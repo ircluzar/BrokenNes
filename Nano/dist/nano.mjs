@@ -75,7 +75,8 @@ class Chip {
     this.pEnvDecay = new Int32Array(2);
     this.pSwNeg = new Uint8Array(2);
     this.pSwShift = new Int32Array(2);
-    this.pSwPeriod = new Int32Array(2);
+    this.pSwPeriod = new Int32Array([1, 1]);   // P + 1, and 1 at power-on ($4001 = 0)
+    this.pSwEnable = new Uint8Array(2);
     this.pSwReload = new Uint8Array(2);
     this.pSwDiv = new Int32Array(2);
 
@@ -138,7 +139,7 @@ class Chip {
       case 0x4005: this.pulseSweep(1, value); break;
       case 0x4006: this.pTimer[1] = (this.pTimer[1] & 0x0700) | value; break;
       case 0x4007: this.pulseHigh(1, value); break;
-      case 0x4008: this.triLinearReg = value; this.triHalt = (value & 0x80) ? 1 : 0; this.triReload = 1; break;
+      case 0x4008: this.triLinearReg = value; this.triHalt = (value & 0x80) ? 1 : 0; break;   // only $400B sets the linear counter's reload flag
       case 0x400A: this.triTimer = (this.triTimer & 0x0700) | value; break;
       case 0x400B:
         this.triTimer = (this.triTimer & 0x00FF) | ((value & 7) << 8);
@@ -146,7 +147,7 @@ class Chip {
         this.triSeq = 0; this.triReload = 1; this.triTimerCounter = this.triTimer + 1;
         break;
       case 0x400C:
-        this.noiseHalt = (value & 0x20) ? 1 : 0; this.noiseConst = (value & 0x10) ? 1 : 0; this.noiseVol = value & 0x0F; this.noiseEnvStart = 1;
+        this.noiseHalt = (value & 0x20) ? 1 : 0; this.noiseConst = (value & 0x10) ? 1 : 0; this.noiseVol = value & 0x0F;   // only $400F restarts the envelope
         break;
       case 0x400E: this.noisePeriodReg = value; break;
       case 0x400F:
@@ -180,10 +181,10 @@ class Chip {
   }
 
   pulseCtl(i, v) {
-    this.pDuty[i] = (v >> 6) & 3; this.pHalt[i] = (v & 0x20) ? 1 : 0; this.pConst[i] = (v & 0x10) ? 1 : 0; this.pVol[i] = v & 0x0F; this.pEnvStart[i] = 1;
+    this.pDuty[i] = (v >> 6) & 3; this.pHalt[i] = (v & 0x20) ? 1 : 0; this.pConst[i] = (v & 0x10) ? 1 : 0; this.pVol[i] = v & 0x0F;   // only $4003 / $4007 restart the envelope
   }
   pulseSweep(i, v) {
-    this.pSwPeriod[i] = ((v >> 4) & 7) + 1; this.pSwNeg[i] = (v & 8) ? 1 : 0; this.pSwShift[i] = v & 7; this.pSwReload[i] = 1;
+    this.pSwEnable[i] = (v & 0x80) ? 1 : 0; this.pSwPeriod[i] = ((v >> 4) & 7) + 1; this.pSwNeg[i] = (v & 8) ? 1 : 0; this.pSwShift[i] = v & 7; this.pSwReload[i] = 1;
   }
   pulseHigh(i, v) {
     this.pTimer[i] = (this.pTimer[i] & 0x00FF) | ((v & 7) << 8);
@@ -214,16 +215,15 @@ class Chip {
     this.sweep(0); this.sweep(1);
   }
 
+  // The sweep unit clocked by a half frame. The update tests the divider BEFORE it is reloaded or counted down, and only while the unit's enable bit is set.
   sweep(i) {
     const shift = this.pSwShift[i], period = this.pSwPeriod[i];
-    if (shift === 0) { if (this.pSwReload[i]) { this.pSwDiv[i] = period; this.pSwReload[i] = 0; } return; }
-    if (this.pSwReload[i]) { this.pSwDiv[i] = period; this.pSwReload[i] = 0; }
-    else if (--this.pSwDiv[i] <= 0) {
-      this.pSwDiv[i] = period;
+    if (this.pSwDiv[i] <= 0 && this.pSwEnable[i] && shift !== 0) {
       const timer = this.pTimer[i], change = timer >> shift;
       const target = this.pSwNeg[i] ? (timer - change - (i === 0 ? 1 : 0)) : (timer + change);
-      if (target >= 8 && target <= 0x7FF) this.pTimer[i] = target;
+      if (timer >= 8 && target <= 0x7FF) this.pTimer[i] = Math.max(0, target);
     }
+    if (this.pSwDiv[i] <= 0 || this.pSwReload[i]) { this.pSwDiv[i] = Math.max(0, period - 1); this.pSwReload[i] = 0; } else this.pSwDiv[i]--;
   }
 
   frameSequencer() {
@@ -237,11 +237,11 @@ class Chip {
         }
       } else {
         switch (this.frameStep) {
-          case 0: this.quarterFrame(); this.halfFrame(); this.nextFrameEvent = 14913; break;
-          case 1: this.quarterFrame(); this.nextFrameEvent = 22371; break;
-          case 2: this.quarterFrame(); this.halfFrame(); this.nextFrameEvent = 29829; break;
-          case 3: this.quarterFrame(); this.nextFrameEvent = 37281; break;
-          case 4: this.quarterFrame(); this.frameStep = -1; this.frameCycle -= 37282; this.nextFrameEvent = 7457; break;
+          case 0: this.quarterFrame(); this.nextFrameEvent = 14913; break;
+          case 1: this.quarterFrame(); this.halfFrame(); this.nextFrameEvent = 22371; break;
+          case 2: this.quarterFrame(); this.nextFrameEvent = 29829; break;
+          case 3: this.nextFrameEvent = 37281; break;
+          case 4: this.quarterFrame(); this.halfFrame(); this.frameStep = -1; this.frameCycle -= 37282; this.nextFrameEvent = 7457; break;
         }
       }
       this.frameStep++;

@@ -24,7 +24,7 @@ if (!host || !dll || !fs.existsSync(host) || !fs.existsSync(dll)) {
   process.exit(2);
 }
 
-let text = fs.readFileSync(path.join(here, '..', 'dist', 'nano.js'), 'utf8');
+let text = fs.readFileSync(process.env.NANO_DIST ?? path.join(here, '..', 'dist', 'nano.js'), 'utf8');
 if (argv.includes('--mutant')) {   // proof that this check can fail: one wrong digit in the pulse period formula
   const find = 'CPU_HZ / (16.0 * freq) - 1.0';
   if (!text.includes(find)) throw new Error('mutation target missing');

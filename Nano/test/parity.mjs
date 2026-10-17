@@ -92,6 +92,40 @@ export function runParity(Nano, list, exe) {
   return results;
 }
 
+// The chip alone, driven by seeded random register writes ($4000-$4017 except the DMC registers and the DMC enable: every channel, the sweep units, the
+// frame counter in both modes, the length counters, at six host rates), replayed through Core's NesApuInstrument. This is what notices a change in
+// Windows/NesEmulator/apus/APU_FIX.cs that the note scripts do not reach (they use only the 4-step frame counter and a few registers).
+export function runChipFuzz(Nano, exe, { rates = [44100, 48000, 22050, 96000, 32000, 16000], seeds = [1, 2, 3], steps = 300 } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nano-fuzz-'));
+  const mine = new Map(), names = [];
+  const rng = (seed) => { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; };
+  for (const rate of rates) for (const seed of seeds) {
+    const r = rng(seed * 7919 + rate), chip = new Nano._kit.Chip(rate, 0x0F);
+    const ops = [], chunks = [], name = `fuzz_${rate}_${seed}`;
+    for (let step = 0; step < steps; step++) {
+      for (let k = Math.floor(r() * 6); k > 0; k--) {
+        const reg = Math.floor(r() * 0x18);
+        if ((reg >= 0x10 && reg <= 0x13) || reg === 0x14 || reg === 0x16) continue;
+        let v = Math.floor(r() * 256);
+        if (reg === 0x15) v &= 0x0F;
+        if (reg === 0x17 && r() < 0.5) v |= 0x40;
+        ops.push([0, reg, v]); chip.write(reg, v);
+      }
+      const n = 1 + Math.floor(r() * (r() < 0.2 ? 3000 : 300));
+      const out = new Float32Array(n); chip.render(out, 0, n);
+      const last = ops[ops.length - 1]; if (last && last[0] === 1) last[1] += n; else ops.push([1, n]);
+      chunks.push(out);
+    }
+    const pcm = new Float32Array(chunks.reduce((a, c) => a + c.length, 0)); let o = 0; for (const c of chunks) { pcm.set(c, o); o += c.length; }
+    fs.writeFileSync(path.join(dir, name + '.trace.json'), JSON.stringify({ core: 'FIX', rate, mask: 15, ops }));
+    mine.set(name, pcm); names.push(name);
+  }
+  execFileSync(exe, ['replay', dir], { stdio: ['ignore', 'ignore', 'inherit'] });
+  const results = names.map(name => ({ name, cmp: comparePcm(mine.get(name), readF32(path.join(dir, name + '.core.f32'))) }));
+  if (!keep) fs.rmSync(dir, { recursive: true, force: true });
+  return results;
+}
+
 // ---- mutants ----
 const MUTANTS = [
   // the chip
@@ -104,7 +138,10 @@ const MUTANTS = [
   ['chip: short-mode noise tap 6 -> 5', '((s >> 6) & 1)', '((s >> 5) & 1)'],
   ['chip: pulse divider (timer+1)*2 off by one', 'pTC[0] = (pTimer[0] + 1) * 2;', 'pTC[0] = (pTimer[0] + 1) * 2 + 1;'],
   ['chip: triangle timer reload off by one', 'this.triTimerCounter = this.triTimer + 1;\n        if (this.triEnabled', 'this.triTimerCounter = this.triTimer + 2;\n        if (this.triEnabled'],
-  ['chip: pulse 1 sweep ones-complement lost', "(i === 0 ? 1 : 0)) : (timer + change);\n      if (target >= 8", "(i === 0 ? 0 : 0)) : (timer + change);\n      if (target >= 8"],
+  ['chip: pulse 1 sweep ones-complement lost', "(i === 0 ? 1 : 0)) : (timer + change);\n      if (timer >= 8", "(i === 0 ? 0 : 0)) : (timer + change);\n      if (timer >= 8"],
+  ['chip: the sweep ignores its enable bit', 'this.pSwDiv[i] <= 0 && this.pSwEnable[i] && shift !== 0', 'this.pSwDiv[i] <= 0 && shift !== 0'],
+  ['chip: a write to $4008 sets the linear counter reload flag', 'this.triHalt = (value & 0x80) ? 1 : 0; break;', 'this.triHalt = (value & 0x80) ? 1 : 0; this.triReload = 1; break;'],
+  ['chip: 5-step frame counter with the half frame one step early', 'case 1: this.quarterFrame(); this.halfFrame(); this.nextFrameEvent = 22371; break;\n          case 2: this.quarterFrame(); this.nextFrameEvent = 29829; break;\n          case 3: this.nextFrameEvent = 37281; break;', 'case 1: this.quarterFrame(); this.nextFrameEvent = 22371; break;\n          case 2: this.quarterFrame(); this.halfFrame(); this.nextFrameEvent = 29829; break;\n          case 3: this.nextFrameEvent = 37281; break;'],
   ['chip: frame sequencer step 22371 -> 22372', 'this.nextFrameEvent = 22371; break;\n          case 2: this.quarterFrame(); this.nextFrameEvent = 29829; break;\n          case 3: this.quarterFrame(); this.halfFrame(); this.frameStep = -1', 'this.nextFrameEvent = 22372; break;\n          case 2: this.quarterFrame(); this.nextFrameEvent = 29829; break;\n          case 3: this.quarterFrame(); this.halfFrame(); this.frameStep = -1'],
   ['chip: Hermite coefficient 1.5 -> 1.4', 'fround(1.5 * fround(y1 - y2))', 'fround(1.4 * fround(y1 - y2))'],
   ['chip: resampler step computed with a rounded input rate', 'this.rsStep = NATIVE_RATE / hostRate;\n\n    // NesApuInstrument.Attach', 'this.rsStep = 44100.5 / hostRate;\n\n    // NesApuInstrument.Attach'],
@@ -130,7 +167,7 @@ const MUTANTS = [
 ];
 
 const exe = parityExe();
-const text = fs.readFileSync(distFile, 'utf8');
+const text = fs.readFileSync(process.env.NANO_DIST ?? distFile, 'utf8');
 let list = scenarios(loadNano(text));
 if (filter) list = list.filter(s => s.name.includes(filter));
 let failed = 0;
@@ -148,6 +185,12 @@ for (const r of res) {
 const silent = res.filter(r => r.peak < 1e-4).map(r => r.name);
 console.log(`${res.length - failed}/${res.length} scripts bit-exact on both checks; ${totalSamples} samples, ${totalWrites} register writes, ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 if (silent.length) { console.log('SILENT scripts (a test that proves nothing): ' + silent.join(', ')); failed++; }
+{
+  const fz = runChipFuzz(loadNano(text), exe);
+  const bad = fz.filter(f => !f.cmp.ok);
+  console.log(`chip fuzz: ${fz.length - bad.length}/${fz.length} random register streams (all registers, both frame-counter modes, six host rates) bit-exact against Core` + (bad.length ? ': ' + bad.map(b => b.name + ' ' + b.cmp.why).join('; ') : ''));
+  if (bad.length) failed++;
+}
 
 if (args.includes('--mutants')) {
   // a smaller set of scripts is enough to see each fault, and keeps a shared machine polite
@@ -162,6 +205,8 @@ if (args.includes('--mutants')) {
     try {
       const r = runParity(loadNano(mutated), subset, exe);
       const chipBad = r.filter(x => !x.chip.ok), instBad = r.filter(x => !x.instrument.ok);
+      const fz = runChipFuzz(loadNano(mutated), exe, { rates: [44100, 48000], seeds: [1, 2], steps: 200 }).filter(f => !f.cmp.ok);
+      if (fz.length) caught.push(`chip fuzz in ${fz.length}`);
       if (chipBad.length) caught.push(`chip check in ${chipBad.length}`);
       if (instBad.length) caught.push(`instrument check in ${instBad.length}`);
       note = (chipBad[0] ?? instBad[0]) ? ` e.g. ${(chipBad[0] ?? instBad[0]).name}: ${(chipBad[0]?.chip ?? instBad[0]?.instrument).why}` : '';
