@@ -54,7 +54,7 @@ ${workletFn}
 workletMain(engineKit(), ${JSON.stringify(nameMatch)});
 `;
 
-const license = fs.readFileSync(path.join(root, '..', 'LICENSE.txt'));
+const license = fs.readFileSync(path.join(root, '..', 'LICENSE.txt'), 'utf8').replace(/\r\n/g, '\n');
 const dist = path.join(root, 'dist');
 const check = process.argv.includes('--check');
 let bad = 0;
