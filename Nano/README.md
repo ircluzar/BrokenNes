@@ -188,7 +188,7 @@ two pulse notes at once use both pulse channels (a third steals the oldest); the
 
 ## How it is proven
 
-Everything below was run; the numbers are in `docs/projects/round5-nano.md`. `node Nano/test/<name>.mjs` runs each; `pwsh UAT/entrypoints/nano-smoke.ps1` runs them together (about 3 minutes; `-Mutants` adds the error injection, about 7).
+Everything below was run; the numbers are in `docs/projects/round5-nano.md`. `node Nano/test/<name>.mjs` runs each; `pwsh UAT/entrypoints/nano-smoke.ps1` runs them together (about 3 minutes; with `-Mutants`, which adds the error injection, about 7).
 Needs: Node 22 or newer for everything; the .NET 10 SDK for `parity.mjs` (it builds `tools/NanoParity` into `NANO_ARTIFACTS`, default `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_nano`, and refuses a stale exe);
 Edge or Chrome for `browser-test.mjs` (`--browser <path>`, `--file` for a `file://` page); a built BrokenNes2 plugin DLL and test host for `plugin-parity.mjs` (`--host`, `--dll`; it says NOT RUN and exits 2 without them).
 
