@@ -48,6 +48,12 @@ public sealed partial class DSP_SFC
     /// <summary>Called once per produced sample (left, right).</summary>
     public Action<short, short>? Output;
 
+    /// <summary>Optional per-sample overrides of what the sound driver wrote to the voices (the plugin's "push into the game"): null, the default, leaves the DSP exactly as it always was. See <see cref="DspVoiceOverrides"/>.</summary>
+    public DspVoiceOverrides? Overrides;
+
+    /// <summary>Optional: told of every register write the audio unit's program makes (address, value) before it lands. A probe for tools and tests; null by default.</summary>
+    public Action<int, byte>? WriteTap;
+
     public DSP_SFC(byte[] aram)
     {
         ram = aram;
@@ -78,6 +84,7 @@ public sealed partial class DSP_SFC
     public void Write(int addr, byte value)
     {
         addr &= 0x7F;
+        WriteTap?.Invoke(addr, value);
         Regs[addr] = value;
         if (addr == KON) newKon = value;
         else if (addr == ENDX) Regs[ENDX] = 0;   // any write clears all end flags
@@ -183,6 +190,7 @@ public sealed partial class DSP_SFC
         }
 
         byte pmon = (byte)(Regs[PMON] & 0xFE), non = Regs[NON], eon = Regs[EON];
+        var ovr = Overrides;
         int mainL = 0, mainR = 0, echoL = 0, echoR = 0;
         int prevOutput = 0;
         byte endx = Regs[ENDX];
@@ -201,7 +209,17 @@ public sealed partial class DSP_SFC
             int brrByte = ram[(v.BrrAddr + v.BrrOffset) & 0xFFFF];
             int header = ram[v.BrrAddr & 0xFFFF];
 
-            if ((pmon & bit) != 0) pitch += ((prevOutput >> 5) * pitch) >> 10;
+            // what the voice plays with: its registers, unless an override names the sample it plays (Overrides is null unless the plugin pushed an instrument into the game)
+            bool usePmod = (pmon & bit) != 0, useNoise = (non & bit) != 0, useEcho = (eon & bit) != 0;
+            int volL = (sbyte)Regs[r], volR = (sbyte)Regs[r + 1], adsr1 = Regs[r + 5], adsr2 = Regs[r + 6], gain = Regs[r + 7];
+            if (ovr != null)
+            {
+                int oi = ovr.Find(Regs[r + 4]);
+                if (oi >= 0) ovr.Apply(oi, ref pitch, ref volL, ref volR, ref adsr1, ref adsr2, ref gain, ref usePmod, ref useNoise, ref useEcho);
+                if (bit == 1) usePmod = false;      // voice 0 has no previous voice to modulate it
+            }
+
+            if (usePmod) pitch += ((prevOutput >> 5) * pitch) >> 10;
 
             if (v.KonDelay != 0)
             {
@@ -219,7 +237,7 @@ public sealed partial class DSP_SFC
             if (FastPaths && v.Env == 0) output = 0;   // (anything * 0) >> 11 == 0: skip the interpolation
             else
             {
-                output = (non & bit) != 0 ? (short)(noise * 2) : Interpolate(v);
+                output = useNoise ? (short)(noise * 2) : Interpolate(v);
                 output = ((output * v.Env) >> 11) & ~1;
             }
             Regs[r + 8] = (byte)(v.Env >> 4);   // ENVX
@@ -231,7 +249,7 @@ public sealed partial class DSP_SFC
                 if ((koff & bit) != 0) v.Mode = EnvMode.Release;
                 if ((kon & bit) != 0) { v.KonDelay = 5; v.Mode = EnvMode.Attack; }
             }
-            if (v.KonDelay == 0) RunEnvelope(v, r);
+            if (v.KonDelay == 0) RunEnvelope(v, adsr1, adsr2, gain);
 
             // Decode the next 4 BRR samples once interpolation has moved past them.
             bool looped = false;
@@ -247,9 +265,9 @@ public sealed partial class DSP_SFC
             }
             v.InterpPos = Math.Min((v.InterpPos & 0x3FFF) + pitch, 0x7FFF);
 
-            int ampL = (output * (sbyte)Regs[r]) >> 7, ampR = (output * (sbyte)Regs[r + 1]) >> 7;
+            int ampL = (output * volL) >> 7, ampR = (output * volR) >> 7;
             mainL = Clamp16(mainL + ampL); mainR = Clamp16(mainR + ampR);
-            if ((eon & bit) != 0) { echoL = Clamp16(echoL + ampL); echoR = Clamp16(echoR + ampR); }
+            if (useEcho) { echoL = Clamp16(echoL + ampL); echoR = Clamp16(echoR + ampR); }
 
             if (looped) endx |= (byte)bit;
             if (v.KonDelay == 5) endx &= (byte)~bit;
@@ -301,7 +319,7 @@ public sealed partial class DSP_SFC
         }
     }
 
-    private void RunEnvelope(Voice v, int r)
+    private void RunEnvelope(Voice v, int adsr1, int adsr2, int gain)
     {
         int env = v.Env;
         if (v.Mode == EnvMode.Release)
@@ -310,8 +328,7 @@ public sealed partial class DSP_SFC
             return;
         }
 
-        int rate, envData = Regs[r + 6];   // ADSR2
-        byte adsr1 = Regs[r + 5];
+        int rate, envData = adsr2;
         if ((adsr1 & 0x80) != 0)
         {
             if (v.Mode >= EnvMode.Decay)
@@ -329,7 +346,7 @@ public sealed partial class DSP_SFC
         }
         else
         {
-            envData = Regs[r + 7];   // GAIN
+            envData = gain;
             int mode = envData >> 5;
             if (mode < 4) { env = envData * 0x10; rate = 31; }
             else

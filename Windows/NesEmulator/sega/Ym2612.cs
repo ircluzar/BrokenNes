@@ -238,7 +238,7 @@ public sealed partial class Ym2612 : IHubVoiceSource
             case 2: address = 0x100 | value; break;
             case 1:
                 if ((address & 0x100) != 0) return;                       // data for a part-2 address is ignored on this port
-                if (address == 0x2A) { dacData = (dacData & ~0x1FE) | ((value ^ 0x80) << 1); NoteDac(); }
+                if (address == 0x2A) { if (Override != null) value = Override.OnDacWrite(value, now); dacData = (dacData & ~0x1FE) | ((value ^ 0x80) << 1); NoteDac(); }
                 else if (address == 0x2B) dacEnable = (value & 0x80) != 0;
                 else if (address == 0x2C) dacData = (dacData & ~1) | ((value >> 3) & 1);
                 else WriteRegister(address, value);
@@ -268,6 +268,20 @@ public sealed partial class Ym2612 : IHubVoiceSource
 
     /// <summary>A register as last written (the frequency-high registers read as latched).</summary>
     public byte Register(int index) => regs[index & 0x1FF];
+
+    /// <summary>Optional hooks for the plugin's "push an instrument into the running game" (null, the default, leaves the chip exactly as it always was). See <see cref="IYm2612Override"/>.</summary>
+    public IYm2612Override? Override { get; set; }
+
+    /// <summary>Rewrites an operator or channel register (the operator registers $30-$9F, the channel registers $B0-$B7, the LFO $22; part 2 adds $100) the way a write would, without the bus: for <see cref="IYm2612Override.OnKeyOn"/>. False for any other register.</summary>
+    public bool OverrideRegister(int index, byte data)
+    {
+        index &= 0x1FF;
+        int low = index & 0xFF;
+        if (!(low is >= 0x30 and <= 0x9F && (low & 3) != 3 || low is >= 0xB0 and <= 0xB2 || low is >= 0xB4 and <= 0xB6 || index == 0x22)) return false;
+        regs[index] = data;
+        modifiedChannels = AllChannels;
+        return true;
+    }
 
     public bool DacEnabled => dacEnable;
     public int DacValue => (short)(dacData << 7) >> 7;
@@ -309,6 +323,7 @@ public sealed partial class Ym2612 : IHubVoiceSource
             if (channel == 3) return;
             channel += ((data >> 2) & 1) * 3;
             int mask = (data >> 4) & 0xF;
+            if (mask != 0) Override?.OnKeyOn(this, channel);      // (null unless the plugin pushed an instrument into the game)
             for (int n = 0; n < 4; n++)
             {
                 var o = ops[channel * 4 + n];
