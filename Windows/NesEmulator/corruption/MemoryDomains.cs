@@ -135,6 +135,9 @@ public static class MachineDomains
         switch (inner)
         {
             case SnesSession snes: return Snes(snes);
+            case GbSession gb: return GameBoy(gb);
+            case NesEmulator.Sega.SmsSession sms: return Sms(sms);
+            case NesEmulator.Sega.MdSession md: return Genesis(md);
             default: return Array.Empty<IMemoryDomain>();
         }
     }
@@ -153,6 +156,60 @@ public static class MachineDomains
     };
 
     private static int Safe(Func<int> size) { try { return size(); } catch { return 0; } }
+
+    private static IReadOnlyList<IMemoryDomain> GameBoy(GbSession s)
+    {
+        var b = s.Board;
+        var ppu = b.Ppu;
+        var list = new List<IMemoryDomain>
+        {
+            new ArrayDomain("WRAM", $"Work RAM ({b.Wram.Length / 1024} KB)", DomainKind.Work, b.Wram),
+            new ArrayDomain("HRAM", "High RAM (127 bytes)", DomainKind.Work, b.Hram),
+            new ArrayDomain("VRAM", $"Video RAM ({ppu.Vram.Length / 1024} KB; a Color has two banks)", DomainKind.Video, ppu.Vram),
+            new ArrayDomain("OAM", "Sprite attribute RAM (160 bytes)", DomainKind.Video, ppu.Oam),
+        };
+        if (b.Model == NesEmulator.Gb.GbModel.Cgb)
+            list.Add(new FuncDomain("CRAM", "Colour palette RAM (64 bytes of background, 64 of sprites)", DomainKind.Palette, 128,
+                a => a < 64 ? ppu.BgPalRam[a] : ppu.ObjPalRam[a - 64], (a, v) => { if (a < 64) ppu.BgPalRam[a] = v; else ppu.ObjPalRam[a - 64] = v; }));
+        else list.Add(new MissingDomain("CRAM", "Colour palette RAM", DomainKind.Palette, "this game runs on the monochrome Game Boy, which has no colour RAM"));
+        list.Add(b.Cart.Ram.Length > 0 ? new ArrayDomain("SRAM", $"Cartridge RAM ({b.Cart.Ram.Length / 1024} KB)", DomainKind.CartRam, b.Cart.Ram) : new MissingDomain("SRAM", "Cartridge RAM", DomainKind.CartRam, "this cartridge has no RAM of its own"));
+        list.Add(new ArrayDomain("ROM", $"Cartridge ROM ({b.Cart.Rom.Length / 1024} KB)", DomainKind.Rom, b.Cart.Rom));
+        list.Add(b.Apu is NesEmulator.Gb.APU_GB apu ? new ArrayDomain("WAVE", "Wave channel RAM (16 bytes: the Game Boy's one custom instrument)", DomainKind.Audio, apu.WaveRam)
+                                                      : new MissingDomain("WAVE", "Wave channel RAM", DomainKind.Audio, "the sound unit is not the Game Boy's own"));
+        return list;
+    }
+
+    private static IReadOnlyList<IMemoryDomain> Sms(NesEmulator.Sega.SmsSession s)
+    {
+        var b = s.Board;
+        bool gg = s.Console == ConsoleKind.GameGear;
+        var list = new List<IMemoryDomain>
+        {
+            new ArrayDomain("RAM", "Work RAM (8 KB)", DomainKind.Work, b.Ram),
+            new ArrayDomain("VRAM", "Video RAM (16 KB)", DomainKind.Video, b.Vdp.Vram),
+            new FuncDomain("CRAM", gg ? "Colour RAM (32 colours of 12 bits)" : "Colour RAM (32 colours of 6 bits)", DomainKind.Palette, gg ? 64 : 32, a => b.Vdp.CramByte(a), (a, v) => b.Vdp.SetCramByte(a, v)),
+        };
+        list.Add(b.Cart.Ram is { Length: > 0 } ram ? new ArrayDomain("SRAM", $"Cartridge RAM ({ram.Length / 1024} KB)", DomainKind.CartRam, ram) : new MissingDomain("SRAM", "Cartridge RAM", DomainKind.CartRam, "this cartridge has no RAM of its own"));
+        list.Add(new ArrayDomain("ROM", $"Cartridge ROM ({b.Cart.Rom.Length / 1024} KB)", DomainKind.Rom, b.Cart.Rom));
+        return list;
+    }
+
+    private static IReadOnlyList<IMemoryDomain> Genesis(NesEmulator.Sega.MdSession s)
+    {
+        var b = s.Board;
+        var list = new List<IMemoryDomain>
+        {
+            new ArrayDomain("RAM", "68000 work RAM (64 KB)", DomainKind.Work, b.Ram),
+            new ArrayDomain("VRAM", "Video RAM (64 KB)", DomainKind.Video, b.Vdp.Vram),
+            new WordDomain("CRAM", "Colour RAM (64 colours of 9 bits)", DomainKind.Palette, b.Vdp.Cram),
+            new WordDomain("VSRAM", "Vertical scroll RAM (40 entries)", DomainKind.Video, b.Vdp.Vsram),
+        };
+        list.Add(b.Sound is NesEmulator.Sega.MdSoundUnit unit ? new ArrayDomain("ZRAM", "Z80 sound RAM (8 KB): the sound driver's code and data", DomainKind.Audio, unit.Z80Ram)
+                                                              : new MissingDomain("ZRAM", "Z80 sound RAM", DomainKind.Audio, "the sound unit is not the Genesis's own"));
+        list.Add(b.Cart.Sram.Length > 0 ? new ArrayDomain("SRAM", $"Cartridge RAM ({b.Cart.Sram.Length / 1024} KB)", DomainKind.CartRam, b.Cart.Sram) : new MissingDomain("SRAM", "Cartridge RAM", DomainKind.CartRam, "this cartridge has no battery RAM"));
+        list.Add(new ArrayDomain("ROM", $"Cartridge ROM ({b.Cart.Rom.Length / 1024} KB)", DomainKind.Rom, b.Cart.Rom));
+        return list;
+    }
 
     private static IReadOnlyList<IMemoryDomain> Snes(SnesSession s)
     {

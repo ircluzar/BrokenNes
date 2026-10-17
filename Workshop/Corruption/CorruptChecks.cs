@@ -49,6 +49,7 @@ internal static class CorruptChecks
         if (Want("audio")) { Section("an SPC700 audio-RAM corruption changes the sound, deterministically, and what Instrument Runaway captures"); Guard(c, "audio", () => Audio(c, rom)); }
         if (Want("engine")) { Section("the Glitch Harvester engine on a console game: farm, stockpile file, start on another machine (the desktop's part, headless)"); Guard(c, "engine", () => CorruptEngineChecks.Run(c, rom)); }
         if (Want("nes")) { Section("the NES path of the engine is unchanged, and its entries travel in the new file"); Guard(c, "nes", () => CorruptEngineChecks.Nes(c)); }
+        if (Want("consoles")) { Section("the Game Boy, Game Boy Color, Master System, Game Gear and Genesis: memories, a corruption on a saved state, a corruption on a replay"); Guard(c, "consoles", () => CorruptConsoleChecks.Run(c)); }
         if (Want("cli")) { Section("--corrupt-apply"); Guard(c, "cli", () => Cli(c, rom)); }
         if (Want("state")) { Section("state anchors on the SNES (run once the SNES has save states)"); Guard(c, "state", () => SnesState(c, rom)); }
         if (Want("smw")) { Section("a real game (Super Mario World), when its ROM is present"); Guard(c, "smw", () => Smw(c, smw)); }

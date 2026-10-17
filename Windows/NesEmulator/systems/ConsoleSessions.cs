@@ -316,6 +316,9 @@ public sealed class GbSession : IConsoleSession
         }
     }
 
+    /// <summary>The Game Boy board (memories, cartridge, the chips): for tools that read or write the machine's memory (the corruption domains).</summary>
+    public BOARD_GB Board => board;
+
     public ConsoleKind Console { get; }
     public string Title { get; }
     public string Description => $"{Consoles.DisplayName(Console)} {Title} ({mapperName}) | CPU {cpuId} | PPU {ppuId} | APU {apuId}";
