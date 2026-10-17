@@ -56,7 +56,7 @@ What Genesis stems, Runaway and games need: `Plugin/README.md` ("The Genesis con
 
 ## State at the pause
 
-- Host tests: `FruityHost selftest` = **47 checks: 46 pass, 1 warning, 0 failed** (`psg` is Sega track C1's, `md` and `rom-sms` C2's, `fm`, `rom-md`, `stems-sega` and `runaway-sega` C3b's) (the warning: the QLQ core plays an octave sharp on purpose).
+- Host tests: `FruityHost selftest` = **50 results: 49 pass, 1 warning, 0 failed** (round 5 added `dpad` = d-pad protection and `prefs` = the settings migration; `psg` is Sega track C1's, `md` and `rom-sms` C2's, `fm`, `rom-md`, `stems-sega` and `runaway-sega` C3b's) (the warning: the QLQ core plays an octave sharp on purpose).
 - Real FL Studio 2026: certified **15/15** (headless render, pitch within 0.1 cent, slides ~2-3 cents) on the old single-instance build. The
   current build (emulator hub, editor, ROM mode for all consoles, Inputs, Instrument Runaway) was installed by the user and worked in manual
   use but was **not re-certified in FL** yet: run `pwsh UAT/certify.ps1 -Only plugin-fl` (FL must be closed) when development resumes.

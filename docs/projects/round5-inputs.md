@@ -64,9 +64,19 @@ The remembered settings moved to `HKCU\Software\BrokenNes\BrokenNes2`. `Prefs.Mi
 **Test: selftest check `prefs`** (`SelfTest.Prefs.cs`, editor hooks 133 = read a setting, 134 = write one). Fake old **files**: values carried to the new store, old file byte-identical (SHA-256), a new setting lands in the new store only, a non-empty new store is not overwritten, no old store means nothing happens and nothing is created. The **real registry code on test keys** under `HKCU\Software\BrokenNes_Test\<guid>` (deleted afterwards): a fake old key with three REG_SZ and one REG_DWORD value is carried over exactly (names and text), the old key is unchanged (4 values, the DWORD is still a DWORD) and receives nothing new, a non-empty new key is not overwritten or topped up, and with no old key nothing appears and the old key is not created. **Pass.** Injected bugs, each flagged: Q1 the migration never runs; Q2 a non-empty new key overwritten; Q3 reading the old key creates it; Q4 DWORD values not carried over; Q5 the file migration overwrites a non-empty store; Q6 the migration writes a marker into the old key.
 Not tested: the two production paths themselves (constants in `Prefs.cs`; the real old key is the user's own, so nothing here wrote to it or to the real new key). On this machine the old key holds one value (`AboutRevisionSeen`); the first time the new DLL runs it will be copied across.
 
-## Verification of the finished state
+## Verification of the finished state (after merging `refs/heads/main` 3d32bd6, c4b's project game state)
 
-(See the table at the end, filled from the final runs.)
+| What | Result |
+|---|---|
+| `Workshop --input-test` (rebuilt after the merge) | 32 passed, 0 failed |
+| `node UAT/lite/test-dpad-guard.mjs --publish <non-AOT Lite publish of this worktree>` | 32 passed, 0 failed |
+| Plugin host selftest, Native AOT DLL, with the VRUN ROM (`certify -Only plugin-host` equivalent run by hand: `FruityHost selftest <dll> --rom vrun_game.nes`) | **49 passed, 1 warning (the QLQ core plays an octave sharp on purpose), 0 failed**, including c4b's `runaway-state`, and the new `dpad` and `prefs` |
+| Plugin install smoke (`UAT/plugin/install-smoke.ps1`, 13 checks, fake FL folders) | pass |
+| Desktop smoke (`UAT/entrypoints/desktop-smoke.ps1 -Exe` on this worktree's build) | pass |
+| Native AOT build of the DLL (`dotnet publish` of the plugin, the same command `Plugin/build-dist.ps1` runs, with this agent's own artifacts folder) | exit 0, 9,519,104 bytes |
+| `UAT/entrypoints/dpad-live.ps1` (new): real key presses (`keybd_event`) into the real desktop window, read back through `GET /api/input/state` | 9 checks pass: the API's Left+Right+Up+Down reaches the game untouched; Left passes; Left+Right gives neither; Right let go gives Left; Up+Down gives neither; Up+Down+Right gives Right. **Proof it can fail:** the same script on a build with the guard bypassed fails 3 of the key steps (`Left+Right`, `Up+Down`, `Up+Down+Right` handed to the game) |
+
+Two honest notes. (1) `plugin-host` and `build-dist` write to the shared `bn_build` artifacts folder, so I ran their commands by hand into `bn_r5_inputs` instead of running `certify.ps1` / `build-dist.ps1` verbatim (the lead should run those on the merged tree). `Plugin/dist/BrokenNes2_x64.dll` in this worktree is my build (git-ignored). (2) The first selftest run before the merge failed `fm` ("4.9x real time, needs 5x"): a speed floor read while other agents were compiling; `fm` passed twice alone and the full suite passed after the merge.
 
 ## Decisions
 
@@ -74,6 +84,7 @@ Not tested: the two production paths themselves (constants in `Prefs.cs`; the re
 - The guard works on the **merged** pad (keyboard + gamepad + stick + on-screen pad), not per device, because Left on the keyboard and Right on the stick is just as impossible on a d-pad.
 - Lite gets a JavaScript twin rather than going through C#, because the JavaScript layer is the one that knows what is human (keys, pads, touch); the C# entries `UpdateInput` / `UpdateInputForPlayer` stay raw so tests and any future programmatic caller are untouched. The twin is a 10-line function, tested for the same 16 combinations; the minimal Web build, which has no settings page, carries the 4 lines inline, always on.
 - The caller scan in `--input-test` is deliberate: the rule "never on recorded input" is enforced by a test that fails when a new caller appears.
+- The editor test hooks are 130-134 (131 reads the setting, 132 re-reads the prefs, 133 / 134 read and write a setting by name), not 90-94: c4b's `case 90` (the state note) landed in main first.
 - The plugin keeps its test seam (`Inputs.KeyProbe`) reachable only through editor hook 130; `InputManager.KeyProbe` is a public property, null in the app.
 
 ## Open problems / next

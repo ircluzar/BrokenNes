@@ -6,7 +6,7 @@ BrokenNes runs four ways. All of them use the cores in `Windows/NesEmulator/`:
 |---|---|---|
 | Desktop | `Windows/` | `UAT/entrypoints/desktop-smoke.ps1` |
 | Web (Lite) | `WebLite/` | `UAT/entrypoints/web-smoke.ps1` |
-| Plugin in a test host | `Plugin/BrokenNes2.Plugin` + `Plugin/BrokenNes.FruityHost` | `FruityHost selftest` (47 checks: 46 pass, 1 expected warning) |
+| Plugin in a test host | `Plugin/BrokenNes2.Plugin` + `Plugin/BrokenNes.FruityHost` | `FruityHost selftest` (50 results: 49 pass, 1 expected warning) |
 | Plugin in FL Studio | the same DLL | `UAT/plugin/fl/fl-certify.ps1` |
 
 `UAT/certify.ps1` builds and runs all of them and writes one report.
