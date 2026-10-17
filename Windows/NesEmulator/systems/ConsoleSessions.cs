@@ -158,6 +158,10 @@ public sealed partial class SnesSession : IConsoleSession
     public ISnesApu Apu => board.Apu;
     /// <summary>The SNES picture chip (tools: per-line register capture).</summary>
     public PPU_SFC Ppu => board.Ppu;
+    /// <summary>The SFC board (work RAM, cartridge, the chips): for tools that read or write the machine's memory (the corruption domains).</summary>
+    public BOARD_SFC Board => board;
+    /// <summary>The game's real SPC700 + DSP while it is the sound unit that is running (native, or inside a NES sound-chip bridge); null while the silent HLE stand-in is in its place.</summary>
+    public APU_SFC? Spc => board.Apu as APU_SFC ?? (board.Apu as NesApuOnSnes)?.Front as APU_SFC;
     public string Description => $"SNES {Title} | CPU {cpuId} | PPU {ppuId} | APU {apuId}{chipLabel}";
     public double FramesPerSecond => NtscFps;
     public string GameId { get; }
@@ -316,6 +320,9 @@ public sealed class GbSession : IConsoleSession
             }
         }
     }
+
+    /// <summary>The Game Boy board (memories, cartridge, the chips): for tools that read or write the machine's memory (the corruption domains).</summary>
+    public BOARD_GB Board => board;
 
     public ConsoleKind Console { get; }
     public string Title { get; }

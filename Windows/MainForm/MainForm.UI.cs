@@ -201,7 +201,7 @@ namespace BrokenNes.Windows
         {
             if (session != null)
             {
-                lock (emulationLock) session.Reset();
+                lock (emulationLock) { session.Reset(); farm.Poison("the game was reset"); }
                 return;
             }
             if (nes != null && !string.IsNullOrEmpty(currentRomPath))

@@ -218,12 +218,8 @@ namespace BrokenNes
                 var json = await JS.InvokeAsync<string>("eval", "window.ghStockpileData || ''");
                 if (!string.IsNullOrWhiteSpace(json))
                 {
-                    var imported = System.Text.Json.JsonSerializer.Deserialize<List<CorruptorModels.HarvestEntry>>(json);
-                    if (imported != null)
-                    {
-                        foreach (var entry in imported) corruptor.GhStockpile.Add(entry);
-                        Status.Set($"Imported {imported.Count} stockpile entries");
-                    }
+                    var result = corruptor.GlitchHarvester.ImportStockpile(json);
+                    Status.Set($"Imported: {result.Summary}" + (result.Refusals.Count > 0 ? " | " + string.Join(" | ", result.Refusals.Take(3)) : "") + (result.Warnings.Count > 0 ? " | " + result.Warnings[0] : ""));
                 }
             }
             catch (Exception ex) { Status.Set($"Import failed: {ex.Message}"); }

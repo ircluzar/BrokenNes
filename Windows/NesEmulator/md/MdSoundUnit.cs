@@ -40,6 +40,8 @@ public sealed partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm261
     private readonly Ym2612 ym;
     private readonly BandLimitedMixer fmLeft, fmRight;     // the FM stream, 53 kHz in, the host rate out
     private readonly byte[] ram = new byte[0x2000];
+    /// <summary>The Z80's 8 KB of sound RAM (the sound driver's code and data), for tools that read or write the machine's memory (the corruption domains).</summary>
+    public byte[] Z80Ram => ram;
     private readonly Z80<ZBus> z80;
     private IGenesisSoundHost? host;
 

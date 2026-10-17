@@ -218,18 +218,19 @@ public static unsafe partial class Win32
     public static partial bool GetOpenFileName(OPENFILENAMEW* ofn);
 
     /// <summary>Shows the standard Open dialog; <paramref name="filter"/> is pairs separated by '|' (e.g. "NES ROMs|*.nes|All files|*.*").</summary>
-    public static string? ChooseFile(nint owner, string title, string filter)
+    public static string? ChooseFile(nint owner, string title, string filter, string? initialDir = null)
     {
         char* file = stackalloc char[1024];
         file[0] = '\0';
         string f = filter.Replace('|', '\0') + "\0\0";
         fixed (char* pf = f)
         fixed (char* pt = title)
+        fixed (char* pd = initialDir)
         {
             var ofn = new OPENFILENAMEW
             {
                 lStructSize = (uint)sizeof(OPENFILENAMEW), hwndOwner = owner, lpstrFilter = pf, nFilterIndex = 1,
-                lpstrFile = file, nMaxFile = 1024, lpstrTitle = pt, Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR,
+                lpstrFile = file, nMaxFile = 1024, lpstrTitle = pt, lpstrInitialDir = pd, Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR,
             };
             return GetOpenFileName(&ofn) ? new string(file) : null;
         }

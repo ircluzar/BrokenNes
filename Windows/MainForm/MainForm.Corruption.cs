@@ -120,6 +120,14 @@ namespace BrokenNes.Windows
 
             if (!IsEmulatorReady) return;
             var safeBlastType = ResolveUnlockedBlastType(corruptor.BlastType, save);
+            if (session != null && farm.Attached)
+            {
+                // a console game: blast it between frames (the lock the frames run under)
+                lock (corruptorLock) corruptor.BlastType = safeBlastType;
+                lock (emulationLock) SessionBlast();
+                NotifyCorruptorChanged();
+                return;
+            }
             QueueEmuAction(() =>
             {
                 if (nes == null) return;
@@ -153,9 +161,11 @@ namespace BrokenNes.Windows
                 corruptor.MemoryDomains.Clear();
                 try
                 {
-                    corruptor.MemoryDomains.Add(new DomainSel { Key = "PRG", Label = "PRG ROM", Size = GetApproxSize(i => nes.PeekPrg(i)), Selected = false });
-                    corruptor.MemoryDomains.Add(new DomainSel { Key = "PRGRAM", Label = "PRG RAM", Size = GetApproxSize(i => nes.PeekPrgRam(i)), Selected = false });
-                    corruptor.MemoryDomains.Add(new DomainSel { Key = "CHR", Label = "CHR", Size = GetApproxSize(i => nes.PeekChr(i)), Selected = false });
+                    // the sizes: probed (what the corruptor has always done; see EmulatorConfig.CorruptionTrueDomainSizes) or the memories' real ones
+                    bool trueSizes = config != null && config.CorruptionTrueDomainSizes;
+                    corruptor.MemoryDomains.Add(new DomainSel { Key = "PRG", Label = "PRG ROM", Size = trueSizes ? NesDomainSize(nes.GetPrgRomSize) : GetApproxSize(i => nes.PeekPrg(i)), Selected = false });
+                    corruptor.MemoryDomains.Add(new DomainSel { Key = "PRGRAM", Label = "PRG RAM", Size = trueSizes ? NesDomainSize(nes.GetPrgRamSize) : GetApproxSize(i => nes.PeekPrgRam(i)), Selected = false });
+                    corruptor.MemoryDomains.Add(new DomainSel { Key = "CHR", Label = "CHR", Size = trueSizes ? NesDomainSize(nes.GetChrSize) : GetApproxSize(i => nes.PeekChr(i)), Selected = false });
                     corruptor.MemoryDomains.Add(new DomainSel { Key = "RAM", Label = "System RAM", Size = 2048, Selected = true });
                 }
                 catch (Exception ex)
@@ -165,6 +175,8 @@ namespace BrokenNes.Windows
             }
             NotifyCorruptorChanged();
         }
+
+        private static int NesDomainSize(Func<int> size) { try { return size(); } catch { return 0; } }
 
         private int GetApproxSize(Func<int, byte> peek)
         {

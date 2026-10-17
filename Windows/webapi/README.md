@@ -284,6 +284,15 @@ file but sit outside the `/api/rtc` prefix and are therefore ungated.)
 | DELETE | `/api/gh/stockpile/{id}` | Delete a stockpile entry |
 | GET | `/api/gh/stockpile/export` | Export the stockpile as JSON |
 | POST | `/api/gh/stockpile/import` | Import a stockpile from JSON (`{ Json }`) |
+| GET | `/api/gh/status` | What the farm can store for the running game (console, how a position is kept, the recording), the stockpile file state, the default folder, the NES domain-size setting |
+| GET | `/api/gh/stockpile/files` | The `.json` stockpile files in the default folder (newest first) |
+| POST | `/api/gh/stockpile/save` | Save the stockpile to a v2 stockpile file (`{ path?, name? }`; no path asks with a Save dialog) |
+| POST | `/api/gh/stockpile/open` | Open a stockpile file (`{ path?, replace? }`; older exports too); returns what was added, refused and why |
+| GET | `/api/console/domains` | The running console game's memories (id, label, true size, kind, writable, why unavailable); not gated (the NES has `/api/memory/domains`) |
+| GET | `/api/console/peek` | `?domain=&address=&length=` up to 4096 bytes of one console memory, read between frames |
+| POST | `/api/console/poke` | `{ domain, address, value }` write one byte of a console memory between frames |
+| GET | `/api/rtc/true-domain-sizes` | Are the NES RTC domains at true sizes (default off: the probed sizes) |
+| POST | `/api/rtc/true-domain-sizes` | Set it (`{ Enabled }`) |
 
 ### Imagine (AI corruption) - `WebApiServer.Endpoints.Imagine.cs` - **gated on `ImagineBug`**
 
