@@ -155,6 +155,7 @@ public sealed unsafe partial class SelfTest
         new("inst-tools", true, true, true, CheckTools),
         new("inst-undo", true, true, true, CheckUndoRedo),
         new("inst-send-push", true, true, true, CheckSendPush),
+        new("model-failure", true, true, true, CheckModelFailure),
         new("presets-nolib", false, false, false, CheckPresetsNoLibrary),
         new("presets-list", false, true, false, CheckPresetsList),
         new("presets-search", false, true, false, CheckPresetsSearch),
@@ -209,6 +210,7 @@ public sealed unsafe partial class SelfTest
         ("presets-list", 1 << 2, "the wheel does not scroll lists"),
         ("presets-search", 1 << 11, "the text input ignores characters"),
         ("presets-buttons", 1 << 7, "Export calls Import"),
+        ("model-failure", 1 << 16, "a model that throws is swallowed without a word on the tab"),
         ("keyboard-guard", 1 << 15, "typing in a text field still presses the game's buttons"),
     ];
 
@@ -637,6 +639,35 @@ public sealed unsafe partial class SelfTest
         p.Test(403, 0, 2);
         Win32Host.Pump(100);
         t.Expect(UiText(p, 2).Contains("not connected"), "without models the Instruments tab should say so");
+    }
+
+    private void CheckModelFailure(T t, UiCtx c)
+    {
+        var p = c.P;
+        UiTabTo(t, c, UiTab1, "Instruments");
+        t.Expect(UiRect(c, UiInstList) != null && UiText(p, 12) == "<none>", "the tab does not start healthy");
+        // reads that throw while the tab paints: the tab says so, the window stays alive and usable
+        p.Test(404, 0, 1);
+        Win32Host.Pump(100);
+        t.Expect(UiText(p, 12).Contains("told to fail on a read"), $"a model that throws while the tab paints left '{UiText(p, 12)}' on the tab");
+        var shot = Win32Host.CapturePixels(c.Hwnd, out int w, out _);
+        t.Expect(CountRgb(shot, w, (556, 110, 752, 360), 255, 184, 76) > 500, "the failure box (amber border) is not on the screen");
+        t.Expect(UiRect(c, UiInstList) == null, "the instrument list is still drawn although its model fails");
+        UiTabTo(t, c, UiTab0, "Emulator");
+        t.Expect(p.Test(400) == 0 && UiRect(c, 21) != null, "the window did not stay usable while a model failed");
+        UiTabTo(t, c, UiTab1, "Instruments");
+        p.Test(404, 0, 0);
+        Win32Host.Pump(100);
+        t.Expect(UiText(p, 12) == "<none>" && UiRect(c, UiInstList) != null, "the tab did not recover when the model worked again");
+        // writes that throw while an event is handled: the status line says so and nothing changes
+        long before = p.Test(410, 12, 1);
+        p.Test(404, 0, 2);
+        UiClick(t, c, UiFieldBase + 1 * 8 + 2, "plus");
+        t.Expect(UiText(p, 3).Contains("A model behind this tab failed") && UiText(p, 3).Contains("told to fail on a write") && p.Test(420, 11) == 0, $"a failing write said '{UiText(p, 3)}'");
+        t.Expect(p.Test(410, 12, 1) == before, "a failing write changed the value");
+        p.Test(404, 0, 0);
+        UiClick(t, c, UiFieldBase + 1 * 8 + 2, "plus");
+        t.Expect(p.Test(410, 12, 1) == before + 1, "the model did not work again after the failure");
     }
 
     // ------------------------------------------------------------------------------------------------ the Presets tab

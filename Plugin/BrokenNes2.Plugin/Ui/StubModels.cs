@@ -43,6 +43,11 @@ internal sealed class StubInstrumentModel : IInstrumentModelProvider
     private int nSet, nLock, nByte, nRandom, nNudge, nUndo, nRedo, nTake, nPush, lastStrength, lastNudgeDir, lastNudgeField = -2, lastInst = -1;
     public string LastCall { get; private set; } = "";
 
+    /// <summary>Test switches (hook 404): reads (Fields) or writes (SetField) throw, to prove the tab shows a failing model instead of failing silently or hanging.</summary>
+    public bool ThrowOnRead, ThrowOnWrite;
+
+    public void SetFailure(bool reads, bool writes) { ThrowOnRead = reads; ThrowOnWrite = writes; version++; }
+
     public StubInstrumentModel(int count = 30)
     {
         list = new Inst[count];
@@ -104,6 +109,7 @@ internal sealed class StubInstrumentModel : IInstrumentModelProvider
 
     public IReadOnlyList<InstrumentField> Fields(int instrument)
     {
+        if (ThrowOnRead) throw new InvalidOperationException("the stub model was told to fail on a read");
         if (!Has(instrument)) return [];
         var n = list[instrument];
         return Defs.Select((d, i) => new InstrumentField(d.Id, d.Name, d.Kind, d.Min, d.Max, n.Values[i], d.Why, n.Locked[i], d.Names, i < 7 ? "Voice" : "Envelope")).ToArray();
@@ -125,6 +131,7 @@ internal sealed class StubInstrumentModel : IInstrumentModelProvider
 
     public ActionResult SetField(int instrument, string fieldId, int value)
     {
+        if (ThrowOnWrite) throw new InvalidOperationException("the stub model was told to fail on a write");
         int f = FieldIndex(fieldId);
         if (!Has(instrument) || f < 0) return ActionResult.Refused("no such field");
         var d = Defs[f];

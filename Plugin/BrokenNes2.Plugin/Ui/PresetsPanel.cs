@@ -27,6 +27,7 @@ internal sealed class PresetsPanel
     private IReadOnlyList<PresetSummary> rows = [];
     private PresetDetails? details;
     private long cacheVersion = -1;
+    private IPresetLibrary? libUsed;
     private string cacheText = "\0";
     private string? cacheFilter = "\0", selectedId;
     private int filter;
@@ -60,6 +61,9 @@ internal sealed class PresetsPanel
         + status.GetHashCode() + (deleteArmed != null ? 11 : 0) + message.GetHashCode() + rows.Count;
 
     private void Act(ActionResult r) { status = r.Message; statusOk = r.Ok; }
+
+    /// <summary>A model threw while handling an event: say so on the status line.</summary>
+    public void Fail(string why) => Act(ActionResult.Refused("A model behind this tab failed: " + why));
 
     public void Blur() { search.Blur(); rename.Blur(); }
     public void Cancel() { drag = Drag.None; list.BarUp(); Blur(); renaming = false; deleteArmed = null; }
@@ -110,9 +114,9 @@ internal sealed class PresetsPanel
     {
         long v = lib.Version;
         string? f = FilterValues[filter];
-        if (v != cacheVersion || search.Text != cacheText || f != cacheFilter)
+        if (v != cacheVersion || search.Text != cacheText || f != cacheFilter || !ReferenceEquals(lib, libUsed))
         {
-            cacheVersion = v; cacheText = search.Text; cacheFilter = f;
+            cacheVersion = v; cacheText = search.Text; cacheFilter = f; libUsed = lib;
             rows = lib.Search(search.Text, f);
             if (selectedId != null && !rows.Any(r => r.Id == selectedId)) { selectedId = null; renaming = false; rename.Blur(); }
             list.Selected = -1;

@@ -72,6 +72,7 @@ internal static class UiMutate
     public const int FieldsNoScroll = 1 << 13;    // the fields table does not scroll
     public const int IgnoreRunaway = 1 << 14;     // the Instruments tab shows the instruments although Instrument Runaway is off
     public const int KeyGuardOff = 1 << 15;       // typing in a text field still presses the game's buttons
+    public const int SilentModelFailure = 1 << 16;   // a model that throws is swallowed without a word on the tab
 
     public static bool Has(int bit) => (Mask & bit) != 0;
 }

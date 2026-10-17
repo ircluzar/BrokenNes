@@ -73,6 +73,9 @@ internal sealed class InstrumentsPanel
 
     private void Act(ActionResult r) { status = r.Message; statusOk = r.Ok; }
 
+    /// <summary>A model threw while handling an event: say so on the status line.</summary>
+    public void Fail(string why) => Act(ActionResult.Refused("A model behind this tab failed: " + why));
+
     public void Blur() { hex.Blur(); }
 
     /// <summary>The tab went away or the game did: let go of everything (a drag, the keyboard).</summary>
@@ -141,9 +144,11 @@ internal sealed class InstrumentsPanel
             if (v != cacheVersion) summaries = p.Instruments;
             if (list.Selected >= summaries.Count) list.Selected = summaries.Count - 1;
             if (list.Selected < 0 && summaries.Count > 0) list.Selected = 0;
+            // read first, remember the version after: a model that throws is asked again at the next paint, never trusted half-read
+            var newFields = list.Selected >= 0 ? p.Fields(list.Selected) : [];
+            var newBlobs = list.Selected >= 0 ? p.Blobs(list.Selected) : [];
+            fields = newFields; blobs = newBlobs;
             cacheVersion = v; cacheInstrument = list.Selected;
-            fields = list.Selected >= 0 ? p.Fields(list.Selected) : [];
-            blobs = list.Selected >= 0 ? p.Blobs(list.Selected) : [];
             if (selField != null && !fields.Any(f => f.Id == selField)) selField = null;
             blobIndex = Math.Clamp(blobIndex, 0, Math.Max(0, blobs.Count - 1));
             hexBlob = blobs.Count > 0 ? blobs[blobIndex] : null;
