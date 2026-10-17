@@ -466,9 +466,13 @@ namespace BrokenNes.Windows
             return true;
         }
         
-        private static readonly string ConfigDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
-            "BrokenNes");
+        // BROKENNES_CONFIG_DIR (a test hook, also read by BrokenNes.Dev.BrokenDevGate) moves config.json to another folder, so a test can run the
+        // app with its own settings without reading or rewriting the user's. Everything else under %APPDATA%\BrokenNes is unaffected.
+        private static readonly string ConfigDirectory = Environment.GetEnvironmentVariable("BROKENNES_CONFIG_DIR") is { Length: > 0 } cfgDir
+            ? cfgDir
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "BrokenNes");
         private static readonly string ConfigFilePath = Path.Combine(ConfigDirectory, "config.json");
         
         /// <summary>

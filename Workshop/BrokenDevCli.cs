@@ -140,6 +140,8 @@ internal static class BrokenDevCli
     private sealed class ScenarioResult
     {
         public string Id = "", Cores = "", Description = "", Result = "ok", CrashInfo = "";
+        /// <summary>An information scenario is run and recorded but does not decide the verdict (the manifest says why, e.g. a known project bug it documents).</summary>
+        public bool Info;
         public int FramesRun; public double Fps, Realtime; public int Colors; public int Width, Height;
         public List<Checkpoint> Checkpoints = new();
         public AudioStats Audio = new();
@@ -173,7 +175,7 @@ internal static class BrokenDevCli
         {
             string sid = sc.GetProperty("id").GetString() ?? "?";
             if (only.Length > 0 && !sid.Equals(only, StringComparison.OrdinalIgnoreCase)) continue;
-            results.Add(RunScenario(console, rom, romBytes, verify, sc, pngDir.Length > 0 ? Path.Combine(pngDir, id) : ""));
+            results.Add(RunScenario(console, rom, romBytes, verify, sc, pngDir));
         }
         if (results.Count == 0) { Console.Error.WriteLine("No scenario ran (check --only)."); return 2; }
 
@@ -183,7 +185,7 @@ internal static class BrokenDevCli
             foreach (var c in cmp.EnumerateArray())
                 cross.Add(EvaluateCompare(c, results));
 
-        bool ok = results.All(r => r.Ok) && cross.All(c => c.Ok);
+        bool ok = results.Where(r => !r.Info).All(r => r.Ok) && cross.All(c => c.Ok);
         var report = BuildReport(id, rom, romBytes, console, results, cross, ok);
         string text = report.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
         if (outFile.Length > 0) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outFile))!); File.WriteAllText(outFile, text); }
@@ -197,13 +199,16 @@ internal static class BrokenDevCli
 
     private static ScenarioResult RunScenario(string console, string romPath, byte[] rom, JsonElement verify, JsonElement sc, string pngDir)
     {
-        var res = new ScenarioResult { Id = sc.GetProperty("id").GetString() ?? "?" };
+        var res = new ScenarioResult { Id = sc.GetProperty("id").GetString() ?? "?", Info = sc.TryGetProperty("info", out var inf) && inf.ValueKind == JsonValueKind.True };
         int frames = sc.GetProperty("frames").GetInt32();
         string input = sc.TryGetProperty("input", out var ip) ? ip.GetString() ?? "" : "";
         var checkpoints = new SortedSet<int>();
         if (sc.TryGetProperty("checkpoints", out var cps)) foreach (var c in cps.EnumerateArray()) checkpoints.Add(c.GetInt32());
         checkpoints.Add(frames);
         bool ntsc = sc.TryGetProperty("ntscFrameTiming", out var nt) && nt.ValueKind == JsonValueKind.True;
+        // powerOnRam: "fceux" (BrokenNes' own fill, the app default) | "zeros" | "ones". A NES program may not rely on power-on RAM (it is undefined on
+        // hardware), but homebrew written against an emulator set to all-zeros often does without knowing it; this is the lever that finds out.
+        string powerOnRam = sc.TryGetProperty("powerOnRam", out var por) ? por.GetString() ?? "fceux" : "fceux";
         JsonElement? expect = sc.TryGetProperty("expect", out var ex) ? ex : null;
         int audioFrom = 0;
         if (expect is { } e0 && e0.TryGetProperty("audio", out var a0) && a0.TryGetProperty("fromFrame", out var af)) audioFrom = af.GetInt32();
@@ -213,13 +218,24 @@ internal static class BrokenDevCli
 
         try
         {
-            using IRunner runner = console == "nes" ? new NesRunner(romPath, rom, verify, ntsc) : new SnesRunner(rom, Path.GetFileName(romPath), verify);
+            using IRunner runner = console == "nes" ? new NesRunner(romPath, rom, verify, ntsc, powerOnRam) : new SnesRunner(rom, Path.GetFileName(romPath), verify);
             res.Cores = runner.Cores; res.Description = runner.Description;
             var held = new List<string>();
             int next = 0;
+            // pokes: [{ "frame": 2, "addr": "0x07FC", "value": 0 }] writes work RAM before that frame runs (NES only): a forced state is a probe, never a proof
+            var pokes = new List<(int Frame, int Addr, byte Value)>();
+            if (sc.TryGetProperty("pokes", out var pk))
+                foreach (var p in pk.EnumerateArray())
+                {
+                    string a = p.GetProperty("addr").ValueKind == JsonValueKind.String ? p.GetProperty("addr").GetString() ?? "0" : p.GetProperty("addr").GetInt32().ToString(CultureInfo.InvariantCulture);
+                    int addr = a.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? Convert.ToInt32(a[2..], 16) : int.Parse(a, CultureInfo.InvariantCulture);
+                    pokes.Add((p.GetProperty("frame").GetInt32(), addr, (byte)p.GetProperty("value").GetInt32()));
+                }
+            if (pokes.Count > 0 && runner is not NesRunner) throw new ArgumentException("pokes work on a NES scenario only");
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int f = 0; f < frames; f++)
             {
+                foreach (var pk2 in pokes) if (pk2.Frame == f && runner is NesRunner nr) nr.Poke(pk2.Addr, pk2.Value);
                 while (next < steps.Count && steps[next].Frame <= f) { held = steps[next].Names; next++; }
                 runner.Step(held);
                 res.FramesRun = f + 1;
@@ -336,7 +352,7 @@ internal static class BrokenDevCli
         {
             scen.Add(new JsonObject
             {
-                ["id"] = r.Id, ["ok"] = r.Ok, ["result"] = r.Result, ["crashInfo"] = r.CrashInfo,
+                ["id"] = r.Id, ["ok"] = r.Ok, ["info"] = r.Info, ["result"] = r.Result, ["crashInfo"] = r.CrashInfo,
                 ["cores"] = r.Cores, ["description"] = r.Description,
                 ["framesRun"] = r.FramesRun, ["width"] = r.Width, ["height"] = r.Height, ["distinctColors"] = r.Colors,
                 ["fps"] = Math.Round(r.Fps, 1), ["realtimeFactor"] = Math.Round(r.Realtime, 2),
@@ -409,7 +425,7 @@ internal static class BrokenDevCli
         public int Width => 256;
         public int Height => 240;
 
-        public NesRunner(string romPath, byte[] rom, JsonElement verify, bool ntsc)
+        public NesRunner(string romPath, byte[] rom, JsonElement verify, bool ntsc, string powerOnRam = "fceux")
         {
             // The app's defaults (CPU_FIX / PPU_FIX / APU_FIX, the accuracy-target family) when the recipe names no core. The bare NES class would
             // otherwise start on its own older defaults (SPD / FMC / FMC), which is not what a BrokenNes user runs.
@@ -428,6 +444,13 @@ internal static class BrokenDevCli
             var rc = new[] { RomTestCli.ApplyCore("CPU", cpu, nes.SetCpuCore, nes.GetCpuCoreId), RomTestCli.ApplyCore("PPU", ppu, nes.SetPpuCore, nes.GetPpuCoreId), RomTestCli.ApplyCore("APU", apu, nes.SetApuCore, nes.GetApuCoreId) };
             foreach (var x in rc) if (!x.Applied) throw new ArgumentException($"{x.Kind} core '{x.Requested}' did not apply (effective '{x.Effective}')");
             Cores = $"{rc[0].Effective}/{rc[1].Effective}/{rc[2].Effective}" + (ntsc ? " ntsc-frame-timing" : "");
+            switch (powerOnRam.ToLowerInvariant())
+            {
+                case "fceux": break;
+                case "zeros": for (int i = 0; i < 2048; i++) nes.PokeSystemRam(i, 0x00); Cores += " power-on-ram=zeros"; break;
+                case "ones": for (int i = 0; i < 2048; i++) nes.PokeSystemRam(i, 0xFF); Cores += " power-on-ram=ones"; break;
+                default: throw new ArgumentException($"powerOnRam '{powerOnRam}' is not fceux, zeros or ones");
+            }
             fix = nes.GetApuStateProbe() as APU_FIX;
         }
 
@@ -461,6 +484,8 @@ internal static class BrokenDevCli
             for (int i = 0; i < argb.Length; i++) argb[i] = 0xFF000000u | ((uint)fb[i * 4] << 16) | ((uint)fb[i * 4 + 1] << 8) | fb[i * 4 + 2];
             MixLab.MixLabCli.SaveArgb(argb, 256, 240, path);
         }
+
+        public void Poke(int addr, byte value) => nes.PokeSystemRam(addr & 0x7FF, value);
 
         public byte[] DumpChr()
         {

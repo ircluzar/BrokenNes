@@ -194,6 +194,17 @@ function Invoke-BdProjectBuild {
             $record.outputs += $rec
         }
     }
+    # A manifest may name the md5 of a ROM the user already has (build.reference.md5). Matching it is strong evidence the toolchain
+    # reproduces the user's build; a mismatch is recorded, never hidden, but is not a failure (the source may have moved on).
+    $ref = Get-BdProp (Get-BdProp $m.build 'reference' $null) 'md5' $null
+    if ($ref -and -not $failed) {
+        $romRec = $record.outputs | Where-Object { $_.id -eq 'rom' } | Select-Object -First 1
+        if ($romRec) {
+            $record['referenceMd5'] = [string]$ref
+            $record['referenceMatch'] = ([string]$romRec.md5 -eq [string]$ref)
+            if ($record['referenceMatch']) { Write-BdOk "  reference: the ROM is byte-identical to the reference build ($ref)" } else { Write-BdWarn "the ROM md5 $($romRec.md5) differs from the reference $ref (not a failure: the source may differ from the reference build)" }
+        }
+    }
     $record.finishedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
     if ($failed) { $record.error = $failed } else { $record.ok = $true }
     Save-BdJson -Object $record -Path (Join-Path $out 'build.json')

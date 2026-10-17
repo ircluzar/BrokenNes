@@ -115,6 +115,7 @@ namespace BrokenNes.Windows
                 nes.LoadROM(romData);
                 nes.RomName = romName;
                 nes.RomPath = romPath ?? romName;
+                ApplyBrokenDevPowerOnRam(nes);   // BrokenDev only: a no-op unless that module is on and a power-on RAM fill was chosen
                 InitializeImagineEngine();
             }
 

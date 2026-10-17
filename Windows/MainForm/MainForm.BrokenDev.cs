@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 using BrokenNes.Dev;
+using NesEmulator;
 
 namespace BrokenNes.Windows
 {
@@ -18,6 +19,21 @@ namespace BrokenNes.Windows
     public partial class MainForm
     {
         private const string DefaultBrokenDevHome = @"P:\BrokenDev\env";
+
+        // Power-on RAM (BrokenDev only). BrokenNes fills work RAM with FCEUX's pattern, which is right for movie portability and honest to hardware (a
+        // real console's RAM powers on undefined), but a homebrew written against an emulator set to all-zeros can read a variable it never wrote and
+        // work there by accident: the SMB1 remake reads two (chr_test_active, fire_anim_timer). A developer picks the fill here to find out.
+        private enum BrokenDevRam { Fceux, Zeros, Ones }
+        private BrokenDevRam brokenDevPowerOnRam =
+            Environment.GetEnvironmentVariable("BROKENDEV_POWERON_RAM")?.ToLowerInvariant() switch { "zeros" => BrokenDevRam.Zeros, "ones" => BrokenDevRam.Ones, _ => BrokenDevRam.Fceux };
+
+        private void ApplyBrokenDevPowerOnRam(NES target)
+        {
+            if (brokenDevPowerOnRam == BrokenDevRam.Fceux || !BrokenDevGate.IsEnabled()) return;
+            byte fill = brokenDevPowerOnRam == BrokenDevRam.Ones ? (byte)0xFF : (byte)0x00;
+            for (int i = 0; i < 2048; i++) target.PokeSystemRam(i, fill);
+            Console.WriteLine($"BrokenDev: work RAM filled with {(fill == 0 ? "zeros" : "ones")} before the first frame.");
+        }
 
         private static string BrokenDevHome() => Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } h ? h : DefaultBrokenDevHome;
 
@@ -74,6 +90,15 @@ namespace BrokenNes.Windows
                 menu.DropDownItems.Add(new ToolStripMenuItem("(no built projects yet: run BrokenDev\\brokendev.ps1 build all)") { Enabled = false });
 
             menu.DropDownItems.Add(new ToolStripSeparator());
+            var ramMenu = new ToolStripMenuItem("Power-on RAM (next ROM load)");
+            foreach (var (mode, label) in new[] { (BrokenDevRam.Fceux, "FCEUX pattern (default)"), (BrokenDevRam.Zeros, "All zeros"), (BrokenDevRam.Ones, "All ones") })
+            {
+                var m = mode;
+                ramMenu.DropDownItems.Add(new ToolStripMenuItem(label, null, (_, _) => { brokenDevPowerOnRam = m; }) { Checked = brokenDevPowerOnRam == m, CheckOnClick = false });
+            }
+            ramMenu.DropDownItems.Add(new ToolStripSeparator());
+            ramMenu.DropDownItems.Add(new ToolStripMenuItem("Reload the current ROM now", null, (_, _) => ResetGame()));
+            menu.DropDownItems.Add(ramMenu);
             menu.DropDownItems.Add(new ToolStripMenuItem("Open BrokenDev folder", null, (_, _) =>
             {
                 try { if (Directory.Exists(home)) Process.Start(new ProcessStartInfo(home) { UseShellExecute = true }); else MessageBox.Show($"{home} does not exist yet. Run BrokenDev\\brokendev.ps1 restore all.", "BrokenDev"); }

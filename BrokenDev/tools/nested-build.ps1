@@ -83,7 +83,8 @@ if ($BaseProfile) {
 if ($SnesTitle) { $settings['EmulatorName'] = $SnesTitle }
 
 # ---- post-build steps --------------------------------------------------------------------------
-$post = @()
+$postSteps = @()
+# (PowerShell variables are case-insensitive: the parameter $Post and a local $post would be one variable)
 foreach ($name in ($Post -split ',' | Where-Object { $_ })) {
     switch ($name.Trim()) {
         'flash' {
@@ -98,9 +99,9 @@ foreach ($name in ($Post -split ',' | Where-Object { $_ })) {
             if ($j.PSObject.Properties['sectors']) { $src = $j.sectors } elseif ($j -is [System.Array]) { $src = $j }
             foreach ($s in $src) { $secs += ('0x{0:X2}' -f [int]$(if ($s.PSObject.Properties['sector']) { $s.sector } else { $s })) }
             if ($secs.Count -lt 1) { throw "no flash save sectors were detected in $Nes ($mlb); not guessing" }
-            $post += [ordered]@{ name = 'flash_patch'; run = 'python'; script = '{pipe}/tools/flash_patch.py'; args = @('{in}', '{out}', '--sectors', ($secs -join ',')) }
+            $postSteps += [ordered]@{ name = 'flash_patch'; run = 'python'; script = '{pipe}/tools/flash_patch.py'; args = @('{in}', '{out}', '--sectors', ($secs -join ',')) }
         }
-        'dmc_status' { $post += [ordered]@{ name = 'dmc_status'; run = 'python'; script = '{pipe}/tools/dmc_status.py'; args = @('{in}', '{out}') } }
+        'dmc_status' { $postSteps += [ordered]@{ name = 'dmc_status'; run = 'python'; script = '{pipe}/tools/dmc_status.py'; args = @('{in}', '{out}') } }
         default { throw "unknown -Post step '$name' (known: flash, dmc_status)" }
     }
 }
@@ -111,7 +112,7 @@ $game = [ordered]@{
     notes = @("Written by BrokenDev tools\nested-build.ps1 (feedback: $Feedback). Base profile: $(if ($BaseProfile) { $BaseProfile } else { 'none' }).")
     feedback = [ordered]@{ calls = @('calls.txt'); srm = @() }
     settings = $settings
-    post_build = $post
+    post_build = @($postSteps)
 }
 $gj = Join-Path $profileDir 'game.json'
 [System.IO.File]::WriteAllText($gj, ($game | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding($false)))
@@ -148,4 +149,11 @@ $a = $ps + @((Join-Path $Pipe 'm30build.ps1'), '-Nes', $Nes, '-Profile', $profil
 & powershell.exe @a
 if ($LASTEXITCODE -ne 0) { throw "m30build.ps1 failed (exit $LASTEXITCODE); see $Out.build.log" }
 if (-not (Test-Path -LiteralPath $Out)) { throw "m30build reported success but wrote no ROM at $Out" }
+# The post-build steps are what make saves and the DMC wait work; a build that silently skipped one is wrong, so check the record.
+$bjPath = "$Out.build.json"
+if (-not (Test-Path -LiteralPath $bjPath)) { throw "m30build wrote no build record ($bjPath)" }
+$bj = Get-Content -LiteralPath $bjPath -Raw | ConvertFrom-Json
+$ran = @(); if ($bj.PSObject.Properties['post_build'] -and $bj.post_build) { $ran = @($bj.post_build | ForEach-Object { if ($_.PSObject.Properties['name']) { [string]$_.name } else { [string]$_ } }) }
+foreach ($want in $postSteps) { if ($ran -notcontains [string]$want.name) { throw "the post-build step '$($want.name)' was requested but is not in the build record (ran: $($ran -join ', '))" } }
+Write-Host ("nested-build: post-build steps run: " + ($ran -join ', '))
 exit 0

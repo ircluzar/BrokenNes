@@ -15,8 +15,9 @@
   "requires": {
     "tools": ["gitbash", "python"],
     "projects": [],
-    "inputs": [
-      { "id": "smb1_orig_rom", "env": "SMB1_ORIG_ROM", "default": "{archives}/SMB1 Topaz/smb1.nes", "neverInGit": true, "description": "the user's own copy of the original Super Mario Bros. ROM, read by the data generators; it is never copied into the repository or the output folder" }
+    "inputs": [],
+    "optionalInputs": [
+      { "id": "smb1_orig_rom", "env": "SMB1_ORIG_ROM", "default": "{archives}/SMB1 Topaz/smb1.nes", "neverInGit": true, "description": "the user's own copy of the original Super Mario Bros. ROM. NOT needed to build (measured: ./build.sh game gives the byte-identical ROM with SMB1_ORIG_ROM pointing nowhere: the level, music and sound data derived from it are already in the source tree). Needed only to regenerate that data and for the same-input parity suite; it is never copied into the repository or the output folder" }
     ],
     "toolchain": ["patched NESFab 1.8 shipped in tools/nesfab/nesfab.exe (a hand-edited compiler binary is a trap: the patches live in tools/nesfab-patches)", "Mesen 2.1.1 shipped in tools/mesen", "Python 3.12 shipped in tools/python"]
   },
@@ -48,6 +49,7 @@
       {
         "id": "boot",
         "frames": 900,
+        "powerOnRam": "zeros",
         "input": "",
         "checkpoints": [60, 300, 600, 900],
         "expect": { "minDistinctColors": 4, "audio": { "fromFrame": 60, "minPeak": 0.02, "minNonSilentFrames": 60 }, "minRealtime": 2.0 }
@@ -55,9 +57,20 @@
       {
         "id": "play",
         "frames": 2400,
+        "powerOnRam": "zeros",
         "input": "120:Start,126:,420:Right,1100:Right+A,1160:Right,1300:Right+B,1500:Right+A+B,1560:Right+B",
         "checkpoints": [300, 600, 900, 1200, 1800, 2400],
         "expect": { "minDistinctColors": 6, "pictureDiffers": [900, 2400], "audio": { "fromFrame": 300, "minPeak": 0.02, "minNonSilentFrames": 100 }, "minRealtime": 2.0 }
+      },
+      {
+        "id": "play-fceux-ram",
+        "info": true,
+        "why": "The same play with BrokenNes' own power-on RAM fill (the FCEUX pattern 00 00 00 00 FF FF FF FF, the app default). The remake reads a variable it never initialises (chr_test_active) and so shows the placeholder digits and stalls on the World card. Recorded, not a verdict: see knownIssues.",
+        "frames": 2400,
+        "powerOnRam": "fceux",
+        "input": "120:Start,126:,420:Right,1100:Right+A,1160:Right,1300:Right+B,1500:Right+A+B,1560:Right+B",
+        "checkpoints": [300, 900, 2400],
+        "expect": { "pictureDiffers": [900, 2400], "audio": { "fromFrame": 300, "minPeak": 0.02, "minNonSilentFrames": 100 } }
       }
     ],
     "compare": [

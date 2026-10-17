@@ -77,8 +77,12 @@ function Invoke-BdProjectVerify {
     Save-BdJson -Object $obj -Path $vjson -Depth 20
     foreach ($sc in $rec.scenarios) {
         $chk = @($sc.checks | Where-Object { -not $_.ok })
-        $line = '  {0,-14} {1,-6} frames={2,-6} colors={3,-3} {4,6} fps  audio-peak={5}' -f $sc.id, $(if ($sc.ok) { 'ok' } else { 'FAIL' }), $sc.framesRun, $sc.distinctColors, $sc.fps, $sc.audio.peak
-        if ($sc.ok) { Write-BdOk $line } else { Write-BdFail $line; foreach ($c in $chk) { Write-BdFail ("      {0}: {1}" -f $c.id, $c.detail) }; if ($sc.result -ne 'ok') { Write-BdFail "      $($sc.result): $($sc.crashInfo)" } }
+        $isInfo = ($sc.PSObject.Properties['info'] -and $sc.info)
+        $state = if ($sc.ok) { 'ok' } elseif ($isInfo) { 'INFO' } else { 'FAIL' }
+        $line = '  {0,-14} {1,-6} frames={2,-6} colors={3,-3} {4,6} fps  audio-peak={5}' -f $sc.id, $state, $sc.framesRun, $sc.distinctColors, $sc.fps, $sc.audio.peak
+        if ($sc.ok) { Write-BdOk $line }
+        elseif ($isInfo) { Write-BdWarn ($line + '  (information scenario: recorded, does not decide the verdict)'); foreach ($c in $chk) { Write-BdWarn ("      {0}: {1}" -f $c.id, $c.detail) } }
+        else { Write-BdFail $line; foreach ($c in $chk) { Write-BdFail ("      {0}: {1}" -f $c.id, $c.detail) }; if ($sc.result -ne 'ok') { Write-BdFail "      $($sc.result): $($sc.crashInfo)" } }
     }
     foreach ($c in $rec.compare) { $l = "  compare {0}: {1}" -f $c.id, $(if ($c.ok) { 'ok' } else { 'FAIL ' + $c.detail }); if ($c.ok) { Write-BdOk $l } else { Write-BdFail $l } }
     $rec

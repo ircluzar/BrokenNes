@@ -385,6 +385,46 @@ try {
         $v = Invoke-WsVerify -Id 'v-flat' -Rom $zero
         Assert-Equal $v.Exit 1 "output: $(Select-BdTail $v.Output 6)"
     }
+    # A tiny ROM that paints the backdrop with the byte it finds at $07FC (work RAM): power-on RAM and pokes become visible in the picture.
+    $ramRom = Join-Path $tmpRoot 'ramcolour.nes'
+    $rb = New-Object byte[] (16 + 16384 + 8192); $rb[0] = 0x4E; $rb[1] = 0x45; $rb[2] = 0x53; $rb[3] = 0x1A; $rb[4] = 1; $rb[5] = 1
+    $code = [byte[]](0x78, 0xA9, 0x3F, 0x8D, 0x06, 0x20, 0xA9, 0x00, 0x8D, 0x06, 0x20, 0xAD, 0xFC, 0x07, 0x8D, 0x07, 0x20, 0xA9, 0x3F, 0x8D, 0x06, 0x20, 0xA9, 0x00, 0x8D, 0x06, 0x20, 0xA9, 0x08, 0x8D, 0x01, 0x20, 0x4C, 0x20, 0xC0)
+    [Array]::Copy($code, 0, $rb, 16, $code.Length); $rb[16 + 0x3FFC] = 0x00; $rb[16 + 0x3FFD] = 0xC0
+    [System.IO.File]::WriteAllBytes($ramRom, $rb)
+    New-VerifyManifest -Id 'v-ram' -Scenarios @(
+        @{ id = 'fceux'; frames = 30; powerOnRam = 'fceux'; checkpoints = @(30) },
+        @{ id = 'zeros'; frames = 30; powerOnRam = 'zeros'; checkpoints = @(30) },
+        @{ id = 'poke1'; frames = 30; powerOnRam = 'zeros'; pokes = @(@{ frame = 0; addr = '0x07FC'; value = 22 }); checkpoints = @(30) },
+        @{ id = 'poke2'; frames = 30; powerOnRam = 'zeros'; pokes = @(@{ frame = 0; addr = 2044; value = 42 }); checkpoints = @(30) })
+    Test-Case 'powerOnRam changes what a program that reads uninitialised RAM draws (fceux pattern vs zeros)' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $v = Invoke-WsVerify -Id 'v-ram' -Rom $ramRom
+        Assert-Equal $v.Exit 0 "output: $(Select-BdTail $v.Output 6)"
+        $h = @{}; foreach ($s in $v.Json.scenarios) { $h[$s.id] = $s.checkpoints[0].hash }
+        Assert-True ($h['fceux'] -ne $h['zeros']) "fceux and zeros drew the same picture ($($h['fceux']))"
+        Assert-True ($h['poke1'] -ne $h['zeros']) 'a poke to $07FC did not change the picture'
+        Assert-True ($h['poke1'] -ne $h['poke2']) 'two different poked values drew the same picture'
+    }
+    New-VerifyManifest -Id 'v-info' -Scenarios @(@{ id = 'bad'; info = $true; frames = 30; expect = @{ minDistinctColors = 99 } })
+    New-VerifyManifest -Id 'v-notinfo' -Scenarios @(@{ id = 'bad'; frames = 30; expect = @{ minDistinctColors = 99 } })
+    Test-Case 'an information scenario that fails is recorded but does not fail the verdict' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $v = Invoke-WsVerify -Id 'v-info' -Rom $testRom
+        Assert-Equal $v.Exit 0
+        Assert-True ($v.Json.scenarios[0].info -and -not $v.Json.scenarios[0].ok) 'the scenario should be flagged info and not ok'
+    }
+    Test-Case 'NEGATIVE: the same failing scenario WITHOUT the info flag fails the verdict (exit 1)' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $v = Invoke-WsVerify -Id 'v-notinfo' -Rom $testRom
+        Assert-Equal $v.Exit 1
+    }
+    Test-Case 'NEGATIVE: an unknown powerOnRam mode is refused, not ignored' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        New-VerifyManifest -Id 'v-badram' -Scenarios @(@{ id = 'x'; frames = 5; powerOnRam = 'random' })
+        $v = Invoke-WsVerify -Id 'v-badram' -Rom $testRom
+        Assert-Equal $v.Exit 1
+        Assert-True ($v.Json.scenarios[0].result -eq 'refused') "result was $($v.Json.scenarios[0].result)"
+    }
     Test-Case 'NEGATIVE: verify exits 2 for a ROM that does not exist' {
         if (-not $ws) { Skip-Test $wsSkip }
         $v = Invoke-WsVerify -Id 'v-pass' -Rom (Join-Path $tmpRoot 'nope.nes')
