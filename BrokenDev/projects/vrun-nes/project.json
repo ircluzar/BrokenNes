@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "id": "vrun-nes",
+  "title": "VRUN CTW (NES demake of Corrupt The World, NESFab, mapper 30)",
+  "family": "vrun",
+  "kind": "nes",
+  "console": "nes",
+  "description": "The NES demake of the HTML5 game CTW, written in NESFab for mapper 30 (UNROM-512: 512 KB PRG, CHR-RAM, self-flashing SST39SF040 saves). The shared audio engine (engine/audio, with the C# MIDI converter) runs inside every build.",
+  "source": {
+    "archive": "vrun_nes_dev",
+    "path": "sys0/simulations/VRUN",
+    "docs": ["START_HERE.md (archive root)", "docs/01-toolchain-setup.md", "docs/23-ram-map.md", "docs/26-live-audio-bridge-spec.md"],
+    "git": "git/vrun-history.bundle (266 commits, standalone repository)"
+  },
+  "requires": {
+    "tools": ["gitbash", "python", "node", "dotnet"],
+    "projects": [],
+    "inputs": [],
+    "toolchain": ["NESFab 1.8 (ISA=legal) shipped in tools/nesfab/nesfab_legal.exe", "Mesen 2.1.1 shipped in tools/mesen (the project's regression suite oracle; BrokenDev uses BrokenNes instead)"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build-game",
+        "shell": "bash",
+        "cwd": "{root:vrun}",
+        "run": "./build.sh game",
+        "timeoutSec": 1200,
+        "note": "prebuild.sh runs the C# music converter (dotnet), the CTW map bake (node) and the CHR bake (python); the build ends with 'PASS - ROM matches the target cartridge spec.'"
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{root:vrun}/build/vrun_game.nes", "publishAs": "vrun_game.nes", "kind": "nes" },
+      { "id": "mlb", "path": "{root:vrun}/build/vrun_game.mlb", "publishAs": "vrun_game.mlb", "kind": "symbols" }
+    ]
+  },
+  "run": { "console": "nes", "note": "Title: NEW GAME / CONTINUE / OPTIONS. Start begins. In game, Start pauses and Select then saves (16 bytes to flash sector 118)." },
+  "verify": {
+    "timeoutSec": 900,
+    "cores": { "cpu": "FIX", "ppu": "FIX", "apu": "FIX" },
+    "scenarios": [
+      {
+        "id": "boot",
+        "frames": 900,
+        "input": "",
+        "checkpoints": [60, 300, 600, 900],
+        "expect": {
+          "minDistinctColors": 5,
+          "audio": { "fromFrame": 60, "minPeak": 0.05, "minNonSilentFrames": 100 },
+          "minRealtime": 2.0
+        }
+      },
+      {
+        "id": "play",
+        "frames": 2400,
+        "input": "120:Start,132:,400:Right,600:Right+B,700:Right,900:Up,1000:Right+B,1200:Down,1300:Right+A,1500:Left+B,1800:Right",
+        "checkpoints": [300, 400, 600, 900, 1200, 1800, 2400],
+        "expect": {
+          "minDistinctColors": 10,
+          "pictureDiffers": [600, 2400],
+          "audio": { "fromFrame": 300, "minPeak": 0.05, "minNonSilentFrames": 300 },
+          "minRealtime": 2.0
+        }
+      },
+      {
+        "id": "play-ntsc",
+        "frames": 2400,
+        "ntscFrameTiming": true,
+        "input": "120:Start,132:,400:Right,600:Right+B,700:Right,900:Up,1000:Right+B,1200:Down,1300:Right+A,1500:Left+B,1800:Right",
+        "checkpoints": [600, 1200, 2400],
+        "expect": { "minDistinctColors": 10 }
+      }
+    ],
+    "compare": [
+      { "a": "play@300", "b": "boot@300", "expect": "differ", "why": "scripted input reached the game: the same frame number looks different with and without input" }
+    ]
+  },
+  "oracle": {
+    "kind": "mesen-trace",
+    "mesenDir": "{root:vrun}/tools/mesen",
+    "frames": 1200,
+    "input": "120:Start,132:,400:Right,600:Right+B,700:Right,900:Up,1000:Right+B",
+    "ramFill": "fceux",
+    "why": "Mesen 2.1.1 (the baseline the VRUN accuracy campaign used) and BrokenNes FIX cores run the same ROM with the same pad script; per frame the picture (palette indices), nametables, OAM, palette, CHR, PPU control and every APU register must agree. Needs the user's Mesen tracer: BROKENDEV_TRACE_LUA."
+  },
+  "knownIssues": [
+    "start_at_option_check fails in the project's own regression suite (the START AT spawn bug, blocked by the ROM budget); 67 of 68 checks pass.",
+    "The ROM is at its ceiling: fixed bank 31 has no slack and each extra 'mode main()' branch costs about 1200 IR nodes.",
+    "NESFab miscompiles are real (three confirmed in the disassembly). When a harmless edit breaks something, disassemble before theorising.",
+    "The build is not byte-reproducible: two builds of the same source gave different ROMs (sha256 584a91bc... and 3cfce10c..., measured by BrokenDev on 2026-10-16) with the same picture at the end of both UAT cases (frames 900 and 2400). Compare behaviour (BrokenDev verify, UAT), not file hashes.",
+    "On BrokenNes the NES runs 48.5 CPU cycles per frame more than hardware unless 'NTSC-accurate frame timing' is on (the app default is off, as an accuracy-for-speed trade). The play-ntsc scenario runs the same input with it on."
+  ]
+}

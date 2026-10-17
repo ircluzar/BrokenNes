@@ -259,7 +259,12 @@ namespace BrokenNes.Windows
         /// <summary>Set once the BrokenNes 1 -> 2 settings migration has run (emulator-first boot).</summary>
         [JsonPropertyName("brokenNes2Migrated")]
         public bool BrokenNes2Migrated { get; set; } = true;
-        
+
+        /// <summary>BrokenDev, the developer-only devkit module (BrokenDev/ in the repository): off by default. The environment variable BROKENNES_DEV=1
+        /// switches it on as well; <c>BrokenNes.Dev.BrokenDevGate</c> is the one place that decides. When off, the app shows nothing of it.</summary>
+        [JsonPropertyName("brokenDevEnabled")]
+        public bool BrokenDevEnabled { get; set; } = false;
+
         /// <summary>
         /// Show the Webmodules menu in the menu bar
         /// </summary>
@@ -468,9 +473,13 @@ namespace BrokenNes.Windows
             return true;
         }
         
-        private static readonly string ConfigDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
-            "BrokenNes");
+        // BROKENNES_CONFIG_DIR (a test hook, also read by BrokenNes.Dev.BrokenDevGate) moves config.json to another folder, so a test can run the
+        // app with its own settings without reading or rewriting the user's. Everything else under %APPDATA%\BrokenNes is unaffected.
+        private static readonly string ConfigDirectory = Environment.GetEnvironmentVariable("BROKENNES_CONFIG_DIR") is { Length: > 0 } cfgDir
+            ? cfgDir
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "BrokenNes");
         private static readonly string ConfigFilePath = Path.Combine(ConfigDirectory, "config.json");
         
         /// <summary>

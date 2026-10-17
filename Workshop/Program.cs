@@ -95,6 +95,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--smstest", StringComparison.OrdinalIgnoreCase)) return Sega.SmsTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--sms-sweep", StringComparison.OrdinalIgnoreCase)) return Sega.SmsSweepCli.Run(args);
         if (args.Length > 0 && (args[0].Equals("--fm-oracle-test", StringComparison.OrdinalIgnoreCase) || args[0].Equals("--fm-dump", StringComparison.OrdinalIgnoreCase))) return Sega.FmOracleTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--brokendev", StringComparison.OrdinalIgnoreCase)) return BrokenDevCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--corrupt-test", StringComparison.OrdinalIgnoreCase)) return Corruption.CorruptCli.Test(args);
         if (args.Length > 0 && args[0].Equals("--corrupt-apply", StringComparison.OrdinalIgnoreCase)) return Corruption.CorruptCli.Apply(args);
         if (args.Length > 0 && args[0].Equals("--input-test", StringComparison.OrdinalIgnoreCase)) return InputTestCli.Run(args);

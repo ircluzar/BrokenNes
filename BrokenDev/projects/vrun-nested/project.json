@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "id": "vrun-nested",
+  "title": "Nested VRUN (VRUN CTW on the SNES through Project Nested)",
+  "family": "vrun",
+  "kind": "nested",
+  "console": "snes",
+  "description": "The NES demake recompiled to a Super Nintendo ROM by a fork of Project Nested plus the project's own NES to SNES pipeline (tools/m30pipe: a pinned core with 18 patch steps, per-game profiles, flash-save emulation into SRAM, preflight checks). The NES source is built as a 'nested' variant (./build.sh game --nested) that links the SNES pad code (schemes C and D read SNES-only face buttons); the plain NES ROM pays nothing for it.",
+  "source": {
+    "archive": "vrun_nes_dev",
+    "path": "Nested_VRUN/Project-Nested (tools/m30pipe) + sys0/simulations/VRUN",
+    "docs": ["START_HERE.md section 4", "Nested_VRUN/Project-Nested/tools/m30pipe/README.md", "tools/m30pipe/core/STEPS.md", "tools/m30pipe/docs/ARCHITECTURE.md and GENERALITY.md"],
+    "git": "git/project-nested.bundle (one commit on upstream v1.8.1; the rest is uncommitted work, see START_HERE section 4)"
+  },
+  "requires": {
+    "tools": ["gitbash", "python", "node", "dotnet", "ps5"],
+    "projects": [],
+    "inputs": [],
+    "toolchain": ["Project Nested injector (.NET Framework 4.8) shipped in Project Nested/bin/Release", "the pinned patched core (out/core, 18 steps) shipped in tools/m30pipe/out/core"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build-nes-nested",
+        "shell": "bash",
+        "cwd": "{root:vrun}",
+        "run": "./build.sh game --nested",
+        "timeoutSec": 1200
+      },
+      {
+        "name": "nested-pipeline",
+        "shell": "ps5",
+        "cwd": "{root:m30pipe}",
+        "file": "{bd}/tools/nested-build.ps1",
+        "args": [
+          "-Nes", "{root:vrun}/build/vrun_game_nested.nes",
+          "-Out", "{work}/vrun_game_nested_SNES.smc",
+          "-Pipe", "{root:m30pipe}",
+          "-Python", "{python}",
+          "-Work", "{work}/nested",
+          "-BaseProfile", "50a5ca15",
+          "-Post", "flash",
+          "-SnesTitle", "VRUN CTW",
+          "-Feedback", "none"
+        ],
+        "timeoutSec": 1800,
+        "note": "No entry-point feedback in this recipe: each part of the game compiles at run time the first time it runs (a short stall), which is the first-room freeze the Nested notes describe. See the nested-harvest variant in docs for the 10 to 20 minute bootstrap."
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{work}/vrun_game_nested_SNES.smc", "publishAs": "vrun_game_nested_SNES.smc", "kind": "snes" },
+      { "id": "nes", "path": "{root:vrun}/build/vrun_game_nested.nes", "publishAs": "vrun_game_nested.nes", "kind": "nes" },
+      { "id": "mlb", "path": "{root:vrun}/build/vrun_game_nested.mlb", "publishAs": "vrun_game_nested.mlb", "kind": "symbols" },
+      { "id": "buildjson", "path": "{work}/vrun_game_nested_SNES.smc.build.json", "publishAs": "vrun_game_nested_SNES.smc.build.json", "kind": "record" }
+    ]
+  },
+  "run": { "console": "snes", "note": "Same game as the NES version. The SNES-pad control schemes C and D read the SNES face buttons." },
+  "verify": {
+    "timeoutSec": 900,
+    "scenarios": [
+      {
+        "id": "boot",
+        "frames": 1200,
+        "input": "",
+        "checkpoints": [120, 300, 600, 1200],
+        "expect": { "minDistinctColors": 5, "audio": { "fromFrame": 120, "minPeak": 0.02, "minNonSilentFrames": 100 }, "minRealtime": 1.0 }
+      },
+      {
+        "id": "play",
+        "frames": 3000,
+        "input": "240:Start,252:,600:Right,800:Right+B,900:Right,1100:Up,1200:Right+B,1400:Down,1500:Right+A,1800:Left+B,2100:Right",
+        "checkpoints": [300, 600, 900, 1200, 2000, 3000],
+        "expect": { "minDistinctColors": 10, "pictureDiffers": [900, 3000], "audio": { "fromFrame": 400, "minPeak": 0.02, "minNonSilentFrames": 200 }, "minRealtime": 1.0 }
+      }
+    ],
+    "compare": [
+      { "a": "play@600", "b": "boot@600", "expect": "differ", "why": "scripted input reached the game" }
+    ]
+  },
+  "oracle": {
+    "kind": "mesen-screens",
+    "mesenDir": "{root:svrunrepo}/tools/Mesen2",
+    "mesenSettings": "{root:svrunpkg}/mesen2_user_folder/settings.json",
+    "frames": [120, 240, 600, 900, 1200, 1800, 2400, 3000],
+    "input": "240:Start,252:,600:Right,800:Right+B,900:Right,1100:Up,1200:Right+B,1400:Down,1500:Right+A,1800:Left+B,2100:Right",
+    "inputShift": 1,
+    "window": [1, 5],
+    "crop": [7, 8],
+    "tolerance": 1,
+    "maxPixels": 64,
+    "why": "As supervrun. VRUN picks the first room from the frame on which Start is pressed, so the two emulators only show the same room when Mesen's Start lands on the same game frame as BrokenNes' (inputShift 1 measured; other values show another room and 18,000+ differing pixels). maxPixels 64 records the measured residue (at most 32 pixels: animation phase of the title's dots) as the bar to keep. Frame 300 (the fade after Start) is left out: it differs by 6,013 pixels at every offset, a one-frame difference in the transition."
+  },
+  "knownIssues": [
+    "Project Nested cannot reproduce NES lag frames: the exact fix would be a NES cycle clock in the recompiler (not started). The room-load timing race and RNG phase differ from the NES by a few frames.",
+    "This recipe builds without entry-point feedback; the first execution of each code path recompiles at run time and freezes briefly. The Nested Builder's 'Harvest' (bootstrap, 10 to 20 minutes, needs Mesen) removes that; BrokenDev records the variant without it.",
+    "The Nested work is mostly uncommitted in the user's Project-Nested repository (3 changed tracked files, about 390 untracked): commit it on the new machine first (START_HERE section 4).",
+    "Nested never delivers the DMC IRQ and never clears the DMC-active bit of $4015; games that depend on either need the post-build tools/dmc_status.py (VRUN does not).",
+    "A rebuilt NES ROM has a new PRG CRC32 and a new flash-save sector layout; a SNES save from an older build is reset on first boot."
+  ]
+}

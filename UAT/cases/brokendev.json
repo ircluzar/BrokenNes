@@ -1,0 +1,271 @@
+{
+  "schema": 1,
+  "suite": "brokendev",
+  "description": "The BrokenDev projects (the user's homebrew: VRUN NES demake, Nested VRUN, Nested VRUN enhanced, the SMB1 remake and its Nested version, Super VRUN) built by BrokenDev\\brokendev.ps1 into BROKENDEV_HOME\\out and run on BrokenNes. The ROMs are built from private source and are never in git: every case skips with a stated reason when its ROM is not there. Record or refresh the expected values with: UAT\\run-suite.ps1 -Exe <fresh Workshop> -Filter brokendev- -UpdateGolden.",
+  "roots": {
+    "brokendev": "P:/BrokenDev/env/out"
+  },
+  "cases": [
+    {
+      "id": "brokendev-vrun-nes-boot",
+      "description": "BrokenDev project 'vrun-nes', scenario 'boot': VRUN CTW (NES demake of Corrupt The World, NESFab, mapper 30). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "kind": "romtest",
+      "rom": "{brokendev}/vrun-nes/vrun_game.nes",
+      "frames": 900,
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "tags": [
+        "brokendev",
+        "vrun-nes",
+        "nes"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "EEA08ED4DD0BE3C7",
+        "framesRun": 900,
+        "distinctColors": 8,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "brokendev-vrun-nes-play",
+      "description": "BrokenDev project 'vrun-nes', scenario 'play': VRUN CTW (NES demake of Corrupt The World, NESFab, mapper 30). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "kind": "romtest",
+      "rom": "{brokendev}/vrun-nes/vrun_game.nes",
+      "frames": 2400,
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "input": "120:Start,132:,400:Right,600:Right+B,700:Right,900:Up,1000:Right+B,1200:Down,1300:Right+A,1500:Left+B,1800:Right",
+      "tags": [
+        "brokendev",
+        "vrun-nes",
+        "nes"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "FD2D983C7EAA8FF5",
+        "framesRun": 2400,
+        "distinctColors": 14,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "brokendev-smb1-nes-boot",
+      "description": "BrokenDev project 'smb1-nes', scenario 'boot': SMB1 remake (frame-accurate Super Mario Bros. in NESFab, mapper 30). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "kind": "romtest",
+      "rom": "{brokendev}/smb1-nes/smb1_game.nes",
+      "frames": 900,
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "powerOnRam": "zeros",
+      "tags": [
+        "brokendev",
+        "smb1-nes",
+        "nes"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "94E1E850C973FF7D",
+        "framesRun": 900,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "brokendev-smb1-nes-play",
+      "description": "BrokenDev project 'smb1-nes', scenario 'play': SMB1 remake (frame-accurate Super Mario Bros. in NESFab, mapper 30). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "kind": "romtest",
+      "rom": "{brokendev}/smb1-nes/smb1_game.nes",
+      "frames": 2400,
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "input": "120:Start,126:,420:Right,1100:Right+A,1160:Right,1300:Right+B,1500:Right+A+B,1560:Right+B",
+      "powerOnRam": "zeros",
+      "tags": [
+        "brokendev",
+        "smb1-nes",
+        "nes"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "31ADC7055B2A1E0F",
+        "framesRun": 2400,
+        "distinctColors": 11,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "brokendev-supervrun-boot",
+      "description": "BrokenDev project 'supervrun', scenario 'boot': Super VRUN (SNES, native: C + 65816 assembly on PVSnesLib). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "kind": "session",
+      "rom": "{brokendev}/supervrun/supervrun.sfc",
+      "frames": 900,
+      "tags": [
+        "brokendev",
+        "supervrun",
+        "snes"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "3DF43797EC0D1437",
+        "audioHash": "B2F97E61598707D4",
+        "framesRun": 900,
+        "distinctColors": 29,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "brokendev-supervrun-play",
+      "description": "BrokenDev project 'supervrun', scenario 'play': Super VRUN (SNES, native: C + 65816 assembly on PVSnesLib). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "kind": "session",
+      "rom": "{brokendev}/supervrun/supervrun.sfc",
+      "frames": 1500,
+      "input": "300:Start,306:,520:Start,526:,1000:Right,1100:Right+Y,1150:Right",
+      "tags": [
+        "brokendev",
+        "supervrun",
+        "snes"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "7821C6DEF6C17E3D",
+        "audioHash": "5ED79983C568E537",
+        "framesRun": 1500,
+        "distinctColors": 129,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "brokendev-vrun-nested-boot",
+      "description": "BrokenDev project 'vrun-nested', scenario 'boot': Nested VRUN (VRUN CTW on the SNES through Project Nested). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "kind": "session",
+      "rom": "{brokendev}/vrun-nested/vrun_game_nested_SNES.smc",
+      "frames": 1200,
+      "tags": [
+        "brokendev",
+        "vrun-nested",
+        "snes"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "DC81113600AE3471",
+        "audioHash": "AF5CC0449EC057B6",
+        "framesRun": 1200,
+        "distinctColors": 8,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "brokendev-vrun-nested-play",
+      "description": "BrokenDev project 'vrun-nested', scenario 'play': Nested VRUN (VRUN CTW on the SNES through Project Nested). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "kind": "session",
+      "rom": "{brokendev}/vrun-nested/vrun_game_nested_SNES.smc",
+      "frames": 3000,
+      "input": "240:Start,252:,600:Right,800:Right+B,900:Right,1100:Up,1200:Right+B,1400:Down,1500:Right+A,1800:Left+B,2100:Right",
+      "tags": [
+        "brokendev",
+        "vrun-nested",
+        "snes"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "9E02CE21A61CE125",
+        "audioHash": "42C6391B6994DE76",
+        "framesRun": 3000,
+        "distinctColors": 16,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "brokendev-vrun-nested-enhanced-boot",
+      "description": "BrokenDev project 'vrun-nested-enhanced', scenario 'boot': Nested VRUN, enhanced for the SNES (shaded sprites and blocks, custom font). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "kind": "session",
+      "rom": "{brokendev}/vrun-nested-enhanced/vrun_game_SNES_enhanced.smc",
+      "frames": 1200,
+      "tags": [
+        "brokendev",
+        "vrun-nested-enhanced",
+        "snes"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "96734D9EC2A9BE5A",
+        "audioHash": "E64B6F3C5939E74B",
+        "framesRun": 1200,
+        "distinctColors": 20,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "brokendev-vrun-nested-enhanced-play",
+      "description": "BrokenDev project 'vrun-nested-enhanced', scenario 'play': Nested VRUN, enhanced for the SNES (shaded sprites and blocks, custom font). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "kind": "session",
+      "rom": "{brokendev}/vrun-nested-enhanced/vrun_game_SNES_enhanced.smc",
+      "frames": 3000,
+      "input": "240:Start,252:,600:Right,800:Right+B,900:Right,1100:Up,1200:Right+B,1400:Down,1500:Right+A,1800:Left+B,2100:Right",
+      "tags": [
+        "brokendev",
+        "vrun-nested-enhanced",
+        "snes"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "163FFAB660B17999",
+        "audioHash": "96EBE1AACAC87217",
+        "framesRun": 3000,
+        "distinctColors": 66,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "brokendev-smb1-nested-boot",
+      "description": "BrokenDev project 'smb1-nested', scenario 'boot': SMB1 remake on the SNES (Nested version). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "kind": "session",
+      "rom": "{brokendev}/smb1-nested/smb1_game_SNES.smc",
+      "frames": 1200,
+      "tags": [
+        "brokendev",
+        "smb1-nested",
+        "snes"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "E0FFDB92F30ADE12",
+        "audioHash": "2E2E31F021EF3960",
+        "framesRun": 1200,
+        "distinctColors": 12,
+        "result": "ok"
+      }
+    },
+    {
+      "id": "brokendev-smb1-nested-play",
+      "description": "BrokenDev project 'smb1-nested', scenario 'play': SMB1 remake on the SNES (Nested version). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "kind": "session",
+      "rom": "{brokendev}/smb1-nested/smb1_game_SNES.smc",
+      "frames": 3000,
+      "input": "240:Start,246:,600:Right,1300:Right+A,1360:Right,1500:Right+B,1700:Right+A+B,1760:Right+B",
+      "tags": [
+        "brokendev",
+        "smb1-nested",
+        "snes"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "1EEB50AAB7A96786",
+        "audioHash": "920F337013EECB16",
+        "framesRun": 3000,
+        "distinctColors": 13,
+        "result": "ok"
+      }
+    }
+  ],
+  "goldenGeneratedUtc": "2026-10-17T00:49:28Z"
+}
