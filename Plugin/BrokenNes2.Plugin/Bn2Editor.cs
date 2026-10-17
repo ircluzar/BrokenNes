@@ -26,6 +26,8 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     public const int IdAboutLink = 70;                                   // + link index in the About text
     public const int IdInputs = 80, IdRunaway = 81, IdInputsClose = 82, IdInputsKeyboard = 83, IdInputsGamepad = 84, IdInputsDefaults = 85, IdInputsOpposite = 86;
     public const int IdInputKey = 200, IdInputPad = 220, IdPadButton = 240;   // + pad button index 0..11
+    public const int IdCor = 500, IdCorClose = 501, IdCorOpen = 502, IdCorStart = 503, IdCorCancel = 504, IdCorRemove = 505, IdCorFreeze = 506;
+    public const int IdCorRow = 520;   // + visible row 0..CorVisible-1 of the Corruption window's list
     public const int IdInstrument = 90, IdGbDuty = 91;
 
     private const string ClassName = "BrokenNes2Editor";
@@ -36,6 +38,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     private const nuint TimerId = 1;
     private const int RowH = 28, RowPitch = 34, ItemH = 24, MaxRows = 12;
     private const int AboutW = 720, AboutH = 542, InputsW = 780, InputsH = 600, HowH = 246, PlogueH = 150;
+    private const int CorW = 800, CorH = 616, CorVisible = 5, CorRowH = 50, CorNoteSeconds = 12;
 
     private enum Kind { Button, Dropdown, Slider, Item, Cell }
     private readonly record struct Hit(int Id, RECT Rect, Kind Kind);
@@ -80,6 +83,12 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     private bool inputsOpen, captureIsKey, captureWait, padConnected;
     private int captureIndex = -1, heldPad = -1, liveBits;
     private Emulator? padEmulator;
+
+    // the Corruption window: the rows as of the last paint (the wheel and the clicks use them), the first visible row, and the note over the picture
+    private bool corOpen, corNoteShown;
+    private int corScroll;
+    private IReadOnlyList<CorrRow> corRows = [];
+    private string? testPickedPath;
 
     public nint Hwnd { get; }
 
@@ -395,14 +404,16 @@ public sealed unsafe class Bn2Editor : IFruityEditor
 
         // Inputs and Instrument Runaway, bottom left
         int by = Height - Margin - 30;
-        var inputsBtn = R(ScreenX, by, 96, 30);
+        var inputsBtn = R(ScreenX, by, 76, 30);
         Button(dc, IdInputs, "Inputs", inputsBtn);
-        var runBtn = R(inputsBtn.Right + 8, by, 206, 30);
+        var corBtn = R(inputsBtn.Right + 6, by, 100, 30);
+        Button(dc, IdCor, "Corruption", corBtn, primary: emu?.Corruption.Applied != null);
+        var runBtn = R(corBtn.Right + 6, by, 176, 30);
         bool canRun = emu?.CanRunaway == true;
         if (canRun || frozen) Button(dc, IdRunaway, frozen ? "Runaway ON  -  release" : "Instrument Runaway", runBtn, primary: frozen);
         else { Box(dc, runBtn, Panel, Line, 5); Txt(dc, "Instrument Runaway", runBtn, Win32.DT_CENTER | Mid, Faint, fontLabel); }
         string runHint = frozen ? (sampler ? "FL notes play its samples" : gbSampler ? "FL notes play its channels" : segaSampler ? "FL notes play its chips" : "frozen and silent") : canRun ? "freeze it, keep its sounds" : "needs ROM mode and a game";
-        Txt(dc, runHint, R(runBtn.Right + 10, by, ColX - runBtn.Right - 20, 30), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+        Txt(dc, runHint, R(runBtn.Right + 8, by, ColX - runBtn.Right - 16, 30), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
 
         // Reset Console, bottom right: starts this emulator over for every instance on it
         var reset = R(Width - Margin - 150, Height - Margin - 30, 150, 30);
@@ -417,6 +428,8 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         if (openId != 0) DrawList(dc);
         if (aboutOpen) DrawAbout(dc);
         else if (inputsOpen) DrawInputs(dc);
+        else if (corOpen) DrawCorruption(dc, emu);
+        else corRows = [];
     }
 
     /// <summary>Instead of the channel strip while the game is frozen: <paramref name="kind"/> 0 silent (NES), 1 SNES instruments, 2 Game Boy channels, 3 a Sega game's sound chips.</summary>
@@ -485,6 +498,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             fixed (uint* bits = bgra)
                 Win32.StretchDIBits(dc, inner.Left + (512 - dw) / 2, inner.Top + (480 - dh) / 2, dw, dh, 0, 0, picW, picH, bits, &bmi, 0, Win32.SRCCOPY);
             DrawStateNote(dc, inner, emu);
+            DrawCorruptionNote(dc, inner, emu);
             return;
         }
 
@@ -501,6 +515,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             Line_(dc, cx, cy, cx, cy + dy * bl, c);
         }
         DrawStateNote(dc, inner, emu);
+        DrawCorruptionNote(dc, inner, emu);
     }
 
     /// <summary>What the project could not do with the game's state (a console that cannot keep it, a state that was not used, one that was too big), over the bottom of the screen for as long as it is true.</summary>
@@ -514,6 +529,33 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         Line_(dc, box.Left, box.Top, box.Right, box.Top, Warn);
         Txt(dc, note, R(box.Left + 12, box.Top + 4, 488, 46), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER, Text, fontSmall);
         noteShown = true;
+    }
+
+    /// <summary>True while the corruption note should be over the picture: a start in progress, a problem that stays, or a result younger than <see cref="CorNoteSeconds"/> seconds (never while the window itself is open: it says the same).</summary>
+    private bool CorruptionNoteWanted(Emulator? emu)
+    {
+        if (emu == null || corOpen) return false;
+        var c = emu.Corruption;
+        return c.Busy || c.Reading || c.Problem != null || (c.Result.Length > 0 && Environment.TickCount64 - c.ResultTick < CorNoteSeconds * 1000L);
+    }
+
+    /// <summary>The corruption note, at the top of the picture: the progress of a start, what a start or an open said, or a problem the project had. (The state note is at the bottom.)</summary>
+    private void DrawCorruptionNote(nint dc, RECT inner, Emulator? emu)
+    {
+        corNoteShown = false;
+        if (!CorruptionNoteWanted(emu)) return;
+        var c = emu!.Corruption;
+        string text; int edge, fill;
+        if (c.Busy) { text = $"Corruption: {(c.Status.Length > 0 ? c.Status : "starting...")}"; edge = Accent; fill = Win32.Rgb(46, 22, 18); }
+        else if (c.Reading) { text = "Corruption: reading the stockpile..."; edge = Accent; fill = Win32.Rgb(46, 22, 18); }
+        else if (c.Problem != null) { text = c.Problem; edge = Warn; fill = Win32.Rgb(46, 32, 12); }
+        else if (c.ResultGood) { text = c.Result; edge = Good; fill = Win32.Rgb(14, 40, 28); }
+        else { text = c.Result; edge = Warn; fill = Win32.Rgb(46, 32, 12); }
+        var box = R(inner.Left, inner.Top, 512, 54);
+        Fill(dc, box, fill);
+        Line_(dc, box.Left, box.Bottom - 1, box.Right, box.Bottom - 1, edge);
+        Txt(dc, text, R(box.Left + 12, box.Top + 4, 488, 46), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, Text, fontSmall);
+        corNoteShown = true;
     }
 
     private void ToBgra()
@@ -752,6 +794,157 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         Button(dc, IdInputsClose, "Close", R(box.Right - 30 - 90, box.Bottom - 60, 90, 34), primary: true);
     }
 
+    // ---------------------------------------------------------------- the Corruption window
+
+    private RECT CorruptionBox => R((Width - CorW) / 2, (Height - CorH) / 2, CorW, CorH);
+
+    /// <summary>A button that can be switched off: drawn quiet, and still answers a click (the answer says why it did nothing).</summary>
+    private void Button(nint dc, int id, string label, RECT r, bool primary, bool enabled)
+    {
+        if (enabled) { Button(dc, id, label, r, primary); return; }
+        bool isHot = hot == id;
+        Box(dc, r, isHot ? Field : Panel, Line, 5);
+        Txt(dc, label, r, Win32.DT_CENTER | Mid, Faint, fontLabel);
+        AddHit(id, r, Kind.Button);
+    }
+
+    private void DrawCorruption(nint dc, Emulator? emu)
+    {
+        DimBackdrop(dc);
+        hits.Clear();                                    // a modal: nothing behind it can be reached
+        var box = CorruptionBox;
+        Box(dc, R(box.Left + 4, box.Top + 6, CorW, CorH), Black, -1, 10);
+        Box(dc, box, Panel, Accent, 10);
+        int lx = box.Left + 30, iw = CorW - 60;
+        var panel = emu?.Corruption;
+        var view = panel?.View;
+        var rows = emu?.CorruptionRows() ?? [];
+        corRows = rows;
+        corScroll = Math.Clamp(corScroll, 0, Math.Max(0, rows.Count - CorVisible));
+        int sel = panel?.Selected ?? -1;
+        bool busy = panel?.Busy == true;
+
+        Txt(dc, "Corruption", R(lx, box.Top + 14, 300, 34), Win32.DT_LEFT | Mid, Text, fontTitle);
+        Txt(dc, "Open a stockpile that BrokenNes saved, pick a corruption, Start it on the game that is loaded (ROM mode), then take its instruments with Instrument Runaway. A started corruption is kept in the FL project.",
+            R(lx, box.Top + 50, iw, 34), Win32.DT_LEFT | Win32.DT_WORDBREAK, Dim, fontSmall);
+        Line_(dc, box.Left + 30, box.Top + 88, box.Right - 30, box.Top + 88, Line);
+
+        // the file
+        int y = box.Top + 98;
+        Button(dc, IdCorOpen, "Open stockpile...", R(lx, y, 170, 30), primary: view == null, enabled: emu != null && panel?.Reading != true);
+        string fileText; int fileColor = Text;
+        if (emu == null) { fileText = "no emulator"; fileColor = Warn; }
+        else if (panel!.Reading) { fileText = "reading..."; fileColor = Warn; }
+        else if (view == null) { fileText = "no stockpile open"; fileColor = Faint; }
+        else
+        {
+            string name = System.IO.Path.GetFileName(view.Path);
+            fileText = view.File == null ? $"{name}  -  could not be used" : $"{name}  -  {view.File.Entries.Count} corruption{(view.File.Entries.Count == 1 ? "" : "s")}" + (view.Legacy ? "  (older format)" : "");
+            if (view.File == null) fileColor = Warn;
+        }
+        Txt(dc, fileText, R(lx + 184, y, iw - 184, 30), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, fileColor, fontLabel);
+
+        // the list
+        int listTop = box.Top + 138;
+        var listArea = R(lx, listTop, iw, CorVisible * CorRowH);
+        if (rows.Count == 0)
+        {
+            string empty = view == null ? "No stockpile is open. Click \"Open stockpile...\" and pick a file the BrokenNes desktop app saved (Glitch Harvester > Save stockpile)."
+                : view.File == null ? "This file could not be used: " + (view.Problems.Count > 0 ? view.Problems[0] : "it is not a stockpile")
+                : "This stockpile holds no corruptions.";
+            Txt(dc, empty, R(lx + 20, listTop + 60, iw - 40, 110), Win32.DT_CENTER | Win32.DT_WORDBREAK | Win32.DT_VCENTER, view?.File == null && view != null ? Warn : Faint, fontLabel);
+        }
+        for (int i = 0; i < CorVisible; i++)
+        {
+            int idx = corScroll + i;
+            if (idx >= rows.Count) break;
+            var row = rows[idx];
+            var rr = R(lx, listTop + i * CorRowH, iw - (rows.Count > CorVisible ? 14 : 0), CorRowH - 4);
+            bool on = sel == idx, isHot = hot == IdCorRow + i;
+            Box(dc, rr, on ? FieldHot : (isHot ? FieldHot : Field), on ? Accent : Line, 5);
+            Dot(dc, rr.Left + 16, rr.Top + 15, 5, row.CanStart ? Good : Warn);
+            var game = row.Entry.Game;
+            string made = game.Title.Length > 0 ? game.Title : game.File.Length > 0 ? game.File : "";
+            Txt(dc, made, R(rr.Right - 230, rr.Top + 4, 220, 22), Win32.DT_RIGHT | Mid | Win32.DT_END_ELLIPSIS, Dim, fontSmall);
+            Txt(dc, row.Entry.Name.Length > 0 ? row.Entry.Name : "(unnamed)", R(rr.Left + 32, rr.Top + 4, rr.Right - rr.Left - 32 - 240, 22), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Text, fontLabel);
+            Txt(dc, row.CanStart ? row.Entry.Summary() : row.Why, R(rr.Left + 32, rr.Top + 26, rr.Right - rr.Left - 44, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, row.CanStart ? Dim : Warn, fontSmall);
+            AddHit(IdCorRow + i, rr, Kind.Button);
+        }
+        if (rows.Count > CorVisible)
+        {
+            int th = listArea.Bottom - listArea.Top - 4, thumbH = Math.Max(24, th * CorVisible / rows.Count);
+            int thumbY = listArea.Top + (th - thumbH) * corScroll / Math.Max(1, rows.Count - CorVisible);
+            Box(dc, R(listArea.Right - 5, listArea.Top, 4, th), Field, -1, 2);
+            Box(dc, R(listArea.Right - 5, thumbY, 4, thumbH), Dim, -1, 2);
+        }
+
+        // what the selected one is
+        var detail = R(lx, box.Top + 396, iw, 84);
+        Box(dc, detail, Bg, Line, 6);
+        if (sel >= 0 && sel < rows.Count)
+        {
+            var row = rows[sel];
+            string desc = row.Entry.Description.Length > 0 ? row.Entry.Description : "(no description)";
+            if (row.Entry.Tags.Count > 0) desc += "   [" + string.Join(", ", row.Entry.Tags) + "]";
+            Txt(dc, desc, R(detail.Left + 12, detail.Top + 6, iw - 24, 34), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_END_ELLIPSIS, Text, fontSmall);
+            Txt(dc, row.CanStart ? "Start: " + row.Cost : row.Why, R(detail.Left + 12, detail.Top + 42, iw - 24, 32), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_END_ELLIPSIS, row.CanStart ? Good : Warn, fontSmall);
+        }
+        else Txt(dc, rows.Count > 0 ? "Pick a corruption above." : "Nothing to start yet.", R(detail.Left + 12, detail.Top + 6, iw - 24, 20), Win32.DT_LEFT | Mid, Faint, fontSmall);
+        if (view is { Problems.Count: > 0 })
+            Txt(dc, "In this file: " + string.Join(" | ", view.Problems), R(detail.Left + 12, detail.Bottom - 22, iw - 24, 18), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Warn, fontSmall);
+
+        // freeze, start, cancel, remove, close
+        y = box.Top + 490;
+        Check(dc, IdCorFreeze, "Freeze the game and switch Instrument Runaway on as soon as it starts", lx, y, panel?.Freeze == true, null, labelW: 560, hitW: 600);
+        y = box.Top + 520;
+        bool canStart = emu != null && !busy && sel >= 0 && sel < rows.Count && rows[sel].CanStart;
+        Button(dc, IdCorStart, busy ? "Starting..." : "Start", R(lx, y, 120, 34), primary: true, enabled: canStart);
+        if (busy) Button(dc, IdCorCancel, "Cancel", R(lx + 130, y, 190, 34), primary: false);
+        else Button(dc, IdCorRemove, "Remove corruption", R(lx + 130, y, 190, 34), primary: false, enabled: canStart);
+        Txt(dc, "Remove corruption puts the game back where this corruption was made, without its changes.", R(lx + 332, y - 2, iw - 332 - 112, 38), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER, Faint, fontSmall);
+        Button(dc, IdCorClose, "Close", R(box.Right - 30 - 100, y, 100, 34), primary: true);
+
+        // what happened
+        y = box.Top + 564;
+        string say = ""; int sayColor = Dim;
+        if (panel != null)
+        {
+            if (busy) { say = panel.Status.Length > 0 ? panel.Status : "starting..."; sayColor = Warn; }
+            else if (panel.Problem != null) { say = panel.Problem; sayColor = Warn; }
+            else if (panel.Result.Length > 0) { say = panel.Result; sayColor = panel.ResultGood ? Good : Warn; }
+        }
+        if (say.Length > 0)
+        {
+            Fill(dc, R(lx, y, 3, 44), sayColor);
+            Txt(dc, say, R(lx + 12, y, iw - 12, 44), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, Text, fontSmall);
+        }
+    }
+
+    /// <summary>The Open button: a file dialog (a test can name the file instead), then the stockpile is read on a worker thread.</summary>
+    private void ChooseStockpile()
+    {
+        var emu = plugin.Emulator;
+        if (emu == null) return;
+        string? path = testPickedPath;
+        testPickedPath = null;
+        path ??= Win32.ChooseFile(Hwnd, "Open a stockpile", "Stockpiles (*.json)|*.json|All files (*.*)|*.*");
+        if (path != null) emu.OpenStockpile(path);
+    }
+
+    private void CorruptionClick(int id)
+    {
+        var emu = plugin.Emulator;
+        if (id == IdCorClose) { corOpen = false; return; }
+        if (emu == null) return;
+        var c = emu.Corruption;
+        if (id == IdCorOpen) ChooseStockpile();
+        else if (id == IdCorFreeze) c.Freeze = !c.Freeze;
+        else if (id == IdCorStart) emu.StartCorruption(c.Selected);
+        else if (id == IdCorRemove) emu.RemoveCorruption(c.Selected);
+        else if (id == IdCorCancel) emu.CancelCorruption();
+        else if (id >= IdCorRow && id < IdCorRow + CorVisible) { int idx = corScroll + id - IdCorRow; if (idx < corRows.Count) c.Selected = idx; }
+    }
+
     /// <summary>Called every 30 ms: what the keyboard (while this window is active), the gamepad and the on-screen pad hold goes to the game
     /// of the emulator this instance sits on; and a binding being rebound waits for its key or button.</summary>
     private void PollInputs()
@@ -941,6 +1134,9 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(Inputs.AllowOpposite ? 9 : 10); Mix(e?.Runaway == true ? 7 : 8);
         if (e != null)
         {
+            var cp = e.Corruption;
+            Mix(corOpen ? 1 + corScroll : 0); Mix(cp.ResultStamp); Mix(cp.Busy ? 1 : 2); Mix(cp.Reading ? 1 : 2); Mix(cp.Status.GetHashCode()); Mix(cp.Selected); Mix(cp.Freeze ? 1 : 2);
+            Mix(cp.View?.GetHashCode() ?? 0); Mix(cp.Applied != null ? 1 : 2); Mix(cp.Problem?.GetHashCode() ?? 0); Mix(CorruptionNoteWanted(e) ? 1 : 0);
             Mix(e.ConfigVersion); Mix(e.PictureVersion); Mix(e.MemberCount); Mix(e.RomStatus.GetHashCode()); Mix(e.FramesRun / 4); Mix(e.StateNote?.GetHashCode() ?? 0);
             for (int c = 0; c < Ch.Total; c++) { Mix(e.Activity(c)); Mix(e.Owner(c)?.GetHashCode() ?? 0); }
         }
@@ -1130,6 +1326,8 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 else if (h.Id == IdAboutClose) aboutOpen = false;
                 else if (h.Id == IdAboutLink) OpenLink(About.ShoutUrl);
                 else if (h.Id == IdInputs) inputsOpen = true;
+                else if (h.Id == IdCor) { corOpen = true; corScroll = 0; }
+                else if (h.Id >= IdCorClose && h.Id < IdCorRow + CorVisible) CorruptionClick(h.Id);
                 else if (h.Id == IdInputsClose) { inputsOpen = false; captureIndex = -1; }
                 else if (h.Id == IdInputsKeyboard) { Inputs.KeyboardEnabled = !Inputs.KeyboardEnabled; Inputs.Save(); }
                 else if (h.Id == IdInputsGamepad) { Inputs.GamepadEnabled = !Inputs.GamepadEnabled; Inputs.Save(); }
@@ -1201,7 +1399,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             case Win32.WM_LBUTTONDBLCLK:
             {
                 var h = HitAt(x, y);
-                if (aboutOpen || inputsOpen)
+                if (aboutOpen || inputsOpen || corOpen)
                 {
                     captureIndex = -1;                         // a click anywhere ends a rebinding that was waiting
                     if (h is { } mh) Activate(mh);             // a modal: only its own controls answer
@@ -1231,7 +1429,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 break;
             case Win32.WM_RBUTTONUP:
             {
-                if (aboutOpen) return;
+                if (aboutOpen || corOpen) return;
                 if (inputsOpen)
                 {
                     var ih = HitAt(x, y);
@@ -1252,6 +1450,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 int delta = (short)((wParam >> 16) & 0xFFFF) / 120;
                 if (aboutOpen) { aboutScroll = Math.Max(0, aboutScroll - delta * 48); break; }
                 if (inputsOpen) break;
+                if (corOpen) { corScroll = Math.Clamp(corScroll - delta, 0, Math.Max(0, corRows.Count - CorVisible)); break; }
                 if (openId != 0)
                 {
                     int rows = Math.Min(openItems.Length, MaxRows);
@@ -1328,6 +1527,13 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 if (index == 0) Inputs.KeyProbe = null;
                 else { int mask = (int)value; Inputs.KeyProbe = vk => { for (int i = 0; i < 12; i++) if ((mask & (int)Inputs.Buttons[i]) != 0 && Inputs.Keys[i] == vk) return true; return false; }; }
                 return 0;
+            // 140: the Corruption window is open (1/0), 141: the corruption note is drawn over the picture (1/0), 142: rows in the window's list as of the last paint, 143: its first visible row,
+            // 144: the next click on "Open stockpile..." opens the file at the UTF-16 path <value> instead of showing the file dialog
+            case 140: return corOpen ? 1 : 0;
+            case 141: return corNoteShown ? 1 : 0;
+            case 142: return corRows.Count;
+            case 143: return corScroll;
+            case 144: testPickedPath = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return 0;
             case 131: return Inputs.AllowOpposite ? 1 : 0;
             case 132: Inputs.Load(); return 0;
             // 133: a remembered setting by name (<value> points at the UTF-16 name; the integer, or -999 when absent), 134: write one (<index> points at the name, <value> is the integer)

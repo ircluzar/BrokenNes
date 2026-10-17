@@ -341,7 +341,7 @@ public sealed partial class Emulator : IDisposable
     }
 
     /// <summary>Applies what a restored instance carries, when it is the first on a new emulator.</summary>
-    internal void Adopt(int newMode, int newChip, string? rom, SpcSnapshot? restoredSnapshot = null, GbSnapshot? restoredGb = null, SegaSnapshot? restoredSega = null, GameStateSection? restoredGame = null, string? gameProblem = null)
+    internal void Adopt(int newMode, int newChip, string? rom, SpcSnapshot? restoredSnapshot = null, GbSnapshot? restoredGb = null, SegaSnapshot? restoredSega = null, GameStateSection? restoredGame = null, string? gameProblem = null, CorruptionSection? restoredCorruption = null)
     {
         lock (EmulatorHub.Gate)
         {
@@ -360,7 +360,7 @@ public sealed partial class Emulator : IDisposable
             {
                 var path = romPaths[console];
                 // the project's game state goes with the game: it is put back on the loading thread, before the game can run (a project saved in Instrument Runaway starts frozen)
-                var request = new RestoreRequest(restoredGame, gameProblem);
+                var request = new RestoreRequest(restoredGame, gameProblem, restoredCorruption);
                 if (path == null || File.Exists(path)) StartLoad(request);
                 else
                 {
