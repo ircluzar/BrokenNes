@@ -23,7 +23,7 @@ namespace BrokenNes.Workshop;
 /// <item><b>sound units and picture chips</b>: a state saved after live swaps (the stand-in unit with the real SPC700 parked behind it, a NES chip listening, a NES picture chip).</item>
 /// <item><b>the app's own factory and the quick-save file</b>.</item>
 /// </list>
-/// <c>--poison NAME</c> breaks the load after the fact (one component's field left as it was); the groups above must then fail: wram vram cgram oam ppureg cpu timing dma hdma aram spc dsp timers ports sram chip parked swap.
+/// <c>--poison NAME</c> breaks the load after the fact (one component's field left as it was); the groups above must then fail: wram vram cgram oam ppureg cpu timing dma hdma aram spc dsp timers ports sram chip parked.
 /// </summary>
 internal static class SnesStateTest
 {
@@ -263,6 +263,33 @@ internal static class SnesStateTest
     //  1. The round trip
     // ---------------------------------------------------------------------------------------------------------------------
 
+    /// <summary>A frame of the script far from <paramref name="at"/>: the point the loading session is running at when the state is loaded.</summary>
+    private static int ElsewhereOf(Game g, int at) => g.Points.Length > 1 && g.Points.Any(p => p != at) ? g.Points.First(p => p != at) : at + 331;
+
+    /// <summary>
+    /// The board's page table is derived (from $420D and the chip's bank registers) and rebuilt at the end of a load. True when the table the session holds is the table a rebuild gives. Rebuilds it, so it is the last thing asked
+    /// of a session that is being tested.
+    /// </summary>
+    private static bool PageTableMatchesRebuild(SnesSession s)
+    {
+        var board = s.Board;
+        var pages = (Array)typeof(BOARD_SFC).GetField("pages", NonPublic)!.GetValue(board)!;
+        var before = new object?[pages.Length];
+        for (int i = 0; i < pages.Length; i++) before[i] = pages.GetValue(i);
+        typeof(BOARD_SFC).GetMethod("BuildPageTable", NonPublic)!.Invoke(board, null);
+        var fields = pages.GetType().GetElementType()!.GetFields();
+        for (int i = 0; i < pages.Length; i++)
+        {
+            var now = pages.GetValue(i)!;
+            foreach (var f in fields)
+            {
+                object? x = f.GetValue(before[i]!), y = f.GetValue(now);
+                if (!(f.FieldType.IsArray ? ReferenceEquals(x, y) : Equals(x, y))) return false;
+            }
+        }
+        return true;
+    }
+
     private static string ChipOf(SnesSession s) => s.Board.Coprocessor is { } c ? c.Describe() : "no chip";
 
     private static void RoundTrips(List<Game> games, bool quick)
@@ -274,7 +301,7 @@ internal static class SnesStateTest
         {
             var script = ScriptOf(g);
             int[] points = quick ? g.Points[..1] : g.Points;
-            int badImmediate = 0, badIdempotent = 0, badPicture = 0, badAudio = 0, badEnd = 0, firstBad = -1;
+            int badImmediate = 0, badIdempotent = 0, badPicture = 0, badAudio = 0, badEnd = 0, badTable = 0, firstBad = -1;
             long size = 0; string chip = "";
             foreach (int at in points)
             {
@@ -285,7 +312,7 @@ internal static class SnesStateTest
                 chip = ChipOf(a);
                 var carried = Play(a, script, at, window);
                 var b = Make(g);
-                Advance(b, script, 0, 1);                                      // the loading session has run before: a loader that replaces too little shows it
+                Advance(b, script, 0, ElsewhereOf(g, at));                     // the loading session is the same game running somewhere else (as when F5 is pressed in a running game): a loader that replaces too little, or leaves a cache of the old picture, shows it
                 b.LoadState(state);
                 ApplyPoison(b);
                 if (PictureHash(b) != pic) badImmediate++;
@@ -295,13 +322,27 @@ internal static class SnesStateTest
                 if (first >= 0) { badPicture++; if (firstBad < 0) firstBad = at; }
                 if (carried.Audio != restored.Audio || carried.Samples != restored.Samples) badAudio++;
                 if (!a.SaveState().AsSpan().SequenceEqual(b.SaveState())) badEnd++;
+                if (!PageTableMatchesRebuild(b)) badTable++;
+            }
+            // a state from power-on (before the game sets FastROM, the chip's banks...) loaded into the game running at a save point: what the running game derived from its registers must follow the loaded ones
+            {
+                var early = Make(g);                                   // power-on: no frame run yet
+                byte[] earlyState = early.SaveState();
+                var run = Make(g); Advance(run, script, 0, points[0]);
+                run.LoadState(earlyState);
+                ApplyPoison(run);
+                bool same = run.SaveState().AsSpan().SequenceEqual(earlyState);
+                var ce = Play(early, script, 0, 90); var re = Play(run, script, 0, 90);
+                bool tableOk = PageTableMatchesRebuild(run);
+                Check($"{g.Short}: a power-on state loaded into the game running at frame {points[0]} (what the running game derived - page table, caches - follows the loaded registers): 90 frames of the same pictures and sound, the same state at the end, the page table is the rebuilt one",
+                    same && ce.Pictures.SequenceEqual(re.Pictures) && ce.Audio == re.Audio && early.SaveState().AsSpan().SequenceEqual(run.SaveState()) && tableOk, $"{(same ? "" : "bytes differ after load; ")}{(ce.Pictures.SequenceEqual(re.Pictures) ? "" : "pictures differ; ")}{(tableOk ? "" : "page table stale")}");
             }
             int n = points.Length;
             string tag = $"{g.Short}";
             Check($"{tag}: the picture right after loading is the saved one; saving again gives the same bytes ({n} save points {string.Join("/", points)}, state {size / 1024} KB)", badImmediate == 0 && badIdempotent == 0, badImmediate + badIdempotent == 0 ? "" : $"picture differs {badImmediate}, bytes differ {badIdempotent} of {n}");
             Check($"{tag}: {window} frames after the load are the picture of the session that carried on", badPicture == 0, badPicture == 0 ? "" : $"{badPicture} of {n} differ, first save point {firstBad}");
             Check($"{tag}: the audio is the same sample for sample", badAudio == 0, badAudio == 0 ? "" : $"{badAudio} of {n} differ");
-            Check($"{tag}: the state each writes at the end of the window (the whole machine, byte for byte) is identical", badEnd == 0, badEnd == 0 ? chip : $"{badEnd} of {n} differ");
+            Check($"{tag}: the state each writes at the end of the window (the whole machine, byte for byte) is identical, and the page table the loaded session holds is the rebuilt one", badEnd == 0 && badTable == 0, badEnd + badTable == 0 ? chip : $"{badEnd} of {n} differ, page table stale {badTable}");
         }
     }
 
@@ -324,7 +365,7 @@ internal static class SnesStateTest
             Advance(a, script, 0, g.Points[0]);
             byte[] state = a.SaveState();
             var b = Make(g);
-            Advance(b, script, 0, 40);
+            Advance(b, script, 0, ElsewhereOf(g, g.Points[0]));
             b.LoadState(state);
             ApplyPoison(b);
             var fresh = Make(g); Advance(fresh, script, 0, 1);
@@ -466,7 +507,7 @@ internal static class SnesStateTest
                 a.RunToLine(line);
                 byte[] state = a.SaveState();
                 var b = Make(g);
-                Advance(b, script, 0, 1);
+                Advance(b, script, 0, ElsewhereOf(g, at));
                 b.LoadState(state);
                 ApplyPoison(b);
                 var (fd, _, _) = SnesFieldWalker.Compare(Walk(a), Walk(b));
@@ -686,6 +727,12 @@ internal static class SnesStateTest
         var g = games.FirstOrDefault(x => x.Key == "smw") ?? games.FirstOrDefault();
         if (g == null) { Skip("factory", "no roster ROM"); return; }
         var script = ScriptOf(g);
+        {
+            // the container's checksum is table driven (about ten times faster than the bitwise definition on a SNES state); it must stay the same function
+            var rng = new Random(12345); bool same = true;
+            foreach (int len in new[] { 0, 1, 7, 255, 1000, 65537, 531_000 }) { var buf = new byte[len]; rng.NextBytes(buf); same &= ConsoleStateFile.Crc32(buf) == ConsoleStateFile.Crc32Reference(buf); }
+            Check("the container's table-driven CRC-32 equals the bit-by-bit definition on random buffers of 0 to 531,000 bytes", same && ConsoleStateFile.Crc32("123456789"u8) == 0xCBF43926u);
+        }
         IConsoleSession Build() => ConsoleSessions.Create(ConsoleKind.Snes, g.Load(), "SFC", "SFC", "SFC", null, g.File);
         var a = Build();
         Check("SupportsState is true through the factory's session (a missing forward silently reverts to the contract default 'no states')", a.SupportsState, a.SupportsState ? "" : a.StateUnsupportedReason);

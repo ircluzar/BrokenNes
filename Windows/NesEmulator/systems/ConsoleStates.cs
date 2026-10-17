@@ -116,7 +116,31 @@ public static class ConsoleStateFile
     /// <summary>The key a web app keeps a game's slot under in its key-value store.</summary>
     public static string SlotKey(ConsoleKind console, string gameId, string slot = "quick") => $"state_v1:{Consoles.Key(console)}:{gameId}.{slot}";
 
+    private static readonly uint[] CrcTable = BuildCrcTable();
+
+    private static uint[] BuildCrcTable()
+    {
+        var t = new uint[256];
+        for (uint n = 0; n < 256; n++)
+        {
+            uint c = n;
+            for (int k = 0; k < 8; k++) c = (c & 1) != 0 ? (c >> 1) ^ 0xEDB88320u : c >> 1;
+            t[n] = c;
+        }
+        return t;
+    }
+
+    /// <summary>CRC-32 (the zip / PNG polynomial), a table at a time: the same value as the bit-by-bit definition (the SNES state test checks that), about ten times faster on the half-megabyte a SNES state is.</summary>
     internal static uint Crc32(ReadOnlySpan<byte> data)
+    {
+        uint crc = 0xFFFFFFFF;
+        var table = CrcTable;
+        foreach (byte b in data) crc = table[(crc ^ b) & 0xFF] ^ (crc >> 8);
+        return ~crc;
+    }
+
+    /// <summary>The definition, bit by bit (for tests).</summary>
+    internal static uint Crc32Reference(ReadOnlySpan<byte> data)
     {
         uint crc = 0xFFFFFFFF;
         foreach (byte b in data)
