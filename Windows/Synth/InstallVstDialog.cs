@@ -57,7 +57,7 @@ namespace BrokenNes.Windows.Synth
             root.Controls.Add(new Label
             {
                 AutoSize = true, MaximumSize = new Size(730, 0), Margin = new Padding(0, 0, 0, 8),
-                Text = "Tick the FL Studio installation(s) to add \"Bogue :: BrokenNes 2\" to. It is copied into that FL Studio's own plugin folder, " +
+                Text = "Tick the FL Studio installation(s) to add \"BrokenNes2\" to. It is copied into that FL Studio's own plugin folder, " +
                        "which is under Program Files: Windows will ask for permission once. Close FL Studio first; it only looks for plugins when it starts.",
             }, 0, 0);
 

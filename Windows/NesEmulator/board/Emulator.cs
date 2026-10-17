@@ -368,6 +368,7 @@ namespace BrokenNes
                         {
                             var cfg = new
                             {
+                                allowOppositeDpad = inputSettings.AllowOppositeDpad,
                                 player1 = new
                                 {
                                     device = inputSettings.Player1.Device.ToString(),

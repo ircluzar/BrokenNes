@@ -190,6 +190,16 @@ window.nesInterop = {
     _mainRef: null, _kbdInstalled: false,
     setMainRef(ref) { this._mainRef = ref; },
 
+    // D-pad protection, always on in this minimal build (it has no settings page): the keyboard hands the emulator a COPY of the pad in which Left+Right and Up+Down
+    // held together are neither pressed, as on a real d-pad. The same rule as WebLite/wwwroot/lib/dpadGuard.js and NesEmulator.Systems.DpadGuard; the raw state stays
+    // in window.nesInputState so letting go of one direction hands the other back.
+    _sendPad() {
+        const s = window.nesInputState.slice();
+        if (s[4] && s[5]) { s[4] = false; s[5] = false; }
+        if (s[6] && s[7]) { s[6] = false; s[7] = false; }
+        try { this._mainRef && this._mainRef.invokeMethodAsync('UpdateInput', s); } catch { }
+    },
+
     registerInput(dotNetRef) {
         this._mainRef = dotNetRef;
         if (!window.nesInputState) window.nesInputState = new Array(8).fill(false);
@@ -221,7 +231,7 @@ window.nesInterop = {
             e.preventDefault();
             if (window.nesInputState[i] === down) return;
             window.nesInputState[i] = down;
-            try { this._mainRef && this._mainRef.invokeMethodAsync('UpdateInput', window.nesInputState); } catch { }
+            this._sendPad();
         };
         document.addEventListener('keydown', e => apply(e, true));
         document.addEventListener('keyup', e => apply(e, false));
@@ -234,7 +244,7 @@ window.nesInterop = {
             for (let i = 0; i < window.nesInputState.length; i++) {
                 if (window.nesInputState[i]) { window.nesInputState[i] = false; changed = true; }
             }
-            if (changed) { try { this._mainRef && this._mainRef.invokeMethodAsync('UpdateInput', window.nesInputState); } catch { } }
+            if (changed) this._sendPad();
         };
         window.addEventListener('blur', clearAllInputs);
         document.addEventListener('visibilitychange', () => {

@@ -39,6 +39,24 @@ internal interface IGame : IDisposable
     GbSnapshot? CaptureGb();
     /// <summary>A copy of a Master System, Game Gear or Genesis game's sound chips: the PSG's registers, the YM2413's, or the YM2612's channel patches and the DAC sounds found in its recent writes (null for every other game).</summary>
     SegaSnapshot? CaptureSega();
+
+    // ---- the whole machine, for a project (see GameState.cs): taken and put back between frames, under the emulator's lock ----
+
+    /// <summary>A stable id of the game: the ROM's SHA-1 in lower-case hex (a NES game's has "nes" in front, a SNES game's "sfc").</summary>
+    string GameId { get; }
+    /// <summary>Whether <see cref="SaveGameState"/> and <see cref="LoadGameState"/> work for this game (a SNES game has no state yet).</summary>
+    bool StateSupported { get; }
+    /// <summary>Why not, in words fit for the user.</summary>
+    string StateUnsupportedReason { get; }
+    /// <summary>The whole machine as bytes: CPU, picture chip, sound chips, memory, cartridge. Throws when it cannot be written (a part that would be left out is a failure, never a half machine).</summary>
+    byte[] SaveGameState();
+    /// <summary>Puts such bytes back and carries the frame count on from <paramref name="framesRun"/>. Throws <see cref="InvalidDataException"/> (the message is for the user) when the state belongs to another game, another sound unit or is damaged; the machine is then as it was.</summary>
+    void LoadGameState(byte[] state, long framesRun);
+    /// <summary>The main work RAM, for tests and for the corruption features to come: its size in bytes (0: the game has none to reach), a byte by offset (-1 outside) and a write (false outside).
+    /// NES: the 2 KB of system RAM ($0000-$07FF). Master System / Game Gear: the 8 KB at $C000. Genesis: the 64 KB at $FF0000. Game Boy / Color: the 8 KB at $C000.</summary>
+    int WorkRamSize { get; }
+    int PeekWorkRam(int offset);
+    bool PokeWorkRam(int offset, byte value);
 }
 
 /// <summary>A running game's voices on their own, by plugin channel (<see cref="Ch"/>), at the host's rate and in step with the game's whole mix.</summary>
@@ -60,7 +78,96 @@ internal sealed class NesGame : IGame
     public NesGame(byte[] rom, Chip chip, int hostRate)
     {
         m = new NesAudioMachine(rom, null, Cx.BestCpu(Cx.Nes), Cx.BestPpu(Cx.Nes), chip.Id) { HostSampleRate = hostRate };
+        GameId = "nes" + Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(rom)).ToLowerInvariant();
     }
+
+    // ---- the whole machine: the NES core's own JSON state plus the APU register latch (the latch is not in the state, and a per-channel stem is made from it) ----
+
+    private static readonly byte[] StateMagic = "NES1"u8.ToArray();
+    private const int LatchLength = 0x18;
+
+    public string GameId { get; }
+    public bool StateSupported => true;
+    public string StateUnsupportedReason => "";
+
+    public byte[] SaveGameState()
+    {
+        string json = m.Nes.SaveState();
+        // The NES writer leaves out a part it cannot write (and says nothing): a state without its CPU, picture chip or sound chip must never be kept as if it were the machine.
+        if (string.IsNullOrEmpty(json)) throw new InvalidOperationException("the NES machine wrote no state");
+        using (var doc = System.Text.Json.JsonDocument.Parse(json))
+            foreach (var part in new[] { "cpu", "ppu", "apu" })
+                if (!doc.RootElement.TryGetProperty(part, out var el) || el.ValueKind != System.Text.Json.JsonValueKind.String || (el.GetString()?.Length ?? 0) <= 2)
+                    throw new InvalidOperationException($"the NES machine wrote no {part} state");
+        var latch = new byte[LatchLength];
+        uint written = m.CopyApuLatch(latch);
+        var body = System.Text.Encoding.UTF8.GetBytes(json);
+        var all = new byte[4 + 4 + LatchLength + body.Length];
+        StateMagic.CopyTo(all, 0);
+        BitConverter.TryWriteBytes(all.AsSpan(4), written);
+        latch.CopyTo(all, 8);
+        body.CopyTo(all, 8 + LatchLength);
+        return all;
+    }
+
+    public void LoadGameState(byte[] state, long framesRun)
+    {
+        if (state.Length < 8 + LatchLength + 2 || !state.AsSpan(0, 4).SequenceEqual(StateMagic)) throw new InvalidDataException("This is not a NES game state.");
+        uint written = BitConverter.ToUInt32(state, 4);
+        var latch = state.AsSpan(8, LatchLength).ToArray();
+        string json = System.Text.Encoding.UTF8.GetString(state, 8 + LatchLength, state.Length - 8 - LatchLength);
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            foreach (var (key, running, what) in new[] { ("cpuCoreId", m.CpuCoreId, "CPU core"), ("ppuCoreId", m.PpuCoreId, "picture core"), ("apuCoreId", m.ApuCoreId, "sound unit") })
+            {
+                string saved = root.TryGetProperty(key, out var el) && el.ValueKind == System.Text.Json.JsonValueKind.String ? el.GetString() ?? "" : "";
+                // a state is never loaded into a different part, and no part is swapped to make it fit
+                if (!string.Equals(saved, running, StringComparison.Ordinal)) throw new InvalidDataException($"The game was saved with the {saved.Replace("CPU_", "").Replace("PPU_", "").Replace("APU_", "")} {what}, but this build runs it on the {running.Replace("CPU_", "").Replace("PPU_", "").Replace("APU_", "")} one.");
+            }
+            foreach (var part in new[] { "cpu", "ppu", "apu", "ram" })
+                if (!root.TryGetProperty(part, out _)) throw new InvalidDataException($"The saved NES state has no {part} data.");
+        }
+        catch (System.Text.Json.JsonException e) { throw new InvalidDataException("The saved NES state is damaged: " + e.Message); }
+        m.RestoreState(json, framesRun);
+        m.Nes.SetApuLatch(latch, written);
+    }
+
+    /// <summary>The state with the sound chip's audio-buffer bookkeeping zeroed (what is queued, the resampling phase, the output filters' memory): the NES core drops its queued audio on purpose when a state is loaded, so a machine that came back from a state and the machine
+    /// that never left have the same emulation state but different bookkeeping. Tests compare machines through this.</summary>
+    internal byte[] SaveComparableState()
+    {
+        var all = SaveGameState();
+        string json = System.Text.Encoding.UTF8.GetString(all, 8 + LatchLength, all.Length - 8 - LatchLength);
+        foreach (var name in new[] { "ringWrite", "ringRead", "ringCount", "samplePhase", "lpLast", "dcLastIn", "dcLastOut" }) json = ZeroField(json, name);
+        var body = System.Text.Encoding.UTF8.GetBytes(json);
+        return [.. all.AsSpan(0, 8 + LatchLength), .. body];
+    }
+
+    private static string ZeroField(string s, string name)
+    {
+        var sb = new System.Text.StringBuilder(s.Length);
+        int i = 0;
+        while (true)
+        {
+            int k = s.IndexOf(name, i, StringComparison.Ordinal);
+            if (k < 0) { sb.Append(s, i, s.Length - i); break; }
+            int p = k + name.Length;
+            while (p < s.Length && (s[p] == '\\' || s[p] == '"')) p++;           // the closing quote, escaped or not
+            if (p >= s.Length || s[p] != ':') { sb.Append(s, i, p - i); i = p; continue; }
+            p++;
+            int q = p;
+            while (q < s.Length && (char.IsDigit(s[q]) || s[q] is '-' or '+' or '.' or 'e' or 'E')) q++;
+            sb.Append(s, i, p - i).Append('0');
+            i = q;
+        }
+        return sb.ToString();
+    }
+
+    public int WorkRamSize => 0x800;
+    public int PeekWorkRam(int offset) => (uint)offset < 0x800u ? m.PeekRam((ushort)offset) : -1;
+    public bool PokeWorkRam(int offset, byte value) { if ((uint)offset >= 0x800u) return false; m.PokeRam((ushort)offset, value); return true; }
 
     public int Console => Cx.Nes;
     public int ChipIndex { get; set; }
@@ -339,6 +446,50 @@ internal sealed class SessionGame : IGame, IGameStems
         if (!s.TrySwapCore(CoreSlot.Apu, ApuFor(s.Console, chip))) return false;
         resampler.SetRates(s.SampleRate, hostRate);
         return true;
+    }
+
+    // ---- the whole machine: the session's own state file (a ConsoleStateFile: it names the game and the sound unit it belongs to, and loading refuses another) ----
+
+    public string GameId => s.GameId;
+    public bool StateSupported => s.SupportsState;
+    /// <summary>Said to the user when a project is saved or opened: short, and the same for every console that has no state (the session's own words are for its menus).</summary>
+    public string StateUnsupportedReason => s.SupportsState ? "" : $"{Cx.RomNames[Console]} games cannot keep their state in a project yet";
+    public byte[] SaveGameState() => s.SaveState();
+
+    public void LoadGameState(byte[] state, long framesRun)
+    {
+        s.LoadState(state);                       // throws InvalidDataException and leaves the machine as it was
+        frames = framesRun;
+        // the sound that was queued before is not the sound of the restored machine: every resampler starts clean at the rates it runs at
+        resampler.Clear();
+        foreach (var r in stemRes) r?.Clear();
+    }
+
+    public int WorkRamSize => Concrete switch
+    {
+        NesEmulator.Sega.SmsSession => 0x2000,
+        NesEmulator.Sega.MdSession => 0x10000,
+        GbSession gb => gb.WorkRamSize,
+        _ => 0,
+    };
+
+    public int PeekWorkRam(int offset) => Concrete switch
+    {
+        NesEmulator.Sega.SmsSession sms => (uint)offset < (uint)sms.Board.Ram.Length ? sms.Board.Ram[offset] : -1,
+        NesEmulator.Sega.MdSession md => (uint)offset < (uint)md.Board.Ram.Length ? md.Board.Ram[offset] : -1,
+        GbSession gb => gb.PeekWorkRam(offset),
+        _ => -1,
+    };
+
+    public bool PokeWorkRam(int offset, byte value)
+    {
+        switch (Concrete)
+        {
+            case NesEmulator.Sega.SmsSession sms when (uint)offset < (uint)sms.Board.Ram.Length: sms.Board.Ram[offset] = value; return true;
+            case NesEmulator.Sega.MdSession md when (uint)offset < (uint)md.Board.Ram.Length: md.Board.Ram[offset] = value; return true;
+            case GbSession gb: return gb.PokeWorkRam(offset, value);
+        }
+        return false;
     }
 
     public void Dispose() => s.Dispose();

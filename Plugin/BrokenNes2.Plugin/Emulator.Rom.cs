@@ -151,10 +151,13 @@ public sealed partial class Emulator
 
     /// <summary>Builds the game on a worker thread (it allocates a whole console) and hands it to the audio side. A bad file leaves
     /// the previous game running and says why in <see cref="RomStatus"/>. A console with no game chosen has nothing to run.</summary>
-    private void StartLoad()
+    private void StartLoad(RestoreRequest? request = null)
     {
         int gen = Interlocked.Increment(ref loadGeneration);
         ClearRunaway();                       // another game: whatever was frozen is gone
+        ClearStateNote();
+        Volatile.Write(ref stateRestore, 0);
+        carriedSection = null;
         int console = Console;
         string? path = romPaths[console];
         string name = RomDisplayName;
@@ -167,6 +170,12 @@ public sealed partial class Emulator
             loading = false;
             romStatus = $"No {Cx.RomNames[console]} game loaded: choose one in the Game list";
             return;
+        }
+        // a project's game: it starts frozen when the project was saved in Instrument Runaway (the game must never run before its state is in place), and a save made before the game is built writes the project's state back as it came
+        if (request?.Section is { } carried && carried.Console == console)
+        {
+            carriedSection = carried.Raw;
+            if (carried.Frozen) Volatile.Write(ref runaway, 1);
         }
         loading = true;
         romStatus = "loading " + name + " ...";
@@ -185,6 +194,7 @@ public sealed partial class Emulator
                     g = new SessionGame(rom, kind, chip, rate, Path.GetFileName(path!));
                 }
                 g.ChipIndex = chipIdx;
+                if (request != null && gen == Volatile.Read(ref loadGeneration)) ApplyRestore(g, request);
                 if (gen != Volatile.Read(ref loadGeneration)) { g.Dispose(); return; }
                 Interlocked.Exchange(ref pendingGame, g);
                 romStatus = "running " + name;
@@ -240,6 +250,7 @@ public sealed partial class Emulator
             {
                 game?.Dispose();
                 game = fresh;
+                carriedSection = null;                // the running game is the project's state now
                 Array.Clear(stems);
                 appliedChip = fresh.ChipIndex;
                 crashReported = false;
@@ -345,6 +356,53 @@ public sealed partial class Emulator
     internal void PokeSnesToneForTests()
     {
         lock (romLock) { ApplyPending(); (game as SessionGame)?.PokeSnesTone(); }
+    }
+
+    // ---- test hooks and the corruption hook: the game's memory and exact frame stepping, under the emulator's lock ----
+
+    /// <summary>Runs exactly <paramref name="frames"/> frames of the game, as if audio were pulled that long (nothing listens: the rings fill and readers skip over them). Returns the game's frame count, -1 with no game. A frozen game does not run.</summary>
+    internal long RunFramesForTests(int frames)
+    {
+        lock (romLock)
+        {
+            ApplyPending();
+            var g = game;
+            if (g == null) return -1;
+            for (int i = 0; i < frames && !g.Crashed; i++) Produce(g);
+            return g.FramesRun;
+        }
+    }
+
+    /// <summary>The byte at <paramref name="offset"/> of the running game's main work RAM (<see cref="IGame.PeekWorkRam"/>); -1 outside it or with no game.</summary>
+    public int PeekWorkRam(int offset)
+    {
+        lock (romLock) { ApplyPending(); return game?.PeekWorkRam(offset) ?? -1; }
+    }
+
+    /// <summary>Writes a byte into the running game's main work RAM, between frames, whether the game runs or is frozen: this is the hook for corrupting a game (the change is part of the state a project keeps). False outside the RAM or with no game.</summary>
+    public bool PokeWorkRam(int offset, byte value)
+    {
+        lock (romLock) { ApplyPending(); return game?.PokeWorkRam(offset, value) ?? false; }
+    }
+
+    /// <summary>1 when the running game can keep its state in a project, 0 when it cannot, -1 with no game.</summary>
+    internal int GameStateSupportedForTests()
+    {
+        lock (romLock) { ApplyPending(); return game == null ? -1 : game.StateSupported ? 1 : 0; }
+    }
+
+    /// <summary>A hash of the whole machine as <see cref="IGame.SaveGameState"/> writes it (0: no game, or a game with no state): two machines in the same state hash alike.</summary>
+    internal long GameStateHashForTests()
+    {
+        lock (romLock)
+        {
+            ApplyPending();
+            var g = game;
+            if (g == null || !g.StateSupported) return 0;
+            ulong h = 1469598103934665603UL;
+            foreach (byte b in g is NesGame nes ? nes.SaveComparableState() : g.SaveGameState()) h = (h ^ b) * 1099511628211UL;
+            return (long)(h | 1);
+        }
     }
 
     /// <summary>For an open editor (GUI thread): when no instance is pulling audio (FL stopped, the plugin idle) the picture still has to
