@@ -893,6 +893,7 @@ function workletMain(kit, PROCESSOR_NAME) {
         case 'param': e.setParam(f, m.name, m.value); break;
         case 'addPreset': e.addPreset(m.name, m.def); break;
         case 'report': this.report = !!m.on; break;
+        case 'ping': this.port.postMessage({ t: 'pong', n: m.n }); break;
       }
     }
 

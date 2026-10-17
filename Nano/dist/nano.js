@@ -908,6 +908,7 @@ function workletMain(kit, PROCESSOR_NAME) {
         case 'param': e.setParam(f, m.name, m.value); break;
         case 'addPreset': e.addPreset(m.name, m.def); break;
         case 'report': this.report = !!m.on; break;
+        case 'ping': this.port.postMessage({ t: 'pong', n: m.n }); break;
       }
     }
 
@@ -942,6 +943,8 @@ function support() {
   if (typeof window === 'undefined' || typeof AudioContext === 'undefined' && typeof webkitAudioContext === 'undefined') return { ok: false, reason: 'no Web Audio API in this environment' };
   if (typeof AudioWorkletNode === 'undefined') return { ok: false, reason: 'this browser has no AudioWorklet (Nano needs it; there is no fallback)' };
   if (window.isSecureContext === false) return { ok: false, reason: 'AudioWorklet only works on a secure page: https://, http://localhost or file://' };
+  // Chromium-based browsers (tested: Edge 155) refuse to load any AudioWorklet module on a file:// page, so create() will reject there
+  if (window.location && window.location.protocol === 'file:') return { ok: true, reason: '', warning: 'file:// pages: Chromium refuses AudioWorklet modules; serve the page over http(s) or localhost. Nano.toAudioBuffer() works anyway.' };
   return { ok: true, reason: '' };
 }
 
@@ -968,8 +971,10 @@ function loadWorklet(ctx, workletUrl) {
   }
   p = ctx.audioWorklet.addModule(url).then(() => { if (blobUrl) URL.revokeObjectURL(blobUrl); }, (err) => {
     loaded.delete(ctx);
+    const onFile = typeof location !== 'undefined' && location.protocol === 'file:';
     throw fail('worklet', 'could not load the Nano worklet: ' + (err && err.message || err) +
-      (workletUrl ? '' : ' (if the page\'s Content-Security-Policy forbids blob: scripts, pass {workletUrl: \'nano-worklet.js\'})'));
+      (onFile ? ' (this is a file:// page, and Chromium-based browsers refuse AudioWorklet modules there, from a Blob or a file alike: open the page through a web server, even http://localhost; Nano.toAudioBuffer() and Nano.renderOffline() do work from file://)' :
+        workletUrl ? '' : ' (if the page\'s Content-Security-Policy forbids blob: scripts, pass {workletUrl: \'nano-worklet.js\'})'));
   });
   loaded.set(ctx, p);
   return p;
@@ -1001,10 +1006,13 @@ class Synth {
     this._id = 1;
     this._cb = null;
     this._disposed = false;
+    this._pings = new Map();
+    this._ping = 0;
     this.onerror = null;
     node.port.onmessage = (e) => {
       const m = e.data;
       if (m.t === 'activity' && this._cb) this._cb({ channels: m.channels, peak: m.peak });
+      else if (m.t === 'pong') { const w = this._pings.get(m.n); if (w) { this._pings.delete(m.n); w(); } }
       else if (m.t === 'error') { if (this.onerror) this.onerror(new Error(m.message)); else console.error('BrokenNes Nano: ' + m.message); }
     };
   }
@@ -1091,6 +1099,15 @@ class Synth {
   /** Routes the sound somewhere else: synth.connect(myGainNode). By default it is connected to the context's destination. */
   connect(destination, output, input) { return this.node.connect(destination, output, input); }
   disconnect(...args) { this.node.disconnect(...args); }
+
+  /**
+   * Resolves once the audio thread has received everything sent so far (notes, presets, parameters). Useful before starting an OfflineAudioContext
+   * and in tests; a page playing live never needs it.
+   */
+  sync() {
+    if (this._disposed) return Promise.resolve();
+    return new Promise((resolve) => { const n = ++this._ping; this._pings.set(n, resolve); this.node.port.postMessage({ t: 'ping', n }); });
+  }
 
   /** Resumes the AudioContext (call it from a click/keypress handler if the context was created suspended). */
   resume() { return this.context.state === 'running' ? Promise.resolve() : this.context.resume(); }
