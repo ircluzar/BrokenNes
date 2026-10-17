@@ -41,11 +41,15 @@ public sealed class SpcSnapshot
     }
 
     private SampleInfo[]? instruments;
+    private bool[]? hasSample;
 
     /// <summary>The instruments the game has loaded, read from its sample table: from the first slot that holds a well-formed sample, on, until a slot
     /// that does not. "Well-formed" means a chain of BRR blocks (range 12 or less) that ends with an end block, and a loop point on a block boundary
     /// inside it. It is a good guess, not a certainty: a table is only 4-byte entries, and other data can look like a sample.</summary>
-    public IReadOnlyList<SampleInfo> Instruments()
+    public IReadOnlyList<SampleInfo> Instruments() => Found();
+
+    /// <summary>The same list as an array, found once (the audio thread asks for it every control step: no allocation after the first call).</summary>
+    private SampleInfo[] Found()
     {
         if (instruments != null) return instruments;
         var list = new List<SampleInfo>();
@@ -56,6 +60,9 @@ public sealed class SpcSnapshot
             for (int v = 0; v < 8; v++) if (Dsp[v * 16 + 4] == slot && Dsp[v * 16 + 8] != 0) sounding = true;
             list.Add(new SampleInfo(slot, SampleStart(slot), SampleLoop(slot), blocks, loops, sounding));
         }
+        var has = new bool[256];
+        foreach (var i in list) has[i.Slot & 0xFF] = true;
+        hasSample = has;
         return instruments = list.ToArray();
     }
 
@@ -83,14 +90,18 @@ public sealed class SpcSnapshot
     }
 
     /// <summary>A slot that holds a sample (one of <see cref="Instruments"/>).</summary>
-    public bool HasSample(int srcn) => Instruments().Any(i => i.Slot == srcn);
+    public bool HasSample(int srcn)
+    {
+        Found();
+        return hasSample![srcn & 0xFF];
+    }
 
     /// <summary>The instrument an instance with this slot setting plays: the slot itself when the game has a sample there, otherwise the one the game
     /// was playing when it froze, otherwise the first one found. (A new instance starts on slot 0, which many games do not use.)</summary>
     public int Resolve(int srcn)
     {
-        var list = Instruments();
-        if (list.Count == 0 || HasSample(srcn)) return srcn;
+        var list = Found();
+        if (list.Length == 0 || HasSample(srcn)) return srcn;
         foreach (var i in list) if (i.Sounding) return i.Slot;
         return list[0].Slot;
     }

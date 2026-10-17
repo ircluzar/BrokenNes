@@ -300,6 +300,12 @@ internal sealed class SessionGame : IGame, IGameStems
 
     internal SpcWriteLog? SpcLog => spcLog;
 
+    /// <summary>Forgets what the sound driver did so far: from now on the log (and the recipes learned from it) are of the game as it is after a change made to the running machine.</summary>
+    internal void RestartListening()
+    {
+        if (spcHooked != null) spcLog?.Begin(spcHooked.Dsp.Regs);
+    }
+
     public int Console { get; }
     public int ChipIndex { get; set; }
     public NesAudioMachine? Nes => null;
@@ -456,7 +462,7 @@ internal sealed class SessionGame : IGame, IGameStems
         if (spcLog == null) { snap.ListenNote = "this sound unit cannot be listened to"; return snap; }
         var recipes = SpcRecipes.Derive(spcLog, spc.SamplesProduced, (long)(ListenWindowSeconds * 32000), spc.Dsp.Regs, out var stats);
         snap.Recipes = recipes;
-        snap.ListenNote = recipes.Length > 0 ? "Listened to the game: " + stats : stats.KeyOns == 0 ? "The game played nothing in the time it was listened to: let it play (the Corruption window can wait before it freezes), then switch Instrument Runaway on." : "Listened to the game, but no voice could be learned: " + stats;
+        snap.ListenNote = recipes.Length > 0 ? stats.Short() : stats.KeyOns == 0 ? $"The game played no notes in the {stats.WindowSeconds:0.#} s it was listened to: let it play, then switch Runaway on." : "Listened, but no voice could be learned: " + stats;
         return snap;
     }
 

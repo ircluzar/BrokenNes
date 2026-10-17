@@ -26,7 +26,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     public const int IdAboutLink = 70;                                   // + link index in the About text
     public const int IdInputs = 80, IdRunaway = 81, IdInputsClose = 82, IdInputsKeyboard = 83, IdInputsGamepad = 84, IdInputsDefaults = 85, IdInputsOpposite = 86;
     public const int IdInputKey = 200, IdInputPad = 220, IdPadButton = 240;   // + pad button index 0..11
-    public const int IdCor = 500, IdCorClose = 501, IdCorOpen = 502, IdCorStart = 503, IdCorCancel = 504, IdCorRemove = 505, IdCorFreeze = 506;
+    public const int IdCor = 500, IdCorClose = 501, IdCorOpen = 502, IdCorStart = 503, IdCorCancel = 504, IdCorRemove = 505, IdCorFreeze = 506, IdCorPlay = 507;
     public const int IdCorRow = 520;   // + visible row 0..CorVisible-1 of the Corruption window's list
     public const int IdInstrument = 90, IdGbDuty = 91;
     /// <summary>In the SNES instrument list a value from here up is a game voice (recipe number + this); below it, a sample slot.</summary>
@@ -329,7 +329,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         Txt(dc, frozen ? "Instrument Runaway" : "Channels", R(x, y, 200, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE, frozen ? Accent : Dim, fontSmall);
         if (!frozen) Txt(dc, CellHint(emu), R(x + 80, y, w - 80, 16), Win32.DT_RIGHT | Win32.DT_SINGLELINE, Faint, fontSmall);
         y += 18;
-        if (frozen) DrawRunawayBanner(dc, sampler ? 1 : gbSampler ? 2 : segaSampler ? 3 : 0, x, y, w); else DrawCells(dc, emu, a, x, y, w);
+        if (frozen) DrawRunawayBanner(dc, sampler ? 1 : gbSampler ? 2 : segaSampler ? 3 : 0, x, y, w, sampler ? emu!.Snapshot!.ListenNote : ""); else DrawCells(dc, emu, a, x, y, w);
         y += 56 + 14;
 
         // THIS INSTANCE
@@ -371,7 +371,6 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 : current.Blocks > 0 ? $"{current.Milliseconds:0} ms, {(current.Loops ? "loops" : "one-shot")}{(current.Sounding ? ", the game was playing it" : "")}   ({found.Count} found, {snap.Recipes.Length} game voices)"
                 : found.Count == 0 ? "the game's sample table has no sample the plugin can read" : $"nothing in this slot   ({found.Count} found: pick one from the list)";
             Txt(dc, info, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
-            if (snap.ListenNote.Length > 0) Txt(dc, snap.ListenNote, R(x, y + RowH + 18, w, 32), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_END_ELLIPSIS, snap.Recipes.Length > 0 ? Dim : Warn, fontSmall);
         }
         else if (segaSampler)
         {
@@ -439,12 +438,12 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     }
 
     /// <summary>Instead of the channel strip while the game is frozen: <paramref name="kind"/> 0 silent (NES), 1 SNES instruments, 2 Game Boy channels, 3 a Sega game's sound chips.</summary>
-    private void DrawRunawayBanner(nint dc, int kind, int x, int y, int w)
+    private void DrawRunawayBanner(nint dc, int kind, int x, int y, int w, string listenNote = "")
     {
         var r = R(x, y, w, 56);
         Box(dc, r, AccentDim, Accent, 6);
         string title = kind == 1 ? "GAME FROZEN  -  INSTRUMENTS LIVE" : kind == 2 ? "GAME FROZEN  -  GAME BOY CHANNELS LIVE" : kind == 3 ? "GAME FROZEN  -  SOUND CHIPS LIVE" : "GAME FROZEN  -  SILENT";
-        string text = kind == 1 ? "Pick one of the game's own instruments below." : kind == 2 ? "Pick a Game Boy channel for each instance." : kind == 3 ? "Pick one of the game's own instruments below." : "Instrument playing works on SNES, Game Boy, Master System, Game Gear and Genesis games.";
+        string text = kind == 1 ? (listenNote.Length > 0 ? listenNote : "Pick one of the game's own instruments below.") : kind == 2 ? "Pick a Game Boy channel for each instance." : kind == 3 ? "Pick one of the game's own instruments below." : "Instrument playing works on SNES, Game Boy, Master System, Game Gear and Genesis games.";
         Txt(dc, title, R(r.Left + 12, r.Top + 8, w - 24, 18), Win32.DT_LEFT | Win32.DT_SINGLELINE, White, fontSection);
         Txt(dc, text, R(r.Left + 12, r.Top + 28, w - 24, 24), Win32.DT_LEFT | Win32.DT_WORDBREAK, Win32.Rgb(240, 200, 195), fontSmall);
     }
@@ -542,7 +541,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     {
         if (emu == null || corOpen) return false;
         var c = emu.Corruption;
-        return c.Busy || c.Reading || c.Problem != null || (c.Result.Length > 0 && Environment.TickCount64 - c.ResultTick < CorNoteSeconds * 1000L);
+        return c.Busy || c.Reading || c.Listening.Length > 0 || c.Problem != null || (c.Result.Length > 0 && Environment.TickCount64 - c.ResultTick < CorNoteSeconds * 1000L);
     }
 
     /// <summary>The corruption note, at the top of the picture: the progress of a start, what a start or an open said, or a problem the project had. (The state note is at the bottom.)</summary>
@@ -554,6 +553,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         string text; int edge, fill;
         if (c.Busy) { text = $"Corruption: {(c.Status.Length > 0 ? c.Status : "starting...")}"; edge = Accent; fill = Win32.Rgb(46, 22, 18); }
         else if (c.Reading) { text = "Corruption: reading the stockpile..."; edge = Accent; fill = Win32.Rgb(46, 22, 18); }
+        else if (c.Listening.Length > 0) { text = "Corruption: " + c.Listening; edge = Accent; fill = Win32.Rgb(46, 22, 18); }
         else if (c.Problem != null) { text = c.Problem; edge = Warn; fill = Win32.Rgb(46, 32, 12); }
         else if (c.ResultGood) { text = c.Result; edge = Good; fill = Win32.Rgb(14, 40, 28); }
         else { text = c.Result; edge = Warn; fill = Win32.Rgb(46, 32, 12); }
@@ -908,7 +908,8 @@ public sealed unsafe class Bn2Editor : IFruityEditor
 
         // freeze, start, cancel, remove, close
         y = box.Top + 490;
-        Check(dc, IdCorFreeze, "Freeze the game and switch Instrument Runaway on as soon as it starts", lx, y, panel?.Freeze == true, null, labelW: 560, hitW: 600);
+        Check(dc, IdCorFreeze, "Switch Instrument Runaway on by itself after the corrupted game has played for", lx, y, panel?.Freeze == true, null, labelW: 470, hitW: 500);
+        Button(dc, IdCorPlay, panel == null ? "10 s" : panel.PlayFor == 0 ? "0 s (at once)" : $"{panel.PlayFor} s", R(lx + 510, y - 3, 132, 28), primary: false, enabled: panel != null);
         y = box.Top + 520;
         bool canStart = emu != null && !busy && sel >= 0 && sel < rows.Count && rows[sel].CanStart;
         Button(dc, IdCorStart, busy ? "Starting..." : "Start", R(lx, y, 120, 34), primary: true, enabled: canStart);
@@ -923,6 +924,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         if (panel != null)
         {
             if (busy) { say = panel.Status.Length > 0 ? panel.Status : "starting..."; sayColor = Warn; }
+            else if (panel.Listening.Length > 0) { say = panel.Listening; sayColor = Warn; }
             else if (panel.Problem != null) { say = panel.Problem; sayColor = Warn; }
             else if (panel.Result.Length > 0) { say = panel.Result; sayColor = panel.ResultGood ? Good : Warn; }
         }
@@ -959,6 +961,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         var c = emu.Corruption;
         if (id == IdCorOpen) ChooseStockpile();
         else if (id == IdCorFreeze) c.Freeze = !c.Freeze;
+        else if (id == IdCorPlay) { int at = Array.IndexOf(CorruptionPanel.PlaySteps, c.PlayFor); c.PlayFor = CorruptionPanel.PlaySteps[(at + 1) % CorruptionPanel.PlaySteps.Length]; }
         else if (id == IdCorStart) emu.StartCorruption(c.Selected);
         else if (id == IdCorRemove) emu.RemoveCorruption(c.Selected);
         else if (id == IdCorCancel) emu.CancelCorruption();
@@ -1155,7 +1158,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         if (e != null)
         {
             var cp = e.Corruption;
-            Mix(corOpen ? 1 + corScroll : 0); Mix(cp.ResultStamp); Mix(cp.Busy ? 1 : 2); Mix(cp.Reading ? 1 : 2); Mix(cp.Status.GetHashCode()); Mix(cp.Selected); Mix(cp.Freeze ? 1 : 2);
+            Mix(corOpen ? 1 + corScroll : 0); Mix(cp.ResultStamp); Mix(cp.Busy ? 1 : 2); Mix(cp.Reading ? 1 : 2); Mix(cp.Status.GetHashCode()); Mix(cp.Listening.GetHashCode()); Mix(cp.PlayFor); Mix(cp.Selected); Mix(cp.Freeze ? 1 : 2);
             Mix(cp.View?.GetHashCode() ?? 0); Mix(cp.Applied != null ? 1 : 2); Mix(cp.Problem?.GetHashCode() ?? 0); Mix(CorruptionNoteWanted(e) ? 1 : 0);
             Mix(e.ConfigVersion); Mix(e.PictureVersion); Mix(e.MemberCount); Mix(e.RomStatus.GetHashCode()); Mix(e.FramesRun / 4); Mix(e.StateNote?.GetHashCode() ?? 0);
             for (int c = 0; c < Ch.Total; c++) { Mix(e.Activity(c)); Mix(e.Owner(c)?.GetHashCode() ?? 0); }

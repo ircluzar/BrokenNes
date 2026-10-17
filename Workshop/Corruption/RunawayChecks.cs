@@ -22,6 +22,9 @@ internal static class RunawayChecks
         bool Want(string g) => only.Length == 0 || only.Split(',').Contains(g);
         string Path(string name, string env, string fallback) => args.SkipWhile(a => a != "--" + name).Skip(1).FirstOrDefault() ?? Environment.GetEnvironmentVariable(env) ?? fallback;
         string smw = Path("smw", "BROKENNES_TEST_SMW", @"X:\EMULATION\Super Nintendo\Super Nintendo (U)\Super Mario World (U) [!].smc");
+        // --write-vibrato-rom <file>: write the synthetic game with the bending sound driver to a file (for the plugin's editor screenshots), then stop
+        int wi = Array.IndexOf(args, "--write-vibrato-rom");
+        if (wi >= 0 && wi + 1 < args.Length) { File.WriteAllBytes(args[wi + 1], SynthSnesRom.Build(vibrato: true)); Console.WriteLine($"written: {args[wi + 1]}"); return 0; }
 
         if (Want("snes-recipe")) { Section("SNES: a sound driver that bends its voice, learned and played back"); Guard(c, "snes-recipe", () => SnesRecipe(c)); }
         if (Want("persist")) { Section("recipes in a project: written, read, and the hostile cases"); Guard(c, "persist", () => Persist(c)); }
@@ -156,6 +159,23 @@ internal static class RunawayChecks
         var stripped = new SpcRecipe { Srcn = r.Srcn, Adsr1 = r.Adsr1, Adsr2 = r.Adsr2, Gain = r.Gain, VolL = r.VolL, VolR = r.VolR, Pitch = r.Pitch, Uses = 1, LengthSamples = r.LengthSamples, Events = r.Events.Where(e => e.Kind != SpcEv.VolL && e.Kind != SpcEv.VolR).ToArray() };
         double dFlat = LabCommon.SpectralDistance(game, RenderRecipe(snap, stripped, frames), 32000);
         c.Control("a recipe without the volume fade is told apart from the game", dFlat > 3 * dRecipe && dFlat > 0.2, $"distance {dFlat:0.000} against {dRecipe:0.000}");
+
+        // the sampler allocates nothing while it plays (a plain note, and a recipe note with its macro)
+        foreach (bool recipe in new[] { false, true })
+        {
+            var sp = new SnesSampler(snap, 48000);
+            var blk = new float[256 * 2];
+            if (recipe) sp.NoteOnRecipe(0, r, SnesSampler.PitchFor(0, r.Pitch), 80); else sp.NoteOn(0, 0, SnesSampler.PitchFor(0), 80, 80);
+            sp.Render(blk, 256);
+            long a0 = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 400; i++)
+            {
+                if (recipe) sp.Update(0, SnesSampler.PitchFor(i, r.Pitch), 80, 80); else sp.Update(0, SnesSampler.PitchFor(i), 80, 80);
+                sp.Render(blk, 128);
+            }
+            long grown = GC.GetAllocatedBytesForCurrentThread() - a0;
+            c.Ok($"the sampler allocates nothing while a {(recipe ? "recipe" : "plain")} note plays (400 blocks)", grown == 0, $"{grown:N0} bytes");
+        }
 
         // listening for a moment too short sees nothing; the old capture sees none of it either way
         var none = clean.Capture(0);

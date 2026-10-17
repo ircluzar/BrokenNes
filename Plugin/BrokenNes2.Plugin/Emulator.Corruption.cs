@@ -162,11 +162,12 @@ public sealed partial class Emulator
                 var domains = MachineDomains.For(g.Session);
                 var report = CorruptionApplier.Apply(domains, entry.Writes, null, 0);
                 g.Farm!.NoteWrites(entry.Writes.Where(w => w.At == 0).ToList());
+                g.RestartListening();                          // the recipes are to be those of the game with the corruption on it
                 if (report.Requested > 0 && report.Applied == 0) { Corruption.SetResult($"{label} could not be applied: {(report.Problems.Count > 0 ? report.Problems[0] : report.Describe())}", false); return; }
                 Corruption.Applied = Describe(original, stockpilePath, g.FramesRun);
                 Corruption.SetResult($"started {label}: applied to the game as it is; {report.Describe()}" + (report.Problems.Count > 0 ? " | " + report.Problems[0] : ""), true);
             }
-            if (freeze) SetRunaway(true);
+            if (freeze) FreezeAfterPlaying(g, label, Corruption.PlayFor);
             return;
         }
 
@@ -192,8 +193,56 @@ public sealed partial class Emulator
         Corruption.Applied = withWrites ? Describe(original, stockpilePath, ng.FramesRun) : null;
         string warn = r.Warnings.Count > 0 ? " | " + string.Join(" | ", r.Warnings) : "";
         string msg = withWrites ? r.Message : $"restarted the game at the place {label} was made, without its writes ({(r.Used == AnchorKind.Boot ? $"replayed {r.FramesReplayed:N0} frames" : "loaded its saved machine")})";
-        if (freeze) { SetRunaway(true); msg += "; Instrument Runaway is on: the game is frozen with the corrupted instruments"; }
+        if (freeze) msg += "; " + FreezeAfterPlaying(ng, label, Corruption.PlayFor);
         Corruption.SetResult(msg + warn, true);
+    }
+
+    /// <summary>With the freeze tick: Instrument Runaway switches on at once (<paramref name="seconds"/> 0: only the corrupted game's sound memory is captured, nothing of what its sound driver does, because it has not run yet),
+    /// or the corrupted game plays for that many seconds first and Runaway switches on by itself, with recipes learned from what its sound driver did in that time. Returns the sentence for the result line.</summary>
+    private string FreezeAfterPlaying(SessionGame ng, string label, int seconds)
+    {
+        if (seconds <= 0)
+        {
+            SetRunaway(true);
+            return "Instrument Runaway is on: the game is frozen with the corrupted sound memory. It did not play first, so nothing of what its sound driver does was learned: choose 'Play for' above 0 s to learn that too";
+        }
+        long target = ng.FramesRun + (long)Math.Round(seconds * ng.FramesPerSecond);
+        Corruption.Listening = $"the corrupted game is playing; Instrument Runaway switches on by itself after {seconds} s";
+        Task.Run(() => WaitThenFreeze(ng, label, target, seconds));
+        return $"the corrupted game plays for {seconds} s, then Instrument Runaway switches on by itself and keeps what the game's sound driver did";
+    }
+
+    private void WaitThenFreeze(SessionGame ng, string label, long targetFrame, int seconds)
+    {
+        try
+        {
+            long lastFrames = ng.FramesRun, lastProgress = Environment.TickCount64;
+            while (ng.FramesRun < targetFrame)
+            {
+                if (!ReferenceEquals(Volatile.Read(ref game), ng))
+                {
+                    Corruption.SetResult($"{label}: another game took the emulator's place before the {seconds} s were over; Instrument Runaway was not switched on", false);
+                    return;
+                }
+                if (ng.FramesRun != lastFrames) { lastFrames = ng.FramesRun; lastProgress = Environment.TickCount64; }
+                else if (Environment.TickCount64 - lastProgress > 10_000)
+                {
+                    Corruption.SetResult($"{label}: the game is not running (FL is stopped and the plugin window is closed), so there is nothing to listen to; start the playback or press Instrument Runaway when you are ready", false);
+                    return;
+                }
+                Corruption.Listening = $"the corrupted game is playing: {Math.Max(0, (targetFrame - ng.FramesRun) / Math.Max(1.0, ng.FramesPerSecond)):0} s left, then Instrument Runaway switches on";
+                Thread.Sleep(50);
+            }
+            SetRunaway(true);
+            string note = Snapshot?.ListenNote ?? "";
+            Corruption.SetResult($"Instrument Runaway is on after {seconds} s of the corrupted game" + (note.Length > 0 ? ". " + note : ""), Snapshot?.Recipes.Length > 0 || Snapshot == null);
+        }
+        catch (Exception e)
+        {
+            Diag.Log("freezing after the corrupted game played failed: " + e);
+            Corruption.SetResult($"could not switch Instrument Runaway on: {e.Message}", false);
+        }
+        finally { Corruption.Listening = ""; }
     }
 
     private static AppliedCorruption Describe(StockpileEntry e, string path, long frame) => new(path, e.Id, e.Name, e.Description, e.Summary(), e.ContentHash(), frame);
@@ -290,6 +339,9 @@ public sealed partial class Emulator
             return (long)(h | 1);
         }
     }
+
+    /// <summary>Chip writes the running SNES game's log holds (all since it began or was last restarted); -1 with no SNES game.</summary>
+    internal long SpcLogCountForTests() { lock (romLock) { ApplyPending(); return (game as SessionGame)?.SpcLog?.Count ?? -1; } }
 
     /// <summary>Frames the running console game's farm has recorded; -1 with no console game.</summary>
     internal long CorruptionFarmFrames() { lock (romLock) { ApplyPending(); return (game as SessionGame)?.Farm?.Frames ?? -1; } }

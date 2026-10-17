@@ -995,6 +995,34 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             // index (0 result, 1 status, 2 why of the selected row, 3 the selected row's name, 4 the stockpile problems), the max chars in the low 16, returns the length, 110 the result's good flag, 111 the result's stamp,
             // 112 whether a corruption is recorded as started on this game, 113 frames the farm has recorded (-1 no farm), 114 the farm's reason why a replay is not possible (1 poisoned, 0 not), 115 the SNES audio RAM hash,
             // 116 the work RAM hash (WRAM, else RAM), 117 hash of the Runaway snapshot's audio RAM, 118 the ARAM byte at <index>, 119 write ARAM byte <index> = <value> straight into the running game (a corruption made outside the farm)
+            // Instrument Runaway recipes (round 6): 122 seconds the Corruption window lets the corrupted game play before it switches Runaway on (value), 123 1 while it is waiting, 124 recipes the SNES snapshot holds (-1 none),
+            // 125 a recipe's field, index = field << 16 | recipe: 0 sample, 1 ADSR1, 2 ADSR2, 3 gain, 4 key-on pitch, 5 events, 6 held (0/1), 7 hash (30 bits), 8 uses, 9 pitch events, 10 length in samples, 11 volume events, 12 volume at the key-on (left), 13 the largest pitch change in cents,
+            // 126 voices of this instance playing a recipe, 127 chip writes the running SNES game's log holds (-1 none), 128 the snapshot's listening note (copied like 85), 129 the recipe the Recipe parameter plays (0 none)
+            case 122: if (emu != null) emu.Corruption.PlayFor = (int)value; return 0;
+            case 123: return emu?.Corruption.Listening.Length > 0 ? 1 : 0;
+            case 124: return emu?.Snapshot?.Recipes.Length ?? -1;
+            case 125:
+            {
+                var rs = emu?.Snapshot?.Recipes;
+                int rec = (int)(index & 0xFFFF), field = (int)(index >> 16);
+                if (rs == null || (uint)rec >= (uint)rs.Length) return -1;
+                var r = rs[rec];
+                return field switch
+                {
+                    0 => r.Srcn, 1 => r.Adsr1, 2 => r.Adsr2, 3 => r.Gain, 4 => r.Pitch, 5 => r.Events.Length, 6 => r.Held ? 1 : 0, 7 => (nint)(r.Hash() & 0x3FFFFFFF), 8 => r.Uses,
+                    9 => r.Count(SpcEv.Pitch), 10 => r.LengthSamples, 11 => r.Count(SpcEv.VolL) + r.Count(SpcEv.VolR), 12 => r.VolL, 13 => r.Events.Where(e => e.Kind == SpcEv.Pitch).Select(e => Math.Abs(e.Value)).DefaultIfEmpty(0).Max(), _ => -1,
+                };
+            }
+            case 126: return voices.Count(v => v.Recipe != null && v.Dsp >= 0);
+            case 127: return (nint)(emu?.SpcLogCountForTests() ?? -1);
+            case 128:
+            {
+                var note = emu?.Snapshot?.ListenNote;
+                if (note == null) return -1;
+                if (value != 0 && index > 0) note.AsSpan(0, Math.Min(note.Length, (int)index)).CopyTo(new Span<char>((void*)value, (int)index));
+                return note.Length;
+            }
+            case 129: { var rs = emu?.Snapshot?.Recipes; int rp = Get(P.Recipe); return rs != null && rp > 0 && rp <= rs.Length ? rp : 0; }
             case 121: SessionGame.NoStateForTests = value != 0; return 0;      // 121 tests only: console games report that they cannot keep their state (value 1), or go back to the truth (0)
             case 120: Emulator.NoPumpForTests = value != 0; return 0;      // 120 tests only: the editor stops running the game to keep the picture moving (value 1), or goes back to it (0)
             case 100: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); if (emu == null || path == null) return 1; emu.OpenStockpile(path); return 0; }

@@ -245,6 +245,9 @@ public sealed class SpcWriteLog
 /// <summary>What deriving recipes found, for the window's text and the tests.</summary>
 public sealed record SpcDeriveStats(int KeyOns, int Notes, int Recipes, int SkippedSilent, long WritesInWindow, long LogDropped, double WindowSeconds)
 {
+    /// <summary>One short line for the banner of the editor.</summary>
+    public string Short() => Recipes > 0 ? $"Listened for {WindowSeconds:0.#} s: {KeyOns} key-ons, {Recipes} game voice{(Recipes == 1 ? "" : "s")}." : $"No notes in the {WindowSeconds:0.#} s it listened to: let the game play first.";
+
     public override string ToString() => $"{KeyOns} key-ons in {WindowSeconds:0.#} s ({WritesInWindow:N0} chip writes), {Recipes} recipes" + (SkippedSilent > 0 ? $", {SkippedSilent} silent notes left out" : "") + (LogDropped > 0 ? $", {LogDropped:N0} older writes had fallen off the log" : "");
 }
 

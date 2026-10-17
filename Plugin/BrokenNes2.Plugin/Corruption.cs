@@ -49,6 +49,11 @@ internal sealed class CorruptionPanel
     public long ResultTick;
     public int Selected = -1;
     public bool Freeze;
+    /// <summary>How many seconds the corrupted game plays before Instrument Runaway switches on by itself (when <see cref="Freeze"/> is ticked): the recipes are learned from what its sound driver does in that time. 0 freezes at once.</summary>
+    public volatile int PlayFor = 10;
+    /// <summary>While the corrupted game is playing before Instrument Runaway switches on: what the window says about it (empty otherwise).</summary>
+    public volatile string Listening = "";
+    public static readonly int[] PlaySteps = [0, 5, 10, 20, 30];
     /// <summary>Something the project asked for that could not be done (its corrupted game could not be rebuilt): shown over the picture for as long as this game runs, not for a few seconds.</summary>
     public volatile string? Problem;
 
