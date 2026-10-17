@@ -20,7 +20,7 @@ public sealed partial class Emulator
 
     private void NoteToFarm(SessionGame g, PushOutcome o)
     {
-        if (g.Farm == null) return;
+        if (g.Farm == null || PushMutants.On(PushMutants.PushForgetsFarm)) return;
         if (o.Writes.Count > 0) g.Farm.NoteWrites(o.Writes.Select(w => new CorruptionWrite(w.Domain, w.Address, w.Value)).ToList());
         if (o.Poison != null) g.Farm.Poison(o.Poison);
     }
@@ -92,6 +92,7 @@ public sealed partial class Emulator
     {
         lock (romLock)
         {
+            ApplyPending();
             return game is SessionGame g && GamePush.IsPushed(g.Session, inst.Kind, inst.Index);
         }
     }
@@ -99,13 +100,13 @@ public sealed partial class Emulator
     /// <summary>How many instruments are pushed into the running game.</summary>
     public int PushedCount
     {
-        get { lock (romLock) return game is SessionGame g ? GamePush.Count(g.Session) : 0; }
+        get { lock (romLock) { ApplyPending(); return game is SessionGame g ? GamePush.Count(g.Session) : 0; } }
     }
 
     /// <summary>One line per instrument pushed into the running game.</summary>
     internal IReadOnlyList<string> DescribePushes()
     {
-        lock (romLock) return game is SessionGame g ? GamePush.Describe(g.Session) : [];
+        lock (romLock) { ApplyPending(); return game is SessionGame g ? GamePush.Describe(g.Session) : []; }
     }
 
     /// <summary>Checks that the sound core still holds what was pushed (a replaced sound unit loses it); the answer is also the tab's note.</summary>
@@ -113,6 +114,7 @@ public sealed partial class Emulator
     {
         lock (romLock)
         {
+            ApplyPending();
             if (game is not SessionGame g || GamePush.Count(g.Session) == 0) return injectNote;
             return injectNote = GamePush.Verify(g.Session) ?? (injectNote != null && injectNote.StartsWith("Pushed instruments are no longer") ? null : injectNote);
         }
@@ -124,6 +126,9 @@ public sealed partial class Emulator
         if (old is SessionGame og && GamePush.Count(og.Session) > 0 && !ReferenceEquals(old, replacement))
             injectNote = $"{GamePush.Count(og.Session)} pushed instrument{(GamePush.Count(og.Session) == 1 ? "" : "s")} left the game when the game was replaced (a reload, a reset or a corruption started from a stockpile): push again";
     }
+
+    /// <summary>How many memory writes the corruption farm holds for the running game (-1: no console game).</summary>
+    internal int FarmWritesForTests() { lock (romLock) { ApplyPending(); return (game as SessionGame)?.Farm?.RecordedWrites ?? -1; } }
 
     /// <summary>A hash of the sound memory of the running game itself (not Runaway's copy): the SNES audio RAM, the Genesis YM2612 channel patches, the Game Boy wave RAM, the YM2413 user instrument; 0 with no game. Tests compare it before a push, after it and after the removal.</summary>
     internal long LiveSoundHashForTests()

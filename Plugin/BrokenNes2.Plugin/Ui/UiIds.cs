@@ -73,6 +73,8 @@ internal static class UiMutate
     public const int IgnoreRunaway = 1 << 14;     // the Instruments tab shows the instruments although Instrument Runaway is off
     public const int KeyGuardOff = 1 << 15;       // typing in a text field still presses the game's buttons
     public const int SilentModelFailure = 1 << 16;   // a model that throws is swallowed without a word on the tab
+    public const int RemoveCallsPush = 1 << 17;      // "Remove from game" pushes instead (round 6, inject)
+    public const int NoticeHidden = 1 << 18;         // the model's standing note is not drawn (round 6, inject)
 
     public static bool Has(int bit) => (Mask & bit) != 0;
 }

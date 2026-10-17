@@ -31,6 +31,11 @@ internal static partial class InjectChecks
             ("snes", "SNES: Super Mario World", () => SnesChecks(mutants)),
             ("genesis-explore", "Genesis: what the game plays (exploration, prints only)", () => GenesisExplore(args)),
             ("genesis", "Genesis: Sonic the Hedgehog", () => GenesisChecks(mutants)),
+            ("gb-explore", "Game Boy: what the game does with its wave RAM (exploration, prints only)", () => GbExplore(args)),
+            ("sms-explore", "Master System FM: what the game does with the user instrument (exploration, prints only)", () => SmsExplore(args)),
+            ("other", "Game Boy wave and YM2413 user instrument on bare chips", () => OtherChecks(mutants)),
+            ("gb", "Game Boy: Link's Awakening", () => GbGameChecks(mutants)),
+            ("sms", "Master System, FM unit: Galactic Protector", () => SmsGameChecks(mutants)),
         };
         foreach (var (id, title, run) in groups)
         {

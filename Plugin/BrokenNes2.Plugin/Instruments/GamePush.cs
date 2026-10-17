@@ -229,10 +229,16 @@ public static class GamePush
         if (st == null || st.Count == 0) return null;
         var m = PushMachine.Of(session);
         var lost = new List<string>();
-        if (st.Records.Any(r => r.Kind == PushKind.SnesSample) && (m.Spc == null || !ReferenceEquals(m.Spc.Dsp, st.DspOwner) || !ReferenceEquals(m.Spc.Dsp.Overrides, st.Dsp))) lost.Add("the SNES sound unit was replaced");
-        if (st.Records.Any(r => r.Kind is PushKind.OpnPatch or PushKind.OpnDac) && (m.MdUnit == null || !ReferenceEquals(m.MdUnit.Fm, st.OpnOwner) || !ReferenceEquals(m.MdUnit.Fm.Override, st.Opn))) lost.Add("the Genesis sound unit was replaced");
-        if (st.Records.Any(r => r.Kind == PushKind.GbWave) && (m.GbApu == null || !ReferenceEquals(m.GbApu, st.GbOwner) || !ReferenceEquals(m.GbApu.Override, st.Gb))) lost.Add("the Game Boy sound unit was replaced");
-        if (st.Records.Any(r => r.Kind == PushKind.OpllUser) && (m.SmsFm == null || !ReferenceEquals(m.SmsFm.Fm, st.OpllOwner) || !ReferenceEquals(m.SmsFm.Fm.Override, st.Opll))) lost.Add("the Master System sound unit was replaced");
+        // the hooks the records need must be in the sound core, and be the ones that were built for these records
+        bool needDsp = st.Records.Any(r => r.Kind == PushKind.SnesSample && SnesPusher.EntryOf(r).Flags != 0);
+        if (st.Records.Any(r => r.Kind == PushKind.SnesSample) && (m.Spc == null || !ReferenceEquals(m.Spc.Dsp, st.DspOwner))) lost.Add("the SNES sound unit was replaced");
+        else if (needDsp && (st.Dsp == null || !ReferenceEquals(m.Spc!.Dsp.Overrides, st.Dsp))) lost.Add("the SNES voice overrides are not in the sound unit");
+        if (st.Records.Any(r => r.Kind is PushKind.OpnPatch or PushKind.OpnDac) && (m.MdUnit == null || !ReferenceEquals(m.MdUnit.Fm, st.OpnOwner))) lost.Add("the Genesis sound unit was replaced");
+        else if (st.Records.Any(r => r.Kind is PushKind.OpnPatch or PushKind.OpnDac) && (st.Opn == null || !ReferenceEquals(m.MdUnit!.Fm.Override, st.Opn))) lost.Add("the Genesis key-on substitution is not in the sound unit");
+        if (st.Records.Any(r => r.Kind == PushKind.GbWave) && (m.GbApu == null || !ReferenceEquals(m.GbApu, st.GbOwner))) lost.Add("the Game Boy sound unit was replaced");
+        else if (st.Records.Any(r => r.Kind == PushKind.GbWave) && (st.Gb == null || !ReferenceEquals(m.GbApu!.Override, st.Gb))) lost.Add("the Game Boy trigger substitution is not in the sound unit");
+        if (st.Records.Any(r => r.Kind == PushKind.OpllUser) && (m.SmsFm == null || !ReferenceEquals(m.SmsFm.Fm, st.OpllOwner))) lost.Add("the Master System sound unit was replaced");
+        else if (st.Records.Any(r => r.Kind == PushKind.OpllUser) && (st.Opll == null || !ReferenceEquals(m.SmsFm!.Fm.Override, st.Opll))) lost.Add("the YM2413 key-on substitution is not in the sound unit");
         if (lost.Count == 0) return null;
         return "Pushed instruments are no longer in the game: " + string.Join(", ", lost.Distinct()) + ", and with it what was pushed";
     }

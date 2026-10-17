@@ -22,7 +22,7 @@ internal sealed class GbPushHook : IGbApuOverride
 
     public void OnTrigger(APU_GB apu, int channel)
     {
-        if (channel != 2) return;
+        if (channel != 2 || PushMutants.On(PushMutants.GbNoSubstitution)) return;
         var w = apu.WaveRam;
         for (int k = 0; k < orig.Length; k++)
             if (w.AsSpan().SequenceEqual(orig[k])) { edit[k].CopyTo(w, 0); return; }
@@ -43,6 +43,7 @@ internal sealed class OpllPushHook : IYm2413Override
 
     public void OnKeyOn(Ym2413 chip, int channel)
     {
+        if (PushMutants.On(PushMutants.OpllNoSubstitution)) return;
         for (int k = 0; k < orig.Length; k++)
         {
             bool same = true;
@@ -82,7 +83,7 @@ internal static class OtherPushers
         rec.Regions.Add(new PushRegion { Domain = "WAVE", Address = 0, Original = orig, Pushed = edit });
         var o = new PushOutcome { Ok = true };
         for (int i = 0; i < 16; i++) if (apu.WaveRam[i] != edit[i]) o.Writes.Add(("WAVE", i, edit[i]));
-        edit.CopyTo(apu.WaveRam, 0);
+        if (!PushMutants.On(PushMutants.GbNoSubstitution)) edit.CopyTo(apu.WaveRam, 0);
         if (old != null) st.Records.Remove(old);
         st.Records.Add(rec);
         PushHooks.Install(m, st);
@@ -94,12 +95,17 @@ internal static class OtherPushers
 
     public static PushOutcome RemoveGbWave(PushMachine m, GamePushes st, PushRecord rec)
     {
-        int restored = 0;
+        string state = "there is no wave RAM to look at";
         var apu = m.GbApu;
-        if (apu != null && apu.WaveRam.AsSpan().SequenceEqual(rec.B)) { rec.A.CopyTo(apu.WaveRam, 0); restored = 16; }
+        if (apu != null)
+        {
+            if (apu.WaveRam.AsSpan().SequenceEqual(rec.B) && !PushMutants.On(PushMutants.RemoveLeavesBytes)) { rec.A.CopyTo(apu.WaveRam, 0); state = "the original wave is back in the wave RAM"; }
+            else if (apu.WaveRam.AsSpan().SequenceEqual(rec.A)) state = "the wave RAM already holds the game's own wave";
+            else state = "the wave RAM holds another wave now (the game loaded one since), so it was left alone";
+        }
         st.Records.Remove(rec);
         PushHooks.Install(m, st);
-        return new PushOutcome { Ok = true, Message = $"Removed the Game Boy wave from the game: {(restored > 0 ? "the original wave is back in the wave RAM" : "the wave RAM no longer held the pushed wave, so it was left alone")} and no trigger writes the edit any more.", Poison = "pushed instruments were removed from the sound unit" };
+        return new PushOutcome { Ok = true, Message = $"Removed the Game Boy wave from the game: {state}, and no trigger writes the edit any more.", Poison = "pushed instruments were removed from the sound unit" };
     }
 
     // ---- YM2413 user instrument ----
@@ -145,16 +151,18 @@ internal static class OtherPushers
 
     public static PushOutcome RemoveOpll(PushMachine m, GamePushes st, PushRecord rec)
     {
-        int restored = 0;
+        string state = "there is no YM2413 to look at";
         var fm = m.SmsFm?.Fm;
         if (fm != null)
         {
-            bool isEdit = true;
-            for (int i = 0; i < 8 && isEdit; i++) isEdit = fm.Register(i) == rec.B[i];
-            if (isEdit) { for (int i = 0; i < 8; i++) if (fm.Register(i) != rec.A[i]) { fm.WriteRegister(i, rec.A[i]); restored++; } }
+            bool isEdit = true, isOrig = true;
+            for (int i = 0; i < 8; i++) { isEdit &= fm.Register(i) == rec.B[i]; isOrig &= fm.Register(i) == rec.A[i]; }
+            if (isEdit && !isOrig) { for (int i = 0; i < 8; i++) if (fm.Register(i) != rec.A[i]) fm.WriteRegister(i, rec.A[i]); state = "the original instrument registers are back in the chip"; }
+            else if (isOrig) state = "the chip's registers are the game's own";
+            else state = "the chip's user instrument registers hold something else now (the game loaded another instrument since), so they were left alone";
         }
         st.Records.Remove(rec);
         PushHooks.Install(m, st);
-        return new PushOutcome { Ok = true, Message = $"Removed the YM2413 user instrument from the game: {(restored > 0 ? "the original instrument registers are back" : "the chip no longer held the pushed registers, so they were left alone")} and no key-on loads the edit any more.", Poison = "pushed instruments were removed from the sound unit" };
+        return new PushOutcome { Ok = true, Message = $"Removed the YM2413 user instrument from the game: {state}, and no key-on loads the edit any more.", Poison = "pushed instruments were removed from the sound unit" };
     }
 }

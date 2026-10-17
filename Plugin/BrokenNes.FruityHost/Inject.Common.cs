@@ -15,9 +15,9 @@ internal static class InjectRun
     /// <summary>Sonic the Hedgehog: Start on the title screen, then run right through Green Hill Zone.</summary>
     public const string SonicScript = "400:Start,420:,900:Right,1700:Right+A,1730:Right";
 
-    public static IConsoleSession Create(ConsoleKind kind, byte[] rom, string fileName)
+    public static IConsoleSession Create(ConsoleKind kind, byte[] rom, string fileName, string? apuId = null)
     {
-        string apu = kind == ConsoleKind.Genesis ? "MD" : CoreCatalog.Default(kind, CoreSlot.Apu);
+        string apu = apuId ?? (kind == ConsoleKind.Genesis ? "MD" : CoreCatalog.Default(kind, CoreSlot.Apu));
         return ConsoleSessions.Create(kind, (byte[])rom.Clone(), CoreCatalog.Default(kind, CoreSlot.Cpu), CoreCatalog.Default(kind, CoreSlot.Ppu), apu, null, fileName);
     }
 

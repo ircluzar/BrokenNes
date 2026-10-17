@@ -64,6 +64,8 @@ internal sealed class InstrumentsPanel
     public string ShownSeed { get; private set; } = "";
     /// <summary>The model's standing note as drawn on the last paint (empty when none is shown).</summary>
     public string ShownNotice { get; private set; } = "";
+    /// <summary>The list row of the selected instrument as drawn: name's detail line (what the self-test reads to see the "in the game" mark).</summary>
+    public string SelectedDetail => list.Selected >= 0 && list.Selected < summaries.Count ? summaries[list.Selected].Detail : "";
     public string Status => status;
     public bool StatusOk => statusOk;
     public bool WantsKeys => hex.Focused;
@@ -314,7 +316,7 @@ internal sealed class InstrumentsPanel
     private void DrawStatus(nint dc)
     {
         // what the last action said; when nothing has been done yet, the model's standing note (a project's pushed instruments that could not be put back, ...)
-        string? notice = status.Length == 0 ? provider?.Notice : null;
+        string? notice = status.Length == 0 && !UiMutate.Has(UiMutate.NoticeHidden) ? provider?.Notice : null;
         ShownNotice = notice ?? "";
         string text = status.Length > 0 ? status : notice ?? "";
         if (text.Length == 0) return;
@@ -388,7 +390,7 @@ internal sealed class InstrumentsPanel
             case UiIds.Redo: Act(p.CanRedo(inst) ? p.Redo(inst) : ActionResult.Refused("nothing to redo")); break;
             case UiIds.SendToPresets: SendToPresets(p, inst); break;
             case UiIds.Push: Act(p.PushIntoGame(inst)); break;
-            case UiIds.Remove: Act(p.IsPushed(inst) ? p.RemoveFromGame(inst) : ActionResult.Refused("this instrument is not pushed into the game")); break;
+            case UiIds.Remove: Act(!p.IsPushed(inst) ? ActionResult.Refused("this instrument is not pushed into the game") : UiMutate.Has(UiMutate.RemoveCallsPush) ? p.PushIntoGame(inst) : p.RemoveFromGame(inst)); break;
         }
         return false;
     }
