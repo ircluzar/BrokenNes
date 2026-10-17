@@ -369,7 +369,7 @@ internal sealed class EmulatorInstrumentProvider : IInstrumentModelProvider
         var h = s.ExistingEntry(inst)?.History ?? new InstrumentHistory(inst);
         var now = h.Current;
         var snap = s.Emu.Snapshot as object ?? (object?)s.Emu.GbState ?? s.Emu.SegaState;
-        var payload = new InstrumentPayload(InstrumentCodec.Pack(now), InstrumentCodec.Pack(h.Clean), h.Serialize(), now.Console, now.Index, InstrumentView.ContextOf(snap));
+        var payload = new InstrumentPayload(InstrumentCodec.Pack(now), InstrumentCodec.Pack(h.Clean), h.Serialize(), now.Console, now.Index, BrokenNes2.Presets.PresetContext.Of(snap, now));      // (what a preset engine needs besides the instrument: Presets/PresetPlay.cs)
         string console = now.Console switch { ConsoleId.Nes => "NES", ConsoleId.GameBoy => "GB", ConsoleId.Snes => "SNES", ConsoleId.MasterSystem => "SMS", _ => "MD" };
         string game = s.Emu.RomPath is { } p ? Path.GetFileName(p) : s.Emu.RomDisplayName;
         int steps = h.Operations.Take(h.Cursor).Count(o => !IsLock(o));

@@ -15,3 +15,6 @@ scripts/ftp_credentials.conf
 /SubProjects/OfflineRA/.vs
 /SubProjects/OfflineRA/obj
 /SubProjects/OfflineRA/bin
+
+# Presets ripped from games hold copyrighted samples: never commit them (the "hygiene" check of FruityHost preset-test and UAT/entrypoints/notices-check.ps1 fail if one is tracked)
+*.bn2preset

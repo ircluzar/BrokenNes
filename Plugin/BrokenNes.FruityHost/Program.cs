@@ -35,6 +35,9 @@ switch (args[0])
     case "imodel-test":
         return ImodelChecks.Main(args);
 
+    case "preset-test":
+        return PresetChecks.Main(args);
+
     case "imodel-fields":
         return ImodelChecks.PrintFields();
 

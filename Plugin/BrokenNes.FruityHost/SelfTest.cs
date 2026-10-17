@@ -170,6 +170,7 @@ public sealed unsafe partial class SelfTest
             ("dpad", "D-pad protection: Left+Right and Up+Down from the keyboard, the on-screen pad or both together send neither; the setting (off by default) is clicked, remembered and read back; a pad set from outside is not touched", DpadGuardTest),
             ("imodel", "Instrument model (round 6): the instruments of a SNES / Genesis / Master System / Game Boy / NES sound-memory snapshot as typed fields and blobs, written back into a copy the existing samplers play (read -> write unchanged = identical bytes), a seeded deterministic corruptor with locks, undo, redo and replay, saved forms that refuse damage; which fields the samplers actually play, proved on rendered PCM; every verifier shown able to fail by a deliberate bug", Imodel),
             ("imodel-ui", "Instrument model behind the real Instruments tab (round 6): a SNES and a Game Boy game frozen with Instrument Runaway, the tab lists their instruments, real clicks and keys on steppers, the hex field, locks, Randomise, Nudge, Undo and Redo change the sound memory FL's notes play (read back through the plugin, undo bit-exact, pitch measured); a change made outside the tab shows on it; three deliberate bugs in the model's glue are each caught", ImodelUi),
+            ("presets", "Presets (round 6): the preset file (versioned, checksummed, refuses damage, never holds a ROM), the folder library, the Presets chips (PRESETS and one per console, appended last) that play a preset from FL's notes with no ROM on an engine of its own, bit for bit what Runaway renders for the same instrument from its game (SNES, Genesis, Master System, Game Gear, Game Boy; the NES through a register player), the project's own copy (a library file gone, a damaged or newer section), no allocation while playing or loading, and the Presets tab with the real library driven by real mouse and key messages; the git rule that keeps ripped presets out of the repository; every verifier shown able to fail", Presets),
             ("inject", "Push into the game (round 6): an edited instrument pushed from the Instruments tab's model into a REAL running game (SNES, Genesis, Game Boy, Master System FM) through the plugin: it sticks (the game's own sound memory, hooks), survives Instrument Runaway off, a saved project and a reopened one (the machine plays on exactly like the one that stayed open), Remove from game puts the original back bit for bit, damaged and newer sections are refused with a note, the corruption farm is told; deliberate bugs are caught", InjectDll),
             ("prefs", "Remembered settings:the new registry path is filled once from the old one (values of both kinds), the old key is never changed or created, a non-empty new key is left alone; on fake files and on real test registry keys", PrefsMigrationTest),
             ("runaway", "Instrument Runaway: the game freezes and goes silent; a SNES game's samples play from FL notes, polyphonically, and survive a saved project", RunawayTest),
@@ -573,7 +574,7 @@ public sealed unsafe partial class SelfTest
         // cores that are accurate by design must be on pitch; degraded / speed-hack cores are reported, not required
         var accurate = new HashSet<string> { "FIX", "FIXS", "FMC", "HI", "HI2", "HI2X", "LOW", "LQ2", "QN", "QLOW", "ULQ", "SPD", "SPD2", "EIL", "LQ", "QLQ", "QLQ2", "MNES", "MD", "SMSFM" };
         var table = new List<string>();
-        foreach (var chip in chips)
+        foreach (var chip in chips.Where(c => c != "PRESETS" && !c.StartsWith("PRE-")))      // (the Presets chips are not cores: they play the preset an instance holds, and have their own check, `presets`)
         {
             var s = One(69, 0, 0.6);
             if (chip == "MD") s.Params[PInstrument] = 14;     // the Genesis chip's sine patch: the pitch is read from zero crossings, which the default (brass) timbre doubles to an octave
@@ -1339,7 +1340,7 @@ public sealed unsafe partial class SelfTest
             int qn = chips.IndexOf("QN");
             ClickControl(t, p, 4, "chip dropdown");
             t.Expect(p.Test(31) == 4, "the chip list did not open");
-            t.Expect(p.Test(32) == chips.Count - 6, $"the chip list has {p.Test(32)} items, expected the {chips.Count - 6} NES chips (the Game Boy, SNES, Master System and Genesis chips are under their own consoles)");
+            t.Expect(p.Test(32) == chips.Count - 10, $"the chip list has {p.Test(32)} items, expected the {chips.Count - 10} NES chips (the Game Boy, SNES, Master System and Genesis chips are under their own consoles; the NES list has the Presets chip for every console and its own NES one)");
             int before = p.Host.ParamChanges.Count;
             // scroll the list until QN is visible, then click it
             for (int guard = 0; guard < 40 && p.Test(30, 100 + qn) == 0; guard++) Win32Host.Wheel(hwnd, -1);
@@ -1371,19 +1372,19 @@ public sealed unsafe partial class SelfTest
             ClickControl(t, p, 51, "Game Boy segment");
             t.Expect(p.GetParam(PConsole) == 1 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "DMG", $"Game Boy segment: console {p.GetParam(PConsole)}, chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}");
             ClickControl(t, p, 4, "chip dropdown (Game Boy)");
-            t.Expect(p.Test(32) == 2, $"the Game Boy chip list has {p.Test(32)} items, expected DMG and DMGS");
+            t.Expect(p.Test(32) == 3, $"the Game Boy chip list has {p.Test(32)} items, expected DMG, DMGS and the Presets shortcut PRE-GB");
             Win32Host.Click(hwnd, 20, 20);
             ClickControl(t, p, 52, "SNES segment");
             t.Expect(p.GetParam(PConsole) == 2 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "SNES", "SNES segment");
             ClickControl(t, p, 53, "SMS segment");
             t.Expect(p.GetParam(PConsole) == 3 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "SMS", $"SMS segment: console {p.GetParam(PConsole)}, chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}");
             ClickControl(t, p, 4, "chip dropdown (SMS)");
-            t.Expect(p.Test(32) == 2, $"the Master System chip list has {p.Test(32)} items, expected SMS and SMSFM");
+            t.Expect(p.Test(32) == 3, $"the Master System chip list has {p.Test(32)} items, expected SMS, SMSFM and the Presets shortcut PRE-SMS");
             Win32Host.Click(hwnd, 20, 20);
             ClickControl(t, p, 54, "MD segment");
             t.Expect(p.GetParam(PConsole) == 4 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "MD", $"MD segment: console {p.GetParam(PConsole)}, chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}");
             ClickControl(t, p, 4, "chip dropdown (MD)");
-            t.Expect(p.Test(32) == 1, $"the Genesis chip list has {p.Test(32)} items, expected MD");
+            t.Expect(p.Test(32) == 2, $"the Genesis chip list has {p.Test(32)} items, expected MD and the Presets shortcut PRE-MD");
             Win32Host.Click(hwnd, 20, 20);
             ClickControl(t, p, 50, "NES segment");
             t.Expect(p.GetParam(PConsole) == 0 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "FIX", "NES segment");
@@ -1521,7 +1522,7 @@ public sealed unsafe partial class SelfTest
         {
             var p = lib.Create(); all.Add(p);
             var chips = Chips(p);
-            t.Expect(chips.Count == 23 && chips[0] == "FIX" && chips[22] == "SMSFM", $"{chips.Count} chips, first {chips[0]} (expected the 17 NES chips with FIX first, then DMG, DMGS, SNES, SMS, MD, and SMSFM appended last)");
+            t.Expect(chips.Count == 29 && chips[0] == "FIX" && chips[22] == "SMSFM" && string.Join(",", chips.Skip(23)) == "PRESETS,PRE-NES,PRE-GB,PRE-SNES,PRE-SMS,PRE-MD", $"{chips.Count} chips, first {chips[0]} (expected the 17 NES chips with FIX first, then DMG, DMGS, SNES, SMS, MD, SMSFM appended, and the six Presets chips last of all)");
             // each console starts with its own chip
             foreach (var (console, chip) in new[] { (1, "DMG"), (2, "SNES"), (3, "SMS"), (4, "MD"), (0, "FIX") })
             {
@@ -1593,7 +1594,7 @@ public sealed unsafe partial class SelfTest
         // ---- the chip list: appended, so every saved project keeps its chip ----
         List<string> chips;
         using (var probe = lib.Create()) chips = Chips(probe);
-        t.Expect(chips.Count == 23 && chips.IndexOf(Chip) == 20 && chips.IndexOf("MD") == 21 && chips.IndexOf("SMSFM") == 22, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected 20, with the Genesis chip and then the Master System FM chip appended after it)");
+        t.Expect(chips.Count == 29 && chips.IndexOf(Chip) == 20 && chips.IndexOf("MD") == 21 && chips.IndexOf("SMSFM") == 22, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected 20, with the Genesis chip and then the Master System FM chip appended after it)");
         t.Expect(chips.IndexOf("FIX") == 0 && chips.IndexOf("DMG") == 17 && chips.IndexOf("DMGS") == 18 && chips.IndexOf("SNES") == 19, "an existing chip moved (the chip index is part of saved projects: append only)");
         byte[] blob;
         using (var a = lib.Create()) { a.SetParam(PCore, chips.IndexOf(Chip)); blob = a.SaveState(); }
@@ -1750,7 +1751,7 @@ public sealed unsafe partial class SelfTest
         // ---- the chip list: appended, so every saved project keeps its chip ----
         List<string> chips;
         using (var probe = lib.Create()) chips = Chips(probe);
-        t.Expect(chips.Count == 23 && chips.IndexOf(Chip) == 21 && chips.IndexOf("SMSFM") == 22, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected 21, with the Master System FM chip appended after it)");
+        t.Expect(chips.Count == 29 && chips.IndexOf(Chip) == 21 && chips.IndexOf("SMSFM") == 22, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected 21, with the Master System FM chip appended after it)");
         t.Expect(chips.IndexOf("FIX") == 0 && chips.IndexOf("DMG") == 17 && chips.IndexOf("DMGS") == 18 && chips.IndexOf("SNES") == 19 && chips.IndexOf("SMS") == 20, "an existing chip moved (the chip index is part of saved projects: append only)");
         byte[] blob;
         using (var a = lib.Create()) { a.SetParam(PCore, chips.IndexOf(Chip)); a.SetParam(PInstrument, 9); blob = a.SaveState(); }

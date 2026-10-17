@@ -8,7 +8,8 @@ namespace BrokenNes2;
 /// is driven through: the Game Boy and SNES chips take the NES registers too (CoreRegistry ids DMG, DMGS, SNES).</param>
 /// <param name="Console">0 NES, 1 Game Boy, 2 SNES, 3 Master System, 4 Genesis (see <see cref="Cx"/>).</param>
 /// <param name="Note">A few words shown beside it in the list.</param>
-public sealed record Chip(string Id, int Console, string? Note);
+/// <param name="IsPreset">One of the Presets chips (<see cref="Cx.PresetChips"/>): not a core, the plugin's own preset engines play. A flag so that asking it on the audio thread allocates nothing.</param>
+public sealed record Chip(string Id, int Console, string? Note, bool IsPreset = false);
 
 /// <summary>
 /// The consoles BrokenNes2 offers and their sound chips. A console decides which chips are listed, and which CPU and PPU a running
@@ -44,6 +45,26 @@ public static class Cx
     /// <summary>Chips added after the first Sega release, in the order they were added; each is listed after every earlier chip whatever console it belongs to (a saved project stores the chip's index: nothing before it may move). Declared before <see cref="Chips"/>: static initializers run in order.</summary>
     private static readonly string[] Appended = ["SMSFM"];
 
+    /// <summary>The Presets chips (Round 6), appended after every chip that existed (a saved project stores the chip's index). They are not cores: no sound unit is built for them, the plugin's own preset engines play (Presets/ and Bn2Plugin.Presets.cs), in Direct mode only, with no ROM.
+    /// <c>PRESETS</c> offers the presets of every console (it sits in the NES list); each console's own list has a shortcut that opens the same picker filtered to that console's presets.</summary>
+    public static readonly (string Id, int Console, string Note, string? Filter)[] PresetChips =
+    [
+        ("PRESETS", Nes, "presets of any console, no ROM", null),
+        ("PRE-NES", Nes, "NES presets, no ROM", "NES"),
+        ("PRE-GB", GameBoy, "Game Boy presets, no ROM", "GB"),
+        ("PRE-SNES", Snes, "SNES presets, no ROM", "SNES"),
+        ("PRE-SMS", MasterSystem, "Master System / Game Gear presets, no ROM", "SMS"),
+        ("PRE-MD", Genesis, "Genesis presets, no ROM", "MD"),
+    ];
+
+    public static bool IsPresetId(string id) => PresetChips.Any(p => p.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Whether a chip (an index into <see cref="Chips"/>) is one of the Presets chips.</summary>
+    public static bool IsPresetChip(int chip) => (uint)chip < (uint)Chips.Count && Chips[chip].IsPreset;       // (read on the audio thread every block: no allocation)
+
+    /// <summary>The console short name (NES, GB, SNES, SMS, MD) a Presets chip's picker lists, or null for the chip that lists every console's presets (and for a chip that is not a Presets chip).</summary>
+    public static string? PresetFilterOf(int chip) => (uint)chip < (uint)Chips.Count ? PresetChips.FirstOrDefault(p => p.Id.Equals(Chips[chip].Id, StringComparison.OrdinalIgnoreCase)).Filter : null;
+
     /// <summary>Every sound chip, grouped by console: NES chips (FIX first), then Game Boy, then SNES, then Master System (SMS), then Genesis (MD), then the chips appended since, in the order they were added (SMSFM, the Master System's FM chip, belongs to the
     /// Master System console but sits last). The Sound chip parameter is an index into this list: new chips are only ever appended (a core id must be given a family in <c>CoreCatalog</c> first, or it would join the NES chips and shift every index after it).</summary>
     public static IReadOnlyList<Chip> Chips { get; } = Build();
@@ -73,6 +94,7 @@ public static class Cx
             int console = NesFamily(found) switch { "Master System" => MasterSystem, "Genesis" => Genesis, "SNES" => Snes, "Game Boy" => GameBoy, _ => Nes };
             list.Add(new Chip(found, console, Notes.GetValueOrDefault(found)));
         }
+        foreach (var p in PresetChips) list.Add(new Chip(p.Id, p.Console, p.Note, IsPreset: true));       // the Presets chips come last of all (append-only)
         return list;
     }
 
@@ -142,7 +164,7 @@ public static class Cx
 
     /// <summary>The sound chip of a running game: the NES chips as they are; the Game Boy's own sound unit (GB, GBS for the 8-channel
     /// one) and the SNES's S-SMP + S-DSP replace the register bridges that Direct mode uses.</summary>
-    public static string RomApu(Chip chip) => chip.Console switch
+    public static string RomApu(Chip chip) => IsPresetId(chip.Id) ? throw new InvalidOperationException("the Presets chips play in Direct mode only: a game cannot run on them (the emulator should have gone back to the console's own sound chip)") : chip.Console switch
     {
         Nes => chip.Id,
         GameBoy => chip.Id.Equals("DMGS", StringComparison.OrdinalIgnoreCase) ? "GBS" : "GB",

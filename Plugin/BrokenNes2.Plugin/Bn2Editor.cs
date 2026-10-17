@@ -307,7 +307,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         DrawStatus(dc, a, emu);
         DrawTabStrip(dc);                                   // tabs (Ui/Bn2Editor.Tabs.cs)
 
-        bool frozen = emu?.Runaway == true, sampler = emu?.SamplerMode == true, gbSampler = emu?.GbSamplerMode == true, segaSampler = emu?.SegaSamplerMode == true;
+        bool frozen = emu?.Runaway == true, sampler = emu?.SamplerMode == true, gbSampler = emu?.GbSamplerMode == true, segaSampler = emu?.SegaSamplerMode == true, presetMode = emu?.PresetMode == true;
         if (tab == 0) {   // the Emulator tab: today's right column, untouched
 
         // EMULATOR
@@ -335,17 +335,18 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         Txt(dc, frozen ? "Instrument Runaway" : "Channels", R(x, y, 200, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE, frozen ? Accent : Dim, fontSmall);
         if (!frozen) Txt(dc, CellHint(emu), R(x + 80, y, w - 80, 16), Win32.DT_RIGHT | Win32.DT_SINGLELINE, Faint, fontSmall);
         y += 18;
-        if (frozen) DrawRunawayBanner(dc, sampler ? 1 : gbSampler ? 2 : segaSampler ? 3 : 0, x, y, w, sampler ? emu!.Snapshot!.ListenNote : segaSampler ? emu!.SegaState!.ListenNote : ""); else DrawCells(dc, emu, a, x, y, w);
+        if (presetMode) DrawPresetBanner(dc, emu!, x, y, w); else if (frozen) DrawRunawayBanner(dc, sampler ? 1 : gbSampler ? 2 : segaSampler ? 3 : 0, x, y, w, sampler ? emu!.Snapshot!.ListenNote : segaSampler ? emu!.SegaState!.ListenNote : ""); else DrawCells(dc, emu, a, x, y, w);
         y += 56 + 14;
 
         // THIS INSTANCE
         Section(dc, "THIS INSTANCE", null, x, y, w);
         y += 30;
-        if (sampler || segaSampler)
+        if (presetMode && PresetHasVoices) DrawPresetVoice(dc, x, y, w);
+        else if (sampler || segaSampler || presetMode)
         {
             Txt(dc, "Channel", R(x, y, 86, RowH), Win32.DT_LEFT | Mid, Dim, fontLabel);
             Box(dc, R(x + 86, y, w - 86, RowH), Panel, Line, 5);
-            Txt(dc, segaSampler ? "Sampler  -  game's sound chips" : "Sampler  -  game's instruments", R(x + 96, y, w - 106, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Dim, fontLabel);
+            Txt(dc, presetMode ? "Sampler  -  this instance's preset" : segaSampler ? "Sampler  -  game's sound chips" : "Sampler  -  game's instruments", R(x + 96, y, w - 106, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Dim, fontLabel);
         }
         else
         {
@@ -362,7 +363,8 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         Slider(dc, P.Coarse, "Coarse", x, y, w); y += 30;
         Slider(dc, P.Fine, "Fine", x, y, w); y += 30;
         int ch = a.Channel;
-        if (sampler)
+        if (presetMode) DrawPresetPicker(dc, emu!, x, y, w);
+        else if (sampler)
         {
             // the picker lists what the game has loaded, read from its sample table
             var snap = emu!.Snapshot!;
@@ -539,7 +541,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
     private void DrawStateNote(nint dc, RECT inner, Emulator? emu)
     {
         noteShown = false;
-        var note = emu?.StateNote;
+        var note = emu?.StateNote ?? plugin.PresetNote;          // (a project's preset that could not be used says so too)
         if (note == null) return;
         var box = R(inner.Left, inner.Bottom - 54, 512, 54);
         Fill(dc, box, Win32.Rgb(46, 32, 12));
@@ -594,6 +596,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 ? $"{emu.RomStatus}   |   frame {emu.FramesRun}   |   {emu.RomDescription}"
                 : emu.RomStatus;
         }
+        else if (emu.PresetMode) s = $"Presets chip {emu.ChipId}   |   " + (plugin.Preset?.Summary ?? "no preset loaded");
         else
         {
             var owner = a.Channel is >= 0 and < Ch.ToneCount ? Ch.ShortNames[a.Channel] : "no channel";
@@ -1166,7 +1169,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         for (int i = 0; i < plugin.Params.Length; i++) Mix(plugin.Get(i));
         Mix(e?.Id ?? 0); Mix(a.Channel); Mix(a.Problem?.GetHashCode() ?? 0);
         Mix(hot); Mix(active); Mix(openId); Mix(openHover); Mix(openScroll); Mix(aboutOpen ? 1 + aboutScroll : 0); Mix(Environment.TickCount64 < resetFlashUntil ? 1 : 0);
-        Mix(UiSignature());
+        Mix(UiSignature()); Mix(PresetSignature());
         Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(Inputs.AllowOpposite ? 9 : 10); Mix(e?.Runaway == true ? 7 : 8);
         if (e != null)
         {
@@ -1243,6 +1246,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             {
                 // only the chips of the console picked above
                 var idx = Cx.ChipsOf(plugin.Get(P.Console));
+                if (plugin.Get(P.Mode) == 1) idx = idx.Where(i => !Cx.IsPresetChip(i)).ToArray();      // the Presets chips play without a game
                 return (idx.Select(i => (Cx.Chips[i].Id, Cx.Chips[i].Note)).ToArray(), idx, plugin.Get(P.Core));
             }
             case IdGame:
@@ -1258,6 +1262,8 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 int current = path == null ? (nes ? 0 : -1) : 1;
                 return (items.ToArray(), vals.ToArray(), current);
             }
+            case IdInstrument when emu?.PresetMode == true: return PresetItems(emu);
+            case IdChannel when emu?.PresetMode == true: return PresetVoiceItems();
             case IdInstrument when emu?.SegaSamplerMode == true:
             {
                 // Auto is the game's choice (what it was playing when it froze); the instruments follow (the parameter is the instrument number + 1)
@@ -1349,6 +1355,8 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         openId = 0;
         openHover = -1;
         if (id == IdGame) PickGame(value);
+        else if (id == IdInstrument && plugin.Emulator?.PresetMode == true) PresetPick(value);      // the preset picker (Bn2Editor.Presets.cs)
+        else if (id == IdChannel && plugin.Emulator?.PresetMode == true) plugin.SetFromUi(P.Recipe, value);      // the preset's Voice
         else if (id == IdInstrument && (plugin.Emulator?.SamplerMode == true || plugin.Emulator?.SegaSamplerMode == true))
         {
             // a game voice (a recipe) or a plain instrument of the sample table: picking one clears the other
@@ -1530,7 +1538,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                     var def = plugin.Params[p];
                     plugin.SetFromUi(p, plugin.Get(p) + delta * Math.Max(1, (def.Max - def.Min) / 50));
                 }
-                else if (h is { Kind: Kind.Dropdown } d && ParamOf(d.Id) is var pp && pp >= 0 && d.Id is not (IdChip or IdInstrument or IdGbDuty))
+                else if (h is { Kind: Kind.Dropdown } d && ParamOf(d.Id) is var pp && pp >= 0 && d.Id is not (IdChip or IdInstrument or IdGbDuty) && !(d.Id == IdChannel && plugin.Emulator?.PresetMode == true))
                     plugin.SetFromUi(pp, plugin.Get(pp) - delta);
                 break;
             }

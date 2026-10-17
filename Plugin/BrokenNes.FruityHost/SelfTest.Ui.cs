@@ -14,6 +14,7 @@ public sealed unsafe partial class SelfTest
     private const int UiTab0 = 1000, UiTab1 = 1001, UiTab2 = 1002;
     private const int UiInstList = 1100, UiInstListBar = 1140, UiBlobChip = 1160, UiWave = 1170, UiHex = 1171, UiLockBlob = 1173;
     private const int UiStrength = 1180, UiRandomise = 1181, UiNudgeDown = 1182, UiNudgeUp = 1183, UiLockAll = 1184, UiUnlockAll = 1185, UiUndo = 1187, UiRedo = 1188, UiSendToPresets = 1189, UiPush = 1190;
+    private const int UiSendName = 1194, UiSendOk = 1195, UiSendCancel = 1196;
     private const int UiFieldBase = 1200, UiFieldBits = 1300;
     private const int UiPresetList = 1600, UiSearch = 1650, UiSearchClear = 1651, UiFilter = 1655, UiLoad = 1670, UiRename = 1671, UiDelete = 1672, UiExport = 1673, UiImport = 1674, UiAudition = 1675;
     private const int WideExtra = 420;
@@ -623,13 +624,34 @@ public sealed unsafe partial class SelfTest
         t.Expect(p.Test(420, 11) == 0, "Redo after a new edit should be refused");
     }
 
+    /// <summary>The name the demonstration library was last given a preset under ("Add <name>" is its last call).</summary>
+    private static string AddedName(PluginInstance p) { string last = UiText(p, 0); return last.StartsWith("Add ") ? last[4..] : last; }
+
     private void CheckSendPush(T t, UiCtx c)
     {
         var p = c.P;
         UiTabTo(t, c, UiTab1, "Instruments");
         UiClick(t, c, UiSendToPresets, "Send to Presets");
-        t.Expect(p.Test(410, 8) == 1 && p.Test(411, 8) == 1, $"Send to Presets: the model gave {p.Test(410, 8)} draft(s), the library took {p.Test(411, 8)}");
-        t.Expect(p.Test(420, 11) == 1 && UiText(p, 3).Contains("in the library"), $"Send to Presets said '{UiText(p, 3)}'");
+        // it asks for a name first (round 6, presets): the model's own name is in the field with everything selected, nothing is in the library yet
+        t.Expect(p.Test(420, 12) == 1 && p.Test(420, 10) == 1 && p.Test(411, 8) == 0, $"Send to Presets did not open a name field (open {p.Test(420, 12)}, keys {p.Test(420, 10)}, library took {p.Test(411, 8)})");
+        string offered = UiText(p, 17);
+        t.Expect(offered.Length > 0, "the name field is empty although the model offered a name");
+        Win32Host.Char(c.Hwnd, (char)27);                                              // Esc: nothing is added
+        t.Expect(p.Test(420, 12) == 0 && p.Test(411, 8) == 0 && UiText(p, 3).Contains("Cancelled"), $"Esc in the name field: open {p.Test(420, 12)}, library took {p.Test(411, 8)}, said '{UiText(p, 3)}'");
+        UiClick(t, c, UiSendToPresets, "Send to Presets (again)");
+        Win32Host.Text(c.Hwnd, "My Lead");                                             // typing replaces the selected name
+        t.Expect(UiText(p, 17) == "My Lead", $"typing over the offered name gave '{UiText(p, 17)}'");
+        Win32Host.Char(c.Hwnd, '\r');
+        t.Expect(p.Test(410, 8) == 2 && p.Test(411, 8) == 1, $"Send to Presets: the model gave {p.Test(410, 8)} draft(s), the library took {p.Test(411, 8)}");
+        t.Expect(p.Test(420, 11) == 1 && UiText(p, 3).Contains("in the library") && p.Test(420, 12) == 0, $"Send to Presets said '{UiText(p, 3)}'");
+        t.Expect(AddedName(p) == "My Lead", $"the library was given the name '{AddedName(p)}', expected the one typed");
+        UiClick(t, c, UiSendToPresets, "Send to Presets (third)");
+        Win32Host.Char(c.Hwnd, '\b'); Win32Host.Char(c.Hwnd, (char)1); Win32Host.Char(c.Hwnd, '\b');
+        Win32Host.Char(c.Hwnd, '\r');                                                  // an empty name is refused and the field stays
+        t.Expect(p.Test(420, 12) == 1 && p.Test(420, 11) == 0 && UiText(p, 3).Contains("needs a name"), $"an empty name: open {p.Test(420, 12)}, said '{UiText(p, 3)}'");
+        Win32Host.Text(c.Hwnd, "Second");
+        UiClick(t, c, UiSendOk, "Add button");
+        t.Expect(p.Test(420, 12) == 0 && p.Test(411, 8) == 2 && AddedName(p) == "Second", $"the Add button: open {p.Test(420, 12)}, library took {p.Test(411, 8)}, name '{AddedName(p)}'");
         UiClick(t, c, UiPush, "Push into the game");
         t.Expect(p.Test(410, 9) == 1 && p.Test(420, 11) == 1 && UiText(p, 3).Contains("pushed"), $"Push into the game said '{UiText(p, 3)}'");
         UiSelectInstrument(t, c, 9);

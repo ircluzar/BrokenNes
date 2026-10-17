@@ -38,6 +38,8 @@
     <Compile Include="..\BrokenNes2.Plugin\SegaSamplers.cs" Link="SegaSamplers.cs" />
     <!-- (InstrumentsUi.cs is the glue to the plugin's tabs and emulator: it is tested through the DLL, not linked) -->
     <Compile Include="..\BrokenNes2.Plugin\Instruments\*.cs" Exclude="..\BrokenNes2.Plugin\Instruments\InstrumentsUi.cs;..\BrokenNes2.Plugin\Instruments\InstrumentPushHandler.cs" LinkBase="Instruments" />
+    <!-- Round 6 (presets): the preset file, the engines' snapshots and the folder library (pure code; PresetLibrary, the plugin glue and the editor's picker are tested through the DLL) -->
+    <Compile Include="..\BrokenNes2.Plugin\Presets\*.cs" LinkBase="Presets" />
   </ItemGroup>
 
 </Project>

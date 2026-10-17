@@ -17,7 +17,7 @@ public sealed unsafe partial class SelfTest
         // ---- the chip list: appended last, so every saved project keeps its chip ----
         List<string> chips;
         using (var probe = lib.Create()) chips = Chips(probe);
-        t.Expect(chips.Count == 23 && chips.IndexOf(Chip) == 22 && chips.IndexOf("SMS") == 20 && chips.IndexOf("MD") == 21, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected the last, 22)");
+        t.Expect(chips.Count == 29 && chips.IndexOf(Chip) == 22 && chips.IndexOf("SMS") == 20 && chips.IndexOf("MD") == 21, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected the last, 22)");
         byte[] blob;
         using (var a = lib.Create()) { a.SetParam(PCore, chips.IndexOf(Chip)); a.SetParam(PInstrument, 9); blob = a.SaveState(); }
         using (var b = lib.Create())
@@ -177,7 +177,7 @@ public sealed unsafe partial class SelfTest
                 t.Expect(p.GetParam(PConsole) == 3 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "SMS", "the SMS segment did not switch to the PSG chip");
                 t.Expect(p.Test(30, 90) == 0 && p.Test(30, 25) != 0, "on the PSG chip the Pulse duty slider stays (dimmed) and there is no instrument picker");
                 ClickControl(t, p, 4, "Sound chip dropdown");
-                t.Expect(p.Test(31) == 4 && p.Test(32) == 2, $"the Master System console should list two chips, the list has {p.Test(32)}");
+                t.Expect(p.Test(31) == 4 && p.Test(32) == 3, $"the Master System console should list three chips (SMS, SMSFM, PRE-SMS), the list has {p.Test(32)}");
                 var chipItem = Centre(p, 100 + 1);
                 t.Expect(chipItem != null, "the second chip is not reachable in the open list");
                 if (chipItem != null) Win32Host.Click(p.EditorHandle, chipItem.Value.X, chipItem.Value.Y);

@@ -13,6 +13,7 @@
 //          (see VRUN docs/26-live-audio-bridge-spec.md).
 using System.Text;
 using BrokenNes.Fruity;
+using BrokenNes2.Presets;
 using NesEmulator.Plugin;
 
 namespace BrokenNes2;
@@ -99,7 +100,11 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     }
 
     /// <summary>The emulator was reset (its Reset Console button): this instance clears itself at the start of its next block.</summary>
-    internal void RequestReset() => Interlocked.Exchange(ref resetRequested, 1);
+    internal void RequestReset()
+    {
+        PrepareAgainForPreset();                 // a preset's engine is made again here, on the UI thread, before the audio thread drops the old one (Bn2Plugin.Presets.cs)
+        Interlocked.Exchange(ref resetRequested, 1);
+    }
 
     /// <summary>Drops every voice (FL gets them back with Voice_Kill at the next tick: a stuck note ends), throws the chip away for a fresh one,
     /// and forgets where it was reading the game.</summary>
@@ -232,6 +237,12 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
     public override void Render(float* dest, int length)
     {
+        RenderCore(dest, length);
+        if (audition != null) MixAudition(dest, length);        // a preset auditioned from the Presets tab sounds over whatever this instance plays (Bn2Plugin.Presets.cs)
+    }
+
+    private void RenderCore(float* dest, int length)
+    {
         renderCalls++;
         if (Interlocked.Exchange(ref resetRequested, 0) != 0) ApplyReset();
         var a = assignment;
@@ -246,6 +257,11 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             return;
         }
 
+        if (emu.PresetMode)
+        {
+            RenderPreset(dest, length, gl, gr);             // the Presets chip: this instance plays its preset on an engine of its own (Bn2Plugin.Presets.cs)
+            return;
+        }
         if (emu.SamplerMode)
         {
             RenderSampler(emu, dest, length, gl, gr);
@@ -313,10 +329,12 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
     // ---- Instrument Runaway: FL notes play the game's own samples ----
 
-    private void RenderSampler(Emulator emu, float* dest, int length, float gl, float gr)
+    private void RenderSampler(Emulator emu, float* dest, int length, float gl, float gr) => RenderSnes(emu.Snapshot, -1, dest, length, gl, gr);
+
+    /// <summary>Plays a SNES snapshot's samples: the game's frozen sound memory (Instrument Runaway, instrument from the Instrument parameter) or a preset's (<paramref name="instrument"/> is its sample slot).</summary>
+    private void RenderSnes(SpcSnapshot? snap, int instrument, float* dest, int length, float gl, float gr)
     {
         DropChip();
-        var snap = emu.Snapshot;
         int rate = EmulatorHub.HostRate;
         if (snap == null) { FinishReleased(); new Span<float>(dest, length * 2).Clear(); return; }
         if (sampler == null || !ReferenceEquals(samplerFor, snap) || samplerRate != rate)
@@ -331,7 +349,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         for (int off = 0; off < length; off += Chunk)
         {
             int n = Math.Min(Chunk, length - off);
-            UpdateSamplerVoices(s);
+            UpdateSamplerVoices(s, instrument);
             s.Render(stereo.AsSpan(0, n * 2), n);
             for (int i = 0; i < n; i++)
             {
@@ -343,13 +361,14 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
     /// <summary>The control-rate step of sampler mode: each FL voice owns one S-DSP voice (eight, so eight notes at once; the oldest is taken
     /// over for a ninth), with pitch and volume re-read from FL's live values like in Direct mode, so slides and bends work.</summary>
-    private void UpdateSamplerVoices(SnesSampler s)
+    private void UpdateSamplerVoices(SnesSampler s, int forcedInstrument = -1)
     {
-        int instrument = samplerFor?.Resolve(Get(P.Instrument)) ?? Get(P.Instrument);
+        int param = forcedInstrument >= 0 ? forcedInstrument : Get(P.Instrument);       // (a preset plays its own sample; Runaway plays the one the Instrument parameter names)
+        int instrument = samplerFor?.Resolve(param) ?? param;
         bool hasSample = samplerFor?.HasSample(instrument) ?? false;   // an empty slot of the game's sample table plays nothing (the DSP would wander through other data)
         // a recipe (Recipe parameter 1 and up) plays what the game's driver did with an instrument; a recipe plays whatever sample the game keyed, so the sample table's check does not apply to it
         SpcRecipe? recipe = null;
-        int rp = Get(P.Recipe);
+        int rp = forcedInstrument >= 0 && PresetMutants.On(PresetMutants.VoiceIgnored) ? 0 : Get(P.Recipe);   // (a preset plays its own sample; the game voices it carries are in its snapshot, so the same parameter picks one)
         var recipes = samplerFor?.Recipes;
         if (rp > 0 && recipes != null && rp <= recipes.Length) recipe = recipes[rp - 1];
         foreach (var v in voices)
@@ -383,10 +402,12 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         }
     }
 
-    private void RenderSegaSampler(Emulator emu, float* dest, int length, float gl, float gr)
+    private void RenderSegaSampler(Emulator emu, float* dest, int length, float gl, float gr) => RenderSega(emu.SegaState, -1, dest, length, gl, gr);
+
+    /// <summary>Plays a Sega snapshot's chips: the game's (Instrument Runaway) or a preset's (<paramref name="instrument"/> is the Instrument parameter's value for it: the picker number plus one).</summary>
+    private void RenderSega(SegaSnapshot? snap, int instrument, float* dest, int length, float gl, float gr)
     {
         DropChip();
-        var snap = emu.SegaState;
         int rate = EmulatorHub.HostRate;
         if (snap == null) { FinishReleased(); new Span<float>(dest, length * 2).Clear(); return; }
         if (segaSampler == null || !ReferenceEquals(segaFor, snap) || segaRate != rate)
@@ -406,7 +427,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         for (int off = 0; off < length; off += Chunk)
         {
             int n = Math.Min(Chunk, length - off);
-            UpdateSegaVoices(s, snap);
+            UpdateSegaVoices(s, snap, instrument);
             s.Render(stereo.AsSpan(0, n * 2), n);
             for (int i = 0; i < n; i++)
             {
@@ -418,13 +439,13 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
     /// <summary>The control-rate step of Sega Runaway: each FL voice owns a slot of the sampler (the instrument's range of them: the YM2413's nine channels, the YM2612's six, eight DAC voices, the PSG's three tones or its noise; the
     /// oldest note gives way for one more), with pitch and level re-read from FL's live values like in Direct mode, so slides and bends work. A note that lost its slot stays silent until it ends.</summary>
-    private void UpdateSegaVoices(SegaSampler s, SegaSnapshot snap)
+    private void UpdateSegaVoices(SegaSampler s, SegaSnapshot snap, int forcedInstrument = -1)
     {
-        // a game voice (the Recipe parameter, 1 and up) plays what the game's driver did with a channel; the slots it may take are its chip's
+        // a game voice (the Recipe parameter, 1 and up) plays what the game's driver did with a channel; the slots it may take are its chip's. (A preset plays its own instrument: no game voice.)
         GenRecipe? recipe = null;
-        int rp = Get(P.Recipe);
+        int rp = forcedInstrument >= 0 ? 0 : Get(P.Recipe);
         if (rp > 0 && rp <= snap.Recipes.Length && snap.Kind == SegaSnapshot.KindOpn) recipe = snap.Recipes[rp - 1];
-        int instrument = recipe != null ? RecipeInstrument + rp : snap.Resolve(Get(P.Instrument));
+        int instrument = recipe != null ? RecipeInstrument + rp : snap.Resolve(forcedInstrument >= 0 ? forcedInstrument : Get(P.Instrument));
         foreach (var v in voices)
         {
             if (v.Finished) continue;
@@ -468,10 +489,12 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     /// <summary>The Game Boy channel (0 pulse 1, 1 pulse 2, 2 wave, 3 noise) the Channel parameter picks in Game Boy Runaway: Auto and Mix are pulse 1.</summary>
     internal static int GbChannelOf(int channelParam) => channelParam is >= 1 and <= 4 ? channelParam - 1 : 0;
 
-    private void RenderGbSampler(Emulator emu, float* dest, int length, float gl, float gr)
+    private void RenderGbSampler(Emulator emu, float* dest, int length, float gl, float gr) => RenderGb(emu.GbState, null, dest, length, gl, gr);
+
+    /// <summary>Plays a Game Boy snapshot's channel: the game's (Instrument Runaway: the Channel parameter picks it) or a preset's (<paramref name="preset"/> names its channel and noise width and keeps its own duty).</summary>
+    private void RenderGb(GbSnapshot? snap, PresetPlayable? preset, float* dest, int length, float gl, float gr)
     {
         DropChip();
-        var snap = emu.GbState;
         int rate = EmulatorHub.HostRate;
         if (snap == null) { FinishReleased(); new Span<float>(dest, length * 2).Clear(); return; }
         if (gbSampler == null || !ReferenceEquals(gbFor, snap) || gbRate != rate)
@@ -486,7 +509,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         for (int off = 0; off < length; off += Chunk)
         {
             int n = Math.Min(Chunk, length - off);
-            UpdateGbVoice(s);
+            UpdateGbVoice(s, preset);
             s.Render(stereo.AsSpan(0, n * 2), n);
             for (int i = 0; i < n; i++)
             {
@@ -499,20 +522,20 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     /// <summary>The control-rate step of Game Boy Runaway: the newest held note plays the chosen channel (last note wins, like a Direct-mode channel);
     /// pitch follows FL's live value so slides and bends work. Volume is the note's velocity at its start (the Game Boy's envelope cannot be
     /// changed under a playing note).</summary>
-    private void UpdateGbVoice(GbSampler s)
+    private void UpdateGbVoice(GbSampler s, PresetPlayable? preset = null)
     {
-        int ch = GbChannelOf(Get(P.Channel));
+        int ch = preset != null ? preset.GbChannel : GbChannelOf(Get(P.Channel));
         var owner = ResolveOwner();
         if (gbGate && (owner == null || gbChannel != ch)) { s.NoteOff(gbChannel); gbGate = false; }
         if (owner == null) return;
         ref var fl = ref owner.Params->FinalLevels;
         double semis = 60.0 + (fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine)) / 100.0;
         double hz = 440.0 * Math.Pow(2.0, (semis - 69.0) / 12.0);
-        bool shortNoise = Get(P.NoiseMode) == 1;
+        bool shortNoise = preset != null ? preset.GbNoiseShort : Get(P.NoiseMode) == 1;
         if (!gbGate || owner.Fresh)
         {
             int level = Math.Clamp((int)Math.Round(15 * fl.Vol), 0, 15);
-            int duty = Get(P.Instrument) is >= 1 and <= 4 ? Get(P.Instrument) - 1 : -1;   // 0 = the game's own duty
+            int duty = preset != null ? -1 : Get(P.Instrument) is >= 1 and <= 4 ? Get(P.Instrument) - 1 : -1;   // 0 = the game's own duty (a preset always plays its own)
             s.NoteOn(ch, hz, level, duty, shortNoise);
             owner.Fresh = false;
             gbGate = true;
@@ -779,6 +802,15 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                     fixed (byte* p = spoBytes) stream.Write(p, (uint)spoLen);
                 }
             }
+            // The preset this instance plays (Direct mode, the Presets chips): its own versioned section, so the project plays when the library file is moved or gone (Presets/PresetSection.cs).
+            if (PresetSectionBytes() is { } presetSection)
+            {
+                uint prsMagic = PresetSection.Tag;
+                int prsLen = presetSection.Length;
+                stream.Write(&prsMagic, 4);
+                stream.Write(&prsLen, 4);
+                fixed (byte* p = presetSection) stream.Write(p, (uint)prsLen);
+            }
             // The whole machine of the game: a reopened project continues from where the game was, and every change made to the game stays (see GameState.cs).
             if (a.Emulator?.CaptureGameSection() is { } gameSection)
             {
@@ -821,6 +853,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         GameStateSection? restoredGame = null;
         string? gameProblem = null;
         CorruptionSection? restoredCorruption = null;
+        byte[]? presetSectionBytes = null;
+        string? presetSectionProblem = null;
         byte[]? injectPayload = null;
         string? injectProblem = null;
         restoring = true;
@@ -844,7 +878,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                     hintEmu = e; hintCh = c;
                     // The sections after the place record: tag, length, bytes. The ones this build knows are read and checked, never trusted; the others (a later build's) are skipped by their length;
                     // a stream that ends, or whose length cannot be right, ends the reading (what was read before it stands).
-                    for (int sections = 0; sections < 8; sections++)
+                    for (int sections = 0; sections < 10; sections++)
                     {
                         uint tag = 0; int slen = 0;
                         if (!stream.Read(&tag, 4) || !stream.Read(&slen, 4)) break;
@@ -886,6 +920,21 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                         {
                             overlayProblem = "damaged (its length)";
                             if (!(slen is >= 0 and <= GameStateSection.MaxRead && SkipSection(stream, slen))) break;
+                        }
+                        else if (tag == PresetSection.Tag)
+                        {
+                            // the instance's preset: read whole, checked later (a damaged or newer one is refused with a note on screen, never half used)
+                            if (slen < PresetSection.MinBytes || slen > PresetSection.MaxBytes)
+                            {
+                                presetSectionProblem = "damaged (its length)";
+                                if (!(slen is >= 0 and <= GameStateSection.MaxRead && SkipSection(stream, slen))) break;
+                            }
+                            else
+                            {
+                                var prsBuf = new byte[slen];
+                                fixed (byte* p = prsBuf) if (!stream.Read(p, (uint)slen)) { presetSectionProblem = "cut short"; break; }
+                                presetSectionBytes = prsBuf;
+                            }
                         }
                         else if (tag == GameStateSection.Tag)
                         {
@@ -942,6 +991,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem, restoredCorruption);
             emu2.SetInstrumentNote(overlayProblem == null ? null : "The project's instrument edits were not restored: " + overlayProblem);
         }
+        RestorePreset(presetSectionBytes, presetSectionProblem);
     }
 
     /// <summary>Reads past a section this build does not know; false when the stream ends first.</summary>
@@ -1172,7 +1222,9 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             case 40: About.ResetForTests(deleteState: true); return 0;
             case 41: About.ResetForTests(deleteState: false); return 0;
             case 42: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return emu == null || path == null ? 1 : emu.LoadRomFile(path) == null ? 0 : 1; }
-            default: return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
+            default:
+                if (id - Fpd.TestBase is >= 340 and < 360) return PresetTestHook(id - Fpd.TestBase, index, value);        // the presets (Bn2Plugin.Presets.cs)
+                return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
     }
 

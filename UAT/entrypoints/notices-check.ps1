@@ -63,6 +63,17 @@ foreach ($f in $files) {
 }
 Check 'every source file that carries another project''s copyright header is named by a ledger' ($unnamed.Count -eq 0) $(if ($unnamed.Count) { $unnamed -join ', ' } else { "$($files.Count) files scanned" })
 
+# ---- ripped presets stay out of the repository (round 6, presets) -----------------------------------------------------------
+# A *.bn2preset made from a game holds that game's samples (copyrighted): git must ignore the extension and track none of them.
+$ignoreFile = Join-Path $repo '.gitignore'
+Check 'the .gitignore has the rule for *.bn2preset' ((Test-Path $ignoreFile) -and ((Get-Content $ignoreFile -Raw) -match '(?m)^\*\.bn2preset\s*$'))
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $trackedPresets = @(& git -C $repo ls-files -- '*.bn2preset' 2>$null)
+    Check 'no *.bn2preset file is tracked by git' ($trackedPresets.Count -eq 0) $(if ($trackedPresets.Count) { $trackedPresets -join ', ' } else { 'git ls-files lists none' })
+    & git -C $repo check-ignore -q -- 'Some Folder/A Ripped Lead.bn2preset' 2>$null
+    Check 'git ignores a preset file anywhere in the tree' ($LASTEXITCODE -eq 0)
+} else { Skip 'no *.bn2preset file is tracked by git' 'git is not on the PATH' }
+
 # ---- what ships --------------------------------------------------------------------------------------------------------
 $needed = @('THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES-gb.md', 'THIRD_PARTY_NOTICES-snes.md', 'THIRD_PARTY_NOTICES-sega.md', 'LICENSE.txt')
 function Shipped($label, $dir) {
