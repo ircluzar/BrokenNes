@@ -27,7 +27,8 @@ internal static class RomTestCli
     private const string Usage =
         "Usage: --romtest --rom <path.nes> [--cpu ID] [--ppu ID] [--apu ID] [--frames N]\n" +
         "                 [--input \"frame:Buttons,frame:Buttons,...\"] [--json] [--out result.json]\n" +
-        "                 [--ntsc-frame-timing on|off]\n" +
+        "                 [--ntsc-frame-timing on|off] [--power-on-ram fceux|zeros|ones]\n" +
+        "  --power-on-ram: work RAM before the first frame: BrokenNes' own FCEUX pattern (default), or all zeros / all ones (a program that reads RAM it never wrote).\n" +
         "  --ntsc-frame-timing: emulate NTSC's true 29780.5 CPU cycles/frame instead of the\n" +
         "                  exact-60fps 29829.55 default. Off unless asked for, so golden hashes\n" +
         "                  stay comparable with the baseline they were captured against.\n" +
@@ -44,6 +45,7 @@ internal static class RomTestCli
         int frames = 600;
         bool json = false;
         bool ntscFrameTiming = false;
+        string powerOnRam = "fceux";   // BrokenNes' own fill (the FCEUX pattern); zeros / ones only on request, for programs that read RAM they never wrote
 
         try
         {
@@ -60,6 +62,7 @@ internal static class RomTestCli
                     case "--out": outPath = args[++i]; break;
                     case "--json": json = true; break;
                     case "--ntsc-frame-timing": ntscFrameTiming = ParseOnOff(args[++i]); break;
+                    case "--power-on-ram": powerOnRam = args[++i].ToLowerInvariant(); if (powerOnRam is not ("fceux" or "zeros" or "ones")) throw new FormatException($"expected fceux|zeros|ones, got '{powerOnRam}'"); break;
                     default:
                         Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}");
                         return 2;
@@ -102,6 +105,7 @@ internal static class RomTestCli
             var cpuApply = ApplyCore("CPU", cpu, nes.SetCpuCore, nes.GetCpuCoreId);
             var ppuApply = ApplyCore("PPU", ppu, nes.SetPpuCore, nes.GetPpuCoreId);
             var apuApply = ApplyCore("APU", apu, nes.SetApuCore, nes.GetApuCoreId);
+            if (powerOnRam != "fceux") for (int ri = 0; ri < 2048; ri++) nes.PokeSystemRam(ri, powerOnRam == "ones" ? (byte)0xFF : (byte)0x00);
 
             var report = new RomTestReport
             {

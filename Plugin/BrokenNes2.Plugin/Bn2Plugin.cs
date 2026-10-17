@@ -733,7 +733,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                 stream.Write(&snapLen, 4);
                 fixed (byte* p = snapBytes) stream.Write(p, (uint)snapLen);
             }
-            // The whole machine of the game, last: a reopened project continues from where the game was, and every change made to the game stays (see GameState.cs).
+            // The whole machine of the game: a reopened project continues from where the game was, and every change made to the game stays (see GameState.cs).
             if (a.Emulator?.CaptureGameSection() is { } gameSection)
             {
                 uint gameMagic = GameStateSection.Tag;
@@ -741,6 +741,15 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                 stream.Write(&gameMagic, 4);
                 stream.Write(&gameLen, 4);
                 fixed (byte* p = gameSection) stream.Write(p, (uint)gameLen);
+            }
+            // A corruption started from a stockpile, last: where it came from, and (for a console with no saved state) the replay that rebuilds the game (see Corruption.cs).
+            if (a.Emulator?.CaptureCorruptionSection() is { } corruptionSection)
+            {
+                uint crpMagic = CorruptionSection.Tag;
+                int crpLen = corruptionSection.Length;
+                stream.Write(&crpMagic, 4);
+                stream.Write(&crpLen, 4);
+                fixed (byte* p = corruptionSection) stream.Write(p, (uint)crpLen);
             }
             return;
         }
@@ -752,6 +761,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         SegaSnapshot? restoredSega = null;
         GameStateSection? restoredGame = null;
         string? gameProblem = null;
+        CorruptionSection? restoredCorruption = null;
         restoring = true;
         try
         {
@@ -801,6 +811,13 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                             fixed (byte* p = gameBuf) if (!stream.Read(p, (uint)slen)) { gameProblem = "cut short"; break; }
                             restoredGame = GameStateSection.Read(gameBuf, out gameProblem);
                         }
+                        else if (tag == CorruptionSection.Tag)
+                        {
+                            if (slen < 20 || slen > CorruptionSection.MaxRead) { restoredCorruption = CorruptionSection.Damaged("damaged"); break; }
+                            var crpBuf = new byte[slen];
+                            fixed (byte* p = crpBuf) if (!stream.Read(p, (uint)slen)) { restoredCorruption = CorruptionSection.Damaged("cut short"); break; }
+                            restoredCorruption = CorruptionSection.Read(crpBuf, out _);          // damaged: the editor says so (the game-state section, if any, still brings the machine back)
+                        }
                         else if (slen is >= 0 and <= GameStateSection.MaxRead && SkipSection(stream, slen)) { }
                         else break;                                          // a section nobody here knows, and cannot be skipped
                     }
@@ -815,7 +832,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         int wMode = Get(P.Mode), wChip = Get(P.Core);
         EmulatorHub.Resolve(this, hintEmu, hintCh);
         var emu2 = assignment.Emulator;
-        if (emu2 != null && emu2.MemberCount == 1) emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem);
+        if (emu2 != null && emu2.MemberCount == 1) emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem, restoredCorruption);
     }
 
     /// <summary>Reads past a section this build does not know; false when the stream ends first.</summary>
@@ -947,6 +964,52 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             case 87: GameStateSection.MaxStored = value > 0 ? (int)value : GameStateSection.DefaultMaxStored; return 0;
             case 88: return emu?.CaptureGameSection()?.Length ?? -1;
             case 89: return emu?.GameStateSupportedForTests() ?? -1;       // 89 whether the running game can keep its state in a project (1/0, -1 no game)
+            // corruption (see Corruption.cs): 100 open the stockpile file at the UTF-16 path <value> (read on a worker), 101 busy flags (1 reading, 2 starting), 102 the list's length (-1: no stockpile open),
+            // 103 flags of row <index>: bit 0 can start, bits 8-15 the Fit (0 fits, 1 other game, 2 other console, 3 no game, 4 cannot here), 104 select row <value>, 105 freeze at once (value 0/1),
+            // 106 start the selected row (0 begun, 1 refused: the reason is in the result), 107 cancel, 108 remove (restart without the writes), 109 copy text <index> chars into the buffer <value>: field in the high bits of
+            // index (0 result, 1 status, 2 why of the selected row, 3 the selected row's name, 4 the stockpile problems), the max chars in the low 16, returns the length, 110 the result's good flag, 111 the result's stamp,
+            // 112 whether a corruption is recorded as started on this game, 113 frames the farm has recorded (-1 no farm), 114 the farm's reason why a replay is not possible (1 poisoned, 0 not), 115 the SNES audio RAM hash,
+            // 116 the work RAM hash (WRAM, else RAM), 117 hash of the Runaway snapshot's audio RAM, 118 the ARAM byte at <index>, 119 write ARAM byte <index> = <value> straight into the running game (a corruption made outside the farm)
+            case 121: SessionGame.NoStateForTests = value != 0; return 0;      // 121 tests only: console games report that they cannot keep their state (value 1), or go back to the truth (0)
+            case 120: Emulator.NoPumpForTests = value != 0; return 0;      // 120 tests only: the editor stops running the game to keep the picture moving (value 1), or goes back to it (0)
+            case 100: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); if (emu == null || path == null) return 1; emu.OpenStockpile(path); return 0; }
+            case 101: return emu == null ? 0 : (emu.Corruption.Reading ? 1 : 0) | (emu.Corruption.Busy ? 2 : 0);
+            case 102: return emu?.Corruption.View?.File?.Entries.Count ?? -1;
+            case 103: { var rows = emu?.CorruptionRows(); if (rows == null || (uint)index >= (uint)rows.Count) return -1; return (rows[(int)index].CanStart ? 1 : 0) | ((int)rows[(int)index].Fit << 8); }
+            case 104: if (emu != null) emu.Corruption.Selected = (int)value; return 0;
+            case 105: if (emu != null) emu.Corruption.Freeze = value != 0; return 0;
+            case 106: return emu == null ? 1 : emu.StartCorruption(emu.Corruption.Selected) == null ? 0 : 1;
+            case 107: emu?.CancelCorruption(); return 0;
+            case 108: return emu == null ? 1 : emu.RemoveCorruption(emu.Corruption.Selected) == null ? 0 : 1;
+            case 109:
+            {
+                if (emu == null) return -1;
+                int field = (int)(index >> 16), max = (int)(index & 0xFFFF);
+                var rows = emu.CorruptionRows();
+                int sel = emu.Corruption.Selected;
+                string? text = field switch
+                {
+                    0 => emu.Corruption.Result,
+                    1 => emu.Corruption.Status,
+                    2 => (uint)sel < (uint)rows.Count ? rows[sel].Why : "",
+                    3 => (uint)sel < (uint)rows.Count ? rows[sel].Entry.Name : "",
+                    4 => emu.Corruption.View is { } v ? string.Join(" | ", v.Problems) : "",
+                    _ => null,
+                };
+                if (text == null) return -1;
+                if (value != 0 && max > 0) text.AsSpan(0, Math.Min(text.Length, max)).CopyTo(new Span<char>((void*)value, max));
+                return text.Length;
+            }
+            case 110: return emu?.Corruption.ResultGood == true ? 1 : 0;
+            case 111: return emu?.Corruption.ResultStamp ?? 0;
+            case 112: return emu?.Corruption.Applied != null ? 1 : 0;
+            case 113: return (nint)(emu?.CorruptionFarmFrames() ?? -1);
+            case 114: return emu?.CorruptionFarmPoisoned() == true ? 1 : 0;
+            case 115: return (nint)(emu?.DomainHashForTests("ARAM") ?? 0);
+            case 116: { long h = emu?.DomainHashForTests("WRAM") ?? 0; return (nint)(h != 0 ? h : emu?.DomainHashForTests("RAM") ?? 0); }
+            case 117: return (nint)(emu?.SnapshotHashForTests() ?? 0);
+            case 118: return emu?.PeekDomainForTests("ARAM", (int)index) ?? -1;
+            case 119: return emu?.PokeDomainForTests("ARAM", (int)index, (byte)value) == true ? 1 : 0;
             case 40: About.ResetForTests(deleteState: true); return 0;
             case 41: About.ResetForTests(deleteState: false); return 0;
             case 42: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return emu == null || path == null ? 1 : emu.LoadRomFile(path) == null ? 0 : 1; }

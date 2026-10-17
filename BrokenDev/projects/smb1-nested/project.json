@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "id": "smb1-nested",
+  "title": "SMB1 remake on the SNES (Nested version)",
+  "family": "smb1",
+  "kind": "nested",
+  "console": "snes",
+  "description": "The SMB1 remake recompiled to a Super Nintendo ROM by Project Nested and the m30pipe pipeline, the same way Nested VRUN is. The remake ROM is built from the user's own data of the original game, so the result is the user's personal build: it is never committed, never published.",
+  "source": {
+    "archive": "vrun_nes_dev",
+    "path": "Nested_VRUN/Project-Nested/tools/m30pipe (pipeline) + the smb1-nes build",
+    "docs": ["tools/m30pipe/games/d257beb1/game.json (the profile of SMB1_Repro_20261002 this recipe copies)", "tools/m30pipe/tools/dmc_status.py header", "claude/memory/nested/snes_qol_work.md (the SMB1_Repro build, 2026-10-02)"]
+  },
+  "requires": {
+    "tools": ["python", "ps5"],
+    "projects": ["smb1-nes"],
+    "inputs": [],
+    "toolchain": ["Project Nested injector and the pinned core shipped in the Nested package"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "nested-pipeline",
+        "shell": "ps5",
+        "cwd": "{root:m30pipe}",
+        "file": "{bd}/tools/nested-build.ps1",
+        "args": [
+          "-Nes", "{root:smb1}/build/smb1_game.nes",
+          "-Out", "{work}/smb1_game_SNES.smc",
+          "-Pipe", "{root:m30pipe}",
+          "-Python", "{python}",
+          "-Work", "{work}/nested",
+          "-BaseProfile", "d257beb1",
+          "-Post", "dmc_status",
+          "-Feedback", "none"
+        ],
+        "timeoutSec": 1800,
+        "note": "dmc_status is required: the remake's DMC-IRQ timing routine loops on BIT $4015 until the DMC-active bit clears, and Project Nested never clears it (the SNES build would freeze at the title otherwise). The DMC IRQ itself is not emulated by Nested; play matches the NES without it."
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{work}/smb1_game_SNES.smc", "publishAs": "smb1_game_SNES.smc", "kind": "snes" },
+      { "id": "buildjson", "path": "{work}/smb1_game_SNES.smc.build.json", "publishAs": "smb1_game_SNES.smc.build.json", "kind": "record" }
+    ]
+  },
+  "run": { "console": "snes", "note": "Same game as the NES remake." },
+  "verify": {
+    "timeoutSec": 1200,
+    "scenarios": [
+      {
+        "id": "boot",
+        "frames": 1200,
+        "input": "",
+        "checkpoints": [120, 300, 600, 1200],
+        "expect": { "minDistinctColors": 4, "audio": { "fromFrame": 120, "minPeak": 0.02, "minNonSilentFrames": 60 }, "minRealtime": 1.0 }
+      },
+      {
+        "id": "play",
+        "frames": 3000,
+        "input": "240:Start,246:,600:Right,1300:Right+A,1360:Right,1500:Right+B,1700:Right+A+B,1760:Right+B",
+        "checkpoints": [300, 600, 1200, 1800, 3000],
+        "expect": { "minDistinctColors": 6, "pictureDiffers": [1200, 3000], "audio": { "fromFrame": 400, "minPeak": 0.02, "minNonSilentFrames": 100 }, "minRealtime": 1.0 }
+      }
+    ],
+    "compare": [
+      { "a": "play@600", "b": "boot@600", "expect": "differ", "why": "scripted input reached the game" }
+    ]
+  },
+  "oracle": {
+    "kind": "mesen-screens",
+    "mesenDir": "{root:svrunrepo}/tools/Mesen2",
+    "mesenSettings": "{root:svrunpkg}/mesen2_user_folder/settings.json",
+    "frames": [300, 600, 900, 1200, 1800, 2400, 3000],
+    "input": "240:Start,246:,600:Right,1300:Right+A,1360:Right,1500:Right+B,1700:Right+A+B,1760:Right+B",
+    "inputShift": 3,
+    "window": [1, 5],
+    "crop": [7, 8],
+    "tolerance": 1,
+    "maxPixels": 400,
+    "why": "As supervrun. Six of seven frames are pixel-identical; frame 900 keeps a residue of about 290 pixels at every input shift and offset (a sprite animation phase in the walking scene), recorded as the bar to keep."
+  },
+  "knownIssues": [
+    "Project Nested never clears the DMC-active bit of $4015 and never delivers the DMC IRQ; the dmc_status post-build step fixes the first, the second stays unemulated (the status-bar split runs from that IRQ on the NES; the profile of the 20261002 build records that play matched the NES anyway).",
+    "No NES lag-frame emulation: long play drifts from the NES by a few frames (docs/GENERALITY.md row 21). Not specific to this game.",
+    "This recipe uses no entry-point feedback, so the first run of each code path recompiles at run time. The 20261002 build had 178 harvested entry points (profile d257beb1).",
+    "The SNES header title is the default 'Nested Emulator' unless a title is set."
+  ]
+}

@@ -9,7 +9,7 @@ namespace NesEmulator.Snes;
 /// Coprocessors are separate <see cref="ISnesCoprocessor"/> objects the board consults first;
 /// <see cref="Chip"/> only reports what the header asks for.
 /// </summary>
-public sealed class SnesCartridge
+public sealed partial class SnesCartridge
 {
     public byte[] Rom { get; }
     public byte[] Sram { get; }

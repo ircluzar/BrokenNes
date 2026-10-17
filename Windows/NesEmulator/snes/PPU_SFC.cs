@@ -24,7 +24,7 @@ namespace NesEmulator.Snes;
 /// PROVENANCE: written from memory and hardware documentation. The Mode 7 pre-rounding/clip formula
 /// and the color-window region semantics follow bsnes/higan's approach. See THIRD_PARTY_NOTICES.md.
 /// </summary>
-public sealed class PPU_SFC
+public sealed partial class PPU_SFC
 {
     public string CoreName => "SFC";
     public string Description => "SNES PPU - scanline renderer, all modes, sprites, windows, color math";
@@ -394,7 +394,9 @@ public sealed class PPU_SFC
     /// must stay pixel-identical to its reference twin; `--snesbench --reference-paths` checks that.
     /// </summary>
     public static bool FastPaths = true;
-    private readonly uint[]?[] brightnessLut = new uint[16][];
+    // The colour tables, one per brightness (1 to 15), built once for the whole process: a table is 128 KB, and one built lazily by the first line a new picture chip draws is a 128 KB allocation inside the first frame of every new game,
+    // which for a plugin is the audio thread. Immutable once built, so every picture chip shares them.
+    private static readonly uint[][] brightnessLut = BuildBrightnessLuts();
 
     /// <summary>Render one visible line (1 = first visible line) into FrameBuffer row line-1.</summary>
     /// <summary>Debug: when non-null, RenderLine records the register snapshot it saw for each line.</summary>
@@ -494,7 +496,7 @@ public sealed class PPU_SFC
             if (subNeeded && (ts & 0x10) != 0) ComposeObj(tsw, width, shift, rankSub, colorSub, layerSub);
         }
 
-        var lut = brightnessLut[brightness] ??= BuildBrightnessLut(brightness);
+        var lut = brightnessLut[brightness];
         if (FastPaths && !hires && (cgadsub & 0x3F) == 0 && (cgwsel & 0xC0) == 0)
         {
             // No color math and no clip-to-black on this line: the main screen is the output.
@@ -704,6 +706,13 @@ public sealed class PPU_SFC
             else addend = colorSub[bx];
         }
         return Blend(color, addend, (cgadsub & 0x80) != 0, halve);
+    }
+
+    private static uint[][] BuildBrightnessLuts()
+    {
+        var all = new uint[16][];
+        for (int b = 1; b < all.Length; b++) all[b] = BuildBrightnessLut(b);     // (brightness 0 is a blank line: it never reads a table)
+        return all;
     }
 
     private static uint[] BuildBrightnessLut(int brightness)

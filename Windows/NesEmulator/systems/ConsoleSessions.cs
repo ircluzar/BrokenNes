@@ -65,7 +65,7 @@ public static class ConsoleSessions
 
 /// <summary>A SNES game: the SFC board, its picture on the SFC chip or any NES chip (through the SNES->NES downgrade,
 /// which keeps every layer and sprite on PPU_FIXS), its sound on the SFC unit, the HLE unit or any NES APU.</summary>
-public sealed class SnesSession : IConsoleSession
+public sealed partial class SnesSession : IConsoleSession
 {
     public const double NtscFps = 21477272.0 / (1364 * 262);
 
@@ -158,6 +158,10 @@ public sealed class SnesSession : IConsoleSession
     public ISnesApu Apu => board.Apu;
     /// <summary>The SNES picture chip (tools: per-line register capture).</summary>
     public PPU_SFC Ppu => board.Ppu;
+    /// <summary>The SFC board (work RAM, cartridge, the chips): for tools that read or write the machine's memory (the corruption domains).</summary>
+    public BOARD_SFC Board => board;
+    /// <summary>The game's real SPC700 + DSP while it is the sound unit that is running (native, or inside a NES sound-chip bridge); null while the silent HLE stand-in is in its place.</summary>
+    public APU_SFC? Spc => board.Apu as APU_SFC ?? (board.Apu as NesApuOnSnes)?.Front as APU_SFC;
     public string Description => $"SNES {Title} | CPU {cpuId} | PPU {ppuId} | APU {apuId}{chipLabel}";
     public double FramesPerSecond => NtscFps;
     public string GameId { get; }
@@ -187,6 +191,12 @@ public sealed class SnesSession : IConsoleSession
             width = 256; height = 240;
             return;
         }
+        PublishNativePicture();
+    }
+
+    /// <summary>The SNES picture chip's own picture (256 wide, or 512 when a line was drawn in a hi-res mode) as the frame the apps show.</summary>
+    private void PublishNativePicture()
+    {
         height = board.Ppu.VisibleHeight;
         bool hires = board.Ppu.FrameHasHiRes;
         width = hires ? PPU_SFC.HiResWidth : PPU_SFC.Width;
@@ -205,8 +215,7 @@ public sealed class SnesSession : IConsoleSession
     public void ImportSave(byte[] data) => Array.Copy(data, board.Cart.Sram, Math.Min(data.Length, board.Cart.Sram.Length));
     public void Dispose() { }
 
-    // save states: the SNES board (65816, S-PPU, SPC700 and DSP, coprocessors) keeps no save/load of its own yet, so this session reports that through the contract's defaults and says why
-    public string StateUnsupportedReason => "The SNES has no save states yet: its CPU, picture chip, sound unit and coprocessors have no state to save.";
+    // save states: SnesSession.State.cs (the board, the 65816, the S-PPU, the SPC700 and S-DSP and the cartridge chips each save their own part)
 }
 
 /// <summary>A Game Boy (DMG) or Game Boy Color game: the GB board with the SM83 at its own or another console's clock,
@@ -311,6 +320,9 @@ public sealed class GbSession : IConsoleSession
             }
         }
     }
+
+    /// <summary>The Game Boy board (memories, cartridge, the chips): for tools that read or write the machine's memory (the corruption domains).</summary>
+    public BOARD_GB Board => board;
 
     public ConsoleKind Console { get; }
     public string Title { get; }

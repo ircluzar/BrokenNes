@@ -527,6 +527,24 @@ public sealed partial class SmsVdp
     public ReadOnlySpan<uint> Palette => palArgb;
     public byte CramByte(int i) => cram[i];
 
+    /// <summary>Writes one byte of colour RAM directly (a tool, not the CPU's port): the Master System keeps 32 colours of --BBGGRR in bytes 0 to 31; the Game Gear 32 colours of 12 bits in little-endian pairs (bytes 0 to 63). The colour the picture uses is recomputed.</summary>
+    public void SetCramByte(int index, byte value)
+    {
+        if (gg)
+        {
+            if ((uint)index >= 64u) return;
+            cram[index] = (byte)(index % 2 == 1 ? value & 0x0F : value);
+            int i = index >> 1;
+            palArgb[i] = ConvertColor(cram[i * 2] | cram[i * 2 + 1] << 8);
+        }
+        else
+        {
+            if ((uint)index >= 32u) return;
+            cram[index] = (byte)(value & 0x3F);
+            palArgb[index] = ConvertColor(value & 0x3F);
+        }
+    }
+
     /// <summary>The 2-bit colour levels of the Master System's CRAM as 8-bit values. The chip's output is analog; these are the levels Mesen shows (the 2-bit value widened to 5 bits as
     /// 0, 10, 21, 31 and scaled to 8), chosen so frames compare pixel for pixel with the oracle.</summary>
     private static readonly byte[] Level2 = { 0x00, 0x52, 0xAD, 0xFF };

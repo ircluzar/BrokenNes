@@ -62,6 +62,9 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--md-oracle", StringComparison.OrdinalIgnoreCase)) return Sega.MdOracleCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-cart-test", StringComparison.OrdinalIgnoreCase)) return Sega.MdCartTest.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-state-test", StringComparison.OrdinalIgnoreCase)) return Sega.MdStateTest.Run(args);
+        if (args.Length > 0 && args[0].Equals("--snes-state-test", StringComparison.OrdinalIgnoreCase)) return SnesStateTest.Run(args);
+        if (args.Length > 0 && args[0].Equals("--state-audit", StringComparison.OrdinalIgnoreCase)) return StateAuditCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--alloc-probe", StringComparison.OrdinalIgnoreCase)) return AllocProbeCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-save-test", StringComparison.OrdinalIgnoreCase)) return Sega.MdSaveTest.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-render", StringComparison.OrdinalIgnoreCase)) return Sega.MdRenderCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--img-diff", StringComparison.OrdinalIgnoreCase)) return Sega.ImgDiffCli.Run(args);
@@ -92,6 +95,9 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--smstest", StringComparison.OrdinalIgnoreCase)) return Sega.SmsTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--sms-sweep", StringComparison.OrdinalIgnoreCase)) return Sega.SmsSweepCli.Run(args);
         if (args.Length > 0 && (args[0].Equals("--fm-oracle-test", StringComparison.OrdinalIgnoreCase) || args[0].Equals("--fm-dump", StringComparison.OrdinalIgnoreCase))) return Sega.FmOracleTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--brokendev", StringComparison.OrdinalIgnoreCase)) return BrokenDevCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--corrupt-test", StringComparison.OrdinalIgnoreCase)) return Corruption.CorruptCli.Test(args);
+        if (args.Length > 0 && args[0].Equals("--corrupt-apply", StringComparison.OrdinalIgnoreCase)) return Corruption.CorruptCli.Apply(args);
         if (args.Length > 0 && args[0].Equals("--input-test", StringComparison.OrdinalIgnoreCase)) return InputTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--console-catalog", StringComparison.OrdinalIgnoreCase)) return ConsoleRunCli.Catalog();
         if (args.Length > 0 && args[0].Equals("--console-run", StringComparison.OrdinalIgnoreCase)) return ConsoleRunCli.Run(args);

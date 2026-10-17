@@ -88,6 +88,15 @@
     <Compile Include="$(NesRoot)sega\**\*.cs"    LinkBase="NesEmulator\sega" />
     <Compile Include="$(NesRoot)sms\**\*.cs"    LinkBase="NesEmulator\sms" />
     <Compile Include="$(NesRoot)md\**\*.cs"     LinkBase="NesEmulator\md" />
+    <Compile Include="$(NesRoot)corruption\**\*.cs" LinkBase="NesEmulator\corruption" />
+    <!-- The Glitch Harvester engine and its models (no UI): the corruption tests drive it headless, with a console session and with a NES. -->
+    <Compile Include="$(NesRoot)corruptor\Corruptor.cs"                        Link="NesEmulator\corruptor\Corruptor.cs" />
+    <Compile Include="$(NesRoot)corruptor\CorruptorModels.cs"                  Link="NesEmulator\corruptor\CorruptorModels.cs" />
+    <Compile Include="$(NesRoot)corruptor\GlitchHarvesterEngine.cs"            Link="NesEmulator\corruptor\GlitchHarvesterEngine.cs" />
+    <Compile Include="$(NesRoot)corruptor\GlitchHarvesterEngine.Console.cs"    Link="NesEmulator\corruptor\GlitchHarvesterEngine.Console.cs" />
+    <Compile Include="$(NesRoot)corruptor\GhStockpileMap.cs"                   Link="NesEmulator\corruptor\GhStockpileMap.cs" />
+    <!-- The plugin's copy of a SNES game's sound memory (what Instrument Runaway captures): the corruption tests build the very same object. One self-contained file. -->
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\SpcSnapshot.cs" Link="PluginShared\SpcSnapshot.cs" />
 
     <!-- nullproviders/: only the 7 that don't `using BrokenNes.Windows.Rendering` (ColorMath,
          which lives outside the emulator tree) - same subset Web/ uses. Discovery is
@@ -107,6 +116,9 @@
          pulled from Windows/Rendering/ - none of the shader pipeline, procedural backgrounds,
          or DirectX machinery. -->
     <Compile Include="$(NesRoot)..\Rendering\DirectBitmap.cs" Link="Rendering\DirectBitmap.cs" />
+
+    <!-- BrokenDev (developer-only module): the one rule that decides whether it is switched on, shared with the desktop app. No UI dependencies. -->
+    <Compile Include="$(NesRoot)..\BrokenDev\BrokenDevGate.cs" Link="BrokenDev\BrokenDevGate.cs" />
 
     <!-- The desktop app's human input layer, linked as it is so the input test exercises the real InputManager (simulated keys through its KeyProbe seam) and the
          real PlayerControllerConfig (the d-pad protection setting and its JSON). Neither touches the rest of the desktop app. -->

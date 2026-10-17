@@ -16,12 +16,13 @@ namespace NesEmulator.Snes;
 /// than a line late. ROM is read-only, so the board serves SNES ROM reads straight from its page
 /// table without syncing.
 /// </summary>
-public sealed class SA1_SFC : ISnesCoprocessor, ISnesBus
+public sealed partial class SA1_SFC : ISnesCoprocessor, ISnesBus
 {
     public string Name => "SA-1";
 
     private readonly byte[] rom;
     private readonly byte[] bwram;
+    private readonly bool ownsBwram;     // BW-RAM is the chip's own array (the cartridge has none); otherwise it is the cartridge's RAM, which the cartridge saves
     private readonly int bwMask;
     private readonly byte[] iram = new byte[0x800];
     public CPU_SFC Cpu { get; }
@@ -86,6 +87,7 @@ public sealed class SA1_SFC : ISnesCoprocessor, ISnesBus
     {
         rom = cart.Rom;
         bwram = cart.Sram.Length > 0 ? cart.Sram : new byte[0x800];
+        ownsBwram = cart.Sram.Length == 0;
         bwMask = (bwram.Length & (bwram.Length - 1)) == 0 ? bwram.Length - 1 : -1;
         Cpu = new CPU_SFC(this);
         Reset();

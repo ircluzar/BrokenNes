@@ -18,7 +18,7 @@ namespace NesEmulator.Snes;
 /// ignored. Raster streams four results per screen line until the SNES writes $8000 into all four
 /// slots of a line.
 /// </summary>
-public sealed class DSP1_SFC : ISnesCoprocessor
+public sealed partial class DSP1_SFC : ISnesCoprocessor
 {
     public string Name => "DSP-1 (homemade)";
     private readonly NECDSP_SFC.Mapping map;

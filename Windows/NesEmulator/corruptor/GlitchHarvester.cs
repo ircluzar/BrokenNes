@@ -166,18 +166,9 @@ namespace BrokenNes
         {
             try
             {
-                // Export with bundled state if available, otherwise fall back to base state lookup
-                var exportObj = corruptor.GhStockpile.Select(e => new 
-                { 
-                    e.Id, 
-                    e.Name, 
-                    e.BaseStateId, 
-                    e.Created, 
-                    Writes = e.Writes, 
-                    BaseState = !string.IsNullOrEmpty(e.State) ? e.State : corruptor.GhBaseStates.FirstOrDefault(b => b.Id == e.BaseStateId)?.State 
-                }).ToList();
-                var json = System.Text.Json.JsonSerializer.Serialize(exportObj);
-                await JS.InvokeVoidAsync("nesInterop.downloadText", $"stockpile_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json", json);
+                // the v2 stockpile file (NesEmulator.Corruption): the same file the desktop app and the FL plugin read, with the saved machine under one name (the older Lite export spelled it BaseState, which the engine's import did not read)
+                var json = corruptor.GlitchHarvester.ExportStockpile();
+                await JS.InvokeVoidAsync("nesInterop.downloadText", $"stockpile_{DateTime.UtcNow:yyyyMMdd_HHmmss}.stockpile.json", json);
                 Status.Set("Exported stockpile");
             }
             catch (Exception ex) { Status.Set("Export failed: " + ex.Message); }

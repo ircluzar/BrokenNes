@@ -280,7 +280,9 @@
       setCrashBehavior: (behavior) => request('/api/rtc/crash-behavior', { method: 'POST', json: { Behavior: behavior } }),
       getStubbornMode: () => request('/api/rtc/stubborn-mode'),
       setStubbornMode: (enabled) => request('/api/rtc/stubborn-mode', { method: 'POST', json: { enabled } }),
-      getLastBlast: () => request('/api/rtc/last-blast')
+      getLastBlast: () => request('/api/rtc/last-blast'),
+      getTrueDomainSizes: () => request('/api/rtc/true-domain-sizes'),
+      setTrueDomainSizes: (enabled) => request('/api/rtc/true-domain-sizes', { method: 'POST', json: { enabled } })
     },
 
     gh: {
@@ -300,10 +302,14 @@
       clearStash: () => request('/api/gh/stash', { method: 'DELETE' }),
       getStockpile: () => request('/api/gh/stockpile'),
       replayStockpile: (id) => request(`/api/gh/stockpile/${encodeURIComponent(id)}/replay`, { method: 'POST', json: {} }),
-      renameStockpile: (id, name) => request(`/api/gh/stockpile/${encodeURIComponent(id)}/rename`, { method: 'PUT', json: { name } }),
+      renameStockpile: (id, name, description) => request(`/api/gh/stockpile/${encodeURIComponent(id)}/rename`, { method: 'PUT', json: description === undefined ? { name } : { name, description } }),
       deleteStockpile: (id) => request(`/api/gh/stockpile/${encodeURIComponent(id)}`, { method: 'DELETE' }),
       exportStockpile: () => request('/api/gh/stockpile/export'),
-      importStockpile: (json) => request('/api/gh/stockpile/import', { method: 'POST', json: { json } })
+      importStockpile: (json) => request('/api/gh/stockpile/import', { method: 'POST', json: { json } }),
+      getStatus: () => request('/api/gh/status'),
+      saveStockpileFile: (path) => request('/api/gh/stockpile/save', { method: 'POST', json: path ? { path } : {} }),
+      openStockpileFile: (path) => request('/api/gh/stockpile/open', { method: 'POST', json: path ? { path } : {} }),
+      listStockpileFiles: () => request('/api/gh/stockpile/files')
     },
 
     imagine: {
