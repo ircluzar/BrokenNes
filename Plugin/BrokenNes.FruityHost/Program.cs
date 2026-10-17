@@ -38,6 +38,12 @@ switch (args[0])
     case "preset-test":
         return PresetChecks.Main(args);
 
+    case "alloc-probe":
+        return PresetChecks.AllocProbe(args);
+
+    case "alloc-probe-loop":
+        return PresetChecks.AllocProbeLoop(args);
+
     case "imodel-fields":
         return ImodelChecks.PrintFields();
 
