@@ -107,6 +107,15 @@ switch (args[0])
             Win32Host.Click(plugin.EditorHandle, (int)(r & 0xFFFF) + (int)((r >> 32) & 0xFFFF) / 2, (int)((r >> 16) & 0xFFFF) + (int)((r >> 48) & 0xFFFF) / 2);
             Win32Host.Pump(100);
         }
+        // the tabs: --demo installs the demonstration models, --freeze switches Instrument Runaway on (ROM mode), --tab instruments|presets opens a tab,
+        // --click id,id,... clicks controls by id, --chars text types into the focused field
+        plugin.Host.EditorResized = () => Win32Host.FitFrame(parent, plugin.EditorHandle);
+        if (args.Contains("--demo")) plugin.Test(400 + 3, 0, 1);
+        if (args.Contains("--freeze")) { plugin.Test(47, 0, 1); Win32Host.Pump(150); }
+        void ClickId(int cid) { long r = plugin.Test(30, cid); if (r != 0) { Win32Host.Click(plugin.EditorHandle, (int)(r & 0xFFFF) + (int)((r >> 32) & 0xFFFF) / 2, (int)((r >> 16) & 0xFFFF) + (int)((r >> 48) & 0xFFFF) / 2); Win32Host.Pump(100); } else Console.Error.WriteLine($"control {cid} is not on screen"); }
+        if (Opt(args, "--tab") is { } tabName) ClickId(1000 + (tabName.StartsWith("i", StringComparison.OrdinalIgnoreCase) ? 1 : tabName.StartsWith("p", StringComparison.OrdinalIgnoreCase) ? 2 : 0));
+        if (Opt(args, "--click") is { } clicks) foreach (var cid in clicks.Split(',')) ClickId(int.Parse(cid));
+        if (Opt(args, "--chars") is { } chars) { Win32Host.Text(plugin.EditorHandle, chars); Win32Host.Pump(100); }
         Win32Host.CaptureWindow(parent, plugin.EditorHandle, 920, 670, args[2]);
         if (Opt(args, "--hold") is { } hold)
         {
@@ -118,6 +127,52 @@ switch (args[0])
         Win32Host.DestroyParent(parent);
         foreach (var e in extras) e.Destroy();
         Console.WriteLine($"wrote {args[2]}");
+        return 0;
+    }
+
+    case "bmpdiff":
+    {
+        // bmpdiff <a.bmp> <b.bmp> [--mask x,y,w,h]...: pixels that differ between two 32-bit editor-shot captures, outside the masked rectangles; prints the count and the bounding box.
+        // (How the Emulator tab is shown to be unchanged: the baseline capture from the unmodified plugin against the new one, the tab strip masked.)
+        byte[] A = File.ReadAllBytes(args[1]), B = File.ReadAllBytes(args[2]);
+        int wa = BitConverter.ToInt32(A, 18), ha = Math.Abs(BitConverter.ToInt32(A, 22)), wb = BitConverter.ToInt32(B, 18), hb = Math.Abs(BitConverter.ToInt32(B, 22));
+        if (wa != wb || ha != hb) { Console.WriteLine($"different sizes: {wa}x{ha} against {wb}x{hb}"); return 1; }
+        var masks = new List<int[]>();
+        for (int i = 3; i + 1 < args.Length; i++) if (args[i] == "--mask") masks.Add(args[i + 1].Split(',').Select(int.Parse).ToArray());
+        int diff = 0, masked = 0, x0 = int.MaxValue, y0 = int.MaxValue, x1 = -1, y1 = -1;
+        for (int y = 0; y < ha; y++)
+            for (int x = 0; x < wa; x++)
+            {
+                int o = 54 + (y * wa + x) * 4;
+                bool same = A[o] == B[o] && A[o + 1] == B[o + 1] && A[o + 2] == B[o + 2];
+                if (same) continue;
+                if (masks.Any(m => x >= m[0] && x < m[0] + m[2] && y >= m[1] && y < m[1] + m[3])) { masked++; continue; }
+                diff++; x0 = Math.Min(x0, x); y0 = Math.Min(y0, y); x1 = Math.Max(x1, x); y1 = Math.Max(y1, y);
+            }
+        Console.WriteLine($"{wa}x{ha}: {diff} pixels differ outside the masks ({masked} inside them)" + (diff > 0 ? $", bounding box x {x0}..{x1}, y {y0}..{y1}" : ""));
+        return diff == 0 ? 0 : 1;
+    }
+
+    case "editor-golden":
+    {
+        // editor-golden <plugin.dll>: prints the rectangle of every control the Emulator tab draws in its default state (NES, Direct, Pulse 1) as C# table rows,
+        // the golden table of SelfTest.Ui.cs (captured from the unmodified plugin, so the self-test can say the tab's layout did not move)
+        var lib = new PluginLibrary(args[1]);
+        Environment.SetEnvironmentVariable("BROKENNES_PREFS_FILE", Path.Combine(Path.GetTempPath(), $"bn2_golden_{Environment.ProcessId}.txt"));
+        File.WriteAllText(Environment.GetEnvironmentVariable("BROKENNES_PREFS_FILE")!, "AboutRevisionSeen=99\n");
+        using var plugin = lib.Create();
+        plugin.Dispatcher(BrokenNes.Fruity.Fpd.SetSampleRate, 0, 48000);
+        plugin.SetParam(6, 1);
+        nint parent = Win32Host.CreateParent();
+        plugin.ShowEditor(parent);
+        Win32Host.Pump(300);
+        for (int id = 1; id < 1000; id++)
+        {
+            long r = plugin.Test(30, id);
+            if (r != 0) Console.WriteLine($"        ({id}, {r & 0xFFFF}, {(r >> 16) & 0xFFFF}, {(r >> 32) & 0xFFFF}, {(r >> 48) & 0xFFFF}),");
+        }
+        plugin.HideEditor();
+        Win32Host.DestroyParent(parent);
         return 0;
     }
 

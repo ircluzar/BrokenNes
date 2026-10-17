@@ -37,6 +37,9 @@ public static class Fpd
 public static class Fhd
 {
     public const int ParamMenu = 0;
+    /// <summary>FHD_EditorResized (fp_plugclass.h): "to notify the host that the editor (EditorHandle) has been resized". The plugin resizes its own editor
+    /// window first, then calls Dispatcher(HostTag, EditorResized, 0, 0); FL then fits its frame around the editor window.</summary>
+    public const int EditorResized = 2;
     public const int GetParamMenuEntry = 18;
 }
 
