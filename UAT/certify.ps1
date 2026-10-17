@@ -58,7 +58,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $workRoot = Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work'
-$art = Join-Path $workRoot 'bn_build'
+$art = if ($env:BROKENNES_ART) { $env:BROKENNES_ART } else { Join-Path $workRoot 'bn_build' }      # BROKENNES_ART: a private build folder (several agents share the machine)
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $outDir = Join-Path $workRoot "certify\$stamp"
 New-Item -ItemType Directory -Force $outDir | Out-Null

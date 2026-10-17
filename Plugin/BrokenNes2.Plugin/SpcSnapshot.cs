@@ -23,8 +23,13 @@ public sealed class SpcSnapshot
         Instruments();      // (the list of samples is worked out now, on the thread that makes the snapshot: the first note on the audio thread must not have to)
     }
 
+    /// <summary>What the game's sound driver was heard doing with its instruments just before the capture (see <see cref="SpcRecipe"/>); empty when nothing was listened to. Set once, by the capture, before the snapshot is handed out. A copy made by <see cref="WithOverlay"/> keeps them.</summary>
+    public SpcRecipe[] Recipes { get; set; } = [];
+    /// <summary>A line for the window: what the listening found (or why it found nothing).</summary>
+    public string ListenNote { get; set; } = "";
+
     /// <summary>A copy with another overlay (null removes it); the sound memory is copied.</summary>
-    public SpcSnapshot WithOverlay(SnesOverlay? overlay) => new(Aram, Dsp, overlay);
+    public SpcSnapshot WithOverlay(SnesOverlay? overlay) => new(Aram, Dsp, overlay) { Recipes = Recipes, ListenNote = ListenNote };
 
     /// <summary>Where the game's sample directory is (the DSP's DIR register is the page): 4 bytes per sample, start and loop address.</summary>
     public int DirectoryBase => Dsp[0x5D] * 0x100;

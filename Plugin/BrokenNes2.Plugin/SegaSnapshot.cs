@@ -58,6 +58,10 @@ public sealed class SegaSnapshot
     public readonly bool[] OpnKeyed = new bool[6];
     public int OpnLfo;
     public DacSample[] Dac = [];
+    /// <summary>What the game's sound driver was heard doing with its channels just before the capture (Genesis only; see <see cref="GenRecipe"/>); empty when nothing was listened to. Set once, by the capture, before the snapshot is handed out.</summary>
+    public GenRecipe[] Recipes { get; set; } = [];
+    /// <summary>A line for the window: what the listening found (or why it found nothing).</summary>
+    public string ListenNote { get; set; } = "";
 
     public const int OpnPatchBytes = 30;
 

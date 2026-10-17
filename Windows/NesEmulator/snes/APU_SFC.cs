@@ -75,6 +75,11 @@ public sealed partial class APU_SFC : ISnesApu
     /// <summary>Debug: called with the SPC700's PC before every instruction.</summary>
     public Action<ushort>? SmpHook;
 
+    /// <summary>Called for every write the SPC700 program makes to a DSP register ($F3): the register (0-127), the value and <see cref="SamplesProduced"/> at that moment
+    /// (the DSP's own 32 kHz clock). Not called for writes made by a tool or a corruption (<c>Dsp.Write</c> directly). The plugin's Instrument Runaway listens to learn how a game's sound driver
+    /// really plays its instruments; null (the default) costs a field check per DSP write.</summary>
+    public Action<byte, byte, long>? DspWriteTap;
+
     /// <summary>
     /// true: only run an SPC instruction if it ENDS by the target time, so the SPC trails the CPU by
     /// less than one instruction. An instruction runs all at once, so this puts its port writes at
@@ -192,7 +197,7 @@ public sealed partial class APU_SFC : ISnesApu
                 iplEnabled = (v & 0x80) != 0;
                 break;
             case 0xF2: dspAddr = v; break;
-            case 0xF3: if (dspAddr < 0x80) Dsp.Write(dspAddr, v); break;
+            case 0xF3: if (dspAddr < 0x80) { Dsp.Write(dspAddr, v); DspWriteTap?.Invoke(dspAddr, v, SamplesProduced); } break;
             case 0xF4: case 0xF5: case 0xF6: case 0xF7: apuToCpu[a - 0xF4] = v; break;
             case 0xFA: case 0xFB: case 0xFC: timerTarget[a - 0xFA] = v; break;
         }
