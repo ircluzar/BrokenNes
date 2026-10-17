@@ -28,7 +28,7 @@ const filter = args.includes('--filter') ? args[args.indexOf('--filter') + 1] : 
 // ---- the Core side ----
 function parityExe() {
   if (process.env.NANO_PARITY_EXE) return process.env.NANO_PARITY_EXE;
-  const art = process.env.NANO_ARTIFACTS ?? path.join(os.tmpdir(), 'brokennes-nano-artifacts');
+  const art = process.env.NANO_ARTIFACTS ?? (process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'VRUN_Nes_Dev_work', 'bn_nano') : path.join(os.tmpdir(), 'brokennes-nano-artifacts'));
   const exe = path.join(art, 'bin', 'NanoParity', 'release', 'NanoParity.exe');
   const csproj = path.join(nanoRoot, 'tools', 'NanoParity', 'NanoParity.csproj');
   // always (re)build: dotnet makes this a no-op when nothing changed, and a stale exe would verify yesterday's Core
