@@ -470,6 +470,7 @@ internal sealed class SessionGame : IGame, IGameStems
         NesEmulator.Sega.SmsSession => 0x2000,
         NesEmulator.Sega.MdSession => 0x10000,
         GbSession gb => gb.WorkRamSize,
+        SnesSession => 0x20000,
         _ => 0,
     };
 
@@ -478,6 +479,7 @@ internal sealed class SessionGame : IGame, IGameStems
         NesEmulator.Sega.SmsSession sms => (uint)offset < (uint)sms.Board.Ram.Length ? sms.Board.Ram[offset] : -1,
         NesEmulator.Sega.MdSession md => (uint)offset < (uint)md.Board.Ram.Length ? md.Board.Ram[offset] : -1,
         GbSession gb => gb.PeekWorkRam(offset),
+        SnesSession snes => (uint)offset < (uint)snes.Board.Wram.Length ? snes.Board.Wram[offset] : -1,
         _ => -1,
     };
 
@@ -488,6 +490,7 @@ internal sealed class SessionGame : IGame, IGameStems
             case NesEmulator.Sega.SmsSession sms when (uint)offset < (uint)sms.Board.Ram.Length: sms.Board.Ram[offset] = value; return true;
             case NesEmulator.Sega.MdSession md when (uint)offset < (uint)md.Board.Ram.Length: md.Board.Ram[offset] = value; return true;
             case GbSession gb: return gb.PokeWorkRam(offset, value);
+            case SnesSession snes when (uint)offset < (uint)snes.Board.Wram.Length: snes.Board.Wram[offset] = value; return true;
         }
         return false;
     }
