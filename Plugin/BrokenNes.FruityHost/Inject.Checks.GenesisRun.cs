@@ -81,9 +81,18 @@ internal static partial class InjectChecks
                 for (int n = 1; n <= 4; n++) if (IsCarrierOp(alg, n - 1)) h.Set($"op{n}.tl", Math.Min(127, h.Current.Get($"op{n}.tl") + 24));
             }), stems);
             var fm = r.Stems[fmStem].ToArray();
-            double ratio = InjectSpectrum.Rms(fm, 0, fm.Length) / rmsFm;
-            // 24 steps of 0.75 dB = 18 dB = x0.126 (the driver's own volume is kept on top of it)
-            return (r.Outcome!.Ok && ratio > 0.07 && ratio < 0.2, $"the carriers' total level of FM {ch + 1} raised by 24 (18 dB of attenuation): the game's FM {ch + 1} has rms {InjectSpectrum.Rms(fm, 0, fm.Length):0.00000} against {rmsFm:0.00000} without the push: x{ratio:0.000} (expected about x0.126)");
+            // the same change written into the chip's registers by hand (this passage of the music never rewrites the levels): the hook must have done exactly that, from its first key-on on
+            var dsession = rig.Start();
+            var dym = GenesisRig.Unit(dsession).Fm;
+            Span<byte> cur = stackalloc byte[30];
+            OpnPushHook.ReadPatch(dym, ch, cur);
+            for (int n = 0; n < 4; n++) if (IsCarrierOp(alg, n)) { int reg = (ch / 3) * 0x100 + 0x40 + new[] { 0, 8, 4, 12 }[n] + ch % 3; dym.OverrideRegister(reg, (byte)((cur[n * 7 + 1] & 0x80) | Math.Min(127, (cur[n * 7 + 1] & 0x7F) + 24))); }
+            var direct = rig.Run(dsession, GenesisWindow, [fmStem]).Stems[fmStem].ToArray();
+            // from the 20th frame on: the note already sounding when the push was made (the channel's first key-on is at frame 7) is the game's own
+            int from = (int)(20 * rate / 60.0);
+            double rmsPushed = InjectSpectrum.Rms(fm, from, fm.Length), rmsBaseLate = InjectSpectrum.Rms(baseFm, from, baseFm.Length), rmsDirect = InjectSpectrum.Rms(direct, from, direct.Length);
+            double ratio = rmsPushed / rmsBaseLate, same = rmsPushed / rmsDirect;
+            return (r.Outcome!.Ok && ratio < 0.3 && Math.Abs(same - 1) < 0.03, $"the carriers' total level of FM {ch + 1} raised by 24 (18 dB): from frame 20 on the game's FM {ch + 1} has rms {rmsPushed:0.00000} against {rmsBaseLate:0.00000} without the push (x{ratio:0.000}; the unpushed channel is near full scale, so the level is not simply x0.126) and {rmsDirect:0.00000} with the same registers written by hand: x{same:0.000}");
         }, PushMutants.OpnNoSubstitution, mutants, "no key-on loads the edited patch");
 
         // a push that changes nothing audible leaves the game's audio bit for bit as it was (the hook itself is neutral)
@@ -174,6 +183,7 @@ internal static partial class InjectChecks
 
         // ---- the hook alone, on a bare chip ----
         GenesisHookUnit(mutants);
+        GenesisHookLevelOnly(mutants);
         GenesisDac(rig, mutants);
     }
 
@@ -261,6 +271,36 @@ internal static partial class InjectChecks
             Expect("a different patch is not touched", after.AsSpan().SequenceEqual(other));
             return (probs.Count == 0, probs.Count == 0 ? "the key-on substitution loads the edited patch, keeps the driver's volume and pan, repeats after a reload, covers every channel that holds the patch and leaves other patches alone" : string.Join("; ", probs));
         }, PushMutants.OpnIgnoresVolume, mutants, "the edit's absolute level replaces the driver's volume");
+    }
+
+    private static void GenesisHookLevelOnly(bool mutants)
+    {
+        // an edit that changes nothing but a level reads as the game's own patch at every key-on: the change must be added once per driver setting, never again at the next note
+        Run("genesis-hook-level-only", () =>
+        {
+            var orig = MakePatch(0, 40);
+            var edit = (byte[])orig.Clone(); edit[3 * 7 + 1] = 40 + 12;
+            var rec = new PushRecord { Kind = PushKind.OpnPatch, Index = 0, Name = "t", A = [.. orig, (byte)0], B = [.. edit, (byte)0], P = [0] };
+            var hook = new OpnPushHook([rec]);
+            var ym = new Ym2612(true) { Override = hook };
+            var probs = new List<string>();
+            var cur = new byte[30];
+            long clock = 0;
+            int Level() { OpnPushHook.ReadPatch(ym, 1, cur); return cur[3 * 7 + 1]; }
+            var driver = (byte[])orig.Clone(); driver[3 * 7 + 1] = 60;
+            SetPatch(ym, 1, driver);
+            var levels = new List<int>();
+            for (int k = 0; k < 5; k++) { KeyOn(ym, 1, clock += 1000); levels.Add(Level()); }
+            if (levels.Any(l => l != 72)) probs.Add("five key-ons after the driver set a level of 60 gave " + string.Join(", ", levels) + " (72 each time expected)");
+            ym.OverrideRegister(0x40 + 12 + 1, 50);                  // the driver changes the volume
+            KeyOn(ym, 1, clock += 1000); int a = Level(); KeyOn(ym, 1, clock += 1000); int b = Level();
+            if (a != 62 || b != 62) probs.Add($"after a volume change to 50 the levels are {a}, {b} (62 expected)");
+            var reload = (byte[])orig.Clone(); reload[3 * 7 + 1] = 30;
+            SetPatch(ym, 1, reload);                                  // the driver loads the patch again
+            KeyOn(ym, 1, clock += 1000); int c = Level();
+            if (c != 42) probs.Add($"after the driver reloaded the patch with a level of 30 the level is {c} (42 expected)");
+            return (probs.Count == 0, probs.Count == 0 ? "a level-only edit is added once per driver setting (72 at every note after a level of 60, 62 after a volume change to 50, 42 after a reload with 30)" : string.Join("; ", probs));
+        }, PushMutants.OpnTlAccumulates, mutants, "the level change is added again at every key-on");
     }
 
     private static void GenesisDac(GenesisRig rig, bool mutants)

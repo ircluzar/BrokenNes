@@ -113,7 +113,6 @@ internal sealed class OpnPushHook : IYm2612Override
         ReadPatch(chip, channel, cur);
         foreach (var p in patches)
         {
-            if (p.Lfo && (chip.Register(0x22) & 0x0F) == (p.OrigLfo & 0x0F)) chip.OverrideRegister(0x22, (byte)(chip.Register(0x22) & ~0x0F | p.EditLfo & 0x0F));
             bool isOrig = true, isEdit = true;
             for (int i = 0; i < PatchBytes; i++)
             {
@@ -125,6 +124,7 @@ internal sealed class OpnPushHook : IYm2612Override
             if (!isOrig && !isEdit) continue;
             if (PushMutants.On(PushMutants.OpnNoSubstitution)) return;
             if (isOrig) Substituted++; else AlreadyEdited++;
+            if (p.Lfo && (chip.Register(0x22) & 0x0F) == (p.OrigLfo & 0x0F)) chip.OverrideRegister(0x22, (byte)(chip.Register(0x22) & ~0x0F | p.EditLfo & 0x0F));     // (the chip's LFO is shared: it goes with the patch, when a channel holding the patch is keyed on)
             // the registers
             for (int i = 0; i < 28; i++)
             {
@@ -138,7 +138,9 @@ internal sealed class OpnPushHook : IYm2612Override
             {
                 if (!p.TlChanged[n]) continue;
                 int i = n * 7 + 1, slot = channel * 4 + n;
-                bool fresh = isOrig || cur[i] != lastTl[slot];        // after the driver loaded a patch or set a volume, the register is the driver's again
+                // the register is the driver's again after it loaded a patch (the registers read as the original, which the edit's differ from) or set a volume (it no longer holds the level this hook wrote); an edit that changes only a level
+                // reads as the original at every key-on, so there the memory of what was written is all there is
+                bool fresh = cur[i] != lastTl[slot] || (isOrig && !isEdit) || PushMutants.On(PushMutants.OpnTlAccumulates);
                 if (!fresh) continue;
                 int delta = (p.Edit[i] & 0x7F) - (p.Orig[i] & 0x7F);
                 int low = PushMutants.On(PushMutants.OpnIgnoresVolume) ? p.Edit[i] & 0x7F : (cur[i] & 0x7F) + delta;      // (the deliberate bug: the edit's absolute level, the driver's volume lost)

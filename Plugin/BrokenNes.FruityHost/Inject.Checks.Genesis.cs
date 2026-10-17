@@ -126,6 +126,28 @@ internal static partial class InjectChecks
         var rig = GenesisRig.Make(frame);
         if (rig == null) { Skip("genesis-explore", "Sonic the Hedgehog is not there"); return; }
         Console.WriteLine($"  at frame {frame}: channel {rig.Channel + 1} (key-ons with its patch in the next {GenesisWindow} frames: {rig.KeyOns}); DAC sounds found: {rig.Snapshot.Dac.Length}");
+        if (args.Contains("--trace"))
+        {
+            // the writes the driver makes to the chosen channel: key-ons, total levels, the other patch registers, frequency, in order
+            var ts = rig.Start();
+            var tu = GenesisRig.Unit(ts);
+            int a0 = 0, a1 = 0, shown = 0, fr = rig.Frame;
+            int ch = rig.Channel, c3 = ch % 3, part = ch / 3;
+            tu.YmPortTap = (m, port, v) =>
+            {
+                if (port == 0) { a0 = v; return; }
+                if (port == 2) { a1 = v; return; }
+                int reg = port == 1 ? a0 : 0x100 | a1; int low = reg & 0xFF, pt = reg >> 8;
+                string? what = null;
+                if (reg == 0x28 && (v & 3) != 3 && ((v & 3) + (v >> 2 & 1) * 3) == ch) what = (v >> 4) != 0 ? $"KEY ON  ({v >> 4:X})" : "key off";
+                else if (pt == part && low >= 0x30 && low <= 0x9F && (low & 3) == c3) what = $"{(low >= 0x40 && low < 0x50 ? "TL" : "patch")} reg ${low:X2} = {v & 0x7F} (raw {v})";
+                else if (pt == part && low is >= 0xA0 and <= 0xA6 && (low & 3) == c3) what = $"freq reg ${low:X2} = {v:X2}";
+                else if (pt == part && low is >= 0xB0 and <= 0xB6 && (low & 3) == c3) what = $"channel reg ${low:X2} = {v:X2}";
+                if (what != null && shown < 70) { shown++; Console.WriteLine($"    frame {fr}: {what}"); }
+            };
+            InjectRun.Frames(ts, rig.Frame, rig.Frame + 120, rig.Pad, null, fn => fr = fn);
+            return;
+        }
         for (int c = 0; c < 6; c++)
         {
             var p = rig.Snapshot.OpnPatch[c];
