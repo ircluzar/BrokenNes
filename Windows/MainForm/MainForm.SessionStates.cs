@@ -126,8 +126,12 @@ namespace BrokenNes.Windows
 
         private static string SafeFileName(string name) => string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
 
+        /// <summary>The message of the last refused save or load (what the HTTP quick-save answer gives as its reason).</summary>
+        private string? lastStateMessage;
+
         private void Refuse(bool showDialogs, string caption, string message)
         {
+            lastStateMessage = message;
             Console.WriteLine($"[{caption}] {message}");
             if (showDialogs) MessageBox.Show(this, message, caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }

@@ -246,6 +246,7 @@ internal static class SnesStateTest
             ("refusals", "refusals", () => Refusals(games)),
             ("sound units and picture chips", "units", () => Units(games)),
             ("the app's own factory and the quick-save file", "factory", () => Factory(games)),
+            ("a program that counts frames while Right is held", "program", ProgramGroup),
             ("size and time", "size", () => SizeAndTime(games)),
         })
         {
@@ -756,6 +757,71 @@ internal static class SnesStateTest
             Check("the file's header names the console, the game's id, the sound unit, the chip and the layout", info.Console == ConsoleKind.Snes && info.GameId == a.GameId && info.Units["apu"] == "SFC" && info.Units["chip"] == "none" && info.Units["format"] == SnesSession.StateFormat, string.Join(",", info.Units.Select(kv => kv.Key + "=" + kv.Value)));
         }
         finally { try { Directory.Delete(tmp, true); } catch { } }
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------------
+    //  6b. A program that counts (no game data: the same ROM the app smoke test loads)
+    // ---------------------------------------------------------------------------------------------------------------------
+
+    private static string SmokeScriptPath()
+    {
+        for (string? d = AppContext.BaseDirectory; d != null; d = Path.GetDirectoryName(d))
+        {
+            string p = Path.Combine(d, "UAT", "entrypoints", "snes-state-smoke.ps1");
+            if (File.Exists(p)) return p;
+        }
+        return Path.Combine(Directory.GetCurrentDirectory(), "UAT", "entrypoints", "snes-state-smoke.ps1");
+    }
+
+    private static void ProgramGroup()
+    {
+        Group("a 32 KB program of ours that adds one to a work-RAM counter for every frame Right is held, and shows it as the backdrop colour");
+        byte[] rom = SnesProgs.CounterRom();
+        SnesSession Mk(string apu = "SFC") => (SnesSession)ConsoleSessions.Create(ConsoleKind.Snes, rom, "SFC", "SFC", apu, null, "counter.sfc");
+        // the program as the app smoke test carries it
+        string ps1 = SmokeScriptPath();
+        if (File.Exists(ps1))
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(ps1), @"\$SnesCounterHex\s*=\s*'([0-9A-Fa-f]+)'");
+            Check("the program in UAT/entrypoints/snes-state-smoke.ps1 is byte for byte the one Workshop/SnesProgs.cs builds", m.Success && m.Groups[1].Value.Equals(SnesProgs.CounterHex, StringComparison.OrdinalIgnoreCase), m.Success ? "" : "no $SnesCounterHex line found");
+        }
+        else Skip("the app smoke test carries the same program", $"{ps1} not found");
+
+        var script = ParseInput("10:Right,50:,80:Right,100:");
+        int Counter(SnesSession s) => s.Board.Wram[0x10] | s.Board.Wram[0x11] << 8;
+        int Backdrop(SnesSession s) => s.Board.Ppu.Cgram[0];
+        var a = Mk();
+        Advance(a, script, 0, 8);
+        Check("with no button held the counter stays 0 and the picture is black", Counter(a) == 0 && Backdrop(a) == 0);
+        Advance(a, script, 8, 50);
+        int c50 = Counter(a);
+        Check("Right held for 40 frames: the counter counts the frames and the backdrop colour is the counter", c50 >= 35 && c50 <= 41 && Backdrop(a) == (c50 & 0x7FFF), $"counter {c50}, backdrop ${Backdrop(a):X4}");
+        // save with Right released, at frame 60 (the picture is still)
+        Advance(a, script, 50, 60);
+        byte[] state = a.SaveState();
+        string stillPicture = PictureHash(a); int cSaved = Counter(a);
+        Advance(a, script, 60, 100);        // Right held again from 80 to 100: the counter moves on
+        int cAfter = Counter(a);
+        var b = Mk(); Advance(b, script, 0, 30);       // another point of the same run
+        int cBefore = Counter(b);
+        b.LoadState(state);
+        ApplyPoison(b);
+        Check("a state loaded into the program running elsewhere brings back the counter and the picture it was saved with", Counter(b) == cSaved && PictureHash(b) == stillPicture && Backdrop(b) == (cSaved & 0x7FFF), $"saved counter {cSaved}, session was at {cBefore}, after load {Counter(b)}");
+        Advance(b, script, 60, 100);
+        Check("... and from there it counts the same 20 frames of Right as the session that carried on: the same counter, the same picture, the same state", Counter(b) == cAfter && PictureHash(b) == PictureHash(a) && a.SaveState().AsSpan().SequenceEqual(b.SaveState()), $"counter {Counter(b)} vs {cAfter}");
+        // a power-on state (what a slot would hold for a game that has not run) puts the counter back to 0
+        var fresh = Mk(); byte[] zero = fresh.SaveState();
+        b.LoadState(zero);
+        Check("a power-on state loaded into the running program puts the counter back to 0 and the picture to black", Counter(b) == 0 && Backdrop(b) == 0);
+        // the same program under the other sound units (no sound; the state must still follow the unit)
+        foreach (string apu in new[] { "HLE", "NES:FIX" })
+        {
+            var u = Mk(apu); Advance(u, script, 0, 60);
+            byte[] us = u.SaveState();
+            var v = Mk(apu); Advance(v, script, 0, 25); v.LoadState(us);
+            Advance(u, script, 60, 100); Advance(v, script, 60, 100);
+            Check($"on the {apu} sound unit: the same round trip (counter {Counter(u)})", Counter(u) == Counter(v) && PictureHash(u) == PictureHash(v));
+        }
     }
 
     // ---------------------------------------------------------------------------------------------------------------------
