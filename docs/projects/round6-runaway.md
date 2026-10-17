@@ -32,7 +32,7 @@ Distances below are the lab's spectral distance (log energies in 20 bands, FFT 1
 | class | the game's sound changes by | old Runaway, at once | old, after 10 s | new capture (10 s) |
 |---|---|---|---|---|
 | Z80 RAM (driver code, variables, tables) | 1.05 \| 2.86 \| 0.12 | **blind**: 0/7 \| 0/7 \| 0/7 | 4/19 \| 8/19 \| 4/10 | recipes unlike the clean ones in every seed that keeps the driver alive: 8, 5, 6 of 12 \| 6 of 6 \| 6, 6, 5 of 9 |
-| 68000 work RAM (variables, sound queue) | 1.08 \| 0.75 \| 0.93 | blind: 0/7 | 4/19 \| 1/19 \| 1/10 | 10, 10, 9 of 12 \| 8 to 12 of 13 \| 8, 6, 10 of 9 |
+| 68000 work RAM (variables, sound queue) | 1.08 \| 0.75 \| 0.93 | blind: 0/7 | 4/19 \| 1/19 \| 1/10 | 10, 10, 9 of 12 \| 8, 11, 12 of 13 \| 8, 6, 10 of 9 |
 | ROM (the whole cartridge) | 1.41 \| 0.12 \| 0.50 | blind: 0/7 | 5/19 \| 0/19 \| 3/10 | 3, 6, 8 \| 7, 10, 13 \| 1, 1, 3 |
 | ROM bytes the Z80 reads (music, patches), Sonic 2 only | 1.17 | blind: 0/7 | 2/19 | 10, 12, 10 of 11 to 13 |
 
@@ -45,8 +45,8 @@ A state made by every class together (4,624 writes), then the same writes split 
 | | SMW | DKC |
 |---|---|---|
 | everything (4,624 writes): the game's sound changes by | **6.66** (level x0.23) | **10.71** (level x0.02) |
-| (a) the instrument data alone (1,757 | 2,517 writes) | 2.23 = **33 percent** of the distance (level x0.75) | 1.68 = **16 percent** (level x1.22) |
-| (b) the driver, registers and RAM alone (2,867 | 2,107 writes) | 6.66 = **100 percent** (level x0.23) | 10.71 = **100 percent** (level x0.03) |
+| (a) the instrument data alone (1,757 writes in SMW, 2,517 in DKC) | 2.23 = **33 percent** of the distance (level x0.75) | 1.68 = **16 percent** (level x1.22) |
+| (b) the driver, registers and RAM alone (2,867 writes in SMW, 2,107 in DKC) | 6.66 = **100 percent** (level x0.23) | 10.71 = **100 percent** (level x0.03) |
 | old Runaway after 10 s on the whole state | 15/20 instruments differ (the (a) part: 19/20 for the data alone, 6/20 for the driver alone) | 19/24 differ (data alone 11/24, driver alone 10/24) |
 | new capture on the whole state | 0 recipes (the game keyed nothing) | 1 recipe (the game keyed almost nothing) |
 
@@ -82,16 +82,52 @@ Resynthesis ceiling: the game's last 10 s played again from the recordings, agai
 
 | game | clean game | corruptions that keep the driver playing | corruptions that kill the driver |
 |---|---|---|---|
-| SMW | macro 0.02, exemplar 0.37, plain 0.87, silence 8.1 | macro 0.01 to 0.04, exemplar 0.01 to 0.59, plain 0.27 to 2.23 | 3 of 8 keyed nothing at all |
+| SMW | macro 0.02, exemplar 0.37, plain 0.87, silence 8.1 | macro 0.00 to 0.04, exemplar 0.00 to 0.59, plain 0.27 to 2.23 | 3 of 8 keyed nothing at all |
 | DKC | macro 0.02, exemplar 0.15, plain 1.12, silence 10.8 | macro 0.00 to 0.05 (seeds 1, 4, 5, 6), exemplar 0.00 to 0.17, plain 0.00 to 6.22 | 3 of 8 keyed nothing; **seed 7 (loud, harsh, 471 key-ons, 27 percent of the energy above 4 kHz) is not reproduced: macro 1.69, exemplar 1.81, plain 3.29, silence 1.97** |
 
 Genesis (Sonic 1, 400 random Z80-RAM writes, DAC muted): FM macro 1.09 to 1.21 against plain 1.51 (the clean game against itself is the floor: 1.09), PSG macro 0.82 to 0.85 against plain 1.46 to 1.49. In the two corruptions that killed the driver (16 key-ons, then 0) neither is meaningfully better than silence-ish plain, which is the right answer: there is nothing to play.
 
-SCREECH_PLACEHOLDER
+## Screech hunt: the loud, harsh case the user described
+
+The user's state was a heavily corrupted game that screeched. The lab hunts for such states (`--runaway-lab snes-screech`): random corruptions of 30, 100 and 300 audio-RAM writes (and 0, 2, 6 S-DSP register writes), the game run for 10 s, "harsh" = more than a quarter of the energy above 4 kHz and audible (rms at least 0.005 and a tenth of the clean game's) over the last 5 s.
+
+| game | corruptions | driver still keyed notes | harsh |
+|---|---|---|---|
+| SMW, any audio-RAM byte | 48 | 36 | **1** (100 writes, seed 15) |
+| DKC, any audio-RAM byte | 48 | 43 | 0 |
+| DKC, only the driver's own memory (code, variables, tables, sequences) | 36 | 10 | 0 |
+| DKC, the resynthesis lab's 8 corruptions (150 writes + 3 DSP writes) | 8 | 5 | **1** (seed 7) |
+
+So a state that is loud and harsh while the driver is alive is **rare under random corruption (2 in 140)**: most corruptions either leave the driver playing something close to the game, or kill it. The two found are exactly the user's kind of state, and the new capture does **not** reproduce them:
+
+- SMW seed 15: rms x3.9 of the clean game, 76 percent of the energy above 4 kHz, 196 key-ons in 10 s, 22 recipes (1 with noise, 3 with pitch modulation, 5 with echo); echo feedback register $87, echo volume $B8/$FE, echo delay register $B8; the driver wrote 11,612 voice registers and 3,414 global ones (1,235 of them to the key-on register) in the window. Distance of the game to the notes played again with their own macros **5.01**, with one macro per instrument 5.01, with the old plain instrument 5.09, to silence 9.02. The macros are no closer than the plain instrument.
+- DKC seed 7: 471 key-ons, 48 recipes, 27 percent of the energy above 4 kHz: own macros 1.69, per instrument 1.81, plain 3.29, silence 1.97: closer than the plain instrument, no closer than silence.
+
+**What it is that the macros miss is not established.** The features these two states have in common are the ones the recipes list as not replayed: pitch modulation (the neighbouring voice drives the pitch), noise (one rate for all voices) and a strong echo feedback, that is, effects between voices and global ones. An attempt to isolate it (the same corruption again with the echo output, the echo feedback, the pitch modulation or the noise switched off a quarter of the way into the window) **could not tell**: its own control (master volume muted) did not silence the sound, so the experiment cannot discriminate (the corrupted driver writes the master volume and the echo feedback twice each in the window, and may put them back). The attempt was removed from the lab rather than kept as a result.
+
+What the user can check in FL (step by step in `Plugin/README.md`): start the corruption with *play for 10 s*, listen to whether Instrument Runaway's game voices carry the sound, and compare with the game. If a screech is still missing, the useful report is which of its features (a steady noise, a high pitched wobble, a long ringing tail) was missed.
 
 ## What was run
 
-VERIFY_PLACEHOLDER
+All on the merged tree (`refs/heads/main` 7bd01f1 merged: `ui` and `imodel`), 2026-10-17. Builds in `bn_r6_runaway`; every exe was built fresh and its exit code checked before it ran.
+
+| what | result |
+|---|---|
+| `BrokenNes.Workshop --runaway-test` (scripted notes against the chips they were written to, controls, hostile `SPR1`/`GNR1`, real SMW and Sonic 1) | **82 passed, 0 failed, 0 not run** |
+| `FruityHost selftest` on the Native AOT DLL (every check of the plugin, including `runaway-recipes`, `imodel`, `imodel-ui`, `ui`, `corruption`, `dpad`) | **55 passed, 1 warning (the QLQ core is an octave sharp on purpose), 0 failed** |
+| `runaway-recipes` alone | passed (4 s): SNES: plain instrument side band 0.004, fade 1.00x; game voice side band 1.19, fade 1.27x; 0 bytes allocated on the audio thread for plain and game voice; the corrupted driver's bend frozen at once: 0 pitch changes, after playing 1 s: 114 to 129 pitch changes (largest 1040 cents); a 1,756-byte recipe section; 25 projects with damaged recipe sections loaded, all kept their sound memory; Genesis: 0 bytes for an FM and a PSG game voice |
+| `BrokenNes.Workshop --corrupt-test` (the shared corruption library) | 275 passed, 0 failed |
+| `--snes-state-test` / `--md-state-test` | 147 / 168 passed, 0 failed |
+| UAT suite (`UAT\run-suite.ps1 -Exe` the fresh Workshop exe) | 125 pass, 0 fail, 16 skip (ROMs absent on this machine), 3 informational |
+| `UAT\certify.ps1 -Only plugin-host,plugin-install` (private build folder through `BROKENNES_ART`) | plugin-host PASS (55 passed, 1 warning, 0 failed, 235 s), plugin-install PASS (14/14 checks, 37 s); report in `%LOCALAPPDATA%\VRUN_Nes_Dev_work\certify\20261017_154005` |
+
+**Checks that can fail, shown failing.** Every verifier of the listening was run against a deliberately broken build, and each made a named check fail (before the merge, on the tree at `1b3f1dc`): M1 pitch changes dropped from the macro, M2 DSP writes not logged, M3 the SNES macro does not play, M4 no held voices, M5 a recipe with pitch 0 accepted, M6 FM patch writes dropped, M7 the FM macro does not play, M8 all notes one recipe (the grouping), M9 the Genesis window ignored (Workshop `--runaway-test`); P1 play-for ignored (Runaway at once), P2 `SPR1` not saved, P3 an allocation in the SNES macro step, P4 the Genesis PSG tap not installed, P5 the Recipe parameter ignored, P6 `GNR1` not saved (plugin check `runaway-recipes`). After the merge one more: M10, the edited-instrument copies drop the game voices (`SnesInstruments.Write`, `SegaInstruments.Copy`): `runaway-recipes` failed with four separate messages, restored, passes. The fifteen earlier injections were **not** rerun after the merge.
+
+**Does the new capture catch what the old one missed, and is a broken one caught?** Yes, both are tests, not claims: Workshop SMW "frozen at once, the old capture sees nothing of it (the plain instruments render bit-identical: 77954295F9FB5C9C / 77954295F9FB5C9C)" next to "after ten seconds the new capture has the corrupted setting as a recipe" (the clean game has no such recipe: control; a second clean run finds exactly the same recipes: control); Sonic 1 "frozen at once the old capture sees none of the 8 driver corruptions (8/8 identical)" next to "7 of 7 audible corruptions: the recipes differ from the clean game's"; the plugin check on a synthetic game whose corrupted driver bends its voice: 0 pitch changes frozen at once, 114 to 129 after playing. The deliberately broken captures are the injections above.
+
+**Clean games are unchanged.** The plain instrument paths of the SNES and Genesis samplers were compared old code against this branch before the merge (167 of 167 instruments of SMW and DKC at the start and ten seconds on, Sonic 1 and Streets of Rage 2, rendered bit-identical; the comparison tool was temporary and is not in the tree, so this one cannot be repeated), and after the merge `imodel`'s `neutral` and golden checks and `runaway-sega` (the existing goldens) pass inside the full selftest.
+
+**Not run, so not known:** real FL Studio (the whole flow is certified through the test host that mimics FL, never through FL); any listening (the dev machine has no sound card: every claim is a measured spectrum, hash or count); recipes for the Master System, Game Gear, Game Boy and NES (none exist); the YM2612 channel-3 modes and CSM; SNES pitch modulation across voices and the echo history.
 
 ## Decisions, and what is open
 

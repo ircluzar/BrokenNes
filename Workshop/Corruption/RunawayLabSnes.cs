@@ -447,8 +447,8 @@ internal static class LabSnes
     }
 
     /// <summary>
-    /// --runaway-lab snes-screech --rom X [--name N] [--setup N] [--window N] [--seeds N] [--input script]: corruptions of the sound driver's own memory (code, variables, tables, sequence data) at 30, 100 and 300 writes, looking for the ones that leave a loud, harsh sound
-    /// (more than a quarter of the energy above 4 kHz, at least a third as loud as the clean game, over the last half of the window), and for each what the old capture and the new one make of it. A state the driver survives with a garbled sound is the case the user reported.
+    /// --runaway-lab snes-screech --rom X [--name N] [--setup N] [--window N] [--seeds N] [--scope driver|all] [--input script]: corruptions of the sound driver's own memory (code, variables, tables, sequence data; with --scope all any byte of audio RAM and a few DSP registers) at 30, 100 and 300 writes,
+    /// looking for the ones that leave a harsh sound (more than a quarter of the energy above 4 kHz, audible: rms at least 0.005 and a tenth of the clean game's, over the last half of the window), and for each what the new capture makes of it. A state the driver survives with a garbled sound is the case the user reported.
     /// </summary>
     public static int ScreechHunt(string[] args)
     {
@@ -459,7 +459,8 @@ internal static class LabSnes
         int window = int.Parse(Opt("window", "600")), seeds = int.Parse(Opt("seeds", "20"));
         var state = Setup(game);
         var classes = Classes(game, state, window, out _);
-        var driver = classes.Where(c => c.Note == "driver" && c.Domain == "ARAM").SelectMany(c => c.Addresses).Distinct().ToArray();
+        string scope = Opt("scope", "driver");                  // driver: only the sound driver's own memory; all: any byte of audio RAM and a few DSP registers (what the resynthesis lab does)
+        var driver = scope == "all" ? Enumerable.Range(0, 0xFFC0).ToArray() : classes.Where(c => c.Note == "driver" && c.Domain == "ARAM").SelectMany(c => c.Addresses).Distinct().ToArray();
         using var clean0 = Fresh(game, state);
         var cleanMono = LabCommon.ToMono(LabCommon.RunPcm(clean0.Session, window));
         int half = cleanMono.Length / 2;
@@ -471,9 +472,12 @@ internal static class LabSnes
             {
                 var rnd = new SeededRandom(9000 + n * 100 + seed);
                 var writes = Enumerable.Range(0, n).Select(_ => new CorruptionWrite("ARAM", driver[rnd.Next(driver.Length)], (byte)rnd.Next(256))).ToList();
+                if (scope == "all") for (int i = 0; i < n / 50; i++) writes.Add(new CorruptionWrite("DSP", rnd.Next(128), (byte)rnd.Next(256)));
                 using var run = Fresh(game, state);
                 CorruptionApplier.Apply(MachineDomains.For(run.Session), writes);
                 var log = new SpcWriteLog(); log.Attach(run.Spc);
+                var perReg = new int[128]; var innerTap = run.Spc.DspWriteTap;          // how often the driver writes each DSP register in the window
+                run.Spc.DspWriteTap = (r, v, t) => { perReg[r & 0x7F]++; innerTap?.Invoke(r, v, t); };
                 long t0 = run.Spc.SamplesProduced;
                 var mono = LabCommon.ToMono(LabCommon.RunPcm(run.Session, window));
                 long t1 = run.Spc.SamplesProduced;
@@ -481,7 +485,7 @@ internal static class LabSnes
                 double rms = LabCommon.Rms(mono, half, mono.Length - half), hf = HighFraction(mono[half..]);
                 var notes = SpcRecipes.Notes(log, t1, t1 - t0, run.Spc.Dsp.Regs, out var stats, out _);
                 if (notes.Count > 0) alive++;
-                bool harsh = hf >= 0.25 && rms >= cleanRms / 3;
+                bool harsh = hf >= 0.25 && rms >= Math.Max(0.005, cleanRms / 10);      // a quarter of the energy above 4 kHz, and audible (not the noise floor of a dead driver)
                 if (!harsh) continue;
                 screech++;
                 var snap = new SpcSnapshot(run.Spc.Aram, run.Spc.Dsp.Regs);
@@ -498,6 +502,8 @@ internal static class LabSnes
                 }
                 else line += " no notes: the sound is not made by key-ons (an echo or a voice nothing keyed)";
                 Console.WriteLine(line);
+                int voiceWrites = 0, globalWrites = 0; for (int r = 0; r < 128; r++) { if ((r & 0x0F) <= 9) voiceWrites += perReg[r]; else globalWrites += perReg[r]; }
+                Console.WriteLine($"      the driver wrote {voiceWrites} voice registers and {globalWrites} global ones in the window; global: EFB {perReg[0x0D]}, EVOL {perReg[0x2C]}+{perReg[0x3C]}, MVOL {perReg[0x0C]}+{perReg[0x1C]}, EON {perReg[0x4D]}, EDL {perReg[0x7D]}, ESA {perReg[0x6D]}, FLG {perReg[0x6C]}, FIR {perReg[0x0F] + perReg[0x1F] + perReg[0x2F] + perReg[0x3F] + perReg[0x4F] + perReg[0x5F] + perReg[0x6F] + perReg[0x7F]}, KON {perReg[0x4C]}, NON {perReg[0x3D]}, PMON {perReg[0x2D]}");
             }
         Console.WriteLine($"{tried} corruptions tried, the driver still keyed notes in {alive}, {screech} left a loud harsh sound");
         return 0;
