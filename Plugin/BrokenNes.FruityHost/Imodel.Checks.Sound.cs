@@ -256,7 +256,8 @@ internal static partial class ImodelChecks
                 case SpcSnapshot s:
                 {
                     var list = Src(s).List();
-                    var loopers = list.Where(i => (i.Blobs[0].Data[^9] & 2) != 0 && ImodelData.Rms(RenderInstrument(s, i.Index)) > 1e-3).Take(2).ToList();
+                    // (a loop pointer is heard only once the sample has played through to its end: short looping samples)
+                    var loopers = list.Where(i => (i.Blobs[0].Data[^9] & 2) != 0 && i.Blobs[0].Data.Length <= 9 * 100 && ImodelData.Rms(RenderInstrument(s, i.Index)) > 1e-3).Take(2).ToList();
                     r.Expect(loopers.Count > 0, $"{fx.Name}: no looping sample plays in the real game's sound memory");
                     foreach (var i in loopers) Probe(r, fx, i.Index, $"{fx.Name} slot {i.Index}", (inst, f) => f.Id is "tune.cents" or "vol.l" or "vol.r" or "mix.noise" or "env.adsr" or "gain.mode" or "loop.addr" or "mix.pmod");
                     break;

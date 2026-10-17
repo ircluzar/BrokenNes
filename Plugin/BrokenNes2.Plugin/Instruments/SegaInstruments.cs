@@ -197,6 +197,7 @@ public sealed class SegaInstruments : IInstrumentSource
                 inst.Field("dac.loop.start")!.Value = d.Loops ? d.LoopStart : 0;
                 inst.Field("dac.loop.end")!.Value = d.Loops ? d.LoopEnd : 0;
                 inst.Field("dac.cycle")!.Value = inst.Field("dac.cycle")!.Clamp((int)Math.Round(d.CycleHz * 100));
+                inst.Exact = d.CycleHz;
                 inst.Facts.Add(("Length", $"{d.Data.Length} samples, {d.Seconds * 1000:0} ms at {d.Rate} Hz"));
                 if (d.Repeats > 1) inst.Facts.Add(("Played", $"{d.Repeats} times in the stretch of writes recorded"));
                 break;
@@ -232,6 +233,7 @@ public sealed class SegaInstruments : IInstrumentSource
         }
         inst.Name = name;
         if (note != null) inst.Facts.Add(("Game", note));
+        inst.Sounding = kind == InstrumentKind.OpnPatch && snap.OpnKeyed[index] || kind is InstrumentKind.OpllUser or InstrumentKind.OpllRom && snap.OpllInPlay().Any(p => p.Instrument == index && p.Keyed);
         return inst;
     }
 
@@ -293,7 +295,7 @@ public sealed class SegaInstruments : IInstrumentSource
                 bool anyField = false;
                 foreach (var f in e.Fields) if (f.Value != cur.Get(f.Id)) anyField = true;
                 if (!dataChanged && !anyField) break;
-                double cycle = e.Get("dac.cycle") != cur.Get("dac.cycle") ? e.Get("dac.cycle") / 100.0 : d.CycleHz;
+                double cycle = e.Get("dac.cycle") == cur.Get("dac.cycle") ? d.CycleHz : Math.Round(e.Exact * 100) == e.Get("dac.cycle") ? e.Exact : e.Get("dac.cycle") / 100.0;
                 bool loopSame = e.Get("dac.loop") == cur.Get("dac.loop") && e.Get("dac.loop.start") == cur.Get("dac.loop.start") && e.Get("dac.loop.end") == cur.Get("dac.loop.end");
                 var nd = new DacSample(e.Get("dac.rate"), (byte[])data.Clone(), loopSame && !dataChanged ? d.LoopStart : loop ? ls : -1, loopSame && !dataChanged ? d.LoopEnd : loop ? le : -1, d.Repeats) { CycleHz = cycle };
                 c.Dac[e.Index - 6] = nd;

@@ -20,6 +20,7 @@ public sealed class SpcSnapshot
         Array.Copy(aram, Aram, Math.Min(aram.Length, AramSize));
         Array.Copy(dsp, Dsp, Math.Min(dsp.Length, DspSize));
         Overlay = overlay;
+        Instruments();      // (the list of samples is worked out now, on the thread that makes the snapshot: the first note on the audio thread must not have to)
     }
 
     /// <summary>A copy with another overlay (null removes it); the sound memory is copied.</summary>
@@ -130,6 +131,15 @@ public sealed class SpcSnapshot
                 return true;
             }
         }
+        return TryGameEnvelope(srcn, out adsr1, out adsr2, out gain);
+    }
+
+    /// <summary>Whether a sample is well-formed by the rule the sampler's list uses (see <see cref="Instruments"/>), and how long it is.</summary>
+    public bool WellFormed(int srcn, out int blocks, out bool loops) => TryParse(srcn, out blocks, out loops);
+
+    /// <summary>The envelope of a game voice that used the sample, ignoring any edit.</summary>
+    public bool TryGameEnvelope(int srcn, out byte adsr1, out byte adsr2, out byte gain)
+    {
         // a voice counts only if the game has set an envelope on it (ADSR on, or a gain): the all-zero registers of a voice it never used would
         // silence the instrument. A voice that is sounding right now (envelope above zero) is preferred.
         int best = -1;

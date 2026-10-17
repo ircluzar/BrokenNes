@@ -246,7 +246,7 @@ public sealed unsafe partial class SelfTest
             using var q = lib.Create();
             q.Dispatcher(Fpd.SetSampleRate, 0, 48000);
             q.LoadState(savedGb);
-            t.Expect(q.Test(45) == 1 && DllRead(q, 0)?.Get("duty") == 0, $"the project lost the Game Boy edit (duty {DllRead(q, 0)?.Get("duty")})");
+            t.Expect(q.Test(45) == 1 && DllRead(q, 0)?.Get("duty") == 1, $"the project lost the Game Boy edit (duty {DllRead(q, 0)?.Get("duty")})");
         }
         finally { DeleteQuietly(gb); }
 

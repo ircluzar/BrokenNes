@@ -268,6 +268,49 @@ internal static partial class ImodelChecks
         r.Note($"{steps} history steps; at each the instrument and locks equal a replay from the clean instrument");
     }
 
+    // ---- the snapshot depends on the instrument's state, not on how it got there: undo is bit-exact in the sound memory ----
+
+    public static void Restore(ImodelReport r, IEnumerable<ImodelFixture> fixtures, int perFixture)
+    {
+        int walks = 0, steps = 0;
+        foreach (var fx in fixtures)
+        {
+            var src = Src(fx.Snapshot);
+            var original = ImodelFixtures.Bytes(fx.Snapshot);
+            foreach (var inst in src.List().Where(i => i.Editable).Take(perFixture))
+            {
+                var h = new InstrumentHistory(inst);
+                var rng = new Prng(Fnv(System.Text.Encoding.UTF8.GetBytes(fx.Name)) ^ (ulong)inst.Index);
+                object cur = fx.Snapshot;
+                string where = $"{fx.Name} {inst.Name}";
+                for (int k = 0; k < 10; k++)
+                {
+                    ulong seed = rng.NextU64();
+                    switch (rng.Below(6))
+                    {
+                        case 0: h.Randomise(rng.Below(1001) / 1000.0, seed, rng.Below(2) == 0); break;
+                        case 1: h.Nudge("", rng.Between(-3, 3), seed, rng.Between(1, 3), rng.Below(2) == 0); break;
+                        case 2: h.FlipBits("", rng.Between(1, 4), seed, rng.Below(2) == 0); break;
+                        case 3: h.Set(inst.Fields[rng.Below((uint)inst.Fields.Length)].Id, rng.Between(-3, 200)); break;
+                        case 4: h.Lock(inst.Fields[rng.Below((uint)inst.Fields.Length)].Id); break;
+                        default: h.Randomise(0.3, seed, true); break;
+                    }
+                    var w = Src(cur).Write(h.Current);
+                    if (!w.Ok) { r.Expect(false, $"{where} step {k}: the write was refused: {w.Reason}"); break; }
+                    cur = w.Snapshot!;
+                    var direct = src.Write(h.Current);
+                    r.Expect(direct.Ok && ImodelFixtures.Bytes(direct.Snapshot!).AsSpan().SequenceEqual(ImodelFixtures.Bytes(cur)), $"{where} step {k}: the sound memory depends on the path the instrument took (writing it from the clean memory gives other bytes)");
+                    steps++;
+                }
+                h.GoTo(0);
+                var back = Src(cur).Write(h.Current);
+                r.Expect(back.Ok && ImodelFixtures.Bytes(back.Snapshot!).AsSpan().SequenceEqual(original), $"{where}: after ten operations and an undo of all of them the sound memory is not byte for byte the original");
+                walks++;
+            }
+        }
+        r.Note($"{walks} instruments walked through ten operations each and back to the clean state: {steps} writes equal the direct write, {walks} undone writes equal the original memory");
+    }
+
     // ---- the saved forms ----
 
     private static byte[] WithCrc(byte[] body)

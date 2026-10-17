@@ -161,6 +161,10 @@ public sealed class Instrument
     /// <summary>False for an instrument that is shown but cannot be written (a ROM instrument of the YM2413).</summary>
     public bool Editable { get; set; } = true;
     public string? ReadOnlyReason { get; set; }
+    /// <summary>Whether the game was playing this instrument when it froze (a SNES voice on the sample, a keyed YM2612 or YM2413 channel).</summary>
+    public bool Sounding { get; set; }
+    /// <summary>For a Genesis DAC loop: the loop's pitch as the snapshot holds it, exactly (the field <c>dac.cycle</c> is that in hundredths of a hertz, rounded). A write keeps the exact value when the field still is its rounding, so editing something and undoing it gives the snapshot's bytes back. NaN: none.</summary>
+    public double Exact { get; set; } = double.NaN;
 
     public Instrument(ConsoleId console, InstrumentKind kind, int index, string name, string description, Field[] fields, Blob[] blobs)
     {
@@ -176,7 +180,7 @@ public sealed class Instrument
     public Instrument Clone()
     {
         var c = new Instrument(Console, Kind, Index, Name, Description, Array.ConvertAll(Fields, f => f.Clone()), Array.ConvertAll(Blobs, b => b.Clone()))
-        { Origin = Origin, Editable = Editable, ReadOnlyReason = ReadOnlyReason };
+        { Origin = Origin, Editable = Editable, ReadOnlyReason = ReadOnlyReason, Sounding = Sounding, Exact = Exact };
         c.Facts.AddRange(Facts);
         return c;
     }
@@ -244,6 +248,7 @@ internal static class InstrumentMutants
 {
     public static int Active = 0;
     public const int IgnoreLocks = 1, SeedIgnored = 2, UndoLeavesBit = 3, ReplayDropsLast = 4, RoundTripLosesBit = 5, FlipOutOfWidth = 6, BrrHeaderBroken = 7, CrcNotChecked = 8, WriteSkipsLoop = 9,
-        OpnSwapsOperators = 10, GbWaveNibbleSwap = 11, SnesOverlayIgnored = 12, SeedNotStored = 13, LoopOutsideSample = 14;
+        OpnSwapsOperators = 10, GbWaveNibbleSwap = 11, SeedNotStored = 13, LoopOutsideSample = 14,
+        ProviderSkipsApply = 15, ProviderIgnoresLocks = 16, UndoNotApplied = 17, WriteLeavesTrace = 18;
     public static bool On(int m) => Active == m;
 }

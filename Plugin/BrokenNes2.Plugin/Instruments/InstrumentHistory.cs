@@ -66,6 +66,24 @@ public sealed class InstrumentHistory
         return true;
     }
 
+    /// <summary>Forgets every operation after the cursor (what could have been redone).</summary>
+    public void DropRedo()
+    {
+        if (cursor < ops.Count) ops.RemoveRange(cursor, ops.Count - cursor);
+    }
+
+    /// <summary>A manual edit that follows another manual edit of the same field with nothing in between replaces it, so dragging a slider is one step of the history, not hundreds.</summary>
+    public OpResult SetCoalesced(string field, int value)
+    {
+        if (cursor > 0 && cursor == ops.Count && ops[cursor - 1] is { Kind: OpKind.Set } last && last.Target == field)
+        {
+            ops.RemoveAt(cursor - 1);
+            cursor--;
+            current = Build(cursor);
+        }
+        return Set(field, value);
+    }
+
     /// <summary>Goes to any point of the history (0 = clean).</summary>
     public void GoTo(int position)
     {

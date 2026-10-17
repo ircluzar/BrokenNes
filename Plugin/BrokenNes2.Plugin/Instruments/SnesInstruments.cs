@@ -100,7 +100,7 @@ public sealed class SnesInstruments : IInstrumentSource
         inst.Facts.Add(("Audio RAM", $"${start:X4}, {info.Blocks} blocks = {info.Blocks * 16} samples = {info.Milliseconds:0.0} ms at pitch $1000"));
         inst.Facts.Add(("Loops", info.Loops ? $"yes, from ${info.Loop:X4} (block {(info.Loop - start) / 9})" : "no (plays once)"));
         inst.Facts.Add(("Envelope", source));
-        if (info.Sounding) inst.Facts.Add(("Game", "one of the game's voices was playing it when the game froze"));
+        if (info.Sounding) { inst.Facts.Add(("Game", "one of the game's voices was playing it when the game froze")); inst.Sounding = true; }
         return inst;
     }
 
@@ -165,7 +165,10 @@ public sealed class SnesInstruments : IInstrumentSource
         if (Differs(e, cur, "env.adsr", "env.ar", "env.dr", "env.sl", "env.sr", "gain.mode", "gain.curve", "gain.rate"))
         {
             var (a1, a2, g) = Envelope(e);
-            entry.Flags |= SnesOverlay.HasEnv; entry.Adsr1 = a1; entry.Adsr2 = a2; entry.Gain = g;
+            // an envelope that is the one the game (or the organ-like default) already gives needs no entry: an edit undone leaves the snapshot's bytes as they were
+            if (!snap.TryGameEnvelope(e.Index, out byte b1, out byte b2, out byte bg)) { b1 = DefaultAdsr1; b2 = DefaultAdsr2; bg = DefaultGain; }
+            if (a1 == b1 && a2 == b2 && g == bg && !InstrumentMutants.On(InstrumentMutants.WriteLeavesTrace)) { entry.Flags &= unchecked((byte)~SnesOverlay.HasEnv); entry.Adsr1 = entry.Adsr2 = entry.Gain = 0; }
+            else { entry.Flags |= SnesOverlay.HasEnv; entry.Adsr1 = a1; entry.Adsr2 = a2; entry.Gain = g; }
             changed.Add("envelope"); overlayChanged = true;
         }
         if (Differs(e, cur, "tune.cents"))
@@ -190,7 +193,12 @@ public sealed class SnesInstruments : IInstrumentSource
         }
         if (blobChanged || loopChanged)
         {
-            entry.Flags |= SnesOverlay.Pinned; entry.Blocks = (ushort)(data.Length / 9);
+            // pinned only while the sample is not well-formed by the sampler's own rule (a header out of range, no end block, a loop pointer off the blocks): a sample put back to a good state is listed on its own again,
+            // so undoing every edit leaves the snapshot's bytes exactly as they were
+            var probe = new SpcSnapshot(aram, dsp, null);
+            int blocks = data.Length / 9;
+            if (probe.WellFormed(e.Index, out int found, out _) && found == blocks && probe.SampleStart(e.Index) == cur.Origin) { entry.Flags &= unchecked((byte)~SnesOverlay.Pinned); entry.Blocks = 0; }
+            else { entry.Flags |= SnesOverlay.Pinned; entry.Blocks = (ushort)blocks; }
             overlayChanged = true;
         }
         var overlay = snap.Overlay;

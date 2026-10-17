@@ -80,6 +80,14 @@ public sealed unsafe partial class Bn2Plugin
                 if (n == 308 && value != 0) packed.CopyTo(new Span<byte>((void*)value, packed.Length));
                 return packed.Length;
             }
+            case 309:     // puts a SNES working copy in place, from the saved bytes of a SpcSnapshot (<index> of them at <value>): a test ROM has no samples worth the name (returns 0 done, 1 not a snapshot)
+            {
+                var s = SpcSnapshot.FromBytes(new ReadOnlySpan<byte>((void*)value, (int)index).ToArray());
+                if (s == null || emu == null) return 1;
+                emu.ReplaceSnapshotForTests(s);
+                return 0;
+            }
+            case 312: InstrumentMutants.Active = (int)value; return 0;       // tests only: switches one of the library's deliberate bugs on (0 = none); the self-test shows its checks catch each
             default: return 0;
         }
     }
