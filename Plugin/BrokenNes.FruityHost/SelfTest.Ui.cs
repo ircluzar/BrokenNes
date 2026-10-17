@@ -142,6 +142,7 @@ public sealed unsafe partial class SelfTest
     [
         new("tabs", false, false, false, CheckTabs),
         new("emulator-unchanged", false, false, false, CheckEmulatorUnchanged),
+        new("emulator-wheel", false, false, false, CheckEmulatorWheel),
         new("gate-direct", false, true, false, CheckGateDirect),
         new("gate-runaway", true, false, false, CheckGateRunaway),
         new("inst-list", true, true, true, CheckInstList),
@@ -300,6 +301,25 @@ public sealed unsafe partial class SelfTest
         UiClick(t, c, 41, "About Close");
         t.Expect(p.Test(36) == 0, "the About window did not close");
         UiTabTo(t, c, UiTab0, "Emulator tab");
+    }
+
+    // The wheel over a slider of the Emulator tab changes its parameter. WM_MOUSEWHEEL carries the cursor in SCREEN coordinates; before round 6 the Emulator tab read them as client
+    // coordinates and hit whatever sat at that point (WheelAt sends the message the way Windows does).
+    private void CheckEmulatorWheel(T t, UiCtx c)
+    {
+        var p = c.P;
+        var s = UiRect(c, 22);                                       // IdSlider + 2: the Pan slider
+        t.Expect(s != null, "the Pan slider of the Emulator tab is not there");
+        if (s == null) return;
+        int before = p.GetParam(2);
+        Win32Host.WheelAt(c.Hwnd, 3, s.Value.X + 40, s.Value.Y + 10);
+        Win32Host.Pump(60);
+        int after = p.GetParam(2);
+        t.Expect(after > before, $"three wheel notches up over the Pan slider moved Pan from {before} to {after}");
+        Win32Host.WheelAt(c.Hwnd, -6, s.Value.X + 40, s.Value.Y + 10);
+        Win32Host.Pump(60);
+        int down = p.GetParam(2);
+        t.Expect(down < after, $"six notches down moved Pan from {after} to {down}");
     }
 
     private void CheckEmulatorUnchanged(T t, UiCtx c)

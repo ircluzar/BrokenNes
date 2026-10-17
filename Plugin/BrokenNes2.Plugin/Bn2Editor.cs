@@ -1522,15 +1522,17 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                     openScroll = Math.Clamp(openScroll - delta, 0, Math.Max(0, openItems.Length - rows));
                     break;
                 }
-                if (tab != 0)                                                          // the Instruments and Presets tabs scroll their own lists
                 {
-                    var wp = new POINT { X = x, Y = y };                               // WM_MOUSEWHEEL carries the cursor in SCREEN coordinates
+                    var wp = new POINT { X = x, Y = y };                               // WM_MOUSEWHEEL carries the cursor in SCREEN coordinates (OnMouse stored them raw above)
                     UiNative.ScreenToClient(Hwnd, &wp);
                     mouseX = wp.X; mouseY = wp.Y;
+                }
+                if (tab != 0)                                                          // the Instruments and Presets tabs scroll their own lists
+                {
                     UiWheel(delta, mouseX, mouseY);
                     break;
                 }
-                // the wheel arrives at screen coordinates: use the last known mouse position
+                // the Emulator tab: the wheel over a slider or a dropdown changes it (this used to hit whatever sat at the SCREEN position: a latent bug, fixed in round 6)
                 var h = HitAt(mouseX, mouseY);
                 if (h is { Kind: Kind.Slider } s)
                 {
