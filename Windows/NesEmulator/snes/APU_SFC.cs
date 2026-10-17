@@ -15,7 +15,7 @@ namespace NesEmulator.Snes;
 /// BrokenNes (listing below) that implements the documented upload protocol. Like the original
 /// it lives at $FFC0-$FFFF, runs from reset, and can be re-entered by a sound driver jumping to $FFC0.
 /// </summary>
-public sealed class APU_SFC : ISnesApu
+public sealed partial class APU_SFC : ISnesApu
 {
     public string CoreName => "SFC";
     public int SampleRate => 32000;

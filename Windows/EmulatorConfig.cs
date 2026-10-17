@@ -149,6 +149,13 @@ namespace BrokenNes.Windows
         /// <summary>
         /// Sega machine settings (Console menu): the video standard ("auto", "ntsc", "pal"), the Genesis board ("auto", "1", "2", "3") and the Master System board ("auto", "markiii", "sms1", "sms2"). Auto reads them from the game.
         /// </summary>
+        /// <summary>
+        /// The Glitch Harvester / RTC's NES memory domains: false (the default, what the corruptor has always done) sizes PRG ROM, PRG RAM and CHR by probing them for non-zero bytes, which on most cartridges gives a size far
+        /// smaller than the memory (a blast then lands in the first few hundred bytes); true uses each memory's real size. Console games always use real sizes. A stockpile entry records which model its writes were drawn from.
+        /// </summary>
+        [JsonPropertyName("corruptionTrueDomainSizes")]
+        public bool CorruptionTrueDomainSizes { get; set; } = false;
+
         [JsonPropertyName("segaRegion")]
         public string SegaRegion { get; set; } = "auto";
 

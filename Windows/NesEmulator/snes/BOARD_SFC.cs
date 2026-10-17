@@ -16,7 +16,7 @@ namespace NesEmulator.Snes;
 /// auto-joypad, the multiply/divide unit, and a fake SPC700 handshake on $2140-$2143 until APU_SFC
 /// exists.
 /// </summary>
-public sealed class BOARD_SFC : ISnesBus
+public sealed partial class BOARD_SFC : ISnesBus
 {
     public const int ClocksPerLine = 1364, LinesPerFrame = 262, VBlankLine = 225;
 

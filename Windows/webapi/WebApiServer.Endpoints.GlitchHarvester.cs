@@ -34,7 +34,8 @@ namespace BrokenNes.Windows.WebApi
                         {
                             b.Id,
                             b.Name,
-                            b.Created
+                            b.Created,
+                            anchor = b.Anchor?.Kind.ToString().ToLowerInvariant() ?? "state", console = b.Game?.Console, game = b.Game?.Title
                         })
                     });
                 }
@@ -49,7 +50,8 @@ namespace BrokenNes.Windows.WebApi
             {
                 var nes = _getNes();
                 var corruptor = _getCorruptor();
-                if (nes == null || corruptor == null)
+                var consoleGh = ConsoleGhHost();
+                if ((nes == null && consoleGh == null) || corruptor == null)
                 {
                     return Results.BadRequest(new { success = false, error = "Emulator or corruptor not initialized" });
                 }
@@ -60,7 +62,8 @@ namespace BrokenNes.Windows.WebApi
                     var name = form?.Name;
                     
                     var gh = corruptor.GlitchHarvester;
-                    var baseState = await gh.AddBaseStateAsync(nes, name);
+                    // a console game (SNES, Game Boy, Master System, Game Gear, Genesis) takes its position as a saved state or a replay from power-on; the NES as its saved state
+                    var baseState = consoleGh != null ? gh.AddBaseState(consoleGh, name) : await gh.AddBaseStateAsync(nes!, name);
                     
                     return Results.Ok(new
                     {
@@ -69,7 +72,8 @@ namespace BrokenNes.Windows.WebApi
                         {
                             baseState.Id,
                             baseState.Name,
-                            baseState.Created
+                            baseState.Created,
+                            anchor = baseState.Anchor?.Kind.ToString().ToLowerInvariant() ?? "state"
                         }
                     });
                 }
@@ -133,7 +137,8 @@ namespace BrokenNes.Windows.WebApi
             {
                 var nes = _getNes();
                 var corruptor = _getCorruptor();
-                if (nes == null || corruptor == null)
+                var consoleGh = ConsoleGhHost();
+                if ((nes == null && consoleGh == null) || corruptor == null)
                 {
                     return Results.BadRequest(new { success = false, error = "Emulator or corruptor not initialized" });
                 }
@@ -145,15 +150,22 @@ namespace BrokenNes.Windows.WebApi
                     // Try to read request body for optional ID
                     var form = await context.Request.ReadFromJsonAsync<LoadBaseRequest>();
                     
+                    if (consoleGh != null)
+                    {
+                        string id = form != null && !string.IsNullOrEmpty(form.Id) ? form.Id : gh.SelectedBaseId;
+                        var started = gh.LoadBase(consoleGh, id);
+                        if (!started.Ok) return Results.BadRequest(new { success = false, error = started.Message });
+                        return Results.Ok(new { success = true, message = started.Message, warnings = started.Warnings });
+                    }
                     if (form != null && !string.IsNullOrEmpty(form.Id))
                     {
                         // Load specific base state by ID
-                        gh.LoadBaseState(nes, form.Id);
+                        gh.LoadBaseState(nes!, form.Id);
                     }
                     else
                     {
                         // Load currently selected base state (backward compatibility)
-                        gh.LoadSelectedBase(nes);
+                        gh.LoadSelectedBase(nes!);
                     }
                     
                     return Results.Ok(new
@@ -248,7 +260,8 @@ namespace BrokenNes.Windows.WebApi
             {
                 var nes = _getNes();
                 var corruptor = _getCorruptor();
-                if (nes == null || corruptor == null)
+                var consoleGh = ConsoleGhHost();
+                if ((nes == null && consoleGh == null) || corruptor == null)
                 {
                     return Results.BadRequest(new { success = false, error = "Emulator or corruptor not initialized" });
                 }
@@ -266,9 +279,7 @@ namespace BrokenNes.Windows.WebApi
                     catch { /* Ignore parse errors */ }
                     
                     // Use the provided base state ID if available, otherwise use the selected one
-                    var entry = (form?.Id != null) 
-                        ? gh.CorruptAndStash(nes, form.Id)
-                        : gh.CorruptAndStash(nes);
+                    var entry = consoleGh != null ? gh.CorruptAndStash(consoleGh, form?.Id) : (form?.Id != null) ? gh.CorruptAndStash(nes!, form.Id) : gh.CorruptAndStash(nes!);
                     
                     return Results.Ok(new
                     {
@@ -279,7 +290,8 @@ namespace BrokenNes.Windows.WebApi
                             entry.Name,
                             entry.BaseStateId,
                             entry.Created,
-                            writeCount = entry.Writes.Count
+                            writeCount = entry.Writes.Count,
+                            summary = SummaryOf(entry), anchor = AnchorKindOf(entry)
                         }
                     });
                 }
@@ -312,7 +324,8 @@ namespace BrokenNes.Windows.WebApi
                             e.Name,
                             e.BaseStateId,
                             e.Created,
-                            writeCount = e.Writes.Count
+                            writeCount = e.Writes.Count,
+                            summary = SummaryOf(e), anchor = AnchorKindOf(e), console = e.Game?.Console, game = e.Game?.Title, description = e.Description
                         })
                     });
                 }
@@ -327,7 +340,8 @@ namespace BrokenNes.Windows.WebApi
             {
                 var nes = _getNes();
                 var corruptor = _getCorruptor();
-                if (nes == null || corruptor == null)
+                var consoleGh = ConsoleGhHost();
+                if ((nes == null && consoleGh == null) || corruptor == null)
                 {
                     return Results.BadRequest(new { success = false, error = "Emulator or corruptor not initialized" });
                 }
@@ -335,7 +349,14 @@ namespace BrokenNes.Windows.WebApi
                 try
                 {
                     var gh = corruptor.GlitchHarvester;
-                    gh.ReplayStashEntry(nes, id);
+                    if (consoleGh != null)
+                    {
+                        var entry = gh.GetStashEntry(id) ?? throw new ArgumentException($"Stash entry with ID '{id}' not found");
+                        var started = gh.ReplayEntry(consoleGh, entry);
+                        if (!started.Ok) return Results.BadRequest(new { success = false, error = started.Message });
+                        return Results.Ok(new { success = true, message = started.Message, warnings = started.Warnings });
+                    }
+                    gh.ReplayStashEntry(nes!, id);
                     
                     return Results.Ok(new
                     {
@@ -455,7 +476,8 @@ namespace BrokenNes.Windows.WebApi
                             e.Name,
                             e.BaseStateId,
                             e.Created,
-                            writeCount = e.Writes.Count
+                            writeCount = e.Writes.Count,
+                            summary = SummaryOf(e), anchor = AnchorKindOf(e), console = e.Game?.Console, game = e.Game?.Title, description = e.Description, legacy = e.Legacy
                         })
                     });
                 }
@@ -466,11 +488,12 @@ namespace BrokenNes.Windows.WebApi
             });
 
             // POST /api/gh/stockpile/{id}/replay - Replay a stockpile entry
-            app.MapPost("/api/gh/stockpile/{id}/replay", (string id) =>
+            app.MapPost("/api/gh/stockpile/{id}/replay", (string id, HttpContext context) =>
             {
                 var nes = _getNes();
                 var corruptor = _getCorruptor();
-                if (nes == null || corruptor == null)
+                var consoleGh = ConsoleGhHost();
+                if ((nes == null && consoleGh == null) || corruptor == null)
                 {
                     return Results.BadRequest(new { success = false, error = "Emulator or corruptor not initialized" });
                 }
@@ -478,7 +501,14 @@ namespace BrokenNes.Windows.WebApi
                 try
                 {
                     var gh = corruptor.GlitchHarvester;
-                    gh.ReplayStockpileEntry(nes, id);
+                    if (consoleGh != null)
+                    {
+                        var entry = gh.GetStockpileEntry(id) ?? throw new ArgumentException($"Stockpile entry with ID '{id}' not found");
+                        var started = gh.ReplayEntry(consoleGh, entry, allowOtherGame: AllowOtherGame(context));
+                        if (!started.Ok) return Results.BadRequest(new { success = false, error = started.Message });
+                        return Results.Ok(new { success = true, message = started.Message, warnings = started.Warnings });
+                    }
+                    gh.ReplayStockpileEntry(nes!, id);
                     
                     return Results.Ok(new
                     {
@@ -511,6 +541,7 @@ namespace BrokenNes.Windows.WebApi
 
                     var gh = corruptor.GlitchHarvester;
                     gh.RenameStockpileEntry(id, form.Name);
+                    if (form.Description != null) gh.DescribeStockpileEntry(id, form.Description);
                     
                     return Results.Ok(new
                     {
@@ -594,12 +625,14 @@ namespace BrokenNes.Windows.WebApi
                     }
 
                     var gh = corruptor.GlitchHarvester;
-                    gh.ImportStockpile(form.Json);
-                    
+                    var result = gh.ImportStockpile(form.Json);
                     return Results.Ok(new
                     {
                         success = true,
-                        message = "Stockpile imported"
+                        message = "Stockpile imported: " + result.Summary,
+                        imported = result.Added,
+                        refusals = result.Refusals,
+                        warnings = result.Warnings
                     });
                 }
                 catch (Exception ex)

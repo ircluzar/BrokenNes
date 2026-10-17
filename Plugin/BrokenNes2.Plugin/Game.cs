@@ -57,6 +57,11 @@ internal interface IGame : IDisposable
     int WorkRamSize { get; }
     int PeekWorkRam(int offset);
     bool PokeWorkRam(int offset, byte value);
+
+    // ---- corruption (see Corruption.cs): the farm that records what the game was handed, for the games that run on a console session ----
+
+    /// <summary>The farm of a console game: it records the pad and every corruption write from the game's power-on, so a project (or a stockpile entry) can describe the game's place; null for a NES game.</summary>
+    NesEmulator.Corruption.ConsoleFarm? Farm { get; }
 }
 
 /// <summary>A running game's voices on their own, by plugin channel (<see cref="Ch"/>), at the host's rate and in step with the game's whole mix.</summary>
@@ -207,6 +212,8 @@ internal sealed class NesGame : IGame
     public GbSnapshot? CaptureGb() => null;
     public SegaSnapshot? CaptureSega() => null;
 
+    public NesEmulator.Corruption.ConsoleFarm? Farm => null;      // (the NES keeps its own corruption path in the desktop app; the plugin's corruption window is for the console games)
+
     public void Dispose() { }
 }
 
@@ -215,6 +222,10 @@ internal sealed class NesGame : IGame
 internal sealed class SessionGame : IGame, IGameStems
 {
     private readonly IConsoleSession s;
+    private readonly byte[] pristineRom;
+    private readonly string fileName;
+    private readonly ConsoleKind kind;
+    private int lastPad;
     private readonly StreamResampler resampler = new();
     private readonly short[] pcm = new short[16384];
     private readonly float[] mono = new float[8192];
@@ -229,16 +240,36 @@ internal sealed class SessionGame : IGame, IGameStems
     private int wantedMask;
 
     public SessionGame(byte[] rom, ConsoleKind kind, Chip chip, int hostRate, string fileName = "")
+        : this(rom, kind, chip, hostRate, fileName,
+               // the file name matters to the Master System family: its region tag and its SG-1000 / SC-3000 extensions come from it. The session gets its own copy of the ROM: a corruption of the ROM must not reach the bytes a later replay starts from.
+               ConsoleSessions.Create(kind, (byte[])rom.Clone(), CoreCatalog.Default(kind, CoreSlot.Cpu), CoreCatalog.Default(kind, CoreSlot.Ppu), ApuFor(kind, chip), null, fileName), null, null) { }
+
+    /// <summary>A game around a session that was built elsewhere (a stockpile entry's replay or saved state): <paramref name="anchor"/> and <paramref name="appliedWrites"/> say how it got where it is, so the farm goes on recording from there.</summary>
+    public SessionGame(byte[] pristineRom, ConsoleKind kind, Chip chip, int hostRate, string fileName, IConsoleSession session, NesEmulator.Corruption.Anchor? anchor, IReadOnlyList<NesEmulator.Corruption.CorruptionWrite>? appliedWrites, DacRecorder? dac = null)
     {
         Console = Cx.FromKind(kind);
-        // the file name matters to the Master System family: its region tag and its SG-1000 / SC-3000 extensions come from it
-        s = ConsoleSessions.Create(kind, rom, CoreCatalog.Default(kind, CoreSlot.Cpu), CoreCatalog.Default(kind, CoreSlot.Ppu), ApuFor(kind, chip), null, fileName);
+        this.kind = kind; this.pristineRom = pristineRom; this.fileName = fileName; s = session;
+        if (dac != null) dacRecorder = dac;
         HostSampleRate = hostRate;
         HookDacRecorder();
+        Farm = new NesEmulator.Corruption.ConsoleFarm();
+        Farm.Attach(s, pristineRom, fileName, new NesEmulator.Corruption.MachineSpec { Cpu = CoreCatalog.Default(kind, CoreSlot.Cpu), Ppu = CoreCatalog.Default(kind, CoreSlot.Ppu), Apu = ApuFor(kind, chip), Note = s.Description }, coresAreOwn: true);
+        if (anchor != null)
+        {
+            Farm.Rebase(s, anchor, appliedWrites?.Where(w => w.At == 0).ToList());
+            frames = anchor.Kind == NesEmulator.Corruption.AnchorKind.State ? anchor.Frame : anchor.Frames;      // the game has run as many frames as its place says (the frame count of a game is frames since power-on)
+        }
     }
 
+    public NesEmulator.Corruption.ConsoleFarm? Farm { get; }
+    internal IConsoleSession Session => s;
+    internal byte[] PristineRom => pristineRom;
+    internal string FileName => fileName;
+    internal ConsoleKind Kind => kind;
+    internal DacRecorder Dac => dacRecorder;
+
     // ---- Instrument Runaway on a Genesis game: the writes the game makes to the YM2612's DAC register, kept so the sounds in them can be found ----
-    private readonly DacRecorder dacRecorder = new();
+    private DacRecorder dacRecorder = new();
     private MdSoundUnit? dacHooked;
 
     /// <summary>Taps the Genesis sound unit's port writes (a unit that was swapped for another gets tapped when it first runs).</summary>
@@ -266,6 +297,7 @@ internal sealed class SessionGame : IGame, IGameStems
         try
         {
             HookDacRecorder();
+            Farm?.OnFrame((ushort)lastPad, 0);          // what the game was handed for this frame (allocation-free), so its place can be described
             s.RunFrame();
             frames++;
             int n;
@@ -395,7 +427,7 @@ internal sealed class SessionGame : IGame, IGameStems
         dispH = h >= 400 ? h / 2 : h;     // a SNES hi-res / interlaced frame has twice the lines it is shown with
     }
 
-    public void SetPad(int buttons) => s.SetPad(0, (PadButtons)buttons);
+    public void SetPad(int buttons) { lastPad = buttons; s.SetPad(0, (PadButtons)buttons); }
 
     public SpcSnapshot? CaptureSpc() =>
         s is SnesSession snes && snes.Apu is NesEmulator.Snes.APU_SFC spc ? new SpcSnapshot(spc.Aram, spc.Dsp.Regs) : null;
@@ -428,6 +460,7 @@ internal sealed class SessionGame : IGame, IGameStems
     internal void PokeSnesTone()
     {
         if (s is not SnesSession snes || snes.Apu is not NesEmulator.Snes.APU_SFC spc) return;
+        Farm?.Poison("a test tone was written to the sound unit");
         var t = SpcSnapshot.TestSample();
         Array.Copy(t.Aram, 0x100, spc.Aram, 0x100, 0x120);
         for (int i = 0; i < SpcSnapshot.DspSize; i++) spc.Dsp.Write(i, t.Dsp[i]);
@@ -439,12 +472,13 @@ internal sealed class SessionGame : IGame, IGameStems
     }
 
     /// <summary>The sound unit a game of this kind runs on: the chip's own (<see cref="Cx.RomApu"/>), except that a Game Gear game takes the Game Gear's menu id (the same unit, with its stereo port).</summary>
-    private static string ApuFor(ConsoleKind kind, Chip chip) => kind == ConsoleKind.GameGear ? CoreCatalog.Default(kind, CoreSlot.Apu) : Cx.RomApu(chip);
+    internal static string ApuFor(ConsoleKind kind, Chip chip) => kind == ConsoleKind.GameGear ? CoreCatalog.Default(kind, CoreSlot.Apu) : Cx.RomApu(chip);
 
     public bool TrySetChip(Chip chip)
     {
         if (!s.TrySwapCore(CoreSlot.Apu, ApuFor(s.Console, chip))) return false;
         resampler.SetRates(s.SampleRate, hostRate);
+        Farm?.Poison($"the sound chip was changed to {chip.Id}");
         return true;
     }
 
@@ -460,6 +494,7 @@ internal sealed class SessionGame : IGame, IGameStems
     {
         s.LoadState(state);                       // throws InvalidDataException and leaves the machine as it was
         frames = framesRun;
+        Farm?.Poison("the project's saved machine was put back");         // what the farm recorded is the game since power-on, which is not how this machine got here
         // the sound that was queued before is not the sound of the restored machine: every resampler starts clean at the rates it runs at
         resampler.Clear();
         foreach (var r in stemRes) r?.Clear();
@@ -483,14 +518,17 @@ internal sealed class SessionGame : IGame, IGameStems
 
     public bool PokeWorkRam(int offset, byte value)
     {
+        bool done = false;
         switch (Concrete)
         {
-            case NesEmulator.Sega.SmsSession sms when (uint)offset < (uint)sms.Board.Ram.Length: sms.Board.Ram[offset] = value; return true;
-            case NesEmulator.Sega.MdSession md when (uint)offset < (uint)md.Board.Ram.Length: md.Board.Ram[offset] = value; return true;
-            case GbSession gb: return gb.PokeWorkRam(offset, value);
+            case NesEmulator.Sega.SmsSession sms when (uint)offset < (uint)sms.Board.Ram.Length: sms.Board.Ram[offset] = value; done = true; break;
+            case NesEmulator.Sega.MdSession md when (uint)offset < (uint)md.Board.Ram.Length: md.Board.Ram[offset] = value; done = true; break;
+            case GbSession gb: done = gb.PokeWorkRam(offset, value); break;
         }
-        return false;
+        // a write the farm did not make is remembered all the same (as a corruption event), or the place the game is in could no longer be described
+        if (done) Farm?.NoteWrites(new[] { new NesEmulator.Corruption.CorruptionWrite(Concrete is GbSession ? "WRAM" : "RAM", offset, value) });
+        return done;
     }
 
-    public void Dispose() => s.Dispose();
+    public void Dispose() { Farm?.Detach(); s.Dispose(); }
 }

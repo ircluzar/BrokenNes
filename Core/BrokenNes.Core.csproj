@@ -69,6 +69,8 @@
     <Compile Include="$(NesRoot)sega\**\*.cs"    LinkBase="NesEmulator\sega" />
     <Compile Include="$(NesRoot)sms\**\*.cs"    LinkBase="NesEmulator\sms" />
     <Compile Include="$(NesRoot)md\**\*.cs"     LinkBase="NesEmulator\md" />
+    <!-- Corruption: the stockpile file, memory domains and anchors the plugin plays (docs/projects/round5-corr-design.md). No UI, no reflection. -->
+    <Compile Include="$(NesRoot)corruption\**\*.cs" LinkBase="NesEmulator\corruption" />
 
     <!-- nullproviders/: the portable subset (the others need Windows rendering). At least one
          concrete provider must exist - NullProviderRegistry throws on an empty list. -->

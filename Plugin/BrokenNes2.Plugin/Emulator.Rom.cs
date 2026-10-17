@@ -158,6 +158,12 @@ public sealed partial class Emulator
         ClearStateNote();
         Volatile.Write(ref stateRestore, 0);
         carriedSection = null;
+        // a corruption started on the game that is being replaced is gone with it; one a project carried comes back with the game
+        var carriedCrp = request?.Corruption is { Problem: null } wholeSection ? wholeSection : null;
+        carriedCorruption = carriedCrp?.Raw;
+        Corruption.Applied = carriedCrp?.Applied;
+        Corruption.Problem = null;
+        if (request?.Corruption?.Problem is { } damaged) Corruption.SetProblem($"The project's corruption record is {damaged}, so it was not used: the game is as the game-state section (if the project has one) or power-on left it");
         int console = Console;
         string? path = romPaths[console];
         string name = RomDisplayName;
@@ -194,7 +200,17 @@ public sealed partial class Emulator
                     g = new SessionGame(rom, kind, chip, rate, Path.GetFileName(path!));
                 }
                 g.ChipIndex = chipIdx;
-                if (request != null && gen == Volatile.Read(ref loadGeneration)) ApplyRestore(g, request);
+                if (request != null && gen == Volatile.Read(ref loadGeneration))
+                {
+                    // a project that carried a started corruption: when the machine does not come back with a saved state (the SNES), the game is rebuilt by replaying its history
+                    if (g is SessionGame fresh && RebuildFromHistory(fresh, request, chip, chipIdx) is { } rebuilt)
+                    {
+                        g.Dispose();
+                        g = rebuilt;
+                        Volatile.Write(ref stateRestore, 1);
+                    }
+                    else ApplyRestore(g, request);
+                }
                 if (gen != Volatile.Read(ref loadGeneration)) { g.Dispose(); return; }
                 Interlocked.Exchange(ref pendingGame, g);
                 romStatus = "running " + name;
@@ -251,6 +267,7 @@ public sealed partial class Emulator
                 game?.Dispose();
                 game = fresh;
                 carriedSection = null;                // the running game is the project's state now
+                carriedCorruption = null;
                 Array.Clear(stems);
                 appliedChip = fresh.ChipIndex;
                 crashReported = false;
@@ -408,9 +425,12 @@ public sealed partial class Emulator
     /// <summary>For an open editor (GUI thread): when no instance is pulling audio (FL stopped, the plugin idle) the picture still has to
     /// move, so the game is advanced here in real time. Its sound goes into the rings, which a returning reader skips over. Several
     /// editors on one emulator share one clock, so the game never runs faster than real time.</summary>
+    /// <summary>Tests only (hook 120): the editor does not run the game to keep the picture moving, so a test that counts frames sees only the frames it asked for.</summary>
+    internal static volatile bool NoPumpForTests;
+
     public void PumpPicture()
     {
-        if (Mode != 1) return;
+        if (Mode != 1 || NoPumpForTests) return;
         long now = Environment.TickCount64;
         if (now - Volatile.Read(ref lastPullTick) < 250) { lastPumpTick = now; return; }
         if (!Monitor.TryEnter(romLock)) return;

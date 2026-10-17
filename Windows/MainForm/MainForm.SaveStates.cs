@@ -575,8 +575,9 @@ namespace BrokenNes.Windows
                 quickStateReason = session.StateUnsupportedReason;
                 return false;
             }
+            lastStateMessage = null;
             bool ok = save ? TryQuickSaveState(showDialogs: false) : TryQuickLoadState(showDialogs: false);
-            if (!ok) quickStateReason = $"the state could not be {(save ? "saved" : "loaded")} (the console log has the message)";
+            if (!ok) quickStateReason = lastStateMessage ?? $"the state could not be {(save ? "saved" : "loaded")} (the console log has the message)";
             return ok;
         }
 

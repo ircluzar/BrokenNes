@@ -9,7 +9,7 @@ using NesEmulator.Systems;
 namespace BrokenNes2;
 
 /// <summary>What a project carried for the game when it was opened: its game-state section (null: an older project), or why the section could not be read.</summary>
-internal sealed record RestoreRequest(GameStateSection? Section, string? Problem);
+internal sealed record RestoreRequest(GameStateSection? Section, string? Problem, CorruptionSection? Corruption = null);
 
 public sealed partial class Emulator
 {

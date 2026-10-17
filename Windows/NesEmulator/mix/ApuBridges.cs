@@ -512,6 +512,12 @@ namespace NesEmulator.Mix
 
         /// <summary>The real SNES audio unit inside (APU_SFC when it is one), for swapping it back in directly.</summary>
         public ISnesApu Front => front is SfcApuAdapter ad ? ad.Inner : front;
+
+        /// <summary>
+        /// The board's clock jumped because a save state was loaded into the unit behind this bridge: listen from <paramref name="masterClock"/> on. The NES chip is a listener, not part of the machine, so it keeps
+        /// whatever it is playing and the next sync maps the loaded voices onto its channels; what it had queued from before the jump is dropped.
+        /// </summary>
+        public void Rebase(long masterClock) { lastClock = masterClock; nextSync = masterClock; queue.Clear(); }
         public void Reset() => front.Reset();
         public byte ReadPort(int port) => front.ReadPort(port);
         public void WritePort(int port, byte value) => front.WritePort(port, value);

@@ -44,6 +44,9 @@ public sealed class BOARD_GB : IGbCpuBus
 
     private readonly byte[] wram;
     private readonly byte[] hram = new byte[0x7F];
+    /// <summary>The work RAM (8 KB; 32 KB on a Color) and the high RAM, for tools that read or write the machine's memory (the corruption domains).</summary>
+    public byte[] Wram => wram;
+    public byte[] Hram => hram;
     private byte ie, iflag = 0xE1;
     private int wramBank = 1;
 

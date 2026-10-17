@@ -297,11 +297,11 @@ function Invoke-SessionCase {
     <#
       A console session (SNES, Game Boy, Master System, Game Gear, Genesis; the NES keeps romtest): Workshop --session-test builds the session the way the apps do, runs it
       for 'frames' with the pad 'input', optional core swaps 'swap' ("200:apu:NES:FIX,..."), and reports the picture hash, the sound hash and level. Optional 'console'
-      (detected from the ROM when absent), 'region', 'genesisModel', 'smsModel'. expect: exitCode, frameBufferHash, audioHash, framesRun, distinctColors, result.
+      (detected from the ROM when absent), 'region', 'genesisModel', 'smsModel', and 'rewind' ("N:M": a save state after frame N is loaded back after frame M and the frames in between are played again; a complete state ends on the same hashes as the run without it). expect: exitCode, frameBufferHash, audioHash, framesRun, distinctColors, result.
     #>
     param($Case, [string]$RomPath)
     $a = @('--session-test', '--rom', $RomPath)
-    foreach ($k in @('console', 'cpu', 'ppu', 'apu', 'swap', 'region')) {
+    foreach ($k in @('console', 'cpu', 'ppu', 'apu', 'swap', 'region', 'rewind')) {
         $v = Get-Prop $Case $k $null
         if ($v) { $a += @("--$k", [string]$v) }
     }
