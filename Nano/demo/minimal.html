@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8"><title>Nano: minimal embed</title>
+<button id="go">Play a coin</button>
+<script src="../dist/nano.js"></script>
+<script>
+  let synth;
+  document.getElementById('go').onclick = async () => {
+    synth ??= await BrokenNesNano.create();      // after a click, so the browser lets the page make sound
+    synth.play('coin');                          // or synth.noteOn('C4', 1, { preset: 'lead', duration: 0.5 })
+  };
+</script>
