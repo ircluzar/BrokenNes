@@ -1,4 +1,4 @@
-// The Bogue :: BrokenNes 2 editor: one dark, self-drawn window (no Win32 controls). Immediate mode: every paint lays the window out
+// The BrokenNes2 editor: one dark, self-drawn window (no Win32 controls). Immediate mode: every paint lays the window out
 // again and records where each control is; mouse events look the control up in that record. Everything runs on FL's GUI
 // thread, from a 30 ms timer that repaints only when something changed.
 //
@@ -24,18 +24,18 @@ public sealed unsafe class Bn2Editor : IFruityEditor
     public const int IdConsole = 50;   // + console 0..2
     public const int IdItem = 100;     // + item index of the open list
     public const int IdAboutLink = 70;                                   // + link index in the About text
-    public const int IdInputs = 80, IdRunaway = 81, IdInputsClose = 82, IdInputsKeyboard = 83, IdInputsGamepad = 84, IdInputsDefaults = 85;
+    public const int IdInputs = 80, IdRunaway = 81, IdInputsClose = 82, IdInputsKeyboard = 83, IdInputsGamepad = 84, IdInputsDefaults = 85, IdInputsOpposite = 86;
     public const int IdInputKey = 200, IdInputPad = 220, IdPadButton = 240;   // + pad button index 0..11
     public const int IdInstrument = 90, IdGbDuty = 91;
 
-    private const string ClassName = "BogueBrokenNes2Editor";
+    private const string ClassName = "BrokenNes2Editor";
     public const int Width = 904, Height = 664;
     private const int Margin = 16, HeaderH = 52;
     private const int ScreenX = Margin, ScreenY = 64, ScreenW = 520, ScreenH = 488;
     private const int ColX = 556, ColW = 332;
     private const nuint TimerId = 1;
     private const int RowH = 28, RowPitch = 34, ItemH = 24, MaxRows = 12;
-    private const int AboutW = 720, AboutH = 542, InputsW = 780, InputsH = 560, HowH = 246, PlogueH = 150;
+    private const int AboutW = 720, AboutH = 542, InputsW = 780, InputsH = 600, HowH = 246, PlogueH = 150;
 
     private enum Kind { Button, Dropdown, Slider, Item, Cell }
     private readonly record struct Hit(int Id, RECT Rect, Kind Kind);
@@ -440,16 +440,12 @@ public sealed unsafe class Bn2Editor : IFruityEditor
 
     private void DrawHeader(nint dc, Emulator? emu)
     {
-        // Bogue :: BrokenNes 2
+        // BrokenNes2
         int x = Margin;
-        Txt(dc, "Bogue", R(x, 8, 200, 36), Win32.DT_LEFT | Mid, Dim, fontTitle);
-        x += TextWidth(dc, "Bogue", fontTitle) + 8;
-        Txt(dc, "::", R(x, 8, 60, 36), Win32.DT_LEFT | Mid, Faint, fontTitle);
-        x += TextWidth(dc, "::", fontTitle) + 8;
         Txt(dc, "Broken", R(x, 8, 200, 36), Win32.DT_LEFT | Mid, Text, fontTitle);
         x += TextWidth(dc, "Broken", fontTitle);
-        Txt(dc, "Nes 2", R(x, 8, 200, 36), Win32.DT_LEFT | Mid, Accent, fontTitle);
-        x += TextWidth(dc, "Nes 2", fontTitle);
+        Txt(dc, "Nes2", R(x, 8, 200, 36), Win32.DT_LEFT | Mid, Accent, fontTitle);
+        x += TextWidth(dc, "Nes2", fontTitle);
         Txt(dc, "one instance = one channel", R(x + 16, 8, 300, 36), Win32.DT_LEFT | Mid, Faint, fontSmall);
 
         // About, and which emulator this instance sits on
@@ -667,15 +663,15 @@ public sealed unsafe class Bn2Editor : IFruityEditor
 
     private RECT InputsBox => R((Width - InputsW) / 2, (Height - InputsH) / 2, InputsW, InputsH);
 
-    private void Check(nint dc, int id, string label, int x, int y, bool on, string? note)
+    private void Check(nint dc, int id, string label, int x, int y, bool on, string? note, int labelW = 120, int hitW = 160)
     {
         var box = R(x, y, 20, 20);
         bool isHot = hot == id;
         Box(dc, box, on ? Accent : (isHot ? FieldHot : Field), on ? Accent : Line, 4);
         if (on) { Line_(dc, x + 4, y + 10, x + 8, y + 14, White); Line_(dc, x + 8, y + 14, x + 16, y + 5, White); Line_(dc, x + 4, y + 11, x + 8, y + 15, White); Line_(dc, x + 8, y + 15, x + 16, y + 6, White); }
-        Txt(dc, label, R(x + 30, y - 2, 120, 24), Win32.DT_LEFT | Mid, Text, fontLabel);
+        Txt(dc, label, R(x + 30, y - 2, labelW, 24), Win32.DT_LEFT | Mid, Text, fontLabel);
         if (note != null) Txt(dc, note, R(x + 30, y + 20, 330, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE, Faint, fontSmall);
-        AddHit(id, R(x, y - 2, 160, 24), Kind.Button);
+        AddHit(id, R(x, y - 2, hitW, 24), Kind.Button);
     }
 
     private void PadKey(nint dc, int index, RECT r, string label)
@@ -725,6 +721,11 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             Txt(dc, capP ? "press a button" : Inputs.PadName(Inputs.Pads[i]), pc, Win32.DT_CENTER | Mid | Win32.DT_END_ELLIPSIS, capP ? White : (Inputs.Pads[i] == 0 ? Faint : Text), fontSmall);
             AddHit(IdInputPad + i, pc, Kind.Button);
         }
+
+        // the d-pad protection (on unless this box is ticked)
+        Check(dc, IdInputsOpposite, "Allow opposite d-pad directions", lx, ty + 12 * 27 + 8, Inputs.AllowOpposite, null, labelW: 230, hitW: 270);
+        Txt(dc, Inputs.AllowOpposite ? "Left+Right and Up+Down pass together" : "Left+Right or Up+Down together send neither, as on a real d-pad",
+            R(lx + 290, ty + 12 * 27 + 6, 440, 24), Win32.DT_LEFT | Mid, Faint, fontSmall);
 
         // the on-screen pad: hold a button with the mouse
         int px = box.Left + 480, py = box.Top + 112;
@@ -793,7 +794,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         if (Inputs.KeyboardEnabled && Inputs.IsForeground(Hwnd)) bits |= Inputs.PollKeyboard();
         if (Inputs.GamepadEnabled) bits |= Inputs.PollGamepad(out padConnected); else padConnected = false;
         if (heldPad >= 0) bits |= Inputs.Buttons[heldPad];
-        liveBits = (int)bits;
+        liveBits = (int)Inputs.Human(bits);                 // the d-pad protection, for the three human sources at once
         emu.SetPad(this, liveBits);
     }
 
@@ -855,13 +856,10 @@ public sealed unsafe class Bn2Editor : IFruityEditor
 
         // a small title: the whole point of this window is below it
         int tx = box.Left + 28;
-        Txt(dc, "Bogue", R(tx, box.Top + 14, 200, 38), Win32.DT_LEFT | Mid, Dim, fontBig);
-        int x = tx + TextWidth(dc, "Bogue", fontBig) + 8;
-        Txt(dc, "::", R(x, box.Top + 14, 40, 38), Win32.DT_LEFT | Mid, Faint, fontBig);
-        x += TextWidth(dc, "::", fontBig) + 8;
+        int x = tx;
         Txt(dc, "Broken", R(x, box.Top + 14, 160, 38), Win32.DT_LEFT | Mid, Text, fontBig);
         x += TextWidth(dc, "Broken", fontBig);
-        Txt(dc, "Nes 2", R(x, box.Top + 14, 160, 38), Win32.DT_LEFT | Mid, Accent, fontBig);
+        Txt(dc, "Nes2", R(x, box.Top + 14, 160, 38), Win32.DT_LEFT | Mid, Accent, fontBig);
         Txt(dc, $"version {About.Version}", R(box.Right - 28 - 200, box.Top + 14, 200, 38), Win32.DT_RIGHT | Mid, Faint, fontSmall);
 
         // how it was made: transparency, plainly
@@ -940,7 +938,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
         for (int i = 0; i < plugin.Params.Length; i++) Mix(plugin.Get(i));
         Mix(e?.Id ?? 0); Mix(a.Channel); Mix(a.Problem?.GetHashCode() ?? 0);
         Mix(hot); Mix(active); Mix(openId); Mix(openHover); Mix(openScroll); Mix(aboutOpen ? 1 + aboutScroll : 0); Mix(Environment.TickCount64 < resetFlashUntil ? 1 : 0);
-        Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(e?.Runaway == true ? 7 : 8);
+        Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(Inputs.AllowOpposite ? 9 : 10); Mix(e?.Runaway == true ? 7 : 8);
         if (e != null)
         {
             Mix(e.ConfigVersion); Mix(e.PictureVersion); Mix(e.MemberCount); Mix(e.RomStatus.GetHashCode()); Mix(e.FramesRun / 4); Mix(e.StateNote?.GetHashCode() ?? 0);
@@ -1135,6 +1133,7 @@ public sealed unsafe class Bn2Editor : IFruityEditor
                 else if (h.Id == IdInputsClose) { inputsOpen = false; captureIndex = -1; }
                 else if (h.Id == IdInputsKeyboard) { Inputs.KeyboardEnabled = !Inputs.KeyboardEnabled; Inputs.Save(); }
                 else if (h.Id == IdInputsGamepad) { Inputs.GamepadEnabled = !Inputs.GamepadEnabled; Inputs.Save(); }
+                else if (h.Id == IdInputsOpposite) { Inputs.AllowOpposite = !Inputs.AllowOpposite; Inputs.Save(); }
                 else if (h.Id == IdInputsDefaults) { Inputs.Defaults(); Inputs.Save(); captureIndex = -1; }
                 else if (h.Id >= IdInputKey && h.Id < IdInputKey + 12) { captureIndex = h.Id - IdInputKey; captureIsKey = true; captureWait = true; }
                 else if (h.Id >= IdInputPad && h.Id < IdInputPad + 12) { captureIndex = h.Id - IdInputPad; captureIsKey = false; captureWait = true; }
@@ -1323,6 +1322,17 @@ public sealed unsafe class Bn2Editor : IFruityEditor
             case 39: return liveBits;
             case 37: return picW | (picH << 16);
             case 90: return noteShown ? 1 : 0;           // the state note is drawn over the screen
+            // 130: simulated keyboard for the Inputs tests: index 1 puts the keys of the pad buttons in <value> (a PadButtons mask) "down" as far as the editor's
+            // poll can tell (their bound keys; the window counts as the foreground one), index 0 gives the keyboard back; 131: whether the opposite directions are allowed, 132: read the remembered input settings again
+            case 130:
+                if (index == 0) Inputs.KeyProbe = null;
+                else { int mask = (int)value; Inputs.KeyProbe = vk => { for (int i = 0; i < 12; i++) if ((mask & (int)Inputs.Buttons[i]) != 0 && Inputs.Keys[i] == vk) return true; return false; }; }
+                return 0;
+            case 131: return Inputs.AllowOpposite ? 1 : 0;
+            case 132: Inputs.Load(); return 0;
+            // 133: a remembered setting by name (<value> points at the UTF-16 name; the integer, or -999 when absent), 134: write one (<index> points at the name, <value> is the integer)
+            case 133: return Prefs.GetInt(System.Runtime.InteropServices.Marshal.PtrToStringUni(value) ?? "", -999);
+            case 134: Prefs.SetInt(System.Runtime.InteropServices.Marshal.PtrToStringUni(index) ?? "", (int)value); return 0;                        // read the remembered input settings again (the plugin does it once, when the library loads)
         }
         return 0;
     }

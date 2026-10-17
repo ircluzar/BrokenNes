@@ -90,6 +90,7 @@
          FluidSynth bridges behind APU_WF/APU_MNES (nesInterop.noteEvent -> here), both lazy-load
          their own heavier dependencies (js-synthesizer/libfluidsynth under sf2player/, ~750KB)
          only when one of those cores is actually selected, so they cost nothing until used. -->
+    <script src="lib/dpadGuard.js"></script>
     <script src="lib/nesInterop.js"></script>
     <script src="lib/soundfont.js"></script>
     <script src="lib/mnesSf2.js"></script>

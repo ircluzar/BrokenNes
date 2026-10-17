@@ -1,4 +1,4 @@
-# Bogue :: BrokenNes 2: the FL Studio plugin
+# BrokenNes2: the FL Studio plugin
 
 BrokenNes runs four ways. All of them use the cores in `Windows/NesEmulator/`:
 
@@ -6,7 +6,7 @@ BrokenNes runs four ways. All of them use the cores in `Windows/NesEmulator/`:
 |---|---|---|
 | Desktop | `Windows/` | `UAT/entrypoints/desktop-smoke.ps1` |
 | Web (Lite) | `WebLite/` | `UAT/entrypoints/web-smoke.ps1` |
-| Plugin in a test host | `Plugin/BrokenNes2.Plugin` + `Plugin/BrokenNes.FruityHost` | `FruityHost selftest` (47 checks: 46 pass, 1 expected warning) |
+| Plugin in a test host | `Plugin/BrokenNes2.Plugin` + `Plugin/BrokenNes.FruityHost` | `FruityHost selftest` (50 results: 49 pass, 1 expected warning) |
 | Plugin in FL Studio | the same DLL | `UAT/plugin/fl/fl-certify.ps1` |
 
 `UAT/certify.ps1` builds and runs all of them and writes one report.
@@ -28,7 +28,7 @@ plugin: a DLL that exports `CreatePlugInstance` and hands FL an object shaped li
 - **`BrokenNes.Fruity`** (library): the FL SDK in C#: structures, the function table built from
   `[UnmanagedCallersOnly]` pointers, parameters / automation / saved state, a generic editor, GDI helpers, and
   `FruityPluginBase`, the class a plugin derives from.
-- **`BrokenNes2.Plugin`** (Native AOT DLL, `BrokenNes2_x64.dll`): the instrument, on `Core/BrokenNes.Core`. FL shows it as **Bogue :: BrokenNes 2**; the DLL and its folder keep the file name `BrokenNes2` because FL finds a native plugin by its file name.
+- **`BrokenNes2.Plugin`** (Native AOT DLL, `BrokenNes2_x64.dll`): the instrument, on `Core/BrokenNes.Core`. FL lists it as **BrokenNes2**, the name it reports; the DLL and its folder have the same name, because FL finds a native plugin by its file name.
 - **`BrokenNes.FruityHost`** (exe): the test bench, a stand-in for FL's host (see below).
 - **`BrokenNes.SynthHost`** (library): hosting the plugin outside FL. `HostSim` / `PluginInstance` / `PluginLibrary` (the host side of the SDK and the
   calls into a loaded DLL; shared with the test bench) plus `SynthRack` (four instances played live) and `MidiRouter`. No audio device and no window of
@@ -230,9 +230,19 @@ and SNES games alike (the NES and Game Boy use A, B, Start, Select and the D-pad
 - an **XInput gamepad** (the left stick is a second D-pad);
 - an **on-screen pad** in the window: hold a button with the mouse.
 
-Click a binding, then press a key or a gamepad button to rebind it (Esc cancels, right-click clears). Mappings and the two on/off switches are
-remembered for the Windows user (`HKCU\Software\Bogue\BrokenNes2`), not per project. Defaults: arrows, X Z S A Q W, Enter, right Shift;
-gamepad with its right-hand button as the SNES A.
+Click a binding, then press a key or a gamepad button to rebind it (Esc cancels, right-click clears). Mappings, the two on/off switches and the
+d-pad setting below are remembered for the Windows user (`HKCU\Software\BrokenNes\BrokenNes2`), not per project. Defaults: arrows, X Z S A Q W,
+Enter, right Shift; gamepad with its right-hand button as the SNES A.
+
+**D-pad protection.** A real d-pad cannot press Left and Right, or Up and Down, together, but a keyboard can. So when the three sources together hold
+two opposite directions, **neither is sent** (the pad is neutral on that axis; Up+Down+Right sends Right). The tick box **Allow opposite d-pad directions**
+at the bottom of the Inputs window is **off by default** (remembered as `InputAllowOpposite`; an install or project from before the setting is protected).
+The rule lives in one pure function, `DpadGuard` (`Windows/NesEmulator/systems/DpadGuard.cs`, shared with the desktop app), and is applied in one place
+(`Inputs.Human`, called by the editor's poll). It is for people only: a pad set from outside (the test hooks, a project) is not touched.
+
+**Settings migration.** The remembered settings used to live under an older registry path (named in `Prefs.cs`, `OldRegistryPath`). The first time a
+settings store is used with an empty new key, the old values are copied over once; the old key is never changed or deleted. The `prefs` check proves it
+on a fake old store and on real (test) registry keys.
 
 ## Instrument Runaway
 
@@ -418,6 +428,8 @@ BrokenNes.FruityHost analyze  <wav> <fixture.json>                # certify audi
 | editor | through real mouse messages: every control is drawn, dropdowns open/scroll/pick and tell the host, a click outside closes, emulator and channel picks move the instance, console buttons list only their chips, channel cells, mode switch, slider drag / double-click reset |
 | rom-consoles | Game Boy and SNES games (tiny ROMs made by the test) open from a saved project, run, draw at their own size, sit on Mix, switch sound chip; loading a file of another console switches the emulator to it; a file that is not a ROM is refused; the NES comes back with its built-in game |
 | reset | Reset Console clears held notes and rebuilds chips for every instance on the emulator (Voice_Kill, silent, registers fresh, nobody moves), and restarts a ROM-mode game from power-on for every listener |
+| dpad | the d-pad protection through the real editor: all 16 combinations of the four directions from a simulated keyboard (bound keys) are neutral on an opposite pair when the setting is off (the default) and pass unchanged when it is ticked; the keyboard's Left plus the mouse on the on-screen Right is neutral; the tick box is clicked with the real mouse, drawn, remembered (`InputAllowOpposite`) and read back; Reset to defaults protects again; an old preferences file with no such line reads as protected; a pad set from outside (hook 44) reaches the emulator with all four directions |
+| prefs | the settings migration (see "Settings migration" above): a fake old file and real HKCU test keys; the new store is filled from the old one once, the old one is untouched and not created, a non-empty new store is not overwritten, no old store means nothing is created |
 | inputs | pressing Start on VRUN's title screen changes the game against an identical run (the pad reaches it); Game Boy and SNES games take pad input; the Inputs window is modal, shows all 12 rows, the on-screen pad presses and releases, switches and cleared bindings are remembered, defaults come back |
 | runaway | a frozen NES game stops (frames, picture) and is silent, releasing resumes it, Reset Console ends it, Direct mode refuses it; on a SNES game the sound memory is captured and notes play a known sample at exact pitches (2000/4000/1000 Hz within a few cents), polyphonically, an unused slot plays the game's instrument, a saved project comes back in Runaway and plays; the buttons work |
 | rom-audio | a Game Boy game's own 512 Hz tone and a SNES game's sample reach the first instance's output (Mix) whatever channel the instance was on, and from a Direct-mode instance that loaded the file |

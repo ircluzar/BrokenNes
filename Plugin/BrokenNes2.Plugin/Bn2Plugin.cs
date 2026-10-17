@@ -1,4 +1,4 @@
-// Bogue :: BrokenNes 2: an FL Studio instrument built on BrokenNes. One FL instance is ONE CHANNEL of an emulator (pulse 1, pulse 2,
+// BrokenNes2: an FL Studio instrument built on BrokenNes. One FL instance is ONE CHANNEL of an emulator (pulse 1, pulse 2,
 // triangle, noise, or in ROM mode the game's whole mix), like any other instrument is one voice. Instances coordinate through
 // EmulatorHub: they share an emulator (its mode, sound chip, cores, game and picture) and each takes a channel of it.
 //
@@ -80,8 +80,8 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         EmulatorHub.Resolve(this);
     }
 
-    /// <summary>What FL shows. (The DLL and its folder stay BrokenNes2: FL finds a native plugin by its file name.)</summary>
-    public const string DisplayName = "Bogue :: BrokenNes 2";
+    /// <summary>What FL shows. (The DLL and its folder have the same name: FL finds a native plugin by its file name.)</summary>
+    public const string DisplayName = "BrokenNes2";
     public static FruityPluginInfo Info { get; } = new(DisplayName, DisplayName);
 
     protected override int StateVersion => 2;

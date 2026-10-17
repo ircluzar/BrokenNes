@@ -156,7 +156,7 @@ namespace BrokenNes.Windows.Synth
             string text = Summarize(results);
             bool installed = results.Any(r => r.Ok);
             if (installed)
-                text += "\n\nStart FL Studio (restart it if it was open) and look for \"Bogue :: BrokenNes 2\" in the plugin picker.";
+                text += "\n\nStart FL Studio (restart it if it was open) and look for \"BrokenNes2\" in the plugin picker.";
             MessageBox.Show(owner, text, Title, MessageBoxButtons.OK, results.All(r => r.Ok) ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
         }
     }
