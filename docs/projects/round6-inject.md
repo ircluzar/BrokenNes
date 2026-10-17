@@ -107,7 +107,7 @@ For each of Super Mario World, Sonic the Hedgehog, Link's Awakening and Galactic
 **push + Remove at once**: sound memory as it was and the machine after the same frames equals the control; **Reset Console** takes the pushes with it and says so; **the deliberate bugs "the farm is not told" and "a reopened project gets no hooks"** are each caught; 40 blocks of the pushed game allocate **0 bytes** on the audio thread (the same game unpushed: 0).
 **The tab, with real mouse messages** (a SNES test game given the made-up sound memory in itself as well): Remove with nothing pushed is refused ("not pushed"), Push of an unedited sample is refused ("nothing to push"), ten shift-clicks on Tuning's plus then Push says what it did and the list shows "in the game", Remove says "Removed sample 0" and the mark goes; the reopened project marks it and Remove works; a damaged section shows the note on the tab; two bugs ("Remove pushes", "the tab hides the note") are caught.
 
-Unchanged by this work, run on the final tree (see section 5): the full `selftest` (the new `inject` check is the 56th), `--snesbench` goldens, `--snes-state-test`, `--md-test`, `--md-state-test`, `--md-golden`.
+Unchanged by this work, run on the final tree (see section 5): the full `selftest` (the new `inject` check is one of the 57 results), `--snesbench` goldens, `--snes-state-test`, `--md-test`, `--md-state-test`, `--md-golden`.
 
 ## 5. Neutrality of the hooks (the shared emulator tree), regression runs
 
@@ -121,6 +121,10 @@ The hooks are one null test each (`DSP_SFC.Overrides`, `Ym2612.Override`, `Ym241
 - Not usable here: `--gbtest` (its test ROMs are not in the worktree: 0 of 168, exit 0), `--session-test` (exit 2: it needs arguments).
 - Speed: interleaved A/B of `--snesbench` (SMW, 4,300 frames, 3 runs a round, 4 rounds, the main build and this one alternating): best 750.3 fps (main) against 732.0 fps (this); median of the rounds' bests 721.5 against 729.0. The run-to-run noise on this shared machine (a round's median ranged 569 to 735 fps) is larger than any difference.
 - Builds that compile the shared tree: the desktop app (`Windows\BrokenNes.Windows.csproj`, 0 errors) and the Lite page (`WebLite\BrokenNes.Lite.csproj`, 0 errors). The old `Web\BrokenNes.Web.csproj` does not build (`NES.cs(1840)`: the namespace `NesEmulator.Mix` is missing there), which is not caused by this work (a file I did not touch).
+
+**Final run after merging `refs/heads/main` (e776c22: Instrument Runaway recipes, `DspWriteTap`, `BankReadTap`; the only conflicts were `Game.CaptureSpc`, now `SnesPusher.Carry` applied to every return of main's version, and two doc lines)**, DLL, test bench and Workshop rebuilt, 2026-10-17:
+`inject-test` **100 passed, 0 failed, 1 not tested** (the check count includes the deliberate-bug runs; the one not tested is Donkey Kong Country at -1200 cents); `selftest --only inject,imodel,imodel-ui,ui,ui-proof,runaway-recipes` 6 / 6; `certify.ps1 -Only plugin-host` **PASS, the full selftest 57 results: 56 pass, 1 expected warning, 0 failed**; `UAT\run-suite.ps1` with the fresh exe **84 pass, 0 fail, 60 skip**;
+`--snesbench` SMW golden IDENTICAL (video b871d85c3cb38874, audio 6c99a6ace3df5db5), `--snes-state-test` 147 / 147, `--md-state-test` 168 / 168, `--md-test` 175 / 175, `--corrupt-test` 275 / 275, `--swap-matrix-test` 35 / 35, `--smstest` 420 pass 0 fail, `--fm-oracle-test` 173 / 173, `--ym-oracle-test` 43 / 43, `--sega-chips-test` 34 / 34, `--sega-stems-test` 38 / 38; `--md-golden` the same single changed frame as before (Titan Overdrive 1, frame 1007).
 
 ## 6. Not tested
 
@@ -141,7 +145,7 @@ The hooks are one null test each (`DSP_SFC.Overrides`, `Ym2612.Override`, `Ym241
 - **The original is kept by the first push** and survives a second push, a re-freeze and a reopened project (INJ1), so Remove works in all of them.
 - **Edits that change nothing are refused or taken for removal** ("nothing to push"; an instrument edited back to the game's own removes the earlier push).
 - **Finding outside my domain:** `--md-golden` reports Titan Overdrive 1 frame 1007 changed (hash C740C2A7D83CE55F) on `main` 7bd01f1 itself (a baseline build of main gives the identical result); it is the frame the hand-off guide already lists as chaotic. Not caused by this work.
-- **Finding:** `Emulator.InstrumentNote` (imodel's note for a project whose overlay was damaged) is not shown anywhere in the UI; the new `Notice` member could carry it (one line in `EmulatorInstrumentProvider.Notice`).
+- **Finding, fixed:** `Emulator.InstrumentNote` (imodel's note for a project whose instrument-edit overlay was damaged) was shown nowhere in the UI; the tab's `Notice` now carries it after the push notes (`EmulatorInstrumentProvider.Notice`).
 - A project reopened during a test must have the instance that saved it disposed first (an Auto instance joins the existing emulator): the first version of the DLL check compared a machine with itself.
 
 ## 8. Open problems and next steps
