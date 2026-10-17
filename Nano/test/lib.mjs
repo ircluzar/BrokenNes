@@ -47,3 +47,46 @@ export function pitchHz(a, rate, from, to, lo = 40, hi = 4000) {
 }
 
 export const midiHz = (n) => 440 * Math.pow(2, (n - 69) / 12);
+
+// Magnitude spectrum (Hann window, radix-2 FFT) of a[from .. from+n), n a power of two; returns n/2 magnitudes.
+export function spectrum(a, from, n) {
+  const re = new Float64Array(n), im = new Float64Array(n);
+  for (let i = 0; i < n; i++) re[i] = (a[from + i] ?? 0) * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / n));
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { [re[i], re[j]] = [re[j], re[i]]; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const ur = re[i + k], ui = im[i + k];
+        const vr = re[i + k + len / 2] * cr - im[i + k + len / 2] * ci, vi = re[i + k + len / 2] * ci + im[i + k + len / 2] * cr;
+        re[i + k] = ur + vr; im[i + k] = ui + vi; re[i + k + len / 2] = ur - vr; im[i + k + len / 2] = ui - vi;
+        const t = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = t;
+      }
+    }
+  }
+  const mag = new Float64Array(n / 2);
+  for (let i = 0; i < n / 2; i++) mag[i] = Math.hypot(re[i], im[i]) / n;
+  return mag;
+}
+
+// Fundamental by counting rising zero crossings over a window (exact for the chip's square, pulse and triangle waves, which cross zero once per
+// period once the DC offset is removed); NaN when there are fewer than three.
+export function pitchZc(a, rate, from, to) {
+  let mean = 0; for (let i = from; i < to; i++) mean += a[i]; mean /= (to - from);
+  let first = -1, last = -1, count = 0;
+  for (let i = from + 1; i < to; i++) {
+    const p = a[i - 1] - mean, q = a[i] - mean;
+    if (p < 0 && q >= 0) {
+      const t = i - 1 + (-p) / (q - p);
+      if (first < 0) first = t;
+      last = t; count++;
+    }
+  }
+  return count >= 3 ? (count - 1) * rate / (last - first) : NaN;
+}
