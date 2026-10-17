@@ -88,7 +88,7 @@ class Chip {
     this.noiseHalt = 0; this.noiseConst = 0; this.noiseVol = 0; this.noiseEnvStart = 0; this.noiseEnvDiv = 0; this.noiseEnvDecay = 0;
 
     // DMC
-    this.dmcMem = null;                        // Uint8Array(0x8000): the bytes at $8000-$FFFF (null: reads 0)
+    this.dmcMem = null;                        // Uint8Array(0x4000): the bytes at $C000-$FFFF, mirrored at $8000 (null: reads 0)
     this.dmcEnabled = 0; this.dmcCtrl = 0; this.dmcAddrReg = 0; this.dmcLenReg = 0;
     this.dmcTimer = 428; this.dmcTimerPeriod = 428; this.dmcAddress = 0; this.dmcLenRemaining = 0; this.dmcIrqEnable = 0; this.dmcLoop = 0;
     this.dmcShiftReg = 0; this.dmcBitsRemaining = 8; this.dmcDelta = 0; this.dmcSilence = 0; this.dmcBuffer = 0; this.dmcBufferFilled = 0;
@@ -114,10 +114,11 @@ class Chip {
 
   setHostRate(rate) { this.hostRate = rate; this.rsStep = NATIVE_RATE / rate; }
 
-  // Memory for the DMC: bytes[i] is the byte at $C000 + i (a DPCM sample; at most 16 KB, wrapping to $8000 like the hardware).
+  // Memory for the DMC: bytes[i] is the byte at $C000 + i (sample data, at most 16 KB). The 16 KB is also seen at $8000, like a 16 KB cartridge, so a
+  // sample that runs past $FFFF wraps round to the start of it.
   setDmcMemory(bytes) {
-    const mem = new Uint8Array(0x8000);
-    mem.set(bytes.subarray(0, Math.min(bytes.length, 0x4000)), 0x4000);
+    const mem = new Uint8Array(0x4000);
+    mem.set(bytes.subarray(0, Math.min(bytes.length, 0x4000)));
     this.dmcMem = mem;
   }
 
@@ -270,7 +271,7 @@ class Chip {
     if (this.dmcBufferFilled) return;
     if (this.dmcLenRemaining === 0) return;
     const mem = this.dmcMem;
-    this.dmcBuffer = mem ? mem[this.dmcAddress - 0x8000] : 0;
+    this.dmcBuffer = mem ? mem[this.dmcAddress & 0x3FFF] : 0;
     this.dmcAddress++; if (this.dmcAddress > 0xFFFF) this.dmcAddress = 0x8000;
     this.dmcLenRemaining--; this.dmcBufferFilled = 1;
     if (this.dmcLenRemaining === 0 && this.dmcLoop) this.restartDmc();
@@ -443,8 +444,9 @@ const PRESETS = {
 const CPU_HZ = 1789773;
 const CHUNK = 64;                 // the control tick, in samples
 const KIND = { pulse: 0, triangle: 1, noise: 2 };
-const KIND_CHANNELS = [[0, 1], [2], [3]];
-const KIND_NAMES = ['pulse', 'triangle', 'noise'];
+const KIND_CHANNELS = [[0, 1], [2], [3], [4]];       // kind 3, 'dpcm', is only made by addSample
+const KIND_NAMES = ['pulse', 'triangle', 'noise', 'dpcm'];
+const CHANNELS = 5;                                  // pulse 1, pulse 2, triangle, noise, DPCM
 const MAX_STACK = 8;
 
 // C# Math.Round(double): halves go to the even neighbour (JS Math.round sends them up)
@@ -479,6 +481,7 @@ function normalizePreset(p, name) {
     arpSteps: null, arpRate: 0, arpOnce: false,
     noiseIdx: -1, noiseTo: 0, noiseMs: 0, noiseMode: 0,
     sweep: -1,
+    dmcAddr: 0, dmcLen: 0, dmcRate: 0, dmcLoop: false, dmcPitched: false, dmcStart: 0,
   };
   if (out.oneShot && out.s !== 0) throw new RangeError('a oneShot preset needs s = 0 (it ends by itself after a + d)');
   if (p.dutySeq) {
@@ -512,6 +515,40 @@ function normalizePreset(p, name) {
   return out;
 }
 
+// A sample preset (kind 3): what addSample registers. addr / len are the $4012 / $4013 values, rate the $4010 rate index.
+function makeSamplePreset(name, o) {
+  const out = normalizePreset({ kind: 'pulse', note: o.note, label: o.label ?? name, desc: o.desc ?? 'a DPCM sample', a: 0, d: o.loop ? 0 : o.durationMs, s: o.loop ? 1 : 0, r: 0, oneShot: !o.loop }, name);
+  out.kind = 3; out.dmcAddr = o.addr; out.dmcLen = o.len; out.dmcRate = o.rate; out.dmcLoop = !!o.loop; out.dmcPitched = !!o.pitched; out.dmcStart = o.start | 0;
+  return out;
+}
+
+// The chip's sample memory ($C000-$FFFF, 16 KB) and the presets made from the samples laid out in it. Engine and Synth both use one, so the main
+// thread and the audio thread agree on every address without talking.
+class SampleBank {
+  constructor() { this.rom = new Uint8Array(0x4000); this.used = 0; this.samples = {}; }
+  // bytes: raw DPCM data (one bit per step: 1 = up, 0 = down, least significant bit first). o: {rate 0..15 (default 15, the fastest), loop, note, pitched, start 0..127
+  // (the level the output counter is set to when the sample starts, default 0), label, desc}
+  add(name, bytes, o = {}) {
+    if (!(bytes instanceof Uint8Array)) bytes = Uint8Array.from(bytes);
+    if (bytes.length < 1) throw new RangeError('a sample needs at least one byte');
+    const rate = o.rate ?? 15;
+    if (!Number.isInteger(rate) || rate < 0 || rate > 15) throw new RangeError('sample rate must be an integer from 0 to 15');
+    const start0 = o.start ?? 0;
+    if (!Number.isInteger(start0) || start0 < 0 || start0 > 127) throw new RangeError('sample start must be an integer from 0 to 127');
+    const note = o.note ?? 60;
+    if (typeof note !== 'number' || !(note >= 0 && note <= 127)) throw new RangeError('sample note must be a number from 0 to 127');
+    const lenReg = Math.min(255, Math.floor((bytes.length - 1) / 16)), played = lenReg * 16 + 1;   // the chip plays 16 x $4013 + 1 bytes
+    const start = (this.used + 63) & ~63;                                                           // $4012 addresses 64-byte blocks
+    if (start + played > 0x4000) throw new RangeError('DPCM memory is full (the chip addresses 16 KB)');
+    this.rom.set(bytes.subarray(0, played), start);
+    this.used = start + played;
+    const slowest = o.pitched ? 0 : rate;
+    const durationMs = played * 8 * DMC_RATES[slowest] / CPU_HZ * 1000 + 3;
+    this.samples[name] = { addr: start >> 6, len: lenReg, rate, played };
+    return makeSamplePreset(name, { note, addr: start >> 6, len: lenReg, rate, loop: !!o.loop, pitched: !!o.pitched, start: start0, durationMs, label: o.label, desc: o.desc });
+  }
+}
+
 class Voice {
   constructor(id, preset, note, vel, start, channel) {
     this.id = id; this.p = preset; this.note = note; this.vel = vel; this.start = start; this.channel = channel;
@@ -531,12 +568,13 @@ class Engine {
     this.nextTick = 0;                 // the frame of the next control tick
     this.events = [];                  // sorted by frame, then by arrival
     this.seq = 0;
-    this.stacks = [[], [], [], []];    // per channel: the voices on it, newest last
-    this.gate = [false, false, false, false];
-    this.curPeriod = [0, 0, 0, 0];
-    this.curLevel = [0, 0, 0, 0];
-    this.curNote = [-1, -1, -1, -1];
-    this.lastVoice = [null, null, null, null];   // the voice whose registers each channel last got
+    this.stacks = [[], [], [], [], []];    // per channel: the voices on it, newest last
+    this.gate = [false, false, false, false, false];
+    this.curPeriod = [0, 0, 0, 0, 0];
+    this.curLevel = [0, 0, 0, 0, 0];
+    this.curNote = [-1, -1, -1, -1, -1];
+    this.lastVoice = [null, null, null, null, null];   // the voice whose registers each channel last got
+    this.bank = new SampleBank();       // the chip's sample memory and what is in it
     this.pitchBend = 0;                // cents, all voices
     this.tune = 0;                     // cents, all voices
     this.presets = {};
@@ -580,6 +618,12 @@ class Engine {
   kill(frame) { this.schedule(frame, { t: 'kill' }); }
   setParam(frame, name, value) { this.schedule(frame, { t: 'param', name, value }); }
 
+  // Adds a DPCM sample (see SampleBank.add); it becomes a preset of the same name.
+  addSample(name, bytes, o) {
+    this.presets[name] = this.bank.add(name, bytes, o);
+    this.chip.setDmcMemory(this.bank.rom);
+  }
+
   addPreset(name, def) { this.presets[name] = normalizePreset(def, name); }
 
   resolvePreset(p) {
@@ -605,7 +649,11 @@ class Engine {
       case 'off': { const v = this.findVoice(ev.ref); if (v) this.release(v); break; }
       case 'bend': { const v = this.findVoice(ev.ref); if (v) v.bend = ev.cents; break; }
       case 'alloff': for (const v of Array.from(this.voices.values())) this.release(v); break;
-      case 'kill': for (const v of Array.from(this.voices.values())) this.remove(v); for (let c = 0; c < 4; c++) this.applyChannel(c); break;
+      case 'kill':
+        for (const v of Array.from(this.voices.values())) this.remove(v);
+        for (let c = 0; c < CHANNELS; c++) this.applyChannel(c);
+        if (this.chip.shadow[0x15] & 0x10) this.wf(0x15, 0x0F);   // a one-shot sample is cut as well
+        break;
       case 'param':
         if (ev.name === 'volume') this.volume = ev.value;
         else if (ev.name === 'pitchBend') this.pitchBend = ev.value;
@@ -744,6 +792,7 @@ class Engine {
     const vol = v.vel * p.gain * this.env(v, this.frame);
     // FL hands the plugin a float32 volume and the plugin multiplies it by 15 in float32 before rounding to even: 0.3 x 15 is 4.5 there (so 4), not 4.5000000179
     let level = clamp(roundEven(Math.fround(15 * Math.fround(vol))), 0, 15);
+    if (ch === 4) level = v.vel * p.gain > 0 ? 15 : 0;   // the DMC has no volume: a sample plays or it does not
     // a voice that follows (or is) a sweep-unit voice restarts the channel: the chip's sweep unit moved the period behind the shadow registers' back
     const lv = this.lastVoice[ch];
     const retrigger = v.fresh || !this.gate[ch] || (lv !== v && ((lv !== null && lv.p.sweep >= 0) || p.sweep >= 0));
@@ -777,7 +826,7 @@ class Engine {
         this.wf(0x0B, hi | 0xF8);
       } else this.w(0x0A, lo);
       this.curPeriod[2] = period;
-    } else {
+    } else if (ch === 3) {
       let idx;
       if (p.noiseIdx >= 0) {
         const f = p.noiseMs > 0 ? Math.min(1, t / p.noiseMs) : 1;
@@ -791,6 +840,27 @@ class Engine {
       this.w(0x0E, (mode << 7) | idx);
       if (retrigger) this.wf(0x0F, 0xF8);
       this.curPeriod[3] = idx;
+    } else {
+      // DPCM: the sample starts from its first byte when the voice begins (or takes the channel back from another sample)
+      if (level === 0) {
+        if (this.gate[4]) { this.silence(4); this.gate[4] = false; }
+        this.curLevel[4] = 0;
+        return;
+      }
+      if (retrigger || lv !== v) {
+        let rate = p.dmcRate;
+        if (p.dmcPitched) {
+          const target = CPU_HZ / DMC_RATES[p.dmcRate] * Math.pow(2.0, (cents / 100.0 - (p.note - 60)) / 12.0);
+          let bd = Infinity;
+          for (let i = 0; i < 16; i++) { const d = Math.abs(Math.log2(CPU_HZ / DMC_RATES[i] / target)); if (d < bd) { bd = d; rate = i; } }
+        }
+        this.wf(0x10, rate | (p.dmcLoop ? 0x40 : 0));
+        this.wf(0x11, p.dmcStart);
+        this.wf(0x12, p.dmcAddr);
+        this.wf(0x13, p.dmcLen);
+        this.wf(0x15, 0x0F);   // bit 4 off then on: the chip restarts a sample only when none is playing
+        this.wf(0x15, 0x1F);
+      }
     }
     this.gate[ch] = true;
     this.curLevel[ch] = level;
@@ -801,13 +871,14 @@ class Engine {
     // the plugin's Silence: the channel's level to 0, the gate closed. A pulse keeps the duty of the voice that just left.
     if (ch < 2) this.w(ch * 4, (this.lastDuty(ch) << 6) | 0x30);
     else if (ch === 2) this.w(8, 0x80);
-    else this.w(0x0C, 0x30);
+    else if (ch === 3) this.w(0x0C, 0x30);
+    else if (this.lastVoice[4] && this.lastVoice[4].p.dmcLoop) this.wf(0x15, 0x0F);   // a looping sample stops with its note; a one-shot is left to finish
   }
   lastDuty(ch) { return (this.chip.shadow[ch * 4] >> 6) & 3; }
 
   // One control tick: finished voices go, every channel is rewritten from its owner.
   tick() {
-    for (let c = 0; c < 4; c++) {
+    for (let c = 0; c < CHANNELS; c++) {
       const st = this.stacks[c];
       for (let i = st.length - 1; i >= 0; i--) {
         const v = st[i];
@@ -848,12 +919,12 @@ class Engine {
   // What the four channels are doing (for meters).
   activity() {
     const a = [];
-    for (let c = 0; c < 4; c++) a.push({ active: this.gate[c], level: this.curLevel[c], note: this.curNote[c], voices: this.stacks[c].length });
+    for (let c = 0; c < CHANNELS; c++) a.push({ active: this.gate[c], level: this.curLevel[c], note: this.curNote[c], voices: this.stacks[c].length });
     return a;
   }
 }
 
-return { Chip, Engine, PRESETS, normalizePreset, roundEven, KIND_NAMES, KIND_CHANNELS, CPU_HZ, CHUNK };
+return { Chip, Engine, SampleBank, PRESETS, normalizePreset, roundEven, KIND_NAMES, KIND_CHANNELS, CPU_HZ, CHUNK, DMC_RATES };
 }
 
 // ---- api: the page-facing side ---------------------------------------------------------------------------------------------------
@@ -904,6 +975,7 @@ function workletMain(kit, PROCESSOR_NAME) {
         case 'kill': e.kill(f); break;
         case 'param': e.setParam(f, m.name, m.value); break;
         case 'addPreset': e.addPreset(m.name, m.def); break;
+        case 'addSample': e.addSample(m.name, m.bytes, m.o); break;
         case 'report': this.report = !!m.on; break;
         case 'ping': this.port.postMessage({ t: 'pong', n: m.n }); break;
       }
@@ -995,6 +1067,7 @@ class Synth {
     this.node = node;
     this._own = ownsContext;
     this._table = {};
+    this._bank = new kit.SampleBank();
     for (const k of Object.keys(kit.PRESETS)) this._table[k] = kit.normalizePreset(kit.PRESETS[k], k);
     if (options.presets) for (const k of Object.keys(options.presets)) this._table[k] = kit.normalizePreset(options.presets[k], k);
     this._default = options.preset ?? 'lead';
@@ -1093,6 +1166,20 @@ class Synth {
     this._post({ t: 'addPreset', name, def });
   }
 
+  /**
+   * Adds a DPCM sample as a preset of the same name (the chip's fifth channel; it has no volume control, so velocity only decides play / do not play).
+   * data: raw DPCM bytes (a Uint8Array: 1 bit per step), or PCM audio (a Float32Array, -1..1, with opts.sampleRate) which is encoded for you.
+   * opts: {rate: 0..15 (the chip's 16 sample rates, 4.2 kHz to 33.1 kHz; default 15), loop, note (what play() uses), pitched (the note picks the nearest of the
+   *        16 rates, relative to opts.note), start (the output level the sample starts from, 0..127, default 0), label, desc}.
+   * All samples together can take 16 KB. Then synth.play(name) or synth.noteOn(note, 1, {preset: name}).
+   */
+  addSample(name, data, opts = {}) {
+    const bytes = data instanceof Float32Array ? encodeDpcm(data, { ...opts, rate: opts.rate ?? 15 }) : data instanceof Uint8Array ? data : (() => { throw new TypeError('sample data is a Uint8Array of DPCM bytes or a Float32Array of PCM'); })();
+    const o = { rate: opts.rate, loop: opts.loop, note: opts.note, pitched: opts.pitched, start: opts.start, label: opts.label, desc: opts.desc };
+    this._table[name] = this._bank.add(name, bytes, o);
+    this._post({ t: 'addSample', name, bytes, o });
+  }
+
   /** Routes the sound somewhere else: synth.connect(myGainNode). By default it is connected to the context's destination. */
   connect(destination, output, input) { return this.node.connect(destination, output, input); }
   disconnect(...args) { this.node.disconnect(...args); }
@@ -1144,6 +1231,35 @@ async function create(options = {}) {
   }
 }
 
+// ---- DPCM ----
+
+/**
+ * Turns PCM audio into DPCM bytes the chip can play: pcm (Float32Array or array, mono, -1..1) at opts.sampleRate (default 44100), resampled to the
+ * chip's sample rate number opts.rate (0..15, default 15 = 33.1 kHz; the slower ones are smaller and rougher). opts.start (0..127, default 0) is the level the
+ * decoder starts from and opts.gain scales the signal (default 1). The encoder follows the chip's own counter (steps of 2, saturating), so what you hear
+ * is what it computes. The result is padded to the length the chip plays (16 n + 1 bytes).
+ */
+function encodeDpcm(pcm, opts = {}) {
+  const inRate = opts.sampleRate ?? 44100, rate = opts.rate ?? 15, gain = opts.gain ?? 1;
+  if (!Number.isInteger(rate) || rate < 0 || rate > 15) throw new RangeError('rate must be an integer from 0 to 15');
+  const start = opts.start ?? 0;
+  if (!Number.isInteger(start) || start < 0 || start > 127) throw new RangeError('start must be an integer from 0 to 127');
+  const outRate = kit.CPU_HZ / kit.DMC_RATES[rate];
+  const n = Math.max(1, Math.floor(pcm.length * outRate / inRate));
+  const bytes = Math.min(4081, Math.max(1, Math.ceil((n / 8 - 1) / 16) * 16 + 1));
+  const out = new Uint8Array(bytes);
+  let c = start;
+  for (let i = 0; i < bytes * 8; i++) {
+    const pos = i * inRate / outRate, k = Math.floor(pos), f = pos - k;
+    const a = pcm[Math.min(k, pcm.length - 1)] ?? 0, b = pcm[Math.min(k + 1, pcm.length - 1)] ?? 0;
+    const x = Math.max(-1, Math.min(1, (a + (b - a) * f) * gain));
+    const target = (x * 0.5 + 0.5) * 127;
+    if (c < target) { out[i >> 3] |= 1 << (i & 7); if (c <= 125) c += 2; }
+    else if (c >= 2) c -= 2;
+  }
+  return out;
+}
+
 // ---- rendering without an AudioContext ----
 
 /**
@@ -1155,6 +1271,10 @@ async function create(options = {}) {
 function renderOffline(events, seconds, opts = {}) {
   const sr = opts.sampleRate || 44100;
   const eng = new kit.Engine(sr, { volume: opts.volume ?? 1, presets: opts.presets, trace: !!opts.trace });
+  if (opts.samples) for (const name of Object.keys(opts.samples)) {
+    const sdef = opts.samples[name];
+    eng.addSample(name, sdef.data instanceof Float32Array ? encodeDpcm(sdef.data, sdef) : sdef.data, sdef);
+  }
   let nextId = 1;
   for (const ev of events) {
     const f = Math.round((ev.time || 0) * sr);
@@ -1177,7 +1297,7 @@ function renderOffline(events, seconds, opts = {}) {
   const total = Math.round(seconds * sr);
   const out = new Float32Array(total);
   for (let o = 0; o < total; o += 128) eng.render(out, o, Math.min(128, total - o));
-  if (opts.trace) { out.trace = eng.trace; out.log = eng.log; out.logPresets = eng.logPresets; }
+  if (opts.trace) { out.trace = eng.trace; out.log = eng.log; out.logPresets = eng.logPresets; out.dmcRom = eng.bank.used ? eng.bank.rom.slice() : null; }
   return out;
 }
 
@@ -1191,7 +1311,7 @@ function toAudioBuffer(ctx, events, seconds, opts = {}) {
 
 const api = {
   version: VERSION,
-  create, support, noteNumber, renderOffline, toAudioBuffer,
+  create, support, noteNumber, renderOffline, toAudioBuffer, encodeDpcm,
   /** The built-in presets: [{name, label, kind, desc, note}] */
   presets: describePresets(Object.fromEntries(Object.keys(kit.PRESETS).map(k => [k, kit.normalizePreset(kit.PRESETS[k], k)]))),
   /** The engine itself, for tools and tests (not a stable interface). */
@@ -1201,4 +1321,4 @@ const api = {
 return api;
 })();
 export default api;
-export const { version, create, support, noteNumber, renderOffline, toAudioBuffer, presets } = api;
+export const { version, create, support, noteNumber, renderOffline, toAudioBuffer, encodeDpcm, presets } = api;

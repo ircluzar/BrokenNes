@@ -35,7 +35,9 @@ if (args[0] == "replay")
         string core = root.GetProperty("core").GetString()!;
         int rate = root.GetProperty("rate").GetInt32();
         byte mask = (byte)root.GetProperty("mask").GetInt32();
-        var chip = new NesApuInstrument(core, rate, mask);
+        IChipDriver chip = root.TryGetProperty("dmcRom", out var romEl) && romEl.ValueKind == JsonValueKind.String
+            ? new DmcChip(rate, Convert.FromBase64String(romEl.GetString()!), mask)
+            : new InstrumentChip(core, rate, mask);
 
         var ops = root.GetProperty("ops");
         long total = 0;

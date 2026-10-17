@@ -18,10 +18,23 @@ const MINE = {
   sweepdn: { kind: 'pulse', duty: 3, a: 0, d: 600, s: 1, r: 80, sweep: { period: 4, negate: false, shift: 1 } },
 };
 
+// samples for the DPCM scripts: PCM that the module encodes, and raw DPCM bytes
+function pcmSweep(n, rate) { const a = new Float32Array(n); let ph = 0; for (let i = 0; i < n; i++) { const f = 900 - 700 * i / n; ph += 2 * Math.PI * f / rate; a[i] = Math.sin(ph) * (1 - i / n); } return a; }
+function rawBytes(seed, n) { const r = rng(seed); const b = new Uint8Array(n); for (let i = 0; i < n; i++) b[i] = Math.floor(r() * 256); return b; }
+export function dpcmSamples(Nano) {
+  return {
+    sweep: { data: pcmSweep(22050, 44100), sampleRate: 44100, rate: 15, note: 60 },
+    sweepslow: { data: pcmSweep(8000, 44100), sampleRate: 44100, rate: 6, note: 60, pitched: true },
+    crunch: { data: rawBytes(5, 257), rate: 12, note: 48 },
+    buzz: { data: Uint8Array.from({ length: 33 }, (_, i) => (i % 2 ? 0xF0 : 0x0F)), rate: 10, loop: true, note: 60, pitched: true },
+    tone: { data: Nano.encodeDpcm(Float32Array.from({ length: 2048 }, (_, i) => Math.sin(2 * Math.PI * 441 * i / 44100)), { sampleRate: 44100, rate: 15 }), rate: 15, loop: true, note: 60, start: 20 },
+  };
+}
+
 export function scenarios(Nano) {
   const out = [];
   const all = Nano.presets.map(p => p.name);
-  const add = (name, sampleRate, seconds, events, presets) => out.push({ name, sampleRate, seconds, events, presets });
+  const add = (name, sampleRate, seconds, events, presets, samples) => out.push({ name, sampleRate, seconds, events, presets, samples });
 
   // 1. every preset at its natural pitch and an octave below / two above, held then released
   for (const rate of [44100, 48000]) {
@@ -128,6 +141,43 @@ export function scenarios(Nano) {
     add(`passage_${rate}`, rate, 3.6, ev);
   }
 
+  // 7b. DPCM: one-shots, loops and notes that stop them, the mixer with the other channels, taking the channel and giving it back
+  {
+    const samples = dpcmSamples(Nano);
+    const ev = [];
+    ev.push({ time: 0, type: 'on', note: 60, preset: 'sweep', id: 1 });
+    ev.push({ time: 0.8, type: 'on', note: 60, preset: 'crunch', id: 2 });
+    ev.push({ time: 1.2, type: 'on', note: 60, preset: 'tone', id: 3 });
+    ev.push({ time: 1.7, type: 'off', id: 3 });
+    ev.push({ time: 1.9, type: 'on', note: 65, preset: 'buzz', id: 4 });
+    ev.push({ time: 2.4, type: 'off', id: 4 });
+    ev.push({ time: 2.6, type: 'on', note: 48, preset: 'sweepslow', id: 5 });
+    ev.push({ time: 3.2, type: 'on', note: 72, preset: 'sweepslow', id: 6 });
+    ev.push({ time: 3.8, type: 'on', note: 60, preset: 'sweep', id: 7 });
+    ev.push({ time: 3.9, type: 'kill' });
+    add('dpcm_basic', 44100, 4.4, ev, undefined, samples);
+  }
+  {
+    const samples = dpcmSamples(Nano);
+    const ev = [];
+    ev.push({ time: 0.0, type: 'on', note: 72, preset: 'lead', id: 1 });
+    ev.push({ time: 0.0, type: 'on', note: 36, preset: 'bass', id: 2 });
+    ev.push({ time: 0.1, type: 'on', note: 60, preset: 'tone', id: 3 });
+    ev.push({ time: 0.2, type: 'on', note: 38, preset: 'snare', id: 4 });
+    ev.push({ time: 0.5, type: 'on', note: 60, preset: 'crunch', id: 5, velocity: 0 });
+    ev.push({ time: 0.9, type: 'on', note: 55, preset: 'buzz', id: 6 });       // takes the channel from the held tone
+    ev.push({ time: 1.3, type: 'off', id: 6 });                                  // and gives it back
+    ev.push({ time: 1.8, type: 'off', id: 3 });
+    ev.push({ time: 1.9, type: 'off', id: 1 });
+    ev.push({ time: 2.0, type: 'on', note: 60, preset: 'sweep', id: 7, channel: 4 });
+    ev.push({ time: 2.2, type: 'alloff' });
+    add('dpcm_voices', 48000, 3.0, ev, undefined, samples);
+  }
+  for (const rate of [32000, 96000]) {
+    const samples = dpcmSamples(Nano);
+    add(`dpcm_rate_${rate}`, rate, 1.6, [{ time: 0, type: 'on', note: 60, preset: 'sweep', id: 1 }, { time: 0.9, type: 'on', note: 60, preset: 'tone', id: 2 }, { time: 1.3, type: 'off', id: 2 }], undefined, samples);
+  }
+
   // 8. seeded random scripts
   const rates = [44100, 48000, 22050, 44100, 48000, 96000];
   for (let s = 1; s <= 12; s++) {
@@ -156,6 +206,27 @@ export function scenarios(Nano) {
     }
     ev.sort((a, b) => a.time - b.time);
     add(`random_${s}`, rates[s % rates.length], 8.5, ev, MINE);
+  }
+  for (let s = 1; s <= 4; s++) {
+    const r = rng(s * 4231), samples = dpcmSamples(Nano), sn = Object.keys(samples);
+    const names = [...all, ...Object.keys(MINE), ...sn, ...sn];
+    const ev = []; let ids = 0;
+    for (let k = 0; k < 60; k++) {
+      const time = Math.round(r() * 5000) / 1000, x = r();
+      if (x < 0.6) {
+        const preset = names[Math.floor(r() * names.length)];
+        const kind = sn.includes(preset) ? 'dpcm' : (MINE[preset] ?? Nano._kit.PRESETS[preset]).kind;
+        const e = { time, type: 'on', note: Math.floor(r() * 100) + 20, velocity: r() < 0.1 ? 0 : Math.round(r() * 100) / 100, preset, id: ++ids };
+        if (r() < 0.15) e.duration = Math.round(r() * 600) / 1000;
+        if (kind === 'dpcm' && r() < 0.1) e.channel = 4;
+        ev.push(e);
+      } else if (x < 0.85 && ids > 0) ev.push({ time, type: 'off', id: 1 + Math.floor(r() * ids) });
+      else if (x < 0.92) ev.push({ time, type: 'alloff' });
+      else if (x < 0.96) ev.push({ time, type: 'kill' });
+      else ev.push({ time, type: 'off', note: Math.floor(r() * 100) + 20 });
+    }
+    ev.sort((a, b) => a.time - b.time);
+    add(`random_dpcm_${s}`, [44100, 48000, 44100, 32000][s - 1], 6, ev, MINE, samples);
   }
   return out;
 }

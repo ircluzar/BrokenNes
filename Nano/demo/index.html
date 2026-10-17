@@ -33,7 +33,7 @@
   #err { color: #ff8a8a; font-family: var(--mono); font-size: 13px; margin-top: 12px; white-space: pre-wrap; }
 
   .row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
-  .lanes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .lanes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
   .lane { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
   .lane .name { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
   .lane .note { font: 600 18px var(--mono); height: 24px; }
@@ -70,7 +70,7 @@
 
   pre { margin: 0; background: #0e0c16; border: 1px solid var(--line); border-radius: 6px; padding: 12px; overflow: auto; font: 13px/1.5 var(--mono); }
   .stats { font: 12px var(--mono); color: var(--dim); }
-  @media (max-width: 640px) { .lanes { grid-template-columns: repeat(2, 1fr); } .seqgrid { grid-template-columns: 52px repeat(16, 1fr); } #kb { height: 120px; } }
+  @media (max-width: 640px) { .lanes { grid-template-columns: repeat(2, 1fr); } .lane:last-child { grid-column: span 2; } .seqgrid { grid-template-columns: 52px repeat(16, 1fr); } #kb { height: 120px; } }
 </style>
 </head>
 <body>
@@ -141,9 +141,9 @@
 'use strict';
 const Nano = window.BrokenNesNano;
 const $ = (id) => document.getElementById(id);
-const COLORS = ['var(--p1)', 'var(--p2)', 'var(--tri)', 'var(--noi)'];
-const KIND_COLOR = { pulse: 'var(--p1)', triangle: 'var(--tri)', noise: 'var(--noi)' };
-const NAMES = ['Pulse 1', 'Pulse 2', 'Triangle', 'Noise'];
+const COLORS = ['var(--p1)', 'var(--p2)', 'var(--tri)', 'var(--noi)', 'var(--accent)'];
+const KIND_COLOR = { pulse: 'var(--p1)', triangle: 'var(--tri)', noise: 'var(--noi)', dpcm: 'var(--accent)' };
+const NAMES = ['Pulse 1', 'Pulse 2', 'Triangle', 'Noise', 'DPCM'];
 const noteName = (n) => n < 0 ? '' : ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][n % 12] + (Math.floor(n / 12) - 1);
 
 let synth = null, analyser = null, preset = 'lead', octave = 3;
@@ -153,6 +153,8 @@ $('startbtn').onclick = async () => {
   try {
     synth = await Nano.create({ preset });
     synth.addPreset('minarp', { kind: 'pulse', duty: 1, arp: { steps: [0, 3, 7, 12], rate: 30 }, a: 0, d: 0, s: 0.75, r: 25, desc: 'minor chord as a fast arpeggio (added by this page)' });
+    addSamples(synth);
+    buildPresets();
     analyser = synth.context.createAnalyser(); analyser.fftSize = 2048; synth.connect(analyser);
     synth.onactivity = onActivity;
     await synth.resume();
@@ -189,6 +191,17 @@ function drawScope() {
     g.stroke(); requestAnimationFrame(loop);
   };
   loop();
+}
+
+// ---- DPCM samples, made here: PCM generated in the page and encoded by Nano (the chip's fifth channel plays 1-bit delta data) ----
+function addSamples(synth) {
+  const rate = 44100;
+  const thump = new Float32Array(rate * 0.22);       // a falling sine with a short click: a sampled kick
+  let ph = 0; for (let i = 0; i < thump.length; i++) { const t = i / rate; ph += 2 * Math.PI * (45 + 120 * Math.exp(-t * 30)) / rate; thump[i] = Math.sin(ph) * Math.exp(-t * 13) * 0.95 + (i < 60 ? 0.3 : 0); }
+  synth.addSample('thump', thump, { sampleRate: rate, rate: 12, note: 36, label: 'DPCM thump', desc: 'a sampled kick, made in this page and encoded to the chip\'s 1-bit DPCM at 20 kHz' });
+  const voice = new Float32Array(rate * 0.2);        // a looping buzzy vowel: harmonics under two formant peaks
+  for (let i = 0; i < voice.length; i++) { const t = i / rate; let v = 0; for (let h = 1; h <= 24; h++) { const f = 110 * h; v += Math.sin(2 * Math.PI * f * t) / h * (Math.exp(-((f - 700) / 250) ** 2) + 0.6 * Math.exp(-((f - 1200) / 300) ** 2)); } voice[i] = v * 0.7; }
+  synth.addSample('voice', voice, { sampleRate: rate, rate: 15, loop: true, pitched: true, note: 60, label: 'DPCM voice', desc: 'a looped vowel-like sample, hold a key; the note chooses the nearest of the chip\'s 16 sample rates' });
 }
 
 // ---- presets ----
@@ -266,7 +279,7 @@ $('panic').onclick = () => { held.clear(); document.querySelectorAll('.key.down'
 buildKeys();
 
 // ---- sound effects ----
-for (const name of ['coin', 'jump', 'blip', 'powerup', 'laser', 'zap', 'hit', 'explosion']) {
+for (const name of ['coin', 'jump', 'blip', 'powerup', 'laser', 'zap', 'hit', 'explosion', 'thump']) {
   const b = document.createElement('button'); b.textContent = name; b.onclick = () => synth && synth.play(name); $('sfx').appendChild(b);
 }
 
@@ -276,6 +289,7 @@ const ROWS = [
   { id: 'snare', label: 'Snare', color: 'var(--noi)', steps: '0000100000001000', preset: 'snare', note: 38 },
   { id: 'hat', label: 'Hat', color: 'var(--noi)', steps: '0010001000100010', preset: 'hat', note: 42 },
   { id: 'ohat', label: 'Open hat', color: 'var(--noi)', steps: '0000000000000001', preset: 'openhat', note: 46 },
+  { id: 'thump', label: 'DPCM', color: 'var(--accent)', steps: '0000000010000000', preset: 'thump', note: 36 },
 ];
 // four bars in A minor: the chord roots for the bass, the arpeggio chords and the melody (two 8th notes per beat; null is a rest)
 const BARS = [

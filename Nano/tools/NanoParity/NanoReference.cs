@@ -37,6 +37,12 @@ public sealed class RefPreset
     public double NoiseMs { get; set; }
     public int NoiseMode { get; set; }
     public int Sweep { get; set; }
+    public int DmcAddr { get; set; }
+    public int DmcLen { get; set; }
+    public int DmcRate { get; set; }
+    public bool DmcLoop { get; set; }
+    public bool DmcPitched { get; set; }
+    public int DmcStart { get; set; }
 }
 
 public sealed class RefVoice
@@ -73,25 +79,27 @@ public sealed class RefEngine
 {
     const double CpuHz = 1789773.0;
     const int Chunk = 64, MaxStack = 8;
-    static readonly int[][] KindChannels = [[0, 1], [2], [3]];
+    static readonly int[][] KindChannels = [[0, 1], [2], [3], [4]];
+    static readonly int[] DmcRates = [428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54];
+    const int Channels = 5;
 
     readonly int sampleRate;
-    readonly NesApuInstrument chip;
+    readonly IChipDriver chip;
     long frame, nextTick;
     readonly List<RefEvent> events = new();
     int seq;
-    readonly List<RefVoice>[] stacks = [new(), new(), new(), new()];
+    readonly List<RefVoice>[] stacks = [new(), new(), new(), new(), new()];
     readonly List<RefVoice> voices = new();   // insertion order, like the JS Map
-    readonly bool[] gate = new bool[4];
-    readonly int[] curPeriod = new int[4];
-    readonly RefVoice?[] lastVoice = new RefVoice?[4];
+    readonly bool[] gate = new bool[Channels];
+    readonly int[] curPeriod = new int[Channels];
+    readonly RefVoice?[] lastVoice = new RefVoice?[Channels];
     double pitchBend, tune;
     public readonly List<int[]> Trace = new();
 
-    public RefEngine(int rate)
+    public RefEngine(int rate, byte[]? sampleRom)
     {
         sampleRate = rate;
-        chip = new NesApuInstrument("FIX", rate, 0x0F);
+        chip = sampleRom == null ? new InstrumentChip("FIX", rate, 0x0F) : new DmcChip(rate, sampleRom, 0x0F);
     }
 
     static double RoundEven(double x) => Math.Round(x, MidpointRounding.ToEven);
@@ -125,7 +133,8 @@ public sealed class RefEngine
             case "alloff": foreach (var v in voices.ToArray()) Release(v); break;
             case "kill":
                 foreach (var v in voices.ToArray()) Remove(v);
-                for (int c = 0; c < 4; c++) ApplyChannel(c);
+                for (int c = 0; c < Channels; c++) ApplyChannel(c);
+                if ((chip.Shadow(0x15) & 0x10) != 0) Wf(0x15, 0x0F);
                 break;
             case "param":
                 if (ev.Name == "pitchBend") pitchBend = ev.Value;
@@ -274,6 +283,7 @@ public sealed class RefEngine
         double vol = v.Vel * p.Gain * Env(v, frame);
         float volF = (float)vol;   // the plugin's fl.Vol is a float and 15 * it is a float product
         int level = (int)Math.Clamp(RoundEven((double)(15 * volF)), 0, 15);
+        if (ch == 4) level = v.Vel * p.Gain > 0 ? 15 : 0;
         var lv = lastVoice[ch];
         bool retrigger = v.Fresh || !gate[ch] || (lv != v && ((lv != null && lv.P.Sweep >= 0) || p.Sweep >= 0));
         v.Fresh = false;
@@ -314,7 +324,7 @@ public sealed class RefEngine
             else W(0x0A, lo);
             curPeriod[2] = period;
         }
-        else
+        else if (ch == 3)
         {
             int idx;
             if (p.NoiseIdx >= 0)
@@ -333,6 +343,30 @@ public sealed class RefEngine
             if (retrigger) Wf(0x0F, 0xF8);
             curPeriod[3] = idx;
         }
+        else
+        {
+            if (level == 0)
+            {
+                if (gate[4]) { Silence(4); gate[4] = false; }
+                return;
+            }
+            if (retrigger || lv != v)
+            {
+                int rate = p.DmcRate;
+                if (p.DmcPitched)
+                {
+                    double target = CpuHz / DmcRates[p.DmcRate] * Math.Pow(2.0, (cents / 100.0 - (p.Note - 60)) / 12.0);
+                    double bd = double.PositiveInfinity;
+                    for (int i = 0; i < 16; i++) { double d = Math.Abs(Math.Log2(CpuHz / DmcRates[i] / target)); if (d < bd) { bd = d; rate = i; } }
+                }
+                Wf(0x10, rate | (p.DmcLoop ? 0x40 : 0));
+                Wf(0x11, p.DmcStart);
+                Wf(0x12, p.DmcAddr);
+                Wf(0x13, p.DmcLen);
+                Wf(0x15, 0x0F);
+                Wf(0x15, 0x1F);
+            }
+        }
         gate[ch] = true;
     }
 
@@ -340,12 +374,13 @@ public sealed class RefEngine
     {
         if (ch < 2) W(ch * 4, (((chip.Shadow(ch * 4) >> 6) & 3) << 6) | 0x30);
         else if (ch == 2) W(8, 0x80);
-        else W(0x0C, 0x30);
+        else if (ch == 3) W(0x0C, 0x30);
+        else if (lastVoice[4] != null && lastVoice[4]!.P.DmcLoop) Wf(0x15, 0x0F);
     }
 
     void Tick()
     {
-        for (int c = 0; c < 4; c++)
+        for (int c = 0; c < Channels; c++)
         {
             var st = stacks[c];
             for (int i = st.Count - 1; i >= 0; i--)
@@ -380,7 +415,8 @@ public sealed class RefEngine
     public static (RefEngine engine, long total) FromScenario(JsonElement root)
     {
         int rate = root.GetProperty("sampleRate").GetInt32();
-        var eng = new RefEngine(rate);
+        byte[]? rom = root.TryGetProperty("dmcRom", out var romEl) && romEl.ValueKind == JsonValueKind.String ? Convert.FromBase64String(romEl.GetString()!) : null;
+        var eng = new RefEngine(rate, rom);
         var presets = new Dictionary<string, RefPreset>();
         foreach (var kv in root.GetProperty("presets").EnumerateObject())
             presets[kv.Name] = kv.Value.Deserialize<RefPreset>(Json)!;

@@ -66,10 +66,10 @@ export function runParity(Nano, list, exe) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nano-parity-'));
   const js = new Map();
   for (const sc of list) {
-    const pcm = Nano.renderOffline(sc.events, sc.seconds, { sampleRate: sc.sampleRate, presets: sc.presets, trace: true });
+    const pcm = Nano.renderOffline(sc.events, sc.seconds, { sampleRate: sc.sampleRate, presets: sc.presets, samples: sc.samples, trace: true });
     js.set(sc.name, pcm);
-    fs.writeFileSync(path.join(dir, sc.name + '.trace.json'), JSON.stringify({ core: 'FIX', rate: sc.sampleRate, mask: 15, ops: pcm.trace }));
-    fs.writeFileSync(path.join(dir, sc.name + '.scn.json'), JSON.stringify({ sampleRate: sc.sampleRate, frames: pcm.length, presets: pcm.logPresets, events: pcm.log }));
+    fs.writeFileSync(path.join(dir, sc.name + '.trace.json'), JSON.stringify({ core: 'FIX', rate: sc.sampleRate, mask: 15, ops: pcm.trace, dmcRom: pcm.dmcRom ? Buffer.from(pcm.dmcRom).toString('base64') : undefined }));
+    fs.writeFileSync(path.join(dir, sc.name + '.scn.json'), JSON.stringify({ sampleRate: sc.sampleRate, frames: pcm.length, presets: pcm.logPresets, events: pcm.log, dmcRom: pcm.dmcRom ? Buffer.from(pcm.dmcRom).toString('base64') : undefined }));
   }
   execFileSync(exe, ['replay', dir], { stdio: ['ignore', 'ignore', 'inherit'] });
   execFileSync(exe, ['notes', dir], { stdio: ['ignore', 'ignore', 'inherit'] });
@@ -108,6 +108,12 @@ const MUTANTS = [
   ['chip: frame sequencer step 22371 -> 22372', 'this.nextFrameEvent = 22371; break;\n          case 2: this.quarterFrame(); this.nextFrameEvent = 29829; break;\n          case 3: this.quarterFrame(); this.halfFrame(); this.frameStep = -1', 'this.nextFrameEvent = 22372; break;\n          case 2: this.quarterFrame(); this.nextFrameEvent = 29829; break;\n          case 3: this.quarterFrame(); this.halfFrame(); this.frameStep = -1'],
   ['chip: Hermite coefficient 1.5 -> 1.4', 'fround(1.5 * fround(y1 - y2))', 'fround(1.4 * fround(y1 - y2))'],
   ['chip: resampler step computed with a rounded input rate', 'this.rsStep = NATIVE_RATE / hostRate;\n\n    // NesApuInstrument.Attach', 'this.rsStep = 44100.5 / hostRate;\n\n    // NesApuInstrument.Attach'],
+  // DPCM
+  ['dmc: delta step +2 -> +1', 'if (this.dmcDelta <= 125) this.dmcDelta += 2;', 'if (this.dmcDelta <= 125) this.dmcDelta += 1;'],
+  ['dmc: sample bytes read one address off', 'mem[this.dmcAddress & 0x3FFF]', 'mem[(this.dmcAddress + 1) & 0x3FFF]'],
+  ['dmc: rate table entry 54 -> 55', '106, 84, 72, 54]', '106, 84, 72, 55]'],
+  ['dmc: loop flag ignored', 'this.dmcLoop = (value & 0x40) ? 1 : 0;', 'this.dmcLoop = 0;'],
+  ['dmc: the engine forgets the start level', 'this.wf(0x11, p.dmcStart);', ''],
   // the instrument layer
   ['engine: round-half-up instead of round-to-even', 'return (f % 2 === 0) ? f : f + 1;', 'return f + 1;'],
   ['engine: pulse period formula - 1.0 -> - 1.2', 'CPU_HZ / (16.0 * freq) - 1.0', 'CPU_HZ / (16.0 * freq) - 1.2'],
@@ -145,7 +151,7 @@ if (silent.length) { console.log('SILENT scripts (a test that proves nothing): '
 
 if (args.includes('--mutants')) {
   // a smaller set of scripts is enough to see each fault, and keeps a shared machine polite
-  const subset = scenarios(loadNano(text)).filter(s => /^(voice_handling|sweep_unit|bends_and_timing|velocity_ladder|pitch_extremes|passage_44100|random_[1-5])$|^preset_(lead|snare|zap|coin|kick|pwm|crash|hat)_44100$/.test(s.name));
+  const subset = scenarios(loadNano(text)).filter(s => /^(voice_handling|sweep_unit|bends_and_timing|velocity_ladder|pitch_extremes|passage_44100|random_[1-5]|dpcm_basic|dpcm_voices)$|^preset_(lead|snare|zap|coin|kick|pwm|crash|hat)_44100$/.test(s.name));
   console.log(`\nMUTANTS: ${MUTANTS.length} deliberate errors, each against ${subset.length} scripts`);
   let survived = 0;
   for (const [name, find, replace] of MUTANTS) {

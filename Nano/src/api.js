@@ -46,6 +46,7 @@ function workletMain(kit, PROCESSOR_NAME) {
         case 'kill': e.kill(f); break;
         case 'param': e.setParam(f, m.name, m.value); break;
         case 'addPreset': e.addPreset(m.name, m.def); break;
+        case 'addSample': e.addSample(m.name, m.bytes, m.o); break;
         case 'report': this.report = !!m.on; break;
         case 'ping': this.port.postMessage({ t: 'pong', n: m.n }); break;
       }
@@ -137,6 +138,7 @@ class Synth {
     this.node = node;
     this._own = ownsContext;
     this._table = {};
+    this._bank = new kit.SampleBank();
     for (const k of Object.keys(kit.PRESETS)) this._table[k] = kit.normalizePreset(kit.PRESETS[k], k);
     if (options.presets) for (const k of Object.keys(options.presets)) this._table[k] = kit.normalizePreset(options.presets[k], k);
     this._default = options.preset ?? 'lead';
@@ -235,6 +237,20 @@ class Synth {
     this._post({ t: 'addPreset', name, def });
   }
 
+  /**
+   * Adds a DPCM sample as a preset of the same name (the chip's fifth channel; it has no volume control, so velocity only decides play / do not play).
+   * data: raw DPCM bytes (a Uint8Array: 1 bit per step), or PCM audio (a Float32Array, -1..1, with opts.sampleRate) which is encoded for you.
+   * opts: {rate: 0..15 (the chip's 16 sample rates, 4.2 kHz to 33.1 kHz; default 15), loop, note (what play() uses), pitched (the note picks the nearest of the
+   *        16 rates, relative to opts.note), start (the output level the sample starts from, 0..127, default 0), label, desc}.
+   * All samples together can take 16 KB. Then synth.play(name) or synth.noteOn(note, 1, {preset: name}).
+   */
+  addSample(name, data, opts = {}) {
+    const bytes = data instanceof Float32Array ? encodeDpcm(data, { ...opts, rate: opts.rate ?? 15 }) : data instanceof Uint8Array ? data : (() => { throw new TypeError('sample data is a Uint8Array of DPCM bytes or a Float32Array of PCM'); })();
+    const o = { rate: opts.rate, loop: opts.loop, note: opts.note, pitched: opts.pitched, start: opts.start, label: opts.label, desc: opts.desc };
+    this._table[name] = this._bank.add(name, bytes, o);
+    this._post({ t: 'addSample', name, bytes, o });
+  }
+
   /** Routes the sound somewhere else: synth.connect(myGainNode). By default it is connected to the context's destination. */
   connect(destination, output, input) { return this.node.connect(destination, output, input); }
   disconnect(...args) { this.node.disconnect(...args); }
@@ -286,6 +302,35 @@ async function create(options = {}) {
   }
 }
 
+// ---- DPCM ----
+
+/**
+ * Turns PCM audio into DPCM bytes the chip can play: pcm (Float32Array or array, mono, -1..1) at opts.sampleRate (default 44100), resampled to the
+ * chip's sample rate number opts.rate (0..15, default 15 = 33.1 kHz; the slower ones are smaller and rougher). opts.start (0..127, default 0) is the level the
+ * decoder starts from and opts.gain scales the signal (default 1). The encoder follows the chip's own counter (steps of 2, saturating), so what you hear
+ * is what it computes. The result is padded to the length the chip plays (16 n + 1 bytes).
+ */
+function encodeDpcm(pcm, opts = {}) {
+  const inRate = opts.sampleRate ?? 44100, rate = opts.rate ?? 15, gain = opts.gain ?? 1;
+  if (!Number.isInteger(rate) || rate < 0 || rate > 15) throw new RangeError('rate must be an integer from 0 to 15');
+  const start = opts.start ?? 0;
+  if (!Number.isInteger(start) || start < 0 || start > 127) throw new RangeError('start must be an integer from 0 to 127');
+  const outRate = kit.CPU_HZ / kit.DMC_RATES[rate];
+  const n = Math.max(1, Math.floor(pcm.length * outRate / inRate));
+  const bytes = Math.min(4081, Math.max(1, Math.ceil((n / 8 - 1) / 16) * 16 + 1));
+  const out = new Uint8Array(bytes);
+  let c = start;
+  for (let i = 0; i < bytes * 8; i++) {
+    const pos = i * inRate / outRate, k = Math.floor(pos), f = pos - k;
+    const a = pcm[Math.min(k, pcm.length - 1)] ?? 0, b = pcm[Math.min(k + 1, pcm.length - 1)] ?? 0;
+    const x = Math.max(-1, Math.min(1, (a + (b - a) * f) * gain));
+    const target = (x * 0.5 + 0.5) * 127;
+    if (c < target) { out[i >> 3] |= 1 << (i & 7); if (c <= 125) c += 2; }
+    else if (c >= 2) c -= 2;
+  }
+  return out;
+}
+
 // ---- rendering without an AudioContext ----
 
 /**
@@ -297,6 +342,10 @@ async function create(options = {}) {
 function renderOffline(events, seconds, opts = {}) {
   const sr = opts.sampleRate || 44100;
   const eng = new kit.Engine(sr, { volume: opts.volume ?? 1, presets: opts.presets, trace: !!opts.trace });
+  if (opts.samples) for (const name of Object.keys(opts.samples)) {
+    const sdef = opts.samples[name];
+    eng.addSample(name, sdef.data instanceof Float32Array ? encodeDpcm(sdef.data, sdef) : sdef.data, sdef);
+  }
   let nextId = 1;
   for (const ev of events) {
     const f = Math.round((ev.time || 0) * sr);
@@ -319,7 +368,7 @@ function renderOffline(events, seconds, opts = {}) {
   const total = Math.round(seconds * sr);
   const out = new Float32Array(total);
   for (let o = 0; o < total; o += 128) eng.render(out, o, Math.min(128, total - o));
-  if (opts.trace) { out.trace = eng.trace; out.log = eng.log; out.logPresets = eng.logPresets; }
+  if (opts.trace) { out.trace = eng.trace; out.log = eng.log; out.logPresets = eng.logPresets; out.dmcRom = eng.bank.used ? eng.bank.rom.slice() : null; }
   return out;
 }
 
@@ -333,7 +382,7 @@ function toAudioBuffer(ctx, events, seconds, opts = {}) {
 
 const api = {
   version: VERSION,
-  create, support, noteNumber, renderOffline, toAudioBuffer,
+  create, support, noteNumber, renderOffline, toAudioBuffer, encodeDpcm,
   /** The built-in presets: [{name, label, kind, desc, note}] */
   presets: describePresets(Object.fromEntries(Object.keys(kit.PRESETS).map(k => [k, kit.normalizePreset(kit.PRESETS[k], k)]))),
   /** The engine itself, for tools and tests (not a stable interface). */

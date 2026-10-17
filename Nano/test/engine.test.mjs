@@ -21,6 +21,8 @@ const MUTANTS = [
   ['slides are ignored', 'if (p.slideMs > 0 || p.slideFrom !== 0 || p.slideTo !== 0) {', 'if (false) {'],
   ['arpeggios are ignored', 'if (p.arpSteps) {\n      let i', 'if (false) {\n      let i'],
   ['voices per channel unbounded', 'const MAX_STACK = 8;', 'const MAX_STACK = 80;'],
+  ['the encoder moves by 1 instead of 2', 'if (c <= 125) c += 2; }', 'if (c <= 126) c += 1; }'],
+  ['a sample plays from the wrong start level', 'this.wf(0x11, p.dmcStart);', 'this.wf(0x11, 1);'],
   ['every preset gets duty 1', "duty: num(p.duty, 1, 0, 3, 'duty') | 0,", 'duty: 1,'],
 ];
 if (process.argv.includes('--mutants')) {
@@ -193,6 +195,37 @@ for (const p of Nano.presets) {
   check('release tail keeps the voice (pwm r = 60 ms)', e6.stacks[0].length === 1 && e6.stacks[0][0].released);
   e6.render(new Float32Array(4000), 0, 4000);
   check('and frees it afterwards', e6.stacks[0].length === 0);
+}
+
+// ---- DPCM: user-supplied samples ----
+{
+  // a 441 Hz sine, encoded at the chip's fastest rate and looped, must come back as 441 Hz
+  const sine = Float32Array.from({ length: 4410 }, (_, i) => 0.8 * Math.sin(2 * Math.PI * 441 * i / 44100));
+  const bytes = Nano.encodeDpcm(sine, { sampleRate: 44100, rate: 15 });
+  check(`encodeDpcm: 0.1 s at 33.1 kHz is ${bytes.length} bytes (16 n + 1)`, (bytes.length - 1) % 16 === 0 && bytes.length > 400 && bytes.length < 470);
+  const x = render([{ time: 0, type: 'on', note: 60, preset: 'tone', id: 1 }], 1.0, { samples: { tone: { data: bytes, rate: 15, loop: true } } });
+  const f = pitchZc(x, RATE, 6000, 6000 + 16384);
+  check(`a looped DPCM sine plays at 441 Hz (measured ${f.toFixed(1)})`, Math.abs(f - 441) < 25, 'the loop is 0.1 s, which is 44.1 periods: the seam shifts the pitch a little');
+  check('and it is audible, above the 4-bit channels\' level', peak(x, 6000, 20000) > 0.1);
+  // a sample that is not looped plays once and ends by itself
+  const y = render([{ time: 0, type: 'on', note: 60, preset: 'tone', id: 1 }], 0.6, { samples: { tone: { data: bytes, rate: 15, loop: false } } });
+  const eng = new kit.Engine(RATE); eng.addSample('s', bytes, { rate: 15 });
+  check('a one-shot sample is silent after its length (0.1 s) and frees the channel', rms(y, 800, 3500) > 0.02 && rms(y, 12000, 26000) < 0.002);
+  // a note that stops a looped sample
+  const z = render([{ time: 0, type: 'on', note: 60, preset: 'tone', id: 1 }, { time: 0.2, type: 'off', id: 1 }], 0.5, { samples: { tone: { data: bytes, rate: 15, loop: true } } });
+  check('note-off stops a looped sample', rms(z, 4000, 8000) > 0.05 && rms(z, 12000, 22000) < 0.002);
+  // memory and argument checks
+  const e2 = new kit.Engine(RATE);
+  e2.addSample('a', new Uint8Array(4081), {}); e2.addSample('b', new Uint8Array(4081), {}); e2.addSample('c', new Uint8Array(4081), {}); e2.addSample('d', new Uint8Array(4081), {});
+  check('the 16 KB of sample memory runs out with an error', throws(() => e2.addSample('e', new Uint8Array(4081), {})) instanceof RangeError);
+  check('bad sample arguments are rejected', throws(() => e2.addSample('z', new Uint8Array(0), {})) instanceof RangeError && throws(() => new kit.SampleBank().add('f', new Uint8Array(5), { rate: 16 })) instanceof RangeError && throws(() => new kit.SampleBank().add('f', new Uint8Array(5), { start: 200 })) instanceof RangeError);
+  // velocity 0 does not play, any other velocity plays at the sample's own level
+  const q = render([{ time: 0, type: 'on', note: 60, preset: 'tone', id: 1, velocity: 0 }], 0.3, { samples: { tone: { data: bytes, rate: 15, loop: true } } });
+  const q2 = render([{ time: 0, type: 'on', note: 60, preset: 'tone', id: 1, velocity: 0.1 }], 0.3, { samples: { tone: { data: bytes, rate: 15, loop: true } } });
+  check('DPCM has no volume: velocity 0 is silent, velocity 0.1 plays as loud as 1', peak(q) < 1e-6 && peak(q2, 4000, 10000) > 0.1);
+  // pitched: the note picks the nearest of the 16 rates
+  const pk = (note) => { const e = new kit.Engine(RATE, { trace: true }); e.addSample('t', bytes, { rate: 8, loop: true, pitched: true, note: 60 }); e.noteOn(0, 1, note, 1, e.resolvePreset('t'), {}); e.render(new Float32Array(200), 0, 200); return e.trace.find(o => o[0] === 0 && o[1] === 0x10)[2] & 15; };
+  check(`pitched samples: the rate index follows the note (note 60 -> ${pk(60)}, 72 -> ${pk(72)}, 48 -> ${pk(48)})`, pk(60) === 8 && pk(72) > 8 && pk(48) < 8);
 }
 
 // ---- determinism: the block size of the host does not change a sample ----

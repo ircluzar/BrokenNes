@@ -146,6 +146,18 @@ async function runAll() {
     return compare(data, want).same;
   });
 
+  await test('a DPCM sample added through the API plays through the worklet, bit for bit', async () => {
+    const sine = Float32Array.from({ length: 4410 }, (_, i) => 0.8 * Math.sin(2 * Math.PI * 441 * i / 44100));
+    const ctx = new OfflineAudioContext(1, RATE / 2, RATE);
+    const s = await Nano.create({ context: ctx, volume: 1 });
+    s.addSample('tone', sine, { sampleRate: 44100, rate: 15, loop: true });
+    s.noteOn(60, 1, { preset: 'tone', time: 0.02, duration: 0.3 });
+    await s.sync();
+    const data = (await ctx.startRendering()).getChannelData(0);
+    const want = Nano.renderOffline([{ time: 0.02, type: 'on', note: 60, preset: 'tone', id: 1, duration: 0.3 }], 0.5, { sampleRate: RATE, volume: 1, samples: { tone: { data: sine, sampleRate: 44100, rate: 15, loop: true } } });
+    return compare(data, want).same && compare(data, want).peak > 0.1;
+  });
+
   await test('connect() routes the node into a page graph (a GainNode at 0.5 halves the samples)', async () => {
     const ctx = new OfflineAudioContext(1, RATE / 2, RATE);
     const s = await Nano.create({ context: ctx, volume: 1, destination: false });
@@ -177,13 +189,21 @@ async function runAll() {
     if (synth.context.state !== 'running') { try { await Promise.race([synth.resume(), sleep(1500)]); } catch (e) { } }
     if (synth.context.state !== 'running') { await synth.dispose(); return { skip: `AudioContext is '${synth.context.state}' (needs a user gesture here), create() took ${tCreate.toFixed(0)} ms` }; }
     let msgs = 0, peak = 0, firstSound = -1;
+    const an = synth.context.createAnalyser(); an.fftSize = 8192; an.smoothingTimeConstant = 0; synth.connect(an);
     const tOn = performance.now();
     synth.onactivity = (a) => { msgs++; peak = Math.max(peak, a.peak); if (a.peak > 0.01 && firstSound < 0) firstSound = performance.now() - tOn; };
-    synth.noteOn('A4', 1, { preset: 'square', duration: 0.3 });
-    await sleep(900);
+    synth.noteOn('A4', 1, { preset: 'square' });
+    await sleep(500);
+    // what the browser's own analyser hears: the loudest frequency bin of the live output
+    const fd = new Float32Array(an.frequencyBinCount); an.getFloatFrequencyData(fd);
+    let bin = 1; for (let i = 2; i < fd.length / 4; i++) if (fd[i] > fd[bin]) bin = i;
+    const heard = bin * synth.sampleRate / an.fftSize;
+    const heardOk = Math.abs(heard - 440) < 2 * synth.sampleRate / an.fftSize;
+    synth.allOff();
+    await sleep(400);
     const state = synth.context.state, sr = synth.sampleRate, lat = synth.context.baseLatency;
     await synth.dispose();
-    return msgs > 3 && peak > 0.05 ? { detail: `${state} at ${sr} Hz, create() ${tCreate.toFixed(0)} ms, first sound ${firstSound.toFixed(0)} ms after noteOn, baseLatency ${(lat * 1000).toFixed(1)} ms, ${msgs} activity reports, peak ${peak.toFixed(3)}` } : (record('  detail', 'fail', `state ${state}, ${msgs} reports, peak ${peak}`), false);
+    return msgs > 3 && peak > 0.05 && heardOk ? { detail: `the analyser hears ${heard.toFixed(0)} Hz for A4 (440), ${state} at ${sr} Hz, create() ${tCreate.toFixed(0)} ms, first sound ${firstSound.toFixed(0)} ms after noteOn, baseLatency ${(lat * 1000).toFixed(1)} ms, ${msgs} activity reports, peak ${peak.toFixed(3)}` } : (record('  detail', 'fail', `state ${state}, ${msgs} reports, peak ${peak}`), false);
   });
 
   const failed = results.filter(r => r.status === 'fail').length;

@@ -82,7 +82,7 @@ class Chip {
     this.noiseHalt = 0; this.noiseConst = 0; this.noiseVol = 0; this.noiseEnvStart = 0; this.noiseEnvDiv = 0; this.noiseEnvDecay = 0;
 
     // DMC
-    this.dmcMem = null;                        // Uint8Array(0x8000): the bytes at $8000-$FFFF (null: reads 0)
+    this.dmcMem = null;                        // Uint8Array(0x4000): the bytes at $C000-$FFFF, mirrored at $8000 (null: reads 0)
     this.dmcEnabled = 0; this.dmcCtrl = 0; this.dmcAddrReg = 0; this.dmcLenReg = 0;
     this.dmcTimer = 428; this.dmcTimerPeriod = 428; this.dmcAddress = 0; this.dmcLenRemaining = 0; this.dmcIrqEnable = 0; this.dmcLoop = 0;
     this.dmcShiftReg = 0; this.dmcBitsRemaining = 8; this.dmcDelta = 0; this.dmcSilence = 0; this.dmcBuffer = 0; this.dmcBufferFilled = 0;
@@ -108,10 +108,11 @@ class Chip {
 
   setHostRate(rate) { this.hostRate = rate; this.rsStep = NATIVE_RATE / rate; }
 
-  // Memory for the DMC: bytes[i] is the byte at $C000 + i (a DPCM sample; at most 16 KB, wrapping to $8000 like the hardware).
+  // Memory for the DMC: bytes[i] is the byte at $C000 + i (sample data, at most 16 KB). The 16 KB is also seen at $8000, like a 16 KB cartridge, so a
+  // sample that runs past $FFFF wraps round to the start of it.
   setDmcMemory(bytes) {
-    const mem = new Uint8Array(0x8000);
-    mem.set(bytes.subarray(0, Math.min(bytes.length, 0x4000)), 0x4000);
+    const mem = new Uint8Array(0x4000);
+    mem.set(bytes.subarray(0, Math.min(bytes.length, 0x4000)));
     this.dmcMem = mem;
   }
 
@@ -264,7 +265,7 @@ class Chip {
     if (this.dmcBufferFilled) return;
     if (this.dmcLenRemaining === 0) return;
     const mem = this.dmcMem;
-    this.dmcBuffer = mem ? mem[this.dmcAddress - 0x8000] : 0;
+    this.dmcBuffer = mem ? mem[this.dmcAddress & 0x3FFF] : 0;
     this.dmcAddress++; if (this.dmcAddress > 0xFFFF) this.dmcAddress = 0x8000;
     this.dmcLenRemaining--; this.dmcBufferFilled = 1;
     if (this.dmcLenRemaining === 0 && this.dmcLoop) this.restartDmc();
