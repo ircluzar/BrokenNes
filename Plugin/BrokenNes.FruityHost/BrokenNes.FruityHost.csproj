@@ -34,6 +34,7 @@
     <Compile Include="..\BrokenNes2.Plugin\GbSampler.cs" Link="GbSampler.cs" />
     <Compile Include="..\BrokenNes2.Plugin\SegaSnapshot.cs" Link="SegaSnapshot.cs" />
     <Compile Include="..\BrokenNes2.Plugin\SegaSamplers.cs" Link="SegaSamplers.cs" />
+    <Compile Include="..\BrokenNes2.Plugin\Instruments\*.cs" LinkBase="Instruments" />
   </ItemGroup>
 
 </Project>

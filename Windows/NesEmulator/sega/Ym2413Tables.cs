@@ -1,3 +1,5 @@
+using System;
+
 namespace NesEmulator.Sega;
 
 // The numeric tables of the YM2413 core, taken from emu2413 v1.6.2 (Mitsutaka Okazaki, MIT): the exponential and log-sine ROM tables, the amplitude-LFO pattern (measured on a real
@@ -63,6 +65,15 @@ public sealed partial class Ym2413
         2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
         0, 0,
     };
+
+    /// <summary>The eight bytes of the chip's ROM instrument <paramref name="instrument"/> (1 to 15), in the layout of the user-instrument registers $00-$07 (Round 6, the instrument model: the plugin shows the ROM instruments and can copy one into the user instrument). Read-only: a copy.</summary>
+    public static byte[] RomPatchBytes(int instrument)
+    {
+        if (instrument is < 1 or > 15) throw new ArgumentOutOfRangeException(nameof(instrument), "the chip's ROM instruments are 1 to 15");
+        var b = new byte[8];
+        Array.Copy(RomPatches, instrument * 8, b, 0, 8);
+        return b;
+    }
 
     internal static readonly byte[] RomPatches =
     {

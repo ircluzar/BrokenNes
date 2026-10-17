@@ -1,3 +1,5 @@
+using SnesOverlay = BrokenNes2.Instruments.SnesOverlay;
+
 namespace BrokenNes2;
 
 /// <summary>
@@ -10,11 +12,18 @@ public sealed class SpcSnapshot
     public readonly byte[] Aram = new byte[AramSize];
     public readonly byte[] Dsp = new byte[DspSize];
 
-    public SpcSnapshot(byte[] aram, byte[] dsp)
+    /// <summary>Per-sample settings added by an instrument edit (envelope, tuning, volumes, flags, "pinned" samples): null for a game's own sound memory, which then plays exactly as it always did. See <see cref="SnesOverlay"/>.</summary>
+    public readonly SnesOverlay? Overlay;
+
+    public SpcSnapshot(byte[] aram, byte[] dsp, SnesOverlay? overlay = null)
     {
         Array.Copy(aram, Aram, Math.Min(aram.Length, AramSize));
         Array.Copy(dsp, Dsp, Math.Min(dsp.Length, DspSize));
+        Overlay = overlay;
     }
+
+    /// <summary>A copy with another overlay (null removes it); the sound memory is copied.</summary>
+    public SpcSnapshot WithOverlay(SnesOverlay? overlay) => new(Aram, Dsp, overlay);
 
     /// <summary>Where the game's sample directory is (the DSP's DIR register is the page): 4 bytes per sample, start and loop address.</summary>
     public int DirectoryBase => Dsp[0x5D] * 0x100;
@@ -46,12 +55,22 @@ public sealed class SpcSnapshot
         var list = new List<SampleInfo>();
         for (int slot = 0; slot < 256; slot++)
         {
-            if (!TryParse(slot, out int blocks, out bool loops)) { if (list.Count > 0) break; else continue; }
+            int blocks; bool loops;
+            // a sample the user edited is "pinned": listed and playable as long as it is there, even when the edit broke its BRR (a header out of range, no end block): the DSP plays whatever is there
+            if (Overlay != null && Overlay.IsPinned(slot) && SampleStart(slot) + Overlay.At(Overlay.IndexOf(slot)).Blocks * 9 <= AramSize) { blocks = Overlay.At(Overlay.IndexOf(slot)).Blocks; loops = PinnedLoops(slot, blocks); }
+            else if (!TryParse(slot, out blocks, out loops)) { if (list.Count > 0) break; else continue; }
             bool sounding = false;
             for (int v = 0; v < 8; v++) if (Dsp[v * 16 + 4] == slot && Dsp[v * 16 + 8] != 0) sounding = true;
             list.Add(new SampleInfo(slot, SampleStart(slot), SampleLoop(slot), blocks, loops, sounding));
         }
         return instruments = list.ToArray();
+    }
+
+    /// <summary>Whether a pinned sample loops: its last block's header has both the loop and the end flag.</summary>
+    private bool PinnedLoops(int srcn, int blocks)
+    {
+        int last = SampleStart(srcn) + (blocks - 1) * 9;
+        return last >= 0 && last < AramSize && (Aram[last] & 3) == 3;
     }
 
     private bool TryParse(int srcn, out int blocks, out bool loops)
@@ -93,6 +112,16 @@ public sealed class SpcSnapshot
     /// <summary>The envelope the game has set on a voice playing this sample number (ADSR1, ADSR2, GAIN), if one of its eight voices has it.</summary>
     public bool TryEnvelope(int srcn, out byte adsr1, out byte adsr2, out byte gain)
     {
+        // an envelope the user set on this sample wins over the game's
+        if (Overlay != null)
+        {
+            int oi = Overlay.IndexOf(srcn);
+            if (oi >= 0 && (Overlay.At(oi).Flags & SnesOverlay.HasEnv) != 0)
+            {
+                adsr1 = Overlay.At(oi).Adsr1; adsr2 = Overlay.At(oi).Adsr2; gain = Overlay.At(oi).Gain;
+                return true;
+            }
+        }
         // a voice counts only if the game has set an envelope on it (ADSR on, or a gain): the all-zero registers of a voice it never used would
         // silence the instrument. A voice that is sounding right now (envelope above zero) is preferred.
         int best = -1;
