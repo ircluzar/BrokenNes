@@ -177,9 +177,11 @@ Running the remake on the BrokenNes cores and against Mesen (see `docs/projects/
    against an emulator that powers RAM on as zeros. Hardware powers RAM on undefined, and BrokenNes (like FCEUX) fills it with a fixed pattern, which puts a
    non-zero byte in both: digits drawn as blocks and a World card that never ends. **Initialise every global, or clear RAM in the reset code, and test with
    RAM filled with both zeros and ones.** BrokenDev's `powerOnRam` lever (verify scenarios, the desktop BrokenDev menu, `romtest --power-on-ram`) exists for this.
-2. The remake writes the APU frame-counter register **every frame** with the 5-step bit set. That exercised three APU_FIX inaccuracies no earlier game had hit
-   (the 5-step sequence put its half-frame clocks one step early, the sweep ignored its enable flag, the sweep updated one half-frame late after a reload),
-   all fixed; see the report. Length counters ran 1.5 times too fast.
+2. The remake writes the APU frame-counter register **every frame** with the 5-step bit set. That exercised five APU_FIX inaccuracies no earlier game had hit
+   (the 5-step sequence put its half-frame clocks one step early, the sweep ignored its enable flag, the sweep updated one half-frame late after a reload,
+   a write to the envelope register restarted the envelope, a write to `$4008` reloaded the triangle's linear counter),
+   all fixed; see the report. Length counters ran 1.5 times too fast. The same game also shows what a sound engine that rewrites its registers every frame
+   needs from an emulator: those writes must not restart anything the hardware does not restart.
 3. BrokenNes' picture, nametables, OAM, palette and CHR agree with Mesen on the remake for 2,398 of 2,400 frames (the two frames are the boot-time upload skew).
 4. The original ROM is **not needed to build** the remake (the level, music and sound data derived from it are already in the source tree); it is needed to
    regenerate that data and for the same-input parity suite.
