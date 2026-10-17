@@ -6,7 +6,7 @@ BrokenNes runs four ways. All of them use the cores in `Windows/NesEmulator/`:
 |---|---|---|
 | Desktop | `Windows/` | `UAT/entrypoints/desktop-smoke.ps1` |
 | Web (Lite) | `WebLite/` | `UAT/entrypoints/web-smoke.ps1` |
-| Plugin in a test host | `Plugin/BrokenNes2.Plugin` + `Plugin/BrokenNes.FruityHost` | `FruityHost selftest` (50 results: 49 pass, 1 expected warning) |
+| Plugin in a test host | `Plugin/BrokenNes2.Plugin` + `Plugin/BrokenNes.FruityHost` | `FruityHost selftest` (53 results: 52 pass, 1 expected warning) |
 | Plugin in FL Studio | the same DLL | `UAT/plugin/fl/fl-certify.ps1` |
 
 `UAT/certify.ps1` builds and runs all of them and writes one report.
@@ -221,6 +221,33 @@ One dark, self-drawn window (no Win32 controls): the emulator's **screen** on th
 The game built into the DLL is VRUN's frozen build (`Resources/default.nes`, `builds/2026-10-01_tearfix`). There are no built-in Game Boy or SNES
 games: a console with no game loaded says so on the screen.
 
+### Tabs: Emulator, Instruments, Presets (round 6)
+
+A strip of three tabs sits on the header rule above the right column (left edge at the column's). Everything listed above is the **Emulator** tab and is unchanged: same window (904 x 664),
+same controls in the same places, same ids, same FL parameters (the tabs add none); the only pixels that differ from the editor before the tabs existed are the strip itself
+(`FruityHost bmpdiff` of a capture before and after, strip masked: 0 pixels differ). **Instruments** and **Presets** make the window **420 pixels wider** (`UiLayout.WideExtra`, 1324 x 664: the picture, the
+status line and the Inputs / Corruption / Instrument Runaway buttons stay where they are; Reset Console belongs to the Emulator tab) and going back restores 904.
+The editor resizes its own window, then calls the host's `FHD_EditorResized` (id 2 in FL's public `fp_plugclass.h`, `Fhd.EditorResized` here): FL fits its frame around the editor window again.
+The test bench's host does what FL does (its frame follows) and the standalone synth's panel follows too (`SynthRack.EditorResized`).
+
+- **Instruments** works with Instrument Runaway: with Runaway off it says *Switch Instrument Runaway on to see the game's instruments* (no game loaded: *Load a game in ROM mode, then switch Instrument Runaway on to see its instruments*; no model
+  connected: *The instrument model is not connected in this build of BrokenNes2.*). With the game frozen: the **instrument list** (scrolling list), the **fields** of the selected instrument (a row each: name, a slider with - and + for
+  ranges and signed values, a stepper for enums, toggles for bit fields, the value, a lock; hovering a row explains the field; Shift on a stepper steps by ten), a **waveform view** with loop markers and a **hex field** for the
+  selected blob (click a byte, type two hex digits), and the **corruption tools**: Strength, Randomise, Nudge - / + (on the field whose name was clicked, else the model picks), Lock all / Unlock all (and a lock per field and for the sample data),
+  Undo / Redo with the step and the seed shown, **Send to Presets** and **Push into the game**. Every action's answer (done, or refused with the reason) appears on the status line under the tools.
+- **Presets**: the library list with a search box (name, tag or game) and a console filter, the details of the selected preset, and **Load, Rename, Delete (two clicks), Export, Import, Audition**. No presets are provided: an empty library says
+  how to get some.
+- **All of it is wired to two interfaces, not to a model:** `Plugin/BrokenNes2.Plugin/Ui/Contracts.cs` (`IInstrumentModelProvider`, `IPresetLibrary`, `UiServices`). The real models plug in from their own files
+  (`Ui/UiBoot.cs` shows how); until they do the tabs say "not connected". `Ui/StubModels.cs` holds demonstration models (a 30-instrument SNES-like model with every field kind and a seeded corruptor with history, a 14-preset
+  library) that **only the self-test installs** (hook 403); nothing in normal use does.
+- **Widgets** (`Ui/`): `ScrollList` and `VScrollBar` (wheel, draggable thumb, page by clicking the track), `Slider`, `Stepper`, `BitToggle`, `TextInput` (caret, Home/End/Delete, Ctrl+A, Enter, Esc; no clipboard), `HexField`, `WaveView`,
+  on a small drawing surface `UiCanvas` with the editor's palette. Typing reaches the focused field through `WM_CHAR` / `WM_KEYDOWN`; while a text or hex field has the keyboard the Inputs window's keyboard-to-pad polling is off
+  (typing a name does not press the game's buttons), and the keyboard goes back to the host's frame when the field lets go.
+- **Control ids:** 1000-1999 belong to the tabs (1000-1002 the strip, 1100-1599 Instruments, 1600-1799 Presets; the exact map is in `Ui/UiIds.cs`); everything below 1000 is the Emulator tab's and the Corruption / Inputs / About windows' and
+  is never reused. Test hooks for the tabs: `Fpd.TestBase + 400..499` through the editor (listed in `Ui/Bn2Editor.Tabs.cs`).
+- **Not verified in real FL:** whether FL's frame follows `FHD_EditorResized` the way the test host's does, whether FL passes typed characters and the wheel to a plugin window (FL also plays notes from typed keys), and the wide window on a
+  small screen. The Instruments and Presets tabs are shells on stub models until the `imodel` and `presets` work lands.
+
 ## Inputs: playing the game
 
 The **Inputs** button (bottom left) opens a window for Player 1's controls, so a game running in the emulator can be navigated (to reach a place
@@ -418,6 +445,9 @@ BrokenNes.FruityHost regtrace <dll> <fixture.json> <channel>      # print period
 BrokenNes.FruityHost fixture  <name> out.json                     # the notes FL's project is generated from
 BrokenNes.FruityHost state    <dll> out.bin [--channel 1-5]       # the plugin's saved state (for the FL project generator)
 BrokenNes.FruityHost editor-shot <dll> out.bmp [--mode rom] [--console 0-2] [--rom file] [--about] [--instances N] [--open chip|game|channel|emulator]
+                                  [--demo] [--freeze] [--tab instruments|presets] [--click id,id,...] [--chars text]   # the tabs: demo models, Runaway on, open a tab, click controls by id, type
+BrokenNes.FruityHost bmpdiff  <a.bmp> <b.bmp> [--mask x,y,w,h]...   # pixels that differ between two captures outside the masks (how the Emulator tab is shown unchanged)
+BrokenNes.FruityHost editor-golden <dll>                          # the rectangle of every control the Emulator tab draws (the golden table of the ui test)
 BrokenNes.FruityHost romtrace <dll> <seconds> [--set <param> <value> --at <s>] [--seq param:value,...]   # ROM mode level / frames over time
 BrokenNes.FruityHost makerom  gb|sfc <out>                        # the tiny do-nothing Game Boy / SNES ROMs the tests use
 BrokenNes.FruityHost analyze  <wav> <fixture.json>                # certify audio rendered by FL
@@ -475,6 +505,8 @@ BrokenNes.FruityHost analyze  <wav> <fixture.json>                # certify audi
 | runaway-sega | Runaway on Master System, Game Gear and Genesis games (tiny ROMs made by the test). **PSG:** the snapshot is captured, the frozen game is silent, notes play the chip's nearest period within a cent (110 Hz to 1.7 kHz), velocity 0.5 and 0.25 play 6.00 and 12.00 dB down (2 dB steps), a note below 109 Hz is silent and counted, chords and a fourth note on three voices, white and periodic noise (the periodic one buzzes near the note), a slide up an octave is followed, the picker lists Auto and three instruments, a saved project comes back. **YM2413:** the user instrument (a sine) plays within a cent of the F-number's pitch, 3 dB steps (6.02 and 12.04 dB down), the chip's flute is not the sine (its octave is 0.33 of the fundamental against 0.000), the synthesizer bass is still the note (its carrier is at half the base), eleven notes on nine channels, a 10 kHz note counted, slides, the PSG's tones, the 20-item picker, a saved project plays the flute. **YM2612:** the DAC sound is found in the write stream (a 32-sample loop at 420.5 Hz), the FM patch plays within a cent, 6.02 and 12.05 dB down (0.75 dB steps), a patch the game never set up is silent and FM 2's patch plays, eight notes on six channels, a 12 kHz note counted; the looped DAC sound plays **at the note's pitch** (440, 220, 880 and 329.6 Hz within a cent) with linear velocity and slides within 20 cents; ten notes on eight DAC voices; the picker; the project round-trips (16,594 bytes); eight deliberate breakages and fourteen random ones of the saved snapshot are survived (dropped, or played finitely); **cost:** every sampler allocates **0 bytes** while playing its busiest chord and runs at 5x real time or better |
 | about | the About window opens by itself the first time only (not for a second instance, not on a machine that has seen it), is modal, shows real text, closes, and reopens from the button |
 | rom-editor | switching to ROM loads the game and the picture replaces the message; the picture keeps moving with no audio running; core picks reach the game; Direct brings the message back |
+| ui | the editor's tabs through real mouse and key messages on the demonstration models (`Ui/StubModels.cs`): the window is 904 x 664 on the Emulator tab, 1324 x 664 on the others, the host is told once per size change (and the test host's frame follows), going back restores 904; the Emulator tab's 24 controls are at the rectangles captured from the plugin before the tabs existed and a round trip through both tabs leaves its picture identical pixel for pixel; the Instruments tab: the Runaway-off, no-game and no-model messages, the instrument list (18 of 30 rows, wheel, thumb drag, page click), selecting an instrument shows its own fields, the fields scroll, slider (the middle is exactly 64 of 127, drag to both ends), stepper (Shift = ten, enum wrap, no call at the end), bit toggles (8 and 14 bits), locks (Lock all, honoured by Randomise), the waveform (hundreds of wave pixels and the loop markers for a blob, none for an empty one, the other blob of a two-blob instrument), the hex field (click, type FF, lower case, arrows, Esc, wheel), Randomise with strength, Nudge on a chosen or any field and on a locked one, Undo / Redo with the history and seed shown, Send to Presets, Push (done and refused); the Presets tab: the library list (14, 11 visible, wheel), search typing (Backspace, Home, Delete, End, Ctrl+A), clear, console filter, Load, Audition, Export, Import (a test names the file; a cancelled dialog reaches nothing), Rename (Enter, Esc), Delete in two clicks; typing in a text field does not press the game's buttons |
+| ui-proof | every check of `ui` is shown able to FAIL: 18 deliberate faults (single tests of a mask in the plugin, set through hook 499, zero in normal use) each make the check that watches that place fail, and the two checks with no switch fail when asked a false question; the failing assertion is printed for each |
 | robust | 60 create/destroy cycles, three emulators concurrently on three threads, garbage calls, destroy with a voice playing |
 | log | `BROKENNES_PLUGIN_LOG=<file>` records the host's calls (for diagnosing a host with no output) |
 

@@ -94,9 +94,28 @@ ROM-mode game and uses Instrument Runaway on the result; a saved FL project keep
 - **A new session's first frame must not allocate:** the SNES picture chip used to build a 128 KB colour table per brightness lazily, inside the first frame it drew, which is on the audio thread when a game is loaded from a state (no frames replayed on the worker); the tables are now built once per process (`PPU_SFC.brightnessLut`). The `corruption` check measures 0 B across a state-anchor start.
 - **Not done:** starting a corruption on a **NES** game in the plugin (the library has the NES domains, the plugin's `NesGame` has no farm; the row says "the plugin starts corruptions on the console games") and `at > 0` timelines.
 
+## Editor tabs (2026-10-17, Round 6 `ui`): Emulator | Instruments | Presets
+
+**What it is:** a strip of three tabs on the header rule above the right column. **Emulator** = the editor as it was (904 x 664, same controls, same ids, same parameters; verified: golden control rectangles + 0 differing pixels outside the strip in six states).
+**Instruments** and **Presets** widen the window by `UiLayout.WideExtra` (420 -> 1324 x 664). Both are shells on two interfaces: `Ui/Contracts.cs` (`IInstrumentModelProvider`, `IPresetLibrary`, `UiServices`); `Ui/StubModels.cs` holds demonstration
+models that **only the self-test installs** (hook 403). User-facing description: `Plugin/README.md` ("Tabs: Emulator, Instruments, Presets"); record and evidence: `docs/projects/round6-ui.md`.
+
+- **How the window grows (the contract question):** `IFruityEditor` has only `Hwnd` and `Destroy`, but FL's public SDK header (`fp_plugclass.h`) has the host call `FHD_EditorResized = 2` ("to notify the host that the editor (EditorHandle) has been resized").
+  `Bn2Editor.ApplyWindowSize` does `SetWindowPos` on its own window, then `plugin.Host.Dispatcher(HostTag, Fhd.EditorResized, 0, 0)` (only when the width changes). `HostSim.EditorResized` (SynthHost) is what a host owner hooks (the test host fits its frame, `SynthRack.EditorResized` -> `SynthForm.FitEditorPanel`
+  resizes the standalone synth's panel; checked on the real synth window: 904 -> 1324 -> 904). **Real FL was not tried:** whether FL fits its frame around the editor window after this call is the open question; if it does not, the right of the wide tabs is clipped.
+- **Seams (keep them):** `Bn2Editor` is `partial`; everything of the tabs lives in `Ui/` (`Bn2Editor.Tabs.cs` = strip, resize, event routing, hooks; `InstrumentsPanel`, `PresetsPanel`; widgets `ScrollList` / `VScrollBar`, `Slider`, `Stepper`, `BitToggle`, `TextInput`, `HexField`, `WaveView` on `UiCanvas`).
+  The editor file only gained: `Kind.Ui`, the `if (tab == 0) { ... } else DrawTabContent(...)` around the right column (no line of it re-indented), the Reset block, `Mix(UiSignature())`, the back buffer at `UiLayout.WideWidth`, and one-line routes in `OnMouse` / `WndProc` / `Test`.
+  The real models register in their own files through `Ui/UiBoot.cs` (partial methods `RegisterInstrumentModel` / `RegisterPresetLibrary`, called when an editor is created).
+- **Ids:** 1000-1999 are the tabs' (map in `Ui/UiIds.cs`); never reuse an id below 1000. Test hooks 400-499 through the editor (list in `Ui/Bn2Editor.Tabs.cs`). Typing: `WM_CHAR` / `WM_KEYDOWN` reach the focused text or hex field; while one has the keyboard the Inputs polling is off.
+- **Pitfalls paid for:** `WM_MOUSEWHEEL` carries the cursor in SCREEN coordinates (the tabs convert with `ScreenToClient`; `FruityHost` `Win32Host.WheelAt` sends it that way). The Emulator tab's old wheel-over-a-slider code still reads the raw lParam as client coordinates
+  (`OnMouse` sets `mouseX` from it first), so on that tab it hits whatever is at the screen position: left alone on purpose, that tab must not change; a latent bug. A model that throws while the tab paints is caught (a paint that never ends is repainted without end): `DrawTabContent` / `UiGuard`.
+  `Test(30, id)` is also the self-test's only way to find a control: register every control with `UiCanvas.AddHit`.
+- **Fault switches:** `UiMutate` (`Ui/UiIds.cs`) are single tests of a mask at the place a check watches; `ui-proof` sets them through hook 499 and demands the check fails. A new check on the tabs should get a switch and a line in `UiFaults` (`SelfTest.Ui.cs`).
+- **Not done / not verified:** real FL (the resize call, typed characters and the wheel reaching a plugin window, a 1324-wide window on a small screen); no clipboard in the text field; the tab is not remembered when the window closes and opens again (it opens on Emulator); the models themselves (`imodel`, `presets`).
+
 ## State at the pause
 
-- Host tests: `FruityHost selftest` = **51 results: 50 pass, 1 warning, 0 failed** (round 5 added `dpad` = d-pad protection, `prefs` = the settings migration and `corruption` = stockpile corruptions; `psg` is Sega track C1's, `md` and `rom-sms` C2's, `fm`, `rom-md`, `stems-sega` and `runaway-sega` C3b's) (the warning: the QLQ core plays an octave sharp on purpose).
+- Host tests: `FruityHost selftest` = **53 results: 52 pass, 1 warning, 0 failed** (round 6 `ui` added `ui` and `ui-proof` = the editor's tabs; round 5 added `dpad` = d-pad protection, `prefs` = the settings migration and `corruption` = stockpile corruptions; `psg` is Sega track C1's, `md` and `rom-sms` C2's, `fm`, `rom-md`, `stems-sega` and `runaway-sega` C3b's) (the warning: the QLQ core plays an octave sharp on purpose).
 - Real FL Studio 2026: certified **15/15** (headless render, pitch within 0.1 cent, slides ~2-3 cents) on the old single-instance build. The
   current build (emulator hub, editor, ROM mode for all consoles, Inputs, Instrument Runaway) was installed by the user and worked in manual
   use but was **not re-certified in FL** yet: run `pwsh UAT/certify.ps1 -Only plugin-fl` (FL must be closed) when development resumes.
@@ -112,7 +131,7 @@ ROM-mode game and uses Instrument Runaway on the result; a saved FL project keep
 | `BrokenNes.Fruity` | FL native SDK mirror (vtable via `[UnmanagedCallersOnly]`), plugin base class, GDI editor base (`Win32Gdi.cs`) |
 | `BrokenNes2.Plugin` | the plugin (Native AOT DLL `BrokenNes2_x64.dll`): `Bn2Plugin` (voices, params, state), `EmulatorHub` / `Emulator` / `Emulator.Rom` (shared emulators, rings, ROM mode), `Game.cs` (NesGame / SessionGame), `Bn2Editor` (self-drawn UI), `SnesSampler` / `GbSampler` (Runaway), `Bn2Input`, `Prefs`, `About` |
 | `BrokenNes.SynthHost` | library: `HostSim` / `PluginInstance` / `PluginLibrary` (moved here from the test bench, namespace `BrokenNes.FruityHost` kept), `SynthRack` (four instances played live), `MidiRouter`. Used by the test bench and by the desktop's standalone synth |
-| `BrokenNes.FruityHost` | the test bench that loads the DLL like FL does: `selftest`, `render`, `track`, `state`, `analyze`, `editor-shot`, `makerom gb\|gbtone\|sfc`, `romtrace` |
+| `BrokenNes.FruityHost` | the test bench that loads the DLL like FL does: `selftest`, `render`, `track`, `state`, `analyze`, `editor-shot`, `bmpdiff`, `editor-golden`, `makerom gb\|gbtone\|sfc`, `romtrace` |
 | `../Core` | `BrokenNes.Core`: allocation-free NES audio path + `ApuStem` (per-channel stems from a Bus write tap) |
 | `../UAT/plugin`, `../UAT/certify.ps1` | FL render certification, installer (`fl/install-to-fl.cmd`), the four-entrypoint certification |
 
@@ -138,7 +157,7 @@ dotnet build   Plugin/BrokenNes.FruityHost/BrokenNes.FruityHost.csproj -c Releas
   certification: `-Only plugin-fl` (~70 s, never kills FL by name, refuses when FL is open).
 - `selftest` drives real windows with real mouse messages: keep the desktop quiet while it runs (`runaway-gb` failed once when other processes were
   running, passed alone and in two further full runs).
-- Editor screenshots: `FruityHost editor-shot <dll> out.bmp --console 1 --rom game.gb --runaway [--open instrument|duty|channel|inputs]`.
+- Editor screenshots: `FruityHost editor-shot <dll> out.bmp --console 1 --rom game.gb --runaway [--open instrument|duty|channel|inputs]`; the tabs: `--demo --mode rom --freeze --tab instruments [--click 1212,1181] [--chars text]` (the `.bmp` is 32-bit top-down; `bmpdiff` compares two).
 - Test hooks into the plugin and editor: `Fpd.TestBase + n` (editor 30-39, plugin 40-51: reset, SetPad, runaway, test snapshot, ...). They
   exist so tests can drive the real editor with real mouse messages; keep new UI testable the same way.
 
