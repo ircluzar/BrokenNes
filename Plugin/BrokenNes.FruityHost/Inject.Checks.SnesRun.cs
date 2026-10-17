@@ -235,6 +235,20 @@ internal static partial class InjectChecks
             return (h == h0, $"push (tuning only) then remove: the game's audio hash {h:X16} against the untouched run's {h0:X16}");
         }, PushMutants.RemoveLeavesOverrides, mutants, "remove leaves the overrides");
 
+        // ---- Instrument Runaway starts again on a game with pushes: its copy shows what the game is forced to use ----
+        Run("snes-refreeze", () =>
+        {
+            var s = rig.Start();
+            var (o, edited, _) = SnesRig.EditAndPush(s, rig.Slot, h => { h.Randomise(0.1, 0xF00DUL, true); h.Set("tune.cents", 650); h.Set("env.adsr", 1); h.Set("env.ar", 5); h.Set("vol.l", 33); h.Set("mix.pmod", 1); });
+            // the copy Runaway takes now (SessionGame.CaptureSpc: the game's memory, with the pushes' overrides carried in the overlay)
+            var spc = SnesRig.Spc(s);
+            var snap = SnesPusher.Carry(s, new SpcSnapshot(spc.Aram, spc.Dsp.Regs));
+            var shown = new SnesInstruments(snap).Read(rig.Slot)!;
+            bool ok = o.Ok && shown.Get("tune.cents") == 650 && shown.Get("env.adsr") == 1 && shown.Get("env.ar") == 5 && shown.Get("vol.l") == 33 && shown.Get("mix.pmod") == 1 && shown.Blobs[0].Data.AsSpan().SequenceEqual(edited.Blobs[0].Data);
+            // and the tab's instrument equals the one that was pushed, so pushing it again is "nothing new" only for the overrides, never a refusal
+            return (ok, $"after a push, a new Runaway copy lists sample {rig.Slot} with tuning {shown.Get("tune.cents")}, envelope mode {shown.Get("env.adsr")} attack {shown.Get("env.ar")}, left weight {shown.Get("vol.l")}, modulation {shown.Get("mix.pmod")} and the pushed sample bytes");
+        }, PushMutants.CarryForgets, mutants, "a new Runaway copy forgets what was pushed");
+
         // ---- pushing again replaces ----
         Run("snes-replace", () =>
         {

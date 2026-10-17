@@ -51,7 +51,7 @@ internal static class SnesPusher
     public static SpcSnapshot Carry(IConsoleSession session, SpcSnapshot raw)
     {
         var st = GamePushes.Peek(session);
-        if (st == null || st.Count == 0) return raw;
+        if (st == null || st.Count == 0 || PushMutants.On(PushMutants.CarryForgets)) return raw;
         SnesOverlay? ov = null;
         foreach (var r in st.Records)
         {

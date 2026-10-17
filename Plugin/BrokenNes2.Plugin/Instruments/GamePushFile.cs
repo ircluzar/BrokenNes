@@ -163,5 +163,5 @@ public static class PushMutants
     public static volatile int Active;
     public static bool On(int id) => Active == id;
     public const int CrcNotChecked = 1, SnesDropsSample = 2, SnesForgetsEnvelope = 3, RemoveLeavesOverrides = 4, RemoveLeavesBytes = 5, OpnIgnoresVolume = 6, DacRateIgnored = 7, SnesDropsTuning = 8, SnesDropsVolume = 9,
-        OpnNoSubstitution = 10, DacNoSubstitution = 11, GbNoSubstitution = 12, OpllNoSubstitution = 13, RestoreSkipsHooks = 14, PushForgetsFarm = 15, OpnRemoveKeepsPatch = 16, SnesDropsMix = 17, OpnStateNotRestored = 18, OpnTlAccumulates = 19;
+        OpnNoSubstitution = 10, DacNoSubstitution = 11, GbNoSubstitution = 12, OpllNoSubstitution = 13, RestoreSkipsHooks = 14, PushForgetsFarm = 15, OpnRemoveKeepsPatch = 16, SnesDropsMix = 17, OpnStateNotRestored = 18, OpnTlAccumulates = 19, CarryForgets = 20;
 }
