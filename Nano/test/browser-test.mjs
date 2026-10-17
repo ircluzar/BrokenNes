@@ -87,5 +87,6 @@ try {
   server.close();
   await new Promise(r => setTimeout(r, 500));
   try { fs.rmSync(profile, { recursive: true, force: true }); } catch { }
+  if (root !== nanoRoot) try { fs.rmSync(root, { recursive: true, force: true }); } catch { }   // the copy a --mutant run served
   process.exit(exitCode);
 }

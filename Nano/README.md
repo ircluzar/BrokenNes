@@ -199,7 +199,7 @@ Everything below was run; the numbers are in `docs/projects/round5-nano.md`. `no
 | `browser-test.mjs` | the AudioWorklet itself in headless Edge: its output (from the embedded Blob and from `nano-worklet.js`) against `renderOffline`; custom presets, DPCM, MIDI messages, `connect()`; the browser's own analyser hears 439 Hz for A4 | **bit-exact, 14 checks** |
 | `engine.test.mjs` | every preset audible and on pitch (zero crossings), presets pairwise distinct (spectra and envelope), vibrato / slide / arpeggio move the pitch, voice handling, DPCM encoder round trip, block-size independence, random scripts finite | 122 checks |
 
-**Tolerance: zero.** The PCM is compared as raw float32 bits. Each check was shown able to fail: `parity.mjs --mutants` injects 34 deliberate errors one at a time (a filter coefficient, one entry of a duty table, a rounding mode, the stealing rule ...) and every one is
+**Tolerance: zero.** The PCM is compared as raw float32 bits. Each check was shown able to fail: `parity.mjs --mutants` injects 33 deliberate errors one at a time (a filter coefficient, one entry of a duty table, a rounding mode, the stealing rule ...) and every one is
 caught; `engine.test.mjs --mutants` 14; `browser-test.mjs --mutant N` 4; `plugin-parity.mjs --mutant`. And it failed for real once: when `APU_FIX` was corrected on `main` (five fixes found by the BrokenDev differential replay against Mesen), the chip
 as first written failed 18 of 77 scripts and all 18 fuzz traces against the new Core, until it was updated to follow.
 
