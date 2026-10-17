@@ -12,7 +12,9 @@ namespace BrokenNes.Workshop.Sega;
 /// the console counterpart of <c>--romtest</c> for the UAT suite (<c>UAT/run-suite.ps1</c>, case kind <c>session</c>): one ROM on one console session built the way the apps build it (<see cref="ConsoleSessions.Create"/>),
 /// run for a fixed number of frames with a scripted pad, then the picture's hash, the sound's hash and level, the number of colours seen and whether anything crashed. Everything is deterministic, so a golden can be recorded
 /// and compared: it proves "nothing moved", not "this is right" (see <c>UAT/README.md</c>). A swap (<c>--swap "200:apu:NES:FIX"</c>) changes a core in the middle of the run through <c>TrySwapCore</c> and the result says whether it
-/// was done in place. Exit code: 0 clean, 1 the session threw, 2 usage or IO, 4 the console could not be built (a refused core id, an unknown ROM).
+/// was done in place. <c>--rewind "N:M"</c> takes a save state after frame N and, after frame M, loads it back: frames N+1 to M are played a second time with the same pad, and the sound of the first pass is dropped, so a machine whose
+/// state is complete ends the run on the very picture, sound and colours of the run without it (a UAT case pair, one with and one without, carries the same golden). Exit code: 0 clean, 1 the session threw, 2 usage or IO, 4 the console could
+/// not be built (a refused core id, an unknown ROM, a state the session refuses).
 /// </summary>
 internal static class SessionTestCli
 {
@@ -25,6 +27,9 @@ internal static class SessionTestCli
         if (romPath == "" || !File.Exists(romPath)) { Console.Error.WriteLine($"ROM not found: {romPath}"); return 2; }
         int frames = int.Parse(Opt("frames", "600"));
         var script = PictureBridgeCli.ParseInput(Opt("input", ""));
+        var rewind = Opt("rewind", "").Split(':', StringSplitOptions.RemoveEmptyEntries);
+        int rewindSave = rewind.Length == 2 ? int.Parse(rewind[0]) : -1, rewindLoad = rewind.Length == 2 ? int.Parse(rewind[1]) : -1;
+        if (rewind.Length == 2 && (rewindSave < 1 || rewindLoad <= rewindSave || rewindLoad >= frames)) { Console.Error.WriteLine("--rewind N:M needs 1 <= N < M < frames"); return 2; }
         var swaps = Opt("swap", "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Split(':', 3)).Select(p => (frame: int.Parse(p[0]), spec: p[1], id: p[2])).ToList();
         var result = new Dictionary<string, object?>();
         int exit = 0;
@@ -42,6 +47,9 @@ internal static class SessionTestCli
             ulong picHash = 0; ulong audioHash = 14695981039346656037UL; double sumSq = 0, sum = 0; long n = 0;
             var colours = new HashSet<uint>(); var buf = new short[65536];
             var held = PadButtons.None; var swapLog = new List<string>(); int ran = 0;
+            byte[]? snapshot = null; (ulong audio, double sum, double sumSq, long n, PadButtons held)? atSave = null; string stateNote = "";
+            if (rewindSave > 0 && swaps.Count > 0) throw new ArgumentException("--rewind and --swap are not combined: a swap would be done twice");
+            if (rewindSave > 0 && !session.SupportsState) throw new NotSupportedException(session.StateUnsupportedReason);
             for (int f = 1; f <= frames; f++)
             {
                 foreach (var sw in swaps.Where(s => s.frame == f - 1))
@@ -66,12 +74,20 @@ internal static class SessionTestCli
                     for (int i = 0; i < len; i++) { ph = (ph ^ fr[i]) * 1099511628211UL; if (colours.Count <= 4096) colours.Add(fr[i] & 0xFFFFFF); }
                     picHash = ph;
                 }
+                if (f == rewindSave) { snapshot = session.SaveState(); atSave = (audioHash, sum, sumSq, n, held); stateNote = $"state {snapshot.Length / 1024} KB at frame {f}"; }
+                if (f == rewindLoad && snapshot != null)
+                {
+                    session.LoadState(snapshot);           // back to frame N: the frames since then are played again, the sound of the first pass is forgotten
+                    (audioHash, sum, sumSq, n, held) = atSave!.Value;
+                    f = rewindSave; stateNote += $", loaded back after frame {rewindLoad}";
+                    snapshot = null;                       // once
+                }
             }
             double mean = n > 0 ? sum / n : 0, rms = n > 0 ? Math.Sqrt(Math.Max(0, sumSq / n - mean * mean)) : 0;
             result["Console"] = Consoles.Key(console); result["Title"] = session.Title; result["Description"] = session.Description;
             result["FramesRun"] = ran; result["FrameBufferHash"] = picHash.ToString("X16"); result["AudioHash"] = audioHash.ToString("X16"); result["AudioRms"] = Math.Round(rms, 5);
             result["DistinctColors"] = colours.Count; result["Width"] = session.FrameWidth; result["Height"] = session.FrameHeight;
-            result["Swaps"] = string.Join(" ", swapLog); result["Result"] = "ok"; result["CrashInfo"] = "";
+            result["Swaps"] = string.Join(" ", swapLog); result["Result"] = "ok"; result["CrashInfo"] = ""; if (stateNote != "") result["State"] = stateNote;
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or InvalidDataException)
         {

@@ -23,7 +23,7 @@ namespace NesEmulator.Snes;
 /// PROVENANCE: written from memory, not copied, but the decimal-mode ADC/SBC, the emulation-mode
 /// stack model and MVN/MVP follow bsnes/higan's approach. See THIRD_PARTY_NOTICES.md.
 /// </summary>
-public sealed class CPU_SFC
+public sealed partial class CPU_SFC
 {
     public string CoreName => "SFC";
     public string Description => "65C816 - the SNES CPU, built as the SFC family's first member";

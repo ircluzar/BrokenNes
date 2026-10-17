@@ -13,7 +13,7 @@ namespace NesEmulator.Snes;
 /// Stores perform the hardware's dummy read first (MOV d,A reads d), which matters only for the
 /// read-to-clear timer counters at $FD-$FF.
 /// </summary>
-public sealed class SMP_SFC
+public sealed partial class SMP_SFC
 {
     private readonly APU_SFC apu;
 

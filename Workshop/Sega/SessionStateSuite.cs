@@ -240,18 +240,47 @@ internal static class SessionStateSuite
         if (!any) yield return SmsCheck.Skipped("Game Boy state round trip", $"no Game Boy ROM under {dir} (set BROKENNES_GB_ROMS): not run");
     }
 
+    /// <summary>
+    /// The SNES session has save states (round 5): the old assertion here was that it says it has none. It is turned round so that it fails if <see cref="IConsoleSession.SupportsState"/> ever goes false again (a missing forward in a wrapper, a
+    /// refactor): the session must report support, return a state that names the SNES, and a fresh session must load it and give the same state back. The full SNES proof (11 games, every coprocessor, every field) is <c>--snes-state-test</c>.
+    /// </summary>
     private static IEnumerable<SmsCheck> SnesChecks()
     {
         string dir = Environment.GetEnvironmentVariable("BROKENNES_SNES_ROMS") is { Length: > 0 } e ? e : @"X:\EMULATION\Super Nintendo";
-        string? zip = Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories).Where(f => f.EndsWith(".sfc", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".smc", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)).FirstOrDefault() : null;
-        if (zip == null) { yield return SmsCheck.Skipped("SNES session reports no state", "no SNES ROM found (set BROKENNES_SNES_ROMS)"); yield break; }
-        IConsoleSession? s = null; string why = "";
-        try { byte[] rom = RomDetect.Unwrap(File.ReadAllBytes(zip), Path.GetFileName(zip), out string inner); s = ConsoleSessions.Create(ConsoleKind.Snes, rom, "SFC", "SFC", "SFC", null, inner); }
+        string? zip = null;
+        if (Directory.Exists(dir))
+        {
+            zip = Directory.EnumerateFiles(dir, "Super Mario World (U) [!].smc", SearchOption.AllDirectories).FirstOrDefault()
+                ?? Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories).Where(f => f.EndsWith(".sfc", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".smc", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
+        }
+        if (zip == null) { yield return SmsCheck.Skipped("SNES session supports save states", "no SNES ROM found (set BROKENNES_SNES_ROMS)"); yield break; }
+        IConsoleSession? s = null, fresh = null; string why = "";
+        try
+        {
+            byte[] rom = RomDetect.Unwrap(File.ReadAllBytes(zip), Path.GetFileName(zip), out string inner);
+            s = ConsoleSessions.Create(ConsoleKind.Snes, rom, "SFC", "SFC", "SFC", null, inner);
+            fresh = ConsoleSessions.Create(ConsoleKind.Snes, rom, "SFC", "SFC", "SFC", null, inner);
+        }
         catch (Exception ex) { why = ex.Message; }
-        if (s == null) { yield return SmsCheck.Skipped("SNES session reports no state", "could not build a SNES session from " + Path.GetFileName(zip) + ": " + why); yield break; }
-        string msg = ""; try { s.SaveState(); } catch (NotSupportedException ex) { msg = ex.Message; }
-        yield return new SmsCheck("the SNES session says why it has no states (SupportsState false, SaveState throws with a reason naming the SNES)", !s.SupportsState && msg.Contains("SNES"), msg);
-        s.Dispose();
+        if (s == null || fresh == null) { yield return SmsCheck.Skipped("SNES session supports save states", "could not build a SNES session from " + Path.GetFileName(zip) + ": " + why); yield break; }
+        for (int i = 0; i < 30; i++) s.RunFrame();
+        fresh.RunFrame();
+        string detail = ""; bool ok = s.SupportsState;
+        if (!ok) detail = "SupportsState is false: " + s.StateUnsupportedReason;
+        else
+        {
+            try
+            {
+                byte[] state = s.SaveState();
+                var info = ConsoleStateFile.Peek(state);
+                fresh.LoadState(state);
+                ok = info.Console == ConsoleKind.Snes && fresh.SaveState().AsSpan().SequenceEqual(state);
+                detail = ok ? $"state {state.Length / 1024} KB, header {string.Join(",", info.Units.Select(kv => kv.Key + "=" + kv.Value))}" : "the state did not load back to the same machine";
+            }
+            catch (Exception ex) { ok = false; detail = ex.GetType().Name + ": " + ex.Message; }
+        }
+        yield return new SmsCheck("the SNES session supports save states: SupportsState is true, SaveState returns a SNES state and a fresh session loads it and gives the same state back (fails if SupportsState goes false again)", ok, detail);
+        s.Dispose(); fresh.Dispose();
     }
 
     private static byte[] SmsSession_DifferentGame()

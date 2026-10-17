@@ -104,6 +104,7 @@ public static class ConsoleStateFile
         "cpu" => $"This state was saved with the {saved ?? "unknown"} CPU core, but the game is running the {running} one. Switch the CPU core to {saved ?? "that one"} and load the state again.",
         "model" => $"This state was saved on a {saved ?? "different"} board model; the game is running as {running}.",
         "region" => $"This state was saved at {saved ?? "another"} timing; the game is running at {running} (the region setting is a part of the machine).",
+        "chip" => $"This state was saved with the cartridge chip \"{saved ?? "unknown"}\", but the game is running with \"{running}\" (a state is never loaded into a different chip: the homemade DSP-1 and Nintendo's DSP-1 firmware are different chips, so put the firmware back the way it was, or leave it out, and load the state again).",
         "format" => $"This state was saved by a different version of the core (state layout {saved ?? "unknown"}, this build uses {running}); it cannot be loaded.",
         _ => $"This state was saved with {unit} = {saved ?? "unknown"}; the game is running {unit} = {running}.",
     };
@@ -115,7 +116,31 @@ public static class ConsoleStateFile
     /// <summary>The key a web app keeps a game's slot under in its key-value store.</summary>
     public static string SlotKey(ConsoleKind console, string gameId, string slot = "quick") => $"state_v1:{Consoles.Key(console)}:{gameId}.{slot}";
 
+    private static readonly uint[] CrcTable = BuildCrcTable();
+
+    private static uint[] BuildCrcTable()
+    {
+        var t = new uint[256];
+        for (uint n = 0; n < 256; n++)
+        {
+            uint c = n;
+            for (int k = 0; k < 8; k++) c = (c & 1) != 0 ? (c >> 1) ^ 0xEDB88320u : c >> 1;
+            t[n] = c;
+        }
+        return t;
+    }
+
+    /// <summary>CRC-32 (the zip / PNG polynomial), a table at a time: the same value as the bit-by-bit definition (the SNES state test checks that), about ten times faster on the half-megabyte a SNES state is.</summary>
     internal static uint Crc32(ReadOnlySpan<byte> data)
+    {
+        uint crc = 0xFFFFFFFF;
+        var table = CrcTable;
+        foreach (byte b in data) crc = table[(crc ^ b) & 0xFF] ^ (crc >> 8);
+        return ~crc;
+    }
+
+    /// <summary>The definition, bit by bit (for tests).</summary>
+    internal static uint Crc32Reference(ReadOnlySpan<byte> data)
     {
         uint crc = 0xFFFFFFFF;
         foreach (byte b in data)

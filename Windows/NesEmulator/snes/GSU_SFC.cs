@@ -15,12 +15,13 @@ namespace NesEmulator.Snes;
 /// handlers while the GSU renders. Scheduling is lazy like the SA-1: shared accesses catch the GSU
 /// up to the SNES clock, and the board calls <see cref="RunTo"/> every scanline.
 /// </summary>
-public sealed class GSU_SFC : ISnesCoprocessor
+public sealed partial class GSU_SFC : ISnesCoprocessor
 {
     public string Name { get; }
 
     private readonly byte[] rom;
     private readonly byte[] ram;
+    private readonly bool ownsRam;      // the work RAM is the chip's own array (the cartridge has none); otherwise it is the cartridge's RAM, which the cartridge saves
     private readonly int ramMask;
     private readonly byte version;
 
@@ -59,6 +60,7 @@ public sealed class GSU_SFC : ISnesCoprocessor
     {
         rom = cart.Rom;
         ram = cart.Sram.Length > 0 ? cart.Sram : new byte[0x8000];
+        ownsRam = cart.Sram.Length == 0;
         ramMask = (ram.Length & (ram.Length - 1)) == 0 ? ram.Length - 1 : 0x7FFF;
         bool gsu2 = cart.ChipsetByte is 0x15 or 0x1A;
         version = (byte)(gsu2 ? 4 : 1);
