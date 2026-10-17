@@ -129,12 +129,12 @@ public static class GamePush
     public static string? WhyNot(ConsoleId console, InstrumentKind kind) => kind switch
     {
         InstrumentKind.PsgTones or InstrumentKind.PsgNoise =>
-            "cannot push on the PSG: its tone, volume and noise registers are written by the game's driver tens of times a second as the music plays, there is no instrument memory to change, and the Runaway sampler does not play these registers either (it plays the PSG from FL's pitch and level)",
+            "cannot push on the PSG: the game's driver writes its tone, volume and noise registers tens of times a second (there is no instrument memory), and the Runaway sampler does not play them either",
         InstrumentKind.OpllRom => "a ROM instrument is built into the YM2413 and is read-only: copy it into the user instrument first",
         InstrumentKind.GbPulse1 or InstrumentKind.GbPulse2 or InstrumentKind.GbNoise =>
-            "cannot push on a Game Boy pulse or noise channel yet: the game's driver writes the duty and envelope registers at every note, and no hook on the channel trigger is built for them (the wave channel's RAM can be pushed)",
+            "cannot push on a Game Boy pulse or noise channel yet: the driver writes duty and envelope at every note and no trigger hook exists for them (the wave channel can be pushed)",
         InstrumentKind.NesPulse1 or InstrumentKind.NesPulse2 or InstrumentKind.NesTriangle or InstrumentKind.NesNoise or InstrumentKind.NesDmc =>
-            "cannot push on the NES: a NES game has no instrument memory (its code writes the sound chip's registers for every note), and BrokenNes2 has no NES sampler to edit instruments for",
+            "cannot push on the NES: a game has no instrument memory (its code writes the sound registers for every note) and BrokenNes2 edits no NES instruments",
         _ => null,
     };
 

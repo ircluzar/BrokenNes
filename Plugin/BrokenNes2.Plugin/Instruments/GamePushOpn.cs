@@ -303,7 +303,7 @@ internal static class OpnPusher
         st.Records.Add(rec);
         PushHooks.Install(m, st);
         o.Poison = "an instrument was pushed into the sound unit as a key-on substitution (not a memory write a replay from power-on could repeat)";
-        o.Message = $"Pushed FM {ch + 1} patch ({Differences(orig, edit, origLfo, editLfo)}): from the next key-on, every channel the game plays this patch on loads the edited one first (the driver's volume is kept). It can reload the original any time; the substitution is made again at each key-on. Remove from game undoes it."
+        o.Message = $"Pushed FM {ch + 1} patch ({Differences(orig, edit, origLfo, editLfo)}): loaded at every key-on of every channel holding the game's original patch, the driver's volume kept; if the driver reloads its own, the next key-on loads the edit again."
             + (twin != null && twin != old ? $" (It replaced the earlier push of the same patch, {twin.Name}.)" : "");
         return o;
     }
@@ -381,8 +381,7 @@ internal static class OpnPusher
         int diff = 0;
         for (int i = 0; i < Math.Min(origData.Length, edit.Length); i++) if (origData[i] != edit[i]) diff++;
         diff += Math.Abs(origData.Length - edit.Length);
-        o.Message = $"Pushed DAC sound {idx + 1} ({diff} samples differ{(origRate != cur.Rate ? $", rate {origRate} to {cur.Rate} Hz" : "")}): when the game's driver streams this sound to the DAC, the edited samples are handed to the chip instead, at the driver's pace (the first {12} samples are heard as the game has them; "
-            + "the sound ends where the driver ends it). Remove from game undoes it.";
+        o.Message = $"Pushed DAC sound {idx + 1} ({diff} samples differ{(origRate != cur.Rate ? $", rate {origRate} to {cur.Rate} Hz" : "")}): whenever the driver streams it, the chip gets the edited samples instead, at the driver's pace (the first 11 samples are the game's own, and the driver ends the sound).";
         return o;
     }
 

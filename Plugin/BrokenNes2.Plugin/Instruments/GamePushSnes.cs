@@ -157,7 +157,7 @@ internal static class SnesPusher
             var r0 = rec.Regions[0];
             for (int i = 0; i < r0.Pushed.Length; i++) if (r0.Original[i] != r0.Pushed[i]) sampleDiff++;
             bool loopDiff = !rec.Regions[1].Original.AsSpan().SequenceEqual(rec.Regions[1].Pushed);
-            parts.Add($"{(sampleDiff > 0 ? $"{sampleDiff} sample bytes" : "")}{(sampleDiff > 0 && loopDiff ? " and " : "")}{(loopDiff ? "the loop pointer" : "")} written into the game's audio RAM (kept until the game loads other sounds there)");
+            parts.Add($"{(sampleDiff > 0 ? $"{sampleDiff} sample bytes" : "")}{(sampleDiff > 0 && loopDiff ? " and " : "")}{(loopDiff ? "the loop pointer" : "")} written into the game's audio RAM (they stay until it loads other sounds)");
         }
         var forced = new List<string>();
         if ((ent.Flags & DspVoiceOverrides.HasEnv) != 0) forced.Add($"envelope ${ent.Adsr1:X2} ${ent.Adsr2:X2} ${ent.Gain:X2}");
@@ -171,8 +171,8 @@ internal static class SnesPusher
             if ((ent.MixMask & DspVoiceOverrides.MixPmod) != 0) f.Add("pitch modulation " + ((ent.Mix & DspVoiceOverrides.MixPmod) != 0 ? "on" : "off"));
             forced.Add(string.Join(", ", f));
         }
-        if (forced.Count > 0) parts.Add($"forced on every voice that plays sample {slot} (the driver's own values are ignored for it): {string.Join("; ", forced)}");
-        o.Message = $"Pushed sample {slot}: " + string.Join("; ", parts) + ". Remove from game undoes it.";
+        if (forced.Count > 0) parts.Add($"forced on every voice playing it, whatever the driver writes: {string.Join(", ", forced)}");
+        o.Message = $"Pushed sample {slot}: " + string.Join("; ", parts) + ".";
         return o;
     }
 

@@ -145,7 +145,7 @@ public sealed unsafe partial class SelfTest
             pushText = DllText(p, HkPushText);
             t.Expect(rc == 0, $"{what}: the push was refused: {pushText}");
             t.Expect(p.Test(HkPushCount) == 1, $"{what}: {p.Test(HkPushCount)} pushes after one push");
-            t.Expect(pushText.Length > 30 && pushText.Contains("Remove from game"), $"{what}: the push says nothing useful: '{pushText}'");
+            t.Expect(pushText.StartsWith("Pushed") && pushText.Length > 60, $"{what}: the push says nothing useful: '{pushText}'");
             pushedLive = p.Test(HkLiveHash);
             if (snes || g.Console == 1) t.Expect(pushedLive != live0, $"{what}: the game's own sound memory is unchanged by the push");
             t.Expect(p.Test(HkFarmPoisoned) == 1, $"{what}: the corruption farm was not told that something a replay cannot repeat was installed");
@@ -358,11 +358,13 @@ public sealed unsafe partial class SelfTest
                 long liveBefore = p.Test(HkLiveHash);
                 UiClick(t, c, UiPush, "Push into the game");
                 string said = UiText(p, 3);
-                t.Expect(p.Test(420, 11) == 1 && said.Contains("Pushed sample 0") && said.Contains("tuning +100 cents") && said.Contains("Remove from game"), $"Push said '{said}'");
+                t.Expect(p.Test(420, 11) == 1 && said.Contains("Pushed sample 0") && said.Contains("tuning +100 cents"), $"Push said '{said}'");
                 t.Expect(p.Test(HkPushCount) == 1 && p.Test(HkPushVerify) == 1, $"after the push: {p.Test(HkPushCount)} pushes, hooks {p.Test(HkPushVerify)}");
                 t.Expect(p.Test(HkLiveHash) == liveBefore, "a tuning-only push changed the game's audio RAM");
                 Win32Host.Pump(150);
                 t.Expect(UiText(p, 14).Contains("in the game"), $"the pushed sample is not marked on the list: '{UiText(p, 14)}'");
+                // (a picture of the tab for the record: BROKENNES_INJECT_SHOT=<path.bmp> in the environment)
+                if (Environment.GetEnvironmentVariable("BROKENNES_INJECT_SHOT") is { Length: > 0 } shot) Win32Host.CaptureWindow(c.Parent, c.Hwnd, 1340, 670, shot);
 
                 // Remove: ok, the mark goes
                 UiClick(t, c, UiRemove, "Remove from game");

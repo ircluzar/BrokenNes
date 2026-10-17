@@ -89,7 +89,7 @@ internal static class OtherPushers
         PushHooks.Install(m, st);
         o.Poison = "an instrument was pushed into the sound unit as a trigger substitution (not a memory write a replay from power-on could repeat)";
         int diff = 0; for (int i = 0; i < 16; i++) if (orig[i] != edit[i]) diff++;
-        o.Message = $"Pushed the Game Boy wave ({diff} of 16 bytes differ): written into the wave RAM now, and written again whenever the wave channel is triggered while the RAM holds the game's original wave (the driver reloads waves when it changes instrument). Remove from game undoes it.";
+        o.Message = $"Pushed the Game Boy wave ({diff} of 16 bytes differ): written into the wave RAM now and again at every wave-channel trigger while the RAM holds the game's own wave (the driver reloads waves when an instrument changes).";
         return o;
     }
 
@@ -145,7 +145,7 @@ internal static class OtherPushers
         PushHooks.Install(m, st);
         o.Poison = "an instrument was pushed into the sound unit as a key-on substitution (not a memory write a replay from power-on could repeat)";
         int diff = 0; for (int i = 0; i < 8; i++) if (orig[i] != edit[i]) diff++;
-        o.Message = $"Pushed the YM2413 user instrument ({diff} of 8 registers differ): at every key-on of a channel that plays the user instrument while its registers are the game's original ones, the edited ones are loaded first. Only the user instrument (the game's own instrument 0) can change; the chip's fifteen ROM instruments cannot. Remove from game undoes it.";
+        o.Message = $"Pushed the YM2413 user instrument ({diff} of 8 registers differ): loaded at every key-on of a channel playing it while its registers are the game's own. The chip's fifteen ROM instruments cannot change.";
         return o;
     }
 

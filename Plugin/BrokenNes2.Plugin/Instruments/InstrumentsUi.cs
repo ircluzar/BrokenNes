@@ -400,7 +400,7 @@ internal sealed class EmulatorInstrumentProvider : IInstrumentModelProvider
         return o.Ok ? ActionResult.Done(o.Message) : ActionResult.Refused(o.Message);
     }
 
-    public string? Notice => s.Emu.VerifyPushes() ?? s.Emu.InjectNote;
+    public string? Notice => s.Emu.VerifyPushes() ?? s.Emu.InjectNote ?? s.Emu.InstrumentNote;
 }
 
 /// <summary>What the tab can draw of an instrument's blobs, and the small translations between the model and the contract.</summary>
