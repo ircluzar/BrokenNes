@@ -175,6 +175,8 @@ public sealed unsafe partial class SelfTest
             ("rom-consoles", "ROM mode on Game Boy and SNES games: runs, picture size, Mix only, files of any console, bad files refused", RomConsoles),
             ("about", "About window: opens by itself the first time only, is modal, closes, reopens from the button", AboutWindow),
             ("rom-editor", "Editor in ROM mode: picture, mode switch loads the game, Direct shows the bypass message", RomEditor),
+            ("ui", "Editor tabs (Emulator | Instruments | Presets): the window is 904 x 664 on the Emulator tab and grows on the others (the host is told), the Emulator tab is unchanged (control rectangles and pixels), the Instruments tab (Runaway and model messages, instrument list, fields, slider, stepper, bit toggles, locks, waveform, hex field, corruption tools, undo and redo, send to presets, push) and the Presets tab (library, search, filter, Load, Rename, Delete, Export, Import, Audition) work through real mouse and key messages on stub models, typing does not press the game's buttons", UiTabsTest),
+            ("ui-proof", "Every check of the editor tabs fails when a matching fault is injected (the faults are switches in the plugin set through a test hook), and the checks without a switch fail when asked a false question", UiProofTest),
             ("robust", "Many instances, concurrent instances, garbage calls, destroy with voices playing", Robust),
             ("log", "BROKENNES_PLUGIN_LOG records the host's calls", LogTest),
         };

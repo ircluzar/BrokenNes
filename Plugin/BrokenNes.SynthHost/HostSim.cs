@@ -115,8 +115,22 @@ public sealed unsafe class HostSim : IDisposable
     {
         var h = Of(self);
         if (h != null && h.Record) lock (h.DispatcherCalls) h.DispatcherCalls.Add(id);
+        if (h != null && id == Fhd.EditorResized)
+        {
+            // FHD_EditorResized: the plugin resized its editor window; the host fits its frame around it again (what FL does)
+            Interlocked.Increment(ref h.editorResizedCalls);
+            try { h.EditorResized?.Invoke(); } catch (Exception) { /* a host callback must never take the plugin down */ }
+        }
         return 0;
     }
+
+    private int editorResizedCalls;
+
+    /// <summary>Calls of FHD_EditorResized seen (the plugin changed the size of its editor window).</summary>
+    public int EditorResizedCalls => Volatile.Read(ref editorResizedCalls);
+
+    /// <summary>Raised on the calling (GUI) thread when the plugin reports its editor was resized: the owner of the frame window resizes it.</summary>
+    public Action? EditorResized { get; set; }
 
     [UnmanagedCallersOnly]
     private static void OnParamChanged(nint self, nint sender, int index, int value)

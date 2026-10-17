@@ -65,6 +65,10 @@ public sealed unsafe class SynthRack : IDisposable
     /// <summary>Voices alive in the plugins (held, or released and still fading).</summary>
     public int LiveVoices => hosts.Sum(h => h.LiveVoices);
 
+    /// <summary>Raised (on the GUI thread, from inside the plugin's own call) with the channel when that instance's editor reports that it was resized
+    /// (FHD_EditorResized): whoever holds the editor window fits its frame around the editor again, as FL does. Read the new size from <see cref="EditorWindow"/>.</summary>
+    public event Action<int>? EditorResized;
+
     /// <summary>Loads the plugin DLL and creates the four instances at <paramref name="sampleRate"/>.</summary>
     public SynthRack(string pluginDll, int sampleRate)
     {
@@ -74,6 +78,8 @@ public sealed unsafe class SynthRack : IDisposable
         {
             held[i] = new Dictionary<int, SimVoice>();
             hosts[i] = new HostSim { Record = false, DeferFree = true };
+            int channel = i;
+            hosts[i].EditorResized = () => EditorResized?.Invoke(channel);       // the editor changed size (its Instruments and Presets tabs are wider): the window that holds it must follow
             var p = lib.Create(hosts[i], (nint)(0x200 + i));
             instances[i] = p;
             p.RackChannel = i;
