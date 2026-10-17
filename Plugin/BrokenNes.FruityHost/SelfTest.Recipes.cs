@@ -9,6 +9,8 @@
 using System.Runtime.InteropServices;
 using BrokenNes.Fruity;
 using BrokenNes.SynthHost;
+using BrokenNes2;
+using BrokenNes2.Instruments;
 using NesEmulator.Corruption;
 using NesEmulator.Systems;
 using SynthSnes = BrokenNes.Workshop.Corruption.SynthSnesRom;
@@ -59,6 +61,7 @@ public sealed unsafe partial class SelfTest
             RecWindow(t, dir, rom);
             RecDamaged(t, rom);
             RecGenesis(t);
+            RecEdited(t);
         }
         finally
         {
@@ -294,6 +297,50 @@ public sealed unsafe partial class SelfTest
             WaitForRom(q);
             var plainNote = RecNote(q);
             t.Expect(q.Test(45) == 1 && q.Test(48) == 1 && q.Test(HkRecipes) == 0 && Audio.Rms(plainNote, 3000, plainNote.Length - 3000) > 0.005, $"recipes (older project): runaway {q.Test(45)}, sampler {q.Test(48)}, recipes {q.Test(HkRecipes)}, the Recipe parameter {q.GetParam(PRecipe)} with no recipes plays the plain instrument at rms {Audio.Rms(plainNote, 3000, plainNote.Length - 3000):0.0000}");
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------------
+    // the Instruments tab's model (round 6 imodel) writes an edited instrument into a COPY of the snapshot: the game's voices must come along (the first merge of the two lost them without a word)
+
+    private void RecEdited(T t)
+    {
+        var snes = ImodelData.SnesWithSamples();
+        snes.Recipes = [new SpcRecipe { Srcn = 0, Held = false }];
+        snes.ListenNote = "Game voices: 1 (from the test)";
+        var src = InstrumentSources.For(snes)!;
+        var first = src.List().FirstOrDefault(i => i.Editable);
+        t.Expect(first != null, "recipes (edited instrument): the SNES test snapshot lists no editable instrument");
+        if (first != null)
+        {
+            var edit = first.Clone();
+            var vol = edit.Field("vol.l");
+            t.Expect(vol != null, "recipes (edited instrument): the SNES instrument has no vol.l field to edit");
+            if (vol != null)
+            {
+                vol.Value = vol.Value == 100 ? 90 : 100;
+                var written = src.Write(edit);
+                var copy = written.Snapshot as SpcSnapshot;
+                t.Expect(written.Ok && copy != null && !ReferenceEquals(copy, snes) && copy.Overlay != null, $"recipes (edited instrument): the volume edit should give a changed copy with an overlay ({written.Reason})");
+                t.Expect(copy != null && copy.Recipes.Length == 1 && ReferenceEquals(copy.Recipes, snes.Recipes) && copy.ListenNote == snes.ListenNote, $"recipes (edited instrument): the SNES copy has {copy?.Recipes.Length} game voices and the note \"{copy?.ListenNote}\": the edit lost them");
+                var again = src.Write(first.Clone());
+                t.Expect(again.Ok && again.Snapshot is SpcSnapshot s2 && s2.Recipes.Length == 1, "recipes (edited instrument): an edit that changes nothing should keep the game voices too");
+            }
+        }
+        var sega = ImodelData.PsgOnly();
+        sega.Recipes = [new GenRecipe { Kind = GenRecipe.KindPsgTone, Period = 254, Att = 0 }];
+        sega.ListenNote = "Game voices: 1 (from the test)";
+        var segaCopy = SegaInstruments.Copy(sega);
+        t.Expect(segaCopy.Recipes.Length == 1 && segaCopy.ListenNote == sega.ListenNote, $"recipes (edited instrument): the Sega copy has {segaCopy.Recipes.Length} game voices and the note \"{segaCopy.ListenNote}\": the copy lost them");
+        var psgSrc = InstrumentSources.For(sega)!;
+        var tone = psgSrc.List().FirstOrDefault(i => i.Editable);
+        if (tone != null)
+        {
+            var e2 = tone.Clone();
+            var f = e2.Fields.FirstOrDefault(x => x.Max > x.Min);
+            if (f != null) f.Value = f.Value == f.Min ? f.Max : f.Min;
+            var w2 = psgSrc.Write(e2);
+            t.Expect(w2.Ok && w2.Snapshot is SegaSnapshot c2 && c2.Recipes.Length == 1, $"recipes (edited instrument): a PSG instrument edit should keep the game voices ({w2.Reason})");
         }
     }
 

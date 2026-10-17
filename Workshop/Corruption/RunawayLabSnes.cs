@@ -446,6 +446,63 @@ internal static class LabSnes
         return list.ToArray();
     }
 
+    /// <summary>
+    /// --runaway-lab snes-screech --rom X [--name N] [--setup N] [--window N] [--seeds N] [--input script]: corruptions of the sound driver's own memory (code, variables, tables, sequence data) at 30, 100 and 300 writes, looking for the ones that leave a loud, harsh sound
+    /// (more than a quarter of the energy above 4 kHz, at least a third as loud as the clean game, over the last half of the window), and for each what the old capture and the new one make of it. A state the driver survives with a garbled sound is the case the user reported.
+    /// </summary>
+    public static int ScreechHunt(string[] args)
+    {
+        string Opt(string n, string d) { int i = Array.IndexOf(args, "--" + n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
+        string romPath = Opt("rom", "");
+        var rom = LabCommon.ReadRom(romPath, out _, out _);
+        var game = new Game(Opt("name", Path.GetFileNameWithoutExtension(romPath)), rom, Opt("input", ""), int.Parse(Opt("setup", "900")));
+        int window = int.Parse(Opt("window", "600")), seeds = int.Parse(Opt("seeds", "20"));
+        var state = Setup(game);
+        var classes = Classes(game, state, window, out _);
+        var driver = classes.Where(c => c.Note == "driver" && c.Domain == "ARAM").SelectMany(c => c.Addresses).Distinct().ToArray();
+        using var clean0 = Fresh(game, state);
+        var cleanMono = LabCommon.ToMono(LabCommon.RunPcm(clean0.Session, window));
+        int half = cleanMono.Length / 2;
+        double cleanRms = LabCommon.Rms(cleanMono, half, cleanMono.Length - half), cleanHf = HighFraction(cleanMono[half..]);
+        Console.WriteLine($"== SNES screech hunt: {game.Name}: {driver.Length} bytes of driver memory; the clean game's last {window / 120} s: rms {cleanRms:0.0000}, {cleanHf:0.00} of the energy above 4 kHz");
+        int alive = 0, screech = 0, tried = 0;
+        foreach (int n in new[] { 30, 100, 300 })
+            for (int seed = 1; seed <= seeds; seed++)
+            {
+                var rnd = new SeededRandom(9000 + n * 100 + seed);
+                var writes = Enumerable.Range(0, n).Select(_ => new CorruptionWrite("ARAM", driver[rnd.Next(driver.Length)], (byte)rnd.Next(256))).ToList();
+                using var run = Fresh(game, state);
+                CorruptionApplier.Apply(MachineDomains.For(run.Session), writes);
+                var log = new SpcWriteLog(); log.Attach(run.Spc);
+                long t0 = run.Spc.SamplesProduced;
+                var mono = LabCommon.ToMono(LabCommon.RunPcm(run.Session, window));
+                long t1 = run.Spc.SamplesProduced;
+                tried++;
+                double rms = LabCommon.Rms(mono, half, mono.Length - half), hf = HighFraction(mono[half..]);
+                var notes = SpcRecipes.Notes(log, t1, t1 - t0, run.Spc.Dsp.Regs, out var stats, out _);
+                if (notes.Count > 0) alive++;
+                bool harsh = hf >= 0.25 && rms >= cleanRms / 3;
+                if (!harsh) continue;
+                screech++;
+                var snap = new SpcSnapshot(run.Spc.Aram, run.Spc.Dsp.Regs);
+                var recipes = SpcRecipes.Derive(log, t1, t1 - t0, run.Spc.Dsp.Regs, out _);
+                snap.Recipes = recipes;
+                var rg = run.Spc.Dsp.Regs;
+                string makeup = $"noise {recipes.Count(r => r.Non)}, pitch-mod {recipes.Count(r => r.Pmon)}, echo {recipes.Count(r => r.Eon)}; echo feedback {rg[0x0D]:X2} volume {rg[0x2C]:X2}/{rg[0x3C]:X2} delay {rg[0x7D]:X2}, FLG {rg[0x6C]:X2}";
+                string line = $"  {n,3} writes, seed {seed,2}: rms {rms:0.0000} (x{rms / cleanRms:0.0}), HF {hf:0.00}, {stats.KeyOns} key-ons, {notes.Count(x => x.Recipe.Held)} held, {recipes.Length} recipes ({makeup});";
+                if (notes.Count > 0)
+                {
+                    int skip = mono.Length / 5;
+                    var reMacro = Resynthesize(snap, notes, recipes, t0, t1, Resynth.Macro); var rePlain = Resynthesize(snap, notes, recipes, t0, t1, Resynth.Plain); var reEx = Resynthesize(snap, notes, recipes, t0, t1, Resynth.Exemplar);
+                    line += $" distance of the game to [macro] {LabCommon.F(LabCommon.SpectralDistance(mono[skip..], reMacro[skip..], 32000))} [exemplar] {LabCommon.F(LabCommon.SpectralDistance(mono[skip..], reEx[skip..], 32000))} [plain] {LabCommon.F(LabCommon.SpectralDistance(mono[skip..], rePlain[skip..], 32000))} [silence] {LabCommon.F(LabCommon.SpectralDistance(mono[skip..], new float[mono.Length - skip], 32000))}";
+                }
+                else line += " no notes: the sound is not made by key-ons (an echo or a voice nothing keyed)";
+                Console.WriteLine(line);
+            }
+        Console.WriteLine($"{tried} corruptions tried, the driver still keyed notes in {alive}, {screech} left a loud harsh sound");
+        return 0;
+    }
+
     /// <summary>The share of the sound's energy above 4 kHz (a rough measure of how screechy or hissy it is).</summary>
     internal static double HighFraction(float[] mono32)
     {

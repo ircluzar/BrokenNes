@@ -7,6 +7,7 @@ namespace BrokenNes.Workshop.Corruption;
 /// See docs/projects/round6-runaway.md for the method and the results.
 ///   snes-probe  --rom X [--frames N] [--input script]     what a SNES game's sound driver does
 ///   snes-resynth --rom X [--name N] [--setup N] [--window N] [--seeds N]     the game's own notes played again from the recorded macros (what a recipe model can carry)
+///   snes-screech --rom X [--name N] [--setup N] [--window N] [--seeds N]     corruptions of the sound driver that leave a loud harsh sound, and what each capture makes of them
 ///   snes-matrix --rom X [--name N] [--input script] [--setup N] [--window N] [--seeds N]     corruption classes against the game's sound and Instrument Runaway
 /// </summary>
 internal static class RunawayLab
@@ -19,6 +20,7 @@ internal static class RunawayLab
             case "snes-probe": return LabSnes.Probe(args);
             case "snes-matrix": return LabSnes.Matrix(args);
             case "snes-resynth": return LabSnes.ResynthLab(args);
+            case "snes-screech": return LabSnes.ScreechHunt(args);
             case "md-probe": return LabMd.Probe(args);
             case "md-resynth": return LabMd.ResynthLab(args);
             case "md-matrix": return LabMd.Matrix(args);

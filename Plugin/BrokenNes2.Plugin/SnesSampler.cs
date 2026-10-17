@@ -16,7 +16,9 @@ internal sealed class SnesSampler
     private readonly float[] tmpL, tmpR;
     private readonly float[] one = new float[1];
     private byte koff = 0xFF, pendingKon;
-    private byte nonMask, eonMask;                 // the noise and echo bits of the eight voices as this sampler's DSP has them
+    // instrument edits (SpcSnapshot.Overlay, null for a game's own sound memory: then none of this runs): the overlay entry each DSP voice plays, and the voice masks the edits' echo / noise / pitch-modulation flags set
+    private readonly int[] voiceOverlay = [-1, -1, -1, -1, -1, -1, -1, -1];
+    private byte eonMask, nonMask, pmonMask;
     private readonly byte defaultEon, flgBase;     // the echo bits plain instruments use; the game's FLG (echo-write flag and noise rate)
 
     // a voice playing a recipe: its macro walks forward one DSP sample at a time (no allocation: the state lives in these eight objects)
@@ -71,7 +73,16 @@ internal sealed class SnesSampler
     public void NoteOn(int voice, int srcn, int pitch, int volL, int volR)
     {
         EndMacro(voice);
-        SetFlags(voice, false, defaultEon != 0);
+        var ov = snap.Overlay;
+        if (ov != null)
+        {
+            // the sample's edited tuning, volume weights and flags (its edited envelope comes through SpcSnapshot.TryEnvelope below)
+            int oi = ov.IndexOf(srcn);
+            voiceOverlay[voice] = oi;
+            ApplyMix(voice, ov, oi);
+            if (oi >= 0) { pitch = ov.AdjustPitch(oi, pitch); volL = ov.AdjustVolume(oi, volL, false); volR = ov.AdjustVolume(oi, volR, true); }
+        }
+        else SetFlags(voice, false, defaultEon != 0);               // a plain note on a voice that played a recipe: the plain flags again
         int r = voice * 16;
         dsp.Write(r, (byte)Math.Clamp(volL, -128, 127));
         dsp.Write(r + 1, (byte)Math.Clamp(volR, -128, 127));
@@ -86,9 +97,31 @@ internal sealed class SnesSampler
         pendingKon |= (byte)(1 << voice);
     }
 
+    /// <summary>Sets this DSP voice's bits in the echo, noise and pitch-modulation registers: the defaults (echo as the game used it, no noise, no modulation) or the sample's edited flags.</summary>
+    private void ApplyMix(int voice, Instruments.SnesOverlay ov, int oi)
+    {
+        bool echo = snap.Dsp[0x4D] != 0, noise = false, pmod = false;
+        if (oi >= 0 && (ov.At(oi).Flags & Instruments.SnesOverlay.HasMix) != 0)
+        {
+            byte m = ov.At(oi).Mix;
+            echo = (m & Instruments.SnesOverlay.MixEcho) != 0; noise = (m & Instruments.SnesOverlay.MixNoise) != 0; pmod = (m & Instruments.SnesOverlay.MixPmod) != 0;
+        }
+        byte bit = (byte)(1 << voice);
+        eonMask = echo ? (byte)(eonMask | bit) : (byte)(eonMask & ~bit);
+        nonMask = noise ? (byte)(nonMask | bit) : (byte)(nonMask & ~bit);
+        pmonMask = pmod ? (byte)(pmonMask | bit) : (byte)(pmonMask & ~bit);
+        dsp.Write(0x4D, eonMask); dsp.Write(0x3D, nonMask); dsp.Write(0x2D, pmonMask);
+    }
+
     public void Update(int voice, int pitch, int volL, int volR)
     {
         if (macros[voice].R != null) { UpdateRecipe(voice, pitch, volL); return; }
+        var ov = snap.Overlay;
+        if (ov != null && voiceOverlay[voice] >= 0)
+        {
+            int oi = voiceOverlay[voice];
+            pitch = ov.AdjustPitch(oi, pitch); volL = ov.AdjustVolume(oi, volL, false); volR = ov.AdjustVolume(oi, volR, true);
+        }
         int r = voice * 16;
         dsp.Write(r, (byte)Math.Clamp(volL, -128, 127));
         dsp.Write(r + 1, (byte)Math.Clamp(volR, -128, 127));
@@ -112,6 +145,8 @@ internal sealed class SnesSampler
         byte n = (byte)(noise ? nonMask | bit : nonMask & ~bit), e = (byte)(echo ? eonMask | bit : eonMask & ~bit);
         if (n != nonMask) { nonMask = n; dsp.Write(0x3D, n); }
         if (e != eonMask) { eonMask = e; dsp.Write(0x4D, e); }
+        byte pm = (byte)(pmonMask & ~bit);                         // pitch modulation needs the neighbouring voice's output: a recipe voice does not replay it
+        if (pm != pmonMask) { pmonMask = pm; dsp.Write(0x2D, pm); }
     }
 
     private void EndMacro(int voice)

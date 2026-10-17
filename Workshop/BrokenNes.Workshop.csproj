@@ -104,6 +104,9 @@
     <Compile Include="..\Plugin\BrokenNes2.Plugin\GenRecipe.cs" Link="PluginShared\GenRecipe.cs" />
     <Compile Include="..\Plugin\BrokenNes2.Plugin\SegaSamplers.cs" Link="PluginShared\SegaSamplers.cs" />
     <Compile Include="..\Core\StreamResampler.cs" Link="PluginShared\StreamResampler.cs" />
+    <!-- SpcSnapshot.cs refers to the per-sample overlay a SNES instrument edit adds to the copy (round 6); that file is self-contained too. -->
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\Instruments\SnesOverlay.cs" Link="PluginShared\SnesOverlay.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\Instruments\InstrumentMutants.cs" Link="PluginShared\InstrumentMutants.cs" />
 
     <!-- nullproviders/: only the 7 that don't `using BrokenNes.Windows.Rendering` (ColorMath,
          which lives outside the emulator tree) - same subset Web/ uses. Discovery is

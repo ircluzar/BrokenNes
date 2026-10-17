@@ -17,7 +17,7 @@ using NesEmulator.Plugin;
 
 namespace BrokenNes2;
 
-public sealed unsafe class Bn2Plugin : FruityPluginBase
+public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 {
     public const double CpuHz = 1789773.0;
     private const int Chunk = 64;
@@ -322,7 +322,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         if (sampler == null || !ReferenceEquals(samplerFor, snap) || samplerRate != rate)
         {
             DropSampler();
-            sampler = new SnesSampler(snap, rate);
+            sampler = TakePrepared<SnesSampler>(snap, rate) ?? new SnesSampler(snap, rate);       // (an instrument edit prepares it on the UI thread: see Bn2Plugin.Instruments.cs)
             samplerFor = snap;
             samplerRate = rate;
         }
@@ -392,12 +392,12 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         if (segaSampler == null || !ReferenceEquals(segaFor, snap) || segaRate != rate)
         {
             DropSampler();
-            segaSampler = snap.Kind switch
+            segaSampler = TakePrepared<SegaSampler>(snap, rate) ?? (snap.Kind switch
             {
                 SegaSnapshot.KindOpn => new OpnSampler(snap, rate),
                 SegaSnapshot.KindOpll => new OpllSampler(snap, rate),
-                _ => new PsgSampler(snap, rate),
-            };
+                _ => (SegaSampler)new PsgSampler(snap, rate),
+            });
             segaFor = snap;
             segaRate = rate;
         }
@@ -477,7 +477,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         if (gbSampler == null || !ReferenceEquals(gbFor, snap) || gbRate != rate)
         {
             DropSampler();
-            gbSampler = new GbSampler(snap, rate);
+            gbSampler = TakePrepared<GbSampler>(snap, rate) ?? new GbSampler(snap, rate);
             gbFor = snap;
             gbRate = rate;
         }
@@ -768,6 +768,16 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                     stream.Write(&sprLen, 4);
                     fixed (byte* p = sprBytes) stream.Write(p, (uint)sprLen);
                 }
+                // the instrument edits that ride on that sound memory (Instruments/SnesOverlay.cs): their own section, after it, so a build that does not know them skips it
+                if (snap.Overlay is { } overlay)
+                {
+                    uint spoMagic = Instruments.SnesOverlay.Tag;
+                    var spoBytes = overlay.ToBytes();
+                    int spoLen = spoBytes.Length;
+                    stream.Write(&spoMagic, 4);
+                    stream.Write(&spoLen, 4);
+                    fixed (byte* p = spoBytes) stream.Write(p, (uint)spoLen);
+                }
             }
             // The whole machine of the game: a reopened project continues from where the game was, and every change made to the game stays (see GameState.cs).
             if (a.Emulator?.CaptureGameSection() is { } gameSection)
@@ -795,6 +805,8 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         SpcSnapshot? restoredSnapshot = null;
         SpcRecipe[]? restoredRecipes = null;
         GenRecipe[]? restoredGenRecipes = null;
+        Instruments.SnesOverlay? restoredOverlay = null;
+        string? overlayProblem = null;
         GbSnapshot? restoredGb = null;
         SegaSnapshot? restoredSega = null;
         GameStateSection? restoredGame = null;
@@ -853,6 +865,17 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                             fixed (byte* p = segaBuf) if (!stream.Read(p, (uint)slen)) break; else restoredSega = SegaSnapshot.FromBytes(segaBuf);
                             if (restoredSega != null && restoredSega.Tag != tag) restoredSega = null;
                         }
+                        else if (tag == Instruments.SnesOverlay.Tag && slen is >= 7 and <= Instruments.SnesOverlay.MaxBytes)
+                        {
+                            // the instrument edits of a SNES sound memory: read and checked, never trusted (a damaged one is dropped and the user is told, see Emulator.InstrumentNote)
+                            var spoBuf = new byte[slen];
+                            fixed (byte* p = spoBuf) if (!stream.Read(p, (uint)slen)) break; else restoredOverlay = Instruments.SnesOverlay.FromBytes(spoBuf, out overlayProblem);
+                        }
+                        else if (tag == Instruments.SnesOverlay.Tag)
+                        {
+                            overlayProblem = "damaged (its length)";
+                            if (!(slen is >= 0 and <= GameStateSection.MaxRead && SkipSection(stream, slen))) break;
+                        }
                         else if (tag == GameStateSection.Tag)
                         {
                             if (slen < GameStateSection.HeaderSize || slen > GameStateSection.MaxRead) { gameProblem = "damaged"; break; }
@@ -883,7 +906,14 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
         var emu2 = assignment.Emulator;
         if (restoredSega != null && restoredGenRecipes != null) { restoredSega.Recipes = restoredGenRecipes; restoredSega.ListenNote = "Game voices from the project: " + restoredGenRecipes.Length; }
         if (restoredSnapshot != null && restoredRecipes != null) { restoredSnapshot.Recipes = restoredRecipes; restoredSnapshot.ListenNote = "Game voices from the project: " + restoredRecipes.Length; }
-        if (emu2 != null && emu2.MemberCount == 1) emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem, restoredCorruption);
+        // the recipes go on first: WithOverlay makes a copy that keeps them
+        if (restoredOverlay != null && restoredSnapshot != null) restoredSnapshot = restoredSnapshot.WithOverlay(restoredOverlay);
+        else if (restoredOverlay != null) overlayProblem = "the project has instrument edits but no sound memory to apply them to";
+        if (emu2 != null && emu2.MemberCount == 1)
+        {
+            emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem, restoredCorruption);
+            emu2.SetInstrumentNote(overlayProblem == null ? null : "The project's instrument edits were not restored: " + overlayProblem);
+        }
     }
 
     /// <summary>Reads past a section this build does not know; false when the stream ends first.</summary>
@@ -1114,7 +1144,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             case 40: About.ResetForTests(deleteState: true); return 0;
             case 41: About.ResetForTests(deleteState: false); return 0;
             case 42: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return emu == null || path == null ? 1 : emu.LoadRomFile(path) == null ? 0 : 1; }
-            default: return TestEditor(id - Fpd.TestBase, index, value);
+            default: return id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
     }
 
