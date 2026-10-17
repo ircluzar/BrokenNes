@@ -40,7 +40,7 @@ BrokenDev\brokendev.ps1 restore all             # 2. extract the three archives 
 BrokenDev\brokendev.ps1 build-workshop          # 3. the headless BrokenNes runner (about 1 minute)
 BrokenDev\brokendev.ps1 build all               # 4. all six versions (about 5 minutes)
 BrokenDev\brokendev.ps1 verify all              # 5. run them on BrokenNes: boot, input, hashes, audio, speed
-BrokenDev\brokendev.ps1 diff all                # 6. (optional) differential replay against Mesen 2
+BrokenDev\brokendev.ps1 diff all                # 6. (optional) differential replay against Mesen 2 (the NES ones need $env:BROKENDEV_TRACE_LUA = the path of the user's state_trace.lua)
 BrokenDev\brokendev.ps1 run supervrun           # open one in the BrokenNes desktop app
 ```
 
@@ -75,6 +75,10 @@ Outputs: `BROKENDEV_HOME\out\<project>\` holds the published ROM, `build.json` (
 * **The SMB1 remake needs zeroed RAM.** See `docs/smb1-knowledge.md` and the report; use the BrokenDev menu's Power-on RAM lever or the
   `powerOnRam` field of a verify scenario.
 * **Mesen kills a test-runner script after about 100 seconds**, so differential replays are limited to a few thousand frames.
+* **The NES differential needs the user's own Mesen tracer** (`tools\state_trace.lua` in his VRUN repository, not in any archive): without
+  `BROKENDEV_TRACE_LUA` the NES `diff` is skipped with that reason, never passed.
+* **Music (Phase 0)**: `BrokenDev\tools\music-replay-check.ps1 -Mid some.mid -Name mysong -Frames 2400 -Template` builds a one-song ROM from a
+  MIDI file with VRUN's own converter, runs it on BrokenNes and checks it frame by frame (see `docs\projects\brokendev-music-pipeline.md`).
 
 ## 6. Where the rest is
 
