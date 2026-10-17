@@ -79,6 +79,7 @@ public sealed unsafe partial class Bn2Editor
     {
         var cv = Canvas();
         cv.Hot = hot; cv.Active = active;
+        PresetHost.Current = plugin;                  // the preset library acts on the instance whose editor this is
         int saved = Win32.SaveDC(dc);
         try
         {
@@ -105,6 +106,7 @@ public sealed unsafe partial class Bn2Editor
     /// <summary>Runs an event handler of a tab; a model that throws is logged and shown on the tab instead of taking the window's message handling with it.</summary>
     private T UiGuard<T>(Func<T> f, T fallback)
     {
+        PresetHost.Current = plugin;                  // the preset library acts on the instance whose editor this is
         try { return f(); }
         catch (Exception e)
         {

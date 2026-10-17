@@ -93,7 +93,7 @@ public sealed partial class Emulator : IDisposable
     /// <summary>Runaway on a Master System, Game Gear or Genesis game: every instance plays the game's sound chips, set up as the game had them, on chips of its own.</summary>
     public bool SegaSamplerMode => Runaway && SegaState != null;
     /// <summary>Any of the sampler modes: the instances are samplers of the frozen game's instruments, not channels of it.</summary>
-    public bool AnySamplerMode => SamplerMode || GbSamplerMode || SegaSamplerMode;
+    public bool AnySamplerMode => SamplerMode || GbSamplerMode || SegaSamplerMode || PresetMode;
     /// <summary>Runaway needs a running game.</summary>
     public bool CanRunaway => Mode == 1 && RomLoaded;
 
@@ -243,6 +243,7 @@ public sealed partial class Emulator : IDisposable
             if (value == mode) return;
             Volatile.Write(ref mode, value);
             if (value == 0) ClearRunaway();
+            else LeavePresetChipLocked();           // a game is going to run: it needs the console's own sound chip, not a Presets chip
             PlaceChanged();
             Changed();
         }
@@ -263,8 +264,11 @@ public sealed partial class Emulator : IDisposable
         if (value == chip) return;
         int before = Console;
         string chipBefore = ChipId;
+        bool presetBefore = PresetMode, modeChanged = false;
+        // a Presets chip plays without a game: picking one while a game runs leaves ROM mode (the Mode buttons show it)
+        if (Cx.IsPresetChip(value) && mode == 1) { Volatile.Write(ref mode, 0); ClearRunaway(); modeChanged = true; }
         Volatile.Write(ref chip, value);
-        if (Console != before) PlaceChanged();
+        if (Console != before || modeChanged || presetBefore != PresetMode) PlaceChanged();
         // a chip of the same console can offer other voices (the Master System FM chip has FM 1-9 where the PSG chip has none): instances are placed again, so those that asked for one get it (or lose it)
         else if (Mode == 1 && !Cx.Channels(Console, 1, chipBefore).SequenceEqual(Cx.Channels(Console, 1, ChipId))) EmulatorHub.ReResolveAll(this);
     }
@@ -302,6 +306,7 @@ public sealed partial class Emulator : IDisposable
             romPaths[console] = path;
             Volatile.Write(ref mode, 1);
             if (console != Console) Volatile.Write(ref chip, Cx.DefaultChip(console));
+            else LeavePresetChipLocked();
             ResetOutputs();
             StartLoad();
             EmulatorHub.ReResolveAll(this);
@@ -333,6 +338,7 @@ public sealed partial class Emulator : IDisposable
             romPaths[Cx.Nes] = null;
             Volatile.Write(ref mode, 1);
             if (Console != Cx.Nes) Volatile.Write(ref chip, Cx.DefaultChip(Cx.Nes));
+            else LeavePresetChipLocked();
             ResetOutputs();
             StartLoad();
             EmulatorHub.ReResolveAll(this);
@@ -351,6 +357,7 @@ public sealed partial class Emulator : IDisposable
             Volatile.Write(ref chip, newChip);
             romPaths[console] = string.IsNullOrWhiteSpace(rom) ? null : rom;
             Volatile.Write(ref mode, Math.Clamp(newMode, 0, 1));
+            if (mode == 1) LeavePresetChipLocked();          // (a project cannot have a game running on a Presets chip; if one says so, the console's own chip it is)
             if (mode != modeBefore || console != consoleBefore)
             {
                 ResetOutputs();
@@ -417,7 +424,7 @@ public sealed partial class Emulator : IDisposable
     }
 
     /// <summary>The picture area's text when there is no picture to show.</summary>
-    public string? PictureMessage => Mode == 0 ? "Direct Mode: Bypassing the ROM" : (PictureValid ? null : Runaway ? "Instrument Runaway: game frozen" : RomStatus);
+    public string? PictureMessage => Mode == 0 ? (PresetMode ? "Presets: instruments ripped from games, played without a ROM" : "Direct Mode: Bypassing the ROM") : (PictureValid ? null : Runaway ? "Instrument Runaway: game frozen" : RomStatus);
 
     /// <summary>Test hook: puts a made-up Sega snapshot in place of the captured one (a test ROM has no DAC sounds worth the name, a bad project has a hostile one).</summary>
     internal void ReplaceSegaForTests(SegaSnapshot snap)
