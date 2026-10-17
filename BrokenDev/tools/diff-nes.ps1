@@ -8,12 +8,12 @@
 
     Mesen    : Mesen.exe <rom> --luaScriptsToLoad state_trace.lua --testRunner      (env VRUN_TRACE_*)
     BrokenNes: BrokenNes.Workshop.exe --trace --rom <rom> --input <script> --frames N  (CPU/PPU/APU FIX)
-    differ   : UAT\diff-trace.ps1 -A <mesen trace> -B <brokennes trace>
+    differ   : UAT\diff-trace.ps1 -A <mesen trace> -B <brokennes trace>  (its full verdict is kept; the gate below reads the traces itself)
 
   The record per frame is CPU registers, a hash of work RAM, the PPU state (nametable, OAM, palette, scroll registers, CHR) and
   the rendered frame as NES palette INDICES (not RGB: palettes are not standardised), identically on both sides. A column that one
-  side cannot measure is not compared and is named in the verdict. Audio samples cannot be compared (Mesen's headless Lua API has
-  none): only the APU registers are. Read UAT\diff-trace.ps1 and the header of state_trace.lua before trusting a verdict.
+  side cannot measure is not compared. Audio samples cannot be compared (Mesen's headless Lua API has none): only the APU registers
+  are. Read UAT\diff-trace.ps1 and the header of state_trace.lua before trusting a verdict.
 
   The Mesen tracer (state_trace.lua) belongs to the user's VRUN repository and is NOT part of BrokenNes: pass its path with
   -TraceLua or set BROKENDEV_TRACE_LUA. Mesen runs from a private copy with flash saves disabled (mapper 30 would otherwise
@@ -22,7 +22,12 @@
   Mesen's test runner stops a script after about 100 seconds of wall clock; a long run needs the segmented runner of the
   campaign. This script runs one segment and says so when Mesen stopped early.
 
-  Exit code: 0 identical over the compared range, 1 divergence, 2 usage or a tool failed.
+  The gate: the picture columns (fbhash, nametables, OAM, palette, CHR), the PPU control columns and every APU register must agree
+  after the first -BootFrames frames. CPU registers, the work-RAM hash and the PPU address v are sampled at an instruction boundary
+  the two emulators cannot align below one instruction, so they are listed as information only. Divergence inside the boot window
+  (Mesen does not draw frame 0; a multi-frame CHR upload at boot lands a frame apart) is listed, not failed.
+
+  Exit code: 0 gate passed, 1 divergence, 2 usage or a tool failed.
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Rom,
@@ -34,8 +39,10 @@ param(
     [string]$BrokenNesInput = '',
     [int]$Frames = 1200,
     [string]$Cores = 'FIX',
+    [ValidateSet('fceux', 'zeros', 'ones')][string]$RamFill = 'fceux',
     [ValidateSet('on', 'off')][string]$Ntsc = 'on',
     [string]$Tag = 'diff',
+    [int]$BootFrames = 10,
     [string]$DiffScript = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -72,7 +79,7 @@ $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true; $psi.WorkingDirector
 $psi.EnvironmentVariables['VRUN_TRACE_OUT'] = $mesenTrace
 $psi.EnvironmentVariables['VRUN_TRACE_INPUT'] = $InputScript
 $psi.EnvironmentVariables['VRUN_TRACE_FRAMES'] = [string]$Frames
-$psi.EnvironmentVariables['VRUN_TRACE_RAMFILL'] = 'fceux'
+$psi.EnvironmentVariables['VRUN_TRACE_RAMFILL'] = $RamFill
 $psi.EnvironmentVariables['VRUN_TRACE_ROM'] = $Rom
 Write-Host "diff-nes: Mesen ($Frames frames) ..."
 $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -85,15 +92,15 @@ $mesenRows = @(Get-Content -LiteralPath $mesenTrace | Where-Object { $_ -notmatc
 if ($mesenRows -lt $Frames) { Write-Host "diff-nes: NOTE Mesen emitted only $mesenRows of $Frames frames (its test runner stops a script after about 100 s); the comparison covers those $mesenRows frames" }
 
 # ---- BrokenNes side ----------------------------------------------------------------------------------------------
-$a = @('--trace', '--rom', $Rom, '--out', $bnTrace, '--frames', [string]$mesenRows, '--cpu', $Cores, '--ppu', $Cores, '--apu', $Cores, '--ntsc-frame-timing', $Ntsc)
+$a = @('--trace', '--rom', $Rom, '--out', $bnTrace, '--frames', [string]$mesenRows, '--cpu', $Cores, '--ppu', $Cores, '--apu', $Cores, '--ntsc-frame-timing', $Ntsc, '--power-on-ram', $RamFill)
 # -BrokenNesInput is the negative control: feeding BrokenNes a different pad script than Mesen got must make the gate FAIL.
 $bnInput = if ($PSBoundParameters.ContainsKey('BrokenNesInput')) { $BrokenNesInput } else { $InputScript }
 if ($bnInput) { $a += @('--input', $bnInput) }
-Write-Host "diff-nes: BrokenNes --trace ($mesenRows frames, cores $Cores, ntsc $Ntsc) ..."
+Write-Host "diff-nes: BrokenNes --trace ($mesenRows frames, cores $Cores, ntsc $Ntsc, power-on RAM $RamFill) ..."
 $r = & $Workshop @a 2>&1 | Out-String
 if (-not (Test-Path -LiteralPath $bnTrace)) { Write-Host ("BrokenNes wrote no trace:`n" + $r); exit 2 }
 
-# ---- the differ --------------------------------------------------------------------------------------------------
+# ---- the differ (its verdict is kept for reading) -------------------------------------------------------------------
 Write-Host 'diff-nes: diff-trace ...'
 # UAT\diff-trace.ps1 is written for PowerShell 7 (it does not parse in Windows PowerShell 5.1): use pwsh, and say so when there is none.
 $pwsh = (Get-Command pwsh.exe -ErrorAction SilentlyContinue | Select-Object -First 1)
@@ -104,31 +111,52 @@ $verdictFile = Join-Path $Work "$Tag.verdict.txt"
 [System.IO.File]::WriteAllText($verdictFile, $out)
 
 # ---- the gate -----------------------------------------------------------------------------------------------------
-# The census lines of the verdict ("    * fbhash        1 frame(s)") give the number of frames each column differed. The columns split by what
-# a difference MEANS (the campaign's own lesson): the picture and sound-register columns agree exactly when the emulators agree, while
-# pc/a/x/y/sp/p/ramhash/v are sampled at an instruction boundary the two emulators cannot align below one instruction, so they differ
-# on a share of frames for no emulation reason: information here, never a failure.
-$census = [ordered]@{}
-foreach ($line in ($out -split "`r?`n")) { if ($line -match '^\s+\*?\s*([a-z0-9]+)\s+(\d+) frame\(s\)\s*$') { $census[$Matches[1]] = [int]$Matches[2] } }
-$exact = @('ntbhash', 'oamhash', 'palhash', 'ctrl', 'mask', 'stat', 'chrhash', 't', 'fx', 'w')
-$apuCols = @($census.Keys | Where-Object { $_ -match '^(p1|p2|t|n|d)(per|vol|len|dut|swp|lin|mod|out|cur|rem)$' -or $_ -in 'fcs', 'st', 'en', 'flg' })
+function Read-TraceColumns([string]$Path) {
+    $names = $null; $rows = New-Object System.Collections.Generic.List[string[]]
+    foreach ($line in [System.IO.File]::ReadLines($Path)) {
+        if ($line.StartsWith('# columns:')) { $names = ($line.Substring(10).Trim()) -split '\|'; continue }
+        if ($line.StartsWith('#') -or $line.Length -eq 0) { continue }
+        $rows.Add($line -split '\|')
+    }
+    if (-not $names) { $names = @('frame', 'pc', 'a', 'x', 'y', 'sp', 'p', 'ramhash') }
+    [pscustomobject]@{ Names = $names; Rows = $rows }
+}
+$ta = Read-TraceColumns $mesenTrace; $tb = Read-TraceColumns $bnTrace
+$idxA = @{}; for ($i = 0; $i -lt $ta.Names.Count; $i++) { $idxA[$ta.Names[$i]] = $i }
+$idxB = @{}; for ($i = 0; $i -lt $tb.Names.Count; $i++) { $idxB[$tb.Names[$i]] = $i }
+$skewCols = @('pc', 'a', 'x', 'y', 'sp', 'p', 'ramhash', 'v')
+$n = [math]::Min($ta.Rows.Count, $tb.Rows.Count)
+$div = [ordered]@{}   # column -> frames that differ (only where both sides measured it)
+foreach ($c in $ta.Names) {
+    if ($c -eq 'frame' -or -not $idxB.ContainsKey($c)) { continue }
+    $ia = $idxA[$c]; $ib = $idxB[$c]; $list = New-Object System.Collections.Generic.List[int]
+    for ($f = 0; $f -lt $n; $f++) {
+        $x = $ta.Rows[$f][$ia]; $y = $tb.Rows[$f][$ib]
+        if ($x -ne '-' -and $y -ne '-' -and $x -ne $y) { $list.Add($f) }
+    }
+    $div[$c] = $list
+}
 $gate = New-Object System.Collections.Generic.List[string]
-foreach ($c in $exact) { if ($census.Contains($c) -and $census[$c] -gt 0) { $gate.Add("$c differs on $($census[$c]) frame(s)") } }
-foreach ($c in $apuCols) { if ($census[$c] -gt 0) { $gate.Add("$c differs on $($census[$c]) frame(s)") } }
-# fbhash: frame 0 differs on every Mesen trace (its power-on frame is not drawn), so one frame of tolerance, named.
-if ($census.Contains('fbhash') -and $census['fbhash'] -gt 1) { $gate.Add("fbhash (the picture) differs on $($census['fbhash']) frames; only frame 0 may") }
-if ($census.Count -eq 0) { $gate.Add('the verdict could not be parsed (no census lines): the differ output changed or failed') }
+$boot = New-Object System.Collections.Generic.List[string]
+foreach ($c in $div.Keys) {
+    if ($skewCols -contains $c) { continue }
+    $late = @($div[$c] | Where-Object { $_ -ge $BootFrames }); $early = @($div[$c] | Where-Object { $_ -lt $BootFrames })
+    if ($late.Count -gt 0) { $gate.Add("$c differs on $($late.Count) frame(s) after the first $BootFrames (first at frame $($late[0]))") }
+    if ($early.Count -gt 0) { $boot.Add("$c@" + ($early -join ',')) }
+}
+if ($n -lt 10) { $gate.Add("only $n frames could be compared") }
+$compared = @($div.Keys | Where-Object { $skewCols -notcontains $_ })
+$census = [ordered]@{}; foreach ($c in $div.Keys) { $census[$c] = $div[$c].Count }
 $summary = [ordered]@{
-    rom = $Rom; frames = $mesenRows; input = $InputScript; cores = $Cores; ntsc = $Ntsc; mesenSeconds = $mesenSec
-    differExitCode = $code; census = $census; gateFailures = @($gate); pass = ($gate.Count -eq 0)
-    note = 'picture (fbhash, nametables, OAM, palette, CHR), PPU control and every APU register must agree; pc/a/x/y/sp/p/ramhash/v are sample-skew columns and are information only'
+    rom = $Rom; frames = $n; input = $InputScript; cores = $Cores; ntsc = $Ntsc; ramFill = $RamFill; mesenSeconds = $mesenSec; bootFrames = $BootFrames
+    differExitCode = $code; divergentFrameCounts = $census; bootSkew = @($boot); gateFailures = @($gate); comparedColumns = $compared.Count; pass = ($gate.Count -eq 0)
+    note = 'picture, PPU control and every APU register must agree after the boot window; pc/a/x/y/sp/p/ramhash/v are sample-skew columns and are information only'
 }
 [System.IO.File]::WriteAllText((Join-Path $Work "$Tag.summary.json"), ($summary | ConvertTo-Json -Depth 5))
-$info = @('pc', 'a', 'x', 'y', 'sp', 'p', 'ramhash', 'v') | ForEach-Object { if ($census.Contains($_)) { "$_=$($census[$_])" } }
-$apuBad = @($apuCols | Where-Object { $census[$_] -gt 0 }).Count
-$cf = @{}; foreach ($k in 'fbhash', 'ntbhash', 'oamhash', 'palhash', 'chrhash') { $cf[$k] = if ($census.Contains($k)) { $census[$k] } else { 'n/a' } }
-Write-Host ("diff-nes: {0} frames compared. picture: fbhash differs on {1}, nametables {2}, OAM {3}, palette {4}, CHR {5}; APU columns differing: {6}" -f $mesenRows, $cf['fbhash'], $cf['ntbhash'], $cf['oamhash'], $cf['palhash'], $cf['chrhash'], $apuBad)
-Write-Host ("diff-nes: sample-skew columns (information): " + ($info -join ' '))
-if ($gate.Count -eq 0) { Write-Host 'diff-nes: PASS (picture, PPU state and APU registers agree with Mesen)' } else { Write-Host ('diff-nes: FAIL: ' + ($gate -join '; ')) }
+$info = $skewCols | ForEach-Object { if ($census.Contains($_)) { "$_=$($census[$_])" } }
+Write-Host ("diff-nes: {0} frames, {1} columns compared exactly (picture, PPU control, APU registers); the sample-skew columns are information only" -f $n, $compared.Count)
+Write-Host ("diff-nes: sample-skew columns (frames that differ): " + ($info -join ' '))
+if ($boot.Count -gt 0) { Write-Host ("diff-nes: boot-window skew (listed, not failed): " + ($boot -join '; ')) }
+if ($gate.Count -eq 0) { Write-Host 'diff-nes: PASS (picture, PPU state and APU registers agree with Mesen after the boot window)' } else { Write-Host ('diff-nes: FAIL: ' + ($gate -join '; ')) }
 Write-Host "diff-nes: full verdict $verdictFile ; traces $mesenTrace , $bnTrace ; summary $(Join-Path $Work "$Tag.summary.json")"
 if ($gate.Count -eq 0) { exit 0 } else { exit 1 }

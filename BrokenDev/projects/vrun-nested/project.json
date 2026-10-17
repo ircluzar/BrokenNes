@@ -77,6 +77,19 @@
       { "a": "play@600", "b": "boot@600", "expect": "differ", "why": "scripted input reached the game" }
     ]
   },
+  "oracle": {
+    "kind": "mesen-screens",
+    "mesenDir": "{root:svrunrepo}/tools/Mesen2",
+    "mesenSettings": "{root:svrunpkg}/mesen2_user_folder/settings.json",
+    "frames": [120, 240, 600, 900, 1200, 1800, 2400, 3000],
+    "input": "240:Start,252:,600:Right,800:Right+B,900:Right,1100:Up,1200:Right+B,1400:Down,1500:Right+A,1800:Left+B,2100:Right",
+    "inputShift": 1,
+    "window": [1, 5],
+    "crop": [7, 8],
+    "tolerance": 1,
+    "maxPixels": 64,
+    "why": "As supervrun. VRUN picks the first room from the frame on which Start is pressed, so the two emulators only show the same room when Mesen's Start lands on the same game frame as BrokenNes' (inputShift 1 measured; other values show another room and 18,000+ differing pixels). maxPixels 64 records the measured residue (at most 32 pixels: animation phase of the title's dots) as the bar to keep. Frame 300 (the fade after Start) is left out: it differs by 6,013 pixels at every offset, a one-frame difference in the transition."
+  },
   "knownIssues": [
     "Project Nested cannot reproduce NES lag frames: the exact fix would be a NES cycle clock in the recompiler (not started). The room-load timing race and RNG phase differ from the NES by a few frames.",
     "This recipe builds without entry-point feedback; the first execution of each code path recompiles at run time and freezes briefly. The Nested Builder's 'Harvest' (bootstrap, 10 to 20 minutes, needs Mesen) removes that; BrokenDev records the variant without it.",

@@ -9,6 +9,7 @@
     restore <project|archive|all>  extract the project archives into BROKENDEV_HOME (-Full: also the bulky extras, -Force: again)
     build   <project|all>        run the project's build steps (dependencies first); outputs go to BROKENDEV_HOME\out\<id>\
     verify  <project|all>        run the built ROM on BrokenNes (headless Workshop) and record the checks in out\<id>\verify.json
+    diff    <project|all>        differential replay of the built ROM, BrokenNes against Mesen 2 (a black-box oracle); out\<id>\diff.json
     run     <project>            launch the built ROM in the BrokenNes desktop app (through its HTTP API)
     build-workshop               build the BrokenNes Workshop (the headless runner verify uses)
     status  <project>            the build and verify records of one project
@@ -18,7 +19,8 @@
     BROKENDEV_ARCHIVES  folder holding the project archives (default: the parent of BROKENDEV_HOME)
     BROKENDEV_PYTHON    force a Python interpreter (default: the first with pillow and numpy)
     BROKENDEV_WORKSHOP  force a Workshop executable
-    SMB1_ORIG_ROM       the user's own original SMB1 ROM (needed to build SMB1; never copied anywhere)
+    BROKENDEV_TRACE_LUA the user's Mesen tracer state_trace.lua (VRUN repository, tools\state_trace.lua), needed by 'diff' of the NES projects
+    SMB1_ORIG_ROM       the user's own original SMB1 ROM (not needed to build the remake; for regenerating its data; never copied anywhere)
 
   Exit codes: 0 ok, 1 a check or build failed, 2 usage error, 3 prerequisites missing.
   Works in Windows PowerShell 5.1 and PowerShell 7.
@@ -49,6 +51,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\Manifest.ps1')
 . (Join-Path $here 'lib\Build.ps1')
 . (Join-Path $here 'lib\Verify.ps1')
+. (Join-Path $here 'lib\Diff.ps1')
 
 function Show-BdHelp { Write-Host (Get-Help (Join-Path $here 'brokendev.ps1') -Full | Out-String) }
 
@@ -149,6 +152,23 @@ try {
             if ($bad.Count -gt 0) { Write-BdFail ("verify failed: " + ($bad -join ', ')); exit 1 }
             exit 0
         }
+        'diff' {
+            $ids = Resolve-BdTargets $Target
+            $bad = @()
+            foreach ($id in $ids) {
+                Write-BdInfo "== diff $id (BrokenNes against Mesen)"
+                try {
+                    $r = Invoke-BdProjectDiff -Id $id
+                    switch ($r.status) {
+                        'pass'    { Write-BdOk "  $id : pass" }
+                        'skipped' { Write-BdWarn "$id : SKIPPED: $($r.reason)" }
+                        default   { Write-BdFail "$id : FAIL: $($r.reason)"; $bad += $id }
+                    }
+                } catch { Write-BdFail $_.Exception.Message; $bad += $id }
+            }
+            if ($bad.Count -gt 0) { Write-BdFail ("diff failed: " + ($bad -join ', ')); exit 1 }
+            exit 0
+        }
         'run' {
             [void](Resolve-BdTargets $Target)
             Invoke-BdProjectRun -Id $Target
@@ -159,7 +179,7 @@ try {
             $r | ConvertTo-Json -Depth 8
             exit 0
         }
-        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, run, build-workshop, build-app, status"; exit 2 }
+        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status"; exit 2 }
     }
 } catch {
     Write-BdFail $_.Exception.Message

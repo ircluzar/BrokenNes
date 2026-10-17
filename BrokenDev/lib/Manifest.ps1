@@ -83,6 +83,16 @@ function Test-BdManifest {
             if ([int](Get-BdProp $sc 'frames' 0) -le 0) { $e.Add("verify scenario '$sid': frames must be positive") }
         }
     }
+    # optional: the differential-replay recipe against Mesen
+    $oracle = Get-BdProp $M 'oracle' $null
+    if ($oracle) {
+        $ok = [string](Get-BdProp $oracle 'kind' '')
+        if (@('mesen-trace', 'mesen-screens') -notcontains $ok) { $e.Add("oracle.kind '$ok' must be mesen-trace or mesen-screens") }
+        if (-not [string](Get-BdProp $oracle 'mesenDir' '')) { $e.Add('oracle.mesenDir is required') }
+        if ($null -eq (Get-BdProp $oracle 'frames' $null)) { $e.Add('oracle.frames is required') }
+        if ($ok -eq 'mesen-screens' -and -not [string](Get-BdProp $oracle 'mesenSettings' '')) { $e.Add('oracle.mesenSettings is required for mesen-screens') }
+        if ($ok -eq 'mesen-trace' -and $M.console -ne 'nes') { $e.Add('a mesen-trace oracle is for NES projects (the trace format is the NES one)') }
+    }
     @($e)
 }
 

@@ -70,6 +70,19 @@
       { "a": "play@600", "b": "boot@600", "expect": "differ", "why": "scripted input reached the game: the same frame number looks different with and without input" }
     ]
   },
+  "oracle": {
+    "kind": "mesen-screens",
+    "mesenDir": "{root:svrunrepo}/tools/Mesen2",
+    "mesenSettings": "{root:svrunpkg}/mesen2_user_folder/settings.json",
+    "frames": [60, 120, 240, 300, 600, 700, 900, 1200, 1500],
+    "input": "300:Start,306:,520:Start,526:,1000:Right,1100:Right+Y,1150:Right",
+    "inputShift": 2,
+    "window": [1, 5],
+    "crop": [7, 8],
+    "tolerance": 1,
+    "maxPixels": 0,
+    "why": "Mesen 2.1.1 from the SuperVRUN package (a private deterministic copy: no frame skipping, zeroed RAM, empty saves) against the BrokenNes SNES cores: the picture after N frames must match pixel for pixel within one colour level (Mesen expands 5-bit channels as (x<<3)|(x>>2), BrokenNes as x*255/31). Mesen's capture API lags by an unknown number of frames and its input is polled after its end-of-frame event, so each frame may match at its own offset (0 to 5) and the input is shifted by inputShift frames; both are recorded."
+  },
   "knownIssues": [
     "Per the project's own retrospective: the S-CPU HDMA/DMA freeze and the INIDISP erratum are real-console behaviours that Mesen (and BrokenNes) do not emulate; the project keeps DMAs out of lines with HDMA live by rule.",
     "Baseline has no frame-time slack by design: rare frames end around scanline 234 to 261 of 262. The game's own HUD shows a LAG counter; it should stay at 0.",

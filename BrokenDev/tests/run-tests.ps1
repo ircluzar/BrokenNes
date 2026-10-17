@@ -95,6 +95,17 @@ try {
         $e = & $mut { param($m) $m.kind = 'nes'; $m.console = 'snes' }
         Assert-True (($e -join ';') -match 'must run on console nes') "errors were: $($e -join '; ')"
     }
+    Test-Case 'NEGATIVE: an oracle with an unknown kind is rejected' {
+        $e = & $mut { param($m) $m | Add-Member -NotePropertyName oracle -NotePropertyValue ([pscustomobject]@{ kind = 'bsnes'; mesenDir = 'x'; frames = 10 }) -Force }
+        Assert-True (($e -join ';') -match "oracle.kind 'bsnes'") "errors were: $($e -join '; ')"
+    }
+    Test-Case 'NEGATIVE: an oracle without frames is rejected' {
+        $e = & $mut { param($m) $m | Add-Member -NotePropertyName oracle -NotePropertyValue ([pscustomobject]@{ kind = 'mesen-screens'; mesenDir = 'x'; mesenSettings = 'y' }) -Force }
+        Assert-True (($e -join ';') -match 'oracle.frames') "errors were: $($e -join '; ')"
+    }
+    Test-Case 'every oracle section in a shipped manifest names a Mesen folder and a frame list' {
+        foreach ($id in $ids) { $m = Read-BdJson (Get-BdManifestPath $id); $o = Get-BdProp $m 'oracle' $null; if ($o) { Assert-True ([bool](Get-BdProp $o 'mesenDir' '')) "$id has no oracle.mesenDir"; Assert-True ($null -ne (Get-BdProp $o 'frames' $null)) "$id has no oracle.frames" } }
+    }
     Test-Case 'NEGATIVE: outputs without a rom are rejected' {
         $e = & $mut { param($m) $m.build.outputs[0].id = 'notrom' }
         Assert-True (($e -join ';') -match "id 'rom'") "errors were: $($e -join '; ')"

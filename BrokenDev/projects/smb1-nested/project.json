@@ -66,6 +66,19 @@
       { "a": "play@600", "b": "boot@600", "expect": "differ", "why": "scripted input reached the game" }
     ]
   },
+  "oracle": {
+    "kind": "mesen-screens",
+    "mesenDir": "{root:svrunrepo}/tools/Mesen2",
+    "mesenSettings": "{root:svrunpkg}/mesen2_user_folder/settings.json",
+    "frames": [300, 600, 900, 1200, 1800, 2400, 3000],
+    "input": "240:Start,246:,600:Right,1300:Right+A,1360:Right,1500:Right+B,1700:Right+A+B,1760:Right+B",
+    "inputShift": 3,
+    "window": [1, 5],
+    "crop": [7, 8],
+    "tolerance": 1,
+    "maxPixels": 400,
+    "why": "As supervrun. Six of seven frames are pixel-identical; frame 900 keeps a residue of about 290 pixels at every input shift and offset (a sprite animation phase in the walking scene), recorded as the bar to keep."
+  },
   "knownIssues": [
     "Project Nested never clears the DMC-active bit of $4015 and never delivers the DMC IRQ; the dmc_status post-build step fixes the first, the second stays unemulated (the status-bar split runs from that IRQ on the NES; the profile of the 20261002 build records that play matched the NES anyway).",
     "No NES lag-frame emulation: long play drifts from the NES by a few frames (docs/GENERALITY.md row 21). Not specific to this game.",

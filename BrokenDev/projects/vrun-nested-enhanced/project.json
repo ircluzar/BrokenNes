@@ -65,6 +65,19 @@
       { "a": "play@600", "b": "boot@600", "expect": "differ", "why": "scripted input reached the game" }
     ]
   },
+  "oracle": {
+    "kind": "mesen-screens",
+    "mesenDir": "{root:svrunrepo}/tools/Mesen2",
+    "mesenSettings": "{root:svrunpkg}/mesen2_user_folder/settings.json",
+    "frames": [120, 240, 600, 900, 1200, 1800, 2400, 3000],
+    "input": "240:Start,252:,600:Right,800:Right+B,900:Right,1100:Up,1200:Right+B,1400:Down,1500:Right+A,1800:Left+B,2100:Right",
+    "inputShift": 4,
+    "window": [1, 5],
+    "crop": [7, 8],
+    "tolerance": 1,
+    "maxPixels": 64,
+    "why": "As vrun-nested. The enhanced ROM needs inputShift 4 (not 1) for the two emulators to pick the same first room: the game reacts to Start three frames differently in the two emulators. The enhancement uploads 2 KB of shading planes per NMI while rendering is off; a timing difference of a few frames there is the suspect and has not been chased (see the report). Measured residue at most 53 pixels."
+  },
   "knownIssues": [
     "The enhancement is keyed to the game's tile layout (tile numbers in the CHR dump and src/game/anim_*.png): a change to VRUN's art needs a fresh dump and may need the tile ranges in the command revisited.",
     "The pass uses WRAM $7E:10DA-10DF and ROM space in banks $81 and $C2 that the pinned core leaves free; a later core step that claims that space would collide (core/SPACE.md is the registry).",
