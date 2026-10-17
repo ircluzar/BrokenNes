@@ -40,8 +40,8 @@ public sealed partial class SnesSession
     /// <summary>Tool / test: runs to the first instruction boundary on or after a scanline of the current frame (see <see cref="BOARD_SFC.RunToLine"/>); a state can be taken there.</summary>
     public void RunToLine(int line) { mid = null; board.RunToLine(line); }
 
-    /// <summary>The SNES board (tools and tests).</summary>
-    public BOARD_SFC Board => board;
+    // (SnesSession.Board is declared once, in ConsoleSessions.cs: a second declaration here, added by the snes-state branch while the corr
+    // branch added the first, made main fail to compile after both merged. Removed by track bd, 2026-10-16.)
 
     /// <summary>The real SPC700 + S-DSP while the stand-in unit plays in its place (tests).</summary>
     internal APU_SFC? ParkedSpc => parkedSpc;
