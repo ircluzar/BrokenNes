@@ -76,6 +76,9 @@ internal class SessionRun : IDisposable
 
     public ulong AudioHash => audio;
 
+    /// <summary>Starts the audio hash (and the sample count) over: two runs that are compared from a common point must not carry the audio of how they got there.</summary>
+    public void ResetAudio() { audio = 1469598103934665603UL; AudioSamples = 0; Peak = 0; }
+
     public void Run(int frames, Func<int, PadButtons>? pad = null)
     {
         for (int i = 0; i < frames; i++)

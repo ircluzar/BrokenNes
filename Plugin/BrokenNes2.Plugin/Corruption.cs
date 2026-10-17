@@ -2,10 +2,11 @@
 // This file is the plugin's side of the data: what the window shows (CorruptionPanel, CorrRow) and the project section that keeps a started corruption through a saved FL project (CorruptionSection,
 // tag "CRP1"). The library is NesEmulator.Corruption (the stockpile file, the memory domains, the anchors); the flow is in Emulator.Corruption.cs and the window in Bn2Editor.cs.
 //
-// A section is   tag u32 | length i32 | payload   appended after the game-state section, so a build that does not know it skips it. The payload is UTF-8 JSON in the stockpile file's own format
+// A section is   tag u32 | length i32 | payload   appended after the game-state section, so a build that does not know it skips it. The payload is   CRC-32 u32 (of the JSON)   then UTF-8 JSON in the stockpile file's own format
 // (one entry, "project history": its anchor is the replay recipe of the game - the pads it was handed, the corruption writes made to it - when the console cannot keep a state) plus a "project" object:
 //   { "v": 1, "stockpilePath": "...", "entryId": "...", "entryName": "...", "entryDescription": "...", "entrySummary": "...", "contentHash": "...", "frozen": false, "startedAtFrame": 123, "note": "..." }
-// A console that keeps its state (everything but the SNES, until it has one) needs no history: the game-state section already holds the corrupted machine; this section then only says where it came from.
+// A console that keeps its state (every console now) needs no history: the game-state section already holds the corrupted machine; this section then only says where it came from. The history is written anyway
+// when the project could not hold the machine (the state was too big or refused): the game is then rebuilt by replaying it, as a console without states would be.
 using System.Text;
 using System.Text.Json;
 using NesEmulator.Corruption;
@@ -107,8 +108,12 @@ internal sealed class CorruptionSection
         sb.Append("\"startedAtFrame\":").Append(applied.StartedAtFrame).Append(',');
         AppendString(sb, "note", note);
         sb.Append("}}");
-        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
-        return bytes.Length > MaxStored ? null : bytes;
+        var json8 = Encoding.UTF8.GetBytes(sb.ToString());
+        if (json8.Length + 4 > MaxStored) return null;
+        var bytes = new byte[4 + json8.Length];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, GameStateSection.Crc32(json8));
+        json8.CopyTo(bytes, 4);
+        return bytes;
     }
 
     private static void AppendString(StringBuilder sb, string name, string value)
@@ -120,12 +125,14 @@ internal sealed class CorruptionSection
     public static CorruptionSection? Read(byte[] p, out string? problem)
     {
         problem = null;
-        if (p.Length < 16 || p.Length > MaxRead) { problem = "damaged"; return Damaged(problem); }
+        if (p.Length < 20 || p.Length > MaxRead) { problem = "damaged"; return Damaged(problem); }
+        if (System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(p) != GameStateSection.Crc32(p.AsSpan(4))) { problem = "damaged"; return Damaged(problem); }
+        var json = p[4..];
         try
         {
-            var read = StockpileJson.Read(p);
+            var read = StockpileJson.Read(json);
             if (read.Stockpile == null) { problem = read.Refusals.Count > 0 ? read.Refusals[0] : "damaged"; return Damaged(problem); }
-            using var doc = JsonDocument.Parse(p, new JsonDocumentOptions { MaxDepth = 32 });
+            using var doc = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 32 });
             if (!doc.RootElement.TryGetProperty("project", out var pr) || pr.ValueKind != JsonValueKind.Object) { problem = "damaged"; return Damaged(problem); }
             string S(string n) => pr.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
             long At() => pr.TryGetProperty("startedAtFrame", out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out long l) && l >= 0 ? l : 0;

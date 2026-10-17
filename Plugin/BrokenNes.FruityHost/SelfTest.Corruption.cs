@@ -28,7 +28,7 @@ public sealed unsafe partial class SelfTest
     private const int IdCor = 500, IdCorClose = 501, IdCorOpenBtn = 502, IdCorStart = 503, IdCorCancel = 504, IdCorRemove = 505, IdCorFreeze = 506, IdCorRow = 520;
     private const int PadA = 1 << 4;
 
-    private sealed record CorrFamily(string Name, int Console, string Chip, ConsoleKind Kind, string Ext, byte[] Rom, int Before, int After, CorruptionWrite[] Writes, string Work, bool Aram, Func<int, int>? Pad = null);
+    private sealed record CorrFamily(string Name, int Console, string Chip, ConsoleKind Kind, string Ext, byte[] Rom, int Before, int After, CorruptionWrite[] Writes, string Work, bool Aram, Func<int, int>? Pad = null, bool Replay = false);
 
     /// <summary>What farming a family's corruption left: the files, the entry, and what the farm's own machine looked like at each step (the reference the plugin must match).</summary>
     private sealed record CorrMade(string Rom, string Stock, StockpileEntry Entry, long Work0, long Aram0, long AramClean, long WorkEnd, long AramEnd, long WorkClean, int FarmFrames);
@@ -81,6 +81,9 @@ public sealed unsafe partial class SelfTest
         // the SNES: the synthetic game (a real SPC700 program uploaded through the boot loader, a one-note instrument in audio RAM at $0500); the pad is held for a while so its history has something in it
         new("SNES", 2, "SNES", ConsoleKind.Snes, ".sfc", SynthSnes.Build(), 150, 40,
             [new("ARAM", 0x0500, 0xB3), new("ARAM", 0x0502, 0x11), new("WRAM", 0x1F0, 0x5A)], "WRAM", true, f => f is >= 100 and < 112 ? PadA : 0),
+        // the same game as a console that cannot keep its state: the stockpile entry is the replay from power-on, the plugin reports no state, so the project carries the game's history (every console has states now; this keeps that path tested)
+        new("SNES (replay)", 2, "SNES", ConsoleKind.Snes, ".sfc", SynthSnes.Build(), 150, 40,
+            [new("ARAM", 0x0500, 0xB3), new("ARAM", 0x0502, 0x11), new("WRAM", 0x1F0, 0x5A)], "WRAM", true, f => f is >= 100 and < 112 ? PadA : 0, Replay: true),
         new("Game Boy", 1, "DMG", ConsoleKind.GameBoy, ".gb", MakeGbRom(counter: true), 60, 40, [new("WRAM", 0, 0xA5), new("WRAM", 0x1F0, 0x5A)], "WRAM", false),
         new("Game Boy Color", 1, "DMG", ConsoleKind.GameBoyColor, ".gbc", MakeGbRom(counter: true, color: true), 60, 40, [new("WRAM", 0, 0xA5), new("WRAM", 0x1F0, 0x5A)], "WRAM", false),
         new("Master System", 3, "SMS", ConsoleKind.MasterSystem, ".sms", MakeSmsCounterRom(), 60, 40, [new("RAM", 0, 0xA5), new("RAM", 0x1F0, 0x5A)], "RAM", false),
@@ -153,11 +156,12 @@ public sealed unsafe partial class SelfTest
         using (var h = lib.Create()) h.Test(120, 0, 1);              // the editor does not run the games to keep their pictures moving: the test counts frames
         try
         {
-            CorrMade? snes = null;
+            CorrMade? snes = null, replay = null;
             foreach (var f in CorFamilies())
             {
                 var made = CorrFarm(t, dir, f);
                 if (made == null) continue;
+                if (f.Replay) { replay = made; continue; }
                 if (f.Aram) snes = made;
                 CorrWindowFlow(t, f, made);
                 CorrRemove(t, f, made);
@@ -171,6 +175,21 @@ public sealed unsafe partial class SelfTest
                 CorrScrolling(t, dir, f, snes);
                 CorrCancel(t, dir, f, snes);
                 CorrMessages(t, dir, f, snes);
+            }
+            // the same flows for a console that cannot keep its state: the entry is the replay from power-on, the project carries the game's history
+            if (replay != null)
+            {
+                var f = CorFamilies().First(x => x.Replay);
+                using (var h = lib.Create()) h.Test(121, 0, 1);
+                try
+                {
+                    CorrWindowFlow(t, f, replay);
+                    CorrRemove(t, f, replay);
+                    CorrSnesInstruments(t, f, replay);
+                    CorrSnesProject(t, f, replay);
+                    CorrAllocation(t, f, replay);
+                }
+                finally { using var h = lib.Create(); h.Test(121, 0, 0); }
             }
             CorrGbWave(t, dir);
             CorrRealSmw(t);
@@ -211,25 +230,30 @@ public sealed unsafe partial class SelfTest
         long workEnd = origin.Hash(f.Work), aramEnd = f.Aram ? origin.Hash("ARAM") : 0;
 
         var game = origin.Farm.Game();
+        // a console with save states describes the place as a saved machine with the replay recipe beside it; the replay family keeps only the recipe
+        var anchor = f.Replay ? (cap.Anchor.Kind == AnchorKind.Boot ? cap.Anchor : cap.Anchor.Alt) : cap.Anchor;
+        t.Expect(anchor != null, $"{f.Name}: the farm has no {(f.Replay ? "replay recipe" : "anchor")} for this game");
+        if (anchor == null) return null;
+        t.Expect(f.Replay || f.Kind != ConsoleKind.Snes || anchor.Kind == AnchorKind.State, $"{f.Name}: the SNES has save states, so the farm should have stored a saved state (it stored {anchor.Kind})");
         var entry = new StockpileEntry
         {
             Name = $"{f.Name} instrument takeover", Description = $"farmed by the plugin's self-test: {f.Writes.Length} writes after {f.Before} frames", Tags = { "selftest", f.Name },
-            Game = game, Machine = origin.Spec, Anchor = cap.Anchor, Writes = f.Writes.ToList(),
+            Game = game, Machine = origin.Spec, Anchor = anchor, Writes = f.Writes.ToList(),
         };
         var otherGame = new StockpileEntry
         {
             Name = "made on another game", Game = new GameRef { Console = game.Console, Sha1 = new string('0', 40), Title = "Another Game", File = "another.rom" },
-            Machine = origin.Spec, Anchor = cap.Anchor, Writes = f.Writes.ToList(),
+            Machine = origin.Spec, Anchor = anchor, Writes = f.Writes.ToList(),
         };
         var otherConsole = new StockpileEntry
         {
             Name = "made on another console", Game = new GameRef { Console = NesEmulator.Systems.Consoles.Key(f.Kind == ConsoleKind.Genesis ? ConsoleKind.Snes : ConsoleKind.Genesis), Sha1 = new string('1', 40), Title = "Elsewhere", File = "elsewhere.rom" },
-            Machine = origin.Spec, Anchor = cap.Anchor, Writes = f.Writes.ToList(),
+            Machine = origin.Spec, Anchor = anchor, Writes = f.Writes.ToList(),
         };
         var sp = new Stockpile { Name = "plugin self-test", Writer = "BrokenNes2 self-test" };
         sp.Entries.Add(entry); sp.Entries.Add(otherGame); sp.Entries.Add(otherConsole);
         StockpileJson.SaveFile(stock, sp);
-        t.Note($"{f.Name}: farmed {f.Writes.Length} writes at frame {farmFrames}; the stockpile is {new FileInfo(stock).Length:N0} bytes ({(cap.Anchor.Kind == AnchorKind.State ? "saved state + replay recipe" : "replay from power-on")})");
+        t.Note($"{f.Name}: farmed {f.Writes.Length} writes at frame {farmFrames}; the stockpile is {new FileInfo(stock).Length:N0} bytes ({(anchor.Kind == AnchorKind.State ? "saved state" + (anchor.Alt != null ? " + replay recipe" : "") : "replay from power-on")})");
         return new CorrMade(rom, stock, entry, work0, aram0, aramClean, workEnd, aramEnd, workClean, farmFrames);
     }
 
@@ -333,7 +357,7 @@ public sealed unsafe partial class SelfTest
                 string said = CorText(p, 0);
                 t.Expect(p.Test(HkCorGood) == 1 && said.StartsWith("started"), $"{name}: starting said '{said}'");
                 t.Expect(p.Test(HkCorApplied) == 1, $"{name}: the plugin does not record a started corruption");
-                t.Expect(said.Contains(f.Aram ? $"replayed {m.FarmFrames:N0} frames" : "loaded its saved machine"), $"{name}: the start said '{said}'");
+                t.Expect(said.Contains(m.Entry.Anchor.Kind == AnchorKind.Boot ? $"replayed {m.FarmFrames:N0} frames" : "loaded its saved machine"), $"{name}: the start said '{said}'");
 
                 // the machine the plugin built is the machine the farm had
                 t.Expect(p.Test(HkWramHash) == m.Work0, $"{name}: after the start the work RAM is not the farm's corrupted work RAM");
@@ -489,39 +513,73 @@ public sealed unsafe partial class SelfTest
     /// <summary>The history of a SNES game that was corrupted: writes made after the start are replayed, a reset is a new game, and what cannot be kept is said.</summary>
     private void CorrSnesProject(T t, CorrFamily f, CorrMade m)
     {
-        // a write made to the audio RAM after the start rides in the project's history and comes back at the same frame
+        // a write made to the audio RAM after the start comes back at the same frame: through the game-state section when the console keeps its state, through the game's recorded history when it cannot
+        string tag = "SNES " + (f.Replay ? "history" : "project");
         bool state;
         using (var probe = SegaGame(m.Rom, 2, "SNES")) state = probe.Test(89) == 1;
+        t.Expect(state == !f.Replay, $"{tag}: the SNES reports {(state ? "a state" : "no state")} where {(f.Replay ? "none" : "one")} was expected");
         byte[] project;
-        long aramBefore;
+        long aramBefore, framesBefore;
         using (var p = SegaGame(m.Rom, 2, "SNES"))
         {
             p.Test(HkRun, 0, 25);
             CorOpenDirect(p, m.Stock);
-            t.Expect(CorWait(() => CorIdle(p)) && p.Test(HkCorCount) == 3, "SNES history: the stockpile did not open");
+            t.Expect(CorWait(() => CorIdle(p)) && p.Test(HkCorCount) == 3, $"{tag}: the stockpile did not open");
             p.Test(HkCorSelect, 0, 0);
-            t.Expect(p.Test(HkCorStart) == 0, "SNES history: the start was refused");
-            t.Expect(CorWait(() => CorIdle(p), 90000) && p.Test(HkCorGood) == 1, $"SNES history: the start said '{CorText(p, 0)}'");
+            t.Expect(p.Test(HkCorStart) == 0, $"{tag}: the start was refused");
+            t.Expect(CorWait(() => CorIdle(p), 90000) && p.Test(HkCorGood) == 1, $"{tag}: the start said '{CorText(p, 0)}'");
             CorPlay(p, 20);
-            t.Expect(p.Test(HkAramPoke, 0x0600, 0x77) == 1, "SNES history: the audio RAM could not be written");
+            t.Expect(p.Test(HkAramPoke, 0x0600, 0x77) == 1, $"{tag}: the audio RAM could not be written");
             CorPlay(p, 10);
-            t.Expect(p.Test(HkAramPeek, 0x0600) == 0x77, "SNES history: the write did not stay");
+            t.Expect(p.Test(HkAramPeek, 0x0600) == 0x77, $"{tag}: the write did not stay");
             aramBefore = p.Test(HkAramHash);
+            framesBefore = p.Test(11);
             project = p.SaveState();
-            long frames = p.Test(HkCorFrames);
-            t.Expect(frames == m.FarmFrames + 30, $"SNES history: the game is at frame {frames}, expected {m.FarmFrames + 30}");
+            t.Expect(framesBefore == m.FarmFrames + 30, $"{tag}: the game is at frame {framesBefore}, expected {m.FarmFrames + 30}");
+            int g1 = FindSection(project, "GAM1");
+            t.Expect(g1 >= 0 && BitConverter.ToInt32(project, g1 + 4) > (state ? 200 : 0), $"{tag}: the game-state section is missing or too small to hold a machine");
         }
         using (var q = Reopen(project))
         {
-            t.Expect(q.Test(HkAramPeek, 0x0600) == 0x77, $"SNES history: the byte written after the start did not come back (it reads {q.Test(HkAramPeek, 0x0600)})");
-            t.Expect(q.Test(HkAramHash) == aramBefore, "SNES history: the audio RAM of the reopened game is not the saved one");
-            t.Expect(q.Test(HkCorFrames) == m.FarmFrames + 30, $"SNES history: the reopened game is at frame {q.Test(HkCorFrames)}");
-            t.Expect(state || CorText(q, 0).Contains("rebuilt by replaying"), $"SNES history: the reopened project said '{CorText(q, 0)}'");
+            t.Expect(q.Test(HkAramPeek, 0x0600) == 0x77, $"{tag}: the byte written after the start did not come back (it reads {q.Test(HkAramPeek, 0x0600)})");
+            t.Expect(q.Test(HkAramHash) == aramBefore, $"{tag}: the audio RAM of the reopened game is not the saved one");
+            t.Expect(q.Test(11) == framesBefore, $"{tag}: the reopened game is at frame {q.Test(11)}, it was saved at {framesBefore}");
+            t.Expect(state || CorText(q, 0).Contains("rebuilt by replaying"), $"{tag}: the reopened project said '{CorText(q, 0)}'");
+            t.Expect(q.Test(HkCorApplied) == 1, $"{tag}: the reopened project does not know a corruption was started");
             // Reset Console is a new game: the corruption is gone, and the plugin says it is not there
             q.Test(43);
-            t.Expect(CorWait(() => q.Test(9) == 1) && q.Test(HkCorApplied) == 0, $"SNES history: after Reset Console the plugin still thinks a corruption is on (applied {q.Test(HkCorApplied)})");
+            t.Expect(CorWait(() => q.Test(9) == 1) && q.Test(HkCorApplied) == 0, $"{tag}: after Reset Console the plugin still thinks a corruption is on (applied {q.Test(HkCorApplied)})");
             q.Test(HkRun, 0, 5);
-            t.Expect(q.Test(HkAramPeek, 0x0600) != 0x77 && q.Test(HkAramHash) != aramBefore, "SNES history: Reset Console kept the corrupted audio RAM");
+            t.Expect(q.Test(HkAramPeek, 0x0600) != 0x77 && q.Test(HkAramHash) != aramBefore, $"{tag}: Reset Console kept the corrupted audio RAM");
+        }
+
+        // a console that keeps its state, whose state the project could not hold (too big): the game's recorded history carries it instead, and the reopened game is rebuilt by replaying it
+        if (state)
+        {
+            byte[] big; long bigAram, bigFrames;
+            try
+            {
+                using var pb = SegaGame(m.Rom, 2, "SNES");
+                pb.Test(HkRun, 0, 25);
+                CorOpenDirect(pb, m.Stock);
+                CorWait(() => CorIdle(pb));
+                pb.Test(HkCorSelect, 0, 0);
+                pb.Test(HkCorStart);
+                t.Expect(CorWait(() => CorIdle(pb), 90000) && pb.Test(HkCorGood) == 1, $"{tag}: the start for the too-big case said '{CorText(pb, 0)}'");
+                CorPlay(pb, 20);
+                pb.Test(HkAramPoke, 0x0610, 0x5C);
+                CorPlay(pb, 10);
+                bigAram = pb.Test(HkAramHash); bigFrames = pb.Test(11);
+                pb.Test(87, 0, 300);                                       // the biggest game-state section a project may hold: smaller than this machine
+                big = pb.SaveState();
+                t.Expect(NoteOf(pb) is { } note && note.Contains("too big"), $"{tag}: saving a state too big for the project said '{NoteOf(pb)}'");
+            }
+            finally { using var reset = lib.Create(); reset.Test(87, 0, 0); }
+            int bg = FindSection(big, "GAM1");
+            t.Expect(bg >= 0 && BitConverter.ToInt32(big, bg + 4) < 400 && FindSection(big, "CRP1") >= 0, $"{tag}: the too-big project should hold a small marker section and the corruption section");
+            using var qb = Reopen(big);
+            t.Expect(CorText(qb, 0).Contains("rebuilt by replaying") && qb.Test(HkCorApplied) == 1, $"{tag}: a project whose machine was too big said '{CorText(qb, 0)}' (applied {qb.Test(HkCorApplied)})");
+            t.Expect(qb.Test(HkAramHash) == bigAram && qb.Test(11) == bigFrames && qb.Test(HkAramPeek, 0x0610) == 0x5C, $"{tag}: the game rebuilt from its history is not the saved one (frame {qb.Test(11)}, saved {bigFrames})");
         }
 
         // damaged, cut-short and absurd corruption sections: the plugin says so and does not pretend
@@ -539,30 +597,31 @@ public sealed unsafe partial class SelfTest
             ok = p2.SaveState();
         }
         int crp = FindSection(ok, "CRP1");
-        if (crp < 0) { t.Expect(false, "SNES history: the project has no corruption section"); return; }
+        if (crp < 0) { t.Expect(false, $"{tag}: the project has no corruption section"); return; }
         int mid = crp + 8 + BitConverter.ToInt32(ok, crp + 4) / 2;
         var damaged = (byte[])ok.Clone();
-        damaged[mid] ^= 0x5A;                                                    // one flipped byte inside the section's JSON
+        damaged[mid] ^= 0x5A;                                                    // one flipped byte inside the section (a checksum covers it)
         using (var d = Reopen(damaged))
         {
             string said = CorText(d, 0);
-            t.Expect(d.Test(HkCorGood) == 0 && (said.Contains("corruption record") || said.Contains("could not be rebuilt")), $"SNES history: a damaged corruption section said '{said}'");
-            t.Expect(d.Test(HkCorApplied) == 0, "SNES history: a damaged corruption section still counts as a started corruption");
-            t.Expect(d.Test(HkAramPeek, 0x0600) != 0x66, "SNES history: the damaged history still changed the game");
+            t.Expect(d.Test(HkCorGood) == 0 && (said.Contains("corruption record") || said.Contains("could not be rebuilt")), $"{tag}: a damaged corruption section said '{said}'");
+            t.Expect(d.Test(HkCorApplied) == 0, $"{tag}: a damaged corruption section still counts as a started corruption");
+            // the machine itself: with a saved state it comes back from the game-state section whatever happened to the corruption record; with only the history it cannot
+            t.Expect((d.Test(HkAramPeek, 0x0600) == 0x66) == state, $"{tag}: the machine {(state ? "should still come back from the game-state section" : "should not come back from a damaged history")} (byte {d.Test(HkAramPeek, 0x0600)})");
         }
         using (var tr = Reopen(ok[..mid]))                                       // cut off in the middle of the section
         {
-            t.Expect(tr.Test(HkCorGood) == 0 && CorText(tr, 0).Length > 0 && tr.Test(HkCorApplied) == 0, $"SNES history: a cut-short corruption section said '{CorText(tr, 0)}'");
+            t.Expect(tr.Test(HkCorGood) == 0 && CorText(tr, 0).Length > 0 && tr.Test(HkCorApplied) == 0, $"{tag}: a cut-short corruption section said '{CorText(tr, 0)}'");
         }
         var huge = (byte[])ok.Clone();
         BitConverter.GetBytes(0x7FFFFFF0).CopyTo(huge, crp + 4);                 // a section that claims 2 GB
         using (var hg = Reopen(huge))
         {
-            t.Expect(hg.Test(HkCorGood) == 0 && CorText(hg, 0).Length > 0 && hg.Test(HkCorApplied) == 0 && hg.Test(12) == 0, $"SNES history: a section that claims 2 GB said '{CorText(hg, 0)}'");
+            t.Expect(hg.Test(HkCorGood) == 0 && CorText(hg, 0).Length > 0 && hg.Test(HkCorApplied) == 0 && hg.Test(12) == 0, $"{tag}: a section that claims 2 GB said '{CorText(hg, 0)}'");
         }
         using (var old = Reopen(ok[..crp]))                                      // an older project (before this section existed) loads exactly as before
         {
-            t.Expect(old.Test(HkCorApplied) == 0 && CorText(old, 0) == "", $"SNES history: a project without the section said '{CorText(old, 0)}'");
+            t.Expect(old.Test(HkCorApplied) == 0 && CorText(old, 0) == "", $"{tag}: a project without the section said '{CorText(old, 0)}'");
         }
     }
 
@@ -913,7 +972,7 @@ public sealed unsafe partial class SelfTest
                 t.Expect(p.Test(45) == 1 && p.Test(48) == 1, $"SMW: Runaway {p.Test(45)}, sampler {p.Test(48)}");
                 snap = p.Test(HkSnapHash); aram = p.Test(HkAramHash); wram = p.Test(HkWramHash); farm = p.Test(HkCorFrames);
                 t.Expect(snap == aramCorrupt && snap != cleanSnap, "SMW: the plugin's instrument snapshot is not the farm's corrupted audio RAM");
-                t.Expect(wram == wramAtStart && farm == 900, $"SMW: the work RAM or the frame count (900) differ from the farm's: frame {farm}");
+                t.Expect(wram == wramAtStart && farm == 900 && p.Test(11) == 900, $"SMW: the work RAM or the frame count (900) differ from the farm's: frame {farm} / {p.Test(11)}");
                 p.SetParam(PInstrument, pick.Slot);
                 corrupt = CorNote(p);
                 project = p.SaveState();
@@ -927,7 +986,7 @@ public sealed unsafe partial class SelfTest
             // the project: a fresh plugin rebuilds the corrupted game by replaying its history and has the same instruments and machine
             using var q = Reopen(project);
             t.Expect(q.Test(HkCorApplied) == 1 && q.Test(45) == 1, $"SMW: after reopening the corruption is {q.Test(HkCorApplied)}, Runaway {q.Test(45)}");
-            t.Expect(q.Test(HkSnapHash) == snap && q.Test(HkAramHash) == aram && q.Test(HkWramHash) == wram && q.Test(HkCorFrames) == 900, "SMW: the game that came back from the project is not the corrupted game that was saved");
+            t.Expect(q.Test(HkSnapHash) == snap && q.Test(HkAramHash) == aram && q.Test(HkWramHash) == wram && q.Test(11) == 900, $"SMW: the game that came back from the project is not the corrupted game that was saved (frame {q.Test(11)})");
             q.SetParam(PInstrument, pick.Slot);
             var again = CorNote(q);
             t.Expect(Math.Abs(Audio.Rms(again, 0, again.Length) - rmsBad) < rmsBad * 0.02, "SMW: the reopened corrupted instrument does not sound as it did");

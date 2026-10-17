@@ -51,7 +51,7 @@ internal static class CorruptChecks
         if (Want("nes")) { Section("the NES path of the engine is unchanged, and its entries travel in the new file"); Guard(c, "nes", () => CorruptEngineChecks.Nes(c)); }
         if (Want("consoles")) { Section("the Game Boy, Game Boy Color, Master System, Game Gear and Genesis: memories, a corruption on a saved state, a corruption on a replay"); Guard(c, "consoles", () => CorruptConsoleChecks.Run(c)); }
         if (Want("cli")) { Section("--corrupt-apply"); Guard(c, "cli", () => Cli(c, rom)); }
-        if (Want("state")) { Section("state anchors on the SNES (run once the SNES has save states)"); Guard(c, "state", () => SnesState(c, rom)); }
+        if (Want("state")) { Section("state anchors on the SNES (skipped only on a build whose SNES has no save states)"); Guard(c, "state", () => SnesState(c, rom)); }
         if (Want("smw")) { Section("a real game (Super Mario World), when its ROM is present"); Guard(c, "smw", () => Smw(c, smw)); }
         return c.Finish();
     }
@@ -742,17 +742,19 @@ internal static class CorruptChecks
     private static void SnesState(Checks c, byte[] rom)
     {
         using var probe = new SnesRun(rom);
-        if (!probe.Session.SupportsState) { c.Skip("a state anchor on the SNES: load a saved machine, then the writes", "the SNES has no save states yet: " + probe.Session.StateUnsupportedReason); return; }
+        if (!probe.Session.SupportsState) { c.Skip("a state anchor on the SNES: load a saved machine, then the writes", "the SNES has no save states here: " + probe.Session.StateUnsupportedReason); return; }
         // with states: save at frame 120, corrupt a fresh machine through the state anchor, compare with corrupting the saved machine directly
         probe.Run(120);
         byte[] state = probe.Session.SaveState();
+        probe.ResetAudio();
         var data = Enumerable.Range(1, 8).Select(i => new CorruptionWrite("ARAM", SynthSnesRom.AramSample + i, i <= 4 ? (byte)0x33 : (byte)0xDD)).ToArray();
-        var entry = SynthEntry(rom, new Anchor { Kind = AnchorKind.State, Console = "snes", StateFormat = "snes", StateData = state }, data);
+        var entry = SynthEntry(rom, new Anchor { Kind = AnchorKind.State, Console = "snes", StateFormat = SnesSession.StateFormat, StateData = state }, data);
         var st = AnchorStart.Start(entry, null, rom, "synth.sfc", ConsoleKind.Snes, null);
-        c.Ok("the state anchor starts (state loaded, 8 writes applied)", st.Ok && st.Used == AnchorKind.State && st.Report!.Applied == 8, st.Message);
+        c.Ok("the state anchor starts (state loaded, 8 writes applied, no frames replayed)", st.Ok && st.Used == AnchorKind.State && st.Report!.Applied == 8 && st.FramesReplayed == 0, st.Message);
         if (!st.Ok) return;
         using var viaState = new SnesRun(st.Session!);
         CorruptionApplier.Apply(MachineDomains.For(probe.Session), data, null);
+        viaState.ResetAudio();
         viaState.Run(60); probe.Run(60);
         c.Ok("the machine after Start equals the saved machine corrupted directly (ARAM, WRAM, sound after 60 more frames)", viaState.Aram() == probe.Aram() && viaState.Wram() == probe.Wram() && viaState.AudioHash == probe.AudioHash);
         var wrong = new SnesRun(rom);
@@ -804,6 +806,14 @@ internal static class CorruptChecks
         var bad2 = FingerprintAt(rom, E(anchor2, writes.ToArray()), 300, out _);
         c.Ok("SMW: the corrupted instrument changes the game's sound over the next 300 frames", bad.Audio != clean.Audio, $"{writes.Count} writes, {bs.Report!.Describe()}");
         c.Ok("SMW: ... the same way every time", bad == bad2);
+        if (look.Session.SupportsState)
+        {
+            // the same corrupted machine through a saved state of the game at frame 900 instead of the replay of its 900 frames
+            var savedAt900 = new Anchor { Kind = AnchorKind.State, Console = "snes", StateFormat = SnesSession.StateFormat, StateData = look.Session.SaveState(), Frame = 900 };
+            var viaState = FingerprintAt(rom, E(savedAt900, writes.ToArray()), 300, out var vs);
+            c.Ok("SMW: the corrupted instrument started from the game's saved machine at frame 900 is the machine the replay of 900 frames reaches (work RAM, audio RAM, S-DSP at the start, then the sound and picture 300 frames on)", viaState == bad, $"{viaState.Show()} vs {bad.Show()}; {vs.Message}");
+            c.Control("SMW: the same saved machine without the writes is not that machine", FingerprintAt(rom, E(savedAt900), 300, out _) != bad);
+        }
         var snapBad = Snap(rom, E(anchor2, writes.ToArray()));
         int diff = 0; for (int i = 0; i < SpcSnapshot.AramSize; i++) if (snap.Aram[i] != snapBad.Aram[i]) diff++;
         c.Ok("SMW: Runaway's SpcSnapshot of the corrupted game differs from the clean one in the written bytes", diff == writes.Count(w => w.Value != w.Was), $"{diff} bytes");

@@ -813,7 +813,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                         }
                         else if (tag == CorruptionSection.Tag)
                         {
-                            if (slen < 16 || slen > CorruptionSection.MaxRead) { restoredCorruption = CorruptionSection.Damaged("damaged"); break; }
+                            if (slen < 20 || slen > CorruptionSection.MaxRead) { restoredCorruption = CorruptionSection.Damaged("damaged"); break; }
                             var crpBuf = new byte[slen];
                             fixed (byte* p = crpBuf) if (!stream.Read(p, (uint)slen)) { restoredCorruption = CorruptionSection.Damaged("cut short"); break; }
                             restoredCorruption = CorruptionSection.Read(crpBuf, out _);          // damaged: the editor says so (the game-state section, if any, still brings the machine back)
@@ -970,6 +970,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
             // index (0 result, 1 status, 2 why of the selected row, 3 the selected row's name, 4 the stockpile problems), the max chars in the low 16, returns the length, 110 the result's good flag, 111 the result's stamp,
             // 112 whether a corruption is recorded as started on this game, 113 frames the farm has recorded (-1 no farm), 114 the farm's reason why a replay is not possible (1 poisoned, 0 not), 115 the SNES audio RAM hash,
             // 116 the work RAM hash (WRAM, else RAM), 117 hash of the Runaway snapshot's audio RAM, 118 the ARAM byte at <index>, 119 write ARAM byte <index> = <value> straight into the running game (a corruption made outside the farm)
+            case 121: SessionGame.NoStateForTests = value != 0; return 0;      // 121 tests only: console games report that they cannot keep their state (value 1), or go back to the truth (0)
             case 120: Emulator.NoPumpForTests = value != 0; return 0;      // 120 tests only: the editor stops running the game to keep the picture moving (value 1), or goes back to it (0)
             case 100: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); if (emu == null || path == null) return 1; emu.OpenStockpile(path); return 0; }
             case 101: return emu == null ? 0 : (emu.Corruption.Reading ? 1 : 0) | (emu.Corruption.Busy ? 2 : 0);
