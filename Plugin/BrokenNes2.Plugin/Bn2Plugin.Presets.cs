@@ -67,6 +67,7 @@ public sealed unsafe partial class Bn2Plugin
         if (emu.PresetBlocker is { } blocked) return ActionResult.Refused(char.ToUpperInvariant(blocked[0]) + blocked[1..] + ".");        // (nothing is loaded and nothing changes: a game that runs here stays as it is)
         string? why = AdoptPreset(file, libraryId, out var lp);
         if (why != null) return ActionResult.Refused(why);
+        if (Get(P.Recipe) != 0) SetFromUi(P.Recipe, 0);                  // (a new preset starts at its plain sample; the game voice picked for the last one means nothing here)
         string? refusal = emu.EnterPresetMode();
         string name = lp!.Data.Name;
         if (refusal != null) return ActionResult.Refused($"\"{name}\" is loaded into this instance, but {refusal}.");
@@ -196,7 +197,7 @@ public sealed unsafe partial class Bn2Plugin
     /// into the buffer at <c>value</c> (at most <c>index</c> chars; returns the length), 342 what this instance holds (0 nothing, 1 plays, 2 cannot play), 343 copy the held preset's name, 344 the held preset file's CRC-32 (0 none), 345 copy the project note
     /// (-1 none), 346 drop the preset, 347 whether an audition is sounding, 348 audition the held preset, 349 bytes this thread allocated, 350 switch a library bug on (value; 0 none), 351 the length of the PRS1 section this instance would save (-1 none),
     /// 352 whether the emulator is in preset mode, 353 copy the held preset's one-line summary, 354 copy the library folder, 355 force a rescan of the library folder (returns the number of presets listed), 356 the held preset's library id (copied; -1 none),
-    /// 357 / 358 put the Sega / Game Boy snapshot in the <c>index</c> bytes at <c>value</c> in place of the frozen game's.</summary>
+    /// 357 / 358 put the Sega / Game Boy snapshot in the <c>index</c> bytes at <c>value</c> in place of the frozen game's, 359 put the game voices (SpcRecipe.Write bytes, <c>index</c> of them at <c>value</c>) on the frozen SNES snapshot as a capture of a game would have.</summary>
     private nint PresetTestHook(int n, nint index, nint value)
     {
         var emu = assignment.Emulator;
@@ -244,6 +245,14 @@ public sealed unsafe partial class Bn2Plugin
                 var g = GbSnapshot.FromBytes(new ReadOnlySpan<byte>((void*)value, (int)index).ToArray());
                 if (g == null || emu == null) return 1;
                 emu.ReplaceGbForTests(g);
+                return 0;
+            }
+            case 359:           // the game voices a capture would have found, put on the frozen SNES snapshot (0 done, 1 not a recipe list or no snapshot)
+            {
+                var list = SpcRecipe.Read(new ReadOnlySpan<byte>((void*)value, (int)index).ToArray());
+                var snap = emu?.Snapshot;
+                if (list == null || snap == null) return 1;
+                snap.Recipes = list;
                 return 0;
             }
             default: return 0;

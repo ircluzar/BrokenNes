@@ -368,7 +368,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         bool hasSample = samplerFor?.HasSample(instrument) ?? false;   // an empty slot of the game's sample table plays nothing (the DSP would wander through other data)
         // a recipe (Recipe parameter 1 and up) plays what the game's driver did with an instrument; a recipe plays whatever sample the game keyed, so the sample table's check does not apply to it
         SpcRecipe? recipe = null;
-        int rp = forcedInstrument >= 0 ? 0 : Get(P.Recipe);              // (a preset plays its own instrument: no game voice)
+        int rp = forcedInstrument >= 0 && PresetMutants.On(PresetMutants.VoiceIgnored) ? 0 : Get(P.Recipe);   // (a preset plays its own sample; the game voices it carries are in its snapshot, so the same parameter picks one)
         var recipes = samplerFor?.Recipes;
         if (rp > 0 && recipes != null && rp <= recipes.Length) recipe = recipes[rp - 1];
         foreach (var v in voices)

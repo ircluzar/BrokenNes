@@ -341,7 +341,8 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         // THIS INSTANCE
         Section(dc, "THIS INSTANCE", null, x, y, w);
         y += 30;
-        if (sampler || segaSampler || presetMode)
+        if (presetMode && PresetHasVoices) DrawPresetVoice(dc, x, y, w);
+        else if (sampler || segaSampler || presetMode)
         {
             Txt(dc, "Channel", R(x, y, 86, RowH), Win32.DT_LEFT | Mid, Dim, fontLabel);
             Box(dc, R(x + 86, y, w - 86, RowH), Panel, Line, 5);
@@ -1262,6 +1263,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 return (items.ToArray(), vals.ToArray(), current);
             }
             case IdInstrument when emu?.PresetMode == true: return PresetItems(emu);
+            case IdChannel when emu?.PresetMode == true: return PresetVoiceItems();
             case IdInstrument when emu?.SegaSamplerMode == true:
             {
                 // Auto is the game's choice (what it was playing when it froze); the instruments follow (the parameter is the instrument number + 1)
@@ -1354,6 +1356,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         openHover = -1;
         if (id == IdGame) PickGame(value);
         else if (id == IdInstrument && plugin.Emulator?.PresetMode == true) PresetPick(value);      // the preset picker (Bn2Editor.Presets.cs)
+        else if (id == IdChannel && plugin.Emulator?.PresetMode == true) plugin.SetFromUi(P.Recipe, value);      // the preset's Voice
         else if (id == IdInstrument && (plugin.Emulator?.SamplerMode == true || plugin.Emulator?.SegaSamplerMode == true))
         {
             // a game voice (a recipe) or a plain instrument of the sample table: picking one clears the other
@@ -1535,7 +1538,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                     var def = plugin.Params[p];
                     plugin.SetFromUi(p, plugin.Get(p) + delta * Math.Max(1, (def.Max - def.Min) / 50));
                 }
-                else if (h is { Kind: Kind.Dropdown } d && ParamOf(d.Id) is var pp && pp >= 0 && d.Id is not (IdChip or IdInstrument or IdGbDuty))
+                else if (h is { Kind: Kind.Dropdown } d && ParamOf(d.Id) is var pp && pp >= 0 && d.Id is not (IdChip or IdInstrument or IdGbDuty) && !(d.Id == IdChannel && plugin.Emulator?.PresetMode == true))
                     plugin.SetFromUi(pp, plugin.Get(pp) - delta);
                 break;
             }

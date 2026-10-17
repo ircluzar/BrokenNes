@@ -12,6 +12,8 @@ internal static partial class PresetChecks
     /// <summary>Test-only (the mutant run): the reference side is played at another velocity, which the comparison must notice.</summary>
     internal static bool ReferenceVelocityOff;
     internal static bool EngineAllocates;
+    /// <summary>Test-only (the mutant run): the game's side plays its voice with another envelope, which the comparison must notice.</summary>
+    internal static bool VoiceReferenceOff;
 
     public sealed record TestMutant(string Name, string CatchingCheck, Action<ImodelReport> Run);
 
@@ -19,6 +21,7 @@ internal static partial class PresetChecks
     [
         new("the Runaway side is played at another velocity", "play-equals-runaway", r => { ReferenceVelocityOff = true; try { PlayEqualsRunaway(r); } finally { ReferenceVelocityOff = false; } }),
         new("an engine allocates a little on every block", "play-alloc", r => { EngineAllocates = true; try { PlayAlloc(r); } finally { EngineAllocates = false; } }),
+        new("the game's side plays its voice with another envelope", "note-plays", r => { VoiceReferenceOff = true; try { NotePlays(r); } finally { VoiceReferenceOff = false; } }),
     ];
 
     // =====================================================================================================================================================================

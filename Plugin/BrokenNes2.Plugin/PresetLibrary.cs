@@ -106,6 +106,7 @@ internal sealed class PresetLibrary : IPresetLibrary
         string instrumentName = draft.Name.EndsWith(" (corrupted)", StringComparison.Ordinal) ? draft.Name[..^12] : draft.Name;
         var d = PresetMaker.Make(draft.Name.Trim(), instrumentName, draft.SourceGame, sha, draft.Notes, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), pl.Packed, pl.CleanPacked, pl.HistoryBytes, pl.Context, out string? problem);
         if (d == null) return ActionResult.Refused("This instrument cannot be kept as a preset: " + problem);
+        if (host?.Emulator?.Snapshot is { } frozen) PresetNote.Attach(d, frozen.Recipes, d.Index);       // (the game voices of this sample: what the driver was heard doing with it, Presets/PresetNote.cs)
         var r = Store.Add(d);
         Store.Refresh(force: true);
         return r.Ok ? ActionResult.Done(r.Message + ". Open the Presets tab to rename it or play it with no ROM.") : ActionResult.Refused(r.Message);

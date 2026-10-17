@@ -25,7 +25,7 @@ public sealed unsafe partial class Bn2Editor
         Box(dc, r, AccentDim, Accent, 6);
         string filter = emu.PresetFilter ?? "";
         Txt(dc, filter.Length == 0 ? "PRESETS  -  ANY CONSOLE, NO ROM" : $"PRESETS  -  {filter}, NO ROM", R(r.Left + 12, r.Top + 8, w - 24, 18), Win32.DT_LEFT | Win32.DT_SINGLELINE, White, fontSection);
-        Txt(dc, "Each instance plays the preset it holds. Pick one below, or Load one in the Presets tab.", R(r.Left + 12, r.Top + 28, w - 24, 24), Win32.DT_LEFT | Win32.DT_WORDBREAK, Win32.Rgb(240, 200, 195), fontSmall);
+        Txt(dc, "Each instance plays its own preset. Pick one below.", R(r.Left + 12, r.Top + 28, w - 24, 24), Win32.DT_LEFT | Win32.DT_WORDBREAK, Win32.Rgb(240, 200, 195), fontSmall);
     }
 
     /// <summary>The Instrument row in preset mode: the preset this instance holds, a dropdown of the library, and one line about what is loaded (or why not).</summary>
@@ -37,6 +37,26 @@ public sealed unsafe partial class Bn2Editor
         string info = presetPickMessage.Length > 0 ? presetPickMessage : note.Length > 0 ? note : lp != null ? lp.Summary : "pick a preset from the library, or send one from the Instruments tab";
         bool warn = presetPickMessage.Length > 0 ? !presetPickOk : note.Length > 0;
         Txt(dc, info, R(x + 86, y + RowH + 1, w - 86, 30), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_END_ELLIPSIS, warn ? Warn : Faint, fontSmall);
+    }
+
+    /// <summary>The held preset carries game voices (a SNES instrument sent from a game): the Channel row of preset mode is their dropdown.</summary>
+    private bool PresetHasVoices => plugin.Preset?.Play.Recipes.Length > 0;
+
+    private void DrawPresetVoice(nint dc, int x, int y, int w)
+    {
+        var rs = plugin.Preset!.Play.Recipes;
+        int rp = plugin.Get(P.Recipe);
+        Dropdown(dc, IdChannel, "Voice", x, y, w, 86, rp > 0 && rp <= rs.Length ? rs[rp - 1].Describe(rp - 1).Name : "Plain sample, as sent");
+    }
+
+    /// <summary>"Plain sample" (value 0) and one entry per game voice the preset carries (value n = the Recipe parameter).</summary>
+    private ((string, string?)[] Items, int[] Values, int Current) PresetVoiceItems()
+    {
+        var rs = plugin.Preset?.Play.Recipes ?? [];
+        var items = new List<(string, string?)> { ("Plain sample, as sent", "the instrument with its own envelope, tuning and volume") };
+        for (int k = 0; k < rs.Length; k++) { var (n, note) = rs[k].Describe(k); items.Add((n, note)); }
+        int rp = plugin.Get(P.Recipe);
+        return (items.ToArray(), Enumerable.Range(0, items.Count).ToArray(), rp > 0 && rp <= rs.Length ? rp : 0);
     }
 
     private ((string, string?)[] Items, int[] Values, int Current) PresetItems(Emulator emu)

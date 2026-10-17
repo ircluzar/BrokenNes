@@ -250,6 +250,8 @@ public static class PresetFile
         if (!h.Current.SameValues(inst) && !PresetMutants.On(PresetMutants.HistoryNotChecked)) return "damaged (the history does not lead to the instrument)";
         string? c = PresetContext.Check(d.Console, d.Context);
         if (c != null) return "its context is " + c;
+        string? nb = PresetNote.Check(d);
+        if (nb != null) return nb;
         d.FieldCount = inst.Fields.Length;
         d.BlobCount = inst.Blobs.Length;
         d.Steps = h.Operations.Take(h.Cursor).Count(o => o.Kind is not (OpKind.Lock or OpKind.Unlock));
@@ -350,6 +352,7 @@ internal static class PresetMutants
 {
     public static int Active;
     public const int CrcNotChecked = 1, HistoryNotChecked = 2, LibraryOverwrites = 3, SectionCrcNotChecked = 4, LoadsWrongBytes = 5, ImportSkipsValidation = 6, SnesEnvelopeDropped = 7, SnesTuningDropped = 8, GenesisPatchIndexOff = 9,
-        GbDutyDropped = 10, ProjectKeepsNothing = 11, ExportWritesWrong = 12, SearchIgnoresTags = 13, RenameKeepsOldName = 14, DeleteKeepsFile = 15;
+        GbDutyDropped = 10, ProjectKeepsNothing = 11, ExportWritesWrong = 12, SearchIgnoresTags = 13, RenameKeepsOldName = 14, DeleteKeepsFile = 15,
+        NoteNotChecked = 16, NoteRecipesDropped = 17, VoiceIgnored = 18;
     public static bool On(int m) => Active == m;
 }

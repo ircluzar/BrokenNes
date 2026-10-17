@@ -146,6 +146,8 @@ public sealed class PresetPlayable
     public int Index;
     public Instrument Instrument = null!;
     public SpcSnapshot? Snes;
+    /// <summary>SNES: the game voices (recipes) the preset carries for its sample (also in <see cref="Snes"/>.Recipes); the Recipe parameter 1 and up plays one of them. Empty for a preset without note behaviour.</summary>
+    public SpcRecipe[] Recipes = [];
     public SegaSnapshot? Sega;
     public GbSnapshot? Gb;
     /// <summary>What the Instrument parameter holds to play this instrument on the snapshot: the SNES sample slot, or the Sega picker index plus one.</summary>
@@ -176,6 +178,7 @@ public sealed class PresetPlayable
             ConsoleId.GameBoy => BuildGb(p, inst, d.Context),
             _ => BuildNes(p, inst),
         };
+        if (problem == null && inst.Console == ConsoleId.Snes && PresetNote.SnesList(d) is { } voices) { p.Recipes = voices; p.Snes!.Recipes = voices; }
         return problem == null ? p : null;
     }
 
@@ -311,5 +314,5 @@ public sealed class PresetPlayable
     }
 
     /// <summary>One line for the Emulator tab and the Presets tab: what is loaded.</summary>
-    public static string Describe(PresetData d) => $"{PresetFile.ConsoleName(d.Console)}  {(d.InstrumentName.Length > 0 ? d.InstrumentName : d.Kind.ToString())}{(d.Corrupted ? $"  (corrupted, {d.Steps} step{(d.Steps == 1 ? "" : "s")})" : "")}";
+    public static string Describe(PresetData d) => $"{PresetFile.ConsoleName(d.Console)}  {(d.InstrumentName.Length > 0 ? d.InstrumentName : d.Kind.ToString())}{(d.Corrupted ? $"  (corrupted, {d.Steps} step{(d.Steps == 1 ? "" : "s")})" : "")}{(d.NoteVersion != 0 ? "  +  " + PresetNote.Describe(d) : "")}";
 }

@@ -71,6 +71,7 @@ public sealed unsafe partial class SelfTest
             PresetsProject(t);
             PresetsAlloc(t);
             PresetsUiFlow(t);
+            PresetsVoices(t);
 
             // the DLL's own deliberate bugs (switched on inside the DLL through hook 330): the scenario meant to catch each must fail
             foreach (var (id, what, scenario) in new (int, string, Action<T>)[]
@@ -78,6 +79,8 @@ public sealed unsafe partial class SelfTest
                 (PresetMutants.ProjectKeepsNothing, "the project keeps no copy of the preset", PresetsProject),
                 (PresetMutants.SectionCrcNotChecked, "the project section's checksum is not checked", PresetsProject),
                 (PresetMutants.LoadsWrongBytes, "the library hands the plugin a file with its last byte missing", PresetsUiFlow),
+                (PresetMutants.NoteRecipesDropped, "Send to Presets keeps no game voice", PresetsVoices),
+                (PresetMutants.VoiceIgnored, "a preset plays its plain sample whatever voice is picked", PresetsVoices),
             })
             {
                 var tt = new T();

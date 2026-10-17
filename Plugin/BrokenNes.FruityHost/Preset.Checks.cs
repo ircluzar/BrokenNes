@@ -22,6 +22,8 @@ internal static partial class PresetChecks
         new("play-builds", "every instrument of every snapshot (clean and corrupted) builds a playable preset, or says why not; the NES DMC says it cannot play yet and every other NES kind builds", PlayBuilds),
         new("play-equals-runaway", "a preset played on a private engine renders the same PCM as Runaway playing that instrument from the game it was ripped from (same note, same velocity): bit-exact on the Genesis, Master System, Game Gear and Game Boy, SNES with the game's old echo cleared", PlayEqualsRunaway),
         new("play-alloc", "the engines built from presets allocate nothing while notes play", PlayAlloc),
+        new("note-block", "the reserved note-behaviour block carries a SNES instrument's game voices (recipes) for its own sample only, deterministically; wrong blocks (another sample's, not a recipe list, another console) are refused with the reason; a later version is kept byte for byte and not played", NoteBlock),
+        new("note-plays", "a game voice played from a preset renders the same PCM as the same voice played from the game's own sound memory, and is not the plain sample", NotePlays),
         new("hygiene", "no *.bn2preset file is tracked by git and the ignore rule is in place (ripped presets hold copyrighted samples and must never be committed)", Hygiene),
     ];
 
@@ -460,6 +462,8 @@ internal static partial class PresetChecks
         new("the SNES tuning is not set on the engine", PresetMutants.SnesTuningDropped, "play-equals-runaway", PlayEqualsRunaway),
         new("the Genesis engine plays the instrument after the one asked for", PresetMutants.GenesisPatchIndexOff, "play-equals-runaway", PlayEqualsRunaway),
         new("the Game Boy duty is not set on the engine", PresetMutants.GbDutyDropped, "play-equals-runaway", PlayEqualsRunaway),
+        new("a game voice of another sample is not noticed in a preset", PresetMutants.NoteNotChecked, "note-block", NoteBlock),
+        new("sending an instrument keeps no game voice", PresetMutants.NoteRecipesDropped, "note-block", NoteBlock),
     ];
 
     public sealed record CheckOutcome(string Id, string What, bool Passed, double Seconds, ImodelReport Report);
