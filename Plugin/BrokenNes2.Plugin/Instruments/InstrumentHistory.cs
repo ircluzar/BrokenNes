@@ -86,6 +86,9 @@ public sealed class InstrumentHistory
     /// <summary>The instrument after the first <paramref name="upTo"/> operations, rebuilt from the clean one (a fresh object).</summary>
     public Instrument Replay(int upTo) => Build(Math.Clamp(upTo, 0, ops.Count)).Inst;
 
+    /// <summary>The locks in force after the first <paramref name="upTo"/> operations, rebuilt from the clean instrument.</summary>
+    public IReadOnlySet<string> ReplayLocks(int upTo) => Build(Math.Clamp(upTo, 0, ops.Count)).Locks;
+
     /// <summary>The corrupted instrument as bytes (<see cref="InstrumentCodec.Pack"/>): the form a preset or a project stores, independent of the corruptor.</summary>
     public byte[] FinalBytes() => InstrumentCodec.Pack(Current);
 

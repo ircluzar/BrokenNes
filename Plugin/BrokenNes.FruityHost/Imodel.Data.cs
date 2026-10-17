@@ -59,9 +59,13 @@ internal static class ImodelData
     }
 
     /// <summary>The note sequence every SNES sampler golden and audibility render plays: eight voices, a pitch glide, a note-off, the tail. 48 kHz, 256-frame blocks. Returns the interleaved stereo PCM.</summary>
+    /// <summary>Test-only (the mutant run of the neutrality check): feeds the sampler an overlay that tunes sample 0 by one cent, as a buggy change would do to a clean snapshot.</summary>
+    public static bool LeakOverlay;
+
     public static float[] RenderSnes(SpcSnapshot snap, int[]? srcn = null, int blocksPerStep = 3)
     {
         srcn ??= [0, 1, 2];
+        if (LeakOverlay && snap.Overlay == null) snap = snap.WithOverlay(new BrokenNes2.Instruments.SnesOverlay([new BrokenNes2.Instruments.SnesOverlay.Entry { Srcn = 0, Flags = BrokenNes2.Instruments.SnesOverlay.HasTune, Tune = 1 }]));
         var s = new SnesSampler(snap, 48000);
         var all = new List<float>();
         var buf = new float[256 * 2];
@@ -84,7 +88,7 @@ internal static class ImodelData
         regs[0x11 - 0x10] = 0x80;                 // NR11: duty 2 (50%)
         regs[0x12 - 0x10] = 0xF3;                 // NR12: volume 15, decrease, pace 3
         regs[0x16 - 0x10] = 0x40;                 // NR21: duty 1 (25%)
-        regs[0x17 - 0x10] = 0xA5;                 // NR22: volume 10, increase, pace 5
+        regs[0x17 - 0x10] = 0xA5;                 // NR22: volume 10, decrease (bit 3 clear), pace 5
         regs[0x1A - 0x10] = 0x80;                 // NR30: wave DAC on
         regs[0x1C - 0x10] = 0x20;                 // NR32: output level 100%
         regs[0x21 - 0x10] = 0xF1;                 // NR42: volume 15, decrease, pace 1
@@ -172,16 +176,32 @@ internal static class ImodelData
     }
 
     /// <summary>Renders notes on slots of a Sega sampler: slot, instrument and Hz/velocity per step; returns interleaved stereo PCM at 48 kHz.</summary>
-    public static float[] RenderSega(SegaSnapshot snap, params (int Slot, int Instrument, double Hz, double Velocity)[] notes)
+    public static float[] RenderSega(SegaSnapshot snap, params (int Slot, int Instrument, double Hz, double Velocity)[] notes) => RenderSega(snap, 12, notes);
+
+    public static float[] RenderSega(SegaSnapshot snap, int hold, params (int Slot, int Instrument, double Hz, double Velocity)[] notes)
     {
         SegaSampler s = snap.Kind switch { SegaSnapshot.KindOpn => new OpnSampler(snap, 48000), SegaSnapshot.KindOpll => new OpllSampler(snap, 48000), _ => new PsgSampler(snap, 48000) };
         var all = new List<float>();
         var buf = new float[256 * 2];
         void Run(int blocks) { for (int i = 0; i < blocks; i++) { s.Render(buf, 256); all.AddRange(buf); } }
-        foreach (var n in notes) { s.NoteOn(n.Slot, n.Instrument, n.Hz, n.Velocity); Run(12); }
-        Run(10);
+        foreach (var n in notes) { s.NoteOn(n.Slot, n.Instrument, n.Hz, n.Velocity); Run(hold); }
+        Run(hold * 5 / 6);
         foreach (var n in notes) s.NoteOff(n.Slot);
-        Run(12);
+        Run(hold);
+        return all.ToArray();
+    }
+
+    /// <summary>One Game Boy channel (0 pulse 1, 1 pulse 2, 2 wave, 3 noise) played with the snapshot's settings: a note, a pitch change, a release.</summary>
+    public static float[] RenderGbChannel(GbSnapshot snap, int ch)
+    {
+        var s = new GbSampler(snap, 48000);
+        var all = new List<float>();
+        var buf = new float[256 * 2];
+        void Run(int blocks) { for (int i = 0; i < blocks; i++) { s.Render(buf, 256); all.AddRange(buf); } }
+        double hz = new[] { 440.0, 330.0, 220.0, 500.0 }[ch];
+        s.NoteOn(ch, hz, 12, -1, false); Run(24);
+        s.Pitch(ch, hz * 1.12, false); Run(12);
+        s.NoteOff(ch); Run(8);
         return all.ToArray();
     }
 

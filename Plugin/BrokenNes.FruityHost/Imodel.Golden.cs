@@ -33,12 +33,15 @@ internal static class ImodelGolden
         ("addams-gg", () => { var p = ImodelGames.Find(@"X:\EMULATION\Sega Game Gear", "Addams Family", ".gg"); var s = p == null ? null : ImodelGames.MasterSystem(p, 1500, false, out _); return (s, p ?? "ROM not found"); }),
     ];
 
-    /// <summary>Lists what each real game's snapshot holds and the hash of a render of it (so the same render can be compared after a sampler change).</summary>
+    /// <summary>Lists what each real game's snapshot holds and the hash of a render of it (so the same render can be compared after a sampler change). The snapshots are the ones <see cref="ImodelFixtures.Real"/> captured (the same frames).</summary>
     public static IEnumerable<string> Real()
     {
-        foreach (var (name, capture) in RealGames())
+        var fixtures = ImodelFixtures.Real();
+        foreach (var (name, _) in RealGames())
         {
-            var (snap, info) = capture();
+            var fx = fixtures.FirstOrDefault(f => f.Name == name);
+            var snap = fx?.Snapshot;
+            string info = "ROM not found";
             if (snap == null) { yield return $"{name,-10} not available: {info}"; continue; }
             switch (snap)
             {

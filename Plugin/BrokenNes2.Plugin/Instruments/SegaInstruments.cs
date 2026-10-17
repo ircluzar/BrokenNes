@@ -127,7 +127,8 @@ public sealed class SegaInstruments : IInstrumentSource
             f.Add(Field.Range(p + "ar", $"{g} attack", g, 0, 15, $"Attack rate of the {role} (15 fastest, 0 never opens)."));
             f.Add(Field.Range(p + "dr", $"{g} decay", g, 0, 15, $"Decay rate of the {role} (15 fastest)."));
             f.Add(Field.Range(p + "sl", $"{g} sustain level", g, 0, 15, $"Level the {role}'s decay stops at (0 the peak, 15 about 45 dB down)."));
-            f.Add(Field.Range(p + "rr", $"{g} release", g, 0, 15, $"How fast the {role} falls after key-off (15 fastest)."));
+            f.Add(Field.Range(p + "rr", $"{g} release", g, 0, 15, p == "mod." ? "A sustained modulator holds its level at key-off on this chip, so this matters only when the modulator is percussive: it is then how fast it fades after reaching its sustain level (15 fastest)."
+                : $"How fast the carrier falls after key-off when sustained (15 fastest); when percussive it is the rate it fades at after reaching its sustain level."));
             f.Add(Field.Range(p + "ksl", $"{g} level scaling", g, 0, 3, $"Key-level scaling: how much quieter the {role} gets as the note goes higher (0 none, 3 most: 6 dB per octave)."));
             f.Add(Field.Enum(p + "wave", $"{g} waveform", g, ["sine", "half sine"], $"The {role}'s wave: a full sine, or a sine with its lower half cut off (reedy, even harmonics)."));
         }

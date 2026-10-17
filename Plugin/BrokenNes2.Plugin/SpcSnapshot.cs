@@ -97,15 +97,23 @@ public sealed class SpcSnapshot
     }
 
     /// <summary>A slot that holds a sample (one of <see cref="Instruments"/>).</summary>
-    public bool HasSample(int srcn) => Instruments().Any(i => i.Slot == srcn);
+    public bool HasSample(int srcn)
+    {
+        // plain loops over the cached array: this is called from the audio thread (every note, every block), where a LINQ closure or an interface enumerator would allocate
+        Instruments();
+        var list = instruments!;
+        for (int k = 0; k < list.Length; k++) if (list[k].Slot == srcn) return true;
+        return false;
+    }
 
     /// <summary>The instrument an instance with this slot setting plays: the slot itself when the game has a sample there, otherwise the one the game
     /// was playing when it froze, otherwise the first one found. (A new instance starts on slot 0, which many games do not use.)</summary>
     public int Resolve(int srcn)
     {
-        var list = Instruments();
-        if (list.Count == 0 || HasSample(srcn)) return srcn;
-        foreach (var i in list) if (i.Sounding) return i.Slot;
+        Instruments();
+        var list = instruments!;
+        if (list.Length == 0 || HasSample(srcn)) return srcn;
+        for (int k = 0; k < list.Length; k++) if (list[k].Sounding) return list[k].Slot;
         return list[0].Slot;
     }
 

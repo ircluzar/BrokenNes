@@ -33,6 +33,7 @@ internal sealed class RegisterMap
             var c = current.Field(s.Id);
             if (f == null || c == null || f.Value == c.Value) continue;
             int mask = ((1 << s.Bits) - 1) << s.Shift;
+            if (InstrumentMutants.On(InstrumentMutants.RoundTripLosesBit) && s.Bits >= 5) mask &= ~(1 << (s.Shift + s.Bits - 1));       // test-only bug: the top bit of a wide field is lost
             regs[s.Byte] = (byte)((regs[s.Byte] & ~mask) | ((f.Value << s.Shift) & mask));
             n++;
         }

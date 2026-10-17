@@ -2,6 +2,7 @@
 // no ROM: a check that needs one reports "not tested" when the file is not there, never a pass.
 using System.IO.Compression;
 using BrokenNes2;
+using BrokenNes2.Instruments;
 using NesEmulator.Gb;
 using NesEmulator.Sega;
 using NesEmulator.Systems;
@@ -77,6 +78,20 @@ internal static class ImodelGames
         var s = Run(rom, color ? ConsoleKind.GameBoyColor : ConsoleKind.GameBoy, "GB", Path.GetFileName(path), frames);
         if (s is not GbSession gb || gb.Apu is not APU_GB apu) { info = "not a Game Boy session"; return null; }
         return GbSnapshot.FromApu(apu);
+    }
+
+    /// <summary>A NES game's APU registers (the register latch) and DMC sample after <paramref name="frames"/> frames, on the FIX cores.</summary>
+    public static NesSnapshot? Nes(string path, int frames, out string info)
+    {
+        info = "";
+        var rom = LoadRom(path);
+        if (rom == null) { info = "ROM not found"; return null; }
+        var m = new NesEmulator.Plugin.NesAudioMachine(rom, null, "FIX", "FIX", "FIX") { HostSampleRate = 48000 };
+        var buf = new float[4096];
+        for (int i = 0; i < frames; i++) { m.RunFrame(); while (m.ReadAvailable(buf) > 0) { } }
+        var latch = new byte[NesSnapshot.RegCount];
+        uint written = m.CopyApuLatch(latch);
+        return NesSnapshot.FromLatch(latch, written, a => m.Nes.PeekCpu(a));
     }
 
     public static SegaSnapshot? Genesis(string path, int frames, out string info)

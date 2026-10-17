@@ -23,6 +23,9 @@ switch (args[0])
         SelfTest.LogProbe(args[1]);
         return 0;
 
+    case "imodel-test":
+        return ImodelChecks.Main(args);
+
     case "imodel-real":
         foreach (var line in ImodelGolden.Real()) Console.WriteLine(line);
         return 0;

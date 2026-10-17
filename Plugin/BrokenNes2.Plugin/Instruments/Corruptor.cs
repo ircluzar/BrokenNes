@@ -81,7 +81,8 @@ public static class InstrumentCorruptor
         if (op.Kind is OpKind.Randomise or OpKind.Nudge or OpKind.FlipBits or OpKind.Set)
         {
             bool loopTouched = inst.Kind == InstrumentKind.SnesSample && inst.Get("loop.addr") != loopBefore;
-            InstrumentRules.Legalise(st, op.Keep && op.Kind != OpKind.Set, loopTouched, LockedFn);
+            // a manual edit may move a locked field when that is what keeps the instrument writable (legality beats a lock there); the random tools never do
+            InstrumentRules.Legalise(st, op.Keep && op.Kind != OpKind.Set, loopTouched, op.Kind == OpKind.Set ? NoLocksFn : LockedFn);
         }
         if (op.Kind is not (OpKind.Lock or OpKind.Unlock)) r = r with { Changed = Fingerprint(inst) != before };
         return r;
@@ -96,7 +97,7 @@ public static class InstrumentCorruptor
     }
 
     private static bool Locked(EditState st, string id) => st.Locks.Contains(id) && !InstrumentMutants.On(InstrumentMutants.IgnoreLocks);
-    private static readonly Func<EditState, string, bool> LockedFn = Locked;
+    private static readonly Func<EditState, string, bool> LockedFn = Locked, NoLocksFn = (_, _) => false;
 
     private static Prng Rng(in InstrumentOp op) => new(InstrumentMutants.On(InstrumentMutants.SeedIgnored) ? 0UL : op.Seed);
 
