@@ -57,10 +57,16 @@ internal static class ImodelFixtures
         var sonic = ImodelGames.Genesis(ImodelGames.Sonic1, 900, out string i2); Add("sonic1", sonic, i2);
         string? zelda = ImodelGames.Find(@"X:\EMULATION\GameBoy", "Link's Awakening", ".zip");
         Add("zelda-gb", zelda == null ? null : ImodelGames.Gb(zelda, 1800, out _), zelda ?? "ROM not found");
-        string? gbc = ImodelGames.Find(@"X:\EMULATION\GameBoy Color", "Wario Land", ".gbc") ?? ImodelGames.Find(@"X:\EMULATION\GameBoy Color", "Pokemon", ".gbc") ?? ImodelGames.Find(@"X:\EMULATION\GameBoy Color", "Zelda", ".gbc");
-        if (gbc != null) Add("gbc", ImodelGames.Gb(gbc, 1800, out _), gbc);
+        string? dkc = ImodelGames.Find(@"X:\EMULATION\Super Nintendo\Super Nintendo (U)", "Donkey Kong Country (U) (V1.2)", ".smc");
+        Add("dkc", dkc == null ? null : ImodelGames.Snes(dkc, 2400, out _), dkc ?? "ROM not found");
+        string? gbc = ImodelGames.Find(@"X:\EMULATION\GameBoy Color", "Dr. Mario DX", ".gbc");
+        Add("drmario-gbc", gbc == null ? null : ImodelGames.Gb(gbc, 1500, out _), gbc ?? "ROM not found");
         string? gg = ImodelGames.Find(@"X:\EMULATION\Sega Game Gear", "Addams Family", ".gg");
         Add("addams-gg", gg == null ? null : ImodelGames.MasterSystem(gg, 1500, false, out _), gg ?? "ROM not found");
+        string? sms = ImodelGames.First(@"X:\EMULATION\Sega Master System\Alex Kidd in Miracle World.7z");
+        Add("alexkidd-sms", sms == null ? null : ImodelGames.MasterSystem(sms, 1500, false, out _), sms ?? "ROM not found");
+        string? smsfm = ImodelGames.Find(@"X:\EMULATION\Sega Master System", "Argos no Juujiken", ".7z");
+        Add("argos-smsfm", smsfm == null ? null : ImodelGames.MasterSystem(smsfm, 1500, true, out _), smsfm ?? "ROM not found");
         string? nes = ImodelGames.Find(@"X:\EMULATION\Nintendo Entertainment System", "Contra (U)", ".nes");
         Add("contra-nes", nes == null ? null : ImodelGames.Nes(nes, 900, out _), nes ?? "ROM not found");
         return real;

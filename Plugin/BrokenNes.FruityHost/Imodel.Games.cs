@@ -14,20 +14,42 @@ internal static class ImodelGames
     public const string Smw = @"X:\EMULATION\Super Nintendo\Super Nintendo (U)\Super Mario World (U) [!].smc";
     public const string Sonic1 = @"X:\EMULATION\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin";
 
-    /// <summary>The game's bytes: a plain ROM file, or the first ROM inside a zip. Null when the file is not there.</summary>
-    public static byte[]? LoadRom(string path)
+    private static readonly string[] RomExtensions = [".gb", ".gbc", ".sms", ".gg", ".sfc", ".smc", ".bin", ".md", ".gen", ".nes"];
+    private const string SevenZip = @"C:\Program Files\7-Zip\7z.exe";
+
+    /// <summary>The game's bytes: a plain ROM file, or the first ROM inside a zip or 7z archive (7-Zip is read through its command line, extracted to a temporary folder that is removed again); <paramref name="name"/> is the ROM's own file name
+    /// (the Master System family takes its region from it). Null when the file is not there.</summary>
+    public static byte[]? LoadRom(string path, out string name)
     {
+        name = Path.GetFileName(path);
         if (!File.Exists(path)) return null;
-        if (!path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) return File.ReadAllBytes(path);
-        using var z = ZipFile.OpenRead(path);
-        var e = z.Entries.FirstOrDefault(x => x.Name.EndsWith(".gb", StringComparison.OrdinalIgnoreCase) || x.Name.EndsWith(".gbc", StringComparison.OrdinalIgnoreCase) || x.Name.EndsWith(".sms", StringComparison.OrdinalIgnoreCase)
-            || x.Name.EndsWith(".gg", StringComparison.OrdinalIgnoreCase) || x.Name.EndsWith(".sfc", StringComparison.OrdinalIgnoreCase) || x.Name.EndsWith(".smc", StringComparison.OrdinalIgnoreCase) || x.Name.EndsWith(".bin", StringComparison.OrdinalIgnoreCase)
-            || x.Name.EndsWith(".md", StringComparison.OrdinalIgnoreCase) || x.Name.EndsWith(".gen", StringComparison.OrdinalIgnoreCase));
-        if (e == null) return null;
-        using var s = e.Open();
-        using var ms = new MemoryStream();
-        s.CopyTo(ms);
-        return ms.ToArray();
+        if (path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            using var z = ZipFile.OpenRead(path);
+            var e = z.Entries.FirstOrDefault(x => RomExtensions.Any(ext => x.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase)));
+            if (e == null) return null;
+            name = e.Name;
+            using var s = e.Open();
+            using var ms = new MemoryStream();
+            s.CopyTo(ms);
+            return ms.ToArray();
+        }
+        if (path.EndsWith(".7z", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!File.Exists(SevenZip)) return null;
+            string dir = Path.Combine(Path.GetTempPath(), "bn2_imodel_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo(SevenZip, $"x -y -o\"{dir}\" \"{path}\"") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+                using (var proc = System.Diagnostics.Process.Start(psi)!) { proc.StandardOutput.ReadToEnd(); proc.WaitForExit(); if (proc.ExitCode != 0) return null; }
+                var file = Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).FirstOrDefault(f => RomExtensions.Any(ext => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)));
+                if (file == null) return null;
+                name = Path.GetFileName(file);
+                return File.ReadAllBytes(file);
+            }
+            finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
+        }
+        return File.ReadAllBytes(path);
     }
 
     /// <summary>The first existing file of a list (a game may be named differently in the library).</summary>
@@ -62,9 +84,9 @@ internal static class ImodelGames
     public static SpcSnapshot? Snes(string path, int frames, out string info)
     {
         info = "";
-        var rom = LoadRom(path);
+        var rom = LoadRom(path, out string romName);
         if (rom == null) { info = "ROM not found"; return null; }
-        var s = Run(rom, ConsoleKind.Snes, CoreCatalog.Default(ConsoleKind.Snes, CoreSlot.Apu), Path.GetFileName(path), frames);
+        var s = Run(rom, ConsoleKind.Snes, CoreCatalog.Default(ConsoleKind.Snes, CoreSlot.Apu), romName, frames);
         if (s is not SnesSession snes || snes.Apu is not NesEmulator.Snes.APU_SFC spc) { info = "not a SNES session"; return null; }
         return new SpcSnapshot(spc.Aram, spc.Dsp.Regs);
     }
@@ -72,10 +94,10 @@ internal static class ImodelGames
     public static GbSnapshot? Gb(string path, int frames, out string info)
     {
         info = "";
-        var rom = LoadRom(path);
+        var rom = LoadRom(path, out string romName);
         if (rom == null) { info = "ROM not found"; return null; }
         bool color = path.EndsWith(".gbc", StringComparison.OrdinalIgnoreCase);
-        var s = Run(rom, color ? ConsoleKind.GameBoyColor : ConsoleKind.GameBoy, "GB", Path.GetFileName(path), frames);
+        var s = Run(rom, color ? ConsoleKind.GameBoyColor : ConsoleKind.GameBoy, "GB", romName, frames);
         if (s is not GbSession gb || gb.Apu is not APU_GB apu) { info = "not a Game Boy session"; return null; }
         return GbSnapshot.FromApu(apu);
     }
@@ -84,7 +106,7 @@ internal static class ImodelGames
     public static NesSnapshot? Nes(string path, int frames, out string info)
     {
         info = "";
-        var rom = LoadRom(path);
+        var rom = LoadRom(path, out string romName);
         if (rom == null) { info = "ROM not found"; return null; }
         var m = new NesEmulator.Plugin.NesAudioMachine(rom, null, "FIX", "FIX", "FIX") { HostSampleRate = 48000 };
         var buf = new float[4096];
@@ -97,11 +119,11 @@ internal static class ImodelGames
     public static SegaSnapshot? Genesis(string path, int frames, out string info)
     {
         info = "";
-        var rom = LoadRom(path);
+        var rom = LoadRom(path, out string romName);
         if (rom == null) { info = "ROM not found"; return null; }
         var rec = new DacRecorder();
         MdSoundUnit? hooked = null;
-        var s = Run(rom, ConsoleKind.Genesis, "MD", Path.GetFileName(path), frames, before: sess =>
+        var s = Run(rom, ConsoleKind.Genesis, "MD", romName, frames, before: sess =>
         {
             var md = (sess is NesEmulator.Mix.SegaPictureSession w ? w.Inner : sess) as MdSession;
             if (md?.Board.Sound is MdSoundUnit u) { u.YmPortTap = rec.OnWrite; hooked = u; }
@@ -114,11 +136,11 @@ internal static class ImodelGames
     public static SegaSnapshot? MasterSystem(string path, int frames, bool fm, out string info)
     {
         info = "";
-        var rom = LoadRom(path);
+        var rom = LoadRom(path, out string romName);
         if (rom == null) { info = "ROM not found"; return null; }
         bool gg = path.EndsWith(".gg", StringComparison.OrdinalIgnoreCase);
         var kind = gg ? ConsoleKind.GameGear : ConsoleKind.MasterSystem;
-        var s = Run(rom, kind, gg ? CoreCatalog.Default(kind, CoreSlot.Apu) : fm ? "SMS-FM" : "SMS", Path.GetFileName(path), frames);
+        var s = Run(rom, kind, gg ? CoreCatalog.Default(kind, CoreSlot.Apu) : fm ? "SMS-FM" : "SMS", romName, frames);
         var inner = s is NesEmulator.Mix.SegaPictureSession w ? w.Inner : s;
         if (inner is not SmsSession sms) { info = "not a Master System session"; return null; }
         var t = sms.Board.Timeline;

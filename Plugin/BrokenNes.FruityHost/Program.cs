@@ -26,6 +26,9 @@ switch (args[0])
     case "imodel-test":
         return ImodelChecks.Main(args);
 
+    case "imodel-fields":
+        return ImodelChecks.PrintFields();
+
     case "imodel-real":
         foreach (var line in ImodelGolden.Real()) Console.WriteLine(line);
         return 0;

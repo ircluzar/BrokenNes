@@ -11,6 +11,8 @@ public sealed class SnesOverlay
 {
     public const uint Tag = 0x314F5053;          // "SPO1" (little-endian, like "SPC1")
     public const int Version = 1, MaxEntries = 256, EntryBytes = 14;
+    /// <summary>The longest a saved overlay can be (the project's section reader refuses anything longer without reading it).</summary>
+    public const int MaxBytes = 3 + MaxEntries * EntryBytes + 4;
     public const byte HasEnv = 1, HasTune = 2, HasVol = 4, HasMix = 8, Pinned = 16;
     public const byte MixEcho = 1, MixNoise = 2, MixPmod = 4;
     public const int MaxTuneCents = 4800;

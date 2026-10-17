@@ -144,6 +144,27 @@ internal static partial class ImodelChecks
 
     private static string Trim(string s) => s.Length <= 170 ? s : s[..167] + "...";
 
+    /// <summary>`FruityHost imodel-fields`: every kind's fields as markdown tables (the field tables of docs/projects/round6-imodel.md are made with this).</summary>
+    public static int PrintFields()
+    {
+        var seen = new HashSet<InstrumentKind>();
+        foreach (var fx in ImodelFixtures.Synthetic())
+            foreach (var inst in Src(fx.Snapshot).List())
+            {
+                if (!seen.Add(inst.Kind)) continue;
+                Console.WriteLine($"### {inst.Kind} ({inst.Console})");
+                Console.WriteLine();
+                Console.WriteLine("| id | name | kind | range | played by the sampler | what it does |");
+                Console.WriteLine("|---|---|---|---|---|---|");
+                foreach (var f in inst.Fields)
+                    Console.WriteLine($"| `{f.Id}` | {f.Name} | {f.Kind} | {(f.Kind == FieldKind.Enum ? string.Join(" / ", f.Names!) : $"{f.Min}..{f.Max}")} | {(f.Audible == Audible.Yes ? "yes" + (f.AudibleNote != null ? " (" + f.AudibleNote + ")" : "") : "**no**: " + f.AudibleNote)} | {f.Explanation} |");
+                foreach (var b in inst.Blobs)
+                    Console.WriteLine($"| `{b.Id}` (blob) | {b.Name} | {b.Kind} | {b.MinLength}..{b.MaxLength} bytes | {(b.Audible == Audible.Yes ? "yes" : "**no**: " + b.AudibleNote)} | {b.Explanation} |");
+                Console.WriteLine();
+            }
+        return 0;
+    }
+
     /// <summary>`FruityHost imodel-test [--only id,id] [--no-mutants]`</summary>
     public static int Main(string[] args)
     {
@@ -179,6 +200,7 @@ public sealed unsafe partial class SelfTest
             foreach (var w in o.Report.Warnings) t.Warn(false, $"[{o.Id}] {w}");
         }
         t.Note($"{results.Count} checks, {results.Sum(o => o.Report.Assertions)} assertions");
+        ImodelDll(t);                                  // the same instruments through the real plugin DLL: edits played by its samplers, kept in a project
         var (lines, missed) = ImodelChecks.RunMutants(null);
         t.Expect(missed == 0, $"{missed} mutants were not caught: " + string.Join("; ", lines.Where(l => l.Contains("MISSED"))));
         t.Note($"{lines.Count - missed} of {lines.Count} deliberate bugs caught");
