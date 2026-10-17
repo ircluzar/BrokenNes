@@ -66,6 +66,11 @@ public class PlayerInputConfig
 
 public class InputSettings
 {
+    /// <summary>
+    /// D-pad protection is ON unless this is true: Left and Right held together (or Up and Down) are both held back, as on a real d-pad (the web twin of
+    /// NesEmulator.Systems.DpadGuard, WebLite/wwwroot/lib/dpadGuard.js). A saved setting from before this field existed reads as false, that is, protected.
+    /// </summary>
+    public bool AllowOppositeDpad { get; set; } = false;
     public PlayerInputConfig Player1 { get; set; } = new() { Player = 1 };
     public PlayerInputConfig Player2 { get; set; } = new() { Player = 2, Device = InputDeviceType.Touch };
 }

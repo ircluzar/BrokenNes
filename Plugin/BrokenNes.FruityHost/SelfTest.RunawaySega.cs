@@ -477,7 +477,8 @@ public sealed unsafe partial class SelfTest
                     using var h = lib.Create();
                     h.Dispatcher(Fpd.SetSampleRate, 0, 48000);
                     h.LoadState(bytes);
-                    int on = (int)h.Test(45);
+                    // (the project also carries the game's own state, so a project saved in Runaway comes back frozen whatever happens to the instrument's snapshot: what is judged here is whether the snapshot came back)
+                    int on = h.Test(45) == 1 && h.Test(71) != 0 ? 1 : 0;
                     if (play && on == 1 && h.Test(71) == 3)
                         foreach (int ins in new[] { 0, 3, 7, 6 + dacCount + 1 })
                         {
@@ -492,6 +493,13 @@ public sealed unsafe partial class SelfTest
                 t.Expect(Load(cut) == 0, "a snapshot cut short should be dropped, not restored");
                 var wrongTag = (byte[])saved.Clone(); "PSG1"u8.CopyTo(wrongTag.AsSpan(tagAt));
                 t.Expect(Load(wrongTag) == 0, "a section whose tag says PSG but whose bytes are a Genesis snapshot should be dropped");
+                using (var frozenOnly = lib.Create())
+                {
+                    frozenOnly.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+                    frozenOnly.LoadState(wrongTag);
+                    WaitForRom(frozenOnly);
+                    t.Expect(frozenOnly.Test(45) == 1 && frozenOnly.Test(71) == 0 && frozenOnly.Test(86) == 1, $"a damaged instrument snapshot should leave the game frozen at its saved state, without the instrument (runaway {frozenOnly.Test(45)}, kind {frozenOnly.Test(71)}, state restore {frozenOnly.Test(86)})");
+                }
                 var hugeLen = (byte[])saved.Clone(); BitConverter.GetBytes(0x7FFFFFF0).CopyTo(hugeLen, tagAt + 4);
                 t.Expect(Load(hugeLen) == 0, "a section that claims two gigabytes should be dropped");
                 var zeroLen = (byte[])saved.Clone(); BitConverter.GetBytes(0).CopyTo(zeroLen, tagAt + 4);

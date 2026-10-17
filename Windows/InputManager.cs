@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using SharpDX.XInput;
+using NesEmulator.Systems;
 
 namespace BrokenNes.Windows
 {
@@ -35,6 +36,15 @@ namespace BrokenNes.Windows
         private bool useController = false;
         private UserIndex controllerIndex;
         private Func<bool>? keyboardFocusProvider;
+
+        /// <summary>
+        /// A seam for tests (Workshop --input-test): when set, it answers "is this virtual key down" in place of GetAsyncKeyState, so the real
+        /// polling, binding and d-pad protection code can be driven with simulated keys. Null in the app.
+        /// </summary>
+        public Func<int, bool>? KeyProbe { get; set; }
+
+        private bool IsKeyDown(int virtualKey) =>
+            KeyProbe != null ? KeyProbe(virtualKey) : (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
         
         public InputManager(UserIndex controllerIndex = UserIndex.One)
         {
@@ -152,7 +162,7 @@ namespace BrokenNes.Windows
                         // Try to parse the key name
                         if (Enum.TryParse<Keys>(bindings[i].Key, out Keys key))
                         {
-                            if ((GetAsyncKeyState((int)key) & 0x8000) != 0)
+                            if (IsKeyDown((int)key))
                             {
                                 keyboardStates[i] = true;
                             }
@@ -167,7 +177,7 @@ namespace BrokenNes.Windows
                 {
                     // Check if key is currently pressed (high bit set)
                     // GetAsyncKeyState takes a virtual key code, which maps 1:1 with WinForms Keys
-                    if ((GetAsyncKeyState((int)kvp.Key) & 0x8000) != 0)
+                    if (IsKeyDown((int)kvp.Key))
                     {
                         int buttonIndex = kvp.Value;
                         if (buttonIndex >= 0 && buttonIndex < keyboardStates.Length)
@@ -245,13 +255,56 @@ namespace BrokenNes.Windows
         }
         
         /// <summary>
-        /// Get the state of a button (merges keyboard and controller)
+        /// Get the state of a button (merges keyboard and controller). The four directions go through <see cref="DpadGuard"/> first: unless the
+        /// player's config allows it, Left and Right held together (from any mix of keyboard, d-pad and stick) read as neither, and so do Up and Down.
+        /// This is a human input source; recorded and API input never come through here.
         /// </summary>
         public bool GetButton(int buttonIndex)
         {
             if (buttonIndex < 0 || buttonIndex >= ButtonCount)
                 return false;
-            
+
+            bool held = RawButton(buttonIndex);
+            if (!held || buttonIndex < 4 || buttonIndex > 7)
+                return held;
+
+            // a direction that is held: ask the guard whether its opposite cancels it
+            var guarded = DpadGuard.Resolve(RawDirections(), playerConfig?.AllowOppositeDpad ?? false);
+            return (guarded & DirectionBit(buttonIndex)) != 0;
+        }
+
+        /// <summary>
+        /// The whole pad of this player as <see cref="PadButtons"/> (the d-pad protected as in <see cref="GetButton"/>); the SNES, Game Boy, Master
+        /// System, Game Gear and Genesis sessions read it. Indices: 0 A, 1 B, 2 Select, 3 Start, 4 Up, 5 Down, 6 Left, 7 Right, 8 X, 9 Y, 10 L, 11 R.
+        /// </summary>
+        public PadButtons Pad()
+        {
+            PadButtons b = 0;
+            if (GetButton(0)) b |= PadButtons.A; if (GetButton(1)) b |= PadButtons.B;
+            if (GetButton(2)) b |= PadButtons.Select; if (GetButton(3)) b |= PadButtons.Start;
+            if (GetButton(4)) b |= PadButtons.Up; if (GetButton(5)) b |= PadButtons.Down;
+            if (GetButton(6)) b |= PadButtons.Left; if (GetButton(7)) b |= PadButtons.Right;
+            if (GetButton(8)) b |= PadButtons.X; if (GetButton(9)) b |= PadButtons.Y;
+            if (GetButton(10)) b |= PadButtons.L; if (GetButton(11)) b |= PadButtons.R;
+            return b;
+        }
+
+        private static PadButtons DirectionBit(int buttonIndex) => buttonIndex switch
+        {
+            4 => PadButtons.Up, 5 => PadButtons.Down, 6 => PadButtons.Left, 7 => PadButtons.Right, _ => PadButtons.None,
+        };
+
+        private PadButtons RawDirections()
+        {
+            PadButtons d = 0;
+            if (RawButton(4)) d |= PadButtons.Up; if (RawButton(5)) d |= PadButtons.Down;
+            if (RawButton(6)) d |= PadButtons.Left; if (RawButton(7)) d |= PadButtons.Right;
+            return d;
+        }
+
+        /// <summary>A button as the devices report it, before the d-pad protection.</summary>
+        private bool RawButton(int buttonIndex)
+        {
             // Respect configured device type for exclusivity
             if (playerConfig != null)
             {

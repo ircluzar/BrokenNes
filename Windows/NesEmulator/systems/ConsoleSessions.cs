@@ -359,6 +359,11 @@ public sealed class GbSession : IConsoleSession
     public void ImportSave(byte[] data) => board.ImportSave(data);
     public void Dispose() { }
 
+    /// <summary>The work RAM the CPU sees at $C000-$DFFF (8 KB; a Color game's other banks are reached through the bank register): a host that corrupts or inspects memory reads and writes it by offset. -1 / false outside.</summary>
+    public int WorkRamSize => 0x2000;
+    public int PeekWorkRam(int offset) => (uint)offset < 0x2000u ? board.Peek((ushort)(0xC000 + offset)) : -1;
+    public bool PokeWorkRam(int offset, byte value) { if ((uint)offset >= 0x2000u) return false; board.Write((ushort)(0xC000 + offset), value); return true; }
+
     // ---- save states (the shared contract in ConsoleSystems.cs). The board's own state covers the Game Boy's SM83, picture chip, sound chip, cartridge and memory; the parts that are not the Game Boy's own (the 65816 in the
     // SM83's place, a NES sound chip standing in for the Game Boy's) have no state of their own to carry, so a session using one says so rather than saving half a machine.
 
