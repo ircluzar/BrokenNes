@@ -248,10 +248,22 @@ public sealed class GenWriteLog
     /// <summary>Starts the log over on a sound unit whose chips hold these registers now.</summary>
     public void Begin(MdSoundUnit unit, double masterHz)
     {
-        for (int i = 0; i < 512; i++) baseYm[i] = unit.Fm.Register(i);
-        for (int i = 0; i < 3; i++) basePsgPeriod[i] = unit.Psg.Period(i);
-        for (int i = 0; i < 4; i++) basePsgVolume[i] = unit.Psg.Volume(i);
-        basePsgNoise = unit.Psg.NoiseControl;
+        var ym = new byte[512];
+        for (int i = 0; i < 512; i++) ym[i] = unit.Fm.Register(i);
+        var period = new int[3]; var volume = new int[4];
+        for (int i = 0; i < 3; i++) period[i] = unit.Psg.Period(i);
+        for (int i = 0; i < 4; i++) volume[i] = unit.Psg.Volume(i);
+        Begin(ym, period, volume, unit.Psg.NoiseControl, masterHz);
+    }
+
+    /// <summary>Starts the log over on chips that hold these registers (the YM2612's 512, the PSG's three tone periods, four attenuations and noise control).</summary>
+    public void Begin(byte[] ym512, int[] psgPeriod, int[] psgVolume, int psgNoise, double masterHz)
+    {
+        Array.Copy(ym512, baseYm, 512);
+        for (int i = 0; i < 3; i++) basePsgPeriod[i] = psgPeriod[i];
+        for (int i = 0; i < 4; i++) basePsgVolume[i] = psgVolume[i];
+        basePsgNoise = psgNoise;
+        foldLatch = 0;
         MasterHz = masterHz;
         count = 0;
     }

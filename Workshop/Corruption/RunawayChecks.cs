@@ -13,7 +13,7 @@ namespace BrokenNes.Workshop.Corruption;
 /// --runaway-test [--only a,b] [--smw rom] [--sonic rom] [--sor2 rom]: the checks of Instrument Runaway's listening (round 6): the recipes learned from a game's sound driver. Each check that can be fooled has a control: the same
 /// check on a sabotaged capture, which it must catch.
 /// </summary>
-internal static class RunawayChecks
+internal static partial class RunawayChecks
 {
     public static int Run(string[] args)
     {
@@ -21,6 +21,7 @@ internal static class RunawayChecks
         string only = args.SkipWhile(a => a != "--only").Skip(1).FirstOrDefault() ?? "";
         bool Want(string g) => only.Length == 0 || only.Split(',').Contains(g);
         string Path(string name, string env, string fallback) => args.SkipWhile(a => a != "--" + name).Skip(1).FirstOrDefault() ?? Environment.GetEnvironmentVariable(env) ?? fallback;
+        string sonic = Path("sonic", "BROKENNES_TEST_SONIC", @"X:\EMULATION\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin");
         string smw = Path("smw", "BROKENNES_TEST_SMW", @"X:\EMULATION\Super Nintendo\Super Nintendo (U)\Super Mario World (U) [!].smc");
         // --write-vibrato-rom <file>: write the synthetic game with the bending sound driver to a file (for the plugin's editor screenshots), then stop
         int wi = Array.IndexOf(args, "--write-vibrato-rom");
@@ -28,6 +29,10 @@ internal static class RunawayChecks
 
         if (Want("snes-recipe")) { Section("SNES: a sound driver that bends its voice, learned and played back"); Guard(c, "snes-recipe", () => SnesRecipe(c)); }
         if (Want("persist")) { Section("recipes in a project: written, read, and the hostile cases"); Guard(c, "persist", () => Persist(c)); }
+        if (Want("md-recipe")) { Section("Genesis: FM notes of a made-up driver, learned and played back against the chip they were written to"); Guard(c, "md-recipe", () => MdRecipe(c)); }
+        if (Want("md-psg")) { Section("Genesis: PSG notes of a made-up driver"); Guard(c, "md-psg", () => MdPsg(c)); }
+        if (Want("md-persist")) { Section("Genesis recipes in a project: written, read, and the hostile cases"); Guard(c, "md-persist", () => MdPersist(c)); }
+        if (Want("md-sonic")) { Section("Genesis: Sonic the Hedgehog, when its ROM is present"); Guard(c, "md-sonic", () => MdSonic(c, sonic, "Sonic 1", "480:Start,490:", 1200)); }
         if (Want("snes-smw")) { Section("SNES: Super Mario World, when its ROM is present"); Guard(c, "snes-smw", () => SnesReal(c, smw)); }
         return c.Finish();
     }

@@ -582,8 +582,9 @@ internal sealed class OpnSampler : SegaSampler, IYm2612Sink
         if (Math.Abs(cents) < 0.005) return true;
         double target = FmPatchBank.PhaseStep(block0, fnum0) * Math.Pow(2.0, cents / 1200.0);          // the wanted phase step
         for (int d = 0; d < 8; d++)
-            foreach (int b in d == 0 ? new[] { block0 } : new[] { block0 + d, block0 - d })
+            for (int side = 0; side < (d == 0 ? 1 : 2); side++)
             {
+                int b = side == 0 ? block0 + d : block0 - d;
                 if (b < 0 || b > 7) continue;
                 int f = (int)Math.Round(target * 2.0 / (1 << b));            // step = (fnum << b) >> 1 for blocks 1 and up: fnum = 2 step / 2^b
                 if (f is >= 1 and <= 2047) { block = b; fnum = f; return true; }
