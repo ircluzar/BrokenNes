@@ -1,7 +1,7 @@
 # Round 5, agent `corr`: corruption in the plugin. Design (milestone C1)
 
 Date: 2026-10-17. Author: agent `corr`. Status: design for the lead to read; C2 starts from it. Everything under "As it is today" was read in the code in this
-worktree (commit 15795e6), not recalled. Everything under "Proposal" is not built yet.
+worktree (commit 15795e6), not recalled. Everything under "Proposal" was a proposal when this was written: **it is built now (C2 to C5), and `docs/projects/round5-corr.md` is the record of what exists, with its numbers.** Where the two differ, the record wins.
 
 The goal, in the user's words: farm corruptions in BrokenNes until a corrupted instrument sounds good, keep the corruption in a **stockpile**, then in the
 BrokenNes2 FL plugin open the stockpile, pick the corruption, **Start** it, and perform **Instrument Runaway** to take over the corrupted instruments (the

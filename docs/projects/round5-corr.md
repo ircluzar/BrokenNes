@@ -1,7 +1,9 @@
 # Round 5, agent `corr`: corruption in the plugin. Record
 
 Design: `docs/projects/round5-corr-design.md` (read it first; this record says what was built and how it was checked). Branch `worktree-agent-ab051cb992266ca6d`.
-Work is in milestones C1 to C5; each section below says what is done, every verifier with its numbers and its proof of failure, and what is not tested.
+Work is in milestones C1 to C5, all done except what the last section lists; each section below says what was built, every verifier with its numbers and its proof of failure, and what is not tested.
+
+**How a user does it, in one paragraph.** Farm a corruption in the BrokenNes desktop app (RTC blast or Glitch Harvester; SNES, Game Boy / Color, Master System, Game Gear, Genesis), keep it in the stockpile, **Save file...**. In FL, load the same game in the plugin's ROM mode, press **Corruption**, **Open stockpile...**, pick the corruption, tick "Freeze the game and switch Instrument Runaway on" and **Start**: the game is rebuilt at the place it was corrupted (a saved machine or a replay from power-on) with the corruption on it, and Instrument Runaway's picker now lists the corrupted instruments. Save the FL project and the corrupted game and its instruments come back.
 
 ## C1: design (done, commit 95ba2a4)
 
@@ -38,7 +40,7 @@ are listed as unavailable with the reason.
 
 ### Workshop tools
 
-- `--corrupt-test [--smw <rom>] [--only group,...]`: 150 checks (149 run, 1 not run; below).
+- `--corrupt-test [--smw <rom>] [--only group,...]`: 150 checks at the end of C2 (149 run, 1 not run; below); the `engine`, `nes` (C3) and `consoles` (C5) groups bring it to 247.
 - `--corrupt-apply --rom X --stockpile S [--entry id|name|number] [--frames N] [--allow-other-game] [--max-replay N]`: starts the entry per its anchor, runs the same anchor without the writes beside it, and prints per memory the bytes that
   differ (count and first addresses), the audio hash and peak of both, the picture hash of both, and what `SpcSnapshot` would hold. Exit 0 ok, 1 refused (with the reason), 2 usage.
 
@@ -88,14 +90,143 @@ SNES has no save states and runs for real when `SupportsState` becomes true** (t
 - Game Boy, Master System, Game Gear and Genesis domains are not built (C5). The NES domain adapter exists (`MachineDomains.For(NES)`) but is not wired or tested (C3/C5).
 - Timing of a replay in the plugin (the SNES at about 588 frames/s headless here, on a busy machine) is not measured inside the plugin.
 
-## C3: the desktop side
+## C3: the desktop side (done, commits 60129a9 and 564afd2)
 
-(not started)
+### What was built
 
-## C4: the plugin side
+- **The Glitch Harvester engine speaks the v2 file** (`Windows/NesEmulator/corruptor/GlitchHarvesterEngine.cs`, `GhStockpileMap.cs`, `CorruptorModels.cs`): `ExportStockpile` / `ImportStockpile` write and read the v2 stockpile (older exports still read, Lite's `BaseState` spelling
+  too; an id is kept unless it is taken), `SaveStockpileFile` / `OpenStockpileFile` (atomic save, a refusal list with reasons on open), `DescribeStockpileEntry`. The Lite web app's export and import go through the same engine, so
+  two defects found in C1 are gone: Lite's export no longer re-imports without a machine state, and Replay is no longer a silent no-op.
+- **Console games farm** (`GlitchHarvesterEngine.Console.cs`, `IConsoleGhHost`): AddBaseState, CorruptAndStash, LoadBase, ReplayEntry and LiveBlast now work on a SNES, Game Boy / Color, Master System, Game Gear or Genesis game.
+  `ConsoleFarm` (library, `Windows/NesEmulator/corruption/ConsoleFarm.cs`) records the pad and every corruption write of a game as it runs, describes where the game is (**a saved machine with the replay recipe beside it when the console keeps states,
+  else the recipe from power-on, else the reason it cannot**), starts an entry and rebases the recording on the machine that results. Anything that makes the recording untrue poisons it with a reason (a reset, a swapped core, a state loaded).
+- **Desktop wiring** (`Windows/MainForm/MainForm.ConsoleFarm.cs`, edits in `MainForm.Consoles.cs`, `.UI.cs`, `.SessionStates.cs`, `.Corruption.cs`): the session loop records pads and writes per frame, auto-corrupt, the RTC tab lists the console's own
+  memories at their true sizes, a replay rebuilds the machine and swaps it in under the emulation lock, and **the player's own save RAM is protected** once a corruption or a replay touched it.
+- **API** (documented in `Windows/webapi/README.md`, `docs/webmodule-api-requirements.md`): `GET /api/gh/status`, `POST /api/gh/stockpile/save|open`, `GET /api/gh/stockpile/files`, `GET /api/console/domains|peek`, `POST /api/console/poke`, `GET|POST /api/rtc/true-domain-sizes`;
+  the existing `/api/gh/*` and `/api/rtc/blast` take the console path when a console game runs, and list entries carry description, game, summary and anchor.
+- **Web module** (`Windows/Webmodules/GlitchHarvester/`): Save file... / Open file..., a description in Rename, a farm status line that says honestly what can be stored for this game, blast from the current position when "Load on operation" is off, and the write
+  counts (the list read a field the API never sent).
+- **The NES domain-size decision** (lead, design section 9.4): the library has true sizes for every console; the existing NES farming UI keeps its probed sizes unless `corruptionTrueDomainSizes` (`EmulatorConfig`, off) is turned on; an entry records the model it was made with
+  (`source.sizeModel`). NES behaviour is unchanged by default.
 
-(not started; waits for `c4b`'s merge)
+### Verification
+
+- `--corrupt-test` grew to **182 checks** with the `engine` and `nes` groups: a farmed corruption saved to a file and started on a different machine reaches exactly the corrupted machine (work RAM, audio RAM and S-DSP equal); blasts made on a replayed machine carry
+  the earlier ones as events; a live blast is remembered; a reset and a non-native sound unit are refused with the reason; **the NES path (state text, writes, replay) is byte-identical through the new file**; the older exports import.
+- `UAT/corruption/desktop-farm.ps1` drives the real app (one instance of its own, never the user's): a generated SNES game is loaded, the memories read, a blast on the audio RAM changes only the audio RAM, a base and a corrupt-and-stash are made, the stockpile is saved,
+  the file is read and started with the headless tool, **replayed in the app and the machine reached has the same audio RAM as the one that was corrupted**, a sound-unit swap makes the app refuse to store a position with the reason, the file opens back, an older export imports,
+  the NES path loads and blasts as before and the RTC domain sizes show the probed sizes and, with the setting on, the true ones. The app's config is put back at the end. **29 checks, all passed** (2026-10-16, a build from this branch).
+
+### The NES domain sizes, measured (lead's decision 9.4)
+
+On the story game `page1_binty.nes` (UAT, the app's RTC tab, same machine): **probed (the default, what the corruptor has always used): PRG 256, PRG RAM 256, CHR 1,024, system RAM 2,048; true (`corruptionTrueDomainSizes` on): PRG 16,384, PRG RAM 8,192, CHR 65,536, system RAM 2,048.**
+So with the default a NES blast could only ever reach the first 256 bytes of PRG ROM and 1 KB of CHR; the library, the plugin and the console games use true sizes. NES behaviour is unchanged unless the setting is turned on (the lead will ask the user). The stockpile entry records which model made it.
+
+## C4: the plugin side (done; commits 96aa9b1 and 0e868c9)
+
+### What was built
+
+The plugin has a **Corruption** window (the button between Inputs and Instrument Runaway). The user flow, end to end, and the code behind each step are in `Plugin/README.md` ("Corruption: farm in BrokenNes, play it in FL") and `Plugin/CLAUDE.md` (rules and pitfalls). In short:
+
+| Step | What happens | Where |
+|---|---|---|
+| Open stockpile... | the file dialog (starting where the desktop app keeps stockpiles, or where the last one came from) names a file; it is read on a worker thread; a file that cannot be used says why | `Bn2Editor.cs`, `Emulator.Corruption.cs` `OpenStockpile` |
+| the list | every corruption with a dot (fits / does not), its summary or the reason in orange: another game (ROM SHA-1), another console, made with another CPU or sound unit, not in ROM mode, a NES game; the first one that fits is selected | `CorruptionRows` / `Evaluate` |
+| Start | builds a **new** game on a worker thread: a saved state is loaded into a fresh machine, or the game is replayed from power-on with the pads and writes it was handed (cap 36,000 frames, progress shown, Cancel); the old game plays on until the new one replaces it between frames | `RunCorruptionStart`, library `AnchorStart` |
+| freeze tick | Instrument Runaway is switched on at the very moment the corrupted game exists, so the instruments captured are the corrupted ones | `SetRunaway(true)` after the swap |
+| Remove corruption | puts the game back where the corruption was made, without its writes | `StartCorruption(withWrites: false)` |
+| the note | a start's result shows over the picture for 12 s; a project's problem stays | `DrawCorruptionNote` |
+| the project | `CRP1` (see below) after the game-state section | `Corruption.cs`, `Bn2Plugin.SaveRestoreState` |
+
+A game keeps a **farm** (`SessionGame.Farm`, the library's `ConsoleFarm`) that records the pad it is handed each frame (allocation-free, in the frame loop) and every corruption write, from power-on. That recording is what describes the game's place when the console cannot save a state.
+Anything that makes it untrue poisons it with a reason (a test tone, a chip swap, Reset, a machine put back from a saved state).
+
+**The project format.** A new section `CRP1` after `GAM1` (an older DLL skips it by length): UTF-8 JSON in the stockpile file's own format (one entry named "project history" whose anchor is the replay recipe) plus a `project` object (stockpile path, entry id / name / description / summary / content hash, frozen, the frame it started at, a note). For a console that keeps its state the history is left out (the game-state section holds the machine) and the note says so.
+Reopened, a SNES game is rebuilt on the loading thread by replaying the history (the game's status line shows the progress); the other consoles come back from `GAM1`. `CorruptionSection.Read` never returns a quiet nothing: a damaged, cut-short or 2 GB-claiming section becomes a problem shown over the picture.
+Sizes in the check's test games: 0.6 to 1.2 KB of `CRP1`; a SNES project with a corrupted instrument is 67 KB (the 64 KB audio RAM copy is the old `SPC1`), a Super Mario World project 79 KB.
+
+### Verification (2026-10-16, this machine)
+
+| Check | Result |
+|---|---|
+| `FruityHost selftest` (the whole suite, Native AOT DLL) | **50 passed, 1 warning (QLQ plays an octave sharp on purpose, as before), 0 failed** (51 results; `corruption` is new, 23 s) |
+| `Workshop --corrupt-test` | **247 passed, 0 failed, 1 not run** (the SNES state anchor, until the SNES keeps a state) |
+| `UAT/plugin/install-smoke.ps1` | 13 checks + the notices check pass |
+| `UAT/corruption/desktop-farm.ps1` (the real app, one instance of its own) | 29 checks, ALL PASSED |
+| NES golden suite `UAT/run-suite.ps1` (fresh Workshop; the story and corpus ROMs copied into the git-ignored folders the cases name) | **93 pass, 0 fail, 16 skip (the unimplemented mappers, as before), 3 info**; `romtest` hashes identical |
+| Native AOT publish of the plugin, Windows and Lite builds | all build, 0 errors |
+
+What the `corruption` check proves (`Plugin/BrokenNes.FruityHost/SelfTest.Corruption.cs`). It farms with the same library the desktop uses (`ConsoleFarm`, a stockpile entry, a stockpile file), then drives the real DLL through its real editor with real mouse messages. Games: a synthetic SNES game with a real SPC700 instrument in audio RAM
+(`SynthSnesRom`, generated, nothing of anyone's), counter games for the Game Boy, Game Boy Color, Master System, Game Gear and Genesis, a tone game for the Game Boy wave channel, and, **when a Super Mario World ROM is named, a real game** (not in the repository; `BROKENNES_TEST_SMW` or the Workshop checks' path).
+
+| Claim | Numbers |
+|---|---|
+| the window opens, is modal (nothing behind it answers), an empty window says what to do | per console; text found by pixels |
+| open: 3 entries, flags fits / other game / other console; refusals carry their reason and leave the game untouched | 6 families |
+| the machine Start builds equals the farm's (work RAM, audio RAM, frame count), and 40 frames later still does | SNES by replay of 150 frames, the others by saved state |
+| **a corrupted SNES instrument sounds different through Instrument Runaway** | the synthetic game's note: rms 0.0769 clean, 0.2782 corrupted (3.62x), odd harmonics 0.379 to 0.538 of the fundamental; **Super Mario World's slot 2 (29 blocks, 224 bytes inverted): rms 0.0441 to 0.1189, correlation 0.200 with the clean note**, the instrument snapshot equals the farm's corrupted audio RAM, 900 frames replayed in 1.5 s |
+| **a corrupted Game Boy wave RAM changes the wave channel's sound** | square wave odd harmonics 0.503 to a triangle's 0.140 of the fundamental |
+| the project keeps it | saved in Runaway, opened in a fresh plugin: the same machine (SNES rebuilt by replaying its history, the others from their saved state), and after the same frames **equal to a game that never left** (work RAM, audio RAM, frame count, whole-machine hash); the corrupted SNES instrument sounds the same (rms within 2%); SMW's reopened game equals the saved one |
+| a write made after the start rides in the history | a byte of audio RAM written 20 frames after the start is there after the reopen; Reset Console ends the corruption |
+| everything that cannot work says so | not there / random bytes / cut off / another JSON format / a newer version / empty (each "could not open ..." and the previous list gone), another sound unit, Direct mode, a NES game, a game of another console, a replay over the cap (names 36,000), Cancel stops a long replay and the running game is untouched, damaged / cut-short / 2 GB-claiming `CRP1`, an older project with no section |
+| Remove corruption, a 12-entry list (first fit selected and scrolled to, the wheel, a click) | six families; the SNES list |
+| **0 bytes allocated on the audio thread** while a corruption is built and its game plays 4 s | measured inside the AOT DLL: 0 B over about 50 render calls |
+
+**Proof the check can fail: 18 injections, one build each, each reverted afterwards (`git status` clean), every one caught by the check named for it.** Messages is the number of failure messages the check printed.
+
+| Injection | Messages | First thing it says |
+|---|---|---|
+| Start drops the entry's writes | 44 | the work RAM / audio RAM after the start are not the farm's |
+| the game's pad is not recorded | 31 | the machine that came back is not the machine that was saved (frame 150, saved at 190) |
+| a write made after the start is not noted | 26 | the byte written after the start did not come back |
+| a project's history is never replayed | 31 | the game is at frame 0, it was saved at 190 |
+| an entry made on another game is said to fit | 46 | an entry made on another game should say so (the library's own game check still refuses the start: two layers) |
+| `CRP1` is not saved | 35 | the project has no corruption section |
+| the game allocates every frame | 23 | 13,328 bytes allocated by the plugin on the audio thread |
+| the freeze tick does nothing | 29 | starting with freeze: Runaway 0, sampler mode 0 |
+| nothing is shown over the picture | 32 | the result is not shown over the picture |
+| a damaged `CRP1` is dropped without a word | 23 | a damaged corruption section said '' |
+| a state put back still claims a replay record | 27 | the reopened game's replay record is usable, expected unusable |
+| controls behind the window answer clicks | 28 | controls behind the Corruption window are still reachable |
+| Cancel does not stop a replay | 24 | the replay did not stop |
+| a started game forgets how many frames it ran | 32 | the game reports 0 frames run, expected 150 |
+| Remove corruption keeps the writes | 33 | the work RAM is not the farm's clean work RAM |
+| the first fitting entry is not selected | 29 | opening selected 'entry 01', expected entry 06 |
+| the wheel does not scroll | 30 | three notches left the list at row 1, expected 4 |
+| only one of the real game's writes lands | 62 | SMW: the instrument snapshot is not the farm's corrupted audio RAM; sounds like the clean one (correlation 1.000) |
+
+**Found while building it (and fixed):** (1) the editor runs the game about 60 frames a second to keep its picture moving, so an exact-frame test needs the switch `NoPumpForTests` (hook 120); (2) a new plugin instance joins the emulator of one that is still alive, so a first version of the check "reopened" a project into the very machine that saved it and passed
+for the wrong reason; every reopen is now into a fresh emulator; (3) a game that was built but not yet swapped in (no audio running) looked like "no game is loaded" to the list; (4) a machine put back by a project had a farm that still described it as a game from power-on: now poisoned; (5) a started game reported 0 frames run; (6) Remove corruption,
+the first fit and the scrolling were added after the first working version, each with an injection.
 
 ## C5: other consoles
 
-(not started)
+| Console | Memories (true sizes) | Anchors | In the plugin | Instrument-level proof |
+|---|---|---|---|---|
+| SNES | WRAM, VRAM, CGRAM, OAM, SRAM, ROM, **ARAM, DSP** | replay from power-on (state when the SNES keeps one: guarded) | start, remove, cancel, project by replayed history: proven | **yes**: synthetic instrument 3.6x louder; Super Mario World instrument correlation 0.2 |
+| Game Boy / Color | WRAM (8 KB / 32 KB), HRAM, VRAM, OAM, CRAM (Color), SRAM, ROM, **WAVE** | saved state + replay recipe | start, remove, project by saved state: proven | **yes**: wave RAM corruption changes the wave channel |
+| Master System / Game Gear | RAM, VRAM, CRAM, SRAM, ROM | saved state + replay recipe | start, remove, project: proven | no (the PSG / YM2413 registers are not memories; the lever is the driver's data in RAM / ROM, not exercised) |
+| Genesis | RAM, VRAM, CRAM, VSRAM, **ZRAM** (the Z80 driver's RAM), SRAM, ROM | saved state + replay recipe | start, remove, project: proven | no (the DAC sounds come from ROM / Z80 RAM; not exercised) |
+| NES | PRG, PRG RAM, CHR, RAM (true sizes in the library; probed in the desktop UI by default) | saved state (desktop) | **not started in the plugin** (the row says so) | n/a: Instrument Runaway on a NES game freezes and silences only |
+
+The library side is checked by `--corrupt-test consoles` (65 checks): per console the memory list and sizes, a write / read / restore on every memory, and that a corruption riding a saved state or a replay from power-on reaches the machine that never left (work RAM and picture equal), each with a control that shows the equality can fail.
+
+## What is not tested, and what is not done
+
+- **Real FL Studio.** The plugin was not re-certified in FL (`certify.ps1 -Only plugin-fl`, which needs FL closed and was not run); everything above is the test host that loads the same DLL the way FL does. The WASAPI hand-off and the UAC click of the installer remain unverified, as before.
+- **Real games other than Super Mario World** (a SNES one, on the title screen). No real Game Boy, Master System, Game Gear or Genesis game was corrupted in the plugin: their checks use test games of our own.
+- **The SNES state anchor** (`state` group, T9): written against `SupportsState`, prints NOT RUN while the SNES has no save states; when the `snes-state` work merges it runs by itself, and the plugin then keeps a SNES game in `GAM1` and stops writing the replay recipe (the check asks hook 89).
+- **NES corruption in the plugin.** Not started: `NesGame` has no farm. A NES stockpile entry is shown with the reason. Next: load the entry's NES state into a fresh `NesGame` (`LoadGameState`), apply the writes through the library's NES domains, swap it in like the console games; Instrument Runaway for the NES is still freeze-and-silence, so the gain is the corrupted game's sound through Mix and the stems.
+- **"Start anyway" on another game** (design 6.1 allowed it with a warning) is not offered: a corruption made on another game is refused, with the reason. The library has the option (`StartOptions.AllowOtherGame`, used by `--corrupt-apply --allow-other-game`).
+- `at > 0` timelines (writes that land some frames after the start) work in the library (`CorruptionTimeline`), but the plugin and desktop do not offer them.
+- Lite does not farm console games (it compiles the library and its export / import use the engine).
+- A SNES replay is about 590 frames/s headless here, 900 frames of Super Mario World in 1.5 s inside the plugin; a 10-minute (36,000 frame) recipe takes about a minute (the check cancels one). Not measured on a slow machine.
+- The file dialog's starting folder (the desktop's `%APPDATA%\BrokenNes\Stockpiles`, then the last folder) is code that compiles and cannot be driven by the test host (a common dialog is modal).
+
+## Next steps
+
+1. Re-certify the build in real FL (`pwsh UAT/certify.ps1 -Only plugin-fl`, FL closed), then try the whole path by hand with a real game: farm in BrokenNes, Save file..., FL, Corruption > Open stockpile..., Start with the freeze tick, pick the corrupted instrument, play it.
+2. NES in the plugin (above).
+3. When `snes-state` merges: run `--corrupt-test` (the T9 check runs by itself) and the plugin's `corruption` check; the SNES then goes through the same path as the Game Boy.
+4. Ask the user about `corruptionTrueDomainSizes` (the lead holds the question).
+5. Corruption that targets the Sega chips' instruments directly (the PSG / FM / DAC settings are not memories): either memory domains for the chips' registers or a lever in the driver's data; a Genesis or Master System real-game check.
