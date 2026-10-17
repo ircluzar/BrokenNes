@@ -15,6 +15,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { scenarios } from './scenarios.mjs';
+import { loadNano } from './lib.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const nanoRoot = path.resolve(here, '..');
@@ -23,11 +24,6 @@ const args = process.argv.slice(2);
 const keep = args.includes('--keep');
 const filter = args.includes('--filter') ? args[args.indexOf('--filter') + 1] : null;
 
-export function loadNano(text) {
-  const m = { exports: {} };
-  new Function('module', text)(m);
-  return m.exports;
-}
 
 // ---- the Core side ----
 function parityExe() {

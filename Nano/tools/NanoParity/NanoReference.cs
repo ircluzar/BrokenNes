@@ -272,7 +272,8 @@ public sealed class RefEngine
         double t = Tms(v, frame);
         double cents = VoiceCents(v, t);
         double vol = v.Vel * p.Gain * Env(v, frame);
-        int level = (int)Math.Clamp(RoundEven(15 * vol), 0, 15);
+        float volF = (float)vol;   // the plugin's fl.Vol is a float and 15 * it is a float product
+        int level = (int)Math.Clamp(RoundEven((double)(15 * volF)), 0, 15);
         var lv = lastVoice[ch];
         bool retrigger = v.Fresh || !gate[ch] || (lv != v && ((lv != null && lv.P.Sweep >= 0) || p.Sweep >= 0));
         v.Fresh = false;

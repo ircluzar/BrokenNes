@@ -742,7 +742,8 @@ class Engine {
     const t = this.tms(v, this.frame);
     const cents = this.voiceCents(v, t);
     const vol = v.vel * p.gain * this.env(v, this.frame);
-    let level = clamp(roundEven(15 * vol), 0, 15);
+    // FL hands the plugin a float32 volume and the plugin multiplies it by 15 in float32 before rounding to even: 0.3 x 15 is 4.5 there (so 4), not 4.5000000179
+    let level = clamp(roundEven(Math.fround(15 * Math.fround(vol))), 0, 15);
     // a voice that follows (or is) a sweep-unit voice restarts the channel: the chip's sweep unit moved the period behind the shadow registers' back
     const lv = this.lastVoice[ch];
     const retrigger = v.fresh || !this.gate[ch] || (lv !== v && ((lv !== null && lv.p.sweep >= 0) || p.sweep >= 0));

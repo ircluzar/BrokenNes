@@ -40,7 +40,7 @@ export function scenarios(Nano) {
   // 2. velocity ladder on the square (levels 0..15 including exact halves) and on the triangle (on/off)
   {
     const ev = []; let t = 0;
-    const vels = [0, 1 / 30, 0.05, 0.1, 0.5, 1 / 6, 0.25, 0.75, 7.5 / 15, 6.5 / 15, 0.9, 1];
+    const vels = [0, 1 / 30, 0.05, 0.1, 0.3, 0.7, 0.5, 1 / 6, 0.25, 0.75, 7.5 / 15, 6.5 / 15, 0.9, 1];
     for (const v of vels) { ev.push({ time: t, type: 'on', note: 69, velocity: v, preset: 'square', id: ev.length + 1 }); ev.push({ time: t + 0.1, type: 'off', id: ev.length }); t += 0.15; }
     for (const v of [0, 0.02, 0.5]) { ev.push({ time: t, type: 'on', note: 45, velocity: v, preset: 'bass', id: ev.length + 1 }); ev.push({ time: t + 0.1, type: 'off', id: ev.length }); t += 0.15; }
     add('velocity_ladder', 44100, t + 0.1, ev);
