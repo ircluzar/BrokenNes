@@ -51,7 +51,7 @@ public sealed partial class Emulator
             if (g == null) return PushOutcome.Refused(why);
             object? work = Snapshot ?? (object?)GbState ?? SegaState;
             var o = GamePush.Push(g.Session, work, edited, clean);
-            if (o.Ok) { NoteToFarm(g, o); injectNote = GamePush.Verify(g.Session); Changed(); }
+            if (o.Ok) { NoteToFarm(g, o); injectNote = GamePush.Verify(g.Session); }      // (no Changed(): a push touches no FL-visible configuration; the tab repaints on its provider's version)
             return o;
         }
     }
@@ -68,7 +68,7 @@ public sealed partial class Emulator
             var kind = GamePushes.KindOf(inst.Kind);
             if (kind == null) return PushOutcome.Refused("nothing was pushed for this kind of instrument");
             var o = GamePush.Remove(g.Session, kind.Value, inst.Index);
-            if (o.Ok) { NoteToFarm(g, o); Changed(); }
+            if (o.Ok) NoteToFarm(g, o);
             return o;
         }
     }
@@ -82,7 +82,7 @@ public sealed partial class Emulator
             ApplyPending();
             if (game is not SessionGame g) return PushOutcome.Refused("there is no console game running");
             var o = GamePush.RemoveAll(g.Session);
-            if (o.Ok) { NoteToFarm(g, o); Changed(); }
+            if (o.Ok) NoteToFarm(g, o);
             return o;
         }
     }

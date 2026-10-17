@@ -15,8 +15,10 @@ internal static partial class InjectChecks
     private static int pass, fail, skipped;
     private static readonly List<string> failures = new();
 
-    private static void Ok(string name, string detail) { pass++; Console.WriteLine($"  PASS  {name}  {detail}"); }
-    private static void Bad(string name, string detail) { fail++; failures.Add(name); Console.WriteLine($"  FAIL  {name}  {detail}"); }
+    /// <summary>Put in front of every check name (the game the group of checks runs on, when it is not the first one).</summary>
+    private static string tag = "";
+    private static void Ok(string name, string detail) { pass++; Console.WriteLine($"  PASS  {tag}{name}  {detail}"); }
+    private static void Bad(string name, string detail) { fail++; failures.Add(tag + name); Console.WriteLine($"  FAIL  {tag}{name}  {detail}"); }
     private static void Skip(string name, string why) { skipped++; Console.WriteLine($"  SKIP  {name}  not tested: {why}"); }
     private static void Check(bool cond, string name, string detail) { if (cond) Ok(name, detail); else Bad(name, detail); }
 
@@ -29,6 +31,7 @@ internal static partial class InjectChecks
         {
             ("snes-explore", "SNES: what the game plays (exploration, prints only)", () => SnesExplore(args)),
             ("snes", "SNES: Super Mario World", () => SnesChecks(mutants)),
+            ("snes-dkc", "SNES: Donkey Kong Country (a second game, a different sound driver)", () => SnesChecksDkc(mutants)),
             ("genesis-explore", "Genesis: what the game plays (exploration, prints only)", () => GenesisExplore(args)),
             ("genesis", "Genesis: Sonic the Hedgehog", () => GenesisChecks(mutants)),
             ("gb-explore", "Game Boy: what the game does with its wave RAM (exploration, prints only)", () => GbExplore(args)),

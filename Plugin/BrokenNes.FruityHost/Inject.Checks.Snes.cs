@@ -22,16 +22,35 @@ internal static partial class InjectChecks
         public int Slot;
         public Func<int, int> Pad = InjectRun.Pad(InjectRun.SmwScript);
 
-        public static SnesRig? Make(int frame = SnesStateFrame)
+        public static SnesRig? Make(int frame = SnesStateFrame, string? romPath = null, string? script = null)
         {
-            var rom = InjectRun.Rom(InjectRun.Smw, out string name);
+            var rom = InjectRun.Rom(romPath ?? InjectRun.Smw, out string name);
             if (rom == null) return null;
             var rig = new SnesRig { Rom = rom, Name = name, Frame = frame };
+            if (script != null) rig.Pad = InjectRun.Pad(script);
             var s = InjectRun.Create(ConsoleKind.Snes, rom, name);
             InjectRun.Frames(s, 0, frame, rig.Pad);
             rig.State = s.SaveState();
             s.Dispose();
-            rig.Slot = SamplesPlayed(rig, SnesWindow).First().Slot;
+            // the sample the music plays most that loops and sounds like a tone in the middle of the range (a bass rumble or a hiss cannot have its pitch measured by an FFT peak)
+            var played = SamplesPlayed(rig, SnesWindow);
+            var s2 = rig.Start();
+            var loops = new SnesInstruments(Freeze(s2)).List().Where(i => i.Blobs[0].Data.Length >= 9 && (i.Blobs[0].Data[^9] & 2) != 0).Select(i => i.Index).ToHashSet();
+            s2.Dispose();
+            var candidates = played.Where(p => loops.Contains(p.Slot) && p.KeyOns >= 8).Select(p => p.Slot).Take(6).ToList();
+            if (candidates.Count == 0) candidates.Add(played.First().Slot);
+            rig.Slot = candidates[0];
+            foreach (int cand in candidates)
+            {
+                rig.Slot = cand;
+                var solo = SnesRun(rig, null, true);
+                var mono = InjectRun.Mono(solo.Pcm);
+                double sum = 0; int n = 0;
+                for (int a = 4096 * 2; a + 4096 <= mono.Length && n < 12; a += 4096, n++) sum += InjectSpectrum.Centroid(mono, a, 4096, SnesRate);
+                double centroid = n == 0 ? 0 : sum / n;
+                if (centroid is >= 300 and <= 3000) break;
+                rig.Slot = candidates[0];
+            }
             return rig;
         }
 
@@ -101,15 +120,31 @@ internal static partial class InjectChecks
     private static double[] PeaksPerWindow(float[] mono, int rate, int n = 4096)
     {
         var r = new List<double>();
-        for (int a = 0; a + n <= mono.Length; a += n) r.Add(InjectSpectrum.PeakHz(mono, a, n, rate, 120, 6000, 2e-2));
+        for (int a = 0; a + n <= mono.Length; a += n) r.Add(InjectSpectrum.PeakHz(mono, a, n, rate, 50, 6000, 2e-2));
         return r.ToArray();
     }
 
     private static void SnesExplore(string[] args)
     {
         int frame = int.TryParse(Opt(args, "--frame"), out int f) ? f : SnesStateFrame;
-        var rig = SnesRig.Make(frame);
-        if (rig == null) { Skip("snes-explore", "Super Mario World is not there"); return; }
+        string? dkcPath = Opt(args, "--game") == "dkc" ? ImodelGames.Find(@"X:\EMULATION\Super Nintendo\Super Nintendo (U)", "Donkey Kong Country (U) (V1.2)", ".smc") : null;
+        var rig = dkcPath != null ? SnesRig.Make(int.TryParse(Opt(args, "--frame"), out int f2) ? f2 : 1500, dkcPath, "") : SnesRig.Make(frame);
+        if (rig == null) { Skip("snes-explore", "the game is not there"); return; }
+        {
+            // every candidate: key-ons and the spectral centroid of its solo audio
+            var pl = SamplesPlayed(rig, SnesWindow);
+            int keep = rig.Slot;
+            foreach (var (slot, keyOns) in pl.Take(8))
+            {
+                rig.Slot = slot;
+                var solo = SnesRun(rig, null, true);
+                var mono = InjectRun.Mono(solo.Pcm);
+                double sum = 0; int n = 0;
+                for (int a = 4096 * 2; a + 4096 <= mono.Length && n < 12; a += 4096, n++) sum += InjectSpectrum.Centroid(mono, a, 4096, SnesRate);
+                Console.WriteLine($"    sample {slot}: {keyOns} key-ons, solo rms {InjectSpectrum.Rms(mono, 0, mono.Length):0.00000}, centroid {(n == 0 ? 0 : sum / n):0} Hz");
+            }
+            rig.Slot = keep;
+        }
         var played = SamplesPlayed(rig, SnesWindow);
         Console.WriteLine($"  at frame {frame}, the next {SnesWindow} frames key on: " + string.Join(", ", played.Take(10).Select(p => $"sample {p.Slot} x{p.KeyOns}")) + $"  -> the checks use sample {rig.Slot}");
         // solo baseline vs +1200 cents
@@ -126,6 +161,18 @@ internal static partial class InjectChecks
         var pb = PeaksPerWindow(mb, SnesRate); var pp = PeaksPerWindow(mp, SnesRate);
         Console.WriteLine($"  solo rms base {InjectSpectrum.Rms(mb, 0, mb.Length):0.0000}, pushed {InjectSpectrum.Rms(mp, 0, mp.Length):0.0000}");
         for (int i = 0; i < pb.Length; i++) Console.WriteLine($"    window {i,2}: base {pb[i],8:0.0} Hz   pushed {pp[i],8:0.0} Hz   ratio {pp[i] / pb[i]:0.000}");
+        // the five strongest spectral peaks of a few windows, to see what a measure that finds no change is looking at
+        foreach (int w in new[] { 4, 10 })
+        {
+            string Top(float[] m)
+            {
+                var pw = InjectSpectrum.Power(m, w * 4096, 4096);
+                var idx = Enumerable.Range(3, pw.Length - 6).Where(k => pw[k] >= pw[k - 1] && pw[k] >= pw[k + 1]).OrderByDescending(k => pw[k]).Take(6).Select(k => $"{k * (double)SnesRate / 4096:0}Hz:{10 * Math.Log10(pw[k] + 1e-12):0}dB");
+                return string.Join("  ", idx);
+            }
+            Console.WriteLine($"    window {w} peaks   base: {Top(mb)}");
+            Console.WriteLine($"    window {w} peaks pushed: {Top(mp)}");
+        }
     }
 
 }

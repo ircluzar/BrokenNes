@@ -26,6 +26,9 @@ switch (args[0])
     case "inject-test":
         return InjectChecks.Main(args);
 
+    case "inject-hash":
+        return InjectNeutral.Main(args);
+
     case "inject-probe":
         return InjectProbe.Main(args);
 
