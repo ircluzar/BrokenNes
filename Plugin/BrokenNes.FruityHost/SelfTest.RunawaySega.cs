@@ -436,7 +436,7 @@ public sealed unsafe partial class SelfTest
                     for (int k = 0; k < 4; k++) { RenderBlocks(p, 0.1); Win32Host.Pump(40); }
                     if (ClickControl(t, p, 90, "Instrument dropdown"))
                     {
-                        t.Expect(p.Test(31) == 90 && p.Test(32) == instruments + 1, $"the Instrument dropdown lists {p.Test(32)} entries, expected {instruments + 1}");
+                        t.Expect(p.Test(31) == 90 && p.Test(32) == instruments + 1 + p.Test(150), $"the Instrument dropdown lists {p.Test(32)} entries, expected {instruments + 1} (Auto and the instruments) plus {p.Test(150)} game voices (the recipes learned from the game's driver)");
                         var item = Centre(p, 100 + 7);
                         if (item != null) Win32Host.Click(p.EditorHandle, item.Value.X, item.Value.Y);
                         t.Expect(p.GetParam(PInstrument) == 7, $"picking the first DAC sound left the parameter at {p.GetParam(PInstrument)} (expected 7)");

@@ -1,5 +1,5 @@
 // Round 6 (presets): the presets through the real plugin DLL (Native AOT): the Presets chips, a preset played in direct mode by FL's notes against Runaway playing the same instrument from its game (bit for bit), the NES player, the project's own copy of a preset
-// (a library file gone, a damaged section, a newer one), nothing allocated while playing or while a preset is loaded, and the Presets tab with the real library, driven by real mouse and key messages. Hooks 320-339 (Bn2Plugin.Presets.cs).
+// (a library file gone, a damaged section, a newer one), nothing allocated while playing or while a preset is loaded, and the Presets tab with the real library, driven by real mouse and key messages. Hooks 340-359 (Bn2Plugin.Presets.cs).
 using System.Runtime.InteropServices;
 using BrokenNes.Fruity;
 using BrokenNes.SynthHost;
@@ -11,8 +11,8 @@ namespace BrokenNes.FruityHost;
 
 public sealed unsafe partial class SelfTest
 {
-    private const int HkPLoad = 320, HkPText = 321, HkPState = 322, HkPName = 323, HkPCrc = 324, HkPNote = 325, HkPClear = 326, HkPAuditioning = 327, HkPAudition = 328, HkPAlloc = 329, HkPMutant = 330, HkPSection = 331,
-        HkPMode = 332, HkPSummary = 333, HkPFolder = 334, HkPRescan = 335, HkPLibId = 336, HkPSega = 337, HkPGb = 338;
+    private const int HkPLoad = 340, HkPText = 341, HkPState = 342, HkPName = 343, HkPCrc = 344, HkPNote = 345, HkPClear = 346, HkPAuditioning = 347, HkPAudition = 348, HkPAlloc = 349, HkPMutant = 350, HkPSection = 351,
+        HkPMode = 352, HkPSummary = 353, HkPFolder = 354, HkPRescan = 355, HkPLibId = 356, HkPSega = 357, HkPGb = 358;
 
     private static int PLoad(PluginInstance p, byte[] file, out string text)
     {

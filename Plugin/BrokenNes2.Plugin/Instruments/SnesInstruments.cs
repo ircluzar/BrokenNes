@@ -203,7 +203,8 @@ public sealed class SnesInstruments : IInstrumentSource
         }
         var overlay = snap.Overlay;
         if (overlayChanged) overlay = SnesOverlay.With(snap.Overlay, entry);
-        return WriteResult.Success(new SpcSnapshot(aram, dsp, overlay), changed);
+        // the game's voices (what its driver was heard doing, round 6 `runaway`) stay with the edited copy: they play the sample the edit changed, through the driver's own macro
+        return WriteResult.Success(new SpcSnapshot(aram, dsp, overlay) { Recipes = snap.Recipes, ListenNote = snap.ListenNote }, changed);
     }
 
     private static int CountDiff(byte[] a, byte[] b) { int n = 0; for (int i = 0; i < Math.Min(a.Length, b.Length); i++) if (a[i] != b[i]) n++; return n; }

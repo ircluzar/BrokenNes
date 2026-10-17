@@ -97,6 +97,13 @@
     <Compile Include="$(NesRoot)corruptor\GhStockpileMap.cs"                   Link="NesEmulator\corruptor\GhStockpileMap.cs" />
     <!-- The plugin's copy of a SNES game's sound memory (what Instrument Runaway captures): the corruption tests build the very same object. One self-contained file. -->
     <Compile Include="..\Plugin\BrokenNes2.Plugin\SpcSnapshot.cs" Link="PluginShared\SpcSnapshot.cs" />
+    <!-- Round 6 (Instrument Runaway lab): the plugin's SNES and Sega samplers and snapshots, linked as they are so the lab measures what the plugin plays. -->
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\SnesSampler.cs" Link="PluginShared\SnesSampler.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\SpcRecipe.cs" Link="PluginShared\SpcRecipe.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\SegaSnapshot.cs" Link="PluginShared\SegaSnapshot.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\GenRecipe.cs" Link="PluginShared\GenRecipe.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\SegaSamplers.cs" Link="PluginShared\SegaSamplers.cs" />
+    <Compile Include="..\Core\StreamResampler.cs" Link="PluginShared\StreamResampler.cs" />
     <!-- SpcSnapshot.cs refers to the per-sample overlay a SNES instrument edit adds to the copy (round 6); that file is self-contained too. -->
     <Compile Include="..\Plugin\BrokenNes2.Plugin\Instruments\SnesOverlay.cs" Link="PluginShared\SnesOverlay.cs" />
     <Compile Include="..\Plugin\BrokenNes2.Plugin\Instruments\InstrumentMutants.cs" Link="PluginShared\InstrumentMutants.cs" />

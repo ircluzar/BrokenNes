@@ -152,9 +152,9 @@ public sealed unsafe partial class SelfTest
             UiClick(t, c, UiNudgeUp, "Nudge + on a locked field");
             t.Expect(p.Test(420, 11) == 0 && UiText(p, 3).Contains("locked"), $"nudging a locked field said '{UiText(p, 3)}'");
 
-            // ---- Push is honest: not built yet ----
+            // ---- Push is honest: this test game's own sound memory is empty, not the made-up one the frozen copy holds, so the push is refused and says why (the `inject` check pushes for real) ----
             UiClick(t, c, UiPush, "Push into the game");
-            t.Expect(p.Test(420, 11) == 0 && UiText(p, 3).Contains("not built"), $"Push into the game said '{UiText(p, 3)}'");
+            t.Expect(p.Test(420, 11) == 0 && UiText(p, 3).Contains("directory") && p.Test(323) == 0, $"Push into the game said '{UiText(p, 3)}' ({p.Test(323)} pushes)");
 
             // ---- a change made behind the tab's back shows on the tab (the Version moves) ----
             var ext = DllRead(p, 1)!;

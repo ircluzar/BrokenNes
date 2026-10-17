@@ -681,6 +681,9 @@ public sealed partial class Ym2413 : IHubVoiceSource
 
     public bool RhythmMode => rhythmMode;
     public byte Register(int index) => reg[index & 0x3f];
+
+    /// <summary>Optional hook for the plugin's "push an instrument into the running game" (null, the default, leaves the chip exactly as it always was). See <see cref="IYm2413Override"/>.</summary>
+    public IYm2413Override? Override { get; set; }
     public int AddressLatch => (int)adr;
 
     /// <summary>A write to the address port (bit 0 of the port clear) or the data port (set).</summary>
@@ -755,6 +758,7 @@ public sealed partial class Ym2413 : IHubVoiceSource
             case >= 0x20 and <= 0x28:
             {
                 int ch = r - 0x20;
+                if ((data & 0x10) != 0 && patchNumber[ch] == 0) Override?.OnKeyOn(this, ch);      // a key-on on the user instrument (null hook unless the plugin pushed an instrument into the game)
                 SetFnumber(ch, ((data & 1) << 8) + reg[0x10 + ch]);
                 SetBlock(ch, (data >> 1) & 7);
                 SetSusFlag(ch, ((data >> 5) & 1) != 0);

@@ -31,6 +31,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         public int Dsp = -1;          // the S-DSP voice playing it in sampler mode
         public int Slot = -1;         // the slot of the Sega sampler playing it (see SegaSnapshot.SlotBase), -1 none
         public int Instr = -1;        // the instrument it was started on
+        public SpcRecipe? Recipe;     // the recipe it was started on (SNES Runaway), null for a plain instrument
         public bool Silenced;         // it lost its slot to a newer note: silent until released
     }
 
@@ -130,7 +131,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         segaFor = null;
         Array.Clear(dspUsed);
         Array.Clear(slotUsed);
-        foreach (var v in voices) { v.Dsp = -1; v.Slot = -1; v.Instr = -1; v.Silenced = false; }
+        foreach (var v in voices) { v.Dsp = -1; v.Slot = -1; v.Instr = -1; v.Silenced = false; v.Recipe = null; }
     }
 
     /// <summary>Makes the emulator-level parameter values show what the emulator it sits on has (the emulator owns them).</summary>
@@ -365,33 +366,39 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         int param = forcedInstrument >= 0 ? forcedInstrument : Get(P.Instrument);       // (a preset plays its own sample; Runaway plays the one the Instrument parameter names)
         int instrument = samplerFor?.Resolve(param) ?? param;
         bool hasSample = samplerFor?.HasSample(instrument) ?? false;   // an empty slot of the game's sample table plays nothing (the DSP would wander through other data)
+        // a recipe (Recipe parameter 1 and up) plays what the game's driver did with an instrument; a recipe plays whatever sample the game keyed, so the sample table's check does not apply to it
+        SpcRecipe? recipe = null;
+        int rp = forcedInstrument >= 0 ? 0 : Get(P.Recipe);              // (a preset plays its own instrument: no game voice)
+        var recipes = samplerFor?.Recipes;
+        if (rp > 0 && recipes != null && rp <= recipes.Length) recipe = recipes[rp - 1];
         foreach (var v in voices)
         {
             if (v.Finished) continue;
             if (v.Released)
             {
-                if (v.Dsp >= 0) { s.NoteOff(v.Dsp); dspUsed[v.Dsp] = false; v.Dsp = -1; }
+                if (v.Dsp >= 0) { s.NoteOff(v.Dsp); dspUsed[v.Dsp] = false; v.Dsp = -1; v.Recipe = null; }
                 v.Finished = true;
                 continue;
             }
             ref var fl = ref v.Params->FinalLevels;
             double cents = fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine);
-            int pitch = SnesSampler.PitchFor(cents);
             int level = Math.Clamp((int)Math.Round(127 * fl.Vol), 0, 127);
             if (v.Dsp < 0)
             {
-                if (!hasSample) continue;
+                if (recipe == null && !hasSample) continue;
                 int dv = Array.IndexOf(dspUsed, false);
                 if (dv < 0)
                 {
-                    foreach (var other in voices) if (other != v && other.Dsp >= 0) { dv = other.Dsp; other.Dsp = -1; break; }   // the oldest note gives way
+                    foreach (var other in voices) if (other != v && other.Dsp >= 0) { dv = other.Dsp; other.Dsp = -1; other.Recipe = null; break; }   // the oldest note gives way
                     if (dv < 0) continue;
                 }
                 v.Dsp = dv;
                 dspUsed[dv] = true;
-                s.NoteOn(dv, instrument, pitch, level, level);
+                v.Recipe = recipe;
+                if (recipe != null) s.NoteOnRecipe(dv, recipe, SnesSampler.PitchFor(cents, recipe.Pitch), level);
+                else { int pitch = SnesSampler.PitchFor(cents); s.NoteOn(dv, instrument, pitch, level, level); }
             }
-            else s.Update(v.Dsp, pitch, level, level);
+            else s.Update(v.Dsp, v.Recipe != null ? SnesSampler.PitchFor(cents, v.Recipe.Pitch) : SnesSampler.PitchFor(cents), level, level);
         }
     }
 
@@ -434,7 +441,11 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     /// oldest note gives way for one more), with pitch and level re-read from FL's live values like in Direct mode, so slides and bends work. A note that lost its slot stays silent until it ends.</summary>
     private void UpdateSegaVoices(SegaSampler s, SegaSnapshot snap, int forcedInstrument = -1)
     {
-        int instrument = snap.Resolve(forcedInstrument >= 0 ? forcedInstrument : Get(P.Instrument));
+        // a game voice (the Recipe parameter, 1 and up) plays what the game's driver did with a channel; the slots it may take are its chip's. (A preset plays its own instrument: no game voice.)
+        GenRecipe? recipe = null;
+        int rp = forcedInstrument >= 0 ? 0 : Get(P.Recipe);
+        if (rp > 0 && rp <= snap.Recipes.Length && snap.Kind == SegaSnapshot.KindOpn) recipe = snap.Recipes[rp - 1];
+        int instrument = recipe != null ? RecipeInstrument + rp : snap.Resolve(forcedInstrument >= 0 ? forcedInstrument : Get(P.Instrument));
         foreach (var v in voices)
         {
             if (v.Finished) continue;
@@ -451,7 +462,10 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             double velocity = Math.Clamp(fl.Vol, 0.0, 1.0);
             if (v.Slot >= 0 && v.Instr != instrument) { s.NoteOff(v.Slot); slotUsed[v.Slot] = false; v.Slot = -1; }     // another instrument was picked under a held note: it starts again on that one
             if (v.Slot >= 0) { s.Update(v.Slot, hz, velocity); continue; }
-            int first = snap.SlotBase(instrument), count = snap.Slots(instrument), slot = -1;
+            int first, count, slot = -1;
+            if (recipe == null) { first = snap.SlotBase(instrument); count = snap.Slots(instrument); }
+            else if (recipe.IsFm) { first = 0; count = OpnSampler.FmSlots; }
+            else { bool noise = recipe.Kind == GenRecipe.KindPsgNoise; first = snap.SlotBase(snap.PsgInstrument + (noise ? 1 : 0)); count = noise ? 1 : 3; }
             for (int i = first; i < first + count && i < slotUsed.Length; i++) if (!slotUsed[i]) { slot = i; break; }
             if (slot < 0)
             {
@@ -468,7 +482,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             }
             slotUsed[slot] = true;
             v.Slot = slot; v.Instr = instrument;
-            s.NoteOn(slot, instrument, hz, velocity);
+            if (recipe != null) s.NoteOnRecipe(slot, recipe, hz, velocity); else s.NoteOn(slot, instrument, hz, velocity);
         }
     }
 
@@ -705,6 +719,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     private const uint PlaceMagic = 0x32554D45; // "EMU2"
     private const uint SpcMagic = 0x31435053;   // "SPC1"
     private const uint GbMagic = 0x31534247;    // "GBS1"
+    /// <summary>The value a Sega voice's Instr takes while it plays a game voice (recipe n is this + n): above every instrument number a snapshot offers.</summary>
+    private const int RecipeInstrument = 1000;
     /// <summary>The biggest Sega snapshot section a project may carry: the largest real one (12 DAC sounds of 64 KB at most 4 in all, the chip registers) is under 270,000 bytes.</summary>
     private const int MaxSegaSection = 300_000;
 
@@ -737,6 +753,16 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 stream.Write(&segaMagic, 4);
                 stream.Write(&segaLen, 4);
                 fixed (byte* p = segaBytes) stream.Write(p, (uint)segaLen);
+                // what the Genesis game's driver was heard doing with its channels (recipes), right after the chips they belong to
+                if (segaSnap.Recipes.Length > 0)
+                {
+                    uint gnrMagic = GenRecipe.Tag;
+                    var gnrBytes = GenRecipe.Write(segaSnap.Recipes);
+                    int gnrLen = gnrBytes.Length;
+                    stream.Write(&gnrMagic, 4);
+                    stream.Write(&gnrLen, 4);
+                    fixed (byte* p = gnrBytes) stream.Write(p, (uint)gnrLen);
+                }
             }
             if (gbSnap != null)
             {
@@ -755,6 +781,16 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 stream.Write(&spcMagic, 4);
                 stream.Write(&snapLen, 4);
                 fixed (byte* p = snapBytes) stream.Write(p, (uint)snapLen);
+                // what the game's driver was heard doing with its instruments (recipes), right after the memory it belongs to; a build that does not know the tag skips it
+                if (snap.Recipes.Length > 0)
+                {
+                    uint sprMagic = SpcRecipe.Tag;
+                    var sprBytes = SpcRecipe.Write(snap.Recipes);
+                    int sprLen = sprBytes.Length;
+                    stream.Write(&sprMagic, 4);
+                    stream.Write(&sprLen, 4);
+                    fixed (byte* p = sprBytes) stream.Write(p, (uint)sprLen);
+                }
                 // the instrument edits that ride on that sound memory (Instruments/SnesOverlay.cs): their own section, after it, so a build that does not know them skips it
                 if (snap.Overlay is { } overlay)
                 {
@@ -793,12 +829,23 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 stream.Write(&crpLen, 4);
                 fixed (byte* p = corruptionSection) stream.Write(p, (uint)crpLen);
             }
+            // The instruments pushed into the running game (Instruments/GamePush.cs): the table of overrides and the original bytes, which no machine state holds. Last, so a build that does not know the section stops reading here.
+            if (a.Emulator?.CaptureInjectSection() is { } injectSection)
+            {
+                uint injMagic = Instruments.GamePushFile.Tag;
+                int injLen = injectSection.Length;
+                stream.Write(&injMagic, 4);
+                stream.Write(&injLen, 4);
+                fixed (byte* p = injectSection) stream.Write(p, (uint)injLen);
+            }
             return;
         }
 
         string? romPath = null;
         int hintEmu = 0, hintCh = -1;
         SpcSnapshot? restoredSnapshot = null;
+        SpcRecipe[]? restoredRecipes = null;
+        GenRecipe[]? restoredGenRecipes = null;
         Instruments.SnesOverlay? restoredOverlay = null;
         string? overlayProblem = null;
         GbSnapshot? restoredGb = null;
@@ -808,6 +855,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         CorruptionSection? restoredCorruption = null;
         byte[]? presetSectionBytes = null;
         string? presetSectionProblem = null;
+        byte[]? injectPayload = null;
+        string? injectProblem = null;
         restoring = true;
         try
         {
@@ -829,7 +878,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                     hintEmu = e; hintCh = c;
                     // The sections after the place record: tag, length, bytes. The ones this build knows are read and checked, never trusted; the others (a later build's) are skipped by their length;
                     // a stream that ends, or whose length cannot be right, ends the reading (what was read before it stands).
-                    for (int sections = 0; sections < 8; sections++)
+                    for (int sections = 0; sections < 10; sections++)
                     {
                         uint tag = 0; int slen = 0;
                         if (!stream.Read(&tag, 4) || !stream.Read(&slen, 4)) break;
@@ -837,6 +886,17 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                         {
                             var snapBuf = new byte[slen];
                             fixed (byte* p = snapBuf) if (!stream.Read(p, (uint)slen)) break; else restoredSnapshot = SpcSnapshot.FromBytes(snapBuf);
+                        }
+                        else if (tag == SpcRecipe.Tag && slen is >= 2 and <= SpcRecipe.MaxSection)
+                        {
+                            // read and checked, never trusted: a stream that is not a recipe list is dropped (the memory it belonged to still plays plain instruments)
+                            var sprBuf = new byte[slen];
+                            fixed (byte* p = sprBuf) if (!stream.Read(p, (uint)slen)) break; else restoredRecipes = SpcRecipe.Read(sprBuf);
+                        }
+                        else if (tag == GenRecipe.Tag && slen is >= 2 and <= GenRecipe.MaxSection)
+                        {
+                            var gnrBuf = new byte[slen];
+                            fixed (byte* p = gnrBuf) if (!stream.Read(p, (uint)slen)) break; else restoredGenRecipes = GenRecipe.Read(gnrBuf);
                         }
                         else if (tag == GbMagic && slen == GbSnapshot.RegCount + GbSnapshot.WaveSize + 1)
                         {
@@ -890,6 +950,22 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                             fixed (byte* p = crpBuf) if (!stream.Read(p, (uint)slen)) { restoredCorruption = CorruptionSection.Damaged("cut short"); break; }
                             restoredCorruption = CorruptionSection.Read(crpBuf, out _);          // damaged: the editor says so (the game-state section, if any, still brings the machine back)
                         }
+                        else if (tag == Instruments.GamePushFile.Tag)
+                        {
+                            // the instruments pushed into the game: read and checked when the game is built, never trusted (a damaged or newer one is dropped and the editor says so, see Emulator.InjectNote)
+                            if (slen < 11 || slen > Instruments.GamePushFile.MaxStored)
+                            {
+                                injectProblem = "damaged (its length)";
+                                if (!(slen is >= 0 and <= GameStateSection.MaxRead && SkipSection(stream, slen))) break;
+                            }
+                            else
+                            {
+                                var injBuf = new byte[slen];
+                                fixed (byte* p = injBuf) if (!stream.Read(p, (uint)slen)) { injectProblem = "cut short"; break; }
+                                Instruments.GamePushFile.Read(injBuf, out _, out injectProblem);     // (the check is made here so that a bad section is refused now, with its reason)
+                                if (injectProblem == null) injectPayload = injBuf;
+                            }
+                        }
                         else if (slen is >= 0 and <= GameStateSection.MaxRead && SkipSection(stream, slen)) { }
                         else break;                                          // a section nobody here knows, and cannot be skipped
                     }
@@ -904,10 +980,14 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         int wMode = Get(P.Mode), wChip = Get(P.Core);
         EmulatorHub.Resolve(this, hintEmu, hintCh);
         var emu2 = assignment.Emulator;
+        if (restoredSega != null && restoredGenRecipes != null) { restoredSega.Recipes = restoredGenRecipes; restoredSega.ListenNote = "Game voices from the project: " + restoredGenRecipes.Length; }
+        if (restoredSnapshot != null && restoredRecipes != null) { restoredSnapshot.Recipes = restoredRecipes; restoredSnapshot.ListenNote = "Game voices from the project: " + restoredRecipes.Length; }
+        // the recipes go on first: WithOverlay makes a copy that keeps them
         if (restoredOverlay != null && restoredSnapshot != null) restoredSnapshot = restoredSnapshot.WithOverlay(restoredOverlay);
         else if (restoredOverlay != null) overlayProblem = "the project has instrument edits but no sound memory to apply them to";
         if (emu2 != null && emu2.MemberCount == 1)
         {
+            emu2.SetInjectRestore(injectPayload, injectProblem);
             emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem, restoredCorruption);
             emu2.SetInstrumentNote(overlayProblem == null ? null : "The project's instrument edits were not restored: " + overlayProblem);
         }
@@ -1049,6 +1129,56 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             // index (0 result, 1 status, 2 why of the selected row, 3 the selected row's name, 4 the stockpile problems), the max chars in the low 16, returns the length, 110 the result's good flag, 111 the result's stamp,
             // 112 whether a corruption is recorded as started on this game, 113 frames the farm has recorded (-1 no farm), 114 the farm's reason why a replay is not possible (1 poisoned, 0 not), 115 the SNES audio RAM hash,
             // 116 the work RAM hash (WRAM, else RAM), 117 hash of the Runaway snapshot's audio RAM, 118 the ARAM byte at <index>, 119 write ARAM byte <index> = <value> straight into the running game (a corruption made outside the farm)
+            // Instrument Runaway recipes (round 6): 122 seconds the Corruption window lets the corrupted game play before it switches Runaway on (value), 123 1 while it is waiting, 124 recipes the SNES snapshot holds (-1 none),
+            // 125 a recipe's field, index = field << 16 | recipe: 0 sample, 1 ADSR1, 2 ADSR2, 3 gain, 4 key-on pitch, 5 events, 6 held (0/1), 7 hash (30 bits), 8 uses, 9 pitch events, 10 length in samples, 11 volume events, 12 volume at the key-on (left), 13 the largest pitch change in cents,
+            // 126 voices of this instance playing a recipe, 127 chip writes the running SNES game's log holds (-1 none), 128 the snapshot's listening note (copied like 85), 129 the recipe the Recipe parameter plays (0 none)
+            case 122: if (emu != null) emu.Corruption.PlayFor = (int)value; return 0;
+            case 123: return emu?.Corruption.Listening.Length > 0 ? 1 : 0;
+            case 124: return emu?.Snapshot?.Recipes.Length ?? -1;
+            case 125:
+            {
+                var rs = emu?.Snapshot?.Recipes;
+                int rec = (int)(index & 0xFFFF), field = (int)(index >> 16);
+                if (rs == null || (uint)rec >= (uint)rs.Length) return -1;
+                var r = rs[rec];
+                return field switch
+                {
+                    0 => r.Srcn, 1 => r.Adsr1, 2 => r.Adsr2, 3 => r.Gain, 4 => r.Pitch, 5 => r.Events.Length, 6 => r.Held ? 1 : 0, 7 => (nint)(r.Hash() & 0x3FFFFFFF), 8 => r.Uses,
+                    9 => r.Count(SpcEv.Pitch), 10 => r.LengthSamples, 11 => r.Count(SpcEv.VolL) + r.Count(SpcEv.VolR), 12 => r.VolL, 13 => r.Events.Where(e => e.Kind == SpcEv.Pitch).Select(e => Math.Abs(e.Value)).DefaultIfEmpty(0).Max(), _ => -1,
+                };
+            }
+            case 126: return voices.Count(v => v.Recipe != null && v.Dsp >= 0);
+            case 127: return (nint)(emu?.SpcLogCountForTests() ?? -1);
+            case 128:
+            {
+                var note = emu?.Snapshot?.ListenNote;
+                if (note == null) return -1;
+                if (value != 0 && index > 0) note.AsSpan(0, Math.Min(note.Length, (int)index)).CopyTo(new Span<char>((void*)value, (int)index));
+                return note.Length;
+            }
+            case 129: { int n = emu?.RecipeCount ?? 0; int rp = Get(P.Recipe); return rp > 0 && rp <= n ? rp : 0; }
+            // Genesis recipes: 150 recipes the Sega snapshot holds (-1 none), 151 a recipe's field, index = field << 16 | recipe: 0 kind (0 FM, 1 PSG tone, 2 PSG noise), 1 block, 2 fnum, 3 events, 4 held, 5 hash (30 bits), 6 uses,
+            // 7 pitch events, 8 length in samples, 9 patch changes, 10 volume changes, 11 largest pitch change in cents, 12 algorithm, 13 PSG period; 152 the Sega snapshot's listening note (copied like 85)
+            case 150: return emu?.SegaState?.Recipes.Length ?? -1;
+            case 151:
+            {
+                var rs = emu?.SegaState?.Recipes;
+                int rec = (int)(index & 0xFFFF), field = (int)(index >> 16);
+                if (rs == null || (uint)rec >= (uint)rs.Length) return -1;
+                var r = rs[rec];
+                return field switch
+                {
+                    0 => r.Kind, 1 => r.Block, 2 => r.Fnum, 3 => r.Events.Length, 4 => r.Held ? 1 : 0, 5 => (nint)(r.Hash() & 0x3FFFFFFF), 6 => r.Uses, 7 => r.Count(GenEv.Pitch), 8 => r.LengthSamples,
+                    9 => r.Count(GenEv.Param), 10 => r.Count(GenEv.Vol), 11 => r.Events.Where(e => e.Kind == GenEv.Pitch).Select(e => Math.Abs(e.Value)).DefaultIfEmpty(0).Max(), 12 => r.Patch[28] & 7, 13 => r.Period, _ => -1,
+                };
+            }
+            case 152:
+            {
+                var note = emu?.SegaState?.ListenNote;
+                if (note == null) return -1;
+                if (value != 0 && index > 0) note.AsSpan(0, Math.Min(note.Length, (int)index)).CopyTo(new Span<char>((void*)value, (int)index));
+                return note.Length;
+            }
             case 121: SessionGame.NoStateForTests = value != 0; return 0;      // 121 tests only: console games report that they cannot keep their state (value 1), or go back to the truth (0)
             case 120: Emulator.NoPumpForTests = value != 0; return 0;      // 120 tests only: the editor stops running the game to keep the picture moving (value 1), or goes back to it (0)
             case 100: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); if (emu == null || path == null) return 1; emu.OpenStockpile(path); return 0; }
@@ -1093,8 +1223,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             case 41: About.ResetForTests(deleteState: false); return 0;
             case 42: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return emu == null || path == null ? 1 : emu.LoadRomFile(path) == null ? 0 : 1; }
             default:
-                if (id - Fpd.TestBase is >= 320 and < 340) return PresetTestHook(id - Fpd.TestBase, index, value);        // the presets (Bn2Plugin.Presets.cs)
-                return id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
+                if (id - Fpd.TestBase is >= 340 and < 360) return PresetTestHook(id - Fpd.TestBase, index, value);        // the presets (Bn2Plugin.Presets.cs)
+                return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
     }
 

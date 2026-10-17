@@ -45,7 +45,7 @@ public sealed unsafe partial class SelfTest
             t.Expect(pa.Test(420, 11) == 1 && WorkingField(pa, 1, "tune.cents") == 100, $"ten shift-clicks on Tuning's plus left it at {WorkingField(pa, 1, "tune.cents")}: '{UiText(pa, 3)}'");
             var ripped = DllRead(pa, 1)!;
             UiClick(t, a, UiSendToPresets, "Send to Presets");
-            t.Expect(pa.Test(420, 12) == 1 && UiText(pa, 14).Contains("Sample 1") && PresetFiles(folder) == 0, $"Send to Presets: name field open {pa.Test(420, 12)}, offered '{UiText(pa, 14)}', files in the library {PresetFiles(folder)}");
+            t.Expect(pa.Test(420, 12) == 1 && UiText(pa, 17).Contains("Sample 1") && PresetFiles(folder) == 0, $"Send to Presets: name field open {pa.Test(420, 12)}, offered '{UiText(pa, 17)}', files in the library {PresetFiles(folder)}");
             Win32Host.Text(a.Hwnd, "Crushed lead");
             Win32Host.Char(a.Hwnd, '\r');
             t.Expect(pa.Test(420, 12) == 0 && pa.Test(420, 11) == 1 && UiText(pa, 3).Contains("Crushed lead") && UiText(pa, 3).Contains("Added"), $"after Enter: name field open {pa.Test(420, 12)}, said '{UiText(pa, 3)}'");
@@ -205,13 +205,13 @@ public sealed unsafe partial class SelfTest
             t.Expect(PickerCount("PRESETS") == 2, "the PRESETS chip's picker does not list both presets");
             t.Expect(PickerCount("PRE-SNES") == 1, "the PRE-SNES shortcut's picker does not list the one SNES preset");
             PickItem(t, pb, 90, 0, "the SNES preset in the picker");
-            t.Expect(UiText(pb, 15).Contains("Loaded") && pb.Test(HkPState) == 1 && DllText(pb, HkPSummary).StartsWith("SNES"), $"picking from the PRE-SNES picker said '{UiText(pb, 15)}', holds '{DllText(pb, HkPSummary)}'");
+            t.Expect(UiText(pb, 18).Contains("Loaded") && pb.Test(HkPState) == 1 && DllText(pb, HkPSummary).StartsWith("SNES"), $"picking from the PRE-SNES picker said '{UiText(pb, 18)}', holds '{DllText(pb, HkPSummary)}'");
             t.Expect(PickerCount("PRE-MD") == 1, "the PRE-MD shortcut's picker does not list the one Genesis preset");
             PickItem(t, pb, 90, 0, "the Genesis preset in the picker");
             t.Expect(DllText(pb, HkPSummary).StartsWith("MD") && DllText(pb, HkPName) == "Electric piano", $"picking from the PRE-MD picker: holds '{DllText(pb, HkPSummary)}' / '{DllText(pb, HkPName)}'");
             t.Expect(PickerCount("PRE-GB") == 1, "the PRE-GB shortcut's picker (no Game Boy preset) should show its one explanatory row");
             PickItem(t, pb, 90, 0, "the explanatory row");
-            t.Expect(UiText(pb, 15).Contains("no preset for this chip") && DllText(pb, HkPName) == "Electric piano", $"the empty picker said '{UiText(pb, 15)}'");
+            t.Expect(UiText(pb, 18).Contains("no preset for this chip") && DllText(pb, HkPName) == "Electric piano", $"the empty picker said '{UiText(pb, 18)}'");
             pb.SetParam(PCore, 0);                                                                  // back to a NES chip: the strip comes back
             Win32Host.Pump(100);
             t.Expect(pb.Test(30, 10) != 0 && pb.Test(30, 90) == 0, "the channel strip did not come back when the chip went back to FIX");

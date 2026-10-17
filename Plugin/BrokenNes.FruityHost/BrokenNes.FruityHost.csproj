@@ -29,13 +29,15 @@
     <ProjectReference Include="..\..\Core\BrokenNes.Core.csproj" />
     <Compile Include="..\..\Workshop\Corruption\SynthSnesRom.cs" Link="SynthSnesRom.cs" />
     <Compile Include="..\BrokenNes2.Plugin\SpcSnapshot.cs" Link="SpcSnapshot.cs" />
+    <Compile Include="..\BrokenNes2.Plugin\SpcRecipe.cs" Link="SpcRecipe.cs" />
+    <Compile Include="..\BrokenNes2.Plugin\GenRecipe.cs" Link="GenRecipe.cs" />
     <!-- Round 6 (imodel): the instrument model and the samplers it is checked against (the `imodel` check renders PCM through the very sampler classes the plugin DLL uses, from the same source files) -->
     <Compile Include="..\BrokenNes2.Plugin\SnesSampler.cs" Link="SnesSampler.cs" />
     <Compile Include="..\BrokenNes2.Plugin\GbSampler.cs" Link="GbSampler.cs" />
     <Compile Include="..\BrokenNes2.Plugin\SegaSnapshot.cs" Link="SegaSnapshot.cs" />
     <Compile Include="..\BrokenNes2.Plugin\SegaSamplers.cs" Link="SegaSamplers.cs" />
     <!-- (InstrumentsUi.cs is the glue to the plugin's tabs and emulator: it is tested through the DLL, not linked) -->
-    <Compile Include="..\BrokenNes2.Plugin\Instruments\*.cs" Exclude="..\BrokenNes2.Plugin\Instruments\InstrumentsUi.cs" LinkBase="Instruments" />
+    <Compile Include="..\BrokenNes2.Plugin\Instruments\*.cs" Exclude="..\BrokenNes2.Plugin\Instruments\InstrumentsUi.cs;..\BrokenNes2.Plugin\Instruments\InstrumentPushHandler.cs" LinkBase="Instruments" />
     <!-- Round 6 (presets): the preset file, the engines' snapshots and the folder library (pure code; PresetLibrary, the plugin glue and the editor's picker are tested through the DLL) -->
     <Compile Include="..\BrokenNes2.Plugin\Presets\*.cs" LinkBase="Presets" />
   </ItemGroup>

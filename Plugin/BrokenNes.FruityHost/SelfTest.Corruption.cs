@@ -475,6 +475,7 @@ public sealed unsafe partial class SelfTest
                 ClickControl(t, p, IdCorOpenBtn, "SNES instruments: Open stockpile");
                 t.Expect(CorWait(() => CorIdle(p)) && p.Test(HkCorCount) == 3, "SNES instruments: the stockpile did not open");
                 ClickControl(t, p, IdCorRow, "SNES instruments: row 0");
+                p.Test(122, 0, 0);                                      // round 6: play for 0 s = freeze at once, the old behaviour this check is about (the recipes check covers playing first)
                 ClickControl(t, p, IdCorFreeze, "SNES instruments: freeze");
                 ClickControl(t, p, IdCorStart, "SNES instruments: Start");
                 t.Expect(CorWait(() => CorIdle(p), 90000), "SNES instruments: the start never finished");
@@ -886,7 +887,7 @@ public sealed unsafe partial class SelfTest
                 CorOpenDirect(p, stock);
                 CorWait(() => CorIdle(p));
                 p.Test(HkCorSelect, 0, 0);
-                p.Test(HkCorFreeze, 0, 1);
+                p.Test(HkCorFreeze, 0, 1); p.Test(122, 0, 0);
                 t.Expect(p.Test(HkCorStart) == 0, "Game Boy wave: the start was refused");
                 t.Expect(CorWait(() => CorIdle(p), 60000) && p.Test(HkCorGood) == 1, $"Game Boy wave: the start said '{CorText(p, 0)}'");
                 t.Expect(p.Test(45) == 1 && p.Test(50) == 1, $"Game Boy wave: Runaway {p.Test(45)}, Game Boy sampler {p.Test(50)}");
@@ -964,7 +965,7 @@ public sealed unsafe partial class SelfTest
             {
                 CorOpenDirect(p, stock);
                 t.Expect(CorWait(() => CorIdle(p)) && p.Test(HkCorCount) == 1, $"SMW: the stockpile did not open ({CorText(p, 0)})");
-                p.Test(HkCorSelect, 0, 0); p.Test(HkCorFreeze, 0, 1);
+                p.Test(HkCorSelect, 0, 0); p.Test(HkCorFreeze, 0, 1); p.Test(122, 0, 0);
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 t.Expect(p.Test(HkCorStart) == 0, $"SMW: the start was refused ({CorText(p, 0)})");
                 t.Expect(CorWait(() => CorIdle(p), 180000) && p.Test(HkCorGood) == 1, $"SMW: the start said '{CorText(p, 0)}'");

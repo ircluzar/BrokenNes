@@ -73,6 +73,8 @@ public sealed partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm261
     public Action<long, int, byte>? YmPortTap;
     /// <summary>Called for every PSG write with the master clock it lands at: (master clock, value).</summary>
     public Action<long, byte>? PsgPortTap;
+    /// <summary>Called for every byte the Z80 reads through its bank window (the cartridge address): the sound driver's music, instrument and sample data. The plugin's Instrument Runaway lab uses it to tell which cartridge bytes the sound driver actually reads; null (the default) costs a field check per bank read.</summary>
+    public Action<int>? BankReadTap;
 
     /// <summary>Output gain of the FM chip's mix (before the 16-bit clip); 1 puts a full-scale FM channel at about 17% of full scale, as the chip's own 9-bit DAC range does.</summary>
     public float FmGain = 1.0f;
@@ -369,6 +371,7 @@ public sealed partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm261
         if (!fromZ80 || host == null) return 0xFF;     // the 68000 cannot see the bank window from its own side of the bus
         BankReads++;
         uint a = (uint)(bank << 15 | address & 0x7FFF);
+        BankReadTap?.Invoke((int)a);
         byte data = host.ReadBus((int)a, master, out int wait);
         stallTicks += (int)Math.Ceiling((wait > 0 ? wait : (long)(BankWindowZ80Stall * machine.Timeline.Z80.Divider)) / (double)machine.Timeline.Z80.Divider);
         return data;

@@ -86,6 +86,10 @@ public sealed partial class Emulator : IDisposable
     public GbSnapshot? GbState => Volatile.Read(ref gbState);
     /// <summary>The sound chips' registers (and, on a Genesis game, the DAC sounds found) captured when Runaway started on a Master System, Game Gear or Genesis game; null for the other consoles.</summary>
     public SegaSnapshot? SegaState => Volatile.Read(ref segaState);
+    /// <summary>What listening to the game's sound driver found, in one line for the window ("" when nothing was captured).</summary>
+    public string ListenNote => Snapshot?.ListenNote ?? SegaState?.ListenNote ?? "";
+    /// <summary>How many game voices (recipes) Instrument Runaway holds for the game's sound driver (SNES, Genesis).</summary>
+    public int RecipeCount => Snapshot?.Recipes.Length ?? SegaState?.Recipes.Length ?? 0;
     /// <summary>Runaway on a SNES game: every instance plays the game's samples through its own S-DSP.</summary>
     public bool SamplerMode => Runaway && Snapshot != null;
     /// <summary>Runaway on a Game Boy game: every instance plays one Game Boy channel, with the game's settings, on its own sound unit.</summary>

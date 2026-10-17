@@ -190,19 +190,19 @@ public sealed unsafe partial class Bn2Plugin
         if (problem != null) Diag.Log("project preset: " + problem);
     }
 
-    // ---- test hooks 320-339 ----
+    // ---- test hooks 340-359 ----
 
-    /// <summary>Hooks of the presets, for the self-test: 320 load the preset file in the <c>index</c> bytes at <c>value</c> into this instance and put its emulator on the Presets chip (0 done, 1 refused: the words are in hook 321), 321 copy the last result's words
-    /// into the buffer at <c>value</c> (at most <c>index</c> chars; returns the length), 322 what this instance holds (0 nothing, 1 plays, 2 cannot play), 323 copy the held preset's name, 324 the held preset file's CRC-32 (0 none), 325 copy the project note
-    /// (-1 none), 326 drop the preset, 327 whether an audition is sounding, 328 audition the held preset, 329 bytes this thread allocated, 330 switch a library bug on (value; 0 none), 331 the length of the PRS1 section this instance would save (-1 none),
-    /// 332 whether the emulator is in preset mode, 333 copy the held preset's one-line summary, 334 copy the library folder, 335 force a rescan of the library folder (returns the number of presets listed), 336 the held preset's library id (copied; -1 none),
-    /// 337 / 338 put the Sega / Game Boy snapshot in the <c>index</c> bytes at <c>value</c> in place of the frozen game's.</summary>
+    /// <summary>Hooks of the presets, for the self-test (Fpd.TestBase + n, n from 340): 340 load the preset file in the <c>index</c> bytes at <c>value</c> into this instance and put its emulator on the Presets chip (0 done, 1 refused: the words are in hook 341), 341 copy the last result's words
+    /// into the buffer at <c>value</c> (at most <c>index</c> chars; returns the length), 342 what this instance holds (0 nothing, 1 plays, 2 cannot play), 343 copy the held preset's name, 344 the held preset file's CRC-32 (0 none), 345 copy the project note
+    /// (-1 none), 346 drop the preset, 347 whether an audition is sounding, 348 audition the held preset, 349 bytes this thread allocated, 350 switch a library bug on (value; 0 none), 351 the length of the PRS1 section this instance would save (-1 none),
+    /// 352 whether the emulator is in preset mode, 353 copy the held preset's one-line summary, 354 copy the library folder, 355 force a rescan of the library folder (returns the number of presets listed), 356 the held preset's library id (copied; -1 none),
+    /// 357 / 358 put the Sega / Game Boy snapshot in the <c>index</c> bytes at <c>value</c> in place of the frozen game's.</summary>
     private nint PresetTestHook(int n, nint index, nint value)
     {
         var emu = assignment.Emulator;
         switch (n)
         {
-            case 320:
+            case 340:
             {
                 if (index <= 0) return 1;
                 var file = new ReadOnlySpan<byte>((void*)value, (int)index).ToArray();
@@ -210,36 +210,36 @@ public sealed unsafe partial class Bn2Plugin
                 lastPresetResult = r.Message;
                 return r.Ok ? 0 : 1;
             }
-            case 321: return CopyText(lastPresetResult, index, value);
-            case 322: return preset == null ? 0 : preset.Play.CannotPlay != null ? 2 : 1;
-            case 323: return preset == null ? -1 : CopyText(preset.Data.Name, index, value);
-            case 324: return preset == null ? 0 : (nint)PresetFile.Checksum(preset.File);
-            case 325: return presetNote == null ? -1 : CopyText(presetNote, index, value);
-            case 326: ClearPreset(); return 0;
-            case 327: return audition != null ? 1 : 0;
-            case 328:
+            case 341: return CopyText(lastPresetResult, index, value);
+            case 342: return preset == null ? 0 : preset.Play.CannotPlay != null ? 2 : 1;
+            case 343: return preset == null ? -1 : CopyText(preset.Data.Name, index, value);
+            case 344: return preset == null ? 0 : (nint)PresetFile.Checksum(preset.File);
+            case 345: return presetNote == null ? -1 : CopyText(presetNote, index, value);
+            case 346: ClearPreset(); return 0;
+            case 347: return audition != null ? 1 : 0;
+            case 348:
             {
                 if (preset == null) return 1;
                 var r = StartAudition(preset.Play);
                 lastPresetResult = r.Message;
                 return r.Ok ? 0 : 1;
             }
-            case 329: return (nint)GC.GetAllocatedBytesForCurrentThread();
-            case 330: PresetMutants.Active = (int)value; return 0;
-            case 331: return PresetSectionBytes()?.Length ?? -1;
-            case 332: return emu?.PresetMode == true ? 1 : 0;
-            case 333: return preset == null ? -1 : CopyText(preset.Summary, index, value);
-            case 334: return CopyText(PresetLibrary.FolderPath(), index, value);
-            case 335: return PresetLibrary.Instance.Rescan();
-            case 336: return preset?.LibraryId == null ? -1 : CopyText(preset.LibraryId, index, value);
-            case 337:           // put the Sega snapshot in the <index> bytes at <value> in place of the frozen game's (tests: a made-up sound memory), Runaway on (0 done, 1 not a snapshot)
+            case 349: return (nint)GC.GetAllocatedBytesForCurrentThread();
+            case 350: PresetMutants.Active = (int)value; return 0;
+            case 351: return PresetSectionBytes()?.Length ?? -1;
+            case 352: return emu?.PresetMode == true ? 1 : 0;
+            case 353: return preset == null ? -1 : CopyText(preset.Summary, index, value);
+            case 354: return CopyText(PresetLibrary.FolderPath(), index, value);
+            case 355: return PresetLibrary.Instance.Rescan();
+            case 356: return preset?.LibraryId == null ? -1 : CopyText(preset.LibraryId, index, value);
+            case 357:           // put the Sega snapshot in the <index> bytes at <value> in place of the frozen game's (tests: a made-up sound memory), Runaway on (0 done, 1 not a snapshot)
             {
                 var s = SegaSnapshot.FromBytes(new ReadOnlySpan<byte>((void*)value, (int)index).ToArray());
                 if (s == null || emu == null) return 1;
                 emu.ReplaceSegaForTests(s);
                 return 0;
             }
-            case 338:           // the same for a Game Boy snapshot
+            case 358:           // the same for a Game Boy snapshot
             {
                 var g = GbSnapshot.FromBytes(new ReadOnlySpan<byte>((void*)value, (int)index).ToArray());
                 if (g == null || emu == null) return 1;

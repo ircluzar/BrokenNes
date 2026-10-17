@@ -5,12 +5,13 @@ namespace BrokenNes2;
 /// <summary>Parameter indices of BrokenNes2 (the order is part of saved projects and automation: append only from here on).
 /// <c>Core</c> (the sound chip), <c>Mode</c> and <c>Console</c> belong to the emulator the instance is attached to and are shared by every
 /// instance on it; the others belong to the instance. <c>Voice</c> (appended with the Sega stems) names one of the Sega chips' own voices (FM 1, the DAC ...)
-/// when the instance should sit on one rather than on a channel of the NES model; 0 leaves the choice to <c>Channel</c>.</summary>
+/// when the instance should sit on one rather than on a channel of the NES model; 0 leaves the choice to <c>Channel</c>. <c>Recipe</c> (appended in round 6) picks one of the recipes Instrument Runaway learned by listening to the
+/// game's sound driver (a SNES game's "game voices"); 0 plays the plain instrument the Instrument parameter names.</summary>
 public static class P
 {
     public const int Core = 0, Volume = 1, Pan = 2, Coarse = 3, Fine = 4, Duty = 5, Channel = 6, NoiseMode = 7;
-    public const int Mode = 8, Emulator = 9, Console = 10, Instrument = 11, Voice = 12;
-    public const int Count = 13;
+    public const int Mode = 8, Emulator = 9, Console = 10, Instrument = 11, Voice = 12, Recipe = 13;
+    public const int Count = 14;
 
     public static bool IsEmulatorLevel(int index) => index is Core or Mode or Console;
 }
@@ -84,5 +85,6 @@ public static class Bn2Params
         new("Console", 0, Cx.Count - 1, 0, Pi.CantInterpolate, v => Cx.Names[Math.Clamp(v, 0, Cx.Count - 1)]),
         new("Instrument", 0, 255, 0, Pi.CantInterpolate, v => $"#{v}"),
         new("Voice", 0, Ch.Total - 6, 0, Pi.CantInterpolate, VoiceText),
+        new("Recipe", 0, SpcRecipe.MaxRecipes, 0, Pi.CantInterpolate, v => v == 0 ? "-" : $"game voice {v}"),
     ];
 }

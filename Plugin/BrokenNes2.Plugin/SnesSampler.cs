@@ -19,11 +19,22 @@ internal sealed class SnesSampler
     // instrument edits (SpcSnapshot.Overlay, null for a game's own sound memory: then none of this runs): the overlay entry each DSP voice plays, and the voice masks the edits' echo / noise / pitch-modulation flags set
     private readonly int[] voiceOverlay = [-1, -1, -1, -1, -1, -1, -1, -1];
     private byte eonMask, nonMask, pmonMask;
+    private readonly byte defaultEon, flgBase;     // the echo bits plain instruments use; the game's FLG (echo-write flag and noise rate)
+
+    // a voice playing a recipe: its macro walks forward one DSP sample at a time (no allocation: the state lives in these eight objects)
+    private sealed class Macro
+    {
+        public SpcRecipe? R;
+        public int Next, BasePitch, Cents, Level, VolL, VolR;
+        public long Age;
+        public double Scale;
+    }
+    private readonly Macro[] macros = Enumerable.Range(0, 8).Select(_ => new Macro()).ToArray();
+    private int macroActive;
 
     public SnesSampler(SpcSnapshot snapshot, int hostRate, int maxBlock = 4096)
     {
         snap = snapshot;
-        eonMask = (byte)(snapshot.Dsp[0x4D] != 0 ? 0xFF : 0);
         var aram = (byte[])snapshot.Aram.Clone();
         dsp = new DSP_SFC(aram);
         dsp.Output = Push;
@@ -32,10 +43,13 @@ internal sealed class SnesSampler
 
         // the game's DSP state, without anything sounding: no key-on, nothing muted, no noise or pitch modulation
         for (int i = 0; i < SpcSnapshot.DspSize; i++) dsp.Write(i, snapshot.Dsp[i]);
-        dsp.Write(0x6C, (byte)(snapshot.Dsp[0x6C] & 0x3F));            // FLG: soft reset and mute off, echo-write flag and noise rate as the game had them
+        flgBase = (byte)(snapshot.Dsp[0x6C] & 0x3F);
+        dsp.Write(0x6C, flgBase);                                      // FLG: soft reset and mute off, echo-write flag and noise rate as the game had them
         if (snapshot.Dsp[0x0C] == 0 && snapshot.Dsp[0x1C] == 0) { dsp.Write(0x0C, 0x60); dsp.Write(0x1C, 0x60); }
         dsp.Write(0x2D, 0); dsp.Write(0x3D, 0);                        // PMON, NON
-        dsp.Write(0x4D, (byte)(snapshot.Dsp[0x4D] != 0 ? 0xFF : 0));   // echo on every voice if the game used it on any
+        defaultEon = (byte)(snapshot.Dsp[0x4D] != 0 ? 0xFF : 0);
+        eonMask = defaultEon;
+        dsp.Write(0x4D, eonMask);                                      // echo on every voice if the game used it on any
         for (int v = 0; v < 8; v++) { dsp.Write(v * 16, 0); dsp.Write(v * 16 + 1, 0); }
         dsp.Write(KoffReg, 0xFF);
         dsp.Write(KonReg, 0);
@@ -53,8 +67,12 @@ internal sealed class SnesSampler
     /// <summary>The DSP pitch register for a note: $1000 plays the sample at its own rate, at the root key (C5 = 60).</summary>
     public static int PitchFor(double cents) => PitchReg(cents / 100.0);
 
+    /// <summary>The DSP pitch register for a note of a recipe: the pitch the game keyed the note on with is the root key (C5), and FL's pitch moves it from there.</summary>
+    public static int PitchFor(double cents, int rootPitch) => Math.Clamp((int)Math.Round(rootPitch * Math.Pow(2.0, cents / 1200.0)), 1, 0x3FFF);
+
     public void NoteOn(int voice, int srcn, int pitch, int volL, int volR)
     {
+        EndMacro(voice);
         var ov = snap.Overlay;
         if (ov != null)
         {
@@ -64,6 +82,7 @@ internal sealed class SnesSampler
             ApplyMix(voice, ov, oi);
             if (oi >= 0) { pitch = ov.AdjustPitch(oi, pitch); volL = ov.AdjustVolume(oi, volL, false); volR = ov.AdjustVolume(oi, volR, true); }
         }
+        else SetFlags(voice, false, defaultEon != 0);               // a plain note on a voice that played a recipe: the plain flags again
         int r = voice * 16;
         dsp.Write(r, (byte)Math.Clamp(volL, -128, 127));
         dsp.Write(r + 1, (byte)Math.Clamp(volR, -128, 127));
@@ -96,6 +115,7 @@ internal sealed class SnesSampler
 
     public void Update(int voice, int pitch, int volL, int volR)
     {
+        if (macros[voice].R != null) { UpdateRecipe(voice, pitch, volL); return; }
         var ov = snap.Overlay;
         if (ov != null && voiceOverlay[voice] >= 0)
         {
@@ -111,9 +131,105 @@ internal sealed class SnesSampler
 
     public void NoteOff(int voice)
     {
+        EndMacro(voice);
         koff |= (byte)(1 << voice);
         dsp.Write(KoffReg, koff);
         pendingKon &= (byte)~(1 << voice);
+    }
+
+    // ---- recipes: a voice that plays what the game's driver did ----
+
+    private void SetFlags(int voice, bool noise, bool echo)
+    {
+        byte bit = (byte)(1 << voice);
+        byte n = (byte)(noise ? nonMask | bit : nonMask & ~bit), e = (byte)(echo ? eonMask | bit : eonMask & ~bit);
+        if (n != nonMask) { nonMask = n; dsp.Write(0x3D, n); }
+        if (e != eonMask) { eonMask = e; dsp.Write(0x4D, e); }
+        byte pm = (byte)(pmonMask & ~bit);                         // pitch modulation needs the neighbouring voice's output: a recipe voice does not replay it
+        if (pm != pmonMask) { pmonMask = pm; dsp.Write(0x2D, pm); }
+    }
+
+    private void EndMacro(int voice)
+    {
+        var m = macros[voice];
+        if (m.R == null) return;
+        m.R = null;
+        macroActive--;
+    }
+
+    private void WritePitch(int voice, Macro m)
+    {
+        int p = (int)Math.Clamp(Math.Round(m.BasePitch * Math.Pow(2.0, m.Cents / 1200.0)), 1, 0x3FFF);
+        int r = voice * 16;
+        dsp.Write(r + 2, (byte)(p & 0xFF));
+        dsp.Write(r + 3, (byte)((p >> 8) & 0x3F));
+    }
+
+    private void WriteVolume(int voice, Macro m)
+    {
+        int r = voice * 16;
+        dsp.Write(r, (byte)Math.Clamp((int)Math.Round(m.VolL * m.Scale), -128, 127));
+        dsp.Write(r + 1, (byte)Math.Clamp((int)Math.Round(m.VolR * m.Scale), -128, 127));
+    }
+
+    /// <summary>Starts a voice on a recipe: the key-on settings the game's driver used, then its macro, with <paramref name="pitch"/> (the register value of the FL note, the recipe's own pitch being the root key) and
+    /// <paramref name="level"/> (0 to 127, FL's velocity) applied on top. The recipe's loudest moment is as loud as a plain instrument at the same level.</summary>
+    public void NoteOnRecipe(int voice, SpcRecipe recipe, int pitch, int level)
+    {
+        var m = macros[voice];
+        if (m.R == null) macroActive++;
+        m.R = recipe; m.Next = 0; m.Age = 0; m.BasePitch = pitch; m.Cents = 0; m.Level = level;
+        m.Scale = level / 127.0 * 127.0 / recipe.PeakVolume;
+        m.VolL = recipe.VolL; m.VolR = recipe.VolR;
+        SetFlags(voice, recipe.Non, recipe.Eon);
+        if (recipe.Non) dsp.Write(0x6C, (byte)((flgBase & 0xE0) | recipe.NoiseRate));        // the noise rate is one setting for all voices: the newest noise note's
+        int r = voice * 16;
+        WriteVolume(voice, m);
+        WritePitch(voice, m);
+        dsp.Write(r + 4, (byte)recipe.Srcn);
+        dsp.Write(r + 5, (byte)recipe.Adsr1); dsp.Write(r + 6, (byte)recipe.Adsr2); dsp.Write(r + 7, (byte)recipe.Gain);
+        koff &= (byte)~(1 << voice);
+        dsp.Write(KoffReg, koff);
+        pendingKon |= (byte)(1 << voice);
+    }
+
+    private void UpdateRecipe(int voice, int pitch, int level)
+    {
+        var m = macros[voice];
+        m.BasePitch = pitch; m.Level = level;
+        m.Scale = level / 127.0 * 127.0 / m.R!.PeakVolume;
+        WritePitch(voice, m);
+        WriteVolume(voice, m);
+    }
+
+    /// <summary>One DSP sample's worth of macro time: the changes whose time has come are written to the voice.</summary>
+    private void TickMacros()
+    {
+        if (macroActive == 0) return;
+        for (int v = 0; v < 8; v++)
+        {
+            var m = macros[v];
+            var r = m.R;
+            if (r == null) continue;
+            var ev = r.Events;
+            while (m.Next < ev.Length && ev[m.Next].T <= m.Age)
+            {
+                var e = ev[m.Next++];
+                int reg = v * 16;
+                switch (e.Kind)
+                {
+                    case SpcEv.Pitch: m.Cents = e.Value; WritePitch(v, m); break;
+                    case SpcEv.VolL: m.VolL = e.Value; WriteVolume(v, m); break;
+                    case SpcEv.VolR: m.VolR = e.Value; WriteVolume(v, m); break;
+                    case SpcEv.Adsr1: dsp.Write(reg + 5, (byte)e.Value); break;
+                    case SpcEv.Adsr2: dsp.Write(reg + 6, (byte)e.Value); break;
+                    case SpcEv.Gain: dsp.Write(reg + 7, (byte)e.Value); break;
+                    case SpcEv.Srcn: dsp.Write(reg + 4, (byte)e.Value); break;
+                    case SpcEv.Flags: SetFlags(v, (e.Value & 1) != 0, (e.Value & 2) != 0); break;
+                }
+            }
+            m.Age++;
+        }
     }
 
     /// <summary>Makes the key-ons of this block take effect (the DSP keeps one pending key-on register).</summary>
@@ -126,7 +242,7 @@ internal sealed class SnesSampler
     public void Render(Span<float> dest, int frames)
     {
         FlushKon();
-        while (left.Available < frames) dsp.RunSample();
+        while (left.Available < frames) { TickMacros(); dsp.RunSample(); }
         left.Read(tmpL.AsSpan(0, frames));
         right.Read(tmpR.AsSpan(0, frames));
         for (int i = 0; i < frames; i++) { dest[i * 2] = tmpL[i]; dest[i * 2 + 1] = tmpR[i]; }
