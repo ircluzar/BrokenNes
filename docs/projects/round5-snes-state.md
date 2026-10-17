@@ -179,7 +179,7 @@ After `git merge refs/heads/main` (12 commits: c4b's project state, inputs' d-pa
 ## 9. Not tested (said, not hidden)
 
 * The physical **F5 / F7 keys** and the **Save State... / Load State...** file dialogs of the desktop app (the HTTP API calls the same methods; UI Automation of modal dialogs hangs the harness by the notes).
-* **Game Boy / Game Boy Color states in the Lite page** and the Master System / Game Gear / Genesis ones on this branch's AOT publish (they are covered by C4a's own Lite suite on its branch; here only the SNES was run in a browser).
+* **Game Boy / Game Boy Color states in the Lite page**, and the Master System / Game Gear / Genesis ones on this branch's AOT publish (C4a's Lite suite, `test-lite-sega.mjs`, covers the Sega three; it was not re-run here, and no Game Boy state check was found in it; only the SNES was run in a browser).
 * A SNES state **in a real FL project** (save and reopen in FL Studio): the plugin's own self test, including four real SNES games, was run on the merged tree (section 8); FL itself was not.
 * Sound **by ear** after a load (the audio is compared sample for sample, and the NES-chip sound units are only checked alive).
 * The **Super FX / SA-1 games' in-game saves** across a state load against the real hardware's behaviour (the state replaces the cartridge RAM with the saved one; the battery file on disk is not touched until the app next writes it).
