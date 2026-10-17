@@ -441,18 +441,28 @@ namespace NesEmulator
             if(!triangle_lengthHalt && triangle_lengthCounter>0) triangle_lengthCounter--;
             if(!noise_lengthHalt && noise_lengthCounter>0) noise_lengthCounter--;
             // Sweeps
-            Sweep(ref pulse1_timer, pulse1_sweepNegate, pulse1_sweepShift, pulse1_sweepPeriod, ref pulse1_sweepDivider, ref pulse1_sweepReload, true);
-            Sweep(ref pulse2_timer, pulse2_sweepNegate, pulse2_sweepShift, pulse2_sweepPeriod, ref pulse2_sweepDivider, ref pulse2_sweepReload, false);
+            Sweep(ref pulse1_timer, (pulse1_sweepRaw & 0x80) != 0, pulse1_sweepNegate, pulse1_sweepShift, pulse1_sweepPeriod, ref pulse1_sweepDivider, ref pulse1_sweepReload, true);
+            Sweep(ref pulse2_timer, (pulse2_sweepRaw & 0x80) != 0, pulse2_sweepNegate, pulse2_sweepShift, pulse2_sweepPeriod, ref pulse2_sweepDivider, ref pulse2_sweepReload, false);
         }
-        private void Sweep(ref ushort timer, bool negate, int shift, int period, ref int divider, ref bool reload, bool channel1)
+        // The period is rewritten only while the sweep's ENABLE flag (bit 7 of $4001/$4005) is set. This ignored the flag, so a game that writes a shift and negate with the flag
+        // clear (the SMB1 remake writes $0F) had its pulse periods ground down by the sweep: the BrokenDev differential replay against Mesen saw the period register fall 0x17C ->
+        // 0x179 -> 0x176 here while Mesen held 0x17C.
+        // Hardware order (nesdev "APU Sweep"): the update tests the divider BEFORE it is reloaded or counted down, so a reload flag with a zero divider (P = 0, the usual case
+        // of a game that sets a sweep and wants it to run every half frame) updates on the very first clock. The earlier code only reloaded on that clock and so ran one
+        // half-frame behind Mesen (period 0x0EF where Mesen had 0x0FD at the first frame of an upward sweep, SMB1 remake). `period` is P + 1 here.
+        private void Sweep(ref ushort timer, bool enabled, bool negate, int shift, int period, ref int divider, ref bool reload, bool channel1)
         {
-            if(shift==0){ if(reload){ divider=period; reload=false; } return; }
-            if(reload){ divider = period; reload=false; }
-            else if(--divider <=0){ divider = period; int change = timer >> shift; int target = negate ? (timer - change - (channel1?1:0)) : (timer + change); if(target >=8 && target <= 0x7FF) timer = (ushort)target; }
+            if(divider == 0 && enabled && shift != 0)
+            {
+                int change = timer >> shift;
+                int target = negate ? (timer - change - (channel1?1:0)) : (timer + change);
+                if(timer >= 8 && target <= 0x7FF) timer = (ushort)Math.Max(0, target);
+            }
+            if(divider == 0 || reload){ divider = period - 1; reload = false; } else divider--;
         }
         private void ClockEnvelope(ref bool start, ref int divider, ref int decay, int volumeParam, bool loop){ if(start){ start=false; decay=15; divider=volumeParam+1; } else { if(--divider <=0){ divider = volumeParam+1; if(decay>0) decay--; else if(loop) decay=15; } } }
 
-        // Frame sequencer (NTSC): 4-step: 0:Q, 1:Q+H,2:Q,3:Q+H+IRQ; 5-step: 0:Q+H,1:Q,2:Q+H,3:Q,4:--- (no IRQ)
+        // Frame sequencer (NTSC): 4-step: 0:Q, 1:Q+H,2:Q,3:Q+H+IRQ; 5-step: 0:Q,1:Q+H,2:Q,3:---,4:Q+H (no IRQ)
         private void ClockFrameSequencer()
         {
             while(frameCycle >= nextFrameEventCycle)
@@ -475,16 +485,20 @@ namespace NesEmulator
                 }
                 else
                 {
+                    // 5-step mode on hardware (nesdev "APU Frame Counter"): 7457 quarter; 14913 quarter + half; 22371 quarter; 29829 nothing; 37281 quarter + half.
+                    // This table had the half-frame clocks at the first and third steps (and none at the last), one step early: a game that writes $4017 with bit 7 set
+                    // every frame (the SMB1 remake does) then ran its length counters and sweeps three times a frame instead of two (found by the BrokenDev differential
+                    // replay against Mesen: pulse length 0xE2 -> 0xE0 -> 0xDE per frame in Mesen, 0xD4 -> 0xD1 -> 0xCE here).
                     switch(frameStep)
                     {
-                        case 0: QuarterFrameTick(); HalfFrameTick(); nextFrameEventCycle = 14913; break;
-                        case 1: QuarterFrameTick(); nextFrameEventCycle = 22371; break;
-                        case 2: QuarterFrameTick(); HalfFrameTick(); nextFrameEventCycle = 29829; break;
-                        case 3: QuarterFrameTick(); nextFrameEventCycle = 37281; break;
+                        case 0: QuarterFrameTick(); nextFrameEventCycle = 14913; break;
+                        case 1: QuarterFrameTick(); HalfFrameTick(); nextFrameEventCycle = 22371; break;
+                        case 2: QuarterFrameTick(); nextFrameEventCycle = 29829; break;
+                        case 3: nextFrameEventCycle = 37281; break;
                         case 4:
-                            QuarterFrameTick();
-                            frameStep = -1; 
-                            frameCycle -= 37282; 
+                            QuarterFrameTick(); HalfFrameTick();
+                            frameStep = -1;
+                            frameCycle -= 37282;
                             nextFrameEventCycle = 7457;
                             break;
                     }
