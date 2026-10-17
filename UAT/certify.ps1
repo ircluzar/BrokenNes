@@ -33,6 +33,8 @@
                                               the DevTools protocol, 100+ checks of the console dropdown, layouts, ROM loading, core pickers, swaps, saves, states, video, audio, pad.
                                               NOT RUN, with the reason, when the script is not in the tree, node 22+ or Edge/Chrome is missing, the wasm-tools (AOT) workload is
                                               missing, the -LitePublish folder holds no site, or the games are not on the machine (-LiteRoms); PASS or FAIL otherwise
+    nano       BrokenNes Nano (web synth)     UAT\entrypoints\nano-smoke.ps1: Nano\dist rebuilt and compared, the engine tests, the module against Core and (with the plugin built by plugin-host)
+                                              against the plugin DLL sample for sample, and the AudioWorklet in headless Edge/Chrome (NOT RUN, with the reason, without node or a browser)
     notices    third-party notices            UAT\entrypoints\notices-check.ps1: the ledgers match the tree, the four license texts are there, and the desktop
                                               folder, the Lite site and (in install-smoke) the installed plugin folder hold the notices
 
@@ -275,6 +277,21 @@ Run 'plugin-synth' {
     $j = if ($last) { $last | ConvertFrom-Json } else { $null }
     if ($j -and $j.status -eq 'NOT RUN') { return @{ Status = 'NOT RUN'; Detail = "$($j.error); the rest: $(CheckSummary $j)" } }
     @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
+}
+
+Run 'nano' {
+    if (-not (Want 'nano')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $a = @('-Artifacts', (Join-Path $workRoot 'uat_nano'))
+    $fh = Join-Path $art 'bin\BrokenNes.FruityHost\release\BrokenNes.FruityHost.exe'
+    $dllp = Join-Path $art 'publish\BrokenNes2.Plugin\release_win-x64\BrokenNes2_x64.dll'
+    if ((Test-Path $fh) -and (Test-Path $dllp)) { $a += @('-FruityHost', $fh, '-PluginDll', $dllp) }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\nano-smoke.ps1') @a 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'nano-smoke.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    if ($j -and $j.status -eq 'NOT RUN') { return @{ Status = 'NOT RUN'; Detail = "$($j.error)" } }
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = ((CheckSummary $j) + $(if ($j -and $j.notes) { "; $($j.notes)" } else { '' })) }
 }
 
 Run 'notices' {
