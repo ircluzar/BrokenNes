@@ -12,7 +12,7 @@ ROM bytes and hashes are those of the final build on this machine. "Cores" are w
 
 | Project | Version | ROM (bytes, sha256 start, md5 start) | Cores | Checks | Diff vs Mesen | Known issues |
 |---|---|---|---|---|---|---|
-| `smb1-nes` | SMB1 remake, NES, mapper 30 | 524,304 `8fc726d4` `2b02d077` | CPU/PPU/APU FIX | boot 900 f, play 2400 f: pass (11 colours, audio peak 0.317 / 0.434, 250-310 fps). Needs zeroed RAM: with the FCEUX power-on pattern the game stalls (info scenario, 7 colours, no sound after frame 300) | **pass** after the APU fixes (2400 f; picture and PPU columns identical; 16 isolated APU blip frames of a budget of 24) | **Project bug: reads two variables it never initialises.** A first-quest remake whose parity cannot be proven by testing. Unmerged work in its pipeline notes |
+| `smb1-nes` | SMB1 remake, NES, mapper 30 | 524,304 `8fc726d4` `2b02d077` | CPU/PPU/APU FIX | boot 900 f, play 2400 f: pass (11 colours, audio peak 0.317 / 0.434, 230-310 fps). Needs zeroed RAM: with the FCEUX power-on pattern the game stalls (info scenario, 7 colours, no sound after frame 300) | **pass** after the APU fixes (2400 f; picture and PPU columns identical; 16 isolated APU blip frames of a budget of 24) | **Project bug: reads two variables it never initialises.** A first-quest remake whose parity cannot be proven by testing. Unmerged work in its pipeline notes |
 | `smb1-nested` | SMB1 remake on the SNES through Project Nested | 4,194,304 `f6c48676` `25b52aac` | SFC/SFC/SFC | boot 1200 f, play 3000 f: pass (11 colours, peak 0.161 / 0.204, 680-1040 fps) | **pass** (7 checkpoints; worst residue 289 px at frame 900, best offset +5) | no DMC IRQ, no lag-frame emulation, no entry-point feedback |
 | `vrun-nes` | VRUN CTW, NES demake, mapper 30 | 524,304 `3cfce10c` `a1e7bd6e` (first build `584a91bc`) | CPU/PPU/APU FIX | boot 900, play 2400, play with NTSC frame timing 2400: pass (8 / 14 colours, peak 0.318 / 0.503, 250-285 fps) | **pass** (1200 f; picture and every APU register identical) | ROM at its ceiling; **build not byte-reproducible**; one check of the project's own regression suite fails (known) |
 | `vrun-nested` | VRUN on the SNES through Project Nested | 4,194,304 `8ab7360b` `0de8d5b8` | SFC/SFC/SFC | boot 1200, play 3000: pass (8 / 10 colours, peak 0.176 / 0.189, 740-850 fps) | **pass** (8 checkpoints; worst residue 32 px) | as `smb1-nested`; builds without entry-point feedback |
@@ -51,7 +51,7 @@ desktop app's BrokenDev menu has a Power-on RAM lever for this.
 
 UAT: `UAT/cases/brokendev.json`, 12 cases (boot and play of each project) with goldens recorded and reproduced over two runs each. They skip, with the
 reason, on a machine without the built ROMs (shown: pointed at a folder that does not exist the 12 SKIP and the suite exits 0; with `-StrictMissing`
-the same 12 FAIL, exit 1). The whole suite after the APU fixes: **64 pass, 0 fail, 60 skip** (52 pre-existing passes unchanged + 12 new).
+the same 12 FAIL, exit 1). The whole suite on the final tree (main `b771fa7` merged): **84 pass, 0 fail, 60 skip** (the 52 pre-existing passes unchanged, the 12 new BrokenDev cases, and the 20 cases of main's new states suite).
 
 ## 4. Differential replay against Mesen
 
@@ -88,16 +88,38 @@ are run in both emulators and a record per frame is compared. It is not a proof 
 Small and additive, except the first item.
 
 1. **`Windows/NesEmulator/apus/APU_FIX.cs` (the default APU core): five accuracy fixes**, each found on the SMB1 remake against Mesen and each with a guard in
-   `BrokenDev/tests/apu-regress.ps1` that **fails on the pre-fix build and passes now** (hand-assembled programs the test writes itself, values measured on Mesen 2.1.1):
-   * 5-step frame sequencer: the half-frame clocks were one step early, so a game writing `$4017 = $FF` every frame ran its length counters three times a frame instead of two (guard: pulse length lasts 4 frames, Mesen 4; before: 3);
-   * the sweep unit ignored its enable flag (guard: period stays `0x17C`, before: `0x0EE`);
-   * the sweep update ran one half-frame late (guard: `1ac 1e2 220 266 2b4 30c`, as Mesen; before `193 1c6 200 242 28c 2df`);
-   * a write to `$4000`/`$4004`/`$400C` restarted the envelope (hardware: only `$4003`/`$4007`/`$400F` does) (guard: a decayed envelope stays 0; before it came back as 8, 4, ...);
-   * a write to `$4008` set the triangle's linear-counter reload flag (hardware: only `$400B` does) (guard: the counter counts down 69 65 61 ... 3d as Mesen; before it jumped back to 7c).
-   While doing this I introduced and fixed a bug of my own: the new sweep divider counted below zero for ever on a game that never wrote `$4001`; the plugin selftest
-   `runaway-state` caught it (a reopened project differed from a run that never left). After the fix the plugin's FruityHost selftest is 49 pass + the known
-   QLQ warning, 0 failed, as before. Other games' audio can change where they relied on those quirks; that was checked only by the UAT suite (framebuffer hashes) and the plugin selftest (pitch, level, state), not by listening.
-   The fixes bring the default core closer to Mesen; whether Mesen is right on hardware was not checked against a real console. The NES, SNES and Sega goldens of the UAT suite are unchanged (64 pass, 0 fail).
+   `BrokenDev/tests/apu-regress.ps1` that **fails on the pre-fix build and passes now** (hand-assembled programs the test writes itself, values measured on Mesen 2.1.1 on 2026-10-16; the older FMC core is printed as a second negative control):
+
+   | # | Fix | Mesen evidence | Pre-fix BrokenNes | Fixed |
+   |---|---|---|---|---|
+   | 1 | 5-step frame sequencer: half-frame clocks were one step early | program writes `$4017 = $FF` every frame; frames until pulse 1's length counter (index 0 = 10) is zero: **4** (SMB1 trace: length 0xE2 -> 0xE0 -> 0xDE per frame) | 3 (length 0xD4 -> 0xD1 -> 0xCE) | 4 |
+   | 2 | sweep ignored its enable flag | `$4001 = $0F` (enable clear): period stays **`0x17C`** after 25 frames | `0x0EE` | `0x17C` |
+   | 3 | sweep update ran one half-frame late after a reload | `$4001 = $84` after idle frames: period at trace frames 3..8 **`1ac 1e2 220 266 2b4 30c`** | `193 1c6 200 242 28c 2df` | same as Mesen |
+   | 4 | a write to `$4000`/`$4004`/`$400C` restarted the envelope (hardware: only `$4003`/`$4007`/`$400F`) | envelope decayed to 0, then the same register rewritten: p1vol, p2vol, nvol stay **0** at frames 5..16 | came back as 8, 4, ... at frames 9, 10 | 0 |
+   | 5 | a write to `$4008` set the triangle linear-counter reload flag (hardware: only `$400B`) | `$4008` rewritten while counting down: tlin **`69 65 61 5d 59 55 51 4d 49 45 41 3d`** (frames 5..16) | `69 65 61 5d 7c 78 ...` (jumped back up) | same as Mesen |
+
+   Effect on the SMB1 remake against Mesen (2400 frames): APU columns that differed before the fixes: p1vol 43 frames, p2vol 142, tlin 176, ...; after them only 16 isolated single-frame blips remain (section 4).
+   While doing this I introduced and fixed a bug of my own: the new sweep divider counted below zero for ever on a game that never wrote `$4001` (the period defaulted to 0); the plugin
+   selftest `runaway-state` caught it (a reopened project differed from a run that never left); the UAT suite did not.
+
+   **Goldens that could depend on APU_FIX audio, and what running each on the final tree (main `b771fa7` merged with this branch) gave:**
+
+   | Golden or suite | Depends on APU_FIX because | Result |
+   |---|---|---|
+   | UAT cases with an `audioHash` or `audioPeak` expectation: 67 cases (SNES, Game Boy, Master System, Game Gear, Genesis sessions, `sega-run`, the 8 BrokenDev SNES cases) | most do not use the NES chip at all | **67 of 67 ran and PASS, none re-recorded** |
+   | ... of those, the 7 whose sound unit is a NES-family chip: `sega-sms-alexkidd-nes-sound` (`NES:FIX`), `sega-sms-sonic1-sound-on-nes-fix` (`NES:FIX`), `sega-sms-sonic-fm-on-nes` (`NES-FM:FIX`), `sega-md-sonic1-nes-sound` (`NES:FIXS`), `sega-sms-sonic-on-snes-chip` (`NES:SNES`), `sega-gg-sonic-on-gb-chip` (`NES:DMG`), `sega-md-sonic1-on-sms-chip` (`NES:SMS`) | FIX or FIXS is the front core ($4015, frame IRQ, DMC DMA) and/or the chip | **7 of 7 PASS** |
+   | the whole UAT suite | NES `romtest` cases hash the picture only | **84 pass, 0 fail, 60 skip** (the 60 skips are cases whose ROMs are absent on this machine, for example the story pages and the savestate corpus; none is an audio case) |
+   | `--sega-bridge-test` | the Sega, Game Boy and SNES chips take NES registers; FIX is the front core | **356 passed, 0 failed** |
+   | `--sega-stems-test` | per-voice stems | **38 passed, 0 failed** |
+   | `--sega-chips-test`, `--sega-contracts-test`, `--sega-test` | chip and timeline contracts | **34, 80, 72 passed, 0 failed** |
+   | `--swap-matrix-test` | live swaps of APU cores | **35 passed, 0 failed** |
+   | `--state-audit` | every core of every console session | 205 supported, 23 partial, 48 refused with a reason, **0 broken** |
+   | FruityHost plugin selftest (Native AOT DLL) | the plugin's Direct mode writes `$4000`/`$4008` and plays a bare APU_FIX; ROM mode stems | **49 pass + the QLQ warning, 1 fail: `corruption`, SNES-only, which fails identically on a clean build of main `b771fa7`** (reported to the lead); `runaway-state` and `cores` (pitch of every chip) pass |
+   | raw audio of the pre-fix and the fixed Workshop (`--apu-audio`, FIX cores, 1500 frames, SHA-256 of the float WAV) | VRUN (4-step, constant volume) and three AudioPlayer songs | **bit-identical** on all four |
+   | `smb1-nes` (BrokenDev verify, pre-fix Workshop against fixed Workshop) | the 5-step game that exposed the bugs | audio **changed by design** (hash `918FAEFF...` -> `D512D0DB...` in boot, `963579DE...` -> `6EB214D4...` in play; peak 0.369 -> 0.317 and 0.4344 -> 0.4337); the picture hash at the last frame is **identical** (`94E1E850...`, `31ADC705...`, `6DA30B9A...`) |
+
+   Nothing audio-based moved, so nothing was re-recorded. I could not run the AccuracyCoin ROM (not on this machine) and no real controller or ear was involved.
+   The fixes bring the default core closer to Mesen; whether Mesen is right on hardware was not checked against a real console.
 2. `Windows/EmulatorConfig.cs`: `brokenDevEnabled` (default off) and `BROKENNES_CONFIG_DIR` (so a test can run the app with its own settings folder).
 3. `Windows/BrokenDev/BrokenDevGate.cs`, `Windows/MainForm/MainForm.BrokenDev.cs` (new), one line each in `MainForm.Initialization.cs` and `MainForm.RomLoading.cs`:
    the BrokenDev menu (built ROMs, Power-on RAM lever, open the folder), shown only with `BROKENNES_DEV=1` or the config flag.

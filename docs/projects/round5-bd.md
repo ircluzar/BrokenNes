@@ -26,13 +26,13 @@ the games import. This round: the module, the six versions verified, the knowled
 |---|---|---|---|
 | `BrokenDev/tests/run-tests.ps1` | the scripts themselves: manifests, placeholders, restore (synthetic zip), build runner, doctor, Workshop gate, verify, the trace gate, the decoder model | 58 pass, 0 fail, 0 skip under Windows PowerShell 5.1 and under PowerShell 7 | Each check has a negative control in the same file: a broken manifest, a missing sentinel, a build that leaves the old output, a step that outlives its timeout (killed by PID), a ROM that draws nothing / ignores the pad / is silent, a two-frame APU divergence, a one-frame picture divergence, too many blips, a trace without a header, a wrong period, a decode one frame off |
 | `brokendev.ps1 verify <id>` | boot, play, hashes, colours, audio, speed on BrokenNes | 6 of 6 pass | the script tests above |
-| `UAT/cases/brokendev.json` (12 cases) | final picture hash per project and scenario, reproducible over two runs | included in the suite: 64 pass, 0 fail, 60 skip | `-UpdateGolden` refuses a case whose two runs disagree; a missing ROM skips with a reason (shown), and `-StrictMissing` turns the skip into a failure (shown) |
+| `UAT/cases/brokendev.json` (12 cases) | final picture hash per project and scenario, reproducible over two runs | included in the suite: 84 pass, 0 fail, 60 skip (final tree) | `-UpdateGolden` refuses a case whose two runs disagree; a missing ROM skips with a reason (shown), and `-StrictMissing` turns the skip into a failure (shown) |
 | `brokendev.ps1 diff <id>` (NES) | picture/PPU exact, APU exact except isolated blips, against Mesen | `vrun-nes` pass, `smb1-nes` pass (16 blip frames of 24) | BrokenNes given another pad script than Mesen: fail; before the APU fixes `smb1-nes` failed on p1vol/p2vol/tlin; the gate has its own script tests |
 | `brokendev.ps1 diff <id>` (SNES) | pictures at checkpoints, best frame offset, residue ceiling | 4 of 4 pass | `supervrun` with no input for BrokenNes: fail |
 | `BrokenDev/tests/apu-regress.ps1` | five APU_FIX behaviours against values measured on Mesen | 5 of 5 guards hold | each fails on the pre-fix build (X=3; `0ee`; `193 1c6 ...`; volumes 8,4 return; tlin jumps to `7c`) and on the older FMC core it prints that it disagrees |
-| `BrokenDev/tests/app-smoke.ps1` | the real desktop app: menu absent when off, present via env or config, a click opens a ROM, the power-on RAM lever | 9 of 9 on an earlier build; **rerun after the final merge, see section 6** | negative controls inside (lever off vs on changes the machine) |
+| `BrokenDev/tests/app-smoke.ps1` | the real desktop app: menu absent when off, present via env or config, a click opens a ROM, the power-on RAM lever | 9 of 9, also on the merged desktop build (section 6) | negative controls inside (lever off vs on changes the machine) |
 | `BrokenDev/tools/music-replay-check.ps1` | MIDI -> converter -> ROM -> BrokenNes -> decoder model, frame by frame; with `-Template`, the patched template as well | 12 of 12 songs agree; template 11 of 11 | three controls per song (notes a semitone off, a frame out of step, another song's streams), a fourth for the template; all fail as required |
-| plugin selftest (`FruityHost selftest`) | the FL plugin after the APU changes | 49 pass + the QLQ warning, 0 failed | it caught a bug of mine (sweep period default) that the UAT suite did not see |
+| plugin selftest (`FruityHost selftest`) | the FL plugin after the APU changes | 49 pass + the QLQ warning, 1 fail (`corruption`, SNES only, fails identically on clean main) | it caught a bug of mine (sweep period default) that the UAT suite did not see |
 
 ## 4. Decisions
 
@@ -51,9 +51,21 @@ Not tested: the six versions with a real keyboard or controller in the desktop w
 anything on real hardware.
 Open: the 16 one-frame APU blips on `smb1-nes` are explained (Mesen's lazily updated APU state, the sample point straddling the NMI) but not proven one by one; the SNES comparison is a few pictures; VRUN's NESFab build is not byte-reproducible; the SMB1 uninitialised variables are the user's to fix (two lines, in the report).
 
-## 6. After the final merge of `main`
+## 6. After the final merge of `main` (b771fa7)
 
-(Filled in by the closing section of the report to the lead; see the end of this file.)
+Main at `108250b` did not compile (`SnesSession.Board` declared twice, CS0102); reported to the lead, who fixed it on main as `b771fa7`; this branch took main's file. Everything below was
+run on the merged tree (main `b771fa7` + this branch):
+
+| Verifier | Result |
+|---|---|
+| `brokendev.ps1 verify all` | 6 of 6 pass (same colours and audio peaks as before the merge) |
+| `brokendev.ps1 diff all` | 6 of 6 pass; the numbers did not move (`smb1-nes` 16 blip frames of 24; SNES worst residues 0, 32, 53, 289 px) |
+| UAT suite | **84 pass, 0 fail, 60 skip**; all 67 audio-expecting cases ran and pass (7 of them with a NES-family sound unit); no golden re-recorded |
+| `run-tests.ps1` | 58 pass, 0 fail, 0 skip under 5.1 (and under PowerShell 7 before the merge) |
+| `apu-regress.ps1` | 5 of 5 guards hold |
+| `app-smoke.ps1` | 9 of 9 pass on the merged desktop build |
+| Workshop `--sega-bridge-test`, `--sega-stems-test`, `--sega-chips-test`, `--sega-contracts-test`, `--sega-test`, `--swap-matrix-test`, `--state-audit` | 356, 38, 34, 80, 72, 35 passed, 0 failed; 0 broken |
+| FruityHost selftest | 49 pass + the QLQ warning, **1 fail: `corruption` (SNES only)**. The same check fails identically on a clean `git archive` of main `b771fa7` built the same way (none of my changes), so it is not caused by this branch; reported to the lead |
 
 ## 7. Next steps
 
