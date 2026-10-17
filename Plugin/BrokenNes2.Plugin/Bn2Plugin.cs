@@ -1049,10 +1049,10 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                 return note.Length;
             }
             case 129: { int n = emu?.RecipeCount ?? 0; int rp = Get(P.Recipe); return rp > 0 && rp <= n ? rp : 0; }
-            // Genesis recipes: 130 recipes the Sega snapshot holds (-1 none), 131 a recipe's field, index = field << 16 | recipe: 0 kind (0 FM, 1 PSG tone, 2 PSG noise), 1 block, 2 fnum, 3 events, 4 held, 5 hash (30 bits), 6 uses,
-            // 7 pitch events, 8 length in samples, 9 patch changes, 10 volume changes, 11 largest pitch change in cents, 12 algorithm, 13 PSG period; 132 the Sega snapshot's listening note (copied like 85)
-            case 130: return emu?.SegaState?.Recipes.Length ?? -1;
-            case 131:
+            // Genesis recipes: 150 recipes the Sega snapshot holds (-1 none), 151 a recipe's field, index = field << 16 | recipe: 0 kind (0 FM, 1 PSG tone, 2 PSG noise), 1 block, 2 fnum, 3 events, 4 held, 5 hash (30 bits), 6 uses,
+            // 7 pitch events, 8 length in samples, 9 patch changes, 10 volume changes, 11 largest pitch change in cents, 12 algorithm, 13 PSG period; 152 the Sega snapshot's listening note (copied like 85)
+            case 150: return emu?.SegaState?.Recipes.Length ?? -1;
+            case 151:
             {
                 var rs = emu?.SegaState?.Recipes;
                 int rec = (int)(index & 0xFFFF), field = (int)(index >> 16);
@@ -1064,7 +1064,7 @@ public sealed unsafe class Bn2Plugin : FruityPluginBase
                     9 => r.Count(GenEv.Param), 10 => r.Count(GenEv.Vol), 11 => r.Events.Where(e => e.Kind == GenEv.Pitch).Select(e => Math.Abs(e.Value)).DefaultIfEmpty(0).Max(), 12 => r.Patch[28] & 7, 13 => r.Period, _ => -1,
                 };
             }
-            case 132:
+            case 152:
             {
                 var note = emu?.SegaState?.ListenNote;
                 if (note == null) return -1;

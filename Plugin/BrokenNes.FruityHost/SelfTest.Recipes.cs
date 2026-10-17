@@ -300,7 +300,7 @@ public sealed unsafe partial class SelfTest
     // ------------------------------------------------------------------------------------------------
     // the Genesis: the YM2612 and PSG notes of a game, learned and played
 
-    private static string RecGenText(PluginInstance p) => RecText(p, 132);
+    private static string RecGenText(PluginInstance p) => RecText(p, 152);
 
     private void RecGenesis(T t)
     {
@@ -317,11 +317,11 @@ public sealed unsafe partial class SelfTest
                 t.Expect(p.Test(12) == 0 && p.Test(11) > 30, "Genesis recipes: the test game did not run");
                 p.Test(47, 0, 1);
                 t.Expect(p.Test(45) == 1 && p.Test(71) == 3, $"Genesis recipes: Runaway on the Genesis game (runaway {p.Test(45)}, snapshot kind {p.Test(71)})");
-                count = (int)p.Test(130);
-                for (int i = 0; i < count; i++) { long kind = p.Test(131, i); if (kind == 0 && fmRecipe < 0) fmRecipe = i; if (kind == 1 && psgRecipe < 0) psgRecipe = i; }
+                count = (int)p.Test(150);
+                for (int i = 0; i < count; i++) { long kind = p.Test(151, i); if (kind == 0 && fmRecipe < 0) fmRecipe = i; if (kind == 1 && psgRecipe < 0) psgRecipe = i; }
                 t.Expect(fmRecipe >= 0 && psgRecipe >= 0, $"Genesis recipes: the game's FM note and PSG tone should each be a game voice ({count} recipes, FM {fmRecipe}, PSG {psgRecipe})");
                 if (fmRecipe < 0 || psgRecipe < 0) return;
-                string note = RecText(p, 132);
+                string note = RecText(p, 152);
                 t.Expect(note.StartsWith("Listened for") && note.Contains("game voice"), $"Genesis recipes: the window's note says '{note}'");
 
                 // the picker lists Auto, the game's instruments, then the game voices
@@ -367,7 +367,7 @@ public sealed unsafe partial class SelfTest
                 t.Note($"Genesis recipes: bytes allocated on the audio thread while three notes play: FM game voice {aFm:N0}, PSG game voice {aPsg:N0}");
                 t.Expect(aFm == 0 && aPsg == 0, $"Genesis recipes: {aFm:N0} (FM) and {aPsg:N0} (PSG) bytes allocated on the audio thread while three game voices played (must be 0)");
                 p.SetParam(PRecipe, fmRecipe + 1);
-                hashes = Enumerable.Range(0, count).Select(i => p.Test(131, (5 << 16) | i)).ToArray();
+                hashes = Enumerable.Range(0, count).Select(i => p.Test(151, (5 << 16) | i)).ToArray();
                 project = p.SaveState();
             }
 
@@ -378,8 +378,8 @@ public sealed unsafe partial class SelfTest
                 q.Dispatcher(Fpd.SetSampleRate, 0, 48000);
                 q.LoadState(project);
                 WaitForRom(q);
-                t.Expect(q.Test(45) == 1 && q.Test(130) == count && q.GetParam(PRecipe) == fmRecipe + 1, $"Genesis recipes: the reopened project has {q.Test(130)} game voices (expected {count}), Recipe parameter {q.GetParam(PRecipe)}");
-                bool same = Enumerable.Range(0, count).All(i => q.Test(131, (5 << 16) | i) == hashes[i]);
+                t.Expect(q.Test(45) == 1 && q.Test(150) == count && q.GetParam(PRecipe) == fmRecipe + 1, $"Genesis recipes: the reopened project has {q.Test(150)} game voices (expected {count}), Recipe parameter {q.GetParam(PRecipe)}");
+                bool same = Enumerable.Range(0, count).All(i => q.Test(151, (5 << 16) | i) == hashes[i]);
                 t.Expect(same, "Genesis recipes: a game voice came back from the project different from the one that was saved");
                 var m2 = new Mixer { SampleRate = 48000 };
                 var a2 = Mono(m2.Run(q, One(60, 0, 0.5)));
@@ -411,7 +411,7 @@ public sealed unsafe partial class SelfTest
                 q.Dispatcher(Fpd.SetSampleRate, 0, 48000);
                 q.LoadState(lying);
                 WaitForRom(q);
-                t.Expect(q.Test(45) == 1 && q.Test(71) == 3 && q.Test(130) == 0, $"Genesis recipes (damaged): a recipe count of 200 should drop the recipes and keep the chips (runaway {q.Test(45)}, recipes {q.Test(130)})");
+                t.Expect(q.Test(45) == 1 && q.Test(71) == 3 && q.Test(150) == 0, $"Genesis recipes (damaged): a recipe count of 200 should drop the recipes and keep the chips (runaway {q.Test(45)}, recipes {q.Test(150)})");
             }
             var without = project.Take(at).Concat(project.Skip(at + 8 + length)).ToArray();
             using (var q = lib.Create())
@@ -419,7 +419,7 @@ public sealed unsafe partial class SelfTest
                 q.Dispatcher(Fpd.SetSampleRate, 0, 48000);
                 q.LoadState(without);
                 WaitForRom(q);
-                t.Expect(q.Test(45) == 1 && q.Test(71) == 3 && q.Test(130) == 0, $"Genesis recipes (older project): runaway {q.Test(45)}, snapshot {q.Test(71)}, recipes {q.Test(130)}");
+                t.Expect(q.Test(45) == 1 && q.Test(71) == 3 && q.Test(150) == 0, $"Genesis recipes (older project): runaway {q.Test(45)}, snapshot {q.Test(71)}, recipes {q.Test(150)}");
             }
         }
         finally { File.Delete(md); }
