@@ -290,6 +290,56 @@ try {
         Assert-True ($bad.Count -eq 0) ("heavy or forbidden files under BrokenDev: " + (($bad | ForEach-Object { $_.Name }) -join ', '))
     }
 
+    # ------------------------------------------------------------------------------------------ music tools (decoder model)
+    Write-Host 'music tools'
+    $musicDir = Join-Path $tmpRoot 'music'
+    New-Item -ItemType Directory -Force -Path $musicDir | Out-Null
+    $modelPy = Join-Path $bd 'tools\music\decoder_model.py'
+    $fabText = "ct U[128] PERIOD_LO = U[128](" + ((1..128 | ForEach-Object { 100 }) -join ', ') + ")`n" +
+               "ct U[128] PERIOD_HI = U[128](" + ((1..128 | ForEach-Object { 1 }) -join ', ') + ")`n" +
+               "data /music_t`n    [] music_t_square1`n        U[5](60, 204, 130, 128, 255)`n" +
+               "    [] music_t_square2`n        U[2](128, 255)`n    [] music_t_triangle`n        U[2](128, 255)`n    [] music_t_noise`n        U[2](128, 255)`n"
+    [System.IO.File]::WriteAllText((Join-Path $musicDir 't.fab'), $fabText)
+    # Hand-worked expectation for square1 (stream: note 60, volume 12, wait 2, note off, loop; the vol variable starts at 15):
+    #   row0 = state before the decode; then per frame: note (vol 15, period 0x164), volume 12, wait, wait, note off (vol 0), loop, note (vol 12), volume 12
+    $sq1 = @(@('000', '0'), @('164', 'f'), @('164', 'c'), @('164', 'c'), @('164', 'c'), @('164', '0'), @('164', '0'), @('164', 'c'), @('164', 'c'))
+    function New-ModelTrace {
+        param([string]$Path, [int]$BadRow = -1)
+        $lines = @('# columns: frame|p1per|p1vol|p2per|p2vol|tper|tlin|nper|nvol')
+        for ($i = 0; $i -lt $sq1.Count; $i++) {
+            $per = $sq1[$i][0]; if ($i -eq $BadRow) { $per = '165' }
+            $lines += ('{0}|{1}|{2}|0|0|0|0|0|0' -f $i, $per, $sq1[$i][1])
+        }
+        [System.IO.File]::WriteAllText($Path, ($lines -join "`n") + "`n")
+    }
+    $mpy = Find-BdPython
+    $mskip = if ($mpy) { '' } else { 'no Python with pillow and numpy' }
+    New-ModelTrace -Path (Join-Path $musicDir 'good.trace')
+    New-ModelTrace -Path (Join-Path $musicDir 'bad.trace') -BadRow 5
+    function Invoke-ModelOn { param([string]$Trace, [string[]]$More) Invoke-BdProcess -FilePath $mpy.Path -Arguments (@('-I', $modelPy, (Join-Path $musicDir 't.fab'), (Join-Path $musicDir $Trace), '--song', 't', '--frames', '8') + $More) -TimeoutSec 60 }
+    Test-Case 'decoder model: a trace made by hand from the opcode rules is matched (exit 0)' {
+        if (-not $mpy) { Skip-Test $mskip }
+        $r = Invoke-ModelOn -Trace 'good.trace' -More @('--start', '1')
+        Assert-Equal $r.ExitCode 0 $r.Output
+        Assert-True ($r.Output -match 'MODEL MATCHES') $r.Output
+    }
+    Test-Case 'NEGATIVE: one wrong period in the trace makes the model fail (exit 1)' {
+        if (-not $mpy) { Skip-Test $mskip }
+        $r = Invoke-ModelOn -Trace 'bad.trace' -More @('--start', '1')
+        Assert-Equal $r.ExitCode 1 $r.Output
+    }
+    Test-Case 'NEGATIVE: the model one frame out of step with the trace fails (exit 1)' {
+        if (-not $mpy) { Skip-Test $mskip }
+        $r = Invoke-ModelOn -Trace 'good.trace' -More @('--start', '2')
+        Assert-Equal $r.ExitCode 1 $r.Output
+    }
+    Test-Case 'NEGATIVE: a trace file without a columns header is refused, not scored' {
+        if (-not $mpy) { Skip-Test $mskip }
+        [System.IO.File]::WriteAllText((Join-Path $musicDir 'nohdr.trace'), "0|164|f`n")
+        $r = Invoke-ModelOn -Trace 'nohdr.trace' -More @('--start', '1')
+        Assert-True ($r.ExitCode -ne 0) 'a file with no # columns: header was accepted'
+    }
+
     # ------------------------------------------------------------------------------------------ BrokenNes integration (Workshop)
     Write-Host 'BrokenNes integration'
     Restore-Env $savedEnv
