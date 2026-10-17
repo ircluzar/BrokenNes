@@ -13,8 +13,14 @@ internal abstract class SegaSampler
     public abstract void NoteOn(int slot, int instrument, double hz, double velocity);
     public abstract void Update(int slot, double hz, double velocity);
     public abstract void NoteOff(int slot);
+    /// <summary>Starts a note on a slot from a recipe (what the game's driver did with a channel): the key-on settings, then the macro, with <paramref name="hz"/> (FL's note: C5 = 261.63 Hz is the recipe's own pitch) and
+    /// <paramref name="velocity"/> applied on top. A sampler that has no recipes for its chips does nothing.</summary>
+    public virtual void NoteOnRecipe(int slot, GenRecipe recipe, double hz, double velocity) { }
     /// <summary>Fills <paramref name="dest"/> with <paramref name="frames"/> interleaved stereo frames at the host rate.</summary>
     public abstract void Render(Span<float> dest, int frames);
+
+    /// <summary>The cents of an FL note against C5 (261.6256 Hz), the pitch of a recipe's own note.</summary>
+    protected static double FlCents(double hz) => 1200 * Math.Log2(Math.Max(1e-6, hz) / 261.6256);
 
     /// <summary>Notes the chips could not play (the PSG's lowest note is 109 Hz; the FM chips stop near 6 kHz), counted once per note: nothing is dropped silently.</summary>
     public long NotesDropped { get; protected set; }
@@ -71,6 +77,11 @@ internal sealed class PsgSampler : SegaSampler
     private bool noiseWhite;
     private readonly bool[] outOfRange = new bool[Slots];
 
+    // a slot playing a recipe: its macro walks forward with the host's samples (the state is in these four objects: no allocation)
+    private sealed class Macro { public GenRecipe? R; public int Next; public double Age, FlCents, Cents; public int FlAtt, Att, Loudest; }
+    private readonly Macro[] macros = Enumerable.Range(0, Slots).Select(_ => new Macro()).ToArray();
+    private int macroActive;
+
     public PsgSampler(SegaSnapshot snapshot, int hostRate)
     {
         snap = snapshot; this.hostRate = hostRate;
@@ -108,13 +119,83 @@ internal sealed class PsgSampler : SegaSampler
 
     public override void NoteOn(int slot, int instrument, double hz, double velocity)
     {
+        if (macros[slot].R != null) { macros[slot].R = null; macroActive--; }
         outOfRange[slot] = false;
         if (slot == NoiseSlot) noiseWhite = snap.IsWhiteNoise(instrument);      // the instrument says which noise: white or periodic
         Update(slot, hz, velocity);
     }
 
+    public override void NoteOnRecipe(int slot, GenRecipe r, double hz, double velocity)
+    {
+        if (r.IsFm || (slot == NoiseSlot) != (r.Kind == GenRecipe.KindPsgNoise)) return;
+        var m = macros[slot];
+        if (m.R == null) macroActive++;
+        m.R = r; m.Next = 0; m.Age = 0; m.Cents = 0; m.FlCents = FlCents(hz); m.Att = r.Att; m.Loudest = r.LoudestAtt; m.FlAtt = Attenuation(velocity);
+        outOfRange[slot] = false;
+        if (slot == NoiseSlot) SetNoise(r.Noise & 7);
+        ApplyRecipe(slot);
+    }
+
+    /// <summary>The slot's registers from its recipe's state: the tone's period (the recipe's own, moved by FL's pitch and the macro), the attenuation (the macro's, quieter by what FL's velocity asks for).</summary>
+    private void ApplyRecipe(int slot)
+    {
+        var m = macros[slot];
+        var r = m.R!;
+        int att = Math.Clamp(m.Att - m.Loudest + m.FlAtt, 0, 15);
+        if (m.Att >= 15) att = 15;
+        double cents = m.FlCents + m.Cents;
+        int n = (int)Math.Round(Math.Max(1, r.Period) / Math.Pow(2.0, cents / 1200.0));
+        if (slot == NoiseSlot)
+        {
+            if ((r.Noise & 3) == 3) { SetPeriod(2, Math.Clamp(n, 1, 1023)); SetVolume(2, 15); }       // the noise rate follows the third tone's period when the game had it so
+            SetVolume(3, att);
+            return;
+        }
+        if (n > 1023 || n < 2)
+        {
+            if (!outOfRange[slot]) { outOfRange[slot] = true; NotesDropped++; }
+            SetVolume(slot, 15);
+            return;
+        }
+        outOfRange[slot] = false;
+        SetPeriod(slot, n); SetVolume(slot, att);
+    }
+
+    private void TickMacros(int frames)
+    {
+        if (macroActive == 0) return;
+        double perFrame = 32000.0 / hostRate;
+        for (int s = 0; s < Slots; s++)
+        {
+            var m = macros[s];
+            var r = m.R;
+            if (r == null) continue;
+            m.Age += frames * perFrame;
+            var ev = r.Events;
+            bool changed = false;
+            while (m.Next < ev.Length && ev[m.Next].T <= m.Age)
+            {
+                var e = ev[m.Next++];
+                switch (e.Kind)
+                {
+                    case GenEv.Pitch: m.Cents = e.Value; changed = true; break;
+                    case GenEv.Vol: m.Att = e.Value; changed = true; break;
+                    case GenEv.Noise: if (s == NoiseSlot) SetNoise(e.Value & 7); break;
+                }
+            }
+            if (changed) ApplyRecipe(s);
+        }
+    }
+
     public override void Update(int slot, double hz, double velocity)
     {
+        if (macros[slot].R != null)
+        {
+            var m = macros[slot];
+            m.FlCents = FlCents(hz); m.FlAtt = Attenuation(velocity);
+            ApplyRecipe(slot);
+            return;
+        }
         if (slot == NoiseSlot)
         {
             SetPeriod(2, NoiseTone(hz)); SetVolume(2, 15);
@@ -133,10 +214,15 @@ internal sealed class PsgSampler : SegaSampler
         SetPeriod(slot, n); SetVolume(slot, Attenuation(velocity));
     }
 
-    public override void NoteOff(int slot) => SetVolume(slot, 15);
+    public override void NoteOff(int slot)
+    {
+        if (macros[slot].R != null) { macros[slot].R = null; macroActive--; }
+        SetVolume(slot, 15);
+    }
 
     public override void Render(Span<float> dest, int frames)
     {
+        TickMacros(frames);
         int guard = 0;
         while (ring.Count < frames && guard++ < 64)
         {
@@ -298,6 +384,14 @@ internal sealed class OpnSampler : SegaSampler, IYm2612Sink
     private readonly long[] lastOff = Enumerable.Repeat(-1_000_000L, FmSlots).ToArray();
     private int held, psgHeld, quiet;
 
+    // an FM channel playing a recipe: the patch it plays, its operators' total levels as they stand, and the macro's place
+    private readonly byte[]?[] curPatch = new byte[FmSlots][];
+    private readonly int[][] tl = Enumerable.Range(0, FmSlots).Select(_ => new int[4]).ToArray();
+    private sealed class FmMacro { public GenRecipe? R; public int Next; public long StartClock; public double FlCents, Cents; public int Att; }
+    private readonly FmMacro[] macros = Enumerable.Range(0, FmSlots).Select(_ => new FmMacro()).ToArray();
+    private int macroActive;
+    private double clocksPerSample32k;
+
     private sealed class DacVoice
     {
         public int Sample = -1;
@@ -309,6 +403,11 @@ internal sealed class OpnSampler : SegaSampler, IYm2612Sink
     private readonly float fadePerFrame;
     private int dacActive;
 
+    /// <summary>A recipe's pan as the game had it (a channel the game panned left plays left), instead of the centre every instrument plays at so that FL's own Pan control works on it. For tests that compare with the game's own mix.</summary>
+    public bool KeepGamePan;
+
+    private byte PanBits(byte b4) => KeepGamePan ? ((b4 & 0xC0) == 0 ? (byte)(b4 | 0xC0) : b4) : (byte)(b4 | 0xC0);
+
     public OpnSampler(SegaSnapshot snapshot, int hostRate)
     {
         snap = snapshot; this.hostRate = hostRate;
@@ -319,12 +418,14 @@ internal sealed class OpnSampler : SegaSampler, IYm2612Sink
         double chipRate = snapshot.OpnClock / (double)Ym2612.ClocksPerSample;
         mixL = new BandLimitedMixer(chipRate, hostRate); mixR = new BandLimitedMixer(chipRate, hostRate);
         psg = new PsgSampler(snapshot, hostRate);
+        clocksPerSample32k = snapshot.OpnClock / 32000.0;
         fadePerFrame = (float)(1.0 / (0.008 * hostRate));
         for (int ch = 0; ch < FmSlots; ch++)
         {
             fundamental[ch] = CarrierFundamental(snapshot.OpnPatch[ch]);
             patchOf[ch] = -1; loaded[ch] = -1; attOf[ch] = -1; blockOf[ch] = -1;
         }
+        lfoNow = snapshot.OpnLfo;
         Reg(0, 0x22, (byte)snapshot.OpnLfo);
     }
 
@@ -374,24 +475,30 @@ internal sealed class OpnSampler : SegaSampler, IYm2612Sink
 
     private void LoadPatch(int ch, int patchIndex)
     {
-        var p = snap.OpnPatch[patchIndex];
+        LoadBytes(ch, snap.OpnPatch[patchIndex], patchIndex);
+    }
+
+    private void LoadBytes(int ch, byte[] p, int tag)
+    {
         int part = ch / 3, c = ch % 3;
         for (int n = 0; n < 4; n++)
             for (int k = 0; k < 7; k++) Reg(part, 0x30 + k * 0x10 + OperatorOffset[n] + c, p[n * 7 + k]);
         Reg(part, 0xB0 + c, p[28]);
-        Reg(part, 0xB4 + c, (byte)(p[29] | 0xC0));
-        loaded[ch] = patchIndex; attOf[ch] = -1;
+        Reg(part, 0xB4 + c, tag == -2 ? PanBits(p[29]) : (byte)(p[29] | 0xC0));
+        loaded[ch] = tag; attOf[ch] = -1;
         fundamental[ch] = CarrierFundamental(p);
+        curPatch[ch] = p;
+        for (int n = 0; n < 4; n++) tl[ch][n] = p[n * 7 + 1] & 0x7F;
     }
 
     private void SetLevel(int ch, int att)
     {
         if (attOf[ch] == att) return;
         attOf[ch] = att;
-        var p = snap.OpnPatch[loaded[ch]];
+        var p = curPatch[ch]!;
         int mask = FmPatchBank.CarriersOf(p[28] & 7), part = ch / 3, c = ch % 3;
         for (int n = 0; n < 4; n++)
-            if ((mask >> n & 1) != 0) Reg(part, 0x40 + OperatorOffset[n] + c, (byte)Math.Min(127, (p[n * 7 + 1] & 0x7F) + att));
+            if ((mask >> n & 1) != 0) Reg(part, 0x40 + OperatorOffset[n] + c, (byte)Math.Min(127, tl[ch][n] + att));
     }
 
     private static int Attenuation(double velocity) => velocity <= 0.002 ? 127 : (int)Math.Clamp(Math.Round(AttenuationDb(velocity) / TotalLevelStepDb), 0, 127);
@@ -410,6 +517,7 @@ internal sealed class OpnSampler : SegaSampler, IYm2612Sink
             SetDac(v, hz, velocity);
             return;
         }
+        if (macros[slot].R != null) { macros[slot].R = null; macroActive--; }
         patchOf[slot] = Math.Clamp(instrument, 0, 5);
         outOfRange[slot] = false;
         if (keyed[slot]) { Key(slot, false); keyed[slot] = false; lastOff[slot] = ymClock; }
@@ -419,6 +527,112 @@ internal sealed class OpnSampler : SegaSampler, IYm2612Sink
         if (loaded[slot] != patchOf[slot]) LoadPatch(slot, patchOf[slot]);
         blockOf[slot] = -1;
         Apply(slot, hz, velocity);
+    }
+
+    public override void NoteOnRecipe(int slot, GenRecipe r, double hz, double velocity)
+    {
+        quiet = 0;
+        if (slot >= PsgBase) { if (!r.IsFm) { psg.NoteOnRecipe(slot - PsgBase, r, hz, velocity); psgHeld++; } return; }
+        if (slot >= DacBase || !r.IsFm) return;
+        var m = macros[slot];
+        if (m.R == null) macroActive++;
+        outOfRange[slot] = false;
+        if (keyed[slot]) { Key(slot, false); keyed[slot] = false; lastOff[slot] = ymClock; }
+        else held++;
+        if (ymClock - lastOff[slot] < 2L * Ym2612.ClocksPerSample) { ymClock += 2L * Ym2612.ClocksPerSample; ym.RunTo(ymClock); }
+        LoadBytes(slot, r.Patch, -2);
+        if (r.Lfo != lfoNow) { lfoNow = r.Lfo; Reg(0, 0x22, (byte)lfoNow); }
+        m.R = r; m.Next = 0; m.StartClock = ymClock; m.Cents = 0; m.FlCents = FlCents(hz); m.Att = Attenuation(velocity);
+        blockOf[slot] = -1;
+        ApplyRecipe(slot);
+    }
+
+    private int lfoNow = -1;
+
+    /// <summary>The channel's pitch (the recipe's own channel frequency moved by FL's pitch and the macro), its level (the operators' total levels plus what FL's velocity asks for) and its key, from the recipe's state.</summary>
+    private void ApplyRecipe(int ch)
+    {
+        var m = macros[ch];
+        var r = m.R!;
+        if (!ChooseFrequency(r.Block, r.Fnum, m.FlCents + m.Cents, snap.OpnClock, out int blk, out int fnum))
+        {
+            if (!outOfRange[ch]) { outOfRange[ch] = true; NotesDropped++; }
+            if (keyed[ch]) { Key(ch, false); keyed[ch] = false; }
+            return;
+        }
+        outOfRange[ch] = false;
+        SetLevel(ch, m.Att);
+        if (blk != blockOf[ch] || fnum != fnumOf[ch])
+        {
+            blockOf[ch] = blk; fnumOf[ch] = fnum;
+            int part = ch / 3, c = ch % 3;
+            Reg(part, 0xA4 + c, (byte)(blk << 3 | fnum >> 8));
+            Reg(part, 0xA0 + c, (byte)(fnum & 0xFF));
+        }
+        if (!keyed[ch]) { Reg(0, 0x28, (byte)((r.OpMask << 4) | (ch < 3 ? ch : ch + 1))); keyed[ch] = true; }
+    }
+
+    /// <summary>
+    /// The block and fnum for a recipe's channel moved by <paramref name="cents"/> from the pair the game keyed it on with. The game's own pair when nothing moves it (a different block of the same frequency would change the envelope's rate scaling, and
+    /// the note would not sound as the game's), else the same block when the number still fits (as a driver bends a note), else the nearest block that holds it.
+    /// </summary>
+    internal static bool ChooseFrequency(int block0, int fnum0, double cents, double clock, out int block, out int fnum)
+    {
+        block = block0; fnum = fnum0;
+        if (Math.Abs(cents) < 0.005) return true;
+        double target = FmPatchBank.PhaseStep(block0, fnum0) * Math.Pow(2.0, cents / 1200.0);          // the wanted phase step
+        for (int d = 0; d < 8; d++)
+            for (int side = 0; side < (d == 0 ? 1 : 2); side++)
+            {
+                int b = side == 0 ? block0 + d : block0 - d;
+                if (b < 0 || b > 7) continue;
+                int f = (int)Math.Round(target * 2.0 / (1 << b));            // step = (fnum << b) >> 1 for blocks 1 and up: fnum = 2 step / 2^b
+                if (f is >= 1 and <= 2047) { block = b; fnum = f; return true; }
+            }
+        return FmPatchBank.TryPitch(FmPatchBank.Hz(block0, fnum0, clock) * Math.Pow(2.0, cents / 1200.0), clock, out block, out fnum, out _);
+    }
+
+    /// <summary>The macro events whose time has come, for every FM channel playing a recipe (called before each step of the chip).</summary>
+    private void TickMacros()
+    {
+        if (macroActive == 0) return;
+        for (int ch = 0; ch < FmSlots; ch++)
+        {
+            var m = macros[ch];
+            var r = m.R;
+            if (r == null) continue;
+            var ev = r.Events;
+            bool pitch = false;
+            while (m.Next < ev.Length && m.StartClock + (long)(ev[m.Next].T * clocksPerSample32k) <= ymClock)
+            {
+                var e = ev[m.Next++];
+                int part = ch / 3, c = ch % 3;
+                switch (e.Kind)
+                {
+                    case GenEv.Pitch: m.Cents = e.Value; pitch = true; break;
+                    case GenEv.Lfo: lfoNow = e.Value; Reg(0, 0x22, (byte)e.Value); break;
+                    case GenEv.Param:
+                    {
+                        int idx = e.Value >> 8; byte v = (byte)e.Value;
+                        if (idx == 28) { Reg(part, 0xB0 + c, v); curPatch[ch]![28] = v; }
+                        else if (idx == 29) Reg(part, 0xB4 + c, PanBits(v));
+                        else if (idx < 28)
+                        {
+                            int n = idx / 7, k = idx % 7;
+                            int carriers = FmPatchBank.CarriersOf(curPatch[ch]![28] & 7);
+                            if (k == 1)
+                            {
+                                tl[ch][n] = v & 0x7F;
+                                if ((carriers >> n & 1) != 0) v = (byte)Math.Min(127, (v & 0x7F) + Math.Max(0, attOf[ch]));
+                            }
+                            Reg(part, 0x30 + k * 0x10 + OperatorOffset[n] + c, v);
+                        }
+                        break;
+                    }
+                }
+            }
+            if (pitch) ApplyRecipe(ch);
+        }
     }
 
     private void Apply(int ch, double hz, double velocity)
@@ -453,6 +667,7 @@ internal sealed class OpnSampler : SegaSampler, IYm2612Sink
     {
         if (slot >= PsgBase) { psg.Update(slot - PsgBase, hz, velocity); return; }
         if (slot >= DacBase) { var v = dac[slot - DacBase]; if (v.Sample >= 0) SetDac(v, hz, velocity); return; }
+        if (macros[slot].R != null) { var m = macros[slot]; m.FlCents = FlCents(hz); m.Att = Attenuation(velocity); ApplyRecipe(slot); return; }
         Apply(slot, hz, velocity);
     }
 
@@ -466,6 +681,7 @@ internal sealed class OpnSampler : SegaSampler, IYm2612Sink
             if (v.Sample >= 0 && (snap.Dac[v.Sample].Loops || snap.Dac[v.Sample].Seconds > 1.0)) v.Releasing = true;
             return;
         }
+        if (macros[slot].R != null) { macros[slot].R = null; macroActive--; }
         if (keyed[slot]) { Key(slot, false); keyed[slot] = false; lastOff[slot] = ymClock; }
         held = Math.Max(0, held - 1);
     }
@@ -475,6 +691,7 @@ internal sealed class OpnSampler : SegaSampler, IYm2612Sink
         int guard = 0;
         while (mixL.Available < frames && guard++ < 256)
         {
+            TickMacros();
             ymClock += 8L * Ym2612.ClocksPerSample;
             ym.RunTo(ymClock);
             mixL.Advance(samples); mixR.Advance(samples);

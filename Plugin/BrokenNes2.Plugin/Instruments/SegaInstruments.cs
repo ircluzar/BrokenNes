@@ -258,6 +258,8 @@ public sealed class SegaInstruments : IInstrumentSource
         c.OpnClock = s.OpnClock; c.OpnLfo = s.OpnLfo;
         for (int ch = 0; ch < 6; ch++) { Array.Copy(s.OpnPatch[ch], c.OpnPatch[ch], SegaSnapshot.OpnPatchBytes); c.OpnKeyed[ch] = s.OpnKeyed[ch]; }
         c.Dac = s.Dac.Select(d => new DacSample(d.Rate, (byte[])d.Data.Clone(), d.LoopStart, d.LoopEnd, d.Repeats) { CycleHz = d.CycleHz }).ToArray();
+        // the game's voices (what its driver was heard doing, round 6 `runaway`) are immutable once captured: the edited copy shares them (a recipe carries the patch the game wrote, so an edit of the plain instrument does not change them)
+        c.Recipes = s.Recipes; c.ListenNote = s.ListenNote;
         return c;
     }
 

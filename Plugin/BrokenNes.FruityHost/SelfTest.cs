@@ -45,7 +45,7 @@ public sealed unsafe partial class SelfTest
         lib = new PluginLibrary(dllPath);
     }
 
-    private static readonly string[] ParamNames = ["Sound chip", "Volume", "Pan", "Coarse", "Fine", "Pulse duty", "Channel", "Noise mode", "Mode", "Emulator", "Console", "Instrument", "Voice"];
+    private static readonly string[] ParamNames = ["Sound chip", "Volume", "Pan", "Coarse", "Fine", "Pulse duty", "Channel", "Noise mode", "Mode", "Emulator", "Console", "Instrument", "Voice", "Recipe"];
 
     // parameter indices
     private const int PCore = 0, PVolume = 1, PPan = 2, PChannel = 6, PMode = 8, PEmulator = 9, PConsole = 10, PInstrument = 11, PVoice = 12;
@@ -163,6 +163,7 @@ public sealed unsafe partial class SelfTest
             ("runaway-gb", "Instrument Runaway on a Game Boy game: the frozen game's channels play from FL notes with its settings", RunawayGb),
             ("runaway-snes", "Instrument Runaway on a SNES game: the picker lists the game's instruments, the chosen one plays", RunawaySnesPicker),
             ("runaway-sega", "Instrument Runaway on Master System, Game Gear and Genesis games: the PSG, the YM2413, the YM2612 and the Genesis DAC's sounds play from FL notes (pitch, level, polyphony, slides, the project, damaged projects, cost)", RunawaySega),
+            ("runaway-recipes", "Instrument Runaway listens to a game's sound driver: SNES game voices (recipes of what the driver did with each instrument: key-on settings plus a macro of pitch, volume and envelope changes) are listed in the picker, played from FL (the game's bend and fade, FL's pitch on top), learned by the Corruption window's play-for (a corrupted bend that freezing at once cannot see), kept in the project, damaged sections survived, no allocation on the audio thread", RunawayRecipes),
             ("runaway-state", "A project keeps the whole machine of a ROM-mode game, corruptions included: NES, Game Boy, Game Boy Color, Master System (PSG and FM), Game Gear, Genesis come back frozen or running exactly as saved, a game with no state says so, older / damaged / oversize / foreign states are survived", RunawayState),
             ("inputs", "Inputs: the pad drives NES, Game Boy and SNES games; mappings are remembered; the modal works", InputsTest),
             ("corruption", "Corruption from a stockpile: farm a corruption the way the desktop app does, open the stockpile in the plugin's Corruption window (real mouse messages), start it on the loaded SNES / Game Boy / Color / Master System / Game Gear / Genesis game, take the corrupted instruments with Instrument Runaway (SNES instrument and Game Boy wave RAM change the sound), keep it through a saved project (replayed history or saved state), messages for everything that cannot work, no allocation on the audio thread", CorruptionTest),
