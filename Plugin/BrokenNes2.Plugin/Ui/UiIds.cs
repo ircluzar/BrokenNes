@@ -69,7 +69,9 @@ internal static class UiMutate
     public const int HexEditDead = 1 << 10;       // typing in the hex field writes nothing
     public const int TextInputDead = 1 << 11;     // the text input ignores characters
     public const int UndoRedoSwapped = 1 << 12;   // Undo calls Redo
-    public const int FieldsNoScroll = 1 << 13;   // the fields table does not scroll
+    public const int FieldsNoScroll = 1 << 13;    // the fields table does not scroll
+    public const int IgnoreRunaway = 1 << 14;     // the Instruments tab shows the instruments although Instrument Runaway is off
+    public const int KeyGuardOff = 1 << 15;       // typing in a text field still presses the game's buttons
 
     public static bool Has(int bit) => (Mask & bit) != 0;
 }

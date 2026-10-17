@@ -282,6 +282,8 @@ internal sealed class StubInstrumentModel : IInstrumentModelProvider
             case 19: { long h = 17; foreach (var b in n.Blobs) foreach (var x in b) h = h * 31 + x; return h; }
             case 20: return (uint)arg < (uint)Defs.Length ? list[1].Values[arg] : -9999;
             case 21: return list.Length;
+            case 22: { int i = arg >> 8, f = arg & 0xFF; return (uint)i < (uint)list.Length && (uint)f < (uint)Defs.Length ? list[i].Values[f] : -9999; }      // value of field f of instrument i (arg = i << 8 | f)
+            case 23: { int i = arg >> 8, f = arg & 0xFF; return (uint)i < (uint)list.Length && (uint)f < (uint)Defs.Length ? (list[i].Locked[f] ? 1 : 0) : -1; }
         }
         return 0;
     }

@@ -15,6 +15,7 @@ internal static unsafe partial class UiNative
     [LibraryImport("user32.dll")] public static partial nint SetFocus(nint hwnd);
     [LibraryImport("user32.dll")] public static partial nint GetFocus();
     [LibraryImport("user32.dll")] public static partial nint GetParent(nint hwnd);
+    [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] public static partial bool ScreenToClient(nint hwnd, POINT* point);
     [LibraryImport("comdlg32.dll", EntryPoint = "GetSaveFileNameW")] [return: MarshalAs(UnmanagedType.Bool)] public static partial bool GetSaveFileName(OPENFILENAMEW* ofn);
 
     /// <summary>The standard Save dialog; <paramref name="filter"/> is pairs separated by '|' as for <see cref="Win32.ChooseFile"/>.</summary>

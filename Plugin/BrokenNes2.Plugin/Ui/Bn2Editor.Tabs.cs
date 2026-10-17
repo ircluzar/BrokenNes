@@ -10,11 +10,12 @@
 // (typing a name must not press the game's buttons).
 //
 // Test hooks (Fpd.TestBase + n), 400 - 499:
-//   400 tab (0..2)                      401 client size of the editor window (w | h << 16)       402 the window's frame size is the client size (1/0)
-//   403 install (value 1) / remove (0) the demonstration models (UiServices; the stubs in StubModels.cs)
+//   400 tab (0..2)                      401 client size of the editor window (w | h << 16)
+//   403 models: value 1 installs the demonstration models (UiServices; the stubs in StubModels.cs), 2 leaves none, 0 puts back what was registered before (the real ones, once they exist)
 //   410 instrument stub counter <index> (argument <value>)       411 preset stub counter <index>
 //   412 copy a text into the UTF-16 buffer <value> (<index> = field in the high 16 bits, max chars in the low 16): 0 preset stub's last call, 1 instrument stub's last call,
-//       2 Instruments message, 3 Instruments status, 4 Presets message, 5 Presets status, 6 search text, 7 selected preset id, 8 Instruments status ok flag as "1"/"0"; returns the length (-1 none)
+//       2 Instruments message, 3 Instruments status, 4 Presets message, 5 Presets status, 6 search text, 7 selected preset id, 8 Instruments status ok flag as "1"/"0", 9 selected instrument's name,
+//       10 the history text drawn, 11 the seed text drawn, 100 + n "Name=value" of the n-th visible field row; returns the length (-1 none)
 //   414 the next Export / Import file dialog answers with the UTF-16 path <value> ("" = cancelled)
 //   420 Instruments panel number <index>: 0 list first row, 1 list rows, 2 selected, 3 fields first row, 4 field rows, 5 hex selected byte, 6 hex first row, 7 blob, 8 waveform columns, 9 strength, 10 wants keys, 11 status ok
 //   421 Presets panel number <index>: 0 rows, 1 first row, 2 renaming, 3 filter, 4 wants keys, 5 status ok
@@ -36,6 +37,9 @@ public sealed unsafe partial class Bn2Editor
 
     internal static StubInstrumentModel? DemoModel;
     internal static StubPresetLibrary? DemoLibrary;
+    private static InstrumentProviderFactory? savedInstruments;
+    private static IPresetLibrary? savedPresets;
+    private static bool demoSaved;
 
     /// <summary>The window's width: the Emulator tab's own, or wider on the tabs that need room.</summary>
     private int Width => tab == 0 ? UiLayout.BaseWidth : UiLayout.WideWidth;
@@ -74,7 +78,33 @@ public sealed unsafe partial class Bn2Editor
     {
         var cv = Canvas();
         cv.Hot = hot; cv.Active = active;
-        if (tab == 1) Inst().Draw(dc, emu); else Presets().Draw(dc);
+        int saved = Win32.SaveDC(dc);
+        try
+        {
+            if (tab == 1) Inst().Draw(dc, emu); else Presets().Draw(dc);
+            tabError = null;
+        }
+        catch (Exception e)
+        {
+            // a model that throws while the tab is painted must not leave the window half drawn (a paint that never finishes is repainted without end)
+            Diag.Log($"tab {tab} draw: {e}");
+            tabError = e.Message;
+            Win32.RestoreDC(dc, saved); saved = Win32.SaveDC(dc);
+            var box = R(UiLayout.PanelX, 110, UiLayout.PanelW, 360);
+            Box(dc, box, Panel, Warn, 8);
+            Txt(dc, "A model behind this tab failed: " + e.Message, R(box.Left + 40, box.Top + 100, box.Right - box.Left - 80, 120), Win32.DT_CENTER | Win32.DT_WORDBREAK | Win32.DT_VCENTER, Text, fontLead);
+            Txt(dc, "BrokenNes2 shows this instead of the tab until the model works again.", R(box.Left + 40, box.Top + 230, box.Right - box.Left - 80, 40), Win32.DT_CENTER | Win32.DT_WORDBREAK, Dim, fontLabel);
+        }
+        finally { Win32.RestoreDC(dc, saved); }
+    }
+
+    private string? tabError;
+
+    /// <summary>Runs an event handler of a tab; a model that throws is logged and shown on the tab instead of taking the window's message handling with it.</summary>
+    private T UiGuard<T>(Func<T> f, T fallback)
+    {
+        try { return f(); }
+        catch (Exception e) { Diag.Log($"tab {tab} event: {e}"); tabError = e.Message; return fallback; }
     }
 
     // ---------------------------------------------------------------- tabs and the window size
@@ -85,8 +115,9 @@ public sealed unsafe partial class Bn2Editor
         if (t == tab) return;
         openId = 0; openHover = -1; active = 0;
         UiCancel();
+        int before = Width;
         tab = t;
-        ApplyWindowSize();
+        if (Width != before) ApplyWindowSize();          // Instruments <-> Presets keep the wide window: the host is told only when the size changed
         Refresh();
     }
 
@@ -101,13 +132,12 @@ public sealed unsafe partial class Bn2Editor
 
     // ---------------------------------------------------------------- events
 
-    private bool UiWantsKeys => tab == 1 ? instPanel?.WantsKeys == true : tab == 2 && presetPanel?.WantsKeys == true;
+    private bool UiWantsKeys => !UiMutate.Has(UiMutate.KeyGuardOff) && (tab == 1 ? instPanel?.WantsKeys == true : tab == 2 && presetPanel?.WantsKeys == true);
 
     private long UiSignature()
     {
-        long s = tab * 7919L;
-        if (tab == 1 && instPanel != null) s += instPanel.Signature();
-        else if (tab == 2 && presetPanel != null) s += presetPanel.Signature();
+        long s = tab * 7919L + (UiServices.Instruments != null ? 1 : 0) + (UiServices.Presets != null ? 2 : 0);      // models connecting or leaving repaint the tab
+        s += UiGuard(() => tab == 1 && instPanel != null ? instPanel.Signature() : tab == 2 && presetPanel != null ? presetPanel.Signature() : 0, 0L);
         return s;
     }
 
@@ -115,7 +145,7 @@ public sealed unsafe partial class Bn2Editor
     {
         int id = h.Id;
         if (id >= UiIds.Tab && id < UiIds.Tab + UiServices.TabNames.Length) { SetTab(id - UiIds.Tab); return; }
-        bool capture = tab == 1 ? Inst().Down(id, x, y, uiShift, uiDbl) : tab == 2 && Presets().Down(id, x, y, uiDbl);
+        bool capture = UiGuard(() => tab == 1 ? Inst().Down(id, x, y, uiShift, uiDbl) : tab == 2 && Presets().Down(id, x, y, uiDbl), false);
         if (capture) { active = id; Win32.SetCapture(Hwnd); }
         if (UiWantsKeys) UiNative.SetFocus(Hwnd);
         else UiReleaseFocus();
@@ -144,7 +174,7 @@ public sealed unsafe partial class Bn2Editor
 
     private void UiMove(int x, int y)
     {
-        if (tab == 1) Inst().Move(x, y); else if (tab == 2) Presets().Move(x, y);
+        UiGuard(() => { if (tab == 1) Inst().Move(x, y); else if (tab == 2) Presets().Move(x, y); return 0; }, 0);
     }
 
     private void UiUp()
@@ -154,12 +184,12 @@ public sealed unsafe partial class Bn2Editor
 
     private void UiWheel(int delta, int x, int y)
     {
-        if (tab == 1) Inst().Wheel(delta, x, y); else if (tab == 2) Presets().Wheel(delta, x, y);
+        UiGuard(() => tab == 1 ? Inst().Wheel(delta, x, y) : tab == 2 && Presets().Wheel(delta, x, y), false);
     }
 
     private bool UiChar(char ch)
     {
-        bool used = tab == 1 ? Inst().Char(ch) : tab == 2 && Presets().Char(ch);
+        bool used = UiGuard(() => tab == 1 ? Inst().Char(ch) : tab == 2 && Presets().Char(ch), false);
         if (used) Refresh();
         if (!UiWantsKeys) UiReleaseFocus();
         return used;
@@ -167,7 +197,7 @@ public sealed unsafe partial class Bn2Editor
 
     private bool UiKey(int vk)
     {
-        bool used = tab == 1 ? Inst().Key(vk) : tab == 2 && Presets().Key(vk);
+        bool used = UiGuard(() => tab == 1 ? Inst().Key(vk) : tab == 2 && Presets().Key(vk), false);
         if (used) Refresh();
         return used;
     }
@@ -197,8 +227,13 @@ public sealed unsafe partial class Bn2Editor
                 return (nint)((long)(r.Right - r.Left) | ((long)(r.Bottom - r.Top) << 16));
             }
             case 403:
-                if (value != 0) { DemoModel = new StubInstrumentModel(); DemoLibrary = new StubPresetLibrary(); var model = DemoModel; UiServices.Instruments = _ => model; UiServices.Presets = DemoLibrary; }
-                else { UiServices.Instruments = null; UiServices.Presets = null; DemoModel = null; DemoLibrary = null; instPanel = null; presetPanel = null; }
+                // value 1: the demonstration models; 2: no models at all; 0: whatever was registered before the first of these calls (the real models, when they exist)
+                if (!demoSaved) { savedInstruments = UiServices.Instruments; savedPresets = UiServices.Presets; demoSaved = true; }
+                if (value == 1) { DemoModel = new StubInstrumentModel(); DemoLibrary = new StubPresetLibrary(); var model = DemoModel; UiServices.Instruments = _ => model; UiServices.Presets = DemoLibrary; }
+                else if (value == 2) { UiServices.Instruments = null; UiServices.Presets = null; DemoModel = null; DemoLibrary = null; }
+                else { UiServices.Instruments = savedInstruments; UiServices.Presets = savedPresets; DemoModel = null; DemoLibrary = null; demoSaved = false; }
+                instPanel = null; presetPanel = null;
+                Refresh();
                 return 0;
             case 410: return (nint)(DemoModel?.Probe((int)index, (int)value) ?? -1);
             case 411: return (nint)(DemoLibrary?.Probe((int)index) ?? -1);
@@ -216,6 +251,10 @@ public sealed unsafe partial class Bn2Editor
                     6 => presetPanel?.SearchText,
                     7 => presetPanel?.SelectedId,
                     8 => instPanel == null ? null : instPanel.StatusOk ? "1" : "0",
+                    9 => instPanel?.SelectedName,
+                    10 => instPanel?.ShownHistory,
+                    11 => instPanel?.ShownSeed,
+                    >= 100 and < 120 => instPanel?.FieldText(field - 100),          // 100 + visible row: "Name=value" of that field row
                     _ => null,
                 };
                 if (text == null) return -1;

@@ -28,6 +28,7 @@ internal sealed class InstrumentsPanel
 
     private IInstrumentModelProvider? provider;
     private InstrumentProviderFactory? factoryUsed;
+    private Emulator? providerEmu;
     private bool factoryTried;
     private long cacheVersion = -1;
     private IReadOnlyList<InstrumentSummary> summaries = [];
@@ -58,6 +59,9 @@ internal sealed class InstrumentsPanel
 
     /// <summary>The message shown instead of the instruments right now ("" when the instruments are shown).</summary>
     public string Message => message;
+    /// <summary>The history and seed texts as drawn on the last paint (what the self-test reads).</summary>
+    public string ShownHistory { get; private set; } = "";
+    public string ShownSeed { get; private set; } = "";
     public string Status => status;
     public bool StatusOk => statusOk;
     public bool WantsKeys => hex.Focused;
@@ -81,9 +85,10 @@ internal sealed class InstrumentsPanel
 
     public void Draw(nint dc, Emulator? emu)
     {
-        string? gate = emu == null ? UiServices.NoEmulator : !emu.CanRunaway ? UiServices.NeedGame : !emu.Runaway ? UiServices.NeedRunaway : null;
+        string? gate = emu == null ? UiServices.NoEmulator : !emu.CanRunaway ? UiServices.NeedGame : !emu.Runaway && !UiMutate.Has(UiMutate.IgnoreRunaway) ? UiServices.NeedRunaway : null;
         string note = gate != null ? "works with Instrument Runaway" : provider is { Unavailable: null } ? $"{summaries.Count} instrument{(summaries.Count == 1 ? "" : "s")} of the frozen game" : "";
-        if (gate != null) { provider = null; factoryTried = false; cacheVersion = -1; }
+        if (gate != null || !ReferenceEquals(emu, providerEmu)) { provider = null; factoryTried = false; cacheVersion = -1; }      // another emulator (or no game) means another provider
+        providerEmu = emu;
         var factory = UiServices.Instruments;
         if (gate == null && (provider == null && (!factoryTried || !ReferenceEquals(factory, factoryUsed))))
         {
@@ -287,13 +292,14 @@ internal sealed class InstrumentsPanel
         c.Button(dc, UiIds.Undo, "Undo", UiCanvas.R(x + 196, y, 66, 28), enabled: inst >= 0 && p.CanUndo(inst));
         c.Button(dc, UiIds.Redo, "Redo", UiCanvas.R(x + 268, y, 66, 28), enabled: inst >= 0 && p.CanRedo(inst));
         string hist = inst >= 0 ? p.HistoryText(inst) : "", seed = inst >= 0 ? p.SeedText(inst) : "";
+        ShownHistory = hist; ShownSeed = seed;
         c.Txt(dc, hist.Length > 0 ? hist : "no history yet", UiCanvas.R(x + 344, y, 80, 28), Win32.DT_LEFT | UiCanvas.Mid, UiCanvas.Faint, c.FontSmall);
         c.Txt(dc, seed.Length > 0 ? "seed " + seed : "", UiCanvas.R(x + 424, y, DetailW - 424, 28), Win32.DT_RIGHT | UiCanvas.Mid | Win32.DT_END_ELLIPSIS, UiCanvas.Dim, c.FontMono);
         // row 3: to the presets, into the game
         y += 32;
         c.Button(dc, UiIds.SendToPresets, "Send to Presets", UiCanvas.R(x, y, 170, 28));
         c.Button(dc, UiIds.Push, "Push into the game", UiCanvas.R(x + 176, y, 190, 28), primary: true);
-        c.Txt(dc, nudgeTarget.Length > 0 ? "Nudge acts on: " + nudgeTarget : "Nudge picks a field (click a field name to choose one)", UiCanvas.R(x + 376, y, DetailW - 376, 28), Win32.DT_LEFT | UiCanvas.Mid | Win32.DT_END_ELLIPSIS, UiCanvas.Faint, c.FontSmall);
+        c.Txt(dc, nudgeTarget.Length > 0 ? "Nudge: " + nudgeTarget : "Nudge: any field", UiCanvas.R(x + 376, y, DetailW - 376, 28), Win32.DT_LEFT | UiCanvas.Mid | Win32.DT_END_ELLIPSIS, UiCanvas.Faint, c.FontSmall);
     }
 
     private void DrawStatus(nint dc)
@@ -444,6 +450,9 @@ internal sealed class InstrumentsPanel
     public bool Key(int vk) => hex.Key(vk);
 
     // ---- what the self-test reads ----
+    /// <summary>"Name=value text" of the field in visible row <paramref name="slot"/> ("" when none).</summary>
+    public string FieldText(int slot) { int i = fieldBar.Pos + slot; return slot >= 0 && i < fields.Count ? $"{fields[i].Name}={fields[i].Format(fields[i].Value)}" : ""; }
+    public string SelectedName => list.Selected >= 0 && list.Selected < summaries.Count ? summaries[list.Selected].Name : "";
     public int FieldFirstRow => fieldBar.Pos;
     public int FieldCount => fields.Count;
     public int ListFirstRow => list.Scroll;

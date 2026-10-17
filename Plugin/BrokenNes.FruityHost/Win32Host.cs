@@ -21,6 +21,8 @@ internal static unsafe partial class Win32Host
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static partial bool EnumChildWindows(nint parent, delegate* unmanaged<nint, nint, int> proc, nint lParam);
 
     [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+    [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static partial bool ClientToScreen(nint h, POINT* p);
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static partial bool GetClientRect(nint h, RECT* r);
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static partial bool PrintWindow(nint h, nint hdc, uint flags);
     [LibraryImport("user32.dll")] private static partial nint GetDC(nint h);
@@ -118,6 +120,15 @@ internal static unsafe partial class Win32Host
     {
         if (x >= 0) MouseMove(hwnd, x, y);
         SendMessage(hwnd, WM_MOUSEWHEEL_, (nint)((uint)(ushort)(short)(notches * 120) << 16), 0);
+    }
+
+    /// <summary>The wheel over the point (x, y) of the window the way Windows delivers it: the message carries the cursor's position in SCREEN coordinates (the tabs convert it).</summary>
+    public static void WheelAt(nint hwnd, int notches, int x, int y)
+    {
+        MouseMove(hwnd, x, y);
+        POINT pt = new() { X = x, Y = y };
+        ClientToScreen(hwnd, &pt);
+        SendMessage(hwnd, WM_MOUSEWHEEL_, (nint)((uint)(ushort)(short)(notches * 120) << 16), Pt(pt.X, pt.Y));
     }
 
     /// <summary>Resizes the parent frame to hold its child and saves what the window shows as a 32-bit BMP.</summary>

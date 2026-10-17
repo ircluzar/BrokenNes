@@ -109,6 +109,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         fontLead = Win32.MakeFont("Segoe UI", 18, Win32.FW_SEMIBOLD);
         fontLink = Win32.MakeFont("Segoe UI", 15, Win32.FW_SEMIBOLD, underline: true);
         aboutOpen = About.ClaimFirstShowing();      // the first time the plugin opens on this machine, the About window opens by itself
+        UiBoot.Run();                               // the Instruments and Presets tabs' models register (Ui/UiBoot.cs)
         Win32.SetTimer(Hwnd, TimerId, 30, 0);
     }
 
@@ -1487,7 +1488,14 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                     openScroll = Math.Clamp(openScroll - delta, 0, Math.Max(0, openItems.Length - rows));
                     break;
                 }
-                if (tab != 0) { UiWheel(delta, mouseX, mouseY); break; }               // the Instruments and Presets tabs scroll their own lists
+                if (tab != 0)                                                          // the Instruments and Presets tabs scroll their own lists
+                {
+                    var wp = new POINT { X = x, Y = y };                               // WM_MOUSEWHEEL carries the cursor in SCREEN coordinates
+                    UiNative.ScreenToClient(Hwnd, &wp);
+                    mouseX = wp.X; mouseY = wp.Y;
+                    UiWheel(delta, mouseX, mouseY);
+                    break;
+                }
                 // the wheel arrives at screen coordinates: use the last known mouse position
                 var h = HitAt(mouseX, mouseY);
                 if (h is { Kind: Kind.Slider } s)

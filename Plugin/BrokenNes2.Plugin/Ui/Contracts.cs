@@ -2,7 +2,7 @@
 //
 // The tabs (Ui/InstrumentsPanel.cs, Ui/PresetsPanel.cs) only know these interfaces. The `imodel` agent implements
 // IInstrumentModelProvider over the instrument model (fields, blobs, the corruptor, history); the `presets` agent implements
-// IPresetLibrary over the preset files. Both register themselves in UiServices; until they do, the tabs say so on screen
+// IPresetLibrary over the preset files. Both register themselves in UiServices (Ui/UiBoot.cs shows where, in the owner's own file); until they do, the tabs say so on screen
 // ("not connected in this build"): a missing model is a message, never a silent empty list.
 //
 // Rules of the contract (stable on purpose: change a member only together with the tab that shows it):
@@ -11,6 +11,8 @@
 //    (Edits reach the audio side through whatever the implementation already does for Instrument Runaway; that is not this contract.)
 //  * Lists and field arrays returned may be cached by the tab until Version changes. Version must change whenever anything the tab
 //    can show changes, also when the change did not come from the tab (another instance, a project restore, Runaway released).
+//  * The factory and every call are made while the editor paints or handles a mouse message: keep them quick (build lazily, cache), and say a failure with an
+//    ActionResult or Unavailable. A call that throws is caught and shown on the tab ("A model behind this tab failed"), never silently ignored.
 //  * Strings are shown as they are: say "BrokenNes2" where the product is named, never a longer branded name.
 //  * Ids (field ids, blob ids, preset ids) are opaque, stable strings; the tab never parses them.
 //  * An action that cannot be done returns ActionResult.Refused(reason). The tab shows the reason; it never retries or falls back.

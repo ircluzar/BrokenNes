@@ -221,6 +221,33 @@ One dark, self-drawn window (no Win32 controls): the emulator's **screen** on th
 The game built into the DLL is VRUN's frozen build (`Resources/default.nes`, `builds/2026-10-01_tearfix`). There are no built-in Game Boy or SNES
 games: a console with no game loaded says so on the screen.
 
+### Tabs: Emulator, Instruments, Presets (round 6)
+
+A strip of three tabs sits on the header rule above the right column (left edge at the column's). Everything listed above is the **Emulator** tab and is unchanged: same window (904 x 664),
+same controls in the same places, same ids, same FL parameters (the tabs add none); the only pixels that differ from the editor before the tabs existed are the strip itself
+(`FruityHost bmpdiff` of a capture before and after, strip masked: 0 pixels differ). **Instruments** and **Presets** make the window **420 pixels wider** (`UiLayout.WideExtra`, 1324 x 664: the picture, the
+status line and the Inputs / Corruption / Instrument Runaway buttons stay where they are; Reset Console belongs to the Emulator tab) and going back restores 904.
+The editor resizes its own window, then calls the host's `FHD_EditorResized` (id 2 in FL's public `fp_plugclass.h`, `Fhd.EditorResized` here): FL fits its frame around the editor window again.
+The test bench's host does what FL does (its frame follows) and the standalone synth's panel follows too (`SynthRack.EditorResized`).
+
+- **Instruments** works with Instrument Runaway: with Runaway off it says *Switch Instrument Runaway on to see the game's instruments* (no game loaded: *Load a game in ROM mode, then switch Instrument Runaway on to see its instruments*; no model
+  connected: *The instrument model is not connected in this build of BrokenNes2.*). With the game frozen: the **instrument list** (scrolling list), the **fields** of the selected instrument (a row each: name, a slider with - and + for
+  ranges and signed values, a stepper for enums, toggles for bit fields, the value, a lock; hovering a row explains the field; Shift on a stepper steps by ten), a **waveform view** with loop markers and a **hex field** for the
+  selected blob (click a byte, type two hex digits), and the **corruption tools**: Strength, Randomise, Nudge - / + (on the field whose name was clicked, else the model picks), Lock all / Unlock all (and a lock per field and for the sample data),
+  Undo / Redo with the step and the seed shown, **Send to Presets** and **Push into the game**. Every action's answer (done, or refused with the reason) appears on the status line under the tools.
+- **Presets**: the library list with a search box (name, tag or game) and a console filter, the details of the selected preset, and **Load, Rename, Delete (two clicks), Export, Import, Audition**. No presets are provided: an empty library says
+  how to get some.
+- **All of it is wired to two interfaces, not to a model:** `Plugin/BrokenNes2.Plugin/Ui/Contracts.cs` (`IInstrumentModelProvider`, `IPresetLibrary`, `UiServices`). The real models plug in from their own files
+  (`Ui/UiBoot.cs` shows how); until they do the tabs say "not connected". `Ui/StubModels.cs` holds demonstration models (a 30-instrument SNES-like model with every field kind and a seeded corruptor with history, a 14-preset
+  library) that **only the self-test installs** (hook 403); nothing in normal use does.
+- **Widgets** (`Ui/`): `ScrollList` and `VScrollBar` (wheel, draggable thumb, page by clicking the track), `Slider`, `Stepper`, `BitToggle`, `TextInput` (caret, Home/End/Delete, Ctrl+A, Enter, Esc; no clipboard), `HexField`, `WaveView`,
+  on a small drawing surface `UiCanvas` with the editor's palette. Typing reaches the focused field through `WM_CHAR` / `WM_KEYDOWN`; while a text or hex field has the keyboard the Inputs window's keyboard-to-pad polling is off
+  (typing a name does not press the game's buttons), and the keyboard goes back to the host's frame when the field lets go.
+- **Control ids:** 1000-1999 belong to the tabs (1000-1002 the strip, 1100-1599 Instruments, 1600-1799 Presets; the exact map is in `Ui/UiIds.cs`); everything below 1000 is the Emulator tab's and the Corruption / Inputs / About windows' and
+  is never reused. Test hooks for the tabs: `Fpd.TestBase + 400..499` through the editor (listed in `Ui/Bn2Editor.Tabs.cs`).
+- **Not verified in real FL:** whether FL's frame follows `FHD_EditorResized` the way the test host's does, whether FL passes typed characters and the wheel to a plugin window (FL also plays notes from typed keys), and the wide window on a
+  small screen. The Instruments and Presets tabs are shells on stub models until the `imodel` and `presets` work lands.
+
 ## Inputs: playing the game
 
 The **Inputs** button (bottom left) opens a window for Player 1's controls, so a game running in the emulator can be navigated (to reach a place

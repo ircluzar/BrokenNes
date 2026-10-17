@@ -21,7 +21,7 @@ namespace BrokenNes.Windows.Synth
         [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
         [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetClientRect(IntPtr hwnd, out RECT rect);
 
-        /// <summary>The plugin editor's size (Bn2Editor.Width x Height); the real size is read from its window once it exists.</summary>
+        /// <summary>The plugin editor's size on its Emulator tab (904 x 664); the real size is read from its window once it exists and whenever the editor reports a resize.</summary>
         private const int EditorW = 904, EditorH = 664;
 
         /// <summary>The computer keyboard as a piano, in the layout most DAWs use: A is C, W is C#, S is D, E is D#, D is E ... P is D# and ';' is E, an octave up from the start.</summary>
@@ -124,6 +124,7 @@ namespace BrokenNes.Windows.Synth
             try { rate = SynthAudioOutput.RateOf(settings.AudioDevice); } catch (Exception ex) { audioError = ex.Message; }
 
             rack = new SynthRack(dll, rate);
+            rack.EditorResized += FitEditorPanel;   // the editor's Instruments and Presets tabs are wider than its Emulator tab: the panel follows (the tab page scrolls when the window is smaller)
             if (SynthSettings.LoadStates() is { } saved) rack.LoadStates(saved);
             router = new MidiRouter(rack) { Routing = settings.Routing, Selected = Math.Clamp(settings.Tab, 0, SynthRack.ChannelCount - 1) };
 
@@ -144,6 +145,13 @@ namespace BrokenNes.Windows.Synth
             StartAudio();
             StartMidi();
             ticker.Start();
+        }
+
+        /// <summary>The plugin said its editor was resized (FHD_EditorResized): the panel that holds it takes the editor window's new size.</summary>
+        private void FitEditorPanel(int channel)
+        {
+            if (rack == null || channel < 0 || channel >= editorPanels.Length) return;
+            if (GetClientRect(rack.EditorWindow(channel), out var r) && r.Right > 0 && r.Bottom > 0) editorPanels[channel].Size = new Size(r.Right, r.Bottom);
         }
 
         /// <summary>Something the synth cannot do without went wrong at start-up. Say what, then put the emulator back so the user is not left with nothing.</summary>
