@@ -95,6 +95,32 @@ $p3 = [byte[]](
 Check 'sweep-reload program layout' (($p3.Length -eq 45) -and ($p3[29] -eq 0x2C) -and ($p3[42] -eq 0x4C)) "length $($p3.Length)"
 $r3 = Join-Path $tmp 'sweep-reload.nes'; [System.IO.File]::WriteAllBytes($r3, (New-NesRom $p3))
 
+# ---- program 4: a write to the envelope register ($4000 / $4004 / $400C) must NOT restart the envelope (only $4003 / $4007 / $400F does) ----------
+$p4 = [byte[]](
+    0x78, 0xD8, 0xA9, 0x0F, 0x8D, 0x15, 0x40,                                   # SEI CLD LDA #$0F STA $4015 (pulse 1, pulse 2, triangle, noise on)
+    0xA9, 0x00, 0x8D, 0x00, 0x40, 0x8D, 0x04, 0x40, 0x8D, 0x0C, 0x40,          # $4000 $4004 $400C = 0: envelope mode, no loop, divider period 1
+    0xA9, 0x08, 0x8D, 0x01, 0x40, 0x8D, 0x05, 0x40,                            # sweeps off
+    0xA9, 0x7C, 0x8D, 0x02, 0x40, 0x8D, 0x06, 0x40,                            # pulse periods $17C
+    0xA9, 0x08, 0x8D, 0x03, 0x40, 0x8D, 0x07, 0x40, 0x8D, 0x0F, 0x40,          # length index 1 (254): this write starts each envelope
+    0xA2, 0x08,                                                                 # LDX #8
+    0x2C, 0x02, 0x20, 0x10, 0xFB, 0xCA, 0xD0, 0xF8,                            # eight vblanks: every envelope has decayed to 0
+    0xA9, 0x00, 0x8D, 0x00, 0x40, 0x8D, 0x04, 0x40, 0x8D, 0x0C, 0x40,          # write the SAME envelope registers again: hardware leaves the decayed level alone
+    0x4C, 0x42, 0xC0)                                                           # JMP *
+Check 'envelope-restart program layout' (($p4.Length -eq 69) -and ($p4[47] -eq 0x2C) -and ($p4[66] -eq 0x4C)) "length $($p4.Length)"
+$r4 = Join-Path $tmp 'envelope-restart.nes'; [System.IO.File]::WriteAllBytes($r4, (New-NesRom $p4))
+# ---- program 5: a write to $4008 must NOT reload the triangle's linear counter (only $400B sets the reload flag) ----------------------------------
+$p5 = [byte[]](
+    0x78, 0xD8, 0xA9, 0x04, 0x8D, 0x15, 0x40,                                   # SEI CLD, triangle on
+    0xA9, 0x7F, 0x8D, 0x08, 0x40,                                               # $4008 = $7F: control clear, reload value 127
+    0xA9, 0x40, 0x8D, 0x0A, 0x40,                                               # period low
+    0xA9, 0x08, 0x8D, 0x0B, 0x40,                                               # length index 1, period high 0: this write sets the reload flag
+    0xA2, 0x09,                                                                 # LDX #9
+    0x2C, 0x02, 0x20, 0x10, 0xFB, 0xCA, 0xD0, 0xF8,                            # nine vblanks: the counter has counted down from 127
+    0xA9, 0x7F, 0x8D, 0x08, 0x40,                                               # $4008 = $7F again: hardware does not reload the counter
+    0x4C, 0x25, 0xC0)                                                           # JMP *
+Check 'linear-counter program layout' (($p5.Length -eq 40) -and ($p5[24] -eq 0x2C) -and ($p5[37] -eq 0x4C)) "length $($p5.Length)"
+$r5 = Join-Path $tmp 'linear-reload.nes'; [System.IO.File]::WriteAllBytes($r5, (New-NesRom $p5))
+
 # expected values, MEASURED on Mesen 2.1.1 (the oracle) on 2026-10-16 with the same programs (power-on RAM zeros); re-measure with -Measure
 $expectX = 4          # frames until the length counter hits zero (two units per frame)
 $expectPer2 = '17c'   # sweep disabled: the period stays 0x17C
@@ -116,6 +142,10 @@ if ($Measure) {
     $m1 = Invoke-MesenTrace $r1 40; Write-Host ("Mesen five-step: X = {0}" -f [Convert]::ToInt32((Get-TraceColumn $m1 'x' 38), 16))
     $m2 = Invoke-MesenTrace $r2 30; Write-Host ("Mesen sweep-disabled: p1per after 25 frames = {0}" -f (Get-TraceColumn $m2 'p1per' 25))
     $m3 = Invoke-MesenTrace $r3 30; Write-Host ("Mesen sweep-reload: p1per at trace frames 3..10 = " + ((3..10 | ForEach-Object { 'f' + $_ + '=' + (Get-TraceColumn $m3 'p1per' $_) }) -join ' '))
+    $m4 = Invoke-MesenTrace $r4 24
+    Write-Host ("Mesen envelope-restart: p1vol/p2vol/nvol at trace frames 5..16 = " + ((5..16 | ForEach-Object { 'f' + $_ + '=' + (Get-TraceColumn $m4 'p1vol' $_) + '/' + (Get-TraceColumn $m4 'p2vol' $_) + '/' + (Get-TraceColumn $m4 'nvol' $_) }) -join ' '))
+    $m5 = Invoke-MesenTrace $r5 24
+    Write-Host ("Mesen linear-reload: tlin at trace frames 5..16 = " + ((5..16 | ForEach-Object { 'f' + $_ + '=' + (Get-TraceColumn $m5 'tlin' $_) }) -join ' '))
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue; exit 0
 }
 try {
@@ -143,6 +173,23 @@ try {
     $gotf = @(); $agree = $true
     foreach ($f in ($expectPer3.Keys | Sort-Object)) { $v = Get-TraceColumn $tf 'p1per' $f; $gotf += "f$f=$v"; if ($v -ne $expectPer3[$f]) { $agree = $false } }
     Write-Host "         negative control: the older FMC core shows p1per $($gotf -join ' ') ($(if ($agree) { 'agrees with Mesen' } else { 'DISAGREES, so the guard can fail' }))"
+    # a write to $4000 / $4004 / $400C must not restart a decayed envelope: Mesen keeps all three volumes at 0 through frame 16
+    $t = Invoke-Trace $r4 24 'FIX'
+    $bad = @(); foreach ($f in 9..16) { foreach ($c in 'p1vol', 'p2vol', 'nvol') { $v = Get-TraceColumn $t $c $f; if ($v -ne '0') { $bad += "f$f $c=$v" } } }
+    Check 'envelope: rewriting the envelope register does not restart a decayed envelope' ($bad.Count -eq 0) $(if ($bad.Count -eq 0) { 'p1vol, p2vol and nvol stay 0 at frames 9..16 (Mesen: 0)' } else { 'volumes came back: ' + ($bad[0..([Math]::Min(5, $bad.Count - 1))] -join ', ') + ' (Mesen: 0)' })
+    $tf = Invoke-Trace $r4 24 'FMC'
+    $badf = @(); foreach ($f in 9..16) { foreach ($c in 'p1vol', 'p2vol', 'nvol') { $v = Get-TraceColumn $tf $c $f; if ($v -ne '0') { $badf += "f$f $c=$v" } } }
+    Write-Host "         negative control: the older FMC core $(if ($badf.Count -eq 0) { 'keeps the volumes at 0 (agrees with Mesen)' } else { 'brings volumes back (' + $badf[0] + '): DISAGREES, so the guard can fail' })"
+    # a write to $4008 must not reload the linear counter: Mesen counts down 4 per frame (0x69 at frame 5 ... 0x3d at frame 16) with no jump back to 0x7f
+    $t = Invoke-Trace $r5 24 'FIX'
+    $tl = @(); foreach ($f in 5..16) { $tl += [Convert]::ToInt32((Get-TraceColumn $t 'tlin' $f), 16) }
+    $mono = $true; for ($i = 1; $i -lt $tl.Count; $i++) { if ($tl[$i] -gt $tl[$i - 1]) { $mono = $false } }
+    $endOk = ([Math]::Abs($tl[-1] - 0x3d) -le 4)
+    Check 'linear counter: rewriting $4008 does not reload the counter' ($mono -and $endOk) ("tlin frames 5..16 = " + (($tl | ForEach-Object { '{0:x}' -f $_ }) -join ' ') + "  (Mesen: 69 65 61 5d 59 55 51 4d 49 45 41 3d)")
+    $tf = Invoke-Trace $r5 24 'FMC'
+    $tlf = @(); foreach ($f in 5..16) { $tlf += [Convert]::ToInt32((Get-TraceColumn $tf 'tlin' $f), 16) }
+    $monof = $true; for ($i = 1; $i -lt $tlf.Count; $i++) { if ($tlf[$i] -gt $tlf[$i - 1]) { $monof = $false } }
+    Write-Host "         negative control: the older FMC core shows tlin $(($tlf | ForEach-Object { '{0:x}' -f $_ }) -join ' ') ($(if ($monof) { 'it also counts down, agrees with Mesen' } else { 'it jumps back up: DISAGREES, so the guard can fail' }))"
 } catch {
     Write-Host "setup problem: $($_.Exception.Message)"; Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue; exit 2
 }

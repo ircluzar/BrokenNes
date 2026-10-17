@@ -22,10 +22,13 @@
   Mesen's test runner stops a script after about 100 seconds of wall clock; a long run needs the segmented runner of the
   campaign. This script runs one segment and says so when Mesen stopped early.
 
-  The gate: the picture columns (fbhash, nametables, OAM, palette, CHR), the PPU control columns and every APU register must agree
-  after the first -BootFrames frames. CPU registers, the work-RAM hash and the PPU address v are sampled at an instruction boundary
-  the two emulators cannot align below one instruction, so they are listed as information only. Divergence inside the boot window
-  (Mesen does not draw frame 0; a multi-frame CHR upload at boot lands a frame apart) is listed, not failed.
+  The gate (rules and reasons in lib\TraceGate.ps1): the picture columns (fbhash, nametables, OAM, palette, CHR) and the PPU control
+  columns must agree exactly after the first -BootFrames frames; so must every APU register, except ISOLATED single-frame blips (a
+  frame where the column differs but agrees on the frame before and the frame after), which are listed in the summary and tolerated up
+  to a budget (the two emulators read the APU at slightly different instants of a frame). CPU registers, the work-RAM hash and the PPU
+  address v and its write toggle w are sampled at an instruction boundary / mid-write-sequence the two emulators cannot align, so they
+  are information only. Divergence inside the boot window (Mesen does not draw frame 0; a multi-frame CHR upload at boot lands a frame
+  apart) is listed, not failed.
 
   Exit code: 0 gate passed, 1 divergence, 2 usage or a tool failed.
 #>
@@ -48,6 +51,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repo = Split-Path -Parent (Split-Path -Parent $here)
+. (Join-Path (Split-Path -Parent $here) 'lib\TraceGate.ps1')
 if (-not $DiffScript) { $DiffScript = Join-Path $repo 'UAT\diff-trace.ps1' }
 foreach ($p in @($Rom, $MesenDir, $Workshop, $DiffScript)) { if (-not (Test-Path -LiteralPath $p)) { Write-Host "missing: $p"; exit 2 } }
 if (-not $TraceLua -or -not (Test-Path -LiteralPath $TraceLua)) { Write-Host 'the Mesen tracer state_trace.lua was not found: pass -TraceLua or set BROKENDEV_TRACE_LUA (it lives in the user''s VRUN repository, tools\state_trace.lua)'; exit 2 }
@@ -110,53 +114,22 @@ $code = $LASTEXITCODE
 $verdictFile = Join-Path $Work "$Tag.verdict.txt"
 [System.IO.File]::WriteAllText($verdictFile, $out)
 
-# ---- the gate -----------------------------------------------------------------------------------------------------
-function Read-TraceColumns([string]$Path) {
-    $names = $null; $rows = New-Object System.Collections.Generic.List[string[]]
-    foreach ($line in [System.IO.File]::ReadLines($Path)) {
-        if ($line.StartsWith('# columns:')) { $names = ($line.Substring(10).Trim()) -split '\|'; continue }
-        if ($line.StartsWith('#') -or $line.Length -eq 0) { continue }
-        $rows.Add($line -split '\|')
-    }
-    if (-not $names) { $names = @('frame', 'pc', 'a', 'x', 'y', 'sp', 'p', 'ramhash') }
-    [pscustomobject]@{ Names = $names; Rows = $rows }
-}
-$ta = Read-TraceColumns $mesenTrace; $tb = Read-TraceColumns $bnTrace
-$idxA = @{}; for ($i = 0; $i -lt $ta.Names.Count; $i++) { $idxA[$ta.Names[$i]] = $i }
-$idxB = @{}; for ($i = 0; $i -lt $tb.Names.Count; $i++) { $idxB[$tb.Names[$i]] = $i }
-$skewCols = @('pc', 'a', 'x', 'y', 'sp', 'p', 'ramhash', 'v')
-$n = [math]::Min($ta.Rows.Count, $tb.Rows.Count)
-$div = [ordered]@{}   # column -> frames that differ (only where both sides measured it)
-foreach ($c in $ta.Names) {
-    if ($c -eq 'frame' -or -not $idxB.ContainsKey($c)) { continue }
-    $ia = $idxA[$c]; $ib = $idxB[$c]; $list = New-Object System.Collections.Generic.List[int]
-    for ($f = 0; $f -lt $n; $f++) {
-        $x = $ta.Rows[$f][$ia]; $y = $tb.Rows[$f][$ib]
-        if ($x -ne '-' -and $y -ne '-' -and $x -ne $y) { $list.Add($f) }
-    }
-    $div[$c] = $list
-}
-$gate = New-Object System.Collections.Generic.List[string]
-$boot = New-Object System.Collections.Generic.List[string]
-foreach ($c in $div.Keys) {
-    if ($skewCols -contains $c) { continue }
-    $late = @($div[$c] | Where-Object { $_ -ge $BootFrames }); $early = @($div[$c] | Where-Object { $_ -lt $BootFrames })
-    if ($late.Count -gt 0) { $gate.Add("$c differs on $($late.Count) frame(s) after the first $BootFrames (first at frame $($late[0]))") }
-    if ($early.Count -gt 0) { $boot.Add("$c@" + ($early -join ',')) }
-}
-if ($n -lt 10) { $gate.Add("only $n frames could be compared") }
-$compared = @($div.Keys | Where-Object { $skewCols -notcontains $_ })
-$census = [ordered]@{}; foreach ($c in $div.Keys) { $census[$c] = $div[$c].Count }
+# ---- the gate (BrokenDev\lib\TraceGate.ps1 holds the rules and their explanation) ------------------------------------------
+$g = Get-BdTraceGate -MesenTrace $mesenTrace -BrokenNesTrace $bnTrace -BootFrames $BootFrames
+$n = $g.Frames; $census = $g.Census; $boot = $g.BootSkew; $gate = $g.GateFailures
+$blipMap = [ordered]@{}; foreach ($k in $g.Blips.Keys) { $blipMap[$k] = @($g.Blips[$k]) }
 $summary = [ordered]@{
     rom = $Rom; frames = $n; input = $InputScript; cores = $Cores; ntsc = $Ntsc; ramFill = $RamFill; mesenSeconds = $mesenSec; bootFrames = $BootFrames
-    differExitCode = $code; divergentFrameCounts = $census; bootSkew = @($boot); gateFailures = @($gate); comparedColumns = $compared.Count; pass = ($gate.Count -eq 0)
-    note = 'picture, PPU control and every APU register must agree after the boot window; pc/a/x/y/sp/p/ramhash/v are sample-skew columns and are information only'
+    differExitCode = $code; divergentFrameCounts = $census; bootSkew = @($boot); gateFailures = @($gate); comparedColumns = $g.ComparedColumns; pass = $g.Pass
+    isolatedApuBlips = $blipMap; isolatedBlipFrames = $g.BlipFrames; blipBudget = $g.BlipLimit
+    note = 'picture and PPU control columns must agree after the boot window; APU registers too, except isolated single-frame blips (listed, budgeted); pc/a/x/y/sp/p/ramhash/v/w are sample-skew columns and are information only'
 }
 [System.IO.File]::WriteAllText((Join-Path $Work "$Tag.summary.json"), ($summary | ConvertTo-Json -Depth 5))
-$info = $skewCols | ForEach-Object { if ($census.Contains($_)) { "$_=$($census[$_])" } }
-Write-Host ("diff-nes: {0} frames, {1} columns compared exactly (picture, PPU control, APU registers); the sample-skew columns are information only" -f $n, $compared.Count)
+$info = $script:BdSkewColumns | ForEach-Object { if ($census.Contains($_)) { "$_=$($census[$_])" } }
+Write-Host ("diff-nes: {0} frames, {1} columns compared (picture and PPU control exactly; APU registers exactly apart from isolated single-frame blips); the sample-skew columns are information only" -f $n, $g.ComparedColumns)
 Write-Host ("diff-nes: sample-skew columns (frames that differ): " + ($info -join ' '))
+if ($g.BlipFrames -gt 0) { Write-Host ("diff-nes: isolated APU blips on {0} frame(s) (budget {1}), listed in the summary: {2}" -f $g.BlipFrames, $g.BlipLimit, (($blipMap.Keys | ForEach-Object { "$_@" + ($blipMap[$_] -join ',') }) -join '  ')) }
 if ($boot.Count -gt 0) { Write-Host ("diff-nes: boot-window skew (listed, not failed): " + ($boot -join '; ')) }
-if ($gate.Count -eq 0) { Write-Host 'diff-nes: PASS (picture, PPU state and APU registers agree with Mesen after the boot window)' } else { Write-Host ('diff-nes: FAIL: ' + ($gate -join '; ')) }
+if ($g.Pass) { Write-Host 'diff-nes: PASS (picture, PPU state and APU registers agree with Mesen after the boot window)' } else { Write-Host ('diff-nes: FAIL: ' + ($gate -join '; ')) }
 Write-Host "diff-nes: full verdict $verdictFile ; traces $mesenTrace , $bnTrace ; summary $(Join-Path $Work "$Tag.summary.json")"
-if ($gate.Count -eq 0) { exit 0 } else { exit 1 }
+if ($g.Pass) { exit 0 } else { exit 1 }

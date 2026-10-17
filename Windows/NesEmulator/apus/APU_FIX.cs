@@ -88,7 +88,7 @@ namespace NesEmulator
         private int pulse1_volumeParam, pulse2_volumeParam, noise_volumeParam; // 0..15
 
         // Sweep units
-        private bool pulse1_sweepNegate, pulse2_sweepNegate; private int pulse1_sweepShift, pulse2_sweepShift; private int pulse1_sweepPeriod, pulse2_sweepPeriod; private bool pulse1_sweepReload, pulse2_sweepReload; private int pulse1_sweepDivider, pulse2_sweepDivider;
+        private bool pulse1_sweepNegate, pulse2_sweepNegate; private int pulse1_sweepShift, pulse2_sweepShift; private int pulse1_sweepPeriod = 1, pulse2_sweepPeriod = 1; /* P + 1; 1 at power-on ($4001 = 0). It was 0, and the sweep divider (period - 1) then counted down below zero for ever on a game that never writes $4001 */ private bool pulse1_sweepReload, pulse2_sweepReload; private int pulse1_sweepDivider, pulse2_sweepDivider;
 
         // Triangle linear counter
         private int triangle_linearCounter; private bool triangle_linearReloadFlag;
@@ -213,20 +213,26 @@ namespace NesEmulator
             RegisterWriteObserver?.Invoke(address, value);
             switch(address)
             {
+                // Hardware: only the fourth register of a channel ($4003 / $4007 / $400F) sets the envelope START flag. A write to the
+                // envelope register ($4000 / $4004 / $400C) changes the loop, constant-volume and volume bits and nothing else, so a game that
+                // rewrites it every frame (the SMB1 remake does) must not pull a decayed envelope back to 15. Measured on Mesen 2.1.1 by
+                // BrokenDev/tests/apu-regress.ps1 (envelope-restart).
                 case 0x4000: // Pulse1 envelope/duty
-                    pulse1_duty = (byte)((value>>6)&3); pulse1_lengthHalt = (value & 0x20)!=0; pulse1_constantVolume = (value & 0x10)!=0; pulse1_volumeParam = value & 0x0F; pulse1_envStart = true; break;
+                    pulse1_duty = (byte)((value>>6)&3); pulse1_lengthHalt = (value & 0x20)!=0; pulse1_constantVolume = (value & 0x10)!=0; pulse1_volumeParam = value & 0x0F; break;
                 case 0x4001: // Pulse1 sweep
                     pulse1_sweepRaw = value; pulse1_sweepPeriod = ((value>>4)&7)+1; pulse1_sweepNegate = (value & 0x08)!=0; pulse1_sweepShift = value & 0x07; pulse1_sweepReload = true; break;
                 case 0x4002: pulse1_timer = (ushort)((pulse1_timer & 0x0700) | value); break;
                 case 0x4003: pulse1_timer = (ushort)((pulse1_timer & 0x00FF) | ((value & 0x07)<<8)); pulse1_lengthIdx = (byte)((value>>3)&0x1F); if(pulse1_enabled) LoadLength(ref pulse1_lengthCounter, pulse1_lengthIdx); pulse1_seqIndex=0; pulse1_envStart=true; pulse1_timerCounter = (pulse1_timer+1)*2; break;
-                case 0x4004: pulse2_duty = (byte)((value>>6)&3); pulse2_lengthHalt = (value & 0x20)!=0; pulse2_constantVolume = (value & 0x10)!=0; pulse2_volumeParam = value & 0x0F; pulse2_envStart = true; break;
+                case 0x4004: pulse2_duty = (byte)((value>>6)&3); pulse2_lengthHalt = (value & 0x20)!=0; pulse2_constantVolume = (value & 0x10)!=0; pulse2_volumeParam = value & 0x0F; break;
                 case 0x4005: pulse2_sweepRaw = value; pulse2_sweepPeriod = ((value>>4)&7)+1; pulse2_sweepNegate = (value & 0x08)!=0; pulse2_sweepShift = value & 0x07; pulse2_sweepReload = true; break;
                 case 0x4006: pulse2_timer = (ushort)((pulse2_timer & 0x0700) | value); break;
                 case 0x4007: pulse2_timer = (ushort)((pulse2_timer & 0x00FF) | ((value & 0x07)<<8)); pulse2_lengthIdx = (byte)((value>>3)&0x1F); if(pulse2_enabled) LoadLength(ref pulse2_lengthCounter, pulse2_lengthIdx); pulse2_seqIndex=0; pulse2_envStart=true; pulse2_timerCounter = (pulse2_timer+1)*2; break;
-                case 0x4008: triangle_linearReg = value; triangle_lengthHalt = (value & 0x80)!=0; triangle_linearReloadFlag = true; break;
+                // Hardware: $4008 sets the control flag and the reload VALUE only; the linear counter's reload FLAG is set by $400B alone.
+                // The old code set it here too, so a game that rewrites $4008 every frame kept reloading a counter that hardware lets run down.
+                case 0x4008: triangle_linearReg = value; triangle_lengthHalt = (value & 0x80)!=0; break;
                 case 0x400A: triangle_timer = (ushort)((triangle_timer & 0x0700) | value); break;
                 case 0x400B: triangle_timer = (ushort)((triangle_timer & 0x00FF) | ((value & 0x07)<<8)); triangle_lengthIdx = (byte)((value>>3)&0x1F); if(triangle_enabled) LoadLength(ref triangle_lengthCounter, triangle_lengthIdx); triangle_seqIndex=0; triangle_linearReloadFlag=true; triangle_timerCounter = triangle_timer+1; break;
-                case 0x400C: noise_lengthHalt = (value & 0x20)!=0; noise_constantVolume = (value & 0x10)!=0; noise_volumeParam = value & 0x0F; noise_envStart = true; break;
+                case 0x400C: noise_lengthHalt = (value & 0x20)!=0; noise_constantVolume = (value & 0x10)!=0; noise_volumeParam = value & 0x0F; break;
                 case 0x400E: noise_periodReg = value; break;
                 case 0x400F: noise_lengthIdx = (byte)((value>>3)&0x1F); if(noise_enabled) LoadLength(ref noise_lengthCounter, noise_lengthIdx); noise_envStart=true; break;
                 case 0x4010: dmc_ctrl = value; dmc_irqEnable = (value & 0x80)!=0; if(!dmc_irqEnable) dmc_irqFlag=false; dmc_loop = (value & 0x40)!=0; dmc_timerPeriod = DMCRatesNTSC[value & 0x0F]; break;
@@ -452,13 +458,13 @@ namespace NesEmulator
         // half-frame behind Mesen (period 0x0EF where Mesen had 0x0FD at the first frame of an upward sweep, SMB1 remake). `period` is P + 1 here.
         private void Sweep(ref ushort timer, bool enabled, bool negate, int shift, int period, ref int divider, ref bool reload, bool channel1)
         {
-            if(divider == 0 && enabled && shift != 0)
+            if(divider <= 0 && enabled && shift != 0)
             {
                 int change = timer >> shift;
                 int target = negate ? (timer - change - (channel1?1:0)) : (timer + change);
                 if(timer >= 8 && target <= 0x7FF) timer = (ushort)Math.Max(0, target);
             }
-            if(divider == 0 || reload){ divider = period - 1; reload = false; } else divider--;
+            if(divider <= 0 || reload){ divider = Math.Max(0, period - 1); reload = false; } else divider--;
         }
         private void ClockEnvelope(ref bool start, ref int divider, ref int decay, int volumeParam, bool loop){ if(start){ start=false; decay=15; divider=volumeParam+1; } else { if(--divider <=0){ divider = volumeParam+1; if(decay>0) decay--; else if(loop) decay=15; } } }
 

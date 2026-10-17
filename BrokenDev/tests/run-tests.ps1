@@ -290,6 +290,61 @@ try {
         Assert-True ($bad.Count -eq 0) ("heavy or forbidden files under BrokenDev: " + (($bad | ForEach-Object { $_.Name }) -join ', '))
     }
 
+    # ------------------------------------------------------------------------------------------ the NES differential gate
+    Write-Host 'differential gate'
+    . (Join-Path $bd 'lib\TraceGate.ps1')
+    $gateDir = Join-Path $tmpRoot 'gate'
+    New-Item -ItemType Directory -Force -Path $gateDir | Out-Null
+    function New-GateTrace {
+        # 40 frames of: frame|fbhash|p1per|w|pc ; $Mutate maps frame -> hashtable of column overrides
+        param([string]$Name, [hashtable]$Mutate = @{})
+        $lines = @('# columns: frame|fbhash|p1per|w|pc')
+        for ($f = 0; $f -lt 40; $f++) {
+            $row = @{ fbhash = ('{0:x4}' -f (100 + $f)); p1per = '07e'; w = '0'; pc = '8000' }
+            if ($Mutate.ContainsKey($f)) { foreach ($k in $Mutate[$f].Keys) { $row[$k] = $Mutate[$f][$k] } }
+            $lines += ('{0}|{1}|{2}|{3}|{4}' -f $f, $row.fbhash, $row.p1per, $row.w, $row.pc)
+        }
+        $p = Join-Path $gateDir $Name
+        [System.IO.File]::WriteAllText($p, ($lines -join "`n") + "`n")
+        $p
+    }
+    $gA = New-GateTrace 'a.trace'
+    Test-Case 'gate: identical traces pass' {
+        $g = Get-BdTraceGate -MesenTrace $gA -BrokenNesTrace (New-GateTrace 'same.trace')
+        Assert-True $g.Pass ($g.GateFailures -join '; ')
+        Assert-Equal $g.BlipFrames 0
+    }
+    Test-Case 'gate: one isolated APU blip passes, and is LISTED with its column and frame' {
+        $g = Get-BdTraceGate -MesenTrace $gA -BrokenNesTrace (New-GateTrace 'blip.trace' @{ 20 = @{ p1per = '12e' } })
+        Assert-True $g.Pass ($g.GateFailures -join '; ')
+        Assert-Equal $g.BlipFrames 1
+        Assert-Equal (@($g.Blips['p1per'])[0]) 20
+    }
+    Test-Case 'NEGATIVE: an APU difference that lasts two frames is a failure, not a blip' {
+        $g = Get-BdTraceGate -MesenTrace $gA -BrokenNesTrace (New-GateTrace 'two.trace' @{ 20 = @{ p1per = '12e' }; 21 = @{ p1per = '12e' } })
+        Assert-True (-not $g.Pass) 'a two-frame APU divergence passed'
+    }
+    Test-Case 'NEGATIVE: a single-frame PICTURE difference after the boot window fails (no blip allowance for pictures)' {
+        $g = Get-BdTraceGate -MesenTrace $gA -BrokenNesTrace (New-GateTrace 'pic.trace' @{ 20 = @{ fbhash = 'dead' } })
+        Assert-True (-not $g.Pass) 'a one-frame picture difference passed'
+        Assert-True ((($g.GateFailures -join ' ') -match 'fbhash')) ($g.GateFailures -join '; ')
+    }
+    Test-Case 'NEGATIVE: more isolated blips than the budget fails' {
+        $mut = @{}; foreach ($f in 12, 15, 18, 21, 24, 27, 30) { $mut[$f] = @{ p1per = '12e' } }
+        $g = Get-BdTraceGate -MesenTrace $gA -BrokenNesTrace (New-GateTrace 'many.trace' $mut) -BlipLimit 5
+        Assert-True (-not $g.Pass) 'seven blips passed with a budget of five'
+        Assert-True (($g.GateFailures -join ' ') -match 'budget') ($g.GateFailures -join '; ')
+    }
+    Test-Case 'sample-skew columns (pc, w) never fail the gate; the boot window is listed, not failed' {
+        $g = Get-BdTraceGate -MesenTrace $gA -BrokenNesTrace (New-GateTrace 'skew.trace' @{ 20 = @{ pc = '8123'; w = '1' }; 21 = @{ pc = '8124' }; 3 = @{ fbhash = 'beef' } })
+        Assert-True $g.Pass ($g.GateFailures -join '; ')
+        Assert-True (($g.BootSkew -join ' ') -match 'fbhash@3') ($g.BootSkew -join '; ')
+    }
+    Test-Case 'NEGATIVE: a trace file without a columns header is refused' {
+        $p = Join-Path $gateDir 'nohdr.trace'; [System.IO.File]::WriteAllText($p, "0|1|2`n")
+        Assert-Throws { Get-BdTraceGate -MesenTrace $p -BrokenNesTrace $gA } 'columns'
+    }
+
     # ------------------------------------------------------------------------------------------ music tools (decoder model)
     Write-Host 'music tools'
     $musicDir = Join-Path $tmpRoot 'music'

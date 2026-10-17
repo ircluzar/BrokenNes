@@ -38,7 +38,13 @@ BrokenDev\brokendev.ps1 list                   # the projects: restored / built 
 BrokenDev\brokendev.ps1 build vrun-nes         # build one project (dependencies first); outputs in BROKENDEV_HOME\out\<id>
 BrokenDev\brokendev.ps1 verify vrun-nes        # run the built ROM on BrokenNes and record checks, hashes, audio, speed
 BrokenDev\brokendev.ps1 build all ; BrokenDev\brokendev.ps1 verify all
+BrokenDev\brokendev.ps1 diff vrun-nes          # differential replay against Mesen 2 as a black-box oracle (NES: needs BROKENDEV_TRACE_LUA)
 BrokenDev\brokendev.ps1 run supervrun          # open the built ROM in BrokenNes (desktop app through its HTTP API)
+
+# the music path, Phase 0 (no plugin): a MIDI file -> VRUN's converter -> a one-song ROM -> BrokenNes, checked frame by frame
+BrokenDev\tools\music-replay-check.ps1 -Mid some.mid -Name mysong -Frames 2400 -Template
+BrokenDev\tests\run-tests.ps1                  # the scripts' own tests (each has a negative control)
+BrokenDev\tests\apu-regress.ps1 -Workshop <Workshop.exe>   # APU_FIX guards measured on Mesen
 ```
 
 Inside BrokenNes (developers only): `BrokenNes.Workshop.exe --brokendev list` and `--brokendev verify <id>` (needs
@@ -62,6 +68,7 @@ Inside BrokenNes (developers only): `BrokenNes.Workshop.exe --brokendev list` an
 | `BROKENDEV_PYTHON` | force one Python | the first 3.10+ with pillow and numpy |
 | `BROKENDEV_WORKSHOP` | force a Workshop executable | the one `build-workshop` built |
 | `BROKENDEV_APP` | the BrokenNes desktop exe `run` should launch | `BROKENDEV_HOME\bnbuild\app\...` if built |
+| `BROKENDEV_TRACE_LUA` | the user's Mesen tracer `state_trace.lua` (his VRUN repository, `tools\`), needed by `diff` for the NES projects | none: the NES `diff` is skipped, with the reason |
 | `SMB1_ORIG_ROM` | the user's own original SMB1 ROM | `P:\BrokenDev\SMB1 Topaz\smb1.nes` |
 | `BROKENNES_DEV` | `1` switches BrokenDev on inside BrokenNes | off |
 
