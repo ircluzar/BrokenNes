@@ -18,6 +18,10 @@
   What it proves: the ROM on BrokenNes plays exactly the opcode streams the converter produced, frame for frame, including the loop
   point. What it does not: that the converter's rules suit your ear, or anything about the FL plugin (not involved here).
 
+  -Template adds the fast path the plugin's "Exact preview" would use: a TEMPLATE ROM (built once, cached under
+  BROKENDEV_HOME\out\music-replay\_template) whose four stream arrays have a fixed size of 1280 bytes (the converter's per-channel
+  maximum); the song's four streams are written over them by PRG offset (taken from the template's .mlb), the patched ROM is run on
+  BrokenNes, and the same model must match the patched ROM, while the template's own song must not.
   The throwaway project is removed afterwards unless -Keep. Needs a restored vrun_nes_dev (brokendev.ps1 restore vrun_nes_dev) and the
   Workshop (brokendev.ps1 build-workshop, or BROKENDEV_WORKSHOP).
   Exit code: 0 the model matches the ROM and every negative control failed as it must; 1 otherwise; 2 a tool or prerequisite is missing.
@@ -26,6 +30,7 @@ param(
     [string]$Mid = '',
     [string]$Name = 'bdpreview',
     [int]$Frames = 560,
+    [switch]$Template,
     [switch]$Keep
 )
 $ErrorActionPreference = 'Stop'
@@ -46,6 +51,7 @@ foreach ($pair in @(@('restored VRUN checkout', $(if (Test-Path -LiteralPath (Jo
 $outDir = Join-Path $bdHome "out\music-replay\$Name"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $proj = Join-Path $vrun "src\bd_$Name"
+$tproj = Join-Path $vrun 'src\bd_tmpl'
 $result = [ordered]@{ name = $Name; frames = $Frames }
 
 try {
@@ -111,6 +117,44 @@ try {
     }
     foreach ($c in $controls) { Write-Host ("  negative control: {0,-50} {1}" -f $c.control, $(if ($c.failedAsRequired) { 'failed as it must' } else { 'DID NOT FAIL - the check cannot be trusted' })) }
     $result.negativeControls = $controls
+
+    # ---- 6. (-Template) the fast path: a template ROM with fixed-size stream regions, patched with this song's streams ----------
+    if ($Template) {
+        $tmplDir = Join-Path $bdHome 'out\music-replay\_template'
+        $tnes = Join-Path $tmplDir 'tmpl.nes'; $tmlb = Join-Path $tmplDir 'tmpl.mlb'; $tfab = Join-Path $tmplDir 'tmpl.fab'
+        if (-not ((Test-Path -LiteralPath $tnes) -and (Test-Path -LiteralPath $tmlb) -and (Test-Path -LiteralPath $tfab))) {
+            New-Item -ItemType Directory -Force -Path $tmplDir, $tproj | Out-Null
+            Invoke-BdProcess -FilePath $py.Path -Arguments @('-I', (Join-Path $here 'music\make_test_mid.py'), (Join-Path $tproj 'song.mid')) -TimeoutSec 60 | Out-Null
+            Copy-Item -LiteralPath (Join-Path $vrun 'src\audioplayer\main.fab') -Destination $tproj -Force
+            $tcfg = [System.IO.File]::ReadAllText((Join-Path $vrun 'src\audioplayer\audioplayer.cfg')).Replace('vrun_audioplayer.nes', 'vrun_bd_tmpl.nes')
+            [System.IO.File]::WriteAllText((Join-Path $tproj 'bd_tmpl.cfg'), $tcfg, (New-Object System.Text.UTF8Encoding($false)))
+            [System.IO.File]::WriteAllText((Join-Path $tproj 'roster.json'), '{ "title": "TMPL", "tracks": [ {"name": "song", "title": "SONG", "midi": "song.mid"} ] }', (New-Object System.Text.UTF8Encoding($false)))
+            $padPy = ConvertTo-BdBashPath (Join-Path $here 'music\pad_streams.py')
+            $pre = [System.IO.File]::ReadAllText((Join-Path $vrun 'src\audioplayer\prebuild.sh')).Replace("`r`n", "`n") + "`npython '$padPy' music_data.fab 1280`n"
+            [System.IO.File]::WriteAllText((Join-Path $tproj 'prebuild.sh'), $pre, (New-Object System.Text.UTF8Encoding($false)))
+            foreach ($ext in 'nes', 'mlb') { $f = Join-Path $vrun "build\vrun_bd_tmpl.$ext"; if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force } }
+            $tb = Invoke-BdProcess -FilePath $bash -Arguments @('-c', "cd '$vrunBash' && ./build.sh bd_tmpl") -TimeoutSec 900 -LogFile (Join-Path $tmplDir 'build.log') -PathPrepend @((Split-Path -Parent $py.Path))
+            if ($tb.ExitCode -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $vrun 'build\vrun_bd_tmpl.nes'))) { Write-Host "template build failed (exit $($tb.ExitCode)); see $(Join-Path $tmplDir 'build.log')"; Write-Host (Select-BdTail $tb.Output 15); exit 1 }
+            Copy-Item -LiteralPath (Join-Path $vrun 'build\vrun_bd_tmpl.nes') -Destination $tnes -Force
+            Copy-Item -LiteralPath (Join-Path $vrun 'build\vrun_bd_tmpl.mlb') -Destination $tmlb -Force
+            Copy-Item -LiteralPath (Join-Path $tproj 'music_data.fab') -Destination $tfab -Force
+            Write-Host ("built the template ROM in {0} s (4 stream regions of 1280 bytes, as the spec's Exact song region)" -f $tb.Seconds)
+        }
+        $patched = Join-Path $outDir 'patched.nes'
+        $pp = Invoke-BdProcess -FilePath $py.Path -Arguments @('-I', (Join-Path $here 'music\patch_streams.py'), $tnes, $tmlb, 'song', $fab, 'song', $patched) -TimeoutSec 60
+        if ($pp.ExitCode -ne 0) { Write-Host 'patching the template failed:'; Write-Host $pp.Output; exit 1 }
+        $ptrace = Join-Path $outDir 'patched.trace'
+        $t2 = Invoke-BdProcess -FilePath $ws -Arguments @('--trace', '--rom', $patched, '--out', $ptrace, '--frames', [string]($Frames + 130), '--cpu', 'FIX', '--ppu', 'FIX', '--apu', 'FIX') -TimeoutSec 600 -LogFile (Join-Path $outDir 'patched-trace.log')
+        if ($t2.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $ptrace)) { Write-Host "BrokenNes trace of the patched ROM failed (exit $($t2.ExitCode))"; exit 1 }
+        $pm = Invoke-BdProcess -FilePath $py.Path -Arguments @('-I', $model, $fab, $ptrace, '--song', 'song', '--scan-start', '0:120', '--frames', [string]$Frames, '--json', (Join-Path $outDir 'patched-model.json')) -TimeoutSec 300
+        $pj = Read-BdJson (Join-Path $outDir 'patched-model.json')
+        Write-Host ("template + patch: {0}/{1} frame-fields agree with THIS song's streams ({2})" -f $pj.total, $pj.of, $(if ($pm.ExitCode -eq 0) { 'MODEL MATCHES' } else { 'NO MATCH' }))
+        $pc = Invoke-BdProcess -FilePath $py.Path -Arguments @('-I', $model, $fab, $ptrace, '--song', 'song', '--other-fab', $tfab, '--scan-start', '0:120', '--frames', [string]$Frames) -TimeoutSec 300
+        $pcOk = ($pc.ExitCode -eq 1)
+        Write-Host ("  negative control: {0,-50} {1}" -f 'the patched ROM against the TEMPLATE song''s streams', $(if ($pcOk) { 'failed as it must' } else { 'DID NOT FAIL - the check cannot be trusted' }))
+        $result.templatePatch = [ordered]@{ match = ($pm.ExitCode -eq 0); agree = $pj.total; of = $pj.of; negativeControlFailedAsRequired = $pcOk; patchedRom = $patched }
+        if ($pm.ExitCode -ne 0 -or -not $pcOk) { $ok = $false }
+    }
     if (@($controls | Where-Object { -not $_.failedAsRequired }).Count -gt 0) { $ok = $false }
     $result.pass = $ok
     Save-BdJson -Object $result -Path (Join-Path $outDir 'result.json')
@@ -119,7 +163,7 @@ try {
 }
 finally {
     if (-not $Keep) {
-        if (Test-Path -LiteralPath $proj) { Remove-Item -LiteralPath $proj -Recurse -Force -ErrorAction SilentlyContinue }
-        foreach ($ext in 'nes', 'mlb') { $f = Join-Path $vrun "build\vrun_bd_$Name.$ext"; if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue } }
+        foreach ($p in @($proj, $tproj)) { if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue } }
+        foreach ($n in @($Name, 'tmpl')) { foreach ($ext in 'nes', 'mlb') { $f = Join-Path $vrun "build\vrun_bd_$n.$ext"; if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue } } }
     }
 }
