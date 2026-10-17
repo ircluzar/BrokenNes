@@ -266,6 +266,8 @@ public sealed unsafe partial class Bn2Editor
                     12 => tabError,
                     10 => instPanel?.ShownHistory,
                     11 => instPanel?.ShownSeed,
+                    13 => instPanel?.ShownNotice,
+                    14 => instPanel?.SelectedDetail,
                     >= 100 and < 120 => instPanel?.FieldText(field - 100),          // 100 + visible row: "Name=value" of that field row
                     _ => null,
                 };

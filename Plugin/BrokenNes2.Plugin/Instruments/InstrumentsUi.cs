@@ -26,10 +26,10 @@ internal static partial class UiBoot
 /// <param name="Context">SNES: the 128 S-DSP registers of the working copy (the echo, noise rate and master volume the sampler plays with); Master System / Genesis: PSG clock (i32), PSG variant (u8), YM2612 clock (i32); Game Boy: model (1 = Color); NES: empty.</param>
 public sealed record InstrumentPayload(byte[] Packed, byte[] CleanPacked, byte[] HistoryBytes, ConsoleId Console, int Index, byte[] Context);
 
-/// <summary>A hook for the `inject` work: when set, "Push into the game" calls it with the emulator and the edited instrument. Until then the tab says it cannot.</summary>
+/// <summary>The hook "Push into the game" calls with the emulator, the edited instrument and the instrument as the game had it (null when it was never edited). The `inject` work sets it (Instruments/InstrumentPushHandler.cs); with none set the tab says it cannot.</summary>
 public static class InstrumentPush
 {
-    public static Func<Emulator, IInstrument, ActionResult>? Handler { get; set; }
+    public static Func<Emulator, IInstrument, IInstrument?, ActionResult>? Handler { get; set; } = EmulatorPush.Handle;
 }
 
 internal sealed class InstrumentSession
@@ -117,7 +117,7 @@ internal sealed class EmulatorInstrumentProvider : IInstrumentModelProvider
                 var inst = list[i];
                 var e = s.ExistingEntry(inst);
                 bool edited = e != null && e.History.Modified;
-                r[i] = new InstrumentSummary(inst.Name, Detail(inst) + (edited ? ", edited" : "") + (inst.Editable ? "" : ", read-only"), inst.Sounding);
+                r[i] = new InstrumentSummary(inst.Name, Detail(inst) + (edited ? ", edited" : "") + (s.Emu.IsPushed(inst) ? ", in the game" : "") + (inst.Editable ? "" : ", read-only"), inst.Sounding);
             }
             return r;
         }
@@ -384,8 +384,23 @@ internal sealed class EmulatorInstrumentProvider : IInstrumentModelProvider
         var handler = InstrumentPush.Handler;
         if (handler == null) return ActionResult.Refused("Pushing an edit into the running game is not built yet. The edit is already in the frozen copy FL's notes play");
         var h = s.ExistingEntry(inst)?.History;
-        return handler(s.Emu, h?.Current ?? inst);
+        var r = handler(s.Emu, h?.Current ?? inst, h?.Clean);
+        s.Touch();           // the list marks the pushed instruments
+        return r;
     }
+
+    public bool IsPushed(int instrument) { var inst = Get(instrument, out _); return inst != null && s.Emu.IsPushed(inst); }
+
+    public ActionResult RemoveFromGame(int instrument)
+    {
+        var inst = Get(instrument, out string? why);
+        if (inst == null) return ActionResult.Refused(why!);
+        var o = s.Emu.RemovePush(inst);
+        s.Touch();
+        return o.Ok ? ActionResult.Done(o.Message) : ActionResult.Refused(o.Message);
+    }
+
+    public string? Notice => s.Emu.VerifyPushes() ?? s.Emu.InjectNote ?? s.Emu.InstrumentNote;
 }
 
 /// <summary>What the tab can draw of an instrument's blobs, and the small translations between the model and the contract.</summary>

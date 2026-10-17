@@ -23,6 +23,15 @@ switch (args[0])
         SelfTest.LogProbe(args[1]);
         return 0;
 
+    case "inject-test":
+        return InjectChecks.Main(args);
+
+    case "inject-hash":
+        return InjectNeutral.Main(args);
+
+    case "inject-probe":
+        return InjectProbe.Main(args);
+
     case "imodel-test":
         return ImodelChecks.Main(args);
 

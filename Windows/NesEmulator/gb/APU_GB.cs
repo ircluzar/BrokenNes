@@ -42,6 +42,9 @@ public sealed class APU_GB : IGbApu
     public readonly GbModel Model;
     public readonly byte[] WaveRam = new byte[16];
 
+    /// <summary>Optional hook for the plugin's "push an instrument into the running game" (null, the default, leaves the unit exactly as it always was). See <see cref="IGbApuOverride"/>.</summary>
+    public IGbApuOverride? Override { get; set; }
+
     // Read-back OR masks for FF10-FF2F.
     private static readonly byte[] ReadMask =
     {
@@ -418,6 +421,7 @@ public sealed class APU_GB : IGbApu
         bool extra = (fsStep & 1) != 0;
         if (extra && !wasLen && lenEnabled[c] && length[c] > 0 && --length[c] == 0 && !trigger) enabled[c] = false;
         if (!trigger) return;
+        Override?.OnTrigger(this, c);      // (null unless the plugin pushed an instrument into the game)
 
         if (length[c] == 0)
         {

@@ -114,6 +114,7 @@ public sealed partial class Emulator
                 g.LoadGameState(sec.State!, sec.Frames);
                 if (sec.Picture != null) RestoreFrame(sec.Picture);
                 Volatile.Write(ref stateRestore, 1);
+                ApplyInjectRestore(g);            // the instruments pushed into the game (INJ1): their hooks go on the sound core the state was just loaded into
                 return;
             }
         }
@@ -123,6 +124,7 @@ public sealed partial class Emulator
             Diag.Log("restoring the game's state failed: " + e);
             head = $"The project's saved game state could not be put back ({e.Message.TrimEnd('.')}), so it was not used";
         }
+        DropInjectRestore("the game's saved state was not put back, so the memory they wrote is not in the game");
         if (head == null) return;                // an older project and a game that can keep its state: nothing to say
         Volatile.Write(ref stateRestore, 2);
         SetStateNote(head);

@@ -468,11 +468,11 @@ internal sealed class SessionGame : IGame, IGameStems
     {
         if (s is not SnesSession snes || snes.Apu is not NesEmulator.Snes.APU_SFC spc) return null;
         var snap = new SpcSnapshot(spc.Aram, spc.Dsp.Regs);
-        if (spcLog == null) { snap.ListenNote = "this sound unit cannot be listened to"; return snap; }
+        if (spcLog == null) { snap.ListenNote = "this sound unit cannot be listened to"; return Instruments.SnesPusher.Carry(s, snap); }
         var recipes = SpcRecipes.Derive(spcLog, spc.SamplesProduced, (long)(ListenWindowSeconds * 32000), spc.Dsp.Regs, out var stats);
         snap.Recipes = recipes;
         snap.ListenNote = recipes.Length > 0 ? stats.Short() : stats.KeyOns == 0 ? $"The game played no notes in the {stats.WindowSeconds:0.#} s it was listened to: let it play, then switch Runaway on." : "Listened, but no voice could be learned: " + stats;
-        return snap;
+        return Instruments.SnesPusher.Carry(s, snap);     // (a game with instruments pushed into it hands the Runaway copy the same overrides)
     }
 
     public GbSnapshot? CaptureGb() =>
