@@ -354,11 +354,12 @@ public sealed partial class Emulator : IDisposable
             newChip = Math.Clamp(newChip, 0, Cx.Chips.Count - 1);
             int console = Cx.ConsoleOf(newChip);
             int modeBefore = mode, consoleBefore = Console;
+            bool presetBefore = PresetMode;
             Volatile.Write(ref chip, newChip);
             romPaths[console] = string.IsNullOrWhiteSpace(rom) ? null : rom;
             Volatile.Write(ref mode, Math.Clamp(newMode, 0, 1));
             if (mode == 1) LeavePresetChipLocked();          // (a project cannot have a game running on a Presets chip; if one says so, the console's own chip it is)
-            if (mode != modeBefore || console != consoleBefore)
+            if (mode != modeBefore || console != consoleBefore || PresetMode != presetBefore)
             {
                 ResetOutputs();
                 EmulatorHub.ReResolveAll(this);     // (channels keep their places when nothing about the emulator changed)

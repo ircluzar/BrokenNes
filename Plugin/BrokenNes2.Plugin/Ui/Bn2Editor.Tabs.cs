@@ -266,6 +266,8 @@ public sealed unsafe partial class Bn2Editor
                     8 => instPanel == null ? null : instPanel.StatusOk ? "1" : "0",
                     9 => instPanel?.SelectedName,
                     14 => instPanel?.NameText,                // the name field "Send to Presets" opens (round 6, presets)
+                    15 => presetPickMessage,                  // what the Emulator tab's preset picker last said
+                    16 => plugin.PresetNote,                  // the note about the project's preset, if any
                     12 => tabError,
                     10 => instPanel?.ShownHistory,
                     11 => instPanel?.ShownSeed,

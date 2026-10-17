@@ -67,6 +67,28 @@ public sealed unsafe partial class SelfTest
         {
             PresetsChips(t);
             PresetsEqualRunaway(t);
+            PresetsNes(t);
+            PresetsProject(t);
+            PresetsAlloc(t);
+            PresetsUiFlow(t);
+
+            // the DLL's own deliberate bugs (switched on inside the DLL through hook 330): the scenario meant to catch each must fail
+            foreach (var (id, what, scenario) in new (int, string, Action<T>)[]
+            {
+                (PresetMutants.ProjectKeepsNothing, "the project keeps no copy of the preset", PresetsProject),
+                (PresetMutants.SectionCrcNotChecked, "the project section's checksum is not checked", PresetsProject),
+                (PresetMutants.LoadsWrongBytes, "the library hands the plugin a file with its last byte missing", PresetsUiFlow),
+            })
+            {
+                var tt = new T();
+                foreach (var f in Directory.EnumerateFiles(scratch, "*.bn2preset", SearchOption.AllDirectories)) File.Delete(f);      // (the scenarios start from an empty library, as they did the first time)
+                using (var probe = lib.Create()) probe.Test(HkPMutant, 0, id);
+                try { scenario(tt); }
+                catch (Exception e) { tt.Failures.Add("exception " + e.Message); }
+                finally { using var probe = lib.Create(); probe.Test(HkPMutant, 0, 0); }
+                t.Expect(tt.Failures.Count > 0, $"the scenario did not notice the deliberate bug '{what}': it cannot fail on it");
+                if (tt.Failures.Count > 0) t.Note($"deliberate bug '{what}' caught: {Trim(tt.Failures[0])}");
+            }
         }
         finally
         {
@@ -77,6 +99,8 @@ public sealed unsafe partial class SelfTest
         t.Expect(missed == 0, $"{missed} deliberate bugs were not caught: " + string.Join("; ", lines.Where(l => l.Contains("MISSED"))));
         t.Note($"{lines.Count - missed} of {lines.Count} deliberate bugs caught by the pure checks");
     }
+
+    private static string Trim(string s) => s.Length <= 150 ? s : s[..147] + "...";
 
     private static int ConsoleParam(ConsoleId c) => c switch { ConsoleId.Nes => 0, ConsoleId.GameBoy => 1, ConsoleId.Snes => 2, ConsoleId.MasterSystem => 3, _ => 4 };
 

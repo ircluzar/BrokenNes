@@ -125,8 +125,17 @@ internal sealed class PresetLibrary : IPresetLibrary
     public ActionResult Rename(string id, string newName)
     {
         if (id.StartsWith(ProjectPrefix, StringComparison.Ordinal)) return ActionResult.Refused("This copy lives in the FL project only. Export it, import the file, and rename that one.");
+        var host = PresetHost.Current;
+        bool held = host?.Preset?.LibraryId == id;               // the instance plays this very file: it follows the rename, so that the library and the project do not end up with two spellings of one preset
         var r = Store.Rename(id, newName);
-        return r.Ok ? ActionResult.Done(r.Message) : ActionResult.Refused(r.Message);
+        if (!r.Ok) return ActionResult.Refused(r.Message);
+        if (held && r.Id != null)
+        {
+            var again = Store.Load(r.Id, out var bytes);
+            if (again.Data != null && bytes != null && host!.AdoptPreset(bytes, r.Id, out _) != null)
+                return ActionResult.Done(r.Message + ". (This instance keeps the preset under its old name: the renamed file could not be loaded into it.)");
+        }
+        return ActionResult.Done(r.Message);
     }
 
     public ActionResult Delete(string id)
