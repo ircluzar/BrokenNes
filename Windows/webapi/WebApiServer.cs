@@ -294,6 +294,7 @@ namespace BrokenNes.Windows.WebApi
             RegisterApuStateEndpoints(app);
             RegisterRtcEndpoints(app);
             RegisterGlitchHarvesterEndpoints(app);
+            RegisterGlitchHarvesterConsoleEndpoints(app);
             RegisterImagineEndpoints(app);
             RegisterAchievementsEndpoints(app);
             RegisterNavigationEndpoints(app);

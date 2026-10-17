@@ -32,6 +32,9 @@ internal static class CorruptChecks
 
         var rom = SynthSnesRom.Build();
         Console.WriteLine($"the synthetic SNES game: {rom.Length:N0} bytes, sha1 {AnchorStart.Sha1Hex(rom)}");
+        // --write-synth-rom <file>: write the generated game to a file (for tests that need a ROM file: the desktop UAT), then stop
+        int wi = Array.IndexOf(args, "--write-synth-rom");
+        if (wi >= 0 && wi + 1 < args.Length) { File.WriteAllBytes(args[wi + 1], rom); Console.WriteLine($"written: {args[wi + 1]}"); return 0; }
 
         if (Want("format")) { Section("stockpile file format"); Guard(c, "format", () => Format(c)); }
         if (Want("legacy")) { Section("older stockpile files (the Glitch Harvester's export, Lite's export)"); Guard(c, "legacy", () => Legacy(c)); }

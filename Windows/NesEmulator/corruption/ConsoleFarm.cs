@@ -44,6 +44,8 @@ public sealed class ConsoleFarm
     public string NotOwnReason { get; private set; } = "";
 
     public bool Attached => Session != null;
+    /// <summary>The game's save RAM is no longer the player's: a corruption wrote to it, or the machine is a replayed or loaded one. A host must not write it over the player's save file.</summary>
+    public bool SaveRamTouched { get; private set; }
     /// <summary>Frames the machine has run since it started, as recorded.</summary>
     public int Frames => p1.Frames;
     /// <summary>Corruption writes recorded since the game started.</summary>
@@ -55,11 +57,11 @@ public sealed class ConsoleFarm
     public void Attach(IConsoleSession session, byte[] rom, string fileName, MachineSpec machine, bool coresAreOwn, string notOwnReason = "")
     {
         Session = session; Rom = rom; FileName = fileName; Machine = machine; CoresAreOwn = coresAreOwn; NotOwnReason = notOwnReason;
-        romSha1 = ""; initialBattery = null;
+        romSha1 = ""; initialBattery = null; SaveRamTouched = false;
         ResetRecording();
     }
 
-    public void Detach() { Session = null; Rom = Array.Empty<byte>(); romSha1 = ""; initialBattery = null; ResetRecording(); }
+    public void Detach() { Session = null; Rom = Array.Empty<byte>(); romSha1 = ""; initialBattery = null; SaveRamTouched = false; ResetRecording(); }
 
     private void ResetRecording() { p1.Reset(); p2.Reset(); events.Clear(); eventWrites = 0; eventsFull = false; }
 
@@ -79,6 +81,7 @@ public sealed class ConsoleFarm
     public void NoteWrites(IReadOnlyCollection<CorruptionWrite> writes)
     {
         if (writes.Count == 0) return;
+        if (writes.Any(w => string.Equals(w.Domain, "SRAM", StringComparison.OrdinalIgnoreCase))) SaveRamTouched = true;
         if (eventWrites + writes.Count > MaxRecordedWrites) { eventsFull = true; return; }
         eventWrites += writes.Count;
         events.Add(new AnchorEvent { Frame = p1.Frames, Writes = writes.Select(w => w with { At = 0 }).ToList() });
@@ -137,6 +140,7 @@ public sealed class ConsoleFarm
     public void Rebase(IConsoleSession session, Anchor anchor, IReadOnlyList<CorruptionWrite>? appliedAfter = null)
     {
         Session = session;
+        SaveRamTouched = true;           // a replayed or loaded machine: its save RAM is the recipe's, not the player's
         var recipe = anchor.Kind == AnchorKind.Boot ? anchor : anchor.Alt is { Kind: AnchorKind.Boot } alt ? alt : null;
         ResetRecording();
         initialBattery = recipe?.Battery;

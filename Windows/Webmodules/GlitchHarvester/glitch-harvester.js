@@ -6,6 +6,9 @@ let selectedBaseId = null;
 let selectedStashId = null;
 let selectedStockpileId = null;
 let currentRenameId = null;
+// the stockpile list as the server last sent it (the detail line under the list reads from it)
+let stockpileEntries = [];
+let farmInfo = null;
 
 // Web API
 const api = window.webapi;
@@ -58,6 +61,14 @@ const elements = {
   btnDeleteStock: null,
   btnExport: null,
   fileImport: null,
+  btnSaveFile: null,
+  btnOpenFile: null,
+  stockpileFile: null,
+  stockpileDetail: null,
+  renameDescription: null,
+  farmStatus: null,
+  baseHint: null,
+  chkTrueSizes: null,
   
   // Imagine
   imagineFlavor: null,
@@ -253,6 +264,14 @@ function initializeElements() {
   elements.btnDeleteStock = document.getElementById('btnDeleteStock');
   elements.btnExport = document.getElementById('btnExport');
   elements.fileImport = document.getElementById('fileImport');
+  elements.btnSaveFile = document.getElementById('btnSaveFile');
+  elements.btnOpenFile = document.getElementById('btnOpenFile');
+  elements.stockpileFile = document.getElementById('stockpileFile');
+  elements.stockpileDetail = document.getElementById('stockpileDetail');
+  elements.renameDescription = document.getElementById('renameDescription');
+  elements.farmStatus = document.getElementById('farmStatus');
+  elements.baseHint = document.getElementById('baseHint');
+  elements.chkTrueSizes = document.getElementById('chkTrueSizes');
   
   // Imagine
   elements.imagineFlavor = document.getElementById('imagineFlavor');
@@ -356,6 +375,9 @@ function attachEventListeners() {
   if (elements.btnDeleteStock) elements.btnDeleteStock.addEventListener('click', deleteStockpile);
   if (elements.btnExport) elements.btnExport.addEventListener('click', exportStockpile);
   if (elements.fileImport) elements.fileImport.addEventListener('change', importStockpile);
+  if (elements.btnSaveFile) elements.btnSaveFile.addEventListener('click', saveStockpileFile);
+  if (elements.btnOpenFile) elements.btnOpenFile.addEventListener('click', openStockpileFile);
+  if (elements.chkTrueSizes) elements.chkTrueSizes.addEventListener('change', toggleTrueSizes);
   
   // Imagine
   if (elements.btnLoadModel) elements.btnLoadModel.addEventListener('click', imagineLoadModel);
@@ -454,6 +476,9 @@ async function loadRTCState() {
   
   // Load domains
   await refreshDomains();
+  await refreshFarmStatus();
+  const sizesData = await api.rtc.getTrueDomainSizes();
+  if (sizesData.success && elements.chkTrueSizes) elements.chkTrueSizes.checked = !!sizesData.enabled;
   
   // Load current settings
   const autoCorruptData = await api.rtc.getAutoCorrupt();
@@ -716,6 +741,99 @@ function switchTab(tabName) {
   document.querySelectorAll('.gh-section').forEach(section => {
     section.classList.toggle('active', section.dataset.section === tabName);
   });
+
+  // the running game may have changed since the module opened: its memories, how a position is stored, the stockpile file
+  if (tabName === 'rtc') { refreshDomains().catch(() => {}); }
+  if (tabName !== 'imagine') { refreshFarmStatus().catch(() => {}); }
+}
+
+// ==================== The farm (console games) and the stockpile file ====================
+
+function describePositions(farm) {
+  if (!farm || !farm.active) return null;
+  if (farm.positions === 'state') return 'a saved machine (loads instantly, exact)';
+  if (farm.positions === 'boot') {
+    return `a replay from power-on (${farm.frames.toLocaleString()} frames so far; a replay may run up to ${farm.replayCapFrames.toLocaleString()} frames and takes time to start)`;
+  }
+  return null;
+}
+
+async function refreshFarmStatus() {
+  const data = await api.gh.getStatus();
+  if (!data.success) return;
+  farmInfo = data.farm || null;
+  const farm = farmInfo;
+  let text = '';
+  let warn = false;
+  if (farm && farm.active) {
+    text = `${farm.consoleName}: ${farm.game}\nA position (a base, or the place a corruption was made) is stored as `;
+    const how = describePositions(farm);
+    if (how) {
+      text += how + '.';
+    } else {
+      text += 'NOTHING right now: ' + (farm.reason || 'it cannot be stored');
+      warn = true;
+    }
+    if (farm.recordedWrites > 0) text += `\n${farm.recordedWrites.toLocaleString()} corruption writes have been made since the game started and are part of the replay.`;
+    if (farm.saveRamProtected) text += '\nThe game\'s save RAM is protected: nothing from this session is written over your save.';
+    if (farm.busy) text += `\nWorking: ${farm.status || 'starting an entry'}`;
+  } else if (farm) {
+    text = 'NES: positions are stored as the NES\'s own saved states. (Load a SNES, Game Boy, Master System, Game Gear or Genesis game to farm those.)';
+  }
+  if (elements.farmStatus) { elements.farmStatus.textContent = text; elements.farmStatus.classList.toggle('warn', warn); }
+  if (elements.baseHint) { elements.baseHint.textContent = text; elements.baseHint.classList.toggle('warn', warn); }
+  const st = data.stockpile;
+  if (st && elements.stockpileFile) {
+    elements.stockpileFile.textContent = st.path
+      ? `File: ${st.path}${st.dirty ? '  (changed since it was saved)' : ''}`
+      : (st.count > 0 ? 'Not saved to a file yet: the stockpile is only in memory until you press Save file...' : '');
+  }
+}
+
+async function toggleTrueSizes() {
+  const enabled = elements.chkTrueSizes.checked;
+  const data = await api.rtc.setTrueDomainSizes(enabled);
+  if (data.success) {
+    showToast(`NES domain sizes: ${enabled ? 'true sizes' : 'the probed sizes'}`);
+    setTimeout(() => refreshDomains().catch(() => {}), 300);
+  } else {
+    elements.chkTrueSizes.checked = !enabled;
+    showToast(data.error || 'Failed to change the setting', 'error');
+  }
+}
+
+async function saveStockpileFile() {
+  const data = await api.gh.saveStockpileFile();
+  if (data.success) showToast(data.message || 'Stockpile saved', 'success');
+  else if (data.cancelled) showToast('Nothing saved');
+  else showToast(data.error || 'Failed to save the stockpile', 'error');
+  await refreshFarmStatus();
+}
+
+async function openStockpileFile() {
+  const data = await api.gh.openStockpileFile();
+  if (data.success) {
+    let msg = data.message || 'Stockpile opened';
+    if (data.refusals && data.refusals.length) msg += ` | refused: ${data.refusals.slice(0, 2).join('; ')}`;
+    else if (data.warnings && data.warnings.length) msg += ` | ${data.warnings[0]}`;
+    showToast(msg, data.refusals && data.refusals.length ? 'error' : 'success');
+    selectedStockpileId = null;
+    await refreshStockpile(true);
+  } else if (data.cancelled) {
+    showToast('No file chosen');
+  } else {
+    showToast(data.error || 'Failed to open the stockpile', 'error');
+  }
+  await refreshFarmStatus();
+}
+
+function entryDetail(entry) {
+  const bits = [];
+  if (entry.summary) bits.push(entry.summary);
+  if (entry.game) bits.push(`${entry.console ? entry.console.toUpperCase() + ' ' : ''}${entry.game}`);
+  if (entry.anchor) bits.push(`start: ${entry.anchor === 'boot' ? 'replay from power-on' : entry.anchor === 'state' ? 'saved machine' : 'wherever the game is'}`);
+  if (entry.legacy === 'no-state') bits.push('this entry came from an older file without its saved machine: it can only be applied to whatever game is running');
+  return bits.join(' • ');
 }
 
 // ==================== Base States ====================
@@ -779,8 +897,8 @@ async function refreshBases(autoScroll = false) {
   console.log('[GH] Base list rendered');
   updateBaseButtons();
   
-  // Enable blast button if a base is selected
-  elements.btnBlast.disabled = selectedBaseId === null;
+  // Enable blast button if a base is selected (or if blasts start from wherever the game is)
+  updateBlastButton();
   console.log('[GH] Blast button enabled:', selectedBaseId !== null);
   
   // Auto-scroll to bottom if requested (when new item is added)
@@ -809,8 +927,14 @@ function selectBase(id) {
   
   // Note: Not calling select API since we pass ID directly to load-base
   // The select endpoint may not be implemented on the server
-  elements.btnBlast.disabled = false;
+  updateBlastButton();
   console.log('[GH] Base state selected (ready to blast or load)');
+}
+
+function updateBlastButton() {
+  // a blast needs a base to start from, unless 'load on operation' is off: then it starts from where the game is
+  const loadsBase = !elements.chkLoadOnOperation || elements.chkLoadOnOperation.checked;
+  elements.btnBlast.disabled = loadsBase && selectedBaseId === null;
 }
 
 function updateBaseButtons() {
@@ -842,7 +966,7 @@ async function addBase() {
     console.log('[GH] Base state created successfully:', baseState);
     console.log('[GH] baseState keys:', baseState ? Object.keys(baseState) : 'baseState is undefined');
     console.log('[GH] baseState full JSON:', JSON.stringify(baseState, null, 2));
-    showToast(`Base state "${name}" created`, 'success');
+    showToast(`Base state "${name}" created` + (baseState?.anchor === 'boot' ? ' (a replay from power-on)' : baseState?.anchor === 'state' ? ' (a saved machine)' : ''), 'success');
     elements.baseNameInput.value = '';
     selectedBaseId = baseState?.id;
     console.log('[GH] Selected base ID set to:', selectedBaseId);
@@ -851,6 +975,7 @@ async function addBase() {
     console.error('[GH] Failed to create base state:', data.error);
     showToast(data.error || 'Failed to create base state', 'error');
   }
+  await refreshFarmStatus();
 }
 
 async function loadBase() {
@@ -868,7 +993,7 @@ async function loadBase() {
   console.log('[GH] Load base response:', data);
   
   if (data.success) {
-    showToast(`Base state loaded: ${selectedBaseId.substring(0, 8)}...`, 'success');
+    showToast(data.message || `Base state loaded: ${selectedBaseId.substring(0, 8)}...`, 'success');
     console.log('[GH] Base state loaded successfully');
   } else {
     console.error('[GH] Failed to load base state:', data.error);
@@ -925,11 +1050,12 @@ async function refreshStash(autoScroll = false) {
          onclick="selectStash('${entry.id}')">
       <div class="gh-item-info">
         <div class="gh-item-name">${escapeHtml(entry.name)}</div>
-        <div class="gh-item-meta">${entry.writes?.length || 0} writes • ${new Date(entry.created).toLocaleString()}</div>
+        <div class="gh-item-meta">${entry.writeCount ?? entry.writes?.length ?? 0} writes • ${new Date(entry.created).toLocaleString()}</div>
+        <div class="gh-item-desc">${escapeHtml(entryDetail(entry))}</div>
       </div>
     </div>
   `).join('');
-  
+
   updateStashButtons();
   
   // Auto-scroll to bottom if requested (when new item is added)
@@ -971,29 +1097,31 @@ async function toggleLoadOnOperation() {
   const enabled = elements.chkLoadOnOperation.checked;
   
   const data = await api.gh.setLoadOnOperation(enabled);
-  
+
   if (data.success) {
     showToast(`Load on operation ${enabled ? 'enabled' : 'disabled'}`);
   }
+  updateBlastButton();
 }
 
 async function blast() {
   console.log('[GH] Blast called - creating corruption');
   console.log('[GH] Using base state ID:', selectedBaseId);
   
-  if (!selectedBaseId) {
+  const loadsBase = !elements.chkLoadOnOperation || elements.chkLoadOnOperation.checked;
+  if (!selectedBaseId && loadsBase) {
     console.error('[GH] No base state selected for blast');
-    showToast('Please select a base state first', 'error');
+    showToast('Please select a base state first (or turn off "Load on operation" to blast from where the game is)', 'error');
     return;
   }
-  
-  const data = await api.gh.corruptAndStash(selectedBaseId);
+
+  const data = await api.gh.corruptAndStash(selectedBaseId || undefined);
   
   console.log('[GH] Blast response:', data);
   
   if (data.success) {
     console.log('[GH] Corruption created:', data.entry);
-    showToast('Corruption created and added to stash', 'success');
+    showToast('Corruption created and added to stash' + (data.entry?.summary ? ': ' + data.entry.summary : ''), 'success');
     selectedStashId = data.entry?.id;
     console.log('[GH] Selected stash ID set to:', selectedStashId);
     await refreshStash(true); // Auto-scroll to bottom when new item is added
@@ -1001,6 +1129,7 @@ async function blast() {
     console.error('[GH] Blast failed:', data.error);
     showToast(data.error || 'Failed to create corruption', 'error');
   }
+  await refreshFarmStatus();
 }
 
 async function replayStash() {
@@ -1009,10 +1138,11 @@ async function replayStash() {
   const data = await api.gh.replayStash(selectedStashId);
   
   if (data.success) {
-    showToast('Stash entry replayed', 'success');
+    showToast(data.message || 'Stash entry replayed', 'success');
   } else {
     showToast(data.error || 'Failed to replay stash entry', 'error');
   }
+  await refreshFarmStatus();
 }
 
 async function promoteToStockpile() {
@@ -1022,7 +1152,7 @@ async function promoteToStockpile() {
   
   if (data.success) {
     showToast('Entry promoted to stockpile', 'success');
-    selectedStockpileId = data.entry?.Id;
+    selectedStockpileId = data.entry?.id ?? data.entry?.Id;
     selectedStashId = null;
     await refreshStash();
     await refreshStockpile(true); // Auto-scroll to bottom when new item is added
@@ -1060,25 +1190,29 @@ async function refreshStockpile(autoScroll = false) {
   }
   
   const stockpile = data.stockpile || [];
-  
+  stockpileEntries = stockpile;
+
   if (stockpile.length === 0) {
-    elements.stockpileList.innerHTML = '<div class="gh-empty">Promoted entries are saved here permanently.</div>';
+    elements.stockpileList.innerHTML = '<div class="gh-empty">Kept entries are listed here. Save file... writes them to a file you can open here again, or in the BrokenNes2 plugin for FL Studio.</div>';
     updateStockpileButtons();
+    showStockpileDetail();
     return;
   }
-  
+
   elements.stockpileList.innerHTML = stockpile.map(entry => `
-    <div class="gh-item ${entry.id === selectedStockpileId ? 'selected' : ''}" 
+    <div class="gh-item ${entry.id === selectedStockpileId ? 'selected' : ''}"
          data-id="${entry.id}"
          onclick="selectStockpile('${entry.id}')">
       <div class="gh-item-info">
         <div class="gh-item-name">${escapeHtml(entry.name)}</div>
-        <div class="gh-item-meta">${entry.writes?.length || 0} writes • ${new Date(entry.created).toLocaleString()}</div>
+        <div class="gh-item-meta">${entry.writeCount ?? entry.writes?.length ?? 0} writes • ${new Date(entry.created).toLocaleString()}</div>
+        <div class="gh-item-desc">${escapeHtml(entryDetail(entry))}</div>
       </div>
     </div>
   `).join('');
-  
+
   updateStockpileButtons();
+  showStockpileDetail();
   
   // Auto-scroll to bottom if requested (when new item is added)
   if (autoScroll && stockpile.length > 0) {
@@ -1098,8 +1232,15 @@ function selectStockpile(id) {
   document.querySelectorAll('#stockpileList .gh-item').forEach(item => {
     item.classList.toggle('selected', item.dataset.id === id);
   });
-  
+
   updateStockpileButtons();
+  showStockpileDetail();
+}
+
+function showStockpileDetail() {
+  if (!elements.stockpileDetail) return;
+  const entry = stockpileEntries.find(e => e.id === selectedStockpileId);
+  elements.stockpileDetail.textContent = entry ? (entry.description ? entry.description + '\n' : '') + entryDetail(entry) : '';
 }
 
 function updateStockpileButtons() {
@@ -1118,10 +1259,11 @@ async function replayStockpile() {
   const data = await api.gh.replayStockpile(selectedStockpileId);
   
   if (data.success) {
-    showToast('Stockpile entry replayed', 'success');
+    showToast((data.message || 'Stockpile entry replayed') + (data.warnings && data.warnings.length ? ' | ' + data.warnings[0] : ''), 'success');
   } else {
     showToast(data.error || 'Failed to replay stockpile entry', 'error');
   }
+  await refreshFarmStatus();
 }
 
 function showRenameModal() {
@@ -1134,6 +1276,8 @@ function showRenameModal() {
   const currentName = selectedItem?.querySelector('.gh-item-name')?.textContent || '';
   
   elements.renameInput.value = currentName;
+  const entry = stockpileEntries.find(e => e.id === selectedStockpileId);
+  if (elements.renameDescription) elements.renameDescription.value = entry?.description || '';
   elements.renameModal.style.display = 'flex';
   elements.renameInput.focus();
   elements.renameInput.select();
@@ -1154,10 +1298,10 @@ async function confirmRename() {
     return;
   }
   
-  const data = await api.gh.renameStockpile(currentRenameId, newName);
+  const data = await api.gh.renameStockpile(currentRenameId, newName, elements.renameDescription ? elements.renameDescription.value : undefined);
   
   if (data.success) {
-    showToast('Entry renamed', 'success');
+    showToast('Entry saved', 'success');
     hideRenameModal();
     await refreshStockpile();
   } else {
@@ -1199,7 +1343,7 @@ async function exportStockpile() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `stockpile_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    a.download = `stockpile_${new Date().toISOString().replace(/[:.]/g, '-')}.stockpile.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1221,7 +1365,7 @@ async function importStockpile(event) {
     const data = await api.gh.importStockpile(text);
     
     if (data.success) {
-      showToast(`Imported ${data.imported || 0} entries`, 'success');
+      showToast(`Imported ${data.imported || 0} entries` + (data.refusals && data.refusals.length ? ` | refused: ${data.refusals.slice(0, 2).join('; ')}` : ''), data.refusals && data.refusals.length ? 'error' : 'success');
       await refreshStockpile(true); // Auto-scroll to bottom when items are imported
     } else {
       showToast(data.error || 'Failed to import stockpile', 'error');

@@ -134,7 +134,7 @@ namespace BrokenNes
             CorruptIntensity = 1;
             foreach (var d in MemoryDomains)
             {
-                d.Selected = d.Key == "PRG" || d.Key == "RAM";
+                d.Selected = d.Key == "PRG" || d.Key == "RAM" || d.Key == "ROM" || d.Key == "WRAM";   // (a console game's memories are ROM and WRAM; the NES has neither of those keys)
             }
             if (!AutoCorrupt)
             {

@@ -69,6 +69,8 @@ namespace BrokenNes.Windows
                     return;
                 }
                 consoleNote = "";
+                if (slot != CoreSlot.Ppu) FarmPoison($"the {slot} was swapped to {id}");   // (a picture chip is a view of the machine; the others change what it does)
+                FarmCoresChanged(session);
                 Diagnostics.ShutdownDiagnostics.Log($"Core hot-swap: {console} {slot} -> {id} ({session.Description})");
                 UpdateCoresMenus();
                 UpdateConsoleTitle();
@@ -142,6 +144,15 @@ namespace BrokenNes.Windows
                     return (w, h, rgba);
                 }
             };
+            // the Glitch Harvester on console games and the stockpile file
+            server.GetConsoleGh = () => ConsoleGh;
+            server.GetFarmInfo = FarmInfo;
+            server.PickStockpilePath = save => PickStockpilePath(save);
+            server.GetStockpileFolder = () => StockpileFolder;
+            server.GetTrueDomainSizes = () => config.CorruptionTrueDomainSizes;
+            server.SetTrueDomainSizes = on => { Helpers.ConfigHelper.Update(config, c => c.CorruptionTrueDomainSizes = on); RefreshMemoryDomainsRequested(); };
+            server.GetConsoleDomains = () => farm.Attached ? farm.Domains() : System.Array.Empty<NesEmulator.Corruption.IMemoryDomain>();
+            server.ConsoleBetweenFrames = work => { lock (emulationLock) return work(); };
             server.SelectConsole = key => Invoke(() => SwitchConsole(Consoles.FromKey(key)));
             server.GetGbLook = () => (config.GbLook, config.GbInvertBackground, config.GbInvertSprites);
             server.SetGbLook = (look, bg, obj) => Invoke(() => SetGbLook(look == null ? null : GbLook.FromKey(look), bg, obj));
@@ -468,6 +479,7 @@ namespace BrokenNes.Windows
             session = s; sessionRom = rom; sessionRomName = romName; sessionFrames = 0; consoleNote = "";
             currentRomPath = romPath ?? romName;
             Helpers.ConfigHelper.Update(config, c => c.SelectedConsole = Consoles.Key(console));
+            FarmAttach(s, rom, romName);        // record the game from its power-on (before the save RAM is loaded, so the farm can note it)
             LoadSessionSave();
             RefreshConsoleMenu();
             UpdateCoresMenus();
@@ -482,6 +494,7 @@ namespace BrokenNes.Windows
             if (session == null) return;
             StopEmulation();
             SaveSessionBattery(force: true);
+            FarmDetach();
             session.Dispose();
             session = null; sessionRom = null; sessionLastSave = null;
         }
@@ -541,7 +554,7 @@ namespace BrokenNes.Windows
                     string legacy = Path.Combine(AppDataDir, "BatterySaves", s.GameId + ".srm");
                     if (File.Exists(legacy)) from = legacy;
                 }
-                if (from != null) s.ImportSave(File.ReadAllBytes(from));
+                if (from != null) { var saved = File.ReadAllBytes(from); s.ImportSave(saved); farm.SetInitialBattery(s.ExportSave()); }   // (a replay from power-on has to start with the same save RAM)
             }
             catch (Exception ex) { Console.WriteLine($"[Console] save load failed: {ex.Message}"); }
             sessionLastSave = s.ExportSave();
@@ -551,6 +564,7 @@ namespace BrokenNes.Windows
         {
             var s = session;
             if (s == null || !s.HasBattery) return;
+            if (farm.SaveRamTouched) return;     // a corruption wrote the game's save RAM, or the machine is a replayed or loaded one: never over the player's save
             try
             {
                 byte[] data;
@@ -629,8 +643,10 @@ namespace BrokenNes.Windows
 
             lock (emulationLock)
             {
+                FarmBeforeFrame(p1, p2);
                 s.SetPad(0, p1); s.SetPad(1, p2);
                 s.RunFrame();
+                FarmAfterFrame();
             }
             sessionFrames++;
             if (sessionFrames % 600 == 0) SaveSessionBattery(force: false);
