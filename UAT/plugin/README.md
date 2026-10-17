@@ -1,4 +1,4 @@
-# Certifying Bogue :: BrokenNes 2 inside FL Studio 2026
+# Certifying BrokenNes2 inside FL Studio 2026
 
 `BrokenNes.FruityHost selftest` proves the plugin against a faithful *stand-in* for FL's host. This recipe proves it
 inside the real thing: FL renders a project that uses the plugin, and the audio is measured against what the
@@ -63,9 +63,9 @@ The report (`fl-certify.json`, `analysis.json`, the rendered `fl-render.wav`) go
 
 ## The plugin's name in FL
 
-FL shows the plugin as **Bogue :: BrokenNes 2** (the name it reports), but the DLL and its folder stay `BrokenNes2`, and the generated project
-refers to the plugin as `BrokenNes2`: FL identifies a native plugin by its file name. The first render after a rename confirms it (a project that
-cannot find the plugin renders silence). `::` is not valid in a Windows file name, so if FL's preset menu ever misbehaves for this plugin, that name is the suspect.
+FL lists the plugin as **BrokenNes2** (the name it reports); the DLL and its folder have the same name, and the generated project refers to the plugin
+as `BrokenNes2`: FL identifies a native plugin by its file name. The first render after a rename confirms it (a project that cannot find the plugin
+renders silence). Earlier builds reported a longer name with a `::` in it, which is not valid in a Windows file name; the plain name removes that suspect.
 
 ## If it fails
 

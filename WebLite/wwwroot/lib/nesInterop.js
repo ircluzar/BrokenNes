@@ -1130,6 +1130,19 @@ window.nesInterop = {
         this._dotNetRef = null;
     },
 
+    // D-pad protection: the ONE way the human input sources (keyboard, gamepad, touch controller) hand the pad to the emulator. The raw state stays in
+    // window.nesInputState / nesInputStateP2 (so letting go of Right gives Left back); what is sent is a protected copy (dpadGuard.js) unless the player
+    // switched the protection off (Input settings: "Allow opposite d-pad directions", cfg.allowOppositeDpad). `method` is the C# entry the caller always used.
+    _allowOpposite: false,
+    _sendPad: function (method, player, state) {
+        const ref = this._mainRef; if (!ref) return;
+        const out = window.dpadGuard ? window.dpadGuard.resolve(state, this._allowOpposite === true) : state;
+        try {
+            if (method === 'UpdateInputForPlayer') ref.invokeMethodAsync('UpdateInputForPlayer', player, out);
+            else ref.invokeMethodAsync('UpdateInput', out);
+        } catch (error) { console.error('Error invoking ' + method + ':', error); }
+    },
+
     registerInput: function (dotNetRef) {
         if (!dotNetRef) {
             console.error('dotNetRef is null');
@@ -1146,13 +1159,7 @@ window.nesInterop = {
         window.nesInputStateP2 = new Array(12).fill(false);
         
         const updateInput = (changed) => {
-            if (changed) {
-                try {
-                    dotNetRef.invokeMethodAsync('UpdateInput', window.nesInputState);
-                } catch (error) {
-                    console.error('Error invoking UpdateInput:', error);
-                }
-            }
+            if (changed) this._sendPad('UpdateInput', 1, window.nesInputState);
         };
 
     // If configureInput not used, fall back to legacy fixed keyboard mapping for P1
@@ -1311,6 +1318,7 @@ window.nesInterop = {
                 r: (gm?.R)??5
             });
             const p1 = cfg?.player1||{}; const p2 = cfg?.player2||{};
+            this._allowOpposite = cfg?.allowOppositeDpad === true;   // anything else (a missing field in an older save too) means protected
             window._nesInputCfg = {
                 p1: { device:(p1.device||'Keyboard'), kbd: mapKeyboard(p1.keyboard), gp: mapGamepad(p1.gamepad), gpIndex: (typeof p1.gamepadIndex==='number'?p1.gamepadIndex:null) },
                 p2: { device:(p2.device||'Touch'), kbd: mapKeyboard(p2.keyboard), gp: mapGamepad(p2.gamepad), gpIndex: (typeof p2.gamepadIndex==='number'?p2.gamepadIndex:null) }
@@ -1348,13 +1356,13 @@ window.nesInterop = {
                         if(arr[b.i]!==true){ arr[b.i]=true; changed = true; }
                     }
                     if(changed && this._mainRef){
-                        try{ for(const b of binds){ const arr = (b.p===2)? window.nesInputStateP2 : window.nesInputState; this._mainRef.invokeMethodAsync('UpdateInputForPlayer', b.p, arr); } }catch(err){ console.error('UpdateInputForPlayer error', err); }
+                        for(const b of binds){ const arr = (b.p===2)? window.nesInputStateP2 : window.nesInputState; this._sendPad('UpdateInputForPlayer', b.p, arr); }
                     }
                 };
                 const onUp = (e)=>{
                     const binds = keyMap[e.code]; if(!binds) return; let changed=false;
                     for(const b of binds){ const arr = (b.p===2)? window.nesInputStateP2 : window.nesInputState; if(arr[b.i]!==false){ arr[b.i]=false; changed=true; } }
-                    if(changed && this._mainRef){ try{ for(const b of binds){ const arr = (b.p===2)? window.nesInputStateP2 : window.nesInputState; this._mainRef.invokeMethodAsync('UpdateInputForPlayer', b.p, arr); } }catch(err){} }
+                    if(changed && this._mainRef){ for(const b of binds){ const arr = (b.p===2)? window.nesInputStateP2 : window.nesInputState; this._sendPad('UpdateInputForPlayer', b.p, arr); } }
                 };
                 document.addEventListener('keydown', onDown);
                 document.addEventListener('keyup', onUp);
@@ -1399,7 +1407,7 @@ window.nesInterop = {
                         if(btn(g.x)) arr[8]=true; if(btn(g.y)) arr[9]=true; if(btn(g.l)) arr[10]=true; if(btn(g.r)) arr[11]=true;
                         // If changed, notify
                         let changed=false; for(let i=0;i<12;i++){ if(arr[i]!==prev[i]){ changed=true; break; } }
-                        if(changed && this._mainRef){ try{ this._mainRef.invokeMethodAsync('UpdateInputForPlayer', player, arr); }catch{} }
+                        if(changed && this._mainRef){ this._sendPad('UpdateInputForPlayer', player, arr); }
                         return true;
                     };
                     const any1 = doPad(window._nesInputCfg.p1, window.nesInputState, 1);
@@ -1973,7 +1981,7 @@ window.nesInterop = {
             const map = { a:0, b:1, select:2, start:3, up:4, down:5, left:6, right:7, x:8, y:9, l:10, r:11 };
             const activeTouches = new Map();
             const updateBtnVisual = (btnEl, pressed)=>{ if(!btnEl) return; btnEl.classList.toggle('pressed', !!pressed); };
-            const setState = (btnKey, val)=>{ const idx = map[btnKey]; if(typeof idx!== 'number') return; if(!window.nesInputState) window.nesInputState=new Array(12).fill(false); window.nesInputState[idx]=val; if(this._mainRef) try{ this._mainRef.invokeMethodAsync('UpdateInput', window.nesInputState);}catch{} };
+            const setState = (btnKey, val)=>{ const idx = map[btnKey]; if(typeof idx!== 'number') return; if(!window.nesInputState) window.nesInputState=new Array(12).fill(false); window.nesInputState[idx]=val; this._sendPad('UpdateInput', 1, window.nesInputState); };
             const elementFromTouch = (touch)=>{ const el = document.elementFromPoint(touch.clientX, touch.clientY); if(!el) return null; return el.closest && el.closest('[data-btn]'); };
             const beginTouch = (touch)=>{ const target = elementFromTouch(touch); if(!target) return; const key = target.dataset.btn; if(!key) return; activeTouches.set(touch.identifier,key); setState(key,true); updateBtnVisual(target,true); };
             const moveTouch = (touch)=>{ const prevKey = activeTouches.get(touch.identifier); const currentEl = elementFromTouch(touch); const newKey = currentEl?.dataset.btn; if(prevKey && prevKey!==newKey){ setState(prevKey,false); const prevEl = ctl.querySelector(`[data-btn="${prevKey}"]`); updateBtnVisual(prevEl,false); activeTouches.delete(touch.identifier);} if(newKey && newKey!==prevKey){ activeTouches.set(touch.identifier,newKey); setState(newKey,true); updateBtnVisual(currentEl,true);} };

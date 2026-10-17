@@ -2,7 +2,7 @@ using BrokenNes.Fruity;
 
 namespace BrokenNes2;
 
-/// <summary>Parameter indices of Bogue :: BrokenNes 2 (the order is part of saved projects and automation: append only from here on).
+/// <summary>Parameter indices of BrokenNes2 (the order is part of saved projects and automation: append only from here on).
 /// <c>Core</c> (the sound chip), <c>Mode</c> and <c>Console</c> belong to the emulator the instance is attached to and are shared by every
 /// instance on it; the others belong to the instance. <c>Voice</c> (appended with the Sega stems) names one of the Sega chips' own voices (FM 1, the DAC ...)
 /// when the instance should sit on one rather than on a channel of the NES model; 0 leaves the choice to <c>Channel</c>.</summary>

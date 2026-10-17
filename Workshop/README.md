@@ -20,6 +20,7 @@ draw their inputs from **a separate project that is not in this repo** (and a si
 | Mode (`argv[0]`) | What it does | Needs, beyond the built `.exe` | Runnable on this machine? |
 | --- | --- | --- | --- |
 | `--romtest` | "Does this ROM run?" gate: exit code + FNV-1a64 framebuffer hash, optional scripted input | any `.nes` | **Yes** |
+| `--input-test` | The d-pad protection ("Allow opposite d-pad directions", off by default): the pure `DpadGuard` for all 16 direction combinations and all 32768 pads, the real desktop `InputManager` with simulated keys, the config JSON, the real controller window, recorded input untouched (NES port, Genesis pad), and a scan that only the human input sources call the guard. Run from the repo root (or `--repo <dir>`); `--shot <png>` also saves the controller window | nothing | **Yes** |
 | `--snestest` | SFC (SNES) core-family spec verifier: runs gilyon/snes-tests and lists every failing test with its inputs and expected output | a `.sfc` from `Windows/Resources/snes-test-roms` | **Yes** |
 | `--snes` | Interactive SNES player window (SFC cores): keyboard + XInput, audio-paced, battery saves | any `.sfc`/`.smc` (bring your own) | **Yes** |
 | `--snesrun` | SFC "how far does this game get?" probe: N frames, scripted input, PNGs at chosen frames, hottest PCs (hang loops), sound-CPU upload state | any `.sfc`/`.smc` (bring your own) | **Yes** |

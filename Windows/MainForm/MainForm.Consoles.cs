@@ -581,19 +581,8 @@ namespace BrokenNes.Windows
         }
 
         // ------------------------------------------------------------------ one frame (emulation thread)
-        private static PadButtons ToPad(InputManager? m)
-        {
-            if (m == null) return PadButtons.None;
-            PadButtons b = 0;
-            // InputManager indices: 0 A, 1 B, 2 Select, 3 Start, 4 Up, 5 Down, 6 Left, 7 Right, 8 X, 9 Y, 10 L, 11 R.
-            if (m.GetButton(0)) b |= PadButtons.A; if (m.GetButton(1)) b |= PadButtons.B;
-            if (m.GetButton(2)) b |= PadButtons.Select; if (m.GetButton(3)) b |= PadButtons.Start;
-            if (m.GetButton(4)) b |= PadButtons.Up; if (m.GetButton(5)) b |= PadButtons.Down;
-            if (m.GetButton(6)) b |= PadButtons.Left; if (m.GetButton(7)) b |= PadButtons.Right;
-            if (m.GetButton(8)) b |= PadButtons.X; if (m.GetButton(9)) b |= PadButtons.Y;
-            if (m.GetButton(10)) b |= PadButtons.L; if (m.GetButton(11)) b |= PadButtons.R;
-            return b;
-        }
+        // The human player's pad (keyboard and gamepad, with the d-pad protection of the player's config): see InputManager.Pad.
+        private static PadButtons ToPad(InputManager? m) => m == null ? PadButtons.None : m.Pad();
 
         /// <summary>
         /// The twelve-button pad as one console wants it. The Master System has a Pause button and no Start (the keyboard's Return, the pad's Start, mean Pause there), and the Game Gear has a Start
