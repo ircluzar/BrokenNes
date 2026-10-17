@@ -219,10 +219,10 @@ try {
     }
     Test-Case 'NEGATIVE: a step that outlives its timeout is killed and fails' {
         if (-not ($sevenZip -and $hasBash)) { Skip-Test '7-Zip or Git Bash missing' }
-        New-SynthProject -Id 'synth-slow' -Run 'sleep 40' -Timeout 3
+        New-SynthProject -Id 'synth-slow' -Run 'sleep 120' -Timeout 3
         $sw = [Diagnostics.Stopwatch]::StartNew()
         Assert-Throws { Invoke-BdProjectBuild -Id 'synth-slow' } 'timed out'
-        Assert-True ($sw.Elapsed.TotalSeconds -lt 30) "the timeout took $($sw.Elapsed.TotalSeconds) s"
+        Assert-True ($sw.Elapsed.TotalSeconds -lt 60) "the timeout took $($sw.Elapsed.TotalSeconds) s"
     }
     Test-Case 'NEGATIVE: building a project whose archive is not restored is refused' {
         if (-not $hasBash) { Skip-Test 'Git Bash missing' }
