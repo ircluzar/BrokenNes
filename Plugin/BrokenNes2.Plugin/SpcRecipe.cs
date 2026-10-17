@@ -27,6 +27,8 @@ public sealed class SpcRecipe
     /// <summary>How long the note the macro was taken from sounded, in samples (32 kHz).</summary>
     public int LengthSamples;
     public bool KeyedOff, Truncated;
+    /// <summary>The voice was already sounding when the listening began and was never keyed on again: the game's driver was not playing notes any more (or this was one note held for the whole time), and this is what the voice was doing.</summary>
+    public bool Held;
     public SpcEvent[] Events = [];
 
     public double Seconds => LengthSamples / 32000.0;
@@ -69,8 +71,8 @@ public sealed class SpcRecipe
         if (Eon) flags.Add("echo");
         if (Pmon) flags.Add("pitch modulation (not replayed)");
         string env0 = (Adsr1 & 0x80) != 0 ? $"ADSR {Adsr1:X2}{Adsr2:X2}" : $"gain {Gain:X2}";
-        string name = $"Game voice {index + 1}: sample #{Srcn}, {env0}";
-        string note = $"played {Uses}x, {Seconds:0.00} s" + (moves.Count > 0 ? ", " + string.Join(", ", moves) : ", no changes while it sounds") + (flags.Count > 0 ? ", " + string.Join(", ", flags) : "") + (Truncated ? ", cut at the macro limit" : "");
+        string name = Held ? $"Sounding voice {index + 1}: sample #{Srcn}, {env0}" : $"Game voice {index + 1}: sample #{Srcn}, {env0}";
+        string note = (Held ? $"was sounding when the game stopped keying notes, for {Seconds:0.#} s" : $"played {Uses}x, {Seconds:0.00} s") + (moves.Count > 0 ? ", " + string.Join(", ", moves) : ", no changes while it sounds") + (flags.Count > 0 ? ", " + string.Join(", ", flags) : "") + (Truncated ? ", cut at the macro limit" : "");
         return (name, note);
     }
 
@@ -91,7 +93,7 @@ public sealed class SpcRecipe
             var r = list[i];
             w.Write((byte)r.Srcn); w.Write((byte)r.Adsr1); w.Write((byte)r.Adsr2); w.Write((byte)r.Gain);
             w.Write((sbyte)r.VolL); w.Write((sbyte)r.VolR); w.Write((ushort)r.Pitch);
-            w.Write((byte)((r.Non ? 1 : 0) | (r.Eon ? 2 : 0) | (r.Pmon ? 4 : 0) | (r.KeyedOff ? 8 : 0) | (r.Truncated ? 16 : 0)));
+            w.Write((byte)((r.Non ? 1 : 0) | (r.Eon ? 2 : 0) | (r.Pmon ? 4 : 0) | (r.KeyedOff ? 8 : 0) | (r.Truncated ? 16 : 0) | (r.Held ? 32 : 0)));
             w.Write((byte)r.NoiseRate); w.Write((ushort)Math.Min(r.Uses, 65535)); w.Write(r.LengthSamples);
             int n = Math.Min(r.Events.Length, MaxEvents);
             Varint(w, (uint)n);
@@ -147,8 +149,8 @@ public sealed class SpcRecipe
                 };
                 if (rec.Pitch is 0 or > 0x3FFF) return null;
                 int f = r.ReadByte();
-                if (f > 31) return null;
-                rec.Non = (f & 1) != 0; rec.Eon = (f & 2) != 0; rec.Pmon = (f & 4) != 0; rec.KeyedOff = (f & 8) != 0; rec.Truncated = (f & 16) != 0;
+                if (f > 63) return null;
+                rec.Non = (f & 1) != 0; rec.Eon = (f & 2) != 0; rec.Pmon = (f & 4) != 0; rec.KeyedOff = (f & 8) != 0; rec.Truncated = (f & 16) != 0; rec.Held = (f & 32) != 0;
                 rec.NoiseRate = r.ReadByte();
                 if (rec.NoiseRate > 31) return null;
                 rec.Uses = r.ReadUInt16();
@@ -190,7 +192,7 @@ public sealed class SpcRecipe
     {
         ulong h = 1469598103934665603UL;
         void Mix(long v) => h = (h ^ (ulong)v) * 1099511628211UL;
-        Mix(Srcn); Mix(Adsr1); Mix(Adsr2); Mix(Gain); Mix(VolL); Mix(VolR); Mix(Pitch); Mix(NoiseRate); Mix((Non ? 1 : 0) | (Eon ? 2 : 0) | (Pmon ? 4 : 0)); Mix(Uses); Mix(LengthSamples);
+        Mix(Srcn); Mix(Adsr1); Mix(Adsr2); Mix(Gain); Mix(VolL); Mix(VolR); Mix(Pitch); Mix(NoiseRate); Mix((Non ? 1 : 0) | (Eon ? 2 : 0) | (Pmon ? 4 : 0) | (Held ? 8 : 0)); Mix(Uses); Mix(LengthSamples);
         foreach (var e in Events) { Mix(e.T); Mix((int)e.Kind); Mix(e.Value); }
         return h;
     }
@@ -260,7 +262,7 @@ public static class SpcRecipes
         public bool Non, Eon, Pmon, Non0, Eon0, Pmon0;          // the flags now, and as they were at the key-on
         public readonly List<SpcEvent> Events = new();
         public int LastCents;
-        public bool Truncated;
+        public bool Truncated, Held;
         public int Flags => (Non ? 1 : 0) | (Eon ? 2 : 0) | (Pmon ? 4 : 0);
     }
 
@@ -269,7 +271,34 @@ public static class SpcRecipes
     /// (<see cref="SpcWriteLog.Begin"/>) and every write older than the window is applied to them first, so a key-on never has settings the driver set before the window missing. A note already sounding when the window starts has no key-on in it
     /// and is not learned.
     /// </summary>
-    public static SpcRecipe[] Derive(SpcWriteLog log, long now, long windowSamples, out SpcDeriveStats stats)
+    public static SpcRecipe[] Derive(SpcWriteLog log, long now, long windowSamples, byte[] dspNow, out SpcDeriveStats stats)
+    {
+        var all = Notes(log, now, windowSamples, dspNow, out stats, out int silent);
+        // one recipe per distinct way of keying a voice on; the note with the most going on (then the longest) is the one the macro is taken from
+        var groups = new Dictionary<long, (SpcRecipe Recipe, int Score)>();
+        foreach (var note in all)
+        {
+            var rec = note.Recipe;
+            // the key: the settings and the flags as they were at the key-on (the events may change them later)
+            long key = ((((long)rec.Srcn * 257 + rec.Adsr1) * 257 + rec.Adsr2) * 257 + rec.Gain) * 16 + ((rec.Non ? 1 : 0) | (rec.Eon ? 2 : 0) | (rec.Pmon ? 4 : 0) | (rec.Held ? 8 : 0));
+            int score = Math.Min(rec.Events.Length, 400) * 100000 + Math.Min(rec.LengthSamples, 99999);
+            if (groups.TryGetValue(key, out var g))
+            {
+                g.Recipe.Uses++;
+                if (score > g.Score) { rec.Uses = g.Recipe.Uses; groups[key] = (rec, score); }
+            }
+            else groups[key] = (rec, score);
+        }
+        var result = groups.Values.Select(g => g.Recipe).OrderByDescending(r => r.Uses).ThenByDescending(r => r.Events.Length).ThenBy(r => r.Srcn).Take(SpcRecipe.MaxRecipes).ToArray();
+        stats = stats with { Recipes = result.Length };
+        return result;
+    }
+
+    /// <summary>One note the driver played inside the window: the voice, when it was keyed on and when it ended (samples at 32 kHz, on the SPC's clock) and the recipe that is exactly this note (its own macro).</summary>
+    public sealed record SpcNote(int Voice, long Start, long End, bool KeyedOff, SpcRecipe Recipe);
+
+    /// <summary>Every note of the window, each with its own macro (what <see cref="Derive"/> groups into recipes); notes that never asked for any volume are left out and counted in <paramref name="silent"/>.</summary>
+    public static List<SpcNote> Notes(SpcWriteLog log, long now, long windowSamples, byte[] dspNow, out SpcDeriveStats stats, out int silent)
     {
         // the registers at the start of the window (the log's starting state, moved forward by the writes older than the window), then the writes of the window in order
         var sh = new int[128];
@@ -287,8 +316,22 @@ public static class SpcRecipes
         var cur = new Open?[8];
         var notes = new List<(Open Note, long End, bool KeyOff)>();
         int keyOns = 0;
+        long start = now - Math.Min(windowSamples, now);
+        // a voice that sounds when the listening ends starts as a note held since the window began; a key-on or a key-off inside the window turns it into an ordinary note (or none), and what is left at the end is a voice the driver did not touch with a key-on
+        for (int v = 0; v < 8; v++)
+            if (windowSamples > 0 && dspNow[v * 16 + 8] != 0)
+            {
+                int b = v * 16;
+                var h = new Open
+                {
+                    Voice = v, T0 = start, Held = true, VL = (sbyte)sh[b], VR = (sbyte)sh[b + 1], P = sh[b + 2] | (sh[b + 3] & 0x3F) << 8, Srcn = sh[b + 4], A1 = sh[b + 5], A2 = sh[b + 6], G = sh[b + 7],
+                    Non = (sh[0x3D] >> v & 1) != 0, Eon = (sh[0x4D] >> v & 1) != 0, Pmon = v > 0 && (sh[0x2D] >> v & 1) != 0, NoiseRate = sh[0x6C] & 0x1F,
+                };
+                h.Non0 = h.Non; h.Eon0 = h.Eon; h.Pmon0 = h.Pmon;
+                cur[v] = h;
+            }
 
-        void Close(int v, long at, bool keyOff) { if (cur[v] is { } n) { notes.Add((n, at, keyOff)); cur[v] = null; } }
+        void Close(int v, long at, bool keyOff) { if (cur[v] is { } n) { if (!n.Held || at >= now) notes.Add((n, at, keyOff)); cur[v] = null; } }
         void Add(Open n, long at, SpcEv kind, int value)
         {
             long dt = at - n.T0;
@@ -366,29 +409,19 @@ public static class SpcRecipes
         }
         for (int v = 0; v < 8; v++) Close(v, now, false);
 
-        // one recipe per distinct way of keying a voice on; the note with the most going on (then the longest) is the one the macro is taken from
-        var groups = new Dictionary<long, (SpcRecipe Recipe, int Score)>();
-        int silent = 0;
+        var result = new List<SpcNote>(notes.Count);
+        silent = 0;
         foreach (var (n, end, keyOff) in notes)
         {
             var rec = new SpcRecipe
             {
-                Srcn = n.Srcn, Adsr1 = n.A1, Adsr2 = n.A2, Gain = n.G, VolL = n.VL, VolR = n.VR, Pitch = Math.Clamp(n.P, 1, 0x3FFF), NoiseRate = n.NoiseRate,
+                Srcn = n.Srcn, Adsr1 = n.A1, Adsr2 = n.A2, Gain = n.G, VolL = n.VL, VolR = n.VR, Pitch = Math.Clamp(n.P, 1, 0x3FFF), NoiseRate = n.NoiseRate, Held = n.Held,
                 Non = n.Non0, Eon = n.Eon0, Pmon = n.Pmon0, Uses = 1, LengthSamples = (int)Math.Min(end - n.T0, int.MaxValue / 2), KeyedOff = keyOff, Truncated = n.Truncated, Events = n.Events.ToArray(),
             };
-            // the key and the flags as they were at the key-on (the events may change them later)
-            long key = ((((long)rec.Srcn * 257 + rec.Adsr1) * 257 + rec.Adsr2) * 257 + rec.Gain) * 8 + ((rec.Non ? 1 : 0) | (rec.Eon ? 2 : 0) | (rec.Pmon ? 4 : 0));
             if (rec.Silent) { silent++; continue; }
-            int score = Math.Min(rec.Events.Length, 400) * 100000 + Math.Min(rec.LengthSamples, 99999);
-            if (groups.TryGetValue(key, out var g))
-            {
-                g.Recipe.Uses++;
-                if (score > g.Score) { rec.Uses = g.Recipe.Uses; groups[key] = (rec, score); }
-            }
-            else groups[key] = (rec, score);
+            result.Add(new SpcNote(n.Voice, n.T0, end, keyOff, rec));
         }
-        var result = groups.Values.Select(g => g.Recipe).OrderByDescending(r => r.Uses).ThenByDescending(r => r.Events.Length).ThenBy(r => r.Srcn).Take(SpcRecipe.MaxRecipes).ToArray();
-        stats = new SpcDeriveStats(keyOns, notes.Count, result.Length, silent, rg.Count, log.Dropped, Math.Min(windowSamples, now) / 32000.0);
+        stats = new SpcDeriveStats(keyOns, notes.Count, 0, silent, rg.Count, log.Dropped, Math.Min(windowSamples, now) / 32000.0);
         return result;
     }
 }

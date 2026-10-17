@@ -202,6 +202,25 @@ internal static class LabSnes
 
     internal sealed record Row(string Class, string Kind, int Writes, double GameDistance, bool GameIdentical, double GameRmsRatio, RunawayDiff Once, RunawayDiff Late);
 
+    /// <summary>One second of a recipe played at its own pitch and volume (32 kHz, left channel): the sound it stands for.</summary>
+    internal static float[] RecipeSound(SpcSnapshot snap, SpcRecipe r) => RunawayChecks.RenderRecipe(snap, r, 32000);
+
+    /// <summary>How far the recipes of a corrupted run are from what the clean game had: how many have no bit-identical twin among the clean ones, and the mean over the corrupted recipes of the distance to the nearest clean recipe's sound.</summary>
+    internal static string RecipeNovelty(SpcSnapshot clean, List<float[]> cleanSounds, SpcSnapshot bad)
+    {
+        if (bad.Recipes.Length == 0) return $"0 recipes (the game keyed nothing; clean had {clean.Recipes.Length})";
+        var hashes = new HashSet<ulong>(clean.Recipes.Select(r => r.Hash()));
+        int novel = 0; double sum = 0;
+        foreach (var r in bad.Recipes)
+        {
+            if (!hashes.Contains(r.Hash())) novel++;
+            var snd = RecipeSound(bad, r);
+            double best = cleanSounds.Count == 0 ? 20 : cleanSounds.Min(c => LabCommon.SpectralDistance(c, snd, 32000));
+            sum += best;
+        }
+        return $"{bad.Recipes.Length} recipes ({clean.Recipes.Length} clean), {novel} unlike any clean one, mean distance to nearest clean {LabCommon.F(sum / bad.Recipes.Length)}";
+    }
+
     /// <summary>--runaway-lab snes-matrix --rom X [--name N] [--input script] [--setup N] [--window N] [--seeds N] [--md file]: the corruption classes against the game's own sound and Instrument Runaway, frozen at once and after the window.</summary>
     public static int Matrix(string[] args)
     {
@@ -219,8 +238,12 @@ internal static class LabSnes
         // the clean game over the window, and what Instrument Runaway captures from it at the start and at the end
         using var clean = Fresh(game, state);
         var cleanOnce = new SpcSnapshot(clean.Spc.Aram, clean.Spc.Dsp.Regs);
+        var cleanLog = new SpcWriteLog(); cleanLog.Attach(clean.Spc);
         var cleanPcm = LabCommon.RunPcm(clean.Session, window);
         var cleanLate = new SpcSnapshot(clean.Spc.Aram, clean.Spc.Dsp.Regs);
+        cleanLate.Recipes = SpcRecipes.Derive(cleanLog, clean.Spc.SamplesProduced, window * 534L, clean.Spc.Dsp.Regs, out var cleanStats);       // a frame is 533.7 DSP samples
+        var cleanRecipeSounds = cleanLate.Recipes.Select(r => RecipeSound(cleanLate, r)).ToList();
+        Console.WriteLine($"clean recipes: {cleanStats}");
         var cleanMono = LabCommon.ToMono(cleanPcm);
         Console.WriteLine($"clean game over the window: peak {LabCommon.Peak(cleanMono):0.000}, rms {LabCommon.Rms(cleanMono):0.0000}, {cleanOnce.Instruments().Count} instruments at the start, {cleanLate.Instruments().Count} at the end");
 
@@ -235,6 +258,7 @@ internal static class LabSnes
         {
             if (c.Addresses.Length == 0) { Console.WriteLine($"-- {c.Name}: empty class on this game, skipped"); continue; }
             double gd = 0, gr = 0; int ident = 0, n = 0, once = 0, late = 0;
+            var recipeNotes = new List<string>();
             var onceD = new List<RunawayDiff>(); var lateD = new List<RunawayDiff>();
             int count = CountFor(c);
             for (int seed = 1; seed <= seeds; seed++)
@@ -243,8 +267,11 @@ internal static class LabSnes
                 using var bad = Fresh(game, state);
                 var rep = CorruptionApplier.Apply(MachineDomains.For(bad.Session), writes);
                 var badOnce = new SpcSnapshot(bad.Spc.Aram, bad.Spc.Dsp.Regs);
+                var badLog = new SpcWriteLog(); badLog.Attach(bad.Spc);
                 var badPcm = LabCommon.RunPcm(bad.Session, window);
                 var badLate = new SpcSnapshot(bad.Spc.Aram, bad.Spc.Dsp.Regs);
+                badLate.Recipes = SpcRecipes.Derive(badLog, bad.Spc.SamplesProduced, window * 534L, bad.Spc.Dsp.Regs, out _);
+                recipeNotes.Add(RecipeNovelty(cleanLate, cleanRecipeSounds, badLate));
                 var badMono = LabCommon.ToMono(badPcm);
                 double d = LabCommon.SpectralDistance(cleanMono, badMono, 32000);
                 gd += d; gr += LabCommon.Rms(badMono) / Math.Max(1e-9, LabCommon.Rms(cleanMono));
@@ -257,6 +284,7 @@ internal static class LabSnes
             var row = new Row(c.Name, c.Note, count, gd / n, ident == n, gr / n, Mean(onceD), Mean(lateD));
             rows.Add(row);
             Console.WriteLine($"{c.Name,-42} writes {count,4}  game: dist {LabCommon.F(row.GameDistance),6}{(row.GameIdentical ? " (identical)" : "")} level x{LabCommon.F(row.GameRmsRatio)}   Runaway at once: {row.Once}   after {window / 60} s: {row.Late}");
+            Console.WriteLine($"{"",-42} new capture (recipes, {window / 60} s): {string.Join("  |  ", recipeNotes)}");
         }
 
         // the heavily corrupted state: static writes alone, driver writes alone, both
@@ -274,12 +302,158 @@ internal static class LabSnes
         {
             using var bad = Fresh(game, state);
             CorruptionApplier.Apply(MachineDomains.For(bad.Session), writes);
+            var heavyLog = new SpcWriteLog(); heavyLog.Attach(bad.Spc);
             var badPcm = LabCommon.RunPcm(bad.Session, window);
             var badMono = LabCommon.ToMono(badPcm);
             var badLate = new SpcSnapshot(bad.Spc.Aram, bad.Spc.Dsp.Regs);
+            badLate.Recipes = SpcRecipes.Derive(heavyLog, bad.Spc.SamplesProduced, window * 534L, bad.Spc.Dsp.Regs, out _);
             Console.WriteLine($"{label,-48} {writes.Count,5} writes: game dist {LabCommon.F(LabCommon.SpectralDistance(cleanMono, badMono, 32000)),6}, level x{LabCommon.F(LabCommon.Rms(badMono) / Math.Max(1e-9, LabCommon.Rms(cleanMono)))}, Runaway after {window / 60} s: {CompareRunaway(cleanLate, badLate)}");
+            Console.WriteLine($"{"",-48} new capture: {RecipeNovelty(cleanLate, cleanRecipeSounds, badLate)}");
         }
         return 0;
+    }
+
+    // ------------------------------------------------------------------------------------------------- what a macro can carry
+
+    internal enum Resynth { Macro, Exemplar, Plain }
+
+    /// <summary>
+    /// The game's own notes played again on a private S-DSP at their original times and voices, to see how much of what the driver did a recipe model holds (an upper bound on what FL could play, since FL supplies its own notes and the game's sequencer is not run).
+    /// Macro: every note with its own recorded macro. Exemplar: every note with the settings it was keyed on with but the macro of the recipe it belongs to (what grouping notes into recipes keeps). Plain: the instrument alone, the way Instrument Runaway played
+    /// before (the sample at the note's pitch with the envelope the game had on a playing voice, no macro).
+    /// </summary>
+    internal static float[] Resynthesize(SpcSnapshot snap, List<SpcRecipes.SpcNote> notes, SpcRecipe[] recipes, long from, long to, Resynth mode)
+    {
+        int n = (int)(to - from);
+        var outp = new float[n];
+        var s = new SnesSampler(snap, 32000);
+        var one = new float[2];
+        var order = notes.OrderBy(x => x.Start).ToList();
+        int next = 0;
+        var endAt = new SortedDictionary<long, List<int>>();
+        for (int i = 0; i < n; i++)
+        {
+            long t = from + i;
+            while (next < order.Count && order[next].Start <= t)
+            {
+                var note = order[next++];
+                var r = note.Recipe;
+                switch (mode)
+                {
+                    case Resynth.Macro:
+                        s.NoteOnRecipe(note.Voice, r, r.Pitch, r.PeakVolume);
+                        break;
+                    case Resynth.Exemplar:
+                    {
+                        var ex = recipes.FirstOrDefault(x => x.Srcn == r.Srcn && x.Adsr1 == r.Adsr1 && x.Adsr2 == r.Adsr2 && x.Gain == r.Gain && x.Non == r.Non && x.Eon == r.Eon && x.Pmon == r.Pmon) ?? r;
+                        var mixed = new SpcRecipe { Srcn = r.Srcn, Adsr1 = r.Adsr1, Adsr2 = r.Adsr2, Gain = r.Gain, VolL = ex.VolL, VolR = ex.VolR, Pitch = r.Pitch, Non = r.Non, Eon = r.Eon, Pmon = r.Pmon, NoiseRate = r.NoiseRate, Events = ex.Events, Uses = 1 };
+                        s.NoteOnRecipe(note.Voice, mixed, r.Pitch, r.PeakVolume);          // the volumes are the exemplar's scaled to this note's loudest
+                        break;
+                    }
+                    default:
+                    {
+                        int level = Math.Min(127, r.PeakVolume);
+                        s.NoteOn(note.Voice, r.Srcn, r.Pitch, level, level);
+                        break;
+                    }
+                }
+                if (note.KeyedOff) { if (!endAt.TryGetValue(note.End, out var l)) endAt[note.End] = l = new(); l.Add(note.Voice); }
+            }
+            while (endAt.Count > 0 && endAt.Keys.First() <= t) { var k = endAt.Keys.First(); foreach (int v in endAt[k]) s.NoteOff(v); endAt.Remove(k); }
+            s.Render(one, 1);
+            outp[i] = (one[0] + one[1]) * 0.5f;
+        }
+        return outp;
+    }
+
+    /// <summary>--runaway-lab snes-resynth --rom X [--name N] [--setup N] [--window N] [--seeds N] [--input script]: for a clean game and some heavily corrupted ones, the game's own sound against its notes played again from the recorded macros.</summary>
+    public static int ResynthLab(string[] args)
+    {
+        string Opt(string n, string d) { int i = Array.IndexOf(args, "--" + n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
+        string romPath = Opt("rom", "");
+        var rom = LabCommon.ReadRom(romPath, out _, out _);
+        var game = new Game(Opt("name", Path.GetFileNameWithoutExtension(romPath)), rom, Opt("input", ""), int.Parse(Opt("setup", "1200")));
+        int window = int.Parse(Opt("window", "600")), seeds = int.Parse(Opt("seeds", "6")), nw = int.Parse(Opt("writes", "300"));
+        var state = Setup(game);
+        Console.WriteLine($"== SNES resynthesis: {game.Name}, window {window} frames, corruptions of {nw} random audio-RAM writes and {nw / 50} DSP-register writes");
+        Console.WriteLine("distance of the game's own sound to: [macro] each note with its own recorded macro, [exemplar] each note with its recipe's macro, [plain] the instrument alone (before recipes), [silence]");
+        for (int seed = 0; seed <= seeds; seed++)
+        {
+            using var run = Fresh(game, state);
+            string label = "clean game";
+            if (seed > 0)
+            {
+                var rnd = new SeededRandom(1000 + seed);
+                var writes = new List<CorruptionWrite>();
+                for (int i = 0; i < nw; i++) writes.Add(new CorruptionWrite("ARAM", rnd.Next(0xFFC0), (byte)rnd.Next(256)));
+                for (int i = 0; i < nw / 50; i++) writes.Add(new CorruptionWrite("DSP", rnd.Next(128), (byte)rnd.Next(256)));
+                CorruptionApplier.Apply(MachineDomains.For(run.Session), writes);
+                label = $"corruption, seed {seed}";
+            }
+            var log = new SpcWriteLog(); log.Attach(run.Spc);
+            long t0 = run.Spc.SamplesProduced;
+            var pcm = LabCommon.RunPcm(run.Session, window);
+            var game32 = LabCommon.ToMono(pcm);
+            long t1 = run.Spc.SamplesProduced;
+            var snap = new SpcSnapshot(run.Spc.Aram, run.Spc.Dsp.Regs);
+            var notes = SpcRecipes.Notes(log, t1, t1 - t0, run.Spc.Dsp.Regs, out var stats, out _);
+            var recipes = SpcRecipes.Derive(log, t1, t1 - t0, run.Spc.Dsp.Regs, out _);
+            snap.Recipes = recipes;
+            double hf = HighFraction(game32);
+            var sil = new float[game32.Length];
+            string line = $"{label,-28} game rms {LabCommon.Rms(game32):0.0000} (HF {hf:0.00}), {stats.KeyOns} key-ons, {recipes.Length} recipes:";
+            if (notes.Count == 0)
+            {
+                var rg = run.Spc.Dsp.Regs;
+                string envx = string.Join(" ", Enumerable.Range(0, 8).Select(v => $"{rg[v * 16 + 8]:X2}"));
+                Console.WriteLine(line + $" no notes at all. At the end: ENVX {envx}, KON {rg[0x4C]:X2} KOFF {rg[0x5C]:X2} EON {rg[0x4D]:X2} NON {rg[0x3D]:X2} PMON {rg[0x2D]:X2} FLG {rg[0x6C]:X2} EFB {rg[0x0D]:X2} EVOL {rg[0x2C]:X2}/{rg[0x3C]:X2} MVOL {rg[0x0C]:X2}/{rg[0x1C]:X2} EDL {rg[0x7D]:X2} ESA {rg[0x6D]:X2}; SPC halted {run.Spc.Smp.Halted}, PC ${run.Spc.Smp.PC:X4}");
+                continue;
+            }
+            int skip = game32.Length / 5;            // the notes that were already sounding when the window began are not in it: judge the last four fifths
+            line += $" ({notes.Count(n => n.Recipe.Held)} held)";
+            foreach (var mode in new[] { Resynth.Macro, Resynth.Exemplar, Resynth.Plain })
+            {
+                var re = Resynthesize(snap, notes, recipes, t0, t1, mode);
+                line += $"  [{mode.ToString().ToLowerInvariant()}] {LabCommon.F(LabCommon.SpectralDistance(game32[skip..], re[skip..], 32000))}";
+            }
+            foreach (int rule in new[] { 1, 2, 3 })
+            {
+                var alt = GroupBy(notes, rule);
+                var re = Resynthesize(snap, notes, alt, t0, t1, Resynth.Exemplar);
+                line += $"  [exemplar rule {rule}] {LabCommon.F(LabCommon.SpectralDistance(game32[skip..], re[skip..], 32000))}";
+            }
+            line += $"  [silence] {LabCommon.F(LabCommon.SpectralDistance(game32[skip..], sil[skip..], 32000))}";
+            Console.WriteLine(line);
+        }
+        return 0;
+    }
+
+    /// <summary>Recipes by another rule for the exemplar than the one Derive uses: 1 the note with the median number of events, 2 the note of median length, 3 the shortest note that has any event (else the shortest).</summary>
+    internal static SpcRecipe[] GroupBy(List<SpcRecipes.SpcNote> notes, int rule)
+    {
+        var list = new List<SpcRecipe>();
+        foreach (var g in notes.GroupBy(n => (n.Recipe.Srcn, n.Recipe.Adsr1, n.Recipe.Adsr2, n.Recipe.Gain, n.Recipe.Non, n.Recipe.Eon, n.Recipe.Pmon, n.Recipe.Held)))
+        {
+            var ordered = (rule == 2 ? g.OrderBy(n => n.Recipe.LengthSamples) : g.OrderBy(n => n.Recipe.Events.Length).ThenBy(n => n.Recipe.LengthSamples)).ToList();
+            var pick = rule switch
+            {
+                3 => ordered.FirstOrDefault(n => n.Recipe.Events.Length > 0) ?? ordered[0],
+                _ => ordered[ordered.Count / 2],
+            };
+            pick.Recipe.Uses = ordered.Count;
+            list.Add(pick.Recipe);
+        }
+        return list.ToArray();
+    }
+
+    /// <summary>The share of the sound's energy above 4 kHz (a rough measure of how screechy or hissy it is).</summary>
+    internal static double HighFraction(float[] mono32)
+    {
+        var bands = LabCommon.AverageBands(mono32, 32000);
+        double total = bands.Sum();
+        if (total <= 0) return 0;
+        // bands are log-spaced from 60 Hz to 16 kHz in 20 steps: the band that starts at 4 kHz is index 14 (60 * (16000/60)^(14/20) = 3.1 kHz) .. use 15 and up (about 3.9 kHz and above)
+        return bands.Skip(15).Sum() / total;
     }
 
     // ------------------------------------------------------------------------------------------------- the probe

@@ -454,7 +454,7 @@ internal sealed class SessionGame : IGame, IGameStems
         if (s is not SnesSession snes || snes.Apu is not NesEmulator.Snes.APU_SFC spc) return null;
         var snap = new SpcSnapshot(spc.Aram, spc.Dsp.Regs);
         if (spcLog == null) { snap.ListenNote = "this sound unit cannot be listened to"; return snap; }
-        var recipes = SpcRecipes.Derive(spcLog, spc.SamplesProduced, (long)(ListenWindowSeconds * 32000), out var stats);
+        var recipes = SpcRecipes.Derive(spcLog, spc.SamplesProduced, (long)(ListenWindowSeconds * 32000), spc.Dsp.Regs, out var stats);
         snap.Recipes = recipes;
         snap.ListenNote = recipes.Length > 0 ? "Listened to the game: " + stats : stats.KeyOns == 0 ? "The game played nothing in the time it was listened to: let it play (the Corruption window can wait before it freezes), then switch Instrument Runaway on." : "Listened to the game, but no voice could be learned: " + stats;
         return snap;

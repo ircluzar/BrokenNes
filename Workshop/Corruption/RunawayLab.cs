@@ -6,6 +6,7 @@ namespace BrokenNes.Workshop.Corruption;
 /// --runaway-lab &lt;what&gt; ...   The Instrument Runaway lab (round 6): measures, on real games, which corruptions the plugin's Instrument Runaway carries into FL and which it does not.
 /// See docs/projects/round6-runaway.md for the method and the results.
 ///   snes-probe  --rom X [--frames N] [--input script]     what a SNES game's sound driver does
+///   snes-resynth --rom X [--name N] [--setup N] [--window N] [--seeds N]     the game's own notes played again from the recorded macros (what a recipe model can carry)
 ///   snes-matrix --rom X [--name N] [--input script] [--setup N] [--window N] [--seeds N]     corruption classes against the game's sound and Instrument Runaway
 /// </summary>
 internal static class RunawayLab
@@ -17,6 +18,7 @@ internal static class RunawayLab
         {
             case "snes-probe": return LabSnes.Probe(args);
             case "snes-matrix": return LabSnes.Matrix(args);
+            case "snes-resynth": return LabSnes.ResynthLab(args);
             default:
                 Console.Error.WriteLine("usage: --runaway-lab snes-probe --rom X [--frames N] [--input script]");
                 return 2;

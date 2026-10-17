@@ -62,7 +62,7 @@ internal static class RunawayChecks
         public SpcSnapshot Capture(double seconds = SpcRecipes.ListenWindowSeconds)
         {
             var snap = new SpcSnapshot(Spc.Aram, Spc.Dsp.Regs);
-            snap.Recipes = SpcRecipes.Derive(Log, Spc.SamplesProduced, (long)(seconds * 32000), out _);
+            snap.Recipes = SpcRecipes.Derive(Log, Spc.SamplesProduced, (long)(seconds * 32000), Spc.Dsp.Regs, out _);
             return snap;
         }
         public void Dispose() => Run.Dispose();
@@ -182,13 +182,28 @@ internal static class RunawayChecks
         int firstDiff = Enumerable.Range(0, wa.Length).FirstOrDefault(i => wa[i] != wb[i], -1);
         c.Ok("and what Instrument Runaway plays from it differs from the clean game's recipe", dCorrupt > 0.5, $"distance {dCorrupt:0.000} over {whole:N0} samples; first differing sample {firstDiff}; rms {LabCommon.Rms(wa):0.0000} / {LabCommon.Rms(wb):0.0000}; bad events at {string.Join(",", rBad?.Events.Where(e => e.Kind == SpcEv.Pitch && e.Value > 500).Take(3).Select(e => e.T) ?? [])}; clean has {r.Events.Count(e => e.Kind == SpcEv.Pitch && e.Value > 500)} such events, hashes {r.Hash():X} / {rBad?.Hash():X}, same object {ReferenceEquals(r, rBad)}, snaps same {ReferenceEquals(snap, badSnap)}");
         c.Control("the clean game's recipe against itself is identical (the difference is the corruption's)", LabCommon.Hash(RenderRecipe(snap, r, frames)) == LabCommon.Hash(RenderRecipe(snap, r, frames)));
+
+        // ---- a dead driver: the voice it keyed keeps sounding and nothing touches the chip any more (a corrupted game stuck on one noise) ----
+        using var stuck = new LoggedSnes(rom);
+        stuck.Play(30);
+        int head = FindAram(stuck.Spc.Aram, 0x8F, 0x03, 0xF2, 0x8F, 0x10, 0xF3);
+        stuck.Spc.Aram[head] = 0x2F; stuck.Spc.Aram[head + 1] = 0xFE;           // BRA to itself: the driver stops where it is
+        stuck.Play(40);
+        var stuckSnap = stuck.Capture(1.0);
+        var held = stuckSnap.Recipes.FirstOrDefault();
+        c.Ok("a voice that sounds when the listening ends, with no key-on inside it, becomes a held-voice recipe", stuckSnap.Recipes.Length == 1 && held is { Held: true, Srcn: 0 }, $"{stuckSnap.Recipes.Length} recipes; held {held?.Held}");
+        c.Ok("and its settings are the ones the voice has", held != null && held.Pitch is >= 0x1000 and <= 0x1100 && held.VolL is > 0 and <= 0x50, $"pitch ${held?.Pitch:X4}, volume {held?.VolL}");
+        var shortWindow = stuck.Capture(0);
+        c.Ok("with no window there is nothing to hold", shortWindow.Recipes.Length == 0);
+        var back = SpcRecipe.Read(SpcRecipe.Write(stuckSnap.Recipes));
+        c.Ok("a held-voice recipe survives the project section", back is { Length: 1 } && back[0].Held && back[0].Hash() == held!.Hash());
     }
 
     /// <summary>A snapshot of a game's memory with recipes derived from a different log.</summary>
     private static SpcSnapshot SnapshotFrom(LoggedSnes g, SpcWriteLog log)
     {
         var snap = new SpcSnapshot(g.Spc.Aram, g.Spc.Dsp.Regs);
-        snap.Recipes = SpcRecipes.Derive(log, g.Spc.SamplesProduced, (long)(SpcRecipes.ListenWindowSeconds * 32000), out _);
+        snap.Recipes = SpcRecipes.Derive(log, g.Spc.SamplesProduced, (long)(SpcRecipes.ListenWindowSeconds * 32000), g.Spc.Dsp.Regs, out _);
         return snap;
     }
 
@@ -282,7 +297,7 @@ internal static class RunawayChecks
         logClean.Attach(clean.Spc);
         LabCommon.RunPcm(clean.Session, 600);
         var snapClean = new SpcSnapshot(clean.Spc.Aram, clean.Spc.Dsp.Regs);
-        snapClean.Recipes = SpcRecipes.Derive(logClean, clean.Spc.SamplesProduced, 10 * 32000L, out var statsClean);
+        snapClean.Recipes = SpcRecipes.Derive(logClean, clean.Spc.SamplesProduced, 10 * 32000L, clean.Spc.Dsp.Regs, out var statsClean);
         c.Ok("a clean game's ten seconds give recipes", snapClean.Recipes.Length >= 3, statsClean.ToString());
         c.Ok("every key-on of the window became a note (none lost to settings the window did not show)", statsClean.Notes == statsClean.KeyOns, $"{statsClean.Notes} notes from {statsClean.KeyOns} key-ons");
         c.Ok("the recipes name samples the game has", snapClean.Recipes.All(r => snapClean.HasSample(r.Srcn)), string.Join(",", snapClean.Recipes.Select(r => "#" + r.Srcn)));
@@ -303,7 +318,7 @@ internal static class RunawayChecks
         logBad.Attach(at0.Spc);
         LabCommon.RunPcm(at0.Session, 600);                                             // the corrupted game plays for ten seconds
         var snapBad = new SpcSnapshot(at0.Spc.Aram, at0.Spc.Dsp.Regs);
-        snapBad.Recipes = SpcRecipes.Derive(logBad, at0.Spc.SamplesProduced, 10 * 32000L, out var statsBad);
+        snapBad.Recipes = SpcRecipes.Derive(logBad, at0.Spc.SamplesProduced, 10 * 32000L, at0.Spc.Dsp.Regs, out var statsBad);
         var seen = snapBad.Recipes.FirstOrDefault(r => r.Srcn == r0.Srcn && r.Adsr1 == r0.Adsr1 && r.Adsr2 == corrupted);
         c.Ok("after ten seconds the new capture has the corrupted setting as a recipe", seen != null, $"{statsBad}");
         c.Ok("and the clean game has no such recipe", !snapClean.Recipes.Any(r => r.Srcn == r0.Srcn && r.Adsr1 == r0.Adsr1 && r.Adsr2 == corrupted));
@@ -340,7 +355,7 @@ internal static class RunawayChecks
         var log = new SpcWriteLog();
         log.Attach(again.Spc);
         LabCommon.RunPcm(again.Session, 600);
-        var recipes = SpcRecipes.Derive(log, again.Spc.SamplesProduced, 10 * 32000L, out _);
+        var recipes = SpcRecipes.Derive(log, again.Spc.SamplesProduced, 10 * 32000L, again.Spc.Dsp.Regs, out _);
         return recipes.Length == first.Length && recipes.Zip(first).All(p => p.First.Hash() == p.Second.Hash());
     }
 }
