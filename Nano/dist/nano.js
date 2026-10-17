@@ -1095,7 +1095,7 @@ class Synth {
   set volume(v) { this.setParam('volume', v); }
   /** The presets this synth knows: [{name, label, kind, desc, note}] */
   get presets() { return describePresets(this._table); }
-  /** Called ~30 times a second with {channels: [{active, level, note}] x4 (pulse 1, pulse 2, triangle, noise), peak}. Set to null to stop. */
+  /** Called about 40 times a second with {channels: [{active, level, note}] x5 (pulse 1, pulse 2, triangle, noise, DPCM), peak}. Set to null to stop. */
   get onactivity() { return this._cb; }
   set onactivity(fn) { this._cb = fn || null; this._post({ t: 'report', on: !!fn }); }
 
@@ -1109,7 +1109,7 @@ class Synth {
   /**
    * Starts a note and returns a handle ({id, off(), bend(cents)}). note: MIDI number (60 = middle C) or a name like 'C4', 'F#3'; velocity 0..1.
    * opts: {preset: name | preset object (default: the synth's current preset), time: AudioContext seconds, delay: seconds from now,
-   *        duration: seconds until the note ends by itself, channel: 0..3 to pin the voice to a chip channel, duty: 0..3, noiseMode: 0|1, bend: cents}
+   *        duration: seconds until the note ends by itself, channel: 0..4 to pin the voice to a chip channel (pulse 1, pulse 2, triangle, noise, DPCM), duty: 0..3, noiseMode: 0|1, bend: cents}
    * Browsers keep an AudioContext silent until a user gesture: call this from a click or key handler, or await synth.resume() there first.
    */
   noteOn(note, velocity = 1, opts = {}) {
