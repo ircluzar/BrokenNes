@@ -23,6 +23,15 @@ switch (args[0])
         SelfTest.LogProbe(args[1]);
         return 0;
 
+    case "imodel-real":
+        foreach (var line in ImodelGolden.Real()) Console.WriteLine(line);
+        return 0;
+
+    case "imodel-golden":
+        // prints the hashes of what the existing samplers play for the made-up snapshots (Imodel.Golden.cs): record them before changing a sampler, compare after
+        foreach (var (name, hash, rms) in ImodelGolden.Compute()) Console.WriteLine($"{name,-18} {hash}  rms {rms:0.00000}");
+        return 0;
+
     case "track":
     {
         var (data, ch, rate) = Audio.ReadWav(args[1]);

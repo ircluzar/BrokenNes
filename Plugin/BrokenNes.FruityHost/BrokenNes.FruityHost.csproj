@@ -29,6 +29,11 @@
     <ProjectReference Include="..\..\Core\BrokenNes.Core.csproj" />
     <Compile Include="..\..\Workshop\Corruption\SynthSnesRom.cs" Link="SynthSnesRom.cs" />
     <Compile Include="..\BrokenNes2.Plugin\SpcSnapshot.cs" Link="SpcSnapshot.cs" />
+    <!-- Round 6 (imodel): the instrument model and the samplers it is checked against (the `imodel` check renders PCM through the very sampler classes the plugin DLL uses, from the same source files) -->
+    <Compile Include="..\BrokenNes2.Plugin\SnesSampler.cs" Link="SnesSampler.cs" />
+    <Compile Include="..\BrokenNes2.Plugin\GbSampler.cs" Link="GbSampler.cs" />
+    <Compile Include="..\BrokenNes2.Plugin\SegaSnapshot.cs" Link="SegaSnapshot.cs" />
+    <Compile Include="..\BrokenNes2.Plugin\SegaSamplers.cs" Link="SegaSamplers.cs" />
   </ItemGroup>
 
 </Project>
