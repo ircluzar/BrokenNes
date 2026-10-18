@@ -80,21 +80,21 @@ public sealed unsafe partial class SelfTest
     }
 
     /// <summary>The synthetic driver's music (four instruments: vibrato, chords with slides, a panned fading bass, a sample loaded under another's number) as a REC1 section, the way a project brings one.</summary>
-    private static byte[] SynthSection(double seconds, out RecSession session)
+    private static byte[] SynthSection(double seconds, out RecSession session, int seed = 7, string name = "Synth take", ulong id = 0xAB)
     {
-        var drv = new SynthDriver(132.5);
+        var drv = new SynthDriver(132.5, seed);
         var rec = new SpcRecorder(); rec.Arm(); for (int i = 0; i < 40; i++) rec.Feed();
         drv.Play(rec, seconds);
-        session = rec.Finish(drv.Aram, drv.Regs, "Synth take", "synthetic driver", "", 1_760_000_000, 0xAB);
+        session = rec.Finish(drv.Aram, drv.Regs, name, "synthetic driver", "", 1_760_000_000, id);
         return RecSection.Build(session);
     }
 
     /// <summary>A plugin on emulator #6 (Direct mode, no game) holding the recording of <paramref name="section"/> as a project would bring it, transcribed. Null (and a failure) when it did not come.</summary>
-    private PluginInstance? Adopted(T t, byte[] section, int options = ROptDefault)
+    private PluginInstance? Adopted(T t, byte[] section, int options = ROptDefault, int emulator = 6)
     {
         var p = lib.Create();
         p.Dispatcher(Fpd.SetSampleRate, 0, 48000);
-        p.SetParam(PEmulator, 6);
+        p.SetParam(PEmulator, emulator);
         p.Test(HkRForget);
         p.Test(HkROptions, 0, options);
         fixed (byte* sp = section) p.Test(HkRAdopt, section.Length, (nint)sp);
@@ -686,6 +686,8 @@ public sealed unsafe partial class SelfTest
         public readonly List<nint> Handles = new();
         public long BoundAtFirst = -2;          // the track it plays right after its first note was started (before it was rendered)
         public int Next;
+        public MidiReplay? M;                   // the file its notes come from (its own tempo map)
+        public long Tick;
     }
 
     /// <summary>Plays the parts' notes the way FL plays a project: one timeline in 64-sample blocks at 48 kHz, each instance asked for its notes when their time comes, with FL's song position of the block
@@ -693,8 +695,8 @@ public sealed unsafe partial class SelfTest
     private long PlayReplace(List<ReplacePart> parts, MidiReplay m)
     {
         const int rate = 48000, block = 64;
-        long endTick = parts.SelectMany(x => x.Notes).Select(n => n.Off).DefaultIfEmpty(0).Max();
-        double end = m.Seconds(endTick) + 0.3;
+        foreach (var pt in parts) pt.M ??= m;
+        double end = parts.Select(x => x.Notes.Count == 0 ? 0 : x.M!.Seconds(x.Notes.Max(n => n.Off))).DefaultIfEmpty(0).Max() + 0.3;
         var buf = new float[block * 2];
         var active = new List<(ReplacePart Pt, MidiReplay.Note N, SimVoice V)>();
         long a0, a1;
@@ -704,28 +706,27 @@ public sealed unsafe partial class SelfTest
             a0 = parts[0].P.Test(HkRAlloc);
             for (long s = 0; s < end * rate; s += block)
             {
-                long tick = m.TickAt(s / (double)rate);
-                double beat = tick / (double)m.Ppq;
+                foreach (var pt in parts) pt.Tick = pt.M!.TickAt(s / (double)rate);
                 for (int i = active.Count - 1; i >= 0; i--)
                 {
                     var (pt, n, v) = active[i];
-                    if (n.Off <= tick) { pt.P.Host.ReleaseFromMixer(v); active.RemoveAt(i); }
+                    if (n.Off <= pt.Tick) { pt.P.Host.ReleaseFromMixer(v); active.RemoveAt(i); }
                 }
                 foreach (var pt in parts)
                 {
-                    pt.P.Host.SongBeats = pt.NoPosition ? double.NaN : beat + pt.BeatOffset;
-                    while (pt.Next < pt.Notes.Count && pt.Notes[pt.Next].On <= tick)
+                    pt.P.Host.SongBeats = pt.NoPosition ? double.NaN : pt.Tick / (double)pt.M!.Ppq + pt.BeatOffset;
+                    while (pt.Next < pt.Notes.Count && pt.Notes[pt.Next].On <= pt.Tick)
                     {
                         var n = pt.Notes[pt.Next++];
                         var v = pt.P.Host.NewVoice(n.Channel, n.Velocity / 127f);
-                        ReplaceLevels(v, n, pt, tick);
+                        ReplaceLevels(v, n, pt, pt.Tick);
                         v.Handle = pt.P.TriggerVoice(v.Params, v.Tag);
                         pt.Handles.Add(v.Handle);
                         if (pt.BoundAtFirst == -2) pt.BoundAtFirst = pt.P.Test(HkTrackOf);
                         active.Add((pt, n, v));
                     }
                 }
-                foreach (var (pt, n, v) in active) ReplaceLevels(v, n, pt, tick);
+                foreach (var (pt, n, v) in active) ReplaceLevels(v, n, pt, pt.Tick);
                 foreach (var pt in parts) { pt.P.NewTick(); pt.P.GenRender(bp, block); }
             }
             a1 = parts[0].P.Test(HkRAlloc);
@@ -754,7 +755,7 @@ public sealed unsafe partial class SelfTest
         q.Test(HkRProbe, 0, 400_000);
         return new ReplacePart
         {
-            Name = name, P = q, Notes = notes, Track = keyShift == 0 ? track : -1, Expect = expect, Range = chan.Range >= 0 ? chan.Range : 2,
+            Name = name, P = q, Notes = notes, M = m, Track = keyShift == 0 ? track : -1, Expect = expect, Range = chan.Range >= 0 ? chan.Range : 2,
             BendT = chan.Bends.Select(b => b.Tick).ToArray(), BendV = chan.Bends.Select(b => b.Bend).ToArray(), CcT = chan.Cc7.Select(b => b.Tick).ToArray(), CcV = chan.Cc7.Select(b => b.Cc).ToArray(),
         };
     }
@@ -790,7 +791,7 @@ public sealed unsafe partial class SelfTest
     private void RecordReplaceScenario(T t, string dir)
     {
         var made = new List<PluginInstance>();
-        PluginInstance? p = null;
+        PluginInstance? p = null, p2 = null;
         string logFile = Path.Combine(dir, "host-log-" + Guid.NewGuid().ToString("N")[..8] + ".txt");
         string? oldLog = Environment.GetEnvironmentVariable("BROKENNES_HOSTLOG_FILE");
         Environment.SetEnvironmentVariable("BROKENNES_HOSTLOG_FILE", logFile);
@@ -808,6 +809,13 @@ public sealed unsafe partial class SelfTest
             t.Expect(tracks >= 4, $"the recording's tracks are not on offer ({tracks})");
             if (tracks < 4) return;
             var m = MidiReplay.Read(RBytes(p, HkRMidi));
+            // a second recording, on another emulator, on offer at the same time
+            p2 = Adopted(t, SynthSection(20, out _, seed: 11, name: "Second take", id: 0xCD), emulator: 5);
+            if (p2 == null) return;
+            until = Environment.TickCount64 + 20000;
+            while (p.Test(HkOffer) < tracks + 2 && Environment.TickCount64 < until) Thread.Sleep(10);
+            t.Expect(p.Test(HkOffer) > tracks, $"the second recording's tracks are not on offer beside the first's ({p.Test(HkOffer)} tracks)");
+            var m2 = MidiReplay.Read(RBytes(p2, HkRMidi));
             // the replacing instances: an empty state, a fresh instance's own state, every parameter pushed at its default
             byte[] fresh;
             using (var f0 = lib.Create()) fresh = f0.SaveState();
@@ -824,6 +832,7 @@ public sealed unsafe partial class SelfTest
             var fq = lib.Create(); made.Add(fq);
             var kq = lib.Create(); made.Add(kq);
             var k2 = lib.Create(); made.Add(k2);
+            var lq = lib.Create(); made.Add(lq);
             long midTick = m.Notes.Where(n => n.Track == 2).Select(n => n.On).OrderBy(x => x).ElementAt(m.Notes.Count(n => n.Track == 2) / 2);
             double fileBpm = 60e6 / m.Tempo[0].Us;
             p.Test(HkRTempo, 0, (nint)Math.Round(fileBpm * 1000));                 // (FL's tempo is the file's: FL took it from the import)
@@ -839,6 +848,7 @@ public sealed unsafe partial class SelfTest
                 Part("F (other notes at the same times)", fq, m, 0, -1, null, 37),
                 Part("K (FL lost the bends and the volume)", kq, m, 0, 0),
                 Part("K2 (FL read the bends at 2 semitones)", k2, m, 2, 2),
+                Part("L (a track of the second recording)", lq, m2, 1, 1),
             };
             parts[5].BeatOffset = 64;
             parts[6].NoPosition = true;
@@ -877,6 +887,7 @@ public sealed unsafe partial class SelfTest
             int onTrack1 = (int)p.Test(HkPlaying, 1);
             t.Expect(onTrack1 == 2, $"{onTrack1} channels counted on track 2 (D and E play it)");
             t.Note($"replace: {string.Join("; ", parts.Select(x => $"{x.Name} -> {(x.P.Test(HkTrackOf) is var k && k >= 0 ? $"track {k + 1}" : "none")}"))}; 0 bytes on the audio thread: {alloc}");
+            t.Expect(DllText(lq, HkTrackStatus).Contains("Second take"), $"L plays a track of another recording than the second: {DllText(lq, HkTrackStatus)}");
 
             // "Play here" by hand, in the Record window of a fresh instance (real mouse messages)
             var iq = lib.Create(); made.Add(iq);
@@ -904,7 +915,7 @@ public sealed unsafe partial class SelfTest
                 $"A reopened: plays track {a2.Test(HkTrackOf) + 1} (how {a2.Test(HkBindHow)}), holds a preset {a2.Test(342)}, preset mode {a2.Test(352)}, configured {a2.Test(HkConfigured)}, the track's expression {a2.Test(718)}");
 
             // withdrawn: an untouched instance playing a track's notes keeps its own sound
-            p.Test(HkRDeal, 0, 0);
+            p.Test(HkRDeal, 0, 0); p2.Test(HkRDeal, 0, 0);
             t.Expect(p.Test(HkOffer) == -1, "the tracks are still on offer after Stop");
             var jq = lib.Create(); made.Add(jq);
             var jpart = Part("J (after the offer was withdrawn)", jq, m, 0, -1);
@@ -926,6 +937,7 @@ public sealed unsafe partial class SelfTest
             Environment.SetEnvironmentVariable("BROKENNES_HOSTLOG_FILE", oldLog);
             foreach (var q in made) q.Dispose();
             if (p != null) { p.Test(HkRDeal, 0, 0); p.Test(HkRForget); p.Dispose(); }
+            if (p2 != null) { p2.Test(HkRDeal, 0, 0); p2.Test(HkRForget); p2.Dispose(); }
         }
     }
 

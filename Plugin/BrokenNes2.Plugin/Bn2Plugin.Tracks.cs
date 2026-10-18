@@ -34,7 +34,7 @@ public sealed unsafe partial class Bn2Plugin
     private volatile TrackBinding? binding;
     private volatile string? trackNote;          // what the window says about this instance's track (a settle refused, an engine missing)
     private long ownSamples, engineWaits;
-    private int notesSeen;
+    private int notesSeen, paramLogged;
     // the track's own pitch bends and volume (by song position) instead of FL's: see TrackExpression
     private volatile TrackExpression? expression;
     private volatile bool exprOn;
@@ -90,7 +90,7 @@ public sealed unsafe partial class Bn2Plugin
         int r = base.ProcessParam(index, value, recFlags);
         if ((recFlags & Rec.UpdateValue) != 0 && (uint)index < (uint)Params.Length)
         {
-            if (notesSeen < 8) HostLog.Add(HostLog.KindParam, InstanceNo, index, Get(index), recFlags);
+            if (HostLog.On && paramLogged < HostLog.PerInstance) { paramLogged++; HostLog.Add(HostLog.KindParam, InstanceNo, index, Get(index), recFlags); }
             int now = Get(index);
             if (now != before && now != Params[index].Default && !configured) { configured = true; }       // (FL set a value that is neither the default nor the one it had)
         }
@@ -358,7 +358,7 @@ public sealed unsafe partial class Bn2Plugin
         {
             case 700: return TrackOffers.Current == null ? -1 : TrackOffers.Ready ? TrackOffers.Current.Slots.Length : 0;                 // tracks on offer (-1 none, 0 engines not built yet)
             case 701: { if (value == 0) TrackOffers.WithdrawAll(); else if (emu?.Recording is { } h) TrackOffers.Offer(emu.Id, h); else return 1; return 0; }   // withdraw all (0) / offer this emulator's recording (1)
-            case 702: return binding?.Track ?? (bindState == 1 ? boundIndex : -1);                                                       // the track this instance plays (-1 none)
+            case 702: return binding?.Track ?? (bindState == 1 && boundSlot is { } bsl ? bsl.Info.Index : -1);                                                       // the track this instance plays (-1 none)
             case 703: return bindState;                                                                                                   // 0 none, 1 bound (not settled), 2 settled
             case 704: return binding?.How ?? 0;                                                                                           // 1 by its notes, 2 by hand
             case 705: return configured ? 1 : 0;

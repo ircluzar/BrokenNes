@@ -128,7 +128,7 @@ public sealed unsafe partial class Bn2Plugin
             case 661: { var tr = emu?.Recording?.Tr; int k = (int)(index >> 24); if (tr == null || (uint)k >= (uint)tr.Tracks.Count) return -1; return CopyBytes(tr.TrackMidi(k), index & 0xFFFFFF, value); }   // a track's own MIDI: index = track << 24 | buffer size
             case 662: { if (emu == null) return 1; lastRecordResult = emu.AddRecordingPresets(); return 0; }
             case 663: return (nint)(emu?.Recording?.Generation ?? 0);
-            case 664: return binding?.Track ?? (bindState == 1 ? boundIndex : -1);                                                                    // the track this instance plays (-1 none)
+            case 664: return binding?.Track ?? (bindState == 1 && boundSlot is { } bsl ? bsl.Info.Index : -1);                                                                    // the track this instance plays (-1 none)
             case 665: { var p = replayProbe; return p == null ? -1 : (nint)p.Lost; }
             case 666: { int k = (int)(index >> 24); var held = emu?.Recording; if (held == null || (uint)k >= (uint)held.Tr.Tracks.Count) return -1; var f = held.Tr.Tracks[k].PresetFile; return f == null ? 0 : CopyBytes(f, index & 0xFFFFFF, value); }   // a track's preset file: index = track << 24 | buffer size
             case 667: { if (emu == null || index <= 0) return 1; emu.AdoptRecord(new ReadOnlySpan<byte>((void*)value, (int)index).ToArray()); return 0; }    // a REC1 section's bytes (index of them at value) as a project would bring them
