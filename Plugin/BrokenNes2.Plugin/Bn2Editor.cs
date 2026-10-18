@@ -522,6 +522,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             DrawStateNote(dc, inner, emu);
             DrawCorruptionNote(dc, inner, emu);
             DrawSongNote(dc, inner, emu);
+            DrawLinkBanner(dc, inner);                  // relink: what this channel is to the tracks on offer (Bn2Editor.Link.cs)
             return;
         }
 
@@ -540,6 +541,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         DrawStateNote(dc, inner, emu);
         DrawCorruptionNote(dc, inner, emu);
         DrawSongNote(dc, inner, emu);
+        DrawLinkBanner(dc, inner);
     }
 
     /// <summary>What the project could not do with the game's state (a console that cannot keep it, a state that was not used, one that was too big), over the bottom of the screen for as long as it is true.</summary>
@@ -1174,7 +1176,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         for (int i = 0; i < plugin.Params.Length; i++) Mix(plugin.Get(i));
         Mix(e?.Id ?? 0); Mix(a.Channel); Mix(a.Problem?.GetHashCode() ?? 0);
         Mix(hot); Mix(active); Mix(openId); Mix(openHover); Mix(openScroll); Mix(aboutOpen ? 1 + aboutScroll : 0); Mix(Environment.TickCount64 < resetFlashUntil ? 1 : 0);
-        Mix(UiSignature()); Mix(PresetSignature()); Mix(SongSignature()); Mix(RecordSignature());
+        Mix(UiSignature()); Mix(PresetSignature()); Mix(SongSignature()); Mix(RecordSignature()); Mix(LinkSignature());
         Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(Inputs.AllowOpposite ? 9 : 10); Mix(e?.Runaway == true ? 7 : 8);
         if (e != null)
         {
@@ -1191,6 +1193,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
     {
         plugin.Emulator?.PumpPicture();
         PollInputs();
+        plugin.PollChannelName("the editor is open", fromEvent: false);      // (relink: a linked channel waiting for its track asks FL for its name, at most once a second)
         long sig = Signature();
         if (sig != lastSignature) Refresh();
     }
@@ -1396,6 +1399,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 else if (IsMidId(h.Id)) MidiClick(h.Id);
                 else if (h.Id == IdRec) { recOpen = true; recMessage = ""; }            // Record (Bn2Editor.Record.cs)
                 else if (IsRecId(h.Id)) RecordClick(h.Id);
+                else if (h.Id is IdLink or IdUnlink) LinkClick(h.Id);                  // the banner's Link to recording / Unlink (Bn2Editor.Link.cs)
                 else if (h.Id >= IdCorClose && h.Id < IdCorRow + CorVisible) CorruptionClick(h.Id);
                 else if (h.Id == IdInputsClose) { inputsOpen = false; captureIndex = -1; }
                 else if (h.Id == IdInputsKeyboard) { Inputs.KeyboardEnabled = !Inputs.KeyboardEnabled; Inputs.Save(); }

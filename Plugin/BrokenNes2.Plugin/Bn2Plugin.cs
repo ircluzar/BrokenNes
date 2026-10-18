@@ -84,9 +84,11 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     public Bn2Plugin(FruityHost host, nint hostTag) : base(host, hostTag, Bn2Params.Build())
     {
         for (int i = 0; i < 32; i++) pool.Push(new Voice());     // FL's voices are taken from here on the audio thread: made now, so a 9th or 20th note at once allocates nothing there (round 8 found 72 bytes per new peak of voices)
-        HostLog.Text(InstanceNo, $"created (host tag 0x{hostTag:X}); {(TrackOffers.Current is { } o ? $"{o.Slots.Length} tracks on offer" : "no tracks on offer")}");
+        HostLog.Text(InstanceNo,$"created (host tag 0x{hostTag:X}, FL's host version {HostVersion}); {(TrackOffers.Current is { } o ? $"{o.Slots.Length} tracks on offer" : "no tracks on offer")}");
         EmulatorHub.Resolve(this);
         TrackOffers.Register(this);   // the tracks of a recording on offer: this instance recognises its track from the notes FL asks it to play (Bn2Plugin.Tracks.cs)
+        // relink: made while tracks are on offer (a new channel, or the one FL makes for a Replace): it joins them at once, and the Record window counts it (Bn2Plugin.Relink.cs)
+        if (TrackOffers.Current != null && !Record.RecMutants.On(Record.RecMutants.NoAutoJoin)) Join("made while tracks are on offer (a new channel, or one FL made for a Replace)");
     }
 
     /// <summary>What FL shows. (The DLL and its folder have the same name: FL finds a native plugin by its file name.)</summary>
@@ -162,6 +164,11 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         // FL's transport started or stopped: the Test MIDI export's song follows it when asked to (Emulator.Song.cs; flags only, nothing allocated, whatever thread FL calls from)
         if (id < Fpd.TestBase && dispatchLogged < HostLog.PerInstance && HostLog.On) { dispatchLogged++; HostLog.Add(HostLog.KindDispatcher, InstanceNo, id, index, value); }
         if (id == Fpd.SetPlaying) { assignment.Emulator?.TransportChanged(value != 0); return 0; }
+        // FL opened the instance, a project was loaded, or FL says the channel's context (its name) changed: ask FL for the channel's name (it can name the track at once: Bn2Plugin.Relink.cs)
+        if (id == Fpd.PluginLoaded) PollChannelName("FL opened the instance (FPD_PluginLoaded)", fromEvent: true);
+        else if (id == Fpd.ContextInfoChanged) PollChannelName($"FPD_ContextInfoChanged {index}", fromEvent: true);
+        else if (id == Fpd.RoutingChanged && (value & 1) != 0) PollChannelName("FPD_RoutingChanged: names changed", fromEvent: true);
+        else if (id == Fpd.ProjLoaded) PollChannelName("FPD_ProjLoaded", fromEvent: true);
         return base.Dispatcher(id, index, value);
     }
 
@@ -210,7 +217,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         v.Note = notesSeen + 1;
         v.TrackKey = -1;
         voices.Add(v);
-        if (!configured || HostLog.On) MatchNote(v);       // an untouched instance recognises its track from this note, before it sounds (Bn2Plugin.Tracks.cs)
+        if (link != LinkNone || bindState == 1 || HostLog.On) MatchNote(v);       // a linked instance recognises its track from this note, before it sounds (Bn2Plugin.Tracks.cs)
         if (configured && expression != null) ExpressionNoteOn(v);   // a channel that plays a track: the track's key and expression for this note
         return v.Handle;
     }
@@ -879,7 +886,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             base.SaveRestoreState(stream, false);
             if (!RestoredCleanly)
             {
-                HostLog.Text(InstanceNo, "state restored: not a BrokenNes2 state of this version (or empty): nothing taken; the instance stays " + (configured ? "configured" : "untouched"));
+                HostLog.Text(InstanceNo, "state restored: not a BrokenNes2 state of this version (or empty): nothing taken; " + (link != LinkNone ? "it stays linked to the recording" : configured ? "the instance stays the user's own" : "nothing changes for the recording"));
                 return;
             }
             int len = 0;
@@ -1049,14 +1056,19 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         }
         RestorePreset(presetSectionBytes, presetSectionProblem);
         if (restoredRecord != null) emu2?.AdoptRecord(restoredRecord);         // (the first instance of the project that carries the recording gives it to the emulator)
-        // whether this state configured the instance (then it is never matched to a track) or left it untouched (FL's empty or default state, a fresh instance's own state)
+        // whether this state makes the instance clearly the user's own (it holds a game, a preset or a track: it leaves the recording and never joins it by itself), or not (FL's empty or default
+        // state, a fresh instance's own state, another channel's values: a joined instance stays joined; relink, 2026-10-18)
         var restoredTrack = trackBytes == null ? (null, null, false) : ReadTrackSection(trackBytes);
-        bool untouched = RestoredDefault(presetSectionBytes != null, trackBytes != null);
-        if (!untouched) MarkConfigured("a project state with its own values" + (presetSectionBytes != null ? ", a preset" : "") + (trackBytes != null ? ", a track" : ""));
+        bool hadGame = restoredGame != null || gameProblem != null || restoredSnapshot != null || restoredGb != null || restoredSega != null || restoredSong != null || restoredRecord != null || restoredCorruption != null || injectPayload != null;
+        bool usersOwn = RestoredUsersOwn(hadGame, presetSectionBytes != null, trackBytes != null);
+        bool wasPristine = RestoredPristine();
+        if (usersOwn) MarkConfigured("its project state holds " + string.Join(", ", new[] { hadGame ? "a game" : null, presetSectionBytes != null ? "a preset" : null, trackBytes != null ? "a track" : null }.Where(x => x != null).DefaultIfEmpty("its own settings")));
+        else if (!wasPristine) pristine = false;
         RestoreTrack(restoredTrack);
         if (HostLog.On)
             HostLog.Text(InstanceNo, $"state restored: values [{string.Join(",", Values)}], ROM path {(romPath ?? "").Length} chars, place emulator #{hintEmu} channel {hintCh}; sections: {(seen is { Count: > 0 } ? string.Join("; ", seen) : "none")}; "
-                + (untouched ? "default for this instance: it stays untouched" : "it configured the instance") + (restoredTrack.Binding != null ? "; plays " + restoredTrack.Binding.Describe() + (restoredTrack.On ? ", bends and volume from the recording" : "") : ""));
+                + (usersOwn ? "the user's own instance (it does not join the recording by itself)" : (wasPristine ? "default values" : "its own values, but no game, preset or track") + (link != LinkNone ? ": it stays linked to the recording" : ": nothing changes for the recording"))
+                + (restoredTrack.Binding != null ? "; plays " + restoredTrack.Binding.Describe() + (restoredTrack.On ? ", bends and volume from the recording" : "") : ""));
     }
 
     /// <summary>Reads past a section this build does not know; false when the stream ends first.</summary>
@@ -1292,6 +1304,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 if (id - Fpd.TestBase is >= 600 and < 620) return SongTestHook(id - Fpd.TestBase, index, value);          // Test MIDI export (Bn2Plugin.Song.cs)
                 if (id - Fpd.TestBase is (>= 640 and < 670) or (>= 680 and < 700)) return RecordTestHook(id - Fpd.TestBase, index, value);        // the recording and the live MIDI out (Bn2Plugin.Record.cs)
                 if (id - Fpd.TestBase is >= 700 and < 720) return TrackTestHook(id - Fpd.TestBase, index, value);                                // the tracks on offer (Bn2Plugin.Tracks.cs)
+                if (id - Fpd.TestBase is >= 720 and < 740) return RelinkTestHook(id - Fpd.TestBase, index, value);                               // linking to the tracks on offer, the channel's name, the host log (Bn2Plugin.Relink.cs)
                 if (id - Fpd.TestBase is >= 740 and < 780) return NesRecordTestHook(id - Fpd.TestBase, index, value);                            // a NES game's recording (Bn2Plugin.RecordNes.cs)
                 return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
@@ -1306,6 +1319,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         TrackOffers.Unregister(this);
         ForgetTrack();
         HostLog.Text(InstanceNo, "destroyed");
+        TrackOffers.Changed();
         EmulatorHub.Leave(this);
         voices.Clear();
         lock (chipGate) chip = null;

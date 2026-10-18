@@ -389,3 +389,96 @@ For the user: (1) duty changes: two tracks (exact, now) or one track per instrum
 | `BrokenNes.Workshop --snes-state-test` | 147 passed, 0 failed, 0 skipped |
 | `UAT\run-suite.ps1 -Exe <fresh Workshop>` | 84 pass, 0 fail, 60 skip (their ROMs are not at this worktree's paths), 0 info |
 | `UAT\entrypoints\notices-check.ps1` | pass (471 files scanned; no `*.bn2preset` tracked) |
+
+## 13. 2026-10-18: relink (the user's report from FL, build r12)
+
+Agent `relink`, branch `relink` from `refs/heads/main` at 71c538d (section 12 merged).
+
+### The report
+
+In the user's words: "The detection of the BrokenNes instances doesn't work anymore when trying to reload the channels. I drag and drop the MIDI file, it creates MIDI Out channels, then I replace them one by one and the counter never increases. If I try what I could do before, which is adding new BrokenNes channel instances, it doesn't detect them either. The count stays 0 forever. Perhaps we need a button for those instances to be able to force relink them or something. I would prefer if it could detect them automatically as we replace the channels, but if that cannot be done, an anchor button to relink to the bunch could be a decent option."
+
+The evidence: `Documents\BrokenNes2 host log.txt` held 35 lines, every one from the test bench (host tag 0x77, "created ...; no tracks on offer", 00:41-04:01), nothing from the user's FL session.
+
+### What was wrong (three things, each enough)
+
+- **The counter counted only channels that had found their track**, and a channel finds its track at its first note, during playback: before Play the window could only show 0, whatever happened. (Section 11 built it that way; the round 8 deal before it assigned at construction, which is what the user was used to.)
+- **Eligibility was an "untouched" heuristic** that any parameter FL set to a non-default value, or a state of ours with non-default values, turned off for good, silently. What FL's Replace hands the new instance is not known (nothing here can run FL); if it pushes the replaced channel's values or a default preset of the user's, every replaced channel was out, with nothing on screen.
+- **The log was off**: a box to tick in the Record window, and the user's session wrote nothing. The test bench, meanwhile, wrote into the user's real file: the record scenario put `BROKENNES_HOSTLOG_FILE` back to "unset" while the plugin's writer still had the last "created" line queued (written 200 ms later to Documents).
+
+Found on the way, by the editor-shot capture of the new banner: the first version counted every instance on the recording's own emulator out as "the recording's channel". With a NES game that emulator has free channels, and FL's Auto emulator puts the first replaced channels there: the first four replaces of a NES song would again have counted 0. Only a configured instance there (the one that recorded, the user's own stems of that game) is the recording's own now; check and deliberate bug `SourceEmulatorExcludes`.
+
+### What was built
+
+- **Joining, visibly** (`Bn2Plugin.Relink.cs`): every instance made while tracks are on offer (a new channel, or the one FL makes for a Replace) joins them in its constructor; instances still pristine (nothing but defaults) when tracks are offered join then; the others alive at that moment get a "not linked" reason. FL's parameter pushes and states without a game, preset or track never unlink (they are logged). An instance leaves only when it is clearly the user's own: a restored project state that holds a game (its machine, a frozen game's sound, a song, a recording, a corruption, pushed instruments), a preset or a track; a change in its editor; a preset or game loaded into it; Record pressed in it.
+- **The counter** (`TrackOffers.Count`, `CounterText`): the Record window's new **CHANNELS** line says "N channels joined, M found their track; K not linked" and lists every instance ("#4 "name": waiting for its first note", "#5: plays track 2 (found by its channel's name)", "#6: not linked (its project state holds a preset)"); the offer button repeats "On offer (N joined, M found): stop". The window was laid out again to make room (one line of description, three facts instead of four, the scroll note in the TRACKS header).
+- **The anchors** (the user's idea): a banner over the screen of every BrokenNes2 while tracks are on offer (`Bn2Editor.Link.cs`): not linked = red, the reason and a big **Link to recording** button; linked = green "LINKED TO THE RECORDING: Press Play in FL and I will find my track from my first note" with **Unlink**; found = the track and how. **Link all BrokenNes2 channels** in the Record window links every instance that is not linked and is not the recording's own. A hand link survives knob changes in that editor; a preset, a game or Unlink ends it.
+- **The channel's name** (item 3 of the brief): the public SDK header (`fp_plugclass.h`, the copy the repository mirrors) has `FHD_GetContextInfo = 76` ("get information about various things. Index is the information type (see CI_ constants)"; "requested info is returned as the result of the function") with `CI_TrackName = 0` ("(R/W) PAnsiChar encoded as UTF-8"), and `FPD_ContextInfoChanged = 41` ("call FHD_GetContextInfo for the new value(s)"); there is no FPD_SetName and no other name call for a plugin (`FHD_SetNewName = 10` is the other direction: the plugin names its channel). FL's own release notes show the "track info" is FL's wrapper feature ("some track information can now be shown in VST3 plugins"; "the alpha value for the track color provided to plugins is zero"; "the CLAP version of FabFilter Pro-Q 4 doesn't show track names"). The header does not say whether a generator gets its channel's name or its mixer track's. A linked instance asks when FL has opened it (`FPD_PluginLoaded`), when FL says the context or the names changed (`FPD_ContextInfoChanged`, `FPD_RoutingChanged` with `RCV_NamesChanged`), after a project load (`FPD_ProjLoaded`), and once a second from FL's Idle and from its open editor while it waits. The answer is used only as a pointer when it is one (above 64 KB, in committed readable memory, `VirtualQuery`, a terminator within 1 KB). A name equal to one offered track's name (case and outer spaces aside), or that name followed by a non-alphanumeric suffix (" #2"), takes that track at once, through the same path as Play here (the engine prepared on the UI thread, settled on the tracks' emulator; TRK1 `how` = 3). A name that starts with "BrokenNes2" is explained: FL's "Auto name channels" (Options > General settings) renames a channel whose plugin is replaced (FL's release notes: "14108 Channel name changes when replacing and "Auto name channels" is disabled", fixed; "14245 Don't rename a channel if a plugin asks this and the "Auto name channels" option is off"). The track names were already unique and recognisable ("<game> HH.mm.ss - NN ..."); the `relink` check holds that the MIDI file's track names (what FL names imported channels) are the offered names and are distinct.
+- **The host log** (`HostLog.cs`): on by itself for every instance while tracks are on offer (from the constructor; the instances alive when tracks are offered are named with their place and values), and whenever the box is ticked (process-wide, remembered as Prefs `HostLog`); FL's host version, Dispatcher calls by FPD_ name, parameters by name, every answer to the name call, joining / leaving / linking; under 1 MB (the older part kept as `BrokenNes2 host log.old.txt`). **Tests never write the user's file**: the test bench names a scratch file and a scratch folder standing for Documents (`BROKENNES_HOSTLOG_FILE`, `BROKENNES_HOSTLOG_DEFAULT_DIR`) before it loads the plugin (`HostLogGuard.Install`, first thing in `Program.cs`), and the `hostlog` check, last of the run, fails when the real file changed.
+- **An offer ends with its emulator**: the emulator that made a recording on offer closing (its last channel deleted, the project closed) withdraws the tracks (`EmulatorHub.Drop`), so the channels of the next project FL opens do not join a recording that is gone.
+
+### Verification
+
+`FruityHost selftest --only relink` (the Native AOT DLL), on the synthetic SNES recording (20 s, 4 tracks) and on a NES VRUN take (15 s): PASS, 125 s in the full run; the same 11 channels and steps for both recordings, every counter string equal, 0 bytes on the audio thread for each, 13 of 13 deliberate bugs caught; the host log of the scenario had 381 lines (SNES) and 247 (NES).
+
+| Step (before any note) | Counter expected and read (also as the window draws it, editor hook 677) |
+|---|---|
+| tracks offered; made before: one pristine, two FL had set values on | "1 channel joined, 0 found their track; 2 not linked" |
+| a replacing channel, empty state | "2 channels joined, ..." |
+| one FL pushed NON-default values on (volume 640, pan -25, duty, noise mode, instrument 3, emulator 7, channel) | "3 channels joined, ..." |
+| one given a state of ours with other values | "4 channels joined, ..." |
+| one FL names after its track (the test host answers `FHD_GetContextInfo`) | "5 channels joined, 1 found its track; 2 not linked" (taken before any note; its first note played by the track's preset) |
+| one whose host answers the name call with the number 7 | "6 channels joined, ..." (not read as a pointer) |
+| one FL put on the recording's own emulator, named "BrokenNes2" | "7 channels joined, ..." (the list explains the name) |
+| a new channel, then a project state with a preset | "8 joined" then "7 channels joined, 1 found its track; 3 not linked" |
+| a new channel, a click on its Volume slider, then its banner's Link to recording (real mouse) | "8 joined", "7 joined; 4 not linked", "8 channels joined, 1 found its track; 3 not linked" |
+| Link all in the Record window (real mouse) | "11 channels joined, 1 found its track" |
+| after Play (each linked channel's first 12 notes at the file's song positions) | "11 channels joined, 11 found their track"; all settled; 0 bytes allocated on the audio thread |
+
+The host log of each scenario (box unticked) holds every instance's creation or presence, its joining, the name FL gave, the number refused, the preset channel leaving, the slider click leaving, both kinds of hand link and FL's parameter pushes; nothing was written in the folder standing for Documents; the user's real file unchanged.
+
+Deliberate bugs (each must make the check fail; all are caught):
+
+| Deliberate bug (`RecMutants`) | Caught by `relink` |
+|---|---|
+| 29 FL's non-default parameter pushes make a joined channel leave (the r12 rule) | the counter after those pushes said "2 channels joined, 0 found their track; 3 not linked" |
+| 30 instances made while tracks are on offer do not join them (SNES, and again on the NES) | "1 channel joined, ...; 3 not linked" after the empty-state replace |
+| 33 the counter counts only the channels that found their track (what the user saw) | "0 channels joined" right after the offer |
+| 32 Link to recording says linked and does nothing | the channel stayed not linked (role 2) |
+| 31 Link all counts the channels and links none | the three were still not linked |
+| 34 the channel's name never takes its track (SNES, and again on the NES) | the named channel played no track before its notes |
+| 37 a project state with a preset stays joined | that channel was still joined (role 3) |
+| 35 the host log does not run by itself while tracks are on offer | the scenario's instances missing from the log |
+| 36 the host log ignores the test's file (it would write the user's Documents) | nothing in the scratch file, a file in the folder standing for Documents |
+| 23 the track's engine is built on the audio thread | 3,637,360 bytes allocated on the audio thread |
+| 39 every instance on the recording's emulator counted out | the channel FL put there counted as the recording's own (role 1) |
+| 38 the host log is never capped | `hostlog`: past 1 MB the file kept growing (1,100,547 bytes), no older part |
+
+### Not verifiable without FL (said plainly)
+
+- **What FL hands a replacing instance** (a state, parameter values, in which order, whether it destroys and re-creates): none of it changes the joining any more, and the log records all of it.
+- **Whether FL answers `FHD_GetContextInfo(CI_TrackName)` for a generator** with its channel's name, its mixer track's name, or nothing; whether FL's Replace keeps the imported channel name (with "Auto name channels" on, FL's own notes suggest it renames the channel after the new plugin). The name path is a shortcut: the notes still find every track.
+- When FL calls `Idle` for a plugin whose editor is closed (the name is also asked at the dispatcher events and from the open editor).
+- Hearing any of it.
+
+### Decisions (and for the user)
+
+Taken: instances made while tracks are on offer join whatever FL pushes (a user's own instance is recognised by content: a game, a preset, a track, or an editor change), instances made before join only when pristine (a project opened while tracks are on offer must not hand its configured synth channels to the matcher), configured instances on the recording's emulator are its own; the log runs by itself while tracks are on offer; a channel whose name names a track takes it at once (as Play here); the offer ends with the emulator that made it. For the user: whether the banner should also show over a game's picture for configured channels (it does now, while tracks are on offer); whether to rename a channel after the track it found (`FHD_SetNewName`; FL ignores it when "Auto name channels" is off).
+
+### Ids, hooks, places this took
+
+Control ids 2036 (Link all), 2060 (Link to recording), 2061 (Unlink); plugin test hooks 719 (notes in the offer's index), 720-738 (`Bn2Plugin.Relink.cs`); editor hooks 677-679; `RecMutants` 29-39; TRK1 `how` 3 (by the channel's name; older builds drop such a binding, the preset still plays); `FruitySdk`: `Fpd.RoutingChanged` 25, `ProjLoaded` 27, `PluginLoaded` 40 (documented), `ContextInfoChanged` 41, `Fhd.GetContextInfo` 76, `Ci.TrackName` 0; `FruityPluginBase.Idle`; `HostSim.TrackName`, `RawContextAnswer`, `ContextInfoCalls`; environment `BROKENNES_HOSTLOG_DEFAULT_DIR`; selftest results `relink` and `hostlog` (last); `editor-shot ... --record s --relink-shots prefix`.
+
+### Final runs (this section)
+
+`refs/heads/main` had not moved from 71c538d (fetched again at the end, `--no-tags`): nothing to merge. Every DLL figure is from the Native AOT DLL published from this tree into `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r8_relink`.
+
+| Run | Result |
+|---|---|
+| `FruityHost selftest` (all) | 63 results: 62 pass, 1 warning (QLQ an octave sharp, on purpose), 0 failed (19 min 13 s); `relink` 13 of 13 deliberate bugs caught, `hostlog` (last) the user's real log untouched, `record` 15 of 15 DLL and 17 of 17 library deliberate bugs, `record-nes` 6 of 6 and 12 of 12 |
+| `BrokenNes.Workshop --corrupt-test` (fresh build) | 275 passed, 0 failed, 0 not run |
+| `BrokenNes.Workshop --snes-state-test` | 147 passed, 0 failed, 0 skipped |
+| `UAT\run-suite.ps1 -Exe <fresh Workshop>` | 84 pass, 0 fail, 60 skip (their ROMs are not at this worktree's paths), 0 info |
+| `UAT\entrypoints\notices-check.ps1` | pass (475 files scanned; no `*.bn2preset` tracked) |
+| The user's `Documents\BrokenNes2 host log.txt` after every run of this work (selftests, editor-shot captures) | unchanged: 2,208 bytes, last written 04:01 (the 35 lines the r12 test runs left in it; they are all host tag 0x77, the test bench's, and can be deleted) |
+

@@ -89,6 +89,9 @@ public static class EmulatorHub
         if (e.MemberCount == 0 && slots[e.Id - 1] == e)
         {
             slots[e.Id - 1] = null;
+            // the emulator that made a recording on offer closes (its last channel deleted, or the project closed): its tracks are not on offer any more (instances already playing one keep it;
+            // without this, the channels of the NEXT project FL opens would join a recording that is gone: relink, 2026-10-18)
+            if (TrackOffers.Current is { } offer && offer.IsSource(e.Id)) { HostLog.Text(0, $"emulator #{e.Id} closed: the tracks it recorded are no longer on offer"); TrackOffers.Withdraw(e.Id); }
             e.Dispose();
         }
     }

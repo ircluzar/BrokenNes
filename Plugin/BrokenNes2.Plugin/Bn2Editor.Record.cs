@@ -1,7 +1,8 @@
 // Round 8 (record): the "Record" button (in the header, right of Test MIDI export: every tab shows it) and its window. Record / Stop, the options (start with FL's Play, stop with FL's Stop,
 // lanes), the state and what the transcription found, which track this channel plays, the tracks (each one a drag handle for its own MIDI file, and "Play here"), live MIDI out, the host log,
 // the whole song's drag handle, Save MIDI..., Add presets, and the offer of the tracks to untouched channels (TrackOffer.cs). The work happens in Emulator.Record.cs and Bn2Plugin.Tracks.cs;
-// this file draws and routes. Control ids 2020-2054 used (2020-2079 reserved); editor test hooks 670-679.
+// this file draws and routes. Control ids 2020-2054 used (2020-2079 reserved; relink added 2036 "Link all BrokenNes2 channels" and the CHANNELS block, and 2060-2061 for the banner over the
+// screen, Bn2Editor.Link.cs); editor test hooks 670-679.
 using BrokenNes.Fruity;
 using BrokenNes2.Record;
 using BrokenNes2.Ui;
@@ -12,6 +13,7 @@ public sealed unsafe partial class Bn2Editor
 {
     public const int IdRec = 2020, IdRecClose = 2021, IdRecStart = 2022, IdRecStop = 2023, IdRecSave = 2024, IdRecPresets = 2025, IdRecDeal = 2026,
         IdRecOptStart = 2027, IdRecOptStop = 2028, IdRecOptLanes = 2029, IdRecDragAll = 2030, IdRecLive = 2031, IdRecPortDown = 2032, IdRecPortUp = 2033, IdRecLog = 2034, IdRecExpr = 2035,
+        IdRecLinkAll = 2036,                          // relink: "Link all BrokenNes2 channels"
         IdRecTrack = 2040, IdRecHere = 2050;          // + visible track row 0..RecRows-1 (the row's drag handle, its "Play here")
     private const int RecW = 820, RecH = 624, RecRows = 5;
 
@@ -54,12 +56,12 @@ public sealed unsafe partial class Bn2Editor
 
         Txt(dc, "Record the music", R(lx, box.Top + 14, 400, 34), Win32.DT_LEFT | Mid, Text, fontTitle);
         if (emu != null) Txt(dc, $"emulator #{emu.Id}", R(box.Right - 30 - 200, box.Top + 14, 200, 34), Win32.DT_RIGHT | Mid, Dim, fontSection);
-        Txt(dc, "Record keeps every note the game's sound chip plays (SNES and NES games), from Record to Stop: one MIDI track and one preset per instrument. Drag the MIDI file into FL, give each track to a BrokenNes2 on the Presets chip: it replays as the game played it.",
-            R(lx, box.Top + 50, iw, 40), Win32.DT_LEFT | Win32.DT_WORDBREAK, Dim, fontSmall);
-        Line_(dc, lx, box.Top + 94, box.Right - 30, box.Top + 94, Line);
+        Txt(dc, "Every note the game's sound chip plays (SNES, NES), from Record to Stop: one MIDI track and one preset per instrument, replayed by BrokenNes2 channels with no game.",
+            R(lx, box.Top + 50, iw, 20), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Dim, fontSmall);
+        Line_(dc, lx, box.Top + 74, box.Right - 30, box.Top + 74, Line);
 
         // Record, Stop, Save MIDI..., Add presets
-        int y = box.Top + 104;
+        int y = box.Top + 84;
         bool busy = st == RecordPanel.Finishing;
         Button(dc, IdRecStart, st == RecordPanel.Armed ? "Armed" : "Record", R(lx, y, 110, 30), primary: st is RecordPanel.Idle or RecordPanel.Done, enabled: emu != null && st is RecordPanel.Idle or RecordPanel.Done);
         Button(dc, IdRecStop, "Stop", R(lx + 118, y, 90, 30), primary: st is RecordPanel.Recording or RecordPanel.Armed, enabled: st is RecordPanel.Recording or RecordPanel.Armed);
@@ -68,13 +70,13 @@ public sealed unsafe partial class Bn2Editor
         Txt(dc, held == null ? "" : held.PresetNote, R(lx + 494, y - 2, iw - 494, 34), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
 
         // the options
-        y = box.Top + 144;
+        y = box.Top + 122;
         Check(dc, IdRecOptStart, "Start with FL's Play", lx, y, ui?.StartWithTransport == true, null, labelW: 200, hitW: 230);
         Check(dc, IdRecOptStop, "Stop with FL's Stop", lx + 250, y, ui?.StopWithTransport == true, null, labelW: 200, hitW: 230);
         Check(dc, IdRecOptLanes, "Lanes (exact: more tracks)", lx + 500, y, ui?.Lanes == true, null, labelW: 230, hitW: 260);
 
         // the state, and what the transcription found
-        var sb = R(lx, box.Top + 176, iw, 134);
+        var sb = R(lx, box.Top + 150, iw, 110);
         Box(dc, sb, Bg, Line, 6);
         string head; int headColor;
         switch (st)
@@ -90,11 +92,11 @@ public sealed unsafe partial class Bn2Editor
         if (st is RecordPanel.Armed or RecordPanel.Recording or RecordPanel.Finishing || held == null)
         {
             string text = ui?.Status is { Length: > 0 } s0 ? s0 : emu == null ? "" : emu.Mode != 1 || emu.Console is not (Cx.Snes or Cx.Nes) ? "Load a SNES or NES game in ROM mode (the Game list), let the music play, then Record." : "Press Record: the recording starts at once (or with FL's Play, or when Instrument Runaway is switched off), Stop ends it.";
-            Txt(dc, text, R(sb.Left + 14, ly, iw - 28, 88), Win32.DT_LEFT | Win32.DT_WORDBREAK, Text, fontLabel);
+            Txt(dc, text, R(sb.Left + 14, ly, iw - 28, 66), Win32.DT_LEFT | Win32.DT_WORDBREAK, Text, fontLabel);
         }
         else
         {
-            foreach (var line in held.Tr.Facts.Take(4))
+            foreach (var line in held.Tr.Facts.Take(3))
             {
                 bool bad = line.Contains("not replayed") || line.Contains("lost") || line.Contains("could not") || line.Contains("no steady") || line.Contains("off by") || line.Contains("cut short") || line.Contains("share");
                 Dot(dc, sb.Left + 20, ly + 9, 3, bad ? Warn : Good);
@@ -104,17 +106,31 @@ public sealed unsafe partial class Bn2Editor
         }
 
         // this channel: which track it plays, or how it will find it
-        Txt(dc, plugin.TrackStatus(), R(lx, box.Top + 314, iw - 300, 24), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, plugin.Binding != null ? Good : Text, fontSmall);
-        Check(dc, IdRecExpr, "Bends + volume from the recording", lx + iw - 290, box.Top + 317, TrackOffers.ExpressionFromRecording, null, labelW: 260, hitW: 290);
+        Txt(dc, plugin.TrackStatus(), R(lx, box.Top + 266, iw - 300, 24), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, plugin.Binding != null ? Good : Text, fontSmall);
+        Check(dc, IdRecExpr, "Bends + volume from the recording", lx + iw - 290, box.Top + 269, TrackOffers.ExpressionFromRecording, null, labelW: 260, hitW: 290);
+
+        // the channels linked to the tracks on offer (relink): how many joined, how many found their track, each one; Link all links every BrokenNes2 channel that is not linked
+        y = box.Top + 294;
+        var offer = TrackOffers.Current;
+        var count = TrackOffers.Count();
+        Txt(dc, "CHANNELS", R(lx, y, 100, 20), Win32.DT_LEFT | Mid, Accent, fontSection);
+        drawnCounter = offer == null ? "no tracks on offer: record, or reopen a project with a recording" : TrackOffers.CounterText(count);
+        Txt(dc, drawnCounter, R(lx + 100, y, iw - 100 - 262, 20), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, offer == null ? Faint : count.Found > 0 ? Good : Text, fontLabel);
+        Button(dc, IdRecLinkAll, "Link all BrokenNes2 channels", R(lx + iw - 252, y - 3, 252, 26), primary: offer != null && count.NotLinked > 0, enabled: offer != null);
+        string list = offer == null ? "" : count.Lines.Length == 0 ? "No BrokenNes2 channel yet: replace an imported MIDI Out channel by BrokenNes2 (or add one): it joins at once and shows here."
+            : string.Join("   ", count.Lines);
+        Txt(dc, list, R(lx, y + 24, iw, 32), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_END_ELLIPSIS, Dim, fontSmall);
+        drawnList = list;
 
         // the tracks: each row is a drag handle for its own MIDI file (drop it on a channel's piano roll in FL); "Play here" gives that track to this channel by hand
-        y = box.Top + 342;
+        y = box.Top + 354;
         var shown = ShownRecording(emu);
         var offered = TrackOffers.Current?.Recordings.FirstOrDefault(r => ReferenceEquals(r.Held, shown));
-        Txt(dc, "TRACKS", R(lx, y, 120, 18), Win32.DT_LEFT | Mid, Accent, fontSection);
-        Txt(dc, shown == null ? "" : (ReferenceEquals(shown, held) ? "" : $"of \"{shown.Session.Name}\" (emulator #{offered?.EmulatorId}): ") + "drag a row onto a channel's piano roll, or the whole song below", R(lx + 120, y, iw - 120, 18), Win32.DT_RIGHT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
-        y += 22;
         var tracks = shown?.Tr.Tracks ?? [];
+        Txt(dc, "TRACKS", R(lx, y, 120, 18), Win32.DT_LEFT | Mid, Accent, fontSection);
+        string scrollNote = tracks.Count > RecRows ? $"  ({recScroll + 1}-{Math.Min(tracks.Count, recScroll + RecRows)} of {tracks.Count}: the wheel scrolls)" : "";
+        Txt(dc, shown == null ? "" : (ReferenceEquals(shown, held) ? "" : $"of \"{shown.Session.Name}\" (emulator #{offered?.EmulatorId}): ") + "drag a row onto a channel's piano roll, or the whole song below" + scrollNote, R(lx + 120, y, iw - 120, 18), Win32.DT_RIGHT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+        y += 22;
         var mine = plugin.Binding;
         recScroll = Math.Clamp(recScroll, 0, Math.Max(0, tracks.Count - RecRows));
         for (int r = 0; r < RecRows; r++)
@@ -135,10 +151,9 @@ public sealed unsafe partial class Bn2Editor
             AddHit(IdRecTrack + r, row, Kind.Button);
             Button(dc, IdRecHere + r, here ? "Plays here" : "Play here", R(lx + iw - 96, y + r * 26, 96, 24), primary: here, enabled: emu != null);
         }
-        if (tracks.Count > RecRows) Txt(dc, $"{recScroll + 1}-{Math.Min(tracks.Count, recScroll + RecRows)} of {tracks.Count}: the wheel scrolls", R(lx, y + RecRows * 26, iw, 16), Win32.DT_RIGHT | Win32.DT_SINGLELINE, Faint, fontSmall);
 
         // live MIDI out (P2): the game's notes to FL's MIDI port while it plays
-        y = box.Top + 506;
+        y = box.Top + 510;
         bool liveOn = emu?.LiveActive == true;          // (the SNES or the NES live out)
         Check(dc, IdRecLive, "Live MIDI out", lx, y + 3, liveOn, null, labelW: 130, hitW: 160);
         Button(dc, IdRecPortDown, "-", R(lx + 166, y, 26, 26), primary: false, enabled: emu != null);
@@ -146,17 +161,16 @@ public sealed unsafe partial class Bn2Editor
         Button(dc, IdRecPortUp, "+", R(lx + 262, y, 26, 26), primary: false, enabled: emu != null);
         string liveText = liveOn ? "live: " + emu!.LiveText : "the game's notes as it plays, one MIDI channel per instrument, to this MIDI port";
         Txt(dc, liveText, R(lx + 300, y, iw - 300 - 186, 26), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, liveOn ? Text : Faint, fontSmall);
-        Check(dc, IdRecLog, "Log FL's calls", lx + iw - 176, y + 3, HostLog.On, null, labelW: 150, hitW: 176);
+        Check(dc, IdRecLog, HostLog.Automatic && !HostLog.UserOn ? "Log FL's calls (on now)" : "Log FL's calls", lx + iw - 176, y + 3, HostLog.UserOn, null, labelW: 150, hitW: 176);
 
         // the whole song's drag handle, and the offer
-        y = box.Top + 538;
+        y = box.Top + 540;
         var drag = R(lx, y, 380, 34);
         bool canDrag = shown != null && !busy;
         Box(dc, drag, canDrag ? (hot == IdRecDragAll || dragArm == IdRecDragAll ? Accent : AccentDim) : Panel, canDrag ? Accent : Line, 6);
         Txt(dc, canDrag ? $"::  Drag {shown!.MidiName} into FL  ({tracks.Count} tracks)" : "::  the MIDI file to drag into FL", drag, Win32.DT_CENTER | Mid | Win32.DT_END_ELLIPSIS, canDrag ? White : Faint, fontLabel);
         AddHit(IdRecDragAll, drag, Kind.Button);
-        int takenBy = offered?.Slots.Sum(s => s.Playing) ?? 0;
-        Button(dc, IdRecDeal, offered != null ? $"Tracks on offer ({takenBy} channel{(takenBy == 1 ? "" : "s")}): stop" : "Offer the tracks to channels", R(lx + 392, y, iw - 392, 34), primary: offered != null, enabled: shown != null && !busy);
+        Button(dc, IdRecDeal, offered != null ? $"On offer ({count.Joined} joined, {count.Found} found): stop" : "Offer the tracks to channels", R(lx + 392, y, iw - 392, 34), primary: offered != null, enabled: shown != null && !busy);
 
         // what happened, and Close
         string say = recMessage.Length > 0 ? recMessage : ui?.Result ?? "";
@@ -211,13 +225,21 @@ public sealed unsafe partial class Bn2Editor
                 else { var (ok, msg) = emu.OfferTracks(); Say(msg, ok); }
                 break;
             }
+            case IdRecLinkAll:
+            {
+                if (TrackOffers.Current == null) { Say("No tracks are on offer: record first (or press \"Offer the tracks to channels\").", false); break; }
+                int n = TrackOffers.LinkAll(out int already);
+                Say(n == 0 ? $"Every BrokenNes2 channel was linked already ({already} joined or playing a track)." : $"Linked {n} BrokenNes2 channel{(n == 1 ? "" : "s")}: press Play in FL, each finds its track from its first note ({TrackOffers.CounterText()}).", true);
+                break;
+            }
             case IdRecExpr:
                 TrackOffers.SetExpression(!TrackOffers.ExpressionFromRecording);
                 Say(TrackOffers.ExpressionFromRecording ? "Channels that play a track take its pitch bends and volume from the recording, at the song position (FL's MIDI import loses controller 7 and reads bends at 2 semitones)." : "Channels that play a track follow FL's own pitch and volume (the channel's events, which you can edit).", true);
                 break;
             case IdRecLog:
-                HostLog.Set(!HostLog.On);
-                Say(HostLog.On ? $"Logging what FL sends to BrokenNes2 (every new channel's first calls, notes and song positions) into {HostLog.FilePath}. It stays on when FL restarts; untick it when done and send the file." : "The log is off.", true);
+                HostLog.Set(!HostLog.UserOn);
+                Say(HostLog.UserOn ? $"Logging what FL sends to BrokenNes2 (every channel's first calls, states, names, notes and song positions) into {HostLog.FilePath}. It stays on when FL restarts; untick it when done and send the file."
+                    : HostLog.Automatic ? $"The log stays on while tracks are on offer ({HostLog.FilePath}); it stops when they are withdrawn." : "The log is off.", true);
                 break;
             case IdRecLive:
                 if (emu.LiveActive) { emu.StopLive(); Say("Live MIDI out is off (the sounding notes were ended).", true); }
@@ -277,7 +299,8 @@ public sealed unsafe partial class Bn2Editor
         var offer = TrackOffers.Current;
         h = h * 31 + (offer?.Version ?? 0);
         if (recOpen && offer != null) foreach (var s in offer.Slots) h = h * 31 + s.Playing;
-        h = h * 31 + (plugin.Binding?.Track ?? -1) + plugin.Matcher.Notes * 7 + (HostLog.On ? 3 : 5) + (TrackOffers.ExpressionFromRecording ? 11 : 13);
+        h = h * 31 + (plugin.Binding?.Track ?? -1) + plugin.Matcher.Notes * 7 + (HostLog.On ? 3 : 5) + (HostLog.UserOn ? 17 : 19) + (TrackOffers.ExpressionFromRecording ? 11 : 13);
+        h = h * 31 + TrackOffers.MembersVersion; h = h * 31 + plugin.LinkState;          // (relink: the channels joined / found, this channel's link)
         if (e == null) return h;
         var u = e.RecordUi;
         h = h * 31 + u.State; h = h * 31 + u.ResultStamp; h = h * 31 + u.Status.GetHashCode();
@@ -313,7 +336,20 @@ public sealed unsafe partial class Bn2Editor
                 return text.Length;
             }
             case 676: return recScroll;
+            // relink: what the last paint drew: 677 the CHANNELS counter, 678 this channel's banner over the screen (title | text; -1 none drawn), 679 the list of channels
+            case 677: return CopyChars(drawnCounter, index, value);
+            case 678: return drawnBanner == null ? -1 : CopyChars(drawnBanner, index, value);
+            case 679: return CopyChars(drawnList, index, value);
             default: return 0;
         }
+    }
+
+    private string drawnCounter = "", drawnList = "";
+
+    private static nint CopyChars(string text, nint index, nint value)
+    {
+        int max = (int)(index & 0xFFFF);
+        if (value != 0 && max > 0) text.AsSpan(0, Math.Min(text.Length, max)).CopyTo(new Span<char>((void*)value, max));
+        return text.Length;
     }
 }

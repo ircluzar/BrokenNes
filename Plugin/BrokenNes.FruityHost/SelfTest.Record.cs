@@ -825,6 +825,7 @@ public sealed unsafe partial class SelfTest
             var defaults = new[] { 0, 1000, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0 };
             for (int i = 0; i < defaults.Length; i++) c.SetParam(i, defaults[i]);
             t.Expect(new[] { a, b, c, d }.All(q => q.Test(HkConfigured) == 0), $"an instance made by FL counts as configured before any note: empty state {a.Test(HkConfigured)}, its own fresh state {b.Test(HkConfigured)}, default parameters {c.Test(HkConfigured)}, made before the offer {d.Test(HkConfigured)}");
+            t.Expect(new[] { a, b, c, d }.All(q => q.Test(HkLinkState) == 1), $"an instance made by FL is not linked to the tracks before any note (relink): empty state {a.Test(HkLinkState)}, its own fresh state {b.Test(HkLinkState)}, default parameters {c.Test(HkLinkState)}, made before the offer {d.Test(HkLinkState)}");
             // more channels: playback from the middle, the song 16 bars later, no song position, other notes at the same times
             var e = lib.Create(); made.Add(e);
             var g = lib.Create(); made.Add(g);
