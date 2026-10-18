@@ -154,6 +154,18 @@ switch (args[0])
         void ClickId(int cid) { long r = plugin.Test(30, cid); if (r != 0) { Win32Host.Click(plugin.EditorHandle, (int)(r & 0xFFFF) + (int)((r >> 32) & 0xFFFF) / 2, (int)((r >> 16) & 0xFFFF) + (int)((r >> 48) & 0xFFFF) / 2); Win32Host.Pump(100); } else Console.Error.WriteLine($"control {cid} is not on screen"); }
         if (Opt(args, "--tab") is { } tabName) ClickId(1000 + (tabName.StartsWith("i", StringComparison.OrdinalIgnoreCase) ? 1 : tabName.StartsWith("p", StringComparison.OrdinalIgnoreCase) ? 2 : 0));
         if (Opt(args, "--click") is { } clicks) foreach (var cid in clicks.Split(',')) ClickId(int.Parse(cid));
+        // Test MIDI export (round 7): --midi song.mid opens the window and the file (as the Open button would), plays it a few seconds; --midi-close shows the editor behind it
+        if (Opt(args, "--midi") is { } midiFile)
+        {
+            ClickId(2000);
+            unsafe { fixed (char* c = Path.GetFullPath(midiFile) + "\0") plugin.Test(621, 0, (nint)c); }
+            ClickId(2002);
+            var stopAt = Environment.TickCount64 + 30000;
+            unsafe { fixed (float* f = buf) while (Environment.TickCount64 < stopAt && !(plugin.Test(601) == 0 && plugin.Test(602) == 1)) { plugin.NewTick(); plugin.GenRender(f, 512); Win32Host.Pump(8); } }
+            unsafe { fixed (float* f = buf) for (int b = 0; b < 48000 * 3 / 512; b++) { plugin.NewTick(); plugin.GenRender(f, 512); if (b % 4 == 0) Win32Host.Pump(8); } }
+            if (args.Contains("--midi-close")) ClickId(2001);
+            Win32Host.Pump(200);
+        }
         if (Opt(args, "--chars") is { } chars) { Win32Host.Text(plugin.EditorHandle, chars); Win32Host.Pump(100); }
         Win32Host.CaptureWindow(parent, plugin.EditorHandle, 920, 670, args[2]);
         if (Opt(args, "--hold") is { } hold)

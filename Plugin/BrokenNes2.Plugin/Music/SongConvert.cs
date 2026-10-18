@@ -60,8 +60,8 @@ public sealed class SongFacts
         if (AnyTruncated)
         {
             var parts = new List<string>();
-            for (int c = 0; c < 4; c++) if (Truncated[c]) parts.Add($"{Names[c]} is {Bytes[c]:N0} bytes, more than {Midi2Nes.MaxChannelBytes:N0}");
-            lines.Add($"truncated: {string.Join("; ", parts)} (it goes silent before the loop)");
+            for (int c = 0; c < 4; c++) if (Truncated[c]) parts.Add($"{Names[c]} {Bytes[c]:N0}");
+            lines.Add($"truncated (over {Midi2Nes.MaxChannelBytes:N0} bytes): {string.Join(", ", parts)}; {(parts.Count == 1 ? "it goes" : "they go")} silent before the loop");
         }
         else lines.Add($"fits: {FinalBytes[0]} + {FinalBytes[1]} + {FinalBytes[2]} + {FinalBytes[3]} bytes (at most {Midi2Nes.MaxChannelBytes:N0} per channel)");
         var other = new List<string> { $"tempo {TempoBpm.ToString("0.#", CultureInfo.InvariantCulture)} BPM" };

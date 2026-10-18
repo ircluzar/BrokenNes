@@ -97,7 +97,7 @@ public sealed unsafe partial class SelfTest
     [
         ("flow", SongFlow, MusicMutate.PlayCallsStop, "the Play button stops"),
         ("engine", SongEngineDll, MusicMutate.PatchSkew, "square 1 patched one byte late"),
-        ("stems", SongStems, 0, ""),
+        ("stems", SongStems, MusicMutate.StemsShifted, "after a restart each channel gets the next channel's stem"),
         ("transport", SongTransport, MusicMutate.TransportIgnored, "FL's transport start does not restart the song"),
         ("reload", SongReload, MusicMutate.ReloadCached, "Reload converts the bytes it had instead of reading the file"),
         ("project", SongProject, MusicMutate.SectionDropsMidi, "the project section is written without the MIDI file"),

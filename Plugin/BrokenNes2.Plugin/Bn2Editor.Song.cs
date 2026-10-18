@@ -54,11 +54,11 @@ public sealed unsafe partial class Bn2Editor
         Txt(dc, "Test MIDI export", R(lx, box.Top + 14, 400, 34), Win32.DT_LEFT | Mid, Text, fontTitle);
         if (emu != null) Txt(dc, $"emulator #{emu.Id}", R(box.Right - 30 - 200, box.Top + 14, 200, 34), Win32.DT_RIGHT | Mid, Dim, fontSection);
         Txt(dc, "Export your song from FL Studio as a MIDI file and open it here. BrokenNes2 converts it with VRUN's own music converter, writes it into VRUN's sound-test player and plays it in this emulator (NES, ROM mode): what you hear is what the game will play. Listen, and compare with FL.",
-            R(lx, box.Top + 50, iw, 34), Win32.DT_LEFT | Win32.DT_WORDBREAK, Dim, fontSmall);
-        Line_(dc, box.Left + 30, box.Top + 90, box.Right - 30, box.Top + 90, Line);
+            R(lx, box.Top + 50, iw, 48), Win32.DT_LEFT | Win32.DT_WORDBREAK, Dim, fontSmall);
+        Line_(dc, box.Left + 30, box.Top + 102, box.Right - 30, box.Top + 102, Line);
 
         // the file
-        int y = box.Top + 100;
+        int y = box.Top + 112;
         Button(dc, IdMidOpen, "Open MIDI...", R(lx, y, 150, 30), primary: held == null, enabled: emu != null && !busy);
         string fileText; int fileColor = Text;
         if (emu == null) { fileText = "no emulator"; fileColor = Warn; }
@@ -68,7 +68,7 @@ public sealed unsafe partial class Bn2Editor
         Txt(dc, fileText, R(lx + 164, y, iw - 164, 30), Win32.DT_LEFT | Mid | 0x4000 /* DT_PATH_ELLIPSIS */, fileColor, fontLabel);
 
         // the song: its name, where it plays, and the facts that make it sound different from FL
-        var song = R(lx, box.Top + 142, iw, 250);
+        var song = R(lx, box.Top + 154, iw, 240);
         Box(dc, song, Bg, Line, 6);
         if (held == null)
         {
@@ -86,13 +86,13 @@ public sealed unsafe partial class Bn2Editor
             string where = state == "NOT THE GAME NOW" ? "Another game runs in this emulator: Play puts the song back (NES, ROM mode)"
                 : $"plays in emulator #{emu.Id}: NES, ROM mode, sound chip {emu.ChipId}, frame {emu.FramesRun}" + (emu.ChipId != "FIX" ? "   (VRUN itself uses FIX)" : "");
             Txt(dc, where, R(song.Left + 14, song.Top + 40, iw - 28, 18), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Dim, fontSmall);
-            int ly = song.Top + 66;
+            int ly = song.Top + 64;
             foreach (var line in held.Facts.Lines())
             {
-                bool bad = line.StartsWith("truncated") || line.Contains("dropped:") || line.Contains("thinned") || line.Contains("ignored") || line.Contains("not played") || line.Contains("lowest pitch") || line.Contains(" silent");
+                bool bad = line.StartsWith("truncated") || line.Contains("dropped:") || line.Contains("thinned") || line.Contains("ignored") || line.Contains("not played") || line.Contains("lowest pitch") || line.Contains(" silent") || line.Contains("silent;");
                 Dot(dc, song.Left + 20, ly + 10, 3, bad ? Warn : Good);
                 Txt(dc, line, R(song.Left + 32, ly, iw - 46, 22), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Text, fontLabel);
-                ly += 28;
+                ly += 28;                                                       // (six lines at most: 64 + 6 x 28 = 232 of the box's 240)
             }
         }
 

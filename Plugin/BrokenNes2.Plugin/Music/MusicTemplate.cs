@@ -219,5 +219,6 @@ public static class MusicMutate
     public const int PlayCallsStop = 1 << 6;      // the Play button stops (button-flow check)
     public const int FactsHideDropped = 1 << 7;   // the facts say no note was dropped (facts check)
     public const int ConverterOffByOne = 1 << 8;  // every note one semitone up after conversion (converter identity check, midi-test)
+    public const int StemsShifted = 1 << 9;       // after a restart each channel gets the next channel's prepared stem (stems check)
     public static bool Has(int bit) => (Mask & bit) != 0;
 }

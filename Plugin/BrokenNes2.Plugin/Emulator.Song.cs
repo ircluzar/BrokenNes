@@ -50,12 +50,14 @@ internal static class SongWorker
     private static readonly object gate = new();
     private static Thread? thread;
     private static int work;
+    private static bool startAsked;                       // (gate) a Start since the thread last looked: it must not exit
 
-    /// <summary>Makes sure the thread runs (call it from a thread that may allocate: the UI or a loading thread).</summary>
+    /// <summary>Makes sure the thread runs (call it from a thread that may allocate: the UI or a loading thread; it may hold the hub's lock).</summary>
     public static void Start()
     {
         lock (gate)
         {
+            startAsked = true;
             if (thread != null) return;
             thread = new Thread(Loop) { IsBackground = true, Name = "BrokenNes2 song standby" };
             thread.Start();
@@ -75,8 +77,15 @@ internal static class SongWorker
             {
                 if (Environment.TickCount64 - idleSince < IdleExitMs) continue;
                 idleSince = Environment.TickCount64;
-                if (!EmulatorHub.All().Any(e => e.SongActive)) { lock (gate) thread = null; return; }      // idle with no song: a song opened later starts it again
-                continue;
+                lock (gate) startAsked = false;
+                bool songs = EmulatorHub.All().Any(e => e.SongActive);           // (the hub's lock is never taken inside this one: Start may be called under the hub's lock)
+                if (songs) continue;
+                lock (gate)
+                {
+                    if (startAsked || Volatile.Read(ref work) != 0) continue;    // a song arrived meanwhile
+                    thread = null;                                              // idle with no song: a song opened later starts it again
+                }
+                return;
             }
             idleSince = Environment.TickCount64;
             foreach (var e in EmulatorHub.All())
@@ -305,7 +314,8 @@ public sealed partial class Emulator
         sb.Game.ChipIndex = sb.Chip;
         appliedChip = sb.Chip;
         int claimedTones = ClaimedTones;
-        for (int c = 0; c < Ch.ToneCount; c++) stems[c] = (claimedTones & (1 << c)) != 0 && !MusicMutate.Has(MusicMutate.RestartAllocates) ? sb.Stems[c] : null;
+        int shift = MusicMutate.Has(MusicMutate.StemsShifted) ? 1 : 0;                                    // (the self-test's deliberate bug)
+        for (int c = 0; c < Ch.ToneCount; c++) stems[c] = (claimedTones & (1 << c)) != 0 && !MusicMutate.Has(MusicMutate.RestartAllocates) ? sb.Stems[(c + shift) % Ch.ToneCount] : null;
         crashReported = false;
         Volatile.Write(ref songStopped, 0);
         Interlocked.Increment(ref epoch);

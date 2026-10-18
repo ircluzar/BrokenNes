@@ -473,7 +473,7 @@ internal static class MidiChecks
         var dense = F("dense");
         r.Expect(dense.ThinnedTotal > 0 && L(dense).Contains("thinned"), "the dense song's thinning is not said: " + L(dense));
         var lng = F("long");
-        r.Expect(lng.AnyTruncated && L(lng).Contains("truncated:") && L(lng).Contains("more than 1,280"), "the long song's truncation is not said: " + L(lng));
+        r.Expect(lng.AnyTruncated && L(lng).Contains("truncated (over 1,280 bytes): square 1 1,923, triangle 3,843; they go silent before the loop"), "the long song's truncation is not said: " + L(lng));
         var many = F("manychannels");
         r.Expect(many.NotesDropped > 0 && many.DroppedChannels.Count >= 4 && L(many).Contains($"{many.NotesDropped} of {many.NotesTotal} notes dropped"), "the dropped channels are not said: " + L(many));
         r.Expect(many.TempoChangesIgnored == 2 && L(many).Contains("2 later tempo changes ignored"), "the ignored tempo changes are not counted right: " + L(many));
@@ -555,10 +555,14 @@ internal static class MidiChecks
             catch (Exception e) { r.Failures.Add($"exception {e.GetType().Name}: {e.Message} @ {e.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}"); }
             var o = new CheckOutcome(c.Id, c.What, r.Failures.Count == 0, sw.Elapsed.TotalSeconds, r);
             list.Add(o);
-            log?.Invoke($"  {(o.Passed ? (r.Warnings.Count > 0 ? "WARN" : "PASS") : "FAIL")}  {c.Id,-18} {r.Assertions,7} assertions  [{o.Seconds:0.0}s]" + (r.Notes.Count > 0 ? "\n        " + string.Join("\n        ", r.Notes) : "") + (r.Warnings.Count > 0 ? "\n        warning: " + string.Join("\n        warning: ", r.Warnings) : "") + (r.Failures.Count > 0 ? "\n        FAILED: " + string.Join("\n        FAILED: ", r.Failures.Take(8)) + (r.Failures.Count > 8 ? $"\n        ... and {r.Failures.Count - 8} more" : "") : ""));
+            string verdict = !o.Passed ? "FAIL" : NotRunAtAll(o) ? "NOT RUN" : r.Warnings.Count > 0 ? "WARN" : "PASS";
+            log?.Invoke($"  {verdict,-7} {c.Id,-18} {r.Assertions,7} assertions  [{o.Seconds:0.0}s]" + (r.Notes.Count > 0 ? "\n        " + string.Join("\n        ", r.Notes) : "") + (r.Warnings.Count > 0 ? "\n        warning: " + string.Join("\n        warning: ", r.Warnings) : "") + (r.Failures.Count > 0 ? "\n        FAILED: " + string.Join("\n        FAILED: ", r.Failures.Take(8)) + (r.Failures.Count > 8 ? $"\n        ... and {r.Failures.Count - 8} more" : "") : ""));
         }
         return list;
     }
+
+    /// <summary>A check that could not run at all (the VRUN tree is missing): never counted as passed.</summary>
+    private static bool NotRunAtAll(CheckOutcome o) => o.Report.Assertions == 0 && o.Report.Warnings.Any(w => w.StartsWith("NOT RUN"));
 
     public static (List<string> Lines, int Missed) RunMutants(string? only)
     {
@@ -616,8 +620,8 @@ internal static class MidiChecks
             foreach (var l in lines) Console.WriteLine(l);
             missed = m;
         }
-        int notRun = results.Count(o => o.Report.Warnings.Any(w => w.StartsWith("NOT RUN")));
-        Console.WriteLine($"{results.Count - failed} checks passed ({notRun} with parts NOT RUN), {failed} failed, {results.Sum(o => o.Report.Assertions)} assertions; {missed} deliberate bugs missed");
+        int notRun = results.Count(NotRunAtAll), partly = results.Count(o => !NotRunAtAll(o) && o.Report.Warnings.Any(w => w.StartsWith("NOT RUN")));
+        Console.WriteLine($"{results.Count - failed - notRun} checks passed ({partly} of them with parts NOT RUN), {notRun} NOT RUN (the VRUN tree is not on this machine: not passed), {failed} failed, {results.Sum(o => o.Report.Assertions)} assertions; {missed} deliberate bugs missed");
         return failed == 0 && missed == 0 ? 0 : 1;
     }
 }
