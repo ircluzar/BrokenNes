@@ -45,6 +45,26 @@ public static class Fhd
     /// <summary>FHD_ActivateMIDI: "makes the host enable its MIDI output, useful when a MIDI out plugin is created".</summary>
     public const int ActivateMidi = 4;
     public const int GetParamMenuEntry = 18;
+    /// <summary>FHD_GetMixingTime: "get mixer time, Index is the time format required (see GT_... constants)"; Value is a pointer to a <see cref="TFPTime"/>, "filled with an optional offset in samples".</summary>
+    public const int GetMixingTime = 36;
+    /// <summary>FHD_GetPlaybackTime: the playback time, the same way.</summary>
+    public const int GetPlaybackTime = 37;
+}
+
+/// <summary>Time formats for <see cref="Fhd.GetMixingTime"/> (fp_plugclass.h, GT_*).</summary>
+public static class Gt
+{
+    public const int Beats = 0, AbsoluteMs = 1, RunningMs = 2, MsSinceStart = 3, Ticks = 4;
+    public const int TimeFormatMask = 0xFF;
+    /// <summary>GT_LocalTime: "time relative to song start" (a flag).</summary>
+    public const int LocalTime = 1 << 31;
+}
+
+/// <summary>TFPTime (fp_plugclass.h): two doubles.</summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct TFPTime
+{
+    public double T, T2;
 }
 
 public static class Fpn
@@ -77,6 +97,7 @@ public static class Fpe
 /// <summary>Voice_ProcessEvent IDs.</summary>
 public static class Fpv
 {
+    /// <summary>FPV_GetLength: "retrieve length in ticks (not reliable) in Result (-1 if undefined)".</summary>
     public const int GetLength = 1;
     public const int GetColor = 2;
     public const int GetVelocity = 3;

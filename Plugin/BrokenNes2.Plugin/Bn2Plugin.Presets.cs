@@ -65,6 +65,8 @@ public sealed unsafe partial class Bn2Plugin
         var emu = Emulator;
         if (emu == null) return ActionResult.Refused("This instance has no emulator to play the preset on.");
         if (emu.PresetBlocker is { } blocked) return ActionResult.Refused(char.ToUpperInvariant(blocked[0]) + blocked[1..] + ".");        // (nothing is loaded and nothing changes: a game that runs here stays as it is)
+        ForgetTrack();
+        MarkConfigured("a preset was loaded");
         string? why = AdoptPreset(file, libraryId, out var lp);
         if (why != null) return ActionResult.Refused(why);
         if (Get(P.Recipe) != 0) SetFromUi(P.Recipe, 0);                  // (a new preset starts at its plain sample; the game voice picked for the last one means nothing here)
@@ -75,7 +77,7 @@ public sealed unsafe partial class Bn2Plugin
         return ActionResult.Done($"Loaded \"{name}\" ({lp.Summary}). Emulator #{emu.Id} is in Direct mode on the {emu.ChipId} chip and plays it from FL's notes" + (others > 0 ? $"; the {others} other instance{(others == 1 ? "" : "s")} on it play{(others == 1 ? "s" : "")} the preset {(others == 1 ? "it" : "they")} hold{(others == 1 ? "s" : "")}" : "") + ".");
     }
 
-    internal void ClearPreset() { preset = null; presetNote = null; DropPresetEngines(); }
+    internal void ClearPreset() { ForgetTrack(); preset = null; presetNote = null; DropPresetEngines(); }
 
     private void DropPresetEngines()
     {

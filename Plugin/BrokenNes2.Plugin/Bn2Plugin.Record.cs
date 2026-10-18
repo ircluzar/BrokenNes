@@ -43,9 +43,6 @@ public sealed unsafe partial class Bn2Plugin
 {
     private volatile ReplayProbe? replayProbe;
     private static string lastRecordResult = "";
-    /// <summary>The track this instance took from a deal (its name), or null.</summary>
-    internal string? DealtTrack { get; private set; }
-    private int dealtIndex = -1;
 
     public override int ProcessEvent(int id, int value, int flags)
     {
@@ -67,29 +64,13 @@ public sealed unsafe partial class Bn2Plugin
         return why;
     }
 
-    /// <summary>A new instance while a deal is armed: it takes the next track's preset on the deal's emulator (Direct mode, PRE-SNES). Called once, when the instance is made.</summary>
-    private void TakeDeal()
-    {
-        if (!RecordDeal.TryTake(out string name, out byte[] preset, out int emuId, out int index, out int count)) return;
-        Volatile.Write(ref Values[P.Emulator], emuId);
-        EmulatorHub.Resolve(this);
-        var emu = Emulator;
-        if (emu == null) { Diag.Log($"deal: track {index + 1} has no emulator"); return; }
-        if (emu.Mode != 0) emu.SetMode(0);
-        if (emu.EnterPresetMode("SNES") is { } why) { presetNote = $"Track {index + 1} of the recording was not loaded: {why}"; return; }
-        if (AdoptPreset(preset, null, out _) is { } why2) { presetNote = $"Track {index + 1} of the recording was not loaded: {why2}"; return; }
-        DealtTrack = name;
-        dealtIndex = index;
-        lastRecordResult = $"This instance plays track {index + 1} of {count}: {name}";
-    }
-
     /// <summary>Hooks of the recording, for the self-test (Fpd.TestBase + n, n from 640). See the list in the code.</summary>
     private nint RecordTestHook(int n, nint index, nint value)
     {
         var emu = assignment.Emulator;
         switch (n)
         {
-            case 640: { var why = emu == null ? "no emulator" : emu.StartRecording(); lastRecordResult = why ?? "armed"; return why == null ? 0 : 1; }     // Record (0 armed, 1 refused: the words in 643 field 8)
+            case 640: { MarkConfigured("Record"); var why = emu == null ? "no emulator" : emu.StartRecording(); lastRecordResult = why ?? "armed"; return why == null ? 0 : 1; }     // Record (0 armed, 1 refused: the words in 643 field 8)
             case 641: emu?.StopRecording(); return 0;                                                                                                   // Stop
             case 642: return emu?.RecordUi.State ?? -1;                                                                                                // 0 idle, 1 armed, 2 recording, 3 transcribing, 4 done
             case 643:                                                                                                                                   // copy a text: field = index >> 16 (0 status, 1 result, 2 facts, 3 MIDI path, 4 folder, 5 track names, 6 preset note, 7 project problem, 8 last hook result, 9 track paths), max = index & 0xFFFF
@@ -126,8 +107,8 @@ public sealed unsafe partial class Bn2Plugin
                 if (value >= 0) { u.StartWithTransport = (value & 1) != 0; u.StopWithTransport = (value & 2) != 0; u.Lanes = (value & 4) != 0; }
                 return was;
             }
-            case 652: { if (value == 0) { RecordDeal.Disarm(); return 0; } if (emu == null) return 1; var (ok, msg) = emu.DealTracks(); lastRecordResult = msg; return ok ? 0 : 1; }
-            case 653: { var (next, count, e) = RecordDeal.State; return RecordDeal.Armed ? next | count << 8 | e << 16 : -1; }
+            case 652: { if (emu == null) return 1; if (value == 0) { TrackOffers.Withdraw(emu.Id); lastRecordResult = "withdrawn"; return 0; } var (ok, msg) = emu.OfferTracks(); lastRecordResult = msg; return ok ? 0 : 1; }   // the tracks on offer: 1 offer this emulator's recording, 0 withdraw it
+            case 653: return TrackOffers.Current?.Slots.Length ?? -1;                                                                                   // tracks on offer (-1 none)
             case 654: replayProbe = value > 0 ? new ReplayProbe((int)value) : null; return 0;                                                          // the replay probe: capacity (0 off)
             case 655:                                                                                                                                   // read it: index = max records, value = buffer of (int64 time, int32 code) records; returns the count (value 0: the count held)
             {
@@ -147,7 +128,7 @@ public sealed unsafe partial class Bn2Plugin
             case 661: { var tr = emu?.Recording?.Tr; int k = (int)(index >> 24); if (tr == null || (uint)k >= (uint)tr.Tracks.Count) return -1; return CopyBytes(tr.TrackMidi(k), index & 0xFFFFFF, value); }   // a track's own MIDI: index = track << 24 | buffer size
             case 662: { if (emu == null) return 1; lastRecordResult = emu.AddRecordingPresets(); return 0; }
             case 663: return (nint)(emu?.Recording?.Generation ?? 0);
-            case 664: return dealtIndex;                                                                                                                 // the track this instance took from a deal (-1 none)
+            case 664: return binding?.Track ?? (bindState == 1 && boundSlot is { } bsl ? bsl.Info.Index : -1);                                                                    // the track this instance plays (-1 none)
             case 665: { var p = replayProbe; return p == null ? -1 : (nint)p.Lost; }
             case 666: { int k = (int)(index >> 24); var held = emu?.Recording; if (held == null || (uint)k >= (uint)held.Tr.Tracks.Count) return -1; var f = held.Tr.Tracks[k].PresetFile; return f == null ? 0 : CopyBytes(f, index & 0xFFFFFF, value); }   // a track's preset file: index = track << 24 | buffer size
             case 667: { if (emu == null || index <= 0) return 1; emu.AdoptRecord(new ReadOnlySpan<byte>((void*)value, (int)index).ToArray()); return 0; }    // a REC1 section's bytes (index of them at value) as a project would bring them

@@ -7,7 +7,10 @@
 //              within 2; the key-on envelope; nothing allocated while playing. On the synthetic driver's music (a REC1 section adopted: no ROM needed) and on Super Mario World when it is on this machine.
 //   capture    the capture in ROM mode while the audio thread pulls the game: 0 bytes allocated on that thread from Record to Stop, no write lost (the game's own log counts the same writes)
 //   project    REC1: saved, reopened to the same MIDI bytes; damaged, changed (checksum) and newer sections refused with the reason (a newer one written back as it came); absent: nothing said
-//   deal       "Give the tracks to the next new instances": each new instance takes the next track's preset on the deal's emulator (Direct, Presets chip); one more instance takes nothing
+//   replace    FL's "import the MIDI file, Replace each MIDI Out channel by BrokenNes2" (2026-10-18): instances made every way FL plausibly makes them (an empty state, a fresh instance's own
+//              state, every parameter pushed at its default, made before the tracks were offered) each recognise their track from their notes (key + FL's song position) and play its preset from
+//              the first note; playback from the middle, the song 16 bars later, no song position from FL, a channel of other notes never taken; "Play here" by hand; the project; the offer
+//              withdrawn; the host log; 0 bytes on the audio thread
 //   transport  "start with FL's Play" waits for FL's Play; "stop with FL's Stop" ends it; a recording in which the game keyed nothing says so
 //   live       live MIDI out (P2): the messages FL receives (MIDIOut_Delayed, the port) read back against a recording made at the same time: every key-on a note-on on its instrument's channel, pitch
 //              and level reproduced, every note ended; FHD_ActivateMIDI; 0 bytes on the audio thread; the synthetic game and Super Mario World (Instrument Runaway ends the notes)
@@ -77,21 +80,21 @@ public sealed unsafe partial class SelfTest
     }
 
     /// <summary>The synthetic driver's music (four instruments: vibrato, chords with slides, a panned fading bass, a sample loaded under another's number) as a REC1 section, the way a project brings one.</summary>
-    private static byte[] SynthSection(double seconds, out RecSession session)
+    private static byte[] SynthSection(double seconds, out RecSession session, int seed = 7, string name = "Synth take", ulong id = 0xAB)
     {
-        var drv = new SynthDriver(132.5);
+        var drv = new SynthDriver(132.5, seed);
         var rec = new SpcRecorder(); rec.Arm(); for (int i = 0; i < 40; i++) rec.Feed();
         drv.Play(rec, seconds);
-        session = rec.Finish(drv.Aram, drv.Regs, "Synth take", "synthetic driver", "", 1_760_000_000, 0xAB);
+        session = rec.Finish(drv.Aram, drv.Regs, name, "synthetic driver", "", 1_760_000_000, id);
         return RecSection.Build(session);
     }
 
     /// <summary>A plugin on emulator #6 (Direct mode, no game) holding the recording of <paramref name="section"/> as a project would bring it, transcribed. Null (and a failure) when it did not come.</summary>
-    private PluginInstance? Adopted(T t, byte[] section, int options = ROptDefault)
+    private PluginInstance? Adopted(T t, byte[] section, int options = ROptDefault, int emulator = 6)
     {
         var p = lib.Create();
         p.Dispatcher(Fpd.SetSampleRate, 0, 48000);
-        p.SetParam(PEmulator, 6);
+        p.SetParam(PEmulator, emulator);
         p.Test(HkRForget);
         p.Test(HkROptions, 0, options);
         fixed (byte* sp = section) p.Test(HkRAdopt, section.Length, (nint)sp);
@@ -112,22 +115,35 @@ public sealed unsafe partial class SelfTest
         ("replay", RecordReplay, RecMutants.TuneIgnoredInPreset, "the presets forget their tuning"),
         ("capture", RecordCapture, RecMutants.CaptureAllocates, "the capture allocates at every key-on"),
         ("project", RecordProject, RecMutants.SectionCrcNotChecked, "the project section's checksum is not checked"),
-        ("deal", RecordDealScenario, RecMutants.DealIgnored, "giving the tracks says it is armed but gives nothing"),
+        ("replace", RecordReplaceScenario, RecMutants.DefaultStateCountsAsTouched, "a default state counts as configuring the instance"),
         ("transport", RecordTransportScenario, 0, ""),
         ("live", RecordLiveScenario, RecMutants.LiveOutSilent, "live MIDI out sends nothing"),
         ("refusals", RecordRefusals, RecMutants.SaveWritesHalf, "Save MIDI... writes half the file"),
     ];
 
+    /// <summary>More deliberate bugs, each run once more with the scenario that must catch it (the replace scenario watches several places).</summary>
+    private (string Name, RecordScenario Body, int Mutant, string Why)[] RecordExtraMutants() =>
+    [
+        ("replace", RecordReplaceScenario, RecMutants.DealIgnored, "a recording's tracks are never put on offer"),
+        ("replace", RecordReplaceScenario, RecMutants.OfferIgnoresLateInstances, "instances made before the offer are ignored"),
+        ("replace", RecordReplaceScenario, RecMutants.BindAfterFirstNote, "the track is taken after the first note was played"),
+        ("replace", RecordReplaceScenario, RecMutants.EnginesNotPrebuilt, "the track's engine is built on the audio thread"),
+        ("replace", RecordReplaceScenario, RecMutants.TrackSectionDropped, "the project does not keep which track an instance plays"),
+        ("replace", RecordReplaceScenario, RecMutants.ManualPickIgnored, "Play here says done and does nothing"),
+        ("replace", RecordReplaceScenario, RecMutants.UnrelatedGrabbed, "any key fits a track's note"),
+        ("replace", RecordReplaceScenario, RecMutants.ExpressionIgnored, "track channels ignore the recording's bends and volume"),
+    ];
+
     private void RecordTest(T t)
     {
         // the library (no DLL): the same checks as `record-test` without the real games, and their deliberate bugs
-        foreach (var o in RecordChecks.RunChecks("root,tempo,capture,transcribe,smf,section,live"))
+        foreach (var o in RecordChecks.RunChecks("root,tempo,capture,transcribe,smf,section,live,match"))
         {
             foreach (var f in o.Report.Failures.Take(3)) t.Expect(false, $"[{o.Id}] {f}");
             foreach (var w in o.Report.Warnings) t.Warn(false, $"[{o.Id}] {w}");
             t.Note($"library {o.Id}: {o.Report.Assertions} assertions passed");
         }
-        var (lines, missed) = RecordChecks.RunMutants("root,tempo,capture,transcribe,smf,section,live");
+        var (lines, missed) = RecordChecks.RunMutants("root,tempo,capture,transcribe,smf,section,live,match");
         t.Expect(missed == 0, $"{missed} of the library's deliberate bugs were not caught: " + string.Join(" / ", lines.Where(l => l.Contains("MISSED"))));
         t.Note($"library: {lines.Count - missed} of {lines.Count} deliberate bugs caught");
 
@@ -150,14 +166,14 @@ public sealed unsafe partial class SelfTest
             }
             int caught = 0, armed = 0;
             recordMutantPass = true;
-            foreach (var (name, body, mutant, why) in RecordScenarios())
+            foreach (var (name, body, mutant, why) in RecordScenarios().Concat(RecordExtraMutants()))
             {
                 if (mutant == 0) continue;
                 armed++;
                 var tt = new T();
                 using (var probe = lib.Create()) probe.Test(HkRMutant, 0, mutant);
                 try { RunRecordScenario(name, body, tt, dir); }
-                finally { using var probe = lib.Create(); probe.Test(HkRMutant, 0, 0); probe.Test(HkRDeal, 0, 0); }
+                finally { using var probe = lib.Create(); probe.Test(HkRMutant, 0, 0); probe.Test(HkOfferSet, 0, 0); }
                 if (tt.Failures.Count > 0) { caught++; t.Note($"deliberate bug '{why}' -> {name} failed: {Short(tt.Failures[0])}"); }
                 else t.Expect(false, $"deliberate bug '{why}' was not caught by {name}: that check cannot fail");
             }
@@ -166,7 +182,7 @@ public sealed unsafe partial class SelfTest
         finally
         {
             recordMutantPass = false;
-            using (var h = lib.Create()) { h.Test(120, 0, 0); h.Test(HkRDeal, 0, 0); h.Test(HkRMutant, 0, 0); }
+            using (var h = lib.Create()) { h.Test(120, 0, 0); h.Test(HkOfferSet, 0, 0); h.Test(HkRMutant, 0, 0); h.Test(HkRTempo, 0, 120_000); }     // (no tracks stay on offer for the checks after this one)
             Environment.SetEnvironmentVariable("BROKENNES_PRESETS_DIR", oldPresets);
             try { Directory.Delete(dir, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
@@ -389,14 +405,16 @@ public sealed unsafe partial class SelfTest
     /// <summary>Compares, note by note, the S-DSP registers each instance wrote with the game's: every pitch value the game held for 4 ms or more (three of FL's 64-sample control steps), in the middle of its time (counted from the note's own key-on
     /// on each side), must be the register the instance had then, unless the transcription lists it as not exact; the volumes within 2 (notes keyed with the preset's balance); the envelope keyed is the
     /// preset's, which is the game's for every note the transcription does not list as keyed with another.</summary>
-    private static void CompareReplay(T t, string label, Transcription tr, List<ReplayPlayer> players)
+    private static void CompareReplay(T t, string label, Transcription tr, List<ReplayPlayer> players, int[]? trackOf = null)
     {
         int values = 0, exact = 0, reported = 0, unreported = 0, shortValues = 0, vols = 0, volOk = 0, volReported = 0, volOther = 0, envSame = 0, envWrong = 0, envOther = 0, missing = 0, compared = 0;
         double maxErr = 0;
-        for (int k = 0; k < tr.Tracks.Count && k < players.Count; k++)
+        for (int pi = 0; pi < players.Count; pi++)
         {
+            int k = trackOf?[pi] ?? pi;
+            if (k >= tr.Tracks.Count) continue;
             var track = tr.Tracks[k];
-            var pl = players[k];
+            var pl = players[pi];
             var probe = pl.Probe;
             // the marks (an FL voice took an S-DSP voice), in time order
             var starts = new List<(int Note, int Voice, long T, int From)>();
@@ -472,7 +490,7 @@ public sealed unsafe partial class SelfTest
                 }
             }
         }
-        int notes = tr.Tracks.Take(players.Count).Sum(x => x.Notes.Count);
+        int notes = Enumerable.Range(0, players.Count).Select(pi => trackOf?[pi] ?? pi).Where(k => k < tr.Tracks.Count).Sum(k => tr.Tracks[k].Notes.Count);
         t.Expect(unreported == 0 && values > 0, $"{label}: pitch {exact:N0} of {values:N0} values exact, {reported} inexact as the transcription says, {unreported} inexact WITHOUT it saying so");
         t.Expect(missing == 0 && compared == notes, $"{label}: {compared} of {notes} notes keyed by the instances, {missing} never keyed or never given a pitch");
         t.Expect(vols == volOk + volReported, $"{label}: volumes {volOk} of {vols} within 2, {volReported} reported, {vols - volOk - volReported} off WITHOUT a word");
@@ -650,35 +668,277 @@ public sealed unsafe partial class SelfTest
 
     // ------------------------------------------------------------------------------------------------ the tracks given to new instances
 
-    private void RecordDealScenario(T t, string dir)
+    private const int HkOffer = 700, HkOfferSet = 701, HkTrackOf = 702, HkBindState = 703, HkBindHow = 704, HkConfigured = 705, HkMatchNotes = 706, HkPick = 708, HkTrackStatus = 709, HkLog = 710,
+        HkEngineWaits = 712, HkPlaying = 713, HkInstanceNo = 714, HkMatchHow = 715;
+
+    /// <summary>One FL channel in the replace scenario: an instance, the notes its piano roll holds (one track of the imported file, or other notes), where FL says they are.</summary>
+    private sealed class ReplacePart
     {
-        byte[] section = SynthSection(10, out _);
-        using var p = Adopted(t, section);
-        if (p == null) return;
+        public required string Name;
+        public required PluginInstance P;
+        public required List<MidiReplay.Note> Notes;
+        public int Track = -1;                  // the track whose notes these are (-1: other notes)
+        public int Expect = -1;                 // the track it must end up playing (-1 none)
+        public double BeatOffset;               // the song as FL places it, against the file
+        public bool NoPosition;                 // FL gives no song position
+        public int FlBends;                     // what FL's channel kept of the file's expression: 0 the bends at the file's range and controller 7, 1 nothing, 2 the bends read at 2 semitones and no controller
+        public long[] BendT = [], CcT = []; public int[] BendV = [], CcV = []; public int Range = 2;
+        public readonly List<nint> Handles = new();
+        public long BoundAtFirst = -2;          // the track it plays right after its first note was started (before it was rendered)
+        public int Next;
+        public MidiReplay? M;                   // the file its notes come from (its own tempo map)
+        public long Tick;
+    }
+
+    /// <summary>Plays the parts' notes the way FL plays a project: one timeline in 64-sample blocks at 48 kHz, each instance asked for its notes when their time comes, with FL's song position of the block
+    /// (plus the part's offset; none when the part has none) and the channel's bend and controller 7 from the file. Returns the bytes the DLL allocated on this (the audio) thread while the notes played.</summary>
+    private long PlayReplace(List<ReplacePart> parts, MidiReplay m)
+    {
+        const int rate = 48000, block = 64;
+        foreach (var pt in parts) pt.M ??= m;
+        double end = parts.Select(x => x.Notes.Count == 0 ? 0 : x.M!.Seconds(x.Notes.Max(n => n.Off))).DefaultIfEmpty(0).Max() + 0.3;
+        var buf = new float[block * 2];
+        var active = new List<(ReplacePart Pt, MidiReplay.Note N, SimVoice V)>();
+        long a0, a1;
+        fixed (float* bp = buf)
+        {
+            for (int w = 0; w < 40; w++) foreach (var pt in parts) { pt.P.NewTick(); pt.P.GenRender(bp, block); }      // (warm-up: each instance's first blocks)
+            a0 = parts[0].P.Test(HkRAlloc);
+            for (long s = 0; s < end * rate; s += block)
+            {
+                foreach (var pt in parts) pt.Tick = pt.M!.TickAt(s / (double)rate);
+                for (int i = active.Count - 1; i >= 0; i--)
+                {
+                    var (pt, n, v) = active[i];
+                    if (n.Off <= pt.Tick) { pt.P.Host.ReleaseFromMixer(v); active.RemoveAt(i); }
+                }
+                foreach (var pt in parts)
+                {
+                    pt.P.Host.SongBeats = pt.NoPosition ? double.NaN : pt.Tick / (double)pt.M!.Ppq + pt.BeatOffset;
+                    while (pt.Next < pt.Notes.Count && pt.Notes[pt.Next].On <= pt.Tick)
+                    {
+                        var n = pt.Notes[pt.Next++];
+                        var v = pt.P.Host.NewVoice(n.Channel, n.Velocity / 127f);
+                        ReplaceLevels(v, n, pt, pt.Tick);
+                        v.Handle = pt.P.TriggerVoice(v.Params, v.Tag);
+                        pt.Handles.Add(v.Handle);
+                        if (pt.BoundAtFirst == -2) pt.BoundAtFirst = pt.P.Test(HkTrackOf);
+                        active.Add((pt, n, v));
+                    }
+                }
+                foreach (var (pt, n, v) in active) ReplaceLevels(v, n, pt, pt.Tick);
+                foreach (var pt in parts) { pt.P.NewTick(); pt.P.GenRender(bp, block); }
+            }
+            a1 = parts[0].P.Test(HkRAlloc);
+            foreach (var (pt, _, v) in active) pt.P.Host.ReleaseFromMixer(v);
+            for (int w = 0; w < 8; w++) foreach (var pt in parts) { pt.P.NewTick(); pt.P.GenRender(bp, block); }
+        }
+        return a1 - a0;
+
+        static void ReplaceLevels(SimVoice v, MidiReplay.Note n, ReplacePart pt, long tick)
+        {
+            int bend = pt.FlBends == 1 ? 0 : ValueAt(pt.BendT, pt.BendV, tick, 0), cc = pt.FlBends != 0 ? 100 : ValueAt(pt.CcT, pt.CcV, tick, 100);
+            int range = pt.FlBends == 2 ? 2 : pt.Range;
+            ref var f = ref v.Params->FinalLevels;
+            f.Pitch = (float)((n.Key - 60) * 100 + bend * range * 100.0 / 8192.0);
+            f.Vol = (float)(n.Velocity / 127.0 * cc / 100.0);
+            f.Pan = 0;
+            v.Params->InitLevels = f;
+        }
+    }
+
+    private ReplacePart Part(string name, PluginInstance q, MidiReplay m, int track, int expect, Func<MidiReplay.Note, bool>? which = null, int keyShift = 0)
+    {
+        var notes = m.Notes.Where(n => n.Track == track + 1 && (which == null || which(n))).Select(n => keyShift == 0 ? n : new MidiReplay.Note { Track = n.Track, Channel = n.Channel, Key = Math.Clamp(n.Key + keyShift, 0, 127), Velocity = n.Velocity, On = n.On, Off = n.Off, Index = n.Index }).ToList();
+        var chan = notes.Count > 0 ? m.Of(track + 1, notes[0].Channel) : new MidiReplay.Chan();
+        q.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+        q.Test(HkRProbe, 0, 400_000);
+        return new ReplacePart
+        {
+            Name = name, P = q, Notes = notes, M = m, Track = keyShift == 0 ? track : -1, Expect = expect, Range = chan.Range >= 0 ? chan.Range : 2,
+            BendT = chan.Bends.Select(b => b.Tick).ToArray(), BendV = chan.Bends.Select(b => b.Bend).ToArray(), CcT = chan.Cc7.Select(b => b.Tick).ToArray(), CcV = chan.Cc7.Select(b => b.Cc).ToArray(),
+        };
+    }
+
+    /// <summary>A replace part as the register comparison reads it: its notes in order, the handle of each, everything its sampler wrote.</summary>
+    private static ReplayPlayer ToPlayer(ReplacePart pt)
+    {
+        var pl = new ReplayPlayer { P = pt.P, Notes = pt.Notes };
+        for (int i = 0; i < pt.Handles.Count; i++) pl.NoteOfHandle[(int)(pt.Handles[i] & 0xFFFF)] = i;
+        int count = (int)pt.P.Test(HkRProbeRead, 0, 0);
+        var raw = new byte[Math.Max(1, count) * 12];
+        int got;
+        fixed (byte* rp = raw) got = (int)pt.P.Test(HkRProbeRead, count, (nint)rp);
+        for (int i = 0; i < got; i++) pl.Probe.Add((BitConverter.ToInt64(raw, i * 12), BitConverter.ToInt32(raw, i * 12 + 8)));
+        return pl;
+    }
+
+    /// <summary>The probe's marks of an instance: the FL voice handles its sampler gave an S-DSP voice to, in order.</summary>
+    private static List<int> ProbeMarks(PluginInstance q)
+    {
+        int count = (int)q.Test(HkRProbeRead, 0, 0);
+        var raw = new byte[Math.Max(1, count) * 12];
+        int got;
+        fixed (byte* rp = raw) got = (int)q.Test(HkRProbeRead, count, (nint)rp);
+        var marks = new List<int>();
+        for (int i = 0; i < got; i++) { int code = BitConverter.ToInt32(raw, i * 12 + 8); if (code >> 24 == 1) marks.Add(code & 0xFFFF); }
+        return marks;
+    }
+
+    /// <summary>FL's "import the MIDI file, then Replace each MIDI Out channel by BrokenNes2", every way FL plausibly creates the replacing instance: each untouched instance recognises its track from
+    /// its notes and plays that track's preset from its first note. Also: an instance made before the tracks were offered, playback started in the middle, the song placed 16 bars later, no song position
+    /// from FL, a channel of other notes (never taken), "Play here" by hand (real mouse), the project, withdrawing the offer, the host log, 0 bytes on the audio thread.</summary>
+    private void RecordReplaceScenario(T t, string dir)
+    {
         var made = new List<PluginInstance>();
+        PluginInstance? p = null, p2 = null;
+        string logFile = Path.Combine(dir, "host-log-" + Guid.NewGuid().ToString("N")[..8] + ".txt");
+        string? oldLog = Environment.GetEnvironmentVariable("BROKENNES_HOSTLOG_FILE");
+        Environment.SetEnvironmentVariable("BROKENNES_HOSTLOG_FILE", logFile);
         try
         {
-            int tracks = (int)p.Test(HkRTracks);
-            var names = RText(p, 5).Split(" | ");
-            t.Expect(p.Test(HkRDeal, 0, 1) == 0, "Give the tracks was refused: " + RText(p, 8));
-            for (int k = 0; k < tracks; k++) made.Add(lib.Create());
-            var extra = lib.Create();
-            made.Add(extra);
-            for (int k = 0; k < tracks; k++)
+            using (var h = lib.Create()) h.Test(HkLog, 0, 1);
+            // D: made BEFORE the tracks are offered (FL may make the instances first)
+            var d = lib.Create(); made.Add(d);
+            byte[] section = SynthSection(20, out var session);
+            p = Adopted(t, section);
+            if (p == null) return;
+            long until = Environment.TickCount64 + 20000;
+            while (p.Test(HkOffer) <= 0 && Environment.TickCount64 < until) Thread.Sleep(10);
+            int tracks = (int)p.Test(HkOffer);
+            t.Expect(tracks >= 4, $"the recording's tracks are not on offer ({tracks})");
+            if (tracks < 4) return;
+            var m = MidiReplay.Read(RBytes(p, HkRMidi));
+            // a second recording, on another emulator, on offer at the same time
+            p2 = Adopted(t, SynthSection(20, out _, seed: 11, name: "Second take", id: 0xCD), emulator: 5);
+            if (p2 == null) return;
+            until = Environment.TickCount64 + 20000;
+            while (p.Test(HkOffer) < tracks + 2 && Environment.TickCount64 < until) Thread.Sleep(10);
+            t.Expect(p.Test(HkOffer) > tracks, $"the second recording's tracks are not on offer beside the first's ({p.Test(HkOffer)} tracks)");
+            var m2 = MidiReplay.Read(RBytes(p2, HkRMidi));
+            // the replacing instances: an empty state, a fresh instance's own state, every parameter pushed at its default
+            byte[] fresh;
+            using (var f0 = lib.Create()) fresh = f0.SaveState();
+            var a = lib.Create(); made.Add(a); a.LoadState([]);
+            var b = lib.Create(); made.Add(b); b.LoadState(fresh);
+            var c = lib.Create(); made.Add(c);
+            var defaults = new[] { 0, 1000, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0 };
+            for (int i = 0; i < defaults.Length; i++) c.SetParam(i, defaults[i]);
+            t.Expect(new[] { a, b, c, d }.All(q => q.Test(HkConfigured) == 0), $"an instance made by FL counts as configured before any note: empty state {a.Test(HkConfigured)}, its own fresh state {b.Test(HkConfigured)}, default parameters {c.Test(HkConfigured)}, made before the offer {d.Test(HkConfigured)}");
+            // more channels: playback from the middle, the song 16 bars later, no song position, other notes at the same times
+            var e = lib.Create(); made.Add(e);
+            var g = lib.Create(); made.Add(g);
+            var hq = lib.Create(); made.Add(hq);
+            var fq = lib.Create(); made.Add(fq);
+            var kq = lib.Create(); made.Add(kq);
+            var k2 = lib.Create(); made.Add(k2);
+            var lq = lib.Create(); made.Add(lq);
+            long midTick = m.Notes.Where(n => n.Track == 2).Select(n => n.On).OrderBy(x => x).ElementAt(m.Notes.Count(n => n.Track == 2) / 2);
+            double fileBpm = 60e6 / m.Tempo[0].Us;
+            p.Test(HkRTempo, 0, (nint)Math.Round(fileBpm * 1000));                 // (FL's tempo is the file's: FL took it from the import)
+            var parts = new List<ReplacePart>
             {
-                var q = made[k];
-                var name = new char[200];
-                long n; fixed (char* c = name) n = q.Test(343, 200, (nint)c);
-                string held = n > 0 ? new string(name, 0, (int)n) : "";
-                t.Expect(q.Test(HkRDealt) == k && q.Test(352) == 1 && q.Test(342) == 1 && k < names.Length && held == names[k],
-                    $"new instance {k + 1}: took track {q.Test(HkRDealt)}, preset mode {q.Test(352)}, plays {q.Test(342)}, holds '{held}' (track {k + 1} is '{(k < names.Length ? names[k] : "?")}')");
+                Part("A (empty state)", a, m, 2, 2),
+                Part("B (its own fresh state)", b, m, 0, 0),
+                Part("C (default parameters pushed)", c, m, 3, 3),
+                Part("D (made before the offer)", d, m, 1, 1),
+                Part("E (playback from the middle)", e, m, 1, 1, n => n.On >= midTick),
+                Part("G (the song 16 bars later)", g, m, 0, 0),
+                Part("H (no song position)", hq, m, 3, 3),
+                Part("F (other notes at the same times)", fq, m, 0, -1, null, 37),
+                Part("K (FL lost the bends and the volume)", kq, m, 0, 0),
+                Part("K2 (FL read the bends at 2 semitones)", k2, m, 2, 2),
+                Part("L (a track of the second recording)", lq, m2, 1, 1),
+            };
+            parts[5].BeatOffset = 64;
+            parts[6].NoPosition = true;
+            parts[8].FlBends = 1;
+            parts[9].FlBends = 2;
+            long alloc = PlayReplace(parts, m);
+            until = Environment.TickCount64 + 5000;
+            while (parts.Any(x => x.Expect >= 0 && x.P.Test(HkBindState) != 2) && Environment.TickCount64 < until) Thread.Sleep(20);
+            foreach (var pt in parts)
+            {
+                long track = pt.P.Test(HkTrackOf), bstate = pt.P.Test(HkBindState), how = pt.P.Test(HkMatchHow);
+                if (pt.Expect < 0)
+                {
+                    t.Expect(track == -1 && bstate == 0 && pt.P.Test(342) == 0, $"{pt.Name}: taken by track {track + 1} (state {bstate}): an unrelated channel must keep its own sound");
+                    continue;
+                }
+                t.Expect(track == pt.Expect && bstate == 2 && pt.P.Test(HkBindHow) == 1 && pt.P.Test(342) == 1 && pt.P.Test(352) == 1,
+                    $"{pt.Name}: plays track {track + 1} (should be {pt.Expect + 1}), state {bstate} (2 = settled on the tracks' emulator), found {(how == 2 ? "by an offset" : "aligned")}, holds a preset {pt.P.Test(342)}, preset mode {pt.P.Test(352)}: {DllText(pt.P, HkTrackStatus)}");
+                var marks = ProbeMarks(pt.P);
+                bool firstByPreset = marks.Count > 0 && pt.Handles.Count > 0 && marks[0] == (int)(pt.Handles[0] & 0xFFFF);
+                bool expectFirst = pt.BeatOffset == 0 && !pt.NoPosition;
+                if (expectFirst) t.Expect(firstByPreset && pt.BoundAtFirst == pt.Expect, $"{pt.Name}: its first note was not played by the track's preset (bound right after the note started: {pt.BoundAtFirst + 1}; the preset's engine first played FL voice {(marks.Count > 0 ? marks[0] : -1)}, the first note was {(pt.Handles.Count > 0 ? pt.Handles[0] & 0xFFFF : -1)})");
+                int played = pt.Handles.Count(hd => marks.Contains((int)(hd & 0xFFFF)));
+                int expectPlayed = expectFirst ? pt.Handles.Count : pt.Handles.Count - TrackMatcher.ShiftedNotes + 1;
+                t.Expect(played >= expectPlayed, $"{pt.Name}: {played} of its {pt.Handles.Count} notes played by the track's preset (at least {expectPlayed} expected)");
             }
-            t.Expect(extra.Test(HkRDealt) == -1 && extra.Test(342) == 0, $"one more instance after the {tracks} tracks: took track {extra.Test(HkRDealt)}");
-            var emus = made.Take(tracks).Select(q => q.Test(16)).Distinct().ToList();
-            t.Expect(tracks > 1 && emus.Count == 1 && emus[0] != p.Test(16), $"the dealt instances are not all on the deal's own emulator: {string.Join(",", made.Select(q => q.Test(16)))} (the recording's is #{p.Test(16)})");
-            t.Note($"deal: {tracks} new instances took tracks 1 to {tracks} on emulator #{made[0].Test(16)}, Presets chip, each its track's preset; one more took nothing");
+            t.Expect(alloc == 0, $"{alloc:N0} bytes allocated on the audio thread while {parts.Count} channels played their notes (the instances recognising their tracks and taking their engines included)");
+            // the expression: channels whose FL events lost the bends and the volume, or read the bends at 2 semitones, still write the game's own registers (they play the recording's expression)
+            var tr = RecTranscribe.Run(session, new RecOptions { Name = session.Name, FlTempo = 120 });
+            foreach (int pi in new[] { 8, 9 })
+            {
+                var pt = parts[pi];
+                t.Expect(pt.P.Test(718) == 1, $"{pt.Name}: does not play its track's expression");
+                CompareReplay(t, pt.Name, tr, [ToPlayer(pt)], [pt.Expect]);
+            }
+            int onTrack1 = (int)p.Test(HkPlaying, 1);
+            t.Expect(onTrack1 == 2, $"{onTrack1} channels counted on track 2 (D and E play it)");
+            t.Note($"replace: {string.Join("; ", parts.Select(x => $"{x.Name} -> {(x.P.Test(HkTrackOf) is var k && k >= 0 ? $"track {k + 1}" : "none")}"))}; 0 bytes on the audio thread: {alloc}");
+            t.Expect(DllText(lq, HkTrackStatus).Contains("Second take"), $"L plays a track of another recording than the second: {DllText(lq, HkTrackStatus)}");
+
+            // "Play here" by hand, in the Record window of a fresh instance (real mouse messages)
+            var iq = lib.Create(); made.Add(iq);
+            nint parent = Win32Host.CreateParent();
+            try
+            {
+                iq.ShowEditor(parent);
+                Win32Host.Pump(60);
+                ClickControl(t, iq, 2020, "Record button");
+                ClickControl(t, iq, 2052, "Play here, row 3");
+                t.Expect(iq.Test(HkTrackOf) == 2 && iq.Test(HkBindHow) == 2 && iq.Test(342) == 1 && iq.Test(352) == 1, $"Play here: plays track {iq.Test(HkTrackOf) + 1} (how {iq.Test(HkBindHow)}), holds a preset {iq.Test(342)}, preset mode {iq.Test(352)} ({EdText(iq, EdRMessage)})");
+                iq.HideEditor();
+            }
+            finally { Win32Host.DestroyParent(parent); }
+
+            // the project: A saved, the instance gone, a fresh one opened from it plays the same track
+            var state = a.SaveState();
+            int trk = FindSection(state, 0x314B5254);
+            t.Expect(trk >= 0, "the project has no TRK1 for A");
+            a.Dispose(); made.Remove(a);
+            var a2 = lib.Create(); made.Add(a2);
+            a2.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+            a2.LoadState(state);
+            t.Expect(a2.Test(HkTrackOf) == 2 && a2.Test(HkBindHow) == 1 && a2.Test(342) == 1 && a2.Test(352) == 1 && a2.Test(HkConfigured) == 1 && a2.Test(718) == 1,
+                $"A reopened: plays track {a2.Test(HkTrackOf) + 1} (how {a2.Test(HkBindHow)}), holds a preset {a2.Test(342)}, preset mode {a2.Test(352)}, configured {a2.Test(HkConfigured)}, the track's expression {a2.Test(718)}");
+
+            // withdrawn: an untouched instance playing a track's notes keeps its own sound
+            p.Test(HkRDeal, 0, 0); p2.Test(HkRDeal, 0, 0);
+            t.Expect(p.Test(HkOffer) == -1, "the tracks are still on offer after Stop");
+            var jq = lib.Create(); made.Add(jq);
+            var jpart = Part("J (after the offer was withdrawn)", jq, m, 0, -1);
+            PlayReplace([jpart], m);
+            t.Expect(jq.Test(HkTrackOf) == -1, $"after the offer was withdrawn an untouched channel took track {jq.Test(HkTrackOf) + 1}");
+
+            // the host log: the calls an instance received, its notes and positions, how it found its track
+            Thread.Sleep(600);
+            string log = File.Exists(logFile) ? File.ReadAllText(logFile) : "";
+            long an = d.Test(HkInstanceNo);
+            t.Expect(log.Contains($"#{an} created") && log.Contains("state restored") && log.Contains($"#{an} note #1:") && log.Contains($"#{an} match after note #1") && log.Contains("settled on emulator"),
+                $"the host log ({log.Length:N0} chars at {logFile}) lacks a creation, a restored state, D's first note or its match, or a settling");
+            t.Note($"host log: {log.Split('\n').Length} lines");
+            if (Environment.GetEnvironmentVariable("BROKENNES_KEEP_HOSTLOG") is { Length: > 0 } keep && !recordMutantPass) File.WriteAllText(keep, log);      // (to read what the log looks like)
         }
-        finally { foreach (var q in made) q.Dispose(); p.Test(HkRDeal, 0, 0); p.Test(HkRForget); }
+        finally
+        {
+            using (var h = lib.Create()) h.Test(HkLog, 0, 0);
+            Environment.SetEnvironmentVariable("BROKENNES_HOSTLOG_FILE", oldLog);
+            foreach (var q in made) q.Dispose();
+            if (p != null) { p.Test(HkRDeal, 0, 0); p.Test(HkRForget); p.Dispose(); }
+            if (p2 != null) { p2.Test(HkRDeal, 0, 0); p2.Test(HkRForget); p2.Dispose(); }
+        }
     }
 
     // ------------------------------------------------------------------------------------------------ FL's transport

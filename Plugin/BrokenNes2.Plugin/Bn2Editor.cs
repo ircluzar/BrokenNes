@@ -1405,7 +1405,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 else if (h.Id >= IdInputKey && h.Id < IdInputKey + 12) { captureIndex = h.Id - IdInputKey; captureIsKey = true; captureWait = true; }
                 else if (h.Id >= IdInputPad && h.Id < IdInputPad + 12) { captureIndex = h.Id - IdInputPad; captureIsKey = false; captureWait = true; }
                 else if (h.Id >= IdPadButton && h.Id < IdPadButton + 12) { heldPad = h.Id - IdPadButton; Win32.SetCapture(Hwnd); }
-                else if (h.Id == IdRunaway) { var re = plugin.Emulator; if (re != null) re.SetRunaway(!re.Runaway); }
+                else if (h.Id == IdRunaway) { var re = plugin.Emulator; if (re != null) { plugin.MarkConfigured("Instrument Runaway"); re.SetRunaway(!re.Runaway); } }
                 else if (h.Id == IdReset) { plugin.Emulator?.Reset(); resetFlashUntil = Environment.TickCount64 + 900; }
                 else if (h.Id is IdModeDirect or IdModeRom) plugin.SetFromUi(P.Mode, h.Id - IdModeDirect);
                 else if (h.Id >= IdConsole && h.Id < IdConsole + Cx.Count) plugin.SetFromUi(P.Console, h.Id - IdConsole);
@@ -1427,6 +1427,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
     {
         var emu = plugin.Emulator;
         if (emu == null) return;
+        plugin.MarkConfigured("a game was picked");
         if (action == 0) emu.UseBuiltInRom();
         else if (action == 1 && emu.SongActive && plugin.Get(P.Console) == Cx.Nes && emu.RomPath is { } back) emu.LoadRomFile(back);      // the file the song replaced
         else if (action == 3) emu.UseSong();

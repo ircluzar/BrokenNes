@@ -117,6 +117,13 @@ public sealed unsafe class HostSim : IDisposable
     {
         var h = Of(self);
         if (h != null && h.Record) lock (h.DispatcherCalls) h.DispatcherCalls.Add(id);
+        if (h != null && (id == Fhd.GetMixingTime || id == Fhd.GetPlaybackTime) && value != 0)
+        {
+            // FHD_GetMixingTime / FHD_GetPlaybackTime: the song position the test set (in beats; GT_LocalTime asks for it from the song's start), left untouched when there is none
+            double b = h.SongBeats;
+            if (!double.IsNaN(b) && (index & Gt.TimeFormatMask) == Gt.Beats) { var t = (TFPTime*)value; t->T = b; t->T2 = 0; }
+            return 0;
+        }
         if (h != null && id == Fhd.EditorResized)
         {
             // FHD_EditorResized: the plugin resized its editor window; the host fits its frame around it again (what FL does)
@@ -180,6 +187,9 @@ public sealed unsafe class HostSim : IDisposable
             _ => 0,
         };
     }
+
+    /// <summary>The song position (beats) FHD_GetMixingTime answers with; NaN: the host gives none (the plugin's time stays as it was).</summary>
+    public double SongBeats = double.NaN;
 
     /// <summary>MIDIOut_Delayed / MIDIOut calls from the plugin (round 8's live MIDI out): each TMIDIOutMsg (Status | Data1 &lt;&lt; 8 | Data2 &lt;&lt; 16 | Port &lt;&lt; 24) and whether it was the
     /// delayed kind, in the order they came; kept while <see cref="Record"/> is on. <see cref="MidiOutSink"/> gets them too (a live host can route them).</summary>

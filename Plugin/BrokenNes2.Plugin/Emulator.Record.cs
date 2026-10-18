@@ -7,8 +7,8 @@
 //            blocks ready while it runs and, once it ended, builds the session, transcribes it (Record/RecTranscribe.cs), writes the MIDI files (the whole song, and each track alone) to a
 //            temporary folder, and adds the presets to the library (Presets\<game>\Recordings\<recording>, once: the same bytes are not added twice).
 //   Project  the session rides in the project as section REC1 (written by the emulator's first instance); a reopened project transcribes it again, to the same bytes.
-//   Deal     "Give the tracks to the next new instances": each BrokenNes2 instance created next (FL's channel Replace, or its MIDI import) takes the next track's preset on an emulator of its own
-//            in Direct mode on the PRE-SNES chip (Bn2Plugin.Record.cs).
+//   Offer    a finished recording's tracks are on offer (TrackOffer.cs) until the window withdraws them: every untouched BrokenNes2 channel recognises its track from the notes FL asks it to
+//            play and plays that track's preset (Bn2Plugin.Tracks.cs). That is what makes "import the MIDI file, Replace each MIDI Out channel by BrokenNes2" work.
 // Nothing is silent: every refusal, loss, cap and fallback is a line of the window (RecordPanel) and of the transcription's facts.
 using BrokenNes2.Presets;
 using BrokenNes2.Record;
@@ -40,51 +40,6 @@ internal sealed class RecordPanel
 internal sealed record RecordHeld(RecSession Session, Transcription Tr, string Folder, string MidiPath, string[] TrackPaths, string[] PresetIds, string PresetNote, long Generation)
 {
     public string MidiName => Path.GetFileName(MidiPath);
-}
-
-/// <summary>"Give the tracks to the next new instances": one deal for the process. Each BrokenNes2 instance created while it is armed takes the next track (its preset) on the deal's emulator.</summary>
-internal static class RecordDeal
-{
-    private static readonly object gate = new();
-    private static List<(string Name, byte[] Preset)> items = new();
-    private static int next, emulatorId;
-    private static long expires;
-    public const int ArmedMinutes = 10;
-
-    public static bool Armed { get { lock (gate) return next < items.Count && Environment.TickCount64 < expires; } }
-    public static (int Next, int Count, int Emulator) State { get { lock (gate) return (next, items.Count, emulatorId); } }
-
-    /// <summary>Arms the deal with a recording's tracks (lanes included: they play their instrument's preset). Null when armed, else why not.</summary>
-    public static string? Arm(RecordHeld held)
-    {
-        if (RecMutants.On(RecMutants.DealIgnored)) return null;                 // (the self-test's deliberate bug: says it is armed, deals nothing)
-        var list = new List<(string, byte[])>();
-        foreach (var t in held.Tr.Tracks) if (t.PresetFile != null) list.Add((t.Name, t.PresetFile));
-        if (list.Count == 0) return "the recording has no track with a preset";
-        int free = 0;
-        for (int i = 1; i <= EmulatorHub.MaxEmulators; i++) if (EmulatorHub.Get(i) == null) { free = i; break; }
-        if (free == 0) return $"all {EmulatorHub.MaxEmulators} emulators are in use: the tracks need one of their own (in Direct mode)";
-        lock (gate)
-        {
-            items = list; next = 0; emulatorId = free;
-            expires = Environment.TickCount64 + ArmedMinutes * 60_000L;
-        }
-        return null;
-    }
-
-    public static void Disarm() { lock (gate) { items = new(); next = 0; } }
-
-    /// <summary>The next track for a new instance, and the emulator it plays on. False when the deal is not armed (or has expired, or every track was given).</summary>
-    public static bool TryTake(out string name, out byte[] preset, out int emulator, out int index, out int count)
-    {
-        lock (gate)
-        {
-            name = ""; preset = []; emulator = emulatorId; index = next; count = items.Count;
-            if (next >= items.Count || Environment.TickCount64 >= expires) return false;
-            (name, preset) = items[next++];
-            return true;
-        }
-    }
 }
 
 public sealed partial class Emulator
@@ -268,6 +223,7 @@ public sealed partial class Emulator
         recSection = RecSection.Build(s);
         recCarried = null;
         recording = new RecordHeld(s, tr, folder, midi, paths, ids, note, Interlocked.Increment(ref recGeneration));
+        if (tr.Tracks.Count > 0 && !RecMutants.On(RecMutants.DealIgnored)) TrackOffers.Offer(Id, recording);      // its tracks are on offer: untouched BrokenNes2 channels recognise theirs from their notes (TrackOffer.cs)
         RecordUi.State = RecordPanel.Done;
         RecordUi.Status = "";
         if (tr.Notes.Count == 0) RecordUi.SetResult($"Recorded {s.Seconds:0.0} s, but no note: {(tr.Facts.Count > 1 ? tr.Facts[1] : "the game started none")}", false);
@@ -338,14 +294,14 @@ public sealed partial class Emulator
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return (false, "Could not save: " + e.Message); }
     }
 
-    /// <summary>Give the tracks to the next new instances. The words for the window.</summary>
-    internal (bool Ok, string Message) DealTracks()
+    /// <summary>Puts this emulator's recording's tracks on offer again (after the window withdrew them). The words for the window.</summary>
+    internal (bool Ok, string Message) OfferTracks()
     {
         var held = recording;
         if (held == null) return (false, "Record first: the tracks come from a recording");
-        if (RecordDeal.Arm(held) is { } why) return (false, "Cannot give the tracks: " + why);
-        var (_, count, emu) = RecordDeal.State;
-        return (true, $"The next {count} BrokenNes2 instances you add take the tracks in order (track 1 first), on emulator #{emu} in Direct mode on the PRE-SNES chip: in FL, replace each imported channel by BrokenNes2 in the order of the tracks. Armed for {RecordDeal.ArmedMinutes} minutes.");
+        if (held.Tr.Tracks.Count == 0) return (false, "The recording has no track");
+        if (!RecMutants.On(RecMutants.DealIgnored)) TrackOffers.Offer(Id, held);
+        return (true, $"The {held.Tr.Tracks.Count} tracks are on offer: every untouched BrokenNes2 channel plays the track its notes belong to (import the MIDI file in FL, then Replace each MIDI Out channel by BrokenNes2).");
     }
 
     // ---- the project (REC1) ----
@@ -361,6 +317,7 @@ public sealed partial class Emulator
     internal void ForgetRecordingForTests()
     {
         if (RecordUi.State is RecordPanel.Armed or RecordPanel.Recording or RecordPanel.Finishing) return;
+        TrackOffers.Withdraw(Id);
         recording = null; recSection = null; recCarried = null; recProblem = null;
         RecordUi.State = RecordPanel.Idle; RecordUi.Status = ""; RecordUi.SetResult("", true);
     }
