@@ -95,6 +95,7 @@ public sealed unsafe partial class SelfTest
         (RecMutants.LogNotAutomatic, false, "the host log does not run by itself while tracks are on offer"),
         (RecMutants.LogIgnoresTestPath, false, "the host log ignores the test's file (it would write the user's Documents)"),
         (RecMutants.EnginesNotPrebuilt, false, "the track's engine is built on the audio thread"),
+        (RecMutants.SourceEmulatorExcludes, false, "every instance on the recording's emulator is counted out (a replacing channel FL puts there would never count)"),
         (RecMutants.NoAutoJoin, true, "instances made while NES tracks are on offer do not join them"),
         (RecMutants.NameIgnored, true, "the channel's name never takes its NES track"),
     ];
@@ -201,20 +202,24 @@ public sealed unsafe partial class SelfTest
             r5.Dispatcher(Fpd.PluginLoaded);
             t.Expect(r5.Test(HkNameGot) == -1 && r5.Test(HkRole) == 3 && hs5.ContextInfoCalls > 0, $"a host that answers the name call with a number: name {r5.Test(HkNameGot)} (-1: none taken), role {r5.Test(HkRole)}");
             Step("a replacing channel whose host answers the name call with a number", "6 channels joined, 1 found its track; 2 not linked");
+            // FL's Replace may put the new instance on the recording's own emulator (Emulator = Auto takes the first emulator with a free channel: the game's): it is not the recording's channel, it joins
+            var r6 = Make(); r6.SetParam(PEmulator, 6);
+            t.Expect(r6.Test(16) == p.Test(16) && r6.Test(HkRole) == 3, $"a replacing channel on the recording's emulator (#{r6.Test(16)}, the recording's is #{p.Test(16)}): role {r6.Test(HkRole)} ({DllText(r6, HkLinkNote)})");
+            Step("a replacing channel that landed on the recording's own emulator", "7 channels joined, 1 found its track; 2 not linked");
             // a project state that is clearly the user's own (it holds a preset): it leaves
             byte[] withTrack = r4.SaveState();
             int trk = FindSection(withTrack, 0x314B5254u);
             t.Expect(trk >= 0 && FindSection(withTrack, 0x31535250u) >= 0, "the named channel's state lacks its preset or its track");
             byte[] withPreset = trk < 0 ? withTrack : withTrack[..trk].Concat(withTrack[(trk + 8 + BitConverter.ToInt32(withTrack, trk + 4))..]).ToArray();
             var u1 = Make();
-            Step("a new channel (before its state)", "7 channels joined, 1 found its track; 2 not linked");
+            Step("a new channel (before its state)", "8 channels joined, 1 found its track; 2 not linked");
             u1.LoadState(withPreset);
             t.Expect(u1.Test(HkRole) == 2 && DllText(u1, HkLinkNote).Contains("preset"), $"a channel given a project state with a preset: role {u1.Test(HkRole)}, '{DllText(u1, HkLinkNote)}'");
-            Step("that channel's project state holds a preset (it leaves)", "6 channels joined, 1 found its track; 3 not linked");
+            Step("that channel's project state holds a preset (it leaves)", "7 channels joined, 1 found its track; 3 not linked");
 
             // the editor: a change made in it makes a channel that joined by itself leave; the banner's "Link to recording" (real mouse) links it again
             var e1 = Make();
-            Step("one more new channel", "7 channels joined, 1 found its track; 3 not linked");
+            Step("one more new channel", "8 channels joined, 1 found its track; 3 not linked");
             parent = Win32Host.CreateParent();
             e1.ShowEditor(parent);
             Win32Host.Pump(80);
@@ -223,29 +228,29 @@ public sealed unsafe partial class SelfTest
             ClickControl(t, e1, 20 + PVolume, "the Volume slider");
             Win32Host.Pump(80);
             Role(e1, 2, "after a change in its editor");
-            Step("that channel changed in its editor (it leaves)", "6 channels joined, 1 found its track; 4 not linked");
+            Step("that channel changed in its editor (it leaves)", "7 channels joined, 1 found its track; 4 not linked");
             t.Expect(EdLong(e1, EdRBanner).StartsWith("TRACKS OF"), $"the banner of an unlinked channel says '{EdLong(e1, EdRBanner)}'");
             ClickControl(t, e1, IdLinkBtn, "Link to recording");
             Win32Host.Pump(80);
             t.Expect(e1.Test(HkLinkState) == 2 && e1.Test(HkRole) == 3, $"Link to recording: link {e1.Test(HkLinkState)}, role {e1.Test(HkRole)}");
-            Step("Link to recording pressed in its editor", "7 channels joined, 1 found its track; 3 not linked");
+            Step("Link to recording pressed in its editor", "8 channels joined, 1 found its track; 3 not linked");
             // the Record window: the counter as it draws it, then Link all (real mouse)
             ClickControl(t, e1, 2020, "Record button");
             Win32Host.Pump(80);
             string drawn = EdLong(e1, EdRCounter);
-            t.Expect(drawn == "7 channels joined, 1 found its track; 3 not linked", $"the Record window draws '{drawn}'");
+            t.Expect(drawn == "8 channels joined, 1 found its track; 3 not linked", $"the Record window draws '{drawn}'");
             ClickControl(t, e1, IdRecLinkAllBtn, "Link all BrokenNes2 channels");
             Win32Host.Pump(80);
             t.Expect(new[] { pre1, pre2, u1 }.All(q => q.Test(HkLinkState) == 2), $"Link all: pre1 {pre1.Test(HkLinkState)}, pre2 {pre2.Test(HkLinkState)}, the preset channel {u1.Test(HkLinkState)} (2 = linked by hand)");
-            Step("Link all pressed in the Record window", "10 channels joined, 1 found its track");
+            Step("Link all pressed in the Record window", "11 channels joined, 1 found its track");
             drawn = EdLong(e1, EdRCounter);
             string list = EdLong(e1, EdRList);
-            t.Expect(drawn == "10 channels joined, 1 found its track", $"after Link all the Record window draws '{drawn}'");
+            t.Expect(drawn == "11 channels joined, 1 found its track", $"after Link all the Record window draws '{drawn}'");
             long n4 = r4.Test(HkInstanceNo), n5 = r5.Test(HkInstanceNo);
             t.Expect(list.Contains($"#{n4} \"{names[nameTrack]}\": plays track {nameTrack + 1} (found by its channel's name)") && list.Contains($"#{n5}: waiting for its first note"), $"the window's list of channels: '{list}'");
 
             // Play: each linked channel finds its track from its notes (the first 12 of its track, at the file's song positions) and settles; the named one plays its track from its first note
-            var linked = new (string Name, PluginInstance Q)[] { ("pre3 (pristine, made before)", pre3), ("r1 (empty state)", r1), ("r2 (non-default pushes)", r2), ("r3 (other values)", r3), ("r5 (a number for a name)", r5),
+            var linked = new (string Name, PluginInstance Q)[] { ("pre3 (pristine, made before)", pre3), ("r1 (empty state)", r1), ("r2 (non-default pushes)", r2), ("r3 (other values)", r3), ("r5 (a number for a name)", r5), ("r6 (on the recording's emulator)", r6),
                 ("u1 (preset state, Link all)", u1), ("e1 (Link to recording)", e1), ("pre1 (Link all)", pre1), ("pre2 (Link all)", pre2) };
             var others = order.Where(k => k != nameTrack).ToList();
             var parts = new List<ReplacePart>();
@@ -275,7 +280,7 @@ public sealed unsafe partial class SelfTest
                 t.Expect(marks.Count > 0 && named.Handles.Count > 0 && marks[0] == (int)(named.Handles[0] & 0xFFFF), "the named channel's first note was not played by its track's preset");
             }
             t.Expect(alloc == 0, $"{alloc:N0} bytes allocated on the audio thread while {parts.Count} linked channels found their tracks and played");
-            Step("after Play", "10 channels joined, 10 found their track");
+            Step("after Play", "11 channels joined, 11 found their track");
 
             // the host log: it ran by itself while the tracks were on offer (the box unticked), for every instance, into the test's scratch file; nothing in the folder standing for Documents
             t.Expect(pre3.Test(HkLogUser) == 0 && pre3.Test(HkLogAuto) == 1, $"the log: the user's box {pre3.Test(HkLogUser)} (should be 0), automatic {pre3.Test(HkLogAuto)} (should be 1)");
@@ -292,7 +297,7 @@ public sealed unsafe partial class SelfTest
                 string want = before ? $"#{no} present when the tracks were offered" : $"#{no} created";
                 if (!log.Contains(want)) missing.Add(want);
             }
-            foreach (var q in new[] { pre3, r1, r2, r3, r4, r5, u1, e1 })
+            foreach (var q in new[] { pre3, r1, r2, r3, r4, r5, r6, u1, e1 })
             {
                 long no = q.Test(HkInstanceNo);
                 if (!log.Contains($"#{no} joined the recording")) missing.Add($"#{no} joined");

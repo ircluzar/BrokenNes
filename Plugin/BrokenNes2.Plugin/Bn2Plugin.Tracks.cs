@@ -145,7 +145,6 @@ public sealed unsafe partial class Bn2Plugin
         bool log = HostLog.On && notesSeen <= 32;
         var snap = TrackOffers.Current;
         bool eligible = snap != null && bindState != 2 && (link != LinkNone || bindState == 1) && binding == null
-            && !(bindState == 0 && assignment.Emulator is { } se && snap.IsSource(se.Id))                                           // (the recording's own channels never join it)
             && !(RecMutants.On(RecMutants.OfferIgnoresLateInstances) && InstanceNo <= TrackOffers.OfferedAfterInstance);    // (the deliberate bug: instances made before the offer are ignored)
         if (!eligible && !log) return;
         double pos = SongBeats(0);

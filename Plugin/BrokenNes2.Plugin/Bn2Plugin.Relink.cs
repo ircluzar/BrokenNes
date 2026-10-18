@@ -95,8 +95,10 @@ public sealed unsafe partial class Bn2Plugin
         TrackOffers.Changed();
     }
 
-    /// <summary>The instance sits on an emulator whose recording is on offer: it made the recording (it never joins it).</summary>
-    internal bool IsSourceNow => TrackOffers.Current is { } s && assignment.Emulator is { } e && s.IsSource(e.Id);
+    /// <summary>The recording's own channel: a configured instance on the emulator whose recording is on offer (the one that recorded, the user's stems of that game). It is not counted, shows no
+    /// banner and Link all leaves it alone. An instance FL makes while the tracks are on offer may land on that emulator too (Emulator = Auto takes the first emulator with a free channel, the
+    /// game's): it is not configured, so it joins like any other (found by the editor-shot capture of relink: counting it out would have kept the counter at 0, the user's report).</summary>
+    internal bool IsSourceNow => configured && TrackOffers.Current is { } s && assignment.Emulator is { } e && s.IsSource(e.Id);
 
     /// <summary>What this instance is to the tracks on offer: 0 nothing (no offer), 1 the recording's own channel, 2 not linked, 3 linked and waiting for its first note, 4 found its track.</summary>
     internal int OfferRole(TrackOfferSnapshot? snap)
@@ -105,8 +107,10 @@ public sealed unsafe partial class Bn2Plugin
         var b = binding;
         if (bindState == 1) return 4;
         if (b != null) { foreach (var r in snap.Recordings) if (r.Held.Session.Id == b.SessionId) return 4; }
-        if (assignment.Emulator is { } e && snap.IsSource(e.Id)) return 1;
-        return link != LinkNone ? 3 : 2;
+        if (RecMutants.On(RecMutants.SourceEmulatorExcludes) && assignment.Emulator is { } se && snap.IsSource(se.Id)) return 1;      // (the deliberate bug: every instance on the recording's emulator counted out)
+        if (link != LinkNone) return 3;
+        if (configured && assignment.Emulator is { } e && snap.IsSource(e.Id)) return 1;
+        return 2;
     }
 
     /// <summary>One line for the Record window's list of channels.</summary>

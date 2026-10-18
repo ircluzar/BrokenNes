@@ -205,7 +205,7 @@ switch (args[0])
         if (Opt(args, "--relink-shots") is { } relinkPrefix)
         {
             var joined = lib.Create(); relinkExtras.Add(joined); joined.Dispatcher(BrokenNes.Fruity.Fpd.SetSampleRate, 0, 48000);
-            var unlinked = lib.Create(); relinkExtras.Add(unlinked); unlinked.Dispatcher(BrokenNes.Fruity.Fpd.SetSampleRate, 0, 48000); unlinked.Test(722);
+            var unlinked = lib.Create(); relinkExtras.Add(unlinked); unlinked.Dispatcher(BrokenNes.Fruity.Fpd.SetSampleRate, 0, 48000); unlinked.SetParam(9, 5); unlinked.Test(722);   // (on emulator #5: a configured channel on the game's emulator counts as the recording's own)
             foreach (var (q, suffix) in new[] { (joined, "joined"), (unlinked, "unlinked") })
             {
                 nint qp = Win32Host.CreateParent();
