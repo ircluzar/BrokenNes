@@ -20,6 +20,7 @@ internal static partial class NesRecChecks
             var l = new NesLive { NoteLog = new int[200_000], NoteClock = new long[200_000] };
             l.AttachSaved(s.BaseState);
             int drained = 0;
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();                          // (a collection inside the window would show in the count)
             long a0 = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < s.Count; i++)
             {

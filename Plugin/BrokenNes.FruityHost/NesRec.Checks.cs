@@ -39,6 +39,7 @@ internal static partial class NesRecChecks
         new("the model's envelope decays two steps at a time", "model", on => NesModelMutants.Active = on ? NesModelMutants.EnvelopeTwice : 0),
         new("pitch bends one register step off", "direct", Rec(NesTranscribeMutants.BendOffByOne)),
         new("every 1,000th write lost without a word", "capture", Rec(NesRecMutants.CaptureLosesWrites)),
+        new("the capture allocates at every fourth-register write", "capture", Rec(NesRecMutants.CaptureAllocates)),
         new("controller 7 one value past its interval", "transcribe", Rec(NesTranscribeMutants.VolumeOffByOne)),
         new("pitch bends one register step off (in a transcription)", "transcribe", Rec(NesTranscribeMutants.BendOffByOne)),
         new("the duty tracks' presets all at 50%", "transcribe", Rec(NesTranscribeMutants.DutyDropped)),

@@ -107,9 +107,14 @@ internal static partial class NesRecChecks
             uint w = g.M.CopyApuLatch(latch);
             rec.Begin(g.M.Nes, latch, w, g.M.ApuCoreId);
             long clock = g.M.ApuClock;
-            for (int i = 0; i < 2000; i++) rec.OnWrite((ushort)(0x4000 + i % 16), (byte)i, clock + i);          // (warm the paths)
+            // the same loop warms every path first (a write, a frame mark, a change of chunk) and the feeder tops the chunks up; then a collection, so that neither the JIT's first passes nor a
+            // collection inside the window shows in this thread's count (both did, once each in a combined selftest: 4,008 bytes; a real allocation per write would be 300,000 x 24 bytes or more)
+            static void Pump(NesRecorder rec, long from, int n) { for (int i = 0; i < n; i++) { rec.OnWrite((ushort)(0x4000 + i % 20), (byte)(i * 7), from + i * 3); if (i % 500 == 0) rec.FrameEnd(from + i * 3); } }
+            Pump(rec, clock, 70_000);
+            rec.Feed();
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
             long a0 = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 300_000; i++) { rec.OnWrite((ushort)(0x4000 + i % 20), (byte)(i * 7), clock + 2000 + i * 3); if (i % 500 == 0) rec.FrameEnd(clock + 2000 + i * 3); }
+            Pump(rec, clock + 70_000 * 3, 300_000);
             long a1 = GC.GetAllocatedBytesForCurrentThread();
             r.Expect(a1 - a0 == 0, $"the capture allocated {a1 - a0:N0} bytes for 300,000 writes");
             // a starved capture counts what it lost
