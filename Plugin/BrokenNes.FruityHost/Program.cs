@@ -47,6 +47,12 @@ switch (args[0])
     case "record-dump":
         return RecordChecks.Dump(args);
 
+    case "nesrec-survey":
+        return NesRecSurvey.Main(args);
+
+    case "nesrec-test":
+        return NesRecChecks.Cli(args);
+
     case "midi-trace":
         return MidiChecks.Trace(args);
 
