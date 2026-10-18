@@ -230,7 +230,14 @@ public sealed class SpcWriteLog
         time[i] = (uint)sample;
         regval[i] = (ushort)(reg << 8 | value);
         count++;
+        Recorder?.Invoke(reg, value, sample);
+        LiveOut?.Invoke(reg, value, sample);
     }
+
+    /// <summary>Round 8 (record): a recording session's capture, told of every write too (null when nothing records). A delegate made on the UI thread when the recording is armed: setting it between frames allocates nothing.</summary>
+    public Action<byte, byte, long>? Recorder;
+    /// <summary>Round 8 (record, phase 2): the live MIDI output, told of every write too (null when off).</summary>
+    public Action<byte, byte, long>? LiveOut;
 
     public void Clear() { count = 0; }
 

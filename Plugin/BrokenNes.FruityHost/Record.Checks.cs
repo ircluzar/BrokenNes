@@ -374,6 +374,20 @@ internal static class RecordChecks
         }
         r.Note(st.Line());
         r.Note($"{tr.Notes.Count} notes, {tr.Tracks.Count} tracks, {tr.Midi.Length:N0} bytes of MIDI; tempo {tr.Tempo.Describe()}; facts: " + string.Join(" | ", tr.Facts));
+        // 4. a recording in which the driver keyed nothing (a note that began before Record bends on): no track, a file FL can still read, and the window says why
+        var rq = new SpcRecorder();
+        rq.Arm();
+        var aram = new byte[0x10000]; var regs = new byte[128];
+        regs[0x4C] = 1; regs[0x03] = 0x10; regs[0x08] = 0x40;                  // (voice 0 sounding: its envelope is up)
+        rq.Begin(aram, regs, 0);
+        for (int i = 0; i < 400; i++) rq.OnWrite(0x03, (byte)(0x10 + (i & 1)), i * 288L);
+        rq.Clock(400 * 288);
+        rq.Halt(RecEnd.Stop);
+        var sq = rq.Finish(aram, regs, "Quiet", "synthetic driver", "", 1_760_000_000, 4);
+        var tq = RecTranscribe.Run(sq, new RecOptions { Name = "Quiet", FlTempo = 120 });
+        var mq = MidiReplay.Read(tq.Midi);
+        r.Expect(tq.Tracks.Count == 0 && tq.Notes.Count == 0 && mq.Problems.Count == 0 && mq.Notes.Count == 0, $"a recording with no key-on: {tq.Tracks.Count} tracks, {tq.Notes.Count} notes, MIDI problems: {string.Join("; ", mq.Problems)}");
+        r.Expect(tq.Facts.Count > 0 && tq.Facts[0].StartsWith("0 notes") && tq.Facts.Any(f => f.Contains("no key-on")), "a recording with no key-on does not say so: " + string.Join(" | ", tq.Facts));
     }
 
     public static void Smf(ImodelReport r)

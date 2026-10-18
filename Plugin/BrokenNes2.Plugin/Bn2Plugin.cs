@@ -79,7 +79,9 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
     public Bn2Plugin(FruityHost host, nint hostTag) : base(host, hostTag, Bn2Params.Build())
     {
+        for (int i = 0; i < 32; i++) pool.Push(new Voice());     // FL's voices are taken from here on the audio thread: made now, so a 9th or 20th note at once allocates nothing there (round 8 found 72 bytes per new peak of voices)
         EmulatorHub.Resolve(this);
+        TakeDeal();               // a recording's tracks given to the next new instances (Bn2Plugin.Record.cs): nothing happens unless the user armed it
     }
 
     /// <summary>What FL shows. (The DLL and its folder have the same name: FL finds a native plugin by its file name.)</summary>
@@ -347,6 +349,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             samplerRate = rate;
         }
         var s = sampler;
+        replayProbe?.Bind(s);                                   // (the self-test's replay probe, round 8: null otherwise)
         float vol = Get(P.Volume) / 1000f;
         for (int off = 0; off < length; off += Chunk)
         {
@@ -397,10 +400,12 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 v.Dsp = dv;
                 dspUsed[dv] = true;
                 v.Recipe = recipe;
+                replayProbe?.Mark(v.Handle, dv);
                 if (recipe != null) s.NoteOnRecipe(dv, recipe, SnesSampler.PitchFor(cents, recipe.Pitch), level);
-                else { int pitch = SnesSampler.PitchFor(cents); s.NoteOn(dv, instrument, pitch, level, level); }
+                else s.NoteOnCents(dv, instrument, cents, level, level);           // (an edited or preset sample's tuning is added to the cents before the one rounding: every register can be reached, round 8)
             }
-            else s.Update(v.Dsp, v.Recipe != null ? SnesSampler.PitchFor(cents, v.Recipe.Pitch) : SnesSampler.PitchFor(cents), level, level);
+            else if (v.Recipe != null) s.Update(v.Dsp, SnesSampler.PitchFor(cents, v.Recipe.Pitch), level, level);
+            else s.UpdateCents(v.Dsp, instrument, cents, level, level);
         }
     }
 
@@ -822,6 +827,15 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 stream.Write(&sngLen, 4);
                 fixed (byte* p = songSection) stream.Write(p, (uint)sngLen);
             }
+            // A recording of the game's music (Record/RecSection.cs): the session itself, so a reopened project transcribes it again; the emulator's first instance writes it.
+            if (a.Emulator?.CaptureRecordSection(this) is { } recordSection)
+            {
+                uint recMagic = Record.RecSection.Tag;
+                int recLen = recordSection.Length;
+                stream.Write(&recMagic, 4);
+                stream.Write(&recLen, 4);
+                fixed (byte* p = recordSection) stream.Write(p, (uint)recLen);
+            }
             // The whole machine of the game: a reopened project continues from where the game was, and every change made to the game stays (see GameState.cs).
             if (a.Emulator?.CaptureGameSection() is { } gameSection)
             {
@@ -870,6 +884,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         string? injectProblem = null;
         Music.SongSection? restoredSong = null;
         string? songProblem = null;
+        byte[]? restoredRecord = null;
         restoring = true;
         try
         {
@@ -964,6 +979,20 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                                 restoredSong = Music.SongSection.Read(sngBuf, out songProblem);
                             }
                         }
+                        else if (tag == Record.RecSection.Tag)
+                        {
+                            // a recording: read whole, checked and transcribed again on a worker (a damaged or newer one is refused with a note in the Record window, never half used)
+                            if (slen < Record.RecSection.HeaderBytes + 6 || slen > Record.RecSection.MaxBytes)
+                            {
+                                if (!(slen is >= 0 and <= GameStateSection.MaxRead && SkipSection(stream, slen))) break;
+                            }
+                            else
+                            {
+                                var recBuf = new byte[slen];
+                                fixed (byte* p = recBuf) if (!stream.Read(p, (uint)slen)) break;
+                                restoredRecord = recBuf;
+                            }
+                        }
                         else if (tag == GameStateSection.Tag)
                         {
                             if (slen < GameStateSection.HeaderSize || slen > GameStateSection.MaxRead) { gameProblem = "damaged"; break; }
@@ -1020,6 +1049,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             emu2.SetInstrumentNote(overlayProblem == null ? null : "The project's instrument edits were not restored: " + overlayProblem);
         }
         RestorePreset(presetSectionBytes, presetSectionProblem);
+        if (restoredRecord != null) emu2?.AdoptRecord(restoredRecord);         // (the first instance of the project that carries the recording gives it to the emulator)
     }
 
     /// <summary>Reads past a section this build does not know; false when the stream ends first.</summary>
@@ -1253,6 +1283,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             default:
                 if (id - Fpd.TestBase is >= 340 and < 360) return PresetTestHook(id - Fpd.TestBase, index, value);        // the presets (Bn2Plugin.Presets.cs)
                 if (id - Fpd.TestBase is >= 600 and < 620) return SongTestHook(id - Fpd.TestBase, index, value);          // Test MIDI export (Bn2Plugin.Song.cs)
+                if (id - Fpd.TestBase is >= 640 and < 670) return RecordTestHook(id - Fpd.TestBase, index, value);        // the recording (Bn2Plugin.Record.cs)
                 return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
     }

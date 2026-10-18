@@ -448,7 +448,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         if (aboutOpen) DrawAbout(dc);
         else if (inputsOpen) DrawInputs(dc);
         else if (corOpen) DrawCorruption(dc, emu);
-        else { corRows = []; if (midOpen) DrawMidi(dc, emu); }
+        else { corRows = []; if (midOpen) DrawMidi(dc, emu); else if (recOpen) DrawRecord(dc, emu); }
     }
 
     /// <summary>Instead of the channel strip while the game is frozen: <paramref name="kind"/> 0 silent (NES), 1 SNES instruments, 2 Game Boy channels, 3 a Sega game's sound chips.</summary>
@@ -479,7 +479,9 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         Txt(dc, "Nes2", R(x, 8, 200, 36), Win32.DT_LEFT | Mid, Accent, fontTitle);
         x += TextWidth(dc, "Nes2", fontTitle);
         Txt(dc, "one instance = one channel", R(x + 16, 8, 300, 36), Win32.DT_LEFT | Mid, Faint, fontSmall);
-        DrawMidiButton(dc, x + 16 + TextWidth(dc, "one instance = one channel", fontSmall) + 24);     // Test MIDI export (Bn2Editor.Song.cs)
+        int midiX = x + 16 + TextWidth(dc, "one instance = one channel", fontSmall) + 24;
+        DrawMidiButton(dc, midiX);                                                                    // Test MIDI export (Bn2Editor.Song.cs)
+        DrawRecordButton(dc, Math.Max(midiX, 330) + 156);                                             // Record (Bn2Editor.Record.cs)
 
         // About, and which emulator this instance sits on
         var about = R(Width - Margin - 74, 13, 74, 26);
@@ -1172,7 +1174,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         for (int i = 0; i < plugin.Params.Length; i++) Mix(plugin.Get(i));
         Mix(e?.Id ?? 0); Mix(a.Channel); Mix(a.Problem?.GetHashCode() ?? 0);
         Mix(hot); Mix(active); Mix(openId); Mix(openHover); Mix(openScroll); Mix(aboutOpen ? 1 + aboutScroll : 0); Mix(Environment.TickCount64 < resetFlashUntil ? 1 : 0);
-        Mix(UiSignature()); Mix(PresetSignature()); Mix(SongSignature());
+        Mix(UiSignature()); Mix(PresetSignature()); Mix(SongSignature()); Mix(RecordSignature());
         Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(Inputs.AllowOpposite ? 9 : 10); Mix(e?.Runaway == true ? 7 : 8);
         if (e != null)
         {
@@ -1392,6 +1394,8 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 else if (h.Id == IdCor) { corOpen = true; corScroll = 0; }
                 else if (h.Id == IdMid) midOpen = true;                                 // Test MIDI export (Bn2Editor.Song.cs)
                 else if (IsMidId(h.Id)) MidiClick(h.Id);
+                else if (h.Id == IdRec) { recOpen = true; recMessage = ""; }            // Record (Bn2Editor.Record.cs)
+                else if (IsRecId(h.Id)) RecordClick(h.Id);
                 else if (h.Id >= IdCorClose && h.Id < IdCorRow + CorVisible) CorruptionClick(h.Id);
                 else if (h.Id == IdInputsClose) { inputsOpen = false; captureIndex = -1; }
                 else if (h.Id == IdInputsKeyboard) { Inputs.KeyboardEnabled = !Inputs.KeyboardEnabled; Inputs.Save(); }
@@ -1454,6 +1458,8 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         {
             case Win32.WM_MOUSEMOVE:
             {
+                // a Record window's drag handle pressed, and the mouse moved with the button down: the file is dragged out (Bn2Editor.Record.cs)
+                if (dragArm != 0 && (wParam & 1) != 0 && (Math.Abs(x - dragX) > 4 || Math.Abs(y - dragY) > 4)) { int armed = dragArm; dragArm = 0; RecordDrag(armed); Refresh(); return; }
                 if (!trackingLeave)
                 {
                     var t = new TRACKMOUSEEVENT { cbSize = (uint)sizeof(TRACKMOUSEEVENT), dwFlags = Win32.TME_LEAVE, hwndTrack = Hwnd };
@@ -1471,9 +1477,10 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             case Win32.WM_LBUTTONDBLCLK:
             {
                 var h = HitAt(x, y);
-                if (aboutOpen || inputsOpen || corOpen || midOpen)
+                if (aboutOpen || inputsOpen || corOpen || midOpen || recOpen)
                 {
                     captureIndex = -1;                         // a click anywhere ends a rebinding that was waiting
+                    if (recOpen && !aboutOpen && !inputsOpen && !corOpen && !midOpen && h is { } dh && IsRecDragId(dh.Id)) { dragArm = dh.Id; dragX = x; dragY = y; Refresh(); return; }     // a drag handle: the drag starts when the mouse moves
                     if (h is { } mh) Activate(mh);             // a modal: only its own controls answer
                     Refresh();
                     return;
@@ -1497,13 +1504,14 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 break;
             }
             case Win32.WM_LBUTTONUP:
+                if (dragArm != 0) { int clicked = dragArm; dragArm = 0; RecordClick(clicked); }      // a drag handle clicked without a drag: the window says how to drag
                 UiUp();
                 if (active != 0) { active = 0; Win32.ReleaseCapture(); }
                 if (heldPad >= 0) { heldPad = -1; Win32.ReleaseCapture(); }
                 break;
             case Win32.WM_RBUTTONUP:
             {
-                if (aboutOpen || corOpen || midOpen) return;
+                if (aboutOpen || corOpen || midOpen || recOpen) return;
                 if (inputsOpen)
                 {
                     var ih = HitAt(x, y);
@@ -1525,6 +1533,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 if (aboutOpen) { aboutScroll = Math.Max(0, aboutScroll - delta * 48); break; }
                 if (inputsOpen || midOpen) break;
                 if (corOpen) { corScroll = Math.Clamp(corScroll - delta, 0, Math.Max(0, corRows.Count - CorVisible)); break; }
+                if (recOpen) { recScroll = Math.Max(0, recScroll - delta); break; }                     // the Record window's track list (clamped when drawn)
                 if (openId != 0)
                 {
                     int rows = Math.Min(openItems.Length, MaxRows);
@@ -1592,6 +1601,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         {
             case >= 400 and < 500: return UiTest(n, index, value);      // the tabs' hooks (Ui/Bn2Editor.Tabs.cs)
             case >= 620 and < 630: return SongTest(n, index, value);    // Test MIDI export's window (Bn2Editor.Song.cs)
+            case >= 670 and < 680: return RecordTest(n, index, value);  // the Record window (Bn2Editor.Record.cs)
             case 30:
                 foreach (var h in hits)
                     if (h.Id == index)

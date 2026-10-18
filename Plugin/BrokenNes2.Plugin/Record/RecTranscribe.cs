@@ -679,6 +679,9 @@ public static class RecTranscribe
         var f = tr.Facts;
         var s = tr.Session;
         f.Add($"{tr.Notes.Count:N0} notes on {tr.Tracks.Count} instrument{(tr.Tracks.Count == 1 ? "" : "s")} in {s.Seconds:0.0} s ({s.Count:N0} chip writes)");
+        if (tr.Notes.Count == 0)
+            f.Add((tr.NoteStats.KeyOns == 0 ? "no key-on: the game started no note while it was recorded" : $"no note to transcribe: the game's {tr.NoteStats.KeyOns} key-ons asked for no volume")
+                + (s.HeldAtStart > 0 ? $" ({s.HeldAtStart} voices were already sounding when Record began: press Record before the music starts, or record until its next notes)" : ""));
         f.Add(tr.Tempo.Found ? $"tempo {tr.Tempo.Describe()}: set FL's tempo to {60_000_000.0 / tr.Map[0].MicrosPerQuarter:0.###} BPM" : $"{tr.Tempo.Describe()}: the notes are at their real times at FL's tempo ({tr.FlTempoUsed:0.##} BPM); keep FL at that tempo");
         int pv = tr.PitchValues, pe = tr.PitchExact, shared = tr.Tracks.Sum(t => t.SharedValues), sharedV = tr.Tracks.Sum(t => t.SharedVolumes), trans = tr.Tracks.Sum(t => t.Transients);
         double worst = tr.Tracks.Count == 0 ? 0 : tr.Tracks.Max(t => t.MaxPitchError);

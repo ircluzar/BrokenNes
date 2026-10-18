@@ -306,9 +306,14 @@ internal sealed class SessionGame : IGame, IGameStems
         spcLog ??= new SpcWriteLog();
         spcLog.Attach(spc);                                  // the log starts from this unit's registers as they are now
         spcHooked = spc;
+        UnitChanged?.Invoke(spc);                            // (a recording in progress takes its copies from the new unit)
     }
 
     internal SpcWriteLog? SpcLog => spcLog;
+    /// <summary>The SNES sound unit the log listens to (null for every other game, or before the first frame).</summary>
+    internal NesEmulator.Snes.APU_SFC? SpcUnit { get { HookSpcLog(); return spcHooked; } }
+    /// <summary>Round 8 (record): told when the SNES sound unit is swapped for another (a sound-chip change), under the emulator's lock.</summary>
+    internal Action<NesEmulator.Snes.APU_SFC>? UnitChanged;
 
     /// <summary>Forgets what the sound driver did so far: from now on the log (and the recipes learned from it) are of the game as it is after a change made to the running machine.</summary>
     internal void RestartListening()
