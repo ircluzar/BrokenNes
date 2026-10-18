@@ -12,6 +12,8 @@ public static class Fpf
     public const int GetNoteInput = 1 << 4;
     public const int WantNewTick = 1 << 5;
     public const int NewVoiceParams = 1 << 21;
+    /// <summary>FPF_MIDIOut: "plugin will send MIDI out messages (only those will be enabled when rendering to a MIDI file)".</summary>
+    public const int MidiOut = 1 << 14;
     public const int TypeFullGen = Generator | GetNoteInput | NewVoiceParams;
 }
 
@@ -40,6 +42,8 @@ public static class Fhd
     /// <summary>FHD_EditorResized (fp_plugclass.h): "to notify the host that the editor (EditorHandle) has been resized". The plugin resizes its own editor
     /// window first, then calls Dispatcher(HostTag, EditorResized, 0, 0); FL then fits its frame around the editor window.</summary>
     public const int EditorResized = 2;
+    /// <summary>FHD_ActivateMIDI: "makes the host enable its MIDI output, useful when a MIDI out plugin is created".</summary>
+    public const int ActivateMidi = 4;
     public const int GetParamMenuEntry = 18;
 }
 
@@ -169,6 +173,15 @@ public unsafe readonly struct FruityHost(nint ptr)
     /// <summary>Slot 6: ask FL about a voice (colour, velocity...).</summary>
     public int VoiceProcessEvent(nint voiceTag, nint eventId, nint eventValue, nint flags) =>
         ((delegate* unmanaged<nint, nint, nint, nint, nint, int>)VTable[6])(ptr, voiceTag, eventId, eventValue, flags);
+
+    /// <summary>Slot 9: MIDIOut_Delayed, "delayed MIDI out message (see TMIDIOutMsg) (will be sent once the MIDI tick has reached the current mixer tick)". <paramref name="msg"/> is a
+    /// TMIDIOutMsg in an integer: Status | Data1 &lt;&lt; 8 | Data2 &lt;&lt; 16 | Port &lt;&lt; 24. Slots 7 and 8 (LockMix_Old, UnlockMix_Old) come before it.</summary>
+    public void MidiOutDelayed(nint sender, nint msg) =>
+        ((delegate* unmanaged<nint, nint, nint, void>)VTable[9])(ptr, sender, msg);
+
+    /// <summary>Slot 10: MIDIOut, "direct MIDI out message" (same packing as <see cref="MidiOutDelayed"/>).</summary>
+    public void MidiOut(nint sender, nint msg) =>
+        ((delegate* unmanaged<nint, nint, nint, void>)VTable[10])(ptr, sender, msg);
 }
 
 /// <summary>The COM IStream FL passes to SaveRestoreState (vtable: QueryInterface, AddRef, Release, Read, Write, ...).</summary>

@@ -175,11 +175,26 @@ public sealed class PresetStore
         return AddBytes(bytes, d);
     }
 
-    private StoreResult AddBytes(byte[] bytes, PresetData d)
+    /// <summary>Round 8 (record): a preset file made elsewhere (a recording's), in the folder of its source game and then <paramref name="subfolders"/> (each made safe as a file name). A file with the same bytes already
+    /// in the library is not added twice: its id is returned with Ok.</summary>
+    public StoreResult AddFile(byte[] bytes, PresetData d, params string[] subfolders)
+    {
+        lock (gate)
+        {
+            Refresh(force: true);
+            uint crc = PresetFile.Checksum(bytes);
+            var twin = entries.FirstOrDefault(e => e.Crc == crc && e.Size == bytes.Length && e.Problem == null);
+            if (twin != null) return new StoreResult(true, $"\"{d.Name}\" is already in the library ({twin.Id})", twin.Id);
+            return AddBytes(bytes, d, subfolders);
+        }
+    }
+
+    private StoreResult AddBytes(byte[] bytes, PresetData d, string[]? subfolders = null)
     {
         lock (gate)
         {
             string dir = Path.Combine(root, CategoryFolder(d.SourceGame));
+            foreach (var sub in subfolders ?? []) dir = Path.Combine(dir, SafeFileName(sub));
             string? path = WriteUnique(dir, d.Name, bytes, out string? why);
             if (path == null) return new StoreResult(false, "Could not write the preset: " + why);
             Refresh(force: true);

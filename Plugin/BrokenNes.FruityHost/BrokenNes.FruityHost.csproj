@@ -43,6 +43,8 @@
     <!-- Round 7 (midi): VRUN's converter (the copy the plugin carries), the template, the facts and the project section (pure code; the window and the emulator glue are tested through the DLL) -->
     <Compile Include="..\BrokenNes2.Plugin\Music\*.cs" LinkBase="Music" />
     <Compile Include="..\BrokenNes2.Plugin\Music\Vrun\*.cs" LinkBase="Music\Vrun" />
+    <!-- Round 8 (record): the recording session, the notes, the root notes, the tempo, the MIDI writer, the transcription and the project section (pure code; the window, the capture glue and the drag source are tested through the DLL) -->
+    <Compile Include="..\BrokenNes2.Plugin\Record\*.cs" LinkBase="Record" />
   </ItemGroup>
 
 </Project>

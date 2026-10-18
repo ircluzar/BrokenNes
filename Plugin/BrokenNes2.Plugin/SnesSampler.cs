@@ -70,7 +70,37 @@ internal sealed class SnesSampler
     /// <summary>The DSP pitch register for a note of a recipe: the pitch the game keyed the note on with is the root key (C5), and FL's pitch moves it from there.</summary>
     public static int PitchFor(double cents, int rootPitch) => Math.Clamp((int)Math.Round(rootPitch * Math.Pow(2.0, cents / 1200.0)), 1, 0x3FFF);
 
-    public void NoteOn(int voice, int srcn, int pitch, int volL, int volR)
+    /// <summary>The DSP pitch register for FL's pitch on a sample tuned by <paramref name="tuneCents"/> (an edit's or a preset's tuning): the tuning is added to the cents and the register rounded ONCE,
+    /// so every register value can be reached by some note and bend (round 8: a recording's notes replay the game's pitch register exactly). With no tuning it is <see cref="PitchFor(double)"/>.</summary>
+    public static int PitchForTuned(double cents, int tuneCents) => tuneCents == 0 ? PitchFor(cents) : PitchReg((cents + tuneCents) / 100.0);
+
+    /// <summary>The register a plain note of sample <paramref name="srcn"/> plays at for FL's pitch <paramref name="cents"/> on this snapshot (its tuning, if an edit or a preset gives it one, applied as <see cref="PitchForTuned"/> does).</summary>
+    public int PitchOf(int srcn, double cents)
+    {
+        var ov = snap.Overlay;
+        int oi = ov?.IndexOf(srcn) ?? -1;
+        return oi >= 0 && (ov!.At(oi).Flags & Instruments.SnesOverlay.HasTune) != 0 ? PitchForTuned(cents, ov.At(oi).Tune) : PitchFor(cents);
+    }
+
+    /// <summary>A plain note from FL's pitch in cents (what the plugin plays): the sample's tuning is applied before the register is rounded (<see cref="PitchForTuned"/>), its volume weights and flags as in <see cref="NoteOn"/>.</summary>
+    public void NoteOnCents(int voice, int srcn, double cents, int volL, int volR) => NoteOnCore(voice, srcn, PitchOf(srcn, cents), volL, volR, tuned: true);
+
+    /// <summary>A held plain note's new pitch (FL's cents) and level, as <see cref="NoteOnCents"/> plays them.</summary>
+    public void UpdateCents(int voice, int srcn, double cents, int volL, int volR)
+    {
+        if (macros[voice].R != null) { UpdateRecipe(voice, PitchFor(cents, macros[voice].R!.Pitch), volL); return; }
+        UpdateCore(voice, PitchOf(srcn, cents), volL, volR, tuned: true);
+    }
+
+    /// <summary>S-DSP samples this sampler has run (the clock of <see cref="Dsp"/>'s writes, for the round-8 replay probe).</summary>
+    internal long SamplesRun { get; private set; }
+
+    /// <summary>The sampler's own S-DSP (tests read its writes through <c>Dsp.WriteTap</c>).</summary>
+    internal DSP_SFC Dsp => dsp;
+
+    public void NoteOn(int voice, int srcn, int pitch, int volL, int volR) => NoteOnCore(voice, srcn, pitch, volL, volR, tuned: false);
+
+    private void NoteOnCore(int voice, int srcn, int pitch, int volL, int volR, bool tuned)
     {
         EndMacro(voice);
         var ov = snap.Overlay;
@@ -80,7 +110,7 @@ internal sealed class SnesSampler
             int oi = ov.IndexOf(srcn);
             voiceOverlay[voice] = oi;
             ApplyMix(voice, ov, oi);
-            if (oi >= 0) { pitch = ov.AdjustPitch(oi, pitch); volL = ov.AdjustVolume(oi, volL, false); volR = ov.AdjustVolume(oi, volR, true); }
+            if (oi >= 0) { if (!tuned) pitch = ov.AdjustPitch(oi, pitch); volL = ov.AdjustVolume(oi, volL, false); volR = ov.AdjustVolume(oi, volR, true); }
         }
         else SetFlags(voice, false, defaultEon != 0);               // a plain note on a voice that played a recipe: the plain flags again
         int r = voice * 16;
@@ -116,11 +146,17 @@ internal sealed class SnesSampler
     public void Update(int voice, int pitch, int volL, int volR)
     {
         if (macros[voice].R != null) { UpdateRecipe(voice, pitch, volL); return; }
+        UpdateCore(voice, pitch, volL, volR, tuned: false);
+    }
+
+    private void UpdateCore(int voice, int pitch, int volL, int volR, bool tuned)
+    {
         var ov = snap.Overlay;
         if (ov != null && voiceOverlay[voice] >= 0)
         {
             int oi = voiceOverlay[voice];
-            pitch = ov.AdjustPitch(oi, pitch); volL = ov.AdjustVolume(oi, volL, false); volR = ov.AdjustVolume(oi, volR, true);
+            if (!tuned) pitch = ov.AdjustPitch(oi, pitch);
+            volL = ov.AdjustVolume(oi, volL, false); volR = ov.AdjustVolume(oi, volR, true);
         }
         int r = voice * 16;
         dsp.Write(r, (byte)Math.Clamp(volL, -128, 127));
@@ -242,7 +278,7 @@ internal sealed class SnesSampler
     public void Render(Span<float> dest, int frames)
     {
         FlushKon();
-        while (left.Available < frames) { TickMacros(); dsp.RunSample(); }
+        while (left.Available < frames) { TickMacros(); dsp.RunSample(); SamplesRun++; }
         left.Read(tmpL.AsSpan(0, frames));
         right.Read(tmpR.AsSpan(0, frames));
         for (int i = 0; i < frames; i++) { dest[i * 2] = tmpL[i]; dest[i * 2 + 1] = tmpR[i]; }

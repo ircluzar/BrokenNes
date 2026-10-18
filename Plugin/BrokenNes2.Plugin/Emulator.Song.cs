@@ -285,6 +285,7 @@ public sealed partial class Emulator
     internal void TransportChanged(bool playing)
     {
         int before = Interlocked.Exchange(ref transport, playing ? 1 : 0);
+        RecordTransport(playing, before);         // a recording that starts or stops with FL's transport (Emulator.Record.cs; flags only)
         if (!SongUi.Follow || !songActive || MusicMutate.Has(MusicMutate.TransportIgnored)) return;
         if (playing && before != 1) RequestRestart();
         else if (!playing && before == 1) StopSong();

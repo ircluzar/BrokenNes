@@ -69,6 +69,8 @@ public sealed unsafe class HostSim : IDisposable
         v[4] = (delegate* unmanaged<nint, nint, void>)&VoiceRelease;
         v[5] = (delegate* unmanaged<nint, nint, int, void>)&VoiceKill;
         v[6] = (delegate* unmanaged<nint, nint, nint, nint, nint, int>)&VoiceProcessEvent;
+        v[9] = (delegate* unmanaged<nint, nint, nint, void>)&MidiOutDelayed;
+        v[10] = (delegate* unmanaged<nint, nint, nint, void>)&MidiOutDirect;
         vtable = v;
     }
 
@@ -177,6 +179,25 @@ public sealed unsafe class HostSim : IDisposable
             Fpv.GetLength => -1,
             _ => 0,
         };
+    }
+
+    /// <summary>MIDIOut_Delayed / MIDIOut calls from the plugin (round 8's live MIDI out): each TMIDIOutMsg (Status | Data1 &lt;&lt; 8 | Data2 &lt;&lt; 16 | Port &lt;&lt; 24) and whether it was the
+    /// delayed kind, in the order they came; kept while <see cref="Record"/> is on. <see cref="MidiOutSink"/> gets them too (a live host can route them).</summary>
+    public List<(uint Msg, bool Delayed)> MidiOutLog { get; } = new();
+    public Action<uint>? MidiOutSink { get; set; }
+
+    [UnmanagedCallersOnly]
+    private static void MidiOutDelayed(nint self, nint sender, nint msg) => OnMidiOut(self, msg, true);
+
+    [UnmanagedCallersOnly]
+    private static void MidiOutDirect(nint self, nint sender, nint msg) => OnMidiOut(self, msg, false);
+
+    private static void OnMidiOut(nint self, nint msg, bool delayed)
+    {
+        var h = Of(self);
+        if (h == null) return;
+        if (h.Record) lock (h.MidiOutLog) h.MidiOutLog.Add(((uint)msg, delayed));
+        try { h.MidiOutSink?.Invoke((uint)msg); } catch (Exception) { /* a host callback must never take the plugin down */ }
     }
 
     /// <summary>The mixer ends a voice itself (note off): Voice_Release to the plugin.</summary>

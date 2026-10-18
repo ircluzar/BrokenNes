@@ -34,6 +34,10 @@ public static class EmulatorHub
     /// <summary>The sample rate FL runs at (every instance gets the same one).</summary>
     public static int HostRate => Volatile.Read(ref hostRate);
 
+    private static double flTempo = 120;
+    /// <summary>FL's project tempo (BPM) as FL last told an instance (FPE_Tempo); 120 until it does. A recording with no tempo of its own is written at this tempo, so its notes keep their real times in FL.</summary>
+    public static double FlTempo { get => Volatile.Read(ref flTempo); set { if (value is > 10 and < 1000) Volatile.Write(ref flTempo, value); } }
+
     public static void SetHostRate(int rate)
     {
         if (rate <= 0 || rate == HostRate) return;

@@ -41,6 +41,12 @@ switch (args[0])
     case "midi-test":
         return MidiChecks.Main(args);
 
+    case "record-test":
+        return RecordChecks.Cli(args);
+
+    case "record-dump":
+        return RecordChecks.Dump(args);
+
     case "midi-trace":
         return MidiChecks.Trace(args);
 
@@ -165,6 +171,21 @@ switch (args[0])
             unsafe { fixed (float* f = buf) for (int b = 0; b < 48000 * 3 / 512; b++) { plugin.NewTick(); plugin.GenRender(f, 512); if (b % 4 == 0) Win32Host.Pump(8); } }
             if (args.Contains("--midi-close")) ClickId(2001);
             Win32Host.Pump(200);
+        }
+        // Record the music (round 8): --record seconds opens the window, records that long (the game running), stops, waits for the transcription; --live switches the live MIDI out on first
+        if (Opt(args, "--record") is { } recSeconds)
+        {
+            // (the recording's presets go into a scratch library, never the user's)
+            Environment.SetEnvironmentVariable("BROKENNES_PRESETS_DIR", Path.Combine(Path.GetTempPath(), "bn2_shot_presets_" + Environment.ProcessId));
+            ClickId(2020);
+            if (args.Contains("--live")) { ClickId(2031); var primedBy = Environment.TickCount64 + 20000; while (plugin.Test(681) == 3 && Environment.TickCount64 < primedBy) Win32Host.Pump(20); }
+            ClickId(2022);
+            unsafe { fixed (float* f = buf) for (int b = 0; b < (int)(double.Parse(recSeconds) * 48000 / 512); b++) { plugin.NewTick(); plugin.GenRender(f, 512); if (b % 4 == 0) Win32Host.Pump(8); } }
+            ClickId(2023);
+            var doneBy = Environment.TickCount64 + 120000;
+            unsafe { fixed (float* f = buf) while (plugin.Test(642) != 4 && Environment.TickCount64 < doneBy) { plugin.NewTick(); plugin.GenRender(f, 512); Win32Host.Pump(8); } }
+            Win32Host.Pump(300);
+            Console.WriteLine($"recording state {plugin.Test(642)}");
         }
         if (Opt(args, "--chars") is { } chars) { Win32Host.Text(plugin.EditorHandle, chars); Win32Host.Pump(100); }
         Win32Host.CaptureWindow(parent, plugin.EditorHandle, 920, 670, args[2]);
