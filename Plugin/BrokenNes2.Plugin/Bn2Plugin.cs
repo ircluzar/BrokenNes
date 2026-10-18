@@ -654,9 +654,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
         ref var fl = ref v.Params->FinalLevels;
         double cents = fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine);
-        double freq = 440.0 * Math.Pow(2.0, ((60.0 + cents / 100.0) - 69.0) / 12.0);
         double master = Get(P.Volume) / 1000.0;
-        int level = Math.Clamp((int)Math.Round(15 * fl.Vol * master), 0, 15);
+        int level = Record.NesDirect.Level(fl.Vol, master);      // (the arithmetic lives in Record/NesDirect.cs since round 8: a NES recording searches its bends and volumes with these very functions)
         bool retrigger = v.Fresh || !gate;
         v.Fresh = false;
 
@@ -666,8 +665,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             case Ch.Pulse2:
             {
                 int b = ch * 4;
-                int period = (int)Math.Round(CpuHz / (16.0 * freq) - 1.0);
-                if (period > 0x7FF) period = 0x7FF;
+                int period = Record.NesDirect.PulsePeriod(cents);
                 if (period < 8) level = 0;                       // the pulse channel mutes below period 8
                 period = Math.Max(period, 8);
                 W(c, b, (Get(P.Duty) << 6) | 0x30 | level);      // length halt + constant volume
@@ -684,8 +682,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             }
             case Ch.Triangle:
             {
-                int period = (int)Math.Round(CpuHz / (32.0 * freq) - 1.0);
-                period = Math.Clamp(period, 2, 0x7FF);
+                int period = Record.NesDirect.TrianglePeriod(cents);
                 W(c, 8, level > 0 ? 0xFF : 0x80);                // the triangle has no volume: on or off
                 int hi = (period >> 8) & 7, lo = period & 0xFF;
                 if (retrigger || hi != ((curPeriod >> 8) & 7))
@@ -700,8 +697,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             default:
             {
                 // Noise has 16 fixed pitches: higher notes pick a shorter period. Bends step through them.
-                double semis = 60.0 + cents / 100.0;
-                int idx = Math.Clamp(15 - (int)Math.Floor((semis - 24.0) / 3.0), 0, 15);
+                int idx = Record.NesDirect.NoiseIndex(cents);
                 W(c, 0x0C, 0x30 | level);
                 W(c, 0x0E, (Get(P.NoiseMode) << 7) | idx);
                 if (retrigger) c.Write(0x0F, 0xF8);

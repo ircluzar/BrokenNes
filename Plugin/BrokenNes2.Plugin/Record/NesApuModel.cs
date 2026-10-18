@@ -103,23 +103,75 @@ public sealed class NesApuModel
 
     public const int StateVersion = 1, StateInts = 80;
 
-    public int[] Save()
+    /// <summary>The saved form of APU_FIX's state, written straight from its probe into <paramref name="dest"/> (allocation-free: the capture calls it on the audio thread). The same layout as
+    /// <see cref="Save"/> of the model <see cref="From"/> makes (the `model` check holds the two to each other).</summary>
+    public static void Fill(in APU_FIX.ApuControlSnapshot c, int[] dest)
     {
-        var s = new int[StateInts];
         int k = 0;
-        s[k++] = StateVersion;
-        foreach (var p in new[] { P1, P2 })
-        {
-            s[k++] = p.Duty; s[k++] = B(p.Halt); s[k++] = B(p.Const); s[k++] = p.Vol; s[k++] = p.SweepRaw; s[k++] = p.SweepPeriod; s[k++] = B(p.SweepNegate); s[k++] = p.SweepShift; s[k++] = B(p.SweepReload); s[k++] = p.SweepDivider;
-            s[k++] = p.Timer; s[k++] = p.LengthIdx; s[k++] = p.Length; s[k++] = B(p.Enabled); s[k++] = B(p.EnvStart); s[k++] = p.EnvDivider; s[k++] = p.EnvDecay;
-        }
+        dest[k++] = StateVersion;
+        dest[k++] = c.P1Duty; dest[k++] = B(c.P1Halt); dest[k++] = B(c.P1Const); dest[k++] = c.P1Vol; dest[k++] = c.P1SweepRaw; dest[k++] = c.P1SweepPeriod; dest[k++] = B(c.P1SweepNegate); dest[k++] = c.P1SweepShift; dest[k++] = B(c.P1SweepReload); dest[k++] = c.P1SweepDivider;
+        dest[k++] = c.P1Timer; dest[k++] = c.P1LengthIdx; dest[k++] = c.P1Length; dest[k++] = B(c.P1Enabled); dest[k++] = B(c.P1EnvStart); dest[k++] = c.P1EnvDivider; dest[k++] = c.P1EnvDecay;
+        dest[k++] = c.P2Duty; dest[k++] = B(c.P2Halt); dest[k++] = B(c.P2Const); dest[k++] = c.P2Vol; dest[k++] = c.P2SweepRaw; dest[k++] = c.P2SweepPeriod; dest[k++] = B(c.P2SweepNegate); dest[k++] = c.P2SweepShift; dest[k++] = B(c.P2SweepReload); dest[k++] = c.P2SweepDivider;
+        dest[k++] = c.P2Timer; dest[k++] = c.P2LengthIdx; dest[k++] = c.P2Length; dest[k++] = B(c.P2Enabled); dest[k++] = B(c.P2EnvStart); dest[k++] = c.P2EnvDivider; dest[k++] = c.P2EnvDecay;
+        dest[k++] = c.TLinearReg; dest[k++] = B(c.THalt); dest[k++] = c.TTimer; dest[k++] = c.TLengthIdx; dest[k++] = c.TLength; dest[k++] = B(c.TEnabled); dest[k++] = c.TLinear; dest[k++] = B(c.TLinearReload);
+        dest[k++] = B(c.NHalt); dest[k++] = B(c.NConst); dest[k++] = c.NVol; dest[k++] = c.NPeriodReg; dest[k++] = c.NLengthIdx; dest[k++] = c.NLength; dest[k++] = B(c.NEnabled); dest[k++] = B(c.NEnvStart); dest[k++] = c.NEnvDivider; dest[k++] = c.NEnvDecay;
+        dest[k++] = c.DmcCtrl; dest[k++] = c.DmcLoad; dest[k++] = c.DmcAddrReg; dest[k++] = c.DmcLenReg; dest[k++] = B(c.DmcEnabled); dest[k++] = c.Status;
+        dest[k++] = c.DmcRemaining > 0 ? c.DmcRemaining : 0; dest[k++] = c.DmcRemaining > 0 ? (int)Math.Min(int.MaxValue, (long)c.DmcRemaining * 8 * DmcRates[c.DmcCtrl & 15]) : -1;
+        dest[k++] = c.FrameCycle; dest[k++] = c.FrameStep; dest[k++] = c.NextFrameEvent; dest[k++] = B(c.FrameMode5); dest[k++] = B(c.FrameIrqInhibit);
+        while (k < dest.Length) dest[k++] = 0;
+    }
+
+    /// <summary>The saved form of a chip that has no state probe (another core than FIX): a chip at power-on given the registers the game last wrote ($4015, then $4000-$4013, then $4017), so the
+    /// notes already sounding begin as if just struck. Approximate, and said so (<see cref="NesSession.BaseExact"/>).</summary>
+    public static void FillFromLatch(byte[] latch, uint written, int[] dest, NesApuModel scratch)
+    {
+        var m = scratch;
+        m.Reset();
+        if ((written >> 0x15 & 1) != 0) m.Write(0x15, latch[0x15]);
+        for (int r = 0; r < 0x14; r++) if ((written >> r & 1) != 0) m.Write(r, latch[r]);
+        if ((written >> 0x17 & 1) != 0) m.Write(0x17, latch[0x17]);
+        m.SaveInto(dest);
+    }
+
+    public int[] Save() { var s = new int[StateInts]; SaveInto(s); return s; }
+
+    /// <summary>The saved form into <paramref name="s"/> (<see cref="StateInts"/> long). Allocation-free.</summary>
+    public void SaveInto(int[] s)
+    {
+        int k = 1;
+        s[0] = StateVersion;
+        SavePulse(P1, s, ref k);
+        SavePulse(P2, s, ref k);
         s[k++] = T.LinearReg; s[k++] = B(T.Halt); s[k++] = T.Timer; s[k++] = T.LengthIdx; s[k++] = T.Length; s[k++] = B(T.Enabled); s[k++] = T.Linear; s[k++] = B(T.LinearReload);
         s[k++] = B(N.Halt); s[k++] = B(N.Const); s[k++] = N.Vol; s[k++] = N.PeriodReg; s[k++] = N.LengthIdx; s[k++] = N.Length; s[k++] = B(N.Enabled); s[k++] = B(N.EnvStart); s[k++] = N.EnvDivider; s[k++] = N.EnvDecay;
         s[k++] = DmcCtrl; s[k++] = DmcLoad; s[k++] = DmcAddrReg; s[k++] = DmcLenReg; s[k++] = B(DmcEnabled); s[k++] = Status; s[k++] = DmcBytes; s[k++] = DmcEnd >= 0 ? (int)Math.Clamp(DmcEnd - Clock, 0, int.MaxValue) : -1;       // (cycles until the sample in progress runs out, from the state's own clock)
         s[k++] = FrameCycle; s[k++] = FrameStep; s[k++] = NextEvent; s[k++] = B(Mode5); s[k++] = B(IrqInhibit);
-        return s;
+        while (k < s.Length) s[k++] = 0;
+    }
 
-        static int B(bool b) => b ? 1 : 0;
+    private static void SavePulse(Pulse p, int[] s, ref int k)
+    {
+        s[k++] = p.Duty; s[k++] = B(p.Halt); s[k++] = B(p.Const); s[k++] = p.Vol; s[k++] = p.SweepRaw; s[k++] = p.SweepPeriod; s[k++] = B(p.SweepNegate); s[k++] = p.SweepShift; s[k++] = B(p.SweepReload); s[k++] = p.SweepDivider;
+        s[k++] = p.Timer; s[k++] = p.LengthIdx; s[k++] = p.Length; s[k++] = B(p.Enabled); s[k++] = B(p.EnvStart); s[k++] = p.EnvDivider; s[k++] = p.EnvDecay;
+    }
+
+    private static int B(bool b) => b ? 1 : 0;
+
+    private static void ResetPulse(Pulse p)
+    {
+        p.Duty = p.Vol = p.SweepRaw = p.SweepShift = p.SweepDivider = p.Timer = p.LengthIdx = p.Length = p.EnvDivider = p.EnvDecay = 0;
+        p.SweepPeriod = 1; p.Halt = p.Const = p.SweepNegate = p.SweepReload = p.Enabled = p.EnvStart = false;
+    }
+
+    /// <summary>Back to power-on (APU_FIX's initial values), keeping the object (the capture reuses one on the audio thread).</summary>
+    public void Reset()
+    {
+        ResetPulse(P1);
+        ResetPulse(P2);
+        T.LinearReg = T.Timer = T.LengthIdx = T.Length = T.Linear = 0; T.Halt = T.Enabled = T.LinearReload = false;
+        N.Vol = N.PeriodReg = N.LengthIdx = N.Length = N.EnvDivider = N.EnvDecay = 0; N.Halt = N.Const = N.Enabled = N.EnvStart = false;
+        DmcCtrl = DmcLoad = DmcAddrReg = DmcLenReg = Status = DmcBytes = 0; DmcEnabled = false; DmcStart = DmcEnd = -1;
+        FrameCycle = FrameStep = 0; NextEvent = 7457; Mode5 = IrqInhibit = false; Clock = 0; LastTick = 0;
     }
 
     /// <summary>The model a saved state describes, at clock 0; null when the ints are not one (every value range-checked: a damaged recording must be refused, never half trusted).</summary>

@@ -13,6 +13,20 @@ namespace BrokenNes2.Presets;
 public static class PresetNote
 {
     public const int SnesRecipes = 1;
+    /// <summary>Version 3 (round 8, record-nes): a NES track recorded from a game. Its bytes: u8 format (1), u8 flags (0). The preset plays FL's notes the way Direct mode does (velocity x controller 7 is the
+    /// chip's volume register, constant volume, no sweep, the pitch through NesDirect) with the preset's duty or noise mode, so a recording's notes write the game's registers back.</summary>
+    public const int NesTrack = 3;
+
+    /// <summary>Marks a NES preset (not the DMC) as a recorded track (version 3).</summary>
+    public static void AttachNesTrack(PresetData d)
+    {
+        if (d.Console != ConsoleId.Nes) return;
+        d.NoteVersion = NesTrack;
+        d.NoteBehaviour = [1, 0];
+    }
+
+    /// <summary>Whether a preset carries the recorded-track behaviour this code plays (version 3, format 1, a NES pulse, triangle or noise).</summary>
+    public static bool IsNesTrack(PresetData d) => d.NoteVersion == NesTrack && d.Console == ConsoleId.Nes && d.NoteBehaviour.Length == 2 && d.NoteBehaviour[0] == 1 && d.NoteBehaviour[1] == 0;
 
     /// <summary>Whether a recipe plays on a preset of sample <paramref name="slot"/> alone: it keys that sample and every sample change in its macro is to that sample.</summary>
     public static bool PlaysOn(SpcRecipe r, int slot)
@@ -49,8 +63,14 @@ public static class PresetNote
             if (list == null || list.Length == 0) return "damaged (the game's note behaviour is not a recipe list)";
             if (list.Any(r => !PlaysOn(r, d.Index) && !PresetMutants.On(PresetMutants.NoteNotChecked))) return "damaged (the note behaviour is for another sample)";
         }
+        if (d.NoteVersion == NesTrack)
+        {
+            if (d.Console != ConsoleId.Nes) return "damaged (a NES track's note behaviour in a preset of another console)";
+            if (d.NoteBehaviour.Length != 2 || d.NoteBehaviour[0] != 1 || d.NoteBehaviour[1] != 0) return "damaged (a NES track's note behaviour)";
+            if (d.Kind == InstrumentKind.NesDmc) return "damaged (a NES track's note behaviour on a DMC instrument)";
+        }
         return null;
     }
 
-    public static string Describe(PresetData d) => d.NoteVersion == 0 ? "" : SnesList(d) is { } l ? $"{l.Length} game voice{(l.Length == 1 ? "" : "s")}" : "note behaviour this version cannot play";
+    public static string Describe(PresetData d) => d.NoteVersion == 0 ? "" : SnesList(d) is { } l ? $"{l.Length} game voice{(l.Length == 1 ? "" : "s")}" : IsNesTrack(d) ? "a recorded track (volume from the notes)" : "note behaviour this version cannot play";
 }
