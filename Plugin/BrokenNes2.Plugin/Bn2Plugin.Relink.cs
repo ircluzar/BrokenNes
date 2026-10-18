@@ -173,7 +173,9 @@ public sealed unsafe partial class Bn2Plugin
         if (!waiting || name == null) return;
         if (RecMutants.On(RecMutants.NameIgnored)) return;                                   // (the self-test's deliberate bug: the name never takes a track)
         var (slot, why) = TrackOffers.FindByName(name);
-        if (slot == null) { if (nameNote != why) { nameNote = why; TrackOffers.Changed(); } return; }
+        if (slot == null && name.StartsWith(DisplayName, StringComparison.OrdinalIgnoreCase))
+            why = "FL named the channel after the plugin: its \"Auto name channels\" option (Options > General settings) renames a replaced channel; untick it before replacing to keep the imported track names";
+        if (slot == null) { if (nameNote != why) { nameNote = why; TrackOffers.Changed(); HostLog.Text(InstanceNo, $"the name \"{name}\" takes no track: {why}"); } return; }
         int was = link;
         if (PickTrack(slot, TrackBinding.ByName) is { } refused)
         {

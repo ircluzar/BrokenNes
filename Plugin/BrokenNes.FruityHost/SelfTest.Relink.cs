@@ -203,8 +203,14 @@ public sealed unsafe partial class SelfTest
             t.Expect(r5.Test(HkNameGot) == -1 && r5.Test(HkRole) == 3 && hs5.ContextInfoCalls > 0, $"a host that answers the name call with a number: name {r5.Test(HkNameGot)} (-1: none taken), role {r5.Test(HkRole)}");
             Step("a replacing channel whose host answers the name call with a number", "6 channels joined, 1 found its track; 2 not linked");
             // FL's Replace may put the new instance on the recording's own emulator (Emulator = Auto takes the first emulator with a free channel: the game's): it is not the recording's channel, it joins
-            var r6 = Make(); r6.SetParam(PEmulator, 6);
+            // (and FL renamed it after the plugin, as FL's "Auto name channels" does on Replace: no track has that name, and the window says why)
+            var hs6 = new HostSim { TrackName = "BrokenNes2" }; hosts.Add(hs6);
+            var r6 = lib.Create(hs6); made.Add(r6); r6.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+            r6.SetParam(PEmulator, 6);
+            r6.Dispatcher(Fpd.PluginLoaded);
             t.Expect(r6.Test(16) == p.Test(16) && r6.Test(HkRole) == 3, $"a replacing channel on the recording's emulator (#{r6.Test(16)}, the recording's is #{p.Test(16)}): role {r6.Test(HkRole)} ({DllText(r6, HkLinkNote)})");
+            string r6Line = LongText(r6, HkChannelList);
+            t.Expect(r6Line.Contains($"#{r6.Test(HkInstanceNo)} \"BrokenNes2\": waiting for its first note (FL named the channel after the plugin: its \"Auto name channels\" option"), $"a channel FL named after the plugin: the window's list says '{r6Line}'");
             Step("a replacing channel that landed on the recording's own emulator", "7 channels joined, 1 found its track; 2 not linked");
             // a project state that is clearly the user's own (it holds a preset): it leaves
             byte[] withTrack = r4.SaveState();
