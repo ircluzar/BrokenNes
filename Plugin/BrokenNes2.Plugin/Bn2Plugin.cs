@@ -35,6 +35,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         public bool Silenced;         // it lost its slot to a newer note: silent until released
         public float PitchMin, PitchMax;   // how far FL moved its pitch while it sounded (the host log: did FL keep the MIDI file's bends?)
         public int Note;              // its number among the instance's notes
+        public int TrackKey = -1;     // a track channel playing the recording's expression: the track's key for this note (-1: FL's own pitch and volume)
+        public float TrackVel;        // FL's velocity at its key-on (0..1)
     }
 
     private readonly List<Voice> voices = new(32);
@@ -206,8 +208,10 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         v.Slot = -1; v.Instr = -1; v.Silenced = false;
         v.PitchMin = v.PitchMax = p->InitLevels.Pitch;
         v.Note = notesSeen + 1;
+        v.TrackKey = -1;
         voices.Add(v);
         if (!configured || HostLog.On) MatchNote(v);       // an untouched instance recognises its track from this note, before it sounds (Bn2Plugin.Tracks.cs)
+        if (configured && expression != null) ExpressionNoteOn(v);   // a channel that plays a track: the track's key and expression for this note
         return v.Handle;
     }
 
@@ -251,6 +255,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     public override void Render(float* dest, int length)
     {
         ownSamples += length;
+        renderLength = length;
         RenderCore(dest, length);
         if (audition != null) MixAudition(dest, length);        // a preset auditioned from the Presets tab sounds over whatever this instance plays (Bn2Plugin.Presets.cs)
     }
@@ -364,10 +369,13 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         var s = sampler;
         replayProbe?.Bind(s);                                   // (the self-test's replay probe, round 8: null otherwise)
         float vol = Get(P.Volume) / 1000f;
+        // a channel playing a track's expression: where in the track this block starts (one question to FL per block)
+        if (expression != null && exprOn) { exprBlockBeat = TrackBeatNow(); exprBeatsPerSample = EmulatorHub.FlTempo / 60.0 / Math.Max(1, EmulatorHub.HostRate); }
+        else exprBlockBeat = double.NaN;
         for (int off = 0; off < length; off += Chunk)
         {
             int n = Math.Min(Chunk, length - off);
-            UpdateSamplerVoices(s, instrument);
+            UpdateSamplerVoices(s, instrument, off);
             s.Render(stereo.AsSpan(0, n * 2), n);
             for (int i = 0; i < n; i++)
             {
@@ -379,8 +387,10 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
     /// <summary>The control-rate step of sampler mode: each FL voice owns one S-DSP voice (eight, so eight notes at once; the oldest is taken
     /// over for a ninth), with pitch and volume re-read from FL's live values like in Direct mode, so slides and bends work.</summary>
-    private void UpdateSamplerVoices(SnesSampler s, int forcedInstrument = -1)
+    private void UpdateSamplerVoices(SnesSampler s, int forcedInstrument = -1, int offset = 0)
     {
+        var ex = expression;
+        double exBeat = ex != null && exprOn ? exprBlockBeat + offset * exprBeatsPerSample : double.NaN;
         int param = forcedInstrument >= 0 ? forcedInstrument : Get(P.Instrument);       // (a preset plays its own sample; Runaway plays the one the Instrument parameter names)
         int instrument = samplerFor?.Resolve(param) ?? param;
         bool hasSample = samplerFor?.HasSample(instrument) ?? false;   // an empty slot of the game's sample table plays nothing (the DSP would wander through other data)
@@ -404,6 +414,12 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             if (fl.Pitch > v.PitchMax) v.PitchMax = fl.Pitch;
             double cents = fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine);
             int level = Math.Clamp((int)Math.Round(127 * fl.Vol), 0, 127);
+            if (v.TrackKey >= 0 && !double.IsNaN(exBeat))
+            {
+                // the recording's own pitch bend and controller 7 at this point of the track (FL's import does not bring them as the file has them): exact as the transcription made them
+                cents = ex!.PitchCents(v.TrackKey, exBeat) + Get(P.Coarse) * 100 + Get(P.Fine);
+                level = Math.Clamp((int)Math.Round(127 * (float)(v.TrackVel * ex.CcAt(exBeat) / 100.0)), 0, 127);
+            }
             if (v.Dsp < 0)
             {
                 if (recipe == null && !hasSample) continue;
@@ -943,7 +959,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                         uint tag = 0; int slen = 0;
                         if (!stream.Read(&tag, 4) || !stream.Read(&slen, 4)) break;
                         seen?.Add($"{Encoding.ASCII.GetString(BitConverter.GetBytes(tag))} {slen} bytes");
-                        if (tag == TrackTag && slen is >= 25 and <= 1024)
+                        if (tag == TrackTag && slen is >= 25 and <= 16 << 20)
                         {
                             var trkBuf = new byte[slen];
                             fixed (byte* p = trkBuf) if (!stream.Read(p, (uint)slen)) break;
@@ -1090,13 +1106,13 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         RestorePreset(presetSectionBytes, presetSectionProblem);
         if (restoredRecord != null) emu2?.AdoptRecord(restoredRecord);         // (the first instance of the project that carries the recording gives it to the emulator)
         // whether this state configured the instance (then it is never matched to a track) or left it untouched (FL's empty or default state, a fresh instance's own state)
-        var restoredTrack = trackBytes == null ? null : ReadTrackSection(trackBytes);
+        var restoredTrack = trackBytes == null ? (null, null, false) : ReadTrackSection(trackBytes);
         bool untouched = RestoredDefault(presetSectionBytes != null, trackBytes != null);
         if (!untouched) MarkConfigured("a project state with its own values" + (presetSectionBytes != null ? ", a preset" : "") + (trackBytes != null ? ", a track" : ""));
         RestoreTrack(restoredTrack);
         if (HostLog.On)
             HostLog.Text(InstanceNo, $"state restored: values [{string.Join(",", Values)}], ROM path {(romPath ?? "").Length} chars, place emulator #{hintEmu} channel {hintCh}; sections: {(seen is { Count: > 0 } ? string.Join("; ", seen) : "none")}; "
-                + (untouched ? "default for this instance: it stays untouched" : "it configured the instance") + (restoredTrack != null ? "; plays " + restoredTrack.Describe() : ""));
+                + (untouched ? "default for this instance: it stays untouched" : "it configured the instance") + (restoredTrack.Binding != null ? "; plays " + restoredTrack.Binding.Describe() + (restoredTrack.On ? ", bends and volume from the recording" : "") : ""));
     }
 
     /// <summary>Reads past a section this build does not know; false when the stream ends first.</summary>

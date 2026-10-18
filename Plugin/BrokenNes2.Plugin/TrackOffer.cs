@@ -21,6 +21,7 @@ internal sealed class TrackSlot
 {
     public required TrackInfo Info;
     public required RecordHeld Held;
+    public required TrackExpression Expression;
     public LoadedPreset? Preset;
     public string? Problem;
     public TrackEngine? Ready;
@@ -43,6 +44,22 @@ internal static class TrackOffers
     private static long version;
     private static int tracksEmulator;
 
+    private static volatile bool expressionFromRecording = Prefs.GetInt("TrackExpression", 1) == 1;
+
+    /// <summary>Whether channels that play a track take its pitch bends and volume from the recording (by song position) rather than from FL (whose MIDI import loses controller 7 and
+    /// reads bends at 2 semitones): the default for a channel when it takes a track; remembered.</summary>
+    public static bool ExpressionFromRecording => expressionFromRecording;
+
+    /// <summary>Sets it for the channels that play a track now and for those to come (UI thread).</summary>
+    public static void SetExpression(bool on)
+    {
+        expressionFromRecording = on;
+        Prefs.SetInt("TrackExpression", on ? 1 : 0);
+        Bn2Plugin[] list;
+        lock (gate) list = instances.ToArray();
+        foreach (var p in list) p.SetTrackExpression(on);
+    }
+
     /// <summary>The number of instances made when the last offer was made (only the self-test's deliberate bug "late instances ignored" reads it).</summary>
     public static int OfferedAfterInstance;
 
@@ -64,7 +81,7 @@ internal static class TrackOffers
         {
             var t = held.Tr.Tracks[k];
             var info = new TrackInfo { Index = k, Name = t.Name, Channel = t.Channel, BendRange = t.BendRange, NoteCount = t.Notes.Count, PresetFile = t.PresetFile };
-            var slot = new TrackSlot { Info = info, Held = held };
+            var slot = new TrackSlot { Info = info, Held = held, Expression = TrackExpression.Of(t) };
             if (t.PresetFile == null) slot.Problem = t.PresetProblem ?? "the track has no preset";
             else
             {

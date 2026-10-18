@@ -11,7 +11,7 @@ namespace BrokenNes2;
 public sealed unsafe partial class Bn2Editor
 {
     public const int IdRec = 2020, IdRecClose = 2021, IdRecStart = 2022, IdRecStop = 2023, IdRecSave = 2024, IdRecPresets = 2025, IdRecDeal = 2026,
-        IdRecOptStart = 2027, IdRecOptStop = 2028, IdRecOptLanes = 2029, IdRecDragAll = 2030, IdRecLive = 2031, IdRecPortDown = 2032, IdRecPortUp = 2033, IdRecLog = 2034,
+        IdRecOptStart = 2027, IdRecOptStop = 2028, IdRecOptLanes = 2029, IdRecDragAll = 2030, IdRecLive = 2031, IdRecPortDown = 2032, IdRecPortUp = 2033, IdRecLog = 2034, IdRecExpr = 2035,
         IdRecTrack = 2040, IdRecHere = 2050;          // + visible track row 0..RecRows-1 (the row's drag handle, its "Play here")
     private const int RecW = 820, RecH = 624, RecRows = 5;
 
@@ -104,7 +104,8 @@ public sealed unsafe partial class Bn2Editor
         }
 
         // this channel: which track it plays, or how it will find it
-        Txt(dc, plugin.TrackStatus(), R(lx, box.Top + 314, iw, 24), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, plugin.Binding != null ? Good : Text, fontSmall);
+        Txt(dc, plugin.TrackStatus(), R(lx, box.Top + 314, iw - 300, 24), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, plugin.Binding != null ? Good : Text, fontSmall);
+        Check(dc, IdRecExpr, "Bends + volume from the recording", lx + iw - 290, box.Top + 317, TrackOffers.ExpressionFromRecording, null, labelW: 260, hitW: 290);
 
         // the tracks: each row is a drag handle for its own MIDI file (drop it on a channel's piano roll in FL); "Play here" gives that track to this channel by hand
         y = box.Top + 342;
@@ -210,6 +211,10 @@ public sealed unsafe partial class Bn2Editor
                 else { var (ok, msg) = emu.OfferTracks(); Say(msg, ok); }
                 break;
             }
+            case IdRecExpr:
+                TrackOffers.SetExpression(!TrackOffers.ExpressionFromRecording);
+                Say(TrackOffers.ExpressionFromRecording ? "Channels that play a track take its pitch bends and volume from the recording, at the song position (FL's MIDI import loses controller 7 and reads bends at 2 semitones)." : "Channels that play a track follow FL's own pitch and volume (the channel's events, which you can edit).", true);
+                break;
             case IdRecLog:
                 HostLog.Set(!HostLog.On);
                 Say(HostLog.On ? $"Logging what FL sends to BrokenNes2 (every new channel's first calls, notes and song positions) into {HostLog.FilePath}. It stays on when FL restarts; untick it when done and send the file." : "The log is off.", true);
@@ -272,7 +277,7 @@ public sealed unsafe partial class Bn2Editor
         var offer = TrackOffers.Current;
         h = h * 31 + (offer?.Version ?? 0);
         if (recOpen && offer != null) foreach (var s in offer.Slots) h = h * 31 + s.Playing;
-        h = h * 31 + (plugin.Binding?.Track ?? -1) + plugin.Matcher.Notes * 7 + (HostLog.On ? 3 : 5);
+        h = h * 31 + (plugin.Binding?.Track ?? -1) + plugin.Matcher.Notes * 7 + (HostLog.On ? 3 : 5) + (TrackOffers.ExpressionFromRecording ? 11 : 13);
         if (e == null) return h;
         var u = e.RecordUi;
         h = h * 31 + u.State; h = h * 31 + u.ResultStamp; h = h * 31 + u.Status.GetHashCode();

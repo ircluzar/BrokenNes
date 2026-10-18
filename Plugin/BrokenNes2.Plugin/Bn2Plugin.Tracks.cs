@@ -35,6 +35,37 @@ public sealed unsafe partial class Bn2Plugin
     private volatile string? trackNote;          // what the window says about this instance's track (a settle refused, an engine missing)
     private long ownSamples, engineWaits;
     private int notesSeen;
+    // the track's own pitch bends and volume (by song position) instead of FL's: see TrackExpression
+    private volatile TrackExpression? expression;
+    private volatile bool exprOn;
+    private double exprOffset, exprBlockBeat = double.NaN, exprBeatsPerSample;
+    private bool exprOwnClock;
+    private int renderLength;
+
+    /// <summary>The window's "bends and volume from the recording" for this channel (UI thread).</summary>
+    internal void SetTrackExpression(bool on) { if (expression != null) exprOn = on; }
+    internal bool TrackExpressionOn => expression != null && exprOn;
+
+    /// <summary>The track's beat now (the start of the block being rendered), from FL's song position or the instance's own clock as the track was found; NaN when there is none.</summary>
+    private double TrackBeatNow()
+    {
+        double t = exprOwnClock
+            ? (ownSamples - renderLength) / (double)Math.Max(1, EmulatorHub.HostRate) * EmulatorHub.FlTempo / 60.0
+            : SongBeats(0);
+        return t - exprOffset;
+    }
+
+    /// <summary>A note of a channel that plays a track's expression: its key is the track's note at that time (FL's own pitch may hold an imported bend), its velocity FL's at the key-on.</summary>
+    private void ExpressionNoteOn(Voice v)
+    {
+        v.TrackKey = -1;
+        var ex = expression;
+        if (ex == null || !exprOn || RecMutants.On(RecMutants.ExpressionIgnored)) return;
+        double beat = TrackBeatNow();
+        if (double.IsNaN(beat)) return;
+        v.TrackKey = ex.KeyAt(beat, v.Params->InitLevels.Pitch, TrackIndex.Tolerance);
+        v.TrackVel = v.Params->InitLevels.Vol;
+    }
     internal readonly int InstanceNo = HostLog.NextInstance();
 
     /// <summary>The track this instance plays, or null.</summary>
@@ -110,6 +141,7 @@ public sealed unsafe partial class Bn2Plugin
         matcher.Feed(snap!.Index, v.Params->InitLevels.Pitch, pos, own, color);
         if (RecMutants.On(RecMutants.BindAfterFirstNote) && notesSeen == 1) { pendingLateBind = matcher.Bound; return; }      // (the self-test's deliberate bug: the first note is played before the track is taken)
         if (matcher.Bound != before || (matcher.Bound >= 0 && boundIndex != matcher.Bound)) { if (matcher.Bound < 0) Unbind(); else Bind(snap, matcher.Bound); }
+        if (matcher.Bound >= 0) { exprOffset = matcher.Offset; exprOwnClock = matcher.OwnClock; ExpressionNoteOn(v); }
         if (matcher.Settled && bindState == 1) Volatile.Write(ref settleWanted, 1);
         if (log) HostLog.Add(HostLog.KindMatch, InstanceNo, notesSeen, (uint)(matcher.Bound + 1) | (matcher.Settled ? 1L << 16 : 0) | (matcher.Unsure ? 1L << 17 : 0) | (long)matcher.How << 18, matcher.Candidates);
     }
@@ -127,6 +159,8 @@ public sealed unsafe partial class Bn2Plugin
         if (RecMutants.On(RecMutants.EnginesNotPrebuilt)) eng = new TrackEngine(new SnesSampler(slot.Preset.Play.Snes!, EmulatorHub.HostRate), EmulatorHub.HostRate);   // (the deliberate bug: built on the audio thread)
         if (eng != null && eng.Rate == EmulatorHub.HostRate) { sampler = eng.Sampler; samplerFor = slot.Preset.Play.Snes; samplerRate = eng.Rate; }
         preset = slot.Preset;
+        expression = slot.Expression;
+        exprOn = TrackOffers.ExpressionFromRecording;
         boundSlot = slot;
         boundIndex = t;
         bindState = 1;
@@ -137,6 +171,7 @@ public sealed unsafe partial class Bn2Plugin
     {
         CountOn(null);
         binding = null;
+        expression = null;
         boundSlot = null; boundIndex = -1;
         if (bindState == 1) preset = null;
         bindState = 0;
@@ -145,6 +180,7 @@ public sealed unsafe partial class Bn2Plugin
     private void Unbind()
     {
         CountOn(null);
+        expression = null;
         boundSlot = null; boundIndex = -1;
         if (bindState == 1) { bindState = 0; preset = null; DropSampler(); }
     }
@@ -220,6 +256,9 @@ public sealed unsafe partial class Bn2Plugin
         MarkConfigured("a track was picked by hand");
         if (AdoptPreset(slot.Preset.File, null, out _) is { } why) return why;          // (the standard path: its engine is prepared here, on the UI thread)
         CountOn(slot);
+        exprOffset = 0; exprOwnClock = false;
+        expression = slot.Expression;
+        exprOn = TrackOffers.ExpressionFromRecording;
         if (Settle(slot, TrackBinding.ByHand) is { } why2) { binding = new TrackBinding(slot.Held.Session.Id, slot.Held.Session.Name, slot.Info.Index, slot.Info.Name, TrackBinding.ByHand); return "it holds the track's preset, but " + why2; }
         return null;
     }
@@ -240,48 +279,72 @@ public sealed unsafe partial class Bn2Plugin
 
     internal const uint TrackTag = 0x314B5254;                   // "TRK1"
 
+    // u16 version (2) | u16 flags (bit 0: bends and volume from the recording) | u64 the recording's session id | i32 track | u8 how | u16 + UTF-8 name | u16 + UTF-8 recording
+    // | i32 + the track's expression (TrackExpression.ToBytes; 0 bytes: none) | u32 CRC-32 of everything before it. Version 1 (no flags meaning, no expression) is read too.
+    private const int TrackVersion = 2;
+
     private byte[]? TrackSectionBytes()
     {
         var b = binding;
         if (b == null || RecMutants.On(RecMutants.TrackSectionDropped)) return null;
         var name = Encoding.UTF8.GetBytes(b.Name.Length > 200 ? b.Name[..200] : b.Name);
         var rec = Encoding.UTF8.GetBytes(b.Recording.Length > 200 ? b.Recording[..200] : b.Recording);
-        var s = new byte[2 + 2 + 8 + 4 + 1 + 2 + name.Length + 2 + rec.Length + 4];
+        var ex = expression?.ToBytes() ?? [];
+        var s = new byte[2 + 2 + 8 + 4 + 1 + 2 + name.Length + 2 + rec.Length + 4 + ex.Length + 4];
         int o = 0;
-        BinaryPrimitives.WriteUInt16LittleEndian(s.AsSpan(o), 1); o += 2;
-        BinaryPrimitives.WriteUInt16LittleEndian(s.AsSpan(o), 0); o += 2;
+        BinaryPrimitives.WriteUInt16LittleEndian(s.AsSpan(o), TrackVersion); o += 2;
+        BinaryPrimitives.WriteUInt16LittleEndian(s.AsSpan(o), (ushort)(exprOn ? 1 : 0)); o += 2;
         BinaryPrimitives.WriteUInt64LittleEndian(s.AsSpan(o), b.SessionId); o += 8;
         BinaryPrimitives.WriteInt32LittleEndian(s.AsSpan(o), b.Track); o += 4;
         s[o++] = (byte)b.How;
         BinaryPrimitives.WriteUInt16LittleEndian(s.AsSpan(o), (ushort)name.Length); o += 2; name.CopyTo(s, o); o += name.Length;
         BinaryPrimitives.WriteUInt16LittleEndian(s.AsSpan(o), (ushort)rec.Length); o += 2; rec.CopyTo(s, o); o += rec.Length;
+        BinaryPrimitives.WriteInt32LittleEndian(s.AsSpan(o), ex.Length); o += 4; ex.CopyTo(s, o); o += ex.Length;
         BinaryPrimitives.WriteUInt32LittleEndian(s.AsSpan(o), Music.Crc32.Of(s.AsSpan(0, o)));
         return s;
     }
 
-    /// <summary>A project's TRK1: which track this instance played. Null when it cannot be read (a newer or damaged section is dropped: the preset it holds still plays).</summary>
-    internal static TrackBinding? ReadTrackSection(ReadOnlySpan<byte> s)
+    /// <summary>A project's TRK1: which track this instance played, its expression and whether it plays it. Binding null when it cannot be read (a newer or damaged section is dropped: the preset
+    /// it holds still plays).</summary>
+    internal static (TrackBinding? Binding, TrackExpression? Expression, bool On) ReadTrackSection(ReadOnlySpan<byte> s)
     {
-        if (s.Length < 25 || BinaryPrimitives.ReadUInt16LittleEndian(s) != 1) return null;
-        if (BinaryPrimitives.ReadUInt32LittleEndian(s[^4..]) != Music.Crc32.Of(s[..^4])) return null;
+        if (s.Length < 25) return (null, null, false);
+        int version = BinaryPrimitives.ReadUInt16LittleEndian(s);
+        if (version is < 1 or > TrackVersion) return (null, null, false);
+        if (BinaryPrimitives.ReadUInt32LittleEndian(s[^4..]) != Music.Crc32.Of(s[..^4])) return (null, null, false);
+        int flags = BinaryPrimitives.ReadUInt16LittleEndian(s[2..]);
         int o = 4;
         ulong id = BinaryPrimitives.ReadUInt64LittleEndian(s[o..]); o += 8;
         int track = BinaryPrimitives.ReadInt32LittleEndian(s[o..]); o += 4;
         int how = s[o++];
         int nl = BinaryPrimitives.ReadUInt16LittleEndian(s[o..]); o += 2;
-        if (o + nl + 2 > s.Length - 4) return null;
+        if (o + nl + 2 > s.Length - 4) return (null, null, false);
         string name = Encoding.UTF8.GetString(s.Slice(o, nl)); o += nl;
         int rl = BinaryPrimitives.ReadUInt16LittleEndian(s[o..]); o += 2;
-        if (o + rl != s.Length - 4) return null;
-        string rec = Encoding.UTF8.GetString(s.Slice(o, rl));
-        return how is TrackBinding.ByNotes or TrackBinding.ByHand && track >= 0 ? new TrackBinding(id, rec, track, name, how) : null;
+        if (o + rl > s.Length - 4) return (null, null, false);
+        string rec = Encoding.UTF8.GetString(s.Slice(o, rl)); o += rl;
+        TrackExpression? ex = null;
+        if (version >= 2)
+        {
+            if (o + 4 > s.Length - 4) return (null, null, false);
+            int el = BinaryPrimitives.ReadInt32LittleEndian(s[o..]); o += 4;
+            if (el < 0 || o + el != s.Length - 4) return (null, null, false);
+            if (el > 0) ex = TrackExpression.FromBytes(s.Slice(o, el));
+        }
+        else if (o != s.Length - 4) return (null, null, false);
+        if (how is not (TrackBinding.ByNotes or TrackBinding.ByHand) || track < 0) return (null, null, false);
+        return (new TrackBinding(id, rec, track, name, how), ex, (flags & 1) != 0);
     }
 
-    /// <summary>After a restore with TRK1: the binding is shown again; an instance whose emulator is not in preset mode (it was never settled) plays its preset on the bound path.</summary>
-    private void RestoreTrack(TrackBinding? b)
+    /// <summary>After a restore with TRK1: the binding is shown again, the expression played as saved; an instance whose emulator is not in preset mode (it was never settled) plays its preset
+    /// on the bound path.</summary>
+    private void RestoreTrack((TrackBinding? Binding, TrackExpression? Expression, bool On) t)
     {
-        if (b == null) return;
-        binding = b;
+        if (t.Binding == null) return;
+        binding = t.Binding;
+        expression = t.Expression;
+        exprOn = t.On && t.Expression != null;
+        exprOffset = 0; exprOwnClock = false;
         configured = true;
         if (preset != null && Emulator?.PresetMode != true) bindState = 1;
     }
@@ -310,6 +373,8 @@ public sealed unsafe partial class Bn2Plugin
             case 714: return InstanceNo;
             case 715: return matcher.How;
             case 716: return matcher.Unsure ? 1 : 0;
+            case 717: { if (value >= 0) TrackOffers.SetExpression(value != 0); return TrackOffers.ExpressionFromRecording ? 1 : 0; }      // bends and volume from the recording, for every track channel (value < 0 reads)
+            case 718: return TrackExpressionOn ? 1 : 0;                                                                                    // this channel plays its track's expression
             default: return 0;
         }
     }

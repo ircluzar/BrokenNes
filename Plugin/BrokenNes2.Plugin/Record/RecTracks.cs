@@ -112,6 +112,114 @@ public sealed class TrackIndex
     }
 }
 
+/// <summary>A track's expression as the recording has it: its notes' keys, its pitch bend (cents) and its controller 7 (percent of the key-on level), by beat. An instance that plays a track can take
+/// pitch and volume from here rather than from FL: FL's MIDI import does not bring controllers along with the notes, and (as FL users report) reads every pitch bend at a range of 2 semitones,
+/// whatever range the file announces; so after "import, then Replace" the channel's own pitch and volume are not the recording's. Read-only once made; the lookups allocate nothing.</summary>
+public sealed class TrackExpression
+{
+    public const int Version = 1;
+    public readonly int Range;
+    public readonly int[] NoteTick; public readonly byte[] NoteKey;
+    public readonly int[] BendTick; public readonly short[] Bend;            // raw 14-bit values - 8192
+    public readonly int[] CcTick; public readonly byte[] Cc;
+
+    public TrackExpression(int range, int[] noteTick, byte[] noteKey, int[] bendTick, short[] bend, int[] ccTick, byte[] cc)
+    {
+        Range = range; NoteTick = noteTick; NoteKey = noteKey; BendTick = bendTick; Bend = bend; CcTick = ccTick; Cc = cc;
+    }
+
+    public static TrackExpression Of(RecTrack t)
+    {
+        var ev = t.Smf.Events.OrderBy(e => e.Tick).ThenBy(e => e.Order).ToList();
+        var nt = new List<int>(); var nk = new List<byte>(); var bt = new List<int>(); var bv = new List<short>(); var ct = new List<int>(); var cv = new List<byte>();
+        foreach (var e in ev)
+        {
+            int kind = e.Status & 0xF0;
+            if (kind == RecMidi.NoteOn && e.Data2 > 0) { nt.Add((int)e.Tick); nk.Add(e.Data1); }
+            else if (kind == RecMidi.Bend) { bt.Add((int)e.Tick); bv.Add((short)((e.Data1 | e.Data2 << 7) - 8192)); }
+            else if (kind == RecMidi.Control && e.Data1 == 7) { ct.Add((int)e.Tick); cv.Add(e.Data2); }
+        }
+        return new TrackExpression(Math.Max(1, t.BendRange), nt.ToArray(), nk.ToArray(), bt.ToArray(), bv.ToArray(), ct.ToArray(), cv.ToArray());
+    }
+
+    private static int Last(int[] ticks, double tick)
+    {
+        int lo = 0, hi = ticks.Length - 1, at = -1;
+        while (lo <= hi) { int m = (lo + hi) >> 1; if (ticks[m] <= tick) { at = m; lo = m + 1; } else hi = m - 1; }
+        return at;
+    }
+
+    /// <summary>The bend in force at <paramref name="beat"/> in cents (FL's float, as the transcription computed it), 0 before the first.</summary>
+    public float BendCentsAt(double beat)
+    {
+        int i = Last(BendTick, beat * RecMidi.Ppq + 1e-6);
+        return i < 0 ? 0f : (float)(Bend[i] * Range * 100.0 / 8192.0);
+    }
+
+    /// <summary>FL's pitch for a note of key <paramref name="key"/> at <paramref name="beat"/>: key and bend in cents from C5, as the float FL hands a plugin (the transcription made it exact for this).</summary>
+    public float PitchCents(int key, double beat)
+    {
+        int i = Last(BendTick, beat * RecMidi.Ppq + 1e-6);
+        return (float)((key - 60) * 100 + (i < 0 ? 0 : Bend[i]) * Range * 100.0 / 8192.0);
+    }
+
+    /// <summary>Controller 7 in force at <paramref name="beat"/> (100 before the first).</summary>
+    public int CcAt(double beat) { int i = Last(CcTick, beat * RecMidi.Ppq + 1e-6); return i < 0 ? 100 : Cc[i]; }
+
+    /// <summary>The key of the track's note that starts within <paramref name="tol"/> beats of <paramref name="beat"/> and fits FL's pitch, else -1.</summary>
+    public int KeyAt(double beat, double pitchCents, double tol)
+    {
+        double t0 = (beat - tol) * RecMidi.Ppq, t1 = (beat + tol) * RecMidi.Ppq;
+        int lo = 0, hi = NoteTick.Length;
+        while (lo < hi) { int m = (lo + hi) >> 1; if (NoteTick[m] < t0) lo = m + 1; else hi = m; }
+        int best = -1; double bestD = double.MaxValue;
+        for (int i = lo; i < NoteTick.Length && NoteTick[i] <= t1; i++)
+        {
+            double d = Math.Abs(pitchCents - (NoteKey[i] - 60) * 100.0 - BendCentsAt(NoteTick[i] / (double)RecMidi.Ppq));
+            double d0 = Math.Abs(pitchCents - (NoteKey[i] - 60) * 100.0);
+            double dd = Math.Min(d, d0);
+            if (dd < bestD) { bestD = dd; best = NoteKey[i]; }
+        }
+        return best;
+    }
+
+    public byte[] ToBytes()
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write((ushort)Version); w.Write((ushort)Range);
+        w.Write(NoteTick.Length); for (int i = 0; i < NoteTick.Length; i++) { w.Write(NoteTick[i]); w.Write(NoteKey[i]); }
+        w.Write(BendTick.Length); for (int i = 0; i < BendTick.Length; i++) { w.Write(BendTick[i]); w.Write(Bend[i]); }
+        w.Write(CcTick.Length); for (int i = 0; i < CcTick.Length; i++) { w.Write(CcTick[i]); w.Write(Cc[i]); }
+        w.Flush();
+        return ms.ToArray();
+    }
+
+    /// <summary>Read back; null when the bytes are not an expression of this version (every count and range checked).</summary>
+    public static TrackExpression? FromBytes(ReadOnlySpan<byte> b)
+    {
+        try
+        {
+            var r = new BinaryReader(new MemoryStream(b.ToArray()));
+            if (r.ReadUInt16() != Version) return null;
+            int range = r.ReadUInt16();
+            if (range is < 1 or > 96) return null;
+            int n = r.ReadInt32(); if (n is < 0 or > 1_000_000) return null;
+            var nt = new int[n]; var nk = new byte[n];
+            for (int i = 0; i < n; i++) { nt[i] = r.ReadInt32(); nk[i] = r.ReadByte(); if (nk[i] > 127 || (i > 0 && nt[i] < nt[i - 1])) return null; }
+            int nb = r.ReadInt32(); if (nb is < 0 or > 4_000_000) return null;
+            var bt = new int[nb]; var bv = new short[nb];
+            for (int i = 0; i < nb; i++) { bt[i] = r.ReadInt32(); bv[i] = r.ReadInt16(); if (bv[i] is < -8192 or > 8191 || (i > 0 && bt[i] < bt[i - 1])) return null; }
+            int nc = r.ReadInt32(); if (nc is < 0 or > 4_000_000) return null;
+            var ct = new int[nc]; var cv = new byte[nc];
+            for (int i = 0; i < nc; i++) { ct[i] = r.ReadInt32(); cv[i] = r.ReadByte(); if (cv[i] > 127 || (i > 0 && ct[i] < ct[i - 1])) return null; }
+            if (r.BaseStream.Position != r.BaseStream.Length) return null;
+            return new TrackExpression(range, nt, nk, bt, bv, ct, cv);
+        }
+        catch (EndOfStreamException) { return null; }
+    }
+}
+
 /// <summary>Which track an instance plays, from the notes it has played: one per instance, everything made with it (the audio thread allocates nothing).</summary>
 public sealed class TrackMatcher
 {
@@ -129,6 +237,9 @@ public sealed class TrackMatcher
 
     /// <summary>The track being played (-1 none), whether it is sure (Settled: matching stops), how many tracks still fit (Candidates), how it was found (1 aligned, 2 shifted).</summary>
     public int Bound = -1, Candidates, How, Notes;
+    /// <summary>Where the track is against the time the notes came with: track beat = that time - Offset (0 when aligned); OwnClock: the time was the instance's own clock (FL gave no song position).</summary>
+    public double Offset;
+    public bool OwnClock;
     public bool Settled, Unsure;
     /// <summary>Counters for the window and the log: notes that matched nothing, choices let go, switches between unison candidates.</summary>
     public int Unexplained, LetGo, Switches;
@@ -186,6 +297,7 @@ public sealed class TrackMatcher
         }
         // the shifted hypotheses, kept alongside (song positions offset by a constant, or the instance's own clock when FL gives none)
         int trackS = -1, strengthS = 0;
+        double offS = 0;
         double t0 = havePos ? pos : ownBeats;
         if (!double.IsNaN(t0))
         {
@@ -206,7 +318,7 @@ public sealed class TrackMatcher
             {
                 int track = hypTrack[0], best = 0;
                 bool one = true;
-                for (int h = 0; h < hypCount; h++) { if (hypTrack[h] != track) one = false; best = Math.Max(best, hypHits[h]); }
+                for (int h = 0; h < hypCount; h++) { if (hypTrack[h] != track) one = false; if (hypHits[h] > best) { best = hypHits[h]; offS = hypOff[h]; } }
                 if (one && best >= ShiftedNotes) { trackS = track; strengthS = best; }
             }
         }
@@ -214,13 +326,13 @@ public sealed class TrackMatcher
         if (strengthA > 0 && strengthA >= strengthS)
         {
             if (Bound >= 0 && choiceA != Bound) Switches++;
-            Bound = choiceA; How = 1; Candidates = cand; Unsure = cand > 1;
+            Bound = choiceA; How = 1; Candidates = cand; Unsure = cand > 1; Offset = 0; OwnClock = false;
             Settled = cand == 1 ? strengthA >= SettleNotes : strengthA >= UnisonSettleNotes;
         }
         else if (trackS >= 0)
         {
             if (Bound >= 0 && Bound != trackS) Switches++;
-            Bound = trackS; How = 2; Candidates = 1; Unsure = false;
+            Bound = trackS; How = 2; Candidates = 1; Unsure = false; Offset = offS; OwnClock = hypOwnClock;
             Settled = strengthS >= ShiftedNotes + 1;
         }
         else LetGoIfProvisional();                    // nothing supports a choice any more (a note the tracks do not have): a provisional one is let go

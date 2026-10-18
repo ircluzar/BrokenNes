@@ -136,7 +136,33 @@ internal static class MatchChecks
             for (int i = 1; i < 5; i++) m.Feed(idx, (notes[i].Key - 60) * 100, notes[i].Beat, double.NaN, -1);
             r.Expect(first && letGo && m.Bound == 2 && m.Settled, $"an added note: bound {first}, let go {letGo}, back on track {m.Bound + 1} (settled {m.Settled})");
         }
-        // 8. nothing allocated per note
+        // 8. a track's expression (the recording's keys, bends and controller 7 by beat): saved and read back the same; a damaged one refused; every note's key found at its time
+        {
+            int same = 0, keys = 0, keysOk = 0, refused = 0;
+            for (int t = 0; t < nt; t++)
+            {
+                var ex = TrackExpression.Of(tr.Tracks[t]);
+                var back = TrackExpression.FromBytes(ex.ToBytes());
+                if (back != null && back.ToBytes().AsSpan().SequenceEqual(ex.ToBytes()) && back.Range == ex.Range) same++;
+                var bytes = ex.ToBytes();
+                for (int d = 0; d < 12; d++)
+                {
+                    var bad = (byte[])bytes.Clone();
+                    int at = rng.Next(0, bad.Length);
+                    bad[at] ^= (byte)(1 << rng.Next(0, 8));
+                    var x = TrackExpression.FromBytes(d % 2 == 0 ? bad : bad.AsSpan(0, bad.Length - 1 - rng.Next(0, 4)));
+                    if (x == null || !x.ToBytes().AsSpan().SequenceEqual(bytes)) refused++;
+                }
+                for (int i = 0; i < ex.NoteTick.Length; i++)
+                {
+                    keys++;
+                    double beat = ex.NoteTick[i] / 960.0;
+                    if (ex.KeyAt(beat, ex.PitchCents(ex.NoteKey[i], beat), TrackIndex.Tolerance) is int k && (k == ex.NoteKey[i] || ex.NoteTick.Where((tk, j) => j != i && Math.Abs(tk - ex.NoteTick[i]) <= TrackIndex.Tolerance * 960 && ex.NoteKey[j] == k).Any())) keysOk++;
+                }
+            }
+            r.Expect(same == nt && refused == nt * 12 && keysOk == keys, $"expressions: {same} of {nt} read back the same, {refused} of {nt * 12} damaged copies not taken for the original, {keysOk} of {keys} notes' keys found at their time");
+        }
+        // 9. nothing allocated per note
         {
             var m = new TrackMatcher();
             var notes = NotesOfTrack(idx, 1);
