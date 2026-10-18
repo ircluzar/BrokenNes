@@ -138,7 +138,8 @@ public sealed unsafe partial class Bn2Plugin
         if (!eligible) return;
         double own = ownSamples / (double)Math.Max(1, EmulatorHub.HostRate) * EmulatorHub.FlTempo / 60.0;
         int before = matcher.Bound;
-        matcher.Feed(snap!.Index, v.Params->InitLevels.Pitch, pos, own, color);
+        float flVel = BitConverter.Int32BitsToSingle(Host.VoiceProcessEvent(v.HostTag, Fpv.GetVelocity, 0, 0));          // (FL's velocity: tells apart tracks that play the same notes, record-nes)
+        matcher.Feed(snap!.Index, v.Params->InitLevels.Pitch, pos, own, color, flVel > 0 ? flVel * 127.0 : -1);
         if (RecMutants.On(RecMutants.BindAfterFirstNote) && notesSeen == 1) { pendingLateBind = matcher.Bound; return; }      // (the self-test's deliberate bug: the first note is played before the track is taken)
         if (matcher.Bound != before || (matcher.Bound >= 0 && boundIndex != matcher.Bound)) { if (matcher.Bound < 0) Unbind(); else Bind(snap, matcher.Bound); }
         if (matcher.Bound >= 0) { exprOffset = matcher.Offset; exprOwnClock = matcher.OwnClock; ExpressionNoteOn(v); }

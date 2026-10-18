@@ -28,6 +28,7 @@ internal static partial class NesRecChecks
         new("section", "REC1 version 2 round trip and refusals", Section),
         new("live", "live MIDI out: every transcribed note struck live at the same moment and key, every note ended, nothing allocated", Live),
         new("vrun-song", "songs converted by VRUN's converter, played by its engine, recorded: the transcription = VRUN's decoder model frame by frame; the tempo = the MIDI file's", VrunSong),
+        new("match", "FL's import-and-Replace with NES tracks: every track found from its own notes, the duty tracks of duty-changing notes told apart by FL's velocity", Match),
     ];
 
     private static Action<bool> Rec(int code) => on => RecMutants.Active = on ? code : 0;
@@ -44,6 +45,7 @@ internal static partial class NesRecChecks
         new("note starts quantised to the 16th grid", "transcribe", Rec(NesTranscribeMutants.NotesQuantised)),
         new("live MIDI out sends nothing", "live", Rec(NesLiveMutants.Silent)),
         new("live note-offs lost", "live", Rec(NesLiveMutants.NoteOffLost)),
+        new("the copies of a duty-changing note keep the same velocity", "match", Rec(NesTranscribeMutants.CopiesNotDistinct)),
     ];
 
     // =====================================================================================================================================================================

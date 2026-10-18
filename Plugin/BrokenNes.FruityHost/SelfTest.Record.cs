@@ -1090,9 +1090,11 @@ public sealed unsafe partial class SelfTest
             p.SetParam(PEmulator, 5);
             p.Test(HkRForget);
             t.Expect(p.Test(HkRStart) == 1 && RText(p, 8).Contains("ROM mode"), $"Record in Direct mode: '{RText(p, 8)}'");
+            p.SetParam(PConsole, 1);                                         // (a Game Boy: the NES records since record-nes, see selftest record-nes)
             p.SetParam(PMode, 1);
-            t.Expect(p.Test(HkRStart) == 1 && RText(p, 8).Contains("SNES games"), $"Record on the NES: '{RText(p, 8)}'");
+            t.Expect(p.Test(HkRStart) == 1 && RText(p, 8).Contains("SNES and NES games"), $"Record on a Game Boy: '{RText(p, 8)}'");
             p.SetParam(PMode, 0);
+            p.SetParam(PConsole, 0);
             string f = Path.Combine(dir, "nothing.mid");
             fixed (char* c = f + "\0") t.Expect(p.Test(HkRSave, 0, (nint)c) == 1 && RText(p, 8).Contains("Nothing to save") && !File.Exists(f), $"Save with nothing recorded: '{RText(p, 8)}'");
             t.Expect(p.Test(HkRDeal, 0, 1) == 1 && RText(p, 8).Contains("Record first"), $"Give the tracks with nothing recorded: '{RText(p, 8)}'");

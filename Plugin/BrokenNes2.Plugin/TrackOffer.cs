@@ -128,14 +128,18 @@ internal static class TrackOffers
         var slots = list.SelectMany(r => r.Slots).ToArray();
         var infos = new TrackInfo[slots.Length];
         var notes = new List<(int, double, int, int, int)>();
+        var vels = new Dictionary<(int Track, long Tick, int Key), int>();
         int first = 0;
         for (int r = 0; r < list.Length; r++)
         {
             foreach (var s in list[r].Slots) { s.Info.Recording = r; infos[first + s.Info.Index] = s.Info; }
             notes.AddRange(TrackIndex.NotesOf(list[r].Held.Tr, first));
+            foreach (var kv in TrackIndex.VelocitiesOf(list[r].Held.Tr, first)) vels[kv.Key] = kv.Value;
             first += list[r].Slots.Length;
         }
-        current = new TrackOfferSnapshot(list, slots, new TrackIndex(infos, notes), Interlocked.Increment(ref version));
+        var index = new TrackIndex(infos, notes);
+        index.SetVelocities(vels);                     // (FL's velocity tells apart tracks that play the same notes: a NES note on two duty tracks, record-nes)
+        current = new TrackOfferSnapshot(list, slots, index, Interlocked.Increment(ref version));
     }
 
     private static void EnsureWorker()

@@ -66,6 +66,38 @@ public sealed class TrackIndex
 
     public int Count => Beat.Length;
 
+    /// <summary>Each note's velocity (1-127; empty: not known). Round 8 record-nes: a NES note whose duty changes while it sounds is on the tracks of each duty, same key, same time; the transcription
+    /// gives the copies different velocities, so FL's velocity tells such "unison" tracks apart (<see cref="TrackMatcher"/>).</summary>
+    public byte[] Velocity = [];
+
+    /// <summary>The velocity of every note-on of a transcription's tracks, by (track, tick, key).</summary>
+    public static Dictionary<(int Track, long Tick, int Key), int> VelocitiesOf(Transcription tr, int firstTrack)
+    {
+        var d = new Dictionary<(int, long, int), int>();
+        for (int k = 0; k < tr.Tracks.Count; k++)
+            foreach (var e in tr.Tracks[k].Smf.Events)
+                if ((e.Status & 0xF0) == RecMidi.NoteOn && e.Data2 > 0) d[(firstTrack + k, e.Tick, e.Data1)] = e.Data2;
+        return d;
+    }
+
+    /// <summary>Fills <see cref="Velocity"/> from <see cref="VelocitiesOf"/>.</summary>
+    public void SetVelocities(Dictionary<(int Track, long Tick, int Key), int> d)
+    {
+        var v = new byte[Beat.Length];
+        for (int i = 0; i < v.Length; i++) v[i] = (byte)(d.TryGetValue((Track[i], (long)Math.Round(Beat[i] * RecMidi.Ppq), Key[i]), out int x) ? x : 0);
+        Velocity = v;
+    }
+
+    /// <summary>Whether track <paramref name="t"/> has a note of this pitch AND this velocity (within 1.5 of 127) within <paramref name="tol"/> beats of <paramref name="beat"/>.</summary>
+    public bool TrackHasVelocity(int t, double beat, double pitchCents, double velocity, double tol)
+    {
+        if (Velocity.Length != Beat.Length) return false;
+        int lo = TrackFirst[t], hi = TrackFirst[t + 1];
+        while (lo < hi) { int m = (lo + hi) >> 1; if (TBeat[m] < beat - tol) lo = m + 1; else hi = m; }
+        for (int i = lo; i < TrackFirst[t + 1] && TBeat[i] <= beat + tol; i++) if (KeyMatches(TNote[i], pitchCents) && Math.Abs(Velocity[TNote[i]] - velocity) <= 1.5) return true;
+        return false;
+    }
+
     /// <summary>Whether FL's pitch (cents from C5) is note <paramref name="i"/>'s key: within 50 cents of the key, of the key with the bend the file starts it with, or with that bend at FL's default range.</summary>
     public bool KeyMatches(int i, double pitchCents)
     {
@@ -226,7 +258,7 @@ public sealed class TrackMatcher
     public const int MaxTracks = 256, MaxHyp = 2048, ShiftedNotes = 4, SettleNotes = 3, UnisonSettleNotes = 8;
     public const double ShiftTolerance = 0.06;
 
-    private readonly int[] hits = new int[MaxTracks], misses = new int[MaxTracks], stamp = new int[MaxTracks];
+    private readonly int[] hits = new int[MaxTracks], misses = new int[MaxTracks], stamp = new int[MaxTracks], velHits = new int[MaxTracks];
     private readonly short[] hypTrack = new short[MaxHyp];
     private readonly double[] hypOff = new double[MaxHyp];
     private readonly int[] hypHits = new int[MaxHyp];
@@ -247,14 +279,16 @@ public sealed class TrackMatcher
     public void Reset(TrackIndex? idx)
     {
         index = idx;
-        Array.Clear(hits); Array.Clear(misses); Array.Clear(stamp);
+        Array.Clear(hits); Array.Clear(misses); Array.Clear(stamp); Array.Clear(velHits);
         hypCount = 0; note = 0; Notes = 0;
         Bound = -1; Candidates = 0; How = 0; Settled = false; Unsure = false; Unexplained = 0; LetGo = 0; Switches = 0;
     }
 
     /// <summary>One note: FL's pitch (cents from C5), its song position in beats (NaN: FL gave none), the instance's own clock in beats, and the note's colour (MIDI channel; -1 unknown).
     /// Updates <see cref="Bound"/> / <see cref="Settled"/>. Allocation-free.</summary>
-    public void Feed(TrackIndex idx, double pitchCents, double pos, double ownBeats, int color)
+    /// <param name="velocity">FL's velocity of the note on the 1-127 scale (FPV_GetVolume x 127; negative: unknown): among tracks that play the same notes it names the one whose note has that velocity
+    /// (a NES note on two duty tracks: the transcription gives the copies different velocities).</param>
+    public void Feed(TrackIndex idx, double pitchCents, double pos, double ownBeats, int color, double velocity = -1)
     {
         if (!ReferenceEquals(idx, index)) Reset(idx);
         if (Settled) return;
@@ -278,12 +312,25 @@ public sealed class TrackMatcher
         if (havePos && cand == 0 && matched > 0)
         {
             // the notes so far fit no track together (playback jumped, a note was edited): start again from this note
-            for (int t = 0; t < nt; t++) { bool hit = stamp[t] == note; hits[t] = hit ? 1 : 0; misses[t] = hit ? 0 : 1; }
+            for (int t = 0; t < nt; t++) { bool hit = stamp[t] == note; hits[t] = hit ? 1 : 0; misses[t] = hit ? 0 : 1; velHits[t] = 0; }
             cand = Count(nt);
         }
-        // the aligned choice: the track kept from before, else the one on the note's MIDI channel, else the lowest
+        // the aligned choice: among tracks that play the same notes (unison), the one whose notes have FL's velocity; else the track kept from before, else the one on the note's MIDI channel, else the lowest
         int choiceA = -1, strengthA = 0;
-        if (cand > 0)
+        bool byVelocity = false;
+        if (cand > 1 && velocity >= 0 && havePos && idx.Velocity.Length == idx.Count)
+        {
+            for (int t = 0; t < nt; t++) if (hits[t] > 0 && misses[t] == 0 && idx.TrackHasVelocity(t, pos, pitchCents, velocity, TrackIndex.Tolerance)) velHits[t]++;
+            int best = -1, bestN = 0, second = 0;
+            for (int t = 0; t < nt; t++)
+            {
+                if (hits[t] == 0 || misses[t] != 0) continue;
+                if (velHits[t] > bestN) { second = bestN; bestN = velHits[t]; best = t; }
+                else if (velHits[t] > second) second = velHits[t];
+            }
+            if (best >= 0 && bestN > second && bestN == hits[best]) { choiceA = best; byVelocity = true; }     // (every note so far had that velocity on that track, and no other track's did as well)
+        }
+        if (cand > 0 && choiceA < 0)
         {
             if (Bound >= 0 && Bound < nt && hits[Bound] > 0 && misses[Bound] == 0) choiceA = Bound;
             if (choiceA < 0 && color >= 0)
@@ -293,8 +340,8 @@ public sealed class TrackMatcher
                 if (n == 1) choiceA = byColor;
             }
             if (choiceA < 0) for (int t = 0; t < nt; t++) if (hits[t] > 0 && misses[t] == 0) { choiceA = t; break; }
-            strengthA = hits[choiceA];
         }
+        if (choiceA >= 0) strengthA = hits[choiceA];
         // the shifted hypotheses, kept alongside (song positions offset by a constant, or the instance's own clock when FL gives none)
         int trackS = -1, strengthS = 0;
         double offS = 0;
@@ -326,8 +373,8 @@ public sealed class TrackMatcher
         if (strengthA > 0 && strengthA >= strengthS)
         {
             if (Bound >= 0 && choiceA != Bound) Switches++;
-            Bound = choiceA; How = 1; Candidates = cand; Unsure = cand > 1; Offset = 0; OwnClock = false;
-            Settled = cand == 1 ? strengthA >= SettleNotes : strengthA >= UnisonSettleNotes;
+            Bound = choiceA; How = 1; Candidates = cand; Unsure = cand > 1 && !byVelocity; Offset = 0; OwnClock = false;
+            Settled = cand == 1 || byVelocity ? strengthA >= SettleNotes : strengthA >= UnisonSettleNotes;
         }
         else if (trackS >= 0)
         {

@@ -54,7 +54,9 @@ public sealed class NesTranscription
     public double FlTempoUsed;
     public byte[] Midi = [];
     public List<string> Facts = new();
-    public int NotesThinned, DutyChangeNotes, ModeChangeNotes, EnvelopeNotes, SweepNotes, RateChangeNotes, ShortNotes;
+    public int NotesThinned, DutyChangeNotes, ModeChangeNotes, EnvelopeNotes, SweepNotes, RateChangeNotes, ShortNotes, TiedCopies;
+    /// <summary>The velocity of a note's copy on a track when it is on several (see NesTranscribe.DistinctCopies), by (track, note).</summary>
+    public Dictionary<(int Track, int Note), int> VelocityOf = new();
     /// <summary>Per (track, note in the track): the timelines the file plays, as FL can play them (below 2 ms merged): the period (pulse / triangle timer, noise index), the level on this track (0 while another
     /// duty sounds), and the MIDI key. Times in CPU cycles from the recording's start.</summary>
     public Dictionary<(int Track, int Note), List<NesVal>> PeriodT = new(), LevelT = new();
@@ -257,6 +259,7 @@ public static class NesTranscribe
         tr.Tracks.Sort((a, b) => a.Index.CompareTo(b.Index));
         foreach (var (note, t) in noteTracks) t.Notes.Add(note);
 
+        tr.TiedCopies = DistinctCopies(tr);
         foreach (var t in tr.Tracks) Channel(tr, t, o);
         foreach (var t in tr.Tracks) MakePreset(tr, t);
 
@@ -350,19 +353,8 @@ public static class NesTranscribe
         {
             var n = tr.Notes[ni];
             var pl = Smooth(n.Periods, n.End, out int tp);
-            // the level on this track: the volume while this track's duty (mode) is the one sounding, else 0
-            List<NesVal> raw;
-            if (ch < 2 || ch == 3)
-            {
-                var sel = ch < 2 ? n.Duties : n.Modes;
-                int mine = ch < 2 ? t.Duty : t.Mode;
-                var times = n.Vols.Select(v => v.T).Concat(sel.Select(d => d.T)).Distinct().OrderBy(x => x).ToList();
-                raw = times.Select(x => new NesVal(x, NesNote.At(sel, x) == mine ? NesNote.At(n.Vols, x) : 0)).ToList();
-                if (raw.Any(v => v.V == 0) && sel.Count > 1) t.Gated++;
-            }
-            else if (ch == 2) raw = [new NesVal(n.Start, 15)];
-            else raw = [new NesVal(n.Start, 15)];
-            var vl = Smooth(Compact(raw), n.End, out int tv);
+            var vl = LevelLine(n, t, out int tv, out bool gated);
+            if (gated) t.Gated++;
             t.Transients += tp + tv;
             if (pl.Count > o.MaxEventsPerNote) pl.RemoveRange(o.MaxEventsPerNote, pl.Count - o.MaxEventsPerNote);
             if (vl.Count > o.MaxEventsPerNote) vl.RemoveRange(o.MaxEventsPerNote, vl.Count - o.MaxEventsPerNote);
@@ -396,10 +388,8 @@ public static class NesTranscribe
             if (start < lastEnd) start = lastEnd;                // (a channel's notes never overlap; the tick map's rounding must not make two touch out of order)
             if (end <= start) { end = start + 1; t.TooShort++; }
             lastEnd = end;
-            // velocity: the struck level, raised when a later level needs more than controller 7 can give
-            int peak = vl.Max(v => v.V), first = vl[0].V;
-            int vel = ch is 2 or 4 ? 127 : Math.Max(VelocityFor(first), VelocityFor((int)Math.Ceiling(peak * 100 / 127.0)));
-            while (vel < 127 && PlayedLevel(vel, 127) < peak) vel++;
+            // velocity: the struck level, raised when a later level needs more than controller 7 can give (a note on several duty tracks: each copy its own, see DistinctCopies)
+            int vel = tr.VelocityOf.TryGetValue((t.Index, ni), out int forced) ? forced : DefaultVelocity(ch, vl);
             t.Velocities.Add(vel);
             // the values: (tick, kind 0 bend / 1 cc, value index)
             var bends = new (int Lo, int Hi, int Ideal, bool Exact)[pl.Count];
@@ -453,6 +443,60 @@ public static class NesTranscribe
         t.Smf.Name = t.Name;
         t.Smf.Instrument = t.Name;
         t.Smf.Texts.Add($"BrokenNes2: {TrackLabel(t, tr.Session)}, pitch-bend range {t.BendRange} semitones (RPN 0); controller 7 is the volume (100 = as struck)");
+    }
+
+    /// <summary>A note's level on a track, as FL can play it: the volume while the track's duty (noise mode) is the one sounding, else 0; the triangle and the DMC at 15.</summary>
+    public static List<NesVal> LevelLine(NesNote n, NesTrack t, out int transients, out bool gated)
+    {
+        int ch = t.Channel;
+        List<NesVal> raw;
+        gated = false;
+        if (ch < 2 || ch == 3)
+        {
+            var sel = ch < 2 ? n.Duties : n.Modes;
+            int mine = ch < 2 ? t.Duty : t.Mode;
+            var times = n.Vols.Select(v => v.T).Concat(sel.Select(d => d.T)).Distinct().OrderBy(x => x).ToList();
+            raw = times.Select(x => new NesVal(x, NesNote.At(sel, x) == mine ? NesNote.At(n.Vols, x) : 0)).ToList();
+            gated = raw.Any(v => v.V == 0) && sel.Count > 1;
+        }
+        else raw = [new NesVal(n.Start, 15)];
+        return Smooth(Compact(raw), n.End, out transients);
+    }
+
+    /// <summary>The velocity of a note on a track: its level when struck, raised until controller 7 (at most 127) reaches its loudest level; the triangle and the DMC 127.</summary>
+    public static int DefaultVelocity(int ch, List<NesVal> vl)
+    {
+        if (ch is 2 or 4) return 127;
+        int peak = vl.Max(v => v.V), first = vl[0].V;
+        int vel = Math.Max(VelocityFor(first), VelocityFor((int)Math.Ceiling(peak * 100 / 127.0)));
+        while (vel < 127 && PlayedLevel(vel, 127) < peak) vel++;
+        return vel;
+    }
+
+    /// <summary>A note whose duty (noise mode) changes while it sounds is on the track of each duty, struck at the same moment with the same key: for FL's import-and-Replace (each channel recognises
+    /// its track from its notes, Record/RecTracks.cs) the copies get velocities at least 3 apart, so FL's velocity tells the tracks apart. Exactness is kept: controller 7 is solved for each copy's own
+    /// velocity (any velocity that reaches the copy's loudest level can play every level exactly). Returns the copies that could not be made distinct.</summary>
+    private static int DistinctCopies(NesTranscription tr)
+    {
+        int tied = 0;
+        if (RecMutants.On(NesTranscribeMutants.CopiesNotDistinct)) return 0;          // (the deliberate bug: every copy keeps its own default velocity)
+        var byNote = new Dictionary<int, List<NesTrack>>();
+        foreach (var t in tr.Tracks) foreach (int ni in t.Notes) { if (!byNote.TryGetValue(ni, out var l)) byNote[ni] = l = new(); l.Add(t); }
+        foreach (var (ni, ts) in byNote)
+        {
+            if (ts.Count < 2) continue;
+            var used = new List<int>();
+            foreach (var t in ts.OrderBy(x => x.Index))
+            {
+                var vl = LevelLine(tr.Notes[ni], t, out _, out _);
+                int floor = DefaultVelocity(t.Channel, vl), vel = floor;
+                while (used.Any(u => Math.Abs(u - vel) < 3) && vel < 127) vel++;
+                if (used.Any(u => Math.Abs(u - vel) < 3)) { tied++; vel = floor; }
+                used.Add(vel);
+                tr.VelocityOf[(t.Index, ni)] = vel;
+            }
+        }
+        return tied;
     }
 
     private static List<NesVal> Compact(List<NesVal> raw)
@@ -531,7 +575,8 @@ public static class NesTranscribe
         if (ends > 0) hw.Add($"{ends} notes ended by the length or linear counter (where the chip ended them)");
         if (hw.Count > 0) f.Add("the chip's own automation, replayed as values: " + string.Join("; ", hw));
         if (tr.DutyChangeNotes > 0 || tr.ModeChangeNotes > 0)
-            f.Add($"{tr.DutyChangeNotes + tr.ModeChangeNotes} notes changed duty (or noise mode) while sounding: they are on the track of each duty they use, struck together, silent (controller 7 at 0) while the other sounds, so the duty changes when the game changed it and the wave does not restart");
+            f.Add($"{tr.DutyChangeNotes + tr.ModeChangeNotes} notes changed duty (or noise mode) while sounding: they are on the track of each duty they use, struck together, silent (controller 7 at 0) while the other sounds, so the duty changes when the game changed it and the wave does not restart; each copy has a velocity of its own, so a replaced FL channel tells its track from the other"
+                + (tr.TiedCopies > 0 ? $" ({tr.TiedCopies} copies could not be given one: those channels may need Play here)" : ""));
         var lost = new List<string>();
         if (s.Dropped > 0) lost.Add($"{s.Dropped:N0} chip writes lost (the capture ran out of memory blocks)");
         if (s.EndedBy == RecEnd.MemoryCap) lost.Add(s.TimeCap ? "the recording stopped at its longest (39 minutes)" : "the recording stopped at the memory cap");
@@ -553,5 +598,5 @@ public static class NesTranscribe
 /// <summary>The NES transcription's deliberate bugs (codes in <see cref="RecMutants"/>' space).</summary>
 public static class NesTranscribeMutants
 {
-    public const int BendOffByOne = 111, VolumeOffByOne = 112, TempoIgnored = 113, NoBendRange = 114, NotesQuantised = 115, DutyDropped = 116, TrackBehaviourDropped = 117;
+    public const int BendOffByOne = 111, VolumeOffByOne = 112, TempoIgnored = 113, NoBendRange = 114, NotesQuantised = 115, DutyDropped = 116, TrackBehaviourDropped = 117, CopiesNotDistinct = 118;
 }
