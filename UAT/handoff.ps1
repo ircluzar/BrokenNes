@@ -83,7 +83,12 @@ if (-not $SkipCertify) {
         $code = $LASTEXITCODE
         $fails = @($o | Where-Object { $_ -match '^\[FAIL\]| FAIL ' }) | Select-Object -First 6
         $passes = @($o | Where-Object { $_ -match '^\[PASS\]|  ok  ' }).Count
-        $line = "{0}: {1}  ({2} passes{3})" -f $r.Name, $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }), $passes, $(if ($fails) { '; ' + ($fails -join ' | ') } else { '' })
+        # a script that could not run (it says so in its JSON result line, e.g. install-smoke while FL Studio is open) exits 0: that is NOT a pass, never print it as one
+        $notRun = $null
+        $jsonLine = @($o | ForEach-Object { "$_" } | Where-Object { $_.TrimStart().StartsWith('{') }) | Select-Object -Last 1
+        if ($jsonLine) { try { $j = $jsonLine | ConvertFrom-Json -ErrorAction Stop; if ("$($j.status)" -eq 'NOT RUN') { $notRun = if ($j.error) { "$($j.error)" } else { 'the script did not run' } } } catch { } }
+        $verdict = if ($notRun) { 'NOT RUN' } elseif ($code -eq 0) { 'PASS' } else { 'FAIL' }
+        $line = if ($notRun) { "{0}: NOT RUN ({1})" -f $r.Name, $notRun } else { "{0}: {1}  ({2} passes{3})" -f $r.Name, $verdict, $passes, $(if ($fails) { '; ' + ($fails -join ' | ') } else { '' }) }
         Write-Host $line; $cert.Add($line)
     }
 } else { $cert.Add('certification skipped (-SkipCertify)') }
