@@ -86,7 +86,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
     /// <summary>What FL shows. (The DLL and its folder have the same name: FL finds a native plugin by its file name.)</summary>
     public const string DisplayName = "BrokenNes2";
-    public static FruityPluginInfo Info { get; } = new(DisplayName, DisplayName);
+    public static FruityPluginInfo Info { get; } = new(DisplayName, DisplayName, Fpf.TypeFullGen | Fpf.WantNewTick | Fpf.MidiOut);     // (MIDI out: the Record window's live MIDI out, round 8)
 
     protected override int StateVersion => 2;
 
@@ -261,6 +261,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             return;
         }
 
+        if (emu.Mode != 1 || emu.SamplerMode) emu.DrainLiveMidi(this);      // (the live MIDI out's last note-offs when the game is frozen or gone; in ROM mode they go after the frames below)
         if (emu.PresetMode)
         {
             RenderPreset(dest, length, gl, gr);             // the Presets chip: this instance plays its preset on an engine of its own (Bn2Plugin.Presets.cs)
@@ -289,6 +290,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             DropChip();
             if (romMono.Length < length) romMono = new float[length];
             emu.PullRom(a.Channel, ref romReadPos, ref romEpoch, romMono.AsSpan(0, length));
+            emu.DrainLiveMidi(this);                        // the live MIDI out's notes of the frames just made go to FL with this block (Emulator.Live.cs; nothing when it is off)
             float vol = Get(P.Volume) / 1000f, peak = 0;
             for (int i = 0; i < length; i++)
             {
@@ -1283,7 +1285,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             default:
                 if (id - Fpd.TestBase is >= 340 and < 360) return PresetTestHook(id - Fpd.TestBase, index, value);        // the presets (Bn2Plugin.Presets.cs)
                 if (id - Fpd.TestBase is >= 600 and < 620) return SongTestHook(id - Fpd.TestBase, index, value);          // Test MIDI export (Bn2Plugin.Song.cs)
-                if (id - Fpd.TestBase is >= 640 and < 670) return RecordTestHook(id - Fpd.TestBase, index, value);        // the recording (Bn2Plugin.Record.cs)
+                if (id - Fpd.TestBase is (>= 640 and < 670) or (>= 680 and < 700)) return RecordTestHook(id - Fpd.TestBase, index, value);        // the recording and the live MIDI out (Bn2Plugin.Record.cs)
                 return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
     }

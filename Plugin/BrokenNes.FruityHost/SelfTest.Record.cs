@@ -9,6 +9,8 @@
 //   project    REC1: saved, reopened to the same MIDI bytes; damaged, changed (checksum) and newer sections refused with the reason (a newer one written back as it came); absent: nothing said
 //   deal       "Give the tracks to the next new instances": each new instance takes the next track's preset on the deal's emulator (Direct, Presets chip); one more instance takes nothing
 //   transport  "start with FL's Play" waits for FL's Play; "stop with FL's Stop" ends it; a recording in which the game keyed nothing says so
+//   live       live MIDI out (P2): the messages FL receives (MIDIOut_Delayed, the port) read back against a recording made at the same time: every key-on a note-on on its instrument's channel, pitch
+//              and level reproduced, every note ended; FHD_ActivateMIDI; 0 bytes on the audio thread; the synthetic game and Super Mario World (Instrument Runaway ends the notes)
 //   refusals   Direct mode, a NES game, Save with nothing recorded: refused with the reason; Save MIDI writes the whole file
 // Each scenario with a deliberate bug is run again with the bug switched on in the DLL (plugin hook 657) and must fail.
 using BrokenNes.Fruity;
@@ -112,19 +114,20 @@ public sealed unsafe partial class SelfTest
         ("project", RecordProject, RecMutants.SectionCrcNotChecked, "the project section's checksum is not checked"),
         ("deal", RecordDealScenario, RecMutants.DealIgnored, "giving the tracks says it is armed but gives nothing"),
         ("transport", RecordTransportScenario, 0, ""),
+        ("live", RecordLiveScenario, RecMutants.LiveOutSilent, "live MIDI out sends nothing"),
         ("refusals", RecordRefusals, RecMutants.SaveWritesHalf, "Save MIDI... writes half the file"),
     ];
 
     private void RecordTest(T t)
     {
         // the library (no DLL): the same checks as `record-test` without the real games, and their deliberate bugs
-        foreach (var o in RecordChecks.RunChecks("root,tempo,capture,transcribe,smf,section"))
+        foreach (var o in RecordChecks.RunChecks("root,tempo,capture,transcribe,smf,section,live"))
         {
             foreach (var f in o.Report.Failures.Take(3)) t.Expect(false, $"[{o.Id}] {f}");
             foreach (var w in o.Report.Warnings) t.Warn(false, $"[{o.Id}] {w}");
             t.Note($"library {o.Id}: {o.Report.Assertions} assertions passed");
         }
-        var (lines, missed) = RecordChecks.RunMutants("root,tempo,capture,transcribe,smf,section");
+        var (lines, missed) = RecordChecks.RunMutants("root,tempo,capture,transcribe,smf,section,live");
         t.Expect(missed == 0, $"{missed} of the library's deliberate bugs were not caught: " + string.Join(" / ", lines.Where(l => l.Contains("MISSED"))));
         t.Note($"library: {lines.Count - missed} of {lines.Count} deliberate bugs caught");
 
@@ -251,6 +254,17 @@ public sealed unsafe partial class SelfTest
             if (hc != null) Win32Host.Click(hwnd, hc.Value.X, hc.Value.Y);
             t.Expect(p.Test(EdRDrags) == drags && EdText(p, EdRMessage).Contains("Hold the button and drag"), $"a click on the handle: {p.Test(EdRDrags) - drags} drags, the window says '{EdText(p, EdRMessage)}'");
             p.Test(EdRDragTest, 0, 0);
+            // live MIDI out: the check box and the port, by mouse
+            long port0 = p.Test(683, 0, -1);
+            ClickControl(t, p, 2033, "port +");
+            long port1 = p.Test(683, 0, -1);
+            ClickControl(t, p, 2031, "Live MIDI out");
+            long liveState = p.Test(681);
+            string liveSaid = EdText(p, EdRMessage);
+            ClickControl(t, p, 2031, "Live MIDI out (off)");
+            t.Expect(port1 == port0 + 1 && liveState is 1 or 3 && liveSaid.Contains($"port {port1}") && p.Test(681) is -1 or 2,
+                $"live MIDI out by mouse: port {port0} -> {port1}, on: state {liveState} ('{liveSaid}'), off: state {p.Test(681)}");
+            ClickControl(t, p, 2032, "port -");
             ClickControl(t, p, IdRecCloseBtn, "Close");
             t.Expect(p.Test(EdROpen) == 0, "Close did not close the Record window");
             p.HideEditor();
@@ -693,6 +707,117 @@ public sealed unsafe partial class SelfTest
             t.Note($"transport: armed until FL's Play, {writes} writes after it, ended by FL's Stop; then: '{RText(p, 1)}'");
         }
         finally { p.Test(HkROptions, 0, ROptDefault); p.Test(HkRForget); }
+    }
+
+    // ------------------------------------------------------------------------------------------------ live MIDI out (P2)
+
+    private const int HkLive = 680, HkLiveState = 681, HkLiveCount = 682, HkLivePort = 683, HkLiveRoot = 684, HkLiveChannel = 685, HkLiveText = 687, HkLiveRoots = 688, HkLiveDrain = 689;
+
+    private static bool LiveWait(PluginInstance p, int state, int ms = 20000)
+    {
+        long until = Environment.TickCount64 + ms;
+        while (Environment.TickCount64 < until) { if (p.Test(HkLiveState) == state) return true; Thread.Sleep(5); }
+        return p.Test(HkLiveState) == state;
+    }
+
+    private static int[] LiveRoots(PluginInstance p)
+    {
+        var roots = new int[100_000];
+        int n;
+        fixed (int* rp = roots) n = (int)p.Test(HkLiveRoots, roots.Length, (nint)rp);
+        return roots[..Math.Max(0, n)];
+    }
+
+    /// <summary>Live MIDI out through the DLL: switched on (FL asked to enable MIDI out), the game recorded at the same time; the messages FL received (MIDIOut_Delayed, the port in each) read back against the
+    /// recording's own writes; switched off: every note ends; nothing allocated on the audio thread. The synthetic game (one note keyed while the root of a sample loaded after the start is not known yet)
+    /// and Super Mario World (roots read before it starts; Instrument Runaway ends the notes).</summary>
+    private void RecordLiveScenario(T t, string dir)
+    {
+        using (var p = RecordGame(dir))
+        {
+            try
+            {
+                p.SetParam(PChannel, 5);
+                var buf = new float[512];
+                void Render(int blocks) { fixed (float* f = buf) for (int i = 0; i < blocks; i++) { p.NewTick(); p.GenRender(f, 256); } }
+                lock (p.Host.MidiOutLog) p.Host.MidiOutLog.Clear();
+                lock (p.Host.DispatcherCalls) p.Host.DispatcherCalls.Clear();
+                p.Test(HkLivePort, 0, 3);
+                t.Expect(p.Test(HkLive, 0, 1) == 0, "live MIDI out was refused: " + RText(p, 8));
+                t.Expect(LiveWait(p, 1), $"live MIDI out did not start (state {p.Test(HkLiveState)})");
+                p.Test(HkLiveRoots, 100_000, 0);
+                bool activated; lock (p.Host.DispatcherCalls) activated = p.Host.DispatcherCalls.Contains(Fhd.ActivateMidi);
+                t.Expect(activated, "FL was not asked to enable its MIDI output (FHD_ActivateMIDI)");
+                t.Expect(p.Test(HkRStart) == 0 && RWait(p, 2, 10000), $"the recording beside it did not begin: {RText(p, 8)}");
+                long a0 = p.Test(HkRAlloc);
+                Render(1100);                                                       // about 5.9 s: the game's upload, its key-on, the driver's bends and fades
+                long a1 = p.Test(HkRAlloc);
+                p.Test(HkRStop);
+                t.Expect(RWait(p, 4), "the recording beside the live out did not end");
+                var roots = LiveRoots(p);
+                int rootNow = (int)p.Test(HkLiveRoot, 0);
+                p.Test(HkLive, 0, 0);
+                Render(4);                                                          // (the note-offs go with the next blocks)
+                t.Expect(p.Test(HkLiveState) == -1, $"live MIDI out did not let go after it was switched off (state {p.Test(HkLiveState)})");
+                List<(uint Msg, bool Delayed)> log; lock (p.Host.MidiOutLog) log = p.Host.MidiOutLog.ToList();
+                t.Expect(log.Count > 0 && log.All(x => x.Delayed && x.Msg >> 24 == 3), $"{log.Count} MIDI messages, {log.Count(x => !x.Delayed)} not through MIDIOut_Delayed, {log.Count(x => x.Msg >> 24 != 3)} not on port 3");
+                var s = RecSection.Read(RBytes(p, HkRSection), out var why);
+                t.Expect(s != null, "the recording does not read: " + why);
+                if (s != null)
+                {
+                    var notes = LiveChecks.Parse(log.Select(x => x.Msg), out int range, out var problems);
+                    foreach (var pr in problems.Take(3)) t.Expect(false, "the stream: " + pr);
+                    var st = LiveChecks.Compare(LiveChecks.Truth(s), notes, roots, range < 0 ? RecLive.DefaultRange : range);
+                    foreach (var pr in st.Problems.Take(4)) t.Expect(false, "synthetic game: " + pr);
+                    t.Expect(st.AllGood && st.Keys == 1, "synthetic game: " + st.Line());
+                    t.Note("synthetic game: " + st.Line());
+                }
+                // the sample was loaded after the live out started: its one note was keyed as if its rate were C5 (counted), and the worker found its root after the key-on: the 2 kHz square
+                double want = 6900 + 1200 * Math.Log2(2000.0 / 440);
+                t.Expect(roots.Length == 1 && roots[0] == 6000 && Math.Abs(rootNow - want) <= 5, $"the root: the note was keyed with {(roots.Length > 0 ? roots[0] / 100.0 : -1):0.00}, the worker then found {rootNow / 100.0:0.00} (the sample is {want / 100:0.00})");
+                t.Expect(a1 - a0 == 0, $"{a1 - a0:N0} bytes allocated on the audio thread with the live out and a recording on");
+            }
+            finally { p.Test(HkLive, 0, 0); p.Test(HkRForget); }
+        }
+        // Super Mario World: the roots of the samples loaded when it starts; many instruments; Instrument Runaway ends the sounding notes
+        if (recordMutantPass) return;
+        if (!File.Exists(ImodelGames.Smw)) { t.Warn(false, "NOT RUN: Super Mario World is not at " + ImodelGames.Smw + ": live MIDI out was checked on the synthetic game only"); return; }
+        using var g = SegaGame(ImodelGames.Smw, 2, "SNES");
+        try
+        {
+            var pad = InjectRun.Pad(InjectRun.SmwScript);
+            DriveFrames(g, pad, 0, 3800);
+            lock (g.Host.MidiOutLog) g.Host.MidiOutLog.Clear();
+            g.Test(HkLivePort, 0, 2);
+            t.Expect(g.Test(HkLive, 0, 1) == 0 && LiveWait(g, 1), "live MIDI out on Super Mario World did not start: " + RText(g, 8));
+            g.Test(HkLiveRoots, 100_000, 0);
+            g.Test(HkROptions, 0, ROptDefault);
+            t.Expect(g.Test(HkRStart) == 0 && RWait(g, 2, 10000), "the recording beside it did not begin: " + RText(g, 8));
+            for (int f = 3800; f < 3800 + 1200; f += 10) { DriveFrames(g, pad, f, f + 10); g.Test(HkLiveDrain); }
+            g.Test(HkRStop);
+            t.Expect(RWait(g, 4, 120000), "the recording beside the live out did not end");
+            var roots = LiveRoots(g);
+            long unknown = g.Test(HkLiveCount, 2 + 3);
+            string describe = EdText(g, HkLiveText);
+            // Instrument Runaway freezes the game: its sounding notes end
+            g.Test(HkRunaway, 0, 1);
+            var buf = new float[512];
+            fixed (float* fb = buf) { g.NewTick(); g.GenRender(fb, 256); }
+            List<(uint Msg, bool Delayed)> log; lock (g.Host.MidiOutLog) log = g.Host.MidiOutLog.ToList();
+            g.Test(HkRunaway, 0, 0);
+            var s = RecSection.Read(RBytes(g, HkRSection), out var why);
+            t.Expect(s != null, "the Super Mario World recording does not read: " + why);
+            if (s == null) return;
+            var notes = LiveChecks.Parse(log.Select(x => x.Msg), out int range, out var problems);
+            foreach (var pr in problems.Take(3)) t.Expect(false, "Super Mario World stream: " + pr);
+            t.Expect(log.All(x => x.Delayed && x.Msg >> 24 == 2), "Super Mario World: messages not through MIDIOut_Delayed on port 2");
+            var st = LiveChecks.Compare(LiveChecks.Truth(s), notes, roots, range < 0 ? RecLive.DefaultRange : range);
+            foreach (var pr in st.Problems.Take(4)) t.Expect(false, "Super Mario World: " + pr);
+            t.Expect(st.AllGood && st.Keys > 100, "Super Mario World: " + st.Line() + " (the hanging ones after Instrument Runaway froze the game)");
+            t.Expect(unknown == 0, $"Super Mario World: {unknown} notes keyed before their sample's root was known (the roots are read before the live out starts)");
+            t.Note($"Super Mario World (20 s of the overworld, live out on port 2): {st.Line()}; {describe}");
+        }
+        finally { g.Test(HkLive, 0, 0); g.Test(HkRunaway, 0, 0); g.Test(HkRForget); }
     }
 
     // ------------------------------------------------------------------------------------------------ what is refused

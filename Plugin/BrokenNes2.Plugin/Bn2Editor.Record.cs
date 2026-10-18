@@ -10,8 +10,8 @@ namespace BrokenNes2;
 public sealed unsafe partial class Bn2Editor
 {
     public const int IdRec = 2020, IdRecClose = 2021, IdRecStart = 2022, IdRecStop = 2023, IdRecSave = 2024, IdRecPresets = 2025, IdRecDeal = 2026,
-        IdRecOptStart = 2027, IdRecOptStop = 2028, IdRecOptLanes = 2029, IdRecDragAll = 2030, IdRecTrack = 2040;          // + visible track row 0..RecRows-1
-    private const int RecW = 820, RecH = 624, RecRows = 6;
+        IdRecOptStart = 2027, IdRecOptStop = 2028, IdRecOptLanes = 2029, IdRecDragAll = 2030, IdRecLive = 2031, IdRecPortDown = 2032, IdRecPortUp = 2033, IdRecTrack = 2040;          // + visible track row 0..RecRows-1
+    private const int RecW = 820, RecH = 624, RecRows = 5;
 
     private bool recOpen;
     private int recScroll, dragArm, dragX, dragY;
@@ -49,7 +49,7 @@ public sealed unsafe partial class Bn2Editor
 
         Txt(dc, "Record the music", R(lx, box.Top + 14, 400, 34), Win32.DT_LEFT | Mid, Text, fontTitle);
         if (emu != null) Txt(dc, $"emulator #{emu.Id}", R(box.Right - 30 - 200, box.Top + 14, 200, 34), Win32.DT_RIGHT | Mid, Dim, fontSection);
-        Txt(dc, "Record keeps every note the game's sound chip plays (SNES games), from Record to Stop. Then: one MIDI track and one preset per instrument. Drag the MIDI file into FL Studio, give each track to a BrokenNes2 instance on the Presets chip: it replays as the game played it, with no game running.",
+        Txt(dc, "Record keeps every note the game's sound chip plays (SNES games), from Record to Stop: one MIDI track and one preset per instrument. Drag the MIDI file into FL, give each track to a BrokenNes2 on the Presets chip: it replays as the game played it.",
             R(lx, box.Top + 50, iw, 40), Win32.DT_LEFT | Win32.DT_WORDBREAK, Dim, fontSmall);
         Line_(dc, lx, box.Top + 94, box.Right - 30, box.Top + 94, Line);
 
@@ -121,6 +121,17 @@ public sealed unsafe partial class Bn2Editor
         }
         if (tracks.Count > RecRows) Txt(dc, $"{recScroll + 1}-{Math.Min(tracks.Count, recScroll + RecRows)} of {tracks.Count}: the wheel scrolls", R(lx, y + RecRows * 26, iw, 16), Win32.DT_RIGHT | Win32.DT_SINGLELINE, Faint, fontSmall);
 
+        // live MIDI out (P2): the game's notes to FL's MIDI port while it plays
+        y = box.Top + 506;
+        var lv = emu?.Live;
+        bool liveOn = lv is { Ended: false };
+        Check(dc, IdRecLive, "Live MIDI out", lx, y + 3, liveOn, null, labelW: 130, hitW: 160);
+        Button(dc, IdRecPortDown, "-", R(lx + 166, y, 26, 26), primary: false, enabled: emu != null);
+        Txt(dc, $"port {emu?.LivePort ?? 0}", R(lx + 194, y, 66, 26), Win32.DT_CENTER | Mid, Text, fontSmall);
+        Button(dc, IdRecPortUp, "+", R(lx + 262, y, 26, 26), primary: false, enabled: emu != null);
+        string liveText = liveOn ? "live: " + lv!.Describe() : "sends the game's notes as it plays (one MIDI channel per instrument); FL channels whose MIDI input port is this number play them";
+        Txt(dc, liveText, R(lx + 300, y, iw - 300, 26), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, liveOn ? Text : Faint, fontSmall);
+
         // the whole song's drag handle, and the deal
         y = box.Top + 538;
         var drag = R(lx, y, 380, 34);
@@ -181,6 +192,13 @@ public sealed unsafe partial class Bn2Editor
                 if (RecordDeal.Armed) { RecordDeal.Disarm(); Say("The tracks are no longer given to new instances.", true); }
                 else { var (ok, msg) = emu.DealTracks(); Say(msg, ok); }
                 break;
+            case IdRecLive:
+                if (emu.Live is { Ended: false }) { emu.StopLive(); Say("Live MIDI out is off (the sounding notes were ended).", true); }
+                else if (plugin.StartLiveMidi() is { } whyLive) Say("No live MIDI out: " + whyLive, false);
+                else Say($"Live MIDI out is on: the game's notes go to MIDI port {emu.LivePort} while it plays. In FL, set the MIDI input port of the channels that should play them to {emu.LivePort} (one MIDI channel per instrument).", true);
+                break;
+            case IdRecPortDown: emu.LivePort--; break;
+            case IdRecPortUp: emu.LivePort++; break;
             case IdRecOptStart: ui.StartWithTransport = !ui.StartWithTransport; break;
             case IdRecOptStop: ui.StopWithTransport = !ui.StopWithTransport; break;
             case IdRecOptLanes:
@@ -222,6 +240,8 @@ public sealed unsafe partial class Bn2Editor
         h = h * 31 + u.State; h = h * 31 + u.ResultStamp; h = h * 31 + u.Status.GetHashCode();
         h = h * 31 + (u.StartWithTransport ? 1 : 2) + (u.StopWithTransport ? 4 : 8) + (u.Lanes ? 16 : 32);
         h = h * 31 + (e.Recording?.Generation ?? 0); h = h * 31 + (e.Recording?.PresetNote.GetHashCode() ?? 0);
+        if (recOpen && e.Live is { } lv) { h = h * 31 + lv.NotesOn + lv.Instruments * 7919 + (lv.Ended ? 1 : 2); }
+        h = h * 31 + e.LivePort;
         return h;
     }
 

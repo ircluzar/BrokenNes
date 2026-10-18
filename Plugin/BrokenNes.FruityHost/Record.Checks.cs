@@ -37,6 +37,7 @@ internal static class RecordChecks
         new("transcribe", "the synthetic driver's music: notes, roots, keys, tempo; the MIDI file replayed through the plugin's pitch function gives the game's pitch register exactly", Transcribe),
         new("smf", "the MIDI file read back by an independent Python parser and by VRUN's", Smf),
         new("section", "the project section REC1 round-trips and refuses damage", Section),
+        new("live", "live MIDI out of the synthetic driver: every key-on a note-on on its instrument's channel, key-on pitch and every held move and level reproduced, the roots, nothing allocated per write", LiveChecks.Live),
         new("games", "SMW, DKC and a corrupted SMW captured, transcribed and replayed: pitch exact, volumes, times, tempo against the driver's tick, roots against an FFT", Games),
     ];
 
@@ -54,6 +55,9 @@ internal static class RecordChecks
         new("every 1,000th write lost without a word", "capture", RecMutants.CaptureLosesWrites),
         new("a new instrument's marker lost", "capture", RecMutants.KeyOnVersionLost),
         new("the section's checksum not checked", "section", RecMutants.SectionCrcNotChecked),
+        new("live MIDI out sends nothing", "live", RecMutants.LiveOutSilent),
+        new("live notes keyed without their sample's root", "live", RecMutants.LiveRootIgnored),
+        new("live note-offs lost", "live", RecMutants.LiveNoteOffLost),
     ];
 
     // =====================================================================================================================================================================
@@ -760,7 +764,7 @@ internal static class RecordChecks
         if (mutants)
         {
             Console.WriteLine("deliberate bugs (each must be caught by the check named):");
-            var (lines, m) = RunMutants(only == null ? "root,tempo,capture,transcribe,smf,section" : only);
+            var (lines, m) = RunMutants(only == null ? "root,tempo,capture,transcribe,smf,section,live" : only);
             foreach (var l in lines) Console.WriteLine(l);
             missed = m;
         }

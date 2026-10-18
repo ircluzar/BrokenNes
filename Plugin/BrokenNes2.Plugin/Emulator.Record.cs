@@ -128,6 +128,7 @@ public sealed partial class Emulator
         recCreated = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         recId = (ulong)Random.Shared.NextInt64();
         recorderTap = rec.OnWrite;                        // (the delegate is made here, on the UI thread: the audio thread only sets it)
+        unitChangedTap ??= OnUnitChanged;                 // (a sound-chip change during the recording: the copies come from the new unit; Emulator.Live.cs)
         Volatile.Write(ref recStartWanted, RecordUi.StartWithTransport ? 0 : 1);
         Volatile.Write(ref recStopWanted, 0);
         recorder = rec;
@@ -171,6 +172,7 @@ public sealed partial class Emulator
             if (Volatile.Read(ref recStartWanted) == 0 || Runaway || g is not SessionGame sg || sg.SpcUnit is not { } spc || sg.SpcLog is not { } log) return;
             rec.Begin(spc.Aram, spc.Dsp.Regs, spc.SamplesProduced);
             log.Recorder = recorderTap;
+            sg.UnitChanged = unitChangedTap;
             recGame = sg;
             RecordUi.State = RecordPanel.Recording;
             return;

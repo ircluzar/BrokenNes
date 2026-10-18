@@ -160,7 +160,7 @@ internal sealed class SynthDriver
     }
 
     /// <summary>Plays <paramref name="seconds"/> of music into <paramref name="rec"/> (Arm-ed beforehand). Returns the length in S-DSP samples.</summary>
-    public long Play(SpcRecorder rec, double seconds)
+    public long Play(SpcRecorder rec, double seconds, Action<byte, byte, long>? tap = null)
     {
         double beat = 60 / Bpm, s16 = beat / 4;
         // melody (A, voice 0) with vibrato on the long notes; doubled an octave down (voice 4) every fourth bar
@@ -211,6 +211,7 @@ internal sealed class SynthDriver
             Regs[reg] = (byte)val;
             Probe++;
             rec.OnWrite((byte)reg, (byte)val, t);
+            tap?.Invoke((byte)reg, (byte)val, t);
         }
         rec.Clock(length);
         rec.Halt(RecEnd.Stop);

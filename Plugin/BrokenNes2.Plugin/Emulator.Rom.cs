@@ -316,6 +316,7 @@ public sealed partial class Emulator
     private void Produce(IGame g)
     {
         RecordService(g);                     // a recording begins or ends between two frames (Emulator.Record.cs; allocation-free)
+        LiveService(g);                       // the live MIDI out follows the game that runs (Emulator.Live.cs; allocation-free)
         if (Runaway || SongHolds(g))
         {
             // frozen (or the Test MIDI export's song stopped): the game does not run, the picture stays, and every channel is silent for as long as a frame would have lasted
@@ -351,6 +352,7 @@ public sealed partial class Emulator
         g.RunFrame();
         CaptureFrame(g);
         RecordClock(g);
+        LiveFrameEnd(g);
 
         int n;
         while ((n = g.ReadAvailable(scratch)) > 0) RingOf(Ch.Mix).Append(scratch.AsSpan(0, n));
