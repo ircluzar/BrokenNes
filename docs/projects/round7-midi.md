@@ -43,7 +43,7 @@ Compose in FL Studio, export a MIDI file, and in the BrokenNes2 plugin press **T
 
 Deliberate bugs (`MusicMutate`, or a change in what the check is fed), each caught: every note a semitone up after conversion (converter: 16 failures), square 1 patched one byte late (engine 21, title 2, reference 16: "differ in 684 of 2400 frames"), the fresh template's engine changed in one byte (template: "PRG 0x014000: 0xA5 / 0x85"), the facts hide dropped notes (facts), the section written without the MIDI (section).
 
-### `FruityHost selftest --only midi` (the Native AOT DLL): PASS, 8 scenarios, 7 of 7 DLL deliberate bugs caught (about 3.5 minutes)
+### `FruityHost selftest --only midi` (the Native AOT DLL): PASS, 8 scenarios, 8 of 8 DLL deliberate bugs caught (about 3.5 minutes)
 
 - **flow** (real mouse messages): the button is in the header and overlaps none of About, the tabs, the Emulator row, Inputs, Corruption; the window opens and is modal; Open MIDI (the file dialog replaced by editor hook 621, as the Corruption window does) makes the song the game ("Loaded flow song.mid: it plays from its start"), the note says it replaced VRUN (built-in), the facts are the synthetic song's, the emulator is NES ROM mode, the song sounds; Stop is silent (rms < 1e-6), Play sounds again, Restart restarts, the follow tick is on by default and toggles; after Close the note is over the picture.
 - **engine**: the ROM the plugin built (hook 610) is **byte for byte the one the library builds** (the one `midi-test` verifies) for synthetic, dense, think and level2; the plugin's own machine (hook 611: the APU latch after each frame, frames run as the audio thread runs them) plays the converter's streams exactly (4,792/4,792, 4,472/4,472, 19,192/19,192, 19,192/19,192 field-frames), decode in frame 6 from power-on and **in frame 0 after a restart**.
@@ -53,11 +53,16 @@ Deliberate bugs (`MusicMutate`, or a change in what the check is fed), each caug
 - **project**: saved, the instance destroyed, a fresh instance opens it: the same ROM bytes, the same facts, the game's state put back (restore result 1, the saved frame 150); a damaged section ("damaged (the checksum does not match)") and a newer one are refused with the reason and no song plays; a project without the section opens to the built-in game with nothing said.
 - **refusals**: Reload with no song; not a MIDI, no notes, drums only, cut short: each "was not loaded: <reason>. Nothing changed: the song that was playing goes on", and it does; a version-2 template refuses Test MIDI export ("cannot run in this build: the music test template is version 2; this build of BrokenNes2 understands version 1 only") and nothing loads.
 - **alloc**: Mix and the four stems claimed, **0 bytes allocated on the audio thread over 1,500 render calls**, two transport restarts and a stop (`FPD_SetPlaying` itself: 0).
-- Deliberate bugs (hook 616), each caught by its scenario: Play stops; square 1 patched one byte late; FL's transport ignored; Reload re-converts the bytes it had; the section without the MIDI; a refusal says nothing; a restart drops the prepared stems (13 MB allocated on the audio thread).
+- Deliberate bugs (hook 616), each caught by its scenario: Play stops; square 1 patched one byte late; after a restart each channel gets the next channel's stem (square 1 silent); FL's transport ignored; Reload re-converts the bytes it had; the section without the MIDI; a refusal says nothing; a restart drops the prepared stems (13 MB allocated on the audio thread).
 
-### The whole self-test and the other suites
+### The whole self-test and the other suites (nothing else broke)
 
-(filled in at the end of the round: see section 9)
+- `FruityHost selftest` (all checks, the Native AOT DLL): **59 results: 58 pass, 1 warning (QLQ plays an octave sharp, on purpose, as before), 0 failed**; the `ui` check's golden rectangles and pixel round trip of the Emulator tab still hold with the new header button.
+- `BrokenNes.Workshop --corrupt-test`: 275 passed, 0 failed, 0 not run.
+- `UAT\run-suite.ps1 -Exe <fresh Workshop>`: 84 pass, 0 fail, 60 skip (the skipped cases' ROMs are not at this worktree's paths), 0 info.
+- `BrokenDev\tests\run-tests.ps1`: 58 passed, 0 failed, 0 skipped.
+- `UAT\entrypoints\notices-check.ps1`: pass (431 files scanned).
+- Without the VRUN tree (`BROKENNES_VRUN` pointing nowhere) `midi-test` says `NOT RUN` for converter, template and reference and does not count them as passed ("1 checks passed, 3 NOT RUN ..., 0 failed").
 
 ## 5. Found on the way
 
