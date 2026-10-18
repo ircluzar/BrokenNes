@@ -156,6 +156,17 @@ public sealed unsafe partial class Bn2Plugin
         CountOn(slot);
         DropSampler();                                                   // (the voices let go of the last engine; nothing allocated)
         var eng = Interlocked.Exchange(ref slot.Ready, null);
+        if (slot.Preset.Play.Console == Instruments.ConsoleId.Nes)
+        {
+            // a NES track (record-nes): the engine is this instance's own copy of the preset with its own register player; none ready yet: silent until the worker builds one (RenderBound)
+            preset = eng?.Nes != null && eng.Rate == EmulatorHub.HostRate ? eng.Nes : slot.Preset;
+            expression = slot.Expression;
+            exprOn = TrackOffers.ExpressionFromRecording;
+            boundSlot = slot;
+            boundIndex = t;
+            bindState = 1;
+            return;
+        }
         if (RecMutants.On(RecMutants.EnginesNotPrebuilt)) eng = new TrackEngine(new SnesSampler(slot.Preset.Play.Snes!, EmulatorHub.HostRate), EmulatorHub.HostRate);   // (the deliberate bug: built on the audio thread)
         if (eng != null && eng.Rate == EmulatorHub.HostRate) { sampler = eng.Sampler; samplerFor = slot.Preset.Play.Snes; samplerRate = eng.Rate; }
         preset = slot.Preset;
@@ -203,6 +214,18 @@ public sealed unsafe partial class Bn2Plugin
     {
         var lp = preset;
         var slot = boundSlot;
+        if (lp != null && lp.Play.Console == Instruments.ConsoleId.Nes)
+        {
+            // a NES track (record-nes): its own register player, taken from the worker's engine (never built here)
+            if (lp.Nes == null || lp.Nes.HostRate != EmulatorHub.HostRate)
+            {
+                var eng = slot == null ? null : Interlocked.Exchange(ref slot.Ready, null);
+                if (eng?.Nes != null && eng.Rate == EmulatorHub.HostRate) { preset = lp = eng.Nes; }
+                else { engineWaits++; FinishReleased(); new Span<float>(dest, length * 2).Clear(); return; }
+            }
+            RenderPreset(dest, length, gl, gr);
+            return;
+        }
         if (lp?.Play.Snes is not { } snap) { FinishReleased(); new Span<float>(dest, length * 2).Clear(); return; }
         if (sampler == null || !ReferenceEquals(samplerFor, snap) || samplerRate != EmulatorHub.HostRate)
         {
@@ -229,7 +252,8 @@ public sealed unsafe partial class Bn2Plugin
     /// <summary>Moves this instance to the tracks' emulator in preset mode (UI thread or the worker). Null when done, else why not.</summary>
     private string? Settle(TrackSlot slot, int how)
     {
-        int id = TrackOffers.TracksEmulator();
+        bool nes = slot.Preset?.Play.Console == Instruments.ConsoleId.Nes;
+        int id = TrackOffers.TracksEmulator(nes);
         if (id == 0) return $"all {EmulatorHub.MaxEmulators} emulators are in use (a project saved now keeps the track: it plays it again when reopened)";
         Volatile.Write(ref Values[P.Emulator], id);
         Volatile.Write(ref Values[P.Channel], 0);
@@ -238,7 +262,7 @@ public sealed unsafe partial class Bn2Plugin
         EmulatorHub.Resolve(this);
         var emu = Emulator;
         if (emu == null) return "it found no emulator";
-        if (emu.EnterPresetMode("SNES") is { } why) return why;
+        if (emu.EnterPresetMode(nes ? "NES" : "SNES") is { } why) return why;
         binding = new TrackBinding(slot.Held.Session.Id, slot.Held.Session.Name, slot.Info.Index, slot.Info.Name, how);
         configured = true;
         trackNote = null;

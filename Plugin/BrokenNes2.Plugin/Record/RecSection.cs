@@ -37,11 +37,40 @@ public static class RecSection
 
     public static byte[] Marker(string why, int payloadLength = 0) => Assemble(FlagTooBig, payloadLength, [], why);
 
-    private static byte[] Assemble(int flags, int payloadLength, byte[] stored, string note)
+    /// <summary>Version 2 (round 8, record-nes): the same layout carrying a NES recording's session (NesSession.ToPayload, whose first byte 'N' tells it from a SNES payload). A SNES recording is still
+    /// written as version 1, so an older BrokenNes2 reads it; an older one refuses a NES recording as "made by a newer BrokenNes2" and writes it back as it came.</summary>
+    public const int VersionNes = 2;
+
+    public static byte[] BuildNes(NesSession s)
+    {
+        var payload = s.ToPayload();
+        byte[] stored;
+        using (var ms = new MemoryStream())
+        {
+            using (var z = new DeflateStream(ms, CompressionLevel.Optimal, leaveOpen: true)) z.Write(payload);
+            stored = ms.ToArray();
+        }
+        if (stored.Length > MaxStored) return Assemble(FlagTooBig, payload.Length, [], $"the recording is {stored.Length / 1048576.0:0.0} MB compressed, more than the {MaxStored / 1048576} MB a project keeps: save its MIDI file and presets to keep it", VersionNes);
+        return Assemble(FlagSession, payload.Length, stored, "", VersionNes);
+    }
+
+    /// <summary>The recording a section holds, SNES or NES (exactly one of the two comes back, or neither with the reason).</summary>
+    public static RecSession? ReadAny(ReadOnlySpan<byte> s, out string? problem, out NesSession? nes)
+    {
+        nes = null;
+        var payload = ReadPayload(s, out problem, VersionNes);
+        if (payload == null) return null;
+        bool isNes = payload.Length > 0 && payload[0] == NesSession.PayloadKind, v2 = BinaryPrimitives.ReadUInt16LittleEndian(s) == VersionNes;
+        if (isNes != v2) { problem = v2 ? "damaged (a version 2 section that holds no NES recording)" : "damaged (a NES recording in a version 1 section)"; return null; }
+        if (isNes) { nes = NesSession.FromPayload(payload, out problem); return null; }
+        return RecSession.FromPayload(payload, out problem);
+    }
+
+    private static byte[] Assemble(int flags, int payloadLength, byte[] stored, string note, int version = Version)
     {
         var nb = Encoding.UTF8.GetBytes(note.Length > 1000 ? note[..1000] : note);
         var b = new byte[HeaderBytes + stored.Length + 2 + nb.Length + 4];
-        BinaryPrimitives.WriteUInt16LittleEndian(b, Version);
+        BinaryPrimitives.WriteUInt16LittleEndian(b, (ushort)version);
         BinaryPrimitives.WriteUInt16LittleEndian(b.AsSpan(2), (ushort)flags);
         BinaryPrimitives.WriteUInt32LittleEndian(b.AsSpan(4), (uint)payloadLength);
         BinaryPrimitives.WriteUInt32LittleEndian(b.AsSpan(8), (uint)stored.Length);
@@ -55,12 +84,19 @@ public static class RecSection
     /// <summary>The recording a section holds; null with the reason when it holds none (a marker: its note), or cannot be used ("damaged (...)", "cut short", "made by a newer BrokenNes2 ...").</summary>
     public static RecSession? Read(ReadOnlySpan<byte> s, out string? problem)
     {
+        var payload = ReadPayload(s, out problem, Version);
+        return payload == null ? null : RecSession.FromPayload(payload, out problem);
+    }
+
+    /// <summary>The checked, inflated payload of a section of version 1 .. <paramref name="newest"/>; null with the reason.</summary>
+    private static byte[]? ReadPayload(ReadOnlySpan<byte> s, out string? problem, int newest)
+    {
         problem = null;
         if (s.Length < HeaderBytes + 2 + 4) { problem = "cut short"; return null; }
         if (s.Length > MaxBytes) { problem = "too big"; return null; }
         int version = BinaryPrimitives.ReadUInt16LittleEndian(s);
-        if (version > Version) { problem = $"made by a newer BrokenNes2 (section version {version})"; return null; }
-        if (version != Version) { problem = "of an unknown version"; return null; }
+        if (version > newest) { problem = $"made by a newer BrokenNes2 (section version {version})"; return null; }
+        if (version < 1) { problem = "of an unknown version"; return null; }
         if (BinaryPrimitives.ReadUInt32LittleEndian(s[^4..]) != Music.Crc32.Of(s[..^4]) && !RecMutants.On(RecMutants.SectionCrcNotChecked)) { problem = "damaged (the checksum does not match)"; return null; }
         int flags = BinaryPrimitives.ReadUInt16LittleEndian(s[2..]);
         if ((flags & ~KnownFlags) != 0) { problem = "it uses a feature this version of BrokenNes2 does not know"; return null; }
@@ -83,6 +119,6 @@ public static class RecSection
             if (got != payload.Length || z.ReadByte() >= 0) { problem = "damaged (its compressed data)"; return null; }
         }
         catch (InvalidDataException) { problem = "damaged (its compressed data)"; return null; }
-        return RecSession.FromPayload(payload, out problem);
+        return payload;
     }
 }

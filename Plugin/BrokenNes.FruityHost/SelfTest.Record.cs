@@ -650,9 +650,9 @@ public sealed unsafe partial class SelfTest
         var changed = state[..(at + 4)].Concat(BitConverter.GetBytes(other.Length)).Concat(other).Concat(state[(at + 8 + len)..]).ToArray();
         Reopen(changed, out long tr2, out string why2, out _);
         t.Expect(tr2 == -1 && why2.Contains("checksum"), $"a changed REC1 under the old checksum: tracks {tr2}, the window says '{why2}'");
-        // newer: version 2 (with a good checksum): refused with the reason, and written back as it came
+        // newer: version 3 (with a good checksum; version 2 is a NES recording's since record-nes): refused with the reason, and written back as it came
         var newer = (byte[])state.Clone();
-        newer[at + 8] = 2;
+        newer[at + 8] = 3;
         uint crc = BrokenNes2.Music.Crc32.Of(newer.AsSpan(at + 8, len - 4));
         BitConverter.TryWriteBytes(newer.AsSpan(at + 8 + len - 4), crc);
         Reopen(newer, out long tr3, out string why3, out byte[] again3);

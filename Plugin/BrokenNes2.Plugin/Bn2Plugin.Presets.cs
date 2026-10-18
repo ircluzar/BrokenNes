@@ -51,7 +51,7 @@ public sealed unsafe partial class Bn2Plugin
         if (play.CannotPlay != null) return play.CannotPlay;
         int rate = EmulatorHub.HostRate;
         var lp = new LoadedPreset { Data = read.Data, File = file, Play = play, LibraryId = libraryId };
-        if (play.Console == ConsoleId.Nes) lp.Nes = new NesPresetPlayer(play.Instrument, rate);
+        if (play.Console == ConsoleId.Nes) lp.Nes = new NesPresetPlayer(play.Instrument, rate, BrokenNes2.Presets.PresetNote.IsNesTrack(read.Data));     // (a track recorded from a NES game plays its notes' volumes: round 8, record-nes)
         PrepareForPreset(lp);
         presetNote = null;
         preset = lp;
@@ -129,6 +129,7 @@ public sealed unsafe partial class Bn2Plugin
         if (sampler != null || gbSampler != null || segaSampler != null) DropSampler();
         player.HostRate = EmulatorHub.HostRate;
         float master = Get(P.Volume) / 1000f;
+        if (player.Track) { RenderNesTrack(player, dest, length, gl, gr); return; }
         for (int off = 0; off < length; off += Chunk)
         {
             int n = Math.Min(Chunk, length - off);

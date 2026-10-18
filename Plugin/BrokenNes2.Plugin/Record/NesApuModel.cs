@@ -83,7 +83,17 @@ public sealed class NesApuModel
     /// <summary>The model of a game's chip as APU_FIX had it (between two frames) at <paramref name="clock"/>.</summary>
     public static NesApuModel From(in APU_FIX.ApuControlSnapshot c, long clock)
     {
-        var m = new NesApuModel { Clock = clock };
+        var m = new NesApuModel();
+        m.Set(c, clock);
+        return m;
+    }
+
+    /// <summary>This model becomes the game chip's state (allocation-free: the live MIDI out does it on the audio thread, between frames).</summary>
+    public void Set(in APU_FIX.ApuControlSnapshot c, long clock)
+    {
+        var m = this;
+        m.Reset();
+        m.Clock = clock;
         void P(Pulse p, int duty, bool halt, bool cnst, int vol, int raw, int per, bool neg, int shift, bool reload, int div, int timer, int li, int len, bool en, bool es, int ed, int dec)
         {
             p.Duty = duty; p.Halt = halt; p.Const = cnst; p.Vol = vol; p.SweepRaw = raw; p.SweepPeriod = per; p.SweepNegate = neg; p.SweepShift = shift; p.SweepReload = reload; p.SweepDivider = div;
@@ -96,7 +106,6 @@ public sealed class NesApuModel
         m.DmcCtrl = c.DmcCtrl; m.DmcLoad = c.DmcLoad; m.DmcAddrReg = c.DmcAddrReg; m.DmcLenReg = c.DmcLenReg; m.DmcEnabled = c.DmcEnabled; m.Status = c.Status;
         if (c.DmcRemaining > 0) { m.DmcStart = clock; m.DmcBytes = c.DmcRemaining; m.DmcEnd = clock + (long)c.DmcRemaining * 8 * DmcRates[c.DmcCtrl & 15]; }
         m.FrameCycle = c.FrameCycle; m.FrameStep = c.FrameStep; m.NextEvent = c.NextFrameEvent; m.Mode5 = c.FrameMode5; m.IrqInhibit = c.FrameIrqInhibit;
-        return m;
     }
 
     // ---- saved form (a recording keeps the state it began from) ----
@@ -125,12 +134,18 @@ public sealed class NesApuModel
     /// notes already sounding begin as if just struck. Approximate, and said so (<see cref="NesSession.BaseExact"/>).</summary>
     public static void FillFromLatch(byte[] latch, uint written, int[] dest, NesApuModel scratch)
     {
-        var m = scratch;
-        m.Reset();
-        if ((written >> 0x15 & 1) != 0) m.Write(0x15, latch[0x15]);
-        for (int r = 0; r < 0x14; r++) if ((written >> r & 1) != 0) m.Write(r, latch[r]);
-        if ((written >> 0x17 & 1) != 0) m.Write(0x17, latch[0x17]);
-        m.SaveInto(dest);
+        scratch.SetFromLatch(latch, written, 0);
+        scratch.SaveInto(dest);
+    }
+
+    /// <summary>This model becomes a chip at power-on given the registers last written (see <see cref="FillFromLatch"/>). Allocation-free.</summary>
+    public void SetFromLatch(byte[] latch, uint written, long clock)
+    {
+        Reset();
+        Clock = clock;
+        if ((written >> 0x15 & 1) != 0) Write(0x15, latch[0x15]);
+        for (int r = 0; r < 0x14; r++) if ((written >> r & 1) != 0) Write(r, latch[r]);
+        if ((written >> 0x17 & 1) != 0) Write(0x17, latch[0x17]);
     }
 
     public int[] Save() { var s = new int[StateInts]; SaveInto(s); return s; }
