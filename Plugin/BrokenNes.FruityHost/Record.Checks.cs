@@ -38,6 +38,7 @@ internal static class RecordChecks
         new("smf", "the MIDI file read back by an independent Python parser and by VRUN's", Smf),
         new("section", "the project section REC1 round-trips and refuses damage", Section),
         new("live", "live MIDI out of the synthetic driver: every key-on a note-on on its instrument's channel, key-on pitch and every held move and level reproduced, the roots, nothing allocated per write", LiveChecks.Live),
+        new("match", "which track a channel plays, from its notes: every track from its first unambiguous note, from the middle, moved 16 bars, without a song position; unrelated notes never taken; unison then parting; the note's colour; an added note; nothing allocated", MatchChecks.Match),
         new("games", "SMW, DKC and a corrupted SMW captured, transcribed and replayed: pitch exact, volumes, times, tempo against the driver's tick, roots against an FFT", Games),
     ];
 
@@ -58,6 +59,8 @@ internal static class RecordChecks
         new("live MIDI out sends nothing", "live", RecMutants.LiveOutSilent),
         new("live notes keyed without their sample's root", "live", RecMutants.LiveRootIgnored),
         new("live note-offs lost", "live", RecMutants.LiveNoteOffLost),
+        new("the track found by the key alone (the song position ignored)", "match", RecMutants.MatchIgnoresPosition),
+        new("any key fits a track's note (an unrelated channel is taken)", "match", RecMutants.UnrelatedGrabbed),
     ];
 
     // =====================================================================================================================================================================
@@ -764,7 +767,7 @@ internal static class RecordChecks
         if (mutants)
         {
             Console.WriteLine("deliberate bugs (each must be caught by the check named):");
-            var (lines, m) = RunMutants(only == null ? "root,tempo,capture,transcribe,smf,section,live" : only);
+            var (lines, m) = RunMutants(only == null ? "root,tempo,capture,transcribe,smf,section,live,match" : only);
             foreach (var l in lines) Console.WriteLine(l);
             missed = m;
         }

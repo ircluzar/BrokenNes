@@ -140,6 +140,7 @@ public sealed unsafe partial class Bn2Editor
             if (path != null && Path.GetDirectoryName(path) is { Length: > 0 } folder) Prefs.Set("MidiFolder", folder);
         }
         if (path == null) return;
+        plugin.MarkConfigured("a MIDI test song was opened");
         if (emu.OpenSong(path) is { } refused) emu.SongUi.SetResult(refused, false);
     }
 
