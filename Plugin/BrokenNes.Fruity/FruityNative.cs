@@ -152,7 +152,12 @@ public static unsafe class FruityNative
         }
     }
 
-    [UnmanagedCallersOnly] private static void Idle(NativePlug* self) { }
+    [UnmanagedCallersOnly]
+    private static void Idle(NativePlug* self)
+    {
+        try { P(self).Idle(); }
+        catch (Exception e) { Diag.Log($"Idle exception: {e}"); }
+    }
 
     [UnmanagedCallersOnly]
     private static void SaveRestoreState(NativePlug* self, nint stream, int save)

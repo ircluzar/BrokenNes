@@ -16,6 +16,7 @@ using BrokenNes.FruityHost;
 static string? Opt(string[] a, string name) { int i = Array.IndexOf(a, name); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
 
 if (args.Length == 0) { Console.Error.WriteLine("usage: selftest|render|fixture|analyze|list (see the header of Program.cs)"); return 2; }
+HostLogGuard.Install();          // the plugin's host log goes to a scratch file for the whole run, never to the user's Documents (HostLogGuard.cs; the selftest's `hostlog` check holds it)
 
 switch (args[0])
 {
@@ -119,6 +120,7 @@ switch (args[0])
     {
         // editor-shot <plugin.dll> <out.bmp> [--mode rom|direct] [--rom game.nes] [--seconds 3] [--console 0-2] [--chip QN]
         //             [--channel 1-5] [--emulator 0-8] [--instances N] [--open chip|game|channel|emulator|inputs|instrument|duty] [--runaway] [--sampler]
+        //             [--record seconds [--live] [--relink-shots prefix]]
         // opens the editor the way FL would, lets the game run a little, and captures the window
         var lib = new PluginLibrary(args[1]);
         string? rom = Opt(args, "--rom");
@@ -197,7 +199,27 @@ switch (args[0])
             Console.WriteLine($"recording state {plugin.Test(642)}");
         }
         if (Opt(args, "--chars") is { } chars) { Win32Host.Text(plugin.EditorHandle, chars); Win32Host.Pump(100); }
+        // relink (2026-10-18): --relink-shots <prefix> (after --record): two more instances made while the tracks are on offer, one joined, one unlinked (as Unlink leaves it); their editors are
+        // captured as <prefix>-joined.bmp and <prefix>-unlinked.bmp, and the Record window above counts them
+        var relinkExtras = new List<PluginInstance>();
+        if (Opt(args, "--relink-shots") is { } relinkPrefix)
+        {
+            var joined = lib.Create(); relinkExtras.Add(joined); joined.Dispatcher(BrokenNes.Fruity.Fpd.SetSampleRate, 0, 48000);
+            var unlinked = lib.Create(); relinkExtras.Add(unlinked); unlinked.Dispatcher(BrokenNes.Fruity.Fpd.SetSampleRate, 0, 48000); unlinked.Test(722);
+            foreach (var (q, suffix) in new[] { (joined, "joined"), (unlinked, "unlinked") })
+            {
+                nint qp = Win32Host.CreateParent();
+                q.ShowEditor(qp);
+                Win32Host.Pump(300);
+                Win32Host.CaptureWindow(qp, q.EditorHandle, 920, 670, relinkPrefix + "-" + suffix + ".bmp");
+                q.HideEditor();
+                Win32Host.DestroyParent(qp);
+                Console.WriteLine($"wrote {relinkPrefix}-{suffix}.bmp");
+            }
+            Win32Host.Pump(300);
+        }
         Win32Host.CaptureWindow(parent, plugin.EditorHandle, 920, 670, args[2]);
+        foreach (var q in relinkExtras) q.Destroy();
         if (Opt(args, "--hold") is { } hold)
         {
             // keep the window open and the game running so a screen grab from outside can be compared with the capture

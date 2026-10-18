@@ -1,9 +1,9 @@
 // Round 8 follow-up (record, 2026-10-18): the tracks of a recording on offer to BrokenNes2 channels.
 //
-// A finished recording (and one a project brings back) puts its tracks on offer until the user withdraws them in the Record window. While they are, every UNTOUCHED BrokenNes2 instance
-// (Bn2Plugin.Tracks.cs: never configured by the user or by a project, whatever default state or parameters FL hands it) recognises its track from the notes FL asks it to play
-// (Record/RecTracks.cs) and plays that track's preset from the note on. That is what makes FL's "import the MIDI file, Replace each MIDI Out channel by BrokenNes2" work whatever order and
-// whatever way FL creates the instances.
+// A finished recording (and one a project brings back) puts its tracks on offer until the user withdraws them in the Record window (or the emulator that made it closes). While they are, every
+// LINKED BrokenNes2 instance (Bn2Plugin.Relink.cs: joined by itself when made while tracks are on offer, whatever parameters FL pushes; or linked by hand) recognises its track from the notes FL
+// asks it to play (Record/RecTracks.cs), or from its channel's name, and plays that track's preset from the note on. That is what makes FL's "import the MIDI file, Replace each MIDI Out channel by
+// BrokenNes2" work whatever order and whatever way FL creates the instances; the Record window counts the channels that joined and the ones that found their track (Count, CounterText).
 //
 // Nothing of this allocates on the audio thread: the tracks' presets and one engine per track (a SnesSampler at FL's rate) are built here, on a worker; an instance that recognises its track
 // takes that engine with one exchange, and the worker builds the next one. The same worker then settles the instance: it moves it to the tracks' emulator (Direct mode, PRE-SNES chip), where it
@@ -37,7 +37,17 @@ internal sealed class TrackSlot
 internal sealed record OfferedRecording(int EmulatorId, RecordHeld Held, TrackSlot[] Slots);
 
 /// <summary>What is on offer now: every offered recording's tracks in one index (immutable once published).</summary>
-internal sealed record TrackOfferSnapshot(OfferedRecording[] Recordings, TrackSlot[] Slots, TrackIndex Index, long Version);
+internal sealed record TrackOfferSnapshot(OfferedRecording[] Recordings, TrackSlot[] Slots, TrackIndex Index, long Version)
+{
+    /// <summary>The emulators whose recordings these are: their instances made the recording and never join it.</summary>
+    public int[] SourceEmulators { get; init; } = [];
+
+    /// <summary>Whether emulator <paramref name="id"/> made one of the recordings (any thread; allocation-free).</summary>
+    public bool IsSource(int id) { foreach (int e in SourceEmulators) if (e == id) return true; return false; }
+}
+
+/// <summary>The Record window's count of the channels linked to the tracks on offer: joined (linked, found or waiting), found (playing a track), not linked; and one line per instance.</summary>
+internal readonly record struct OfferCount(int Joined, int Found, int NotLinked, string[] Lines);
 
 internal static class TrackOffers
 {
@@ -73,8 +83,11 @@ internal static class TrackOffers
     /// <summary>Every engine on offer is built (tests wait for it).</summary>
     public static bool Ready { get { var s = current; return s != null && s.Slots.All(x => x.Preset == null || x.Ready != null); } }
 
-    public static void Register(Bn2Plugin p) { lock (gate) instances.Add(p); }
-    public static void Unregister(Bn2Plugin p) { lock (gate) instances.Remove(p); }
+    /// <summary>The instances of the process (tests: nothing left alive from an earlier check).</summary>
+    public static int Live { get { lock (gate) return instances.Count; } }
+
+    public static void Register(Bn2Plugin p) { lock (gate) instances.Add(p); Changed(); }
+    public static void Unregister(Bn2Plugin p) { lock (gate) instances.Remove(p); Changed(); }
 
     /// <summary>Offers a recording's tracks (a worker or the UI thread): the presets are read and checked here; the engines are built by the worker. Replaces what the same emulator offered before.</summary>
     public static void Offer(int emulatorId, RecordHeld held)
@@ -100,14 +113,90 @@ internal static class TrackOffers
         }
         var rec = new OfferedRecording(emulatorId, held, slots);
         OfferedAfterInstance = HostLog.InstancesMade;
-        HostLog.Text(0, $"the {slots.Length} tracks of \"{held.Session.Name}\" (emulator #{emulatorId}) are on offer: " + string.Join(", ", slots.Select(s => $"{s.Info.Index + 1} ch {s.Info.Channel + 1} {s.Info.NoteCount} notes{(s.Problem != null ? " (" + s.Problem + ")" : "")}")));
+        Bn2Plugin[] all;
         lock (gate)
         {
             var list = (current?.Recordings ?? []).Where(r => r.EmulatorId != emulatorId).Append(rec).ToArray();
             Publish(list);
             EnsureWorker();
+            all = instances.ToArray();
         }
+        HostLog.Text(0, $"the {slots.Length} tracks of \"{held.Session.Name}\" (emulator #{emulatorId}) are on offer: " + string.Join(", ", slots.Select(s => $"{s.Info.Index + 1} \"{s.Info.Name}\" ch {s.Info.Channel + 1} {s.Info.NoteCount} notes{(s.Problem != null ? " (" + s.Problem + ")" : "")}")));
+        foreach (var p in all) { p.LogPresence(); p.OfferAppeared(); }          // (the log names every instance alive now; those still pristine join the tracks, the others show "Link to recording")
         _ = rate;
+    }
+
+    private static long membersVersion;
+
+    /// <summary>Changes whenever an instance joins, leaves, finds its track or settles, or what is on offer changes: the editors repaint on it (any thread; allocation-free).</summary>
+    public static long MembersVersion => Interlocked.Read(ref membersVersion);
+    public static void Changed() => Interlocked.Increment(ref membersVersion);
+
+    /// <summary>"Link all BrokenNes2 channels" (the Record window): every instance of the process that is not linked, plays no track and did not make the recording is linked by hand. Returns how many;
+    /// <paramref name="already"/>: how many were linked or playing a track already.</summary>
+    public static int LinkAll(out int already)
+    {
+        already = 0;
+        var snap = current;
+        if (snap == null) return 0;
+        Bn2Plugin[] list;
+        lock (gate) list = instances.ToArray();
+        int n = 0;
+        foreach (var p in list)
+        {
+            int role = p.OfferRole(snap);
+            if (role is 3 or 4) { already++; continue; }
+            if (role != 2) continue;
+            if (RecMutants.On(RecMutants.LinkAllIgnored)) { n++; continue; }      // (the self-test's deliberate bug: counted as linked, nothing done)
+            if (p.LinkByHand("Link all, in the Record window", fromButton: false) == null) n++;
+        }
+        HostLog.Text(0, $"Link all: {n} channel{(n == 1 ? "" : "s")} linked by hand, {already} linked or playing a track already");
+        return n;
+    }
+
+    /// <summary>The channels and the tracks on offer (UI thread): joined, found, not linked, a line for each instance (the recording's own channels left out).</summary>
+    public static OfferCount Count()
+    {
+        var snap = current;
+        if (snap == null) return new OfferCount(0, 0, 0, []);
+        Bn2Plugin[] list;
+        lock (gate) list = instances.ToArray();
+        int joined = 0, found = 0, notLinked = 0;
+        var lines = new List<string>();
+        foreach (var p in list.OrderBy(x => x.InstanceNo))
+        {
+            int role = p.OfferRole(snap);
+            if (role == 4) { found++; joined++; }
+            else if (role == 3) joined++;
+            else if (role == 2) notLinked++;
+            else continue;
+            lines.Add(p.OfferLine(snap));
+        }
+        if (RecMutants.On(RecMutants.CounterCountsFoundOnly)) joined = found;      // (the self-test's deliberate bug: the r12 counter, which only moved once a channel had found its track)
+        return new OfferCount(joined, found, notLinked, lines.ToArray());
+    }
+
+    /// <summary>"3 channels joined, 1 found its track; 2 not linked": what the Record window shows (and its offer button).</summary>
+    public static string CounterText() => CounterText(Count());
+
+    public static string CounterText(OfferCount c) =>
+        $"{c.Joined} channel{(c.Joined == 1 ? "" : "s")} joined, {c.Found} found {(c.Found == 1 ? "its" : "their")} track" + (c.NotLinked > 0 ? $"; {c.NotLinked} not linked" : "");
+
+    /// <summary>The track a channel's name names (FL names imported channels after the MIDI file's track names): the one whose name it is (case and spaces at the ends aside), else the longest
+    /// track name it starts with followed by something that is not a letter or digit (" #2", " (2)"); null with the reason when none or more than one fit.</summary>
+    public static (TrackSlot? Slot, string Why) FindByName(string channel)
+    {
+        var snap = current;
+        if (snap == null) return (null, "no tracks are on offer");
+        string c = channel.Trim();
+        var exact = snap.Slots.Where(s => string.Equals(s.Info.Name.Trim(), c, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (exact.Count == 1) return (exact[0], "");
+        if (exact.Count > 1) return (null, $"{exact.Count} tracks on offer have that name");
+        var starts = snap.Slots.Where(s => s.Info.Name.Trim().Length > 0 && c.Length > s.Info.Name.Trim().Length && c.StartsWith(s.Info.Name.Trim(), StringComparison.OrdinalIgnoreCase) && !char.IsLetterOrDigit(c[s.Info.Name.Trim().Length])).ToList();
+        if (starts.Count == 0) return (null, "no track on offer has that name");
+        int longest = starts.Max(s => s.Info.Name.Trim().Length);
+        var best = starts.Where(s => s.Info.Name.Trim().Length == longest).ToList();
+        return best.Count == 1 ? (best[0], "") : (null, $"{best.Count} tracks on offer fit that name");
     }
 
     /// <summary>Takes a recording's tracks off offer (the window's button, a forgotten recording). Instances already playing a track keep playing it.</summary>
@@ -124,6 +213,8 @@ internal static class TrackOffers
 
     private static void Publish(OfferedRecording[] list)
     {
+        Changed();
+        HostLog.SetOffer(list.Length > 0);                // (the host log runs for every instance while tracks are on offer)
         if (list.Length == 0) { current = null; return; }
         var slots = list.SelectMany(r => r.Slots).ToArray();
         var infos = new TrackInfo[slots.Length];
@@ -139,7 +230,7 @@ internal static class TrackOffers
         }
         var index = new TrackIndex(infos, notes);
         index.SetVelocities(vels);                     // (FL's velocity tells apart tracks that play the same notes: a NES note on two duty tracks, record-nes)
-        current = new TrackOfferSnapshot(list, slots, index, Interlocked.Increment(ref version));
+        current = new TrackOfferSnapshot(list, slots, index, Interlocked.Increment(ref version)) { SourceEmulators = list.Select(r => r.EmulatorId).ToArray() };
     }
 
     private static void EnsureWorker()

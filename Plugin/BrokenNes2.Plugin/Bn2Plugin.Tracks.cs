@@ -1,12 +1,12 @@
 // Round 8 follow-up (record, 2026-10-18): an instance recognises which track of an offered recording its FL channel plays (TrackOffer.cs, Record/RecTracks.cs).
 //
-// UNTOUCHED (eligible) means: nobody configured this instance. It stays untouched through whatever FL may do after creating it: a restored state whose instance-level parameters are the defaults
-// and that carries no preset and no track (an empty state, FL's default state, a fresh instance's own state even when it sat on a ROM-mode emulator: the emulator-level values Sound chip, Mode and
-// Console belong to the emulator, not to the instance), and parameter pushes that set a default or the value already there. It becomes CONFIGURED (never matched again) when: the user changes a
-// value in its editor; FL sets a parameter to a value that is neither the default nor the one it has; a project state holds non-default instance values, a preset or a track; the user loads a
-// preset, a game or starts a recording from it; it recognised its track and settled; a track was picked for it by hand.
+// ELIGIBLE means LINKED to the tracks on offer (relink, 2026-10-18: Bn2Plugin.Relink.cs). An instance joins by itself when it is created while tracks are on offer (a new channel, or the one FL makes
+// for a Replace) or is still pristine when they are offered; FL's parameter pushes do not undo that (they are logged). It is the user's own CONFIGURED instance (it leaves, and never joins by itself)
+// when: a project state it restores holds a game, a preset or a track; the user changes a value in its editor; the user loads a preset, a game or starts a recording from it; it settled on a track;
+// a track was picked for it by hand. The editor's "Link to recording" and the Record window's "Link all" link any instance by hand. (Until relink, eligibility was an "untouched" heuristic that
+// non-default parameter pushes defeated, with nothing on screen until the first note: the user's r12 report.)
 //
-// At each note FL starts (TriggerVoice, the audio thread, before the note is rendered) an untouched instance asks FL for the song position (FHD_GetMixingTime in beats; with GT_LocalTime too, for
+// At each note FL starts (TriggerVoice, the audio thread, before the note is rendered) a linked instance asks FL for the song position (FHD_GetMixingTime in beats; with GT_LocalTime too, for
 // the log), and the note's colour, and feeds the matcher. When the matcher names a track the instance takes that track's prebuilt engine and preset and plays it from this very note (the "bound"
 // render path: whatever emulator it sits on). The offer's worker then settles it on the tracks' emulator (Direct mode, PRE-SNES), where it is an ordinary preset instance; section TRK1 of
 // the project says which track of which recording it plays, and how it was found.
@@ -20,8 +20,9 @@ namespace BrokenNes2;
 /// <summary>The track an instance plays (for the window and the project): the recording, the track, how it was found.</summary>
 internal sealed record TrackBinding(ulong SessionId, string Recording, int Track, string Name, int How)
 {
-    public const int ByNotes = 1, ByHand = 2;
-    public string Describe() => $"track {Track + 1} of \"{Recording}\": {Name} ({(How == ByHand ? "picked by hand" : "recognised from its notes")})";
+    public const int ByNotes = 1, ByHand = 2, ByName = 3;
+    public string HowWords => How switch { ByHand => "picked by hand", ByName => "found by its channel's name", _ => "recognised from its notes" };
+    public string Describe() => $"track {Track + 1} of \"{Recording}\": {Name} ({HowWords})";
 }
 
 public sealed unsafe partial class Bn2Plugin
@@ -74,15 +75,22 @@ public sealed unsafe partial class Bn2Plugin
     internal string? TrackNote => trackNote;
     internal TrackMatcher Matcher => matcher;
 
-    /// <summary>The user or a project configured this instance: it is never matched to a track any more.</summary>
-    internal void MarkConfigured(string why)
+    /// <summary>The user or a project configured this instance (it is the user's own): it does not join an offer by itself, and leaves one it joined by itself. A channel linked by hand stays
+    /// linked when <paramref name="keepHandLink"/> (a knob changed in its editor), and leaves otherwise (a preset, a game, a project state of its own, Unlink).</summary>
+    internal void MarkConfigured(string why, bool keepHandLink = false)
     {
-        if (configured) return;
-        configured = true;
-        HostLog.Text(InstanceNo, "configured: " + why);
+        pristine = false;
+        if (!configured) { configured = true; HostLog.Text(InstanceNo, "configured: " + why); if (link == LinkNone) linkNote ??= why; }
+        if ((link == LinkAuto || (link == LinkHand && !keepHandLink)) && bindState == 0 && binding == null)
+        {
+            link = LinkNone;
+            linkNote = why;
+            HostLog.Text(InstanceNo, "left the recording: " + why);
+            TrackOffers.Changed();
+        }
     }
 
-    protected override void OnUserChange(int index, int value) => MarkConfigured($"the editor set {Params[index].Name} to {value}");
+    protected override void OnUserChange(int index, int value) => MarkConfigured($"you set {Params[index].Name} to {value} in its editor", keepHandLink: true);
 
     public override int ProcessParam(int index, int value, int recFlags)
     {
@@ -92,17 +100,30 @@ public sealed unsafe partial class Bn2Plugin
         {
             if (HostLog.On && paramLogged < HostLog.PerInstance) { paramLogged++; HostLog.Add(HostLog.KindParam, InstanceNo, index, Get(index), recFlags); }
             int now = Get(index);
-            if (now != before && now != Params[index].Default && !configured) { configured = true; }       // (FL set a value that is neither the default nor the one it had)
+            if (now != before && now != Params[index].Default)
+            {
+                // FL set a value that is neither the default nor the one it had: logged (above), and the instance is no longer pristine; it stays in the recording if it joined it (relink: FL's
+                // Replace may push the old channel's values; the old rule took that for the user's own configuration and the counter never moved). No text here: this can be the audio thread.
+                pristine = false;
+                if (RecMutants.On(RecMutants.ParamPushUnjoins) && bindState == 0 && binding == null) { configured = true; link = LinkNone; TrackOffers.Changed(); }      // (the deliberate bug: the old rule)
+            }
         }
         return r;
     }
 
-    /// <summary>Whether a restored state left this instance untouched: a state that is not ours, or one whose instance-level values are the defaults and that holds no preset and no track.</summary>
-    private bool RestoredDefault(bool hadPreset, bool hadTrack)
+    /// <summary>Whether a restored state makes this instance clearly the user's own: it holds a game (its machine, a frozen game's sound, a song, a recording, a corruption, pushed instruments),
+    /// a preset or a track. Values alone do not (FL may hand a default or another channel's values).</summary>
+    private static bool RestoredUsersOwn(bool hadGame, bool hadPreset, bool hadTrack)
     {
-        if (RecMutants.On(RecMutants.DefaultStateCountsAsTouched)) return false;
+        if (RecMutants.On(RecMutants.DefaultStateCountsAsTouched)) return true;
+        if (RecMutants.On(RecMutants.UsersOwnStateJoins)) return false;
+        return hadGame || hadPreset || hadTrack;
+    }
+
+    /// <summary>Whether the restored values are the defaults (emulator-level values aside: they belong to the emulator): the instance stays pristine.</summary>
+    private bool RestoredPristine()
+    {
         if (!RestoredCleanly) return true;
-        if (hadPreset || hadTrack) return false;
         for (int i = 0; i < Params.Length; i++) if (!P.IsEmulatorLevel(i) && Get(i) != Params[i].Default) return false;
         return true;
     }
@@ -117,13 +138,14 @@ public sealed unsafe partial class Bn2Plugin
         return t.T;
     }
 
-    /// <summary>A note FL starts (TriggerVoice): the untouched instance weighs it against the tracks on offer and, when a track is named, plays it from this note. Allocation-free.</summary>
+    /// <summary>A note FL starts (TriggerVoice): the linked instance weighs it against the tracks on offer and, when a track is named, plays it from this note. Allocation-free.</summary>
     private void MatchNote(Voice v)
     {
         notesSeen++;
         bool log = HostLog.On && notesSeen <= 32;
         var snap = TrackOffers.Current;
-        bool eligible = !configured && bindState != 2 && snap != null && (preset == null || bindState == 1)
+        bool eligible = snap != null && bindState != 2 && (link != LinkNone || bindState == 1) && binding == null
+            && !(bindState == 0 && assignment.Emulator is { } se && snap.IsSource(se.Id))                                           // (the recording's own channels never join it)
             && !(RecMutants.On(RecMutants.OfferIgnoresLateInstances) && InstanceNo <= TrackOffers.OfferedAfterInstance);    // (the deliberate bug: instances made before the offer are ignored)
         if (!eligible && !log) return;
         double pos = SongBeats(0);
@@ -157,6 +179,7 @@ public sealed unsafe partial class Bn2Plugin
         CountOn(slot);
         DropSampler();                                                   // (the voices let go of the last engine; nothing allocated)
         var eng = Interlocked.Exchange(ref slot.Ready, null);
+        TrackOffers.Changed();                                           // (the window's count: this channel found its track)
         if (slot.Preset.Play.Console == Instruments.ConsoleId.Nes)
         {
             // a NES track (record-nes): the engine is this instance's own copy of the preset with its own register player; none ready yet: silent until the worker builds one (RenderBound)
@@ -191,6 +214,7 @@ public sealed unsafe partial class Bn2Plugin
 
     private void Unbind()
     {
+        TrackOffers.Changed();
         CountOn(null);
         expression = null;
         boundSlot = null; boundIndex = -1;
@@ -266,25 +290,29 @@ public sealed unsafe partial class Bn2Plugin
         if (emu.EnterPresetMode(nes ? "NES" : "SNES") is { } why) return why;
         binding = new TrackBinding(slot.Held.Session.Id, slot.Held.Session.Name, slot.Info.Index, slot.Info.Name, how);
         configured = true;
+        pristine = false;
         trackNote = null;
         if (how == TrackBinding.ByNotes) bindState = 2;
         HostLog.Text(InstanceNo, $"settled on emulator #{id}: plays {binding.Describe()}");
+        TrackOffers.Changed();
         return null;
     }
 
-    /// <summary>"Play here" in the Record window (UI thread): this instance plays a track of an offered recording, whatever it played before.</summary>
-    internal string? PickTrack(TrackSlot slot)
+    /// <summary>"Play here" in the Record window (UI thread), or the channel's name naming the track (<see cref="TrackBinding.ByName"/>): this instance plays a track of an offered recording,
+    /// whatever it played before.</summary>
+    internal string? PickTrack(TrackSlot slot, int how = TrackBinding.ByHand)
     {
-        if (RecMutants.On(RecMutants.ManualPickIgnored)) return null;            // (the self-test's deliberate bug: says done, does nothing)
+        if (how == TrackBinding.ByHand && RecMutants.On(RecMutants.ManualPickIgnored)) return null;            // (the self-test's deliberate bug: says done, does nothing)
         if (slot.Preset == null) return $"{slot.Info.Name} has no preset: {slot.Problem}";
         ForgetTrack();
-        MarkConfigured("a track was picked by hand");
+        link = LinkNone;                                                         // (it takes a track now: not "waiting" any more, and loading the track's preset is not "leaving")
+        MarkConfigured(how == TrackBinding.ByName ? "its channel's name names a track" : "a track was picked by hand");
         if (AdoptPreset(slot.Preset.File, null, out _) is { } why) return why;          // (the standard path: its engine is prepared here, on the UI thread)
         CountOn(slot);
         exprOffset = 0; exprOwnClock = false;
         expression = slot.Expression;
         exprOn = TrackOffers.ExpressionFromRecording;
-        if (Settle(slot, TrackBinding.ByHand) is { } why2) { binding = new TrackBinding(slot.Held.Session.Id, slot.Held.Session.Name, slot.Info.Index, slot.Info.Name, TrackBinding.ByHand); return "it holds the track's preset, but " + why2; }
+        if (Settle(slot, how) is { } why2) { binding = new TrackBinding(slot.Held.Session.Id, slot.Held.Session.Name, slot.Info.Index, slot.Info.Name, how); TrackOffers.Changed(); return "it holds the track's preset, but " + why2; }
         return null;
     }
 
@@ -295,9 +323,14 @@ public sealed unsafe partial class Bn2Plugin
         if (b != null) return "This channel plays " + b.Describe() + (trackNote != null ? "; " + trackNote : "") + ".";
         if (bindState == 1 && boundSlot is { } s) return $"This channel plays track {s.Info.Index + 1} ({s.Info.Name}){(matcher.Unsure ? $": {matcher.Candidates} tracks play the same notes so far; it plays the first of them until a note tells them apart" : "")}; it moves to the tracks' emulator in a moment.";
         if (trackNote != null) return trackNote;
-        if (TrackOffers.Current == null) return "No tracks are on offer: record, or reopen a project with a recording.";
-        if (configured || preset != null) return "This channel is configured: it takes a track only when you press \"Play here\" on a row.";
-        return "This channel is untouched: its first note tells it which track it plays (the key and where the note is in the song). Or press \"Play here\" on a row.";
+        var snap = TrackOffers.Current;
+        if (snap == null) return "No tracks are on offer: record, or reopen a project with a recording.";
+        return OfferRole(snap) switch
+        {
+            1 => "This channel's emulator made the recording: it keeps playing the game.",
+            3 => "This channel is linked to the recording: press Play in FL and it finds its track from its first note (or press \"Play here\" on a row).",
+            _ => $"This channel is not linked ({linkNote ?? "its own settings"}): press \"Link all\" above, \"Link to recording\" in its editor, or \"Play here\" on a row.",
+        };
     }
 
     // ---- the project: section TRK1 ----
@@ -357,7 +390,7 @@ public sealed unsafe partial class Bn2Plugin
             if (el > 0) ex = TrackExpression.FromBytes(s.Slice(o, el));
         }
         else if (o != s.Length - 4) return (null, null, false);
-        if (how is not (TrackBinding.ByNotes or TrackBinding.ByHand) || track < 0) return (null, null, false);
+        if (how is not (TrackBinding.ByNotes or TrackBinding.ByHand or TrackBinding.ByName) || track < 0) return (null, null, false);
         return (new TrackBinding(id, rec, track, name, how), ex, (flags & 1) != 0);
     }
 
@@ -371,7 +404,10 @@ public sealed unsafe partial class Bn2Plugin
         exprOn = t.On && t.Expression != null;
         exprOffset = 0; exprOwnClock = false;
         configured = true;
+        pristine = false;
+        link = LinkNone;
         if (preset != null && Emulator?.PresetMode != true) bindState = 1;
+        TrackOffers.Changed();
     }
 
     // ---- test hooks 700-719 ----
@@ -400,6 +436,7 @@ public sealed unsafe partial class Bn2Plugin
             case 716: return matcher.Unsure ? 1 : 0;
             case 717: { if (value >= 0) TrackOffers.SetExpression(value != 0); return TrackOffers.ExpressionFromRecording ? 1 : 0; }      // bends and volume from the recording, for every track channel (value < 0 reads)
             case 718: return TrackExpressionOn ? 1 : 0;                                                                                    // this channel plays its track's expression
+            case 719: return TrackOffers.Current?.Index.Count ?? -1;                                                                        // notes in the offer's index (-1: no offer)
             default: return 0;
         }
     }

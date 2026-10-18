@@ -132,7 +132,9 @@ public static class RecMutants
         KeyOnVersionLost = 9, NotesQuantised = 10, ConflictsHidden = 11, TrackMidiWrongChannel = 12, DragWrongFile = 13, SaveWritesHalf = 14, CaptureAllocates = 15, DealIgnored = 16, LiveOutSilent = 17,
         LiveRootIgnored = 18, LiveNoteOffLost = 19,
         // the track offer (2026-10-18): which track an FL channel plays
-        MatchIgnoresPosition = 20, UnrelatedGrabbed = 21, BindAfterFirstNote = 22, EnginesNotPrebuilt = 23, TrackSectionDropped = 24, DefaultStateCountsAsTouched = 25, ManualPickIgnored = 26, OfferIgnoresLateInstances = 27, ExpressionIgnored = 28;
+        MatchIgnoresPosition = 20, UnrelatedGrabbed = 21, BindAfterFirstNote = 22, EnginesNotPrebuilt = 23, TrackSectionDropped = 24, DefaultStateCountsAsTouched = 25, ManualPickIgnored = 26, OfferIgnoresLateInstances = 27, ExpressionIgnored = 28,
+        // relink (2026-10-18): instances joining the recording, the anchor buttons, the channel's name, the host log
+        ParamPushUnjoins = 29, NoAutoJoin = 30, LinkAllIgnored = 31, LinkButtonIgnored = 32, CounterCountsFoundOnly = 33, NameIgnored = 34, LogNotAutomatic = 35, LogIgnoresTestPath = 36, UsersOwnStateJoins = 37, LogNotCapped = 38;
     public static bool On(int m) => Active == m;
 }
 

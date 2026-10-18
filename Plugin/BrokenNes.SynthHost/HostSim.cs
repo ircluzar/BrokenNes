@@ -124,6 +124,13 @@ public sealed unsafe class HostSim : IDisposable
             if (!double.IsNaN(b) && (index & Gt.TimeFormatMask) == Gt.Beats) { var t = (TFPTime*)value; t->T = b; t->T2 = 0; }
             return 0;
         }
+        if (h != null && id == Fhd.GetContextInfo)
+        {
+            // FHD_GetContextInfo (relink): the channel's name as FL would give it for CI_TrackName (a UTF-8 string the host owns; 0: none), or whatever raw answer a test set
+            Interlocked.Increment(ref h.contextInfoCalls);
+            if ((index & 0xFFFF) != Ci.TrackName) return 0;
+            return h.RawContextAnswer ?? h.trackNamePtr;
+        }
         if (h != null && id == Fhd.EditorResized)
         {
             // FHD_EditorResized: the plugin resized its editor window; the host fits its frame around it again (what FL does)
@@ -133,7 +140,28 @@ public sealed unsafe class HostSim : IDisposable
         return 0;
     }
 
-    private int editorResizedCalls;
+    private int editorResizedCalls, contextInfoCalls;
+    private nint trackNamePtr;
+    private string? trackName;
+
+    /// <summary>The channel's name FHD_GetContextInfo answers for CI_TrackName (null: 0, no name). The string is kept in native memory the host owns, as FL's is.</summary>
+    public string? TrackName
+    {
+        get => trackName;
+        set
+        {
+            var old = trackNamePtr;
+            trackName = value;
+            trackNamePtr = value == null ? 0 : Marshal.StringToCoTaskMemUTF8(value);
+            if (old != 0) Marshal.FreeCoTaskMem(old);
+        }
+    }
+
+    /// <summary>A raw answer to FHD_GetContextInfo instead of the name's pointer (a test of what the plugin does with an answer that is not a pointer to text).</summary>
+    public nint? RawContextAnswer { get; set; }
+
+    /// <summary>Calls of FHD_GetContextInfo seen.</summary>
+    public int ContextInfoCalls => Volatile.Read(ref contextInfoCalls);
 
     /// <summary>Calls of FHD_EditorResized seen (the plugin changed the size of its editor window).</summary>
     public int EditorResizedCalls => Volatile.Read(ref editorResizedCalls);
@@ -226,5 +254,6 @@ public sealed unsafe class HostSim : IDisposable
         FreeDeferred();
         lock (Hosts) Hosts.Remove(self);
         NativeMemory.Free((void*)self);
+        TrackName = null;
     }
 }

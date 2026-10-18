@@ -176,6 +176,8 @@ public abstract unsafe class FruityPluginBase
     public abstract void ReleaseVoice(nint handle);
     public abstract void KillVoice(nint handle);
     public virtual void NewTick() { }
+    /// <summary>FL's Idle call (the GUI thread, from time to time). Keep it cheap.</summary>
+    public virtual void Idle() { }
     /// <summary>Fill <paramref name="length"/> stereo frames (interleaved L,R) at the host's sample rate.</summary>
     public abstract void Render(float* dest, int length);
 

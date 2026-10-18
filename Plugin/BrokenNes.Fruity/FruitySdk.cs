@@ -29,7 +29,14 @@ public static class Fpd
     public const int SetSamplesPerTick = 20;
     public const int SetFocus = 22;
     public const int GetParamInfo = 26;
+    /// <summary>FPD_RoutingChanged: "mixer routing changed ... See RCV_ constants for the meaning of the Value parameter" (RCV_NamesChanged = 1: "only one or more track names have changed").</summary>
+    public const int RoutingChanged = 25;
+    /// <summary>FPD_ProjLoaded: "called after a project has been loaded".</summary>
+    public const int ProjLoaded = 27;
+    /// <summary>FPD_PluginLoaded: "done opening the plugin - note that SaveRestoreState is called before this!"</summary>
     public const int PluginLoaded = 40;
+    /// <summary>FPD_ContextInfoChanged: "Index holds the type of information (see CI_ constants), call FHD_GetContextInfo for the new value(s)".</summary>
+    public const int ContextInfoChanged = 41;
 
     /// <summary>Test-only dispatcher IDs (never sent by FL): the test host asks the plugin about its internals.</summary>
     public const int TestBase = 0x6000;
@@ -49,6 +56,19 @@ public static class Fhd
     public const int GetMixingTime = 36;
     /// <summary>FHD_GetPlaybackTime: the playback time, the same way.</summary>
     public const int GetPlaybackTime = 37;
+    /// <summary>FHD_GetContextInfo: "get information about various things. Index is the information type (see CI_ constants), Value and result depend on the type"; the header's note on the CI_ block:
+    /// "requested info is returned as the result of the function". For <see cref="Ci.TrackName"/> the result is a pointer to a UTF-8 string FL owns (0: none). Which "track" a generator gets (its
+    /// channel or the mixer track it feeds) the header does not say.</summary>
+    public const int GetContextInfo = 76;
+}
+
+/// <summary>Context information types for <see cref="Fhd.GetContextInfo"/> and <see cref="Fpd.ContextInfoChanged"/> (fp_plugclass.h, CI_*).</summary>
+public static class Ci
+{
+    /// <summary>CI_TrackName: "(R/W) PAnsiChar encoded as UTF-8".</summary>
+    public const int TrackName = 0;
+    /// <summary>CI_TrackIndex: "(R)".</summary>
+    public const int TrackIndex = 1;
 }
 
 /// <summary>Time formats for <see cref="Fhd.GetMixingTime"/> (fp_plugclass.h, GT_*).</summary>
