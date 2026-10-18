@@ -96,6 +96,15 @@ Deliberate bugs (`MusicMutate`, or a change in what the check is fed), each caug
 - A `music import` verb (BrokenDev) that puts the MIDI into the game's own roster and checks the game's Sound Test (pipeline milestone P5); the VRUN game's ROM budget is the limit to watch.
 - When VRUN changes its converter or engine: copy `engine/audio/converter` again, rebuild the template with the script, rerun `midi-test`: the `converter` and `template` checks say what changed.
 
-## 9. Final runs
+## 9. Final runs (after merging `refs/heads/main` at 35c46ff, which added only the round 8 brief; the DLL published from the merged tree)
 
-(filled in at the end of the round)
+| Verifier | Result |
+|---|---|
+| `FruityHost midi-test` | 9 checks passed, 0 NOT RUN, 0 failed, 245 assertions; 7 deliberate bugs, 0 missed (converter 9 s, template 18 s, engine 105 s, reference 201 s with the 14 rebuilt ROMs cached) |
+| `FruityHost selftest` (all, Native AOT DLL) | 59 results: 58 pass, 1 warning (QLQ), 0 failed; `midi` PASS with 8 of 8 deliberate bugs caught |
+| `BrokenNes.Workshop --corrupt-test` (fresh build) | 275 passed, 0 failed, 0 not run |
+| `UAT\run-suite.ps1 -Exe <fresh Workshop>` | 84 pass, 0 fail, 60 skip, 0 info |
+| `BrokenDev\tests\run-tests.ps1` | 58 passed, 0 failed |
+| `UAT\entrypoints\notices-check.ps1` | pass |
+
+Control ids, hooks, tags and places this round took (for whoever builds on the plugin next): control ids 2000-2007 (2000-2019 reserved: 2000 header button, 2001 Close, 2002 Open MIDI, 2003 Play, 2004 Restart, 2005 Stop, 2006 Reload, 2007 Follow); plugin test hooks 600-619 (`Bn2Plugin.Song.cs`), editor hooks 620-622 (629 reserved, `Bn2Editor.Song.cs`); project section tag `SNG1` (0x31474E53) before `GAM1`; `MusicMutate` bits 0-9; the header strip between the subtitle and the emulator badge (x 330 to 480, y 13 to 39); the song note over the top of the picture (shown only when the corruption note is not); the modal window 780 x 590 centred.
