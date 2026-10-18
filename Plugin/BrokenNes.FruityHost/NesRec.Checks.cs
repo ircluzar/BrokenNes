@@ -27,6 +27,7 @@ internal static partial class NesRecChecks
         new("smf", "the NES file read back by an independent Python parser and by VRUN's", Smf),
         new("section", "REC1 version 2 round trip and refusals", Section),
         new("live", "live MIDI out: every transcribed note struck live at the same moment and key, every note ended, nothing allocated", Live),
+        new("vrun-song", "songs converted by VRUN's converter, played by its engine, recorded: the transcription = VRUN's decoder model frame by frame; the tempo = the MIDI file's", VrunSong),
     ];
 
     private static Action<bool> Rec(int code) => on => RecMutants.Active = on ? code : 0;

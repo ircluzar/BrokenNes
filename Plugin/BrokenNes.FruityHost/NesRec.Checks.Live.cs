@@ -39,8 +39,10 @@ internal static partial class NesRecChecks
             {
                 int key = n.Channel == 3 ? NesDirect.NoiseKey(n.Periods[0].V) : (int)Math.Round(NesDirect.MidiOf(n.Periods[0].V, n.Channel == 2));
                 int k = -1;
+                // (the triangle: the transcription starts it at its strike, the live out sends it when it sounds, at the quarter frame after: up to 7,458 cycles later)
+                long late = n.Channel == 2 ? NesNotes.QuarterFrame : 0;
                 for (int i = 0; i < ons && k < 0; i++)
-                    if (!used[i] && l.NoteLog[i] >> 16 == n.Channel && Math.Abs(l.NoteClock![i] - n.Start) <= 400 && (l.NoteLog[i] >> 8 & 0xFF) == key) k = i;
+                    if (!used[i] && l.NoteLog[i] >> 16 == n.Channel && l.NoteClock![i] - n.Start >= -400 && l.NoteClock[i] - n.Start <= 400 + late && (l.NoteLog[i] >> 8 & 0xFF) == key) k = i;
                 if (k >= 0) { used[k] = true; matched++; }
                 else miss ??= $"channel {n.Channel} at {n.StartSeconds:0.0000} s key {key}";
             }

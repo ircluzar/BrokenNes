@@ -74,6 +74,9 @@ public sealed class NesNoteStats
 
 public static class NesNotes
 {
+    /// <summary>The longest wait for a quarter frame (CPU cycles: 7457, plus one).</summary>
+    public const uint QuarterFrame = 7458;
+
     /// <summary>Every note of the session, in start order (time, then channel).</summary>
     public static List<NesNote> Extract(NesSession s, out NesNoteStats stats)
     {
@@ -82,6 +85,7 @@ public static class NesNotes
         var open = new NesNote?[5];
         var done = new List<NesNote>();
         int pendingCopy = -1, frame4011 = 0;
+        long triStrike = -1, triZero = -1;          // the triangle's last strike while silent, and its last $4008 write of a reload value 0
 
         bool Audible(int c, out NesEnd why)
         {
@@ -151,11 +155,13 @@ public static class NesNotes
                 var n = open[c];
                 if (!aud)
                 {
-                    if (n != null) Close(c, t, why);
-                    else if (struck == c) st.StruckSilent++;
+                    // the triangle's linear counter runs out at the quarter frame after the write that set it to 0: the note ends at that write (the driver's moment; the replay's chip waits for its own quarter frame the same way)
+                    if (n != null) Close(c, c == 2 && why == NesEnd.LinearCounter && triZero >= n.Start && t - triZero <= QuarterFrame ? (uint)triZero : t, why);
+                    else if (struck == c) { if (c == 2) triStrike = t; else st.StruckSilent++; }
                     continue;
                 }
-                if (n == null) { Open(c, t, struck == c, false); continue; }
+                // the triangle sounds from the quarter frame after its strike ($400B reloads the linear counter then): the note starts at the strike, the driver's moment, as the replay's own chip delays it alike
+                if (n == null) { if (c == 2 && struck != 2 && triStrike >= 0 && t - triStrike <= QuarterFrame) { Open(c, (uint)triStrike, true, false); triStrike = -1; } else Open(c, t, struck == c, false); continue; }
                 if (struck == c)
                 {
                     // the driver made it audible (its volume, $4015) a moment before it struck it: one note, struck (not a blip of a few cycles and then a note)
@@ -222,6 +228,7 @@ public static class NesNotes
             bool wasPlaying = m.DmcPlaying;
             int oldRate = m.DmcCtrl & 15;
             bool trig = m.Write(reg, v);
+            if (reg == 0x08 && (v & 0x7F) == 0) triZero = t;
             if (reg == 0x11) { st.Pcm4011++; frame4011++; }
             if (reg == 0x17) st.Writes4017++;
             if (reg == 0x10 && open[4] != null && (v & 15) != oldRate) open[4]!.DmcRateChanges++;
