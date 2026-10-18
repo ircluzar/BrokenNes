@@ -58,12 +58,16 @@ public abstract unsafe class FruityPluginBase
         value = Math.Clamp(value, Params[index].Min, Params[index].Max);
         if (value == Get(index)) return;
         Volatile.Write(ref Values[index], value);
+        OnUserChange(index, value);
         OnParamChanged(index, value);
         Host.OnParamChanged(HostTag, index, value);
     }
 
     /// <summary>Called after a value changed (from FL automation or from the editor).</summary>
     protected virtual void OnParamChanged(int index, int value) { }
+
+    /// <summary>Called when the user changed a value in the editor (before <see cref="OnParamChanged"/>).</summary>
+    protected virtual void OnUserChange(int index, int value) { }
 
     /// <summary>Text for the editor's live readout (GUI thread; keep it cheap and tolerant of torn reads).</summary>
     public virtual string GetReadout() => "";

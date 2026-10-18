@@ -130,7 +130,9 @@ public static class RecMutants
     public static int Active;
     public const int BendOffByOne = 1, TuneIgnoredInPreset = 2, RootOctaveOff = 3, TempoOnePercent = 4, NoBendRange = 5, VelocityIgnoresWeights = 6, CaptureLosesWrites = 7, SectionCrcNotChecked = 8,
         KeyOnVersionLost = 9, NotesQuantised = 10, ConflictsHidden = 11, TrackMidiWrongChannel = 12, DragWrongFile = 13, SaveWritesHalf = 14, CaptureAllocates = 15, DealIgnored = 16, LiveOutSilent = 17,
-        LiveRootIgnored = 18, LiveNoteOffLost = 19;
+        LiveRootIgnored = 18, LiveNoteOffLost = 19,
+        // the track offer (2026-10-18): which track an FL channel plays
+        MatchIgnoresPosition = 20, UnrelatedGrabbed = 21, BindAfterFirstNote = 22, EnginesNotPrebuilt = 23, TrackSectionDropped = 24, DefaultStateCountsAsTouched = 25, ManualPickIgnored = 26, OfferIgnoresLateInstances = 27;
     public static bool On(int m) => Active == m;
 }
 

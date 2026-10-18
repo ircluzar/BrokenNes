@@ -33,6 +33,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         public int Instr = -1;        // the instrument it was started on
         public SpcRecipe? Recipe;     // the recipe it was started on (SNES Runaway), null for a plain instrument
         public bool Silenced;         // it lost its slot to a newer note: silent until released
+        public float PitchMin, PitchMax;   // how far FL moved its pitch while it sounded (the host log: did FL keep the MIDI file's bends?)
+        public int Note;              // its number among the instance's notes
     }
 
     private readonly List<Voice> voices = new(32);
@@ -80,8 +82,9 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     public Bn2Plugin(FruityHost host, nint hostTag) : base(host, hostTag, Bn2Params.Build())
     {
         for (int i = 0; i < 32; i++) pool.Push(new Voice());     // FL's voices are taken from here on the audio thread: made now, so a 9th or 20th note at once allocates nothing there (round 8 found 72 bytes per new peak of voices)
+        HostLog.Text(InstanceNo, $"created (host tag 0x{hostTag:X}); {(TrackOffers.Current is { } o ? $"{o.Slots.Length} tracks on offer" : "no tracks on offer")}");
         EmulatorHub.Resolve(this);
-        TakeDeal();               // a recording's tracks given to the next new instances (Bn2Plugin.Record.cs): nothing happens unless the user armed it
+        TrackOffers.Register(this);   // the tracks of a recording on offer: this instance recognises its track from the notes FL asks it to play (Bn2Plugin.Tracks.cs)
     }
 
     /// <summary>What FL shows. (The DLL and its folder have the same name: FL finds a native plugin by its file name.)</summary>
@@ -155,9 +158,12 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             return 0;
         }
         // FL's transport started or stopped: the Test MIDI export's song follows it when asked to (Emulator.Song.cs; flags only, nothing allocated, whatever thread FL calls from)
+        if (id < Fpd.TestBase && dispatchLogged < HostLog.PerInstance && HostLog.On) { dispatchLogged++; HostLog.Add(HostLog.KindDispatcher, InstanceNo, id, index, value); }
         if (id == Fpd.SetPlaying) { assignment.Emulator?.TransportChanged(value != 0); return 0; }
         return base.Dispatcher(id, index, value);
     }
+
+    private int dispatchLogged;
 
     protected override void OnParamChanged(int index, int value)
     {
@@ -198,7 +204,10 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         v.Released = v.Finished = v.KillRequested = false;
         v.Fresh = true;
         v.Slot = -1; v.Instr = -1; v.Silenced = false;
+        v.PitchMin = v.PitchMax = p->InitLevels.Pitch;
+        v.Note = notesSeen + 1;
         voices.Add(v);
+        if (!configured || HostLog.On) MatchNote(v);       // an untouched instance recognises its track from this note, before it sounds (Bn2Plugin.Tracks.cs)
         return v.Handle;
     }
 
@@ -241,6 +250,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
     public override void Render(float* dest, int length)
     {
+        ownSamples += length;
         RenderCore(dest, length);
         if (audition != null) MixAudition(dest, length);        // a preset auditioned from the Presets tab sounds over whatever this instance plays (Bn2Plugin.Presets.cs)
     }
@@ -254,6 +264,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         float pan = Get(P.Pan) / 100f;
         float gl = Math.Min(1f, 1f - pan), gr = Math.Min(1f, 1f + pan);
 
+        if (bindState == 1) { RenderBound(dest, length, gl, gr); return; }     // a track recognised from its notes, not settled yet: its preset, wherever the instance sits (Bn2Plugin.Tracks.cs)
         if (emu == null || a.Channel < 0)
         {
             FinishReleased();
@@ -384,10 +395,13 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             if (v.Released)
             {
                 if (v.Dsp >= 0) { s.NoteOff(v.Dsp); dspUsed[v.Dsp] = false; v.Dsp = -1; v.Recipe = null; }
+                if (HostLog.On && v.Note <= 32) HostLog.Add(HostLog.KindNoteEnd, InstanceNo, v.Note, 0, 0, v.PitchMin, v.PitchMax);
                 v.Finished = true;
                 continue;
             }
             ref var fl = ref v.Params->FinalLevels;
+            if (fl.Pitch < v.PitchMin) v.PitchMin = fl.Pitch;
+            if (fl.Pitch > v.PitchMax) v.PitchMax = fl.Pitch;
             double cents = fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine);
             int level = Math.Clamp((int)Math.Round(127 * fl.Vol), 0, 127);
             if (v.Dsp < 0)
@@ -820,6 +834,16 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 stream.Write(&prsLen, 4);
                 fixed (byte* p = presetSection) stream.Write(p, (uint)prsLen);
             }
+            // Which track of a recording this instance plays and how it was found (Bn2Plugin.Tracks.cs), after its preset.
+            if (TrackSectionBytes() is { } trackSection)
+            {
+                uint trkMagic = TrackTag;
+                int trkLen = trackSection.Length;
+                stream.Write(&trkMagic, 4);
+                stream.Write(&trkLen, 4);
+                fixed (byte* p = trackSection) stream.Write(p, (uint)trkLen);
+            }
+            if (HostLog.On) HostLog.Text(InstanceNo, $"state saved: {Params.Length} values, ROM path {n} bytes, emulator #{emu} channel {ch}{(PresetSectionBytes() is { } ps ? $", PRS1 {ps.Length} bytes" : "")}{(TrackSectionBytes() is { } ts ? $", TRK1 {ts.Length} bytes" : "")}");
             // The Test MIDI export's song (Music/SongSection.cs): the MIDI file's bytes and path, so a reopened project rebuilds the same ROM; before the game's state, which then fits it.
             if (a.Emulator?.CaptureSongSection() is { } songSection)
             {
@@ -887,11 +911,17 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         Music.SongSection? restoredSong = null;
         string? songProblem = null;
         byte[]? restoredRecord = null;
+        byte[]? trackBytes = null;
+        var seen = HostLog.On ? new List<string>() : null;
         restoring = true;
         try
         {
             base.SaveRestoreState(stream, false);
-            if (!RestoredCleanly) return;
+            if (!RestoredCleanly)
+            {
+                HostLog.Text(InstanceNo, "state restored: not a BrokenNes2 state of this version (or empty): nothing taken; the instance stays " + (configured ? "configured" : "untouched"));
+                return;
+            }
             int len = 0;
             if (stream.Read(&len, 4) && len is >= 0 and <= 4096)
             {
@@ -908,11 +938,18 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                     hintEmu = e; hintCh = c;
                     // The sections after the place record: tag, length, bytes. The ones this build knows are read and checked, never trusted; the others (a later build's) are skipped by their length;
                     // a stream that ends, or whose length cannot be right, ends the reading (what was read before it stands).
-                    for (int sections = 0; sections < 10; sections++)
+                    for (int sections = 0; sections < 12; sections++)
                     {
                         uint tag = 0; int slen = 0;
                         if (!stream.Read(&tag, 4) || !stream.Read(&slen, 4)) break;
-                        if (tag == SpcMagic && slen == SpcSnapshot.AramSize + SpcSnapshot.DspSize)
+                        seen?.Add($"{Encoding.ASCII.GetString(BitConverter.GetBytes(tag))} {slen} bytes");
+                        if (tag == TrackTag && slen is >= 25 and <= 1024)
+                        {
+                            var trkBuf = new byte[slen];
+                            fixed (byte* p = trkBuf) if (!stream.Read(p, (uint)slen)) break;
+                            trackBytes = trkBuf;
+                        }
+                        else if (tag == SpcMagic && slen == SpcSnapshot.AramSize + SpcSnapshot.DspSize)
                         {
                             var snapBuf = new byte[slen];
                             fixed (byte* p = snapBuf) if (!stream.Read(p, (uint)slen)) break; else restoredSnapshot = SpcSnapshot.FromBytes(snapBuf);
@@ -1052,6 +1089,14 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         }
         RestorePreset(presetSectionBytes, presetSectionProblem);
         if (restoredRecord != null) emu2?.AdoptRecord(restoredRecord);         // (the first instance of the project that carries the recording gives it to the emulator)
+        // whether this state configured the instance (then it is never matched to a track) or left it untouched (FL's empty or default state, a fresh instance's own state)
+        var restoredTrack = trackBytes == null ? null : ReadTrackSection(trackBytes);
+        bool untouched = RestoredDefault(presetSectionBytes != null, trackBytes != null);
+        if (!untouched) MarkConfigured("a project state with its own values" + (presetSectionBytes != null ? ", a preset" : "") + (trackBytes != null ? ", a track" : ""));
+        RestoreTrack(restoredTrack);
+        if (HostLog.On)
+            HostLog.Text(InstanceNo, $"state restored: values [{string.Join(",", Values)}], ROM path {(romPath ?? "").Length} chars, place emulator #{hintEmu} channel {hintCh}; sections: {(seen is { Count: > 0 } ? string.Join("; ", seen) : "none")}; "
+                + (untouched ? "default for this instance: it stays untouched" : "it configured the instance") + (restoredTrack != null ? "; plays " + restoredTrack.Describe() : ""));
     }
 
     /// <summary>Reads past a section this build does not know; false when the stream ends first.</summary>
@@ -1286,6 +1331,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 if (id - Fpd.TestBase is >= 340 and < 360) return PresetTestHook(id - Fpd.TestBase, index, value);        // the presets (Bn2Plugin.Presets.cs)
                 if (id - Fpd.TestBase is >= 600 and < 620) return SongTestHook(id - Fpd.TestBase, index, value);          // Test MIDI export (Bn2Plugin.Song.cs)
                 if (id - Fpd.TestBase is (>= 640 and < 670) or (>= 680 and < 700)) return RecordTestHook(id - Fpd.TestBase, index, value);        // the recording and the live MIDI out (Bn2Plugin.Record.cs)
+                if (id - Fpd.TestBase is >= 700 and < 720) return TrackTestHook(id - Fpd.TestBase, index, value);                                // the tracks on offer (Bn2Plugin.Tracks.cs)
                 return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
     }
@@ -1296,6 +1342,9 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
     public override void Destroy()
     {
+        TrackOffers.Unregister(this);
+        ForgetTrack();
+        HostLog.Text(InstanceNo, "destroyed");
         EmulatorHub.Leave(this);
         voices.Clear();
         lock (chipGate) chip = null;
