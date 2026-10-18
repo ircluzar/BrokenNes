@@ -105,7 +105,9 @@ public sealed partial class Emulator
             if (req.Problem != null) head = $"The project's saved game state is {req.Problem}, so it was not used";
             else if (sec == null) { if (!g.StateSupported) head = g.StateUnsupportedReason; }
             else if (sec.Console != g.Console || !string.Equals(sec.GameId, g.GameId, StringComparison.OrdinalIgnoreCase))
-                head = "The project's saved game state belongs to a different game than the file now at the saved path, so it was not used";
+                head = g is NesGame { IsSongTest: true }
+                    ? "The project's saved game state was made with another build of the MIDI test's player (its template or converter changed), so the song starts from its beginning"
+                    : "The project's saved game state belongs to a different game than the file now at the saved path, so it was not used";
             else if (!sec.HasState)
                 head = sec.Unsupported ? (g.StateSupported ? "This project was saved before games of this console could keep their state" : g.StateUnsupportedReason) : sec.Note.Length > 0 ? sec.Note : "The project holds no state for this game";
             else if (!g.StateSupported) head = g.StateUnsupportedReason;

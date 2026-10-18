@@ -40,6 +40,9 @@
     <Compile Include="..\BrokenNes2.Plugin\Instruments\*.cs" Exclude="..\BrokenNes2.Plugin\Instruments\InstrumentsUi.cs;..\BrokenNes2.Plugin\Instruments\InstrumentPushHandler.cs" LinkBase="Instruments" />
     <!-- Round 6 (presets): the preset file, the engines' snapshots and the folder library (pure code; PresetLibrary, the plugin glue and the editor's picker are tested through the DLL) -->
     <Compile Include="..\BrokenNes2.Plugin\Presets\*.cs" LinkBase="Presets" />
+    <!-- Round 7 (midi): VRUN's converter (the copy the plugin carries), the template, the facts and the project section (pure code; the window and the emulator glue are tested through the DLL) -->
+    <Compile Include="..\BrokenNes2.Plugin\Music\*.cs" LinkBase="Music" />
+    <Compile Include="..\BrokenNes2.Plugin\Music\Vrun\*.cs" LinkBase="Music\Vrun" />
   </ItemGroup>
 
 </Project>

@@ -23,7 +23,7 @@ drive the game yet").
 | Opcode format and the per-frame decoders | `engine/audio/gen_music_decoders.py` (templates), `audio_engine.fab` | Done, in use by the game and the AudioPlayer ROM. One opcode per channel per frame at most (`AUDIO_LOOP_CAP = 1`). |
 | AudioPlayer ROM | `./build.sh audioplayer`, `src/audioplayer` | Done. Roster in `roster.json`; builds in about 2 s once the toolchain is warm (measured, section 7). |
 | Live audio bridge | VRUN `docs/26-live-audio-bridge-spec.md` | **Specification only** apart from M0. M1 (live ROM with a mailbox), M2 to M5 (plugin side) are not built. |
-| BrokenNes2 plugin | `Plugin/BrokenNes2.Plugin` (native Fruity plugin, Native AOT) | Direct mode (FL's notes play a bare chip) and ROM mode (a game runs; per-channel stems through `ApuWriteTap`; the whole machine saved in the project as `GAM1`). No song input. |
+| BrokenNes2 plugin | `Plugin/BrokenNes2.Plugin` (native Fruity plugin, Native AOT) | Direct mode (FL's notes play a bare chip) and ROM mode (a game runs; per-channel stems through `ApuWriteTap`; the whole machine saved in the project as `GAM1`). **Song input since round 7:** "Test MIDI export" (path B, template + patch; `docs/projects/round7-midi.md`). |
 | PRG poke and write tap | `Core/NesAudioMachine.cs` (`PokePrg`), `Windows/NesEmulator/board/Cartridge.cs` (`PokePrg(index, value)`), `Bus.cs`/`NES.cs` (`ApuWriteTap`) | Exist. `PokePrg` already serves the desktop's corruption feature. |
 | SNES side | SuperVRUN `tools/music/sf2it.py` + `MNES.sf2` -> Impulse Tracker modules -> PVSnesLib soundbank -> SPC700 driver | A separate lane with its own converter. Its own record says "Lab vs Mesen: 89,475/89,475 DSP writes identical": the same idea as section 6, on the DSP. |
 | BrokenDev music tools | `BrokenDev/tools/music-replay-check.ps1`, `tools/music/*.py` | **New, measured**: Phase 0 and the template fast path (sections 5 and 7). |
@@ -163,7 +163,7 @@ Reproduce: `BrokenDev\tools\music-replay-check.ps1 -Mid <song.mid> -Name mysong 
 | P0 | `music-replay-check.ps1`: MIDI to ROM to BrokenNes to model | 12 songs agree; three negative controls fail | **Done** |
 | P0b | Template ROM + patch, offline | 11 of 11 songs agree with the full build's model | **Done** |
 | P1 | Desktop: BrokenDev menu "Preview a MIDI file..." (convert, patch the template with `PokePrg`, reset, play) | the same model check passes on a trace taken from the live machine | Not started |
-| P2 | Plugin: song source + stems + restart on transport | a project with a dropped MIDI reopens and replays; FruityHost selftest gains a check | Not started |
+| P2 | Plugin: song source + stems + restart on transport | a project with a dropped MIDI reopens and replays; FruityHost selftest gains a check | **Done** in round 7 (`midi`): "Test MIDI export", see `docs/projects/round7-midi.md` |
 | P3 | Plugin: capture pass; measure capture against FL's export (spec question 1) | a stated list of differences, measured in FL | Not started; needs FL |
 | P4 | Plugin: seek | model check from a non-zero start | Not started |
 | P5 | `music import` verb; Sound Test check in the real game | the model check passes on the game ROM's trace | Not started |

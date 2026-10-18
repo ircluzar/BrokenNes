@@ -113,7 +113,8 @@ public static unsafe class FruityNative
     [UnmanagedCallersOnly]
     private static nint Dispatcher(NativePlug* self, nint id, nint index, nint value)
     {
-        if (id != Fpd.SetSamplesPerTick && id != Fpd.SetFocus && id < Fpd.TestBase)
+        // (the line is only built when the log is on: FL may call the dispatcher from its audio thread, FPD_SetPlaying for one, and a string per call is an allocation there)
+        if (Diag.Enabled && id != Fpd.SetSamplesPerTick && id != Fpd.SetFocus && id < Fpd.TestBase)
             Diag.Log($"Dispatcher id={id} index={index} value=0x{value:X}");
         try
         {

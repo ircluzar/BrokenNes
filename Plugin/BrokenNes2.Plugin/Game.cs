@@ -92,6 +92,8 @@ internal sealed class NesGame : IGame
     private const int LatchLength = 0x18;
 
     public string GameId { get; }
+    /// <summary>The game is the Test MIDI export's song (the template with a song in it: Emulator.Song.cs), not the built-in game or a file.</summary>
+    public bool IsSongTest { get; init; }
     public bool StateSupported => true;
     public string StateUnsupportedReason => "";
 

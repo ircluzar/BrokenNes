@@ -37,6 +37,12 @@ find a borrowed piece that is not listed, that is a bug in this file: report it.
 BizHawk's license statement (`LICENSE` in its repository) says the BizHawk team's own C# is provided under the MIT License, and that other parts of that repository
 carry their own, sometimes incompatible, licenses. Only files authored by the BizHawk team are used here. The MIT text is reproduced in section 6.
 
+**The user's own projects inside the plugin (not third-party):** the built-in game `Plugin/BrokenNes2.Plugin/Resources/default.nes` (VRUN) and the Test MIDI export template
+`Resources/musictest.nes` (VRUN's AudioPlayer with padded song arrays, built by `BrokenDev/tools/music/build-musictest.ps1`) are the user's VRUN code compiled by NESFab 1.8;
+NESFab's own library code compiled into them (`lib/`) is under the Boost Software License 1.0, which asks for no notice in compiled form, and the NESFab compiler (GPL-3.0) is a
+build tool that is neither shipped nor copied. `Plugin/BrokenNes2.Plugin/Music/Vrun/` is a byte-for-byte copy of VRUN's music converter (`engine/audio/converter`), the user's
+code (`SOURCE.txt` there records its origin and hashes).
+
 ## 2. Code with provenance that needs attention
 
 | What | Where | Status |

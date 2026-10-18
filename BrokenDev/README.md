@@ -43,6 +43,9 @@ BrokenDev\brokendev.ps1 run supervrun          # open the built ROM in BrokenNes
 
 # the music path, Phase 0 (no plugin): a MIDI file -> VRUN's converter -> a one-song ROM -> BrokenNes, checked frame by frame
 BrokenDev\tools\music-replay-check.ps1 -Mid some.mid -Name mysong -Frames 2400 -Template
+# the template the plugin's "Test MIDI export" carries (Plugin/BrokenNes2.Plugin/Resources/musictest.*), and a full one-song rebuild (the reference), in a scratch copy
+BrokenDev\tools\music\build-musictest.ps1 -Out <folder>
+BrokenDev\tools\music\build-musictest.ps1 -Mode song -Mid some.mid -Name mysong -Out <folder>
 BrokenDev\tests\run-tests.ps1                  # the scripts' own tests (each has a negative control)
 BrokenDev\tests\apu-regress.ps1 -Workshop <Workshop.exe>   # APU_FIX guards measured on Mesen
 ```

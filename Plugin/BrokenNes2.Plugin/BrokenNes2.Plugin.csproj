@@ -33,6 +33,9 @@
     <EmbeddedResource Include="Resources/default.nes" LogicalName="default.nes" />
     <!-- the About window's text: plain text you can edit (see About.cs for the little markup) -->
     <EmbeddedResource Include="Resources/about.txt" LogicalName="about.txt" />
+    <!-- Test MIDI export (round 7): VRUN's AudioPlayer with padded stream arrays, and its manifest (made by BrokenDev/tools/music/build-musictest.ps1; Music/MusicTemplate.cs reads them) -->
+    <EmbeddedResource Include="Resources/musictest.nes" LogicalName="musictest.nes" />
+    <EmbeddedResource Include="Resources/musictest.txt" LogicalName="musictest.txt" />
   </ItemGroup>
 
   <ItemGroup>

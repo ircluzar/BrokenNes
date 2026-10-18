@@ -169,6 +169,10 @@ public sealed partial class Emulator
         string name = RomDisplayName;
         int chipIdx = Chip;
         var chip = Cx.Chips[chipIdx];
+        // the Test MIDI export's song (Emulator.Song.cs): the template with the song in it, or a project's song that the loading thread converts first
+        var songNow = console == Cx.Nes && songActive ? song : null;
+        var songFromProject = console == Cx.Nes && songActive && songNow == null ? songPending : null;
+        if (songNow != null || songFromProject != null) Interlocked.Exchange(ref standby, null);
         if (path == null && console != Cx.Nes)
         {
             Interlocked.Exchange(ref pendingGame, null);
@@ -191,7 +195,12 @@ public sealed partial class Emulator
             try
             {
                 int rate = EmulatorHub.HostRate;
-                if (console == Cx.Nes) g = new NesGame(path == null ? BuiltInRom() : RomDetect.Unwrap(File.ReadAllBytes(path), path, out _), chip, rate);
+                if (songNow != null || songFromProject != null)
+                {
+                    var held = songNow ?? HeldForLoad(songFromProject!);
+                    g = new NesGame(held.Rom, chip, rate) { IsSongTest = true };
+                }
+                else if (console == Cx.Nes) g = new NesGame(path == null ? BuiltInRom() : RomDetect.Unwrap(File.ReadAllBytes(path), path, out _), chip, rate);
                 else
                 {
                     var rom = RomDetect.Unwrap(File.ReadAllBytes(path!), path!, out string inner);
@@ -214,7 +223,8 @@ public sealed partial class Emulator
                 }
                 if (gen != Volatile.Read(ref loadGeneration)) { g.Dispose(); return; }
                 Interlocked.Exchange(ref pendingGame, g);
-                romStatus = "running " + name;
+                romStatus = "running " + (g is NesGame { IsSongTest: true } && song is { } playing ? "MIDI test: " + playing.FileName : name);
+                if (g is NesGame { IsSongTest: true }) { WantStandby(); }          // the copy a restart (Play, Restart, FL's transport) swaps in
             }
             catch (Exception e)
             {
@@ -277,6 +287,7 @@ public sealed partial class Emulator
                 Interlocked.Increment(ref epoch);
             }
         }
+        ApplySongRestart();                   // Play / Restart / FL's transport on the Test MIDI export's song (Emulator.Song.cs)
         var g = game;
         if (g == null) return;
 
@@ -304,9 +315,9 @@ public sealed partial class Emulator
     /// <summary>Runs one frame of the game and distributes its sound to the channel rings. Under romLock.</summary>
     private void Produce(IGame g)
     {
-        if (Runaway)
+        if (Runaway || SongHolds(g))
         {
-            // frozen: the game does not run, the picture stays, and every channel is silent for as long as a frame would have lasted
+            // frozen (or the Test MIDI export's song stopped): the game does not run, the picture stays, and every channel is silent for as long as a frame would have lasted
             int silent = Math.Clamp((int)Math.Round(g.HostSampleRate / g.FramesPerSecond), 1, zeros.Length);
             foreach (var r in rings) r?.Append(zeros.AsSpan(0, silent));
             return;

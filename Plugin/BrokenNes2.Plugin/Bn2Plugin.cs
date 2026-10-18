@@ -152,6 +152,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             EmulatorHub.SetHostRate((int)value);
             return 0;
         }
+        // FL's transport started or stopped: the Test MIDI export's song follows it when asked to (Emulator.Song.cs; flags only, nothing allocated, whatever thread FL calls from)
+        if (id == Fpd.SetPlaying) { assignment.Emulator?.TransportChanged(value != 0); return 0; }
         return base.Dispatcher(id, index, value);
     }
 
@@ -811,6 +813,15 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 stream.Write(&prsLen, 4);
                 fixed (byte* p = presetSection) stream.Write(p, (uint)prsLen);
             }
+            // The Test MIDI export's song (Music/SongSection.cs): the MIDI file's bytes and path, so a reopened project rebuilds the same ROM; before the game's state, which then fits it.
+            if (a.Emulator?.CaptureSongSection() is { } songSection)
+            {
+                uint sngMagic = Music.SongSection.Tag;
+                int sngLen = songSection.Length;
+                stream.Write(&sngMagic, 4);
+                stream.Write(&sngLen, 4);
+                fixed (byte* p = songSection) stream.Write(p, (uint)sngLen);
+            }
             // The whole machine of the game: a reopened project continues from where the game was, and every change made to the game stays (see GameState.cs).
             if (a.Emulator?.CaptureGameSection() is { } gameSection)
             {
@@ -857,6 +868,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         string? presetSectionProblem = null;
         byte[]? injectPayload = null;
         string? injectProblem = null;
+        Music.SongSection? restoredSong = null;
+        string? songProblem = null;
         restoring = true;
         try
         {
@@ -936,6 +949,21 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                                 presetSectionBytes = prsBuf;
                             }
                         }
+                        else if (tag == Music.SongSection.Tag)
+                        {
+                            // the Test MIDI export's song: read whole, checked (a damaged or newer one is refused with a note in the window, never half used)
+                            if (slen < Music.SongSection.HeaderBytes + 4 || slen > Music.SongSection.MaxBytes)
+                            {
+                                songProblem = "damaged (its length)";
+                                if (!(slen is >= 0 and <= GameStateSection.MaxRead && SkipSection(stream, slen))) break;
+                            }
+                            else
+                            {
+                                var sngBuf = new byte[slen];
+                                fixed (byte* p = sngBuf) if (!stream.Read(p, (uint)slen)) { songProblem = "cut short"; break; }
+                                restoredSong = Music.SongSection.Read(sngBuf, out songProblem);
+                            }
+                        }
                         else if (tag == GameStateSection.Tag)
                         {
                             if (slen < GameStateSection.HeaderSize || slen > GameStateSection.MaxRead) { gameProblem = "damaged"; break; }
@@ -988,7 +1016,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         if (emu2 != null && emu2.MemberCount == 1)
         {
             emu2.SetInjectRestore(injectPayload, injectProblem);
-            emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem, restoredCorruption);
+            emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem, restoredCorruption, restoredSong, songProblem);
             emu2.SetInstrumentNote(overlayProblem == null ? null : "The project's instrument edits were not restored: " + overlayProblem);
         }
         RestorePreset(presetSectionBytes, presetSectionProblem);
@@ -1224,6 +1252,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             case 42: { var path = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return emu == null || path == null ? 1 : emu.LoadRomFile(path) == null ? 0 : 1; }
             default:
                 if (id - Fpd.TestBase is >= 340 and < 360) return PresetTestHook(id - Fpd.TestBase, index, value);        // the presets (Bn2Plugin.Presets.cs)
+                if (id - Fpd.TestBase is >= 600 and < 620) return SongTestHook(id - Fpd.TestBase, index, value);          // Test MIDI export (Bn2Plugin.Song.cs)
                 return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
     }

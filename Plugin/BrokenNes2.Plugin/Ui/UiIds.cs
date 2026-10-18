@@ -7,7 +7,9 @@
 //     500 - 524  Corruption window                                          (all Bn2Editor; never reuse)
 //     1000 - 1999  THE TABS (this file): 1000 - 1009 the tab strip, 1100 - 1599 the Instruments tab, 1600 - 1799 the Presets tab,
 //                  1800 - 1999 reserved for later tab work.
-// Test hooks the tabs answer through the editor (Fpd.TestBase + n): 400 - 479 (see Bn2Editor.Tabs.cs); the plugin's own hooks stay below 400.
+//     2000 - 2019  the Test MIDI export button and window (round 7, Bn2Editor.Song.cs)
+// Test hooks the tabs answer through the editor (Fpd.TestBase + n): 400 - 479 (see Bn2Editor.Tabs.cs); the plugin's own hooks stay below 400, except Test MIDI export's:
+// plugin 600 - 619 (Bn2Plugin.Song.cs) and editor 620 - 629 (Bn2Editor.Song.cs).
 namespace BrokenNes2.Ui;
 
 /// <summary>Geometry shared by the editor and the tabs. The window is BaseWidth x Height on the Emulator tab and grows to the right by <see cref="WideExtra"/> on the others
