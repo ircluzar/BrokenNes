@@ -11,7 +11,8 @@
 //     2020 - 2079  the Record button and window (round 8, Bn2Editor.Record.cs: 2020-2035, 2040-2044 and 2050-2054 used, the rest reserved)
 // Test hooks the tabs answer through the editor (Fpd.TestBase + n): 400 - 479 (see Bn2Editor.Tabs.cs); the plugin's own hooks stay below 400, except Test MIDI export's:
 // plugin 600 - 619 (Bn2Plugin.Song.cs) and editor 620 - 629 (Bn2Editor.Song.cs), and the recording's: plugin 640 - 669 and 680 - 699 (Bn2Plugin.Record.cs; 680+ the live
-// MIDI out), 700 - 719 (Bn2Plugin.Tracks.cs: the tracks on offer) and editor 670 - 679 (Bn2Editor.Record.cs).
+// MIDI out), 700 - 719 (Bn2Plugin.Tracks.cs: the tracks on offer) and editor 670 - 679 (Bn2Editor.Record.cs); a NES game's recording (round 8, record-nes): plugin 740 - 779
+// (Bn2Plugin.RecordNes.cs), editor 780 - 789 and control ids 2080 - 2119 reserved (the NES recording shows in the Record window's own controls).
 namespace BrokenNes2.Ui;
 
 /// <summary>Geometry shared by the editor and the tabs. The window is BaseWidth x Height on the Emulator tab and grows to the right by <see cref="WideExtra"/> on the others

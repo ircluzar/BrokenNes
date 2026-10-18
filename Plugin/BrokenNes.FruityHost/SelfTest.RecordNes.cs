@@ -392,7 +392,25 @@ public sealed unsafe partial class SelfTest
             t.Expect(p2.Test(HkRTracks) == -1 && RText(p2, 7).Contains("damaged"), $"a damaged NES REC1: tracks {p2.Test(HkRTracks)}, the window says '{RText(p2, 7)}'");
             p2.Test(HkRForget);
         }
-        t.Note($"project: a {section.Length:N0}-byte REC1 (version 2) reopened to the same {tr.Midi.Length:N0}-byte MIDI file; a damaged one refused");
+        // changed: another recording (one period write moved by one) under the first one's checksum: only the checksum can tell
+        int pw = Array.FindIndex(s.RegVals, v => v >> 8 == 0x02);
+        if (pw >= 0)
+        {
+            s.RegVals[pw] ^= 1;
+            var other = RecSection.BuildNes(s);
+            BitConverter.GetBytes(BitConverter.ToUInt32(section, section.Length - 4)).CopyTo(other, other.Length - 4);
+            using var p3 = lib.Create();
+            p3.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+            p3.SetParam(PEmulator, 6);
+            p3.Test(HkRForget);
+            fixed (byte* sp = other) p3.Test(HkRAdopt, other.Length, (nint)sp);
+            long until = Environment.TickCount64 + 20000;
+            while (p3.Test(HkRState) == 3 && Environment.TickCount64 < until) Thread.Sleep(10);
+            t.Expect(p3.Test(HkRTracks) == -1 && RText(p3, 7).Contains("checksum"), $"a changed NES REC1 under the old checksum: tracks {p3.Test(HkRTracks)}, the window says '{RText(p3, 7)}'");
+            p3.Test(HkRForget);
+        }
+        else t.Expect(false, "the take has no period write to change");
+        t.Note($"project: a {section.Length:N0}-byte REC1 (version 2) reopened to the same {tr.Midi.Length:N0}-byte MIDI file; a damaged one and a changed one under the old checksum refused");
     }
 
     // ------------------------------------------------------------------------------------------------ FL's import, then Replace
@@ -432,12 +450,15 @@ public sealed unsafe partial class SelfTest
             p.Test(HkRTempo, 0, (nint)Math.Round(fileBpm * 1000));
             // the tracks with the most notes, so each part's first notes tell its track
             var order = Enumerable.Range(0, tr.Tracks.Count).Where(k => tr.Tracks[k].Channel != 4).OrderByDescending(k => tr.Tracks[k].Notes.Count).ToList();
+            // (four channels on four different tracks: a second channel on a track taken a moment before waits for the worker to build that track's next engine, by design, and starts late)
+            int kTrack = order.First(k => tr.Tracks[k].Channel < 2);           // (K: a pulse track, whose volume moves)
+            var others = order.Where(k => k != kTrack).ToList();
             var parts = new List<ReplacePart>
             {
-                Part("A (empty state)", a, m, order[0], order[0]),
-                Part("B (its own fresh state)", b, m, order[1], order[1]),
-                Part("D (made before the offer)", d, m, order[2], order[2]),
-                Part("K (FL lost the bends and the volume)", kq, m, order[0], order[0]),
+                Part("A (empty state)", a, m, others[0], others[0]),
+                Part("B (its own fresh state)", b, m, others[1], others[1]),
+                Part("D (made before the offer)", d, m, others[2], others[2]),
+                Part("K (FL lost the bends and the volume)", kq, m, kTrack, kTrack),
             };
             parts[3].FlBends = 1;
             foreach (var pt in parts) pt.P.Test(HkNProbe, 0, 1_000_000);
@@ -496,8 +517,8 @@ public sealed unsafe partial class SelfTest
             var a2 = lib.Create(); made.Add(a2);
             a2.Dispatcher(Fpd.SetSampleRate, 0, 48000);
             a2.LoadState(state);
-            t.Expect(a2.Test(HkTrackOf) == order[0] && a2.Test(342) == 1 && a2.Test(HkNTrackPreset) == 1 && a2.Test(718) == 1, $"A reopened: plays track {a2.Test(HkTrackOf) + 1}, a NES track preset {a2.Test(HkNTrackPreset)}, the expression {a2.Test(718)}");
-            t.Note($"replace: {string.Join("; ", parts.Select(x => $"{x.Name} -> {(x.P.Test(HkTrackOf) is var k2 && k2 >= 0 ? tr.Tracks[(int)k2].Name : "none")}"))}; {alloc} bytes on the audio thread");
+            t.Expect(a2.Test(HkTrackOf) == others[0] && a2.Test(342) == 1 && a2.Test(HkNTrackPreset) == 1 && a2.Test(718) == 1, $"A reopened: plays track {a2.Test(HkTrackOf) + 1} (should be {others[0] + 1}), a NES track preset {a2.Test(HkNTrackPreset)}, the expression {a2.Test(718)}");
+            t.Note($"replace: {string.Join("; ", parts.Select(x => $"{x.Name} -> {tr.Tracks[x.Expect].Name}"))} (each found and settled), A's project reopened plays its track; {alloc} bytes on the audio thread");
         }
         finally { foreach (var q in made) q.Dispose(); p?.Test(HkOfferSet, 0, 0); p?.Test(HkRForget); p?.Dispose(); }
     }

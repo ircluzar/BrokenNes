@@ -139,7 +139,7 @@ internal static partial class NesRecChecks
     [
         ("VRUN", 60, ""),
         ("Super Mario Bros. (JU) (PRG0)", 200, "180:start,4"),
-        ("Adventures of Bayou Billy", 300, "300:start,4"),
+        ("Adventures of Bayou Billy", 900, "300:start,4"),             // (its music starts about 12 s after power-on)
         ("Adventures of Rad Gravity", 300, "300:start,4"),
         ("Base Wars", 300, "300:start,4"),
         ("Contra (U)", 300, "300:start,4"),
@@ -159,14 +159,14 @@ internal static partial class NesRecChecks
             TranscribeAndReplay(r, g.Name, s);
             games++;
         }
-        // corrupted: 300 random bytes of work RAM changed (seeded) before the take, VRUN and SMB1
-        foreach (var (pick, park, script) in new[] { ("VRUN", 120, ""), ("Super Mario Bros. (JU) (PRG0)", 400, "180:start,4") })
+        // corrupted: random bytes of work RAM changed (seeded) before the take: VRUN (24 bytes: 300 silence its music) and SMB1 (300)
+        foreach (var (pick, park, script, bytes) in new[] { ("VRUN", 120, "", 24), ("Super Mario Bros. (JU) (PRG0)", 400, "180:start,4", 300) })
         {
             var g = pick == "VRUN" ? NesRecGame.Vrun() : NesRecGame.Find(pick, script);
             if (g == null) continue;
             g.Run(park);
             var rnd = new Random(9);
-            for (int i = 0; i < 300; i++) g.M.PokeRam((ushort)rnd.Next(0x800), (byte)rnd.Next(256));
+            for (int i = 0; i < bytes; i++) g.M.PokeRam((ushort)rnd.Next(0x800), (byte)rnd.Next(256));
             var s = g.Record((int)(GameSeconds * NesAudioMachine.FramesPerSecond), "corrupted " + pick);
             TranscribeAndReplay(r, g.Name + " (corrupted, seed 9)", s);
         }
