@@ -23,6 +23,7 @@ public sealed partial class Emulator
     private NesLive? nesLiveTarget;
     private NesGame? nesTapped;
     private long nesTapWrites;
+    private string nesRecChip = "";
 
     /// <summary>The NES capture in progress (tests).</summary>
     internal NesRecorder? NesRecorderForTests => nesRecorder;
@@ -62,6 +63,7 @@ public sealed partial class Emulator
         recCreated = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         recId = (ulong)Random.Shared.NextInt64();
         nesApuTap ??= OnNesApuWrite;                      // (the delegate is made here, on the UI thread: the audio thread only sets it)
+        nesRecChip = g.Nes?.ApuCoreId ?? "";
         Volatile.Write(ref recStartWanted, RecordUi.StartWithTransport ? 0 : 1);
         Volatile.Write(ref recStopWanted, 0);
         nesRecorder = rec;
@@ -81,7 +83,7 @@ public sealed partial class Emulator
             if (Volatile.Read(ref recStopWanted) != 0) { rec.Halt(RecEnd.Stop); return; }
             if (Volatile.Read(ref recStartWanted) == 0 || Runaway || g is not NesGame ng || ng.Nes is not { } m || SongHolds(g)) return;
             uint written = m.CopyApuLatch(nesLatch);
-            rec.Begin(m.Nes, nesLatch, written, m.ApuCoreId);
+            rec.Begin(m.Nes, nesLatch, written, nesRecChip);          // (the chip's name read on the UI thread: a type's name may allocate)
             nesTapWrites = 0;
             nesRecTarget = rec;
             nesRecGame = ng;

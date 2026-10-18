@@ -221,3 +221,58 @@ Control ids 2034 (Log FL's calls), 2035 (Bends + volume from the recording), 205
 | `BrokenNes.Workshop --snes-state-test` | 147 passed, 0 failed, 0 skipped |
 | `UAT\run-suite.ps1 -Exe <fresh Workshop>` | 84 pass, 0 fail, 60 skip (their ROMs are not at this worktree's paths), 0 info |
 | `UAT\entrypoints\notices-check.ps1` | pass (453 files scanned; no `*.bn2preset` tracked) |
+
+## 12. 2026-10-18: the NES (agent `record-nes`)
+
+Branch `worktree-agent-a594f6a114873faad`, from 421c4d8; `refs/heads/main` (1a04aad, section 11) merged in before the NES was wired into the window, the offer and the project.
+
+### The request and the design calls
+
+The user: "add support for NES for the replay thing we just did on SNES": record what a NES game plays in ROM mode into FL as MIDI tracks, each replayed "as is" by a BrokenNes2 instance in Direct mode with no game running; the same decisions as the SNES (file and live MIDI out, tempo, pitch bends, volume as velocity + controller, one track per instrument). The lead's call: a NES "instrument" is a channel and its timbre: **one track per (pulse channel, duty)**, the triangle, **one per noise mode**, **one per DMC sample**; the replay must write the game's period registers (exact or reported); hardware envelopes and sweeps carried by evidence.
+
+### The evidence that shaped it (`FruityHost nesrec-survey`)
+
+A sixth of the roster (253 files at `X:\EMULATION\Nintendo Entertainment System\`, every sixth from two offsets; 40 s each, Start pressed once at 5 s): 36 do not run here (mappers not supported, a crash), 12 play no note in that time, **205 play notes**:
+
+| How the driver drives the chip | Games | Share |
+|---|---|---|
+| the hardware **decay envelope** on 5 %+ of its pulse / noise notes | 82 (40 %) | about 19 % of all pulse / noise notes |
+| the **length counter** running (halt off) when the note is struck | 99 (48 %) | about 31 % of pulse / noise notes |
+| the hardware **sweep** on at the note | 46 at all, 30 on 5 %+ of pulse notes | about 5 % of pulse notes |
+| the **duty changed under a sounding pulse** | 131 (64 %) | 12,464 changes for 68,053 pulse notes |
+| the triangle's **linear counter** ending notes (control off) | 122 | about 47 % of triangle notes |
+| **DMC samples** / raw PCM through $4011 | 29 / 12 | |
+
+So the register writes alone do not say when a NES note ends or how loud it is: the transcription reads what the chip **sounds**.
+
+### What exists
+
+| Part | Where |
+|---|---|
+| A model of the chip (APU_FIX's rules, event-driven: writes and quarter / half frames) | `Record/NesApuModel.cs`; its starting state from `APU_FIX.ProbeControl()` (new, read-only) |
+| The capture (every $4000-$4017 write with its APU clock, frame marks, DMC sample copies through the mapper, never the bus) | `Record/NesRecorder.cs` (`NesRecorder`, `NesSession`, payload kind 'N'); `NesAudioMachine.RecordTap` (new) |
+| Notes from what the chip sounds | `Record/NesNotes.cs` |
+| Transcription (tracks, duty gating, exact bends and CC7, distinct velocities for a note's copies, presets, facts) | `Record/NesTranscribe.cs` |
+| Direct mode's register code, in one place | `Record/NesDirect.cs` (moved verbatim from `Bn2Plugin.Apply`; Direct mode and the recorded-track presets call it) |
+| The NES recording seen through the SNES shape (window, files, offer, matching, expression unchanged) | `Record/NesAdapter.cs`, `RecordHeld.Nes` |
+| Live MIDI out | `Record/NesLive.cs`, `Emulator.Live.cs` |
+| The plugin side | `Emulator.RecordNes.cs`, `Bn2Plugin.RecordNes.cs`, `NesPresetPlayer` (track mode), `TrackOffer.cs` / `Bn2Plugin.Tracks.cs` (NES engines, PRE-NES), `RecSection.cs` (version 2), `PresetNote.cs` (version 3), `RecTracks.cs` (velocity tie-break) |
+| Checks | `FruityHost nesrec-test` (`NesRec.*.cs`), `selftest --only record-nes` (`SelfTest.RecordNes.cs`), `nesrec-dump`, `nesrec-survey` |
+
+### How it works (the parts that are not obvious)
+
+**The chip model.** Each write and each quarter / half frame (the frame sequencer's own clock, 4- or 5-step, from the game chip's counters at Record) updates the model; after each, every channel's state is read: audible (enabled, length counter running, period at least 8 and not muted by the sweep's target, volume above 0; the triangle: linear counter above 0, period at least 2), the period after the sweep, the volume in force (constant or the decay level), the duty, the noise's mode and index. Times are CPU cycles: a write at clock W comes after the cycles 0..W-1, as the bus's tap reports it.
+
+**A note** is a stretch during which a channel is audible, cut where the driver strikes it again (its fourth register: the wave and the envelope restart, as a new FL note restarts them in the replay). A silence splits notes (the replay's next note restarts the wave, inaudibly, since nothing sounds before it). Two refinements found on real games: a channel made audible by its volume write a few cycles before the driver strikes it is one note, struck; the triangle sounds from the quarter frame after its strike ($400B reloads the linear counter then), so its note starts at the strike, the driver's moment (the replay's own chip delays it alike), and ends at the $4008 write that set its counter to 0. Notes shorter than 2 ms are left out and counted.
+
+**Tracks and duty changes.** One track per (pulse channel, duty), triangle, (noise, mode), DMC sample (by its bytes). A note whose duty changes while it sounds is on the track of **each** duty it uses, struck at the same tick on each, its level 0 on a track while another duty sounds (controller 7 = 0). The instances' waves start together, so when the level moves from one instance to the other the duty changes exactly when the game changed it, and the wave does not restart (the replay check proves the silent copy is silent at every compared moment). The cost: such an instrument shows on two tracks.
+
+**Pitch, volume.** The key is the musical note of the period the note holds longest (noise: index i is key 70 - 3i, Direct mode's mapping). Every period value is the key plus a 14-bit bend searched with the plugin's own `NesDirect` functions on FL's float cents at the track's bend range (the smallest of 2..48 that holds every move): the `direct` check shows every pulse / triangle period 8 (2) .. $7FF and every noise index reachable at the ranges 2, 3, 8, 12, 24 and 48 (24,600 of 24,600). The volume is velocity x controller 7 / 100 through `NesDirect.Level`, solved exactly (the middle of the interval of exact values, away from rounding edges). The sweep's periods are bends, the decay envelope's levels controller 7 values at each quarter frame: values exact, timing within FL's control step.
+
+**The carrier: a NES preset with the recorded-track behaviour** (decided here). The preset is the round-6 NES preset (kind, duty or noise mode; constant volume, halt, no sweep, length 31: the registers Direct mode writes) plus a note block, version 3, that makes `NesPresetPlayer` play FL's notes with `NesDirect.Write`: the volume register from velocity x controller 7, the preset's duty. Why not plain Direct mode on the FIX chip: Direct mode's channels are exclusive per emulator (a recording has several tracks of one channel: "Pulse 1, 25%" and "Pulse 1, 50%" need a pulse slot each, two per emulator, eight emulators at most), and the SNES flow (presets in the library, the offer, the matching, settling on a Presets chip, PRS1 / TRK1) takes presets. The register code is Direct mode's own, so the registers are those Direct mode would write. Without the block (an older BrokenNes2) the preset plays as a plain NES preset and the Presets tab says "note behaviour this version cannot play". Instances settle on a **PRE-NES** emulator of their own. The DMC: a preset with the sample's bytes, refused with "cannot play on this console yet".
+
+**FL's import-and-Replace.** The matcher (section 11) saw the duty copies of a note as unison candidates (same key, same position); copies now get velocities at least 3 apart (exactness kept: CC7 is solved for each copy's own velocity), the offer's index knows each note's velocity, and an untouched instance breaks a unison tie by FL's velocity of the note (`FPV_GetVelocity`). On Alien 3, 4 of 8 tracks were found for sure from their first 12 notes without the velocity, 8 of 8 with it.
+
+**The project.** `REC1` **version 2** holds a NES session (the same header, deflate and CRC-32); SNES recordings stay version 1 (older DLLs read them); an older DLL refuses a NES section as made by a newer BrokenNes2 and writes it back as it came. A version 1 section holding a NES session, or version 2 a SNES one, is damaged.
+
+**Live MIDI out.** The same model on the audio thread (allocation-free): a note-on per strike / audibility on its instrument's MIDI channel (channel and duty or mode, in first-sounding order), bends (range 12) and controller 7 as the values move, note-offs at silence; a duty change ends the note on one channel and strikes it on the other (live cannot strike both in advance).

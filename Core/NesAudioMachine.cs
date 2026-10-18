@@ -43,6 +43,7 @@ public sealed class NesAudioMachine
             cfg.NtscAccurateFrameRate = true;
         }
         Symbols = mlbText != null ? MlbSymbols.Parse(mlbText) : MlbSymbols.Parse("");
+        apuTap = OnApuWrite;
     }
 
     /// <summary>Every NES APU core id the registry knows (FIX, QN, DMG = Game Boy chip, ...).</summary>
@@ -125,7 +126,8 @@ public sealed class NesAudioMachine
 
     private void ApplyTap()
     {
-        var want = captureApu || recordTap != null ? (apuTap ??= OnApuWrite) : null;
+        // (the delegate is made when the machine is made, never here: a recording or a stem can begin on the audio thread, which must not allocate; record-nes found 88 bytes there)
+        var want = captureApu || recordTap != null ? apuTap : null;
         if (!ReferenceEquals(nes.ApuWriteTap, want)) nes.ApuWriteTap = want;
     }
 
