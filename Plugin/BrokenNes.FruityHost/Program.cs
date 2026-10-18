@@ -38,6 +38,12 @@ switch (args[0])
     case "preset-test":
         return PresetChecks.Main(args);
 
+    case "midi-test":
+        return MidiChecks.Main(args);
+
+    case "midi-trace":
+        return MidiChecks.Trace(args);
+
     case "alloc-probe":
         return PresetChecks.AllocProbe(args);
 

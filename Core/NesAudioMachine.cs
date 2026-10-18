@@ -101,20 +101,26 @@ public sealed class NesAudioMachine
     private ApuWrite[] apuLog = new ApuWrite[1024];
     private int apuLogCount;
     private bool captureApu;
+    private Action<ushort, byte, long>? apuTap;
+
+    private void OnApuWrite(ushort addr, byte val, long clock)
+    {
+        if (apuLogCount == apuLog.Length) Array.Resize(ref apuLog, apuLog.Length * 2);
+        apuLog[apuLogCount++] = new ApuWrite { Clock = clock, Reg = (byte)(addr - 0x4000), Value = val };
+    }
 
     /// <summary>When on, <see cref="ApuLog"/> holds every write the game made to $4000-$4017 during the last frame (a host
-    /// replays them on one-channel chips to get each channel's own sound). Off by default; costs nothing then.</summary>
+    /// replays them on one-channel chips to get each channel's own sound). Off by default; costs nothing then.
+    /// A host sets it before every frame (the plugin does, from its audio thread): the tap is made once and kept, so setting it allocates nothing
+    /// (it used to make a new closure each time: 64 bytes per frame on the audio thread while a NES game's stems were claimed).</summary>
     public bool CaptureApuWrites
     {
         get => captureApu;
         set
         {
             captureApu = value;
-            nes.ApuWriteTap = value ? (addr, val, clock) =>
-            {
-                if (apuLogCount == apuLog.Length) Array.Resize(ref apuLog, apuLog.Length * 2);
-                apuLog[apuLogCount++] = new ApuWrite { Clock = clock, Reg = (byte)(addr - 0x4000), Value = val };
-            } : null;
+            var want = value ? (apuTap ??= OnApuWrite) : null;
+            if (!ReferenceEquals(nes.ApuWriteTap, want)) nes.ApuWriteTap = want;
         }
     }
 

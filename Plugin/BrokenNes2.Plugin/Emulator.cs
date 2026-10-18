@@ -308,6 +308,7 @@ public sealed partial class Emulator : IDisposable
         lock (EmulatorHub.Gate)
         {
             romPaths[console] = path;
+            if (console == Cx.Nes) DropSongLocked();         // a NES file replaces the Test MIDI export's song as the NES game (the song stays held: the window and the Game list can bring it back)
             Volatile.Write(ref mode, 1);
             if (console != Console) Volatile.Write(ref chip, Cx.DefaultChip(console));
             else LeavePresetChipLocked();
@@ -329,6 +330,7 @@ public sealed partial class Emulator : IDisposable
             for (int c = 0; c < Ch.Total; c++) Volatile.Write(ref activity[c], 0);
             ResetOutputs();
             bool wasRunaway = Runaway;
+            Volatile.Write(ref songStopped, 0);   // (the Test MIDI export's song plays from power-on like any game)
             if (Mode == 1) StartLoad();       // the running game goes on until the new one is ready, then it is replaced
             if (wasRunaway) EmulatorHub.ReResolveAll(this);
         }
@@ -340,6 +342,7 @@ public sealed partial class Emulator : IDisposable
         lock (EmulatorHub.Gate)
         {
             romPaths[Cx.Nes] = null;
+            DropSongLocked();
             Volatile.Write(ref mode, 1);
             if (Console != Cx.Nes) Volatile.Write(ref chip, Cx.DefaultChip(Cx.Nes));
             else LeavePresetChipLocked();
@@ -351,7 +354,8 @@ public sealed partial class Emulator : IDisposable
     }
 
     /// <summary>Applies what a restored instance carries, when it is the first on a new emulator.</summary>
-    internal void Adopt(int newMode, int newChip, string? rom, SpcSnapshot? restoredSnapshot = null, GbSnapshot? restoredGb = null, SegaSnapshot? restoredSega = null, GameStateSection? restoredGame = null, string? gameProblem = null, CorruptionSection? restoredCorruption = null)
+    internal void Adopt(int newMode, int newChip, string? rom, SpcSnapshot? restoredSnapshot = null, GbSnapshot? restoredGb = null, SegaSnapshot? restoredSega = null, GameStateSection? restoredGame = null, string? gameProblem = null, CorruptionSection? restoredCorruption = null,
+        Music.SongSection? restoredSong = null, string? songProblem = null)
     {
         lock (EmulatorHub.Gate)
         {
@@ -361,6 +365,8 @@ public sealed partial class Emulator : IDisposable
             bool presetBefore = PresetMode;
             Volatile.Write(ref chip, newChip);
             romPaths[console] = string.IsNullOrWhiteSpace(rom) ? null : rom;
+            AdoptSong(restoredSong, songProblem);       // the Test MIDI export's song (SNG1): when it was the NES game, the loading thread converts it and builds it as the game
+            bool songGame = console == Cx.Nes && songActive;
             Volatile.Write(ref mode, Math.Clamp(newMode, 0, 1));
             if (mode == 1) LeavePresetChipLocked();          // (a project cannot have a game running on a Presets chip; if one says so, the console's own chip it is)
             if (mode != modeBefore || console != consoleBefore || PresetMode != presetBefore)
@@ -373,7 +379,7 @@ public sealed partial class Emulator : IDisposable
                 var path = romPaths[console];
                 // the project's game state goes with the game: it is put back on the loading thread, before the game can run (a project saved in Instrument Runaway starts frozen)
                 var request = new RestoreRequest(restoredGame, gameProblem, restoredCorruption);
-                if (path == null || File.Exists(path)) StartLoad(request);
+                if (songGame || path == null || File.Exists(path)) StartLoad(request);
                 else
                 {
                     RomStatus = "the project's game was not found: " + path;
@@ -423,6 +429,7 @@ public sealed partial class Emulator : IDisposable
     {
         get
         {
+            if (Console == Cx.Nes && songActive) return "MIDI test: " + (song?.FileName ?? Path.GetFileName(songPending?.Path ?? "song.mid"));
             var path = romPaths[Console];
             return path != null ? Path.GetFileName(path) : Console == Cx.Nes ? "VRUN (built-in)" : "none loaded";
         }

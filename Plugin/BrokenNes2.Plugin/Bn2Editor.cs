@@ -448,7 +448,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         if (aboutOpen) DrawAbout(dc);
         else if (inputsOpen) DrawInputs(dc);
         else if (corOpen) DrawCorruption(dc, emu);
-        else corRows = [];
+        else { corRows = []; if (midOpen) DrawMidi(dc, emu); }
     }
 
     /// <summary>Instead of the channel strip while the game is frozen: <paramref name="kind"/> 0 silent (NES), 1 SNES instruments, 2 Game Boy channels, 3 a Sega game's sound chips.</summary>
@@ -479,6 +479,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         Txt(dc, "Nes2", R(x, 8, 200, 36), Win32.DT_LEFT | Mid, Accent, fontTitle);
         x += TextWidth(dc, "Nes2", fontTitle);
         Txt(dc, "one instance = one channel", R(x + 16, 8, 300, 36), Win32.DT_LEFT | Mid, Faint, fontSmall);
+        DrawMidiButton(dc, x + 16 + TextWidth(dc, "one instance = one channel", fontSmall) + 24);     // Test MIDI export (Bn2Editor.Song.cs)
 
         // About, and which emulator this instance sits on
         var about = R(Width - Margin - 74, 13, 74, 26);
@@ -518,6 +519,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 Win32.StretchDIBits(dc, inner.Left + (512 - dw) / 2, inner.Top + (480 - dh) / 2, dw, dh, 0, 0, picW, picH, bits, &bmi, 0, Win32.SRCCOPY);
             DrawStateNote(dc, inner, emu);
             DrawCorruptionNote(dc, inner, emu);
+            DrawSongNote(dc, inner, emu);
             return;
         }
 
@@ -535,6 +537,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         }
         DrawStateNote(dc, inner, emu);
         DrawCorruptionNote(dc, inner, emu);
+        DrawSongNote(dc, inner, emu);
     }
 
     /// <summary>What the project could not do with the game's state (a console that cannot keep it, a state that was not used, one that was too big), over the bottom of the screen for as long as it is true.</summary>
@@ -1169,7 +1172,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         for (int i = 0; i < plugin.Params.Length; i++) Mix(plugin.Get(i));
         Mix(e?.Id ?? 0); Mix(a.Channel); Mix(a.Problem?.GetHashCode() ?? 0);
         Mix(hot); Mix(active); Mix(openId); Mix(openHover); Mix(openScroll); Mix(aboutOpen ? 1 + aboutScroll : 0); Mix(Environment.TickCount64 < resetFlashUntil ? 1 : 0);
-        Mix(UiSignature()); Mix(PresetSignature());
+        Mix(UiSignature()); Mix(PresetSignature()); Mix(SongSignature());
         Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(Inputs.AllowOpposite ? 9 : 10); Mix(e?.Runaway == true ? 7 : 8);
         if (e != null)
         {
@@ -1251,15 +1254,17 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             }
             case IdGame:
             {
-                // values are actions: 0 the built-in game, 1 the game already loaded, 2 choose a file
+                // values are actions: 0 the built-in game, 1 the game file (already loaded, or loaded again when the song replaced it), 2 choose a file, 3 the Test MIDI export's song
                 var items = new List<(string, string?)>();
                 var vals = new List<int>();
                 bool nes = plugin.Get(P.Console) == Cx.Nes;
                 string? path = emu?.RomPath;
-                if (nes) { items.Add(("VRUN (built-in)", path == null ? "loaded" : null)); vals.Add(0); }
-                if (path != null) { items.Add((emu!.RomDisplayName, "loaded")); vals.Add(1); }
+                bool songOn = nes && emu?.SongActive == true;
+                if (nes) { items.Add(("VRUN (built-in)", path == null && !songOn ? "loaded" : null)); vals.Add(0); }
+                if (path != null) { items.Add((Path.GetFileName(path), songOn ? null : "loaded")); vals.Add(1); }
+                if (nes && emu?.Song is { } held) { items.Add(("MIDI test: " + held.FileName, songOn ? "loaded" : "Test MIDI export's song")); vals.Add(3); }
                 items.Add(("Load a game file...", ".nes  .gb  .gbc  .sfc  .smc  .sms  .gg  .md  .gen  .zip")); vals.Add(2);
-                int current = path == null ? (nes ? 0 : -1) : 1;
+                int current = songOn ? 3 : path == null ? (nes ? 0 : -1) : 1;
                 return (items.ToArray(), vals.ToArray(), current);
             }
             case IdInstrument when emu?.PresetMode == true: return PresetItems(emu);
@@ -1385,6 +1390,8 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 else if (h.Id == IdAboutLink) OpenLink(About.ShoutUrl);
                 else if (h.Id == IdInputs) inputsOpen = true;
                 else if (h.Id == IdCor) { corOpen = true; corScroll = 0; }
+                else if (h.Id == IdMid) midOpen = true;                                 // Test MIDI export (Bn2Editor.Song.cs)
+                else if (IsMidId(h.Id)) MidiClick(h.Id);
                 else if (h.Id >= IdCorClose && h.Id < IdCorRow + CorVisible) CorruptionClick(h.Id);
                 else if (h.Id == IdInputsClose) { inputsOpen = false; captureIndex = -1; }
                 else if (h.Id == IdInputsKeyboard) { Inputs.KeyboardEnabled = !Inputs.KeyboardEnabled; Inputs.Save(); }
@@ -1417,6 +1424,8 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         var emu = plugin.Emulator;
         if (emu == null) return;
         if (action == 0) emu.UseBuiltInRom();
+        else if (action == 1 && emu.SongActive && plugin.Get(P.Console) == Cx.Nes && emu.RomPath is { } back) emu.LoadRomFile(back);      // the file the song replaced
+        else if (action == 3) emu.UseSong();
         else if (action == 2)
         {
             var path = Win32.ChooseFile(Hwnd, "Load a game", Cx.RomFilter);
@@ -1462,7 +1471,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             case Win32.WM_LBUTTONDBLCLK:
             {
                 var h = HitAt(x, y);
-                if (aboutOpen || inputsOpen || corOpen)
+                if (aboutOpen || inputsOpen || corOpen || midOpen)
                 {
                     captureIndex = -1;                         // a click anywhere ends a rebinding that was waiting
                     if (h is { } mh) Activate(mh);             // a modal: only its own controls answer
@@ -1494,7 +1503,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 break;
             case Win32.WM_RBUTTONUP:
             {
-                if (aboutOpen || corOpen) return;
+                if (aboutOpen || corOpen || midOpen) return;
                 if (inputsOpen)
                 {
                     var ih = HitAt(x, y);
@@ -1514,7 +1523,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             {
                 int delta = (short)((wParam >> 16) & 0xFFFF) / 120;
                 if (aboutOpen) { aboutScroll = Math.Max(0, aboutScroll - delta * 48); break; }
-                if (inputsOpen) break;
+                if (inputsOpen || midOpen) break;
                 if (corOpen) { corScroll = Math.Clamp(corScroll - delta, 0, Math.Max(0, corRows.Count - CorVisible)); break; }
                 if (openId != 0)
                 {
@@ -1582,6 +1591,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         switch (n)
         {
             case >= 400 and < 500: return UiTest(n, index, value);      // the tabs' hooks (Ui/Bn2Editor.Tabs.cs)
+            case >= 620 and < 630: return SongTest(n, index, value);    // Test MIDI export's window (Bn2Editor.Song.cs)
             case 30:
                 foreach (var h in hits)
                     if (h.Id == index)
