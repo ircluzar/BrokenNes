@@ -16,15 +16,72 @@ public sealed partial class Emulator
     /// <summary>The live MIDI out (null: off).</summary>
     internal RecLive? Live => live;
     /// <summary>The MIDI port the live notes go to (FL routes MIDI by port: the receiving channels listen on the same number).</summary>
-    internal int LivePort { get => livePort; set { livePort = Math.Clamp(value, 0, 255); if (live is { } l) l.Port = livePort; } }
+    internal int LivePort { get => livePort; set { livePort = Math.Clamp(value, 0, 255); if (live is { } l) l.Port = livePort; if (nesLive is { } nl) nl.Port = livePort; } }
+
+    // ---- a NES game's live MIDI out (round 8, record-nes: Record/NesLive.cs), beside the SNES one ----
+    private volatile NesLive? nesLive;
+    private NesGame? nesLiveGame;
+
+    /// <summary>The NES live MIDI out (null: off).</summary>
+    internal NesLive? NesLiveOut => nesLive;
+    /// <summary>Whether a live MIDI out (SNES or NES) runs, and its line for the window.</summary>
+    internal bool LiveActive => live is { Ended: false } || nesLive is { Ended: false };
+    internal string LiveText => nesLive is { Ended: false } n ? n.Describe() : live?.Describe() ?? "";
+    internal long LiveSignature => (live?.NotesOn ?? 0) + (live?.Instruments ?? 0) * 7919 + (nesLive?.NotesOn ?? 0) * 31 + (nesLive?.Instruments ?? 0) * 104729 + (LiveActive ? 1 : 2);
+
+    private string? StartNesLive()
+    {
+        if (nesLive is { Ended: false }) return null;
+        if (nesLive is { Ended: true, Pending: > 0 }) return "the last live notes' note-offs are still waiting for FL to pull the sound: try again in a moment";
+        var l = new NesLive { Port = livePort };
+        nesApuTap ??= OnNesApuWrite;                   // (made here, on the UI thread: the audio thread only sets it)
+        lock (romLock)
+        {
+            ApplyPending();
+            nesLive = l;
+            nesLiveGame = null;
+        }
+        return null;
+    }
+
+    private void StopNesLive()
+    {
+        var l = nesLive;
+        if (l == null) return;
+        lock (romLock)
+        {
+            nesLiveTarget = null;
+            l.Detach();
+            RetapNes(nesRecTarget != null ? game as NesGame : null);
+            nesLiveGame = null;
+            l.AllOff();
+            l.Ended = true;
+            if (l.Pending == 0) nesLive = null;
+        }
+    }
+
+    /// <summary>Between two frames (allocation-free): the NES live out follows the game that runs.</summary>
+    private void NesLiveService(IGame? g)
+    {
+        var l = nesLive;
+        if (l == null || l.Ended || ReferenceEquals(g, nesLiveGame)) return;
+        if (nesLiveGame != null) { l.AllOff(); l.Detach(); nesLiveTarget = null; nesLiveGame = null; }
+        if (g is not NesGame ng || ng.Nes is not { } m) { RetapNes(nesRecTarget != null ? nesRecGame : null); return; }
+        uint written = m.CopyApuLatch(nesLatch);
+        l.Attach(m.Nes, nesLatch, written);
+        nesLiveTarget = l;
+        nesLiveGame = ng;
+        RetapNes(ng);
+    }
 
     /// <summary>Live MIDI out on (UI thread). Null when on, else why not.</summary>
     internal string? StartLive()
     {
         if (live is { Ended: false }) return null;
         if (live is { Ended: true, Pending: > 0 }) return "the last live notes' note-offs are still waiting for FL to pull the sound: try again in a moment";
-        if (Mode != 1) return "live MIDI out needs ROM mode and a SNES game: load one in the Game list";
-        if (Console != Cx.Snes) return $"live MIDI out works on SNES games for now (this emulator runs the {Cx.Names[Console]})";
+        if (Mode != 1) return "live MIDI out needs ROM mode and a SNES or NES game: load one in the Game list";
+        if (Console == Cx.Nes) return StartNesLive();
+        if (Console != Cx.Snes) return $"live MIDI out works on SNES and NES games for now (this emulator runs the {Cx.Names[Console]})";
         var l = new RecLive { Port = livePort };
         liveTap = l.OnWrite;                           // (made here, on the UI thread: the audio thread only sets it)
         unitChangedTap ??= OnUnitChanged;
@@ -53,6 +110,7 @@ public sealed partial class Emulator
     /// <summary>Live MIDI out off (UI thread): the sounding notes get their note-offs, sent by the next audio block.</summary>
     internal void StopLive()
     {
+        StopNesLive();
         var l = live;
         if (l == null) return;
         lock (romLock)
@@ -68,6 +126,7 @@ public sealed partial class Emulator
     /// <summary>Between two frames, under romLock (allocation-free): the live out follows the game that runs (a new game: the old one's notes off, the new one listened to).</summary>
     private void LiveService(IGame? g)
     {
+        NesLiveService(g);
         var l = live;
         if (l == null || l.Ended || !l.Primed || ReferenceEquals(g, liveGame)) return;
         if (liveGame != null)
@@ -86,6 +145,7 @@ public sealed partial class Emulator
 
     private void LiveFrameEnd(IGame g)
     {
+        if (nesLive is { Ended: false } nl && ReferenceEquals(g, nesLiveGame) && g.Nes is { } nm) nl.EndFrame(nm.ApuClock);
         if (live is { Ended: false } l && ReferenceEquals(g, liveGame)) l.EndFrame();
     }
 
@@ -99,6 +159,7 @@ public sealed partial class Emulator
     /// <summary>The instance that pulled the game's sound hands the queued live notes to FL (the audio thread, after the frames it asked for).</summary>
     internal void DrainLiveMidi(Bn2Plugin who)
     {
+        DrainNesLive(who);
         var l = live;
         bool silent = Runaway || Mode != 1;
         if (l == null || l.Pending == 0 && !(silent && l.Sounding)) return;
@@ -108,6 +169,20 @@ public sealed partial class Emulator
             int port = l.Port;
             while (l.TryDequeue(out uint m)) who.SendMidiOut(m | (uint)port << 24);
             if (l.Ended && ReferenceEquals(live, l)) live = null;
+        }
+    }
+
+    private void DrainNesLive(Bn2Plugin who)
+    {
+        var l = nesLive;
+        bool silent = Runaway || Mode != 1;
+        if (l == null || l.Pending == 0 && !(silent && l.Sounding)) return;
+        lock (romLock)
+        {
+            if (silent) l.AllOff();                    // a frozen game (or none) is silent: so are its live notes
+            int port = l.Port;
+            while (l.TryDequeue(out uint m)) who.SendMidiOut(m | (uint)port << 24);
+            if (l.Ended && ReferenceEquals(nesLive, l)) nesLive = null;
         }
     }
 }

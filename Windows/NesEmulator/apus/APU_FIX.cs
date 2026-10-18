@@ -609,6 +609,41 @@ namespace NesEmulator
             (byte)dmc_output, dmc_shiftReg, dmc_bitsRemaining, dmc_timer, dmc_silence,
             (byte)frameStep);
 
+        // ===== Control-state probe (BrokenNes2's recording of a game's music, round 8) =====================
+        //
+        // Every counter and flag that decides WHEN a channel sounds and HOW LOUD - the envelope dividers and start flags, the sweep dividers
+        // and reload flags, the linear counter's reload flag, the frame sequencer's position - in this core's own units. The plugin's
+        // recording takes it once, between two frames, so that its own model of the chip (BrokenNes2.Record.NesApuModel) starts from exactly
+        // the state the game's chip was in and then follows the game's register writes. Read-only, allocation-free (a struct), and nothing in
+        // any machine state: the default path does not call it.
+        public readonly struct ApuControlSnapshot
+        {
+            public int P1Duty { get; init; } public bool P1Halt { get; init; } public bool P1Const { get; init; } public int P1Vol { get; init; }
+            public int P1SweepRaw { get; init; } public int P1SweepPeriod { get; init; } public bool P1SweepNegate { get; init; } public int P1SweepShift { get; init; } public bool P1SweepReload { get; init; } public int P1SweepDivider { get; init; }
+            public int P1Timer { get; init; } public int P1LengthIdx { get; init; } public int P1Length { get; init; } public bool P1Enabled { get; init; } public bool P1EnvStart { get; init; } public int P1EnvDivider { get; init; } public int P1EnvDecay { get; init; }
+            public int P2Duty { get; init; } public bool P2Halt { get; init; } public bool P2Const { get; init; } public int P2Vol { get; init; }
+            public int P2SweepRaw { get; init; } public int P2SweepPeriod { get; init; } public bool P2SweepNegate { get; init; } public int P2SweepShift { get; init; } public bool P2SweepReload { get; init; } public int P2SweepDivider { get; init; }
+            public int P2Timer { get; init; } public int P2LengthIdx { get; init; } public int P2Length { get; init; } public bool P2Enabled { get; init; } public bool P2EnvStart { get; init; } public int P2EnvDivider { get; init; } public int P2EnvDecay { get; init; }
+            public int TLinearReg { get; init; } public bool THalt { get; init; } public int TTimer { get; init; } public int TLengthIdx { get; init; } public int TLength { get; init; } public bool TEnabled { get; init; } public int TLinear { get; init; } public bool TLinearReload { get; init; }
+            public bool NHalt { get; init; } public bool NConst { get; init; } public int NVol { get; init; } public int NPeriodReg { get; init; } public int NLengthIdx { get; init; } public int NLength { get; init; } public bool NEnabled { get; init; } public bool NEnvStart { get; init; } public int NEnvDivider { get; init; } public int NEnvDecay { get; init; }
+            public int DmcCtrl { get; init; } public int DmcLoad { get; init; } public int DmcAddrReg { get; init; } public int DmcLenReg { get; init; } public bool DmcEnabled { get; init; } public int DmcAddress { get; init; } public int DmcRemaining { get; init; } public int DmcOutput { get; init; }
+            public int Status { get; init; } public int FrameCycle { get; init; } public int FrameStep { get; init; } public int NextFrameEvent { get; init; } public bool FrameMode5 { get; init; } public bool FrameIrqInhibit { get; init; }
+        }
+
+        public ApuControlSnapshot ProbeControl() => new ApuControlSnapshot
+        {
+            P1Duty = pulse1_duty, P1Halt = pulse1_lengthHalt, P1Const = pulse1_constantVolume, P1Vol = pulse1_volumeParam,
+            P1SweepRaw = pulse1_sweepRaw, P1SweepPeriod = pulse1_sweepPeriod, P1SweepNegate = pulse1_sweepNegate, P1SweepShift = pulse1_sweepShift, P1SweepReload = pulse1_sweepReload, P1SweepDivider = pulse1_sweepDivider,
+            P1Timer = pulse1_timer, P1LengthIdx = pulse1_lengthIdx, P1Length = pulse1_lengthCounter, P1Enabled = pulse1_enabled, P1EnvStart = pulse1_envStart, P1EnvDivider = pulse1_envDivider, P1EnvDecay = pulse1_envDecay,
+            P2Duty = pulse2_duty, P2Halt = pulse2_lengthHalt, P2Const = pulse2_constantVolume, P2Vol = pulse2_volumeParam,
+            P2SweepRaw = pulse2_sweepRaw, P2SweepPeriod = pulse2_sweepPeriod, P2SweepNegate = pulse2_sweepNegate, P2SweepShift = pulse2_sweepShift, P2SweepReload = pulse2_sweepReload, P2SweepDivider = pulse2_sweepDivider,
+            P2Timer = pulse2_timer, P2LengthIdx = pulse2_lengthIdx, P2Length = pulse2_lengthCounter, P2Enabled = pulse2_enabled, P2EnvStart = pulse2_envStart, P2EnvDivider = pulse2_envDivider, P2EnvDecay = pulse2_envDecay,
+            TLinearReg = triangle_linearReg, THalt = triangle_lengthHalt, TTimer = triangle_timer, TLengthIdx = triangle_lengthIdx, TLength = triangle_lengthCounter, TEnabled = triangle_enabled, TLinear = triangle_linearCounter, TLinearReload = triangle_linearReloadFlag,
+            NHalt = noise_lengthHalt, NConst = noise_constantVolume, NVol = noise_volumeParam, NPeriodReg = noise_periodReg, NLengthIdx = noise_lengthIdx, NLength = noise_lengthCounter, NEnabled = noise_enabled, NEnvStart = noise_envStart, NEnvDivider = noise_envDivider, NEnvDecay = noise_envDecay,
+            DmcCtrl = dmc_ctrl, DmcLoad = dmc_directLoad, DmcAddrReg = dmc_addrReg, DmcLenReg = dmc_lenReg, DmcEnabled = dmc_enabled, DmcAddress = dmc_sampleAddress, DmcRemaining = dmc_sampleLengthRemaining, DmcOutput = dmc_deltaCounter,
+            Status = statusWriteLatch, FrameCycle = frameCycle, FrameStep = frameStep, NextFrameEvent = nextFrameEventCycle, FrameMode5 = frameMode5, FrameIrqInhibit = frameIRQInhibit,
+        };
+
         private bool ChannelEnabled(int bit) => (channelEnableMask & bit) != 0;
 
         private bool SweepWouldMute(ushort timer, bool negate, int shift, bool channel1)

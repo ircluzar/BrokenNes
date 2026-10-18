@@ -43,6 +43,7 @@ public sealed class NesAudioMachine
             cfg.NtscAccurateFrameRate = true;
         }
         Symbols = mlbText != null ? MlbSymbols.Parse(mlbText) : MlbSymbols.Parse("");
+        apuTap = OnApuWrite;
     }
 
     /// <summary>Every NES APU core id the registry knows (FIX, QN, DMG = Game Boy chip, ...).</summary>
@@ -105,8 +106,29 @@ public sealed class NesAudioMachine
 
     private void OnApuWrite(ushort addr, byte val, long clock)
     {
-        if (apuLogCount == apuLog.Length) Array.Resize(ref apuLog, apuLog.Length * 2);
-        apuLog[apuLogCount++] = new ApuWrite { Clock = clock, Reg = (byte)(addr - 0x4000), Value = val };
+        if (captureApu)
+        {
+            if (apuLogCount == apuLog.Length) Array.Resize(ref apuLog, apuLog.Length * 2);
+            apuLog[apuLogCount++] = new ApuWrite { Clock = clock, Reg = (byte)(addr - 0x4000), Value = val };
+        }
+        RecordTap?.Invoke(addr, val, clock);
+    }
+
+    private Action<ushort, byte, long>? recordTap;
+
+    /// <summary>A second listener to every write to $4000-$4017 (BrokenNes2's recording of a game's music and its live MIDI out, round 8), beside the per-frame log: called on the thread that runs the
+    /// frame, before the chip takes the write, with the APU clock. Null by default (costs nothing then). The host makes the delegate once, off the audio thread; setting it allocates nothing.</summary>
+    public Action<ushort, byte, long>? RecordTap
+    {
+        get => recordTap;
+        set { recordTap = value; ApplyTap(); }
+    }
+
+    private void ApplyTap()
+    {
+        // (the delegate is made when the machine is made, never here: a recording or a stem can begin on the audio thread, which must not allocate; record-nes found 88 bytes there)
+        var want = captureApu || recordTap != null ? apuTap : null;
+        if (!ReferenceEquals(nes.ApuWriteTap, want)) nes.ApuWriteTap = want;
     }
 
     /// <summary>When on, <see cref="ApuLog"/> holds every write the game made to $4000-$4017 during the last frame (a host
@@ -119,8 +141,7 @@ public sealed class NesAudioMachine
         set
         {
             captureApu = value;
-            var want = value ? (apuTap ??= OnApuWrite) : null;
-            if (!ReferenceEquals(nes.ApuWriteTap, want)) nes.ApuWriteTap = want;
+            ApplyTap();
         }
     }
 

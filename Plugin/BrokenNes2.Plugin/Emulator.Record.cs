@@ -40,6 +40,9 @@ internal sealed class RecordPanel
 internal sealed record RecordHeld(RecSession Session, Transcription Tr, string Folder, string MidiPath, string[] TrackPaths, string[] PresetIds, string PresetNote, long Generation)
 {
     public string MidiName => Path.GetFileName(MidiPath);
+    /// <summary>A NES game's recording (round 8, record-nes): its own transcription; <see cref="Tr"/> is the same tracks seen through the SNES transcription's shape (Record/NesAdapter.cs), and
+    /// <see cref="Session"/> a stand-in that carries its name, game, id and length. Null for a SNES recording.</summary>
+    public NesTranscription? Nes { get; init; }
 }
 
 public sealed partial class Emulator
@@ -69,8 +72,9 @@ public sealed partial class Emulator
     {
         if (RecordUi.State is RecordPanel.Armed or RecordPanel.Recording) return "already recording: press Stop first";
         if (RecordUi.State == RecordPanel.Finishing) return "the last recording is still being transcribed";
-        if (Mode != 1) return "recording needs ROM mode and a SNES game: load one in the Game list";
-        if (Console != Cx.Snes) return $"recording works on SNES games for now (this emulator runs the {Cx.Names[Console]}): the other consoles come later";
+        if (Mode != 1) return "recording needs ROM mode and a SNES or NES game: load one in the Game list";
+        if (Console == Cx.Nes) return StartNesRecording();            // (the NES: Emulator.RecordNes.cs)
+        if (Console != Cx.Snes) return $"recording works on SNES and NES games for now (this emulator runs the {Cx.Names[Console]}): the other consoles come later";
         IGame? g;
         lock (romLock) { ApplyPending(); g = game; }
         if (g is not SessionGame sg || sg.Console != Cx.Snes) return "the SNES game is still loading: try again in a moment";
@@ -96,14 +100,14 @@ public sealed partial class Emulator
     /// <summary>Stop: the recording ends between two frames; the feeder thread then transcribes it.</summary>
     internal void StopRecording()
     {
-        if (recorder == null) return;
+        if (recorder == null && nesRecorder == null) return;
         Volatile.Write(ref recStopWhy, (int)RecEnd.Stop);
         Volatile.Write(ref recStopWanted, 1);
     }
 
     private string DefaultRecordingName()
     {
-        string title = PresetStore.GameTitle(Path.GetFileName(RomPath ?? "")) is { Length: > 0 } t ? t : "SNES";
+        string title = PresetStore.GameTitle(Path.GetFileName(RomPath ?? "")) is { Length: > 0 } t ? t : Console == Cx.Nes ? "VRUN" : "SNES";
         if (title.Length > 24) title = title[..24].TrimEnd();
         return $"{title} {DateTime.Now:HH.mm.ss}";
     }
@@ -111,7 +115,7 @@ public sealed partial class Emulator
     /// <summary>FL's transport (flags only: any thread, no allocation). With the options on, a start begins an armed recording and a stop ends a running one.</summary>
     private void RecordTransport(bool playing, int before)
     {
-        if (recorder == null) return;
+        if (recorder == null && nesRecorder == null) return;
         if (playing && before != 1 && RecordUi.StartWithTransport) Volatile.Write(ref recStartWanted, 1);
         if (!playing && before == 1 && RecordUi.StopWithTransport && RecordUi.State == RecordPanel.Recording) { Volatile.Write(ref recStopWhy, (int)RecEnd.Transport); Volatile.Write(ref recStopWanted, 1); }
     }
@@ -119,6 +123,7 @@ public sealed partial class Emulator
     /// <summary>Between two frames, under romLock (the audio thread, the editor's picture pump, or the feeder): an armed recording begins when the game runs, a running one ends when asked, or when its game was replaced. Allocation-free.</summary>
     private void RecordService(IGame? g)
     {
+        if (nesRecorder != null) { NesRecordService(g); return; }   // (a NES game's recording: Emulator.RecordNes.cs)
         var rec = recorder;
         if (rec == null) return;
         if (RecordUi.State == RecordPanel.Armed)
@@ -141,6 +146,7 @@ public sealed partial class Emulator
     /// <summary>After a frame: the recording's clock moves on even when the driver wrote nothing.</summary>
     private void RecordClock(IGame g)
     {
+        NesRecordClock(g);
         if (recorder is { Recording: true } rec && ReferenceEquals(g, recGame) && recGame!.SpcUnit is { } spc) rec.Clock(spc.SamplesProduced);
     }
 
@@ -271,7 +277,7 @@ public sealed partial class Emulator
         RecordUi.State = RecordPanel.Finishing;
         Task.Run(() =>
         {
-            try { Transcribe(held.Session, addPresets: false); var h = recording; if (h != null) recording = h with { PresetIds = held.PresetIds, PresetNote = held.PresetNote }; }
+            try { if (held.Nes != null) TranscribeNes(held.Nes.Session, addPresets: false); else Transcribe(held.Session, addPresets: false); var h = recording; if (h != null) recording = h with { PresetIds = held.PresetIds, PresetNote = held.PresetNote }; }
             catch (Exception e) { RecordUi.State = RecordPanel.Done; RecordUi.SetResult("Transcribing again failed: " + e.Message, false); }
         });
         return null;
@@ -332,7 +338,8 @@ public sealed partial class Emulator
         {
             try
             {
-                var s = RecSection.Read(section, out var why);
+                var s = RecSection.ReadAny(section, out var why, out var nesSession);
+                if (nesSession != null) { recProblem = null; TranscribeNes(nesSession, addPresets: false); return; }    // (a NES game's recording: REC1 version 2)
                 if (s == null)
                 {
                     recProblem = "The project's recording was not used: " + why;

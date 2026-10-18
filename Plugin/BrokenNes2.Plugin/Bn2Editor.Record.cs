@@ -54,7 +54,7 @@ public sealed unsafe partial class Bn2Editor
 
         Txt(dc, "Record the music", R(lx, box.Top + 14, 400, 34), Win32.DT_LEFT | Mid, Text, fontTitle);
         if (emu != null) Txt(dc, $"emulator #{emu.Id}", R(box.Right - 30 - 200, box.Top + 14, 200, 34), Win32.DT_RIGHT | Mid, Dim, fontSection);
-        Txt(dc, "Record keeps every note the game's sound chip plays (SNES games), from Record to Stop: one MIDI track and one preset per instrument. Drag the MIDI file into FL, give each track to a BrokenNes2 on the Presets chip: it replays as the game played it.",
+        Txt(dc, "Record keeps every note the game's sound chip plays (SNES and NES games), from Record to Stop: one MIDI track and one preset per instrument. Drag the MIDI file into FL, give each track to a BrokenNes2 on the Presets chip: it replays as the game played it.",
             R(lx, box.Top + 50, iw, 40), Win32.DT_LEFT | Win32.DT_WORDBREAK, Dim, fontSmall);
         Line_(dc, lx, box.Top + 94, box.Right - 30, box.Top + 94, Line);
 
@@ -89,7 +89,7 @@ public sealed unsafe partial class Bn2Editor
         int ly = sb.Top + 38;
         if (st is RecordPanel.Armed or RecordPanel.Recording or RecordPanel.Finishing || held == null)
         {
-            string text = ui?.Status is { Length: > 0 } s0 ? s0 : emu == null ? "" : emu.Mode != 1 || emu.Console != Cx.Snes ? "Load a SNES game in ROM mode (the Game list), let the music play, then Record." : "Press Record: the recording starts at once (or with FL's Play, or when Instrument Runaway is switched off), Stop ends it.";
+            string text = ui?.Status is { Length: > 0 } s0 ? s0 : emu == null ? "" : emu.Mode != 1 || emu.Console is not (Cx.Snes or Cx.Nes) ? "Load a SNES or NES game in ROM mode (the Game list), let the music play, then Record." : "Press Record: the recording starts at once (or with FL's Play, or when Instrument Runaway is switched off), Stop ends it.";
             Txt(dc, text, R(sb.Left + 14, ly, iw - 28, 88), Win32.DT_LEFT | Win32.DT_WORDBREAK, Text, fontLabel);
         }
         else
@@ -129,7 +129,8 @@ public sealed unsafe partial class Bn2Editor
             Txt(dc, "::", R(row.Left + 6, row.Top, 14, 24), Win32.DT_LEFT | Mid, Dim, fontLabel);
             Txt(dc, t.Name, R(row.Left + 22, row.Top, 320, 24), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Text, fontSmall);
             int playing = offered != null && k < offered.Slots.Length ? offered.Slots[k].Playing : 0;
-            string info = $"{t.Notes.Count} notes, ch {t.Channel + 1}, bend {t.BendRange}, {(t.Root.Found ? RecRoot.NoteName((int)Math.Round(t.Root.Midi)) + " root" : "no root")}{(playing > 0 ? $", {playing} channel{(playing == 1 ? "" : "s")}" : "")}";
+            string what = shown?.Nes is { } nes && k < nes.Tracks.Count ? (nes.Tracks[k].CannotPlay != null ? "DMC: cannot play yet" : nes.Tracks[k].Kind) : t.Root.Found ? RecRoot.NoteName((int)Math.Round(t.Root.Midi)) + " root" : "no root";     // (a NES track: its channel; a SNES one: its sample's root)
+            string info = $"{t.Notes.Count} notes, ch {t.Channel + 1}, bend {t.BendRange}, {what}{(playing > 0 ? $", {playing} channel{(playing == 1 ? "" : "s")}" : "")}";
             Txt(dc, info, R(row.Left + 346, row.Top, row.Right - row.Left - 352, 24), Win32.DT_RIGHT | Mid | Win32.DT_END_ELLIPSIS, Dim, fontSmall);
             AddHit(IdRecTrack + r, row, Kind.Button);
             Button(dc, IdRecHere + r, here ? "Plays here" : "Play here", R(lx + iw - 96, y + r * 26, 96, 24), primary: here, enabled: emu != null);
@@ -138,13 +139,12 @@ public sealed unsafe partial class Bn2Editor
 
         // live MIDI out (P2): the game's notes to FL's MIDI port while it plays
         y = box.Top + 506;
-        var lv = emu?.Live;
-        bool liveOn = lv is { Ended: false };
+        bool liveOn = emu?.LiveActive == true;          // (the SNES or the NES live out)
         Check(dc, IdRecLive, "Live MIDI out", lx, y + 3, liveOn, null, labelW: 130, hitW: 160);
         Button(dc, IdRecPortDown, "-", R(lx + 166, y, 26, 26), primary: false, enabled: emu != null);
         Txt(dc, $"port {emu?.LivePort ?? 0}", R(lx + 194, y, 66, 26), Win32.DT_CENTER | Mid, Text, fontSmall);
         Button(dc, IdRecPortUp, "+", R(lx + 262, y, 26, 26), primary: false, enabled: emu != null);
-        string liveText = liveOn ? "live: " + lv!.Describe() : "the game's notes as it plays, one MIDI channel per instrument, to this MIDI port";
+        string liveText = liveOn ? "live: " + emu!.LiveText : "the game's notes as it plays, one MIDI channel per instrument, to this MIDI port";
         Txt(dc, liveText, R(lx + 300, y, iw - 300 - 186, 26), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, liveOn ? Text : Faint, fontSmall);
         Check(dc, IdRecLog, "Log FL's calls", lx + iw - 176, y + 3, HostLog.On, null, labelW: 150, hitW: 176);
 
@@ -220,7 +220,7 @@ public sealed unsafe partial class Bn2Editor
                 Say(HostLog.On ? $"Logging what FL sends to BrokenNes2 (every new channel's first calls, notes and song positions) into {HostLog.FilePath}. It stays on when FL restarts; untick it when done and send the file." : "The log is off.", true);
                 break;
             case IdRecLive:
-                if (emu.Live is { Ended: false }) { emu.StopLive(); Say("Live MIDI out is off (the sounding notes were ended).", true); }
+                if (emu.LiveActive) { emu.StopLive(); Say("Live MIDI out is off (the sounding notes were ended).", true); }
                 else if (plugin.StartLiveMidi() is { } whyLive) Say("No live MIDI out: " + whyLive, false);
                 else Say($"Live MIDI out is on: the game's notes go to MIDI port {emu.LivePort} while it plays. In FL, set the MIDI input port of the channels that should play them to {emu.LivePort} (one MIDI channel per instrument).", true);
                 break;
@@ -283,7 +283,7 @@ public sealed unsafe partial class Bn2Editor
         h = h * 31 + u.State; h = h * 31 + u.ResultStamp; h = h * 31 + u.Status.GetHashCode();
         h = h * 31 + (u.StartWithTransport ? 1 : 2) + (u.StopWithTransport ? 4 : 8) + (u.Lanes ? 16 : 32);
         h = h * 31 + (e.Recording?.Generation ?? 0); h = h * 31 + (e.Recording?.PresetNote.GetHashCode() ?? 0);
-        if (recOpen && e.Live is { } lv) { h = h * 31 + lv.NotesOn + lv.Instruments * 7919 + (lv.Ended ? 1 : 2); }
+        if (recOpen) h = h * 31 + e.LiveSignature;
         h = h * 31 + e.LivePort;
         return h;
     }

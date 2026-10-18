@@ -2,6 +2,7 @@
 // register writes, one per instance. What differs from Direct mode's channels is whose registers they are: the pulse duty, the envelope (decay or constant volume, loop, length), the sweep, the triangle's linear counter and the noise's mode and period are the
 // PRESET's, as the game had them. The note's pitch and loudness are FL's (pitch writes the timer, velocity scales the output). Not played: the DMC (it reads its sample from the game's memory and the bare chip has no game), said on screen.
 using BrokenNes2.Instruments;
+using BrokenNes2.Record;
 using NesEmulator.Plugin;
 
 namespace BrokenNes2;
@@ -14,10 +15,20 @@ internal sealed class NesPresetPlayer
     private bool gate;
     private int curPeriod;
 
-    public NesPresetPlayer(Instrument inst, int hostRate)
+    /// <summary>A preset recorded from a game (its note block says so, PresetNote.NesTrack): FL's notes write the registers the way Direct mode does (Record/NesDirect.cs: velocity x controller 7 is the
+    /// volume register, constant volume, no sweep), with the preset's duty or noise mode, so a recording's notes write the game's registers back. The plain preset's own volume and envelope are not used then.</summary>
+    public readonly bool Track;
+    private readonly int channel;
+
+    /// <summary>The bare chip it plays (tests read its writes through <c>WriteTap</c>).</summary>
+    public NesApuInstrument Chip => chip;
+
+    public NesPresetPlayer(Instrument inst, int hostRate, bool track = false)
     {
         chip = new NesApuInstrument("FIX", hostRate);
         kind = inst.Kind;
+        Track = track && kind is InstrumentKind.NesPulse1 or InstrumentKind.NesPulse2 or InstrumentKind.NesTriangle or InstrumentKind.NesNoise;
+        channel = kind switch { InstrumentKind.NesPulse1 => 0, InstrumentKind.NesPulse2 => 1, InstrumentKind.NesTriangle => 2, _ => 3 };
         int Get(string id) => inst.Field(id)?.Value ?? 0;
         duty = Get("duty"); halt = Get("halt"); constant = Get("const"); volume = Get("vol");
         sweepOn = Get("sweep.on"); sweepPeriod = Get("sweep.period"); sweepNegate = Get("sweep.neg"); sweepShift = Get("sweep.shift");
@@ -92,6 +103,21 @@ internal sealed class NesPresetPlayer
             }
         }
         gate = true;
+    }
+
+    /// <summary>The control-rate step of a recorded track (<see cref="Track"/>): Direct mode's registers for the note held (<paramref name="level"/> = NesDirect.Level of FL's level and the Volume
+    /// parameter), or the channel silent. Returns the level written (0 for a muted pulse).</summary>
+    public int UpdateTrack(bool hasNote, bool fresh, double cents, int level)
+    {
+        if (!hasNote)
+        {
+            if (gate) { NesDirect.Silence(chip, channel, duty); gate = false; }
+            return 0;
+        }
+        bool retrigger = fresh || !gate;
+        curPeriod = NesDirect.Write(chip, channel, duty, mode, ref level, cents, retrigger, curPeriod);
+        gate = true;
+        return level;
     }
 
     public void Render(Span<float> mono) => chip.Render(mono);

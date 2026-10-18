@@ -684,74 +684,18 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
         ref var fl = ref v.Params->FinalLevels;
         double cents = fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine);
-        double freq = 440.0 * Math.Pow(2.0, ((60.0 + cents / 100.0) - 69.0) / 12.0);
         double master = Get(P.Volume) / 1000.0;
-        int level = Math.Clamp((int)Math.Round(15 * fl.Vol * master), 0, 15);
+        int level = Record.NesDirect.Level(fl.Vol, master);      // (the arithmetic lives in Record/NesDirect.cs since round 8: a NES recording searches its bends and volumes with these very functions)
         bool retrigger = v.Fresh || !gate;
         v.Fresh = false;
 
-        switch (ch)
-        {
-            case Ch.Pulse1:
-            case Ch.Pulse2:
-            {
-                int b = ch * 4;
-                int period = (int)Math.Round(CpuHz / (16.0 * freq) - 1.0);
-                if (period > 0x7FF) period = 0x7FF;
-                if (period < 8) level = 0;                       // the pulse channel mutes below period 8
-                period = Math.Max(period, 8);
-                W(c, b, (Get(P.Duty) << 6) | 0x30 | level);      // length halt + constant volume
-                W(c, b + 1, 0x08);                               // sweep off
-                int hi = (period >> 8) & 7, lo = period & 0xFF;
-                if (retrigger || hi != ((curPeriod >> 8) & 7))
-                {
-                    W(c, b + 2, lo);
-                    c.Write(b + 3, (byte)(hi | 0xF8));           // a $4003 write restarts the waveform: only on a new note or a high-bit change
-                }
-                else W(c, b + 2, lo);
-                curPeriod = period;
-                break;
-            }
-            case Ch.Triangle:
-            {
-                int period = (int)Math.Round(CpuHz / (32.0 * freq) - 1.0);
-                period = Math.Clamp(period, 2, 0x7FF);
-                W(c, 8, level > 0 ? 0xFF : 0x80);                // the triangle has no volume: on or off
-                int hi = (period >> 8) & 7, lo = period & 0xFF;
-                if (retrigger || hi != ((curPeriod >> 8) & 7))
-                {
-                    W(c, 0x0A, lo);
-                    c.Write(0x0B, (byte)(hi | 0xF8));
-                }
-                else W(c, 0x0A, lo);
-                curPeriod = period;
-                break;
-            }
-            default:
-            {
-                // Noise has 16 fixed pitches: higher notes pick a shorter period. Bends step through them.
-                double semis = 60.0 + cents / 100.0;
-                int idx = Math.Clamp(15 - (int)Math.Floor((semis - 24.0) / 3.0), 0, 15);
-                W(c, 0x0C, 0x30 | level);
-                W(c, 0x0E, (Get(P.NoiseMode) << 7) | idx);
-                if (retrigger) c.Write(0x0F, 0xF8);
-                curPeriod = idx;
-                break;
-            }
-        }
+        // the registers (Record/NesDirect.cs since round 8: a NES preset recorded from a game writes them with this very code)
+        curPeriod = Record.NesDirect.Write(c, ch, Get(P.Duty), Get(P.NoiseMode), ref level, cents, retrigger, curPeriod);
         gate = true;
         curLevel = level;
     }
 
-    private void Silence(NesApuInstrument c, int ch)
-    {
-        switch (ch)
-        {
-            case Ch.Pulse1: case Ch.Pulse2: W(c, ch * 4, (Get(P.Duty) << 6) | 0x30); break;
-            case Ch.Triangle: W(c, 8, 0x80); break;
-            default: W(c, 0x0C, 0x30); break;
-        }
-    }
+    private void Silence(NesApuInstrument c, int ch) => Record.NesDirect.Silence(c, ch, Get(P.Duty));
 
     // ---- saved state: the parameters (the emulator-level ones as the emulator has them), the game's path, and where it sat ----
 
@@ -1348,6 +1292,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 if (id - Fpd.TestBase is >= 600 and < 620) return SongTestHook(id - Fpd.TestBase, index, value);          // Test MIDI export (Bn2Plugin.Song.cs)
                 if (id - Fpd.TestBase is (>= 640 and < 670) or (>= 680 and < 700)) return RecordTestHook(id - Fpd.TestBase, index, value);        // the recording and the live MIDI out (Bn2Plugin.Record.cs)
                 if (id - Fpd.TestBase is >= 700 and < 720) return TrackTestHook(id - Fpd.TestBase, index, value);                                // the tracks on offer (Bn2Plugin.Tracks.cs)
+                if (id - Fpd.TestBase is >= 740 and < 780) return NesRecordTestHook(id - Fpd.TestBase, index, value);                            // a NES game's recording (Bn2Plugin.RecordNes.cs)
                 return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
     }

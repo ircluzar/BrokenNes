@@ -650,9 +650,9 @@ public sealed unsafe partial class SelfTest
         var changed = state[..(at + 4)].Concat(BitConverter.GetBytes(other.Length)).Concat(other).Concat(state[(at + 8 + len)..]).ToArray();
         Reopen(changed, out long tr2, out string why2, out _);
         t.Expect(tr2 == -1 && why2.Contains("checksum"), $"a changed REC1 under the old checksum: tracks {tr2}, the window says '{why2}'");
-        // newer: version 2 (with a good checksum): refused with the reason, and written back as it came
+        // newer: version 3 (with a good checksum; version 2 is a NES recording's since record-nes): refused with the reason, and written back as it came
         var newer = (byte[])state.Clone();
-        newer[at + 8] = 2;
+        newer[at + 8] = 3;
         uint crc = BrokenNes2.Music.Crc32.Of(newer.AsSpan(at + 8, len - 4));
         BitConverter.TryWriteBytes(newer.AsSpan(at + 8 + len - 4), crc);
         Reopen(newer, out long tr3, out string why3, out byte[] again3);
@@ -1090,9 +1090,11 @@ public sealed unsafe partial class SelfTest
             p.SetParam(PEmulator, 5);
             p.Test(HkRForget);
             t.Expect(p.Test(HkRStart) == 1 && RText(p, 8).Contains("ROM mode"), $"Record in Direct mode: '{RText(p, 8)}'");
+            p.SetParam(PConsole, 1);                                         // (a Game Boy: the NES records since record-nes, see selftest record-nes)
             p.SetParam(PMode, 1);
-            t.Expect(p.Test(HkRStart) == 1 && RText(p, 8).Contains("SNES games"), $"Record on the NES: '{RText(p, 8)}'");
+            t.Expect(p.Test(HkRStart) == 1 && RText(p, 8).Contains("SNES and NES games"), $"Record on a Game Boy: '{RText(p, 8)}'");
             p.SetParam(PMode, 0);
+            p.SetParam(PConsole, 0);
             string f = Path.Combine(dir, "nothing.mid");
             fixed (char* c = f + "\0") t.Expect(p.Test(HkRSave, 0, (nint)c) == 1 && RText(p, 8).Contains("Nothing to save") && !File.Exists(f), $"Save with nothing recorded: '{RText(p, 8)}'");
             t.Expect(p.Test(HkRDeal, 0, 1) == 1 && RText(p, 8).Contains("Record first"), $"Give the tracks with nothing recorded: '{RText(p, 8)}'");

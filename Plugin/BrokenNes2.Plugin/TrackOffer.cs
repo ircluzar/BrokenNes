@@ -13,8 +13,12 @@ using BrokenNes2.Record;
 
 namespace BrokenNes2;
 
-/// <summary>A prebuilt engine and the rate it was built for.</summary>
-internal sealed record TrackEngine(SnesSampler Sampler, int Rate);
+/// <summary>A prebuilt engine and the rate it was built for: a SNES track's sampler, or (record-nes) a NES track's own copy of its preset with a register player of its own (a NES preset's player is
+/// the instance's, never shared).</summary>
+internal sealed record TrackEngine(SnesSampler? Sampler, int Rate)
+{
+    public LoadedPreset? Nes { get; init; }
+}
 
 /// <summary>One track on offer: its preset (loaded once, shared by every instance that plays it), the engine the next instance takes.</summary>
 internal sealed class TrackSlot
@@ -88,7 +92,8 @@ internal static class TrackOffers
                 var read = PresetFile.Read(t.PresetFile);
                 var play = read.Data == null ? null : PresetPlayable.Build(read.Data, out string? why);
                 if (read.Data == null) slot.Problem = read.Problem;
-                else if (play == null || play.Snes == null) slot.Problem = "the preset does not build a SNES engine";
+                else if (play != null && play.CannotPlay != null) slot.Problem = play.CannotPlay;                               // (a NES DMC track: no engine plays the DMC yet)
+                else if (play == null || (play.Snes == null && play.Console != Instruments.ConsoleId.Nes)) slot.Problem = "the preset does not build a SNES or NES engine";
                 else slot.Preset = new LoadedPreset { Data = read.Data, File = t.PresetFile, Play = play };
             }
             slots[k] = slot;
@@ -123,14 +128,18 @@ internal static class TrackOffers
         var slots = list.SelectMany(r => r.Slots).ToArray();
         var infos = new TrackInfo[slots.Length];
         var notes = new List<(int, double, int, int, int)>();
+        var vels = new Dictionary<(int Track, long Tick, int Key), int>();
         int first = 0;
         for (int r = 0; r < list.Length; r++)
         {
             foreach (var s in list[r].Slots) { s.Info.Recording = r; infos[first + s.Info.Index] = s.Info; }
             notes.AddRange(TrackIndex.NotesOf(list[r].Held.Tr, first));
+            foreach (var kv in TrackIndex.VelocitiesOf(list[r].Held.Tr, first)) vels[kv.Key] = kv.Value;
             first += list[r].Slots.Length;
         }
-        current = new TrackOfferSnapshot(list, slots, new TrackIndex(infos, notes), Interlocked.Increment(ref version));
+        var index = new TrackIndex(infos, notes);
+        index.SetVelocities(vels);                     // (FL's velocity tells apart tracks that play the same notes: a NES note on two duty tracks, record-nes)
+        current = new TrackOfferSnapshot(list, slots, index, Interlocked.Increment(ref version));
     }
 
     private static void EnsureWorker()
@@ -152,10 +161,12 @@ internal static class TrackOffers
                 if (snap != null)
                     foreach (var s in snap.Slots)
                     {
-                        if (s.Preset?.Play.Snes is not { } spc) continue;
+                        if (s.Preset is not { } lp) continue;
                         var r = Volatile.Read(ref s.Ready);
                         if (r != null && r.Rate == rate) continue;
-                        Volatile.Write(ref s.Ready, new TrackEngine(new SnesSampler(spc, rate), rate));
+                        if (lp.Play.Snes is { } spc) Volatile.Write(ref s.Ready, new TrackEngine(new SnesSampler(spc, rate), rate));
+                        else if (lp.Play.Console == Instruments.ConsoleId.Nes)
+                            Volatile.Write(ref s.Ready, new TrackEngine(null, rate) { Nes = new LoadedPreset { Data = lp.Data, File = lp.File, Play = lp.Play, Nes = new NesPresetPlayer(lp.Play.Instrument, rate, PresetNote.IsNesTrack(lp.Data)) } });
                     }
                 Bn2Plugin[] list;
                 lock (gate) list = instances.ToArray();
@@ -166,17 +177,21 @@ internal static class TrackOffers
         }
     }
 
-    /// <summary>The emulator the tracks' instances sit on: the one used before while it is still in preset mode, else the lowest free number (made explicit by the instance that asks). 0: all eight are in use.</summary>
-    public static int TracksEmulator()
+    /// <summary>The emulator the tracks' instances sit on: the one used before while it is still in preset mode, else the lowest free number (made explicit by the instance that asks). 0: all eight are in use.
+    /// A NES recording's tracks have one of their own (PRE-NES), a SNES recording's theirs (PRE-SNES): <paramref name="nes"/>.</summary>
+    public static int TracksEmulator(bool nes = false)
     {
         lock (EmulatorHub.Gate)
         {
-            if (tracksEmulator > 0 && EmulatorHub.Get(tracksEmulator) is { PresetMode: true, AutoCreated: false }) return tracksEmulator;
+            ref int mine = ref nes ? ref nesTracksEmulator : ref tracksEmulator;
+            if (mine > 0 && EmulatorHub.Get(mine) is { PresetMode: true, AutoCreated: false }) return mine;
             for (int i = 1; i <= EmulatorHub.MaxEmulators; i++)
-                if (EmulatorHub.Get(i) == null) { tracksEmulator = i; return i; }
+                if (EmulatorHub.Get(i) == null) { mine = i; return i; }
             return 0;
         }
     }
+
+    private static int nesTracksEmulator;
 
     /// <summary>The slot of a track of a recording (by the recording's session id and the track's index), or null.</summary>
     public static TrackSlot? Find(ulong sessionId, int track)

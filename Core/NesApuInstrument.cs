@@ -77,8 +77,15 @@ public sealed class NesApuInstrument
     public void Write(int reg, byte value)
     {
         shadow[reg] = value;
+        WriteTap?.Invoke(reg, value);
         apu.WriteAPURegister((ushort)(0x4000 + reg), value);
     }
+
+    /// <summary>Tests only (null otherwise): every register write the host makes, with <see cref="SamplesRendered"/> as its time (BrokenNes2's self-test reads what a replayed recording writes).</summary>
+    public Action<int, byte>? WriteTap;
+
+    /// <summary>How many host-rate samples <see cref="Render"/> has produced (the time base of <see cref="WriteTap"/>).</summary>
+    public long SamplesRendered { get; private set; }
 
     /// <summary>Last value written to a register (0 until written).</summary>
     public byte Shadow(int reg) => shadow[reg];
@@ -107,6 +114,7 @@ public sealed class NesApuInstrument
     /// <summary>Fills <paramref name="dest"/> with mono samples at the host rate.</summary>
     public void Render(Span<float> dest)
     {
+        SamplesRendered += dest.Length;
         int done = 0;
         while (done < dest.Length)
         {
