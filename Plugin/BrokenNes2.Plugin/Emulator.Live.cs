@@ -74,6 +74,7 @@ public sealed partial class Emulator
         {
             if (liveGame.SpcLog is { } old && ReferenceEquals(old.LiveOut, liveTap)) old.LiveOut = null;
             l.AllOff();
+            l.ForgetRoots();                           // (the new game's samples may sit where the old one's did)
             liveGame = null;
         }
         if (g is not SessionGame sg || sg.SpcUnit is not { } spc || sg.SpcLog is not { } log) return;

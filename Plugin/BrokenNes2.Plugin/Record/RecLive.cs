@@ -62,6 +62,9 @@ public sealed class RecLive
         dirty = 0; dirtyAt = -1;
     }
 
+    /// <summary>Another game: the roots known are of the old one's samples; each sample's first key-on asks again (allocation-free).</summary>
+    public void ForgetRoots() => Array.Fill(rootStart, -1);
+
     /// <summary>Another sound unit took over (a chip change): its memory from now on.</summary>
     public void Rebind(byte[] unitAram) => aram = unitAram;
 

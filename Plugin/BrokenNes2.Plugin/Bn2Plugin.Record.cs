@@ -1,6 +1,7 @@
 // Round 8 (record): the instance's side of a recording. FL's tempo (FPE_Tempo) for a recording with no tempo of its own; the deal (an instance created while "Give the tracks to the next new
 // instances" is armed takes the next track's preset on the deal's emulator, Direct mode, PRE-SNES chip); a probe of the instance's own S-DSP writes (the self-test replays a recording's MIDI file
-// through presets and compares, per note, the registers written with the game's); the test hooks 640-669 (the editor's are 670-679, Bn2Editor.Record.cs).
+// through presets and compares, per note, the registers written with the game's); live MIDI out's way to FL (MIDIOut_Delayed, FHD_ActivateMIDI); the test hooks 640-669 and 680-699
+// (the editor's are 670-679, Bn2Editor.Record.cs).
 using BrokenNes.Fruity;
 using BrokenNes2.Record;
 

@@ -175,6 +175,8 @@ switch (args[0])
         // Record the music (round 8): --record seconds opens the window, records that long (the game running), stops, waits for the transcription; --live switches the live MIDI out on first
         if (Opt(args, "--record") is { } recSeconds)
         {
+            // (the recording's presets go into a scratch library, never the user's)
+            Environment.SetEnvironmentVariable("BROKENNES_PRESETS_DIR", Path.Combine(Path.GetTempPath(), "bn2_shot_presets_" + Environment.ProcessId));
             ClickId(2020);
             if (args.Contains("--live")) { ClickId(2031); var primedBy = Environment.TickCount64 + 20000; while (plugin.Test(681) == 3 && Environment.TickCount64 < primedBy) Win32Host.Pump(20); }
             ClickId(2022);
