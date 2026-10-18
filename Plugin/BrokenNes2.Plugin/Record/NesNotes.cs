@@ -30,6 +30,8 @@ public sealed class NesNote
     public int EnvelopeSteps, SweepSteps;
     /// <summary>DMC: the copy of the sample's bytes (an index into <see cref="NesSession.Dmc"/>, -1 when none was made), whether it loops, and how often its rate changed while it played.</summary>
     public int DmcCopy = -1, DmcRateChanges;
+    /// <summary>Made audible a moment (under 2 ms) before the driver struck it: its start is the strike.</summary>
+    public int StruckLate;
     public bool DmcLoop;
 
     public double StartSeconds => Start / NesSession.CpuHz;
@@ -123,13 +125,18 @@ public static class NesNotes
             open[c] = null;
         }
 
-        void Open(int c, uint at, bool struck, bool before)
+        void Fill(NesNote n, int c, uint at)
         {
-            var n = new NesNote { Channel = c, Start = at, Struck = struck, BeforeStart = before };
             n.Periods.Add(new NesVal(at, Period(c)));
             n.Vols.Add(new NesVal(at, Vol(c)));
             if (c < 2) n.Duties.Add(new NesVal(at, Duty(c)));
             if (c == 3) n.Modes.Add(new NesVal(at, Mode(c)));
+        }
+
+        void Open(int c, uint at, bool struck, bool before)
+        {
+            var n = new NesNote { Channel = c, Start = at, Struck = struck, BeforeStart = before };
+            Fill(n, c, at);
             open[c] = n;
             if (before) st.BeforeStart++;
             if (struck) st.Struck++;
@@ -149,7 +156,13 @@ public static class NesNotes
                     continue;
                 }
                 if (n == null) { Open(c, t, struck == c, false); continue; }
-                if (struck == c) { Close(c, t, NesEnd.Struck); Open(c, t, true, false); continue; }
+                if (struck == c)
+                {
+                    // the driver made it audible (its volume, $4015) a moment before it struck it: one note, struck (not a blip of a few cycles and then a note)
+                    if (!n.Struck && !n.BeforeStart && t - n.Start < NesTranscribe.MinHold) { n.Struck = true; st.Struck++; n.StruckLate++; n.Periods.Clear(); n.Vols.Clear(); n.Duties.Clear(); n.Modes.Clear(); n.Start = t; Fill(n, c, t); continue; }
+                    Close(c, t, NesEnd.Struck); Open(c, t, true, false);
+                    continue;
+                }
                 int p = Period(c), v = Vol(c);
                 if (Add(n.Periods, t, p) && tick == 2 && c < 2) n.SweepSteps++;
                 if (Add(n.Vols, t, v) && tick >= 1 && c != 2) n.EnvelopeSteps++;

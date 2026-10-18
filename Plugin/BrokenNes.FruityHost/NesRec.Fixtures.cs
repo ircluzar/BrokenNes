@@ -79,6 +79,34 @@ internal sealed class NesRecGame
     public void Run(int frames) { for (int i = 0; i < frames && !M.Crashed; i++) RunFrame(); }
 
     public APU_FIX Apu => (APU_FIX)M.Nes.ActiveApu!;
+
+    /// <summary>The writes the bus reported during the last <see cref="Record"/> (an independent count beside the capture's).</summary>
+    public long TapWrites;
+
+    /// <summary>Records <paramref name="frames"/> frames from now: the capture armed and begun between two frames, fed from the machine's record tap (the plugin's own path), every write counted beside it,
+    /// a frame end marked after every frame. <paramref name="beforeFrame"/> runs before each frame (a corruption, a pad).</summary>
+    public NesSession Record(int frames, string name, Action<int>? beforeFrame = null, NesRecorder? rec = null, Action<NesRecorder>? onBegin = null)
+    {
+        rec ??= new NesRecorder();
+        rec.Arm();
+        for (int i = 0; i < 8; i++) rec.Feed();
+        var latch = new byte[0x18];
+        uint written = M.CopyApuLatch(latch);
+        rec.Begin(M.Nes, latch, written, M.ApuCoreId);
+        onBegin?.Invoke(rec);
+        TapWrites = 0;
+        M.RecordTap = (a, v, c) => { TapWrites++; rec.OnWrite(a, v, c); };
+        for (int f = 0; f < frames && !M.Crashed; f++)
+        {
+            beforeFrame?.Invoke(Frame);
+            RunFrame();
+            rec.FrameEnd(M.ApuClock);
+            if (f % 30 == 0) rec.Feed();
+        }
+        M.RecordTap = null;
+        rec.Halt(RecEnd.Stop);
+        return rec.Finish(name, Name, Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(Rom)).ToLowerInvariant(), 1_760_000_000, 0x4E5);
+    }
 }
 
 /// <summary>The roster games the checks use, each for what the survey found it does (round8-record.md, NES: "the evidence").</summary>

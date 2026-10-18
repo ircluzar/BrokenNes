@@ -16,7 +16,17 @@ public sealed class NesLive
     public const int QueueSize = 8192, DefaultRange = 12;
     private readonly uint[] queue = new uint[QueueSize];
     private int head, tail;
-    private readonly NesApuModel m = new();
+    private NesApuModel m = new();
+    /// <summary>Tests: the clock (CPU cycles) of every note-on, beside <see cref="NoteLog"/>.</summary>
+    public long[]? NoteClock;
+
+    /// <summary>Tests: listens from a recording's saved starting state (NesSession.BaseState) at clock 0, as Attach would from the game's chip. Notes sounding in it are not sent.</summary>
+    public void AttachSaved(int[] state)
+    {
+        m = NesApuModel.Load(state) ?? throw new ArgumentException("not a chip state");
+        for (int c = 0; c < 4; c++) vKey[c] = Audible(c) ? -2 : -1;
+        attached = true;
+    }
     // per NES channel: the note it sounds (key -1 none; -2 sounding since before the live out started: not sent), its MIDI channel, struck level and velocity, its duty / mode
     private readonly int[] vKey = new int[4], vChan = new int[4], vVel = new int[4], vSub = new int[4], vPeriod = new int[4], vLevel = new int[4];
     // per instrument (channel x 4 + duty or mode): its MIDI channel (-1 not sounded yet)
@@ -123,7 +133,7 @@ public sealed class NesLive
         SendBend(ch, BendOf(c, p, key));
         SendCc(ch, c == 2 ? 100 : CcOf(lv, vel));
         Put(0x90 | ch, key, vel);
-        if (NoteLog is { } log && NotesOn < log.Length) log[NotesOn] = c << 16 | key << 8 | vel;
+        if (NoteLog is { } log && NotesOn < log.Length) { log[NotesOn] = c << 16 | key << 8 | vel; if (NoteClock is { } nc && NotesOn < nc.Length) nc[NotesOn] = m.Clock; }
         NotesOn++;
         keyedSinceAllOff = true;
     }

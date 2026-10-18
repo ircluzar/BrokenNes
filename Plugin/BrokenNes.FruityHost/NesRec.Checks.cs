@@ -21,12 +21,28 @@ internal static partial class NesRecChecks
     public static readonly Check[] All =
     [
         new("model", "the chip model follows APU_FIX exactly: random writes, and real games compared at every frame's end", Model),
+        new("direct", "NesDirect = Direct mode's old arithmetic; every period reachable by a key and a bend", Direct),
+        new("capture", "every write the bus reported kept, DMC samples copied, nothing allocated per write, losses counted, the saved form refuses damage", Capture),
+        new("transcribe", "real games and corrupted ones transcribed and replayed from the MIDI bytes through the presets' register code: every value exact or reported", Transcribe),
+        new("smf", "the NES file read back by an independent Python parser and by VRUN's", Smf),
+        new("section", "REC1 version 2 round trip and refusals", Section),
+        new("live", "live MIDI out: every transcribed note struck live at the same moment and key, every note ended, nothing allocated", Live),
     ];
+
+    private static Action<bool> Rec(int code) => on => RecMutants.Active = on ? code : 0;
 
     public static readonly Mutant[] Mutants =
     [
         new("the model ignores the hardware sweep", "model", on => NesModelMutants.Active = on ? NesModelMutants.SweepIgnored : 0),
         new("the model's envelope decays two steps at a time", "model", on => NesModelMutants.Active = on ? NesModelMutants.EnvelopeTwice : 0),
+        new("pitch bends one register step off", "direct", Rec(NesTranscribeMutants.BendOffByOne)),
+        new("every 1,000th write lost without a word", "capture", Rec(NesRecMutants.CaptureLosesWrites)),
+        new("controller 7 one value past its interval", "transcribe", Rec(NesTranscribeMutants.VolumeOffByOne)),
+        new("pitch bends one register step off (in a transcription)", "transcribe", Rec(NesTranscribeMutants.BendOffByOne)),
+        new("the duty tracks' presets all at 50%", "transcribe", Rec(NesTranscribeMutants.DutyDropped)),
+        new("note starts quantised to the 16th grid", "transcribe", Rec(NesTranscribeMutants.NotesQuantised)),
+        new("live MIDI out sends nothing", "live", Rec(NesLiveMutants.Silent)),
+        new("live note-offs lost", "live", Rec(NesLiveMutants.NoteOffLost)),
     ];
 
     // =====================================================================================================================================================================
@@ -153,6 +169,36 @@ internal static partial class NesRecChecks
         }
         finally { GameSeconds = keep; }
         return (lines, missed);
+    }
+
+    /// <summary>`FruityHost nesrec-dump vrun|&lt;roster name&gt; [seconds] [park frames] [script]`: a recording's facts, tracks and first notes (a development aid).</summary>
+    public static int Dump(string[] args)
+    {
+        string which = args.Length > 1 ? args[1] : "vrun";
+        double secs = args.Length > 2 ? double.Parse(args[2]) : 20;
+        int park = args.Length > 3 ? int.Parse(args[3]) : 300;
+        string script = args.Length > 4 ? args[4] : "300:start,4";
+        var g = which == "vrun" ? NesRecGame.Vrun() : NesRecGame.Find(which, script);
+        if (g == null) { Console.WriteLine("no ROM"); return 2; }
+        g.Run(park);
+        var s = g.Record((int)(secs * NesAudioMachine.FramesPerSecond), which);
+        var sw = Stopwatch.StartNew();
+        var tr = NesTranscribe.Run(s, new NesOptions { Name = which });
+        Console.WriteLine($"{g.Name}: {s.Seconds:0.0} s, {s.Count} entries ({g.TapWrites} writes on the bus), {s.Dmc.Length} DMC copies, transcribed in {sw.ElapsedMilliseconds} ms; {tr.Notes.Count} notes");
+        foreach (var f in tr.Facts) Console.WriteLine("  " + f);
+        if (args.Contains("--short"))
+            foreach (var n in NesNotes.Extract(s, out _).Where(n => n.End - n.Start < NesTranscribe.MinHold && n.Channel != 4).Take(20))
+                Console.WriteLine($"  short: ch {n.Channel} {n.StartSeconds:0.00000}-{n.End / NesSession.CpuHz:0.00000} s ({n.End - n.Start} cycles) {(n.Struck ? "struck" : "became")} end {n.EndedBy}; periods {string.Join(" ", n.Periods.Select(v => v.V.ToString("X3")))}; vols {string.Join(" ", n.Vols.Select(v => v.V))}");
+        foreach (var t in tr.Tracks)
+        {
+            Console.WriteLine($"  track {t.Index + 1} '{t.Name}': {t.Notes.Count} notes, ch {t.MidiChannel + 1}, bend {t.BendRange}, pitch {t.PitchExact}/{t.PitchValues}, vol {t.VolExact}/{t.VolValues}, gated {t.Gated}{(t.PresetProblem != null ? ", preset: " + t.PresetProblem : "")}{(t.CannotPlay != null ? ", " + t.CannotPlay : "")}");
+            foreach (int ni in t.Notes.Take(args.Contains("--all") ? 100000 : 6))
+            {
+                var n = tr.Notes[ni];
+                Console.WriteLine($"     {n.StartSeconds,8:0.000}-{n.End / NesSession.CpuHz:0.000} s {(n.Struck ? "struck" : n.BeforeStart ? "before" : "became")} end {n.EndedBy}; periods {string.Join(" ", n.Periods.Take(8).Select(v => v.V.ToString("X3")))}{(n.Periods.Count > 8 ? $" (+{n.Periods.Count - 8})" : "")}; vols {string.Join(" ", n.Vols.Take(12).Select(v => v.V))}{(n.Vols.Count > 12 ? $" (+{n.Vols.Count - 12})" : "")}; duties {string.Join(" ", n.Duties.Select(v => v.V))}; env {n.EnvelopeSteps} sweep {n.SweepSteps}");
+            }
+        }
+        return 0;
     }
 
     public static int Cli(string[] args)

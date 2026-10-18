@@ -53,6 +53,9 @@ switch (args[0])
     case "nesrec-test":
         return NesRecChecks.Cli(args);
 
+    case "nesrec-dump":
+        return NesRecChecks.Dump(args);
+
     case "midi-trace":
         return MidiChecks.Trace(args);
 

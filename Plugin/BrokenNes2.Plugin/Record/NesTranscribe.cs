@@ -537,7 +537,7 @@ public static class NesTranscribe
         if (s.EndedBy == RecEnd.MemoryCap) lost.Add(s.TimeCap ? "the recording stopped at its longest (39 minutes)" : "the recording stopped at the memory cap");
         if (tr.NotesThinned > 0) lost.Add($"{tr.NotesThinned:N0} notes past the limit of the file left out");
         if (tr.ShortNotes > 0) lost.Add($"{tr.ShortNotes:N0} notes shorter than 2 ms left out (below FL's control rate)");
-        if (st.BeforeStart > 0) lost.Add($"{st.BeforeStart} notes were already sounding when it started (they start at its first moment)");
+        if (st.BeforeStart > 0) lost.Add(st.BeforeStart == 1 ? "1 note was already sounding when it started (it starts at its first moment)" : $"{st.BeforeStart} notes were already sounding when it started (they start at its first moment)");
         if (!s.BaseExact) lost.Add($"the game ran on the {s.Chip.Replace("APU_", "")} chip, which cannot report its counters: the recording's first notes start as if just struck, and the transcription follows the FIX chip's rules");
         else if (s.Chip.Length > 0 && s.Chip != "APU_FIX") lost.Add($"the game ran on the {s.Chip.Replace("APU_", "")} chip; the presets play on the FIX chip");
         if (lost.Count > 0) f.Add(string.Join("; ", lost));
