@@ -63,7 +63,8 @@ public sealed class CaptureSession
         return l;
     }
 
-    public int LaneCount { get { lock (gate) return lanes.Count; } }
+    public int LaneCount { get { lock (gate) return State == Done ? laneCountAtEnd : lanes.Count; } }
+    private int laneCountAtEnd;
     public CaptureLane[] Lanes { get { lock (gate) return lanes.ToArray(); } }
 
     /// <summary>FL started its transport on an instance (FPD_SetPlaying 1; any thread, nothing allocated).</summary>
@@ -141,6 +142,8 @@ public sealed class CaptureSession
         try { r = CaptureSong.Build(Name, UniqueNames(data), StartTiming, EndTiming.Rate == 0 ? timing() : EndTiming); }
         catch (Exception e) { r = new CaptureResult { Name = Name, Problem = "the capture could not be turned into a MIDI file: " + e.Message }; r.Report.Add(e.ToString()); }
         Result = r;
+        laneCountAtEnd = data.Count;
+        lock (gate) lanes.Clear();                                                    // (the lanes' memory goes: the result holds what was captured)
         Volatile.Write(ref state, Done);
         try { OnFinished?.Invoke(this); } catch (Exception) { /* the window shows the result whatever the handler did */ }
     }

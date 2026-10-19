@@ -75,7 +75,7 @@ public sealed unsafe partial class Bn2Editor
         if (held == null)
         {
             Txt(dc, MusicTemplate.Builtin(out var why) == null ? "Test MIDI export cannot run in this build: " + why
-                    : "No song yet. In FL Studio: File > Export > MIDI file..., then Open MIDI... here. After you change the song in FL, export it again over the same file and press Reload.",
+                    : "No song yet. Press Capture from FL, then Play in FL from the start and Stop at the end; or in FL Studio: File > Export > MIDI file..., then Open MIDI... here (after a change, export again over the same file and press Reload).",
                 R(song.Left + 30, song.Top + 70, iw - 60, 110), Win32.DT_CENTER | Win32.DT_WORDBREAK | Win32.DT_VCENTER, MusicTemplate.Builtin(out _) == null ? Warn : Faint, fontLabel);
         }
         else
