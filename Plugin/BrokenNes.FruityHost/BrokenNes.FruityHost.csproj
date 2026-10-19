@@ -45,6 +45,8 @@
     <Compile Include="..\BrokenNes2.Plugin\Music\Vrun\*.cs" LinkBase="Music\Vrun" />
     <!-- Round 8 (record): the recording session, the notes, the root notes, the tempo, the MIDI writer, the transcription and the project section (pure code; the window, the capture glue and the drag source are tested through the DLL) -->
     <Compile Include="..\BrokenNes2.Plugin\Record\*.cs" LinkBase="Record" />
+    <!-- Round 9 (capture): Capture from FL's lanes, clock, pitch conventions and MIDI builder (pure code; the hooks in the instance, the hub and the window are tested through the DLL) -->
+    <Compile Include="..\BrokenNes2.Plugin\Capture\*.cs" LinkBase="Capture" />
   </ItemGroup>
 
 </Project>
