@@ -46,7 +46,10 @@ param(
     [ValidateSet('on', 'off')][string]$Ntsc = 'on',
     [string]$Tag = 'diff',
     [int]$BootFrames = 10,
-    [string]$DiffScript = ''
+    [string]$DiffScript = '',
+    # Mesen's test runner stops a script after about 100 s of wall clock (about 5,800 traced VRUN frames); a positive value is passed
+    # as Mesen's own --timeout=<seconds> so one segment can run longer (0 = Mesen's default, as before).
+    [int]$MesenTimeoutSec = 0
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -79,6 +82,8 @@ Remove-Item -LiteralPath $mesenTrace, $bnTrace -ErrorAction SilentlyContinue
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = Join-Path $priv 'Mesen.exe'
 $psi.Arguments = '"' + $Rom + '" --luaScriptsToLoad "' + $TraceLua + '" --testRunner'
+if ($MesenTimeoutSec -gt 0) { $psi.Arguments += " --timeout=$MesenTimeoutSec" }
+$waitMs = [math]::Max(600000, ($MesenTimeoutSec + 60) * 1000)
 $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true; $psi.WorkingDirectory = $priv
 $psi.EnvironmentVariables['VRUN_TRACE_OUT'] = $mesenTrace
 $psi.EnvironmentVariables['VRUN_TRACE_INPUT'] = $InputScript
@@ -88,7 +93,7 @@ $psi.EnvironmentVariables['VRUN_TRACE_ROM'] = $Rom
 Write-Host "diff-nes: Mesen ($Frames frames) ..."
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $p = [System.Diagnostics.Process]::Start($psi)
-if (-not $p.WaitForExit(600000)) { try { & taskkill.exe /PID $p.Id /T /F | Out-Null } catch { }; Write-Host 'Mesen did not finish in 600 s'; exit 2 }
+if (-not $p.WaitForExit($waitMs)) { try { & taskkill.exe /PID $p.Id /T /F | Out-Null } catch { }; Write-Host "Mesen did not finish in $([int]($waitMs / 1000)) s"; exit 2 }
 $mesenSec = [math]::Round($sw.Elapsed.TotalSeconds, 1)
 Write-Host "diff-nes: Mesen exit $($p.ExitCode) in $mesenSec s"
 if (-not (Test-Path -LiteralPath $mesenTrace)) { Write-Host 'Mesen wrote no trace (check the script path and the ROM)'; exit 2 }
