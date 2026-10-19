@@ -69,6 +69,9 @@ switch (args[0])
     case "alloc-probe-loop":
         return PresetChecks.AllocProbeLoop(args);
 
+    case "alloc-gc-probe":
+        return SelfTest.AllocGcProbe(args);
+
     case "imodel-fields":
         return ImodelChecks.PrintFields();
 

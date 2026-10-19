@@ -732,7 +732,7 @@ public sealed unsafe partial class SelfTest
         var buf = new float[block * 2];
         var active = new List<(ReplacePart Pt, MidiReplay.Note N, SimVoice V)>();
         long a0, a1;
-        bool trace = Environment.GetEnvironmentVariable("BROKENNES_ALLOC_TRACE") == "1";
+        bool trace = Environment.GetEnvironmentVariable("BROKENNES_ALLOC_TRACE") != "0";     // (on by default: an allocation that happens once in a while must say where when it does; the reads allocate nothing)
         allocTrace.Clear();
         foreach (var pt in parts)
         {
@@ -742,8 +742,14 @@ public sealed unsafe partial class SelfTest
         fixed (float* bp = buf)
         {
             for (int w = 0; w < 40; w++) foreach (var pt in parts) { pt.P.NewTick(); pt.P.GenRender(bp, block); }      // (warm-up: each instance's first blocks)
+            int gc0 = (int)parts[0].P.Test(809);
             a0 = parts[0].P.Test(HkRAlloc);
-            foreach (var pt in parts) { pt.P.Dispatcher(Fpd.SongPosChanged); pt.P.Dispatcher(Fpd.SetPlaying, 0, 1); }   // (FL's Play, as the log shows it)
+            foreach (var pt in parts)
+            {
+                long d0 = trace ? pt.P.Test(HkRAlloc) : 0;
+                pt.P.Dispatcher(Fpd.SongPosChanged); pt.P.Dispatcher(Fpd.SetPlaying, 0, 1);    // (FL's Play, as the log shows it)
+                if (trace && pt.P.Test(HkRAlloc) - d0 is long dd && dd > 0 && allocTrace.Count < 16) allocTrace.Add($"{pt.Name}: FL's Play (SongPosChanged, SetPlaying): {dd} bytes");
+            }
             for (long s = 0; s < end * rate; s += block)
             {
                 foreach (var pt in parts)
@@ -768,7 +774,7 @@ public sealed unsafe partial class SelfTest
                         if (trace && pt.P.Test(HkRAlloc) - t0a is long dt0 && dt0 > 0 && allocTrace.Count < 16) allocTrace.Add($"{pt.Name}: TriggerVoice at block {s / block}: {dt0} bytes");
                         pt.Handles.Add(v.Handle);
                         pt.TrackNote.Add(pt.TrackPos.TryGetValue(n.Index, out int tn) ? tn : -1);
-                        if (pt.BoundAtFirst == -2) pt.BoundAtFirst = pt.P.Test(HkTrackOf);
+                        if (pt.BoundAtFirst == -2) { long t1 = trace ? pt.P.Test(HkRAlloc) : 0; pt.BoundAtFirst = pt.P.Test(HkTrackOf); if (trace && pt.P.Test(HkRAlloc) - t1 is long dt1 && dt1 > 0 && allocTrace.Count < 16) allocTrace.Add($"{pt.Name}: the test's read of its track: {dt1} bytes"); }
                         active.Add((pt, n, v));
                     }
                 }
@@ -781,6 +787,8 @@ public sealed unsafe partial class SelfTest
                 }
             }
             a1 = parts[0].P.Test(HkRAlloc);
+            int gcs = (int)parts[0].P.Test(809) - gc0;
+            if (a1 != a0 && allocTrace.Count < 16) allocTrace.Add($"{gcs} collection(s) ran in the DLL's runtime during the window");
             foreach (var (pt, _, v) in active) pt.P.Host.ReleaseFromMixer(v);
             foreach (var pt in parts) pt.P.Dispatcher(Fpd.SetPlaying, 0, 0);
             for (int w = 0; w < 8; w++) foreach (var pt in parts) { pt.P.NewTick(); pt.P.GenRender(bp, block); }

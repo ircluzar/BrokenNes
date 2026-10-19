@@ -14,6 +14,7 @@
 // Tests never write the user's file: the test host names a scratch file in BROKENNES_HOSTLOG_FILE and a scratch folder standing for Documents in BROKENNES_HOSTLOG_DEFAULT_DIR, and its `hostlog`
 // check fails when a run touched the real file.
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using BrokenNes2.Record;
@@ -35,6 +36,13 @@ internal static class HostLog
     }
 
     public const int KindDispatcher = 1, KindParam = 2, KindNote = 3, KindMatch = 4, KindNoteEnd = 5, KindTime = 6;
+
+    // The time of a record: the performance counter, turned into the wall clock by the writer. Never DateTime.UtcNow on the audio thread: on Windows it refreshes a leap-second cache every five
+    // minutes and the thread that calls it first after that allocates the new cache (32 bytes); the `reload` check caught it as "32 bytes allocated on the audio thread" now and then (2026-10-18).
+    private static readonly long clockUtc0 = DateTime.UtcNow.Ticks, clockStamp0 = Stopwatch.GetTimestamp();
+    private static readonly double ticksPerStamp = (double)TimeSpan.TicksPerSecond / Stopwatch.Frequency;
+    private static long Now() => Stopwatch.GetTimestamp();
+    private static long UtcTicksOf(long stamp) => clockUtc0 + (long)((stamp - clockStamp0) * ticksPerStamp);
     private static readonly Entry[] ring = new Entry[16384];
     private static long next;
     private static readonly ConcurrentQueue<(long Ticks, string Line)> text = new();
@@ -90,7 +98,7 @@ internal static class HostLog
     public static void Text(int inst, string line)
     {
         if (!On) return;
-        text.Enqueue((DateTime.UtcNow.Ticks, $"{DateTime.Now:HH:mm:ss.fff} #{inst} {line}"));
+        text.Enqueue((Now(), $"{DateTime.Now:HH:mm:ss.fff} #{inst} {line}"));
         EnsureWriter();
     }
 
@@ -100,7 +108,7 @@ internal static class HostLog
         if (!On) return;
         long i = Interlocked.Increment(ref next) - 1;
         ref var e = ref ring[i & (ring.Length - 1)];
-        e.Ticks = DateTime.UtcNow.Ticks; e.Inst = inst; e.Kind = kind; e.A = a; e.B = b; e.C = c; e.X = x; e.Y = y; e.Z = z;
+        e.Ticks = Now(); e.Inst = inst; e.Kind = kind; e.A = a; e.B = b; e.C = c; e.X = x; e.Y = y; e.Z = z;
         Volatile.Write(ref e.Seq, i + 1);
         if (writer == null) wakeWanted = 1;
     }
@@ -180,7 +188,7 @@ internal static class HostLog
 
     private static string Format(in Entry e)
     {
-        var t = new DateTime(e.Ticks, DateTimeKind.Utc).ToLocalTime();
+        var t = new DateTime(UtcTicksOf(e.Ticks), DateTimeKind.Utc).ToLocalTime();
         var c = CultureInfo.InvariantCulture;
         string body = e.Kind switch
         {

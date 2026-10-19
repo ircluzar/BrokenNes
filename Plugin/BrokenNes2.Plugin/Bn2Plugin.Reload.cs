@@ -83,6 +83,8 @@ public sealed unsafe partial class Bn2Plugin
             case 805: return transportPlaying ? 1 : 0;
             case 806: { double p = SongPosition(out _, out _); return double.IsNaN(p) ? -1 : (nint)Math.Round(p * 1000); }
             case 807: return matcher.Candidates;
+            case 808: GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); return 0;                                                       // a collection in the DLL's runtime (before an allocation window: the per-thread counter is not exact across one)
+            case 809: return GC.CollectionCount(0);                                                                                                // the DLL runtime's gen-0 collections so far
             default: return 0;
         }
     }
