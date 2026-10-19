@@ -476,7 +476,7 @@ internal static class MidiChecks
         var t = BundledTemplate();
         var (_, _, mlb) = MidiFixtures.Bundled();
         string cache = MidiFixtures.Work("reference");
-        int same = 0, songs = 0;
+        int same = 0, songs = 0, lagged = 0;
         foreach (var s in Playable().Where(x => x.Name is not ("manychannels" or "lownotes")))
         {
             var b = SongConvert.Convert(s.Midi, out _)!;
@@ -495,19 +495,40 @@ internal static class MidiChecks
             var full = MidiRun.Of(File.ReadAllBytes(romFile), n + 120, File.ReadAllText(mlbFile));
             var patched = MidiRun.Of(t.Patch(b.Channels, b.Facts.LoopFrames, "song"), n + 120, mlb);
             int fs = MidiModel.Best(b.Channels, full.Latch, n, skip: Skip).Start, ps = MidiModel.Best(b.Channels, patched.Latch, n, skip: Skip).Start;
-            int bad = 0, first = -1;
+            // the sound registers as each NMI left them: exactly the same. The player's position and loop count are read from RAM when the frame ends, and the NMI that updates them
+            // (pl_audio_post, after the decoders) can still be running then, longer in the template (its bend decoders on all three tonal channels) than in a rebuild whose song has
+            // fewer bends: a sample may show the previous frame's value. So at every frame the two samples must be equal, or one exactly one player step behind the other (counted);
+            // anything else (another loop length, a frame skipped or counted twice) fails.
+            int bad = 0, first = -1, ramBad = 0, ramLag = 0, loopLen = b.Facts.LoopFrames;
+            string? ramFirst = null;
             for (int k = 0; k < n; k++)
             {
-                bool eq = full.Latch.AsSpan((fs + k) * MidiModel.LatchBytes, MidiModel.LatchBytes).SequenceEqual(patched.Latch.AsSpan((ps + k) * MidiModel.LatchBytes, MidiModel.LatchBytes))
-                       && full.Loops[fs + k] == patched.Loops[ps + k] && full.Position[fs + k] == patched.Position[ps + k];
-                if (!eq) { bad++; if (first < 0) first = k; }
+                bool latchEq = full.Latch.AsSpan((fs + k) * MidiModel.LatchBytes, MidiModel.LatchBytes).SequenceEqual(patched.Latch.AsSpan((ps + k) * MidiModel.LatchBytes, MidiModel.LatchBytes));
+                if (!latchEq) { bad++; if (first < 0) first = k; }
+                var fa = (P: full.Position[fs + k], L: full.Loops[fs + k]);
+                var pa = (P: patched.Position[ps + k], L: patched.Loops[ps + k]);
+                if (fa == pa) continue;
+                // one NMI of the player: the position one step on, back to 0 and one more loop at the song's loop length (the loop count stops at 98: player_ui.fab pl_audio_post)
+                (int P, int L) Step((int P, int L) x) => x.P + 1 >= loopLen ? (0, Math.Min(x.L + 1, 98)) : (x.P + 1, x.L);
+                if (Step(fa) == pa || Step(pa) == fa) ramLag++;
+                else
+                {
+                    ramBad++;
+                    if (ramFirst == null)
+                    {
+                        string Seq(MidiRun a, int sa) => string.Join(" ", Enumerable.Range(Math.Max(0, k - 2), Math.Min(5, n - Math.Max(0, k - 2))).Select(j => $"{a.Position[sa + j]}/{a.Loops[sa + j]}"));
+                        ramFirst = $"+{k}: position/loops around it, rebuild {Seq(full, fs)}; template {Seq(patched, ps)}";
+                    }
+                }
             }
-            r.Expect(bad == 0, $"{s.Name}: the full rebuild and the patched template differ in {bad} of {n} frames (first at +{first} from the decode start; starts {fs} and {ps})");
+            r.Expect(bad == 0, $"{s.Name}: the full rebuild and the patched template write other sound registers in {bad} of {n} frames (first at +{first} from the decode start; starts {fs} and {ps})");
+            r.Expect(ramBad == 0, $"{s.Name}: the full rebuild and the patched template keep another player position or loop count in {ramBad} of {n} frames (beyond a one-frame lag of the sample; first {ramFirst})");
             r.Expect(fs == ps, $"{s.Name}: the full rebuild decodes from frame {fs}, the patched template from {ps}");
             songs++;
-            if (bad == 0) same++;
+            lagged += ramLag;
+            if (bad == 0 && ramBad == 0) same++;
         }
-        r.Note($"{same} of {songs} songs: the full rebuild by VRUN's toolchain and the template with the song patched in write the same 24 sound registers and keep the same player position and loop count, frame for frame");
+        r.Note($"{same} of {songs} songs: the full rebuild by VRUN's toolchain and the template with the song patched in write the same 24 sound registers as each NMI leaves them, and keep the same player position and loop count, frame for frame ({lagged} frames in all where one ROM's position was read a frame late: its NMI was still running when the frame ended)");
     }
 
     // ---- pitch bends (round 9) ----
