@@ -672,21 +672,25 @@ public sealed unsafe partial class SelfTest
         finally { q.Dispose(); h.Dispose(); }
     }
 
-    /// <summary>`FruityHost alloc-gc-probe <dll> [blocks] [collections]`: does a collection in the DLL's runtime move the per-thread allocation counter of a thread that allocates nothing? One instance
-    /// renders blocks on this thread (a note held, then none) while another thread makes the DLL collect; every block whose count moved is listed with the collections that ran meanwhile. A developer's
-    /// aid for the `reload` / `record` allocation checks (their window must not count a collection's bookkeeping as an allocation).</summary>
+    /// <summary>`FruityHost alloc-gc-probe <dll> [blocks] [rounds] [induced|large|contend]`: does a collection in the DLL's runtime move the per-thread allocation counter of a thread that allocates nothing?
+    /// One instance renders blocks on this thread (a note held, then none) while another thread makes the DLL collect (induced: GC.Collect; large: 1 MB of 128 KB arrays a round, so the runtime starts its
+    /// own collections, background ones included); every block whose count moved is listed with the collections that ran meanwhile. contend: the instance plays VRUN in ROM mode (Mix) while another thread
+    /// holds the game's lock for 1 ms every few ms, as the recording's feeder thread does: does the audio thread allocate when it has to wait for that lock? A developer's aid for the allocation checks.</summary>
     public static int AllocGcProbe(string[] args)
     {
         int blocks = args.Length > 2 && int.TryParse(args[2], out int b) ? b : 20000;
         int collections = args.Length > 3 && int.TryParse(args[3], out int c) ? c : 400;
+        string mode = args.Length > 4 ? args[4] : "induced";
+        bool large = mode == "large", contend = mode == "contend";
         var lib = new PluginLibrary(args[1]);
         var h = new HostSim();
         var p = lib.Create(h);
         p.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+        if (contend) { p.SetParam(PEmulator, 3); p.SetParam(PConsole, 0); p.SetParam(PMode, 1); WaitForRom(p); p.SetParam(PChannel, 5); }
         var other = lib.Create(new HostSim());
-        var buf = new float[128];
+        var buf = new float[512];
         var deltas = new long[blocks]; var gcs = new int[blocks];
-        int moved = 0; long sum = 0;
+        int moved = 0, g2start; long sum = 0;
         fixed (float* bp = buf)
         {
             for (int w = 0; w < 200; w++) { p.NewTick(); p.GenRender(bp, 64); }
@@ -694,14 +698,15 @@ public sealed unsafe partial class SelfTest
             v.Handle = p.TriggerVoice(v.Params, v.Tag);
             for (int w = 0; w < 200; w++) { p.NewTick(); p.GenRender(bp, 64); }
             bool stop = false;
-            var collector = new Thread(() => { for (int i = 0; i < collections && !Volatile.Read(ref stop); i++) { other.Test(808); Thread.Sleep(2); } }) { IsBackground = true };
+            var collector = new Thread(() => { for (int i = 0; i < collections && !Volatile.Read(ref stop); i++) { if (contend) p.Test(811, 0, 1); else if (large) other.Test(810, 0, 8); else other.Test(808); Thread.Sleep(2); } }) { IsBackground = true };
             long last = p.Test(HkRAlloc);
             int g0 = (int)p.Test(809);
+            g2start = (int)p.Test(809, 2);
             collector.Start();
             for (int i = 0; i < blocks; i++)
             {
                 if (i == blocks / 2) h.ReleaseFromMixer(v);
-                p.NewTick(); p.GenRender(bp, 64);
+                p.NewTick(); p.GenRender(bp, contend ? 256 : 64);
                 long now = p.Test(HkRAlloc);
                 int g = (int)p.Test(809);
                 deltas[i] = now - last; gcs[i] = g - g0;
@@ -709,10 +714,11 @@ public sealed unsafe partial class SelfTest
             }
             Volatile.Write(ref stop, true);
             collector.Join();
+            g2start = (int)p.Test(809, 2) - g2start;
         }
         int collected = 0;
         for (int i = 0; i < blocks; i++) { collected += gcs[i]; if (deltas[i] != 0) { moved++; sum += deltas[i]; } }
-        Console.WriteLine($"alloc-gc-probe: {blocks} blocks rendered on this thread, {collected} collections in the DLL's runtime meanwhile (made by another thread); {moved} blocks moved this thread's count, {sum} bytes in all");
+        Console.WriteLine($"alloc-gc-probe ({mode}): {blocks} blocks rendered on this thread, {collected} collections in the DLL's runtime meanwhile ({g2start} of generation 2), made by another thread; {moved} blocks moved this thread's count, {sum} bytes in all");
         int shown = 0;
         for (int i = 0; i < blocks && shown < 30; i++)
             if (deltas[i] != 0) { shown++; Console.WriteLine($"  block {i}: {deltas[i]:+#;-#;0} bytes, {gcs[i]} collection(s) during it"); }

@@ -25,6 +25,7 @@ internal sealed class NoteFollowLog
 public sealed unsafe partial class Bn2Plugin
 {
     private volatile NoteFollowLog? noteLog;
+    private static byte[]? gcGarbage;                     // (hook 810: the last large array made, so the runtime cannot skip making it)
 
     /// <summary>The note log's line for voice <paramref name="v"/> (the audio thread, after OnNote).</summary>
     private void LogFollow(Voice v, TrackIndex? idx)
@@ -84,7 +85,9 @@ public sealed unsafe partial class Bn2Plugin
             case 806: { double p = SongPosition(out _, out _); return double.IsNaN(p) ? -1 : (nint)Math.Round(p * 1000); }
             case 807: return matcher.Candidates;
             case 808: GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); return 0;                                                       // a collection in the DLL's runtime (before an allocation window: the per-thread counter is not exact across one)
-            case 809: return GC.CollectionCount(0);                                                                                                // the DLL runtime's gen-0 collections so far
+            case 809: return GC.CollectionCount(index is >= 0 and <= 2 ? (int)index : 0);                                                          // the DLL runtime's collections of generation <index> so far
+            case 810: { for (int i = 0; i < value; i++) gcGarbage = new byte[128 * 1024]; return 0; }                                               // <value> large arrays made and dropped (they start the runtime's own collections, background ones included)
+            case 811: { if (assignment.Emulator is not { } e) return 1; e.HoldRomLockForTests((int)value); return 0; }                               // holds this instance's emulator's game lock for <value> ms (the caller's thread)
             default: return 0;
         }
     }

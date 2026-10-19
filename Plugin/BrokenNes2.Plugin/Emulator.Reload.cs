@@ -51,4 +51,10 @@ public sealed partial class Emulator
         RecordUi.SetResult(msg, true);
         return (true, msg);
     }
+
+    /// <summary>Tests (FruityHost alloc-gc-probe contend): holds the game's lock for <paramref name="ms"/> milliseconds, as a worker thread does between frames.</summary>
+    internal void HoldRomLockForTests(int ms)
+    {
+        lock (romLock) Thread.Sleep(ms);
+    }
 }
