@@ -591,6 +591,23 @@ Fix: `HostLog.Add` stores `Stopwatch.GetTimestamp()`; the writer turns it into t
 
 One more observation, not explained: in the run of `record,record-nes,relink,reload,capture,hostlog` right after this merge, made while a CPU-heavy Workshop test ran beside it, `record-nes`'s capture window (a NES game in ROM mode recorded for 1,800 blocks) counted 7,232 bytes on the audio thread once. It did not happen again (`record-nes` alone right after: 0 bytes; the full selftest after: 0 bytes). Two causes were measured away: a collection in the DLL's runtime (`alloc-gc-probe large`: 40,000 blocks while the DLL collected 259 times by itself, generation 2 included: the rendering thread's count never moved) and the game lock's contention with the recording's feeder thread (`alloc-gc-probe contend`: VRUN in ROM mode while another thread held the game lock for 1 ms every few ms: 6,000 blocks, 0 bytes). The capture window now says which blocks allocated when one does, so the next occurrence names its block.
 
+### Final runs (this section)
+
+`refs/heads/main` was merged three times (capture 4cda3b2, the SNES HDMA fix 4bb3ef1, VRUN's bends 8f67d43; the last was clean and touched only the plugin's music and capture code, their checks, BrokenDev's template build and docs). Every DLL figure is from the Native AOT DLL published from this tree into `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r8_reload`.
+
+| Run | Result |
+|---|---|
+| `FruityHost selftest` (all, final tree) | 65 results: 64 pass, 1 warning (QLQ an octave sharp, on purpose), 0 failed (24 min 11 s); `reload` 8 of 8 deliberate bugs caught, `record` 15 of 15 DLL and 20 of 20 library, `record-nes` 6 of 6 and 12 of 12, `relink` 13 of 13, `capture` and `midi` pass, `realtime` 6.9x, `hostlog` (last) the user's real log untouched |
+| `FruityHost selftest --only midi,capture,record,record-nes,relink,reload,hostlog` (after the last merge) | 7 of 7 pass (20 min) |
+| `FruityHost record-test` (with the games) | 9 checks pass, 163 assertions, 20 of 20 deliberate bugs caught (`match` 5 of them) |
+| `FruityHost nesrec-test --only match` | pass, 9 assertions, its deliberate bug caught |
+| `FruityHost capture-test` | 5 checks pass, 715 assertions, 0 deliberate bugs missed |
+| `BrokenNes.Workshop --corrupt-test` (fresh build, tree with main 4bb3ef1) | 275 passed, 0 failed, 0 not run |
+| `BrokenNes.Workshop --snes-state-test` (same build) | 147 passed, 0 failed, 0 skipped |
+| `UAT\run-suite.ps1 -Exe <that Workshop>` | 84 pass, 0 fail, 60 skip (their ROMs are not at this worktree's paths), 0 info |
+| `UAT\entrypoints\notices-check.ps1` | pass (492 files scanned; no `*.bn2preset` tracked) |
+| The user's `Documents\BrokenNes2 host log.txt` (the evidence) after every run of this work | unchanged: 139,784 bytes, last written 18:58:45 on 2026-10-18 by FL, SHA-256 6973d492... |
+
 ### Ids, hooks, places this took
 
 Plugin test hooks 790-811 (`Bn2Plugin.Reload.cs`; 808 a collection in the DLL's runtime, 809 its collection count of a generation, 810 large arrays made and dropped, 811 hold the game lock (`Emulator.HoldRomLockForTests`)); `FruityHost alloc-gc-probe <dll> [blocks] [rounds] [induced|large|contend]`; `RecMutants` 40-47; `TRK1` version 3 (+ i16 base); `TrackExpression` bytes version 2 (+ velocities; version 1 read); `HostLog.KindTime`; `Fpd.SongPosChanged`; `HostSim.RootNote` / `FlNoteOn` / `SampleRate` / `Tempo` / `MixingTimeCalls`; `NesReplay.Compare(..., asked)`; selftest result `reload` (before `hostlog`); environment `BROKENNES_FLREPLAY_DIR`, `BROKENNES_SCENARIOS`, `BROKENNES_MUTANTS`, `BROKENNES_ALLOC_TRACE`.
