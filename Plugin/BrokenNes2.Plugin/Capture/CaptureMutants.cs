@@ -21,7 +21,8 @@ public static class CaptureMutants
         EventsLostSilently = 12,   // every 40th pitch event is lost and not counted                                                                         -> bends
         LiveNoBends = 13,          // the live MIDI out sends notes but no pitch bend                                                                        -> live
         SlideIgnored = 14,         // pitch changes of a voice after its note-on are not captured (only the pitch it started with)                           -> bends
-        BaseDetectionIgnored = 15; // C5 always, even for channels whose notes only fit MIDI note 0 (imported channels): their keys 60 too high             -> notes (imported)
+        BaseDetectionIgnored = 15, // C5 always, even for channels whose notes only fit MIDI note 0 (imported channels): their keys 60 too high             -> notes (imported)
+        OverlapsKept = 16;         // overlapping notes on a channel left overlapping (the file before 2026-10-19): VRUN's converter cuts the newer note         -> convert, build
 
     public static bool On(int m) => Active == m;
 }

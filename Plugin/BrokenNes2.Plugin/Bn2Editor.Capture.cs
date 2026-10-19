@@ -45,7 +45,7 @@ public sealed unsafe partial class Bn2Editor
             // the facts after the summary (the window's song box below has the converter's own facts): the slides and bends, the converter's choice of channels, anything lost or guessed
             foreach (var f in r.Facts.Skip(1).Take(3))
             {
-                bool bad = f.Contains("LOST") || f.Contains("cutting") || f.Contains("ASSUMED") || f.Contains("chooses") || f.Contains("not played") || f.Contains("early") || f.Contains("clamped") || f.Contains("MIDI note 0:");
+                bool bad = f.Contains("LOST") || f.Contains("cutting") || f.Contains("goes back to") || f.Contains("ASSUMED") || f.Contains("chooses") || f.Contains("not played") || f.Contains("early") || f.Contains("clamped") || f.Contains("MIDI note 0:");
                 Dot(dc, lx + 8, fy + 8, 3, bad ? Warn : Good);
                 Txt(dc, f, R(lx + 20, fy, iw - 20, 17), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Text, fontSmall);
                 drawn.Add(f);

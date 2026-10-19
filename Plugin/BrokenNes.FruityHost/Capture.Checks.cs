@@ -11,7 +11,10 @@
 //   convert     the captured file through VRUN's converter (the plugin's copy) with bends off gives exactly the streams and loop of the ideal file written from the script (same notes, no
 //               bends); with bends on (the plugin's way, round 9) the ROM the plugin builds plays the decoder model's registers, no note moves, and its periods follow the take's pitch
 //               (held bends exact, moving ones within the tolerance) on square 1, square 2 and the triangle; the capture's facts and the converter's bends line say so
+//               (the overlapped note: the ROM plays it for its whole length; the same take built with the overlap kept, the "before" control, is cut where the earlier note ends)
 //   lanes       a lane's chunks: 0 bytes allocated per event, a lane whose worker is late counts what it lost (never silently), the cap
+//   mono        one note at a time per channel (2026-10-19): an earlier note ends where the next one starts, the newer keeps its whole length, slides inside a note untouched, notes struck
+//               together keep the newer; counted and said; no note in the file overlaps the next on its track; the ROM plays the kept notes throughout
 //
 // Each check is shown able to fail by a deliberate bug (CaptureMutants).
 using System.Diagnostics;
@@ -73,6 +76,7 @@ internal static class CaptureChecks
         new("build", "a scripted FL song's lane events built and read back by the independent parser: every note within a tick, the played pitch at every FL tick within the bend's step, ranges, channels, the end", BuildCheck),
         new("convert", "the captured file through VRUN's converter: without bends = the ideal file written from the script (streams and loop byte for byte); with them (the plugin's way) the ROM plays them on square 1, square 2 and the triangle, held exact and moving within the tolerance, no note moved", ConvertCheck),
         new("lanes", "a lane allocates nothing per event, counts what it loses when its worker is late, stops at its cap", LanesCheck),
+        new("mono", "one note at a time per channel: an earlier note ends where the next one starts, the newer keeps its whole length (slides inside it too), notes struck together keep the newer, counted and said; the ROM plays the kept notes throughout", MonoCheck),
     ];
 
     /// <summary>A deliberate bug: a capture one (<see cref="CaptureMutants"/>) or, with <paramref name="Music"/>, one of Test MIDI export's (<see cref="MusicMutate"/>: the bends' path).</summary>
@@ -93,6 +97,8 @@ internal static class CaptureChecks
         new("pitch changes after a note-on not captured", CaptureMutants.SlideIgnored, "build"),
         new("an allocation per captured event", CaptureMutants.CaptureAllocates, "lanes"),
         new("the clock counts at 44,100 Hz whatever the rate", CaptureMutants.ClockFixedRate, "lanes"),
+        new("overlapping notes left overlapping (VRUN's converter cuts the newer one)", CaptureMutants.OverlapsKept, "convert"),
+        new("overlapping notes left overlapping, on the take made for it", CaptureMutants.OverlapsKept, "mono"),
         new("Test MIDI export converts the take with bends off (round 7's way)", 0, "convert", MusicMutate.BendsIgnored),
         new("every slide's slope negated after conversion", 0, "convert", MusicMutate.SlideSignFlipped),
     ];
@@ -146,8 +152,14 @@ internal static class CaptureChecks
     /// <summary>The MIDI channel (0-15) each rack instance's track should be on: what VRUN's converter turns into its NES channel.</summary>
     public static readonly int[] ExpectedChannel = [0, 1, 2, 9];
 
-    /// <summary>A note's expected end in FL ticks (FL stopped before its end: the Stop).</summary>
-    public static int EndTick(FlSong s, FlNote n) => Math.Min(n.End, s.StopTick);
+    /// <summary>A note's expected end in FL ticks: its own end, the Stop when FL stopped before it, or (one note at a time per channel, 2026-10-19) the start of the next note on its channel when
+    /// that comes first.</summary>
+    public static int EndTick(FlSong s, FlNote n)
+    {
+        int end = Math.Min(n.End, s.StopTick);
+        foreach (var m in s.Notes) if (m != n && m.Inst == n.Inst && m.Start > n.Start && m.Start < end) end = m.Start;
+        return end;
+    }
 
     // =====================================================================================================================================================================
     // the lane events the plugin writes for a song (the "ideal plugin": what Bn2Plugin.Capture.cs does, from the same tick loop as FlRun)
@@ -449,7 +461,8 @@ internal static class CaptureChecks
                 if (d == null) continue;
                 var c = Compare(r, d, s, truth, label);
                 r.Expect(res.Facts.Any(f => f.Contains("still sounding when FL stopped")), $"{label}: the note held over Stop is not said");
-                r.Expect(res.Facts.Any(f => f.Contains("1 note overlapped the next one") && f.Contains("VRUN stops the channel where the earlier note ends")), $"{label}: the overlapping notes (VRUN cuts the newer one short) are not said: {string.Join(" | ", res.Facts)}");
+                r.Expect(res.Facts.Any(f => f.StartsWith("1 overlap resolved") && f.Contains("1 earlier note ends where the next one starts")) && !res.Facts.Any(f => f.Contains("cutting the newer one short")),
+                    $"{label}: the overlap the capture resolved (one note at a time) is not said, or VRUN is still said to cut it: {string.Join(" | ", res.Facts)}");
                 r.Expect(res.Facts.Any(f => f.Contains("slide or bend") && f.Contains($"({res.BendEvents} bends, range ") && f.Contains("VRUN's engine plays the bends")), $"{label}: the facts do not say the slides and bends (counted, with the range) and that VRUN plays them: {string.Join(" | ", res.Facts)}");
                 if (tempo)
                     r.Note($"{label}: {c.NotesFound}/{c.Notes} notes, start and end within {c.MaxTickError} tick(s) at 960 per quarter; pitch at {c.PitchOk}/{c.PitchPoints} FL ticks within {c.AllowedPitchError:0.###} cents (worst {c.MaxPitchError:0.####}); ranges {string.Join("/", c.Range)} semitones; {res.BendEvents} bends");
@@ -498,14 +511,20 @@ internal static class CaptureChecks
             foreach (int field in new[] { 1, 3, 5, 6, 7 }) if (MidiModel.Field(a, field) != MidiModel.Field(c, field)) { moved++; break; }
         }
         r.Expect(moved == 0, $"with bends, the volume / triangle / noise registers differ from the take without bends in {moved} of {n} frames: the notes moved");
-        // the overlapping notes (Pulse 1: key 74 from FL tick 764, the earlier 76 ends at 772): VRUN's converter stops the channel at 772, so the newer note and its slide (from 784) are cut
-        // short there, as the take's fact says; the ROM is silent on square 1 from just after 772 to just before 74's end (864)
+        // the overlapping notes (Pulse 1: 76 from FL tick 672 to 772, the newer 74 from 764 to 864, sliding down an octave from 784). One note at a time per channel (2026-10-19): the file ends
+        // 76 at 764 and the ROM plays 74 for its whole length, slide included. The "before" control is the same take built with the overlap kept (the file before that decision): VRUN's
+        // converter stops the channel where the earlier note ends (772), so there the newer note and its slide fall silent until 864
         int FrameOf(int flTick) => (int)(flTick * 10L * ((double)res.MicrosPerQuarter / 960 * Midi2Nes.Fps) / 1_000_000.0);
         int sounding74 = MidiModel.Field(run.Latch.AsSpan((start + FrameOf(766) + 1) * MidiModel.LatchBytes, MidiModel.LatchBytes), 1);
-        int cutFrames = 0, span = 0;
-        for (int f = FrameOf(772) + 2; f < FrameOf(864) - 1; f++, span++) if (MidiModel.Field(run.Latch.AsSpan((start + f) * MidiModel.LatchBytes, MidiModel.LatchBytes), 1) == 0) cutFrames++;
-        r.Expect(sounding74 > 0 && cutFrames == span && span > 10, $"the overlapped note: square 1's volume {sounding74} as it starts, silent in {cutFrames} of the {span} frames after the earlier note's end (VRUN's converter stops the channel there)");
-        r.Note($"the overlapped note plays {FrameOf(772) - FrameOf(764)} frames in VRUN, then the channel is silent for {span}+ frames (FL plays it on, sliding down an octave): the take's fact says so");
+        int from = FrameOf(772) + 2, to = FrameOf(864) - 1, span = to - from;
+        var before = CaptureSong.Build("convert-before", lanes, Timing(s, 48000, true), Timing(s, 48000, true), oneNoteAtATime: false);
+        var beforeSong = SongConvert.Convert(before.Midi, out _)!;
+        var runBefore = MidiRun.Of(t.Patch(beforeSong.Channels, beforeSong.Facts.LoopFrames, "capture"), n + MusicTemplate.Preroll + 4, mlb);
+        int silentAfter = Silent(run.Latch, start, 1, from, to), silentBefore = Silent(runBefore.Latch, start, 1, from, to);
+        r.Expect(sounding74 > 0 && span > 10 && silentAfter == 0, $"the overlapped note: square 1's volume {sounding74} as it starts, and it is silent in {silentAfter} of the {span} frames from the earlier note's end to its own (one note at a time: it should sound in all)");
+        r.Expect(silentBefore == span, $"the control (the take built with the overlap kept, as before 2026-10-19): square 1 silent in {silentBefore} of those {span} frames (VRUN's converter stops the channel where the earlier note ends: all expected)");
+        r.Expect(before.Facts.Any(f => f.Contains("VRUN stops the channel where the earlier note ends")) && res.Facts.Any(f => f.StartsWith("1 overlap resolved")), $"the overlap's facts: before '{string.Join(" | ", before.Facts.Where(f => f.Contains("overlap")))}', now '{string.Join(" | ", res.Facts.Where(f => f.Contains("overlap")))}'");
+        r.Note($"the overlapped note (74, sliding down an octave): the ROM plays it {FrameOf(864) - FrameOf(764)} frames, silent in {silentAfter} of the {span} after the earlier note's end; with the overlap kept (before) it was silent in {silentBefore} of them");
         var parts = new List<string>();
         foreach (var rep in cap.Facts.BendsPlayed)
         {
@@ -525,6 +544,81 @@ internal static class CaptureChecks
         low.Coarse[1] = -36;
         var lr = CaptureSong.Build("low", IdealLanes(low, 48000, out _), Timing(low, 48000, true), Timing(low, 48000, true));
         r.Expect(lr.Facts.Any(f => f.Contains("chooses by itself") && f.Contains("triangle plays Pulse 2")), $"a Pulse 2 lower than the triangle: the converter's choice is not said: {string.Join(" | ", lr.Facts)}");
+    }
+
+    /// <summary>Frames in [<paramref name="from"/>, <paramref name="to"/>) (after the preroll <paramref name="start"/>) where a latch field (1 = square 1's volume) is 0.</summary>
+    private static int Silent(byte[] latch, int start, int field, int from, int to)
+    {
+        int k = 0;
+        for (int f = from; f < to; f++) if (MidiModel.Field(latch.AsSpan((start + f) * MidiModel.LatchBytes, MidiModel.LatchBytes), field) == 0) k++;
+        return k;
+    }
+
+    public static void MonoCheck(ImodelReport r)
+    {
+        // one note at a time per channel (2026-10-19), on a take made for it (Pulse 1, 120 BPM, PPQ 96): a note with a newer one inside it that it outlasts, two notes struck at the same
+        // moment, a slide FL delivers inside its parent note, a note that only touches the next, and Pulse 2 untouched
+        var s = new FlSong { Name = "mono", Bpm = 120, StopTick = 960, Root = [60, 60, 60, 60] };
+        void N(int inst, int key, int start, int len, string label, Action<FlNote>? more = null)
+        {
+            var n = new FlNote { Inst = inst, Key = key, Start = start, Length = len, Velocity = 100, Label = label };
+            more?.Invoke(n);
+            s.Notes.Add(n);
+        }
+        N(0, 60, 0, 300, "long, outlasts the next");
+        N(0, 67, 96, 96, "inside the long one");
+        N(0, 64, 384, 96, "struck with the next (left out)");
+        N(0, 65, 384, 150, "struck with the previous (kept)");
+        N(0, 69, 576, 192, "slide inside it", n => n.Slides = [new FlSlide { StartTick = 48, LengthTicks = 96, ToKey = 72 }]);
+        N(0, 71, 768, 96, "touches the previous");
+        N(1, 48, 0, 768, "the other channel");
+        var lanes = IdealLanes(s, 48000, out _);
+        var res = CaptureSong.Build("mono", lanes, Timing(s, 48000, true), Timing(s, 48000, true));
+        if (res.Problem != null) { r.Expect(false, res.Problem); return; }
+        var d = Dump(r, res.Midi, "mono");
+        if (d == null) return;
+        var p1 = d.Notes.Where(x => x.Ch == 1).OrderBy(x => x.On).ToList();
+        // the file's Pulse 1: 60 0..960 (shortened where 67 starts), 67 960..1920 (whole), 65 3840..5340 (whole; 64 at the same moment left out), 69 5760..7680 (its slide a bend), 71 7680..8640
+        (int Key, long On, long Off)[] expect = [(60, 0, 960), (67, 960, 1920), (65, 3840, 5340), (69, 5760, 7680), (71, 7680, 8640)];
+        string got = string.Join(", ", p1.Select(x => $"{x.Key} {x.On}-{x.Off}"));
+        r.Expect(p1.Count == expect.Length && p1.Zip(expect).All(z => z.First.Key == z.Second.Key && Math.Abs(z.First.On - z.Second.On) <= 1 && Math.Abs(z.First.Off - z.Second.Off) <= 1),
+            $"Pulse 1 in the file: {got}; expected {string.Join(", ", expect.Select(x => $"{x.Key} {x.On}-{x.Off}"))} (one note at a time: the earlier ends where the next starts, the newer whole)");
+        int overlapping = 0;
+        foreach (var g in d.Notes.GroupBy(x => x.Track))
+        {
+            var ns = g.OrderBy(x => x.On).ToList();
+            for (int i = 1; i < ns.Count; i++) if (ns[i - 1].Off > ns[i].On) overlapping++;
+        }
+        r.Expect(overlapping == 0, $"{overlapping} notes in the file still overlap the next on their track");
+        var p2 = d.Notes.Where(x => x.Ch == 2).ToList();
+        r.Expect(p2.Count == 1 && p2[0].On == 0 && p2[0].Off == 7680, $"Pulse 2's note (no overlap on its channel): {string.Join(", ", p2.Select(x => $"{x.Key} {x.On}-{x.Off}"))}, expected 48 0-7680");
+        // the slide inside 69: bends from 6240, back to 0 by the next note (no bend left on 71)
+        var b1 = d.Bends.Where(x => x.Ch == 1).OrderBy(x => x.Tick).ToList();
+        int rangeP1 = d.Rpns.Where(x => x.Ch == 1).Select(x => x.Range).DefaultIfEmpty(2).Last();
+        int at71 = 0, atSlideEnd = 0;
+        foreach (var b in b1) { if (b.Tick <= 7680) at71 = b.Value; if (b.Tick <= 7200) atSlideEnd = b.Value; }
+        double slideCents = atSlideEnd * rangeP1 * 100.0 / 8192;
+        r.Expect(b1.Any(b => b.Tick > 6240 && b.Tick < 7200) && Math.Abs(slideCents - 300) <= rangeP1 * 100.0 / 16384 + 1e-3 && at71 == 0,
+            $"the slide inside 69: {b1.Count(b => b.Tick > 6240 && b.Tick < 7200)} bends while it moves, {slideCents:0.###} cents when it ends (300 expected), bend {at71} at 71's start (0 expected)");
+        // the fact and the counts
+        var t0 = res.Tracks.First(x => x.Id.Role == CapRole.Pulse1);
+        r.Expect(t0.Shortened == 1 && t0.DroppedTogether == 1 && t0.Outlasted == 1, $"Pulse 1's counts: {t0.Shortened} shortened, {t0.DroppedTogether} left out, {t0.Outlasted} outlasted (1, 1, 1 expected)");
+        r.Expect(res.Facts.Any(f => f.StartsWith("2 overlaps resolved") && f.Contains("1 earlier note ends where the next one starts") && f.Contains("1 struck at the same moment as a newer one is left out") && f.Contains("1 of them was still held after the newer note ended")),
+            $"the overlap fact: {string.Join(" | ", res.Facts.Where(f => f.Contains("overlap")))}");
+        r.Expect(!res.Facts.Any(f => f.Contains("cutting the newer one short") || f.Contains("VRUN stops the channel")), $"VRUN is still said to cut a note: {string.Join(" | ", res.Facts)}");
+        // the converter: the newer note sounds for its whole length (its frames), the one inside the long note too
+        var song = SongConvert.Convert(res.Midi, out var why);
+        r.Expect(song != null, $"the converter refused the take: {why}");
+        if (song == null) return;
+        var tm = MidiChecks.BundledTemplate();
+        var (_, _, mlb) = MidiFixtures.Bundled();
+        int loop = song.Facts.LoopFrames;
+        var run = MidiRun.Of(tm.Patch(song.Channels, loop, "capture"), loop + MusicTemplate.Preroll + 4, mlb);
+        var sc = MidiModel.Best(song.Channels, run.Latch, loop, skip: MidiChecks.Skip);
+        int FrameOf(int flTick) => (int)(flTick * 10L * ((double)res.MicrosPerQuarter / 960 * Midi2Nes.Fps) / 1_000_000.0);
+        int silent65 = Silent(run.Latch, sc.Start, 1, FrameOf(384) + 2, FrameOf(534) - 1), silent67 = Silent(run.Latch, sc.Start, 1, FrameOf(96) + 2, FrameOf(192) - 1);
+        r.Expect(silent65 == 0 && silent67 == 0, $"the ROM: square 1 silent in {silent65} frames of the kept note struck with another (65) and {silent67} of the note inside the long one (67): both should sound throughout");
+        r.Note($"Pulse 1: {got}; {t0.Shortened} shortened, {t0.DroppedTogether} left out, {t0.Outlasted} outlasted; the slide inside its note ends {slideCents:0.##} cents up; ROM silent frames in the kept notes {silent65}+{silent67}");
     }
 
     public static void LanesCheck(ImodelReport r)
