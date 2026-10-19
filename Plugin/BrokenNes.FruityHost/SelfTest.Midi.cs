@@ -512,22 +512,27 @@ public sealed unsafe partial class SelfTest
             t.Expect(said.Contains("was not loaded") && said.Contains(expect) && said.Contains("Nothing changed"), $"{name}: the window said '{said}'");
             t.Expect(p.Test(HkSGen) == gen && p.Test(HkSRunning) == 1, $"{name}: the song that was playing was replaced or stopped");
         }
-        // a template the code does not know: Test MIDI export refuses, with the reason
+        // a template the code does not know (the next format version) or one it no longer plays (round 7's version 1, whose plain decoders read a bend opcode as the loop):
+        // Test MIDI export refuses, with the reason
         string tdir = MidiDir();
         var (rom, manifest, _) = MidiFixtures.Bundled();
-        File.WriteAllBytes(Path.Combine(tdir, "v2.nes"), rom);
-        File.WriteAllText(Path.Combine(tdir, "v2.txt"), manifest.Replace("version = 1", "version = 2"));
-        fixed (char* c = Path.Combine(tdir, "v2.txt") + "\0") t.Expect(p.Test(HkSTemplate, 0, (nint)c) == 0, "the test template could not be set");
-        try
+        t.Expect(manifest.Contains($"version = {MusicTemplate.FormatVersion}"), "the bundled manifest does not carry this build's format version");
+        foreach (int v in new[] { MusicTemplate.FormatVersion + 1, 1 })
         {
-            t.Expect(p.Test(HkSTemplateOk) == 0, "a version-2 template is accepted");
-            long stamp = p.Test(HkSStamp);
-            SOpen(p, WriteMid("good2", MidiFixtures.Synthetic()));
-            SWait(p, () => p.Test(HkSStamp) > stamp, 10000);
-            t.Expect(SText(p, 0).Contains("cannot run in this build") && SText(p, 0).Contains("version 2"), $"a version-2 template: the window said '{SText(p, 0)}'");
-            t.Expect(p.Test(HkSGen) == gen, "a song was loaded with a template the code does not know");
+            File.WriteAllBytes(Path.Combine(tdir, $"v{v}.nes"), rom);
+            File.WriteAllText(Path.Combine(tdir, $"v{v}.txt"), manifest.Replace($"version = {MusicTemplate.FormatVersion}", $"version = {v}"));
+            fixed (char* c = Path.Combine(tdir, $"v{v}.txt") + "\0") t.Expect(p.Test(HkSTemplate, 0, (nint)c) == 0, "the test template could not be set");
+            try
+            {
+                t.Expect(p.Test(HkSTemplateOk) == 0, $"a version-{v} template is accepted");
+                long stamp = p.Test(HkSStamp);
+                SOpen(p, WriteMid($"good_v{v}", MidiFixtures.Synthetic()));
+                SWait(p, () => p.Test(HkSStamp) > stamp, 10000);
+                t.Expect(SText(p, 0).Contains("cannot run in this build") && SText(p, 0).Contains($"version {v}") && (v != 1 || SText(p, 0).Contains("cannot play pitch bends")), $"a version-{v} template: the window said '{SText(p, 0)}'");
+                t.Expect(p.Test(HkSGen) == gen, $"a song was loaded with a version-{v} template");
+            }
+            finally { p.Test(HkSTemplate, 0, 0); }
         }
-        finally { p.Test(HkSTemplate, 0, 0); }
         t.Expect(p.Test(HkSTemplateOk) == 1, "the built-in template is not usable");
     }
 
