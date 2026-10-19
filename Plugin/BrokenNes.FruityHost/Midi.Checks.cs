@@ -838,8 +838,9 @@ internal static class MidiChecks
     /// <summary>`FruityHost midi-trace &lt;song name&gt; [from] [to]`: the APU fields of the patched template frame by frame (a development aid: what the engine check compares).</summary>
     public static int Trace(string[] args)
     {
-        var s = Songs().FirstOrDefault(x => x.Name == args[1]);
-        if (s == null) { Console.WriteLine("songs: " + string.Join(", ", Songs().Select(x => x.Name))); return 2; }
+        // a song the checks write (by name) or any .mid file
+        var s = File.Exists(args[1]) ? new MidiSong(Path.GetFileNameWithoutExtension(args[1]), File.ReadAllBytes(args[1]), args[1]) : Songs().FirstOrDefault(x => x.Name == args[1]);
+        if (s == null) { Console.WriteLine("a .mid file, or one of: " + string.Join(", ", Songs().Select(x => x.Name))); return 2; }
         int from = args.Length > 2 ? int.Parse(args[2]) : 0, to = args.Length > 3 ? int.Parse(args[3]) : 20;
         var t = BundledTemplate();
         var b = SongConvert.Convert(s.Midi, out var why) ?? throw new InvalidOperationException(why);
