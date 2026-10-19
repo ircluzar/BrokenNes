@@ -164,7 +164,7 @@ public static class CaptureSong
         catch (Exception e) { r.Report.Add("the converter could not read the capture back: " + e.Message); }
         ConverterFacts(r);
         // the window shows the first few: the summary, then what changes the replay most (lost events, guesses, the slides and bends, the converter's own choice, the base), then the rest
-        static int Rank(string f) => f.Contains("LOST") ? 0 : f.Contains("ASSUMED") || f.Contains("ASSUMING") ? 1 : f.Contains("slide or bend") || f.Contains("slides or bends") ? 2 : f.Contains("chooses by itself") ? 3 : f.Contains("MIDI note 0") && !f.StartsWith("keys read from C5") ? 4 : f.Contains("not played") ? 5 : 9;
+        static int Rank(string f) => f.Contains("LOST") ? 0 : f.Contains("ASSUMED") || f.Contains("ASSUMING") ? 1 : f.Contains("slide or bend") || f.Contains("slides or bends") ? 2 : f.Contains("chooses by itself") || f.Contains("cutting the newer one short") ? 3 : f.Contains("MIDI note 0") && !f.StartsWith("keys read from C5") ? 4 : f.Contains("not played") ? 5 : 9;
         var rest = r.Facts.Skip(1).Select((f, i) => (f, i)).OrderBy(x => Rank(x.f)).ThenBy(x => x.i).Select(x => x.f).ToList();
         r.Facts.RemoveRange(1, r.Facts.Count - 1);
         r.Facts.AddRange(rest);
@@ -384,7 +384,8 @@ public static class CaptureSong
         int cut = r.Tracks.Sum(t => t.SameKeyCut);
         if (cut > 0) r.Facts.Add($"{cut} note{(cut == 1 ? "" : "s")} struck again on the same key before {(cut == 1 ? "its" : "their")} release: the earlier one ends there (one note per key on a MIDI channel)");
         int over = r.Tracks.Sum(t => t.Overlapped);
-        if (over > 0) r.Facts.Add($"{over} note{(over == 1 ? "" : "s")} overlapped the next one on {(over == 1 ? "its" : "their")} channel: the channel plays the newest (as BrokenNes2 does) and the bend follows it");
+        // (VRUN's converter stops a channel at any note-off (Midi2Nes.cs): the earlier note's end cuts the newer one short there, its slide too)
+        if (over > 0) r.Facts.Add($"{over} note{(over == 1 ? "" : "s")} overlapped the next one on {(over == 1 ? "its" : "their")} channel: BrokenNes2 plays the newest and the bend follows it, but VRUN stops the channel where the earlier note ends, cutting the newer one short");
         int levelVel = r.Tracks.Sum(t => t.LevelVelocities);
         if (levelVel > 0) r.Facts.Add($"FL gave no velocity for {levelVel} note{(levelVel == 1 ? "" : "s")} (FPV_GetVelocity): their velocity is the voice's level");
         var late = started.Where(l => l.JoinedLate).ToList();

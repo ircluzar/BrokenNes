@@ -55,13 +55,18 @@ public sealed class SongFacts
 
     private static readonly string[] Names = ["square 1", "square 2", "triangle", "noise"];
 
-    /// <summary>The one line about pitch bends (null when the file has none): where they play and what that cost, what was thinned, where and why they do not play.</summary>
+    /// <summary>The one line about pitch bends (null when the file has none): what was lost first (bend frames thinned, channels whose bends do not play and why: the window cuts a long
+    /// line at its end, and the losses must stay visible), then where they play and what that cost.</summary>
     public string? BendLine()
     {
         if (PitchBends == 0) return null;
         var ci = CultureInfo.InvariantCulture;
         var parts = new List<string>();
         var played = BendsPlayed.OrderBy(b => b.NesChannel).ToList();
+        int off = BendFramesOff;
+        if (played.Count > 0 && off > 0) parts.Add($"{off} bend frame{(off == 1 ? "" : "s")} thinned (no free frame)");
+        foreach (var b in Bends.Where(b => b.Ignored || b.Dropped).OrderBy(b => b.NesChannel))
+            parts.Add($"bends not played on {Names[b.NesChannel]}" + (b.Ignored ? " (no pitch)" : b.DropReason is { } why && why.Contains("truncated") ? " (truncated)" : " (no room)"));
         if (played.Count > 0)
         {
             int slides = played.Sum(b => b.SlideOps), steps = played.Sum(b => b.PitchOps + b.NoteOnsAsPitch);
@@ -70,11 +75,7 @@ public sealed class SongFacts
             if (played.Any(b => b.HeldBentFrames > 0)) quality.Add("held exact");
             if (played.Any(b => b.BentFrames > b.HeldBentFrames)) quality.Add($"moving within {played.Max(b => b.MaxMovingErrorCents).ToString("0", ci)} cents");
             parts.Add($"bends played on {where}: {slides} slide{(slides == 1 ? "" : "s")} + {steps} pitch step{(steps == 1 ? "" : "s")} (+{BendBytes} bytes)" + (quality.Count > 0 ? ", " + string.Join(", ", quality) : ""));
-            int off = BendFramesOff;
-            if (off > 0) parts.Add($"{off} bend frame{(off == 1 ? "" : "s")} thinned (no free frame)");
         }
-        foreach (var b in Bends.Where(b => b.Ignored || b.Dropped).OrderBy(b => b.NesChannel))
-            parts.Add($"not played on {Names[b.NesChannel]}" + (b.Ignored ? " (no pitch)" : b.DropReason is { } why && why.Contains("truncated") ? " (truncated)" : " (no room)"));
         if (parts.Count == 0) parts.Add($"{PitchBends} pitch bend{(PitchBends == 1 ? "" : "s")}, none on a NES channel's MIDI channel (or all centred)");
         return string.Join("; ", parts);
     }

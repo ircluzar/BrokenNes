@@ -449,6 +449,7 @@ internal static class CaptureChecks
                 if (d == null) continue;
                 var c = Compare(r, d, s, truth, label);
                 r.Expect(res.Facts.Any(f => f.Contains("still sounding when FL stopped")), $"{label}: the note held over Stop is not said");
+                r.Expect(res.Facts.Any(f => f.Contains("1 note overlapped the next one") && f.Contains("VRUN stops the channel where the earlier note ends")), $"{label}: the overlapping notes (VRUN cuts the newer one short) are not said: {string.Join(" | ", res.Facts)}");
                 r.Expect(res.Facts.Any(f => f.Contains("slide or bend") && f.Contains($"({res.BendEvents} bends, range ") && f.Contains("VRUN's engine plays the bends")), $"{label}: the facts do not say the slides and bends (counted, with the range) and that VRUN plays them: {string.Join(" | ", res.Facts)}");
                 if (tempo)
                     r.Note($"{label}: {c.NotesFound}/{c.Notes} notes, start and end within {c.MaxTickError} tick(s) at 960 per quarter; pitch at {c.PitchOk}/{c.PitchPoints} FL ticks within {c.AllowedPitchError:0.###} cents (worst {c.MaxPitchError:0.####}); ranges {string.Join("/", c.Range)} semitones; {res.BendEvents} bends");
@@ -497,6 +498,14 @@ internal static class CaptureChecks
             foreach (int field in new[] { 1, 3, 5, 6, 7 }) if (MidiModel.Field(a, field) != MidiModel.Field(c, field)) { moved++; break; }
         }
         r.Expect(moved == 0, $"with bends, the volume / triangle / noise registers differ from the take without bends in {moved} of {n} frames: the notes moved");
+        // the overlapping notes (Pulse 1: key 74 from FL tick 764, the earlier 76 ends at 772): VRUN's converter stops the channel at 772, so the newer note and its slide (from 784) are cut
+        // short there, as the take's fact says; the ROM is silent on square 1 from just after 772 to just before 74's end (864)
+        int FrameOf(int flTick) => (int)(flTick * 10L * ((double)res.MicrosPerQuarter / 960 * Midi2Nes.Fps) / 1_000_000.0);
+        int sounding74 = MidiModel.Field(run.Latch.AsSpan((start + FrameOf(766) + 1) * MidiModel.LatchBytes, MidiModel.LatchBytes), 1);
+        int cutFrames = 0, span = 0;
+        for (int f = FrameOf(772) + 2; f < FrameOf(864) - 1; f++, span++) if (MidiModel.Field(run.Latch.AsSpan((start + f) * MidiModel.LatchBytes, MidiModel.LatchBytes), 1) == 0) cutFrames++;
+        r.Expect(sounding74 > 0 && cutFrames == span && span > 10, $"the overlapped note: square 1's volume {sounding74} as it starts, silent in {cutFrames} of the {span} frames after the earlier note's end (VRUN's converter stops the channel there)");
+        r.Note($"the overlapped note plays {FrameOf(772) - FrameOf(764)} frames in VRUN, then the channel is silent for {span}+ frames (FL plays it on, sliding down an octave): the take's fact says so");
         var parts = new List<string>();
         foreach (var rep in cap.Facts.BendsPlayed)
         {
