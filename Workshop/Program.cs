@@ -63,6 +63,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--md-cart-test", StringComparison.OrdinalIgnoreCase)) return Sega.MdCartTest.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-state-test", StringComparison.OrdinalIgnoreCase)) return Sega.MdStateTest.Run(args);
         if (args.Length > 0 && args[0].Equals("--snes-state-test", StringComparison.OrdinalIgnoreCase)) return SnesStateTest.Run(args);
+        if (args.Length > 0 && args[0].Equals("--snes-timing-test", StringComparison.OrdinalIgnoreCase)) return SnesTimingTest.Run(args);
         if (args.Length > 0 && args[0].Equals("--state-audit", StringComparison.OrdinalIgnoreCase)) return StateAuditCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--alloc-probe", StringComparison.OrdinalIgnoreCase)) return AllocProbeCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-save-test", StringComparison.OrdinalIgnoreCase)) return Sega.MdSaveTest.Run(args);
