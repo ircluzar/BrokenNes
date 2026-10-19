@@ -50,8 +50,7 @@ public sealed unsafe partial class Bn2Plugin
         nesProbe?.Bind(player.Chip);
         double master = Get(P.Volume) / 1000.0;
         var ex = expression;
-        if (ex != null && exprOn) { exprBlockBeat = TrackBeatNow(); exprBeatsPerSample = EmulatorHub.FlTempo / 60.0 / Math.Max(1, EmulatorHub.HostRate); }
-        else exprBlockBeat = double.NaN;
+        BeginExpressionBlock();
         for (int off = 0; off < length; off += Chunk)
         {
             int n = Math.Min(Chunk, length - off);
@@ -61,12 +60,12 @@ public sealed unsafe partial class Bn2Plugin
                 ref var fl = ref owner.Params->FinalLevels;
                 if (fl.Pitch < owner.PitchMin) owner.PitchMin = fl.Pitch;
                 if (fl.Pitch > owner.PitchMax) owner.PitchMax = fl.Pitch;
-                double cents = fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine);
+                double cents = FlCents(fl.Pitch);
                 int level = NesDirect.Level(fl.Vol, master);
-                double exBeat = exprBlockBeat + off * exprBeatsPerSample;
-                if (owner.TrackKey >= 0 && ex != null && !double.IsNaN(exBeat))
+                double exBeat = ExpressionBeat(owner, off);
+                if (!double.IsNaN(exBeat) && ex != null)
                 {
-                    // the recording's own pitch bend and controller 7 at this point of the track: exact as the transcription made them
+                    // the recorded note's own pitch bend and controller 7 at this point of it, from its own onset: exact as the transcription made them
                     cents = ex.PitchCents(owner.TrackKey, exBeat) + Get(P.Coarse) * 100 + Get(P.Fine);
                     level = NesDirect.Level((float)(owner.TrackVel * ex.CcAt(exBeat) / 100.0), master);
                 }

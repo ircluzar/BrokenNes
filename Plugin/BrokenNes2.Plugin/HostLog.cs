@@ -34,7 +34,7 @@ internal static class HostLog
         public double X, Y, Z;
     }
 
-    public const int KindDispatcher = 1, KindParam = 2, KindNote = 3, KindMatch = 4, KindNoteEnd = 5;
+    public const int KindDispatcher = 1, KindParam = 2, KindNote = 3, KindMatch = 4, KindNoteEnd = 5, KindTime = 6;
     private static readonly Entry[] ring = new Entry[16384];
     private static long next;
     private static readonly ConcurrentQueue<(long Ticks, string Line)> text = new();
@@ -175,12 +175,16 @@ internal static class HostLog
         var c = CultureInfo.InvariantCulture;
         string body = e.Kind switch
         {
-            KindDispatcher => $"Dispatcher id={e.A} ({DispatcherName(e.A)}) index={e.B} value={e.C}",
+            KindDispatcher => e.A == 20 ? string.Create(c, $"Dispatcher id={e.A} ({DispatcherName(e.A)}) index={e.B} value={e.C} (as a float: {BitConverter.Int32BitsToSingle((int)e.C):0.###} samples per tick)") : $"Dispatcher id={e.A} ({DispatcherName(e.A)}) index={e.B} value={e.C}",
             KindParam => $"ProcessParam index={e.A} ({(e.A is >= 0 and < P.Count ? ParamNames[e.A] : "?")}) value={e.B} flags=0x{e.C:X}",
-            KindNote => string.Create(c, $"note #{e.A}: pitch {e.X:0.##} cents from C5 (key {60 + Math.Round(e.X / 100)}), song position {Pos(e.Y)} beats (local {Pos(e.Z)}), colour {e.B >> 32}, length {(int)e.B} ticks, velocity {e.C / 1000.0:0.###}"),
-            KindMatch => (e.B & 0xFFFF) == 0 ? $"match after note #{e.A}: no track yet ({e.C} aligned candidates)"
-                : $"match after note #{e.A}: track {e.B & 0xFFFF} ({((e.B >> 16 & 1) != 0 ? "settled" : "provisional")}, {((e.B >> 17 & 1) != 0 ? $"unsure: {e.C} tracks have these notes" : "the only candidate")}, by {(e.B >> 18) switch { 1 => "the same key at the same song position", 2 => "a constant offset", _ => "?" }})",
-            KindNoteEnd => string.Create(c, $"note #{e.A} ended: FL moved its pitch between {e.X:0.##} and {e.Y:0.##} cents while it sounded (a bend FL applies shows as a range)"),
+            KindNote => string.Create(c, $"note #{e.A}: pitch {e.X:0.##} (key {Math.Round(e.X / 100.0, 2)} if from MIDI 0, {60 + Math.Round(e.X / 100.0, 2)} if from C5), colour {e.B >> 32} (MIDI channel {(e.B >> 32) + 1}), velocity {e.C / 1000.0:0.###} (MIDI {Math.Round(e.C / 1000.0 * 128)}), length {(int)e.B} ticks, song position {Pos(e.Y)} beats, since FL's Play {Pos(e.Z)} beats"),
+            KindTime => string.Create(c, $"note #{e.A}: FHD_GetMixingTime (GT_Beats) answered {Pos(e.X)} with an offset of 0 samples and {Pos(e.Y)} with an offset of 1 s (FL's tempo {e.Z:0.##} BPM: a song position only when they are {e.Z / 60.0:0.###} beats apart)"),
+            KindMatch => (e.B & 0xFFFF) == 0 ? $"match after note #{e.A}: no track yet ({e.C} candidates; {(((e.B >> 24) & 1) != 0 ? "the colour names a track, no key of it fits this pitch at base 0 or 60" : "no track has this note")})"
+                : string.Create(c, $"match after note #{e.A}: track {e.B & 0xFFFF} ({((e.B >> 16 & 1) != 0 ? "settled" : "provisional")}, {((e.B >> 17 & 1) != 0 ? $"unsure: {e.C} tracks fit" : "the only candidate")}, by {(e.B >> 18 & 15) switch { 1 => "its colour (MIDI channel) and key", 2 => "its keys and the time between notes", 3 => "the track given (by hand, by name, settled, a project)", _ => "?" }}), ")
+                    + string.Create(c, $"FL's pitch read from {(e.X == 0 ? "MIDI note 0" : e.X == 60 ? "C5" : $"MIDI note {e.X:0}")}{((e.B >> 25 & 1) != 0 ? "" : " (not sure yet)")}, ")
+                    + (e.Y >= 0 ? string.Create(c, $"recorded note {e.Y + 1:0} of the track{((e.B >> 23 & 1) != 0 ? "" : " (provisional)")}{((e.B >> 22 & 1) != 0 ? ", where the song's start puts it" : "")}") : "a note the recording does not have (played as FL gives it)")
+                    + (e.Z >= 0 ? string.Create(c, $", plays key {e.Z:0} with the recorded bends and volume") : ""),
+            KindNoteEnd => string.Create(c, $"note #{e.A} ended: FL moved its pitch between {e.X:0.##} and {e.Y:0.##} while it sounded (a bend FL applies shows as a range)"),
             _ => $"kind {e.Kind} {e.A} {e.B} {e.C}",
         };
         return $"{t:HH:mm:ss.fff} #{e.Inst} {body}";

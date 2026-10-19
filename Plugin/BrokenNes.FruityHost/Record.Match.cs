@@ -1,150 +1,271 @@
-// Round 8 follow-up (2026-10-18): the check of TrackMatcher (Record/RecTracks.cs) without the DLL: which track a channel plays, from its notes. The tracks are the synthetic driver's
-// transcription (4 instruments) and crafted ones for the cases a real song may hold (two tracks playing the same notes, then parting).
+// Round 8 follow-up (2026-10-18), rewritten for `reload` (2026-10-18, the user's FL session): the check of TrackMatcher (Record/RecTracks.cs) without the DLL. The notes are fed the way FL 2026
+// hands them (Record/FlNotes.cs; the evidence is the host log of the user's session): the pitch in cents above the CHANNEL's base (MIDI note 0 for an imported channel replaced by BrokenNes2, C5
+// for one made in FL), the colour = the imported note's MIDI channel - 1, the velocity / 128, NO song position, the time from the instance's own clock at FL's tempo, the transport's start (FL's Play).
+// Each note must be bound to the right track AND to the right recorded note (or one that plays exactly the same: same key, velocity, length, bends and controller 7 from its start), because the
+// channel plays that note's recorded expression from its own onset.
 using BrokenNes2.Record;
 
 namespace BrokenNes.FruityHost;
 
 internal static class MatchChecks
 {
-    private static (Transcription Tr, TrackIndex Index) Synthetic()
+    public const int Rate = 48000;
+
+    private static (Transcription Tr, TrackIndex Index, TrackExpression[] Ex) Synthetic()
     {
         var drv = new SynthDriver(132.5);
         var rec = new SpcRecorder(); rec.Arm(); for (int i = 0; i < 40; i++) rec.Feed();
         drv.Play(rec, 20);
         var s = rec.Finish(drv.Aram, drv.Regs, "Match", "synthetic driver", "", 1_760_000_000, 9);
         var tr = RecTranscribe.Run(s, new RecOptions { Name = "Match", FlTempo = 120 });
-        var infos = tr.Tracks.Select((t, k) => new TrackInfo { Index = k, Name = t.Name, Channel = t.Channel, BendRange = t.BendRange, NoteCount = t.Notes.Count }).ToArray();
-        return (tr, new TrackIndex(infos, TrackIndex.NotesOf(tr, 0)));
+        return (tr, IndexOf(tr), tr.Tracks.Select(TrackExpression.Of).ToArray());
     }
 
-    /// <summary>A track's notes as the matcher's index holds them: (beat, key, the bend it starts with in cents at the track's range).</summary>
-    private static List<(double Beat, int Key, int Bend)> NotesOfTrack(TrackIndex idx, int t)
+    /// <summary>The offer's index of a transcription (as TrackOffers builds it: notes, velocities).</summary>
+    public static TrackIndex IndexOf(Transcription tr)
     {
-        var l = new List<(double, int, int)>();
-        for (int i = idx.TrackFirst[t]; i < idx.TrackFirst[t + 1]; i++) { int n = idx.TNote[i]; l.Add((idx.Beat[n], idx.Key[n], idx.StartBendCents[n])); }
+        var infos = tr.Tracks.Select((t, k) => new TrackInfo { Index = k, Name = t.Name, Channel = t.Channel, BendRange = t.BendRange, NoteCount = t.Notes.Count }).ToArray();
+        var idx = new TrackIndex(infos, TrackIndex.NotesOf(tr, 0));
+        idx.SetVelocities(TrackIndex.VelocitiesOf(tr, 0));
+        return idx;
+    }
+
+    /// <summary>One note as FL plays it.</summary>
+    public readonly record struct FlNote(int Note, double Beat, int Key, int Velocity, int Colour);
+
+    /// <summary>A track's notes (TrackIndex order) as FL plays them.</summary>
+    public static List<FlNote> NotesOfTrack(TrackIndex idx, int t)
+    {
+        var l = new List<FlNote>();
+        for (int i = idx.TrackFirst[t]; i < idx.TrackFirst[t + 1]; i++) { int n = idx.TNote[i]; l.Add(new FlNote(n, idx.Beat[n], idx.Key[n], idx.Velocity.Length > 0 ? idx.Velocity[n] : 100, idx.Tracks[t].Channel)); }
         return l;
+    }
+
+    /// <summary>Whether two notes play the same thing (key, velocity, length, and the track's bends and controller 7 from their starts): identifying one for the other changes nothing heard.</summary>
+    public static bool Equivalent(TrackExpression ex, (long On, long Off)[] spans, int a, int b)
+    {
+        if (a == b) return true;
+        if (a < 0 || b < 0 || ex.NoteKey[a] != ex.NoteKey[b] || (ex.NoteVel.Length > 0 && ex.NoteVel[a] != ex.NoteVel[b])) return false;
+        long la = spans[a].Off - spans[a].On, lb = spans[b].Off - spans[b].On;
+        if (Math.Abs(la - lb) > 1) return false;
+        var offs = new SortedSet<long> { 0 };
+        foreach (var t in ex.BendTick) { if (t >= spans[a].On && t < spans[a].Off) offs.Add(t - spans[a].On); if (t >= spans[b].On && t < spans[b].Off) offs.Add(t - spans[b].On); }
+        foreach (var t in ex.CcTick) { if (t >= spans[a].On && t < spans[a].Off) offs.Add(t - spans[a].On); if (t >= spans[b].On && t < spans[b].Off) offs.Add(t - spans[b].On); }
+        foreach (long d in offs)
+        {
+            double ba = (spans[a].On + d) / 960.0, bb = (spans[b].On + d) / 960.0;
+            if (ex.BendRawAt(ba) != ex.BendRawAt(bb) || ex.CcAt(ba) != ex.CcAt(bb)) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Each note's (on, off) tick in the expression's note order (from the track's SMF events).</summary>
+    public static (long On, long Off)[] Spans(RecTrack t, TrackExpression ex)
+    {
+        var spans = new (long, long)[ex.NoteTick.Length];
+        var open = new Dictionary<int, Queue<int>>();
+        int k = 0;
+        foreach (var e in t.Smf.Events.OrderBy(e => e.Tick).ThenBy(e => e.Order))
+        {
+            int kind = e.Status & 0xF0;
+            if (kind == RecMidi.NoteOn && e.Data2 > 0) { if (!open.TryGetValue(e.Data1, out var q)) open[e.Data1] = q = new(); q.Enqueue(k); spans[k] = (e.Tick, e.Tick); k++; }
+            else if ((kind == RecMidi.NoteOff || kind == RecMidi.NoteOn) && open.TryGetValue(e.Data1, out var q2) && q2.Count > 0) { int i = q2.Dequeue(); spans[i] = (spans[i].Item1, e.Tick); }
+        }
+        return spans;
+    }
+
+    /// <summary>The note's number in its track's expression (its NoteTick order) for an index note.</summary>
+    public static int ExprNumber(TrackIndex idx, int t, int note) { for (int p = idx.TrackFirst[t]; p < idx.TrackFirst[t + 1]; p++) if (idx.TNote[p] == note) return p - idx.TrackFirst[t]; return -1; }
+
+    /// <summary>Feeds FL notes to a fresh matcher: pitch at <paramref name="baseKey"/>, the time from the beats at <paramref name="bpm"/> (the instance's own clock, 48 kHz, notes on 64-sample blocks),
+    /// the transport started at <paramref name="playFrom"/> (beats; FL's Play), no song position. Returns, per note, the recorded note the matcher named.</summary>
+    public static int[] Play(TrackMatcher m, TrackIndex idx, IReadOnlyList<FlNote> notes, int baseKey, double bpm, double playFrom, double[]? times = null, Func<FlNote, int>? colour = null)
+    {
+        double bps = bpm / 60.0 / Rate;
+        var got = new int[notes.Count];
+        for (int i = 0; i < notes.Count; i++)
+        {
+            var n = notes[i];
+            double t = times?[i] ?? n.Beat;
+            long sample = (long)Math.Round((t - playFrom) / bps) / 64 * 64;
+            m.Feed(idx, FlNotes.Pitch(n.Key, baseKey), colour?.Invoke(n) ?? n.Colour, n.Velocity, sample, bps, 64 * bps, double.NaN, (sample) * bps);
+            got[i] = m.NoteAt;
+        }
+        return got;
     }
 
     public static void Match(ImodelReport r)
     {
-        var (tr, idx) = Synthetic();
+        var (tr, idx, exs) = Synthetic();
         int nt = idx.Tracks.Length;
+        double bpm = 60e6 / tr.Map[0].MicrosPerQuarter;
         r.Expect(nt == 4 && idx.Count > 100, $"the synthetic recording: {nt} tracks, {idx.Count} notes");
-        var rng = new Random(5);
-        // 1. every track, from its first note, in both ways FL may hand the pitch (with the file's bend at the note's start, or without it): bound before the first note sounds, settled in 3
-        int boundFirst = 0, uniqueFirst = 0, settled = 0, right = 0, cases = 0;
-        foreach (bool withBend in new[] { false, true })
+        var spans = tr.Tracks.Select((t, k) => Spans(t, exs[k])).ToArray();
+        bool Right(int t, FlNote n, int got) => got >= 0 && idx.Track[got] == t && Equivalent(exs[t], spans[t], ExprNumber(idx, t, n.Note), ExprNumber(idx, t, got));
+
+        // 1. every track from the song's start, on an imported channel (pitch from MIDI 0) and on one made in FL (from C5): the track and the base on the FIRST note (played from it: its colour, or
+        //    for colour 0, FL's default, the song's start), settled by the second, and every note identified as the recorded note it is
+        int tracksOk = 0, notesAll = 0, notesRight = 0, cases = 0;
+        foreach (int baseKey in FlNotes.Bases)
             for (int t = 0; t < nt; t++)
             {
+                cases++;
                 var m = new TrackMatcher();
                 var notes = NotesOfTrack(idx, t);
-                cases++;
-                for (int i = 0; i < notes.Count && i < 12; i++)
-                {
-                    var n = notes[i];
-                    double pitch = (n.Key - 60) * 100 + (withBend ? n.Bend : 0) + rng.Next(-20, 21), beat = n.Beat + (rng.NextDouble() - 0.5) * 0.02;
-                    m.Feed(idx, pitch, beat, double.NaN, -1);
-                    if (i > 0) continue;
-                    // the first note: tracks that have it (the same key at that time) besides this one make it ambiguous, the rest must be bound at once
-                    var have = new HashSet<int>();
-                    for (int j = 0; j < idx.Count; j++) if (Math.Abs(idx.Beat[j] - beat) <= TrackIndex.Tolerance && idx.KeyMatches(j, pitch)) have.Add(idx.Track[j]);
-                    if (have.Count == 1) { uniqueFirst++; if (m.Bound == t) boundFirst++; }
-                }
-                if (m.Bound == t) right++;
-                if (m.Settled) settled++;
-                if (m.Bound != t) r.Expect(false, $"track {t + 1} ({(withBend ? "with" : "without")} the start bend): the matcher says {m.Bound + 1} after {m.Notes} notes ({m.Candidates} candidates)");
+                var first = new TrackMatcher();
+                Play(first, idx, notes.Take(1).ToList(), baseKey, bpm, 0);
+                var second = new TrackMatcher();
+                Play(second, idx, notes.Take(2).ToList(), baseKey, bpm, 0);
+                bool atFirst = first.Bound == t && first.Base == baseKey && second.Settled;
+                var got = Play(m, idx, notes, baseKey, bpm, 0);
+                int right = Enumerable.Range(0, notes.Count).Count(i => Right(t, notes[i], got[i]));
+                notesAll += notes.Count; notesRight += right;
+                if (atFirst && m.Bound == t && m.Base == baseKey && right == notes.Count) tracksOk++;
+                else r.Expect(false, $"track {t + 1} (base {baseKey}): on its first note track {first.Bound + 1} base {first.Base} settled {first.Settled}; after {notes.Count} notes track {m.Bound + 1} base {m.Base}; {right} of {notes.Count} notes identified");
             }
-        r.Expect(right == cases && settled == cases && boundFirst == uniqueFirst && uniqueFirst > 0, $"aligned: {right} of {cases} tracks found and {settled} settled; {boundFirst} of the {uniqueFirst} whose first note no other track has were bound on it");
-        // 2. playback started in the middle (any note of a track, not only its first)
-        int mid = 0;
+        r.Expect(tracksOk == cases, $"from the start: {tracksOk} of {cases} (track, base) found on the first note, {notesRight} of {notesAll} notes identified as their recorded note");
+
+        // 2. playback from the middle (FL's Play with the playhead mid-song: the time since Play is not the song's beat): the track on the first note; the notes identified from the third on
+        int midRight = 0, midAll = 0, midTracks = 0;
         for (int t = 0; t < nt; t++)
         {
-            var m = new TrackMatcher();
             var notes = NotesOfTrack(idx, t);
             int from = notes.Count / 2;
-            m.Feed(idx, (notes[from].Key - 60) * 100, notes[from].Beat, double.NaN, -1);
-            if (m.Bound == t) mid++;
+            var tail = notes.Skip(from).ToList();
+            var m = new TrackMatcher();
+            double playhead = tail[0].Beat - 0.37;
+            var got = Play(m, idx, tail, 0, bpm, playhead);
+            if (m.Bound == t) midTracks++;
+            for (int i = 2; i < tail.Count; i++) { midAll++; if (Right(t, tail[i], got[i])) midRight++; }
         }
-        r.Expect(mid == nt, $"from the middle of the song: {mid} of {nt} tracks found on their first note");
-        // 3. an unrelated channel: random notes, and other keys at the very times a track plays: never taken, never settled
-        int grabbed = 0, brief = 0;
+        r.Expect(midTracks == nt && midRight == midAll, $"from the middle: {midTracks} of {nt} tracks found, {midRight} of {midAll} notes from the third identified");
+
+        // 3. a loop: a track's first 12 notes played twice (FL loops back to the song's start with no word to the plugin): every note identified, but the first two after the loop
+        int loopRight = 0, loopAll = 0;
+        for (int t = 0; t < nt; t++)
+        {
+            var notes = NotesOfTrack(idx, t).Take(12).ToList();
+            if (notes.Count < 3) continue;
+            double span = notes[^1].Beat + 0.5;
+            var twice = notes.Concat(notes).ToList();
+            var times = notes.Select(n => n.Beat).Concat(notes.Select(n => n.Beat + span)).ToArray();
+            var m = new TrackMatcher();
+            var got = Play(m, idx, twice, 0, bpm, 0, times);
+            for (int i = 0; i < twice.Count; i++) { if (i == notes.Count || i == notes.Count + 1) continue; loopAll++; if (Right(t, twice[i], got[i])) loopRight++; }
+        }
+        r.Expect(loopRight == loopAll && loopAll > 0, $"a loop of each track's first 12 notes, played twice: {loopRight} of {loopAll} notes identified (all but the first two after the loop)");
+
+        // 4. the user's edits: a note added (a key the track does not have there), a note moved by a third of a beat, a note deleted: the added note is no recorded note; the notes after each edit
+        //    (from the second) identified again
+        {
+            int t = 2;
+            var notes = NotesOfTrack(idx, t);
+            var edited = notes.Take(24).ToList();
+            var times = edited.Select(n => n.Beat).ToList();
+            int add = 5, move = 11, del = 17;
+            edited.Insert(add, new FlNote(-1, edited[add].Beat - 0.11, edited[add].Key + 13, 90, edited[add].Colour)); times.Insert(add, edited[add].Beat);
+            times[move + 1] += 0.33;
+            edited.RemoveAt(del + 1); times.RemoveAt(del + 1);
+            var m = new TrackMatcher();
+            var got = Play(m, idx, edited, 0, bpm, 0, times.ToArray());
+            bool addedNone = got[add] == -1;
+            int after = 0, afterRight = 0;
+            for (int i = 0; i < edited.Count; i++)
+            {
+                if (i == add || i == move + 1 || i == move + 2 || i == del + 1) continue;      // (the edited notes and the one right after each)
+                after++; if (Right(t, edited[i], got[i])) afterRight++;
+            }
+            r.Expect(addedNone && afterRight == after && m.Bound == t, $"edits: the added note {(addedNone ? "is no recorded note" : $"was taken for recorded note {got[add]}")}; {afterRight} of {after} other notes identified; track {m.Bound + 1}");
+        }
+
+        // 5. no colour (a channel coloured otherwise): the track from the keys and the time between notes, sure after 4 notes, never before 3
+        int noColour = 0;
+        for (int t = 0; t < nt; t++)
+        {
+            var notes = NotesOfTrack(idx, t).Take(8).ToList();
+            var m = new TrackMatcher();
+            bool early = false;
+            for (int i = 0; i < notes.Count; i++) { Play(m, idx, [notes[i]], 0, bpm, 0, [notes[i].Beat], _ => 12); if (i < 2 && m.Settled) early = true; }
+            if (m.Bound == t && m.Settled && !early) noColour++;
+            else r.Expect(false, $"track {t + 1} without its colour: track {m.Bound + 1}, settled {m.Settled}, settled before the third note {early}");
+        }
+        r.Expect(noColour == nt, $"without the colour: {noColour} of {nt} tracks found from their keys and intervals");
+
+        // 6. unrelated channels. (a) The user's own notes in FL's default colour (0, which is also track 1's channel): never settled, never played by a track for two notes running. (b) Random notes
+        //    in another track's colour: never settled (a note whose key that track has is played by its instrument provisionally: the colour is the import's). (c) A track's notes moved up 37
+        //    semitones: never taken.
+        var rng = new Random(5);
+        int grabbed = 0, settledAny = 0, provisional = 0, randomNotes = 0;
         for (int trial = 0; trial < 20; trial++)
         {
+            bool own = trial < 10;
             var m = new TrackMatcher();
-            bool everSettled = false, held = false;
             int run = 0;
             for (int i = 0; i < 16; i++)
             {
-                m.Feed(idx, rng.Next(-30, 30) * 100, rng.NextDouble() * 40, rng.NextDouble() * 40, -1);
-                everSettled |= m.Settled;
+                double beat = i * 0.5 + rng.NextDouble() * 0.4;
+                Play(m, idx, [new FlNote(-1, beat, rng.Next(30, 100), 90, own ? 0 : 1 + trial % (nt - 1))], 0, bpm, 0);
+                randomNotes++;
                 run = m.Bound >= 0 ? run + 1 : 0;
-                if (run == 1) brief++;
-                held |= run >= 2;                            // (a random note can fall on a track's note: taken for that note, let go at the next)
+                if (m.Bound >= 0) provisional++;
+                if (own && run >= 2) grabbed++;
+                if (m.Settled) settledAny++;
             }
-            if (everSettled || held) grabbed++;
         }
         for (int t = 0; t < nt; t++)
         {
             var m = new TrackMatcher();
-            foreach (var n in NotesOfTrack(idx, t).Take(10)) m.Feed(idx, (n.Key - 60 + 37) * 100, n.Beat, double.NaN, -1);      // (keys no track plays, at the track's own times)
+            Play(m, idx, NotesOfTrack(idx, t).Take(10).Select(n => n with { Key = n.Key + 37 }).ToList(), 0, bpm, 0);
             if (m.Bound >= 0 || m.Settled) grabbed++;
         }
-        r.Expect(grabbed == 0, $"unrelated channels: {grabbed} of {20 + nt} taken by a track for more than one note or settled ({brief} single random notes fell on a track's note and were let go at the next)");
-        // 4. the song moved by 16 bars (a pattern placed later than the file put it): found after 3 notes by a constant offset
-        int shifted = 0;
-        for (int t = 0; t < nt; t++)
+        r.Expect(grabbed == 0 && settledAny == 0, $"unrelated channels: {settledAny} settled on a track, {grabbed} held one for two notes running in FL's default colour or took a transposed track ({provisional} of {randomNotes} random notes played by the instrument of the track their colour names, provisionally)");
+
+        // 7. more than 15 tracks: the channels the transcription shares (RecTranscribe.ShareChannels) never put two tracks starting on the same key on one channel when another channel is free of
+        //    it, and with 23 tracks every track is found on its first note from its colour and key
         {
-            var m = new TrackMatcher();
-            foreach (var n in NotesOfTrack(idx, t).Skip(3).Take(6)) m.Feed(idx, (n.Key - 60) * 100, n.Beat + 64, double.NaN, -1);
-            if (m.Bound == t && m.How == 2 && m.Settled) shifted++;
-            else r.Expect(false, $"track {t + 1} 64 beats later: the matcher says {m.Bound + 1} (how {m.How}, settled {m.Settled})");
+            var rr = new Random(23);
+            var crafted = new List<(int Track, double Beat, int Key, int B, int B2)>();
+            var keysets = new List<(int, HashSet<int>)>();
+            for (int t = 0; t < 23; t++)
+            {
+                int first = 40 + rr.Next(0, 6) * 2;                     // (first keys collide on purpose: six choices for 23 tracks)
+                var ks = new HashSet<int>();
+                double b = rr.Next(0, 4) * 0.5;
+                for (int i = 0; i < 12; i++) { int key = i == 0 ? first : 36 + rr.Next(0, 36); crafted.Add((t, b, key, 0, 0)); ks.Add(key); b += 0.25 + rr.Next(0, 4) * 0.25; }
+                keysets.Add((first, ks));
+            }
+            var chans = RecTranscribe.ShareChannels(keysets);
+            int clash = 0, maxPer = 0;
+            for (int c = 0; c < 16; c++)
+            {
+                var on = Enumerable.Range(0, 23).Where(k => chans[k] == c).ToList();
+                maxPer = Math.Max(maxPer, on.Count);
+                for (int a = 0; a < on.Count; a++) for (int b = a + 1; b < on.Count; b++) if (keysets[on[a]].Item1 == keysets[on[b]].Item1) clash++;
+            }
+            var infos = Enumerable.Range(0, 23).Select(k => new TrackInfo { Index = k, Channel = chans[k] }).ToArray();
+            var big = new TrackIndex(infos, crafted);
+            int found = 0;
+            for (int t = 0; t < 23; t++)
+            {
+                var m = new TrackMatcher();
+                Play(m, big, NotesOfTrack(big, t).Take(1).ToList(), 0, 120, 0);
+                if (m.Bound == t && !m.Unsure) found++;
+            }
+            r.Expect(clash == 0 && maxPer <= 2 && found == 23 && !chans.Contains(9), $"23 tracks on 15 channels: at most {maxPer} per channel, {clash} channels with two tracks starting on the same key, channel 10 {(chans.Contains(9) ? "used" : "left out")}; {found} of 23 tracks found on their first note");
         }
-        r.Expect(shifted == nt, $"a song 64 beats later: {shifted} of {nt} tracks found by their offset and settled within 6 notes");
-        // 5. no song position from FL: the instance's own clock (any start), found the same way
-        int own = 0;
-        for (int t = 0; t < nt; t++)
+
+        // 8. a track's expression (keys, velocities, bends, controller 7 by beat): saved and read back the same (version 2, and version 1 without velocities read too); damage refused
         {
-            var m = new TrackMatcher();
-            double start = 7.3;
-            foreach (var n in NotesOfTrack(idx, t).Take(6)) m.Feed(idx, (n.Key - 60) * 100, double.NaN, n.Beat + start + (rng.NextDouble() - 0.5) * 0.03, -1);
-            if (m.Bound == t && m.Settled) own++;
-        }
-        r.Expect(own == nt, $"no song position: {own} of {nt} tracks found from the instance's own clock");
-        // 6. unison: two crafted tracks play the same 4 notes, then part; and the note's colour (its MIDI channel) settling it at once
-        var a = new List<(int, double, int, int, int)>();
-        for (int i = 0; i < 8; i++) { a.Add((0, i, 60 + (i % 3), 0, 0)); a.Add((1, i, 60 + (i % 3) + (i >= 4 ? 5 : 0), 0, 0)); }
-        var uni = new TrackIndex([new TrackInfo { Index = 0, Channel = 0 }, new TrackInfo { Index = 1, Channel = 1 }], a);
-        var mu = new TrackMatcher();
-        bool unsureAtFirst = false;
-        for (int i = 0; i < 8; i++)
-        {
-            mu.Feed(uni, (60 + (i % 3) + (i >= 4 ? 5 : 0) - 60) * 100, i, double.NaN, -1);
-            if (i == 0) unsureAtFirst = mu.Unsure && mu.Bound == 0 && !mu.Settled;
-        }
-        r.Expect(unsureAtFirst && mu.Bound == 1 && mu.Switches == 1 && mu.Settled, $"unison: unsure on the first note (plays track 1 meanwhile: {unsureAtFirst}), then track {mu.Bound + 1} after they parted ({mu.Switches} switch, settled {mu.Settled})");
-        var mc = new TrackMatcher();
-        mc.Feed(uni, 0, 0, double.NaN, 1);
-        r.Expect(mc.Bound == 1, $"unison with the note's colour = track 2's MIDI channel: track {mc.Bound + 1} at once");
-        // 7. a note added by the user before the choice is sure lets the choice go; the next notes of the track bring it back
-        {
-            var m = new TrackMatcher();
-            var notes = NotesOfTrack(idx, 2);
-            m.Feed(idx, (notes[0].Key - 60) * 100, notes[0].Beat, double.NaN, -1);
-            bool first = m.Bound == 2;
-            m.Feed(idx, (notes[0].Key - 60 + 41) * 100, notes[0].Beat + 0.37, double.NaN, -1);
-            bool letGo = m.Bound == -1;
-            for (int i = 1; i < 5; i++) m.Feed(idx, (notes[i].Key - 60) * 100, notes[i].Beat, double.NaN, -1);
-            r.Expect(first && letGo && m.Bound == 2 && m.Settled, $"an added note: bound {first}, let go {letGo}, back on track {m.Bound + 1} (settled {m.Settled})");
-        }
-        // 8. a track's expression (the recording's keys, bends and controller 7 by beat): saved and read back the same; a damaged one refused; every note's key found at its time
-        {
-            int same = 0, keys = 0, keysOk = 0, refused = 0;
+            int same = 0, refused = 0, v1 = 0;
             for (int t = 0; t < nt; t++)
             {
-                var ex = TrackExpression.Of(tr.Tracks[t]);
-                var back = TrackExpression.FromBytes(ex.ToBytes());
-                if (back != null && back.ToBytes().AsSpan().SequenceEqual(ex.ToBytes()) && back.Range == ex.Range) same++;
+                var ex = exs[t];
                 var bytes = ex.ToBytes();
+                var back = TrackExpression.FromBytes(bytes);
+                if (back != null && back.ToBytes().AsSpan().SequenceEqual(bytes) && back.NoteVel.SequenceEqual(ex.NoteVel) && BitConverter.ToUInt16(bytes, 0) == 2) same++;
+                var old = new TrackExpression(ex.Range, ex.NoteTick, ex.NoteKey, [], ex.BendTick, ex.Bend, ex.CcTick, ex.Cc);
+                var oldBack = TrackExpression.FromBytes(old.ToBytes());
+                if (oldBack != null && BitConverter.ToUInt16(old.ToBytes(), 0) == 1 && oldBack.NoteVel.Length == 0 && oldBack.NoteTick.SequenceEqual(ex.NoteTick)) v1++;
                 for (int d = 0; d < 12; d++)
                 {
                     var bad = (byte[])bytes.Clone();
@@ -153,26 +274,22 @@ internal static class MatchChecks
                     var x = TrackExpression.FromBytes(d % 2 == 0 ? bad : bad.AsSpan(0, bad.Length - 1 - rng.Next(0, 4)));
                     if (x == null || !x.ToBytes().AsSpan().SequenceEqual(bytes)) refused++;
                 }
-                for (int i = 0; i < ex.NoteTick.Length; i++)
-                {
-                    keys++;
-                    double beat = ex.NoteTick[i] / 960.0;
-                    if (ex.KeyAt(beat, ex.PitchCents(ex.NoteKey[i], beat), TrackIndex.Tolerance) is int k && (k == ex.NoteKey[i] || ex.NoteTick.Where((tk, j) => j != i && Math.Abs(tk - ex.NoteTick[i]) <= TrackIndex.Tolerance * 960 && ex.NoteKey[j] == k).Any())) keysOk++;
-                }
             }
-            r.Expect(same == nt && refused == nt * 12 && keysOk == keys, $"expressions: {same} of {nt} read back the same, {refused} of {nt * 12} damaged copies not taken for the original, {keysOk} of {keys} notes' keys found at their time");
+            r.Expect(same == nt && v1 == nt && refused == nt * 12, $"expressions: {same} of {nt} read back the same (version 2, with velocities), {v1} of {nt} version 1 read, {refused} of {nt * 12} damaged copies not taken for the original");
         }
+
         // 9. nothing allocated per note
         {
             var m = new TrackMatcher();
             var notes = NotesOfTrack(idx, 1);
-            m.Feed(idx, 0, 0, 0, -1);
+            Play(m, idx, notes, 0, bpm, 0);
             m.Reset(null);
+            double bps = bpm / 60.0 / Rate;
             long a0 = GC.GetAllocatedBytesForCurrentThread();
-            for (int pass = 0; pass < 50; pass++) { m.Reset(idx); foreach (var n in notes) m.Feed(idx, (n.Key - 60) * 100, double.NaN, n.Beat + 3, -1); foreach (var n in notes) m.Feed(idx, (n.Key - 60) * 100, n.Beat, double.NaN, -1); }
+            for (int pass = 0; pass < 50; pass++) { m.Reset(idx); for (int i = 0; i < notes.Count; i++) m.Feed(idx, FlNotes.Pitch(notes[i].Key, 0), notes[i].Colour, notes[i].Velocity, (long)(notes[i].Beat / bps), bps, 64 * bps, double.NaN, notes[i].Beat); }
             long a1 = GC.GetAllocatedBytesForCurrentThread();
-            r.Expect(a1 - a0 == 0, $"{a1 - a0:N0} bytes allocated by {50 * notes.Count * 2:N0} notes fed to the matcher");
+            r.Expect(a1 - a0 == 0, $"{a1 - a0:N0} bytes allocated by {50 * notes.Count:N0} notes fed to the matcher");
         }
-        r.Note($"{nt} tracks, {idx.Count} notes: aligned {right}/{cases} (on the first note {boundFirst} of the {uniqueFirst} unambiguous ones), from the middle {mid}/{nt}, shifted by 16 bars {shifted}/{nt}, own clock {own}/{nt}, unrelated taken {grabbed}/{20 + nt}, unison resolved, colour, an added note");
+        r.Note($"{nt} tracks, {idx.Count} notes, fed as FL 2026 hands them (pitch from the channel's base, colour = MIDI channel - 1, no song position): from the start {tracksOk}/{cases} on the first note and {notesRight}/{notesAll} notes identified; from the middle {midRight}/{midAll}; a loop {loopRight}/{loopAll}; edits; no colour {noColour}/{nt}; unrelated settled {settledAny}, held {grabbed}; 23 tracks on shared channels");
     }
 }

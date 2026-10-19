@@ -36,36 +36,81 @@ public sealed unsafe partial class Bn2Plugin
     private volatile string? trackNote;          // what the window says about this instance's track (a settle refused, an engine missing)
     private long ownSamples, engineWaits;
     private int notesSeen, paramLogged;
-    // the track's own pitch bends and volume (by song position) instead of FL's: see TrackExpression
+    // the track's own pitch bends and volume instead of FL's, each recorded note's from its own onset: see TrackExpression
     private volatile TrackExpression? expression;
     private volatile bool exprOn;
-    private double exprOffset, exprBlockBeat = double.NaN, exprBeatsPerSample;
-    private bool exprOwnClock;
+    private double exprBlockBeat = double.NaN, exprBeatsPerSample;
+    private long exprBlockStart;
     private int renderLength;
 
     /// <summary>The window's "bends and volume from the recording" for this channel (UI thread).</summary>
     internal void SetTrackExpression(bool on) { if (expression != null) exprOn = on; }
     internal bool TrackExpressionOn => expression != null && exprOn;
 
-    /// <summary>The track's beat now (the start of the block being rendered), from FL's song position or the instance's own clock as the track was found; NaN when there is none.</summary>
-    private double TrackBeatNow()
+    // ---- FL's conventions (Record/FlNotes.cs) ----
+
+    /// <summary>The channel's base key: FL hands a voice's pitch in cents above it. C5 (60) on a channel made in FL, MIDI note 0 on an imported channel FL replaced by BrokenNes2 (reload); found
+    /// from the channel's track (TrackMatcher) and kept with it (TRK1).</summary>
+    private volatile int pitchBase = FlNotes.BaseC5;
+    internal int PitchBase => pitchBase;
+
+    /// <summary>FL's pitch of a voice plus the instance's Coarse and Fine, as cents from C5 (what every engine takes), at the channel's base: the ONE conversion every sound path uses.</summary>
+    private double FlCents(float flPitch) => FlNotes.ToC5Cents(flPitch, pitchBase) + Get(P.Coarse) * 100 + Get(P.Fine);
+
+    /// <summary>What the channel follows once it knows its track (settled, picked by hand, named, a project's TRK1): that track's notes in an index, so each FL note is matched to its recorded
+    /// note. Made off the audio thread; the audio thread locks its matcher on it at the next note.</summary>
+    internal sealed record FollowTarget(TrackIndex Index, int Track, int Base);
+    private volatile FollowTarget? follow;
+    private FollowTarget? followLocked;
+
+    // FL's transport: the instance's own clock at FL's Play (the song's start, when FL plays from it), and whether it plays (FPD_SetPlaying / FPD_SongPosChanged, any thread)
+    private long transportStart = -1;
+    private volatile bool transportPlaying;
+    private int transportMoved;
+
+    private void TransportNote(bool playing)
     {
-        double t = exprOwnClock
-            ? (ownSamples - renderLength) / (double)Math.Max(1, EmulatorHub.HostRate) * EmulatorHub.FlTempo / 60.0
-            : SongBeats(0);
-        return t - exprOffset;
+        if (playing && !transportPlaying) Volatile.Write(ref transportStart, Volatile.Read(ref ownSamples));
+        transportPlaying = playing;
+        Volatile.Write(ref transportMoved, 1);
     }
 
-    /// <summary>A note of a channel that plays a track's expression: its key is the track's note at that time (FL's own pitch may hold an imported bend), its velocity FL's at the key-on.</summary>
-    private void ExpressionNoteOn(Voice v)
+    private void TransportMoved() => Volatile.Write(ref transportMoved, 1);
+
+    /// <summary>A linked channel waiting for its first note (silent in ROM mode: it does not play the game's channel).</summary>
+    internal bool WaitingForTrack => link != LinkNone && bindState == 0 && binding == null && TrackOffers.Current != null;
+
+    /// <summary>The block's clock for the expression (the audio thread, at the start of a block's render).</summary>
+    private void BeginExpressionBlock()
+    {
+        exprBeatsPerSample = EmulatorHub.FlTempo / 60.0 / Math.Max(1, EmulatorHub.HostRate);
+        exprBlockStart = ownSamples - renderLength;
+        exprBlockBeat = RecMutants.On(RecMutants.ExpressionBySongPosition) && expression != null && exprOn ? SongPosition(out _, out _) : double.NaN;     // (the deliberate bug: by FL's song position, as r13 did)
+    }
+
+    /// <summary>Where voice <paramref name="v"/> is in its recorded note at <paramref name="offset"/> samples into the block: the note's start beat plus the time since the voice's onset, at FL's tempo.
+    /// NaN when the voice plays FL's own pitch and volume (not a recorded note, or the switch is off).</summary>
+    private double ExpressionBeat(Voice v, int offset)
+    {
+        if (v.TrackKey < 0 || expression == null || !exprOn) return double.NaN;
+        if (RecMutants.On(RecMutants.ExpressionBySongPosition)) return exprBlockBeat + offset * exprBeatsPerSample;
+        long since = exprBlockStart + offset - v.Onset;
+        return v.ExprBeat0 + Math.Max(0, since) * exprBeatsPerSample;
+    }
+
+    /// <summary>A note of a channel that plays a track: the recorded note FL started (<paramref name="note"/> in <paramref name="idx"/>, -1 none) gives the voice its key, its velocity and its
+    /// expression from its own onset. A note the recording does not have plays as FL gives it.</summary>
+    private void ExpressionNoteOn(Voice v, TrackIndex idx, int note)
     {
         v.TrackKey = -1;
+        v.RecNote = note;
         var ex = expression;
-        if (ex == null || !exprOn || RecMutants.On(RecMutants.ExpressionIgnored)) return;
-        double beat = TrackBeatNow();
-        if (double.IsNaN(beat)) return;
-        v.TrackKey = ex.KeyAt(beat, v.Params->InitLevels.Pitch, TrackIndex.Tolerance);
-        v.TrackVel = v.Params->InitLevels.Vol;
+        if (ex == null || !exprOn || note < 0 || RecMutants.On(RecMutants.ExpressionIgnored)) return;
+        v.TrackKey = idx.Key[note];
+        v.ExprBeat0 = idx.Beat[note];
+        int vel = idx.Velocity.Length == idx.Count ? idx.Velocity[note] : 0;
+        v.TrackVel = vel > 0 && !RecMutants.On(RecMutants.FlVelocityForExpression) ? FlNotes.RecordedLevel(vel) : v.Params->InitLevels.Vol;
+        if (RecMutants.On(RecMutants.ExpressionBySongPosition) && double.IsNaN(SongPosition(out _, out _))) v.TrackKey = -1;      // (the deliberate bug: no song position, no expression: what FL got from r13)
     }
     internal readonly int InstanceNo = HostLog.NextInstance();
 
@@ -130,42 +175,90 @@ public sealed unsafe partial class Bn2Plugin
 
     // ---- the audio thread ----
 
-    /// <summary>FL's song position of the block being mixed, in beats (NaN: FL gave none).</summary>
-    private double SongBeats(int flags)
+    /// <summary>FL's song position of the block being mixed, in beats; NaN when FL gives none. FHD_GetMixingTime's TFPTime "is filled with an optional offset in samples" (fp_plugclass.h): the
+    /// call is made with offset 0 and again with an offset of one second, and the answer is a position only when the two are a second of beats apart (FL at its tempo). Until reload the plugin
+    /// passed NaN as the offset: FL 2026 answered NaN to every note (the host log of 2026-10-18). <paramref name="raw0"/> / <paramref name="raw1"/>: what FL answered, for the log.</summary>
+    private double SongPosition(out double raw0, out double raw1)
     {
-        TFPTime t; t.T = double.NaN; t.T2 = 0;
-        Host.Dispatcher(HostTag, Fhd.GetMixingTime, Gt.Beats | flags, (nint)(&t));
-        return t.T;
+        int rate = Math.Max(1, EmulatorHub.HostRate);
+        TFPTime a; a.T = RecMutants.On(RecMutants.MixingTimeNaNOffset) ? double.NaN : 0; a.T2 = 0;
+        Host.Dispatcher(HostTag, Fhd.GetMixingTime, Gt.Beats, (nint)(&a));
+        TFPTime b; b.T = RecMutants.On(RecMutants.MixingTimeNaNOffset) ? double.NaN : rate; b.T2 = 0;
+        Host.Dispatcher(HostTag, Fhd.GetMixingTime, Gt.Beats, (nint)(&b));
+        raw0 = a.T; raw1 = b.T;
+        double second = EmulatorHub.FlTempo / 60.0;
+        return double.IsFinite(a.T) && double.IsFinite(b.T) && Math.Abs(b.T - a.T - second) <= 0.02 * second ? a.T : double.NaN;
     }
 
-    /// <summary>A note FL starts (TriggerVoice): the linked instance weighs it against the tracks on offer and, when a track is named, plays it from this note. Allocation-free.</summary>
-    private void MatchNote(Voice v)
+    /// <summary>A note FL starts (TriggerVoice, the audio thread, before it sounds). A linked instance weighs it against the tracks on offer and, when a track is named, plays it from this note; one
+    /// that knows its track finds which recorded note this is. Both then play that note's own key, velocity and expression. The host log gets the note as FL gave it and what was made of it.
+    /// Allocation-free.</summary>
+    private void OnNote(Voice v)
     {
         notesSeen++;
         bool log = HostLog.On && notesSeen <= 32;
         var snap = TrackOffers.Current;
-        bool eligible = snap != null && bindState != 2 && (link != LinkNone || bindState == 1) && binding == null
+        bool matching = snap != null && bindState != 2 && (link != LinkNone || bindState == 1) && binding == null
             && !(RecMutants.On(RecMutants.OfferIgnoresLateInstances) && InstanceNo <= TrackOffers.OfferedAfterInstance);    // (the deliberate bug: instances made before the offer are ignored)
-        if (!eligible && !log) return;
-        double pos = SongBeats(0);
-        double local = log ? SongBeats(Gt.LocalTime) : double.NaN;
-        int color = Host.VoiceProcessEvent(v.HostTag, Fpv.GetColor, 0, 0);
+        var fol = follow;
+        bool following = !matching && fol != null && expression != null;
+        if (!matching && !following && !log) return;
+        float pitch = v.Params->InitLevels.Pitch;
+        int colour = Host.VoiceProcessEvent(v.HostTag, Fpv.GetColor, 0, 0);
+        float flVel = BitConverter.Int32BitsToSingle(Host.VoiceProcessEvent(v.HostTag, Fpv.GetVelocity, 0, 0));
+        double bps = EmulatorHub.FlTempo / 60.0 / Math.Max(1, EmulatorHub.HostRate);
+        double pos = SongPosition(out double raw0, out double raw1);
+        long ts = Volatile.Read(ref transportStart);
+        double tb = transportPlaying && ts >= 0 ? (ownSamples - ts) * bps : double.NaN;
+        if (Interlocked.Exchange(ref transportMoved, 0) != 0) matcher.Restart();          // (FL's Play, Stop or a jump: the next note is matched afresh)
         if (log)
         {
             int len = Host.VoiceProcessEvent(v.HostTag, Fpv.GetLength, 0, 0);
-            float vel = BitConverter.Int32BitsToSingle(Host.VoiceProcessEvent(v.HostTag, Fpv.GetVelocity, 0, 0));
-            HostLog.Add(HostLog.KindNote, InstanceNo, notesSeen, (long)color << 32 | (uint)len, (long)(vel * 1000), v.Params->InitLevels.Pitch, pos, local);
+            HostLog.Add(HostLog.KindNote, InstanceNo, notesSeen, (long)colour << 32 | (uint)len, (long)(flVel * 1000), pitch, pos, tb);
+            if (notesSeen <= 4) HostLog.Add(HostLog.KindTime, InstanceNo, notesSeen, 0, 0, raw0, raw1, EmulatorHub.FlTempo);
         }
-        if (!eligible) return;
-        double own = ownSamples / (double)Math.Max(1, EmulatorHub.HostRate) * EmulatorHub.FlTempo / 60.0;
-        int before = matcher.Bound;
-        float flVel = BitConverter.Int32BitsToSingle(Host.VoiceProcessEvent(v.HostTag, Fpv.GetVelocity, 0, 0));          // (FL's velocity: tells apart tracks that play the same notes, record-nes)
-        matcher.Feed(snap!.Index, v.Params->InitLevels.Pitch, pos, own, color, flVel > 0 ? flVel * 127.0 : -1);
-        if (RecMutants.On(RecMutants.BindAfterFirstNote) && notesSeen == 1) { pendingLateBind = matcher.Bound; return; }      // (the self-test's deliberate bug: the first note is played before the track is taken)
-        if (matcher.Bound != before || (matcher.Bound >= 0 && boundIndex != matcher.Bound)) { if (matcher.Bound < 0) Unbind(); else Bind(snap, matcher.Bound); }
-        if (matcher.Bound >= 0) { exprOffset = matcher.Offset; exprOwnClock = matcher.OwnClock; ExpressionNoteOn(v); }
-        if (matcher.Settled && bindState == 1) Volatile.Write(ref settleWanted, 1);
-        if (log) HostLog.Add(HostLog.KindMatch, InstanceNo, notesSeen, (uint)(matcher.Bound + 1) | (matcher.Settled ? 1L << 16 : 0) | (matcher.Unsure ? 1L << 17 : 0) | (long)matcher.How << 18, matcher.Candidates);
+        if (!matching && !following) return;
+        int midiVel = FlNotes.MidiVelocity(flVel);
+        if (matching)
+        {
+            var idx = snap!.Index;
+            int before = matcher.Bound;
+            matcher.Feed(idx, pitch, colour, midiVel, ownSamples, bps, renderLength * bps, pos, tb);
+            if (RecMutants.On(RecMutants.BindAfterFirstNote) && notesSeen == 1) { pendingLateBind = matcher.Bound; return; }      // (the self-test's deliberate bug: the first note is played before the track is taken)
+            if (matcher.Bound != before || (matcher.Bound >= 0 && boundIndex != matcher.Bound)) { if (matcher.Bound < 0) Unbind(); else Bind(snap, matcher.Bound); }
+            if (matcher.Bound >= 0)
+            {
+                pitchBase = matcher.Base;
+                ExpressionNoteOn(v, idx, matcher.NoteAt);
+            }
+            if (matcher.Settled && bindState == 1) Volatile.Write(ref settleWanted, 1);
+        }
+        else
+        {
+            // the track is known (settled, by hand, by name, a project): which of its notes this is
+            if (!ReferenceEquals(fol, followLocked)) { matcher.Lock(fol!.Index, fol.Track, fol.Base); followLocked = fol; }
+            matcher.Feed(fol!.Index, pitch, colour, midiVel, ownSamples, bps, renderLength * bps, pos, tb);
+            if (matcher.Base >= 0 && (matcher.BaseSure || fol.Base < 0)) pitchBase = matcher.Base;
+            ExpressionNoteOn(v, fol.Index, matcher.NoteAt);
+        }
+        LogFollow(v, matching ? snap!.Index : fol!.Index);
+        if (log)
+        {
+            var idx = matching ? snap!.Index : fol!.Index;
+            int inTrack = matcher.NoteAt >= 0 && matcher.Bound >= 0 ? NoteInTrack(idx, matcher.Bound, matcher.NoteAt) : -1;
+            HostLog.Add(HostLog.KindMatch, InstanceNo, notesSeen,
+                (uint)(matcher.Bound + 1) | (matcher.Settled ? 1L << 16 : 0) | (matcher.Unsure ? 1L << 17 : 0) | (long)matcher.How << 18 | (matcher.Aligned ? 1L << 22 : 0) | (matcher.NoteSure ? 1L << 23 : 0) | (matcher.ByColour ? 1L << 24 : 0) | (matcher.BaseSure ? 1L << 25 : 0),
+                matcher.Candidates, matcher.Base, inTrack, v.TrackKey);
+        }
+    }
+
+    /// <summary>The number (0 up) of note <paramref name="note"/> among its track's notes, for the log (a binary search; allocation-free).</summary>
+    private static int NoteInTrack(TrackIndex idx, int t, int note)
+    {
+        if ((uint)t >= (uint)idx.Tracks.Length) return -1;
+        for (int p = idx.TrackLowerBound(t, idx.Beat[note] - 1e-9); p < idx.TrackFirst[t + 1] && idx.TBeat[p] <= idx.Beat[note] + 1e-9; p++)
+            if (idx.TNote[p] == note) return p - idx.TrackFirst[t];
+        return -1;
     }
 
     private int pendingLateBind = -1;
@@ -175,6 +268,7 @@ public sealed unsafe partial class Bn2Plugin
     {
         var slot = snap.Slots[t];
         if (slot.Preset == null) { trackNote = $"track {t + 1} has no preset ({slot.Problem}): it is not played"; return; }
+        boundTrackIndex = snap.Index;
         CountOn(slot);
         DropSampler();                                                   // (the voices let go of the last engine; nothing allocated)
         var eng = Interlocked.Exchange(ref slot.Ready, null);
@@ -206,6 +300,8 @@ public sealed unsafe partial class Bn2Plugin
         CountOn(null);
         binding = null;
         expression = null;
+        follow = null;
+        pitchBase = FlNotes.BaseC5;
         boundSlot = null; boundIndex = -1;
         if (bindState == 1) preset = null;
         bindState = 0;
@@ -216,9 +312,12 @@ public sealed unsafe partial class Bn2Plugin
         TrackOffers.Changed();
         CountOn(null);
         expression = null;
+        pitchBase = FlNotes.BaseC5;                                      // (the base came with the track that was let go)
         boundSlot = null; boundIndex = -1;
         if (bindState == 1) { bindState = 0; preset = null; DropSampler(); }
     }
+
+    private TrackIndex? boundTrackIndex;
 
     private TrackSlot? countedSlot;
 
@@ -270,6 +369,8 @@ public sealed unsafe partial class Bn2Plugin
         Volatile.Write(ref settleWanted, 0);
         var slot = boundSlot;
         if (slot == null) return;
+        // from now its notes are followed on this track only (the audio thread locks its matcher on it at the next note), at the base its notes showed
+        if (boundTrackIndex != null && boundIndex >= 0) follow = new FollowTarget(boundTrackIndex, boundIndex, matcher.BaseSure ? matcher.Base : -1);
         if (Settle(slot, TrackBinding.ByNotes) is { } why) { trackNote = $"plays {slot.Info.Name}, but stays where FL put it: {why}"; HostLog.Text(InstanceNo, "not settled: " + why); }
     }
 
@@ -292,7 +393,7 @@ public sealed unsafe partial class Bn2Plugin
         pristine = false;
         trackNote = null;
         if (how == TrackBinding.ByNotes) bindState = 2;
-        HostLog.Text(InstanceNo, $"settled on emulator #{id}: plays {binding.Describe()}");
+        HostLog.Text(InstanceNo, $"settled on emulator #{id} ({(nes ? "PRE-NES" : "PRE-SNES")}, the track's preset \"{slot.Preset?.Data.Name}\"): plays {binding.Describe()}; FL's pitch is read from {BaseWords(pitchBase)}");
         TrackOffers.Changed();
         return null;
     }
@@ -308,9 +409,11 @@ public sealed unsafe partial class Bn2Plugin
         MarkConfigured(how == TrackBinding.ByName ? "its channel's name names a track" : "a track was picked by hand");
         if (AdoptPreset(slot.Preset.File, null, out _) is { } why) return why;          // (the standard path: its engine is prepared here, on the UI thread)
         CountOn(slot);
-        exprOffset = 0; exprOwnClock = false;
         expression = slot.Expression;
         exprOn = TrackOffers.ExpressionFromRecording;
+        // its notes are followed on this track (the base is found from them: a channel picked by hand may be an imported one or one made in FL)
+        if (TrackOffers.Current is { } snap && Array.IndexOf(snap.Slots, slot) is int g and >= 0) follow = new FollowTarget(snap.Index, g, -1);
+        else follow = new FollowTarget(TrackIndex.FromExpression(slot.Expression, slot.Info.Channel), 0, -1);
         if (Settle(slot, how) is { } why2) { binding = new TrackBinding(slot.Held.Session.Id, slot.Held.Session.Name, slot.Info.Index, slot.Info.Name, how); TrackOffers.Changed(); return "it holds the track's preset, but " + why2; }
         return null;
     }
@@ -336,9 +439,10 @@ public sealed unsafe partial class Bn2Plugin
 
     internal const uint TrackTag = 0x314B5254;                   // "TRK1"
 
-    // u16 version (2) | u16 flags (bit 0: bends and volume from the recording) | u64 the recording's session id | i32 track | u8 how | u16 + UTF-8 name | u16 + UTF-8 recording
-    // | i32 + the track's expression (TrackExpression.ToBytes; 0 bytes: none) | u32 CRC-32 of everything before it. Version 1 (no flags meaning, no expression) is read too.
-    private const int TrackVersion = 2;
+    // u16 version (3) | u16 flags (bit 0: bends and volume from the recording) | u64 the recording's session id | i32 track | u8 how | u16 + UTF-8 name | u16 + UTF-8 recording
+    // | i32 + the track's expression (TrackExpression.ToBytes; 0 bytes: none) | i16 the channel's base key (reload: -1 not known) | u32 CRC-32 of everything before it.
+    // Versions 1 (no flags meaning, no expression) and 2 (no base) are read too; an older DLL drops a version 3 (the preset still plays).
+    private const int TrackVersion = 3;
 
     private byte[]? TrackSectionBytes()
     {
@@ -347,7 +451,7 @@ public sealed unsafe partial class Bn2Plugin
         var name = Encoding.UTF8.GetBytes(b.Name.Length > 200 ? b.Name[..200] : b.Name);
         var rec = Encoding.UTF8.GetBytes(b.Recording.Length > 200 ? b.Recording[..200] : b.Recording);
         var ex = expression?.ToBytes() ?? [];
-        var s = new byte[2 + 2 + 8 + 4 + 1 + 2 + name.Length + 2 + rec.Length + 4 + ex.Length + 4];
+        var s = new byte[2 + 2 + 8 + 4 + 1 + 2 + name.Length + 2 + rec.Length + 4 + ex.Length + 2 + 4];
         int o = 0;
         BinaryPrimitives.WriteUInt16LittleEndian(s.AsSpan(o), TrackVersion); o += 2;
         BinaryPrimitives.WriteUInt16LittleEndian(s.AsSpan(o), (ushort)(exprOn ? 1 : 0)); o += 2;
@@ -357,57 +461,66 @@ public sealed unsafe partial class Bn2Plugin
         BinaryPrimitives.WriteUInt16LittleEndian(s.AsSpan(o), (ushort)name.Length); o += 2; name.CopyTo(s, o); o += name.Length;
         BinaryPrimitives.WriteUInt16LittleEndian(s.AsSpan(o), (ushort)rec.Length); o += 2; rec.CopyTo(s, o); o += rec.Length;
         BinaryPrimitives.WriteInt32LittleEndian(s.AsSpan(o), ex.Length); o += 4; ex.CopyTo(s, o); o += ex.Length;
+        int baseKey = follow is { } f && f.Base >= 0 ? f.Base : matcher.BaseSure && bindState != 0 ? matcher.Base : binding != null ? pitchBase : -1;
+        BinaryPrimitives.WriteInt16LittleEndian(s.AsSpan(o), (short)baseKey); o += 2;
         BinaryPrimitives.WriteUInt32LittleEndian(s.AsSpan(o), Music.Crc32.Of(s.AsSpan(0, o)));
         return s;
     }
 
-    /// <summary>A project's TRK1: which track this instance played, its expression and whether it plays it. Binding null when it cannot be read (a newer or damaged section is dropped: the preset
-    /// it holds still plays).</summary>
-    internal static (TrackBinding? Binding, TrackExpression? Expression, bool On) ReadTrackSection(ReadOnlySpan<byte> s)
+    /// <summary>A project's TRK1: which track this instance played, its expression, whether it plays it, and the channel's base key (-1 not known). Binding null when it cannot be read (a newer or
+    /// damaged section is dropped: the preset it holds still plays).</summary>
+    internal static (TrackBinding? Binding, TrackExpression? Expression, bool On, int Base) ReadTrackSection(ReadOnlySpan<byte> s)
     {
-        if (s.Length < 25) return (null, null, false);
+        if (s.Length < 25) return (null, null, false, -1);
         int version = BinaryPrimitives.ReadUInt16LittleEndian(s);
-        if (version is < 1 or > TrackVersion) return (null, null, false);
-        if (BinaryPrimitives.ReadUInt32LittleEndian(s[^4..]) != Music.Crc32.Of(s[..^4])) return (null, null, false);
+        if (version is < 1 or > TrackVersion) return (null, null, false, -1);
+        if (BinaryPrimitives.ReadUInt32LittleEndian(s[^4..]) != Music.Crc32.Of(s[..^4])) return (null, null, false, -1);
         int flags = BinaryPrimitives.ReadUInt16LittleEndian(s[2..]);
         int o = 4;
         ulong id = BinaryPrimitives.ReadUInt64LittleEndian(s[o..]); o += 8;
         int track = BinaryPrimitives.ReadInt32LittleEndian(s[o..]); o += 4;
         int how = s[o++];
         int nl = BinaryPrimitives.ReadUInt16LittleEndian(s[o..]); o += 2;
-        if (o + nl + 2 > s.Length - 4) return (null, null, false);
+        if (o + nl + 2 > s.Length - 4) return (null, null, false, -1);
         string name = Encoding.UTF8.GetString(s.Slice(o, nl)); o += nl;
         int rl = BinaryPrimitives.ReadUInt16LittleEndian(s[o..]); o += 2;
-        if (o + rl > s.Length - 4) return (null, null, false);
+        if (o + rl > s.Length - 4) return (null, null, false, -1);
         string rec = Encoding.UTF8.GetString(s.Slice(o, rl)); o += rl;
         TrackExpression? ex = null;
+        int baseKey = -1;
         if (version >= 2)
         {
-            if (o + 4 > s.Length - 4) return (null, null, false);
+            if (o + 4 > s.Length - 4) return (null, null, false, -1);
             int el = BinaryPrimitives.ReadInt32LittleEndian(s[o..]); o += 4;
-            if (el < 0 || o + el != s.Length - 4) return (null, null, false);
+            int tail = version >= 3 ? 2 : 0;
+            if (el < 0 || o + el + tail != s.Length - 4) return (null, null, false, -1);
             if (el > 0) ex = TrackExpression.FromBytes(s.Slice(o, el));
+            o += el;
+            if (version >= 3) { baseKey = BinaryPrimitives.ReadInt16LittleEndian(s[o..]); if (baseKey is < -1 or > 127) return (null, null, false, -1); }
         }
-        else if (o != s.Length - 4) return (null, null, false);
-        if (how is not (TrackBinding.ByNotes or TrackBinding.ByHand or TrackBinding.ByName) || track < 0) return (null, null, false);
-        return (new TrackBinding(id, rec, track, name, how), ex, (flags & 1) != 0);
+        else if (o != s.Length - 4) return (null, null, false, -1);
+        if (how is not (TrackBinding.ByNotes or TrackBinding.ByHand or TrackBinding.ByName) || track < 0) return (null, null, false, -1);
+        return (new TrackBinding(id, rec, track, name, how), ex, (flags & 1) != 0, baseKey);
     }
 
-    /// <summary>After a restore with TRK1: the binding is shown again, the expression played as saved; an instance whose emulator is not in preset mode (it was never settled) plays its preset
-    /// on the bound path.</summary>
-    private void RestoreTrack((TrackBinding? Binding, TrackExpression? Expression, bool On) t)
+    /// <summary>After a restore with TRK1: the binding is shown again, the expression played as saved, the channel's notes followed on the track (from the expression alone: the recording need not
+    /// be on offer) at the base saved; an instance whose emulator is not in preset mode (it was never settled) plays its preset on the bound path.</summary>
+    private void RestoreTrack((TrackBinding? Binding, TrackExpression? Expression, bool On, int Base) t)
     {
         if (t.Binding == null) return;
         binding = t.Binding;
         expression = t.Expression;
         exprOn = t.On && t.Expression != null;
-        exprOffset = 0; exprOwnClock = false;
+        if (t.Base >= 0) pitchBase = t.Base;
+        follow = t.Expression != null ? new FollowTarget(TrackIndex.FromExpression(t.Expression, 0), 0, t.Base) : null;
         configured = true;
         pristine = false;
         link = LinkNone;
         if (preset != null && Emulator?.PresetMode != true) bindState = 1;
         TrackOffers.Changed();
     }
+
+    private static string BaseWords(int b) => b switch { FlNotes.BaseImported => "MIDI note 0 (an imported channel)", FlNotes.BaseC5 => "C5 (a channel made in FL)", < 0 => "a base not known yet", _ => $"MIDI note {b}" };
 
     // ---- test hooks 700-719 ----
 

@@ -140,7 +140,7 @@ public sealed unsafe partial class Bn2Plugin
             {
                 if (owner.Fresh) nesProbe?.Mark(owner.Handle);
                 ref var fl = ref owner.Params->FinalLevels;
-                player.Update(true, owner.Fresh, fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine));
+                player.Update(true, owner.Fresh, FlCents(fl.Pitch));
                 owner.Fresh = false;
                 gain = (float)Math.Clamp(fl.Vol, 0.0, 1.0) * master;
             }

@@ -35,8 +35,11 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         public bool Silenced;         // it lost its slot to a newer note: silent until released
         public float PitchMin, PitchMax;   // how far FL moved its pitch while it sounded (the host log: did FL keep the MIDI file's bends?)
         public int Note;              // its number among the instance's notes
-        public int TrackKey = -1;     // a track channel playing the recording's expression: the track's key for this note (-1: FL's own pitch and volume)
-        public float TrackVel;        // FL's velocity at its key-on (0..1)
+        public int TrackKey = -1;     // a track channel playing the recording's expression: the recorded note's key (-1: FL's own pitch and volume)
+        public float TrackVel;        // the recorded note's velocity as a level (velocity / 127, as the transcription made every level), or FL's when the note is not in the recording
+        public double ExprBeat0;      // the recorded note's start (beats in its track): its bends and controller 7 are played from here, from the voice's own onset (reload: no song position needed)
+        public long Onset;            // the instance's own clock (samples rendered) when FL started the voice
+        public int RecNote = -1;      // which note of the recording it is (TrackIndex), -1 none: the tests and the log read it
     }
 
     private readonly List<Voice> voices = new(32);
@@ -163,7 +166,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         }
         // FL's transport started or stopped: the Test MIDI export's song follows it when asked to (Emulator.Song.cs; flags only, nothing allocated, whatever thread FL calls from)
         if (id < Fpd.TestBase && dispatchLogged < HostLog.PerInstance && HostLog.On) { dispatchLogged++; HostLog.Add(HostLog.KindDispatcher, InstanceNo, id, index, value); }
-        if (id == Fpd.SetPlaying) { assignment.Emulator?.TransportChanged(value != 0); return 0; }
+        if (id == Fpd.SetPlaying) { TransportNote(value != 0); assignment.Emulator?.TransportChanged(value != 0); return 0; }
+        if (id == Fpd.SongPosChanged) TransportMoved();
         // FL opened the instance, a project was loaded, or FL says the channel's context (its name) changed: ask FL for the channel's name (it can name the track at once: Bn2Plugin.Relink.cs)
         if (id == Fpd.PluginLoaded) PollChannelName("FL opened the instance (FPD_PluginLoaded)", fromEvent: true);
         else if (id == Fpd.ContextInfoChanged) PollChannelName($"FPD_ContextInfoChanged {index}", fromEvent: true);
@@ -215,10 +219,11 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         v.Slot = -1; v.Instr = -1; v.Silenced = false;
         v.PitchMin = v.PitchMax = p->InitLevels.Pitch;
         v.Note = notesSeen + 1;
-        v.TrackKey = -1;
+        v.TrackKey = -1; v.RecNote = -1;
+        v.Onset = ownSamples;                                         // (the block rendered next starts here)
         voices.Add(v);
-        if (link != LinkNone || bindState == 1 || HostLog.On) MatchNote(v);       // a linked instance recognises its track from this note, before it sounds (Bn2Plugin.Tracks.cs)
-        if (configured && expression != null) ExpressionNoteOn(v);   // a channel that plays a track: the track's key and expression for this note
+        // a linked instance recognises its track from this note before it sounds; one that plays a track knows which recorded note this is and plays its expression (Bn2Plugin.Tracks.cs)
+        if (link != LinkNone || bindState != 0 || follow != null || HostLog.On) OnNote(v);
         return v.Handle;
     }
 
@@ -309,6 +314,14 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
         if (emu.Mode == 1)
         {
+            if (WaitingForTrack && !Record.RecMutants.On(Record.RecMutants.WaitingPlaysGame))
+            {
+                // linked to a recording and waiting for its first note (FL's Replace puts the first replaced channels on the game's free channels): silent, not the game's channel (reload: the
+                // user heard the game where the track's instrument should play)
+                FinishReleased();
+                new Span<float>(dest, length * 2).Clear();
+                return;
+            }
             FinishReleased();   // voices still come and go in FL: keep them balanced even though the game does not play them yet
             DropChip();
             if (romMono.Length < length) romMono = new float[length];
@@ -376,9 +389,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         var s = sampler;
         replayProbe?.Bind(s);                                   // (the self-test's replay probe, round 8: null otherwise)
         float vol = Get(P.Volume) / 1000f;
-        // a channel playing a track's expression: where in the track this block starts (one question to FL per block)
-        if (expression != null && exprOn) { exprBlockBeat = TrackBeatNow(); exprBeatsPerSample = EmulatorHub.FlTempo / 60.0 / Math.Max(1, EmulatorHub.HostRate); }
-        else exprBlockBeat = double.NaN;
+        BeginExpressionBlock();                                 // (a channel playing a track's expression: the block's clock, Bn2Plugin.Tracks.cs)
         for (int off = 0; off < length; off += Chunk)
         {
             int n = Math.Min(Chunk, length - off);
@@ -397,7 +408,6 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     private void UpdateSamplerVoices(SnesSampler s, int forcedInstrument = -1, int offset = 0)
     {
         var ex = expression;
-        double exBeat = ex != null && exprOn ? exprBlockBeat + offset * exprBeatsPerSample : double.NaN;
         int param = forcedInstrument >= 0 ? forcedInstrument : Get(P.Instrument);       // (a preset plays its own sample; Runaway plays the one the Instrument parameter names)
         int instrument = samplerFor?.Resolve(param) ?? param;
         bool hasSample = samplerFor?.HasSample(instrument) ?? false;   // an empty slot of the game's sample table plays nothing (the DSP would wander through other data)
@@ -412,19 +422,19 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             if (v.Released)
             {
                 if (v.Dsp >= 0) { s.NoteOff(v.Dsp); dspUsed[v.Dsp] = false; v.Dsp = -1; v.Recipe = null; }
-                if (HostLog.On && v.Note <= 32) HostLog.Add(HostLog.KindNoteEnd, InstanceNo, v.Note, 0, 0, v.PitchMin, v.PitchMax);
-                v.Finished = true;
+                Finish(v);
                 continue;
             }
             ref var fl = ref v.Params->FinalLevels;
             if (fl.Pitch < v.PitchMin) v.PitchMin = fl.Pitch;
             if (fl.Pitch > v.PitchMax) v.PitchMax = fl.Pitch;
-            double cents = fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine);
+            double cents = FlCents(fl.Pitch);
             int level = Math.Clamp((int)Math.Round(127 * fl.Vol), 0, 127);
-            if (v.TrackKey >= 0 && !double.IsNaN(exBeat))
+            double exBeat = ExpressionBeat(v, offset);
+            if (!double.IsNaN(exBeat) && ex != null)
             {
-                // the recording's own pitch bend and controller 7 at this point of the track (FL's import does not bring them as the file has them): exact as the transcription made them
-                cents = ex!.PitchCents(v.TrackKey, exBeat) + Get(P.Coarse) * 100 + Get(P.Fine);
+                // the recorded note's own pitch bend and controller 7 at this point of it, from its own onset (FL's import does not bring them as the file has them): exact as the transcription made them
+                cents = ex.PitchCents(v.TrackKey, exBeat) + Get(P.Coarse) * 100 + Get(P.Fine);
                 level = Math.Clamp((int)Math.Round(127 * (float)(v.TrackVel * ex.CcAt(exBeat) / 100.0)), 0, 127);
             }
             if (v.Dsp < 0)
@@ -503,7 +513,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             }
             if (v.Silenced) continue;
             ref var fl = ref v.Params->FinalLevels;
-            double cents = fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine);
+            double cents = FlCents(fl.Pitch);
             double hz = 440.0 * Math.Pow(2.0, ((60.0 + cents / 100.0) - 69.0) / 12.0);
             double velocity = Math.Clamp(fl.Vol, 0.0, 1.0);
             if (v.Slot >= 0 && v.Instr != instrument) { s.NoteOff(v.Slot); slotUsed[v.Slot] = false; v.Slot = -1; }     // another instrument was picked under a held note: it starts again on that one
@@ -575,7 +585,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         if (gbGate && (owner == null || gbChannel != ch)) { s.NoteOff(gbChannel); gbGate = false; }
         if (owner == null) return;
         ref var fl = ref owner.Params->FinalLevels;
-        double semis = 60.0 + (fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine)) / 100.0;
+        double semis = 60.0 + FlCents(fl.Pitch) / 100.0;
         double hz = 440.0 * Math.Pow(2.0, (semis - 69.0) / 12.0);
         bool shortNoise = preset != null ? preset.GbNoiseShort : Get(P.NoiseMode) == 1;
         if (!gbGate || owner.Fresh)
@@ -643,7 +653,14 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     private void FinishReleased()
     {
         foreach (var v in voices)
-            if (v.Released) v.Finished = true;
+            if (v.Released) Finish(v);
+    }
+
+    /// <summary>A released voice is done; the host log gets how far FL moved its pitch while it sounded (whether FL applies the imported bends: reload).</summary>
+    private void Finish(Voice v)
+    {
+        if (!v.Finished && HostLog.On && v.Note <= 32) HostLog.Add(HostLog.KindNoteEnd, InstanceNo, v.Note, 0, 0, v.PitchMin, v.PitchMax);
+        v.Finished = true;
     }
 
     /// <summary>The newest unreleased voice owns the channel; released voices are finished (the NES has no release tail: the channel
@@ -654,7 +671,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         for (int i = voices.Count - 1; i >= 0; i--)
         {
             var v = voices[i];
-            if (v.Released) { v.Finished = true; continue; }
+            if (v.Released) { Finish(v); continue; }
             if (v.Finished) continue;
             owner ??= v;
         }
@@ -690,7 +707,9 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         }
 
         ref var fl = ref v.Params->FinalLevels;
-        double cents = fl.Pitch + Get(P.Coarse) * 100 + Get(P.Fine);
+        if (fl.Pitch < v.PitchMin) v.PitchMin = fl.Pitch;
+        if (fl.Pitch > v.PitchMax) v.PitchMax = fl.Pitch;
+        double cents = FlCents(fl.Pitch);
         double master = Get(P.Volume) / 1000.0;
         int level = Record.NesDirect.Level(fl.Vol, master);      // (the arithmetic lives in Record/NesDirect.cs since round 8: a NES recording searches its bends and volumes with these very functions)
         bool retrigger = v.Fresh || !gate;
@@ -1058,7 +1077,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         if (restoredRecord != null) emu2?.AdoptRecord(restoredRecord);         // (the first instance of the project that carries the recording gives it to the emulator)
         // whether this state makes the instance clearly the user's own (it holds a game, a preset or a track: it leaves the recording and never joins it by itself), or not (FL's empty or default
         // state, a fresh instance's own state, another channel's values: a joined instance stays joined; relink, 2026-10-18)
-        var restoredTrack = trackBytes == null ? (null, null, false) : ReadTrackSection(trackBytes);
+        var restoredTrack = trackBytes == null ? (null, null, false, -1) : ReadTrackSection(trackBytes);
         bool hadGame = restoredGame != null || gameProblem != null || restoredSnapshot != null || restoredGb != null || restoredSega != null || restoredSong != null || restoredRecord != null || restoredCorruption != null || injectPayload != null;
         bool usersOwn = RestoredUsersOwn(hadGame, presetSectionBytes != null, trackBytes != null);
         bool wasPristine = RestoredPristine();
@@ -1306,6 +1325,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 if (id - Fpd.TestBase is >= 700 and < 720) return TrackTestHook(id - Fpd.TestBase, index, value);                                // the tracks on offer (Bn2Plugin.Tracks.cs)
                 if (id - Fpd.TestBase is >= 720 and < 740) return RelinkTestHook(id - Fpd.TestBase, index, value);                               // linking to the tracks on offer, the channel's name, the host log (Bn2Plugin.Relink.cs)
                 if (id - Fpd.TestBase is >= 740 and < 780) return NesRecordTestHook(id - Fpd.TestBase, index, value);                            // a NES game's recording (Bn2Plugin.RecordNes.cs)
+                if (id - Fpd.TestBase is >= 790 and < 820) return ReloadTestHook(id - Fpd.TestBase, index, value);                               // FL's real conventions, the notes followed, a recording offered from its files (Bn2Plugin.Reload.cs)
                 return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
     }

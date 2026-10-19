@@ -234,7 +234,7 @@ public sealed unsafe partial class Bn2Editor
             }
             case IdRecExpr:
                 TrackOffers.SetExpression(!TrackOffers.ExpressionFromRecording);
-                Say(TrackOffers.ExpressionFromRecording ? "Channels that play a track take its pitch bends and volume from the recording, at the song position (FL's MIDI import loses controller 7 and reads bends at 2 semitones)." : "Channels that play a track follow FL's own pitch and volume (the channel's events, which you can edit).", true);
+                Say(TrackOffers.ExpressionFromRecording ? "Channels that play a track take each recorded note's own pitch bends, volume and velocity from the recording, from the note's start (FL's MIDI import loses controller 7 and reads bends at 2 semitones)." : "Channels that play a track follow FL's own pitch and volume (the channel's events, which you can edit).", true);
                 break;
             case IdRecLog:
                 HostLog.Set(!HostLog.UserOn);
