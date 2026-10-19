@@ -111,8 +111,8 @@ public sealed unsafe partial class SelfTest
     private (string Name, CapScenario Body, int[] Mutants)[] CaptureScenarios() =>
     [
         ("flow", CapFlow, [CaptureMutants.NotFed]),
-        ("file", CapFile, [CaptureMutants.BaseFromMidi0, CaptureMutants.BaseDetectionIgnored, CaptureMutants.VelocityOver127, CaptureMutants.TempoIgnored, CaptureMutants.BendSignFlipped, CaptureMutants.SlideIgnored, CaptureMutants.BendRangeUnwritten, CaptureMutants.EventsLostSilently]),
-        ("engine", CapEngine, [CaptureMutants.Pulse2OnChannel1, CaptureMutants.EndAtLastNote]),
+        ("file", CapFile, [CaptureMutants.BaseFromMidi0, CaptureMutants.BaseDetectionIgnored, CaptureMutants.VelocityOver127, CaptureMutants.TempoIgnored, CaptureMutants.BendSignFlipped, CaptureMutants.SlideIgnored, CaptureMutants.BendRangeUnwritten, CaptureMutants.EventsLostSilently, CaptureMutants.OverlapsKept]),
+        ("engine", CapEngine, [CaptureMutants.Pulse2OnChannel1, CaptureMutants.EndAtLastNote, CaptureMutants.OverlapsKept]),
         ("render", CapRender, [CaptureMutants.ClockFixedRate]),
         ("alloc", CapAlloc, [CaptureMutants.CaptureAllocates]),
         ("live", CapLive, [CaptureMutants.LiveNoBends]),

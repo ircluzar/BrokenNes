@@ -35,6 +35,8 @@ public sealed class CapNote
     /// <summary>What FL answered when asked its song position at the note-on (FHD_GetMixingTime, offset 0): T and T2.</summary>
     public double FlBeats = double.NaN, FlT2 = double.NaN;
     public bool HasFlTime;
+    /// <summary>When the file ends the note because a newer one starts on its channel (seconds; +inf: its own end).</summary>
+    public double PlayEnd = double.PositiveInfinity;
     internal double Current;
 }
 
@@ -51,6 +53,9 @@ public sealed class CapTrack
     public readonly List<CapNote> Notes = new();
     public readonly List<SmfEvent> Events = new();
     public int BendEvents, Clamped, SameKeyCut, Overlapped, EndedAtStop, LevelVelocities, KeysClamped;
+    /// <summary>One note at a time (2026-10-19): earlier notes ended where the next one starts, earlier notes left out (struck at the same tick as a newer one), and of the shortened ones those
+    /// that FL still held after the newer note ended (BrokenNes2 goes back to them; the file does not).</summary>
+    public int Shortened, DroppedTogether, Outlasted;
     /// <summary>The largest pitch-bend distance from the key (cents) and the largest error the 14-bit bend leaves (cents).</summary>
     public double MaxDev, MaxQuantError;
     /// <summary>The key FL's pitch was read from on this channel (Record/FlNotes.cs: 60 = C5, 0 = MIDI note 0) and how it was chosen.</summary>
@@ -100,8 +105,11 @@ public static class CaptureSong
     /// <summary>The MIDI channel a role asks for (-1: none of its own).</summary>
     public static int ChannelOf(CapRole r) => r switch { CapRole.Pulse1 => 0, CapRole.Pulse2 => 1, CapRole.Triangle => 2, CapRole.Noise => 9, CapRole.Dmc => 4, _ => -1 };
 
-    public static CaptureResult Build(string name, IReadOnlyList<LaneData> lanes, FlTiming start, FlTiming end)
+    /// <summary>The take's file. <paramref name="oneNoteAtATime"/> (the default, the user's decision of 2026-10-19): an earlier note on a channel ends where the next one starts; false gives the
+    /// file as it was before (overlaps kept: VRUN's converter then cuts the newer note), for the checks' "before" control.</summary>
+    public static CaptureResult Build(string name, IReadOnlyList<LaneData> lanes, FlTiming start, FlTiming end, bool oneNoteAtATime = true)
     {
+        bool mono = oneNoteAtATime && !CaptureMutants.On(CaptureMutants.OverlapsKept);
         var r = new CaptureResult { Name = name };
         r.Tempo = FlClock.Resolve(start);
         r.MicrosPerQuarter = Math.Clamp((int)Math.Round(60_000_000.0 / r.Tempo.Bpm), 1, 0xFFFFFF);
@@ -142,7 +150,7 @@ public static class CaptureSong
         }
 
         // ---- bends, events
-        foreach (var t in r.Tracks) MakeEvents(t, r.MicrosPerQuarter);
+        foreach (var t in r.Tracks) MakeEvents(t, r.MicrosPerQuarter, mono);
 
         // ---- the end: the bar line after the last note (VRUN loops the song there)
         long lastOff = r.Tracks.SelectMany(t => t.Notes).Max(n => n.EndTick);
@@ -164,7 +172,7 @@ public static class CaptureSong
         catch (Exception e) { r.Report.Add("the converter could not read the capture back: " + e.Message); }
         ConverterFacts(r);
         // the window shows the first few: the summary, then what changes the replay most (lost events, guesses, the slides and bends, the converter's own choice, the base), then the rest
-        static int Rank(string f) => f.Contains("LOST") ? 0 : f.Contains("ASSUMED") || f.Contains("ASSUMING") ? 1 : f.Contains("slide or bend") || f.Contains("slides or bends") ? 2 : f.Contains("chooses by itself") || f.Contains("cutting the newer one short") ? 3 : f.Contains("MIDI note 0") && !f.StartsWith("keys read from C5") ? 4 : f.Contains("not played") ? 5 : 9;
+        static int Rank(string f) => f.Contains("LOST") ? 0 : f.Contains("ASSUMED") || f.Contains("ASSUMING") ? 1 : f.Contains("slide or bend") || f.Contains("slides or bends") ? 2 : f.Contains("chooses by itself") || f.Contains("cutting the newer one short") || f.Contains("goes back to") ? 3 : f.Contains("MIDI note 0") && !f.StartsWith("keys read from C5") ? 4 : f.Contains("not played") ? 5 : 9;
         var rest = r.Facts.Skip(1).Select((f, i) => (f, i)).OrderBy(x => Rank(x.f)).ThenBy(x => x.i).Select(x => x.f).ToList();
         r.Facts.RemoveRange(1, r.Facts.Count - 1);
         r.Facts.AddRange(rest);
@@ -275,34 +283,55 @@ public static class CaptureSong
 
     // ------------------------------------------------------------------------------------------------ events: notes, the owner's bend
 
-    private static void MakeEvents(CapTrack t, int mpq)
+    private static void MakeEvents(CapTrack t, int mpq, bool mono)
     {
-        // same key struck again before its release on this channel: the earlier note ends where the new one starts (a MIDI channel holds one note per key)
-        var lastOfKey = new Dictionary<int, CapNote>();
         var keep = new List<CapNote>();
-        foreach (var n in t.Notes)
+        if (mono)
         {
-            if (lastOfKey.TryGetValue(n.Key, out var prev) && prev.EndTick > n.StartTick)
+            // ONE NOTE AT A TIME on a channel (the user's decision, 2026-10-19): a BrokenNes2 channel and a NES channel play one note, the newest. An earlier note still sounding when the next one
+            // starts ends there (the newer note keeps its whole length); one struck at the same tick as a newer one is left out. Left overlapping, VRUN's converter, which stops a channel at any
+            // note-off, would cut the newer note where the earlier one ends. Slides FL delivers inside the parent note are pitch changes of that note, not notes: untouched.
+            CapNote? prev = null;
+            foreach (var n in t.Notes)
             {
-                t.SameKeyCut++;
-                if (prev.StartTick >= n.StartTick) keep.Remove(prev);
-                else prev.EndTick = n.StartTick;
+                if (prev != null && prev.EndTick > n.StartTick)
+                {
+                    if (prev.End > n.End) t.Outlasted++;                                          // (BrokenNes2 goes back to the earlier note when the newer ends; the file does not)
+                    if (prev.StartTick >= n.StartTick) { keep.Remove(prev); t.DroppedTogether++; }
+                    else { prev.EndTick = n.StartTick; prev.PlayEnd = n.Start; t.Shortened++; }
+                }
+                keep.Add(n);
+                prev = n;
             }
-            lastOfKey[n.Key] = n;
-            keep.Add(n);
         }
-        // (notes still sounding when a later one starts: the channel plays the newest, the bend follows it)
-        for (int i = 0; i + 1 < t.Notes.Count; i++)
-            if (t.Notes[i + 1].Start < t.Notes[i].End) t.Overlapped++;
+        else
+        {
+            // (before 2026-10-19, and the deliberate bug OverlapsKept: only the same key struck again before its release ends the earlier note there; other overlaps stay overlapping)
+            var lastOfKey = new Dictionary<int, CapNote>();
+            foreach (var n in t.Notes)
+            {
+                if (lastOfKey.TryGetValue(n.Key, out var prev) && prev.EndTick > n.StartTick)
+                {
+                    t.SameKeyCut++;
+                    if (prev.StartTick >= n.StartTick) keep.Remove(prev);
+                    else prev.EndTick = n.StartTick;
+                }
+                lastOfKey[n.Key] = n;
+                keep.Add(n);
+            }
+            for (int i = 0; i + 1 < t.Notes.Count; i++)
+                if (t.Notes[i + 1].Start < t.Notes[i].End) t.Overlapped++;
+        }
 
-        // the owner's distance from its key at every change: pass 1 finds the range, pass 2 writes
+        // the owner's distance from its key at every change (the notes as the file has them: an earlier note ends where the next starts): pass 1 finds the range, pass 2 writes
         var pts = new List<(double T, int Order, int Seq, CapNote N, double Cents)>();
         int seq = 0;
-        foreach (var n in t.Notes)
+        foreach (var n in mono ? keep : t.Notes)
         {
+            double end = Math.Min(n.End, n.PlayEnd);
             pts.Add((n.Start, 1, seq++, n, n.PlayedAtStart));
-            for (int k = 1; k < n.Pitch.Count; k++) pts.Add((n.Pitch[k].T, 2, seq++, n, n.Pitch[k].Cents));
-            pts.Add((n.End, 0, seq++, n, 0));
+            for (int k = 1; k < n.Pitch.Count; k++) if (n.Pitch[k].T < end || n.Pitch[k].T == n.Start) pts.Add((n.Pitch[k].T, 2, seq++, n, n.Pitch[k].Cents));
+            pts.Add((end, 0, seq++, n, 0));
         }
         pts.Sort((a, b) => a.T != b.T ? a.T.CompareTo(b.T) : a.Order != b.Order ? a.Order.CompareTo(b.Order) : a.Seq.CompareTo(b.Seq));
         var active = new List<CapNote>();
@@ -384,8 +413,15 @@ public static class CaptureSong
         int cut = r.Tracks.Sum(t => t.SameKeyCut);
         if (cut > 0) r.Facts.Add($"{cut} note{(cut == 1 ? "" : "s")} struck again on the same key before {(cut == 1 ? "its" : "their")} release: the earlier one ends there (one note per key on a MIDI channel)");
         int over = r.Tracks.Sum(t => t.Overlapped);
-        // (VRUN's converter stops a channel at any note-off (Midi2Nes.cs): the earlier note's end cuts the newer one short there, its slide too)
+        // (only a file built with overlaps kept, the checks' "before" control: VRUN's converter stops a channel at any note-off (Midi2Nes.cs), so the earlier note's end cuts the newer one short)
         if (over > 0) r.Facts.Add($"{over} note{(over == 1 ? "" : "s")} overlapped the next one on {(over == 1 ? "its" : "their")} channel: BrokenNes2 plays the newest and the bend follows it, but VRUN stops the channel where the earlier note ends, cutting the newer one short");
+        // one note at a time (2026-10-19): what the capture resolved, and the one difference it leaves (an earlier note FL still held after the newer ended)
+        int shortened = r.Tracks.Sum(t => t.Shortened), together = r.Tracks.Sum(t => t.DroppedTogether), outlasted = r.Tracks.Sum(t => t.Outlasted);
+        if (shortened + together > 0)
+            r.Facts.Add($"{shortened + together} overlap{(shortened + together == 1 ? "" : "s")} resolved, one note at a time per channel as BrokenNes2 and the NES play: "
+                + (shortened > 0 ? $"{shortened} earlier note{(shortened == 1 ? " ends" : "s end")} where the next one starts (the newer keeps its whole length)" : "")
+                + (together > 0 ? $"{(shortened > 0 ? "; " : "")}{together} struck at the same moment as a newer one {(together == 1 ? "is" : "are")} left out" : "")
+                + (outlasted > 0 ? $"; {outlasted} of them {(outlasted == 1 ? "was" : "were")} still held after the newer note ended: BrokenNes2 goes back to {(outlasted == 1 ? "it" : "them")} there, the file does not" : ""));
         int levelVel = r.Tracks.Sum(t => t.LevelVelocities);
         if (levelVel > 0) r.Facts.Add($"FL gave no velocity for {levelVel} note{(levelVel == 1 ? "" : "s")} (FPV_GetVelocity): their velocity is the voice's level");
         var late = started.Where(l => l.JoinedLate).ToList();
@@ -431,7 +467,7 @@ public static class CaptureSong
         r.Report.Add($"tempo: {r.Tempo.Source}{(r.Tempo.Check != null ? "; " + r.Tempo.Check : "")}; {r.MicrosPerQuarter} us per quarter, {Ppq} ticks per quarter");
         r.Report.Add($"FL's timing at Play: samples per tick {start.SamplesPerTick:0.####}, time signature {(start.TimeSigKnown ? $"{start.StepsPerBar}/{start.StepsPerBeat} steps, PPQ {start.Ppq}" : "unknown")}, FPE_Tempo {(start.HasTempo ? start.Tempo.ToString("0.###", ci) : "none")}, process mode {start.ProcessMode}, {start.Rate:N0} Hz");
         foreach (var t in r.Tracks)
-            r.Report.Add($"track \"{t.Name}\" (#{t.Id.InstanceNo}, {t.Id.Detail}): pitch read from {(t.Base == FlNotes.BaseC5 ? "C5" : $"MIDI note {t.Base}")} ({t.BaseHow}), MIDI {t.Channel + 1}, {t.Notes.Count} notes ({t.MovingNotes} move), {t.BendEvents} bends at range {t.BendRange} (largest {t.MaxDev:0.##} cents from the key, 14-bit error at most {t.MaxQuantError:0.###} cents){(t.Clamped > 0 ? $", {t.Clamped} clamped" : "")}{(t.SameKeyCut > 0 ? $", {t.SameKeyCut} same-key cuts" : "")}{(t.EndedAtStop > 0 ? $", {t.EndedAtStop} ended at Stop" : "")}");
+            r.Report.Add($"track \"{t.Name}\" (#{t.Id.InstanceNo}, {t.Id.Detail}): pitch read from {(t.Base == FlNotes.BaseC5 ? "C5" : $"MIDI note {t.Base}")} ({t.BaseHow}), MIDI {t.Channel + 1}, {t.Notes.Count} notes ({t.MovingNotes} move), {t.BendEvents} bends at range {t.BendRange} (largest {t.MaxDev:0.##} cents from the key, 14-bit error at most {t.MaxQuantError:0.###} cents){(t.Clamped > 0 ? $", {t.Clamped} clamped" : "")}{(t.SameKeyCut > 0 ? $", {t.SameKeyCut} same-key cuts" : "")}{(t.Shortened + t.DroppedTogether > 0 ? $", {t.Shortened} shortened / {t.DroppedTogether} left out for the next note ({t.Outlasted} outlasted it)" : "")}{(t.EndedAtStop > 0 ? $", {t.EndedAtStop} ended at Stop" : "")}");
         r.Report.Add($"end: tick {r.EndTick} ({r.Bars} bars of {r.BeatsPerBar}), the last note ends at tick {r.Tracks.SelectMany(t => t.Notes).Max(n => n.EndTick)}");
     }
 
