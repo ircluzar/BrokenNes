@@ -40,6 +40,10 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         public double ExprBeat0;      // the recorded note's start (beats in its track): its bends and controller 7 are played from here, from the voice's own onset (reload: no song position needed)
         public long Onset;            // the instance's own clock (samples rendered) when FL started the voice
         public int RecNote = -1;      // which note of the recording it is (TrackIndex), -1 none: the tests and the log read it
+        public float CapPitch;        // round 9 (capture): the pitch last written into the capture's lane (cents from C5)
+        public bool CapOff = true;    // its release is in the lane (or it has no note-on there)
+        public bool LiveSent;         // its note-on went out as MIDI (Bn2Plugin.CaptureLive.cs)
+        public int LiveKey, LiveCh, LiveBase;
     }
 
     private readonly List<Voice> voices = new(32);
@@ -93,6 +97,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         TrackOffers.Register(this);   // the tracks of a recording on offer: this instance recognises its track from the notes FL asks it to play (Bn2Plugin.Tracks.cs)
         // relink: made while tracks are on offer (a new channel, or the one FL makes for a Replace): it joins them at once, and the Record window counts it (Bn2Plugin.Relink.cs)
         if (TrackOffers.Current != null && !Record.RecMutants.On(Record.RecMutants.NoAutoJoin)) Join("made while tracks are on offer (a new channel, or one FL made for a Replace)");
+        CaptureHub.Register(this);    // round 9: "Capture from FL" reaches every instance of the process (CaptureHub.cs, Bn2Plugin.Capture.cs)
     }
 
     /// <summary>What FL shows. (The DLL and its folder have the same name: FL finds a native plugin by its file name.)</summary>
@@ -160,6 +165,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
     public override nint Dispatcher(nint id, nint index, nint value)
     {
+        if (id < Fpd.TestBase) CaptureDispatch(id, index, value);     // round 9: FL's transport and timing calls for "Capture from FL" (Bn2Plugin.Capture.cs; nothing allocated)
         if (id == Fpd.SetSampleRate && value > 0)
         {
             EmulatorHub.SetHostRate((int)value);
@@ -222,22 +228,25 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         v.Note = notesSeen + 1;
         v.TrackKey = -1; v.RecNote = -1;
         v.Onset = ownSamples;                                         // (the block rendered next starts here)
+        v.CapOff = true; v.LiveSent = false;
         voices.Add(v);
         // a linked instance recognises its track from this note before it sounds; one that plays a track knows which recorded note this is and plays its expression (Bn2Plugin.Tracks.cs)
         if (link != LinkNone || bindState != 0 || follow != null || HostLog.On) OnNote(v);
+        if (CaptureWanted) CaptureNoteOn(v);                           // round 9: the note into the capture's lane / out as MIDI (Bn2Plugin.Capture.cs; after OnNote: a base found on this very note is the capture's hint)
         return v.Handle;
     }
 
     public override void ReleaseVoice(nint handle)
     {
         var v = Find(handle);
-        if (v != null) v.Released = true;
+        if (v != null) { v.Released = true; if (CaptureWanted) CaptureNoteOff(v); }
     }
 
     public override void KillVoice(nint handle)
     {
         var v = Find(handle);
         if (v == null) return;
+        if (CaptureWanted) CaptureNoteOff(v);
         voices.Remove(v);
         pool.Push(v);
     }
@@ -269,8 +278,10 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     {
         ownSamples += length;
         renderLength = length;
+        if (CaptureWanted) CaptureBlock();                       // round 9: the pitch FL wants each voice to play in this block, into the capture's lane (Bn2Plugin.Capture.cs)
         RenderCore(dest, length);
         if (audition != null) MixAudition(dest, length);        // a preset auditioned from the Presets tab sounds over whatever this instance plays (Bn2Plugin.Presets.cs)
+        capLane?.Advance(length, EmulatorHub.HostRate);          // (the capture's clock: the samples FL rendered since its Play)
     }
 
     private void RenderCore(float* dest, int length)
@@ -1327,6 +1338,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 if (id - Fpd.TestBase is >= 720 and < 740) return RelinkTestHook(id - Fpd.TestBase, index, value);                               // linking to the tracks on offer, the channel's name, the host log (Bn2Plugin.Relink.cs)
                 if (id - Fpd.TestBase is >= 740 and < 780) return NesRecordTestHook(id - Fpd.TestBase, index, value);                            // a NES game's recording (Bn2Plugin.RecordNes.cs)
                 if (id - Fpd.TestBase is >= 790 and < 820) return ReloadTestHook(id - Fpd.TestBase, index, value);                               // FL's real conventions, the notes followed, a recording offered from its files (Bn2Plugin.Reload.cs)
+                if (id - Fpd.TestBase is >= 840 and < 860) return CaptureTestHook(id - Fpd.TestBase, index, value);                              // round 9: Capture from FL (Bn2Plugin.Capture.cs; 790-819 are reload's)
                 return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
     }
@@ -1337,6 +1349,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
     public override void Destroy()
     {
+        CaptureHub.Unregister(this);
         TrackOffers.Unregister(this);
         ForgetTrack();
         HostLog.Text(InstanceNo, "destroyed");

@@ -53,6 +53,7 @@ public sealed unsafe partial class Bn2Plugin
     /// <summary>The channel's base key: FL hands a voice's pitch in cents above it. C5 (60) on a channel made in FL, MIDI note 0 on an imported channel FL replaced by BrokenNes2 (reload); found
     /// from the channel's track (TrackMatcher) and kept with it (TRK1).</summary>
     private volatile int pitchBase = FlNotes.BaseC5;
+    private volatile bool pitchBaseKnown;                // the base was found from the track's notes (every hypothesis agreed) or a project gave it; else it is assumed (C5)
     internal int PitchBase => pitchBase;
 
     /// <summary>FL's pitch of a voice plus the instance's Coarse and Fine, as cents from C5 (what every engine takes), at the channel's base: the ONE conversion every sound path uses.</summary>
@@ -230,6 +231,7 @@ public sealed unsafe partial class Bn2Plugin
             if (matcher.Bound >= 0)
             {
                 pitchBase = matcher.Base;
+                pitchBaseKnown = matcher.BaseSure;
                 ExpressionNoteOn(v, idx, matcher.NoteAt);
             }
             if (matcher.Settled && bindState == 1) Volatile.Write(ref settleWanted, 1);
@@ -239,7 +241,7 @@ public sealed unsafe partial class Bn2Plugin
             // the track is known (settled, by hand, by name, a project): which of its notes this is
             if (!ReferenceEquals(fol, followLocked)) { matcher.Lock(fol!.Index, fol.Track, fol.Base); followLocked = fol; }
             matcher.Feed(fol!.Index, pitch, colour, midiVel, ownSamples, bps, renderLength * bps, pos, tb);
-            if (matcher.Base >= 0 && (matcher.BaseSure || fol.Base < 0)) pitchBase = matcher.Base;
+            if (matcher.Base >= 0 && (matcher.BaseSure || fol.Base < 0)) { pitchBase = matcher.Base; pitchBaseKnown = matcher.BaseSure || fol.Base >= 0; }
             ExpressionNoteOn(v, fol.Index, matcher.NoteAt);
         }
         LogFollow(v, matching ? snap!.Index : fol!.Index);
@@ -302,7 +304,7 @@ public sealed unsafe partial class Bn2Plugin
         binding = null;
         expression = null;
         follow = null;
-        pitchBase = FlNotes.BaseC5;
+        pitchBase = FlNotes.BaseC5; pitchBaseKnown = false;
         boundSlot = null; boundIndex = -1;
         if (bindState == 1) preset = null;
         bindState = 0;
@@ -313,7 +315,7 @@ public sealed unsafe partial class Bn2Plugin
         TrackOffers.Changed();
         CountOn(null);
         expression = null;
-        pitchBase = FlNotes.BaseC5;                                      // (the base came with the track that was let go)
+        pitchBase = FlNotes.BaseC5; pitchBaseKnown = false;              // (the base came with the track that was let go)
         boundSlot = null; boundIndex = -1;
         if (bindState == 1) { bindState = 0; preset = null; DropSampler(); }
     }
@@ -516,7 +518,7 @@ public sealed unsafe partial class Bn2Plugin
         binding = t.Binding;
         expression = t.Expression;
         exprOn = t.On && t.Expression != null;
-        if (t.Base >= 0) pitchBase = t.Base;
+        if (t.Base >= 0) { pitchBase = t.Base; pitchBaseKnown = true; }
         follow = t.Expression != null ? new FollowTarget(TrackIndex.FromExpression(t.Expression, 0), 0, t.Base) : null;
         configured = true;
         pristine = false;

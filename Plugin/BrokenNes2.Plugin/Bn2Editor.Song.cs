@@ -9,7 +9,7 @@ namespace BrokenNes2;
 public sealed unsafe partial class Bn2Editor
 {
     public const int IdMid = 2000, IdMidClose = 2001, IdMidOpen = 2002, IdMidPlay = 2003, IdMidRestart = 2004, IdMidStop = 2005, IdMidReload = 2006, IdMidFollow = 2007;
-    private const int MidW = 780, MidH = 590, MidNoteSeconds = 12;
+    private const int MidW = 780, MidH = 650, MidNoteSeconds = 12;      // (650 since round 9: the Capture from FL row and strip, Bn2Editor.Capture.cs)
 
     private bool midOpen, midNoteShown;
     private string? testMidiPath;
@@ -53,27 +53,29 @@ public sealed unsafe partial class Bn2Editor
 
         Txt(dc, "Test MIDI export", R(lx, box.Top + 14, 400, 34), Win32.DT_LEFT | Mid, Text, fontTitle);
         if (emu != null) Txt(dc, $"emulator #{emu.Id}", R(box.Right - 30 - 200, box.Top + 14, 200, 34), Win32.DT_RIGHT | Mid, Dim, fontSection);
-        Txt(dc, "Export your song from FL Studio as a MIDI file and open it here. BrokenNes2 converts it with VRUN's own music converter, writes it into VRUN's sound-test player and plays it in this emulator (NES, ROM mode): what you hear is what the game will play. Listen, and compare with FL.",
+        Txt(dc, "Capture your song straight from FL (Capture from FL: your BrokenNes2 channels as they are, no MIDI Out channels), or export it from FL as a MIDI file and open it here. BrokenNes2 converts it with VRUN's own music converter and plays it in VRUN's sound-test player in this emulator (NES, ROM mode): what you hear is what the game will play.",
             R(lx, box.Top + 50, iw, 48), Win32.DT_LEFT | Win32.DT_WORDBREAK, Dim, fontSmall);
         Line_(dc, box.Left + 30, box.Top + 102, box.Right - 30, box.Top + 102, Line);
 
-        // the file
+        // the file: Open MIDI..., Capture from FL, Save MIDI... (Bn2Editor.Capture.cs)
         int y = box.Top + 112;
         Button(dc, IdMidOpen, "Open MIDI...", R(lx, y, 150, 30), primary: held == null, enabled: emu != null && !busy);
+        DrawCaptureButtons(dc, lx + 160, y, emu);
         string fileText; int fileColor = Text;
         if (emu == null) { fileText = "no emulator"; fileColor = Warn; }
         else if (busy) { fileText = ui!.Status.Length > 0 ? ui.Status : "converting..."; fileColor = Warn; }
         else if (held == null) { fileText = "no MIDI file open"; fileColor = Faint; }
         else fileText = held.Path;
-        Txt(dc, fileText, R(lx + 164, y, iw - 164, 30), Win32.DT_LEFT | Mid | 0x4000 /* DT_PATH_ELLIPSIS */, fileColor, fontLabel);
+        Txt(dc, fileText, R(lx + 484, y, iw - 484, 30), Win32.DT_LEFT | Mid | 0x4000 /* DT_PATH_ELLIPSIS */, fileColor, fontSmall);
+        DrawCaptureStrip(dc, lx, iw, box.Top + 150);
 
         // the song: its name, where it plays, and the facts that make it sound different from FL
-        var song = R(lx, box.Top + 154, iw, 240);
+        var song = R(lx, box.Top + 268, iw, 196);
         Box(dc, song, Bg, Line, 6);
         if (held == null)
         {
             Txt(dc, MusicTemplate.Builtin(out var why) == null ? "Test MIDI export cannot run in this build: " + why
-                    : "No song yet. In FL Studio: File > Export > MIDI file..., then Open MIDI... here. After you change the song in FL, export it again over the same file and press Reload.",
+                    : "No song yet. Press Capture from FL, then Play in FL from the start and Stop at the end; or in FL Studio: File > Export > MIDI file..., then Open MIDI... here (after a change, export again over the same file and press Reload).",
                 R(song.Left + 30, song.Top + 70, iw - 60, 110), Win32.DT_CENTER | Win32.DT_WORDBREAK | Win32.DT_VCENTER, MusicTemplate.Builtin(out _) == null ? Warn : Faint, fontLabel);
         }
         else
@@ -91,13 +93,13 @@ public sealed unsafe partial class Bn2Editor
             {
                 bool bad = line.StartsWith("truncated") || line.Contains("dropped:") || line.Contains("thinned") || line.Contains("ignored") || line.Contains("not played") || line.Contains("lowest pitch") || line.Contains(" silent") || line.Contains("silent;");
                 Dot(dc, song.Left + 20, ly + 10, 3, bad ? Warn : Good);
-                Txt(dc, line, R(song.Left + 32, ly, iw - 46, 22), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Text, fontLabel);
-                ly += 28;                                                       // (six lines at most: 64 + 6 x 28 = 232 of the box's 240)
+                Txt(dc, line, R(song.Left + 32, ly, iw - 46, 20), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Text, fontLabel);
+                ly += 22;                                                       // (six lines at most: 64 + 6 x 22 = 196, the box's height)
             }
         }
 
         // Play, Restart, Stop; Reload
-        y = box.Top + 404;
+        y = box.Top + 474;
         bool canPlay = emu != null && held != null && !busy;
         Button(dc, IdMidPlay, "Play", R(lx, y, 100, 34), primary: true, enabled: canPlay);
         Button(dc, IdMidRestart, "Restart", R(lx + 110, y, 100, 34), primary: false, enabled: canPlay);
@@ -105,11 +107,11 @@ public sealed unsafe partial class Bn2Editor
         Button(dc, IdMidReload, "Reload", R(lx + 350, y, 110, 34), primary: false, enabled: canPlay);
         Txt(dc, held == null ? "" : $"reads {held.FileName} again: export from FL over it, then Reload", R(lx + 472, y - 2, iw - 472, 38), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER, Faint, fontSmall);
 
-        y = box.Top + 452;
+        y = box.Top + 520;
         Check(dc, IdMidFollow, "Follow FL's transport: FL's Play restarts the song from its start, FL's Stop stops it", lx, y, ui?.Follow == true, null, labelW: 640, hitW: 660);
 
         // what happened
-        y = box.Top + 486;
+        y = box.Top + 548;
         string say = ""; int sayColor = Dim;
         if (ui != null)
         {
@@ -122,7 +124,7 @@ public sealed unsafe partial class Bn2Editor
             Txt(dc, say, R(lx + 12, y, iw - 12, 44), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, Text, fontSmall);
         }
         Line_(dc, box.Left + 30, box.Bottom - 54, box.Right - 30, box.Bottom - 54, Line);
-        Txt(dc, "The song is kept in the FL project (the MIDI file's bytes). Nobody listens for you: whether it replays well is your call.", R(lx, box.Bottom - 48, iw - 120, 36), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER, Faint, fontSmall);
+        Txt(dc, "The song is kept in the FL project (the MIDI file's bytes). VRUN's engine plays no pitch bend: a captured file keeps them, the game drops them. Whether it replays well is your call.", R(lx, box.Bottom - 48, iw - 120, 36), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER, Faint, fontSmall);
         Button(dc, IdMidClose, "Close", R(box.Right - 30 - 100, box.Bottom - 46, 100, 34), primary: true);
     }
 

@@ -48,6 +48,7 @@ public sealed unsafe partial class Bn2Plugin
     {
         // FL's tempo (a float in Value): a recording with no tempo of its own is written at it, so its notes keep their real times in FL
         if (id == Fpe.Tempo) EmulatorHub.FlTempo = BitConverter.Int32BitsToSingle(value);
+        CaptureProcessEvent(id, value, flags);           // round 9: FL's tempo for "Capture from FL" (Capture/FlClock.cs)
         return 0;
     }
 
