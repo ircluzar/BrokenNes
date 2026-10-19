@@ -143,7 +143,7 @@ public sealed unsafe partial class Bn2Plugin
             return ("PLAYS ITS TRACK", "This channel plays " + what + ".", 0);
         }
         if (role == 3)
-            return ("LINKED TO THE RECORDING", "Press Play in FL and I will find my track from my first note" + (channelName != null && nameNote != null ? $" (FL calls this channel \"{channelName}\": {nameNote})" : "") + ". Or use Play here in the Record window.", 2);
+            return ("LINKED TO THE RECORDING", "Press Play in FL and I will find my track from my first note (its colour and its key) and play its instrument; until then I am silent" + (channelName != null && nameNote != null ? $" (FL calls this channel \"{channelName}\": {nameNote})" : "") + ". Or use Play here in the Record window.", 2);
         return ($"TRACKS OF \"{rec}\" ON OFFER", $"This channel is not linked ({linkNote ?? "its own settings"}). Link it and it finds its track from its first note when FL plays.", 1);
     }
 

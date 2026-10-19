@@ -74,7 +74,8 @@ internal static class NesReplay
     }
 
     /// <summary>The comparison (see the file's header). <paramref name="label"/> names the take in the report.</summary>
-    public static void Compare(ImodelReport r, string label, NesTranscription tr, IReadOnlyList<Played> played, out string line)
+    /// <param name="asked">Only the notes (track, index in the track) a partial replay played (FL from the middle, one pass of a loop); their start times are then not compared with the game's.</param>
+    public static void Compare(ImodelReport r, string label, NesTranscription tr, IReadOnlyList<Played> played, out string line, Func<int, int, bool>? asked = null)
     {
         int values = 0, exact = 0, reported = 0, bad = 0, gatedOk = 0, gatedBad = 0, missing = 0, shortVals = 0, compared = 0;
         const uint MinHeld = 7160;                                  // 4 ms in CPU cycles
@@ -119,6 +120,7 @@ internal static class NesReplay
                 foreach (var (k, q) in hs)
                 {
                     var t = tr.Tracks[k];
+                    if (asked != null && !asked(k, q)) continue;
                     if (!marks[k].TryGetValue(q, out long t0)) { missing++; continue; }
                     long at = t0 + (long)Math.Round((mid - n.Start) / NesSession.CpuHz * Rate);
                     bool mine = c < 2 ? t.Duty == wantD : c == 3 ? t.Mode == wantD : true;
@@ -153,7 +155,7 @@ internal static class NesReplay
                 if (marks[k].TryGetValue(q, out long t0)) offs.Add(t0 / (double)Rate - tr.Notes[tr.Tracks[k].Notes[q]].StartSeconds);
         offs.Sort();
         double med = offs.Count > 0 ? offs[offs.Count / 2] : 0, worstMs = offs.Count > 0 ? offs.Max(o => Math.Abs(o - med)) * 1000 : 0;
-        r.Expect(worstMs <= 2.5, $"{label}: a note starts {worstMs:0.00} ms from the game's time in the replay (FL's control step is 1.33 ms, a tick 0.5 ms or less)");
+        r.Expect(asked != null || worstMs <= 2.5, $"{label}: a note starts {worstMs:0.00} ms from the game's time in the replay (FL's control step is 1.33 ms, a tick 0.5 ms or less)");
         r.Expect(bad == 0 && values > 0, $"{label}: {exact:N0} of {values:N0} values (period, volume and duty together) exact, {reported} reported as not exact, {bad} wrong WITHOUT a word");
         r.Expect(gatedBad == 0, $"{label}: {gatedBad} moments where a note's other duty's track was not silent");
         r.Expect(missing == 0, $"{label}: {missing} notes never played by their track");

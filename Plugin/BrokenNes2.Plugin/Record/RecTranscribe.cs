@@ -134,7 +134,9 @@ public static class RecMutants
         // the track offer (2026-10-18): which track an FL channel plays
         MatchIgnoresPosition = 20, UnrelatedGrabbed = 21, BindAfterFirstNote = 22, EnginesNotPrebuilt = 23, TrackSectionDropped = 24, DefaultStateCountsAsTouched = 25, ManualPickIgnored = 26, OfferIgnoresLateInstances = 27, ExpressionIgnored = 28,
         // relink (2026-10-18): instances joining the recording, the anchor buttons, the channel's name, the host log
-        ParamPushUnjoins = 29, NoAutoJoin = 30, LinkAllIgnored = 31, LinkButtonIgnored = 32, CounterCountsFoundOnly = 33, NameIgnored = 34, LogNotAutomatic = 35, LogIgnoresTestPath = 36, UsersOwnStateJoins = 37, LogNotCapped = 38, SourceEmulatorExcludes = 39;
+        ParamPushUnjoins = 29, NoAutoJoin = 30, LinkAllIgnored = 31, LinkButtonIgnored = 32, CounterCountsFoundOnly = 33, NameIgnored = 34, LogNotAutomatic = 35, LogIgnoresTestPath = 36, UsersOwnStateJoins = 37, LogNotCapped = 38, SourceEmulatorExcludes = 39,
+        // reload (2026-10-18, the user's FL session): FL's real conventions (Record/FlNotes.cs), the colour, expression from each note's own onset
+        OldPitchBase = 40, ColourIgnored = 41, ExpressionBySongPosition = 42, FlVelocityForExpression = 43, MixingTimeNaNOffset = 44, SharedChannelsInOrder = 45, FollowByKeyOnly = 46, WaitingPlaysGame = 47;
     public static bool On(int m) => Active == m;
 }
 
@@ -144,6 +146,51 @@ public static class RecTranscribe
 
     /// <summary>The 15 MIDI channels a track can have (channel 10, index 9, is left out: General MIDI drums).</summary>
     public static int ChannelOf(int track) { int k = track % 15; return k < 9 ? k : k + 1; }
+
+    /// <summary>The MIDI channel of every track (reload, 2026-10-18): FL's import keeps a note's MIDI channel as its colour, which is how a replaced channel finds its track (Record/RecTracks.cs). The
+    /// first 15 tracks take channels 1-9 and 11-16 in order (one track per channel: the colour names the track). Past 15, a track shares the channel whose tracks are fewest, then whose first notes
+    /// are NOT its first key, then which share the fewest keys with it: the colour names two tracks at most and their first notes (and later their keys) tell them apart.</summary>
+    public static int[] ShareChannels(IReadOnlyList<(int FirstKey, HashSet<int> Keys)> tracks)
+    {
+        var ch = new int[tracks.Count];
+        for (int k = 0; k < tracks.Count; k++)
+        {
+            if (k < 15 || RecMutants.On(RecMutants.SharedChannelsInOrder)) { ch[k] = ChannelOf(k); continue; }       // (the deliberate bug: the channels repeat in order, as before)
+            int best = -1; long bestCost = long.MaxValue;
+            for (int c = 0; c < 15; c++)
+            {
+                int channel = ChannelOf(c);
+                long occupants = 0, sameFirst = 0, shared = 0;
+                for (int j = 0; j < k; j++)
+                {
+                    if (ch[j] != channel) continue;
+                    occupants++;
+                    if (tracks[j].FirstKey == tracks[k].FirstKey) sameFirst++;
+                    foreach (int key in tracks[k].Keys) if (tracks[j].Keys.Contains(key)) shared++;
+                }
+                long cost = occupants * 1_000_000 + sameFirst * 10_000 + shared;
+                if (cost < bestCost) { bestCost = cost; best = channel; }
+            }
+            ch[k] = best;
+        }
+        return ch;
+    }
+
+    /// <summary>The first key and the keys of a track's note-ons (its SMF events).</summary>
+    public static (int FirstKey, HashSet<int> Keys) KeysOf(SmfTrack smf)
+    {
+        int first = -1;
+        var keys = new HashSet<int>();
+        foreach (var e in smf.Events.OrderBy(e => e.Tick).ThenBy(e => e.Order))
+            if ((e.Status & 0xF0) == RecMidi.NoteOn && e.Data2 > 0) { if (first < 0) first = e.Data1; keys.Add(e.Data1); }
+        return (first, keys);
+    }
+
+    /// <summary>Moves a track's events to MIDI channel <paramref name="channel"/> (the status bytes' low nibble).</summary>
+    public static void SetChannel(SmfTrack smf, int channel)
+    {
+        for (int i = 0; i < smf.Events.Count; i++) { var e = smf.Events[i]; smf.Events[i] = e with { Status = (byte)(e.Status & 0xF0 | channel & 15) }; }
+    }
 
     public static Transcription Run(RecSession s, RecOptions o)
     {
@@ -195,6 +242,12 @@ public static class RecTranscribe
             foreach (var t in g.Skip(1)) t.CopyInstrument(first);
         }
         foreach (var t in tr.Tracks) Channel(tr, t, o);
+        // past 15 tracks, channels are shared by tracks whose first notes differ (FL's note colour is the channel: reload)
+        if (tr.Tracks.Count > 15)
+        {
+            var chans = ShareChannels(tr.Tracks.Select(t => KeysOf(t.Smf)).ToList());
+            for (int k = 0; k < tr.Tracks.Count; k++) if (tr.Tracks[k].Channel != chans[k]) { tr.Tracks[k].Channel = chans[k]; SetChannel(tr.Tracks[k].Smf, chans[k]); }
+        }
         foreach (var g in tr.Tracks.GroupBy(t => t.Version))
         {
             var first = g.First();
@@ -717,7 +770,7 @@ public static class RecTranscribe
         if (s.VersionsOver > 0) lost.Add($"{s.VersionsOver} key-ons of instruments past the limit of {SpcRecorder.MaxVersions}");
         if (tr.SamplesChanged.Count > 0) lost.Add($"{tr.SamplesChanged.Count} samples were rewritten during the recording (their first version is used)");
         if (s.HeldAtStart > 0) lost.Add($"{s.HeldAtStart} voices were already sounding when it started (not transcribed)");
-        if (tr.ChannelsShared > 0) lost.Add($"{tr.ChannelsShared} tracks share a MIDI channel number with an earlier track (16 channels)");
+        if (tr.ChannelsShared > 0) lost.Add($"{tr.ChannelsShared} tracks share a MIDI channel with an earlier track (16 channels; each shares with one whose first note is another key, so FL's note colour and the first note tell them apart)");
         if (lost.Count > 0) f.Add(string.Join("; ", lost));
         var owners = tr.Tracks.Where(t => t.Lane == 0).ToList();
         int presets = owners.Count(t => t.PresetFile != null);

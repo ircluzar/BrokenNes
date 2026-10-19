@@ -119,9 +119,12 @@ public sealed unsafe class HostSim : IDisposable
         if (h != null && h.Record) lock (h.DispatcherCalls) h.DispatcherCalls.Add(id);
         if (h != null && (id == Fhd.GetMixingTime || id == Fhd.GetPlaybackTime) && value != 0)
         {
-            // FHD_GetMixingTime / FHD_GetPlaybackTime: the song position the test set (in beats; GT_LocalTime asks for it from the song's start), left untouched when there is none
+            // FHD_GetMixingTime / FHD_GetPlaybackTime: "Value is a pointer to a TFPTime, which is filled with an optional offset in samples" (fp_plugclass.h): the time at the block's start plus that
+            // offset (NaN in, NaN out: what FL 2026 answered the plugin's NaN offset with, every note of the user's session). No song position unless the test set one (FL gave none): the TFPTime
+            // is left as the plugin filled it.
+            Interlocked.Increment(ref h.mixingTimeCalls);
             double b = h.SongBeats;
-            if (!double.IsNaN(b) && (index & Gt.TimeFormatMask) == Gt.Beats) { var t = (TFPTime*)value; t->T = b; t->T2 = 0; }
+            if (!double.IsNaN(b) && (index & Gt.TimeFormatMask) == Gt.Beats) { var t = (TFPTime*)value; t->T = b + t->T / Math.Max(1, h.SampleRate) * h.Tempo / 60.0; t->T2 = 0; }
             return 0;
         }
         if (h != null && id == Fhd.GetContextInfo)
@@ -140,7 +143,31 @@ public sealed unsafe class HostSim : IDisposable
         return 0;
     }
 
-    private int editorResizedCalls, contextInfoCalls;
+    private int editorResizedCalls, contextInfoCalls, mixingTimeCalls;
+
+    /// <summary>Calls of FHD_GetMixingTime / FHD_GetPlaybackTime seen.</summary>
+    public int MixingTimeCalls => Volatile.Read(ref mixingTimeCalls);
+
+    /// <summary>The rate and tempo the song position's offset (in samples) is converted at.</summary>
+    public int SampleRate = 48000;
+    public double Tempo = 120;
+
+    /// <summary>The channel's root note: FL hands a voice's pitch in cents above it (FL 2026, the user's session of 2026-10-18: MIDI note 0 on a channel FL made by importing a MIDI file and the user
+    /// replaced by BrokenNes2; C5 = 60 on a channel made in FL, which the FL render certification measured). The plugin is not told which: it finds it (Record/FlNotes.cs).</summary>
+    public int RootNote = 60;
+
+    /// <summary>A note-on as FL 2026 makes it (Record/FlNotes.cs): the pitch in cents above the channel's root note (plus a bend in cents FL applies), FPV_GetVelocity = the MIDI velocity / 128,
+    /// the level the same (FL's InitLevels.Vol for a note: not measured; the velocity's float is the assumption), the colour = the imported note's MIDI channel - 1.</summary>
+    public SimVoice FlNoteOn(int key, int velocity, int colour, double bendCents = 0, double levelScale = 1)
+    {
+        var v = NewVoice(colour, velocity / 128f);
+        ref var f = ref v.Params->FinalLevels;
+        f.Pitch = (float)((key - RootNote) * 100 + bendCents);
+        f.Vol = (float)(velocity / 128.0 * levelScale);
+        f.Pan = 0;
+        v.Params->InitLevels = f;
+        return v;
+    }
     private nint trackNamePtr;
     private string? trackName;
 

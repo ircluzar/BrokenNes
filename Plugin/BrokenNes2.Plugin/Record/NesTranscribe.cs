@@ -261,6 +261,12 @@ public static class NesTranscribe
 
         tr.TiedCopies = DistinctCopies(tr);
         foreach (var t in tr.Tracks) Channel(tr, t, o);
+        // past 15 tracks, channels are shared by tracks whose first notes differ (FL's note colour is the channel: reload, RecTranscribe.ShareChannels)
+        if (tr.Tracks.Count > 15)
+        {
+            var chans = RecTranscribe.ShareChannels(tr.Tracks.Select(t => RecTranscribe.KeysOf(t.Smf)).ToList());
+            for (int k = 0; k < tr.Tracks.Count; k++) if (tr.Tracks[k].MidiChannel != chans[k]) { tr.Tracks[k].MidiChannel = chans[k]; RecTranscribe.SetChannel(tr.Tracks[k].Smf, chans[k]); }
+        }
         foreach (var t in tr.Tracks) MakePreset(tr, t);
 
         var tempos = tr.Map.Select(m => ((long)Math.Round(m.Tick), m.MicrosPerQuarter)).ToList();

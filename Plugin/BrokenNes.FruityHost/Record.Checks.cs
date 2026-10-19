@@ -38,7 +38,7 @@ internal static class RecordChecks
         new("smf", "the MIDI file read back by an independent Python parser and by VRUN's", Smf),
         new("section", "the project section REC1 round-trips and refuses damage", Section),
         new("live", "live MIDI out of the synthetic driver: every key-on a note-on on its instrument's channel, key-on pitch and every held move and level reproduced, the roots, nothing allocated per write", LiveChecks.Live),
-        new("match", "which track a channel plays, from its notes: every track from its first unambiguous note, from the middle, moved 16 bars, without a song position; unrelated notes never taken; unison then parting; the note's colour; an added note; nothing allocated", MatchChecks.Match),
+        new("match", "which track and which recorded note a channel plays, fed as FL 2026 hands notes (pitch from the channel's base, colour = MIDI channel, no song position): from the start on the first note, from the middle, a loop, edits, no colour, unrelated notes never taken, 23 tracks on shared channels; nothing allocated", MatchChecks.Match),
         new("games", "SMW, DKC and a corrupted SMW captured, transcribed and replayed: pitch exact, volumes, times, tempo against the driver's tick, roots against an FFT", Games),
     ];
 
@@ -59,8 +59,11 @@ internal static class RecordChecks
         new("live MIDI out sends nothing", "live", RecMutants.LiveOutSilent),
         new("live notes keyed without their sample's root", "live", RecMutants.LiveRootIgnored),
         new("live note-offs lost", "live", RecMutants.LiveNoteOffLost),
-        new("the track found by the key alone (the song position ignored)", "match", RecMutants.MatchIgnoresPosition),
         new("any key fits a track's note (an unrelated channel is taken)", "match", RecMutants.UnrelatedGrabbed),
+        new("FL's pitch read from C5 only (the r13 matcher: an imported channel's pitch is from MIDI note 0)", "match", RecMutants.OldPitchBase),
+        new("the note's colour ignored (the MIDI channel FL keeps in it)", "match", RecMutants.ColourIgnored),
+        new("each note taken for the first recorded note of its key (no order, no time between notes)", "match", RecMutants.FollowByKeyOnly),
+        new("past 15 tracks the MIDI channels repeat in order (two tracks starting on one key share a colour)", "match", RecMutants.SharedChannelsInOrder),
     ];
 
     // =====================================================================================================================================================================

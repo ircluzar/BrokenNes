@@ -26,6 +26,8 @@ public static class Fpd
     public const int UseVoiceLevels = 7;
     public const int SetEnabled = 11;
     public const int SetPlaying = 12;
+    /// <summary>FPD_SongPosChanged: "song position has been relocated (by other means than by playing of course)". FL 2026 sends it at every Play and Stop too (the host log of 2026-10-18).</summary>
+    public const int SongPosChanged = 13;
     public const int SetSamplesPerTick = 20;
     public const int SetFocus = 22;
     public const int GetParamInfo = 26;

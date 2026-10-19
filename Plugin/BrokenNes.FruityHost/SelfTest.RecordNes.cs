@@ -188,9 +188,17 @@ public sealed unsafe partial class SelfTest
             Render(200);                                                           // (the game started)
             p.Test(HkROptions, 0, ROptDefault);
             t.Expect(p.Test(HkRStart) == 0, "Record was refused: " + RText(p, 8));
+            var perBlock = new long[1800];                                          // (where an allocation happened, when one does: the reads allocate nothing)
             long a0 = p.Test(HkRAlloc);
-            Render(1800);                                                          // about 9.6 s at 48 kHz
+            fixed (float* f = buf)
+                for (int i = 0; i < perBlock.Length; i++)                           // about 9.6 s at 48 kHz
+                {
+                    long b0 = p.Test(HkRAlloc);
+                    p.NewTick(); p.GenRender(f, 256);
+                    perBlock[i] = p.Test(HkRAlloc) - b0;
+                }
             long a1 = p.Test(HkRAlloc);
+            string where = string.Join(", ", perBlock.Select((d, i) => (d, i)).Where(x => x.d != 0).Take(6).Select(x => $"block {x.i}: {x.d} bytes"));
             bool recording = p.Test(HkRState) == 2;
             long tap = p.Test(HkNTap);
             p.Test(HkRunaway, 0, 1);
@@ -198,7 +206,7 @@ public sealed unsafe partial class SelfTest
             bool done = RWait(p, 4);
             p.Test(HkRunaway, 0, 0);
             t.Expect(recording && done, $"the NES capture did not run or end (recording {recording}, state {p.Test(HkRState)}: {RText(p, 1)})");
-            t.Expect(a1 - a0 == 0, $"{a1 - a0:N0} bytes allocated on the audio thread while the NES game was recorded (1,800 blocks)");
+            t.Expect(a1 - a0 == 0, $"{a1 - a0:N0} bytes allocated on the audio thread while the NES game was recorded (1,800 blocks{(where.Length > 0 ? ": " + where : "")})");
             var s = NesSession.FromPayload(RBytes(p, HkNPayload), out var why);
             t.Expect(s != null, "the session does not read: " + why);
             if (s == null) return;

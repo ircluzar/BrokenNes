@@ -169,8 +169,9 @@ public sealed unsafe partial class Bn2Plugin
         LiveBlock(tuning);
     }
 
-    /// <summary>The base key this instance knows FL counts its pitch from (-1: it does not know; the capture reads C5 and checks the notes). Before the `reload` merge no instance knows it.</summary>
-    private int CaptureBaseHint => -1;
+    /// <summary>The base key this instance knows FL counts its pitch from (-1: it does not know; the capture reads C5 and checks the notes): reload's per-instance base, once the instance found it
+    /// from its track's notes or a project gave it (Bn2Plugin.Tracks.cs, Record/FlNotes.cs).</summary>
+    private int CaptureBaseHint => pitchBaseKnown ? pitchBase : -1;
 
     // ---- the window's live MIDI out of the notes (Bn2Plugin.CaptureLive.cs) ----
     partial void LiveNoteOn(Voice v, float final, float tuning, float vel);
