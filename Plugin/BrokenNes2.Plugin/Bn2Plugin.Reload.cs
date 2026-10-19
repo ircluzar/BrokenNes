@@ -7,17 +7,17 @@ namespace BrokenNes2;
 /// <summary>Every note an instance was asked to play and what it made of it (the self-test reads it): preallocated, filled by the audio thread without allocating.</summary>
 internal sealed class NoteFollowLog
 {
-    public const int Fields = 7;
+    public const int Fields = 8;
     public readonly int[] Data;
     public int Count;
     public long Lost;
     public NoteFollowLog(int capacity) { Data = new int[Math.Max(1, capacity) * Fields]; }
 
-    public void Add(int handle, int recNote, int inTrack, int trackKey, int track, int baseKey, int flags)
+    public void Add(int handle, int recNote, int inTrack, int trackKey, int track, int baseKey, int flags, int tick)
     {
         if ((Count + 1) * Fields > Data.Length) { Lost++; return; }
         int o = Count * Fields;
-        Data[o] = handle; Data[o + 1] = recNote; Data[o + 2] = inTrack; Data[o + 3] = trackKey; Data[o + 4] = track; Data[o + 5] = baseKey; Data[o + 6] = flags;
+        Data[o] = handle; Data[o + 1] = recNote; Data[o + 2] = inTrack; Data[o + 3] = trackKey; Data[o + 4] = track; Data[o + 5] = baseKey; Data[o + 6] = flags; Data[o + 7] = tick;
         Count++;
     }
 }
@@ -33,13 +33,15 @@ public sealed unsafe partial class Bn2Plugin
         if (l == null) return;
         int inTrack = idx != null && matcher.NoteAt >= 0 && matcher.Bound >= 0 ? NoteInTrack(idx, matcher.Bound, matcher.NoteAt) : -1;
         int flags = (matcher.Settled ? 1 : 0) | (matcher.NoteSure ? 2 : 0) | (matcher.Aligned ? 4 : 0) | (matcher.ByColour ? 8 : 0) | (matcher.BaseSure ? 16 : 0) | (matcher.Unsure ? 32 : 0);
-        l.Add((int)(v.Handle & 0xFFFF), v.RecNote, inTrack, v.TrackKey, matcher.Bound, pitchBase, flags);
+        int tick = idx != null && matcher.NoteAt >= 0 ? (int)Math.Round(idx.Beat[matcher.NoteAt] * RecMidi.Ppq) : -1;
+        l.Add((int)(v.Handle & 0xFFFF), matcher.NoteAt, inTrack, v.TrackKey, matcher.Bound, pitchBase, flags, tick);
     }
 
     /// <summary>790 the channel's base key, 791 the matcher's base (-1), 792 whether it is sure, 793 the recorded note of the last note (TrackIndex, -1), 794 jumps (seeds after the first), 795 notes the
     /// recording does not have, 796 the colour named the candidates, 797 the last seed was aligned with FL's position or the song's start, 798 settled, 799 how (1 colour, 2 keys, 3 given),
     /// 800 offer a recording from its files (value: a UTF-16 "midi path|preset folder" (no folder: the library's); 0 offered, 1 refused: the words in 643 field 8), 801 the note log on (value:
-    /// capacity; 0 off), 802 read it (index: max records, value: a buffer of 7 ints per note: handle, recorded note, its number in the track, key played, track, base, flags; returns the count),
+    /// capacity; 0 off), 802 read it (index: max records, value: a buffer of 8 ints per note: handle, the recorded note the matcher named (-1 none), its number in the track, the key played with the
+    /// recorded expression (-1: FL's own pitch), track, base, flags, the recorded note's tick; returns the count),
     /// 803 the note log's lost count, 804 following a known track (1/0), 805 FL's transport playing (1/0), 806 the song position FL gives now x 1000 (-1: none), 807 the matcher's candidates.</summary>
     private nint ReloadTestHook(int n, nint index, nint value)
     {

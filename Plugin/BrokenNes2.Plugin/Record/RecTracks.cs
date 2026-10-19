@@ -290,7 +290,7 @@ public sealed class TrackMatcher
     public const int MaxTracks = 256, MaxHyp = 4096, MaxBases = 128;
     /// <summary>Notes in a row that must fit (key and time between them) for a track to be SURE (settled: the instance moves to the tracks' emulator): with a colour that names it (FL's import keeps the
     /// MIDI channel in the colour), and without a colour, or with colour 0 (FL's default colour: a note the user drew is colour 0 too). When the first of them is where the song's start or FL's
-    /// position puts it: two with a colour naming the track (0 too), three without. Before that the track is played PROVISIONALLY from the first note when the colour (not 0) names it, else once
+    /// position puts it: that one note with a colour (not 0) naming the track, two with colour 0, three without. Before that the track is played PROVISIONALLY from the first note when the colour (not 0) names it, else once
     /// two notes fit or the first is where the song's start puts it; a note that contradicts a provisional track lets it go.</summary>
     public const int SettleByColour = 3, SettleWithoutColour = 4;
     public const int ShiftedNotes = SettleWithoutColour;           // (the older name: notes a channel without colour or position needs)
@@ -430,19 +430,29 @@ public sealed class TrackMatcher
             return;
         }
         missesInRow = 0;
-        // 3. which hypothesis this note is: aligned (when seeded with a position), FL's velocity (a NES note on two duty tracks without colours), the track and base played so far, else the first
-        int pick = -1;
+        // 3. FL's velocity: FL's import keeps each note's velocity, and the recording gives notes that sound different different velocities (the key-on level; a NES note on two duty tracks:
+        //    copies 3 apart). The hypotheses whose note has FL's velocity are kept when there are some (when the user changed a velocity, none has it: all stay). This tells apart notes of the
+        //    same key at the same intervals with another volume (an echo; playback from the middle), and tracks that play the same notes.
         bool byVelocity = false;
-        if (velocity > 0 && idx.Velocity.Length == idx.Count && !SameTrackAll())
+        if (velocity > 0 && idx.Velocity.Length == idx.Count && hCount > 1 && !RecMutants.On(RecMutants.FollowByKeyOnly))
         {
-            // tracks that play the same notes (a NES note on the tracks of two duties): the one whose note has FL's velocity, when only one has it
-            int with = -1;
-            bool many = false;
-            for (int h = 0; h < hCount; h++)
-                if (Math.Abs(idx.Velocity[idx.TNote[hAt[h]]] - velocity) <= 1) { if (with < 0) with = h; else if (hT[h] != hT[with]) many = true; }
-            if (with >= 0 && !many) { pick = with; byVelocity = true; }
+            int k = 0;
+            for (int h = 0; h < hCount; h++) if (Math.Abs(idx.Velocity[idx.TNote[hAt[h]]] - velocity) <= 1) k++;
+            if (k > 0 && k < hCount)
+            {
+                bool manyTracks = !SameTrackAll();
+                for (int h = 0, w = 0; h < hCount; h++)
+                {
+                    if (Math.Abs(idx.Velocity[idx.TNote[hAt[h]]] - velocity) > 1) continue;
+                    hT[w] = hT[h]; hB[w] = hB[h]; hAt[w] = hAt[h]; hN[w] = hN[h]; w++;
+                }
+                hCount = k;
+                byVelocity = manyTracks && SameTrackAll();           // (the velocity named the track among tracks that play the same notes)
+            }
         }
-        velRun = byVelocity && (velRun == 0 || hT[pick] == Bound) ? velRun + 1 : 0;
+        velRun = byVelocity && (velRun == 0 || hT[0] == Bound) ? velRun + 1 : 0;
+        // which hypothesis this note is: the track and base played so far, else the first
+        int pick = -1;
         if (pick < 0 && Bound >= 0) for (int h = 0; h < hCount; h++) if (hT[h] == Bound && (Base < 0 || bases[hB[h]] == Base)) { pick = h; break; }
         if (pick < 0) pick = 0;
         int track = hT[pick];
@@ -470,7 +480,7 @@ public sealed class TrackMatcher
         else { Candidates = cand; Unsure = cand > 1; }
         if (!Settled && Bound == track)
         {
-            int need = alignedChain ? (ByColour && !anyBase ? 2 : SettleWithoutColour - 1) : strong ? SettleByColour : SettleWithoutColour;
+            int need = alignedChain ? (strong ? 1 : ByColour && !anyBase ? 2 : SettleWithoutColour - 1) : strong ? SettleByColour : SettleWithoutColour;
             bool sure = baseAgrees && (cand == 1 && inRow >= need || velRun >= SettleWithoutColour);
             if (sure) Settled = true;
         }
