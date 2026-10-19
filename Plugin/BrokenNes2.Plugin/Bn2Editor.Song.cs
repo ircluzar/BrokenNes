@@ -124,7 +124,7 @@ public sealed unsafe partial class Bn2Editor
             Txt(dc, say, R(lx + 12, y, iw - 12, 44), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, Text, fontSmall);
         }
         Line_(dc, box.Left + 30, box.Bottom - 54, box.Right - 30, box.Bottom - 54, Line);
-        Txt(dc, "The song is kept in the FL project (the MIDI file's bytes). VRUN's engine plays no pitch bend: a captured file keeps them, the game drops them. Whether it replays well is your call.", R(lx, box.Bottom - 48, iw - 120, 36), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER, Faint, fontSmall);
+        Txt(dc, "The song is kept in the FL project (the MIDI file's bytes). Pitch bends play on the squares and the triangle (in the game: \"bends\": true in the song's roster entry). Whether it replays well is your call.", R(lx, box.Bottom - 48, iw - 120, 36), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER, Faint, fontSmall);
         Button(dc, IdMidClose, "Close", R(box.Right - 30 - 100, box.Bottom - 46, 100, 34), primary: true);
     }
 

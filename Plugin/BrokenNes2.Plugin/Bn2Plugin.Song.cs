@@ -9,9 +9,11 @@ public sealed unsafe partial class Bn2Plugin
     /// 603 copy a text into the buffer at <c>value</c>: field in the high bits of <c>index</c> (0 result, 1 the facts' lines joined by '\n', 2 the note about the game it replaced, 3 the song's name, 4 the status, 5 why the template cannot be used),
     /// the max chars in the low 16; returns the length (-1 none), 604 Play, 605 Restart, 606 Stop, 607 Reload (0 started, 1 refused), 608 follow FL's transport: <c>index</c> 1 sets it to <c>value</c>; returns it, 609 stopped (1/0),
     /// 610 write the running song's ROM to the UTF-16 path <c>value</c> (1 written, 0 not the song), 611 run exactly <c>value</c> frames and copy the APU register latch ($4000-$4017, 24 bytes) after each into the buffer at <c>index</c>
-    /// (a restart asked for is applied between frames, as on the audio thread; returns the frames run, -1 no game), 612 the built-in template is usable (1) or refused (0), 613 tests: the template is read from the manifest at the UTF-16 path
+    /// (a restart asked for is applied between frames, as on the audio thread; returns the frames run, -1 no game; round 9: with bit 30 of <c>value</c> set, the registers as each frame's NMI left them, Music/NmiLatch.cs),
+    /// 612 the built-in template is usable (1) or refused (0), 613 tests: the template is read from the manifest at the UTF-16 path
     /// <c>value</c> and the ROM beside it (same name, .nes; 0 = the built-in one again; returns 0, or 1 when they cannot be read), 614 the window's stamp (counts every result), 615 a number: <c>index</c> 0 notes, 1 dropped, 2 thinned,
     /// 3 loop frames, 4 truncated channels (bit mask), 5-8 bytes per channel as patched, 9 restarts done, 10 FL's transport as last told (-1 unknown), 11 a restart copy is ready (1/0), 12 pitch bends, 13 tempo changes ignored,
+    /// 14 the channels that play pitch bends (bit mask, round 9), 15 bend opcodes written, 16 bend frames thinned (off target), 17 bytes the bends added,
     /// 616 the deliberate-bug mask (MusicMutate) = <c>value</c>, 617 frames the running game has run, 618 the song's generation (counts every load), 619 the bytes of the song section this instance would save (-1 none).</summary>
     private nint SongTestHook(int n, nint index, nint value)
     {
@@ -53,7 +55,7 @@ public sealed unsafe partial class Bn2Plugin
                 File.WriteAllBytes(path, rom);
                 return 1;
             }
-            case 611: return emu == null ? -1 : (nint)emu.RunFramesLatchForTests((int)value, (byte*)index);
+            case 611: return emu == null ? -1 : (nint)emu.RunFramesLatchForTests((int)(value & 0x3FFFFFFF), (byte*)index, (value & 0x40000000) != 0);
             case 612: return MusicTemplate.Builtin(out _) != null ? 1 : 0;
             case 613:
             {
@@ -73,7 +75,8 @@ public sealed unsafe partial class Bn2Plugin
                 return index switch
                 {
                     0 => f.NotesTotal, 1 => f.NotesDropped, 2 => f.ThinnedTotal, 3 => f.LoopFrames, 4 => (f.Truncated[0] ? 1 : 0) | (f.Truncated[1] ? 2 : 0) | (f.Truncated[2] ? 4 : 0) | (f.Truncated[3] ? 8 : 0),
-                    >= 5 and <= 8 => f.FinalBytes[index - 5], 12 => f.PitchBends, 13 => f.TempoChangesIgnored, _ => -1,
+                    >= 5 and <= 8 => f.FinalBytes[index - 5], 12 => f.PitchBends, 13 => f.TempoChangesIgnored,
+                    14 => f.BendMask, 15 => f.BendOpcodes, 16 => f.BendFramesOff, 17 => f.BendBytes, _ => -1,
                 };
             }
             case 616: MusicMutate.Mask = (int)value; return 0;

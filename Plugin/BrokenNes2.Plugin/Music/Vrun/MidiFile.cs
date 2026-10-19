@@ -23,6 +23,9 @@ public sealed class MidiFile
     public const int NoteOn = 0x90;
     public const int NoteOff = 0x80;
     public const int ControlChange = 0xB0;
+    /// <summary>Pitch bend: <see cref="MidiEvent.Data1"/> is the low 7 bits,
+    /// <see cref="MidiEvent.Data2"/> the high 7 bits; 8192 is the centre.</summary>
+    public const int PitchBend = 0xE0;
     public const int Meta = 0xFF;
     public const int SetTempo = 0x51;
 
