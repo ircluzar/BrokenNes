@@ -22,11 +22,24 @@ internal static class MidiFixtures
         return d?.FullName ?? throw new InvalidOperationException("the repository was not found (set BROKENNES_REPO)");
     }
 
-    /// <summary>The user's restored VRUN tree, or null (then every check that needs it is reported NOT RUN, never passed).</summary>
+    /// <summary>The user's VRUN tree, or null (then every check that needs it is reported NOT RUN, never passed): BROKENNES_VRUN, else VRUN_ROOT (set by the VRUN
+    /// workspace's nesdev-env.sh: the live repo, as a Git Bash path or a Windows one), else the live workspace beside this repository (PROJECTS\VRUN_Nes_Dev, the layout
+    /// WORKSPACE.md describes), else BrokenDev's restored copy. Since round 9 the tree must have VRUN's pitch-bend engine (merged into the live VRUN 2026-10-18); an older
+    /// copy (BrokenDev's restore of the 2026-10-12 archive predates it) fails the converter and template checks, by design.</summary>
     public static string? Vrun()
     {
-        var env = Environment.GetEnvironmentVariable("BROKENNES_VRUN");
-        string dir = !string.IsNullOrEmpty(env) ? env : Path.Combine(Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } h ? h : @"P:\BrokenDev\env", @"vrun_nes_dev\sys0\simulations\VRUN");
+        static string? Win(string? p) => string.IsNullOrEmpty(p) ? null : p.Length > 3 && p[0] == '/' && char.IsLetter(p[1]) && p[2] == '/' ? $"{char.ToUpperInvariant(p[1])}:{p[2..].Replace('/', '\\')}" : p;
+        static string? Live()
+        {
+            try
+            {
+                string s = Path.Combine(Path.GetDirectoryName(RepoRoot())!, @"VRUN_Nes_Dev\sys0\simulations\VRUN");
+                return File.Exists(Path.Combine(s, "build.sh")) ? s : null;
+            }
+            catch (InvalidOperationException) { return null; }
+        }
+        string dir = Win(Environment.GetEnvironmentVariable("BROKENNES_VRUN")) ?? Win(Environment.GetEnvironmentVariable("VRUN_ROOT")) ?? Live()
+            ?? Path.Combine(Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } h ? h : @"P:\BrokenDev\env", @"vrun_nes_dev\sys0\simulations\VRUN");
         return File.Exists(Path.Combine(dir, "build.sh")) && Directory.Exists(Path.Combine(dir, @"engine\audio\converter")) ? dir : null;
     }
 
@@ -166,6 +179,117 @@ internal static class MidiFixtures
         {
             int end = tpq * 12;
             list.Add(new("lownotes", File_(1, 96, Track([Tempo(0, 500000)], 96 * 12), Track(Notes(0, [(20, 96), (28, 96), (40, 96), (24, 96)], 100, 96 * 4), 96 * 12), Track(Notes(1, [(12, 192), (30, 192)], 100, 96 * 2), 96 * 12)), "written here: notes below A1, a rest at the start"));
+        }
+        return list;
+    }
+
+    // ---- pitch bends (round 9) ----
+
+    private static (int, byte[]) Bend(int tick, int ch, int value)
+    {
+        int v = Math.Clamp(value + 8192, 0, 16383);
+        return (tick, [(byte)(0xE0 | ch), (byte)(v & 0x7F), (byte)(v >> 7 & 0x7F)]);
+    }
+
+    /// <summary>RPN 0 (the bend range) set to <paramref name="semitones"/>, then the RPN deselected, at <paramref name="tick"/>.</summary>
+    private static IEnumerable<(int, byte[])> BendRange(int tick, int ch, int semitones) =>
+    [
+        (tick, [(byte)(0xB0 | ch), 101, 0]), (tick, [(byte)(0xB0 | ch), 100, 0]), (tick, [(byte)(0xB0 | ch), 6, (byte)semitones]),
+        (tick, [(byte)(0xB0 | ch), 101, 127]), (tick, [(byte)(0xB0 | ch), 100, 127]),
+    ];
+
+    /// <summary>A linear bend from <paramref name="a"/> to <paramref name="b"/> between two ticks, one event every <paramref name="step"/> ticks.</summary>
+    private static IEnumerable<(int, byte[])> Ramp(int ch, int from, int to, int a, int b, int step = 4)
+    {
+        for (int t = from; t <= to; t += step) yield return Bend(t, ch, a + (int)Math.Round((double)(b - a) * (t - from) / Math.Max(1, to - from)));
+        yield return Bend(to, ch, b);
+    }
+
+    /// <summary>Songs with pitch bends, as FL exports them (bend events a few ticks apart, RPN 0 ranges): each has a lead on MIDI channel 1 (square 1), a bass on 2 (the triangle:
+    /// the lowest), a second voice on 3 (square 2) and drums on 10 (the noise), 96 ticks a beat at 120 BPM, and bends where its name says. The VRUN converter's own checks
+    /// (engine/audio/converter/tests) hold the same shapes against a model of the decoders; here they go through the plugin's whole path into the ROM.</summary>
+    public static List<MidiSong> BendSongs()
+    {
+        const int tpq = 96;
+        var list = new List<MidiSong>();
+        byte[] Song(int beats, IEnumerable<(int, byte[])> lead, IEnumerable<(int, byte[])> bass, IEnumerable<(int, byte[])> second, IEnumerable<(int, byte[])>? drumBends = null)
+        {
+            int end = beats * tpq;
+            var drums = Enumerable.Range(0, beats * 2).SelectMany(i => Notes(9, [(i % 4 == 0 ? 36 : i % 2 == 0 ? 38 : 42, 8)], 110, i * tpq / 2)).Concat(drumBends ?? []);
+            return File_(1, tpq, Track([Tempo(0, 500000)], end), Track(lead, end), Track(bass, end), Track(second, end), Track(drums, end));
+        }
+        IEnumerable<(int, byte[])> Plain(int ch, int beats, int note) => Notes(ch, Enumerable.Range(0, beats).Select(i => (note + i % 3 * 2, tpq)), 90);
+
+        // FL slide notes as exported: each lead note glides into the next over a quarter beat (RPN 0 = 12), the next note starts where the glide ends with the bend reset
+        {
+            var lead = new List<(int, byte[])>(BendRange(0, 0, 12));
+            int[] seq = [72, 79, 74, 69, 76, 72];
+            int t0 = 0;
+            for (int i = 0; i < seq.Length - 1; i++)
+            {
+                int len = tpq + tpq / 4;
+                lead.Add((t0, [0x90, (byte)seq[i], 100]));
+                lead.AddRange(Ramp(0, t0 + tpq * 3 / 4, t0 + len - 1, 0, Math.Clamp((int)Math.Round((seq[i + 1] - seq[i]) / 12.0 * 8192), -8192, 8191), 3));
+                lead.Add((t0 + len, [0x80, (byte)seq[i], 0]));
+                lead.Add(Bend(t0 + len, 0, 0));
+                t0 += len;
+            }
+            lead.AddRange(Notes(0, [(seq[^1], tpq)], 100, t0));
+            list.Add(new("bendglides", Song(8, lead, Plain(1, 8, 36), Plain(2, 8, 60)), "written here: FL glides into the next note (RPN 12), square 1"));
+        }
+        // octave slides on the second voice (RPN 0 = 12): up an octave over two beats, down two octaves in one, back in one; then a note that starts bent
+        {
+            var second = new List<(int, byte[])>(BendRange(0, 2, 12));
+            second.AddRange(Notes(2, [(67, 5 * tpq)], 100));
+            second.AddRange(Ramp(2, tpq / 2, 2 * tpq, 0, 8191));
+            second.AddRange(Ramp(2, 2 * tpq, 3 * tpq, 8191, -8192));
+            second.AddRange(Ramp(2, 3 * tpq, 4 * tpq, -8192, 0));
+            second.Add(Bend(5 * tpq + tpq / 2, 2, 2048));
+            second.AddRange(Notes(2, [(64, 2 * tpq)], 100, 5 * tpq + tpq / 2));
+            second.Add(Bend(8 * tpq - 2, 2, 0));
+            list.Add(new("bendoctaves", Song(8, Plain(0, 8, 76), Plain(1, 8, 36), second), "written here: octave slides up and down and a bent note (RPN 12), square 2"));
+        }
+        // a vibrato on the bass (the triangle: 5.5 Hz, +-0.5 semitone at the default range of 2), then a held bend
+        {
+            var bass = new List<(int, byte[])>(Notes(1, [(45, 4 * tpq - 8)], 100));
+            for (int t = 0; t < 4 * tpq - 8; t += 2) bass.Add(Bend(t, 1, (int)Math.Round(2048 * Math.Sin(2 * Math.PI * 5.5 * t / (double)tpq * 0.5))));
+            bass.Add(Bend(4 * tpq - 8, 1, -4096));
+            bass.AddRange(Notes(1, [(40, 4 * tpq - 8)], 100, 4 * tpq));
+            bass.Add(Bend(6 * tpq, 1, 0));
+            list.Add(new("bendvibrato", Song(8, Plain(0, 8, 76), bass, Plain(2, 8, 60)), "written here: vibrato and a held bend on the triangle (default range)"));
+        }
+        // notes that start bent, and one bend held across several notes (MIDI keeps it), default range
+        {
+            var lead = new List<(int, byte[])>();
+            int[] bends = [-8192, 4096, 0, 8191, -4096, 2048];
+            int[] notes = [72, 74, 76, 77, 79, 77];
+            for (int i = 0; i < 6; i++) { lead.Add(Bend(i * tpq, 0, bends[i])); lead.AddRange(Notes(0, [(notes[i], tpq - 8)], 100, i * tpq)); }
+            var second = new List<(int, byte[])> { Bend(tpq, 2, 4096) };
+            for (int i = 0; i < 5; i++) second.AddRange(Notes(2, [(62 + i, tpq - 12)], 90, tpq + i * tpq));
+            second.Add(Bend(7 * tpq, 2, 0));
+            list.Add(new("bendprebent", Song(8, lead, Plain(1, 8, 36), second), "written here: notes that start bent (square 1), a bend held across notes (square 2)"));
+        }
+        // all at once, and the drums bend too (the noise has no pitch: counted, not played)
+        {
+            var lead = new List<(int, byte[])>(BendRange(0, 0, 12));
+            lead.AddRange(Notes(0, [(72, 2 * tpq), (76, 2 * tpq), (79, 4 * tpq)], 100));
+            lead.AddRange(Ramp(0, tpq, 2 * tpq - 1, 0, 2731, 3));
+            lead.Add(Bend(2 * tpq, 0, 0));
+            lead.AddRange(Ramp(0, 5 * tpq, 7 * tpq, 0, -4096, 4));
+            var bass = new List<(int, byte[])>(Notes(1, [(40, 8 * tpq - 8)], 100));
+            for (int t = 0; t < 8 * tpq - 8; t += 3) bass.Add(Bend(t, 1, (int)Math.Round(1500 * Math.Sin(2 * Math.PI * 4.0 * t / (double)tpq * 0.5))));
+            var second = new List<(int, byte[])>(BendRange(0, 2, 2));
+            second.AddRange(Notes(2, [(64, 4 * tpq), (67, 4 * tpq)], 90));
+            second.AddRange(Ramp(2, 2 * tpq, 3 * tpq, 0, 8191));
+            second.AddRange(Ramp(2, 3 * tpq, 4 * tpq, 8191, 0));
+            list.Add(new("bendall", Song(8, lead, bass, second, Ramp(9, 0, 4 * tpq, 0, 8191, 8)), "written here: bends on square 1, square 2, the triangle and the drums"));
+        }
+        // sixteenth notes under a fast vibrato: the channel's one opcode per frame is mostly taken by the notes, so bend frames are thinned (counted), never the notes
+        {
+            var lead = new List<(int, byte[])>();
+            for (int i = 0; i < 32; i++) lead.AddRange(Notes(0, [(72 + i % 4 * 3, tpq / 4 - 6)], 100, i * tpq / 4));
+            for (int t = 0; t < 8 * tpq; t += 2) lead.Add(Bend(t, 0, (int)Math.Round(4096 * Math.Sin(2 * Math.PI * 6.0 * t / (double)tpq * 0.5))));
+            list.Add(new("benddense", Song(8, lead, Plain(1, 8, 36), Plain(2, 8, 60)), "written here: a vibrato under sixteenth notes: bend frames thinned"));
         }
         return list;
     }

@@ -46,13 +46,16 @@ public sealed unsafe partial class SelfTest
         return false;
     }
 
-    private static byte[] SLatch(PluginInstance p, int frames)
+    private static byte[] SLatch(PluginInstance p, int frames, bool perNmi = false)
     {
         var buf = new byte[frames * MidiModel.LatchBytes];
         long n;
-        fixed (byte* b = buf) n = p.Test(HkSLatch, (nint)b, frames);
+        fixed (byte* b = buf) n = p.Test(HkSLatch, (nint)b, frames | (perNmi ? 0x40000000 : 0));
         return n == frames ? buf : buf[..(int)(Math.Max(0, n) * MidiModel.LatchBytes)];
     }
+
+    /// <summary>The registers as each frame's NMI left them (round 9: the bend decoders make a busy frame's NMI write on past the frame's end; Music/NmiLatch.cs).</summary>
+    private static byte[] SLatchNmi(PluginInstance p, int frames) => SLatch(p, frames, true);
 
     private static byte[]? SRom(PluginInstance p, string dir)
     {
@@ -91,6 +94,41 @@ public sealed unsafe partial class SelfTest
         return p;
     }
 
+    /// <summary>`FruityHost song-compat save &lt;dll&gt; &lt;song.mid&gt; &lt;out.state&gt;` (an FL project with a Test MIDI export song, from any plugin DLL since round 7: hooks 600-619
+    /// are the same) and `song-compat open &lt;dll&gt; &lt;state&gt;` (reopened by another DLL: what it says and plays). Two processes, so two versions of the plugin never share one.</summary>
+    internal static int SongCompat(string[] args)
+    {
+        if (args.Length < 4) { Console.WriteLine("song-compat save <dll> <song.mid> <out.state> | song-compat open <dll> <state>"); return 2; }
+        using var p = new PluginLibrary(args[2]).Create();
+        p.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+        p.SetParam(PEmulator, 8);
+        p.Test(120, 0, 1);
+        if (args[1] == "save")
+        {
+            p.SetParam(PMode, 1);
+            WaitForRom(p);
+            // a .mid file, or the name of a song the checks write (MidiFixtures: bendall, manychannels, ...)
+            string mid = File.Exists(args[3]) ? Path.GetFullPath(args[3]) : WriteMid(args[3], MidiFixtures.BendSongs().Concat(MidiFixtures.Stress()).First(s => s.Name == args[3]).Midi);
+            if (SOpen(p, mid) != 0 || !SReady(p)) { Console.WriteLine($"the song did not load: '{SText(p, 0)}'"); return 1; }
+            SLatch(p, 150);
+            var st = p.SaveState();
+            File.WriteAllBytes(args[4], st);
+            Console.WriteLine($"saved {st.Length} bytes; frames {p.Test(HkSFrames)}; window: '{SText(p, 0)}'; facts: {SText(p, 1).Replace('\n', '|')}");
+            return 0;
+        }
+        p.LoadState(File.ReadAllBytes(args[3]));
+        bool ready = SReady(p);
+        SLatch(p, 0);
+        var latch = SLatch(p, 120);
+        int sounding = 0;
+        for (int f = 0; f < latch.Length / MidiModel.LatchBytes; f++) { var l = latch.AsSpan(f * MidiModel.LatchBytes, MidiModel.LatchBytes); if (MidiModel.Field(l, 1) > 0 || MidiModel.Field(l, 3) > 0 || MidiModel.Field(l, 5) != 0) sounding++; }
+        Console.WriteLine($"reopened: built {ready}, song is the game {p.Test(HkSRunning)}, game state restore {p.Test(86)}, frames {p.Test(HkSFrames)}, {sounding}/{latch.Length / MidiModel.LatchBytes} frames with a sounding channel");
+        Console.WriteLine($"window: '{SText(p, 0)}'");
+        Console.WriteLine($"facts: {SText(p, 1).Replace('\n', '|')}");
+        p.Test(120, 0, 0);
+        return ready && p.Test(HkSRunning) == 1 ? 0 : 1;
+    }
+
     private delegate void SongScenario(T t);
 
     private (string Name, SongScenario Body, int Mutant, string Why)[] SongScenarios() =>
@@ -103,7 +141,44 @@ public sealed unsafe partial class SelfTest
         ("project", SongProject, MusicMutate.SectionDropsMidi, "the project section is written without the MIDI file"),
         ("refusals", SongRefusals, MusicMutate.RefusalSilent, "a refusal says nothing"),
         ("alloc", SongAlloc, MusicMutate.RestartAllocates, "a restart drops the prepared stems (the audio thread makes new ones)"),
+        ("bends", SongBendsDll, MusicMutate.BendsIgnored, "the song is converted with bends off (round 7's way)"),
     ];
+
+    // ------------------------------------------------------------------------------------------------ pitch bends (round 9), from the plugin's own machine
+
+    private void SongBendsDll(T t)
+    {
+        foreach (var s in MidiFixtures.BendSongs().Where(x => x.Name is "bendall" or "bendprebent"))
+        {
+            using var p = SongPlugin();
+            p.Test(120, 0, 1);                                                    // the editor does not run the game behind the test's back
+            try
+            {
+                t.Expect(SOpen(p, WriteMid(s.Name, s.Midi)) == 0, $"{s.Name}: the open was refused");
+                t.Expect(SReady(p), $"{s.Name}: the song's game was not built: '{SText(p, 0)}'");
+                // what VRUN's converter does with it (bends on), apart from the plugin's path
+                var reference = Vrun.Audio.Midi2Nes.ConvertSong(Vrun.Audio.MidiFile.Parse(s.Midi), SongConvert.TrackName, _ => { }, new Vrun.Audio.ConvertOptions { Bends = true });
+                var played = reference.Bends.Where(x => !x.Ignored && !x.Dropped).ToList();
+                int loop = reference.LoopFrames, n = 2 * loop;
+                var latch = SLatchNmi(p, n + MusicTemplate.Preroll + 4);
+                var sc = MidiModel.Best(reference.Channels, latch, n, skip: MidiChecks.Skip);
+                t.Expect(sc.Worst >= 1.0 && sc.Start == MusicTemplate.Preroll, $"{s.Name}: the plugin's machine does not play VRUN's streams with bends: {sc.Agree}/{sc.Of} (decode in frame {sc.Start}); {string.Join("; ", sc.Mismatches)}");
+                var parts = new List<string>();
+                foreach (var rep in played)
+                {
+                    var j = MidiChecks.JudgeBends(latch, sc.Start, rep.NesChannel, MidiChecks.IdealPitch(s.Midi, rep.MidiChannel, loop), loop, rep.ToleranceCents, rep.SlidesOff);
+                    t.Expect(j.Off <= 2 * rep.FramesOverTolerance && j.Bent >= 10, $"{s.Name} {MusicTemplate.ChannelNames[rep.NesChannel]}: {j.Off} of {j.Checked} frames off the MIDI's pitch ({j.Bent} bent; the converter says {rep.FramesOverTolerance} a loop)");
+                    parts.Add($"{MusicTemplate.ChannelNames[rep.NesChannel]} {j.Bent} bent frames, {j.Off} off, held max {j.MaxHeldCents:0.0} / moving max {j.MaxMovingCents:0.0} cents");
+                }
+                string facts = SText(p, 1);
+                int mask = played.Aggregate(0, (m, x) => m | 1 << x.NesChannel);
+                t.Expect(p.Test(HkSNum, 14) == mask && p.Test(HkSNum, 15) > 0 && p.Test(HkSNum, 17) > 0, $"{s.Name}: the window's numbers say bends on mask {p.Test(HkSNum, 14)} ({p.Test(HkSNum, 15)} opcodes, {p.Test(HkSNum, 17)} bytes), the converter plays them on {mask}");
+                t.Expect(facts.Contains("bends played on "), $"{s.Name}: the facts do not say the bends are played: {facts}");
+                t.Note($"{s.Name}: {sc.Agree}/{sc.Of} field-frames as each NMI left them, decode in frame {sc.Start}; " + string.Join("; ", parts) + $"; facts: {facts.Split('\n').LastOrDefault()}");
+            }
+            finally { p.Test(120, 0, 0); }
+        }
+    }
 
     private void MidiTest(T t)
     {
@@ -227,7 +302,7 @@ public sealed unsafe partial class SelfTest
                 var b = SongConvert.Convert(s.Midi, out _)!;
                 int n = Math.Clamp(b.Facts.LoopFrames + 120, 560, 2400);
                 // from power-on (the hook takes the built game first, as the audio thread would): the decode begins after the preroll
-                var all = SLatch(p, n + 120);
+                var all = SLatchNmi(p, n + 120);
                 t.Expect(p.Test(HkSRunning) == 1 && p.Test(HkSFrames) == n + 120, $"{s.Name}: the song game ran {p.Test(HkSFrames)} frames, expected {n + 120} from power-on");
                 var rom = SRom(p, dir);
                 t.Expect(rom != null && rom.AsSpan().SequenceEqual(LibraryRom(s.Midi, s.Name)), $"{s.Name}: the ROM the plugin built is not the one the library builds (the one midi-test verifies)");
@@ -237,7 +312,7 @@ public sealed unsafe partial class SelfTest
                 // after a restart (the copy run up to the decode): the decode is in the first frame
                 SWait(p, () => p.Test(HkSNum, 11) == 1, 10000);
                 p.Test(HkSRestart);
-                var after = SLatch(p, n + 20);
+                var after = SLatchNmi(p, n + 20);
                 var sr = MidiModel.Best(b.Channels, after, n, 0, 8, MidiChecks.Skip);
                 t.Expect(sr.Worst >= 1.0 && sr.Start == 0, $"{s.Name}: after Restart the decode began in frame {sr.Start} ({sr.Agree}/{sr.Of}); a restart should start the song in the first frame");
                 t.Note($"{s.Name}: {sc.Agree}/{sc.Of} field-frames from power-on (decode in frame {sc.Start}), {sr.Agree}/{sr.Of} after a restart (decode in frame {sr.Start})");
@@ -309,7 +384,7 @@ public sealed unsafe partial class SelfTest
             SWait(p, () => p.Test(HkSNum, 11) == 1, 10000);
             long r0 = p.Test(HkSNum, 9);
             p.Dispatcher(Fpd.SetPlaying, 0, 1);                                 // FL's Play
-            var after = SLatch(p, 600);
+            var after = SLatchNmi(p, 600);
             var sc = MidiModel.Best(b.Channels, after, 480, 0, 8, MidiChecks.Skip);
             t.Expect(p.Test(HkSNum, 9) == r0 + 1, "FL's transport start did not restart the song");
             t.Expect(sc.Start == 0 && sc.Worst >= 1.0, $"after FL's Play the decode began in frame {sc.Start} ({sc.Agree}/{sc.Of}), expected the first frame");
@@ -472,22 +547,27 @@ public sealed unsafe partial class SelfTest
             t.Expect(said.Contains("was not loaded") && said.Contains(expect) && said.Contains("Nothing changed"), $"{name}: the window said '{said}'");
             t.Expect(p.Test(HkSGen) == gen && p.Test(HkSRunning) == 1, $"{name}: the song that was playing was replaced or stopped");
         }
-        // a template the code does not know: Test MIDI export refuses, with the reason
+        // a template the code does not know (the next format version) or one it no longer plays (round 7's version 1, whose plain decoders read a bend opcode as the loop):
+        // Test MIDI export refuses, with the reason
         string tdir = MidiDir();
         var (rom, manifest, _) = MidiFixtures.Bundled();
-        File.WriteAllBytes(Path.Combine(tdir, "v2.nes"), rom);
-        File.WriteAllText(Path.Combine(tdir, "v2.txt"), manifest.Replace("version = 1", "version = 2"));
-        fixed (char* c = Path.Combine(tdir, "v2.txt") + "\0") t.Expect(p.Test(HkSTemplate, 0, (nint)c) == 0, "the test template could not be set");
-        try
+        t.Expect(manifest.Contains($"version = {MusicTemplate.FormatVersion}"), "the bundled manifest does not carry this build's format version");
+        foreach (int v in new[] { MusicTemplate.FormatVersion + 1, 1 })
         {
-            t.Expect(p.Test(HkSTemplateOk) == 0, "a version-2 template is accepted");
-            long stamp = p.Test(HkSStamp);
-            SOpen(p, WriteMid("good2", MidiFixtures.Synthetic()));
-            SWait(p, () => p.Test(HkSStamp) > stamp, 10000);
-            t.Expect(SText(p, 0).Contains("cannot run in this build") && SText(p, 0).Contains("version 2"), $"a version-2 template: the window said '{SText(p, 0)}'");
-            t.Expect(p.Test(HkSGen) == gen, "a song was loaded with a template the code does not know");
+            File.WriteAllBytes(Path.Combine(tdir, $"v{v}.nes"), rom);
+            File.WriteAllText(Path.Combine(tdir, $"v{v}.txt"), manifest.Replace($"version = {MusicTemplate.FormatVersion}", $"version = {v}"));
+            fixed (char* c = Path.Combine(tdir, $"v{v}.txt") + "\0") t.Expect(p.Test(HkSTemplate, 0, (nint)c) == 0, "the test template could not be set");
+            try
+            {
+                t.Expect(p.Test(HkSTemplateOk) == 0, $"a version-{v} template is accepted");
+                long stamp = p.Test(HkSStamp);
+                SOpen(p, WriteMid($"good_v{v}", MidiFixtures.Synthetic()));
+                SWait(p, () => p.Test(HkSStamp) > stamp, 10000);
+                t.Expect(SText(p, 0).Contains("cannot run in this build") && SText(p, 0).Contains($"version {v}") && (v != 1 || SText(p, 0).Contains("cannot play pitch bends")), $"a version-{v} template: the window said '{SText(p, 0)}'");
+                t.Expect(p.Test(HkSGen) == gen, $"a song was loaded with a version-{v} template");
+            }
+            finally { p.Test(HkSTemplate, 0, 0); }
         }
-        finally { p.Test(HkSTemplate, 0, 0); }
         t.Expect(p.Test(HkSTemplateOk) == 1, "the built-in template is not usable");
     }
 

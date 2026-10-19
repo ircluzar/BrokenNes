@@ -402,25 +402,66 @@ public sealed partial class Emulator
     internal byte[]? SongRomForTests() => SongRunning ? song?.Rom : null;
 
     /// <summary>Runs exactly <paramref name="frames"/> frames the way the audio thread does (a pending game or restart is applied between frames) and copies the APU register latch after each, 24 bytes a frame.
-    /// Returns the frames run, -1 with no game. (Tests: the engine check reads the song's decoders frame by frame through it.)</summary>
-    internal unsafe long RunFramesLatchForTests(int frames, byte* dest)
+    /// Returns the frames run, -1 with no game. (Tests: the engine check reads the song's decoders frame by frame through it.) With <paramref name="perNmi"/> (round 9) the registers are those each
+    /// frame's NMI left (Music/NmiLatch.cs: every write through the machine's APU write tap, chained to any tap already there; a frame's NMI can still be writing when the frame ends), except the
+    /// last frame's, which may lack what its NMI writes after the call returns; a restart that swaps the machine starts a new recording on the new one.</summary>
+    internal unsafe long RunFramesLatchForTests(int frames, byte* dest, bool perNmi = false)
     {
         lock (romLock)
         {
             var latch = new byte[0x18];
             int done = 0;
             ApplyPending();                                                    // (also with 0 frames: a game that is built is taken, as the audio thread would)
-            for (int i = 0; i < frames; i++)
+            NesAudioMachine? tapped = null;
+            Action<ushort, byte, long>? kept = null;
+            NmiLatch? rec = null;
+            int recFrom = 0;
+            try
             {
-                ApplyPending();
-                var g = game;
-                if (g?.Nes == null || g.Crashed) break;
-                Produce(g);
-                g.Nes.CopyApuLatch(latch);
-                if (dest != null) for (int k = 0; k < 0x18; k++) dest[i * 0x18 + k] = latch[k];
-                done++;
+                for (int i = 0; i < frames; i++)
+                {
+                    ApplyPending();
+                    var g = game;
+                    if (g?.Nes == null || g.Crashed) break;
+                    if (perNmi && !ReferenceEquals(g.Nes, tapped))
+                    {
+                        WriteNmiLatches(rec, recFrom, dest);
+                        if (tapped != null) tapped.RecordTap = kept;
+                        tapped = g.Nes;
+                        kept = tapped.RecordTap;
+                        tapped.CopyApuLatch(latch);
+                        var r = new NmiLatch(latch);
+                        var prev = kept;
+                        tapped.RecordTap = prev == null ? r.OnWrite : (a, v, c) => { r.OnWrite(a, v, c); prev(a, v, c); };
+                        rec = r;
+                        recFrom = i;
+                    }
+                    Produce(g);
+                    if (perNmi) rec!.FrameRan(g.Nes.FrameStartClock);
+                    else
+                    {
+                        g.Nes.CopyApuLatch(latch);
+                        if (dest != null) for (int k = 0; k < 0x18; k++) dest[i * 0x18 + k] = latch[k];
+                    }
+                    done++;
+                }
+            }
+            finally
+            {
+                if (perNmi)
+                {
+                    WriteNmiLatches(rec, recFrom, dest);
+                    if (tapped != null) tapped.RecordTap = kept;
+                }
             }
             return game == null ? -1 : done;
         }
+    }
+
+    private static unsafe void WriteNmiLatches(NmiLatch? rec, int from, byte* dest)
+    {
+        if (rec == null || dest == null) return;
+        var o = rec.PerNmi();
+        for (int k = 0; k < o.Length; k++) dest[from * NmiLatch.Bytes + k] = o[k];
     }
 }

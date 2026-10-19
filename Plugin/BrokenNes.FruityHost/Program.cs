@@ -63,6 +63,9 @@ switch (args[0])
     case "midi-trace":
         return MidiChecks.Trace(args);
 
+    case "song-compat":
+        return SelfTest.SongCompat(args);
+
     case "alloc-probe":
         return PresetChecks.AllocProbe(args);
 

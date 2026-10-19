@@ -3,12 +3,13 @@
 // library checks first (CaptureChecks), then the DLL:
 //
 //   flow     the window with real mouse messages: Capture from FL arms, FL plays the song on four BrokenNes2 channels (Direct mode), FL's Stop builds the file, Test MIDI export plays it at once in
-//            the same emulator, the facts say what VRUN's engine drops, Save MIDI... writes the file, the MIDI-out box
+//            the same emulator, the facts say the slides and bends (VRUN's engine plays them: round 9), Save MIDI... writes the file, the MIDI-out box
 //   file     the captured file read by the independent parser: every note FL played (key, velocity, start and end within 1 tick at 960 per quarter, the channel VRUN's converter expects), the
 //            pitch FL played at every tick within the bend's 14-bit step, the smallest bend range, the end at the bar line; at FL's own 44.1 kHz / 130 BPM without FPE_Tempo too; and the pitch
 //            registers the instance's own chip wrote are those the file's pitch gives through Direct mode's arithmetic (or within a rounding edge)
-//   engine   the song Test MIDI export built from the take: the ROM is the library's for those bytes, the plugin's machine plays the converter's streams frame by frame, the streams and loop are
-//            those of the ideal file written from the script (the converter drops the bends: counted)
+//   engine   the song Test MIDI export built from the take: the ROM is the library's for those bytes, the plugin's machine plays the converter's streams (with bends) frame by frame as each NMI
+//            left the registers, its periods follow the take's pitch on square 1, square 2 and the triangle (held bends exact, moving ones within the tolerance: round 9), and without bends
+//            the take converts to the streams and loop of the ideal file written from the script (the notes)
 //   render   FL's Export (PM_IsRendering, another sample rate than the live one): the same file
 //   alloc    0 bytes allocated on the audio thread while four channels are captured (live MIDI out on too)
 //   live     "Send my notes and pitch bends as MIDI out": every note FL played and the played pitch at every tick, through MIDIOut_Delayed on port 1, channels 1/2/3/10
@@ -197,12 +198,12 @@ public sealed unsafe partial class SelfTest
             Win32Host.Pump(60);
             string strip = CEdText(p);
             t.Expect(strip.Contains("Captured FL capture") && strip.Contains("39 notes on 4 channels"), $"after the take the strip says '{strip}'");
-            t.Expect(strip.Contains("no pitch bend") && p.Test(EdCFacts) >= 1, $"the strip does not show what VRUN's engine drops ({p.Test(EdCFacts)} facts drawn): '{strip}'");
+            t.Expect(strip.Contains("slide or bend") && strip.Contains("VRUN's engine plays the bends") && p.Test(EdCFacts) >= 1, $"the strip does not show the slides and bends VRUN plays ({p.Test(EdCFacts)} facts drawn): '{strip}'");
             t.Expect(SText(p, 0).StartsWith("Loaded FL capture"), $"Test MIDI export said '{SText(p, 0)}'");
             t.Expect(SText(p, 3).StartsWith("FL capture"), $"the song's name is '{SText(p, 3)}'");
             string facts = SText(p, 1);
             t.Expect(facts.Contains("square 1 <- MIDI 1") && facts.Contains("square 2 <- MIDI 2") && facts.Contains("triangle <- MIDI 3") && facts.Contains("noise <- MIDI 10"), $"the converter's facts: {facts}");
-            t.Expect(facts.Contains("pitch bends not played"), $"the converter's facts do not count the bends: {facts}");
+            t.Expect(facts.Contains("bends played on square 1, square 2, triangle:"), $"the converter's facts do not say the take's bends are played: {facts}");
             t.Expect(p.Test(21) == 1 && p.Test(14) == 0, "the emulator is not in NES ROM mode with the song");
             var audio = RenderBlocks(p, 1.0);
             t.Expect(Audio.Rms(audio, 0, audio.Length) > 0.003, $"the captured song is silent in VRUN's engine (rms {Audio.Rms(audio, 0, audio.Length):0.0000})");
@@ -265,7 +266,7 @@ public sealed unsafe partial class SelfTest
                 string facts = CText(rack[0], 1);
                 if (root == 60) r.Expect(facts.Contains("keys read from C5") && !facts.Contains("only fit"), $"{label}: the base (C5) is not said: {facts}");
                 else r.Expect(facts.Contains("read from MIDI note 0: their notes only fit there") && facts.Contains("like the other channels") && facts.Split('\n').Take(4).Any(f => f.Contains("only fit")), $"{label}: the base found (MIDI note 0) is not said: {facts}");
-                r.Expect(facts.Contains("still sounding when FL stopped") && facts.Contains("no pitch bend"), $"{label}: the take's facts: {facts}");
+                r.Expect(facts.Contains("still sounding when FL stopped") && facts.Contains("VRUN's engine plays the bends"), $"{label}: the take's facts: {facts}");
                 if (!tempo) r.Expect(CText(rack[0], 2).Contains("from FL's") && CText(rack[0], 2).Contains("PPQ 96"), $"{label}: the tempo's source is not FL's samples per tick x PPQ: {CText(rack[0], 2).Split('\n').FirstOrDefault(l => l.StartsWith("tempo"))}");
                 r.Expect(CText(rack[0], 2).Contains("FL left the time as it was (no song position)") && !facts.Contains("FL's own song position"), $"{label}: FL gave no song position (as in the log), the report does not say so");
                 Absorb(t, r, label);
@@ -328,21 +329,35 @@ public sealed unsafe partial class SelfTest
             t.Expect(b != null, "the converter refused the captured file: " + why);
             if (b == null) return;
             int n = Math.Clamp(b.Facts.LoopFrames + 120, 560, 2400);
-            var all = SLatch(p, n + 120);
+            // (the registers as each NMI left them: with the bend decoders a busy NMI can still be writing when the frame ends, Music/NmiLatch.cs)
+            var all = SLatchNmi(p, n + 120);
             var rom = SRom(p, MidiDir());
             t.Expect(rom != null && rom.AsSpan().SequenceEqual(LibraryRom(midi, SText(p, 3))), "the ROM the plugin built from the take is not the library's for the same bytes");
             var sc = MidiModel.Best(b.Channels, all, n, skip: MidiChecks.Skip);
             t.Expect(sc.Worst >= 1.0 && sc.Start == MusicTemplate.Preroll, $"the plugin's machine does not play the converter's streams of the take: {sc.Agree}/{sc.Of} from frame {sc.Start}; {string.Join("; ", sc.Mismatches)}");
-            // the streams and loop are the ideal file's (the script's notes, no bends) at the take's tempo
+            // the notes: without bends the take converts to the ideal file's streams and loop (the script's notes, no bends) at the take's tempo
             int mpq = (int)p.Test(HkCNum, 9);
             var ideal = SongConvert.Convert(CaptureChecks.IdealMidi(s, mpq), out _)!;
+            var plain = Vrun.Audio.Midi2Nes.ConvertSong(Vrun.Audio.MidiFile.Parse(midi), SongConvert.TrackName, _ => { });
             for (int c = 0; c < 4; c++)
-                t.Expect(b.Channels[c].AsSpan().SequenceEqual(ideal.Channels[c]), $"{Vrun.Audio.Midi2Nes.ChannelNames[c]}: the take's stream ({b.Channels[c].Length} bytes) is not the ideal file's ({ideal.Channels[c].Length})");
+                t.Expect(plain.Channels[c].AsSpan().SequenceEqual(ideal.Channels[c]), $"{Vrun.Audio.Midi2Nes.ChannelNames[c]}: the take's stream without bends ({plain.Channels[c].Length} bytes) is not the ideal file's ({ideal.Channels[c].Length})");
             long bar = 4L * 960, lastOff = (long)s.Notes.Max(x => CaptureChecks.EndTick(s, x)) * 10, end = (lastOff + bar - 1) / bar * bar;
             int expectFrames = Math.Max((int)(end * ((double)mpq / 960 * Vrun.Audio.Midi2Nes.Fps) / 1_000_000.0), 2);
             t.Expect(b.Facts.LoopFrames == expectFrames && ideal.Facts.LoopFrames == expectFrames, $"the loop is {b.Facts.LoopFrames} frames (ideal {ideal.Facts.LoopFrames}); the bar line after the last note ({end / bar} bars) is {expectFrames}");
-            t.Expect(b.Facts.PitchBends == p.Test(HkCNum, 2) && b.Facts.PitchBends > 0, $"the converter counts {b.Facts.PitchBends} pitch bends not played, the take wrote {p.Test(HkCNum, 2)}");
-            t.Note($"the take in VRUN's engine: {sc.Agree}/{sc.Of} field-frames of the converter's streams from frame {sc.Start}; streams {string.Join(" + ", b.Channels.Select(x => x.Length))} bytes = the ideal file's; loop {b.Facts.LoopFrames} frames ({end / bar} bars); {b.Facts.PitchBends} bends not played");
+            // the bends (round 9): every bend the take wrote is counted, the plugin plays them on square 1, square 2 and the triangle (its window's numbers too), and the period its machine
+            // wrote follows the take's pitch frame by frame (held bends exact, moving ones within the tolerance)
+            t.Expect(b.Facts.PitchBends == p.Test(HkCNum, 2) && b.Facts.PitchBends > 0, $"the converter counts {b.Facts.PitchBends} pitch bends, the take wrote {p.Test(HkCNum, 2)}");
+            t.Expect(b.Facts.BendMask == 7 && p.Test(HkSNum, 14) == 7 && p.Test(HkSNum, 15) == b.Facts.BendOpcodes && p.Test(HkSNum, 17) == b.Facts.BendBytes,
+                $"the take's bends: the converter plays them on mask {b.Facts.BendMask}, the window's numbers say mask {p.Test(HkSNum, 14)}, {p.Test(HkSNum, 15)} opcodes, {p.Test(HkSNum, 17)} bytes ({b.Facts.BendOpcodes}, {b.Facts.BendBytes} expected)");
+            int loop = b.Facts.LoopFrames;
+            var parts = new List<string>();
+            foreach (var rep in b.Facts.BendsPlayed)
+            {
+                var j = MidiChecks.JudgeBends(all, sc.Start, rep.NesChannel, MidiChecks.IdealPitch(midi, rep.MidiChannel, loop), loop, rep.ToleranceCents, rep.SlidesOff);
+                t.Expect(j.Off <= 2 * rep.FramesOverTolerance && j.Bent >= 10, $"{MusicTemplate.ChannelNames[rep.NesChannel]}: {j.Off} of {j.Checked} frames off the take's pitch on the plugin's machine ({j.Bent} bent; the converter says {rep.FramesOverTolerance} a loop)");
+                parts.Add($"{MusicTemplate.ChannelNames[rep.NesChannel]} {j.Bent} bent frames, {j.Off} off, held max {j.MaxHeldCents:0.0} / moving max {j.MaxMovingCents:0.0} cents");
+            }
+            t.Note($"the take in VRUN's engine: {sc.Agree}/{sc.Of} field-frames of the converter's streams from frame {sc.Start}; streams {string.Join(" + ", b.Channels.Select(x => x.Length))} bytes with bends ({string.Join(" + ", plain.Channels.Select(x => x.Length))} without = the ideal file's); loop {b.Facts.LoopFrames} frames ({end / bar} bars); {b.Facts.PitchBends} bends: {string.Join("; ", parts)}");
         }
         finally { rack[0].Test(120, 0, 0); Dispose(rack); }
     }
