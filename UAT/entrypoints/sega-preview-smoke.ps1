@@ -300,6 +300,11 @@ try {
     if ($haveBackup) {
         $cfg = Get-Content -LiteralPath $configBackup -Raw | ConvertFrom-Json
         $cfg | Add-Member -NotePropertyName enableWebmoduleSavestateDebugShortcuts -NotePropertyValue $true -Force
+        # the cores a console last used are the user's (a Genesis left on a NES picture chip loads at 256x240): the checks below start from each console's own
+        if (-not $cfg.consoleCores) { $cfg | Add-Member -NotePropertyName consoleCores -NotePropertyValue ([pscustomobject]@{}) -Force }
+        foreach ($own in @(@('sms', 'SMS'), @('gg', 'GG'), @('md', 'MD'))) {
+            $cfg.consoleCores | Add-Member -NotePropertyName $own[0] -NotePropertyValue ([pscustomobject]@{ cpu = $null; ppu = $own[1]; apu = $own[1] }) -Force
+        }
         ($cfg | ConvertTo-Json -Depth 20) | Set-Content -LiteralPath $configPath -Encoding UTF8
     }
     $inst = Start-BrokenNesInstance -ExePath $Exe -TimeoutSeconds 120
