@@ -44,8 +44,17 @@ internal static class HostLog
     private static int instances;
     private static long written;
 
-    /// <summary>Whether the log is on (any thread): ticked by the user, or tracks on offer.</summary>
-    public static bool On => user || (offerActive && !RecMutants.On(RecMutants.LogNotAutomatic));
+    /// <summary>Whether the log is on (any thread): ticked by the user, tracks on offer, or a capture from FL armed or running (round 9: what FL says about time goes to the log).</summary>
+    public static bool On => user || captureActive || (offerActive && !RecMutants.On(RecMutants.LogNotAutomatic));
+    private static volatile bool captureActive;
+
+    /// <summary>A capture from FL was armed (true) or ended (false): the log runs meanwhile (round 9, CaptureHub).</summary>
+    public static void SetCapture(bool active)
+    {
+        if (active == captureActive) return;
+        if (active) { captureActive = true; Text(0, "capture from FL armed: the log runs until it ends"); }
+        else { Text(0, "capture from FL ended" + (user || offerActive ? "" : ": the log stops")); captureActive = false; }
+    }
     /// <summary>The user's own setting ("Log FL's calls"; remembered).</summary>
     public static bool UserOn => user;
     /// <summary>On because tracks are on offer.</summary>

@@ -13,6 +13,8 @@
 // plugin 600 - 619 (Bn2Plugin.Song.cs) and editor 620 - 629 (Bn2Editor.Song.cs), and the recording's: plugin 640 - 669 and 680 - 699 (Bn2Plugin.Record.cs; 680+ the live
 // MIDI out), 700 - 719 (Bn2Plugin.Tracks.cs: the tracks on offer) and editor 670 - 679 (Bn2Editor.Record.cs); a NES game's recording (round 8, record-nes): plugin 740 - 779
 // (Bn2Plugin.RecordNes.cs), editor 780 - 789 and control ids 2080 - 2119 reserved (the NES recording shows in the Record window's own controls).
+// Round 9 (capture): control ids 2120 - 2139 (Capture from FL in the Test MIDI export window, Bn2Editor.Capture.cs: 2120-2122 used), plugin hooks 790 - 809 (Bn2Plugin.Capture.cs),
+// editor hooks 810 - 819 (Bn2Editor.Capture.cs).
 namespace BrokenNes2.Ui;
 
 /// <summary>Geometry shared by the editor and the tabs. The window is BaseWidth x Height on the Emulator tab and grows to the right by <see cref="WideExtra"/> on the others

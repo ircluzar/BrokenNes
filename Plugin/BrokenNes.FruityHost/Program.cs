@@ -42,6 +42,9 @@ switch (args[0])
     case "midi-test":
         return MidiChecks.Main(args);
 
+    case "capture-test":
+        return CaptureChecks.Main(args);
+
     case "record-test":
         return RecordChecks.Cli(args);
 

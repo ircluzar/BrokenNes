@@ -1176,7 +1176,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         for (int i = 0; i < plugin.Params.Length; i++) Mix(plugin.Get(i));
         Mix(e?.Id ?? 0); Mix(a.Channel); Mix(a.Problem?.GetHashCode() ?? 0);
         Mix(hot); Mix(active); Mix(openId); Mix(openHover); Mix(openScroll); Mix(aboutOpen ? 1 + aboutScroll : 0); Mix(Environment.TickCount64 < resetFlashUntil ? 1 : 0);
-        Mix(UiSignature()); Mix(PresetSignature()); Mix(SongSignature()); Mix(RecordSignature()); Mix(LinkSignature());
+        Mix(UiSignature()); Mix(PresetSignature()); Mix(SongSignature()); Mix(RecordSignature()); Mix(LinkSignature()); Mix(CaptureSignature());
         Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(Inputs.AllowOpposite ? 9 : 10); Mix(e?.Runaway == true ? 7 : 8);
         if (e != null)
         {
@@ -1397,6 +1397,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 else if (h.Id == IdCor) { corOpen = true; corScroll = 0; }
                 else if (h.Id == IdMid) midOpen = true;                                 // Test MIDI export (Bn2Editor.Song.cs)
                 else if (IsMidId(h.Id)) MidiClick(h.Id);
+                else if (IsCapId(h.Id)) CaptureClick(h.Id);                            // Capture from FL, in the Test MIDI export window (Bn2Editor.Capture.cs)
                 else if (h.Id == IdRec) { recOpen = true; recMessage = ""; }            // Record (Bn2Editor.Record.cs)
                 else if (IsRecId(h.Id)) RecordClick(h.Id);
                 else if (h.Id is IdLink or IdUnlink) LinkClick(h.Id);                  // the banner's Link to recording / Unlink (Bn2Editor.Link.cs)
@@ -1607,6 +1608,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             case >= 400 and < 500: return UiTest(n, index, value);      // the tabs' hooks (Ui/Bn2Editor.Tabs.cs)
             case >= 620 and < 630: return SongTest(n, index, value);    // Test MIDI export's window (Bn2Editor.Song.cs)
             case >= 670 and < 680: return RecordTest(n, index, value);  // the Record window (Bn2Editor.Record.cs)
+            case >= 810 and < 820: return CaptureEditorTest(n, index, value);  // Capture from FL (Bn2Editor.Capture.cs)
             case 30:
                 foreach (var h in hits)
                     if (h.Id == index)
