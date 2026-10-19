@@ -102,6 +102,8 @@ internal sealed unsafe class FlRun : IDisposable
     public bool Rendering;
     /// <summary>Ticks rendered after Stop (FL's mixer runs on).</summary>
     public int AfterStopTicks = 8;
+    /// <summary>Rack indexes that get no FPD_SetPlaying 1 (a channel FL does not tell: the edge case of a lane that joins late).</summary>
+    public int[] NoPlay = [];
     private readonly int* timeSig = (int*)NativeMemory.AllocZeroed(16);
     public FlTruth Truth = new();
     /// <summary>Called after every tick (the test reads allocation counters, probes registers...).</summary>
@@ -143,7 +145,7 @@ internal sealed unsafe class FlRun : IDisposable
         for (int i = 0; i < rack.Count; i++) { rack[i].SetParam(3, s.Coarse[i]); rack[i].SetParam(4, s.Fine[i]); }
         foreach (var p in rack) p.Dispatcher(Fpd.SetSamplesPerTick, 0, sptBits);
         foreach (var p in rack) p.Dispatcher(13, 0, 0);                                     // FPD_SongPosChanged
-        foreach (var p in rack) p.Dispatcher(Fpd.SetPlaying, 0, 1);
+        for (int i = 0; i < rack.Count; i++) if (!NoPlay.Contains(i)) rack[i].Dispatcher(Fpd.SetPlaying, 0, 1);
         foreach (var p in rack) p.Dispatcher(Fpd.SetSamplesPerTick, 0, sptBits);
         if (SendTempo) foreach (var p in rack) p.ProcessEvent(Fpe.Tempo, BitConverter.SingleToInt32Bits((float)s.Bpm), (int)Math.Round(spt));
         var buf = new float[8192 * 2];

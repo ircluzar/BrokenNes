@@ -17,7 +17,7 @@ public sealed unsafe partial class Bn2Plugin
     private long capNotes;
 
     /// <summary>The take this instance writes into (the hub sets it on the UI thread, or the constructor while a take is armed).</summary>
-    internal void AttachLane(CaptureSession s, CaptureLane lane) { capSession = s; capTuning = float.NaN; capLane = lane; }
+    internal void AttachLane(CaptureSession s, CaptureLane lane) { capSession = s; capTuning = float.NaN; Interlocked.Exchange(ref capNotes, 0); capLane = lane; }
     internal void DetachLane() { capLane = null; capSession = null; }
     internal CaptureLane? Lane => capLane;
     internal long CapturedNotes => Interlocked.Read(ref capNotes);
@@ -111,7 +111,7 @@ public sealed unsafe partial class Bn2Plugin
     private float CapTuningNow => Get(P.Coarse) * 100 + Get(P.Fine);
 
     /// <summary>Whether TriggerVoice, the releases and the blocks have anything to do here (a take listens, or the live MIDI out is on).</summary>
-    private bool CaptureWanted => capLane != null || CaptureHub.LiveOn;
+    private bool CaptureWanted => capLane != null || CaptureHub.LiveOn || LivePending;
 
     /// <summary>A note FL starts (TriggerVoice).</summary>
     private void CaptureNoteOn(Voice v)

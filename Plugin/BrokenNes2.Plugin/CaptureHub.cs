@@ -30,7 +30,6 @@ internal static class CaptureHub
     {
         var s = CaptureSession.Current;
         lock (gate) instances.Add(p);
-        if (live) p.SetLiveChannel(LiveChannelOf(p));
         if (s != null && s.Listening) p.AttachLane(s, s.NewLane(p.CaptureIdentity()));        // made while a take is armed or runs: it takes part (a lane of its own; it joins at the others' clock if FL never starts it)
     }
 
@@ -128,14 +127,8 @@ internal static class CaptureHub
     {
         live = on;
         Prefs.SetInt("CaptureMidiOut", on ? 1 : 0);
-        foreach (var p in All()) p.SetLiveChannel(on ? LiveChannelOf(p) : -1);
+        foreach (var p in All()) p.LiveSwitched();
         Interlocked.Increment(ref stamp);
-    }
-
-    private static int LiveChannelOf(Bn2Plugin p)
-    {
-        int ch = CaptureSong.ChannelOf(p.CaptureIdentity().Role);
-        return ch >= 0 ? ch : 4 + p.InstanceNo % 5;
     }
 
     /// <summary>The window's status line.</summary>
@@ -145,7 +138,7 @@ internal static class CaptureHub
         if (s == null || s.State == CaptureSession.Cancelled) return "Capture from FL: press it, then Play in FL from the start of your song and Stop at its end. Every BrokenNes2 channel records what FL plays on it (notes, slides, pitch bends); the song is converted and played here at once.";
         return s.State switch
         {
-            CaptureSession.Armed => $"ARMED: press Play in FL from the start of the song, Stop at its end. {s.LaneCount} BrokenNes2 channel{(s.LaneCount == 1 ? "" : "s")} listen.",
+            CaptureSession.Armed => $"ARMED: press Play in FL from the start of the song, Stop at its end. {s.LaneCount} BrokenNes2 channel{(s.LaneCount == 1 ? "" : "s")} listen." + (ArmNote is { } an ? "  " + an : ""),
             CaptureSession.Recording => $"CAPTURING {Dur(s.Seconds)}: {All().Sum(p => p.CapturedNotes)} notes so far. Press Stop in FL at the end of the song.",
             CaptureSession.Finishing => "FL stopped: building the MIDI file...",
             _ => s.Result?.Problem is { } why ? "Nothing captured: " + why + "." : $"Captured {s.Name}: {s.Result?.Notes} notes on {s.Result?.Tracks.Count} channels. Save MIDI... keeps the file (with the pitch bends).",

@@ -40,7 +40,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         public float CapPitch;        // round 9 (capture): the pitch last written into the capture's lane (cents from C5)
         public bool CapOff = true;    // its release is in the lane (or it has no note-on there)
         public bool LiveSent;         // its note-on went out as MIDI (Bn2Plugin.CaptureLive.cs)
-        public int LiveKey;
+        public int LiveKey, LiveCh;
     }
 
     private readonly List<Voice> voices = new(32);

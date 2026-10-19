@@ -34,7 +34,6 @@ public sealed unsafe partial class Bn2Editor
         var s = CaptureSession.Current;
         int st = s?.State ?? -1;
         string status = CaptureHub.StatusText();
-        if (CaptureHub.ArmNote is { } an && st is CaptureSession.Armed or CaptureSession.Recording) status += "  " + an;
         int color = st switch { CaptureSession.Armed => Warn, CaptureSession.Recording => Good, CaptureSession.Finishing => Warn, CaptureSession.Done => s?.Result?.Problem == null ? Good : Warn, _ => Dim };
         Fill(dc, R(lx, y, 3, 38), color);
         Txt(dc, status, R(lx + 12, y, iw - 12, 38), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_END_ELLIPSIS, Text, fontSmall);
