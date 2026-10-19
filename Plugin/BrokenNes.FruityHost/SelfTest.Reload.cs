@@ -494,6 +494,7 @@ public sealed unsafe partial class SelfTest
                 int onGame = parts.Count(pt => pt.P.Test(16) == g.Test(16)) + (waiting.Test(16) == g.Test(16) ? 1 : 0);
                 t.Expect(waiting.Test(16) == g.Test(16) && waiting.Test(HkLinkState) == 1 && gamePeak > 0.01 && peak == 0, $"{pick}: a channel FL put on the game's emulator (#{waiting.Test(16)}, the game's #{g.Test(16)}, linked {waiting.Test(HkLinkState)}) played peak {peak:0.000} while it waited for its first note (the game's own channel: {gamePeak:0.000}); it must be silent");
                 long alloc = PlayReplace(parts, m);
+                var traces = new List<string>(allocTrace);
                 // pass 2: three more channels on three tracks: FL's Play from the middle, a loop of 8 beats, a channel made in FL (its pitch from C5)
                 var extra = new List<ReplacePart>();
                 var kinds = new[] { "from the middle", "a loop of 8 beats", "a channel made in FL" };
@@ -513,6 +514,7 @@ public sealed unsafe partial class SelfTest
                     extra.Add(pt);
                 }
                 alloc += PlayReplace(extra, m);
+                traces.AddRange(allocTrace);
                 until = Environment.TickCount64 + 8000;
                 var all = parts.Concat(extra).ToList();
                 while (all.Any(x => x.P.Test(HkBindState) != 2) && Environment.TickCount64 < until) Thread.Sleep(20);
@@ -576,7 +578,7 @@ public sealed unsafe partial class SelfTest
                         lines.Add(line2);
                     }
                 }
-                t.Expect(alloc == 0, $"{pick}: {alloc:N0} bytes allocated on the audio thread while the channels found their tracks and played");
+                t.Expect(alloc == 0, $"{pick}: {alloc:N0} bytes allocated on the audio thread while the channels found their tracks and played{(traces.Count > 0 ? ": " + string.Join(" / ", traces) : "")}");
                 if (!reloadMutantPass) t.Note($"{pick} ({usable.Count} tracks, {s.Seconds:0.0} s), played as FL 2026 plays imported channels: {firstOk} of {all.Count} channels found their track on their first note; {onGame} waited on the game's emulator in silence | " + string.Join(" | ", lines));
             }
             finally { foreach (var q in made) q.Dispose(); foreach (var hq in hostsMade) hq.Dispose(); g.Test(HkOfferSet, 0, 0); g.Test(HkRForget); }

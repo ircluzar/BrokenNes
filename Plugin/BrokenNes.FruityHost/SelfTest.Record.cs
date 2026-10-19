@@ -755,7 +755,7 @@ public sealed unsafe partial class SelfTest
                     for (int i = active.Count - 1; i >= 0; i--)
                     {
                         var (q, n, v) = active[i];
-                        if (q == pt && (wrapped || n.Off <= pt.Tick)) { q.P.Host.ReleaseFromMixer(v); active.RemoveAt(i); }
+                        if (q == pt && (wrapped || n.Off <= pt.Tick)) { long r0 = trace ? q.P.Test(HkRAlloc) : 0; q.P.Host.ReleaseFromMixer(v); active.RemoveAt(i); if (trace && q.P.Test(HkRAlloc) - r0 is long dr && dr > 0 && allocTrace.Count < 16) allocTrace.Add($"{q.Name}: release at block {s / block}: {dr} bytes"); }
                     }
                     if (pt.Next < 0 || wrapped) { pt.Next = pt.Notes.FindIndex(n => n.On >= startTick); if (pt.Next < 0) pt.Next = pt.Notes.Count; }
                     pt.P.Host.SongBeats = pt.Position ? pt.Tick / (double)pt.M.Ppq + pt.BeatOffset : double.NaN;
@@ -763,7 +763,9 @@ public sealed unsafe partial class SelfTest
                     {
                         var n = pt.Notes[pt.Next++];
                         var v = pt.P.Host.FlNoteOn(n.Key, n.Velocity, n.Channel + pt.ColourShift, StartBend(pt, pt.Tick), pt.FlBends == 0 ? ValueAt(pt.CcT, pt.CcV, pt.Tick, 100) / 100.0 : 1);
+                        long t0a = trace ? pt.P.Test(HkRAlloc) : 0;
                         v.Handle = pt.P.TriggerVoice(v.Params, v.Tag);
+                        if (trace && pt.P.Test(HkRAlloc) - t0a is long dt0 && dt0 > 0 && allocTrace.Count < 16) allocTrace.Add($"{pt.Name}: TriggerVoice at block {s / block}: {dt0} bytes");
                         pt.Handles.Add(v.Handle);
                         pt.TrackNote.Add(pt.TrackPos.TryGetValue(n.Index, out int tn) ? tn : -1);
                         if (pt.BoundAtFirst == -2) pt.BoundAtFirst = pt.P.Test(HkTrackOf);
