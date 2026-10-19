@@ -578,12 +578,15 @@ public sealed partial class BOARD_SFC : ISnesBus
             int r = ch << 4;
             dmaRegs[r + 8] = dmaRegs[r + 2]; dmaRegs[r + 9] = dmaRegs[r + 3];
             dmaRegs[r + 0xA] = 0;
-            HdmaReload(ch);
+            HdmaReload(ch, fetchCharged: false);
         }
     }
 
-    /// <summary>When the line counter's low 7 bits run out, fetch the next table entry.</summary>
-    private void HdmaReload(int ch)
+    /// <summary>
+    /// When the line counter's low 7 bits run out, fetch the next table entry. <paramref name="fetchCharged"/>: the caller already paid the
+    /// 8 clocks of the table byte fetch (every line does, see <see cref="RunHdmaLine"/>); HDMA init has not.
+    /// </summary>
+    private void HdmaReload(int ch, bool fetchCharged)
     {
         int r = ch << 4;
         if ((dmaRegs[r + 0xA] & 0x7F) != 0) return;
@@ -593,7 +596,7 @@ public sealed partial class BOARD_SFC : ISnesBus
         dmaRegs[r + 0xA] = count;
         hdmaDone[ch] = count == 0;
         hdmaDoTransfer[ch] = !hdmaDone[ch];
-        stall += 8;
+        if (!fetchCharged) stall += 8;
         if ((dmaRegs[r] & 0x40) != 0 && !hdmaDone[ch])
         {
             dmaRegs[r + 5] = ReadNoTick(bank, a2a++);
@@ -631,7 +634,11 @@ public sealed partial class BOARD_SFC : ISnesBus
             }
             dmaRegs[r + 0xA]--;
             hdmaDoTransfer[ch] = (dmaRegs[r + 0xA] & 0x80) != 0;   // repeat mode transfers every line
-            HdmaReload(ch);
+            // Every active channel reads the next table byte on every line (8 clocks), whether or not the counter ran out: the byte is
+            // kept only on a reload. Charging it only on reloads gave the CPU 8 clocks per channel per line too many (5 channels: ~3% of
+            // the CPU), measured against Mesen with Workshop --snes-timing-test (hdma1-long / hdma5-long / hdma5-repeat).
+            stall += 8;
+            HdmaReload(ch, fetchCharged: true);
         }
     }
 }

@@ -156,8 +156,8 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "DC81113600AE3471",
-        "audioHash": "AF5CC0449EC057B6",
+        "frameBufferHash": "6C4E8664BB99D064",
+        "audioHash": "A6AA2194864B75D7",
         "framesRun": 1200,
         "distinctColors": 8,
         "result": "ok"
@@ -178,7 +178,7 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "9E02CE21A61CE125",
-        "audioHash": "42C6391B6994DE76",
+        "audioHash": "53803F694D18F311",
         "framesRun": 3000,
         "distinctColors": 16,
         "result": "ok"
@@ -197,8 +197,8 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "96734D9EC2A9BE5A",
-        "audioHash": "E64B6F3C5939E74B",
+        "frameBufferHash": "9F73EFB790AD3F1B",
+        "audioHash": "638D79B018386693",
         "framesRun": 1200,
         "distinctColors": 20,
         "result": "ok"
@@ -218,10 +218,10 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "163FFAB660B17999",
-        "audioHash": "96EBE1AACAC87217",
+        "frameBufferHash": "CB1C25041D360C26",
+        "audioHash": "F91D7B5F19E2F4E7",
         "framesRun": 3000,
-        "distinctColors": 66,
+        "distinctColors": 62,
         "result": "ok"
       }
     },
@@ -238,8 +238,8 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "E0FFDB92F30ADE12",
-        "audioHash": "2E2E31F021EF3960",
+        "frameBufferHash": "28E323BA356B4A02",
+        "audioHash": "022DFE59DE10BBAB",
         "framesRun": 1200,
         "distinctColors": 12,
         "result": "ok"
@@ -260,7 +260,7 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "1EEB50AAB7A96786",
-        "audioHash": "920F337013EECB16",
+        "audioHash": "83BE2937A1912449",
         "framesRun": 3000,
         "distinctColors": 13,
         "result": "ok"
