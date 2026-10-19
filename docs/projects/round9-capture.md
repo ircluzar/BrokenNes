@@ -88,7 +88,17 @@ Deliberate bugs through the DLL (hook 849), each caught by its scenario: flow (b
 
 ### The whole self-test and the other suites
 
-FINAL_RUNS_PLACEHOLDER
+`refs/heads/main` did not move during this work (5fcae89, fetched again at the end with `--no-tags`): nothing to merge. DLL and test bench built from this tree into `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r9_capture` (the DLL with `dotnet publish`, Native AOT, as `Plugin/build-dist.ps1` does).
+
+| Run | Result |
+|---|---|
+| `FruityHost capture-test` | 5 of 5 checks, 695 assertions, 13 of 13 deliberate bugs caught, 0 NOT RUN |
+| `FruityHost selftest --only capture` (the final DLL) | PASS: 7 scenarios, 15 of 15 DLL and 13 of 13 library deliberate bugs caught (about 2 minutes) |
+| `FruityHost selftest` (all, the DLL one commit before the final one: the last commit only frees a finished take's lanes and changes one text; `capture` and `midi` were rerun on the final DLL: both PASS) | **64 results: 62 pass, 1 warning (QLQ an octave sharp, on purpose, as before), 1 failed: `realtime` 4.9x real time where the floor is 5x.** Not this work: `main`'s own DLL, published from `refs/heads/main` and run interleaved with this one on the same machine at the same time, measured 4.5, 4.7, 4.6, 4.6x against 4.9, 4.9, 4.9, 4.7x for this branch (the machine was 26-35 % busy with other agents; `Plugin/CLAUDE.md` warns that a busy machine cuts the figures). `midi`, `record`, `record-nes`, `relink`, `capture` and `hostlog` (the user's real host log untouched) all PASS in that run |
+| `BrokenNes.Workshop --corrupt-test` (fresh build) | 275 passed, 0 failed, 0 not run |
+| `UAT\run-suite.ps1 -Exe <fresh Workshop>` | 84 pass, 0 fail, 60 skip (their ROMs are not at this worktree's paths), 0 info |
+| `UAT\entrypoints\notices-check.ps1` | pass (488 files scanned; no `*.bn2preset` tracked) |
+| The user's `Documents\BrokenNes2 host log.txt` | read once, never written: the test bench's `HostLogGuard` and the `hostlog` check (last of the full run) |
 
 ## 6. The scripted FL song (what the checks play)
 
