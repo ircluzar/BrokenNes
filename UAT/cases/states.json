@@ -196,10 +196,10 @@
                                ],
                       "expect":  {
                                      "exitCode":  0,
-                                     "frameBufferHash":  "03AC5A5A9ECD00B2",
-                                     "audioHash":  "7DA214760DAD4152",
+                                     "frameBufferHash":  "E5A742D6EB4639CC",
+                                     "audioHash":  "A5EC9A89CF82285B",
                                      "framesRun":  1450,
-                                     "distinctColors":  1610,
+                                     "distinctColors":  1512,
                                      "result":  "ok"
                                  }
                   },
@@ -218,10 +218,10 @@
                                ],
                       "expect":  {
                                      "exitCode":  0,
-                                     "frameBufferHash":  "03AC5A5A9ECD00B2",
-                                     "audioHash":  "7DA214760DAD4152",
+                                     "frameBufferHash":  "E5A742D6EB4639CC",
+                                     "audioHash":  "A5EC9A89CF82285B",
                                      "framesRun":  1450,
-                                     "distinctColors":  1610,
+                                     "distinctColors":  1512,
                                      "result":  "ok"
                                  }
                   },
@@ -239,7 +239,7 @@
                                ],
                       "expect":  {
                                      "exitCode":  0,
-                                     "frameBufferHash":  "01883F749B4CEBAE",
+                                     "frameBufferHash":  "1691370B9E07D4CF",
                                      "audioHash":  "5B20323A334430AA",
                                      "framesRun":  1500,
                                      "distinctColors":  1252,
@@ -261,7 +261,7 @@
                                ],
                       "expect":  {
                                      "exitCode":  0,
-                                     "frameBufferHash":  "01883F749B4CEBAE",
+                                     "frameBufferHash":  "1691370B9E07D4CF",
                                      "audioHash":  "5B20323A334430AA",
                                      "framesRun":  1500,
                                      "distinctColors":  1252,

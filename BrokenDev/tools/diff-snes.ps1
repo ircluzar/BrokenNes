@@ -39,7 +39,10 @@ param(
     [string]$BrokenNesInput = '',
     [int]$WindowBefore = 1,
     [int]$WindowAfter = 4,
-    [switch]$KeepDiffs
+    [switch]$KeepDiffs,
+    # Mesen's test runner stops a script after about 100 s of wall clock; a positive value is passed as Mesen's own
+    # --timeout=<seconds> so a longer run fits in one segment (0 = Mesen's default, as before).
+    [int]$MesenTimeoutSec = 0
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -71,6 +74,8 @@ $maxFrame = ($frameList | Measure-Object -Maximum).Maximum
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = Join-Path $priv 'Mesen.exe'
 $psi.Arguments = '"' + $Rom + '" --luaScriptsToLoad "' + (Join-Path $here 'mesen-snes-capture.lua') + '" --testRunner'
+if ($MesenTimeoutSec -gt 0) { $psi.Arguments += " --timeout=$MesenTimeoutSec" }
+$waitMs = [math]::Max(600000, ($MesenTimeoutSec + 60) * 1000)
 $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true; $psi.WorkingDirectory = $priv
 $psi.EnvironmentVariables['MESEN_OUT'] = $mesenOut
 $psi.EnvironmentVariables['MESEN_TAG'] = 'm'
@@ -81,7 +86,7 @@ $psi.EnvironmentVariables['MESEN_INPUT_SHIFT'] = [string]$InputShift
 Write-Host "diff-snes: Mesen ($maxFrame frames) ..."
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $p = [System.Diagnostics.Process]::Start($psi)
-if (-not $p.WaitForExit(600000)) { try { & taskkill.exe /PID $p.Id /T /F | Out-Null } catch { }; Write-Host 'Mesen did not finish in 600 s'; exit 2 }
+if (-not $p.WaitForExit($waitMs)) { try { & taskkill.exe /PID $p.Id /T /F | Out-Null } catch { }; Write-Host "Mesen did not finish in $([int]($waitMs / 1000)) s"; exit 2 }
 Write-Host "diff-snes: Mesen exit $($p.ExitCode) in $([math]::Round($sw.Elapsed.TotalSeconds, 1)) s; $(@(Get-ChildItem $mesenOut -Filter *.png).Count) pictures"
 if (@(Get-ChildItem $mesenOut -Filter *.png).Count -lt $frameList.Count) { Write-Host 'Mesen did not write the requested pictures (its test runner stops a script after about 100 s)'; exit 2 }
 
