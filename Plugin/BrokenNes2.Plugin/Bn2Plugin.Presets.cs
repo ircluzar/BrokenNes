@@ -104,7 +104,7 @@ public sealed unsafe partial class Bn2Plugin
     private void RenderPreset(float* dest, int length, float gl, float gr)
     {
         var lp = preset;
-        if (lp == null || lp.Play.CannotPlay != null)
+        if (lp == null || lp.Play.CannotPlay != null || (lp.Play.Console == ConsoleId.Nes && lp.Nes == null))      // (a NES preset without its player: silent, never an exception per block)
         {
             DropChip();
             if (sampler != null || gbSampler != null || segaSampler != null) DropSampler();

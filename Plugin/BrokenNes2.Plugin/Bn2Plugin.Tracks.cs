@@ -6,10 +6,11 @@
 // a track was picked for it by hand. The editor's "Link to recording" and the Record window's "Link all" link any instance by hand. (Until relink, eligibility was an "untouched" heuristic that
 // non-default parameter pushes defeated, with nothing on screen until the first note: the user's r12 report.)
 //
-// At each note FL starts (TriggerVoice, the audio thread, before the note is rendered) a linked instance asks FL for the song position (FHD_GetMixingTime in beats; with GT_LocalTime too, for
-// the log), and the note's colour, and feeds the matcher. When the matcher names a track the instance takes that track's prebuilt engine and preset and plays it from this very note (the "bound"
-// render path: whatever emulator it sits on). The offer's worker then settles it on the tracks' emulator (Direct mode, PRE-SNES), where it is an ordinary preset instance; section TRK1 of
-// the project says which track of which recording it plays, and how it was found.
+// At each note FL starts (TriggerVoice, the audio thread, before the note is rendered) a linked instance reads the note the way FL hands it (reload, Record/FlNotes.cs: the pitch above the channel's
+// base key, the colour = the MIDI channel, the velocity / 128; FL's song position when FL gives one, the time since FL's Play) and feeds the matcher, which names the track AND the recorded note
+// this is. When it names a track the instance takes that track's prebuilt engine and preset and plays it from this very note (the "bound" render path: whatever emulator it sits on). Once it is
+// sure and holds its engine, the offer's worker settles it on the tracks' emulator (Direct mode, PRE-SNES / PRE-NES), where it is an ordinary preset instance; the matcher keeps following its
+// notes (each plays its recorded note's own expression from its onset); section TRK1 of the project says which track of which recording it plays, how it was found and the channel's base.
 using System.Buffers.Binary;
 using System.Text;
 using BrokenNes.Fruity;
@@ -366,9 +367,13 @@ public sealed unsafe partial class Bn2Plugin
     {
         if (pendingLateBind >= 0 && TrackOffers.Current is { } late) { int t = pendingLateBind; pendingLateBind = -1; Bind(late, t); if (matcher.Settled) settleWanted = 1; }
         if (Volatile.Read(ref settleWanted) == 0 || bindState != 1) return;
-        Volatile.Write(ref settleWanted, 0);
         var slot = boundSlot;
-        if (slot == null) return;
+        if (slot == null) { Volatile.Write(ref settleWanted, 0); return; }
+        // not before the instance holds its track's engine: settled, it plays as an ordinary preset instance, which would build an engine it lacks on the audio thread (reload: channels are sure
+        // from their first notes now, often while a second channel of the same track still waits for the worker's next engine). RenderBound takes that engine; the next pass settles it.
+        bool nesTrack = slot.Preset?.Play.Console == Instruments.ConsoleId.Nes;
+        if (nesTrack ? preset?.Nes is not { } np || np.HostRate != EmulatorHub.HostRate : sampler == null || !ReferenceEquals(samplerFor, slot.Preset?.Play.Snes) || samplerRate != EmulatorHub.HostRate) return;
+        Volatile.Write(ref settleWanted, 0);
         // from now its notes are followed on this track only (the audio thread locks its matcher on it at the next note), at the base its notes showed
         if (boundTrackIndex != null && boundIndex >= 0) follow = new FollowTarget(boundTrackIndex, boundIndex, matcher.BaseSure ? matcher.Base : -1);
         if (Settle(slot, TrackBinding.ByNotes) is { } why) { trackNote = $"plays {slot.Info.Name}, but stays where FL put it: {why}"; HostLog.Text(InstanceNo, "not settled: " + why); }

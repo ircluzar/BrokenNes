@@ -89,6 +89,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         for (int i = 0; i < 32; i++) pool.Push(new Voice());     // FL's voices are taken from here on the audio thread: made now, so a 9th or 20th note at once allocates nothing there (round 8 found 72 bytes per new peak of voices)
         HostLog.Text(InstanceNo,$"created (host tag 0x{hostTag:X}, FL's host version {HostVersion}); {(TrackOffers.Current is { } o ? $"{o.Slots.Length} tracks on offer" : "no tracks on offer")}");
         EmulatorHub.Resolve(this);
+        if (HostLog.On) { var a0 = assignment; HostLog.Text(InstanceNo, $"placed on emulator #{a0.Emulator?.Id ?? 0} channel {a0.Channel} ({(a0.Emulator?.Mode == 1 ? "ROM mode: its game's channel" : a0.Emulator?.PresetMode == true ? "a Presets chip" : "Direct mode")})"); }
         TrackOffers.Register(this);   // the tracks of a recording on offer: this instance recognises its track from the notes FL asks it to play (Bn2Plugin.Tracks.cs)
         // relink: made while tracks are on offer (a new channel, or the one FL makes for a Replace): it joins them at once, and the Record window counts it (Bn2Plugin.Relink.cs)
         if (TrackOffers.Current != null && !Record.RecMutants.On(Record.RecMutants.NoAutoJoin)) Join("made while tracks are on offer (a new channel, or one FL made for a Replace)");

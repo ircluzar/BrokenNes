@@ -60,7 +60,7 @@ internal static class TrackOffers
 
     private static volatile bool expressionFromRecording = Prefs.GetInt("TrackExpression", 1) == 1;
 
-    /// <summary>Whether channels that play a track take its pitch bends and volume from the recording (by song position) rather than from FL (whose MIDI import loses controller 7 and
+    /// <summary>Whether channels that play a track take each recorded note's pitch bends, volume and velocity from the recording (from the note's onset) rather than from FL (whose MIDI import loses controller 7 and
     /// reads bends at 2 semitones): the default for a channel when it takes a track; remembered.</summary>
     public static bool ExpressionFromRecording => expressionFromRecording;
 

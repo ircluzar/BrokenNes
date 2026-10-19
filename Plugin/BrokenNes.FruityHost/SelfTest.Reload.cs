@@ -115,7 +115,9 @@ public sealed unsafe partial class SelfTest
         header = "";
         var head = new Regex(@"^(\d\d):(\d\d):(\d\d)\.(\d\d\d) #(\d+) (.*)$");
         var call = new Regex(@"^Dispatcher id=(\d+) \([^)]*\) index=(-?\d+) value=(-?\d+)");
-        var note = new Regex(@"^note #\d+: pitch (-?[\d.]+) cents from C5 \(key -?\d+\), song position (\S+) beats \(local \S+\), colour (-?\d+), length -?\d+ ticks, velocity ([\d.]+)");
+        // (r13's note line: "note #1: pitch 7100 cents from C5 (key 131), song position none beats (local none), colour 1, length -1 ticks, velocity 0.5"; reload's: "note #1: pitch 7100 (key 71 if from
+        // MIDI 0, ...), colour 1 (MIDI channel 2), velocity 0.5 (MIDI 64), length -1 ticks, ...": both are read)
+        var note = new Regex(@"^note #\d+: pitch (-?[\d.]+)\b.*?, colour (-?\d+)\b.*?, (?:length -?\d+ ticks, )?velocity ([\d.]+)");
         foreach (var line in File.ReadLines(path))
         {
             if (line.StartsWith("====") && header.Length == 0) { header = line; continue; }
@@ -129,7 +131,7 @@ public sealed unsafe partial class SelfTest
             if (body.StartsWith("created ")) li.Created = ms;
             else if (body.StartsWith("joined the recording")) li.Joined = true;
             else if (call.Match(body) is { Success: true } c) li.Calls.Add((ms, int.Parse(c.Groups[1].Value), long.Parse(c.Groups[2].Value), long.Parse(c.Groups[3].Value)));
-            else if (note.Match(body) is { Success: true } n) li.Notes.Add((ms, float.Parse(n.Groups[1].Value, CultureInfo.InvariantCulture), int.Parse(n.Groups[3].Value), float.Parse(n.Groups[4].Value, CultureInfo.InvariantCulture)));
+            else if (note.Match(body) is { Success: true } n) li.Notes.Add((ms, float.Parse(n.Groups[1].Value, CultureInfo.InvariantCulture), int.Parse(n.Groups[2].Value), float.Parse(n.Groups[3].Value, CultureInfo.InvariantCulture)));
         }
         return map;
     }

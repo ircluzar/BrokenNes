@@ -1,6 +1,6 @@
 // Round 8 (record-nes): the instance's side of a NES recording. A track recorded from a NES game is a NES preset with the recorded-track note behaviour (PresetNote.NesTrack): it plays FL's notes
 // with Direct mode's own register code (Record/NesDirect.cs), its duty or noise mode from the preset, the volume register from FL's velocity x controller 7, and, when the channel plays its track's
-// expression (TrackExpression: "Bends + volume from the recording"), the recording's own bends and controller 7 at FL's song position, as the SNES tracks do. A probe of the instance's own chip
+// expression (TrackExpression: "Bends + volume from the recording"), each recorded note's own bends, controller 7 and velocity from the note's onset (reload: no song position needed), as the SNES tracks do. A probe of the instance's own chip
 // writes (the self-test compares them with the game's); the test hooks 740-779 (the editor's NES ones: 780-789).
 using BrokenNes2.Record;
 using NesEmulator.Plugin;
@@ -44,7 +44,7 @@ public sealed unsafe partial class Bn2Plugin
     private volatile NesReplayProbe? nesProbe;
     private Voice? nesTrackOwner;
 
-    /// <summary>A NES track preset: the newest held note plays (a NES channel is monophonic), its pitch and level from FL or, with the track's expression on, from the recording at FL's song position.</summary>
+    /// <summary>A NES track preset: the newest held note plays (a NES channel is monophonic), its pitch and level from FL or, with the track's expression on, from the recorded note it is, from its onset.</summary>
     private void RenderNesTrack(NesPresetPlayer player, float* dest, int length, float gl, float gr)
     {
         nesProbe?.Bind(player.Chip);
