@@ -8,8 +8,9 @@
 //               events exactly as the plugin writes them, built, and read back by the INDEPENDENT parser (Capture.SmfDump.py): every note (channel, key, velocity, start and end within 1 tick at
 //               960 per quarter), the played pitch at every FL tick within the bend's 14-bit step (R x 100 / 16384 cents), the smallest bend range that holds every move, the channels VRUN's
 //               converter expects, the end at the bar line after the last note
-//   convert     the captured file through VRUN's converter (the plugin's copy) gives exactly the streams and loop of the ideal file written from the script (same notes, no bends): the converter
-//               ignores the bends, and the window says how many
+//   convert     the captured file through VRUN's converter (the plugin's copy) with bends off gives exactly the streams and loop of the ideal file written from the script (same notes, no
+//               bends); with bends on (the plugin's way, round 9) the ROM the plugin builds plays the decoder model's registers, no note moves, and its periods follow the take's pitch
+//               (held bends exact, moving ones within the tolerance) on square 1, square 2 and the triangle; the capture's facts and the converter's bends line say so
 //   lanes       a lane's chunks: 0 bytes allocated per event, a lane whose worker is late counts what it lost (never silently), the cap
 //
 // Each check is shown able to fail by a deliberate bug (CaptureMutants).
@@ -70,11 +71,12 @@ internal static class CaptureChecks
         new("pitch", "FL's pitch above the channel's base key (one shared conversion, Record/FlNotes.cs): C5 on FL's own channels, MIDI note 0 detected on imported ones and said", PitchCheck),
         new("tempo", "the take's tempo from what FL says (FPE_Tempo, samples per tick x PPQ, or 120 said), the log's samples-per-tick bits read as a float", TempoCheck),
         new("build", "a scripted FL song's lane events built and read back by the independent parser: every note within a tick, the played pitch at every FL tick within the bend's step, ranges, channels, the end", BuildCheck),
-        new("convert", "the captured file through VRUN's converter = the ideal file written from the script (streams and loop byte for byte); the bends are counted as not played", ConvertCheck),
+        new("convert", "the captured file through VRUN's converter: without bends = the ideal file written from the script (streams and loop byte for byte); with them (the plugin's way) the ROM plays them on square 1, square 2 and the triangle, held exact and moving within the tolerance, no note moved", ConvertCheck),
         new("lanes", "a lane allocates nothing per event, counts what it loses when its worker is late, stops at its cap", LanesCheck),
     ];
 
-    public sealed record Mutant(string Name, int Code, string CatchingCheck);
+    /// <summary>A deliberate bug: a capture one (<see cref="CaptureMutants"/>) or, with <paramref name="Music"/>, one of Test MIDI export's (<see cref="MusicMutate"/>: the bends' path).</summary>
+    public sealed record Mutant(string Name, int Code, string CatchingCheck, int Music = 0);
 
     public static readonly Mutant[] Mutants =
     [
@@ -91,6 +93,8 @@ internal static class CaptureChecks
         new("pitch changes after a note-on not captured", CaptureMutants.SlideIgnored, "build"),
         new("an allocation per captured event", CaptureMutants.CaptureAllocates, "lanes"),
         new("the clock counts at 44,100 Hz whatever the rate", CaptureMutants.ClockFixedRate, "lanes"),
+        new("Test MIDI export converts the take with bends off (round 7's way)", 0, "convert", MusicMutate.BendsIgnored),
+        new("every slide's slope negated after conversion", 0, "convert", MusicMutate.SlideSignFlipped),
     ];
 
     // =====================================================================================================================================================================
@@ -445,7 +449,7 @@ internal static class CaptureChecks
                 if (d == null) continue;
                 var c = Compare(r, d, s, truth, label);
                 r.Expect(res.Facts.Any(f => f.Contains("still sounding when FL stopped")), $"{label}: the note held over Stop is not said");
-                r.Expect(res.Facts.Any(f => f.Contains("no pitch bend") && f.Contains("their keys")), $"{label}: the facts do not say VRUN's engine drops the bends: {string.Join(" | ", res.Facts)}");
+                r.Expect(res.Facts.Any(f => f.Contains("slide or bend") && f.Contains($"({res.BendEvents} bends, range ") && f.Contains("VRUN's engine plays the bends")), $"{label}: the facts do not say the slides and bends (counted, with the range) and that VRUN plays them: {string.Join(" | ", res.Facts)}");
                 if (tempo)
                     r.Note($"{label}: {c.NotesFound}/{c.Notes} notes, start and end within {c.MaxTickError} tick(s) at 960 per quarter; pitch at {c.PitchOk}/{c.PitchPoints} FL ticks within {c.AllowedPitchError:0.###} cents (worst {c.MaxPitchError:0.####}); ranges {string.Join("/", c.Range)} semitones; {res.BendEvents} bends");
             }
@@ -461,13 +465,52 @@ internal static class CaptureChecks
         var ideal = SongConvert.Convert(IdealMidi(s, res.MicrosPerQuarter), out var why2);
         r.Expect(cap != null && ideal != null, $"the converter refused: {why1} / {why2}");
         if (cap == null || ideal == null) return;
+        // 1. the notes: the captured file through the converter with bends off (round 7's conversion) gives the ideal file's streams and loop byte for byte (the ideal file has no bends:
+        //    the plugin's conversion of it is round 7's too, midi-test `bends` holds that on every song)
+        var plain = Midi2Nes.ConvertSong(MidiFile.Parse(res.Midi), SongConvert.TrackName, _ => { });
         for (int ch = 0; ch < 4; ch++)
-            r.Expect(cap.Channels[ch].AsSpan().SequenceEqual(ideal.Channels[ch]), $"{Midi2Nes.ChannelNames[ch]}: the captured file's stream ({cap.Channels[ch].Length} bytes) differs from the ideal file's ({ideal.Channels[ch].Length})");
+            r.Expect(plain.Channels[ch].AsSpan().SequenceEqual(ideal.Channels[ch]), $"{Midi2Nes.ChannelNames[ch]}: the captured file's stream without bends ({plain.Channels[ch].Length} bytes) differs from the ideal file's ({ideal.Channels[ch].Length})");
         r.Expect(cap.Facts.LoopFrames == ideal.Facts.LoopFrames, $"loop {cap.Facts.LoopFrames} frames, the ideal file's {ideal.Facts.LoopFrames}");
         r.Expect(cap.Facts.Source.SequenceEqual(new[] { 1, 2, 3, 10 }), $"the converter's channels: square 1 <- {cap.Facts.Source[0]}, square 2 <- {cap.Facts.Source[1]}, triangle <- {cap.Facts.Source[2]}, noise <- {cap.Facts.Source[3]} (1, 2, 3, 10 expected)");
         r.Expect(cap.Facts.PitchBends == res.BendEvents && res.BendEvents > 0, $"the converter's facts count {cap.Facts.PitchBends} pitch bends, the capture wrote {res.BendEvents}");
         r.Expect(res.ConverterTrack.SequenceEqual(new[] { 0, 1, 2, 3 }), $"the capture's view of the converter's choice: {string.Join(",", res.ConverterTrack)}");
-        r.Note($"streams {string.Join(" + ", cap.Channels.Select(c => c.Length))} bytes, loop {cap.Facts.LoopFrames} frames, {cap.Facts.PitchBends} bends the engine does not play: identical to the ideal file's streams");
+        // 2. the bends (round 9): the plugin plays them on the three channels whose instances slid or were tuned (Pulse 1 slides and bends, Pulse 2 slides, the triangle slides and is
+        //    tuned +7 cents), and both the capture and the converter say so
+        string bendLine = cap.Facts.BendLine() ?? "";
+        r.Expect(cap.Facts.BendMask == 7 && bendLine.StartsWith("bends played on square 1, square 2, triangle:"), $"the take's bends are not played on square 1, square 2 and the triangle (mask {cap.Facts.BendMask}): '{bendLine}'");
+        r.Expect(res.Facts.Any(f => f.Contains("slide or bend") && f.Contains("VRUN's engine plays the bends")), $"the take's facts do not say VRUN plays the bends: {string.Join(" | ", res.Facts)}");
+        // 3. the ROM the plugin builds (the bundled template with the take patched in), against the same take converted without bends: the decoders play the take's streams exactly
+        //    (the frame-exact model), no note moves, and on every frame where a note sounds the period follows the file's pitch (held bends exact, moving ones within the tolerance;
+        //    the file's pitch is FL's within the bend's 14-bit step: `build`). The registers as each NMI left them (Music/NmiLatch.cs).
+        var t = MidiChecks.BundledTemplate();
+        var (_, _, mlb) = MidiFixtures.Bundled();
+        int loop = cap.Facts.LoopFrames, n = Math.Min(2 * loop, 2400);
+        var run = MidiRun.Of(t.Patch(cap.Channels, loop, "capture"), n + MusicTemplate.Preroll + 4, mlb);
+        var runPlain = MidiRun.Of(t.Patch(plain.Channels, loop, "capture"), n + MusicTemplate.Preroll + 4, mlb);
+        var sc = MidiModel.Best(cap.Channels, run.Latch, n, skip: MidiChecks.Skip);
+        r.Expect(sc.Worst >= 1.0 && sc.Start == MusicTemplate.Preroll, $"the ROM does not play the take's streams with bends: {sc.Agree}/{sc.Of} field-frames from frame {sc.Start}; {string.Join("; ", sc.Mismatches)}");
+        int start = sc.Start, moved = 0;
+        for (int f = 0; f < n; f++)
+        {
+            var a = run.Latch.AsSpan((start + f) * MidiModel.LatchBytes, MidiModel.LatchBytes);
+            var c = runPlain.Latch.AsSpan((start + f) * MidiModel.LatchBytes, MidiModel.LatchBytes);
+            foreach (int field in new[] { 1, 3, 5, 6, 7 }) if (MidiModel.Field(a, field) != MidiModel.Field(c, field)) { moved++; break; }
+        }
+        r.Expect(moved == 0, $"with bends, the volume / triangle / noise registers differ from the take without bends in {moved} of {n} frames: the notes moved");
+        var parts = new List<string>();
+        foreach (var rep in cap.Facts.BendsPlayed)
+        {
+            string name = MusicTemplate.ChannelNames[rep.NesChannel];
+            var pitch = MidiChecks.IdealPitch(res.Midi, rep.MidiChannel, loop);
+            var j = MidiChecks.JudgeBends(run.Latch, start, rep.NesChannel, pitch, loop, rep.ToleranceCents, rep.SlidesOff);
+            var jp = MidiChecks.JudgeBends(runPlain.Latch, start, rep.NesChannel, pitch, loop, rep.ToleranceCents, rep.SlidesOff);
+            r.Expect(j.Off <= 2 * rep.FramesOverTolerance, $"{name}: {j.Off} of {j.Checked} frames off the take's pitch in the ROM (the converter says {rep.FramesOverTolerance} a loop)");
+            r.Expect(j.Bent >= 10, $"{name}: only {j.Bent} bent frames could be judged ({j.Checked} in all)");
+            r.Expect(jp.Off > j.Off, $"{name}: without bends the ROM is no further off the take's pitch ({jp.Off} frames) than with them ({j.Off}): the check cannot tell");
+            parts.Add($"{name} {j.Checked} frames judged, {j.Bent} bent ({j.Held} held, max {j.MaxHeldCents:0.0} cents from the NES period; moving max {j.MaxMovingCents:0.0}), {j.Off} off (converter: {rep.FramesOverTolerance}/loop; {jp.Off} off without bends)");
+        }
+        r.Note($"streams with bends {string.Join(" + ", cap.Channels.Select(c => c.Length))} bytes (without: {string.Join(" + ", plain.Channels.Select(c => c.Length))} = the ideal file's), loop {cap.Facts.LoopFrames} frames, {cap.Facts.PitchBends} bends in the file; '{bendLine}'");
+        r.Note($"the ROM over {n} frames: {sc.Agree}/{sc.Of} field-frames = the decoder model, no note moved{(run.LateFrames > 0 ? $", {run.LateFrames} frames whose NMI wrote on past the frame's end" : "")}; {string.Join("; ", parts)}");
         // the converter gives the triangle to the lowest channel: a song whose Pulse 2 plays lower than its triangle is said
         var low = Song();
         low.Coarse[1] = -36;
@@ -538,9 +581,10 @@ internal static class CaptureChecks
             var check = All.First(c => c.Id == m.CatchingCheck);
             var r = new ImodelReport();
             CaptureMutants.Active = m.Code;
+            MusicMutate.Mask = m.Music;
             try { check.Run(r); }
             catch (Exception e) { r.Failures.Add($"exception {e.GetType().Name}: {e.Message}"); }
-            finally { CaptureMutants.Active = 0; }
+            finally { CaptureMutants.Active = 0; MusicMutate.Mask = 0; }
             bool caught = r.Failures.Count > 0;
             if (!caught) missed++;
             lines.Add($"  {(caught ? "caught" : "MISSED")}  [{m.CatchingCheck}] {m.Name}: {r.Failures.Count} failing assertions" + (caught ? $", e.g. {(r.Failures[0].Length > 170 ? r.Failures[0][..167] + "..." : r.Failures[0])}" : ""));

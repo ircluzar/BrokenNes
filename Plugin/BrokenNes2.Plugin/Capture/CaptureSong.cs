@@ -163,8 +163,8 @@ public static class CaptureSong
         }
         catch (Exception e) { r.Report.Add("the converter could not read the capture back: " + e.Message); }
         ConverterFacts(r);
-        // the window shows the first few: the summary, then what changes the replay most (lost events, guesses, the bends VRUN drops, the converter's own choice, the base), then the rest
-        static int Rank(string f) => f.Contains("LOST") ? 0 : f.Contains("ASSUMED") || f.Contains("ASSUMING") ? 1 : f.Contains("no pitch bend") ? 2 : f.Contains("chooses by itself") ? 3 : f.Contains("MIDI note 0") && !f.StartsWith("keys read from C5") ? 4 : f.Contains("not played") ? 5 : 9;
+        // the window shows the first few: the summary, then what changes the replay most (lost events, guesses, the slides and bends, the converter's own choice, the base), then the rest
+        static int Rank(string f) => f.Contains("LOST") ? 0 : f.Contains("ASSUMED") || f.Contains("ASSUMING") ? 1 : f.Contains("slide or bend") || f.Contains("slides or bends") ? 2 : f.Contains("chooses by itself") ? 3 : f.Contains("MIDI note 0") && !f.StartsWith("keys read from C5") ? 4 : f.Contains("not played") ? 5 : 9;
         var rest = r.Facts.Skip(1).Select((f, i) => (f, i)).OrderBy(x => Rank(x.f)).ThenBy(x => x.i).Select(x => x.f).ToList();
         r.Facts.RemoveRange(1, r.Facts.Count - 1);
         r.Facts.AddRange(rest);
@@ -359,7 +359,7 @@ public static class CaptureSong
         r.Facts.Add($"Captured {r.Notes} note{(r.Notes == 1 ? "" : "s")} from {r.Tracks.Count} channel{(r.Tracks.Count == 1 ? "" : "s")} ({chans}) in {Dur(r.Seconds)}: {r.Bars} bar{(r.Bars == 1 ? "" : "s")} of {r.BeatsPerBar}/4 at {r.Tempo.Bpm.ToString("0.##", ci)} BPM");
         int moving = r.MovingNotes;
         if (moving > 0)
-            r.Facts.Add($"{moving} note{(moving == 1 ? " slides or bends" : "s slide or bend")} ({r.BendEvents} bends): VRUN's engine has no pitch bend, it plays {(moving == 1 ? "it at its key" : "them at their keys")}; the file keeps the bends (range {string.Join("/", r.Tracks.Where(t => t.BendEvents > 0).Select(t => t.BendRange).Distinct())})");
+            r.Facts.Add($"{moving} note{(moving == 1 ? " slides or bends" : "s slide or bend")} ({r.BendEvents} bends, range {string.Join("/", r.Tracks.Where(t => t.BendEvents > 0).Select(t => t.BendRange).Distinct())}): VRUN's engine plays the bends on its squares and triangle (the converter's bends line says what it kept; in the game: \"bends\": true in the song's roster entry)");
         else r.Facts.Add("no slide or pitch bend in the take");
         // the base key FL's pitch was read from (FL tells a plugin no root note: Record/FlNotes.cs): said first when a channel is not read from C5, else last
         var from0 = r.Tracks.Where(t => t.BaseHow == BaseWhy.OnlyMidi0).Select(t => t.Name).ToList();

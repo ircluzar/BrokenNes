@@ -47,7 +47,7 @@ internal static class MidiChecks
 
     // ---- shared ----
 
-    private static MusicTemplate BundledTemplate()
+    internal static MusicTemplate BundledTemplate()
     {
         var (rom, manifest, _) = MidiFixtures.Bundled();
         return MusicTemplate.Load(rom, manifest, out var why) ?? throw new InvalidOperationException("the bundled template does not load: " + why);
