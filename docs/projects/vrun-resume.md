@@ -1,13 +1,57 @@
 # Resuming the VRUN games: VRUN CTW (NES), Nested VRUN (SNES) and Super VRUN (SNES)
 
-Date: 2026-10-18. Agent `vrun-dev`, BrokenNes branch `vrun-resume` (worktree under `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_vrundev\wt`).
+Date: 2026-10-18. Agent `vrun-dev`, BrokenNes branches `vrun-resume` (merged as `d38dcc2`) and `vrun-resume-2`.
 The user's request: make sure the three games compile on this machine and run correctly on BrokenNes, so development can resume. SMB1 was
 out of scope (it is only touched where a BrokenNes change moved one of its UAT goldens).
 
-Nothing of the user's was moved, merged, committed or overwritten. Builds ran in scratch copies; the tested ROMs are frozen in the workspace's
-`builds\` folder, as its recipe says. Every decision below is the user's.
+Round 1 changed nothing of the user's (builds in scratch copies, tested ROMs frozen in the workspace's `builds\` folder). The user then
+decided the questions of section 8; round 2 (same day, branch `vrun-resume-2`) carried them out: section 0 is where things are now.
 
-## 1. Where each game lives, and which copy is the newest
+## 0. Where to develop now (after 2026-10-18)
+
+| Game | Develop in | Build | State |
+|---|---|---|---|
+| **VRUN CTW (NES)** | `PROJECTS\VRUN_Nes_Dev\sys0\simulations\VRUN` (git, branch `vrun-history-export`) | Git Bash: `source /c/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/nesdev-env.sh; cd "$VRUN_ROOT"; ./build.sh game` | tear fix committed (`01264eb`); the 54 files left CRLF by the first checkout restored to the committed LF (content identical); `./build.sh game` there: "PASS - ROM matches the target cartridge spec.", `git status` clean. Another agent (`vrun-bends`) merges its `audio-bends` branch on top. |
+| **Nested VRUN (SNES)** | `PROJECTS\VRUN_Nes_Dev\Nested_VRUN\Project-Nested` (git) | `tools\m30pipe` (section 7) | all the long-uncommitted work committed in 5 commits (below); the archive's SMB1 additions brought in; profile `games\79b64e20` (the 2026-10-18 build) added; `out\core` rebuilt on this machine: same pinned core, no more "stale core" warning; `m30build.ps1` from this checkout rebuilds the frozen `builds\2026-10-18_nested\vrun_game_nested_SNES.smc` byte for byte (md5 `7f2dc32d`). |
+| **Super VRUN (SNES)** | `PROJECTS\SuperVRUN_dev` (git clone of the P: archive: branches `two-player` (checked out, `d428c83`) and `master`, tags `pre-2p`, `pre-shadow`; remote `archive` = the P: repository) | Git Bash, in `snes-dev\supervrun`: `bash build.sh` | builds there: every srccheck lint passes, `ramcheck: 69 WRAM sections, .bss ends at $7EF78D, OK`, `Build finished`, **md5 `fa11f13f`** (the ROM the user plays), 43 s, `git status` clean. P:\BrokenDev stays the archive (nothing there was changed or deleted). |
+
+BrokenDev's own verbs (`BrokenDev\brokendev.ps1 build|verify|diff`) still work from its restores in `P:\BrokenDev\env` (`BROKENDEV_HOME`); the
+development copies above are where the user and agents edit, build and freeze.
+
+Commits of round 2, per repository (nothing pushed anywhere):
+* VRUN (`vrun-history-export`): `01264eb` VRUN: initialise tear_active at its declaration, so a fresh power-on never starts with phantom tears.
+* Project-Nested: `5c9b6ba` Mapper 30 groundwork (the hand-made core patches of 2026-09-13..17, `patch_scripts`, the flash-save study, and the
+  core they produced, `Project Nested\Project_Nested.smc` md5 `74a533f6` = chain steps 01-11); `1967c53` m30pipe: the reproducible pipeline (core
+  patch chain with its pristine input, `m30build.ps1`, preflight, asm65, tools, test ROM sources, docs); `bf8975a` m30pipe: the verification
+  harness and the zero-feedback bootstrap; `579e624` m30pipe: per-game profiles (VRUN `50a5ca15` with its three play-session `.srm` as provenance,
+  `4ef0ec54`, `17dd5f8e`, `79b64e20`; SMB1 `dba0048e`, `d257beb1`) and the Nested Builder UI; `77d76f7` diff_harness: the differential probes of
+  the Nested bug hunts. Index line endings stay LF (the repository's convention, CRLF on disk through `core.autocrlf=true`).
+  **Left uncommitted on purpose** (snapshots and debris, not sources): `Project Nested\Project_Nested.*.smc` and `Project_Nested.smc.before_*`
+  (11 experiment cores), `tools\patch_scripts\Project_Nested.before_*.smc` (6), `tools\patch_scripts\__pycache__\`,
+  `tools\patch_scripts\flash_save\__pycache__\`, and `tools\m30pipe\harness\hv\--out` (an accidental output file of a mistyped command).
+* VRUN_Nes_Dev workspace (no git): `WORKSPACE.md` points at this page and its Git notes say what changed; `memory\nested\snes_qol_work.md`
+  is the archive's newer copy.
+
+Super VRUN details:
+* Copied into the clone from the package (both git-ignored): `snes-stub\` (PVSnesLib 4.6.0, needed by `build.sh`) and `tools\Mesen2\Mesen.exe`
+  (the test runner of `./build.sh --test` and `tests\*.sh`). Not copied (not needed to build; on P: when wanted): `mz\` (2.1 GB of CTW
+  reference), `tools\bsnes-plus\`, `nes-stub\`, `nes-dev\nesfab`, `snes-dev\musiclab\` (1.3 GB), `snes-dev\supervrun_head\`, `tools\fluidsynth\`.
+* Build output: `build.sh` hard-codes `snes-dev\supervrun\build` (about 18 MB per build, more after test runs) inside the repository, so it
+  lives in OneDrive, git-ignored (`snes-dev/*/build/*`). Moving it out would need a change to `build.sh` (or a junction, which OneDrive does
+  not handle well); left as is.
+* Mesen has no `Documents\Mesen2` folder on this machine yet: the package's `mesen2_user_folder\` (the user's input mapping, settings with
+  SNES overscan 0, playtest saves) is on P: for when the user wants it (README step 6).
+* Claude memory: the 15 notes of `claude\projects\C--Users-pgirard-Desktop-SuperVRUN\memory` are now in
+  `%USERPROFILE%\.claude\projects\C--Users-philt-OneDrive-Documents-PROJECTS-SuperVRUN-dev\memory\` (they load when Claude Code is opened in
+  `PROJECTS\SuperVRUN_dev`; they still quote the old `C:\Users\pgirard\Desktop\SuperVRUN` paths, read them as `PROJECTS\SuperVRUN_dev`), and the
+  board export beside them (`...\live_board_export\`). The transcripts (590 MB) were not restored.
+* The live board `https://claude.ai/artifact/N1BpPY1PCz8i4akUr5C4yh` ("Super VRUN Board") is still live in this account with its data
+  (`board/now` version 76, last written 2026-10-14): nothing to restore, and it was not written to.
+* git: the clone's `core.autocrlf=false` (the repository mixes CRLF, LF and binary files; the archive had the same). Commits will use this
+  machine's global identity (the archive repository had a local `pgirard` identity). Fetching from the `archive` remote needs
+  `git -c safe.directory=* fetch archive` (the NAS owns the files).
+
+## 1. Where each game lived before round 2, and which copy was the newest
 
 | Game | Copies on this machine | Newest | Evidence |
 |---|---|---|---|
@@ -135,11 +179,11 @@ The games (reported, not changed):
 ## 6. Environment notes (this machine)
 
 * **Claude-launched processes write `%LOCALAPPDATA%` / `%APPDATA%` into the Claude app's package store** (`AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\...`): everything an agent puts under `%LOCALAPPDATA%\VRUN_Nes_Dev_work` may be invisible to your own Explorer and is lost if that app is reset. Frozen ROMs therefore went to the OneDrive `builds\` folder.
-* **Live VRUN checkout: 54 tracked files are CRLF in the working tree but LF in git**, hidden because git trusts its stat cache (WORKSPACE.md says the files are LF). List: `git ls-files --eol | findstr "i/lf.*w/crlf"`. They are docs, test Lua, `.mlb`s, room JSON, `framingtest/hello` `main.fab`, `tools/nes-mapbake.mjs`, two `.py` tools. The build still passes; a future touch of the index will suddenly show 54 modified files.
+* (Fixed in round 2.) The live VRUN checkout had 54 tracked files CRLF in the working tree but LF in git, hidden because git trusted its stat cache. They were restored to the committed bytes after checking that line endings were the only difference; the index then still held the old CRLF sizes (git reported them modified without re-reading), which re-staging the identical content cleared. `git ls-files --eol` now shows no `w/crlf`.
 * The Mesen tracers the differentials need (`state_trace.lua`, `apu_write_log.lua`, `ppu2007_pair.lua`, …) exist **only in the older `PROJECTS\sys0\simulations\VRUN\tools`** clone, not in the VRUN repository.
 * Mesen's `--testRunner` stops a script after ~100 s: pass `--timeout=<s>` (the BrokenDev tools now can).
-* `Nested_VRUN\...\m30pipe\out\core\manifest.json` points at the old machine (`C:\Users\user\Desktop\...`), so every build prints "core is stale, building with the OLD core". Harmless (the pinned md5 is checked and `build_core.py` reproduces it); `python core\build_core.py --out out\core` would clear it (your checkout: your call).
-* **Super VRUN on P:**: git refuses the repository ("dubious ownership", the NAS owns the files) unless `safe.directory` is set; builds are ~3× slower than on C:.
+* (Fixed in round 2.) `m30pipe\out\core\manifest.json` pointed at the old machine (`C:\Users\user\Desktop\...`), so every build printed "core is stale, building with the OLD core". `python core\build_core.py --out out\core` rebuilt it on this machine: all 18 steps MATCH, the core is still **`57c4a845`** (unchanged), so every pinned profile md5 still holds and builds stay reproducible; only the manifest's paths changed. Rebuild it the same way after moving the folder.
+* Super VRUN on P: (now only the archive): git refuses the repository ("dubious ownership", the NAS owns the files) unless `safe.directory` is set, and builds there are ~3× slower than on C:. Develop in `PROJECTS\SuperVRUN_dev`.
 * WMIC is gone on this Windows 11, so Super VRUN's `tools\kill_test_mesen.sh` kills nothing: it cannot hurt other agents, but it also cannot stop a stray test Mesen. Run one Mesen test at a time.
 * Python: use `source nesdev-env.sh` (Python 3.14 first). `python3` in Git Bash is the Windows Store alias and hangs. Pillow warns that `Image.getdata` goes away in Pillow 14 (2027-10-15): VRUN's `chrbake.py` and sprite tools will need `get_flattened_data`.
 * `UAT\diff-trace.ps1` needs PowerShell 7 (`pwsh`).
@@ -164,11 +208,14 @@ cd C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\Nested_VRUN\Project-N
 powershell -NoProfile -ExecutionPolicy Bypass -File bootstrap\bootstrap.ps1 -Nes <frozen vrun_game_nested.nes> -Work <scratch>\boot -Out <scratch>\vrun_game_nested_SNES.smc
 python tools\snes_enhance.py <scratch>\vrun_game_nested_SNES.smc <scratch>\vrun_game_nested_SNES_enhanced.smc --chr out\font\chr32k.bin --full-bevel-from 64 --anim-png <VRUN>\src\game\anim_*.png
 ```
-(This round passed `-Profile`, `-MesenDir` and `-OutRoot` to keep everything in scratch; in your own checkout the defaults are right.)
+(Round 1 passed `-Profile`, `-MesenDir` and `-OutRoot` to keep everything in scratch; in the checkout the defaults are right. Rebuilding an
+existing build from its profile: `powershell -NoProfile -ExecutionPolicy Bypass -File m30build.ps1 -Nes <frozen .nes> -Out <file>`.)
 
 ```bash
-# Super VRUN (Git Bash, from snes-dev/supervrun)
-bash build.sh                                  # srccheck, ..., "ramcheck: ... OK", "Build finished"; md5 must equal the commit's
+# Super VRUN (Git Bash)
+source /c/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/nesdev-env.sh      # Python 3.14 with Pillow/numpy first
+cd /c/Users/philt/OneDrive/Documents/PROJECTS/SuperVRUN_dev/snes-dev/supervrun
+bash build.sh                                  # srccheck, ..., "ramcheck: ... OK", "Build finished"; md5 must equal the commit's (7c55bd4/d428c83: fa11f13f)
 ./build.sh --test                              # Mesen self-test (one Mesen test at a time)
 ```
 
@@ -193,7 +240,7 @@ python BrokenDev\tools\vrun\playscript.py nes 10800 > play.txt          # profil
 pwsh -File BrokenDev\tools\diff-nes.ps1 -Rom <rom> -Work <dir> -MesenDir <VRUN>\tools\mesen -Workshop $ws `
      -TraceLua C:\Users\philt\OneDrive\Documents\PROJECTS\sys0\simulations\VRUN\tools\state_trace.lua -InputScript (Get-Content play.txt) -Frames 10800 -MesenTimeoutSec 900
 python BrokenDev\tools\vrun\apu_shift.py <dir>\diff.mesen.trace.txt <dir>\diff.brokennes.trace.txt      # classify APU blips
-pwsh -File BrokenDev\tools\diff-snes.ps1 -Rom <smc> -Work <dir> -MesenDir P:\BrokenDev\env\supervrun_dev\SuperVRUN\tools\Mesen2 `
+pwsh -File BrokenDev\tools\diff-snes.ps1 -Rom <smc> -Work <dir> -MesenDir C:\Users\philt\OneDrive\Documents\PROJECTS\SuperVRUN_dev\tools\Mesen2 `
      -MesenSettings P:\BrokenDev\env\supervrun_dev\mesen2_user_folder\settings.json -Workshop $ws -Python <python> `
      -Frames 600,1200,... -InputScript ... -CropTop 7 -CropBottom 8 -InputShift <n> -MesenTimeoutSec 600
 #   input shifts measured on the fixed build: Nested VRUN (2026-10-18) 1, its enhanced build 2, Super VRUN 2
@@ -218,22 +265,17 @@ pwsh -File BrokenDev\tools\vrun\vrun-save-check.ps1 -Exe <BrokenNes.Windows.exe>
 Mesen traps met again: never reuse VRUN's Mesen for SNES (input port 1 is None there); clear a private Mesen's `Saves\` before a run; VRUN
 picks its map from the frame Start is pressed, so a one-frame input difference means another map (calibrate `-InputShift` on the title).
 
-## 8. Decisions for the user
+## 8. Decisions
 
-1. **VRUN CTW**: commit the uncommitted `src/game/main.fab` (the `tear_active` initialisation, 2026-10-01) in the live repo? It builds (PASS)
-   and was the build tested here. Nothing else is uncommitted.
-2. **Live VRUN checkout line endings**: restore the 54 CRLF files to the committed LF (`git checkout -- <those files>`, naming them; `main.fab`
-   is not among them, so your edit is safe), or leave them.
-3. **Nested**: the live Project-Nested is the one to develop VRUN in. To bring the copies together without losing anything: copy the archive's
-   SMB1 additions into it (`games\d257beb1\`, `tools\dmc_status.py`, the "post-build steps" section of `core\STEPS.md`, `out\ship\SMB1_Repro*`),
-   add `games\79b64e20\` from `builds\2026-10-18_nested\profile_79b64e20\` if you keep the 2026-10-18 build, then **commit the long-uncommitted
-   Nested work** (the package's START_HERE asks for this first). Optionally take the archive's newer memory note `nested\snes_qol_work.md`.
-4. **Super VRUN**: the only copy is the BrokenDev restore on the P: share. Pick a local home (for example `C:\Users\philt\Desktop\SuperVRUN`, the
-   original layout): a `git clone -b two-player` plus the untracked `snes-stub\toolchain` and `tools\Mesen2` reproduce the ROM byte for byte
-   (shown here), or extract `SuperVRUN_dev.zip` there in full. Restore its Claude memory from the zip (`claude\projects\...` was not restored)
-   and reconnect its live board (`https://claude.ai/artifact/N1BpPY1PCz8i4akUr5C4yh`).
-5. **BrokenNes**: merge `vrun-resume` (the HDMA fix, its test, the 10 goldens, the tools, this page): the lead's call. The two known SNES timing
-   differences (emulation-mode RMW, DMA alignment) are ready to fix but move more goldens; and the enhanced build's title lag frame is open.
-6. Clear the "stale core" warning (`build_core.py --out out\core`) or live with it.
-7. Add a pointer to this page in `VRUN_Nes_Dev\WORKSPACE.md` (not done: it is your file).
-8. Unchanged from before: NTSC-accurate frame timing is still off by default in the app (VRUN's frame budget is only faithful with it on).
+Decided by the user on 2026-10-18 and done (section 0): commit the tear fix; restore the 54 CRLF files; bring the Nested copies together and
+commit the Nested work; rebuild `out\core`; a pointer in `WORKSPACE.md`; a Super VRUN development copy in `PROJECTS\SuperVRUN_dev`;
+merge `vrun-resume` into BrokenNes (`d38dcc2`).
+
+Still open:
+1. The two measured SNES timing differences (emulation-mode RMW, DMA clock alignment) are ready to fix but move more UAT goldens; the
+   enhanced Nested build's title lag frame is not explained (section 5).
+2. Pin the 2026-10-18 Nested build in its profile (`expect.final_md5 = 7f2dc32d8c409592faf83005ab9e342e` in `games\79b64e20\game.json`) when it
+   becomes the build you ship, as games\README.md describes.
+3. The uncommitted Nested backup cores (section 0): delete them, ignore them, or keep them as they are.
+4. Super VRUN: restore `mesen2_user_folder\` to `Documents\Mesen2` if you want the package's Mesen settings and playtest saves on this machine.
+5. Unchanged from before: NTSC-accurate frame timing is still off by default in the app (VRUN's frame budget is only faithful with it on).
