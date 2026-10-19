@@ -40,7 +40,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         public float CapPitch;        // round 9 (capture): the pitch last written into the capture's lane (cents from C5)
         public bool CapOff = true;    // its release is in the lane (or it has no note-on there)
         public bool LiveSent;         // its note-on went out as MIDI (Bn2Plugin.CaptureLive.cs)
-        public int LiveKey, LiveCh;
+        public int LiveKey, LiveCh, LiveBase;
     }
 
     private readonly List<Voice> voices = new(32);
@@ -1317,7 +1317,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 if (id - Fpd.TestBase is >= 700 and < 720) return TrackTestHook(id - Fpd.TestBase, index, value);                                // the tracks on offer (Bn2Plugin.Tracks.cs)
                 if (id - Fpd.TestBase is >= 720 and < 740) return RelinkTestHook(id - Fpd.TestBase, index, value);                               // linking to the tracks on offer, the channel's name, the host log (Bn2Plugin.Relink.cs)
                 if (id - Fpd.TestBase is >= 740 and < 780) return NesRecordTestHook(id - Fpd.TestBase, index, value);                            // a NES game's recording (Bn2Plugin.RecordNes.cs)
-                if (id - Fpd.TestBase is >= 790 and < 810) return CaptureTestHook(id - Fpd.TestBase, index, value);                              // round 9: Capture from FL (Bn2Plugin.Capture.cs)
+                if (id - Fpd.TestBase is >= 840 and < 860) return CaptureTestHook(id - Fpd.TestBase, index, value);                              // round 9: Capture from FL (Bn2Plugin.Capture.cs; 790-819 are reload's)
                 return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
     }

@@ -1,5 +1,6 @@
-// Round 9 (capture): "Capture from FL" through the real plugin DLL (Native AOT), played by the FL-faithful host (Capture.FlHost.cs: the real log's Dispatcher sequence, notes in FL ticks, InitLevels
-// from MIDI note 0, FinalLevels from C5, slides inside their parent note, per-note pitch automation, no song position). The library checks first (CaptureChecks), then the DLL:
+// Round 9 (capture): "Capture from FL" through the real plugin DLL (Native AOT), played by the FL-faithful host (Capture.FlHost.cs: the real log's Dispatcher sequence, notes in FL ticks, the pitch
+// above the channel's root note (C5 on a channel made in FL, MIDI note 0 on an imported one: Record/FlNotes.cs), slides inside their parent note, per-note pitch automation, no song position). The
+// library checks first (CaptureChecks), then the DLL:
 //
 //   flow     the window with real mouse messages: Capture from FL arms, FL plays the song on four BrokenNes2 channels (Direct mode), FL's Stop builds the file, Test MIDI export plays it at once in
 //            the same emulator, the facts say what VRUN's engine drops, Save MIDI... writes the file, the MIDI-out box
@@ -13,7 +14,7 @@
 //   live     "Send my notes and pitch bends as MIDI out": every note FL played and the played pitch at every tick, through MIDIOut_Delayed on port 1, channels 1/2/3/10
 //   edge     nothing played, cancel, a channel FL never started (joins late, said), a note held over Stop (said), arming again puts the emulator back in Direct mode
 //
-// Each scenario is run again with a deliberate bug switched on in the DLL (plugin hook 799) and must fail. Plugin hooks 790-809 (Bn2Plugin.Capture.cs), editor hooks 810-819 (Bn2Editor.Capture.cs).
+// Each scenario is run again with a deliberate bug switched on in the DLL (plugin hook 849) and must fail. Plugin hooks 840-859 (Bn2Plugin.Capture.cs), editor hooks 860-869 (Bn2Editor.Capture.cs).
 using BrokenNes.Fruity;
 using BrokenNes2.Capture;
 using BrokenNes2.Music;
@@ -23,8 +24,8 @@ namespace BrokenNes.FruityHost;
 
 public sealed unsafe partial class SelfTest
 {
-    private const int HkCArm = 790, HkCCancel = 791, HkCState = 792, HkCText = 793, HkCMidi = 794, HkCSave = 795, HkCNum = 796, HkCLive = 798, HkCMutant = 799, HkCReset = 800, HkCClock = 801;
-    private const int EdCText = 810, EdCSavePath = 811, EdCShown = 812, EdCFacts = 813;
+    private const int HkCArm = 840, HkCCancel = 841, HkCState = 842, HkCText = 843, HkCMidi = 844, HkCSave = 845, HkCNum = 846, HkCLive = 848, HkCMutant = 849, HkCReset = 850, HkCClock = 851;
+    private const int EdCText = 860, EdCSavePath = 861, EdCShown = 862, EdCFacts = 863;
     private const int IdCapArmBtn = 2120, IdCapSaveBtn = 2121, IdCapLiveBtn = 2122;
     private const int CapEmu = 7;
 
@@ -109,7 +110,7 @@ public sealed unsafe partial class SelfTest
     private (string Name, CapScenario Body, int[] Mutants)[] CaptureScenarios() =>
     [
         ("flow", CapFlow, [CaptureMutants.NotFed]),
-        ("file", CapFile, [CaptureMutants.InitFromC5, CaptureMutants.VelocityOver127, CaptureMutants.TempoIgnored, CaptureMutants.BendSignFlipped, CaptureMutants.SlideIgnored, CaptureMutants.BendRangeUnwritten, CaptureMutants.EventsLostSilently]),
+        ("file", CapFile, [CaptureMutants.BaseFromMidi0, CaptureMutants.BaseDetectionIgnored, CaptureMutants.VelocityOver127, CaptureMutants.TempoIgnored, CaptureMutants.BendSignFlipped, CaptureMutants.SlideIgnored, CaptureMutants.BendRangeUnwritten, CaptureMutants.EventsLostSilently]),
         ("engine", CapEngine, [CaptureMutants.Pulse2OnChannel1, CaptureMutants.EndAtLastNote]),
         ("render", CapRender, [CaptureMutants.ClockFixedRate]),
         ("alloc", CapAlloc, [CaptureMutants.CaptureAllocates]),
@@ -230,11 +231,13 @@ public sealed unsafe partial class SelfTest
 
     private void CapFile(T t)
     {
-        foreach (var (rate, bpm, tempo) in new[] { (48000, 141.3, true), (44100, 130.0, false) })
+        // channels made in FL (root C5: the user's compositions) at 48 kHz / 141.3 BPM with FPE_Tempo and at the user's own 44.1 kHz / 130 BPM without it; channels FL made by importing a MIDI file
+        // (root MIDI note 0) at 44.1 kHz: the capture must read them from MIDI note 0 and say so
+        foreach (var (rate, bpm, tempo, root) in new[] { (48000, 141.3, true, 60), (44100, 130.0, false, 60), (44100, 130.0, true, 0) })
         {
-            string label = $"{rate} Hz {bpm} BPM, {(tempo ? "FPE_Tempo" : "no FPE_Tempo (FL's samples per tick x PPQ)")}";
+            string label = $"{rate} Hz {bpm} BPM, {(tempo ? "FPE_Tempo" : "no FPE_Tempo (FL's samples per tick x PPQ)")}, {(root == 60 ? "channels made in FL" : "imported channels (root MIDI note 0)")}";
             CapFresh();
-            var s = CaptureChecks.Song(bpm);
+            var s = CaptureChecks.Song(bpm, root);
             using var run = new FlRun { Rate = rate, SendTempo = tempo };
             var rack = CapRack(run, s);
             try
@@ -250,14 +253,21 @@ public sealed unsafe partial class SelfTest
                 {
                     var c = CaptureChecks.Compare(r, d, s, run.Truth, label);
                     r.Note($"{c.NotesFound}/{c.Notes} notes, start and end within {c.MaxTickError} tick(s) at 960 per quarter; the pitch FL played at {c.PitchOk}/{c.PitchPoints} ticks within {c.AllowedPitchError:0.###} cents (worst {c.MaxPitchError:0.####}); bend ranges {string.Join("/", c.Range)}");
-                    // the chip's period registers against the file's pitch through Direct mode's arithmetic (NesDirect, the code that wrote them)
-                    var (same, edge, wrong) = PeriodsAgainstFile(d, s, run.Truth, periods, c.Range);
-                    r.Expect(wrong.Count == 0, $"{label}: {wrong.Count} ticks where the file's pitch gives another period register than the chip held: {string.Join("; ", wrong.Take(3))}");
-                    r.Note($"period registers: {same} of {same + edge + wrong.Count} ticks the very register the chip held (pulse 1 and triangle), {edge} at a rounding edge (within the bend's step), {wrong.Count} other");
+                    // the chip's period registers against the file's pitch through Direct mode's arithmetic (NesDirect, the code that wrote them). On channels made in FL only: Direct mode reads FL's
+                    // pitch from C5 (an imported channel's notes play 60 keys high in Direct mode until the instance knows its base: reload's work)
+                    if (root == 60)
+                    {
+                        var (same, edge, wrong) = PeriodsAgainstFile(d, s, run.Truth, periods, c.Range);
+                        r.Expect(wrong.Count == 0, $"{label}: {wrong.Count} ticks where the file's pitch gives another period register than the chip held: {string.Join("; ", wrong.Take(3))}");
+                        r.Note($"period registers: {same} of {same + edge + wrong.Count} ticks the very register the chip held (pulse 1 and triangle), {edge} at a rounding edge (within the bend's step), {wrong.Count} other");
+                    }
                 }
                 string facts = CText(rack[0], 1);
+                if (root == 60) r.Expect(facts.Contains("keys read from C5") && !facts.Contains("only fit"), $"{label}: the base (C5) is not said: {facts}");
+                else r.Expect(facts.Contains("only fit if FL counts the pitch from MIDI note 0") && facts.Contains("like the other channels") && facts.Split('\n').Take(4).Any(f => f.Contains("only fit")), $"{label}: the base found (MIDI note 0) is not said: {facts}");
                 r.Expect(facts.Contains("still sounding when FL stopped") && facts.Contains("no pitch bend"), $"{label}: the take's facts: {facts}");
                 if (!tempo) r.Expect(CText(rack[0], 2).Contains("from FL's") && CText(rack[0], 2).Contains("PPQ 96"), $"{label}: the tempo's source is not FL's samples per tick x PPQ: {CText(rack[0], 2).Split('\n').FirstOrDefault(l => l.StartsWith("tempo"))}");
+                r.Expect(CText(rack[0], 2).Contains("FL left the time as it was (no song position)") && !facts.Contains("FL's own song position"), $"{label}: FL gave no song position (as in the log), the report does not say so");
                 Absorb(t, r, label);
             }
             finally { Dispose(rack); }
@@ -347,8 +357,8 @@ public sealed unsafe partial class SelfTest
         var rack = CapRack(run, s);
         try
         {
-            // FL renders the song (File > Export > WAV): another rate, PM_IsRendering
-            run.Rate = 48000; run.Rendering = true;
+            // FL renders the song (File > Export > WAV): another rate, PM_IsRendering; and this host answers FHD_GetMixingTime (the capture compares FL's song position with its own clock)
+            run.Rate = 48000; run.Rendering = true; run.AnswerSongPosition = true;
             foreach (var p in rack) { p.Dispatcher(Fpd.SetSampleRate, 0, 48000); p.Dispatcher(1, 0, 3072 | 16); }
             var midi = CapTake(t, rack, run, s);
             if (midi == null) return;
@@ -360,6 +370,7 @@ public sealed unsafe partial class SelfTest
                 r.Note($"export: {c.NotesFound}/{c.Notes} notes within {c.MaxTickError} tick(s), the pitch at {c.PitchOk}/{c.PitchPoints} ticks within {c.AllowedPitchError:0.###} cents");
             }
             r.Expect(CText(rack[0], 1).Contains("while FL rendered"), "the facts do not say the take was rendered: " + CText(rack[0], 1));
+            r.Expect(CText(rack[0], 1).Contains($"FL's own song position agrees with the capture's clock at {s.Notes.Count} notes"), "a host that gives its song position: the facts do not compare it with the clock: " + CText(rack[0], 1));
             Absorb(t, r, "render");
         }
         finally { Dispose(rack); }

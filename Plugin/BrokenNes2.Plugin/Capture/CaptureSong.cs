@@ -1,10 +1,15 @@
 // Round 9 (capture): the lanes of a take (what FL played on each BrokenNes2 instance) -> a Standard MIDI File with the pitch bends, and the facts that explain it.
 //
-//   notes      one per note FL started: key = FL's key (InitLevels, cents from MIDI 0: FlPitch) + the instance's Coarse, the velocity FL gave (x 128: FL's 0.5 is MIDI 64), start and end at their real
-//              times (the instance's sample clock since FL's Play) converted to ticks (960 per quarter) at the take's tempo (FlClock.Resolve). A note still sounding at Stop ends there (said).
+//   base       FL hands a voice's pitch (InitLevels and FinalLevels alike) in cents above the CHANNEL's base key (Record/FlNotes.cs, the `reload` agent's reading of the user's real log): C5 on a
+//              channel made in FL (the user's compositions: the default here), MIDI note 0 on a channel FL made by importing a MIDI file. FL tells a plugin no root note, so per channel: the base the
+//              instance found from a recording's track when it knows one; else C5, unless the notes cannot be read from C5 (keys above 127: then MIDI note 0, said); a channel whose notes fit both
+//              follows the channels that were sure (said). The base used is in the facts and in the file's text.
+//   notes      one per note FL started: key = the nearest key of InitLevels.Pitch + the instance's tuning (Coarse x 100 + Fine), the velocity FL gave (x 128: FL's 0.5 is MIDI 64), start and end
+//              at their real times (the instance's sample clock since FL's Play) converted to ticks (960 per quarter) at the take's tempo (FlClock.Resolve). A note still sounding at Stop ends there.
 //   bends      what the instance PLAYS is FinalLevels.Pitch + its tuning (slides, per-note pitch, fine pitch, the channel's pitch, Coarse / Fine): the bend at every moment is that pitch minus the key of
 //              the note that owns the channel (the newest one sounding: a BrokenNes2 channel is monophonic and plays its newest note), at a pitch-bend range per track (RPN 0) wide enough for every
-//              move (the smallest of 2..48 semitones; beyond 48 the value is clamped and counted). A bend is written whenever its 14-bit value changes, before the note-on it belongs to.
+//              move (the smallest of 2..48 semitones; beyond 48 the value is clamped and counted). A bend is written whenever its 14-bit value changes, before the note-on it belongs to. (A bend is
+//              the same whatever the base: only the keys depend on it.)
 //   tracks     SMF type 1: a conductor (tempo, FL's time signature, the facts as text) and one track per instance that got a note, named after its role (Pulse 1, Pulse 2, Triangle, Noise, DMC) or
 //              FL's name for its channel, on the MIDI channel VRUN's converter turns into that NES channel: Pulse 1 -> 1, Pulse 2 -> 2, Triangle -> 3, Noise -> 10 (the converter takes channel 10
 //              for the noise when it has more notes than channel 4, which the capture never uses; the three densest other channels play the squares and the triangle, the lowest of them on
@@ -27,8 +32,14 @@ public sealed class CapNote
     /// <summary>The largest distance between what it played and its key (cents).</summary>
     public double MaxDev;
     public bool Moves => MaxDev > 0.5;
+    /// <summary>What FL answered when asked its song position at the note-on (FHD_GetMixingTime, offset 0): T and T2.</summary>
+    public double FlBeats = double.NaN, FlT2 = double.NaN;
+    public bool HasFlTime;
     internal double Current;
 }
+
+/// <summary>How a channel's base key was chosen: the instance knew it, the notes only fit MIDI note 0, the notes only fit C5, they fit both (C5, FL's own channels), or like the channels that were sure.</summary>
+public enum BaseWhy { Default, Known, OnlyMidi0, OnlyC5, LikeOthers }
 
 public sealed class CapTrack
 {
@@ -39,9 +50,12 @@ public sealed class CapTrack
     public int BendRange = 2;
     public readonly List<CapNote> Notes = new();
     public readonly List<SmfEvent> Events = new();
-    public int BendEvents, Clamped, SameKeyCut, Overlapped, EndedAtStop, LevelVelocities;
+    public int BendEvents, Clamped, SameKeyCut, Overlapped, EndedAtStop, LevelVelocities, KeysClamped;
     /// <summary>The largest pitch-bend distance from the key (cents) and the largest error the 14-bit bend leaves (cents).</summary>
     public double MaxDev, MaxQuantError;
+    /// <summary>The key FL's pitch was read from on this channel (Record/FlNotes.cs: 60 = C5, 0 = MIDI note 0) and how it was chosen.</summary>
+    public int Base = FlNotes.BaseC5;
+    public BaseWhy BaseHow;
     public string Name => Id.Name;
     public int MovingNotes => Notes.Count(n => n.Moves);
 }
@@ -96,10 +110,12 @@ public static class CaptureSong
         r.Seconds = started.Count == 0 ? 0 : started.Max(l => l.StopSeconds);
         r.LostEvents = lanes.Sum(l => l.Lost);
 
-        // ---- the notes of each lane
+        // ---- each channel's base key, then the notes of each lane
+        var bases = ResolveBases(started);
         foreach (var lane in started.OrderBy(l => (int)l.Identity.Role).ThenBy(l => l.Identity.InstanceNo))
         {
-            var t = new CapTrack { Id = lane.Identity };
+            var (b, why) = bases[lane];
+            var t = new CapTrack { Id = lane.Identity, Base = b, BaseHow = why };
             ReadNotes(lane, t, r.MicrosPerQuarter);
             if (t.Notes.Count > 0) r.Tracks.Add(t);
         }
@@ -147,10 +163,60 @@ public static class CaptureSong
         }
         catch (Exception e) { r.Report.Add("the converter could not read the capture back: " + e.Message); }
         ConverterFacts(r);
+        // the window shows the first few: the summary, then what changes the replay most (lost events, guesses, the bends VRUN drops, the converter's own choice, the base), then the rest
+        static int Rank(string f) => f.Contains("LOST") ? 0 : f.Contains("ASSUMED") || f.Contains("ASSUMING") ? 1 : f.Contains("no pitch bend") ? 2 : f.Contains("chooses by itself") ? 3 : f.Contains("MIDI note 0") && !f.StartsWith("keys read from C5") ? 4 : f.Contains("not played") ? 5 : 9;
+        var rest = r.Facts.Skip(1).Select((f, i) => (f, i)).OrderBy(x => Rank(x.f)).ThenBy(x => x.i).Select(x => x.f).ToList();
+        r.Facts.RemoveRange(1, r.Facts.Count - 1);
+        r.Facts.AddRange(rest);
         return r;
     }
 
     // ------------------------------------------------------------------------------------------------ notes
+
+    /// <summary>The key above the base a note names: the nearest whole key of FL's pitch + the instance's tuning (cents).</summary>
+    private static int KeyAboveBase(double flPitch, double tuning) => (int)Math.Round((flPitch + tuning) / 100.0, MidpointRounding.AwayFromZero);
+
+    /// <summary>The MIDI key's pitch in cents from C5 (what the engines and the bends are measured in).</summary>
+    public static double C5CentsOfKey(int key) => (key - FlNotes.BaseC5) * 100.0;
+
+    /// <summary>Each started lane's base key (see the file's header): known by the instance; else C5 unless its notes only fit MIDI note 0 (a key above 127 from C5); a lane whose notes fit both
+    /// follows the lanes that were sure when they all said MIDI note 0, else C5.</summary>
+    private static Dictionary<LaneData, (int Base, BaseWhy How)> ResolveBases(List<LaneData> lanes)
+    {
+        var kind = new Dictionary<LaneData, BaseWhy>();
+        foreach (var lane in lanes)
+        {
+            double tuning = 0;
+            int hi = int.MinValue, lo = int.MaxValue;
+            for (int i = 0; i < lane.Count; i++)
+            {
+                int k = CapEv.Kind(lane.Code[i]);
+                if (k == CapEv.Tuning) tuning = lane.A[i];
+                else if (k is CapEv.On or CapEv.OnLevelVelocity) { int rel = KeyAboveBase(lane.A[i], tuning); hi = Math.Max(hi, rel); lo = Math.Min(lo, rel); }
+            }
+            kind[lane] = lane.Identity.BaseHint >= 0 ? BaseWhy.Known
+                : hi == int.MinValue ? BaseWhy.Default
+                : hi + FlNotes.BaseC5 > 127 && lo >= 0 ? BaseWhy.OnlyMidi0                      // from C5 a key above 127; from MIDI note 0 every key fits
+                : lo < 0 ? BaseWhy.OnlyC5                                                       // from MIDI note 0 a key below 0
+                : BaseWhy.Default;
+        }
+        bool sureMidi0 = kind.Values.Any(k => k == BaseWhy.OnlyMidi0), sureC5 = kind.Values.Any(k => k == BaseWhy.OnlyC5);
+        var o = new Dictionary<LaneData, (int, BaseWhy)>();
+        foreach (var (lane, k) in kind)
+        {
+            (int, BaseWhy) b = k switch
+            {
+                BaseWhy.Known => (lane.Identity.BaseHint, k),
+                BaseWhy.OnlyMidi0 => (FlNotes.BaseImported, k),
+                BaseWhy.OnlyC5 => (FlNotes.BaseC5, k),
+                _ => sureMidi0 && !sureC5 ? (FlNotes.BaseImported, BaseWhy.LikeOthers) : (FlNotes.BaseC5, BaseWhy.Default),
+            };
+            if (CaptureMutants.On(CaptureMutants.BaseFromMidi0)) b = (FlNotes.BaseImported, BaseWhy.Default);                         // (the deliberate bugs)
+            else if (CaptureMutants.On(CaptureMutants.BaseDetectionIgnored) && k != BaseWhy.Known) b = (FlNotes.BaseC5, BaseWhy.Default);
+            o[lane] = b;
+        }
+        return o;
+    }
 
     private static void ReadNotes(LaneData lane, CapTrack t, int mpq)
     {
@@ -167,20 +233,22 @@ public static class CaptureSong
                 case CapEv.OnLevelVelocity:
                 {
                     if (open.Remove(voice, out var was)) { was.End = at; t.Notes.Add(was); }
-                    var n = new CapNote
-                    {
-                        Voice = voice, Start = at, InitCents = lane.A[i], PlayedAtStart = lane.B[i], Tuning = tuning, VelocityFromLevel = kind == CapEv.OnLevelVelocity,
-                        Key = FlPitch.KeyOfInit(lane.A[i], tuning),
-                    };
+                    int key = t.Base + KeyAboveBase(lane.A[i], tuning);
+                    if (key is < 0 or > 127) { t.KeysClamped++; key = Math.Clamp(key, 0, 127); }
+                    double played = FlNotes.ToC5Cents(lane.B[i], t.Base) + tuning;
+                    var n = new CapNote { Voice = voice, Start = at, InitCents = lane.A[i], PlayedAtStart = played, Tuning = tuning, VelocityFromLevel = kind == CapEv.OnLevelVelocity, Key = key };
                     double vel = lane.C[i] * (CaptureMutants.On(CaptureMutants.VelocityOver127) ? 127.0 : 128.0);
                     n.Velocity = Math.Clamp((int)Math.Round(vel, MidpointRounding.AwayFromZero), 1, 127);
-                    n.Pitch.Add((at, lane.B[i]));
+                    n.Pitch.Add((at, played));
                     open[voice] = n;
                     if (n.VelocityFromLevel) t.LevelVelocities++;
                     break;
                 }
                 case CapEv.Pitch:
-                    if (open.TryGetValue(voice, out var p)) p.Pitch.Add((at, lane.A[i]));
+                    if (open.TryGetValue(voice, out var p)) p.Pitch.Add((at, FlNotes.ToC5Cents(lane.A[i], t.Base) + lane.B[i]));
+                    break;
+                case CapEv.MixTime:
+                    if (open.TryGetValue(voice, out var m)) { m.FlBeats = lane.A[i]; m.FlT2 = lane.B[i]; m.HasFlTime = true; }
                     break;
                 case CapEv.Off:
                     if (open.Remove(voice, out var o)) { o.End = at; t.Notes.Add(o); }
@@ -199,7 +267,7 @@ public static class CaptureSong
         {
             n.StartTick = TickOf(n.Start, mpq);
             n.EndTick = Math.Max(n.StartTick + 1, TickOf(n.End, mpq));
-            double keyCents = FlPitch.FinalOfMidi(n.Key);
+            double keyCents = C5CentsOfKey(n.Key);
             n.MaxDev = n.Pitch.Max(x => Math.Abs(x.Cents - keyCents));
         }
         t.Notes.Sort((a, b) => a.StartTick != b.StartTick ? a.StartTick.CompareTo(b.StartTick) : a.Start != b.Start ? a.Start.CompareTo(b.Start) : a.Voice.CompareTo(b.Voice));
@@ -248,7 +316,7 @@ public static class CaptureSong
             if (i + 1 < pts.Count && pts[i + 1].T == at) continue;                 // a moment's changes all applied first
             var owner = active.Count > 0 ? active[^1] : null;
             if (owner == null) continue;
-            bends.Add((at, owner.Current - FlPitch.FinalOfMidi(owner.Key), owner));
+            bends.Add((at, owner.Current - C5CentsOfKey(owner.Key), owner));
         }
         // the smallest range whose 14 bits reach every move: up to +range x 8191/8192, down to -range
         double up = bends.Count == 0 ? 0 : Math.Max(0, bends.Max(b => b.Dev)), down = bends.Count == 0 ? 0 : Math.Max(0, -bends.Min(b => b.Dev));
@@ -293,6 +361,20 @@ public static class CaptureSong
         if (moving > 0)
             r.Facts.Add($"{moving} note{(moving == 1 ? " slides or bends" : "s slide or bend")} ({r.BendEvents} pitch-bend events, range {string.Join("/", r.Tracks.Where(t => t.BendEvents > 0).Select(t => t.BendRange).Distinct())} semitones): VRUN's engine has no pitch bend and plays {(moving == 1 ? "it" : "them")} at {(moving == 1 ? "its key" : "their keys")}; the MIDI file keeps the bends");
         else r.Facts.Add("no slide or pitch bend in the take");
+        // the base key FL's pitch was read from (FL tells a plugin no root note: Record/FlNotes.cs): said first when a channel is not read from C5, else last
+        var from0 = r.Tracks.Where(t => t.BaseHow == BaseWhy.OnlyMidi0).Select(t => t.Name).ToList();
+        var like = r.Tracks.Where(t => t.BaseHow == BaseWhy.LikeOthers).Select(t => t.Name).ToList();
+        var known = r.Tracks.Where(t => t.BaseHow == BaseWhy.Known).Select(t => $"{t.Name} from {(t.Base == FlNotes.BaseC5 ? "C5" : $"MIDI note {t.Base}")}").ToList();
+        string? baseFact = null;
+        if (from0.Count > 0)
+            baseFact = $"{string.Join(", ", from0)}: {(from0.Count == 1 ? "its notes only fit" : "their notes only fit")} if FL counts the pitch from MIDI note 0 (a channel FL made by importing a MIDI file), so {(from0.Count == 1 ? "it is" : "they are")} read that way"
+                + (like.Count > 0 ? $"; {string.Join(", ", like)} too, like the other channels (their notes fit both)" : "");
+        if (known.Count > 0) baseFact = (baseFact == null ? "" : baseFact + "; ") + "pitch read as found from the recording's track: " + string.Join(", ", known);
+        var fitBoth = r.Tracks.Where(t => t.BaseHow == BaseWhy.Default && t.Base == FlNotes.BaseC5).Select(t => t.Name).ToList();
+        if (baseFact != null && fitBoth.Count > 0) baseFact += $"; {string.Join(", ", fitBoth)} read from C5 ({(fitBoth.Count == 1 ? "its" : "their")} notes fit both readings: if {(fitBoth.Count == 1 ? "it was" : "they were")} imported too, {(fitBoth.Count == 1 ? "its keys are" : "their keys are")} 60 too high)";
+        if (baseFact != null) r.Facts.Add(baseFact);
+        int clampedKeys = r.Tracks.Sum(t => t.KeysClamped);
+        if (clampedKeys > 0) r.Facts.Add($"{clampedKeys} note{(clampedKeys == 1 ? "" : "s")} outside MIDI's keys 0-127 at the base used: clamped (the channel's root note may not be C5 or MIDI note 0)");
         if (r.Tempo.Guessed) r.Facts.Add("tempo " + r.Tempo.Source);
         int atStop = r.Tracks.Sum(t => t.EndedAtStop);
         if (atStop > 0) r.Facts.Add($"{atStop} note{(atStop == 1 ? " was" : "s were")} still sounding when FL stopped: {(atStop == 1 ? "it ends" : "they end")} there");
@@ -319,13 +401,36 @@ public static class CaptureSong
         if (end.TempoChanges > start.TempoChanges || end.SptChanges > start.SptChanges) r.Facts.Add($"FL's tempo changed during the take: the file keeps the first ({r.Tempo.Bpm.ToString("0.##", ci)} BPM) with every note at its real time, which is what VRUN plays (it honours the first tempo only)");
         if (started.Any(l => l.RateChanges > 0)) r.Facts.Add("FL changed its sample rate during the take: the clock follows it");
         if (((start.ProcessMode | end.ProcessMode) & 16) != 0 && start.ProcessMode >= 0) r.Facts.Add("captured while FL rendered (Export): the clock is the samples FL rendered, not the wall clock");
+        // FL's own song position at the notes (asked with offset 0, as the SDK says), against the capture's clock: evidence for whether FL gives one
+        var asked = r.Tracks.SelectMany(t => t.Notes).Where(n => n.HasFlTime).OrderBy(n => n.Start).ToList();
+        if (asked.Count > 0)
+        {
+            if (asked.All(n => n.FlBeats == 0 && n.FlT2 == CapEv.MixSentinel))
+                r.Report.Add($"FL's song position (FHD_GetMixingTime, GT_Beats, offset 0) at {asked.Count} notes: FL left the time as it was (no song position)");
+            else
+            {
+                var diffs = asked.Where(n => double.IsFinite(n.FlBeats)).Select(n => n.FlBeats - n.Start * r.Tempo.Bpm / 60.0).OrderBy(x => x).ToList();
+                string first = string.Join(", ", asked.Take(3).Select(n => $"T {n.FlBeats.ToString("0.####", ci)} T2 {n.FlT2.ToString("0.####", ci)} at {n.Start:0.####} s"));
+                if (diffs.Count == 0) r.Report.Add($"FL's song position at {asked.Count} notes: not a number ({first})");
+                else
+                {
+                    double med = diffs[diffs.Count / 2], spread = diffs[^1] - diffs[0];
+                    r.Report.Add($"FL's song position at {asked.Count} notes ({first}, ...): FL's beats minus the capture's clock: median {med.ToString("0.####", ci)}, spread {spread.ToString("0.####", ci)} beats");
+                    r.Facts.Add(spread < 0.02
+                        ? $"FL's own song position agrees with the capture's clock at {diffs.Count} notes (within {spread.ToString("0.###", ci)} beats{(Math.Abs(med) > 0.01 ? $"; FL's Play was at beat {med.ToString("0.##", ci)}" : "")})"
+                        : $"FL's own song position and the capture's clock differ by up to {spread.ToString("0.###", ci)} beats over {diffs.Count} notes (the host log has the numbers)");
+                }
+            }
+        }
+        if (r.Tracks.All(t => t.Base == FlNotes.BaseC5 && t.BaseHow is BaseWhy.Default or BaseWhy.OnlyC5))
+            r.Facts.Add("keys read from C5, as FL counts the pitch on channels made in FL (FL tells a plugin no root note; a channel FL made by importing a MIDI file counts from MIDI note 0, which these notes do not show)");
         int silent = lanes.Count(l => l.Started) - r.Tracks.Count;
         if (silent > 0) r.Report.Add($"{silent} channel{(silent == 1 ? "" : "s")} got no note: no track");
 
         r.Report.Add($"tempo: {r.Tempo.Source}{(r.Tempo.Check != null ? "; " + r.Tempo.Check : "")}; {r.MicrosPerQuarter} us per quarter, {Ppq} ticks per quarter");
         r.Report.Add($"FL's timing at Play: samples per tick {start.SamplesPerTick:0.####}, time signature {(start.TimeSigKnown ? $"{start.StepsPerBar}/{start.StepsPerBeat} steps, PPQ {start.Ppq}" : "unknown")}, FPE_Tempo {(start.HasTempo ? start.Tempo.ToString("0.###", ci) : "none")}, process mode {start.ProcessMode}, {start.Rate:N0} Hz");
         foreach (var t in r.Tracks)
-            r.Report.Add($"track \"{t.Name}\" (#{t.Id.InstanceNo}, {t.Id.Detail}): MIDI {t.Channel + 1}, {t.Notes.Count} notes ({t.MovingNotes} move), {t.BendEvents} bends at range {t.BendRange} (largest {t.MaxDev:0.##} cents from the key, 14-bit error at most {t.MaxQuantError:0.###} cents){(t.Clamped > 0 ? $", {t.Clamped} clamped" : "")}{(t.SameKeyCut > 0 ? $", {t.SameKeyCut} same-key cuts" : "")}{(t.EndedAtStop > 0 ? $", {t.EndedAtStop} ended at Stop" : "")}");
+            r.Report.Add($"track \"{t.Name}\" (#{t.Id.InstanceNo}, {t.Id.Detail}): pitch read from {(t.Base == FlNotes.BaseC5 ? "C5" : $"MIDI note {t.Base}")} ({t.BaseHow}), MIDI {t.Channel + 1}, {t.Notes.Count} notes ({t.MovingNotes} move), {t.BendEvents} bends at range {t.BendRange} (largest {t.MaxDev:0.##} cents from the key, 14-bit error at most {t.MaxQuantError:0.###} cents){(t.Clamped > 0 ? $", {t.Clamped} clamped" : "")}{(t.SameKeyCut > 0 ? $", {t.SameKeyCut} same-key cuts" : "")}{(t.EndedAtStop > 0 ? $", {t.EndedAtStop} ended at Stop" : "")}");
         r.Report.Add($"end: tick {r.EndTick} ({r.Bars} bars of {r.BeatsPerBar}), the last note ends at tick {r.Tracks.SelectMany(t => t.Notes).Max(n => n.EndTick)}");
     }
 

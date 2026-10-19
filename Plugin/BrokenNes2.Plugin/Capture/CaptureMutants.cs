@@ -7,7 +7,7 @@ public static class CaptureMutants
     public static int Active;
 
     public const int
-        InitFromC5 = 1,            // a note's key read from InitLevels as cents from C5 (the convention the old code assumed): every key 60 off              -> notes
+        BaseFromMidi0 = 1,         // every channel's pitch read from MIDI note 0 (an imported channel's base) whatever its notes say: FL's own channels 60 keys low -> notes
         VelocityOver127 = 2,       // velocity = FL's value x 127 instead of x 128                                                                           -> notes
         BendRangeUnwritten = 3,    // the bends are scaled for the track's range but no RPN 0 is written (a reader assumes 2 semitones)                      -> bends
         BendSignFlipped = 4,       // every bend the other way                                                                                               -> bends
@@ -20,7 +20,8 @@ public static class CaptureMutants
         NotFed = 11,               // the capture is built but not handed to Test MIDI export                                                                -> flow
         EventsLostSilently = 12,   // every 40th pitch event is lost and not counted                                                                         -> bends
         LiveNoBends = 13,          // the live MIDI out sends notes but no pitch bend                                                                        -> live
-        SlideIgnored = 14;         // pitch changes of a voice after its note-on are not captured (only the pitch it started with)                           -> bends
+        SlideIgnored = 14,         // pitch changes of a voice after its note-on are not captured (only the pitch it started with)                           -> bends
+        BaseDetectionIgnored = 15; // C5 always, even for channels whose notes only fit MIDI note 0 (imported channels): their keys 60 too high             -> notes (imported)
 
     public static bool On(int m) => Active == m;
 }

@@ -9,7 +9,9 @@ namespace BrokenNes2.Capture;
 /// <summary>What an instance is, for its track: its role (which NES channel VRUN's converter should give it), the track's name, and where it sat.</summary>
 public enum CapRole { Pulse1, Pulse2, Triangle, Noise, Dmc, Other }
 
-public sealed record LaneIdentity(int InstanceNo, CapRole Role, string Name, string Detail, int EmulatorId)
+/// <summary><paramref name="BaseHint"/>: the base key FL counts this channel's pitch from when the instance knows it (it found it from a recording's track: Record/FlNotes.cs), -1 when it does not
+/// (the capture then reads FL's channels from C5 and says when the notes show otherwise).</summary>
+public sealed record LaneIdentity(int InstanceNo, CapRole Role, string Name, string Detail, int EmulatorId, int BaseHint = -1)
 {
     public static string RoleName(CapRole r) => r switch { CapRole.Pulse1 => "Pulse 1", CapRole.Pulse2 => "Pulse 2", CapRole.Triangle => "Triangle", CapRole.Noise => "Noise", CapRole.Dmc => "DMC", _ => "Other" };
 }
@@ -17,19 +19,23 @@ public sealed record LaneIdentity(int InstanceNo, CapRole Role, string Name, str
 /// <summary>Event kinds (the low 4 bits of a code; the voice's id is above them).</summary>
 public static class CapEv
 {
-    /// <summary>A note FL started: A = InitLevels.Pitch (cents from MIDI 0), B = the pitch played (FinalLevels.Pitch + the instance's tuning, cents from C5), C = FL's velocity (0..1, FPV_GetVelocity).
-    /// (<see cref="OnLevelVelocity"/> is the same with C = the voice's InitLevels.Vol, when FL gave no velocity.)</summary>
+    /// <summary>A note FL started: A = InitLevels.Pitch, B = FinalLevels.Pitch (both as FL hands them: cents above the channel's base key, Record/FlNotes.cs), C = FL's velocity (0..1,
+    /// FPV_GetVelocity). The instance's tuning is the last <see cref="Tuning"/> before it. (<see cref="OnLevelVelocity"/> is the same with C = the voice's InitLevels.Vol, when FL gave no velocity.)</summary>
     public const int On = 1;
-    /// <summary>The pitch a sounding voice plays changed: A = cents from C5 (FinalLevels.Pitch + tuning).</summary>
+    /// <summary>What a sounding voice plays changed: A = FinalLevels.Pitch as FL hands it, B = the instance's tuning (Coarse x 100 + Fine, cents) then.</summary>
     public const int Pitch = 2;
     /// <summary>FL released the voice (or killed it before releasing it).</summary>
     public const int Off = 3;
-    /// <summary>The instance's tuning (Coarse x 100 + Fine) at a note-on: A = cents.</summary>
+    /// <summary>The instance's tuning (Coarse x 100 + Fine) before a note-on, when it changed: A = cents.</summary>
     public const int Tuning = 4;
     /// <summary>FL said its song position changed (FPD_SongPosChanged) while the take ran.</summary>
     public const int SongPos = 5;
     /// <summary>A note-on whose velocity FL did not give (FPV_GetVelocity answered nothing usable): C is the voice's InitLevels.Vol.</summary>
     public const int OnLevelVelocity = 6;
+    /// <summary>FL's answer to FHD_GetMixingTime (GT_Beats) at a note-on, asked with the SDK's "optional offset in samples" at 0 (the older code passed NaN there: FL's log answered nothing):
+    /// A = TFPTime.T, B = TFPTime.T2 (<see cref="MixSentinel"/> when FL left it).</summary>
+    public const int MixTime = 7;
+    public const double MixSentinel = -12345.5;
 
     public static int Code(int kind, int voice) => (voice & 0x07FFFFFF) << 4 | kind;
     public static int Kind(int code) => code & 0xF;

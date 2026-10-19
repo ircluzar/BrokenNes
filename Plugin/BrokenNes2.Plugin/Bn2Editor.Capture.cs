@@ -1,6 +1,6 @@
 // Round 9 (capture): "Capture from FL" in the Test MIDI export window: arm / cancel, Save MIDI..., the take's status and the facts that matter most (the bends VRUN's engine drops, the converter's own
 // choice of channels, anything lost), and "send my notes as MIDI out". The work is in CaptureHub.cs and Capture/; this file only draws and routes clicks. Control ids 2120-2139 (2120-2122 used);
-// editor test hooks 810-819.
+// editor test hooks 860-869.
 using BrokenNes.Fruity;
 using BrokenNes2.Capture;
 
@@ -98,21 +98,21 @@ public sealed unsafe partial class Bn2Editor
         return h;
     }
 
-    /// <summary>The capture's editor hooks: 810 copy what the strip drew (lines joined by '\n'), 811 the next Save MIDI... writes the UTF-16 path <c>value</c> instead of the dialog, 812 the strip was drawn
-    /// in the last paint (1/0), 813 how many facts it drew.</summary>
+    /// <summary>The capture's editor hooks: 860 copy what the strip drew (lines joined by '\n'), 861 the next Save MIDI... writes the UTF-16 path <c>value</c> instead of the dialog, 862 the strip was drawn
+    /// in the last paint (1/0), 863 how many facts it drew.</summary>
     private nint CaptureEditorTest(int n, nint index, nint value)
     {
         switch (n)
         {
-            case 810:
+            case 860:
             {
                 var text = capDrawn;
                 if (value != 0 && index > 0) text.AsSpan(0, Math.Min(text.Length, (int)index)).CopyTo(new Span<char>((void*)value, (int)index));
                 return text.Length;
             }
-            case 811: testCapturePath = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return 0;
-            case 812: return midOpen && capStripShown ? 1 : 0;
-            case 813: return capFactsDrawn;
+            case 861: testCapturePath = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return 0;
+            case 862: return midOpen && capStripShown ? 1 : 0;
+            case 863: return capFactsDrawn;
             default: return 0;
         }
     }

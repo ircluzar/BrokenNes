@@ -1608,7 +1608,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             case >= 400 and < 500: return UiTest(n, index, value);      // the tabs' hooks (Ui/Bn2Editor.Tabs.cs)
             case >= 620 and < 630: return SongTest(n, index, value);    // Test MIDI export's window (Bn2Editor.Song.cs)
             case >= 670 and < 680: return RecordTest(n, index, value);  // the Record window (Bn2Editor.Record.cs)
-            case >= 810 and < 820: return CaptureEditorTest(n, index, value);  // Capture from FL (Bn2Editor.Capture.cs)
+            case >= 860 and < 870: return CaptureEditorTest(n, index, value);  // Capture from FL (Bn2Editor.Capture.cs)
             case 30:
                 foreach (var h in hits)
                     if (h.Id == index)

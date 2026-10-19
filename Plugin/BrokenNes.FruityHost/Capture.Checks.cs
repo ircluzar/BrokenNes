@@ -1,7 +1,8 @@
 // Round 9 (capture): the checks of "Capture from FL" that need no plugin DLL (`FruityHost capture-test [--only id,id] [--no-mutants]`, and the first half of `selftest --only capture`), and the
 // comparisons the DLL scenarios share (SelfTest.Capture.cs).
 //
-//   pitch       FL's two pitch conventions in one place (FlPitch): InitLevels from MIDI note 0 (the user's real log), FinalLevels from C5 (Direct mode); keys from either never 60 apart
+//   pitch       FL's pitch above the channel's base key in one place (Record/FlNotes.cs, the `reload` agent's): C5 on channels made in FL, MIDI note 0 on imported ones (the real log's 7100 = key 71);
+//               the capture reads C5 unless the notes only fit MIDI note 0, and channels that fit both follow the sure ones (said)
 //   tempo       the take's tempo from what FL says (FPE_Tempo; samples per tick x PPQ; neither: 120 assumed and said), and the log's samples-per-tick value read as a float (212.30)
 //   build       a scripted FL song (FlSong: slides, slide chains, per-note pitch automation, fine pitch, Coarse / Fine on the instances, overlapping notes, a note held over Stop) turned into lane
 //               events exactly as the plugin writes them, built, and read back by the INDEPENDENT parser (Capture.SmfDump.py): every note (channel, key, velocity, start and end within 1 tick at
@@ -16,6 +17,7 @@ using System.Diagnostics;
 using System.Globalization;
 using BrokenNes2.Capture;
 using BrokenNes2.Music;
+using BrokenNes2.Record;
 using Vrun.Audio;
 
 namespace BrokenNes.FruityHost;
@@ -65,7 +67,7 @@ internal static class CaptureChecks
 
     public static readonly Check[] All =
     [
-        new("pitch", "FL's note pitch: InitLevels from MIDI note 0, FinalLevels from C5, in one shared conversion", PitchCheck),
+        new("pitch", "FL's pitch above the channel's base key (one shared conversion, Record/FlNotes.cs): C5 on FL's own channels, MIDI note 0 detected on imported ones and said", PitchCheck),
         new("tempo", "the take's tempo from what FL says (FPE_Tempo, samples per tick x PPQ, or 120 said), the log's samples-per-tick bits read as a float", TempoCheck),
         new("build", "a scripted FL song's lane events built and read back by the independent parser: every note within a tick, the played pitch at every FL tick within the bend's step, ranges, channels, the end", BuildCheck),
         new("convert", "the captured file through VRUN's converter = the ideal file written from the script (streams and loop byte for byte); the bends are counted as not played", ConvertCheck),
@@ -76,7 +78,8 @@ internal static class CaptureChecks
 
     public static readonly Mutant[] Mutants =
     [
-        new("a note's key read from InitLevels as cents from C5 (the old convention)", CaptureMutants.InitFromC5, "build"),
+        new("every channel read from MIDI note 0 (FL's own channels 60 keys low)", CaptureMutants.BaseFromMidi0, "build"),
+        new("C5 always, even where the notes only fit MIDI note 0 (imported channels 60 keys high)", CaptureMutants.BaseDetectionIgnored, "pitch"),
         new("velocity = FL's value x 127", CaptureMutants.VelocityOver127, "build"),
         new("no RPN 0 written (the bends read at 2 semitones)", CaptureMutants.BendRangeUnwritten, "build"),
         new("every bend the other way", CaptureMutants.BendSignFlipped, "build"),
@@ -95,9 +98,9 @@ internal static class CaptureChecks
 
     /// <summary>The song every capture check plays: four BrokenNes2 channels (Pulse 1, Pulse 2 with Coarse +12, Triangle with Fine +7, Noise), 141.3 BPM (a tempo like the user's), PPQ 96, 4/4: plain
     /// notes, fine pitch +-30, a slide up, a slide down an octave, a slide chain, a 26-semitone slide, vibrato by per-note automation, two overlapping notes, a same-key retrigger, a note held over Stop.</summary>
-    public static FlSong Song(double bpm = 141.3)
+    public static FlSong Song(double bpm = 141.3, int root = 60)
     {
-        var s = new FlSong { Name = "capture-song", Bpm = bpm, StopTick = 1600 };
+        var s = new FlSong { Name = "capture-song", Bpm = bpm, StopTick = 1600, Root = [root, root, root, root] };
         s.Coarse[1] = 12; s.Fine[2] = 7;
         void N(int inst, int key, int start, int len, int vel = 100, string label = "", Action<FlNote>? more = null)
         {
@@ -165,22 +168,22 @@ internal static class CaptureChecks
                 float tuning = s.Coarse[n.Inst] * 100 + s.Fine[n.Inst];
                 var lane = lanes[n.Inst];
                 if (tuning != tuningSent[n.Inst]) { lane.Add(CapEv.Tuning, 0, tuning); tuningSent[n.Inst] = tuning; }
-                float played = (float)FlSong.FinalPitch(n, k) + tuning;
-                lane.Add(CapEv.On, voice, (float)FlSong.InitPitch(n), played, n.Velocity / 128f);
-                active.Add((n, voice++, played));
+                float final = (float)s.FlFinal(n, k);
+                lane.Add(CapEv.On, voice, final, final, n.Velocity / 128f);                                       // (InitLevels = FinalLevels at the note-on, both above the channel's root)
+                active.Add((n, voice++, final));
                 truth.Samples[n] = (sample, -1);
             }
             for (int i = 0; i < active.Count; i++)
             {
                 var (n, v, last) = active[i];
-                float p = (float)FlSong.FinalPitch(n, k) + s.Coarse[n.Inst] * 100 + s.Fine[n.Inst];
-                if (p != last) { lanes[n.Inst].Add(CapEv.Pitch, v, p); active[i] = (n, v, p); }
+                float f = (float)s.FlFinal(n, k);
+                if (f != last) { lanes[n.Inst].Add(CapEv.Pitch, v, f, s.Coarse[n.Inst] * 100 + s.Fine[n.Inst]); active[i] = (n, v, f); }
             }
             for (int inst = 0; inst < 4; inst++)
             {
                 FlNote? owner = null; float pitch = 0;
                 foreach (var (n, _, last) in active) if (n.Inst == inst && (owner == null || n.Start >= owner.Start)) { owner = n; pitch = last; }
-                if (owner != null) truth.Owners.Add((k, inst, owner, pitch));
+                if (owner != null) truth.Owners.Add((k, inst, owner, pitch + (s.Root[inst] - 60) * 100.0 + s.Coarse[inst] * 100 + s.Fine[inst]));
             }
             int len = (int)(Math.Floor((k + 1) * spt) - Math.Floor(k * spt));
             foreach (var l in lanes) l.Advance(len, rate);
@@ -365,17 +368,33 @@ internal static class CaptureChecks
 
     public static void PitchCheck(ImodelReport r)
     {
-        foreach (int key in new[] { 0, 21, 33, 60, 69, 71, 73, 75, 108, 127 })
+        // the shared conversion (Record/FlNotes.cs): the real log's 7100 on an imported channel and 1100 on a channel made in FL are both key 71, 1100 cents from C5
+        r.Expect(FlNotes.Key(7100, FlNotes.BaseImported) == 71 && FlNotes.Key(1100, FlNotes.BaseC5) == 71 && FlNotes.ToC5Cents(7100, FlNotes.BaseImported) == 1100 && FlNotes.ToC5Cents(1100, FlNotes.BaseC5) == 1100,
+            "FlNotes: 7100 from MIDI note 0 and 1100 from C5 are key 71, 1100 cents from C5");
+        // which base the capture reads each channel from: FL's own channels (C5), imported ones (MIDI note 0), a mix
+        foreach (var (label, roots, expect) in new (string, int[], (int Base, BaseWhy How)[])[]
         {
-            r.Expect(FlPitch.KeyOfInit(key * 100) == key, $"InitLevels {key * 100} cents is key {FlPitch.KeyOfInit(key * 100)}, expected {key} (cents from MIDI note 0: the real log's 7100 is key 71)");
-            r.Expect(Math.Abs(FlPitch.MidiOfFinal(FlPitch.FinalOfMidi(key)) - key) < 1e-9 && FlPitch.FinalOfMidi(60) == 0, $"FinalLevels: key {key} round trip (C5 = 0)");
+            ("channels made in FL", [60, 60, 60, 60], [(60, BaseWhy.Default), (60, BaseWhy.Default), (60, BaseWhy.OnlyC5), (60, BaseWhy.OnlyC5)]),    // (the bass and the drums sit below C5: from MIDI note 0 they would be below key 0)
+            ("imported channels", [0, 0, 0, 0], [(0, BaseWhy.OnlyMidi0), (0, BaseWhy.OnlyMidi0), (0, BaseWhy.LikeOthers), (0, BaseWhy.LikeOthers)]),
+            ("imported pulses, a triangle made in FL", [0, 0, 60, 0], [(0, BaseWhy.OnlyMidi0), (0, BaseWhy.OnlyMidi0), (60, BaseWhy.OnlyC5), (60, BaseWhy.Default)]),
+        })
+        {
+            var s = Song(root: 60);
+            s.Root = roots;
+            var res = CaptureSong.Build("bases", IdealLanes(s, 48000, out _), Timing(s, 48000, true), Timing(s, 48000, true));
+            if (res.Problem != null) { r.Expect(false, $"{label}: {res.Problem}"); continue; }
+            for (int i = 0; i < 4; i++)
+            {
+                var t = res.Tracks.First(x => x.Id.Role == (CapRole)i);
+                r.Expect(t.Base == expect[i].Base && t.BaseHow == expect[i].How, $"{label}: {t.Name} read from {t.Base} ({t.BaseHow}), expected {expect[i].Base} ({expect[i].How})");
+            }
+            string facts = string.Join(" | ", res.Facts);
+            if (roots.All(x => x == 60)) r.Expect(facts.Contains("keys read from C5") && !facts.Contains("only fit"), $"{label}: the base is not said as C5: {facts}");
+            else r.Expect(facts.Contains("only fit if FL counts the pitch from MIDI note 0") && res.Facts.IndexOf(res.Facts.First(f => f.Contains("only fit"))) <= 3, $"{label}: the detected base is not said among the first facts: {facts}");
+            if (label.StartsWith("imported pulses")) r.Expect(facts.Contains("Noise read from C5") && facts.Contains("60 too high"), $"{label}: the noise channel that fits both is not said: {facts}");
+            if (roots.All(x => x == 0)) r.Expect(facts.Contains("Triangle, Noise too, like the other channels"), $"{label}: the channels read like the others are not said: {facts}");
+            r.Note($"{label}: bases {string.Join("/", res.Tracks.Select(t => t.Base))}");
         }
-        r.Expect(FlPitch.KeyOfInit(7130) == 71 && FlPitch.KeyOfInit(7170) == 72 && FlPitch.KeyOfInit(7100, 1200) == 83 && FlPitch.KeyOfInit(7100, -1260) == 58 && FlPitch.KeyOfInit(7100, -1240) == 59,
-            $"fine pitch and tuning: the nearest key ({FlPitch.KeyOfInit(7130)}, {FlPitch.KeyOfInit(7170)}, {FlPitch.KeyOfInit(7100, 1200)}, {FlPitch.KeyOfInit(7100, -1260)}, {FlPitch.KeyOfInit(7100, -1240)})");
-        // the two conventions of FL's levels side by side: a note FL starts on key 71 has InitLevels 7100 and FinalLevels 1100
-        var n = new FlNote { Key = 71 };
-        r.Expect(FlPitch.KeyOfInit(FlSong.InitPitch(n)) == (int)Math.Round(FlPitch.MidiOfFinal(FlSong.FinalPitch(n, 0))), "a note's key from InitLevels equals the key its FinalLevels plays");
-        r.Note("InitLevels.Pitch 7100 -> key 71, FinalLevels.Pitch 1100 -> key 71 (the same note)");
     }
 
     public static void TempoCheck(ImodelReport r)
@@ -410,12 +429,13 @@ internal static class CaptureChecks
 
     public static void BuildCheck(ImodelReport r)
     {
-        // 141.3 BPM at 48 kHz (a tempo whose samples per tick are far from whole), and the user's own FL: 130 BPM at 44.1 kHz (the real log's samples per tick)
-        foreach (var (rate, bpm) in new[] { (48000, 141.3), (44100, 130.0) })
+        // 141.3 BPM at 48 kHz (a tempo whose samples per tick are far from whole), the user's own FL: 130 BPM at 44.1 kHz (the real log's samples per tick), on channels made in FL (root C5) and on
+        // channels FL made by importing a MIDI file (root MIDI note 0: the capture must find it)
+        foreach (var (rate, bpm, root) in new[] { (48000, 141.3, 60), (44100, 130.0, 60), (44100, 130.0, 0) })
             foreach (bool tempo in new[] { true, false })
             {
-                var s = Song(bpm);
-                string label = $"{rate} Hz {bpm} BPM, {(tempo ? "FPE_Tempo" : "no FPE_Tempo")}";
+                var s = Song(bpm, root);
+                string label = $"{rate} Hz {bpm} BPM, {(tempo ? "FPE_Tempo" : "no FPE_Tempo")}, {(root == 60 ? "channels made in FL" : "imported channels")}";
                 var lanes = IdealLanes(s, rate, out var truth);
                 var res = CaptureSong.Build("build", lanes, Timing(s, rate, tempo), Timing(s, rate, tempo));
                 r.Expect(res.Problem == null, $"{label}: {res.Problem}");

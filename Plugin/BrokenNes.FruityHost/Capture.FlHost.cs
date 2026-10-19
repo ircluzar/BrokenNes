@@ -8,9 +8,10 @@
 //              it; the log could not show ProcessEvent)
 //   ticks      one FL tick (1/PPQ of a beat) at a time: NewTick, the releases and the note-ons of that tick, every sounding voice's FinalLevels for that tick, then Gen_Render of the tick's samples
 //              (floor((k+1) x samples per tick) - floor(k x samples per tick)), every instance every tick
-//   notes      InitLevels.Pitch = key x 100 + fine, cents from MIDI note 0 (the log: keys 71, 73, 75 arrived as 7100, 7300, 7500); FinalLevels.Pitch = the pitch to play, cents from C5 (what Direct
-//              mode reads and real FL certified): (key - 60) x 100 + fine + the slide + the per-note automation; FPV_GetVelocity = velocity / 128 (the log: 0.632 for 81, 0.5 for 64); slide notes do
-//              not start voices: the parent voice glides (FL slide notes lie inside the parent note); FPV_GetLength -1; no song position (FHD_GetMixingTime answers nothing, as in the log)
+//   notes      a voice's pitch in cents above its CHANNEL's root note (Record/FlNotes.cs, the `reload` agent's reading of the log): C5 on a channel made in FL (the default here), MIDI note 0 on one
+//              FL made by importing a MIDI file (the log: keys 71, 73, 75 arrived as 7100, 7300, 7500); FinalLevels.Pitch = (key - root) x 100 + fine + the slide + the per-note automation, and
+//              InitLevels = FinalLevels at the note-on (as reload's HostSim.FlNoteOn); FPV_GetVelocity = velocity / 128 (the log: 0.632 for 81, 0.5 for 64); slide notes do not start voices: the
+//              parent voice glides (FL slide notes lie inside the parent note); FPV_GetLength -1; no song position (FHD_GetMixingTime leaves the time as it was, as the log's FL did)
 //   Stop       SetPlaying 0 to every instance, then the voices still held are released
 //
 // What it records is the truth the checks compare a capture with: each note's start and end sample, and the pitch FL put in each sounding voice at every tick.
@@ -51,8 +52,13 @@ internal sealed class FlSong
     public int StopTick;
     /// <summary>The instances' Coarse (semitones) and Fine (cents) parameters.</summary>
     public int[] Coarse = new int[4], Fine = new int[4];
+    /// <summary>Each channel's root note: FL hands a voice's pitch in cents above it (60 = C5: a channel made in FL; 0: a channel FL made by importing a MIDI file).</summary>
+    public int[] Root = [60, 60, 60, 60];
 
-    /// <summary>FinalLevels.Pitch of a note at song tick <paramref name="tick"/> (cents from C5).</summary>
+    /// <summary>FinalLevels.Pitch as FL hands it on the note's channel at song tick <paramref name="tick"/> (cents above the channel's root).</summary>
+    public double FlFinal(FlNote n, double tick) => FinalPitch(n, tick) + (60 - Root[n.Inst]) * 100.0;
+
+    /// <summary>The pitch a note plays at song tick <paramref name="tick"/>, cents from C5 (the root aside: what the instance plays when it reads the root right).</summary>
     public static double FinalPitch(FlNote n, double tick)
     {
         double rel = tick - n.Start;
@@ -80,8 +86,6 @@ internal sealed class FlSong
         return cents;
     }
 
-    /// <summary>InitLevels.Pitch of a note (cents from MIDI note 0, as FL hands it over).</summary>
-    public static double InitPitch(FlNote n) => n.Key * 100.0 + n.Fine;
 }
 
 /// <summary>What FL delivered, for the comparison: per note its first and last sample; per tick and instance, the voice FL would call the newest sounding one and the pitch it had then.</summary>
@@ -104,6 +108,8 @@ internal sealed unsafe class FlRun : IDisposable
     public int AfterStopTicks = 8;
     /// <summary>Rack indexes that get no FPD_SetPlaying 1 (a channel FL does not tell: the edge case of a lane that joins late).</summary>
     public int[] NoPlay = [];
+    /// <summary>A host that DOES answer FHD_GetMixingTime with the song position (the real log's FL did not, as asked then): what the capture reports in that case.</summary>
+    public bool AnswerSongPosition;
     private readonly int* timeSig = (int*)NativeMemory.AllocZeroed(16);
     public FlTruth Truth = new();
     /// <summary>Called after every tick (the test reads allocation counters, probes registers...).</summary>
@@ -164,6 +170,7 @@ internal sealed unsafe class FlRun : IDisposable
                     foreach (var (n, v, p) in active) { p.Host.ReleaseFromMixer(v); Truth.Samples[n] = (Truth.Samples[n].Start, sample); }
                     active.Clear();
                 }
+                if (AnswerSongPosition) foreach (var p in rack) p.Host.SongBeats = (double)k / s.Ppq;
                 foreach (var p in rack) p.NewTick();
                 for (int i = active.Count - 1; i >= 0; i--)
                 {
@@ -178,22 +185,21 @@ internal sealed unsafe class FlRun : IDisposable
                     var n = byStart[next++];
                     var p = rack[n.Inst];
                     var v = p.Host.NewVoice(n.Inst, n.Velocity / 128f);
-                    v.Params->InitLevels.Pitch = (float)FlSong.InitPitch(n);
-                    v.Params->InitLevels.Vol = n.Velocity / 128f;
-                    v.Params->FinalLevels.Pitch = (float)FlSong.FinalPitch(n, k);
+                    v.Params->FinalLevels.Pitch = (float)s.FlFinal(n, k);
                     v.Params->FinalLevels.Vol = n.Velocity / 128f;
+                    v.Params->InitLevels = v.Params->FinalLevels;
                     v.Handle = p.TriggerVoice(v.Params, v.Tag);
                     active.Add((n, v, p));
                     Truth.Samples[n] = (sample, -1);
                 }
-                foreach (var (n, v, p) in active) v.Params->FinalLevels.Pitch = (float)FlSong.FinalPitch(n, k);
+                foreach (var (n, v, p) in active) v.Params->FinalLevels.Pitch = (float)s.FlFinal(n, k);
                 if (k < s.StopTick)
                     for (int inst = 0; inst < rack.Count; inst++)
                     {
-                        // the newest sounding note of each instance (BrokenNes2's channel plays it)
+                        // the newest sounding note of each instance (BrokenNes2's channel plays it), as cents from C5 with the instance's tuning
                         FlNote? owner = null; float pitch = 0;
                         foreach (var (n, v, p) in active) if (n.Inst == inst && (owner == null || n.Start >= owner.Start)) { owner = n; pitch = v.Params->FinalLevels.Pitch; }
-                        if (owner != null) Truth.Owners.Add((k, inst, owner, pitch + s.Coarse[inst] * 100 + s.Fine[inst]));
+                        if (owner != null) Truth.Owners.Add((k, inst, owner, pitch + (s.Root[inst] - 60) * 100.0 + s.Coarse[inst] * 100 + s.Fine[inst]));
                     }
                 int len = (int)(Math.Floor((k + 1) * spt) - Math.Floor(k * spt));
                 foreach (var p in rack) p.GenRender(b, len);
@@ -202,6 +208,7 @@ internal sealed unsafe class FlRun : IDisposable
             }
         }
         foreach (var (n, v, p) in active) p.Host.ReleaseFromMixer(v);
+        foreach (var p in rack) p.Host.SongBeats = double.NaN;
         Truth.TotalSamples = sample;
     }
 
