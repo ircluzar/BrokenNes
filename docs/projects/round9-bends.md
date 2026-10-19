@@ -37,15 +37,19 @@ The same lag touches the player's position and loop counter (RAM, read when the 
 
 ## 5. Verification
 
-(Filled in below with the final runs.)
+| Run | Result |
+|---|---|
+| `FruityHost midi-test` (no DLL, the VRUN tree present) | 10 checks pass; 11 deliberate bugs caught. `engine` 22/22 songs exactly as the converter's streams (100 frames in all whose NMI wrote past the frame's end, compared as each NMI left them); `reference` 20/20 songs: the full rebuild and the patched template write the same registers per NMI (77 frames where a player position was sampled one step late, counted); `bends`: every song without a played bend byte for byte as without bends, the bend songs' pitch in the ROM within the converter's own count (0 off on the written fixtures), no note moved |
+| `FruityHost capture-test` (no DLL) | 5 checks, 708 assertions pass; 15 deliberate bugs caught (13 capture + 2 of Test MIDI export's: bends off, slides negated). `convert`, the scripted take: streams 279 + 40 + 53 + 82 bytes with bends (55 + 28 + 24 + 82 without = the ideal file's), loop 510 frames, 646 bends; "bends played on square 1, square 2, triangle: 19 slides + 66 pitch steps (+265 bytes), held exact, moving within 29 cents"; the ROM over 1,020 frames = the decoder model (8,152 field-frames), no note moved; triangle 744 frames judged (706 held, 0.0 cents from the NES period; moving max 9.6), square 1 560 (moving max 29.0: the 26-semitone slide, half a frame of its speed), square 2 676; 0 frames off on each, against 736 / 330 / 38 off without bends |
+| A project saved by `main`'s plugin (round 7's template) reopened by this one (`FruityHost song-compat save <old dll> bendall s.state`, then `song-compat open <new dll> s.state`: two processes) | bendall and manychannels: the song is converted again from the MIDI the project keeps, it is the game and sounds (114 of 120 frames), its bends play now ("bends played on square 1, square 2, triangle: ..." where round 7 said "440 pitch bends not played"); the saved machine state belongs to the old ROM, so the plugin's own message says the song starts from its beginning ("made with another build of the MIDI test's player"); saved and reopened by this plugin, the state comes back (restore 1, frame 270) |
+| `selftest --only midi,capture` (Native AOT DLL) | both pass; midi 9 of 9 DLL bugs caught (the `refusals` scenario now writes the next template version and round 7's version 1, both refused); capture 15 + 15 bugs caught; `engine` after a take by the FL-faithful host: the plugin's own machine 5,032/5,032 field-frames per NMI, triangle 579 / square 1 271 / square 2 38 bent frames, 0 off |
 
 ## 6. Not tested (said plainly)
 
 - **Nobody listened.** No sound card on the build machine: every claim is a register trace, a model or a count.
-- **Real FL Studio:** its MIDI export's bend resolution and range (RPN 0 or not), FL's slide notes as exported.
-- **A capture from FL with bends** through the converter end to end: waits for the `capture` track (round 9) to merge.
-- **The game's own build with bends** (VRUN side): built and measured, not run; the user decides which songs get `"bends": true`, the tolerance, the CPU budget and whether the shop's music snapshot keeps the bend state.
-- **Square 2's bend decoder while a sound effect borrows the channel** (the AudioPlayer has no sound effects): not run anywhere.
+- **Real FL Studio:** its MIDI export's bend resolution and range (RPN 0 or not), FL's slide notes as exported, and a take of Capture from FL in real FL (the FL-faithful host's take is checked end to end: FL's pitch -> the file -> the converter -> the plugin's machine).
+- **The game's own build with bends** (VRUN side): see section 8 (built and run in a test copy, the CPU measured; nothing goes into the user's game until the user says so).
+- **Square 2's bend decoder while a sound effect borrows the channel**: it ran in the test game during combat (section 8: CPU only); its registers after a sound effect were not compared with a model.
 
 ## 7. Decisions taken here
 

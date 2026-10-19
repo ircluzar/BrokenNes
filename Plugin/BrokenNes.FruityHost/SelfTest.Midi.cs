@@ -94,6 +94,41 @@ public sealed unsafe partial class SelfTest
         return p;
     }
 
+    /// <summary>`FruityHost song-compat save &lt;dll&gt; &lt;song.mid&gt; &lt;out.state&gt;` (an FL project with a Test MIDI export song, from any plugin DLL since round 7: hooks 600-619
+    /// are the same) and `song-compat open &lt;dll&gt; &lt;state&gt;` (reopened by another DLL: what it says and plays). Two processes, so two versions of the plugin never share one.</summary>
+    internal static int SongCompat(string[] args)
+    {
+        if (args.Length < 4) { Console.WriteLine("song-compat save <dll> <song.mid> <out.state> | song-compat open <dll> <state>"); return 2; }
+        using var p = new PluginLibrary(args[2]).Create();
+        p.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+        p.SetParam(PEmulator, 8);
+        p.Test(120, 0, 1);
+        if (args[1] == "save")
+        {
+            p.SetParam(PMode, 1);
+            WaitForRom(p);
+            // a .mid file, or the name of a song the checks write (MidiFixtures: bendall, manychannels, ...)
+            string mid = File.Exists(args[3]) ? Path.GetFullPath(args[3]) : WriteMid(args[3], MidiFixtures.BendSongs().Concat(MidiFixtures.Stress()).First(s => s.Name == args[3]).Midi);
+            if (SOpen(p, mid) != 0 || !SReady(p)) { Console.WriteLine($"the song did not load: '{SText(p, 0)}'"); return 1; }
+            SLatch(p, 150);
+            var st = p.SaveState();
+            File.WriteAllBytes(args[4], st);
+            Console.WriteLine($"saved {st.Length} bytes; frames {p.Test(HkSFrames)}; window: '{SText(p, 0)}'; facts: {SText(p, 1).Replace('\n', '|')}");
+            return 0;
+        }
+        p.LoadState(File.ReadAllBytes(args[3]));
+        bool ready = SReady(p);
+        SLatch(p, 0);
+        var latch = SLatch(p, 120);
+        int sounding = 0;
+        for (int f = 0; f < latch.Length / MidiModel.LatchBytes; f++) { var l = latch.AsSpan(f * MidiModel.LatchBytes, MidiModel.LatchBytes); if (MidiModel.Field(l, 1) > 0 || MidiModel.Field(l, 3) > 0 || MidiModel.Field(l, 5) != 0) sounding++; }
+        Console.WriteLine($"reopened: built {ready}, song is the game {p.Test(HkSRunning)}, game state restore {p.Test(86)}, frames {p.Test(HkSFrames)}, {sounding}/{latch.Length / MidiModel.LatchBytes} frames with a sounding channel");
+        Console.WriteLine($"window: '{SText(p, 0)}'");
+        Console.WriteLine($"facts: {SText(p, 1).Replace('\n', '|')}");
+        p.Test(120, 0, 0);
+        return ready && p.Test(HkSRunning) == 1 ? 0 : 1;
+    }
+
     private delegate void SongScenario(T t);
 
     private (string Name, SongScenario Body, int Mutant, string Why)[] SongScenarios() =>
