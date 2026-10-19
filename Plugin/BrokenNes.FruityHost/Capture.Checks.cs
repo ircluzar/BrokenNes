@@ -390,7 +390,7 @@ internal static class CaptureChecks
             }
             string facts = string.Join(" | ", res.Facts);
             if (roots.All(x => x == 60)) r.Expect(facts.Contains("keys read from C5") && !facts.Contains("only fit"), $"{label}: the base is not said as C5: {facts}");
-            else r.Expect(facts.Contains("only fit if FL counts the pitch from MIDI note 0") && res.Facts.IndexOf(res.Facts.First(f => f.Contains("only fit"))) <= 3, $"{label}: the detected base is not said among the first facts: {facts}");
+            else r.Expect(facts.Contains("read from MIDI note 0: their notes only fit there") && res.Facts.IndexOf(res.Facts.First(f => f.Contains("only fit"))) <= 3, $"{label}: the detected base is not said among the first facts: {facts}");
             if (label.StartsWith("imported pulses")) r.Expect(facts.Contains("Noise read from C5") && facts.Contains("60 too high"), $"{label}: the noise channel that fits both is not said: {facts}");
             if (roots.All(x => x == 0)) r.Expect(facts.Contains("Triangle, Noise too, like the other channels"), $"{label}: the channels read like the others are not said: {facts}");
             r.Note($"{label}: bases {string.Join("/", res.Tracks.Select(t => t.Base))}");

@@ -264,7 +264,7 @@ public sealed unsafe partial class SelfTest
                 }
                 string facts = CText(rack[0], 1);
                 if (root == 60) r.Expect(facts.Contains("keys read from C5") && !facts.Contains("only fit"), $"{label}: the base (C5) is not said: {facts}");
-                else r.Expect(facts.Contains("only fit if FL counts the pitch from MIDI note 0") && facts.Contains("like the other channels") && facts.Split('\n').Take(4).Any(f => f.Contains("only fit")), $"{label}: the base found (MIDI note 0) is not said: {facts}");
+                else r.Expect(facts.Contains("read from MIDI note 0: their notes only fit there") && facts.Contains("like the other channels") && facts.Split('\n').Take(4).Any(f => f.Contains("only fit")), $"{label}: the base found (MIDI note 0) is not said: {facts}");
                 r.Expect(facts.Contains("still sounding when FL stopped") && facts.Contains("no pitch bend"), $"{label}: the take's facts: {facts}");
                 if (!tempo) r.Expect(CText(rack[0], 2).Contains("from FL's") && CText(rack[0], 2).Contains("PPQ 96"), $"{label}: the tempo's source is not FL's samples per tick x PPQ: {CText(rack[0], 2).Split('\n').FirstOrDefault(l => l.StartsWith("tempo"))}");
                 r.Expect(CText(rack[0], 2).Contains("FL left the time as it was (no song position)") && !facts.Contains("FL's own song position"), $"{label}: FL gave no song position (as in the log), the report does not say so");

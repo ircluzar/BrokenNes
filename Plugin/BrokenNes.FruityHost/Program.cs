@@ -201,6 +201,28 @@ switch (args[0])
             Win32Host.Pump(300);
             Console.WriteLine($"recording state {plugin.Test(642)}");
         }
+        // Capture from FL (round 9): --capture opens the Test MIDI export window, arms a take, lets the FL-faithful host (Capture.FlHost.cs) play the capture checks' song on this instance and three
+        // more (Pulse 1, Pulse 2, Triangle, Noise on emulator #7, Direct mode), and waits until Test MIDI export plays it; [--capture-root 0] plays it as imported channels (root MIDI note 0)
+        var captureExtras = new List<PluginInstance>();
+        if (args.Contains("--capture"))
+        {
+            var song = CaptureChecks.Song(root: int.Parse(Opt(args, "--capture-root") ?? "60"));
+            using var run = new FlRun { Rate = 48000 };
+            run.Create(plugin, song);
+            plugin.SetParam(9, 7); plugin.SetParam(6, 1);
+            var rackx = new List<PluginInstance> { plugin };
+            for (int c = 1; c < 4; c++) { var q = lib.Create(); run.Create(q, song); q.SetParam(9, 7); q.SetParam(6, c + 1); rackx.Add(q); captureExtras.Add(q); }
+            Win32Host.Pump(100);
+            ClickId(2000);
+            ClickId(2120);
+            run.Play(rackx, song);
+            var doneBy = Environment.TickCount64 + 60000;
+            while (plugin.Test(842) != 4 && Environment.TickCount64 < doneBy) Win32Host.Pump(20);
+            unsafe { fixed (float* f = buf) while (Environment.TickCount64 < doneBy && !(plugin.Test(601) == 0 && plugin.Test(602) == 1)) { foreach (var q in rackx) { q.NewTick(); q.GenRender(f, 512); } Win32Host.Pump(8); } }
+            unsafe { fixed (float* f = buf) for (int b = 0; b < 48000 * 2 / 512; b++) { foreach (var q in rackx) { q.NewTick(); q.GenRender(f, 512); } if (b % 4 == 0) Win32Host.Pump(8); } }
+            Win32Host.Pump(300);
+            Console.WriteLine($"capture state {plugin.Test(842)}, song {plugin.Test(602)}");
+        }
         if (Opt(args, "--chars") is { } chars) { Win32Host.Text(plugin.EditorHandle, chars); Win32Host.Pump(100); }
         // relink (2026-10-18): --relink-shots <prefix> (after --record): two more instances made while the tracks are on offer, one joined, one unlinked (as Unlink leaves it); their editors are
         // captured as <prefix>-joined.bmp and <prefix>-unlinked.bmp, and the Record window above counts them
@@ -223,6 +245,7 @@ switch (args[0])
         }
         Win32Host.CaptureWindow(parent, plugin.EditorHandle, 920, 670, args[2]);
         foreach (var q in relinkExtras) q.Destroy();
+        foreach (var q in captureExtras) q.Destroy();
         if (Opt(args, "--hold") is { } hold)
         {
             // keep the window open and the game running so a screen grab from outside can be compared with the capture

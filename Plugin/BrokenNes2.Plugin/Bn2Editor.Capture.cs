@@ -45,7 +45,7 @@ public sealed unsafe partial class Bn2Editor
             // the facts after the summary (the window's song box below has the converter's own facts): what VRUN drops, the converter's choice of channels, anything lost or guessed
             foreach (var f in r.Facts.Skip(1).Take(3))
             {
-                bool bad = f.Contains("no pitch bend") || f.Contains("LOST") || f.Contains("ASSUMED") || f.Contains("chooses") || f.Contains("not played") || f.Contains("early") || f.Contains("clamped");
+                bool bad = f.Contains("no pitch bend") || f.Contains("LOST") || f.Contains("ASSUMED") || f.Contains("chooses") || f.Contains("not played") || f.Contains("early") || f.Contains("clamped") || f.Contains("MIDI note 0:");
                 Dot(dc, lx + 8, fy + 8, 3, bad ? Warn : Good);
                 Txt(dc, f, R(lx + 20, fy, iw - 20, 17), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Text, fontSmall);
                 drawn.Add(f);
@@ -58,7 +58,7 @@ public sealed unsafe partial class Bn2Editor
             Txt(dc, CaptureHub.LastWords, R(lx + 20, fy, iw - 20, 17), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
             drawn.Add(CaptureHub.LastWords);
         }
-        Check(dc, IdCapLive, $"Send my notes and pitch bends as MIDI out (port {Bn2Plugin.LivePort}; Pulse 1, 2, Triangle, Noise on MIDI channels 1, 2, 3, 10)", lx, y + 96, CaptureHub.LiveOn, null, labelW: 640, hitW: 660);
+        Check(dc, IdCapLive, $"Send my notes and pitch bends as MIDI out (port {Bn2Plugin.LivePort}; channels 1, 2, 3, 10; bend range {Bn2Plugin.LiveBendRange})", lx, y + 96, CaptureHub.LiveOn, null, labelW: 640, hitW: 660);
         capDrawn = string.Join("\n", drawn);
     }
 

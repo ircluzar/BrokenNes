@@ -359,7 +359,7 @@ public static class CaptureSong
         r.Facts.Add($"Captured {r.Notes} note{(r.Notes == 1 ? "" : "s")} from {r.Tracks.Count} channel{(r.Tracks.Count == 1 ? "" : "s")} ({chans}) in {Dur(r.Seconds)}: {r.Bars} bar{(r.Bars == 1 ? "" : "s")} of {r.BeatsPerBar}/4 at {r.Tempo.Bpm.ToString("0.##", ci)} BPM");
         int moving = r.MovingNotes;
         if (moving > 0)
-            r.Facts.Add($"{moving} note{(moving == 1 ? " slides or bends" : "s slide or bend")} ({r.BendEvents} pitch-bend events, range {string.Join("/", r.Tracks.Where(t => t.BendEvents > 0).Select(t => t.BendRange).Distinct())} semitones): VRUN's engine has no pitch bend and plays {(moving == 1 ? "it" : "them")} at {(moving == 1 ? "its key" : "their keys")}; the MIDI file keeps the bends");
+            r.Facts.Add($"{moving} note{(moving == 1 ? " slides or bends" : "s slide or bend")} ({r.BendEvents} bends): VRUN's engine has no pitch bend, it plays {(moving == 1 ? "it at its key" : "them at their keys")}; the file keeps the bends (range {string.Join("/", r.Tracks.Where(t => t.BendEvents > 0).Select(t => t.BendRange).Distinct())})");
         else r.Facts.Add("no slide or pitch bend in the take");
         // the base key FL's pitch was read from (FL tells a plugin no root note: Record/FlNotes.cs): said first when a channel is not read from C5, else last
         var from0 = r.Tracks.Where(t => t.BaseHow == BaseWhy.OnlyMidi0).Select(t => t.Name).ToList();
@@ -367,7 +367,7 @@ public static class CaptureSong
         var known = r.Tracks.Where(t => t.BaseHow == BaseWhy.Known).Select(t => $"{t.Name} from {(t.Base == FlNotes.BaseC5 ? "C5" : $"MIDI note {t.Base}")}").ToList();
         string? baseFact = null;
         if (from0.Count > 0)
-            baseFact = $"{string.Join(", ", from0)}: {(from0.Count == 1 ? "its notes only fit" : "their notes only fit")} if FL counts the pitch from MIDI note 0 (a channel FL made by importing a MIDI file), so {(from0.Count == 1 ? "it is" : "they are")} read that way"
+            baseFact = $"{string.Join(", ", from0)} read from MIDI note 0: {(from0.Count == 1 ? "its" : "their")} notes only fit there (FL counts so on channels it made by importing a MIDI file)"
                 + (like.Count > 0 ? $"; {string.Join(", ", like)} too, like the other channels (their notes fit both)" : "");
         if (known.Count > 0) baseFact = (baseFact == null ? "" : baseFact + "; ") + "pitch read as found from the recording's track: " + string.Join(", ", known);
         var fitBoth = r.Tracks.Where(t => t.BaseHow == BaseWhy.Default && t.Base == FlNotes.BaseC5).Select(t => t.Name).ToList();
