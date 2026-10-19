@@ -1,14 +1,16 @@
-VRUN's music converter, copied into BrokenNes for the plugin's "Test MIDI export" (round 7, 2026-10-17).
+VRUN's music converter, copied into BrokenNes for the plugin's "Test MIDI export" (round 7, 2026-10-17; pitch bends, round 9, 2026-10-18).
 
-Origin: the user's own VRUN NES project, engine/audio/converter (Vrun.Audio.Converter: MidiFile.cs, Midi2Nes.cs, FabWriter.cs),
+Origin: the user's own VRUN NES project, engine/audio/converter (Vrun.Audio.Converter: MidiFile.cs, Midi2Nes.cs, FabWriter.cs, Bends.cs),
 restored by BrokenDev under P:\BrokenDev\env\vrun_nes_dev\sys0\simulations\VRUN. It is the user's code, not third-party code;
 the files are copied byte for byte (namespace Vrun.Audio kept) and must not be edited here: change them in VRUN, then copy again.
+This copy is VRUN's branch audio-bends (the converter as of 237d7e4: MIDI pitch bends, opcodes 0xD1 pitch / 0xD2 slide).
 
 sha256 of the copies (line endings LF, as in VRUN):
-  MidiFile.cs   81af35e290b02dcd5defa04a39d9707b05fe388e82c0f7b67183fa338b1bb623
-  Midi2Nes.cs   e45ae510cad620b12f1ea578be97a6faf8292ab829c28a701d26333f08dc1fae
+  MidiFile.cs   89812698128251131d0d899f935df41f577e6a11a6b1d23f3b7af00fb983fa0a
+  Midi2Nes.cs   060df9f2eed787953838a204c77fc5109f3bc9071811187f4032f4a63a8adf52
   FabWriter.cs  688ca24d0a05a0801991b2fb3398c674783107ef9f35ee92a603a8c22c97a3b5
+  Bends.cs      d76cd0801b0f908756f950456e60d6843621c93b28fd66c3e9892c9c36f95265
 
 The guard against a silent drift is `FruityHost midi-test` (check "converter"): whenever the VRUN tree is on the machine, this copy must
 regenerate VRUN's baked music_data.fab files byte for byte, give the same output as VRUN's own midi2nes on every roster song and on the
-synthetic songs the check writes, and the sources must be the same text (a difference in the sources is reported by name).
+songs the checks write (without and with --bends), and the sources must be the same text (a difference in the sources is reported by name).

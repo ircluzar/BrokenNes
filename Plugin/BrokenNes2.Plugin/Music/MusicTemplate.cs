@@ -16,9 +16,14 @@ namespace BrokenNes2.Music;
 public sealed class MusicTemplate
 {
     public const string FormatName = "bn2-musictest";
-    public const int FormatVersion = 1;
-    /// <summary>The opcode format the converter writes and the template's decoders read (Midi2Nes.cs header).</summary>
-    public const string Opcodes = "vrun-music-1";
+    /// <summary>2 (round 9): the template's tonal decoders play pitch bends. A version-1 template has the plain decoders, which read a bend opcode as the
+    /// loop: it is refused.</summary>
+    public const int FormatVersion = 2;
+    /// <summary>The opcode format the converter writes and the template's decoders read (Midi2Nes.cs header): vrun-music-2 adds the bend opcodes
+    /// 0xD1 pitch and 0xD2 slide (Music/Vrun/Bends.cs).</summary>
+    public const string Opcodes = "vrun-music-2";
+    /// <summary>The channels whose decoders must be VRUN's bend decoders (the converter writes bend opcodes on these three only).</summary>
+    public const string BendDecoders = "square1 square2 triangle";
     public const int HeaderBytes = 16;
     /// <summary>The AudioPlayer's charmap: a character's tile is its ASCII code - 32, and the string ends with the charmap's '\0', tile 95.</summary>
     public const byte StringEnd = 95;
@@ -90,8 +95,10 @@ public sealed class MusicTemplate
         string? Get(string k) => m != null && m.TryGetValue(k, out var v) ? v : null;
         if (m == null || Get("format") != FormatName) { problem = "the music test template's description is not a BrokenNes2 music test manifest"; return null; }
         if (!int.TryParse(Get("version"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int version)) { problem = "the music test template's description has no version"; return null; }
-        if (version != FormatVersion) { problem = $"the music test template is version {version}; this build of BrokenNes2 understands version {FormatVersion} only"; return null; }
-        if (Get("opcodes") != Opcodes) { problem = $"the music test template plays the opcode format '{Get("opcodes")}'; this build's converter writes '{Opcodes}'"; return null; }
+        bool old = MusicMutate.Has(MusicMutate.OldTemplateAccepted) && version == 1;       // (the deliberate bug: a round-7 template taken as it is)
+        if (version != FormatVersion && !old) { problem = $"the music test template is version {version}; this build of BrokenNes2 understands version {FormatVersion} only" + (version == 1 ? " (a version-1 template cannot play pitch bends)" : ""); return null; }
+        if (Get("opcodes") != Opcodes && !old) { problem = $"the music test template plays the opcode format '{Get("opcodes")}'; this build's converter writes '{Opcodes}'"; return null; }
+        if (Get("bend-decoders") != BendDecoders && !old) { problem = $"the music test template's bend decoders are '{Get("bend-decoders")}'; this build's converter writes pitch bends on {BendDecoders}"; return null; }
         if (!int.TryParse(Get("region"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int region) || region != Midi2Nes.MaxChannelBytes)
         { problem = $"the music test template's stream regions are {Get("region")} bytes; the converter writes up to {Midi2Nes.MaxChannelBytes}"; return null; }
         if (!int.TryParse(Get("rom-bytes"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int romBytes) || romBytes != rom.Length) { problem = $"the music test template ROM is {rom.Length} bytes, its description says {Get("rom-bytes")}"; return null; }
@@ -220,5 +227,10 @@ public static class MusicMutate
     public const int FactsHideDropped = 1 << 7;   // the facts say no note was dropped (facts check)
     public const int ConverterOffByOne = 1 << 8;  // every note one semitone up after conversion (converter identity check, midi-test)
     public const int StemsShifted = 1 << 9;       // after a restart each channel gets the next channel's prepared stem (stems check)
+    // round 9 (pitch bends)
+    public const int BendsIgnored = 1 << 10;      // the song is converted with bends off, as round 7 did (bends check: the ROM's pitch against the MIDI's)
+    public const int SlideSignFlipped = 1 << 11;  // every slide's slope is negated after conversion (bends check)
+    public const int FactsHideBendLoss = 1 << 12; // the facts say no bend frame was thinned (facts check)
+    public const int OldTemplateAccepted = 1 << 13; // a version-1 template (plain decoders: a bend opcode reads as the loop) is accepted (template-refusals check)
     public static bool Has(int bit) => (Mask & bit) != 0;
 }

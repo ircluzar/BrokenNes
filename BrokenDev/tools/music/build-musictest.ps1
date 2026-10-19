@@ -11,12 +11,14 @@
                   1280 bytes (pad_streams.py; the converter's per-channel maximum), so a song's streams can be written over them by
                   PRG offset. Its song title is 24 characters (the player's maximum) and its loop length a sentinel, so the plugin
                   can write the song's own name and loop length too (the template is built three times with three sentinels: the
-                  bytes that hold them are found by comparison). Writes <Out>\musictest.nes, <Out>\musictest.txt (the manifest:
-                  format, version, the PRG offset of each array, the title and the loop-length bytes, the region size, the period
-                  table's hash, the ROM's hash) and <Out>\musictest.mlb. NESFab does not build byte-for-byte reproducibly (a few
+                  bytes that hold them are found by comparison). Its square 1, square 2 and triangle decoders are VRUN's pitch-bend
+                  decoders (roster "bends": true, "bend_decoders": "all"; checked in the generated decoders), so a song with bend
+                  opcodes plays. Writes <Out>\musictest.nes, <Out>\musictest.txt (the manifest: format, version 2, the opcode
+                  format, the bend decoders, the PRG offset of each array, the title and the loop-length bytes, the region size, the
+                  period table's hash, the ROM's hash) and <Out>\musictest.mlb. NESFab does not build byte-for-byte reproducibly (a few
                   strings change places), so FruityHost midi-test compares the bundled template with a fresh build by what it does.
-  -Mode song      a FULL REBUILD of a one-song AudioPlayer for -Mid (no padding): the reference the template + patch path is
-                  compared with. Writes <Out>\<Name>.nes, <Out>\<Name>.mlb, <Out>\music_data.fab, <Out>\build_report.json.
+  -Mode song      a FULL REBUILD of a one-song AudioPlayer for -Mid (no padding, bends on, bend decoders where its streams have
+                  bend opcodes, as the game would build it): the reference the template + patch path is compared with. Writes <Out>\<Name>.nes, <Out>\<Name>.mlb, <Out>\music_data.fab, <Out>\build_report.json.
 
   Needs: the restored VRUN tree (BrokenDev\brokendev.ps1 restore vrun_nes_dev), Git Bash, Python 3 (stdlib only), the .NET SDK
   (VRUN's converter is built by build_music.py in the scratch copy). Exit code 0 built, 1 the build failed, 2 a prerequisite is missing.
@@ -40,8 +42,13 @@ $bd = Split-Path -Parent (Split-Path -Parent $here)
 . (Join-Path $bd 'lib\Tools.ps1')
 
 # ---- what this template format is (the plugin refuses a manifest whose format or version it does not know) ----
+# Version 2 (round 9, pitch bends): the opcode format is vrun-music-2 (the converter's 0xD1 pitch / 0xD2 slide), and the template's square 1,
+# square 2 and triangle decoders are VRUN's bend decoders (roster "bend_decoders": "all"), so a song whose streams hold bend opcodes plays.
+# A version-1 template has the plain decoders, which read a bend opcode as the loop: the plugin refuses it.
 $FormatName = 'bn2-musictest'
-$FormatVersion = 1
+$FormatVersion = 2
+$Opcodes = 'vrun-music-2'
+$BendChannels = @('square1', 'square2', 'triangle')
 $Region = 1280                                   # Midi2Nes.MaxChannelBytes
 $Channels = @('square1', 'square2', 'triangle', 'noise')
 $Fillers = @{ square1 = 0xA1; square2 = 0xA2; triangle = 0xA3; noise = 0xA4 }   # pad_streams.py
@@ -115,7 +122,11 @@ if ($Mode -eq 'template') {
 } else { Copy-Item -LiteralPath $Mid -Destination (Join-Path $proj 'song.mid') -Force }
 # The template's title is the longest the player draws (24 characters): the plugin writes the song's own name over it.
 $title = if ($Mode -eq 'template') { $TemplateTitle } else { $Name.ToUpperInvariant() }
-[System.IO.File]::WriteAllText((Join-Path $proj 'roster.json'), ('{ "title": "BROKENNES2 MIDI TEST", "tracks": [ {"name": "' + $track + '", "title": "' + $title + '", "midi": "song.mid"} ] }'), $utf8)
+# Pitch bends: the plugin converts every song with bends on (a song without bends converts exactly as without), so both modes ask VRUN's build
+# for them. The template gets the bend decoders on its three tonal channels whatever its own song holds (any song can be patched in); a full
+# rebuild gets them where its streams have bend opcodes, as the game would.
+$bendKeys = if ($Mode -eq 'template') { ', "bends": true, "bend_decoders": "all"' } else { ', "bends": true' }
+[System.IO.File]::WriteAllText((Join-Path $proj 'roster.json'), ('{ "title": "BROKENNES2 MIDI TEST", "tracks": [ {"name": "' + $track + '", "title": "' + $title + '", "midi": "song.mid"' + $bendKeys + '} ] }'), $utf8)
 $basePre = [System.IO.File]::ReadAllText((Join-Path $scratch 'src\audioplayer\prebuild.sh')).Replace("`r`n", "`n")
 
 # ---- build with VRUN's own build.sh (the template twice, with two loop-length sentinels: see set_loop_frames.py) ----
@@ -162,6 +173,12 @@ for ($i = 0; $i -lt $TemplateTitle.Length; $i++) {
 }
 $mlbA = [System.IO.File]::ReadAllText($mlb)
 $fabA = [System.IO.File]::ReadAllText((Join-Path $proj 'music_data.fab'))
+# the template's square 1, square 2 and triangle decoders must be VRUN's bend decoders (they hold the slide state mus_<ch>_vel): read from the generated decoders
+$decText = [System.IO.File]::ReadAllText((Join-Path $proj 'music_decoders.fab')).Replace("`r`n", "`n")
+foreach ($pair in @(@('square1', 'mus_sq1_vel'), @('square2', 'mus_sq2_vel'), @('triangle', 'mus_tri_vel'))) {
+    $fn = [regex]::Match($decText, "(?ms)^fn update_$($pair[0])_song\(\)\n(.*?)(?=^fn |\z)")
+    if (-not $fn.Success -or $fn.Groups[1].Value -notmatch [regex]::Escape($pair[1])) { Write-Host "the template's update_$($pair[0])_song is not a bend decoder (no $($pair[1])): VRUN's tree has no pitch-bend engine, or build_music.py ignored ""bend_decoders"": ""all"""; exit 1 }
+}
 # The loop-length constant: built again with two other sentinels, a byte of the template holds the constant's low (high) byte when the three builds hold the three
 # sentinels' low (high) bytes there. (NESFab lays the /strings group out differently when the constant changes, so other bytes move between the builds too: they
 # are counted, not used. Only the template itself, build A, is ever patched, at the offsets found in it.)
@@ -210,7 +227,8 @@ $m = New-Object System.Text.StringBuilder
 [void]$m.Append("# with a one-song roster whose four stream arrays are padded to the converter's maximum. Offsets are PRG-ROM offsets (after the 16-byte iNES header).`n")
 [void]$m.Append("format = $FormatName`n")
 [void]$m.Append("version = $FormatVersion`n")
-[void]$m.Append("opcodes = vrun-music-1`n")
+[void]$m.Append("opcodes = $Opcodes`n")
+[void]$m.Append("bend-decoders = $($BendChannels -join ' ')`n")
 [void]$m.Append("region = $Region`n")
 foreach ($ch in $Channels) { [void]$m.Append(("{0} = 0x{1:X6}`n" -f $ch, $sym[$ch][0])) }
 [void]$m.Append(("filler = {0:X2} {1:X2} {2:X2} {3:X2}`n" -f $Fillers.square1, $Fillers.square2, $Fillers.triangle, $Fillers.noise))

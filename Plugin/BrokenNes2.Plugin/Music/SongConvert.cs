@@ -1,6 +1,11 @@
 // A MIDI file through VRUN's converter (Music/Vrun, copied byte for byte from the VRUN project), and the short facts that explain what the user will hear
 // differently from FL Studio: which MIDI channels the four NES channels play, notes that had no channel, notes thinned because the engine reads one opcode
-// per channel per frame, the loop, the bytes per channel and truncation, the tempo (only the first counts), pitch bends (not played), very low notes.
+// per channel per frame, the loop, the bytes per channel and truncation, the tempo (only the first counts), pitch bends (round 9: played, with what was
+// thinned or not played and why), very low notes.
+//
+// Pitch bends: every song is converted with the converter's bends ON. A song without bends converts exactly as with them off (the converter's own
+// guarantee, held by midi-test), so "on whenever the file has bends" needs no switch: a file with bends plays them, a file without plays as it always did.
+// VRUN's game build plays a song's bends only when its roster entry says "bends": true (engine/audio/README.md, "Pitch bends"); the facts say so.
 //
 // Pure code, run on a worker thread (it allocates; it never runs on the audio thread). The facts come from the converter's own result and log lines (the
 // same lines VRUN's build_music.py turns into build_report.json) plus a count over the MIDI events for what the converter ignores silently.
@@ -30,13 +35,49 @@ public sealed class SongFacts
     public int[] FinalBytes = new int[4];
     public double TempoBpm;
     public int TempoChangesIgnored, PitchBends, LowNotes;
+    /// <summary>What the converter did with each NES channel whose MIDI channel bends (Bends.cs: played, thinned, not played and why); empty when no mapped channel bends.</summary>
+    public IReadOnlyList<BendReport> Bends = [];
     public List<string> Log = [];
 
     public int Thinned(int ch) => ThinnedVolume[ch] + ThinnedOff[ch] + ThinnedOn[ch];
     public int ThinnedTotal => Thinned(0) + Thinned(1) + Thinned(2) + Thinned(3);
     public bool AnyTruncated => Truncated.Any(t => t);
 
+    /// <summary>The bend reports of the channels that play their bends.</summary>
+    public IEnumerable<BendReport> BendsPlayed => Bends.Where(b => !b.Ignored && !b.Dropped);
+    /// <summary>NES channels that play pitch bends (bit 0 square 1 .. bit 2 triangle).</summary>
+    public int BendMask => BendsPlayed.Aggregate(0, (m, b) => m | 1 << b.NesChannel);
+    /// <summary>Bend opcodes written (slides, pitch steps, bent note-ons), the bytes they added, and the frames off target (a bend opcode was needed while a note held the
+    /// channel's one opcode per frame: the bends the engine thinned).</summary>
+    public int BendOpcodes => BendsPlayed.Sum(b => b.SlideOps + b.PitchOps + b.NoteOnsAsPitch);
+    public int BendBytes => BendsPlayed.Sum(b => b.BytesAdded);
+    public int BendFramesOff => MusicMutate.Has(MusicMutate.FactsHideBendLoss) ? 0 : BendsPlayed.Sum(b => b.FramesOverTolerance);
+
     private static readonly string[] Names = ["square 1", "square 2", "triangle", "noise"];
+
+    /// <summary>The one line about pitch bends (null when the file has none): where they play and what that cost, what was thinned, where and why they do not play.</summary>
+    public string? BendLine()
+    {
+        if (PitchBends == 0) return null;
+        var ci = CultureInfo.InvariantCulture;
+        var parts = new List<string>();
+        var played = BendsPlayed.OrderBy(b => b.NesChannel).ToList();
+        if (played.Count > 0)
+        {
+            int slides = played.Sum(b => b.SlideOps), steps = played.Sum(b => b.PitchOps + b.NoteOnsAsPitch);
+            string where = string.Join(", ", played.Select(b => Names[b.NesChannel] + (b.SlidesOff ? " (held only: no room for slides)" : b.ToleranceCents > b.RequestedToleranceCents ? $" (at {b.ToleranceCents.ToString("0.#", ci)} cents: room)" : "")));
+            var quality = new List<string>();
+            if (played.Any(b => b.HeldBentFrames > 0)) quality.Add("held exact");
+            if (played.Any(b => b.BentFrames > b.HeldBentFrames)) quality.Add($"moving within {played.Max(b => b.MaxMovingErrorCents).ToString("0", ci)} cents");
+            parts.Add($"bends played on {where}: {slides} slide{(slides == 1 ? "" : "s")} + {steps} pitch step{(steps == 1 ? "" : "s")} (+{BendBytes} bytes)" + (quality.Count > 0 ? ", " + string.Join(", ", quality) : ""));
+            int off = BendFramesOff;
+            if (off > 0) parts.Add($"{off} bend frame{(off == 1 ? "" : "s")} thinned (no free frame)");
+        }
+        foreach (var b in Bends.Where(b => b.Ignored || b.Dropped).OrderBy(b => b.NesChannel))
+            parts.Add($"not played on {Names[b.NesChannel]}" + (b.Ignored ? " (no pitch)" : b.DropReason is { } why && why.Contains("truncated") ? " (truncated)" : " (no room)"));
+        if (parts.Count == 0) parts.Add($"{PitchBends} pitch bend{(PitchBends == 1 ? "" : "s")}, none on a NES channel's MIDI channel (or all centred)");
+        return string.Join("; ", parts);
+    }
 
     /// <summary>A few short lines for the window: what makes the replay differ from FL, nothing else.</summary>
     public List<string> Lines()
@@ -56,7 +97,9 @@ public sealed class SongFacts
             for (int c = 0; c < 4; c++) if (Thinned(c) > 0) parts.Add($"{Names[c]} {Thinned(c)}");
             lines.Add($"{ThinnedTotal} notes or changes thinned (too dense: one change per channel per frame): {string.Join(", ", parts)}");
         }
-        lines.Add($"loop {LoopFrames} frames ({LoopSeconds.ToString("0.00", CultureInfo.InvariantCulture)} s): the song starts again at the end of the MIDI");
+        string loop = $"loop {LoopFrames} frames ({LoopSeconds.ToString("0.00", CultureInfo.InvariantCulture)} s)";
+        int loopAt = lines.Count;
+        lines.Add(loop + ": the song starts again at the end of the MIDI");
         if (AnyTruncated)
         {
             var parts = new List<string>();
@@ -66,9 +109,11 @@ public sealed class SongFacts
         else lines.Add($"fits: {FinalBytes[0]} + {FinalBytes[1]} + {FinalBytes[2]} + {FinalBytes[3]} bytes (at most {Midi2Nes.MaxChannelBytes:N0} per channel)");
         var other = new List<string> { $"tempo {TempoBpm.ToString("0.#", CultureInfo.InvariantCulture)} BPM" };
         if (TempoChangesIgnored > 0) other.Add($"{TempoChangesIgnored} later tempo change{(TempoChangesIgnored == 1 ? "" : "s")} ignored");
-        if (PitchBends > 0) other.Add($"{PitchBends} pitch bend{(PitchBends == 1 ? "" : "s")} not played");
         if (LowNotes > 0) other.Add($"{LowNotes} note{(LowNotes == 1 ? "" : "s")} below A1 at the lowest pitch");
-        lines.Add(string.Join("; ", other));
+        // (the window has room for six lines: with the bends line and a thinning line, the tempo goes on the loop's line)
+        if (BendLine() is { } bends && lines.Count + 2 > 6) lines[loopAt] = loop + "; " + string.Join("; ", other);
+        else lines.Add(string.Join("; ", other));
+        if (BendLine() is { } b) lines.Add(b);
         return lines;
     }
 }
@@ -129,7 +174,9 @@ public static class SongConvert
         }
 
         SongResult result;
-        try { result = Midi2Nes.ConvertSong(file, TrackName, facts.Log.Add); }
+        // bends on (a no-op for a song without bends); the deliberate bug BendsIgnored converts as round 7 did
+        var options = new ConvertOptions { Bends = !MusicMutate.Has(MusicMutate.BendsIgnored) };
+        try { result = Midi2Nes.ConvertSong(file, TrackName, facts.Log.Add, options); }
         catch (Exception e) when (e is FormatException or IndexOutOfRangeException or ArgumentOutOfRangeException or ArgumentException or InvalidOperationException or OverflowException)
         { problem = $"the converter could not convert it ({e.Message.TrimEnd('.')})"; return null; }
 
@@ -176,11 +223,48 @@ public static class SongConvert
                     && result.ChannelMap.Any(kv => kv.Key == ev.Channel && kv.Value != 3)) facts.LowNotes++;     // (the noise channel has no pitch: not counted)
 
         facts.LoopFrames = result.LoopFrames;
+        facts.Bends = result.Bends;
         for (int c = 0; c < 4; c++) { facts.Bytes[c] = result.UntruncatedLengths[c]; facts.Truncated[c] = result.Truncated[c]; facts.FinalBytes[c] = result.Channels[c].Length; }
         var channels = result.Channels;
         if (MusicMutate.Has(MusicMutate.ConverterOffByOne))
-            channels = channels.Select(s => s.Select((b, i) => b < 0x7F && (i == 0 || s[i - 1] != 0xD0) ? (byte)(b + 1) : b).ToArray()).ToArray();
+            channels = channels.Select(s => MapOpcodes(s, (op, i, c) => op < 0x7F ? (byte)(op + 1) : op)).ToArray();
+        if (MusicMutate.Has(MusicMutate.SlideSignFlipped))
+            channels = channels.Select(FlipSlides).ToArray();
         return new SongBuild(TrackName, channels, facts);
+    }
+
+    /// <summary>A copy of a stream with <paramref name="f"/> applied to each opcode byte (never to an operand: $D0 has one, the bend opcodes $D1/$D2 two).</summary>
+    private static byte[] MapOpcodes(byte[] s, Func<byte, int, byte[], byte> f)
+    {
+        var o = (byte[])s.Clone();
+        for (int i = 0; i < o.Length; i++)
+        {
+            byte op = s[i];
+            o[i] = f(op, i, s);
+            if (op == 0xD0) i += 1;
+            else if (op is Vrun.Audio.Bends.OpPitch or Vrun.Audio.Bends.OpSlide) i += 2;
+            else if (op == 0xFF) break;
+        }
+        return o;
+    }
+
+    /// <summary>The deliberate bug SlideSignFlipped: every slide's slope negated (the ROM then bends the wrong way: the check against the MIDI's pitch must see it).</summary>
+    private static byte[] FlipSlides(byte[] s)
+    {
+        var o = (byte[])s.Clone();
+        for (int i = 0; i < o.Length; i++)
+        {
+            byte op = s[i];
+            if (op == Vrun.Audio.Bends.OpSlide && i + 2 < o.Length)
+            {
+                int v = -(short)(s[i + 1] | s[i + 2] << 8);
+                o[i + 1] = (byte)v; o[i + 2] = (byte)(v >> 8);
+            }
+            if (op == 0xD0) i += 1;
+            else if (op is Vrun.Audio.Bends.OpPitch or Vrun.Audio.Bends.OpSlide) i += 2;
+            else if (op == 0xFF) break;
+        }
+        return o;
     }
 
     /// <summary>A name for the song from its file name (the AudioPlayer's title rules apply when it is written into the ROM).</summary>

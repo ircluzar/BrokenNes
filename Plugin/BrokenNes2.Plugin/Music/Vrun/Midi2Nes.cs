@@ -20,8 +20,15 @@ namespace Vrun.Audio;
 ///   0x81-0xBF  wait 1-63 frames
 ///   0xC0-0xCF  volume 0-15
 ///   0xD0 xx    wait xx (1-255) frames
+///   0xD1 lo hi pitch: play period hi:lo now (a note-on at an exact period)
+///   0xD2 lo hi slide: add hi.lo (signed 8.8) to the period every frame
 ///   0xFF       end: loop to the start of this channel's stream
 /// </code>
+/// <para>0xD1/0xD2 are the pitch-bend opcodes, written only when the caller
+/// asks for bends (<see cref="ConvertOptions.Bends"/>) and only on square 1,
+/// square 2 and the triangle; a song that has them needs the bend decoders.
+/// See <see cref="Bends"/>. Without bends the output is exactly what it
+/// always was.</para>
 ///
 /// <para>Every whole-song decision the converter makes - which MIDI channel
 /// goes where, cap-1 retiming, overload thinning, the shared loop period,
@@ -536,7 +543,7 @@ public static class Midi2Nes
         while (i < n)
         {
             int b = stream[i];
-            int width = b == 0xD0 ? 2 : 1;
+            int width = b == 0xD0 ? 2 : b == Bends.OpPitch || b == Bends.OpSlide ? 3 : 1;
             if (o.Count + width > maxBytes - padReserve)
                 break;
             for (int k = 0; k < width && i + k < n; k++)
@@ -572,7 +579,18 @@ public static class Midi2Nes
     /// </summary>
     public static (Dictionary<int, List<int>> Streams, List<int> Order, int TotalFrames) Convert(
         MidiFile midi, List<KeyValuePair<int, int>> channelMap, Action<string> log)
+        => Convert(midi, channelMap, log, ConvertOptions.Default, out _);
+
+    /// <summary>As <see cref="Convert(MidiFile, List{KeyValuePair{int, int}}, Action{string})"/>,
+    /// with <paramref name="options"/>. With bends on, each retimed tonal
+    /// stream then gets its bend opcodes (<see cref="Bends"/>) and
+    /// <paramref name="bends"/> says, per channel whose MIDI channel bends,
+    /// what was done; it is empty with bends off.</summary>
+    public static (Dictionary<int, List<int>> Streams, List<int> Order, int TotalFrames) Convert(
+        MidiFile midi, List<KeyValuePair<int, int>> channelMap, Action<string> log,
+        ConvertOptions options, out List<BendReport> bends)
     {
+        bends = new List<BendReport>();
         int microsPerQuarter = FindTempo(midi);
         // Same operation order as the Python original - these floats feed
         // truncation to whole frames, so the order matters for identity.
@@ -711,8 +729,83 @@ public static class Midi2Nes
             stream.Add(0xFF);
             var compressed = CompressPattern(stream);
             streams[nes] = RetimeForCap1(compressed, totalFrames, ChannelNames[nes], log);
+
+            if (options.Bends)
+            {
+                int midiCh = channelMap.Where(kv => kv.Value == nes).Select(kv => kv.Key).First();
+                var report = ApplyBends(streams, nes, midiCh, events, framesPerTick, totalFrames, options);
+                if (report != null)
+                {
+                    bends.Add(report);
+                    log(Bends.Describe(report, null));
+                }
+            }
         }
         return (streams, order, totalFrames);
+    }
+
+    /// <summary>
+    /// Adds one channel's bend opcodes to its retimed stream (in place in
+    /// <paramref name="streams"/>). Null when its MIDI channel never bends
+    /// away from the centre. The noise is counted and left alone. Notes are
+    /// never cut to make room for bends: a channel whose bends would take it
+    /// past <see cref="MaxChannelBytes"/> is fitted again with the moving-
+    /// pitch tolerance doubled (up to <see cref="Bends.MaxToleranceCents"/>),
+    /// then with slides off (held bent pitches only), then without bends;
+    /// a channel truncated even without its bends gets none. The report says
+    /// which.
+    /// </summary>
+    static BendReport? ApplyBends(Dictionary<int, List<int>> streams, int nes, int midiCh,
+        List<(int Tick, MidiEvent Ev)> events, double framesPerTick, int totalFrames, ConvertOptions options)
+    {
+        var src = Bends.BuildSource(events, framesPerTick, totalFrames);
+        if (src.NonZeroEvents == 0)
+            return null;
+        var baseReport = new BendReport
+        {
+            NesChannel = nes,
+            MidiChannel = midiCh,
+            Events = src.Events,
+            NonZeroEvents = src.NonZeroEvents,
+            RangeSemitones = src.MaxRange,
+            RangeFromRpn = src.RangeFromRpn,
+            ToleranceCents = options.BendToleranceCents,
+            RequestedToleranceCents = options.BendToleranceCents,
+        };
+        if (nes == 3)
+            return baseReport with { Ignored = true };
+        var original = streams[nes];
+        if (original.Count > MaxChannelBytes)
+            return baseReport with
+            {
+                Dropped = true,
+                DropReason = $"the channel is over {MaxChannelBytes} bytes even without them (it is truncated)",
+            };
+        double tol = options.BendToleranceCents;
+        while (true)
+        {
+            var (fitted, report) = Bends.Fit(original, src, tol, nes, midiCh);
+            if (fitted.Count <= MaxChannelBytes)
+            {
+                streams[nes] = fitted;
+                return report with { RequestedToleranceCents = options.BendToleranceCents };
+            }
+            if (tol * 2 > Bends.MaxToleranceCents)
+                break;
+            tol *= 2;
+        }
+        // Still too big: keep the held bent pitches (and bent note-ons), drop the slides.
+        var (steps, stepsReport) = Bends.Fit(original, src, tol, nes, midiCh, slides: false);
+        if (steps.Count <= MaxChannelBytes)
+        {
+            streams[nes] = steps;
+            return stepsReport with { RequestedToleranceCents = options.BendToleranceCents };
+        }
+        return baseReport with
+        {
+            Dropped = true,
+            DropReason = $"even their held pitches alone would take the channel to {steps.Count} bytes, over {MaxChannelBytes}",
+        };
     }
 
     /// <summary>
@@ -723,9 +816,16 @@ public static class Midi2Nes
     /// order, that the build prints (build_music.py parses them).
     /// </summary>
     public static SongResult ConvertSong(MidiFile midi, string name, Action<string> log)
+        => ConvertSong(midi, name, log, ConvertOptions.Default);
+
+    /// <summary>As <see cref="ConvertSong(MidiFile, string, Action{string})"/>,
+    /// with <paramref name="options"/>. With bends on, the log gains one line
+    /// per bending channel and a final "bend channels" line, and the result's
+    /// <see cref="SongResult.Bends"/> holds the reports.</summary>
+    public static SongResult ConvertSong(MidiFile midi, string name, Action<string> log, ConvertOptions options)
     {
         var map = SelectChannelMap(midi, name, log);
-        var (streams, _, totalFrames) = Convert(midi, map, log);
+        var (streams, _, totalFrames) = Convert(midi, map, log, options, out var bendReports);
         log($"[midi2nes] loop period ({name}): {totalFrames} frames " +
             $"({(totalFrames / Fps).ToString("F2", CultureInfo.InvariantCulture)}s) - all 4 channels phase-locked to it");
 
@@ -749,7 +849,32 @@ public static class Midi2Nes
                 cut = new List<int> { 0xFF };
             final[nes] = cut.Select(b => (byte)b).ToArray();
         }
-        return new SongResult(name, final, totalFrames, map, untruncatedLengths, truncated);
+        if (options.Bends)
+        {
+            // The build reads this line (build_music.py) and the bend
+            // decoders follow the streams themselves, so it is a report, not
+            // a contract: which channels hold bend opcodes.
+            var played = Enumerable.Range(0, 3).Where(c => final[c].Length > 0 && HasBendOps(final[c])).Select(c => ChannelNames[c]).ToList();
+            log($"[midi2nes] bend channels ({name}): {(played.Count > 0 ? string.Join(",", played) : "none")}");
+        }
+        return new SongResult(name, final, totalFrames, map, untruncatedLengths, truncated) { Bends = bendReports };
+    }
+
+    /// <summary>True when a stream holds a bend opcode (0xD1/0xD2) - the
+    /// decoder that plays it must be a bend decoder.</summary>
+    public static bool HasBendOps(IReadOnlyList<byte> stream)
+    {
+        int i = 0;
+        while (i < stream.Count)
+        {
+            int b = stream[i];
+            if (b == 0xFF)
+                return false;
+            if (b == Bends.OpPitch || b == Bends.OpSlide)
+                return true;
+            i += b == 0xD0 ? 2 : 1;
+        }
+        return false;
     }
 }
 
@@ -762,4 +887,9 @@ public sealed record SongResult(
     int LoopFrames,
     List<KeyValuePair<int, int>> ChannelMap,
     int[] UntruncatedLengths,
-    bool[] Truncated);
+    bool[] Truncated)
+{
+    /// <summary>One report per channel whose MIDI channel bends (bends on
+    /// only; empty otherwise).</summary>
+    public IReadOnlyList<BendReport> Bends { get; init; } = Array.Empty<BendReport>();
+}

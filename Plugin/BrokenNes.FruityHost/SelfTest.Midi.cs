@@ -46,13 +46,16 @@ public sealed unsafe partial class SelfTest
         return false;
     }
 
-    private static byte[] SLatch(PluginInstance p, int frames)
+    private static byte[] SLatch(PluginInstance p, int frames, bool perNmi = false)
     {
         var buf = new byte[frames * MidiModel.LatchBytes];
         long n;
-        fixed (byte* b = buf) n = p.Test(HkSLatch, (nint)b, frames);
+        fixed (byte* b = buf) n = p.Test(HkSLatch, (nint)b, frames | (perNmi ? 0x40000000 : 0));
         return n == frames ? buf : buf[..(int)(Math.Max(0, n) * MidiModel.LatchBytes)];
     }
+
+    /// <summary>The registers as each frame's NMI left them (round 9: the bend decoders make a busy frame's NMI write on past the frame's end; Music/NmiLatch.cs).</summary>
+    private static byte[] SLatchNmi(PluginInstance p, int frames) => SLatch(p, frames, true);
 
     private static byte[]? SRom(PluginInstance p, string dir)
     {
@@ -103,7 +106,44 @@ public sealed unsafe partial class SelfTest
         ("project", SongProject, MusicMutate.SectionDropsMidi, "the project section is written without the MIDI file"),
         ("refusals", SongRefusals, MusicMutate.RefusalSilent, "a refusal says nothing"),
         ("alloc", SongAlloc, MusicMutate.RestartAllocates, "a restart drops the prepared stems (the audio thread makes new ones)"),
+        ("bends", SongBendsDll, MusicMutate.BendsIgnored, "the song is converted with bends off (round 7's way)"),
     ];
+
+    // ------------------------------------------------------------------------------------------------ pitch bends (round 9), from the plugin's own machine
+
+    private void SongBendsDll(T t)
+    {
+        foreach (var s in MidiFixtures.BendSongs().Where(x => x.Name is "bendall" or "bendprebent"))
+        {
+            using var p = SongPlugin();
+            p.Test(120, 0, 1);                                                    // the editor does not run the game behind the test's back
+            try
+            {
+                t.Expect(SOpen(p, WriteMid(s.Name, s.Midi)) == 0, $"{s.Name}: the open was refused");
+                t.Expect(SReady(p), $"{s.Name}: the song's game was not built: '{SText(p, 0)}'");
+                // what VRUN's converter does with it (bends on), apart from the plugin's path
+                var reference = Vrun.Audio.Midi2Nes.ConvertSong(Vrun.Audio.MidiFile.Parse(s.Midi), SongConvert.TrackName, _ => { }, new Vrun.Audio.ConvertOptions { Bends = true });
+                var played = reference.Bends.Where(x => !x.Ignored && !x.Dropped).ToList();
+                int loop = reference.LoopFrames, n = 2 * loop;
+                var latch = SLatchNmi(p, n + MusicTemplate.Preroll + 4);
+                var sc = MidiModel.Best(reference.Channels, latch, n, skip: MidiChecks.Skip);
+                t.Expect(sc.Worst >= 1.0 && sc.Start == MusicTemplate.Preroll, $"{s.Name}: the plugin's machine does not play VRUN's streams with bends: {sc.Agree}/{sc.Of} (decode in frame {sc.Start}); {string.Join("; ", sc.Mismatches)}");
+                var parts = new List<string>();
+                foreach (var rep in played)
+                {
+                    var j = MidiChecks.JudgeBends(latch, sc.Start, rep.NesChannel, MidiChecks.IdealPitch(s.Midi, rep.MidiChannel, loop), loop, rep.ToleranceCents, rep.SlidesOff);
+                    t.Expect(j.Off <= 2 * rep.FramesOverTolerance && j.Bent >= 10, $"{s.Name} {MusicTemplate.ChannelNames[rep.NesChannel]}: {j.Off} of {j.Checked} frames off the MIDI's pitch ({j.Bent} bent; the converter says {rep.FramesOverTolerance} a loop)");
+                    parts.Add($"{MusicTemplate.ChannelNames[rep.NesChannel]} {j.Bent} bent frames, {j.Off} off, held max {j.MaxHeldCents:0.0} / moving max {j.MaxMovingCents:0.0} cents");
+                }
+                string facts = SText(p, 1);
+                int mask = played.Aggregate(0, (m, x) => m | 1 << x.NesChannel);
+                t.Expect(p.Test(HkSNum, 14) == mask && p.Test(HkSNum, 15) > 0 && p.Test(HkSNum, 17) > 0, $"{s.Name}: the window's numbers say bends on mask {p.Test(HkSNum, 14)} ({p.Test(HkSNum, 15)} opcodes, {p.Test(HkSNum, 17)} bytes), the converter plays them on {mask}");
+                t.Expect(facts.Contains("bends played on "), $"{s.Name}: the facts do not say the bends are played: {facts}");
+                t.Note($"{s.Name}: {sc.Agree}/{sc.Of} field-frames as each NMI left them, decode in frame {sc.Start}; " + string.Join("; ", parts) + $"; facts: {facts.Split('\n').LastOrDefault()}");
+            }
+            finally { p.Test(120, 0, 0); }
+        }
+    }
 
     private void MidiTest(T t)
     {
@@ -227,7 +267,7 @@ public sealed unsafe partial class SelfTest
                 var b = SongConvert.Convert(s.Midi, out _)!;
                 int n = Math.Clamp(b.Facts.LoopFrames + 120, 560, 2400);
                 // from power-on (the hook takes the built game first, as the audio thread would): the decode begins after the preroll
-                var all = SLatch(p, n + 120);
+                var all = SLatchNmi(p, n + 120);
                 t.Expect(p.Test(HkSRunning) == 1 && p.Test(HkSFrames) == n + 120, $"{s.Name}: the song game ran {p.Test(HkSFrames)} frames, expected {n + 120} from power-on");
                 var rom = SRom(p, dir);
                 t.Expect(rom != null && rom.AsSpan().SequenceEqual(LibraryRom(s.Midi, s.Name)), $"{s.Name}: the ROM the plugin built is not the one the library builds (the one midi-test verifies)");
@@ -237,7 +277,7 @@ public sealed unsafe partial class SelfTest
                 // after a restart (the copy run up to the decode): the decode is in the first frame
                 SWait(p, () => p.Test(HkSNum, 11) == 1, 10000);
                 p.Test(HkSRestart);
-                var after = SLatch(p, n + 20);
+                var after = SLatchNmi(p, n + 20);
                 var sr = MidiModel.Best(b.Channels, after, n, 0, 8, MidiChecks.Skip);
                 t.Expect(sr.Worst >= 1.0 && sr.Start == 0, $"{s.Name}: after Restart the decode began in frame {sr.Start} ({sr.Agree}/{sr.Of}); a restart should start the song in the first frame");
                 t.Note($"{s.Name}: {sc.Agree}/{sc.Of} field-frames from power-on (decode in frame {sc.Start}), {sr.Agree}/{sr.Of} after a restart (decode in frame {sr.Start})");
@@ -309,7 +349,7 @@ public sealed unsafe partial class SelfTest
             SWait(p, () => p.Test(HkSNum, 11) == 1, 10000);
             long r0 = p.Test(HkSNum, 9);
             p.Dispatcher(Fpd.SetPlaying, 0, 1);                                 // FL's Play
-            var after = SLatch(p, 600);
+            var after = SLatchNmi(p, 600);
             var sc = MidiModel.Best(b.Channels, after, 480, 0, 8, MidiChecks.Skip);
             t.Expect(p.Test(HkSNum, 9) == r0 + 1, "FL's transport start did not restart the song");
             t.Expect(sc.Start == 0 && sc.Worst >= 1.0, $"after FL's Play the decode began in frame {sc.Start} ({sc.Agree}/{sc.Of}), expected the first frame");
