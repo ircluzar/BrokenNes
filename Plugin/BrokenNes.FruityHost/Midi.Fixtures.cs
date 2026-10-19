@@ -22,11 +22,14 @@ internal static class MidiFixtures
         return d?.FullName ?? throw new InvalidOperationException("the repository was not found (set BROKENNES_REPO)");
     }
 
-    /// <summary>The user's restored VRUN tree, or null (then every check that needs it is reported NOT RUN, never passed).</summary>
+    /// <summary>The user's VRUN tree, or null (then every check that needs it is reported NOT RUN, never passed): BROKENNES_VRUN, else VRUN_ROOT (set by the VRUN
+    /// workspace's nesdev-env.sh: the live repo, as a Git Bash path or a Windows one), else BrokenDev's restored copy. Since round 9 the tree must have VRUN's pitch-bend
+    /// engine (merged into the live VRUN 2026-10-18); an older copy fails the converter and template checks, by design.</summary>
     public static string? Vrun()
     {
-        var env = Environment.GetEnvironmentVariable("BROKENNES_VRUN");
-        string dir = !string.IsNullOrEmpty(env) ? env : Path.Combine(Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } h ? h : @"P:\BrokenDev\env", @"vrun_nes_dev\sys0\simulations\VRUN");
+        static string? Win(string? p) => string.IsNullOrEmpty(p) ? null : p.Length > 3 && p[0] == '/' && char.IsLetter(p[1]) && p[2] == '/' ? $"{char.ToUpperInvariant(p[1])}:{p[2..].Replace('/', '\\')}" : p;
+        string dir = Win(Environment.GetEnvironmentVariable("BROKENNES_VRUN")) ?? Win(Environment.GetEnvironmentVariable("VRUN_ROOT"))
+            ?? Path.Combine(Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } h ? h : @"P:\BrokenDev\env", @"vrun_nes_dev\sys0\simulations\VRUN");
         return File.Exists(Path.Combine(dir, "build.sh")) && Directory.Exists(Path.Combine(dir, @"engine\audio\converter")) ? dir : null;
     }
 

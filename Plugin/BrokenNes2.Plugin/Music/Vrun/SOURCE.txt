@@ -1,9 +1,11 @@
 VRUN's music converter, copied into BrokenNes for the plugin's "Test MIDI export" (round 7, 2026-10-17; pitch bends, round 9, 2026-10-18).
 
 Origin: the user's own VRUN NES project, engine/audio/converter (Vrun.Audio.Converter: MidiFile.cs, Midi2Nes.cs, FabWriter.cs, Bends.cs),
-restored by BrokenDev under P:\BrokenDev\env\vrun_nes_dev\sys0\simulations\VRUN. It is the user's code, not third-party code;
+live in the VRUN workspace (VRUN_ROOT = sys0\simulations\VRUN; BrokenDev's restored copy under P:\BrokenDev\env\vrun_nes_dev predates the
+bends merge: point BROKENNES_VRUN or VRUN_ROOT at the live tree for the checks). It is the user's code, not third-party code;
 the files are copied byte for byte (namespace Vrun.Audio kept) and must not be edited here: change them in VRUN, then copy again.
-This copy is VRUN's branch audio-bends (the converter as of 237d7e4: MIDI pitch bends, opcodes 0xD1 pitch / 0xD2 slide).
+This copy is VRUN's branch audio-bends (the converter as of 237d7e4: MIDI pitch bends, opcodes 0xD1 pitch / 0xD2 slide), merged into
+the live VRUN branch vrun-history-export as e5ba53f (2026-10-18; no roster song has "bends": true yet).
 
 sha256 of the copies (line endings LF, as in VRUN):
   MidiFile.cs   89812698128251131d0d899f935df41f577e6a11a6b1d23f3b7af00fb983fa0a

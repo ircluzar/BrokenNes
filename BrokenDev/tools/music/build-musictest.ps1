@@ -55,6 +55,7 @@ $Fillers = @{ square1 = 0xA1; square2 = 0xA2; triangle = 0xA3; noise = 0xA4 }   
 $TemplateTitle = 'MIDI EXPORT FROM FL TEST'                                   # 24 characters, the player's maximum
 $SentinelA = 0x6D29; $SentinelB = 0x92D6; $SentinelC = 0x5AA5               # six different bytes: a byte that holds the loop length differs in all three builds
 
+if (-not $Vrun -and $env:BROKENNES_VRUN) { $Vrun = $env:BROKENNES_VRUN }
 if (-not $Vrun) { $Vrun = Join-Path (Get-BdHome) 'vrun_nes_dev\sys0\simulations\VRUN' }
 $workRoot = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\musictest' } else { throw 'LOCALAPPDATA is not set' }
 if (-not $Work) { $Work = Join-Path $workRoot 'scratch' }
@@ -177,7 +178,7 @@ $fabA = [System.IO.File]::ReadAllText((Join-Path $proj 'music_data.fab'))
 $decText = [System.IO.File]::ReadAllText((Join-Path $proj 'music_decoders.fab')).Replace("`r`n", "`n")
 foreach ($pair in @(@('square1', 'mus_sq1_vel'), @('square2', 'mus_sq2_vel'), @('triangle', 'mus_tri_vel'))) {
     $fn = [regex]::Match($decText, "(?ms)^fn update_$($pair[0])_song\(\)\n(.*?)(?=^fn |\z)")
-    if (-not $fn.Success -or $fn.Groups[1].Value -notmatch [regex]::Escape($pair[1])) { Write-Host "the template's update_$($pair[0])_song is not a bend decoder (no $($pair[1])): VRUN's tree has no pitch-bend engine, or build_music.py ignored ""bend_decoders"": ""all"""; exit 1 }
+    if (-not $fn.Success -or $fn.Groups[1].Value -notmatch [regex]::Escape($pair[1])) { Write-Host "the template's update_$($pair[0])_song is not a bend decoder (no $($pair[1])): the VRUN tree at $Vrun has no pitch-bend engine (older than VRUN's merge of audio-bends: point -Vrun / BROKENNES_VRUN at the live VRUN), or build_music.py ignored ""bend_decoders"": ""all"""; exit 1 }
 }
 # The loop-length constant: built again with two other sentinels, a byte of the template holds the constant's low (high) byte when the three builds hold the three
 # sentinels' low (high) bytes there. (NESFab lays the /strings group out differently when the constant changes, so other bytes move between the builds too: they

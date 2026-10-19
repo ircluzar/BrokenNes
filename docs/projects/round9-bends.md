@@ -1,6 +1,6 @@
 # Round 9 `bends`: VRUN's sound engine plays pitch bends, and Test MIDI export plays them
 
-Date: 2026-10-18. Agent `vrun-bends`. VRUN branch `audio-bends` (VRUN repo, from `6c561f6`; worktree `%LOCALAPPDATA%\VRUN_Nes_Dev_work\vrun-bends\VRUN`), BrokenNes branch `vrun-bends` (from `refs/heads/main` `5fcae89`; worktree `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r9_bends\wt`). User-facing: `Plugin/README.md` (Test MIDI export, "Pitch bends"); VRUN side: `engine/audio/README.md` ("Pitch bends") in VRUN; handoff: `Plugin/CLAUDE.md`. Builds on `docs/projects/round7-midi.md`.
+Date: 2026-10-18. Agent `vrun-bends`. VRUN branch `audio-bends` (VRUN repo, from `6c561f6`; worktree `%LOCALAPPDATA%\VRUN_Nes_Dev_work\vrun-bends\VRUN`; merged into the live `vrun-history-export` as `e5ba53f`, section 9), BrokenNes branch `vrun-bends` (from `refs/heads/main` `5fcae89`; worktree `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r9_bends\wt`). User-facing: `Plugin/README.md` (Test MIDI export, "Pitch bends"); VRUN side: `engine/audio/README.md` ("Pitch bends") in VRUN; handoff: `Plugin/CLAUDE.md`. Builds on `docs/projects/round7-midi.md`.
 
 ## 1. What the user asked for, and decided
 
@@ -39,17 +39,21 @@ The same lag touches the player's position and loop counter (RAM, read when the 
 
 | Run | Result |
 |---|---|
-| `FruityHost midi-test` (no DLL, the VRUN tree present) | 10 checks pass; 11 deliberate bugs caught. `engine` 22/22 songs exactly as the converter's streams (100 frames in all whose NMI wrote past the frame's end, compared as each NMI left them); `reference` 20/20 songs: the full rebuild and the patched template write the same registers per NMI (77 frames where a player position was sampled one step late, counted); `bends`: every song without a played bend byte for byte as without bends, the bend songs' pitch in the ROM within the converter's own count (0 off on the written fixtures), no note moved |
+| `FruityHost midi-test` (no DLL; `BROKENNES_VRUN` = the live VRUN after the merge, `e5ba53f`) | 10 checks pass, 470 assertions, 11 deliberate bugs caught (18.6 min). `converter`: the four copied files equal the live VRUN's, VRUN's CLI with and without `--bends` gives the same streams; `engine` 22/22 songs exactly as the converter's streams (100 frames in all whose NMI wrote past the frame's end, compared as each NMI left them); `reference` 20/20 songs: VRUN's full rebuild and the patched template write the same registers per NMI (77 frames where one ROM's player position was sampled one step late, counted); `bends`: 12 songs without a played bend byte for byte as without bends, 10 play bends (the 6 written fixtures and roster songs whose MIDIs bend, e.g. baropencrpt: 415 held frames exact, 0 off against 364 off without bends), no note moved |
 | `FruityHost capture-test` (no DLL) | 5 checks, 708 assertions pass; 15 deliberate bugs caught (13 capture + 2 of Test MIDI export's: bends off, slides negated). `convert`, the scripted take: streams 279 + 40 + 53 + 82 bytes with bends (55 + 28 + 24 + 82 without = the ideal file's), loop 510 frames, 646 bends; "bends played on square 1, square 2, triangle: 19 slides + 66 pitch steps (+265 bytes), held exact, moving within 29 cents"; the ROM over 1,020 frames = the decoder model (8,152 field-frames), no note moved; triangle 744 frames judged (706 held, 0.0 cents from the NES period; moving max 9.6), square 1 560 (moving max 29.0: the 26-semitone slide, half a frame of its speed), square 2 676; 0 frames off on each, against 736 / 330 / 38 off without bends |
 | A project saved by `main`'s plugin (round 7's template) reopened by this one (`FruityHost song-compat save <old dll> bendall s.state`, then `song-compat open <new dll> s.state`: two processes) | bendall and manychannels: the song is converted again from the MIDI the project keeps, it is the game and sounds (114 of 120 frames), its bends play now ("bends played on square 1, square 2, triangle: ..." where round 7 said "440 pitch bends not played"); the saved machine state belongs to the old ROM, so the plugin's own message says the song starts from its beginning ("made with another build of the MIDI test's player"); saved and reopened by this plugin, the state comes back (restore 1, frame 270) |
 | `selftest --only midi,capture` (Native AOT DLL) | both pass; midi 9 of 9 DLL bugs caught (the `refusals` scenario now writes the next template version and round 7's version 1, both refused); capture 15 + 15 bugs caught; `engine` after a take by the FL-faithful host: the plugin's own machine 5,032/5,032 field-frames per NMI, triangle 579 / square 1 271 / square 2 38 bent frames, 0 off |
+| `UATun-suite.ps1 -Exe <fresh Workshop>` | 84 pass, 0 fail, 60 skip, 0 info (the same as before the round) |
+| `UAT\entrypoints
+otices-check.ps1` | the ledger checks pass (11); the shipped-folder checks need an installed or built app folder (skipped) |
 
 ## 6. Not tested (said plainly)
 
 - **Nobody listened.** No sound card on the build machine: every claim is a register trace, a model or a count.
 - **Real FL Studio:** its MIDI export's bend resolution and range (RPN 0 or not), FL's slide notes as exported, and a take of Capture from FL in real FL (the FL-faithful host's take is checked end to end: FL's pitch -> the file -> the converter -> the plugin's machine).
-- **The game's own build with bends** (VRUN side): see section 8 (built and run in a test copy, the CPU measured; nothing goes into the user's game until the user says so).
-- **Square 2's bend decoder while a sound effect borrows the channel**: it ran in the test game during combat (section 8: CPU only); its registers after a sound effect were not compared with a model.
+- **A gameplay song with bends in the shipped game:** none has `"bends": true` (the user's decision). Section 8 measured a test copy whose gameplay songs bend: the CPU and the frame timing, not the sound.
+- **Square 2's bend decoder while a sound effect borrows the channel**: it ran in the test copy during combat and the SFX soak (CPU only); its registers after a sound effect were not compared with a model.
+- **What one overrun frame does to the picture** (section 8): the main loop misses a frame; whether the NMI then uploads a half-updated sprite or HUD buffer was not checked.
 
 ## 7. Decisions taken here
 
@@ -57,3 +61,34 @@ The same lag touches the player's position and loop counter (RAM, read when the 
 - The template carries the bend decoders on all three tonal channels (any song can be patched in), format version 2; version 1 refused.
 - Registers compared per NMI; the player's RAM position allowed a one-frame sample lag, counted.
 - No new hook number (the `capture` track works in the same window): hook 611 gained a flag bit, hook 615 indexes 14-17.
+- A take of Capture from FL plays its bends (the capture's fact says so, ranked with the slides, no longer a warning); the capture's `convert` check and `selftest` `engine` scenario now verify the take end to end.
+- The checks find the VRUN tree by `BROKENNES_VRUN`, then `VRUN_ROOT` (the VRUN workspace's `nesdev-env.sh`), then BrokenDev's restored copy, which predates the merge: with that copy the `converter` and `template` checks fail by design (the copy here is newer than that VRUN).
+
+## 8. The game with bending gameplay songs: frame headroom (the user's decision 4, "measure in gameplay first")
+
+**Builds.** Both from VRUN `audio-bends` (= `6c561f6` + the bend engine), frozen in the workspace: `builds\2026-10-18_cputest_nobends` (the roster as committed) and `builds\2026-10-18_cputest_gameplay-bends` (think, level2, boss and baropen, the shop's song, given a continuous bend wave on the three MIDI channels VRUN plays on square 1, square 2 and the triangle, with `"bends": true`; the MIDIs are in its `midi\`). The wave (`engine/audio/tests/inject_bends.py`: +-40 cents, a 32-frame triangle) keeps a slide running on every frame a note sounds; the converter played it on all three channels of all four songs (up to 150 slides and 6-60 pitch steps a channel; think's square 1, which plays little, got pitch steps only; some channels at a 20-40 cent moving tolerance to stay under 1,280 bytes). Bank 31 unchanged (1,777 free).
+
+**Method.** 17 of the game's own check scenes (busy combat in levels 0-5, the corruption detector's combat, level 2 combat, level 2's busiest rooms moving and firing, level 5's densest rooms with pickups, a whole-room sweep, the boss arena under HUD and heal-wrap stress, the shop reveal and the shop UAT, transitions, the SFX soak), run unchanged by Mesen with `tools/frame_headroom.lua` watching (`engine/audio/tests/gameplay_headroom.sh`, `headroom_compare.py`; committed on `audio-bends` as `3be2ecf`). Per frame: the main loop's spare cycles (from its call of `runtime_wait_nmi` to the NMI), an overrun (the NMI came while the main loop still worked), the NMI's length (entry to its RTI) and its `$2005` time. 69,612 frames per build; the two builds played the same game frame for frame (player, room, RNG, track) in 16 scenes and in the first 851 frames of the 17th.
+
+| scene | NMI mean (cycles) | NMI max | main loop's least spare | overruns (new with bends) |
+|---|---|---|---|---|
+| busy combat, levels 0-5 | 2,484-2,789 -> 2,670-2,978 | 2,975-3,540 -> 3,468-3,937 | 2,280 -> 2,157 (level 5) | 0 new |
+| level 2 combat / busiest rooms | 2,734 / 2,902 -> 2,937 / 3,109 | 3,565 / 3,827 -> 3,810 / 4,291 | 14,565 / 1,821 -> 13,773 / 1,635 | 0 new |
+| level 5 densest rooms | 2,501 -> 2,748 | 3,206 -> 3,798 | 1,695 -> 1,437 | 0 new |
+| whole-room sweep | 2,490 -> 2,732 | 3,226 -> 3,452 | **135 -> 162** (10 frames under 1,500 in both) | 0 new |
+| boss arena, HUD stress | 2,350 -> 2,395 | 3,147 -> 3,534 | 4,158 -> 3,948 | 0 new |
+| boss arena, heal wraps | 2,394 -> 2,912 | 3,302 -> 3,732 | **210 -> overrun** | **1 (frame 824)** |
+| shop reveal / shop UAT | 2,206 -> 2,454 | 2,924 -> 3,315 | 16,980 -> 16,983 | 0 new |
+
+- **The decoders' cost:** the NMI grows by about 190-255 cycles on an average frame while think or level2 bends (45 in the boss arena), and by up to about 1,000 on a frame. The decoders run after the vblank-critical writes, so the `$2005` time does not move for them (outside shop drawing, the two builds' `$2005` times differ by at most 17 cycles either way, from code placement).
+- **Where it matters:** the game's two heaviest moments already run close to the frame's end without bends: a whole-room sweep (least spare 135 cycles; this run's bending frames there happened to be lighter) and heal wraps in the boss arena (least spare 210). With bends, that boss-arena frame overran by the NMI's extra 200 cycles: the main loop missed one frame (one frame of slowdown; the NMI, music included, still ran), and from frame 852 the two runs played different games (the scene's own check still passed: all 179 heal bursts granted).
+- **A layout effect, not the decoders:** the bigger music data made NESFab place `shop_price` and `shop_write_digits5` in bank 0 instead of 3 and 10 (the same in a second build of each: reproducible), so every shop-drawing NMI writes `$2005` 78-81 cycles later (at most 2,064 of the 2,273-cycle budget in the shop scenes). In `audio_transition_check.lua`'s forced shop draw, which already writes late without bends (11 writes on the pre-render and first lines with rendering on), 18 land there.
+- **The game as merged** (no song bends, `builds\2026-10-18_nes_bends`): the same NMI as before the merge (busy level 0 and boss heal wraps: means 2,574 and 2,419, the same maxima), no new overrun, the shop code where it was.
+
+What this means for the user's decision to give a gameplay song bends: an average frame affords it easily; the sweep and the boss-arena heal wrap need a few hundred cycles found first (or the song's bends kept off those moments), and a build with the song's bends should be checked for where NESFab puts the shop code (`gameplay_headroom.sh` + `headroom_compare.py` do both in about 12 minutes).
+
+## 9. Into the game (the user's decisions 1-3, 2026-10-18)
+
+- `audio-bends` merged into the live VRUN (`C:\...\VRUN_Nes_Dev\sys0\simulations\VRUN`, branch `vrun-history-export`) with `--no-ff` as **`e5ba53f`**, on top of the user's tear fix `01264eb`; the branch's commits keep their ids (`237d7e4` converter, `40a7568` decoders, `bdd5e2a` spec 26, `ad3652c` tests). A merge, not a rebase: the ids were already reported, no file overlaps the tear fix, no conflict.
+- `./build.sh game`: "PASS - ROM matches the target cartridge spec."; `git status` clean. The generated `src/game/music_data.fab`, `music_decoders.fab`, `music_roster.fab` were rewritten by the build and their blobs equal HEAD's (`a7d305b`, `b55bae8`, `06e9950`): no song has `"bends": true`, no bend decoder, no `mus_*_vel` in the `.mlb`; bank 31 1,777 bytes free as before. Frozen: `builds\2026-10-18_nes_bends\vrun_game.nes` (sha256 `af7458dc628f22b1...`) + `.mlb`.
+- Not pushed (VRUN's origin is the workspace's `git\vrun-history.bundle`, which still ends at `6c561f6`). The measurement tools (`3be2ecf`) are on `audio-bends` only, not merged.
