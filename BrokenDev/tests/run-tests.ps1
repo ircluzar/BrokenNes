@@ -24,6 +24,8 @@ $bd = Split-Path -Parent $here
 . (Join-Path $bd 'lib\Manifest.ps1')
 . (Join-Path $bd 'lib\Build.ps1')
 . (Join-Path $bd 'lib\Verify.ps1')
+. (Join-Path $bd 'lib\Diff.ps1')
+. (Join-Path $bd 'lib\DevTools.ps1')
 
 $script:pass = 0; $script:fail = 0; $script:skip = 0
 $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('bdtests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -51,7 +53,8 @@ function Assert-Throws {
 
 function Save-Env { param([string[]]$Names) $h = @{}; foreach ($n in $Names) { $h[$n] = [Environment]::GetEnvironmentVariable($n) }; $h }
 function Restore-Env { param($Saved) foreach ($k in $Saved.Keys) { [Environment]::SetEnvironmentVariable($k, $Saved[$k]) } }
-$envNames = @('BROKENDEV_HOME', 'BROKENDEV_ARCHIVES', 'BROKENDEV_PROJECTS', 'BROKENDEV_ARCHIVES_JSON', 'BROKENDEV_PYTHON', 'BROKENDEV_WORKSHOP', 'BROKENNES_DEV', 'BROKENNES_CONFIG_DIR')
+$envNames = @('BROKENDEV_HOME', 'BROKENDEV_ARCHIVES', 'BROKENDEV_PROJECTS', 'BROKENDEV_ARCHIVES_JSON', 'BROKENDEV_PYTHON', 'BROKENDEV_WORKSHOP', 'BROKENNES_DEV', 'BROKENNES_CONFIG_DIR',
+              'BROKENDEV_DEVTOOLS', 'BROKENDEV_TRACE_LUA', 'BROKENDEV_LIVE_SYNTH', 'BROKENDEV_LIVE_MISSING', 'BD_TEST_TOOL_VAR')
 $savedEnv = Save-Env $envNames
 
 try {
@@ -250,6 +253,241 @@ try {
         $rec = Invoke-BdProjectBuild -Id 'synth-dry' -DryRun
         Assert-Equal @($rec.steps).Count 1
         Assert-True (-not (Test-Path (Join-Path (Get-BdHome) 'synth\sub\dry.flag'))) 'the dry run executed the step'
+    }
+
+    # ------------------------------------------------------------------------------------------ live workspaces
+    Write-Host 'live workspaces'
+    $liveRoot = Join-Path $tmpRoot 'liveproj'
+    $liveName = 'bdlive-' + [guid]::NewGuid().ToString('N').Substring(0, 6)
+    $liveWs = Join-Path $liveRoot $liveName
+    $wt = Join-Path $liveRoot 'Repo\.claude\worktrees\wt'     # a git worktree's place inside a checkout
+    New-Item -ItemType Directory -Force -Path (Join-Path $liveWs 'sub'), $wt | Out-Null
+    Set-Content (Join-Path $liveWs 'sub\live.flag') 'live'
+    $liveTable = @{ schema = 1; archives = @{ synth = @{ file = 'synth.zip'; extractTo = 'synth'; stripTop = 'Top'; include = @(); exclude = @('skip\*'); roots = @{ synthroot = 'sub'; other = '.' }; sentinels = @('keep.txt', 'sub/sentinel.txt')
+                                                       live = @{ folder = $liveName; roots = @{ synthroot = 'sub' }; sentinels = @('sub/live.flag') } } } }
+    Save-BdJson -Object $liveTable -Path (Join-Path $tmpRoot 'archives-live.json') -Depth 10
+    $tableBefore = $env:BROKENDEV_ARCHIVES_JSON
+    $env:BROKENDEV_ARCHIVES_JSON = Join-Path $tmpRoot 'archives-live.json'
+    Test-Case 'a live workspace beside a parent of the repository is found (a git worktree finds the main checkout''s neighbour)' {
+        $spec = Get-BdArchiveSpec -Id synth
+        Assert-Equal (Find-BdLiveFolder -Spec $spec -SearchFrom $wt) $liveWs
+        $w = Get-BdWorkspace -Id synth -SearchFrom $wt
+        Assert-Equal $w.Kind 'live'
+        Assert-Equal $w.Path $liveWs
+    }
+    Test-Case 'NEGATIVE: a folder with the right name but without the live sentinels is not taken for the workspace' {
+        Remove-Item (Join-Path $liveWs 'sub\live.flag')
+        try {
+            $spec = Get-BdArchiveSpec -Id synth
+            Assert-True ($null -eq (Find-BdLiveFolder -Spec $spec -SearchFrom $wt)) 'a folder without the sentinels was accepted'
+            Assert-True ((Get-BdWorkspace -Id synth -SearchFrom $wt).Kind -ne 'live') 'the workspace is live without its sentinels'
+        } finally { Set-Content (Join-Path $liveWs 'sub\live.flag') 'live' }
+    }
+    Test-Case 'BROKENDEV_LIVE_<ARCHIVE> names the live folder; the roots it maps come from it, the others from the restored copy' {
+        $env:BROKENDEV_LIVE_SYNTH = $liveWs
+        try {
+            $w = Get-BdWorkspace -Id synth
+            Assert-Equal $w.Kind 'live'
+            Assert-Equal $w.Source 'BROKENDEV_LIVE_SYNTH'
+            $r = Get-BdArchiveRoots -Detailed
+            Assert-Equal $r['synthroot'].Path (Join-Path $liveWs 'sub')
+            Assert-Equal $r['synthroot'].From 'live'
+            Assert-Equal $r['other'].From 'restored'
+            Assert-Equal $r['other'].Path (Join-Path (Get-BdHome) 'synth')
+        } finally { $env:BROKENDEV_LIVE_SYNTH = $null }
+    }
+    Test-Case 'NEGATIVE: BROKENDEV_LIVE_<ARCHIVE> pointing at a folder that is not the workspace is an error, not a silent fallback' {
+        $env:BROKENDEV_LIVE_SYNTH = Join-Path $tmpRoot 'archives'
+        try { Assert-Throws { Get-BdWorkspace -Id synth } 'missing' } finally { $env:BROKENDEV_LIVE_SYNTH = $null }
+    }
+    Test-Case 'NEGATIVE: BROKENDEV_LIVE_<ARCHIVE>=off uses the restored copy even when a live workspace exists' {
+        $env:BROKENDEV_LIVE_SYNTH = 'off'
+        try {
+            $w = Get-BdWorkspace -Id synth -SearchFrom $wt
+            Assert-True ($w.Kind -ne 'live') "off still gave $($w.Kind)"
+            Assert-Equal (Get-BdArchiveRoots)['synthroot'] (Join-Path (Get-BdHome) 'synth\sub')
+        } finally { $env:BROKENDEV_LIVE_SYNTH = $null }
+    }
+    Test-Case 'a project builds in its live workspace with nothing restored; NEGATIVE: with the live workspace off and nothing restored, the build is refused' {
+        if (-not $hasBash) { Skip-Test 'Git Bash missing' }
+        $env:BROKENDEV_HOME = Join-Path $tmpRoot 'home-live'    # nothing is restored in this home
+        $env:BROKENDEV_LIVE_SYNTH = $liveWs
+        try {
+            New-SynthProject -Id 'synth-live' -Run 'printf "LIVE%s" $RANDOM > rom.bin'
+            $rec = Invoke-BdProjectBuild -Id 'synth-live'
+            Assert-True $rec.ok 'record not ok'
+            Assert-Equal $rec.workspace.kind 'live'
+            Assert-True (Test-Path (Join-Path $liveWs 'sub\rom.bin')) 'the build did not run in the live workspace'
+            $env:BROKENDEV_LIVE_SYNTH = 'off'
+            Assert-Throws { Invoke-BdProjectBuild -Id 'synth-live' } 'restore'
+        } finally { $env:BROKENDEV_LIVE_SYNTH = $null; $env:BROKENDEV_HOME = Join-Path $tmpRoot 'home' }
+    }
+    Test-Case 'the shipped archives.json live sections validate; NEGATIVE: a live root that is not an archive root is rejected' {
+        $env:BROKENDEV_ARCHIVES_JSON = $null
+        $e = @(Test-BdArchiveLive -Table (Get-BdArchiveTable))
+        Assert-True ($e.Count -eq 0) ($e -join '; ')
+        $env:BROKENDEV_ARCHIVES_JSON = Join-Path $tmpRoot 'archives-live.json'
+        $t = Get-BdArchiveTable
+        $t['synth'].live.roots | Add-Member -NotePropertyName nosuchroot -NotePropertyValue 'x'
+        Assert-True ((@(Test-BdArchiveLive -Table $t) -join ';') -match 'nosuchroot') 'an unknown live root was accepted'
+    }
+    $env:BROKENDEV_ARCHIVES_JSON = $tableBefore
+
+    # ------------------------------------------------------------------------------------------ developer tools (devtools.json)
+    Write-Host 'developer tools'
+    Test-Case 'the shipped devtools.json validates against the shipped projects' {
+        $saveP = $env:BROKENDEV_PROJECTS; $env:BROKENDEV_PROJECTS = $null; $env:BROKENDEV_DEVTOOLS = $null
+        try { $e = @(Test-BdDevtools -J (Read-BdJson (Get-BdDevtoolsPath)) -ProjectIds (Get-BdProjectIds)); Assert-True ($e.Count -eq 0) ($e -join '; ') }
+        finally { $env:BROKENDEV_PROJECTS = $saveP }
+    }
+    $dtGood = Read-BdJson (Join-Path $bd 'devtools.json')
+    $dtMut = { param([scriptblock]$Edit) $c = ($dtGood | ConvertTo-Json -Depth 30) | ConvertFrom-Json; & $Edit $c; @(Test-BdDevtools -J $c -ProjectIds @('vrun-nes', 'vrun-nested', 'supervrun')) }
+    Test-Case 'NEGATIVE: a server without a port, two servers on one port, an unknown project, a script without a timeout are rejected' {
+        $e = & $dtMut { param($j) ($j.tools | Where-Object { $_.kind -eq 'server' } | Select-Object -First 1).PSObject.Properties.Remove('port') }
+        Assert-True (($e -join ';') -match "needs its 'port'") ($e -join '; ')
+        $e = & $dtMut { param($j) $s = @($j.tools | Where-Object { $_.kind -eq 'server' }); $s[1].port = $s[0].port }
+        Assert-True (($e -join ';') -match 'also the port') ($e -join '; ')
+        $e = & $dtMut { param($j) $j.tools[0].project = 'nes-zelda' }
+        Assert-True (($e -join ';') -match 'not a BrokenDev project') ($e -join '; ')
+        $e = & $dtMut { param($j) ($j.tools | Where-Object { $_.kind -eq 'script' } | Select-Object -First 1).timeoutSec = 0 }
+        Assert-True (($e -join ';') -match 'timeoutSec') ($e -join '; ')
+    }
+    Test-Case 'every shipped tool finds its folder and scripts in the live workspace; NEGATIVE: a tool naming a missing script is reported' {
+        $saveP = $env:BROKENDEV_PROJECTS; $saveA = $env:BROKENDEV_ARCHIVES_JSON
+        $env:BROKENDEV_PROJECTS = $null; $env:BROKENDEV_ARCHIVES_JSON = $null
+        try {
+            $live = @((Get-BdArchiveTable).Keys | Where-Object { (Get-BdWorkspace -Id $_).Kind -eq 'live' })
+            if ($live.Count -eq 0) { Skip-Test 'no live workspace beside the repository on this machine' }
+            $bad = @(); $checked = 0
+            foreach ($t in (Read-BdDevtools)) {
+                $arch = [string](Read-BdManifest -Id ([string]$t.project)).source.archive
+                if ((Get-BdWorkspace -Id $arch).Kind -ne 'live') { continue }
+                $checked++
+                $m = @(Test-BdToolFiles -Tool $t -Ctx (New-BdToolContext $t)); if ($m.Count) { $bad += "$($t.id): $($m -join ', ')" }
+            }
+            Assert-True ($bad.Count -eq 0) ($bad -join ' | ')
+            Assert-True ($checked -ge 10) "only $checked tools were checked"
+            $t0 = (Read-BdDevtools)[0] | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+            $t0.run = @('{python}', 'tools/no_such_tool.py')
+            Assert-True ((@(Test-BdToolFiles -Tool $t0 -Ctx (New-BdToolContext $t0)) -join ';') -match 'no_such_tool') 'a missing script was not reported'
+        } finally { $env:BROKENDEV_PROJECTS = $saveP; $env:BROKENDEV_ARCHIVES_JSON = $saveA }
+    }
+    $toolDir = Join-Path $tmpRoot 'toolsrv'
+    New-Item -ItemType Directory -Force -Path $toolDir | Out-Null
+    Set-Content (Join-Path $toolDir 'index.html') '<html><body>bd-synthetic-tool</body></html>'
+    function Get-FreePort { $l = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0); $l.Start(); $p = $l.LocalEndpoint.Port; $l.Stop(); $p }
+    $srvPort = Get-FreePort; $busyPort = Get-FreePort
+    while ($busyPort -eq $srvPort) { $busyPort = Get-FreePort }
+    $synthTools = @{ schema = 1; tools = @(
+        @{ id = 'synth-server'; title = 'synthetic server'; project = 'synth-ok'; edits = 'nothing'; kind = 'server'; cwd = $toolDir; run = @('{python}', '-m', 'http.server', [string]$srvPort, '--bind', '127.0.0.1'); port = $srvPort; probe = '/index.html'; probeText = 'bd-synthetic-tool'; from = 'test' },
+        @{ id = 'synth-busy'; title = 'synthetic server on a taken port'; project = 'synth-ok'; edits = 'nothing'; kind = 'server'; cwd = $toolDir; run = @('{python}', '-m', 'http.server', [string]$busyPort, '--bind', '127.0.0.1'); port = $busyPort; probe = '/index.html'; probeText = 'bd-synthetic-tool'; from = 'test' },
+        @{ id = 'synth-script'; title = 'synthetic script'; project = 'synth-ok'; edits = 'nothing'; kind = 'script'; cwd = $toolDir; run = @('{bash}', '-c', 'echo "var=$BD_TEST_TOOL_VAR args=$*"; exit "$1"', 'x'); env = @{ BD_TEST_TOOL_VAR = 'from-entry' }; timeoutSec = 60; from = 'test' },
+        @{ id = 'synth-page'; title = 'synthetic page'; project = 'synth-ok'; edits = 'nothing'; kind = 'page'; cwd = $toolDir; run = @('{bash}', '-c', 'mkdir -p "$1" && echo "<html>page</html>" > "$1/index.html"', 'x', '{work}'); open = '{work}/index.html'; timeoutSec = 60; from = 'test' },
+        @{ id = 'synth-nopage'; title = 'synthetic page that writes nothing'; project = 'synth-ok'; edits = 'nothing'; kind = 'page'; cwd = $toolDir; run = @('{bash}', '-c', 'true'); open = '{work}/never.html'; timeoutSec = 60; from = 'test' }
+    ) }
+    Save-BdJson -Object $synthTools -Path (Join-Path $tmpRoot 'devtools.json') -Depth 10
+    $env:BROKENDEV_DEVTOOLS = Join-Path $tmpRoot 'devtools.json'
+    $toolsReady = ($sevenZip -and $hasBash -and (Test-Path (Join-Path $projDir 'synth-ok\project.json')))
+    Test-Case 'a server tool starts hidden, answers its probe, is reused when started again, and stops by the PID BrokenDev recorded' {
+        if (-not ($toolsReady -and (Find-BdPython))) { Skip-Test 'Python, 7-Zip or Git Bash missing' }
+        $t = Get-BdTool -Id 'synth-server'; $ctx = New-BdToolContext $t
+        $r = Start-BdServerTool -Tool $t -Ctx $ctx
+        try {
+            Assert-True (-not $r.Reused) 'the first start was reported as a reuse'
+            Assert-True (Test-BdToolProbe $t) 'the server does not answer its probe'
+            $r2 = Start-BdServerTool -Tool $t -Ctx $ctx
+            Assert-True $r2.Reused 'a second start did not reuse the running server'
+        } finally { [void](Stop-BdServerTool $t) }
+        Start-Sleep -Milliseconds 800
+        Assert-True (-not (Test-BdPortOpen -Port $srvPort)) 'the server still listens after Stop'
+    }
+    Test-Case 'NEGATIVE: a tool whose port is taken by another program is refused, and that program is left running' {
+        if (-not ($toolsReady -and (Find-BdPython))) { Skip-Test 'Python, 7-Zip or Git Bash missing' }
+        $l = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, $busyPort); $l.Start()
+        try {
+            $t = Get-BdTool -Id 'synth-busy'
+            Assert-Throws { Start-BdServerTool -Tool $t -Ctx (New-BdToolContext $t) } 'taken by'
+            Assert-True (Test-BdPortOpen -Port $busyPort) 'the program on the port was stopped'
+        } finally { $l.Stop() }
+    }
+    Test-Case 'a script tool runs in its folder with its env defaults and extra arguments; NEGATIVE: a failing script returns its failure' {
+        if (-not $toolsReady) { Skip-Test '7-Zip or Git Bash missing' }
+        $t = Get-BdTool -Id 'synth-script'; $ctx = New-BdToolContext $t
+        Assert-Equal (Invoke-BdScriptTool -Tool $t -Ctx $ctx -Extra @('0')) 0
+        $log = [System.IO.File]::ReadAllText((Join-Path $ctx['work'] 'run.log'))
+        Assert-True ($log -match 'var=from-entry args=0') "the entry's env default or the argument did not reach the script: $log"
+        $env:BD_TEST_TOOL_VAR = 'from-caller'
+        try {
+            [void](Invoke-BdScriptTool -Tool $t -Ctx $ctx -Extra @('0'))
+            Assert-True ([System.IO.File]::ReadAllText((Join-Path $ctx['work'] 'run.log')) -match 'var=from-caller') 'the caller''s own value did not win'
+        } finally { $env:BD_TEST_TOOL_VAR = $null }
+        Assert-Equal (Invoke-BdScriptTool -Tool $t -Ctx $ctx -Extra @('3')) 3
+    }
+    Test-Case 'a page tool writes and offers its page; NEGATIVE: a page tool whose steps write nothing fails' {
+        if (-not $toolsReady) { Skip-Test '7-Zip or Git Bash missing' }
+        Assert-Equal (Invoke-BdTool -Id 'synth-page' -NoBrowser) 0
+        Assert-True (Test-Path (Join-Path (Get-BdHome) 'work\tools\synth-page\index.html')) 'no page was written'
+        Assert-Throws { Invoke-BdTool -Id 'synth-nopage' -NoBrowser } 'did not write'
+    }
+    $env:BROKENDEV_DEVTOOLS = $null
+    Test-Case 'diff uses BrokenDev''s copy of the user''s Mesen tracer, NEGATIVE: unless BROKENDEV_TRACE_LUA names another; the 20 sys0 scripts are all there' {
+        $env:BROKENDEV_TRACE_LUA = $null
+        Assert-Equal (Get-BdTraceLua) (Join-Path $bd 'tools\vrun\mesen\state_trace.lua')
+        Assert-True (Test-Path (Get-BdTraceLua)) 'the copy is missing'
+        $env:BROKENDEV_TRACE_LUA = 'X:\elsewhere\state_trace.lua'
+        try { Assert-Equal (Get-BdTraceLua) 'X:\elsewhere\state_trace.lua' } finally { $env:BROKENDEV_TRACE_LUA = $null }
+        $names = @(Get-ChildItem (Join-Path $bd 'tools\vrun\mesen') -File | ForEach-Object { $_.Name })
+        Assert-Equal $names.Count 20 ("files: " + ($names -join ', '))
+    }
+    Test-Case 'the Nested Builder state of the old machine is repaired (Mesen, destinations, recent ROMs); NEGATIVE: a Mesen that exists is kept' {
+        $nb = Join-Path $tmpRoot 'nb'; $pipe = Join-Path $nb 'pipe'; $vr = Join-Path $nb 'vrun'
+        New-Item -ItemType Directory -Force -Path (Join-Path $pipe 'out\ui'), (Join-Path $vr 'tools\mesen'), (Join-Path $vr 'build') | Out-Null
+        Set-Content (Join-Path $vr 'tools\mesen\Mesen.exe') 'x'; Set-Content (Join-Path $vr 'build\vrun_game.nes') 'x'
+        $old = @{ recent = @(@{ path = 'C:\PROJECTS\sys0\simulations\VRUN\build\vrun_game.nes'; name = 'vrun_game.nes'; ts = 1 }); mesen_exe = 'C:\PROJECTS\sys0\simulations\VRUN\tools\mesen\Mesen.exe'
+                  dest_by_rom = @{ 'c:\users\user\desktop\vrun_game.nes' = 'C:\Users\user\Desktop\Nested_VRUN\x.smc' }
+                  dest_by_name = @{ 'vrun_game.nes' = 'C:\Users\user\Desktop\Nested_VRUN\x.smc'; 'keep.nes' = (Join-Path $nb 'keep.smc') } }
+        $sp = Join-Path $pipe 'out\ui\state.json'
+        Save-BdJson -Object $old -Path $sp
+        $ctx = @{ Roots = @{ m30pipe = $pipe; vrun = $vr } }
+        Update-BdNestedBuilderState -Ctx $ctx
+        $st = Read-BdJson $sp
+        Assert-Equal $st.mesen_exe (Join-Path $vr 'tools\mesen\Mesen.exe')
+        Assert-True ($null -eq $st.dest_by_name.PSObject.Properties['vrun_game.nes']) 'a destination in a folder that does not exist was kept'
+        Assert-True ($null -ne $st.dest_by_name.PSObject.Properties['keep.nes']) 'a valid destination was dropped'
+        Assert-Equal @($st.recent)[0].path (Join-Path $vr 'build\vrun_game.nes')
+        Assert-True (Test-Path "$sp.oldmachine") 'the original state was not kept'
+        $mine = Join-Path $nb 'MyMesen.exe'; Set-Content $mine 'x'
+        $st.mesen_exe = $mine; Save-BdJson -Object $st -Path $sp
+        Update-BdNestedBuilderState -Ctx $ctx
+        Assert-Equal (Read-BdJson $sp).mesen_exe $mine
+    }
+    Test-Case 'the SFX configurator lists every trigger call site with its clip; NEGATIVE: a renderer copy that differs from the game is flagged on the page' {
+        $spy = Find-BdPython; if (-not $spy) { Skip-Test 'no Python with pillow and numpy' }
+        $sv = Join-Path $tmpRoot 'sfxvrun'
+        New-Item -ItemType Directory -Force -Path "$sv\src\game", "$sv\engine\audio", "$sv\tools" | Out-Null
+        [System.IO.File]::WriteAllText("$sv\src\game\main.fab", "fn foo()`n    trigger_sfx_sq2_bleep()`nfn damage_player()`n    trigger_hit_sfx()`nmode main()`n    if paused`n        trigger_fire_sfx()`n    // trigger_sfx_noise_boom() in a comment is not a call`n")
+        [System.IO.File]::WriteAllText("$sv\engine\audio\audio_engine.fab", "data /music`n    [] sfx_fire`n        U[3](1, 2, 255)`n    [] sfx_hit`n        U[2](3, 255)`n    [] sfx_bleep`n        U[2](4, 255)`n")
+        $zeros = ((1..128 | ForEach-Object { '0' }) -join ', ')
+        [System.IO.File]::WriteAllText("$sv\src\game\music_data.fab", "ct U[128] PERIOD_LO = U[128]($zeros)`nct U[128] PERIOD_HI = U[128]($zeros)`n")
+        $stub = { param($bleep) "import argparse, wave`nSQ2_CLIPS = {'fire': [1, 2, 255], 'bleep': $bleep}`nNOISE_CLIPS = {'hit': [3, 255]}`nPERIOD_LO = [0] * 128`nPERIOD_HI = [0] * 128`ndef main():`n    ap = argparse.ArgumentParser(); ap.add_argument('--out-dir', required=True); a = ap.parse_args()`n    for fam, t in (('sq2', SQ2_CLIPS), ('noise', NOISE_CLIPS)):`n        for n in t:`n            w = wave.open(a.out_dir + '/' + fam + '_' + n + '.wav', 'wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100); w.writeframes(b'\x00\x10' * 441); w.close()`nif __name__ == '__main__':`n    main()`n" }
+        [System.IO.File]::WriteAllText("$sv\tools\render_sfx_wav.py", (& $stub '[4, 255]'))
+        $gen = Join-Path $bd 'tools\vrun\sfx-configurator\generate.py'
+        $out = Join-Path $tmpRoot 'sfxout'
+        $r = Invoke-BdProcess -FilePath $spy.Path -Arguments @($gen, '--vrun', $sv, '--out', $out) -TimeoutSec 120
+        Assert-Equal $r.ExitCode 0 $r.Output
+        $j = Read-BdJson (Join-Path $out 'events.json')
+        Assert-Equal @($j.sites).Count 3 ('sites: ' + (@($j.sites | ForEach-Object { "$($_.fn):$($_.line)" }) -join ', '))
+        $hurt = @($j.events | Where-Object { $_.id -eq 'player_hurt' })[0]
+        Assert-True ($hurt -and $hurt.current -eq 'noise_hit' -and $hurt.loc -eq 'main.fab:4 in damage_player()') "player_hurt row: $($hurt | ConvertTo-Json -Compress)"
+        Assert-Equal @($j.warnings).Count 0 ($j.warnings -join '; ')
+        $page = [System.IO.File]::ReadAllText((Join-Path $out 'index.html'))
+        Assert-True ($page -notmatch '/\*__|__N_CLIPS__|__WARNINGS__|__FOOTER__') 'a placeholder was left in the page'
+        Assert-True ($page -match 'function buildConfigJson') 'the export code of the August page is gone'
+        [System.IO.File]::WriteAllText("$sv\tools\render_sfx_wav.py", (& $stub '[5, 255]'))
+        $r = Invoke-BdProcess -FilePath $spy.Path -Arguments @($gen, '--vrun', $sv, '--out', $out) -TimeoutSec 120
+        $j = Read-BdJson (Join-Path $out 'events.json')
+        Assert-True ((@($j.warnings) -join ' ') -match 'sq2_bleep') "no warning for the stale clip: $($j.warnings -join '; ')"
+        Assert-True ([System.IO.File]::ReadAllText((Join-Path $out 'index.html')) -match 'Check before trusting the sounds') 'the page does not show the warning'
     }
 
     # ------------------------------------------------------------------------------------------ tools and doctor
