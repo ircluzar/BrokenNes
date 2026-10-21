@@ -383,7 +383,10 @@ try {
         @{ id = 'synth-busy'; title = 'synthetic server on a taken port'; project = 'synth-ok'; edits = 'nothing'; kind = 'server'; cwd = $toolDir; run = @('{python}', '-m', 'http.server', [string]$busyPort, '--bind', '127.0.0.1'); port = $busyPort; probe = '/index.html'; probeText = 'bd-synthetic-tool'; from = 'test' },
         @{ id = 'synth-script'; title = 'synthetic script'; project = 'synth-ok'; edits = 'nothing'; kind = 'script'; cwd = $toolDir; run = @('{bash}', '-c', 'echo "var=$BD_TEST_TOOL_VAR args=$*"; exit "$1"', 'x'); env = @{ BD_TEST_TOOL_VAR = 'from-entry' }; timeoutSec = 60; from = 'test' },
         @{ id = 'synth-page'; title = 'synthetic page'; project = 'synth-ok'; edits = 'nothing'; kind = 'page'; cwd = $toolDir; run = @('{bash}', '-c', 'mkdir -p "$1" && echo "<html>page</html>" > "$1/index.html"', 'x', '{work}'); open = '{work}/index.html'; timeoutSec = 60; from = 'test' },
-        @{ id = 'synth-nopage'; title = 'synthetic page that writes nothing'; project = 'synth-ok'; edits = 'nothing'; kind = 'page'; cwd = $toolDir; run = @('{bash}', '-c', 'true'); open = '{work}/never.html'; timeoutSec = 60; from = 'test' }
+        @{ id = 'synth-nopage'; title = 'synthetic page that writes nothing'; project = 'synth-ok'; edits = 'nothing'; kind = 'page'; cwd = $toolDir; run = @('{bash}', '-c', 'true'); open = '{work}/never.html'; timeoutSec = 60; from = 'test' },
+        @{ id = 'synth-okexit'; title = 'synthetic script whose exit 1 means done'; project = 'synth-ok'; edits = 'nothing'; kind = 'script'; cwd = $toolDir; run = @('{bash}', '-c', 'exit "$1"', 'x'); okExitCodes = @(1); timeoutSec = 60; from = 'test' },
+        @{ id = 'synth-pymod'; title = 'synthetic tool that needs numpy'; project = 'synth-ok'; edits = 'nothing'; kind = 'script'; cwd = $toolDir; run = @('{python}', '-c', 'import numpy'); pythonModules = @('numpy'); timeoutSec = 60; from = 'test' },
+        @{ id = 'synth-nomod'; title = 'synthetic tool that needs a module no Python has'; project = 'synth-ok'; edits = 'nothing'; kind = 'script'; cwd = $toolDir; run = @('{python}', '-c', 'pass'); pythonModules = @('bd_no_such_module'); timeoutSec = 60; from = 'test' }
     ) }
     Save-BdJson -Object $synthTools -Path (Join-Path $tmpRoot 'devtools.json') -Depth 10
     $env:BROKENDEV_DEVTOOLS = Join-Path $tmpRoot 'devtools.json'
@@ -428,6 +431,17 @@ try {
         Assert-Equal (Invoke-BdTool -Id 'synth-page' -NoBrowser) 0
         Assert-True (Test-Path (Join-Path (Get-BdHome) 'work\tools\synth-page\index.html')) 'no page was written'
         Assert-Throws { Invoke-BdTool -Id 'synth-nopage' -NoBrowser } 'did not write'
+    }
+    Test-Case 'an exit code a tool declares as done counts as success; NEGATIVE: any other non-zero exit still fails' {
+        if (-not $toolsReady) { Skip-Test '7-Zip or Git Bash missing' }
+        $t = Get-BdTool -Id 'synth-okexit'; $ctx = New-BdToolContext $t
+        Assert-Equal (Invoke-BdScriptTool -Tool $t -Ctx $ctx -Extra @('1')) 0
+        Assert-Equal (Invoke-BdScriptTool -Tool $t -Ctx $ctx -Extra @('2')) 2
+    }
+    Test-Case 'a tool that needs Python modules gets a Python that has them; NEGATIVE: a module no Python has is refused with its name' {
+        if (-not ($toolsReady -and (Find-BdPython))) { Skip-Test 'Python, 7-Zip or Git Bash missing' }
+        Assert-Equal (Invoke-BdTool -Id 'synth-pymod') 0
+        Assert-Throws { Invoke-BdTool -Id 'synth-nomod' } 'bd_no_such_module'
     }
     $env:BROKENDEV_DEVTOOLS = $null
     Test-Case 'diff uses BrokenDev''s copy of the user''s Mesen tracer, NEGATIVE: unless BROKENDEV_TRACE_LUA names another; the 20 sys0 scripts are all there' {

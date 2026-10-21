@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "_doc": "The developer tools made while developing the games, as BrokenDev starts them: 'brokendev.ps1 tools' lists them, 'brokendev.ps1 tool <id> [args...]' starts one against the project's workspace (the LIVE one when it sits beside the repository). Nothing here re-implements a tool: 'run' is the command the tool was always started with. kind: 'server' = a local web UI on its own port (BrokenDev starts it hidden, waits until 'probe' answers, opens 'url' in the default browser; a copy already answering on the port is reused, anything else on the port is reported, never stopped); 'script' = runs once in the foreground (the arguments after the tool id are added to the last step); 'page' = its steps write a page, 'open' is opened in the browser. Placeholders: {root:<name>} (archives.json roots), {python} (a Python 3.10+ with pillow and numpy; 'minPython' asks more), {node}, {bash} (Git Bash), {work} (BROKENDEV_HOME\\work\\tools\\<id>), {home}, {bd}, {repo}. 'env' values are defaults: a variable already set in the caller's environment wins. 'prepare' names a fix BrokenDev applies first (lib\\DevTools.ps1). 'from' says where the tool came from. The record of all of this is docs/projects/brokendev-tools.md.",
+  "_doc": "The developer tools made while developing the games, as BrokenDev starts them: 'brokendev.ps1 tools' lists them, 'brokendev.ps1 tool <id> [args...]' starts one against the project's workspace (the LIVE one when it sits beside the repository). Nothing here re-implements a tool: 'run' is the command the tool was always started with. kind: 'server' = a local web UI on its own port (BrokenDev starts it hidden, waits until 'probe' answers, opens 'url' in the default browser; a copy already answering on the port is reused, anything else on the port is reported, never stopped); 'script' = runs once in the foreground (the arguments after the tool id are added to the last step); 'page' = its steps write a page, 'open' is opened in the browser. Placeholders: {root:<name>} (archives.json roots), {python} (a Python 3.10+ with pillow and numpy; 'minPython' and 'pythonModules' ask more, and that Python is also first on PATH for the tool's own scripts), {node}, {bash} (Git Bash), {work} (BROKENDEV_HOME\\work\\tools\\<id>), {home}, {bd}, {repo}. 'env' values are defaults: a variable already set in the caller's environment wins. 'okExitCodes' lists exit codes besides 0 that mean the script finished normally. 'prepare' names a fix BrokenDev applies first (lib\\DevTools.ps1). 'from' says where the tool came from. The record of all of this is docs/projects/brokendev-tools.md.",
   "tools": [
     {
       "id": "vrun-tile-editor",
@@ -147,6 +147,8 @@
       "cwd": "{root:vrun}",
       "run": ["{root:vrun}/tools/mesen/Mesen.exe", "{root:vrun}/build/vrun_game.nes", "--luaScriptsToLoad", "{root:vrun}/tools/screenshot.lua", "--testRunner"],
       "env": { "VRUN_CAPTURE_OUT": "{work}/capture.png" },
+      "okExitCodes": [1],
+      "okExitNote": "screenshot.lua ends with emu.stop(1) once the PNG is written",
       "timeoutSec": 300,
       "from": "VRUN repository tools/screenshot.lua"
     },
@@ -258,6 +260,9 @@
       "kind": "script",
       "cwd": "{root:supervrun}",
       "run": ["{bash}", "tools/music/make_modules.sh"],
+      "pythonModules": ["mido"],
+      "env": { "MNES_SF2": "{root:svrunpkg}/desktop/MNES.sf2" },
+      "envNote": "sf2it.py looks for the SoundFont at the old machine's C:\\Users\\pgirard\\Desktop\\MNES.sf2 unless MNES_SF2 says otherwise; it is in the Super VRUN package (desktop/), which only the restored copy has",
       "timeoutSec": 1200,
       "from": "Super VRUN repository snes-dev/supervrun/tools/music/make_modules.sh (the 2026-09-27 music benchmark)"
     }

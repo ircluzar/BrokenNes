@@ -47,6 +47,7 @@ function Test-BdDevtools {
             if (-not [string](Get-BdProp $t 'probe' '')) { $e.Add("tool '$id': a server needs a 'probe' path (a GET that answers when the tool is up)") }
         }
         if ($kind -eq 'page' -and -not [string](Get-BdProp $t 'open' '')) { $e.Add("tool '$id': a page needs 'open' (the file its steps write)") }
+        foreach ($c in @(Get-BdProp $t 'okExitCodes' @())) { if ([string]$c -notmatch '^\d+$') { $e.Add("tool '$id': okExitCodes must be numbers, found '$c'") } }
         if ($kind -in 'script', 'page' -and [int](Get-BdProp $t 'timeoutSec' 0) -le 0) { $e.Add("tool '$id': timeoutSec must be a positive number") }
     }
     @($e)
@@ -79,11 +80,43 @@ function Get-BdTool {
     $t
 }
 
+function Find-BdPythonFor {
+    <#
+      The first Python (BROKENDEV_PYTHON when set, else every candidate) that is at least $MinVersion and has Pillow, NumPy and
+      $Modules (among those Get-BdPythonInfo probes: scipy, soundfile, mido). $null when none has them.
+    #>
+    param([string[]]$Modules = @(), [string]$MinVersion = '3.10')
+    $cands = if ($env:BROKENDEV_PYTHON) { @($env:BROKENDEV_PYTHON) } else { @(Get-BdPythonCandidates) }
+    foreach ($p in $cands) {
+        $i = Get-BdPythonInfo -Path $p
+        if (-not $i -or $i.Version -lt [version]$MinVersion) { continue }
+        $ok = $true
+        foreach ($mod in @('PIL', 'numpy') + $Modules) { if (-not $i.Modules.ContainsKey($mod) -or $i.Modules[$mod] -eq 'MISSING') { $ok = $false } }
+        if ($ok) { return $i }
+    }
+    $null
+}
+
 function New-BdToolContext {
-    <# Placeholders for a tool: the project's (roots, python, out ...) plus {work} = BROKENDEV_HOME\work\tools\<id>, {node}, {bash}. #>
+    <#
+      Placeholders for a tool: the project's (roots, python, out ...) plus {work} = BROKENDEV_HOME\work\tools\<id>, {node}, {bash}.
+      A tool that names 'minPython' or 'pythonModules' gets the first Python that has them ({python}, and first on PATH for its children);
+      when none has them, ctx['pythonMissing'] says what is missing.
+    #>
     param([Parameter(Mandatory)]$Tool)
     $m = Read-BdManifest -Id ([string]$Tool.project)
     $ctx = New-BdContext $m
+    $minPy = [string](Get-BdProp $Tool 'minPython' '')
+    $mods = @(Get-BdProp $Tool 'pythonModules' @())
+    if ($minPy -or $mods.Count -gt 0) {
+        $want = if ($minPy) { $minPy } else { '3.10' }
+        $py = Find-BdPythonFor -Modules $mods -MinVersion $want
+        if ($py) { $ctx['python'] = $py.Path; $ctx['pythondir'] = Split-Path -Parent $py.Path }
+        else {
+            [void]$ctx.Remove('python'); [void]$ctx.Remove('pythondir')
+            $ctx['pythonMissing'] = "a Python $want or newer with pillow, numpy$(if ($mods.Count) { ', ' + ($mods -join ', ') })"
+        }
+    }
     $ctx['work'] = Join-Path (Join-Path (Join-Path (Get-BdHome) 'work') 'tools') ([string]$Tool.id)
     $node = Find-BdExecutable -Name 'node.exe' -Candidates @("$env:ProgramFiles\nodejs\node.exe")
     if ($node) { $ctx['node'] = $node }
@@ -100,7 +133,7 @@ function Expand-BdToolArgs {
         $s = [string]$a
         foreach ($need in 'python', 'node', 'bash') {
             if ($s -match "\{$need\}" -and -not $Ctx.ContainsKey($need)) {
-                $what = @{ python = 'a Python 3.10+ with pillow and numpy'; node = 'Node.js'; bash = 'Git Bash' }[$need]
+                $what = @{ python = $(if ($Ctx.ContainsKey('pythonMissing')) { [string]$Ctx['pythonMissing'] } else { 'a Python 3.10+ with pillow and numpy' }); node = 'Node.js'; bash = 'Git Bash' }[$need]
                 throw "tool ${ToolId}: needs $what, which this machine does not have (run brokendev.ps1 doctor)"
             }
         }
@@ -342,6 +375,9 @@ function Invoke-BdScriptTool {
         finally { Restore-BdToolEnv $undo; $env:PATH = $pathBefore }
         $code = $r.ExitCode
         if ($r.TimedOut) { Write-BdFail "tool $($Tool.id): step $($i + 1) timed out after $($Tool.timeoutSec) s (log $log)"; return 1 }
+        # a step may declare other exit codes that mean 'done' (screenshot.lua ends with emu.stop(1) once it has written its PNG)
+        $okCodes = @(@(Get-BdProp $steps[$i] 'okExitCodes' @(Get-BdProp $Tool 'okExitCodes' @())) | ForEach-Object { [int]$_ }) + 0
+        if ($okCodes -contains $code) { $code = 0 }
         if ($code -ne 0) { Write-BdFail "tool $($Tool.id): step $($i + 1) exited $code (log $log)"; return $code }
     }
     $code
@@ -353,11 +389,8 @@ function Invoke-BdTool {
     $t = Get-BdTool -Id $Id
     if ($Stop) { if ([string]$t.kind -ne 'server') { throw "tool $Id is not a server" }; [void](Stop-BdServerTool $t); return 0 }
     $ctx = New-BdToolContext $t
-    $minPy = [string](Get-BdProp $t 'minPython' '')
-    if ($minPy -and $ctx.ContainsKey('python')) {
-        $pi = Get-BdPythonInfo -Path ([string]$ctx['python'])
-        if ($pi -and $pi.Version -lt [version]$minPy) { throw "tool ${Id}: needs Python $minPy or newer; BrokenDev found $($pi.Version) at $($ctx['python']) (set BROKENDEV_PYTHON)" }
-    }
+    # a tool whose scripts call 'python' themselves (bash scripts) needs the right one even without {python} in its own command
+    if ($ctx.ContainsKey('pythonMissing')) { throw "tool ${Id}: needs $($ctx['pythonMissing']), which this machine does not have (set BROKENDEV_PYTHON to one)" }
     $ws = Get-BdWorkspace -Id ([string](Read-BdManifest -Id ([string]$t.project)).source.archive)
     Write-BdInfo ("tool {0}: {1}  [workspace: {2} {3}]" -f $Id, $t.title, $ws.Kind, $ws.Path)
     $miss = @(Test-BdToolFiles -Tool $t -Ctx $ctx)

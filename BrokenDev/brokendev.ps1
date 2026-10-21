@@ -138,7 +138,7 @@ try {
             if ($Target -and (Get-BdProjectIds) -notcontains $Target) { throw "unknown project '$Target' (known: $((Get-BdProjectIds) -join ', '))" }
             $rows = Get-BdToolRows -Project $Target
             if ($Json) { $rows | ConvertTo-Json -Depth 3; exit 0 }
-            $fmt = '{0,-30} {1,-13} {2,-27} {3}'
+            $fmt = '{0,-30} {1,-12} {2,-30} {3}'
             $fmt -f 'TOOL', 'PROJECT', 'STARTS', 'WHAT YOU EDIT OR CHECK WITH IT' | Write-Host
             foreach ($r in $rows) {
                 $fmt -f $r.Id, $r.Project, $r.Starts, $r.Title | Write-Host
