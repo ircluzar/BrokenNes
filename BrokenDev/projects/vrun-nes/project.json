@@ -81,7 +81,7 @@
     "frames": 1200,
     "input": "120:Start,132:,400:Right,600:Right+B,700:Right,900:Up,1000:Right+B",
     "ramFill": "fceux",
-    "why": "Mesen 2.1.1 (the baseline the VRUN accuracy campaign used) and BrokenNes FIX cores run the same ROM with the same pad script; per frame the picture (palette indices), nametables, OAM, palette, CHR, PPU control and every APU register must agree. Needs the user's Mesen tracer: BROKENDEV_TRACE_LUA."
+    "why": "Mesen 2.1.1 (the baseline the VRUN accuracy campaign used) and BrokenNes FIX cores run the same ROM with the same pad script; per frame the picture (palette indices), nametables, OAM, palette, CHR, PPU control and every APU register must agree. Uses the user's Mesen tracer, kept in BrokenDev/tools/vrun/mesen/state_trace.lua (BROKENDEV_TRACE_LUA names another)."
   },
   "knownIssues": [
     "start_at_option_check fails in the project's own regression suite (the START AT spawn bug, blocked by the ROM budget); 67 of 68 checks pass.",
