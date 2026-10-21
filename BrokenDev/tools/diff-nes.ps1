@@ -15,9 +15,10 @@
   side cannot measure is not compared. Audio samples cannot be compared (Mesen's headless Lua API has none): only the APU registers
   are. Read UAT\diff-trace.ps1 and the header of state_trace.lua before trusting a verdict.
 
-  The Mesen tracer (state_trace.lua) belongs to the user's VRUN repository and is NOT part of BrokenNes: pass its path with
-  -TraceLua or set BROKENDEV_TRACE_LUA. Mesen runs from a private copy with flash saves disabled (mapper 30 would otherwise
-  persist the previous run's flash into the next run) and the user's own Mesen install is never modified.
+  The Mesen tracer (state_trace.lua) is the user's own tool from the VRUN accuracy campaign. Its only surviving copy was in an older
+  local clone (sys0); BrokenDev keeps it in tools\vrun\mesen\ and uses that copy unless -TraceLua or BROKENDEV_TRACE_LUA names another.
+  Mesen runs from a private copy with flash saves disabled (mapper 30 would otherwise persist the previous run's flash into the next
+  run) and the user's own Mesen install is never modified.
 
   Mesen's test runner stops a script after about 100 seconds of wall clock; a long run needs the segmented runner of the
   campaign. This script runs one segment and says so when Mesen stopped early.
@@ -37,7 +38,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Work,
     [Parameter(Mandatory = $true)][string]$MesenDir,
     [Parameter(Mandatory = $true)][string]$Workshop,
-    [string]$TraceLua = $env:BROKENDEV_TRACE_LUA,
+    [string]$TraceLua = $(if ($env:BROKENDEV_TRACE_LUA) { $env:BROKENDEV_TRACE_LUA } else { Join-Path $PSScriptRoot 'vrun\mesen\state_trace.lua' }),
     [string]$InputScript = '',
     [string]$BrokenNesInput = '',
     [int]$Frames = 1200,
@@ -57,7 +58,7 @@ $repo = Split-Path -Parent (Split-Path -Parent $here)
 . (Join-Path (Split-Path -Parent $here) 'lib\TraceGate.ps1')
 if (-not $DiffScript) { $DiffScript = Join-Path $repo 'UAT\diff-trace.ps1' }
 foreach ($p in @($Rom, $MesenDir, $Workshop, $DiffScript)) { if (-not (Test-Path -LiteralPath $p)) { Write-Host "missing: $p"; exit 2 } }
-if (-not $TraceLua -or -not (Test-Path -LiteralPath $TraceLua)) { Write-Host 'the Mesen tracer state_trace.lua was not found: pass -TraceLua or set BROKENDEV_TRACE_LUA (it lives in the user''s VRUN repository, tools\state_trace.lua)'; exit 2 }
+if (-not $TraceLua -or -not (Test-Path -LiteralPath $TraceLua)) { Write-Host "the Mesen tracer state_trace.lua was not found at '$TraceLua': pass -TraceLua or set BROKENDEV_TRACE_LUA (BrokenDev keeps a copy in tools\vrun\mesen\)"; exit 2 }
 New-Item -ItemType Directory -Force -Path $Work | Out-Null
 
 # ---- a private Mesen copy: flash saves off, no saves, the user's install untouched ---------------------------------

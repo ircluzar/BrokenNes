@@ -3,6 +3,15 @@
 
 Set-StrictMode -Version Latest
 
+function Get-BdTraceLua {
+    <#
+      The Mesen tracer the NES diff runs: BROKENDEV_TRACE_LUA when set, else BrokenDev's own copy of the user's tracer
+      (tools\vrun\mesen\state_trace.lua, brought over from the older sys0 clone where it was the only copy).
+    #>
+    if ($env:BROKENDEV_TRACE_LUA) { return $env:BROKENDEV_TRACE_LUA }
+    Join-Path (Get-BdRoot) 'tools\vrun\mesen\state_trace.lua'
+}
+
 function Invoke-BdProjectDiff {
     <#
       Returns a record { project; kind; status = pass | fail | skipped; reason; summary }. 'skipped' always says why (a missing external tool is never a silent pass).
@@ -28,10 +37,11 @@ function Invoke-BdProjectDiff {
     $tools = Join-Path (Get-BdRoot) 'tools'
 
     if ($kind -eq 'mesen-trace') {
-        $lua = $env:BROKENDEV_TRACE_LUA
+        $lua = Get-BdTraceLua
+        $record['traceLua'] = $lua
         if (-not $lua -or -not (Test-Path -LiteralPath $lua)) {
             $record.status = 'skipped'
-            $record.reason = "the Mesen tracer state_trace.lua is the user's own tool (VRUN repository, tools\state_trace.lua) and is not part of BrokenNes: set BROKENDEV_TRACE_LUA to it"
+            $record.reason = "the Mesen tracer state_trace.lua was not found (BROKENDEV_TRACE_LUA='$env:BROKENDEV_TRACE_LUA', BrokenDev's copy $(Join-Path (Get-BdRoot) 'tools\vrun\mesen\state_trace.lua'))"
         } elseif (-not (Test-Path -LiteralPath (Join-Path $mesenDir 'Mesen.exe'))) {
             $record.status = 'skipped'; $record.reason = "Mesen not found at $mesenDir (is the project restored?)"
         } else {
