@@ -88,8 +88,18 @@ function Get-BdPythonInfo {
     [pscustomobject]$info
 }
 
+$script:BdPythonCache = @{}
+
 function Find-BdPython {
-    <# The first interpreter that is >= 3.10 and has Pillow and NumPy; BROKENDEV_PYTHON forces one. $null when none qualifies. #>
+    <# The first interpreter that is >= 3.10 and has Pillow and NumPy; BROKENDEV_PYTHON forces one. $null when none qualifies. Cached per BROKENDEV_PYTHON and PATH. #>
+    $key = "$env:BROKENDEV_PYTHON|$env:PATH"
+    if ($script:BdPythonCache.ContainsKey($key)) { return $script:BdPythonCache[$key] }
+    $r = Find-BdPythonUncached
+    $script:BdPythonCache[$key] = $r
+    $r
+}
+
+function Find-BdPythonUncached {
     if ($env:BROKENDEV_PYTHON) {
         $i = Get-BdPythonInfo -Path $env:BROKENDEV_PYTHON
         if ($i -and $i.Version -ge [version]'3.10' -and $i.Modules['PIL'] -ne 'MISSING' -and $i.Modules['numpy'] -ne 'MISSING') { return $i }

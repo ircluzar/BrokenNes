@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "_doc": "The archives BrokenDev restores into BROKENDEV_HOME. 'file' is relative to the archives folder (BROKENDEV_ARCHIVES, default: the parent of BROKENDEV_HOME, i.e. P:\\BrokenDev). 'stripTop' removes the archive's single top-level folder. 'include'/'exclude' are archive paths relative to that top folder (7-Zip wildcards); an empty include means everything. 'roots' name folders (relative to extractTo) that manifests refer to as {root:<name>}. 'sentinels' are files that must exist after a restore: a restore that lacks one is reported as failed. Nothing here is ever copied into git.",
+  "_doc": "The archives BrokenDev restores into BROKENDEV_HOME. 'file' is relative to the archives folder (BROKENDEV_ARCHIVES, default: the parent of BROKENDEV_HOME, i.e. P:\\BrokenDev). 'stripTop' removes the archive's single top-level folder. 'include'/'exclude' are archive paths relative to that top folder (7-Zip wildcards); an empty include means everything. 'roots' name folders (relative to extractTo) that manifests refer to as {root:<name>}. 'sentinels' are files that must exist after a restore: a restore that lacks one is reported as failed. 'live' describes the user's LIVE workspace of the same projects (the folder he develops in), which BrokenDev prefers over the restored copy: 'folder' is looked for beside the repository and beside each of its parent folders (so a git worktree finds the same workspace), 'roots' maps root names to folders inside it (a root it does not list stays the restored copy's), and every 'sentinels' file must exist. The environment variable BROKENDEV_LIVE_<ARCHIVE ID IN CAPITALS> overrides the search with a folder, or with 'off' to use the restored copy. Nothing here is ever copied into git.",
   "archives": {
     "vrun_nes_dev": {
       "title": "VRUN CTW (NES) + Nested VRUN (SNES) development package",
@@ -15,6 +15,21 @@
         "nested": "Nested_VRUN/Project-Nested",
         "m30pipe": "Nested_VRUN/Project-Nested/tools/m30pipe",
         "vrunpkg": "."
+      },
+      "live": {
+        "folder": "VRUN_Nes_Dev",
+        "roots": {
+          "vrun": "sys0/simulations/VRUN",
+          "ctw": "sys0/simulations/mz/CTW",
+          "nested": "Nested_VRUN/Project-Nested",
+          "m30pipe": "Nested_VRUN/Project-Nested/tools/m30pipe",
+          "vrunpkg": "."
+        },
+        "sentinels": [
+          "sys0/simulations/VRUN/build.sh",
+          "sys0/simulations/mz/CTW/tools/replacement-engine/Launch-VRUN.mjs",
+          "Nested_VRUN/Project-Nested/tools/m30pipe/m30build.ps1"
+        ]
       },
       "sentinels": [
         "START_HERE.md",
@@ -40,6 +55,18 @@
         "svrunrepo": "SuperVRUN",
         "supervrun": "SuperVRUN/snes-dev/supervrun",
         "svrunpkg": "."
+      },
+      "live": {
+        "folder": "SuperVRUN_dev",
+        "roots": {
+          "svrunrepo": ".",
+          "supervrun": "snes-dev/supervrun"
+        },
+        "rootsNote": "The live SuperVRUN_dev folder IS the repository (the archive's SuperVRUN folder). svrunpkg (the package root: mesen2_user_folder, dev_retrospective.md) has no live equivalent and stays the restored copy.",
+        "sentinels": [
+          "snes-dev/supervrun/build.sh",
+          "snes-stub/toolchain/pvsneslib/devkitsnes/bin/816-tcc.exe"
+        ]
       },
       "sentinels": [
         "dev_retrospective.md",

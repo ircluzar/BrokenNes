@@ -13,14 +13,15 @@
   The programs run through 'BrokenNes.Workshop --trace' (CPU/PPU/APU FIX); the checks read the trace's x, p1len and p1per columns at fixed frames.
   NEGATIVE CONTROLS (shown able to fail): every program is also run on a different, older APU core (FMC), which has the behaviour being guarded
   against only if it does not keep the fixed behaviour; the test prints what that core did and a check that PASSES on it would be reported as "not discriminating".
-  The oracle values can be re-measured with Mesen: -MesenDir (a Mesen 2 folder) and BROKENDEV_TRACE_LUA (the user's state_trace.lua).
+  The oracle values can be re-measured with Mesen: -MesenDir (a Mesen 2 folder) and -Measure; the tracer is the user's state_trace.lua
+  (BrokenDev's copy in tools\vrun\mesen\, or BROKENDEV_TRACE_LUA).
 
   Exit code: 0 all guards hold, 1 a guard failed, 2 setup problem.
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Workshop,
     [string]$MesenDir = '',
-    [string]$TraceLua = $env:BROKENDEV_TRACE_LUA,
+    [string]$TraceLua = $(if ($env:BROKENDEV_TRACE_LUA) { $env:BROKENDEV_TRACE_LUA } else { Join-Path (Split-Path -Parent $PSScriptRoot) 'tools\vrun\mesen\state_trace.lua' }),
     [switch]$Measure
 )
 $ErrorActionPreference = 'Stop'

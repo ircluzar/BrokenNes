@@ -67,8 +67,10 @@ if (-not $SkipProjects -and $homeInfo) {
         $zip = Get-BdArchiveFile $spec
         $zipOk = Test-Path -LiteralPath $zip
         $st = Get-BdRestoreState $spec
+        $ws = Get-BdWorkspace -Id $id -Table $table
         $detail = "archive $(if ($zipOk) { 'present' } else { 'MISSING: ' + $zip }); restore state: $($st.State) ($($st.Detail))"
         $checks.Add((New-BdCheck "Project restored: $id" ($st.State -eq 'restored') $false '' $zip $detail "brokendev.ps1 restore $id"))
+        $checks.Add((New-BdCheck "Workspace used: $id" ($ws.Kind -in 'live', 'restored') $false $ws.Kind $ws.Path $ws.Detail "put the live workspace beside the repository, or brokendev.ps1 restore $id"))
     }
 
     $roots = Get-BdArchiveRoots $table

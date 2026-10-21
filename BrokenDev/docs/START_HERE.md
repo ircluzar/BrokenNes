@@ -40,9 +40,33 @@ BrokenDev\brokendev.ps1 restore all             # 2. extract the three archives 
 BrokenDev\brokendev.ps1 build-workshop          # 3. the headless BrokenNes runner (about 1 minute)
 BrokenDev\brokendev.ps1 build all               # 4. all six versions (about 5 minutes)
 BrokenDev\brokendev.ps1 verify all              # 5. run them on BrokenNes: boot, input, hashes, audio, speed
-BrokenDev\brokendev.ps1 diff all                # 6. (optional) differential replay against Mesen 2 (the NES ones need $env:BROKENDEV_TRACE_LUA = the path of the user's state_trace.lua)
+BrokenDev\brokendev.ps1 diff all                # 6. (optional) differential replay against Mesen 2 (the NES ones use the user's tracer, kept in BrokenDev\tools\vrun\mesen)
 BrokenDev\brokendev.ps1 run supervrun           # open one in the BrokenNes desktop app
+BrokenDev\brokendev.ps1 tools                   # 7. the editors and checkers of the games; 'tool <id>' starts one (section 3a)
 ```
+
+**Live workspaces first.** When the user's own workspaces sit beside the repository (`VRUN_Nes_Dev`, `SuperVRUN_dev`), `build` and the tools
+work on them, not on the restored copies, and step 2 is not needed for those archives (`list` shows which workspace each project uses). On a
+machine that has only the archives, everything runs on the restored copies as before. `BROKENDEV_LIVE_<ARCHIVE>=<folder>` points at a live
+workspace elsewhere; `=off` forces the restored copy.
+
+## 3a. The tools
+
+`brokendev.ps1 tools` lists the tools made while developing the games, with what you edit or check with each. `brokendev.ps1 tool <id>` starts
+one: a web UI on the port it always used, opened in the default browser (`-NoBrowser` prints the address; a copy already running is reused;
+another program on the port is reported and left alone; `-Stop` stops the one BrokenDev started), or a script in the foreground (arguments after
+the id are passed to it; environment variables such as `VRUN_TARGET_ROOM` keep working: the entry's defaults never override yours).
+
+| Tool | What it is for |
+|---|---|
+| `vrun-tile-editor` | draw the hand-authored VRUN art (bullet, breakable block, door overlay, spikes, wires, HUD, logo); a normal build picks it up |
+| `vrun-sfx-configurator` | choose which sound plays on which event; Copy / Download JSON, then the bindings are applied to `main.fab` by hand or by Claude |
+| `vrun-audioplayer-configurator` | arrange MIDI songs into the AudioPlayer ROM, build it, play it |
+| `nested-builder` | turn a VRUN build into the SNES (Project Nested) ROM |
+| `ctw-room-designer` | edit CTW room templates (VRUN's rooms come from them), generate seeded maps, play the original CTW |
+| `vrun-*`, `svrun-*` scripts | the check and measurement scripts of both projects (`brokendev.ps1 tools` lists them) |
+
+Where each one came from, how it was verified on 2026-10-20 and what is still missing: `docs\projects\brokendev-tools.md`.
 
 `restore` takes an archive id (`vrun_nes_dev`, `supervrun_dev`, `smb1_topaz`), a project id, or `all`. By default it leaves out bulk that no
 build needs (SuperVRUN's 1.3 GB music-lab renders and its Claude transcripts, the SMB1 parity pipeline's 5 GB of working debris); `-Full`
@@ -75,8 +99,14 @@ Outputs: `BROKENDEV_HOME\out\<project>\` holds the published ROM, `build.json` (
 * **The SMB1 remake needs zeroed RAM.** See `docs/smb1-knowledge.md` and the report; use the BrokenDev menu's Power-on RAM lever or the
   `powerOnRam` field of a verify scenario.
 * **Mesen kills a test-runner script after about 100 seconds**, so differential replays are limited to a few thousand frames.
-* **The NES differential needs the user's own Mesen tracer** (`tools\state_trace.lua` in his VRUN repository, not in any archive): without
-  `BROKENDEV_TRACE_LUA` the NES `diff` is skipped with that reason, never passed.
+* **The NES differential needs the user's own Mesen tracer** (`state_trace.lua`, in no archive and in neither repository: its only copy was an
+  older local clone, `PROJECTS\sys0`). BrokenDev keeps it, with the 19 other tracer and probe scripts of that campaign, in
+  `BrokenDev\tools\vrun\mesen\`; `BROKENDEV_TRACE_LUA` can still name another one.
+* **Old-machine paths.** The tools came from a machine where the projects lived in `C:\PROJECTS\sys0\...`. BrokenDev starts them with the
+  paths of this machine (and the Python it found: the first `python` on PATH may lack Pillow); two scripts that hard-coded the old path or
+  called a deleted script were fixed in the VRUN repository itself (see `docs\projects\brokendev-tools.md`).
+* **Super VRUN's test runners stop every Mesen started with `--testRunner`** (its `tools/kill_test_mesen.sh`), not only their own: do not run
+  `svrun-*` checks while another Mesen test runs (the VRUN regression suite, a `diff`, another agent's).
 * **Music (Phase 0)**: `BrokenDev\tools\music-replay-check.ps1 -Mid some.mid -Name mysong -Frames 2400 -Template` builds a one-song ROM from a
   MIDI file with VRUN's own converter, runs it on BrokenNes and checks it frame by frame (see `docs\projects\brokendev-music-pipeline.md`).
 
@@ -86,4 +116,5 @@ Outputs: `BROKENDEV_HOME\out\<project>\` holds the published ROM, `build.json` (
 * `BrokenDev\docs\smb1-knowledge.md`: what reverse engineering SMB1 taught (no Nintendo code or data).
 * `docs\projects\brokendev-report.md`: the table of all six versions with hashes, cores, checks and results.
 * `docs\projects\brokendev-music-pipeline.md`: the design for composing in FL Studio and replaying on a ROM.
+* `docs\projects\brokendev-tools.md`: the tools (inventory, origin, verification, gaps).
 * `docs\projects\round5-bd.md`: this track's record.

@@ -141,10 +141,11 @@ function Invoke-BdProjectBuild {
     }
     if ($missing.Count -gt 0) { throw "project ${Id}: missing tools: $($missing -join ', '). Run 'brokendev.ps1 doctor'." }
 
-    $archives = Get-BdArchiveTable
-    $spec = Get-BdArchiveSpec -Id ([string]$m.source.archive) -Table $archives
-    $st = Get-BdRestoreState $spec
-    if ($st.State -ne 'restored' -and -not $DryRun) { throw "project ${Id}: archive '$($m.source.archive)' is $($st.State) ($($st.Detail)). Run 'brokendev.ps1 restore $Id'." }
+    # The project builds in its live workspace when there is one (the user's own folder: outputs land in its git-ignored build folders,
+    # exactly like his own builds), else in the restored copy, which must then be completely restored.
+    $ws = Get-BdWorkspace -Id ([string]$m.source.archive)
+    if ($ws.Kind -notin 'live', 'restored' -and -not $DryRun) { throw "project ${Id}: archive '$($m.source.archive)' has no live workspace and its restored copy is $($ws.Kind) ($($ws.Detail)). Run 'brokendev.ps1 restore $Id'." }
+    if (-not $DryRun) { Write-BdInfo ("  workspace: {0} ({1})" -f $ws.Kind, $ws.Path) }
 
     $inputs = @{}
     $baseEnv = @{}
@@ -163,7 +164,7 @@ function Invoke-BdProjectBuild {
     $started = (Get-Date).ToUniversalTime()
 
     if (-not $DryRun) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
-    $record = [ordered]@{ project = $Id; title = [string]$m.title; startedAtUtc = $started.ToString('o'); ok = $false; steps = @(); outputs = @(); python = $(if ($ctx.ContainsKey('python')) { [string]$ctx['python'] } else { $null }); error = $null }
+    $record = [ordered]@{ project = $Id; title = [string]$m.title; startedAtUtc = $started.ToString('o'); ok = $false; workspace = [ordered]@{ kind = $ws.Kind; path = $ws.Path; source = $ws.Source }; steps = @(); outputs = @(); python = $(if ($ctx.ContainsKey('python')) { [string]$ctx['python'] } else { $null }); error = $null }
     $failed = $null
     foreach ($s in @($m.build.steps)) {
         $r = Invoke-BdBuildStep -Step $s -Ctx $ctx -LogDir $logDir -BaseEnv $baseEnv -DryRun:$DryRun

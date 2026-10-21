@@ -11,6 +11,8 @@ function Get-BdArchiveTable {
     $j = Read-BdJson -Path $Path
     $t = [ordered]@{}
     foreach ($p in $j.archives.PSObject.Properties) { $t[$p.Name] = $p.Value }
+    $errs = @(Test-BdArchiveLive -Table $t)
+    if ($errs.Count -gt 0) { throw ("archive table $Path is invalid:`n  " + ($errs -join "`n  ")) }
     $t
 }
 
@@ -30,17 +32,123 @@ function Get-BdArchiveTarget {
     Join-Path (Get-BdHome) ([string]$Spec.extractTo)
 }
 
-function Get-BdArchiveRoots {
-    <# name -> absolute folder, for every root of every archive (used by Expand-BdPath {root:name}). #>
+# ---------------------------------------------------------------------------------------------------- live workspaces
+#
+# The restored copies under BROKENDEV_HOME are snapshots of the archives. The user develops in his LIVE workspaces (VRUN_Nes_Dev,
+# SuperVRUN_dev beside the BrokenNes repository), and the tools must edit those. An archive's 'live' section says how to find its live
+# workspace and where each root is inside it; the restored copy stays the fallback for a machine that has no live workspace.
+
+function Get-BdLiveEnvName {
+    <# BROKENDEV_LIVE_<ARCHIVE ID IN CAPITALS>: a folder (the live workspace to use) or 'off' (use the restored copy). #>
+    param([Parameter(Mandatory)][string]$Id)
+    'BROKENDEV_LIVE_' + ($Id.ToUpperInvariant() -replace '[^A-Z0-9]', '_')
+}
+
+function Join-BdRel {
+    param([Parameter(Mandatory)][string]$Base, [string]$Rel)
+    $r = ([string]$Rel) -replace '/', '\'
+    if (-not $r -or $r -eq '.') { return $Base }
+    Join-Path $Base $r
+}
+
+function Test-BdArchiveLive {
+    <# Structural validation of the archives' 'live' sections. Returns an array of error strings (empty = valid). #>
     param($Table = (Get-BdArchiveTable))
+    $e = New-Object System.Collections.Generic.List[string]
+    foreach ($id in $Table.Keys) {
+        $spec = $Table[$id]
+        $live = Get-BdProp $spec 'live' $null
+        if (-not $live) { continue }
+        if (-not [string](Get-BdProp $live 'folder' '')) { $e.Add("archive ${id}: live.folder is required") }
+        if (@(Get-BdProp $live 'sentinels' @()).Count -eq 0) { $e.Add("archive ${id}: live.sentinels is empty (a folder that merely has the right name must not pass for the workspace)") }
+        $lr = Get-BdProp $live 'roots' $null
+        if (-not $lr -or @($lr.PSObject.Properties).Count -eq 0) { $e.Add("archive ${id}: live.roots is empty") }
+        else { foreach ($p in $lr.PSObject.Properties) { if ($null -eq $spec.roots.PSObject.Properties[$p.Name]) { $e.Add("archive ${id}: live root '$($p.Name)' is not one of the archive's roots ($((@($spec.roots.PSObject.Properties | ForEach-Object { $_.Name })) -join ', '))") } } }
+    }
+    @($e)
+}
+
+function Get-BdLiveMissing {
+    <# The live sentinels (archive spec 'live.sentinels') that $Folder lacks. Empty = the folder is a valid live workspace. #>
+    param([Parameter(Mandatory)]$Spec, [Parameter(Mandatory)][string]$Folder)
+    $live = Get-BdProp $Spec 'live' $null
+    $missing = @()
+    foreach ($s in @(Get-BdProp $live 'sentinels' @())) { if (-not (Test-Path -LiteralPath (Join-BdRel $Folder ([string]$s)))) { $missing += [string]$s } }
+    $missing
+}
+
+function Find-BdLiveFolder {
+    <#
+      The live workspace of one archive: a folder named live.folder beside $SearchFrom (default: the repository) or beside one of its
+      parent folders, that has every live sentinel. A git worktree under BrokenNes\.claude\worktrees therefore finds the same workspace
+      as the main checkout. $null when there is none (a new machine: the restored copy is used).
+    #>
+    param([Parameter(Mandatory)]$Spec, [string]$SearchFrom = (Get-BdRepoRoot))
+    $live = Get-BdProp $Spec 'live' $null
+    if (-not $live) { return $null }
+    $name = [string](Get-BdProp $live 'folder' '')
+    if (-not $name) { return $null }
+    $dir = Split-Path -Parent ([System.IO.Path]::GetFullPath($SearchFrom).TrimEnd('\'))
+    while ($dir) {
+        $cand = Join-Path $dir $name
+        if ((Test-Path -LiteralPath $cand -PathType Container) -and @(Get-BdLiveMissing -Spec $Spec -Folder $cand).Count -eq 0) { return $cand }
+        $parent = Split-Path -Parent $dir
+        if (-not $parent -or $parent -eq $dir) { break }
+        $dir = $parent
+    }
+    $null
+}
+
+function Get-BdWorkspace {
+    <#
+      Which copy of an archive's projects BrokenDev works on. Returns { Id; Kind = live | restored | partial | absent; Path; Source; Detail }.
+        1. BROKENDEV_LIVE_<ID> = a folder: that folder, which must have the live sentinels (an explicit choice is never silently replaced);
+           BROKENDEV_LIVE_<ID> = off: the restored copy.
+        2. a live workspace found beside the repository (Find-BdLiveFolder).
+        3. the restored copy under BROKENDEV_HOME (its restore state: restored, partial or absent).
+    #>
+    param([Parameter(Mandatory)][string]$Id, $Table = (Get-BdArchiveTable), [string]$SearchFrom = (Get-BdRepoRoot))
+    $spec = Get-BdArchiveSpec -Id $Id -Table $Table
+    $envName = Get-BdLiveEnvName $Id
+    $ev = [Environment]::GetEnvironmentVariable($envName)
+    $live = Get-BdProp $spec 'live' $null
+    $off = ($ev -and @('off', 'restored', '0', 'no') -contains $ev.Trim().ToLowerInvariant())
+    if ($ev -and -not $off) {
+        if (-not $live) { throw "$envName is set, but archive '$Id' has no 'live' layout in archives.json" }
+        $full = [System.IO.Path]::GetFullPath($ev).TrimEnd('\')
+        if (-not (Test-Path -LiteralPath $full -PathType Container)) { throw "$envName points at $full, which does not exist" }
+        $miss = @(Get-BdLiveMissing -Spec $spec -Folder $full)
+        if ($miss.Count -gt 0) { throw "$envName points at $full, which is not a live workspace of '$Id' (missing: $($miss -join ', '))" }
+        return [pscustomobject]@{ Id = $Id; Kind = 'live'; Path = $full; Source = $envName; Detail = "live workspace from $envName" }
+    }
+    if (-not $off) {
+        $found = Find-BdLiveFolder -Spec $spec -SearchFrom $SearchFrom
+        if ($found) { return [pscustomobject]@{ Id = $Id; Kind = 'live'; Path = $found; Source = 'beside the repository'; Detail = "live workspace (set $envName=off to use the restored copy)" } }
+    }
+    $st = Get-BdRestoreState $spec
+    $why = if ($off) { "$envName=off" } elseif ($live) { "no live workspace '$([string]$live.folder)' found beside the repository" } else { 'this archive has no live layout' }
+    [pscustomobject]@{ Id = $Id; Kind = [string]$st.State; Path = (Get-BdArchiveTarget $spec); Source = 'restored copy'; Detail = "$why; restored copy: $($st.State) ($($st.Detail))" }
+}
+
+function Get-BdArchiveRoots {
+    <#
+      name -> absolute folder, for every root of every archive (used by Expand-BdPath {root:name}). A root comes from the archive's live
+      workspace when there is one and its 'live.roots' names that root, else from the restored copy. -Detailed returns name -> object
+      { Path; From = live | restored; Archive } instead, for 'list' and the build record.
+    #>
+    param($Table = (Get-BdArchiveTable), [switch]$Detailed)
     $roots = @{}
     foreach ($id in $Table.Keys) {
         $spec = $Table[$id]
         $target = Get-BdArchiveTarget $spec
+        $ws = Get-BdWorkspace -Id $id -Table $Table
+        $liveRoots = $null
+        if ($ws.Kind -eq 'live') { $liveRoots = Get-BdProp (Get-BdProp $spec 'live' $null) 'roots' $null }
         foreach ($r in $spec.roots.PSObject.Properties) {
-            $rel = ([string]$r.Value) -replace '/', '\'
-            $full = if ($rel -eq '.') { $target } else { Join-Path $target $rel }
-            $roots[$r.Name] = $full
+            $liveRel = if ($liveRoots) { Get-BdProp $liveRoots $r.Name $null } else { $null }
+            if ($null -ne $liveRel) { $full = Join-BdRel $ws.Path ([string]$liveRel); $from = 'live' }
+            else { $full = Join-BdRel $target ([string]$r.Value); $from = 'restored' }
+            if ($Detailed) { $roots[$r.Name] = [pscustomobject]@{ Path = $full; From = $from; Archive = $id } } else { $roots[$r.Name] = $full }
         }
     }
     $roots
