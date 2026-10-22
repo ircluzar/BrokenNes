@@ -93,8 +93,11 @@ function Invoke-BdAdapterMesen {
             $ov = Get-BdProp $sec $(if ([string]$Spec.Console -eq 'nes') { 'NtscOverscan' } else { 'Overscan' }) $null
             if ($ov) { $settings['overscan'] = "L$($ov.Left) R$($ov.Right) T$($ov.Top) B$($ov.Bottom)" }
         }
-        if (-not $settings.Contains('RamPowerOnState')) { $settings['RamPowerOnState'] = "Mesen's default (Mesen did not write its settings back)" }
+        if (-not $settings.Contains('RamPowerOnState')) { $settings['RamPowerOnState'] = "Mesen's default (the test runner does not write its settings back; see ramMeasured)" }
     } catch { $settings['settingsReadBack'] = $_.Exception.Message }
+    if (Test-Path -LiteralPath $resultFile) {
+        foreach ($line in [System.IO.File]::ReadAllLines($resultFile)) { if ($line -match '^note power-on RAM [^:]*: (.*)$') { $settings['ramMeasured'] = $Matches[1] } }
+    }
     $r | Add-Member -NotePropertyName Settings -NotePropertyValue $settings -Force
     $r
 }

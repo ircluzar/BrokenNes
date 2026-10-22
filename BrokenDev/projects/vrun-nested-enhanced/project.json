@@ -81,7 +81,7 @@
   "compat": {
     "what": "As vrun-nested (the enhancement is a post-build pass on that ROM: the same NES build, so vrun-nested's .mlb names the variables).",
     "symbols": { "file": "{home}/out/vrun-nested/vrun_game_nested.mlb", "nesRamInWram": 0 },
-    "reads": { "app_state": "app_state", "current_room": "current_room", "room_load_phase": "room_load_phase", "save_exists": "save_exists", "nmi": "runtime_nmi_counter" },
+    "reads": { "app_state": "app_state", "current_room": "current_room", "room_load_phase": "room_load_phase", "save_exists": "save_exists", "title_cursor": "title_cursor", "nmi": "runtime_nmi_counter" },
     "frameTolerance": 30,
     "scenarios": [
       {
@@ -99,6 +99,33 @@
           { "id": "stays", "what": "the scripted play stays in the game", "read": "app_state", "is": 1, "within": [700, 3000], "hold": true, "soft": true },
           { "id": "alive", "what": "the game keeps running to the end (the NES NMI counter keeps ticking)", "changes": "nmi", "within": [2700, 3000], "min": 150 },
           { "id": "drawn", "what": "gameplay is drawn at the end", "picture": 3000, "minColors": 8 }
+        ]
+      },
+      {
+        "id": "save",
+        "saves": "save",
+        "frames": 900,
+        "input": "240:Start,252:,600:Start,612:,660:Select,672:",
+        "shots": [500, 900],
+        "what": "as vrun-nested: Start, pause, Select = save and quit into the SRAM-emulated flash",
+        "checks": [
+          { "id": "game", "what": "Start reaches gameplay", "read": "app_state", "is": 1, "within": [241, 599] },
+          { "id": "saved", "what": "pause + Select saves (save_exists becomes 1)", "read": "save_exists", "is": 1, "within": [661, 780], "compare": true },
+          { "id": "quit", "what": "save and quit returns to the title", "read": "app_state", "is": 0, "after": "saved", "within": [0, 60] },
+          { "id": "continue-cursor", "what": "the title cursor lands on CONTINUE (title_cursor 1)", "read": "title_cursor", "is": 1, "after": "quit", "within": [0, 120] }
+        ]
+      },
+      {
+        "id": "continue",
+        "saves": "save",
+        "frames": 400,
+        "input": "",
+        "shots": [400],
+        "what": "a fresh boot of the same emulator with the SRAM of 'save'",
+        "checks": [
+          { "id": "offers-continue", "what": "a fresh boot finds the save (save_exists 1: CONTINUE is offered)", "read": "save_exists", "is": 1, "within": [1, 300] },
+          { "id": "keeps", "what": "the save stays found", "read": "save_exists", "is": 1, "within": [300, 400], "hold": true },
+          { "id": "title-drawn", "what": "the title is drawn", "picture": 400, "minColors": 4 }
         ]
       }
     ]

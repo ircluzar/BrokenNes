@@ -27,7 +27,7 @@
       "sha256Source": "GitHub's published digest of the release asset",
       "exe": "EmuHawk.exe",
       "homepage": "https://github.com/TASEmulators/BizHawk",
-      "portable": "BizHawk keeps everything beside EmuHawk.exe unless --config names another config.ini. BrokenDev always passes --config=<scratch>\\config.ini, whose path settings point every save, state and screenshot folder into the run's scratch folder.",
+      "portable": "BizHawk keeps everything beside EmuHawk.exe unless --config names another config.ini. BrokenDev always passes --config=<scratch>\\config.ini (JSON), whose absolute PathEntries point every save, state and screenshot folder into the run's scratch folder (firmware is read from the install). Checked: the install folder is unchanged after runs (478 entries, sizes and times), nothing lands in %TEMP% or %APPDATA%.",
       "prerequisites": ".NET Framework 4.8 and the Visual C++ 2015-2022 x64 runtime (checked by 'emulators': both present on this machine on 2026-10-22)."
     },
     {
@@ -82,13 +82,13 @@
       "package": "mesen",
       "consoles": ["nes", "snes"],
       "adapter": "mesen",
-      "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
+      "can": { "memory": true, "pictures": true, "audio": true, "saves": true, "exactFrames": true },
       "defaults": {
         "region": "Auto (NTSC for these ROMs)",
-        "ramInit": "Mesen's own default (recorded per run in compat.json from the settings it ran with)",
+        "ramInit": "NES: all zeros; SNES work RAM: random (both measured before the first frame on 2026-10-22, recorded per run)",
         "overscan": "none: NES 256x240, SNES 256x224 or 239"
       },
-      "notes": "Driven with Lua through --testRunner (the API the 20 VRUN tracers use). Input is set on the inputPolled event. Audio activity is not measured (the Lua API has no audio access)."
+      "notes": "Driven with Lua through --testRunner (the API the 20 VRUN tracers use) from a private home (a copy of Mesen.exe with its own settings.json under work\\compat). Input is set on the inputPolled event; a settings file must give port 1 a pad (without one setInput does nothing). Sound activity: NES only, from the APU status register's length counters ($4015, debug read). Its stdout must be a file, not a pipe (the test runner never starts with a pipe); it lists every RAM byte the game reads before writing it ('Uninitialized memory read'), which compat records."
     },
     {
       "id": "bizhawk-neshawk",
@@ -100,11 +100,11 @@
       "adapter": "bizhawk",
       "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
       "defaults": {
-        "region": "NTSC (from the ROM header)",
-        "ramInit": "NesHawk's own (recorded per run)",
-        "overscan": "NesHawk clips 8 lines top and bottom by default: pictures are 256x224"
+        "region": "from the ROM header (RegionOverride None): NTSC for these ROMs",
+        "ramInit": "the FCEUX pattern 00 00 00 00 FF FF FF FF repeated, deterministic (a few per-game overrides by ROM hash)",
+        "overscan": "lines 8-231 (NTSC_TopLine 8, NTSC_BottomLine 231): pictures are 256x224"
       },
-      "notes": "EmuHawk --lua=<script> --config=<scratch config.ini> (NES -> NesHawk pinned, sound off, unthrottled). Input with joypad.set, frames with emu.frameadvance, memory.read_u8 on the core's RAM domain, client.screenshot."
+      "notes": "EmuHawk --chromeless --config=<scratch config.ini> --lua=<script> <rom>: PreferredCores NES -> NesHawk with DontTryOtherCores, sound off, throttles off but frame skipping off (Unthrottled would skip rendering 2 frames of 3), StartPaused so the script starts at power-on (frame 0), hotkeys blanked (EmuHawk takes the keyboard focus), every path in the scratch folder and SaveRAM in the run's save folder. Input with joypad.set ('P1 A' ...), memory.read_u8 on the 'RAM' domain (2 KB), client.screenshot, client.exitCode. SaveRAM is written when EmuHawk closes the game, for every battery cart; the name is the ROM name with '_' shown as a space ('vrun game.SaveRAM'). Mapper 30: the save holds the flashed sectors (a 512-byte sector table plus the 512 KB flash), and flashed sectors are read from it over the ROM at the next boot. No audio activity (no Lua audio API)."
     },
     {
       "id": "fceux",
@@ -137,19 +137,19 @@
     },
     {
       "id": "bizhawk-bsnes",
-      "title": "BizHawk 2.11.1, BSNES core",
+      "title": "BizHawk 2.11.1, BSNESv115+ core (bsnes v115)",
       "package": "bizhawk",
-      "core": "BSNES",
+      "core": "BSNESv115+",
       "system": "SNES",
       "consoles": ["snes"],
       "adapter": "bizhawk",
       "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
       "defaults": {
         "region": "Auto (NTSC for these ROMs)",
-        "ramInit": "bsnes's own (recorded per run)",
-        "overscan": "256x224"
+        "ramInit": "Entropy Low: pseudo-random but the same every run and every ROM (starts 50 3D 50 3D ...)",
+        "overscan": "256x224 (ShowOverscan off)"
       },
-      "notes": "As bizhawk-neshawk with SNES -> BSNES pinned; work RAM through the WRAM domain."
+      "notes": "As bizhawk-neshawk with SNES -> BSNESv115+ pinned; work RAM through the 'WRAM' domain (128 KB), cartridge SRAM in 'CARTRAM'. 'BSNESv115+' is the current bsnes in BizHawk 2.11.1; the core 2.11.1 names plain 'BSNES' is the legacy bsnes v0.87 (LibsnesCore), which stops the Nested ROMs on Project Nested's own 'SRAM is missing' screen (measured by BrokenDev on 2026-10-22): it is not the bsnes players mean, so it is not the column. Its Snes9x core is not used either (the standalone Snes9x is its own column)."
     }
   ]
 }

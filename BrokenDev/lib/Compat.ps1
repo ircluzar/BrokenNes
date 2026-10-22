@@ -725,6 +725,14 @@ function Invoke-BdCompatEmulator {
         $r = $null
         Write-BdInfo ("  {0,-16} {1,-12} {2} frames ..." -f $id, $sc.Id, $sc.Frames)
         try { $r = & $fn @call } catch { $srec.adapterError = $_.Exception.Message }
+        # an adapter that finds it cannot run here at all (an outdated Workshop, a missing component) says CANNOT-RUN: the column is
+        # 'cannot be tested', not a failure of the game
+        if ($srec.adapterError -like 'CANNOT-RUN:*') {
+            $rec.notRun = $srec.adapterError.Substring(11).Trim()
+            $v = Get-BdCompatVerdict -NotRun $rec.notRun
+            $rec.verdict = $v.Verdict; $rec.why = $v.Why; $rec.counts = $v
+            return [pscustomobject]$rec
+        }
         if ($r) { $srec.exitCode = $r.ExitCode; $srec.seconds = $r.Seconds; if ($r.PSObject.Properties['Settings']) { $rec.settings = $r.Settings } }
         $resPath = Join-Path $sOut 'result.txt'
         $res = $null

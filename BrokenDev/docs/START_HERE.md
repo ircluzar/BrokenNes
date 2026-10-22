@@ -43,6 +43,8 @@ BrokenDev\brokendev.ps1 verify all              # 5. run them on BrokenNes: boot
 BrokenDev\brokendev.ps1 diff all                # 6. (optional) differential replay against Mesen 2 (the NES ones use the user's tracer, kept in BrokenDev\tools\vrun\mesen)
 BrokenDev\brokendev.ps1 run supervrun           # open one in the BrokenNes desktop app
 BrokenDev\brokendev.ps1 tools                   # 7. the editors and checkers of the games; 'tool <id>' starts one (section 3a)
+BrokenDev\brokendev.ps1 emulators install all   # 8. the other emulators (section 3b): Mesen, BizHawk, FCEUX, Snes9x, pinned releases
+BrokenDev\brokendev.ps1 compat all              # 9. every game on BrokenNes and on every emulator of its console
 ```
 
 **Live workspaces first.** When the user's own workspaces sit beside the repository (`VRUN_Nes_Dev`, `SuperVRUN_dev`), `build` and the tools
@@ -67,6 +69,23 @@ the id are passed to it; environment variables such as `VRUN_TARGET_ROOM` keep w
 | `vrun-*`, `svrun-*` scripts | the check and measurement scripts of both projects (`brokendev.ps1 tools` lists them) |
 
 Where each one came from, how it was verified on 2026-10-20 and what is still missing: `docs\projects\brokendev-tools.md`.
+
+## 3b. Other emulators (compat)
+
+`brokendev.ps1 emulators` lists them (installed or not, version, consoles, what each one's column can check). `emulators install <id|all>`
+installs the pinned official releases portable into `BROKENDEV_HOME\emulators\<id>-<version>`: a zip already in `emulators\_downloads`
+with the pinned size and sha256 is used as it is; a missing one is downloaded from the pinned GitHub release URL only; a zip that does not
+match is reported and left alone. BizHawk needs the Visual C++ 2015-2022 x64 runtime and .NET Framework 4.8: `emulators` says when one is
+missing; BrokenDev never installs system components.
+
+* `compat <project|all> [-Emu id,id] [-Scenario id]` runs the project's `compat` scenarios on BrokenNes first (the reference column, through
+  the Workshop: **it needs a Workshop built from this repository after 2026-10-22**, `build-workshop`; an older one is reported as
+  "cannot be tested") and then on every installed emulator of its console. Open `out\<project>\compat\compat.html`.
+* `play <project> -Emu <id>` opens the built ROM in one emulator for hand testing; its saves live in `work\play\<project>\<emu>\saves`
+  (moved aside when the ROM changes: FCEUX's mapper-30 save is the whole PRG flash and would otherwise run the OLD build).
+* Each emulator runs with its OWN defaults (power-on RAM, region): that is the point. BizHawk and FCEUX open windows during a run.
+* Mesen's test runner is stopped by Super VRUN's own test scripts (they close every Mesen started with `--testRunner`): do not run them at the
+  same time as `compat`.
 
 `restore` takes an archive id (`vrun_nes_dev`, `supervrun_dev`, `smb1_topaz`), a project id, or `all`. By default it leaves out bulk that no
 build needs (SuperVRUN's 1.3 GB music-lab renders and its Claude transcripts, the SMB1 parity pipeline's 5 GB of working debris); `-Full`
@@ -117,4 +136,5 @@ Outputs: `BROKENDEV_HOME\out\<project>\` holds the published ROM, `build.json` (
 * `docs\projects\brokendev-report.md`: the table of all six versions with hashes, cores, checks and results.
 * `docs\projects\brokendev-music-pipeline.md`: the design for composing in FL Studio and replaying on a ROM.
 * `docs\projects\brokendev-tools.md`: the tools (inventory, origin, verification, gaps).
+* `docs\projects\brokendev-emulators.md`: the other emulators, how each is driven, what each column can check, the compat matrix.
 * `docs\projects\round5-bd.md`: this track's record.
