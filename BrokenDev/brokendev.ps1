@@ -297,6 +297,7 @@ try {
                 try { $rec = Invoke-BdCompat -Project $id -EmuIds $Emu -Scenarios $Scenario; if (-not $rec.ok) { $bad += $id } }
                 catch { Write-BdFail $_.Exception.Message; $bad += $id }
             }
+            [void](Write-BdCompatMatrix)
             if ($bad.Count -gt 0) { Write-BdFail ("compat found problems in: " + ($bad -join ', ') + ' (see out\<project>\compat\compat.html)'); exit 1 }
             exit 0
         }

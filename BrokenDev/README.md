@@ -109,7 +109,7 @@ enough colours or like BrokenNes' picture. Emulators boot a few frames apart, so
 runs with its own defaults (its power-on RAM, its region), which is the point. The verdict per emulator is `works`, `differs` (a state too
 many frames from BrokenNes', a picture unlike it), `fails` (a crash, a hang, a check that failed) or `cannot be tested` (with the reason).
 Results: `out/<id>/compat/compat.json`, `compat.html` (the contact sheet: rows = pictures, columns = BrokenNes then each emulator) and the
-pictures. The emulators, how each is driven, what each column can and cannot check, and the results: `docs/projects/brokendev-emulators.md`.
+pictures; `out/compat.html` (and `compat-matrix.json`) is the matrix of every project's latest run, linking to each sheet. The emulators, how each is driven, what each column can and cannot check, and the results: `docs/projects/brokendev-emulators.md`.
 
 ## Live workspaces
 

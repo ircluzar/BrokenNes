@@ -829,9 +829,21 @@ try {
         Assert-True ($e -match 'checks is empty') $e
         Assert-True ($e -match "after 'c2' must name an earlier check") $e
     }
-    Test-Case 'Mesen''s uninitialised-read lines become addresses with their symbols' {
+    Test-Case 'Mesen''s uninitialised-read lines become addresses with their symbols (NES $XXXX, SNES $BBXXXX; section markers are not names)' {
         $u = @(Get-BdUninitialisedReads -Output "x`n[CPU] Uninitialized memory read: `$05E0`n[CPU] Uninitialized memory read: `$05E2`n[CPU] Uninitialized memory read: `$05E0" -Symbols @{ redraw_backlog = 0x5E0 })
         Assert-Equal $u.Count 2; Assert-Equal $u[1].Symbol 'redraw_backlog+2'
+        $s = @(Get-BdUninitialisedReads -Output '[CPU] Uninitialized memory read: $7EF4F2' -Symbols @{ players_n = 0x7EF4F2; 'SECTIONSTART_.x' = 0x7EF4F0 } -Console snes)
+        Assert-Equal $s[0].Addr '$7EF4F2'; Assert-Equal $s[0].Symbol 'players_n'
+    }
+    Test-Case 'play saves belong to one build: a new ROM moves them aside (kept); NEGATIVE: the same ROM keeps them' {
+        $pd = Join-Path $tmpRoot 'play\saves'
+        [void](Set-BdPlaySaves -SaveDir $pd -RomSha256 'aaaa1111')
+        Set-Content (Join-Path $pd 'game.sav') 'old build'
+        Assert-True ($null -eq (Set-BdPlaySaves -SaveDir $pd -RomSha256 'aaaa1111')) 'the same ROM moved the saves'
+        Assert-True (Test-Path (Join-Path $pd 'game.sav')) 'the same ROM lost its save'
+        $aside = Set-BdPlaySaves -SaveDir $pd -RomSha256 'bbbb2222'
+        Assert-True ($aside -and (Test-Path (Join-Path $aside 'game.sav'))) 'the old save was not kept aside'
+        Assert-True (-not (Test-Path (Join-Path $pd 'game.sav'))) 'a new build still sees the old save'
     }
     Test-Case 'pictures: the same picture in another palette is structurally the same; NEGATIVE: a different picture is not; a BMP becomes a PNG' {
         Add-Type -AssemblyName System.Drawing

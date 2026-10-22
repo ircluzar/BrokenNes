@@ -80,7 +80,8 @@ missing; BrokenDev never installs system components.
 
 * `compat <project|all> [-Emu id,id] [-Scenario id]` runs the project's `compat` scenarios on BrokenNes first (the reference column, through
   the Workshop: **it needs a Workshop built from this repository after 2026-10-22**, `build-workshop`; an older one is reported as
-  "cannot be tested") and then on every installed emulator of its console. Open `out\<project>\compat\compat.html`.
+  "cannot be tested") and then on every installed emulator of its console. Open `out\<project>\compat\compat.html`, or `out\compat.html`
+  for the matrix of every project.
 * `play <project> -Emu <id>` opens the built ROM in one emulator for hand testing; its saves live in `work\play\<project>\<emu>\saves`
   (moved aside when the ROM changes: FCEUX's mapper-30 save is the whole PRG flash and would otherwise run the OLD build).
 * Each emulator runs with its OWN defaults (power-on RAM, region): that is the point. BizHawk and FCEUX open windows during a run.

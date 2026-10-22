@@ -649,16 +649,21 @@ function Get-BdUninitialisedReads {
     <# Mesen's test runner prints '[CPU] Uninitialized memory read: $XXXX' for RAM read before any write: the addresses, with the symbol each falls in. #>
     param([string]$Output, [hashtable]$Symbols = @{}, [string]$Console = 'nes')
     $addrs = @(([regex]::Matches([string]$Output, 'Uninitialized memory read: \$([0-9A-Fa-f]+)') | ForEach-Object { [Convert]::ToInt32($_.Groups[1].Value, 16) }) | Select-Object -Unique | Sort-Object)
+    # Mesen prints NES RAM as $XXXX and SNES addresses as 24-bit $BBXXXX: a NES .mlb (R: entries) and a SNES .sym (24-bit) name them
+    # directly; WLA-DX section markers are not names.
     $byAddr = @{}
-    foreach ($k in $Symbols.Keys) { $a = [int]$Symbols[$k]; if (-not $byAddr.ContainsKey($a) -or $k.Length -lt $byAddr[$a].Length) { $byAddr[$a] = $k } }
+    foreach ($k in $Symbols.Keys) {
+        if ($k -like 'SECTIONSTART_*' -or $k -like 'SECTIONEND_*') { continue }
+        $a = [int]$Symbols[$k]; if (-not $byAddr.ContainsKey($a) -or $k.Length -lt $byAddr[$a].Length) { $byAddr[$a] = $k }
+    }
     $keys = @($byAddr.Keys | Sort-Object)
     foreach ($a in $addrs) {
         $name = ''
-        if ($Console -eq 'nes' -and $keys.Count -gt 0) {
+        if ($keys.Count -gt 0) {
             $below = @($keys | Where-Object { $_ -le $a } | Select-Object -Last 1)
             if ($below.Count -gt 0 -and ($a - $below[0]) -lt 64) { $name = $byAddr[$below[0]]; if ($a -ne $below[0]) { $name += '+' + ($a - $below[0]) } }
         }
-        [pscustomobject]@{ Addr = ('${0:X4}' -f $a); Symbol = $name }
+        [pscustomobject]@{ Addr = $(if ($a -gt 0xFFFF) { '${0:X6}' -f $a } else { '${0:X4}' -f $a }); Symbol = $name }
     }
 }
 
@@ -987,7 +992,83 @@ ul { margin:4px 0; padding-left:18px; }
     [System.IO.File]::WriteAllText($Path, $sb.ToString(), (New-Object System.Text.UTF8Encoding($false)))
 }
 
+# ---------------------------------------------------------------------------------------------------- the matrix of every project
+
+function Write-BdCompatMatrix {
+    <#
+      BROKENDEV_HOME\out\compat.html and compat-matrix.json: every project's latest compat record side by side (rows = projects, columns =
+      emulators, each cell the verdict, its first reason and a link to that project's contact sheet). Returns the rows. Prints the table.
+    #>
+    $outRoot = Join-Path (Get-BdHome) 'out'
+    $recs = @()
+    foreach ($id in (Get-BdProjectIds)) {
+        $p = Join-Path $outRoot "$id\compat\compat.json"
+        if (Test-Path -LiteralPath $p) { $recs += (Read-BdJson $p) }
+    }
+    if ($recs.Count -eq 0) { return @() }
+    $emuList = @((Read-BdEmulators).emulators)
+    $emuIds = @($emuList | ForEach-Object { [string]$_.id })
+    $consolesOf = @{}; foreach ($e in $emuList) { $consolesOf[[string]$e.id] = @($e.consoles) }
+    $rows = foreach ($r in $recs) {
+        $cells = [ordered]@{}
+        foreach ($e in $emuIds) {
+            $er = @($r.emulators) | Where-Object { $_.id -eq $e } | Select-Object -First 1
+            $cells[$e] = if ($er) { [ordered]@{ verdict = [string]$er.verdict; why = @($er.why | Select-Object -First 3) } } else { $null }
+        }
+        [ordered]@{ project = [string]$r.project; title = [string]$r.title; console = [string]$r.console; ranAtUtc = [string]$r.ranAtUtc; romSha256 = [string]$r.romSha256; cells = $cells }
+    }
+    Save-BdJson -Object ([ordered]@{ schema = 1; madeAtUtc = (Get-Date).ToUniversalTime().ToString('o'); emulators = $emuIds; projects = @($rows) }) -Path (Join-Path $outRoot 'compat-matrix.json') -Depth 8
+    $H = { param($t) ConvertTo-BdHtml ([string]$t) }
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Compat Matrix</title><style>')
+    [void]$sb.Append(':root{--bg:#fbfaf7;--fg:#1d1d1b;--muted:#6b6a65;--line:#dedcd4;--works:#1f7a3a;--differs:#9a6700;--fails:#b42318}@media (prefers-color-scheme: dark){:root{--bg:#161614;--fg:#ecebe6;--muted:#a3a29b;--line:#34332f;--works:#5bc27a;--differs:#e3b341;--fails:#f47067}}')
+    [void]$sb.Append('body{background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,Segoe UI,sans-serif;margin:0;padding:16px}table{border-collapse:collapse}th,td{border:1px solid var(--line);padding:6px;vertical-align:top;text-align:left;font-size:13px}.wrap{overflow-x:auto}.muted{color:var(--muted);font-size:12px}a{color:inherit}.v{font-weight:600;text-transform:uppercase;font-size:12px}.works{color:var(--works)}.differs{color:var(--differs)}.fails{color:var(--fails)}.cannot{color:var(--muted)}</style></head><body>')
+    [void]$sb.Append("<h1 style=`"font-size:20px;margin:0 0 8px`">BrokenDev compat matrix</h1><p class=`"muted`">Each project's latest compat run; BrokenNes is the reference column. Made $(& $H (Get-Date).ToString('yyyy-MM-dd HH:mm')).</p>")
+    [void]$sb.Append('<div class="wrap"><table><tr><th>Project</th>')
+    foreach ($e in $emuIds) { [void]$sb.Append("<th>$(& $H $e)</th>") }
+    [void]$sb.Append('</tr>')
+    foreach ($row in $rows) {
+        [void]$sb.Append("<tr><td><a href=`"$(& $H $row.project)/compat/compat.html`"><b>$(& $H $row.project)</b></a><div class=`"muted`">$(& $H $row.console), run $(& $H $row.ranAtUtc.Substring(0, [math]::Min(16, $row.ranAtUtc.Length)))</div></td>")
+        foreach ($e in $emuIds) {
+            $c = $row.cells[$e]
+            if (-not $c) { [void]$sb.Append("<td class=`"muted`">$(if ($consolesOf[$e] -notcontains $row.console) { "not a $($row.console) emulator" } else { 'not run' })</td>"); continue }
+            $cls = switch ($c.verdict) { 'works' { 'works' } 'differs' { 'differs' } 'fails' { 'fails' } default { 'cannot' } }
+            $why = if (@($c.why).Count) { '<div class="muted">' + (& $H (@($c.why)[0])) + '</div>' } else { '' }
+            [void]$sb.Append("<td><span class=`"v $cls`">$(& $H $c.verdict)</span>$why</td>")
+        }
+        [void]$sb.Append('</tr>')
+    }
+    [void]$sb.Append('</table></div></body></html>')
+    [System.IO.File]::WriteAllText((Join-Path $outRoot 'compat.html'), $sb.ToString(), (New-Object System.Text.UTF8Encoding($false)))
+    $fmt = '{0,-22}' + (($emuIds | ForEach-Object { ' {' + ([array]::IndexOf($emuIds, $_) + 1) + ',-17}' }) -join '')
+    Write-Host ''
+    Write-Host ($fmt -f (@('PROJECT') + $emuIds))
+    foreach ($row in $rows) { Write-Host ($fmt -f (@($row.project) + @($emuIds | ForEach-Object { if ($row.cells[$_]) { $row.cells[$_].verdict } else { '-' } }))) }
+    Write-BdOk "matrix: $(Join-Path $outRoot 'compat.html')"
+    @($rows)
+}
+
 # ---------------------------------------------------------------------------------------------------- play
+
+function Set-BdPlaySaves {
+    <#
+      A hand-testing save folder belongs to one build: FCEUX's mapper-30 save is the whole PRG flash and is RUN at the next power-on, so a
+      save made by an older build would replace the new program. When the ROM's sha256 differs from the one stamped in the folder, the
+      folder is moved aside (kept, never deleted) and a fresh one is made. Returns the folder it moved aside, or $null.
+    #>
+    param([Parameter(Mandatory)][string]$SaveDir, [Parameter(Mandatory)][string]$RomSha256)
+    $stamp = Join-Path $SaveDir '.brokendev-rom-sha256'
+    $aside = $null
+    if ((Test-Path -LiteralPath $stamp) -and ([System.IO.File]::ReadAllText($stamp).Trim() -ne $RomSha256)) {
+        $old = [System.IO.File]::ReadAllText($stamp).Trim()
+        $aside = Join-Path (Split-Path -Parent $SaveDir) ("{0}-{1}-{2}" -f (Split-Path -Leaf $SaveDir), $old.Substring(0, [math]::Min(12, $old.Length)), (Get-Date).ToString('yyyyMMdd-HHmmss'))
+        Move-Item -LiteralPath $SaveDir -Destination $aside
+        Write-BdWarn "the ROM changed since the last play: the saves of the older build were moved to $aside"
+    }
+    New-Item -ItemType Directory -Force -Path $SaveDir | Out-Null
+    [System.IO.File]::WriteAllText($stamp, $RomSha256)
+    $aside
+}
 
 function Invoke-BdPlay {
     <#
@@ -1013,17 +1094,8 @@ function Invoke-BdPlay {
     if (-not $rom -or -not (Test-Path -LiteralPath $rom.published)) { throw "the built ROM of $Project is missing" }
     $work = Join-Path (Join-Path (Join-Path (Get-BdHome) 'work\play') $Project) $EmuId
     $scratch = Join-Path $work 'scratch'; $saves = Join-Path $work 'saves'
-    # The saves belong to one build: FCEUX's mapper-30 save is the whole PRG flash and is RUN at the next power-on, so a save made by an older
-    # build would replace the new program. A new ROM moves the old saves aside (kept, never deleted) and starts with an empty folder.
-    $stamp = Join-Path $saves '.brokendev-rom-sha256'
-    if ((Test-Path -LiteralPath $saves) -and (Test-Path -LiteralPath $stamp) -and ([System.IO.File]::ReadAllText($stamp).Trim() -ne [string]$rom.sha256)) {
-        $old = [System.IO.File]::ReadAllText($stamp).Trim()
-        $aside = Join-Path $work ("saves-{0}-{1}" -f $old.Substring(0, [math]::Min(12, $old.Length)), (Get-Date).ToString('yyyyMMdd-HHmmss'))
-        Move-Item -LiteralPath $saves -Destination $aside
-        Write-BdWarn "the ROM changed since the last play: the saves of the older build were moved to $aside"
-    }
-    New-Item -ItemType Directory -Force -Path $scratch, $saves | Out-Null
-    [System.IO.File]::WriteAllText($stamp, [string]$rom.sha256)
+    [void](Set-BdPlaySaves -SaveDir $saves -RomSha256 ([string]$rom.sha256))
+    New-Item -ItemType Directory -Force -Path $scratch | Out-Null
     $copy = Join-Path $scratch (Split-Path -Leaf ([string]$rom.published))
     Copy-Item -LiteralPath ([string]$rom.published) -Destination $copy -Force
     $p = & $fn -Emu $e -Package $pkg -Exe $exe -Rom $copy -SaveDir $saves -Scratch $scratch
