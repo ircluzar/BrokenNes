@@ -83,6 +83,62 @@
     "ramFill": "fceux",
     "why": "Mesen 2.1.1 (the baseline the VRUN accuracy campaign used) and BrokenNes FIX cores run the same ROM with the same pad script; per frame the picture (palette indices), nametables, OAM, palette, CHR, PPU control and every APU register must agree. Uses the user's Mesen tracer, kept in BrokenDev/tools/vrun/mesen/state_trace.lua (BROKENDEV_TRACE_LUA names another)."
   },
+  "compat": {
+    "what": "VRUN on other NES emulators (brokendev.ps1 compat vrun-nes): the game's own state read through its .mlb symbols every frame, pictures at the checkpoints. Emulators boot a few frames apart, so states are compared with a frame tolerance. The map seed rotates every title frame (map_slot), so the first room may differ between emulators: current_room is recorded, never compared.",
+    "symbols": { "file": "{out}/vrun_game.mlb" },
+    "reads": {
+      "app_state": "app_state", "title_cursor": "title_cursor", "current_room": "current_room", "room_load_phase": "room_load_phase",
+      "save_exists": "save_exists", "player_hp": "player_hp", "nmi": "runtime_nmi_counter"
+    },
+    "frameTolerance": 30,
+    "scenarios": [
+      {
+        "id": "play",
+        "verify": "play",
+        "shots": [100],
+        "what": "power-on, the title, Start, then verify's play script",
+        "checks": [
+          { "id": "title", "what": "boots to the title (app_state APP_TITLE = 0 before Start)", "read": "app_state", "is": 0, "within": [60, 119], "hold": true },
+          { "id": "title-runs", "what": "the title runs (the NMI counter ticks)", "changes": "nmi", "within": [40, 119], "min": 30 },
+          { "id": "no-save", "what": "a first boot has no save (save_exists 0)", "read": "save_exists", "is": 0, "within": [60, 119], "hold": true },
+          { "id": "title-drawn", "what": "the title screen is drawn", "picture": 100, "minColors": 4 },
+          { "id": "title-like", "what": "the title looks like BrokenNes' title (structure, palette aside)", "similar": 100, "min": 0.8 },
+          { "id": "game", "what": "Start reaches gameplay (app_state APP_GAME = 1)", "read": "app_state", "is": 1, "within": [121, 400], "compare": true },
+          { "id": "room-loaded", "what": "the first room finishes loading (room_load_phase reaches its last phase, 9)", "read": "room_load_phase", "is": 9, "after": "game", "within": [-60, 300] },
+          { "id": "stays", "what": "the scripted play stays in the game (no death, no return to the title)", "read": "app_state", "is": 1, "within": [600, 2400], "hold": true, "soft": true },
+          { "id": "alive", "what": "the game keeps running to the end (the NMI counter keeps ticking)", "changes": "nmi", "within": [2100, 2400], "min": 250 },
+          { "id": "drawn", "what": "gameplay is drawn at the end", "picture": 2400, "minColors": 6 }
+        ]
+      },
+      {
+        "id": "save",
+        "saves": "save",
+        "frames": 400,
+        "input": "60:Start,66:,150:Start,156:,170:Select,176:",
+        "shots": [100, 260, 400],
+        "what": "Start, pause (Start), Select = save and quit: 16 bytes to the mapper-30 flash (sector 118)",
+        "checks": [
+          { "id": "game", "what": "Start reaches gameplay", "read": "app_state", "is": 1, "within": [61, 149] },
+          { "id": "saved", "what": "pause + Select saves (save_exists becomes 1)", "read": "save_exists", "is": 1, "within": [171, 260], "compare": true },
+          { "id": "quit", "what": "save and quit returns to the title", "read": "app_state", "is": 0, "after": "saved", "within": [0, 60] },
+          { "id": "continue-cursor", "what": "the title cursor lands on CONTINUE (title_cursor 1)", "read": "title_cursor", "is": 1, "after": "quit", "within": [0, 120] }
+        ]
+      },
+      {
+        "id": "continue",
+        "saves": "save",
+        "frames": 200,
+        "input": "",
+        "shots": [200],
+        "what": "a fresh boot of the same emulator, its battery save from 'save' in place",
+        "checks": [
+          { "id": "offers-continue", "what": "a fresh boot finds the save (save_exists 1: CONTINUE is offered)", "read": "save_exists", "is": 1, "within": [1, 120] },
+          { "id": "keeps", "what": "the save stays found", "read": "save_exists", "is": 1, "within": [120, 200], "hold": true },
+          { "id": "title-drawn", "what": "the title is drawn", "picture": 200, "minColors": 4 }
+        ]
+      }
+    ]
+  },
   "knownIssues": [
     "start_at_option_check fails in the project's own regression suite (the START AT spawn bug, blocked by the ROM budget); 67 of 68 checks pass.",
     "The ROM is at its ceiling: fixed bank 31 has no slack and each extra 'mode main()' branch costs about 1200 IR nodes.",

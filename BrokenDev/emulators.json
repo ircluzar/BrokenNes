@@ -1,0 +1,155 @@
+{
+  "schema": 1,
+  "note": "The emulators BrokenDev tests the homebrew games on, besides BrokenNes (the reference column of every result). A package is one official release zip, pinned by URL, size and sha256, unpacked portable into BROKENDEV_HOME\\emulators\\<package>-<version>. One package can back several emulator ids (BizHawk: NesHawk for the NES, BSNES for the SNES). Validated by lib\\Emulators.ps1 (Test-BdEmulators) and tests\\run-tests.ps1. Download hosts are also checked against a fixed list in lib\\Emulators.ps1: editing this file alone cannot add a new download source.",
+  "packages": [
+    {
+      "id": "mesen",
+      "title": "Mesen 2",
+      "version": "2.1.1",
+      "url": "https://github.com/SourMesen/Mesen2/releases/download/2.1.1/Mesen_2.1.1_Windows.zip",
+      "file": "Mesen_2.1.1_Windows.zip",
+      "bytes": 34058170,
+      "sha256": "23ccc2bc060b663c68dad3a8c5d6da7d23a50f872d04f135bafa2b04ff7d5cbe",
+      "sha256Source": "GitHub's published digest of the release asset",
+      "exe": "Mesen.exe",
+      "homepage": "https://github.com/SourMesen/Mesen2",
+      "portable": "Mesen is portable when a settings.json sits beside Mesen.exe; otherwise it uses Documents\\Mesen2 (which Super VRUN's own tests use on this machine). BrokenDev writes that settings.json before every start (lib\\Emulators.ps1, Set-BdMesenSettings), so its Mesen never reads or writes Documents\\Mesen2.",
+      "prerequisites": ".NET 8 desktop runtime is bundled (single-file exe); no system component needed."
+    },
+    {
+      "id": "bizhawk",
+      "title": "BizHawk (EmuHawk)",
+      "version": "2.11.1",
+      "url": "https://github.com/TASEmulators/BizHawk/releases/download/2.11.1/BizHawk-2.11.1-win-x64.zip",
+      "file": "BizHawk-2.11.1-win-x64.zip",
+      "bytes": 97984101,
+      "sha256": "dd7cbd5e205b09c5bce6afabc4f8aa525acc0bbeb9753b198a8db3fe6a5e5717",
+      "sha256Source": "GitHub's published digest of the release asset",
+      "exe": "EmuHawk.exe",
+      "homepage": "https://github.com/TASEmulators/BizHawk",
+      "portable": "BizHawk keeps everything beside EmuHawk.exe unless --config names another config.ini. BrokenDev always passes --config=<scratch>\\config.ini, whose path settings point every save, state and screenshot folder into the run's scratch folder.",
+      "prerequisites": ".NET Framework 4.8 and the Visual C++ 2015-2022 x64 runtime (checked by 'emulators': both present on this machine on 2026-10-22)."
+    },
+    {
+      "id": "fceux",
+      "title": "FCEUX",
+      "version": "2.7.0",
+      "url": "https://github.com/TASEmulators/fceux/releases/download/fceux-2.7.0/fceux-2.7.0-win64.zip",
+      "file": "fceux-2.7.0-win64.zip",
+      "bytes": 4842676,
+      "sha256": "f851d608fc21bc7d289d25ef92cb29ca6c96a21c3df28f82aab2a8328df1f9ff",
+      "sha256Source": "GitHub's published digest of the release asset",
+      "exe": "fceux64.exe",
+      "homepage": "https://github.com/TASEmulators/fceux",
+      "portable": "The Windows build keeps fceux.cfg beside fceux64.exe and makes its folders there; '-cfg' takes a file NAME joined to the exe's folder ('A pathname can NOT be specified', 2.7.0 help), and FCEUX writes the config back on exit. So BrokenDev never runs the installed copy: every run gets a copy of fceux64.exe and its DLLs (7.6 MB) in its scratch folder with a fresh fceux.cfg (battery saves -> the run's save folder, every other folder in the scratch folder). The adapter checks that the installed folder did not change.",
+      "prerequisites": "none"
+    },
+    {
+      "id": "snes9x",
+      "title": "Snes9x",
+      "version": "1.63",
+      "url": "https://github.com/snes9xgit/snes9x/releases/download/1.63/snes9x-1.63-win32-x64.zip",
+      "file": "snes9x-1.63-win32-x64.zip",
+      "bytes": 5328695,
+      "sha256": "e2bd103819051eae57d163cdbbf6b3b92db73fdd4a6a0ee6a939e507eaa95db8",
+      "sha256Source": "measured by BrokenDev on 2026-10-22 (GitHub publishes no digest for this asset)",
+      "exe": "snes9x-x64.exe",
+      "homepage": "https://github.com/snes9xgit/snes9x",
+      "portable": "The Windows build reads snes9x.conf beside its exe; '-conf <file>' names another one. BrokenDev passes -conf <scratch>\\snes9x.conf with its save, snapshot and movie folders in the run's scratch folder.",
+      "prerequisites": "none"
+    }
+  ],
+  "emulators": [
+    {
+      "id": "brokennes",
+      "title": "BrokenNes (Workshop, headless)",
+      "package": null,
+      "consoles": ["nes", "snes"],
+      "adapter": "workshop",
+      "reference": true,
+      "can": { "memory": true, "pictures": true, "audio": true, "saves": true, "exactFrames": true },
+      "defaults": {
+        "region": "NTSC",
+        "ramInit": "NES: the FCEUX pattern 00 00 00 00 FF FF FF FF (the app default; a project may ask powerOnRam zeros). SNES: zeros.",
+        "overscan": "none: the NES picture is 256x240, the SNES 256x224 (or 239)",
+        "cores": "the app defaults: NES CPU/PPU/APU FIX, SNES SFC; a project's verify.cores wins"
+      },
+      "notes": "The same Workshop and cores as 'verify'; deterministic, so a reference result can be compared run to run."
+    },
+    {
+      "id": "mesen",
+      "title": "Mesen 2.1.1",
+      "package": "mesen",
+      "consoles": ["nes", "snes"],
+      "adapter": "mesen",
+      "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
+      "defaults": {
+        "region": "Auto (NTSC for these ROMs)",
+        "ramInit": "Mesen's own default (recorded per run in compat.json from the settings it ran with)",
+        "overscan": "none: NES 256x240, SNES 256x224 or 239"
+      },
+      "notes": "Driven with Lua through --testRunner (the API the 20 VRUN tracers use). Input is set on the inputPolled event. Audio activity is not measured (the Lua API has no audio access)."
+    },
+    {
+      "id": "bizhawk-neshawk",
+      "title": "BizHawk 2.11.1, NesHawk core",
+      "package": "bizhawk",
+      "core": "NesHawk",
+      "system": "NES",
+      "consoles": ["nes"],
+      "adapter": "bizhawk",
+      "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
+      "defaults": {
+        "region": "NTSC (from the ROM header)",
+        "ramInit": "NesHawk's own (recorded per run)",
+        "overscan": "NesHawk clips 8 lines top and bottom by default: pictures are 256x224"
+      },
+      "notes": "EmuHawk --lua=<script> --config=<scratch config.ini> (NES -> NesHawk pinned, sound off, unthrottled). Input with joypad.set, frames with emu.frameadvance, memory.read_u8 on the core's RAM domain, client.screenshot."
+    },
+    {
+      "id": "fceux",
+      "title": "FCEUX 2.7.0",
+      "package": "fceux",
+      "consoles": ["nes"],
+      "adapter": "fceux",
+      "can": { "memory": true, "pictures": true, "audio": true, "saves": true, "exactFrames": true },
+      "defaults": {
+        "region": "NTSC (palyo 0, dendy 0; also for a NES 2.0 'multiple region' header)",
+        "ramInit": "00 00 00 00 FF FF FF FF repeated (RAMInitOption 0, measured before the first frame)",
+        "overscan": "the window shows lines 8-231 (srendline 8, erendline 231); BrokenDev's pictures have all 240 lines",
+        "other": "old PPU (newppu 0), 8 sprites a line, FCEUX's built-in palette"
+      },
+      "notes": "fceux64.exe -lua <script> <rom> on a private copy. Input with joypad.set(1, ...) every frame (held during frame f+1 when set at framecount f), memory.readbyte, the picture with gui.gdscreenshot(true) (the frame just completed, 256x240; gui.savescreenshotas saves the NEXT frame cropped to 224 lines, so it is not used), sound activity from sound.get() (channel volumes, sound output off), emu.speedmode('nothrottle') (every frame rendered), a clean exit with emu.exit (the battery save is written on close). Two windows (FCEUX and its Lua console) show during a run; they cannot be hidden. Mapper-30 saves: the .sav is the WHOLE 512 KB PRG flash, written on every close and run from at the next power-on, so a save folder must be emptied when the ROM changes (BrokenDev does)."
+    },
+    {
+      "id": "snes9x",
+      "title": "Snes9x 1.63 (standalone)",
+      "package": "snes9x",
+      "consoles": ["snes"],
+      "adapter": "snes9x",
+      "can": { "memory": false, "pictures": true, "audio": false, "saves": false, "exactFrames": true },
+      "defaults": {
+        "region": "Auto (NTSC for these ROMs)",
+        "ramInit": "Snes9x's own",
+        "overscan": "256x224 (239 when the game turns overscan on)"
+      },
+      "notes": "No scripting in the standalone build. Input comes from a .smv movie BrokenDev writes; pictures from its own frame dump. It cannot read game memory: its column checks pictures only and says so."
+    },
+    {
+      "id": "bizhawk-bsnes",
+      "title": "BizHawk 2.11.1, BSNES core",
+      "package": "bizhawk",
+      "core": "BSNES",
+      "system": "SNES",
+      "consoles": ["snes"],
+      "adapter": "bizhawk",
+      "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
+      "defaults": {
+        "region": "Auto (NTSC for these ROMs)",
+        "ramInit": "bsnes's own (recorded per run)",
+        "overscan": "256x224"
+      },
+      "notes": "As bizhawk-neshawk with SNES -> BSNES pinned; work RAM through the WRAM domain."
+    }
+  ]
+}

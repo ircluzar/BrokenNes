@@ -90,6 +90,31 @@
     "maxPixels": 64,
     "why": "As supervrun. VRUN picks the first room from the frame on which Start is pressed, so the two emulators only show the same room when Mesen's Start lands on the same game frame as BrokenNes' (inputShift 1 measured; other values show another room and 18,000+ differing pixels). maxPixels 64 records the measured residue (at most 32 pixels: animation phase of the title's dots) as the bar to keep. Frame 300 (the fade after Start) is left out: it differs by 6,013 pixels at every offset, a one-frame difference in the transition."
   },
+  "compat": {
+    "what": "Nested VRUN on other SNES emulators. Project Nested keeps the NES 2 KB RAM at SNES work RAM $0000-$07FF (its own harness says so, m30pipe/harness/nmitest/nmitest.lua; checked on BrokenNes: runtime_nmi_counter at WRAM $000A ticks and app_state at $03D8 flips on Start), so the nested NES build's .mlb names the game's variables. The first room depends on the frame Start lands on: current_room is recorded, never compared.",
+    "symbols": { "file": "{out}/vrun_game_nested.mlb", "nesRamInWram": 0 },
+    "reads": { "app_state": "app_state", "current_room": "current_room", "room_load_phase": "room_load_phase", "save_exists": "save_exists", "nmi": "runtime_nmi_counter" },
+    "frameTolerance": 30,
+    "scenarios": [
+      {
+        "id": "play",
+        "verify": "play",
+        "shots": [200],
+        "what": "power-on, the title, Start, verify's play script",
+        "checks": [
+          { "id": "title", "what": "boots to the title (app_state 0 before Start)", "read": "app_state", "is": 0, "within": [150, 239], "hold": true },
+          { "id": "title-runs", "what": "the title runs (the NES NMI counter ticks)", "changes": "nmi", "within": [120, 239], "min": 30 },
+          { "id": "title-drawn", "what": "the title screen is drawn", "picture": 200, "minColors": 4 },
+          { "id": "title-like", "what": "the title looks like BrokenNes' title", "similar": 200, "min": 0.8 },
+          { "id": "game", "what": "Start reaches gameplay (app_state 1)", "read": "app_state", "is": 1, "within": [241, 600], "compare": true },
+          { "id": "room-loaded", "what": "the first room finishes loading (room_load_phase 9)", "read": "room_load_phase", "is": 9, "after": "game", "within": [-60, 300] },
+          { "id": "stays", "what": "the scripted play stays in the game", "read": "app_state", "is": 1, "within": [700, 3000], "hold": true, "soft": true },
+          { "id": "alive", "what": "the game keeps running to the end (the NES NMI counter keeps ticking)", "changes": "nmi", "within": [2700, 3000], "min": 150 },
+          { "id": "drawn", "what": "gameplay is drawn at the end", "picture": 3000, "minColors": 6 }
+        ]
+      }
+    ]
+  },
   "knownIssues": [
     "Project Nested cannot reproduce NES lag frames: the exact fix would be a NES cycle clock in the recompiler (not started). The room-load timing race and RNG phase differ from the NES by a few frames.",
     "This recipe builds without entry-point feedback; the first execution of each code path recompiles at run time and freezes briefly. The Nested Builder's 'Harvest' (bootstrap, 10 to 20 minutes, needs Mesen) removes that; BrokenDev records the variant without it.",

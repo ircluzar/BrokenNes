@@ -26,6 +26,8 @@ $bd = Split-Path -Parent $here
 . (Join-Path $bd 'lib\Verify.ps1')
 . (Join-Path $bd 'lib\Diff.ps1')
 . (Join-Path $bd 'lib\DevTools.ps1')
+. (Join-Path $bd 'lib\Emulators.ps1')
+. (Join-Path $bd 'lib\Compat.ps1')
 
 $script:pass = 0; $script:fail = 0; $script:skip = 0
 $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('bdtests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -54,7 +56,7 @@ function Assert-Throws {
 function Save-Env { param([string[]]$Names) $h = @{}; foreach ($n in $Names) { $h[$n] = [Environment]::GetEnvironmentVariable($n) }; $h }
 function Restore-Env { param($Saved) foreach ($k in $Saved.Keys) { [Environment]::SetEnvironmentVariable($k, $Saved[$k]) } }
 $envNames = @('BROKENDEV_HOME', 'BROKENDEV_ARCHIVES', 'BROKENDEV_PROJECTS', 'BROKENDEV_ARCHIVES_JSON', 'BROKENDEV_PYTHON', 'BROKENDEV_WORKSHOP', 'BROKENNES_DEV', 'BROKENNES_CONFIG_DIR',
-              'BROKENDEV_DEVTOOLS', 'BROKENDEV_TRACE_LUA', 'BROKENDEV_LIVE_SYNTH', 'BROKENDEV_LIVE_MISSING', 'BD_TEST_TOOL_VAR')
+              'BROKENDEV_DEVTOOLS', 'BROKENDEV_TRACE_LUA', 'BROKENDEV_LIVE_SYNTH', 'BROKENDEV_LIVE_MISSING', 'BD_TEST_TOOL_VAR', 'BROKENDEV_EMULATORS')
 $savedEnv = Save-Env $envNames
 
 try {
@@ -647,6 +649,222 @@ try {
         Assert-True ($r.ExitCode -ne 0) 'a file with no # columns: header was accepted'
     }
 
+    # ------------------------------------------------------------------------------------------ emulators (registry, install)
+    Write-Host 'emulators'
+    $env:BROKENDEV_HOME = Join-Path $tmpRoot 'emuhome'
+    $env:BROKENDEV_EMULATORS = $null
+    $emuGood = Read-BdJson (Join-Path $bd 'emulators.json')
+    $emuMut = { param([scriptblock]$Edit) $c = ($emuGood | ConvertTo-Json -Depth 30) | ConvertFrom-Json; & $Edit $c; @(Test-BdEmulators -J $c) }
+    Test-Case 'the shipped emulators.json validates: six emulators, BrokenNes the one reference, four pinned packages' {
+        $e = @(Test-BdEmulators -J $emuGood); Assert-True ($e.Count -eq 0) ($e -join '; ')
+        $ids = @($emuGood.emulators | ForEach-Object { $_.id })
+        foreach ($w in 'brokennes', 'mesen', 'bizhawk-neshawk', 'fceux', 'snes9x', 'bizhawk-bsnes') { Assert-True ($ids -contains $w) "missing emulator $w" }
+        Assert-Equal @($emuGood.packages).Count 4
+        Assert-Equal (@($emuGood.emulators | Where-Object { Get-BdProp $_ 'reference' $false }) | ForEach-Object { $_.id }) 'brokennes'
+    }
+    Test-Case 'NEGATIVE: a download URL outside the pinned release locations, a bad sha256, a missing package, two references, a bizhawk id without its core are rejected' {
+        $e = & $emuMut { param($j) $j.packages[0].url = 'https://example.com/releases/Mesen_2.1.1_Windows.zip' }
+        Assert-True (($e -join ';') -match 'not one of the pinned release locations') ($e -join '; ')
+        $e = & $emuMut { param($j) $j.packages[1].url = 'https://github.com/someone/BizHawk/releases/download/2.11.1/BizHawk-2.11.1-win-x64.zip' }
+        Assert-True (($e -join ';') -match 'not one of the pinned release locations') 'a fork on github.com passed for the official repository'
+        $e = & $emuMut { param($j) $j.packages[0].sha256 = 'abc' }
+        Assert-True (($e -join ';') -match 'sha256') ($e -join '; ')
+        $e = & $emuMut { param($j) ($j.emulators | Where-Object { $_.id -eq 'fceux' }).package = 'nestopia' }
+        Assert-True (($e -join ';') -match "package 'nestopia' is not in packages") ($e -join '; ')
+        $e = & $emuMut { param($j) ($j.emulators | Where-Object { $_.id -eq 'brokennes' }) | Add-Member -NotePropertyName x -NotePropertyValue 1; ($j.emulators | Where-Object { $_.id -eq 'mesen' }) | Add-Member -NotePropertyName reference -NotePropertyValue $true -Force }
+        Assert-True (($e -join ';') -match 'reference') ($e -join '; ')
+        $e = & $emuMut { param($j) ($j.emulators | Where-Object { $_.id -eq 'bizhawk-bsnes' }).PSObject.Properties.Remove('core') }
+        Assert-True (($e -join ';') -match "needs 'core'") ($e -join '; ')
+    }
+    # a synthetic package: a tiny zip with an exe-named file, at a URL of the allowed form (never downloaded: -NoDownload)
+    $zstage = Join-Path $tmpRoot 'zstage'; New-Item -ItemType Directory -Force -Path (Join-Path $zstage 'Top') | Out-Null
+    Set-Content (Join-Path $zstage 'Top\fakeemu.exe') 'not a real program'
+    $dlDir = Join-Path $env:BROKENDEV_HOME 'emulators\_downloads'; New-Item -ItemType Directory -Force -Path $dlDir | Out-Null
+    $zipPath = Join-Path $dlDir 'fakeemu-1.0.zip'
+    if ($sevenZip) { Push-Location $zstage; & $sevenZip a -tzip $zipPath 'Top' -bso0 -bsp0 | Out-Null; Pop-Location }
+    $fakePkg = [pscustomobject]@{ id = 'fakeemu'; version = '1.0'; url = 'https://github.com/TASEmulators/fceux/releases/download/x/fakeemu-1.0.zip'; file = 'fakeemu-1.0.zip'; exe = 'fakeemu.exe'
+                                  bytes = $(if (Test-Path $zipPath) { (Get-Item $zipPath).Length } else { 1 }); sha256 = $(if (Test-Path $zipPath) { Get-BdSha256 $zipPath } else { '0' * 64 }) }
+    Test-Case 'install reuses a zip already in _downloads (size and sha256 pinned), unpacks it portable into <id>-<version> and marks it installed' {
+        if (-not $sevenZip) { Skip-Test '7-Zip not installed' }
+        $st = Install-BdEmuPackage -Package $fakePkg -NoDownload
+        Assert-Equal $st.State 'installed'
+        Assert-True (Test-Path (Join-Path $env:BROKENDEV_HOME 'emulators\fakeemu-1.0\fakeemu.exe')) 'the exe is not where the registry says'
+        Assert-True (Test-Path (Join-Path $env:BROKENDEV_HOME 'emulators\fakeemu-1.0\.brokendev-install.json')) 'no install marker'
+    }
+    Test-Case 'NEGATIVE: a zip in _downloads with the wrong sha256 is refused, kept as it is, and nothing is installed' {
+        if (-not $sevenZip) { Skip-Test '7-Zip not installed' }
+        $bad = $fakePkg.PSObject.Copy(); $bad.version = '1.1'; $bad.sha256 = ('f' * 64)
+        Assert-Throws { Install-BdEmuPackage -Package $bad -NoDownload } 'does not match the pinned release'
+        Assert-True (Test-Path $zipPath) 'the mismatching zip was deleted'
+        Assert-Equal (Get-BdEmuPackageState $bad).State 'absent'
+    }
+    Test-Case 'NEGATIVE: a package URL that is not a pinned release location is refused before any download' {
+        $bad = $fakePkg.PSObject.Copy(); $bad.url = 'https://example.com/fakeemu-1.0.zip'; $bad.file = 'other.zip'
+        Assert-Throws { Get-BdEmuZip -Package $bad } 'not a pinned release location'
+    }
+    Test-Case 'NEGATIVE: a zip without the exe the registry names fails the install and leaves no installed marker' {
+        if (-not $sevenZip) { Skip-Test '7-Zip not installed' }
+        $bad = $fakePkg.PSObject.Copy(); $bad.version = '1.2'; $bad.exe = 'missing.exe'
+        Assert-Throws { Install-BdEmuPackage -Package $bad -NoDownload } 'missing.exe'
+        Assert-True ((Get-BdEmuPackageState $bad).State -ne 'installed') 'a broken install looks installed'
+    }
+    Test-Case 'NEGATIVE: an installed folder whose marker names another zip is partial, not installed' {
+        if (-not $sevenZip) { Skip-Test '7-Zip not installed' }
+        $other = $fakePkg.PSObject.Copy(); $other.sha256 = ('e' * 64)
+        Assert-Equal (Get-BdEmuPackageState $other).State 'partial'
+    }
+
+    # ------------------------------------------------------------------------------------------ compat (spec, result, checks, verdicts)
+    Write-Host 'compat'
+    $runSpec = @{ Console = 'nes'; Rom = 'C:\r o m\g.nes'; Out = 'C:\out dir'; SaveDir = 'C:\saves'; Frames = 300
+                  Reads = @(@{ Name = 'app_state'; Domain = 'ram'; Addr = 0x3D8 }, @{ Name = 'nmi'; Domain = 'ram'; Addr = 0xA }); Input = '120:Start,132:,200:Right+A'; Shots = @(100, 300) }
+    Test-Case 'a spec round-trips (paths with spaces, buttons, reads, pictures)' {
+        $t = New-BdCompatSpecText -Run $runSpec
+        $s = Read-BdCompatSpec -Text $t
+        Assert-Equal $s.Rom 'C:\r o m\g.nes'; Assert-Equal $s.Frames 300; Assert-Equal @($s.Reads).Count 2
+        Assert-Equal $s.Reads[0].Addr 0x3D8; Assert-Equal @($s.Inputs).Count 3; Assert-Equal (@($s.Inputs[2].Buttons) -join '+') 'Right+A'
+        Assert-Equal @($s.Inputs[1].Buttons).Count 0; Assert-Equal (@($s.Shots) -join ',') '100,300'
+    }
+    Test-Case 'NEGATIVE: a spec that an adapter could misread is never written (wram on a NES, a SNES button on a NES, a picture after the last frame)' {
+        $x = $runSpec.Clone(); $x.Reads = @(@{ Name = 'a'; Domain = 'wram'; Addr = 1 })
+        Assert-Throws { New-BdCompatSpecText -Run $x } 'does not belong'
+        $x = $runSpec.Clone(); $x.Input = '10:Y'
+        Assert-Throws { New-BdCompatSpecText -Run $x } "'Y' is not a nes button"
+        $x = $runSpec.Clone(); $x.Shots = @(301)
+        Assert-Throws { New-BdCompatSpecText -Run $x } 'outside'
+    }
+    function New-ResultText {
+        # app_state 0 until frame $GameAt then 1; nmi counts every frame (or freezes from $FreezeAt); shots at 100 and $Frames
+        param([int]$Frames = 300, [int]$GameAt = 130, [int]$FreezeAt = 0, [string]$End = 'done')
+        $l = @('# bdcompat-result 1', 'emu synthetic', 'reads app_state nmi')
+        for ($f = 1; $f -le $Frames; $f++) { $n = if ($FreezeAt -gt 0 -and $f -ge $FreezeAt) { $FreezeAt % 256 } else { $f % 256 }; $l += "t $f $(if ($f -ge $GameAt) { 1 } else { 0 }) $n" }
+        $l += 'shot 100 shot_00100.png'; $l += 'audio 30 1'
+        if ($End) { $l += "end $End $Frames" }
+        $l -join "`n"
+    }
+    Test-Case 'a result parses: reads, a value per frame, pictures, sound windows, the end' {
+        $r = ConvertFrom-BdCompatResult -Text (New-ResultText)
+        Assert-Equal @($r.Errors).Count 0 ($r.Errors -join '; ')
+        Assert-Equal (@($r.Reads) -join ',') 'app_state,nmi'; Assert-Equal $r.Frames.Count 300; Assert-Equal $r.Values[130][0] 1
+        Assert-Equal $r.Shots[100] 'shot_00100.png'; Assert-Equal $r.Audio[30] 1; Assert-Equal $r.End.State 'done'; Assert-Equal $r.LastFrame 300
+    }
+    Test-Case 'NEGATIVE: a result with a missing value, a non-number, a frame going backwards, no header or an unknown end state is reported, never scored as complete' {
+        foreach ($bad in @("# bdcompat-result 1`nreads a b`nt 1 5", "# bdcompat-result 1`nreads a`nt 1 x", "# bdcompat-result 1`nreads a`nt 2 1`nt 1 1", "reads a`nt 1 1", "# bdcompat-result 1`nend exploded 5", "# bdcompat-result 1`nreads a`nt 1 300")) {
+            $r = ConvertFrom-BdCompatResult -Text $bad
+            Assert-True (@($r.Errors).Count -gt 0) "accepted: $($bad -replace "`n", ' | ')"
+        }
+    }
+    $canAll = [pscustomobject]@{ memory = $true; pictures = $true }
+    $canPic = [pscustomobject]@{ memory = $false; pictures = $true }
+    function Invoke-Chk { param($Check, $Res, $Can = $canAll, [hashtable]$Prior = @{}, [hashtable]$Shots = @{}) Test-BdCompatCheck -Check ([pscustomobject]$Check) -Result $Res -Shots $Shots -Can $Can -Prior $Prior }
+    $goodRes = ConvertFrom-BdCompatResult -Text (New-ResultText)
+    Test-Case 'checks: a state reached in its window passes with its first frame; NEGATIVE: the same state outside the window fails' {
+        $c = Invoke-Chk @{ id = 'game'; what = 'x'; read = 'app_state'; is = 1; within = @(121, 200) } $goodRes
+        Assert-Equal $c.Status 'pass'; Assert-Equal $c.FirstFrame 130
+        $c = Invoke-Chk @{ id = 'game'; what = 'x'; read = 'app_state'; is = 1; within = @(10, 120) } $goodRes
+        Assert-Equal $c.Status 'fail'
+    }
+    Test-Case 'checks: hold passes when the value holds on every frame; NEGATIVE: one frame off fails and names it' {
+        Assert-Equal (Invoke-Chk @{ id = 't'; what = 'x'; read = 'app_state'; is = 0; within = @(1, 129); hold = $true } $goodRes).Status 'pass'
+        $c = Invoke-Chk @{ id = 't'; what = 'x'; read = 'app_state'; is = 0; within = @(1, 130); hold = $true } $goodRes
+        Assert-Equal $c.Status 'fail'; Assert-True ($c.Detail -match 'frame 130') $c.Detail
+    }
+    Test-Case 'checks: a heartbeat passes while the game runs; NEGATIVE: a game frozen from frame 200 fails it (a hang inside an emulator that keeps drawing)' {
+        Assert-Equal (Invoke-Chk @{ id = 'alive'; what = 'x'; changes = 'nmi'; within = @(200, 300); min = 90 } $goodRes).Status 'pass'
+        $frozen = ConvertFrom-BdCompatResult -Text (New-ResultText -FreezeAt 200)
+        Assert-Equal (Invoke-Chk @{ id = 'alive'; what = 'x'; changes = 'nmi'; within = @(200, 300); min = 90 } $frozen).Status 'fail'
+    }
+    Test-Case 'checks: after makes a window relative to an earlier check; NEGATIVE: after a check that never happened fails' {
+        $c = Invoke-Chk @{ id = 'loaded'; what = 'x'; read = 'app_state'; is = 1; after = 'game'; within = @(-5, 5) } $goodRes -Prior @{ game = 130 }
+        Assert-Equal $c.Status 'pass'; Assert-Equal $c.FirstFrame 130
+        $c = Invoke-Chk @{ id = 'loaded'; what = 'x'; read = 'app_state'; is = 1; after = 'game'; within = @(-5, 5) } $goodRes -Prior @{ game = $null }
+        Assert-Equal $c.Status 'fail'
+    }
+    Test-Case 'checks: memory checks are n/a on an emulator that cannot read memory (never a silent pass); a soft check turns a failure into a difference' {
+        Assert-Equal (Invoke-Chk @{ id = 'g'; what = 'x'; read = 'app_state'; is = 1; within = @(121, 200) } $goodRes -Can $canPic).Status 'n/a'
+        Assert-Equal (Invoke-Chk @{ id = 'g'; what = 'x'; read = 'app_state'; is = 7; within = @(121, 200); soft = $true } $goodRes).Status 'differs'
+    }
+    Test-Case 'checks: a picture with enough colours passes; NEGATIVE: too few colours, or no picture at that frame, fails' {
+        $shots = @{ 100 = [pscustomobject]@{ Colors = 7; Hash = 'A' }; 300 = [pscustomobject]@{ Colors = 1; Hash = 'B' } }
+        Assert-Equal (Invoke-Chk @{ id = 'p'; what = 'x'; picture = 100; minColors = 4 } $goodRes -Shots $shots).Status 'pass'
+        Assert-Equal (Invoke-Chk @{ id = 'p'; what = 'x'; picture = 300; minColors = 4 } $goodRes -Shots $shots).Status 'fail'
+        Assert-Equal (Invoke-Chk @{ id = 'p'; what = 'x'; picture = 200; minColors = 4 } $goodRes -Shots $shots).Status 'fail'
+    }
+    function New-ScRec { param([string]$Id = 'play', [string]$State = 'done', $Checks) [pscustomobject]@{ Id = $Id; End = [pscustomobject]@{ State = $State; Frame = 300; Text = '' }; Checks = @($Checks) } }
+    function New-Chk { param([string]$Id, [string]$Status = 'pass', $First = $null, [bool]$Compare = $false) [pscustomobject]@{ Id = $Id; What = $Id; Status = $Status; Detail = 'd'; FirstFrame = $First; Compare = $Compare } }
+    Test-Case 'verdicts: works when every check passes and compared states are within the tolerance' {
+        $v = Get-BdCompatVerdict -Records @(New-ScRec -Checks @((New-Chk 'title'), (New-Chk 'game' pass 140 $true))) -RefFirst @{ 'play/game' = 127 } -Tolerance 30
+        Assert-Equal $v.Verdict 'works' ($v.Why -join '; ')
+    }
+    Test-Case 'NEGATIVE verdicts: a planted failed check fails; a hung run fails; a state 40 frames late differs; a run where nothing applies cannot be tested' {
+        Assert-Equal (Get-BdCompatVerdict -Records @(New-ScRec -Checks @((New-Chk 'title'), (New-Chk 'game' fail)))).Verdict 'fails'
+        Assert-Equal (Get-BdCompatVerdict -Records @(New-ScRec -State 'hung' -Checks @((New-Chk 'title')))).Verdict 'fails'
+        $v = Get-BdCompatVerdict -Records @(New-ScRec -Checks @((New-Chk 'game' pass 167 $true))) -RefFirst @{ 'play/game' = 127 } -Tolerance 30
+        Assert-Equal $v.Verdict 'differs'; Assert-True (($v.Why -join ' ') -match '40 frames') ($v.Why -join '; ')
+        Assert-Equal (Get-BdCompatVerdict -Records @(New-ScRec -Checks @((New-Chk 'game' 'n/a')))).Verdict 'cannot be tested'
+        Assert-Equal (Get-BdCompatVerdict -NotRun 'not installed').Verdict 'cannot be tested'
+        Assert-Equal (Get-BdCompatVerdict -Records @(New-ScRec -Checks @((New-Chk 'stays' 'differs')))).Verdict 'differs'
+    }
+    Test-Case 'symbols: a NESFab .mlb and a WLA-DX .sym are read; SNES addresses map to work RAM; NEGATIVE: a ROM address is not work RAM, an unknown symbol is an error' {
+        $mlb = Join-Path $tmpRoot 'g.mlb'; [System.IO.File]::WriteAllText($mlb, "NesPrgRom:07CF6B:code@31_1:`nR:03D8:app_state@0:`nR:0330:player_x@1:`nR:0397:player_x@0:`n")
+        $t = Read-BdSymbols -Path $mlb
+        Assert-Equal $t['app_state'] 0x3D8; Assert-Equal $t['player_x'] 0x397; Assert-Equal $t['player_x@1'] 0x330
+        $sym = Join-Path $tmpRoot 'g.sym'; [System.IO.File]::WriteAllText($sym, "; header`n007ec9f0 cur_state_seen`n00000037 snes_vblank_count`n00988000 code`n")
+        $s = Read-BdSymbols -Path $sym
+        Assert-Equal (ConvertTo-BdWramOffset -Address $s['cur_state_seen']) 0xC9F0
+        Assert-Equal (ConvertTo-BdWramOffset -Address $s['snes_vblank_count']) 0x37
+        Assert-Throws { ConvertTo-BdWramOffset -Address $s['code'] } 'not in SNES work RAM'
+        $sec = [pscustomobject]@{ symbols = [pscustomobject]@{ file = $mlb; nesRamInWram = 0 }; reads = [pscustomobject]@{ a = 'app_state' } }
+        Assert-Equal (@(Resolve-BdCompatReads -Compat $sec -Console 'snes')[0].Addr) 0x3D8
+        $sec.reads = [pscustomobject]@{ a = 'no_such_variable' }
+        Assert-Throws { Resolve-BdCompatReads -Compat $sec -Console 'nes' } 'no_such_variable'
+    }
+    Test-Case 'NEGATIVE: compat sections are validated (a check on an unknown read, a scenario with no checks, after naming a later check)' {
+        $sec = [pscustomobject]@{ symbols = [pscustomobject]@{ file = 'x.mlb' }; reads = [pscustomobject]@{ a = 'a' }; scenarios = @(
+            [pscustomobject]@{ id = 's'; frames = 10; checks = @([pscustomobject]@{ id = 'c'; what = 'w'; read = 'b'; is = 1; within = @(1, 2) }) },
+            [pscustomobject]@{ id = 't'; frames = 10; checks = @() },
+            [pscustomobject]@{ id = 'u'; frames = 10; checks = @([pscustomobject]@{ id = 'c1'; what = 'w'; read = 'a'; is = 1; within = @(1, 2); after = 'c2' }, [pscustomobject]@{ id = 'c2'; what = 'w'; read = 'a'; is = 1; within = @(1, 2) }) }) }
+        $e = (Test-BdCompatSection -Compat $sec) -join ' | '
+        Assert-True ($e -match "'b' is not one of compat.reads") $e
+        Assert-True ($e -match 'checks is empty') $e
+        Assert-True ($e -match "after 'c2' must name an earlier check") $e
+    }
+    Test-Case 'Mesen''s uninitialised-read lines become addresses with their symbols' {
+        $u = @(Get-BdUninitialisedReads -Output "x`n[CPU] Uninitialized memory read: `$05E0`n[CPU] Uninitialized memory read: `$05E2`n[CPU] Uninitialized memory read: `$05E0" -Symbols @{ redraw_backlog = 0x5E0 })
+        Assert-Equal $u.Count 2; Assert-Equal $u[1].Symbol 'redraw_backlog+2'
+    }
+    Test-Case 'pictures: the same picture in another palette is structurally the same; NEGATIVE: a different picture is not; a BMP becomes a PNG' {
+        Add-Type -AssemblyName System.Drawing
+        function New-Pic { param([string]$Path, [scriptblock]$Color) $b = New-Object System.Drawing.Bitmap 32, 30; for ($y = 0; $y -lt 30; $y++) { for ($x = 0; $x -lt 32; $x++) { $b.SetPixel($x, $y, (& $Color $x $y)) } }; $fmt = if ($Path -match '\.bmp$') { [System.Drawing.Imaging.ImageFormat]::Bmp } else { [System.Drawing.Imaging.ImageFormat]::Png }; $b.Save($Path, $fmt); $b.Dispose() }
+        $a = Join-Path $tmpRoot 'pa.png'; $b2 = Join-Path $tmpRoot 'pb.bmp'; $c = Join-Path $tmpRoot 'pc.png'
+        New-Pic $a { param($x, $y) if ($x -lt 16) { [System.Drawing.Color]::FromArgb(10, 20, 30) } else { [System.Drawing.Color]::FromArgb(200, 0, 0) } }
+        New-Pic $b2 { param($x, $y) if ($x -lt 16) { [System.Drawing.Color]::FromArgb(0, 0, 0) } else { [System.Drawing.Color]::FromArgb(250, 30, 30) } }
+        New-Pic $c { param($x, $y) if ((($x -shr 2) + ($y -shr 2)) % 2) { [System.Drawing.Color]::FromArgb(10, 20, 30) } else { [System.Drawing.Color]::FromArgb(200, 0, 0) } }
+        $sa = Get-BdPictureStats -Path $a; $sb2 = Get-BdPictureStats -Path $b2
+        Assert-Equal $sa.Colors 2; Assert-True ($sb2.Path -match '\.png$' -and (Test-Path $sb2.Path) -and -not (Test-Path $b2)) 'the BMP was not converted to a PNG'
+        Assert-Equal (Get-BdPictureSimilarity -A $a -B $sb2.Path) 1
+        Assert-True ((Get-BdPictureSimilarity -A $a -B $c) -lt 0.8) 'a different picture scored as similar'
+    }
+    Test-Case 'a watched emulator that keeps writing its result runs to the end; NEGATIVE: one that stops writing is ended as hung, one that outlives its limit as timed out' {
+        $rf = Join-Path $tmpRoot 'watch-result.txt'
+        $psx = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $writer = "for (`$i = 0; `$i -lt 8; `$i++) { Add-Content -LiteralPath '$rf' 'x'; Start-Sleep -Milliseconds 500 }"
+        $r = Invoke-BdWatchedProcess -FilePath $psx -Arguments @('-NoProfile', '-Command', $writer) -ResultFile $rf -TimeoutSec 60 -HangSec 3
+        Assert-True (-not $r.Hung -and -not $r.TimedOut) "a writing process was stopped (hung=$($r.Hung) timeout=$($r.TimedOut))"
+        $r = Invoke-BdWatchedProcess -FilePath $psx -Arguments @('-NoProfile', '-Command', 'Start-Sleep -Seconds 60') -ResultFile (Join-Path $tmpRoot 'never.txt') -TimeoutSec 60 -HangSec 3
+        Assert-True $r.Hung 'a silent process was not ended as hung'; Assert-True ($r.Seconds -lt 30) "the hang took $($r.Seconds) s to see"
+        $r = Invoke-BdWatchedProcess -FilePath $psx -Arguments @('-NoProfile', '-Command', $writer.Replace('-lt 8', '-lt 40')) -ResultFile (Join-Path $tmpRoot 'slow.txt') -TimeoutSec 3 -HangSec 30
+        Assert-True $r.TimedOut 'a process past its limit was not ended as timed out'
+    }
+    Test-Case 'every adapter file loads and defines its run and play functions' {
+        foreach ($ad in 'workshop', 'mesen', 'bizhawk', 'fceux', 'snes9x') {
+            $le = Get-BdAdapterLoadError -Adapter $ad
+            Assert-True (-not $le) "adapter $ad does not load: $le"
+            Assert-True ([bool](Get-BdAdapterFunction -Adapter $ad)) "adapter $ad has no Invoke-BdAdapter function"
+            if ($ad -ne 'workshop') { Assert-True ([bool](Get-BdAdapterFunction -Adapter $ad -Prefix 'Start-BdPlay')) "adapter $ad has no Start-BdPlay function" }
+        }
+    }
+
     # ------------------------------------------------------------------------------------------ BrokenNes integration (Workshop)
     Write-Host 'BrokenNes integration'
     Restore-Env $savedEnv
@@ -797,6 +1015,39 @@ try {
         if (-not $ws) { Skip-Test $wsSkip }
         $v = Invoke-WsVerify -Id 'v-pass' -Rom (Join-Path $tmpRoot 'nope.nes')
         Assert-Equal $v.Exit 2
+    }
+    # the compat runner: the same contract as the other emulators' adapters
+    $crOut = Join-Path $tmpRoot 'crun'
+    function Invoke-WsRun {
+        param($Run, [string[]]$More = @())
+        New-Item -ItemType Directory -Force -Path $Run.Out | Out-Null
+        $sp = Join-Path $Run.Out 'spec.txt'
+        [System.IO.File]::WriteAllText($sp, $(if ($Run.ContainsKey('Text')) { $Run.Text } else { New-BdCompatSpecText -Run $Run }))
+        $r = Invoke-Ws -WsArgs (@('--brokendev', 'run', '--spec', $sp) + $More) -ExtraEnv @{ BROKENNES_DEV = '1' }
+        $res = $null; $rp = Join-Path $Run.Out 'result.txt'
+        if (Test-Path $rp) { $res = ConvertFrom-BdCompatResult -Text ([System.IO.File]::ReadAllText($rp)) }
+        [pscustomobject]@{ Exit = $r.ExitCode; Output = $r.Output; Result = $res }
+    }
+    Test-Case 'compat run: BrokenNes writes the contract (a value per frame, pictures, the end) for the RAM-colour ROM; power-on RAM shows in the reads' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $run = @{ Console = 'nes'; Rom = $ramRom; Out = (Join-Path $crOut 'a'); SaveDir = (Join-Path $crOut 'sa'); Frames = 30; Reads = @(@{ Name = 'b7fc'; Domain = 'ram'; Addr = 0x7FC }); Input = ''; Shots = @(30) }
+        $x = Invoke-WsRun $run @('--ram', 'zeros')
+        if ($x.Exit -eq 2 -and $x.Output -match "Unknown BrokenDev command 'run'") { Skip-Test 'this Workshop predates brokendev run (rebuild it: brokendev.ps1 build-workshop)' }
+        Assert-Equal $x.Exit 0 (Select-BdTail $x.Output 5)
+        Assert-Equal @($x.Result.Errors).Count 0 ($x.Result.Errors -join '; ')
+        Assert-Equal $x.Result.End.State 'done'; Assert-Equal $x.Result.Frames.Count 30; Assert-Equal $x.Result.Values[30][0] 0
+        Assert-True (Test-Path (Join-Path $run.Out $x.Result.Shots[30])) 'no picture'
+        $run2 = $run.Clone(); $run2.Out = Join-Path $crOut 'b'
+        $y = Invoke-WsRun $run2 @('--ram', 'ones')
+        Assert-Equal $y.Result.Values[30][0] 255
+    }
+    Test-Case 'NEGATIVE: the compat runner refuses a spec reading SNES work RAM on a NES (exit 2), and an unknown directive' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $x = Invoke-WsRun @{ Out = (Join-Path $crOut 'c'); Text = "console nes`nrom $ramRom`nout $(Join-Path $crOut 'c')`nframes 5`nread a wram 10`n" }
+        if ($x.Exit -eq 2 -and $x.Output -match "Unknown BrokenDev command 'run'") { Skip-Test 'this Workshop predates brokendev run' }
+        Assert-Equal $x.Exit 2
+        $x = Invoke-WsRun @{ Out = (Join-Path $crOut 'd'); Text = "console nes`nrom $ramRom`nout $(Join-Path $crOut 'd')`nframes 5`nteleport 3`n" }
+        Assert-Equal $x.Exit 2
     }
 }
 finally {

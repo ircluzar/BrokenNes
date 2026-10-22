@@ -79,6 +79,35 @@
     "maxPixels": 400,
     "why": "As supervrun. Six of seven frames are pixel-identical; frame 900 keeps a residue of about 290 pixels at every input shift and offset (a sprite animation phase in the walking scene), recorded as the bar to keep."
   },
+  "compat": {
+    "what": "The Nested remake on other SNES emulators. Project Nested keeps the NES 2 KB RAM at SNES work RAM $0000-$07FF, so the NES symbols of smb1-nes read the same variables (checked on BrokenNes: runtime_nmi_counter at WRAM $000A ticks, title_active at $07BA flips on Start). The pipeline zeroes NES RAM itself (MemoryEmulation.ZeroMemoryReset), so the remake's uninitialised-RAM bug cannot show here whatever the emulator's power-on RAM.",
+    "symbols": { "file": "{home}/out/smb1-nes/smb1_game.mlb", "nesRamInWram": 0 },
+    "reads": {
+      "title_active": "title_active", "levelcard_state": "levelcard_state", "camera_x": "camera_x", "lives": "lives",
+      "chr_test_active": "chr_test_active", "nmi": "runtime_nmi_counter"
+    },
+    "frameTolerance": 30,
+    "scenarios": [
+      {
+        "id": "play",
+        "verify": "play",
+        "shots": [200],
+        "what": "power-on, the title, Start, verify's play script",
+        "checks": [
+          { "id": "title", "what": "boots to the title (title_active 1)", "read": "title_active", "is": 1, "within": [100, 239] },
+          { "id": "title-runs", "what": "the title runs (the NES NMI counter ticks)", "changes": "nmi", "within": [100, 239], "min": 30 },
+          { "id": "title-drawn", "what": "the title screen is drawn", "picture": 200, "minColors": 4 },
+          { "id": "title-like", "what": "the title looks like BrokenNes' title", "similar": 200, "min": 0.8 },
+          { "id": "uninit-ram", "what": "chr_test_active reads 0", "read": "chr_test_active", "is": 0, "within": [100, 239], "hold": true },
+          { "id": "start", "what": "Start leaves the title (title_active 0)", "read": "title_active", "is": 0, "within": [241, 500], "compare": true },
+          { "id": "world-card", "what": "the World card ends and the level starts", "read": "levelcard_state", "is": 0, "after": "start", "within": [60, 400], "compare": true },
+          { "id": "scrolls", "what": "holding Right scrolls the level (camera_x moves)", "changes": "camera_x", "within": [600, 1300], "min": 20 },
+          { "id": "alive", "what": "the game keeps running to the end (the NES NMI counter keeps ticking)", "changes": "nmi", "within": [2700, 3000], "min": 150 },
+          { "id": "drawn", "what": "a picture is drawn at the end", "picture": 3000, "minColors": 4 }
+        ]
+      }
+    ]
+  },
   "knownIssues": [
     "Project Nested never clears the DMC-active bit of $4015 and never delivers the DMC IRQ; the dmc_status post-build step fixes the first, the second stays unemulated (the status-bar split runs from that IRQ on the NES; the profile of the 20261002 build records that play matched the NES anyway).",
     "No NES lag-frame emulation: long play drifts from the NES by a few frames (docs/GENERALITY.md row 21). Not specific to this game.",
