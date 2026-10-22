@@ -100,7 +100,7 @@ frames to picture), a `result.txt` and pictures out.
 | `mesen` | NES, SNES | Mesen 2.1.1, Lua through `--testRunner`, a private home | state, pictures, NES sound activity, saves; lists RAM read before written |
 | `bizhawk-neshawk` | NES | BizHawk 2.11.1 EmuHawk, `--lua`, a scratch `--config` pinning NesHawk | state, pictures, saves |
 | `fceux` | NES | FCEUX 2.7.0, `-lua` on a private copy | state, pictures, sound activity, saves |
-| `snes9x` | SNES | Snes9x 1.63 standalone (no scripting): see the record | pictures (see docs) |
+| `snes9x` | SNES | Snes9x 1.63 standalone (no scripting): its own menu commands by window message, a .smv movie, Frame Advance, its screenshots and save states | state, pictures, saves |
 | `bizhawk-bsnes` | SNES | BizHawk 2.11.1 EmuHawk, `--lua`, a scratch `--config` pinning BSNES | state, pictures, saves |
 
 A project's manifest has a `compat` section: the bytes to read (by the game's own symbols, `.mlb` or `.sym`), and scenarios (a `verify`
@@ -145,6 +145,7 @@ copy; a machine with no live workspace (a new one) uses the restored copy, as be
 | `BROKENDEV_TRACE_LUA` | another Mesen tracer for `diff` of the NES projects | BrokenDev's copy of the user's `state_trace.lua`, `tools\vrun\mesen\` |
 | `BROKENDEV_DEVTOOLS` | another tools registry (the tests use it) | `devtools.json` |
 | `BROKENDEV_EMULATORS` | another emulator registry (the tests use it) | `emulators.json` |
+| `BROKENDEV_SNES9X_WORK` | a local folder for Snes9x's per-frame pictures and save states during compat | the run's scratch, or `%TEMP%\brokendev-snes9x` when that is on a network share |
 | `SMB1_ORIG_ROM` | the user's own original SMB1 ROM | `P:\BrokenDev\SMB1 Topaz\smb1.nes` |
 | `BROKENNES_DEV` | `1` switches BrokenDev on inside BrokenNes | off |
 

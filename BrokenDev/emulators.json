@@ -55,7 +55,7 @@
       "sha256Source": "measured by BrokenDev on 2026-10-22 (GitHub publishes no digest for this asset)",
       "exe": "snes9x-x64.exe",
       "homepage": "https://github.com/snes9xgit/snes9x",
-      "portable": "The Windows build reads snes9x.conf beside its exe; '-conf <file>' names another one. BrokenDev passes -conf <scratch>\\snes9x.conf with its save, snapshot and movie folders in the run's scratch folder.",
+      "portable": "Snes9x reads and REWRITES snes9x.conf beside its exe and writes stdout.txt, stderr.txt and Valid.Ext there; '-conf' only adds a file to the standard one. So BrokenDev never runs the installed copy: every run gets a copy of snes9x-x64.exe (13 MB) in its scratch folder with its own snes9x.conf (every Dir: absolute, Dir:SRAM = the run's save folder, AddToRegistry FALSE). WARNING: Snes9x's default AddToRegistry TRUE writes per-user (HKCU) file associations at start-up; the adapter checks before and after every run that they did not change.",
       "prerequisites": "none"
     }
   ],
@@ -127,13 +127,13 @@
       "package": "snes9x",
       "consoles": ["snes"],
       "adapter": "snes9x",
-      "can": { "memory": false, "pictures": true, "audio": false, "saves": false, "exactFrames": true },
+      "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
       "defaults": {
-        "region": "Auto (NTSC for these ROMs)",
-        "ramInit": "Snes9x's own",
-        "overscan": "256x224 (239 when the game turns overscan on)"
+        "region": "from the ROM header (NTSC for these ROMs)",
+        "ramInit": "work RAM 0x55 everywhere (S9xReset); a fresh battery RAM is 0x60 bytes",
+        "overscan": "native: 256x224, 256x239 when the game turns overscan on"
       },
-      "notes": "No scripting in the standalone build. Input comes from a .smv movie BrokenDev writes; pictures from its own frame dump. It cannot read game memory: its column checks pictures only and says so."
+      "notes": "The standalone Windows build has no scripting and no movie, dump or max-frames switches (those are the Unix port's). It is driven by its own menu commands, sent as window messages to the window of the process BrokenDev started (minimised, no focus): input from a .smv movie BrokenDev writes (power-on reset, read-only, File > Movie > Play), Pause, then Frame Advance one frame at a time, each step confirmed by its own Save Screenshot of that frame (exact frames, native-size PNG, 5-bit colour); work RAM from its own save state (slot 0) after every frame (the 128 KB RAM block of the gzip freeze file; about 40 frames/s with reads, 110 without); WM_CLOSE at the end (the battery save is written to the save folder). Input alignment: Snes9x latches the auto-joypad two lines after vblank with the new sample, BrokenNes at vblank; the adapter reads the game's NMITIMEN from a probe run and maps the movie for auto-joypad or hand-read pads (measured: Super VRUN auto-joypad, the Nested ROMs hand-read; each then replays BrokenNes' run exactly). The movie resets only the first 128 KB of battery RAM. No sound activity. Sound muted, OpenGL display (the default Direct3D shows an error box on this machine)."
     },
     {
       "id": "bizhawk-bsnes",
