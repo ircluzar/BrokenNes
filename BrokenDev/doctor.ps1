@@ -58,6 +58,21 @@ $checks.Add((Test-BdWindowsPowerShell))
 $checks.Add((Test-Bd7Zip))
 $checks.Add((Get-BdDotNetFramework48))
 $checks.Add((Test-BdWorkshop))
+# the other emulators 'compat' tests the games on (optional: 'brokendev.ps1 emulators install all')
+if ($homeInfo) {
+    try {
+        . (Join-Path $here 'lib\Emulators.ps1')
+        $ej = Read-BdEmulators
+        $inst = @(); $miss = @(); $pre = @()
+        foreach ($p in $ej.packages) {
+            if ((Get-BdEmuPackageState $p).State -eq 'installed') { $inst += "$($p.id) $($p.version)" } else { $miss += [string]$p.id }
+            foreach ($x in @(Test-BdEmuPrereqs $p)) { $pre += "$($p.id) needs $x" }
+        }
+        $ok = ($miss.Count -eq 0 -and $pre.Count -eq 0)
+        $detail = "installed: $(if ($inst.Count) { $inst -join ', ' } else { 'none' })$(if ($miss.Count) { '; not installed: ' + ($miss -join ', ') })$(if ($pre.Count) { '; ' + ($pre -join '; ') })"
+        $checks.Add((New-BdCheck 'Other emulators (compat)' $ok $false "$($inst.Count) of $(@($ej.packages).Count)" (Get-BdEmuHome) $detail 'brokendev.ps1 emulators install all'))
+    } catch { $checks.Add((New-BdCheck 'Other emulators (compat)' $false $false '' '' $_.Exception.Message 'see BrokenDev\emulators.json')) }
+}
 
 # ---- archives and the toolchains that ship in them ---------------------------------------------
 if (-not $SkipProjects -and $homeInfo) {

@@ -32,6 +32,7 @@ internal static class BrokenDevCli
         "Usage: --brokendev list   [--manifests DIR] [--home DIR]\n" +
         "       --brokendev verify <id> [--manifests DIR] [--home DIR] [--rom PATH] [--only SCENARIO] [--png-dir DIR] [--out FILE]\n" +
         "       --brokendev dump-chr --rom PATH --out FILE [--frames N] [--input \"f:Buttons,...\"]   (a NES game's CHR RAM after N frames)\n" +
+        "       --brokendev run --spec FILE [--ram fceux|zeros|ones] [--cpu ID --ppu ID --apu ID] [--ntsc]   (a compat run: BrokenDev's emulator-neutral spec in, result.txt + pictures out)\n" +
         "BrokenDev is developer-only: set BROKENNES_DEV=1 (or brokenDevEnabled in config.json) first.";
 
     private const double NtscFps = 60.0988;
@@ -49,6 +50,8 @@ internal static class BrokenDevCli
         if (args.Length < 2) { Console.Error.WriteLine(Usage); return 2; }
         if (args[1].Equals("dump-chr", StringComparison.OrdinalIgnoreCase))
             return DumpChr(Opt("rom", ""), int.Parse(Opt("frames", "600"), CultureInfo.InvariantCulture), Opt("input", ""), Opt("out", ""));
+        if (args[1].Equals("run", StringComparison.OrdinalIgnoreCase))
+            return CompatRun(Opt("spec", ""), Opt("ram", "fceux"), Opt("cpu", ""), Opt("ppu", ""), Opt("apu", ""), args.Any(a => a.Equals("--ntsc", StringComparison.OrdinalIgnoreCase)));
 
         string? manifests = FindManifests(Opt("manifests", ""));
         if (manifests == null)
@@ -123,6 +126,120 @@ internal static class BrokenDevCli
         File.WriteAllBytes(outFile, chr);
         Console.WriteLine($"wrote {chr.Length} bytes of CHR after {frames} frames ({runner.Cores}); {chr.Count(b => b != 0)} non-zero; fnv {Fnv(chr)}");
         return 0;
+    }
+
+    // ---- run (BrokenDev compat) ------------------------------------------------------------------
+
+    /// <summary>
+    /// One run of BrokenDev's emulator-neutral compat contract (BrokenDev/lib/Compat.ps1 describes it): the spec names the ROM, the frames, the
+    /// pad script, the bytes to record every frame and the frames to picture; this writes <c>result.txt</c> and <c>shot_NNNNN.png</c> into the
+    /// spec's out folder, exactly as the Mesen, BizHawk, FCEUX and Snes9x adapters do, so BrokenNes is the reference column of the same table.
+    /// The battery save (a NES mapper's flash, a SNES cartridge's SRAM) is read from and written back to the spec's savedir as brokennes.sav:
+    /// a second run with the same savedir is a fresh boot that finds the game's save.
+    /// Exit: 0 the run reached its last frame, 1 the game crashed, 2 a bad spec or a missing file.
+    /// </summary>
+    private static int CompatRun(string specPath, string ram, string cpu, string ppu, string apu, bool ntsc)
+    {
+        if (specPath.Length == 0 || !File.Exists(specPath)) { Console.Error.WriteLine($"spec not found: '{specPath}'\n{Usage}"); return 2; }
+        string console = "", rom = "", outDir = "", saveDir = ""; int frames = 0;
+        var reads = new List<(string Name, string Domain, int Addr)>();
+        var steps = new List<InputStep>();
+        var shots = new SortedSet<int>();
+        int lineNo = 0;
+        foreach (string raw in File.ReadAllLines(specPath))
+        {
+            lineNo++;
+            string line = raw.Trim();
+            if (line.Length == 0 || line.StartsWith('#')) continue;
+            int sp = line.IndexOf(' ');
+            string key = sp < 0 ? line : line[..sp], val = sp < 0 ? "" : line[(sp + 1)..].Trim();
+            try
+            {
+                switch (key)
+                {
+                    case "console": console = val; break;
+                    case "rom": rom = val; break;
+                    case "out": outDir = val; break;
+                    case "savedir": saveDir = val; break;
+                    case "frames": frames = int.Parse(val, CultureInfo.InvariantCulture); break;
+                    case "read":
+                    {
+                        var p = val.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        reads.Add((p[0], p[1], Convert.ToInt32(p[2], 16)));
+                        break;
+                    }
+                    case "input":
+                    {
+                        var p = val.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        var names = p.Length < 2 || p[1] == "-" ? new List<string>() : p[1].Split('+', StringSplitOptions.RemoveEmptyEntries).ToList();
+                        steps.Add(new InputStep(int.Parse(p[0], CultureInfo.InvariantCulture), names));
+                        break;
+                    }
+                    case "shot": shots.Add(int.Parse(val, CultureInfo.InvariantCulture)); break;
+                    default: throw new FormatException($"unknown directive '{key}'");
+                }
+            }
+            catch (Exception ex) when (ex is FormatException or IndexOutOfRangeException or OverflowException)
+            {
+                Console.Error.WriteLine($"spec line {lineNo}: {ex.Message}: {raw}"); return 2;
+            }
+        }
+        if (console is not ("nes" or "snes") || rom.Length == 0 || outDir.Length == 0 || frames <= 0) { Console.Error.WriteLine("spec needs console nes|snes, rom, out and frames > 0"); return 2; }
+        if (!File.Exists(rom)) { Console.Error.WriteLine($"ROM not found: {rom}"); return 2; }
+        foreach (var r in reads)
+            if ((console == "nes" && r.Domain != "ram") || (console == "snes" && r.Domain != "wram")) { Console.Error.WriteLine($"read {r.Name}: domain {r.Domain} does not belong to the {console}"); return 2; }
+        steps = steps.OrderBy(s => s.Frame).ToList();
+        Directory.CreateDirectory(outDir);
+        string savePath = saveDir.Length > 0 ? Path.Combine(saveDir, "brokennes.sav") : "";
+
+        var coresJson = new JsonObject();
+        if (cpu.Length > 0) coresJson["cpu"] = cpu; if (ppu.Length > 0) coresJson["ppu"] = ppu; if (apu.Length > 0) coresJson["apu"] = apu;
+        using var verifyDoc = JsonDocument.Parse(new JsonObject { ["cores"] = coresJson }.ToJsonString());
+        byte[] romBytes = File.ReadAllBytes(rom);
+        using var w = new StreamWriter(Path.Combine(outDir, "result.txt"), false, new System.Text.UTF8Encoding(false));
+        w.WriteLine("# bdcompat-result 1");
+        int done = 0;
+        try
+        {
+            using IRunner runner = console == "nes" ? new NesRunner(rom, romBytes, verifyDoc.RootElement, ntsc, ram) : new SnesRunner(romBytes, Path.GetFileName(rom), verifyDoc.RootElement);
+            w.WriteLine($"emu BrokenNes Workshop {runner.Cores}");
+            w.WriteLine("reads " + string.Join(' ', reads.Select(r => r.Name)));
+            w.WriteLine($"note {runner.Description}");
+            w.WriteLine(console == "nes" ? $"note power-on RAM: {ram} (BrokenNes' own fill is the FCEUX pattern 00 00 00 00 FF FF FF FF)" : "note power-on work RAM: zeros");
+            if (savePath.Length > 0 && File.Exists(savePath))
+            {
+                byte[] save = File.ReadAllBytes(savePath);
+                w.WriteLine($"note battery: loaded {save.Length} bytes from {savePath}: {runner.ImportBattery(save)}");
+            }
+            else w.WriteLine("note battery: none loaded (a first boot)");
+            var held = new List<string>(); int next = 0;
+            var audio = new AudioStats();
+            for (int f = 0; f < frames; f++)
+            {
+                while (next < steps.Count && steps[next].Frame <= f) { held = steps[next].Names; next++; }
+                runner.Step(held);
+                done = f + 1;
+                if (runner.Crashed) { w.WriteLine($"end crashed {done} {runner.CrashInfo}"); w.Flush(); return 1; }
+                Accumulate(audio, runner.DrainAudio(), true);
+                w.WriteLine($"t {done}" + string.Concat(reads.Select(r => " " + runner.Peek(r.Domain, r.Addr).ToString(CultureInfo.InvariantCulture))));
+                if (done % 30 == 0) { w.WriteLine($"audio {done} {(audio.NonSilentFrames > 0 ? 1 : 0)}"); audio = new AudioStats(); }
+                if (shots.Contains(done)) { string file = $"shot_{done:D5}.png"; runner.SavePng(Path.Combine(outDir, file)); w.WriteLine($"shot {done} {file}"); }
+                if (done % 60 == 0) w.Flush();
+            }
+            if (savePath.Length > 0)
+            {
+                byte[]? save = runner.ExportBattery();
+                if (save is { Length: > 0 }) { Directory.CreateDirectory(saveDir); File.WriteAllBytes(savePath, save); w.WriteLine($"note battery: wrote {save.Length} bytes to {savePath}"); }
+                else w.WriteLine("note battery: the game has nothing to save (no write to its save memory in this run)");
+            }
+            w.WriteLine($"end done {done}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            w.WriteLine($"end crashed {done} {ex.GetType().Name}: {ex.Message.Replace('\n', ' ')}");
+            return 1;
+        }
     }
 
     // ---- verify --------------------------------------------------------------------------------
@@ -407,6 +524,12 @@ internal static class BrokenDevCli
         float[] DrainAudio();
         (ulong hash, int colors) Picture();
         void SavePng(string path);
+        /// <summary>One byte of the game's memory without side effects: domain "ram" (NES 2 KB system RAM) or "wram" (SNES 128 KB work RAM).</summary>
+        int Peek(string domain, int addr);
+        /// <summary>The battery save as the apps persist it (NES: the mapper's flash or other mapper-side memory; SNES: the cartridge SRAM), or null.</summary>
+        byte[]? ExportBattery();
+        /// <summary>Puts a battery save back before the first frame; returns what happened, in words.</summary>
+        string ImportBattery(byte[] data);
     }
 
     private static string Fnv(byte[] d) { ulong h = 14695981039346656037UL; foreach (byte b in d) { h ^= b; h *= 1099511628211UL; } return h.ToString("X16"); }
@@ -487,6 +610,12 @@ internal static class BrokenDevCli
 
         public void Poke(int addr, byte value) => nes.PokeSystemRam(addr & 0x7FF, value);
 
+        public int Peek(string domain, int addr) => domain == "ram" ? nes.PeekSystemRam(addr & 0x7FF) : throw new ArgumentException($"the NES has no memory domain '{domain}' here (ram)");
+
+        public byte[]? ExportBattery() => nes.ExportMapperBatteryMemory();
+
+        public string ImportBattery(byte[] data) => nes.HasMapperBatteryMemory ? nes.ImportMapperBatteryMemory(data).ToString() : "the cartridge has no mapper-side battery memory";
+
         public byte[] DumpChr()
         {
             int n = nes.GetChrSize(); var b = new byte[n];
@@ -555,6 +684,17 @@ internal static class BrokenDevCli
         }
 
         public void SavePng(string path) => MixLab.MixLabCli.SaveArgb(s.Frame, s.FrameWidth, s.FrameHeight, path);
+
+        public int Peek(string domain, int addr) => domain == "wram" && s is SnesSession ss ? ss.Board.Wram[addr & 0x1FFFF] : throw new ArgumentException($"the SNES has no memory domain '{domain}' here (wram)");
+
+        public byte[]? ExportBattery() => s.HasBattery ? s.ExportSave() : null;
+
+        public string ImportBattery(byte[] data)
+        {
+            if (!s.HasBattery) return "the cartridge has no battery";
+            try { s.ImportSave(data); return "Applied"; }
+            catch (Exception ex) { return "refused: " + ex.Message; }
+        }
 
         public void Dispose() => s.Dispose();
     }

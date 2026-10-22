@@ -83,6 +83,31 @@
     "maxPixels": 0,
     "why": "Mesen 2.1.1 from the SuperVRUN package (a private deterministic copy: no frame skipping, zeroed RAM, empty saves) against the BrokenNes SNES cores: the picture after N frames must match pixel for pixel within one colour level (Mesen expands 5-bit channels as (x<<3)|(x>>2), BrokenNes as x*255/31). Mesen's capture API lags by an unknown number of frames and its input is polled after its end-of-frame event, so each frame may match at its own offset (0 to 5) and the input is shifted by inputShift frames; both are recorded."
   },
+  "compat": {
+    "what": "Super VRUN on other SNES emulators, its state read through the WLA-DX symbols (supervrun.sym): cur_state_seen is the last state whose entry ran (0 title, 8 story, 1 game: include/game_states.h), snes_vblank_count the PVSnesLib frame counter (its low byte).",
+    "symbols": { "file": "{out}/supervrun.sym" },
+    "reads": { "state": "cur_state_seen", "title_cursor": "title_cursor", "room": "room_current", "save_run_valid": "save_run_valid", "player_hp": "player_hp", "vblank": "snes_vblank_count" },
+    "frameTolerance": 30,
+    "scenarios": [
+      {
+        "id": "play",
+        "verify": "play",
+        "shots": [200],
+        "what": "power-on, the title, Start (story), Start (skip the story), verify's play script",
+        "checks": [
+          { "id": "title", "what": "boots to the title (cur_state_seen STATE_TITLE = 0)", "read": "state", "is": 0, "within": [60, 299], "hold": true },
+          { "id": "title-runs", "what": "the title runs (the vblank counter ticks)", "changes": "vblank", "within": [60, 299], "min": 100 },
+          { "id": "title-drawn", "what": "the title screen is drawn", "picture": 200, "minColors": 8 },
+          { "id": "title-like", "what": "the title looks like BrokenNes' title", "similar": 200, "min": 0.8 },
+          { "id": "story", "what": "Start opens the story (cur_state_seen STATE_STORY = 8)", "read": "state", "is": 8, "within": [301, 519], "compare": true },
+          { "id": "game", "what": "Start skips the story into gameplay (cur_state_seen STATE_GAME = 1)", "read": "state", "is": 1, "after": "story", "within": [1, 400], "compare": true },
+          { "id": "stays", "what": "the scripted play stays in the game", "read": "state", "is": 1, "within": [700, 1500], "hold": true, "soft": true },
+          { "id": "alive", "what": "the game keeps running to the end (the vblank counter keeps ticking)", "changes": "vblank", "within": [1200, 1500], "min": 250 },
+          { "id": "drawn", "what": "gameplay is drawn at the end", "picture": 1500, "minColors": 20 }
+        ]
+      }
+    ]
+  },
   "knownIssues": [
     "Per the project's own retrospective: the S-CPU HDMA/DMA freeze and the INIDISP erratum are real-console behaviours that Mesen (and BrokenNes) do not emulate; the project keeps DMAs out of lines with HDMA live by rule.",
     "Baseline has no frame-time slack by design: rare frames end around scanline 234 to 261 of 262. The game's own HUD shows a LAG counter; it should stay at 0.",

@@ -85,6 +85,35 @@
     "ramFill": "zeros",
     "why": "Same method as vrun-nes. Both emulators start from zeroed work RAM (the project's own Mesen setting): with the FCEUX pattern the remake reads two uninitialised variables and stalls (see knownIssues), which is a project finding, not a difference between the emulators."
   },
+  "compat": {
+    "what": "The remake on other NES emulators, each with ITS OWN default power-on RAM (BrokenNes runs verify's powerOnRam zeros, the project's requirement). The uninit-ram check reads the variable the remake never initialises, so an emulator whose RAM does not power on as zeros shows the known bug directly.",
+    "symbols": { "file": "{out}/smb1_game.mlb" },
+    "reads": {
+      "title_active": "title_active", "levelcard_state": "levelcard_state", "camera_x": "camera_x", "lives": "lives",
+      "chr_test_active": "chr_test_active", "fire_anim_timer": "fire_anim_timer", "nmi": "runtime_nmi_counter"
+    },
+    "frameTolerance": 30,
+    "scenarios": [
+      {
+        "id": "play",
+        "verify": "play",
+        "shots": [100],
+        "what": "power-on, the title, Start, verify's play script (walk right, jump, run)",
+        "checks": [
+          { "id": "title", "what": "boots to the title (title_active 1)", "read": "title_active", "is": 1, "within": [20, 119] },
+          { "id": "title-runs", "what": "the title runs (the NMI counter ticks)", "changes": "nmi", "within": [40, 119], "min": 30 },
+          { "id": "title-drawn", "what": "the title screen is drawn", "picture": 100, "minColors": 4 },
+          { "id": "title-like", "what": "the title looks like BrokenNes' title (structure, palette aside)", "similar": 100, "min": 0.8 },
+          { "id": "uninit-ram", "what": "chr_test_active reads 0 (the remake never initialises it and relies on RAM powering on as zeros: knownIssues)", "read": "chr_test_active", "is": 0, "within": [20, 119], "hold": true },
+          { "id": "start", "what": "Start leaves the title (title_active 0)", "read": "title_active", "is": 0, "within": [121, 300], "compare": true },
+          { "id": "world-card", "what": "the World card ends and the level starts (levelcard_state back to 0)", "read": "levelcard_state", "is": 0, "after": "start", "within": [60, 400], "compare": true },
+          { "id": "scrolls", "what": "holding Right scrolls the level (camera_x moves)", "changes": "camera_x", "within": [420, 900], "min": 20 },
+          { "id": "alive", "what": "the game keeps running to the end (the NMI counter keeps ticking)", "changes": "nmi", "within": [2100, 2400], "min": 250 },
+          { "id": "drawn", "what": "a picture is drawn at the end", "picture": 2400, "minColors": 4 }
+        ]
+      }
+    ]
+  },
   "knownIssues": [
     "PROJECT BUG, found by BrokenDev: the remake reads two variables it never initialises, chr_test_active ($07FC) and fire_anim_timer ($07AE), and relies on work RAM powering on as zeros (the project's own Mesen is set to AllZeros). Real hardware powers RAM on undefined, and BrokenNes (like FCEUX) fills it with 00 00 00 00 FF FF FF FF, which puts $FF in both: the digits 1, 2 and 3 are drawn with the test-pattern tiles ('WORLD' shows blocks, the title says '[]PLAYER GAME') and the World card never ends. Fix in the project: set both to 0 at boot (or clear all of RAM in the reset code). BrokenDev's verify runs with powerOnRam zeros so the rest of the game can be checked, and records play-fceux-ram as an information scenario to show the effect.",
     "First quest: all 32 levels play start to finish and every level matches the original in same-input replays, but 'full parity' cannot be proven by testing, only approached: every new kind of replay found real differences the earlier ones could not see.",

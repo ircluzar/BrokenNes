@@ -78,6 +78,58 @@
     "maxPixels": 64,
     "why": "As vrun-nested. The enhanced ROM needs inputShift 4 (not 1) for the two emulators to pick the same first room: the game reacts to Start three frames differently in the two emulators. The enhancement uploads 2 KB of shading planes per NMI while rendering is off; a timing difference of a few frames there is the suspect and has not been chased (see the report). Measured residue at most 53 pixels."
   },
+  "compat": {
+    "what": "As vrun-nested (the enhancement is a post-build pass on that ROM: the same NES build, so vrun-nested's .mlb names the variables).",
+    "symbols": { "file": "{home}/out/vrun-nested/vrun_game_nested.mlb", "nesRamInWram": 0 },
+    "reads": { "app_state": "app_state", "current_room": "current_room", "room_load_phase": "room_load_phase", "save_exists": "save_exists", "title_cursor": "title_cursor", "nmi": "runtime_nmi_counter" },
+    "frameTolerance": 30,
+    "scenarios": [
+      {
+        "id": "play",
+        "verify": "play",
+        "shots": [200],
+        "what": "power-on, the title, Start, verify's play script",
+        "checks": [
+          { "id": "title", "what": "boots to the title (app_state 0 before Start)", "read": "app_state", "is": 0, "within": [150, 239], "hold": true },
+          { "id": "title-runs", "what": "the title runs (the NES NMI counter ticks)", "changes": "nmi", "within": [120, 239], "min": 30 },
+          { "id": "title-drawn", "what": "the title screen is drawn", "picture": 200, "minColors": 4 },
+          { "id": "title-like", "what": "the title looks like BrokenNes' title", "similar": 200, "min": 0.8 },
+          { "id": "game", "what": "Start reaches gameplay (app_state 1)", "read": "app_state", "is": 1, "within": [241, 600], "compare": true },
+          { "id": "room-loaded", "what": "the first room finishes loading (room_load_phase 9)", "read": "room_load_phase", "is": 9, "after": "game", "within": [-60, 300] },
+          { "id": "stays", "what": "the scripted play stays in the game", "read": "app_state", "is": 1, "within": [700, 3000], "hold": true, "soft": true },
+          { "id": "alive", "what": "the game keeps running to the end (the NES NMI counter keeps ticking)", "changes": "nmi", "within": [2700, 3000], "min": 150 },
+          { "id": "drawn", "what": "gameplay is drawn at the end", "picture": 3000, "minColors": 8 }
+        ]
+      },
+      {
+        "id": "save",
+        "saves": "save",
+        "frames": 900,
+        "input": "240:Start,252:,600:Start,612:,660:Select,672:",
+        "shots": [500, 900],
+        "what": "as vrun-nested: Start, pause, Select = save and quit into the SRAM-emulated flash",
+        "checks": [
+          { "id": "game", "what": "Start reaches gameplay", "read": "app_state", "is": 1, "within": [241, 599] },
+          { "id": "saved", "what": "pause + Select saves (save_exists becomes 1)", "read": "save_exists", "is": 1, "within": [661, 780], "compare": true },
+          { "id": "quit", "what": "save and quit returns to the title", "read": "app_state", "is": 0, "after": "saved", "within": [0, 60] },
+          { "id": "continue-cursor", "what": "the title cursor lands on CONTINUE (title_cursor 1)", "read": "title_cursor", "is": 1, "after": "quit", "within": [0, 120] }
+        ]
+      },
+      {
+        "id": "continue",
+        "saves": "save",
+        "frames": 400,
+        "input": "",
+        "shots": [400],
+        "what": "a fresh boot of the same emulator with the SRAM of 'save'",
+        "checks": [
+          { "id": "offers-continue", "what": "a fresh boot finds the save (save_exists 1: CONTINUE is offered)", "read": "save_exists", "is": 1, "within": [1, 300] },
+          { "id": "keeps", "what": "the save stays found", "read": "save_exists", "is": 1, "within": [300, 400], "hold": true },
+          { "id": "title-drawn", "what": "the title is drawn", "picture": 400, "minColors": 4 }
+        ]
+      }
+    ]
+  },
   "knownIssues": [
     "The enhancement is keyed to the game's tile layout (tile numbers in the CHR dump and src/game/anim_*.png): a change to VRUN's art needs a fresh dump and may need the tile ranges in the command revisited.",
     "The pass uses WRAM $7E:10DA-10DF and ROM space in banks $81 and $C2 that the pinned core leaves free; a later core step that claims that space would collide (core/SPACE.md is the registry).",

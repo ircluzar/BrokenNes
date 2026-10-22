@@ -93,6 +93,12 @@ function Test-BdManifest {
         if ($ok -eq 'mesen-screens' -and -not [string](Get-BdProp $oracle 'mesenSettings' '')) { $e.Add('oracle.mesenSettings is required for mesen-screens') }
         if ($ok -eq 'mesen-trace' -and $M.console -ne 'nes') { $e.Add('a mesen-trace oracle is for NES projects (the trace format is the NES one)') }
     }
+    # optional: the multi-emulator compatibility recipe (lib\Compat.ps1 interprets it; validated when that library is loaded)
+    $compat = Get-BdProp $M 'compat' $null
+    if ($compat -and (Get-Command Test-BdCompatSection -ErrorAction SilentlyContinue)) {
+        $vids = @(@(Get-BdProp $v 'scenarios' @()) | ForEach-Object { [string](Get-BdProp $_ 'id' '') })
+        foreach ($x in @(Test-BdCompatSection -Compat $compat -VerifyIds $vids)) { $e.Add($x) }
+    }
     @($e)
 }
 

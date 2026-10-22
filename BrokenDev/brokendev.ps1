@@ -16,6 +16,15 @@
     tools   [project]            the developer tools (editors, checkers) of every project or of one (devtools.json)
     tool    <id> [args...]       start one: a web UI on its own port in the default browser (-NoBrowser prints the address,
                                  -Stop stops the one BrokenDev started), or a script in the foreground (args are passed to it)
+    emulators                    the other emulators BrokenDev tests the games on (emulators.json): installed or not, version, consoles,
+                                 what each one's column can check
+    emulators install <id|all>   unpack the PINNED release (Mesen, BizHawk, FCEUX, Snes9x) portable into BROKENDEV_HOME\emulators; a zip
+                                 already in emulators\_downloads with the pinned size and sha256 is used, anything else is refused
+    play    <project> -Emu <id>  open the built ROM in that emulator for hand testing (saves in work\play\<project>\<emu>; BrokenNes: 'run')
+    compat  <project|all> [-Emu id,id] [-Scenario id,id]
+                                 the project's compat scenarios on BrokenNes (the reference column, always first) and on every installed
+                                 emulator of its console: the game's state read every frame, pictures, saves; a verdict per emulator
+                                 (works / differs / fails / cannot be tested) in out\<id>\compat\compat.json and compat.html
 
   Workspaces
     Every project works on the user's LIVE workspace when one sits beside the repository (VRUN_Nes_Dev, SuperVRUN_dev), else on the
@@ -29,6 +38,7 @@
     BROKENDEV_PYTHON    force a Python interpreter (default: the first with pillow and numpy)
     BROKENDEV_WORKSHOP  force a Workshop executable
     BROKENDEV_TRACE_LUA another Mesen tracer for 'diff' of the NES projects (default: BrokenDev's copy, tools\vrun\mesen\state_trace.lua)
+    BROKENDEV_EMULATORS another emulator registry (the tests use it; default emulators.json)
     SMB1_ORIG_ROM       the user's own original SMB1 ROM (not needed to build the remake; for regenerating its data; never copied anywhere)
 
   Exit codes: 0 ok, 1 a check or build failed, 2 usage error, 3 prerequisites missing.
@@ -39,6 +49,10 @@
   powershell -NoProfile -File BrokenDev\brokendev.ps1 build vrun-nes
   powershell -NoProfile -File BrokenDev\brokendev.ps1 tools
   powershell -NoProfile -File BrokenDev\brokendev.ps1 tool vrun-tile-editor
+  powershell -NoProfile -File BrokenDev\brokendev.ps1 emulators install all
+  powershell -NoProfile -File BrokenDev\brokendev.ps1 compat vrun-nes
+  powershell -NoProfile -File BrokenDev\brokendev.ps1 compat all -Emu mesen,fceux
+  powershell -NoProfile -File BrokenDev\brokendev.ps1 play supervrun -Emu snes9x
 #>
 [CmdletBinding()]
 param(
@@ -53,6 +67,10 @@ param(
     [switch]$Stop,
     [string]$ArtifactsPath = '',
     [string]$Exe = '',
+    # 'play' / 'compat': the emulator ids (comma list; 'compat' default: every installed one that runs the project's console)
+    [string[]]$Emu = @(),
+    # 'compat': only these scenarios of the project's compat section (comma list)
+    [string[]]$Scenario = @(),
     # 'tool <id> <args...>': the arguments after the tool id are passed to the tool
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @()
 )
@@ -68,6 +86,8 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\Verify.ps1')
 . (Join-Path $here 'lib\Diff.ps1')
 . (Join-Path $here 'lib\DevTools.ps1')
+. (Join-Path $here 'lib\Emulators.ps1')
+. (Join-Path $here 'lib\Compat.ps1')
 
 function Show-BdHelp { Write-Host (Get-Help (Join-Path $here 'brokendev.ps1') -Full | Out-String) }
 
@@ -105,7 +125,10 @@ function Get-BdProjectStatus {
 }
 
 try {
-    if ($Rest.Count -gt 0 -and $Verb.ToLowerInvariant() -ne 'tool') { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
+    if ($Rest.Count -gt 0 -and @('tool', 'emulators') -notcontains $Verb.ToLowerInvariant()) { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
+    # -Emu a,b and -Scenario a,b: one comma list or several values, the same either way (pwsh -File passes a,b as one string)
+    $Emu = @($Emu | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $Scenario = @($Scenario | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     switch ($Verb.ToLowerInvariant()) {
         'help' { Show-BdHelp; exit 0 }
         'doctor' {
@@ -235,7 +258,50 @@ try {
             $r | ConvertTo-Json -Depth 8
             exit 0
         }
-        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool"; exit 2 }
+        'emulators' {
+            if (-not $Target -or $Target -eq 'list') {
+                $rows = @(Get-BdEmulatorRows)
+                if ($Json) { $rows | ConvertTo-Json -Depth 3; exit 0 }
+                Write-Host ("emulators folder = {0}" -f (Get-BdEmuHome))
+                Write-Host ''
+                $fmt = '{0,-16} {1,-9} {2,-15} {3,-30} {4}'
+                $fmt -f 'EMULATOR', 'CONSOLES', 'VERSION', 'STATE', 'ITS COLUMN CAN CHECK' | Write-Host
+                foreach ($r in $rows) { $fmt -f $r.Id, $r.Consoles, $r.Version, $r.State, ($r.Can + $(if ($r.Reference) { '  (the reference)' } else { '' })) | Write-Host }
+                Write-Host ''
+                Write-Host 'install: brokendev.ps1 emulators install <emulator|package|all>   (the pinned releases only; a zip already in _downloads is reused)'
+                exit 0
+            }
+            if ($Target -ne 'install') { throw "emulators: unknown action '$Target' (list, install)" }
+            if ($Rest.Count -ne 1) { throw 'emulators install needs one emulator id, package id or all' }
+            $bad = @()
+            foreach ($p in (Resolve-BdEmuInstallTargets -Name $Rest[0])) {
+                Write-BdInfo "== install $($p.id) $($p.version)"
+                $pre = @(Test-BdEmuPrereqs $p)
+                if ($pre.Count -gt 0) { Write-BdWarn ("$($p.id) needs system components this machine lacks: " + ($pre -join ', ') + ' (BrokenDev never installs system components; install them yourself)') }
+                try { [void](Install-BdEmuPackage -Package $p -Force:$Force) } catch { Write-BdFail $_.Exception.Message; $bad += [string]$p.id }
+            }
+            if ($bad.Count -gt 0) { exit 1 }
+            exit 0
+        }
+        'play' {
+            [void](Resolve-BdTargets $Target)
+            if ($Emu.Count -ne 1) { throw 'play needs one emulator: -Emu <id> (see: brokendev.ps1 emulators)' }
+            Invoke-BdPlay -Project $Target -EmuId $Emu[0]
+            exit 0
+        }
+        'compat' {
+            $ids = Resolve-BdTargets $Target
+            $bad = @()
+            foreach ($id in $ids) {
+                Write-BdInfo "== compat $id"
+                try { $rec = Invoke-BdCompat -Project $id -EmuIds $Emu -Scenarios $Scenario; if (-not $rec.ok) { $bad += $id } }
+                catch { Write-BdFail $_.Exception.Message; $bad += $id }
+            }
+            [void](Write-BdCompatMatrix)
+            if ($bad.Count -gt 0) { Write-BdFail ("compat found problems in: " + ($bad -join ', ') + ' (see out\<project>\compat\compat.html)'); exit 1 }
+            exit 0
+        }
+        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, play, compat"; exit 2 }
     }
 } catch {
     Write-BdFail $_.Exception.Message
