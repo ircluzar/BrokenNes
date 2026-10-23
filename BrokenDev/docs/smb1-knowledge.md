@@ -177,6 +177,11 @@ Running the remake on the BrokenNes cores and against Mesen (see `docs/projects/
    against an emulator that powers RAM on as zeros. Hardware powers RAM on undefined, and BrokenNes (like FCEUX) fills it with a fixed pattern, which puts a
    non-zero byte in both: digits drawn as blocks and a World card that never ends. **Initialise every global, or clear RAM in the reset code, and test with
    RAM filled with both zeros and ones.** BrokenDev's `powerOnRam` lever (verify scenarios, the desktop BrokenDev menu, `romtest --power-on-ram`) exists for this.
+   **Fixed 2026-10-22** in the live workspace (`docs/projects/brokendev-emulators.md`, section 4): Mesen's uninitialised-read report over the whole
+   replay suite found 34 such variables, not two (147 bytes: the enemy slot arrays, the PRNG's last five bytes, the music's mute flags, player timers),
+   and several of them change the game's state on their own. The fix is NESFab's `ram-init` (one line of `game.cfg`): the reset code zeroes all 2 KB of
+   RAM between its two vblank waits, as the original's cold boot does, before NESFab's runtime initialises anything. Initialisers on the variables
+   instead re-allocated all of RAM and moved the boot's NMI enable past the vblank it is tuned to.
 2. The remake writes the APU frame-counter register **every frame** with the 5-step bit set. That exercised five APU_FIX inaccuracies no earlier game had hit
    (the 5-step sequence put its half-frame clocks one step early, the sweep ignored its enable flag, the sweep updated one half-frame late after a reload,
    a write to the envelope register restarted the envelope, a write to `$4008` reloaded the triangle's linear counter),

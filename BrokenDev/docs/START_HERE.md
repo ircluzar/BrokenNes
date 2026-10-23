@@ -116,8 +116,9 @@ Outputs: `BROKENDEV_HOME\out\<project>\` holds the published ROM, `build.json` (
   (its timestamp must be newer than the build's start), so a stale ROM can never pass for a fresh one.
 * **PowerShell variables are case-insensitive.** `$Post` and `$post` are one variable; a helper silently dropped its post-build steps this way
   (now guarded: the Nested helper checks the build record for every step it was asked to run).
-* **The SMB1 remake needs zeroed RAM.** See `docs/smb1-knowledge.md` and the report; use the BrokenDev menu's Power-on RAM lever or the
-  `powerOnRam` field of a verify scenario.
+* **The SMB1 remake needed zeroed RAM until 2026-10-22.** Builds of the archive's source still do (see `docs/smb1-knowledge.md`); the live
+  workspace (`PROJECTS\SMB1_Remake_dev`) has the fix (its reset code zeroes RAM) and runs with any power-on RAM. The BrokenDev menu's
+  Power-on RAM lever and the `powerOnRam` field of a verify scenario are how to check a game for this.
 * **Mesen kills a test-runner script after about 100 seconds**, so differential replays are limited to a few thousand frames.
 * **The NES differential needs the user's own Mesen tracer** (`state_trace.lua`, in no archive and in neither repository: its only copy was an
   older local clone, `PROJECTS\sys0`). BrokenDev keeps it, with the 19 other tracer and probe scripts of that campaign, in
