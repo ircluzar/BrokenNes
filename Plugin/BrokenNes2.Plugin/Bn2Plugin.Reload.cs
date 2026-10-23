@@ -26,6 +26,29 @@ public sealed unsafe partial class Bn2Plugin
 {
     private volatile NoteFollowLog? noteLog;
     private static byte[]? gcGarbage;                     // (hook 810: the last large array made, so the runtime cannot skip making it)
+    private static byte[]? meterGarbage;                  // (hook 814)
+    private static object? loadChip;                      // (hook 813: the last chip built, so the runtime cannot skip making it)
+    private static Thread? loadThread;
+    private static volatile bool loadStop;
+    private static int loadBuilt;
+
+    /// <summary>Hook 813: another thread of the DLL builds NES sound chips (a whole <c>NesApuInstrument</c>, the allocation the track offer's worker makes for every NES track
+    /// engine) every <paramref name="everyMs"/> ms, so the runtime collects by itself while a test measures the audio thread; 0 stops it. Returns the chips built so far.</summary>
+    private static nint GcLoad(int everyMs)
+    {
+        if (everyMs > 0 && loadThread == null)
+        {
+            loadStop = false; loadBuilt = 0;
+            loadThread = new Thread(() =>
+            {
+                while (!loadStop) { loadChip = new NesEmulator.Plugin.NesApuInstrument("FIX", EmulatorHub.HostRate); Interlocked.Increment(ref loadBuilt); Thread.Sleep(everyMs); }
+                loadChip = null;
+            }) { IsBackground = true, Name = "BrokenNes2 test: collections" };
+            loadThread.Start();
+        }
+        else if (everyMs <= 0 && loadThread != null) { loadStop = true; loadThread.Join(); loadThread = null; }
+        return Volatile.Read(ref loadBuilt);
+    }
 
     /// <summary>The note log's line for voice <paramref name="v"/> (the audio thread, after OnNote).</summary>
     private void LogFollow(Voice v, TrackIndex? idx)
@@ -88,6 +111,11 @@ public sealed unsafe partial class Bn2Plugin
             case 809: return GC.CollectionCount(index is >= 0 and <= 2 ? (int)index : 0);                                                          // the DLL runtime's collections of generation <index> so far
             case 810: { for (int i = 0; i < value; i++) gcGarbage = new byte[128 * 1024]; return 0; }                                               // <value> large arrays made and dropped (they start the runtime's own collections, background ones included)
             case 811: { if (assignment.Emulator is not { } e) return 1; e.HoldRomLockForTests((int)value); return 0; }                               // holds this instance's emulator's game lock for <value> ms (the caller's thread)
+            // the allocation meter (2026-10-23): GC.GetAllocatedBytesForCurrentThread counts the unused rest of the calling thread's allocation context (up to the runtime's 8 KB
+            // allocation quantum) as allocated when a collection that another thread's allocations started retires it; a thread with an EMPTY context cannot be moved that way
+            case 812: GC.Collect(0, GCCollectionMode.Forced, blocking: true); return (nint)GC.GetAllocatedBytesForCurrentThread();                       // an allocation window begins: this thread's context emptied (a collection here), then the counter
+            case 813: return GcLoad((int)value);                                                                                                       // value > 0: a thread builds a NES sound chip every <value> ms (the track offer's worker's allocation); 0: stop; returns the chips built
+            case 814: { meterGarbage = new byte[Math.Max(0, (int)value)]; return meterGarbage.Length; }                                                // <value> bytes allocated on THIS thread (room left in its context, or a real allocation)
             default: return 0;
         }
     }

@@ -558,7 +558,7 @@ public sealed unsafe partial class SelfTest
                 long before = 0, after = 0;
                 var mixer = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm =>
                 {
-                    if (sm >= 48000 * 2 && before == 0) before = p.Test(4);
+                    if (sm >= 48000 * 2 && before == 0) before = AllocStart(p);
                     if (sm >= 48000 * 8 && after == 0) after = p.Test(4);
                 } };
                 var sw = Pace.Start();

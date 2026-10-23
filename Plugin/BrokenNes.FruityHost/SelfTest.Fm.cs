@@ -215,7 +215,7 @@ public sealed unsafe partial class SelfTest
             long allocBefore = 0, allocAfter = 0; int switches = 0;
             var mixer = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm =>
             {
-                if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = plugin.Test(4);
+                if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = AllocStart(plugin);
                 if (sm >= 48000 * 9 && allocAfter == 0) allocAfter = plugin.Test(4);
                 if (sm / 48000 != (sm - 512) / 48000) { plugin.SetParam(PInstrument, (sm / 48000) % Count); switches++; }      // a new instrument every second
             } };

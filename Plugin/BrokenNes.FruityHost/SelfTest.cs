@@ -176,7 +176,7 @@ public sealed unsafe partial class SelfTest
             ("record", "Record the music (round 8): a SNES game's sound-chip writes recorded from the header's Record button (real mouse messages), transcribed into one MIDI track and one preset per instrument (root note, tuning, bend range, tempo), the MIDI file dragged out (the drop data read back) or saved, then played the way FL would into one BrokenNes2 instance per track on the Presets chip with no game: every pitch value the game held for 4 ms or more is the register the instances' own sound chips write, unless the transcription says otherwise; volumes within 2; the envelope; the synthetic driver and Super Mario World; the FL project (REC1: reopened, damaged, changed, newer, absent), FL's import-and-Replace (each untouched BrokenNes2 channel recognises its track from its notes, however FL made it), FL's transport, live MIDI out, refusals, 0 bytes allocated on the audio thread; each scenario fails with its deliberate bug", RecordTest),
             ("record-nes", "Record the music of a NES game (round 8, record-nes): the chip model held to APU_FIX, the capture (every write the bus reported, 0 bytes on the audio thread), the notes from what the chip SOUNDS (hardware envelopes, sweeps, length and linear counters, duty changes), one track per channel and duty, the MIDI file replayed through the recorded-track presets' own register code: every period, volume and duty the game held for 4 ms or more written back exactly, or said; VRUN's converted songs against VRUN's decoder model; the window by mouse, the project (REC1 version 2), FL's import-and-Replace with NES tracks, live MIDI out, refusals; each scenario fails with its deliberate bug", RecordNesTest),
             ("relink", "Linking BrokenNes2 channels to a recording's tracks (relink, the user's r12 report: the counter never moved when MIDI Out channels were replaced): every instance FL could make while tracks are on offer (empty state, NON-default parameter pushes, other values, a channel FL names after its track: taken at once, a host answering the name call with a number) joins at once and the Record window's counter says so after each, before any note; a project state with a preset and a change in the editor make one leave; the editor's Link to recording and the window's Link all (real mouse messages) link the rest, instances made before the offer included; then every linked channel finds its track from its notes and settles, the named one plays it from its first note; 0 bytes on the audio thread; the host log ran for every instance by itself into the test's scratch file; SNES and NES recordings; each check fails with its deliberate bug", RelinkTest),
-            ("reload", "FL's real conventions (reload, the user's FL 2026 session: replaced channels played the wrong instruments): THE LOG REPLAY of that session through the DLL (the channels FL made, created with the calls the log shows, their notes at their logged times with FL's own pitch from MIDI note 0, colour and velocity, no song position, no channel name): every channel finds its track on its first note by its colour and key, settles with the track's preset, identifies every note as the recorded note it is and plays its expression, and its chip plays the preset's instrument (Wario's Woods; Super Mario World's channels with the file's notes); a NES and a SNES take of our own played as FL plays imported channels (from the start, the middle, a loop, a channel made in FL): every register the game held written back; FL's song position read when FL gives one; the r13 conventions fail the log replay; each scenario fails with its deliberate bugs", ReloadTest),
+            ("reload", "FL's real conventions (reload, the user's FL 2026 session: replaced channels played the wrong instruments): THE LOG REPLAY of that session through the DLL (the channels FL made, created with the calls the log shows, their notes at their logged times with FL's own pitch from MIDI note 0, colour and velocity, no song position, no channel name): every channel finds its track on its first note by its colour and key, settles with the track's preset, identifies every note as the recorded note it is and plays its expression, and its chip plays the preset's instrument (Wario's Woods; Super Mario World's channels with the file's notes); a NES and a SNES take of our own played as FL plays imported channels (from the start, the middle, a loop, a channel made in FL): every register the game held written back; FL's song position read when FL gives one; the allocation meter of every audio-thread window checked while another DLL thread makes the runtime collect (the old meter counts bytes nobody allocated, the windows' meter never does, a real allocation still counts); the r13 conventions fail the log replay; each scenario fails with its deliberate bugs", ReloadTest),
             ("capture", "Capture from FL (round 9): FL's song played into four BrokenNes2 channels the way FL does (the real log's calls, notes in FL ticks, pitch above the channel's root note: C5 on channels made in FL, MIDI note 0 on imported ones, found and said; slides, per-note pitch, no song position), captured from the Test MIDI export window (real mouse messages) into a MIDI file read back by an independent parser: every note within a tick, the played pitch at every tick within the bend's 14-bit step, the channels VRUN's converter expects, the bar-line end; played at once by VRUN's engine (the converter's streams = the ideal file's), FL's Export at another rate, the MIDI out of the notes, the edges, 0 bytes on the audio thread; each scenario fails with its deliberate bug", CaptureTest),
             ("prefs", "Remembered settings:the new registry path is filled once from the old one (values of both kinds), the old key is never changed or created, a non-empty new key is left alone; on fake files and on real test registry keys", PrefsMigrationTest),
             ("runaway", "Instrument Runaway: the game freezes and goes silent; a SNES game's samples play from FL notes, polyphonically, and survive a saved project", RunawayTest),
@@ -194,6 +194,11 @@ public sealed unsafe partial class SelfTest
         };
 
         var results = new List<TestResult>();
+        // a developer's aid for a failure seen once in many runs: BROKENNES_REPEAT=n runs the selected checks n times in this one process (with BROKENNES_SCENARIOS, a scenario n times;
+        // several such processes side by side load the machine the way a busy one does: the allocation meter's failure came back 2 to 5 times in 100 runs that way, where ten runs of
+        // `reload` alone never showed it)
+        int repeat = int.TryParse(Environment.GetEnvironmentVariable("BROKENNES_REPEAT"), out int rp) && rp > 1 ? rp : 1;
+        if (repeat > 1) tests = Enumerable.Range(0, repeat).SelectMany(_ => tests).ToArray();
         foreach (var (id, name, body) in tests)
         {
             if (only != null && !only.Split(',').Contains(id)) continue;
@@ -749,7 +754,7 @@ public sealed unsafe partial class SelfTest
             rack.NoteOn(0, 57, 0.8f); rack.NoteOn(1, 64, 0.8f); rack.NoteOn(2, 45, 0.8f); rack.NoteOn(3, 60, 0.8f);
             var buf = new float[480 * 2];
             for (int i = 0; i < 100; i++) rack.Render(buf);   // warm up
-            long m0 = GC.GetAllocatedBytesForCurrentThread(), p0 = rack.Instances[0].Test(4);
+            long p0 = AllocStart(rack.Instances[0]), m0 = HostAllocStart();
             var sw = Pace.Start();
             for (int i = 0; i < 600; i++) { rack.Render(buf); if (i % 100 == 0) rack.PitchBend(0, (i / 100) % 2 == 0 ? 0.3f : -0.3f); }
             sw.Stop();
@@ -854,7 +859,7 @@ public sealed unsafe partial class SelfTest
         var rack = MakeRack([0, 1, 2, 3]);
         var plugin = rack[0];
         long allocBefore = 0, allocAfter = 0;
-        var mixer = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm => { if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = plugin.Test(4); if (sm >= 48000 * 9 && allocAfter == 0) allocAfter = plugin.Test(4); } };
+        var mixer = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm => { if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = AllocStart(plugin); if (sm >= 48000 * 9 && allocAfter == 0) allocAfter = plugin.Test(4); } };
         var sw = Pace.Start();
         var audio = mixer.Run(rack, s, 0);
         sw.Stop();
@@ -868,7 +873,7 @@ public sealed unsafe partial class SelfTest
 
         using var rp = RomPlugin();
         RenderBlocks(rp, 1.0);
-        long a0 = rp.Test(4);
+        long a0 = AllocStart(rp);
         var sw2 = Pace.Start();
         RenderBlocks(rp, 8.0);
         sw2.Stop();
@@ -1735,7 +1740,7 @@ public sealed unsafe partial class SelfTest
             var plugin = rack[0];
             SetChip(plugin, Chip);
             long allocBefore = 0, allocAfter = 0;
-            var mixer = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm => { if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = plugin.Test(4); if (sm >= 48000 * 9 && allocAfter == 0) allocAfter = plugin.Test(4); } };
+            var mixer = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm => { if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = AllocStart(plugin); if (sm >= 48000 * 9 && allocAfter == 0) allocAfter = plugin.Test(4); } };
             var sw = Pace.Start();
             var audio = mixer.Run(rack, s, 0);
             sw.Stop();
@@ -1951,7 +1956,7 @@ public sealed unsafe partial class SelfTest
             long allocBefore = 0, allocAfter = 0; int patchSwitches = 0;
             var mixer = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm =>
             {
-                if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = plugin.Test(4);
+                if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = AllocStart(plugin);
                 if (sm >= 48000 * 9 && allocAfter == 0) allocAfter = plugin.Test(4);
                 if (sm / 48000 != (sm - 512) / 48000) { plugin.SetParam(PInstrument, (sm / 48000) % 16); patchSwitches++; }      // a new patch every second
             } };

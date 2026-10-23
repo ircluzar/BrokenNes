@@ -637,7 +637,7 @@ public sealed unsafe partial class SelfTest
         long alloc = 0; int blocks = 0;
         long Render(double seconds)
         {
-            long a0 = p.Test(4);
+            long a0 = AllocStart(p);
             RenderBlocks(p, seconds);
             blocks++;
             return p.Test(4) - a0;

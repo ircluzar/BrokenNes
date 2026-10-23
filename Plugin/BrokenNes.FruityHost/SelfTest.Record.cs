@@ -379,7 +379,7 @@ public sealed unsafe partial class SelfTest
                     }
                 }
                 foreach (var (pl, n, v) in active) Levels(v, n, pl, tick);
-                if (a0 < 0 && s >= rate / 2) a0 = players[0].P.Test(HkRAlloc);
+                if (a0 < 0 && s >= rate / 2) a0 = AllocStart(players[0].P);
                 foreach (var pl in players) { pl.P.NewTick(); pl.P.GenRender(bp, block); }
             }
             a1 = players[0].P.Test(HkRAlloc);
@@ -585,7 +585,7 @@ public sealed unsafe partial class SelfTest
             void Render(int blocks) { fixed (float* f = buf) for (int i = 0; i < blocks; i++) { p.NewTick(); p.GenRender(f, 256); } }
             t.Expect(p.Test(HkRStart) == 0, "Record was refused: " + RText(p, 8));
             long log0 = p.Test(HkSpcLog);                                         // (the game has run no frame yet; Record hooked its log)
-            long a0 = p.Test(HkRAlloc);                                           // (after Record: arming makes the capture's memory on the UI thread)
+            long a0 = AllocStart(p);                                              // (after Record: arming makes the capture's memory on the UI thread)
             Render(1800);                                                          // about 9.6 s at 48 kHz: the game's start, its key-on, the driver's bends and fades
             long a1 = p.Test(HkRAlloc);
             bool recording = p.Test(HkRState) == 2;
@@ -742,8 +742,8 @@ public sealed unsafe partial class SelfTest
         fixed (float* bp = buf)
         {
             for (int w = 0; w < 40; w++) foreach (var pt in parts) { pt.P.NewTick(); pt.P.GenRender(bp, block); }      // (warm-up: each instance's first blocks)
+            a0 = AllocStart(parts[0].P);                                          // (this thread's allocation context emptied first: SelfTest.AllocMeter.cs)
             int gc0 = (int)parts[0].P.Test(809);
-            a0 = parts[0].P.Test(HkRAlloc);
             foreach (var pt in parts)
             {
                 long d0 = trace ? pt.P.Test(HkRAlloc) : 0;
@@ -1093,7 +1093,7 @@ public sealed unsafe partial class SelfTest
                 bool activated; lock (p.Host.DispatcherCalls) activated = p.Host.DispatcherCalls.Contains(Fhd.ActivateMidi);
                 t.Expect(activated, "FL was not asked to enable its MIDI output (FHD_ActivateMIDI)");
                 t.Expect(p.Test(HkRStart) == 0 && RWait(p, 2, 10000), $"the recording beside it did not begin: {RText(p, 8)}");
-                long a0 = p.Test(HkRAlloc);
+                long a0 = AllocStart(p);
                 Render(1100);                                                       // about 5.9 s: the game's upload, its key-on, the driver's bends and fades
                 long a1 = p.Test(HkRAlloc);
                 p.Test(HkRStop);
