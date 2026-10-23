@@ -290,6 +290,7 @@ internal static class SegaContractsTestCli
         public readonly Dictionary<(int, ushort), byte> Last = new();
         public RecordingPort(int banks) { Banks = banks; }
         public void Write(int bank, ushort address, byte value) { Log.Add((bank, address, value)); Last[(bank, address)] = value; }
+        public int EnsureBanks(int wanted) => Banks;      // a fixed set of banks
     }
 
     private static double PulseHzFromRegisters(RecordingPort p, int bank, ushort b) =>

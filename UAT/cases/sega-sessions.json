@@ -53,7 +53,7 @@
     },
     {
       "id": "sega-sms-alexkidd-fixs",
-      "description": "Alex Kidd's picture drawn by the 8-layer NES chip FIXS (the layered path of the picture bridge).",
+      "description": "Alex Kidd's picture drawn by the enhanced NES chip FIXS (the layered path of the picture bridge), at the Master System's own 256x192.",
       "kind": "session",
       "rom": "{sms}/alexkidd.sms",
       "ppu": "NES:FIXS",
@@ -67,7 +67,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "FA802CE409D347C5",
+        "frameBufferHash": "3DC906E3F38D07C5",
         "audioHash": "C49BC3833FC7E1ED",
         "framesRun": 400,
         "distinctColors": 13,
@@ -225,7 +225,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "554ABF614D639901",
+        "frameBufferHash": "8498066B30C09901",
         "audioHash": "765675C207E1BEFD",
         "framesRun": 400,
         "distinctColors": 28,
@@ -276,7 +276,7 @@
     },
     {
       "id": "sega-gg-sonic-fixs",
-      "description": "The Game Gear's 160x144 window drawn by the NES chip FIXS.",
+      "description": "The Game Gear's 160x144 LCD drawn by the enhanced NES chip FIXS, at its own size.",
       "kind": "session",
       "rom": "{gg}/Sonic The Hedgehog (U) (V1.1) [!].gg",
       "ppu": "NES:FIXS",
@@ -290,7 +290,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "2CFB361C1717AF0D",
+        "frameBufferHash": "B8B7BD579D97340D",
         "audioHash": "35A427FFDCCF4CE5",
         "framesRun": 400,
         "distinctColors": 15,
@@ -409,7 +409,7 @@
     },
     {
       "id": "sega-md-sonic1-fixs",
-      "description": "The Genesis's picture drawn by the NES chip FIXS (layered).",
+      "description": "The Genesis's picture drawn by the enhanced NES chip FIXS (layered), the whole 320x224.",
       "kind": "session",
       "rom": "{md}/Sonic the Hedgehog (JUE) [!].bin",
       "ppu": "NES:FIXS",
@@ -423,7 +423,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "250E5CC163E0F839",
+        "frameBufferHash": "4ADC82C9DE537339",
         "audioHash": "8EF6753CA29D5D7D",
         "framesRun": 400,
         "distinctColors": 9,
@@ -432,7 +432,7 @@
     },
     {
       "id": "sega-md-sonic1-nes-sound",
-      "description": "The Genesis's FM, DAC and PSG replayed on the 8-channel NES chip FIXS.",
+      "description": "The Genesis's FM, DAC and PSG replayed on the enhanced NES chip FIXS (a bank of NES channels for every two of its eleven voices: five banks).",
       "kind": "session",
       "rom": "{md}/Sonic the Hedgehog (JUE) [!].bin",
       "apu": "NES:FIXS",
@@ -500,5 +500,5 @@
       }
     }
   ],
-  "goldenGeneratedUtc": "2026-10-16T14:25:03Z"
+  "goldenGeneratedUtc": "2026-10-23T03:21:27Z"
 }

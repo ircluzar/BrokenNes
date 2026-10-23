@@ -205,7 +205,11 @@ internal static class SwapSuite
                         {
                             var w = Real(s) as SegaPictureSession;
                             bool bridged = w != null && w.Bridged;
-                            if (!bridged || s.FrameWidth != 256 || s.FrameHeight != 240) problems.Add($"not drawn on the chip: {s.FrameWidth}x{s.FrameHeight}");
+                            // a stock NES chip draws the NES's 256 x 240; an enhanced one (FIXS, DMGS) the console's own picture: 256 x 192 (224, 240) or the Game Gear's 160 x 144
+                            bool enhanced = w?.GuestSize == true;
+                            bool sizeOk = enhanced ? (gg ? s.FrameWidth == 160 && s.FrameHeight == 144 : s.FrameWidth == 256 && s.FrameHeight is 192 or 224 or 240) : s.FrameWidth == 256 && s.FrameHeight == 240;
+                            if (!bridged || !sizeOk) problems.Add($"not drawn on the chip: {s.FrameWidth}x{s.FrameHeight}{(enhanced ? " (enhanced: the console's own size)" : "")}");
+                            if (bridged && enhanced != (option.Id is "NES:FIXS" or "NES:DMGS")) problems.Add($"{option.Id} {(enhanced ? "drew at the console's size" : "drew a NES picture")}: the enhanced chips (and only they) draw the console's own size");
                             if (got.Colours < 2) problems.Add("the picture is blank");
                             var before = got.Pic; Play(s, 1); if (Take(s).Pic == before) problems.Add("the picture does not move");
                         }

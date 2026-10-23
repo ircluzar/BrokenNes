@@ -139,7 +139,7 @@
     },
     {
       "id": "sega-sms-sonic1-picture-on-nes-fixs",
-      "description": "Master System Sonic drawn by the NES picture chip FIXS (PPU menu id NES:FIXS): the picture bridge, 256x240 canvas.",
+      "description": "Master System Sonic drawn by the enhanced NES picture chip FIXS (PPU menu id NES:FIXS): the picture bridge, at the Master System's own 256x192.",
       "kind": "sega-run",
       "rom": "{sms}/Sonic The Hedgehog (USA, Europe).7z",
       "ppu": "NES:FIXS",
@@ -152,8 +152,8 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "69E529E790D887CB",
-        "size": "256x240",
+        "frameBufferHash": "A62322CEC1F6C7CB",
+        "size": "256x192",
         "distinctColors": 17,
         "audioPeak": 13401,
         "battery": "False",
@@ -499,5 +499,5 @@
       }
     }
   ],
-  "goldenGeneratedUtc": "2026-10-15T20:05:16Z"
+  "goldenGeneratedUtc": "2026-10-23T03:21:33Z"
 }

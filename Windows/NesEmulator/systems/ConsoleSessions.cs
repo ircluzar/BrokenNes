@@ -186,9 +186,9 @@ public sealed partial class SnesSession : IConsoleSession
         board.RunFrame();
         if (down != null)
         {
-            var rgba = down.Render(snesPpu!, mid);
-            ConsoleSessions.RgbaToArgb(rgba, frame);
-            width = 256; height = 240;
+            var f = down.Render(snesPpu!, mid);     // an enhanced chip: the SNES's own 256 x 224 / 239, all its layers; a stock one: the NES's 256 x 240
+            Array.Copy(f.Argb, frame, f.Width * f.Height);
+            width = f.Width; height = f.Height;
             return;
         }
         PublishNativePicture();
@@ -228,8 +228,10 @@ public sealed class GbSession : IConsoleSession
     public IGbApu Apu => board.Apu;
     private GbLineCapture? cap;
     private GbToNes? toNes;
+    /// <summary>The picture bridge onto a NES chip, when the picture is on one (tests: the enhanced chip's layers).</summary>
+    internal GbToNes? PictureBridge => toNes;
     private GbToSnes? toSnes;
-    private readonly uint[] frame = new uint[256 * 240];
+    private readonly uint[] frame = new uint[ExtPicture.MaxWidth * ExtPicture.MaxLines];
     private int width = PPU_GB.Width, height = PPU_GB.Height;
     private string cpuId, ppuId, apuId;
     private readonly string mapperName;
@@ -349,7 +351,7 @@ public sealed class GbSession : IConsoleSession
         var shades = board.Ppu.DmgColors;   // the Game Boy look, live (DMG games on a DMG)
         for (int i = 0; i < 4; i++) shades[i] = GbLook.Argb(i);
         board.RunFrame();
-        if (toNes != null) { ConsoleSessions.RgbaToArgb(toNes.Render(board, cap!), frame); width = 256; height = 240; }
+        if (toNes != null) { var f = toNes.Render(board, cap!); Array.Copy(f.Argb, frame, f.Width * f.Height); width = f.Width; height = f.Height; }   // an enhanced chip: 160 x 144; a stock one: 256 x 240
         else if (toSnes != null) { var f = toSnes.Render(board, cap!); Array.Copy(f, frame, Math.Min(f.Length, frame.Length)); width = 256; height = f.Length / 256; }
         else { Array.Copy(board.Ppu.FrameBuffer, frame, PPU_GB.Width * PPU_GB.Height); width = PPU_GB.Width; height = PPU_GB.Height; }
     }

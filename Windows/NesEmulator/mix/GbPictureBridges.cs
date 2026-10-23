@@ -95,17 +95,29 @@ public static class GbLook
 /// (8x16 = two 8x8, 8 per line instead of 10), palettes become 2C02 colours (DMG shades as NES greens). Each NES tile
 /// row takes the scroll of the Game Boy line it covers, so status-bar splits survive (with at most 7 pixels of fine
 /// scroll mismatch). With bleed on (default) the rest of the NES screen shows the Game Boy map beyond the screen edges.
+/// On an enhanced chip (FIX enhanced: <see cref="IEnhancedPictureChip"/>) the picture is instead the Game Boy's own 160 x 144 as layers (<see cref="RenderLayers"/>):
+/// the background and the window apart, each line's own scroll and window position, all 40 sprites with the Game Boy's 10 a line and its priorities.
 /// </summary>
 internal sealed class GbToNes
 {
     private readonly NesPictureSink sink;
     public bool Bleed = true;
-    public string Stats = "";
+    private string stats = "";
+    private int layersUsed, bgTilesUsed, piecesUsed; private bool layeredLast;
+    /// <summary>What the last frame used (tools): tiles, sprites, palettes; made when read (the layered path makes no string a frame).</summary>
+    public string Stats => layeredLast ? $"layers {layersUsed} (background tiles {bgTilesUsed}), sprite pieces {piecesUsed}" : stats;
     public GbToNes(string nesPpuId) { sink = new NesPictureSink(nesPpuId); }
     public string PpuId => sink.PpuId;
+    /// <summary>The last picture (the enhanced chip's 160 x 144, or the NES chip's 256 x 240).</summary>
+    public BridgeFrame Frame { get; } = new();
+    public bool Layered => sink.Enhanced != null;
+    /// <summary>The enhanced chip the layers go to (null on a stock chip): tests read its layers.</summary>
+    internal IEnhancedPictureChip? Enhanced => sink.Enhanced;
 
-    public byte[] Render(BOARD_GB board, GbLineCapture cap)
+    public BridgeFrame Render(BOARD_GB board, GbLineCapture cap)
     {
+        layeredLast = sink.Enhanced != null;
+        if (sink.Enhanced is { } chip) return RenderLayers(board, cap, chip);
         var ppu = board.Ppu; var vram = ppu.Vram; bool cgb = board.CgbMode;
         var pic = new NesPicture();
         const int Ref = 72;
@@ -239,8 +251,175 @@ internal sealed class GbToNes
             pic.Oam[o + 2] = (byte)(Slot(objSlots, p.pal) | ((p.flags & 0x80) != 0 ? 0x20 : 0) | ((p.flags & 0x20) != 0 ? 0x40 : 0) | ((p.flags & 0x40) != 0 ? 0x80 : 0));
             pic.Oam[o + 3] = (byte)(48 + p.x);
         }
-        Stats = $"bg tiles {bgTiles.Count} (overflow {overflow}), obj tiles {objTiles.Count}, sprites {kept}/{pieces.Count} 8x8 pieces, bg palettes {bgPalUse.Count}";
-        return sink.Present(pic);
+        stats = $"bg tiles {bgTiles.Count} (overflow {overflow}), obj tiles {objTiles.Count}, sprites {kept}/{pieces.Count} 8x8 pieces, bg palettes {bgPalUse.Count}";
+        return Frame.FromRgba(sink.Present(pic));
+    }
+
+    // ---------------------------------------------------------------------------------------------------- the layered path
+    private readonly Dictionary<int, int> tileOf = new();
+    private readonly Dictionary<int, int> objOf = new();
+    private readonly int[] winLine = new int[144];
+    private readonly List<(int x, int oam)> order = new();
+    private readonly byte[] selected = new byte[144 * 40];
+
+    private static uint Rgb(ushort bgr) { var (r, g, b) = NesPalette.FromBgr555(bgr); return (uint)(r << 16 | g << 8 | b); }
+    private static uint Rgb((int r, int g, int b) c) => (uint)(c.r << 16 | c.g << 8 | c.b);
+
+    /// <summary>
+    /// The Game Boy picture as the enhanced chip's layers, at 160 x 144: layer 0 the background (the 32 x 32 map, each line's SCX / SCY), layer 1 the window (its map, from WX - 7, its
+    /// own line counter, hiding the background where it is: a window pixel of colour 0 is the backdrop, as the Game Boy shows it), the sprites (40, 8 x 16 as two pieces, the first 10
+    /// a line in OAM order as the Game Boy picks them, in front in X order on a DMG and OAM order on a GBC; behind the background's colours 1-3 when their flag says so; a GBC
+    /// background tile with its priority bit over every sprite). Colours: the Game Boy look's shades (DMG, through BGP / OBP0 / OBP1 of the middle line) or the GBC palettes, with
+    /// the look's inversions. Not carried: map and tile-data selects that change down the frame (the middle line's are used), a GBC background's colour 0 other than palette 0's.
+    /// </summary>
+    private BridgeFrame RenderLayers(BOARD_GB board, GbLineCapture cap, IEnhancedPictureChip chip)
+    {
+        var ppu = board.Ppu; var vram = ppu.Vram; bool cgb = board.CgbMode;
+        const int W = 160, H = 144, Ref = 72;
+        var e = chip.Layers;
+        e.BeginFrame(W, H);
+        e.Guest = cgb ? "Game Boy Color" : "Game Boy";
+        byte lcdc = cap.Lcdc[Ref];
+        int bgMap = (lcdc & 0x08) != 0 ? 0x1C00 : 0x1800, winMap = (lcdc & 0x40) != 0 ? 0x1C00 : 0x1800;
+        bool unsignedTiles = (lcdc & 0x10) != 0;
+        // ---- palettes: BG / OBJ palette p, colour c (level c); the backdrop is BG colour 0
+        for (int p = 0; p < 8; p++)
+            for (int c = 1; c < 4; c++)
+            {
+                if (cgb)
+                {
+                    e.BgRgb[p * 4 + c] = Rgb(GbLook.BackgroundColour(GbShades.Cgb(ppu.BgPalRam, p, c)));
+                    e.ObjRgb[p * 4 + c] = Rgb(GbLook.SpriteColour(GbShades.Cgb(ppu.ObjPalRam, p, c)));
+                }
+                else if (p < 2)
+                {
+                    int bsh = GbLook.Background(GbShades.Shade(cap.Bgp[Ref], c)), osh = GbLook.Sprite(GbShades.Shade(p == 1 ? cap.Obp1[Ref] : cap.Obp0[Ref], c));
+                    e.BgRgb[p * 4 + c] = ppu.CompatMode ? Rgb(GbShades.Cgb(ppu.BgPalRam, 0, bsh)) : Rgb(GbLook.Shades[bsh]);
+                    e.ObjRgb[p * 4 + c] = ppu.CompatMode ? Rgb(GbShades.Cgb(ppu.ObjPalRam, p, osh)) : Rgb(GbLook.Shades[osh]);
+                }
+            }
+        uint backdrop = cgb ? Rgb(GbLook.BackgroundColour(GbShades.Cgb(ppu.BgPalRam, 0, 0)))
+            : ppu.CompatMode ? Rgb(GbShades.Cgb(ppu.BgPalRam, 0, GbLook.Background(GbShades.Shade(cap.Bgp[Ref], 0)))) : Rgb(GbLook.Shades[GbLook.Background(GbShades.Shade(cap.Bgp[Ref], 0))]);
+        // ---- the two layers, per line
+        var bg = e.Layers[0]; var win = e.Layers[1];
+        bg.Enabled = true; bg.Name = "background"; bg.MapWidth = 32; bg.MapHeight = 32;
+        win.Enabled = true; win.Name = "window"; win.MapWidth = 32; win.MapHeight = 32;
+        e.LayerCount = 2;
+        int wl = 0; bool anyHidden = false, windowShown = false;
+        for (int y = 0; y < H; y++)
+        {
+            e.BackdropRgb[y] = e.BackdropAltRgb[y] = backdrop;
+            byte lc = cap.Lcdc[y];
+            if ((lc & 0x80) == 0) continue;                                        // the LCD off: the backdrop only
+            bool bgOn = cgb || (lc & 0x01) != 0;
+            byte zBg = 5, zBgHigh = cgb && (lc & 0x01) != 0 ? (byte)11 : (byte)5;   // a GBC tile's priority bit puts it over every sprite (when LCDC bit 0, the master priority, is set)
+            if (bgOn) { bg.On[y] = true; bg.ScrollX[y] = cap.Scx[y]; bg.ScrollY[y] = cap.Scy[y]; bg.ZLow[y] = zBg; bg.ZHigh[y] = zBgHigh; }
+            int wx = cap.Wx[y] - 7;
+            bool winOn = bgOn && (lc & 0x20) != 0 && y >= cap.Wy[y] && cap.Wx[y] <= 166;
+            winLine[y] = winOn ? wl++ : -1;
+            if (winOn)
+            {
+                windowShown = true;
+                win.On[y] = true; win.ScrollX[y] = (short)(-wx & 255); win.ScrollY[y] = (short)((winLine[y] - y) & 255); win.ZLow[y] = zBg; win.ZHigh[y] = zBgHigh;
+                if (!anyHidden) { Array.Clear(bg.Hidden); Array.Clear(win.Hidden); anyHidden = true; }
+                for (int x = 0; x < W; x++) { bool inWin = x >= wx; win.Hidden[y * ExtPicture.Stride + x] = !inWin; bg.Hidden[y * ExtPicture.Stride + x] = inWin; }
+            }
+            else if (anyHidden) for (int x = 0; x < W; x++) { bg.Hidden[y * ExtPicture.Stride + x] = false; win.Hidden[y * ExtPicture.Stride + x] = true; }
+            if ((lc & 0x02) != 0)
+            {
+                e.ObjOn[y] = true;
+                e.ObjZ[y * 4 + 0] = 4;     // behind the background's colours 1-3 (OAM flag bit 7), over colour 0 and the backdrop
+                e.ObjZ[y * 4 + 1] = 10;    // in front of the background
+            }
+        }
+        bg.AnyHidden = win.AnyHidden = anyHidden;
+        if (!windowShown) win.Enabled = false;
+        // ---- tiles: each map cell's tile (bank, flips baked in), the colour index its level
+        tileOf.Clear(); int next = 1;
+        void Cells(ExtPicture.Layer L, int map)
+        {
+            for (int cell = 0; cell < 1024; cell++)
+            {
+                int t = vram[map + cell]; byte attr = cgb ? vram[0x2000 + map + cell] : (byte)0;
+                int addr = unsignedTiles ? t * 16 : 0x1000 + (sbyte)t * 16;
+                if ((attr & 0x08) != 0) addr += 0x2000;
+                bool hf = (attr & 0x20) != 0, vf = (attr & 0x40) != 0;
+                int key = addr | (hf ? 1 << 15 : 0) | (vf ? 1 << 16 : 0);
+                if (!tileOf.TryGetValue(key, out int id))
+                {
+                    id = next < ExtPicture.MaxTiles ? next++ : 1;
+                    tileOf[key] = id;
+                    for (int r = 0; r < 8; r++)
+                    {
+                        int rr = vf ? 7 - r : r;
+                        int lo = vram[(addr + rr * 2) & 0x3FFF], hi = vram[(addr + rr * 2 + 1) & 0x3FFF];
+                        for (int x = 0; x < 8; x++) { int bit = hf ? x : 7 - x; L.Tiles[id * 64 + r * 8 + x] = (byte)((lo >> bit & 1) | (hi >> bit & 1) << 1); }
+                    }
+                }
+                L.Map[cell] = (ushort)id; L.Attr[cell] = (byte)((cgb ? attr & 7 : 0) | ((attr & 0x80) != 0 ? 8 : 0));
+            }
+        }
+        Cells(bg, bgMap);
+        bgTilesUsed = next - 1;
+        // the two layers keep their own tile tables: the window's are numbered again
+        tileOf.Clear(); next = 1;
+        if (win.Enabled) Cells(win, winMap);
+        // ---- sprites: the first 10 a line in OAM order (as the Game Boy picks them), in front in X order (DMG) or OAM order (GBC)
+        bool tall = (lcdc & 0x04) != 0; int hgt = tall ? 16 : 8;
+        Array.Clear(selected);
+        for (int y = 0; y < H; y++)
+        {
+            int count = 0;
+            for (int i = 0; i < 40 && count < 10; i++)
+            {
+                int sy = ppu.Oam[i * 4] - 16;
+                if (y >= sy && y < sy + hgt) { selected[y * 40 + i] = 1; count++; }
+            }
+        }
+        order.Clear();
+        for (int i = 0; i < 40; i++) order.Add((ppu.Oam[i * 4 + 1], i));
+        if (!cgb) order.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.oam.CompareTo(b.oam));
+        objOf.Clear(); int n = 0;
+        if (e.Sprites.Length < 256) e.Sprites = new ExtPicture.Sprite[256];
+        foreach (var (_, i) in order)
+        {
+            int sy = ppu.Oam[i * 4] - 16, sx = ppu.Oam[i * 4 + 1] - 8, tile = ppu.Oam[i * 4 + 2], f = ppu.Oam[i * 4 + 3];
+            if (sy <= -hgt || sy >= H || sx <= -8 || sx >= W) continue;
+            int pal = cgb ? f & 7 : (f >> 4) & 1, bank = cgb && (f & 0x08) != 0 ? 0x2000 : 0;
+            bool hf = (f & 0x20) != 0, vf = (f & 0x40) != 0;
+            for (int piece = 0; piece < (tall ? 2 : 1); piece++)
+            {
+                int t = tall ? (tile & 0xFE) + (vf ? 1 - piece : piece) : tile;
+                int addr = bank + t * 16, py = sy + piece * 8;
+                if (!objOf.TryGetValue(addr, out int id))
+                {
+                    id = objOf.Count; objOf[addr] = id;
+                    for (int r = 0; r < 8; r++)
+                    {
+                        int lo = vram[(addr + r * 2) & 0x3FFF], hi = vram[(addr + r * 2 + 1) & 0x3FFF];
+                        for (int x = 0; x < 8; x++) e.SpriteTiles[id * 64 + r * 8 + x] = (byte)((lo >> (7 - x) & 1) | (hi >> (7 - x) & 1) << 1);
+                    }
+                }
+                // one piece for every run of lines on which the Game Boy picked this sprite
+                int from = -1;
+                for (int y = Math.Max(0, py); y <= Math.Min(H, py + 8); y++)
+                {
+                    bool on = y < Math.Min(H, py + 8) && selected[y * 40 + i] != 0;
+                    if (on && from < 0) from = y;
+                    if (!on && from >= 0 && n < e.Sprites.Length)
+                    {
+                        e.Sprites[n++] = new ExtPicture.Sprite { X = (short)sx, Y = (short)py, FirstLine = (short)from, LastLine = (short)(y - 1), Tile = (ushort)id, Palette = (byte)pal,
+                            Priority = (byte)((f & 0x80) != 0 && !(cgb && (lcdc & 0x01) == 0) ? 0 : 1), HFlip = hf, VFlip = vf };
+                        from = -1;
+                    }
+                }
+            }
+        }
+        e.SpriteCount = n; e.SpriteLimit = 1024; e.SpritesPerLine = 64;      // the Game Boy's own 10 a line were applied above
+        e.PaletteVersion++;
+        layersUsed = e.LayersInUse; piecesUsed = n;
+        chip.DrawLayers();
+        return Frame.From(chip);
     }
 
     private static byte Rev(byte b) { b = (byte)((b & 0xF0) >> 4 | (b & 0x0F) << 4); b = (byte)((b & 0xCC) >> 2 | (b & 0x33) << 2); return (byte)((b & 0xAA) >> 1 | (b & 0x55) << 1); }

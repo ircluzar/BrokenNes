@@ -377,7 +377,7 @@ namespace NesEmulator.Sega
     /// says it has none, so a game's detection routine sees a plain console), and pitches a NES channel cannot reach (<see cref="NesVoiceWriter.Dropped"/> counts the voices lost to
     /// missing channels; a note below the triangle's or pulse's range is silenced by the writer). The PSG itself is not run: only its registers matter, the sound is the NES chip's.
     /// </summary>
-    public sealed class SmsSoundOnNes : ISmsSound
+    public sealed class SmsSoundOnNes : ISmsSound, IHubVoiceSource
     {
         public const string DefaultBackApu = "FIX";
 
@@ -413,7 +413,7 @@ namespace NesEmulator.Sega
             front = new Sn76489(request.CpuClockHz, 44100, request.Variant);
             host = new NesEmulator.Mix.NesApuHost(BackApuId);   // throws ArgumentException for an unknown NES chip: never a quiet substitute
             back = host.Apu;
-            writer = new NesVoiceWriter(NesRegisterPorts.For(back));
+            writer = new NesVoiceWriter(NesRegisterPorts.For(back), NesVoiceWriter.BanksFor(pulses: 2, triangles: 1, noises: 1));     // the PSG's four voices fit one bank: an enhanced chip keeps the banks it has
             nesPerClock = NesVoiceWriter.NesCpuHz / request.CpuClockHz;
             output = new NesChipOutput(back, request.Machine.SampleRate);   // a chip with a rate of its own (SNES 32 kHz, Game Boy 48 kHz) is converted to the machine's
         }

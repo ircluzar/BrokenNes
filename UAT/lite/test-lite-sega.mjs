@@ -294,7 +294,11 @@ async function groupSwap() {
     await sleep(800);
     const st2 = await page.eval(`document.body.innerText`);
     const br = await page.eval(`window.__frames(60)`);
-    check('swap', 'Master System: the picture swaps to a NES chip in place (256x240, sound unbroken)', /swapped in/.test(st2) && br.w === 256 && br.h === 240 && br.withAudio >= 58, `${br.w}x${br.h} audio ${br.withAudio}/60`);
+    check('swap', 'Master System: the picture swaps to the enhanced NES chip FIXS in place, at the Master System\'s own 256x192 (sound unbroken)', /swapped in/.test(st2) && br.w === 256 && br.h === 192 && br.withAudio >= 58, `${br.w}x${br.h} audio ${br.withAudio}/60`);
+    await selectOption(page, 'select[aria-label="Ppu core"]', 'NES:FIX');
+    await sleep(800);
+    const stock = await page.eval(`window.__frames(30)`);
+    check('swap', 'Master System: on the stock NES chip FIX the picture is a NES picture (256x240)', stock.w === 256 && stock.h === 240 && stock.withAudio >= 28, `${stock.w}x${stock.h}`);
     await selectOption(page, 'select[aria-label="Ppu core"]', 'SMS');
     await sleep(800);
     const back = await page.eval(`window.__frames(30)`);
@@ -310,7 +314,11 @@ async function groupSwap() {
     await sleep(1000);
     const st = await page.eval(`document.body.innerText`);
     const r = await page.eval(`window.__frames(30)`);
-    check('swap', 'Genesis: the picture swaps to a NES chip in place', /swapped in/.test(st) && r.w === 256 && r.h === 240, `${r.w}x${r.h}`);
+    check('swap', 'Genesis: the picture swaps to the enhanced NES chip FIXS in place, the whole 320x224 (shown 320 wide)', /swapped in/.test(st) && r.w === 320 && r.h === 224 && r.aw === 320, `${r.w}x${r.h} shown ${r.aw}`);
+    await selectOption(page, 'select[aria-label="Ppu core"]', 'NES:FIX');
+    await sleep(1000);
+    const rs = await page.eval(`window.__frames(30)`);
+    check('swap', 'Genesis: on the stock NES chip FIX the picture is a NES picture (256x240: the middle 256 columns)', rs.w === 256 && rs.h === 240, `${rs.w}x${rs.h}`);
     // the sound unit swaps live (BOARD_MD.SwapSound): the Z80, its RAM and the chips' registers move into the new unit and the game goes on. A swap the session cannot do would restart the game with a message that says why
     // (the page's SetConsoleCoreAsync); no Genesis sound unit refuses any more, so the restart path is not reachable from the menus.
     for (const id of ['NES:FIX', 'NES:HI2', 'MD']) {

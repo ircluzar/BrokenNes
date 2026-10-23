@@ -63,7 +63,7 @@ namespace NesEmulator.Sega
             inner = new SmsFmSound(request.CpuClockHz, 44100, request.Variant);
             host = new NesApuHost(BackApuId);   // throws ArgumentException for an unknown NES chip: never a quiet substitute
             back = host.Apu;
-            writer = new NesVoiceWriter(NesRegisterPorts.For(back));
+            writer = new NesVoiceWriter(NesRegisterPorts.For(back), NesVoiceWriter.BanksForTonal(VoiceTotal - NoiseVoices, NoiseVoices));     // an enhanced chip: 7 banks, every voice its own channel
             nesPerClock = NesVoiceWriter.NesCpuHz / request.CpuClockHz;
             output = new NesChipOutput(back, request.Machine.SampleRate);   // a chip with a rate of its own (SNES 32 kHz, Game Boy 48 kHz) is converted to the machine's
             replay = new HubReplayer(writer, VoiceTotal, IsNoiseVoice, APU_MD.TriangleRms, APU_SMS.DefaultLowNotes);
@@ -71,6 +71,7 @@ namespace NesEmulator.Sega
 
         /// <summary>The PSG noise (voice 3) and the rhythm snare, cymbal and hi-hat.</summary>
         private static bool IsNoiseVoice(int i) => i == 3 || i == PsgVoices + 10 || i == PsgVoices + 12 || i == PsgVoices + 13;
+        private const int NoiseVoices = 4;
 
         public string CoreName => $"NES-FM:{back.CoreName}+{inner.CoreName}";
         public int SampleRate => output.SampleRate;

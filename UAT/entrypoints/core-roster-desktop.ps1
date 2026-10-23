@@ -12,6 +12,8 @@
     2. negative control: config.json says selectedPpuCore "NOSUCH" (an id nobody knows) -> the app falls back to FIX: what DMGX would have become without the migration.
     3. the menus: GET /api/console/cores for the NES lists FIX (stock), FIX (enhanced), then the other consoles' best cores, then the gimmick cores; the labels say stock /
        enhanced. POST /api/console/core/ppu/DMGX (an old id through the API) selects DMGS.
+    4. the enhanced picture: Master System Sonic and Genesis Sonic (when their ROMs are here) swapped onto NES:FIXS and NES:DMGS are drawn at the console's own size
+       (256x192, 320x224); on the stock NES:FIX (the negative control) the NES's 256x240.
 
   Each app is closed by PID (never by name). Exit 0 = every check passed.
 #>
@@ -84,6 +86,28 @@ try {
         $cfg = Read-Config $r.ConfigPath
         Check 'API: selecting the old id DMGX selects the enhanced Game Boy chip (DMGS) and stores DMGS' ("$($status.ppu)" -eq 'PPU_DMGS' -and $cfg.selectedPpuCore -eq 'DMGS') "ppu=$($status.ppu) stored=$($cfg.selectedPpuCore) response=$($set | ConvertTo-Json -Compress)"
     } finally { [void](Stop-BrokenNesInstance -ProcessId $r.Inst.ProcessId) }
+
+    # 4. the enhanced picture contract in the app: a Sega game swapped onto an enhanced chip (FIXS, DMGS) is drawn at the console's own size; on the stock FIX it is a NES picture
+    $games = @(
+        @{ Name = 'Master System Sonic'; Path = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms'); W = 256; H = 192 },
+        @{ Name = 'Genesis Sonic'; Path = 'X:\EMULATION\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin'; W = 320; H = 224 })
+    foreach ($g in $games) {
+        if (-not (Test-Path -LiteralPath $g.Path)) { Write-Host "[NOT RUN] $($g.Name): no ROM at $($g.Path)"; continue }
+        $r = Start-Isolated ('{ ' + $base + ', "selectedPpuCore": "FIX" }')
+        try {
+            $id = $r.Inst.ProcessId
+            Load-BrokenNesRom -ProcessId $id -Path $g.Path | Out-Null
+            Start-Sleep -Seconds 3
+            foreach ($chip in 'NES:FIXS', 'NES:DMGS', 'NES:FIX') {
+                $set = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path ('/api/console/core/ppu/' + [Uri]::EscapeDataString($chip))
+                Start-Sleep -Seconds 2
+                $fb = Invoke-BrokenNesApi -ProcessId $id -Method GET -Path '/api/console/framebuffer'
+                $want = if ($chip -eq 'NES:FIX') { '256x240' } else { "$($g.W)x$($g.H)" }
+                $got = "$($fb.width)x$($fb.height)"
+                Check "picture: $($g.Name) on $chip is $want ($(if ($chip -eq 'NES:FIX') { 'the stock chip: a NES picture' } else { "the enhanced chip: the console's own size" }))" ([bool]$set.success -and $got -eq $want) "success=$($set.success) picture $got"
+            }
+        } finally { [void](Stop-BrokenNesInstance -ProcessId $r.Inst.ProcessId) }
+    }
 }
 catch { Check 'the script ran to the end' $false $_.Exception.Message }
 

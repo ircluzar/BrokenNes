@@ -310,17 +310,18 @@ public sealed class Sn76489 : IHubVoiceSource
             int bit = i;   // stereo bits: tone 1 = 0, tone 2 = 1, tone 3 = 2, noise = 3
             bool heard = (stereo & ((0x10 | 0x01) << bit)) != 0;
             float level = heard ? Level[volume[i]] : 0f;
+            float pan = HubVoice.PanOf((stereo & (0x10 << bit)) != 0, (stereo & (0x01 << bit)) != 0);    // the Game Gear's stereo port (the Master System's is $FF: both)
             if (i < 3)
             {
                 int n = period[i] == 0 && variant == PsgVariant.Ti ? 0x400 : period[i];
                 if (n <= 1) level = 0f;
                 double hz = n > 0 ? cpuClockHz / (32.0 * n) : 0;
-                voices[i] = new HubVoice(i < 2 ? HubVoiceKind.Pulse : HubVoiceKind.Triangle, hz, level, Duty: 2);
+                voices[i] = new HubVoice(i < 2 ? HubVoiceKind.Pulse : HubVoiceKind.Triangle, hz, level, Duty: 2, Pan: pan);
             }
             else
             {
                 double hz = cpuClockHz / 16.0 / (2.0 * NoiseRate());
-                voices[i] = new HubVoice(HubVoiceKind.Noise, hz, level, ShortNoise: (noise & 4) == 0);
+                voices[i] = new HubVoice(HubVoiceKind.Noise, hz, level, ShortNoise: (noise & 4) == 0, Pan: pan);
             }
         }
         return 4;

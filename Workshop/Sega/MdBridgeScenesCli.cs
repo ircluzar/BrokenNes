@@ -53,28 +53,28 @@ internal static class MdBridgeScenesCli
             int si = (f + 1 - first) / period;
             if (f + 1 - first >= 0 && (f + 1 - first) % period == 0 && si < count && (only.Count == 0 || only.Contains(si)))
             {
-                var reg = wrap.Region; int mask = 0, colour = 0;
+                var reg = wrap.Region; int mask = 0, colour = 0, cw = wrap.CanvasWidth, ch = wrap.CanvasHeight;     // the canvas: the NES's 256 x 240, or the Genesis's own picture on an enhanced chip
                 for (int y = reg.Y; y < reg.Y + reg.H; y++)
                     for (int x = reg.X; x < reg.X + reg.W; x++)
                     {
-                        uint b = wrap.BridgeCanvas[y * 256 + x] & 0xFFFFFF, r = wrap.ReferenceCanvas[y * 256 + x] & 0xFFFFFF;
+                        uint b = wrap.BridgeCanvas[y * cw + x] & 0xFFFFFF, r = wrap.ReferenceCanvas[y * cw + x] & 0xFFFFFF;
                         if ((b != 0) != (r != 0)) mask++;
                         if (layered && b != NearestNes(r)) colour++;
                     }
-                double ssim = PictureMetrics.Compare(wrap.BridgeCanvas, wrap.ReferenceCanvas, 256, reg.X, reg.Y, reg.W, reg.H).Ssim;
+                double ssim = PictureMetrics.Compare(wrap.BridgeCanvas, wrap.ReferenceCanvas, cw, reg.X, reg.Y, reg.W, reg.H).Ssim;
                 rows.Add((si, mask, colour, wrap.Counters.ToString(), ssim));
                 if (pngDir != null && mask > 0)
                 {
                     // reference | bridge | difference (a pixel drawn in one picture and not the other)
-                    var both = new uint[3 * 256 * 240];
-                    for (int y = 0; y < 240; y++) for (int x = 0; x < 256; x++)
+                    var both = new uint[3 * cw * ch];
+                    for (int y = 0; y < ch; y++) for (int x = 0; x < cw; x++)
                     {
-                        uint b = wrap.BridgeCanvas[y * 256 + x], r = wrap.ReferenceCanvas[y * 256 + x];
-                        both[y * 768 + x] = r; both[y * 768 + 256 + x] = b;
-                        both[y * 768 + 512 + x] = ((b & 0xFFFFFF) != 0) != ((r & 0xFFFFFF) != 0) ? 0xFFFF0000u : 0xFF000000u;
+                        uint b = wrap.BridgeCanvas[y * cw + x], r = wrap.ReferenceCanvas[y * cw + x];
+                        both[y * 3 * cw + x] = r; both[y * 3 * cw + cw + x] = b;
+                        both[y * 3 * cw + 2 * cw + x] = ((b & 0xFFFFFF) != 0) != ((r & 0xFFFFFF) != 0) ? 0xFFFF0000u : 0xFF000000u;
                     }
                     Directory.CreateDirectory(pngDir);
-                    BrokenNes.Workshop.MixLab.MixLabCli.SaveArgb(both, 768, 240, Path.Combine(pngDir, $"scene{si:D3}.png"));
+                    BrokenNes.Workshop.MixLab.MixLabCli.SaveArgb(both, 3 * cw, ch, Path.Combine(pngDir, $"scene{si:D3}.png"));
                 }
             }
         }

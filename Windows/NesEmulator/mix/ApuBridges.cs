@@ -462,10 +462,13 @@ namespace NesEmulator.Mix
     /// discarded. 960 times a second the bridge reads the eight DSP voices and replays the loudest on the NES channels:
     /// tonal voices -> pulse 1, pulse 2, triangle (pitch = playback rate / the sample's own period, measured once per
     /// sample by autocorrelation of its loop); noise voices and one-shot (non-looping) samples -> the noise channel.
-    /// When the NES chip has a second channel bank (<see cref="IApuExtChannels"/>: APU_FIXS, APU_DMGS) all eight voices
-    /// fit: the four loudest tonal voices on the four pulses, the next two on the two triangles, two noises.
+    /// When the NES chip is an enhanced one (<see cref="IApuExtChannels"/>: APU_FIXS, APU_DMGS) it has two banks to start with (the four loudest tonal voices on the
+    /// four pulses, the next two on the two triangles, two noises) and grows by a bank whenever the game sounds more voices at once than its pulses and noise
+    /// channels hold - up to eight banks, so all eight DSP voices always have a channel of their own (bank k: the tonal voices 2k and 2k + 1 by loudness on its
+    /// pulses, voice 2B + k on its triangle (B banks), noise k on its noise). A stock chip has one bank: the loudest three tonal voices and one noise, the rest counted as dropped.
+    /// The eight voices as the hub's voice list: <see cref="DescribeVoices"/>.
     /// </summary>
-    internal sealed class NesApuOnSnes : ISnesApu
+    internal sealed class NesApuOnSnes : ISnesApu, NesEmulator.Sega.IHubVoiceSource
     {
         private readonly ISnesApu front;
         private readonly ISnesApuProbe probe;
@@ -476,9 +479,14 @@ namespace NesEmulator.Mix
         private readonly Queue<float> queue = new();
         private readonly Dictionary<int, double> periodCache = new();
         private readonly int[] nesCache = new int[0x18];
-        /// <summary>The NES chip's second channel bank, when it has one, and that bank's register cache.</summary>
+        /// <summary>The NES chip's extra channel banks, when it has them, and their register caches (bank k at k * 0x18).</summary>
         private readonly IApuExtChannels? ext;
-        private readonly int[] extCache = new int[0x18];
+        private readonly int[] extCache = new int[MaxBanks * 0x18];
+        private readonly Action<ushort, byte>[] bankWriters = new Action<ushort, byte>[MaxBanks];
+        /// <summary>The most banks the bridge uses: one per DSP voice, so a game sounding eight noises at once still has a channel for each.</summary>
+        public const int MaxBanks = 8;
+        /// <summary>The NES chip's banks the bridge writes now: 1 on a stock chip, 2 and up on an enhanced one.</summary>
+        public int Banks { get; private set; } = 1;
         public long Syncs; public int VoicesMapped;
         /// <summary>Over all syncs: voices mapped (sum, for the average), the most at once, and voices dropped for want of a channel.</summary>
         public long VoicesMappedTotal, VoicesDroppedTotal; public int VoicesMappedMax;
@@ -500,15 +508,31 @@ namespace NesEmulator.Mix
             N(0x4017, 0x40); N(0x4015, 0x0F);
             N(0x4001, 0x00); N(0x4005, 0x00); N(0x400F, 0x08);
             ext = back as IApuExtChannels;
-            if (ext != null)
+            bankWriters[0] = N;
+            Array.Fill(extCache, -1);
+            if (ext != null) Grow(2);
+        }
+
+        /// <summary>Opens banks up to <paramref name="banks"/> (the chip grows to them first; each new bank starts as bank 1 always has).</summary>
+        private void Grow(int banks)
+        {
+            if (ext == null) return;
+            banks = Math.Min(MaxBanks, 1 + ext.EnsureExtBanks(Math.Min(MaxBanks, banks) - 1));
+            for (int k = Banks; k < banks; k++)
             {
-                Array.Fill(extCache, -1);
-                E(0x4017, 0x40); E(0x4015, 0x0F);
-                E(0x4001, 0x00); E(0x4005, 0x00); E(0x400F, 0x08);
+                int bank = k;
+                bankWriters[bank] = (a, v) => E(bank, a, v);
+                E(bank, 0x4017, 0x40); E(bank, 0x4015, 0x0F);
+                E(bank, 0x4001, 0x00); E(bank, 0x4005, 0x00); E(bank, 0x400F, 0x08);
             }
+            Banks = Math.Max(Banks, banks);
         }
 
         public string CoreName => $"NES:{back.CoreName}+{front.CoreName}";
+        /// <summary>The DSP registers and sound RAM the bridge listens to (tests poke a state into them and <see cref="Sync"/>).</summary>
+        internal ISnesApuProbe Probe => probe;
+        /// <summary>The NES chip the voices are replayed on (tests).</summary>
+        internal NesEmulator.IAPU Back => back;
 
         /// <summary>The real SNES audio unit inside (APU_SFC when it is one), for swapping it back in directly.</summary>
         public ISnesApu Front => front is SfcApuAdapter ad ? ad.Inner : front;
@@ -525,7 +549,30 @@ namespace NesEmulator.Mix
         public string Describe() => $"{CoreName} syncs={Syncs} mapped={VoicesMapped} avg={(Syncs > 0 ? (double)VoicesMappedTotal / Syncs : 0):F2} max={VoicesMappedMax} dropped-avg={(Syncs > 0 ? (double)VoicesDroppedTotal / Syncs : 0):F2} | {front.Describe()}";
 
         private void N(ushort a, byte v) { if (nesCache[a - 0x4000] == v) return; nesCache[a - 0x4000] = v; back.WriteAPURegister(a, v); }
-        private void E(ushort a, byte v) { if (extCache[a - 0x4000] == v) return; extCache[a - 0x4000] = v; ext!.WriteExtRegister(1, a, v); }
+        private void E(int bank, ushort a, byte v) { int i = bank * 0x18 + a - 0x4000; if (extCache[i] == v) return; extCache[i] = v; ext!.WriteExtRegister(bank, a, v); }
+
+        /// <summary>The eight DSP voices as the hub's voice list (tools and tests: what the guest is playing, whatever the NES chip carries of it): a looped sample is a pulse at the
+        /// sample's pitch, a noise voice or a one-shot sample is a noise; the level is the envelope times the voice's volume (0 to 1); the pan from the left and right volumes.</summary>
+        public int DescribeVoices(Span<NesEmulator.Sega.HubVoice> voices)
+        {
+            var r = probe.DspRegs;
+            int n = Math.Min(8, voices.Length);
+            for (int v = 0; v < n; v++)
+            {
+                int b = v * 16, envx = r[b + 8] & 0x7F;
+                int l = Math.Abs((sbyte)r[b]), rt = Math.Abs((sbyte)r[b + 1]);
+                double loud = envx * (l + rt) / 2.0;
+                bool isNoise = (r[0x3D] & (1 << v)) != 0;
+                int pitch = r[b + 2] | (r[b + 3] & 0x3F) << 8;
+                double period = isNoise ? 0 : Period(r[b + 4]);
+                float level = loud < 40 ? 0f : (float)Math.Min(1.0, loud / 16129.0);
+                float pan = l + rt == 0 ? 0f : (float)(rt - l) / (l + rt);
+                voices[v] = isNoise || period == 0
+                    ? new NesEmulator.Sega.HubVoice(NesEmulator.Sega.HubVoiceKind.Noise, isNoise ? DspNoiseHz[r[0x6C] & 31] : 4000, level, Pan: pan)
+                    : new NesEmulator.Sega.HubVoice(NesEmulator.Sega.HubVoiceKind.Pulse, 32000.0 * pitch / 4096.0 / period, level, Pan: pan);
+            }
+            return n;
+        }
 
         public void RunTo(long masterClock)
         {
@@ -586,7 +633,7 @@ namespace NesEmulator.Mix
             return period;
         }
 
-        private void Sync()
+        internal void Sync()      // internal: the tests sync a poked DSP state directly
         {
             Syncs++;
             var r = probe.DspRegs;
@@ -606,19 +653,20 @@ namespace NesEmulator.Mix
             }
             tonal.Sort((a, c) => c.loud.CompareTo(a.loud));
             noises.Sort((a, c) => c.loud != a.loud ? c.loud.CompareTo(a.loud) : a.v.CompareTo(c.v));   // ties: lowest voice first, as before
-            int banks = ext != null ? 2 : 1;
+            // an enhanced chip grows to what this sync sounds: a pulse for every tonal voice, a noise channel for every noise one
+            int need = Math.Max((tonal.Count + 1) / 2, noises.Count);
+            if (ext != null && need > Banks) Grow(need);
+            int banks = Banks;
             VoicesMapped = Math.Min(tonal.Count, 3 * banks) + Math.Min(noises.Count, banks);
             VoicesMappedTotal += VoicesMapped; VoicesMappedMax = Math.Max(VoicesMappedMax, VoicesMapped);
             VoicesDroppedTotal += tonal.Count + noises.Count - VoicesMapped;
-            Action<ushort, byte> bank0 = N, bank1 = E;
-            // Bank 0 alone: the two loudest on the pulses, the third on the triangle (as always). With bank 1: the four
-            // loudest on the four pulses, the fifth and sixth on the triangles.
+            // Bank k of B: the tonal voices 2k and 2k + 1 (by loudness) on its pulses, voice 2B + k on its triangle, noise k. One bank: the two loudest on the pulses,
+            // the third on the triangle (as always); two: the four loudest on the four pulses, the fifth and sixth on the triangles (as before the banks could grow).
             for (int k = 0; k < banks; k++)
             {
-                var w = k == 0 ? bank0 : bank1;
-                int p0 = banks == 1 ? 0 : k * 2, tri = banks == 1 ? 2 : 4 + k;
-                WritePulses(w, tonal, p0);
-                WriteTriangle(w, tonal, tri);
+                var w = bankWriters[k];
+                WritePulses(w, tonal, k * 2);
+                WriteTriangle(w, tonal, 2 * banks + k);
                 WriteNoise(w, r, noises, k);
             }
         }

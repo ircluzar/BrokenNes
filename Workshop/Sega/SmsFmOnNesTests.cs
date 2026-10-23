@@ -90,7 +90,7 @@ internal static class SmsFmOnNesTests
     {
         var r = new Rig("NES-FM:FIX");
         var u = r.Unit as SmsFmSoundOnNes;
-        Check("NES-FM:FIX builds the FM bridge, NES-FM alone means FIX, and NES-FM:FIXS builds an 8-channel one", u != null && u.BackApuId == "FIX" && new Rig("NES-FM").Unit is SmsFmSoundOnNes { BackApuId: "FIX" } && new Rig("NES-FM:FIXS").Unit is SmsFmSoundOnNes { BackApuId: "FIXS" });
+        Check("NES-FM:FIX builds the FM bridge, NES-FM alone means FIX, and NES-FM:FIXS builds one on the enhanced chip (7 banks: every one of the 18 voices on a channel of its own)", u != null && u.BackApuId == "FIX" && new Rig("NES-FM").Unit is SmsFmSoundOnNes { BackApuId: "FIX" } && new Rig("NES-FM:FIXS").Unit is SmsFmSoundOnNes { BackApuId: "FIXS", Writer.Banks: 7 } && u.Writer.Banks == 1);
         Check("the unit has the FM chip (a game's detection finds it) and says what it is", u!.HasFm && u.CoreName.StartsWith("NES-FM:") && u.CoreName.Contains("YM2413"), u.CoreName);
         Check("the audio control register reads back what was written (the detection routine's test)", Detect(u));
         bool threw = false; try { new Rig("NES-FM:NOSUCHCHIP"); } catch (ArgumentException) { threw = true; }
@@ -196,13 +196,13 @@ internal static class SmsFmOnNesTests
         var big = new Rig("NES-FM:FIXS"); big.Unit.WriteAudioControl(1);
         for (int ch = 0; ch < 9; ch++) big.Note(ch, 1, ch, 220 * Math.Pow(2, ch / 12.0));
         big.Run(0.2);
-        var owners8 = Replayer(big).Allocator.TonalOwner;
-        int pulses = owners8.Take(4).Count(o => o >= 0), triangles = owners8.Skip(4).Count(o => o >= 0);
-        Check($"NES:FIXS has 4 pulses and 2 triangles: the four pulses are all in use for nine voices ({pulses}), and a triangle (one fixed level) takes only a voice at least 35% of that level ({triangles} of 2 do)", pulses == 4, $"{string.Join(",", owners8)}");
+        var owners8 = Replayer(big).Allocator.TonalOwner; int bigPulses = ((SmsFmSoundOnNes)big.Unit).Writer.PulseSlots;
+        int pulses = owners8.Take(bigPulses).Count(o => o >= 0), triangles = owners8.Skip(bigPulses).Count(o => o >= 0);
+        Check($"NES:FIXS (enhanced: {bigPulses} pulses, {owners8.Length - bigPulses} triangles) carries all nine voices on pulses ({pulses}), none without a channel, and no triangle takes one ({triangles}): a pulse has the volume the triangle lacks", pulses == 9 && triangles == 0 && ((SmsFmSoundOnNes)big.Unit).VoicesWithoutChannel == 0, $"{string.Join(",", owners8)}; {((SmsFmSoundOnNes)big.Unit).VoicesWithoutChannel} without a channel");
         var quietVoices = new Rig("NES-FM:FIXS"); quietVoices.Unit.WriteAudioControl(1);
         for (int ch = 0; ch < 9; ch++) quietVoices.Note(ch, 1, 6 + ch % 3, 220 * Math.Pow(2, ch / 12.0));
         quietVoices.Run(0.2);
-        Check("quiet voices never go to a triangle (it would play them far too loud)", Replayer(quietVoices).Allocator.TonalOwner.Skip(4).All(o => o < 0), $"{string.Join(",", Replayer(quietVoices).Allocator.TonalOwner)}");
+        Check("quiet voices never go to a triangle (it would play them far too loud)", Replayer(quietVoices).Allocator.TonalOwner.Skip(((SmsFmSoundOnNes)quietVoices.Unit).Writer.PulseSlots).All(o => o < 0), $"{string.Join(",", Replayer(quietVoices).Allocator.TonalOwner)}");
     }
 
     private static void Stealing()

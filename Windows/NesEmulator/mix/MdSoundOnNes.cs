@@ -89,7 +89,7 @@ namespace NesEmulator.Sega
             inner = new MdSoundUnit(machine);
             host = new NesApuHost(BackApuId);   // throws ArgumentException for an unknown NES chip: never a quiet substitute
             back = host.Apu;
-            writer = new NesVoiceWriter(NesRegisterPorts.For(back));
+            writer = new NesVoiceWriter(NesRegisterPorts.For(back), NesVoiceWriter.BanksForTonal(MdSoundUnit.VoiceCount - 2, 2));     // nine tonal voices, two noises: an enhanced chip gives 5 banks
             nesPerMaster = NesVoiceWriter.NesCpuHz / machine.Timeline.MasterHz;
             output = new NesChipOutput(back, machine.SampleRate);   // a chip with a rate of its own (SNES 32 kHz, Game Boy 48 kHz) is converted to the machine's
             replay = new HubReplayer(writer, MdSoundUnit.VoiceCount, IsNoiseVoice, APU_MD.TriangleRms, APU_MD.DefaultLowNotes);
@@ -163,7 +163,7 @@ namespace NesEmulator.Sega
             return rms * inner.FmGain;
         }
 
-        private static bool IsNoiseVoice(int i) => i == 6 || i == 10;
+        private static bool IsNoiseVoice(int i) => i == 6 || i == 10;     // the DAC and the PSG noise
 
         private void Replay()
         {
