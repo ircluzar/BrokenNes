@@ -15,7 +15,7 @@ namespace BrokenNes.Workshop.Sega;
 internal static class SegaScenes
 {
     // ================================================================================================================ rigs
-    private sealed class SmsRig
+    internal sealed class SmsRig
     {
         public readonly SmsSession Inner; public readonly SegaPictureSession Wrap; public SmsVdp V => Inner.Board.Vdp;
         public SmsRig(string ppu, bool gg = false)
@@ -37,7 +37,7 @@ internal static class SegaScenes
         public void Frames(int n = 3) { for (int i = 0; i < n; i++) Wrap.RunFrame(); }
     }
 
-    private sealed class MdRig
+    internal sealed class MdRig
     {
         public readonly MdSession Inner; public readonly SegaPictureSession Wrap; public MdVdp V => Inner.Board.Vdp;
         public const int PlaneA = 0xC000, PlaneB = 0xE000, WindowNt = 0xB000, Sat = 0xF800, HScroll = 0xFC00;

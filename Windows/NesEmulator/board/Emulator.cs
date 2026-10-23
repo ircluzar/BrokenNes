@@ -318,7 +318,15 @@ namespace BrokenNes
                     try {
                         var pShader = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_shader"); if(!string.IsNullOrWhiteSpace(pShader)) nesController.ActiveShaderKey = pShader;
                         var pCpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_cpuCore"); if(!string.IsNullOrWhiteSpace(pCpu)) nesController.CpuCoreSel = pCpu;
-                        var pPpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_ppuCore"); if(!string.IsNullOrWhiteSpace(pPpu)) nesController.PpuCoreSel = pPpu;
+                        var pPpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_ppuCore");
+                        if(!string.IsNullOrWhiteSpace(pPpu))
+                        {
+                            // a retired picture chip (DMGX, the old DMGXI / DMGSI) is its successor, stored back - never reset to the default
+                            bool moved = false, invertSprites = false;
+                            nesController.PpuCoreSel = NesEmulator.Systems.CoreIdMigration.Migrate(NesEmulator.Systems.ConsoleKind.Nes, NesEmulator.Systems.CoreSlot.Ppu, pPpu, ref moved, ref invertSprites)!;
+                            if (moved) await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_ppuCore", nesController.PpuCoreSel);
+                            if (invertSprites) { NesEmulator.Mix.GbLook.InvertSprites = true; await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_gbinvobj", "1"); }
+                        }
                         var pApu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_apuCore"); if(!string.IsNullOrWhiteSpace(pApu)) nesController.ApuCoreSel = pApu;
                         var pClk = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_clockCore"); if(!string.IsNullOrWhiteSpace(pClk) && nesController.ClockCoreOptions.Contains(pClk)) nesController.ClockCoreSel = pClk;
                         // Absent key means "never set", which must keep the ON default - so only a

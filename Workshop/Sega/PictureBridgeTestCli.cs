@@ -72,7 +72,8 @@ internal static class PictureBridgeTestCli
         {
             string n = Consoles.DisplayName(console);
             Check($"{n}: the own chip is first and the NES chips follow", CoreCatalog.Options(console, CoreSlot.Ppu)[0].Id == (console == ConsoleKind.GameGear ? "GG" : "SMS") && nesChips.All(c => Has(console, CoreSlot.Ppu, "NES:" + c)));
-            Check($"{n}: the Game Boy, SNES and Genesis chips are offered through the NES", new[] { "NES:DMG", "NES:DMGX", "NES:DMGS", "NES:SNES", "NES:MD" }.All(id => Has(console, CoreSlot.Ppu, id)));
+            Check($"{n}: the Game Boy (stock, enhanced), SNES and Genesis chips are offered through the NES", new[] { "NES:DMG", "NES:DMGS", "NES:SNES", "NES:MD" }.All(id => Has(console, CoreSlot.Ppu, id)));
+            Check($"{n}: the retired big-screen Game Boy chip (NES:DMGX) is not offered and a stored pick of it resolves to the enhanced chip", !Has(console, CoreSlot.Ppu, "NES:DMGX") && CoreCatalog.Resolve(console, CoreSlot.Ppu, "NES:DMGX") == "NES:DMGS");
             Check($"{n}: its own family's NES-side chip (SMS) is not offered", !Has(console, CoreSlot.Ppu, "NES:SMS"));
         }
         Check("Genesis: the NES chips, the Game Boy / SNES chips and the Master System chip are offered, its own family's is not", nesChips.All(c => Has(ConsoleKind.Genesis, CoreSlot.Ppu, "NES:" + c)) && Has(ConsoleKind.Genesis, CoreSlot.Ppu, "NES:SMS") && Has(ConsoleKind.Genesis, CoreSlot.Ppu, "NES:DMGS") && !Has(ConsoleKind.Genesis, CoreSlot.Ppu, "NES:MD"));

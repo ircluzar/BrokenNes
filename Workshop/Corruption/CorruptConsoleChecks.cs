@@ -16,7 +16,7 @@ internal static class CorruptConsoleChecks
 
     // ---- the programs (written for this project; each is a counter in work RAM that picks the backdrop colour) ----
 
-    private static byte[] GbRom(bool color = false)
+    internal static byte[] GbRom(bool color = false)
     {
         var rom = new byte[0x8000];
         byte[] logo = [0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D, 0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E,
@@ -33,7 +33,7 @@ internal static class CorruptConsoleChecks
         return rom;
     }
 
-    private static byte[] SmsRom(bool gameGear)
+    internal static byte[] SmsRom(bool gameGear)
     {
         var rom = new byte[0x8000];
         byte[] code =

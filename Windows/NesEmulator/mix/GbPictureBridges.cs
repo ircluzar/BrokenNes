@@ -49,9 +49,14 @@ public enum GbPaletteChoice { Green, Grey, Pocket, Color }
 
 /// <summary>
 /// BrokenNes 2: the Game Boy look, app-wide. <see cref="Palette"/> applies wherever a Game Boy picture is shown: the
-/// Game Boy console, NES/SNES games through the Game Boy picture chip (DMG, DMGX, DMGS - Color runs that chip as a GBC)
-/// and Game Boy games through NES/SNES picture chips. The inversions apply to those cross-console translations only (a
-/// game drawn for another console can have its light and dark the other way round): background and sprites apart.
+/// Game Boy console, other consoles' games through the Game Boy picture chips (stock DMG, enhanced DMGS - Color runs that chip as a GBC)
+/// and Game Boy games through NES/SNES picture chips. The inversions apply to those cross-console translations only: background and sprites apart.
+/// <para>
+/// Every path is upright by default: a colour's Game Boy shade follows its own brightness (<see cref="NesEmulator.Gb.GbColour.ShadeOf"/>), so bright is light and dark is dark,
+/// whatever console the game is and whichever Game Boy chip draws it. <see cref="InvertBackground"/> mirrors the lightness of the background - the layers AND the backdrop -
+/// and <see cref="InvertSprites"/> that of the sprites, the same way on every path: a DMG shade s becomes 3 - s, a Game Boy Color colour has its lightness mirrored with its hue kept
+/// (<see cref="NesEmulator.Gb.GbColour.FlipLightness"/>, not a colour negative). The bezel around a cropped picture and the black outside a picture never flip.
+/// </para>
 /// </summary>
 public static class GbLook
 {
@@ -69,9 +74,9 @@ public static class GbLook
     public static bool Color => Palette == GbPaletteChoice.Color;
     public static int Background(int shade) => InvertBackground ? 3 - shade : shade;
     public static int Sprite(int shade) => InvertSprites ? 3 - shade : shade;
-    /// <summary>A BGR555 colour with its lightness inverted when asked (the complement).</summary>
-    public static ushort Background(ushort bgr) => InvertBackground ? (ushort)(bgr ^ 0x7FFF) : bgr;
-    public static ushort Sprite(ushort bgr) => InvertSprites ? (ushort)(bgr ^ 0x7FFF) : bgr;
+    /// <summary>A BGR555 colour with its lightness mirrored when asked (hue and saturation kept: <see cref="NesEmulator.Gb.GbColour.FlipLightness555"/>).</summary>
+    public static ushort BackgroundColour(ushort bgr) => InvertBackground ? NesEmulator.Gb.GbColour.FlipLightness555(bgr) : bgr;
+    public static ushort SpriteColour(ushort bgr) => InvertSprites ? NesEmulator.Gb.GbColour.FlipLightness555(bgr) : bgr;
 
     public static string Key(GbPaletteChoice p) => p.ToString().ToLowerInvariant();
     public static GbPaletteChoice FromKey(string? key) => key?.ToLowerInvariant() switch
@@ -141,7 +146,7 @@ internal sealed class GbToNes
 
         // ---- palettes
         byte Nes555(ushort c) { var (r, g, b) = NesPalette.FromBgr555(c); return NesPalette.Nearest(r, g, b); }
-        byte Cgb(byte[] palRam, int p, int c) => Nes555(GbLook.Background(GbShades.Cgb(palRam, p, c)));
+        byte Cgb(byte[] palRam, int p, int c) => Nes555(GbLook.BackgroundColour(GbShades.Cgb(palRam, p, c)));
         // DMG games: BGP picks the shade (inverted when asked); the shade is a colour of the chosen look, or of the
         // GBC's compatibility palette when the game runs on a GBC.
         byte bgp = cap.Bgp[Ref];
@@ -215,7 +220,7 @@ internal sealed class GbToNes
         }
         for (int k = 0; k < 4; k++)
             for (int c = 1; c < 4; c++)
-                pic.Pal[16 + k * 4 + c] = cgb ? (k < objSlots.Count ? Nes555(GbLook.Sprite(GbShades.Cgb(ppu.ObjPalRam, objSlots[k], c))) : (byte)0x0F)
+                pic.Pal[16 + k * 4 + c] = cgb ? (k < objSlots.Count ? Nes555(GbLook.SpriteColour(GbShades.Cgb(ppu.ObjPalRam, objSlots[k], c))) : (byte)0x0F)
                                               : ObjShade(k, c);
         var objTiles = new Dictionary<int, int>(); int nextObj = 0;
         Array.Fill(pic.Oam, (byte)0xFF);
@@ -292,8 +297,8 @@ internal sealed class GbToSnes
             for (int c = 0; c < 4; c++)
             {
                 int bsh = GbLook.Background(GbShades.Shade(cap.Bgp[Ref], c)), osh = GbLook.Sprite(GbShades.Shade(p == 1 ? cap.Obp1[Ref] : cap.Obp0[Ref], c));
-                ushort bgc = cgb ? GbLook.Background(GbShades.Cgb(ppu.BgPalRam, p, c)) : ppu.CompatMode ? GbShades.Cgb(ppu.BgPalRam, 0, bsh) : GbShades.Bgr555(bsh);
-                ushort obc = cgb ? GbLook.Sprite(GbShades.Cgb(ppu.ObjPalRam, p, c)) : ppu.CompatMode ? GbShades.Cgb(ppu.ObjPalRam, p == 1 ? 1 : 0, osh) : GbShades.Bgr555(osh);
+                ushort bgc = cgb ? GbLook.BackgroundColour(GbShades.Cgb(ppu.BgPalRam, p, c)) : ppu.CompatMode ? GbShades.Cgb(ppu.BgPalRam, 0, bsh) : GbShades.Bgr555(bsh);
+                ushort obc = cgb ? GbLook.SpriteColour(GbShades.Cgb(ppu.ObjPalRam, p, c)) : ppu.CompatMode ? GbShades.Cgb(ppu.ObjPalRam, p == 1 ? 1 : 0, osh) : GbShades.Bgr555(osh);
                 cg[p * 4 + c] = bgc; cg[32 + p * 4 + c] = bgc; cg[128 + p * 16 + c] = obc;
             }
         // Sprites.
