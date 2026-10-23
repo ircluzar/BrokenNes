@@ -12,7 +12,7 @@ namespace NesEmulator.Sega;
 /// <remarks>Exactness: the machine ends up in the state a tick-by-tick run would have left it in at every moment anything can look (the 68000's accesses, the interrupt line, the bus request and reset, save states, tools);
 /// the speed suite's goldens (every frame and sample of six games) and a state-hash comparison of the twin (<c>MdSoundUnit.FastLoops = false</c>) every 50 frames show it. Anything impure in the observed turn (a read outside the RAM,
 /// any write, any port) means no fast-forward.</remarks>
-public sealed partial class MdSoundUnit
+public partial class MdSoundUnit
 {
     /// <summary>True: polling loops are fast-forwarded as described above. False: every T-state is ticked, the reference twin (<c>--sega-bench --ab md-loop</c>; the output is bit for bit the same either way).</summary>
     public static bool FastLoops = true;

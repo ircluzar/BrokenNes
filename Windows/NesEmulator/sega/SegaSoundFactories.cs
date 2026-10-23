@@ -55,6 +55,7 @@ public static class GenesisSoundFactories
     public static readonly Dictionary<string, Func<SegaMachine, IGenesisSound>> Factories = new(StringComparer.OrdinalIgnoreCase)
     {
         ["MD"] = m => new MdSoundUnit(m),
+        ["MDS"] = m => new MdSoundUnitS(m),   // the Genesis's own enhanced unit: the stock unit for a Genesis game, plus extra YM2612 + PSG sets for the cross-console bridges
         ["MD-STUB"] = m => new GenesisSoundStub(m),
         ["NES"] = m => new MdSoundOnNes(m),
     };

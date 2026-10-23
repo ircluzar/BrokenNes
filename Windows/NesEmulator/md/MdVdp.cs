@@ -28,7 +28,7 @@ public interface IMdVdpHost
 /// <para><b>Approximations that the next milestone tunes against test ROMs:</b> the slots are spread evenly through the line (hardware has irregular slot lengths around HSYNC); the V counter
 /// steps at <see cref="VCounterStepOffset"/>; the horizontal-blank flag spans a fixed stretch; the vertical-blank flag, VINT and the Z80 interrupt follow the line numbers.</para>
 /// </remarks>
-public sealed partial class MdVdp
+public partial class MdVdp
 {
     // ---- memories and registers
     public readonly byte[] Vram = new byte[0x10000];
