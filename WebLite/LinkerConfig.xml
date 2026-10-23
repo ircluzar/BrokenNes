@@ -75,6 +75,8 @@
     <type fullname="NesEmulator.APU_SNESS" preserve="all" />
     <type fullname="NesEmulator.PPU_MDS" preserve="all" />
     <type fullname="NesEmulator.APU_MDS" preserve="all" />
+    <type fullname="NesEmulator.PPU_SMSS" preserve="all" />
+    <type fullname="NesEmulator.APU_SMSS" preserve="all" />
     <type fullname="NesEmulator.NES" preserve="fields" />
 
     <!-- Clocks are small and drive frame pacing; keep all of them. -->

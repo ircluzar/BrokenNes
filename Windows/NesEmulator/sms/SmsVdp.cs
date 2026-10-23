@@ -20,7 +20,7 @@ public enum SmsVdpRevision { Sms1, Sms2, GameGear, Tms9918 }
 /// <para><b>Not modelled:</b> VRAM access slots (CPU writes are never delayed), the zoomed-sprite bug of the 315-5124, the 315-5124's address masks on registers 3, 4 and 6 (those on 2 and 5 are),
 /// light-pen and phaser TH latching beyond the TH rising edge, and the Game Gear's SMS-compatibility palette mode.</para>
 /// </remarks>
-public sealed partial class SmsVdp
+public partial class SmsVdp
 {
     // ---- timing constants (master clocks within a line, origin at counter $1E6) -------------------------------------------------------------------------
     // Found by running FluBBa's VDP test (Workshop --smstest --scan) against the board's access timing (BOARD_SMS.IoPhaseMc = 0): each test passes over a window of a few master clocks, one Z80
@@ -547,9 +547,9 @@ public sealed partial class SmsVdp
 
     /// <summary>The 2-bit colour levels of the Master System's CRAM as 8-bit values. The chip's output is analog; these are the levels Mesen shows (the 2-bit value widened to 5 bits as
     /// 0, 10, 21, 31 and scaled to 8), chosen so frames compare pixel for pixel with the oracle.</summary>
-    private static readonly byte[] Level2 = { 0x00, 0x52, 0xAD, 0xFF };
+    internal static readonly byte[] Level2 = { 0x00, 0x52, 0xAD, 0xFF };
     /// <summary>The 4-bit levels of the Game Gear's CRAM (the value widened to 5 bits, then scaled to 8).</summary>
-    private static readonly byte[] Level4 = BuildLevel4();
+    internal static readonly byte[] Level4 = BuildLevel4();
     private static byte[] BuildLevel4()
     {
         var t = new byte[16];
