@@ -868,6 +868,17 @@ try {
         $r = Invoke-BdWatchedProcess -FilePath $psx -Arguments @('-NoProfile', '-Command', $writer.Replace('-lt 8', '-lt 40')) -ResultFile (Join-Path $tmpRoot 'slow.txt') -TimeoutSec 3 -HangSec 30
         Assert-True $r.TimedOut 'a process past its limit was not ended as timed out'
     }
+    Test-Case 'a Windows PowerShell 5.1 step started from PowerShell 7 finds its own modules; NEGATIVE: with PS7''s module path forced on it, it does not' {
+        $psx = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $f = Join-Path $tmpRoot 'hash-me.txt'; Set-Content -LiteralPath $f 'x'
+        $cmd = "(Get-FileHash -LiteralPath '$f' -Algorithm SHA256).Hash"
+        $r = Invoke-BdProcess -FilePath $psx -Arguments @('-NoProfile', '-Command', $cmd) -TimeoutSec 60 -Quiet
+        Assert-True ($r.ExitCode -eq 0 -and $r.Output -match '[0-9A-F]{64}') "Get-FileHash failed in the 5.1 child: $($r.Output)"
+        if ($PSVersionTable.PSEdition -eq 'Core') {
+            $bad = Invoke-BdProcess -FilePath $psx -Arguments @('-NoProfile', '-Command', $cmd) -TimeoutSec 60 -Quiet -Env @{ PSModulePath = $env:PSModulePath }
+            Assert-True ($bad.Output -notmatch '[0-9A-F]{64}') 'with PowerShell 7''s module path the 5.1 child still hashed: the negative control proves nothing'
+        }
+    }
     Test-Case 'every adapter file loads and defines its run and play functions' {
         foreach ($ad in 'workshop', 'mesen', 'bizhawk', 'fceux', 'snes9x') {
             $le = Get-BdAdapterLoadError -Adapter $ad

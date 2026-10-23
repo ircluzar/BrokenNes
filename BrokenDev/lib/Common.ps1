@@ -167,6 +167,14 @@ function Stop-BdProcessTree {
     & taskkill.exe /PID $ProcessId /T /F 2>&1 | Out-Null
 }
 
+function Get-BdWindowsPowerShellModulePath {
+    <# The module path a Windows PowerShell 5.1 started from Explorer would have: the user's WindowsPowerShell\Modules and the machine value. #>
+    $machine = [Environment]::ExpandEnvironmentVariables([string][Environment]::GetEnvironmentVariable('PSModulePath', 'Machine'))
+    if (-not $machine) { $machine = (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules') + ';' + (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\Modules') }
+    $user = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
+    (@($user) + ($machine -split ';' | Where-Object { $_ -and $_ -notmatch '\\PowerShell\\7' })) -join ';'
+}
+
 function Invoke-BdProcess {
     <#
       Runs an executable with a hard timeout, capturing stdout+stderr into $LogFile (and returning the captured text in
@@ -192,6 +200,11 @@ function Invoke-BdProcess {
     $psi.WorkingDirectory = $WorkingDirectory
     if ($psi.PSObject.Properties['ArgumentList']) { foreach ($a in $Arguments) { [void]$psi.ArgumentList.Add([string]$a) } }
     else { $psi.Arguments = ConvertTo-BdArgString $Arguments }
+    # A Windows PowerShell 5.1 child started from PowerShell 7 inherits PS7's PSModulePath and then loads PS7's own modules
+    # (Get-FileHash and friends are "not recognized" there): it gets Windows PowerShell's machine module path instead.
+    if ([System.IO.Path]::GetFileName($FilePath) -ieq 'powershell.exe' -and $PSVersionTable.PSEdition -eq 'Core' -and -not $Env.ContainsKey('PSModulePath')) {
+        $psi.EnvironmentVariables['PSModulePath'] = Get-BdWindowsPowerShellModulePath
+    }
     foreach ($k in $Env.Keys) { $psi.EnvironmentVariables[[string]$k] = [string]$Env[$k] }
     if ($PathPrepend.Count -gt 0) {
         $cur = $psi.EnvironmentVariables['PATH']
