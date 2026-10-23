@@ -25,7 +25,7 @@ public sealed partial class SnesSession
     /// <summary>The layout of the payload: bump it whenever the board, a core or a chip changes what it writes, so an old state is refused rather than misread.</summary>
     public const string StateFormat = "sfc-1";
     private const byte PayloadVersion = 1;
-    private const byte UnitSfc = 0, UnitHle = 1, UnitNes = 2;
+    private const byte UnitSfc = 0, UnitHle = 1, UnitNes = 2, UnitChip = 3;
 
     public bool SupportsState => true;
 
@@ -106,6 +106,7 @@ public sealed partial class SnesSession
                 parkedSpc?.SaveState(w);
                 break;
             case NesApuOnSnes { Front: APU_SFC front }: w.Write(UnitNes); front.SaveState(w); break;
+            case SnesApuOnChip { Front: APU_SFC chipFront }: w.Write(UnitChip); chipFront.SaveState(w); break;      // another console's enhanced sound chip: a listener, like the NES chip; the SPC700 + S-DSP is the machine
             default: throw new NotSupportedException($"The sound unit {board.Apu.CoreName} keeps no state that can be saved.");
         }
     }
@@ -132,6 +133,11 @@ public sealed partial class SnesSession
                 RequireUnit(unit, UnitNes);
                 front.LoadState(r);
                 bridge.Rebase(board.MasterClock);   // the NES chip listens to the loaded voices from the board's new time; its own phases are not part of the machine
+                break;
+            case SnesApuOnChip { Front: APU_SFC chipFront } onChip:
+                RequireUnit(unit, UnitChip);
+                chipFront.LoadState(r);
+                onChip.Rebase(board.MasterClock);
                 break;
             default: throw new NotSupportedException($"The sound unit {board.Apu.CoreName} keeps no state that can be loaded.");
         }

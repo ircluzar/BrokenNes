@@ -21,7 +21,7 @@ namespace NesEmulator.Mix;
 /// </summary>
 internal sealed class SnesToNes
 {
-    private readonly NesPictureSink sink;
+    private readonly IPictureSink sink;
     public readonly Stats Last = new();
 
     public sealed class Stats
@@ -39,6 +39,12 @@ internal sealed class SnesToNes
     }
 
     public SnesToNes(string nesPpuId) { sink = new NesPictureSink(nesPpuId); }
+
+    /// <summary>Onto an enhanced picture chip of another console directly (no NES in between): the SNES picture as layers at its own size, in that chip's colours.</summary>
+    public SnesToNes(IEnhancedPictureChip chip, string routeId) { sink = new ChipPictureSink(chip, routeId); }
+
+    /// <summary>The route's name ("FIXS", "MD:MDS").</summary>
+    public string PpuId => sink.PpuId;
 
     /// <summary>True when the picture chip is an enhanced one (FIX enhanced, Game Boy enhanced: <see cref="IEnhancedPictureChip"/>): the frame is translated
     /// line by line from PPU_SFC.BridgeLines into the chip's layers, at the SNES's own size.</summary>

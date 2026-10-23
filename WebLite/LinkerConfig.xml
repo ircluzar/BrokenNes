@@ -69,6 +69,10 @@
     <type fullname="NesEmulator.APU_MD" preserve="all" />
     <type fullname="NesEmulator.APU_SMSFM" preserve="all" />
     <type fullname="NesEmulator.APU_FIXS" preserve="all" />
+    <!-- Enhanced cores phase 3: a NES game on the other consoles' ENHANCED chips (CoreRegistry finds them by name, so they must be rooted).
+         The other consoles reach those chips directly (EnhancedChips routes, plain code: no root needed). -->
+    <type fullname="NesEmulator.PPU_SNESS" preserve="all" />
+    <type fullname="NesEmulator.APU_SNESS" preserve="all" />
     <type fullname="NesEmulator.NES" preserve="fields" />
 
     <!-- Clocks are small and drive frame pacing; keep all of them. -->

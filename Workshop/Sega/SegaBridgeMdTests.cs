@@ -75,12 +75,15 @@ internal static class SegaBridgeMdTests
         Check("the NES APU menu lists MD under the Genesis family ('From the Genesis'), with an honest label", nes is { Family: "Genesis" } && nes.Label.Contains("DMC is dropped") && nes.Label.Contains("YM2612"), nes?.Label ?? "(missing)");
         Check("... and the NES-family sound chip list (used by the other consoles' menus) does not include it", CoreCatalog.NesFamilyOf(CoreSlot.Apu, "MD") == "Genesis" && CoreCatalog.NesFamilyOf(CoreSlot.Apu, "FIX") == "NES");
         var apu = CoreCatalog.Options(ConsoleKind.Genesis, CoreSlot.Apu);
-        Check($"the Genesis APU menu: the stock unit MD first, then the other consoles' best chips (FIX stock and enhanced first), then the rest of the NES chips ({apu.Skip(1).Count(o => o.Family == "NES")} NES chips in all), every one through the NES registers", apu[0].Id == "MD" && apu.Count > 5 && apu.Skip(1).All(o => o.Id.StartsWith("NES:")) && apu[1].Id == "NES:FIX" && apu[2].Id == "NES:FIXS" && apu.Skip(1).Count(o => o.Family == "NES") > 15 && apu.Skip(1).SkipWhile(o => o.Section == CoreSection.OtherConsoles).All(o => o.Section == CoreSection.More && o.Family == "NES"));
-        Check("... NES:FIX and NES:FIXS are offered; the NES entries' labels say mono, no FM timbre, and that the DAC becomes noise", apu.Any(o => o.Id == "NES:FIX") && apu.Any(o => o.Id == "NES:FIXS") && apu.Skip(1).Where(o => o.Family == "NES").All(o => o.Label.Contains("mono") && o.Label.Contains("no FM timbre") && o.Label.Contains("DAC")));
+        int own = apu.Count(o => o.Section == CoreSection.Own);      // the stock unit, then the Genesis's own enhanced unit (MDS) once it exists
+        Check($"the Genesis APU menu: the stock unit MD first{(own > 1 ? $", then its enhanced unit {apu[1].Id}" : "")}, then the other consoles' best chips (FIX stock and enhanced first), then the rest of the NES chips ({apu.Skip(own).Count(o => o.Family == "NES")} NES chips in all), every one through the NES registers or directly to another console's enhanced chip",
+            apu[0].Id == "MD" && apu.Count > 5 && apu.Skip(own).All(o => o.Id.StartsWith("NES:") || CoreCatalog.IsDirectRoute(o.Id)) && apu[own].Id == "NES:FIX" && apu[own + 1].Id == "NES:FIXS" && apu.Skip(own).Count(o => o.Family == "NES") > 15 && apu.Skip(own).SkipWhile(o => o.Section == CoreSection.OtherConsoles).All(o => o.Section == CoreSection.More && o.Family == "NES"));
+        Check("... NES:FIX and NES:FIXS are offered; the NES entries' labels say mono, no FM timbre, and that the DAC becomes noise", apu.Any(o => o.Id == "NES:FIX") && apu.Any(o => o.Id == "NES:FIXS") && apu.Skip(own).Where(o => o.Family == "NES").All(o => o.Label.Contains("mono") && o.Label.Contains("no FM timbre") && o.Label.Contains("DAC")));
         Check("... the Game Boy, SNES and Master System chips are offered through the NES (C4b), the Genesis's own is not (a Genesis game on the Genesis chip is the console)", new[] { "NES:DMG", "NES:DMGS", "NES:SNES", "NES:SMS", "NES:SMSFM" }.All(id => apu.Any(o => o.Id == id && o.Family != "NES")) && apu.All(o => o.Id != "NES:MD"));
         Check("... a stored NES:FIX is kept, a stored id the menu lacks falls back to the stock unit", CoreCatalog.Resolve(ConsoleKind.Genesis, CoreSlot.Apu, "NES:FIX") == "NES:FIX" && CoreCatalog.Resolve(ConsoleKind.Genesis, CoreSlot.Apu, "NES:NOPE") == "MD");
         var mdPpu = CoreCatalog.Options(ConsoleKind.Genesis, CoreSlot.Ppu);   // the picture slot gained the NES picture chips in C3a (verified by --picture-bridge-test)
-        Check("the Genesis CPU slot is unchanged (own core only) and its picture slot is its own chip first, then NES chips", CoreCatalog.Options(ConsoleKind.Genesis, CoreSlot.Cpu).Count == 1 && mdPpu[0].Id == "MD" && mdPpu.Skip(1).All(o => o.Id.StartsWith("NES:")) && mdPpu.All(o => o.Id != "NES:MD"));
+        int ownPpu = mdPpu.Count(o => o.Section == CoreSection.Own);
+        Check("the Genesis CPU slot is unchanged (own core only) and its picture slot is its own chip first (and its enhanced one), then NES chips and the other consoles' enhanced chips", CoreCatalog.Options(ConsoleKind.Genesis, CoreSlot.Cpu).Count == 1 && mdPpu[0].Id == "MD" && mdPpu.Skip(ownPpu).All(o => o.Id.StartsWith("NES:") || CoreCatalog.IsDirectRoute(o.Id)) && mdPpu.All(o => o.Id != "NES:MD"));
         Check("the Master System and Game Gear menus still list the PSG on NES chips and no Genesis unit of their own (the Genesis chip is a hub entry NES:MD)", CoreCatalog.Options(ConsoleKind.MasterSystem, CoreSlot.Apu).All(o => o.Id != "MD") && CoreCatalog.Options(ConsoleKind.MasterSystem, CoreSlot.Apu).Any(o => o.Id == "NES:MD") && CoreCatalog.Options(ConsoleKind.GameGear, CoreSlot.Apu).Count > 5);
     }
 
@@ -750,7 +753,7 @@ internal static class SegaBridgeMdTests
             MasterHz = m.Timeline.MasterHz;
             Unit = GenesisSoundFactories.Create(id, m);
             Unit.Reset();
-            Real = Unit as MdSoundUnit ?? ((MdSoundOnNes)Unit).Inner;
+            Real = Unit as MdSoundUnit ?? (Unit as MdSoundOnNes)?.Inner ?? ((NesEmulator.Mix.MdSoundOnChip)Unit).Inner;
         }
         public int Rate => Unit.SampleRate;
         public void Ym(int reg, int value)
@@ -840,7 +843,7 @@ internal static class SegaBridgeMdTests
             }
             catch (Exception e) { failed.Add($"{id}: {e.GetType().Name} {e.Message}"); }
         }
-        Check($"every NES chip in the Genesis APU menu ({ids.Count}) builds a unit that sounds: {ok} do; silent: [{string.Join(", ", silent)}]; failed: [{string.Join("; ", failed)}]", ids.Count >= 15 && silent.Count == 0 && failed.Count == 0);
+        Check($"every chip in the Genesis APU menu ({ids.Count}: the NES chips, the other consoles' through the NES or directly, its own enhanced unit) builds a unit that sounds: {ok} do; silent: [{string.Join(", ", silent)}]; failed: [{string.Join("; ", failed)}]", ids.Count >= 15 && silent.Count == 0 && failed.Count == 0);
     }
 
     private static void UnitPitch()

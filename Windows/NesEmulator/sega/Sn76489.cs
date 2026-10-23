@@ -316,7 +316,7 @@ public sealed class Sn76489 : IHubVoiceSource
                 int n = period[i] == 0 && variant == PsgVariant.Ti ? 0x400 : period[i];
                 if (n <= 1) level = 0f;
                 double hz = n > 0 ? cpuClockHz / (32.0 * n) : 0;
-                voices[i] = new HubVoice(i < 2 ? HubVoiceKind.Pulse : HubVoiceKind.Triangle, hz, level, Duty: 2, Pan: pan);
+                voices[i] = new HubVoice(i < 2 ? HubVoiceKind.Pulse : HubVoiceKind.Triangle, hz, level, Duty: 2, Pan: pan, Psg: true);
             }
             else
             {

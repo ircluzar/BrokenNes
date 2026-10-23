@@ -627,6 +627,46 @@ internal static class SegaScenes
             }
             AllocCase($"Genesis scene on {chip}", md[0], md[1]);
         }
+        // the other consoles' enhanced chips, reached directly (enhanced cores phase 3): the same scenes, on every chip that is not the scene's own family
+        foreach (var route in NesEmulator.Mix.EnhancedChips.PictureRoutes)
+        {
+            bool sega8 = route.StartsWith("SMS:", StringComparison.OrdinalIgnoreCase) || route.StartsWith("GG:", StringComparison.OrdinalIgnoreCase), md16 = route.StartsWith("MD:", StringComparison.OrdinalIgnoreCase);
+            if (!sega8)
+            {
+                double[] sms = new double[2], gg = new double[2];
+                for (int pass = 0; pass < 2; pass++)
+                {
+                    var r = new SmsRig(pass == 0 ? route : "SMS"); SmsMoving(r); int f = 0;
+                    sms[pass] = BytesPerFrame(() => { r.V.Regs[8] = (byte)(f++ * 3); r.Wrap.RunFrame(); });
+                    var g = new SmsRig(pass == 0 ? route : "GG", gg: true); SmsMoving(g); f = 0;
+                    gg[pass] = BytesPerFrame(() => { g.V.Regs[8] = (byte)(f++ * 3); g.Wrap.RunFrame(); });
+                }
+                AllocCase($"Master System scene on {route}", sms[0], sms[1]);
+                AllocCase($"Game Gear scene on {route}", gg[0], gg[1]);
+            }
+            if (!md16)
+            {
+                double[] md = new double[2];
+                for (int pass = 0; pass < 2; pass++)
+                {
+                    var r = new MdRig(pass == 0 ? route : "MD"); MdMoving(r); r.Go(1); int f = 0;
+                    md[pass] = BytesPerFrame(() => { for (int l = 0; l < 224; l++) r.W16(MdRig.HScroll + l * 4, (l * 3 + f) & 0x1FF); f += 2; r.Wrap.RunFrame(); });
+                }
+                AllocCase($"Genesis scene on {route}", md[0], md[1]);
+            }
+        }
+        // a NES game on the NES board's enhanced chips of the other consoles (SNESS, SMSS, MDS): the layers and the chip's drawing, against the stock FIX on the same board
+        foreach (var id in new[] { "SNESS", "SMSS", "MDS" }.Where(i => CoreRegistry.PpuIds.Contains(i, StringComparer.OrdinalIgnoreCase)))
+        {
+            double[] nes = new double[2];
+            for (int pass = 0; pass < 2; pass++)
+            {
+                var sink = new NesEmulator.Mix.NesPictureSink(pass == 0 ? id : "FIX"); var scene = BrokenNes.Workshop.EnhancedCores.EnhancedPhase3Tests.NesScene(); int f = 0;
+                sink.Present(scene);
+                nes[pass] = BytesPerFrame(() => { scene.FineX = f++ & 7; scene.Oam[3] = (byte)(f * 5); sink.Present(scene); });
+            }
+            AllocCase($"NES scene on the NES board's {id}", nes[0], nes[1]);
+        }
         string smsDir = Arg(args, "--sms-roms"), ggDir = Arg(args, "--gg-roms"), mdDir = Arg(args, "--md-roms");
         // real games run long (a game is run for a thousand frames on each of three chips): only when asked for, with --only alloc or --alloc-games
         bool realGames = Arg(args, "--only").Equals("alloc", StringComparison.OrdinalIgnoreCase) || args.Contains("--alloc-games", StringComparer.OrdinalIgnoreCase);

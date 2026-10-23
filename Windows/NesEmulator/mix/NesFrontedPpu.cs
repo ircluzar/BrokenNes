@@ -185,6 +185,9 @@ public abstract class NesFrontedPpu : IPPU, IPpuFixTiming, IPictureBridgeInfo
     /// <summary>The pattern tables the 8-line group of NES line <paramref name="line"/> was drawn with.</summary>
     protected ChrVersion ChrAtLine(int line) => groupChr[Math.Clamp(line >> 3, 0, 29)] ?? groupChr[0]!;
 
+    /// <summary>The pattern tables of each 8-line group of the frame (<paramref name="rows"/>[g] = the 8 KB group g was drawn with; the arrays are the captured versions themselves, not copies).</summary>
+    protected void GroupChr(byte[][] rows) { for (int g = 0; g < rows.Length; g++) rows[g] = ChrAtLine(g * 8).Data; }
+
     protected int DistinctChrVersions()
     {
         var seen = new HashSet<int>();

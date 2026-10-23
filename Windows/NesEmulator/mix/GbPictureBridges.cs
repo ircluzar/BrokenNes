@@ -100,13 +100,15 @@ public static class GbLook
 /// </summary>
 internal sealed class GbToNes
 {
-    private readonly NesPictureSink sink;
+    private readonly IPictureSink sink;
     public bool Bleed = true;
     private string stats = "";
     private int layersUsed, bgTilesUsed, piecesUsed; private bool layeredLast;
     /// <summary>What the last frame used (tools): tiles, sprites, palettes; made when read (the layered path makes no string a frame).</summary>
     public string Stats => layeredLast ? $"layers {layersUsed} (background tiles {bgTilesUsed}), sprite pieces {piecesUsed}" : stats;
     public GbToNes(string nesPpuId) { sink = new NesPictureSink(nesPpuId); }
+    /// <summary>Onto an enhanced picture chip of another console directly (no NES in between): the Game Boy picture as layers at its 160 x 144, in that chip's colours.</summary>
+    public GbToNes(IEnhancedPictureChip chip, string routeId) { sink = new ChipPictureSink(chip, routeId); }
     public string PpuId => sink.PpuId;
     /// <summary>The last picture (the enhanced chip's 160 x 144, or the NES chip's 256 x 240).</summary>
     public BridgeFrame Frame { get; } = new();

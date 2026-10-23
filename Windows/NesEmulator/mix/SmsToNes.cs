@@ -82,7 +82,7 @@ internal readonly record struct PictureWindow(int X0, int Y0, int W, int H, int 
 /// </summary>
 internal sealed class SmsToNes : IVariantLevels
 {
-    private readonly NesPictureSink sink;
+    private readonly IPictureSink sink;
     public readonly BridgeCounters Counters = new();
     private readonly bool gg;
     public string NesPpuId => sink.PpuId;
@@ -114,7 +114,12 @@ internal sealed class SmsToNes : IVariantLevels
     // what FillLevels needs from the frame being drawn (the packer asks for the pixels of a variant while the flat path runs)
     private SegaQuantizer? levelsQ; private byte[]? vramNow; private int bdNow;
 
-    public SmsToNes(string nesPpuId, bool gameGear) { sink = new NesPictureSink(nesPpuId); gg = gameGear; bgPalette = new[] { pal0, pal1 }; }
+    public SmsToNes(string nesPpuId, bool gameGear) : this(new NesPictureSink(nesPpuId), gameGear) { }
+
+    /// <summary>Onto an enhanced picture chip of another console directly (no NES in between): the Master System / Game Gear picture as layers at its own size, in that chip's colours.</summary>
+    public SmsToNes(IEnhancedPictureChip chip, string routeId, bool gameGear) : this(new ChipPictureSink(chip, routeId), gameGear) { }
+
+    private SmsToNes(IPictureSink sink, bool gameGear) { this.sink = sink; gg = gameGear; bgPalette = new[] { pal0, pal1 }; }
 
     public bool Layered => sink.Enhanced != null;
     /// <summary>The enhanced chip the layers go to (null on a stock chip): tests read its layers.</summary>

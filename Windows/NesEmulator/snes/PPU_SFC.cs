@@ -24,7 +24,7 @@ namespace NesEmulator.Snes;
 /// PROVENANCE: written from memory and hardware documentation. The Mode 7 pre-rounding/clip formula
 /// and the color-window region semantics follow bsnes/higan's approach. See THIRD_PARTY_NOTICES.md.
 /// </summary>
-public sealed partial class PPU_SFC
+public partial class PPU_SFC
 {
     public string CoreName => "SFC";
     public string Description => "SNES PPU - scanline renderer, all modes, sprites, windows, color math";

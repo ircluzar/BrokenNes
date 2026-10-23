@@ -13,12 +13,14 @@ internal sealed class NesPicture
     public bool Blank;
     /// <summary>Show sprites from pattern table 1 (the default) - off keeps the picture BG-only.</summary>
     public bool Sprites = true;
+    /// <summary>TESTS: PPUMASK as written (null, the default: $1E with sprites, $0E without, both shown in the left column as always).</summary>
+    public byte? Mask;
 
     /// <summary>Back to what a new picture is: every table zero, no fine scroll, rendering on, sprites shown. A bridge keeps one picture and clears it for each frame instead of making a new one.</summary>
     public void Clear()
     {
         Array.Clear(ChrBg); Array.Clear(ChrObj); Array.Clear(Nt0); Array.Clear(Nt1); Array.Clear(Pal); Array.Clear(Oam);
-        FineX = 0; FineY = 0; Blank = false; Sprites = true;
+        FineX = 0; FineY = 0; Blank = false; Sprites = true; Mask = null;
     }
 
     /// <summary>The picture of a frame that shows nothing (the backdrop only): rendering off, every palette entry colour $0F, every sprite off the screen.</summary>
@@ -68,10 +70,39 @@ internal sealed class BridgeFrame
 }
 
 /// <summary>
+/// Where a cross-console translator sends its picture (the shared step of the enhanced roster, docs/projects/enhanced-cores.md 5.3): a chip that takes the guest's layers
+/// (<see cref="Enhanced"/>: the layered path at the guest's size), or a NES picture chip that draws a flat NES picture (<see cref="Present"/>). Two routes implement it:
+/// <see cref="NesPictureSink"/> (a NES board's PPU, any NES PPU core by id: stock chips draw the flat picture, FIX enhanced and Game Boy enhanced take the layers) and
+/// <see cref="ChipPictureSink"/> (an enhanced picture chip of another console reached directly, with no NES in between: the SNES, Master System / Game Gear and Genesis enhanced chips).
+/// A translator never knows which of the two it has.
+/// </summary>
+internal interface IPictureSink
+{
+    /// <summary>What the route is called in the menus and the counters ("FIXS", "SNES:SFCS").</summary>
+    string PpuId { get; }
+    /// <summary>The chip that takes the guest's layers (<see cref="IEnhancedPictureChip"/>), or null for a stock NES chip (the flat path).</summary>
+    IEnhancedPictureChip? Enhanced { get; }
+    /// <summary>The flat path: a NES picture drawn by a NES chip, RGBA 256 x 240. Only a route without <see cref="Enhanced"/> is asked.</summary>
+    byte[] Present(NesPicture p);
+}
+
+/// <summary>
+/// An enhanced picture chip reached directly (not through a NES board): the guest's translator fills the chip's layers and the chip draws them at the guest's size in its own colours.
+/// There is no flat path: a chip that takes the layers is never handed a NES picture, so <see cref="Present"/> refuses (never a quiet substitute).
+/// </summary>
+internal sealed class ChipPictureSink : IPictureSink
+{
+    public ChipPictureSink(IEnhancedPictureChip chip, string id) { Enhanced = chip ?? throw new ArgumentNullException(nameof(chip)); PpuId = id; }
+    public string PpuId { get; }
+    public IEnhancedPictureChip? Enhanced { get; }
+    public byte[] Present(NesPicture p) => throw new InvalidOperationException($"{PpuId} is an enhanced picture chip: it draws the guest's layers, never a flat NES picture");
+}
+
+/// <summary>
 /// A real NES (idle NROM program) whose PPU - any NES PPU core by id - draws a <see cref="NesPicture"/>.
 /// Shared by every "downgrade to NES" bridge (SNES -> NES, Game Boy -> NES) so each NES PPU core joins them all.
 /// </summary>
-internal sealed class NesPictureSink
+internal sealed class NesPictureSink : IPictureSink
 {
     private readonly NES nes;
     private readonly Bus bus;
@@ -136,7 +167,7 @@ internal sealed class NesPictureSink
         foreach (var b in p.Oam) W(0x2004, b);
         _ = bus.Read(0x2002);
         W(0x2000, 0x08); W(0x2005, (byte)p.FineX); W(0x2005, (byte)p.FineY);
-        W(0x2001, p.Blank ? (byte)0x00 : (byte)(p.Sprites ? 0x1E : 0x0E));
+        W(0x2001, p.Blank ? (byte)0x00 : p.Mask ?? (byte)(p.Sprites ? 0x1E : 0x0E));
         if (IdleMode == 2) nes.RunIdleToVblank();
         else if (IdleMode == 1) { nes.RunIdleFrame(); nes.RunIdleFrame(); }   // one frame to latch the new picture, one to present it
         else { nes.RunFrame(); nes.RunFrame(); }

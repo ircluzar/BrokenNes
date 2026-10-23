@@ -41,7 +41,8 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
     /// <summary>The wrapped board session (tools).</summary>
     public IConsoleSession Inner => inner;
 
-    private static bool IsNesChip(string id) => id.StartsWith("NES:", StringComparison.OrdinalIgnoreCase);
+    /// <summary>A picture chip that is not the console's own: a NES chip (<c>NES:&lt;chip&gt;</c>) or another console's enhanced chip reached directly (<c>SNES:SFCS</c>, <c>MD:MDS</c>, ...).</summary>
+    private static bool IsNesChip(string id) => id.StartsWith("NES:", StringComparison.OrdinalIgnoreCase) || CoreCatalog.IsDirectRoute(id);
 
     /// <summary>The id of the picture chip in use: the console's own, or <c>NES:&lt;chip&gt;</c>.</summary>
     public string PictureChip => ppuId;
@@ -50,13 +51,24 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
     private void SetBridge(string id)
     {
         toNesSms = null; toNesMd = null;
-        string chip = id[4..];
-        if (sms != null)
+        bool gg = inner.Console == ConsoleKind.GameGear;
+        if (CoreCatalog.IsDirectRoute(id))
         {
-            smsCap ??= new SmsLineCapture(sms);
-            toNesSms = new SmsToNes(chip, inner.Console == ConsoleKind.GameGear);
+            // another console's enhanced picture chip, reached directly: the console's own picture as layers at its own size, in that chip's colours
+            var chip = EnhancedChips.Picture(id);
+            if (sms != null) { smsCap ??= new SmsLineCapture(sms); toNesSms = new SmsToNes(chip, id, gg); }
+            else toNesMd = new MdToNes(md!, chip, id);
         }
-        else toNesMd = new MdToNes(md!, chip);
+        else
+        {
+            string chip = id[4..];
+            if (sms != null)
+            {
+                smsCap ??= new SmsLineCapture(sms);
+                toNesSms = new SmsToNes(chip, gg);
+            }
+            else toNesMd = new MdToNes(md!, chip);
+        }
         referenceSame = sms != null;
     }
 
@@ -122,7 +134,7 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
     public string SwapRefusal(CoreSlot slot, string id) => !ConsoleSessions.Offers(Console, slot, id) ? ConsoleSessions.NotOffered(Console, slot, id)
         : slot != CoreSlot.Ppu ? inner.SwapRefusal(slot, id)
         : IsNesChip(id) ? $"the picture bridge to {id} could not be built for this {Consoles.DisplayName(Console)} game"
-        : $"the {Consoles.DisplayName(Console)} has one picture chip of its own ({CoreCatalog.Default(Console, CoreSlot.Ppu)}) and {id} is not it";
+        : $"the {Consoles.DisplayName(Console)}'s own picture chips are {string.Join(" and ", System.Linq.Enumerable.Select(System.Linq.Enumerable.Where(CoreCatalog.Options(Console, CoreSlot.Ppu), o => o.Section == CoreSection.Own), o => o.Id))}, and {id} is not one of them";
 
     public bool TrySwapCore(CoreSlot slot, string id)
     {
@@ -134,13 +146,18 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
             catch (Exception ex) when (ex is ArgumentException or NotSupportedException or InvalidOperationException) { ClearBridge(); return false; }   // the app restarts the game on it and says why
             ppuId = id; return true;
         }
-        // the console's own chip is the only other picture chip: any other id is not a choice this console has (the app restarts the game on it, which then says so)
-        if (!id.Equals(CoreCatalog.Default(Console, CoreSlot.Ppu), StringComparison.OrdinalIgnoreCase) || !inner.TrySwapCore(slot, id)) return false;
+        // the console's own chips are the only other picture chips: stock (the default) and enhanced (a subclass of it, drawing the console's own game on the stock pipeline); any other id is not a choice this console
+        // has (the app restarts the game on it, which then says so)
+        if (!IsOwnChip(id) || !inner.TrySwapCore(slot, id)) return false;
         ClearBridge(); ppuId = id; return true;
     }
 
+    /// <summary>The console's own picture chips: its stock chip and, once it exists, its enhanced one (its own game draws on the stock pipeline on both).</summary>
+    private bool IsOwnChip(string id) => System.Linq.Enumerable.Any(CoreCatalog.Options(Console, CoreSlot.Ppu), o => o.Section == CoreSection.Own && o.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+
     // ---------------------------------------------------------------------------------------------------------- IPictureBridgeInfo
-    public string BridgeName => toNesSms != null ? $"{Consoles.DisplayName(Console)} on NES:{toNesSms.NesPpuId}" : toNesMd != null ? $"Genesis on NES:{toNesMd.NesPpuId}" : "none";
+    public string BridgeName => toNesSms != null ? $"{Consoles.DisplayName(Console)} on {Route(toNesSms.NesPpuId)}" : toNesMd != null ? $"Genesis on {Route(toNesMd.NesPpuId)}" : "none";
+    private static string Route(string id) => id.Contains(':') ? id : "NES:" + id;
     public BridgeCounters Counters => toNesSms?.Counters ?? toNesMd?.Counters ?? emptyCounters;
     private static readonly BridgeCounters emptyCounters = new();
     public uint[] ReferenceCanvas => reference;

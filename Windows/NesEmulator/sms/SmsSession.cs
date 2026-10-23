@@ -170,7 +170,7 @@ public class SmsSession : IConsoleSession
                 return true;
             }
             case CoreSlot.Ppu:
-                if (id.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) return false;   // drawing the picture on a NES chip is the wrapper's work, not the board's
+                if (id.Contains(':')) return false;   // drawing the picture on a NES chip (or another console's enhanced chip) is the wrapper's work, not the board's
                 ppuId = id; return true;   // one picture chip per console: the one running
             default: cpuId = id; return true;
         }
