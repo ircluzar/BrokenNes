@@ -91,6 +91,7 @@ namespace NesEmulator.Mix
         {
             var s = new Set(model, SampleRate);
             if (now >= 0) { s.Start = now; s.Pos = Math.Max(ring.BasePos, ring.ReadPos) + BandLimitedMixer.Taps / 2; }      // a set made later starts where the others are (its mixers' latency counted), with no catching up
+            else s.Pos = BandLimitedMixer.Taps / 2;      // the first set: its mixers hold back half their kernel before the first sample is final, so its stream starts with that much silence (the stock units deliver as many samples for the same frames)
             sets[b] = s; live[liveCount++] = s;
         }
 
