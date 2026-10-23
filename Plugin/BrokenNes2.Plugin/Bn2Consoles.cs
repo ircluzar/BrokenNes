@@ -37,7 +37,7 @@ public static class Cx
 
     private static readonly Dictionary<string, string> Notes = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["FIX"] = "accurate", ["FIXS"] = "8 channels", ["DMG"] = "Game Boy sound chip", ["DMGS"] = "8 channels", ["SNES"] = "S-DSP", ["SMS"] = "SN76489 PSG: 109 Hz and up",
+        ["FIX"] = "accurate", ["FIXS"] = "enhanced: extra channel banks", ["DMG"] = "Game Boy sound chip", ["DMGS"] = "enhanced: extra channel banks", ["SNES"] = "S-DSP", ["SMS"] = "SN76489 PSG: 109 Hz and up",
         ["MD"] = "YM2612 FM + PSG: pick the patch with Instrument",
         ["SMSFM"] = "YM2413 FM + PSG: pick the instrument with Instrument",
     };
@@ -162,7 +162,7 @@ public static class Cx
     public static string BestCpu(int console) => CoreCatalog.Default(Kind(console), CoreSlot.Cpu);
     public static string BestPpu(int console) => CoreCatalog.Default(Kind(console), CoreSlot.Ppu);
 
-    /// <summary>The sound chip of a running game: the NES chips as they are; the Game Boy's own sound unit (GB, GBS for the 8-channel
+    /// <summary>The sound chip of a running game: the NES chips as they are; the Game Boy's own sound unit (GB, GBS for the enhanced
     /// one) and the SNES's S-SMP + S-DSP replace the register bridges that Direct mode uses.</summary>
     public static string RomApu(Chip chip) => IsPresetId(chip.Id) ? throw new InvalidOperationException("the Presets chips play in Direct mode only: a game cannot run on them (the emulator should have gone back to the console's own sound chip)") : chip.Console switch
     {

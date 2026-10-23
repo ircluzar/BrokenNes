@@ -100,10 +100,11 @@ internal sealed class MdLineCapture
 }
 
 /// <summary>
-/// MIX LAB: the Genesis -> NES picture bridge. After each frame the VDP's state becomes what a NES picture chip can draw. The Genesis picture is 320 or 256 pixels wide and 224 or 240 lines; the NES chip's is 256 x 240,
-/// so a 320-wide picture is shown as its middle 256 columns (32 columns lost each side, counted) and a 240-line one as its middle 224 lines.
+/// MIX LAB: the Genesis -> NES picture bridge. After each frame the VDP's state becomes what a NES picture chip can draw. The Genesis picture is 320 or 256 pixels wide and 224 or 240 lines. An enhanced chip
+/// (FIX enhanced, Game Boy enhanced) draws all of it, at its own size; a stock NES chip's picture is 256 x 240, so there a 320-wide picture is shown as its middle 256 columns (32 columns lost each side, counted) and a
+/// 240-line one as its middle 224 lines.
 /// <list type="bullet">
-/// <item><b>Layered path</b> (PPU_FIXS, and the Game Boy bridges fronted by it): plane B, plane A and the window become extension layers - each with the VDP's own per-line horizontal scroll, its vertical scroll
+/// <item><b>Layered path</b> (the enhanced chips: <see cref="IEnhancedPictureChip"/>), the whole 320 or 256 x 224 or 240: plane B, plane A and the window become extension layers - each with the VDP's own per-line horizontal scroll, its vertical scroll
 /// (a column-scroll plane is split into runs of equal scroll, up to 3 a plane), the plane size, and the priority bit of every tile - ordered on the VDP's own priority ladder with the sprites. The window replaces plane A
 /// where the registers say. The 80 (64) sprites are followed along the VDP's link list and filtered by the VDP's own per-line rules (20 / 16 a line, 40 / 32 cells, the X = 0 mask) before they reach the NES chip, so what is drawn
 /// is what the VDP drew. 4-bit tiles are reduced to 3 colours + see-through in up to 8 palettes (<see cref="SegaQuantizer"/>), colours matched to the NES chips' palette.</item>
@@ -122,7 +123,7 @@ internal sealed class MdToNes : IVariantLevels
     public string NesPpuId => sink.PpuId;
     public PictureWindow Window { get; private set; }
     private readonly SegaQuantizer layeredBgQ = new(), layeredObjQ = new(), flatBgQ = new(), flatObjQ = new();
-    private readonly bool[] vis = new bool[256];
+    private readonly bool[] vis = new bool[ExtPicture.MaxWidth];
 
     // The working memory of a frame, made once and cleared for each frame (`--picture-bridge-test --only alloc` measures what a frame still allocates).
     private readonly NesPicture scratch = new();
@@ -154,7 +155,12 @@ internal sealed class MdToNes : IVariantLevels
         cap = new MdLineCapture(board);
     }
 
-    public bool Layered => (sink.Ppu as PPU_FIXS ?? (sink.Ppu as PPU_DMG)?.LayerFront) != null;
+    public bool Layered => sink.Enhanced != null;
+    /// <summary>The enhanced chip the layers go to (null on a stock chip): tests read its layers.</summary>
+    internal IEnhancedPictureChip? Enhanced => sink.Enhanced;
+
+    /// <summary>The last picture (the enhanced chip's at the Genesis's size, or the NES chip's 256 x 240).</summary>
+    public BridgeFrame Frame { get; } = new();
 
     private static int Rgb9(ushort c)
     {
@@ -166,23 +172,24 @@ internal sealed class MdToNes : IVariantLevels
     // ---------------------------------------------------------------------------------------------------------------- the pictures
     private PictureWindow WindowFor(bool h40, int active)
     {
+        if (Layered) return new PictureWindow(0, 0, h40 ? 320 : 256, Math.Clamp(active, 8, ExtPicture.MaxLines), 0, 0);     // an enhanced chip: the whole picture
         int w = 256, x0 = h40 ? 32 : 0;
         int h = Math.Min(active, 224), y0 = (active - h) / 2;
         return PictureWindow.Centered(x0, y0, w, h);
     }
 
-    /// <summary>The Genesis chip's own picture of this frame on the bridge's canvas (ARGB, 256 x 240).</summary>
-    public void BuildReference(uint[] reference, out (int X, int Y, int W, int H) region)
+    /// <summary>The Genesis chip's own picture of this frame on the bridge's canvas (ARGB, <paramref name="canvasWidth"/> wide: the NES's 256, or the picture's own width on an enhanced chip).</summary>
+    public void BuildReference(uint[] reference, int canvasWidth, out (int X, int Y, int W, int H) region)
     {
         var w = Window; var v = board.Vdp;
         Array.Clear(reference);
         var pic = v.Picture; int pw = v.PictureWidth, ph = v.PictureHeight;
         for (int y = 0; y < w.H && w.Y0 + y < ph; y++)
-            for (int x = 0; x < w.W && w.X0 + x < pw; x++) reference[(w.OffsetY + y) * 256 + w.OffsetX + x] = pic[(w.Y0 + y) * MdVdp.PictureStride + w.X0 + x];
+            for (int x = 0; x < w.W && w.X0 + x < pw; x++) reference[(w.OffsetY + y) * canvasWidth + w.OffsetX + x] = pic[(w.Y0 + y) * MdVdp.PictureStride + w.X0 + x];
         region = (w.OffsetX, w.OffsetY, w.W, w.H);
     }
 
-    public byte[] Render()
+    public BridgeFrame Render()
     {
         Counters.BeginFrame();
         stamp++;
@@ -191,18 +198,18 @@ internal sealed class MdToNes : IVariantLevels
         cap.Complete();
         var win = Window = WindowFor(cap.H40, cap.ActiveLines);
         var c = Counters;
-        if (cap.H40) c.Add("columns cropped from the 320-wide picture", 64);
-        if (cap.ActiveLines > 224) c.Add("lines cropped from the 240-line picture", cap.ActiveLines - 224);
+        if (cap.H40 && !Layered) c.Add("columns cropped from the 320-wide picture", 64);
+        if (cap.ActiveLines > 224 && !Layered) c.Add("lines cropped from the 240-line picture", cap.ActiveLines - 224);
         if ((cap.RegEnd[12] & 8) != 0) c.Add("frames in shadow/highlight mode (the shading is not drawn)");
         il2 = (cap.RegEnd[12] & 6) == 6;
         if (cap.Interlaced) c.Add(il2 ? "frames in interlace mode 2 (the field is drawn from the even rows of the 8x16 cells)" : "interlaced frames (drawn as normal frames)");
         if ((cap.RegEnd[1] & 4) == 0) { c.Add("frames in the Master System compatibility mode (not translated)"); }
-        var layered = sink.Ppu as PPU_FIXS ?? (sink.Ppu as PPU_DMG)?.LayerFront;
+        var layered = sink.Enhanced;
         if ((cap.RegEnd[1] & 4) == 0)
         {
-            if (layered != null) { var e0 = layered.Ext ??= new ExtPicture(); e0.BeginFrame(); layered.ExtLineOffset = 8; }
+            if (layered != null) { layered.Layers.BeginFrame(win.W, win.H); layered.Layers.Guest = "Master System compatibility mode (not translated)"; layered.DrawLayers(); return Frame.From(layered); }
             scratch.ClearToBlank();
-            return sink.Present(scratch);
+            return Frame.FromRgba(sink.Present(scratch));
         }
         int changed = 0; for (int l = 0; l < win.H; l++) if (cap.CramState[win.Y0 + l] != cap.CramStates.Count - 1) changed++;
         c.Add("lines drawn with a palette other than the frame's", changed);
@@ -395,12 +402,13 @@ internal sealed class MdToNes : IVariantLevels
     }
 
     // ================================================================================================================ the layered path
-    private byte[] RenderLayered(PictureWindow win, PPU_FIXS fx)
+    private BridgeFrame RenderLayered(PictureWindow win, IEnhancedPictureChip chip)
     {
         var c = Counters;
-        var e = fx.Ext ??= new ExtPicture();
-        e.BeginFrame();
-        fx.ExtLineOffset = win.OffsetY;
+        var e = chip.Layers;
+        e.BeginFrame(win.W, win.H);
+        e.Guest = cap.H40 ? "Genesis H40" : "Genesis H32";
+        int W = win.W;
         int dx = win.Dx, h = win.H, y0 = win.Y0;
         var rEnd = cap.RegEnd;
         var A = PlaneOf(true); var B = PlaneOf(false);
@@ -415,7 +423,7 @@ internal sealed class MdToNes : IVariantLevels
             int bd = Rgb9(cr[cap.Reg[l][7] & 0x3F]);
             e.BackdropRgb[el] = e.BackdropAltRgb[el] = (uint)NesFixPalette.ForTextbook(bd);
         }
-        if (!displayAny) return Finish(e, 0, 0, 0);
+        if (!displayAny) return Finish(e, chip, 0, 0, 0);
 
         // ---- layers: plane B, plane A and (where the registers put one) the window; a column-scroll plane keeps one layer and a vertical scroll for each 16-pixel column
         layers.Clear();
@@ -426,7 +434,7 @@ internal sealed class MdToNes : IVariantLevels
         layers.Add(specs[0].Set(B, false, false, 1));
         layers.Add(specs[1].Set(A, true, false, 0));
         if (windowUsed) layers.Add(specs[2].Set(null, true, true, 0));
-        for (int k = 0; k < layers.Count; k++) { layers[k].Index = k; var X = e.Layers[k]; X.Reset(); layers[k].X = X; }
+        for (int k = 0; k < layers.Count; k++) { layers[k].Index = k; var X = e.Layers[k]; X.Reset(); layers[k].X = X; X.Name = layers[k].Window ? "window" : layers[k].IsA ? "plane A" : "plane B"; }
         e.LayerCount = layers.Count;
         int vsLinesOff = 0, blankShLines = 0;
 
@@ -469,7 +477,7 @@ internal sealed class MdToNes : IVariantLevels
                 {
                     bool inWin = sx >= wf && sx < wt;
                     if (L.Window ? !inWin : (L.IsA && inWin)) continue;
-                    int ex = sx - dx; if ((uint)ex >= 256) continue;
+                    int ex = sx - dx; if ((uint)ex >= (uint)W) continue;
                     vis[ex] = true; any = true;
                 }
                 if (!any) continue;
@@ -492,15 +500,15 @@ internal sealed class MdToNes : IVariantLevels
                     {
                         X.ColumnShift[el] = (short)(dx - (hs & 15));
                         if (L.IsA && (hs & 15) != 0 && wf == 0 && wt > 0 && wt < width) { X.ColumnExtraFrom[el] = (short)(wt - dx); X.ColumnExtra[el] = (short)(hs & 15); }     // the strip after a window at the left
-                        for (int ex = 0; ex < 256; ex++) if (vis[ex] && VsAt(l, L, ex + dx, hs) != X.ColumnValue(el, ex)) { vsLinesOff++; break; }
+                        for (int ex = 0; ex < W; ex++) if (vis[ex] && VsAt(l, L, ex + dx, hs) != X.ColumnValue(el, ex)) { vsLinesOff++; break; }
                     }
                 }
-                for (int x = 0; x < 256; x++) X.Hidden[el * 256 + x] = !vis[x];
+                for (int x = 0; x < W; x++) X.Hidden[el * ExtPicture.Stride + x] = !vis[x];
                 X.AnyHidden = true;
                 // the cells this line shows
                 for (int sx = from; sx < to; sx += 8)
                 {
-                    int ex = sx - dx; if (ex + 8 <= 0 || ex >= 256) continue;
+                    int ex = sx - dx; if (ex + 8 <= 0 || ex >= W) continue;
                     if (L.Window) { L.Seen[(l >> 3) * X.MapWidth + (sx >> 3)] = true; continue; }
                     int hs = L.IsA ? cap.HsA[l] : cap.HsB[l];
                     if (colMode)
@@ -526,7 +534,7 @@ internal sealed class MdToNes : IVariantLevels
                 if (dx < 8)
                 {
                     if (!e.AnyObjHidden) Array.Clear(e.ObjHidden);       // BeginFrame clears the flag, not the mask: nothing of an earlier frame's mask may remain
-                    for (int x = 0; x < 8 - dx; x++) e.ObjHidden[el * 256 + x] = true;
+                    for (int x = 0; x < 8 - dx; x++) e.ObjHidden[el * ExtPicture.Stride + x] = true;
                     e.AnyObjHidden = true;
                 }
                 if ((R[12] & 8) != 0) blankShLines++;
@@ -535,7 +543,7 @@ internal sealed class MdToNes : IVariantLevels
         }
         c.Add("lines with a vertical scroll other than the frame's (column scroll taken from the end of the frame)", vsLinesOff);
         c.Add("lines with the left column blanked in shadow/highlight mode (the column shows the plain backdrop, not the shadowed one)", blankShLines);
-        if (!anyBg) return Finish(e, 0, 0, 0);
+        if (!anyBg) return Finish(e, chip, 0, 0, 0);
 
         // ---- background tiles: one item per (tile, palette line), 3 colours each, 8 palettes
         var bgQ = layeredBgQ; bgQ.BeginFrame();
@@ -623,7 +631,7 @@ internal sealed class MdToNes : IVariantLevels
                                 if (HoldsOperators(tile, s.Pal)) operatorPieces++;
                             }
                             int ex = s.XRaw - 128 + 8 * k - dx;
-                            if (ex + 8 > 0 && ex < 256)
+                            if (ex + 8 > 0 && ex < W)
                                 kept.Add((ex, top - y0, runStart - y0, y - 1 - y0, item, s.HF, s.VF, s.Prio));
                             runStart = -1;
                         }
@@ -654,7 +662,7 @@ internal sealed class MdToNes : IVariantLevels
             };
         e.SpriteCount = n; e.SpriteLimit = 1024; e.SpritesPerLine = 64;     // the VDP's own limits were applied above
         e.PaletteVersion++;
-        return Finish(e, overflow, objOver, 0);
+        return Finish(e, chip, overflow, objOver, 0);
     }
 
     private sealed class LayerSpec
@@ -673,10 +681,10 @@ internal sealed class MdToNes : IVariantLevels
         }
     }
 
-    private byte[] Finish(ExtPicture e, int bgOverflow, int objOverflow, int unused)
+    private BridgeFrame Finish(ExtPicture e, IEnhancedPictureChip chip, int bgOverflow, int objOverflow, int unused)
     {
-        scratch.ClearToBlank();
-        var frame = sink.Present(scratch);
+        chip.DrawLayers();
+        var frame = Frame.From(chip);
         Counters.Add("background tiles past the layer's 1023 (wrong tiles shown)", bgOverflow);
         Counters.Add("sprite tiles past the 1024 the extension holds", objOverflow);
         Counters.Level("sprite pieces", e.SpriteCount);
@@ -685,7 +693,7 @@ internal sealed class MdToNes : IVariantLevels
     }
 
     // ================================================================================================================ the flat path
-    private byte[] RenderFlat(PictureWindow win)
+    private BridgeFrame RenderFlat(PictureWindow win)
     {
         var c = Counters;
         var pic = scratch; pic.Clear();
@@ -855,7 +863,7 @@ internal sealed class MdToNes : IVariantLevels
         c.Add("sprite pieces past the NES's 64 (or its 256 sprite tiles)", over);
         int crowded = 0; for (int ln = 0; ln < perLine.Length; ln++) if (perLine[ln] > 8) crowded++;
         c.Add("lines with more than 8 sprite pieces (the NES chip drops the rest)", crowded);
-        return sink.Present(pic);
+        return Frame.FromRgba(sink.Present(pic));
     }
 
     // a background tile variant: the tile's content, its palette line and its flips

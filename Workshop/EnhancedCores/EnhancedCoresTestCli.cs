@@ -23,6 +23,7 @@ namespace BrokenNes.Workshop.EnhancedCores;
 /// flip the background (the backdrop with it) and the sprites apart, the same way on every path: a NES game (Game Boy stock and enhanced), a SNES game, a Master System, Game Gear and Genesis game
 /// (through the NES, stock and enhanced), a Game Boy game drawn by a NES and a SNES chip, Game Boy Color colours (lightness mirrored, hue kept). Negative controls: the old index-as-shade mapping
 /// (<see cref="PPU_DMG.IndexShadesForTests"/>) draws the scenes inverted and is caught; the old CGB negative changes the hue and is caught.</item>
+/// <item><b>layers</b> and <b>sound</b>: the two enhanced contracts (<see cref="EnhancedContractTests"/>).</item>
 /// </list>
 /// Exit code 0 = every check passed.
 /// </summary>
@@ -56,8 +57,10 @@ internal static class EnhancedCoresTestCli
             if (Want("menu")) Guard("menu: stock and enhanced, own best cores first", Menus);
             if (Want("migrate")) Guard("migrate: the retired DMGX reaches DMGS wherever it was stored", Migrations);
             if (Want("invert")) Guard("invert: upright Game Boy pictures and the inversions on every path", Inversions);
+            if (Want("layers")) Guard("layers: one layered picture at the guest's own size and layer count, on both enhanced picture chips", EnhancedContractTests.Layers);
+            if (Want("sound")) Guard("sound: one voice list per guest, as many channel banks as its voices need on the enhanced sound chips", EnhancedContractTests.Sound);
         }
-        finally { (GbLook.Palette, GbLook.InvertBackground, GbLook.InvertSprites) = savedLook; PPU_DMG.IndexShadesForTests = false; PPU_GBE.BackdropIgnoresInversionForTests = false; }
+        finally { (GbLook.Palette, GbLook.InvertBackground, GbLook.InvertSprites) = savedLook; PPU_DMG.IndexShadesForTests = false; PPU_GBE.BackdropIgnoresInversionForTests = false; PPU_GBE.IndexShadesForTests = false; }
         Console.WriteLine($"\n{Passes} passed, {Fails} failed");
         return Fails == 0 ? 0 : 1;
     }
@@ -304,7 +307,11 @@ internal static class EnhancedCoresTestCli
     }
 
     private static Func<int, int, uint> Rgba(byte[] f) => (x, y) => { int o = (y * 256 + x) * 4; return (uint)(f[o] << 16 | f[o + 1] << 8 | f[o + 2]); };
-    private static Func<int, int, uint> Argb(uint[] f, int w = 256) => (x, y) => f[y * w + x] & 0xFFFFFF;
+    /// <summary>A pixel reader in the scene's 256 x 240 canvas coordinates: a picture at the guest's own size sits at (<paramref name="ox"/>, <paramref name="oy"/>) of that canvas.</summary>
+    private static Func<int, int, uint> Argb(uint[] f, int w = 256, int ox = 0, int oy = 0) => (x, y) => f[(y - oy) * w + x - ox] & 0xFFFFFF;
+    /// <summary>A translator's picture: the NES's 256 x 240 as it is, the guest's own size (an enhanced chip) placed at (<paramref name="ox"/>, <paramref name="oy"/>).</summary>
+    private static Func<int, int, uint> Seen(BridgeFrame f, int ox, int oy) => f.GuestSize ? Argb(f.Argb, f.Width, ox, oy) : Argb(f.Argb);
+    private static Func<int, int, uint> Seen(SegaPictureSession w, int ox, int oy) => w.GuestSize ? Argb(w.Frame, w.FrameWidth, ox, oy) : Argb(w.Frame);
 
     private static void Inversions()
     {
@@ -322,7 +329,7 @@ internal static class EnhancedCoresTestCli
         {
             Func<Func<int, int, uint>> nesScene = () => Rgba(NesScene(chip));
             PathChecks($"NES game on Game Boy {(chip == "DMG" ? "stock" : "enhanced")} ({chip})", nesScene);
-            Control($"NES game on {chip}", nesScene, on => PPU_DMG.IndexShadesForTests = on, "the old index-as-shade mapping (its palette has dark colour 1 and bright colour 3)");
+            Control($"NES game on {chip}", nesScene, chip == "DMG" ? on => PPU_DMG.IndexShadesForTests = on : on => PPU_GBE.IndexShadesForTests = on, "the old index-as-shade mapping (its palette has dark colour 1 and bright colour 3)");
         }
         GbLook.Palette = GbPaletteChoice.Color;
         foreach (var chip in new[] { "DMG", "DMGS" })
@@ -337,7 +344,7 @@ internal static class EnhancedCoresTestCli
         // ---- a SNES game through the NES (the flat translator onto the stock chip, the layered one onto the enhanced chip)
         foreach (var chip in new[] { "DMG", "DMGS" })
         {
-            Func<Func<int, int, uint>> snes = () => Rgba(SnesScene(chip));
+            Func<Func<int, int, uint>> snes = () => Seen(SnesScene(chip), 0, 8);       // the SNES picture's line 0 is the NES canvas's line 8
             PathChecks($"SNES game on Game Boy {(chip == "DMG" ? "stock" : "enhanced")} (NES:{chip})", snes);
             if (chip == "DMG") Control("SNES game on NES:DMG", snes, on => PPU_DMG.IndexShadesForTests = on, "the old index-as-shade mapping (the translator's levels run dark to bright)");
             else ControlBackdrop("SNES game on NES:DMGS", snes);
@@ -346,13 +353,13 @@ internal static class EnhancedCoresTestCli
         foreach (var chip in new[] { "NES:DMG", "NES:DMGS" })
         {
             var sms = new SegaScenes.SmsRig(chip); SmsScene(sms);
-            Func<Func<int, int, uint>> smsR = () => { sms.Frames(3); return Argb(sms.Wrap.Frame); };
+            Func<Func<int, int, uint>> smsR = () => { sms.Frames(3); return Seen(sms.Wrap, 0, 24); };
             PathChecks($"Master System game on Game Boy {(chip == "NES:DMG" ? "stock" : "enhanced")} ({chip})", smsR);
             var gg = new SegaScenes.SmsRig(chip, gg: true); SmsScene(gg, gameGear: true);
-            Func<Func<int, int, uint>> ggR = () => { gg.Frames(3); return Argb(gg.Wrap.Frame); };
+            Func<Func<int, int, uint>> ggR = () => { gg.Frames(3); return Seen(gg.Wrap, 48, 48); };
             PathChecks($"Game Gear game on Game Boy {(chip == "NES:DMG" ? "stock" : "enhanced")} ({chip})", ggR);
             var md = new SegaScenes.MdRig(chip); MdScene(md);
-            Func<Func<int, int, uint>> mdR = () => { md.Go(3); return Argb(md.Wrap.Frame); };
+            Func<Func<int, int, uint>> mdR = () => { md.Go(3); return Seen(md.Wrap, 0, 8); };
             PathChecks($"Genesis game on Game Boy {(chip == "NES:DMG" ? "stock" : "enhanced")} ({chip})", mdR);
             if (chip == "NES:DMG")
             {
@@ -365,8 +372,8 @@ internal static class EnhancedCoresTestCli
         foreach (var ppu in new[] { "NES:FIX", "NES:FIXS", "SNES:SFC" })
         {
             using var s = GbScene(ppu, color: false);
-            int oy = ppu == "SNES:SFC" ? 40 - 48 : 0;      // the SNES picture puts the Game Boy screen at (48, 40), the NES one at (48, 48)
-            Func<Func<int, int, uint>> gbR = () => { for (int f = 0; f < 3; f++) s.RunFrame(); return Argb(s.Frame, s.FrameWidth); };
+            int oy = ppu == "SNES:SFC" ? 40 - 48 : 0;      // the SNES picture puts the Game Boy screen at (48, 40), the NES one at (48, 48); the enhanced chip draws the Game Boy's own 160 x 144
+            Func<Func<int, int, uint>> gbR = () => { for (int f = 0; f < 3; f++) s.RunFrame(); return s.FrameWidth == 160 ? Argb(s.Frame, 160, 48, 48) : Argb(s.Frame, s.FrameWidth); };
             PathChecks($"Game Boy game on {ppu}", gbR, dy: oy);
         }
         using (var s = GbScene("NES:FIX", color: true))
@@ -413,7 +420,7 @@ internal static class EnhancedCoresTestCli
     private static readonly Dictionary<string, NesPictureSink> sinks = new();
 
     /// <summary>A SNES mode 1 picture: BG1 white and black cells, a grey backdrop, eight sprites striped black | white; drawn through the NES on <paramref name="chip"/>.</summary>
-    private static byte[] SnesScene(string chip)
+    private static BridgeFrame SnesScene(string chip)
     {
         var sp = SnesCores.CreatePpu("SFC");
         var v = sp.Vram; var cg = sp.Cgram; var oam = sp.Oam;

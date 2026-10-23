@@ -31,6 +31,43 @@ internal sealed class NesPicture
 }
 
 /// <summary>
+/// The picture a cross-console translator made, as a session shows it: 0xFFRRGGBB, its size, and whether it is the guest's own size (an enhanced chip drew the
+/// guest's layers: <see cref="IEnhancedPictureChip"/>) or the NES's 256 x 240 (a stock chip drew a NES picture). One per translator, reused: no allocation.
+/// </summary>
+internal sealed class BridgeFrame
+{
+    public readonly uint[] Argb = new uint[ExtPicture.MaxWidth * ExtPicture.MaxLines];
+    public int Width = 256, Height = 240;
+    /// <summary>True when an enhanced chip drew the guest's own picture size; false for a NES chip's 256 x 240.</summary>
+    public bool GuestSize;
+
+    /// <summary>A NES chip's 256 x 240 RGBA picture.</summary>
+    public BridgeFrame FromRgba(byte[] rgba)
+    {
+        Width = 256; Height = 240; GuestSize = false;
+        int n = Math.Min(256 * 240, rgba.Length / 4);
+        for (int i = 0; i < n; i++) { int o = i * 4; Argb[i] = 0xFF000000u | (uint)rgba[o] << 16 | (uint)rgba[o + 1] << 8 | rgba[o + 2]; }
+        return this;
+    }
+
+    /// <summary>What an enhanced chip just drew, at its size.</summary>
+    public BridgeFrame From(IEnhancedPictureChip chip)
+    {
+        Width = chip.PictureWidth; Height = chip.PictureHeight; GuestSize = true;
+        Array.Copy(chip.Picture, Argb, Width * Height);
+        return this;
+    }
+
+    /// <summary>The picture as RGBA bytes (tools that save it).</summary>
+    public byte[] ToRgba()
+    {
+        var rgba = new byte[Width * Height * 4];
+        for (int i = 0; i < Width * Height; i++) { uint c = Argb[i]; rgba[i * 4] = (byte)(c >> 16); rgba[i * 4 + 1] = (byte)(c >> 8); rgba[i * 4 + 2] = (byte)c; rgba[i * 4 + 3] = 255; }
+        return rgba;
+    }
+}
+
+/// <summary>
 /// A real NES (idle NROM program) whose PPU - any NES PPU core by id - draws a <see cref="NesPicture"/>.
 /// Shared by every "downgrade to NES" bridge (SNES -> NES, Game Boy -> NES) so each NES PPU core joins them all.
 /// </summary>
@@ -59,6 +96,9 @@ internal sealed class NesPictureSink
 
     /// <summary>The NES PPU core drawing the picture (for chips with extensions, e.g. PPU_FIXS layers).</summary>
     public IPPU Ppu => bus.ppu;
+
+    /// <summary>The picture chip when it is an enhanced one (FIX enhanced, Game Boy enhanced): a translator then fills its layers at the guest's size instead of a NES picture.</summary>
+    public IEnhancedPictureChip? Enhanced => bus.ppu as IEnhancedPictureChip;
 
     private void W(ushort a, byte v) => bus.Write(a, v);
 

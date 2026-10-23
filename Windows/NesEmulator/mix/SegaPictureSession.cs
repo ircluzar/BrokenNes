@@ -21,8 +21,11 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
     private SmsToNes? toNesSms;
     private MdToNes? toNesMd;
     private string ppuId;
-    private readonly uint[] frame = new uint[256 * 240], reference = new uint[256 * 240];
+    private readonly uint[] frame = new uint[ExtPicture.MaxWidth * ExtPicture.MaxLines], reference = new uint[ExtPicture.MaxWidth * ExtPicture.MaxLines];
     private (int X, int Y, int W, int H) region = (0, 0, 256, 240);
+    /// <summary>The size of the last bridged picture: the console's own on an enhanced chip (the Genesis's 320 or 256 x 224 or 240, the Master System's 256 x 192 / 224 / 240, the Game Gear's 160 x 144), else the NES's 256 x 240.</summary>
+    private int frameWidth = 256, frameHeight = 240;
+    private bool guestSize;
     private bool referenceSame = true;
 
     public SegaPictureSession(IConsoleSession inner, string ppu)
@@ -78,9 +81,14 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
     public void SetPad(int player, PadButtons buttons) => inner.SetPad(player, buttons);
     public void Reset() => inner.Reset();
     public uint[] Frame => Bridged ? frame : inner.Frame;
-    public int FrameWidth => Bridged ? 256 : inner.FrameWidth;
-    public int FrameHeight => Bridged ? 240 : inner.FrameHeight;
-    public int DisplayWidth => Bridged ? 256 : inner.DisplayWidth;
+    /// <summary>True while an enhanced chip draws the console's own picture size (the frame is the console's picture at the top left, not a NES picture with it placed on the 256 x 240).</summary>
+    public bool GuestSize => Bridged && guestSize;
+    /// <summary>The enhanced chip drawing the picture, null on the console's own chip or a stock NES chip (tests read its layers).</summary>
+    internal IEnhancedPictureChip? Enhanced => toNesSms?.Enhanced ?? toNesMd?.Enhanced;
+    public int FrameWidth => Bridged ? frameWidth : inner.FrameWidth;
+    public int FrameHeight => Bridged ? frameHeight : inner.FrameHeight;
+    /// <summary>On an enhanced chip the console's own proportions (the Genesis's 320 for both its widths, as its own chip shows them); a NES chip's picture is 256 wide.</summary>
+    public int DisplayWidth => !Bridged ? inner.DisplayWidth : guestSize && md != null ? 320 : frameWidth;
     public int SampleRate => inner.SampleRate;
     public int ReadSamples(short[] buffer) => inner.ReadSamples(buffer);
     public bool HasBattery => inner.HasBattery;
@@ -94,17 +102,21 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
         inner.RunFrame();
         if (toNesSms != null)
         {
-            var rgba = toNesSms.Render(sms!.Vdp, smsCap!);
-            ConsoleSessions.RgbaToArgb(rgba, frame);
+            Take(toNesSms.Render(sms!.Vdp, smsCap!));
             BuildSmsReference(toNesSms.Window);
         }
         else if (toNesMd != null)
         {
-            var rgba = toNesMd.Render();
-            ConsoleSessions.RgbaToArgb(rgba, frame);
-            toNesMd.BuildReference(reference, out var r);
+            Take(toNesMd.Render());
+            toNesMd.BuildReference(reference, frameWidth, out var r);
             region = Viewed(r);
         }
+    }
+
+    private void Take(BridgeFrame f)
+    {
+        frameWidth = f.Width; frameHeight = f.Height; guestSize = f.GuestSize;
+        Array.Copy(f.Argb, frame, f.Width * f.Height);
     }
 
     public string SwapRefusal(CoreSlot slot, string id) => !ConsoleSessions.Offers(Console, slot, id) ? ConsoleSessions.NotOffered(Console, slot, id)
@@ -133,8 +145,8 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
     private static readonly BridgeCounters emptyCounters = new();
     public uint[] ReferenceCanvas => reference;
     public uint[] BridgeCanvas => frame;
-    public int CanvasWidth => 256;
-    public int CanvasHeight => 240;
+    public int CanvasWidth => frameWidth;
+    public int CanvasHeight => frameHeight;
     public (int X, int Y, int W, int H) Region => region;
     public bool ReferenceIsSameFrame => referenceSame;
 
@@ -143,7 +155,7 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
         Array.Clear(reference);
         var src = sms!.Vdp.Frame;
         for (int y = 0; y < w.H; y++)
-            for (int x = 0; x < w.W; x++) reference[(w.OffsetY + y) * 256 + w.OffsetX + x] = 0xFF000000u | src[(w.Y0 + y) * 256 + w.X0 + x];
+            for (int x = 0; x < w.W; x++) reference[(w.OffsetY + y) * frameWidth + w.OffsetX + x] = 0xFF000000u | src[(w.Y0 + y) * 256 + w.X0 + x];
         region = Viewed((w.OffsetX, w.OffsetY, w.W, w.H));
     }
 

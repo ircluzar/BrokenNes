@@ -31,7 +31,7 @@ namespace NesEmulator.Mix
     /// pulse 1/2 -> NES pulse 1/2 (the duty cycles are the same four), wave -> triangle (the waveform is lost, the pitch
     /// kept), noise -> noise (nearest NES period; the 7-bit mode maps to the NES short mode). Stereo panning is dropped.
     /// </summary>
-    public sealed class GbApuOnNes : IGbApu
+    public sealed class GbApuOnNes : IGbApu, NesEmulator.Sega.IHubVoiceSource
     {
         private readonly APU_GB front;
         private readonly NesEmulator.IAPU back;
@@ -125,6 +125,28 @@ namespace NesEmulator.Mix
             }
         }
 
+        /// <summary>The Game Boy's four voices as the hub's voice list (tools and tests): pulse 1 and 2, the wave channel (a triangle on the NES), the noise; the level is the
+        /// channel's volume (0 to 1), the pan from NR51.</summary>
+        public int DescribeVoices(Span<NesEmulator.Sega.HubVoice> voices)
+        {
+            int nr51 = front.ReadRegister(0x25), n = Math.Min(4, voices.Length);
+            for (int i = 0; i < n; i++)
+            {
+                var ch = front.Channel(i);
+                bool on = ch.Enabled && ch.DacOn && ch.Volume > 0;
+                float pan = NesEmulator.Sega.HubVoice.PanOf((nr51 >> (4 + i) & 1) != 0, (nr51 >> i & 1) != 0);
+                double hz = i switch
+                {
+                    0 or 1 => ch.Period < 2048 ? 131072.0 / (2048 - ch.Period) : 0,
+                    2 => ch.Period < 2048 ? 65536.0 / (2048 - ch.Period) : 0,
+                    _ => 262144.0 / ((ch.NoiseDivisorCode == 0 ? 0.5 : ch.NoiseDivisorCode) * Math.Pow(2, ch.NoiseShift)),
+                };
+                var kind = i < 2 ? NesEmulator.Sega.HubVoiceKind.Pulse : i == 2 ? NesEmulator.Sega.HubVoiceKind.Triangle : NesEmulator.Sega.HubVoiceKind.Noise;
+                voices[i] = new NesEmulator.Sega.HubVoice(kind, on ? hz : 0, on ? ch.Volume / 15f : 0f, Duty: ch.Duty & 3, ShortNoise: i == 3 && ch.NoiseShortMode, Pan: pan);
+            }
+            return n;
+        }
+
         public int ReadSamples(short[] buffer)
         {
             var scratch = new short[4096]; while (front.ReadSamples(scratch) > 0) { }
@@ -159,8 +181,12 @@ namespace NesEmulator
         private readonly IGbApu gb;
         /// <summary>Bank 0: the NES chip's own channels replayed on the Game Boy chip's own four.</summary>
         private readonly Lane lane0;
-        /// <summary>Bank 1 (APU_DMGS): a second set of NES channels replayed on APU_GBS's second four.</summary>
-        private readonly Lane? lane1;
+        /// <summary>Banks 1.. (APU_DMGS): more sets of NES channels, each replayed on one of APU_GBS's extra banks. <see cref="extLaneOf"/> by bank (index k - 1 is bank k, null until the bank is
+        /// first written), <see cref="extLanes"/> the ones made, in the order they were made (synced in that order).</summary>
+        private readonly Lane?[] extLaneOf = new Lane?[APU_GBS.MaxBanks];
+        private readonly Lane[] extLanes = new Lane[APU_GBS.MaxBanks];
+        private int extLaneCount, extBankCount;
+        private readonly IApuExtChannels? gbExt;
         private readonly Queue<float> queue = new();
         private readonly short[] pull = new short[8192];
         private double gbAcc; private int fsAcc, sinceSync, channelMask = 0x1F;
@@ -175,17 +201,37 @@ namespace NesEmulator
             lane0 = new Lane((r, v) => gb.WriteRegister(r, v));
             if (extBank)
             {
-                var x = gb as IApuExtChannels ?? throw new NotSupportedException($"Game Boy APU '{gbApuId}' has no extra channel bank");
-                lane1 = new Lane((r, v) => x.WriteExtRegister(1, (ushort)r, v));
+                gbExt = gb as IApuExtChannels ?? throw new NotSupportedException($"Game Boy APU '{gbApuId}' has no extra channel bank");
+                AddBanks(1);
+                ExtLane(1);      // the second bank is there from the start, as it always was
             }
         }
+
+        /// <summary>Offers the Game Boy chip's extra banks up to <paramref name="banks"/> (the chip grows to them); a bank's lane is made when the bank is first written.</summary>
+        private protected void AddBanks(int banks)
+        {
+            if (gbExt == null) return;
+            extBankCount = Math.Max(extBankCount, Math.Min(gbExt.EnsureExtBanks(banks), extLaneOf.Length));
+        }
+
+        /// <summary>The extra banks on offer.</summary>
+        private protected int ExtBankCount => extBankCount;
+        /// <summary>The extra banks written so far (each one a Game Boy bank of four the chip runs).</summary>
+        private protected int ExtLaneCount => extLaneCount;
 
         public virtual string CoreName => $"DMG:{gb.CoreName}+{front.CoreName}";
         public virtual string Description => "MIX LAB: NES channels played on a Game Boy sound chip";
         public int Performance => 0; public int Rating => 1; public string Category => "Experimental";
 
-        /// <summary>The second bank, for the subclass that exposes it.</summary>
-        private protected Lane? ExtLane => lane1;
+        /// <summary>Extra bank <paramref name="bank"/> (1..), made the first time it is asked for, for the subclass that exposes them.</summary>
+        private protected Lane ExtLane(int bank)
+        {
+            if (extLaneOf[bank - 1] is { } lane) return lane;
+            var ext = gbExt!;
+            lane = new Lane((r, v) => ext.WriteExtRegister(bank, (ushort)r, v));
+            extLaneOf[bank - 1] = lane; extLanes[extLaneCount++] = lane;
+            return lane;
+        }
 
         /// <summary>
         /// One set of NES channels (a <see cref="NesChannelModel"/> fed by register writes) replayed on one bank of Game
@@ -297,7 +343,7 @@ namespace NesEmulator
         {
             front.Step(cpuCycles);
             lane0.Model.Clock(cpuCycles);
-            lane1?.Model.Clock(cpuCycles);
+            for (int i = 0; i < extLaneCount; i++) extLanes[i].Model.Clock(cpuCycles);
             gbAcc += cpuCycles * (4194304.0 / 1789773.0);
             int t = (int)gbAcc;
             if (t > 0)
@@ -305,7 +351,7 @@ namespace NesEmulator
                 gbAcc -= t; gb.Tick(t);
                 for (fsAcc += t; fsAcc >= 8192; fsAcc -= 8192) gb.FrameSequencerStep();
             }
-            if ((sinceSync += cpuCycles) >= 1864) { sinceSync = 0; lane0.Sync(channelMask); lane1?.Sync(channelMask); }
+            if ((sinceSync += cpuCycles) >= 1864) { sinceSync = 0; lane0.Sync(channelMask); for (int i = 0; i < extLaneCount; i++) extLanes[i].Sync(channelMask); }
             if (front.GetQueuedSampleCount() > 8192) front.GetAudioSamples();
         }
 
@@ -341,24 +387,28 @@ namespace NesEmulator
     }
 
     /// <summary>
-    /// MIX LAB: <see cref="APU_DMG"/> on the 8-channel Game Boy chip <see cref="NesEmulator.Gb.APU_GBS"/>: the NES
-    /// chip's own channels on the Game Boy's first four as before, and a second bank of NES channels (written through
-    /// <see cref="IApuExtChannels"/>, like <see cref="APU_FIXS"/>'s) on the second four - 4 pulses, 2 waves, 2 noises.
-    /// For the SNES bridge (SNES sound "NES:DMGS"): a SNES game's voices reach the Game Boy eight at a time instead of
-    /// four. Discovered by CoreRegistry as APU id "DMGS".
+    /// The Game Boy sound chip, ENHANCED, on the NES board: <see cref="APU_DMG"/> on the enhanced Game Boy chip <see cref="NesEmulator.Gb.APU_GBS"/>: the NES
+    /// chip's own channels on the Game Boy's first four as before, and more banks of NES channels (written through <see cref="IApuExtChannels"/>, like
+    /// <see cref="APU_FIXS"/>'s), each on one of the Game Boy chip's extra banks of four - as many as the other console's voices need (two banks when it is
+    /// made: 4 pulses, 2 waves, 2 noises). For the cross-console bridges (sound "NES:DMGS"): a SNES or Sega game's voices reach the Game Boy channels all at
+    /// once instead of four. Discovered by CoreRegistry as APU id "DMGS".
     /// </summary>
     public sealed class APU_DMGS : APU_DMG, IApuExtChannels
     {
         public APU_DMGS(Bus bus) : base(bus, "GBS", extBank: true) { }
 
-        public override string Description => "MIX LAB: two banks of NES channels played on an 8-channel Game Boy sound chip";
-        public int ExtBanks => 1;
+        public override string Description => "MIX LAB: banks of NES channels (as many as the other console's voices need) played on the enhanced Game Boy sound chip";
+        public int ExtBanks => ExtBankCount;
+        public int MaxExtBanks => APU_GBS.MaxBanks;
+        public int EnsureExtBanks(int wanted) { AddBanks(Math.Clamp(wanted, 1, MaxExtBanks)); return ExtBankCount; }
+        /// <summary>The extra banks written so far (tests).</summary>
+        public int ExtBanksInUse => ExtLaneCount;
 
         public void WriteExtRegister(int bank, ushort address, byte value)
         {
-            if (bank != 1) throw new ArgumentOutOfRangeException(nameof(bank), "APU_DMGS has one extra bank (1)");
+            if (bank < 1 || bank > ExtBankCount) throw new ArgumentOutOfRangeException(nameof(bank), $"APU_DMGS has extra banks 1 to {ExtBankCount} (EnsureExtBanks adds more, up to {MaxExtBanks})");
             if (address is >= 0x4010 and <= 0x4013) return;   // no DMC: nowhere to play it on the Game Boy
-            ExtLane!.Write(address, value);
+            ExtLane(bank).Write(address, value);
         }
     }
 }

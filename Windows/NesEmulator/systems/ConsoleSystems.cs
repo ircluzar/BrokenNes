@@ -306,13 +306,13 @@ public static class CoreCatalog
         ["CPU:SM83"] = "SM83 (Game Boy CPU) - an instruction-set wall: it runs the game's 6502 code as SM83 instructions, so most games stop at once",
         ["CPU:Z80"] = "Z80 (Master System CPU) - an instruction-set wall: it runs the game's 6502 code as Z80 instructions, so nearly every game stops at once",
         ["CPU:M68K"] = "M68K (Genesis CPU) - an instruction-set wall: it runs the game's 6502 code as 68000 instructions, so nearly every game stops at once",
-        ["PPU:FIX"] = "the NES picture chip (2C02), dot-accurate", ["PPU:FIXS"] = "the NES picture chip with the cross-console layers (the guest's layers, all its sprites; NES colours)",
+        ["PPU:FIX"] = "the NES picture chip (2C02), dot-accurate", ["PPU:FIXS"] = "the NES picture chip with the cross-console layers (the guest's picture at its own size with all its layers and sprites; NES colours)",
         ["PPU:SNES"] = "SNES picture chip", ["PPU:DMG"] = "Game Boy picture chip (160x144: the middle of the picture, 4 shades by brightness)",
         ["PPU:DMGS"] = "Game Boy picture chip with the whole picture and the cross-console layers (4 shades by brightness, or Game Boy Color colours)",
         ["PPU:SMS"] = "Master System picture chip (Mode 4: 4-bit tiles, 32 colours of 64, 8 sprites a line; 240-line mode)",
         ["PPU:MD"] = "Genesis picture chip (4-bit tiles, 64 colours of 512, 16 sprites a line, per-line scroll)",
-        ["APU:FIX"] = "the NES sound chip (2A03), accurate", ["APU:FIXS"] = "the NES sound chip with extra channel banks for the cross-console sound (8 channels)",
-        ["APU:SNES"] = "SNES sound (S-DSP)", ["APU:DMG"] = "Game Boy sound chip", ["APU:DMGS"] = "Game Boy sound chip with extra channel banks (8 channels)",
+        ["APU:FIX"] = "the NES sound chip (2A03), accurate", ["APU:FIXS"] = "the NES sound chip with extra channel banks for the cross-console sound (as many as the other console's voices need)",
+        ["APU:SNES"] = "SNES sound (S-DSP)", ["APU:DMG"] = "Game Boy sound chip", ["APU:DMGS"] = "Game Boy sound chip with extra channel banks (as many as the other console's voices need)",
         ["APU:SMS"] = "Master System / Game Gear sound chip (SN76489 PSG: 3 square tones + noise; the DMC is dropped)",
         ["APU:SMSFM"] = "Master System FM chip (YM2413: pulses and triangle as FM channels with a chosen instrument, noise on the SN76489 PSG; the DMC is dropped)",
         ["APU:MD"] = "Genesis sound chips (YM2612 FM + SN76489: pulses and triangle as FM voices with a chosen patch, noise on the PSG; the DMC is dropped)",
@@ -564,7 +564,7 @@ public static class CoreCatalog
                         list.Add(new("HLE", "HLE (silent - no sound, fastest)", "SNES"));
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), NesFamilyOf(CoreSlot.Apu, id)));
                         if (CoreRegistry.ApuIds.Contains("DMG", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMG", "Game Boy sound chip (through NES registers)", "Game Boy"));
-                        if (CoreRegistry.ApuIds.Contains("DMGS", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMGS", "Game Boy sound chip, 8 channels (through NES registers)", "Game Boy"));
+                        if (CoreRegistry.ApuIds.Contains("DMGS", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMGS", "Game Boy sound chip with extra channel banks: all eight of the SNES's voices (through NES registers)", "Game Boy"));
                         foreach (var id in HubSoundChips("SNES").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "Game Boy")) list.Add(new("NES:" + id, HubSoundLabel(id, "the SNES's voices"), NesFamilyOf(CoreSlot.Apu, id)));
                         break;
                 }
@@ -678,7 +678,7 @@ public static class CoreCatalog
     private static string HubSoundLabel(string id, string carried) => id.ToUpperInvariant() switch
     {
         "DMG" => $"DMG - through a NES onto the Game Boy sound chip ({carried} as 2 pulses, wave and noise; mono)",
-        "DMGS" => $"DMGS - through a NES onto the Game Boy sound chip with 8 channels ({carried}; mono)",
+        "DMGS" => $"DMGS - through a NES onto the Game Boy sound chip with extra channel banks ({carried}, every voice on a channel of its own; mono)",
         "SNES" => $"SNES - through a NES onto the SNES sound (S-DSP; {carried} as sampled voices)",
         "SMS" => $"SMS - through a NES onto the Master System sound chip ({carried} on the SN76489's 3 tones + noise)",
         "SMSFM" => $"SMSFM - through a NES onto the Master System FM chip ({carried} on YM2413 instruments + the PSG's noise)",
@@ -694,27 +694,27 @@ public static class CoreCatalog
     /// <summary>The menu label of a Master System / Game Gear game's sound played by a NES chip. Honest about what the trip loses: the PSG alone, mono.</summary>
     private static string SegaOnNesLabel(string id) => id.ToUpperInvariant() switch
     {
-        "FIXS" => "FIXS - the PSG on the 8-channel NES chip (mono; no YM2413 FM, no Game Gear stereo)",
+        "FIXS" => "FIXS - the PSG on the NES chip with extra channel banks (mono; no YM2413 FM, no Game Gear stereo)",
         _ => $"{id} - the PSG on a NES sound chip (mono; no YM2413 FM, no Game Gear stereo)",
     };
 
     /// <summary>The menu label of the Japanese console's PSG + YM2413 played by a NES chip: says what is kept (the chip is detected, the music is the FM music) and what is lost (the timbre, voices beyond the chip's channels).</summary>
     private static string SegaFmOnNesLabel(string id) => id.ToUpperInvariant() switch
     {
-        "FIXS" => "FIXS - the Japanese console's PSG + FM on the 8-channel NES chip (FM found by the game; mono; 6 tonal voices + 2 noises of 18, the rest dropped and counted; every FM voice a plain pulse)",
+        "FIXS" => "FIXS - the Japanese console's PSG + FM on the NES chip with extra channel banks (FM found by the game; mono; all 18 voices on 7 banks of channels; every FM voice a plain pulse)",
         _ => $"{id} - the Japanese console's PSG + FM on a NES sound chip (FM found by the game; mono; 3 tonal voices + 1 noise of 18, the rest dropped and counted; every FM voice a plain pulse)",
     };
 
     /// <summary>The menu label of a Genesis game's sound played by a NES chip. Honest about what the trip loses: FM timbre (every FM note is a plain pulse), the DAC's samples (noise hits), panning, and voices beyond the chip's channels.</summary>
     private static string GenesisOnNesLabel(string id) => id.ToUpperInvariant() switch
     {
-        "FIXS" => "FIXS - FM, DAC and PSG on the 8-channel NES chip (mono; up to 6 tones + 2 noises; no FM timbre, the DAC becomes noise hits)",
+        "FIXS" => "FIXS - FM, DAC and PSG on the NES chip with extra channel banks (mono; all 11 voices on 5 banks of channels; no FM timbre, the DAC becomes noise hits)",
         _ => $"{id} - FM, DAC and PSG on a NES sound chip (mono; 3 tones + 1 noise; no FM timbre, the DAC becomes noise hits)",
     };
 
     private static string NesSoundLabel(string id) => id.ToUpperInvariant() switch
     {
-        "FIXS" => "FIXS - NES sound, 8 channels (4 pulses, 2 triangles, 2 noises)",
+        "FIXS" => "FIXS - NES sound with extra channel banks (2 pulses, a triangle and a noise each, as many as the other console's voices need)",
         _ => $"{id} - NES sound",
     };
 }

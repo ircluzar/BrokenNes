@@ -821,7 +821,7 @@ internal static class SegaBridgeMdTests
         Check("the stock unit is still what MD builds, and the NES ids are listed", GenesisSoundFactories.Create("MD", m) is MdSoundUnit && GenesisSoundFactories.Ids.Contains("NES") && GenesisSoundFactories.Create("MD-STUB", m) is GenesisSoundStub);
         var u = (MdSoundOnNes)plain;
         Check($"it says what it is ({u.CoreName}), reports the NES chip's rate ({u.SampleRate} Hz), and the real unit is inside (Z80, YM2612, PSG)", u.CoreName.StartsWith("NES:") && u.CoreName.Contains("MD (Z80, PSG") && u.SampleRate == 44100 && u.Inner.Cpu != null);
-        Check("the writer has one bank on NES:FIX (3 tonal slots, 1 noise) and two on NES:FIXS (6 tonal, 2 noise)", u.Writer.Banks == 1 && ((MdSoundOnNes)GenesisSoundFactories.Create("NES:FIXS", m)).Writer.Banks == 2);
+        Check("the writer has one bank on NES:FIX (3 tonal slots, 1 noise) and, on the enhanced NES:FIXS, the five the eleven voices need (10 pulses, 5 triangles, 5 noises: 9 tonal voices on pulses, 2 noises)", u.Writer.Banks == 1 && ((MdSoundOnNes)GenesisSoundFactories.Create("NES:FIXS", m)).Writer.Banks == 5);
     }
 
     private static void UnitEveryChip()
@@ -1022,7 +1022,7 @@ internal static class SegaBridgeMdTests
             }
             // the loudest voices keep a channel (FM1 is the loudest: TL 4)
             bool loudest = true; for (int c = 0; c < Math.Min(slots, 6); c++) { double at = SegaMeasure.Component(x, 44100, hz[c], 4000, 4000 + 32768), off = SegaMeasure.Component(x, 44100, hz[c] * 1.0595, 4000, 4000 + 32768); loudest &= at > off * 3; }
-            Check($"{id}: six FM voices at six pitches, {slots} NES tonal channels: {heard} are heard ({string.Join(" ", present)}), the loudest ones first; voices without a channel counted ({u.VoicesWithoutChannel} voice-syncs)", heard == slots && loudest && (slots >= 6 ? u.VoicesWithoutChannel == 0 : u.VoicesWithoutChannel > 100));
+            Check($"{id}: six FM voices at six pitches, {slots} NES tonal channels: {heard} are heard ({string.Join(" ", present)}), the loudest ones first; voices without a channel counted ({u.VoicesWithoutChannel} voice-syncs)", heard == Math.Min(slots, 6) && loudest && (slots >= 6 ? u.VoicesWithoutChannel == 0 : u.VoicesWithoutChannel > 100));
         }
         {
             // NES:FIX has two pulses and a triangle. Two quiet voices sit on the pulses and a loud low note (below the pulse's range) on the triangle; a loud newcomer finds no free channel and takes one of the quiet voices' pulse

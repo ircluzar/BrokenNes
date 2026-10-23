@@ -28,7 +28,7 @@ internal sealed class SnesToNes
     {
         public int UniqueBgTiles, BgOverflow, UniqueObjTiles, ObjOverflow, SnesPalettesUsed, SpritesWanted, SpritesKept;
         public string Note = "";
-        /// <summary>Layered path (PPU_FIXS): per SNES layer, "BG1:123" = unique tiles it needed; empty on the flat path.</summary>
+        /// <summary>Layered path (an enhanced chip): per SNES layer, "BG1:123" = unique tiles it needed; empty on the flat path.</summary>
         public string Layers = "";
         public int LineDrops;
         public override string ToString() => Layers.Length == 0
@@ -40,9 +40,14 @@ internal sealed class SnesToNes
 
     public SnesToNes(string nesPpuId) { sink = new NesPictureSink(nesPpuId); }
 
-    /// <summary>True when the picture chip is a SNES-support one (PPU_FIXS, or a Game Boy bridge fronted by it): it is
-    /// translated line by line from PPU_SFC.BridgeLines.</summary>
-    public bool Layered => (sink.Ppu as PPU_FIXS ?? (sink.Ppu as PPU_DMG)?.LayerFront) != null;
+    /// <summary>True when the picture chip is an enhanced one (FIX enhanced, Game Boy enhanced: <see cref="IEnhancedPictureChip"/>): the frame is translated
+    /// line by line from PPU_SFC.BridgeLines into the chip's layers, at the SNES's own size.</summary>
+    public bool Layered => sink.Enhanced != null;
+    /// <summary>The enhanced chip the layers go to (null on a stock chip): tests read its layers.</summary>
+    internal IEnhancedPictureChip? Enhanced => sink.Enhanced;
+
+    /// <summary>The last picture (the enhanced chip's at the SNES's size, or the NES chip's 256 x 240).</summary>
+    public BridgeFrame Frame { get; } = new();
 
     /// <summary>NROM, 16K PRG, CHR-RAM, vertical mirroring: JMP * forever, RTI for NMI/IRQ.</summary>
     internal static byte[] IdleRom()
@@ -58,13 +63,13 @@ internal sealed class SnesToNes
     }
 
 
-    /// <summary>Program the NES PPU from the SNES PPU's current state, run one NES frame, return RGBA 256x240.</summary>
-    public byte[] Render(ISnesPpuCore sp, SnesPpuSnapshot? midFrame = null)
+    /// <summary>The SNES PPU's current state on the chip: an enhanced chip draws its layers at the SNES's size (256 x 224, or 239 lines in the overscan mode); a stock NES
+    /// chip is programmed with a NES picture and runs one NES frame (256 x 240).</summary>
+    public BridgeFrame Render(ISnesPpuCore sp, SnesPpuSnapshot? midFrame = null)
     {
         var s = midFrame ?? sp.Snapshot();
-        // A chip with SNES-support layers (PPU_FIXS, or a Game Boy bridge fronted by one) gets every layer and sprite.
-        var layered = sink.Ppu as PPU_FIXS ?? (sink.Ppu as PPU_DMG)?.LayerFront;
-        if (layered != null) return RenderLayered(sp, s, layered);
+        // An enhanced chip gets every layer and sprite, at the SNES's size.
+        if (sink.Enhanced is { } layered) return RenderLayered(sp, s, layered);
         var st = new Stats();
         var chrBg = new byte[256 * 16];
         var chrObj = new byte[256 * 16];
@@ -244,7 +249,7 @@ internal sealed class SnesToNes
         }
         st.SpritesKept = kept; st.UniqueObjTiles = objTiles.Count;
 
-        var frame = sink.Present(new NesPicture { ChrBg = chrBg, ChrObj = chrObj, Nt0 = nt[0], Nt1 = nt[1], Pal = pal, Oam = nesOam, FineX = fx, FineY = fy, Blank = blank });
+        var frame = Frame.FromRgba(sink.Present(new NesPicture { ChrBg = chrBg, ChrObj = chrObj, Nt0 = nt[0], Nt1 = nt[1], Pal = pal, Oam = nesOam, FineX = fx, FineY = fy, Blank = blank }));
         Last.UniqueBgTiles = st.UniqueBgTiles; Last.BgOverflow = st.BgOverflow; Last.UniqueObjTiles = st.UniqueObjTiles; Last.ObjOverflow = st.ObjOverflow;
         Last.SnesPalettesUsed = st.SnesPalettesUsed; Last.SpritesWanted = st.SpritesWanted; Last.SpritesKept = st.SpritesKept; Last.Note = st.Note;
         Last.Layers = ""; Last.LineDrops = 0;
@@ -275,7 +280,7 @@ internal sealed class SnesToNes
     };
 
     /// <summary>
-    /// A SNES frame into PPU_FIXS's SNES-support picture (<see cref="ExtPicture"/>), line by line: each captured line's
+    /// A SNES frame into an enhanced chip's layers (<see cref="ExtPicture"/>, at the SNES's 256 x 224 or 256 x 239), line by line: each captured line's
     /// registers decide which layers, Mode 7 and sprites are on there, their scroll, their place on the priority ladder
     /// (main-screen layers in front of sub-screen-only ones, which show through the backdrop only where colour math adds the
     /// sub screen), their window masks, and the backdrop (colour math applied, the fixed colour included). Layers with the
@@ -283,15 +288,16 @@ internal sealed class SnesToNes
     /// limiting: 2-bit tiles (3 brightness levels per SNES palette) and 8 palettes of each kind - the most used SNES
     /// palettes get their own, the rest borrow the closest-looking one. No colour blending: math picks, it does not mix.
     /// </summary>
-    private byte[] RenderLayered(ISnesPpuCore sp, SnesPpuSnapshot s, PPU_FIXS fx)
+    private BridgeFrame RenderLayered(ISnesPpuCore sp, SnesPpuSnapshot s, IEnhancedPictureChip chip)
     {
         var st = new Stats();
         var cg = sp.Cgram; var vram = sp.Vram;
-        var e = fx.Ext ??= new ExtPicture();
-        e.BeginFrame();
+        var e = chip.Layers;
+        int visible = Math.Clamp(sp.VisibleHeight, 224, 239);
+        e.BeginFrame(256, visible);
         e.SpriteLimit = MixConfig.ExtSpriteLimit; e.SpritesPerLine = MixConfig.ExtSpritesPerLine;
-        var lines = LinesOf(sp, s);
-        const int N = ExtPicture.Lines, W = ExtPicture.Width;
+        var lines = LinesOf(sp, s, visible);
+        int N = visible; const int W = 256;
 
         int Level(ushort c) { var (r, g, b) = NesPalette.FromBgr555(c); int y = (r * 3 + g * 6 + b) / 10; return y < 80 ? 1 : y < 165 ? 2 : 3; }
         int Pixel(int tileAddr, int bpp, int r, int c)
@@ -344,7 +350,7 @@ internal sealed class SnesToNes
             for (int x = 0; x < W && !lineAny; x++) lineAny = hidden(x);
             if (!lineAny && !any) return;
             if (!any) { Array.Clear(mask); any = true; }
-            for (int x = 0; x < W; x++) mask[y * W + x] = hidden(x);
+            for (int x = 0; x < W; x++) mask[y * ExtPicture.Stride + x] = hidden(x);
         }
 
         // ---- pass 1: per line, what is on, where, and which map cells are ever seen
@@ -619,9 +625,11 @@ internal sealed class SnesToNes
         e.PaletteVersion++;
         st.SpritesWanted = wanted; st.SpritesKept = kept; st.UniqueObjTiles = itemTile.Count;
 
-        // The native NES picture stays off (only the extension draws).
-        var pal0 = Enumerable.Repeat((byte)0x0F, 32).ToArray();
-        var frame = sink.Present(new NesPicture { Pal = pal0, Oam = Enumerable.Repeat((byte)0xFF, 256).ToArray(), Blank = true });
+        // The enhanced chip draws the layers at the SNES's size.
+        e.Guest = "SNES mode"; e.GuestMode = lines[1].Regs.Bgmode & 7;
+        for (int si = 0; si < segs.Count; si++) e.Layers[si].Name = $"BG{segs[si].K + 1}";
+        chip.DrawLayers();
+        var frame = Frame.From(chip);
         st.LineDrops = e.SpriteLineDrops;
         Last.UniqueBgTiles = st.UniqueBgTiles; Last.BgOverflow = st.BgOverflow; Last.UniqueObjTiles = st.UniqueObjTiles; Last.ObjOverflow = st.ObjOverflow;
         Last.SnesPalettesUsed = st.SnesPalettesUsed; Last.SpritesWanted = st.SpritesWanted; Last.SpritesKept = st.SpritesKept; Last.Note = st.Note;
@@ -809,12 +817,12 @@ internal sealed class SnesToNes
     /// The frame's per-line registers: PPU_SFC's own capture when it ran (index = SNES line 1-224), otherwise the one
     /// snapshot for every line (no windows, no fixed colour, no Mode 7 matrix).
     /// </summary>
-    private static PPU_SFC.BridgeLineState[] LinesOf(ISnesPpuCore sp, SnesPpuSnapshot s)
+    private static PPU_SFC.BridgeLineState[] LinesOf(ISnesPpuCore sp, SnesPpuSnapshot s, int lines)
     {
-        if (sp is SfcPpuAdapter ad && ad.Inner.BridgeLines is { Length: >= ExtPicture.Lines + 1 } captured) return captured;
+        if (sp is SfcPpuAdapter ad && ad.Inner.BridgeLines is { } captured && captured.Length >= lines + 1) return captured;
         var regs = new PPU_SFC.RegisterSnapshot(s.Inidisp, s.BgMode, 0, s.Obsel, s.Bgsc[0], s.Bgsc[1], s.Bgsc[2], s.Bgsc[3], s.Bg12Nba, s.Bg34Nba,
             s.Hofs[0], s.Vofs[0], s.Hofs[1], s.Vofs[1], s.Hofs[2], s.Vofs[2], s.Hofs[3], s.Vofs[3], s.Tm, s.Ts, 0, 0, 0, 0, 0, 0);
         var one = new PPU_SFC.BridgeLineState(regs, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, sp.Cgram[0]);
-        return Enumerable.Repeat(one, ExtPicture.Lines + 1).ToArray();
+        return Enumerable.Repeat(one, ExtPicture.MaxLines + 1).ToArray();
     }
 }

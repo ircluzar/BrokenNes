@@ -70,13 +70,27 @@ internal static class SegaScenes
     }
 
     // ================================================================================================================ comparing
-    private static uint At(uint[] c, int x, int y) => c[y * 256 + x] & 0xFFFFFF;
+    /// <summary>A pixel of a canvas <paramref name="w"/> wide.</summary>
+    private static uint Px(uint[] c, int w, int x, int y) => c[y * w + x] & 0xFFFFFF;
+
+    /// <summary>The offset from the NES canvas's coordinates to the bridge's picture. A NES chip (the stock path) puts the console's picture on its 256 x 240: the Master System's 192 lines
+    /// at line 24, the Genesis's 224 at line 8 and its H40 picture's middle 256 columns, the Game Gear's LCD at (48, 48). An enhanced chip draws the console's own picture at its own size
+    /// (the frame is that picture): the same scene's coordinates then name the same pixel of it, so one scene checks both paths.</summary>
+    private static (int X, int Y) Placement(SegaPictureSession w) => !w.GuestSize ? (0, 0)
+        : w.Console == ConsoleKind.GameGear ? (48, 48) : (w.CanvasWidth == 320 ? -32 : 0, Math.Max(0, (240 - w.CanvasHeight) / 2));
+
+    /// <summary>The bridge's pixel at the NES canvas's (x, y), on either path (black outside an enhanced chip's picture).</summary>
+    private static uint At(SegaPictureSession w, int x, int y)
+    {
+        var (ox, oy) = Placement(w); x -= ox; y -= oy;
+        return (uint)x < (uint)w.CanvasWidth && (uint)y < (uint)w.CanvasHeight ? Px(w.BridgeCanvas, w.CanvasWidth, x, y) : 0u;
+    }
 
     /// <summary>How many pixels of the region are "drawn" in one picture and not in the other (a pixel is drawn when it is not black: every scene's backdrop is colour 0, black on both pictures).</summary>
-    private static int MaskMismatch(uint[] bridge, uint[] reference, (int X, int Y, int W, int H) r)
+    private static int MaskMismatch(SegaPictureSession w, (int X, int Y, int W, int H) r)
     {
-        const uint bb = 0, rb = 0; int bad = 0;
-        for (int y = r.Y; y < r.Y + r.H; y++) for (int x = r.X; x < r.X + r.W; x++) if ((At(bridge, x, y) != bb) != (At(reference, x, y) != rb)) bad++;
+        const uint bb = 0, rb = 0; int bad = 0, cw = w.CanvasWidth; var bridge = w.BridgeCanvas; var reference = w.ReferenceCanvas;
+        for (int y = r.Y; y < r.Y + r.H; y++) for (int x = r.X; x < r.X + r.W; x++) if ((Px(bridge, cw, x, y) != bb) != (Px(reference, cw, x, y) != rb)) bad++;
         return bad;
     }
 
@@ -84,19 +98,20 @@ internal static class SegaScenes
     private static int Mm(SegaPictureSession w, string tag, int tolerance = 0, [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
     {
         string name = tag + "_line" + line;
-        int mm = MaskMismatch(w.BridgeCanvas, w.ReferenceCanvas, w.Region);
+        int mm = MaskMismatch(w, w.Region);
         string dir = Environment.GetEnvironmentVariable("BRIDGE_TEST_PNG") ?? "";
         if (mm > tolerance && dir.Length > 0)
         {
             Directory.CreateDirectory(dir);
-            var both = new uint[3 * 256 * 240]; const uint bb = 0, rb = 0;
-            for (int y = 0; y < 240; y++) for (int x = 0; x < 256; x++)
+            int cw = w.CanvasWidth, ch = w.CanvasHeight;
+            var both = new uint[3 * cw * ch]; const uint bb = 0, rb = 0;
+            for (int y = 0; y < ch; y++) for (int x = 0; x < cw; x++)
             {
-                both[y * 768 + x] = w.ReferenceCanvas[y * 256 + x]; both[y * 768 + 256 + x] = w.BridgeCanvas[y * 256 + x];
-                bool d = (At(w.BridgeCanvas, x, y) != bb) != (At(w.ReferenceCanvas, x, y) != rb);
-                both[y * 768 + 512 + x] = d ? 0xFFFF0000u : 0xFF000000u;
+                both[y * 3 * cw + x] = w.ReferenceCanvas[y * cw + x]; both[y * 3 * cw + cw + x] = w.BridgeCanvas[y * cw + x];
+                bool d = (Px(w.BridgeCanvas, cw, x, y) != bb) != (Px(w.ReferenceCanvas, cw, x, y) != rb);
+                both[y * 3 * cw + 2 * cw + x] = d ? 0xFFFF0000u : 0xFF000000u;
             }
-            MixLab.MixLabCli.SaveArgb(both, 768, 240, Path.Combine(dir, string.Concat(name.Select(c => char.IsLetterOrDigit(c) ? c : '_')) + ".png"));
+            MixLab.MixLabCli.SaveArgb(both, 3 * cw, ch, Path.Combine(dir, string.Concat(name.Select(c => char.IsLetterOrDigit(c) ? c : '_')) + ".png"));
         }
         return mm;
     }
@@ -105,11 +120,11 @@ internal static class SegaScenes
     /// Unlike <see cref="MaskMismatch"/> it sees a tile swapped for another of the same drawn-ness, a wrong palette line or the wrong layer on top.</summary>
     private static int ColourMismatch(SegaPictureSession w, (int X, int Y, int W, int H) r)
     {
-        int bad = 0; var b = w.BridgeCanvas; var f = w.ReferenceCanvas;
+        int bad = 0, cw = w.CanvasWidth; var b = w.BridgeCanvas; var f = w.ReferenceCanvas;
         for (int y = r.Y; y < r.Y + r.H; y++) for (int x = r.X; x < r.X + r.W; x++)
         {
-            uint rf = At(f, x, y);
-            if (At(b, x, y) != NesLook((int)(rf >> 16 & 0xFF), (int)(rf >> 8 & 0xFF), (int)(rf & 0xFF))) bad++;
+            uint rf = Px(f, cw, x, y);
+            if (Px(b, cw, x, y) != NesLook((int)(rf >> 16 & 0xFF), (int)(rf >> 8 & 0xFF), (int)(rf & 0xFF))) bad++;
         }
         return bad;
     }
@@ -150,7 +165,7 @@ internal static class SegaScenes
     /// <summary>Pixels of the bridge's picture that are not the colour of the plane row <paramref name="rowAt"/>(line, screen x) gives; <paramref name="dx"/>: the screen column of the picture's first column (32 in H40).</summary>
     private static int RowMismatch(MdRig r, int dx, Func<int, int, int> rowAt, int fromScreenX = 0)
     {
-        var c = r.Wrap.BridgeCanvas; int bad = 0;
+        var c = r.Wrap; int bad = 0;
         for (int y = 0; y < 224; y++) for (int x = 0; x < 256; x++)
             if (x + dx >= fromScreenX && At(c, x, 8 + y) != MdLook(RowCram[1 + rowAt(y, x + dx) % 6])) bad++;
         return bad;
@@ -238,7 +253,7 @@ internal static class SegaScenes
             r.Sprite(0, 40, 40, 1, 1, 2, pal: 3); r.Sprite(1, 88, 96, 1, 1, 2, pal: 3); r.Sprite(2, 40, 60, 1, 1, 3, pal: 3); r.Sprite(3, 200, 40, 1, 1, 4, pal: 3); r.Sprite(4, 200, 60, 1, 1, 5, link: 0);
             r.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, sh ? 0x08 : 0x00, 0x3F, 0, 0x02, 0x01, 0, 0);
             r.Go();
-            uint P(int x, int y) => At(r.Wrap.BridgeCanvas, x + 3, 8 + y + 3);
+            uint P(int x, int y) => At(r.Wrap, x + 3, 8 + y + 3);
             uint white = MdLook(0xEEE);
             string mode = sh ? "in shadow/highlight mode" : "with shadow/highlight off";
             Check($"{tag}: {mode}: a shadow operator (palette 3, colour 15) over the backdrop {(sh ? "is not drawn" : "is an ordinary white pixel")}", P(40, 40) == (sh ? 0u : white), $"{P(40, 40):X6}");
@@ -260,7 +275,7 @@ internal static class SegaScenes
             r.Sprite(0, 0, 40, 1, 1, 7, link: 1); r.Sprite(1, 8, 60, 1, 1, 7, link: 0);          // one wholly in the blank column, one wholly in the second cell
             r.Regs(0x04 | 0x20, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, sh ? 0x08 : 0x00, 0x3F, 0, 0x02, 0x01, 0, 0);
             r.Go();
-            var cv = r.Wrap.BridgeCanvas; string mode = sh ? "in shadow/highlight mode" : "with shadow/highlight off";
+            var cv = r.Wrap; string mode = sh ? "in shadow/highlight mode" : "with shadow/highlight off";
             uint Cell(int c) => MdLook(RowCram[1 + c % 6]);
             int blankBad = 0, secondBad = 0, restBad = 0;
             for (int y = 100; y < 130; y++)
@@ -283,7 +298,7 @@ internal static class SegaScenes
             for (int row = 0; row < 28; row++) for (int col = 0; col < 64; col++) r.Cell(MdRig.PlaneA, 64, row, col, 1);
             r.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, 0x06, 0x3F, 0, 0x02, 0x01, 0, 0);
             r.Go();
-            var cv = r.Wrap.BridgeCanvas; int bad = 0;
+            var cv = r.Wrap; int bad = 0;
             for (int y = 0; y < 224; y++) for (int x = 0; x < 256; x++) if (At(cv, x, 8 + y) != MdLook(RowCram[(y & 7) < 4 ? 1 : 2])) bad++;
             Check($"{tag}: interlace mode 2: a cell is 16 pattern rows tall, the field shows every other one (the top half colour 1, the bottom half colour 2)", bad == 0, $"{bad} pixels differ");
             Check($"{tag}: ... and the frame counts it (double-height cells drawn as the field's even rows)", r.Wrap.Counters.Total("frames in interlace mode 2 (the field is drawn from the even rows of the 8x16 cells)") >= 2, r.Wrap.Counters.ToString());
@@ -304,9 +319,14 @@ internal static class SegaScenes
                 var w = own.Wrap; double aspect = (double)w.DisplayWidth / w.FrameHeight;
                 Check($"{tag}: interlace mode 2 on the console's own chip ({(r12 == 0x87 ? "H40" : "H32")}): the picture is {w.FrameWidth} x {w.FrameHeight} shown {w.DisplayWidth} wide, 10:7, and the frame buffer holds it", !w.Bridged && w.Frame.Length >= w.FrameWidth * w.FrameHeight && Math.Abs(aspect - 10.0 / 7.0) < 0.01 && (w.FrameHeight == 224 || w.FrameHeight == 448), $"{w.FrameWidth}x{w.FrameHeight}, display width {w.DisplayWidth}, frame {w.Frame.Length}");
             }
-            var onNes = new MdRig(chip); onNes.Color(0, 0); onNes.Tile(1, 1);
-            onNes.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, 0x87, 0x3F, 0, 0x02, 0x01, 0, 0); onNes.Go();
-            Check($"{tag}: interlace mode 2 on a NES chip: the canvas is the NES's 256 x 240 shown 256 wide", onNes.Wrap.Bridged && onNes.Wrap.FrameWidth == 256 && onNes.Wrap.FrameHeight == 240 && onNes.Wrap.DisplayWidth == 256, $"{onNes.Wrap.FrameWidth}x{onNes.Wrap.FrameHeight}, {onNes.Wrap.DisplayWidth}");
+            foreach (var nesChip in new[] { chip, "NES:FIX" })
+            {
+                var onNes = new MdRig(nesChip); onNes.Color(0, 0); onNes.Tile(1, 1);
+                onNes.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, 0x87, 0x3F, 0, 0x02, 0x01, 0, 0); onNes.Go();
+                var ow = onNes.Wrap;
+                if (nesChip == "NES:FIX") Check($"Genesis on NES:FIX: interlace mode 2 on a stock NES chip: the canvas is the NES's 256 x 240 shown 256 wide", ow.Bridged && ow.FrameWidth == 256 && ow.FrameHeight == 240 && ow.DisplayWidth == 256, $"{ow.FrameWidth}x{ow.FrameHeight}, {ow.DisplayWidth}");
+                else Check($"{tag}: interlace mode 2 on the enhanced chip: the field's own 320 x 224, shown 320 wide (10:7)", ow.Bridged && ow.FrameWidth == 320 && ow.FrameHeight == 224 && ow.DisplayWidth == 320, $"{ow.FrameWidth}x{ow.FrameHeight}, {ow.DisplayWidth}");
+            }
         }
     }
 
@@ -322,10 +342,11 @@ internal static class SegaScenes
         for (int row = 10; row < 13; row++) for (int col = 6; col < 10; col++) r.Cell(row, col, 2);
         r.Frames();
         var reg = r.Wrap.Region;
-        Check($"{tag}: the picture is the chip's 256x192, centred on the NES's 240 lines", reg == (0, 24, 256, 192), reg.ToString());
-        Check($"{tag}: background cells are drawn where the VDP draws them", MaskMismatch(r.Wrap.BridgeCanvas, r.Wrap.ReferenceCanvas, reg) == 0, $"{MaskMismatch(r.Wrap.BridgeCanvas, r.Wrap.ReferenceCanvas, reg)} pixels differ");
-        Check($"{tag}: the red cell is the NES colour that looks most like red", At(r.Wrap.BridgeCanvas, 40, 24 + 4 * 8 + 3) == SmsLook(Red) && At(r.Wrap.BridgeCanvas, 52, 24 + 10 * 8 + 3) == SmsLook(Green), $"{At(r.Wrap.BridgeCanvas, 40, 24 + 35):X6} want {SmsLook(Red):X6}; {At(r.Wrap.BridgeCanvas, 52, 24 + 83):X6} want {SmsLook(Green):X6}");
-        Check($"{tag}: the lines above and below the 192 are black", At(r.Wrap.BridgeCanvas, 100, 3) == 0x000000 && At(r.Wrap.BridgeCanvas, 100, 236) == 0x000000 || !layered);
+        Check(layered ? $"{tag}: the picture is the Master System's own 256x192 (the frame is 256 x 192, shown 256 wide)" : $"{tag}: the picture is the chip's 256x192, centred on the NES's 240 lines",
+            layered ? reg == (0, 0, 256, 192) && r.Wrap.FrameWidth == 256 && r.Wrap.FrameHeight == 192 && r.Wrap.DisplayWidth == 256 : reg == (0, 24, 256, 192), $"{reg} frame {r.Wrap.FrameWidth}x{r.Wrap.FrameHeight} shown {r.Wrap.DisplayWidth}");
+        Check($"{tag}: background cells are drawn where the VDP draws them", MaskMismatch(r.Wrap, reg) == 0, $"{MaskMismatch(r.Wrap, reg)} pixels differ");
+        Check($"{tag}: the red cell is the NES colour that looks most like red", At(r.Wrap, 40, 24 + 4 * 8 + 3) == SmsLook(Red) && At(r.Wrap, 52, 24 + 10 * 8 + 3) == SmsLook(Green), $"{At(r.Wrap, 40, 24 + 35):X6} want {SmsLook(Red):X6}; {At(r.Wrap, 52, 24 + 83):X6} want {SmsLook(Green):X6}");
+        if (!layered) Check($"{tag}: the picture is a NES picture (256 x 240)", r.Wrap.FrameWidth == 256 && r.Wrap.FrameHeight == 240 && !r.Wrap.GuestSize, $"{r.Wrap.FrameWidth}x{r.Wrap.FrameHeight}");
         var drawn = r.Wrap.Counters;
         Check($"{tag}: it says what it is and counts frames", r.Wrap.Description.Contains("PICTURE " + chip) && drawn.Frames >= 3, r.Wrap.Description.Split('|').Last().Trim());
 
@@ -371,8 +392,8 @@ internal static class SegaScenes
         r = new SmsRig(chip); r.Cram(0, 0); r.Cram(1, Blue); r.Cram(16, 0); r.Cram(17, Green); r.Tile(1, 1); r.Tile(3, 1);
         r.Cell(10, 10, 1, 0x1000); r.Cell(10, 14, 1, 0);
         r.Sprite(0, 80, 80, 3); r.Sprite(1, 112, 80, 3); r.Frames();
-        bool inFront = At(r.Wrap.BridgeCanvas, 84, 24 + 84) == SmsLook(Green), covered = At(r.Wrap.BridgeCanvas, 84 + 0, 24 + 84) != SmsLook(Blue);
-        uint overPrio = At(r.Wrap.BridgeCanvas, 84, 24 + 84), overPlain = At(r.Wrap.BridgeCanvas, 116, 24 + 84);
+        bool inFront = At(r.Wrap, 84, 24 + 84) == SmsLook(Green), covered = At(r.Wrap, 84 + 0, 24 + 84) != SmsLook(Blue);
+        uint overPrio = At(r.Wrap, 84, 24 + 84), overPlain = At(r.Wrap, 116, 24 + 84);
         Check($"{tag}: a priority background tile covers the sprite over it, a plain one does not", overPrio == SmsLook(Blue) && overPlain == SmsLook(Green), $"{overPrio:X6} / {overPlain:X6}");
 
         // ---- the Master System II's taller picture and an untranslated mode
@@ -380,7 +401,8 @@ internal static class SegaScenes
         r.Regs(0x06, 0x48, 0x0E, 0, 0, 0x7E, 0xFB, 0x00, 0, 0, 0xFF);
         for (int row = 0; row < 31; row++) for (int col = 2; col < 30; col++) r.V.Vram[0x3700 + row * 64 + col * 2] = 1;
         r.Frames();
-        Check($"{tag}: the 240-line mode shows its middle 224 lines (the 16 cut are counted)", r.Wrap.Region == (0, 8, 256, 224), r.Wrap.Region.ToString());
+        Check(layered ? $"{tag}: the 240-line mode is drawn whole (256 x 240, nothing cut)" : $"{tag}: the 240-line mode shows its middle 224 lines (the 16 cut are counted)",
+            r.Wrap.Region == (layered ? (0, 0, 256, 240) : (0, 8, 256, 224)), r.Wrap.Region.ToString());
         mm = Mm(r.Wrap, tag);
         Check($"{tag}: ... and draws them as the VDP does", mm == 0, $"{mm} pixels differ");
         r = new SmsRig(chip); r.Regs(0x00, 0x40, 0x0E, 0, 0, 0x7E, 0xFB, 0x00, 0, 0, 0xFF); r.Frames();
@@ -404,11 +426,16 @@ internal static class SegaScenes
             for (int row = 0; row < 24; row++) for (int col = 0; col < 32; col++) if (col % 2 == 0 && row % 2 == 0) r.Cell(row, col, 1);
             r.Frames();
             string tag = $"Game Gear on {chip}";
-            Check($"{tag}: the LCD window is 160x144 at the middle of the NES picture", r.Wrap.Region == (48, 48, 160, 144), r.Wrap.Region.ToString());
-            Check($"{tag}: the bezel around it is black", At(r.Wrap.BridgeCanvas, 10, 10) == 0 && At(r.Wrap.BridgeCanvas, 240, 200) == 0 && At(r.Wrap.BridgeCanvas, 100, 20) == 0);
+            bool layered = chip == "NES:FIXS";
+            if (layered) Check($"{tag}: the picture is the LCD's own 160x144 (the frame is 160 x 144, no bezel)", r.Wrap.Region == (0, 0, 160, 144) && r.Wrap.FrameWidth == 160 && r.Wrap.FrameHeight == 144 && r.Wrap.DisplayWidth == 160, $"{r.Wrap.Region} frame {r.Wrap.FrameWidth}x{r.Wrap.FrameHeight}");
+            else
+            {
+                Check($"{tag}: the LCD window is 160x144 at the middle of the NES picture", r.Wrap.Region == (48, 48, 160, 144), r.Wrap.Region.ToString());
+                Check($"{tag}: the bezel around it is black", At(r.Wrap, 10, 10) == 0 && At(r.Wrap, 240, 200) == 0 && At(r.Wrap, 100, 20) == 0);
+            }
             int mm = Mm(r.Wrap, tag);
             Check($"{tag}: what the window shows is what the Game Gear shows", mm <= (chip == "NES:FIXS" ? 0 : 200), $"{mm} pixels differ");
-            Check($"{tag}: a 12-bit colour (red 15) is the NES colour nearest to it", At(r.Wrap.BridgeCanvas, 49, 48 + 8) == NesLook(0xFF, 0, 0), $"{At(r.Wrap.BridgeCanvas, 49, 56):X6} want {NesLook(0xFF, 0, 0):X6}");
+            Check($"{tag}: a 12-bit colour (red 15) is the NES colour nearest to it", At(r.Wrap, 49, 48 + 8) == NesLook(0xFF, 0, 0), $"{At(r.Wrap, 49, 56):X6} want {NesLook(0xFF, 0, 0):X6}");
             if (chip == "NES:FIXS") Check($"{tag}: every pixel of the window is the NES colour nearest to the Game Gear's own", ColourMismatch(r.Wrap, r.Wrap.Region) == 0, $"{ColourMismatch(r.Wrap, r.Wrap.Region)} pixels differ");
         }
     }
@@ -426,10 +453,11 @@ internal static class SegaScenes
         for (int row = 7; row < 11; row++) for (int col = 12; col < 17; col++) r.Cell(MdRig.PlaneB, 64, row, col, 3, 2, prio: true);   // plane B high: blue, over plane A low
         r.Go();
         var reg = r.Wrap.Region;
-        Check($"{tag}: the picture is the chip's 256x224 at NES line 8", reg == (0, 8, 256, 224), reg.ToString());
-        int mm = MaskMismatch(r.Wrap.BridgeCanvas, r.Wrap.ReferenceCanvas, reg);
+        Check(layered ? $"{tag}: the picture is the Genesis's own 256x224 (H32; the frame is 256 x 224, shown 320 wide as the console shows it)" : $"{tag}: the picture is the chip's 256x224 at NES line 8",
+            layered ? reg == (0, 0, 256, 224) && r.Wrap.FrameWidth == 256 && r.Wrap.FrameHeight == 224 && r.Wrap.DisplayWidth == 320 : reg == (0, 8, 256, 224), $"{reg} frame {r.Wrap.FrameWidth}x{r.Wrap.FrameHeight} shown {r.Wrap.DisplayWidth}");
+        int mm = MaskMismatch(r.Wrap, reg);
         Check($"{tag}: planes are drawn where the VDP draws them", mm == 0, $"{mm} pixels differ");
-        uint pa = At(r.Wrap.BridgeCanvas, 9 * 8 + 2, 8 + 5 * 8 + 2), pb = At(r.Wrap.BridgeCanvas, 13 * 8 + 2, 8 + 7 * 8 + 2), pc = At(r.Wrap.BridgeCanvas, 4 * 8 + 2, 8 + 4 * 8 + 2);
+        uint pa = At(r.Wrap, 9 * 8 + 2, 8 + 5 * 8 + 2), pb = At(r.Wrap, 13 * 8 + 2, 8 + 7 * 8 + 2), pc = At(r.Wrap, 4 * 8 + 2, 8 + 4 * 8 + 2);
         Check($"{tag}: plane A over plane B, plane B's priority tile over plane A, by the VDP's ladder", pa == MdLook(0x0EE) && pb == MdLook(0xEEE) && pc == MdLook(0x00E), $"{pa:X6}/{pb:X6}/{pc:X6} want {MdLook(0x0EE):X6}/{MdLook(0xEEE):X6}/{MdLook(0x00E):X6}");
 
         // ---- per-line horizontal scroll and vertical scroll
@@ -456,8 +484,8 @@ internal static class SegaScenes
         r.Go();
         mm = Mm(r.Wrap, tag);
         Check($"{tag}: the window layer replaces plane A where the registers put it", mm <= (layered ? 0 : 600), $"{mm} pixels differ");
-        Check($"{tag}: the window's own tiles and palette show in it", At(r.Wrap.BridgeCanvas, 4, 8 + 4) == MdLook(0x0E0) || !layered, $"{At(r.Wrap.BridgeCanvas, 4, 12):X6}");
-        if (layered) Check($"{tag}: the window's cells are on the columns the VDP puts them (every colour is the VDP's)", At(r.Wrap.BridgeCanvas, 4, 12) == MdLook(0x0E0) && At(r.Wrap.BridgeCanvas, 12, 12) == MdLook(0xE0E) && ColourMismatch(r.Wrap, r.Wrap.Region) == 0, $"{At(r.Wrap.BridgeCanvas, 4, 12):X6}/{At(r.Wrap.BridgeCanvas, 12, 12):X6}; {ColourMismatch(r.Wrap, r.Wrap.Region)} pixels differ");
+        Check($"{tag}: the window's own tiles and palette show in it", At(r.Wrap, 4, 8 + 4) == MdLook(0x0E0) || !layered, $"{At(r.Wrap, 4, 12):X6}");
+        if (layered) Check($"{tag}: the window's cells are on the columns the VDP puts them (every colour is the VDP's)", At(r.Wrap, 4, 12) == MdLook(0x0E0) && At(r.Wrap, 12, 12) == MdLook(0xE0E) && ColourMismatch(r.Wrap, r.Wrap.Region) == 0, $"{At(r.Wrap, 4, 12):X6}/{At(r.Wrap, 12, 12):X6}; {ColourMismatch(r.Wrap, r.Wrap.Region)} pixels differ");
 
         // ---- sprites against the planes: the ladder spr_hi > A_hi > B_hi > spr_lo > A_lo > B_lo
         r = new MdRig(chip); r.Color(0, 0); r.Color(1, 0x00E); r.Color(17, 0xE00); r.Color(33, 0x0E0); r.Tile(1, 1);
@@ -469,7 +497,7 @@ internal static class SegaScenes
         for (int k = 0; k < 5; k++) r.Sprite(k, (4 + 4 * k) * 8, 5 * 8, 1, 1, 1, pal: 1, prio: k == 2, link: k == 4 ? 0 : k + 1);
         r.Go();
         uint[] want = { MdLook(0xE00), MdLook(0x00E), MdLook(0xE00), MdLook(0x0E0), MdLook(0x0E0) }; var got = new uint[5];
-        for (int k = 0; k < 5; k++) got[k] = At(r.Wrap.BridgeCanvas, (4 + 4 * k) * 8 + 3, 8 + 5 * 8 + 3);
+        for (int k = 0; k < 5; k++) got[k] = At(r.Wrap, (4 + 4 * k) * 8 + 3, 8 + 5 * 8 + 3);
         Check($"{tag}: a sprite and a plane meet as the VDP's ladder says (sprite over plane A low, plane A high over a low sprite, a high sprite over everything, plane B high over a low sprite)", got.SequenceEqual(want) || !layered, string.Join("/", got.Select(g => g.ToString("X6"))) + " want " + string.Join("/", want.Select(g => g.ToString("X6"))));
         if (layered) Check($"{tag}: ... and every pixel of the scene is the VDP's", ColourMismatch(r.Wrap, r.Wrap.Region) == 0, $"{ColourMismatch(r.Wrap, r.Wrap.Region)} pixels differ");
 
@@ -493,15 +521,30 @@ internal static class SegaScenes
         for (int row = 0; row < 28; row++) { r.Cell(MdRig.PlaneA, 64, row, 0, 1); r.Cell(MdRig.PlaneA, 64, row, 39, 2); r.Cell(MdRig.PlaneA, 64, row, 20, 1); }
         r.Regs(0x04, 0x4C, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, 0x81, 0x3F, 0, 0x02, 0x01, 0, 0);
         r.Go();
-        Check($"{tag}: a 320-column picture shows its middle 256 and counts the 64 columns cut", r.Wrap.Region == (0, 8, 256, 224) && r.Wrap.Counters.Total("columns cropped from the 320-wide picture") >= 64 * 2, r.Wrap.Counters.ToString());
-        mm = Mm(r.Wrap, tag);
-        Check($"{tag}: ... the cut picture is what the VDP shows in those columns (the edge cells are gone)", mm == 0, $"{mm} pixels differ");
+        if (layered)
+        {
+            // the enhanced chip draws all 320 columns: the edge cells (column 0 blue, column 39 green) are there, and nothing is counted as cut
+            var cv320 = r.Wrap.BridgeCanvas; int w320 = r.Wrap.CanvasWidth;
+            bool edges = w320 == 320 && Px(cv320, 320, 3, 50) == MdLook(0x00E) && Px(cv320, 320, 315, 50) == MdLook(0x0E0) && Px(cv320, 320, 163, 50) == MdLook(0x00E);
+            Check($"{tag}: a 320-column, 240-line picture (H40 V30) is drawn whole: 320 x 240, its edge cells (columns 0 and 39) shown, no column or line counted as cut", r.Wrap.Region == (0, 0, 320, 240) && r.Wrap.FrameWidth == 320 && r.Wrap.FrameHeight == 240 && r.Wrap.DisplayWidth == 320 && edges && r.Wrap.Counters.Total("lines cropped from the 240-line picture") == 0
+                && r.Wrap.Counters.Total("columns cropped from the 320-wide picture") == 0, $"{r.Wrap.Region} frame {r.Wrap.FrameWidth}x{r.Wrap.FrameHeight}; edges {edges}; {r.Wrap.Counters}");
+            mm = Mm(r.Wrap, tag);
+            Check($"{tag}: ... and every one of the 320 columns is what the VDP shows", mm == 0, $"{mm} pixels differ");
+        }
+        else
+        {
+            Check($"{tag}: a 320-column picture shows its middle 256 and counts the 64 columns cut", r.Wrap.Region == (0, 8, 256, 224) && r.Wrap.Counters.Total("columns cropped from the 320-wide picture") >= 64 * 2, r.Wrap.Counters.ToString());
+            mm = Mm(r.Wrap, tag);
+            Check($"{tag}: ... the cut picture is what the VDP shows in those columns (the edge cells are gone)", mm == 0, $"{mm} pixels differ");
+            Check($"{tag}: negative control: the NES chip's picture has no column 0 (the edge cell is cut: what the enhanced chip shows is not there)", At(r.Wrap, 3, 58) != MdLook(0x00E) || r.Wrap.FrameWidth != 256, $"{At(r.Wrap, 3, 58):X6}");
+        }
         r = new MdRig(chip); r.Color(0, 0); r.Color(1, 0x00E); r.Tile(1, 1);
         for (int row = 0; row < 30; row++) for (int col = 2; col < 30; col++) r.Cell(MdRig.PlaneA, 64, row, col, 1);
         r.Regs(0x04, 0x4C, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, 0x00, 0x3F, 0, 0x02, 0x01, 0, 0);
         r.Go();
         mm = Mm(r.Wrap, tag);
-        Check($"{tag}: a 240-line picture shows its middle 224 lines", r.Wrap.Region == (0, 8, 256, 224) && mm == 0, $"{r.Wrap.Region} {mm} pixels differ");
+        Check(layered ? $"{tag}: a 240-line picture is drawn whole (256 x 240), as the VDP draws it" : $"{tag}: a 240-line picture shows its middle 224 lines",
+            r.Wrap.Region == (layered ? (0, 0, 256, 240) : (0, 8, 256, 224)) && mm == 0 && (!layered || r.Wrap.FrameHeight == 240 && r.Wrap.Counters.Total("lines cropped from the 240-line picture") == 0), $"{r.Wrap.Region} {mm} pixels differ; {r.Wrap.Counters}");
         // shadow/highlight is not drawn, and says so; a Master System compatibility frame is not translated
         r = new MdRig(chip); r.Color(0, 0); r.Tile(1, 1); r.Cell(MdRig.PlaneA, 64, 4, 4, 1);
         r.Regs(0x04, 0x44, 0x30, 0x2C, 0x07, 0x7C, 0, 0x00, 0, 0, 0xFF, 0x00, 0x08, 0x3F, 0, 0x02, 0x01, 0, 0); r.Go();
@@ -563,7 +606,7 @@ internal static class SegaScenes
     /// <summary>The translators' steady-state allocation per frame: synthetic scenes that move every frame (scroll, sprites), then, when game directories are given, real games.</summary>
     public static void Alloc(string[] args)
     {
-        foreach (var chip in new[] { "NES:FIXS", "NES:FIX" })
+        foreach (var chip in new[] { "NES:FIXS", "NES:DMGS", "NES:FIX" })      // the two enhanced chips (FIX, Game Boy) draw the layers themselves: nothing a frame either
         {
             double[] sms = new double[2], gg = new double[2];
             for (int pass = 0; pass < 2; pass++)
@@ -659,9 +702,9 @@ internal static class SegaScenes
         long frames0 = r.Inner.Board.Frames;
         Check("it swaps to a NES chip in place (the board goes on)", r.Wrap.TrySwapCore(CoreSlot.Ppu, "NES:FIXS") && r.Wrap.Bridged);
         r.Frames(2);
-        Check("... the picture is the NES's 256x240 and the board's frame counter kept counting", r.Wrap.FrameWidth == 256 && r.Wrap.FrameHeight == 240 && r.Wrap.DisplayWidth == 256 && r.Inner.Board.Frames >= frames0 + 2, $"{r.Inner.Board.Frames} vs {frames0}");
+        Check("... the picture is the Master System's own 256x192 (the enhanced chip) and the board's frame counter kept counting", r.Wrap.FrameWidth == 256 && r.Wrap.FrameHeight == 192 && r.Wrap.DisplayWidth == 256 && r.Wrap.GuestSize && r.Inner.Board.Frames >= frames0 + 2, $"{r.Wrap.FrameWidth}x{r.Wrap.FrameHeight}; {r.Inner.Board.Frames} vs {frames0}");
         Check("... the description names the chip and carries the counters", r.Wrap.Description.Contains("PICTURE NES:FIXS") && r.Wrap.Description.Contains("["), r.Wrap.Description.Split('|').Last());
-        Check("... it is a picture bridge with a name and a reference to compare with", r.Wrap.BridgeName == "Master System on NES:FIXS" && r.Wrap.ReferenceCanvas.Length == 256 * 240);
+        Check("... it is a picture bridge with a name and a reference to compare with", r.Wrap.BridgeName == "Master System on NES:FIXS" && r.Wrap.ReferenceCanvas.Length >= r.Wrap.CanvasWidth * r.Wrap.CanvasHeight && r.Wrap.CanvasWidth == 256 && r.Wrap.CanvasHeight == 192);
         Check("... through the NES onto the Game Boy chip too", r.Wrap.TrySwapCore(CoreSlot.Ppu, "NES:DMG") && Run3(r) && r.Wrap.Bridged);
         Check("... and back to the console's own chip", r.Wrap.TrySwapCore(CoreSlot.Ppu, "SMS") && !r.Wrap.Bridged && r.Wrap.FrameHeight == 192);
         Check("a chip that is not on the menu is refused (the app then restarts the game on it and says why), not replaced", !r.Wrap.TrySwapCore(CoreSlot.Ppu, "NES:NOPE") && !r.Wrap.TrySwapCore(CoreSlot.Ppu, "NOPE") && !r.Wrap.Bridged);
@@ -698,7 +741,7 @@ internal static class SegaScenes
             {
                 if (script.TryGetValue(f - 1, out var h)) held = h;
                 s.SetPad(0, held); s.RunFrame(); while (s.ReadSamples(buf) > 0) { }
-                if (f > 60 && f % 20 == 0) fid.Add(PictureMetrics.Compare(info.ReferenceCanvas, info.BridgeCanvas, 256, info.Region.X, info.Region.Y, info.Region.W, info.Region.H));
+                if (f > 60 && f % 20 == 0) fid.Add(PictureMetrics.Compare(info.ReferenceCanvas, info.BridgeCanvas, info.CanvasWidth, info.Region.X, info.Region.Y, info.Region.W, info.Region.H));
             }
             double ssim = fid.Average(x => x.Ssim);
             Check($"{Consoles.DisplayName(console)} {Path.GetFileNameWithoutExtension(file)} on {chip}: recognisable and tracked ({fid.Count} samples)", ssim >= minSsim && fid.Count(x => x.Ssim >= 0.5) >= fid.Count * 0.8, $"SSIM {ssim:F3} (worst {fid.Min(x => x.Ssim):F3}); {info.Counters.Summary(3)}");

@@ -20,7 +20,7 @@
          leaves the count 2.
 
     SWAP  (in the switch-ON run) for each of the three consoles, through the desktop's own swap (POST /api/console/core/{slot}/{id}, the call the PPU and APU menus
-         make): the picture chip goes to NES:FIXS (the bridge: a 256x240 NES picture, different from the native one, the status naming the bridge) and back (the
+         make): the picture chip goes to NES:FIXS (the bridge onto the enhanced NES chip: the console's own picture size in the NES chip's colours, different from the native one, the status naming the bridge; NES:FIX, the stock chip: a 256x240 NES picture) and back (the
          console's own picture again, the same pixels), the program still answers the pad on the NES chip and after the swap back; the sound unit goes to NES:FIXS
          and back (Master System and Game Gear in place, the status note empty; the Genesis restarts the game and the note says why, "sound unit"); an id the menu
          does not list is refused and nothing changes. One more check drives the real PPU menu of the Master System through UI Automation (PPU > the NES:FIXS entry)
@@ -363,7 +363,7 @@ try {
         }
     }
     # ---- core swaps, all three consoles, through the desktop's own swap (POST /api/console/core/{slot}/{id}, the call the PPU and APU menus make) ----
-    # The picture chip goes to NES:FIXS (the bridge: a 256x240 NES picture of the Sega game) and back; the sound unit goes to NES:FIXS and back. A swap that can be done in place leaves the game running
+    # The picture chip goes to NES:FIXS (the bridge onto the enhanced NES chip: the Sega game's picture at its own size, in the NES chip's colours) and back; the sound unit goes to NES:FIXS and back. A swap that can be done in place leaves the game running
     # (the program still answers the pad), one that cannot restarts the game and the status note says why; an id the menu does not list is refused and nothing changes.
     $swapSet = @(
         @{ Key = 'sms'; File = 'smoke.sms'; OwnPpu = 'SMS'; OwnApu = 'SMS'; ApuInPlace = $true;  Pad = @('Right') },
@@ -383,9 +383,13 @@ try {
         if ($s0.ppu -ne $e.OwnPpu -or $s0.apu -ne $e.OwnApu -or $s0.pictureBridge) { Write-Host "[WARN] ${k}: could not start from the console's own cores: ppu=$($s0.ppu) apu=$($s0.apu) bridge=[$($s0.pictureBridge)]" }
         # --- the picture chip out: the NES chip draws the game
         $r = Set-ConsoleCore $id 'ppu' 'NES:FIXS'
-        $b = Wait-Frame $id { param($x) $x.Width -eq 256 -and $x.Height -eq 240 -and $x.NonBlackPct -ge 5 } 14
+        $b = Wait-Frame $id { param($x) $x.Width -eq $base.Width -and $x.Height -eq $base.Height -and $x.NonBlackPct -ge 5 -and $x.Hash -ne $base.Hash } 14
         $s = Get-ConsoleStatus $id
-        Check "${k}_swap_ppu_to_nes_fixs" ([bool]$r.success -and $s.ppu -eq 'NES:FIXS' -and "$($s.pictureBridge)" -like '*NES:FIXS*' -and $b.Width -eq 256 -and $b.Height -eq 240 -and $b.NonBlackPct -ge 5 -and $b.Hash -ne $base.Hash -and -not $s.note) "success=$($r.success) ppu=$($s.ppu) bridge=[$($s.pictureBridge)] picture $($b.Width)x$($b.Height) $($b.NonBlackPct)% non-black, differs from the native one: $($b.Hash -ne $base.Hash); note=[$($s.note)]"
+        Check "${k}_swap_ppu_to_nes_fixs" ([bool]$r.success -and $s.ppu -eq 'NES:FIXS' -and "$($s.pictureBridge)" -like '*NES:FIXS*' -and $b.Width -eq $base.Width -and $b.Height -eq $base.Height -and $b.NonBlackPct -ge 5 -and $b.Hash -ne $base.Hash -and -not $s.note) "success=$($r.success) ppu=$($s.ppu) bridge=[$($s.pictureBridge)] picture $($b.Width)x$($b.Height) (the console's own size, $($base.Width)x$($base.Height), on the enhanced chip) $($b.NonBlackPct)% non-black, differs from the native one: $($b.Hash -ne $base.Hash); note=[$($s.note)]"
+        # the stock NES chip draws a NES picture (256x240) instead
+        $r = Set-ConsoleCore $id 'ppu' 'NES:FIX'
+        $bs = Wait-Frame $id { param($x) $x.Width -eq 256 -and $x.Height -eq 240 -and $x.NonBlackPct -ge 5 } 14
+        Check "${k}_swap_ppu_to_nes_fix_is_a_nes_picture" ([bool]$r.success -and $bs.Width -eq 256 -and $bs.Height -eq 240) "success=$($r.success) picture $($bs.Width)x$($bs.Height)"
         # --- and back: the console's own chip again, the same picture (the program was only waiting)
         $r = Set-ConsoleCore $id 'ppu' $e.OwnPpu
         $back = Wait-Frame $id { param($x) $x.Width -eq $base.Width -and $x.Height -eq $base.Height -and $x.Hash -eq $base.Hash } 14
@@ -393,7 +397,7 @@ try {
         Check "${k}_swap_ppu_back_restores_the_picture" ([bool]$r.success -and $s.ppu -eq $e.OwnPpu -and -not $s.pictureBridge -and $back.Width -eq $base.Width -and $back.Hash -eq $base.Hash) "success=$($r.success) ppu=$($s.ppu) bridge=[$($s.pictureBridge)] picture $($back.Width)x$($back.Height), the one from before the swap: $($back.Hash -eq $base.Hash) (before $($base.Hash.Substring(0, 8)) after $($back.Hash.Substring(0, 8)))"
         # --- the game keeps running through it: on the NES chip and on the way back the program still answers the pad
         Set-ConsoleCore $id 'ppu' 'NES:FIXS' | Out-Null
-        Wait-Frame $id { param($x) $x.Width -eq 256 -and $x.Height -eq 240 } 14 | Out-Null; Start-Sleep -Milliseconds 500
+        Wait-Frame $id { param($x) $x.Width -eq $base.Width -and $x.Height -eq $base.Height -and $x.Hash -ne $base.Hash } 14 | Out-Null; Start-Sleep -Milliseconds 500
         $movedBridged = Test-InputChangesPicture $id (Get-Frame $id) -Button $e.Pad -Seconds 10
         Set-ConsoleCore $id 'ppu' $e.OwnPpu | Out-Null
         Wait-Frame $id { param($x) $x.Width -eq $base.Width -and $x.Height -eq $base.Height } 14 | Out-Null; Start-Sleep -Milliseconds 500
@@ -452,11 +456,11 @@ try {
             }
         }
         $stillFront = [SmokeWin]::GetForegroundWindow() -eq (Get-Process -Id $id).MainWindowHandle
-        $bm = Wait-Frame $id { param($x) $x.Width -eq 256 -and $x.Height -eq 240 } 14
+        $bm = Wait-Frame $id { param($x) $x.Width -eq $baseUi.Width -and $x.Height -eq $baseUi.Height -and $x.Hash -ne $baseUi.Hash } 14
         $s = Get-ConsoleStatus $id
         if (-not $clicked -and -not $stillFront) { NotRun 'ui_ppu_menu_swaps_the_picture' "the app lost the foreground to [$([SmokeWin]::Title())] before the menu could be driven" }
         else {
-            Check 'ui_ppu_menu_swaps_the_picture' ($clicked -and $s.ppu -eq 'NES:FIXS' -and "$($s.pictureBridge)" -like '*NES:FIXS*' -and $bm.Width -eq 256 -and $bm.Height -eq 240 -and $bm.Hash -ne $baseUi.Hash) "menu item [$itemName] invoked=$clicked; ppu=$($s.ppu) bridge=[$($s.pictureBridge)] picture $($bm.Width)x$($bm.Height), differs from the native one: $($bm.Hash -ne $baseUi.Hash)"
+            Check 'ui_ppu_menu_swaps_the_picture' ($clicked -and $s.ppu -eq 'NES:FIXS' -and "$($s.pictureBridge)" -like '*NES:FIXS*' -and $bm.Width -eq $baseUi.Width -and $bm.Height -eq $baseUi.Height -and $bm.Hash -ne $baseUi.Hash) "menu item [$itemName] invoked=$clicked; ppu=$($s.ppu) bridge=[$($s.pictureBridge)] picture $($bm.Width)x$($bm.Height) (the Master System's own size on the enhanced chip), differs from the native one: $($bm.Hash -ne $baseUi.Hash)"
         }
         Set-ConsoleCore $id 'ppu' 'SMS' | Out-Null     # leave the console on its own chip
     }

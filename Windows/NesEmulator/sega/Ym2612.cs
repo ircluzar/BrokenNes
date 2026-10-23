@@ -918,11 +918,12 @@ public sealed partial class Ym2612 : IHubVoiceSource
                 }
             }
             bool silent = !keyed || pan == 0 || (ch == 5 && dacEnable) || (MuteMask >> ch & 1) != 0;
-            voices[ch] = new HubVoice(HubVoiceKind.Pulse, silent ? 0 : hz, silent ? 0f : (float)Math.Min(1.0, level), Duty: 2);
+            voices[ch] = new HubVoice(HubVoiceKind.Pulse, silent ? 0 : hz, silent ? 0f : (float)Math.Min(1.0, level), Duty: 2, Pan: HubVoice.PanOf((pan & 2) != 0, (pan & 1) != 0));
         }
         float dac = dacEnable && (MuteMask >> 6 & 1) == 0 ? dacSwing : 0f;
         dacSwing = 0f;
-        voices[Channels] = new HubVoice(HubVoiceKind.Noise, 4000.0, dac, ShortNoise: false);
+        int dacPan = regs[0xB4 + 0x102] >> 6 & 3;      // the DAC plays through channel 6's output and its pan bits
+        voices[Channels] = new HubVoice(HubVoiceKind.Noise, 4000.0, dac, ShortNoise: false, Pan: HubVoice.PanOf((dacPan & 2) != 0, (dacPan & 1) != 0));
         return VoiceCount;
     }
 

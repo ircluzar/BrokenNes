@@ -66,7 +66,7 @@ internal static class MixLabCli
     private static int RunNes(Func<string, string, string> opt)
     {
         string rom = opt("rom", ""), outDir = opt("out-dir", "."), tag = opt("tag", "mix");
-        MixConfig.SnesCpu = opt("snes-cpu", "SFC"); MixConfig.SnesPpu = opt("snes-ppu", "SFC"); MixConfig.NesFrontPpu = opt("nes-front", "FIX"); MixConfig.SnesApu = opt("snes-apu", "SFC"); MixConfig.NesFrontApu = opt("nes-front-apu", "FIX"); MixConfig.GbPpuModel = opt("gb-model", "dmg"); MixConfig.ExtSpriteLimit = int.Parse(opt("ext-sprites", "1024")); MixConfig.ExtSpritesPerLine = int.Parse(opt("ext-sprites-per-line", "34")); { var rs = opt("gb-res", "256x240").Split('x'); MixConfig.GbHiResWidth = int.Parse(rs[0]); MixConfig.GbHiResHeight = int.Parse(rs[1]); } { var cr = opt("gb-crop", "48,48").Split(','); MixConfig.GbCropX = int.Parse(cr[0]); MixConfig.GbCropY = int.Parse(cr[1]); } MixConfig.GbApu = opt("gb-apu", "GB");
+        MixConfig.SnesCpu = opt("snes-cpu", "SFC"); MixConfig.SnesPpu = opt("snes-ppu", "SFC"); MixConfig.NesFrontPpu = opt("nes-front", "FIX"); MixConfig.SnesApu = opt("snes-apu", "SFC"); MixConfig.NesFrontApu = opt("nes-front-apu", "FIX"); MixConfig.GbPpuModel = opt("gb-model", "dmg"); MixConfig.ExtSpriteLimit = int.Parse(opt("ext-sprites", "1024")); MixConfig.ExtSpritesPerLine = int.Parse(opt("ext-sprites-per-line", "34")); { var cr = opt("gb-crop", "48,48").Split(','); MixConfig.GbCropX = int.Parse(cr[0]); MixConfig.GbCropY = int.Parse(cr[1]); } MixConfig.GbApu = opt("gb-apu", "GB");
         int frames = int.Parse(opt("frames", "600"));
         if (opt("snes-fastpaths", "1") == "0") NesEmulator.Snes.PPU_SFC.FastPaths = false;
         var pngAt = Frames(opt("png-at", frames.ToString()));
@@ -128,7 +128,7 @@ internal static class MixLabCli
     // ------------------------------------------------------------------ SNES game, downgraded onto NES PPUs
     private static int RunSnes2Nes(Func<string, string, string> opt)
     {
-        MixConfig.GbPpuModel = opt("gb-model", "dmg"); MixConfig.ExtSpriteLimit = int.Parse(opt("ext-sprites", "1024")); MixConfig.ExtSpritesPerLine = int.Parse(opt("ext-sprites-per-line", "34")); { var rs = opt("gb-res", "256x240").Split('x'); MixConfig.GbHiResWidth = int.Parse(rs[0]); MixConfig.GbHiResHeight = int.Parse(rs[1]); } { var cr = opt("gb-crop", "48,48").Split(','); MixConfig.GbCropX = int.Parse(cr[0]); MixConfig.GbCropY = int.Parse(cr[1]); }
+        MixConfig.GbPpuModel = opt("gb-model", "dmg"); MixConfig.ExtSpriteLimit = int.Parse(opt("ext-sprites", "1024")); MixConfig.ExtSpritesPerLine = int.Parse(opt("ext-sprites-per-line", "34")); { var cr = opt("gb-crop", "48,48").Split(','); MixConfig.GbCropX = int.Parse(cr[0]); MixConfig.GbCropY = int.Parse(cr[1]); }
         string rom = opt("rom", ""), outDir = opt("out-dir", "."), tag = opt("tag", Path.GetFileNameWithoutExtension(rom));
         int frames = int.Parse(opt("frames", "600"));
         if (opt("snes-fastpaths", "1") == "0") NesEmulator.Snes.PPU_SFC.FastPaths = false;
@@ -153,8 +153,8 @@ internal static class MixLabCli
             SaveArgb(snesPpu.FrameBuffer, 256, snesPpu.VisibleHeight, Path.Combine(outDir, $"{tag}_f{f:D5}_snes.png"));
             foreach (var (id, down) in downs)
             {
-                var fb = down.Render(snesPpu, mid);
-                SaveRgba(fb, 256, 240, Path.Combine(outDir, $"{tag}_f{f:D5}_nes-{id}.png"));
+                var pic = down.Render(snesPpu, mid);
+                SaveRgba(pic.ToRgba(), pic.Width, pic.Height, Path.Combine(outDir, $"{tag}_f{f:D5}_nes-{id}.png"));
                 Console.WriteLine($"f{f} {id}: {down.Last} | mid={(mid != null ? "line112" : "END-OF-FRAME")} inidisp=${(mid ?? snesPpu.Snapshot()).Inidisp:X2}");
             }
         }

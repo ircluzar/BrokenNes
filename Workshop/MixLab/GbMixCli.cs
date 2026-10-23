@@ -69,8 +69,8 @@ internal static class GbMixCli
             if (targets.Any(t => t.Equals("GB", StringComparison.OrdinalIgnoreCase))) MixLabCli.SaveArgb(board.Ppu.FrameBuffer, 160, 144, stem + "_gb.png");
             foreach (var n in nes)
             {
-                var rgba = n.Render(board, cap);
-                MixLabCli.SaveRgba(rgba, 256, 240, $"{stem}_nes-{n.PpuId}.png");
+                var pic = n.Render(board, cap);
+                MixLabCli.SaveRgba(pic.ToRgba(), pic.Width, pic.Height, $"{stem}_nes-{n.PpuId}.png");
                 Console.WriteLine($"f{f} NES:{n.PpuId}: {n.Stats}");
             }
             foreach (var s in snes)

@@ -37,30 +37,31 @@ public class PPU_DMG : IPPU, IPpuProbe
     private readonly IPPU front;
     private readonly IPpuProbe? probe;
     private readonly IPpuFrameClock? clock;
-    private readonly GbScreen gb;
-    /// <summary>The Game Boy screen size (160x144 on the stock chip, bigger on the enhanced chip).</summary>
-    private readonly int W, H;
-    private readonly bool cgb;
-    private readonly byte[] frame = new byte[256 * 240 * 4];
+    /// <summary>The stock Game Boy chip (null on the enhanced bridge, which draws with <see cref="PPU_DMGS"/>'s PPU_GBE).</summary>
+    private readonly PPU_GB? gb;
+    /// <summary>The window the chip sees of the NES screen: 160x144 on the stock chip, the whole 256x240 on the enhanced one.</summary>
+    private protected readonly int W, H;
+    private protected readonly bool cgb;
+    private protected readonly byte[] frame = new byte[256 * 240 * 4];
     private byte ctrl, oamAddr;
     private readonly byte[] oam = new byte[256];
-    private readonly int[] lineX = new int[240], lineY = new int[240];
-    private readonly byte[] lineMask = new byte[240];
-    private readonly byte[] chr = new byte[0x2000], nt = new byte[0x1000], pal = new byte[32], frameOam = new byte[256];
-    private byte frameCtrl;
+    private protected readonly int[] lineX = new int[240], lineY = new int[240];
+    private protected readonly byte[] lineMask = new byte[240];
+    private protected readonly byte[] chr = new byte[0x2000], nt = new byte[0x1000], pal = new byte[32], frameOam = new byte[256];
+    private protected byte frameCtrl;
     private int lastLine = -1;
     private readonly Func<ushort, byte> busRead;
-    /// <summary>Top-left of the W x H window the Game Boy sees of the 256x240 NES screen (MixConfig.GbCrop).</summary>
+    /// <summary>Top-left of the W x H window the Game Boy sees of the 256x240 NES screen (MixConfig.GbCrop; 0, 0 on the enhanced chip).</summary>
     private readonly int cx, cy;
     private PpuSharedState? st;
 
-    public PPU_DMG(Bus bus) : this(bus, PPU_GB.Width, PPU_GB.Height) { }
+    public PPU_DMG(Bus bus) : this(bus, enhanced: false) { }
 
-    protected PPU_DMG(Bus bus, int gbWidth, int gbHeight, string? frontId = null, bool enhanced = false)
+    private protected PPU_DMG(Bus bus, bool enhanced)
     {
         this.bus = bus;
-        W = gbWidth; H = gbHeight;
-        frontId ??= MixConfig.NesFrontPpu;
+        W = enhanced ? 256 : PPU_GB.Width; H = enhanced ? 240 : PPU_GB.Height;
+        string frontId = MixConfig.NesFrontPpu;
         var t = CoreRegistry.PpuTypes.TryGetValue(frontId, out var ft) ? ft : throw new ArgumentException($"No NES PPU '{frontId}'");
         front = CoreRegistry.CreateInstance<IPPU>(t, bus) ?? throw new InvalidOperationException("front PPU");
         probe = front as IPpuProbe;
@@ -68,20 +69,21 @@ public class PPU_DMG : IPPU, IPpuProbe
         if (probe == null && (!MixConfig.RescueFront || clock == null))
             throw new NotSupportedException($"NES PPU {frontId} has no IPpuProbe - it cannot front a Game Boy PPU");
         busRead = probe != null ? probe.ProbePpuBusRead : StateRead;
-        cx = Math.Clamp(MixConfig.GbCropX, 0, 256 - W); cy = Math.Clamp(MixConfig.GbCropY, 0, 240 - H);
+        cx = enhanced ? 0 : Math.Clamp(MixConfig.GbCropX, 0, 256 - W); cy = enhanced ? 0 : Math.Clamp(MixConfig.GbCropY, 0, 240 - H);
         // Game Boy Color: asked for directly (MixConfig), or by the Game Boy look.
         cgb = MixConfig.GbPpuModel.Equals("cgb", StringComparison.OrdinalIgnoreCase) || GbLook.Color;
-        gb = GbScreen.Create(cgb ? GbModel.Cgb : GbModel.Dmg, W, H, enhanced);
-        gb.LineStarted += OnGbLine;
+        if (!enhanced)
+        {
+            gb = new PPU_GB(cgb ? GbModel.Cgb : GbModel.Dmg) { CompatMode = false };
+            gb.ResetPostBoot();
+            gb.LineStarted += OnGbLine;
+        }
         rowChrs = new byte[Math.Max(1, H / 8)][];
         for (int i = 0; i < rowChrs.Length; i++) rowChrs[i] = new byte[0x2000];
     }
 
-    /// <summary>The NES front chip when it is a PPU_FIXS, whose cross-console layers the enhanced chip carries over.</summary>
-    public PPU_FIXS? LayerFront => front as PPU_FIXS;
-
-    public string CoreName => $"DMG{(gb.Enhanced != null ? $"S {W}x{H}" : "")}:{(cgb ? "CGB" : "DMG")}+{front.CoreName}";
-    public string Description => gb.Enhanced != null ? "MIX LAB: the enhanced Game Boy picture chip drawing a NES game whole (and the cross-console layers)" : "MIX LAB: a Game Boy PPU drawing the middle of a NES game";
+    public virtual string CoreName => $"DMG:{(cgb ? "CGB" : "DMG")}+{front.CoreName}";
+    public virtual string Description => "MIX LAB: the stock Game Boy picture chip drawing the middle 160x144 of a NES game";
     public int Performance => 0;
     public int Rating => 1;
     public string Category => "Experimental";
@@ -200,7 +202,7 @@ public class PPU_DMG : IPPU, IPpuProbe
     }
 
     private void SnapshotChr() { for (int i = 0; i < 0x2000; i++) chr[i] = busRead((ushort)i); }
-    private readonly byte[][] rowChrs;
+    private protected readonly byte[][] rowChrs;
     /// <summary>Distinct background tile patterns the last frame needed (over 256 = some cells show wrong tiles).</summary>
     public int BgSlotsUsed;
     private void SnapshotRow(int group) { if (group < rowChrs.Length) { var dst = rowChrs[group]; for (int i = 0; i < 0x2000; i++) dst[i] = busRead((ushort)i); } }
@@ -241,9 +243,9 @@ public class PPU_DMG : IPPU, IPpuProbe
     /// <summary>A NES colour's Game Boy shade by its brightness (as the PPU_FIX family draws the colour).</summary>
     private static byte ShadeOfNes(int nesColour) => GbColour.ShadeOf((uint)NesFixPalette.Rgb(nesColour));
 
-    private void PresentFrame()
+    private protected virtual void PresentFrame()
     {
-        var vram = gb.Vram;
+        var gb = this.gb!; var vram = gb.Vram;
         int bgTable = (frameCtrl & 0x10) != 0 ? 0x1000 : 0;
         bool dmg = !cgb, legacy = dmg && IndexShadesForTests;
         // ---- which NES tile each Game Boy map cell shows: each Game Boy line's NES row lands in map row (Y >> 3) & 31, its columns at (X >> 3) & 31;
@@ -335,10 +337,9 @@ public class PPU_DMG : IPPU, IPpuProbe
         }
         gb.Bgp = LastBgp; gb.Obp0 = LastObp0; gb.Obp1 = LastObp1;
         if (!cgb) for (int i = 0; i < 4; i++) gb.DmgColors[i] = GbLook.Argb(i);   // the chosen look, live
-        CarryLayers();
         // Draw one Game Boy frame (SCX/SCY are set per line in OnGbLine).
         long target = gb.FrameCount + 1; int guard = 0;
-        int guardMax = gb.FrameDots / 2;   // two frames' worth of 4-dot ticks
+        int guardMax = PPU_GB.DotsPerLine * PPU_GB.Lines / 2;   // two frames' worth of 4-dot ticks
         while (gb.FrameCount < target && guard++ < guardMax) gb.Tick(4);
         // Present: the Game Boy screen centred where it came from, a dark bezel around it.
         var src = gb.FrameBuffer;
@@ -483,23 +484,9 @@ public class PPU_DMG : IPPU, IPpuProbe
         return (BitConverter.ToUInt64(recoded, 0), BitConverter.ToUInt64(recoded, 8));
     }
 
-    /// <summary>
-    /// PPU_DMGS: the NES front chip's cross-console picture (PPU_FIXS.Ext) shown by the enhanced Game Boy chip (PPU_GBE) too - the
-    /// same <see cref="ExtPicture"/>, seen through the window, the Game Boy chip turning it into its own colours (shades by brightness,
-    /// or CGB colours) with the Game Boy look's inversions.
-    /// </summary>
-    private void CarryLayers()
-    {
-        var dst = gb.Enhanced; var src = LayerFront;
-        if (dst == null) return;
-        if (src != null) src.ExtCompose = false;   // its NES picture is not shown: the Game Boy chip draws the extension
-        dst.Ext = src?.Ext;
-        dst.ExtOffsetX = cx; dst.ExtOffsetY = cy - (src?.ExtLineOffset ?? 8);
-        dst.ExtInvertBackground = GbLook.InvertBackground; dst.ExtInvertSprites = GbLook.InvertSprites;
-    }
-
     private void OnGbLine(int l)
     {
+        var gb = this.gb!;
         int L = l + cy, X0 = (lineX[L] + cx) & 511, Y = lineY[L] & 511;
         gb.Scx = (byte)(X0 & 255); gb.Scy = (byte)((Y - l) & 255);
         byte mask = lineMask[L];
@@ -508,13 +495,59 @@ public class PPU_DMG : IPPU, IPpuProbe
 }
 
 /// <summary>
-/// MIX LAB: the Game Boy picture chip, ENHANCED - <see cref="PPU_DMG"/> on the enhanced Game Boy chip PPU_GBE, fronted by the NES chip PPU_FIXS
-/// (FIX enhanced): the whole picture (256x240 by default; --gb-res WxH picks another, 160-256 x 144-240) instead of the stock chip's middle
-/// 160x144, and a game translated through the NES (SNES, Master System, Game Gear, Genesis) keeps its layers and all its sprites on the Game
-/// Boy too, within Game Boy shades or CGB colours. Discovered by CoreRegistry as PPU id "DMGS" (it replaced "DMGX", the big screen without
-/// the layers, on 2026-10-22: a stored DMGX is moved here by <see cref="CoreRegistry.MigratePpuId"/>).
+/// MIX LAB: the Game Boy picture chip, ENHANCED (PPU id "DMGS", "Game Boy (enhanced)"): the enhanced Game Boy chip PPU_GBE drawing the cross-console layers at the
+/// guest's own size, in Game Boy shades by brightness or CGB colours, with the Game Boy look's inversions.
+/// <list type="bullet">
+/// <item>A NES game on the NES board: the NES picture (a NES PPU core in front for the registers, timing, NMI and sprite-0 hit, as on the stock bridge) becomes
+/// one layer and its sprites (<see cref="NesToLayers"/>) and is drawn whole, 256 x 240 - the full 2 x 2 nametable map with each line's scroll, all 64 sprites with the
+/// NES's 8 a line - instead of the stock chip's middle 160 x 144 through the Game Boy's own 32 x 32 map, 256 tiles and 40 objects.</item>
+/// <item>Another console's game (SNES, Master System, Game Gear, Genesis) through the NES: its translator fills <see cref="Layers"/> at the guest's size (up to
+/// 320 x 240) with as many layers as the guest uses and calls <see cref="DrawLayers"/> (<see cref="IEnhancedPictureChip"/>).</item>
+/// </list>
+/// It replaced "DMGX" (the big screen without the layers) on 2026-10-22: a stored DMGX is moved here by <see cref="CoreRegistry.MigratePpuId"/>.
 /// </summary>
-public sealed class PPU_DMGS : PPU_DMG
+public sealed class PPU_DMGS : PPU_DMG, IEnhancedPictureChip
 {
-    public PPU_DMGS(Bus bus) : base(bus, MixConfig.GbHiResWidth, MixConfig.GbHiResHeight, "FIXS", enhanced: true) { }
+    private readonly PPU_GBE chip;
+    private readonly NesToLayers nes = new();
+
+    public PPU_DMGS(Bus bus) : base(bus, enhanced: true) { chip = new PPU_GBE(cgb ? GbModel.Cgb : GbModel.Dmg); }
+
+    public override string CoreName => $"DMGS:{(cgb ? "CGB" : "DMG")}";
+    public override string Description => "MIX LAB: the enhanced Game Boy picture chip: a NES game whole, another console's game at its own size with all its layers, in Game Boy shades or CGB colours";
+
+    /// <summary>The enhanced chip itself (tests).</summary>
+    public PPU_GBE Chip => chip;
+    /// <summary>Background tiles past the layer's 1023 in the NES game's last frame.</summary>
+    public int TileOverflow => nes.TileOverflow;
+
+    public ExtPicture Layers => chip.Layers;
+    public uint[] Picture => chip.FrameBuffer;
+    public int PictureWidth => chip.Width;
+    public int PictureHeight => chip.Height;
+    public string EnhancedName => "Game Boy enhanced";
+    public string ColourLimit => cgb ? "Game Boy Color colours" : "4 Game Boy shades";
+
+    /// <summary>Draws the layers with the Game Boy look of now (its shades, its two inversions).</summary>
+    public void DrawLayers()
+    {
+        if (!cgb) for (int i = 0; i < 4; i++) chip.DmgColors[i] = GbLook.Argb(i);
+        chip.InvertBackground = GbLook.InvertBackground; chip.InvertSprites = GbLook.InvertSprites;
+        chip.ComposeLayers();
+    }
+
+    /// <summary>A NES game: its frame as layers, drawn whole.</summary>
+    private protected override void PresentFrame()
+    {
+        nes.Fill(chip.Layers, nt, pal, rowChrs, chr, frameOam, frameCtrl, lineX, lineY, lineMask);
+        DrawLayers();
+        var src = chip.FrameBuffer; int w = chip.Width, h = chip.Height;
+        for (int y = 0; y < 240; y++)
+            for (int x = 0; x < 256; x++)
+            {
+                int o = (y * 256 + x) * 4;
+                uint c = x < w && y < h ? src[y * w + x] : 0xFF1A1C1Eu;
+                frame[o] = (byte)(c >> 16); frame[o + 1] = (byte)(c >> 8); frame[o + 2] = (byte)c; frame[o + 3] = 255;
+            }
+    }
 }

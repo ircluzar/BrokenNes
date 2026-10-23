@@ -231,7 +231,7 @@ internal static class SessionStateSuite
             // refusals
             var g = Make(); Go(g, 0, 20); byte[] gs = g.SaveState();
             string msg = ""; try { Make(apu: "GBS").LoadState(gs); } catch (InvalidDataException ex) { msg = ex.Message; }
-            yield return new SmsCheck($"Game Boy {inner}: a state of the stock sound unit is refused by a session on the 8-channel unit, naming them", msg.Contains("sound unit") && msg.Contains("GBS"), msg);
+            yield return new SmsCheck($"Game Boy {inner}: a state of the stock sound unit is refused by a session on the enhanced unit (GBS), naming them", msg.Contains("sound unit") && msg.Contains("GBS"), msg);
             msg = ""; try { Make("65816").SaveState(); } catch (NotSupportedException ex) { msg = ex.Message; }
             yield return new SmsCheck($"Game Boy {inner}: a session with the 65816 in the SM83's place says it has no states instead of saving half a machine", msg.Contains("65816"), msg);
             msg = ""; try { ConsoleSessions.Create(ConsoleKind.GameBoy, rom, "GB", "GB", "GB", null, inner).LoadState(SmsSession_DifferentGame()); } catch (InvalidDataException ex) { msg = ex.Message; }

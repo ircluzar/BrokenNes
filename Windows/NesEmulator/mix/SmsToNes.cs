@@ -70,7 +70,8 @@ internal readonly record struct PictureWindow(int X0, int Y0, int W, int H, int 
 /// <summary>
 /// MIX LAB: the Master System / Game Gear -> NES picture bridge. After each frame, what the VDP was programmed to show is turned into what a NES picture chip can draw:
 /// <list type="bullet">
-/// <item><b>Layered path</b> (PPU_FIXS, and the Game Boy bridges fronted by it): the background becomes an extension layer with the chip's own per-line horizontal scroll, vertical scroll, scroll locks and left-column
+/// <item><b>Layered path</b> (the enhanced chips, FIX enhanced and Game Boy enhanced: <see cref="IEnhancedPictureChip"/>), at the console's own size - the Master System's
+/// 256 x 192 (224 or 240 in the taller modes), the Game Gear's 160 x 144 LCD: the background becomes an extension layer with the chip's own per-line horizontal scroll, vertical scroll, scroll locks and left-column
 /// mask; its 4-bit tiles are reduced to 2-bit ones (3 colours + see-through) grouped into 8 palettes by the colours each tile really uses; the 64 sprites become pieces in the chip's own order and under the chip's own
 /// rules (8 a line, the 0xD0 terminator, zoom, tall sprites, the 8-pixel shift), drawn in front of or behind the background tiles that have the priority bit. Backdrop colour is per line.</item>
 /// <item><b>Flat path</b> (every other NES chip): one background (256 tiles, 4 palettes of 3 colours per 16 x 16 block, the NES's single fine scroll), sprites as 8x8 NES sprites (64, the chip enforces 8 a line);
@@ -99,7 +100,7 @@ internal sealed class SmsToNes : IVariantLevels
     private readonly int[][] bgPalette;
     private readonly List<Piece> pieceBuf = new(), itemPiece = new();
     private readonly bool[] seen0 = new bool[32 * 32], seen1 = new bool[32 * 32];
-    private readonly int[] fsLine = new int[ExtPicture.Lines], perLineLayered = new int[ExtPicture.Lines], perLineFlat = new int[240];
+    private readonly int[] fsLine = new int[ExtPicture.MaxLines], perLineLayered = new int[ExtPicture.MaxLines], perLineFlat = new int[240];
     private readonly Dictionary<int, int> cellItem = new(), itemOf = new(), variantUses = new();
     private readonly Dictionary<long, int> pieceItem = new();
     private readonly Dictionary<int, int>[] tileOf = { new(), new() };
@@ -115,35 +116,42 @@ internal sealed class SmsToNes : IVariantLevels
 
     public SmsToNes(string nesPpuId, bool gameGear) { sink = new NesPictureSink(nesPpuId); gg = gameGear; bgPalette = new[] { pal0, pal1 }; }
 
-    public bool Layered => (sink.Ppu as PPU_FIXS ?? (sink.Ppu as PPU_DMG)?.LayerFront) != null;
+    public bool Layered => sink.Enhanced != null;
+    /// <summary>The enhanced chip the layers go to (null on a stock chip): tests read its layers.</summary>
+    internal IEnhancedPictureChip? Enhanced => sink.Enhanced;
+
+    /// <summary>The last picture (the enhanced chip's at the console's size, or the NES chip's 256 x 240).</summary>
+    public BridgeFrame Frame { get; } = new();
 
     private static int Rgb(uint argb) => (int)(argb & 0xFFFFFF);
 
-    /// <summary>The window of the frame: the Master System's whole picture (at most 224 lines, the middle of a 240-line one), or the Game Gear's 160 x 144 LCD.</summary>
+    /// <summary>The window of the frame: the Master System's whole picture (on a NES chip at most 224 lines, the middle of a 240-line one, centred on the NES's 240), or the Game Gear's 160 x 144 LCD.
+    /// On an enhanced chip the window is the picture itself, at the top left: 256 x 192 / 224 / 240, or 160 x 144.</summary>
     public PictureWindow WindowFor(SmsVdp vdp)
     {
         int h = vdp.ActiveHeight;
+        if (Layered) return gg ? new PictureWindow(48, Math.Max(0, (h - 144) / 2), 160, 144, 0, 0) : new PictureWindow(0, 0, 256, Math.Min(h, ExtPicture.MaxLines), 0, 0);
         if (gg) return PictureWindow.Centered(48, Math.Max(0, (h - 144) / 2), 160, 144);
         int vis = Math.Min(h, 224);
         return PictureWindow.Centered(0, (h - vis) / 2, 256, vis);
     }
 
-    /// <summary>Draw the VDP's state as a NES picture; RGBA 256 x 240.</summary>
-    public byte[] Render(SmsVdp vdp, SmsLineCapture cap)
+    /// <summary>Draw the VDP's state on the chip: at the console's size on an enhanced chip, as a NES picture (256 x 240) on a stock one.</summary>
+    public BridgeFrame Render(SmsVdp vdp, SmsLineCapture cap)
     {
         Counters.BeginFrame();
         var win = Window = WindowFor(vdp);
         cap.Complete(vdp.ActiveHeight);
         BuildCanon(vdp.Vram);
         bool mode4 = vdp.Revision != SmsVdpRevision.Tms9918 && (vdp.Regs[0] & 4) != 0;
-        var layered = sink.Ppu as PPU_FIXS ?? (sink.Ppu as PPU_DMG)?.LayerFront;
+        var layered = sink.Enhanced;
         if (!mode4)
         {
             // the TMS9918 modes of the SG-1000 are not translated: say so and show the backdrop, nothing else
             Counters.Add("frames in a TMS9918 graphics mode (not translated)");
-            if (layered != null) { var e0 = layered.Ext ??= new ExtPicture(); e0.BeginFrame(); layered.ExtLineOffset = 8; }
+            if (layered != null) { layered.Layers.BeginFrame(win.W, win.H); layered.Layers.Guest = "TMS9918 mode (not translated)"; layered.DrawLayers(); return Frame.From(layered); }
             scratch.ClearToBlank();
-            return sink.Present(scratch);
+            return Frame.FromRgba(sink.Present(scratch));
         }
         for (int l = 0; l < win.H; l++) if (cap.PaletteHash[win.Y0 + l] != cap.PaletteHash[Math.Min(vdp.ActiveHeight, SmsLineCapture.Lines) - 1]) { Counters.Add("lines drawn with a palette other than the frame's"); }
         return layered != null ? RenderLayered(vdp, cap, win, layered) : RenderFlat(vdp, cap, win);
@@ -246,11 +254,11 @@ internal sealed class SmsToNes : IVariantLevels
     }
 
     // ======================================================================================================================= the layered path
-    private byte[] RenderLayered(SmsVdp vdp, SmsLineCapture cap, PictureWindow win, PPU_FIXS fx)
+    private BridgeFrame RenderLayered(SmsVdp vdp, SmsLineCapture cap, PictureWindow win, IEnhancedPictureChip chip)
     {
-        var e = fx.Ext ??= new ExtPicture();
-        e.BeginFrame();
-        fx.ExtLineOffset = win.OffsetY;
+        var e = chip.Layers;
+        e.BeginFrame(win.W, win.H);
+        e.Guest = gg ? "Game Gear" : "Master System";
         var vram = vdp.Vram;
         int H = vdp.ActiveHeight; bool ext = H != 192;
         int dx = win.Dx, h = win.H;
@@ -300,21 +308,23 @@ internal sealed class SmsToNes : IVariantLevels
             for (int p = 0; p < 4; p++) e.ObjZ[el * 4 + p] = 3;
         }
         // masks: outside the window (and the left-column mask, and the vertical-lock split) hide a layer's pixels
-        HideLayer(L0, false, cap, win, h, dx);
-        if (vlockAny) HideLayer(L1, true, cap, win, h, dx);
+        HideLayer(L0, false, cap, win, h, dx, e.Width);
+        if (vlockAny) HideLayer(L1, true, cap, win, h, dx, e.Width);
+        int W = e.Width;
         for (int el = 0; el < h; el++)
-            for (int x = 0; x < 256; x++)
+            for (int x = 0; x < W; x++)
             {
                 int sx = x + dx;
                 bool hd = HiddenCol(win, sx) || ((cap.R0[win.Y0 + el] & 0x20) != 0 && sx < 8);
-                e.ObjHidden[el * 256 + x] = hd;
+                e.ObjHidden[el * ExtPicture.Stride + x] = hd;
                 if (hd) e.AnyObjHidden = true;
             }
-        // outside the window (the Game Gear's bezel, the lines above and below): black
+        // outside the window (a picture on a canvas bigger than it): black
         for (int el = 0; el < h; el++)
-            for (int x = 0; x < 256; x++) if (HiddenCol(win, x + dx)) { e.Black[el * 256 + x] = true; e.AnyBlack = true; }
+            for (int x = 0; x < W; x++) if (HiddenCol(win, x + dx)) { e.Black[el * ExtPicture.Stride + x] = true; e.AnyBlack = true; }
+        L0.Name = "background"; L1.Name = "vertical-lock columns";
 
-        if (!anyBg) { return Finish(e, 0, 0, 0); }
+        if (!anyBg) { return Finish(e, chip, 0, 0, 0); }
 
         // ---- background tiles: one item per (tile, palette), 3 colours each, 8 palettes of them
         var bgQ = layeredBgQ; bgQ.BeginFrame();
@@ -355,7 +365,7 @@ internal sealed class SmsToNes : IVariantLevels
         {
             // pieces wholly outside the window or off the screen cost nothing
             int ey = p.Y - win.Y0, ex = p.X - dx;
-            if (ey + 8 <= 0 || ey >= h || ex + 8 <= 0 || ex >= 256) continue;
+            if (ey + 8 <= 0 || ey >= h || ex + 8 <= 0 || ex >= W) continue;
             wanted++;
             long key = (long)p.Tile << 4 | (p.Zoom ? (long)(p.Quadrant + 1) : 0);
             if (!pieceItem.TryGetValue(key, out int item))
@@ -399,7 +409,7 @@ internal sealed class SmsToNes : IVariantLevels
         var perLine = perLineLayered; Array.Clear(perLine); int excess = 0;
         foreach (var (p, _) in kept) for (int ln = Math.Max(0, p.Y - win.Y0); ln < Math.Min(h, p.Y - win.Y0 + 8); ln++) perLine[ln]++;
         for (int ln = 0; ln < h; ln++) if (perLine[ln] > e.SpritesPerLine) excess += perLine[ln] - e.SpritesPerLine;
-        return Finish(e, overflow, objTilesOver, excess);
+        return Finish(e, chip, overflow, objTilesOver, excess);
     }
 
     /// <summary>The layered path's background cells that were seen: the tile each shows (one item per tile and palette line), and the variant (tile, palette line, flips) the layer's map will point at.</summary>
@@ -432,28 +442,27 @@ internal sealed class SmsToNes : IVariantLevels
     private static bool HiddenCol(in PictureWindow win, int srcX) => srcX < win.X0 || srcX >= win.X0 + win.W;
 
     /// <summary>The pixels of a layer that the window, the left-column mask and the vertical-lock split hide (the vertical-lock layer holds the columns from 192 on, the other layer is hidden there).</summary>
-    private void HideLayer(ExtPicture.Layer L, bool lockLayer, SmsLineCapture cap, in PictureWindow win, int h, int dx)
+    private void HideLayer(ExtPicture.Layer L, bool lockLayer, SmsLineCapture cap, in PictureWindow win, int h, int dx, int width)
     {
         bool any = false;
         for (int el = 0; el < h; el++)
         {
             int r0 = cap.R0[win.Y0 + el], from = 192 + fsLine[el];
-            for (int x = 0; x < 256; x++)
+            for (int x = 0; x < width; x++)
             {
                 int sx = x + dx;
                 bool hd = HiddenCol(win, sx) || ((r0 & 0x20) != 0 && sx < 8) || (lockLayer ? sx < from : (r0 & 0x80) != 0 && sx >= from);
                 if (hd) any = true;
-                L.Hidden[el * 256 + x] = hd;
+                L.Hidden[el * ExtPicture.Stride + x] = hd;
             }
         }
         L.AnyHidden = any;
     }
 
-    private byte[] Finish(ExtPicture e, int bgOverflow, int objTilesOver, int spriteExcess)
+    private BridgeFrame Finish(ExtPicture e, IEnhancedPictureChip chip, int bgOverflow, int objTilesOver, int spriteExcess)
     {
-        // the native NES picture stays off: only the extension draws
-        scratch.ClearToBlank();
-        var frame = sink.Present(scratch);
+        chip.DrawLayers();
+        var frame = Frame.From(chip);
         Counters.Add("background tiles past the layer's 1023 (wrong tiles shown)", bgOverflow);
         Counters.Add("sprite tiles past the 1024 the extension holds", objTilesOver);
         Counters.Add("sprite pieces over the 8-per-line limit (the chip drops them too)", spriteExcess);
@@ -462,7 +471,7 @@ internal sealed class SmsToNes : IVariantLevels
     }
 
     // ======================================================================================================================= the flat path
-    private byte[] RenderFlat(SmsVdp vdp, SmsLineCapture cap, PictureWindow win)
+    private BridgeFrame RenderFlat(SmsVdp vdp, SmsLineCapture cap, PictureWindow win)
     {
         var c = Counters;
         var vram = vdp.Vram; var pic = scratch; pic.Clear();
@@ -621,7 +630,7 @@ internal sealed class SmsToNes : IVariantLevels
         c.Add("sprite pieces past the NES's 64 (or its 256 sprite tiles)", dropped);
         int crowded = 0; for (int ln = 0; ln < perLine.Length; ln++) if (perLine[ln] > 8) crowded++;
         c.Add("lines with more than 8 sprite pieces (the NES chip drops the rest)", crowded);
-        return sink.Present(pic);
+        return Frame.FromRgba(sink.Present(pic));
     }
 
     private static int VariantKey(Cell cell) => cell.Tile | (cell.Pal2 ? 1 << 9 : 0) | (cell.HFlip ? 1 << 10 : 0) | (cell.VFlip ? 1 << 11 : 0);

@@ -78,7 +78,7 @@ public sealed class BridgeCounters
 
 /// <summary>
 /// What a session or a core exposes when its picture crosses a bridge: a name, the counters, and the two pictures a fidelity measurement compares - the
-/// bridge's own and the source chip's, placed on the same 256x240 canvas.
+/// bridge's own and the source chip's, placed on the same canvas: the NES's 256 x 240 on a stock NES chip, the guest's own picture size on an enhanced chip.
 /// </summary>
 public interface IPictureBridgeInfo
 {
