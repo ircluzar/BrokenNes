@@ -221,10 +221,16 @@ function makeZip(name, data) {
 
 // ------------------------------------------------------------------------------------------------------------- the core pickers
 async function groupPickers() {
+  // since the enhanced cores' phase 3: the console's own enhanced chip (SMSS, GGS, MDS) and the other consoles' enhanced chips reached directly (SNES:SFCS, SMS:SMSS, GG:GGS, MD:MDS)
   const want = {
-    sms: { cpu: ['Z80'], ppu: ['SMS', 'NES:FIXS', 'NES:FIX'], apu: ['SMS', 'SMS-FM', 'NES:FIX'] },
-    gg: { cpu: ['Z80'], ppu: ['GG', 'NES:FIXS', 'NES:FIX'], apu: ['GG', 'NES:FIX'] },
-    md: { cpu: ['M68K'], ppu: ['MD', 'NES:FIXS', 'NES:FIX'], apu: ['MD', 'NES:FIX'] },
+    sms: { cpu: ['Z80'], ppu: ['SMS', 'SMSS', 'NES:FIXS', 'NES:FIX', 'SNES:SFCS', 'MD:MDS'], apu: ['SMS', 'SMS-FM', 'SMSS', 'NES:FIX', 'SNES:SFCS', 'MD:MDS'] },
+    gg: { cpu: ['Z80'], ppu: ['GG', 'GGS', 'NES:FIXS', 'NES:FIX', 'SNES:SFCS', 'MD:MDS'], apu: ['GG', 'GGS', 'NES:FIX', 'SNES:SFCS', 'MD:MDS'] },
+    md: { cpu: ['M68K'], ppu: ['MD', 'MDS', 'NES:FIXS', 'NES:FIX', 'SNES:SFCS', 'SMS:SMSS', 'GG:GGS'], apu: ['MD', 'MDS', 'NES:FIX', 'SNES:SFCS', 'SMS:SMSS', 'GG:GGS'] },
+  };
+  const enhancedLabels = {
+    sms: ['SMSS=Master System (enhanced)', 'SNES:SFCS=SNES (enhanced)', 'MD:MDS=Genesis (enhanced)'],
+    gg: ['GGS=Game Gear (enhanced)', 'SNES:SFCS=SNES (enhanced)', 'MD:MDS=Genesis (enhanced)'],
+    md: ['MDS=Genesis (enhanced)', 'SNES:SFCS=SNES (enhanced)', 'SMS:SMSS=Master System (enhanced)', 'GG:GGS=Game Gear (enhanced)'],
   };
   for (const key of ['sms', 'gg', 'md']) {
     await withLab({}, async lab => {
@@ -237,13 +243,14 @@ async function groupPickers() {
       check('pickers', `${key}: the PPU picker has the console's own chip first, then the other consoles' best chips, then the rest (one group each)`, groups.length === 3 && /\(its own\)/.test(groups[0]) && /^From the other consoles/.test(groups[1]) && /^More/.test(groups[2]), groups.join(' | '));
       const labels = await page.eval(`[...document.querySelectorAll('select[aria-label="Ppu core"] option')].map(o => o.value + '=' + o.text)`);
       check('pickers', `${key}: the stock / enhanced labels (FIX (stock), FIX (enhanced), Game Boy (stock), Game Boy (enhanced))`, ['NES:FIX=FIX (stock)', 'NES:FIXS=FIX (enhanced)', 'NES:DMG=Game Boy (stock)', 'NES:DMGS=Game Boy (enhanced)'].every(p => labels.some(l => l.startsWith(p))), labels.slice(0, 7).join(' | '));
+      check('pickers', `${key}: the enhanced chips of its own and of the other consoles say so (${enhancedLabels[key].map(p => p.split('=')[1]).join(', ')})`, enhancedLabels[key].every(p => labels.some(l => l.startsWith(p))), labels.filter(l => /\(enhanced\)/.test(l)).join(' | '));
     });
   }
   // the NES side lists the Sega chips under their family
   await withLab({}, async lab => {
     const page = await lab.open('/', { timeout: 240000 });
     await page.waitFor("!!document.getElementById('ppuCoreSelect')", 120000);
-    for (const [btn, ids] of [['ppuCoreSelect', ['SMS', 'MD']], ['apuCoreSelect', ['SMS', 'MD']]]) {
+    for (const [btn, ids] of [['ppuCoreSelect', ['SMS', 'MD', 'SNESS', 'SMSS', 'MDS']], ['apuCoreSelect', ['SMS', 'MD', 'SNESS', 'SMSS', 'MDS']]]) {
       await page.eval(`document.getElementById('${btn}').click()`);
       await sleep(500);
       const text = await page.eval(`document.body.innerText`);
@@ -299,6 +306,13 @@ async function groupSwap() {
     await sleep(800);
     const stock = await page.eval(`window.__frames(30)`);
     check('swap', 'Master System: on the stock NES chip FIX the picture is a NES picture (256x240)', stock.w === 256 && stock.h === 240 && stock.withAudio >= 28, `${stock.w}x${stock.h}`);
+    // the other consoles' enhanced chips, reached directly (phase 3): the Master System's own size on each
+    for (const id of ['SNES:SFCS', 'MD:MDS']) {
+      await selectOption(page, 'select[aria-label="Ppu core"]', id);
+      await sleep(800);
+      const e = await page.eval(`window.__frames(30)`);
+      check('swap', `Master System: the picture swaps to ${id} (another console's enhanced chip) at the Master System's own 256x192`, e.w === 256 && e.h === 192 && e.withAudio >= 28 && new Set(e.hashes).size > 1, `${e.w}x${e.h} audio ${e.withAudio}/30`);
+    }
     await selectOption(page, 'select[aria-label="Ppu core"]', 'SMS');
     await sleep(800);
     const back = await page.eval(`window.__frames(30)`);
@@ -319,9 +333,15 @@ async function groupSwap() {
     await sleep(1000);
     const rs = await page.eval(`window.__frames(30)`);
     check('swap', 'Genesis: on the stock NES chip FIX the picture is a NES picture (256x240: the middle 256 columns)', rs.w === 256 && rs.h === 240, `${rs.w}x${rs.h}`);
+    for (const id of ['SNES:SFCS', 'SMS:SMSS', 'GG:GGS']) {
+      await selectOption(page, 'select[aria-label="Ppu core"]', id);
+      await sleep(1000);
+      const e = await page.eval(`window.__frames(30)`);
+      check('swap', `Genesis: the picture swaps to ${id} (another console's enhanced chip), the whole 320x224 shown 320 wide`, e.w === 320 && e.h === 224 && e.aw === 320, `${e.w}x${e.h} shown ${e.aw}`);
+    }
     // the sound unit swaps live (BOARD_MD.SwapSound): the Z80, its RAM and the chips' registers move into the new unit and the game goes on. A swap the session cannot do would restart the game with a message that says why
     // (the page's SetConsoleCoreAsync); no Genesis sound unit refuses any more, so the restart path is not reachable from the menus.
-    for (const id of ['NES:FIX', 'NES:HI2', 'MD']) {
+    for (const id of ['NES:FIX', 'NES:HI2', 'SNES:SFCS', 'SMS:SMSS', 'MDS', 'MD']) {
       await selectOption(page, 'select[aria-label="Apu core"]', id);
       await sleep(1500);
       const st2 = await page.eval(`document.body.innerText`);
