@@ -59,6 +59,11 @@ internal static class EnhancedCoresTestCli
             if (Want("invert")) Guard("invert: upright Game Boy pictures and the inversions on every path", Inversions);
             if (Want("layers")) Guard("layers: one layered picture at the guest's own size and layer count, on both enhanced picture chips", EnhancedContractTests.Layers);
             if (Want("sound")) Guard("sound: one voice list per guest, as many channel banks as its voices need on the enhanced sound chips", EnhancedContractTests.Sound);
+            if (Want("layers3")) Guard("layers3: the SNES, Master System / Game Gear and Genesis enhanced picture chips: every guest at its own size and layer count, in the chip's colours", EnhancedPhase3Tests.Layers);
+            if (Want("sound3")) Guard("sound3: the SNES, Master System / Game Gear and Genesis enhanced sound chips: a channel for every guest voice, the pitch, the pan", EnhancedPhase3Tests.Sound);
+            if (Want("states3")) Guard("states3: save states with the other consoles' enhanced chips (loaded, or refused with the reason)", EnhancedPhase3Tests.States);
+            if (Want("own3")) Guard("own3: a console's own game on its enhanced chips draws and sounds exactly as on the stock chips", EnhancedPhase3Tests.OwnNeutral);
+            if (Want("speed3")) Guard("speed3: frames a second on the enhanced chips of the other consoles (information)", EnhancedPhase3Tests.Speed);
         }
         finally { (GbLook.Palette, GbLook.InvertBackground, GbLook.InvertSprites) = savedLook; PPU_DMG.IndexShadesForTests = false; PPU_GBE.BackdropIgnoresInversionForTests = false; PPU_GBE.IndexShadesForTests = false; }
         Console.WriteLine($"\n{Passes} passed, {Fails} failed");
@@ -114,17 +119,32 @@ internal static class EnhancedCoresTestCli
             var got = CoreCatalog.Options(c, s).Take(ids.Length).Select(o => o.Id).ToArray();
             Check($"{Consoles.DisplayName(c)} {s} begins {string.Join(", ", ids)}", got.SequenceEqual(ids, StringComparer.OrdinalIgnoreCase), string.Join(", ", got));
         }
-        Head(ConsoleKind.Nes, CoreSlot.Ppu, "FIX", "FIXS", "SNES", "DMG", "DMGS", "SMS", "MD");
-        Head(ConsoleKind.Nes, CoreSlot.Apu, "FIX", "FIXS", "SNES", "DMG", "DMGS", "SMS", "SMSFM", "MD");
-        Head(ConsoleKind.Snes, CoreSlot.Ppu, "SFC", "NES:FIX", "NES:FIXS", "NES:DMG", "NES:DMGS", "NES:SMS", "NES:MD");
-        Head(ConsoleKind.Snes, CoreSlot.Apu, "SFC", "NES:FIX", "NES:FIXS", "NES:DMG", "NES:DMGS", "NES:SMS", "NES:SMSFM", "NES:MD");
-        Head(ConsoleKind.GameBoy, CoreSlot.Ppu, "GB", "NES:FIX", "NES:FIXS", "SNES:SFC", "NES:SMS", "NES:MD");
-        Head(ConsoleKind.GameBoy, CoreSlot.Apu, "GB", "GBS", "NES:FIX", "NES:FIXS", "NES:SNES", "NES:SMS", "NES:SMSFM", "NES:MD");
-        Head(ConsoleKind.MasterSystem, CoreSlot.Ppu, "SMS", "NES:FIX", "NES:FIXS", "NES:SNES", "NES:DMG", "NES:DMGS", "NES:MD");
-        Head(ConsoleKind.MasterSystem, CoreSlot.Apu, "SMS", "SMS-FM", "NES:FIX", "NES:FIXS", "NES-FM:FIX", "NES-FM:FIXS", "NES:SNES", "NES:DMG", "NES:DMGS", "NES:MD");
-        Head(ConsoleKind.GameGear, CoreSlot.Ppu, "GG", "NES:FIX", "NES:FIXS", "NES:SNES", "NES:DMG", "NES:DMGS", "NES:MD");
-        Head(ConsoleKind.Genesis, CoreSlot.Ppu, "MD", "NES:FIX", "NES:FIXS", "NES:SNES", "NES:DMG", "NES:DMGS", "NES:SMS");
-        Head(ConsoleKind.Genesis, CoreSlot.Apu, "MD", "NES:FIX", "NES:FIXS", "NES:SNES", "NES:DMG", "NES:DMGS", "NES:SMS", "NES:SMSFM");
+        // phase 3: the other consoles' enhanced chips (after each console's stock chip in its family), the consoles' own enhanced chips after their stock ones; each appears once its chips exist
+        bool snes = EnhancedChips.IsRoute("SNES:SFCS"), sms = EnhancedChips.IsRoute("SMS:SMSS"), gg = EnhancedChips.IsRoute("GG:GGS"), md = EnhancedChips.IsRoute("MD:MDS");
+        string[] H(params string?[] ids) => ids.Where(i => i != null).Select(i => i!).ToArray();
+        Head(ConsoleKind.Nes, CoreSlot.Ppu, H("FIX", "FIXS", "SNES", snes ? "SNESS" : null, "DMG", "DMGS", "SMS", sms ? "SMSS" : null, "MD", md ? "MDS" : null));
+        Head(ConsoleKind.Nes, CoreSlot.Apu, H("FIX", "FIXS", "SNES", snes ? "SNESS" : null, "DMG", "DMGS", "SMS", "SMSFM", sms ? "SMSS" : null, "MD", md ? "MDS" : null));
+        Head(ConsoleKind.Snes, CoreSlot.Ppu, H("SFC", snes ? "SFCS" : null, "NES:FIX", "NES:FIXS", "NES:DMG", "NES:DMGS", "NES:SMS", sms ? "SMS:SMSS" : null, gg ? "GG:GGS" : null, "NES:MD", md ? "MD:MDS" : null));
+        Head(ConsoleKind.Snes, CoreSlot.Apu, H("SFC", snes ? "SFCS" : null, "NES:FIX", "NES:FIXS", "NES:DMG", "NES:DMGS", "NES:SMS", "NES:SMSFM", sms ? "SMS:SMSS" : null, gg ? "GG:GGS" : null, "NES:MD", md ? "MD:MDS" : null));
+        Head(ConsoleKind.GameBoy, CoreSlot.Ppu, H("GB", "NES:FIX", "NES:FIXS", "SNES:SFC", snes ? "SNES:SFCS" : null, "NES:SMS", sms ? "SMS:SMSS" : null, gg ? "GG:GGS" : null, "NES:MD", md ? "MD:MDS" : null));
+        Head(ConsoleKind.GameBoy, CoreSlot.Apu, H("GB", "GBS", "NES:FIX", "NES:FIXS", "NES:SNES", snes ? "SNES:SFCS" : null, "NES:SMS", "NES:SMSFM", sms ? "SMS:SMSS" : null, gg ? "GG:GGS" : null, "NES:MD", md ? "MD:MDS" : null));
+        Head(ConsoleKind.MasterSystem, CoreSlot.Ppu, H("SMS", sms ? "SMSS" : null, "NES:FIX", "NES:FIXS", "NES:SNES", snes ? "SNES:SFCS" : null, "NES:DMG", "NES:DMGS", "NES:MD", md ? "MD:MDS" : null));
+        Head(ConsoleKind.MasterSystem, CoreSlot.Apu, H("SMS", "SMS-FM", sms ? "SMSS" : null, "NES:FIX", "NES:FIXS", "NES-FM:FIX", "NES-FM:FIXS", "NES:SNES", snes ? "SNES:SFCS" : null, "NES:DMG", "NES:DMGS", "NES:MD", md ? "MD:MDS" : null));
+        Head(ConsoleKind.GameGear, CoreSlot.Ppu, H("GG", gg ? "GGS" : null, "NES:FIX", "NES:FIXS", "NES:SNES", snes ? "SNES:SFCS" : null, "NES:DMG", "NES:DMGS", "NES:MD", md ? "MD:MDS" : null));
+        Head(ConsoleKind.Genesis, CoreSlot.Ppu, H("MD", md ? "MDS" : null, "NES:FIX", "NES:FIXS", "NES:SNES", snes ? "SNES:SFCS" : null, "NES:DMG", "NES:DMGS", "NES:SMS", sms ? "SMS:SMSS" : null, gg ? "GG:GGS" : null));
+        Head(ConsoleKind.Genesis, CoreSlot.Apu, H("MD", md ? "MDS" : null, "NES:FIX", "NES:FIXS", "NES:SNES", snes ? "SNES:SFCS" : null, "NES:DMG", "NES:DMGS", "NES:SMS", "NES:SMSFM", sms ? "SMS:SMSS" : null, gg ? "GG:GGS" : null));
+        // the labels of the new entries say "<Console> (enhanced)"
+        foreach (var (c, s, id, name) in new[] { (ConsoleKind.Nes, CoreSlot.Ppu, "SNESS", "SNES"), (ConsoleKind.Genesis, CoreSlot.Ppu, "SNES:SFCS", "SNES"), (ConsoleKind.GameBoy, CoreSlot.Apu, "SNES:SFCS", "SNES"),
+                                               (ConsoleKind.Nes, CoreSlot.Apu, "MDS", "Genesis"), (ConsoleKind.Snes, CoreSlot.Ppu, "MD:MDS", "Genesis"), (ConsoleKind.Snes, CoreSlot.Apu, "SMS:SMSS", "Master System"),
+                                               (ConsoleKind.Genesis, CoreSlot.Ppu, "GG:GGS", "Game Gear"), (ConsoleKind.Snes, CoreSlot.Ppu, "SFCS", "SNES"), (ConsoleKind.Genesis, CoreSlot.Apu, "MDS", "Genesis"),
+                                               (ConsoleKind.MasterSystem, CoreSlot.Ppu, "SMSS", "Master System"), (ConsoleKind.GameGear, CoreSlot.Apu, "GGS", "Game Gear") })
+        {
+            var o = CoreCatalog.Options(c, s).FirstOrDefault(x => x.Id == id);
+            if (o == null) continue;
+            Check($"{Consoles.DisplayName(c)} {s}: {id} is \"{name} (enhanced)\" ({o.Label[..Math.Min(o.Label.Length, 60)]}...)", o.Label.StartsWith($"{name} (enhanced)") && o.Grade == CoreGrade.Enhanced, o.Label);
+        }
+        Check("no menu but the NES's offers the NES board's ids of the other consoles' enhanced chips (SNESS, SMSS, MDS: the other consoles reach those chips directly)",
+            consoles.Where(c => c != ConsoleKind.Nes).All(c => new[] { CoreSlot.Ppu, CoreSlot.Apu }.All(s => CoreCatalog.Options(c, s).All(o => !new[] { "NES:SNESS", "NES:SMSS", "NES:MDS" }.Contains(o.Id, StringComparer.OrdinalIgnoreCase)))));
         // the labels the request gives as examples
         string L(ConsoleKind c, CoreSlot s, string id) => CoreCatalog.Options(c, s).First(o => o.Id == id).Label;
         Check("the NES picture menu says FIX (stock) / FIX (enhanced) / Game Boy (stock) / Game Boy (enhanced)",

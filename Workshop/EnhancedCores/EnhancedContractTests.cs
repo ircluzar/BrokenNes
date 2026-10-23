@@ -42,7 +42,7 @@ internal static class EnhancedContractTests
 
     // ---- SNES: four bands, one per BG (BG1 x 0-63, BG2 64-127, BG3 128-191, BG4 192-255), on a black backdrop
 
-    private static ISnesPpuCore SnesBands(int mode, bool overscan)
+    internal static ISnesPpuCore SnesBands(int mode, bool overscan)
     {
         var sp = SnesCores.CreatePpu("SFC");
         var v = sp.Vram; var cg = sp.Cgram;
@@ -111,7 +111,7 @@ internal static class EnhancedContractTests
 
     // ---- the Genesis: H40 / H32, V30 / V28; column 0 blue, column 39 (H40) or 31 (H32) green, the middle column blue, the rest backdrop
 
-    private static SegaScenes.MdRig MdEdges(string ppu, bool h40, bool v30)
+    internal static SegaScenes.MdRig MdEdges(string ppu, bool h40, bool v30)
     {
         var r = new SegaScenes.MdRig(ppu); r.Color(0, 0); r.Color(1, 0x00E); r.Color(2, 0x0E0); r.Tile(1, 1); r.Tile(2, 2);
         int last = h40 ? 39 : 31;
@@ -179,7 +179,7 @@ internal static class EnhancedContractTests
 
     // ---- a Game Boy game on FIX enhanced: background and window
 
-    private static GbSession GbWindowScene(string ppu, bool window)
+    internal static GbSession GbWindowScene(string ppu, bool window)
     {
         var rom = BrokenNes.Workshop.Corruption.CorruptConsoleChecks.GbRom(false);
         rom[0x150] = 0x18; rom[0x151] = 0xFE;
@@ -297,9 +297,9 @@ internal static class EnhancedContractTests
         Check($"the Game Boy's voice list is its 4 voices, with NR51 as the pan (pulse 1 left only {buf[0].Pan:+0.0;-0.0}, pulse 2 right only {buf[1].Pan:+0.0;-0.0})", gn == 4 && buf[0].Pan == -1f && buf[1].Pan == 1f, $"{gn}");
     }
 
-    private static SmsSoundRequest SmsRequest() => new(new SegaMachine(SegaTimeline.MasterSystem(SegaRegion.Ntsc, ConsoleKind.MasterSystem), GenesisModel.Model1, 44100), ConsoleKind.MasterSystem, PsgVariant.Sega);
+    internal static SmsSoundRequest SmsRequest() => new(new SegaMachine(SegaTimeline.MasterSystem(SegaRegion.Ntsc, ConsoleKind.MasterSystem), GenesisModel.Model1, 44100), ConsoleKind.MasterSystem, PsgVariant.Sega);
 
-    private static byte[] SegaScenesRom()
+    internal static byte[] SegaScenesRom()
     {
         var rom = new byte[0x20000];
         void L(int at, uint v) { rom[at] = (byte)(v >> 24); rom[at + 1] = (byte)(v >> 16); rom[at + 2] = (byte)(v >> 8); rom[at + 3] = (byte)v; }
@@ -311,9 +311,11 @@ internal static class EnhancedContractTests
 
     /// <summary>Pokes <paramref name="voices"/> sounding DSP voices into the bridge's S-DSP: a looped square sample (period 16), voices 0 .. tonal-1 at 220 Hz and up, the last <paramref name="noises"/> of them noise.
     /// Voice 1 left only, voice 2 right only, the others both.</summary>
-    private static void PokeSnesVoices(NesApuOnSnes bridge, int voices, int noises)
+    internal static void PokeSnesVoices(NesApuOnSnes bridge, int voices, int noises) => PokeSnesVoices(bridge.Probe, voices, noises);
+
+    internal static void PokeSnesVoices(ISnesApuProbe probe, int voices, int noises)
     {
-        var r = bridge.Probe.DspRegs; var ar = bridge.Probe.Aram;
+        var r = probe.DspRegs; var ar = probe.Aram;
         Array.Clear(r);
         r[0x5D] = 0x02;                                                                          // the sample directory at $0200
         ar[0x200] = 0x00; ar[0x201] = 0x03; ar[0x202] = 0x00; ar[0x203] = 0x03;                  // sample 0: start and loop at $0300

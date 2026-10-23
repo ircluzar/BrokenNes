@@ -39,6 +39,8 @@ public static class SmsSoundFactories
     /// </summary>
     public static ISmsSound Create(string id, SmsSoundRequest request)
     {
+        // another console's enhanced sound chip, directly (SNES:SFCS, MD:MDS): the PSG's voices on its channels. Looked up before the colon split, so "SMS:..." never falls to the stock unit
+        if (NesEmulator.Systems.CoreCatalog.IsDirectRoute(id)) return new NesEmulator.Mix.SmsSoundOnChip(request, id);
         if (Factories.TryGetValue(id, out var f)) return f(request);
         int colon = id.IndexOf(':');
         if (colon > 0 && Factories.TryGetValue(id[..colon], out var g)) return g(request with { Detail = id[(colon + 1)..] });
@@ -68,6 +70,8 @@ public static class GenesisSoundFactories
     /// <summary>The unit for <paramref name="id"/>; an unknown id (or an unknown NES chip behind a colon) is an error, never a quiet substitution.</summary>
     public static IGenesisSound Create(string id, SegaMachine machine)
     {
+        // another console's enhanced sound chip, directly (SNES:SFCS, SMS:SMSS, GG:GGS): the Genesis's eleven voices on its channels
+        if (NesEmulator.Systems.CoreCatalog.IsDirectRoute(id)) return new NesEmulator.Mix.MdSoundOnChip(machine, id);
         if (Factories.TryGetValue(id, out var f)) return f(machine);
         int colon = id.IndexOf(':');
         if (colon > 0 && Detailed.TryGetValue(id[..colon], out var g)) return g(machine, id[(colon + 1)..]);

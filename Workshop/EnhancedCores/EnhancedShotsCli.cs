@@ -25,6 +25,7 @@ internal static class EnhancedShotsCli
     {
         RomTestCli.EnsureConsole();
         string Opt(string name, string dflt) { int i = Array.FindIndex(args, a => a.Equals("--" + name, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : dflt; }
+        if (Opt("set", "").Equals("phase3", StringComparison.OrdinalIgnoreCase)) return Phase3(Opt);
         string outDir = Opt("out", "."), label = Opt("label", "shot");
         Directory.CreateDirectory(outDir);
         string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -97,6 +98,99 @@ internal static class EnhancedShotsCli
                 Console.WriteLine($"  {name}: {s.FrameWidth}x{s.FrameHeight} hash={Hash(s.Frame, s.FrameWidth, s.FrameHeight)}");
                 n++;
             }
+        return n;
+    }
+
+    /// <summary>
+    /// <c>--set phase3 [--out dir]</c> (default <c>%LOCALAPPDATA%\VRUN_Nes_Dev_work\enhanced_cores\phase3</c>): a NES, a SNES, a Game Boy, a Master System and a Genesis game on each of the other consoles' enhanced picture chips
+    /// (<c>SNES:SFCS</c>, <c>SMS:SMSS</c>, <c>GG:GGS</c>, <c>MD:MDS</c>; the NES game on the NES board's <c>SNESS</c>, <c>SMSS</c>, <c>MDS</c>) next to the same console's stock chip as the guests reached it before
+    /// (<c>NES:SNES</c>, <c>NES:SMS</c>, <c>NES:MD</c>; the NES game on <c>SNES</c>, <c>SMS</c>, <c>MD</c>), and on its own chip. One frame of each game, the same on every chip.
+    /// </summary>
+    private static int Phase3(Func<string, string, string> Opt)
+    {
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string outDir = Opt("out", System.IO.Path.Combine(local, @"VRUN_Nes_Dev_work\enhanced_cores\phase3"));
+        Directory.CreateDirectory(outDir);
+        var routes = new (string Route, string Family, string? NesId, string Stock)[] { ("SNES:SFCS", "SNES", "SNESS", "NES:SNES"), ("MD:MDS", "Genesis", "MDS", "NES:MD"), ("SMS:SMSS", "Master System", "SMSS", "NES:SMS"), ("GG:GGS", "Master System", null, "NES:SMS") }
+            .Where(r => EnhancedChips.IsRoute(r.Route)).ToArray();
+        var games = new List<Game>
+        {
+            new("nes-smb", ConsoleKind.Nes, Opt("nes", @"X:\EMULATION\Nintendo Entertainment System\Super Mario Bros. (JU) (PRG0) [!].nes"), 400, "100:Start,106:"),
+            new("snes-smw", ConsoleKind.Snes, Opt("snes", @"X:\EMULATION\Super Nintendo\Super Nintendo (U)\Super Mario World (U) [!].smc"), 700, ""),
+            new("gb-kirby", ConsoleKind.GameBoy, Opt("gb", @"X:\EMULATION\GameBoy\Kirby's Dream Land (UE) [!].zip"), 500, "200:Start,210:,300:Start,310:"),
+            new("sms-sonic", ConsoleKind.MasterSystem, Opt("sms", System.IO.Path.Combine(local, @"VRUN_Nes_Dev_work\sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms")), 900, "300:A,310:"),
+            new("md-sonic", ConsoleKind.Genesis, Opt("md", @"X:\EMULATION\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin"), 900, "450:Start,460:"),
+        };
+        int made = 0, failed = 0;
+        foreach (var g in games)
+        {
+            if (!File.Exists(g.Path)) { Console.WriteLine($"SKIP {g.Key}: no ROM at {g.Path}"); continue; }
+            try
+            {
+                if (g.Console == ConsoleKind.Nes)
+                {
+                    var chips = new List<string> { "FIX" };
+                    foreach (var r in routes.Where(r => r.NesId != null)) { chips.Add(r.Stock[4..]); chips.Add(r.NesId!); }
+                    made += NesShots(g, outDir, "phase3", chips.Distinct().ToArray());
+                }
+                else
+                {
+                    var chips = new List<string> { CoreCatalog.Default(g.Console, CoreSlot.Ppu) };
+                    // the stock chip as this console reaches it (the Game Boy reaches the SNES's directly, the Super Game Boy way: SNES:SFC)
+                    foreach (var r in routes.Where(r => r.Family != Consoles.Family(g.Console))) { chips.Add(Consoles.IsGameBoy(g.Console) && r.Family == "SNES" ? "SNES:SFC" : r.Stock); chips.Add(r.Route); }
+                    made += Shots(g, outDir, "phase3", chips.Distinct().Where(c => CoreCatalog.Find(g.Console, CoreSlot.Ppu, c) != null).ToList());
+                }
+            }
+            catch (Exception ex) { failed++; Console.WriteLine($"FAIL {g.Key}: {ex}"); }
+        }
+        Console.WriteLine($"{made} pictures written to {outDir}, {failed} games failed");
+        return failed == 0 ? 0 : 1;
+    }
+
+    /// <summary>One console game to its frame, then the same frame (from a state) on each chip.</summary>
+    private static int Shots(Game g, string outDir, string label, List<string> chips)
+    {
+        GbLook.Palette = GbPaletteChoice.Green; GbLook.InvertBackground = GbLook.InvertSprites = false;
+        byte[] rom = RomDetect.Unwrap(File.ReadAllBytes(g.Path), System.IO.Path.GetFileName(g.Path), out string inner);
+        string own = CoreCatalog.Default(g.Console, CoreSlot.Ppu);
+        using var s = ConsoleSessions.Create(g.Console, rom, CoreCatalog.Default(g.Console, CoreSlot.Cpu), own, CoreCatalog.Default(g.Console, CoreSlot.Apu), null, inner);
+        var script = Script(g.Input); var held = PadButtons.None; var buf = new short[32768];
+        for (int f = 1; f <= g.Frames - 3; f++) { if (script.TryGetValue(f - 1, out var h)) held = h; s.SetPad(0, held); s.RunFrame(); while (s.ReadSamples(buf) > 0) { } }
+        byte[] state = s.SaveState();
+        int n = 0;
+        foreach (var chip in chips)
+        {
+            s.LoadState(state);
+            if (!s.TrySwapCore(CoreSlot.Ppu, chip)) { Console.WriteLine($"  {g.Key}: the PPU menu refused {chip}: {s.SwapRefusal(CoreSlot.Ppu, chip)}"); continue; }
+            for (int f = g.Frames - 2; f <= g.Frames; f++) { s.SetPad(0, held); s.RunFrame(); while (s.ReadSamples(buf) > 0) { } }
+            string name = $"{label}_{g.Key}_{chip.Replace(':', '-').ToLowerInvariant()}.png";
+            MixLabCli.SaveArgb(s.Frame, s.FrameWidth, s.FrameHeight, System.IO.Path.Combine(outDir, name));
+            Console.WriteLine($"  {name}: {s.FrameWidth}x{s.FrameHeight} hash={Hash(s.Frame, s.FrameWidth, s.FrameHeight)}");
+            n++;
+        }
+        return n;
+    }
+
+    private static int NesShots(Game g, string outDir, string label, string[] chips)
+    {
+        int n = 0;
+        foreach (var chip in chips)
+        {
+            var nes = new NES { RomName = System.IO.Path.GetFileName(g.Path) };
+            nes.LoadROM(File.ReadAllBytes(g.Path));
+            nes.SetCpuCore("FIX"); nes.SetApuCore("FIX");
+            if (!nes.SetPpuCore(chip)) { Console.WriteLine($"  {g.Key}: no NES PPU {chip}"); continue; }
+            if (chip != "FIX" && nes.GetSpeedConfig() is { } sc) { sc.CpuCyclePrecisePpu = true; sc.NtscAccurateFrameRate = true; }
+            var pad = new bool[8];
+            var script = new Dictionary<int, bool[]> { [100] = new[] { false, false, false, true, false, false, false, false }, [106] = new bool[8] };
+            for (int f = 0; f < g.Frames; f++) { if (script.TryGetValue(f, out var h)) pad = h; nes.SetInputs(pad, null); nes.RunFrame(); nes.GetAudioBuffer(); }
+            var rgba = nes.GetFrameBuffer(); var argb = new uint[256 * 240];
+            for (int i = 0; i < argb.Length; i++) argb[i] = 0xFF000000u | (uint)rgba[i * 4] << 16 | (uint)rgba[i * 4 + 1] << 8 | rgba[i * 4 + 2];
+            string name = $"{label}_{g.Key}_{chip.ToLowerInvariant()}.png";
+            MixLabCli.SaveArgb(argb, 256, 240, System.IO.Path.Combine(outDir, name));
+            Console.WriteLine($"  {name}: 256x240 ppu={nes.GetPpuCoreId()} hash={Hash(argb, 256, 240)}");
+            n++;
+        }
         return n;
     }
 

@@ -116,7 +116,7 @@ internal sealed class MdLineCapture
 /// </summary>
 internal sealed class MdToNes : IVariantLevels
 {
-    private readonly NesPictureSink sink;
+    private readonly IPictureSink sink;
     private readonly BOARD_MD board;
     private readonly MdLineCapture cap;
     public readonly BridgeCounters Counters = new();
@@ -148,10 +148,15 @@ internal sealed class MdToNes : IVariantLevels
     // what FillLevels reads while the packer asks for the pixels of the variants (the flat path)
     private SegaQuantizer? levelsQ;
 
-    public MdToNes(BOARD_MD board, string nesPpuId)
+    public MdToNes(BOARD_MD board, string nesPpuId) : this(board, new NesPictureSink(nesPpuId)) { }
+
+    /// <summary>Onto an enhanced picture chip of another console directly (no NES in between): the Genesis picture as layers at its own size, in that chip's colours.</summary>
+    public MdToNes(BOARD_MD board, IEnhancedPictureChip chip, string routeId) : this(board, new ChipPictureSink(chip, routeId)) { }
+
+    private MdToNes(BOARD_MD board, IPictureSink sink)
     {
         this.board = board;
-        sink = new NesPictureSink(nesPpuId);
+        this.sink = sink;
         cap = new MdLineCapture(board);
     }
 

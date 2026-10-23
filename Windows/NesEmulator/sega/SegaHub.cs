@@ -18,8 +18,10 @@ public enum HubVoiceKind { Pulse, Triangle, Noise }
 /// <param name="Duty">Pulse duty, 0 to 3 (12.5%, 25%, 50%, 75% as the NES has them); ignored by the others.</param>
 /// <param name="ShortNoise">A noise voice in its short, buzzy mode (the NES 93-step register; the SN76489's periodic noise).</param>
 /// <param name="Pan">Where the guest puts the voice, where it says: -1 the left speaker only, +1 the right only, 0 both (or not known). The NES hub is mono, so a NES chip plays every
-/// voice on both sides; the field is the guest's own word for tools, tests and the stems, and for an enhanced chip with stereo of its own to come.</param>
-public readonly record struct HubVoice(HubVoiceKind Kind, double Hz, float Level, int Duty = 2, bool ShortNoise = false, float Pan = 0f)
+/// voice on both sides; the enhanced chips with stereo of their own (the SNES's S-DSP, the Genesis's FM, the Game Gear's stereo port) put it where the guest does.</param>
+/// <param name="Psg">The voice is a tone of an SN76489 PSG (the Master System's, the Game Gear's, the Genesis's): a 50% square whatever its <see cref="Kind"/> says (the PSG's third tone is offered
+/// as a triangle so the NES hub puts it on the NES triangle). An enhanced chip that has such a PSG (the Genesis) plays it there; the others play it as a 50% square. The NES hub ignores it.</param>
+public readonly record struct HubVoice(HubVoiceKind Kind, double Hz, float Level, int Duty = 2, bool ShortNoise = false, float Pan = 0f, bool Psg = false)
 {
     public bool Audible => Level > 0.001f && Hz > 0;
 

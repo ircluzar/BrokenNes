@@ -23,8 +23,8 @@ public sealed class MdSession : IConsoleSession
     private int frameWidth = 320, frameHeight = 224;
     /// <summary>Show the VDP's memory view instead of the picture.</summary>
     public bool DebugView { get; set; }
-    private readonly string cpuId, ppuId;
-    private string apuId;
+    private readonly string cpuId;
+    private string ppuId, apuId;
     private readonly short[] scratch = new short[0];
     private readonly string title;
     private readonly string gameId;
@@ -183,7 +183,10 @@ public sealed class MdSession : IConsoleSession
                 apuId = id;
                 return true;
             }
-            case CoreSlot.Ppu: return id.Equals(ppuId, StringComparison.OrdinalIgnoreCase);
+            case CoreSlot.Ppu:
+                // the VDP's own ids: the stock chip and the enhanced one (a subclass that draws a Genesis game on the stock pipeline); a NES chip or another console's is the wrapper's
+                if (id.Contains(':') || !System.Linq.Enumerable.Any(CoreCatalog.Options(ConsoleKind.Genesis, CoreSlot.Ppu), o => o.Section == CoreSection.Own && o.Id.Equals(id, StringComparison.OrdinalIgnoreCase))) return false;
+                ppuId = id; return true;
             default: return id.Equals(cpuId, StringComparison.OrdinalIgnoreCase);
         }
     }

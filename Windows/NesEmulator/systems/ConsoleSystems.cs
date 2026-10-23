@@ -297,8 +297,30 @@ public static class CoreCatalog
 {
     // NES-board cores that are really another console's part (the mix bridges).
     private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy", ["Z80"] = "Master System", ["M68K"] = "Genesis" };
-    private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["MD"] = "Genesis" };
-    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis" };
+    private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis" };
+    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis" };
+
+    /// <summary>The NES board's ids of the other consoles' ENHANCED chips (a NES game on them). Only the NES menu offers them: the other consoles reach those chips directly (<see cref="DirectRoutes"/>), never through a NES.</summary>
+    private static readonly HashSet<string> NesBoardEnhancedOfOthers = new(StringComparer.OrdinalIgnoreCase) { "SNESS", "SMSS", "MDS" };
+
+    /// <summary>
+    /// The routes from a console to another console's ENHANCED chips with no NES in between (docs/projects/enhanced-cores.md 5): the route id the menus store, the family, the name the label gives, and the chip's id on
+    /// its own console's menu. A guest's translator fills the chip's layers directly (<c>EnhancedChips.Picture</c>) and its voices play on the chip's banks (<c>EnhancedChips.Sound</c>). A route is offered once its chips
+    /// exist (registered in <c>EnhancedChips</c>), and never to the chip's own family (a Master System game's enhanced chip is SMSS on its own menu, not a route).
+    /// </summary>
+    private static readonly (string Route, string Family, string Name, string Own)[] DirectRoutes =
+    {
+        ("SNES:SFCS", "SNES", "SNES", "SFCS"),
+        ("SMS:SMSS", "Master System", "Master System", "SMSS"),
+        ("GG:GGS", "Master System", "Game Gear", "GGS"),
+        ("MD:MDS", "Genesis", "Genesis", "MDS"),
+    };
+
+    /// <summary>True when the enhanced chips of <paramref name="route"/> exist (the menus offer them).</summary>
+    private static bool Built(string route) => NesEmulator.Mix.EnhancedChips.IsRoute(route);
+
+    /// <summary>True when <paramref name="id"/> is a direct route to another console's enhanced chips (<see cref="DirectRoutes"/>) whose chips exist.</summary>
+    public static bool IsDirectRoute(string? id) => id != null && Array.Exists(DirectRoutes, r => r.Route.Equals(id, StringComparison.OrdinalIgnoreCase)) && Built(id);
 
     private static readonly Dictionary<string, string> NesBridgeLabels = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -311,6 +333,12 @@ public static class CoreCatalog
         ["PPU:DMGS"] = "Game Boy picture chip with the whole picture and the cross-console layers (4 shades by brightness, or Game Boy Color colours)",
         ["PPU:SMS"] = "Master System picture chip (Mode 4: 4-bit tiles, 32 colours of 64, 8 sprites a line; 240-line mode)",
         ["PPU:MD"] = "Genesis picture chip (4-bit tiles, 64 colours of 512, 16 sprites a line, per-line scroll)",
+        ["PPU:SNESS"] = "the SNES picture chip with the cross-console layers: the game whole at its own 256 x 240 (the SNES shows 224 or 239 lines), every sprite, in the SNES's 15-bit colours",
+        ["PPU:SMSS"] = "the Master System picture chip with the cross-console layers: the game whole at its own 256 x 240 (the Master System shows 192 to 240 lines), every sprite, in the Master System's 64 colours",
+        ["PPU:MDS"] = "the Genesis picture chip with the cross-console layers: the game whole at its own 256 x 240, every sprite, in the Genesis's 512 colours",
+        ["APU:SNESS"] = "the SNES sound chip with extra S-DSP banks: every NES channel on a voice of its own, pulses with their duty (the DMC is dropped)",
+        ["APU:SMSS"] = "the Master System sound chip with extra SN76489 sets: every NES channel on a channel of its own (the DMC is dropped)",
+        ["APU:MDS"] = "the Genesis sound chips with extra YM2612 + PSG sets: every NES channel on a channel of its own (the DMC is dropped)",
         ["APU:FIX"] = "the NES sound chip (2A03), accurate", ["APU:FIXS"] = "the NES sound chip with extra channel banks for the cross-console sound (as many as the other console's voices need)",
         ["APU:SNES"] = "SNES sound (S-DSP)", ["APU:DMG"] = "Game Boy sound chip", ["APU:DMGS"] = "Game Boy sound chip with extra channel banks (as many as the other console's voices need)",
         ["APU:SMS"] = "Master System / Game Gear sound chip (SN76489 PSG: 3 square tones + noise; the DMC is dropped)",
@@ -397,31 +425,46 @@ public static class CoreCatalog
         ("Master System", CoreSlot.Cpu, "Z80", CoreGrade.Stock, "Master System"),
         ("Genesis", CoreSlot.Cpu, "M68K", CoreGrade.Stock, "Genesis"),
         ("NES", CoreSlot.Ppu, "FIX", CoreGrade.Stock, "FIX"), ("NES", CoreSlot.Ppu, "FIXS", CoreGrade.Enhanced, "FIX"),
-        ("SNES", CoreSlot.Ppu, "SNES", CoreGrade.Stock, "SNES"),
+        ("SNES", CoreSlot.Ppu, "SNES", CoreGrade.Stock, "SNES"), ("SNES", CoreSlot.Ppu, "SNESS", CoreGrade.Enhanced, "SNES"),
         ("Game Boy", CoreSlot.Ppu, "DMG", CoreGrade.Stock, "Game Boy"), ("Game Boy", CoreSlot.Ppu, "DMGS", CoreGrade.Enhanced, "Game Boy"),
-        ("Master System", CoreSlot.Ppu, "SMS", CoreGrade.Stock, "Master System"),
-        ("Genesis", CoreSlot.Ppu, "MD", CoreGrade.Stock, "Genesis"),
+        ("Master System", CoreSlot.Ppu, "SMS", CoreGrade.Stock, "Master System"), ("Master System", CoreSlot.Ppu, "SMSS", CoreGrade.Enhanced, "Master System"),
+        ("Genesis", CoreSlot.Ppu, "MD", CoreGrade.Stock, "Genesis"), ("Genesis", CoreSlot.Ppu, "MDS", CoreGrade.Enhanced, "Genesis"),
         ("NES", CoreSlot.Apu, "FIX", CoreGrade.Stock, "FIX"), ("NES", CoreSlot.Apu, "FIXS", CoreGrade.Enhanced, "FIX"),
-        ("SNES", CoreSlot.Apu, "SNES", CoreGrade.Stock, "SNES"),
+        ("SNES", CoreSlot.Apu, "SNES", CoreGrade.Stock, "SNES"), ("SNES", CoreSlot.Apu, "SNESS", CoreGrade.Enhanced, "SNES"),
         ("Game Boy", CoreSlot.Apu, "DMG", CoreGrade.Stock, "Game Boy"), ("Game Boy", CoreSlot.Apu, "DMGS", CoreGrade.Enhanced, "Game Boy"),
         ("Master System", CoreSlot.Apu, "SMS", CoreGrade.Stock, "Master System"), ("Master System", CoreSlot.Apu, "SMSFM", CoreGrade.Stock, "Master System FM"),
-        ("Genesis", CoreSlot.Apu, "MD", CoreGrade.Stock, "Genesis"),
+        ("Master System", CoreSlot.Apu, "SMSS", CoreGrade.Enhanced, "Master System"),
+        ("Genesis", CoreSlot.Apu, "MD", CoreGrade.Stock, "Genesis"), ("Genesis", CoreSlot.Apu, "MDS", CoreGrade.Enhanced, "Genesis"),
     };
 
     /// <summary>A console's own best cores by their own menu ids (stock, then enhanced).</summary>
-    private static (string Id, CoreGrade Grade, string Name)[] OwnBest(ConsoleKind console, CoreSlot slot) => (console, slot) switch
+    private static (string Id, CoreGrade Grade, string Name)[] OwnBest(ConsoleKind console, CoreSlot slot)
     {
-        (ConsoleKind.Nes, _) => BestOnNes.Where(b => b.Family == "NES" && b.Slot == slot).Select(b => (b.NesId, b.Grade, b.Name)).ToArray(),
-        (ConsoleKind.Snes, CoreSlot.Cpu) => new[] { ("SFC", CoreGrade.Stock, "SNES") },
-        (ConsoleKind.Snes, _) => new[] { ("SFC", CoreGrade.Stock, "SNES") },
-        (ConsoleKind.GameBoy or ConsoleKind.GameBoyColor, CoreSlot.Apu) => new[] { ("GB", CoreGrade.Stock, "Game Boy"), ("GBS", CoreGrade.Enhanced, "Game Boy") },
-        (ConsoleKind.GameBoy or ConsoleKind.GameBoyColor, _) => new[] { ("GB", CoreGrade.Stock, console == ConsoleKind.GameBoyColor ? "Game Boy Color" : "Game Boy") },
-        (ConsoleKind.MasterSystem, CoreSlot.Cpu) or (ConsoleKind.GameGear, CoreSlot.Cpu) => new[] { ("Z80", CoreGrade.Stock, Consoles.DisplayName(console)) },
-        (ConsoleKind.MasterSystem, CoreSlot.Apu) => new[] { ("SMS", CoreGrade.Stock, "Master System"), ("SMS-FM", CoreGrade.Stock, "Master System FM") },
-        (ConsoleKind.MasterSystem, _) => new[] { ("SMS", CoreGrade.Stock, "Master System") },
-        (ConsoleKind.GameGear, _) => new[] { ("GG", CoreGrade.Stock, "Game Gear") },
-        (ConsoleKind.Genesis, CoreSlot.Cpu) => new[] { ("M68K", CoreGrade.Stock, "Genesis") },
-        _ => new[] { ("MD", CoreGrade.Stock, "Genesis") },
+        var stock = (console, slot) switch
+        {
+            (ConsoleKind.Nes, _) => BestOnNes.Where(b => b.Family == "NES" && b.Slot == slot).Select(b => (b.NesId, b.Grade, b.Name)).ToArray(),
+            (ConsoleKind.Snes, _) => new[] { ("SFC", CoreGrade.Stock, "SNES") },
+            (ConsoleKind.GameBoy or ConsoleKind.GameBoyColor, CoreSlot.Apu) => new[] { ("GB", CoreGrade.Stock, "Game Boy"), ("GBS", CoreGrade.Enhanced, "Game Boy") },
+            (ConsoleKind.GameBoy or ConsoleKind.GameBoyColor, _) => new[] { ("GB", CoreGrade.Stock, console == ConsoleKind.GameBoyColor ? "Game Boy Color" : "Game Boy") },
+            (ConsoleKind.MasterSystem, CoreSlot.Cpu) or (ConsoleKind.GameGear, CoreSlot.Cpu) => new[] { ("Z80", CoreGrade.Stock, Consoles.DisplayName(console)) },
+            (ConsoleKind.MasterSystem, CoreSlot.Apu) => new[] { ("SMS", CoreGrade.Stock, "Master System"), ("SMS-FM", CoreGrade.Stock, "Master System FM") },
+            (ConsoleKind.MasterSystem, _) => new[] { ("SMS", CoreGrade.Stock, "Master System") },
+            (ConsoleKind.GameGear, _) => new[] { ("GG", CoreGrade.Stock, "Game Gear") },
+            (ConsoleKind.Genesis, CoreSlot.Cpu) => new[] { ("M68K", CoreGrade.Stock, "Genesis") },
+            _ => new[] { ("MD", CoreGrade.Stock, "Genesis") },
+        };
+        // the console's own enhanced picture and sound chips (SFCS, SMSS, GGS, MDS), once they exist: after its stock cores
+        if (slot == CoreSlot.Cpu || console == ConsoleKind.Nes) return stock;
+        foreach (var r in DirectRoutes)
+            if (r.Family == Consoles.Family(console) && Built(r.Route) && OwnRouteOf(console) == r.Route)
+                return stock.Append((r.Own, CoreGrade.Enhanced, r.Name)).ToArray();
+        return stock;
+    }
+
+    /// <summary>The direct route whose chips are this console's own (the Master System's SMS:SMSS, the Game Gear's GG:GGS), or null.</summary>
+    private static string? OwnRouteOf(ConsoleKind console) => console switch
+    {
+        ConsoleKind.Snes => "SNES:SFCS", ConsoleKind.MasterSystem => "SMS:SMSS", ConsoleKind.GameGear => "GG:GGS", ConsoleKind.Genesis => "MD:MDS", _ => null,
     };
 
     private static readonly string[] FamilyOrder = { "NES", "SNES", "Game Boy", "Master System", "Genesis" };
@@ -437,6 +480,9 @@ public static class CoreCatalog
         }
         // the Game Boy draws on the SNES chip directly (GbToSnes, the Super Game Boy idea): the SNES's stock picture chip seen from the Game Boy
         if (id.Equals("SNES:SFC", StringComparison.OrdinalIgnoreCase)) return ("SNES", CoreGrade.Stock, "SNES");
+        // another console's enhanced chips, reached directly (no NES in between)
+        foreach (var r in DirectRoutes)
+            if (r.Route.Equals(id, StringComparison.OrdinalIgnoreCase) && r.Family != Consoles.Family(console)) return (r.Family, CoreGrade.Enhanced, r.Name);
         int colon = id.IndexOf(':');
         if (colon < 0) return null;
         string route = id[..colon], nes = id[(colon + 1)..];
@@ -488,10 +534,45 @@ public static class CoreCatalog
         return own.Concat(crossSorted).Concat(more).ToList();
     }
 
+    /// <summary>The console's own enhanced chip (once it exists) and the routes to the other consoles' enhanced chips (once they exist), for the picture or the sound slot.</summary>
+    private static void AddEnhanced(List<CoreOption> list, ConsoleKind console, CoreSlot slot)
+    {
+        if (slot == CoreSlot.Cpu || console == ConsoleKind.Nes) return;
+        string own = Consoles.Family(console);
+        if (OwnRouteOf(console) is { } mine && Built(mine))
+        {
+            var r = Array.Find(DirectRoutes, d => d.Route == mine);
+            list.Add(new(r.Own, OwnEnhancedLabel(console, r.Own, slot), own));
+        }
+        foreach (var r in DirectRoutes)
+            if (r.Family != own && Built(r.Route)) list.Add(new(r.Route, RouteLabel(r.Route, slot), r.Family));
+    }
+
+    private static string OwnEnhancedLabel(ConsoleKind console, string id, CoreSlot slot)
+    {
+        string name = Consoles.DisplayName(console);
+        return slot == CoreSlot.Ppu
+            ? $"{id} (a {name} game draws exactly as on the stock chip; the chip also takes another console's picture at its own size with all its layers)"
+            : $"{id} (the stock sound for a {name} game, plus extra banks of its channels for another console's voices)";
+    }
+
+    private static string RouteLabel(string route, CoreSlot slot) => (route.ToUpperInvariant(), slot) switch
+    {
+        ("SNES:SFCS", CoreSlot.Ppu) => "SFCS - SNES picture chip with the game's layers at its own size (15-bit colours, the colour math in them; no NES in between)",
+        ("SNES:SFCS", _) => "SFCS - SNES sound with S-DSP banks: every voice on a DSP voice of its own (looped samples at their pitch, the pan kept)",
+        ("SMS:SMSS", CoreSlot.Ppu) => "SMSS - Master System picture chip with the game's layers at its own size (the Master System's 64 colours)",
+        ("SMS:SMSS", _) => "SMSS - Master System sound with SN76489 sets: every voice on a channel of its own (squares and noise; mono)",
+        ("GG:GGS", CoreSlot.Ppu) => "GGS - Game Gear picture chip with the game's layers at its own size (the Game Gear's 4,096 colours)",
+        ("GG:GGS", _) => "GGS - Game Gear sound with SN76489 sets: every voice on a channel of its own, the pan on the stereo port",
+        ("MD:MDS", CoreSlot.Ppu) => "MDS - Genesis picture chip with the game's layers at its own size (512 colours, shadow and highlight for the colour math)",
+        _ => "MDS - Genesis sound with YM2612 + PSG sets: every voice on a channel of its own (FM voices, PSG squares and noise, the pan on the FM)",
+    };
+
     /// <summary>Every entry of a console's menu with the labels the bridges give them (unordered sections: <see cref="Arrange"/> orders them).</summary>
     private static List<CoreOption> RawOptions(ConsoleKind console, CoreSlot slot)
     {
         var list = new List<CoreOption>();
+        AddEnhanced(list, console, slot);
         switch (console)
         {
             case ConsoleKind.Nes:
@@ -636,14 +717,14 @@ public static class CoreCatalog
 
     // NES picture chips a SNES or Game Boy picture can be drawn on (not the ones that bridge back to the source console).
     private static IEnumerable<string> NesPictureChips() =>
-        CoreRegistry.PpuIds.Where(i => !i.Equals("SNES", StringComparison.OrdinalIgnoreCase))
+        CoreRegistry.PpuIds.Where(i => !i.Equals("SNES", StringComparison.OrdinalIgnoreCase) && !NesBoardEnhancedOfOthers.Contains(i))
             .OrderBy(i => NesFamilyOf(CoreSlot.Ppu, i) == "NES" ? 0 : 1)
             .ThenBy(i => i.Equals("FIXS", StringComparison.OrdinalIgnoreCase) ? 0 : i.Equals("FIX", StringComparison.OrdinalIgnoreCase) ? 1 : 2)
             .ThenBy(i => i, StringComparer.OrdinalIgnoreCase);
 
     // The NES picture chips a Sega game can be drawn on: every NES-board picture chip but the console family's own (a Master System game on the Master System chip is the console itself).
     private static IEnumerable<string> SegaPictureChips(string ownFamily) =>
-        CoreRegistry.PpuIds.Where(i => NesFamilyOf(CoreSlot.Ppu, i) != ownFamily)
+        CoreRegistry.PpuIds.Where(i => NesFamilyOf(CoreSlot.Ppu, i) != ownFamily && !NesBoardEnhancedOfOthers.Contains(i))
             .OrderBy(i => NesFamilyOf(CoreSlot.Ppu, i) == "NES" ? 0 : 1)
             .ThenBy(i => i.Equals("FIXS", StringComparison.OrdinalIgnoreCase) ? 0 : i.Equals("FIX", StringComparison.OrdinalIgnoreCase) ? 1 : 2)
             .ThenBy(i => i, StringComparer.OrdinalIgnoreCase);
@@ -670,7 +751,7 @@ public static class CoreCatalog
 
     /// <summary>The sound chips of other consoles that are NES APU cores (the bridges: Game Boy, SNES, Master System, Genesis), minus <paramref name="ownFamily"/>'s: a game's sound reaches them through the NES registers, which is how every foreign sound path works.</summary>
     private static IEnumerable<string> HubSoundChips(string ownFamily) =>
-        CoreRegistry.ApuIds.Where(i => NesFamilyOf(CoreSlot.Apu, i) is var f && f != "NES" && f != ownFamily)
+        CoreRegistry.ApuIds.Where(i => NesFamilyOf(CoreSlot.Apu, i) is var f && f != "NES" && f != ownFamily && !NesBoardEnhancedOfOthers.Contains(i))
             .OrderBy(i => Array.IndexOf(new[] { "Game Boy", "SNES", "Master System", "Genesis" }, NesFamilyOf(CoreSlot.Apu, i)))
             .ThenBy(i => i, StringComparer.OrdinalIgnoreCase);
 

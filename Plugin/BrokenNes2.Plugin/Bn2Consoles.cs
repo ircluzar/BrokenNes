@@ -32,8 +32,10 @@ public static class Cx
     /// </summary>
     public static bool RomSupported(int console) => console is >= 0 and < Count;
 
-    /// <summary>Cores that are not offered: MNES and WF turn the sound into MIDI-style playback rather than emulating a chip.</summary>
-    private static readonly HashSet<string> Hidden = new(StringComparer.OrdinalIgnoreCase) { "MNES", "WF" };
+    /// <summary>Cores that are not offered: MNES and WF turn the sound into MIDI-style playback rather than emulating a chip. SNESS, SMSS and MDS (2026-10-23, the enhanced cores phase 3: a NES game on the SNES /
+    /// Master System / Genesis enhanced sound chips) are left out so that no saved chip index moves (they would sort into the SNES, Master System and Genesis groups, before chips appended since); offering them
+    /// would mean appending them to <see cref="Appended"/>.</summary>
+    private static readonly HashSet<string> Hidden = new(StringComparer.OrdinalIgnoreCase) { "MNES", "WF", "SNESS", "SMSS", "MDS" };
 
     private static readonly Dictionary<string, string> Notes = new(StringComparer.OrdinalIgnoreCase)
     {

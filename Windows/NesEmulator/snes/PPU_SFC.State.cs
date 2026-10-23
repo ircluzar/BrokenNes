@@ -12,7 +12,7 @@ namespace NesEmulator.Snes;
 /// <c>DebugLineRegisters</c>, <c>DebugLayerMask</c>, <c>CounterSource</c>) belong to whoever installed them.</para>
 /// Any new register or latch added to this chip that a running game can change must be written here: <c>--snes-state-test</c> sets each field in turn and fails the one that comes back different.
 /// </summary>
-public sealed partial class PPU_SFC
+public partial class PPU_SFC
 {
     private const byte StateVersion = 1;
 

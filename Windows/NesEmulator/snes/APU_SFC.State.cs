@@ -9,7 +9,7 @@ namespace NesEmulator.Snes;
 /// the unit's own clock (SPC cycles run since reset, and toward the next DSP sample) and the samples produced but not yet read - only the unread part of the output ring is state; where in the 64K-sample ring they happen to sit is
 /// not, so a loaded unit holds them from the start of its ring.
 /// </summary>
-public sealed partial class APU_SFC
+public partial class APU_SFC
 {
     private const byte StateVersion = 1;
 
