@@ -55,7 +55,7 @@ try {
         foreach ($f in $wantSms) { $p = Join-Path "$lib\Sega Master System" $f; if ((Test-Path $p) -and (Test-Path $sz)) { & $sz x -y "-o$(Join-Path $Roms 'sms')" $p | Out-Null } }
         $gg = 'Sonic The Hedgehog (U)*', 'Columns (U)*'
         foreach ($g in $gg) { Get-ChildItem "$lib\Sega Game Gear" -Filter "$g.gg" -ErrorAction SilentlyContinue | Select-Object -First 1 | Copy-Item -Destination (Join-Path $Roms 'gg') }
-        foreach ($m in 'Sonic the Hedgehog (JUE) [!].bin', 'Streets of Rage (JUE) (REV 00) [!].bin', 'Gunstar Heroes (E) [!].bin', 'NBA Jam (EU) (REV 01) [!].bin', 'Wonder Boy In Monster World (UE) [!].bin') { $p = Join-Path "$lib\Sega Genesis" $m; if (Test-Path $p) { Copy-Item $p (Join-Path $Roms 'md') } }
+        foreach ($m in 'Sonic the Hedgehog (JUE) [!].bin', 'Streets of Rage (JUE) (REV 00) [!].bin', 'Gunstar Heroes (E) [!].bin', 'NBA Jam (EU) (REV 01) [!].bin', 'Wonder Boy In Monster World (UE) [!].bin') { $p = Join-Path "$lib\Sega Genesis" $m; if (Test-Path -LiteralPath $p) { Copy-Item -LiteralPath $p (Join-Path $Roms 'md') } }      # -LiteralPath: the [!] in the names is not a wildcard
     }
     $notes.Add("publish: $Publish; games: $Roms")
     # ---- the suite
