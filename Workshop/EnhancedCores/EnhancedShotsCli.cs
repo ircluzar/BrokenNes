@@ -42,7 +42,7 @@ internal static class EnhancedShotsCli
             if (only.Length > 0 && !only.Any(o => g.Key.StartsWith(o, StringComparison.OrdinalIgnoreCase))) continue;
             if (!File.Exists(g.Path)) { Console.WriteLine($"SKIP {g.Key}: no ROM at {g.Path}"); continue; }
             try { made += g.Console == ConsoleKind.Nes ? NesGame(g, outDir, label) : SessionGame(g, outDir, label); }
-            catch (Exception ex) { failed++; Console.WriteLine($"FAIL {g.Key}: {ex.GetType().Name}: {ex.Message}"); }
+            catch (Exception ex) { failed++; Console.WriteLine($"FAIL {g.Key}: {ex}"); }
         }
         GbLook.InvertBackground = GbLook.InvertSprites = false;
         Console.WriteLine($"{made} pictures written to {outDir}, {failed} games failed");

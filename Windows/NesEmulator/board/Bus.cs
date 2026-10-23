@@ -463,6 +463,7 @@ public class Bus : IBus
 	public bool SetPpuCoreById(string id)
 	{
 		if (string.IsNullOrWhiteSpace(id)) return false;
+		id = CoreRegistry.MigratePpuId(id);   // a retired id (DMGX ...) is its successor, never "no such core" (a save state, a setting, the HTTP API)
 		var newPpu = GetOrCreatePpu(id);
 		if (newPpu == null) return false;
 		if (ReferenceEquals(newPpu, activePpu)) { ppu = activePpu; return true; }

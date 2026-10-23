@@ -7,16 +7,29 @@ using NesEmulator.Gb;
 namespace NesEmulator;
 
 /// <summary>
-/// MIX LAB: a Game Boy PPU (the real PPU_GB, DMG or Game Boy Color, <see cref="MixConfig.GbPpuModel"/>) drawing a NES game.
+/// MIX LAB: the Game Boy picture chip, STOCK (the real PPU_GB, DMG or Game Boy Color, <see cref="MixConfig.GbPpuModel"/>) drawing a NES game -
+/// and, through the NES picture bridges, a SNES, Master System, Game Gear or Genesis game. Discovered by CoreRegistry as PPU id "DMG";
+/// <see cref="PPU_DMGS"/> is the same bridge on the enhanced chip (PPU_GBE).
 ///
 /// A NES PPU core (MixConfig.NesFrontPpu, IPpuProbe - or any core through the PpuSharedState rescue) stays in front
 /// for register semantics, timing, NMI and sprite-0 hit. Each frame the bridge records every NES line's scroll, then
-/// builds Game Boy VRAM: NES background tiles -> the $8800 tile block (signed ids, so NES tile n = Game Boy tile n),
-/// the used sprite tiles -> $8000, the 2x2 nametables -> the 32x32 Game Boy map row by row, and has PPU_GB draw a real
-/// frame, setting SCX/SCY as each Game Boy line starts. The Game Boy sees the middle of the NES screen: 160x144 of it,
-/// from NES (48,48). DMG: one BGP for everything, so the four NES palettes collapse into 4 greens by colour index;
-/// Game Boy Color: NES palettes -> CGB palettes, attributes per tile. 40 sprites, 10 per line (NES: 64 and 8).
-/// Discovered by CoreRegistry as PPU id "DMG". <see cref="PPU_DMGX"/> is the same bridge on the off-spec PPU_GBX.
+/// builds Game Boy VRAM: NES background tiles -> the $8800 tile block (signed ids), the used sprite tiles -> $8000,
+/// the 2x2 nametables -> the 32x32 Game Boy map row by row, and has the Game Boy chip draw a real frame, setting SCX/SCY
+/// as each Game Boy line starts. The stock chip sees the middle of the NES screen: 160x144 of it, from NES (48,48).
+///
+/// Colours (the picture is upright on every path: bright is light, dark is dark, see <see cref="GbColour.ShadeOf"/>):
+/// <list type="bullet">
+/// <item>DMG: every NES colour becomes the Game Boy shade of its own brightness (as the PPU_FIX family draws it). The Game Boy has one background
+/// palette (BGP) and two sprite palettes (OBP0/1) of 3 shades + colour 0: each frame the bridge picks the shades they hold from the shades the
+/// picture uses (the least used one gives way when all four are), recodes every tile's colours to them (colour 0 stays colour 0: the backdrop,
+/// and the see-through of sprites and of the background under "behind" sprites), and puts each NES sprite palette on whichever of OBP0 / OBP1
+/// fits it. Before 2026-10-22 the colour index was the shade (BGP = E4), which drew the SNES and Sega bridges' pictures - whose colour indices run
+/// dark to bright - inverted.</item>
+/// <item>Game Boy Color: the NES palettes become CGB palettes, attributes per tile, the colours themselves.</item>
+/// <item>The Game Boy look's inversions (<see cref="GbLook"/>): background (the backdrop included) and sprites apart, a shade s becomes 3 - s, a
+/// CGB colour has its lightness mirrored (hue kept). The bezel around the stock chip's window never flips.</item>
+/// </list>
+/// 40 sprites, 10 per line (NES: 64 and 8).
 /// </summary>
 public class PPU_DMG : IPPU, IPpuProbe
 {
@@ -25,7 +38,7 @@ public class PPU_DMG : IPPU, IPpuProbe
     private readonly IPpuProbe? probe;
     private readonly IPpuFrameClock? clock;
     private readonly GbScreen gb;
-    /// <summary>The Game Boy screen size (160x144, or bigger on PPU_GBX).</summary>
+    /// <summary>The Game Boy screen size (160x144 on the stock chip, bigger on the enhanced chip).</summary>
     private readonly int W, H;
     private readonly bool cgb;
     private readonly byte[] frame = new byte[256 * 240 * 4];
@@ -43,7 +56,7 @@ public class PPU_DMG : IPPU, IPpuProbe
 
     public PPU_DMG(Bus bus) : this(bus, PPU_GB.Width, PPU_GB.Height) { }
 
-    protected PPU_DMG(Bus bus, int gbWidth, int gbHeight, string? frontId = null, bool layered = false)
+    protected PPU_DMG(Bus bus, int gbWidth, int gbHeight, string? frontId = null, bool enhanced = false)
     {
         this.bus = bus;
         W = gbWidth; H = gbHeight;
@@ -58,15 +71,17 @@ public class PPU_DMG : IPPU, IPpuProbe
         cx = Math.Clamp(MixConfig.GbCropX, 0, 256 - W); cy = Math.Clamp(MixConfig.GbCropY, 0, 240 - H);
         // Game Boy Color: asked for directly (MixConfig), or by the Game Boy look.
         cgb = MixConfig.GbPpuModel.Equals("cgb", StringComparison.OrdinalIgnoreCase) || GbLook.Color;
-        gb = GbScreen.Create(cgb ? GbModel.Cgb : GbModel.Dmg, W, H, layered);
+        gb = GbScreen.Create(cgb ? GbModel.Cgb : GbModel.Dmg, W, H, enhanced);
         gb.LineStarted += OnGbLine;
+        rowChrs = new byte[Math.Max(1, H / 8)][];
+        for (int i = 0; i < rowChrs.Length; i++) rowChrs[i] = new byte[0x2000];
     }
 
-    /// <summary>The NES front chip when it is a PPU_FIXS, whose SNES-support layers a subclass can carry over.</summary>
+    /// <summary>The NES front chip when it is a PPU_FIXS, whose cross-console layers the enhanced chip carries over.</summary>
     public PPU_FIXS? LayerFront => front as PPU_FIXS;
 
-    public string CoreName => $"DMG{(W != PPU_GB.Width || H != PPU_GB.Height ? $"X {W}x{H}" : "")}:{(cgb ? "CGB" : "DMG")}+{front.CoreName}";
-    public string Description => "MIX LAB: a Game Boy PPU drawing the middle of a NES game";
+    public string CoreName => $"DMG{(gb.Enhanced != null ? $"S {W}x{H}" : "")}:{(cgb ? "CGB" : "DMG")}+{front.CoreName}";
+    public string Description => gb.Enhanced != null ? "MIX LAB: the enhanced Game Boy picture chip drawing a NES game whole (and the cross-console layers)" : "MIX LAB: a Game Boy PPU drawing the middle of a NES game";
     public int Performance => 0;
     public int Rating => 1;
     public string Category => "Experimental";
@@ -185,11 +200,10 @@ public class PPU_DMG : IPPU, IPpuProbe
     }
 
     private void SnapshotChr() { for (int i = 0; i < 0x2000; i++) chr[i] = busRead((ushort)i); }
-    private byte[][]? rowChrs;
-    private byte[][] rowChr => rowChrs ??= Enumerable.Range(0, H / 8).Select(_ => new byte[0x2000]).ToArray();
+    private readonly byte[][] rowChrs;
     /// <summary>Distinct background tile patterns the last frame needed (over 256 = some cells show wrong tiles).</summary>
     public int BgSlotsUsed;
-    private void SnapshotRow(int group) { var dst = rowChr[group]; for (int i = 0; i < 0x2000; i++) dst[i] = busRead((ushort)i); }
+    private void SnapshotRow(int group) { if (group < rowChrs.Length) { var dst = rowChrs[group]; for (int i = 0; i < 0x2000; i++) dst[i] = busRead((ushort)i); } }
 
     // ---------------------------------------------------------------- the translation
     private int NesTile(int X, int Y, out int palette)
@@ -201,87 +215,125 @@ public class PPU_DMG : IPPU, IPpuProbe
         return nt[baseAddr + row * 32 + col];
     }
 
+    // The frame's working memory, made once (the tables are cleared for each frame).
+    private readonly int[] cellGroup = new int[32 * 32], cellAddr = new int[32 * 32], cellPal = new int[32 * 32];
+    private readonly bool[] cellSet = new bool[32 * 32];
+    private readonly Dictionary<(ulong, ulong), int> bgSlotOf = new();
+    private readonly Dictionary<int, int> objSlotOf = new();
+    private readonly byte[] recoded = new byte[16];
+    private readonly long[] bgUse = new long[16], objUse = new long[16];
+    private readonly byte[] bgShade = new byte[16], objShade = new byte[16];
+    private readonly byte[] bgValue = new byte[16], objValue = new byte[16];
+    private readonly int[] obpOf = new int[4];
+    private readonly List<(int x, int y, int nesAddr, int at)> pieces = new();
+
+    /// <summary>The Game Boy shades the last frame's palettes held (tests): BGP colour 0 (the backdrop) and colours 1-3, OBP0 and OBP1 colours 1-3, as shade numbers (0 lightest).</summary>
+    public byte LastBgp { get; private set; }
+    public byte LastObp0 { get; private set; }
+    public byte LastObp1 { get; private set; }
+
+    /// <summary>
+    /// TEST ONLY (the inversion checks' negative control): draw with the colour index as the shade (BGP = OBP = E4, or 1B when inverted) as the bridge did before
+    /// 2026-10-22, the mapping that drew the SNES and Sega bridges' pictures inverted. False in every app.
+    /// </summary>
+    internal static bool IndexShadesForTests;
+
+    /// <summary>A NES colour's Game Boy shade by its brightness (as the PPU_FIX family draws the colour).</summary>
+    private static byte ShadeOfNes(int nesColour) => GbColour.ShadeOf((uint)NesFixPalette.Rgb(nesColour));
+
     private void PresentFrame()
     {
         var vram = gb.Vram;
         int bgTable = (frameCtrl & 0x10) != 0 ? 0x1000 : 0;
-        // BG tiles: NES tile t -> Game Boy signed tile t ($9000 + t*16 for t < 128, $8800 + ... for t >= 128).
-        // Background: each cell takes its tile pattern from the CHR as it was when its 8-line group was drawn (games
-        // switch CHR banks mid-frame), and the patterns in use are packed into the 256 signed Game Boy tile ids.
-        var slotOf = new Dictionary<string, int>(); int nextBg = 0;
-        int BgSlot(byte[] src, int at)
-        {
-            string key = Convert.ToBase64String(src, at, 16);
-            if (slotOf.TryGetValue(key, out var id)) return id;
-            id = nextBg < 256 ? nextBg++ : (at >> 4) & 255;   // overflow: reuse a slot (visible as wrong tiles)
-            slotOf[key] = id;
-            int gbAddr = 0x1000 + (sbyte)id * 16;
-            for (int r = 0; r < 8; r++) { vram[gbAddr + r * 2] = src[at + r]; vram[gbAddr + r * 2 + 1] = src[at + 8 + r]; }
-            return id;
-        }
-        // Map: each Game Boy line's NES row lands in map row (Y >> 3) & 31, its columns at (X >> 3) & 31. A line spans
-        // (W + fine X) / 8 tiles; at W = 256 with a fine scroll that is 33, one more than the 32-column map holds - the
-        // last would land on the first, so it is left out (the Game Boy map's own limit: the right edge repeats the left).
+        bool dmg = !cgb, legacy = dmg && IndexShadesForTests;
+        // ---- which NES tile each Game Boy map cell shows: each Game Boy line's NES row lands in map row (Y >> 3) & 31, its columns at (X >> 3) & 31;
+        // a cell takes its pattern from the CHR as it was when its 8-line group was drawn (games switch CHR banks mid-frame). A line spans (W + fine X) / 8
+        // tiles; at W = 256 with a fine scroll that is 33, one more than the 32-column map holds - the last would land on the first, so it is left out (the
+        // Game Boy map's own limit: the right edge repeats the left).
+        Array.Clear(cellSet);
         for (int l = 0; l < H; l++)
         {
             int L = l + cy, X0 = (lineX[L] + cx) & 511, Y = lineY[L] & 511;
             int m = (Y >> 3) & 31;
-            var rc = rowChr[Math.Min(l >> 3, H / 8 - 1)];
+            int group = Math.Min(l >> 3, rowChrs.Length - 1);
             int cols = Math.Min(32, (W + (X0 & 7) + 7) >> 3);
             for (int c = 0; c < cols; c++)
             {
                 int X = (X0 + c * 8) & 511, mc = (X >> 3) & 31;
                 int tile = NesTile(X, Y, out int p);
-                vram[0x1800 + m * 32 + mc] = (byte)BgSlot(rc, bgTable + tile * 16);
-                if (cgb) vram[0x2000 + 0x1800 + m * 32 + mc] = (byte)p;
+                int cell = m * 32 + mc;
+                cellSet[cell] = true; cellGroup[cell] = group; cellAddr[cell] = bgTable + tile * 16; cellPal[cell] = p;
             }
         }
-        BgSlotsUsed = nextBg;
-        // Sprites: the used NES sprite tiles -> $8000 slots 0-127, up to 40 Game Boy sprites (8x16 NES = two 8x8).
-        Array.Fill(gb.Oam, (byte)0);
-        var slots = new Dictionary<int, int>(); int next = 0, n = 0;
+        // ---- the sprites in the window (8x16 NES = two 8x8), at most 40
+        pieces.Clear();
         bool tall = (frameCtrl & 0x20) != 0; int sprTable = (frameCtrl & 0x08) != 0 ? 0x1000 : 0;
-        int Slot(int nesAddr)
-        {
-            if (slots.TryGetValue(nesAddr, out var s)) return s;
-            if (next >= 128) return -1;
-            s = next++; slots[nesAddr] = s;
-            for (int r = 0; r < 8; r++) { vram[s * 16 + r * 2] = chr[nesAddr + r]; vram[s * 16 + r * 2 + 1] = chr[nesAddr + 8 + r]; }
-            return s;
-        }
-        void Put(int x, int y, int nesAddr, int at)
-        {
-            if (n >= 40 || x <= -8 || x >= W || y <= -8 || y >= H) return;
-            if (x + 8 > 255 || y + 16 > 255) return;   // OAM coordinates are bytes: no object past X 247 / Y 239
-            int s = Slot(nesAddr); if (s < 0) return;
-            int f = ((at & 0x20) != 0 ? 0x80 : 0) | ((at & 0x40) != 0 ? 0x20 : 0) | ((at & 0x80) != 0 ? 0x40 : 0) | (cgb ? at & 3 : 0);
-            gb.Oam[n * 4] = (byte)(y + 16); gb.Oam[n * 4 + 1] = (byte)(x + 8); gb.Oam[n * 4 + 2] = (byte)s; gb.Oam[n * 4 + 3] = (byte)f; n++;
-        }
-        for (int i = 0; i < 64; i++)
+        for (int i = 0; i < 64 && pieces.Count < 40; i++)
         {
             int y = frameOam[i * 4] + 1 - cy, tile = frameOam[i * 4 + 1], at = frameOam[i * 4 + 2], x = frameOam[i * 4 + 3] - cx;
             bool vf = (at & 0x80) != 0;
-            if (!tall) { Put(x, y, sprTable + tile * 16, at); continue; }
+            if (!tall) { AddPiece(x, y, sprTable + tile * 16, at); continue; }
             int tbl = (tile & 1) != 0 ? 0x1000 : 0, top = tile & 0xFE;
-            Put(x, y, tbl + (vf ? top + 1 : top) * 16, at);
-            Put(x, y + 8, tbl + (vf ? top : top + 1) * 16, at);
+            AddPiece(x, y, tbl + (vf ? top + 1 : top) * 16, at);
+            AddPiece(x, y + 8, tbl + (vf ? top : top + 1) * 16, at);
         }
-        // Palettes.
+        // ---- DMG: the shades the palettes hold, and every colour's value in them
+        if (dmg) ChooseShades(legacy);
+        else
+        {
+            // Game Boy Color: the colour index is kept, the palettes carry the colours (the DMG registers are not used)
+            for (int i = 0; i < 16; i++) { bgValue[i] = (byte)(i & 3); objValue[i] = (byte)(i & 3); }
+            LastBgp = LastObp0 = LastObp1 = 0xE4;
+        }
+        // ---- background tiles: NES tile patterns (their colours recoded to the palette values) -> the 256 signed Game Boy tile ids ($9000 + id*16 for id < 128,
+        // $8800 + ... for id >= 128), packed by content; past 256 a slot is reused (visible as wrong tiles)
+        bgSlotOf.Clear(); int nextBg = 0;
+        for (int cell = 0; cell < 32 * 32; cell++)
+        {
+            if (!cellSet[cell]) continue;
+            int p = cellPal[cell];
+            var key = Recode(rowChrs[cellGroup[cell]], cellAddr[cell], bgValue, p * 4, dmg);
+            if (!bgSlotOf.TryGetValue(key, out int id))
+            {
+                id = nextBg < 256 ? nextBg++ : (cellAddr[cell] >> 4) & 255;
+                bgSlotOf[key] = id;
+                int gbAddr = 0x1000 + (sbyte)id * 16;
+                Array.Copy(recoded, 0, vram, gbAddr, 16);
+            }
+            vram[0x1800 + cell] = (byte)id;
+            if (cgb) vram[0x2000 + 0x1800 + cell] = (byte)p;
+        }
+        BgSlotsUsed = nextBg;
+        // ---- sprites: the used NES sprite tiles (per palette, recoded) -> $8000 slots 0-127, up to 40 Game Boy sprites
+        Array.Fill(gb.Oam, (byte)0);
+        objSlotOf.Clear(); int nextObj = 0, n = 0;
+        foreach (var (x, y, nesAddr, at) in pieces)
+        {
+            int p = at & 3;
+            int key = nesAddr | (dmg ? p << 16 : 0);
+            if (!objSlotOf.TryGetValue(key, out int s))
+            {
+                if (nextObj >= 128) continue;
+                s = nextObj++; objSlotOf[key] = s;
+                Recode(chr, nesAddr, objValue, p * 4, dmg);
+                Array.Copy(recoded, 0, vram, s * 16, 16);
+            }
+            int f = ((at & 0x20) != 0 ? 0x80 : 0) | ((at & 0x40) != 0 ? 0x20 : 0) | ((at & 0x80) != 0 ? 0x40 : 0) | (cgb ? p : obpOf[p] << 4);
+            gb.Oam[n * 4] = (byte)(y + 16); gb.Oam[n * 4 + 1] = (byte)(x + 8); gb.Oam[n * 4 + 2] = (byte)s; gb.Oam[n * 4 + 3] = (byte)f; n++;
+        }
+        // ---- palettes
         if (cgb)
         {
             for (int p = 0; p < 4; p++)
                 for (int c = 0; c < 4; c++)
                 {
                     ushort bg = NesPalette.ToBgr555(pal[c == 0 ? 0 : p * 4 + c]), ob = NesPalette.ToBgr555(pal[16 + p * 4 + c]);
-                    bg = GbLook.Background(bg); ob = GbLook.Sprite(ob);   // lightness inverted when asked (the complement)
+                    bg = GbLook.BackgroundColour(bg); ob = GbLook.SpriteColour(ob);   // the lightness mirrored when asked (hue kept)
                     gb.BgPalRam[p * 8 + c * 2] = (byte)bg; gb.BgPalRam[p * 8 + c * 2 + 1] = (byte)(bg >> 8);
                     gb.ObjPalRam[p * 8 + c * 2] = (byte)ob; gb.ObjPalRam[p * 8 + c * 2 + 1] = (byte)(ob >> 8);
                 }
         }
-        // Palettes: shade = colour index (E4), or the reverse (1B) when the Game Boy look inverts that side - the Game Boy's
-        // own BGP / OBP do the flip, so PPU_GBXS's SNES extension (drawn through the same registers) flips with them.
-        byte bgpNow = GbLook.InvertBackground ? (byte)0x1B : (byte)0xE4, obp = GbLook.InvertSprites ? (byte)0x1B : (byte)0xE4;
-        gb.Bgp = bgpNow; gb.Obp0 = obp; gb.Obp1 = obp;
+        gb.Bgp = LastBgp; gb.Obp0 = LastObp0; gb.Obp1 = LastObp1;
         if (!cgb) for (int i = 0; i < 4; i++) gb.DmgColors[i] = GbLook.Argb(i);   // the chosen look, live
         CarryLayers();
         // Draw one Game Boy frame (SCX/SCY are set per line in OnGbLine).
@@ -299,18 +351,151 @@ public class PPU_DMG : IPPU, IPpuProbe
             }
     }
 
+    private void AddPiece(int x, int y, int nesAddr, int at)
+    {
+        if (pieces.Count >= 40) return;              // the Game Boy's 40 objects (an 8x16 NES sprite is two of them)
+        if (x <= -8 || x >= W || y <= -8 || y >= H) return;
+        if (x + 8 > 255 || y + 16 > 255) return;   // OAM coordinates are bytes: no object past X 247 / Y 239
+        pieces.Add((x, y, nesAddr, at));
+    }
+
     /// <summary>
-    /// PPU_DMGS: the NES front chip's SNES-support picture (PPU_FIXS.Ext) shown by the Game Boy chip (PPU_GBXS) too - the
-    /// same <see cref="ExtPicture"/>, seen through the crop window, each chip turning it into its own colours (Game Boy
-    /// shades through BGP/OBP, or CGB colours).
+    /// The DMG palettes of the frame (<see cref="LastBgp"/>, <see cref="LastObp0"/>, <see cref="LastObp1"/>) and every NES colour's value in them (<c>bgValue</c>,
+    /// <c>objValue</c>: palette * 4 + colour index -> the Game Boy colour 0-3 the tile pixel is recoded to). Shades by brightness, inverted when the look asks.
+    /// Background: colour 0 is the backdrop (its own shade); colours 1-3 hold the shades the background's pixels use most. Sprites: OBP0 and OBP1 are the two
+    /// sets of 3 shades that draw the sprite pixels with the least error, each NES sprite palette on the better of the two.
+    /// </summary>
+    private void ChooseShades(bool legacy)
+    {
+        if (legacy)
+        {
+            // the old mapping: the colour index is the shade
+            byte idx = GbLook.InvertBackground ? (byte)0x1B : (byte)0xE4, oidx = GbLook.InvertSprites ? (byte)0x1B : (byte)0xE4;
+            LastBgp = idx; LastObp0 = LastObp1 = oidx;
+            for (int i = 0; i < 16; i++) { bgValue[i] = (byte)(i & 3); objValue[i] = (byte)(i & 3); }
+            Array.Clear(obpOf);
+            return;
+        }
+        for (int p = 0; p < 4; p++)
+            for (int c = 0; c < 4; c++)
+            {
+                bgShade[p * 4 + c] = (byte)GbLook.Background(ShadeOfNes(pal[c == 0 ? 0 : p * 4 + c]));
+                objShade[p * 4 + c] = (byte)GbLook.Sprite(ShadeOfNes(pal[16 + p * 4 + c]));
+            }
+        // how many pixels of each palette colour the picture shows
+        Array.Clear(bgUse); Array.Clear(objUse);
+        for (int cell = 0; cell < 32 * 32; cell++) if (cellSet[cell]) Count(rowChrs[cellGroup[cell]], cellAddr[cell], cellPal[cell], bgUse);
+        foreach (var (_, _, nesAddr, at) in pieces) Count(chr, nesAddr, at & 3, objUse);
+        // background: the backdrop, then the three most used shades of the opaque pixels (sorted light to dark)
+        Span<long> hist = stackalloc long[4];
+        for (int p = 0; p < 4; p++) for (int c = 1; c < 4; c++) hist[bgShade[p * 4 + c]] += bgUse[p * 4 + c];
+        Span<int> bgSet = stackalloc int[3];
+        PickThree(hist, bgSet);
+        LastBgp = (byte)(bgShade[0] | bgSet[0] << 2 | bgSet[1] << 4 | bgSet[2] << 6);
+        for (int p = 0; p < 4; p++)
+        {
+            bgValue[p * 4] = 0;
+            for (int c = 1; c < 4; c++) bgValue[p * 4 + c] = (byte)(1 + Nearest(bgSet, bgShade[p * 4 + c]));
+        }
+        // sprites: the pair of shade sets (of the four sets of 3 the 4 shades make) that draws the sprite pixels with the least error
+        ReadOnlySpan<int> sets = stackalloc int[] { 0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3 };
+        long best = long.MaxValue; int bestA = 3, bestB = 3;
+        for (int a = 0; a < 4; a++)
+            for (int b = a; b < 4; b++)
+            {
+                long cost = 0;
+                for (int p = 0; p < 4; p++) cost += Math.Min(SetCost(sets.Slice(a * 3, 3), p), SetCost(sets.Slice(b * 3, 3), p));
+                if (cost < best) { best = cost; bestA = a; bestB = b; }
+            }
+        var setA = sets.Slice(bestA * 3, 3); var setB = sets.Slice(bestB * 3, 3);
+        LastObp0 = (byte)(setA[0] << 2 | setA[1] << 4 | setA[2] << 6);
+        LastObp1 = (byte)(setB[0] << 2 | setB[1] << 4 | setB[2] << 6);
+        for (int p = 0; p < 4; p++)
+        {
+            obpOf[p] = SetCost(setB, p) < SetCost(setA, p) ? 1 : 0;
+            var set = obpOf[p] == 1 ? setB : setA;
+            objValue[p * 4] = 0;
+            for (int c = 1; c < 4; c++) objValue[p * 4 + c] = (byte)(1 + Nearest(set, objShade[p * 4 + c]));
+        }
+    }
+
+    /// <summary>The pixels of an 8x8 NES tile by colour index, added to <paramref name="use"/>[palette * 4 + colour].</summary>
+    private static void Count(byte[] src, int at, int palette, long[] use)
+    {
+        for (int r = 0; r < 8; r++)
+        {
+            int lo = src[(at + r) & 0x1FFF], hi = src[(at + 8 + r) & 0x1FFF];
+            for (int x = 0; x < 8; x++) use[palette * 4 + ((lo >> x) & 1 | ((hi >> x) & 1) << 1)]++;
+        }
+    }
+
+    /// <summary>The cost (pixels times shade steps off) of drawing NES sprite palette <paramref name="p"/> with a set of 3 shades.</summary>
+    private long SetCost(ReadOnlySpan<int> set, int p)
+    {
+        long cost = 0;
+        for (int c = 1; c < 4; c++)
+        {
+            int s = objShade[p * 4 + c];
+            cost += objUse[p * 4 + c] * Math.Abs(set[Nearest(set, s)] - s);
+        }
+        return cost;
+    }
+
+    /// <summary>The three most used shades (all of them when three or fewer are used), light to dark; an unused place repeats the last shade (or 1, 2, 3 for none).</summary>
+    private static void PickThree(ReadOnlySpan<long> hist, Span<int> set)
+    {
+        int used = 0; for (int s = 0; s < 4; s++) if (hist[s] > 0) used++;
+        if (used == 0) { set[0] = 1; set[1] = 2; set[2] = 3; return; }
+        int drop = -1;
+        if (used == 4) { drop = 0; for (int s = 1; s < 4; s++) if (hist[s] < hist[drop]) drop = s; }
+        int n = 0;
+        for (int s = 0; s < 4 && n < 3; s++) if (hist[s] > 0 && s != drop) set[n++] = s;
+        while (n < 3) { set[n] = set[n - 1]; n++; }
+    }
+
+    /// <summary>The place in a 3-shade set (light to dark) of the shade nearest <paramref name="shade"/> (a tie goes to the lighter one).</summary>
+    private static int Nearest(ReadOnlySpan<int> set, int shade)
+    {
+        int best = 0;
+        for (int i = 1; i < set.Length; i++) if (Math.Abs(set[i] - shade) < Math.Abs(set[best] - shade)) best = i;
+        return best;
+    }
+
+    /// <summary>A NES tile (planes at <paramref name="at"/> and +8) as a Game Boy tile (row by row, plane 0 then plane 1) into <c>recoded</c>, its colours
+    /// through <paramref name="values"/>[<paramref name="offset"/> + colour] when <paramref name="map"/>; returns the 16 bytes as a key.</summary>
+    private (ulong, ulong) Recode(byte[] src, int at, byte[] values, int offset, bool map)
+    {
+        for (int r = 0; r < 8; r++)
+        {
+            int lo = src[(at + r) & 0x1FFF], hi = src[(at + 8 + r) & 0x1FFF];
+            if (map)
+            {
+                int nlo = 0, nhi = 0;
+                for (int x = 0; x < 8; x++)
+                {
+                    int v = values[offset + ((lo >> x) & 1 | ((hi >> x) & 1) << 1)];
+                    nlo |= (v & 1) << x; nhi |= (v >> 1 & 1) << x;
+                }
+                lo = nlo; hi = nhi;
+            }
+            recoded[r * 2] = (byte)lo; recoded[r * 2 + 1] = (byte)hi;
+        }
+        return (BitConverter.ToUInt64(recoded, 0), BitConverter.ToUInt64(recoded, 8));
+    }
+
+    /// <summary>
+    /// PPU_DMGS: the NES front chip's cross-console picture (PPU_FIXS.Ext) shown by the enhanced Game Boy chip (PPU_GBE) too - the
+    /// same <see cref="ExtPicture"/>, seen through the window, the Game Boy chip turning it into its own colours (shades by brightness,
+    /// or CGB colours) with the Game Boy look's inversions.
     /// </summary>
     private void CarryLayers()
     {
-        var dst = gb.LayerChip; var src = LayerFront;
+        var dst = gb.Enhanced; var src = LayerFront;
         if (dst == null) return;
         if (src != null) src.ExtCompose = false;   // its NES picture is not shown: the Game Boy chip draws the extension
         dst.Ext = src?.Ext;
         dst.ExtOffsetX = cx; dst.ExtOffsetY = cy - (src?.ExtLineOffset ?? 8);
+        dst.ExtInvertBackground = GbLook.InvertBackground; dst.ExtInvertSprites = GbLook.InvertSprites;
     }
 
     private void OnGbLine(int l)
@@ -323,22 +508,13 @@ public class PPU_DMG : IPPU, IPpuProbe
 }
 
 /// <summary>
-/// MIX LAB: <see cref="PPU_DMG"/> on the off-spec Game Boy picture chip PPU_GBX - a Game Boy with a 256x240 screen, so a
-/// NES (or, through the NES, SNES) game is shown whole instead of cropped to the Game Boy's 160x144. Everything else
-/// keeps the Game Boy's limits: 4 greens or CGB palettes, 256 background tiles, 40 objects with 10 per line, the one
-/// 32x32 background map. --gb-res WxH picks another size (160-256 x 144-240). Discovered by CoreRegistry as PPU id "DMGX".
-/// </summary>
-public sealed class PPU_DMGX : PPU_DMG
-{
-    public PPU_DMGX(Bus bus) : base(bus, MixConfig.GbHiResWidth, MixConfig.GbHiResHeight) { }
-}
-
-/// <summary>
-/// MIX LAB: the Game Boy bridge with SNES support - PPU_DMGX's big screen on PPU_GBXS, fronted by the NES chip PPU_FIXS,
-/// so a SNES game translated through the NES keeps its layers and all its sprites on the Game Boy too (within Game Boy
-/// tiles and palettes). Discovered by CoreRegistry as PPU id "DMGS".
+/// MIX LAB: the Game Boy picture chip, ENHANCED - <see cref="PPU_DMG"/> on the enhanced Game Boy chip PPU_GBE, fronted by the NES chip PPU_FIXS
+/// (FIX enhanced): the whole picture (256x240 by default; --gb-res WxH picks another, 160-256 x 144-240) instead of the stock chip's middle
+/// 160x144, and a game translated through the NES (SNES, Master System, Game Gear, Genesis) keeps its layers and all its sprites on the Game
+/// Boy too, within Game Boy shades or CGB colours. Discovered by CoreRegistry as PPU id "DMGS" (it replaced "DMGX", the big screen without
+/// the layers, on 2026-10-22: a stored DMGX is moved here by <see cref="CoreRegistry.MigratePpuId"/>).
 /// </summary>
 public sealed class PPU_DMGS : PPU_DMG
 {
-    public PPU_DMGS(Bus bus) : base(bus, MixConfig.GbHiResWidth, MixConfig.GbHiResHeight, "FIXS", layered: true) { }
+    public PPU_DMGS(Bus bus) : base(bus, MixConfig.GbHiResWidth, MixConfig.GbHiResHeight, "FIXS", enhanced: true) { }
 }

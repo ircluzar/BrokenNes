@@ -4,8 +4,9 @@ using NesEmulator.Gb;
 namespace NesEmulator.Mix;
 
 /// <summary>
-/// The Game Boy picture chip as the NES-side bridges (PPU_DMG / PPU_DMGX) drive it: the stock 160x144 PPU_GB, or the
-/// off-spec PPU_GBX with a bigger screen. A thin forwarder, so the stock core keeps its public fields untouched.
+/// The Game Boy picture chip as the NES-side bridges drive it: the stock 160x144 <see cref="PPU_GB"/> (PPU_DMG, Game Boy stock), or the
+/// enhanced <see cref="PPU_GBE"/> with a screen of the guest's size and the cross-console layers (PPU_DMGS, Game Boy enhanced). A thin forwarder,
+/// so the stock core keeps its public fields untouched.
 /// </summary>
 internal abstract class GbScreen
 {
@@ -28,12 +29,12 @@ internal abstract class GbScreen
     public abstract long FrameCount { get; }
     public abstract void Tick(int dots);
     public abstract event Action<int>? LineStarted;
-    /// <summary>The SNES-support chip behind this screen, when it is one (PPU_GBXS).</summary>
-    public virtual PPU_GBXS? LayerChip => null;
+    /// <summary>The enhanced chip behind this screen, when it is one (its cross-console layers).</summary>
+    public virtual PPU_GBE? Enhanced => null;
 
-    public static GbScreen Create(GbModel model, int width, int height, bool layered = false)
-        => layered ? new Layered(model, width, height)
-         : width == PPU_GB.Width && height == PPU_GB.Height ? new Stock(model) : new Extended(model, width, height);
+    /// <summary>The stock chip at 160x144, or the enhanced chip at <paramref name="width"/> x <paramref name="height"/>.</summary>
+    public static GbScreen Create(GbModel model, int width, int height, bool enhanced)
+        => enhanced ? new EnhancedScreen(model, width, height) : new Stock(model);
 
     private sealed class Stock : GbScreen
     {
@@ -59,35 +60,11 @@ internal abstract class GbScreen
         public override event Action<int>? LineStarted { add => p.LineStarted += value; remove => p.LineStarted -= value; }
     }
 
-    private sealed class Layered : GbScreen
+    private sealed class EnhancedScreen : GbScreen
     {
-        private readonly PPU_GBXS p;
-        public Layered(GbModel model, int w, int h) { p = new PPU_GBXS(model, w, h) { CompatMode = false }; p.ResetPostBoot(); }
-        public override PPU_GBXS? LayerChip => p;
-        public override int Width => p.Width;
-        public override int Height => p.Height;
-        public override int FrameDots => p.DotsPerLine * p.Lines;
-        public override byte[] Vram => p.Vram;
-        public override byte[] Oam => p.Oam;
-        public override byte[] BgPalRam => p.BgPalRam;
-        public override byte[] ObjPalRam => p.ObjPalRam;
-        public override uint[] DmgColors => p.DmgColors;
-        public override uint[] FrameBuffer => p.FrameBuffer;
-        public override byte Scx { set => p.Scx = value; }
-        public override byte Scy { set => p.Scy = value; }
-        public override byte Lcdc { set => p.Lcdc = value; }
-        public override byte Bgp { set => p.Bgp = value; }
-        public override byte Obp0 { set => p.Obp0 = value; }
-        public override byte Obp1 { set => p.Obp1 = value; }
-        public override long FrameCount => p.FrameCount;
-        public override void Tick(int dots) => p.Tick(dots);
-        public override event Action<int>? LineStarted { add => p.LineStarted += value; remove => p.LineStarted -= value; }
-    }
-
-    private sealed class Extended : GbScreen
-    {
-        private readonly PPU_GBX p;
-        public Extended(GbModel model, int w, int h) { p = new PPU_GBX(model, w, h) { CompatMode = false }; p.ResetPostBoot(); }
+        private readonly PPU_GBE p;
+        public EnhancedScreen(GbModel model, int w, int h) { p = new PPU_GBE(model, w, h) { CompatMode = false }; p.ResetPostBoot(); }
+        public override PPU_GBE? Enhanced => p;
         public override int Width => p.Width;
         public override int Height => p.Height;
         public override int FrameDots => p.DotsPerLine * p.Lines;

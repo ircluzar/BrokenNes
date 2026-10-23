@@ -222,23 +222,82 @@ public static class RomDetect
         console == romConsole || (Consoles.IsGameBoy(console) && Consoles.IsGameBoy(romConsole));
 }
 
+/// <summary>
+/// What a core menu entry is, of the consoles' best cores: <see cref="Stock"/> = the console's most accurate chip, behaving as itself (on another console it shows what that chip can natively);
+/// <see cref="Enhanced"/> = the same chip with the cross-console help (more layers, a picture the guest's size, more channel banks; see <c>docs/projects/enhanced-cores.md</c>);
+/// <see cref="Other"/> = everything else (the NES gimmick cores, variants, the silent unit).
+/// </summary>
+public enum CoreGrade { Stock, Enhanced, Other }
+
+/// <summary>The three parts of a core menu, in this order: the console's own best cores (stock, enhanced), the other consoles' best cores (stock, enhanced), then the rest (the NES gimmick cores and other variants, as before).</summary>
+public enum CoreSection { Own, OtherConsoles, More }
+
 /// <summary>One entry of a core menu: the id stored in settings, what to show, and the family it belongs to.</summary>
 public sealed record CoreOption(string Id, string Label, string Family)
 {
     /// <summary>True for a CPU entry that is an instruction-set wall: the chip really runs the game's machine code, which is another processor's, so the game stops almost at once (said in the label; the menus and the HTTP API show it).</summary>
     public bool Wall { get; init; }
+    /// <summary>Stock or enhanced for a console's best core (the label says so), Other for the rest.</summary>
+    public CoreGrade Grade { get; init; } = CoreGrade.Other;
+    /// <summary>The part of the menu the entry sits in (menus draw a heading per section: <see cref="CoreCatalog.SectionTitle"/>).</summary>
+    public CoreSection Section { get; init; } = CoreSection.More;
 }
 
 /// <summary>
-/// The core menus of each console: the console's own family first, then the other consoles' parts that can stand in
-/// (the cross-console bridges). On the NES they are ordinary NES cores from <see cref="CoreRegistry"/>, tagged with
-/// the family they really come from; on the SNES and Game Boy they are ids a <see cref="IConsoleSession"/> builds.
+/// Core ids that were renamed or retired, and what a stored pick of one becomes. A retired id is never silently reset to the default: wherever an id can have been stored (the desktop's config.json,
+/// Lite's IndexedDB prefs, a NES save state's core type name, a stockpile's machine, a FL project, the HTTP API, a test script) it is moved to its successor through these functions.
+/// <list type="bullet">
+/// <item><c>DMGX</c> (the Game Boy picture chip with a big screen, PPU_DMGX on PPU_GBX) became <c>DMGS</c>, the enhanced Game Boy picture chip, when the three Game Boy picture chips were merged into stock and enhanced (2026-10-22).</item>
+/// <item><c>DMGXI</c> / <c>DMGSI</c> (the inverted-sprite chips retired before) become <c>DMGS</c> as well, with the Game Boy look's sprite inversion switched on (<see cref="InvertsSprites"/>).</item>
+/// </list>
+/// The NES-board half lives in <see cref="CoreRegistry.MigratePpuId"/> (the board code is compiled without this folder in the old Web build); this class adds the console-menu forms (<c>NES:DMGX</c>).
+/// </summary>
+public static class CoreIdMigration
+{
+    /// <summary>A NES-board core id as it is today (<c>DMGX</c> -> <c>DMGS</c>); any other id unchanged.</summary>
+    public static string NesBoard(CoreSlot slot, string id) => slot == CoreSlot.Ppu ? CoreRegistry.MigratePpuId(id) : id;
+
+    /// <summary>A console menu id as it is today: <c>NES:DMGX</c> (and the retired <c>NES:DMGXI</c> / <c>NES:DMGSI</c>) -> <c>NES:DMGS</c>, and the NES console's bare ids through <see cref="NesBoard"/>; any other id unchanged.</summary>
+    public static string Console(ConsoleKind console, CoreSlot slot, string id)
+    {
+        if (string.IsNullOrEmpty(id)) return id;
+        if (console == ConsoleKind.Nes) return NesBoard(slot, id);
+        if (slot == CoreSlot.Ppu && id.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) return "NES:" + CoreRegistry.MigratePpuId(id[4..]);
+        return id;
+    }
+
+    /// <summary>True when the stored pick is one of the retired inverted-sprite chips (<c>DMGXI</c>, <c>DMGSI</c>, with or without <c>NES:</c>): its migration also switches the Game Boy look's sprite inversion on.</summary>
+    public static bool InvertsSprites(string? id) => id != null && (id.EndsWith("DMGXI", StringComparison.OrdinalIgnoreCase) || id.EndsWith("DMGSI", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>True when <paramref name="id"/> is an id this class moves (the caller then stores the new one back).</summary>
+    public static bool IsRetired(ConsoleKind console, CoreSlot slot, string? id) => id != null && !string.Equals(Console(console, slot, id), id, StringComparison.Ordinal);
+
+    /// <summary>
+    /// One stored pick of a settings store (the desktop's config.json, Lite's IndexedDB prefs) as it must be stored now: unchanged unless it is retired, then its successor,
+    /// with <paramref name="moved"/> set (the store is written back) and <paramref name="invertSprites"/> set when the retired chip had its sprites inverted (the Game Boy look's
+    /// sprite inversion is switched on in its place). Every app migrates through this one function, which <c>Workshop --enhanced-test</c> checks.
+    /// </summary>
+    public static string? Migrate(ConsoleKind console, CoreSlot slot, string? stored, ref bool moved, ref bool invertSprites)
+    {
+        if (stored == null || !IsRetired(console, slot, stored)) return stored;
+        moved = true;
+        if (InvertsSprites(stored)) invertSprites = true;
+        return Console(console, slot, stored);
+    }
+}
+
+/// <summary>
+/// The core menus of each console. Every PPU and APU menu (and the CPU menus, for the order) has three parts (<see cref="CoreSection"/>): the console's own best cores
+/// (<see cref="CoreGrade.Stock"/>, then <see cref="CoreGrade.Enhanced"/>), the other consoles' best cores (stock, enhanced; families in the order NES, SNES, Game Boy, Master System, Genesis),
+/// then the rest as before (the NES gimmick cores, variants). The labels of the best cores say "(stock)" / "(enhanced)". On the NES they are ordinary NES cores from <see cref="CoreRegistry"/>,
+/// tagged with the family they really come from; on the other consoles they are ids an <see cref="IConsoleSession"/> builds. Ids never change for a label: FIXS is FIX enhanced, DMG / DMGS
+/// the Game Boy stock / enhanced chips on the NES board, GBS the Game Boy's enhanced sound unit (saved settings, states and FL projects keep working).
 /// </summary>
 public static class CoreCatalog
 {
     // NES-board cores that are really another console's part (the mix bridges).
     private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy", ["Z80"] = "Master System", ["M68K"] = "Genesis" };
-    private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGX"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["MD"] = "Genesis" };
+    private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["MD"] = "Genesis" };
     private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis" };
 
     private static readonly Dictionary<string, string> NesBridgeLabels = new(StringComparer.OrdinalIgnoreCase)
@@ -247,11 +306,13 @@ public static class CoreCatalog
         ["CPU:SM83"] = "SM83 (Game Boy CPU) - an instruction-set wall: it runs the game's 6502 code as SM83 instructions, so most games stop at once",
         ["CPU:Z80"] = "Z80 (Master System CPU) - an instruction-set wall: it runs the game's 6502 code as Z80 instructions, so nearly every game stops at once",
         ["CPU:M68K"] = "M68K (Genesis CPU) - an instruction-set wall: it runs the game's 6502 code as 68000 instructions, so nearly every game stops at once",
-        ["PPU:SNES"] = "SNES picture chip", ["PPU:DMG"] = "Game Boy picture chip (160x144)",
-        ["PPU:DMGX"] = "Game Boy picture chip, big screen", ["PPU:DMGS"] = "Game Boy picture chip, big screen + layers",
+        ["PPU:FIX"] = "the NES picture chip (2C02), dot-accurate", ["PPU:FIXS"] = "the NES picture chip with the cross-console layers (the guest's layers, all its sprites; NES colours)",
+        ["PPU:SNES"] = "SNES picture chip", ["PPU:DMG"] = "Game Boy picture chip (160x144: the middle of the picture, 4 shades by brightness)",
+        ["PPU:DMGS"] = "Game Boy picture chip with the whole picture and the cross-console layers (4 shades by brightness, or Game Boy Color colours)",
         ["PPU:SMS"] = "Master System picture chip (Mode 4: 4-bit tiles, 32 colours of 64, 8 sprites a line; 240-line mode)",
         ["PPU:MD"] = "Genesis picture chip (4-bit tiles, 64 colours of 512, 16 sprites a line, per-line scroll)",
-        ["APU:SNES"] = "SNES sound (S-DSP)", ["APU:DMG"] = "Game Boy sound chip", ["APU:DMGS"] = "Game Boy sound chip, 8 channels",
+        ["APU:FIX"] = "the NES sound chip (2A03), accurate", ["APU:FIXS"] = "the NES sound chip with extra channel banks for the cross-console sound (8 channels)",
+        ["APU:SNES"] = "SNES sound (S-DSP)", ["APU:DMG"] = "Game Boy sound chip", ["APU:DMGS"] = "Game Boy sound chip with extra channel banks (8 channels)",
         ["APU:SMS"] = "Master System / Game Gear sound chip (SN76489 PSG: 3 square tones + noise; the DMC is dropped)",
         ["APU:SMSFM"] = "Master System FM chip (YM2413: pulses and triangle as FM channels with a chosen instrument, noise on the SN76489 PSG; the DMC is dropped)",
         ["APU:MD"] = "Genesis sound chips (YM2612 FM + SN76489: pulses and triangle as FM voices with a chosen patch, noise on the PSG; the DMC is dropped)",
@@ -277,8 +338,20 @@ public static class CoreCatalog
     {
         string name = Consoles.DisplayName(console), own = Consoles.Family(console);
         if (o.Wall) return o.Label;      // an instruction-set wall says so in its label: the game stops almost at once
-        if (o.Family == own) return $"{o.Label}\nThe {name}'s own {slot.ToString().ToUpperInvariant()} part: the game runs on it as it was made.";
+        string grade = o.Grade switch
+        {
+            CoreGrade.Enhanced when slot == CoreSlot.Ppu => "\nEnhanced: the chip takes another console's layers and its whole picture (as many layers as the game uses, the game's own picture size), within the chip's own colours.",
+            CoreGrade.Enhanced => "\nEnhanced: the chip adds channel banks for another console's voices, so they are not squeezed into its own channels.",
+            CoreGrade.Stock when o.Family != own => $"\nStock: the {o.Family}'s chip as it is, showing what it natively can.",
+            _ => "",
+        };
+        if (o.Family == own) return $"{o.Label}\nThe {name}'s own {slot.ToString().ToUpperInvariant()} part: the game runs on it as it was made.{grade}";
         string chip = o.Id.Contains(':') ? o.Id[(o.Id.IndexOf(':') + 1)..] : o.Id;
+        return grade.Length > 0 ? TipBody(console, slot, o, name, chip) + grade : TipBody(console, slot, o, name, chip);
+    }
+
+    private static string TipBody(ConsoleKind console, CoreSlot slot, CoreOption o, string name, string chip)
+    {
         return slot switch
         {
             CoreSlot.Ppu => $"{o.Label}\nDraws the {name} picture with this {o.Family} picture part through a picture bridge. What the part cannot show (colours past its palette, more tiles than it holds, shading) is counted: the status line and GET /api/console list the losses.",
@@ -288,8 +361,135 @@ public static class CoreCatalog
         };
     }
 
-    /// <summary>The menu for one slot of one console, own family first (and within the NES family, FIX first).</summary>
+    /// <summary>
+    /// The menu for one slot of one console: the console's own best cores (stock, enhanced), the other consoles' best cores (stock, enhanced; NES, SNES, Game Boy, Master System, Genesis),
+    /// then everything else in the order it always had (see <see cref="CoreSection"/>). The first entry is the console's own stock core, the default.
+    /// </summary>
     public static IReadOnlyList<CoreOption> Options(ConsoleKind console, CoreSlot slot)
+    {
+        var key = (console, slot);
+        lock (cache) if (cache.TryGetValue(key, out var hit)) return hit;
+        var arranged = Arrange(console, slot, RawOptions(console, slot));
+        lock (cache) cache[key] = arranged;
+        return arranged;
+    }
+
+    // The menus are built once per console and slot: CoreRegistry's ids are fixed for the process, and the menus are read on every swap and status request.
+    private static readonly Dictionary<(ConsoleKind, CoreSlot), IReadOnlyList<CoreOption>> cache = new();
+
+    /// <summary>The heading a menu draws over a section (desktop menu headings, Lite option groups).</summary>
+    public static string SectionTitle(ConsoleKind console, CoreSection section) => section switch
+    {
+        CoreSection.Own => $"{Consoles.DisplayName(console)} (its own)",
+        CoreSection.OtherConsoles => "From the other consoles",
+        _ => console == ConsoleKind.Nes ? "More NES cores" : "More (NES cores and variants)",
+    };
+
+    /// <summary>
+    /// The best cores of each console family, as the NES board knows them (the ids the other consoles reach through "NES:"): the stock chip, then the enhanced one where it exists. The SNES, Master System
+    /// and Genesis have stock chips only for now; their enhanced chips attach later through the same contract (docs/projects/enhanced-cores.md).
+    /// </summary>
+    private static readonly (string Family, CoreSlot Slot, string NesId, CoreGrade Grade, string Name)[] BestOnNes =
+    {
+        ("NES", CoreSlot.Cpu, "FIX", CoreGrade.Stock, "FIX"),
+        ("SNES", CoreSlot.Cpu, "SNES", CoreGrade.Stock, "SNES"),
+        ("Game Boy", CoreSlot.Cpu, "SM83", CoreGrade.Stock, "Game Boy"),
+        ("Master System", CoreSlot.Cpu, "Z80", CoreGrade.Stock, "Master System"),
+        ("Genesis", CoreSlot.Cpu, "M68K", CoreGrade.Stock, "Genesis"),
+        ("NES", CoreSlot.Ppu, "FIX", CoreGrade.Stock, "FIX"), ("NES", CoreSlot.Ppu, "FIXS", CoreGrade.Enhanced, "FIX"),
+        ("SNES", CoreSlot.Ppu, "SNES", CoreGrade.Stock, "SNES"),
+        ("Game Boy", CoreSlot.Ppu, "DMG", CoreGrade.Stock, "Game Boy"), ("Game Boy", CoreSlot.Ppu, "DMGS", CoreGrade.Enhanced, "Game Boy"),
+        ("Master System", CoreSlot.Ppu, "SMS", CoreGrade.Stock, "Master System"),
+        ("Genesis", CoreSlot.Ppu, "MD", CoreGrade.Stock, "Genesis"),
+        ("NES", CoreSlot.Apu, "FIX", CoreGrade.Stock, "FIX"), ("NES", CoreSlot.Apu, "FIXS", CoreGrade.Enhanced, "FIX"),
+        ("SNES", CoreSlot.Apu, "SNES", CoreGrade.Stock, "SNES"),
+        ("Game Boy", CoreSlot.Apu, "DMG", CoreGrade.Stock, "Game Boy"), ("Game Boy", CoreSlot.Apu, "DMGS", CoreGrade.Enhanced, "Game Boy"),
+        ("Master System", CoreSlot.Apu, "SMS", CoreGrade.Stock, "Master System"), ("Master System", CoreSlot.Apu, "SMSFM", CoreGrade.Stock, "Master System FM"),
+        ("Genesis", CoreSlot.Apu, "MD", CoreGrade.Stock, "Genesis"),
+    };
+
+    /// <summary>A console's own best cores by their own menu ids (stock, then enhanced).</summary>
+    private static (string Id, CoreGrade Grade, string Name)[] OwnBest(ConsoleKind console, CoreSlot slot) => (console, slot) switch
+    {
+        (ConsoleKind.Nes, _) => BestOnNes.Where(b => b.Family == "NES" && b.Slot == slot).Select(b => (b.NesId, b.Grade, b.Name)).ToArray(),
+        (ConsoleKind.Snes, CoreSlot.Cpu) => new[] { ("SFC", CoreGrade.Stock, "SNES") },
+        (ConsoleKind.Snes, _) => new[] { ("SFC", CoreGrade.Stock, "SNES") },
+        (ConsoleKind.GameBoy or ConsoleKind.GameBoyColor, CoreSlot.Apu) => new[] { ("GB", CoreGrade.Stock, "Game Boy"), ("GBS", CoreGrade.Enhanced, "Game Boy") },
+        (ConsoleKind.GameBoy or ConsoleKind.GameBoyColor, _) => new[] { ("GB", CoreGrade.Stock, console == ConsoleKind.GameBoyColor ? "Game Boy Color" : "Game Boy") },
+        (ConsoleKind.MasterSystem, CoreSlot.Cpu) or (ConsoleKind.GameGear, CoreSlot.Cpu) => new[] { ("Z80", CoreGrade.Stock, Consoles.DisplayName(console)) },
+        (ConsoleKind.MasterSystem, CoreSlot.Apu) => new[] { ("SMS", CoreGrade.Stock, "Master System"), ("SMS-FM", CoreGrade.Stock, "Master System FM") },
+        (ConsoleKind.MasterSystem, _) => new[] { ("SMS", CoreGrade.Stock, "Master System") },
+        (ConsoleKind.GameGear, _) => new[] { ("GG", CoreGrade.Stock, "Game Gear") },
+        (ConsoleKind.Genesis, CoreSlot.Cpu) => new[] { ("M68K", CoreGrade.Stock, "Genesis") },
+        _ => new[] { ("MD", CoreGrade.Stock, "Genesis") },
+    };
+
+    private static readonly string[] FamilyOrder = { "NES", "SNES", "Game Boy", "Master System", "Genesis" };
+
+    /// <summary>The NES-board chip an entry reaches (its id without the route: "NES:FIXS" -> FIXS, "NES-FM:FIX" -> FIX, "SNES:SFC" -> SNES), and whether that is a best core of another family.</summary>
+    private static (string Family, CoreGrade Grade, string Name)? CrossBest(ConsoleKind console, CoreSlot slot, CoreOption o)
+    {
+        string id = o.Id;
+        if (console == ConsoleKind.Nes)
+        {
+            foreach (var b in BestOnNes) if (b.Slot == slot && b.Family != "NES" && b.NesId.Equals(id, StringComparison.OrdinalIgnoreCase)) return (b.Family, b.Grade, b.Name);
+            return null;
+        }
+        // the Game Boy draws on the SNES chip directly (GbToSnes, the Super Game Boy idea): the SNES's stock picture chip seen from the Game Boy
+        if (id.Equals("SNES:SFC", StringComparison.OrdinalIgnoreCase)) return ("SNES", CoreGrade.Stock, "SNES");
+        int colon = id.IndexOf(':');
+        if (colon < 0) return null;
+        string route = id[..colon], nes = id[(colon + 1)..];
+        if (!route.Equals("NES", StringComparison.OrdinalIgnoreCase) && !route.Equals("NES-FM", StringComparison.OrdinalIgnoreCase)) return null;
+        foreach (var b in BestOnNes)
+            if (b.Slot == slot && b.NesId.Equals(nes, StringComparison.OrdinalIgnoreCase) && b.Family != Consoles.Family(console))
+                return (b.Family, b.Grade, route.Equals("NES-FM", StringComparison.OrdinalIgnoreCase) ? b.Name + " with the FM chip" : b.Name);
+        return null;
+    }
+
+    /// <summary>"FIX (enhanced) - ..." from a label that may start with its id ("FIXS - NES picture chip ..."): the grade's name first, then what the entry does.</summary>
+    private static string GradedLabel(string name, CoreGrade grade, CoreOption o)
+    {
+        string label = o.Label, id = o.Id, bare = id.Contains(':') ? id[(id.IndexOf(':') + 1)..] : id;
+        foreach (var head in new[] { id + " - ", bare + " - ", id + " (", bare + " (" })
+            if (label.StartsWith(head, StringComparison.OrdinalIgnoreCase)) { label = head.EndsWith("(") ? label[(head.Length - 1)..].Trim() : label[head.Length..]; break; }
+        if (label.Equals(id, StringComparison.OrdinalIgnoreCase) || label.Equals(bare, StringComparison.OrdinalIgnoreCase)) label = "";
+        // "(SNES picture chip)" left from "SFC (SNES picture chip)": drop the brackets
+        if (label.StartsWith("(") && label.EndsWith(")")) label = label[1..^1];
+        string head2 = $"{name} ({(grade == CoreGrade.Enhanced ? "enhanced" : "stock")})";
+        return label.Length > 0 ? $"{head2} - {label}" : head2;
+    }
+
+    /// <summary>Puts a console's menu in its three sections and names the best cores stock / enhanced (the rest keep their label and their order).</summary>
+    private static IReadOnlyList<CoreOption> Arrange(ConsoleKind console, CoreSlot slot, List<CoreOption> raw)
+    {
+        var own = new List<CoreOption>(); var cross = new List<(int family, int order, CoreOption o)>(); var more = new List<CoreOption>();
+        var ownBest = OwnBest(console, slot);
+        for (int i = 0; i < raw.Count; i++)
+        {
+            var o = raw[i];
+            int ob = Array.FindIndex(ownBest, b => b.Id.Equals(o.Id, StringComparison.OrdinalIgnoreCase));
+            if (ob >= 0)
+            {
+                var (_, grade, name) = ownBest[ob];
+                own.Add(o with { Label = slot == CoreSlot.Cpu ? o.Label : GradedLabel(name, grade, o), Grade = grade, Section = CoreSection.Own });
+                continue;
+            }
+            if (CrossBest(console, slot, o) is { } x)
+            {
+                cross.Add((Array.IndexOf(FamilyOrder, x.Family), i, o with { Label = slot == CoreSlot.Cpu ? o.Label : GradedLabel(x.Name, x.Grade, o), Grade = x.Grade, Section = CoreSection.OtherConsoles }));
+                continue;
+            }
+            more.Add(o with { Grade = CoreGrade.Other, Section = CoreSection.More });
+        }
+        // own: in the order of OwnBest (stock first); the others: by family, then stock before enhanced, then the order they came in (the FM route after the plain one)
+        own.Sort((a, b) => Array.FindIndex(ownBest, x => x.Id.Equals(a.Id, StringComparison.OrdinalIgnoreCase)).CompareTo(Array.FindIndex(ownBest, x => x.Id.Equals(b.Id, StringComparison.OrdinalIgnoreCase))));
+        var crossSorted = cross.OrderBy(c => c.family).ThenBy(c => c.o.Id.StartsWith("NES-FM:", StringComparison.OrdinalIgnoreCase) ? 1 : 0).ThenBy(c => c.o.Grade).ThenBy(c => c.order).Select(c => c.o);
+        return own.Concat(crossSorted).Concat(more).ToList();
+    }
+
+    /// <summary>Every entry of a console's menu with the labels the bridges give them (unordered sections: <see cref="Arrange"/> orders them).</summary>
+    private static List<CoreOption> RawOptions(ConsoleKind console, CoreSlot slot)
     {
         var list = new List<CoreOption>();
         switch (console)
@@ -395,18 +595,44 @@ public static class CoreCatalog
                 }
                 break;
         }
-        // Own family first, the others after in a fixed order; order inside a family is kept.
+        // Own family first, the others after in a fixed order; order inside a family is kept (the "More" section keeps this order).
         string own = Consoles.Family(console);
         string[] order = { own, "NES", "SNES", "Game Boy" };
         return list.OrderBy(o => Array.IndexOf(order, o.Family) is var i and >= 0 ? i : 9).ToList();
     }
 
-    /// <summary>The default core of a slot (the first of the own family).</summary>
+    /// <summary>The default core of a slot (the console's own stock core, the first entry).</summary>
     public static string Default(ConsoleKind console, CoreSlot slot) => Options(console, slot).FirstOrDefault()?.Id ?? "FIX";
 
-    /// <summary>A stored id if the menu still offers it, otherwise the default.</summary>
-    public static string Resolve(ConsoleKind console, CoreSlot slot, string? stored) =>
-        stored != null && Options(console, slot).Any(o => o.Id.Equals(stored, StringComparison.OrdinalIgnoreCase)) ? stored : Default(console, slot);
+    /// <summary>A stored id if the menu still offers it (a retired id moved to its successor first: <see cref="CoreIdMigration"/>), otherwise the default.</summary>
+    public static string Resolve(ConsoleKind console, CoreSlot slot, string? stored)
+    {
+        if (stored == null) return Default(console, slot);
+        string id = CoreIdMigration.Console(console, slot, stored);
+        return Options(console, slot).Any(o => o.Id.Equals(id, StringComparison.OrdinalIgnoreCase)) ? id : Default(console, slot);
+    }
+
+    /// <summary>The menu entry for an id (a retired id finds its successor), or null when the menu does not offer it.</summary>
+    public static CoreOption? Find(ConsoleKind console, CoreSlot slot, string? id)
+    {
+        if (string.IsNullOrEmpty(id)) return null;
+        string now = CoreIdMigration.Console(console, slot, id);
+        return Options(console, slot).FirstOrDefault(o => o.Id.Equals(now, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>True when a picture chip id of this console draws through a Game Boy picture chip (the NES board's DMG / DMGS, or "NES:DMG" / "NES:DMGS" on another console) - or is the Game Boy's own: the Game Boy look and its inversions apply.</summary>
+    public static bool IsGameBoyPicture(ConsoleKind console, string? ppuId)
+    {
+        if (Consoles.IsGameBoy(console)) return true;
+        if (string.IsNullOrEmpty(ppuId)) return false;
+        string id = CoreIdMigration.Console(console, CoreSlot.Ppu, ppuId);
+        if (console != ConsoleKind.Nes)
+        {
+            if (!id.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) return false;
+            id = id[4..];
+        }
+        return NesFamilyOf(CoreSlot.Ppu, id) == "Game Boy";
+    }
 
     // NES picture chips a SNES or Game Boy picture can be drawn on (not the ones that bridge back to the source console).
     private static IEnumerable<string> NesPictureChips() =>
@@ -427,7 +653,7 @@ public static class CoreCatalog
     {
         "FIXS" => "FIXS - NES picture chip with layers (per-line scroll, tiles in 3 colours + clear, 8 palettes, sprites in the VDP's order; losses counted)",
         "SNES" => "SNES - through a NES onto the SNES picture chip",
-        "DMG" or "DMGX" or "DMGS" or "SMS" or "MD" => NesPictureLabel(id),
+        "DMG" or "DMGS" or "SMS" or "MD" => NesPictureLabel(id),
         _ => $"{id} - NES picture chip (flat: one 256-tile background, 4 palettes of 3 colours, 64 sprites; losses counted)",
     };
 
@@ -436,9 +662,9 @@ public static class CoreCatalog
         "SMS" => "SMS - through a NES onto the Master System picture chip",
         "MD" => "MD - through a NES onto the Genesis picture chip",
         "FIXS" => "FIXS - NES picture chip with SNES layers + all sprites",
-        "DMG" => "DMG - through a NES onto the Game Boy picture chip",
-        "DMGX" => "DMGX - through a NES onto the big-screen Game Boy chip",
-        "DMGS" => "DMGS - through a NES onto the Game Boy chip with SNES layers",
+        "FIX" => "FIX - NES picture chip (flat: one background layer)",
+        "DMG" => "DMG - through a NES onto the Game Boy picture chip (the middle 160x144, 4 shades by brightness)",
+        "DMGS" => "DMGS - through a NES onto the Game Boy picture chip with the whole picture and the game's layers",
         _ => $"{id} - NES picture chip",
     };
 

@@ -118,9 +118,9 @@
                                 <label class="mini-label" title="@($"{slot.ToString().ToUpperInvariant()} of the {emu!.ActiveConsoleName} - swaps in while the game runs")">@slot.ToString().ToUpperInvariant()</label>
                                 <select class="btn btn-rf btn-select console-core-select" aria-label="@($"{slot} core")" value="@current"
                                         @onchange="(e => emu!.SetConsoleCoreAsync(slot, e.Value?.ToString() ?? current))">
-                                    @foreach (var fam in emu!.ConsoleCoreOptions(slot).GroupBy(o => o.Family))
+                                    @foreach (var fam in emu!.ConsoleCoreOptions(slot).GroupBy(o => o.Section))
                                     {
-                                        <optgroup label="@(fam.Key == Consoles.Family(emu!.ActiveConsole) ? $"{fam.Key} family" : $"From the {fam.Key}")">
+                                        <optgroup label="@CoreCatalog.SectionTitle(emu!.ActiveConsole, fam.Key)">
                                             @foreach (var o in fam)
                                             {
                                                 <option value="@o.Id" selected="@(o.Id == current)">@o.Label</option>

@@ -3,7 +3,7 @@ using System;
 namespace NesEmulator
 {
     /// <summary>
-    /// The SNES-support picture extension shared by the variant chips PPU_FIXS (NES) and PPU_GBXS (Game Boy): extra
+    /// The SNES-support picture extension shared by the enhanced chips PPU_FIXS (NES, FIX enhanced) and PPU_GBE (Game Boy enhanced): extra
     /// background layers, a Mode 7 layer and an extended sprite list that the cross-console bridge fills from a SNES frame,
     /// composed one source line at a time. Chip-neutral: tiles are 2-bit values (a brightness level 1-3 inside a palette,
     /// 0 = see-through) and palettes are RGB, so each chip turns a composed pixel into its own colours (NES palette entries,

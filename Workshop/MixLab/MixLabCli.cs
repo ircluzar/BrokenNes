@@ -79,7 +79,8 @@ internal static class MixLabCli
             ("CPU", opt("cpu", "FIX"), nes.SetCpuCore, nes.GetCpuCoreId), ("PPU", opt("ppu", "FIX"), nes.SetPpuCore, nes.GetPpuCoreId), ("APU", opt("apu", "FIX"), nes.SetApuCore, nes.GetApuCoreId) })
         {
             set(id);
-            if (!get().EndsWith("_" + id, StringComparison.OrdinalIgnoreCase)) { Console.Error.WriteLine($"{kind} core {id} not applied (got {get()})"); return 3; }
+            string want = kind == "PPU" ? CoreRegistry.MigratePpuId(id) : id;     // a retired picture chip (DMGX) runs as its successor
+            if (!get().EndsWith("_" + want, StringComparison.OrdinalIgnoreCase)) { Console.Error.WriteLine($"{kind} core {id} not applied (got {get()})"); return 3; }
         }
         var bus = (Bus)typeof(NES).GetField("bus", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(nes)!;
         // Bridge PPUs wrap PPU_FIX, and the board only runs PPU_FIX timing precisely when the PPU *is* PPU_FIX: the wrapped

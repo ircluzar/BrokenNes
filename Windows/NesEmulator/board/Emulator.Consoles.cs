@@ -43,24 +43,28 @@ namespace BrokenNes
             {
                 var c = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_console");
                 if (!string.IsNullOrEmpty(c)) SelectedConsole = Consoles.FromKey(c);
+                // The Game Boy look.
+                GbLook.Palette = GbLook.FromKey(await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gblook"));
+                GbLook.InvertBackground = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gbinvbg") == "1";
+                GbLook.InvertSprites = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gbinvobj") == "1";
+                // The core picks. A pick of a retired core moves to its successor and is stored back (CoreIdMigration: the big-screen Game Boy chip
+                // NES:DMGX is the enhanced chip NES:DMGS now; the retired DMGXI / DMGSI also switch the sprite inversion on) - never a reset to the default.
+                bool invertSprites = false;
                 foreach (var k in Consoles.All.Where(k => k != ConsoleKind.Nes))
                     foreach (var slot in new[] { CoreSlot.Cpu, CoreSlot.Ppu, CoreSlot.Apu })
                     {
                         var v = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", CoreKey(k, slot));
-                        if (!string.IsNullOrEmpty(v)) consoleCores[CoreKey(k, slot)] = v;
+                        if (string.IsNullOrEmpty(v)) continue;
+                        bool moved = false;
+                        consoleCores[CoreKey(k, slot)] = CoreIdMigration.Migrate(k, slot, v, ref moved, ref invertSprites)!;
+                        if (moved) await JS.InvokeVoidAsync("nesInterop.idbSetItem", CoreKey(k, slot), consoleCores[CoreKey(k, slot)]);
                     }
-                // The Game Boy look. Picks of the retired DMGXI / DMGSI picture chips become DMGX / DMGS + sprite inversion.
-                GbLook.Palette = GbLook.FromKey(await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gblook"));
-                GbLook.InvertBackground = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gbinvbg") == "1";
-                GbLook.InvertSprites = await JS.InvokeAsync<string?>("nesInterop.idbGetItem", "pref_gbinvobj") == "1";
-                bool retired = false;
-                foreach (var key in consoleCores.Keys.ToList())
                 {
-                    var v = consoleCores[key].ToUpperInvariant();
-                    if (v.EndsWith("DMGXI") || v.EndsWith("DMGSI")) { consoleCores[key] = consoleCores[key][..^1]; retired = true; await JS.InvokeVoidAsync("nesInterop.idbSetItem", key, consoleCores[key]); }
+                    bool moved = false;
+                    Controller.PpuCoreSel = CoreIdMigration.Migrate(ConsoleKind.Nes, CoreSlot.Ppu, Controller.PpuCoreSel, ref moved, ref invertSprites)!;
+                    if (moved) await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_ppuCore", Controller.PpuCoreSel);
                 }
-                if (Controller.PpuCoreSel.ToUpperInvariant() is "DMGXI" or "DMGSI") { Controller.PpuCoreSel = Controller.PpuCoreSel[..^1]; retired = true; await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_ppuCore", Controller.PpuCoreSel); }
-                if (retired) { GbLook.InvertSprites = true; await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_gbinvobj", "1"); }
+                if (invertSprites) { GbLook.InvertSprites = true; await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_gbinvobj", "1"); }
             }
             catch (Exception ex) { Logger.LogWarning(ex, "console prefs"); }
         }
@@ -72,10 +76,9 @@ namespace BrokenNes
         public bool GbInvertBackground => GbLook.InvertBackground;
         public bool GbInvertSprites => GbLook.InvertSprites;
 
-        /// <summary>A Game Boy picture is in play: a Game Boy game, or a NES / SNES game through a Game Boy picture chip.</summary>
-        public bool ShowsGameBoyPicture => ActiveConsole is ConsoleKind.GameBoy or ConsoleKind.GameBoyColor
-            || (ActiveConsole == ConsoleKind.Snes && ConsoleCore(ConsoleKind.Snes, CoreSlot.Ppu).Contains("DMG", StringComparison.OrdinalIgnoreCase))
-            || (ActiveConsole == ConsoleKind.Nes && Controller.PpuCoreSel.StartsWith("DMG", StringComparison.OrdinalIgnoreCase));
+        /// <summary>A Game Boy picture is in play: a Game Boy game, or any other console's game (NES, SNES, Master System, Game Gear, Genesis) through a Game Boy
+        /// picture chip, stock or enhanced - the look and its two inversions are shown whenever they apply.</summary>
+        public bool ShowsGameBoyPicture => CoreCatalog.IsGameBoyPicture(ActiveConsole, ActiveConsole == ConsoleKind.Nes ? Controller.PpuCoreSel : ConsoleCore(ActiveConsole, CoreSlot.Ppu));
 
         /// <summary>Change the Game Boy look (null = unchanged). Going to or from Game Boy Color changes the Game Boy
         /// model, so a game using a Game Boy picture restarts; the rest applies live.</summary>

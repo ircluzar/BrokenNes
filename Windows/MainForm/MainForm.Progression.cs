@@ -301,19 +301,22 @@ namespace BrokenNes.Windows
             save ??= LoadProgressionSnapshot();
             EnsureUnlockedProgressionCapabilities(save);
 
-            var safeCpuCore = ResolveUnlockedCoreSelection(config.SelectedCpuCore, CoreRegistry.CpuIds, save.OwnedCpuIds, "FIX");
+            // With the legacy locks off (BrokenNes 2's default) every core is unlocked (IsCpuCoreUnlocked and the others say so): a stored pick is only checked for
+            // existing, never reset because the BrokenNes 1 campaign save does not own it (before 2026-10-22 a pick of FIX enhanced or a Game Boy chip that save
+            // did not own was put back to FIX at every ROM load).
+            var safeCpuCore = ResolveUnlockedCoreSelection(config.SelectedCpuCore, CoreRegistry.CpuIds, LegacyLocksOff ? CoreRegistry.CpuIds : save.OwnedCpuIds, "FIX");
             if (!string.Equals(config.SelectedCpuCore, safeCpuCore, StringComparison.OrdinalIgnoreCase))
             {
                 Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = safeCpuCore);
             }
 
-            var safePpuCore = ResolveUnlockedCoreSelection(config.SelectedPpuCore, CoreRegistry.PpuIds, save.OwnedPpuIds, "FIX");
+            var safePpuCore = ResolveUnlockedCoreSelection(config.SelectedPpuCore, CoreRegistry.PpuIds, LegacyLocksOff ? CoreRegistry.PpuIds : save.OwnedPpuIds, "FIX");
             if (!string.Equals(config.SelectedPpuCore, safePpuCore, StringComparison.OrdinalIgnoreCase))
             {
                 Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = safePpuCore);
             }
 
-            var safeApuCore = ResolveUnlockedCoreSelection(config.SelectedApuCore, CoreRegistry.ApuIds, save.OwnedApuIds, "FIX");
+            var safeApuCore = ResolveUnlockedCoreSelection(config.SelectedApuCore, CoreRegistry.ApuIds, LegacyLocksOff ? CoreRegistry.ApuIds : save.OwnedApuIds, "FIX");
             if (!string.Equals(config.SelectedApuCore, safeApuCore, StringComparison.OrdinalIgnoreCase))
             {
                 Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = safeApuCore);

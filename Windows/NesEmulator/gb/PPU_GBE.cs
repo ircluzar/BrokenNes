@@ -4,9 +4,21 @@ using System.IO;
 namespace NesEmulator.Gb;
 
 /// <summary>
-/// OFF-SPEC VARIANT of <see cref="PPU_GB"/>: the same Game Boy / Game Boy Color picture processor with a bigger screen,
-/// for showing other consoles' games through a Game Boy picture chip without cropping them to 160x144 (the mix lab's
-/// NES PPU id "DMGX" drives it at 256x240). Everything else stays Game Boy: 2-bit tiles from the same 384-tile VRAM
+/// PPU_GBE: the Game Boy picture chip, ENHANCED - the one cross-console variant of <see cref="PPU_GB"/> (the stock chip). It replaced the
+/// two variants before it (2026-10-22): PPU_GBX (a bigger screen) and PPU_GBXS (the bigger screen plus the SNES-support layers), so the
+/// Game Boy has a stock chip and an enhanced chip, as the NES has FIX and FIX enhanced. Two things are added to the stock chip:
+///   * a screen of the guest's size: the frame is Width x Height (160-256 x 144-240) instead of 160x144, so another console's game is shown
+///     whole instead of cropped (the NES-board bridge PPU_DMGS drives it);
+///   * the cross-console layers (<see cref="ExtPicture"/>): extra background layers, each with its own 2-bit tiles, map, palettes, priority
+///     bits and per-line scroll, an extended list of 8x8 sprite pieces (flips, 4 priorities) with configurable limits, and a priority ladder
+///     (highest opaque z wins, colour 0 is see-through) the bridge loads for the guest. The guest's colours become the chip's own: 4 shades
+///     by brightness (DMG) or CGB colours.
+/// What stays Game Boy: 2-bit tiles, 4 shades (DMG) or the 8+8 CGB palettes. With the extension empty and the stock size it draws exactly as
+/// PPU_GB.
+///
+/// The bigger screen: the same Game Boy / Game Boy Color picture processor with a bigger screen,
+/// for showing other consoles' games through a Game Boy picture chip without cropping them to 160x144 (the NES-board bridge,
+/// NES PPU id "DMGS", drives it at 256x240). Everything else stays Game Boy: 2-bit tiles from the same 384-tile VRAM
 /// (768 on CGB), the one 32x32-tile (256x256 pixel) background map that wraps, the window, 4 shades or 8 CGB palettes,
 /// 40 objects with 10 per line, OAM coordinates in bytes (no object right of X 247 or below Y 239) and the dot-level
 /// pipeline below. Only the frame is stretched: a line gets Width - 160 extra dots (the same HBlank budget after the
@@ -30,7 +42,7 @@ namespace NesEmulator.Gb;
 /// at dot 452 of the line before, LY=LYC and VBlank at 454. Calibrated against gbmicrotest, Mooneye and the
 /// Mealybug Tearoom mid-scanline tests.
 /// </summary>
-public sealed class PPU_GBX
+public sealed class PPU_GBE
 {
     public readonly int Width, Height, DotsPerLine, Lines;
     /// <summary>The last line of the frame (153 on a real Game Boy), and the two interrupt-side events of each line.</summary>
@@ -69,7 +81,7 @@ public sealed class PPU_GBX
 
     /// <param name="width">Screen width, 160-256 in steps of 8 (the background map is 256 pixels wide).</param>
     /// <param name="height">Screen height, 144-240 (LY is a byte and the frame keeps its 10 VBlank lines).</param>
-    public PPU_GBX(GbModel model, int width = 256, int height = 240)
+    public PPU_GBE(GbModel model, int width = 256, int height = 240)
     {
         if (width < 160 || width > 256 || (width & 7) != 0) throw new ArgumentOutOfRangeException(nameof(width), "160-256, a multiple of 8");
         if (height < 144 || height > 240) throw new ArgumentOutOfRangeException(nameof(height), "144-240");
@@ -283,7 +295,7 @@ public sealed class PPU_GBX
         ly++;
         lyReadsZero = false;
         if (ly == Lines) { ly = 0; windowLine = 0; windowYTriggered = false; }
-        if (ly < Height) LineStarted?.Invoke(ly);
+        if (ly < Height) { LineStarted?.Invoke(ly); BuildExtLine(); }
         if (ly != 0) lyCmpVis = -1;   // LY has read 0 since early line 153: line 0 keeps matching
         if (ly <= Height) visMode = 0;
         if (ly == Height)
@@ -582,13 +594,13 @@ public sealed class PPU_GBX
     private void OutputPixel(int x, int bc, int oc, byte oa, byte attr)
     {
         int i = ly * Width + x;
-        uint color; byte shade;
+        uint color; byte shade; int nz = 0;   // nz: the native pixel's place on the extension's ladder
         if (Cgb)
         {
             bool objWins = oc != 0 && (Lcdc & 0x02) != 0
                 && ((Lcdc & 0x01) == 0 || bc == 0 || ((oa & 0x80) == 0 && (attr & 0x80) == 0));
-            if (objWins) { color = CgbColor(ObjPalRam, oa & 7, oc); shade = (byte)oc; }
-            else { color = CgbColor(BgPalRam, attr & 7, bc); shade = (byte)bc; }
+            if (objWins) { color = CgbColor(ObjPalRam, oa & 7, oc); shade = (byte)oc; nz = (oa & 0x80) == 0 ? NativeObjFrontZ : NativeObjBehindZ; }
+            else { color = CgbColor(BgPalRam, attr & 7, bc); shade = (byte)bc; if (bc != 0) nz = NativeBgZ; }
         }
         else
         {
@@ -603,16 +615,94 @@ public sealed class PPU_GBX
                     : (dot == obp0WriteDot ? (byte)(Obp0 | obp0Old) : Obp0);
                 shade = (byte)(pal >> (oc * 2) & 3);
                 color = CompatMode ? CgbColor(ObjPalRam, (oa & 0x10) != 0 ? 1 : 0, shade) : DmgColors[shade];
+                nz = (oa & 0x80) == 0 ? NativeObjFrontZ : NativeObjBehindZ;
             }
             else
             {
                 byte pal = dot == bgpWriteDot ? (byte)(Bgp | bgpOld) : Bgp;
                 shade = (byte)(pal >> (bc * 2) & 3);
                 color = CompatMode ? CgbColor(BgPalRam, 0, shade) : DmgColors[shade];
+                if (bc != 0) nz = NativeBgZ;
             }
+        }
+        if (extLineActive && extZ![x] >= nz)
+        {
+            // The extension is in use: the native picture takes its place on the ladder, over the extension's backdrop.
+            color = extColor![x]; shade = extShade![x];
         }
         FrameBuffer[i] = color;
         ShadeBuffer[i] = shade;
+    }
+
+    // =================================================================================== the cross-console layers
+    /// <summary>
+    /// The cross-console picture (<see cref="ExtPicture"/>: per-line layers, Mode 7, sprites, windows, backdrop), shared with
+    /// the NES chip PPU_FIXS in front of the Game Boy bridge. Null or inactive: the chip draws exactly as the stock chip at its size. The Game
+    /// Boy pixel (x, ly) shows the extension's source pixel (x + ExtOffsetX, ly + ExtOffsetY). DMG: every colour becomes the shade of its
+    /// own brightness (<see cref="GbColour.ShadeOf"/>: bright 0 .. dark 3), the backdrop included; CGB: the colour itself (5 bits a channel).
+    /// </summary>
+    public ExtPicture? Ext;
+    public int ExtOffsetX, ExtOffsetY;
+    /// <summary>
+    /// The Game Boy look's lightness inversions for the extension's picture, set by the bridge: the background (the layers, Mode 7 and the backdrop) and the sprites
+    /// apart. DMG: shade s becomes 3 - s; CGB: the colour's lightness is mirrored with its hue and saturation kept (<see cref="GbColour.FlipLightness"/>). The black
+    /// outside the picture (the Game Gear's bezel, the SNES's clip to black) never flips.
+    /// </summary>
+    public bool ExtInvertBackground, ExtInvertSprites;
+
+    /// <summary>TEST ONLY (the inversion checks' negative control): the backdrop keeps its shade when the background is inverted, as the layered chip did before 2026-10-22. False in every app.</summary>
+    internal static bool BackdropIgnoresInversionForTests;
+    /// <summary>Ladder positions of the native Game Boy picture when the extension is active.</summary>
+    public byte NativeBgZ = 5, NativeObjFrontZ = 10, NativeObjBehindZ = 4;
+    public int ExtSpriteLineDrops => Ext?.SpriteLineDrops ?? 0;
+
+    private bool extLineActive;
+    private byte[]? extZ, extShade, extKey;
+    private bool[]? extMath;
+    private uint[]? extColor;
+
+    private void BuildExtLine()
+    {
+        var e = Ext;
+        extLineActive = false;
+        if (e == null || !e.Active) return;
+        extZ ??= new byte[Width]; extShade ??= new byte[Width]; extKey ??= new byte[Width]; extColor ??= new uint[Width]; extMath ??= new bool[Width];
+        int src = ly + ExtOffsetY;
+        if (!e.ComposeLine(src, ExtOffsetX, Width, extZ, extKey, extMath)) return;
+        extLineActive = true;
+        for (int x = 0; x < Width; x++)
+        {
+            byte k = extKey[x];
+            bool black = k == ExtPicture.KeyBlack, obj = (k & 0x60) == ExtPicture.KindObj;
+            // the backdrop keys (KeyBackdrop, KeyBackdropAlt) are the background's: they flip with it; the black outside the picture never does
+            bool inv = !black && (obj ? ExtInvertSprites : ExtInvertBackground) && !(BackdropIgnoresInversionForTests && k < ExtPicture.KindBg);
+            uint rgb = black ? 0u : e.Rgb(k, src);
+            if (extMath[x]) rgb = e.Blend(rgb, src);       // fixed-colour math: the blend's own colour (CGB) or the shade of its brightness (DMG)
+            if (Cgb)
+            {
+                if (inv) rgb = GbColour.FlipLightness(rgb);
+                extColor[x] = Cgb555(rgb);
+                extShade[x] = (byte)(k >= ExtPicture.KindBg ? k & 3 : 0);
+                continue;
+            }
+            byte shade = black ? (byte)3 : GbColour.ShadeOf(rgb);
+            if (inv) shade = (byte)(3 - shade);
+            extShade[x] = shade;
+            extColor[x] = CompatMode ? CgbColor(obj ? ObjPalRam : BgPalRam, 0, shade) : DmgColors[shade];
+        }
+    }
+
+    /// <summary>An RGB colour as the CGB shows it (5 bits per channel).</summary>
+    private static uint Cgb555(uint rgb)
+    {
+        int r = (int)(rgb >> 19) & 0x1F, g = (int)(rgb >> 11) & 0x1F, b = (int)(rgb >> 3) & 0x1F;
+        return 0xFF000000u | (uint)((r << 3 | r >> 2) << 16 | (g << 3 | g >> 2) << 8 | (b << 3 | b >> 2));
+    }
+
+    /// <summary>Switch the extension off: the chip draws exactly as the stock chip (at its size) again.</summary>
+    public void ClearExtension()
+    {
+        if (Ext != null) Ext.Active = false;
     }
 
     private static uint CgbColor(byte[] pal, int palette, int index)

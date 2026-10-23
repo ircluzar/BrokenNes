@@ -16,13 +16,26 @@ namespace BrokenNes.Workshop;
 /// </summary>
 internal static class ConsoleRunCli
 {
-    public static int Catalog()
+    public static int Catalog(string[]? args = null)
     {
+        bool labels = args != null && args.Contains("--labels");
         foreach (var c in Consoles.All)
         {
             Console.WriteLine($"== {Consoles.DisplayName(c)}");
             foreach (var slot in new[] { CoreSlot.Cpu, CoreSlot.Ppu, CoreSlot.Apu })
-                Console.WriteLine($"  {slot}: " + string.Join(" | ", CoreCatalog.Options(c, slot).GroupBy(o => o.Family).Select(g => $"[{g.Key}] " + string.Join(", ", g.Select(o => o.Id)))));
+            {
+                if (!labels)
+                {
+                    Console.WriteLine($"  {slot}: " + string.Join(" | ", CoreCatalog.Options(c, slot).GroupBy(o => o.Section).Select(g => $"[{CoreCatalog.SectionTitle(c, g.Key)}] " + string.Join(", ", g.Select(o => o.Grade == CoreGrade.Other ? o.Id : $"{o.Id}({o.Grade.ToString().ToLowerInvariant()})")))));
+                    continue;
+                }
+                Console.WriteLine($"  {slot}:");
+                foreach (var g in CoreCatalog.Options(c, slot).GroupBy(o => o.Section))
+                {
+                    Console.WriteLine($"    -- {CoreCatalog.SectionTitle(c, g.Key)}");
+                    foreach (var o in g) Console.WriteLine($"       {o.Id,-14} {o.Label}");
+                }
+            }
         }
         return 0;
     }

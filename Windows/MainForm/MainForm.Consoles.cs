@@ -160,7 +160,7 @@ namespace BrokenNes.Windows
             {
                 var slot = slotName.ToLowerInvariant() switch { "cpu" => CoreSlot.Cpu, "ppu" => CoreSlot.Ppu, _ => CoreSlot.Apu };
                 var console = session?.Console ?? SelectedConsole;
-                var opt = CoreCatalog.Options(console, slot).FirstOrDefault(o => o.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+                var opt = CoreCatalog.Find(console, slot, id);     // a retired id (DMGX, NES:DMGX) is its successor
                 if (opt == null) return false;
                 Invoke(() =>
                 {
@@ -268,21 +268,28 @@ namespace BrokenNes.Windows
             if (gbInvertObjItem != null) gbInvertObjItem.Checked = config.GbInvertSprites;
         }
 
-        /// <summary>Apply the saved Game Boy look to the engine (at start-up, after the config loads). Also moves picks of the
-        /// retired DMGXI / DMGSI picture chips to DMGX / DMGS with sprite inversion on.</summary>
+        /// <summary>Apply the saved Game Boy look to the engine (at start-up, after the config loads). Also moves the stored picks of retired
+        /// cores to their successors and writes the config back (<see cref="CoreIdMigration"/>: the big-screen Game Boy chip DMGX is now the
+        /// enhanced Game Boy chip DMGS; the retired DMGXI / DMGSI also switch the sprite inversion on) - never a silent reset to the default.</summary>
         private void ApplyGbLook()
         {
-            bool migrated = false;
-            string Retire(string? id)
+            bool migrated = false, invertSprites = false;
+            config.SelectedCpuCore = CoreIdMigration.Migrate(ConsoleKind.Nes, CoreSlot.Cpu, config.SelectedCpuCore, ref migrated, ref invertSprites)!;
+            config.SelectedPpuCore = CoreIdMigration.Migrate(ConsoleKind.Nes, CoreSlot.Ppu, config.SelectedPpuCore, ref migrated, ref invertSprites)!;
+            config.SelectedApuCore = CoreIdMigration.Migrate(ConsoleKind.Nes, CoreSlot.Apu, config.SelectedApuCore, ref migrated, ref invertSprites)!;
+            foreach (var (key, sel) in config.ConsoleCores)
             {
-                if (id == null) return id!;
-                var up = id.ToUpperInvariant();
-                if (up.EndsWith("DMGXI") || up.EndsWith("DMGSI")) { migrated = true; return id[..^1]; }
-                return id;
+                var console = Consoles.FromKey(key);
+                sel.Cpu = CoreIdMigration.Migrate(console, CoreSlot.Cpu, sel.Cpu, ref migrated, ref invertSprites);
+                sel.Ppu = CoreIdMigration.Migrate(console, CoreSlot.Ppu, sel.Ppu, ref migrated, ref invertSprites);
+                sel.Apu = CoreIdMigration.Migrate(console, CoreSlot.Apu, sel.Apu, ref migrated, ref invertSprites);
             }
-            config.SelectedPpuCore = Retire(config.SelectedPpuCore);
-            foreach (var sel in config.ConsoleCores.Values) if (sel.Ppu != null) sel.Ppu = Retire(sel.Ppu);
-            if (migrated) { config.GbInvertSprites = true; Helpers.ConfigHelper.Save(config); }
+            if (invertSprites) config.GbInvertSprites = true;
+            if (migrated)
+            {
+                Console.WriteLine($"[Config] retired core picks moved to their successors (PPU {config.SelectedPpuCore}{(invertSprites ? ", sprite inversion on" : "")})");
+                Helpers.ConfigHelper.Save(config);
+            }
             GbLook.Palette = GbLook.FromKey(config.GbLook);
             GbLook.InvertBackground = config.GbInvertBackground;
             GbLook.InvertSprites = config.GbInvertSprites;
@@ -307,10 +314,10 @@ namespace BrokenNes.Windows
             if (wasColor == GbLook.Color) return;
             if (session != null && sessionRom != null)
             {
-                if (session.Console is ConsoleKind.GameBoy or ConsoleKind.GameBoyColor || SelectedCore(session.Console, CoreSlot.Ppu).Contains("DMG", StringComparison.OrdinalIgnoreCase))
+                if (CoreCatalog.IsGameBoyPicture(session.Console, SelectedCore(session.Console, CoreSlot.Ppu)))
                     StartSession(session.Console, sessionRom, sessionRomName, currentRomPath);
             }
-            else if (nes != null && config.SelectedPpuCore.StartsWith("DMG", StringComparison.OrdinalIgnoreCase))
+            else if (nes != null && CoreCatalog.IsGameBoyPicture(ConsoleKind.Nes, config.SelectedPpuCore))
                 SetPpuCore(config.SelectedPpuCore, bypassProgression: true);
         }
 
@@ -726,8 +733,8 @@ namespace BrokenNes.Windows
         }
 
         // ------------------------------------------------------------------ core menus, per console
-        /// <summary>One core menu for the selected console: the console's own family first, then the other consoles'
-        /// parts, each family under its own heading.</summary>
+        /// <summary>One core menu for the selected console, in the catalog's three sections, each under its heading: the console's own best cores
+        /// (stock, enhanced), the other consoles' best cores (stock, enhanced), then the rest (the NES gimmick cores and variants).</summary>
         private void BuildCoreMenu(ToolStripMenuItem menu, CoreSlot slot, GameSave progressionSave)
         {
             menu.DropDownItems.Clear();
@@ -735,11 +742,10 @@ namespace BrokenNes.Windows
             string current = console == ConsoleKind.Nes
                 ? (slot switch { CoreSlot.Cpu => config.SelectedCpuCore, CoreSlot.Ppu => config.SelectedPpuCore, _ => config.SelectedApuCore })
                 : SelectedCore(console, slot);
-            string own = Consoles.Family(console);
-            foreach (var group in CoreCatalog.Options(console, slot).GroupBy(o => o.Family))
+            foreach (var group in CoreCatalog.Options(console, slot).GroupBy(o => o.Section))
             {
                 if (menu.DropDownItems.Count > 0) menu.DropDownItems.Add(new ToolStripSeparator());
-                string heading = group.Key == own ? $"{group.Key} family ({Consoles.DisplayName(console)})" : $"From the {group.Key}";
+                string heading = CoreCatalog.SectionTitle(console, group.Key);
                 menu.DropDownItems.Add(new ToolStripMenuItem(heading) { Enabled = false, Font = new Font(menu.Font ?? SystemFonts.MenuFont!, FontStyle.Bold) });
                 foreach (var opt in group)
                 {

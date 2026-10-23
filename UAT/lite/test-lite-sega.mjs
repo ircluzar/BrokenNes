@@ -234,7 +234,9 @@ async function groupPickers() {
         check('pickers', `${key}: the ${slot.toUpperCase()} picker is there and lists the catalog`, opts && want[key][slot].every(id => opts.some(o => o.toUpperCase() === id.toUpperCase() || o.toUpperCase().startsWith(id.toUpperCase()))), opts ? opts.join(',') : 'no picker');
       }
       const groups = await page.eval(`[...document.querySelectorAll('select[aria-label="Ppu core"] optgroup')].map(g => g.label)`);
-      check('pickers', `${key}: the PPU picker groups the console's own chip first, then the other consoles' (labelled "From the ...")`, groups.length >= 2 && /family/.test(groups[0]) && groups.slice(1).every(g => /^From the/.test(g)), groups.join(' | '));
+      check('pickers', `${key}: the PPU picker has the console's own chip first, then the other consoles' best chips, then the rest (one group each)`, groups.length === 3 && /\(its own\)/.test(groups[0]) && /^From the other consoles/.test(groups[1]) && /^More/.test(groups[2]), groups.join(' | '));
+      const labels = await page.eval(`[...document.querySelectorAll('select[aria-label="Ppu core"] option')].map(o => o.value + '=' + o.text)`);
+      check('pickers', `${key}: the stock / enhanced labels (FIX (stock), FIX (enhanced), Game Boy (stock), Game Boy (enhanced))`, ['NES:FIX=FIX (stock)', 'NES:FIXS=FIX (enhanced)', 'NES:DMG=Game Boy (stock)', 'NES:DMGS=Game Boy (enhanced)'].every(p => labels.some(l => l.startsWith(p))), labels.slice(0, 7).join(' | '));
     });
   }
   // the NES side lists the Sega chips under their family
@@ -249,6 +251,29 @@ async function groupPickers() {
       await page.eval(`(() => { const c = document.querySelector('.modal-close, [aria-label="Close"], .picker-close'); if (c) c.click(); else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); })()`);
       await sleep(300);
     }
+  });
+}
+
+// ------------------------------------------------------------------------------------------------------------- the core roster: a pick an older build stored, the Game Boy look's controls
+async function groupRoster() {
+  await withLab({}, async lab => {
+    let page = await lab.open('/', { timeout: 240000 });
+    // what an older build stored: the retired big-screen Game Boy chip (DMGX) for the Genesis's picture and for the NES's
+    await page.eval(`(async () => { await nesInterop.idbSetItem('pref_core_md_ppu', 'NES:DMGX'); await nesInterop.idbSetItem('pref_ppuCore', 'DMGX'); return 1; })()`);
+    page = await openRom(lab, GAMES.md);
+    await sleep(1500);
+    const sel = await page.eval(`document.querySelector('select[aria-label="Ppu core"]')?.value || ''`);
+    const stored = await page.eval(`(async () => [await nesInterop.idbGetItem('pref_core_md_ppu'), await nesInterop.idbGetItem('pref_ppuCore')].join(','))()`);
+    check('roster', 'a stored NES:DMGX (the retired chip) runs the Genesis on its successor NES:DMGS, and the stored picks are written back as DMGS', sel === 'NES:DMGS' && stored === 'NES:DMGS,DMGS', `picker=${sel} stored=${stored}`);
+    const look = await page.eval(`!!document.getElementById('gbLookSelect')`);
+    check('roster', 'a Genesis game on a Game Boy picture chip shows the Game Boy look and its two inversions', look);
+    const r = await page.eval(`window.__frames ? 1 : 0`).then(async () => { await ready(page); return page.eval(`window.__frames(30)`); });
+    check('roster', '... and the game runs on it', r.frames === 30 && new Set(r.hashes).size >= 1, `${r.w}x${r.h}`);
+    await selectOption(page, 'select[aria-label="Ppu core"]', 'MD');
+    await sleep(800);
+    const lookOff = await page.eval(`!!document.getElementById('gbLookSelect')`);
+    check('roster', 'negative control: on its own chip the Game Boy look is not shown', !lookOff);
+    check('roster', 'no console error', page.consoleErrors().length === 0, page.consoleErrors().slice(0, 2).join(' | '));
   });
 }
 
@@ -558,7 +583,7 @@ async function groupSpeed() {
   });
 }
 
-const groups = { console: groupConsole, layout: groupLayout, rom: groupRom, import: groupImport, pickers: groupPickers, swap: groupSwap, saves: groupSaves, states: groupStates, video: groupVideo, audio: groupAudio, control: groupControl, speed: groupSpeed };
+const groups = { console: groupConsole, layout: groupLayout, rom: groupRom, import: groupImport, pickers: groupPickers, roster: groupRoster, swap: groupSwap, saves: groupSaves, states: groupStates, video: groupVideo, audio: groupAudio, control: groupControl, speed: groupSpeed };
 for (const [g, fn] of Object.entries(groups)) {
   if (!wantGroup(g)) continue;
   try { await fn(); } catch (e) { check(g, 'group ran to the end', false, String(e.stack || e).split('\n').slice(0, 3).join(' | ')); }
