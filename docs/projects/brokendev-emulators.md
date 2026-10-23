@@ -179,10 +179,10 @@ this branch (the shared one predates `run`). Every emulator ran with its own def
 | Project (ROM sha256) | BrokenNes | Mesen 2.1.1 | NesHawk 2.11.1 | FCEUX 2.7.0 | Snes9x 1.63 | BSNESv115+ 2.11.1 |
 |---|---|---|---|---|---|---|
 | vrun-nes (`3cfce10c`) | works | works | works | works | - | - |
-| smb1-nes (`8fc726d4`) | works | works | **fails** | **fails** | - | - |
+| smb1-nes (`a80b9a59`, the power-on RAM fix, 2026-10-22 evening; was `8fc726d4`: works, works, **fails**, **fails**) | works | works | works | works | - | - |
 | vrun-nested (`8ab7360b`) | works | works | - | - | works | works |
 | vrun-nested-enhanced (`102a52fc`) | works | works | - | - | works | works |
-| smb1-nested (`f6c48676`) | works | works | - | - | works | works |
+| smb1-nested (`a834cff1`, from the fixed NES ROM; was `f6c48676`: the same four works) | works | works | - | - | works | works |
 | supervrun (`4a56b5d8`) | works | works | - | - | works | works |
 
 Evidence, cell by cell (first frame of each compared state; BrokenNes in brackets):
@@ -193,10 +193,16 @@ Evidence, cell by cell (first frame of each compared state; BrokenNes in bracket
   earlier (609 [610]). Title pictures 0.99-1.0 like BrokenNes'; gameplay 0.53-0.65 (another room, by design).
 * **smb1-nes** (10 checks): Mesen start 123 [123], World card ends 269 [268], all pass. NesHawk and FCEUX: `uninit-ram`, `world-card` and
   `scrolls` FAIL: `chr_test_active` = 255 from frame 20, `levelcard_state` stays 2, `camera_x` never moves (section 4, finding 1).
+  **After the fix** (the live workspace's ROM, `a80b9a59`): all 10 checks pass on all four; start 123 everywhere [123], World card ends
+  269 on Mesen and NesHawk, 270 on FCEUX [268]; `chr_test_active` 0 on every frame 20-119 on every emulator; title pictures similarity
+  1.0; Mesen's uninitialised-read list is empty (was 199 bytes).
 * **vrun-nested** (16 checks): Mesen game 296 [295], saved 665 [665], `.srm` 256 KB, fresh boot finds it. Snes9x game 295, saved 665,
   every picture identical to BrokenNes' (similarity 1.0: the same first room). BSNESv115+ game 296, saved 665, fresh boot finds it.
 * **vrun-nested-enhanced** (16 checks): as vrun-nested (Mesen and BSNESv115+ game 297 [294], Snes9x 294).
 * **smb1-nested** (10 checks): start 243 [243] everywhere; World card ends 404 / 405 / 406 [404] (Mesen / Snes9x / BSNESv115+).
+  From the fixed NES ROM (`a834cff1`): all pass; start 243 everywhere; World card ends 386 / 405 / 385 [405]. Mesen and BSNESv115+ now end
+  it 19-20 frames before BrokenNes and Snes9x (within the 30-frame tolerance; the NES ROM takes 145 frames from Start, Mesen's run 143): the
+  Nested build recompiles NES code at run time and the fix re-packed the ROM's banks, which changes that load; not investigated further.
 * **supervrun** (9 checks): story 307 [308] and game 532 [533] on Mesen and BSNESv115+ (one frame earlier: most likely where each applies a
   frame's input relative to the auto-joypad latch, the difference measured for Snes9x and compensated there; within the tolerance);
   Snes9x 308 and 533, the same recorded bytes as BrokenNes on every frame from frame 5; title 0.86 like BrokenNes' on Mesen and bsnes (an
@@ -216,6 +222,19 @@ folder moved off the network share).
    Mesen's own uninitialised-read report lists both variables among the 199 bytes the remake reads before writing. Real hardware powers RAM
    on undefined, so a player's console can do the same. The fix is the one knownIssues names: clear both at boot (or all RAM in the reset
    code). The Nested build is immune: Project Nested's pipeline zeroes NES RAM itself (`MemoryEmulation.ZeroMemoryReset`).
+   **FIXED the same evening in the user's live workspace** (`PROJECTS\SMB1_Remake_dev`, now `archives.json`'s `smb1_topaz.live`; engine
+   commit `f10dbd6`). Mesen's report over all 159 replay cases lists 314 addresses: 165 never-used OAM bytes (the sprite DMA reads
+   them), 2 dummy reads of NESFab's skip opcode (`IGN $01A9`, `IGN $09A9`), and **34 variables, 147 bytes** (the player timers, the PRNG's
+   last five bytes, the enemy slot arrays, the music's mute flags, ...). The two named here are not enough: with only them zeroed, case 2-1k
+   (the coin-room route) still fails under the FCEUX pattern and under all-FF (`ecoll_bits`, a Paratroopa one pixel off at frame 3491). The
+   fix is one line, `ram-init = 1` in `game.cfg`: NESFab's reset code zeroes all 2 KB between its two vblank waits, before its runtime sets
+   anything up, as the original's cold boot does (initialisers on the 34 variables re-allocated all of RAM and moved the boot's NMI enable
+   past its vblank). Bank 31 free unchanged (1,098), RAM unchanged, the first NMI on the same frame. Proof: `verify.sh` all checks 3/3; the
+   159-case suite gives the archived ROM's report line for line with ours' replay logs byte-identical; the suite again with the FCEUX
+   pattern, all-FF and random power-on RAM (private copies of the project's Mesen, a hash of the written RAM and of the picture on every
+   frame): every case the same replay and the same written RAM on all frames (pictures: below). Compat: all four NES emulators work.
+   Left for the developer: with Mesen's AllOnes/Random, which also fill nametable RAM, one or two pixels of row 31 (the status-bar split
+   line) show the not-yet-written second nametable (video memory, not RAM; clearing it does not fit the boot's tuned timing).
 2. **VRUN reads RAM it never wrote** (Mesen's report): `redraw_backlog` ($05E0-$05FB, 28 bytes), `_save_addr@2` ($06FF), `tear_active`
    ($07CB-$07CE). No visible effect in these runs on zeros (Mesen), the FCEUX pattern (BrokenNes, FCEUX, NesHawk): every check passes on
    all four. Worth a look before it bites on a console whose RAM powers on otherwise. Not an emulator issue.

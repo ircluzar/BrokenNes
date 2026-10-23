@@ -97,6 +97,20 @@
         "smb1": "source/engine",
         "smb1pkg": "."
       },
+      "live": {
+        "folder": "SMB1_Remake_dev",
+        "roots": {
+          "smb1": "source/engine",
+          "smb1pkg": "."
+        },
+        "rootsNote": "The live SMB1_Remake_dev folder (2026-10-22) has the restored copy's layout (README.md, retrospective.md, source, pipeline, memory, dashboard, roms); source/engine is a git repository (the archive's state committed on the stream bundles' SYNC-71, the four streams as refs) with the toolchain (tools/nesfab, tools/mesen, tools/python) present but git-ignored.",
+        "sentinels": [
+          "source/engine/build.sh",
+          "source/engine/tools/nesfab/nesfab.exe",
+          "source/engine/tools/mesen/Mesen.exe",
+          "source/engine/src/game/game.cfg"
+        ]
+      },
       "sentinels": [
         "README.md",
         "source/engine/build.sh",

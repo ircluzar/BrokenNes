@@ -80,7 +80,7 @@
     "why": "As supervrun. Six of seven frames are pixel-identical; frame 900 keeps a residue of about 290 pixels at every input shift and offset (a sprite animation phase in the walking scene), recorded as the bar to keep."
   },
   "compat": {
-    "what": "The Nested remake on other SNES emulators. Project Nested keeps the NES 2 KB RAM at SNES work RAM $0000-$07FF, so the NES symbols of smb1-nes read the same variables (checked on BrokenNes: runtime_nmi_counter at WRAM $000A ticks, title_active at $07BA flips on Start). The pipeline zeroes NES RAM itself (MemoryEmulation.ZeroMemoryReset), so the remake's uninitialised-RAM bug cannot show here whatever the emulator's power-on RAM.",
+    "what": "The Nested remake on other SNES emulators. Project Nested keeps the NES 2 KB RAM at SNES work RAM $0000-$07FF, so the NES symbols of smb1-nes read the same variables (checked on BrokenNes: runtime_nmi_counter at WRAM $000A ticks, title_active at $07BA flips on Start). The pipeline zeroes NES RAM itself (MemoryEmulation.ZeroMemoryReset), so the remake's old uninitialised-RAM bug (smb1-nes knownIssues, fixed 2026-10-22) never showed here whatever the emulator's power-on RAM; since the fix the NES ROM zeroes it as well.",
     "symbols": { "file": "{home}/out/smb1-nes/smb1_game.mlb", "nesRamInWram": 0 },
     "reads": {
       "title_active": "title_active", "levelcard_state": "levelcard_state", "camera_x": "camera_x", "lives": "lives",
@@ -109,6 +109,7 @@
     ]
   },
   "knownIssues": [
+    "Built from smb1-nes' ROM, which since 2026-10-22 comes from the live workspace (PROJECTS\\SMB1_Remake_dev) with the power-on RAM fix (its reset code zeroes NES RAM; smb1-nes knownIssues). The Nested build did not need it (the pipeline zeroes NES RAM too) and behaves the same with it: the same checks pass on the same frames.",
     "Project Nested never clears the DMC-active bit of $4015 and never delivers the DMC IRQ; the dmc_status post-build step fixes the first, the second stays unemulated (the status-bar split runs from that IRQ on the NES; the profile of the 20261002 build records that play matched the NES anyway).",
     "No NES lag-frame emulation: long play drifts from the NES by a few frames (docs/GENERALITY.md row 21). Not specific to this game.",
     "This recipe uses no entry-point feedback, so the first run of each code path recompiles at run time. The 20261002 build had 178 harvested entry points (profile d257beb1).",
