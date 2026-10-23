@@ -42,7 +42,7 @@ namespace NesEmulator.Mix
             public readonly PsgSet Psg;
             public readonly BandLimitedMixer FmL, FmR;
             public long FmSamples; private float lastL, lastR;
-            public long YmClock, PsgClock; public double Start = -1;
+            public long YmClock, PsgClock; public double Start = double.NaN;      // the guest time the set started at (NaN: not yet; it can be below 0 after a rebase)
             public long Pos;                  // the output position this set writes next (BankMixRing)
             public readonly int[] Block = new int[6], Fnum = new int[6], Att = new int[6], PatchOf = new int[6], Pan = new int[6];
             public readonly bool[] Keyed = new bool[6], OutOfRange = new bool[6];
@@ -192,16 +192,23 @@ namespace NesEmulator.Mix
             YmReg(s, address & 0xFF, value, (address >> 8) & 1);                                    // $000-$0FF part 1, $100-$1FF part 2
         }
 
+        public override void Rebase(double seconds)
+        {
+            if (now < 0) return;
+            now = seconds;
+            for (int i = 0; i < liveCount; i++) { var s = live[i]; if (!double.IsNaN(s.Start)) s.Start = seconds - s.YmClock / YmClockHz; }
+        }
+
         public override void RunTo(double seconds)
         {
-            if (now < 0) { now = seconds; for (int i = 0; i < liveCount; i++) if (live[i].Start < 0) live[i].Start = seconds; return; }
+            if (now < 0) { now = seconds; for (int i = 0; i < liveCount; i++) if (double.IsNaN(live[i].Start)) live[i].Start = seconds; return; }
             if (seconds <= now) return;
             now = seconds;
             long minPos = long.MaxValue;
             for (int i = 0; i < liveCount; i++)
             {
                 var s = live[i];
-                if (s.Start < 0) s.Start = seconds;
+                if (double.IsNaN(s.Start)) s.Start = seconds;
                 double t = seconds - s.Start;
                 long ym = (long)(t * YmClockHz); if (ym > s.YmClock) { s.YmClock = ym; s.Ym.RunTo(ym); }
                 long psg = (long)(t * PsgClockHz); if (psg > s.PsgClock) { long d = psg - s.PsgClock; s.PsgClock = psg; while (d > 0) { int step = (int)Math.Min(d, int.MaxValue); s.Psg.Psg.Run(step); d -= step; } }
@@ -292,9 +299,10 @@ namespace NesEmulator.Sega
 
         public ExtPicture Layers => layers;
         public void DrawLayers() => painter.Draw(layers);
-        public uint[] Picture => painter.Picture;
-        public int PictureWidth => painter.Width;
-        public int PictureHeight => painter.Height;
+        // the enhanced picture, through the contract only: MdVdp's own Picture / PictureWidth / PictureHeight stay the VDP's own (a Genesis game's), never hidden by the layers' picture
+        uint[] IEnhancedPictureChip.Picture => painter.Picture;
+        int IEnhancedPictureChip.PictureWidth => painter.Width;
+        int IEnhancedPictureChip.PictureHeight => painter.Height;
         public string EnhancedName => "Genesis enhanced";
         public string ColourLimit => "the Genesis's 9-bit colours (512), shadow and highlight for colour math";
         public int MathPixels => painter.MathPixels;

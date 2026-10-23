@@ -45,6 +45,8 @@ namespace NesEmulator.Mix
         long NotesTransposed { get; }
         /// <summary>Silences every channel and forgets which voice sits where (a reset or a loaded state); the banks stay.</summary>
         void Silence();
+        /// <summary>The guest's clock jumped (a state was loaded, the machine was reset): the chip goes on from <paramref name="seconds"/> without running the time between.</summary>
+        void Rebase(double seconds);
         string Describe();
     }
 
@@ -101,6 +103,7 @@ namespace NesEmulator.Mix
         /// <summary>A raw register write of a bank, addressed as the chip's own (<see cref="IApuExtChannels.WriteExtRegister"/>; bank 0 too).</summary>
         protected abstract void WriteRaw(int bank, ushort address, byte value);
         public abstract void RunTo(double seconds);
+        public abstract void Rebase(double seconds);
         public abstract int ReadSamples(Span<short> dest);
         /// <summary>The derived chip silences its channels' registers (the base has already forgotten its owners).</summary>
         protected abstract void SilenceAll();

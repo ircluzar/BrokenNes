@@ -52,7 +52,7 @@ namespace NesEmulator.Mix
         public string CoreName => $"{Route}+{inner.CoreName}";
         public int SampleRate => chip.SampleRate;
         public void Attach(IGenesisSoundHost host) => inner.Attach(host);
-        public void Reset() { inner.Reset(); nextSync = 0; chip.Silence(); Array.Clear(wasAudible); }
+        public void Reset() { inner.Reset(); nextSync = -1; chip.Silence(); Array.Clear(wasAudible); }
         public void WriteBusRequest(bool requested, long masterClock) => inner.WriteBusRequest(requested, masterClock);
         public bool IsBusGranted(long masterClock) => inner.IsBusGranted(masterClock);
         public void WriteReset(bool released, long masterClock) => inner.WriteReset(released, masterClock);
@@ -65,6 +65,7 @@ namespace NesEmulator.Mix
         public void RunTo(long masterClock)
         {
             inner.RunTo(masterClock);
+            if (nextSync < 0) { nextSync = masterClock; chip.Rebase(masterClock / masterHz); }      // after a reset or a loaded state: go on from the board's time, never run the jump
             while (nextSync <= masterClock)
             {
                 chip.RunTo(nextSync / masterHz);
@@ -118,7 +119,7 @@ namespace NesEmulator.Mix
         {
             inner.LoadState(r);
             // the chip is a listener, not part of the machine: it starts again from the loaded unit's clock and an empty output, then plays the loaded voices
-            nextSync = inner.Clock;
+            nextSync = -1;
             chip.Silence();
             Array.Clear(wasAudible);
         }
@@ -366,7 +367,7 @@ namespace NesEmulator.Mix
         public string Describe() => $"{CoreName}: {chip.Describe()}; syncs {Syncs} | {front.Describe()}";
 
         /// <summary>The board's clock jumped (a save state was loaded into the unit behind the bridge): listen from <paramref name="masterClock"/> on.</summary>
-        public void Rebase(long masterClock) { lastClock = masterClock; nextSync = masterClock; chip.Silence(); }
+        public void Rebase(long masterClock) { lastClock = masterClock; nextSync = masterClock; chip.Silence(); chip.Rebase(masterClock / MasterHz); }
 
         public void RunTo(long masterClock)
         {

@@ -174,6 +174,8 @@ namespace NesEmulator.Mix
         /// <summary>The DSP registers of a bank (tests: what the chip was told).</summary>
         public byte[] Registers(int bank) => banks[bank]?.Dsp.Regs ?? Array.Empty<byte>();
 
+        public override void Rebase(double seconds) { if (samplesDone >= 0) samplesDone = (long)Math.Floor(seconds * DspRate); }
+
         public override void RunTo(double seconds)
         {
             long target = (long)Math.Floor(seconds * DspRate);

@@ -38,7 +38,8 @@ namespace NesEmulator.Mix
 
         private sealed class Set
         {
-            public readonly PsgSet Psg; public double Start = -1; public long Clock, Pos;
+            public readonly PsgSet Psg; public long Clock, Pos;
+            public double Start = double.NaN;      // the guest time the set started at (NaN: not yet; it can be below 0 after a rebase)
             public bool NoiseWanted; public double NoiseHz; public bool NoisePeriodic; public float NoiseLevel, NoisePan;
             public Set(int rate, bool stereo) { Psg = new PsgSet(PsgClockHz, rate, PsgVariant.Sega, stereo); }
         }
@@ -103,16 +104,23 @@ namespace NesEmulator.Mix
         /// <summary>A raw write: address 0 the PSG's port, address 1 the Game Gear's stereo port.</summary>
         protected override void WriteRaw(int b, ushort address, byte value) => sets[b]!.Psg.Raw(address, value);
 
+        public override void Rebase(double seconds)
+        {
+            if (now < 0) return;
+            now = seconds;
+            for (int i = 0; i < liveCount; i++) { var s = live[i]; if (!double.IsNaN(s.Start)) s.Start = seconds - s.Clock / PsgClockHz; }
+        }
+
         public override void RunTo(double seconds)
         {
-            if (now < 0) { now = seconds; for (int i = 0; i < liveCount; i++) if (live[i].Start < 0) live[i].Start = seconds; return; }
+            if (now < 0) { now = seconds; for (int i = 0; i < liveCount; i++) if (double.IsNaN(live[i].Start)) live[i].Start = seconds; return; }
             if (seconds <= now) return;
             now = seconds;
             long minPos = long.MaxValue;
             for (int i = 0; i < liveCount; i++)
             {
                 var s = live[i];
-                if (s.Start < 0) s.Start = seconds;
+                if (double.IsNaN(s.Start)) s.Start = seconds;
                 long clock = (long)((seconds - s.Start) * PsgClockHz);
                 if (clock > s.Clock) { long d = clock - s.Clock; s.Clock = clock; while (d > 0) { int step = (int)Math.Min(d, int.MaxValue); s.Psg.Psg.Run(step); d -= step; } }
                 int got;
