@@ -651,7 +651,7 @@ public static class CoreCatalog
     /// <summary>The menu label of a Sega game's picture drawn by a NES (or, through it, another console's) chip. Honest about the route and what it costs.</summary>
     private static string SegaPictureLabel(string id) => id.ToUpperInvariant() switch
     {
-        "FIXS" => "FIXS - NES picture chip with layers (per-line scroll, tiles in 3 colours + clear, 8 palettes, sprites in the VDP's order; losses counted)",
+        "FIXS" => "FIXS - NES picture chip with the game's layers at the console's own size (the Genesis's whole 320 columns; per-line scroll, tiles in 3 colours + clear, 8 palettes, sprites in the VDP's order; losses counted)",
         "SNES" => "SNES - through a NES onto the SNES picture chip",
         "DMG" or "DMGS" or "SMS" or "MD" => NesPictureLabel(id),
         _ => $"{id} - NES picture chip (flat: one 256-tile background, 4 palettes of 3 colours, 64 sprites; losses counted)",
@@ -661,10 +661,10 @@ public static class CoreCatalog
     {
         "SMS" => "SMS - through a NES onto the Master System picture chip",
         "MD" => "MD - through a NES onto the Genesis picture chip",
-        "FIXS" => "FIXS - NES picture chip with SNES layers + all sprites",
+        "FIXS" => "FIXS - NES picture chip with the game's layers + all sprites, at the game's own size",
         "FIX" => "FIX - NES picture chip (flat: one background layer)",
         "DMG" => "DMG - through a NES onto the Game Boy picture chip (the middle 160x144, 4 shades by brightness)",
-        "DMGS" => "DMGS - through a NES onto the Game Boy picture chip with the whole picture and the game's layers",
+        "DMGS" => "DMGS - through a NES onto the Game Boy picture chip with the game's whole picture at its own size and its layers",
         _ => $"{id} - NES picture chip",
     };
 
