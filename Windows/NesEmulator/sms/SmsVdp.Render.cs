@@ -6,7 +6,7 @@ namespace NesEmulator.Sega;
 // Sprites for a line are worked out when the line begins (the chip fetches them during the line before); the background is drawn pixel by pixel, lazily, so a write in the
 // middle of a line (register, name table, pattern, palette) shows from exactly that pixel on.
 
-public sealed partial class SmsVdp
+public partial class SmsVdp
 {
     private readonly byte[] sprLine = new byte[256];       // Mode 4: 0 = no sprite pixel, else the sprite palette colour 1..15
     private readonly uint[] lineBuf = new uint[256];       // TMS modes: the finished line

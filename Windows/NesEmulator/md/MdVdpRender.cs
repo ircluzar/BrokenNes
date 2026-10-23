@@ -15,7 +15,7 @@ namespace NesEmulator.Sega;
 /// <para><b>Index byte.</b> Layer pixels are one byte: bit 7 priority, bits 5-4 palette line, bits 3-0 colour, and zero is transparent. The final byte per pixel is the palette index (bits 5-0) with the
 /// shadow state in bits 7-6 (0 normal, 1 shadow, 2 highlight), which is also the index into <c>pal</c>, a table of 192 colours.</para>
 /// </remarks>
-public sealed partial class MdVdp
+public partial class MdVdp
 {
     public const int PictureStride = 320, PictureMaxHeight = 240;
 
@@ -71,7 +71,8 @@ public sealed partial class MdVdp
         FramesRendered = 0; PictureWidth = 320; PictureHeight = 224;
     }
 
-    private static uint Argb(int c, int mode)
+    /// <summary>A 9-bit colour (0000BBB0GGG0RRR0) as the VDP's DAC shows it: mode 0 normal, 1 shadow, 2 highlight (shared with the Genesis enhanced chip, MdVdpS).</summary>
+    internal static uint Argb(int c, int mode)
     {
         // mode 0 normal, 1 shadow, 2 highlight; c is the 9-bit colour (0000BBB0GGG0RRR0)
         int r = c >> 1 & 7, g = c >> 5 & 7, b = c >> 9 & 7;

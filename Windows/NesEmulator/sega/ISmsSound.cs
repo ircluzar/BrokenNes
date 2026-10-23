@@ -51,7 +51,7 @@ public interface ISmsSound
 }
 
 /// <summary>The stock sound unit: the SN76489 (with the Game Gear's stereo port) and no FM chip.</summary>
-public sealed class SmsSound : ISmsSound, IVoiceStems
+public class SmsSound : ISmsSound, IVoiceStems
 {
     private readonly Sn76489 psg;
 

@@ -21,7 +21,7 @@ namespace NesEmulator.Sega;
 /// band-limited mixer (<see cref="BandLimitedMixer"/>, the PSG's own resampler) that integrates it at the host rate, so the conversion to 44.1 or 48 kHz has no aliasing. The PSG and the FM are summed
 /// with <see cref="FmGain"/> and <see cref="Sn76489.Gain"/>, then clipped to 16 bits. No allocation per sample.</para>
 /// </remarks>
-public sealed partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, IVoiceStems
+public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, IVoiceStems
 {
     /// <summary>Z80 T-states a bank-window access stalls the Z80 for (about 3.3; the sources disagree, the plan lists them).</summary>
     public const double BankWindowZ80Stall = 3.3;

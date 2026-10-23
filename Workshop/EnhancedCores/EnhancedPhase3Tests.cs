@@ -437,18 +437,21 @@ internal static class EnhancedPhase3Tests
             if (c.Family != "SNES")
             {
                 using var s = new SnesSession(snesRom, "SFC", c.Route, c.Route, null);
-                Run(s, 30); var state = s.SaveState(); Run(s, 10);
+                Run(s, 30); var state = s.SaveState(); Run(s, 240);
                 string? err = null; try { s.LoadState(state); } catch (Exception ex) { err = ex.Message; }
+                long got = Samples(s, 20), want = (long)(20 * s.SampleRate / SnesSession.NtscFps) * 2;
                 using var other = new SnesSession(snesRom, "SFC", "SFC", "SFC", null);
                 string? refused = null; try { other.LoadState(state); } catch (InvalidDataException ex) { refused = ex.Message; }
-                Check($"a SNES game saved with its sound (and picture) on {c.Name} loads back ({err ?? "loaded"}); into a session with the stock unit it is refused with the reason", err == null && refused != null, refused ?? "(not refused)");
+                Check($"a SNES game saved with its sound (and picture) on {c.Name} loads back ({err ?? "loaded"}), the 20 frames after it sound as long as 20 frames ({got / 2} of {want / 2}); into a session with the stock unit it is refused with the reason", err == null && refused != null && Math.Abs(got - want) < want / 10, (refused ?? "(not refused)") + $" | {got}/{want}");
             }
             if (c.Family != "Genesis")
             {
                 using var s = new MdSession(EnhancedContractTests.SegaScenesRom(), "M68K", "MD", c.Route);
-                Run(s, 30); var state = s.SaveState(); Run(s, 10);
+                Run(s, 30); var state = s.SaveState(); Run(s, 240);
                 string? err = null; try { s.LoadState(state); } catch (Exception ex) { err = ex.Message; }
-                Check($"a Genesis game saved with its sound on {c.Name} loads back ({err ?? "loaded"})", err == null);
+                // the board's clock went back 240 frames: the chip goes on from there (it neither waits for its old time nor runs the jump), so the next 20 frames deliver 20 frames of sound
+                long got = Samples(s, 20), want = 20L * s.SampleRate / 60 * 2;
+                Check($"a Genesis game saved with its sound on {c.Name} loads back ({err ?? "loaded"}), and the 20 frames after the load sound as long as 20 frames do ({got / 2} sample frames, {want / 2} wanted)", err == null && Math.Abs(got - want) < want / 10, $"{got}/{want}");
             }
             if (c.Family != "Master System")
             {
@@ -473,6 +476,9 @@ internal static class EnhancedPhase3Tests
     }
 
     private static void Run(IConsoleSession s, int frames) { var buf = new short[16384]; for (int f = 0; f < frames; f++) { s.RunFrame(); while (s.ReadSamples(buf) > 0) { } } }
+
+    /// <summary>The shorts of sound <paramref name="frames"/> frames deliver.</summary>
+    private static long Samples(IConsoleSession s, int frames) { var buf = new short[16384]; long n = 0; for (int f = 0; f < frames; f++) { s.RunFrame(); int got; while ((got = s.ReadSamples(buf)) > 0) n += got; } return n; }
 
     // =========================================================================================================================================== own consoles: the enhanced chip draws and sounds exactly as the stock one
     public static void OwnNeutral()

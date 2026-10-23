@@ -8,7 +8,7 @@ namespace NesEmulator.Sega;
 /// published picture is part of the state, so that the picture right after a load is the one that was saved, and the buffer under construction is, so that a restored VDP is the saved one field for field).
 /// Any new field of <see cref="MdVdp"/> that a running game can change must be written here: <c>--md-state-test</c> compares a restored VDP with the one that saved by reflection and names the field that was left out.
 /// </summary>
-public sealed partial class MdVdp
+public partial class MdVdp
 {
     public void SaveState(BinaryWriter w)
     {
