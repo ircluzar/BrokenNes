@@ -227,7 +227,7 @@
     },
     {
       "id": "brokendev-smb1-nested-boot",
-      "description": "BrokenDev project 'smb1-nested', scenario 'boot': SMB1 remake on the SNES (Nested version). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "description": "BrokenDev project 'smb1-nested', scenario 'boot': SMB1 remake on the SNES (Nested version). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking). Re-recorded 2026-10-23: the remake now zeroes its RAM at power-on (NESFab ram-init, SMB1_Remake_dev f10dbd6), which re-packs its banks and moves the Nested runtime's timing (was 28E323BA356B4A02 / 022DFE59DE10BBAB).",
       "kind": "session",
       "rom": "{brokendev}/smb1-nested/smb1_game_SNES.smc",
       "frames": 1200,
@@ -238,8 +238,8 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "28E323BA356B4A02",
-        "audioHash": "022DFE59DE10BBAB",
+        "frameBufferHash": "FC014F8C433F6C4D",
+        "audioHash": "DED08D28399A2899",
         "framesRun": 1200,
         "distinctColors": 12,
         "result": "ok"
@@ -247,7 +247,7 @@
     },
     {
       "id": "brokendev-smb1-nested-play",
-      "description": "BrokenDev project 'smb1-nested', scenario 'play': SMB1 remake on the SNES (Nested version). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "description": "BrokenDev project 'smb1-nested', scenario 'play': SMB1 remake on the SNES (Nested version). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking). Re-recorded 2026-10-23: the remake now zeroes its RAM at power-on (NESFab ram-init, SMB1_Remake_dev f10dbd6), which re-packs its banks and moves the Nested runtime's timing (was 1EEB50AAB7A96786 / 83BE2937A1912449).",
       "kind": "session",
       "rom": "{brokendev}/smb1-nested/smb1_game_SNES.smc",
       "frames": 3000,
@@ -259,8 +259,8 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "1EEB50AAB7A96786",
-        "audioHash": "83BE2937A1912449",
+        "frameBufferHash": "A0CFF7C8F7373786",
+        "audioHash": "0CC77FACB1E870A0",
         "framesRun": 3000,
         "distinctColors": 13,
         "result": "ok"
