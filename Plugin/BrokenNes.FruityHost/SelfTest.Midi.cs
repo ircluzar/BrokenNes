@@ -586,6 +586,7 @@ public sealed unsafe partial class SelfTest
             long Render(int blocks)
             {
                 long sum = 0;
+                AllocStart(p);                                                     // (this thread's allocation context emptied: the per-block reads below allocate nothing, so it stays so)
                 for (int b = 0; b < blocks; b++)
                     foreach (var i in all)
                     {
@@ -599,7 +600,7 @@ public sealed unsafe partial class SelfTest
             SWait(p, () => p.Test(HkSNum, 11) == 1, 10000);
             GC.Collect();
             long steady = Render(150);
-            long a1 = p.Test(4); p.Dispatcher(Fpd.SetPlaying, 0, 1); long dispatch = p.Test(4) - a1;
+            long a1 = AllocStart(p); p.Dispatcher(Fpd.SetPlaying, 0, 1); long dispatch = p.Test(4) - a1;
             long restart = Render(60);
             long r0 = p.Test(HkSNum, 9);
             t.Expect(r0 >= 1, "the transport start did not restart the song");

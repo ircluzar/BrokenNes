@@ -259,7 +259,7 @@ public sealed unsafe partial class SelfTest
         long a0 = 0, a1 = 0;
         var m = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm =>
         {
-            if (sm >= 48000 && a0 == 0) { Quiet(); a0 = p.Test(HkPAlloc); }
+            if (sm >= 48000 && a0 == 0) { Quiet(); a0 = AllocStart(p); }
             if (sm >= 48000 * 6 && a1 == 0) a1 = p.Test(HkPAlloc);
         } };
         p.Dispatcher(Fpd.SetSampleRate, 0, 48000);

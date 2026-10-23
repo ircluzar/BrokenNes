@@ -16,7 +16,11 @@
 //               on a channel made in FL (pitch from C5)
 //   snes-take   Super Mario World recorded here (when its ROM is here): the same, register by register on the S-DSP
 //   position    when FL does give a song position, the plugin reads it (FHD_GetMixingTime with offset 0, checked against an offset of one second)
+//   meter       the allocation meter of every "0 bytes on the audio thread" figure (SelfTest.AllocMeter.cs): while another DLL thread builds NES sound chips (as the track offer's worker
+//               does), the counter as the windows used to read it moves in allocation-free rounds (the negative control: what failed `nes-take` once in 11 full runs), the windows'
+//               meter (AllocStart) never does, and a real allocation inside a window is still counted
 // Each scenario is run again with deliberate bugs in the DLL (plugin hook 657), and must fail: the r13 matcher's reading (pitch from C5) fails the log replay, as it failed in FL.
+// `meter`'s deliberate bug is the bench's own: windows that begin the old way.
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
@@ -48,7 +52,11 @@ public sealed unsafe partial class SelfTest
         ("nes-take", ReloadNesTake, RecMutants.WaitingPlaysGame, "a linked channel waiting for its first note plays the game's channel"),
         ("snes-take", ReloadSnesTake, RecMutants.ExpressionBySongPosition, "the recorded expression by FL's song position (r13), on the SNES"),
         ("position", ReloadPosition, RecMutants.MixingTimeNaNOffset, "FHD_GetMixingTime asked with a NaN offset (r13: FL answered NaN)"),
+        ("meter", ReloadMeter, MeterOldStart, "allocation windows that begin with the room the thread's allocation context has left (the meter before 2026-10-23)"),
     ];
+
+    /// <summary>The deliberate bug of `meter` (not a DLL mutant: the bench's own meter, SelfTest.AllocMeter.cs).</summary>
+    private const int MeterOldStart = -1;
 
     private void ReloadTest(T t)
     {
@@ -78,15 +86,16 @@ public sealed unsafe partial class SelfTest
                 if (ScenarioFilter is { } only && (!FilterKeepsMutants || !only.Contains(name))) continue;
                 armed++;
                 var tt = new T();
-                using (var probe = lib.Create()) probe.Test(HkRMutant, 0, mutant);
+                if (mutant == MeterOldStart) meterOldStart = true;
+                else using (var probe = lib.Create()) probe.Test(HkRMutant, 0, mutant);
                 try { body(tt, dir); } catch (Exception e) { tt.Failures.Add("exception " + e.Message); }
-                finally { using var probe = lib.Create(); probe.Test(HkRMutant, 0, 0); probe.Test(HkOfferSet, 0, 0); }
+                finally { meterOldStart = false; using var probe = lib.Create(); probe.Test(HkRMutant, 0, 0); probe.Test(HkOfferSet, 0, 0); }
                 bool notRun = tt.Failures.Count == 0 && tt.Warnings.Any(w => w.StartsWith("NOT RUN"));
                 if (notRun) { t.Warn(false, $"deliberate bug '{why}': {name} NOT RUN ({tt.Warnings.First(w => w.StartsWith("NOT RUN"))})"); continue; }
                 if (tt.Failures.Count > 0) { caught++; t.Note($"deliberate bug '{why}' -> {name} failed: {(tt.Failures[0].Length > 240 ? tt.Failures[0][..237] + "..." : tt.Failures[0])}"); }
                 else t.Expect(false, $"deliberate bug '{why}' was not caught by {name}: that check cannot fail");
             }
-            t.Note($"DLL: {caught} of {armed} deliberate bugs caught");
+            t.Note($"DLL: {caught} of {armed} deliberate bugs caught (meter's is the bench's own)");
         }
         finally
         {
@@ -672,10 +681,84 @@ public sealed unsafe partial class SelfTest
         finally { q.Dispose(); h.Dispose(); }
     }
 
+    // ------------------------------------------------------------------------------------------------ the allocation meter (SelfTest.AllocMeter.cs)
+
+    /// <summary>Scenario `meter`: what this bench's "bytes allocated on the audio thread" figures are worth while another thread of the DLL makes the runtime collect. A NES channel in
+    /// Direct mode (FIX) holds a note and renders on this thread in 64-sample blocks; another DLL thread builds a NES sound chip every 2 ms (hook 813: the allocation the track offer's
+    /// worker makes for every NES track engine, which is what ran beside the failing window). Each round allocates 48 bytes on this thread (hook 814: the room a test's own setup leaves
+    /// in the thread's allocation context), reads the counter, renders 40 allocation-free blocks and reads it again.
+    /// (1) The meter as the windows read it until 2026-10-23 (negative control): within 30 s some round shows the counter moving although nothing was allocated; if none does, this
+    /// scenario cannot tell the fixed meter from the old one (a failure). (2) The windows' meter (AllocStart, after the same 48 bytes): no round moves, over at least 2,000 rounds, five
+    /// times as many as (1) needed, and three times as many gen-2 collections. (3) A real allocation inside a window (24 bytes on this thread, between the reads) is counted: at least the 24.</summary>
+    private void ReloadMeter(T t, string dir)
+    {
+        const int blocks = 40, block = 64;
+        var h = new HostSim();
+        var p = lib.Create(h);
+        var buf = new float[block * 2];
+        try
+        {
+            p.Dispatcher(Fpd.SetSampleRate, 0, 48000);
+            var v = h.FlNoteOn(60, 100, 0, 0, 1);
+            v.Handle = p.TriggerVoice(v.Params, v.Tag);
+            fixed (float* bp = buf)
+            {
+                float* rb = bp;
+                void Round() { for (int b = 0; b < blocks; b++) { p.NewTick(); p.GenRender(rb, block); } }
+                for (int w = 0; w < 50; w++) Round();                                              // (warm: the chip made, the note sounding)
+                long built0 = p.Test(HkGcLoad, 0, 2);
+                // (1) the old meter
+                int oldRounds = 0, oldMoved = 0;
+                long oldBytes = 0, oldFirst = 0;
+                int g2 = (int)p.Test(809, 2);
+                long until = Environment.TickCount64 + 30000;
+                while (oldMoved == 0 && Environment.TickCount64 < until)
+                {
+                    p.Test(HkAllocHere, 0, 48);
+                    long r0 = p.Test(HkRAlloc);
+                    Round();
+                    long r1 = p.Test(HkRAlloc);
+                    oldRounds++;
+                    if (r1 != r0) { oldMoved++; oldBytes += r1 - r0; oldFirst = r1 - r0; }
+                }
+                int g2Old = (int)p.Test(809, 2) - g2;
+                t.Expect(oldMoved > 0, $"the negative control: the meter as the windows read it before (48 bytes allocated, then the counter) never moved in {oldRounds} allocation-free rounds under {g2Old} gen-2 collections made by another thread building NES chips: this scenario cannot tell the windows' meter from the old one");
+                // (2) the windows' meter
+                int newRounds = 0, newMoved = 0;
+                long newBytes = 0;
+                int target = Math.Max(2000, 5 * oldRounds);
+                g2 = (int)p.Test(809, 2);
+                until = Environment.TickCount64 + 60000;
+                while ((newRounds < target || (int)p.Test(809, 2) - g2 < 3 * g2Old) && Environment.TickCount64 < until)
+                {
+                    p.Test(HkAllocHere, 0, 48);
+                    long w0 = AllocStart(p);
+                    Round();
+                    long w1 = p.Test(HkRAlloc);
+                    newRounds++;
+                    if (w1 != w0) { newMoved++; newBytes += w1 - w0; }
+                }
+                int g2New = (int)p.Test(809, 2) - g2;
+                t.Expect(newMoved == 0 && newRounds >= target && g2New >= 3 * g2Old, $"the windows' meter (AllocStart) moved in {newMoved} of {newRounds} allocation-free rounds ({newBytes:N0} bytes nobody allocated) under {g2New} gen-2 collections (needed: none moved, at least {target} rounds and {3 * g2Old} collections)");
+                // (3) a real allocation is still counted
+                long z0 = AllocStart(p);
+                p.Test(HkAllocHere, 0, 24);
+                Round();
+                long real = p.Test(HkRAlloc) - z0;
+                long built = p.Test(HkGcLoad, 0, 0) - built0;
+                t.Expect(real >= 24, $"a real allocation of 24 bytes on this thread inside a window counted {real} bytes");
+                if (!reloadMutantPass) t.Note($"meter: while another DLL thread built {built:N0} NES sound chips, the old meter (48 bytes allocated, then the counter) moved in round {oldRounds} by {oldFirst:N0} bytes nobody allocated ({g2Old} gen-2 collections so far); the windows' meter (AllocStart) moved in {newMoved} of {newRounds} rounds under {g2New} gen-2 collections; a real 24-byte allocation in a window counted {real} bytes");
+            }
+        }
+        finally { p.Test(HkGcLoad, 0, 0); p.Dispose(); h.Dispose(); }
+    }
+
     /// <summary>`FruityHost alloc-gc-probe <dll> [blocks] [rounds] [induced|large|contend]`: does a collection in the DLL's runtime move the per-thread allocation counter of a thread that allocates nothing?
     /// One instance renders blocks on this thread (a note held, then none) while another thread makes the DLL collect (induced: GC.Collect; large: 1 MB of 128 KB arrays a round, so the runtime starts its
     /// own collections, background ones included); every block whose count moved is listed with the collections that ran meanwhile. contend: the instance plays VRUN in ROM mode (Mix) while another thread
-    /// holds the game's lock for 1 ms every few ms, as the recording's feeder thread does: does the audio thread allocate when it has to wait for that lock? A developer's aid for the allocation checks.</summary>
+    /// holds the game's lock for 1 ms every few ms, as the recording's feeder thread does: does the audio thread allocate when it has to wait for that lock? A developer's aid for the allocation checks.
+    /// (It answers "no" because its rendering thread's allocation context is empty after the first collection; with room left in it, a collection CAN move the counter: scenario
+    /// `meter` of `reload` and SelfTest.AllocMeter.cs.)</summary>
     public static int AllocGcProbe(string[] args)
     {
         int blocks = args.Length > 2 && int.TryParse(args[2], out int b) ? b : 20000;

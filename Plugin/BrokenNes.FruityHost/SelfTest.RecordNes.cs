@@ -189,7 +189,7 @@ public sealed unsafe partial class SelfTest
             p.Test(HkROptions, 0, ROptDefault);
             t.Expect(p.Test(HkRStart) == 0, "Record was refused: " + RText(p, 8));
             var perBlock = new long[1800];                                          // (where an allocation happened, when one does: the reads allocate nothing)
-            long a0 = p.Test(HkRAlloc);
+            long a0 = AllocStart(p);
             fixed (float* f = buf)
                 for (int i = 0; i < perBlock.Length; i++)                           // about 9.6 s at 48 kHz
                 {
@@ -283,7 +283,7 @@ public sealed unsafe partial class SelfTest
                     }
                 }
                 foreach (var (k, idx, v) in active) Lv(v, notes[k][idx], chans[k], tick);
-                if (a0 < 0 && s >= rate / 2) a0 = live[0].Test(HkRAlloc);
+                if (a0 < 0 && s >= rate / 2) a0 = AllocStart(live[0]);
                 foreach (var q in live) { q.NewTick(); q.GenRender(bp, block); }
             }
             a1 = live[0].Test(HkRAlloc);
@@ -547,7 +547,7 @@ public sealed unsafe partial class SelfTest
             t.Expect(p.Test(HkLive, 0, 1) == 0, "live MIDI out on a NES game was refused: " + RText(p, 8));
             p.Test(HkROptions, 0, ROptDefault);
             t.Expect(p.Test(HkRStart) == 0 && RWait(p, 2, 10000), "the recording beside it did not begin: " + RText(p, 8));
-            long a0 = p.Test(HkRAlloc);
+            long a0 = AllocStart(p);
             Render(2200);                                                         // about 11.7 s
             long a1 = p.Test(HkRAlloc);
             p.Test(HkRStop);

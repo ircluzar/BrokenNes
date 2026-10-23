@@ -589,7 +589,7 @@ Fix: `HostLog.Add` stores `Stopwatch.GetTimestamp()`; the writer turns it into t
 
 `refs/heads/main` moved again before the end: an SNES HDMA timing fix (`Windows/NesEmulator/snes/BOARD_SFC.cs`: every active HDMA channel's per-line fetch charged on every line) and the VRUN resume docs. Clean merge. The SNES numbers quoted above were measured again on the merged tree and did not change: `snes-take` (Super Mario World recorded by the DLL, 6 tracks, 20 s) still finds 6 of 7 channels on their first note with every pitch value exact or reported; the log replays use the session's own MIDI file and presets (no emulation); `record-test games` (Super Mario World, 39.9 s, 492 notes) 28 assertions pass.
 
-One more observation, not explained: in the run of `record,record-nes,relink,reload,capture,hostlog` right after this merge, made while a CPU-heavy Workshop test ran beside it, `record-nes`'s capture window (a NES game in ROM mode recorded for 1,800 blocks) counted 7,232 bytes on the audio thread once. It did not happen again (`record-nes` alone right after: 0 bytes; the full selftest after: 0 bytes). Two causes were measured away: a collection in the DLL's runtime (`alloc-gc-probe large`: 40,000 blocks while the DLL collected 259 times by itself, generation 2 included: the rendering thread's count never moved) and the game lock's contention with the recording's feeder thread (`alloc-gc-probe contend`: VRUN in ROM mode while another thread held the game lock for 1 ms every few ms: 6,000 blocks, 0 bytes). The capture window now says which blocks allocated when one does, so the next occurrence names its block.
+One more observation, not explained at the time (explained on 2026-10-23: section 15, the allocation meter): in the run of `record,record-nes,relink,reload,capture,hostlog` right after this merge, made while a CPU-heavy Workshop test ran beside it, `record-nes`'s capture window (a NES game in ROM mode recorded for 1,800 blocks) counted 7,232 bytes on the audio thread once. It did not happen again (`record-nes` alone right after: 0 bytes; the full selftest after: 0 bytes). Two causes were measured away: a collection in the DLL's runtime (`alloc-gc-probe large`: 40,000 blocks while the DLL collected 259 times by itself, generation 2 included: the rendering thread's count never moved) and the game lock's contention with the recording's feeder thread (`alloc-gc-probe contend`: VRUN in ROM mode while another thread held the game lock for 1 ms every few ms: 6,000 blocks, 0 bytes). The capture window now says which blocks allocated when one does, so the next occurrence names its block.
 
 ### Final runs (this section)
 
@@ -611,3 +611,48 @@ One more observation, not explained: in the run of `record,record-nes,relink,rel
 ### Ids, hooks, places this took
 
 Plugin test hooks 790-811 (`Bn2Plugin.Reload.cs`; 808 a collection in the DLL's runtime, 809 its collection count of a generation, 810 large arrays made and dropped, 811 hold the game lock (`Emulator.HoldRomLockForTests`)); `FruityHost alloc-gc-probe <dll> [blocks] [rounds] [induced|large|contend]`; `RecMutants` 40-47; `TRK1` version 3 (+ i16 base); `TrackExpression` bytes version 2 (+ velocities; version 1 read); `HostLog.KindTime`; `Fpd.SongPosChanged`; `HostSim.RootNote` / `FlNoteOn` / `SampleRate` / `Tempo` / `MixingTimeCalls`; `NesReplay.Compare(..., asked)`; selftest result `reload` (before `hostlog`); environment `BROKENNES_FLREPLAY_DIR`, `BROKENNES_SCENARIOS`, `BROKENNES_MUTANTS`, `BROKENNES_ALLOC_TRACE`.
+
+## 15. 2026-10-23: the allocation meter (a `reload` failure that was not the plugin's)
+
+### The report
+
+One full `FruityHost selftest` on main 2dacc35 (65 checks, about 25 minutes) failed `reload` with "nes-take: Wario's Woods: 6,400 bytes allocated on the audio thread while the channels found their tracks and played: Wario's Woods 03.19.31 - 03 Triangle (a loop of 8 beats) at block 84: 6400 bytes (track 3, state 1) / 0 collection(s) ran in the DLL's runtime during the window". Ten runs of `selftest --only reload` right after passed.
+
+### What it was
+
+**Not an allocation.** The DLL runtime's `GC.GetAllocatedBytesForCurrentThread()` (what hooks 4, 306, 349, 656 and 847 return, the meter of every "0 bytes on the audio thread" check of the bench) is `alloc_bytes - (alloc_limit - alloc_ptr)` of the thread's allocation context, and it is not exact across a garbage collection: when a collection that ANOTHER thread's allocations started retires a context that still has unused room (the rest of the 8 KB quantum the thread received at its last allocation), that room can come out counted as allocated by the thread, which allocated nothing. In `nes-take` the room was the test's own (the setup of the second pass allocates in the DLL on the test thread: probes, note logs, the channels FL makes); the collection came from the track offer's worker, which builds a whole NES sound chip (`NesPresetPlayer` -> `NesApuInstrument` -> a NES with its CPU cores, picture chip and three sound cores) for the next engine of a track the moment a channel takes the one waiting; and the moment was the first block a channel of the second pass played after taking its track's engine (state 1, the bound path, block 80-84: its first note). The same meter explains record-nes's unexplained 7,232 bytes of 2026-10-19 (section 14).
+
+### How it was found (every figure measured on this machine)
+
+| Run | Result |
+|---|---|
+| Full `selftest` with per-call probes in the DLL's audio path (build of main 8f7dddd) | 65 results: 64 pass, the QLQ warning, 0 failed (25 min): not reproduced |
+| `selftest --only reload` with `BROKENNES_SCENARIOS=nes-take`, 6 processes side by side x 15 runs each (they load each other) | 2 of 90 failed: 7,248 bytes (7,152 in one block, inside the NES chip's render) and 7,216 bytes that no traced DLL call saw (the counter moved while the thread was in the bench's own code) |
+| the same, 3 processes as the check is and 3 with the thread's allocation context emptied before the window, x 20 | plain 1 of 60 failed (8,112 bytes, 7,992 of them inside the chip's render, 0 collections counted); emptied 0 of 60 |
+| the same with probes inside `NesApuInstrument.Render` (6 x 25) | 7 of 150 failed, every one at the resampler's first read of the block (pure arithmetic over preallocated arrays): 5,920 to 7,912 bytes, always a channel of the second Wario's Woods pass in its first block |
+| DLL experiment: this thread makes one 48-byte allocation, then runs 3 ms of allocation-free arithmetic, while another DLL thread builds NES sound chips every 2 ms; 3,000 rounds | the counter moved in 65 and 69 rounds (two runs), 507,512 and 532,256 bytes in all, up to 8,152 bytes a round, under ~3,800 gen-2 collections |
+| the same with this thread's allocation context emptied first (a collection on this thread, `GC.Collect()` or `GC.Collect(0)`) and nothing allocated in the rounds | 0 of 3,000 rounds, three runs, under 3,749 to 3,777 gen-2 collections each |
+| the other thread making the runtime collect in other ways (3,000 rounds each): 16 KB arrays, 128 KB arrays, both, NES machine + ROM, the Bus alone, `GC.Collect(0/1/2)`, background gen-2 collections | 0, 1 (3,960 B), 1 (8,152 B), 3, 2 of 500, 0, 0: the move needs a collection at the right moment; building NES chips makes the most of them |
+| A/B, same DLL and bench at the same time: 3 processes with the windows as they began until now, 3 with `AllocStart`, x 30 `nes-take` each | old meter 4 of 90 failed (7,288; 608; 608; 4,256 bytes), `AllocStart` 0 of 90 |
+| `AllocStart` only, 6 processes x 30 (the same) | 0 of 180 failed |
+
+The varying sizes (608 to 8,152 bytes, never more than the 8 KB quantum) are the room the thread had left; the reports that counted "0 collections" in the window (the original, and 2 of the 10 reproduced) had the room retired by a collection not counted inside it.
+
+### The fix (the bench's meter; the plugin is unchanged)
+
+`FruityHost/SelfTest.AllocMeter.cs`: every allocation window begins with `AllocStart(p)` = plugin hook 812 (a gen-0 collection on the measuring thread, which empties its allocation context, then the counter). The window must not allocate on that thread (that is what it checks), so the context stays empty and no collection can move the counter; a real allocation still counts in full (its new context has room again, so the figure can be larger than the allocation, never smaller and never 0). All 23 window starts of the bench use it (realtime, psg, md, fm, standalone-rack, runaway-recipes, runaway-sega, corruption, imodel, inject, presets, midi, capture, record, record-nes, relink and reload: `PlayReplace` serves the last four). No tolerance anywhere. A collection in the bench's own runtime (`GC.Collect()` before a window, as `presets` and `capture` did) does nothing for the DLL's counter.
+
+### The check that catches it deterministically
+
+`reload` scenario `meter` (hooks 812-814): a NES channel in Direct mode holds a note and renders on the test thread while another DLL thread builds a NES sound chip every 2 ms (hook 813, the worker's allocation). (1) Negative control, the meter as the windows read it before: each round allocates 48 bytes on the thread (hook 814), reads the counter, renders 40 allocation-free blocks, reads again; some round must show the counter moving within 30 s (it does, typically within a second), or the scenario cannot tell the fix from no fix. (2) The windows' meter: the same rounds beginning with `AllocStart`: none may move, over at least 2,000 rounds (five times what (1) needed) and three times as many gen-2 collections. (3) A real 24-byte allocation inside a window is counted (48 bytes: the array). Its deliberate bug is the bench's own (`MeterOldStart`: windows begin the old way): `meter` must then fail, and does. In `selftest --only reload` (183 s, 9 of 9 deliberate bugs caught): the old meter moved in round 545 by 8,128 bytes nobody allocated (16 gen-2 collections so far, 1,662 chips built in the whole scenario); `AllocStart` moved in 0 of 2,725 rounds under 293 gen-2 collections; the real 24-byte array counted 48 bytes; with the deliberate bug, 19 of 2,000 rounds moved (152,600 bytes).
+
+### Final runs
+
+Every figure from the Native AOT DLL `Plugin/build-dist.ps1` made of this tree (`Plugin/dist/BrokenNes2_x64.dll`, sha256 4E5BD0E8...) and the bench built from the same tree.
+
+| Run | Result |
+|---|---|
+| `FruityHost selftest` (all) | 65 results: 64 pass, 1 warning (QLQ an octave sharp, on purpose), 0 failed (25.3 min); `reload` 9 of 9 deliberate bugs caught, `meter`: the old meter moved in round 605 by 8,128 bytes nobody allocated, `AllocStart` 0 of 3,025 rounds under 142 gen-2 collections; `record` 15 of 15 (library 20 of 20), `record-nes` 6 of 6 (12 of 12), `relink` 13 of 13, `capture` 17 of 17, `midi` 9 of 9; `realtime` 6.5x, 0 B; `hostlog` (last) the user's real log untouched |
+| `FruityHost selftest --only reload,record,record-nes,relink,capture,midi,presets`, twice | 7 of 7 pass both times (22.2 and 22.1 min); `meter`: the old meter moved in rounds 357 and 330 (8,128 bytes each), `AllocStart` 0 of 2,000 rounds under 115 and 114 gen-2 collections |
+| `selftest --only reload` (whole check, before the full run) | pass, 183 s, 9 of 9 deliberate bugs |
+| `reload` `nes-take`, 6 processes x 30 side by side, `AllocStart` | 0 of 180 failed (with the old meter the same set-up failed 2 to 5 times in 100) |

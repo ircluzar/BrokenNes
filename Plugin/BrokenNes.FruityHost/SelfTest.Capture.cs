@@ -406,6 +406,7 @@ public sealed unsafe partial class SelfTest
             t.Expect(SWait(rack[0], () => rack[0].Test(HkSRunning) == 1, 30000), "the first take's song did not become the game");
             t.Expect(rack[0].Test(HkCArm) == 0, "the second take was refused");     // (the emulator goes back to Direct mode here, on this thread: its chips are made now)
             GC.Collect();
+            AllocStart(rack[0]);                                                  // (this thread's allocation context emptied: SelfTest.AllocMeter.cs)
             long[] before = rack.Select(p => p.Test(4)).ToArray();
             run.Play(rack, s);
             long total = 0;

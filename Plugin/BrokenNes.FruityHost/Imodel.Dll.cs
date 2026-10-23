@@ -50,7 +50,7 @@ public sealed unsafe partial class SelfTest
         fixed (float* f = buf)
         {
             p.NewTick();
-            long a0 = p.Test(HkInstAlloc);
+            long a0 = AllocStart(p);
             p.GenRender(f, 512);
             return p.Test(HkInstAlloc) - a0;
         }
@@ -163,7 +163,7 @@ public sealed unsafe partial class SelfTest
                 long a0 = 0, a1 = 0;
                 var m = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm =>
                 {
-                    if (sm >= 48000 && a0 == 0) a0 = p.Test(HkInstAlloc);
+                    if (sm >= 48000 && a0 == 0) a0 = AllocStart(p);
                     if (sm >= 48000 * 4 && a1 == 0) a1 = p.Test(HkInstAlloc);
                 } };
                 var s = new Scenario { Name = "alloc", Tempo = 60, LengthBeats = 5 };

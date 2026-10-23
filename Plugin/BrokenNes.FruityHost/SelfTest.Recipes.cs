@@ -134,7 +134,7 @@ public sealed unsafe partial class SelfTest
             {
                 p.SetParam(PRecipe, recipe);
                 long before = -1, after = -1;
-                var chord = new Mixer { SampleRate = 48000, AfterBlock = sm => { if (sm >= 48000 * 0.3 && before < 0) before = p.Test(4); if (sm >= 48000 * 1.0 && after < 0) after = p.Test(4); } };
+                var chord = new Mixer { SampleRate = 48000, AfterBlock = sm => { if (sm >= 48000 * 0.3 && before < 0) before = AllocStart(p); if (sm >= 48000 * 1.0 && after < 0) after = p.Test(4); } };
                 var three = new Scenario { Name = "three", Tempo = 60, LengthBeats = 1.2 };
                 foreach (var (key, start, length) in new[] { (60.0, 0.0, 0.8), (64.0, 0.1, 0.7), (67.0, 0.2, 0.6) }) three.Notes.Add(new SimNote { StartBeat = start, LengthBeats = length, Key = key, Channel = 0, Velocity = 0.78 });
                 Mono(chord.Run(p, three));
@@ -404,7 +404,7 @@ public sealed unsafe partial class SelfTest
                 {
                     p.SetParam(PRecipe, recipe);
                     long before = -1, after = -1;
-                    var mx = new Mixer { SampleRate = 48000, AfterBlock = sm => { if (sm >= 48000 * 0.3 && before < 0) before = p.Test(4); if (sm >= 48000 * 1.0 && after < 0) after = p.Test(4); } };
+                    var mx = new Mixer { SampleRate = 48000, AfterBlock = sm => { if (sm >= 48000 * 0.3 && before < 0) before = AllocStart(p); if (sm >= 48000 * 1.0 && after < 0) after = p.Test(4); } };
                     var three = new Scenario { Name = "three", Tempo = 60, LengthBeats = 1.2 };
                     foreach (var (key, start, length) in new[] { (60.0, 0.0, 0.8), (64.0, 0.1, 0.7), (67.0, 0.2, 0.6) }) three.Notes.Add(new SimNote { StartBeat = start, LengthBeats = length, Key = key, Channel = 0, Velocity = 0.78 });
                     Mono(mx.Run(p, three));
