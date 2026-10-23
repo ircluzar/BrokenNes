@@ -279,6 +279,10 @@ dotnet build   Plugin/BrokenNes.FruityHost/BrokenNes.FruityHost.csproj -c Releas
 
 ## Rules this tree follows
 
+- **NES-board APU ids the plugin does not list** (`Cx.Hidden` in `Bn2Consoles.cs`): `MNES`, `WF` (MIDI-style playback) and, since the enhanced cores' phase 3 (2026-10-23), `SNESS`, `SMSS`, `MDS`
+  (a NES game on the SNES / Master System / Genesis enhanced sound chips: `docs/projects/enhanced-cores.md` section 5). Listing them would sort them into their console's group and move every
+  chip index after it; to offer one, append it to `Appended` instead.
+
 - **Edits in the shared emulator tree must stay additive** (BrokenNes desktop/web must not change behaviour). The plugin's hooks there:
   `Windows/NesEmulator/board/Bus.cs` + `NES.cs` (APU write tap), `systems/ConsoleSessions.cs` (`SnesSession.Apu`, `GbSession.Apu`).
   The plugin links that tree: after changing core/session APIs (`IConsoleSession`, `APU_GB`, `APU_SFC`/`DSP_SFC`, `CoreCatalog`) run `selftest`.

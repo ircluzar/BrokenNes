@@ -203,11 +203,17 @@ internal static class SegaFoundationTestCli
         Check("a stored id the menu offers is kept (case-insensitive)", CoreCatalog.Resolve(ConsoleKind.Genesis, CoreSlot.Cpu, "m68k") == "m68k");
         // Track C: the Master System, Game Gear and Genesis APU menus also list the console's sound replayed on NES chips (ids NES:<chip>, family NES); every other entry is the console's own
         // Track C3a: the picture menus list the NES-family picture chips too (a Sega game's picture drawn by a NES, Game Boy or SNES chip, ids NES:<chip>, family of the chip)
-        Check("every Sega option names its own family (or is a NES-chip bridge entry NES:<chip> in the Master System / Game Gear / Genesis sound or picture menu)",
-            expect.All(e => CoreCatalog.Options(e.Item1, e.Item2).All(o => o.Family == Consoles.Family(e.Item1)
-                // C4b: and the sound of another console's chip reached through the NES registers (NES:DMG, NES:SNES, NES:MD, ...: the family of that chip)
-                || (e.Item2 == CoreSlot.Apu && (Consoles.IsMasterSystemFamily(e.Item1) || e.Item1 == ConsoleKind.Genesis) && (o.Id.StartsWith("NES:") || o.Id.StartsWith("NES-FM:")))
-                || (e.Item2 == CoreSlot.Ppu && (Consoles.IsMasterSystemFamily(e.Item1) || e.Item1 == ConsoleKind.Genesis) && o.Id.StartsWith("NES:")))));
+        bool OwnOrBridge((ConsoleKind, CoreSlot, string) e, CoreOption o) => o.Family == Consoles.Family(e.Item1)
+            // C4b: and the sound of another console's chip reached through the NES registers (NES:DMG, NES:SNES, NES:MD, ...: the family of that chip)
+            || (e.Item2 == CoreSlot.Apu && (Consoles.IsMasterSystemFamily(e.Item1) || e.Item1 == ConsoleKind.Genesis) && (o.Id.StartsWith("NES:") || o.Id.StartsWith("NES-FM:")))
+            || (e.Item2 == CoreSlot.Ppu && (Consoles.IsMasterSystemFamily(e.Item1) || e.Item1 == ConsoleKind.Genesis) && o.Id.StartsWith("NES:"))
+            // enhanced cores phase 3: another console's enhanced picture or sound chip reached directly, no NES in between (SNES:SFCS, SMS:SMSS, GG:GGS, MD:MDS)
+            || (e.Item2 != CoreSlot.Cpu && CoreCatalog.IsDirectRoute(o.Id));
+        Check("every Sega option names its own family (or is a NES-chip bridge entry NES:<chip>, or a direct route to another console's enhanced chip, in the Master System / Game Gear / Genesis sound or picture menu)",
+            expect.All(e => CoreCatalog.Options(e.Item1, e.Item2).All(o => OwnOrBridge(e, o))),
+            string.Join(" ", expect.SelectMany(e => CoreCatalog.Options(e.Item1, e.Item2).Where(o => !OwnOrBridge(e, o)).Select(o => $"{e.Item1}/{e.Item2}:{o.Id}({o.Family})"))));
+        Check("negative control: a direct route is not taken for a console's own entry or a NES bridge (SMS:SMSS is one, SMSS, NES:SMS and SMS are not)",
+            CoreCatalog.IsDirectRoute("SMS:SMSS") && !CoreCatalog.IsDirectRoute("SMSS") && !CoreCatalog.IsDirectRoute("NES:SMS") && !CoreCatalog.IsDirectRoute("SMS"));
         Check("the NES, SNES and Game Boy menus are unchanged by the Sega kinds", CoreCatalog.Default(ConsoleKind.Snes, CoreSlot.Cpu) == "SFC" && CoreCatalog.Default(ConsoleKind.GameBoy, CoreSlot.Cpu) == "GB" && CoreCatalog.Default(ConsoleKind.Nes, CoreSlot.Cpu) == "FIX");
 
         // round 4 (C4b): every entry of every non-NES console's core menus has a tooltip that says what the entry is and what it costs: a part of another console is a bridge, and its losses are counted

@@ -5,7 +5,8 @@ The user's request (2026-10-22): improve and unify the roster of alternate chips
 Genesis, and the "invert colours" toggle of the Game Boy look drew one of the variants inverted. The aim: every console's most accurate core in
 two variants per slot, **stock** (the chip as itself; on another console it shows what that chip natively can) and **enhanced** (the
 cross-console help: the guest's layers, a picture the guest's size, more channel banks), the enhancement adapting to the guest console's spec
-through one generic contract that later SFC / SMS / MD enhanced chips can implement too. The NES gimmick cores stay, after the best cores.
+through one generic contract that every console's enhanced chips implement: the NES's and the Game Boy's (phases 1 and 2), the SNES's, the Master
+System's / Game Gear's and the Genesis's (phase 3, section 5). The NES gimmick cores stay, after the best cores.
 
 ## 1. The roster
 
@@ -16,7 +17,8 @@ Every PPU and APU menu (and, for the order, every CPU menu) is three sections (`
 3. **The rest**, in the order it always had: the NES gimmick cores (CUBE, LQ, HI2X, WF, ...), the SNES's silent HLE unit, the SM83 clock variants.
 
 The labels of the best cores begin with their grade: `FIX (stock)`, `FIX (enhanced)`, `Game Boy (stock)`, `Game Boy (enhanced)`, `SNES (stock)`,
-`Master System (stock)`, `Master System FM (stock)` (the Japanese console's YM2413), `Genesis (stock)`; what follows the dash is what the entry does.
+`Master System (stock)`, `Master System FM (stock)` (the Japanese console's YM2413), `Genesis (stock)`, and since phase 3 `SNES (enhanced)`,
+`Master System (enhanced)`, `Game Gear (enhanced)`, `Genesis (enhanced)`; what follows the dash is what the entry does.
 The desktop draws a heading per section (`CoreCatalog.SectionTitle`), Lite an option group per section. **Ids did not change** (saved settings,
 NES save states, stockpiles, FL projects and the HTTP API keep working), with one retirement:
 
@@ -28,9 +30,20 @@ NES save states, stockpiles, FL projects and the HTTP API keep working), with on
 | Game Boy enhanced | `DMGS` | `NES:DMGS` | the enhanced Game Boy picture chip (PPU_GBE): the guest's picture at its own size with all its layers; APU_DMGS on APU_GBS's banks |
 | (retired) | `DMGX` | `NES:DMGX` | the big screen without the layers: **moved to DMGS** wherever it was stored |
 | Game Boy enhanced sound on the Game Boy | - | `GBS` (Game Boy menu) | APU_GBS |
+| SNES stock | `SNES` | `NES:SNES` (`SNES:SFC` from the Game Boy) | the S-PPU / S-DSP through the NES (PPU_SNES, APU_SNES) |
+| SNES enhanced | `SNESS` | `SNES:SFCS` (no NES in between) | PPU_SFCS / SfcVoiceChip (S-DSP banks); `SFCS` on the SNES's own menu (PPU_SFCS, APU_SFCS) |
+| Master System stock | `SMS`, `SMSFM` | `NES:SMS`, `NES:SMSFM` | the VDP / the PSG (+ YM2413) through the NES |
+| Master System enhanced | `SMSS` | `SMS:SMSS` | SmsVdpS (6-bit colour) / PsgVoiceChip (SN76489 sets, mono); `SMSS` on the Master System's own menu |
+| Game Gear enhanced | - | `GG:GGS` | SmsVdpS (12-bit colour) / PsgVoiceChip (SN76489 sets on the stereo port); `GGS` on the Game Gear's own menu |
+| Genesis stock | `MD` | `NES:MD` | the VDP / YM2612 + PSG through the NES |
+| Genesis enhanced | `MDS` | `MD:MDS` | MdVdpS (9-bit colour, shadow / highlight) / MdVoiceChip (YM2612 + PSG sets); `MDS` on the Genesis's own menu |
 
-The SNES (SFC), Master System / Game Gear (SMS, GG) and Genesis (MD) have stock chips only; their enhanced chips are the next phase (section 5).
-The Game Boy console's own picture menu has no enhanced entry: on its own console the enhanced chip would draw exactly as the stock one.
+Every console's own menu is its stock chips then its enhanced one (the Master System: `SMS`, `SMS-FM`, `SMSS`). On its own console an enhanced chip draws and
+sounds exactly as the stock one (it is a subclass of it, and nothing fills its extra layers or banks there: `--enhanced-test --only own3` proves it frame by
+frame and sample by sample), so those entries are there for the menu's symmetry and the state units, not a different picture. The Game Boy console's own
+picture menu still has no enhanced entry (phase 2's decision: the Game Boy's own game would draw exactly as on the stock chip). The other consoles reach the
+SNES, Master System / Game Gear and Genesis enhanced chips **directly** (the routes `SNES:SFCS`, `SMS:SMSS`, `GG:GGS`, `MD:MDS`: no NES in between, section 5);
+only the NES menu offers the NES board's ids of them (`SNESS`, `SMSS`, `MDS`: a NES game on them), and no other menu offers `NES:SNESS`, `NES:SMSS` or `NES:MDS`.
 
 ### The Game Boy picture chips
 
@@ -105,6 +118,12 @@ chip draws, the Sega consoles included (`CoreCatalog.IsGameBoyPicture`).
   Genesis game on FIX enhanced.
 - `UAT/lite/test-lite-sega.mjs` group `swap` and `UAT/entrypoints/sega-preview-smoke.ps1`: a Master System game swapped onto FIXS is 256x192, a
   Genesis game 320x224 shown 320 wide; on the stock FIX the NES's 256x240.
+- Phase 3 (`Workshop/EnhancedCores/EnhancedPhase3Tests.cs`, every check on every one of the other consoles' enhanced chips that exists, each with the stock
+  chip of the same console as its negative control): `--enhanced-test --only layers3` (every guest at its size and layer count, every pixel in the chip's
+  colours, the colour math the chip's own way, a NES scene on the NES board matched pixel for pixel against the NES's own chip), `sound3` (a channel for
+  every voice, the banks, the pitch, the pan, drops past the last bank; every guest's bridge; Sonic 1), `states3`, `own3` (a console's own game on its
+  enhanced chips equal to its stock ones, every frame and every sample), `speed3` (information). `--picture-bridge-test --only alloc` covers the new routes and
+  the NES board's new chips; `--enhanced-shots --set phase3` makes the pictures (section 5.6).
 
 ## 4. The enhanced contract
 
@@ -142,8 +161,13 @@ Implemented by:
 - `PPU_DMGS : PPU_DMG` (Game Boy enhanced) with `PPU_GBE` behind it: DMG shades by brightness (or the Game Boy Color's 5-bit colours), the
   Game Boy look's inversions (section 2). A NES game reaches it through `NesToLayers` (the NES chip in front, MixConfig.NesFrontPpu, keeps the
   game's PPU timing).
+- Phase 3 (section 5): `PPU_SFCS : PPU_SFC` (SNES enhanced, 15-bit colour), `MdVdpS : MdVdp` (Genesis enhanced, 9-bit colour, shadow / highlight),
+  `SmsVdpS : SmsVdp` (Master System enhanced, 6-bit colour; Game Gear enhanced, 12-bit), all drawing through `LayerPainter` (ppus/LayerPainter.cs: the
+  compose-and-colour loop every chip of another console shares; a chip gives its colour rules).
 
-A translator finds the chip through `NesPictureSink.Enhanced` (the board's PPU when it is an `IEnhancedPictureChip`): enhanced -> the layered
+A translator finds the chip through its sink (`IPictureSink`, mix/NesPictureSink.cs): `NesPictureSink` (a NES board's PPU: FIX enhanced and Game Boy
+enhanced take the layers, the stock chips the flat NES picture) or `ChipPictureSink` (another console's enhanced chip directly, phase 3). On a NES board
+`NesPictureSink.Enhanced` is the board's PPU when it is an `IEnhancedPictureChip`: enhanced -> the layered
 path at the guest's size; anything else -> the flat path, a NES picture of 256 x 240 drawn by the NES chip (the Genesis's 320 columns cropped
 to the middle 256 and its 240 lines to 224, counted). The result goes to the session as a `BridgeFrame` (`mix/NesPictureSink.cs`: ARGB, size,
 `GuestSize`), and the sessions (`SnesSession`, `GbSession`, `SegaPictureSession`) publish its size: `FrameWidth` x `FrameHeight` is the guest's,
@@ -191,37 +215,135 @@ this machine, shared with other work): MD 652, NES:FIX 527, NES:FIXS 483, NES:DM
 sounding) each extra APU_FIX costs about what bank 0 does.
 
 **What stays mono and lossy** on every NES-hub chip: the FM timbre (a pulse), the DAC's samples (noise hits), the pan, the SNES's samples and
-echo. Those are the guest chip's own sound; an enhanced chip of that console (section 5) is where they can be kept.
+echo. Those are the guest chip's own sound. The enhanced chips of the other consoles (phase 3, section 5) take the same voice list without the NES in
+between (`IEnhancedSoundChip`): the pan where they have stereo, the duty of a pulse on the S-DSP, a guest's PSG square on the Genesis's own PSG.
 
-## 5. For the next phase: SFC, SMS and MD enhanced chips
+## 5. Phase 3: the SNES, Master System / Game Gear and Genesis enhanced chips
 
-The SNES (SFC), Master System / Game Gear (SMS, GG) and Genesis (MD) have stock chips only. An enhanced chip of one of them attaches to the
-other consoles through the same two contracts; nothing in the translators has to learn about it.
+Phase 3 (2026-10-23) gave the three other consoles' most accurate chips their enhanced variants, on the two contracts of section 4. Each enhanced picture
+chip is a **subclass of the stock chip** (its console's own game draws on the stock pipeline, untouched), each enhanced sound chip carries **extra banks of
+the console's own channels**, and every other console reaches them **directly**: a guest's translator fills the chip's layers and its voices play on the
+chip's banks, with no NES in between.
 
-**A picture chip** (say `PPU_SFCS`, "SNES (enhanced)"):
+### 5.1 The shared step: a route that is not the NES board
 
-1. Make it a subclass of the stock chip (as `PPU_FIXS : PPU_FIX`), so the console's own games draw on the stock pipeline and its golden hashes
-   do not move.
-2. Implement `IEnhancedPictureChip`: own an `ExtPicture`; in `DrawLayers` call `Layers.ComposeLine(line, 0, Width, z, key, math)` per line and
-   turn each key into the chip's colour (`Layers.Rgb(key, line)`, `Layers.Blend` for colour math) in its own rules - the SNES's 15-bit colour
-   (every guest colour nearly exact), the Master System's 6-bit or the Game Gear's 12-bit, the Genesis's 9-bit (and its shadow / highlight
-   where `math` says); `ColourLimit` says what is lost. Copy `PPU_FIXS.DrawLayers` (about 40 lines) as the model.
-3. Let the translators reach it. Today every translator reaches an enhanced chip through `NesPictureSink.Enhanced`, which is the NES board's
-   PPU. The layered paths never touch the NES: give the translators a second constructor that takes an `IEnhancedPictureChip` directly (or a
-   sink interface with `Enhanced` and, for the flat path, `Present`), and the Genesis on the SNES chip is `new MdToNes(board, chip)`.
-   `GbToSnes` (the Game Boy on the SNES chip, flat today) becomes `GbToNes.RenderLayers` onto the SNES chip the same way.
-4. The catalog: the chip's id on its own console (`OwnBest` with an `Enhanced` entry: the menus, the labels and `CoreOption.Grade` follow), on
-   the others (`CrossBest`, e.g. `SNES:SFCS`), the session that builds the bridge (`SegaPictureSession.SetBridge`, `GbSession.SetPicture`,
-   `SnesSession`), and a root in `WebLite/LinkerConfig.xml`.
+- **Pictures**: `IPictureSink` (mix/NesPictureSink.cs) is where a translator sends its picture: `NesPictureSink` (a NES board's PPU, exactly as before) or
+  `ChipPictureSink` (an `IEnhancedPictureChip` of another console, which has no flat path and refuses a NES picture). `SnesToNes`, `SmsToNes`, `MdToNes`
+  and `GbToNes` gained a constructor that takes the chip; nothing else in them changed. `GbToSnes` (the flat Super Game Boy route, `SNES:SFC`) stays the
+  SNES's stock entry for a Game Boy game; the enhanced one is `GbToNes.RenderLayers` onto PPU_SFCS (`SNES:SFCS`).
+- **Sound**: `IEnhancedSoundChip` (mix/EnhancedSound.cs) is the voice side of an enhanced sound chip: `Apply(voices)` (the hub's `HubVoice` list, about 960
+  times a second), `RunTo(seconds)`, stereo `ReadSamples` at the rate the chip was made for, `BanksFor(inventory)` (the bank arithmetic), the counters,
+  and `IApuExtChannels` (the raw registers of each bank). `HubVoiceChip` is the shared half: channels come in kinds (the S-DSP has one kind, eight a bank;
+  the PSG two, three squares and a noise; the Genesis three, six FM channels, three PSG squares and a noise); a voice keeps its channel while it sounds and
+  its kind does not change, a newcomer (loudest first) takes the lowest free channel of its kind, a bank is added only when no channel of that kind is
+  free, and only past the last bank (`MaxBanks`) is a voice dropped, and counted. A bank costs nothing until a voice plays on it. Allocation-free.
+- **The guests' bridges** (mix/EnhancedSoundBridges.cs) keep the guest's real sound unit in front (everything the game can see) and hand its voice list to
+  the chip: `MdSoundOnChip` (Genesis: the 11 voices, FM levels from the carriers' total levels and envelopes, the PSG and the DAC on the same scale),
+  `SmsSoundOnChip` (Master System / Game Gear PSG: 4 voices, the Game Gear's stereo port as the pan), `GbApuOnChip` (Game Boy: 4 voices, NR51's pan),
+  `SnesApuOnChip` (SNES: the 8 DSP voices, VOL L / VOL R the pan; `SnesVoiceReader` is the description NesApuOnSnes gives) and `NesApuOnChip` (a NES
+  game on the NES board: its 4 channels; the DMC is dropped and counted). Levels are on one scale per guest (1 = its loudest single voice), so the guest's
+  balance is kept. `HubVoice` gained `Psg` (an SN76489 tone: a 50% square whatever its kind says; the NES hub ignores it).
+- **The catalog** (systems/ConsoleSystems.cs): `DirectRoutes` lists the routes; `EnhancedChips` (mix/EnhancedSound.cs) builds a route's chips; a route, the
+  console's own enhanced entry and the NES board's ids appear once the chips exist (`CoreCatalog.IsDirectRoute`). The NES board's ids of the other
+  consoles' enhanced chips are offered on the NES menu only (`NesBoardEnhancedOfOthers`). **The sessions**: `SnesSession` (picture and sound, its
+  hot swap of the sound unit, its save state: unit byte 3 for a direct route), `GbSession` (picture, sound; no save states with another console's sound
+  chip, as before for the NES ones, said in its reason), `SegaPictureSession` (picture; the console's own enhanced id is a pass-through), `MdSession` /
+  `SmsSession` (their own enhanced picture id), `SmsSoundFactories` / `GenesisSoundFactories` (a route is looked up before the colon split, so `SMS:...`
+  never falls to the stock unit).
+- **The NES board**: `NesLayeredPpu` (mix/NesLayeredPpu.cs, on `NesFrontedPpu`: FIX in front, each 8-line group's pattern tables, `NesToLayers`, then
+  the chip draws) is a NES game on another console's enhanced picture chip; `NesApuOnChip` its sound. `NesPicture.Mask` is a tests-only PPUMASK override.
+- The NES path did not change: the goldens of every console's own default cores are unchanged (5.5).
 
-**A sound chip** (say `APU_SFCS`, the S-DSP with more voices; `SMSS`, more SN76489 sets; `MDS`, more YM2612s):
+### 5.2 SNES enhanced (`SFCS`, `SNES:SFCS`, NES board `SNESS`)
 
-1. Implement `IApuExtChannels` on it: bank 0 the game's chip untouched, banks 1.. more of the same voices, made when first written.
-2. Write the voice writer for its registers (`HubVoice` -> that chip's registers), with the same bank arithmetic as `NesVoiceWriter.BanksFor`
-   (a tonal voice per tonal channel, a noise per noise channel): the S-DSP can play a guest voice as a looped sample at its pitch, a YM2612 as an
-   FM voice with a chosen patch, an SN76489 as a square. The guest's `Pan` then has somewhere to go.
-3. The bridges that today replay the hub's voices on the NES (`MdSoundOnNes`, `SmsFmSoundOnNes`, `SmsSoundOnNes`, `NesApuOnSnes`) take that
-   writer instead of `NesVoiceWriter` when the chip is not a NES one; their voice lists and their counters are already the chip-independent half.
+| | Picture: `PPU_SFCS : PPU_SFC` (mix/SnesEnhanced.cs) | Sound: `SfcVoiceChip` (S-DSPs), `APU_SFCS : APU_SFC` on its own menu |
+|---|---|---|
+| Rules | the SNES's 15-bit colours (32,768: every channel rounded to 5 bits, shown as the S-PPU shows them at full brightness); colour math the SNES's way, in 15-bit (`PPU_SFC.Blend`: add / subtract, half) | banks of 8 S-DSP voices (each bank a `DSP_SFC` on its own 64 KB of sound RAM), every voice a looped BRR sample of its own waveform: a pulse of its duty (12.5 / 25 / 50 / 75 %), a PSG tone a 50% square, a triangle, white noise, the NES's 93-step short noise; at its pitch (32-sample periods up to 4 kHz, 8-sample ones to 16 kHz, a noise one sample a shift); level and pan on VOL L / VOL R; no echo; 8 banks at most |
+| NES game (`SNESS`) | the whole 256 x 240 (the stock S-PPU route shows 239 lines), the whole 2 x 2 nametable map, the NES's 8 sprites a line | 4 voices, pulses with their duty |
+| Game Boy | 160 x 144, background + window (replaces the flat `GbToSnes` on the enhanced chip) | 4 voices, the pulses' duty, NR51's pan |
+| Master System / Game Gear | 256 x 192 / 224 / 240, 160 x 144 | 4 voices (1 bank), the Game Gear's pan |
+| Genesis | 320 or 256 x 224 or 240 (the SNES is 256 wide), plane B, plane A, the window | 11 voices on 2 banks |
 
-**Tests to copy:** `--enhanced-test` groups `layers` and `sound` run every guest on both enhanced chips with a stock negative control; add the
-new chip to `EnhancedChips` / the bank tables there, and to the `alloc` group of `--picture-bridge-test`.
+### 5.3 Genesis enhanced (`MDS`, `MD:MDS`, NES board `MDS`)
+
+| | Picture: `MdVdpS : MdVdp` (mix/GenesisEnhanced.cs) | Sound: `MdVoiceChip` (YM2612 + PSG sets), `MdSoundUnitS : MdSoundUnit` on its own menu |
+|---|---|---|
+| Rules | the Genesis's 9-bit colours (512) at the VDP's own DAC levels; where the guest's colour math asks, the Genesis's own: **shadow** where it subtracts, **highlight** where it adds (the DAC's lower / upper steps) | sets of a YM2612 and an SN76489 on the Genesis's NTSC clocks (6 FM channels, 3 squares, a noise each), 6 sets at most; a guest's PSG tone on the PSG (the same square), every other tonal voice an FM voice with the patch chosen for the Genesis bridges (`APU_MD.DefaultPatch`; a triangle the sine; the "PSG square" patch puts pulses on the PSG), its level through the carriers' total level, its pitch to the FM registers' cent; the noise on the PSG (white or periodic, the exact rate through tone 3 when free); the pan on the FM L/R bits (the Genesis PSG is mono) |
+| NES game (`MDS`) | the whole 256 x 240, each layer's own left-column clip (the stock VDP route can blank both layers only), the NES's 8 sprites a line (the stock route shows 16) | 4 voices: pulses on FM, the triangle the sine, the noise on the PSG |
+| SNES | 256 x 224 / 239 with **all its layers** (mode 0: four, more than plane A + plane B + the window), its colour math as shadow / highlight | 8 voices on 2 sets (6 FM + 2 on the next) |
+| Game Boy | 160 x 144, background + window | 4 voices |
+| Master System / Game Gear | 256 x 192 / 224 / 240, 160 x 144 | its 3 tones on the Genesis's own PSG (the very same squares), the noise on its noise: 1 set |
+
+### 5.4 Master System / Game Gear enhanced (`SMSS` / `GGS`, `SMS:SMSS` / `GG:GGS`, NES board `SMSS`)
+
+| | Picture: `SmsVdpS : SmsVdp` (mix/MasterSystemEnhanced.cs) | Sound: `PsgVoiceChip` (SN76489 sets), `SmsSoundS : SmsSound` on the own menus |
+|---|---|---|
+| Rules | the Master System's 6-bit colours (64: levels 0, 82, 173, 255) or the Game Gear's 12-bit (4,096), as the VDP's colour RAM shows them; the guest's colour math blended and shown in them; the guest's size beyond the Master System's 256 x 192 / 224 and the Game Gear's 160 x 144, every layer and sprite the guest has | sets of an SN76489 (3 squares, a noise), 8 at most; every tonal voice a square (a pulse's duty, a triangle's shape and an FM timbre are not carried), notes below the PSG's 109 Hz whole octaves up (counted); the noise at its exact rate through tone 3 when tone 3 is free; the Game Gear's **stereo port** carries the pan (left / right / both), the Master System is mono |
+| NES game (`SMSS`) | the whole 256 x 240 (the stock route: the Master System's one 32-column map, so the right edge repeats the left column, counted) | 4 voices on 1 set |
+| SNES | 256 x 224 / 239, all its layers | 8 voices on 3 sets |
+| Game Boy | 160 x 144, background + window | 4 voices |
+| Genesis | 320 x 224 / 240, plane B, plane A, the window | 11 voices on 3 sets (9 tones, 2 noises) |
+
+### 5.5 Tests and numbers (2026-10-23)
+
+- `--enhanced-test`: 329 checks, 0 failed (198 before phase 3); phase 3's groups: `layers3`, `sound3`, `states3`, `own3`, `speed3` (section 3), every check with
+  its stock negative control: on the stock chip through the NES the guest is the NES's 256 x 240, its voices squeezed into one bank (3 tonal + 1 noise,
+  the rest dropped and counted); the NES scene differs from the NES's own picture in 512 pixels on the stock SNES route, while every enhanced chip
+  matches it in every pixel. `own3`: Super Mario World (SNES, 600 frames), Sonic 1 (Genesis), Sonic (Master System), Columns (Game Gear) on their own
+  enhanced picture and sound chips: every picture and every sample equal to the stock chips'.
+- Sound: a voice at 440 Hz plays at 439.9 Hz on the S-DSP banks, 440.1 on the Genesis's FM, 440.5 on the PSG sets (the PSG's period step); a NES pulse at
+  440.4 Hz (its own timer's note) within 0.5 cents on all three; a voice panned left plays left only on the SNES, Genesis and Game Gear chips and on both
+  sides alike on the Master System's (mono); Sonic 1 into Green Hill plays on 2 S-DSP banks, 3 PSG sets, 9 voices at once at most, none dropped (on the
+  stock NES route: 1 bank, 20,915 voice-syncs without a channel).
+- `--picture-bridge-test --only alloc`: 0 bytes a frame on every new route (the Master System, Game Gear and Genesis scenes on `SNES:SFCS`, `MD:MDS`,
+  `SMS:SMSS`, `GG:GGS`) and for a NES scene on the NES board's `SNESS`, `MDS`, `SMSS`, as on FIXS, DMGS and FIX.
+- Speed (`speed3`, frames a second of picture + sound together, over five runs, the machine shared with other work): a Genesis program on SNES enhanced
+  403-485 (on the stock SNES chip through the NES 251-298, on its own chips 614-789); a Master System program on Genesis enhanced 428-511 (stock through
+  the NES 215-272, own 1,048-1,221); a Genesis program on Master System enhanced 248-286 and on Game Gear enhanced 223-286 (stock through the NES
+  238-305: the three PSG sets the eleven voices take cost about what the NES hop does).
+- The other suites, on a build of the final commit: `--picture-bridge-test` 252 / 0, `--swap-matrix-test` 35 / 0 (every sound unit of every menu, the
+  new ones included, gives the console's sample count and pitch), `--sega-bridge-test` 356 / 0, `--smstest` 430 / 0 (6 skips: no roster folder given),
+  `--snes-state-test` 147 / 0, `--md-state-test` 168 / 0, `--corrupt-test` 275 / 0, `--cpu-wall-test` 27 / 0; the UAT suite 123 pass, 2 fail, 16 skip,
+  3 info, as main (the two failures are `brokendev-smb1-nested-boot` / `-play`, on main too); `UAT/entrypoints/core-roster-desktop.ps1` all pass (the NES
+  menu's new head, the labels, Sonic on the Master System and the Genesis on every enhanced chip at its own size); Lite (AOT) `lite-sega -Only
+  console,rom,swap,video,pickers,roster` 78 / 0 (the pickers list and label the new chips; a Master System game swaps to `SNES:SFCS` and `MD:MDS` at
+  256 x 192, a Genesis game to `SNES:SFCS`, `SMS:SMSS`, `GG:GGS` at 320 x 224, its sound to `SNES:SFCS`, `SMS:SMSS`, `MDS` in place);
+  `UAT/sega-gate.ps1` 18 of 19 steps pass, as main: `--md-golden`'s Titan Overdrive 1 frame 1007 (`C740C2A7D83CE55F`) fails on main too, every other golden
+  equal; `--sega-test` learned the direct routes (73 / 0, a negative control beside it); the FL plugin's `selftest --only consoles,cores,swap,hub-explicit,
+  psg,md,fm,rom-sms,rom-md,stems-sega,runaway-sega` 10 pass, 1 warning (QLQ's octave, intended), 0 failed (`fm` 6.3x real time: its 5x floor needs a quiet
+  machine).
+- Goldens: unchanged (5.7).
+
+### 5.6 Pictures
+
+`Workshop --enhanced-shots --set phase3` writes, to `%LOCALAPPDATA%\VRUN_Nes_Dev_work\enhanced_cores\phase3\`, one frame of Super Mario Bros. (NES), Super
+Mario World (SNES), Kirby's Dream Land (Game Boy), Sonic (Master System) and Sonic 1 (Genesis) on its own chip and on each other console's stock chip (as
+the guests reached it before) and enhanced chip.
+
+### 5.7 Golden hashes, the FL plugin, Lite
+
+- Every console's own default cores are unchanged: the UAT suite and the Sega gate show the same results as main (5.5), and `own3` shows a console's own
+  game on its enhanced chips equal to its stock chips.
+- **The FL plugin's chip list** is built from the NES board's APU ids and its indexes are append-only. The three new NES-board APU ids (`SNESS`, `SMSS`,
+  `MDS`) are kept **out** of it (`Plugin/BrokenNes2.Plugin/Bn2Consoles.cs`, `Cx.Hidden`, beside `MNES` and `WF`), so no saved chip index moves; offering
+  them in the plugin would mean appending them to `Appended`. The plugin's self-test chip-index assertions are unchanged.
+- **Lite**: the NES board's new classes are rooted in `WebLite/LinkerConfig.xml` (`PPU_SNESS`, `APU_SNESS`, `PPU_MDS`, `APU_MDS`, `PPU_SMSS`, `APU_SMSS`);
+  the direct routes are plain code.
+- **Save states**: a state is saved with the sound unit's id in its header (`apu`), as before: a game saved with another console's enhanced sound chip
+  loads back into the same choice and is refused, with the reason, by a session with another unit; the SNES's payload names the bridge (unit 3) and
+  rebases the chip, a listener like the NES ones; the Game Boy has no states with another console's sound chip (its reason says so). The consoles' own
+  enhanced units keep the stock unit's state (their extra banks are not part of the machine). Stockpiles and settings migrate nothing: all ids are new.
+- The stock chips' classes are no longer `sealed` (PPU_SFC, APU_SFC, MdVdp, MdSoundUnit, SmsVdp, SmsSound): the enhanced chips subclass them.
+
+### 5.8 Risks and what is not carried
+
+- The guest's picture reaches every enhanced chip as `ExtPicture`: 2-bit tiles (3 colours + clear) in 8 palettes a kind, so a SNES or Genesis game on the
+  SNES, Master System or Genesis enhanced chip has its colours reduced to 3 a tile before the chip's own colours apply. A chip with more colours per tile
+  (the SNES's 4 / 8 bpp) cannot get them back through this contract; a wider ExtPicture would be the next step.
+- The Genesis guest's own shadow / highlight is still not described in `ExtPicture` (counted by MdToNes, as before), so the Genesis enhanced chip shades only
+  what a SNES guest's colour math asks.
+- Sound: FM timbre on the S-DSP and the PSG (a square at the FM voice's pitch), the DAC's samples (a noise hit), the SNES's samples and echo, the Game Boy's
+  wave RAM (a triangle), a pulse's duty on the PSG and the Genesis FM are not carried; the noise's short mode is the NES's 93 steps on the S-DSP whatever the
+  guest's (the SN76489's periodic noise is 16 steps). The Master System's FM unit (`SMS-FM`) is offered on the NES chips only, not on the enhanced chips.
+- The Master System / Game Gear enhanced sound costs a little more than the NES hop for an eleven-voice guest (three PSG sets run at the PSG's clock).
+
