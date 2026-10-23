@@ -75,10 +75,13 @@ try {
     try {
         $menus = (Invoke-BrokenNesApi -ProcessId $r.Inst.ProcessId -Path '/api/console/cores').menus
         $ppu = @($menus.ppu)
-        $head = ($ppu | Select-Object -First 7 | ForEach-Object { $_.id }) -join ','
-        Check 'menus: the NES picture menu starts FIX, FIXS, SNES, DMG, DMGS, SMS, MD' ($head -eq 'FIX,FIXS,SNES,DMG,DMGS,SMS,MD') $head
-        $labels = @($ppu | Select-Object -First 5 | ForEach-Object { $_.label })
-        Check 'menus: the labels say FIX (stock), FIX (enhanced), Game Boy (stock), Game Boy (enhanced)' ($labels[0] -like 'FIX (stock)*' -and $labels[1] -like 'FIX (enhanced)*' -and $labels[3] -like 'Game Boy (stock)*' -and $labels[4] -like 'Game Boy (enhanced)*') ($labels -join ' | ')
+        # since the enhanced cores' phase 3 every family's stock chip is followed by its enhanced one (SNESS, SMSS, MDS: a NES game on the SNES, Master System and Genesis enhanced chips)
+        $head = ($ppu | Select-Object -First 10 | ForEach-Object { $_.id }) -join ','
+        Check 'menus: the NES picture menu starts FIX, FIXS, SNES, SNESS, DMG, DMGS, SMS, SMSS, MD, MDS' ($head -eq 'FIX,FIXS,SNES,SNESS,DMG,DMGS,SMS,SMSS,MD,MDS') $head
+        $label = @{}; foreach ($o in $ppu) { $label[$o.id] = $o.label }
+        $want = [ordered]@{ FIX = 'FIX (stock)'; FIXS = 'FIX (enhanced)'; DMG = 'Game Boy (stock)'; DMGS = 'Game Boy (enhanced)'; SNES = 'SNES (stock)'; SNESS = 'SNES (enhanced)'; SMSS = 'Master System (enhanced)'; MDS = 'Genesis (enhanced)' }
+        $bad = @($want.Keys | Where-Object { -not ("$($label[$_])" -like "$($want[$_])*") })
+        Check 'menus: the labels say FIX (stock), FIX (enhanced), Game Boy (stock), Game Boy (enhanced), SNES (enhanced), Master System (enhanced), Genesis (enhanced)' ($bad.Count -eq 0) (($want.Keys | ForEach-Object { "$($_): $($label[$_])" }) -join ' | ')
         Check 'menus: no DMGX on offer' (-not ($ppu | Where-Object { $_.id -eq 'DMGX' })) ''
         $set = Invoke-BrokenNesApi -ProcessId $r.Inst.ProcessId -Method POST -Path '/api/console/core/ppu/DMGX'
         Start-Sleep -Seconds 2
@@ -87,10 +90,11 @@ try {
         Check 'API: selecting the old id DMGX selects the enhanced Game Boy chip (DMGS) and stores DMGS' ("$($status.ppu)" -eq 'PPU_DMGS' -and $cfg.selectedPpuCore -eq 'DMGS') "ppu=$($status.ppu) stored=$($cfg.selectedPpuCore) response=$($set | ConvertTo-Json -Compress)"
     } finally { [void](Stop-BrokenNesInstance -ProcessId $r.Inst.ProcessId) }
 
-    # 4. the enhanced picture contract in the app: a Sega game swapped onto an enhanced chip (FIXS, DMGS) is drawn at the console's own size; on the stock FIX it is a NES picture
+    # 4. the enhanced picture contract in the app: a Sega game swapped onto an enhanced chip (FIXS, DMGS; since phase 3 the other consoles' enhanced chips, reached directly, and the console's own enhanced
+    #    chip) is drawn at the console's own size; on the stock FIX it is a NES picture
     $games = @(
-        @{ Name = 'Master System Sonic'; Path = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms'); W = 256; H = 192 },
-        @{ Name = 'Genesis Sonic'; Path = 'X:\EMULATION\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin'; W = 320; H = 224 })
+        @{ Name = 'Master System Sonic'; Path = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms'); W = 256; H = 192; Chips = @('NES:FIXS', 'NES:DMGS', 'NES:FIX', 'SNES:SFCS', 'MD:MDS', 'SMSS') },
+        @{ Name = 'Genesis Sonic'; Path = 'X:\EMULATION\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin'; W = 320; H = 224; Chips = @('NES:FIXS', 'NES:DMGS', 'NES:FIX', 'SNES:SFCS', 'SMS:SMSS', 'GG:GGS', 'MDS') })
     foreach ($g in $games) {
         if (-not (Test-Path -LiteralPath $g.Path)) { Write-Host "[NOT RUN] $($g.Name): no ROM at $($g.Path)"; continue }
         $r = Start-Isolated ('{ ' + $base + ', "selectedPpuCore": "FIX" }')
@@ -98,13 +102,13 @@ try {
             $id = $r.Inst.ProcessId
             Load-BrokenNesRom -ProcessId $id -Path $g.Path | Out-Null
             Start-Sleep -Seconds 3
-            foreach ($chip in 'NES:FIXS', 'NES:DMGS', 'NES:FIX') {
+            foreach ($chip in $g.Chips) {
                 $set = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path ('/api/console/core/ppu/' + [Uri]::EscapeDataString($chip))
                 Start-Sleep -Seconds 2
                 $fb = Invoke-BrokenNesApi -ProcessId $id -Method GET -Path '/api/console/framebuffer'
                 $want = if ($chip -eq 'NES:FIX') { '256x240' } else { "$($g.W)x$($g.H)" }
                 $got = "$($fb.width)x$($fb.height)"
-                Check "picture: $($g.Name) on $chip is $want ($(if ($chip -eq 'NES:FIX') { 'the stock chip: a NES picture' } else { "the enhanced chip: the console's own size" }))" ([bool]$set.success -and $got -eq $want) "success=$($set.success) picture $got"
+                Check "picture: $($g.Name) on $chip is $want ($(if ($chip -eq 'NES:FIX') { 'the stock chip: a NES picture' } elseif ($chip -notlike '*:*') { "the console's own enhanced chip: its own picture" } else { "the enhanced chip: the console's own size" }))" ([bool]$set.success -and $got -eq $want) "success=$($set.success) picture $got"
             }
         } finally { [void](Stop-BrokenNesInstance -ProcessId $r.Inst.ProcessId) }
     }
