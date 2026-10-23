@@ -107,20 +107,20 @@ internal static class EnhancedPhase3Tests
             var sp = EnhancedContractTests.SnesBands(1, false);
             var p = ((SfcPpuAdapter)sp).Inner;
             sp.WriteRegister(0x30, 0x00);                 // CGWSEL: the fixed colour is the addend, math everywhere
-            sp.WriteRegister(0x31, (byte)cgadsub);        // CGADSUB: BG1, add or subtract
+            sp.WriteRegister(0x31, (byte)cgadsub);        // CGADSUB: BG3 (the dark band: room to get brighter and darker), add or subtract
             sp.WriteRegister(0x32, 0xE8);                 // COLDATA: all three channels at 8
             p.BridgeLines = new PPU_SFC.BridgeLineState[240];
             p.BeginFrame(); for (int l = 1; l <= 224; l++) p.RenderLine(l); p.OnVBlankStart();
             var chip = EnhancedChips.Picture(c.Route);
             var f = new SnesToNes(chip, c.Route).Render(sp);
             mathPixels = chip.Layers.MathLayers.Take(224).Count(m => m != 0);
-            return f.Argb[100 * f.Width + 32] & 0xFFFFFF;
+            return f.Argb[100 * f.Width + 2 * 64 + 32] & 0xFFFFFF;
         }
-        uint plain = Draw(0x00, out _), add = Draw(0x01, out int lines), sub = Draw(0x81, out _);
+        uint plain = Draw(0x00, out _), add = Draw(0x04, out int lines), sub = Draw(0x84, out _);
         int Luma(uint rgb) => (int)(((rgb >> 16) & 0xFF) * 3 + ((rgb >> 8) & 0xFF) * 6 + (rgb & 0xFF));
         bool ok = lines > 0 && Luma(add) > Luma(plain) && Luma(sub) < Luma(plain) && c.InLimit(add) && c.InLimit(sub);
         string how = c.Family == "Genesis" ? "highlighted / shadowed (the Genesis's own colour math)" : "blended with the fixed colour in the chip's own colours";
-        Check($"SNES colour math on {c.Name}: BG1 with the fixed colour added is brighter, subtracted darker - {how}", ok, $"plain {plain:X6} add {add:X6} sub {sub:X6}; math on {lines} lines");
+        Check($"SNES colour math on {c.Name}: BG3 with the fixed colour added is brighter, subtracted darker - {how}", ok, $"plain {plain:X6} add {add:X6} sub {sub:X6}; math on {lines} lines");
     }
 
     private static void GenesisGuest(Chip c)
@@ -262,14 +262,32 @@ internal static class EnhancedPhase3Tests
         return n == 0 ? (0, 0) : (Math.Sqrt(sl / n), Math.Sqrt(sr / n));
     }
 
-    /// <summary>The fundamental of a mono stream by its rising zero crossings (after removing its mean).</summary>
+    /// <summary>The fundamental of a mono stream (40 Hz to 4 kHz), by autocorrelation over a quarter second from its middle: the smallest lag that correlates within 10% of the best (so a rich FM timbre, whose zero
+    /// crossings double, still gives its fundamental), refined between samples.</summary>
     internal static double Pitch(List<float> s, int rate)
     {
-        if (s.Count < rate / 4) return 0;
-        int skip = s.Count / 4; double mean = 0; for (int i = skip; i < s.Count; i++) mean += s[i]; mean /= s.Count - skip;
-        int first = -1, last = -1, count = 0;
-        for (int i = skip + 1; i < s.Count; i++) if (s[i - 1] - mean < 0 && s[i] - mean >= 0) { if (first < 0) first = i; last = i; count++; }
-        return count < 2 ? 0 : (count - 1) * (double)rate / (last - first);
+        int n = rate / 4, start = s.Count / 2 - n / 2;
+        if (start < 0 || s.Count < n * 2) return 0;
+        double mean = 0; for (int i = 0; i < n; i++) mean += s[start + i]; mean /= n;
+        var x = new double[n]; for (int i = 0; i < n; i++) x[i] = s[start + i] - mean;
+        int minLag = rate / 4000, maxLag = rate / 40;
+        var corr = new double[maxLag + 2]; double best = 0;
+        for (int lag = minLag; lag <= maxLag + 1; lag++)
+        {
+            double a = 0, e0 = 0, e1 = 0;
+            for (int i = 0; i + lag < n; i++) { a += x[i] * x[i + lag]; e0 += x[i] * x[i]; e1 += x[i + lag] * x[i + lag]; }
+            corr[lag] = e0 > 0 && e1 > 0 ? a / Math.Sqrt(e0 * e1) : 0;
+            if (lag <= maxLag && corr[lag] > best) best = corr[lag];
+        }
+        if (best < 0.3) return 0;
+        for (int lag = minLag + 1; lag <= maxLag; lag++)
+            if (corr[lag] >= 0.9 * best && corr[lag] >= corr[lag - 1] && corr[lag] >= corr[lag + 1])
+            {
+                double y0 = corr[lag - 1], y1 = corr[lag], y2 = corr[lag + 1], d = y0 - 2 * y1 + y2;
+                double p = d != 0 ? lag + 0.5 * (y0 - y2) / d : lag;
+                return rate / p;
+            }
+        return 0;
     }
 
     public static void Sound()
@@ -498,18 +516,19 @@ internal static class EnhancedPhase3Tests
     {
         foreach (var c in Built())
         {
-            var rom = EnhancedContractTests.SegaScenesRom();
+            // a guest of another family: a Genesis program on the SNES and the Master System chips, a Master System program on the Genesis chip
+            var (console, rom, file) = c.Family == "Genesis" ? (ConsoleKind.MasterSystem, BrokenNes.Workshop.Corruption.CorruptConsoleChecks.SmsRom(false), "t.sms") : (ConsoleKind.Genesis, EnhancedContractTests.SegaScenesRom(), "t.md");
             string Rate(string ppu, string apu)
             {
-                using var s = new SegaPictureSession(new MdSession(rom, "M68K", "MD", apu), ppu);
+                using var s = ConsoleSessions.Create(console, rom, CoreCatalog.Default(console, CoreSlot.Cpu), ppu, apu, null, file);
                 var buf = new short[65536];
                 for (int f = 0; f < 20; f++) { s.RunFrame(); while (s.ReadSamples(buf) > 0) { } }
                 var sw = Stopwatch.StartNew(); int frames = 0;
                 while (sw.ElapsedMilliseconds < 1200) { s.RunFrame(); while (s.ReadSamples(buf) > 0) { } frames++; }
                 return $"{frames / sw.Elapsed.TotalSeconds:F0} fps";
             }
-            if (c.Family == "Genesis") continue;
-            Console.WriteLine($"  INFO  a Genesis program on {c.Name}: picture + sound {Rate(c.Route, c.Route)}; on the stock chip through the NES ({c.StockRoute}): {Rate(c.StockRoute, c.StockRoute)}; on the Genesis's own chips: {Rate("MD", "MD")}");
+            string own = CoreCatalog.Default(console, CoreSlot.Ppu);
+            Console.WriteLine($"  INFO  a {Consoles.DisplayName(console)} program on {c.Name} (picture and sound, {c.Route}): {Rate(c.Route, c.Route)}; on the stock chip through the NES ({c.StockRoute}): {Rate(c.StockRoute, c.StockRoute)}; on its own chips: {Rate(own, CoreCatalog.Default(console, CoreSlot.Apu))}");
         }
     }
 }

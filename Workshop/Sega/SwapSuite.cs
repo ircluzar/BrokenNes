@@ -187,7 +187,9 @@ internal static class SwapSuite
                     if (!accepted) problems.Add("the swap was refused (a menu id must swap in place)");
                     string differs = Describe(got, want);
                     if (differs != "") problems.Add("the game was disturbed: " + differs);
-                    if (!s.Description.Contains(slot switch { CoreSlot.Cpu => "CPU " + option.Id, CoreSlot.Ppu => option.Id.StartsWith("NES:") ? "PICTURE " + option.Id : "PPU " + option.Id, _ => "APU " + option.Id }, StringComparison.OrdinalIgnoreCase))
+                    // a picture chip that is not the console's own: a NES chip, or another console's enhanced chip reached directly (SNES:SFCS, MD:MDS)
+                    bool bridgedId = option.Id.StartsWith("NES:") || CoreCatalog.IsDirectRoute(option.Id);
+                    if (!s.Description.Contains(slot switch { CoreSlot.Cpu => "CPU " + option.Id, CoreSlot.Ppu => bridgedId ? "PICTURE " + option.Id : "PPU " + option.Id, _ => "APU " + option.Id }, StringComparison.OrdinalIgnoreCase))
                         problems.Add("the description does not name the new core: " + s.Description);
                     // NES:WF sends its notes to the Windows MIDI synth when the machine has one (and then makes no PCM at all): its tone is not in the delivered samples, so it cannot be measured here; said, not hidden
                     bool midi = slot == CoreSlot.Apu && MidiMode(s);
@@ -201,7 +203,7 @@ internal static class SwapSuite
                         if (!SameAudio(audio, controlAudio)) problems.Add("the sound is not the control's sample for sample");
                     if (slot == CoreSlot.Ppu)
                     {
-                        if (option.Id.StartsWith("NES:"))
+                        if (bridgedId)
                         {
                             var w = Real(s) as SegaPictureSession;
                             bool bridged = w != null && w.Bridged;
@@ -209,7 +211,7 @@ internal static class SwapSuite
                             bool enhanced = w?.GuestSize == true;
                             bool sizeOk = enhanced ? (gg ? s.FrameWidth == 160 && s.FrameHeight == 144 : s.FrameWidth == 256 && s.FrameHeight is 192 or 224 or 240) : s.FrameWidth == 256 && s.FrameHeight == 240;
                             if (!bridged || !sizeOk) problems.Add($"not drawn on the chip: {s.FrameWidth}x{s.FrameHeight}{(enhanced ? " (enhanced: the console's own size)" : "")}");
-                            if (bridged && enhanced != (option.Id is "NES:FIXS" or "NES:DMGS")) problems.Add($"{option.Id} {(enhanced ? "drew at the console's size" : "drew a NES picture")}: the enhanced chips (and only they) draw the console's own size");
+                            if (bridged && enhanced != (option.Id is "NES:FIXS" or "NES:DMGS" || CoreCatalog.IsDirectRoute(option.Id))) problems.Add($"{option.Id} {(enhanced ? "drew at the console's size" : "drew a NES picture")}: the enhanced chips (and only they) draw the console's own size");
                             if (got.Colours < 2) problems.Add("the picture is blank");
                             var before = got.Pic; Play(s, 1); if (Take(s).Pic == before) problems.Add("the picture does not move");
                         }
