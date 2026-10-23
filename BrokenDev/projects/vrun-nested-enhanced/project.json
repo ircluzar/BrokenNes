@@ -71,12 +71,12 @@
     "mesenSettings": "{root:svrunpkg}/mesen2_user_folder/settings.json",
     "frames": [120, 240, 600, 900, 1200, 1800, 2400, 3000],
     "input": "240:Start,252:,600:Right,800:Right+B,900:Right,1100:Up,1200:Right+B,1400:Down,1500:Right+A,1800:Left+B,2100:Right",
-    "inputShift": 4,
+    "inputShift": 1,
     "window": [1, 5],
     "crop": [7, 8],
     "tolerance": 1,
     "maxPixels": 64,
-    "why": "As vrun-nested. The enhanced ROM needs inputShift 4 (not 1) for the two emulators to pick the same first room: the game reacts to Start three frames differently in the two emulators. The enhancement uploads 2 KB of shading planes per NMI while rendering is off; a timing difference of a few frames there is the suspect and has not been chased (see the report). Measured residue at most 53 pixels."
+    "why": "As vrun-nested (input shift 1). Until 2026-10-23 the enhanced ROM needed shift 4: its boot uploads of 2 KB shading planes split Nested's title-start catch-up of NES frames differently on the two emulators (BrokenNes 2+2, Mesen 3+1). Project Nested f13a2f9 holds the uploads until rendering has been on once; since then the catch-up is +4 in one frame on both and the diff is pixel-identical at shift 1."
   },
   "compat": {
     "what": "As vrun-nested (the enhancement is a post-build pass on that ROM: the same NES build, so vrun-nested's .mlb names the variables).",
