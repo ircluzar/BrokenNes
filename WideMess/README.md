@@ -149,10 +149,11 @@ The sound ROM's checks measure the samples by FFT against the generator's manife
 
 **The desktop app smoke test passes 8 of 8** (a new step: the sound ROM runs on APU WMS, unlocked).
 
-**Merged with milestone 4:**
-- `--wms-test` passes 114 of 114, and 123 of 123 with the nine SNES games, also with `--reference-paths`.
+**Merged with milestones 2 and 4** (WMFEAT `$3F`, state format `wms-4`):
+- `--wms-test` passes 136 of 136, and 163 of 163 with the nine SNES games, also with `--reference-paths`.
 - The games' sound hashes are still the ones from before milestone 3, and the ALttP golden is IDENTICAL.
-- The desktop smoke passes 8 of 8.
+- The desktop smoke passes 10 of 10. Lite and Core build.
+- The plugin self-test passes 64, with 1 warning (QLQ +1200 cents) and 0 failures. It ran on the branch merged with milestone 4.
 - UAT: 125 pass, 0 fail, 16 skip, 3 info.
 
   From a git worktree, the suite's story and 65-o-borked ROMs exist only in the main checkout's ignored build folders, so 44 more cases skip
