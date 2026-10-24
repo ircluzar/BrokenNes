@@ -1,0 +1,71 @@
+;===================================================================================
+; hdr.asm for a WideMess game (the WideMess map, game-file map 2: docs/projects/widemess-spec.md section 2).
+; Written by BrokenDev's wmsbuild.ps1 from BrokenDev/widemess/lib/wmshdr.asm.in; do not edit the copy in build/.
+;
+; The WideMess map is HiROM-shaped: ROM in whole 64 KB banks at $C0-$FF (mirrored at $40-$6F and in the upper halves of $00-$3F /
+; $80-$BF), so PVSnesLib's HiROM libraries and its HiROM memory map are used as they are. The memory map below must stay exactly
+; PVSnesLib's: wlalink refuses objects "compiled for different memory architectures", and PVSnesLib's libraries are objects.
+; Far RAM, the 1 MB work RAM's banks $70-$7D: SLOT 3 (a whole 64 KB bank) with the bank named in the section, after .BASE $00
+; (this file sets .BASE for the code, and WLA adds it to a RAMSECTION's bank too). In assembly:
+;     .BASE $00
+;     .RAMSECTION "my_far" BANK $71 SLOT 3
+;     my_table dsb 40000
+;     .ENDS
+; and in C:  extern u8 my_table[];   (816-tcc addresses globals with long addressing, so the bank is the section's own).
+; Bank $70 $0000-$07FF holds the library's sprite table shadow (wmsfar.asm); the rest of $70-$7D is the game's.
+; Banks $7E-$7F are the SNES's 128 KB, as always (PVSnesLib's .bss lives there). The minimum ROM is 2 banks (128 KB):
+; PVSnesLib's libraries were assembled with .ROMBANKS 2 and the linker takes the largest.
+; Battery RAM (the .wms header's size) sits at $20-$3F:6000-7FFF, 8 KB a bank: PVSnesLib's SLOT 4.
+;===================================================================================
+
+.DEFINE HIROM 1
+@FASTROMDEF@
+.DEFINE WIDEMESS 1
+
+.MEMORYMAP
+  SLOTSIZE $10000
+  DEFAULTSLOT 0
+  SLOT 0 $0000                  ; ROM, 64 KB banks
+  SLOT 1 $0 $2000               ; low RAM (PVSnesLib)
+  SLOT 2 $2000 $E000            ; RAM (PVSnesLib)
+  SLOT 3 $0 $10000              ; global RAM (PVSnesLib); WideMess far RAM: BANK $70-$7D SLOT 3
+  SLOT 4 $6000                  ; battery RAM (PVSnesLib's SRAM slot)
+.ENDME
+
+.ROMBANKSIZE $10000
+.ROMBANKS @ROMBANKS@
+
+.SNESHEADER                     ; not read on the WideMess map (the .wms header is), kept so SNES tools still recognise the image
+  ID "SNES"
+  NAME "@ROMTITLE@"
+  @ROMSPEED@
+  HIROM
+  CARTRIDGETYPE $00
+  ROMSIZE $@ROMSIZE@
+  SRAMSIZE $00
+  COUNTRY $01
+  LICENSEECODE $00
+  VERSION $00
+.ENDSNES
+
+.SNESNATIVEVECTOR
+  COP EmptyHandler
+  BRK EmptyHandler
+  ABORT EmptyHandler
+  NMI VBlank
+  IRQ EmptyHandler
+.ENDNATIVEVECTOR
+
+.SNESEMUVECTOR
+  COP EmptyHandler
+  ABORT EmptyHandler
+  NMI EmptyHandler
+  RESET tcc__start
+  IRQBRK EmptyHandler
+.ENDEMUVECTOR
+
+.ifdef FASTROM
+    .BASE $C0
+.else
+    .BASE $40
+.endif

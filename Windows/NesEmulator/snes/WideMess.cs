@@ -202,6 +202,8 @@ public sealed partial class PPU_WMS : PPU_SFC
     /// <summary>WMCTRL bit 0 (400-pixel output) and bit 1 (the WideMess mode), as last written.</summary>
     public bool WideOutput => (ctrl & 1) != 0;
     public bool LayersMode => (ctrl & 2) != 0;
+    /// <summary>WMTM as last written (a read-only view for tools: the register itself is write-only).</summary>
+    public byte MainLayers => mainLayers;
 
     public override void Reset()
     {
