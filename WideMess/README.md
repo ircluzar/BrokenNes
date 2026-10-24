@@ -357,3 +357,36 @@ centre compared line by line.
   the deliberate faults it catches, the sound chip, the WideMess console's foreign chips, 12 real games in lockstep with the SNES enhanced chip); `--picture-bridge-test` 255 of 255 (3 new: 0 bytes a
   frame on WMS:WMSS); contact sheets of the 12 games in `docs/projects/widemess-images/m7/` (`Workshop --wms-guest-sheet`); the desktop smoke test 18 of 18 with its GUEST step. Nothing changed for the
   rest: `--wms-test` 269 of 269 with the nine SNES games, 269 of 269 with `--reference-paths`; `--swap-matrix-test` 35/0, `--sega-bridge-test` 356/0, `--md-state-test` 168/0, `--corrupt-test` 275/0, `--debug-test` 101/0; `--snes-state-test` 143 pass, 4 fail, as on f1b8c9d (its field walker finds milestone 3's DSP fields and milestone 6's enhancement fields outside a SNES state; milestone 7b's session counters are excluded as not machine state); UAT `run-suite.ps1` 125 pass, 0 fail, 16 skip, 3 info; `core-roster-desktop.ps1` and `debugger-desktop-smoke.ps1` pass; Lite, the plugin's Core and the desktop app build.
+
+## The test cartridge (2026-10-24)
+
+**What it is** (`testcart/README.md` has every test's expected result, the results table and how a harness drives it): one cartridge on the
+WideMess map, `testroms/bin/widemess-testcart.wms`, whose menu runs eight tests live in WideMess's 400 x 224 picture: eight layers of 256
+colours; the 256-sprite table (a swarm, a 64 x 64 planet in 256 colours, a line of 72 where 64 draw); windows and colour math at 400 (a
+spotlight); the SNES modes 0, 1, 5, 2 and 7 drawn 400 wide; the 32 voices (a grid lit by each voice's envelope, 16-bit PCM beside BRR, echo);
+fast CPU and fast DMA beside the spec's predictions; the memories (1 MB work RAM, 512 KB video RAM, 1 MB sound RAM); identity. It judges
+itself (109 checks) and keeps its results at `$7E:1000`; SELECT held at power-on runs every self-check unattended. Its picture pages each
+have a reference picture from milestone 2's model of the spec (20 in all, milestone 2's three scenes among them). On a SNES it says what it
+is; on a console that lacks a feature it says which and runs nothing of that test.
+
+![The test cartridge](../docs/projects/widemess-images/testcart/sheet.png)
+
+**How to run it:** the desktop app's Console > **WideMess test cartridge** (built into the program; `POST /api/widemess/testcart`); the
+file `testroms/bin/widemess-testcart.wms` on the WideMess console; BrokenDev project `widemess-testcart` (`build`, `verify`, `run`);
+`Workshop --wms-testcart` (its checks), `--wms-testcart-shots` (its screens).
+
+**Results** (the branch with main `b1150de` merged, `6af64cb`):
+- **`--wms-test` 315 of 315** with the nine SNES games: the milestones' 269 and the cartridge's 46 (section TC): its run-all (tests 1, 2,
+  5, 6, 7, 8 pass, 109 checks, none failed; 3 and 4 by their pictures) read from its results table; test 6's counts against spec 2's model
+  computed in C# (3,208 / 12,385 / 2,406 / 7,539 / 3,609 / 12,385; DMA 5,632 / 10,752 / 6,144); the 32 voices seen in the DSP one at a
+  time; all 20 picture comparisons pixel-exact; test 1's eight layers each drawing their bank; the controls: its SNES image on a SNES, and
+  `WMFEAT` masked by its own ROM byte to $FB, $01 and $00. `--wms-testcart --reference-paths` 46 of 46.
+- **Shown able to fail:** four planted emulator bugs (fast mode's `$4200-$43FF` at 2 clocks; `WMVDATA` reads not stepping; a 19-bit WRAM
+  port; `WID` reading 0) each fail the test they belong to (6; 1 and 7; 7; 5). The 19-bit port first crashed the memory test (its fills
+  landed on the cartridge's own work RAM): it now probes the port's bits before filling.
+- **Milestone 2's model fixed** (`testroms/picture/gen_picture.py`): with mosaic off it rounded hi-res half-pixels to even columns; the
+  cartridge's mode 5 page found it, BrokenNes was right. Milestone 2's eleven pictures are unchanged by the fix.
+- **The desktop smoke test 21 of 21**, with its TESTCART steps (the menu entry; the cartridge starts 400 x 224 with its table; the pad runs
+  test 8, which passes). **UAT `run-suite.ps1` 125 pass, 0 fail, 16 skip, 3 info. BrokenDev's tests 115 / 0 / 0**; `brokendev build
+  widemess-testcart` gives the shipped `.wms` byte for byte and `verify` passes. Lite, the plugin's Core and the desktop app build.
+- No emulator code changed. Lite does not offer WideMess yet (milestone 7a): its menu entry comes with it.
