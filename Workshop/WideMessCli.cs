@@ -97,7 +97,7 @@ internal static partial class WideMessCli
             for (int line = 1; line <= H; line++) ppu.RenderLine(line);
             var px = ppu.WideBuffer.AsSpan(0, W * H).ToArray();
             int colours = px.Distinct().Count() - 1;
-            Put(px, (layer & 1) * (W + gap), (H + label + gap) * (1 + layer / 2), $"BG{layer + 1} alone: colour bank {layer & 3}, {colours} colours, scroll {(layer + 1) / 2.0:0.#} px/frame");
+            Put(px, (layer & 1) * (W + gap), (H + label + gap) * (1 + layer / 2), $"BG{layer + 1} alone: {colours} colours");
         }
         ppu.WriteWide(0xC1, 0xFF);
         sheet.Save(output, System.Drawing.Imaging.ImageFormat.Png);
@@ -195,6 +195,7 @@ internal static partial class WideMessCli
         if (!PictureTests(dir)) return 2;   // milestone 2: the picture test ROMs (WideMessCli.Picture.cs)
         if (!TestCpuMemory(dir)) return 2;   // milestone 4: fast CPU, 1 MB work RAM, the WideMess map, fast DMA (WideMessCli.Memory.cs)
         SoundTests(dir);                     // milestone 3: the sound chip (WideMessCli.Sound.cs)
+        if (!DevkitTests(dir)) return 2;     // milestone 5: the devkit's template and sample game (WideMessCli.Devkit.cs)
 
         string snes = Opt(args, "snes", "");
         int frames = int.Parse(Opt(args, "frames", "900"));

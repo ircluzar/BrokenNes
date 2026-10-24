@@ -21,6 +21,10 @@
     emulators install <id|all>   unpack the PINNED release (Mesen, BizHawk, FCEUX, Snes9x) portable into BROKENDEV_HOME\emulators; a zip
                                  already in emulators\_downloads with the pinned size and sha256 is used, anything else is refused
     play    <project> -Emu <id>  open the built ROM in that emulator for hand testing (saves in work\play\<project>\<emu>; BrokenNes: 'run')
+    new widemess <name> [-Path folder] [-Title T]
+                                 a new WideMess game from the devkit's template (BrokenDev/widemess): its folder (default
+                                 BROKENDEV_HOME\projects\<name>) and its manifest projects\<name>, ready to build / verify / run
+                                 (docs/projects/widemess-devkit.md)
     compat  <project|all> [-Emu id,id] [-Scenario id,id]
                                  the project's compat scenarios on BrokenNes (the reference column, always first) and on every installed
                                  emulator of its console: the game's state read every frame, pictures, saves; a verdict per emulator
@@ -67,6 +71,9 @@ param(
     [switch]$Stop,
     [string]$ArtifactsPath = '',
     [string]$Exe = '',
+    # 'new widemess <name>': the project's folder and title
+    [string]$Path = '',
+    [string]$Title = '',
     # 'play' / 'compat': the emulator ids (comma list; 'compat' default: every installed one that runs the project's console)
     [string[]]$Emu = @(),
     # 'compat': only these scenarios of the project's compat section (comma list)
@@ -88,6 +95,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\DevTools.ps1')
 . (Join-Path $here 'lib\Emulators.ps1')
 . (Join-Path $here 'lib\Compat.ps1')
+. (Join-Path $here 'lib\WideMess.ps1')
 
 function Show-BdHelp { Write-Host (Get-Help (Join-Path $here 'brokendev.ps1') -Full | Out-String) }
 
@@ -105,9 +113,9 @@ function Get-BdProjectStatus {
     param([string]$Id)
     $m = Read-BdManifest -Id $Id
     $archives = Get-BdArchiveTable
-    $spec = Get-BdArchiveSpec -Id ([string]$m.source.archive) -Table $archives
-    $st = Get-BdRestoreState $spec
-    $ws = Get-BdWorkspace -Id ([string]$m.source.archive) -Table $archives
+    $ws = Get-BdProjectWorkspace -Manifest $m -Table $archives
+    # a project with its own folder (a WideMess project) has nothing to restore
+    $st = if ($m.source.PSObject.Properties['folder']) { [pscustomobject]@{ State = 'n/a' } } else { Get-BdRestoreState (Get-BdArchiveSpec -Id ([string]$m.source.archive) -Table $archives) }
     $out = Get-BdOutDir $Id
     $build = $null; $verify = $null
     $bp = Join-Path $out 'build.json'; $vp = Join-Path $out 'verify.json'
@@ -115,7 +123,7 @@ function Get-BdProjectStatus {
     if (Test-Path -LiteralPath $vp) { $verify = Read-BdJson $vp }
     [pscustomobject]@{
         Id = $Id; Title = [string]$m.title; Kind = [string]$m.kind
-        Workspace = $ws.Kind; WorkspacePath = $ws.Path; Archive = [string]$m.source.archive
+        Workspace = $ws.Kind; WorkspacePath = $ws.Path; Archive = [string](Get-BdProp $m.source 'archive' '')
         Restored = $st.State
         Built = $(if ($build -and $build.ok) { 'yes' } elseif ($build) { 'FAILED' } else { 'no' })
         Rom = $(if ($build -and $build.ok) { ($build.outputs | Where-Object { $_.id -eq 'rom' } | Select-Object -First 1) } else { $null })
@@ -125,7 +133,7 @@ function Get-BdProjectStatus {
 }
 
 try {
-    if ($Rest.Count -gt 0 -and @('tool', 'emulators') -notcontains $Verb.ToLowerInvariant()) { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
+    if ($Rest.Count -gt 0 -and @('tool', 'emulators', 'new') -notcontains $Verb.ToLowerInvariant()) { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
     # -Emu a,b and -Scenario a,b: one comma list or several values, the same either way (pwsh -File passes a,b as one string)
     $Emu = @($Emu | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $Scenario = @($Scenario | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -189,7 +197,7 @@ try {
             if ($Target -eq 'all') { $archiveIds = @($table.Keys) }
             elseif ($table.Contains($Target)) { $archiveIds = @($Target) }
             else {
-                foreach ($pid0 in (Resolve-BdProjectDeps -Id $Target)) { $archiveIds += [string](Read-BdManifest -Id $pid0).source.archive }
+                foreach ($pid0 in (Resolve-BdProjectDeps -Id $Target)) { $a0 = [string](Get-BdProp (Read-BdManifest -Id $pid0).source 'archive' ''); if ($a0) { $archiveIds += $a0 } }
                 $archiveIds = @($archiveIds | Select-Object -Unique)
             }
             New-Item -ItemType Directory -Force -Path (Get-BdHome) | Out-Null
@@ -301,7 +309,18 @@ try {
             if ($bad.Count -gt 0) { Write-BdFail ("compat found problems in: " + ($bad -join ', ') + ' (see out\<project>\compat\compat.html)'); exit 1 }
             exit 0
         }
-        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, play, compat"; exit 2 }
+        'new' {
+            if ($Target -ne 'widemess') { throw "new: the one kind of project BrokenDev makes is 'widemess' (brokendev.ps1 new widemess <name> [-Path folder] [-Title T])" }
+            if ($Rest.Count -ne 1) { throw 'new widemess needs one name: brokendev.ps1 new widemess <name> [-Path folder] [-Title T]' }
+            $p = New-BdWideMessProject -Name $Rest[0] -Path $Path -Title $Title
+            Write-BdOk "new WideMess project '$($p.Id)'"
+            Write-BdInfo "  source:   $($p.Folder)   (manifest source.folder: $($p.FolderText))"
+            Write-BdInfo "  manifest: $($p.Manifest)"
+            Write-BdInfo "  next:     brokendev.ps1 build $($p.Id) ; brokendev.ps1 verify $($p.Id) ; brokendev.ps1 run $($p.Id)"
+            Write-BdInfo "  guide:    docs/projects/widemess-devkit.md"
+            exit 0
+        }
+        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, play, compat, new"; exit 2 }
     }
 } catch {
     Write-BdFail $_.Exception.Message

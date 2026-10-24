@@ -122,6 +122,9 @@ function Invoke-BdProjectRun {
         $res | ConvertTo-Json -Depth 3 | Write-Host
         return
     }
+    if ([string]$m.console -eq 'wms') {
+        throw "the BrokenNes desktop app is not built (set BROKENDEV_APP, or run: brokendev.ps1 build-app). A WideMess game opens in the desktop app; without it, Workshop --wms-run / --wms-shot run it headless."
+    }
     if ([string]$m.console -ne 'snes') {
         throw "the BrokenNes desktop app is not built (set BROKENDEV_APP, or run: brokendev.ps1 build-app). A NES ROM cannot be opened without it."
     }

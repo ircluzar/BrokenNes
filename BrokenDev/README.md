@@ -18,6 +18,7 @@ The app shows nothing of BrokenDev unless it is switched on: set the environment
 | `smb1-nes` | the frame-accurate NESFab remake of Super Mario Bros. | NES, mapper 30 | patched NESFab 1.8 (shipped), `./build.sh game` |
 | `smb1-nested` | the remake on the SNES through Project Nested | SNES (nested) | `smb1-nes`, then `m30pipe` |
 | `supervrun` | Super VRUN, the current native SNES project | SNES | PVSnesLib 4.6.0 (shipped), `bash build.sh` |
+| `widemess-sample` | Wide Blaster, the WideMess devkit's sample game (`WideMess/sample` in this repository) | WideMess | PVSnesLib + the WideMess devkit, `widemess/tools/wmsbuild.ps1` |
 
 Each project is a manifest, `projects/<id>/project.json`: where its source comes from (an archive and a path), the tools it
 needs, the build steps and outputs, how to verify it on BrokenNes, and what is known to be wrong with it. The scripts in this
@@ -46,6 +47,7 @@ BrokenDev\brokendev.ps1 emulators              # the other emulators the games a
 BrokenDev\brokendev.ps1 emulators install all  # Mesen, BizHawk, FCEUX, Snes9x: the pinned official releases, portable
 BrokenDev\brokendev.ps1 compat vrun-nes        # the game on BrokenNes (the reference) and every installed emulator of its console
 BrokenDev\brokendev.ps1 play vrun-nes -Emu fceux   # open the built ROM in one of them, by hand
+BrokenDev\brokendev.ps1 new widemess my-game   # a new WideMess game from the devkit's template (its folder and projects\my-game)
 
 # the music path, Phase 0 (no plugin): a MIDI file -> VRUN's converter -> a one-song ROM -> BrokenNes, checked frame by frame
 BrokenDev\tools\music-replay-check.ps1 -Mid some.mid -Name mysong -Frames 2400 -Template
@@ -58,6 +60,13 @@ BrokenDev\tests\apu-regress.ps1 -Workshop <Workshop.exe>   # APU_FIX guards meas
 
 Inside BrokenNes (developers only): `BrokenNes.Workshop.exe --brokendev list` and `--brokendev verify <id>` (needs
 `BROKENNES_DEV=1`), and a **BrokenDev** menu in the desktop app that opens the built ROMs.
+
+## The WideMess devkit
+
+BrokenDev is also the devkit of WideMess, BrokenNes's fantasy console: `widemess/` holds PVSnesLib's WideMess extensions (`lib/`), the
+converters and the build (`tools/`), the sound driver (`driver/`) and the template `new widemess` copies (`template/`). A WideMess project's
+manifest has kind and console `wms` and its source in its own folder (`source.folder`); `verify` runs it on the WideMess console and checks
+its `expect.wms`; `compat` has BrokenNes's column only. The guide: `docs/projects/widemess-devkit.md`.
 
 ## The tools (editors and checkers of the games)
 

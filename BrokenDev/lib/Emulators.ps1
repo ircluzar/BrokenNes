@@ -69,7 +69,7 @@ function Test-BdEmulators {
         if (-not [string](Get-BdProp $m 'title' '')) { $e.Add("emulator ${id}: 'title' is required") }
         $cons = @(Get-BdProp $m 'consoles' @())
         if ($cons.Count -eq 0) { $e.Add("emulator ${id}: consoles is empty") }
-        foreach ($c in $cons) { if (@('nes', 'snes') -notcontains [string]$c) { $e.Add("emulator ${id}: console '$c' must be nes or snes") } }
+        foreach ($c in $cons) { if (@('nes', 'snes', 'wms') -notcontains [string]$c) { $e.Add("emulator ${id}: console '$c' must be nes, snes or wms") } }
         $ad = [string](Get-BdProp $m 'adapter' '')
         if ($script:BdEmuAdapters -notcontains $ad) { $e.Add("emulator ${id}: adapter '$ad' must be one of: $($script:BdEmuAdapters -join ', ')") }
         $pkg = Get-BdProp $m 'package' $null
