@@ -39,7 +39,7 @@ internal static partial class WideMessCli
         int sram = int.Parse(Opt(args, "sram", "0"));   // the WideMess map's battery RAM (maps 0 and 1 take theirs from the SNES header)
         bool battery = args.Any(a => a.Equals("--battery", StringComparison.OrdinalIgnoreCase));
         var file = WmsFile.Pack(image, title, map, features, sram, battery);
-        WmsFile.Read(file);   // the file must be one BrokenNes opens
+        WmsFile.Cartridge(image, WmsFile.Read(file));   // the file must be one BrokenNes opens, its map included
         File.WriteAllBytes(output, file);
         Console.WriteLine($"{output}: {file.Length:N0} bytes, '{title}', map {map}, features {features:X2}{(sram > 0 ? $", battery RAM {sram:N0}{(battery ? " (battery)" : "")}" : "")}, CRC {WmsFile.Crc32(image):X8}");
         return 0;

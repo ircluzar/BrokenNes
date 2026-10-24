@@ -356,7 +356,7 @@ public sealed partial class BOARD_SFC : ISnesBus
     private int AccessClocks(uint bank, uint offset)
     {
         if (fastCpu) return FastAccessClocks(bank, offset);   // WideMess fast mode (BOARD_SFC.WideMess.cs)
-        if ((bank & 0x40) != 0)                          // $40-$7F, $C0-$FF
+        if ((bank & 0x40) != 0)                           // $40-$7F, $C0-$FF
             return bank >= 0xC0 && (memsel & 1) != 0 ? 6 : 8;
         if (offset < 0x2000) return 8;
         if (offset < 0x4000) return 6;
