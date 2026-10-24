@@ -359,9 +359,11 @@ They follow WideMess milestone 1. Each one is merged, tested and pushed before t
 - **Breaking parks the emulation thread** at an instruction boundary (a watch breaks after the instruction that made the access); the
   run loops are untouched, so a game runs frame-identically with the debugger attached and breaking (checked on every console and on
   VRUN and Super VRUN).
-- **Zero cost when off:** the hooks are fields that stay null until something needs them (`NES.DebugHook`, `Bus.DebugTap`,
-  `BOARD_SFC.DebugHook` / `DebugTap` / `DebugSlowPages`, `BOARD_GB.DebugHook` / `DebugTap`; the SPC700 through the existing
-  `APU_SFC.SmpHook`, its watches predicted from each instruction's operands so the sound path is unchanged).
+- **Zero cost when off:** the hooks are fields that stay null until something needs them (`NES.DebugHook`, `Bus.DebugTap` on the
+  NES bus's slow path, `BOARD_SFC.DebugHook` / `DebugTap` (DMA, HDMA), `BOARD_GB.DebugHook` / `DebugTap` (OAM / VRAM DMA)). The SNES
+  and Game Boy CPUs' own accesses are watched by a bus the debugger interposes in front of the CPU (`CPU_SFC.DebugInterpose`,
+  `CPU_GB.DebugInterpose`), so the boards' `Read` / `Write`, which the JIT inlines into the CPUs, are byte for byte as before. The SPC700
+  goes through the existing `APU_SFC.SmpHook`, its watches predicted from each instruction's operands, so the sound path is unchanged.
 - **Workshop:** `--debug-test` (the conformance suite: test ROMs per console assembled in `Workshop/Debug/DebugTestRoms.cs`, a negative
   control per check, the real games when present), `--debug --rom <file> [--sym <file>] --do "break sub2; run; stack; trace 20"`.
 - **HTTP:** `/api/memory/*` answer for every console; `/api/debug/*` (reading always, control behind `enableDebuggerControl`), listed in

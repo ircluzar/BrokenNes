@@ -3,24 +3,15 @@ using System;
 namespace NesEmulator.Snes;
 
 /// <summary>The debugger's side of the board (Windows/NesEmulator/debug drives it). Nothing here runs unless a debugger set
-/// <see cref="DebugHook"/>, <see cref="DebugTap"/> or <see cref="DebugSlowPages"/>.</summary>
+/// <see cref="DebugHook"/> or <see cref="DebugTap"/>. The CPU's own accesses are watched without touching the board at all: the debugger
+/// interposes a watching bus in front of it (<see cref="CPU_SFC.DebugInterpose"/>), so Read and Write stay exactly as they are.</summary>
 public sealed partial class BOARD_SFC
 {
     /// <summary>Called before every 65816 step (instruction, interrupt entry or a halted cycle); null = no debugger armed.</summary>
     public ISnesInstructionHook? DebugHook;
 
-    /// <summary>Every CPU access on the decoding path, every DMA and HDMA byte (both buses) and every HDMA table fetch; null = no watch set.</summary>
+    /// <summary>Every DMA and HDMA byte (both buses) and every HDMA table fetch; null = no watch set.</summary>
     public ISnesBusDebugTap? DebugTap;
-
-    private bool debugSlowPages;
-
-    /// <summary>True: the page table is left empty, so every CPU access (work RAM and ROM included) takes the decoding path the
-    /// <see cref="DebugTap"/> sees: the reference path, whose goldens are identical to the fast one.</summary>
-    public bool DebugSlowPages
-    {
-        get => debugSlowPages;
-        set { if (value == debugSlowPages) return; debugSlowPages = value; BuildPageTable(); }
-    }
 
     /// <summary>The cartridge's decoding of a CPU address: the ROM or SRAM index, or -1 (the board's own areas, open bus).</summary>
     public int DebugCartIndex(uint bank, uint offset, out bool sram) => Cart.DebugDecode(bank, offset, out sram);
@@ -38,13 +29,6 @@ public sealed partial class BOARD_SFC
     public bool DebugNmiFlag => nmiFlag;
     public bool DebugIrqFlag => irqFlag;
     public byte DebugOpenBus => mdr;
-
-    private byte DebugRead(uint bank, uint offset, uint address)
-    {
-        byte v = mdr = ReadNoTick(bank, offset);
-        DebugTap!.OnRead(address, v, SnesBusSource.Cpu, -1);
-        return v;
-    }
 
     /// <summary>One DMA or HDMA byte with the debugger watching: the same reads and writes in the same order as the untapped lines in RunDma / RunHdmaLine.</summary>
     private void DebugDmaByte(bool toA, uint aBank, uint aAddr, byte bReg, int channel, SnesBusSource source)
@@ -82,6 +66,32 @@ public sealed partial class CPU_SFC
     public string DebugPendingInterruptKind => nmiPending ? "NMI" : "IRQ";
     /// <summary>For the debugger: the next <see cref="Step"/> runs the instruction at PBR:PC (not stopped, no interrupt, not waiting).</summary>
     public bool DebugWillExecute => !Stopped && !DebugInterruptPending && (!Waiting || irqLine);
+
+    private ISnesBus? debugRealBus;
+    private BOARD_SFC? debugRealBoard;
+
+    /// <summary>The bus the CPU really runs on (the board, or a bridge's wrapper), whatever is interposed.</summary>
+    public ISnesBus DebugRealBus => debugRealBus ?? bus;
+
+    /// <summary>True while a debugger's watching bus sits between the CPU and its board.</summary>
+    public bool DebugInterposed => debugRealBus != null;
+
+    /// <summary>The debugger's watches: every CPU access goes through <paramref name="watching"/> (which forwards to <see cref="DebugRealBus"/>),
+    /// the CPU taking its interface path as it does on a bridge's bus; null puts the CPU back on its own bus. The board is not touched.</summary>
+    public void DebugInterpose(ISnesBus? watching)
+    {
+        if (watching != null)
+        {
+            if (debugRealBus == null) { debugRealBus = bus; debugRealBoard = board; }
+            bus = watching;
+            board = null;
+        }
+        else if (debugRealBus != null)
+        {
+            bus = debugRealBus; board = debugRealBoard;
+            debugRealBus = null; debugRealBoard = null;
+        }
+    }
 }
 
 public partial class PPU_SFC

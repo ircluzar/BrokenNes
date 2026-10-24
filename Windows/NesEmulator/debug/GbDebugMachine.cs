@@ -36,7 +36,33 @@ public sealed class GbDebugMachine : DebugMachine, IGbInstructionHook, IGbBusDeb
     public override void ApplyHooks(bool[] exec, bool[] memory)
     {
         board.DebugHook = exec[0] ? this : null;
-        board.DebugTap = memory[0] ? this : null;
+        board.DebugTap = memory[0] ? this : null;   // OAM and VRAM DMA bytes
+        if (board.Core is CPU_GB c) c.DebugInterpose(memory[0] ? watchingBus ??= new WatchingBus(this) : null);   // the CPU's own accesses
+    }
+
+    private WatchingBus? watchingBus;
+
+    /// <summary>Sits between the SM83 and the board while a watch is set: reads are reported after they happen, writes before they land.</summary>
+    private sealed class WatchingBus : IGbCpuBus
+    {
+        private readonly GbDebugMachine m;
+        public WatchingBus(GbDebugMachine machine) { m = machine; }
+        private IGbCpuBus Real => ((CPU_GB)m.board.Core).DebugRealBus;
+        public byte Read(ushort address)
+        {
+            byte v = Real.Read(address);
+            m.Debugger?.OnAccess(m.cpu, address, v, false, AccessSource.Cpu, -1);
+            return v;
+        }
+        public void Write(ushort address, byte value)
+        {
+            m.Debugger?.OnAccess(m.cpu, address, value, true, AccessSource.Cpu, -1);
+            Real.Write(address, value);
+        }
+        public void Idle() => Real.Idle();
+        public byte PendingInterrupts => Real.PendingInterrupts;
+        public void AcknowledgeInterrupt(int bit) => Real.AcknowledgeInterrupt(bit);
+        public bool Stop() => Real.Stop();
     }
 
     void IGbInstructionHook.BeforeInstruction() => Debugger?.OnInstruction(cpu, board.CycleCount);

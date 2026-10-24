@@ -284,7 +284,6 @@ public sealed partial class BOARD_SFC : ISnesBus
         }
         uint bank = address >> 16, offset = address & 0xFFFF;
         Tick(AccessClocks(bank, offset));
-        if (DebugTap != null) return DebugRead(bank, offset, address);   // a debugger watch (BOARD_SFC.Debug.cs)
         return mdr = ReadNoTick(bank, offset);
     }
 
@@ -308,7 +307,6 @@ public sealed partial class BOARD_SFC : ISnesBus
         Tick(AccessClocks(bank, offset));
         mdr = value;
         WriteWatch?.Invoke(bank, offset, value);
-        DebugTap?.OnWrite(address, value, SnesBusSource.Cpu, -1);   // a debugger watch, before the write lands
         WriteNoTick(bank, offset, value);
     }
 
@@ -355,7 +353,6 @@ public sealed partial class BOARD_SFC : ISnesBus
                 page = new Page { Data = Cart.Rom, Offset = romIndex, Speed = AccessClocks(bank, offset) };
             }
         }
-        if (debugSlowPages) Array.Clear(pages);   // a debugger watch: every access takes the decoding path (BOARD_SFC.Debug.cs)
     }
 
     private int AccessClocks(uint bank, uint offset)

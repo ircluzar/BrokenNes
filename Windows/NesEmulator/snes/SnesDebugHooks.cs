@@ -7,9 +7,9 @@ namespace NesEmulator.Snes;
 /// <summary>Who made a bus access the debugger sees.</summary>
 public enum SnesBusSource : byte { Cpu = 0, Dma = 1, Hdma = 2 }
 
-/// <summary>The debugger's view of the SNES bus (<see cref="BOARD_SFC.DebugTap"/>). A-bus addresses are 24-bit; B-bus registers are
-/// given as $00:21xx. Installed only while a read or write watch is set; the board then also routes every access through its decoding
-/// path (<see cref="BOARD_SFC.DebugSlowPages"/>), which the reference-path goldens prove gives the same machine.</summary>
+/// <summary>The debugger's view of the SNES's DMA (<see cref="BOARD_SFC.DebugTap"/>): every DMA and HDMA byte on both buses and every HDMA
+/// table fetch. A-bus addresses are 24-bit; B-bus registers are given as $00:21xx. Installed only while a read or write watch is set (the
+/// CPU's own accesses are watched through a bus interposed in front of the CPU, <see cref="CPU_SFC.DebugInterpose"/>).</summary>
 public interface ISnesBusDebugTap
 {
     /// <summary>After a read, with the value read. <paramref name="channel"/> is the DMA channel (-1 for the CPU).</summary>

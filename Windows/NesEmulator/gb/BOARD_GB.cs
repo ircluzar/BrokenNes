@@ -140,7 +140,7 @@ public sealed class BOARD_GB : IGbCpuBus
     // ---- the debugger (Windows/NesEmulator/debug); each null unless a debugger armed it ----
     /// <summary>Called before every CPU step (instruction, interrupt dispatch or halted cycle).</summary>
     public IGbInstructionHook? DebugHook;
-    /// <summary>Every CPU read and write, every OAM DMA and VRAM DMA byte.</summary>
+    /// <summary>Every OAM DMA and VRAM DMA byte (the CPU's own accesses are watched through a bus interposed in front of the CPU, <see cref="CPU_GB.DebugInterpose"/>).</summary>
     public IGbBusDebugTap? DebugTap;
     /// <summary>The work RAM bank at $D000-$DFFF (1-7; 1 on a monochrome Game Boy).</summary>
     public int DebugWramBank => wramBank;
@@ -175,7 +175,6 @@ public sealed class BOARD_GB : IGbCpuBus
     {
         if (hdmaRequest) RunHdmaBlock();
         Cycle();
-        if (DebugTap != null) { byte v = ReadBus(address, cpu: true); DebugTap.OnRead(address, v, GbBusSource.Cpu); return v; }
         return ReadBus(address, cpu: true);
     }
 
@@ -183,7 +182,6 @@ public sealed class BOARD_GB : IGbCpuBus
     {
         if (hdmaRequest) RunHdmaBlock();
         Cycle();
-        DebugTap?.OnWrite(address, value, GbBusSource.Cpu);
         WriteBus(address, value);
     }
 

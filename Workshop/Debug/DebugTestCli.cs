@@ -415,11 +415,11 @@ internal static class DebugTestCli
             h.Dbg.Add("ssub", AccessKind.Exec, hits: "%40");
             int breaks = 0;
             while (h.Runner.FramesDone < 120) { if (h.Runner.Run(120 - h.Runner.FramesDone) == RunOutcome.Break) breaks++; }
-            Check("SNES: attached and breaking, frame-identical to no debugger (slow pages, DMA taps, SPC hook)", h.PictureHash() == plain.PictureHash() && h.RamHash() == plain.RamHash() && breaks > 3,
+            Check("SNES: attached and breaking, frame-identical to no debugger (watching bus, DMA taps, SPC hook)", h.PictureHash() == plain.PictureHash() && h.RamHash() == plain.RamHash() && breaks > 3,
                   $"picture {h.PictureHash():X16} vs {plain.PictureHash():X16}, WRAM {h.RamHash():X16} vs {plain.RamHash():X16}, {breaks} breaks");
             var board = ((SnesSession)h.Session!).Board;
             h.Dbg.Detach();
-            Check("SNES detached: no hook left", board.DebugHook == null && board.DebugTap == null && !board.DebugSlowPages && ((SnesSession)h.Session!).Spc!.SmpHook == null, "board hooks null, page table back, SmpHook restored");
+            Check("SNES detached: no hook left", board.DebugHook == null && board.DebugTap == null && !board.Cpu.DebugInterposed && ((SnesSession)h.Session!).Spc!.SmpHook == null, "board hooks null, the CPU back on its own bus, SmpHook restored");
         }
     }
 
@@ -519,7 +519,7 @@ internal static class DebugTestCli
                   $"picture {h.PictureHash():X16} vs {plain.PictureHash():X16}, RAM {h.RamHash():X16}, {breaks} breaks");
             var board = ((GbSession)h.Session!).Board;
             h.Dbg.Detach();
-            Check("Game Boy detached: no hook left", board.DebugHook == null && board.DebugTap == null, "board hooks null");
+            Check("Game Boy detached: no hook left", board.DebugHook == null && board.DebugTap == null && !((NesEmulator.Gb.CPU_GB)board.Core).DebugInterposed, "board hooks null, the CPU back on its own bus");
         }
     }
 
@@ -619,7 +619,7 @@ internal static class DebugTestCli
             h.Runner.Run(300 - h.Runner.FramesDone);
             plain.RunPlain((int)h.Runner.FramesDone);
             Check("Super VRUN: a VRAM watch sees the DMA uploads", dmaW.Hits > 1000, $"{dmaW.Hits} VRAM bytes by DMA, {cpuW.Hits} by the CPU in {h.Runner.FramesDone} frames");
-            Check("Super VRUN: debugger attached (every access on the slow path), frame-identical to no debugger", h.PictureHash() == plain.PictureHash() && h.RamHash() == plain.RamHash(),
+            Check("Super VRUN: debugger attached (every CPU access through the watching bus, every DMA byte tapped), frame-identical to no debugger", h.PictureHash() == plain.PictureHash() && h.RamHash() == plain.RamHash(),
                   $"{h.Runner.FramesDone} frames, picture {h.PictureHash():X16} vs {plain.PictureHash():X16}");
         }
     }

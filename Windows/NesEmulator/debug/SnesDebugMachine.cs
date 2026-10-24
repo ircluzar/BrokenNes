@@ -45,8 +45,8 @@ public sealed class SnesDebugMachine : DebugMachine, ISnesInstructionHook, ISnes
     public override void ApplyHooks(bool[] exec, bool[] memory)
     {
         board.DebugHook = exec[0] || exec[1] ? this : null;   // the SPC's hook is re-checked from the 65816's (the sound unit can be swapped)
-        board.DebugTap = memory[0] ? this : null;
-        board.DebugSlowPages = memory[0];
+        board.DebugTap = memory[0] ? this : null;              // DMA and HDMA bytes
+        board.Cpu.DebugInterpose(memory[0] ? watchingBus ??= new WatchingBus(this) : null);   // the CPU's own accesses
         spcArmed = exec[1] || memory[1];
         spcMemArmed = memory[1];
         SyncSpcHook();
@@ -100,6 +100,29 @@ public sealed class SnesDebugMachine : DebugMachine, ISnesInstructionHook, ISnes
         }
     }
 
+    private WatchingBus? watchingBus;
+
+    /// <summary>Sits between the 65816 and its bus while a watch is set: every access the CPU makes, with the value, then (or, for a
+    /// write, first) the real bus. Reads are reported after they happen (the value), writes before they land (the picture chip's port
+    /// addresses still say where they go).</summary>
+    private sealed class WatchingBus : ISnesBus
+    {
+        private readonly SnesDebugMachine m;
+        public WatchingBus(SnesDebugMachine machine) { m = machine; }
+        public byte Read(uint address)
+        {
+            byte v = m.board.Cpu.DebugRealBus.Read(address);
+            m.Debugger?.OnAccess(m.main, address & 0xFFFFFF, v, false, AccessSource.Cpu, -1);
+            return v;
+        }
+        public void Write(uint address, byte value)
+        {
+            m.Debugger?.OnAccess(m.main, address & 0xFFFFFF, value, true, AccessSource.Cpu, -1);
+            m.board.Cpu.DebugRealBus.Write(address, value);
+        }
+        public void Idle() => m.board.Cpu.DebugRealBus.Idle();
+    }
+
     void ISnesBusDebugTap.OnRead(uint address, byte value, SnesBusSource source, int channel) =>
         Debugger?.OnAccess(main, address, value, false, (AccessSource)source, channel);
 
@@ -122,6 +145,7 @@ public sealed class SnesDebugMachine : DebugMachine, ISnesInstructionHook, ISnes
         {
             yield return "SPC700 watches are predicted from each instruction's operands before it runs (its accesses are not tapped, so the plugin's sound path stays untouched); stores' dummy reads are not listed.";
             yield return "VRAM reads through $2139/$213A are seen as register reads, not VRAM reads.";
+            yield return "while a read or write watch is set the 65816 reaches its bus through the debugger's watching bus (its interface path, as on a bridge): the machine is the same, it only runs slower.";
             if (session.Spc == null) yield return "the sound unit is the HLE stand-in: there is no SPC700 to debug.";
         }
     }
