@@ -112,7 +112,7 @@ namespace BrokenNes.Windows
                     Cpu = console == ConsoleKind.Nes ? nes?.GetCpuCoreId() : SelectedCore(console, CoreSlot.Cpu),
                     Ppu = console == ConsoleKind.Nes ? nes?.GetPpuCoreId() : SelectedCore(console, CoreSlot.Ppu),
                     Apu = console == ConsoleKind.Nes ? nes?.GetApuCoreId() : SelectedCore(console, CoreSlot.Apu),
-                    FrameWidth = s?.FrameWidth ?? NES_WIDTH, FrameHeight = s?.FrameHeight ?? NES_HEIGHT, Fps = currentFps,
+                    FrameWidth = s?.FrameWidth ?? (nes?.WidePicture is { HasWidePicture: true } nw ? nw.WideWidth : NES_WIDTH), FrameHeight = s?.FrameHeight ?? (nes?.WidePicture is { HasWidePicture: true } nh ? nh.WideHeight : NES_HEIGHT), Fps = currentFps,
                     // a picture that crosses a bridge says what it is and what it lost (Sega game on a NES chip, NES game on the Master System / Genesis chip)
                     PictureBridge = BridgeOf(s) is { } bi && bi.BridgeName != "none" ? bi.BridgeName : null,
                     PictureBridgeCounters = BridgeOf(s) is { } bc && bc.BridgeName != "none" ? new Dictionary<string, long>(bc.Counters.Totals) : null,
@@ -142,7 +142,17 @@ namespace BrokenNes.Windows
             server.GetConsoleFrame = () =>
             {
                 var s = session;
-                if (s == null) return null;
+                if (s == null)
+                {
+                    // the NES: its picture chip's own size when it draws wider than the NES (the WideMess widescreen chip, PPU_WMSS); otherwise the endpoint gives the NES's 256 x 240
+                    if (nes?.WidePicture is not { HasWidePicture: true } wide) return null;
+                    lock (emulationLock)
+                    {
+                        int ww = wide.WideWidth, wh = wide.WideHeight; var src = wide.WidePicture; var rgba = new byte[ww * wh * 4];
+                        for (int i = 0; i < ww * wh; i++) { uint c = src[i]; rgba[i * 4] = (byte)(c >> 16); rgba[i * 4 + 1] = (byte)(c >> 8); rgba[i * 4 + 2] = (byte)c; rgba[i * 4 + 3] = 255; }
+                        return (ww, wh, rgba);
+                    }
+                }
                 lock (emulationLock)
                 {
                     int w = s.FrameWidth, h = s.FrameHeight; var src = s.Frame; var rgba = new byte[w * h * 4];
@@ -736,6 +746,42 @@ namespace BrokenNes.Windows
                 dxRenderer.AspectWidth = aspectWidth == w ? 0 : aspectWidth;
                 if (!string.IsNullOrEmpty(config.CurrentShader)) NesShaderControl.SwitchShader(config.CurrentShader);
             }
+        }
+
+        // ------------------------------------------------------------------ a NES picture wider than the NES (the WideMess widescreen chip on the NES board, PPU_WMSS)
+        /// <summary>True while the NES's picture chip has been drawing wider than 256 (the display is that wide until it is rebuilt at the NES's size).</summary>
+        private bool nesWideShown;
+
+        /// <summary>What <see cref="CopyWideNesFrame"/> returns when it copied the frame (the emulation loop then shows it).</summary>
+        private static readonly byte[] WideFrameCopied = new byte[0];
+
+        /// <summary>The wide picture into the back buffer at its own size (square pixels): <see cref="WideFrameCopied"/>, or null while the display is being rebuilt for it (the frame is dropped).</summary>
+        private byte[]? CopyWideNesFrame(IWidePictureSource wide)
+        {
+            int w = wide.WideWidth, h = wide.WideHeight; bool resize = false;
+            lock (emulationLock)
+            {
+                var bb = backBuffer;
+                if (bb == null || bb.Width != w || bb.Height != h || displayWidth != w) resize = true;
+                else
+                {
+                    var src = wide.WidePicture; var dst = bb.Bits;
+                    int n = Math.Min(w * h, Math.Min(src.Length, dst.Length));
+                    for (int i = 0; i < n; i++) dst[i] = (int)src[i];
+                }
+            }
+            nesWideShown = true;
+            if (resize) { RequestDisplaySize(w, h, w); return null; }
+            return WideFrameCopied;
+        }
+
+        /// <summary>After a wide NES picture: true once the display is the NES's 256 x 240 again (until then frames are dropped and the rebuild is asked for).</summary>
+        private bool NesDisplayIsBack()
+        {
+            var bb = backBuffer;
+            if (bb != null && bb.Width == NES_WIDTH && bb.Height == NES_HEIGHT && displayWidth == NES_WIDTH) { nesWideShown = false; return true; }
+            RequestDisplaySize(NES_WIDTH, NES_HEIGHT, NES_WIDTH);
+            return false;
         }
 
         /// <summary>Back to the NES picture size when the NES runs again.</summary>

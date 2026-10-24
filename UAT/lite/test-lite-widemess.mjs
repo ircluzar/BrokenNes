@@ -17,6 +17,8 @@
 //   enhance  WideMess milestone 6 in Lite: Super Mario World on the WideMess console finds its profile (built into the app), widescreen gives a 400-wide picture whose centre is, frame for frame from one
 //            saved moment, the SNES picture; the choice is kept per game in IndexedDB (fast CPU never) and comes back in a fresh page; "Use the profile" sets exactly the profile's recommendations;
 //            the controls: a .wms game has no enhancements (said, switches disabled), the SNES console has no panel.
+//   chips    milestone 7b's chips, which follow the WideMess console into Lite: a NES game on the NES board's widescreen chip (WMSS) is shown 400 wide; a SNES game on the route WMS:WMSS
+//            (picture and sound) is 400 wide and keeps its sound.
 //   speed    frames per second in the browser (the page's own frame call, FrameTick, in a JavaScript loop, as bench-lite.mjs does; then once more with the picture drawn to the canvas each frame):
 //            layers, sprites, windows, widesnes and the sample game Wide Blaster (played with M5's input script) must hold 60 frames a second. LITELAB_GPU=1 draws on the machine's GPU (the
 //            entrypoint sets it for this group); otherwise the drawn figures are SwiftShader's (the CPU draws) and are reported only.
@@ -396,6 +398,32 @@ if (want('enhance')) {
       check('enhance', 'the control: on the SNES console there is no WideMess enhancements panel', !has && (await console_(page)) === 'snes', `panel ${has}, console ${await console_(page)}`);
     });
   }
+}
+
+// ============================================================================================= milestone 7b's chips on the other consoles' menus (they follow the WideMess console, which Lite turns on)
+if (want('chips')) {
+  // a NES game (Lite's built-in VRUN) on the NES board's WideMess widescreen chip: the page shows its whole 400-wide picture (the trimmed build keeps PPU_WMSS)
+  await withLab(async lab => {
+    const page = await lab.open('/?rom=vrun.nes&ppu=WMSS', { timeout: 240000 });
+    await page.waitFor("document.body.innerText.includes('ROM: vrun.nes') || document.body.innerText.includes('vrun.nes')", 240000).catch(() => {});
+    await page.eval(HELPERS);
+    const r = await page.eval(`window.__frames(240, null, { colours: true })`);
+    const sel = await page.eval(`document.getElementById('ppuCoreSelect')?.innerText?.trim() || ''`);
+    check('chips', 'a NES game on the WideMess widescreen chip (NES board WMSS) is shown whole, 400 wide, in Lite', /WMSS/.test(sel) && r.w === 400 && r.aw === 400 && r.colours > 4, `PPU ${sel}, ${r.w} x ${r.h} shown ${r.aw} wide, ${r.colours} colours`);
+  });
+  if (haveSmw) await withLab(async lab => {
+    // a SNES game on the SNES console's WideMess (enhanced) entries, route WMS:WMSS: 400 wide, and its sound goes on
+    const page = await openRom(lab, 'snes/smw.smc');
+    await page.eval(`window.__frames(300)`);
+    const pp = await selectOption(page, 'select[aria-label="Ppu core"]', 'WMS:WMSS');
+    await sleep(1500);
+    const r = await page.eval(`window.__frames(120)`);
+    const ap = await selectOption(page, 'select[aria-label="Apu core"]', 'WMS:WMSS');
+    await sleep(1500);
+    const r2 = await page.eval(`window.__frames(120)`);
+    check('chips', 'a SNES game on the WideMess (enhanced) picture and sound chips (route WMS:WMSS) in Lite: 400 wide, the sound goes on', pp === 'ok' && ap === 'ok' && r.w === 400 && r2.w === 400 && r2.withAudio >= 110 && r2.rms > 0.001,
+      `picture pick ${pp}, sound pick ${ap}; ${r.w} x ${r.h}; sound ${r2.withAudio} frames, rms ${r2.rms.toFixed(4)}`);
+  });
 }
 
 // ============================================================================================= speed

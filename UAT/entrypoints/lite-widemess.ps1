@@ -46,7 +46,7 @@ try {
     New-Item -ItemType Directory -Force $roms | Out-Null
     $notes.Add("publish: $Publish; games: $roms")
     $test = Join-Path $repo 'UAT\lite\test-lite-widemess.mjs'
-    $groups = if ($Only) { @($Only | ForEach-Object { $_ -split ',' } | Where-Object { $_ }) } else { @('console', 'picture', 'model', 'control', 'snes', 'sound', 'saves', 'states', 'layout', 'enhance', 'speed') }
+    $groups = if ($Only) { @($Only | ForEach-Object { $_ -split ',' } | Where-Object { $_ }) } else { @('console', 'picture', 'model', 'control', 'snes', 'sound', 'saves', 'states', 'layout', 'enhance', 'chips', 'speed') }
     $checks = @(); $speed = $null; $codes = @()
     $plain = @($groups | Where-Object { $_ -ne 'speed' })
     if ($plain.Count) {

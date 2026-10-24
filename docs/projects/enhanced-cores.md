@@ -13,7 +13,7 @@ System's / Game Gear's and the Genesis's (phase 3, section 5). The NES gimmick c
 Every PPU and APU menu (and, for the order, every CPU menu) is three sections (`CoreSection` in `Windows/NesEmulator/systems/ConsoleSystems.cs`):
 
 1. **The console's own best cores**: stock, then enhanced.
-2. **The other consoles' best cores**: families in the order NES, SNES, Game Boy, Master System, Genesis; stock before enhanced in each.
+2. **The other consoles' best cores**: families in the order NES, SNES, Game Boy, Master System, Genesis, WideMess (section 6; only where the WideMess console is offered); stock before enhanced in each.
 3. **The rest**, in the order it always had: the NES gimmick cores (CUBE, LQ, HI2X, WF, ...), the SNES's silent HLE unit, the SM83 clock variants.
 
 The labels of the best cores begin with their grade: `FIX (stock)`, `FIX (enhanced)`, `Game Boy (stock)`, `Game Boy (enhanced)`, `SNES (stock)`,
@@ -37,6 +37,7 @@ NES save states, stockpiles, FL projects and the HTTP API keep working), with on
 | Game Gear enhanced | - | `GG:GGS` | SmsVdpS (12-bit colour) / PsgVoiceChip (SN76489 sets on the stereo port); `GGS` on the Game Gear's own menu |
 | Genesis stock | `MD` | `NES:MD` | the VDP / YM2612 + PSG through the NES |
 | Genesis enhanced | `MDS` | `MD:MDS` | MdVdpS (9-bit colour, shadow / highlight) / MdVoiceChip (YM2612 + PSG sets); `MDS` on the Genesis's own menu |
+| WideMess enhanced (section 6) | `WMSS` | `WMS:WMSS` | WmsWideChip (the widescreen chip: 400 wide, 15-bit colour) / WmsVoiceChip (32 WideMess voices a bank, 16-bit PCM first); no entry on the WideMess's own menu (its WMS chips are the WideMess); offered only where `Consoles.WideMessEnabled` |
 
 Every console's own menu is its stock chips then its enhanced one (the Master System: `SMS`, `SMS-FM`, `SMSS`). On its own console an enhanced chip draws and
 sounds exactly as the stock one (it is a subclass of it, and nothing fills its extra layers or banks there: `--enhanced-test --only own3` proves it frame by
@@ -347,3 +348,97 @@ the guests reached it before) and enhanced chip.
   guest's (the SN76489's periodic noise is 16 steps). The Master System's FM unit (`SMS-FM`) is offered on the NES chips only, not on the enhanced chips.
 - The Master System / Game Gear enhanced sound costs a little more than the NES hop for an eleven-voice guest (three PSG sets run at the PSG's clock).
 
+## 6. WideMess milestone 7b: the widescreen chip and the WideMess sound chip on the other consoles' menus
+
+WideMess (docs/projects/widemess-plan.md, docs/projects/widemess-spec.md section 8) joined the roster on 2026-10-24: its picture chip and its sound chip are the **WideMess (enhanced)** entry of the
+picture and sound menus of the SNES, Game Boy, Game Boy Color, Master System, Game Gear and Genesis (the route `WMS:WMSS`) and of the NES (the NES board's ids `WMSS`), last of the other consoles'
+section. They take the two contracts of section 4; the picture contract gained the **wide view** (6.1). Offered only where the WideMess console is (`Consoles.WideMessEnabled`: the desktop app and
+Workshop; Lite and the FL plugin keep them hidden until they offer the WideMess, and the menu cache follows the switch). The WideMess console's own menu has no enhanced entry: its own WMS chips are the
+WideMess, and a WideMess or SNES game draws and sounds on them exactly as it would on these. It offers the other consoles' chips instead, as the SNES console does (6.5).
+
+### 6.1 The contract's additions: the wide view
+
+| Field | Who sets it | What it says |
+|---|---|---|
+| `ExtPicture.ViewWidth` | the chip (0 for every chip but the widescreen chip's 400; `BeginFrame` keeps it) | how wide the chip shows the guest; `SideColumns` = (that - the guest's width) / 2 more columns each side |
+| `Layer.RealWidth` | the translator, every frame | how many columns of distinct picture the layer's map really holds: a NES background 512 with vertical mirroring (or a mapper giving the quadrants different nametables), else 256; a SNES BG its map's width (256, 512, twice that with 16 x 16 tiles); a Genesis plane 256, 512 or 1024; a Master System, Game Gear or Game Boy map 256 |
+| `Layer.FixedToScreen` | the translator | the layer is laid out on the screen, not scrolled over a map: the Genesis window plane, the Game Boy window, the Master System's vertical-lock columns |
+| `ExtPicture.SpritesBeyondEdges` | the translator (reset by `BeginFrame`) | the guest's sprite positions beyond its edges are real places: a SNES's 9-bit X, the Genesis's 512-pixel sprite plane, the Game Gear's VDP line around its LCD, the part of a NES sprite past the right edge; not a Game Boy's (games hide unused sprites at X = 0) nor a Master System's (its sprites never leave its 256 columns) |
+
+With `ViewWidth` set the translators also fill the map cells the sides show (`NesToLayers`, `SnesToNes`, `MdToNes`; the Game Boy's whole map and the Master System's whole rows were filled already) and
+list the sprite pieces only the sides show (`SnesToNes`, `MdToNes`, `SmsToNes` for the Game Gear), **after the guest's own**: the side cells' tiles are quantized into the palettes the guest's picture
+chose (`SegaQuantizer.Fit`, `SnesToNes.Quantizer.Fit`), so the guest's picture is exactly what it is without them, and a colour that is not on the screen is drawn with the nearest one and counted
+(`MdToNes.SideColourLoss`). With `ViewWidth` 0 (every other chip) nothing changes: section 3's suites give the same output as before. One translator change for every chip: the Master System's
+left-column mask (VDP register 0 bit 5) moved from `Layer.Hidden` to `Layer.BlankLeft`, the field made for exactly that (the same pixels hidden; it is the screen's clip, not a window, so a wider view
+does not stretch it over a side).
+
+### 6.2 The widescreen chip (`WmsWideChip`, mix/WideMessEnhanced.cs)
+
+- **400 wide**, the guest's own height, square pixels, the WideMess's picture width (spec section 3). 72 columns a side for a 256-wide guest, 40 for the Genesis in H40, 120 for a Game Boy or a Game Gear.
+- **The middle** is the guest's own picture (`ExtPicture.ComposeLine`), in the SNES enhanced chip's 15-bit colours and colour math: pixel for pixel what `PPU_SFCS` draws of the same frame.
+- **The sides**: each layer, each frame, gets one rule (`WideRule`) from what its translator reported: **extend** when its real width is wider than the guest's picture (the map continues as the
+  guest's scroll gives it, wrapping at the map's width; columns past the real width repeat and are counted as repeated), **repeat** when it is not (its own visible columns side by side),
+  **fill** when it is laid out on the screen or did not report its width (nothing of it: what is behind it, or the backdrop; the unreported case is counted apart and the checks require it to be 0).
+  Mode 7 continues its transformation (its plane is 1024 pixels). The Genesis's column scroll continues from its edge pairs.
+- **Masks** (windows, the colour window, clip to black, the backdrop's colour math) reach a side from the guest's column next to it, as the WideMess's own windows reach its edges (spec 3.4).
+- **Sprites** only where `SpritesBeyondEdges`: drawn in the sides in the guest's order, never counted against its per-line limit (a piece the guest drops on a line is dropped in the side too).
+- **Counted** every frame (`Extended`, `Repeated`, `Filled`, `MaskedSideColumns`, `UnreportedLines`, `SpriteLinesNotExtended`, `SideSpritePixels`; `CountInto` adds them to a bridge's counters: the
+  status line and `GET /api/console`). Allocation-free.
+
+| Guest | Layers | Sprites in the sides |
+|---|---|---|
+| NES (board id `WMSS`) | background **extend** with vertical mirroring (the neighbouring nametable: 144 real columns a line), **repeat** with horizontal or one-screen mirroring | the part of a sprite past the right edge |
+| SNES | each BG by its map: 64 tiles **extend**, 32 **repeat**; Mode 7 **extend** | yes: X 256-327 right of the picture, 328-511 left, X = 256 (games' hiding place) never |
+| Game Boy / Color | background **extend** (256 of which 160 shown: 96 real columns, 144 repeated), window **fill** | no: they stop at the screen's edges |
+| Master System | background **repeat** (its map is the screen's 256), vertical-lock columns **fill** | no (they never leave the screen) |
+| Game Gear | background **extend** (the VDP's 256-pixel line around the LCD's 160: 96 real, 144 repeated) | yes: the VDP draws them around the LCD |
+| Genesis | planes **extend** (512 or 1024; a 256-wide plane in H32 **repeats**), window **fill** | yes: the 512-pixel sprite plane |
+
+**What no rule fixes** (as for SNES games, widemess-spec 6.1): the columns a game streams just past its edge show old picture until it scrolls there (Super Mario Bros.' left side at the start of
+1-1 is empty sky); objects a game creates at its edge pop in there; a HUD drawn into the map shows the map's row continuing beside it (Super Mario Land's status bar); a colour only the sides show
+is drawn in the screen's palettes (counted).
+
+### 6.3 The sound chip (`WmsVoiceChip`)
+
+Banks of 32 WideMess voices: each bank is a WideMess S-DSP (`DSP_SFC` with its voices 8-31 and 1 MB of sound RAM attached, unlocked), its first 24 channels voices 8-31 playing **16-bit PCM**
+(pulses of the four duties, a smooth triangle, 16-bit white noise, the NES's 93-step short noise: spec section 4's sample directory), the next 8 the S-DSP's voices 0-7 playing the same shapes in BRR.
+Every guest voice on a voice of its own (`HubVoiceChip`), its pitch on the 14-bit pitch, its level and pan on VOLL / VOLR; no echo. One bank holds every guest of the other consoles (18 voices at most,
+a Japanese Master System's PSG + FM); 4 banks at most. The bridges are the existing ones (`MdSoundOnChip`, `SmsSoundOnChip`, `GbApuOnChip`, `SnesApuOnChip`, `NesApuOnChip` as `APU_WMSS`).
+Allocation-free.
+
+### 6.4 The NES console
+
+`PPU_WMSS : NesLayeredPpu` draws a NES game 400 wide; its `GetFrameBuffer` is the NES's own 256 x 240, the middle (`NesLayeredPpu` now takes the middle of any chip wider than 256: save-state pictures,
+recordings, every NES-only tool see the NES's picture), and `IWidePictureSource` (ppus/ExtPicture.cs, `NES.WidePicture`) gives the whole width to an app that can show it: the desktop app's NES loop shows
+it at its size (and returns to 256 x 240 when another chip draws), and `GET /api/console/framebuffer` gives it. `APU_WMSS : NesApuOnChip`: the NES's four channels on WideMess voices (the DMC dropped and
+counted). The FL plugin's chip list never takes `WMSS`: its family is the WideMess's (`CoreCatalog.NesApuFamily`), which `Bn2Consoles` lists no chip of, so no saved chip index moves. Lite roots both classes
+(`WebLite/LinkerConfig.xml`) for the day it offers the WideMess.
+
+### 6.5 The other consoles' chips on the WideMess console
+
+The WideMess console's picture and sound menus offer the other consoles' chips as the SNES console does (`NES:<chip>`, the Game Boy chips through the NES, `SMS:SMSS`, `GG:GGS`, `MD:MDS`; not the SNES's own,
+which the WMS chips are). A SNES game on them is exactly the SNES console's game on them (`wmsown`: every frame and sample). The game's own sound unit inside such a bridge is the WideMess's (`APU_WMS`), so its
+sound RAM port and its unlock line keep working. What those chips cannot carry of a WideMess game is counted, never silent: frames drawn in the WideMess's own picture (the 8-layer mode or 400 wide: the
+other chip shows what the SNES registers say) and frames sounding voices 8-31 (the bridges replay the S-DSP's eight), both in `SnesSession.Description` (the status line).
+
+### 6.6 Tests and numbers (2026-10-24)
+
+- `Workshop --enhanced-test`: 435 checks, 0 failed (the 329 of sections 3 and 5.5 as before, output identical but the NES board's new ids in two id lists; 106 new). `--only wmsmenu,wms,wmsown,wmsgames`
+  (Workshop/EnhancedCores/WideMessGuestTests.cs; 19, 55, 5 and 27 checks):
+  - `wmsmenu`: the route on every other console's picture and sound menus and `WMSS` on the NES's, in the right section and order; none of it with the WideMess hidden, and a running game refuses it there.
+  - `wms`: a scene per guest: 400 wide; the middle equal to `SNES:SFCS` (`SNESS` on the NES board) pixel for pixel; each rule as reported; **a NES game with vertical mirroring shows the real
+    neighbouring nametable** (the right side is exactly the game scrolled 72 pixels on), with horizontal mirroring the screen repeats; a Game Boy's sides are the game scrolled there (96 real columns, then
+    its first again), the window fills; a Master System repeats and its left-column mask stays the screen's; a Game Gear shows the VDP's columns 208-255 and a sprite left of the LCD; a Genesis plane is the
+    game scrolled 40 on, a sprite at x 330 shows, the window fills, a colour only beside the screen is counted; a SNES 64-tile map is the game scrolled 72 on, a 32-tile one repeats, a sprite at X 300
+    shows, a window over columns 0-7 reaches the left side only. Deliberate faults caught: a chip forced to repeat (NES, Game Boy), forced to fill (SNES), forced to draw no side sprites (Game Gear,
+    Genesis). The sound chip: 11 voices on 1 bank, 18 on 1 bank, 440 Hz within 0.2 cent on a PCM voice and on a BRR voice, stereo; every guest's bridge with no voice dropped (the stock route through the
+    NES drops 4 of the SNES's 8); a NES game on `APU_WMSS`; states.
+  - `wmsown`: section 6.5, with the WideMess test ROMs `layers.wms` and `sound.wms` as the counted cases.
+  - `wmsgames`: 12 games of the user's library in lockstep with `SNES:SFCS` (`SNESS`): Super Mario Bros., Ice Climber, Kirby's Adventure (NES), Super Mario Land, Kirby's Dream Land, Link's Awakening
+    (Game Boy), Super Mario Bros. Deluxe (Game Boy Color), Sonic and Alex Kidd (Master System), Sonic (Game Gear), Sonic 1 (Genesis), Super Mario World (SNES): the middle identical every frame (1,100 to 2,400 frames each), no layer
+    unreported, the sound with no voice dropped; allocation: no object a frame beyond what the same translator allocates on `SNES:SFCS` (the synthetic scenes measure 0 bytes), the sound chip 0 bytes a frame.
+- `--picture-bridge-test` (alloc group): 0 bytes a frame on `WMS:WMSS` for the Master System, Game Gear and Genesis scenes.
+- `Workshop --wms-guest-sheet --out <dir>`: contact sheets of those 12 games (the game's own picture beside the same frame 400 wide, the guest's edges marked, the rules and counts under it):
+  docs/projects/widemess-images/m7/.
+- `UAT/entrypoints/widemess-desktop-smoke.ps1` step GUEST: the NES's test.nes on `WMSS` shown 400 x 240 by the desktop app and 256 x 240 again on FIX; Sonic (Master System) on `WMS:WMSS` picture
+  and sound, 400 x 192.

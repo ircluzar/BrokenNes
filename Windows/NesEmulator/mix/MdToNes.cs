@@ -139,6 +139,8 @@ internal sealed class MdToNes : IVariantLevels
     private readonly List<(int layer, int cell, int variant, int item, Cell cl)> variants = new();
     private readonly List<(int tile, int pal)> itemTile = new();
     private readonly List<(int x, int y, int from, int to, int item, bool hf, bool vf, bool prio)> keptLayered = new();
+    /// <summary>The pieces only a wide view's side columns show (<see cref="ExtPicture.ViewWidth"/>): drawn there after the guest's own, never counted against its limits.</summary>
+    private readonly List<(int x, int y, int from, int to, int item, bool hf, bool vf, bool prio)> keptSide = new();
     private readonly List<(int x, int y, int item, bool hf, bool vf, bool behind)> keptFlat = new();
     private readonly List<Spr> sprList = new(), sprPool = new(), onLine = new();
     private readonly Cell?[,] cellGrid = new Cell?[30, 33];
@@ -415,6 +417,7 @@ internal sealed class MdToNes : IVariantLevels
         e.Guest = cap.H40 ? "Genesis H40" : "Genesis H32";
         int W = win.W;
         int dx = win.Dx, h = win.H, y0 = win.Y0;
+        int side = e.SideColumns;      // a wide view (the WideMess widescreen chip): the planes' cells and the sprites its side columns show, after the guest's own
         var rEnd = cap.RegEnd;
         var A = PlaneOf(true); var B = PlaneOf(false);
         bool displayAny = false;
@@ -450,6 +453,8 @@ internal sealed class MdToNes : IVariantLevels
             var X = L.X;
             X.Enabled = true; X.SnesLayer = L.IsA ? 0 : 1;
             X.MapWidth = L.Window ? (cap.H40 ? 64 : 32) : L.Plane!.WCells; X.MapHeight = L.Window ? 32 : L.Plane!.HCells;
+            // the wide view: a plane is as wide as its map (32, 64 or 128 cells); the window is laid out on the screen
+            if (L.Window) { X.FixedToScreen = true; X.RealWidth = W; } else X.RealWidth = L.Plane!.WCells * 8;
             L.ClearSeen(X.MapWidth * X.MapHeight);
             if (colMode && !L.Window)
             {
@@ -531,6 +536,19 @@ internal sealed class MdToNes : IVariantLevels
                     L.Seen[(py >> 3) * X.MapWidth + (px0 >> 3)] = true;
                     L.Seen[(py >> 3) * X.MapWidth + (((px0 + 7) & L.Plane.WMask) >> 3)] = true;
                 }
+                // the cells a wide view's side columns show (a plane only: the window is laid out on the screen), each side pixel's as the chip reads it (ExtPicture: the map pixel ScrollX + x, the column scroll at x)
+                if (side > 0 && !L.Window)
+                {
+                    int hsS = L.IsA ? cap.HsA[l] : cap.HsB[l];
+                    int rowLine = (l + VsAt(l, L, 0, hsS)) & L.Plane!.HMask;
+                    for (int ex = -side; ex < W + side; ex++)
+                    {
+                        if (ex == 0) ex = W;      // the guest's own columns: above
+                        int pyS = colMode ? (y0 + el + X.ColumnValue(el, ex)) & L.Plane.HMask : rowLine;
+                        int pxS = (dx - hsS + ex) & L.Plane.WMask;
+                        L.SideSeen[(pyS >> 3) * X.MapWidth + (pxS >> 3)] = true;
+                    }
+                }
             }
             // sprites are drawn on every line the display is on (not in a blank left column)
             e.ObjOn[el] = true;
@@ -553,41 +571,52 @@ internal sealed class MdToNes : IVariantLevels
         // ---- background tiles: one item per (tile, palette line), 3 colours each, 8 palettes
         var bgQ = layeredBgQ; bgQ.BeginFrame();
         itemOf.Clear(); variants.Clear();
-        foreach (var L in layers)
+        void AddCell(LayerSpec L, int cellIx)
         {
             var X = L.X;
-            for (int cellIx = 0; cellIx < L.SeenCount; cellIx++)
+            int row = cellIx / X.MapWidth, col = cellIx % X.MapWidth;
+            var cl = L.Window ? WindowCell(row, col) : PlaneCell(L.Plane!, row, col);
+            int key = ContentOf(cl.Tile) << 2 | cl.Pal;
+            if (!itemOf.TryGetValue(key, out int item))
             {
-                if (!L.Seen[cellIx]) continue;
-                int row = cellIx / X.MapWidth, col = cellIx % X.MapWidth;
-                var cl = L.Window ? WindowCell(row, col) : PlaneCell(L.Plane!, row, col);
-                int key = ContentOf(cl.Tile) << 2 | cl.Pal;
-                if (!itemOf.TryGetValue(key, out int item))
-                {
-                    var pal = palettes[cl.Pal];
-                    item = bgQ.Add(key, out var hist);
-                    if (hist != null)
-                        for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
-                        {
-                            int ci = TilePixel(cl.Tile, y, x);
-                            if (ci == 0) continue;
-                            int rgb = pal[ci]; hist[rgb] = hist.GetValueOrDefault(rgb) + 1;
-                        }
-                    itemOf[key] = item;
-                }
-                variants.Add((L.Index, cellIx, ContentOf(cl.Tile) | cl.Pal << 20 | (cl.HFlip ? 1 << 22 : 0) | (cl.VFlip ? 1 << 23 : 0), item, cl));
+                var pal = palettes[cl.Pal];
+                item = bgQ.Add(key, out var hist);
+                if (hist != null)
+                    for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
+                    {
+                        int ci = TilePixel(cl.Tile, y, x);
+                        if (ci == 0) continue;
+                        int rgb = pal[ci]; hist[rgb] = hist.GetValueOrDefault(rgb) + 1;
+                    }
+                itemOf[key] = item;
             }
+            variants.Add((L.Index, cellIx, ContentOf(cl.Tile) | cl.Pal << 20 | (cl.HFlip ? 1 << 22 : 0) | (cl.VFlip ? 1 << 23 : 0), item, cl));
         }
+        foreach (var L in layers)
+            for (int cellIx = 0; cellIx < L.SeenCount; cellIx++)
+                if (L.Seen[cellIx]) AddCell(L, cellIx);
         bgQ.Solve(ExtPicture.Palettes);
         for (int g = 0; g < ExtPicture.Palettes; g++) for (int lv = 1; lv < 4; lv++) e.BgRgb[g * 4 + lv] = (uint)NesFixPalette.ForTextbook(bgQ.Palette[g][lv]);
-        for (int k = 0; k < layers.Count; k++) { tileOf[k].Clear(); nextTile[k] = 1; }
-        int overflow = 0;
-        foreach (var (layer, cellIx, variant, item, cl) in variants)
+        // the cells only the wide view's side columns show: after the guest's own, in the palettes they chose (Fit), so the guest's picture is exactly what it is without them
+        int centreVariants = variants.Count;
+        if (side > 0)
         {
+            int firstNew = bgQ.Count;
+            foreach (var L in layers)
+                if (!L.Window)
+                    for (int cellIx = 0; cellIx < L.SeenCount; cellIx++)
+                        if (L.SideSeen[cellIx] && !L.Seen[cellIx]) AddCell(L, cellIx);
+            c.Add(SideColourLoss, bgQ.Fit(firstNew));
+        }
+        for (int k = 0; k < layers.Count; k++) { tileOf[k].Clear(); nextTile[k] = 1; }
+        int overflow = 0, sideOverflow = 0;
+        for (int vi = 0; vi < variants.Count; vi++)
+        {
+            var (layer, cellIx, variant, item, cl) = variants[vi];
             var X = layers[layer].X;
             if (!tileOf[layer].TryGetValue(variant, out int t))
             {
-                if (nextTile[layer] >= ExtPicture.MaxTiles) { overflow++; t = 1 + cl.Tile % (ExtPicture.MaxTiles - 1); }
+                if (nextTile[layer] >= ExtPicture.MaxTiles) { if (vi < centreVariants) overflow++; else sideOverflow++; t = 1 + cl.Tile % (ExtPicture.MaxTiles - 1); }
                 else
                 {
                     t = nextTile[layer]++; tileOf[layer][variant] = t;
@@ -607,7 +636,7 @@ internal sealed class MdToNes : IVariantLevels
         c.Add("sprites the VDP dropped itself (20/16 a line, 40/32 cells, the X = 0 mask)", dropped);
         var objQ = layeredObjQ; objQ.BeginFrame();
         pieceItem.Clear(); itemTile.Clear(); int operatorPieces = 0;
-        var kept = keptLayered; kept.Clear();
+        var kept = keptLayered; kept.Clear(); keptSide.Clear();
         foreach (var s in sprites)
         {
             if (s.Active == 0) continue;
@@ -638,6 +667,8 @@ internal sealed class MdToNes : IVariantLevels
                             int ex = s.XRaw - 128 + 8 * k - dx;
                             if (ex + 8 > 0 && ex < W)
                                 kept.Add((ex, top - y0, runStart - y0, y - 1 - y0, item, s.HF, s.VF, s.Prio));
+                            else if (side > 0 && ex + 8 > -side && ex < W + side)
+                                keptSide.Add((ex, top - y0, runStart - y0, y - 1 - y0, item, s.HF, s.VF, s.Prio));
                             runStart = -1;
                         }
                     }
@@ -657,7 +688,7 @@ internal sealed class MdToNes : IVariantLevels
             }
         }
         c.Add(OperatorCounter, operatorPieces);
-        if (e.Sprites.Length < kept.Count) e.Sprites = new ExtPicture.Sprite[kept.Count];
+        if (e.Sprites.Length < kept.Count + keptSide.Count) e.Sprites = new ExtPicture.Sprite[kept.Count + keptSide.Count];
         int n = 0;
         foreach (var k in kept)
             e.Sprites[n++] = new ExtPicture.Sprite
@@ -665,23 +696,37 @@ internal sealed class MdToNes : IVariantLevels
                 X = (short)k.x, Y = (short)k.y, FirstLine = (short)Math.Max(0, k.from), LastLine = (short)Math.Min(h - 1, k.to),
                 Tile = (ushort)(k.item % ExtPicture.MaxSpriteTiles), Palette = (byte)objQ.Group[k.item], Priority = (byte)(k.prio ? 1 : 0), HFlip = k.hf, VFlip = k.vf,
             };
+        // the side columns' pieces after the guest's own (their items are the guest's: every evaluated piece was quantized above)
+        foreach (var k in keptSide)
+            e.Sprites[n++] = new ExtPicture.Sprite
+            {
+                X = (short)k.x, Y = (short)k.y, FirstLine = (short)Math.Max(0, k.from), LastLine = (short)Math.Min(h - 1, k.to),
+                Tile = (ushort)(k.item % ExtPicture.MaxSpriteTiles), Palette = (byte)objQ.Group[k.item], Priority = (byte)(k.prio ? 1 : 0), HFlip = k.hf, VFlip = k.vf,
+            };
         e.SpriteCount = n; e.SpriteLimit = 1024; e.SpritesPerLine = 64;     // the VDP's own limits were applied above
+        e.SpritesBeyondEdges = true;     // the VDP's sprite plane is 512 pixels wide: a sprite beyond the picture's edges is a real place
         e.PaletteVersion++;
+        c.Add("side-column tiles past the layer's 1023 (the WideMess widescreen view: wrong tiles shown in the sides)", sideOverflow);
         return Finish(e, chip, overflow, objOver, 0);
     }
+
+    /// <summary>The WideMess widescreen view's colour loss: map cells only its sides show, drawn in the guest's own palettes because their colours are not on the screen.</summary>
+    internal const string SideColourLoss = "side-column tiles drawn in the guest's palettes, their own colours not being on the screen (the WideMess widescreen view)";
 
     private sealed class LayerSpec
     {
         public Plane? Plane; public bool IsA, Window; public int VsOff, Index; public ExtPicture.Layer X = null!;
         /// <summary>The cells of the layer's map this frame shows; only the first <see cref="SeenCount"/> entries are the frame's.</summary>
         public bool[] Seen = Array.Empty<bool>();
+        /// <summary>The cells a wide view's side columns show (<see cref="ExtPicture.ViewWidth"/>), same layout; those not in <see cref="Seen"/> are quantized after the guest's own.</summary>
+        public bool[] SideSeen = Array.Empty<bool>();
         public int SeenCount;
         public LayerSpec Set(Plane? plane, bool isA, bool window, int vsOff) { Plane = plane; IsA = isA; Window = window; VsOff = vsOff; Index = 0; return this; }
         /// <summary>Forget the cells seen, for a map of <paramref name="cells"/> cells (the array is kept between frames and grown when a bigger map needs it).</summary>
         public void ClearSeen(int cells)
         {
-            if (Seen.Length < cells) Seen = new bool[cells];
-            Array.Clear(Seen, 0, cells);
+            if (Seen.Length < cells) { Seen = new bool[cells]; SideSeen = new bool[cells]; }
+            Array.Clear(Seen, 0, cells); Array.Clear(SideSeen, 0, cells);
             SeenCount = cells;
         }
     }

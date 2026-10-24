@@ -148,7 +148,7 @@ mix. They add up to it within 3 sixteen-bit steps (`--sega-stems-test`: the disc
 
 ### The WideMess chip (the WMS chip, WideMess milestone 7a)
 
-WideMess is BrokenNes's souped-up SNES fantasy console (`docs/projects/widemess-spec.md`; section 8 says how it appears in each host). In the plugin it is the **SNES console's second sound
+WideMess is BrokenNes's souped-up SNES fantasy console (`docs/projects/widemess-spec.md`; section 9 says how it appears in each host). In the plugin it is the **SNES console's second sound
 chip, WMS**, appended last as **chip 29** (after the six Presets chips; nothing before it moved), the way the Japanese Master System is the Master System console with its FM chip. There is no
 sixth console button: a WideMess is a SNES until a game unlocks it.
 

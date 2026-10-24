@@ -566,6 +566,9 @@ namespace BrokenNes
                     }
                     StateHasChanged();
                 }
+                // a NES picture chip that draws wider than the NES (the WideMess widescreen chip, PPU_WMSS, WideMess milestone 7b): its whole picture at its own size, square pixels, as the desktop shows it
+                if (nes.WidePicture is { HasWidePicture: true } wide && WideNesFrame(wide) is { } wfb)
+                    return new FramePayload { Framebuffer = wfb, Audio = queuedAudio ? audioBuffer : null, SampleRate = sampleRate, Width = wide.WideWidth, Height = wide.WideHeight, DisplayWidth = wide.WideWidth };
                 return new FramePayload
                 {
                     Framebuffer = nesController.framebuffer,
@@ -581,6 +584,20 @@ namespace BrokenNes
                 StateHasChanged();
                 return new FramePayload { Framebuffer = null, Audio = null, SampleRate = 0 };
             }
+        }
+
+        private byte[]? wideNesBuffer;
+
+        /// <summary>The wide NES picture (0xFFRRGGBB) as the page's RGBA bytes, in a buffer kept between frames (made again only when the size changes); null when the chip's picture is not complete.</summary>
+        private byte[]? WideNesFrame(NesEmulator.IWidePictureSource wide)
+        {
+            int w = wide.WideWidth, h = wide.WideHeight;
+            var src = wide.WidePicture;
+            if (w <= 0 || h <= 0 || src == null || src.Length < w * h) return null;
+            if (wideNesBuffer == null || wideNesBuffer.Length != w * h * 4) wideNesBuffer = new byte[w * h * 4];
+            var dst = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(wideNesBuffer.AsSpan());
+            for (int i = 0; i < w * h; i++) { uint c = src[i]; dst[i] = 0xFF000000u | ((c & 0xFFu) << 16) | (c & 0x0000FF00u) | ((c >> 16) & 0xFFu); }
+            return wideNesBuffer;
         }
 
         private async Task TriggerAchievementUnlockFlowAsync(string id, string title)
