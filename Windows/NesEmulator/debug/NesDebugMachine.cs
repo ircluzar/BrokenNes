@@ -56,6 +56,8 @@ public sealed class NesDebugMachine : DebugMachine, INesInstructionHook, IBusDeb
     void IBusDebugTap.OnRead(ushort address, byte value) => Debugger?.OnAccess(cpu, address, value, false, AccessSource.Cpu, -1);
     void IBusDebugTap.OnWrite(ushort address, byte value) => Debugger?.OnAccess(cpu, address, value, true, AccessSource.Cpu, -1);
 
+    void IBusDebugTap.OnDmcDmaHalt(ushort address) => Debugger?.OnDmcHalt(cpu, address);
+
     void IBusDebugTap.OnOamDma(byte page)
     {
         var d = Debugger;

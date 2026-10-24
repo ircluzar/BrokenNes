@@ -67,8 +67,10 @@ public sealed class GbDebugMachine : DebugMachine, IGbInstructionHook, IGbBusDeb
         }
         public void Write(ushort address, byte value)
         {
-            m.Debugger?.OnAccess(m.cpu, address, value, true, AccessSource.Cpu, -1);
+            var d = m.Debugger;
+            d?.OnAccess(m.cpu, address, value, true, AccessSource.Cpu, -1);
             Real.Write(address, value);
+            d?.OnWriteDone(m.cpu, address, value);
         }
         public void Idle() => Real.Idle();
         public byte PendingInterrupts => Real.PendingInterrupts;

@@ -117,10 +117,12 @@ public sealed class SnesDebugMachine : DebugMachine, ISnesInstructionHook, ISnes
         }
         public void Write(uint address, byte value)
         {
-            m.Debugger?.OnAccess(m.main, address & 0xFFFFFF, value, true, AccessSource.Cpu, -1);
+            var d = m.Debugger;
+            d?.OnAccess(m.main, address & 0xFFFFFF, value, true, AccessSource.Cpu, -1);
             m.board.Cpu.DebugRealBus.Write(address, value);
+            d?.OnWriteDone(m.main, address & 0xFFFFFF, value);
         }
-        public void Idle() => m.board.Cpu.DebugRealBus.Idle();
+        public void Idle() { m.Debugger?.OnIdleCycle(m.main); m.board.Cpu.DebugRealBus.Idle(); }
     }
 
     void ISnesBusDebugTap.OnRead(uint address, byte value, SnesBusSource source, int channel) =>

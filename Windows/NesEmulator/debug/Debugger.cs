@@ -269,6 +269,46 @@ public sealed class Debugger
     /// <summary>Records every instruction into the per-CPU ring (always on while anything else keeps the hooks armed).</summary>
     public bool TraceRing { get => traceRing; set { traceRing = value; Rearm(); } }
 
+    // ---------------------------------------------------------------- observers (the checks and the profiler, D4)
+
+    private DebugObserver[] observers = Array.Empty<DebugObserver>();
+
+    /// <summary>Adds a tool that sees every step and access the hooks see (<see cref="DebugObserver"/>); the hooks it wants are armed.</summary>
+    public void AddObserver(DebugObserver o)
+    {
+        lock (sync) { var a = observers; Array.Resize(ref a, a.Length + 1); a[^1] = o; observers = a; }
+        Rearm();
+    }
+
+    public void RemoveObserver(DebugObserver o)
+    {
+        lock (sync) observers = observers.Where(x => !ReferenceEquals(x, o)).ToArray();
+        Rearm();
+    }
+
+    public IReadOnlyList<DebugObserver> Observers => observers;
+
+    /// <summary>A CPU write after it landed (from the SNES / Game Boy watching buses).</summary>
+    internal void OnWriteDone(DebugCpu cpu, uint address, byte value)
+    {
+        var obs = observers;
+        for (int i = 0; i < obs.Length; i++) obs[i].OnWriteDone(cpu, address, value);
+    }
+
+    /// <summary>An internal cycle of the 65816 (from the SNES watching bus).</summary>
+    internal void OnIdleCycle(DebugCpu cpu)
+    {
+        var obs = observers;
+        for (int i = 0; i < obs.Length; i++) obs[i].OnIdleCycle(cpu);
+    }
+
+    /// <summary>A DMC fetch halted the NES CPU on a read (from the NES bus's precise-DMA model).</summary>
+    internal void OnDmcHalt(DebugCpu cpu, uint address)
+    {
+        var obs = observers;
+        for (int i = 0; i < obs.Length; i++) obs[i].OnDmcHalt(cpu, address);
+    }
+
     /// <summary>Rebuilds the matching tables and arms exactly the hooks something needs. While parked a hook that is no longer needed stays
     /// armed until the machine resumes (<paramref name="resuming"/>): the CPU has not moved, so its call stack is still right for a step.</summary>
     public void Rearm() => Rearm(resuming: false);
@@ -302,11 +342,14 @@ public sealed class Debugger
         var exec = new bool[cpus.Count];
         var mem = new bool[cpus.Count];
         bool global = pauseRequested || gstep != GlobalStep.None || runToFrame >= 0 || runToScanline >= 0;
+        var obs = observers;
         for (int i = 0; i < cpus.Count; i++)
         {
             var ca = na.Cpus[i];
-            mem[i] = ca.Read.Length + ca.Write.Length > 0;
-            exec[i] = mem[i] || ca.Exec.Length > 0 || cpus[i].State.Step != StepMode.None || trackCallStack || traceRing
+            bool obsSteps = false, obsMem = false;
+            foreach (var o in obs) { obsSteps |= o.WantsSteps(i); obsMem |= o.WantsAccesses(i); }
+            mem[i] = ca.Read.Length + ca.Write.Length > 0 || obsMem;
+            exec[i] = mem[i] || obsSteps || ca.Exec.Length > 0 || cpus[i].State.Step != StepMode.None || trackCallStack || traceRing
                       || (traceFile != null && traceFile.CpuIndex == i) || (i == 0 && global) || (keepParked && hooked[i]);
             if (exec[i] && !hooked[i]) ResetState(cpus[i]);   // the call stack is tracked from the moment the hook is armed
             hooked[i] = exec[i];
@@ -330,7 +373,7 @@ public sealed class Debugger
     /// <summary>Removes every breakpoint, step, trace and hook, and lets a parked emulation go: the machine runs as if no debugger existed.</summary>
     public void Detach()
     {
-        lock (sync) bps.Clear();
+        lock (sync) { bps.Clear(); observers = Array.Empty<DebugObserver>(); }
         pauseRequested = false; gstep = GlobalStep.None; runToFrame = -1; runToScanline = -1;
         trackCallStack = false; traceRing = false;
         StopTraceFile();
@@ -475,6 +518,9 @@ public sealed class Debugger
         var stack = st.Stack;
         while (stack.Count > 0 && cpu.StackAbove(sp, stack[^1].SpAfter)) PopFrame(cpu);
 
+        var obs = observers;
+        for (int i = 0; i < obs.Length; i++) obs[i].OnStep(cpu, cycle, exec, irq);
+
         if (!exec)
         {
             if (irq != null)
@@ -537,16 +583,25 @@ public sealed class Debugger
             int n = cpu.AccessKeys(target, false, keys);
             for (int i = 0; i < n; i++) if (keys[i].Equals(fk)) { f.TracedFunction = true; st.TracedFunctionFrames++; break; }
         }
-        if (st.Stack.Count > 512) st.Stack.RemoveAt(0);   // a runaway (a stack reset without returns): keep the newest
+        if (st.Stack.Count > 512) { var old = st.Stack[0]; st.Stack.RemoveAt(0); NotifyReturn(cpu, old); }   // a runaway (a stack reset without returns): keep the newest
         st.Stack.Add(f);
+        var obs = observers;
+        for (int i = 0; i < obs.Length; i++) obs[i].OnCall(cpu, f);
     }
 
-    private static void PopFrame(DebugCpu cpu)
+    private void PopFrame(DebugCpu cpu)
     {
         var st = cpu.State;
         var f = st.Stack[^1];
         st.Stack.RemoveAt(st.Stack.Count - 1);
         if (f.TracedFunction && st.TracedFunctionFrames > 0) st.TracedFunctionFrames--;
+        NotifyReturn(cpu, f);
+    }
+
+    private void NotifyReturn(DebugCpu cpu, CallFrame f)
+    {
+        var obs = observers;
+        for (int i = 0; i < obs.Length; i++) obs[i].OnReturn(cpu, f);
     }
 
     private BreakInfo? MatchExec(DebugCpu cpu, CpuDebugState st, CpuArmed ca, uint pc, BreakInfo? br)
@@ -578,6 +633,8 @@ public sealed class Debugger
     /// <summary>A memory access by a CPU or a DMA (the machine's tap).</summary>
     internal void OnAccess(DebugCpu cpu, uint address, byte value, bool write, AccessSource source, int channel)
     {
+        var obs = observers;
+        for (int i = 0; i < obs.Length; i++) obs[i].OnAccess(cpu, address, value, write, source, channel);
         var ca = armed.Cpus[cpu.Index];
         if ((write ? ca.Write : ca.Read).Length == 0) return;
         Span<SpaceKey> keys = stackalloc SpaceKey[4];

@@ -80,6 +80,8 @@ public sealed class GbCartridge
     public int DebugRomIndex(ushort a) => mapper.DebugRomIndex(a);
     /// <summary>For the debugger: the cartridge RAM index $A000-$BFFF reaches now, or -1 (RAM disabled, a clock register, or a mapper that does not say).</summary>
     public int DebugRamIndex(ushort a) => mapper.DebugRamIndex(a);
+    /// <summary>For the hardware checks (D4): the cartridge answers at $A000-$BFFF now (its RAM gate is open: RAM, or an RTC register).</summary>
+    public bool DebugRamGateOpen => mapper.DebugRamGateOpen;
     public void WriteRom(ushort a, byte v) => mapper.WriteRom(a, v);
     public byte ReadRam(ushort a) => mapper.ReadRam(a);
     public void WriteRam(ushort a, byte v) => mapper.WriteRam(a, v);
@@ -104,6 +106,7 @@ public sealed class GbCartridge
         // the debugger's mirror folding (never called while it is off)
         public virtual int DebugRomIndex(ushort a) => -1;
         public virtual int DebugRamIndex(ushort a) => -1;
+        public virtual bool DebugRamGateOpen => true;
         protected int RomIndex(int bank, ushort a) => ((bank & RomMask) << 14) | (a & 0x3FFF);
         protected int RamIndex(int bank, ushort a) { var ram = Cart.Ram; return ram.Length == 0 ? -1 : ((bank << 13) | (a & 0x1FFF)) % ram.Length; }
 
@@ -376,6 +379,7 @@ public sealed class GbCartridge
         private int RamBank => mode ? bank2 : 0;
         public override int DebugRomIndex(ushort a) => a < 0x4000 ? RomIndex(mode ? bank2 << Shift : 0, a) : RomIndex(bank2 << Shift | Low, a);
         public override int DebugRamIndex(ushort a) => ramg ? RamIndex(RamBank, a) : -1;
+        public override bool DebugRamGateOpen => ramg;
         public override byte ReadRam(ushort a) => ramg ? RamAt(RamBank, a) : (byte)0xFF;
         public override void WriteRam(ushort a, byte v) { if (ramg) RamSet(RamBank, a, v); }
         public override void SaveState(BinaryWriter w) { w.Write(ramg); w.Write(mode); w.Write(bank1); w.Write(bank2); }
@@ -389,6 +393,7 @@ public sealed class GbCartridge
         public override byte ReadRom(ushort a) => a < 0x4000 ? RomAt(0, a) : RomAt(bank, a);
         public override int DebugRomIndex(ushort a) => RomIndex(a < 0x4000 ? 0 : bank, a);
         public override int DebugRamIndex(ushort a) => ramg ? a & 0x1FF : -1;
+        public override bool DebugRamGateOpen => ramg;
         public override void WriteRom(ushort a, byte v)
         {
             if (a >= 0x4000) return;
@@ -410,6 +415,7 @@ public sealed class GbCartridge
         public override byte ReadRom(ushort a) => a < 0x4000 ? RomAt(0, a) : RomAt(romBank, a);
         public override int DebugRomIndex(ushort a) => RomIndex(a < 0x4000 ? 0 : romBank, a);
         public override int DebugRamIndex(ushort a) => ramg && sel <= 3 ? RamIndex(sel, a) : -1;
+        public override bool DebugRamGateOpen => ramg;
         public override void WriteRom(ushort a, byte v)
         {
             switch (a >> 13)
@@ -446,6 +452,7 @@ public sealed class GbCartridge
         public override byte ReadRom(ushort a) => a < 0x4000 ? RomAt(0, a) : RomAt(romBank, a);
         public override int DebugRomIndex(ushort a) => RomIndex(a < 0x4000 ? 0 : romBank, a);
         public override int DebugRamIndex(ushort a) => ramg ? RamIndex(ramBank, a) : -1;
+        public override bool DebugRamGateOpen => ramg;
         public override void WriteRom(ushort a, byte v)
         {
             if (a < 0x2000) ramg = v == 0x0A;

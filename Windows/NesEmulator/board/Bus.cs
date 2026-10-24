@@ -16,6 +16,9 @@ public interface IBusDebugTap
 	void OnWrite(ushort address, byte value);
 	/// <summary>An OAM DMA from CPU page <paramref name="page"/> was just copied (256 bytes read by the DMA, written to OAM).</summary>
 	void OnOamDma(byte page);
+	/// <summary>A DMC sample fetch halted the CPU on its read of <paramref name="address"/> (the precise-DMA model; the hardware checks of D4
+	/// count the controller and $2007 reads a DMC DMA actually lands on). Called before the read itself.</summary>
+	void OnDmcDmaHalt(ushort address);
 }
 
 /// <summary>The debugger's per-instruction hook on the NES (<see cref="NES.DebugHook"/>; null = no debugger, one null test per instruction).</summary>
@@ -282,6 +285,7 @@ public class Bus : IBus
 			if (!isWrite && dmcDmaPending)
 			{
 				dmcDmaPending = false;
+				DebugTap?.OnDmcDmaHalt(preciseReadAddress);   // the debugger's checks (null when none is armed; this branch is the rare DMC halt)
 				int dma = DmcDmaLength(instructionStartCycle + preciseAccessCycles + preciseStallCycles);
 				int dots = dma * 3 + preciseCarryDots; preciseCarryDots = 0;
 				if (dots > 0) ppu!.Step(dots);
