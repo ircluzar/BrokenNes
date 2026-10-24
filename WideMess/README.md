@@ -310,10 +310,10 @@ centre compared line by line.
 - E7 speed: widescreen + no flicker runs at 357-461 (SMW), 399-422 (F-Zero) and 466-553 (Super Mario Kart) frames a second in Workshop
   over the runs (a shared CPU), the picture alone 425-829; drawing allocates nothing.
 
-**Results** (on the branch with milestone 3 merged):
-- **`--wms-test` 252 of 252** with every milestone's checks, the nine SNES games of the identity check (frame- and sound-identical on both
-  consoles, and drawn wide with the centre identical) and milestone 6's E checks on the eleven games.
-- **219 of 219 on the reference paths** (`--reference-paths`, the E checks on Super Mario World, F-Zero and Contra III).
+**Results** (on the branch with milestones 3 and 5 merged, main `f1b8c9d`):
+- **`--wms-test` 269 of 269** with every milestone's checks, the nine SNES games of the identity check (frame- and sound-identical on both
+  consoles, and drawn wide with the centre identical) and milestone 6's E checks on the eleven games (252 of 252 before milestone 5's merge).
+- **236 of 236 on the reference paths** (`--reference-paths`, the E checks on Super Mario World, F-Zero and Contra III).
 - **The SNES path is unchanged:**
   - the ALttP speed-pass golden is IDENTICAL, on the fast and the reference paths;
   - an interleaved A/B against `f14f0c6` (ALttP, 2,400 frames, 4 pairs) gives 1.036, or 0.999 without the cold first pair: noise.
