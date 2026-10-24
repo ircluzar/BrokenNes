@@ -13,14 +13,10 @@
 ; the pages of each test (gen_testcart.py's page numbers)
 TestPages:
   .DW T2Pages, T3Pages, T4Pages
-T2Pages: .DB 1, PG_REF_SPRITES
-T3Pages: .DB 1, PG_REF_WINDOWS
-T4Pages: .DB 1, PG_REF_WIDESNES
-; each page's animation (VbNone: none) and what its frame does besides the keys (Nothing: nothing)
-PageHooks:
-  .DW VbNone, VbNone, VbNone
-PageFrames:
-  .DW Nothing, Nothing, Nothing
+T2Pages: .DB 2, PG_SWARM, PG_REF_SPRITES
+T3Pages: .DB 2, PG_SPOT, PG_REF_WINDOWS
+T4Pages: .DB 6, PG_MODE1, PG_MODE0, PG_MODE5, PG_MODE2, PG_MODE7, PG_REF_WIDESNES
+; (each page's vblank work, frame work and set-up after its script are PageHooks, PageFrames and PageInits in tc_tables.inc)
 
 ZeroByte: .DB 0
 
@@ -31,9 +27,12 @@ T2Enter:
 .INDEX 16
   lda #2
   jsr TestGate
-  lda #'V'
-  sta RES_STATUS+1
-  bra PageTestEnter
+  stz pgidx
+  stz pgvariant
+  stz pgstill
+  jsr ShowPage
+  jsr T2Checks
+  bra PageTestShown
 T3Enter:
   lda #3
   jsr TestGate
@@ -51,6 +50,7 @@ PageTestEnter:
   stz pgvariant
   stz pgstill
   jsr ShowPage
+PageTestShown:
   lda runall
   bne +
   rts
@@ -109,8 +109,12 @@ T4Frame:
   jsr PageSelect
   jmp ShowPage
 +
+  lda pgstill
+  bne +
   ldx pgcur
   jmp (PageFrames,x)
++
+  rts
 
 ; PagesOfTest: ptr2 = the test's page list, pgcount its length (keeps A).
 PagesOfTest:
@@ -211,6 +215,13 @@ ShowPage:
   lda.l PageScripts+2,x
   sta scrptr+2
   jsr PlayScript
+  ; the page's own set-up (in forced blank: it reads back what the script wrote, keeps the screen as the script left it)
+  lda #$80
+  sta INIDISP
+  ldx pgcur
+  jsr (PageInits,x)
+  lda #$0F
+  sta INIDISP
   ; its variant: the (register, value) writes after the script
   lda pgvariant
   beq @variantdone

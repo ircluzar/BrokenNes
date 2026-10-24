@@ -204,6 +204,7 @@
   vbready     db                ; 1: the main program is waiting for the NMI's vblank work
   textdirty   db
   paneldirty  db
+  textrow     db                ; a row + 1: that row of the text buffer alone to video RAM at the next vblank
   screen      db
   screen2     dw                ; screen x 2
   runall      db                ; 1: running every self-check unattended
@@ -267,6 +268,14 @@
   pgvariant   dw
   pgstill     dw
   scrptr      dsb 4             ; the script being played
+  anim        dw                ; a live page's frame count
+  objstat     dw                ; WMOBJSTAT as the last vblank read it
+  spotnext    dw                ; test 3: the HDMA table the main program filled, for the next vblank to give HDMA
+  spotready   dw
+  barx        dw
+  bardir      dw
+  plx_        dw                ; the planet's two phases
+  ply_        dw
   t1dirty     db                ; test 1: the legend changed
   nocount     db                ; 1: Judge judges again (a live test's later rounds) without counting; a failure fails the test
   saved       dw
@@ -313,4 +322,5 @@
 .DEFINE DMASINK  $7E8000        ; the speed test's DMA lands here (16 KB)
 .DEFINE OAMBUF   $7EC000        ; a WideMess sprite table (2 KB)
 .DEFINE HDMABUF  $7EC800        ; HDMA tables
-.DEFINE SNESBUF  $7ED000        ; a SNES BG map made from the text buffer (32 x 28 entries)
+.DEFINE SNESBUF  $7EE000
+.DEFINE SWARMPH  $7EF000        ; test 2: each swarm sprite's two phases        ; a SNES BG map made from the text buffer (32 x 28 entries)

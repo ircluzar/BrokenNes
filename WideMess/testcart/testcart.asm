@@ -316,7 +316,13 @@ NmiFull:
   lda textdirty
   beq +
   stz textdirty
+  stz textrow
   jsr DmaText
++
+  lda textrow
+  beq +
+  jsr DmaTextRow
+  stz textrow
 +
   lda paneldirty
   beq +
@@ -377,6 +383,43 @@ DmaText:
   lda #$7E
   sta A1B0
   ldx #28 * 128
+  stx DAS0
+  lda #$01
+  sta MDMAEN
+  rts
+
+; DmaTextRow: row textrow - 1 of the text buffer alone (128 bytes).
+DmaTextRow:
+  lda textrow
+  dec a
+  rep #$20
+.ACCU 16
+  and #$00FF
+  xba
+  lsr a                 ; row x 128
+  sta nmitmp
+  sep #$20
+.ACCU 8
+  lda nmitmp
+  sta WMVADDL
+  lda nmitmp+1
+  sta WMVADDM
+  lda #(VR_MAPS >> 16)
+  sta WMVADDH
+  stz DMAP0
+  lda #<WMVDATA
+  sta BBAD0
+  rep #$20
+.ACCU 16
+  lda nmitmp
+  clc
+  adc #(TEXTBUF & $FFFF)
+  sta A1T0
+  sep #$20
+.ACCU 8
+  lda #$7E
+  sta A1B0
+  ldx #128
   stx DAS0
   lda #$01
   sta MDMAEN
@@ -863,6 +906,8 @@ PanelRowTile:
 .INCLUDE "tc_speed.asm"
 .INCLUDE "tc_layers.asm"
 .INCLUDE "tc_picture.asm"
+.INCLUDE "tc_pages.asm"
+.INCLUDE "tc_modes.asm"
 .INCLUDE "tc_tables.inc"
 
 .ENDS

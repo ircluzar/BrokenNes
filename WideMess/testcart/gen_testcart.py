@@ -229,6 +229,7 @@ for k in range(16):
     UIPAL[768 + CELL + 16 + k] = rgb(*mix((3, 5, 10), (31, 8, 8), k / 15))    # red: failed
     UIPAL[768 + CELL + 32 + k] = rgb(*mix((3, 5, 10), (10, 22, 31), k / 15))  # blue: running, or the PCM voices
 pack.put(words(UIPAL), 'UIPAL')
+UIPAL_ROM = list(UIPAL)        # the colours as they are in ROM (pages that DMA from them give the model the same)
 
 # ------------------------------------------------------------------ tiles of the title and menu backgrounds (64 KB unit 2), and their maps
 
@@ -473,6 +474,431 @@ for name, _title, scene, m2variants in GP.SCENES:
     assert [v for v, _ in REF_VARIANTS[name]] == list(m2variants), f'milestone 2 changed the variants of {name}'
     page('ref-' + name, scene, REF_VARIANTS[name])
 
+# ---- what the showcase pages share
+def a24(where): return where[0] << 16 | where[1]
+FONT8_AT, UIPAL_AT, UITILES_AT = pack.put(bytes(font8)), pack.put(words(UIPAL_ROM)), pack.put(ui.blob())
+MAP_AT = {k: pack.put(m) for k, m in maps.items()}
+PAGE_TEXT = {}        # page -> the label of its text layer's map (the cartridge copies it into its text buffer to print live values over it)
+
+def text_map(lines):
+    """[(row, column, style, text)] -> BG1's 64 x 32 map in the cartridge's text encoding (tile = style x 128 + code, the priority bit)."""
+    m = [0] * (64 * 32)
+    for row, col, style, s in lines:
+        for i, ch in enumerate(s.upper()):
+            m[row * 64 + col + i] = (style * 128 + ord(ch)) | 0x1000
+    return words(m)
+
+def text_layer(rom, name, lines):
+    """BG1 as the cartridge's text layer: the font (unit 1), colour bank 3 (the styles), its map at $60000."""
+    rom.b(0x21C2, 0); rom.b(0x21C3, 0); rom.b(0x21C4, 1); rom.dma_rom(0x21C5, a24(FONT8_AT), font8)
+    rom.b(0x21C6, 0x00); rom.b(0x21C7, 0x03); rom.dma_rom(0x21C8, a24(UIPAL_AT) + 1536, words(UIPAL_ROM[768:]))
+    blob = text_map(lines)
+    label = 'TXT_' + name.upper().replace('-', '_')
+    pack.put(blob, label); PAGE_TEXT[name] = label
+    rom.vram_wm(0x60000, blob)
+    rom.b(0x21D0, 0xC0); rom.b(0x21D8, 0x1C)
+
+def backdrop(rom, layers):
+    """The title's layers (unit 2 tiles, banks 0-1 colours): layers is a list of (BG 0-7, map name, WMBGnCFG)."""
+    rom.b(0x21C2, 0); rom.b(0x21C3, 0); rom.b(0x21C4, 2); rom.dma_rom(0x21C5, a24(UITILES_AT), ui.blob())
+    rom.b(0x21C6, 0); rom.b(0x21C7, 0); rom.dma_rom(0x21C8, a24(UIPAL_AT), words(UIPAL_ROM[:512]))
+    for bg, name, cfg in layers:
+        a = 0x60000 + bg * 0x1000
+        rom.b(0x21C2, a & 0xFF); rom.b(0x21C3, (a >> 8) & 0xFF); rom.b(0x21C4, a >> 16); rom.dma_rom(0x21C5, a24(MAP_AT[name]), maps[name])
+        rom.b(0x21D0 + bg, 0xC0 + 2 * bg); rom.b(0x21D8 + bg, cfg)
+
+def hide_all_oam(rom):
+    rom.b(0x21A2, 0); rom.b(0x21A3, 0); rom.dma(0x21A4, GP.widemess_oam([]))
+    rom.b(0x2102, 0); rom.b(0x2103, 0); rom.dma(0x2104, GP.snes_oam([]))
+
+def wram_table(rom, addr, data):
+    """Bytes into work RAM through the WRAM port (an HDMA table the cartridge then rewrites each frame)."""
+    rom.b(0x2181, addr & 0xFF); rom.b(0x2182, (addr >> 8) & 0xFF); rom.b(0x2183, (addr >> 16) & 1)
+    rom.dma(0x2180, data)
+
+def sphere(size, shades=15, light=(-0.45, -0.5)):
+    """A shaded ball, size x size, colour 1 (dark) - shades (bright), 0 outside."""
+    px = [[0] * size for _ in range(size)]
+    r = size / 2 - 0.5
+    for y in range(size):
+        for x in range(size):
+            dx, dy = (x - r) / (r + 0.5), (y - r) / (r + 0.5)
+            d2 = dx * dx + dy * dy
+            if d2 > 1: continue
+            z = math.sqrt(1 - d2)
+            lum = max(0.0, (-light[0] * dx - light[1] * dy + 0.75 * z) / 1.25)
+            px[y][x] = 1 + min(shades - 1, int(lum ** 1.4 * shades))
+    return px
+
+def sheet_tiles(px, bpp):
+    """A sprite's pixels -> its 8 x 8 tiles in order (ty, tx)."""
+    h, w = len(px), len(px[0])
+    return [[tile_bytes([row[tx * 8:tx * 8 + 8] for row in px[ty * 8:ty * 8 + 8]], bpp) for tx in range(w // 8)] for ty in range(h // 8)]
+
+# ---- test 2's page: the swarm. 256 sprites at most: the line of 72 (table entries 0-71: the first 64 drawn), the planet, the swarm.
+SWARM_SX = [round(100 * math.sin(2 * math.pi * i / 256)) for i in range(256)]
+SWARM_SY = [round(60 * math.sin(2 * math.pi * i / 256)) for i in range(256)]
+BALL_PAL = 24                 # 4 bpp palettes 24-31: colours 384-511 (bank 1, above the title's)
+for k in range(8):
+    hue = [(31, 9, 9), (31, 20, 4), (28, 29, 6), (9, 29, 9), (6, 26, 31), (10, 12, 31), (24, 10, 31), (31, 12, 24)][k]
+    for s in range(15): UIPAL[384 + 16 * k + 1 + s] = rgb(*mix((2, 2, 5), hue, (s + 1) / 15)) if s < 12 else rgb(*mix(hue, (31, 31, 31), (s - 11) / 4))
+PLANET_BANK = 2               # 8 bpp: colours 512-767
+for i in range(1, 256):
+    t = i / 255
+    UIPAL[512 + i] = rgb(*mix((2, 4, 14), (8, 20, 31), t * 1.4)) if t < 0.7 else rgb(*mix((8, 20, 31), (31, 31, 26), (t - 0.7) / 0.3))
+def planet():
+    px = [[0] * 64 for _ in range(64)]
+    for y in range(64):
+        for x in range(64):
+            dx, dy = (x - 31.5) / 32, (y - 31.5) / 32
+            d2 = dx * dx + dy * dy
+            if d2 > 1: continue
+            z = math.sqrt(1 - d2)
+            band = 0.5 + 0.5 * math.sin(9 * dy + 2.2 * math.sin(4 * dx))        # stripes, as a gas giant
+            lum = max(0.0, (0.5 * -dx + 0.45 * -dy + 0.8 * z) / 1.2) * (0.55 + 0.45 * band)
+            px[y][x] = 1 + min(254, int(lum * 255))
+    return px
+sheet = bytearray(16384)      # 4 bpp tiles 0-255 (32 bytes each) in the first 8 KB; 8 bpp tiles from 128 (64 bytes each) in the second
+def put4(tile, tiles):
+    for ty, row in enumerate(tiles):
+        for tx, t in enumerate(row): sheet[(tile + ty * 16 + tx) * 32:(tile + ty * 16 + tx) * 32 + 32] = t
+def put8(tile, tiles):
+    for ty, row in enumerate(tiles):
+        for tx, t in enumerate(row): sheet[(tile + ty * 16 + tx) * 64:(tile + ty * 16 + tx) * 64 + 64] = t
+put4(0, sheet_tiles(sphere(8), 4)); put4(2, sheet_tiles(sphere(16), 4)); put4(4, sheet_tiles(sphere(32), 4))
+put8(128, sheet_tiles(planet(), 8))
+SIZE_ATTR = {8: (0, 0), 16: (2, 1), 32: (4, 2), 64: (128, 3)}      # tile, size code
+swarm = []                    # (entry, size, palette, cx, cy, px, py, sx, sy)
+srnd = random.Random(256)
+for k in range(8): swarm.append((32, BALL_PAL + k % 8, 110 + srnd.randrange(180), 96 + srnd.randrange(16), srnd.randrange(256), srnd.randrange(256), 1, 1))
+for k in range(32): swarm.append((16, BALL_PAL + k % 8, 110 + srnd.randrange(180), 92 + srnd.randrange(24), srnd.randrange(256), srnd.randrange(256), 1 + k % 2, 1 + (k // 2) % 2))
+for k in range(80): swarm.append((8, BALL_PAL + k % 8, 104 + srnd.randrange(192), 90 + srnd.randrange(28), srnd.randrange(256), srnd.randrange(256), 1 + k % 3, 1 + k % 2))
+LINE_Y, LINE_N = 194, 72
+def swarm_oam(t=0):
+    s = []
+    for k in range(LINE_N): s.append(GP.oam_entry(24 + 5 * k, LINE_Y, 0, BALL_PAL + (k // 8) % 8, 8, 8, 3))
+    s.append(GP.oam_entry(300 + (SWARM_SX[(64 + t) & 255] >> 2), 70 + (SWARM_SY[(t * 2) & 255] >> 2), 128, PLANET_BANK * 16, 64, 64, 2, bpp8=True))
+    for size, pal, cx, cy, px_, py_, sx, sy in swarm:
+        tile, _ = SIZE_ATTR[size]
+        x = cx + SWARM_SX[(px_ + t * sx) & 255] - size // 2
+        y = cy + SWARM_SY[(py_ + t * sy) & 255] - size // 2
+        s.append(GP.oam_entry(x, y, tile, pal, size, size, 3))
+    return s
+define('SWARM_FIRST', LINE_N + 1); define('SWARM_COUNT', len(swarm)); define('BALL_PAL', BALL_PAL)
+tables.append('SwarmSX: .DW ' + ', '.join(str(v & 0xFFFF) for v in SWARM_SX))
+tables.append('SwarmSY: .DW ' + ', '.join(str(v & 0xFFFF) for v in SWARM_SY))
+# each swarm sprite: cx (16 bits), cy - size / 2 + 0 (16 bits, as cx), px, py, sx, sy, size / 2
+tables.append('SwarmData:')
+for size, pal, cx, cy, px_, py_, sx, sy in swarm:
+    tables.append(f'  .DW {cx - size // 2}, {cy - size // 2}\n  .DB {px_}, {py_}, {sx}, {sy}')
+
+def page_swarm(rom):
+    rom.unlock()
+    backdrop(rom, [(4, 'mfar', 0x24), (5, 'near', 0x20), (6, 'far', 0x20), (7, 'sky', 0x20)])
+    rom.b(0x21C6, 0x80); rom.b(0x21C7, 1); rom.dma(0x21C8, words(UIPAL[384:768]))      # the balls' and the planet's colours
+    text_layer(rom, 'swarm', [
+        (1, 2, 4, '2  SPRITES: THE 256-SPRITE TABLE'), (1, 41, 1, 'B: MENU'),
+        (3, 2, 1, '8 X 8 TO 64 X 64, 4 OR 8 BITS A PIXEL, 400 WIDE'),
+        (26, 2, 1, 'A LINE OF 72: THE FIRST 64 ARE DRAWN ' + chr(4)),
+        (27, 2, 1, chr(5) + chr(4) + ' PAGE   SELECT: STILL (THE REFERENCE)')])
+    rom.vram_wm(0x30000, bytes(sheet))
+    rom.b(0x21A2, 0); rom.b(0x21A3, 0); rom.dma(0x21A4, GP.widemess_oam(swarm_oam(0)))
+    rom.b(0x2102, 0); rom.b(0x2103, 0); rom.dma(0x2104, GP.snes_oam([]))
+    rom.b(0x21A1, 3); rom.b(0x21A0, 1)                      # WMOBJBASE 3 ($30000), the WideMess table
+    for p, slot in enumerate([16, 16, 1, 1]): rom.b(0x21A6 + p, slot)   # priority 3 behind the text only, 0 behind everything (not used)
+    rom.b(0x212C, 0x10)                                     # TM: sprites
+    rom.b(0x21C1, 0xF1)                                     # WMTM: the text, BG5-BG8
+    rom.b(0x21C0, 0x03)
+    rom.b(0x2100, 0x0F)
+page('swarm', page_swarm)
+
+# ---- test 3's page: a spotlight. Window 1 is a circle (HDMA on WMWH0 / WMWH1, a table in work RAM the cartridge moves every frame);
+# colour math subtracts a grey outside it (the colour window); window 2, a bar across the 400 columns, cuts the logo (BG3) with XOR.
+SPOT_R = 56
+SPOT_HW = [int(math.sqrt(max(0, SPOT_R * SPOT_R - (d + 0.5) ** 2))) for d in range(SPOT_R)]
+tables.append('SpotHalf: .DB ' + ', '.join(str(v) for v in SPOT_HW))
+define('SPOT_R', SPOT_R)
+SPOT_A, SPOT_B = 0x7EC800, 0x7ECE00      # the two tables (the cartridge draws the next frame's while HDMA reads this one)
+define('SPOT_TABLE_A', SPOT_A & 0xFFFF); define('SPOT_TABLE_B', SPOT_B & 0xFFFF)
+def spot_entries(cx, cy):
+    e = []
+    for y in range(224):
+        d = abs(y - cy) if y < cy else y - cy
+        if d < SPOT_R: l, r = cx - SPOT_HW[d], cx + SPOT_HW[d]
+        else: l, r = 1, 0                                   # left > right: no window on this line
+        l, r = max(0, l), min(399, r)
+        e.append((1, [l & 0xFF, l >> 8, r & 0xFF, r >> 8]))
+    return e
+SPOT_X, SPOT_Y = 200, 112
+tables.append('SpotPathX: .DW ' + ', '.join(str(200 + round(150 * math.sin(2 * math.pi * i / 256))) for i in range(256)))
+tables.append('SpotPathY: .DW ' + ', '.join(str(112 + round(60 * math.sin(2 * math.pi * 2 * i / 256 + 0.0))) for i in range(256)))
+define('SPOT_BAR_W', 24)
+def page_spot(rom):
+    rom.unlock()
+    backdrop(rom, [(2, 'logo', 0x24), (3, 'mnear', 0x24), (4, 'mfar', 0x24), (5, 'near', 0x20), (6, 'far', 0x20), (7, 'sky', 0x20)])
+    text_layer(rom, 'spot', [
+        (1, 2, 4, '3  WINDOWS AND COLOUR MATH AT 400'), (1, 41, 1, 'B: MENU'),
+        (23, 2, 0, 'WINDOW 1: A CIRCLE, ITS EDGES BY HDMA'), (24, 2, 0, 'COLOUR MATH: A GREY SUBTRACTED OUTSIDE IT'),
+        (25, 2, 0, 'WINDOW 2: A BAR, 9-BIT POSITIONS 0-399'), (26, 2, 0, 'THE LOGO (BG3): WINDOW 1 XOR WINDOW 2'),
+        (27, 2, 1, chr(5) + chr(4) + ' PAGE   SELECT: STILL (THE REFERENCE)')])
+    hide_all_oam(rom)
+    table = bytearray()
+    entries = spot_entries(SPOT_X, SPOT_Y)
+    for rows, data in entries: table.append(rows); table += bytes(data)
+    table.append(0)
+    wram_table(rom, SPOT_A, table)
+    rom.cpu(0x4310, 3); rom.cpu(0x4311, 0xB0); rom.cpu(0x4312, SPOT_A & 0xFF); rom.cpu(0x4313, (SPOT_A >> 8) & 0xFF); rom.cpu(0x4314, 0x7E)
+    rom.m.hdma.append((0xB0, 3, entries))
+    rom.b(0x21B4, 0x01)                                     # WMWCTL: 9-bit positions
+    rom.b2(0x21B2, 188); rom.b2(0x21B3, 188 + 23)            # window 2: the bar
+    rom.b(0x21B9, 0x0A)                                     # WMW34SEL: BG3 window 1 and window 2 on
+    rom.b(0x21BC, 3 << 4)                                   # WMWLOG14: BG3 XNOR (masked where both or neither: the logo shows in the circle, the bar flips it)
+    rom.b(0x21B6, 0x04)                                     # WMTMW: BG3 masked on the main screen
+    rom.b(0x2125, 0x20)                                     # WOBJSEL: the colour window is window 1
+    rom.b(0x2130, 0x20)                                     # CGWSEL: colour math only outside the colour window, the fixed colour
+    rom.b(0x2131, 0xA0)                                     # CGADSUB: subtract, the backdrop too
+    rom.b(0x21BE, 0xFE)                                     # WMCMATH: BG2-BG8 (the text stays bright)
+    rom.b(0x2132, 0x20 | 13); rom.b(0x2132, 0x40 | 13); rom.b(0x2132, 0x80 | 12)
+    rom.b(0x21C1, 0xFD)                                     # WMTM: all but BG2
+    rom.b(0x21C0, 0x03)
+    rom.cpu(0x420C, 0x02)
+    rom.b(0x2100, 0x0F)
+page('spot', page_spot)
+
+# ---- test 4's pages: the SNES modes drawn 400 wide (spec 3.2). Lines 0-15 are the WideMess mode (WMCTRL = 3 by HDMA channel 7) with the
+# page's caption on BG1; from line 16 the page's SNES mode, 400 wide (WMCTRL = 1). The SNES picture is columns 72-327.
+class SnesPool:
+    """SNES tiles (2 / 4 / 8 bits a pixel, planar), exact duplicates stored once; pair=True stores 16-pixel cells as two tiles (modes 5, 6)."""
+    def __init__(self, bpp, pair=False):
+        self.bpp, self.pair = bpp, pair
+        self.tiles, self.index = [], {}
+        self.add([[0] * (16 if pair else 8) for _ in range(8)])
+    def add(self, px):
+        if self.pair:
+            key = tile_bytes([r[:8] for r in px], self.bpp) + tile_bytes([r[8:] for r in px], self.bpp)
+        else:
+            key = tile_bytes(px, self.bpp)
+        if key not in self.index:
+            self.index[key] = len(self.tiles)
+            if self.pair: self.tiles += [key[:8 * self.bpp], key[8 * self.bpp:]]
+            else: self.tiles.append(key)
+        return self.index[key]
+    def blob(self): return b''.join(self.tiles)
+
+def snes_map(img, pool, pal_of, w_tiles, h_tiles=32, prio_of=None):
+    """img[y][x] colour indices -> a SNES BG map (32 x 32 screens: column 32-63 in the second screen), words."""
+    cw = 16 if pool.pair else 8
+    m = [0] * (w_tiles * h_tiles)
+    for ty in range(h_tiles):
+        for tx in range(w_tiles):
+            px = [[img[(ty * 8 + y) % len(img)][(tx * cw + x) % len(img[0])] for x in range(cw)] for y in range(8)]
+            t = pool.add(px)
+            e = t | pal_of(tx, ty) << 10 | (0x2000 if prio_of and prio_of(tx, ty) else 0)
+            m[(tx // 32) * 1024 + ty * 32 + tx % 32] = e
+    return words(m)
+
+def band(rom, name, line1, line2):
+    text_layer(rom, name, [(0, 1, 4, line1), (1, 1, 1, line2)])
+    rom.b(0x21C1, 0x01)                                     # WMTM: the caption (BG1) in the WideMess-mode lines
+    rom.hdma(7, 0x21C0, 0, [(16, [0x03]), (104, [0x01]), (104, [0x01])])
+
+def snes_palette(rom, cols):
+    rom.b(0x2121, 0); rom.dma(0x2122, words(cols))
+
+def grad(c0, c1, n): return [rgb(*mix(c0, c1, k / max(1, n - 1))) for k in range(n)]
+HELP4 = chr(5) + chr(4) + ' PAGE  SELECT: STILL  B: MENU'
+
+def page_mode1(rom):
+    rom.unlock()
+    pal = [0] * 256
+    pal[0] = rgb(9, 17, 29)                                 # the sky
+    pal[1:16] = grad((6, 22, 6), (2, 7, 3), 15)             # palette 0: green hills (the map's left half)
+    pal[17:32] = grad((30, 18, 4), (10, 4, 1), 15)          # palette 1: autumn hills (its right half)
+    pal[33:48] = grad((31, 31, 31), (20, 23, 28), 15)       # palette 2: clouds
+    for k in range(8): pal[128 + 16 * k + 1:128 + 16 * k + 16] = UIPAL[384 + 16 * k + 1:384 + 16 * k + 16]   # the sprites: the balls
+    snes_palette(rom, pal)
+    hills = [[0] * 512 for _ in range(256)]
+    for x in range(512):
+        top = int(ridge(x, 150, [(22, 2, 0.4), (10, 5, 2.1), (4, 13, 1.0)]))
+        for y in range(max(0, top), 256): hills[y][x] = 1 + min(14, max(0, y - top) * 14 // 70)
+    clouds = [[0] * 256 for _ in range(256)]
+    crnd = random.Random(7)
+    for _ in range(9):
+        cx, cy, w = crnd.randrange(256), 30 + crnd.randrange(70), 20 + crnd.randrange(26)
+        for y in range(256):
+            for x in range(256):
+                dx = min(abs(x - cx), 256 - abs(x - cx))
+                d = (dx / w) ** 2 + ((y - cy) / (w * 0.45)) ** 2
+                if d < 1: clouds[y][x] = max(clouds[y][x], 1 + int((1 - d) * 14) if y < cy + 4 else 1 + int((1 - d) * 8))
+    p1, p2 = SnesPool(4), SnesPool(4)
+    m1 = snes_map(hills, p1, lambda tx, ty: 0 if tx < 32 else 1, 64)
+    m2 = snes_map(clouds, p2, lambda tx, ty: 2, 32)
+    assert len(p1.tiles) <= 768 and len(p2.tiles) <= 256, (len(p1.tiles), len(p2.tiles))
+    rom.vram_snes(0x0000, p1.blob()); rom.vram_snes(0x3000, p2.blob())
+    rom.vram_snes(0x4000, bytes(sheet[:8192]))              # the sprites' tiles: the swarm's 4 bpp sheet
+    rom.vram_snes(0x6000, m1); rom.vram_snes(0x6800, m2)
+    rom.b(0x2107, 0x61); rom.b(0x2108, 0x68); rom.b(0x210B, 0x30)
+    rom.b2(0x210D, 0); rom.b2(0x210E, 0); rom.b2(0x210F, 0); rom.b2(0x2110, 0)
+    # the SNES table across 400: X = -72 (column 0), -40, 0 (72), 100, 200, 255 (327, its right half past the SNES edge), 290, 320 (392)
+    rom.b(0x2101, 0x02)                                     # OBSEL: 8 x 8 / 16 x 16, names at word $4000
+    xs = [-72, -40, 0, 100, 200, 255, 290, 320]
+    rom.b(0x2102, 0); rom.b(0x2103, 0)
+    rom.dma(0x2104, GP.snes_oam([(x & 511, 60 + 12 * (k % 3), 2, k % 8, 3, True, 0) for k, x in enumerate(xs)]))
+    rom.b(0x21A2, 0); rom.b(0x21A3, 0); rom.dma(0x21A4, GP.widemess_oam([]))
+    band(rom, 'mode1', '4  MODE 1, 400 WIDE: A 64-TILE MAP, BOTH HALVES', 'SNES SPRITES AT X -72 TO 320  ' + chr(4) + ' 1/6  SEL: STILL')
+    rom.b(0x212C, 0x13)                                     # TM: BG1, BG2, sprites
+    rom.b(0x2105, 0x01)
+    rom.b(0x21C0, 0x01)
+    rom.cpu(0x420C, 0x80)
+    rom.b(0x2100, 0x0F)
+page('mode1', page_mode1)
+
+def page_mode0(rom):
+    rom.unlock()
+    pal = [0] * 256
+    pal[0] = rgb(2, 2, 6)
+    layer_cols = [[(31, 26, 8), (26, 14, 2), (8, 4, 1)], [(10, 30, 31), (4, 16, 26), (1, 5, 12)],
+                  [(30, 10, 28), (20, 4, 18), (8, 1, 8)], [(12, 26, 10), (6, 16, 6), (2, 6, 3)]]
+    for b in range(4):
+        for p in range(8):
+            for c in range(3):
+                pal[32 * b + 4 * p + 1 + c] = rgb(*mix(layer_cols[b][c], (31, 31, 31), p / 14))
+    snes_palette(rom, pal)
+    pool = SnesPool(2)
+    def img(f): return [[f(x, y) for x in range(256)] for y in range(256)]
+    imgs = [img(lambda x, y: (1 if (y % 32) < 3 else 2 if (y % 32) < 14 else 0) if ((x + (y // 16) * 16) % 64) < 56 else 0),  # BG1 bricks
+            img(lambda x, y: (1 + ((x + y) // 6) % 3) if ((x + y) % 24) < 10 else 0),                                      # BG2 stripes
+            img(lambda x, y: (1 + (x // 32 + y // 32) % 3) if ((x % 32 - 16) ** 2 + (y % 32 - 16) ** 2) < 90 else 0),     # BG3 dots
+            img(lambda x, y: 1 + (y // 28) % 3)]                                                                              # BG4 bands
+    maps_ = [snes_map(im, pool, (lambda b: lambda tx, ty: (ty // 4) % 8 if b == 3 else (tx // 8) % 8)(b), 32) for b, im in enumerate(imgs)]
+    assert len(pool.tiles) <= 1024
+    rom.vram_snes(0x0000, pool.blob())
+    for b in range(4): rom.vram_snes(0x6000 + 0x400 * b, maps_[b])
+    rom.b(0x2107, 0x60); rom.b(0x2108, 0x64); rom.b(0x2109, 0x68); rom.b(0x210A, 0x6C); rom.b(0x210B, 0x00); rom.b(0x210C, 0x00)
+    for r in range(0x210D, 0x2115): rom.b2(r, 0)
+    hide_all_oam(rom)
+    band(rom, 'mode0', '4  MODE 0, 400 WIDE: FOUR LAYERS, 4 COLOURS', '32-TILE MAPS REPEAT  ' + chr(4) + ' 2/6  SEL: STILL')
+    rom.b(0x212C, 0x0F)
+    rom.b(0x2105, 0x00)
+    rom.b(0x21C0, 0x01)
+    rom.cpu(0x420C, 0x80)
+    rom.b(0x2100, 0x0F)
+page('mode0', page_mode0)
+
+def page_mode5(rom):
+    rom.unlock()
+    pal = [0] * 256
+    pal[0] = rgb(1, 1, 4)
+    pal[1], pal[2], pal[3], pal[4], pal[5] = rgb(31, 4, 4), rgb(4, 8, 31), rgb(31, 31, 31), rgb(4, 4, 10), rgb(31, 24, 4)
+    pal[33:36] = [rgb(6, 4, 14), rgb(10, 6, 20), rgb(14, 8, 26)]
+    snes_palette(rom, pal)
+    # BG1 (16 half-pixel tiles, 4 bits): rows of stripes 1 half-pixel wide (averaged: purple), 2 wide (red and blue at 400), a checker of
+    # 1 half-pixel (grey), and the word HI-RES in 1-half-pixel strokes
+    W = 512
+    bg1 = [[0] * W for _ in range(256)]
+    word = text_bitmap('HI-RES 512', 3)
+    for y in range(256):
+        for x in range(W):
+            band_ = (y // 40) % 4
+            if band_ == 0: v = 1 if x % 2 == 0 else 2
+            elif band_ == 1: v = 1 if (x // 2) % 2 == 0 else 2
+            elif band_ == 2: v = 3 if (x + y) % 2 == 0 else 4
+            else: v = 0
+            bg1[y][x] = v
+    for y in range(len(word)):
+        for x in range(len(word[0])):
+            if word[y][x]: bg1[130 + y][40 + x] = 5
+    bg2 = [[(1 + ((x // 8 + y // 8) % 3)) for x in range(512)] for y in range(256)]
+    p1, p2 = SnesPool(4, pair=True), SnesPool(2, pair=True)
+    m1 = snes_map(bg1, p1, lambda tx, ty: 0, 32)
+    m2 = snes_map(bg2, p2, lambda tx, ty: 0, 32)
+    assert len(p1.tiles) <= 1024 and len(p2.tiles) <= 1024
+    rom.vram_snes(0x0000, p1.blob()); rom.vram_snes(0x4000, p2.blob())
+    rom.vram_snes(0x6000, m1); rom.vram_snes(0x6400, m2)
+    rom.b(0x2107, 0x60); rom.b(0x2108, 0x64); rom.b(0x210B, 0x40)
+    for r in range(0x210D, 0x2111): rom.b2(r, 0)
+    hide_all_oam(rom)
+    band(rom, 'mode5', '4  MODE 5, HI-RES: 800 HALF-PIXELS TO 400', '1 HALF-PIXEL BLENDS, 2 SHOW  ' + chr(4) + ' 3/6  SEL: STILL')
+    rom.b(0x212C, 0x03)
+    rom.b(0x2105, 0x05)
+    rom.b(0x21C0, 0x01)
+    rom.cpu(0x420C, 0x80)
+    rom.b(0x2100, 0x0F)
+page('mode5', page_mode5)
+
+def page_mode2(rom):
+    rom.unlock()
+    pal = [0] * 256
+    pal[0] = rgb(2, 3, 8)
+    for k in range(15): pal[1 + k] = rgb(*mix((31, 8, 10), (8, 10, 31), k / 14))
+    for k in range(15): pal[17 + k] = rgb(*mix((6, 28, 12), (31, 30, 8), k / 14))
+    snes_palette(rom, pal)
+    # BG1: columns of colour (each tile column its own colour); BG2: a check, mosaic 4 x 4; BG3's map: the offset-per-tile table
+    bg1 = [[(1 + (x // 8) % 15) if (y % 64) < 48 and (x % 8) < 7 else 0 for x in range(256)] for y in range(256)]
+    bg2 = [[(1 + ((x // 16 + y // 16) % 2) * 7 + (y // 32) % 7) for x in range(256)] for y in range(256)]
+    p1, p2 = SnesPool(4), SnesPool(4)
+    m1 = snes_map(bg1, p1, lambda tx, ty: 0, 32)
+    m2 = snes_map(bg2, p2, lambda tx, ty: 1, 32)
+    rom.vram_snes(0x0000, p1.blob()); rom.vram_snes(0x2000, p2.blob())
+    rom.vram_snes(0x6000, m1); rom.vram_snes(0x6400, m2)
+    # BG3 row 0: horizontal offsets (none), row 1: vertical offsets for BG1 (bit 13): a wave of 16 columns
+    opt = [0] * (32 * 32)
+    for tx in range(32): opt[32 + tx] = 0x2000 | (16 + round(14 * math.sin(2 * math.pi * tx / 16))) & 0x3FF
+    rom.vram_snes(0x6800, words(opt))
+    rom.b(0x2107, 0x60); rom.b(0x2108, 0x64); rom.b(0x2109, 0x68); rom.b(0x210B, 0x20)
+    for r in range(0x210D, 0x2113): rom.b2(r, 0)
+    rom.b(0x2106, 0x32)                                     # MOSAIC: 4 x 4 on BG2
+    hide_all_oam(rom)
+    band(rom, 'mode2', '4  MODE 2: OFFSET-PER-TILE AND MOSAIC, 400 WIDE', 'COLUMNS PAST THE EDGE COUNT ON  ' + chr(4) + ' 4/6  SEL: STILL')
+    rom.b(0x212C, 0x03)
+    rom.b(0x2105, 0x02)
+    rom.b(0x21C0, 0x01)
+    rom.cpu(0x420C, 0x80)
+    rom.b(0x2100, 0x0F)
+page('mode2', page_mode2)
+
+M7_ANGLE0, M7_SCALE = 20, 0.8                              # the still picture's angle (of 256) and scale
+M7COS = [round(256 * math.cos(2 * math.pi * i / 256) / M7_SCALE) for i in range(256)]
+M7SIN = [round(256 * math.sin(2 * math.pi * i / 256) / M7_SCALE) for i in range(256)]
+tables.append('M7Cos: .DW ' + ', '.join(str(v & 0xFFFF) for v in M7COS))
+tables.append('M7Sin: .DW ' + ', '.join(str(v & 0xFFFF) for v in M7SIN))
+define('M7_ANGLE0', M7_ANGLE0)
+def page_mode7(rom):
+    rom.unlock()
+    pal = [0] * 256
+    pal[0] = rgb(1, 1, 4)
+    for t in range(1, 64):          # tile t: ring (t - 1) // 7 in its own hue, a lit and a dark edge
+        hue = (t * 37) % 360
+        h6 = hue / 60
+        c = [max(0, min(1, abs((h6 + o) % 6 - 3) - 1)) for o in (0, 4, 2)]
+        base = tuple(4 + 26 * v for v in c)
+        pal[4 * t] = rgb(*base); pal[4 * t + 1] = rgb(*mix(base, (31, 31, 31), 0.5)); pal[4 * t + 2] = rgb(*mix(base, (0, 0, 0), 0.55)); pal[4 * t + 3] = rgb(*mix(base, (0, 0, 0), 0.25))
+    snes_palette(rom, pal)
+    m7map = bytes(1 + (min(8, int(math.hypot(tx - 63.5, ty - 63.5) / 7.5)) * 7 + ((tx // 4 + ty // 4) % 7)) % 63 for ty in range(128) for tx in range(128))
+    rom.vram_snes(0, m7map, vmain=0x00, mode=0, reg=0x2118)
+    tiles = bytearray()
+    for t in range(64):
+        for y in range(8):
+            for x in range(8):
+                if t == 0: tiles.append(0)
+                elif x == 0 or y == 0: tiles.append(4 * t + 1)
+                elif x == 7 or y == 7: tiles.append(4 * t + 2)
+                else: tiles.append(4 * t + (3 if (x + y) % 6 == 0 else 0))
+    rom.vram_snes(0, bytes(tiles), vmain=0x80, mode=0, reg=0x2119)
+    rom.b(0x211A, 0x00)                                     # M7SEL: the plane repeats
+    c, s = M7COS[M7_ANGLE0], M7SIN[M7_ANGLE0]
+    rom.b2(0x211B, c & 0xFFFF); rom.b2(0x211C, s & 0xFFFF); rom.b2(0x211D, -s & 0xFFFF); rom.b2(0x211E, c & 0xFFFF)
+    rom.b2(0x211F, 512); rom.b2(0x2120, 512)
+    rom.b2(0x210D, 512 - 128); rom.b2(0x210E, 512 - 112)
+    hide_all_oam(rom)
+    band(rom, 'mode7', '4  MODE 7, 400 WIDE: SCREEN X -72 TO 327', 'THE PLANE TURNS TO BOTH EDGES  ' + chr(4) + ' 5/6  SEL: STILL')
+    rom.b(0x212C, 0x01)
+    rom.b(0x2105, 0x07)
+    rom.b(0x21C0, 0x01)
+    rom.cpu(0x420C, 0x80)
+    rom.b(0x2100, 0x0F)
+page('mode7', page_mode7)
+
 def page_scripts():
     """Each page's script into the ROM (after every blob its DMAs take), its picture and its variants' pictures into BIN."""
     out = []
@@ -513,6 +939,12 @@ for i, (name, label, variants) in enumerate(page_list):
         for r, val in writes: b += [r, val]
     tables.append(f'PageVar{i}: .DB ' + ', '.join(f'${x:02X}' for x in b))
 define('PAGE_COUNT', len(page_list))
+PAGE_CODE = {'swarm': ('SwarmVblank', 'SwarmFrame', 'SwarmInit'), 'spot': ('SpotVblank', 'SpotFrame', 'SpotInit'),
+             'mode1': ('Mode1Vblank', 'Nothing', 'AnimInit'), 'mode0': ('Mode0Vblank', 'Nothing', 'AnimInit'), 'mode5': ('Mode5Vblank', 'Nothing', 'AnimInit'),
+             'mode2': ('Mode2Vblank', 'Nothing', 'AnimInit'), 'mode7': ('Mode7Vblank', 'Nothing', 'AnimInit')}
+for col, n in (('PageHooks', 0), ('PageFrames', 1), ('PageInits', 2)):
+    tables.append(col + ': .DW ' + ', '.join(PAGE_CODE.get(name, ('VbNone', 'Nothing', 'Nothing'))[n] for name, _, _ in page_list))
+tables.append('PageTexts: .DL ' + ', '.join(PAGE_TEXT.get(name, '0') for name, _, _ in page_list))
 
 def write_png(path, rows): GP.write_png(path, rows)
 
