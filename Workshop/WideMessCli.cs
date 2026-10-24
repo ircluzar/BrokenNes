@@ -17,7 +17,7 @@ namespace BrokenNes.Workshop;
 /// and on the WideMess console. Exit 0 when every check passes, 1 when one fails, 2 on usage or a missing file.</item>
 /// </list>
 /// </summary>
-internal static class WideMessCli
+internal static partial class WideMessCli
 {
     private static string Opt(string[] args, string n, string d)
     {
@@ -181,6 +181,9 @@ internal static class WideMessCli
             Run(s, 30); uint[] b = Snapshot(s);
             Check(a.SequenceEqual(b) && s.FrameWidth == 400, "save at frame 100, run 30, load, run 30: the same 400-wide picture", $"{state.Length / 1024} KB");
         }
+
+        // milestone 3: the sound chip (WideMessCli.Sound.cs)
+        SoundTests(dir);
 
         string snes = Opt(args, "snes", "");
         int frames = int.Parse(Opt(args, "frames", "900"));
