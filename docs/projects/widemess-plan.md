@@ -2,6 +2,9 @@
 
 Plan of 2026-10-23, written after an interview with the user. Work starts the week of 2026-10-26. Nothing is built yet.
 
+Order (decided 2026-10-23): **WideMess milestone 1 first**, then the BrokenDev debugging toolkit
+(`docs/projects/brokendev-debugging-plan.md`), then the Game Boy game VRUN: Vaults of Obsolete Code (its own plan later).
+
 ## The vision (the user's words, condensed)
 
 WideMess is a **fantasy console implemented in BrokenNes**: a Super Nintendo with superior specs. It has a wider screen, a much
@@ -139,3 +142,5 @@ game unlocks the extensions (an unlock write plus an ID register a game reads). 
 5. How the SPC700 reaches 1 MB of sound RAM (banked windows or DMA), and the exact voice count.
 6. The wide-mode timing model (dot clock and H-blank length) and the DMA budget per frame at 400 wide.
 7. Which SNES-game enhancement comes first (widescreen is the most visible; no flicker the safest).
+8. Reserve the debug port registers and the hardware-check hooks in the spec, so the BrokenDev debugging toolkit (which follows
+   WideMess milestone 1) covers WideMess as soon as it boots.
