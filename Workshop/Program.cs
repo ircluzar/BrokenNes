@@ -86,6 +86,8 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--bridge-sweep-one", StringComparison.OrdinalIgnoreCase)) return Sega.BridgeSweepCli.RunOne(args);
         if (args.Length > 0 && args[0].Equals("--cpu-wall-test", StringComparison.OrdinalIgnoreCase)) return Sega.CpuWallTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--session-test", StringComparison.OrdinalIgnoreCase)) return Sega.SessionTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--debug-test", StringComparison.OrdinalIgnoreCase)) return Debug.DebugTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--debug", StringComparison.OrdinalIgnoreCase)) return Debug.DebugRunCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--wms-pack", StringComparison.OrdinalIgnoreCase)) return WideMessCli.Pack(args);
         if (args.Length > 0 && args[0].Equals("--wms-test", StringComparison.OrdinalIgnoreCase)) return WideMessCli.Test(args);
         if (args.Length > 0 && args[0].Equals("--wms-shot", StringComparison.OrdinalIgnoreCase)) return WideMessCli.Shot(args);
@@ -118,6 +120,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--console-run", StringComparison.OrdinalIgnoreCase)) return ConsoleRunCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--enhanced-shots", StringComparison.OrdinalIgnoreCase)) return EnhancedCores.EnhancedShotsCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--enhanced-test", StringComparison.OrdinalIgnoreCase)) return EnhancedCores.EnhancedCoresTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--wms-guest-sheet", StringComparison.OrdinalIgnoreCase)) return EnhancedCores.WideMessGuestSheet.Run(args);
         if (args.Length > 0 && args[0].Equals("--snesrun", StringComparison.OrdinalIgnoreCase))
         {
             return SnesRunCli.Run(args);

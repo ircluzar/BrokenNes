@@ -107,6 +107,8 @@ internal sealed class SmsToNes : IVariantLevels
     private readonly int[] nextTile = new int[2], fineXVotes = new int[8];
     private readonly List<(int layer, int cell, int variant, int item, Cell c)> variants = new();
     private readonly List<(Piece p, int item)> kept = new();
+    /// <summary>The Game Gear's pieces only a wide view's side columns show (<see cref="ExtPicture.ViewWidth"/>): after the guest's own, never counted against its limits.</summary>
+    private readonly List<(Piece p, int item)> sideKept = new();
     private readonly Cell?[,] cellGrid = new Cell?[30, 33];
     private readonly Dictionary<int, Cell> variantCell = new();
     private readonly int[,,] votes = new int[15, 17, 4];
@@ -264,6 +266,7 @@ internal sealed class SmsToNes : IVariantLevels
         var e = chip.Layers;
         e.BeginFrame(win.W, win.H);
         e.Guest = gg ? "Game Gear" : "Master System";
+        int side = e.SideColumns;      // a wide view (the WideMess widescreen chip): the Game Gear's VDP line around its LCD shows there
         var vram = vdp.Vram;
         int H = vdp.ActiveHeight; bool ext = H != 192;
         int dx = win.Dx, h = win.H;
@@ -342,6 +345,9 @@ internal sealed class SmsToNes : IVariantLevels
         int overflow = 0;
         e.LayerCount = vlockAny ? 2 : 1;
         for (int k = 0; k < e.LayerCount; k++) { var X = e.Layers[k]; X.Enabled = true; X.MapWidth = 32; X.MapHeight = 32; X.SnesLayer = 0; }
+        // the wide view: the background is the VDP's 256-pixel map (whole rows are filled above); the vertical-lock columns are laid out on the screen
+        L0.RealWidth = 256;
+        if (vlockAny) { L1.RealWidth = 256; L1.FixedToScreen = true; }
         foreach (var (layer, cellIx, variant, item, cell) in variants)
         {
             var X = e.Layers[layer];
@@ -364,13 +370,19 @@ internal sealed class SmsToNes : IVariantLevels
 
         // ---- sprites: the chip's own list, each piece a tile of its own palette group
         var objQ = layeredObjQ; objQ.BeginFrame();
-        pieceItem.Clear(); itemPiece.Clear(); kept.Clear();
+        pieceItem.Clear(); itemPiece.Clear(); kept.Clear(); sideKept.Clear();
         int wanted = 0;
         foreach (var p in pieces)
         {
             // pieces wholly outside the window or off the screen cost nothing
             int ey = p.Y - win.Y0, ex = p.X - dx;
-            if (ey + 8 <= 0 || ey >= h || ex + 8 <= 0 || ex >= W) continue;
+            if (ey + 8 <= 0 || ey >= h) continue;
+            if (ex + 8 <= 0 || ex >= W)
+            {
+                // the Game Gear's VDP draws its whole 256-pixel line: a piece around the LCD is a real place for a wide view's sides (after the guest's own)
+                if (side > 0 && gg && ex + 8 > -side && ex < W + side) sideKept.Add((p, -1));
+                continue;
+            }
             wanted++;
             long key = (long)p.Tile << 4 | (p.Zoom ? (long)(p.Quadrant + 1) : 0);
             if (!pieceItem.TryGetValue(key, out int item))
@@ -400,7 +412,40 @@ internal sealed class SmsToNes : IVariantLevels
                 e.SpriteTiles[item * 64 + y * 8 + x] = ci == 0 ? (byte)0 : objQ.Level(item, objPalette[ci]);
             }
         }
-        if (e.Sprites.Length < kept.Count) e.Sprites = new ExtPicture.Sprite[kept.Count];
+        // the side columns' pieces: their items after the guest's own, in the palettes it chose (Fit)
+        if (sideKept.Count > 0)
+        {
+            int firstNew = objQ.Count;
+            for (int k = 0; k < sideKept.Count; k++)
+            {
+                var p = sideKept[k].p;
+                long key = (long)p.Tile << 4 | (p.Zoom ? (long)(p.Quadrant + 1) : 0);
+                if (!pieceItem.TryGetValue(key, out int item))
+                {
+                    item = objQ.Add(key, out var hist);
+                    if (hist != null)
+                        for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
+                        {
+                            int ci = PiecePixel(vram, p, y, x);
+                            if (ci == 0) continue;
+                            int rgb = objPalette[ci]; hist[rgb] = hist.GetValueOrDefault(rgb) + 1;
+                        }
+                    pieceItem[key] = item; itemPiece.Add(p);
+                }
+                sideKept[k] = (p, item);
+            }
+            Counters.Add(MdToNes.SideColourLoss, objQ.Fit(firstNew));
+            for (int item = firstNew; item < itemPiece.Count && item < ExtPicture.MaxSpriteTiles; item++)
+            {
+                var pp = itemPiece[item];
+                for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
+                {
+                    int ci = PiecePixel(vram, pp, y, x);
+                    e.SpriteTiles[item * 64 + y * 8 + x] = ci == 0 ? (byte)0 : objQ.Level(item, objPalette[ci]);
+                }
+            }
+        }
+        if (e.Sprites.Length < kept.Count + sideKept.Count) e.Sprites = new ExtPicture.Sprite[kept.Count + sideKept.Count];
         int n = 0;
         foreach (var (p, item) in kept)
             e.Sprites[n++] = new ExtPicture.Sprite
@@ -408,7 +453,17 @@ internal sealed class SmsToNes : IVariantLevels
                 X = (short)(p.X - dx), Y = (short)(p.Y - win.Y0), FirstLine = 0, LastLine = (short)(h - 1),
                 Tile = (ushort)(item % ExtPicture.MaxSpriteTiles), Palette = (byte)objQ.Group[item], Priority = 1,
             };
+        foreach (var (p, item) in sideKept)
+        {
+            if (item >= ExtPicture.MaxSpriteTiles) continue;     // past the extension's sprite tiles: not drawn in the side
+            e.Sprites[n++] = new ExtPicture.Sprite
+            {
+                X = (short)(p.X - dx), Y = (short)(p.Y - win.Y0), FirstLine = 0, LastLine = (short)(h - 1),
+                Tile = (ushort)item, Palette = (byte)objQ.Group[item], Priority = 1,
+            };
+        }
         e.SpriteCount = n;
+        e.SpritesBeyondEdges = gg;      // the Game Gear's sprites around its LCD are real places; a Master System's never leave its 256 columns
         e.PaletteVersion++;
         // sprites the chip itself drops (more than 8 pieces on a line): counted from the list, not from the compositor (which runs twice a frame)
         var perLine = perLineLayered; Array.Clear(perLine); int excess = 0;
@@ -453,10 +508,12 @@ internal sealed class SmsToNes : IVariantLevels
         for (int el = 0; el < h; el++)
         {
             int r0 = cap.R0[win.Y0 + el], from = 192 + fsLine[el];
+            // the left-column mask (register 0 bit 5) is a blank left column of the picture (Layer.BlankLeft hides the same pixels), not a window: a wider view does not stretch it over a side
+            L.BlankLeft[el] = (byte)((r0 & 0x20) != 0 ? Math.Max(0, 8 - dx) : 0);
             for (int x = 0; x < width; x++)
             {
                 int sx = x + dx;
-                bool hd = HiddenCol(win, sx) || ((r0 & 0x20) != 0 && sx < 8) || (lockLayer ? sx < from : (r0 & 0x80) != 0 && sx >= from);
+                bool hd = HiddenCol(win, sx) || (lockLayer ? sx < from : (r0 & 0x80) != 0 && sx >= from);
                 if (hd) any = true;
                 L.Hidden[el * ExtPicture.Stride + x] = hd;
             }

@@ -1,7 +1,7 @@
 # BrokenDev debugging toolkit: a debugger, hardware checks and an MCP server
 
 Plan of 2026-10-23, written after an interview with the user. It starts **after WideMess milestone 1** (the week of 2026-10-26).
-Nothing is built yet.
+**Milestone D1 (the debugger engine) is built** (2026-10-24): see "D1 as built" after the milestones. The rest is not.
 
 ## Why
 
@@ -345,6 +345,32 @@ They follow WideMess milestone 1. Each one is merged, tested and pushed before t
 | **D8** | **Viewers** | The desktop windows (debugger, memory, tiles, maps, sprites, palettes, event view, sound monitor), then the BrokenDev web pages. |
 | **D9** | **Checkup, chaos, coverage** | `brokendev checkup` over every game, `brokendev chaos`, the coverage pages. |
 | next | **VRUN: Vaults of Obsolete Code** | Its own plan: `docs/projects/vrun-voc-plan.md`. |
+
+## D1 as built (2026-10-24)
+
+- **Engine:** `Windows/NesEmulator/debug` (compiled by the desktop app and Workshop; the plugin, Lite, Core and the benches compile only
+  the hooks). `Debugger` (breakpoints, watches, tracepoints, conditions, hit counts, stepping, call stack, trace ring, trace files,
+  symbols, variables by name), one `DebugMachine` per console (`NesDebugMachine`, `SnesDebugMachine` with the 65816 and the SPC700, also
+  the WideMess, `GbDebugMachine`), disassemblers for the 6502, 65816, SPC700 and SM83, `DebugRunner` (the headless driver D3 builds on).
+- **Mirrors** are canonical keys: every access is folded to the place it reaches (NES RAM mirrors, PRG ROM by offset; SNES work RAM
+  through every system bank and the `$2180` port, registers through every system bank, ROM / SRAM through every mirror, VRAM / CGRAM /
+  OAM through their ports; Game Boy echo RAM, ROM / RAM / VRAM / work RAM by bank). DMA, HDMA (and its table fetches), NES OAM DMA,
+  Game Boy OAM and VRAM DMA are accesses with their source.
+- **Breaking parks the emulation thread** at an instruction boundary (a watch breaks after the instruction that made the access); the
+  run loops are untouched, so a game runs frame-identically with the debugger attached and breaking (checked on every console and on
+  VRUN and Super VRUN).
+- **Zero cost when off:** the hooks are fields that stay null until something needs them (`NES.DebugHook`, `Bus.DebugTap` on the
+  NES bus's slow path, `BOARD_SFC.DebugHook` / `DebugTap` (DMA, HDMA), `BOARD_GB.DebugHook` / `DebugTap` (OAM / VRAM DMA)). The SNES
+  and Game Boy CPUs' own accesses are watched by a bus the debugger interposes in front of the CPU (`CPU_SFC.DebugInterpose`,
+  `CPU_GB.DebugInterpose`), so the boards' `Read` / `Write`, which the JIT inlines into the CPUs, are byte for byte as before. The SPC700
+  goes through the existing `APU_SFC.SmpHook`, its watches predicted from each instruction's operands, so the sound path is unchanged.
+- **Workshop:** `--debug-test` (the conformance suite: test ROMs per console assembled in `Workshop/Debug/DebugTestRoms.cs`, a negative
+  control per check, the real games when present), `--debug --rom <file> [--sym <file>] --do "break sub2; run; stack; trace 20"`.
+- **HTTP:** `/api/memory/*` answer for every console; `/api/debug/*` (reading always, control behind `enableDebuggerControl`), listed in
+  `Windows/webapi/README.md`; `UAT\entrypoints\debugger-desktop-smoke.ps1` drives them in the real app with a scratch config.
+- **Left for later milestones:** the MCP server on these routes and on `DebugRunner` (D3); step back (D5, from save states and
+  replay); the checks, profiler and coverage built on the same hooks (D4, D9); the windows (D8). Lite does not wire the debugger
+  (single-threaded WASM cannot park a thread: Lite's debugging comes through D3's web pages).
 
 ## Open questions (to settle at the start of the track)
 

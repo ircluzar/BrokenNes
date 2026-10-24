@@ -38,24 +38,27 @@ internal sealed class NesPicture
 /// </summary>
 internal sealed class BridgeFrame
 {
-    public readonly uint[] Argb = new uint[ExtPicture.MaxWidth * ExtPicture.MaxLines];
+    public readonly uint[] Argb = new uint[ExtPicture.MaxViewWidth * ExtPicture.MaxLines];
     public int Width = 256, Height = 240;
     /// <summary>True when an enhanced chip drew the guest's own picture size; false for a NES chip's 256 x 240.</summary>
     public bool GuestSize;
+    /// <summary>The columns a wide chip (the WideMess widescreen chip, <see cref="ExtPicture.ViewWidth"/>) showed on each side of the guest's own picture, which sits in the middle; 0 for every other picture.</summary>
+    public int Side;
 
     /// <summary>A NES chip's 256 x 240 RGBA picture.</summary>
     public BridgeFrame FromRgba(byte[] rgba)
     {
-        Width = 256; Height = 240; GuestSize = false;
+        Width = 256; Height = 240; GuestSize = false; Side = 0;
         int n = Math.Min(256 * 240, rgba.Length / 4);
         for (int i = 0; i < n; i++) { int o = i * 4; Argb[i] = 0xFF000000u | (uint)rgba[o] << 16 | (uint)rgba[o + 1] << 8 | rgba[o + 2]; }
         return this;
     }
 
-    /// <summary>What an enhanced chip just drew, at its size.</summary>
+    /// <summary>What an enhanced chip just drew, at its size (a wide chip's picture is the guest's with <see cref="Side"/> columns each side).</summary>
     public BridgeFrame From(IEnhancedPictureChip chip)
     {
         Width = chip.PictureWidth; Height = chip.PictureHeight; GuestSize = true;
+        Side = Width > chip.Layers.Width ? (Width - chip.Layers.Width) >> 1 : 0;
         Array.Copy(chip.Picture, Argb, Width * Height);
         return this;
     }

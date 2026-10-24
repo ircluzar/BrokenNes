@@ -190,6 +190,11 @@ public class CPU_FIX : ICPU {
 	private bool nmiDeferOne;
 	private int dispatchedCycles; // the running instruction's length once its accesses are done; 0 before
 
+	/// <summary>For the debugger: the next <see cref="ExecuteInstruction"/> takes an interrupt instead of running the instruction at PC (the same tests it makes, read only).</summary>
+	public bool DebugInterruptPending => (nmiRequested && !nmiDeferOne) || (!pollFlagI && irqRequested && !irqDeferOne);
+	/// <summary>For the debugger: "NMI" or "IRQ", the interrupt <see cref="DebugInterruptPending"/> means.</summary>
+	public string DebugPendingInterruptKind => nmiRequested && !nmiDeferOne ? "NMI" : "IRQ";
+
 	public int ExecuteInstruction() {
 		dispatchedCycles = 0;
 		bool nmiDeferred = nmiDeferOne; nmiDeferOne = false;

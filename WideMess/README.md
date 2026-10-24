@@ -48,6 +48,8 @@ BrokenNes.Workshop.exe --wms-enhance-sheet (--game KEY | --rom game.sfc [--input
 BrokenNes.Workshop.exe --wms-enhance-film  (--game KEY | --rom game.sfc [--input SCRIPT]) --out film.png [--every 300] [--frames 6000] [--fast-cpu]
 BrokenNes.Workshop.exe --wms-enhance-test  [--roms DIR] [--snes-dir DIR] [--enhance-games KEY;KEY] [--profiles DIR]
 BrokenNes.Workshop.exe --wms-fast-probe    --rom game.sfc [--frames 300] [--from 0] [--every 10]
+BrokenNes.Workshop.exe --enhanced-test --only wmsmenu,wms,wmsown,wmsgames
+BrokenNes.Workshop.exe --wms-guest-sheet --out dir [--only "name,name"] [--scale 2]
 ```
 
 - `--wms-test` runs the milestones' checks, each with a negative control (milestone 3's sound checks are its sections S1-S6). With `--snes`, it also runs each SNES game frame for frame on the SNES
@@ -69,6 +71,9 @@ BrokenNes.Workshop.exe --wms-fast-probe    --rom game.sfc [--frames 300] [--from
 - `--wms-enhance-test` runs milestone 6's checks alone; `--wms-test` runs them after the others. The proven games are read from `--snes-dir`
   (default `X:\EMULATION\Super Nintendo\Super Nintendo (U)`); a game not found there is skipped.
 - `--wms-fast-probe` switches the console's fast CPU on at a frame and prints the 65816's PC beside the SNES console's.
+- `--enhanced-test --only wmsmenu,wms,wmsown,wmsgames` (milestone 7b) checks the WideMess chips on the other consoles' menus (docs/projects/enhanced-cores.md section 6);
+  `wmsgames` needs the user's library (X:\EMULATION, the local Sega roster) and `wmsown` the test ROMs here (run it from the repository).
+- `--wms-guest-sheet` (milestone 7b) draws contact sheets of other consoles' games on the widescreen chip beside their own picture.
 - Workshop is a GUI-subsystem program. In PowerShell, run it with `Start-Process -Wait -NoNewWindow -RedirectStandardOutput`.
 
 The desktop app's own check is `UAT/entrypoints/widemess-desktop-smoke.ps1 -Exe <BrokenNes.Windows.exe>`. It uses a scratch settings folder.
@@ -329,3 +334,20 @@ centre compared line by line.
   shoot-'em-up (Gradius III, R-Type III) would exercise it more.
 - Games that stream their maps just past the SNES edge (Donkey Kong Country, Super Castlevania IV, Contra III) could look better with
   a direction-aware rule. Today's rules are static per scene.
+
+## Milestone 7b result (2026-10-24): the WideMess chips on the other consoles
+
+- **The widescreen chip** (`WmsWideChip`, `Windows/NesEmulator/mix/WideMessEnhanced.cs`) and **the WideMess sound chip** (`WmsVoiceChip`) are the **WideMess (enhanced)** entry of the picture and
+  sound menus of the SNES, Game Boy, Game Boy Color, Master System, Game Gear and Genesis (route `WMS:WMSS`) and of the NES (the NES board's `PPU_WMSS` / `APU_WMSS`, id `WMSS`), only where the
+  WideMess console is offered (the desktop app and Workshop; Lite and the FL plugin keep them hidden). The design: spec section 8, `docs/projects/enhanced-cores.md` section 6.
+- **400 wide, the guest's own picture in the middle** (exactly the SNES enhanced chip's picture of the same frame), **each layer extended, repeated or filled** by the width its translator reports
+  (the contract's new wide view): a NES game with vertical mirroring shows its neighbouring nametable beside the screen, a Game Boy or Game Gear game the rest of its 256-pixel map, a Genesis game
+  its 512-pixel planes, a SNES game its 64-tile maps and Mode 7; a Master System game and a NES game with horizontal mirroring repeat; windows and HUD columns fill. Sprites beyond the edges where
+  the guest's places there are real (SNES, Genesis, Game Gear, the NES's right edge). What each side showed is counted every frame (the status line, the HTTP API).
+- **The sound chip** puts every voice of the guest on a WideMess voice of its own (voices 8-31 in 16-bit PCM first, then the S-DSP's 0-7).
+- **The other way:** the WideMess console's menus offer the other consoles' chips as the SNES console's do; what they cannot carry of a WideMess game (its own picture, its voices 8-31) is counted.
+- **The NES console** shows a NES game 400 wide in the desktop app (and in `GET /api/console/framebuffer`); its own 256 x 240 frame is the middle.
+- **Proof** (the branch merged with main 76a903a): `--enhanced-test` 435 of 435, of which 106 new (`--only wmsmenu,wms,wmsown,wmsgames`: 19, 55, 5, 27: menus and their gating, a scene per guest with
+  the deliberate faults it catches, the sound chip, the WideMess console's foreign chips, 12 real games in lockstep with the SNES enhanced chip); `--picture-bridge-test` 255 of 255 (3 new: 0 bytes a
+  frame on WMS:WMSS); contact sheets of the 12 games in `docs/projects/widemess-images/m7/` (`Workshop --wms-guest-sheet`); the desktop smoke test 18 of 18 with its GUEST step. Nothing changed for the
+  rest: `--wms-test` 269 of 269 with the nine SNES games, 269 of 269 with `--reference-paths`; `--swap-matrix-test` 35/0, `--sega-bridge-test` 356/0, `--md-state-test` 168/0, `--corrupt-test` 275/0, `--debug-test` 101/0; `--snes-state-test` 143 pass, 4 fail, as on f1b8c9d (its field walker finds milestone 3's DSP fields and milestone 6's enhancement fields outside a SNES state; milestone 7b's session counters are excluded as not machine state); UAT `run-suite.ps1` 125 pass, 0 fail, 16 skip, 3 info; `core-roster-desktop.ps1` and `debugger-desktop-smoke.ps1` pass; Lite, the plugin's Core and the desktop app build.

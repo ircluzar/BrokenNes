@@ -77,6 +77,9 @@
     <type fullname="NesEmulator.APU_MDS" preserve="all" />
     <type fullname="NesEmulator.PPU_SMSS" preserve="all" />
     <type fullname="NesEmulator.APU_SMSS" preserve="all" />
+    <!-- WideMess milestone 7b: a NES game on the WideMess widescreen and sound chips (NES board WMSS). Offered only where Consoles.WideMessEnabled is on (CoreCatalog hides them otherwise). -->
+    <type fullname="NesEmulator.PPU_WMSS" preserve="all" />
+    <type fullname="NesEmulator.APU_WMSS" preserve="all" />
     <type fullname="NesEmulator.NES" preserve="fields" />
 
     <!-- Clocks are small and drive frame pacing; keep all of them. -->

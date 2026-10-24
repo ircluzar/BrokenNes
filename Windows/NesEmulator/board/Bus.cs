@@ -6,6 +6,25 @@ public interface IBus
 	void Write(ushort address, byte value);
 }
 
+/// <summary>The debugger's view of the NES CPU bus (Windows/NesEmulator/debug). Installed only while a read or write watch is set:
+/// <see cref="Bus.DebugTap"/> is null otherwise, and the bus pays one null test on its slow path (the page-table RAM path pays nothing).</summary>
+public interface IBusDebugTap
+{
+	/// <summary>A CPU read that reached the slow path (every register, cartridge and, while the RAM pages are masked, RAM read), with the value read.</summary>
+	void OnRead(ushort address, byte value);
+	/// <summary>A CPU write that reached the slow path, after it landed.</summary>
+	void OnWrite(ushort address, byte value);
+	/// <summary>An OAM DMA from CPU page <paramref name="page"/> was just copied (256 bytes read by the DMA, written to OAM).</summary>
+	void OnOamDma(byte page);
+}
+
+/// <summary>The debugger's per-instruction hook on the NES (<see cref="NES.DebugHook"/>; null = no debugger, one null test per instruction).</summary>
+public interface INesInstructionHook
+{
+	/// <summary>Called before each <c>ExecuteInstruction</c> with the CPU cycle the instruction starts on (may block: a breakpoint parks the emulation thread here).</summary>
+	void BeforeInstruction(long cpuCycle);
+}
+
 public class Bus : IBus
 {
 		// === Page Table ===
@@ -653,6 +672,7 @@ public class Bus : IBus
 
 	private byte ReadSlow(ushort address)
 	{
+		if (DebugTap != null && !debugTapBusy) return DebugReadSlow(address);   // the debugger's watches (null when none is set)
 		// PPU registers 0x2000-0x3FFF (mirrored every 8)
 		if (address < 0x4000)
 		{
@@ -713,6 +733,7 @@ public class Bus : IBus
 
 	private void WriteSlow(ushort address, byte value)
 	{
+		if (DebugTap != null && !debugTapBusy) { DebugWriteSlow(address, value); return; }   // the debugger's watches (null when none is set)
 		// Touch idle loop detector (direct call; avoids reflection cost)
 		if (cpu is CPU_SPD spdCpu) spdCpu.IdleLoopMaybeWriteTouch(address);
 		if (address < 0x4000)
@@ -811,8 +832,9 @@ public class Bus : IBus
 			return;
 		}
 		
-		var srcPage = pages[pageIndex];
-		bool isRam = srcPage.data == ram; // all mirrors point to same array
+		// Pages $00-$1F are always the internal RAM (all mirrors point to the same array). Tested by index, not by the page's array, so a
+		// debugger that masks the RAM pages (DebugMaskRam) leaves the DMA exactly as it was: one block copy, no bus reads.
+		bool isRam = pageIndex < 0x20;
 		if (isRam)
 		{
 			// Compute linear offset inside 2KB RAM mirroring
@@ -987,6 +1009,45 @@ public class Bus : IBus
 
 		var w = new MapperRegisterWrite(address, value, effective, latchCount, prgBank, chrBank, mirroring, status, sl, dot);
 		obs(in w);
+	}
+
+	// === Debugger tap (Windows/NesEmulator/debug) ======================================
+	// Null unless the debugger has a read or write watch set. ReadSlow and WriteSlow test it first; the RAM fast path never sees it, so a
+	// watch on RAM masks the RAM pages (DebugMaskRam) and RAM accesses then come through the slow path too. Everything the machine does is
+	// unchanged with the tap on: the same values land in the same places on the same cycles (the debugger's checks prove it frame by frame).
+	public IBusDebugTap? DebugTap;
+	private bool debugTapBusy;   // re-entry guard: the tapped path calls the original one
+
+	/// <summary>Sends RAM accesses ($0000-$1FFF) through the slow path (where <see cref="DebugTap"/> sees them), or back to the page table.</summary>
+	public void DebugMaskRam(bool masked)
+	{
+		for (int p = 0x00; p <= 0x1F; p++)
+		{
+			pages[p].data = masked ? null : ram;
+			pages[p].offset = (p % 0x08) * 0x100;
+			pages[p].writable = !masked;
+		}
+	}
+
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+	private byte DebugReadSlow(ushort address)
+	{
+		var tap = DebugTap!;
+		byte v;
+		if (address < 0x2000) v = ram[address & 0x07FF];
+		else { debugTapBusy = true; try { v = ReadSlow(address); } finally { debugTapBusy = false; } }
+		tap.OnRead(address, v);
+		return v;
+	}
+
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+	private void DebugWriteSlow(ushort address, byte value)
+	{
+		var tap = DebugTap!;
+		if (address < 0x2000) ram[address & 0x07FF] = value;
+		else { debugTapBusy = true; try { WriteSlow(address, value); } finally { debugTapBusy = false; } }
+		tap.OnWrite(address, value);
+		if (address == 0x4014) tap.OnOamDma(value);
 	}
 
 	public byte PeekByte(ushort address) => Read(address);

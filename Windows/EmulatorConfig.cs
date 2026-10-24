@@ -292,6 +292,14 @@ namespace BrokenNes.Windows
         /// </summary>
         [JsonPropertyName("enableWebmoduleSavestateDebugShortcuts")]
         public bool EnableWebmoduleSavestateDebugShortcuts { get; set; } = false;
+
+        /// <summary>
+        /// Lets the HTTP API control the debugger (attach, breakpoints, pause, step, run to, write registers, trace files). Off by default:
+        /// the debugger's state is always readable (GET /api/debug/...), controlling it is opted into (BrokenDev's live MCP sessions ask
+        /// the user first; tests use a scratch config with this on).
+        /// </summary>
+        [JsonPropertyName("enableDebuggerControl")]
+        public bool EnableDebuggerControl { get; set; } = false;
         
         // Controller configuration - NEW SYSTEM
         /// <summary>

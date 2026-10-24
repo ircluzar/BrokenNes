@@ -89,6 +89,9 @@
     <Compile Include="$(NesRoot)sms\**\*.cs"    LinkBase="NesEmulator\sms" />
     <Compile Include="$(NesRoot)md\**\*.cs"     LinkBase="NesEmulator\md" />
     <Compile Include="$(NesRoot)corruption\**\*.cs" LinkBase="NesEmulator\corruption" />
+    <!-- The debugger engine (BrokenDev milestone D1): breakpoints, watches, stepping, call stack, trace, symbols. The plugin and Lite
+         compile only its hooks (in board\Bus.cs, snes\SnesDebugHooks.cs, gb\GbDebugHooks.cs), never this folder. -->
+    <Compile Include="$(NesRoot)debug\**\*.cs" LinkBase="NesEmulator\debug" />
     <!-- The Glitch Harvester engine and its models (no UI): the corruption tests drive it headless, with a console session and with a NES. -->
     <Compile Include="$(NesRoot)corruptor\Corruptor.cs"                        Link="NesEmulator\corruptor\Corruptor.cs" />
     <Compile Include="$(NesRoot)corruptor\CorruptorModels.cs"                  Link="NesEmulator\corruptor\CorruptorModels.cs" />

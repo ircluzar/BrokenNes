@@ -20,6 +20,24 @@ namespace NesEmulator
         /// <summary>The largest guest picture: 320 wide (Genesis H40), 240 lines (a Genesis in V30, the Master System's 240-line mode, the NES).</summary>
         public const int MaxWidth = 320, MaxLines = 240, Stride = MaxWidth;
         public const int MaxLayers = 8, MaxTiles = 1024, MaxSpriteTiles = 1024, Palettes = 8;
+        /// <summary>The widest picture a chip may draw from a guest's layers (<see cref="ViewWidth"/>): the WideMess widescreen chip's 400.</summary>
+        public const int MaxViewWidth = 400;
+
+        /// <summary>
+        /// THE WIDE VIEW (docs/projects/enhanced-cores.md section 6): how wide the chip will show the guest's picture, set by the chip (never by a translator, and not reset by <see cref="BeginFrame"/>). 0, the default and
+        /// every chip but the WideMess widescreen chip's value, is the guest's own width. A wider view shows <see cref="SideColumns"/> more columns on each side of the guest's picture, drawn from what each layer really
+        /// keeps beyond the guest's edges (<see cref="Layer.RealWidth"/>): the translator then also fills the map cells those columns show, after the guest's own and in the guest's own palettes, so the guest's picture
+        /// itself is exactly what it would be without them.
+        /// </summary>
+        public int ViewWidth;
+        /// <summary>The columns the view adds on each side of the guest's picture this frame (0 unless <see cref="ViewWidth"/> is wider than <see cref="Width"/>).</summary>
+        public int SideColumns => ViewWidth > Width ? (ViewWidth - Width) >> 1 : 0;
+        /// <summary>
+        /// The translator's word on its sprites in a wider view (reset by <see cref="BeginFrame"/>): true when the guest's sprite positions beyond its edges are real places (a SNES's 9-bit X, the Genesis's 512-pixel
+        /// sprite plane, the Game Gear's VDP line around its LCD, the part of a NES sprite past the right edge), and the translator then also lists the pieces only the side columns show (after the guest's own); false
+        /// when they are not (a Game Boy hides its unused sprites just off the screen; a Master System's sprites never leave its 256 columns): a wide chip then draws no sprite in the sides.
+        /// </summary>
+        public bool SpritesBeyondEdges;
 
         /// <summary>Composed pixel keys: 0 backdrop, 1 backdrop where colour math is blocked, 2 black (clip to black); else
         /// kind | palette &lt;&lt; 2 | level, with kind 0x20 background layer, 0x40 sprite, 0x60 Mode 7.</summary>
@@ -78,10 +96,19 @@ namespace NesEmulator
             public readonly byte[] BlankLeft = new byte[MaxLines];
             /// <summary>Per line, the blank left column's quirk in shadow/highlight mode: from this source x (-1: never) the 8 pixels show this layer's pixels 8 to the left (the second cell shows the first cell's planes).</summary>
             public readonly short[] CellOneStart = new short[MaxLines];
+            /// <summary>
+            /// How many columns of distinct picture the layer's map really holds across, in pixels: the translator reports it every frame (the one thing the wide view needs from it). A NES background 512 with
+            /// vertical mirroring (the neighbouring nametable), 256 with any other; a SNES BG its map's width (256 or 512, twice that with 16 x 16 tiles); a Genesis plane 256, 512 or 1024; a Master System, Game Gear
+            /// or Game Boy map 256. 0 = not reported (a wide chip shows nothing of the layer beyond the guest's edges, and counts it).
+            /// </summary>
+            public int RealWidth;
+            /// <summary>The layer is laid out on the guest's screen, not scrolled over a map (the Genesis window plane, the Game Boy window, the Master System's vertical-lock columns): a view wider than the guest has nothing
+            /// more of it to show.</summary>
+            public bool FixedToScreen;
 
             public void Reset()
             {
-                Enabled = false; AnyHidden = false; ColumnScroll = null; Name = "";
+                Enabled = false; AnyHidden = false; ColumnScroll = null; Name = ""; RealWidth = 0; FixedToScreen = false;
                 Array.Clear(On); Array.Clear(Map); Array.Clear(Attr);
                 Array.Clear(ColumnExtra); Array.Clear(BlankLeft); Array.Fill(CellOneStart, (short)-1);
             }
@@ -168,7 +195,7 @@ namespace NesEmulator
         {
             if (width < 8 || width > MaxWidth) throw new ArgumentOutOfRangeException(nameof(width), $"8-{MaxWidth}");
             if (height < 8 || height > MaxLines) throw new ArgumentOutOfRangeException(nameof(height), $"8-{MaxLines}");
-            Width = width; Height = height; Guest = ""; GuestMode = -1;
+            Width = width; Height = height; Guest = ""; GuestMode = -1; SpritesBeyondEdges = false;
             for (int i = 0; i < MaxLayers; i++) Layers[i].Reset();
             LayerCount = 0;
             Mode7.Reset();
@@ -362,5 +389,19 @@ namespace NesEmulator
         string EnhancedName { get; }
         /// <summary>The colours the chip draws with, in words ("the 2C02's colours", "4 Game Boy shades", "Game Boy Color colours").</summary>
         string ColourLimit { get; }
+    }
+
+    /// <summary>
+    /// A NES-board picture chip whose picture is wider than the NES's 256 x 240 (the WideMess widescreen chip, PPU_WMSS): its <see cref="IPPU.GetFrameBuffer"/> is the NES's own 256 columns (the middle), and an app
+    /// that can show a wider picture (the desktop app) shows this one instead. The buffer is the chip's own: read it between frames.
+    /// </summary>
+    public interface IWidePictureSource
+    {
+        /// <summary>True when the last frame was drawn wider than 256.</summary>
+        bool HasWidePicture { get; }
+        /// <summary>The last picture, 0xFFRRGGBB, <see cref="WideWidth"/> x <see cref="WideHeight"/> (row stride <see cref="WideWidth"/>).</summary>
+        uint[] WidePicture { get; }
+        int WideWidth { get; }
+        int WideHeight { get; }
     }
 }

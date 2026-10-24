@@ -307,6 +307,9 @@ internal sealed class GbToNes
         bg.Enabled = true; bg.Name = "background"; bg.MapWidth = 32; bg.MapHeight = 32;
         win.Enabled = true; win.Name = "window"; win.MapWidth = 32; win.MapHeight = 32;
         e.LayerCount = 2;
+        // the wide view: the background's map is 256 pixels across (the Game Boy shows 160 of them; the whole map is filled below); the window is laid out on the screen. Sprites: a Game Boy hides the ones it does
+        // not use just off the screen (X = 0), so their places beyond the edges are not real (ExtPicture.SpritesBeyondEdges stays false)
+        bg.RealWidth = 256; win.RealWidth = 256; win.FixedToScreen = true;
         int wl = 0; bool anyHidden = false, windowShown = false;
         for (int y = 0; y < H; y++)
         {

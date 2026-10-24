@@ -124,9 +124,11 @@ public sealed partial class BOARD_SFC : ISnesBus
         frameReady = false;
         long guard = MasterClock + ClocksPerLine * (long)LinesPerFrame * 4;
         var hook = InstructionHook;
+        var dbg = DebugHook;   // the debugger (BOARD_SFC.Debug.cs): null unless armed
         while (!frameReady && MasterClock < guard)
         {
             hook?.Invoke(Cpu);
+            dbg?.BeforeInstruction();
             Cpu.Step();
         }
     }
@@ -522,6 +524,7 @@ public sealed partial class BOARD_SFC : ISnesBus
     {
         if (channels == 0) return;
         Tick(8);
+        var tap = DebugTap;   // a debugger watch sees every DMA byte (null when none is set)
         for (int ch = 0; ch < 8; ch++)
         {
             if ((channels & (1 << ch)) == 0) continue;
@@ -539,7 +542,8 @@ public sealed partial class BOARD_SFC : ISnesBus
             for (int n = 0; count > 0; n++, count--)
             {
                 byte bReg = (byte)(bbad + pattern[n % pattern.Length]);
-                if (toA) WriteNoTick(aBank, aAddr, ReadBBus(bReg));
+                if (tap != null) DebugDmaByte(toA, aBank, aAddr, bReg, ch, SnesBusSource.Dma);
+                else if (toA) WriteNoTick(aBank, aAddr, ReadBBus(bReg));
                 else DmaWriteBBus(bReg, ReadNoTick(aBank, aAddr));
                 aAddr = (ushort)(aAddr + step);
                 Tick(dmaByteClocks);   // 8; 4 with WideMess fast DMA
@@ -609,6 +613,7 @@ public sealed partial class BOARD_SFC : ISnesBus
         byte bank = dmaRegs[r + 4];
         ushort a2a = (ushort)(dmaRegs[r + 8] | dmaRegs[r + 9] << 8);
         byte count = ReadNoTick(bank, a2a++);
+        DebugTap?.OnRead((uint)bank << 16 | (ushort)(a2a - 1), count, SnesBusSource.Hdma, ch);   // a debugger watch sees the table fetches
         dmaRegs[r + 0xA] = count;
         hdmaDone[ch] = count == 0;
         hdmaDoTransfer[ch] = !hdmaDone[ch];
@@ -617,6 +622,7 @@ public sealed partial class BOARD_SFC : ISnesBus
         {
             dmaRegs[r + 5] = ReadNoTick(bank, a2a++);
             dmaRegs[r + 6] = ReadNoTick(bank, a2a++);
+            if (DebugTap is { } t) { t.OnRead((uint)bank << 16 | (ushort)(a2a - 2), dmaRegs[r + 5], SnesBusSource.Hdma, ch); t.OnRead((uint)bank << 16 | (ushort)(a2a - 1), dmaRegs[r + 6], SnesBusSource.Hdma, ch); }
             stall += 16;
         }
         dmaRegs[r + 8] = (byte)a2a; dmaRegs[r + 9] = (byte)(a2a >> 8);
@@ -626,6 +632,7 @@ public sealed partial class BOARD_SFC : ISnesBus
     {
         if (hdmaen == 0 || Scanline >= vblankLine) return;
         stall += 18;
+        var tap = DebugTap;   // a debugger watch sees every HDMA byte (null when none is set)
         for (int ch = 0; ch < 8; ch++)
         {
             if ((hdmaen & (1 << ch)) == 0 || hdmaDone[ch]) continue;
@@ -640,7 +647,8 @@ public sealed partial class BOARD_SFC : ISnesBus
                 {
                     ushort addr = (ushort)(dmaRegs[lo] | dmaRegs[lo + 1] << 8);
                     byte bReg = (byte)(bbad + offset);
-                    if (toA) WriteNoTick(bank, addr, ReadBBus(bReg));
+                    if (tap != null) DebugDmaByte(toA, bank, addr, bReg, ch, SnesBusSource.Hdma);
+                    else if (toA) WriteNoTick(bank, addr, ReadBBus(bReg));
                     else DmaWriteBBus(bReg, ReadNoTick(bank, addr));
                     addr++;
                     dmaRegs[lo] = (byte)addr; dmaRegs[lo + 1] = (byte)(addr >> 8);
