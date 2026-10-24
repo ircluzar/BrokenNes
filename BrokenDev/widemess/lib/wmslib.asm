@@ -78,6 +78,88 @@ wms_dma_bits:
     .db $01, $02, $04, $08, $10, $20, $40, $80
 
 ;-----------------------------------------------------------------------------
+; The sprite table's shadow (wmsfar.asm, bank $70), 8 bytes a sprite (spec 3.3). In 65816 because a game sets a hundred sprites a frame:
+; the C versions cost several times as much.
+;
+; void wmsSpriteSet(u8 id, s16 x, s16 y, u16 tile, u8 attr6, u8 attr7)
+;   id 4,s  x 5-6,s  y 7-8,s  tile 9-10,s  attr6 11,s  attr7 12,s; +3 after php/phx
+;-----------------------------------------------------------------------------
+wmsSpriteSet:
+    php
+    rep #$30
+    phx
+    lda 7,s
+    and.w #$00FF
+    asl a
+    asl a
+    asl a
+    tax                     ; X = 8 x id
+    lda 8,s
+    and.w #$03FF
+    sta.l wmsOamShadow,x    ; X: bits 0-7, bits 8-9
+    lda 10,s
+    and.w #$03FF
+    sta.l wmsOamShadow+2,x  ; Y
+    lda 12,s
+    and.w #$0FFF
+    sta.l wmsOamShadow+4,x  ; the tile
+    lda 14,s
+    sta.l wmsOamShadow+6,x  ; attr6, attr7
+    sep #$20
+    lda.b #$01
+    sta.l wms_oam_dirty
+    rep #$20
+    plx
+    plp
+    rtl
+
+; void wmsSpriteMove(u8 id, s16 x, s16 y): id 4,s  x 5-6,s  y 7-8,s; +3
+wmsSpriteMove:
+    php
+    rep #$30
+    phx
+    lda 7,s
+    and.w #$00FF
+    asl a
+    asl a
+    asl a
+    tax
+    lda 8,s
+    and.w #$03FF
+    sta.l wmsOamShadow,x
+    lda 10,s
+    and.w #$03FF
+    sta.l wmsOamShadow+2,x
+    sep #$20
+    lda.b #$01
+    sta.l wms_oam_dirty
+    rep #$20
+    plx
+    plp
+    rtl
+
+; void wmsSpriteHide(u8 id): Y = 240, below the picture (spec 3.3, "hiding a sprite"). id 4,s; +3
+wmsSpriteHide:
+    php
+    rep #$30
+    phx
+    lda 7,s
+    and.w #$00FF
+    asl a
+    asl a
+    asl a
+    tax
+    lda.w #240
+    sta.l wmsOamShadow+2,x
+    sep #$20
+    lda.b #$01
+    sta.l wms_oam_dirty
+    rep #$20
+    plx
+    plp
+    rtl
+
+;-----------------------------------------------------------------------------
 ; void wmsScrollNow(u8 n, u16 x, u16 y): layer n's WMBGnHOFS / WMBGnVOFS ($21E0 + 2n, $21E1 + 2n), each written twice (low, high).
 ;   n 4,s  x 5-6,s  y 7-8,s; +3 after php/phx
 ;-----------------------------------------------------------------------------

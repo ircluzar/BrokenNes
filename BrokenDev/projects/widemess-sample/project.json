@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "id": "widemess-sample",
+  "title": "Wide Blaster, the WideMess devkit's sample game",
+  "family": "widemess",
+  "kind": "wms",
+  "console": "wms",
+  "description": "A small horizontal shooter that uses every WideMess feature (docs/projects/widemess-spec.md): 8 layers of 256 colours at 400 x 224 in parallax, up to 199 sprites from the 256-sprite table (a 64 x 64 256-colour boss among them), a song on 11 of voices 8-31 with 16-bit PCM and BRR samples plus effects, fast CPU and fast DMA, every actor pool and a 64 KB flight recorder in the 1 MB work RAM. Made with 'brokendev new widemess widemess-sample', then grown. The devkit guide: docs/projects/widemess-devkit.md.",
+  "source": { "folder": "{repo}/WideMess/sample" },
+  "requires": {
+    "tools": ["python", "workshop"],
+    "projects": [],
+    "inputs": [],
+    "toolchain": ["PVSnesLib 4.6.0 (816-tcc, 816-opt, wla-65816, wla-spc700, wlalink, snesbrr), the copy in the Super VRUN workspace (snes-stub/toolchain/pvsneslib): read, never changed", "BrokenNes Workshop (--wms-pack)"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "ps5",
+        "cwd": "{src}",
+        "file": "{bd}/widemess/tools/wmsbuild.ps1",
+        "args": ["-Project", "{src}", "-Pvsneslib", "{root:svrunrepo}/snes-stub/toolchain/pvsneslib", "-Workshop", "{workshop}"],
+        "timeoutSec": 900,
+        "note": "wmsbuild.ps1: the converters (wms.json's graphics and sound), 816-tcc, wla-65816, wla-spc700, wlalink on PVSnesLib's HiROM libraries, Workshop --wms-pack --map 2."
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{src}/build/widemess_sample.wms", "publishAs": "widemess_sample.wms", "kind": "wms" },
+      { "id": "sym", "path": "{src}/build/widemess_sample.sym", "publishAs": "widemess_sample.sym", "kind": "symbols" }
+    ]
+  },
+  "run": { "console": "wms", "note": "The d-pad flies, B or Y fires, Start restarts after the game is over." },
+  "verify": {
+    "timeoutSec": 900,
+    "scenarios": [
+      {
+        "id": "play",
+        "frames": 900,
+        "input": "30:Right+B,200:Up+B,260:Down+Y,400:B,700:Left+Y",
+        "checkpoints": [300, 600, 900],
+        "expect": {
+          "minDistinctColors": 32,
+          "pictureDiffers": [600, 900],
+          "audio": { "fromFrame": 60, "minPeak": 0.1, "minNonSilentFrames": 800 },
+          "wms": { "unlocked": true, "width": 400, "layers8": true, "fastCpu": true, "minLayers": 8, "minSprites": 129, "minVoices": 9, "minVoiceFrames": 800, "minBigWramBytes": 2000 },
+          "minRealtime": 1.0
+        },
+        "why": "8 layers drawing, more sprites on the picture than a SNES table holds (128), more of the new voices sounding at once than the S-DSP has (8), the far work RAM in use, fast mode on"
+      },
+      {
+        "id": "idle",
+        "frames": 900,
+        "input": "",
+        "checkpoints": [900],
+        "expect": { "wms": { "unlocked": true, "width": 400, "minLayers": 8 } }
+      }
+    ],
+    "compare": [
+      { "a": "play@900", "b": "idle@900", "expect": "differ", "why": "the pad reached the game" }
+    ]
+  },
+  "compat": {
+    "what": "Wide Blaster on BrokenNes only: no other emulator runs WideMess. game_frame counts the main loop's frames, snes_vblank_count PVSnesLib's vblanks: in fast mode the loop finishes every frame (at SNES speed it takes 2 to 3).",
+    "symbols": { "file": "{out}/widemess_sample.sym" },
+    "reads": { "frame": "game_frame", "vblank": "snes_vblank_count", "lives": "lives" },
+    "frameTolerance": 30,
+    "scenarios": [
+      {
+        "id": "play",
+        "verify": "play",
+        "shots": [600],
+        "what": "power-on and verify's play script",
+        "checks": [
+          { "id": "sixty", "what": "the main loop keeps 60 frames a second (game_frame changes on every frame of 600-900)", "changes": "frame", "within": [600, 900], "min": 295 },
+          { "id": "alive", "what": "the ship is alive at frame 300 (lives 1-3)", "read": "lives", "is": 3, "within": [100, 300] },
+          { "id": "drawn", "what": "the scene is drawn", "picture": 600, "minColors": 32 }
+        ]
+      }
+    ]
+  },
+  "knownIssues": [
+    "PVSnesLib counts the loading frames (graphics and the sound RAM image, about 360 KB through DMA) as lag: lag_frame_counter is 9 at the first frame of play and stays there."
+  ]
+}

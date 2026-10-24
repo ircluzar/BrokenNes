@@ -108,6 +108,14 @@ internal static partial class WideMessCli
         Console.WriteLine("wms: " + Measure(s).Line());
         Console.WriteLine($"apu: {s.Board.Apu.Describe()}");
         Console.WriteLine($"audio: peak {audioPeak / 32768.0:F3}, audible in {audibleFrames} of {frames} frames");
+        // --wram ADDR:LEN[,ADDR:LEN]: bytes of work RAM (20-bit work-RAM addresses: $00000-$1FFFF the SNES's 128 KB, $20000+ banks $70-$7D)
+        foreach (string w in Opt(args, "wram", "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var p = w.Split(':');
+            int a = Convert.ToInt32(p[0].TrimStart('$'), 16), n = p.Length > 1 ? int.Parse(p[1]) : 16;
+            byte B(int x) => x < 0x20000 ? s.Board.Wram[x] : s.Board.WramHigh is { } h && x - 0x20000 < h.Length ? h[x - 0x20000] : (byte)0;
+            Console.WriteLine($"wram ${a:X5}: {string.Join(" ", Enumerable.Range(0, n).Select(k => B(a + k).ToString("X2")))}");
+        }
         if (args.Contains("--voices", StringComparer.OrdinalIgnoreCase) && s.Board.Apu is APU_SFC apu && WideSoundOn(apu.Dsp))
         {
             // every voice that has a pitch: its registers (the second page through WBANK, put back after)

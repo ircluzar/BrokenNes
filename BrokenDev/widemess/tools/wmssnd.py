@@ -20,7 +20,8 @@ The build mode's wms.json section:
     "effects": [ { "name": "shot", "sample": "laser", "note": 72, "voice": 0, "volume": 110, "pan": 64 } ]
   }
 A sample's "root" is the MIDI note it sounds at its own rate (default 60). "loop" is the sample (frame) it loops from; without it the
-sample plays once. Songs: every MIDI channel that has notes must be named in "instruments" (or listed in "ignore"); notes become the
+sample plays once. Songs: every MIDI channel that has notes must be named in "instruments" (or listed in "ignore"), with a sample, or
+with a drum kit, { "36": "kick", "38": "snare" } (MIDI note -> sample, each played at its own pitch); notes become the
 driver's 24 channels (voices 8-31), at most 24 at once; time is quantised to the driver's tick (160 a second). Effects play one note
 of a sample on one voice: voices 0-7 play BRR only (the S-DSP's own voices, samples below 64 KB), voices 8-31 anything.
 Nothing is dropped silently: too many notes at once, a pitch above 4x, a sample that does not fit, a MIDI channel without an
@@ -280,6 +281,15 @@ def build_song(song, samples, root):
         if ch not in inst_map:
             raise SndError(f'{who}: MIDI channel {ch} has notes but no instrument (add it to "instruments", or to "ignore")')
         name = inst_map[ch]
+        play = n + transpose
+        if isinstance(name, dict):      # a drum kit: MIDI note -> sample, played at the sample's own pitch
+            kit = name
+            name = kit.get(str(n))
+            if name is None:
+                raise SndError(f'{who}: channel {ch} plays note {n}, which its kit does not name (kit notes: {sorted(kit)})')
+            if name not in samples:
+                raise SndError(f'{who}: channel {ch}\'s kit names "{name}", which is not a sample')
+            play = samples[name]['root']
         if name not in samples:
             raise SndError(f'{who}: channel {ch}\'s instrument "{name}" is not a sample')
         a = int(round(sec(s) * TICK_RATE))
@@ -288,7 +298,7 @@ def build_song(song, samples, root):
         vol = min(127, int(round(127 * amp)))
         l = min(127, int(round(vol * min(1.0, (127 - pn) / 63.5))))
         r = min(127, int(round(vol * min(1.0, pn / 63.5))))
-        events.append((a, b, name, n + transpose, l, r))
+        events.append((a, b, name, play, l, r))
     if not events:
         raise SndError(f'{who}: the MIDI file has no notes')
     events.sort()

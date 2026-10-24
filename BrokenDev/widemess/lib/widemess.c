@@ -25,7 +25,7 @@ extern void wms_dma(u8 ch, u8 mode, u8 bbad, u8 *src, u16 size);
 extern u8 wmsOamShadow[];
 extern u8 wms_byte_values[];
 
-static u8 wms_oam_dirty;
+u8 wms_oam_dirty;          /* not static: wmslib.asm's sprite routines set it */
 static u8 wms_scroll_dirty;
 static u16 wms_hofs[8];
 static u16 wms_vofs[8];
@@ -130,37 +130,7 @@ void wmsColor(u16 entry, u16 bgr15)
     REG_WMCGDATA = (u8)(bgr15 >> 8);
 }
 
-void wmsSpriteSet(u8 id, s16 x, s16 y, u16 tile, u8 attr6, u8 attr7)
-{
-    u16 p = (u16)id << 3;
-    wmsOamShadow[p] = (u8)x;
-    wmsOamShadow[p + 1] = (u8)((u16)x >> 8) & 3;
-    wmsOamShadow[p + 2] = (u8)y;
-    wmsOamShadow[p + 3] = (u8)((u16)y >> 8) & 3;
-    wmsOamShadow[p + 4] = (u8)tile;
-    wmsOamShadow[p + 5] = (u8)(tile >> 8) & 0x0F;
-    wmsOamShadow[p + 6] = attr6;
-    wmsOamShadow[p + 7] = attr7;
-    wms_oam_dirty = 1;
-}
-
-void wmsSpriteMove(u8 id, s16 x, s16 y)
-{
-    u16 p = (u16)id << 3;
-    wmsOamShadow[p] = (u8)x;
-    wmsOamShadow[p + 1] = (u8)((u16)x >> 8) & 3;
-    wmsOamShadow[p + 2] = (u8)y;
-    wmsOamShadow[p + 3] = (u8)((u16)y >> 8) & 3;
-    wms_oam_dirty = 1;
-}
-
-void wmsSpriteHide(u8 id)
-{
-    u16 p = (u16)id << 3;
-    wmsOamShadow[p + 2] = 240;
-    wmsOamShadow[p + 3] = 0;
-    wms_oam_dirty = 1;
-}
+/* wmsSpriteSet, wmsSpriteMove, wmsSpriteHide: wmslib.asm (a game calls them a hundred times a frame) */
 
 void wmsSpriteHideFrom(u16 first)
 {
