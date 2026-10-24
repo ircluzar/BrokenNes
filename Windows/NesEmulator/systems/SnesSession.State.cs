@@ -25,9 +25,9 @@ public sealed partial class SnesSession
     /// <summary>The layout of the payload: bump it whenever the board, a core or a chip changes what it writes, so an old state is refused rather than misread.</summary>
     public const string StateFormat = "sfc-1";
     /// <summary>The WideMess console's layout: the SNES payload, then the WideMess registers, its picture chip's own memories (<see cref="PPU_WMS.SaveWide"/>), the WideMess map's work RAM
-    /// (<see cref="BOARD_SFC.SaveWideMemory"/>, milestone 4) and the rest of the picture (<see cref="PPU_WMS.SavePicture"/>, milestone 2: the sprite table, the sprite / window / colour-math
-    /// registers and the rows drawn 400 wide).</summary>
-    public const string WideMessStateFormat = "wms-3";
+    /// (<see cref="BOARD_SFC.SaveWideMemory"/>, milestone 4), the rest of the picture (<see cref="PPU_WMS.SavePicture"/>, milestone 2: the sprite table, the sprite / window / colour-math
+    /// registers and the rows drawn 400 wide) and the sound chip's own part (<see cref="WriteWideSound"/>, milestone 3).</summary>
+    public const string WideMessStateFormat = "wms-4";
     private const byte PayloadVersion = 1;
     private const byte UnitSfc = 0, UnitHle = 1, UnitNes = 2, UnitChip = 3;
 
@@ -116,6 +116,7 @@ public sealed partial class SnesSession
         if (wms != null) { board.WideMess!.SaveState(w); wms.SaveWide(w); }
         if (wms != null) board.SaveWideMemory(w);   // milestone 4: the WideMess map's work RAM (the modes are the registers above)
         if (wms != null) wms.SavePicture(w);        // milestone 2: the sprite table, the registers of $21A0-$21BF, the rows drawn 400 wide
+        if (wms != null) WriteWideSound(w);    // milestone 3: the sound chip's WideMess part
     }
 
     private void ReadPayload(BinaryReader r)
@@ -133,7 +134,7 @@ public sealed partial class SnesSession
             case APU_HLE hle:
                 RequireUnit(unit, UnitHle);
                 hle.LoadState(r);
-                if (r.ReadBoolean()) { parkedSpc ??= new APU_SFC(); parkedSpc.LoadState(r); }
+                if (r.ReadBoolean()) { parkedSpc ??= wms != null ? new APU_WMS() : new APU_SFC(); parkedSpc.LoadState(r); }
                 else parkedSpc = null;
                 break;
             case NesApuOnSnes { Front: APU_SFC front } bridge:
@@ -151,6 +152,7 @@ public sealed partial class SnesSession
         if (wms != null) { board.WideMess!.LoadState(r); wms.LoadWide(r); }
         if (wms != null) board.LoadWideMemory(r);
         if (wms != null) wms.LoadPicture(r);
+        if (wms != null) ReadWideSound(r);
     }
 
     private static void RequireUnit(byte saved, byte running)

@@ -1,0 +1,858 @@
+{
+ "rate": 32000,
+ "period": 32,
+ "gain_env": 2032,
+ "mvol": 127,
+ "solo": [
+  96,
+  48
+ ],
+ "wdir": 1044480,
+ "voices": [
+  {
+   "voice": 0,
+   "kind": "s-dsp brr",
+   "address": 516,
+   "srcn": 0,
+   "pitch": 819,
+   "freq": 199.951171875,
+   "fund": 7167.628105940006,
+   "all_vol": 13
+  },
+  {
+   "voice": 1,
+   "kind": "s-dsp brr",
+   "address": 516,
+   "srcn": 0,
+   "pitch": 1229,
+   "freq": 300.048828125,
+   "fund": 7167.628105940006,
+   "all_vol": 13
+  },
+  {
+   "voice": 2,
+   "kind": "s-dsp brr",
+   "address": 516,
+   "srcn": 0,
+   "pitch": 1638,
+   "freq": 399.90234375,
+   "fund": 7167.628105940006,
+   "all_vol": 13
+  },
+  {
+   "voice": 3,
+   "kind": "s-dsp brr",
+   "address": 516,
+   "srcn": 0,
+   "pitch": 2048,
+   "freq": 500.0,
+   "fund": 7167.628105940006,
+   "all_vol": 13
+  },
+  {
+   "voice": 4,
+   "kind": "s-dsp brr",
+   "address": 516,
+   "srcn": 0,
+   "pitch": 2458,
+   "freq": 600.09765625,
+   "fund": 7167.628105940006,
+   "all_vol": 13
+  },
+  {
+   "voice": 5,
+   "kind": "s-dsp brr",
+   "address": 516,
+   "srcn": 0,
+   "pitch": 2867,
+   "freq": 699.951171875,
+   "fund": 7167.628105940006,
+   "all_vol": 13
+  },
+  {
+   "voice": 6,
+   "kind": "s-dsp brr",
+   "address": 516,
+   "srcn": 0,
+   "pitch": 3277,
+   "freq": 800.048828125,
+   "fund": 7167.628105940006,
+   "all_vol": 13
+  },
+  {
+   "voice": 7,
+   "kind": "s-dsp brr",
+   "address": 516,
+   "srcn": 0,
+   "pitch": 3686,
+   "freq": 899.90234375,
+   "fund": 7167.628105940006,
+   "all_vol": 13
+  },
+  {
+   "voice": 8,
+   "kind": "pcm",
+   "address": 73728,
+   "srcn": 8,
+   "pitch": 4096,
+   "freq": 1000.0,
+   "fund": 2999.871739443784,
+   "format": 3,
+   "end": 73792,
+   "crc": 4184369062,
+   "length": 64,
+   "all_vol": 32
+  },
+  {
+   "voice": 9,
+   "kind": "brr",
+   "address": 139264,
+   "srcn": 9,
+   "pitch": 4506,
+   "freq": 1100.09765625,
+   "fund": 2618.150394142235,
+   "format": 0,
+   "end": 0,
+   "crc": 3422858250,
+   "length": 18,
+   "all_vol": 37
+  },
+  {
+   "voice": 10,
+   "kind": "pcm",
+   "address": 204800,
+   "srcn": 10,
+   "pitch": 4915,
+   "freq": 1199.951171875,
+   "fund": 3499.98107823807,
+   "format": 3,
+   "end": 204864,
+   "crc": 3973321249,
+   "length": 64,
+   "all_vol": 27
+  },
+  {
+   "voice": 11,
+   "kind": "brr",
+   "address": 270336,
+   "srcn": 11,
+   "pitch": 5325,
+   "freq": 1300.048828125,
+   "fund": 3081.199090767521,
+   "format": 0,
+   "end": 0,
+   "crc": 988433727,
+   "length": 18,
+   "all_vol": 31
+  },
+  {
+   "voice": 12,
+   "kind": "pcm",
+   "address": 335872,
+   "srcn": 12,
+   "pitch": 5734,
+   "freq": 1399.90234375,
+   "fund": 3999.748265303396,
+   "format": 3,
+   "end": 335936,
+   "crc": 2119995599,
+   "length": 64,
+   "all_vol": 24
+  },
+  {
+   "voice": 13,
+   "kind": "brr",
+   "address": 401408,
+   "srcn": 13,
+   "pitch": 6144,
+   "freq": 1500.0,
+   "fund": 3600.916333444114,
+   "format": 0,
+   "end": 0,
+   "crc": 1797613787,
+   "length": 18,
+   "all_vol": 27
+  },
+  {
+   "voice": 14,
+   "kind": "pcm",
+   "address": 466944,
+   "srcn": 14,
+   "pitch": 6554,
+   "freq": 1600.09765625,
+   "fund": 4499.9840239917485,
+   "format": 3,
+   "end": 467008,
+   "crc": 2647250058,
+   "length": 64,
+   "all_vol": 21
+  },
+  {
+   "voice": 15,
+   "kind": "brr",
+   "address": 532480,
+   "srcn": 15,
+   "pitch": 6963,
+   "freq": 1699.951171875,
+   "fund": 4298.617515647142,
+   "format": 0,
+   "end": 0,
+   "crc": 3319301189,
+   "length": 18,
+   "all_vol": 22
+  },
+  {
+   "voice": 16,
+   "kind": "pcm",
+   "address": 598016,
+   "srcn": 16,
+   "pitch": 7373,
+   "freq": 1800.048828125,
+   "fund": 5000.191563446624,
+   "format": 3,
+   "end": 598080,
+   "crc": 397787796,
+   "length": 64,
+   "all_vol": 19
+  },
+  {
+   "voice": 17,
+   "kind": "brr",
+   "address": 663552,
+   "srcn": 17,
+   "pitch": 7782,
+   "freq": 1899.90234375,
+   "fund": 5052.13779216965,
+   "format": 0,
+   "end": 0,
+   "crc": 1578616801,
+   "length": 18,
+   "all_vol": 19
+  },
+  {
+   "voice": 18,
+   "kind": "pcm",
+   "address": 729088,
+   "srcn": 18,
+   "pitch": 8192,
+   "freq": 2000.0,
+   "fund": 5499.98739757088,
+   "format": 3,
+   "end": 729152,
+   "crc": 3623619717,
+   "length": 64,
+   "all_vol": 17
+  },
+  {
+   "voice": 19,
+   "kind": "brr",
+   "address": 794624,
+   "srcn": 19,
+   "pitch": 8602,
+   "freq": 2100.09765625,
+   "fund": 6162.3981815350435,
+   "format": 0,
+   "end": 0,
+   "crc": 2907844649,
+   "length": 18,
+   "all_vol": 16
+  },
+  {
+   "voice": 20,
+   "kind": "pcm",
+   "address": 860160,
+   "srcn": 20,
+   "pitch": 9011,
+   "freq": 2199.951171875,
+   "fund": 5999.945245155675,
+   "format": 3,
+   "end": 860224,
+   "crc": 3725173369,
+   "length": 64,
+   "all_vol": 16
+  },
+  {
+   "voice": 21,
+   "kind": "brr",
+   "address": 925696,
+   "srcn": 21,
+   "pitch": 9421,
+   "freq": 2300.048828125,
+   "fund": 7312.939059904939,
+   "format": 0,
+   "end": 0,
+   "crc": 1303124187,
+   "length": 18,
+   "all_vol": 13
+  },
+  {
+   "voice": 22,
+   "kind": "pcm",
+   "address": 991232,
+   "srcn": 22,
+   "pitch": 9830,
+   "freq": 2399.90234375,
+   "fund": 6500.2231913462965,
+   "format": 3,
+   "end": 991296,
+   "crc": 1266774645,
+   "length": 64,
+   "all_vol": 15
+  },
+  {
+   "voice": 23,
+   "kind": "brr",
+   "address": 106496,
+   "srcn": 23,
+   "pitch": 10240,
+   "freq": 2500.0,
+   "fund": 8348.664875474358,
+   "format": 0,
+   "end": 0,
+   "crc": 3928765758,
+   "length": 18,
+   "all_vol": 11
+  },
+  {
+   "voice": 24,
+   "kind": "pcm",
+   "address": 172032,
+   "srcn": 24,
+   "pitch": 10650,
+   "freq": 2600.09765625,
+   "fund": 6999.889473231211,
+   "format": 3,
+   "end": 172096,
+   "crc": 1101670558,
+   "length": 64,
+   "all_vol": 14
+  },
+  {
+   "voice": 25,
+   "kind": "brr",
+   "address": 237568,
+   "srcn": 25,
+   "pitch": 11059,
+   "freq": 2699.951171875,
+   "fund": 10472.601576568939,
+   "format": 0,
+   "end": 0,
+   "crc": 780583085,
+   "length": 18,
+   "all_vol": 9
+  },
+  {
+   "voice": 26,
+   "kind": "pcm",
+   "address": 303104,
+   "srcn": 26,
+   "pitch": 11469,
+   "freq": 2800.048828125,
+   "fund": 7500.053275204399,
+   "format": 3,
+   "end": 303168,
+   "crc": 1684650206,
+   "length": 64,
+   "all_vol": 13
+  },
+  {
+   "voice": 27,
+   "kind": "brr",
+   "address": 368640,
+   "srcn": 27,
+   "pitch": 11878,
+   "freq": 2899.90234375,
+   "fund": 2063.521786126672,
+   "format": 0,
+   "end": 0,
+   "crc": 2603695482,
+   "length": 18,
+   "all_vol": 47
+  },
+  {
+   "voice": 28,
+   "kind": "pcm",
+   "address": 434176,
+   "srcn": 28,
+   "pitch": 12288,
+   "freq": 3000.0,
+   "fund": 8000.031942161368,
+   "format": 3,
+   "end": 434240,
+   "crc": 2553822293,
+   "length": 64,
+   "all_vol": 12
+  },
+  {
+   "voice": 29,
+   "kind": "brr",
+   "address": 499712,
+   "srcn": 29,
+   "pitch": 12698,
+   "freq": 3100.09765625,
+   "fund": 3092.128734564225,
+   "format": 0,
+   "end": 0,
+   "crc": 2102186920,
+   "length": 18,
+   "all_vol": 31
+  },
+  {
+   "voice": 30,
+   "kind": "pcm",
+   "address": 565248,
+   "srcn": 30,
+   "pitch": 13107,
+   "freq": 3199.951171875,
+   "fund": 8500.243657931289,
+   "format": 3,
+   "end": 565312,
+   "crc": 1764497031,
+   "length": 64,
+   "all_vol": 11
+  },
+  {
+   "voice": 31,
+   "kind": "brr",
+   "address": 630784,
+   "srcn": 31,
+   "pitch": 13517,
+   "freq": 3300.048828125,
+   "fund": 6184.25746912845,
+   "format": 0,
+   "end": 0,
+   "crc": 216899393,
+   "length": 18,
+   "all_vol": 16
+  }
+ ],
+ "steps": [
+  {
+   "index": 0,
+   "name": "init",
+   "voices": []
+  },
+  {
+   "index": 1,
+   "name": "solo 8",
+   "voices": [
+    8
+   ]
+  },
+  {
+   "index": 2,
+   "name": "solo 9",
+   "voices": [
+    9
+   ]
+  },
+  {
+   "index": 3,
+   "name": "solo 10",
+   "voices": [
+    10
+   ]
+  },
+  {
+   "index": 4,
+   "name": "solo 11",
+   "voices": [
+    11
+   ]
+  },
+  {
+   "index": 5,
+   "name": "solo 12",
+   "voices": [
+    12
+   ]
+  },
+  {
+   "index": 6,
+   "name": "solo 13",
+   "voices": [
+    13
+   ]
+  },
+  {
+   "index": 7,
+   "name": "solo 14",
+   "voices": [
+    14
+   ]
+  },
+  {
+   "index": 8,
+   "name": "solo 15",
+   "voices": [
+    15
+   ]
+  },
+  {
+   "index": 9,
+   "name": "solo 16",
+   "voices": [
+    16
+   ]
+  },
+  {
+   "index": 10,
+   "name": "solo 17",
+   "voices": [
+    17
+   ]
+  },
+  {
+   "index": 11,
+   "name": "solo 18",
+   "voices": [
+    18
+   ]
+  },
+  {
+   "index": 12,
+   "name": "solo 19",
+   "voices": [
+    19
+   ]
+  },
+  {
+   "index": 13,
+   "name": "solo 20",
+   "voices": [
+    20
+   ]
+  },
+  {
+   "index": 14,
+   "name": "solo 21",
+   "voices": [
+    21
+   ]
+  },
+  {
+   "index": 15,
+   "name": "solo 22",
+   "voices": [
+    22
+   ]
+  },
+  {
+   "index": 16,
+   "name": "solo 23",
+   "voices": [
+    23
+   ]
+  },
+  {
+   "index": 17,
+   "name": "solo 24",
+   "voices": [
+    24
+   ]
+  },
+  {
+   "index": 18,
+   "name": "solo 25",
+   "voices": [
+    25
+   ]
+  },
+  {
+   "index": 19,
+   "name": "solo 26",
+   "voices": [
+    26
+   ]
+  },
+  {
+   "index": 20,
+   "name": "solo 27",
+   "voices": [
+    27
+   ]
+  },
+  {
+   "index": 21,
+   "name": "solo 28",
+   "voices": [
+    28
+   ]
+  },
+  {
+   "index": 22,
+   "name": "solo 29",
+   "voices": [
+    29
+   ]
+  },
+  {
+   "index": 23,
+   "name": "solo 30",
+   "voices": [
+    30
+   ]
+  },
+  {
+   "index": 24,
+   "name": "solo 31",
+   "voices": [
+    31
+   ]
+  },
+  {
+   "index": 25,
+   "name": "all 32",
+   "voices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31
+   ]
+  },
+  {
+   "index": 26,
+   "name": "brr at pitch 1.0",
+   "voices": [
+    9
+   ]
+  },
+  {
+   "index": 27,
+   "name": "echo on",
+   "voices": [
+    8
+   ]
+  },
+  {
+   "index": 28,
+   "name": "echo off",
+   "voices": [
+    8
+   ]
+  },
+  {
+   "index": 29,
+   "name": "pitch modulation",
+   "voices": [
+    9
+   ]
+  },
+  {
+   "index": 30,
+   "name": "noise",
+   "voices": [
+    10
+   ]
+  },
+  {
+   "index": 31,
+   "name": "one-shot",
+   "voices": [
+    13
+   ]
+  },
+  {
+   "index": 32,
+   "name": "stream",
+   "voices": [
+    12
+   ]
+  },
+  {
+   "index": 33,
+   "name": "off",
+   "voices": []
+  }
+ ],
+ "step_frames": 12,
+ "stream": {
+  "step": 32,
+  "frames": 14,
+  "rewrite_at": 6,
+  "address": 802816,
+  "length": 1024,
+  "before_hz": 1000,
+  "after_hz": 2000
+ },
+ "oneshot": {
+  "address": 737280,
+  "samples": 3200,
+  "srcn": 40,
+  "voice": 13
+ },
+ "pm": {
+  "carrier": 9,
+  "mod_hz": 50.048828125
+ },
+ "readback": {
+  "address": 1044480,
+  "length": 672,
+  "sum": 6440
+ },
+ "blobs": [
+  {
+   "address": 73728,
+   "length": 64,
+   "crc": 4184369062
+  },
+  {
+   "address": 139264,
+   "length": 18,
+   "crc": 3422858250
+  },
+  {
+   "address": 204800,
+   "length": 64,
+   "crc": 3973321249
+  },
+  {
+   "address": 270336,
+   "length": 18,
+   "crc": 988433727
+  },
+  {
+   "address": 335872,
+   "length": 64,
+   "crc": 2119995599
+  },
+  {
+   "address": 401408,
+   "length": 18,
+   "crc": 1797613787
+  },
+  {
+   "address": 466944,
+   "length": 64,
+   "crc": 2647250058
+  },
+  {
+   "address": 532480,
+   "length": 18,
+   "crc": 3319301189
+  },
+  {
+   "address": 598016,
+   "length": 64,
+   "crc": 397787796
+  },
+  {
+   "address": 663552,
+   "length": 18,
+   "crc": 1578616801
+  },
+  {
+   "address": 729088,
+   "length": 64,
+   "crc": 3623619717
+  },
+  {
+   "address": 794624,
+   "length": 18,
+   "crc": 2907844649
+  },
+  {
+   "address": 860160,
+   "length": 64,
+   "crc": 3725173369
+  },
+  {
+   "address": 925696,
+   "length": 18,
+   "crc": 1303124187
+  },
+  {
+   "address": 991232,
+   "length": 64,
+   "crc": 1266774645
+  },
+  {
+   "address": 106496,
+   "length": 18,
+   "crc": 3928765758
+  },
+  {
+   "address": 172032,
+   "length": 64,
+   "crc": 1101670558
+  },
+  {
+   "address": 237568,
+   "length": 18,
+   "crc": 780583085
+  },
+  {
+   "address": 303104,
+   "length": 64,
+   "crc": 1684650206
+  },
+  {
+   "address": 368640,
+   "length": 18,
+   "crc": 2603695482
+  },
+  {
+   "address": 434176,
+   "length": 64,
+   "crc": 2553822293
+  },
+  {
+   "address": 499712,
+   "length": 18,
+   "crc": 2102186920
+  },
+  {
+   "address": 565248,
+   "length": 64,
+   "crc": 1764497031
+  },
+  {
+   "address": 630784,
+   "length": 18,
+   "crc": 216899393
+  },
+  {
+   "address": 737280,
+   "length": 6400,
+   "crc": 443831805
+  },
+  {
+   "address": 802816,
+   "length": 1024,
+   "crc": 2994614175
+  },
+  {
+   "address": 1044480,
+   "length": 672,
+   "crc": 3780592700
+  }
+ ]
+}
