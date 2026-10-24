@@ -49,6 +49,9 @@ namespace BrokenNes.Windows
         
         private void StopEmulation()
         {
+            // A debugger stopped at a breakpoint parks the emulation thread mid-frame: detach it first (every hook removed, the thread let
+            // go), or the join below would wait on a parked thread. The debugger is made again for the next game on its first use.
+            try { webApiServer?.ReleaseDebugger(); } catch { }
             isEmulationRunning = false;
             isPaused = false; // Unpause to allow thread to exit loop
             

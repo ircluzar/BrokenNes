@@ -29,10 +29,10 @@ public sealed partial class CPU_SFC
     public string Description => "65C816 - the SNES CPU, built as the SFC family's first member";
     public string Category => "Accuracy";
 
-    private readonly ISnesBus bus;
+    private ISnesBus bus;   // not readonly: the debugger interposes a watching bus while a watch is set (CPU_SFC.DebugInterpose)
     // The same object as `bus` when it is the SNES board: calls through it are direct (no interface
     // dispatch), which matters most under WASM where there is no guarded devirtualization.
-    private readonly BOARD_SFC? board;
+    private BOARD_SFC? board;
 
     /// <summary>Read at construction: false keeps every access on the ISnesBus interface (reference/A-B).</summary>
     public static bool DirectBus = true;

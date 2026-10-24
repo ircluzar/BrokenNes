@@ -96,6 +96,11 @@ namespace BrokenNes.Windows
         // ------------------------------------------------------------------ HTTP API (automation, UAT)
         private void WireConsoleApi(WebApi.WebApiServer server)
         {
+            // the debugger (BrokenDev D1): the running session (the NES is _getNes), the opt-in for its control routes, and the emulation
+            // lock a parked emulation thread releases
+            server.GetConsoleSession = () => session;
+            server.DebuggerControlEnabled = () => config.EnableDebuggerControl;
+            server.Debuggers.HostLock = emulationLock;
             server.GetConsoleStatus = () =>
             {
                 var s = session; var console = s?.Console ?? SelectedConsole;
