@@ -1,7 +1,8 @@
 # BrokenDev debugging toolkit: a debugger, hardware checks and an MCP server
 
 Plan of 2026-10-23, written after an interview with the user. It starts **after WideMess milestone 1** (the week of 2026-10-26).
-**Milestone D1 (the debugger engine) is built** (2026-10-24): see "D1 as built" after the milestones. The rest is not.
+**Milestone D1 (the debugger engine) is built** (2026-10-24): see "D1 as built" after the milestones. **Milestone D4 (checks, budgets,
+profiler) is built** (2026-10-24): see "D4 as built"; the Game Boy hello world's accepted findings wait for D2. The rest is not.
 
 ## Why
 
@@ -457,6 +458,41 @@ port and DMA reads are still checked.
   and runs, so the strict rule reports every read that *can* collide and the run's actual collisions are only counted.
 - **"HDMA just after a DMA ends"** (the other trigger of the 5A22 v1 freeze): its window is not documented to a cycle, so only an HDMA
   during the DMA is reported.
+
+## D4 as built (2026-10-24)
+
+- **Engine:** `Windows/NesEmulator/debug/checks` (compiled by the desktop app and Workshop, like D1). The checks are a `DebugObserver` of the
+  D1 `Debugger`: it arms the hooks they ask for and calls them before its breakpoint matching (D1 gained observers and four events: a write
+  after it landed, the 65816's idle cycles, call frames pushed and popped, the NES DMC halt). `ConsoleChecks` (findings by rule and place,
+  frames and lag frames, the profiler, stack collisions), `NesChecks`, `SnesChecks` (also the WideMess, with the reserved debug-port hook at
+  `$4230-$423F`), `GbChecks`, `CheckRun` (attach, the profile summary, the report, ROM bank free space).
+- **Zero cost when off:** the boards gained read-only accessors that nothing calls with the checks off, and `Bus.PreciseTick` one null test
+  inside its rare DMC-halt branch. The ALttP golden is IDENTICAL, SMW's result is unchanged (video `e0fe6fe55bd52156`, audio
+  `3d7b8c7da7a360eb`), `--debug-test` 101 of 101, and the speed A/B is within noise (below).
+- **The catalogue as built:** the 37 rules of "D4 settled" (11 NES, 14 SNES and WideMess, 12 Game Boy), none dropped. Not built: the NES
+  picture chip's own reads, exact-only DMC collisions, the "HDMA just after a DMA" freeze (reasons in "D4 settled").
+- **Workshop:** `--check-test` (109 checks: every rule's test ROM triggers it, naming the rule, the first frame, the PC and its symbol, and its
+  negative control stays silent; the clean templates break no rule; the 6502's dummy reads are not reads; the profiler's busy time, lag
+  frames, DMA bytes and vblank use; checks on frame-identical to checks off on the NES, SNES, WideMess, Game Boy, VRUN and Super VRUN),
+  `--checks` and `--profile` (`--rom --sym --frames --input --wait --frames-csv --json`), which replace the hand-written Lua profilers.
+- **verify:** a manifest's `checks` section runs every (or the listed) scenario a second time with the checks on; anything not in
+  `checks.accepted` fails; `budgets` fail over and warn near; the report has the previous build's values (`out/<id>/budget-history.json`).
+  Cost with the checks on: VRUN x1.5, Super VRUN x4.5 (114 checked frames a second); a project's verify takes 20 to 90 s more.
+- **The user's games, today's findings (all accepted, with reasons, in their manifests):**
+  - VRUN: lag frames only (boot; the first room load; 5 frames at a room change). Budgets: lag 5 of 8 in play from frame 130, the busiest
+    frame 58.5% of 95%.
+  - The SMB1 remake: 14 unofficial opcodes (NESFab's unofficial ISA), among them the **highly unstable `$AB` LAX #imm, used only with
+    `#$00`** (safe as used); lag at boot and 4 frames per level reload (12 in play from frame 300, budget 16).
+  - Super VRUN: lag while booting and loading, **0 in play** (its own rule; budget 0); one unverified picture finding (BG1 draws colour 27,
+    never written, during the title-to-game fade). No work RAM is read before it is written in today's build (October's 61 were fixed or seen by a Mesen script that missed DMA writes).
+  - Nested VRUN and its enhanced build: the Nested engine's reset does **`ROL $420D` on a write-only register** (the FastROM bit it writes
+    back is open-bus luck); one read of INIDISP in play; 0 lag in play once its frame wait (`$80A739`) is declared.
+  - The SMB1 Nested build: the same `ROL $420D`; 382 SNES vblanks outside the engine's frame wait in play (unverified, not budgeted).
+  - The WideMess sample: **8 variables read before written: the devkit's start-up does not clear work RAM** (BrokenNes powers it on as
+    zeros; a WideMess powers on as a SNES); a game made from the template inherits it.
+- **Left open:** the Game Boy hello world's accepted list (D2); named timers in the profile (D7's debug port); the SNES picture model's
+  limits (modes 0-4, no HDMA); RAM headroom by allocation from the symbols (today: bytes read, a lower bound of use); the WideMess's VRAM and
+  sound RAM headroom; where the SMB1 Nested build waits; the devkit's start-up clear.
 
 ## Open questions (to settle at the start of the track)
 

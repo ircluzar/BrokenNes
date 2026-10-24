@@ -1233,7 +1233,8 @@ try {
         $bank = $b.checks.budgets | Where-Object { $_.id -eq 'romBankFree' }
         Assert-True ($null -ne $b.checks.previousBuild -and $null -ne $bank.previous) "no trend: $($b.checks.budgets | ConvertTo-Json -Compress -Depth 4)"
         Assert-True ([double]$bank.delta -lt 0) "the changed byte should cost free space: delta $($bank.delta)"
-        Assert-Equal @(Read-BdJson $hist).Count 2 'one history entry per build'
+        $h = Read-BdJson $hist   # (assigned first: Windows PowerShell's ConvertFrom-Json hands an array over as one object)
+        Assert-Equal $h.Count 2 'one history entry per build'
     }
     Test-Case 'NEGATIVE: verify exits 2 for a ROM that does not exist' {
         if (-not $ws) { Skip-Test $wsSkip }
