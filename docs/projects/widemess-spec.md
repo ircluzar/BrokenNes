@@ -265,6 +265,6 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
 | `.wms` files | 1 | done (`WmsFile`, `Workshop --wms-pack`) |
 | 512 KB video RAM, 1,024 colours, the 8-layer mode, wide output | 1 | done (`PPU_WMS`; test ROM `WideMess/testroms/layers`) |
 | SNES modes and Mode 7 wide, sprites, windows, colour math at 400 | 2 | not yet |
-| Sound | 3 | not yet |
+| Sound: 32 voices, BRR + 16-bit PCM, 1 MB sound RAM, the port | 3 | done (`APU_WMS`, `DSP_SFC.WideMess.cs`; test ROM `WideMess/testroms/sound`) |
 | Fast CPU, 1 MB work RAM, the WideMess map, fast DMA | 4 | not yet |
 | Debug port | BrokenDev debugging toolkit | reserved |
