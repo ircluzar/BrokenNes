@@ -21,7 +21,7 @@
 .PARAMETER Workshop
   BrokenNes.Workshop.exe, for --wms-pack. Default: $env:BD_WORKSHOP, $env:BROKENDEV_WORKSHOP.
 .PARAMETER Python
-  Python 3.10+ with Pillow and NumPy. Default: $env:BROKENDEV_PYTHON, else 'python'.
+  Python 3.10+ with Pillow and NumPy. Default: $env:BROKENDEV_PYTHON, else the first one BrokenDev finds.
 .PARAMETER Define
   Extra -D names for the C and assembly sources (e.g. WMS_NOUNLOCK, the negative control: no unlock).
 .PARAMETER Out
@@ -40,6 +40,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $wmsRoot = Split-Path -Parent $PSScriptRoot                        # BrokenDev\widemess
 . (Join-Path (Split-Path -Parent $wmsRoot) 'lib\Common.ps1')        # Invoke-BdProcess and friends
+. (Join-Path (Split-Path -Parent $wmsRoot) 'lib\Tools.ps1')         # Find-BdPython
 $libDir = Join-Path $wmsRoot 'lib'
 $drvDir = Join-Path $wmsRoot 'driver'
 
@@ -87,7 +88,8 @@ if (-not $Workshop) { $Workshop = $env:BROKENDEV_WORKSHOP }
 if ($Workshop) { $Workshop = $Workshop.Replace('/', '\') }
 if (-not $Workshop -or -not (Test-Path -LiteralPath $Workshop)) { Fail "BrokenNes.Workshop.exe not found (pass -Workshop, or run brokendev.ps1 build-workshop): it packs the .wms" }
 if (-not $Python) { $Python = $env:BROKENDEV_PYTHON }
-if (-not $Python) { $Python = 'python' }
+if (-not $Python) { $found = Find-BdPython; if ($found) { $Python = $found.Path } }
+if (-not $Python) { Fail 'no Python 3.10+ with Pillow and NumPy found (pass -Python or set BROKENDEV_PYTHON)' }
 
 if (-not $Out) { $Out = Join-Path $Project 'build' }
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
@@ -102,7 +104,12 @@ function Run([string]$what, [string]$exe, [string[]]$a, [string]$cwd = $Out) {
     $script:step++
     $log = Join-Path $logDir ('{0:D3}-{1}.log' -f $script:step, ($what -replace '[^A-Za-z0-9_\.\-]', '_'))
     $r = Invoke-BdProcess -FilePath $exe -Arguments $a -WorkingDirectory $cwd -TimeoutSec 600 -LogFile $log
-    if ($r.TimedOut -or $r.ExitCode -ne 0) { Fail "$what failed (exit $($r.ExitCode)); log $log`n$(Select-BdTail $r.Output 20)" }
+    if ($r.TimedOut -or $r.ExitCode -ne 0) {
+        # the lines that say what went wrong (the linker lists every section it discards first), else the tail
+        $bad = @(($r.Output -split "`r?`n") | Where-Object { $_ -cmatch 'ERROR|FIX_REFERENCES|error|Error' -and $_ -notmatch '^DISCARD' } | Select-Object -First 12)
+        $why = if ($bad.Count) { $bad -join "`n" } else { Select-BdTail $r.Output 20 }
+        Fail "$what failed (exit $($r.ExitCode)); log $log`n$why"
+    }
     # wla-65816 and wlalink can print an error and still exit 0 in some versions: an 'error' line is a failure
     if ($r.Output -cmatch '(?m)^.*(\bERROR\b|FIX_REFERENCES).*$') { Fail "$what reported: $($Matches[0])`nlog $log" }
     $r
@@ -110,16 +117,25 @@ function Run([string]$what, [string]$exe, [string[]]$a, [string]$cwd = $Out) {
 Write-Host "wmsbuild: $name ('$title'), $romBanks x 64 KB, $(if ($fastRom) { 'FastROM' } else { 'SlowROM' }), features 0x$('{0:X2}' -f $features)$(if ($Define.Count) { ', -D ' + ($Define -join ' -D ') })"
 Write-Host "  PVSnesLib $Pvsneslib"
 
-# ---- 1. the converters (the assets of wms.json)
+# ---- 1. the sound driver (an SPC700 program, a plain image from $0200), then the converters (the assets of wms.json)
 $objs = New-Object System.Collections.Generic.List[string]
-$genAsm = @()
+Get-ChildItem -LiteralPath $gen -File -ErrorAction SilentlyContinue | Remove-Item -Force    # nothing stale from an earlier build
+$soundOn = $null -ne (Get-BdProp $cfg 'sound' $null)
+if ($soundOn -and ($features -band 0x04) -eq 0) { Fail "wms.json has a 'sound' section but its features lack 'sound' (the .wms header must ask for the sound chip)" }
+if ($soundOn) {
+    Copy-Item -LiteralPath (Join-Path $drvDir 'wmsdrv.asm') -Destination (Join-Path $Out 'wmsdrv.asm') -Force
+    [void](Run 'spc wmsdrv' $as700 @('-o', 'wmsdrv.o', 'wmsdrv.asm'))
+    [System.IO.File]::WriteAllText((Join-Path $Out 'wmsdrv.link'), "[objects]`r`nwmsdrv.o`r`n")
+    [void](Run 'link wmsdrv' $ld @('-b', 'wmsdrv.link', (Join-Path $gen 'wmsdrv.bin')))
+}
 foreach ($conv in @(@{ Key = 'graphics'; Script = 'wmsgfx.py' }, @{ Key = 'sound'; Script = 'wmssnd.py' })) {
     if ($null -eq (Get-BdProp $cfg $conv.Key $null)) { continue }
     $sargs = @('-I', (Join-Path $PSScriptRoot $conv.Script), 'build', $cfgPath, $gen)
-    if ($conv.Key -eq 'sound') { $sargs += @('--snesbrr', (Join-Path $tools 'snesbrr.exe')) }
-    [void](Run $conv.Script $Python $sargs $Project)
+    if ($conv.Key -eq 'sound') { $sargs += @('--driver', (Join-Path $gen 'wmsdrv.bin'), '--snesbrr', (Join-Path $tools 'snesbrr.exe')) }
+    $r = Run $conv.Script $Python $sargs $Project
+    foreach ($line in ($r.Output -split "`r?`n")) { if ($line -match '^wms(gfx|snd):') { Write-Host "  $line" } }
 }
-foreach ($g in @(Get-ChildItem -LiteralPath $gen -Filter '*.asm' -File -ErrorAction SilentlyContinue)) { $genAsm += $g.FullName }
+$genAsm = @(Get-ChildItem -LiteralPath $gen -Filter '*.asm' -File -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { $_.FullName })
 
 # ---- 2. hdr.asm
 $romSizeCode = 5; while ((1 -shl $romSizeCode) * 1024 -lt $romBanks * 65536) { $romSizeCode++ }
@@ -140,7 +156,6 @@ $cflags = @('-Wall', '-c', '-H') + $(if ($fastRom) { @('-F') } else { @() }) + @
 $cfiles = @()
 $cfiles += @(Get-ChildItem -LiteralPath (Join-Path $Project 'src') -Filter '*.c' -File -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { $_.FullName })
 $cfiles += (Join-Path $libDir 'widemess.c')
-$soundOn = ($features -band 0x04) -ne 0 -and $null -ne (Get-BdProp $cfg 'sound' $null)
 if ($soundOn) { $cfiles += (Join-Path $libDir 'wmssound.c') }
 $seen = @{}
 foreach ($c in $cfiles) {
@@ -165,18 +180,6 @@ foreach ($s in $sfiles) {
     if ([System.IO.Path]::GetFullPath($s) -ne $dst) { Copy-Item -LiteralPath $s -Destination $dst -Force }
     [void](Run "as $base" $as @('-d', '-s', '-x', '-o', "$base.obj", "$base.asm"))
     $objs.Add("$base.obj")
-}
-
-# the sound driver: an SPC700 program, a plain image the library uploads through the sound port
-if ($soundOn) {
-    Copy-Item -LiteralPath (Join-Path $drvDir 'wmsdrv.asm') -Destination (Join-Path $Out 'wmsdrv.asm') -Force
-    [void](Run 'spc wmsdrv' $as700 @('-o', 'wmsdrv.o', 'wmsdrv.asm'))
-    [System.IO.File]::WriteAllText((Join-Path $Out 'wmsdrv.link'), "[objects]`r`nwmsdrv.o`r`n")
-    [void](Run 'link wmsdrv' $ld @('-b', 'wmsdrv.link', 'wmsdrv.bin'))
-    $drvAsm = ".include `"hdr.asm`"`r`n.SECTION `".wms_driver`" SUPERFREE`r`nwms_driver_bin:`r`n.INCBIN `"wmsdrv.bin`"`r`nwms_driver_end:`r`n.ENDS`r`n"
-    [System.IO.File]::WriteAllText((Join-Path $Out 'wmsdrvbin_s.asm'), $drvAsm)
-    [void](Run 'as wmsdrvbin' $as @('-d', '-s', '-x', '-o', 'wmsdrvbin_s.obj', 'wmsdrvbin_s.asm'))
-    $objs.Add('wmsdrvbin_s.obj')
 }
 
 # ---- 4. link

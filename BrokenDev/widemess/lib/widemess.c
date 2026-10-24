@@ -173,6 +173,11 @@ void wmsSpriteHideFrom(u16 first)
     wms_oam_dirty = 1;
 }
 
+void wmsSpritesShow(u8 on)
+{
+    *(vuint8 *)0x212C = on ? 0x10 : 0x00;   /* TM */
+}
+
 void wmsSpritePri(u8 prio, u8 slots)
 {
     wms_poke(0x21A6 + (prio & 3), slots);

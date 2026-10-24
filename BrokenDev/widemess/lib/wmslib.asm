@@ -103,4 +103,147 @@ wmsScrollNow:
     plp
     rtl
 
+;-----------------------------------------------------------------------------
+; void wmsUpload(u8 *table): runs an upload table (wmsgfx.py's gfx_uploads, or a game's own) in forced blank. Records of 12 bytes:
+;   +0 kind  +1 arg  +2 dest (24 bits)  +5 cfg  +6 src (24 bits)  +9 0  +10 size (16 bits; 0 = 64 KB)
+;   kind 0 end | 1 video RAM (DMA to WMVDATA at dest) | 2 colours (WMCGADDR = dest, DMA to WMCGDATA, size in bytes)
+;        3 layer arg: WMBGnMAP = dest / 2 KB, WMBGnCFG = cfg | 4 the WideMess sprite table on, its tiles at arg x 64 KB
+;        5 work RAM (DMA through the WRAM port at the 20-bit dest) | 6 sound RAM (DMA through $21F3 at dest) | 7 WMTM = arg
+;   table 4,s (address) 6,s (bank); +6 after php/phx/phy/phb
+;-----------------------------------------------------------------------------
+wmsUpload:
+    php
+    rep #$30
+    phx
+    phy
+    phb
+    sep #$20
+    lda 12,s
+    pha
+    plb                     ; DB = the table's bank: records are read with lda.w n,x
+    rep #$20
+    lda 10,s
+    tax
+_up_loop:
+    sep #$20
+    lda.w 0,x
+    bne +
+    jmp _up_done
++   cmp #1
+    bne _up_k2
+    lda.w 2,x
+    sta.l $0021C2
+    lda.w 3,x
+    sta.l $0021C3
+    lda.w 4,x
+    sta.l $0021C4
+    lda #$C5
+    jsr _up_dma
+    jmp _up_next
+_up_k2:
+    cmp #2
+    bne _up_k3
+    lda.w 2,x
+    sta.l $0021C6
+    lda.w 3,x
+    sta.l $0021C7
+    lda #$C8
+    jsr _up_dma
+    jmp _up_next
+_up_k3:
+    cmp #3
+    bne _up_k4
+    rep #$20
+    lda.w 3,x               ; dest bits 8-23
+    lsr a
+    lsr a
+    lsr a                   ; low byte: dest / 2 KB
+    sep #$20
+    pha                     ; the map unit
+    lda.w 5,x
+    pha                     ; the configuration
+    lda.w 1,x               ; the layer
+    phx
+    rep #$20
+    and.w #$0007
+    tax
+    sep #$20
+    lda 3,s
+    sta.l $0021D8,x
+    lda 4,s
+    sta.l $0021D0,x
+    plx
+    pla
+    pla
+    jmp _up_next
+_up_k4:
+    cmp #4
+    bne _up_k5
+    lda.w 1,x
+    sta.l $0021A1
+    lda #$01
+    sta.l $0021A0
+    jmp _up_next
+_up_k5:
+    cmp #5
+    bne _up_k6
+    lda.w 2,x
+    sta.l $002181
+    lda.w 3,x
+    sta.l $002182
+    lda.w 4,x
+    sta.l $002183
+    lda #$80
+    jsr _up_dma
+    jmp _up_next
+_up_k6:
+    cmp #6
+    bne _up_k7
+    lda.w 2,x
+    sta.l $0021F0
+    lda.w 3,x
+    sta.l $0021F1
+    lda.w 4,x
+    sta.l $0021F2
+    lda #$F3
+    jsr _up_dma
+    jmp _up_next
+_up_k7:
+    lda.w 1,x
+    sta.l $0021C1
+_up_next:
+    rep #$20
+    txa
+    clc
+    adc.w #12
+    tax
+    jmp _up_loop
+_up_done:
+    rep #$30
+    plb
+    ply
+    plx
+    plp
+    rtl
+
+; X = a record, A (8 bits) = the B-bus register: DMA channel 0 from the record's source, its size.
+; (.ACCU 8: WLA follows sep/rep in the order it reads them, and the code before this label ends 16-bit, so without it the
+; "lda #$00" below assembles 3 bytes long and the CPU, 8-bit here, runs its third byte as a BRK.)
+.ACCU 8
+_up_dma:
+    sta.l $004301
+    lda #$00
+    sta.l $004300
+    lda.w 8,x
+    sta.l $004304
+    rep #$20
+    lda.w 6,x
+    sta.l $004302
+    lda.w 10,x
+    sta.l $004305
+    sep #$20
+    lda #$01
+    sta.l $00420B
+    rts
+
 .ENDS

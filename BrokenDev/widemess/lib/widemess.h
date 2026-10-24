@@ -152,6 +152,9 @@ void wmsScrollNow(u8 n, u16 x, u16 y);
 /* DMA copies (forced blank, or right after WaitForVBlank()). size 0 means 65,536 bytes. */
 void wmsVramCopy(u32 vramAddr, u8 *src, u16 size);
 void wmsVramFill(u32 vramAddr, u8 value, u16 size);
+/* Runs an upload table in forced blank: wmsgfx.py's gfx_uploads (gfx.h: gfxLoadAll()) or a game's own (records of 12 bytes,
+   described in wmslib.asm): maps, tiles, colours, the layers' settings, the sprite table's base, WMTM, work RAM, sound RAM. */
+void wmsUpload(u8 *table);
 /* count colours (2 bytes each, 15-bit BGR) from entry first (0-1023). */
 void wmsPalCopy(u16 first, u8 *src, u16 count);
 void wmsColor(u16 entry, u16 bgr15);
@@ -164,6 +167,8 @@ void wmsSpriteSet(u8 id, s16 x, s16 y, u16 tile, u8 attr6, u8 attr7);
 void wmsSpriteMove(u8 id, s16 x, s16 y);
 void wmsSpriteHide(u8 id);
 void wmsSpriteHideFrom(u16 first);
+/* Sprites on the main screen (the SNES's TM bit 4, which the WideMess mode keeps for its sprites; it ignores TM's BG bits). */
+void wmsSpritesShow(u8 on);
 /* WMOBJPRIn: how many of the 16 BG slots are in front of sprites of priority prio. */
 void wmsSpritePri(u8 prio, u8 slots);
 /* Uploads the sprite table now (forced blank, vblank). */

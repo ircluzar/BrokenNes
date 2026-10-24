@@ -1,0 +1,29 @@
+{
+  "name": "{{NAME}}",
+  "title": "{{TITLE}}",
+  "romBanks": 4,
+  "fastRom": true,
+  "features": ["picture", "sprites", "sound", "fastcpu", "bigwram"],
+  "graphics": {
+    "backdrop": "#081040",
+    "layers": [
+      { "name": "title", "png": "gfx/title.png", "layer": 0, "bank": 0 },
+      { "name": "hills", "png": "gfx/hills.png", "layer": 6, "bank": 1, "map": "64x32" },
+      { "name": "sky", "png": "gfx/sky.png", "layer": 7, "bank": 2 }
+    ],
+    "sprites": [
+      { "name": "ship", "png": "gfx/ship.png", "frame": "16x16", "bpp": 4, "palette": 48 }
+    ]
+  },
+  "sound": {
+    "samples": [
+      { "name": "chime", "wav": "audio/chime.wav", "format": "pcm16", "rate": 32000, "root": 69, "adsr": ["8F", "E8"] }
+    ],
+    "songs": [
+      { "name": "hello", "mid": "audio/hello.mid", "instruments": { "0": "chime" }, "volume": 0.45 }
+    ],
+    "effects": [
+      { "name": "ding", "sample": "chime", "note": 88, "voice": 31, "volume": 100 }
+    ]
+  }
+}
