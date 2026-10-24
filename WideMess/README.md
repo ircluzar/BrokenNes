@@ -333,3 +333,40 @@ centre compared line by line.
   shoot-'em-up (Gradius III, R-Type III) would exercise it more.
 - Games that stream their maps just past the SNES edge (Donkey Kong Country, Super Castlevania IV, Contra III) could look better with
   a direction-aware rule. Today's rules are static per scene.
+
+## Milestone 7a result (2026-10-24): WideMess in BrokenNes Lite and in the FL plugin
+
+How WideMess appears in each host, and why the plugin differs, is spec section 8.
+
+**BrokenNes Lite** (the Blazor WebAssembly build; `WebLite/`, the facade `Windows/NesEmulator/board/Emulator.Consoles.cs` and `Emulator.WideMess.cs`):
+- the Console menu has WideMess; `.wms` files open from the file input, drag and drop, the ROM manager and `?rom=`; a SNES game runs on the WideMess when it is selected
+  and goes back to the SNES when the SNES is chosen (the game's own file decides, as on the desktop);
+- the 400 x 224 picture is shown at its square-pixel 16:9 shape (the canvas and the page take 400 / 224);
+- battery RAM in IndexedDB (`battery_v1:wms<sha1>.srm`; a SNES game on the WideMess keeps its SNES save), save states (`state_v1:wms:<game id>.quick`);
+- the touch controller's SNES pad; the X / Y / L / R key hints;
+- milestone 6's enhancements for a SNES game on the WideMess: a row beside the core menus (the profile line, Use the profile, the four switches with the profile's verdicts,
+  the known issues), kept per game in IndexedDB (fast CPU never), the profiles built into the app;
+- `WebLite/LinkerConfig.xml` roots `PPU_WMS`, `APU_WMS`, `WmsExtension` and `WmsFile` (they are built with `new`, so the trimmer keeps them anyway; the roots guard against a future
+  lookup by name).
+
+**The FL plugin** (`Plugin/README.md`, "The WideMess chip"; `Plugin/CLAUDE.md`):
+- the WideMess sound chip is **chip 29, `WMS`**, appended after the six Presets chips on the SNES console (nothing before it moved);
+- **Direct mode:** the chip itself (a private S-DSP with voices 8-31 attached and unlocked), 24 notes at once on one channel, from 14 built-in 16-bit PCM instruments (each
+  waveform eleven band-limited one-cycle loops, one per octave);
+- **ROM mode:** `.wms` games and SNES games on the WideMess console, 400 x 224 in the editor at 1x, the sound on Mix; the chip can be swapped under a running game;
+- **Instrument Runaway** on an unlocked WideMess game plays the game's own 16-bit PCM and BRR samples (both directories; 24 notes at once on the new voices); a project keeps
+  them (section `WMS1`).
+
+**How it is tested.**
+
+| Check | What it shows | Its negative controls |
+|---|---|---|
+| Lite `console`, `picture`, `layout` | the menu and cores (WMS, the SFC sound chip offered); 400 x 224 with 1,020 colours, moving; canvas 800 x 448, aspect 400 / 224; the SNES pad | |
+| Lite `model` | `sprites`, `widesnes`, `windows`: the browser's frame is the spec model's PNG pixel for pixel | |
+| Lite `control`, `snes` | `layers.sfc` on the WideMess finds it (400 wide) and on the SNES draws its red screen; Super Mario World on both consoles: 1,196 frames, picture and sound identical | `layers_nounlock.wms`: 256 x 224, black |
+| Lite `sound` | `sound.wms` rms 0.088 at 32 kHz | the locked control 0.008 |
+| Lite `saves`, `states` | `bigmap.wms`'s 256 KB battery RAM with its boot counter in IndexedDB, counting up in a fresh page; states of three WideMess games: the next 60 frames' pictures and sound equal, also in a fresh page | |
+| Lite `enhance` | Super Mario World finds its profile; widescreen: 400 wide, the centre (columns 72-327) the SNES picture for 30 frames from one saved moment; kept per game, back in a fresh page; Use the profile = widescreen + no flicker | a `.wms` game has none (said, switches disabled); fast CPU not kept; the SNES console has no row |
+| Lite `speed` | the AOT build in Edge, the frame call (and drawn on the GPU): layers 160 (177), sprites 194 (175), windows 137 (131), widesnes 123 (117), Wide Blaster 110 (110) frames a second; Super Mario World on the SNES 205 | SwiftShader (the CPU draws): reported only |
+| plugin `wms` | chip 29 and every earlier index; pitch A0-C8 worst 0.196 cent; the sine's harmonics below -100 dB; each instrument's harmonics on its formula; 24 notes = 24 frequencies in the mix, a 25th takes the oldest's voice; level 0.0 dB from the NES chip; 9x real time and 0 bytes with 4 x 6 sliding notes; Reset Console | deliberate bugs (8 voices; the pitch for the wrong loop) caught; the same chord on the SNES chip: 1 note |
+| plugin `rom-wms` | a `.wms` file takes WMS from a NES emulator; 400 x 224 in the editor; `sprites` / `widesnes`: the plugin's picture hash = the PNG's; `sound.wms` rms 0.083; Super Mario World frame and sample identical on the SNES and WMS chips (10 pictures over 600 frames, 143,872 samples); a chip swap under a running game; Runaway lists 28 instruments (14 16-bit PCM and 12 BRR of the new voices' directory, 2 of the S-DSP's), plays the game's 1 kHz PCM sine at C5, A4, C6, a 6-note chord, 0 bytes; the project's `WMS1` | the locked control (0.008) and the SNES chip (no new voices, said); a damaged `WMS1` refused with a note; the locked control's Runaway is the SNES sampler's |

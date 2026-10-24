@@ -385,7 +385,7 @@ if (want('enhance')) {
       await sleep(400);
       const off = await page.eval(`window.__frames(30)`);
       const p4 = await panel(page);
-      check('enhance', '"Use the profile" switches on what the profile recommends (Super Mario World\'s: widescreen and no flicker, nothing else); pressed again, everything is off and the picture is the SNES\'s 256', p3 && /Profile on/.test(p3.profileButton) && p3.boxes[0].on && p3.boxes[1].on && !p3.boxes[2].on && !p3.boxes[3].on && p4 && p4.boxes.every(b => !b.on) && off.w === 256,
+      check('enhance', '"Use the profile" switches on what the profile recommends (Super Mario World\'s: widescreen and no flicker, nothing else); pressed again, everything is off and the picture is the SNES\'s 256', p3 && /Profile on/i.test(p3.profileButton) && p3.boxes[0].on && p3.boxes[1].on && !p3.boxes[2].on && !p3.boxes[3].on && p4 && p4.boxes.every(b => !b.on) && off.w === 256,
         `after: ${JSON.stringify(p3?.boxes.map(b => b.on))} "${p3?.profileButton}"; again: ${JSON.stringify(p4?.boxes.map(b => b.on))}, ${off.w} wide`);
     });
     // the SNES console has no enhancements panel
