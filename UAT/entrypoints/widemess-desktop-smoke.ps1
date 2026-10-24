@@ -6,13 +6,14 @@
   Starts the shipped WinForms app with a scratch settings folder (BROKENNES_CONFIG_DIR: the user's config.json is never read or written) and checks, through its
   HTTP API and its Console menu:
     MENU     the Console menu lists WideMess.
-    WMS      the WideMess test ROM (WideMess\testroms\bin\layers.wms) loads: the console is "wms", the cores WMS / WMS / SFC, the picture 400 x 224 with more than 800
+    WMS      the WideMess test ROM (WideMess\testroms\bin\layers.wms) loads: the console is "wms", the cores WMS / WMS / WMS, the picture 400 x 224 with more than 800
              colours, and it moves (the layers scroll).
     M2       the milestone-2 picture ROMs (sprites.wms, widesnes.wms) show, in the app, exactly the pictures their generator's model of the spec draws
              (<rom>.expect.png: the 256-sprite table at 400; SNES modes 1, 0, 5, 2 and 7 drawn 400 wide).
     SNES     with WideMess selected, the ROM's SNES image (layers.sfc, a SNES-format file) runs on the WideMess too (400 wide: the game finds the WideMess);
              switching the console to the SNES moves it to the SNES, where it draws its red "not a WideMess" screen at 256 x 224.
     CONTROL  the negative-control ROM (layers_nounlock.wms: the WideMess registers written without the unlock) stays a SNES picture: 256 wide, black.
+    SOUND    the sound test ROM (sound.wms, milestone 3) runs on the WideMess sound chip (APU WMS) and unlocks it (Workshop --wms-test measures its sound).
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
 
 .EXAMPLE
@@ -93,7 +94,7 @@ try {
     . (Join-Path $repo 'UAT\lib\ApiClient.ps1')
     . (Join-Path $repo 'UAT\lib\UiaHelpers.ps1')
     Add-Type -AssemblyName System.Drawing
-    foreach ($f in 'layers.wms', 'layers.sfc', 'layers_nounlock.wms') { if (-not (Test-Path -LiteralPath (Join-Path $bin $f))) { throw "missing ${f}: build WideMess\testroms\layers\build.ps1" } }
+    foreach ($f in 'layers.wms', 'layers.sfc', 'layers_nounlock.wms', 'sound.wms') { if (-not (Test-Path -LiteralPath (Join-Path $bin $f))) { throw "missing ${f}: build WideMess\testroms\layers\build.ps1 and WideMess\testroms\sound\build.ps1" } }
     foreach ($f in 'sprites.wms', 'sprites.expect.png', 'widesnes.wms', 'widesnes.expect.png') { if (-not (Test-Path -LiteralPath (Join-Path $bin $f))) { throw "missing ${f}: build WideMess\testroms\picture\build.ps1" } }
     $cfgDir = Join-Path $WorkDir 'config'
     if (Test-Path -LiteralPath $cfgDir) { Remove-Item -LiteralPath $cfgDir -Recurse -Force }
@@ -111,7 +112,7 @@ try {
     Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/load-rom' -Body @{ path = (Join-Path $bin 'layers.wms') } | Out-Null
     $f1 = Wait-Frame $id { param($f) $f.Width -eq 400 -and $f.Colors -gt 800 }
     $st = Get-Status $id
-    Check 'wms_console' ($st.console -eq 'wms' -and $st.cpu -eq 'WMS' -and $st.ppu -eq 'WMS' -and $st.apu -eq 'SFC') "console $($st.console), cores $($st.cpu)/$($st.ppu)/$($st.apu), $($st.description)"
+    Check 'wms_console' ($st.console -eq 'wms' -and $st.cpu -eq 'WMS' -and $st.ppu -eq 'WMS' -and $st.apu -eq 'WMS') "console $($st.console), cores $($st.cpu)/$($st.ppu)/$($st.apu), $($st.description)"
     Check 'wms_picture' ($f1.Width -eq 400 -and $f1.Height -eq 224 -and $f1.Colors -gt 800) "$($f1.Width) x $($f1.Height), $($f1.Colors) colours"
     Start-Sleep -Milliseconds 700
     $f2 = Get-Frame $id
@@ -140,6 +141,12 @@ try {
     $f5 = Wait-Frame $id { param($f) $f.Width -eq 256 }
     $st = Get-Status $id
     Check 'control_stays_snes' ($st.console -eq 'wms' -and $f5.Width -eq 256 -and $f5.AllBlack) "console $($st.console), $($f5.Width) x $($f5.Height), all black: $($f5.AllBlack)"
+
+    # SOUND: the sound test ROM (milestone 3) runs on the WideMess sound chip and unlocks it (what it sounds like is measured by Workshop --wms-test)
+    Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/load-rom' -Body @{ path = (Join-Path $bin 'sound.wms') } | Out-Null
+    $end = (Get-Date).AddSeconds(10)
+    do { Start-Sleep -Milliseconds 400; $st = Get-Status $id } while ((Get-Date) -lt $end -and -not ($st.description -match 'WideMess sound' -and $st.description -match 'unlocked'))
+    Check 'sound_chip' ($st.console -eq 'wms' -and $st.apu -eq 'WMS' -and $st.description -match 'WideMess sound' -and $st.description -match '\| unlocked') "console $($st.console), APU $($st.apu), $($st.description)"
 
     $result.pass = -not ($checks.Values | Where-Object { -not $_.ok })
 }

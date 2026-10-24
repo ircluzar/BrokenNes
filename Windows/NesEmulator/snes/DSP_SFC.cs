@@ -275,6 +275,13 @@ public sealed partial class DSP_SFC
             prevOutput = output;
         }
         Regs[ENDX] = endx;
+        if (wideOn)
+        {
+            // the WideMess's voices 8-31 (DSP_SFC.WideMess.cs): never on a SNES or a locked WideMess. The sums go through fields, not refs, so these locals stay in registers in the loop above.
+            wideMainL = mainL; wideMainR = mainR; wideEchoL = echoL; wideEchoR = echoR;
+            RunWide(prevOutput);
+            mainL = wideMainL; mainR = wideMainR; echoL = wideEchoL; echoR = wideEchoR;
+        }
 
         RunEcho(mainL, mainR, echoL, echoR);
     }
