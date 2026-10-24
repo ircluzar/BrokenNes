@@ -464,7 +464,7 @@ public static class CoreCatalog
             (ConsoleKind.MasterSystem, _) => new[] { ("SMS", CoreGrade.Stock, "Master System") },
             (ConsoleKind.GameGear, _) => new[] { ("GG", CoreGrade.Stock, "Game Gear") },
             (ConsoleKind.Genesis, CoreSlot.Cpu) => new[] { ("M68K", CoreGrade.Stock, "Genesis") },
-            (ConsoleKind.WideMess, CoreSlot.Apu) => new[] { ("SFC", CoreGrade.Stock, "WideMess") },
+            (ConsoleKind.WideMess, CoreSlot.Apu) => new[] { ("WMS", CoreGrade.Stock, "WideMess"), ("SFC", CoreGrade.Stock, "SNES") },
             (ConsoleKind.WideMess, _) => new[] { ("WMS", CoreGrade.Stock, "WideMess") },
             _ => new[] { ("MD", CoreGrade.Stock, "Genesis") },
         };
@@ -649,14 +649,16 @@ public static class CoreCatalog
                 }
                 break;
             // WideMess (docs/projects/widemess-spec.md): its own parts only for now. The CPU is the SNES's 65816 (its fast mode arrives in milestone 4), the picture chip is the
-            // WideMess's (the SNES chip + 512 KB video RAM, 1,024 colours, 8 layers of 256 colours, 400 wide), the sound is the SNES's until the WideMess sound chip (milestone 3).
+            // WideMess's (the SNES chip + 512 KB video RAM, 1,024 colours, 8 layers of 256 colours, 400 wide), the sound chip is the WideMess's (the SNES's S-SMP + S-DSP + voices
+            // 8-31 and 1 MB of sound RAM, spec section 4), with the SNES's own as the alternative.
             case ConsoleKind.WideMess:
                 switch (slot)
                 {
                     case CoreSlot.Cpu: list.Add(new("WMS", "WMS (65816; the fast mode arrives in milestone 4)", "WideMess")); break;
                     case CoreSlot.Ppu: list.Add(new("WMS", "WMS (WideMess picture chip: the SNES chip + 512 KB video RAM, 1,024 colours, 8 layers of 256 colours, 400 wide)", "WideMess")); break;
                     default:
-                        list.Add(new("SFC", "SFC (S-SMP + S-DSP; the WideMess sound chip arrives in milestone 3)", "WideMess"));
+                        list.Add(new("WMS", "WMS (WideMess sound chip: the S-SMP + S-DSP, plus 24 more voices in BRR or 16-bit PCM and 1 MB of sound RAM once a game unlocks them)", "WideMess"));
+                        list.Add(new("SFC", "SFC (the SNES's S-SMP + S-DSP: 8 voices, 64 KB, no WideMess sound)", "WideMess"));
                         list.Add(new("HLE", "HLE (silent - no sound, fastest)", "WideMess"));
                         break;
                 }

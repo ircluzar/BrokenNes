@@ -275,6 +275,7 @@ public sealed partial class DSP_SFC
             prevOutput = output;
         }
         Regs[ENDX] = endx;
+        if (wideOn) RunWide(ref mainL, ref mainR, ref echoL, ref echoR, prevOutput);   // the WideMess's voices 8-31 (DSP_SFC.WideMess.cs): never on a SNES or a locked WideMess
 
         RunEcho(mainL, mainR, echoL, echoR);
     }

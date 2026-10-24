@@ -15,14 +15,33 @@ namespace NesEmulator.Snes;
 public sealed class WmsExtension
 {
     public const byte SpecMajor = 1, SpecMinor = 0;
-    /// <summary>The WMFEAT bits this console has: bit 0 = the picture (wide output and the 8-layer mode). The other features arrive with their milestones.</summary>
-    public const byte Features = 0x01;
+    /// <summary>The WMFEAT bits this console has: bit 0 = the picture (wide output and the 8-layer mode), bit 2 = the sound (32 voices, BRR + 16-bit PCM, 1 MB sound RAM). The other features arrive with their milestones.</summary>
+    public const byte Features = 0x05;
     public const byte IdValue = 0x57;   // 'W'
 
     private readonly PPU_WMS ppu;
     private byte unlockStep, speed, dma;
 
     public WmsExtension(PPU_WMS ppu) { this.ppu = ppu; }
+
+    // ---- the sound unit's side (spec 4; WideMess.Sound.cs)
+    private APU_WMS? sound;
+    /// <summary>The WideMess sound chip when it is the sound unit playing (the session sets it, and again after an APU swap); null when a SNES sound chip plays, which has no sound RAM port and no voices 8-31.
+    /// Set while unlocked, the unit is unlocked at once (the unlock line); an unlocked unit set while the console is locked (parked across a reset) goes back to its power-on WideMess part.</summary>
+    public APU_WMS? Sound
+    {
+        get => sound;
+        set
+        {
+            sound = value;
+            if (value == null) return;
+            if (Unlocked) value.Unlock();
+            else if (value.Unlocked) value.PowerOnWide();
+        }
+    }
+    /// <summary>The board's master clock (the session sets it): a sound RAM port access lands at that moment.</summary>
+    public Func<long>? Clock { get; set; }
+    private long SoundClock() => Clock?.Invoke() ?? throw new InvalidOperationException("the WideMess sound RAM port needs the board's clock (WmsExtension.Clock)");
 
     /// <summary>True once the game wrote $57, $4D to WMUNLOCK; until the next reset.</summary>
     public bool Unlocked { get; private set; }
@@ -36,7 +55,7 @@ public sealed class WmsExtension
         if (offset == 0x4220)
         {
             if (value == IdValue) unlockStep = 1;
-            else if (unlockStep == 1 && value == 0x4D) { Unlocked = true; unlockStep = 0; }
+            else if (unlockStep == 1 && value == 0x4D) { Unlocked = true; unlockStep = 0; sound?.Unlock(); }
             else unlockStep = 0;
         }
         else if (was)
@@ -62,17 +81,18 @@ public sealed class WmsExtension
     /// <summary>The first B-bus register of the WideMess window ($21A0-$21FF; the Satellaview's $2188-$219F stays below it).</summary>
     public const byte FirstBBus = 0xA0;
 
-    /// <summary>A B-bus write to $21A0-$21FF (CPU or DMA); ignored while locked. $21A0-$21EF are the picture's (spec 3), $21F0-$21F7 the sound RAM port (milestone 3), $21F8-$21FF reserved.</summary>
+    /// <summary>A B-bus write to $21A0-$21FF (CPU or DMA); ignored while locked. $21A0-$21EF are the picture's (spec 3), $21F0-$21F7 the sound RAM port (spec 4), $21F8-$21FF reserved.</summary>
     public void WriteB(byte reg, byte value)
     {
         if (!Unlocked || reg < FirstBBus) return;
         if (reg < 0xF0) ppu.WriteWide(reg, value);
+        else if (reg < 0xF8) sound?.WriteSoundPort(reg, value, SoundClock());
     }
 
-    /// <summary>A B-bus read of $21A0-$21FF while unlocked: the picture's data ports, open bus for its write-only registers, 0 for the parts not built yet and the reserved ones.</summary>
+    /// <summary>A B-bus read of $21A0-$21FF while unlocked: the picture's and the sound RAM's data ports, open bus for their write-only registers, 0 for the parts not built yet and the reserved ones.</summary>
     public byte ReadB(byte reg, byte openBus)
     {
-        if (reg >= 0xF0) return 0;
+        if (reg >= 0xF0) return reg < 0xF8 && sound != null ? sound.ReadSoundPort(reg, openBus, SoundClock()) : (byte)0;
         int v = ppu.ReadWide(reg);
         return v < 0 ? openBus : (byte)v;
     }

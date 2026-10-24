@@ -100,6 +100,7 @@ public sealed partial class SnesSession : IConsoleSession
         else if (apu.Equals("HLE", StringComparison.OrdinalIgnoreCase)) unit = new APU_HLE();
         else if (CoreCatalog.IsDirectRoute(apu)) unit = new SnesApuOnChip(apu, null, 0);          // another console's enhanced sound chip, directly
         else if (apu.Equals("SFCS", StringComparison.OrdinalIgnoreCase)) unit = new APU_SFCS();   // the SNES's own, enhanced: the stock unit for a SNES game
+        else if (apu.Equals("WMS", StringComparison.OrdinalIgnoreCase)) unit = new APU_WMS();     // the WideMess sound chip: the SNES's until a game unlocks it
         else unit = new APU_SFC();
         var chip = SnesChips.Create(cart, loadFirmware, false, out string chipNote);
         if (wideMess)
@@ -107,6 +108,8 @@ public sealed partial class SnesSession : IConsoleSession
             board = new BOARD_SFC(cart, unit, chip, cpuFactory: null, ppuFactory: () => new PPU_WMS());
             wms = (PPU_WMS)board.Ppu;
             board.WideMess = new WmsExtension(wms);
+            board.WideMess.Clock = () => board.MasterClock;   // the sound RAM port lands at the CPU's moment (spec 4)
+            board.WideMess.Sound = unit as APU_WMS;
         }
         else board = new BOARD_SFC(cart, unit, chip);
         cpuId = cpu; ppuId = ppu; apuId = apu;
@@ -165,13 +168,14 @@ public sealed partial class SnesSession : IConsoleSession
                     if (real == null) real = new APU_SFC();   // no running driver to keep (HLE from the start): a fresh unit
                     real.SyncTo(board.MasterClock);           // a parked unit resumes from here, not from when it stopped
                     parkedSpc = null;
-                    // the SNES's own unit, stock or enhanced: the same SPC700 + S-DSP state moves into the other kind of unit (the enhanced one's extra banks are empty on its own console)
-                    bool wantEnhanced = id.Equals("SFCS", StringComparison.OrdinalIgnoreCase);
-                    if (!id.Contains(':') && (real is APU_SFCS) != wantEnhanced) real = MoveSpc(real, wantEnhanced ? new APU_SFCS() : new APU_SFC());
+                    // the SNES's own unit, stock or enhanced, or the WideMess's: the same SPC700 + S-DSP state moves into the other kind of unit (the enhanced one's extra banks are empty on its own console;
+                    // the WideMess's voices 8-31 and its sound RAM above 64 KB start empty, unlocked if the console is: a SNES unit has none to carry)
+                    if (!id.Contains(':') && !IsUnitKind(real, id)) real = MoveSpc(real, NewUnit(id));
                     if (id.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { MixConfig.NesBackApu = id[4..]; board.SwapApu(new NesApuOnSnes(real, board.MasterClock)); }
                     else if (CoreCatalog.IsDirectRoute(id)) board.SwapApu(new SnesApuOnChip(id, real, board.MasterClock));
                     else board.SwapApu(real);
                 }
+                if (board.WideMess != null) board.WideMess.Sound = Spc as APU_WMS;   // the sound RAM port and the unlock line follow the WideMess sound chip; a SNES unit has neither
                 apuId = id; return true;
             }
             default:
@@ -179,7 +183,17 @@ public sealed partial class SnesSession : IConsoleSession
         }
     }
 
-    /// <summary>The same SPC700 + S-DSP in a unit of the other kind (stock / enhanced): its whole state moves, at the board's time.</summary>
+    /// <summary>True when the unit is the kind the menu id names (SFC, SFCS or WMS).</summary>
+    private static bool IsUnitKind(APU_SFC unit, string id) => id.ToUpperInvariant() switch
+    {
+        "SFCS" => unit is APU_SFCS,
+        "WMS" => unit is APU_WMS,
+        _ => unit.GetType() == typeof(APU_SFC),
+    };
+
+    private static APU_SFC NewUnit(string id) => id.ToUpperInvariant() switch { "SFCS" => new APU_SFCS(), "WMS" => new APU_WMS(), _ => new APU_SFC() };
+
+    /// <summary>The same SPC700 + S-DSP in a unit of the other kind (stock / enhanced / WideMess): its whole state moves, at the board's time.</summary>
     private static APU_SFC MoveSpc(APU_SFC from, APU_SFC to)
     {
         using var ms = new System.IO.MemoryStream();
@@ -199,7 +213,7 @@ public sealed partial class SnesSession : IConsoleSession
     public BOARD_SFC Board => board;
     /// <summary>The game's real SPC700 + DSP while it is the sound unit that is running (native, or inside a NES sound-chip bridge); null while the silent HLE stand-in is in its place.</summary>
     public APU_SFC? Spc => board.Apu as APU_SFC ?? (board.Apu as NesApuOnSnes)?.Front as APU_SFC ?? (board.Apu as SnesApuOnChip)?.Front as APU_SFC;
-    public string Description => $"{(wms != null ? "WideMess" : "SNES")} {Title} | CPU {cpuId} | PPU {ppuId} | APU {apuId}{chipLabel}{(board.WideMess is { Unlocked: true } ? " | unlocked" : "")}";
+    public string Description => $"{(wms != null ? "WideMess" : "SNES")} {Title} | CPU {cpuId} | PPU {ppuId} | APU {apuId}{chipLabel}{(board.WideMess is { Unlocked: true } ? " | unlocked" : "")}{(board.WideMess is { Unlocked: true, Sound: null } ? $" (no WideMess sound: APU {apuId} is a SNES sound chip)" : "")}";
     public double FramesPerSecond => NtscFps;
     public string GameId { get; }
 
