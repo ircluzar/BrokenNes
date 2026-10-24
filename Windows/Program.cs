@@ -39,6 +39,8 @@ namespace BrokenNes.Windows
         [STAThread]
         static int Main(string[] args)
         {
+            NesEmulator.Systems.Consoles.WideMessEnabled = true;   // the WideMess console (docs/projects/widemess-spec.md): the desktop app offers it; Lite and the plugin do from its milestone 7
+
             // `--install-vst`: put the FL Studio plugin where FL finds it and stop. No console, no diagnostics, no emulator.
             if (args.Any(a => a.Equals("--install-vst", StringComparison.OrdinalIgnoreCase)))
                 return BrokenNes.Windows.Synth.InstallVstFlow.RunCommand(args);

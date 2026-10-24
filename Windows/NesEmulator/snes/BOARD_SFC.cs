@@ -61,6 +61,12 @@ public sealed partial class BOARD_SFC : ISnesBus
     /// <summary>Cartridge chip (DSP-1, ...) consulted before ROM/SRAM decoding, or null.</summary>
     public ISnesCoprocessor? Coprocessor { get; }
 
+    /// <summary>
+    /// The WideMess's own registers (docs/projects/widemess-spec.md), on a WideMess console only; null on a SNES. It is consulted only for addresses the SNES leaves unused
+    /// ($4220-$423F, B-bus $21A0-$21FF), and while it is locked those accesses go where they go on a SNES.
+    /// </summary>
+    public WmsExtension? WideMess { get; set; }
+
     /// <param name="apu">Audio unit; defaults to the silent <see cref="APU_HLE"/> loader stand-in.</param>
     /// <param name="coprocessor">Cartridge chip, when the game has one and its firmware was found.</param>
     public BOARD_SFC(SnesCartridge cart, ISnesApu? apu = null, ISnesCoprocessor? coprocessor = null)
@@ -91,6 +97,7 @@ public sealed partial class BOARD_SFC : ISnesBus
     public void Reset()
     {
         nmitimen = 0; memsel = 0; hdmaen = 0; nmiFlag = irqFlag = false;
+        WideMess?.Reset();
         BuildPageTable();
         UpdateNextEvent();
         Apu.Reset();
@@ -369,6 +376,7 @@ public sealed partial class BOARD_SFC : ISnesBus
             if (offset is 0x4016 or 0x4017) return ReadSerialPad((int)offset - 0x4016);
             if (offset >= 0x4200 && offset < 0x4220) return ReadCpuIo(offset);
             if (offset >= 0x4300 && offset < 0x4380) return dmaRegs[offset & 0x7F];
+            if (offset >= 0x4220 && offset < 0x4240 && WideMess is { Unlocked: true } wm) return wm.ReadCpu(offset);
         }
         if (Coprocessor != null && Coprocessor.Owns(bank, offset)) return Coprocessor.Read(bank, offset, MasterClock);
         return Cart.TryRead(bank, offset, out byte v) ? v : mdr;
@@ -384,6 +392,7 @@ public sealed partial class BOARD_SFC : ISnesBus
             if (offset == 0x4016) { WriteJoyLatch(value); return; }
             if (offset >= 0x4200 && offset < 0x4220) { WriteCpuIo(offset, value); return; }
             if (offset >= 0x4300 && offset < 0x4380) { dmaRegs[offset & 0x7F] = value; return; }
+            if (offset >= 0x4220 && offset < 0x4240 && WideMess != null && WideMess.WriteCpu(offset, value)) return;
         }
         if (Coprocessor != null && Coprocessor.Owns(bank, offset)) { Coprocessor.Write(bank, offset, value, MasterClock); return; }
         Cart.Write(bank, offset, value);
@@ -396,6 +405,7 @@ public sealed partial class BOARD_SFC : ISnesBus
         if (reg < 0x40) { int v = Ppu.ReadRegister(reg); return v < 0 ? mdr : (byte)v; }
         if (reg < 0x80) { Apu.RunTo(MasterClock); return Apu.ReadPort(reg & 3); }
         if (reg == 0x80) { byte v = Wram[wramPortAddress]; wramPortAddress = (wramPortAddress + 1) & 0x1FFFF; return v; }
+        if (reg >= WmsExtension.FirstBBus && WideMess is { Unlocked: true } wm) return wm.ReadB(reg, mdr);
         return mdr;
     }
 
@@ -412,6 +422,7 @@ public sealed partial class BOARD_SFC : ISnesBus
             case 0x81: wramPortAddress = (wramPortAddress & 0x1FF00) | value; break;
             case 0x82: wramPortAddress = (wramPortAddress & 0x100FF) | (uint)value << 8; break;
             case 0x83: wramPortAddress = (wramPortAddress & 0x0FFFF) | (uint)(value & 1) << 16; break;
+            default: if (reg >= WmsExtension.FirstBBus) WideMess?.WriteB(reg, value); break;
         }
     }
 

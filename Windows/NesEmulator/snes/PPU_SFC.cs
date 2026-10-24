@@ -101,7 +101,7 @@ public partial class PPU_SFC
         cgwsel, cgadsub, setini, m7sel);
     private bool VramWritable => !DropVramWritesDuringDisplay || !inDisplay || ForcedBlank;
 
-    public void Reset()
+    public virtual void Reset()
     {
         inidisp = 0x80;
         vmain = 0; vmadd = 0; cgadd = 0; cgHigh = false; oamadd = 0; oamInternal = 0;
@@ -329,7 +329,7 @@ public partial class PPU_SFC
         return HiResBuffer;
     }
 
-    public void BeginFrame()
+    public virtual void BeginFrame()
     {
         if (FrameHasHiRes) { Array.Clear(rowHiRes); FrameHasHiRes = false; }
         VisibleHeight = (setini & 0x04) != 0 ? MaxHeight : Height;
@@ -420,7 +420,7 @@ public partial class PPU_SFC
     // rewrite OAM mid-frame, like Super Mario Kart's split screen, get one copy per part).
     private byte[]? bridgeOam; private int bridgeOamVersion = -1;
 
-    public void RenderLine(int line)
+    public virtual void RenderLine(int line)
     {
         if (DebugLineRegisters != null && line >= 0 && line < DebugLineRegisters.Length) DebugLineRegisters[line] = GetRegisterSnapshot();
         if (BridgeLines != null && line >= 0 && line < BridgeLines.Length)

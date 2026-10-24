@@ -406,7 +406,8 @@ namespace BrokenNes.Windows
             if (console == SelectedConsole && (session != null || nes != null && console == ConsoleKind.Nes)) { RefreshConsoleMenu(); return; }
             Helpers.ConfigHelper.Update(config, c => c.SelectedConsole = Consoles.Key(console));
             RefreshConsoleMenu();
-            if (session != null && sessionRom != null && RomDetect.Runs(console, session.Console))
+            // the game itself decides where it can go (a SNES game on the WideMess goes back to the SNES; a WideMess game cannot)
+            if (session != null && sessionRom != null && RomDetect.Runs(console, RomDetect.Detect(sessionRom, sessionRomName) ?? session.Console))
             {
                 StartSession(console, sessionRom, sessionRomName, currentRomPath);
                 return;
@@ -457,6 +458,8 @@ namespace BrokenNes.Windows
             var console = kind.Value;
             if (Consoles.IsGameBoy(console) && Consoles.IsGameBoy(SelectedConsole) && !(console == ConsoleKind.GameBoyColor && (rom[0x143] & 0xC0) == 0xC0))
                 console = SelectedConsole;
+            // a SNES game runs on the WideMess when the WideMess is the selected console (it is a superset of the SNES)
+            if (console == ConsoleKind.Snes && SelectedConsole == ConsoleKind.WideMess && Consoles.IsAvailable(ConsoleKind.WideMess)) console = ConsoleKind.WideMess;
             StartSession(console, rom, inner, romPath ?? inner);
             if (romPath != null) config.AddRecentRom(romPath);
             return null;
@@ -540,6 +543,8 @@ namespace BrokenNes.Windows
         private string? SessionSavePath(IConsoleSession s) => s.Console switch
         {
             ConsoleKind.Snes => Path.Combine(AppDataDir, "SnesSaves", s.GameId + ".srm"),
+            // a SNES game on the WideMess keeps its SNES save (same id, same file); a WideMess game has its own folder
+            ConsoleKind.WideMess => Path.Combine(AppDataDir, s.GameId.StartsWith("sfc", StringComparison.Ordinal) ? "SnesSaves" : "WideMessSaves", s.GameId + ".srm"),
             ConsoleKind.MasterSystem => Path.Combine(AppDataDir, "SmsSaves", s.GameId + ".sav"),
             ConsoleKind.GameGear => Path.Combine(AppDataDir, "GgSaves", s.GameId + ".sav"),
             ConsoleKind.Genesis => Path.Combine(AppDataDir, "MdSaves", s.GameId + ".srm"),

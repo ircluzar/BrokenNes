@@ -1,0 +1,125 @@
+<#
+.SYNOPSIS
+  WideMess in the real desktop app (docs/projects/widemess-spec.md, milestone 1). Exit 0 = pass. Prints ONE JSON result line as the last line of stdout.
+
+.DESCRIPTION
+  Starts the shipped WinForms app with a scratch settings folder (BROKENNES_CONFIG_DIR: the user's config.json is never read or written) and checks, through its
+  HTTP API and its Console menu:
+    MENU     the Console menu lists WideMess.
+    WMS      the WideMess test ROM (WideMess\testroms\bin\layers.wms) loads: the console is "wms", the cores WMS / WMS / SFC, the picture 400 x 224 with more than 800
+             colours, and it moves (the layers scroll).
+    SNES     with WideMess selected, the ROM's SNES image (layers.sfc, a SNES-format file) runs on the WideMess too (400 wide: the game finds the WideMess);
+             switching the console to the SNES moves it to the SNES, where it draws its red "not a WideMess" screen at 256 x 224.
+    CONTROL  the negative-control ROM (layers_nounlock.wms: the WideMess registers written without the unlock) stays a SNES picture: 256 wide, black.
+  Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
+
+.EXAMPLE
+  pwsh -File UAT\entrypoints\widemess-desktop-smoke.ps1 -Exe C:\path\BrokenNes.Windows.exe
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)][string]$Exe,
+    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_widemess_desktop')
+)
+$ErrorActionPreference = 'Stop'
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$bin = Join-Path $repo 'WideMess\testroms\bin'
+$checks = [ordered]@{}
+$result = [ordered]@{ entrypoint = 'widemess-desktop'; pass = $false }
+
+function Check($name, [bool]$ok, $detail) {
+    $script:checks[$name] = [ordered]@{ ok = $ok; detail = "$detail" }
+    Write-Host ("[{0}] {1} - {2}" -f $(if ($ok) { 'PASS' } else { 'FAIL' }), $name, $detail)
+}
+
+function Get-Frame([int]$procId) {
+    $fb = Invoke-BrokenNesApi -ProcessId $procId -Method GET -Path '/api/console/framebuffer'
+    $bytes = [Convert]::FromBase64String([string]$fb.data)
+    $colors = New-Object 'System.Collections.Generic.HashSet[int]'; $n = $fb.width * $fb.height; $red = 0; $black = 0
+    for ($i = 0; $i -lt $n; $i++) {
+        $o = $i * 4; $c = ([int]$bytes[$o] -shl 16) -bor ([int]$bytes[$o + 1] -shl 8) -bor [int]$bytes[$o + 2]
+        [void]$colors.Add($c); if ($c -eq 0xFF0000) { $red++ }; if ($c -eq 0) { $black++ }
+    }
+    $sha = [Security.Cryptography.SHA1]::Create()
+    [pscustomobject]@{ Width = [int]$fb.width; Height = [int]$fb.height; Colors = $colors.Count; Hash = [BitConverter]::ToString($sha.ComputeHash($bytes)); AllRed = ($red -eq $n); AllBlack = ($black -eq $n) }
+}
+function Wait-Frame([int]$procId, [scriptblock]$ok, [int]$seconds = 10) {
+    $end = (Get-Date).AddSeconds($seconds); $f = $null
+    do { Start-Sleep -Milliseconds 400; $f = Get-Frame $procId; if (& $ok $f) { break } } while ((Get-Date) -lt $end)
+    return $f
+}
+function Get-Status([int]$procId) { (Invoke-BrokenNesApi -ProcessId $procId -Method GET -Path '/api/console').status }
+function Get-ConsoleMenuNames([int]$procId) {
+    for ($try = 0; $try -lt 4; $try++) {
+        $wins = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $procId)))
+        $main = $wins | Where-Object { $_.Current.Name -like 'BrokenNes*' } | Select-Object -First 1
+        $item = if ($main) { Find-ByName $main 'Console' } else { $null }
+        if ($item) {
+            $pattern = $item.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+            $pattern.Expand(); Start-Sleep -Milliseconds 500
+            $names = @(foreach ($k in $item.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) { if ($k.Current.ControlType -eq [System.Windows.Automation.ControlType]::MenuItem) { $k.Current.Name } })
+            $pattern.Collapse()
+            if ($names.Count) { return $names }
+        }
+        Start-Sleep -Milliseconds 800
+    }
+    return @()
+}
+
+$inst = $null
+$savedConfigDir = $env:BROKENNES_CONFIG_DIR
+try {
+    . (Join-Path $repo 'UAT\lib\ApiClient.ps1')
+    . (Join-Path $repo 'UAT\lib\UiaHelpers.ps1')
+    foreach ($f in 'layers.wms', 'layers.sfc', 'layers_nounlock.wms') { if (-not (Test-Path -LiteralPath (Join-Path $bin $f))) { throw "missing ${f}: build WideMess\testroms\layers\build.ps1" } }
+    $cfgDir = Join-Path $WorkDir 'config'
+    if (Test-Path -LiteralPath $cfgDir) { Remove-Item -LiteralPath $cfgDir -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
+    $env:BROKENNES_CONFIG_DIR = $cfgDir
+    $inst = Start-BrokenNesInstance -ExePath $Exe
+    $id = $inst.ProcessId
+    $result.pid = $id
+    Start-Sleep -Seconds 4   # the app loads its embedded test.nes a few seconds after the API answers
+
+    $names = @(Get-ConsoleMenuNames $id)
+    Check 'menu_lists_widemess' ($names -contains 'WideMess') ("Console menu: " + ($names -join ', '))
+
+    # WMS: the test ROM
+    Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/load-rom' -Body @{ path = (Join-Path $bin 'layers.wms') } | Out-Null
+    $f1 = Wait-Frame $id { param($f) $f.Width -eq 400 -and $f.Colors -gt 800 }
+    $st = Get-Status $id
+    Check 'wms_console' ($st.console -eq 'wms' -and $st.cpu -eq 'WMS' -and $st.ppu -eq 'WMS' -and $st.apu -eq 'SFC') "console $($st.console), cores $($st.cpu)/$($st.ppu)/$($st.apu), $($st.description)"
+    Check 'wms_picture' ($f1.Width -eq 400 -and $f1.Height -eq 224 -and $f1.Colors -gt 800) "$($f1.Width) x $($f1.Height), $($f1.Colors) colours"
+    Start-Sleep -Milliseconds 700
+    $f2 = Get-Frame $id
+    Check 'wms_moves' ($f2.Hash -ne $f1.Hash) 'the layers scroll'
+
+    # SNES: the SNES image while WideMess is selected, then moved to the SNES
+    Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/load-rom' -Body @{ path = (Join-Path $bin 'layers.sfc') } | Out-Null
+    $f3 = Wait-Frame $id { param($f) $f.Width -eq 400 }
+    $st = Get-Status $id
+    Check 'snes_image_on_widemess' ($st.console -eq 'wms' -and $f3.Width -eq 400) "console $($st.console), $($f3.Width) x $($f3.Height)"
+    Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/console/select/snes' | Out-Null
+    $f4 = Wait-Frame $id { param($f) $f.AllRed }
+    $st = Get-Status $id
+    Check 'snes_image_on_snes' ($st.console -eq 'snes' -and $f4.Width -eq 256 -and $f4.AllRed) "console $($st.console), $($f4.Width) x $($f4.Height), all red: $($f4.AllRed)"
+
+    # CONTROL: the negative control
+    Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/load-rom' -Body @{ path = (Join-Path $bin 'layers_nounlock.wms') } | Out-Null
+    $f5 = Wait-Frame $id { param($f) $f.Width -eq 256 }
+    $st = Get-Status $id
+    Check 'control_stays_snes' ($st.console -eq 'wms' -and $f5.Width -eq 256 -and $f5.AllBlack) "console $($st.console), $($f5.Width) x $($f5.Height), all black: $($f5.AllBlack)"
+
+    $result.pass = -not ($checks.Values | Where-Object { -not $_.ok })
+}
+catch {
+    Check 'run' $false $_.Exception.Message
+}
+finally {
+    if ($inst) { Stop-BrokenNesInstance -ProcessId $inst.ProcessId | Out-Null }
+    $env:BROKENNES_CONFIG_DIR = $savedConfigDir
+}
+$result.checks = $checks
+$result | ConvertTo-Json -Compress -Depth 5
+if ($result.pass) { exit 0 } else { exit 1 }

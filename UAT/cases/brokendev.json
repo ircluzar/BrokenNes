@@ -31,7 +31,7 @@
     },
     {
       "id": "brokendev-vrun-nes-play",
-      "description": "BrokenDev project 'vrun-nes', scenario 'play': VRUN CTW (NES demake of Corrupt The World, NESFab, mapper 30). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "description": "BrokenDev project 'vrun-nes', scenario 'play': VRUN CTW (NES demake of Corrupt The World, NESFab, mapper 30). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking). Re-recorded 2026-10-24: the game was rebuilt in the VRUN games round of 2026-10-23 (power-on RAM fixes, the Super VRUN two-player merge, the Nested input shift); the unchanged emulator (2ae11a8) gives these values, so the change is the game's, not BrokenNes's.",
       "kind": "romtest",
       "rom": "{brokendev}/vrun-nes/vrun_game.nes",
       "frames": 2400,
@@ -46,7 +46,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "FD2D983C7EAA8FF5",
+        "frameBufferHash": "25285801D4EF6BA5",
         "framesRun": 2400,
         "distinctColors": 14,
         "result": "ok",
@@ -104,7 +104,7 @@
     },
     {
       "id": "brokendev-supervrun-boot",
-      "description": "BrokenDev project 'supervrun', scenario 'boot': Super VRUN (SNES, native: C + 65816 assembly on PVSnesLib). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "description": "BrokenDev project 'supervrun', scenario 'boot': Super VRUN (SNES, native: C + 65816 assembly on PVSnesLib). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking). Re-recorded 2026-10-24: the game was rebuilt in the VRUN games round of 2026-10-23 (power-on RAM fixes, the Super VRUN two-player merge, the Nested input shift); the unchanged emulator (2ae11a8) gives these values, so the change is the game's, not BrokenNes's.",
       "kind": "session",
       "rom": "{brokendev}/supervrun/supervrun.sfc",
       "frames": 900,
@@ -115,16 +115,16 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "3DF43797EC0D1437",
-        "audioHash": "B2F97E61598707D4",
+        "frameBufferHash": "A0FFD5802708178E",
+        "audioHash": "85D857B0AF37B09F",
         "framesRun": 900,
-        "distinctColors": 29,
+        "distinctColors": 48,
         "result": "ok"
       }
     },
     {
       "id": "brokendev-supervrun-play",
-      "description": "BrokenDev project 'supervrun', scenario 'play': Super VRUN (SNES, native: C + 65816 assembly on PVSnesLib). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "description": "BrokenDev project 'supervrun', scenario 'play': Super VRUN (SNES, native: C + 65816 assembly on PVSnesLib). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking). Re-recorded 2026-10-24: the game was rebuilt in the VRUN games round of 2026-10-23 (power-on RAM fixes, the Super VRUN two-player merge, the Nested input shift); the unchanged emulator (2ae11a8) gives these values, so the change is the game's, not BrokenNes's.",
       "kind": "session",
       "rom": "{brokendev}/supervrun/supervrun.sfc",
       "frames": 1500,
@@ -136,16 +136,16 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "7821C6DEF6C17E3D",
-        "audioHash": "5ED79983C568E537",
+        "frameBufferHash": "82BFD1D5503638B5",
+        "audioHash": "6E52A6B5F46EAEAC",
         "framesRun": 1500,
-        "distinctColors": 129,
+        "distinctColors": 160,
         "result": "ok"
       }
     },
     {
       "id": "brokendev-vrun-nested-boot",
-      "description": "BrokenDev project 'vrun-nested', scenario 'boot': Nested VRUN (VRUN CTW on the SNES through Project Nested). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "description": "BrokenDev project 'vrun-nested', scenario 'boot': Nested VRUN (VRUN CTW on the SNES through Project Nested). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking). Re-recorded 2026-10-24: the game was rebuilt in the VRUN games round of 2026-10-23 (power-on RAM fixes, the Super VRUN two-player merge, the Nested input shift); the unchanged emulator (2ae11a8) gives these values, so the change is the game's, not BrokenNes's.",
       "kind": "session",
       "rom": "{brokendev}/vrun-nested/vrun_game_nested_SNES.smc",
       "frames": 1200,
@@ -157,7 +157,7 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "6C4E8664BB99D064",
-        "audioHash": "A6AA2194864B75D7",
+        "audioHash": "7E5CEAACAB25C4A6",
         "framesRun": 1200,
         "distinctColors": 8,
         "result": "ok"
@@ -165,7 +165,7 @@
     },
     {
       "id": "brokendev-vrun-nested-play",
-      "description": "BrokenDev project 'vrun-nested', scenario 'play': Nested VRUN (VRUN CTW on the SNES through Project Nested). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "description": "BrokenDev project 'vrun-nested', scenario 'play': Nested VRUN (VRUN CTW on the SNES through Project Nested). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking). Re-recorded 2026-10-24: the game was rebuilt in the VRUN games round of 2026-10-23 (power-on RAM fixes, the Super VRUN two-player merge, the Nested input shift); the unchanged emulator (2ae11a8) gives these values, so the change is the game's, not BrokenNes's.",
       "kind": "session",
       "rom": "{brokendev}/vrun-nested/vrun_game_nested_SNES.smc",
       "frames": 3000,
@@ -177,8 +177,8 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "9E02CE21A61CE125",
-        "audioHash": "53803F694D18F311",
+        "frameBufferHash": "CD11BFD64E7C02BB",
+        "audioHash": "D28457E6B77308D4",
         "framesRun": 3000,
         "distinctColors": 16,
         "result": "ok"
@@ -186,7 +186,7 @@
     },
     {
       "id": "brokendev-vrun-nested-enhanced-boot",
-      "description": "BrokenDev project 'vrun-nested-enhanced', scenario 'boot': Nested VRUN, enhanced for the SNES (shaded sprites and blocks, custom font). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "description": "BrokenDev project 'vrun-nested-enhanced', scenario 'boot': Nested VRUN, enhanced for the SNES (shaded sprites and blocks, custom font). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking). Re-recorded 2026-10-24: the game was rebuilt in the VRUN games round of 2026-10-23 (power-on RAM fixes, the Super VRUN two-player merge, the Nested input shift); the unchanged emulator (2ae11a8) gives these values, so the change is the game's, not BrokenNes's.",
       "kind": "session",
       "rom": "{brokendev}/vrun-nested-enhanced/vrun_game_SNES_enhanced.smc",
       "frames": 1200,
@@ -197,8 +197,8 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "9F73EFB790AD3F1B",
-        "audioHash": "638D79B018386693",
+        "frameBufferHash": "D957CACF699B63A1",
+        "audioHash": "2297AE216D813675",
         "framesRun": 1200,
         "distinctColors": 20,
         "result": "ok"
@@ -206,7 +206,7 @@
     },
     {
       "id": "brokendev-vrun-nested-enhanced-play",
-      "description": "BrokenDev project 'vrun-nested-enhanced', scenario 'play': Nested VRUN, enhanced for the SNES (shaded sprites and blocks, custom font). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking).",
+      "description": "BrokenDev project 'vrun-nested-enhanced', scenario 'play': Nested VRUN, enhanced for the SNES (shaded sprites and blocks, custom font). The ROM is BUILT from the user's own homebrew source (archives under P:\\BrokenDev, restored by BrokenDev\\brokendev.ps1) and lives outside git, so on a machine without it this case SKIPS. The picture hash pins 'nothing moved' for that build; it does not prove the game is right (BrokenDev verify and diff do the looking). Re-recorded 2026-10-24: the game was rebuilt in the VRUN games round of 2026-10-23 (power-on RAM fixes, the Super VRUN two-player merge, the Nested input shift); the unchanged emulator (2ae11a8) gives these values, so the change is the game's, not BrokenNes's.",
       "kind": "session",
       "rom": "{brokendev}/vrun-nested-enhanced/vrun_game_SNES_enhanced.smc",
       "frames": 3000,
@@ -218,10 +218,10 @@
       ],
       "expect": {
         "exitCode": 0,
-        "frameBufferHash": "CB1C25041D360C26",
-        "audioHash": "F91D7B5F19E2F4E7",
+        "frameBufferHash": "7D9790DAB6EB8CEE",
+        "audioHash": "25836330B07C7887",
         "framesRun": 3000,
-        "distinctColors": 62,
+        "distinctColors": 63,
         "result": "ok"
       }
     },

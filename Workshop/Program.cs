@@ -13,6 +13,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        NesEmulator.Systems.Consoles.WideMessEnabled = true;   // the WideMess console (docs/projects/widemess-spec.md): Workshop's runners and tests offer it
         if (args.Length > 0 && args[0].Equals("--headless", StringComparison.OrdinalIgnoreCase))
         {
             return HeadlessRunner.Run(args);
@@ -85,6 +86,10 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--bridge-sweep-one", StringComparison.OrdinalIgnoreCase)) return Sega.BridgeSweepCli.RunOne(args);
         if (args.Length > 0 && args[0].Equals("--cpu-wall-test", StringComparison.OrdinalIgnoreCase)) return Sega.CpuWallTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--session-test", StringComparison.OrdinalIgnoreCase)) return Sega.SessionTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--wms-pack", StringComparison.OrdinalIgnoreCase)) return WideMessCli.Pack(args);
+        if (args.Length > 0 && args[0].Equals("--wms-test", StringComparison.OrdinalIgnoreCase)) return WideMessCli.Test(args);
+        if (args.Length > 0 && args[0].Equals("--wms-shot", StringComparison.OrdinalIgnoreCase)) return WideMessCli.Shot(args);
+        if (args.Length > 0 && args[0].Equals("--wms-sheet", StringComparison.OrdinalIgnoreCase)) return WideMessCli.Sheet(args);
         if (args.Length > 0 && args[0].Equals("--swap-matrix-test", StringComparison.OrdinalIgnoreCase)) return Sega.SwapMatrixTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-bridge-scenes", StringComparison.OrdinalIgnoreCase)) return Sega.MdBridgeScenesCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-patches", StringComparison.OrdinalIgnoreCase)) return Sega.MdPatchCli.Run(args);

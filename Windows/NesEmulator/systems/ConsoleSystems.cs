@@ -11,7 +11,7 @@ namespace NesEmulator.Systems;
 /// Genesis / Mega Drive) are appended: stored settings use <see cref="Consoles.Key"/>, never these numbers. They stay out of every menu, ROM
 /// detection and file filter until their cores exist (see <see cref="Consoles.IsAvailable"/>).
 /// </summary>
-public enum ConsoleKind { Nes, Snes, GameBoy, GameBoyColor, MasterSystem, GameGear, Genesis }
+public enum ConsoleKind { Nes, Snes, GameBoy, GameBoyColor, MasterSystem, GameGear, Genesis, WideMess }
 
 /// <summary>One controller, the union of every console's buttons. Each console reads the ones it has.</summary>
 /// <remarks>
@@ -44,11 +44,18 @@ public static class Consoles
 
     public static bool SegaPreview { get; set; } = Environment.GetEnvironmentVariable("BROKENNES_SEGA") == "1";
 
+    /// <summary>
+    /// WideMess, the souped-up SNES fantasy console (docs/projects/widemess-plan.md), is offered only by the hosts that turn it on (the desktop app and Workshop at start-up). Lite and the FL plugin
+    /// arrive in its milestone 7; until then they leave it off, so their menus, ROM detection and file filters are what they were.
+    /// </summary>
+    public static bool WideMessEnabled { get; set; }
+
     public static bool IsAvailable(ConsoleKind k) => k switch
     {
         ConsoleKind.MasterSystem => MasterSystemReady || SegaPreview,
         ConsoleKind.GameGear => GameGearReady || SegaPreview,
         ConsoleKind.Genesis => GenesisReady || SegaPreview,
+        ConsoleKind.WideMess => WideMessEnabled,
         _ => true,
     };
 
@@ -62,7 +69,7 @@ public static class Consoles
     };
 
     private static readonly ConsoleKind[] Every =
-        { ConsoleKind.Nes, ConsoleKind.Snes, ConsoleKind.GameBoy, ConsoleKind.GameBoyColor, ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis };
+        { ConsoleKind.Nes, ConsoleKind.Snes, ConsoleKind.GameBoy, ConsoleKind.GameBoyColor, ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis, ConsoleKind.WideMess };
 
     /// <summary>The consoles the apps offer: the finished ones (plus the Sega ones while the preview is on).</summary>
     public static ConsoleKind[] All => Every.Where(IsAvailable).ToArray();
@@ -75,14 +82,15 @@ public static class Consoles
         ConsoleKind.MasterSystem => "Master System",
         ConsoleKind.GameGear => "Game Gear",
         ConsoleKind.Genesis => "Genesis / Mega Drive",
+        ConsoleKind.WideMess => "WideMess",
         _ => "Game Boy Color",
     };
 
-    /// <summary>Short stable key for settings and storage ("nes", "snes", "gb", "gbc", "sms", "gg", "md").</summary>
+    /// <summary>Short stable key for settings and storage ("nes", "snes", "gb", "gbc", "sms", "gg", "md", "wms").</summary>
     public static string Key(ConsoleKind k) => k switch
     {
         ConsoleKind.Nes => "nes", ConsoleKind.Snes => "snes", ConsoleKind.GameBoy => "gb",
-        ConsoleKind.MasterSystem => "sms", ConsoleKind.GameGear => "gg", ConsoleKind.Genesis => "md",
+        ConsoleKind.MasterSystem => "sms", ConsoleKind.GameGear => "gg", ConsoleKind.Genesis => "md", ConsoleKind.WideMess => "wms",
         _ => "gbc",
     };
 
@@ -94,6 +102,7 @@ public static class Consoles
         "sms" or "mastersystem" or "master system" => ConsoleKind.MasterSystem,
         "gg" or "gamegear" or "game gear" => ConsoleKind.GameGear,
         "md" or "genesis" or "megadrive" or "mega drive" or "gen" => ConsoleKind.Genesis,
+        "wms" or "widemess" => ConsoleKind.WideMess,
         _ => ConsoleKind.Nes,
     };
 
@@ -103,6 +112,7 @@ public static class Consoles
         ConsoleKind.Nes => "NES", ConsoleKind.Snes => "SNES",
         ConsoleKind.MasterSystem or ConsoleKind.GameGear => "Master System",
         ConsoleKind.Genesis => "Genesis",
+        ConsoleKind.WideMess => "WideMess",
         _ => "Game Boy",
     };
 
@@ -119,13 +129,14 @@ public static class Consoles
         ConsoleKind.MasterSystem => new[] { ".sms", ".sg", ".sc" },
         ConsoleKind.GameGear => new[] { ".gg" },
         ConsoleKind.Genesis => new[] { ".md", ".gen", ".smd", ".bin" },
+        ConsoleKind.WideMess => new[] { ".wms" },
         _ => new[] { ".gb", ".gbc" },
     };
 
     /// <summary>Every ROM extension BrokenNes 2 opens (the Sega ones only once available), plus .zip (a ROM inside is unpacked).</summary>
     public static string[] AllRomExtensions =>
         new[] { ".nes", ".sfc", ".smc", ".gb", ".gbc" }
-            .Concat(new[] { ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis }.Where(IsAvailable).SelectMany(Extensions))
+            .Concat(new[] { ConsoleKind.MasterSystem, ConsoleKind.GameGear, ConsoleKind.Genesis, ConsoleKind.WideMess }.Where(IsAvailable).SelectMany(Extensions))
             .Append(".zip").ToArray();
 }
 
@@ -169,6 +180,8 @@ public static class RomDetect
     /// <summary>The console this ROM is for, or null when it looks like none of them.</summary>
     public static ConsoleKind? Detect(byte[] rom, string fileName)
     {
+        // a WideMess game file (its own header, docs/projects/widemess-spec.md 5), only where the console is offered
+        if (NesEmulator.Snes.WmsFile.HasMagic(rom) && Consoles.IsAvailable(ConsoleKind.WideMess)) return ConsoleKind.WideMess;
         if (rom.Length >= 16 && rom[0] == 'N' && rom[1] == 'E' && rom[2] == 'S' && rom[3] == 0x1A) return ConsoleKind.Nes;
         if (rom.Length >= 0x150 && rom.AsSpan(0x104, NintendoLogoStart.Length).SequenceEqual(NintendoLogoStart))
             return (rom[0x143] & 0x80) != 0 ? ConsoleKind.GameBoyColor : ConsoleKind.GameBoy;
@@ -217,9 +230,9 @@ public static class RomDetect
         return false;
     }
 
-    /// <summary>A ROM this console can run: GB and GBC take each other's cartridges.</summary>
+    /// <summary>A ROM this console can run: GB and GBC take each other's cartridges; the WideMess runs SNES games (it is a superset of the SNES).</summary>
     public static bool Runs(ConsoleKind console, ConsoleKind romConsole) =>
-        console == romConsole || (Consoles.IsGameBoy(console) && Consoles.IsGameBoy(romConsole));
+        console == romConsole || (Consoles.IsGameBoy(console) && Consoles.IsGameBoy(romConsole)) || (console == ConsoleKind.WideMess && romConsole == ConsoleKind.Snes);
 }
 
 /// <summary>
@@ -451,6 +464,8 @@ public static class CoreCatalog
             (ConsoleKind.MasterSystem, _) => new[] { ("SMS", CoreGrade.Stock, "Master System") },
             (ConsoleKind.GameGear, _) => new[] { ("GG", CoreGrade.Stock, "Game Gear") },
             (ConsoleKind.Genesis, CoreSlot.Cpu) => new[] { ("M68K", CoreGrade.Stock, "Genesis") },
+            (ConsoleKind.WideMess, CoreSlot.Apu) => new[] { ("SFC", CoreGrade.Stock, "WideMess") },
+            (ConsoleKind.WideMess, _) => new[] { ("WMS", CoreGrade.Stock, "WideMess") },
             _ => new[] { ("MD", CoreGrade.Stock, "Genesis") },
         };
         // the console's own enhanced picture and sound chips (SFCS, SMSS, GGS, MDS), once they exist: after its stock cores
@@ -537,7 +552,8 @@ public static class CoreCatalog
     /// <summary>The console's own enhanced chip (once it exists) and the routes to the other consoles' enhanced chips (once they exist), for the picture or the sound slot.</summary>
     private static void AddEnhanced(List<CoreOption> list, ConsoleKind console, CoreSlot slot)
     {
-        if (slot == CoreSlot.Cpu || console == ConsoleKind.Nes) return;
+        // the WideMess's chips on the other consoles' menus, and theirs on its, are its milestone 7
+        if (slot == CoreSlot.Cpu || console == ConsoleKind.Nes || console == ConsoleKind.WideMess) return;
         string own = Consoles.Family(console);
         if (OwnRouteOf(console) is { } mine && Built(mine))
         {
@@ -629,6 +645,19 @@ public static class CoreCatalog
                         // SoundFont rather than emulating a chip, so a Genesis game's voices would reach no sound there (the verifier checks that every chip listed here sounds).
                         foreach (var id in NesSoundChips().Where(i => !i.Equals("WF", StringComparison.OrdinalIgnoreCase) && !i.Equals("MNES", StringComparison.OrdinalIgnoreCase))) list.Add(new("NES:" + id, GenesisOnNesLabel(id), "NES"));
                         foreach (var id in HubSoundChips("Genesis")) list.Add(new("NES:" + id, HubSoundLabel(id, "the Genesis's FM, DAC and PSG"), NesFamilyOf(CoreSlot.Apu, id)));
+                        break;
+                }
+                break;
+            // WideMess (docs/projects/widemess-spec.md): its own parts only for now. The CPU is the SNES's 65816 (its fast mode arrives in milestone 4), the picture chip is the
+            // WideMess's (the SNES chip + 512 KB video RAM, 1,024 colours, 8 layers of 256 colours, 400 wide), the sound is the SNES's until the WideMess sound chip (milestone 3).
+            case ConsoleKind.WideMess:
+                switch (slot)
+                {
+                    case CoreSlot.Cpu: list.Add(new("WMS", "WMS (65816; the fast mode arrives in milestone 4)", "WideMess")); break;
+                    case CoreSlot.Ppu: list.Add(new("WMS", "WMS (WideMess picture chip: the SNES chip + 512 KB video RAM, 1,024 colours, 8 layers of 256 colours, 400 wide)", "WideMess")); break;
+                    default:
+                        list.Add(new("SFC", "SFC (S-SMP + S-DSP; the WideMess sound chip arrives in milestone 3)", "WideMess"));
+                        list.Add(new("HLE", "HLE (silent - no sound, fastest)", "WideMess"));
                         break;
                 }
                 break;

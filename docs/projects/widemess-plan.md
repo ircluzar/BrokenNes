@@ -124,7 +124,7 @@ game unlocks the extensions (an unlock write plus an ID register a game reads). 
 
 | | Milestone | Done when |
 |---|---|---|
-| **M1** (next week) | **Spec v1 + a booting console** | The spec is written and agreed (registers, memory map, timing, file format, unlock). WideMess appears in BrokenNes and boots SNES games with every SNES golden unchanged. A hand-written test ROM shows 400 x 224 and 8 layers of 256 colours. |
+| **M1** (done 2026-10-24) | **Spec v1 + a booting console** | The spec is written and agreed (registers, memory map, timing, file format, unlock). WideMess appears in BrokenNes and boots SNES games with every SNES golden unchanged. A hand-written test ROM shows 400 x 224 and 8 layers of 256 colours. **Result:** `docs/projects/widemess-spec.md` v1; the console `wms` in the desktop app and Workshop; `Workshop --wms-test` passes 21 of 21 checks plus 13 SNES games frame-identical on both consoles (SNES console and WideMess); the desktop smoke test passes 7 of 7; UAT 125 pass, 0 fail. Details: `WideMess/README.md`. |
 | M2 | Picture complete | Sprites (256, 64 per line, 256-colour), windows and colour math at 400 wide, Mode 7 wide, the conformance suite for the picture. |
 | M3 | Sound chip | 32 voices, BRR + 16-bit PCM, 1 MB sound RAM, SNES drivers unchanged on voices 0-7; the conformance suite for sound. |
 | M4 | CPU and memory | Fast mode, 1 MB work RAM mapping, the extra DMA bandwidth. |

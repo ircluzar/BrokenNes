@@ -24,6 +24,8 @@ public sealed partial class SnesSession
 {
     /// <summary>The layout of the payload: bump it whenever the board, a core or a chip changes what it writes, so an old state is refused rather than misread.</summary>
     public const string StateFormat = "sfc-1";
+    /// <summary>The WideMess console's layout: the SNES payload, then the WideMess registers and its picture chip's own memories (<see cref="PPU_WMS.SaveWide"/>).</summary>
+    public const string WideMessStateFormat = "wms-1";
     private const byte PayloadVersion = 1;
     private const byte UnitSfc = 0, UnitHle = 1, UnitNes = 2, UnitChip = 3;
 
@@ -34,7 +36,7 @@ public sealed partial class SnesSession
     {
         ["apu"] = apuId.ToUpperInvariant(),
         ["chip"] = board.Coprocessor?.StateId ?? "none",
-        ["format"] = StateFormat,
+        ["format"] = wms != null ? WideMessStateFormat : StateFormat,
     };
 
     /// <summary>Tool / test: runs to the first instruction boundary on or after a scanline of the current frame (see <see cref="BOARD_SFC.RunToLine"/>); a state can be taken there.</summary>
@@ -109,6 +111,7 @@ public sealed partial class SnesSession
             case SnesApuOnChip { Front: APU_SFC chipFront }: w.Write(UnitChip); chipFront.SaveState(w); break;      // another console's enhanced sound chip: a listener, like the NES chip; the SPC700 + S-DSP is the machine
             default: throw new NotSupportedException($"The sound unit {board.Apu.CoreName} keeps no state that can be saved.");
         }
+        if (wms != null) { board.WideMess!.SaveState(w); wms.SaveWide(w); }
     }
 
     private void ReadPayload(BinaryReader r)
@@ -141,6 +144,7 @@ public sealed partial class SnesSession
                 break;
             default: throw new NotSupportedException($"The sound unit {board.Apu.CoreName} keeps no state that can be loaded.");
         }
+        if (wms != null) { board.WideMess!.LoadState(r); wms.LoadWide(r); }
     }
 
     private static void RequireUnit(byte saved, byte running)

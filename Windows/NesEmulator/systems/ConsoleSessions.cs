@@ -17,6 +17,7 @@ public static class ConsoleSessions
                                          Func<string[], (string name, byte[] data)?>? loadFirmware = null, string fileName = "", NesEmulator.Sega.SegaOptions? sega = null) => console switch
     {
         ConsoleKind.Snes => new SnesSession(rom, cpu, ppu, apu, loadFirmware),
+        ConsoleKind.WideMess => new SnesSession(rom, cpu, ppu, apu, loadFirmware, wideMess: true),
         ConsoleKind.GameBoy or ConsoleKind.GameBoyColor => new GbSession(rom, console, cpu, ppu, apu),
         ConsoleKind.MasterSystem or ConsoleKind.GameGear or ConsoleKind.Genesis => CreateSega(console, rom, cpu, ppu, apu, fileName, sega),
         _ => throw new ArgumentException("The NES runs on the NES class, not a console session"),
@@ -64,12 +65,16 @@ public static class ConsoleSessions
 }
 
 /// <summary>A SNES game: the SFC board, its picture on the SFC chip or any NES chip (through the SNES->NES downgrade,
-/// which keeps every layer and sprite on PPU_FIXS), its sound on the SFC unit, the HLE unit or any NES APU.</summary>
+/// which keeps every layer and sprite on PPU_FIXS), its sound on the SFC unit, the HLE unit or any NES APU.
+/// <para>The same session is the <b>WideMess</b> console (<c>wideMess: true</c>, docs/projects/widemess-spec.md): the SFC board with the WideMess picture chip (<see cref="PPU_WMS"/>) and its registers
+/// (<see cref="WmsExtension"/>), running a .wms game or a SNES game. Locked, the WideMess is a SNES, so a SNES game runs exactly as on the SNES console.</para></summary>
 public sealed partial class SnesSession : IConsoleSession
 {
     public const double NtscFps = 21477272.0 / (1364 * 262);
 
     private readonly BOARD_SFC board;
+    /// <summary>The WideMess picture chip when this session is the WideMess console (null on the SNES).</summary>
+    private readonly PPU_WMS? wms;
     private SnesToNes? down;
     private ISnesPpuCore? snesPpu;
     private SnesPpuSnapshot? mid;
@@ -81,11 +86,15 @@ public sealed partial class SnesSession : IConsoleSession
     /// <summary>The game's real SPC700 + DSP while the silent HLE unit stands in (swapped back in, it resumes).</summary>
     private APU_SFC? parkedSpc;
 
-    public SnesSession(byte[] rom, string cpu, string ppu, string apu, Func<string[], (string name, byte[] data)?>? loadFirmware)
+    public SnesSession(byte[] rom, string cpu, string ppu, string apu, Func<string[], (string name, byte[] data)?>? loadFirmware, bool wideMess = false)
     {
         romBytes = rom;
-        GameId = "sfc" + ConsoleSessions.Sha1(rom);
-        var cart = SnesCartridge.Load(rom);
+        // a .wms game is its header + a SNES-format image (checked: a damaged file or one needing more than this console has is refused here, with the reason); a SNES game is itself and keeps its SNES id, so its saves are the SNES console's
+        WmsFile.Header? wmsHeader = null;
+        byte[] image = wideMess ? WmsFile.Payload(rom, out wmsHeader) : rom;
+        bool wmsGame = wideMess && wmsHeader != null;
+        GameId = (wmsGame ? "wms" : "sfc") + ConsoleSessions.Sha1(rom);
+        var cart = SnesCartridge.Load(image);
         ISnesApu unit;
         if (apu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { MixConfig.NesBackApu = apu[4..]; unit = SnesCores.CreateApu("NES"); }
         else if (apu.Equals("HLE", StringComparison.OrdinalIgnoreCase)) unit = new APU_HLE();
@@ -93,12 +102,23 @@ public sealed partial class SnesSession : IConsoleSession
         else if (apu.Equals("SFCS", StringComparison.OrdinalIgnoreCase)) unit = new APU_SFCS();   // the SNES's own, enhanced: the stock unit for a SNES game
         else unit = new APU_SFC();
         var chip = SnesChips.Create(cart, loadFirmware, false, out string chipNote);
-        board = new BOARD_SFC(cart, unit, chip);
+        if (wideMess)
+        {
+            board = new BOARD_SFC(cart, unit, chip, cpuFactory: null, ppuFactory: () => new PPU_WMS());
+            wms = (PPU_WMS)board.Ppu;
+            board.WideMess = new WmsExtension(wms);
+        }
+        else board = new BOARD_SFC(cart, unit, chip);
         cpuId = cpu; ppuId = ppu; apuId = apu;
         chipLabel = chip != null ? $" | {chip.Name}" : chipNote != "" ? $" | {chipNote}" : "";
-        Title = cart.Title.Trim();
+        Title = wmsGame && wmsHeader!.Title.Length > 0 ? wmsHeader.Title : cart.Title.Trim();
         SetPicture(ppu);
     }
+
+    /// <summary>The WideMess picture chip (null unless this is the WideMess console).</summary>
+    public PPU_WMS? WideMessPpu => wms;
+    /// <summary>The WideMess registers (null unless this is the WideMess console).</summary>
+    public WmsExtension? WideMess => board.WideMess;
 
     /// <summary>The picture path: the SFC chip itself, or a NES / Game Boy chip through the SNES->NES translation (a view
     /// of the SFC chip's state - the SFC chip keeps running either way, so this swaps freely).</summary>
@@ -121,11 +141,11 @@ public sealed partial class SnesSession : IConsoleSession
         }
     }
 
-    public string SwapRefusal(CoreSlot slot, string id) => ConsoleSessions.NotOffered(ConsoleKind.Snes, slot, id);
+    public string SwapRefusal(CoreSlot slot, string id) => ConsoleSessions.NotOffered(Console, slot, id);
 
     public bool TrySwapCore(CoreSlot slot, string id)
     {
-        if (!ConsoleSessions.Offers(ConsoleKind.Snes, slot, id)) return false;     // an id the menu does not list is refused, never accepted
+        if (!ConsoleSessions.Offers(Console, slot, id)) return false;     // an id the menu does not list is refused, never accepted
         switch (slot)
         {
             case CoreSlot.Ppu:
@@ -169,7 +189,7 @@ public sealed partial class SnesSession : IConsoleSession
         return to;
     }
 
-    public ConsoleKind Console => ConsoleKind.Snes;
+    public ConsoleKind Console => wms != null ? ConsoleKind.WideMess : ConsoleKind.Snes;
     public string Title { get; }
     /// <summary>The game's audio unit (plugin hosts read its sample RAM and DSP registers: APU_SFC when the sound is the SFC unit).</summary>
     public ISnesApu Apu => board.Apu;
@@ -179,7 +199,7 @@ public sealed partial class SnesSession : IConsoleSession
     public BOARD_SFC Board => board;
     /// <summary>The game's real SPC700 + DSP while it is the sound unit that is running (native, or inside a NES sound-chip bridge); null while the silent HLE stand-in is in its place.</summary>
     public APU_SFC? Spc => board.Apu as APU_SFC ?? (board.Apu as NesApuOnSnes)?.Front as APU_SFC ?? (board.Apu as SnesApuOnChip)?.Front as APU_SFC;
-    public string Description => $"SNES {Title} | CPU {cpuId} | PPU {ppuId} | APU {apuId}{chipLabel}";
+    public string Description => $"{(wms != null ? "WideMess" : "SNES")} {Title} | CPU {cpuId} | PPU {ppuId} | APU {apuId}{chipLabel}{(board.WideMess is { Unlocked: true } ? " | unlocked" : "")}";
     public double FramesPerSecond => NtscFps;
     public string GameId { get; }
 
@@ -215,6 +235,13 @@ public sealed partial class SnesSession : IConsoleSession
     private void PublishNativePicture()
     {
         height = board.Ppu.VisibleHeight;
+        if (wms is { FrameIsWide: true })
+        {
+            // a WideMess game drew 400 wide (square pixels): lines it drew in a SNES mode sit in the middle of the wide frame
+            width = PPU_WMS.WideWidth;
+            Array.Copy(wms.GetWideFrame(), frame, width * height);
+            return;
+        }
         bool hires = board.Ppu.FrameHasHiRes;
         width = hires ? PPU_SFC.HiResWidth : PPU_SFC.Width;
         Array.Copy(hires ? board.Ppu.GetHiResFrame() : board.Ppu.FrameBuffer, frame, width * height);
@@ -224,7 +251,8 @@ public sealed partial class SnesSession : IConsoleSession
     public uint[] Frame => frame;
     public int FrameWidth => width;
     public int FrameHeight => height;
-    public int DisplayWidth => 256;
+    /// <summary>256 for a SNES picture (a 512-wide hi-res frame shows at 256); 400 for a WideMess wide frame, whose pixels are square.</summary>
+    public int DisplayWidth => width == PPU_WMS.WideWidth && wms != null ? PPU_WMS.WideWidth : 256;
     public int SampleRate => board.Apu.SampleRate;
     public int ReadSamples(short[] buffer) => board.Apu.ReadSamples(buffer);
     public bool HasBattery => board.Cart.HasBattery && board.Cart.Sram.Length > 0;
