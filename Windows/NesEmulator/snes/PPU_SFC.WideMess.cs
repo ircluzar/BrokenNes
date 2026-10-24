@@ -54,6 +54,12 @@ public partial class PPU_SFC
     /// <summary>STAT77's sprite flags, raised (never cleared) by a sprite pass the subclass draws for the SNES sprite table.</summary>
     protected void RaiseSpriteOverflow(bool range, bool time) { if (range) rangeOver = true; if (time) timeOver = true; }
 
+    /// <summary>Milestone 6: a hi-res line the subclass drew (its 512 half-pixels written to <see cref="HiResBuffer"/>), so <see cref="GetHiResFrame"/> keeps it sharp.</summary>
+    protected void MarkHiResRow(int row) { rowHiRes[row] = true; FrameHasHiRes = true; }
+
+    /// <summary>Test (milestone 6): STAT77's sprite flags as they stand (range: more than 32 sprites on a line; time: more than 34 slivers), read without touching the chip's open bus.</summary>
+    public (bool range, bool time) SpriteOverflowFlags => (rangeOver, timeOver);
+
     // ---- the SNES chip's constant tables, shared rather than copied
     /// <summary>A mode's front-to-back order as (layer, priority): layers 0-3 = BG1-4, 4 = OBJ; priority 2 on a BG marks "either priority" (Mode 7's BG1).</summary>
     protected static (byte layer, byte prio)[] SnesModeOrder(int mode, bool bg3Top) => mode switch

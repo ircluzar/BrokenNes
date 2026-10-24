@@ -113,6 +113,11 @@
     <None Include="NesEmulator\sega\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES-sega.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
   </ItemGroup>
 
+  <!-- WideMess milestone 6: the SNES games' enhancement profiles (docs/projects/widemess-spec.md 6.2) ship beside the program, in WideMess\profiles. -->
+  <ItemGroup>
+    <None Include="..\WideMess\profiles\*.json" Link="WideMess\profiles\%(Filename)%(Extension)"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+  </ItemGroup>
+
   <ItemGroup>
     <Content Include="BrokenNes.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

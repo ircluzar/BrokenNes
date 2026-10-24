@@ -234,6 +234,7 @@ public sealed partial class SnesSession : IConsoleSession
     public void RunFrame()
     {
         mid = null;
+        if (wms != null) BeforeFrameEnhance();   // milestone 6: the console's enhancements (SnesSession.Enhance.cs)
         board.RunFrame();
         if (down != null)
         {

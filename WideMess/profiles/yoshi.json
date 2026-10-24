@@ -1,0 +1,38 @@
+{
+  "format": "widemess-profile-1",
+  "title": "Super Mario World 2: Yoshi's Island",
+  "file": "Super Mario World 2 - Yoshi's Island (U) (M3) (V1.1).smc",
+  "sha1": [
+    "34612a93741f156d6e497462ab7f253cb8a959a0"
+  ],
+  "widescreen": {
+    "layers": {
+      "bg1": "extend",
+      "bg2": "extend",
+      "bg3": "extend",
+      "bg4": "extend",
+      "sprites": "extend"
+    }
+  },
+  "enhancements": {
+    "widescreen": "risky",
+    "noFlicker": "good",
+    "betterSound": "good",
+    "fastCpu": "risky"
+  },
+  "recommended": [
+    "widescreen",
+    "noFlicker"
+  ],
+  "issues": [
+    "At the start of a stage the side columns show old tiles: the game draws the level into video RAM only as Yoshi moves, so for the first screens the sides hold whatever was there before.",
+    "The game draws only what is near the SNES picture: further out, the sides lag behind by a few frames when Yoshi moves fast.",
+    "Enemies appear near the SNES edge (the game creates them as they come near).",
+    "No flicker: in the 5,200 frames checked it showed more sprites on 18 lines, all of them over the SNES's limits (52 lines went over).",
+    "Fast CPU ran the 5,200 frames checked, from power-on and switched on later; the game's timing changes from frame 285."
+  ],
+  "verified": {
+    "date": "2026-10-24",
+    "how": "Workshop --wms-test (E6), 5,200 frames of a pad script (intro, the first stage) in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/yoshi.png."
+  }
+}

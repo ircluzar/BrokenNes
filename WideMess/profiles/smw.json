@@ -1,0 +1,54 @@
+{
+  "format": "widemess-profile-1",
+  "title": "Super Mario World",
+  "file": "Super Mario World (U) [!].smc",
+  "sha1": [
+    "6b47bb75d16514b6a476aa0c73a683a2a4c18765"
+  ],
+  "widescreen": {
+    "layers": {
+      "bg1": "extend",
+      "bg2": "extend",
+      "bg3": "extend",
+      "bg4": "extend",
+      "sprites": "extend"
+    },
+    "masks": [
+      {
+        "why": "the status bar and the title's wooden frame are BG3 drawn in front (BGMODE $09) and laid out for 256 columns",
+        "layers": [
+          "bg3"
+        ],
+        "rows": [
+          0,
+          223
+        ],
+        "rule": "fill",
+        "when": {
+          "bgmode": "$09"
+        }
+      }
+    ]
+  },
+  "enhancements": {
+    "widescreen": "good",
+    "noFlicker": "good",
+    "betterSound": "good",
+    "fastCpu": "risky"
+  },
+  "recommended": [
+    "widescreen",
+    "noFlicker"
+  ],
+  "issues": [
+    "Enemies and coins appear 16-32 pixels past the SNES edge: the game creates its objects as they come near the SNES picture, so in the side columns they pop in.",
+    "At the start of a level the left side is empty: the level begins at the SNES picture's left edge.",
+    "Levels whose water or clouds are BG3 drawn in front (the layer-3 tides) lose that layer in the side columns.",
+    "No flicker: in the 4,000 frames checked the game never drew more sprites on a line than a SNES shows, so it changed nothing; it changes only lines over the limits.",
+    "Fast CPU switched on while the game starts hangs it on a black screen: the 65816 reaches the next step of its sound-driver handshake (writing $FF to $2141) about 8 ms after starting the driver instead of 31 ms, while the driver is still setting up and clears its input ports, so both wait for each other forever. A real 10.74 MHz 65816 would do the same. Switched on after the title appears, the game ran the 4,000 frames checked."
+  ],
+  "verified": {
+    "date": "2026-10-24",
+    "how": "Workshop --wms-test (E6), 4,000 frames of a pad script (title, new game, Yoshi's Island 2) in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/smw.png."
+  }
+}

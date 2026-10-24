@@ -90,6 +90,10 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--wms-test", StringComparison.OrdinalIgnoreCase)) return WideMessCli.Test(args);
         if (args.Length > 0 && args[0].Equals("--wms-shot", StringComparison.OrdinalIgnoreCase)) return WideMessCli.Shot(args);
         if (args.Length > 0 && args[0].Equals("--wms-sheet", StringComparison.OrdinalIgnoreCase)) return WideMessCli.Sheet(args);
+        if (args.Length > 0 && args[0].Equals("--wms-enhance-sheet", StringComparison.OrdinalIgnoreCase)) return WideMessCli.EnhanceSheet(args);
+        if (args.Length > 0 && args[0].Equals("--wms-enhance-film", StringComparison.OrdinalIgnoreCase)) return WideMessCli.EnhanceFilm(args);
+        if (args.Length > 0 && args[0].Equals("--wms-enhance-test", StringComparison.OrdinalIgnoreCase)) return WideMessCli.EnhanceTest(args);
+        if (args.Length > 0 && args[0].Equals("--wms-fast-probe", StringComparison.OrdinalIgnoreCase)) return WideMessCli.FastProbe(args);
         if (args.Length > 0 && args[0].Equals("--wms-run", StringComparison.OrdinalIgnoreCase)) return WideMessCli.RunGame(args);
         if (args.Length > 0 && args[0].Equals("--swap-matrix-test", StringComparison.OrdinalIgnoreCase)) return Sega.SwapMatrixTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-bridge-scenes", StringComparison.OrdinalIgnoreCase)) return Sega.MdBridgeScenesCli.Run(args);
