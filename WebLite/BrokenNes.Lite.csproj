@@ -117,6 +117,8 @@
     <Compile Include="$(NesRoot)board\Emulator.ImagineInterop.cs" Link="NesEmulator\board\Emulator.ImagineInterop.cs" />
     <!-- BrokenNes 2: console selector + SNES / Game Boy sessions in the Lite UI. -->
     <Compile Include="$(NesRoot)board\Emulator.Consoles.cs"       Link="NesEmulator\board\Emulator.Consoles.cs" />
+    <!-- WideMess milestone 7a: the milestone-6 enhancements of a SNES game on the WideMess console (the desktop's Console > WideMess enhancements). -->
+    <Compile Include="$(NesRoot)board\Emulator.WideMess.cs"       Link="NesEmulator\board\Emulator.WideMess.cs" />
     <Compile Include="$(NesRoot)board\NesController.cs"           Link="NesEmulator\board\NesController.cs" />
     <Compile Include="$(NesRoot)board\NesControllerModels.cs"     Link="NesEmulator\board\NesControllerModels.cs" />
     <Compile Include="$(NesRoot)board\StatePersistence.cs"        Link="NesEmulator\board\StatePersistence.cs" />
@@ -181,6 +183,12 @@
     <Compile Include="$(NesRoot)nullproviders\CloudsNullProvider.cs"       Link="NesEmulator\nullproviders\CloudsNullProvider.cs" />
     <Compile Include="$(NesRoot)nullproviders\FireNullProvider.cs"         Link="NesEmulator\nullproviders\FireNullProvider.cs" />
     <Compile Include="$(NesRoot)nullproviders\WaterRipplesNullProvider.cs" Link="NesEmulator\nullproviders\WaterRipplesNullProvider.cs" />
+  </ItemGroup>
+
+  <!-- WideMess milestone 6's game profiles (WideMess/profiles/*.json), built into the app: Emulator.WideMess.cs writes them into the browser's in-memory file system at start-up, where the shared
+       profile reader (WmsProfiles) finds them, as the desktop app finds them beside its exe. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\WideMess\profiles\*.json" LogicalName="WideMess.profiles.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <!-- Third-party notices are served with the site (Notices link in the header): the ported cores (Z80, 68000, ymfm, emu2413, BizHawk mappers) are under licenses that ask for it.

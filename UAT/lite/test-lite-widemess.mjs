@@ -14,6 +14,9 @@
 //   saves    battery RAM: the 4 MB WideMess-map ROM (bigmap.wms, 256 KB battery RAM) keeps a boot counter there; it is in IndexedDB (battery_v1:wms<sha1>.srm) and counts up in a fresh page.
 //   states   Save state / Load state on WideMess games (the same calls as the buttons): the next 60 frames are the same pictures and the same sound, also in a fresh page; the slot is state_v1:wms:<game id>.quick.
 //   layout   the touch controller has the SNES pad on the WideMess (data-layout wms: X, Y, L and R shown).
+//   enhance  WideMess milestone 6 in Lite: Super Mario World on the WideMess console finds its profile (built into the app), widescreen gives a 400-wide picture whose centre is, frame for frame from one
+//            saved moment, the SNES picture; the choice is kept per game in IndexedDB (fast CPU never) and comes back in a fresh page; "Use the profile" sets exactly the profile's recommendations;
+//            the controls: a .wms game has no enhancements (said, switches disabled), the SNES console has no panel.
 //   speed    frames per second in the browser (the page's own frame call, FrameTick, in a JavaScript loop, as bench-lite.mjs does; then once more with the picture drawn to the canvas each frame):
 //            layers, sprites, windows, widesnes and the sample game Wide Blaster (played with M5's input script) must hold 60 frames a second. LITELAB_GPU=1 draws on the machine's GPU (the
 //            entrypoint sets it for this group); otherwise the drawn figures are SwiftShader's (the CPU draws) and are reported only.
@@ -309,6 +312,91 @@ if (want('states')) for (const [rom, hold] of [['wms/layers.wms', []], ['wms/dev
   const fresh = await page2.eval(`window.__frames(60, ${JSON.stringify(hold)})`);
   check('states', `${rom}: the state kept in the browser loads into a fresh page and the next 60 frames are the same pictures`, /State loaded/.test(loaded2) && before.hashes.every((h, i) => h === fresh.hashes[i]), `${before.hashes.filter((h, i) => h === fresh.hashes[i]).length}/60 equal`);
 });
+
+// ============================================================================================= the milestone-6 enhancements (a SNES game on the WideMess console)
+if (want('enhance')) {
+  if (!haveSmw) check('enhance', 'Super Mario World is needed for the enhancements group (its profile is in WideMess/profiles)', false, 'not found under ' + lib);
+  else {
+    const smwBytes = fs.readFileSync(path.join(a.roms, 'snes', 'smw.smc'));
+    const imageSha = sha1(smwBytes.length % 1024 === 512 ? smwBytes.subarray(512) : smwBytes);
+    const keptKey = `pref_wmsenh_${imageSha}`;
+    const panel = page => page.eval(`(() => { const p = document.getElementById('wms-enhance'); if (!p) return null; return { status: document.getElementById('wms-enh-status')?.innerText || '', boxes: [0,1,2,3].map(i => { const b = document.getElementById('wms-enh-' + i); return b ? { on: b.checked, off: b.disabled, why: b.parentElement.title } : null; }), profileButton: document.getElementById('wms-use-profile')?.innerText || '' }; })()`);
+    const click = (page, id) => page.eval(`(() => { const b = document.getElementById(${JSON.stringify(id)}); if (!b) return false; b.click(); return true; })()`);
+    // the centre of a 400-wide frame (columns 72-327) hashed the way a 256-wide frame is hashed whole: equal hashes = the same SNES picture
+    const CENTRE = `window.__centre = async (n, wide) => {
+      const ref = window.__ref; if (nesInterop._loopActive) nesInterop.stopEmulationLoop();
+      const out = []; let w = 0;
+      for (let i = 0; i < n; i++) {
+        const p = await ref.invokeMethodAsync('FrameTick'); if (!p || !p.fb) continue;
+        w = p.w; const u = new Uint32Array(p.fb.buffer, p.fb.byteOffset, p.fb.byteLength >> 2); let hh = 2166136261;
+        const x0 = wide ? 72 : 0, cols = 256;
+        for (let y = 0; y < p.h; y++) for (let x = 0; x < cols; x++) { hh ^= u[y * p.w + x0 + x]; hh = Math.imul(hh, 16777619); }
+        out.push(hh >>> 0);
+      }
+      return { w, hashes: out };
+    }; 1`;
+    await withLab(async lab => {
+      const page = await lab.open('/', { timeout: 240000 });
+      await page.waitFor("!!document.getElementById('consoleSelect')", 120000);
+      await selectOption(page, '#consoleSelect', 'wms');
+      await sleep(800);
+      // the control: a WideMess game has no enhancements
+      await lab.open('/?rom=' + encodeURIComponent('roms/wms/layers.wms'), { timeout: 240000 });
+      await page.waitFor("document.body.innerText.includes('ROM: roms/')", 240000);
+      await page.waitFor("!!document.getElementById('wms-enhance')", 30000).catch(() => {});
+      const ctl = await panel(page);
+      check('enhance', 'the control: a WideMess game has no enhancements (the panel says so and its switches are off and disabled)', ctl && /a WideMess game has no enhancements/.test(ctl.status) && ctl.boxes.every(b => b && !b.on && b.off), JSON.stringify(ctl).slice(0, 300));
+      // Super Mario World on the WideMess console: its profile is found
+      await lab.open('/?rom=' + encodeURIComponent('roms/snes/smw.smc'), { timeout: 240000 });
+      await page.waitFor("document.body.innerText.includes('ROM: roms/')", 240000);
+      await page.eval(HELPERS); await page.eval(CENTRE);
+      await page.waitFor("!!document.getElementById('wms-enhance')", 30000).catch(() => {});
+      const p0 = await panel(page);
+      check('enhance', 'a SNES game on the WideMess console finds its profile (the built-in profiles in the browser\'s file system)', p0 && /profile: Super Mario World/.test(p0.status) && p0.boxes.every(b => b && !b.on && !b.off), p0 ? p0.status : 'no panel');
+      // widescreen: from one saved moment, the SNES picture's 30 frames, then the same 30 frames with widescreen on: the centre of each 400-wide frame is that SNES frame
+      await page.eval(`window.__frames(360)`);
+      const [saved] = await press(page, 'Save');
+      const plain = await page.eval(`window.__centre(30, false)`);
+      const [loaded] = await press(page, 'Load');
+      await sleep(300);
+      await click(page, 'wms-enh-0');
+      await sleep(500);
+      const wide = await page.eval(`window.__centre(30, true)`);
+      const same = plain.hashes.length === 30 && plain.hashes.every((h, i) => h === wide.hashes[i]);
+      check('enhance', 'widescreen: the picture is 400 wide and its centre (columns 72-327) is the SNES picture, frame for frame from the same saved moment', /State saved/.test(saved) && /State loaded/.test(loaded) && plain.w === 256 && wide.w === 400 && same,
+        `${plain.w} -> ${wide.w} wide; ${plain.hashes.filter((h, i) => h === wide.hashes[i]).length}/30 centres equal`);
+      // kept per game: in IndexedDB, and on again in a fresh page; fast CPU is never kept
+      await click(page, 'wms-enh-3');
+      await sleep(400);
+      const kept = await page.eval(`nesInterop.idbGetItem(${JSON.stringify(keptKey)})`);
+      const p1 = await panel(page);
+      check('enhance', 'the choice is kept for the game (IndexedDB pref_wmsenh_<image SHA-1>), without fast CPU (never kept: spec 6.3)', kept === 'w' && p1.boxes[0].on && p1.boxes[3].on, `kept "${kept}", widescreen ${p1.boxes[0].on}, fast CPU ${p1.boxes[3].on} (on now, not kept)`);
+      await lab.open('/?rom=' + encodeURIComponent('roms/snes/smw.smc'), { timeout: 240000 });
+      await page.waitFor("document.body.innerText.includes('ROM: roms/')", 240000);
+      await page.eval(HELPERS);
+      const again = await page.eval(`window.__frames(60)`);
+      const p2 = await panel(page);
+      check('enhance', 'a fresh page of the game switches the kept widescreen on again (and fast CPU stays off)', again.w === 400 && p2 && p2.boxes[0].on && !p2.boxes[3].on, `${again.w} wide; ${JSON.stringify(p2?.boxes.map(b => b.on))}`);
+      // Use the profile: what the profile recommends, nothing else; again: all off, back to the SNES picture
+      await click(page, 'wms-use-profile');
+      await sleep(400);
+      const p3 = await panel(page);
+      await click(page, 'wms-use-profile');
+      await sleep(400);
+      const off = await page.eval(`window.__frames(30)`);
+      const p4 = await panel(page);
+      check('enhance', '"Use the profile" switches on what the profile recommends (Super Mario World\'s: widescreen and no flicker, nothing else); pressed again, everything is off and the picture is the SNES\'s 256', p3 && /Profile on/.test(p3.profileButton) && p3.boxes[0].on && p3.boxes[1].on && !p3.boxes[2].on && !p3.boxes[3].on && p4 && p4.boxes.every(b => !b.on) && off.w === 256,
+        `after: ${JSON.stringify(p3?.boxes.map(b => b.on))} "${p3?.profileButton}"; again: ${JSON.stringify(p4?.boxes.map(b => b.on))}, ${off.w} wide`);
+    });
+    // the SNES console has no enhancements panel
+    await withLab(async lab => {
+      const page = await lab.open('/?rom=' + encodeURIComponent('roms/snes/smw.smc'), { timeout: 240000 });
+      await page.waitFor("document.body.innerText.includes('ROM: roms/')", 240000);
+      const has = await page.eval(`!!document.getElementById('wms-enhance')`);
+      check('enhance', 'the control: on the SNES console there is no WideMess enhancements panel', !has && (await console_(page)) === 'snes', `panel ${has}, console ${await console_(page)}`);
+    });
+  }
+}
 
 // ============================================================================================= speed
 const speed = [];

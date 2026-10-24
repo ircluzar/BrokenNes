@@ -645,4 +645,34 @@ No flicker changed nothing in eight of the eleven games' checked play: most SNES
 | Sound: 32 voices, BRR + 16-bit PCM, 1 MB sound RAM, the port | 3 | done (`APU_WMS`, `DSP_SFC.WideMess.cs`; test ROM `WideMess/testroms/sound`) |
 | Fast CPU, 1 MB work RAM, the WideMess map, fast DMA | 4 | done (`BOARD_SFC.WideMess.cs`, `WideMess.Memory.cs`; test ROMs `WideMess/testroms/cpu`) |
 | SNES games enhanced: widescreen, no flicker, better sound, fast CPU, profiles | 6 | done (`WideMess.Enhance.cs`, `WideMess.Profiles.cs`, `DSP_SFC.Enhance.cs`, `SnesSession.Enhance.cs`; `WideMess/profiles`, 11 games proven, 6.4) |
+| BrokenNes Lite and the FL plugin (section 8) | 7a | done (Lite: `Emulator.Consoles.cs`, `Emulator.WideMess.cs`, `UAT/lite/test-lite-widemess.mjs`; plugin: chip `WMS`, `WmsBank.cs`, `WmsSampler.cs`, `WmsSnapshot.cs`, self-test `wms` / `rom-wms`) |
 | Debug port | BrokenDev debugging toolkit | reserved |
+
+## 8. The hosts: where WideMess runs (milestone 7a)
+
+The console is the same everywhere: the shared emulator tree (`SnesSession` with `wideMess: true`, `PPU_WMS`, `APU_WMS`, `WmsFile`), so a game runs the same, frame for frame, in every host. What
+differs is how each host shows it, keeps it and lets you play it.
+
+| | Desktop app | BrokenNes Lite (browser) | FL plugin (BrokenNes2) |
+|---|---|---|---|
+| Where WideMess is | Console > WideMess | the Console menu, WideMess | the SNES console's second sound chip, **WMS** (chip 29); there is no sixth console button |
+| Its games (`.wms`) | Open ROM, recent files, the HTTP API | the file input, drag and drop, the ROM manager, `?rom=` | the Game list and the file dialog: a `.wms` file takes the WMS chip; a project keeps the chip it was saved with |
+| SNES games on it | when WideMess is selected; switching to SNES moves them back | the same (the game's own file decides) | on the WMS chip: the WideMess console, locked (a SNES); identical to the SNES chip, picture and sound |
+| The picture | 400 x 224, square pixels | 400 x 224 shown at 400 / 224 (16:9): the canvas and the page take that shape | 400 x 224 at 1x in the editor's 512 x 480 screen (whole-number scaling: 2x does not fit) |
+| The sound | APU WMS (the SNES's SFC offered instead) | the same | ROM mode: the game's whole sound on Mix (no per-voice stems, like a SNES game). Direct mode: the chip itself, played by FL's notes (below) |
+| Battery saves | `WideMessSaves\wms<sha1>.srm`; a SNES game keeps `SnesSaves\sfc<sha1>.srm` | IndexedDB `battery_v1:wms<sha1>.srm`; a SNES game keeps `battery_v1:sfc<sha1>.srm` | in the project, with the whole machine (`GAM1`) |
+| Save states | the state slots | IndexedDB `state_v1:wms:<game id>.quick` (Save / Load State) | the project (`GAM1`); Instrument Runaway's copy of the sound chip in `WMS1` |
+| The pad | keyboard, gamepad | keyboard, gamepad, the touch controller's SNES pad (`data-layout` wms) | the Inputs window (the SNES buttons) |
+| Milestone 6's enhancements | Console > WideMess enhancements | the WideMess row beside the core menus (profile line, Use the profile, four switches, known issues), kept per game in IndexedDB; the profiles are built into the app | not offered: the plugin is for sound; a SNES game on the WMS chip runs plain |
+| Speed | 61 frames a second (desktop) | the AOT build in Edge on this machine: layers 160, sprites 194, windows 137, widesnes 123, Wide Blaster 110 frames a second (the frame call; with the picture drawn on the GPU 110 to 177) | not measured as frames: the plugin runs a game as fast as FL pulls sound |
+
+**Why the plugin differs.** A plugin console is a family of sound chips: the emulator's console is whatever console its chip belongs to, and the five console buttons and the Console
+parameter's range are part of saved projects and the editor's pixel-tested layout. WideMess is a SNES superset, so it is the SNES console with another sound chip, as the Japanese Master
+System is the Master System console with its FM chip (SMSFM). The WMS chip's index is appended after the Presets chips; nothing before it moved.
+
+**The WMS chip as an instrument (Direct mode).** Not a NES-register bridge like the other chips but the chip itself: a private S-DSP with voices 8-31 attached and unlocked, playing FL's notes
+polyphonically, **24 notes at once on one channel** (the oldest gives its voice to a 25th), from 14 built-in **16-bit PCM** instruments (the Instrument parameter; 0 = the channel's own: a pulse at
+the Pulse duty, a triangle, a noise in the Noise mode). Each waveform is eleven one-cycle loops, one per octave, band-limited so that nothing above 16 kHz is in a loop at twice its rate; a note
+starts on the loop whose rate puts its pitch register between $1000 and $1FFF, so the pitch is exact to a fifth of a cent (measured A0 to C8) and a held note bends an octave up or more. Each
+instrument has its S-DSP envelope. **Instrument Runaway on a WideMess game** whose sound unit is unlocked plays the game's own instruments the same way: the new voices' directory (16-bit PCM
+and BRR anywhere in the 1 MB, 24 at once) and the S-DSP's own (8 at once), at their pitch ($1000 = the sample's own rate at C5). Editing them in the Instruments tab is not built.

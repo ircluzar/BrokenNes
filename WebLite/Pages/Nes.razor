@@ -131,6 +131,26 @@
                             </div>
                         }
                     }
+                    @if (emu!.ShowsWideMessEnhancements)
+                    {
+                        @* WideMess milestone 6 in Lite (7a): a SNES game on the WideMess console, enhanced by its profile; the same choices as the desktop's Console > WideMess enhancements, kept per game. *@
+                        <div class="qc-select-stack wms-enhance" id="wms-enhance">
+                            <label class="mini-label" title="@(string.IsNullOrEmpty(emu!.WideMessEnhanceIssues) ? "A SNES game on the WideMess console: widescreen, no sprite flicker, better sound, fast CPU (the console's, never the game's)" : "Known issues:\n" + emu!.WideMessEnhanceIssues)">WideMess</label>
+                            <div class="wms-enh-box">
+                                <span class="wms-enh-status" id="wms-enh-status">@emu!.WideMessEnhanceStatus</span>
+                                <button type="button" class="btn btn-rf btn-sm" id="wms-use-profile" @onclick="(() => emu!.ToggleWideMessProfileAsync())">@(emu!.WideMessProfileOn ? "Profile on" : "Use the profile")</button>
+                                @for (int i = 0; i < 4; i++)
+                                {
+                                    var which = i;
+                                    var why = emu!.WideMessEnhanceWhyNot(which);
+                                    bool on = emu!.WideMessEnhanceOn(which);
+                                    <label class="wms-enh-item" title="@(why ?? $"profile: {emu!.WideMessEnhanceVerdict(which)}{(which == 3 ? " (changes the game's timing; never kept)" : "")}")">
+                                        <input type="checkbox" id="@($"wms-enh-{which}")" checked="@on" disabled="@(why != null && !on)" @onchange="(e => emu!.SetWideMessEnhancementAsync(which, e.Value is true))" /> @Emulator.WideMessEnhanceLabels[which]
+                                    </label>
+                                }
+                            </div>
+                        </div>
+                    }
                     @if (ShowApuPicker && emu!.ActiveConsole == ConsoleKind.Nes)
                     {
                         <div class="qc-select-stack">

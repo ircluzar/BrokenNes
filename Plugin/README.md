@@ -38,17 +38,18 @@ plugin: a DLL that exports `CreatePlugInstance` and hands FL an object shaped li
 
 An emulator is of one **console** (the *Console* parameter and the five buttons in the editor): **NES**, **Game Boy** (GB), **SNES**, **SMS** (the Master System and the Game Gear) or **MD** (the Genesis / Mega Drive). A console
 decides:
-- **the sound chips it lists:** the 17 NES cores (FIX first), the Game Boy chips (DMG, DMGS: 8 channels), the SNES chip (S-DSP), the Master System's two chips (**SMS**: the SN76489 PSG; **SMSFM**: the Japanese console's YM2413 FM chip with the PSG, appended last as chip 22) and the Genesis chip (**MD**: the YM2612 FM chip and the PSG, see below). Picking a
+- **the sound chips it lists:** the 17 NES cores (FIX first), the Game Boy chips (DMG, DMGS: 8 channels), the SNES chip (S-DSP), the Master System's two chips (**SMS**: the SN76489 PSG; **SMSFM**: the Japanese console's YM2413 FM chip with the PSG, appended last as chip 22) the Genesis chip (**MD**: the YM2612 FM chip and the PSG, see below) and, on the SNES console, the **WideMess** sound chip (**WMS**, appended last as chip 29: see "The WideMess chip"). Picking a
   chip of another console switches the console, and switching the console picks its first chip. The MNES and WF cores (MIDI-style, not chips) are not offered.
 - **the CPU and PPU of a running game:** not choices any more. Each console gets the best of its own family from BrokenNes's `CoreCatalog`
   (FIX for the NES; the real Game Boy, SNES and Master System / Game Gear cores otherwise).
 - **what ROM mode runs:** a NES, Game Boy (also Game Boy Color), SNES, Master System (also SG-1000 and SC-3000), Game Gear or **Genesis** game, through BrokenNes's console sessions. The picture is scaled by a whole
   number to fill the screen (Game Boy and Game Gear 3x, NES, SNES and Master System 2x, Genesis 1x, or 2x in its 256-wide mode). A NES game has stems for its four tone channels; a **Sega game has one stem per voice of its sound unit** (PSG tones and noise, the Genesis' FM 1-6 and DAC,
   the Master System FM chip's FM 1-9 and rhythm voices: see "The channel model"); a Game Boy or SNES game plays through the **Mix** channel only.
-  The Game list takes a `.nes`, `.gb`, `.gbc`, `.sfc`, `.smc`, `.sms`, `.gg`, `.sg`, `.sc`, `.md`, `.gen`, `.smd` or `.zip` and switches the emulator to the file's console by itself (a Master System and a Game Gear game share the SMS console;
+  A **WideMess** game (`.wms`) runs on the SNES console's WMS chip, 400 x 224 at 1x (see "The WideMess chip").
+  The Game list takes a `.nes`, `.gb`, `.gbc`, `.sfc`, `.smc`, `.wms`, `.sms`, `.gg`, `.sg`, `.sc`, `.md`, `.gen`, `.smd` or `.zip` and switches the emulator to the file's console by itself (a Master System and a Game Gear game share the SMS console;
   which one it is, is read from the file).
 - **Direct mode:** every console's chip takes the NES registers (the Game Boy, SNES, Master System and Genesis chips are the register bridges DMG/DMGS/SNES/SMS/SMSFM/MD), so the four
-  tone channels exist on all of them.
+  tone channels exist on all of them. The WMS chip is the exception: it is the WideMess sound chip itself, played polyphonically (below).
 
 ### The Master System console (the SMS chip)
 
@@ -144,6 +145,46 @@ floor is 5x; the NES chip measures 7x and the PSG chip 21x in the same test), **
 **Mix**; the picture is 256 or 320 wide and 224 or 240 high, shown at its own size. **Per-voice stems:** PSG tone 1, 2, 3 and noise (the channels *Pulse 1, Pulse 2, Triangle, Noise*), **FM 1-6** and the **DAC** (the *Voice* parameter): eleven in all, from the sound unit's own run of the chips, in step with the
 mix. They add up to it within 3 sixteen-bit steps (`--sega-stems-test`: the discrete chip's DAC offsets and ladder effect are in the stems exactly as in the mix). An instance that asks for FM 7-9 or a rhythm voice is refused with a message and the game does not run ahead for it. Instrument Runaway: see below.
 **The Genesis is the heaviest console here**: the 68000, the Z80 and the VDP are emulated whole, so a real Genesis game takes a good part of a core (see "What it costs").
+
+### The WideMess chip (the WMS chip, WideMess milestone 7a)
+
+WideMess is BrokenNes's souped-up SNES fantasy console (`docs/projects/widemess-spec.md`; section 8 says how it appears in each host). In the plugin it is the **SNES console's second sound
+chip, WMS**, appended last as **chip 29** (after the six Presets chips; nothing before it moved), the way the Japanese Master System is the Master System console with its FM chip. There is no
+sixth console button: a WideMess is a SNES until a game unlocks it.
+
+**Direct mode: the chip itself, many notes at once.** Not a NES-register bridge like the other chips: each instance owns a private WideMess sound chip (the S-DSP with its voices 8-31 attached and
+unlocked, `WmsSampler`) and FL's notes play on its new voices, **24 notes at once on one channel** (a 25th takes the oldest note's voice; that note stays silent until FL releases it). The
+**Instrument** parameter picks one of 14 built-in **16-bit PCM** instruments (a dropdown on every channel; out of range is the last):
+
+| # | Instrument | What it is |
+|---|---|---|
+| 0 | Auto | the channel's own: Pulse 1 / 2 a pulse at the *Pulse duty* (12.5, 25, 50, 75 %), Triangle a triangle, Noise a noise in the *Noise mode* (long = white, short = periodic) |
+| 1-3 | Square, Pulse 25%, Pulse 12.5% | the NES pulses' shapes without their steps |
+| 4-6 | Triangle, Sawtooth, Sine | |
+| 7 | Organ | drawbars 1, 2, 3, 4, 6, 8, held |
+| 8 | Strings | every harmonic at 1/n^1.4, a 0.2 s attack |
+| 9-11 | Pluck, E. piano, Synth bass | with decaying S-DSP envelopes |
+| 12-13 | Noise, Noise (periodic) | a 16,384-sample white noise; the NES short noise's 93-step sequence; the note sets the rate (C5 = 32 kHz) |
+
+Every waveform is eleven one-cycle loops (4,096 samples down to 4), one per octave, each band-limited so that nothing above 16 kHz is in it at twice its own rate (`WmsBank`). A note starts on the
+loop whose rate puts the pitch register between $1000 and $1FFF: the pitch is **exact to a fifth of a cent** from A0 to C8 (measured), and a held note bends an octave or more up (and down as far as
+FL goes) on the loop it started on. The instruments were designed here, from the additive formulas of the waveforms named; nobody has listened to them: what is measured is pitch, harmonic content,
+level and polyphony. Level: a 25% pulse at full velocity is as loud as the NES chip's (0.0 dB); each note's voice is kept at a third of the chip's range, so eight loud notes fit the S-DSP's 16-bit
+sum, as on the console (the spec: the voices add with saturation). Cost: four instances with six sliding notes each, 9x real time; nothing allocated on the audio thread (the chip is made on the
+UI thread when the instance is placed; Reset Console makes it again there).
+
+**WideMess games in ROM mode.** The Game list and the file dialog open `.wms` files: the emulator goes to the SNES console, takes the WMS chip and the game runs on the WideMess console (the
+picture 400 x 224, shown at 1x: the editor's 512 x 480 screen takes whole-number scaling only), its whole sound on **Mix** (no per-voice stems, like a SNES game). A SNES game on the WMS chip
+runs on the WideMess console too, locked: frame for frame and sample for sample the SNES chip's game. A project keeps the chip it was saved with: a `.wms` game in a project on the SNES chip
+runs on the WideMess console with the SNES's own sound unit (its new voices are not heard, and the status line says so). The chip can be swapped under a running game (WMS and SNES): the game goes
+on. A project keeps the whole machine as for every console (`GAM1`).
+
+**Instrument Runaway on a WideMess game** whose sound unit is unlocked: every instance becomes a sampler of the game's WideMess sound chip (`WmsSnapshot`: the 1 MB of sound RAM, the S-DSP's
+registers, the second register page and the new voices' directory). The **Instrument** picker lists the game's instruments: every well-formed entry of the new voices' directory (16-bit PCM and
+BRR, anywhere in the 1 MB; they play on the new voices, 24 at once), then the S-DSP's own directory's samples (8 at once). $1000 plays a sample at its own rate at C5; the envelope is the one the
+game had on a voice that played it. A project saved in Runaway keeps the copy in section **`WMS1`** (deflated, CRC-32; a damaged or newer section is refused and the Instruments tab says so). A
+locked WideMess game (or a SNES game) is the SNES sampler's, as before. Not built: editing WideMess instruments in the Instruments tab (it says so), presets of them, pushing them into the game,
+recording the new voices (the Record window records the S-DSP's 8).
 
 ## One instance = one channel of an emulator
 

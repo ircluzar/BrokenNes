@@ -922,6 +922,11 @@ table.rom-table thead th { border-color:#3a4a59 !important; }
 }
 /* Restore select padding close to button sizing */
 .quick-controls .btn-group .qc-select-stack .btn-select { padding:0.45rem 0.75rem 0.40rem 0.70rem !important; }
+/* WideMess enhancements (a SNES game on the WideMess console): the profile line, Use the profile, four switches */
+.wms-enh-box { display:flex; flex-wrap:wrap; align-items:center; gap:.25rem .6rem; padding:.35rem .55rem .3rem; border:1px solid #3a4653; border-radius:6px; font-size:.72rem; color:#d9e4ec; max-width:min(44rem, 100%); }
+.wms-enh-status { flex-basis:100%; color:#8fa3b8; font-size:.68rem; line-height:1.15; }
+.wms-enh-item { display:inline-flex; align-items:center; gap:.25rem; cursor:pointer; white-space:nowrap; margin:0; }
+.wms-enh-item input:disabled { cursor:not-allowed; }
 @media (max-width:599px){
   .quick-controls .btn-group .qc-select-stack { margin-right:.2rem; }
   .quick-controls .btn-group .qc-select-stack .mini-label { font-size:.44rem; top:-0.5rem; }

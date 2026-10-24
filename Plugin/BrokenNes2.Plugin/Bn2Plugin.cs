@@ -121,7 +121,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     internal void RequestReset()
     {
         PrepareAgainForPreset();                 // a preset's engine is made again here, on the UI thread, before the audio thread drops the old one (Bn2Plugin.Presets.cs)
-        if (assignment.Emulator?.WmsDirectMode == true) { wmsEngine = null; PrepareWms(); }      // the WideMess chip is made again here too (the audio thread takes the new one; its notes start over on it)
+        if (assignment.Emulator?.WmsDirectMode == true) PrepareWms(again: true);      // the WideMess chip is made again here too, then swapped in (the audio thread takes the new one; its notes start over on it)
         Interlocked.Exchange(ref resetRequested, 1);
     }
 

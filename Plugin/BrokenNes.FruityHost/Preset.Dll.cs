@@ -141,12 +141,12 @@ public sealed unsafe partial class SelfTest
             p.ShowEditor(parent);
             Win32Host.Pump(100);
             ClickControl(t, p, 4, "chip dropdown (SNES, Direct)");
-            t.Expect(p.Test(32) == 2, $"the SNES chip list has {p.Test(32)} items in Direct mode, expected SNES and PRE-SNES");
+            t.Expect(p.Test(32) == 3, $"the SNES chip list has {p.Test(32)} items in Direct mode, expected SNES, PRE-SNES and the WideMess chip WMS");
             Win32Host.Click(p.EditorHandle, 20, 20);
             p.SetParam(PMode, 1);
             Win32Host.Pump(100);
             ClickControl(t, p, 4, "chip dropdown (SNES, ROM)");
-            t.Expect(p.Test(32) == 1, $"the SNES chip list has {p.Test(32)} items in ROM mode, expected SNES alone");
+            t.Expect(p.Test(32) == 2, $"the SNES chip list has {p.Test(32)} items in ROM mode, expected SNES and WMS (the Presets chip plays without a game)");
             Win32Host.Click(p.EditorHandle, 20, 20);
             p.HideEditor();
         }

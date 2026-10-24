@@ -19,10 +19,10 @@ public sealed unsafe partial class Bn2Plugin
     internal static volatile int WmsMutant;
 
     /// <summary>UI thread: the Direct-mode engine of the WMS chip, made ahead of the first block (it copies 64 KB and makes the chip; the bank's 1 MB is made once per process).</summary>
-    private void PrepareWms()
+    private void PrepareWms(bool again = false)
     {
         int rate = EmulatorHub.HostRate;
-        if (wmsEngine != null && wmsEngineRate == rate) return;
+        if (!again && wmsEngine != null && wmsEngineRate == rate) return;
         var e = new WmsSampler(WmsSnapshot.BuiltInBank, rate);
         wmsEngineRate = rate;
         wmsEngine = e;

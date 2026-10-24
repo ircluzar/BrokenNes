@@ -201,6 +201,7 @@ namespace BrokenNes
             try { await JS.InvokeVoidAsync("nesInterop.setTouchLayout", Consoles.Key(console)); } catch { }
             try { await JS.InvokeVoidAsync("nesInterop.setSessionFps", s.FramesPerSecond); } catch { }   // a PAL game runs at 50, not the page's 60
             Status.Set($"{Consoles.DisplayName(console)}: {s.Title}");
+            if (console == ConsoleKind.WideMess) await ApplySavedWideMessEnhancementsAsync();     // a SNES game on the WideMess: the enhancements kept for it, said on the status line (Emulator.WideMess.cs)
             await StartEmulation();
             StateHasChanged();
         }

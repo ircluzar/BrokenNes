@@ -14,7 +14,7 @@ This folder holds what is built for WideMess outside the emulator code.
 | `testroms/picture/` | Milestone 2's test ROMs: `sprites`, `windows`, `widesnes`. One 65816 register player (`player.asm`) plays the script of register writes, DMA and HDMA that `gen_picture.py` generates for each scene; the same writes drive the generator's own model of spec section 3, which draws the picture each ROM must produce (`<rom>.expect.png`). `build.ps1` builds the ROMs, their negative controls and the pictures into `testroms/bin/`. |
 | `testroms/sound/` | Milestone 3's test ROM, the sound chip: a 65816 program (`sound.asm`) and an SPC700 program (`spc.asm`), WLA-DX; `gen_data.py` makes the samples, the DMA jobs, the SPC700's step lists and the manifest the checks measure against. `build.ps1` builds it and its negative control into `testroms/bin/`. |
 | `testroms/cpu/` | Milestone 4's test ROMs (WLA-DX; `build.ps1` builds them into `testroms/bin/`): `speed.asm`, the fast CPU and fast DMA measured against the spec's cycle model, with its no-unlock control; `bigmap.asm` + `gen_bigmap.py`, a 4 MB game on the WideMess map (1 MB work RAM, the 20-bit WRAM port, 256 KB battery RAM, 64 ROM banks). |
-| `profiles/` | Milestone 6: the SNES games' enhancement profiles (spec section 6.2, format `widemess-profile-1`), one JSON file per game, found by the ROM image's SHA-1. The desktop app and Workshop ship them beside the program. |
+| `profiles/` | Milestone 6: the SNES games' enhancement profiles (spec section 6.2, format `widemess-profile-1`), one JSON file per game, found by the ROM image's SHA-1. The desktop app and Workshop ship them beside the program; BrokenNes Lite builds them into the app (milestone 7a). |
 | `sample/` | Milestone 5's sample game, **Wide Blaster**, made with the devkit (`brokendev new widemess widemess-sample`): C and 65816 on PVSnesLib with the WideMess extensions, its PNG, WAV and MIDI sources and `wms.json`. BrokenDev project `widemess-sample`. |
 | `testroms/devkit/` | Milestone 5's test ROMs: `build.ps1` builds the devkit's template and the sample game, each with its negative controls, into `testroms/bin/` with BrokenDev's devkit. |
 | `testroms/bin/` | The built test ROMs: `devkit_template.wms`, `devkit_template_nounlock.wms`, `devkit_sample.wms` (+ `.sym`), `devkit_sample_nounlock.wms`, `devkit_sample_snesspeed.wms`; `layers.wms`, `layers.sfc` (the same game as a SNES image) and `layers_nounlock.wms` (the negative control); `sprites`, `windows`, `widesnes` (`.wms`, `_nounlock.wms`) with the model's pictures (`.expect.png`, `_nounlock.expect.png`, `.<variant>.expect.png`); `sound.wms`, `sound.sfc`, `sound_nounlock.wms` and `sound.json` (the manifest); `speed.wms`, `speed.sfc`, `speed_nounlock.wms`; `bigmap.wms` (its controls, cut to 2 MB or on the HiROM map, are made by `--wms-test`). |
@@ -72,6 +72,10 @@ BrokenNes.Workshop.exe --wms-fast-probe    --rom game.sfc [--frames 300] [--from
 - Workshop is a GUI-subsystem program. In PowerShell, run it with `Start-Process -Wait -NoNewWindow -RedirectStandardOutput`.
 
 The desktop app's own check is `UAT/entrypoints/widemess-desktop-smoke.ps1 -Exe <BrokenNes.Windows.exe>`. It uses a scratch settings folder.
+
+Milestone 7a's checks: BrokenNes Lite's is `UAT/entrypoints/lite-widemess.ps1 [-Publish <AOT publish folder>]` (it publishes the AOT build itself otherwise; `UAT/lite/test-lite-widemess.mjs` in
+Edge over the DevTools protocol); the FL plugin's are the self-test's `wms` and `rom-wms` (`FruityHost selftest <dll> --only wms,rom-wms`, see `Plugin/CLAUDE.md`). How WideMess appears in
+each host is spec section 8.
 
 ## Milestone 1 result (2026-10-24)
 
