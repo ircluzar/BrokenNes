@@ -93,7 +93,9 @@ internal sealed class EmulatorInstrumentProvider : IInstrumentModelProvider
     private readonly InstrumentSession s;
     public EmulatorInstrumentProvider(InstrumentSession session) { s = session; }
 
-    public string? Unavailable => s.Emu.InstrumentSource == null ? "This game has no instruments BrokenNes2 can edit: a NES game is frozen and silenced by Instrument Runaway, but nothing plays its sound registers yet" : null;
+    public string? Unavailable => s.Emu.InstrumentSource != null ? null
+        : s.Emu.WmsSamplerMode ? "This WideMess game's instruments play from FL's notes (pick one with Instrument on the Emulator tab: its 16-bit PCM and BRR samples, 24 notes at once), but editing them in this tab is not built yet"
+        : "This game has no instruments BrokenNes2 can edit: a NES game is frozen and silenced by Instrument Runaway, but nothing plays its sound registers yet";
     public long Version => s.Version;
 
     // ---- reading ----
