@@ -98,6 +98,8 @@ with it pixel for pixel.
   noise on a shared CPU, the code is the same).
 - **UAT `run-suite.ps1`: 125 pass, 0 fail, 16 skip, 3 info.** Lite and the plugin's Core build (WideMess stays hidden there).
 - **The desktop app smoke test passes 9 of 9**: it now also checks that the app shows `sprites.wms` and `widesnes.wms` exactly as the model draws them.
+- **With milestone 4 merged** (WMFEAT `$3B`, state format `wms-3`): `--wms-test` 113 of 113 with all milestones' checks and the 9 games, the same
+  on the reference paths; the ALttP golden IDENTICAL; desktop smoke 9 of 9; UAT 125 pass, 0 fail, 16 skip, 3 info; Lite and Core build.
 
 ## Milestone 4 result (2026-10-24): CPU and memory
 
