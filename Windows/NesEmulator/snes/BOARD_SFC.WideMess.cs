@@ -51,11 +51,20 @@ public sealed partial class BOARD_SFC
         }
     }
 
+    private bool consoleFastCpu;
+    /// <summary>Milestone 6: the console's fast CPU for a locked SNES game (docs/projects/widemess-spec.md section 6.1): fast mode as WMSPEED gives it, with the game unaware (WMSPEED still reads
+    /// what the game wrote). Only on a WideMess console; the session switches it off when the game unlocks the extensions.</summary>
+    public bool ConsoleFastCpu
+    {
+        get => consoleFastCpu;
+        set { consoleFastCpu = value && wideMess != null; ApplyWideMess(); }
+    }
+
     /// <summary>The board's view of the WideMess registers, after any change (the unlock, WMSPEED, WMDMA, a reset, a loaded state).</summary>
     private void ApplyWideMess()
     {
         var wm = wideMess;
-        bool fast = wm is { FastCpu: true };
+        bool fast = wm is { FastCpu: true } || (consoleFastCpu && wm != null);
         idleClocks = fast ? 2 : 6;
         dmaByteClocks = wm is { FastDma: true } ? 4 : 8;
         // the 20-bit WRAM port: the WideMess map's 1 MB, once unlocked; otherwise the SNES's 17 bits (and an address left from an unlocked time drops to them)

@@ -427,11 +427,212 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
   It says which, rather than running it.
 - The extension `.wms` is provisional: the user's call (plan, open question 1).
 
-## 6. SNES games on WideMess
+## 6. SNES games on WideMess (milestone 6)
 
 - Every `.sfc` / `.smc` game boots on the WideMess console exactly as on the SNES console: the same picture, sound and timing, to the
   frame hash.
-- Per-game enhancements (widescreen, no flicker, better sound) are opt-in profiles, milestone 6.
+- **Enhancements are the console's, never the game's.** The player switches them on for a game; the game never does, and never
+  sees one. The extension stays locked, so every register, memory and flag the game reads is what a SNES gives it. That includes
+  `STAT77`'s sprite flags, which keep counting the SNES's limits on the SNES's 256 columns. Fast CPU is the one exception, by its
+  nature: it changes the game's timing.
+- **Only a locked SNES game is enhanced.** A `.wms` game gets none, and a SNES game that unlocks the extensions loses them at the
+  unlock: from then on the picture, sound and speed are the game's to set.
+- Everything off is the SNES, frame for frame (the identity check of section 6's proof).
+
+### 6.1 The four enhancements
+
+**Widescreen** (needs a profile): the picture is 400 x 224.
+- **The centre is the SNES's picture.** Columns 72-327 are exactly the SNES's, line for line, sprites and flags included.
+- **The sides** are the 72 columns either side, drawn from what the game keeps in video RAM. The game's profile gives each layer a
+  rule (BG1-BG4; Mode 7's plane is BG1, with BG2 for EXTBG):
+  - **extend**: the SNES modes drawn wide, section 3.2. The layer's tile map continues past the SNES edges and wraps at the map's
+    width, as on the SNES: a 64-tile map shows the half the SNES keeps off screen, a 32-tile map repeats. Mode 7 continues its
+    transformation.
+  - **repeat**: the layer's own 256 visible columns repeat side by side. Picture column c shows the layer's column
+    72 + ((c - 72) mod 256). For a 32-tile map this is the same as extend; for a 64-tile map it hides the off-screen half.
+  - **fill**: the layer is transparent in the sides, so the layers behind it, or the backdrop, show there.
+- **Sprites** follow one of two rules:
+  - **extend**: the SNES's sprite pass draws the centre unchanged: 32 sprites and 34 slivers, counted on the SNES's 256 columns.
+    The parts of sprites that fall in the side columns are drawn in addition and never counted. Their X follows section 3.3:
+    9-bit X 0-327 is picture column 72 + X, and 328-511 is X - 512. One exception: X = 256 (the SNES's -256, where games hide
+    sprites) is never drawn in the sides.
+  - **fill**: no sprites in the sides. Use it for games that cull their objects at the SNES edge, or that park unused sprites
+    off the left or right.
+- **Masks** override the rules for part of the sides, for the things a game lays out for 256 columns: a HUD, the columns where
+  it streams new tiles, a title screen. A mask is a rectangle:
+  - rows `top`-`bottom`;
+  - a band of the sides, `from`-`to` pixels out from the SNES edge (0 is the column next to it, 72 the picture's edge), on the
+    left, the right or both sides;
+  - the layers it covers;
+  - a rule: fill or repeat, or **black**, which draws those columns black, every layer and the backdrop;
+  - optionally a **scene condition** (`when`): SNES registers as the game last wrote them, each ANDed with a mask and compared
+    with a value, so a mask can apply to one scene only. Examples: a title screen whose BG1 map is at `$1000`; the rows where
+    `BGMODE` puts BG3 in front. The registers are `BGMODE`, `BG1SC`-`BG4SC`, `BG12NBA`, `BG34NBA`, `TM`, `TS`, `OBSEL`,
+    `SETINI`, `CGWSEL` and `CGADSUB`.
+  Masks can never touch the centre. A later mask in the list wins over an earlier one.
+- **Window edges** (`windows`): `reach` (the default, section 3.4) or `snes`, which keeps the SNES's window positions where the
+  SNES draws them. Use `snes` for a game that masks a few edge columns with a window, which would otherwise black out a whole side.
+- **Windows and colour math** follow section 3.4: a SNES window edge on the SNES picture's edge (0 or 255) reaches the picture's
+  edge; the sub screen and the fixed colour cover the sides as they cover the centre.
+- **What no rule can fix** is written in the profile and shown to the player, never hidden:
+  - objects the game creates only as they reach the SNES edge (enemies that pop in at column 72 or 327);
+  - tiles the game streams in just past the SNES edge (old tiles beyond them until the game scrolls further);
+  - effects timed for 256 columns.
+
+**No sprite flicker**: the SNES sprite table drawn with WideMess's own line limits, 64 sprites and 128 slivers (section 3.3),
+instead of the SNES's 32 and 34.
+- The game still reads the SNES's `STAT77` flags.
+- A line within the SNES's limits is drawn exactly as on the SNES. Only a line over them shows more.
+- A game that flickers on purpose, re-ordering its sprites every frame so that each gets its turn, keeps flickering: the console
+  cannot know which sprites the game left out.
+- It works with or without widescreen (256 wide without).
+
+**Better sound**: the S-DSP's voices interpolate their samples with a 4-point cubic (Catmull-Rom) instead of the S-DSP's Gaussian
+filter, which dulls the high frequencies.
+- The samples, pitches, envelopes, echo and mixing are unchanged.
+- Only what is mixed changes. The S-DSP's own output, which the sound driver can read (`OUTX`) and which modulates the next voice's
+  pitch, stays the Gaussian's.
+- The echo buffer in sound RAM is written from what is mixed, so it holds the cubic. A driver that read its own echo buffer back
+  would see the difference; no known driver does.
+- More voices cannot be added to existing music: the game's driver plays 8.
+- At a pitch of exactly 1.0 the cubic gives each sample as it is, where the Gaussian blurs 3 of them together.
+- Only the S-DSP's voices 0-7 are affected; the WideMess voices 8-31 (section 4) are a WideMess game's, never a locked SNES game's.
+
+**Fast CPU**: section 2's fast mode, forced on by the console while the game stays locked.
+- Every CPU access takes 2 master clocks except the I/O registers.
+- It removes slowdown and can break games that time things by counting CPU cycles. A profile marks it safe, risky or broken.
+- **Switch it on after the game has started.** Super Mario World hangs if fast CPU is on while it starts. It sends its sound driver to
+  the SPC700 exactly as at SNES speed (the first 23,973 port writes are identical), starts the driver, then writes `$FF` to `$2141`
+  8 ms later instead of 31 ms. The driver is still setting up and clears its input ports, so that write is lost and the two wait for
+  each other forever. A real 65816 at 10.74 MHz would do the same: this is the game's timing, not an emulation fault. Switched on
+  after the title, the game runs.
+- Chrono Trigger and Contra III hang at a later scene change (a black screen, the 65816 in a loop), even with fast CPU switched on
+  after the title: probably the same kind of handshake with the sound driver, not traced. Their profiles call fast CPU broken.
+- So the desktop app never keeps fast CPU for a game's next start.
+
+### 6.2 Profiles
+
+**Where they live.** `WideMess/profiles/<name>.json`, one file per game. The desktop app and Workshop ship the folder beside the
+program (`WideMess\profiles`).
+
+**How a game finds its profile.** By the SHA-1 of the ROM image. A 512-byte copier header is not part of the image, so the key is
+the No-Intro hash. A profile can list several hashes (revisions).
+
+**The format** (`widemess-profile-1`). Every key is checked, and a file with an unknown key, a bad value or a hash another
+profile already claims is refused with the reason. It is never half-read.
+
+```json
+{
+  "format": "widemess-profile-1",
+  "title": "Super Mario World",
+  "sha1": ["6b47bb75d16514b6a476aa0c73a683a2a4c18765"],
+  "widescreen": {
+    "layers": { "bg1": "extend", "bg2": "extend", "bg3": "fill", "bg4": "extend", "sprites": "extend" },
+    "masks": [
+      { "why": "the status bar is BG3 drawn in front, laid out for 256 columns", "layers": ["bg3"], "rows": [0, 223], "side": "both", "from": 0, "to": 72,
+        "rule": "fill", "when": { "bgmode": "$09" } }
+    ]
+  },
+  "enhancements": {
+    "widescreen": "good",
+    "noFlicker": "good",
+    "betterSound": "good",
+    "fastCpu": "risky"
+  },
+  "recommended": ["widescreen", "noFlicker"],
+  "issues": ["Enemies appear at the SNES edge: the game creates them as they reach it."],
+  "verified": { "date": "2026-10-24", "how": "contact sheet m6/smw.png; centre identical over 3,000 frames" }
+}
+```
+
+- `widescreen` is required when `enhancements.widescreen` is anything but `"unavailable"`, and refused when it is `"unavailable"`.
+  Its keys: `layers` (required: `bg1`-`bg4` extend / repeat / fill, `sprites` extend / fill), `masks` and `windows` (6.1).
+- A mask's keys: `why`, `layers` (`bg1`-`bg4`, `sprites`, or `all`; a black mask covers `all`), `rows` (`[top, bottom]`, 0-238),
+  `rule` (fill / repeat / black; sprites cannot repeat), and optionally `side` (both / left / right), `from` and `to` (0-72, from < to)
+  and `when` (`{ "register": "$VV" }` or `"$VV/$MM"`, hex; a value with bits outside its mask is refused, it could never match).
+- `file` (optional) names the ROM file the profile was made with.
+- In `enhancements`, each of the four is one of:
+  - `good`: verified;
+  - `risky`: works, with the issues listed;
+  - `broken`: verified not to work, and still offered, labelled;
+  - `unavailable`: not offered for this game, for example widescreen in a game whose sides are garbage.
+- `recommended` is what "Use the profile" switches on.
+- `issues` are shown to the player as they are written.
+
+**Without a profile:**
+- widescreen is not offered, and the menu says "no profile for this game";
+- no flicker, better sound and fast CPU are generic and can be switched on, marked "not verified for this game";
+- a broken profile file is reported with its reason, never skipped.
+
+### 6.3 In BrokenNes
+
+**The desktop app**: Console > **WideMess enhancements**, for a SNES game on the WideMess console.
+- The game's profile: its title and when it was verified, "no profile for this game", or "the profile is broken: why".
+- **Use the profile**: switches on what the profile recommends.
+- One item per enhancement (widescreen, no sprite flicker, better sound, fast CPU), each labelled with the profile's verdict. Fast
+  CPU always says it changes timing.
+- **Known issues...**: the profile's list.
+- The choices are kept per game in the app's settings (by the image's SHA-1) and applied when the game starts again. Fast CPU is
+  never kept (6.1: some games hang if it is on while they start), and its menu item says so.
+- The title bar shows what is on (`[WideMess: widescreen, no flicker]`). When the game unlocks WideMess and loses its enhancements,
+  the menu's profile line says why.
+
+**The HTTP API** (for tests and tools; it changes only the running game, not the settings file):
+- `GET /api/widemess/enhance`: the game's profile (or why there is none), what is on, and what is offered.
+- `POST /api/widemess/enhance` with `{ "widescreen", "noFlicker", "betterSound", "fastCpu", "useProfile" }` (each optional):
+  switches them. A refusal says why, for example widescreen without a profile.
+- `POST /api/widemess/profile` with a profile's JSON: a scratch profile for the running game, checked like a file, held in memory
+  only.
+
+**Workshop:**
+- `--wms-enhance-sheet (--game <key> | --rom <game> [--input <script>]) --out <png> [--at <frames>]`: the contact sheet, the SNES
+  picture beside WideMess widescreen at several moments of play. `--game` names a proven game (6.4: its pad script and moments).
+  `--all-extend` draws every layer extended instead of the profile (why a game's widescreen is unavailable); `--no-flicker` adds it.
+- `--wms-enhance-film`: the wide picture every N frames, with each moment's register set-up per band of rows (for writing profiles).
+- `--wms-enhance-test`: milestone 6's checks alone.
+- `--wms-fast-probe --rom <game> --from <frame>`: fast CPU switched on at a frame, the 65816's PC beside the SNES console's.
+- `--wms-test` checks every enhancement against a negative control:
+  - each switched off gives the SNES;
+  - widescreen keeps the centre identical;
+  - no flicker changes only the lines over the SNES's limits;
+  - better sound changes the sound only when on;
+  - fast CPU runs the speed ROM at fast mode's speed with the game locked.
+
+### 6.4 The games proven (milestone 6)
+
+Eleven games, each with its profile in `WideMess/profiles` and its contact sheet in `docs/projects/widemess-images/m6`. Each was run
+by `--wms-test` in lockstep with the SNES console, through a pad script or the game's own attract demos, up to its sheet's last moment
+(4,000-6,750 frames). For every game:
+- widescreen keeps the centre the SNES's picture every frame, with `STAT77` and the sound identical;
+- switched off, the picture is the SNES's frame for frame;
+- no flicker changes only lines over the SNES's sprite limits;
+- better sound changes only the sound.
+
+| Game | Widescreen | Its rules | No flicker (lines with more sprites) | Fast CPU |
+|---|---|---|---|---|
+| Super Mario World | good | all extended; BG3 filled where it is drawn in front (status bar, title frame) | 0 | risky: hangs if on at power-on |
+| Yoshi's Island (Super FX 2) | risky | all extended | 18 | risky |
+| Donkey Kong Country | risky | all extended; black sides for the intro and level-name screens | 0 | risky |
+| Super Metroid | risky | all extended; BG3 filled in the status rows | 0 | risky |
+| A Link to the Past | risky | all extended | 0 | risky |
+| F-Zero | good | all extended, sprites filled; BG3 filled above the horizon | 0 | risky |
+| Super Mario Kart (DSP-1) | good | all extended, sprites filled; black sides for the title | 0 | risky |
+| Chrono Trigger | unavailable | (the sides hold unrelated tiles) | 0 | broken |
+| Mega Man X | risky | all extended | 254 | risky |
+| Contra III | risky | all extended, BG3 filled | 2,946 | broken |
+| Super Castlevania IV | risky | all extended, BG3 filled; black sides for the title | 0 | risky |
+
+What the sheets show, by kind of game:
+- **Mode 7 games** (F-Zero, Super Mario Kart) extend best: the plane continues to both edges.
+- **Games that keep their whole level in video RAM**, or scroll a 64-tile map smoothly (Super Mario World, A Link to the Past
+  outdoors, Mega Man X once running), look right.
+- **Games that draw new columns only just past the SNES edge** show a seam or old tiles further out, on the side they move
+  towards (Donkey Kong Country, Super Castlevania IV, Contra III, Yoshi's Island at a stage's start).
+- **Games that keep unrelated tiles beside the screen** show them: Chrono Trigger (unavailable), Super Metroid beyond a room's walls,
+  A Link to the Past's indoor rooms.
+- **HUDs and text drawn on a 32-tile BG3 map** repeat unless the profile fills them: almost every game needs that rule.
+
+No flicker changed nothing in eight of the eleven games' checked play: most SNES games keep under 32 sprites and 34 slivers on a line.
 
 ## 7. Implementation status
 
@@ -443,4 +644,5 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
 | SNES modes and Mode 7 wide, sprites, windows, colour math at 400 | 2 | done (`PPU_WMS`'s wide compositor, `WideMess.Picture.cs`; test ROMs `WideMess/testroms/picture`; `WMFEAT` bit 1) |
 | Sound: 32 voices, BRR + 16-bit PCM, 1 MB sound RAM, the port | 3 | done (`APU_WMS`, `DSP_SFC.WideMess.cs`; test ROM `WideMess/testroms/sound`) |
 | Fast CPU, 1 MB work RAM, the WideMess map, fast DMA | 4 | done (`BOARD_SFC.WideMess.cs`, `WideMess.Memory.cs`; test ROMs `WideMess/testroms/cpu`) |
+| SNES games enhanced: widescreen, no flicker, better sound, fast CPU, profiles | 6 | done (`WideMess.Enhance.cs`, `WideMess.Profiles.cs`, `DSP_SFC.Enhance.cs`, `SnesSession.Enhance.cs`; `WideMess/profiles`, 11 games proven, 6.4) |
 | Debug port | BrokenDev debugging toolkit | reserved |
