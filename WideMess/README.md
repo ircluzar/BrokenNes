@@ -100,6 +100,15 @@ The sound ROM's checks measure the samples by FFT against the generator's manife
 
 **The desktop app smoke test passes 8 of 8** (a new step: the sound ROM runs on APU WMS, unlocked).
 
+**Merged with milestone 4:**
+- `--wms-test` passes 114 of 114, and 123 of 123 with the nine SNES games, also with `--reference-paths`.
+- The games' sound hashes are still the ones from before milestone 3, and the ALttP golden is IDENTICAL.
+- The desktop smoke passes 8 of 8.
+- UAT: 125 pass, 0 fail, 16 skip, 3 info.
+
+  From a git worktree, the suite's story and 65-o-borked ROMs exist only in the main checkout's ignored build folders, so 44 more cases skip
+  there; they were linked in for this run.
+
 **Open:**
 - An SPC700-side window on the RAM above 64 KB (none now: the main CPU fills it).
 - The plugin and Lite keep WideMess hidden until milestone 7.
