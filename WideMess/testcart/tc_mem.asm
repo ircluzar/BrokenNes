@@ -456,13 +456,32 @@ MemPass:
   jsr FastOn
   jsr PatPtr
   jsr MemKept
-  jsr MemWork
+  lda #1
+  sta portok
   lda RES_FEAT
   and #FEAT_BIGWRAM
   beq +
+  jsr MemPortProbe      ; (a port short of 20 bits would fill the program's own bank: then only bank 1 is filled)
++
+  jsr MemWork
+  lda RES_FEAT
+  and #FEAT_BIGWRAM
+  beq ++
+  lda portok
+  bne +
+  ldx #$0001            ; the port failed its probe: the checks that need it fail
+  stx errs2
+  ldx #MI_PORT
+  jsr ItemDone
+  ldx #$0001
+  stx errs2
+  ldx #MI_WRAP
+  jsr ItemDone
+  bra ++
++
   jsr MemPortCheck
   jsr MemWrap
-+
+++
   jsr MemMirror
   lda RES_FEAT
   and #FEAT_SOUND
@@ -522,6 +541,46 @@ MemKept:
   inc errs2
   bra @ok
 
+; MemPortProbe: each address bit 16-19 of the WRAM port, one byte at offset $F000 + k of work-RAM banks 1, 2, 4 and 8 ($7F, $70, $72, $76), read
+; back on the A bus. A port that dropped one of those bits would have written a lower bank (the cartridge keeps only scratch at $F000 of
+; $7E and $7F, so the probe harms nothing). portok = 0 when a bit failed.
+PortProbeW: .DB 1, 2, 4, 8
+PortProbeB: .DB $7F, $70, $72, $76
+MemPortProbe:
+.ACCU 8
+.INDEX 16
+  ldx #$0000
+-
+  stz ptr
+  lda #$F0
+  sta ptr+1
+  lda PortProbeB.w,x
+  sta ptr+2
+  txy
+  lda #$00
+  sta [ptr],y           ; B:F000 + k cleared on the A bus
+  txa
+  sta WMADDL
+  lda #$F0
+  sta WMADDM
+  lda PortProbeW.w,x
+  sta WMADDH            ; the port at w:F000 + k
+  txa
+  ora #$A0
+  sta WMDATA
+  lda [ptr],y
+  sta tmp
+  txa
+  ora #$A0
+  cmp tmp
+  beq +
+  stz portok
++
+  inx
+  cpx #4
+  bne -
+  rts
+
 ; MemWork: the port writes the pattern into work-RAM banks 1-15 (bank 1 only without 1 MB), then the A bus reads each back.
 MemWork:
 .ACCU 8
@@ -532,6 +591,21 @@ MemWork:
   bne +
   lda #1
   sta loop0
++
+  lda portok
+  bne +
+  lda #1
+  sta loop0             ; the port failed its probe: bank 1 ($7F) alone, the others fail
+  ldx #$0000
+-
+  phx
+  ldy #$0001
+  sty errs2
+  jsr ItemDone
+  plx
+  inx
+  cpx #14
+  bne -
 +
   ldx #$0001
   stx wbank

@@ -258,6 +258,7 @@
   item        dw
   wbank       dw                ; a work-RAM bank (0-15) / a video RAM unit / a sound RAM bank
   snddirty    db                ; 1: the memory test wrote over the sound test's samples
+  portok      db                ; the memory test: the WRAM port's 20 bits answered its probe
   row         dw                ; (words: their high bytes stay 0, so 16-bit index loads read them whole)
   col         dw
   st          dw
