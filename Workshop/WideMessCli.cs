@@ -97,7 +97,7 @@ internal static partial class WideMessCli
             for (int line = 1; line <= H; line++) ppu.RenderLine(line);
             var px = ppu.WideBuffer.AsSpan(0, W * H).ToArray();
             int colours = px.Distinct().Count() - 1;
-            Put(px, (layer & 1) * (W + gap), (H + label + gap) * (1 + layer / 2), $"BG{layer + 1} alone: colour bank {layer & 3}, {colours} colours, scroll {(layer + 1) / 2.0:0.#} px/frame");
+            Put(px, (layer & 1) * (W + gap), (H + label + gap) * (1 + layer / 2), $"BG{layer + 1} alone: {colours} colours");
         }
         ppu.WriteWide(0xC1, 0xFF);
         sheet.Save(output, System.Drawing.Imaging.ImageFormat.Png);
