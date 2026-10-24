@@ -24,7 +24,7 @@ emulates decodes this range: the SA-1 is at `$2200-$23FF`, the Super FX at `$300
 | `$4221` | WMID | R | `$57` ('W') once unlocked. A SNES returns open bus, which for `LDA $4221` is `$42` (the address's high byte), so the read tells the two apart. |
 | `$4222` | WMVER | R | Spec major version (1). |
 | `$4223` | WMREV | R | Spec minor version (0). |
-| `$4224` | WMFEAT | R | Features this console has (bit = 1): 0 picture (wide output, 8-layer mode); 1 sprites+ (the rest of the picture, section 3: the 256-sprite table, windows and colour math at 400, the SNES modes wide); 2 sound+ ; 3 fast CPU; 4 1 MB work RAM; 5 fast DMA; 7 debug port. |
+| `$4224` | WMFEAT | R | Features this console has (bit = 1): 0 picture (wide output, 8-layer mode); 1 sprites+ (the rest of the picture, section 3: the 256-sprite table, windows and colour math at 400, the SNES modes wide); 2 sound+ (section 4: voices 8-31, 16-bit PCM, 1 MB sound RAM); 3 fast CPU; 4 1 MB work RAM; 5 fast DMA; 7 debug port. |
 | `$4225` | WMSPEED | R/W | Bit 0: fast CPU (section 2). 0 at reset. |
 | `$4226` | WMDMA | R/W | Bit 0: fast general DMA (section 2). 0 at reset. |
 | `$4227-$422F` | | | Reserved: read 0, write ignored. |
@@ -295,15 +295,104 @@ sub screen shows only its backdrop, the fixed colour is added and the result is 
 
 All of `$21A0-$21BF` is 0 at reset except `WMOBJPRI0-3` (12, 8, 4, 0). The write-only registers read as open bus.
 
-## 4. Sound (milestone 3; outline)
+## 4. Sound (milestone 3)
 
-- **SNES drivers run unchanged.** The SPC700 and the S-DSP are the SNES's: the SPC700's 64 KB, voices 0-7, their registers and timing.
-- **Once unlocked:**
-  - 24 more voices (32 in all) in a second DSP register page;
-  - samples in BRR or 16-bit PCM, read by the DSP from up to 1 MB of sound RAM through 20-bit sample addresses;
-  - output at 32 or 48 kHz.
-- **Filling the sound RAM:** the main CPU writes the 1 MB through the B-bus port at `$21F0-$21F7` (DMA-capable), so samples stream without the SPC700 copying them.
-- **Details to settle in milestone 3:** the exact registers, how the SPC700 sees the extra RAM (a bank window), the mixer, and echo for the new voices.
+**Locked, the sound unit is the SNES's.** The S-SMP (SPC700) with its 64 KB, the boot loader, the timers and the four ports; the S-DSP
+with voices 0-7, their registers and their timing. A SNES sound driver runs unchanged and sounds bit-identical.
+
+**The unlock.** The main CPU's `WMUNLOCK` (section 1) unlocks the sound unit as well: the console's unlock line reaches it. A reset locks
+it again. There is no second unlock on the sound side.
+- An SPC700 program detects the extensions by reading `WID` (DSP register `$9D`): `$57` once unlocked.
+- On a SNES, or while locked, `$9D` reads the mirror of the S-DSP's unused register `$1D`. Write 0 to `$1D` first, so the test is
+  unambiguous.
+
+**Sound RAM: 1 MB**, addresses `$00000-$FFFFF`.
+- The first 64 KB is the SPC700's RAM (the SNES's 64 KB). The SPC700, the boot loader, voices 0-7, the S-DSP's sample directory (`DIR`)
+  and its echo buffer see exactly what they always saw.
+- The 960 KB above it is reached by the new voices (20-bit sample addresses) and by the main CPU's port.
+- The SPC700 keeps its 64 KB: it has no window on the RAM above. The main CPU fills that RAM, the DSP plays it. A driver keeps its code,
+  its variables and the S-DSP's samples in the 64 KB and points the new voices at samples above.
+- At power-on and reset the whole 1 MB reads 0 (BrokenNes clears it, as it clears the 64 KB).
+
+**The main CPU's port** (B-bus, live once unlocked; DMA can write it and read it):
+
+| Address | Name | R/W | Meaning |
+|---|---|---|---|
+| `$21F0-$21F2` | WMSADDL / M / H | W | Sound RAM address, 20 bits (`$21F2` bits 0-3). Reads give open bus. |
+| `$21F3` | WMSDATA | R/W | Write: one byte at the address, then the address + 1 (wrapping at 1 MB). Read: the byte there, then the address + 1. |
+| `$21F4-$21F7` | | | Reserved: read 0, write ignored. |
+
+- The port covers the whole 1 MB, the SPC700's 64 KB included. A game can load SPC700 code or S-DSP samples there without the boot
+  loader; it must not overwrite what a running SPC700 program uses.
+- **Timing:** a byte lands at the moment the CPU or the DMA writes it; the sound unit has caught up to that moment. General DMA moves a
+  byte every 8 master clocks: about 5.9 KB in a vblank (twice that with fast DMA, section 2).
+
+**32 voices.** Voices 0-7 are the S-DSP's. Voices 8-31 are new, in three banks of 8, each bank laid out like the S-DSP's register map
+in a **second DSP register page**:
+- Once unlocked, DSP addresses `$80-$FF` (`$F2` with bit 7 set) are the second page. On a SNES they are read-only mirrors of
+  `$00-$7F`. Addresses `$00-$7F` are untouched.
+- `WBANK` chooses the bank of 8 voices the page shows. A driver that already plays the S-DSP's voices plays a bank with the same code,
+  `$F2` ORed with `$80`.
+
+**The second page** (DSP address = `$80` + offset; "bank" = the registers of the bank `WBANK` shows, "every bank" = one register seen
+from all three):
+
+| Offset | Name | | Meaning |
+|---|---|---|---|
+| `$x0-$x9` | VOLL ... OUTX | bank | Voice 8 + 8 x `WBANK` + x: `VOLL`, `VOLR`, `PITCHL`, `PITCHH`, `SRCN`, `ADSR1`, `ADSR2`, `GAIN`, `ENVX`, `OUTX`, as the S-DSP's `$x0-$x9`. |
+| `$xA`, `$xB`, `$xE` | VxADDRL / M / H | bank | Read-only: the voice's playing address, 20 bits. BRR: the block it is in. PCM: its next 4 samples. Streaming drivers use it to stay ahead of the voice. |
+| `$4C` | WKON | bank | Key-on of the bank's 8 voices (bit x = voice x of the bank), as `KON`. |
+| `$5C` | WKOFF | bank | Key-off, as `KOFF`. |
+| `$7C` | WENDX | bank | End flags, as `ENDX`; a write clears them. |
+| `$2D` | WPMON | bank | Pitch modulation, as `PMON`. Bit 0 of bank 0 is voice 8, modulated by voice 7. |
+| `$3D` | WNON | bank | Noise instead of the sample, as `NON`. |
+| `$4D` | WEON | bank | Into the echo, as `EON`. |
+| `$0C` | WBANK | every bank | Bits 0-1: 0 = voices 8-15, 1 = 16-23, 2 = 24-31. 3 shows no voices: their registers read 0 and ignore writes. |
+| `$1D` | WID | every bank | Read-only: `$57`. |
+| `$5D`, `$6D` | WDIRL, WDIRH | every bank | The new voices' sample directory: address = `WDIRH` (bits 0-3) x `$10000` + `WDIRL` x `$100`. |
+| others | | | Reserved: write 0. |
+
+**Samples.** A new voice's `SRCN` picks an entry of its directory: 256 entries of 16 bytes (4 KB, anywhere in the 1 MB on a 256-byte
+boundary).
+
+| Offset | Size | Field |
+|---|---|---|
+| +0 | 3 | Start address, 20 bits (byte +2 bits 0-3; its top bits are ignored). |
+| +3 | 1 | Format. Bit 0: 16-bit PCM (0: BRR). Bit 1: a PCM sample loops (0: it plays once). Bits 2-7: reserved, 0. |
+| +4 | 3 | Loop address. |
+| +7 | 1 | Reserved. |
+| +8 | 3 | End address. PCM: the address just past the last sample. BRR: ignored (the blocks' end flags say). |
+| +11 | 5 | Reserved. |
+
+- **BRR:** the S-DSP's format (9-byte blocks of 16 samples, its filters, its end and loop flags) at a 20-bit address.
+- **16-bit PCM:** signed little-endian samples, read 4 at a time (8 bytes).
+  - After each group, if the next address is at or past the end, the voice goes to the loop address and sets its `WENDX` bit. Without the
+    loop bit it also goes silent, as after a BRR end block without the loop flag.
+  - A sample's length and its loop point are whole groups of 4 samples. A sample must not cross the end of the 1 MB.
+- **The DSP reads an entry when it needs it:** the start and the format at key-on, the end after each PCM group, the loop at the end. A
+  streaming driver can move a playing sample's end.
+- **Both formats go through the S-DSP's pipeline:** the 4-point Gaussian interpolation, the 14-bit pitch (up to 4x: a 32 kHz sample up
+  to 128 kHz), the ADSR and GAIN envelopes, the volumes. As on the S-DSP, the interpolation's 16-bit partial sum can wrap within a few
+  steps of full scale: keep PCM samples within about ±32,700.
+
+**The mix.**
+- The 32 voices add into the S-DSP's main and echo sums in voice order, 0 to 31, with the S-DSP's 16-bit saturation after each voice.
+  32 loud voices clip: the driver keeps the sum in range, as on the S-DSP with 8.
+- Then the S-DSP's own stages apply to the whole sum: `MVOL`, the echo (`EVOL`, `EFB`, the FIR, the buffer in the first 64 KB), and
+  `FLG`'s mute. One stereo output.
+- `FLG`'s soft reset keys off all 32 voices, and its noise clock is the one noise generator they all use.
+- Pitch modulation runs down the chain 0 to 31.
+
+**Output: 32 kHz.** 48 kHz was considered and dropped. The S-DSP's envelope rates, echo delay and noise, and the SPC700's timers, all
+count 32 kHz samples, so a 48 kHz WideMess would no longer be a SNES on voices 0-7. The hosts resample, as they do for the SNES.
+
+**Believable 1994-96 hardware.** The S-DSP's design at 4 times its clock (12.288 MHz, from the same 24.576 MHz crystal) serves 32 voices
+in the same 32 kHz period. The 1 MB of sound RAM is DRAM; 24 PCM voices at 4x pitch read about 6 MB/s. A register write reaches its voice
+at the next sample, as with BrokenNes's S-DSP.
+
+**Save states** carry the sound RAM above 64 KB, the second page and the new voices.
+
+**Detection:** `WMFEAT` bit 2.
 
 ## 5. The game file: `.wms` (milestone 1)
 
@@ -484,6 +573,6 @@ profile already claims is refused with the reason. It is never half-read.
 | `.wms` files | 1 | done (`WmsFile`, `Workshop --wms-pack`) |
 | 512 KB video RAM, 1,024 colours, the 8-layer mode, wide output | 1 | done (`PPU_WMS`; test ROM `WideMess/testroms/layers`) |
 | SNES modes and Mode 7 wide, sprites, windows, colour math at 400 | 2 | done (`PPU_WMS`'s wide compositor, `WideMess.Picture.cs`; test ROMs `WideMess/testroms/picture`; `WMFEAT` bit 1) |
-| Sound | 3 | not yet |
+| Sound: 32 voices, BRR + 16-bit PCM, 1 MB sound RAM, the port | 3 | done (`APU_WMS`, `DSP_SFC.WideMess.cs`; test ROM `WideMess/testroms/sound`) |
 | Fast CPU, 1 MB work RAM, the WideMess map, fast DMA | 4 | done (`BOARD_SFC.WideMess.cs`, `WideMess.Memory.cs`; test ROMs `WideMess/testroms/cpu`) |
 | Debug port | BrokenDev debugging toolkit | reserved |

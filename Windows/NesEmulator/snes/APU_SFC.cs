@@ -167,7 +167,7 @@ public partial class APU_SFC : ISnesApu
         switch (a)
         {
             case 0xF2: return dspAddr;
-            case 0xF3: return Dsp.Read(dspAddr & 0x7F);
+            case 0xF3: return dspAddr < 0x80 ? Dsp.Read(dspAddr) : Dsp.ReadHigh(dspAddr);   // $80-$FF: the S-DSP's mirror, or the WideMess's second page once unlocked
             case 0xF4: case 0xF5: case 0xF6: case 0xF7: return cpuToApu[a - 0xF4];
             case 0xF8: case 0xF9: return Aram[a];
             case 0xFD: case 0xFE: case 0xFF:
@@ -197,7 +197,10 @@ public partial class APU_SFC : ISnesApu
                 iplEnabled = (v & 0x80) != 0;
                 break;
             case 0xF2: dspAddr = v; break;
-            case 0xF3: if (dspAddr < 0x80) { Dsp.Write(dspAddr, v); DspWriteTap?.Invoke(dspAddr, v, SamplesProduced); } break;
+            case 0xF3:
+                if (dspAddr < 0x80) { Dsp.Write(dspAddr, v); DspWriteTap?.Invoke(dspAddr, v, SamplesProduced); }
+                else Dsp.WriteHigh(dspAddr, v);   // nowhere on a SNES; the WideMess's second page once unlocked
+                break;
             case 0xF4: case 0xF5: case 0xF6: case 0xF7: apuToCpu[a - 0xF4] = v; break;
             case 0xFA: case 0xFB: case 0xFC: timerTarget[a - 0xFA] = v; break;
         }

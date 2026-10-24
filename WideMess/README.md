@@ -10,29 +10,33 @@ This folder holds what is built for WideMess outside the emulator code.
 |---|---|
 | `testroms/layers/` | Test ROM 1, eight layers of 256 colours at 400 x 224 (65816 assembly, WLA-DX), with its negative control. `build.ps1` builds both into `testroms/bin/`. |
 | `testroms/picture/` | Milestone 2's test ROMs: `sprites`, `windows`, `widesnes`. One 65816 register player (`player.asm`) plays the script of register writes, DMA and HDMA that `gen_picture.py` generates for each scene; the same writes drive the generator's own model of spec section 3, which draws the picture each ROM must produce (`<rom>.expect.png`). `build.ps1` builds the ROMs, their negative controls and the pictures into `testroms/bin/`. |
+| `testroms/sound/` | Milestone 3's test ROM, the sound chip: a 65816 program (`sound.asm`) and an SPC700 program (`spc.asm`), WLA-DX; `gen_data.py` makes the samples, the DMA jobs, the SPC700's step lists and the manifest the checks measure against. `build.ps1` builds it and its negative control into `testroms/bin/`. |
 | `testroms/cpu/` | Milestone 4's test ROMs (WLA-DX; `build.ps1` builds them into `testroms/bin/`): `speed.asm`, the fast CPU and fast DMA measured against the spec's cycle model, with its no-unlock control; `bigmap.asm` + `gen_bigmap.py`, a 4 MB game on the WideMess map (1 MB work RAM, the 20-bit WRAM port, 256 KB battery RAM, 64 ROM banks). |
-| `testroms/bin/` | The built test ROMs: `layers.wms`, `layers.sfc` (the same game as a SNES image) and `layers_nounlock.wms` (the negative control); `sprites`, `windows`, `widesnes` (`.wms`, `_nounlock.wms`) with the model's pictures (`.expect.png`, `_nounlock.expect.png`, `.<variant>.expect.png`); `speed.wms`, `speed.sfc`, `speed_nounlock.wms`; `bigmap.wms` (its controls, cut to 2 MB or on the HiROM map, are made by `--wms-test`). |
+| `testroms/bin/` | The built test ROMs: `layers.wms`, `layers.sfc` (the same game as a SNES image) and `layers_nounlock.wms` (the negative control); `sprites`, `windows`, `widesnes` (`.wms`, `_nounlock.wms`) with the model's pictures (`.expect.png`, `_nounlock.expect.png`, `.<variant>.expect.png`); `sound.wms`, `sound.sfc`, `sound_nounlock.wms` and `sound.json` (the manifest); `speed.wms`, `speed.sfc`, `speed_nounlock.wms`; `bigmap.wms` (its controls, cut to 2 MB or on the HiROM map, are made by `--wms-test`). |
 
 **The emulator side** is in `Windows/NesEmulator/snes/`:
 - `WideMess.cs`: the unlock and registers (`WmsExtension`), the `.wms` file (`WmsFile`) and the picture chip (`PPU_WMS`).
 - `WideMess.Picture.cs` (milestone 2): `PPU_WMS`'s wide compositor, one for the WideMess mode and the SNES modes drawn 400 wide (main and sub
   screens, windows, colour math), both sprite tables and the registers `$21A0-$21BF`.
+- `WideMess.Sound.cs` (milestone 3): the sound chip `APU_WMS` (an `APU_SFC` subclass: the sound RAM above 64 KB and the port `$21F0-$21F3`), and
+  `DSP_SFC.WideMess.cs`: the S-DSP's voices 8-31 and its second register page.
 - `WideMess.Memory.cs` (milestone 4): the WideMess map's limits and the cartridge a `.wms` file becomes (`SnesCartridge.LoadWideMessMap`).
 - `BOARD_SFC.WideMess.cs` (milestone 4): fast mode, the 1 MB work RAM and its 20-bit WRAM port, fast DMA.
-- The hooks in `BOARD_SFC.cs` and `PPU_SFC.WideMess.cs` (read-only views of the SNES chip's registers; the SNES chip's own drawing is untouched).
+- The hooks in `BOARD_SFC.cs`, `PPU_SFC.WideMess.cs` (read-only views of the SNES chip's registers; the SNES chip's own drawing is untouched), `DSP_SFC.cs` (one
+  test a sample) and `APU_SFC.cs` (`$F3` with `$F2` at `$80-$FF`).
 - The console is registered in `Windows/NesEmulator/systems/ConsoleSystems.cs` (key `wms`).
 - It runs on `SnesSession` with `wideMess: true`.
 
 ## Tools (BrokenNes Workshop)
 
 ```
-BrokenNes.Workshop.exe --wms-test  [--roms WideMess	estromsin] [--snes "a.sfc;b.smc"] [--frames 900] [--reference-paths]
+BrokenNes.Workshop.exe --wms-test  [--roms WideMess\testroms\bin] [--snes "a.sfc;b.smc"] [--frames 900] [--reference-paths]
 BrokenNes.Workshop.exe --wms-pack  --in game.sfc --out game.wms [--title T] [--features 1] [--map 0|1|2] [--sram BYTES] [--battery]
 BrokenNes.Workshop.exe --wms-shot  --rom game.wms --out shot.png [--frames 60] [--scale 3] [--console wms|snes] [--wide]
 BrokenNes.Workshop.exe --wms-sheet --rom game.wms --out sheet.png [--frames 120]
 ```
 
-- `--wms-test` runs the milestones' checks, each with a negative control. With `--snes`, it also runs each SNES game frame for frame on the SNES
+- `--wms-test` runs the milestones' checks, each with a negative control (milestone 3's sound checks are its sections S1-S6). With `--snes`, it also runs each SNES game frame for frame on the SNES
   console and on the WideMess console and requires identical pictures and sound; then draws each game 400 wide (WIDE set on the chip, the game
   itself still locked) and requires every line's columns 72-327 to be the SNES chip's own line. `--reference-paths` turns the SNES chips' fast
   paths off.
@@ -100,6 +104,65 @@ with it pixel for pixel.
 - **The desktop app smoke test passes 9 of 9**: it now also checks that the app shows `sprites.wms` and `widesnes.wms` exactly as the model draws them.
 - **With milestone 4 merged** (WMFEAT `$3B`, state format `wms-3`): `--wms-test` 113 of 113 with all milestones' checks and the 9 games, the same
   on the reference paths; the ALttP golden IDENTICAL; desktop smoke 9 of 9; UAT 125 pass, 0 fail, 16 skip, 3 info; Lite and Core build.
+
+## Milestone 3 result (2026-10-24): the sound chip
+
+The design is spec section 4. In short:
+- The main CPU's unlock unlocks the sound unit too.
+- Voices 8-31 are three more banks of the S-DSP's voices in a second register page (`$F2` = `$80-$FF`, `WBANK`).
+- Samples are BRR or 16-bit PCM, anywhere in 1 MB of sound RAM, from a 16-byte directory entry.
+- The main CPU fills the sound RAM through `$21F0-$21F3`, with DMA.
+- The new voices mix into the S-DSP's sums before its master volume and echo. The output stays 32 kHz.
+
+**`--wms-test`: 71 of 71 checks pass** (milestone 1's 23, then 48 for the sound). With the nine SNES games of the rules, 80 of 80.
+The sound ROM's checks measure the samples by FFT against the generator's manifest:
+- **Each new voice alone:** frequency within 2 Hz, level within 4% (all 24 come out at 0.993 of the expected level), the pan, and a tone
+  holding over 99% of the power.
+- **All 32 at once:** 32 tones at the 32 frequencies, each within 0.19 dB of its level.
+- **16-bit PCM against BRR** at pitch 1.0: harmonics at -68 dB against -29 dB.
+- **The rest:** the echo with and without a voice's `WEON` bit, pitch modulation from the voice before, noise, a one-shot PCM sample, a
+  ring the 65816 rewrites through the port while the voice plays it, and the playing-address registers.
+- **Negative controls:**
+  - The same program without the unlock: the new voices are silent, the S-DSP's 8 play, and the sound RAM above 64 KB is untouched.
+  - That program on a SNES: bit-identical to it on the locked WideMess.
+  - The SNES image on a SNES.
+- **The rest of the machine:** a save state into a fresh session, bit-identical; the menu (WMS first) and the swap to SFC, which says so;
+  0 bytes allocated over 60 frames of 32 voices.
+- **Shown able to fail:** 9 deliberate bugs, each caught. They were:
+  - 16-bit addresses;
+  - PCM read as BRR;
+  - no echo for the new voices;
+  - no pitch modulation;
+  - the loop bit ignored;
+  - a state without the sound RAM;
+  - the unlock not reaching the sound unit;
+  - the port live while locked;
+  - the second page readable while locked.
+
+**SNES games stay SNES:**
+- The nine games are frame-identical on both consoles, sound included, and their sound hashes equal the build before milestone 3.
+- The ALttP speed-pass golden is IDENTICAL.
+- Interleaved A/B on ALttP gives the new build 1.006 times the old speed (best of 3, 12 rounds). The DSP takes 15.65% of the frame
+  against 15.70% before.
+
+**Cost:** 32 voices take about 33 ms of CPU a second of sound (the S-DSP's 8: 10 ms).
+
+**The desktop app smoke test passes 8 of 8** (a new step: the sound ROM runs on APU WMS, unlocked).
+
+**Merged with milestones 2 and 4** (WMFEAT `$3F`, state format `wms-4`):
+- `--wms-test` passes 136 of 136, and 163 of 163 with the nine SNES games, also with `--reference-paths`.
+- The games' sound hashes are still the ones from before milestone 3, and the ALttP golden is IDENTICAL.
+- The desktop smoke passes 10 of 10. Lite and Core build.
+- The plugin self-test passes 64, with 1 warning (QLQ +1200 cents) and 0 failures. It ran on the branch merged with milestone 4.
+- UAT: 125 pass, 0 fail, 16 skip, 3 info.
+
+  From a git worktree, the suite's story and 65-o-borked ROMs exist only in the main checkout's ignored build folders, so 44 more cases skip
+  there; they were linked in for this run.
+
+**Open:**
+- An SPC700-side window on the RAM above 64 KB (none now: the main CPU fills it).
+- The plugin and Lite keep WideMess hidden until milestone 7.
+- No sound driver yet (milestone 5).
 
 ## Milestone 4 result (2026-10-24): CPU and memory
 
