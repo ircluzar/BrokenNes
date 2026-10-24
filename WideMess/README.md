@@ -372,9 +372,25 @@ How WideMess appears in each host, and why the plugin differs, is spec section 9
 | Lite `sound` | `sound.wms` rms 0.088 at 32 kHz | the locked control 0.008 |
 | Lite `saves`, `states` | `bigmap.wms`'s 256 KB battery RAM with its boot counter in IndexedDB, counting up in a fresh page; states of three WideMess games: the next 60 frames' pictures and sound equal, also in a fresh page | |
 | Lite `enhance` | Super Mario World finds its profile; widescreen: 400 wide, the centre (columns 72-327) the SNES picture for 30 frames from one saved moment; kept per game, back in a fresh page; Use the profile = widescreen + no flicker | a `.wms` game has none (said, switches disabled); fast CPU not kept; the SNES console has no row |
-| Lite `speed` | the AOT build in Edge, the frame call (and drawn on the GPU): layers 160 (177), sprites 194 (175), windows 137 (131), widesnes 123 (117), Wide Blaster 110 (110) frames a second; Super Mario World on the SNES 205 | SwiftShader (the CPU draws): reported only |
+| Lite `speed` | the AOT build in Edge, the frame call over three runs on a shared machine (the last run's with the picture drawn on the GPU in brackets): layers 160-196 (206), sprites 194-208 (202), windows 122-137 (95), widesnes 123-129 (119), Wide Blaster 110-121 (87) frames a second, p95 under 13 ms; Super Mario World on the SNES 205-207 | SwiftShader (the CPU draws): reported only |
 | plugin `wms` | chip 29 and every earlier index; pitch A0-C8 worst 0.196 cent; the sine's harmonics below -100 dB; each instrument's harmonics on its formula; 24 notes = 24 frequencies in the mix, a 25th takes the oldest's voice; level 0.0 dB from the NES chip; 9x real time and 0 bytes with 4 x 6 sliding notes; Reset Console | deliberate bugs (8 voices; the pitch for the wrong loop) caught; the same chord on the SNES chip: 1 note |
 | plugin `rom-wms` | a `.wms` file takes WMS from a NES emulator; 400 x 224 in the editor; `sprites` / `widesnes`: the plugin's picture hash = the PNG's; `sound.wms` rms 0.083; Super Mario World frame and sample identical on the SNES and WMS chips (10 pictures over 600 frames, 143,872 samples); a chip swap under a running game; Runaway lists 28 instruments (14 16-bit PCM and 12 BRR of the new voices' directory, 2 of the S-DSP's), plays the game's 1 kHz PCM sine at C5, A4, C6, a 6-note chord, 0 bytes; the project's `WMS1` | the locked control (0.008) and the SNES chip (no new voices, said); a damaged `WMS1` refused with a note; the locked control's Runaway is the SNES sampler's |
+
+| Lite `chips` | milestone 7b's chips, which follow the console into Lite: a NES game (VRUN) on the NES board's widescreen chip `WMSS` is shown whole, 400 x 240; Super Mario World on the route `WMS:WMSS` (picture and sound) is 400 wide and keeps its sound | |
+
+**Results** (the branch merged with main 4b3e643: milestones 6, 7b and the debugger D1):
+- **The plugin's self-test: 67 results, 66 pass, the QLQ warning (the QLQ core plays an octave sharp on purpose), 0 failed** (29.6 minutes; 65 before this milestone: `wms` and
+  `rom-wms` are new; the chip-count assertions of `consoles`, `psg`, `md`, `fm`, `presets` and `editor` follow the appended chip).
+- **Lite:** every suite passes on the AOT build: the WideMess suite (`lite-widemess.ps1`) 41 checks, the SNES states 18, the d-pad 32, the Sega suite 137.
+- **`--wms-test` 269 of 269** with the nine SNES games of the rules (Super Mario World, A Link to the Past, Star Fox, Super Mario RPG, Pilotwings, F-Zero, Super Metroid,
+  Donkey Kong Country, Chrono Trigger: frame- and sound-identical on both consoles) and milestone 6's checks; **269 of 269 with `--reference-paths`**.
+- **UAT `run-suite.ps1`: 125 pass, 0 fail, 16 skip, 3 info.** The desktop smoke test passes 18 of 18.
+- Nothing changes for the other consoles in Lite and the plugin: their suites and checks pass as before; the chip indexes 0-28 are where they were.
+
+**Open:**
+- Editing WideMess instruments in the plugin's Instruments tab (and presets of them, pushing them into the game): the tab says it is not built; Runaway plays them.
+- The plugin's Record window records the S-DSP's 8 voices of a WideMess game, not the new voices; a WideMess game has no per-voice stems.
+- A phone's speed in Lite is not measured (this machine's Edge: 110 frames a second at the slowest, Wide Blaster); nobody has listened to the plugin's built-in instruments.
 
 ## Milestone 7b result (2026-10-24): the WideMess chips on the other consoles
 

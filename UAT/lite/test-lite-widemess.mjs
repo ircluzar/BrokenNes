@@ -409,7 +409,8 @@ if (want('chips')) {
     await page.eval(HELPERS);
     const r = await page.eval(`window.__frames(240, null, { colours: true })`);
     const sel = await page.eval(`document.getElementById('ppuCoreSelect')?.innerText?.trim() || ''`);
-    check('chips', 'a NES game on the WideMess widescreen chip (NES board WMSS) is shown whole, 400 wide, in Lite', /WMSS/.test(sel) && r.w === 400 && r.aw === 400 && r.colours > 4, `PPU ${sel}, ${r.w} x ${r.h} shown ${r.aw} wide, ${r.colours} colours`);
+    check('chips', 'a NES game on the WideMess widescreen chip (NES board WMSS) is shown whole, 400 wide, in Lite (VRUN\'s first screens: a few colours, moving)', /WMSS/.test(sel) && r.w === 400 && r.aw === 400 && r.colours >= 2 && new Set(r.hashes).size > 1,
+      `PPU ${sel}, ${r.w} x ${r.h} shown ${r.aw} wide, ${r.colours} colours, ${new Set(r.hashes).size} distinct pictures in 240 frames`);
   });
   if (haveSmw) await withLab(async lab => {
     // a SNES game on the SNES console's WideMess (enhanced) entries, route WMS:WMSS: 400 wide, and its sound goes on
