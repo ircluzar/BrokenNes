@@ -9,7 +9,7 @@
     WMS      the WideMess test ROM (WideMess\testroms\bin\layers.wms) loads: the console is "wms", the cores WMS / WMS / SFC, the picture 400 x 224 with more than 800
              colours, and it moves (the layers scroll).
     M2       the milestone-2 picture ROMs (sprites.wms, widesnes.wms) show, in the app, exactly the pictures their generator's model of the spec draws
-             (<rom>.expect.png: the 256-sprite table at 400; SNES modes 1 and 7 drawn 400 wide).
+             (<rom>.expect.png: the 256-sprite table at 400; SNES modes 1, 0, 5, 2 and 7 drawn 400 wide).
     SNES     with WideMess selected, the ROM's SNES image (layers.sfc, a SNES-format file) runs on the WideMess too (400 wide: the game finds the WideMess);
              switching the console to the SNES moves it to the SNES, where it draws its red "not a WideMess" screen at 256 x 224.
     CONTROL  the negative-control ROM (layers_nounlock.wms: the WideMess registers written without the unlock) stays a SNES picture: 256 wide, black.

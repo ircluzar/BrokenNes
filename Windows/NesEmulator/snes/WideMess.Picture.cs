@@ -133,6 +133,8 @@ public sealed partial class PPU_WMS
     public int CompareMismatches { get; set; }
     public int CompareOverflowRows { get; set; }
     public int CompareFirstMismatch { get; set; } = -1;
+    /// <summary>Test: the compared lines by what they used: [0-7] BGMODE's mode, [8] mosaic on a shown layer, [9] colour math, [10] a window on a shown layer, [11] sprites shown.</summary>
+    public readonly int[] CompareUse = new int[12];
 
     private void CompareLine(int line)
     {
@@ -140,6 +142,15 @@ public sealed partial class PPU_WMS
         if (row < 0 || row >= VisibleHeight || (ctrl & 1) == 0) return;
         base.RenderLine(line);
         CompareRows++;
+        if (!ForcedBlank && MasterBrightness != 0)
+        {
+            int shown = RegTm | RegTs;
+            CompareUse[RegBgmode & 7]++;
+            if ((RegMosaic & shown & 0x0F) != 0 && (RegMosaic >> 4) != 0) CompareUse[8]++;
+            if ((RegCgadsub & 0x3F) != 0 || (RegCgwsel & 0xC0) != 0) CompareUse[9]++;
+            if (((RegTmw | RegTsw) & shown & 0x1F) != 0) CompareUse[10]++;
+            if ((shown & 0x10) != 0) CompareUse[11]++;
+        }
         var snes = FrameBuffer.AsSpan(row * Width, Width);
         var wide = WideBuffer.AsSpan(row * WideWidth + SnesOrigin, Width);
         if (snes.SequenceEqual(wide)) return;
@@ -748,7 +759,7 @@ public sealed partial class PPU_WMS
         {
             if (layer < 9 ? (needed & (1 << layer)) == 0 : !colourNeeded) continue;
             int sel = lnSel[layer], logic = lnLog[layer];
-            long signature = sel | logic << 4 | (long)l1 << 6 | (long)r1 << 16 | (long)l2 << 26 | (long)r2 << 36 | (long)width << 46;
+            long signature = (uint)(sel | logic << 4) | (long)l1 << 6 | (long)r1 << 16 | (long)l2 << 26 | (long)r2 << 36 | (long)width << 46;
             if (FastPaths && winSig[layer] == signature) continue;
             winSig[layer] = signature;
             var mask = win[layer];

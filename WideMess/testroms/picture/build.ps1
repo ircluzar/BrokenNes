@@ -3,7 +3,7 @@
   Builds the WideMess picture test ROMs (milestone 2) and the pictures they must draw into WideMess\testroms\bin:
     sprites.wms,  sprites_nounlock.wms     the 256-sprite table in the WideMess mode at 400 (and its negative control)
     windows.wms,  windows_nounlock.wms     windows and colour math at 400
-    widesnes.wms, widesnes_nounlock.wms    SNES modes 1 and 7 drawn 400 wide, the SNES sprite table across 400
+    widesnes.wms, widesnes_nounlock.wms    SNES modes 1, 0, 5, 2 and 7 drawn 400 wide, the SNES sprite table across 400
     <rom>.expect.png, <rom>_nounlock.expect.png, <rom>.<variant>.expect.png
                                            the pictures gen_picture.py's model of the spec draws for them (Workshop --wms-test compares)
   The negative controls are the same ROMs assembled with -D NOUNLOCK: they write every WideMess register without unlocking first.

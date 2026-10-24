@@ -130,7 +130,8 @@ force-blanked (`INIDISP` bit 7). Write in vblank or in forced blank.
 **SNES columns and picture columns.** The SNES's registers that hold a screen position count from the **SNES picture's left edge**:
 `WH0-WH3`, the X of the SNES sprite table, Mode 7's screen x, the offset-per-tile columns and the mosaic grid. In a 400-wide picture
 that edge is **picture column 72**: the SNES picture is centred (72 + 256 + 72), so columns 72-327 of a wide SNES mode are exactly what
-a SNES draws, and the 72 columns either side are new. In a 256-wide picture it is column 0. The WideMess registers
+a SNES draws, and the 72 columns either side are new. (The one exception is a line where the SNES sprite table runs over its limits:
+they count sprites over the whole picture, section 3.3, so a SNES may drop different ones.) In a 256-wide picture it is column 0. The WideMess registers
 (`WMWH0-3`, the WideMess sprite table) count in **picture columns**, 0-399.
 
 ### 3.2 The SNES modes drawn wide (milestone 2)
@@ -308,7 +309,7 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
 | Unlock, ID, version, features | 1 | done (`WmsExtension`) |
 | `.wms` files | 1 | done (`WmsFile`, `Workshop --wms-pack`) |
 | 512 KB video RAM, 1,024 colours, the 8-layer mode, wide output | 1 | done (`PPU_WMS`; test ROM `WideMess/testroms/layers`) |
-| SNES modes and Mode 7 wide, sprites, windows, colour math at 400 | 2 | not yet |
+| SNES modes and Mode 7 wide, sprites, windows, colour math at 400 | 2 | done (`PPU_WMS`'s wide compositor, `WideMess.Picture.cs`; test ROMs `WideMess/testroms/picture`; `WMFEAT` bit 1) |
 | Sound | 3 | not yet |
 | Fast CPU, 1 MB work RAM, the WideMess map, fast DMA | 4 | not yet |
 | Debug port | BrokenDev debugging toolkit | reserved |

@@ -9,9 +9,9 @@
 #   windows    the WideMess mode at 400: two windows at 9-bit positions (one shaped line by line by HDMA), the logic of BG1-BG8, main and
 #              sub screen masks, colour math (add / subtract / half, the sub screen, the fixed colour, clip to black, the math region,
 #              the per-sprite math bit); the SNES's positions at 400 (variant)
-#   widesnes   SNES modes 1 and 7 drawn 400 wide (split by HDMA on BGMODE): 64-wide and 32-wide maps past the SNES's 256 columns, Mode 7
-#              continued, the SNES sprite table across 400 (X from -184 to 327), the SNES windows at 400; 9-bit windows and the WideMess
-#              sprite table in a SNES mode (variants)
+#   widesnes   SNES modes 1, 0, 5 (hi-res), 2 (offset-per-tile, mosaic) and 7 drawn 400 wide, in bands set by HDMA on BGMODE: 64-wide
+#              and 32-wide maps past the SNES's 256 columns, offset-per-tile left of the SNES edge, Mode 7 continued, the SNES sprite table
+#              across 400 (X from -184 to 327), the SNES windows at 400; 9-bit windows and the WideMess sprite table in a SNES mode (variants)
 # Every scene is built twice: as the ROM (it unlocks) and as its negative control, the same ROM built with -D NOUNLOCK, whose WideMess
 # writes must all be ignored (the model draws that too).
 #
@@ -86,9 +86,11 @@ LARGE = [(16, 16), (32, 32), (64, 64), (32, 32), (64, 64), (64, 64), (32, 64), (
 ORDER = {
     0: [('obj', 3), ('bg', 0, 1), ('bg', 1, 1), ('obj', 2), ('bg', 0, 0), ('bg', 1, 0), ('obj', 1), ('bg', 2, 1), ('bg', 3, 1), ('obj', 0), ('bg', 2, 0), ('bg', 3, 0)],
     1: [('obj', 3), ('bg', 0, 1), ('bg', 1, 1), ('obj', 2), ('bg', 0, 0), ('bg', 1, 0), ('obj', 1), ('bg', 2, 1), ('obj', 0), ('bg', 2, 0)],
+    2: [('obj', 3), ('bg', 0, 1), ('obj', 2), ('bg', 1, 1), ('obj', 1), ('bg', 0, 0), ('obj', 0), ('bg', 1, 0)],
+    5: [('obj', 3), ('bg', 0, 1), ('obj', 2), ('bg', 1, 1), ('obj', 1), ('bg', 0, 0), ('obj', 0), ('bg', 1, 0)],
     7: [('obj', 3), ('obj', 2), ('obj', 1), ('bg', 0, 0), ('obj', 0)],
 }
-BPP = {0: [2, 2, 2, 2], 1: [4, 4, 2, 0], 7: [8, 0, 0, 0]}
+BPP = {0: [2, 2, 2, 2], 1: [4, 4, 2, 0], 2: [4, 4, 0, 0], 5: [4, 2, 0, 0], 7: [8, 0, 0, 0]}
 DMA_PATTERN = {0: [0], 1: [0, 1], 2: [0, 0], 3: [0, 0, 1, 1], 4: [0, 1, 2, 3]}
 
 class Model:
@@ -296,11 +298,11 @@ class Model:
             out.append(None if i == 0 else (self.cg[bank + i], (e >> 12) & 1))
         return out
 
-    # -- the SNES modes (0, 1 and 7: what the scenes use)
+    # -- the SNES modes (0, 1, 2, 5 and 7: what the scenes use)
     def row_snes(self, row, width, origin):
         line = row + 1
         mode = self.reg[5] & 7
-        assert mode in ORDER, f'the model draws modes 0, 1 and 7, not {mode}'
+        assert mode in ORDER, f'the model draws modes 0, 1, 2, 5 and 7, not {mode}'
         assert not self.reg[5] & 0xF8, 'the model draws 8 x 8 tiles and BG3 without its priority bit'
         tm, ts, tmw, tsw, adsub = self.reg[0x2C], self.reg[0x2D], self.reg[0x2E], self.reg[0x2F], self.reg[0x31]
         def nine(v): return (v & 15) | (0x100 if v & 0x10 else 0)
@@ -320,29 +322,67 @@ class Model:
             if mode == 7: bg[b] = self.mode7(line, width, origin) if b == 0 else None
             elif BPP[mode][b]: bg[b] = self.snes_layer(b, mode, line, width, origin)
         obj = self.sprites(row, width, origin)
-        return self.compose(width, origin, bg, obj, order, screens, sel, log, same_rank_mode7=(mode == 7))
+        return self.compose(width, origin, bg, obj, order, screens, sel, log, same_rank_mode7=(mode == 7), hires=mode in (5, 6))
 
     def snes_layer(self, b, mode, line, width, origin):
+        """One layer's line; in hi-res (modes 5, 6) 2 x width half-pixels, its tiles 16 half-pixels wide (the tile and the next one)."""
         bpp = BPP[mode][b]
+        hires = mode in (5, 6)
+        tw = 16 if hires else 8
         sc = self.reg[7 + b]
         mapbase, wide, tall = (sc & 0xFC) << 8, sc & 1, sc & 2
         nba = (self.reg[0x0B] >> (b * 4)) & 15 if b < 2 else (self.reg[0x0C] >> ((b - 2) * 4)) & 15
         charbase = nba << 12
         mw, mh = (64 if wide else 32), (64 if tall else 32)
-        y = (line + self.vofs[b]) % (mh * 8)
+        mos = self.reg[6]
+        msize = (mos >> 4) + 1 if mos >> b & 1 else 1                 # mosaic blocks, aligned on the SNES picture's left edge and on line 1
+        yline = line - (line - 1) % msize
         palbase = b * 32 if mode == 0 else 0
         out = []
-        for c in range(width):
-            x = (c - origin + self.hofs[b]) % (mw * 8)
-            tx, ty = x // 8, y // 8
+        for c in range(2 * width if hires else width):
+            sx = c - 2 * origin if hires else c - origin                 # counted from the SNES picture's left edge
+            sx -= sx % (msize * (2 if hires else 1))                     # (Python's % is a floor modulo: negative columns too)
+            hs, vs = self.hofs[b], self.vofs[b]
+            if mode in (2, 4, 6) and b < 2: hs, vs = self.offset_per_tile(b, mode, sx >> 1 if hires else sx, hs, vs)
+            x = (sx + (2 if hires else 1) * hs) % (mw * tw)
+            y = (yline + vs) % (mh * 8)
+            tx, ty = x // tw, y // 8
             screen = (1 if tx >= 32 else 0) + ((2 if wide else 1) if ty >= 32 else 0)
             e = self.word(mapbase + screen * 0x400 + (ty % 32) * 32 + (tx % 32))
-            fx, fy = x % 8, y % 8
-            if e & 0x4000: fx = 7 - fx
+            fx, fy = x % tw, y % 8
+            if e & 0x4000: fx = tw - 1 - fx
             if e & 0x8000: fy = 7 - fy
-            i = self.tile_row(2 * ((charbase + (e & 0x3FF) * bpp * 4) & 0x7FFF), bpp, fy)[fx]
+            tile = (e & 0x3FF) + (1 if fx >= 8 else 0)
+            i = self.tile_row(2 * ((charbase + (tile & 0x3FF) * bpp * 4) & 0x7FFF), bpp, fy)[fx % 8]
             out.append(None if i == 0 else (self.cg[(palbase + ((e >> 10) & 7) * (1 << bpp) + i) & 0xFF], (e >> 13) & 1))
         return out
+
+    def snes_map(self, mapbase, wide, tall, col, row):
+        a = mapbase + ((row & 31) << 5) + (col & 31)
+        if wide and col & 32: a += 0x400
+        if tall and row & 32: a += 0x800 if wide else 0x400
+        return self.word(a)
+
+    def offset_per_tile(self, b, mode, screen_x, hs, vs):
+        """Modes 2, 4, 6: BG3's map row VOFS3/8 (and the next, in modes 2 and 6) gives BG1 and BG2 a scroll per tile column. The SNES picture's
+        first tile column never changes; the columns left of it are numbered -1, -2, ... and read BG3's entries further left (spec 3.2)."""
+        column = (screen_x + (self.hofs[b] & 7)) >> 3
+        if column == 0: return hs, vs
+        sc = self.reg[9]
+        mapbase, wide, tall = (sc & 0xFC) << 8, sc & 1, sc & 2
+        col = ((self.hofs[2] >> 3) + column - 1) & (63 if wide else 31)
+        row = (self.vofs[2] >> 3) & (63 if tall else 31)
+        enable = 0x2000 << b
+        h = self.snes_map(mapbase, wide, tall, col, row)
+        if mode == 4:
+            if h & enable:
+                if h & 0x8000: vs = h & 0x3FF
+                else: hs = (h & 0x3F8) | (hs & 7)
+            return hs, vs
+        v = self.snes_map(mapbase, wide, tall, col, row + 1)
+        if h & enable: hs = (h & 0x3F8) | (hs & 7)
+        if v & enable: vs = v & 0x3FF
+        return hs, vs
 
     def mode7(self, line, width, origin):
         m = self.m7
@@ -452,18 +492,21 @@ class Model:
         if not en1: return w2
         return (w1 or w2, w1 and w2, w1 != w2, w1 == w2)[logic]
 
-    def compose(self, width, origin, bg, obj, order, screens, sel, log, same_rank_mode7=False):
+    def compose(self, width, origin, bg, obj, order, screens, sel, log, same_rank_mode7=False, hires=False):
+        """Front-most layer per pixel on the main and sub screens, then clip-to-black and colour math. In hi-res the layers come in half-pixels
+        (sprites and windows in pixels) and each pixel is the average of its two half-pixels."""
         rank = {item: i for i, item in enumerate(order)}
         if same_rank_mode7: rank[('bg', 0, 1)] = rank[('bg', 0, 0)]
         pos = self.positions(width, origin)
         cgw, adsub = self.reg[0x30], self.reg[0x31]
         black_mode, region_mode = (cgw >> 6) & 3, (cgw >> 4) & 3
         out = []
-        for x in range(width):
+        for hx in range(2 * width if hires else width):
+            x = hx >> 1 if hires else hx
             def front(on, masked):
                 best = None
                 for l in range(8):
-                    p = bg[l][x] if bg[l] is not None else None
+                    p = bg[l][hx] if bg[l] is not None else None
                     if p is None or not on >> l & 1: continue
                     if masked >> l & 1 and self.inside(sel[l], log[l], x, pos): continue
                     r = rank.get(('bg', l, p[1]))
@@ -488,8 +531,10 @@ class Model:
                     if s is None: half = False        # the sub screen shows only its backdrop: the fixed colour, not halved
                     else: addend = s[1]
                 colour = blend(colour, addend, bool(adsub & 0x80), half)
-            out.append(argb(colour))
-        return out
+            out.append(colour)
+        if hires:
+            out = [sum(((((out[2 * x] >> sh) & 31) + ((out[2 * x + 1] >> sh) & 31)) >> 1) << sh for sh in (0, 5, 10)) for x in range(width)]
+        return [argb(c) for c in out]
 
 # ------------------------------------------------------------------ a ROM: the script, its data, and the model fed the same writes
 
@@ -742,7 +787,13 @@ def scene_widesnes(rom):
                 map1.append(((gx + ty) & 15) | ((gx >> 3) & 7) << 10 | (0x2000 if ty < 7 else 0))
     rom.vram_snes(0x6000, words(map1))
     rom.vram_snes(0x6800, words([(32 + (tx + ty) % 4) | ((tx + ty) & 3) << 14 | (ty % 8) << 10 for ty in range(32) for tx in range(32)]))
-    rom.vram_snes(0x6C00, words([((1 + tx % 4) if tx % 5 == 0 else 0) | (tx % 8) << 10 | (0x2000 if ty % 2 else 0) for ty in range(32) for tx in range(32)]))
+    # BG3's map: rows 0-29 are what BG3 shows in modes 0 and 1; rows 30 and 31 (never on screen) are mode 2's offset-per-tile table:
+    # row 30 the horizontal offsets (bit 13 BG1, bit 14 BG2), row 31 the vertical ones; the mode 2 band points BG3's VOFS at row 30 (HDMA below)
+    def bg3(tx, ty):
+        if ty == 30: return ((tx * 13 + 8) & 0x3F8) | (0x2000 if tx % 2 == 0 else 0) | (0x4000 if tx % 3 == 0 else 0)
+        if ty == 31: return ((tx * 7 + 3) & 0x3FF) | (0x2000 if tx % 3 == 1 else 0) | (0x4000 if tx % 2 == 1 else 0)
+        return ((1 + tx % 4) if tx % 5 == 0 else 0) | (tx % 8) << 10 | (0x2000 if ty % 2 else 0)
+    rom.vram_snes(0x6C00, words([bg3(tx, ty) for ty in range(32) for tx in range(32)]))
     rom.b(0x2107, 0x61); rom.b(0x2108, 0x68); rom.b(0x2109, 0x6C)
     rom.b(0x210B, 0x44); rom.b(0x210C, 0x05)
     rom.b2(0x210D, 40); rom.b2(0x210E, 0)                           # BG1 (and Mode 7) scroll
@@ -764,9 +815,9 @@ def scene_widesnes(rom):
         (328, 90, 76, 5, 3, True, 0),       # X = 328 is -184: off the left
         (440, 10, 78, 6, 3, False, 0),      # X = -72: column 0
         (412, 30, 96, 7, 3, True, 0),       # X = -100, 32 wide: 4 columns
-        (100, 60, 98, 0, 0, True, 0),       # priority 0: behind BG1 and BG2
-        (150, 130, 100, 1, 2, True, 0x40),  # the Mode 7 half, h-flipped
-        (462, 150, 102, 2, 1, True, 0x80),  # X = -50 over the Mode 7 half, v-flipped
+        (100, 60, 98, 0, 0, True, 0),       # priority 0, across the mode 1 and hi-res bands
+        (150, 130, 100, 1, 2, True, 0x40),  # across the hi-res and Mode 7 bands, h-flipped
+        (462, 150, 102, 2, 1, True, 0x80),  # X = -50 over Mode 7, v-flipped
     ]))
     # the WideMess table (for the variant that turns it on in a SNES mode): tiles at 128 KB
     rom.vram_wm(0x20000, sheet4())
@@ -780,10 +831,12 @@ def scene_widesnes(rom):
     rom.b(0x2130, 0x10); rom.b(0x2131, 0x22)
     rom.b(0x2132, 0x20 | 8); rom.b(0x2132, 0x40 | 2); rom.b(0x2132, 0x80 | 12)
     rom.b(0x212C, 0x17)                                              # BG1, BG2, BG3, sprites
-    rom.hdma(1, 0x2105, 0, [(112, [0x01]), (112, [0x07])])           # mode 1 above, Mode 7 below
+    rom.hdma(1, 0x2105, 0, [(40, [0x01]), (40, [0x00]), (48, [0x05]), (48, [0x02]), (48, [0x07])])   # bands: mode 1, mode 0, hi-res mode 5, mode 2, Mode 7
+    rom.hdma(4, 0x2106, 0, [(64, [0x00]), (64, [0x00]), (48, [0x33]), (48, [0x00])])   # mosaic 4 x 4 on BG1 and BG2 in the mode 2 band (with its offset-per-tile)
+    rom.hdma(5, 0x2112, 2, [(64, [0, 0]), (64, [0, 0]), (48, [240, 0]), (48, [0, 0])])   # BG3VOFS: the offset-per-tile table (BG3's rows 30-31) in the mode 2 band
     rom.b(0x2105, 0x01)
     rom.b(0x21C0, 0x01)                                              # WMCTRL: WIDE (a SNES mode, 400 wide)
-    rom.cpu(0x420C, 0x02)
+    rom.cpu(0x420C, 0x32)                                            # HDMA channels 1, 4 and 5
     rom.b(0x2100, 0x0F)
     rom.end()
 
