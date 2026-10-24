@@ -94,7 +94,7 @@ public sealed partial class SnesSession : IConsoleSession
         byte[] image = wideMess ? WmsFile.Payload(rom, out wmsHeader) : rom;
         bool wmsGame = wideMess && wmsHeader != null;
         GameId = (wmsGame ? "wms" : "sfc") + ConsoleSessions.Sha1(rom);
-        var cart = SnesCartridge.Load(image);
+        var cart = wmsGame ? WmsFile.Cartridge(image, wmsHeader!) : SnesCartridge.Load(image);   // a .wms game's map is its header's (the WideMess map, or LoROM / HiROM checked against the image)
         ISnesApu unit;
         if (apu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { MixConfig.NesBackApu = apu[4..]; unit = SnesCores.CreateApu("NES"); }
         else if (apu.Equals("HLE", StringComparison.OrdinalIgnoreCase)) unit = new APU_HLE();

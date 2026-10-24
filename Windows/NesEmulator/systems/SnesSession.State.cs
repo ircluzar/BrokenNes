@@ -24,9 +24,9 @@ public sealed partial class SnesSession
 {
     /// <summary>The layout of the payload: bump it whenever the board, a core or a chip changes what it writes, so an old state is refused rather than misread.</summary>
     public const string StateFormat = "sfc-1";
-    /// <summary>The WideMess console's layout: the SNES payload, then the WideMess registers, its picture chip's own memories (<see cref="PPU_WMS.SaveWide"/>) and its sound chip's own part
-    /// (<see cref="WriteWideSound"/>; wms-2).</summary>
-    public const string WideMessStateFormat = "wms-2";
+    /// <summary>The WideMess console's layout: the SNES payload, then the WideMess registers, its picture chip's own memories (<see cref="PPU_WMS.SaveWide"/>), the WideMess map's work RAM
+    /// (<see cref="BOARD_SFC.SaveWideMemory"/>, milestone 4) and its sound chip's own part (<see cref="WriteWideSound"/>, milestone 3).</summary>
+    public const string WideMessStateFormat = "wms-3";
     private const byte PayloadVersion = 1;
     private const byte UnitSfc = 0, UnitHle = 1, UnitNes = 2, UnitChip = 3;
 
@@ -113,7 +113,8 @@ public sealed partial class SnesSession
             default: throw new NotSupportedException($"The sound unit {board.Apu.CoreName} keeps no state that can be saved.");
         }
         if (wms != null) { board.WideMess!.SaveState(w); wms.SaveWide(w); }
-        if (wms != null) WriteWideSound(w);
+        if (wms != null) board.SaveWideMemory(w);   // milestone 4: the WideMess map's work RAM (the modes are the registers above)
+        if (wms != null) WriteWideSound(w);    // milestone 3: the sound chip's WideMess part
     }
 
     private void ReadPayload(BinaryReader r)
@@ -147,6 +148,7 @@ public sealed partial class SnesSession
             default: throw new NotSupportedException($"The sound unit {board.Apu.CoreName} keeps no state that can be loaded.");
         }
         if (wms != null) { board.WideMess!.LoadState(r); wms.LoadWide(r); }
+        if (wms != null) board.LoadWideMemory(r);
         if (wms != null) ReadWideSound(r);
     }
 

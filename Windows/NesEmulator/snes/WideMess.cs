@@ -15,8 +15,9 @@ namespace NesEmulator.Snes;
 public sealed class WmsExtension
 {
     public const byte SpecMajor = 1, SpecMinor = 0;
-    /// <summary>The WMFEAT bits this console has: bit 0 = the picture (wide output and the 8-layer mode), bit 2 = the sound (32 voices, BRR + 16-bit PCM, 1 MB sound RAM). The other features arrive with their milestones.</summary>
-    public const byte Features = 0x05;
+    /// <summary>The WMFEAT bits this console has: bit 0 = the picture (wide output and the 8-layer mode); bit 2 = the sound (32 voices, BRR + 16-bit PCM, 1 MB sound RAM; milestone 3);
+    /// bits 3, 4, 5 = fast CPU, 1 MB work RAM, fast DMA (milestone 4). The other features arrive with their milestones.</summary>
+    public const byte Features = 0x3D;
     public const byte IdValue = 0x57;   // 'W'
 
     private readonly PPU_WMS ppu;
@@ -46,7 +47,14 @@ public sealed class WmsExtension
     /// <summary>True once the game wrote $57, $4D to WMUNLOCK; until the next reset.</summary>
     public bool Unlocked { get; private set; }
 
-    public void Reset() { Unlocked = false; unlockStep = 0; speed = 0; dma = 0; }
+    public void Reset() { Unlocked = false; unlockStep = 0; speed = 0; dma = 0; Changed?.Invoke(); }
+
+    /// <summary>WMSPEED bit 0: fast mode (spec section 2).</summary>
+    public bool FastCpu => (speed & 1) != 0;
+    /// <summary>WMDMA bit 0: fast general DMA (spec section 2).</summary>
+    public bool FastDma => (dma & 1) != 0;
+    /// <summary>The board's hook: called when the unlock, WMSPEED or WMDMA changed (a write, a reset, a loaded state), so it applies the modes (BOARD_SFC.WideMess.cs).</summary>
+    public Action? Changed;
 
     /// <summary>A CPU write to $4220-$423F. Returns true when the extension took it (unlocked); false leaves it to the SNES path (the unlock writes themselves are watched either way).</summary>
     public bool WriteCpu(uint offset, byte value)
@@ -55,13 +63,13 @@ public sealed class WmsExtension
         if (offset == 0x4220)
         {
             if (value == IdValue) unlockStep = 1;
-            else if (unlockStep == 1 && value == 0x4D) { Unlocked = true; unlockStep = 0; sound?.Unlock(); }
+            else if (unlockStep == 1 && value == 0x4D) { Unlocked = true; unlockStep = 0; Changed?.Invoke(); sound?.Unlock(); }
             else unlockStep = 0;
         }
         else if (was)
         {
-            if (offset == 0x4225) speed = (byte)(value & 1);
-            else if (offset == 0x4226) dma = (byte)(value & 1);
+            if (offset == 0x4225) { speed = (byte)(value & 1); Changed?.Invoke(); }
+            else if (offset == 0x4226) { dma = (byte)(value & 1); Changed?.Invoke(); }
         }
         return was;
     }
@@ -98,11 +106,11 @@ public sealed class WmsExtension
     }
 
     public void SaveState(BinaryWriter w) { w.Write(Unlocked); w.Write(unlockStep); w.Write(speed); w.Write(dma); }
-    public void LoadState(BinaryReader r) { Unlocked = r.ReadBoolean(); unlockStep = r.ReadByte(); speed = r.ReadByte(); dma = r.ReadByte(); }
+    public void LoadState(BinaryReader r) { Unlocked = r.ReadBoolean(); unlockStep = r.ReadByte(); speed = r.ReadByte(); dma = r.ReadByte(); Changed?.Invoke(); }
 }
 
 /// <summary>The .wms game file (spec section 5): a 64-byte header, then the ROM image as the 65816 sees it under the header's map.</summary>
-public static class WmsFile
+public static partial class WmsFile
 {
     public const int HeaderSize = 0x40;
     public static ReadOnlySpan<byte> Magic => "WIDEMESS"u8;
@@ -125,7 +133,8 @@ public static class WmsFile
             throw new InvalidDataException($"the game needs WideMess spec {major}.{minor}; this BrokenNes has {WmsExtension.SpecMajor}.{WmsExtension.SpecMinor}");
         if ((required & ~(uint)WmsExtension.Features) != 0)
             throw new InvalidDataException($"the game needs WideMess features this BrokenNes does not have yet (WMFEAT bits {required & ~(uint)WmsExtension.Features:X2}): {Missing(required & ~(uint)WmsExtension.Features)}");
-        if (map > 1) throw new InvalidDataException(map == 2 ? "the game uses the WideMess map (1 MB work RAM), which arrives in milestone 4" : $"unknown WideMess map {map}");
+        if (map > 2) throw new InvalidDataException($"unknown WideMess map {map} (0 LoROM, 1 HiROM, 2 the WideMess map)");
+        if (map == 2) CheckWideMessMap(romSize, sram, (data[0x0B] & 1) != 0);   // WideMess.Memory.cs
         string title = Encoding.ASCII.GetString(data, 0x20, 32).TrimEnd(' ', '\0');
         return new Header(major, minor, map, (data[0x0B] & 1) != 0, romSize, sram, required, data[0x18], title);
     }

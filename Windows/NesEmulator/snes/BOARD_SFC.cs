@@ -61,11 +61,7 @@ public sealed partial class BOARD_SFC : ISnesBus
     /// <summary>Cartridge chip (DSP-1, ...) consulted before ROM/SRAM decoding, or null.</summary>
     public ISnesCoprocessor? Coprocessor { get; }
 
-    /// <summary>
-    /// The WideMess's own registers (docs/projects/widemess-spec.md), on a WideMess console only; null on a SNES. It is consulted only for addresses the SNES leaves unused
-    /// ($4220-$423F, B-bus $21A0-$21FF), and while it is locked those accesses go where they go on a SNES.
-    /// </summary>
-    public WmsExtension? WideMess { get; set; }
+    // The WideMess's registers (WideMess), fast mode, 1 MB work RAM and fast DMA: BOARD_SFC.WideMess.cs.
 
     /// <param name="apu">Audio unit; defaults to the silent <see cref="APU_HLE"/> loader stand-in.</param>
     /// <param name="coprocessor">Cartridge chip, when the game has one and its firmware was found.</param>
@@ -91,6 +87,7 @@ public sealed partial class BOARD_SFC : ISnesBus
         Coprocessor?.Attach(level => { chipIrq = level; Cpu.SetIrq(irqFlag || chipIrq); }, BuildPageTable);
         Coprocessor?.AttachBusProbe(() => busAddress);
         for (int i = 0; i < 0x80; i++) dmaRegs[i] = 0xFF;
+        wramHigh = cart.WideMessMap ? new byte[WramHighBytes] : null;   // the WideMess map's work RAM (a .wms game only)
         Reset();
     }
 
@@ -263,7 +260,7 @@ public sealed partial class BOARD_SFC : ISnesBus
     //  ISnesBus
     // =====================================================================================
 
-    public void Idle() => Tick(6);
+    public void Idle() => Tick(idleClocks);   // 6; 2 in WideMess fast mode
 
     // The SNES CPU's current bus address, for the SA-1's bus-conflict timing.
     private uint busAddress;
@@ -339,6 +336,10 @@ public sealed partial class BOARD_SFC : ISnesBus
             {
                 if (offset < 0x2000) page = new Page { Data = Wram, Offset = (int)offset, Speed = AccessClocks(bank, offset), Writable = true };
             }
+            else if (wramHigh != null && IsWramHighBank(bank))
+            {
+                page = new Page { Data = wramHigh, Offset = (int)((bank - 0x70) << 16 | offset), Speed = AccessClocks(bank, offset), Writable = true };
+            }
             else if (Coprocessor != null && Coprocessor.Owns(bank, offset))
             {
                 // Chip ports stay on the slow path; chip-mapped ROM (SA-1 banks) may still be direct.
@@ -354,6 +355,7 @@ public sealed partial class BOARD_SFC : ISnesBus
 
     private int AccessClocks(uint bank, uint offset)
     {
+        if (fastCpu) return FastAccessClocks(bank, offset);   // WideMess fast mode (BOARD_SFC.WideMess.cs)
         if ((bank & 0x40) != 0)                           // $40-$7F, $C0-$FF
             return bank >= 0xC0 && (memsel & 1) != 0 ? 6 : 8;
         if (offset < 0x2000) return 8;
@@ -369,6 +371,7 @@ public sealed partial class BOARD_SFC : ISnesBus
     private byte ReadNoTick(uint bank, uint offset)
     {
         if (bank is 0x7E or 0x7F) return Wram[(bank - 0x7E) << 16 | offset];
+        if (wramHigh != null && IsWramHighBank(bank)) return wramHigh[(bank - 0x70) << 16 | offset];
         if (IsSystemBank(bank) && offset < 0x8000)
         {
             if (offset < 0x2000) return Wram[offset];
@@ -385,6 +388,7 @@ public sealed partial class BOARD_SFC : ISnesBus
     private void WriteNoTick(uint bank, uint offset, byte value)
     {
         if (bank is 0x7E or 0x7F) { Wram[(bank - 0x7E) << 16 | offset] = value; return; }
+        if (wramHigh != null && IsWramHighBank(bank)) { wramHigh[(bank - 0x70) << 16 | offset] = value; return; }
         if (IsSystemBank(bank) && offset < 0x8000)
         {
             if (offset < 0x2000) { Wram[offset] = value; return; }
@@ -404,7 +408,7 @@ public sealed partial class BOARD_SFC : ISnesBus
     {
         if (reg < 0x40) { int v = Ppu.ReadRegister(reg); return v < 0 ? mdr : (byte)v; }
         if (reg < 0x80) { Apu.RunTo(MasterClock); return Apu.ReadPort(reg & 3); }
-        if (reg == 0x80) { byte v = Wram[wramPortAddress]; wramPortAddress = (wramPortAddress + 1) & 0x1FFFF; return v; }
+        if (reg == 0x80) return ReadWramPort();
         if (reg >= WmsExtension.FirstBBus && WideMess is { Unlocked: true } wm) return wm.ReadB(reg, mdr);
         return mdr;
     }
@@ -418,10 +422,11 @@ public sealed partial class BOARD_SFC : ISnesBus
         if (reg < 0x80) { Apu.RunTo(MasterClock); Apu.WritePort(reg & 3, value); return; }
         switch (reg)
         {
-            case 0x80: Wram[wramPortAddress] = value; wramPortAddress = (wramPortAddress + 1) & 0x1FFFF; break;
-            case 0x81: wramPortAddress = (wramPortAddress & 0x1FF00) | value; break;
-            case 0x82: wramPortAddress = (wramPortAddress & 0x100FF) | (uint)value << 8; break;
-            case 0x83: wramPortAddress = (wramPortAddress & 0x0FFFF) | (uint)(value & 1) << 16; break;
+            // the port's address: 17 bits ($2183 bit 0), or 20 bits ($2183 bits 0-3) on an unlocked WideMess with the WideMess map (wramPortMask)
+            case 0x80: WriteWramPort(value); break;
+            case 0x81: wramPortAddress = (wramPortAddress & ~0xFFu) | value; break;
+            case 0x82: wramPortAddress = (wramPortAddress & ~0xFF00u) | (uint)value << 8; break;
+            case 0x83: wramPortAddress = (wramPortAddress & 0x0FFFF) | ((uint)value << 16 & wramPortMask); break;
             default: if (reg >= WmsExtension.FirstBBus) WideMess?.WriteB(reg, value); break;
         }
     }
@@ -537,7 +542,7 @@ public sealed partial class BOARD_SFC : ISnesBus
                 if (toA) WriteNoTick(aBank, aAddr, ReadBBus(bReg));
                 else DmaWriteBBus(bReg, ReadNoTick(aBank, aAddr));
                 aAddr = (ushort)(aAddr + step);
-                Tick(8);
+                Tick(dmaByteClocks);   // 8; 4 with WideMess fast DMA
             }
             dmaRegs[r + 2] = (byte)aAddr; dmaRegs[r + 3] = (byte)(aAddr >> 8);
             dmaRegs[r + 5] = 0; dmaRegs[r + 6] = 0;

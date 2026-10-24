@@ -10,8 +10,9 @@ namespace BrokenNes.Workshop;
 /// <summary>
 /// The WideMess console's tools (docs/projects/widemess-spec.md):
 /// <list type="bullet">
-/// <item><c>--wms-pack --in game.sfc --out game.wms [--title T] [--features 1] [--map 0|1]</c>: a SNES-format image as a .wms game file (the 64-byte header, CRC-32).</item>
-/// <item><c>--wms-test [--roms DIR] [--snes F1;F2;...] [--frames N]</c>: milestone 1's checks, each with its negative control. The test ROMs (WideMess/testroms/bin): the 8-layer ROM draws
+/// <item><c>--wms-pack --in game.sfc --out game.wms [--title T] [--features 1] [--map 0|1|2] [--sram BYTES] [--battery]</c>: a SNES-format image (or, with map 2, a WideMess-map ROM with
+/// its battery RAM size) as a .wms game file (the 64-byte header, CRC-32).</item>
+/// <item><c>--wms-test [--roms DIR] [--snes F1;F2;...] [--frames N] [--reference-paths]</c>: milestone 1's checks, each with its negative control. The test ROMs (WideMess/testroms/bin): the 8-layer ROM draws
 /// 400 x 224 with eight layers of 256 colours on a WideMess, a red screen on a SNES, and its NOUNLOCK twin (WideMess registers written without the unlock) stays a SNES picture.
 /// The .wms loader refuses damaged and too-new files. A save state round-trips. Then every SNES game given runs frame for frame identically (picture and sound) on the SNES console
 /// and on the WideMess console. Exit 0 when every check passes, 1 when one fails, 2 on usage or a missing file.</item>
@@ -29,16 +30,18 @@ internal static partial class WideMessCli
     {
         RomTestCli.EnsureConsole();
         string input = Opt(args, "in", ""), output = Opt(args, "out", "");
-        if (!File.Exists(input) || output == "") { Console.Error.WriteLine("usage: --wms-pack --in game.sfc --out game.wms [--title T] [--features 1] [--map 0|1]"); return 2; }
+        if (!File.Exists(input) || output == "") { Console.Error.WriteLine("usage: --wms-pack --in game.sfc --out game.wms [--title T] [--features 1] [--map 0|1|2] [--sram BYTES] [--battery]"); return 2; }
         byte[] image = File.ReadAllBytes(input);
         if (image.Length % 1024 == 512) image = image[512..];   // a copier header is not part of the image
         byte map = byte.Parse(Opt(args, "map", "0"));
         uint features = uint.Parse(Opt(args, "features", "1"));
         string title = Opt(args, "title", Path.GetFileNameWithoutExtension(input));
-        var file = WmsFile.Pack(image, title, map, features);
-        WmsFile.Read(file);   // the file must be one BrokenNes opens
+        int sram = int.Parse(Opt(args, "sram", "0"));   // the WideMess map's battery RAM (maps 0 and 1 take theirs from the SNES header)
+        bool battery = args.Any(a => a.Equals("--battery", StringComparison.OrdinalIgnoreCase));
+        var file = WmsFile.Pack(image, title, map, features, sram, battery);
+        WmsFile.Cartridge(image, WmsFile.Read(file));   // the file must be one BrokenNes opens, its map included
         File.WriteAllBytes(output, file);
-        Console.WriteLine($"{output}: {file.Length:N0} bytes, '{title}', map {map}, features {features:X2}, CRC {WmsFile.Crc32(image):X8}");
+        Console.WriteLine($"{output}: {file.Length:N0} bytes, '{title}', map {map}, features {features:X2}{(sram > 0 ? $", battery RAM {sram:N0}{(battery ? " (battery)" : "")}" : "")}, CRC {WmsFile.Crc32(image):X8}");
         return 0;
     }
 
@@ -115,6 +118,11 @@ internal static partial class WideMessCli
         string layers = Path.Combine(dir, "layers.wms"), nounlock = Path.Combine(dir, "layers_nounlock.wms"), snesImage = Path.Combine(dir, "layers.sfc");
         foreach (var f in new[] { layers, nounlock, snesImage }) if (!File.Exists(f)) { Console.Error.WriteLine($"missing test ROM {f} (build WideMess/testroms/layers/build.ps1)"); return 2; }
         fails = passes = 0;
+        if (args.Any(a => a.Equals("--reference-paths", StringComparison.OrdinalIgnoreCase)))
+        {
+            PPU_SFC.FastPaths = DSP_SFC.FastPaths = BOARD_SFC.FastPaths = false;   // every SNES fast path off: the checks run on the reference twins
+            Console.WriteLine("(reference paths: the SNES chips' fast paths are off)");
+        }
 
         Console.WriteLine("1. The 8-layer ROM on a WideMess");
         using (var s = Session(ConsoleKind.WideMess, File.ReadAllBytes(layers)))
@@ -166,9 +174,9 @@ internal static partial class WideMessCli
         Console.WriteLine("5. The .wms loader refuses what it cannot run, and says why");
         byte[] good = File.ReadAllBytes(layers);
         Refused(Damage(good, 0x1000), "a damaged file (CRC)", "damaged");
-        Refused(Patch(good, 0x14, 0x08), "a game needing a feature this console lacks (fast CPU)", "fast CPU");
+        Refused(Patch(good, 0x14, 0x80), "a game needing a feature this console lacks (debug port)", "debug port");
         Refused(Patch(good, 0x08, 2), "a game needing spec 2.0", "spec 2.0");
-        Refused(Patch(good, 0x0A, 2), "a game on the WideMess map (milestone 4)", "milestone 4");
+        Refused(Patch(good, 0x0A, 3), "a game on an unknown map", "unknown WideMess map");
         Refused(good[..0x800], "a cut file", "says");
 
         Console.WriteLine("6. Save states carry the WideMess part");
@@ -182,8 +190,8 @@ internal static partial class WideMessCli
             Check(a.SequenceEqual(b) && s.FrameWidth == 400, "save at frame 100, run 30, load, run 30: the same 400-wide picture", $"{state.Length / 1024} KB");
         }
 
-        // milestone 3: the sound chip (WideMessCli.Sound.cs)
-        SoundTests(dir);
+        if (!TestCpuMemory(dir)) return 2;   // milestone 4: fast CPU, 1 MB work RAM, the WideMess map, fast DMA (WideMessCli.Memory.cs)
+        SoundTests(dir);                     // milestone 3: the sound chip (WideMessCli.Sound.cs)
 
         string snes = Opt(args, "snes", "");
         int frames = int.Parse(Opt(args, "frames", "900"));
