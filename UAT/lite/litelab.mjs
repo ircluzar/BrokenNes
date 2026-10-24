@@ -85,36 +85,54 @@ class Cdp {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function startLabOnce({ publishDir, romsDir, headless = true, width = 1280, height = 900, mobile = false, log = () => {} }) {
+/** Stops the browser this lab started: the PID spawned (when still there) and every browser process whose command line names this lab's own profile folder (a unique temp folder, so only
+ * this lab's processes match), each by PID with its tree. Never by name: the user's own browser is left alone. */
+function killProfile(profile, launcherPid) {
+  const pids = new Set();
+  if (launcherPid) pids.add(String(launcherPid));
+  if (process.platform === 'win32') {
+    const q = `Get-CimInstance Win32_Process -Filter "Name='msedge.exe' or Name='chrome.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('${profile.replace(/'/g, "''")}') -and $_.CommandLine -notlike '*--type=*' } | ForEach-Object { $_.ProcessId }`;
+    const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', q], { encoding: 'utf8', windowsHide: true });
+    for (const l of String(r.stdout || '').split(/\r?\n/)) if (/^\d+$/.test(l.trim())) pids.add(l.trim());
+    for (const pid of pids) spawnSync('taskkill', ['/T', '/F', '/PID', pid], { stdio: 'ignore', windowsHide: true });
+  } else for (const pid of pids) { try { process.kill(+pid); } catch {} }
+}
+
+async function startLabOnce({ publishDir, romsDir, headless = true, width = 1280, height = 900, mobile = false, gpu = process.env.LITELAB_GPU === '1', log = () => {} }) {
   const { server, port } = await serve({ publishDir, romsDir });
   const base = `http://127.0.0.1:${port}`;
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'litelab-'));
+  // gpu: the browser's own GPU path (ANGLE on the machine's graphics card) instead of SwiftShader, the software renderer the labs use by default (it draws on the CPU, so a speed
+  // measured with the picture drawn is then the CPU's drawing, not a phone's or a desktop's GPU)
   const args = [`--remote-debugging-port=0`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', `--window-size=${width},${height}`,
     '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', '--autoplay-policy=no-user-gesture-required',
-    '--enable-unsafe-swiftshader', '--use-angle=swiftshader', 'about:blank'];
+    ...(gpu ? [] : ['--enable-unsafe-swiftshader', '--use-angle=swiftshader']), 'about:blank'];
   if (headless) args.unshift('--headless=new');
   const proc = spawn(findBrowser(), args, { stdio: 'ignore', windowsHide: true });
+  // Edge's launcher may start the real browser as a child and exit at once (seen with Edge in 2026-10: the PID spawned here is gone a second later while the browser runs and has written its
+  // DevTools port), so the browser is judged by its DevTools socket, not by the PID spawned; close() stops every process that uses this lab's own profile folder, by PID.
   let gone = false; let cdpRef = null;
-  proc.on('exit', code => { gone = true; cdpRef?.failAll('the browser exited (code ' + code + ')'); });
+  proc.on('exit', () => {});
   let dbgPort = 0, cdp, ws;
   try {
   for (let i = 0; i < 80 && !dbgPort; i++) {
     await sleep(250);
     try { dbgPort = parseInt(fs.readFileSync(path.join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0], 10); } catch {}
   }
-  if (!dbgPort) { proc.kill(); throw new Error('browser DevTools port did not appear'); }
+  if (!dbgPort) { killProfile(profile, proc.pid); throw new Error('browser DevTools port did not appear'); }
   const list = await (await fetch(`http://127.0.0.1:${dbgPort}/json/list`, { signal: AbortSignal.timeout(15000) })).json();
   const target = list.find(t => t.type === 'page');
   ws = new WebSocket(target.webSocketDebuggerUrl);
   { let t; await Promise.race([new Promise((res, rej) => { ws.addEventListener('open', res); ws.addEventListener('error', rej); }), new Promise((_, rej) => { t = setTimeout(() => rej(new Error('DevTools socket did not open')), 15000); })]); clearTimeout(t); }
   cdp = new Cdp(ws); cdpRef = cdp;
+  ws.addEventListener('close', () => { gone = true; cdpRef?.failAll('the browser closed its DevTools socket'); });
   if (gone) throw new Error('the browser exited while starting');
   for (const d of ['Page', 'Runtime', 'Network', 'Log']) await cdp.send(d + '.enable');
   if (mobile) {
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
   }
-  } catch (e) { try { proc.kill(); } catch {} server.close(); try { fs.rmSync(profile, { recursive: true, force: true }); } catch {} throw e; }
+  } catch (e) { killProfile(profile, proc.pid); server.close(); try { fs.rmSync(profile, { recursive: true, force: true }); } catch {} throw e; }
 
   const page = {
     cdp, base,
@@ -199,7 +217,7 @@ async function startLabOnce({ publishDir, romsDir, headless = true, width = 1280
       try { await cdp.send('Browser.close'); } catch {}
       try { ws.close(); } catch {}
       await sleep(300);
-      if (proc.pid) spawnSync('taskkill', ['/T', '/F', '/PID', String(proc.pid)], { stdio: 'ignore' });
+      killProfile(profile, proc.pid);
       server.close();
       try { fs.rmSync(profile, { recursive: true, force: true }); } catch {}
     },

@@ -79,6 +79,14 @@
     <type fullname="NesEmulator.APU_SMSS" preserve="all" />
     <type fullname="NesEmulator.NES" preserve="fields" />
 
+    <!-- WideMess (its milestone 7, docs/projects/widemess-spec.md): the console runs on SnesSession(wideMess: true), which builds its picture chip, sound chip, registers and
+         cartridge with `new` (no name lookup today), so the trimmer already keeps them; they are rooted anyway, whole, so that no future lookup by name (the way CoreRegistry finds
+         the NES cores) can strip them into a silent black screen or a silent sound chip. UAT\lite\test-lite-widemess.mjs proves the trimmed AOT build runs every part. -->
+    <type fullname="NesEmulator.Snes.PPU_WMS" preserve="all" />
+    <type fullname="NesEmulator.Snes.APU_WMS" preserve="all" />
+    <type fullname="NesEmulator.Snes.WmsExtension" preserve="all" />
+    <type fullname="NesEmulator.Snes.WmsFile" preserve="all" />
+
     <!-- Clocks are small and drive frame pacing; keep all of them. -->
     <type fullname="NesEmulator.CLOCK_*" preserve="all" />
 

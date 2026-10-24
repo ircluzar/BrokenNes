@@ -304,13 +304,13 @@
   #touch-controller .shoulder-btn { flex:0 0 38%; background:#262e37; border:1px solid #3a4653; color:#d9e4ec; padding:0.6rem 0; font-size:0.75rem; font-weight:700; letter-spacing:1px; text-align:center; border-radius:10px 10px 18px 18px; box-shadow:0 2px 5px rgba(0,0,0,.45); user-select:none; -webkit-user-select:none; }
   #touch-controller .actions .ab-cluster .btn-x,
   #touch-controller .actions .ab-cluster .btn-y { display:none; position:absolute; width:30%; aspect-ratio:1/1; border-radius:50%; font-weight:700; font-size:0.95rem; color:#10141a; display:none; align-items:center; justify-content:center; box-shadow:0 5px 12px -3px #000c, inset 0 0 6px #0005; }
-  /* SNES: the Super Famicom diamond (X top, A right, B bottom, Y left) and L / R shoulders. */
-  #touch-controller[data-layout=snes] .shoulder-row { display:flex; }
-  #touch-controller[data-layout=snes] .actions .ab-cluster > div { width:30%; transform:none; color:#10141a; }
-  #touch-controller[data-layout=snes] .actions .ab-cluster .btn-x { display:flex; left:35%; top:0; background:#4b7bd6; border:1px solid #7fa3ea; }
-  #touch-controller[data-layout=snes] .actions .ab-cluster .btn-a { right:2%; top:32%; left:auto; bottom:auto; background:#d64b4b; border:1px solid #ea8080; }
-  #touch-controller[data-layout=snes] .actions .ab-cluster .btn-b { left:35%; bottom:0; top:auto; background:#e3c14a; border:1px solid #f0d985; }
-  #touch-controller[data-layout=snes] .actions .ab-cluster .btn-y { display:flex; left:2%; top:32%; background:#4bab6a; border:1px solid #83cc9b; }
+  /* SNES: the Super Famicom diamond (X top, A right, B bottom, Y left) and L / R shoulders. The WideMess (data-layout = wms) has the SNES pad. */
+  #touch-controller[data-layout=snes] .shoulder-row, #touch-controller[data-layout=wms] .shoulder-row { display:flex; }
+  #touch-controller[data-layout=snes] .actions .ab-cluster > div, #touch-controller[data-layout=wms] .actions .ab-cluster > div { width:30%; transform:none; color:#10141a; }
+  #touch-controller[data-layout=snes] .actions .ab-cluster .btn-x, #touch-controller[data-layout=wms] .actions .ab-cluster .btn-x { display:flex; left:35%; top:0; background:#4b7bd6; border:1px solid #7fa3ea; }
+  #touch-controller[data-layout=snes] .actions .ab-cluster .btn-a, #touch-controller[data-layout=wms] .actions .ab-cluster .btn-a { right:2%; top:32%; left:auto; bottom:auto; background:#d64b4b; border:1px solid #ea8080; }
+  #touch-controller[data-layout=snes] .actions .ab-cluster .btn-b, #touch-controller[data-layout=wms] .actions .ab-cluster .btn-b { left:35%; bottom:0; top:auto; background:#e3c14a; border:1px solid #f0d985; }
+  #touch-controller[data-layout=snes] .actions .ab-cluster .btn-y, #touch-controller[data-layout=wms] .actions .ab-cluster .btn-y { display:flex; left:2%; top:32%; background:#4bab6a; border:1px solid #83cc9b; }
   /* Game Boy / Game Boy Color: two slanted maroon buttons and slanted pill Select / Start. */
   #touch-controller[data-layout=gb] .actions .ab-cluster .btn-a,
   #touch-controller[data-layout=gb] .actions .ab-cluster .btn-b,

@@ -3,6 +3,9 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.Extensions.Logging;
 using BrokenNes;
 
+// WideMess, the souped-up SNES fantasy console (docs/projects/widemess-spec.md): Lite offers it since its milestone 7 (the console menu, .wms files, SNES games on it).
+NesEmulator.Systems.Consoles.WideMessEnabled = true;
+
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");

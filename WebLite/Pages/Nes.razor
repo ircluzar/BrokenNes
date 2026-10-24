@@ -469,7 +469,7 @@
                 <button class="btn btn-sm btn-success" @onclick="(()=>emu!.TriggerRomImportDialogPublic())">Import</button>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="(()=>emu!.ReloadCurrentRomPublic())" disabled="@(string.IsNullOrEmpty(emu!.Controller.CurrentRomName))">Reload</button>
             </div>
-            <div class="mb-2 small text-muted">Built-in + cached uploaded ROMs (persisted in browser storage). Click a row to load. Import or drag NES (.nes), SNES (.sfc, .smc) and Game Boy / Color (.gb, .gbc) ROMs@(Consoles.All.Any(Consoles.IsSega) ? " (and Sega: " + string.Join(" ", Consoles.All.Where(Consoles.IsSega).SelectMany(Consoles.Extensions)) + (Consoles.SegaPreview ? ", preview on" : "") + ")" : ""), or a .zip holding one - the console follows the ROM. A .7z or .rar archive cannot be opened in the browser: unpack it first (7-Zip) or put the ROM in a .zip.</div>
+            <div class="mb-2 small text-muted">Built-in + cached uploaded ROMs (persisted in browser storage). Click a row to load. Import or drag NES (.nes), SNES (.sfc, .smc) and Game Boy / Color (.gb, .gbc) ROMs@(Consoles.IsAvailable(ConsoleKind.WideMess) ? ", WideMess games (.wms)" : "")@(Consoles.All.Any(Consoles.IsSega) ? " (and Sega: " + string.Join(" ", Consoles.All.Where(Consoles.IsSega).SelectMany(Consoles.Extensions)) + (Consoles.SegaPreview ? ", preview on" : "") + ")" : ""), or a .zip holding one - the console follows the ROM. A .7z or .rar archive cannot be opened in the browser: unpack it first (7-Zip) or put the ROM in a .zip.</div>
             <div class="table-responsive" style="max-height:260px; overflow:auto;">
                 <table id="rom-table" class="table table-sm table-dark align-middle mb-0 rom-table">
                     <thead class="table-secondary text-dark" style="position:sticky;top:0;">
@@ -865,7 +865,7 @@
                         <div>@s.Player1.Keyboard.A: A</div>
                         <div>@s.Player1.Keyboard.Select: Select</div>
                         <div>@s.Player1.Keyboard.Start: Start</div>
-                        @if (emu!.ActiveConsole == ConsoleKind.Snes)
+                        @if (emu!.ActiveConsole is ConsoleKind.Snes or ConsoleKind.WideMess)
                         {
                             <div>@s.Player1.Keyboard.Y: Y</div>
                             <div>@s.Player1.Keyboard.X: X</div>
@@ -889,7 +889,7 @@
                 }
                 else if (s.Player1.Device == InputDeviceType.Gamepad)
                 {
-                    <div>Gamepad [@s.Player1.GamepadIndex]: A=@s.Player1.Gamepad.A, B=@s.Player1.Gamepad.B, Select=@s.Player1.Gamepad.Select, Start=@s.Player1.Gamepad.Start@(emu!.ActiveConsole == ConsoleKind.Snes ? $", X={s.Player1.Gamepad.X}, Y={s.Player1.Gamepad.Y}, L={s.Player1.Gamepad.L}, R={s.Player1.Gamepad.R}" : "")</div>
+                    <div>Gamepad [@s.Player1.GamepadIndex]: A=@s.Player1.Gamepad.A, B=@s.Player1.Gamepad.B, Select=@s.Player1.Gamepad.Select, Start=@s.Player1.Gamepad.Start@(emu!.ActiveConsole is ConsoleKind.Snes or ConsoleKind.WideMess ? $", X={s.Player1.Gamepad.X}, Y={s.Player1.Gamepad.Y}, L={s.Player1.Gamepad.L}, R={s.Player1.Gamepad.R}" : "")</div>
                 }
                 else
                 {

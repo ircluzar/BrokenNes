@@ -135,7 +135,9 @@ namespace BrokenNes
             try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", "pref_console", Consoles.Key(console)); } catch { }
             if (session != null && sessionRom != null)
             {
-                if (RomDetect.Runs(console, session.Console)) { await StartSessionAsync(console, sessionRom, sessionRomName); return; }
+                // the game itself decides where it can go, as on the desktop: a SNES game on the WideMess goes back to the SNES; a WideMess game cannot
+                var romKind = RomDetect.Detect(sessionRom, sessionRomName) ?? session.Console;
+                if (RomDetect.Runs(console, romKind)) { await StartSessionAsync(console, sessionRom, sessionRomName); return; }
                 await StopSessionAsync();
             }
             Status.Set(console == ConsoleKind.Nes ? "NES selected" : $"{Consoles.DisplayName(console)} selected - load a ROM from the ROM Manager");
@@ -166,6 +168,8 @@ namespace BrokenNes
             // A Game Boy cartridge runs on whichever of Game Boy / Game Boy Color is selected (Color-only carts: Color).
             if (Consoles.IsGameBoy(console) && Consoles.IsGameBoy(SelectedConsole) && !(console == ConsoleKind.GameBoyColor && (rom[0x143] & 0xC0) == 0xC0))
                 console = SelectedConsole;
+            // a SNES game runs on the WideMess when the WideMess is the selected console (it is a superset of the SNES: locked, it is a SNES), as on the desktop
+            if (console == ConsoleKind.Snes && SelectedConsole == ConsoleKind.WideMess && Consoles.IsAvailable(ConsoleKind.WideMess)) console = ConsoleKind.WideMess;
             await StartSessionAsync(console, rom, romName);
             return true;
         }
@@ -255,7 +259,8 @@ namespace BrokenNes
         // ------------------------------------------------------------------ battery saves (IndexedDB kv)
         private string SessionSaveKey(IConsoleSession s) => s.Console switch
         {
-            ConsoleKind.Snes => $"battery_v1:{s.GameId}.srm",
+            // the WideMess as on the desktop: a SNES game on it keeps its SNES save (its id is sfc<sha1>, the same key), a WideMess game has its own (wms<sha1>)
+            ConsoleKind.Snes or ConsoleKind.WideMess => $"battery_v1:{s.GameId}.srm",
             ConsoleKind.MasterSystem => $"battery_v1:sms{s.GameId}.sav",
             ConsoleKind.GameGear => $"battery_v1:gg{s.GameId}.sav",
             ConsoleKind.Genesis => $"battery_v1:md{s.GameId}.srm",
