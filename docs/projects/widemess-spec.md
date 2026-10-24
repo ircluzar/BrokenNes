@@ -24,7 +24,7 @@ emulates decodes this range: the SA-1 is at `$2200-$23FF`, the Super FX at `$300
 | `$4221` | WMID | R | `$57` ('W') once unlocked. A SNES returns open bus, which for `LDA $4221` is `$42` (the address's high byte), so the read tells the two apart. |
 | `$4222` | WMVER | R | Spec major version (1). |
 | `$4223` | WMREV | R | Spec minor version (0). |
-| `$4224` | WMFEAT | R | Features this console has (bit = 1): 0 picture (wide output, 8-layer mode); 1 sprites+ ; 2 sound+ ; 3 fast CPU; 4 1 MB work RAM; 5 fast DMA; 7 debug port. |
+| `$4224` | WMFEAT | R | Features this console has (bit = 1): 0 picture (wide output, 8-layer mode); 1 sprites+ (the rest of the picture, section 3: the 256-sprite table, windows and colour math at 400, the SNES modes wide); 2 sound+ (section 4: voices 8-31, 16-bit PCM, 1 MB sound RAM); 3 fast CPU; 4 1 MB work RAM; 5 fast DMA; 7 debug port. |
 | `$4225` | WMSPEED | R/W | Bit 0: fast CPU (section 2). 0 at reset. |
 | `$4226` | WMDMA | R/W | Bit 0: fast general DMA (section 2). 0 at reset. |
 | `$4227-$422F` | | | Reserved: read 0, write ignored. |
@@ -148,18 +148,152 @@ force-blanked (`INIDISP` bit 7). Write in vblank or in forced blank.
   2. the low-priority tiles of BG1 ... BG8;
   3. the backdrop: colour 0.
 - **Applies:** `INIDISP`'s brightness and forced blank.
-- **Milestone 2 adds** sprites, windows and colour math to this mode.
+- **Sprites, windows and colour math** (milestone 2): sections 3.3 and 3.4. The sprites interleave with the 16 layer slots of the
+  order above through `WMOBJPRI0-3`.
 
 **Wide output** (`WMCTRL` bit 0):
 - The picture is 400 x 224 (or 239), **square pixels**: 16:9 on a 16:9 screen.
 - The WideMess mode uses all 400 columns.
-- The SNES modes 0-7 in wide, and Mode 7 in wide, are milestone 2. Until then WIDE without LAYERS8 draws the SNES picture at 256, as a SNES.
+- The SNES modes 0-7 are drawn 400 wide too (below, milestone 2).
 
-**Sprites** (milestone 2):
-- 256 sprites, 64 per line;
-- sizes 8 x 8 to 64 x 64;
-- 4 or 8 bits per pixel;
-- X positions over 400.
+### 3.1 The three pictures (milestone 2)
+
+`WMCTRL` picks one of three pictures, line by line:
+
+| `WMCTRL` | Picture |
+|---|---|
+| bits 0 and 1 clear (and always while locked) | **The SNES picture**: the SNES chip itself, 256 wide (512 half-pixels in modes 5 and 6). Nothing in `$21A0-$21BF` has any effect on it. |
+| bit 1 (LAYERS8), bit 0 either way | **The WideMess mode**, 400 wide with bit 0, 256 wide without. |
+| bit 0 (WIDE) without bit 1 | **A SNES mode drawn wide**: the mode `BGMODE` selects, 400 wide. |
+
+**SNES columns and picture columns.** The SNES's registers that hold a screen position count from the **SNES picture's left edge**:
+`WH0-WH3`, the X of the SNES sprite table, Mode 7's screen x, the offset-per-tile columns and the mosaic grid. In a 400-wide picture
+that edge is **picture column 72**: the SNES picture is centred (72 + 256 + 72), so columns 72-327 of a wide SNES mode are exactly what
+a SNES draws, and the 72 columns either side are new. (The one exception is a line where the SNES sprite table runs over its limits:
+they count sprites over the whole picture, section 3.3, so a SNES may drop different ones.) In a 256-wide picture it is column 0. The WideMess registers
+(`WMWH0-3`, the WideMess sprite table) count in **picture columns**, 0-399.
+
+### 3.2 The SNES modes drawn wide (milestone 2)
+
+`WMCTRL` = WIDE: the mode `BGMODE` selects, with every SNES register meaning what it means on a SNES, over 400 columns.
+- **Layers** show the parts of their tile maps a SNES does not: picture column c shows the layer's pixel column (c - 72 + HOFS),
+  wrapping at the map's width as on the SNES. A 64-tile-wide map shows the half a SNES keeps off screen; a 32-wide map repeats.
+- **Offset-per-tile** (modes 2, 4, 6): the SNES's first tile column keeps its rule (never offset); the tile columns to its left continue
+  the count (-1, -2, ...), so they take BG3's entries further left (BG3's map wraps).
+- **Mosaic** blocks are aligned on the SNES picture's left edge.
+- **Hi-res** (modes 5, 6): 800 half-pixels, averaged in pairs into 400, as the SNES chip's 256-wide picture averages 512. There is no
+  sharp 800-wide picture.
+- **Mode 7** continues its transformation across the 400 columns: screen x runs from -72 to 327 (M7SEL's horizontal flip makes it
+  255 - x, as on the SNES), with the SNES's rules outside the plane (M7SEL bits 6-7) and EXTBG. This is bsnes-hd's widescreen Mode 7.
+- **Video RAM**: the SNES modes read the first 64 KB, as always.
+- **Sprites**, **windows** and **colour math**: below.
+
+### 3.3 Sprites (milestone 2)
+
+Two sprite tables; `WMOBJ` bit 0 picks the one the WideMess mode and the wide SNES modes draw (the 256-wide SNES picture always draws the
+SNES's).
+
+**The SNES table** (`WMOBJ` bit 0 clear): `OAM`, 128 sprites, `OBSEL`, 4 bits per pixel, colours 128-255, as on a SNES. In a 400-wide
+picture a sprite's 9-bit X counts in SNES columns from -184 to 327 (X = 328-511 means X - 512): picture column 72 + X. Its limits stay
+the SNES's (32 sprites and 34 slivers on a line, counted over the whole picture, the flags in `STAT77` `$213E`), and so do its priority
+rotation (`OAMADD` bit 15) and its tile layout.
+
+**The WideMess table** (`WMOBJ` bit 0 set): 256 sprites, 64 per line, 8 x 8 to 64 x 64, 4 or 8 bits per pixel, in their own 2 KB
+memory (WideMess OAM), 8 bytes per sprite (sprite n at byte n x 8):
+
+| Byte | Bits | Meaning |
+|---|---|---|
+| 0 | 0-7 | X, bits 0-7. |
+| 1 | 0-1 | X, bits 8-9. X is a signed 10-bit **picture column** (-512 to 511): the sprite's left edge. Bits 2-7 reserved (0). |
+| 2 | 0-7 | Y, bits 0-7. |
+| 3 | 0-1 | Y, bits 8-9. Y is a signed 10-bit **picture row**: the sprite's top row (row 0 is the first visible line). Bits 2-7 reserved (0). |
+| 4 | 0-7 | Tile, bits 0-7. |
+| 5 | 0-3 | Tile, bits 8-11: counted from `WMOBJBASE` in tiles of 32 bytes (4 bpp) or 64 bytes (8 bpp). Bits 4-7 reserved (0). |
+| 6 | 0-5 | Palette. 4 bpp: colours palette x 16 + 0-15 (any 16 of the 1,024). 8 bpp: colours (palette / 16) x 256 + 0-255 (a bank; bits 0-3 unused). |
+| 6 | 6 | Horizontal flip. |
+| 6 | 7 | Vertical flip. |
+| 7 | 0-1 | Width: 8, 16, 32 or 64 pixels. |
+| 7 | 2-3 | Height: 8, 16, 32 or 64 pixels. |
+| 7 | 4-5 | Priority 0-3. |
+| 7 | 6 | 8 bits per pixel (else 4). |
+| 7 | 7 | Colour math: the sprite takes part in colour math when `CGADSUB` bit 4 is set (the SNES table uses palettes 4-7 for this). |
+
+- **Tiles:** the SNES's planar formats: 4 bpp is 32 bytes (bit-plane pairs 0/1 and 2/3, 16 bytes apart), 8 bpp is 64 bytes (as the
+  layers). Colour 0 is transparent. A sprite's tile (tx, ty), counted in 8 x 8 tiles from its top-left before flipping, is
+  tile + ty x 16 + tx (mod 4,096): sprite sheets are 16 tiles (128 pixels) wide, as on the SNES.
+- **Order:** a lower table index is in front of a higher one, whatever their priorities (the SNES rule). There is no priority rotation.
+- **Line limits:** the first 64 sprites in table order that cover a line (and are not wholly off the picture) are drawn; their slivers
+  (8-pixel tile rows inside the picture) are counted in table order and the ones past 128 are not drawn. `WMOBJSTAT` records both.
+- **Hiding a sprite:** place it off the picture (for example Y = 240). WideMess OAM is all zeros at power-on and is not cleared by a reset.
+- **Video timing:** like `WMVDATA`, writes through `WMOAMDATA` during the active picture are ignored unless the screen is
+  force-blanked; the address advances either way.
+
+**Priorities.**
+- In the **SNES modes**, a sprite's priority 0-3 places it in the mode's own order, as on a SNES, whichever table it comes from.
+- In the **WideMess mode**, the layers make 16 slots, front to back: the high-priority tiles of BG1 ... BG8, then the low-priority tiles of
+  BG1 ... BG8. `WMOBJPRIn` says how many of those slots are in front of the sprites of priority n (0-16; above 16 counts as 16): 0 puts
+  them in front of every layer, 16 behind every layer and in front of the backdrop. At reset: priority 3 at 0, 2 at 4, 1 at 8, 0 at 12.
+- Only one sprite pixel reaches each column (the frontmost sprite's), and its priority places it.
+
+**Sprite registers** (`$21A0-$21AF`):
+
+| Address | Name | Meaning |
+|---|---|---|
+| `$21A0` | WMOBJ | Bit 0 TABLE: the WideMess table replaces the SNES's in the WideMess mode and the wide SNES modes. |
+| `$21A1` | WMOBJBASE | Bits 0-2: the WideMess table's tiles start at this x 64 KB of video RAM. |
+| `$21A2-$21A3` | WMOAMADDL / H | WideMess OAM byte address, 11 bits (`$21A3` bits 0-2). |
+| `$21A4` | WMOAMDATA | Write: one byte at the address, then the address + 1. Read: the same, reading. DMA-capable. |
+| `$21A5` | WMOBJSTAT | Read: bit 6 more than 64 of the WideMess table's sprites covered a line; bit 7 more than 128 of its slivers. Cleared at the start of each frame that is not force-blanked (as `STAT77`'s flags). |
+| `$21A6+n` | WMOBJPRIn | The WideMess mode: the number of BG slots in front of sprites of priority n (n = 0-3). |
+| `$21AA-$21AF` | | Reserved. |
+
+### 3.4 Windows and colour math at 400 (milestone 2)
+
+The SNES's two windows, its masks, its sub screen and its colour math (`CGWSEL`, `CGADSUB`, `COLDATA`) work over the whole picture, with
+the SNES's rules: a window covers the picture columns from its left to its right position inclusive (none when left > right); where the
+sub screen shows only its backdrop, the fixed colour is added and the result is not halved.
+- **Window positions:** `WMWCTL` bit 0 set: `WMWH0-3`, 9-bit picture columns. Clear: the SNES's `WH0-WH3`, in SNES columns (picture
+  column 72 + value in a 400-wide picture), except that an edge on the SNES picture's edge reaches the picture's edge: a left position
+  of 0 means column 0 and a right position of 255 means column 399. So a SNES window that spans the SNES picture (0-255, as games keep
+  for their colour window) spans the wide picture, and one inside it stays where the SNES draws it.
+- **The wide SNES modes** use the SNES's registers exactly as a SNES does (`TS`, `W12SEL`, `W34SEL`, `WOBJSEL`, `WBGLOG`, `WOBJLOG`,
+  `TMW`, `TSW`, `CGWSEL`, `CGADSUB`, `COLDATA`); only the positions come from `WMWCTL`'s choice.
+- **The WideMess mode** has 8 layers, so its layer bits are WideMess registers, 8 bits for BG1-BG8 (bit n = BG n+1); the SNES's
+  registers keep their meaning for the sprites, the colour window, the backdrop and the math controls:
+
+| | BG1-BG8 | Sprites | Backdrop / colour window / controls |
+|---|---|---|---|
+| Main screen | `WMTM` | `TM` bit 4 | |
+| Sub screen | `WMTS` | `TS` bit 4 | |
+| Masked by their window, main / sub | `WMTMW` / `WMTSW` | `TMW` / `TSW` bit 4 | |
+| Window select (the `W12SEL` layout) | `WMW12SEL` ... `WMW78SEL` | `WOBJSEL` bits 0-3 | colour window: `WOBJSEL` bits 4-7 |
+| Window logic (the `WBGLOG` layout) | `WMWLOG14`, `WMWLOG58` | `WOBJLOG` bits 0-1 | colour window: `WOBJLOG` bits 2-3 |
+| Colour math on | `WMCMATH` | `CGADSUB` bit 4 | backdrop `CGADSUB` bit 5; half bit 6; subtract bit 7; `CGWSEL`; `COLDATA` |
+
+  `CGWSEL` bit 0 (direct colour) and `MOSAIC` have no effect in the WideMess mode.
+
+**Window and colour-math registers** (`$21B0-$21BF`):
+
+| Address | Name | Meaning |
+|---|---|---|
+| `$21B0` | WMWH0 | Window 1 left, 9 bits, written twice (the low byte, then bit 8 in bit 0). |
+| `$21B1` | WMWH1 | Window 1 right, the same way. |
+| `$21B2` | WMWH2 | Window 2 left. |
+| `$21B3` | WMWH3 | Window 2 right. |
+| `$21B4` | WMWCTL | Bit 0 WIDEWIN: the windows' positions are `WMWH0-3` (else the SNES's `WH0-WH3` in SNES columns). A write resets the four positions' byte phase. |
+| `$21B5` | WMTS | The WideMess mode: BG1-BG8 on the sub screen. |
+| `$21B6` | WMTMW | The WideMess mode: BG1-BG8 masked by their window on the main screen. |
+| `$21B7` | WMTSW | The same on the sub screen. |
+| `$21B8` | WMW12SEL | The WideMess mode: BG1's (bits 0-3) and BG2's (bits 4-7) windows: per layer bit 0 window 1 inverted, bit 1 window 1 on, bit 2 window 2 inverted, bit 3 window 2 on. |
+| `$21B9` | WMW34SEL | BG3 and BG4. |
+| `$21BA` | WMW56SEL | BG5 and BG6. |
+| `$21BB` | WMW78SEL | BG7 and BG8. |
+| `$21BC` | WMWLOG14 | How BG1-BG4 combine their two windows (2 bits each, BG1 in bits 0-1: 0 OR, 1 AND, 2 XOR, 3 XNOR). |
+| `$21BD` | WMWLOG58 | The same for BG5-BG8. |
+| `$21BE` | WMCMATH | The WideMess mode: colour math on BG1-BG8. |
+| `$21BF` | | Reserved. |
+
+All of `$21A0-$21BF` is 0 at reset except `WMOBJPRI0-3` (12, 8, 4, 0). The write-only registers read as open bus.
 
 ## 4. Sound (milestone 3)
 
@@ -306,7 +440,7 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
 | Unlock, ID, version, features | 1 | done (`WmsExtension`) |
 | `.wms` files | 1 | done (`WmsFile`, `Workshop --wms-pack`) |
 | 512 KB video RAM, 1,024 colours, the 8-layer mode, wide output | 1 | done (`PPU_WMS`; test ROM `WideMess/testroms/layers`) |
-| SNES modes and Mode 7 wide, sprites, windows, colour math at 400 | 2 | not yet |
+| SNES modes and Mode 7 wide, sprites, windows, colour math at 400 | 2 | done (`PPU_WMS`'s wide compositor, `WideMess.Picture.cs`; test ROMs `WideMess/testroms/picture`; `WMFEAT` bit 1) |
 | Sound: 32 voices, BRR + 16-bit PCM, 1 MB sound RAM, the port | 3 | done (`APU_WMS`, `DSP_SFC.WideMess.cs`; test ROM `WideMess/testroms/sound`) |
 | Fast CPU, 1 MB work RAM, the WideMess map, fast DMA | 4 | done (`BOARD_SFC.WideMess.cs`, `WideMess.Memory.cs`; test ROMs `WideMess/testroms/cpu`) |
 | Debug port | BrokenDev debugging toolkit | reserved |

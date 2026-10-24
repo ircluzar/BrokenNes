@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  WideMess in the real desktop app (docs/projects/widemess-spec.md, milestone 1). Exit 0 = pass. Prints ONE JSON result line as the last line of stdout.
+  WideMess in the real desktop app (docs/projects/widemess-spec.md, milestones 1 and 2). Exit 0 = pass. Prints ONE JSON result line as the last line of stdout.
 
 .DESCRIPTION
   Starts the shipped WinForms app with a scratch settings folder (BROKENNES_CONFIG_DIR: the user's config.json is never read or written) and checks, through its
@@ -8,6 +8,8 @@
     MENU     the Console menu lists WideMess.
     WMS      the WideMess test ROM (WideMess\testroms\bin\layers.wms) loads: the console is "wms", the cores WMS / WMS / WMS, the picture 400 x 224 with more than 800
              colours, and it moves (the layers scroll).
+    M2       the milestone-2 picture ROMs (sprites.wms, widesnes.wms) show, in the app, exactly the pictures their generator's model of the spec draws
+             (<rom>.expect.png: the 256-sprite table at 400; SNES modes 1, 0, 5, 2 and 7 drawn 400 wide).
     SNES     with WideMess selected, the ROM's SNES image (layers.sfc, a SNES-format file) runs on the WideMess too (400 wide: the game finds the WideMess);
              switching the console to the SNES moves it to the SNES, where it draws its red "not a WideMess" screen at 256 x 224.
     CONTROL  the negative-control ROM (layers_nounlock.wms: the WideMess registers written without the unlock) stays a SNES picture: 256 wide, black.
@@ -44,6 +46,24 @@ function Get-Frame([int]$procId) {
     $sha = [Security.Cryptography.SHA1]::Create()
     [pscustomobject]@{ Width = [int]$fb.width; Height = [int]$fb.height; Colors = $colors.Count; Hash = [BitConverter]::ToString($sha.ComputeHash($bytes)); AllRed = ($red -eq $n); AllBlack = ($black -eq $n) }
 }
+function Compare-Expect([int]$procId, [string]$png) {   # 0 when the app's picture is the PNG's pixel for pixel, else what differs
+    $fb = Invoke-BrokenNesApi -ProcessId $procId -Method GET -Path '/api/console/framebuffer'
+    $bytes = [Convert]::FromBase64String([string]$fb.data)
+    $bmp = [System.Drawing.Bitmap]::new($png)
+    try {
+        if ($bmp.Width -ne [int]$fb.width -or $bmp.Height -ne [int]$fb.height) { return "the picture is $($fb.width) x $($fb.height), the model's $($bmp.Width) x $($bmp.Height)" }
+        $diff = 0
+        for ($y = 0; $y -lt $bmp.Height; $y++) {
+            for ($x = 0; $x -lt $bmp.Width; $x++) {
+                $c = $bmp.GetPixel($x, $y); $o = ($y * $bmp.Width + $x) * 4
+                if ($bytes[$o] -ne $c.R -or $bytes[$o + 1] -ne $c.G -or $bytes[$o + 2] -ne $c.B) { $diff++ }
+            }
+        }
+        if ($diff -eq 0) { return 0 }
+        return "$diff pixels differ from the model's picture"
+    }
+    finally { $bmp.Dispose() }
+}
 function Wait-Frame([int]$procId, [scriptblock]$ok, [int]$seconds = 10) {
     $end = (Get-Date).AddSeconds($seconds); $f = $null
     do { Start-Sleep -Milliseconds 400; $f = Get-Frame $procId; if (& $ok $f) { break } } while ((Get-Date) -lt $end)
@@ -73,7 +93,9 @@ $savedConfigDir = $env:BROKENNES_CONFIG_DIR
 try {
     . (Join-Path $repo 'UAT\lib\ApiClient.ps1')
     . (Join-Path $repo 'UAT\lib\UiaHelpers.ps1')
+    Add-Type -AssemblyName System.Drawing
     foreach ($f in 'layers.wms', 'layers.sfc', 'layers_nounlock.wms', 'sound.wms') { if (-not (Test-Path -LiteralPath (Join-Path $bin $f))) { throw "missing ${f}: build WideMess\testroms\layers\build.ps1 and WideMess\testroms\sound\build.ps1" } }
+    foreach ($f in 'sprites.wms', 'sprites.expect.png', 'widesnes.wms', 'widesnes.expect.png') { if (-not (Test-Path -LiteralPath (Join-Path $bin $f))) { throw "missing ${f}: build WideMess\testroms\picture\build.ps1" } }
     $cfgDir = Join-Path $WorkDir 'config'
     if (Test-Path -LiteralPath $cfgDir) { Remove-Item -LiteralPath $cfgDir -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
@@ -95,6 +117,14 @@ try {
     Start-Sleep -Milliseconds 700
     $f2 = Get-Frame $id
     Check 'wms_moves' ($f2.Hash -ne $f1.Hash) 'the layers scroll'
+
+    # M2: the picture test ROMs show, in the app, exactly the picture the spec's model draws (WideMess\testroms\picture)
+    foreach ($rom in 'sprites', 'widesnes') {
+        Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/load-rom' -Body @{ path = (Join-Path $bin "$rom.wms") } | Out-Null
+        $end = (Get-Date).AddSeconds(10); $diff = 'no frame'
+        do { Start-Sleep -Milliseconds 400; $diff = Compare-Expect $id (Join-Path $bin "$rom.expect.png") } while ($diff -ne 0 -and (Get-Date) -lt $end)
+        Check "m2_$rom" ($diff -eq 0) $(if ($diff -eq 0) { "400 x 224, every pixel as $rom.expect.png" } else { "$diff" })
+    }
 
     # SNES: the SNES image while WideMess is selected, then moved to the SNES
     Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/load-rom' -Body @{ path = (Join-Path $bin 'layers.sfc') } | Out-Null

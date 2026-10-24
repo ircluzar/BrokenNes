@@ -15,9 +15,10 @@ namespace NesEmulator.Snes;
 public sealed class WmsExtension
 {
     public const byte SpecMajor = 1, SpecMinor = 0;
-    /// <summary>The WMFEAT bits this console has: bit 0 = the picture (wide output and the 8-layer mode); bit 2 = the sound (32 voices, BRR + 16-bit PCM, 1 MB sound RAM; milestone 3);
-    /// bits 3, 4, 5 = fast CPU, 1 MB work RAM, fast DMA (milestone 4). The other features arrive with their milestones.</summary>
-    public const byte Features = 0x3D;
+    /// <summary>The WMFEAT bits this console has: bit 0 = the picture (wide output and the 8-layer mode); bit 1 = the rest of the picture (the 256-sprite table,
+    /// windows and colour math at 400, the SNES modes wide: milestone 2); bit 2 = the sound (32 voices, BRR + 16-bit PCM, 1 MB sound RAM: milestone 3); bits 3, 4, 5 =
+    /// fast CPU, 1 MB work RAM, fast DMA (milestone 4). The other features arrive with their milestones.</summary>
+    public const byte Features = 0x3F;
     public const byte IdValue = 0x57;   // 'W'
 
     private readonly PPU_WMS ppu;
@@ -192,9 +193,10 @@ public static partial class WmsFile
 /// <summary>
 /// The WideMess picture chip (spec section 3): the SNES's S-PPU (a subclass; the SNES modes draw on its pipeline untouched) plus 512 KB of video RAM (the SNES's 64 KB
 /// is its first 64 KB), 1,024 colours (the SNES's 256 first), the WideMess mode (8 layers of 8-bpp tiles, each with its own map, tiles, colour bank and scroll) and the
-/// 400-wide output. Its registers ($21C0-$21EF) are reached only through <see cref="WmsExtension"/> once a game unlocked them, so until then it is the SNES chip.
+/// 400-wide output; and (milestone 2, WideMess.Picture.cs) the sprites, windows and colour math of the WideMess mode and the SNES modes drawn 400 wide. Its registers ($21A0-$21EF)
+/// are reached only through <see cref="WmsExtension"/> once a game unlocked them, so until then it is the SNES chip.
 /// </summary>
-public sealed class PPU_WMS : PPU_SFC
+public sealed partial class PPU_WMS : PPU_SFC
 {
     public const int WideWidth = 400, Layers = 8;
     public const int VramBytes = 512 * 1024, Colours = 1024;
@@ -227,18 +229,21 @@ public sealed class PPU_WMS : PPU_SFC
         base.Reset();
         ctrl = 0; mainLayers = 0; vaddr = 0; cgaddr = 0; cgPhase = false; cgLow = 0;
         Array.Clear(mapBase); Array.Clear(config); Array.Clear(scrollH); Array.Clear(scrollV); Array.Clear(scrollPhase); Array.Clear(scrollLow);
+        ResetPicture();
     }
 
     public override void BeginFrame()
     {
         base.BeginFrame();
         if (anyWide) { Array.Clear(rowWide); anyWide = false; }
+        BeginFramePicture();
     }
 
-    // ---------------------------------------------------------------- registers ($21C0-$21EF)
+    // ---------------------------------------------------------------- registers ($21A0-$21EF; $21A0-$21BF in WideMess.Picture.cs)
 
     public void WriteWide(byte reg, byte v)
     {
+        if (reg < 0xC0) { WritePicture(reg, v); return; }
         switch (reg)
         {
             case 0xC0: ctrl = (byte)(v & 3); Array.Clear(scrollPhase); return;
@@ -280,7 +285,7 @@ public sealed class PPU_WMS : PPU_SFC
                 cgPhase = false; cgaddr = (cgaddr + 1) & (Colours - 1);
                 return c >> 8;
             }
-            default: return -1;
+            default: return reg < 0xC0 ? ReadPicture(reg) : -1;
         }
     }
 
@@ -298,89 +303,14 @@ public sealed class PPU_WMS : PPU_SFC
     public ushort Colour(int i) => i < 256 ? Cgram[i] : CgramHigh[i - 256];
     public void SetColour(int i, ushort c) { if (i < 256) Cgram[i] = c; else CgramHigh[i - 256] = c; }
 
-    // ---------------------------------------------------------------- the WideMess mode
+    // ---------------------------------------------------------------- the picture
 
+    /// <summary>WMCTRL = 0: the SNES chip's own line. Otherwise the wide compositor (WideMess.Picture.cs): the WideMess mode, or a SNES mode drawn 400 wide.</summary>
     public override void RenderLine(int line)
     {
-        if ((ctrl & 2) == 0) { base.RenderLine(line); return; }
-        RenderLayersLine(line);
-    }
-
-    private readonly byte[] rank = new byte[WideWidth];
-    private readonly ushort[] pixel = new ushort[WideWidth];
-
-    private void RenderLayersLine(int line)
-    {
-        int row = line - 1;
-        if (row < 0 || row >= VisibleHeight) return;
-        bool wide = (ctrl & 1) != 0;
-        int width = wide ? WideWidth : Width;
-        Span<uint> dst = wide ? WideBuffer.AsSpan(row * WideWidth, WideWidth) : FrameBuffer.AsSpan(row * Width, Width);
-        if (wide) { rowWide[row] = true; anyWide = true; }
-        int brightness = MasterBrightness;
-        if (ForcedBlank || brightness == 0) { dst.Fill(0xFF000000u); return; }
-
-        ushort backdrop = Cgram[0];
-        Array.Fill(rank, (byte)0xFF, 0, width);
-        Array.Fill(pixel, backdrop, 0, width);
-        for (int layer = 0; layer < Layers; layer++)
-            if ((mainLayers & (1 << layer)) != 0) DrawLayer(layer, row, width);
-
-        var lut = ColourTable(brightness);
-        for (int x = 0; x < width; x++) dst[x] = lut[pixel[x]];
-    }
-
-    /// <summary>One layer's pixels on one line: front to back, the high-priority tiles of BG1-BG8, then the low-priority ones; a lower rank wins.</summary>
-    private void DrawLayer(int layer, int row, int width)
-    {
-        byte cfg = config[layer];
-        int tilesWide = (cfg & 2) != 0 ? 128 : 64, tilesHigh = (cfg & 1) != 0 ? 64 : 32;
-        int bank = ((cfg >> 2) & 3) << 8, tileBase = ((cfg >> 4) & 7) << 16, map = mapBase[layer] << 11;
-        int y = (row + scrollV[layer]) & (tilesHigh * 8 - 1);
-        int ty = y >> 3, fy = y & 7;
-        int pxWide = tilesWide * 8;
-        int mx = scrollH[layer] & (pxWide - 1);
-        byte rankHigh = (byte)layer, rankLow = (byte)(Layers + layer);
-        Span<byte> idx = stackalloc byte[8];
-        int x = 0;
-        while (x < width)
-        {
-            int tx = mx >> 3, fx = mx & 7;
-            int ea = (map + (ty * tilesWide + tx) * 2) & (VramBytes - 1);
-            int entry = VramByte(ea) | VramByte((ea + 1) & (VramBytes - 1)) << 8;
-            int tile = entry & 0xFFF;
-            bool high = (entry & 0x1000) != 0, hflip = (entry & 0x4000) != 0, vflip = (entry & 0x8000) != 0;
-            int r = vflip ? 7 - fy : fy;
-            int ta = tileBase + tile * 64 + r * 2;
-            DecodeRow(ta, idx);
-            byte rk = high ? rankHigh : rankLow;
-            int run = Math.Min(8 - fx, width - x);
-            for (int i = 0; i < run; i++)
-            {
-                int px = fx + i;
-                byte c = idx[hflip ? 7 - px : px];
-                if (c != 0 && rk < rank[x + i]) { rank[x + i] = rk; pixel[x + i] = Colour(bank + c); }
-            }
-            x += run;
-            mx = (mx + run) & (pxWide - 1);
-        }
-    }
-
-    /// <summary>One row of an 8-bpp SNES tile (bit-plane pairs 0/1, 2/3, 4/5, 6/7, 16 bytes apart) as 8 colour indices, left to right.</summary>
-    private void DecodeRow(int a, Span<byte> idx)
-    {
-        idx.Clear();
-        for (int pair = 0; pair < 4; pair++)
-        {
-            int pa = (a + pair * 16) & (VramBytes - 1);
-            byte p0 = VramByte(pa), p1 = VramByte((pa + 1) & (VramBytes - 1));
-            int b0 = pair * 2, b1 = b0 + 1;
-            for (int px = 0; px < 8; px++)
-            {
-                int bit = 7 - px;
-                idx[px] |= (byte)(((p0 >> bit) & 1) << b0 | ((p1 >> bit) & 1) << b1);
-            }
-        }
+        if (ctrl == 0) { base.RenderLine(line); return; }
+        RenderWideLine(line);
+        if (CompareWithSnes && ctrl == 1) CompareLine(line);
     }
 
     /// <summary>The last frame at 400 wide: lines drawn in a SNES mode are centred in it (72 columns of black either side), as a SNES picture inside a wide screen.</summary>
