@@ -50,6 +50,8 @@
 
 .INCLUDE "tc_gen.inc"
 .INCLUDE "tc_datadefs.inc"
+.INCLUDE "tc_spcsize.inc"
+.DEFINE SPC_AT $C00000
 .INCLUDE "tc_defs.inc"
 
 ; ---- the cartridge's info block, at a fixed place: ROM bank 0, offset $FF80 ($00:FF80). README.md documents it.
@@ -908,8 +910,18 @@ PanelRowTile:
 .INCLUDE "tc_picture.asm"
 .INCLUDE "tc_pages.asm"
 .INCLUDE "tc_modes.asm"
+.INCLUDE "tc_sound.asm"
 .INCLUDE "tc_tables.inc"
 
 .ENDS
+
+; the SPC700 program (tc_spc.asm, assembled by build.ps1), in ROM bank 0's lower half: $C0:0000
+.BASE $C0
+.BANK 0 SLOT 0
+.ORG $0000
+.SECTION "SpcImage" FORCE
+  .INCBIN "tc_spc.bin"
+.ENDS
+.BASE $00
 
 .INCLUDE "tc_data.inc"

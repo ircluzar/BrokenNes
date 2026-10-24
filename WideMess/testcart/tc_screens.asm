@@ -205,7 +205,7 @@ TxtT3:     .DB "WINDOWS AND COLOUR MATH AT 400", EOS
 TxtT4:     .DB "THE SNES MODES DRAWN 400 WIDE", EOS
 TxtT5:     .DB "SOUND: 32 VOICES, 16-BIT PCM", EOS
 TxtT6:     .DB "FAST CPU AND FAST DMA", EOS
-TxtT7:     .DB "MEMORIES: 1 MB WORK RAM AND MORE", EOS
+TxtT7:     .DB "MEMORIES: 1 MB WORK RAM, MORE", EOS
 TxtT8:     .DB "IDENTITY: WMID, WMVER, WMFEAT", EOS
 TxtRunAll: .DB "RUN ALL SELF-CHECKS", EOS
 TxtBMenu:  .DB S_GREY, "B: MENU", EOS
@@ -536,9 +536,9 @@ SummaryEnter:
 SummaryFrame:
   jmp BackOnB
 TxtSumHead: .DB S_YELLOW, "SELF-CHECKS: THE RESULTS", EOS
-TxtSumCols: .DB S_CYAN, "TEST                              RESULT CHECKS", EOS
-TxtSumPass: .DB S_GREEN, "EVERY SELF-CHECK PASSED.", S_GREY, " EYE: COMPARE THE PICTURE", NL, "WITH ITS REFERENCE (README.MD).", EOS
-TxtSumFail: .DB S_RED, "A SELF-CHECK FAILED:", S_GREY, " OPEN THE TEST TO SEE WHICH.", EOS
+TxtSumCols: .DB S_CYAN, "TEST                              RESULT #", EOS
+TxtSumPass: .DB S_GREEN, "EVERY SELF-CHECK PASSED.", NL, S_GREY, "EYE: TESTS 3 AND 4 ARE JUDGED BY THEIR PICTURES.", EOS
+TxtSumFail: .DB S_RED, "A SELF-CHECK FAILED.", NL, S_GREY, "OPEN THE TEST TO SEE WHICH.", EOS
 
 ; ================================================================================================ "not available"
 
@@ -644,7 +644,7 @@ TxtF7: .DB "DEBUG PORT", EOS
 TxtYes: .DB S_GREEN, "YES", EOS
 TxtNo:  .DB S_RED, "NO ", EOS
 TxtNa1: .DB S_RED, "NOT AVAILABLE ON THIS CONSOLE.", S_WHITE, " IT NEEDS:", EOS
-TxtNa2: .DB S_GREY, "THE CARTRIDGE READS WMFEAT ($4224) AND RUNS ONLY", NL, "WHAT THE CONSOLE HAS: NOTHING OF THIS TEST RAN.", NL, NL, "ITS STATUS IN THE RESULTS TABLE IS 'N'.", EOS
+TxtNa2: .DB S_GREY, "THE CARTRIDGE READS WMFEAT ($4224) AND RUNS", NL, "ONLY WHAT THE CONSOLE HAS: NONE OF THIS TEST", NL, "RAN. ITS STATUS IN THE RESULTS TABLE IS 'N'.", EOS
 
 ; ================================================================================================ the SNES screen: not a WideMess, or one without the picture
 
@@ -888,28 +888,9 @@ TxtIdReserved: .DB S_WHITE, "$4227-$422F", S_GREY, "   (UNLOCKED)   ALL $00", EO
 TxtIdBits:     .DB S_CYAN, "WMFEAT'S BITS", S_GREY, " (MASK $", HEX8, RES_MASK & $FF, RES_MASK >> 8, ")", EOS
 TxtIdResult:   .DB S_WHITE, "RESULT  ", STATUS, (RES_STATUS + 7) & $FF, (RES_STATUS + 7) >> 8, S_GREY, "  CHECKS ", DEC8, (RES_CHECKS + 7) & $FF, (RES_CHECKS + 7) >> 8, "  FAILED ", DEC8, (RES_FAILS + 7) & $FF, (RES_FAILS + 7) >> 8, EOS
 
-; ================================================================================================ the tests not built yet (each replaced as it is written)
+; ================================================================================================ the reference screen (the pages replaced it)
 
 RefEnter:
   jmp BackToMenu
-T5Enter:
-.ACCU 8
-.INDEX 16
-  lda screen
-  sec
-  sbc #SC_TEST1 - 1
-  jsr TestGate
-  lda #0
-  jsr SetupUI
-  jsr Header
-  PRINT 6, 4, TxtTodo
-  jsr ScreenOn
-  lda runall
-  beq +
-  jmp RunAllNext
-+
-  rts
-T5Frame:
 RefFrame:
   jmp BackOnB
-TxtTodo: .DB S_ORANGE, "THIS TEST IS NOT IN THIS BUILD YET.", EOS

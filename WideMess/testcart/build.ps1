@@ -60,6 +60,7 @@ try {
     Invoke-Tool $asm700 @('-o', 'tc_spc.o', 'tc_spc.asm') $work | Out-Null
     Set-Content -LiteralPath (Join-Path $work 'tc_spc.link') -Value "[objects]`r`ntc_spc.o" -Encoding ascii
     Invoke-Tool $link @('-b', 'tc_spc.link', 'tc_spc.bin') $work | Out-Null
+    Set-Content -LiteralPath (Join-Path $work 'tc_spcsize.inc') -Value ".DEFINE SPC_LEN $((Get-Item -LiteralPath (Join-Path $work 'tc_spc.bin')).Length)" -Encoding ascii
     # 3. the 65816 program
     Get-ChildItem -LiteralPath $src -File | Where-Object { $_.Extension -in '.asm', '.inc' -and $_.Name -ne 'tc_spc.asm' } | Copy-Item -Destination $work
     Invoke-Tool $asm @('-o', 'testcart.o', 'testcart.asm') $work | Out-Null

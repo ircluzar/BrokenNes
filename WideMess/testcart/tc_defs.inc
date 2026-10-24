@@ -276,6 +276,10 @@
   bardir      dw
   plx_        dw                ; the planet's two phases
   ply_        dw
+  sel5        dw                ; test 5: the selected voice, the voices sent to the echo (32 bits), the mailbox's last number
+  echomask    dsb 4
+  sndcmd      db
+  cellv       dw                ; test 5: the grid's cell being drawn
   t1dirty     db                ; test 1: the legend changed
   nocount     db                ; 1: Judge judges again (a live test's later rounds) without counting; a failure fails the test
   saved       dw

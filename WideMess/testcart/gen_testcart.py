@@ -227,7 +227,8 @@ CELL = 160    # 16 levels of a cell's light (the sound test's voices, the memory
 for k in range(16):
     UIPAL[768 + CELL + k] = rgb(*mix((3, 5, 10), (12, 31, 14), k / 15))       # green: sounding / passed
     UIPAL[768 + CELL + 16 + k] = rgb(*mix((3, 5, 10), (31, 8, 8), k / 15))    # red: failed
-    UIPAL[768 + CELL + 32 + k] = rgb(*mix((3, 5, 10), (10, 22, 31), k / 15))  # blue: running, or the PCM voices
+    UIPAL[768 + CELL + 32 + k] = rgb(*mix((3, 5, 10), (10, 22, 31), k / 15))  # blue: running, or the S-DSP's voices
+    UIPAL[768 + CELL + 48 + k] = rgb(*mix((3, 5, 10), (31, 22, 4), k / 15))   # amber: the BRR voices
 pack.put(words(UIPAL), 'UIPAL')
 UIPAL_ROM = list(UIPAL)        # the colours as they are in ROM (pages that DMA from them give the model the same)
 
@@ -345,7 +346,7 @@ for k, kind in enumerate(('tl', 't', 'tr', 'l', '', 'r', 'bl', 'b', 'br', 'hl'))
     define(f'PANEL_{kind.upper() or "C"}', PANEL_TILES[kind])
 # cells: 16 levels of light in three hues (a solid tile with a dark rim): tile CELL_TILE + hue x 16 + level
 cell_first = len(ui.tiles)
-for hue in range(3):
+for hue in range(4):
     for lv in range(16):
         px = [[CELL + hue * 16 + lv] * 8 for _ in range(8)]
         for i in range(8): px[0][i] = px[7][i] = 0          # a dark rim above and below: cells side by side join up
@@ -439,6 +440,70 @@ tables.append('SpeedTable:')
 for name, off, p, lo, hi, need in spd:
     tables.append(f'  .DW {lo}, {hi}, {p}\n  .DB ${off:02X}, ${need:02X}')
 define('SPD_ROWS', len(spd))
+
+# ------------------------------------------------------------------ test 5: the sound chip (spec section 4)
+
+# One waveform, an organ tone of 32 samples a cycle (1,000 Hz at pitch $1000), stored three ways: BRR in the SPC700's 64 KB for the S-DSP's
+# voices 0-7, 16-bit PCM (looping) and BRR above 64 KB for voices 8-31 (even voices PCM, odd voices BRR: the same tone side by side).
+# Sound RAM: $0200 the SPC700 program (tc_spc.asm), $0400 its mailbox, $0500 its report, $0600 the S-DSP's directory, $2000 the S-DSP's BRR,
+# $4000-$47FF the echo buffer; $10000 the WideMess directory, $10100 the PCM sample, $10200 the BRR sample.
+WAVE_N = 32
+def organ(n): return [sum(a * math.sin(2 * math.pi * h * i / n) for h, a in ((1, 1.0), (2, 0.45), (3, 0.3), (4, 0.15), (6, 0.08))) for i in range(n)]
+w = organ(WAVE_N); peak = max(abs(v) for v in w)
+wave = [v / peak for v in w]
+def brr(values, shift, loop=True):           # filter 0, 16 samples a block (gen_data.py's encoder)
+    data = bytearray()
+    blocks = len(values) // 16
+    for b in range(blocks):
+        flags = (3 if loop else 1) if b == blocks - 1 else 0
+        data.append(shift << 4 | flags)
+        nyb = [max(-8, min(7, int(round(v / (1 << shift))))) for v in values[b * 16:(b + 1) * 16]]
+        for i in range(0, 16, 2): data.append((nyb[i] & 15) << 4 | (nyb[i + 1] & 15))
+    return bytes(data)
+SND_BRR_LOW = brr([v * 7 * 1024 for v in wave], 10)               # S-DSP: nibbles to +-7 at shift 10
+SND_PCM = b''.join(int(round(v * 12000)).to_bytes(2, 'little', signed=True) for v in wave)
+SND_BRR = brr([v * 7 * 1024 for v in wave], 10)
+pack.put(SND_BRR_LOW, 'SND_BRR_LOW'); pack.put(SND_PCM, 'SND_PCM'); pack.put(SND_BRR, 'SND_BRR')
+def wentry(start, fmt, loop, end):
+    e = bytearray(16)
+    e[0:3] = start.to_bytes(3, 'little'); e[3] = fmt; e[4:7] = loop.to_bytes(3, 'little'); e[8:11] = end.to_bytes(3, 'little')
+    return bytes(e)
+WDIR, PCM_AT, BRR_AT = 0x10000, 0x10100, 0x10200
+wdir = wentry(PCM_AT, 3, PCM_AT, PCM_AT + len(SND_PCM)) + wentry(BRR_AT, 0, BRR_AT, 0)
+pack.put(wdir, 'SND_WDIR')
+pack.put(bytes([0x00, 0x20, 0x00, 0x20]), 'SND_DIR')                # the S-DSP's entry 0: start $2000, loop $2000
+define('PCM_AT_L', PCM_AT & 0xFFFF); define('PCM_END_L', (PCM_AT + len(SND_PCM)) & 0xFFFF)
+# each voice's note: a C major scale up the grid, row r an octave above row r - 1 (C3 for voice 0, C7 for voice 31)
+SCALE = [0, 2, 4, 5, 7, 9, 11, 12]
+def pitch_of(v):
+    midi = 48 + 12 * (v // 8) + SCALE[v % 8]
+    f = 440 * 2 ** ((midi - 69) / 12)
+    return min(0x3FFF, int(round(f / 1000 * 4096)))
+tables.append('VoicePitch: .DW ' + ', '.join(str(pitch_of(v)) for v in range(32)))
+NOTE = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C']
+tables.append('VoiceNote: .DB ' + ', '.join(f'"{NOTE[v % 8]}{3 + v // 8 + (1 if v % 8 == 7 else 0)}"' for v in range(32)))
+# the DSP's set-up, three mailbox lists (each at most 127 register writes): the globals; voices 0-15; voices 16-31 (every voice: its
+# sample, ADSR, volume 0)
+def vreg(v, r): return (r | ((v - 8) % 8) << 4 | 0x80) if v >= 8 else (r | v << 4)
+ADSR1, ADSR2 = 0xDF, 0x6E
+lists = []
+g = [(0x6C, 0x20), (0x0C, 0x7F), (0x1C, 0x7F), (0x2C, 0), (0x3C, 0), (0x4D, 0), (0x5C, 0), (0x3D, 0), (0x2D, 0), (0x5D, 0x06),
+     (0x6D, 0x40), (0x7D, 0x01), (0x0D, 0x50), (0x0F, 0x7F)] + [(0x0F + 0x10 * k, 0) for k in range(1, 8)]
+g += [(0xDD, (WDIR >> 8) & 0xFF), (0xED, WDIR >> 16)]
+for b in range(3): g += [(0x8C, b), (0xAD, 0), (0xBD, 0), (0xCD, 0), (0xDC, 0)]
+lists.append(g)
+for half in range(2):
+    l, bank = [], None
+    for v in range(16 * half, 16 * half + 16):
+        if v >= 8 and (v - 8) // 8 != bank: bank = (v - 8) // 8; l.append((0x8C, bank))
+        srcn = 0 if v < 8 else (v % 2)          # S-DSP: its BRR; new voices: even PCM (entry 0), odd BRR (entry 1)
+        l += [(vreg(v, 4), srcn), (vreg(v, 5), ADSR1), (vreg(v, 6), ADSR2), (vreg(v, 0), 0), (vreg(v, 1), 0),
+              (vreg(v, 2), pitch_of(v) & 0xFF), (vreg(v, 3), pitch_of(v) >> 8)]
+    lists.append(l)
+for k, l in enumerate(lists):
+    assert len(l) <= 127, len(l)
+    tables.append(f'DspInit{k}: .DB {len(l)}, ' + ', '.join(f'${a:02X}, ${b:02X}' for a, b in l))
+define('SND_ADSR1', ADSR1); define('SND_ADSR2', ADSR2)
 
 # ------------------------------------------------------------------ the picture pages (tests 2-4): scripts the cartridge plays, and the model's pictures
 
