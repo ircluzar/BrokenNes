@@ -147,6 +147,94 @@ internal static partial class WideMessCli
         return 0;
     }
 
+    // ------------------------------------------------------------------------------------------------ --wms-test, milestone 5
+
+    /// <summary>One run of a devkit ROM: the report at the end, the most of voices 8-31 sounding in a frame, the frames with any sounding, and the
+    /// game's own frame counter at the end when its address is given (the sample's game_frame, from its .sym).</summary>
+    private sealed record DevkitRun(DevkitReport Report, int MaxWideVoices, int WideVoiceFrames, int GameFrames, double AudioPeak);
+
+    private static DevkitRun RunDevkit(string rom, int frames, string input = "", int gameFrameAddr = -1)
+    {
+        using var s = Session(ConsoleKind.WideMess, File.ReadAllBytes(rom));
+        var steps = ParsePadScript(input);
+        PadButtons held = PadButtons.None;
+        int maxVoices = 0, voiceFrames = 0, peak = 0;
+        for (int f = 1; f <= frames; f++)
+        {
+            if (steps.TryGetValue(f, out var b)) held = b;
+            s.SetPad(0, held);
+            s.RunFrame();
+            int got;
+            while ((got = s.ReadSamples(audio)) > 0) for (int k = 0; k < got; k++) peak = Math.Max(peak, Math.Abs((int)audio[k]));
+            int v = WideVoicesSounding(s);
+            if (v > maxVoices) maxVoices = v;
+            if (v > 0) voiceFrames++;
+        }
+        int game = gameFrameAddr >= 0 ? s.Board.Wram[gameFrameAddr & 0x1FFFF] | s.Board.Wram[(gameFrameAddr + 1) & 0x1FFFF] << 8 : -1;
+        return new DevkitRun(Measure(s), maxVoices, voiceFrames, game, peak / 32768.0);
+    }
+
+    /// <summary>A symbol's 24-bit address in a WLA-DX .sym ("BBBBAAAA name"), as a work RAM offset for banks $7E-$7F; -1 when absent.</summary>
+    private static int SymbolWram(string sym, string name)
+    {
+        foreach (string line in File.ReadLines(sym))
+        {
+            var p = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (p.Length == 2 && p[1] == name && p[0].Length == 8)
+            {
+                int a = Convert.ToInt32(p[0], 16), bank = (a >> 16) & 0xFF;
+                if (bank is 0x7E or 0x7F) return (bank - 0x7E) << 16 | (a & 0xFFFF);
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>Milestone 5's checks (WideMess/testroms/devkit/build.ps1 builds the ROMs): the template of 'brokendev new widemess' boots on the
+    /// WideMess console with what it shows, the sample game shows every feature, each with negative controls. False when the ROMs are missing.</summary>
+    private static bool DevkitTests(string dir)
+    {
+        string tpl = Path.Combine(dir, "devkit_template.wms"), tplNo = Path.Combine(dir, "devkit_template_nounlock.wms");
+        string smp = Path.Combine(dir, "devkit_sample.wms"), smpNo = Path.Combine(dir, "devkit_sample_nounlock.wms"), smpSlow = Path.Combine(dir, "devkit_sample_snesspeed.wms"), sym = Path.Combine(dir, "devkit_sample.sym");
+        foreach (var f in new[] { tpl, tplNo, smp, smpNo, smpSlow, sym }) if (!File.Exists(f)) { Console.Error.WriteLine($"missing test ROM {f} (build WideMess/testroms/devkit/build.ps1)"); return false; }
+
+        Console.WriteLine("M5.1 The template of 'brokendev new widemess' (devkit_template.wms): it builds and boots on the WideMess console");
+        var t = RunDevkit(tpl, 300);
+        var tr = t.Report;
+        Check(tr.Unlocked && tr.Width == 400 && tr.Height == 224 && tr.Layers8, "it unlocks WideMess and draws 400 x 224 in the 8-layer mode", $"unlocked {tr.Unlocked}, {tr.Width} x {tr.Height}, LAYERS8 {tr.Layers8}");
+        Check(tr.LayersDrawing == 3, "its 3 layers draw (wms.json: title BG1, hills BG7, sky BG8)", $"{tr.LayersDrawing}: {string.Join(" ", tr.LayerPixels)}");
+        Check(tr.SpritesOnScreen == 1 && tr.WideSprites, "its sprite is on the picture, from the WideMess table", $"{tr.SpritesOnScreen}, table {tr.WideSprites}");
+        Check(t.WideVoiceFrames >= 150 && t.MaxWideVoices >= 2, "its song sounds on the WideMess voices (8-31)", $"{t.WideVoiceFrames} of 300 frames, at most {t.MaxWideVoices} at once, peak {t.AudioPeak:F2}");
+        Check(tr.FastCpu && tr.BigWramBytes > 0, "fast mode is on and the work RAM above 128 KB is in use", $"fast {tr.FastCpu}, {tr.BigWramBytes} bytes");
+
+        Console.WriteLine("M5.2 Negative control: the template built with -D WMS_NOUNLOCK (it writes every WideMess register, locked)");
+        var tn = RunDevkit(tplNo, 300).Report;
+        Check(!tn.Unlocked && tn.Width == 256 && !tn.Layers8 && tn.LayersDrawing == 0 && tn.SpritesOnScreen == 0 && !tn.FastCpu, "nothing of WideMess happens: locked, 256 wide, no layer, no sprite, SNES speed",
+              $"unlocked {tn.Unlocked}, {tn.Width} wide, layers {tn.LayersDrawing}, sprites {tn.SpritesOnScreen}, fast {tn.FastCpu}");
+        Check(tn.WideVoices <= 0 && tn.Colours == 1, "and no WideMess voice sounds; the picture is one colour (the game's WideMess picture never reached the screen)", $"voices {tn.WideVoices}, {tn.Colours} colours");
+
+        Console.WriteLine("M5.3 The sample game, Wide Blaster (devkit_sample.wms), 900 frames of play");
+        const string play = "30:Right+B,200:Up+B,260:Down+Y,400:B,700:Left+Y";
+        int gameFrame = SymbolWram(sym, "game_frame");
+        Check(gameFrame >= 0, "its symbol file names game_frame", $"${gameFrame:X5}");
+        var s = RunDevkit(smp, 900, play, gameFrame);
+        var sr = s.Report;
+        Check(sr.Unlocked && sr.Width == 400 && sr.Layers8 && sr.LayersDrawing == 8, "8 layers draw at 400 x 224", $"{sr.LayersDrawing}: {string.Join(" ", sr.LayerPixels)}");
+        Check(sr.SpritesOnScreen > 128, "more sprites on the picture than a SNES's whole table (128)", $"{sr.SpritesOnScreen}");
+        Check(s.MaxWideVoices > 8 && s.WideVoiceFrames >= 800, "more of the WideMess voices sound at once than the S-DSP has (8), nearly all the time", $"at most {s.MaxWideVoices}, {s.WideVoiceFrames} of 900 frames");
+        Check(sr.FastCpu && sr.FastDma, "fast CPU and fast DMA are on", $"{sr.FastCpu} {sr.FastDma}");
+        Check(sr.BigWramBytes >= 2000, "its pools, path and recorder fill work RAM above the SNES's 128 KB", $"{sr.BigWramBytes:N0} non-zero bytes");
+        Check(s.GameFrames >= 880, "fast mode keeps its main loop at 60 frames a second (the loading frames aside)", $"game_frame {s.GameFrames} after 900 frames");
+
+        Console.WriteLine("M5.4 Negative controls for the sample's checks");
+        var sn = RunDevkit(smpNo, 300).Report;
+        Check(!sn.Unlocked && sn.Width == 256 && sn.LayersDrawing == 0 && sn.SpritesOnScreen == 0, "the sample built with -D WMS_NOUNLOCK: locked, 256 wide, no layer, no sprite", $"{sn.Width} wide, layers {sn.LayersDrawing}, sprites {sn.SpritesOnScreen}");
+        Check(!(tr.LayersDrawing == 8) && !(tr.SpritesOnScreen > 128) && !(t.MaxWideVoices > 8), "the template fails the sample's thresholds (8 layers, over 128 sprites, over 8 voices): the checks can say no",
+              $"{tr.LayersDrawing} layers, {tr.SpritesOnScreen} sprites, {t.MaxWideVoices} voices");
+        var slow = RunDevkit(smpSlow, 900, play, gameFrame);
+        Check(!slow.Report.FastCpu && slow.GameFrames < 500, "the sample at SNES speed (-D SAMPLE_SNES_SPEED) cannot keep 60 frames a second", $"game_frame {slow.GameFrames} after 900 frames, fast {slow.Report.FastCpu}");
+        return true;
+    }
+
     /// <summary>"frame:Button+Button,frame:,..." (BrokenDev's input format) as frame -> the buttons held from that frame.</summary>
     internal static SortedDictionary<int, PadButtons> ParsePadScript(string spec)
     {

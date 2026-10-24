@@ -6,6 +6,18 @@
 
 Set-StrictMode -Version Latest
 
+function Find-BdPvsneslib {
+    <# PVSnesLib's folder for WideMess builds: BROKENDEV_PVSNESLIB, else the copy in the Super VRUN workspace beside the repository (a git
+       worktree under .claude\worktrees looks beside the main checkout). $null when there is none (devkitsnes\bin\816-tcc.exe is the test). #>
+    $c = @()
+    if ($env:BROKENDEV_PVSNESLIB) { $c += $env:BROKENDEV_PVSNESLIB }
+    $repo = Get-BdRepoRoot
+    $c += (Join-Path (Split-Path $repo -Parent) 'SuperVRUN_dev\snes-stub\toolchain\pvsneslib')
+    if ($repo -match '^(.*?)\\[^\\]+\\\.claude\\worktrees\\') { $c += (Join-Path $Matches[1] 'SuperVRUN_dev\snes-stub\toolchain\pvsneslib') }
+    foreach ($p in $c) { if ($p -and (Test-Path -LiteralPath (Join-Path $p 'devkitsnes\bin\816-tcc.exe'))) { return (Resolve-Path -LiteralPath $p).Path } }
+    $null
+}
+
 function New-BdWideMessProject {
     <#
       Creates a WideMess project. $Name: the project id (lower-case letters, digits, dashes); the ROM is called after it (dashes become _).

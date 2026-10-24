@@ -41,6 +41,7 @@ $ErrorActionPreference = 'Stop'
 $wmsRoot = Split-Path -Parent $PSScriptRoot                        # BrokenDev\widemess
 . (Join-Path (Split-Path -Parent $wmsRoot) 'lib\Common.ps1')        # Invoke-BdProcess and friends
 . (Join-Path (Split-Path -Parent $wmsRoot) 'lib\Tools.ps1')         # Find-BdPython
+. (Join-Path (Split-Path -Parent $wmsRoot) 'lib\WideMess.ps1')      # Find-BdPvsneslib
 $libDir = Join-Path $wmsRoot 'lib'
 $drvDir = Join-Path $wmsRoot 'driver'
 
@@ -67,14 +68,7 @@ foreach ($f in @(Get-BdProp $cfg 'features' @('picture'))) {
     $features = $features -bor $featNames[$k]
 }
 
-if (-not $Pvsneslib) { $Pvsneslib = $env:BROKENDEV_PVSNESLIB }
-if (-not $Pvsneslib) {
-    # the user's PVSnesLib, shipped in the Super VRUN workspace beside the repository (a worktree looks beside the main checkout)
-    $repo = Get-BdRepoRoot
-    $cands = @((Join-Path (Split-Path $repo -Parent) 'SuperVRUN_dev\snes-stub\toolchain\pvsneslib'))
-    if ($repo -match '^(.*?)\\[^\\]+\\\.claude\\worktrees\\') { $cands += (Join-Path $Matches[1] 'SuperVRUN_dev\snes-stub\toolchain\pvsneslib') }
-    foreach ($c in $cands) { if (Test-Path -LiteralPath (Join-Path $c 'devkitsnes\bin\816-tcc.exe')) { $Pvsneslib = $c; break } }
-}
+if (-not $Pvsneslib) { $Pvsneslib = Find-BdPvsneslib }    # BROKENDEV_PVSNESLIB, else the Super VRUN workspace beside the repository
 if (-not $Pvsneslib -or -not (Test-Path -LiteralPath (Join-Path $Pvsneslib 'devkitsnes\bin\816-tcc.exe'))) { Fail "PVSnesLib not found (pass -Pvsneslib or set BROKENDEV_PVSNESLIB; looked for devkitsnes\bin\816-tcc.exe)" }
 $Pvsneslib = (Resolve-Path -LiteralPath $Pvsneslib).Path
 $bin = Join-Path $Pvsneslib 'devkitsnes\bin'; $tools = Join-Path $Pvsneslib 'devkitsnes\tools'

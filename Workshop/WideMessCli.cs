@@ -195,6 +195,7 @@ internal static partial class WideMessCli
         if (!PictureTests(dir)) return 2;   // milestone 2: the picture test ROMs (WideMessCli.Picture.cs)
         if (!TestCpuMemory(dir)) return 2;   // milestone 4: fast CPU, 1 MB work RAM, the WideMess map, fast DMA (WideMessCli.Memory.cs)
         SoundTests(dir);                     // milestone 3: the sound chip (WideMessCli.Sound.cs)
+        if (!DevkitTests(dir)) return 2;     // milestone 5: the devkit's template and sample game (WideMessCli.Devkit.cs)
 
         string snes = Opt(args, "snes", "");
         int frames = int.Parse(Opt(args, "frames", "900"));
