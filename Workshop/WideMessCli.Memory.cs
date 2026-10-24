@@ -151,7 +151,22 @@ internal static partial class WideMessCli
         Refused(WmsFile.Pack(image, "x", 2, 16, 3000, true), "WideMess-map battery RAM that is not a power of two", "power of two");
         Refused(WmsFile.Pack(image, "x", 2, 16, 0, true), "a battery without battery RAM", "battery");
         Refused(WmsFile.Pack(image[..0x8000], "x", 2, 16), "a 32 KB image on the WideMess map (less than one bank)", "64 KB");
+
+        Console.WriteLine("M4.6 No allocation per frame on the new paths");
+        long speedBytes = AllocatedOver(File.ReadAllBytes(speed), 40), bigBytes = AllocatedOver(big, 60);
+        Check(speedBytes == 0 && bigBytes == 0, "the speed ROM's 40 frames (mode switches, fast DMA, the port) and the big map's 60 (its checks, then fast mode and the 20-bit port every frame) allocate nothing",
+              $"{speedBytes} and {bigBytes} bytes");
         return true;
+    }
+
+    /// <summary>Managed bytes this thread allocates while a fresh session runs <paramref name="frames"/> frames (its first frame, which sets the session up, is not counted).</summary>
+    private static long AllocatedOver(byte[] rom, int frames)
+    {
+        using var s = Session(ConsoleKind.WideMess, rom);
+        Run(s, 1);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Run(s, frames);
+        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
     private sealed record SpeedResult(byte Id, byte SpeedRead, int A, int AFast, int B, int BFast, int Dma, int DmaFast, int DmaFastCpu, byte LoRomRam, byte PortWrap);
