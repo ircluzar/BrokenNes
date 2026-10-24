@@ -1836,6 +1836,8 @@ namespace NesEmulator
 		// New helpers: expose active core identifiers for UI (suffixes FMC/FIX etc.)
 		public string GetCpuCoreId() => bus?.cpu?.GetType().Name ?? string.Empty;
 		public string GetPpuCoreId() => bus?.ppu?.GetType().Name ?? string.Empty;
+		/// <summary>The picture chip when it draws wider than the NES (the WideMess widescreen chip, PPU_WMSS): an app that can show a wider picture shows <see cref="IWidePictureSource.WidePicture"/>; null otherwise.</summary>
+		public IWidePictureSource? WidePicture => bus?.ppu as IWidePictureSource;
 		/// <summary>The picture bridge the PPU core is, when it hands its picture to another console's chip (PPU_SMS, PPU_MD): its counters and the two pictures a fidelity measurement compares. Null for every other core.</summary>
 		public NesEmulator.Mix.IPictureBridgeInfo? GetPictureBridge() => bus?.ppu as NesEmulator.Mix.IPictureBridgeInfo;
 		public string GetApuCoreId() => bus?.ActiveAPU?.GetType().Name ?? string.Empty;

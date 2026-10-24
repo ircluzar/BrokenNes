@@ -237,13 +237,17 @@ public sealed partial class SnesSession : IConsoleSession
         board.RunFrame();
         if (down != null)
         {
-            var f = down.Render(snesPpu!, mid);     // an enhanced chip: the SNES's own 256 x 224 / 239, all its layers; a stock one: the NES's 256 x 240
+            var f = down.Render(snesPpu!, mid);     // an enhanced chip: the SNES's own 256 x 224 / 239, all its layers (the WideMess widescreen chip: 400 wide); a stock one: the NES's 256 x 240
             Array.Copy(f.Argb, frame, f.Width * f.Height);
-            width = f.Width; height = f.Height;
+            width = f.Width; height = f.Height; wideBridge = f.Side > 0;
             return;
         }
+        wideBridge = false;
         PublishNativePicture();
     }
+
+    /// <summary>True while the WideMess widescreen chip draws the picture (route WMS:WMSS): the frame is 400 wide with square pixels.</summary>
+    private bool wideBridge;
 
     /// <summary>The SNES picture chip's own picture (256 wide, or 512 when a line was drawn in a hi-res mode) as the frame the apps show.</summary>
     private void PublishNativePicture()
@@ -266,7 +270,7 @@ public sealed partial class SnesSession : IConsoleSession
     public int FrameWidth => width;
     public int FrameHeight => height;
     /// <summary>256 for a SNES picture (a 512-wide hi-res frame shows at 256); 400 for a WideMess wide frame, whose pixels are square.</summary>
-    public int DisplayWidth => width == PPU_WMS.WideWidth && wms != null ? PPU_WMS.WideWidth : 256;
+    public int DisplayWidth => wideBridge || (width == PPU_WMS.WideWidth && wms != null) ? width : 256;
     public int SampleRate => board.Apu.SampleRate;
     public int ReadSamples(short[] buffer) => board.Apu.ReadSamples(buffer);
     public bool HasBattery => board.Cart.HasBattery && board.Cart.Sram.Length > 0;
@@ -290,7 +294,7 @@ public sealed class GbSession : IConsoleSession
     /// <summary>The picture bridge onto a NES chip, when the picture is on one (tests: the enhanced chip's layers).</summary>
     internal GbToNes? PictureBridge => toNes;
     private GbToSnes? toSnes;
-    private readonly uint[] frame = new uint[ExtPicture.MaxWidth * ExtPicture.MaxLines];
+    private readonly uint[] frame = new uint[ExtPicture.MaxViewWidth * ExtPicture.MaxLines];
     private int width = PPU_GB.Width, height = PPU_GB.Height;
     private string cpuId, ppuId, apuId;
     private readonly string mapperName;

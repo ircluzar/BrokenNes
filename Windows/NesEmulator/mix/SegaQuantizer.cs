@@ -184,6 +184,25 @@ internal sealed class SegaQuantizer
         for (int g = 0; g < groups; g++) { prev[g * 3] = Palette[g][1]; prev[g * 3 + 1] = Palette[g][2]; prev[g * 3 + 2] = Palette[g][3]; }
     }
 
+    /// <summary>
+    /// Items added after <see cref="Solve"/>: the map cells only a wider view's side columns show (<see cref="ExtPicture.ViewWidth"/>, the WideMess widescreen chip). Each takes the solved palette that draws it with the
+    /// least error; the palettes, every earlier item's group and the next frame's starting point stay exactly as solved, so the guest's own picture is what it is without them. Allocation-free once warm.
+    /// </summary>
+    /// <returns>The items no palette draws exactly (their colours are not in the guest's own picture): the side columns' colour loss, for the counters.</returns>
+    public int Fit(int fromItem)
+    {
+        int n = count, lossy = 0;
+        if (Group.Length < n) Array.Resize(ref Group, Math.Max(n, Group.Length * 2));
+        for (int i = fromItem; i < n; i++)
+        {
+            int best = 0; long be = long.MaxValue;
+            for (int g = 0; g < Palette.Length; g++) { long e = Cost(i, g); if (e < be) { be = e; best = g; } }
+            Group[i] = best;
+            if (be > 0) lossy++;
+        }
+        return lossy;
+    }
+
     /// <summary>Total error of the last solution and the number of pixels it covers (diagnosis).</summary>
     public (long error, long pixels) Quality()
     {

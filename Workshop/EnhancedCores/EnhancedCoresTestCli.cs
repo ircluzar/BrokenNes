@@ -64,6 +64,9 @@ internal static class EnhancedCoresTestCli
             if (Want("states3")) Guard("states3: save states with the other consoles' enhanced chips (loaded, or refused with the reason)", EnhancedPhase3Tests.States);
             if (Want("own3")) Guard("own3: a console's own game on its enhanced chips draws and sounds exactly as on the stock chips", EnhancedPhase3Tests.OwnNeutral);
             if (Want("speed3")) Guard("speed3: frames a second on the enhanced chips of the other consoles (information)", EnhancedPhase3Tests.Speed);
+            if (Want("wmsmenu")) Guard("wmsmenu: the WideMess's chips on the other consoles' menus, only where the WideMess is offered", WideMessGuestTests.Menus);
+            if (Want("wms")) Guard("wms: the WideMess widescreen chip (400 wide: each layer extended, repeated or filled as its translator's width says) and the WideMess sound chip, on every other console", () => { WideMessGuestTests.Pictures(); WideMessGuestTests.Sound(); });
+            if (Want("wmsgames")) Guard("wmsgames: real games on the WideMess chips: the middle identical to the SNES enhanced chip's picture every frame, the sound with no voice dropped, no allocation a frame", WideMessGuestTests.GamesCheck);
         }
         finally { (GbLook.Palette, GbLook.InvertBackground, GbLook.InvertSprites) = savedLook; PPU_DMG.IndexShadesForTests = false; PPU_GBE.BackdropIgnoresInversionForTests = false; PPU_GBE.IndexShadesForTests = false; }
         Console.WriteLine($"\n{Passes} passed, {Fails} failed");
@@ -71,7 +74,7 @@ internal static class EnhancedCoresTestCli
     }
 
     // =========================================================================================================== menu
-    private static readonly string[] FamilyOrder = { "NES", "SNES", "Game Boy", "Master System", "Genesis" };
+    private static readonly string[] FamilyOrder = { "NES", "SNES", "Game Boy", "Master System", "Genesis", "WideMess" };
 
     /// <summary>Null when <paramref name="menu"/> is in the three sections in order (own best: stock before enhanced; other consoles' best: by family, stock before enhanced within a route; then the rest)
     /// and every best core's label says its grade; otherwise why not.</summary>

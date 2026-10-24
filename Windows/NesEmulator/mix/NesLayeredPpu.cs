@@ -35,11 +35,17 @@ public abstract class NesLayeredPpu : NesFrontedPpu, IEnhancedPictureChip
     protected override void Present()
     {
         GroupChr(rowChr);
-        nes.Fill(chip.Layers, Nt, Pal, rowChr, ChrAtLine(120).Data, FrameOam, LineCtrl[0], LineX, LineY, LineMask);
+        nes.Fill(chip.Layers, Nt, Pal, rowChr, ChrAtLine(120).Data, FrameOam, LineCtrl[0], LineX, LineY, LineMask, NesToLayers.NametableWidth(bus.cartridge));
         chip.DrawLayers();
-        var src = chip.Picture; int w = chip.PictureWidth, h = chip.PictureHeight;
+        // the NES's own 256 columns: the chip's picture, or the middle of a wider one (the WideMess widescreen chip shows more on each side: PPU_WMSS hands the whole of it to the apps that show it)
+        var src = chip.Picture; int w = chip.PictureWidth, h = chip.PictureHeight, x0 = w > 256 ? (w - 256) / 2 : 0;
         for (int y = 0; y < 240; y++)
-            for (int x = 0; x < 256; x++) StoreRgb(x, y, x < w && y < h ? src[y * w + x] : 0xFF000000u);
+            for (int x = 0; x < 256; x++) StoreRgb(x, y, x + x0 < w && y < h ? src[y * w + x + x0] : 0xFF000000u);
         if (nes.TileOverflow > 0) Counters.Add("background tiles past the layer's 1023", nes.TileOverflow);
+        if (nes.SideOverflow > 0) Counters.Add("side-column tiles past the layer's 1023 (the WideMess widescreen view)", nes.SideOverflow);
+        AfterPresent();
     }
+
+    /// <summary>After a frame was drawn (the WideMess widescreen chip counts its sides here).</summary>
+    protected virtual void AfterPresent() { }
 }

@@ -444,8 +444,10 @@ namespace BrokenNes.Windows
                             // Only lock when actually copying to reduce contention
                             using (PerformanceProfiler.Time("FrameBuffer.Copy"))
                             {
-                                byte[]? nesFrameBuffer = nes.GetFrameBuffer();
-                                if (nesFrameBuffer != null && nesFrameBuffer.Length == NES_WIDTH * NES_HEIGHT * 4 && backBuffer != null)
+                                // a NES picture chip that draws wider than the NES (the WideMess widescreen chip, PPU_WMSS): its whole picture at its own size; back to the NES's 256 x 240 when another chip draws again
+                                byte[]? nesFrameBuffer = nes.WidePicture is { HasWidePicture: true } wide ? CopyWideNesFrame(wide) : nesWideShown && !NesDisplayIsBack() ? null : nes.GetFrameBuffer();
+                                if (nesFrameBuffer == WideFrameCopied) RequestRenderFrame();
+                                else if (nesFrameBuffer != null && nesFrameBuffer.Length == NES_WIDTH * NES_HEIGHT * 4 && backBuffer != null)
                                 {
                                     lock (emulationLock)
                                     {
@@ -633,7 +635,7 @@ namespace BrokenNes.Windows
                 // Get the framebuffer from the PPU
                 byte[]? nesFrameBuffer = nes.GetFrameBuffer();
                 
-                if (nesFrameBuffer != null && nesFrameBuffer.Length == NES_WIDTH * NES_HEIGHT * 4)
+                if (nesFrameBuffer != null && nesFrameBuffer.Length == NES_WIDTH * NES_HEIGHT * 4 && frameBuffer.Bits.Length == NES_WIDTH * NES_HEIGHT)
                 {
                     // Copy framebuffer data to DirectBitmap (convert byte[] to expected format)
                     frameBuffer.CopyFromBytes(nesFrameBuffer);

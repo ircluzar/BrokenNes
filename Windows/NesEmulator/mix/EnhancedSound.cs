@@ -324,9 +324,10 @@ namespace NesEmulator.Mix
     /// <summary>The built-in routes: each console's enhanced chips add their line here as they are made (SNES, Genesis, Master System / Game Gear).</summary>
     internal static partial class EnhancedChipRoutes
     {
-        public static void Register() { RegisterSnes(); RegisterGenesis(); RegisterMasterSystem(); }
+        public static void Register() { RegisterSnes(); RegisterGenesis(); RegisterMasterSystem(); RegisterWideMess(); }
         static partial void RegisterSnes();
         static partial void RegisterGenesis();
         static partial void RegisterMasterSystem();
+        static partial void RegisterWideMess();
     }
 }
