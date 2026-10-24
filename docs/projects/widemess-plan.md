@@ -110,6 +110,18 @@ game unlocks the extensions (an unlock write plus an ID register a game reads). 
 - **A project template:** `brokendev new widemess` (the "starter kit" improvement from the BrokenDev page).
 - `build`, `verify`, `run` and `play` for WideMess projects, plus a sample game that uses every feature.
 
+## Spinoffs: an FPGA core or a C++ port (later)
+
+The user (2026-10-24): "it would be very useful later if we were to make a spinoff of widemess as an fpga core or as a cpp port".
+Neither is planned yet. Two things already built make them possible:
+
+- **The spec** (`docs/projects/widemess-spec.md`) is the contract, written independently of BrokenNes's code.
+- **The WideMess test cartridge** is built to be their conformance suite:
+  - it checks itself, and shows pass or fail on screen;
+  - it writes its results to a documented table in RAM, so a test harness on any implementation can read them;
+  - it can run every self-checking test in sequence, unattended;
+  - it relies only on the spec.
+
 ## Super VRUN: WideMess edition (later)
 
 **Only after Super VRUN is complete.**
