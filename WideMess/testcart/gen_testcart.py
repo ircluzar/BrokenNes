@@ -347,7 +347,7 @@ cell_first = len(ui.tiles)
 for hue in range(3):
     for lv in range(16):
         px = [[CELL + hue * 16 + lv] * 8 for _ in range(8)]
-        for i in range(8): px[0][i] = px[7][i] = px[i][0] = px[i][7] = 0
+        for i in range(8): px[0][i] = px[7][i] = 0          # a dark rim above and below: cells side by side join up
         n = ui.add(px)[0]
         assert n == cell_first + hue * 16 + lv
 define('CELL_TILE', cell_first)
@@ -355,6 +355,89 @@ define('CELL_TILE', cell_first)
 pack.put(ui.blob(), 'UITILES')
 for k, m in maps.items(): pack.put(m, 'MAP_' + k.upper())
 print(f'ui: {len(ui.tiles)} tiles ({len(ui.blob())} bytes), maps {", ".join(maps)}')
+
+# ------------------------------------------------------------------ test 1: milestone 1's eight layers (WideMess/testroms/layers)
+
+# its 1,024 colours and 33 tiles as they are, and the eight 64 x 32 maps layers.asm builds (the same rule, here, so the cartridge can upload
+# them and read them back): a 2 x 2-tile block is layer n's when (x/2 + y/2 + n) mod 4 = 0; its tile is 1 + 4n + ((x/2 + y) mod 4); odd layers
+# put block rows 0 and 1 of every 4 in front (the priority bit)
+M1 = os.path.join(HERE, '..', 'testroms', 'layers')
+with open(os.path.join(M1, 'palette.bin'), 'rb') as f: m1pal = f.read()
+with open(os.path.join(M1, 'tiles.bin'), 'rb') as f: m1tiles = f.read()
+assert len(m1pal) == 2048 and len(m1tiles) == 33 * 64
+pack.put(m1pal, 'M1PAL'); pack.put(m1tiles, 'M1TILES')
+m1maps = bytearray()
+for layer in range(8):
+    for y in range(32):
+        for x in range(64):
+            if ((x // 2 + y // 2 + layer) & 3) == 0:
+                e = 1 + 4 * layer + ((x // 2 + y) & 3)
+                if layer & 1 and not (y & 2): e |= 0x1000
+            else: e = 0
+            m1maps += struct.pack('<H', e)
+pack.put(m1maps, 'M1MAPS')      # 32 KB: layer n's map at + n x 4 KB
+
+# ------------------------------------------------------------------ test 7: the memories' patterns
+
+# 64 KB of pseudo-random bytes (a 32-bit xorshift): every memory test writes it from an offset that differs by bank and by pass, and compares
+# what it reads back with the same ROM bytes, so a memory that aliases two banks, drops an address bit or sticks a data bit is caught.
+x = 0x2545F491
+pattern = bytearray()
+while len(pattern) < 0x10000:
+    x ^= (x << 13) & 0xFFFFFFFF; x ^= x >> 17; x ^= (x << 5) & 0xFFFFFFFF
+    pattern.append(x & 0xFF)
+pack.put(pattern, 'PATTERN')
+# the WideMess sprite table's 2 KB (spec 3.3): two patterns that leave its reserved bits 0 (bytes 1 and 3 keep bits 0-1, byte 5 bits 0-3)
+VALID = [0xFF, 0x03, 0xFF, 0x03, 0xFF, 0x0F, 0xFF, 0xFF]
+oam_a = bytes(pattern[0x3000 + i] & VALID[i % 8] for i in range(2048))
+oam_b = bytes((~pattern[0x3000 + i]) & VALID[i % 8] for i in range(2048))
+assert pack.put(oam_a, 'OAMPAT_A')[0] == pack.put(oam_b, 'OAMPAT_B')[0], 'the two sprite-table patterns must share a bank'
+
+# the memory screen's cells: items 0-15 work RAM $70-$7F, 16-23 video RAM units, 24-39 sound RAM banks; 40-45 the lines below (status column)
+tables = []     # lines of tc_tables.inc (included in the code bank)
+cells = []
+for i in range(16): cells.append((5 + i // 8, 6 + (i % 8) * 5, f'${0x70 + i:02X}'))
+for i in range(8): cells.append((9, 6 + i * 5, f' {i:X} '))
+for i in range(16): cells.append((12 + i // 8, 6 + (i % 8) * 5, f' {i:X} '))
+for i in range(6): cells.append((16 + i, 42, '   '))
+tables.append('MemCellRow: .DB ' + ', '.join(str(r) for r, _, _ in cells))
+tables.append('MemCellCol: .DB ' + ', '.join(str(c) for _, c, _ in cells))
+tables.append('MemCellText: .DB ' + ', '.join(f'"{t}"' for _, _, t in cells))
+define('MEM_ITEMS', len(cells))
+# the SNES screens' palettes (mode 0, BG1): style s is palette s: colour 4 s + 1 the top, + 2 the lower rows, + 3 the shadow; colour 0 the backdrop
+snespal = []
+for k, (top, low, sh) in enumerate(STYLES): snespal += [rgb(2, 2, 6) if k == 0 else 0, rgb(*top), rgb(*low), rgb(*sh)]
+tables.append('SnesPalette: .DW ' + ', '.join(f'${c:04X}' for c in snespal))
+
+# ------------------------------------------------------------------ test 6: what spec section 2's cycle model predicts for the speed test's loops
+# A frame is 262 lines of 1,364 master clocks; the DRAM refresh takes 40 a line. SNES speed: ROM (SlowROM) and work RAM 8 clocks, internal
+# cycles 6, I/O 6; fast mode: every cycle 2 clocks except the I/O registers, which keep 6. FastROM (MEMSEL = 1, bank $80): ROM 6 clocks.
+#   loop A = inc dp + lda dp + beq (16-bit A): 6 ROM, 6 work RAM, 2 internal          -> 108 / 28 clocks
+#   loop B = loop A + lda $4214 (16-bit): + 3 ROM, 2 I/O                              -> 144 / 46
+#   loop A from FastROM: its 6 ROM cycles at 6 clocks                                  -> 96 / 28
+#   the NMI that ends a frame's count: the cartridge's NmiEntry (jmp (nmijump): 3 ROM, 2 work RAM), then speed.asm's handler (entry, rep, pha,
+#   sep, lda $4210, rep, inc, pla, rti: 16 ROM, 16 work RAM, 11 internal, 1 I/O)        -> 368 / 102
+# The count in a frame is (frame - refresh - NMI) / loop; the checks allow 0.5% either way (Workshop's milestone-4 check allows the same).
+FRAME, REFRESH = 1364 * 262, 40 * 262
+NMI_SLOW, NMI_FAST = (16 + 3) * 8 + (16 + 2) * 8 + 11 * 6 + 1 * 6, (16 + 3 + 16 + 2 + 11) * 2 + 6
+assert (NMI_SLOW, NMI_FAST) == (368, 102)
+def count(loop, nmi): return (FRAME - REFRESH - nmi) / loop
+VBLANK = 1364 * 37 - 40 * 37            # general DMA's clocks in one vblank, less the refresh
+spd = []   # (name, result offset, predicted, lo, hi, the feature it needs, row, column)
+for name, off, loop, nmi, need in [('A', 0x00, 108, NMI_SLOW, 0), ('AF', 0x02, 28, NMI_FAST, 8), ('B', 0x04, 144, NMI_SLOW, 0), ('BF', 0x06, 46, NMI_FAST, 8),
+                                   ('R', 0x08, 96, NMI_SLOW, 0), ('RF', 0x0A, 28, NMI_FAST, 8)]:
+    p = count(loop, nmi)
+    spd.append((name, off, round(p), math.ceil(p * 0.995), math.floor(p * 1.005), need))
+ideal, ideal_fast = VBLANK // 8, VBLANK // 4
+spd.append(('D', 0x0C, ideal, ideal - 1536, ideal + 512, 0))
+spd.append(('DF', 0x0E, ideal_fast, ideal_fast - 2560, ideal_fast + 512, 0x20))
+for name, off, p, lo, hi, need in spd:
+    define(f'SPD_{name}_P', p); define(f'SPD_{name}_LO', lo); define(f'SPD_{name}_HI', hi)
+print('speed predictions: ' + ', '.join(f'{n} {p} [{lo}-{hi}]' for n, _, p, lo, hi, _ in spd))
+tables.append('SpeedTable:')
+for name, off, p, lo, hi, need in spd:
+    tables.append(f'  .DW {lo}, {hi}, {p}\n  .DB ${off:02X}, ${need:02X}')
+define('SPD_ROWS', len(spd))
 
 # ------------------------------------------------------------------ output
 
@@ -365,5 +448,8 @@ pack.write_defs(os.path.join(WORK, 'tc_datadefs.inc'))
 with open(os.path.join(WORK, 'tc_gen.inc'), 'w', newline='\n') as f:
     f.write('; generated by gen_testcart.py: do not edit\n')
     for k, v in defs: f.write(f'.DEFINE {k} {v}\n')
+with open(os.path.join(WORK, 'tc_tables.inc'), 'w', newline='\n') as f:
+    f.write('; generated by gen_testcart.py: do not edit (tables in the code bank)\n')
+    for line in tables: f.write(line + '\n')
 used = sum(len(b) for b in pack.banks)
 print(f'gen_testcart: {used:,} bytes of data in {sum(1 for b in pack.banks if b)} banks')

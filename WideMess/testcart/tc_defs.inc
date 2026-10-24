@@ -252,6 +252,17 @@
   nmitmp      dsb 8             ; the NMI's own scratch (it interrupts the main program's use of tmp)
   runstep     dw                ; the run-all's position in RunAllOrder
   waitn       dw
+  patoff      dw                ; the memory test: where in the pattern a bank starts
+  passes      dw
+  item        dw
+  wbank       dw                ; a work-RAM bank (0-15) / a video RAM unit / a sound RAM bank
+  snddirty    db                ; 1: the memory test wrote over the sound test's samples
+  row         dw                ; (words: their high bytes stay 0, so 16-bit index loads read them whole)
+  col         dw
+  st          dw
+  t1dirty     db                ; test 1: the legend changed
+  nocount     db                ; 1: Judge judges again (a live test's later rounds) without counting; a failure fails the test
+  saved       dw
   scratch     dsb 32
 .ENDE
 
@@ -295,3 +306,4 @@
 .DEFINE DMASINK  $7E8000        ; the speed test's DMA lands here (16 KB)
 .DEFINE OAMBUF   $7EC000        ; a WideMess sprite table (2 KB)
 .DEFINE HDMABUF  $7EC800        ; HDMA tables
+.DEFINE SNESBUF  $7ED000        ; a SNES BG map made from the text buffer (32 x 28 entries)

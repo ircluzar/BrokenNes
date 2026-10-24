@@ -47,7 +47,6 @@
 .ENDEMUVECTOR
 
 .EMPTYFILL $00
-.COMPUTESNESCHECKSUM
 
 .INCLUDE "tc_gen.inc"
 .INCLUDE "tc_datadefs.inc"
@@ -212,6 +211,10 @@ GoScreen:
 .INDEX 16
   sta screen
   sta RES_SCREEN
+  stz WMSPEED           ; every screen starts at SNES speed, normal DMA, SlowROM, HDMA off, the full NMI
+  stz WMDMA
+  stz MEMSEL
+  stz HDMAEN
   rep #$20
 .ACCU 16
   and #$00FF
@@ -219,8 +222,12 @@ GoScreen:
   sta screen2
   lda #VbNone
   sta vbhook            ; no vblank work while the screen sets up
+  lda #NmiFull
+  sta nmijump
   sep #$20
 .ACCU 8
+  lda #$81
+  sta NMITIMEN
   ldx #$1FFF            ; a fresh stack: GoScreen never returns
   txs
   ldx screen2
@@ -852,6 +859,10 @@ PanelRowTile:
 
 .INCLUDE "tc_video.asm"
 .INCLUDE "tc_screens.asm"
+.INCLUDE "tc_mem.asm"
+.INCLUDE "tc_speed.asm"
+.INCLUDE "tc_layers.asm"
+.INCLUDE "tc_tables.inc"
 
 .ENDS
 

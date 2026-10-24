@@ -68,6 +68,7 @@ BeginTest:
 .ACCU 8
   stz checks
   stz fails
+  stz nocount
   jsr TestIndex
   lda #'R'
   sta RES_STATUS,x
@@ -102,14 +103,26 @@ TestIndex:
 ; Judge: carry set = the check passed. Counts it and prints PASS or FAIL at X.
 Judge:
 .ACCU 8
-  bcc +
+  bcc @fail
+  lda nocount
+  bne +
   inc checks
++
   lda #'P'
   jmp PrintStatus
-+
+@fail:
+  lda nocount
+  bne +
   inc checks
   inc fails
   lda #'F'
+  jmp PrintStatus
++
+  phx
+  jsr TestIndex
+  lda #'F'
+  sta RES_STATUS,x      ; a later round failed: the test fails
+  plx
   jmp PrintStatus
 
 ; BackOnB: B or START goes back to the menu.
@@ -641,22 +654,7 @@ SnesScreen:
 .INDEX 16
   jsr ResetVideo
   stz NMITIMEN
-  lda #$80
-  sta VMAIN
-  stz VMADDL
-  stz VMADDH
-  lda #$01
-  sta DMAP0             ; two registers, $2118 / $2119
-  lda #<VMDATAL
-  sta BBAD0
-  ldx #(FONT2BPP & $FFFF)
-  stx A1T0
-  lda #(FONT2BPP >> 16)
-  sta A1B0
-  ldx #FONT2BPP_LEN
-  stx DAS0
-  lda #$01
-  sta MDMAEN
+  jsr SnesFont
   ; the eight styles as mode 0's eight 4-colour palettes of BG1
   stz CGADD
   ldx #$0000
@@ -678,10 +676,25 @@ SnesScreen:
   PRINT 5, 1, TxtSnes2
 ++
   PRINT 22, 1, TxtSnes3
-  stz VMADDL
+  jsr TextToSnes
+  jsr DmaSnesText
+  lda #$01
+  sta TM                ; BG1
+  stz BGMODE
   lda #$04
-  sta VMADDH            ; word $0400
+  sta BG1SC             ; map at word $0400, 32 x 32
+  stz BG12NBA           ; tiles at word 0
+  lda #$0F
+  sta INIDISP
+-
+  bra -
+
+; TextToSnes: the text buffer's columns 0-31 of rows 0-27, as SNES BG map entries (code | style << 10: the style is the palette) in SNESBUF.
+TextToSnes:
+.ACCU 8
+.INDEX 16
   ldx #$0000
+  ldy #$0000
 -
   rep #$20
 .ACCU 16
@@ -694,10 +707,15 @@ SnesScreen:
   asl a
   asl a                 ; style x 1024: the palette field (bits 10-12)
   ora tmp
-  sta VMDATAL
+  phx
+  tyx
+  sta.l SNESBUF,x
+  plx
+  iny
+  iny
   inx
   inx
-  txa                   ; the SNES map is 32 entries a row: skip the buffer's columns 32-63
+  txa                   ; 32 entries a row: skip the buffer's columns 32-63
   and #$007F
   cmp #$0040
   bne +
@@ -710,26 +728,48 @@ SnesScreen:
 .ACCU 8
   cpx #(28 * 128)
   bcc -
-  lda #$01
-  sta TM                ; BG1
-  stz BGMODE
-  lda #$04
-  sta BG1SC             ; map at word $0400, 32 x 32
-  stz BG12NBA           ; tiles at word 0
-  lda #$0F
-  sta INIDISP
--
-  bra -
+  rts
 
-SnesPalette:            ; per style: backdrop / unused, the top, the lower rows, the shadow (BGR555)
-  .DW $1442, $7FFF, $7F79, $1020
-  .DW $0000, $5E93, $4E0F, $1020
-  .DW $0000, $21EA, $1CA5, $0400
-  .DW $0000, $253F, $109B, $0005
-  .DW $0000, $27DF, $0EFF, $00C5
-  .DW $0000, $7F89, $7AA5, $18C0
-  .DW $0000, $1A7F, $09BD, $0045
-  .DW $0000, $7DFD, $7537, $1824
+; DmaSnesText: SNESBUF to SNES video RAM word $0400 (BG1's map). In forced blank or vblank.
+DmaSnesText:
+  lda #$80
+  sta VMAIN
+  stz VMADDL
+  lda #$04
+  sta VMADDH
+  lda #$01
+  sta DMAP0             ; two registers, $2118 / $2119
+  lda #<VMDATAL
+  sta BBAD0
+  ldx #(SNESBUF & $FFFF)
+  stx A1T0
+  lda #(SNESBUF >> 16)
+  sta A1B0
+  ldx #(28 * 64)
+  stx DAS0
+  lda #$01
+  sta MDMAEN
+  rts
+
+; SnesFont: the 2-bit font to SNES video RAM word 0 and the eight styles as BG1's eight 4-colour palettes (mode 0: colours 0-31).
+SnesFont:
+  lda #$80
+  sta VMAIN
+  stz VMADDL
+  stz VMADDH
+  lda #$01
+  sta DMAP0
+  lda #<VMDATAL
+  sta BBAD0
+  ldx #(FONT2BPP & $FFFF)
+  stx A1T0
+  lda #(FONT2BPP >> 16)
+  sta A1B0
+  ldx #FONT2BPP_LEN
+  stx DAS0
+  lda #$01
+  sta MDMAEN
+  rts
 TxtSnes0: .DB S_YELLOW, "WIDEMESS TEST CARTRIDGE 1.0", EOS
 TxtSnes1: .DB S_WHITE, "THIS IS A WIDEMESS CARTRIDGE.", NL, NL
           .DB "THIS CONSOLE IS NOT A WIDEMESS:", NL, "WMID ($4221) READ ", S_RED, "$", HEX8, RES_WMID & $FF, RES_WMID >> 8, S_WHITE, ", NOT $57.", NL, NL
@@ -852,13 +892,10 @@ TxtIdResult:   .DB S_WHITE, "RESULT  ", STATUS, (RES_STATUS + 7) & $FF, (RES_STA
 
 RefEnter:
   jmp BackToMenu
-T1Enter:
 T2Enter:
 T3Enter:
 T4Enter:
 T5Enter:
-T6Enter:
-T7Enter:
 .ACCU 8
 .INDEX 16
   lda screen
@@ -875,13 +912,10 @@ T7Enter:
   jmp RunAllNext
 +
   rts
-T1Frame:
 T2Frame:
 T3Frame:
 T4Frame:
 T5Frame:
-T6Frame:
-T7Frame:
 RefFrame:
   jmp BackOnB
 TxtTodo: .DB S_ORANGE, "THIS TEST IS NOT IN THIS BUILD YET.", EOS
