@@ -255,7 +255,25 @@ centre compared line by line.
 - E5 who gets them: not a `.wms` game, not the SNES console, no widescreen without a profile; a SNES game that unlocks WideMess loses them,
   and its picture is then its own.
 - E6 the eleven games in lockstep with the SNES console (above).
-- E7 speed: widescreen + no flicker runs at 461 (SMW), 422 (F-Zero) and 553 (Super Mario Kart) frames a second in Workshop, the picture
-  alone 589-829; drawing allocates nothing.
+- E7 speed: widescreen + no flicker runs at 357-461 (SMW), 399-422 (F-Zero) and 466-553 (Super Mario Kart) frames a second in Workshop
+  over the runs (a shared CPU), the picture alone 425-829; drawing allocates nothing.
 
-**Results**: RESULTS-PENDING
+**Results** (on the branch with milestone 3 merged):
+- **`--wms-test` 252 of 252** with every milestone's checks, the nine SNES games of the identity check (frame- and sound-identical on both
+  consoles, and drawn wide with the centre identical) and milestone 6's E checks on the eleven games.
+- **219 of 219 on the reference paths** (`--reference-paths`, the E checks on Super Mario World, F-Zero and Contra III).
+- **The SNES path is unchanged:**
+  - the ALttP speed-pass golden is IDENTICAL, on the fast and the reference paths;
+  - an interleaved A/B against `f14f0c6` (ALttP, 2,400 frames, 4 pairs) gives 1.036, or 0.999 without the cold first pair: noise.
+- **The desktop smoke test passes 15 of 15**, with the new M6 step.
+- **UAT `run-suite.ps1`: 125 pass, 0 fail, 16 skip, 3 info.**
+- Lite and the plugin's Core build (WideMess stays hidden there).
+- In the real app, Super Mario World finds its profile beside the program; "use the profile" plus better sound gives 400 x 224 at the
+  app's 60 fps.
+
+**Open:**
+- Fast CPU's hang in Chrono Trigger and Contra III is not traced (Super Mario World's is: the game's own sound-driver timing).
+- No flicker had little to do in this play: eight of the eleven games never went over the SNES's limits with visible sprites. A
+  shoot-'em-up (Gradius III, R-Type III) would exercise it more.
+- Games that stream their maps just past the SNES edge (Donkey Kong Country, Super Castlevania IV, Contra III) could look better with
+  a direction-aware rule. Today's rules are static per scene.
