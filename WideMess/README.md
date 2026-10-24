@@ -39,6 +39,8 @@ BrokenNes.Workshop.exe --wms-pack  --in game.sfc --out game.wms [--title T] [--f
 BrokenNes.Workshop.exe --wms-shot  --rom game.wms --out shot.png [--frames 60] [--scale 3] [--console wms|snes] [--wide]
 BrokenNes.Workshop.exe --wms-sheet --rom game.wms --out sheet.png [--frames 120]
 BrokenNes.Workshop.exe --wms-run   --rom game.wms [--frames N] [--input "f:Buttons,..."] [--png-at f,...] [--out-dir d] [--voices] [--wram ADDR:LEN] [--ram-trap] [--trap-pc BBXXXX]
+BrokenNes.Workshop.exe --enhanced-test --only wmsmenu,wms,wmsown,wmsgames
+BrokenNes.Workshop.exe --wms-guest-sheet --out dir [--only "name,name"] [--scale 2]
 ```
 
 - `--wms-test` runs the milestones' checks, each with a negative control (milestone 3's sound checks are its sections S1-S6). With `--snes`, it also runs each SNES game frame for frame on the SNES
@@ -52,6 +54,9 @@ BrokenNes.Workshop.exe --wms-run   --rom game.wms [--frames N] [--input "f:Butto
   work RAM above 128 KB, voices sounding: the measure BrokenDev's `verify` checks), the sound unit, the audio and the hottest PCs; `--voices`
   lists the voices' registers and the WideMess directory, `--wram` dumps work RAM, `--ram-trap` / `--trap-pc` stop at a crash and list the
   instructions before it.
+- `--enhanced-test --only wmsmenu,wms,wmsown,wmsgames` (milestone 7b) checks the WideMess chips on the other consoles' menus (docs/projects/enhanced-cores.md section 6);
+  `wmsgames` needs the user's library (X:\EMULATION, the local Sega roster) and `wmsown` the test ROMs here (run it from the repository).
+- `--wms-guest-sheet` (milestone 7b) draws contact sheets of other consoles' games on the widescreen chip beside their own picture.
 - Workshop is a GUI-subsystem program. In PowerShell, run it with `Start-Process -Wait -NoNewWindow -RedirectStandardOutput`.
 
 The desktop app's own check is `UAT/entrypoints/widemess-desktop-smoke.ps1 -Exe <BrokenNes.Windows.exe>`. It uses a scratch settings folder.

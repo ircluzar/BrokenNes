@@ -66,6 +66,7 @@ internal static class EnhancedCoresTestCli
             if (Want("speed3")) Guard("speed3: frames a second on the enhanced chips of the other consoles (information)", EnhancedPhase3Tests.Speed);
             if (Want("wmsmenu")) Guard("wmsmenu: the WideMess's chips on the other consoles' menus, only where the WideMess is offered", WideMessGuestTests.Menus);
             if (Want("wms")) Guard("wms: the WideMess widescreen chip (400 wide: each layer extended, repeated or filled as its translator's width says) and the WideMess sound chip, on every other console", () => { WideMessGuestTests.Pictures(); WideMessGuestTests.Sound(); });
+            if (Want("wmsown")) Guard("wmsown: the other consoles' chips on the WideMess console, as the SNES console offers them; what of a WideMess game they do not carry, counted", WideMessGuestTests.OnWideMess);
             if (Want("wmsgames")) Guard("wmsgames: real games on the WideMess chips: the middle identical to the SNES enhanced chip's picture every frame, the sound with no voice dropped, no allocation a frame", WideMessGuestTests.GamesCheck);
         }
         finally { (GbLook.Palette, GbLook.InvertBackground, GbLook.InvertSprites) = savedLook; PPU_DMG.IndexShadesForTests = false; PPU_GBE.BackdropIgnoresInversionForTests = false; PPU_GBE.IndexShadesForTests = false; }

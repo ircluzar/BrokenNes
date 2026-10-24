@@ -110,9 +110,13 @@ namespace NesEmulator.Mix
                 else sb.Append(" (").Append(L.RealWidth).Append(L.FixedToScreen ? ", on the screen)" : ")");
             }
             if (layers.Mode7.Enabled) sb.Append(sb.Length > 0 ? "; " : "").Append("Mode 7 extend");
-            sb.Append(layers.SpritesBeyondEdges ? "; sprites extend" : "; sprites fill");
+            if (sb.Length == 0) sb.Append("no layer");
+            sb.Append(spritesBeyond ? "; sprites extend" : "; sprites fill");
             return sb.ToString();
         }
+
+        /// <summary>The status line's words for the sides of the last frame (makes a string: read it when the status is asked for, not every frame).</summary>
+        public string SidesSummary => $"WideMess widescreen: {DescribeRules()}; side columns x lines extended {Extended}, repeated {Repeated}, filled {Filled}";
 
         public string Describe() =>
             $"{layers.Describe()} drawn {PictureWidth} wide ({Side} columns a side): {DescribeRules()}; side columns x lines extended {Extended}, repeated {Repeated}, filled {Filled}, masked {MaskedSideColumns}, not reported {UnreportedLines}";
@@ -123,7 +127,7 @@ namespace NesEmulator.Mix
             c.Add("WideMess widescreen: side columns x lines repeated (no more picture there)", Repeated);
             c.Add("WideMess widescreen: side columns x lines filled (a layer laid out on the screen)", Filled - UnreportedLines * 2L * Side);
             c.Add("WideMess widescreen: layer-lines filled because their width was not reported", UnreportedLines);
-            c.Add("WideMess widescreen: lines without sprites in the sides (the guest's off-screen sprite places are not real)", SpriteLinesNotExtended);
+            c.Add("WideMess widescreen: lines whose sprites stop at the guest's edges (its sprite places beyond them are not real)", SpriteLinesNotExtended);
             c.Level("WideMess widescreen: side columns x lines extended", Extended);
         }
 

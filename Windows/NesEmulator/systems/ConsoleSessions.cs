@@ -96,9 +96,10 @@ public sealed partial class SnesSession : IConsoleSession
         GameId = (wmsGame ? "wms" : "sfc") + ConsoleSessions.Sha1(rom);
         var cart = wmsGame ? WmsFile.Cartridge(image, wmsHeader!) : SnesCartridge.Load(image);   // a .wms game's map is its header's (the WideMess map, or LoROM / HiROM checked against the image)
         ISnesApu unit;
-        if (apu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { MixConfig.NesBackApu = apu[4..]; unit = SnesCores.CreateApu("NES"); }
+        // another console's sound chip (through the NES registers, or directly): on the WideMess console the game's own unit inside the bridge is the WideMess's, so its sound RAM port and unlock line still work
+        if (apu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { MixConfig.NesBackApu = apu[4..]; unit = wideMess ? new NesApuOnSnes(new APU_WMS(), 0) : SnesCores.CreateApu("NES"); }
         else if (apu.Equals("HLE", StringComparison.OrdinalIgnoreCase)) unit = new APU_HLE();
-        else if (CoreCatalog.IsDirectRoute(apu)) unit = new SnesApuOnChip(apu, null, 0);          // another console's enhanced sound chip, directly
+        else if (CoreCatalog.IsDirectRoute(apu)) unit = new SnesApuOnChip(apu, wideMess ? new APU_WMS() : null, 0);          // another console's enhanced sound chip, directly
         else if (apu.Equals("SFCS", StringComparison.OrdinalIgnoreCase)) unit = new APU_SFCS();   // the SNES's own, enhanced: the stock unit for a SNES game
         else if (apu.Equals("WMS", StringComparison.OrdinalIgnoreCase)) unit = new APU_WMS();     // the WideMess sound chip: the SNES's until a game unlocks it
         else unit = new APU_SFC();
@@ -109,7 +110,7 @@ public sealed partial class SnesSession : IConsoleSession
             wms = (PPU_WMS)board.Ppu;
             board.WideMess = new WmsExtension(wms);
             board.WideMess.Clock = () => board.MasterClock;   // the sound RAM port lands at the CPU's moment (spec 4)
-            board.WideMess.Sound = unit as APU_WMS;
+            board.WideMess.Sound = Spc as APU_WMS;             // the WideMess sound chip, itself or inside another console's chip's bridge
         }
         else board = new BOARD_SFC(cart, unit, chip);
         cpuId = cpu; ppuId = ppu; apuId = apu;
@@ -213,7 +214,7 @@ public sealed partial class SnesSession : IConsoleSession
     public BOARD_SFC Board => board;
     /// <summary>The game's real SPC700 + DSP while it is the sound unit that is running (native, or inside a NES sound-chip bridge); null while the silent HLE stand-in is in its place.</summary>
     public APU_SFC? Spc => board.Apu as APU_SFC ?? (board.Apu as NesApuOnSnes)?.Front as APU_SFC ?? (board.Apu as SnesApuOnChip)?.Front as APU_SFC;
-    public string Description => $"{(wms != null ? "WideMess" : "SNES")} {Title} | CPU {cpuId} | PPU {ppuId} | APU {apuId}{chipLabel}{(board.WideMess is { Unlocked: true } ? " | unlocked" : "")}{(board.WideMess is { Unlocked: true, Sound: null } ? $" (no WideMess sound: APU {apuId} is a SNES sound chip)" : "")}";
+    public string Description => $"{(wms != null ? "WideMess" : "SNES")} {Title} | CPU {cpuId} | PPU {ppuId} | APU {apuId}{chipLabel}{(board.WideMess is { Unlocked: true } ? " | unlocked" : "")}{(board.WideMess is { Unlocked: true, Sound: null } ? $" (no WideMess sound: APU {apuId} is a SNES sound chip)" : "")}{NotCarried}{(down?.Enhanced is WmsWideChip wide ? " | " + wide.SidesSummary : "")}";
     public double FramesPerSecond => NtscFps;
     public string GameId { get; }
 
@@ -235,6 +236,7 @@ public sealed partial class SnesSession : IConsoleSession
     {
         mid = null;
         board.RunFrame();
+        if (wms != null) CountWideMessNotCarried();
         if (down != null)
         {
             var f = down.Render(snesPpu!, mid);     // an enhanced chip: the SNES's own 256 x 224 / 239, all its layers (the WideMess widescreen chip: 400 wide); a stock one: the NES's 256 x 240
@@ -248,6 +250,21 @@ public sealed partial class SnesSession : IConsoleSession
 
     /// <summary>True while the WideMess widescreen chip draws the picture (route WMS:WMSS): the frame is 400 wide with square pixels.</summary>
     private bool wideBridge;
+
+    // ---- the WideMess console on the other consoles' chips (milestone 7): what of a WideMess game they do not carry, counted (never a silent loss)
+    /// <summary>Frames a WideMess game drew in its own picture (the 8-layer mode or 400 wide) while another console's picture chip showed the game: that chip shows what the SNES registers say.</summary>
+    public long WideMessPictureFramesNotCarried { get; private set; }
+    /// <summary>Frames in which a WideMess game sounded its voices 8-31 while another console's sound chip played the game: those chips replay the S-DSP's eight voices.</summary>
+    public long WideMessVoiceFramesNotCarried { get; private set; }
+
+    private void CountWideMessNotCarried()
+    {
+        if (down != null && wms!.FrameIsWide) WideMessPictureFramesNotCarried++;
+        if ((board.Apu is NesApuOnSnes || board.Apu is SnesApuOnChip) && Spc is APU_WMS { Unlocked: true } w && w.Dsp.WideVoicesSounding > 0) WideMessVoiceFramesNotCarried++;
+    }
+
+    private string NotCarried => wms == null || (WideMessPictureFramesNotCarried == 0 && WideMessVoiceFramesNotCarried == 0) ? ""
+        : $" | not carried by the other console's chips: {(WideMessPictureFramesNotCarried > 0 ? $"{WideMessPictureFramesNotCarried} frames of the WideMess picture (8 layers or 400 wide: the {ppuId} chip shows the SNES registers)" : "")}{(WideMessPictureFramesNotCarried > 0 && WideMessVoiceFramesNotCarried > 0 ? ", " : "")}{(WideMessVoiceFramesNotCarried > 0 ? $"{WideMessVoiceFramesNotCarried} frames of WideMess voices 8-31 ({apuId} replays the S-DSP's eight)" : "")}";
 
     /// <summary>The SNES picture chip's own picture (256 wide, or 512 when a line was drawn in a hi-res mode) as the frame the apps show.</summary>
     private void PublishNativePicture()
@@ -393,7 +410,7 @@ public sealed class GbSession : IConsoleSession
 
     public ConsoleKind Console { get; }
     public string Title { get; }
-    public string Description => $"{Consoles.DisplayName(Console)} {Title} ({mapperName}) | CPU {cpuId} | PPU {ppuId} | APU {apuId}";
+    public string Description => $"{Consoles.DisplayName(Console)} {Title} ({mapperName}) | CPU {cpuId} | PPU {ppuId} | APU {apuId}{(toNes?.Enhanced is WmsWideChip wide ? " | " + wide.SidesSummary : "")}";
     public double FramesPerSecond => BOARD_GB.DmgFps;
     public string GameId { get; }
     /// <summary>The cartridge's accelerometer (MBC7), for apps that feed tilt.</summary>

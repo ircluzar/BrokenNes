@@ -107,7 +107,7 @@ namespace BrokenNes.Windows
                     Cpu = console == ConsoleKind.Nes ? nes?.GetCpuCoreId() : SelectedCore(console, CoreSlot.Cpu),
                     Ppu = console == ConsoleKind.Nes ? nes?.GetPpuCoreId() : SelectedCore(console, CoreSlot.Ppu),
                     Apu = console == ConsoleKind.Nes ? nes?.GetApuCoreId() : SelectedCore(console, CoreSlot.Apu),
-                    FrameWidth = s?.FrameWidth ?? NES_WIDTH, FrameHeight = s?.FrameHeight ?? NES_HEIGHT, Fps = currentFps,
+                    FrameWidth = s?.FrameWidth ?? (nes?.WidePicture is { HasWidePicture: true } nw ? nw.WideWidth : NES_WIDTH), FrameHeight = s?.FrameHeight ?? (nes?.WidePicture is { HasWidePicture: true } nh ? nh.WideHeight : NES_HEIGHT), Fps = currentFps,
                     // a picture that crosses a bridge says what it is and what it lost (Sega game on a NES chip, NES game on the Master System / Genesis chip)
                     PictureBridge = BridgeOf(s) is { } bi && bi.BridgeName != "none" ? bi.BridgeName : null,
                     PictureBridgeCounters = BridgeOf(s) is { } bc && bc.BridgeName != "none" ? new Dictionary<string, long>(bc.Counters.Totals) : null,
@@ -136,7 +136,17 @@ namespace BrokenNes.Windows
             server.GetConsoleFrame = () =>
             {
                 var s = session;
-                if (s == null) return null;
+                if (s == null)
+                {
+                    // the NES: its picture chip's own size when it draws wider than the NES (the WideMess widescreen chip, PPU_WMSS); otherwise the endpoint gives the NES's 256 x 240
+                    if (nes?.WidePicture is not { HasWidePicture: true } wide) return null;
+                    lock (emulationLock)
+                    {
+                        int ww = wide.WideWidth, wh = wide.WideHeight; var src = wide.WidePicture; var rgba = new byte[ww * wh * 4];
+                        for (int i = 0; i < ww * wh; i++) { uint c = src[i]; rgba[i * 4] = (byte)(c >> 16); rgba[i * 4 + 1] = (byte)(c >> 8); rgba[i * 4 + 2] = (byte)c; rgba[i * 4 + 3] = 255; }
+                        return (ww, wh, rgba);
+                    }
+                }
                 lock (emulationLock)
                 {
                     int w = s.FrameWidth, h = s.FrameHeight; var src = s.Frame; var rgba = new byte[w * h * 4];

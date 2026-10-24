@@ -562,8 +562,8 @@ public static class CoreCatalog
     /// <summary>The console's own enhanced chip (once it exists) and the routes to the other consoles' enhanced chips (once they exist), for the picture or the sound slot.</summary>
     private static void AddEnhanced(List<CoreOption> list, ConsoleKind console, CoreSlot slot)
     {
-        // the WideMess's chips on the other consoles' menus, and theirs on its, are its milestone 7
-        if (slot == CoreSlot.Cpu || console == ConsoleKind.Nes || console == ConsoleKind.WideMess) return;
+        // the WideMess's chips on the other consoles' menus, and theirs on its (milestone 7): the WideMess offers the other consoles' chips as the SNES console does (not the SNES's: its own WMS chips are the SNES's, and more)
+        if (slot == CoreSlot.Cpu || console == ConsoleKind.Nes) return;
         string own = Consoles.Family(console);
         if (OwnRouteOf(console) is { } mine && Built(mine))
         {
@@ -571,7 +571,7 @@ public static class CoreCatalog
             list.Add(new(r.Own, OwnEnhancedLabel(console, r.Own, slot), own));
         }
         foreach (var r in DirectRoutes)
-            if (r.Family != own && Built(r.Route)) list.Add(new(r.Route, RouteLabel(r.Route, slot), r.Family));
+            if (r.Family != own && Built(r.Route) && !(console == ConsoleKind.WideMess && r.Family == "SNES")) list.Add(new(r.Route, RouteLabel(r.Route, slot), r.Family));
     }
 
     private static string OwnEnhancedLabel(ConsoleKind console, string id, CoreSlot slot)
@@ -661,18 +661,26 @@ public static class CoreCatalog
                         break;
                 }
                 break;
-            // WideMess (docs/projects/widemess-spec.md): its own parts only for now. The CPU is the SNES's 65816 (its fast mode arrives in milestone 4), the picture chip is the
-            // WideMess's (the SNES chip + 512 KB video RAM, 1,024 colours, 8 layers of 256 colours, 400 wide), the sound chip is the WideMess's (the SNES's S-SMP + S-DSP + voices
-            // 8-31 and 1 MB of sound RAM, spec section 4), with the SNES's own as the alternative.
+            // WideMess (docs/projects/widemess-spec.md): the CPU is the SNES's 65816 (its fast mode arrives in milestone 4), the picture chip is the WideMess's (the SNES chip + 512 KB video RAM, 1,024 colours,
+            // 8 layers of 256 colours, 400 wide), the sound chip is the WideMess's (the SNES's S-SMP + S-DSP + voices 8-31 and 1 MB of sound RAM, spec section 4), with the SNES's own as the alternative.
+            // Milestone 7: the other consoles' chips, as the SNES console offers them (a SNES game's picture and sound translated; a WideMess game's own picture - 8 layers, 400 wide - and its voices 8-31 are
+            // not carried by them, and the session counts every frame they were not: SnesSession.Description).
             case ConsoleKind.WideMess:
                 switch (slot)
                 {
                     case CoreSlot.Cpu: list.Add(new("WMS", "WMS (65816; the fast mode arrives in milestone 4)", "WideMess")); break;
-                    case CoreSlot.Ppu: list.Add(new("WMS", "WMS (WideMess picture chip: the SNES chip + 512 KB video RAM, 1,024 colours, 8 layers of 256 colours, 400 wide)", "WideMess")); break;
+                    case CoreSlot.Ppu:
+                        list.Add(new("WMS", "WMS (WideMess picture chip: the SNES chip + 512 KB video RAM, 1,024 colours, 8 layers of 256 colours, 400 wide)", "WideMess"));
+                        foreach (var id in NesPictureChips()) list.Add(new("NES:" + id, NesPictureLabel(id), NesFamilyOf(CoreSlot.Ppu, id)));
+                        break;
                     default:
                         list.Add(new("WMS", "WMS (WideMess sound chip: the S-SMP + S-DSP, plus 24 more voices in BRR or 16-bit PCM and 1 MB of sound RAM once a game unlocks them)", "WideMess"));
                         list.Add(new("SFC", "SFC (the SNES's S-SMP + S-DSP: 8 voices, 64 KB, no WideMess sound)", "WideMess"));
                         list.Add(new("HLE", "HLE (silent - no sound, fastest)", "WideMess"));
+                        foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), NesFamilyOf(CoreSlot.Apu, id)));
+                        if (CoreRegistry.ApuIds.Contains("DMG", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMG", "Game Boy sound chip (through NES registers)", "Game Boy"));
+                        if (CoreRegistry.ApuIds.Contains("DMGS", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMGS", "Game Boy sound chip with extra channel banks: all eight of the S-DSP's voices (through NES registers)", "Game Boy"));
+                        foreach (var id in HubSoundChips("SNES").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "Game Boy")) list.Add(new("NES:" + id, HubSoundLabel(id, "the S-DSP's eight voices"), NesFamilyOf(CoreSlot.Apu, id)));
                         break;
                 }
                 break;

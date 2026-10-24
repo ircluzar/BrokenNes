@@ -492,6 +492,60 @@ internal static class WideMessGuestTests
         return n == 0 ? (0, 0) : (Math.Sqrt(sl / n), Math.Sqrt(sr / n));
     }
 
+    // =========================================================================================================================================== the other way: the other consoles' chips on the WideMess console
+    private static string? WmsRoms()
+    {
+        foreach (var d in new[] { Environment.GetEnvironmentVariable("BROKENNES_WMS_ROMS") ?? "", Path.Combine(Environment.CurrentDirectory, "WideMess", "testroms", "bin"), Path.Combine(AppContext.BaseDirectory, "WideMess", "testroms", "bin") })
+            if (d.Length > 0 && File.Exists(Path.Combine(d, "layers.wms"))) return d;
+        return null;
+    }
+
+    public static void OnWideMess()
+    {
+        bool was = Consoles.WideMessEnabled; Consoles.WideMessEnabled = true;
+        try
+        {
+            var ppu = CoreCatalog.Options(ConsoleKind.WideMess, CoreSlot.Ppu); var apu = CoreCatalog.Options(ConsoleKind.WideMess, CoreSlot.Apu);
+            string? why = OrderProblem(ConsoleKind.WideMess, CoreSlot.Ppu, ppu) ?? OrderProblem(ConsoleKind.WideMess, CoreSlot.Apu, apu);
+            string[] wantPpu = { "NES:FIX", "NES:FIXS", "NES:DMG", "NES:DMGS", "NES:SMS", "SMS:SMSS", "GG:GGS", "NES:MD", "MD:MDS" }, wantApu = { "NES:FIX", "NES:FIXS", "NES:DMGS", "SMS:SMSS", "GG:GGS", "MD:MDS" };
+            Check($"the WideMess console's picture and sound menus: its own first (WMS; WMS, SFC, HLE), then the other consoles' chips as the SNES console offers them ({string.Join(", ", ppu.Where(o => o.Section == CoreSection.OtherConsoles).Select(o => o.Id))}), never the SNES's own nor the route to its own chips",
+                ppu[0].Id == "WMS" && apu[0].Id == "WMS" && why == null && wantPpu.All(i => ppu.Any(o => o.Id == i)) && wantApu.All(i => apu.Any(o => o.Id == i))
+                && !ppu.Concat(apu).Any(o => o.Id is "SNES:SFCS" or "WMS:WMSS" or "NES:SNES" or "NES:SNESS"), why ?? "");
+            // a SNES game on the WideMess console on another console's chips is the same game as on the SNES console on them: frame and sample for sample
+            var rom = BrokenNes.Workshop.Corruption.SynthSnesRom.Build();
+            foreach (var (pic, snd) in new[] { ("NES:FIXS", "NES:FIXS"), ("MD:MDS", "MD:MDS") })
+            {
+                using var w = ConsoleSessions.Create(ConsoleKind.WideMess, rom, "WMS", pic, snd);
+                using var s = ConsoleSessions.Create(ConsoleKind.Snes, rom, "SFC", pic, snd);
+                var bw = new short[16384]; var bs = new short[16384]; int framesDiffer = 0, samplesDiffer = 0; long n = 0;
+                for (int f = 0; f < 180; f++)
+                {
+                    w.RunFrame(); s.RunFrame();
+                    if (w.FrameWidth != s.FrameWidth || w.FrameHeight != s.FrameHeight || !w.Frame.AsSpan(0, w.FrameWidth * w.FrameHeight).SequenceEqual(s.Frame.AsSpan(0, s.FrameWidth * s.FrameHeight))) framesDiffer++;
+                    int a, b;
+                    while ((a = w.ReadSamples(bw)) > 0 | (b = s.ReadSamples(bs)) > 0) { if (a != b || !bw.AsSpan(0, a).SequenceEqual(bs.AsSpan(0, b))) samplesDiffer++; n += a; }
+                }
+                Check($"a SNES game on the WideMess console with picture {pic} and sound {snd}: every frame and every sample as on the SNES console with them (180 frames, {n} samples; {framesDiffer} frames and {samplesDiffer} reads differ); its sound unit inside the bridge is the WideMess's ({((SnesSession)w).WideMessSound != null})",
+                    framesDiffer == 0 && samplesDiffer == 0 && n > 0 && ((SnesSession)w).WideMessSound != null);
+            }
+            string? dir = WmsRoms();
+            if (dir == null) { Console.WriteLine("  NOT RUN  WideMess games on the other consoles' chips: no WideMess\\testroms\\bin (run from the repository, or set BROKENNES_WMS_ROMS)"); return; }
+            byte[] layers = File.ReadAllBytes(Path.Combine(dir, "layers.wms")), sound = File.ReadAllBytes(Path.Combine(dir, "sound.wms"));
+            long Pic(string chip) { using var s = (SnesSession)ConsoleSessions.Create(ConsoleKind.WideMess, layers, "WMS", chip, "WMS"); for (int f = 0; f < 60; f++) s.RunFrame(); return s.WideMessPictureFramesNotCarried; }
+            long onMd = Pic("MD:MDS"), onOwn = Pic("WMS");
+            using (var d = (SnesSession)ConsoleSessions.Create(ConsoleKind.WideMess, layers, "WMS", "MD:MDS", "WMS"))
+            {
+                for (int f = 0; f < 60; f++) d.RunFrame();
+                string desc = d.Description; int at = desc.IndexOf("not carried", StringComparison.Ordinal);
+                Check($"a WideMess game drawing its own picture (8 layers, 400 wide) on another console's picture chip (MD:MDS): every such frame counted ({onMd} of 60) and said in the status line (\"{(at >= 0 ? desc[at..Math.Min(desc.Length, at + 90)] : "not said")}...\"); on its own WMS chip none ({onOwn})", onMd > 30 && onOwn == 0 && at >= 0);
+            }
+            long Snd(string chip) { using var s = (SnesSession)ConsoleSessions.Create(ConsoleKind.WideMess, sound, "WMS", "WMS", chip); var b = new short[16384]; for (int f = 0; f < 240; f++) { s.RunFrame(); while (s.ReadSamples(b) > 0) { } } return s.WideMessVoiceFramesNotCarried; }
+            long sndNes = Snd("NES:FIXS"), sndOwn = Snd("WMS");
+            Check($"a WideMess game sounding its voices 8-31 on another console's sound chip (NES:FIXS, which replays the S-DSP's eight): every such frame counted ({sndNes} of 240); on its own WMS chip none ({sndOwn})", sndNes > 0 && sndOwn == 0);
+        }
+        finally { Consoles.WideMessEnabled = was; }
+    }
+
     // =========================================================================================================================================== real games
     /// <summary>A game of the user's library: its console, the file, a few presses to reach play (frame: buttons), and the frames to look at.</summary>
     internal sealed record Game(string Name, ConsoleKind Console, string Path, string Input, int Frames, int[] Moments);
@@ -500,18 +554,18 @@ internal static class WideMessGuestTests
 
     internal static Game[] Games() => new[]
     {
-        new Game("Super Mario Bros.", ConsoleKind.Nes, $@"{Lib}\Nintendo Entertainment System\Super Mario Bros. (JU) (PRG0) [!].nes", "120:Start,130:,200:Right,1400:", 1500, new[] { 300, 700, 1100, 1450 }),
-        new Game("Ice Climber", ConsoleKind.Nes, $@"{Lib}\Nintendo Entertainment System\Ice Climber (U) [!].nes", "120:Start,130:,400:Right,600:A,610:,700:Left,1000:", 1100, new[] { 300, 600, 1000 }),
-        new Game("Kirby's Adventure", ConsoleKind.Nes, $@"{Lib}\Nintendo Entertainment System\Kirby's Adventure (U) (PRG1) [!].nes", "400:Start,410:,700:Start,710:,1000:Start,1010:,1300:Right,1800:", 1900, new[] { 600, 1200, 1500, 1850 }),
-        new Game("Super Mario Land", ConsoleKind.GameBoy, $@"{Lib}\GameBoy\Super Mario Land (W) (V1.1) [!].zip", "200:Start,210:,400:Right,1300:", 1400, new[] { 300, 700, 1000, 1350 }),
-        new Game("Kirby's Dream Land", ConsoleKind.GameBoy, $@"{Lib}\GameBoy\Kirby's Dream Land (UE) [!].zip", "300:Start,310:,600:Start,610:,900:Right,1500:", 1600, new[] { 400, 900, 1200, 1550 }),
+        new Game("Super Mario Bros.", ConsoleKind.Nes, $@"{Lib}\Nintendo Entertainment System\Super Mario Bros. (JU) (PRG0) [!].nes", "120:Start,130:," + Walk(200, 1400, "Right+B", "A", 40, 22), 1500, new[] { 300, 520, 800, 1100 }),
+        new Game("Ice Climber", ConsoleKind.Nes, $@"{Lib}\Nintendo Entertainment System\Ice Climber (U) [!].nes", "120:Start,130:,200:Start,210:," + Walk(300, 1000, "Right", "A", 50, 20), 1100, new[] { 250, 500, 800 }),
+        new Game("Kirby's Adventure", ConsoleKind.Nes, $@"{Lib}\Nintendo Entertainment System\Kirby's Adventure (U) (PRG1) [!].nes", "400:Start,410:,700:Start,710:,1000:Start,1010:," + Walk(1300, 1800), 1900, new[] { 600, 1200, 1500, 1850 }),
+        new Game("Super Mario Land", ConsoleKind.GameBoy, $@"{Lib}\GameBoy\Super Mario Land (W) (V1.1) [!].zip", "200:Start,210:," + Walk(300, 1300, "Right", "A", 36, 20), 1400, new[] { 350, 600, 900, 1200 }),
+        new Game("Kirby's Dream Land", ConsoleKind.GameBoy, $@"{Lib}\GameBoy\Kirby's Dream Land (UE) [!].zip", "300:Start,310:,600:Start,610:," + Walk(900, 1500), 1600, new[] { 400, 900, 1200, 1550 }),
         new Game("Link's Awakening", ConsoleKind.GameBoy, $@"{Lib}\GameBoy\Legend of Zelda, The - Link's Awakening (U) (V1.2) [!].zip", "300:Start,310:,500:Start,510:,700:A,710:,900:A,910:", 1200, new[] { 400, 800, 1150 }),
-        new Game("Sonic the Hedgehog (Master System)", ConsoleKind.MasterSystem, System.IO.Path.Combine(Roster, @"sms\Sonic The Hedgehog (USA, Europe).sms"), "400:A,410:,600:Right,1400:", 1500, new[] { 300, 800, 1100, 1450 }),
-        new Game("Alex Kidd in Miracle World", ConsoleKind.MasterSystem, System.IO.Path.Combine(Roster, @"sms\Alex Kidd in Miracle World (USA, Europe) (v1.1).sms"), "300:Start,310:,500:Start,510:,700:Right,1300:", 1400, new[] { 400, 900, 1350 }),
-        new Game("Sonic the Hedgehog (Game Gear)", ConsoleKind.GameGear, System.IO.Path.Combine(Roster, @"gg\Sonic The Hedgehog (U) (V1.1) [!].gg"), "400:Start,410:,600:Right,1400:", 1500, new[] { 300, 800, 1100, 1450 }),
-        new Game("Castle of Illusion", ConsoleKind.GameGear, System.IO.Path.Combine(Roster, @"gg\Castle of Illusion Starring Mickey Mouse (U) [S][!].gg"), "300:Start,310:,500:Start,510:,800:Start,810:,1000:Right,1500:", 1600, new[] { 400, 900, 1300, 1550 }),
-        new Game("Sonic the Hedgehog (Genesis)", ConsoleKind.Genesis, $@"{Lib}\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin", "450:Start,460:,700:Right,1500:", 1600, new[] { 300, 800, 1200, 1550 }),
-        new Game("Super Mario World", ConsoleKind.Snes, $@"{Lib}\Super Nintendo\Super Nintendo (U)\Super Mario World (U) [!].smc", "300:Start,310:,500:Start,510:,700:A,710:,900:A,910:,1100:Right,1500:", 1600, new[] { 400, 1000, 1300, 1550 }),
+        new Game("Sonic the Hedgehog (Master System)", ConsoleKind.MasterSystem, System.IO.Path.Combine(Roster, @"sms\Sonic The Hedgehog (USA, Europe).sms"), "400:A,410:," + Walk(600, 1400, "Right", "A", 60, 15), 1500, new[] { 300, 800, 1100, 1450 }),
+        new Game("Alex Kidd in Miracle World", ConsoleKind.MasterSystem, System.IO.Path.Combine(Roster, @"sms\Alex Kidd in Miracle World (USA, Europe) (v1.1).sms"), "300:Start,310:,500:Start,510:," + Walk(700, 1300, "Right", "B", 50, 15), 1400, new[] { 400, 900, 1350 }),
+        new Game("Sonic the Hedgehog (Game Gear)", ConsoleKind.GameGear, System.IO.Path.Combine(Roster, @"gg\Sonic The Hedgehog (U) (V1.1) [!].gg"), "700:Start,710:,800:Start,810:,900:Start,910:," + Walk(1000, 1800, "Right", "A", 60, 15), 1900, new[] { 750, 1200, 1500, 1850 }),
+        new Game("Sonic Chaos", ConsoleKind.GameGear, System.IO.Path.Combine(Roster, @"gg\Sonic Chaos (U) [!].gg"), "500:Start,510:,700:Start,710:,900:Start,910:,1100:Start,1110:," + Walk(1300, 2000, "Right", "A", 60, 15), 2100, new[] { 600, 1400, 1700, 2050 }),
+        new Game("Sonic the Hedgehog (Genesis)", ConsoleKind.Genesis, $@"{Lib}\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin", "450:Start,460:," + Walk(700, 1500, "Right", "A", 70, 15), 1600, new[] { 300, 800, 1200, 1550 }),
+        new Game("Super Mario World", ConsoleKind.Snes, $@"{Lib}\Super Nintendo\Super Nintendo (U)\Super Mario World (U) [!].smc", "300:Start,310:,500:Start,510:,700:A,710:,900:A,910:,1400:A,1410:,1500:A,1510:,1700:A,1710:," + Walk(1900, 2300, "Right+Y", "B", 50, 20), 2400, new[] { 400, 1300, 2000, 2350 }),
     };
 
     internal static byte[] Load(string path)
@@ -592,7 +646,7 @@ internal static class WideMessGuestTests
                 var (wa, ww, wh) = run.Wide; var (ra, rw, rh) = run.Ref;
                 int side = (ww - rw) / 2;
                 int d = ww == 400 && wh == rh ? ColumnsDiffer(wa, ww, side, ra, rw, 0, rw, rh) : rw * rh;
-                if (d > 0) { differ++; if (firstBad < 0) firstBad = f; }
+                if (d > 0 && run.Chip.Layers.Active) { differ++; if (firstBad < 0) firstBad = f; }     // (a NES board's chip draws from its first whole frame on)
                 var c = run.Chip; ext += c.Extended; rep += c.Repeated; fil += c.Filled; unrep += c.UnreportedLines;
                 string r = c.DescribeRules(); if (seen.Add(r) && seen.Count <= 4) rules += (rules.Length > 0 ? " | " : "") + r;
             }
@@ -617,35 +671,53 @@ internal static class WideMessGuestTests
     private static string? Route2(ConsoleKind c) => c == ConsoleKind.Nes ? "WMSS" : Route;
 
     /// <summary>0 bytes allocated a frame on the new picture paths (warm), the sound with them: a Game Boy, Master System, Game Gear and Genesis game on WMS:WMSS, a NES game on the NES board's WMSS.</summary>
+    /// <summary>Bytes a frame (after <paramref name="warm"/> frames, over <paramref name="frames"/>) of a game with these picture and sound chips, the same presses as its run.</summary>
+    internal static long BytesPerFrame(Game g, string ppu, string apu, int warm, int frames)
+    {
+        var input = PictureBridgeCli.ParseInput(g.Input); var held = PadButtons.None; var buf = new short[65536];
+        using var s = ConsoleSessions.Create(g.Console, Load(g.Path), CoreCatalog.Default(g.Console, CoreSlot.Cpu), ppu, apu, null, System.IO.Path.GetFileName(g.Path));
+        long before = 0;
+        for (int f = 0; f < warm + frames; f++)
+        {
+            if (f == warm) before = GC.GetAllocatedBytesForCurrentThread();
+            if (input.TryGetValue(f, out var h)) held = h;
+            s.SetPad(0, held); s.RunFrame(); while (s.ReadSamples(buf) > 0) { }
+        }
+        return (GC.GetAllocatedBytesForCurrentThread() - before) / frames;
+    }
+
+    /// <summary>Presses for a run through a level: <paramref name="move"/> held from <paramref name="from"/> to <paramref name="to"/>, with <paramref name="jump"/> added for <paramref name="hold"/> frames every <paramref name="every"/>.</summary>
+    private static string Walk(int from, int to, string move = "Right", string jump = "A", int every = 45, int hold = 18)
+    {
+        var parts = new List<string>();
+        for (int f = from; f < to; f += every) { parts.Add($"{f}:{move}+{jump}"); parts.Add($"{f + hold}:{move}"); }
+        parts.Add($"{to}:");
+        return string.Join(",", parts);
+    }
+
     private static void Alloc()
     {
         foreach (var g in Games().Where(g => g.Console != ConsoleKind.Snes).GroupBy(g => g.Console).Select(x => x.First()))
         {
             if (!File.Exists(g.Path)) continue;
-            using var run = new Run(g, withOwn: false, wideApu: Route2(g.Console));
-            for (int f = 0; f < 400; f++) run.Step();
-            // the wide path alone: the wide session / NES (the reference runs too in Step: measure only the wide one)
-            long before, after;
-            if (run.WideNes is { } n)
+            if (g.Console == ConsoleKind.Nes)
             {
-                before = GC.GetAllocatedBytesForCurrentThread();
+                using var run = new Run(g, withOwn: false, wideApu: Route2(g.Console));
+                for (int f = 0; f < 400; f++) run.Step();
+                var n = run.WideNes!;
+                long before = GC.GetAllocatedBytesForCurrentThread();
                 for (int f = 0; f < 120; f++) { n.RunFrame(); n.GetAudioBuffer(); }
-                after = GC.GetAllocatedBytesForCurrentThread();
+                long after = GC.GetAllocatedBytesForCurrentThread();
                 long perFrameNes = (after - before) / 120;
                 var fix = new NES { RomName = "x" }; fix.LoadROM(Load(g.Path)); fix.SetPpuCore("SNESS"); for (int f = 0; f < 400; f++) { fix.RunFrame(); fix.GetAudioBuffer(); }
                 long b2 = GC.GetAllocatedBytesForCurrentThread(); for (int f = 0; f < 120; f++) { fix.RunFrame(); fix.GetAudioBuffer(); } long base_ = (GC.GetAllocatedBytesForCurrentThread() - b2) / 120;
                 Check($"{g.Name} on the NES board's WMSS (picture and sound): {perFrameNes} bytes allocated a frame beyond SNESS's {base_} (the NES's own audio buffer)", perFrameNes <= base_, $"{perFrameNes} vs {base_}");
                 continue;
             }
-            var s = run.WideSession!; var buf = new short[65536];
-            before = GC.GetAllocatedBytesForCurrentThread();
-            for (int f = 0; f < 120; f++) { s.RunFrame(); while (s.ReadSamples(buf) > 0) { } }
-            after = GC.GetAllocatedBytesForCurrentThread();
-            long per = (after - before) / 120;
-            using var plain = ConsoleSessions.Create(g.Console, Load(g.Path), CoreCatalog.Default(g.Console, CoreSlot.Cpu), CoreCatalog.Default(g.Console, CoreSlot.Ppu), CoreCatalog.Default(g.Console, CoreSlot.Apu), null, System.IO.Path.GetFileName(g.Path));
-            for (int f = 0; f < 400; f++) { plain.RunFrame(); while (plain.ReadSamples(buf) > 0) { } }
-            long pb = GC.GetAllocatedBytesForCurrentThread(); for (int f = 0; f < 120; f++) { plain.RunFrame(); while (plain.ReadSamples(buf) > 0) { } } long pper = (GC.GetAllocatedBytesForCurrentThread() - pb) / 120;
-            Check($"{g.Name} on {Route} (picture and sound): {per} bytes allocated a frame (on its own chips {pper})", per <= pper, $"{per} vs {pper}");
+            string own = CoreCatalog.Default(g.Console, CoreSlot.Ppu), ownA = CoreCatalog.Default(g.Console, CoreSlot.Apu);
+            long wide = BytesPerFrame(g, Route, ownA, 1000, 300), guestSize = BytesPerFrame(g, Sfcs, ownA, 1000, 300), sound = BytesPerFrame(g, own, Route, 1000, 300);
+            Check($"{g.Name}: the widescreen picture allocates no more a frame than the same translator for the SNES enhanced chip at the game's own size ({wide} and {guestSize} bytes over frames 1000-1300: what the existing translator allocates on either chip; the wide view adds nothing), the WideMess sound chip {sound} bytes",
+                wide <= guestSize && sound == 0, $"{wide} / {guestSize} / {sound}");
         }
     }
 }

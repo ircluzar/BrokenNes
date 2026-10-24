@@ -14,6 +14,8 @@
              switching the console to the SNES moves it to the SNES, where it draws its red "not a WideMess" screen at 256 x 224.
     CONTROL  the negative-control ROM (layers_nounlock.wms: the WideMess registers written without the unlock) stays a SNES picture: 256 wide, black.
     SOUND    the sound test ROM (sound.wms, milestone 3) runs on the WideMess sound chip (APU WMS) and unlocks it (Workshop --wms-test measures its sound).
+    GUEST    milestone 7b: the NES (its embedded test.nes) on the NES board's WideMess widescreen chip (PPU WMSS) is shown 400 x 240, and 256 x 240 again back on FIX; a Master System game
+             (the local Sega roster's Sonic, when it is there) on WMS:WMSS picture and sound is 400 x 192 (Workshop --enhanced-test --only wms,wmsgames measures what the sides show).
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
 
 .EXAMPLE
@@ -147,6 +149,30 @@ try {
     $end = (Get-Date).AddSeconds(10)
     do { Start-Sleep -Milliseconds 400; $st = Get-Status $id } while ((Get-Date) -lt $end -and -not ($st.description -match 'WideMess sound' -and $st.description -match 'unlocked'))
     Check 'sound_chip' ($st.console -eq 'wms' -and $st.apu -eq 'WMS' -and $st.description -match 'WideMess sound' -and $st.description -match '\| unlocked') "console $($st.console), APU $($st.apu), $($st.description)"
+
+    # GUEST (milestone 7b): another console's game on the WideMess widescreen chip. The NES (its embedded test.nes) on the NES board's WMSS: the app shows the picture 400 wide, and 256 x 240 again on FIX;
+    # a Master System game (the local Sega roster, when it is there) on WMS:WMSS picture and sound: 400 x 192, its sound on the WideMess sound chip.
+    Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/console/select/nes' | Out-Null
+    Start-Sleep -Seconds 2
+    $set = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/console/core/ppu/WMSS'
+    $f6 = Wait-Frame $id { param($f) $f.Width -eq 400 }
+    $st = Get-Status $id
+    Check 'guest_nes_wide' ([bool]$set.success -and $st.console -eq 'nes' -and $st.ppu -eq 'PPU_WMSS' -and $f6.Width -eq 400 -and $f6.Height -eq 240 -and $st.frameWidth -eq 400) "console $($st.console), PPU $($st.ppu), picture $($f6.Width) x $($f6.Height), status $($st.frameWidth) x $($st.frameHeight)"
+    $set = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/console/core/ppu/FIX'
+    Start-Sleep -Seconds 2
+    $f7 = Get-Frame $id; $st = Get-Status $id
+    Check 'guest_nes_back' ([bool]$set.success -and $st.ppu -eq 'PPU_FIX' -and $f7.Width -eq 256 -and $st.frameWidth -eq 256) "PPU $($st.ppu), picture $($f7.Width) x $($f7.Height), status $($st.frameWidth)"
+    $sms = Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms'
+    if (Test-Path -LiteralPath $sms) {
+        Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/load-rom' -Body @{ path = $sms } | Out-Null
+        Start-Sleep -Seconds 3
+        $route = [Uri]::EscapeDataString('WMS:WMSS')
+        $p1 = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path "/api/console/core/ppu/$route"
+        $a1 = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path "/api/console/core/apu/$route"
+        $f8 = Wait-Frame $id { param($f) $f.Width -eq 400 }
+        $st = Get-Status $id
+        Check 'guest_sms_wide' ([bool]$p1.success -and [bool]$a1.success -and $st.console -eq 'sms' -and $st.ppu -eq 'WMS:WMSS' -and $st.apu -eq 'WMS:WMSS' -and $f8.Width -eq 400 -and $f8.Height -eq 192 -and $f8.Colors -gt 4) "console $($st.console), PPU $($st.ppu), APU $($st.apu), picture $($f8.Width) x $($f8.Height), $($f8.Colors) colours; $($st.pictureBridgeSummary)"
+    } else { Write-Host "[NOT RUN] guest_sms_wide: no Master System game at $sms" }
 
     $result.pass = -not ($checks.Values | Where-Object { -not $_.ok })
 }
