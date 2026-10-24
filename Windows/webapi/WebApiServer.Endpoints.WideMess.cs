@@ -26,6 +26,8 @@ namespace BrokenNes.Windows.WebApi
         public Func<WideMessEnhanceRequest, (string? error, object state)>? SetWideMessEnhance { get; set; }
         /// <summary>A scratch profile for the running game (its JSON, checked like a file; held in memory only): (null, or why it was refused).</summary>
         public Func<string, string?>? SetWideMessScratchProfile { get; set; }
+        /// <summary>The embedded WideMess test cartridge started on the WideMess console, as Console > WideMess test cartridge: null, or why not.</summary>
+        public Func<string?>? OpenWideMessTestCart { get; set; }
 
         private void RegisterWideMessEndpoints(WebApplication app)
         {
@@ -39,6 +41,14 @@ namespace BrokenNes.Windows.WebApi
                 if (SetWideMessEnhance == null) return Results.BadRequest(new { success = false, error = "not available" });
                 var (error, state) = SetWideMessEnhance(req);
                 return error == null ? Results.Ok(new { success = true, state }) : Results.Ok(new { success = false, error, state });
+            });
+
+            // POST /api/widemess/testcart - the embedded WideMess test cartridge on the WideMess console (Console > WideMess test cartridge)
+            app.MapPost("/api/widemess/testcart", () =>
+            {
+                if (OpenWideMessTestCart == null) return Results.BadRequest(new { success = false, error = "not available" });
+                string? error = OpenWideMessTestCart();
+                return error == null ? Results.Ok(new { success = true }) : Results.Ok(new { success = false, error });
             });
 
             // POST /api/widemess/profile <a profile's JSON> - a scratch profile for the running game (memory only; the profiles folder is untouched)

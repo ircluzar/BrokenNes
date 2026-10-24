@@ -199,6 +199,79 @@ internal static partial class WideMessCli
         return true;
     }
 
+    /// <summary><c>--wms-testcart-shots --rom widemess-testcart.wms --out DIR</c>: every screen of the test cartridge (the live pages as they move, the tests after their checks, the
+    /// summary of a run-all, the SNES screen, a "not available" screen) as PNGs, and sheet.png, all of them labelled on one page.</summary>
+    public static int TestCartShots(string[] args)
+    {
+        RomTestCli.EnsureConsole();
+        Consoles.WideMessEnabled = true;
+        string rom = Opt(args, "rom", ""), outDir = Opt(args, "out", "");
+        if (!File.Exists(rom) || outDir == "") { Console.Error.WriteLine("usage: --wms-testcart-shots --rom widemess-testcart.wms --out DIR"); return 2; }
+        Directory.CreateDirectory(outDir);
+        byte[] wms = File.ReadAllBytes(rom);
+        var shots = new List<(string file, string label, uint[] px, int w, int h)>();
+        void Take(SnesSession s, string file, string label)
+        {
+            shots.Add((file, label, Snapshot(s), s.FrameWidth, s.FrameHeight));
+            MixLab.MixLabCli.SaveArgb(s.Frame, s.FrameWidth, s.FrameHeight, Path.Combine(outDir, file));
+            Console.WriteLine($"{file}: {label}");
+        }
+        using (var s = Session(ConsoleKind.WideMess, wms))
+        {
+            Run(s, 40); Take(s, "title.png", "The title");
+            Tap(s, PadButtons.Start); WaitRam(s, TcScreen, 1); Run(s, 30); Take(s, "menu.png", "The menu");
+        }
+        var pages = new (int test, string[] names, int settle)[] { (1, new[] { "t1-layers" }, 60), (2, new[] { "t2-swarm", "t2-ref-sprites" }, 60), (3, new[] { "t3-spot", "t3-ref-windows" }, 60),
+                                                                   (4, new[] { "t4-mode1", "t4-mode0", "t4-mode5", "t4-mode2", "t4-mode7", "t4-ref-widesnes" }, 60), (5, new[] { "t5-sound" }, 30),
+                                                                   (6, new[] { "t6-speed" }, 60), (7, new[] { "t7-memories" }, 30), (8, new[] { "t8-identity" }, 30) };
+        string[] labels = { "", "1 Eight layers", "2 Sprites", "3 Windows and colour math", "4 The SNES modes drawn 400 wide", "5 Sound: 32 voices", "6 Fast CPU and fast DMA", "7 Memories", "8 Identity" };
+        foreach (var (test, names, settle) in pages)
+        {
+            using var s = Session(ConsoleKind.WideMess, wms);
+            if (!OpenTest(s, test)) { Console.Error.WriteLine($"test {test} did not open"); return 1; }
+            if (test == 7) for (int f = 0; f < 3000 && s.Board.Wram[0x12B0] == 0; f++) Run(s, 1);   // after a whole pass
+            for (int k = 0; k < names.Length; k++)
+            {
+                if (k > 0) { Tap(s, PadButtons.Right); Run(s, 40); }
+                if (test == 5) { Tap(s, PadButtons.X); Run(s, 3); }     // all 32 voices: the grid lit
+                Run(s, settle);
+                Take(s, names[k] + ".png", labels[test] + (names.Length > 1 ? $", page {k + 1}: {names[k][3..]}" : ""));
+            }
+        }
+        using (var s = Session(ConsoleKind.WideMess, wms))
+        {
+            for (int f = 1; f <= 4000 && s.Board.Wram[TcState] != 3; f++) { s.SetPad(0, f <= 30 ? PadButtons.Select : PadButtons.None); RunFramePeak(s); }
+            Run(s, 30); Take(s, "summary.png", "A run-all's summary (SELECT held at power-on)");
+        }
+        byte[] image = WmsFile.Payload(wms, out _);
+        using (var s = Session(ConsoleKind.Snes, image)) { Run(s, 60); Take(s, "snes.png", "On a SNES: the cartridge says what it is"); }
+        {
+            byte[] masked = (byte[])image.Clone(); masked[TcMaskOffset] = 0xFB;
+            using var s = Session(ConsoleKind.WideMess, WmsFile.Pack(masked, "masked", 2, 0));
+            if (OpenTest(s, 5)) { Run(s, 10); Take(s, "not-available.png", "WMFEAT without bit 2: test 5 not available"); }
+        }
+        // the sheet: two columns, each picture at 400 wide (256-wide ones centred), its label above it
+        const int W = 400, H = 224, gap = 12, label = 20, cols = 2;
+        int rows = (shots.Count + cols - 1) / cols;
+        using var sheet = new System.Drawing.Bitmap(cols * W + (cols + 1) * gap, rows * (H + label + gap) + gap);
+        using var g = System.Drawing.Graphics.FromImage(sheet);
+        using var font = new System.Drawing.Font("Segoe UI", 10f);
+        g.Clear(System.Drawing.Color.FromArgb(20, 22, 30));
+        for (int i = 0; i < shots.Count; i++)
+        {
+            var (file, text, px, w, h) = shots[i];
+            int x0 = gap + (i % cols) * (W + gap), y0 = gap + (i / cols) * (H + label + gap);
+            g.DrawString(text, font, System.Drawing.Brushes.White, x0, y0);
+            using var bmp = new System.Drawing.Bitmap(w, h);
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) bmp.SetPixel(x, y, System.Drawing.Color.FromArgb(unchecked((int)px[y * w + x])));
+            g.DrawImageUnscaled(bmp, x0 + (W - w) / 2, y0 + label);
+        }
+        string sheetPath = Path.Combine(outDir, "sheet.png");
+        sheet.Save(sheetPath, System.Drawing.Imaging.ImageFormat.Png);
+        Console.WriteLine($"{sheetPath}: {shots.Count} screens, {sheet.Width} x {sheet.Height}");
+        return 0;
+    }
+
     /// <summary>One frame; the loudest sample of its audio.</summary>
     private static int RunFramePeak(IConsoleSession s)
     {

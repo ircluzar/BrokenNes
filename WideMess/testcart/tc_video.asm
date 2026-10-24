@@ -202,6 +202,23 @@ SetupUI:
 UiCfg:
   .DB $1C, $2C, $24, $24, $24, $20, $20, $20
 
+; GlassPanels: with sprites+ (bit 1: windows and colour math at 400), the panels (BG2) half see-through: colour math adds the sub screen
+; (BG4-BG8, the backdrop's layers) halved. Without it the panels stay opaque.
+GlassPanels:
+.ACCU 8
+  lda RES_FEAT
+  and #FEAT_SPRITES
+  beq +
+  lda #$F8
+  sta WMTS              ; BG4-BG8 (the mountains, the stars, the sky) on the sub screen
+  lda #$02
+  sta WMCMATH           ; colour math on BG2
+  sta CGWSEL            ; with the sub screen (not the fixed colour)
+  lda #$40
+  sta CGADSUB           ; add, halved
++
+  rts
+
 ; ScreenOn: in forced blank, the text and the panels straight to video RAM, then the picture on.
 ScreenOn:
 .ACCU 8

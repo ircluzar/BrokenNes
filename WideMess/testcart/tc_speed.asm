@@ -22,6 +22,7 @@ T6Enter:
   stx RES_T6ROUNDS
   lda #0
   jsr SetupUI
+  jsr GlassPanels
   rep #$20
 .ACCU 16
   lda #VbNone

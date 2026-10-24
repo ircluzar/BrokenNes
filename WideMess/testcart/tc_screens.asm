@@ -262,6 +262,7 @@ MenuEnter:
   sta RES_STATE
   lda #0
   jsr SetupUI
+  jsr GlassPanels
   PRINT 1, 2, TxtMenuHead
   PRINT 1, 36, TxtMenuFeat
   lda #3
@@ -457,6 +458,7 @@ SummaryEnter:
 .INDEX 16
   lda #0
   jsr SetupUI
+  jsr GlassPanels
   PRINT 1, 2, TxtSumHead
   PRINT 1, 41, TxtBMenu
   lda #3
@@ -547,6 +549,7 @@ NaEnter:
 .INDEX 16
   lda #0
   jsr SetupUI
+  jsr GlassPanels
   jsr Header
   PRINT 5, 4, TxtNa1
   ; the bits it needs that the console lacks
@@ -788,6 +791,7 @@ T8Enter:
   jsr TestGate
   lda #0
   jsr SetupUI
+  jsr GlassPanels
   jsr Header
   jsr BeginTest
   PRINT 4, 3, TxtIdCols
