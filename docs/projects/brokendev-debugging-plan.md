@@ -56,7 +56,7 @@ ready for it, with a Game Boy hello world built during this plan.
 | Game Boy target | **Game Boy Color, also playing on the original** (one ROM: colours on a Color, greys on an original). |
 | Game Boy compat | **Mesen and BizHawk** (already installed; BizHawk's Gambatte and SameBoy cores). |
 | Game Boy workspace | **`PROJECTS\VRUN_VOC_dev`**, its own git, local commits only, never pushed. |
-| Order | **WideMess first, then this plan, then the Game Boy game** (its own plan and interview after this one). |
+| Order | **WideMess first, then this plan, then the Game Boy game** (its plan: `docs/projects/vrun-voc-plan.md`). |
 
 ## The pieces, in detail
 
@@ -303,7 +303,8 @@ A program in BrokenDev, written in C# with the official MCP SDK for .NET. It tal
   - Mesen;
   - BizHawk (Gambatte and SameBoy).
 - It is **the Game Boy test subject** for the debugger, the checks and the MCP server.
-- The game itself gets its own plan and interview after this plan.
+- The game itself has its own plan: `docs/projects/vrun-voc-plan.md` (written 2026-10-23). There this hello world is milestone V0,
+  the skeleton, so it uses the game's final cartridge setup: MBC5, 1 MB ROM, 32 KB battery RAM, dual mode.
 
 ## How it fits BrokenNes
 
@@ -343,7 +344,7 @@ They follow WideMess milestone 1. Each one is merged, tested and pushed before t
 | **D7** | **Debug port** | Print, assert, timers and markers on the three consoles, with NESFab, PVSnesLib and GBDK libraries, stripped from release builds. Other emulators run the dev builds unharmed. |
 | **D8** | **Viewers** | The desktop windows (debugger, memory, tiles, maps, sprites, palettes, event view, sound monitor), then the BrokenDev web pages. |
 | **D9** | **Checkup, chaos, coverage** | `brokendev checkup` over every game, `brokendev chaos`, the coverage pages. |
-| next | **VRUN: Vaults of Obsolete Code** | Its own plan, after an interview. |
+| next | **VRUN: Vaults of Obsolete Code** | Its own plan: `docs/projects/vrun-voc-plan.md`. |
 
 ## Open questions (to settle at the start of the track)
 
