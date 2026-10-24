@@ -1,0 +1,13 @@
+{
+  "format": "widemess-profile-1",
+  "title": "Chrono Trigger",
+  "file": "Chrono Trigger (U) [!].smc",
+  "sha1": ["de5822f4f2f7a55acb8926d4c0eaa63d5d989312"],
+  "enhancements": { "widescreen": "unavailable", "noFlicker": "good", "betterSound": "good", "fastCpu": "risky" },
+  "recommended": ["noFlicker", "betterSound"],
+  "issues": [
+    "Widescreen is not offered: the game keeps unrelated tiles in the parts of its maps the SNES does not show (fields, towns, cutscenes and the Epoch scenes show scrambled tiles there), and the battle menu repeats. No layer rule can make the sides right.",
+    "The contact sheet shows why: it is drawn with every layer extended."
+  ],
+  "verified": { "date": "2026-10-24", "how": "pending" }
+}

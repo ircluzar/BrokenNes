@@ -1,0 +1,17 @@
+{
+  "format": "widemess-profile-1",
+  "title": "The Legend of Zelda: A Link to the Past",
+  "file": "Legend of Zelda, The - A Link to the Past (U) [!].smc",
+  "sha1": ["6d4f10a8b10e10dbe624cb23cf03b88bb8252973"],
+  "widescreen": {
+    "layers": { "bg1": "extend", "bg2": "extend", "bg3": "extend", "bg4": "extend", "sprites": "extend" }
+  },
+  "enhancements": { "widescreen": "risky", "noFlicker": "good", "betterSound": "good", "fastCpu": "risky" },
+  "recommended": ["widescreen", "noFlicker"],
+  "issues": [
+    "Outdoors the side columns show the overworld as it really continues.",
+    "Indoors (houses, dungeons) the sides show the rest of the 512 x 512 map the room is drawn in: other rooms' walls and floors beside a small room.",
+    "Enemies appear near the SNES edge (the game creates them as they come near)."
+  ],
+  "verified": { "date": "2026-10-24", "how": "pending" }
+}

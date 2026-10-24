@@ -1,0 +1,17 @@
+{
+  "format": "widemess-profile-1",
+  "title": "Mega Man X",
+  "file": "Mega Man X (U) (V1.1) [!].smc",
+  "sha1": ["c65216760ba99178100a10d98457cf11496c2097"],
+  "widescreen": {
+    "layers": { "bg1": "extend", "bg2": "extend", "bg3": "extend", "bg4": "extend", "sprites": "extend" }
+  },
+  "enhancements": { "widescreen": "risky", "noFlicker": "good", "betterSound": "good", "fastCpu": "risky" },
+  "recommended": ["widescreen", "noFlicker"],
+  "issues": [
+    "The game draws a stage into video RAM only near the SNES picture: at the start of a stage, and ahead of X when he runs, the side columns show flat colour until the game draws there.",
+    "Enemies appear near the SNES edge (the game creates them as they come near).",
+    "The title screen's ribbons continue into the sides."
+  ],
+  "verified": { "date": "2026-10-24", "how": "pending" }
+}

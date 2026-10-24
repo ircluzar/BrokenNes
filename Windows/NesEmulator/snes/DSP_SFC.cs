@@ -191,6 +191,7 @@ public sealed partial class DSP_SFC
 
         byte pmon = (byte)(Regs[PMON] & 0xFE), non = Regs[NON], eon = Regs[EON];
         var ovr = Overrides;
+        bool cubic = CubicInterpolation;   // WideMess better sound (DSP_SFC.Enhance.cs); false on a SNES
         int mainL = 0, mainR = 0, echoL = 0, echoR = 0;
         int prevOutput = 0;
         byte endx = Regs[ENDX];
@@ -233,12 +234,13 @@ public sealed partial class DSP_SFC
                 pitch = 0;
             }
 
-            int output;
-            if (FastPaths && v.Env == 0) output = 0;   // (anything * 0) >> 11 == 0: skip the interpolation
+            int output, heard;   // output: the S-DSP's own (OUTX, the next voice's pitch modulation); heard: what is mixed (the same, or WideMess better sound's cubic)
+            if (FastPaths && v.Env == 0) output = heard = 0;   // (anything * 0) >> 11 == 0: skip the interpolation
             else
             {
                 output = useNoise ? (short)(noise * 2) : Interpolate(v);
                 output = ((output * v.Env) >> 11) & ~1;
+                heard = cubic && !useNoise ? ((InterpolateCubic(v) * v.Env) >> 11) & ~1 : output;
             }
             Regs[r + 8] = (byte)(v.Env >> 4);   // ENVX
 
@@ -265,7 +267,7 @@ public sealed partial class DSP_SFC
             }
             v.InterpPos = Math.Min((v.InterpPos & 0x3FFF) + pitch, 0x7FFF);
 
-            int ampL = (output * volL) >> 7, ampR = (output * volR) >> 7;
+            int ampL = (heard * volL) >> 7, ampR = (heard * volR) >> 7;
             mainL = Clamp16(mainL + ampL); mainR = Clamp16(mainR + ampR);
             if (useEcho) { echoL = Clamp16(echoL + ampL); echoR = Clamp16(echoR + ampR); }
 

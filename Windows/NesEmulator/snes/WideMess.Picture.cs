@@ -171,13 +171,12 @@ public sealed partial class PPU_WMS
     private static int FloorMod(int a, int m) { int r = a % m; return r < 0 ? r + m : r; }
     private static int Clip13(int n) => (n & 0x2000) != 0 ? (n | ~0x3FF) : (n & 0x3FF);
 
-    /// <summary>One line in the WideMess mode or a wide SNES mode (WMCTRL != 0).</summary>
-    private void RenderWideLine(int line)
+    /// <summary>One line in the WideMess mode or a wide SNES mode (WMCTRL != 0), or a locked SNES game's enhanced line (WideMess.Enhance.cs: <paramref name="wide"/> is widescreen).</summary>
+    private void RenderWideLine(int line, bool wide, bool layers8)
     {
         int row = line - 1;
         if (row < 0 || row >= VisibleHeight) return;
         lineOverflow = false;
-        bool wide = (ctrl & 1) != 0, layers8 = (ctrl & 2) != 0;
         int width = wide ? WideWidth : Width, origin = wide ? SnesOrigin : 0;
         Span<uint> dst = wide ? WideBuffer.AsSpan(row * WideWidth, WideWidth) : FrameBuffer.AsSpan(row * Width, Width);
         if (wide) { rowWide[row] = true; anyWide = true; }
@@ -346,6 +345,7 @@ public sealed partial class PPU_WMS
         ComputeWideWindows((lnMainWin & lnMain) | (fSubNeeded ? lnSubWin & lnSub : 0), fColourWindow, width, origin);
         int total = hires ? 2 * width : width, shift = hires ? 1 : 0;
         ClearScreens(total);
+        if (lnEnh && enhWide != null) BuildRemap(row);   // milestone 6: the widescreen profile's side rules for this row (WideMess.Enhance.cs)
         byte mosaic = RegMosaic;
         for (int bg = 0; bg < 4; bg++)
         {
@@ -353,7 +353,7 @@ public sealed partial class PPU_WMS
             if ((used & bit) == 0 || mode == 7 || bpp == 0) continue;
             bool onMain = (lnMain & bit) != 0, onSub = fSubNeeded && (lnSub & bit) != 0;
             bool mosaicActive = (mosaic & bit) != 0 && (mosaic >> 4) != 0;
-            if (FastPaths && !hires && !mosaicActive && mode is not (2 or 4 or 6)) { SnesBgFused(bg, bpp, mode, line, width, origin, onMain, onSub); continue; }
+            if (FastPaths && !hires && !mosaicActive && mode is not (2 or 4 or 6) && !Remapped(bg)) { SnesBgFused(bg, bpp, mode, line, width, origin, onMain, onSub); continue; }
             SnesBg(bg, bpp, mode, line, width, origin);
             ComposeBgLine(bg, onMain, onSub, total, shift);
         }
@@ -365,6 +365,11 @@ public sealed partial class PPU_WMS
         }
         Sprites(row, width, origin, used, total, shift);
         Finish(dst, ColourTable(brightness), width, hires, math);
+        if (lnEnh)
+        {
+            if (enhWide != null) BlackColumns(dst);
+            else if (hires) EnhancedHiRes(row, ColourTable(brightness), math);   // no flicker alone, a hi-res line: its sharp 512 half-pixels too, as the SNES chip keeps them
+        }
     }
 
     private int CharBase(int bg) => ((bg < 2 ? RegBg12nba >> (bg * 4) : RegBg34nba >> ((bg - 2) * 4)) & 0x0F) << 12;
@@ -565,6 +570,13 @@ public sealed partial class PPU_WMS
 
     private void ComposeBgLine(int layer, bool onMain, bool onSub, int total, int shift)
     {
+        if (Remapped(layer))
+        {
+            // milestone 6: a widescreen side rule other than extend on this line (WideMess.Enhance.cs)
+            if (onMain) ComposeBgMapped(layer, (lnMainWin & (1 << layer)) != 0, total, shift, rankM, colM, layM);
+            if (onSub) ComposeBgMapped(layer, (lnSubWin & (1 << layer)) != 0, total, shift, rankS, colS, layS);
+            return;
+        }
         if (onMain) ComposeBg(layer, (lnMainWin & (1 << layer)) != 0, total, shift, rankM, colM, layM);
         if (onSub) ComposeBg(layer, (lnSubWin & (1 << layer)) != 0, total, shift, rankS, colS, layS);
     }
@@ -588,7 +600,18 @@ public sealed partial class PPU_WMS
     private void Sprites(int row, int width, int origin, int used, int total, int shift)
     {
         if ((used & 0x100) == 0) return;
-        if ((objCtrl & 1) != 0) WideTableSprites(row, width); else SnesTableSprites(row, width, origin);
+        if (lnEnh)
+        {
+            // milestone 6: a locked SNES game's sprites, enhanced (WideMess.Enhance.cs)
+            EnhancedSprites(row, width, origin);
+            if (Remapped(WmsWidescreen.Sprites))
+            {
+                if ((lnMain & 0x100) != 0) ComposeObjMapped((lnMainWin & 0x100) != 0, total, shift, rankM, colM, layM);
+                if (fSubNeeded && (lnSub & 0x100) != 0) ComposeObjMapped((lnSubWin & 0x100) != 0, total, shift, rankS, colS, layS);
+                return;
+            }
+        }
+        else if ((objCtrl & 1) != 0) WideTableSprites(row, width); else SnesTableSprites(row, width, origin);
         if ((lnMain & 0x100) != 0) ComposeObj((lnMainWin & 0x100) != 0, total, shift, rankM, colM, layM);
         if (fSubNeeded && (lnSub & 0x100) != 0) ComposeObj((lnSubWin & 0x100) != 0, total, shift, rankS, colS, layS);
     }
@@ -752,8 +775,9 @@ public sealed partial class PPU_WMS
         {
             // the SNES's positions, counted from the SNES picture's left edge; a window edge on the SNES picture's edge (left 0, right 255) reaches the picture's edge (spec 3.4)
             byte a = RegWh0, b = RegWh1, c = RegWh2, d = RegWh3;
-            l1 = a == 0 ? 0 : origin + a; r1 = b == 255 ? width - 1 : origin + b;
-            l2 = c == 0 ? 0 : origin + c; r2 = d == 255 ? width - 1 : origin + d;
+            bool reach = !(lnEnh && enhWide is { WindowsReachEdge: false });   // milestone 6: a widescreen profile can keep the SNES's edges where they are (spec 6.1)
+            l1 = a == 0 && reach ? 0 : origin + a; r1 = b == 255 && reach ? width - 1 : origin + b;
+            l2 = c == 0 && reach ? 0 : origin + c; r2 = d == 255 && reach ? width - 1 : origin + d;
         }
         for (int layer = 0; layer < 10; layer++)
         {

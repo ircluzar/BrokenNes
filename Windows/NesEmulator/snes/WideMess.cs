@@ -284,11 +284,16 @@ public sealed partial class PPU_WMS : PPU_SFC
 
     // ---------------------------------------------------------------- the picture
 
-    /// <summary>WMCTRL = 0: the SNES chip's own line. Otherwise the wide compositor (WideMess.Picture.cs): the WideMess mode, or a SNES mode drawn 400 wide.</summary>
+    /// <summary>WMCTRL = 0: the SNES chip's own line, or with a console enhancement on (milestone 6, WideMess.Enhance.cs) the wide compositor for the locked SNES game. Otherwise the wide
+    /// compositor (WideMess.Picture.cs): the WideMess mode, or a SNES mode drawn 400 wide.</summary>
     public override void RenderLine(int line)
     {
-        if (ctrl == 0) { base.RenderLine(line); return; }
-        RenderWideLine(line);
+        if (ctrl == 0)
+        {
+            if (enhOn) EnhancedLine(line); else base.RenderLine(line);
+            return;
+        }
+        RenderWideLine(line, (ctrl & 1) != 0, (ctrl & 2) != 0);
         if (CompareWithSnes && ctrl == 1) CompareLine(line);
     }
 

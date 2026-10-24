@@ -1,0 +1,20 @@
+{
+  "format": "widemess-profile-1",
+  "title": "Super Mario Kart",
+  "file": "Super Mario Kart (U) [!].smc",
+  "sha1": ["47e103d8398cf5b7cbb42b95df3a3c270691163b"],
+  "widescreen": {
+    "layers": { "bg1": "extend", "bg2": "extend", "bg3": "extend", "bg4": "extend", "sprites": "fill" },
+    "masks": [
+      { "why": "the title screen's logo is laid out for 256 columns on a 32-tile map that would repeat (BG1 map at $1000)", "layers": ["all"], "rows": [0, 223], "rule": "black", "when": { "bg1sc": "$10" } }
+    ]
+  },
+  "enhancements": { "widescreen": "good", "noFlicker": "good", "betterSound": "good", "fastCpu": "risky" },
+  "recommended": ["widescreen", "noFlicker"],
+  "issues": [
+    "Both Mode 7 views (the track and the course map, or the two players' tracks) continue to both edges; the hills behind repeat seamlessly.",
+    "Sprites are filled in the sides: the game places the karts, shadows and items it does not show around the SNES picture, so rivals appear only in the centre 256 columns.",
+    "The title screen is shown with black sides."
+  ],
+  "verified": { "date": "2026-10-24", "how": "pending" }
+}

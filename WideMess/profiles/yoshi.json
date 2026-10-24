@@ -1,0 +1,18 @@
+{
+  "format": "widemess-profile-1",
+  "title": "Super Mario World 2: Yoshi's Island",
+  "file": "Super Mario World 2 - Yoshi's Island (U) (M3) (V1.1).smc",
+  "sha1": ["34612a93741f156d6e497462ab7f253cb8a959a0"],
+  "widescreen": {
+    "layers": { "bg1": "extend", "bg2": "extend", "bg3": "extend", "bg4": "extend", "sprites": "extend" }
+  },
+  "enhancements": { "widescreen": "risky", "noFlicker": "good", "betterSound": "good", "fastCpu": "risky" },
+  "recommended": ["widescreen", "noFlicker"],
+  "issues": [
+    "At the start of a stage the side columns show old tiles: the game draws the level into video RAM only as Yoshi moves, so for the first screens the sides hold whatever was there before.",
+    "The game draws only what is near the SNES picture: further out, the sides lag behind by a few frames when Yoshi moves fast.",
+    "Enemies appear near the SNES edge (the game creates them as they come near).",
+    "Fast CPU speeds up the 65816 only, not the Super FX 2 that draws the game's special effects: the effects keep their speed, the rest of the game's timing changes."
+  ],
+  "verified": { "date": "2026-10-24", "how": "pending" }
+}

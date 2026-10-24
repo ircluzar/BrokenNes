@@ -1,0 +1,21 @@
+{
+  "format": "widemess-profile-1",
+  "title": "Super Mario World",
+  "file": "Super Mario World (U) [!].smc",
+  "sha1": ["6b47bb75d16514b6a476aa0c73a683a2a4c18765"],
+  "widescreen": {
+    "layers": { "bg1": "extend", "bg2": "extend", "bg3": "extend", "bg4": "extend", "sprites": "extend" },
+    "masks": [
+      { "why": "the status bar and the title's wooden frame are BG3 drawn in front (BGMODE $09) and laid out for 256 columns", "layers": ["bg3"], "rows": [0, 223], "rule": "fill", "when": { "bgmode": "$09" } }
+    ]
+  },
+  "enhancements": { "widescreen": "good", "noFlicker": "good", "betterSound": "good", "fastCpu": "risky" },
+  "recommended": ["widescreen", "noFlicker"],
+  "issues": [
+    "Enemies and coins appear 16-32 pixels past the SNES edge: the game creates its objects as they come near the SNES picture, so in the side columns they pop in.",
+    "At the start of a level the left side is empty: the level begins at the SNES picture's left edge.",
+    "Levels whose water or clouds are BG3 drawn in front (the layer-3 tides) lose that layer in the side columns.",
+    "Fast CPU removes the game's slowdown, so its own timing changes: risky."
+  ],
+  "verified": { "date": "2026-10-24", "how": "pending" }
+}

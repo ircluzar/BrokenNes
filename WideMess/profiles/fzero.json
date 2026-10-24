@@ -1,0 +1,20 @@
+{
+  "format": "widemess-profile-1",
+  "title": "F-Zero",
+  "file": "F-ZERO (U) [!].smc",
+  "sha1": ["d3efd32b68f1fe37a82db9d9929b7ca7cc1a3af4"],
+  "widescreen": {
+    "layers": { "bg1": "extend", "bg2": "extend", "bg3": "extend", "bg4": "extend", "sprites": "fill" },
+    "masks": [
+      { "why": "the speed, power and time display above the horizon is BG3 laid out for 256 columns on a 32-tile map that would repeat", "layers": ["bg3"], "rows": [0, 46], "rule": "fill" }
+    ]
+  },
+  "enhancements": { "widescreen": "good", "noFlicker": "good", "betterSound": "good", "fastCpu": "risky" },
+  "recommended": ["widescreen", "noFlicker"],
+  "issues": [
+    "The track (Mode 7) continues to both edges, and the skyline above it repeats seamlessly.",
+    "Sprites are filled in the sides: the game parks its unused sprites (the CHECK sign, the rank and lap icons) just off the SNES picture, where the side columns would show them. Rival machines therefore appear only in the centre.",
+    "The display above the horizon keeps its 256 columns (BG3 filled in rows 0-46)."
+  ],
+  "verified": { "date": "2026-10-24", "how": "pending" }
+}

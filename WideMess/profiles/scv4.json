@@ -1,0 +1,21 @@
+{
+  "format": "widemess-profile-1",
+  "title": "Super Castlevania IV",
+  "file": "Super Castlevania IV (U) [!].smc",
+  "sha1": ["684c1dfaff8e5999422c24d48054d96bb12da2f4"],
+  "widescreen": {
+    "layers": { "bg1": "extend", "bg2": "extend", "bg3": "fill", "bg4": "extend", "sprites": "extend" },
+    "masks": [
+      { "why": "the title screen's logo is laid out for 256 columns on a 32-tile map that would repeat (BG1 map at $0000, 32 tiles)", "layers": ["all"], "rows": [0, 223], "rule": "black", "when": { "bg1sc": "$02" } }
+    ]
+  },
+  "enhancements": { "widescreen": "risky", "noFlicker": "good", "betterSound": "good", "fastCpu": "risky" },
+  "recommended": ["widescreen", "noFlicker"],
+  "issues": [
+    "At the start of a stage the left side shows old tiles: the game has not drawn the level there yet.",
+    "The game draws new columns of the level only a few tiles ahead of the SNES edge: ahead of Simon the far side columns can show old tiles.",
+    "BG3 (the score and timer, and the title's text) is filled in the sides.",
+    "The title screen is shown with black sides."
+  ],
+  "verified": { "date": "2026-10-24", "how": "pending" }
+}

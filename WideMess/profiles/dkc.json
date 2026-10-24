@@ -1,0 +1,21 @@
+{
+  "format": "widemess-profile-1",
+  "title": "Donkey Kong Country",
+  "file": "Donkey Kong Country (U) (V1.2) [!].smc",
+  "sha1": ["cd606e77ab2034438e06891cd2d067dad69b4d1a"],
+  "widescreen": {
+    "layers": { "bg1": "extend", "bg2": "extend", "bg3": "extend", "bg4": "extend", "sprites": "extend" },
+    "masks": [
+      { "why": "Cranky's intro and the level-name screens are drawn for 256 columns on a 32-tile map that would repeat (BG1 map at $7C00)", "layers": ["all"], "rows": [0, 223], "rule": "black", "when": { "bg1sc": "$7C" } }
+    ]
+  },
+  "enhancements": { "widescreen": "risky", "noFlicker": "good", "betterSound": "good", "fastCpu": "risky" },
+  "recommended": ["widescreen"],
+  "issues": [
+    "The game draws new columns of the level only 8 to 16 pixels ahead of the SNES edge: on the side Donkey Kong runs towards, the side columns beyond that show old tiles (a visible seam) until he gets there.",
+    "Behind him the sides are right: the game keeps the columns it drew.",
+    "Cranky's intro and the level-name screens are shown with black sides.",
+    "Enemies appear near the SNES edge (the game creates them as they come near)."
+  ],
+  "verified": { "date": "2026-10-24", "how": "pending" }
+}

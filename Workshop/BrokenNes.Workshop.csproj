@@ -158,4 +158,9 @@
     <Copy SourceFiles="@(_SharedRomFiles)" DestinationFolder="$(OutDir)Roms" SkipUnchangedFiles="true" />
   </Target>
 
+  <!-- WideMess milestone 6: the SNES games' enhancement profiles (docs/projects/widemess-spec.md 6.2), beside the program in WideMess\profiles, as the desktop app ships them. -->
+  <ItemGroup>
+    <None Include="..\WideMess\profiles\*.json" Link="WideMess\profiles\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
