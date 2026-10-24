@@ -21,11 +21,13 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
     private SmsToNes? toNesSms;
     private MdToNes? toNesMd;
     private string ppuId;
-    private readonly uint[] frame = new uint[ExtPicture.MaxWidth * ExtPicture.MaxLines], reference = new uint[ExtPicture.MaxWidth * ExtPicture.MaxLines];
+    private readonly uint[] frame = new uint[ExtPicture.MaxViewWidth * ExtPicture.MaxLines], reference = new uint[ExtPicture.MaxViewWidth * ExtPicture.MaxLines];
     private (int X, int Y, int W, int H) region = (0, 0, 256, 240);
     /// <summary>The size of the last bridged picture: the console's own on an enhanced chip (the Genesis's 320 or 256 x 224 or 240, the Master System's 256 x 192 / 224 / 240, the Game Gear's 160 x 144), else the NES's 256 x 240.</summary>
     private int frameWidth = 256, frameHeight = 240;
     private bool guestSize;
+    /// <summary>The columns the WideMess widescreen chip shows on each side of the console's own picture (0 on every other chip): the picture is 400 wide, the console's own in the middle.</summary>
+    private int side;
     private bool referenceSame = true;
 
     public SegaPictureSession(IConsoleSession inner, string ppu)
@@ -100,7 +102,7 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
     public int FrameWidth => Bridged ? frameWidth : inner.FrameWidth;
     public int FrameHeight => Bridged ? frameHeight : inner.FrameHeight;
     /// <summary>On an enhanced chip the console's own proportions (the Genesis's 320 for both its widths, as its own chip shows them); a NES chip's picture is 256 wide.</summary>
-    public int DisplayWidth => !Bridged ? inner.DisplayWidth : guestSize && md != null ? 320 : frameWidth;
+    public int DisplayWidth => !Bridged ? inner.DisplayWidth : side > 0 ? frameWidth : guestSize && md != null ? 320 : frameWidth;
     public int SampleRate => inner.SampleRate;
     public int ReadSamples(short[] buffer) => inner.ReadSamples(buffer);
     public bool HasBattery => inner.HasBattery;
@@ -123,12 +125,26 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
             toNesMd.BuildReference(reference, frameWidth, out var r);
             region = Viewed(r);
         }
+        if (side > 0) ShiftReference();
+        if (Enhanced is WmsWideChip wide) wide.CountInto(Counters);     // what the widescreen chip showed beside the console's picture (the status line)
     }
 
     private void Take(BridgeFrame f)
     {
-        frameWidth = f.Width; frameHeight = f.Height; guestSize = f.GuestSize;
+        frameWidth = f.Width; frameHeight = f.Height; guestSize = f.GuestSize; side = f.Side;
         Array.Copy(f.Argb, frame, f.Width * f.Height);
+    }
+
+    /// <summary>On the widescreen chip the console's own picture is the middle of the frame: the reference (laid out from the left) moves right by the side's columns, and so does its region.</summary>
+    private void ShiftReference()
+    {
+        for (int y = 0; y < frameHeight; y++)
+        {
+            int row = y * frameWidth;
+            for (int x = frameWidth - 1; x >= side; x--) reference[row + x] = reference[row + x - side];
+            for (int x = 0; x < side; x++) reference[row + x] = 0;
+        }
+        region = (region.X + side, region.Y, region.W, region.H);
     }
 
     public string SwapRefusal(CoreSlot slot, string id) => !ConsoleSessions.Offers(Console, slot, id) ? ConsoleSessions.NotOffered(Console, slot, id)

@@ -645,4 +645,62 @@ No flicker changed nothing in eight of the eleven games' checked play: most SNES
 | Sound: 32 voices, BRR + 16-bit PCM, 1 MB sound RAM, the port | 3 | done (`APU_WMS`, `DSP_SFC.WideMess.cs`; test ROM `WideMess/testroms/sound`) |
 | Fast CPU, 1 MB work RAM, the WideMess map, fast DMA | 4 | done (`BOARD_SFC.WideMess.cs`, `WideMess.Memory.cs`; test ROMs `WideMess/testroms/cpu`) |
 | SNES games enhanced: widescreen, no flicker, better sound, fast CPU, profiles | 6 | done (`WideMess.Enhance.cs`, `WideMess.Profiles.cs`, `DSP_SFC.Enhance.cs`, `SnesSession.Enhance.cs`; `WideMess/profiles`, 11 games proven, 6.4) |
+| The WideMess chips on the other consoles (the widescreen chip, the sound chip), theirs on the WideMess | 7b | done (section 8; `WmsWideChip`, `WmsVoiceChip`, NES board `PPU_WMSS` / `APU_WMSS`: mix/WideMessEnhanced.cs; `Workshop --enhanced-test --only wmsmenu,wms,wmsown,wmsgames`) |
 | Debug port | BrokenDev debugging toolkit | reserved |
+| Conformance: the test cartridge (any implementation of this spec runs it; its expected results, its results table, its reference pictures) | - | done (`WideMess/testcart`, `WideMess/testroms/bin/widemess-testcart.wms`; `Workshop --wms-testcart`) |
+
+## 8. The WideMess chips on the other consoles (milestone 7b)
+
+The WideMess's picture and sound chips are offered to the other consoles' games (NES, SNES, Game Boy and Game Boy Color, Master System, Game Gear, Genesis) as the **WideMess (enhanced)** entry of
+their picture and sound menus: the route `WMS:WMSS`, and on the NES the NES board's `WMSS`. They take the cross-console contract (`docs/projects/enhanced-cores.md` section 4; its section 6 has the
+additions and the code): the guest's picture as layers, its sound as a list of voices. They are offered only where the WideMess console is.
+
+### 8.1 The widescreen chip
+
+- **400 wide**, the guest's own height (NES 240; SNES 224 or 239; Game Boy and Game Gear 144; Master System 192, 224 or 240; Genesis 224 or 240), square pixels.
+- **The middle is the guest's picture**, (400 - its width) / 2 columns from the left: 72 for a 256-wide guest, 40 for a Genesis in H40, 120 for a Game Boy or a Game Gear. It is drawn in 15-bit colours
+  with the SNES's colour math, exactly as the SNES's enhanced chip draws the same guest.
+- **The sides**: each layer, each frame, gets one rule, chosen from how wide the layer's map really is (its translator says) and whether it is laid out on the screen:
+
+| Rule | When | The side shows |
+|---|---|---|
+| **extend** | the layer's map is wider than the guest's picture | the map continued as the guest's scroll gives it, wrapping at the map's width; past the map's real width it repeats |
+| **repeat** | the map is no wider than the picture | the layer's own visible columns, side by side |
+| **fill** | the layer is laid out on the screen (a window, a HUD column), or its width was not given | nothing of the layer: the layers behind it, or the backdrop |
+
+| Guest | Its layers | Its sprites in the sides |
+|---|---|---|
+| NES | background: **extend** with vertical mirroring (the neighbouring nametable, 512 wide), **repeat** with horizontal or one-screen mirroring | the part past the right edge |
+| SNES | each BG by its map: 64 tiles **extend**, 32 **repeat**; Mode 7 **extend** (section 3.2's rule) | yes, by section 3.3's X (256-327 right of the picture, 328-511 left; X = 256 never) |
+| Game Boy / Color | background **extend** (a 256-pixel map around 160 columns), window **fill** | no: stopped at the edges (games hide unused sprites just off the screen) |
+| Master System | background **repeat** (its map is its screen's width), vertical-lock columns **fill** | no (they never leave the screen) |
+| Game Gear | background **extend** (the VDP's 256-pixel line around the LCD) | yes (the VDP draws them around the LCD) |
+| Genesis | planes **extend** (512 or 1024 wide; a 256-wide plane in H32 repeats), window **fill** | yes (the 512-pixel sprite plane) |
+
+- **Masks** (windows, the colour window, clip to black, the backdrop's colour math) reach a side from the guest's column next to it, as section 3.4's windows reach the picture's edges. A clip of the
+  guest's own first column (the NES's left 8 pixels, the Master System's and the Genesis's left column) is the screen's and stays in the middle.
+- **Sprites** in the sides are drawn in the guest's order and never counted against its per-line limit; a sprite the guest drops on a line is not drawn in the side either.
+- **Colours**: a cell only the sides show is drawn in the palettes the guest's own picture uses, so the middle stays exactly the guest's; a colour that is not on the screen is drawn with the nearest one.
+- **Counted, every frame**, in the status line and `GET /api/console`: side columns x lines extended, repeated, filled and masked; layers whose width was not given (never, in every game checked);
+  lines whose sprites stop at the edges; side tiles whose colours are not on the screen.
+- **What no rule fixes** (as for SNES games, 6.1): columns a game streams just past its edge show old picture until it scrolls there; objects created at the edge pop in there; a HUD drawn into the map
+  shows the map's row continuing beside it.
+
+### 8.2 The sound chip
+
+- Banks of **32 WideMess voices**, each a WideMess sound chip (section 4) unlocked: voices 8-31 first, playing **16-bit PCM** (pulses of four duties, a smooth triangle, white noise, the NES's 93-step
+  short noise), then voices 0-7 playing the same shapes in BRR.
+- **Every voice of the guest on a voice of its own**, at its pitch (the 14-bit pitch: a 440 Hz voice plays within 0.2 cent), its level and its pan (VOLL / VOLR); no echo. One bank holds the most any
+  other console sounds at once (18 voices: a Japanese Master System's PSG and FM); four at most.
+
+### 8.3 The NES console
+
+- `WMSS` draws the NES game 400 wide. The NES's own 256 x 240 picture is its middle: save-state pictures, recordings and the NES tools keep it; the desktop app shows the whole width.
+- `WMSS` sound plays the NES's four channels on WideMess voices; the DMC is not carried, and counted.
+
+### 8.4 The other consoles' chips on the WideMess console
+
+- The WideMess's picture and sound menus offer the other consoles' chips as the SNES console's do (NES, Game Boy, Master System / Game Gear, Genesis; not the SNES's own, which the WideMess's are).
+- A SNES game on them is the SNES console's game on them, frame for frame and sample for sample.
+- A WideMess game's own picture (the 8-layer mode, 400 wide) and its voices 8-31 are not carried by them: every frame that uses them is counted and said in the status line. The game's own sound
+  unit inside such a chip is still the WideMess's, so its sound RAM port and its unlock work.

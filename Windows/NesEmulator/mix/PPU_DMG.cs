@@ -510,8 +510,9 @@ public sealed class PPU_DMGS : PPU_DMG, IEnhancedPictureChip
 {
     private readonly PPU_GBE chip;
     private readonly NesToLayers nes = new();
+    private readonly Bus nesBus;
 
-    public PPU_DMGS(Bus bus) : base(bus, enhanced: true) { chip = new PPU_GBE(cgb ? GbModel.Cgb : GbModel.Dmg); }
+    public PPU_DMGS(Bus bus) : base(bus, enhanced: true) { nesBus = bus; chip = new PPU_GBE(cgb ? GbModel.Cgb : GbModel.Dmg); }
 
     public override string CoreName => $"DMGS:{(cgb ? "CGB" : "DMG")}";
     public override string Description => "MIX LAB: the enhanced Game Boy picture chip: a NES game whole, another console's game at its own size with all its layers, in Game Boy shades or CGB colours";
@@ -539,7 +540,7 @@ public sealed class PPU_DMGS : PPU_DMG, IEnhancedPictureChip
     /// <summary>A NES game: its frame as layers, drawn whole.</summary>
     private protected override void PresentFrame()
     {
-        nes.Fill(chip.Layers, nt, pal, rowChrs, chr, frameOam, frameCtrl, lineX, lineY, lineMask);
+        nes.Fill(chip.Layers, nt, pal, rowChrs, chr, frameOam, frameCtrl, lineX, lineY, lineMask, NesToLayers.NametableWidth(nesBus.cartridge));
         DrawLayers();
         var src = chip.FrameBuffer; int w = chip.Width, h = chip.Height;
         for (int y = 0; y < 240; y++)

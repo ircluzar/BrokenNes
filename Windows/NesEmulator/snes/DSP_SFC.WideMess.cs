@@ -31,6 +31,18 @@ public sealed partial class DSP_SFC
     /// <summary>True while voices 8-31 and the second page are live (the console is unlocked).</summary>
     public bool WideOn => wideOn;
 
+    /// <summary>How many of voices 8-31 sound now (their envelope above zero; 0 while locked). Read-only: tools and the bridges that do not carry them count it.</summary>
+    public int WideVoicesSounding
+    {
+        get
+        {
+            if (!wideOn || wideVoices == null) return 0;
+            int n = 0;
+            foreach (var v in wideVoices) if (v.Env > 0) n++;
+            return n;
+        }
+    }
+
     /// <summary>Gives this S-DSP the WideMess voices (<see cref="APU_WMS"/>'s constructor): <paramref name="high"/> is the sound RAM above the first 64 KB (960 KB). They stay off until <see cref="SetWideOn"/>.</summary>
     public void AttachWide(byte[] high)
     {

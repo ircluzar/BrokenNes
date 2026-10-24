@@ -304,6 +304,8 @@ internal sealed class SnesToNes
         e.SpriteLimit = MixConfig.ExtSpriteLimit; e.SpritesPerLine = MixConfig.ExtSpritesPerLine;
         var lines = LinesOf(sp, s, visible);
         int N = visible; const int W = 256;
+        // a wide view (the WideMess widescreen chip, ExtPicture.ViewWidth): the map cells and the sprite pieces its side columns show, kept apart from the guest's own and added after them
+        int side = e.SideColumns, sideCells = side > 0 ? (side + 7) / 8 + 1 : 0;
 
         int Level(ushort c) { var (r, g, b) = NesPalette.FromBgr555(c); int y = (r * 3 + g * 6 + b) / 10; return y < 80 ? 1 : y < 165 ? 2 : 3; }
         int Pixel(int tileAddr, int bpp, int r, int c)
@@ -448,6 +450,8 @@ internal sealed class SnesToNes
                             palCount[pk] = palCount.GetValueOrDefault(pk) + 1;
                         }
                     }
+                    for (int c = -sideCells; c < 0; c++) sg.SideSeen.Add(ey * sg.MapW + ((ex0 + c) & (sg.MapW - 1)));
+                    for (int c = 33; c <= 32 + sideCells; c++) sg.SideSeen.Add(ey * sg.MapW + ((ex0 + c) & (sg.MapW - 1)));
                 }
             }
             if (Visible(0x10, out bool mainObj))
@@ -489,20 +493,54 @@ internal sealed class SnesToNes
         }
         bgQ.Solve(ExtPicture.Palettes);
         for (int g = 0; g < ExtPicture.Palettes; g++) for (int L = 1; L < 4; L++) e.BgRgb[g * 4 + L] = Scaled(bgQ.Palette[g][L]);
+        // the cells only the wide view's side columns show: in the palettes the guest's own picture chose (Fit), after it, so the guest's picture is exactly what it is without them
+        int centreCells = cellItems.Count;
+        if (side > 0)
+        {
+            for (int si = 0; si < segs.Count; si++)
+            {
+                var sg = segs[si]; int wpt = sg.Bpp * 4;
+                foreach (int cell in sg.SideSeen)
+                {
+                    if (sg.Seen.Contains(cell)) continue;
+                    int ex = cell % sg.MapW, ey = cell / sg.MapW;
+                    ushort entry = MapEntry(vram, sg, ex, ey);
+                    bool hf = (entry & 0x4000) != 0, vf = (entry & 0x8000) != 0, prio = (entry & 0x2000) != 0;
+                    int p = (entry >> 10) & 7, pb = PalBase(sg.K, sg.Bpp, p, sg.Mode0);
+                    int tile = entry & 0x3FF;
+                    if (sg.Big == 1) tile = (tile + ((ex & 1) ^ (hf ? 1 : 0)) + 16 * ((ey & 1) ^ (vf ? 1 : 0))) & 0x3FF;
+                    int addr = sg.ChrBase + tile * wpt, bpp = sg.Bpp;
+                    int item = bgQ.Add((long)addr << 20 | (long)bpp << 16 | (uint)pb, h =>
+                    {
+                        for (int r = 0; r < 8; r++) for (int x = 0; x < 8; x++)
+                        {
+                            int i = Pixel(addr, bpp, r, x);
+                            if (i != 0) { int c = RgbOf(cg[(pb + i) & 0xFF]); h[c] = h.GetValueOrDefault(c) + 1; }
+                        }
+                    });
+                    cellItems.Add((si, cell, tile | (p << 10) | (hf ? 1 << 13 : 0) | (vf ? 1 << 14 : 0), item, tile, pb, hf, vf, prio));
+                }
+            }
+            int lossy = bgQ.Fit();
+            if (lossy > 0) st.Note += $" ({lossy} side-column tiles drawn in the guest's palettes, their own colours not being on the screen)";
+        }
         var notes = new List<string>();
         var segTiles = new Dictionary<int, int>[segs.Count]; var segNext = new int[segs.Count];
         for (int si = 0; si < segs.Count; si++)
         {
             var X = e.Layers[si]; var sg = segs[si];
             X.Enabled = true; X.MapWidth = sg.MapW; X.MapHeight = sg.MapH; X.SnesLayer = sg.K;
+            X.RealWidth = sg.MapW * 8;      // the map's width (64 tiles: the half a SNES keeps off screen; 16 x 16 tiles double it)
             segTiles[si] = new Dictionary<int, int>(); segNext[si] = 1;   // tile 0 stays see-through
         }
-        foreach (var ci in cellItems)
+        int sideOverflow = 0;
+        for (int cix = 0; cix < cellItems.Count; cix++)
         {
+            var ci = cellItems[cix];
             var sg = segs[ci.si]; var X = e.Layers[ci.si]; var tiles = segTiles[ci.si];
             if (!tiles.TryGetValue(ci.variant, out int t))
             {
-                if (segNext[ci.si] >= ExtPicture.MaxTiles) { st.BgOverflow++; t = 1 + ci.tile % (ExtPicture.MaxTiles - 1); }
+                if (segNext[ci.si] >= ExtPicture.MaxTiles) { if (cix < centreCells) st.BgOverflow++; else sideOverflow++; t = 1 + ci.tile % (ExtPicture.MaxTiles - 1); }
                 else
                 {
                     t = segNext[ci.si]++; tiles[ci.variant] = t;
@@ -520,6 +558,7 @@ internal sealed class SnesToNes
         for (int si = 0; si < segs.Count; si++) notes.Add($"BG{segs[si].K + 1}:{segTiles[si].Count}");
         e.LayerCount = segs.Count;
         if (segOverflow > 0) st.Note += $" ({segOverflow} layer-lines past the {ExtPicture.MaxLayers}-layer limit)";
+        if (sideOverflow > 0) st.Note += $" ({sideOverflow} side-column tiles past the layer's 1023: shown as the closest by number)";
 
         // ---- Mode 7: the 128x128 map and 256 8x8 tiles straight from VRAM (low bytes map, high bytes texels), with 8
         // palettes of its own chosen for its tiles
@@ -571,6 +610,8 @@ internal sealed class SnesToNes
         var objQ = new Quantizer();
         var pieces = new List<(int sx, int sy, int from, int to, int item, int prio, bool hf, bool vf, bool mathPal)>();
         var itemTile = new List<(int addr, int pal)>();
+        // the pieces only a wide view's side columns show (never counted against the guest's limits; added after the guest's own, in its palettes)
+        var sidePieces = new List<(int addr, int sx, int sy, int from, int to, int pal, int prio, bool hf, bool vf)>();
         if (anyObj)
             foreach (var (from, to, oamS, obsel) in epochs)
             {
@@ -578,18 +619,25 @@ internal sealed class SnesToNes
                 for (int i = 0; i < 128; i++)
                 {
                     int hi = (oamS[512 + (i >> 2)] >> ((i & 3) * 2)) & 3;
-                    int x = oamS[i * 4] | ((hi & 1) << 8); if (x >= 256) x -= 512;
+                    int x = oamS[i * 4] | ((hi & 1) << 8);
+                    // the SNES: X 256-511 is -256..-1. A wide view (WideMess spec 3.3): X up to 255 + the side is right of the picture, the rest negative, and 256 (-256, where games hide sprites) never in a side
+                    if (x >= 256 && (side == 0 || x == 256 || x >= 256 + side)) x -= 512;
                     int y = oamS[i * 4 + 1], a = oamS[i * 4 + 3], tile = oamS[i * 4 + 2] | ((a & 1) << 8);
                     var (w, h) = (hi & 2) != 0 ? large[(obsel >> 5) & 7] : small[(obsel >> 5) & 7];
                     if (y >= 224 && y + h <= 256) continue;
                     if (y >= 224) y -= 256;
-                    if (x >= 256 || x + w <= 0 || y + h <= from || y > to) continue;
+                    if (x >= 256 + side || x + w <= -side || y + h <= from || y > to) continue;
                     int pal = (a >> 1) & 7, prio = (a >> 4) & 3; bool hf = (a & 0x40) != 0, vf = (a & 0x80) != 0;
                     for (int r = 0; r < h / 8; r++) for (int c = 0; c < w / 8; c++)
                     {
                         int tt = (tile & 0x100) | (((tile & 0xF0) + (r << 4)) & 0xF0) | (((tile & 0x0F) + c) & 0x0F);
                         int sx = x + 8 * (hf ? w / 8 - 1 - c : c), sy = y + 8 * (vf ? h / 8 - 1 - r : r);
-                        if (sx <= -8 || sx >= 256 || sy + 8 <= from || sy > to) continue;
+                        if (sy + 8 <= from || sy > to) continue;
+                        if (sx <= -8 || sx >= 256)
+                        {
+                            if (side > 0 && sx > -8 - side && sx < 256 + side) sidePieces.Add((objBase + (tt >= 256 ? gap : 0) + (tt & 0xFF) * 16, sx, sy, from, to, pal, prio, hf, vf));
+                            continue;
+                        }
                         wanted++;
                         if (pieces.Count >= e.SpriteLimit) continue;
                         int addr = objBase + (tt >= 256 ? gap : 0) + (tt & 0xFF) * 16, pp = pal;
@@ -619,7 +667,37 @@ internal sealed class SnesToNes
             }
         }
         if (itemTile.Count > ExtPicture.MaxSpriteTiles) st.ObjOverflow += itemTile.Count - ExtPicture.MaxSpriteTiles;
-        if (e.Sprites.Length < pieces.Count) e.Sprites = new ExtPicture.Sprite[pieces.Count];
+        int centreItems = itemTile.Count;
+        var sideItems = new List<int>(sidePieces.Count);
+        foreach (var sp2 in sidePieces)
+        {
+            int addr = sp2.addr, pp = sp2.pal, before = objQ.Count;
+            int item = objQ.Add((long)addr << 8 | (uint)pp, hh =>
+            {
+                for (int rr = 0; rr < 8; rr++) for (int xx = 0; xx < 8; xx++)
+                {
+                    int ci = Pixel(addr, 4, rr, xx);
+                    if (ci != 0) { int rgb = RgbOf(cg[128 + pp * 16 + ci]); hh[rgb] = hh.GetValueOrDefault(rgb) + 1; }
+                }
+            });
+            if (objQ.Count > before) itemTile.Add((addr, pp));
+            sideItems.Add(item);
+        }
+        if (sidePieces.Count > 0)
+        {
+            int lossy = objQ.Fit();
+            if (lossy > 0) st.Note += $" ({lossy} side-column sprite tiles drawn in the guest's palettes)";
+            for (int item = centreItems; item < itemTile.Count && item < ExtPicture.MaxSpriteTiles; item++)
+            {
+                var (addr, pal) = itemTile[item];
+                for (int rr = 0; rr < 8; rr++) for (int xx = 0; xx < 8; xx++)
+                {
+                    int ci = Pixel(addr, 4, rr, xx);
+                    e.SpriteTiles[item * 64 + rr * 8 + xx] = ci == 0 ? (byte)0 : objQ.Level(item, RgbOf(cg[128 + pal * 16 + ci]));
+                }
+            }
+        }
+        if (e.Sprites.Length < pieces.Count + sidePieces.Count) e.Sprites = new ExtPicture.Sprite[pieces.Count + sidePieces.Count];
         foreach (var pc in pieces)
             e.Sprites[kept++] = new ExtPicture.Sprite
             {
@@ -627,7 +705,19 @@ internal sealed class SnesToNes
                 Tile = (ushort)(pc.item % ExtPicture.MaxSpriteTiles), Palette = (byte)objQ.Group[pc.item], Priority = (byte)pc.prio,
                 HFlip = pc.hf, VFlip = pc.vf, MathPalette = pc.mathPal,
             };
-        e.SpriteCount = kept;
+        int all = kept;
+        for (int k = 0; k < sidePieces.Count; k++)
+        {
+            var pc = sidePieces[k]; int item = sideItems[k];
+            if (item >= ExtPicture.MaxSpriteTiles) continue;      // past the extension's sprite tiles: not drawn in the side
+            e.Sprites[all++] = new ExtPicture.Sprite
+            {
+                X = (short)pc.sx, Y = (short)pc.sy, FirstLine = (short)pc.from, LastLine = (short)pc.to,
+                Tile = (ushort)item, Palette = (byte)objQ.Group[item], Priority = (byte)pc.prio, HFlip = pc.hf, VFlip = pc.vf, MathPalette = pc.pal >= 4,
+            };
+        }
+        e.SpriteCount = all;
+        e.SpritesBeyondEdges = true;     // a SNES sprite's 9-bit X is a real place beyond the 256 columns (-256 is where games hide them, never inside a side)
         e.PaletteVersion++;
         st.SpritesWanted = wanted; st.SpritesKept = kept; st.UniqueObjTiles = itemTile.Count;
 
@@ -656,6 +746,8 @@ internal sealed class SnesToNes
     {
         public int K, MapBase, ChrBase, Bpp, Big, MapW, MapH; public bool Wide, Tall, Mode0;
         public readonly HashSet<int> Seen = new();
+        /// <summary>The cells a wide view's side columns show (<see cref="ExtPicture.ViewWidth"/>); those not in <see cref="Seen"/> are added after the guest's own.</summary>
+        public readonly HashSet<int> SideSeen = new();
     }
 
     /// <summary>
@@ -723,6 +815,7 @@ internal sealed class SnesToNes
             double SigD(int a, (double r, double g, double b)[] c) { double d = 0; for (int j = 0; j < 3; j++) d += D(sig[a][j], c[j]); return d; }
             // 2. items into groups: farthest-point starts from the heaviest item, then k-means on signatures
             int k = Math.Min(groups, n);
+            used = k;
             var cen = new List<(double r, double g, double b)[]> { sig[Enumerable.Range(0, n).OrderByDescending(i => weight[i]).First()] };
             while (cen.Count < k)
             {
@@ -796,6 +889,43 @@ internal sealed class SnesToNes
                 levels.Add(map);
             }
         }
+
+        /// <summary>
+        /// Items added after <see cref="Solve"/>: the map cells only a wider view's side columns show (<see cref="ExtPicture.ViewWidth"/>, the WideMess widescreen chip). Each takes the solved palette that draws its
+        /// pixels with the least error, and its levels in it; the palettes and every earlier item stay as solved, so the guest's own picture is what it is without them.
+        /// </summary>
+        /// <returns>The items no palette draws exactly (their colours are not in the guest's own picture): the side columns' colour loss, for the counters.</returns>
+        public int Fit()
+        {
+            int n = hist.Count, from = levels.Count, lossy = 0;
+            if (from >= n || Palette.Length == 0) return 0;
+            if (Group.Length < n) { var g2 = new int[n]; Array.Copy(Group, g2, Group.Length); Group = g2; }
+            int palettes = used > 0 ? used : Palette.Length;      // the palettes the solve made (the others are its unused grey defaults)
+            for (int i = from; i < n; i++)
+            {
+                int bestG = 0; double be = double.MaxValue;
+                for (int j = 0; j < palettes; j++)
+                {
+                    double e = 0;
+                    foreach (var kv in hist[i]) { var c = C(kv.Key); double b = double.MaxValue; for (int L = 1; L <= 3; L++) b = Math.Min(b, D(c, C((int)Palette[j][L]))); e += b * kv.Value; }
+                    if (e < be) { be = e; bestG = j; }
+                }
+                Group[i] = bestG;
+                if (be > 0) lossy++;
+                var map = new Dictionary<int, byte>(); var P = Palette[bestG];
+                foreach (var col in hist[i].Keys)
+                {
+                    var c = C(col); int best = 1; double bd = double.MaxValue;
+                    for (int L = 1; L <= 3; L++) { double d = D(c, C((int)P[L])); if (d < bd) { bd = d; best = L; } }
+                    map[col] = (byte)best;
+                }
+                levels.Add(map);
+            }
+            return lossy;
+        }
+
+        /// <summary>The palettes the last <see cref="Solve"/> made (the rest keep its grey defaults).</summary>
+        private int used;
     }
 
     /// <summary>CGRAM base of palette p of layer k: mode 0 gives each layer its own 32 colours; 8bpp layers use all 256.</summary>

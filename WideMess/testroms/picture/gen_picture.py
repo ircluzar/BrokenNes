@@ -341,7 +341,7 @@ class Model:
         out = []
         for c in range(2 * width if hires else width):
             sx = c - 2 * origin if hires else c - origin                 # counted from the SNES picture's left edge
-            sx -= sx % (msize * (2 if hires else 1))                     # (Python's % is a floor modulo: negative columns too)
+            if msize > 1: sx -= sx % (msize * (2 if hires else 1))       # (Python's % is a floor modulo: negative columns too); no mosaic: every half-pixel its own
             hs, vs = self.hofs[b], self.vofs[b]
             if mode in (2, 4, 6) and b < 2: hs, vs = self.offset_per_tile(b, mode, sx >> 1 if hires else sx, hs, vs)
             x = (sx + (2 if hires else 1) * hs) % (mw * tw)

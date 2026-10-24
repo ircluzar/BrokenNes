@@ -98,6 +98,8 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--wms-enhance-sheet", StringComparison.OrdinalIgnoreCase)) return WideMessCli.EnhanceSheet(args);
         if (args.Length > 0 && args[0].Equals("--wms-enhance-film", StringComparison.OrdinalIgnoreCase)) return WideMessCli.EnhanceFilm(args);
         if (args.Length > 0 && args[0].Equals("--wms-enhance-test", StringComparison.OrdinalIgnoreCase)) return WideMessCli.EnhanceTest(args);
+        if (args.Length > 0 && args[0].Equals("--wms-testcart", StringComparison.OrdinalIgnoreCase)) return WideMessCli.TestCartTest(args);
+        if (args.Length > 0 && args[0].Equals("--wms-testcart-shots", StringComparison.OrdinalIgnoreCase)) return WideMessCli.TestCartShots(args);
         if (args.Length > 0 && args[0].Equals("--wms-fast-probe", StringComparison.OrdinalIgnoreCase)) return WideMessCli.FastProbe(args);
         if (args.Length > 0 && args[0].Equals("--wms-run", StringComparison.OrdinalIgnoreCase)) return WideMessCli.RunGame(args);
         if (args.Length > 0 && args[0].Equals("--swap-matrix-test", StringComparison.OrdinalIgnoreCase)) return Sega.SwapMatrixTestCli.Run(args);
@@ -121,6 +123,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--console-run", StringComparison.OrdinalIgnoreCase)) return ConsoleRunCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--enhanced-shots", StringComparison.OrdinalIgnoreCase)) return EnhancedCores.EnhancedShotsCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--enhanced-test", StringComparison.OrdinalIgnoreCase)) return EnhancedCores.EnhancedCoresTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--wms-guest-sheet", StringComparison.OrdinalIgnoreCase)) return EnhancedCores.WideMessGuestSheet.Run(args);
         if (args.Length > 0 && args[0].Equals("--snesrun", StringComparison.OrdinalIgnoreCase))
         {
             return SnesRunCli.Run(args);

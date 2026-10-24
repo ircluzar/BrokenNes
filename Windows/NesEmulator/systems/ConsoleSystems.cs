@@ -310,11 +310,15 @@ public static class CoreCatalog
 {
     // NES-board cores that are really another console's part (the mix bridges).
     private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy", ["Z80"] = "Master System", ["M68K"] = "Genesis" };
-    private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis" };
-    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis" };
+    private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess" };
+    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess" };
 
-    /// <summary>The NES board's ids of the other consoles' ENHANCED chips (a NES game on them). Only the NES menu offers them: the other consoles reach those chips directly (<see cref="DirectRoutes"/>), never through a NES.</summary>
-    private static readonly HashSet<string> NesBoardEnhancedOfOthers = new(StringComparer.OrdinalIgnoreCase) { "SNESS", "SMSS", "MDS" };
+    /// <summary>The NES board's ids of the other consoles' ENHANCED chips (a NES game on them). Only the NES menu offers them: the other consoles reach those chips directly (<see cref="DirectRoutes"/>), never through a NES.
+    /// WMSS (the WideMess's, milestone 7) only where the WideMess console is offered (<see cref="Consoles.WideMessEnabled"/>).</summary>
+    private static readonly HashSet<string> NesBoardEnhancedOfOthers = new(StringComparer.OrdinalIgnoreCase) { "SNESS", "SMSS", "MDS", "WMSS" };
+
+    /// <summary>True when a NES-board id or a route belongs to a console this host does not offer (the WideMess's chips where the WideMess is hidden: Lite and the FL plugin until they offer it).</summary>
+    private static bool Hidden(string family) => family == "WideMess" && !Consoles.IsAvailable(ConsoleKind.WideMess);
 
     /// <summary>
     /// The routes from a console to another console's ENHANCED chips with no NES in between (docs/projects/enhanced-cores.md 5): the route id the menus store, the family, the name the label gives, and the chip's id on
@@ -327,10 +331,13 @@ public static class CoreCatalog
         ("SMS:SMSS", "Master System", "Master System", "SMSS"),
         ("GG:GGS", "Master System", "Game Gear", "GGS"),
         ("MD:MDS", "Genesis", "Genesis", "MDS"),
+        // WideMess milestone 7 (docs/projects/enhanced-cores.md section 6): the widescreen picture chip and the 32-voice sound chip. Its own menu has no enhanced entry (its WMS chips are the WideMess); offered only
+        // where the WideMess console is (Consoles.WideMessEnabled).
+        ("WMS:WMSS", "WideMess", "WideMess", "WMSS"),
     };
 
-    /// <summary>True when the enhanced chips of <paramref name="route"/> exist (the menus offer them).</summary>
-    private static bool Built(string route) => NesEmulator.Mix.EnhancedChips.IsRoute(route);
+    /// <summary>True when the enhanced chips of <paramref name="route"/> exist (the menus offer them) and its console is offered here.</summary>
+    private static bool Built(string route) => NesEmulator.Mix.EnhancedChips.IsRoute(route) && !Hidden(Array.Find(DirectRoutes, r => r.Route.Equals(route, StringComparison.OrdinalIgnoreCase)).Family ?? "");
 
     /// <summary>True when <paramref name="id"/> is a direct route to another console's enhanced chips (<see cref="DirectRoutes"/>) whose chips exist.</summary>
     public static bool IsDirectRoute(string? id) => id != null && Array.Exists(DirectRoutes, r => r.Route.Equals(id, StringComparison.OrdinalIgnoreCase)) && Built(id);
@@ -352,6 +359,8 @@ public static class CoreCatalog
         ["APU:SNESS"] = "the SNES sound chip with extra S-DSP banks: every NES channel on a voice of its own, pulses with their duty (the DMC is dropped)",
         ["APU:SMSS"] = "the Master System sound chip with extra SN76489 sets: every NES channel on a channel of its own (the DMC is dropped)",
         ["APU:MDS"] = "the Genesis sound chips with extra YM2612 + PSG sets: every NES channel on a channel of its own (the DMC is dropped)",
+        ["PPU:WMSS"] = "the WideMess widescreen chip: the game 400 wide (the neighbouring nametable beside the screen with vertical mirroring, the screen repeated with horizontal), in 15-bit colours; the NES's own 256 columns in the middle",
+        ["APU:WMSS"] = "the WideMess sound chip: every NES channel on a WideMess voice of its own in 16-bit PCM (the DMC is dropped)",
         ["APU:FIX"] = "the NES sound chip (2A03), accurate", ["APU:FIXS"] = "the NES sound chip with extra channel banks for the cross-console sound (as many as the other console's voices need)",
         ["APU:SNES"] = "SNES sound (S-DSP)", ["APU:DMG"] = "Game Boy sound chip", ["APU:DMGS"] = "Game Boy sound chip with extra channel banks (as many as the other console's voices need)",
         ["APU:SMS"] = "Master System / Game Gear sound chip (SN76489 PSG: 3 square tones + noise; the DMC is dropped)",
@@ -408,7 +417,7 @@ public static class CoreCatalog
     /// </summary>
     public static IReadOnlyList<CoreOption> Options(ConsoleKind console, CoreSlot slot)
     {
-        var key = (console, slot);
+        var key = (console, slot, Consoles.WideMessEnabled);
         lock (cache) if (cache.TryGetValue(key, out var hit)) return hit;
         var arranged = Arrange(console, slot, RawOptions(console, slot));
         lock (cache) cache[key] = arranged;
@@ -416,7 +425,7 @@ public static class CoreCatalog
     }
 
     // The menus are built once per console and slot: CoreRegistry's ids are fixed for the process, and the menus are read on every swap and status request.
-    private static readonly Dictionary<(ConsoleKind, CoreSlot), IReadOnlyList<CoreOption>> cache = new();
+    private static readonly Dictionary<(ConsoleKind, CoreSlot, bool), IReadOnlyList<CoreOption>> cache = new();
 
     /// <summary>The heading a menu draws over a section (desktop menu headings, Lite option groups).</summary>
     public static string SectionTitle(ConsoleKind console, CoreSection section) => section switch
@@ -448,6 +457,7 @@ public static class CoreCatalog
         ("Master System", CoreSlot.Apu, "SMS", CoreGrade.Stock, "Master System"), ("Master System", CoreSlot.Apu, "SMSFM", CoreGrade.Stock, "Master System FM"),
         ("Master System", CoreSlot.Apu, "SMSS", CoreGrade.Enhanced, "Master System"),
         ("Genesis", CoreSlot.Apu, "MD", CoreGrade.Stock, "Genesis"), ("Genesis", CoreSlot.Apu, "MDS", CoreGrade.Enhanced, "Genesis"),
+        ("WideMess", CoreSlot.Ppu, "WMSS", CoreGrade.Enhanced, "WideMess"), ("WideMess", CoreSlot.Apu, "WMSS", CoreGrade.Enhanced, "WideMess"),
     };
 
     /// <summary>A console's own best cores by their own menu ids (stock, then enhanced).</summary>
@@ -482,7 +492,7 @@ public static class CoreCatalog
         ConsoleKind.Snes => "SNES:SFCS", ConsoleKind.MasterSystem => "SMS:SMSS", ConsoleKind.GameGear => "GG:GGS", ConsoleKind.Genesis => "MD:MDS", _ => null,
     };
 
-    private static readonly string[] FamilyOrder = { "NES", "SNES", "Game Boy", "Master System", "Genesis" };
+    private static readonly string[] FamilyOrder = { "NES", "SNES", "Game Boy", "Master System", "Genesis", "WideMess" };
 
     /// <summary>The NES-board chip an entry reaches (its id without the route: "NES:FIXS" -> FIXS, "NES-FM:FIX" -> FIX, "SNES:SFC" -> SNES), and whether that is a best core of another family.</summary>
     private static (string Family, CoreGrade Grade, string Name)? CrossBest(ConsoleKind console, CoreSlot slot, CoreOption o)
@@ -552,8 +562,8 @@ public static class CoreCatalog
     /// <summary>The console's own enhanced chip (once it exists) and the routes to the other consoles' enhanced chips (once they exist), for the picture or the sound slot.</summary>
     private static void AddEnhanced(List<CoreOption> list, ConsoleKind console, CoreSlot slot)
     {
-        // the WideMess's chips on the other consoles' menus, and theirs on its, are its milestone 7
-        if (slot == CoreSlot.Cpu || console == ConsoleKind.Nes || console == ConsoleKind.WideMess) return;
+        // the WideMess's chips on the other consoles' menus, and theirs on its (milestone 7): the WideMess offers the other consoles' chips as the SNES console does (not the SNES's: its own WMS chips are the SNES's, and more)
+        if (slot == CoreSlot.Cpu || console == ConsoleKind.Nes) return;
         string own = Consoles.Family(console);
         if (OwnRouteOf(console) is { } mine && Built(mine))
         {
@@ -561,7 +571,7 @@ public static class CoreCatalog
             list.Add(new(r.Own, OwnEnhancedLabel(console, r.Own, slot), own));
         }
         foreach (var r in DirectRoutes)
-            if (r.Family != own && Built(r.Route)) list.Add(new(r.Route, RouteLabel(r.Route, slot), r.Family));
+            if (r.Family != own && Built(r.Route) && !(console == ConsoleKind.WideMess && r.Family == "SNES")) list.Add(new(r.Route, RouteLabel(r.Route, slot), r.Family));
     }
 
     private static string OwnEnhancedLabel(ConsoleKind console, string id, CoreSlot slot)
@@ -581,6 +591,8 @@ public static class CoreCatalog
         ("GG:GGS", CoreSlot.Ppu) => "GGS - Game Gear picture chip with the game's layers at its own size (the Game Gear's 4,096 colours)",
         ("GG:GGS", _) => "GGS - Game Gear sound with SN76489 sets: every voice on a channel of its own, the pan on the stereo port",
         ("MD:MDS", CoreSlot.Ppu) => "MDS - Genesis picture chip with the game's layers at its own size (512 colours, shadow and highlight for the colour math)",
+        ("WMS:WMSS", CoreSlot.Ppu) => "WMSS - WideMess widescreen chip: the game 400 wide, its layers extended where the game keeps more picture, repeated or filled where it does not (15-bit colours; what each side shows is counted)",
+        ("WMS:WMSS", _) => "WMSS - WideMess sound chip: every voice on a WideMess voice of its own (16-bit PCM pulses, triangles and noise; the pan kept)",
         _ => "MDS - Genesis sound with YM2612 + PSG sets: every voice on a channel of its own (FM voices, PSG squares and noise, the pan on the FM)",
     };
 
@@ -598,6 +610,7 @@ public static class CoreCatalog
                 foreach (var id in ids.OrderBy(i => i.Equals("FIX", StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(i => i, StringComparer.OrdinalIgnoreCase))
                 {
                     string fam = NesFamilyOf(slot, id);
+                    if (Hidden(fam)) continue;       // the WideMess's chips where the WideMess is hidden (Lite, the FL plugin)
                     list.Add(new CoreOption(id, NesBridgeLabels.TryGetValue(prefix + ":" + id, out var l) ? $"{id} - {l}" : id, fam) { Wall = slot == CoreSlot.Cpu && id.ToUpperInvariant() is "Z80" or "M68K" or "SM83" });
                 }
                 break;
@@ -648,18 +661,26 @@ public static class CoreCatalog
                         break;
                 }
                 break;
-            // WideMess (docs/projects/widemess-spec.md): its own parts only for now. The CPU is the SNES's 65816 (its fast mode arrives in milestone 4), the picture chip is the
-            // WideMess's (the SNES chip + 512 KB video RAM, 1,024 colours, 8 layers of 256 colours, 400 wide), the sound chip is the WideMess's (the SNES's S-SMP + S-DSP + voices
-            // 8-31 and 1 MB of sound RAM, spec section 4), with the SNES's own as the alternative.
+            // WideMess (docs/projects/widemess-spec.md): the CPU is the SNES's 65816 (its fast mode arrives in milestone 4), the picture chip is the WideMess's (the SNES chip + 512 KB video RAM, 1,024 colours,
+            // 8 layers of 256 colours, 400 wide), the sound chip is the WideMess's (the SNES's S-SMP + S-DSP + voices 8-31 and 1 MB of sound RAM, spec section 4), with the SNES's own as the alternative.
+            // Milestone 7: the other consoles' chips, as the SNES console offers them (a SNES game's picture and sound translated; a WideMess game's own picture - 8 layers, 400 wide - and its voices 8-31 are
+            // not carried by them, and the session counts every frame they were not: SnesSession.Description).
             case ConsoleKind.WideMess:
                 switch (slot)
                 {
                     case CoreSlot.Cpu: list.Add(new("WMS", "WMS (65816; the fast mode arrives in milestone 4)", "WideMess")); break;
-                    case CoreSlot.Ppu: list.Add(new("WMS", "WMS (WideMess picture chip: the SNES chip + 512 KB video RAM, 1,024 colours, 8 layers of 256 colours, 400 wide)", "WideMess")); break;
+                    case CoreSlot.Ppu:
+                        list.Add(new("WMS", "WMS (WideMess picture chip: the SNES chip + 512 KB video RAM, 1,024 colours, 8 layers of 256 colours, 400 wide)", "WideMess"));
+                        foreach (var id in NesPictureChips()) list.Add(new("NES:" + id, NesPictureLabel(id), NesFamilyOf(CoreSlot.Ppu, id)));
+                        break;
                     default:
                         list.Add(new("WMS", "WMS (WideMess sound chip: the S-SMP + S-DSP, plus 24 more voices in BRR or 16-bit PCM and 1 MB of sound RAM once a game unlocks them)", "WideMess"));
                         list.Add(new("SFC", "SFC (the SNES's S-SMP + S-DSP: 8 voices, 64 KB, no WideMess sound)", "WideMess"));
                         list.Add(new("HLE", "HLE (silent - no sound, fastest)", "WideMess"));
+                        foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), NesFamilyOf(CoreSlot.Apu, id)));
+                        if (CoreRegistry.ApuIds.Contains("DMG", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMG", "Game Boy sound chip (through NES registers)", "Game Boy"));
+                        if (CoreRegistry.ApuIds.Contains("DMGS", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMGS", "Game Boy sound chip with extra channel banks: all eight of the S-DSP's voices (through NES registers)", "Game Boy"));
+                        foreach (var id in HubSoundChips("SNES").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "Game Boy")) list.Add(new("NES:" + id, HubSoundLabel(id, "the S-DSP's eight voices"), NesFamilyOf(CoreSlot.Apu, id)));
                         break;
                 }
                 break;
