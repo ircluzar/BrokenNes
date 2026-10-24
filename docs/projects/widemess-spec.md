@@ -648,6 +648,7 @@ No flicker changed nothing in eight of the eleven games' checked play: most SNES
 | BrokenNes Lite and the FL plugin (section 9) | 7a | done (Lite: `Emulator.Consoles.cs`, `Emulator.WideMess.cs`, `UAT/lite/test-lite-widemess.mjs`; plugin: chip `WMS`, `WmsBank.cs`, `WmsSampler.cs`, `WmsSnapshot.cs`, self-test `wms` / `rom-wms`) |
 | The WideMess chips on the other consoles (the widescreen chip, the sound chip), theirs on the WideMess | 7b | done (section 8; `WmsWideChip`, `WmsVoiceChip`, NES board `PPU_WMSS` / `APU_WMSS`: mix/WideMessEnhanced.cs; `Workshop --enhanced-test --only wmsmenu,wms,wmsown,wmsgames`) |
 | Debug port | BrokenDev debugging toolkit | reserved |
+| Conformance: the test cartridge (any implementation of this spec runs it; its expected results, its results table, its reference pictures) | - | done (`WideMess/testcart`, `WideMess/testroms/bin/widemess-testcart.wms`; `Workshop --wms-testcart`) |
 
 ## 8. The WideMess chips on the other consoles (milestone 7b)
 

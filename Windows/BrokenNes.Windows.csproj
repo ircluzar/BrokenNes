@@ -62,6 +62,8 @@
   <ItemGroup>
     <!-- Embed default ROM -->
     <EmbeddedResource Include="Resources\test.nes" />
+    <!-- the WideMess test cartridge (WideMess/testcart): Console > WideMess test cartridge -->
+    <EmbeddedResource Include="..\WideMess\testroms\bin\widemess-testcart.wms" Link="Resources\widemess-testcart.wms" LogicalName="widemess-testcart.wms" />
   </ItemGroup>
 
   <ItemGroup>

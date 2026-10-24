@@ -125,6 +125,7 @@ namespace BrokenNes.Windows
             };
             server.QuickStateReason = () => quickStateReason;
             WireWideMessApi(server);   // WideMess milestone 6 (MainForm.WideMess.cs)
+            WireWideMessTestCartApi(server);   // POST /api/widemess/testcart (MainForm.WideMessTestCart.cs)
             server.GetSegaSettings = () => new
             {
                 region = NesEmulator.Sega.SegaOptions.Key(NesEmulator.Sega.SegaOptions.RegionFromKey(config.SegaRegion)),
@@ -240,6 +241,7 @@ namespace BrokenNes.Windows
             consoleMenu.DropDownItems.Add(BuildGbLookMenu());
             consoleMenu.DropDownItems.Add(BuildSegaMenu());
             consoleMenu.DropDownItems.Add(BuildWideMessMenu());   // WideMess milestone 6: the SNES games' enhancements (MainForm.WideMess.cs)
+            consoleMenu.DropDownItems.Add(BuildWideMessTestCartItem());   // the WideMess test cartridge, embedded (MainForm.WideMessTestCart.cs)
             consoleMenu.DropDownOpening += (s, e) => RefreshConsoleMenu();
             RefreshConsoleMenu();
             return consoleMenu;

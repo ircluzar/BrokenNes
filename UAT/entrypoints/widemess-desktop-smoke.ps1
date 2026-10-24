@@ -20,6 +20,8 @@
              picture back, 256 wide; the API's switches leave the settings file without a kept choice.
     GUEST    milestone 7b: the NES (its embedded test.nes) on the NES board's WideMess widescreen chip (PPU WMSS) is shown 400 x 240, and 256 x 240 again back on FIX; a Master System game
              (the local Sega roster's Sonic, when it is there) on WMS:WMSS picture and sound is 400 x 192 (Workshop --enhanced-test --only wms,wmsgames measures what the sides show).
+    TESTCART the Console menu has "WideMess test cartridge"; it (POST /api/widemess/testcart) starts the embedded test cartridge on the WideMess console, 400 x 224, its results table
+             says WMTC and WMID $57; the pad reaches its menu and test 8 (identity), which passes its 6 self-checks (WideMess\testcart\README.md).
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
 
 .EXAMPLE
@@ -214,6 +216,25 @@ try {
         $st = Get-Status $id
         Check 'guest_sms_wide' ([bool]$p1.success -and [bool]$a1.success -and $st.console -eq 'sms' -and $st.ppu -eq 'WMS:WMSS' -and $st.apu -eq 'WMS:WMSS' -and $f8.Width -eq 400 -and $f8.Height -eq 192 -and $f8.Colors -gt 4) "console $($st.console), PPU $($st.ppu), APU $($st.apu), picture $($f8.Width) x $($f8.Height), $($f8.Colors) colours; $($st.pictureBridgeSummary)"
     } else { Write-Host "[NOT RUN] guest_sms_wide: no Master System game at $sms" }
+
+    # TESTCART: the WideMess test cartridge, embedded in the program: Console > WideMess test cartridge (its twin, POST /api/widemess/testcart) starts it on the WideMess console;
+    # its results table ($7E:1000, WideMess\testcart\README.md) says WMTC; START reaches its menu, DOWN x 7 and A run test 8 (identity), which passes its 6 self-checks
+    Check 'testcart_menu' ($names -contains 'WideMess test cartridge') ("Console menu: " + ($names -join ', '))
+    $r = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/widemess/testcart'
+    $f6 = Wait-Frame $id { param($f) $f.Width -eq 400 -and $f.Colors -gt 40 }
+    $st = Get-Status $id
+    function Get-TcTable { (Invoke-BrokenNesApi -ProcessId $id -Method GET -Path '/api/console/peek?domain=WRAM&address=4096&length=64').data }
+    $t = Get-TcTable
+    $magic = -join ($t[0..3] | ForEach-Object { [char]$_ })
+    Check 'testcart_starts' ($r.success -and $st.console -eq 'wms' -and $f6.Width -eq 400 -and $f6.Height -eq 224 -and $magic -eq 'WMTC' -and $t[0x10] -eq 0x57) "console $($st.console), $($f6.Width) x $($f6.Height), $($f6.Colors) colours, table '$magic', WMID $('{0:X2}' -f $t[0x10])"
+    function Press($b) { Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/input/set-buttons' -Body @{ buttons = @($b); holdMs = 120 } | Out-Null; Start-Sleep -Milliseconds 350 }
+    Press 'Start'
+    $end = (Get-Date).AddSeconds(10); do { Start-Sleep -Milliseconds 300; $t = Get-TcTable } while ($t[0x0A] -ne 1 -and (Get-Date) -lt $end)
+    Start-Sleep -Milliseconds 600
+    foreach ($k in 1..7) { Press 'Down' }
+    Press 'A'
+    $end = (Get-Date).AddSeconds(15); do { Start-Sleep -Milliseconds 400; $t = Get-TcTable } while (($t[0x0A] -ne 9 -or $t[0x27] -ne 0x50) -and (Get-Date) -lt $end)
+    Check 'testcart_identity' ($t[0x0A] -eq 9 -and $t[0x27] -eq 0x50 -and $t[0x2F] -eq 6 -and $t[0x37] -eq 0) "screen $($t[0x0A]) (9 = test 8), its status '$([char]$t[0x27])', $($t[0x2F]) checks, $($t[0x37]) failed"
 
     $result.pass = -not ($checks.Values | Where-Object { -not $_.ok })
 }
