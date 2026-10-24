@@ -37,8 +37,10 @@ public static class CheckRun
         {
             var busy = frames.Select(f => 100.0 * f.Busy / c.NominalFrameCycles).ToList();
             s.BusyAverage = busy.Average();
-            int wi = busy.IndexOf(busy.Max());
-            s.BusyWorst = busy[wi]; s.BusyWorstFrame = frames[wi].Frame;
+            // the worst frame that made it: a lag frame is 100% busy by definition and is counted by the lag frames instead
+            int wi = -1;
+            for (int i = 0; i < frames.Count; i++) if (!frames[i].Lag && (wi < 0 || busy[i] > busy[wi])) wi = i;
+            if (wi >= 0) { s.BusyWorst = busy[wi]; s.BusyWorstFrame = frames[wi].Frame; }
             s.LagFrames = frames.Count(f => f.Lag);
             s.LagFrameList = frames.Where(f => f.Lag).Select(f => f.Frame).Take(60).ToList();
             var up = frames.Where(f => f.UploadCycles >= 0).Select(f => 100.0 * f.UploadCycles / c.VblankCycles).ToList();

@@ -17,7 +17,8 @@ public sealed class SnesChecks : ConsoleChecks
     private readonly Snes65816 cpu;
     private readonly bool wideMess;
     private readonly WrittenMap wram = new(0x20000), vram = new(0x10000), cgram = new(0x200), oam = new(0x220), aram = new(0x10000);
-    private readonly WrittenMap? wramHi;
+    private readonly WrittenMap? wramHi, wramHiRead;
+    private readonly WrittenMap wramRead = new(0x20000), vramData = new(0x10000), aramData = new(0x10000);
     private readonly StackCollisions stack = new(0x2000);
 
     public SnesChecks(Debugger debugger, CheckOptions options) : base(debugger, options)
@@ -25,7 +26,7 @@ public sealed class SnesChecks : ConsoleChecks
         var m = (SnesDebugMachine)debugger.Machine;
         session = m.Session; board = m.Board; cpu = (Snes65816)m.Main;
         wideMess = session.Console == ConsoleKind.WideMess;
-        if (board.WramHigh is { } hi) wramHi = new WrittenMap(hi.Length);
+        if (board.WramHigh is { } hi) { wramHi = new WrittenMap(hi.Length); wramHiRead = new WrittenMap(hi.Length); }
     }
 
     public override string Family => "snes";
@@ -81,6 +82,7 @@ public sealed class SnesChecks : ConsoleChecks
 
     // ---------------------------------------------------------------- accesses
     private int pendingVram = -1, pendingCgram = -1, pendingOam = -1;
+    private byte pendingValue;
     private int prefetchWord = -1, cgPtr, oamPtr;
     private long mulAt = -100, divAt = -100; private bool lastWasDiv;
     private bool dmaRunning, dmaFromVblank, dmaHdmaReported; private uint dmaPc;
@@ -132,6 +134,7 @@ public sealed class SnesChecks : ConsoleChecks
             else NoteMainWrite();
             return;
         }
+        (hi ? wramHiRead! : wramRead).Set(key.Offset);
         if (!map[key.Offset])
             Report("snes.wram-uninit", MemoryPlace(c, address, text), text, c, curPc,
                 source == AccessSource.Cpu ? "read before it was ever written" : $"read by {source} (channel {cpuChannel(source)}) before it was ever written");
@@ -151,7 +154,7 @@ public sealed class SnesChecks : ConsoleChecks
                 case 0x2118: case 0x2119:
                 {
                     int b = ppu.DebugVramWordAddress * 2 + (reg == 0x2119 ? 1 : 0);
-                    if (cpuSrc) pendingVram = b; else PictureWrite(c, "VRAM", b, source, channel, landed: ppu.DebugVramWritable);
+                    if (cpuSrc) { pendingVram = b; pendingValue = value; } else { if (value != 0 && ppu.DebugVramWritable) vramData.Set(b & 0xFFFF); PictureWrite(c, "VRAM", b, source, channel, landed: ppu.DebugVramWritable); }
                     return;
                 }
                 case 0x2122:
@@ -247,6 +250,7 @@ public sealed class SnesChecks : ConsoleChecks
         uint cpuAddr = k.Space == Snes65816.SpaceWram ? 0x7E0000u + k.Offset : 0x700000u + k.Offset;
         if (write) { (k.Space == Snes65816.SpaceWram ? wram : wramHi)?.Set(k.Offset); return; }
         var map = k.Space == Snes65816.SpaceWram ? wram : wramHi;
+        (k.Space == Snes65816.SpaceWram ? wramRead : wramHiRead)?.Set(k.Offset);
         if (map != null && !map[k.Offset])
         {
             string text = k.Space == Snes65816.SpaceWram ? $"wram:${k.Offset:X5}" : $"wramhi:${k.Offset:X5}";
@@ -274,7 +278,7 @@ public sealed class SnesChecks : ConsoleChecks
     {
         if (c.Index != 0) return;
         var ppu = board.Ppu;
-        if (pendingVram >= 0) { PictureWrite(c, "VRAM", pendingVram, AccessSource.Cpu, -1, landed: ppu.DebugVramWritable); pendingVram = -1; }
+        if (pendingVram >= 0) { if (pendingValue != 0 && ppu.DebugVramWritable) vramData.Set(pendingVram & 0xFFFF); PictureWrite(c, "VRAM", pendingVram, AccessSource.Cpu, -1, landed: ppu.DebugVramWritable); pendingVram = -1; }
         if (pendingCgram >= 0) { PictureWrite(c, "CGRAM", pendingCgram, AccessSource.Cpu, -1, landed: CgramWriteOk(AccessSource.Cpu)); pendingCgram = -1; }
         if (pendingOam >= 0) { PictureWrite(c, "OAM", pendingOam, AccessSource.Cpu, -1, landed: !ppu.DebugInDisplay || ppu.ForcedBlank); pendingOam = -1; }
         var key = cpu.Map(address);
@@ -374,18 +378,20 @@ public sealed class SnesChecks : ConsoleChecks
     private void SpcAccess(uint address, byte value, bool write)
     {
         int a = (int)(address & 0xFFFF);
-        if (write) { aram.Set(a); return; }
+        if (write) { aram.Set(a); if (Dbg.Machine.Cpus[1].Peek(address) != 0) aramData.Set(a); return; }
         if (a >= 0xF0 && a <= 0xFF) return;
         if (EchoRegion(out int s, out int n) && InRegion(a, s, n))
             Report("snes.echo-overrun", $"SPC700 data in the echo buffer ${s:X4}-${(s + n - 1) & 0xFFFF:X4}", $"spc:${a:X4}", Dbg.Machine.Cpus[1], Dbg.Machine.Cpus[1].PC,
                 $"the SPC700 reads ${a:X4}, inside the echo buffer the DSP keeps writing (ESA ${s >> 8:X2}, {n} bytes)");
     }
 
+    private bool echoMarked; private (int, int) echoMarkedAt;
+
     private void CheckVoices()
     {
         var apu = Apu;
         if (apu == null || !EchoRegion(out int s, out int n)) return;
-        for (int i = 0; i < n; i += 64) aram.Set((s + i) & 0xFFFF);   // the echo buffer is in use (for the headroom)
+        if (!echoMarked || echoMarkedAt != (s, n)) { for (int i = 0; i < n; i++) { aram.Set((s + i) & 0xFFFF); aramData.Set((s + i) & 0xFFFF); } echoMarked = true; echoMarkedAt = (s, n); }   // the echo buffer is in use (the headroom)
         var r = apu.Dsp.Regs;
         var spc = Dbg.Machine.Cpus[1];
         for (int v = 0; v < 8; v++)
@@ -531,12 +537,11 @@ public sealed class SnesChecks : ConsoleChecks
     // ---------------------------------------------------------------- the report
     public override IEnumerable<(string name, long size, long written)> MemoryUse()
     {
-        yield return ("wram", 0x20000, wram.Count());
-        if (wramHi != null) yield return ("wramhi", wramHi.Size, wramHi.Count());
-        yield return ("vram", 0x10000, vram.Count());
-        yield return ("cgram", 0x200, cgram.Count());
-        yield return ("oam", 0x220, oam.Count());
-        yield return ("aram", 0x10000, aram.Count());
+        yield return ("wram", 0x20000, wramRead.Count());
+        if (wramHiRead != null) yield return ("wramhi", wramHiRead.Size, wramHiRead.Count());
+        if (wideMess) yield break;   // the WideMess's 512 KB VRAM and 1 MB sound RAM are reached by paths the SNES model does not follow
+        yield return ("vram", 0x10000, vramData.Count());
+        yield return ("aram", 0x10000, aramData.Count());
     }
 
     public override (long deepest, long free) StackUse() => stack.Lowest == uint.MaxValue ? (-1, -1) : (stack.Lowest, stack.Headroom(0));

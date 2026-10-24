@@ -102,6 +102,35 @@ function Test-BdManifest {
         if ($ok -eq 'mesen-screens' -and -not [string](Get-BdProp $oracle 'mesenSettings' '')) { $e.Add('oracle.mesenSettings is required for mesen-screens') }
         if ($ok -eq 'mesen-trace' -and $M.console -ne 'nes') { $e.Add('a mesen-trace oracle is for NES projects (the trace format is the NES one)') }
     }
+    # optional: the hardware checks and the budgets (milestone D4; the Workshop's verify checks the rule ids against its catalogue)
+    $checks = Get-BdProp $M 'checks' $null
+    if ($null -ne $checks) {
+        $vids = @(@(Get-BdProp $v 'scenarios' @()) | ForEach-Object { [string](Get-BdProp $_ 'id' '') })
+        foreach ($s in @(Get-BdProp $checks 'scenarios' @())) { if ($vids -notcontains [string]$s) { $e.Add("checks.scenarios: no verify scenario '$s'") } }
+        foreach ($a in @(Get-BdProp $checks 'accepted' @())) {
+            $r = [string](Get-BdProp $a 'rule' '')
+            if (-not $r) { $e.Add('checks.accepted: an entry has no rule') }
+            if ($r -and $r -notmatch '^(nes|snes|gb)\.[a-z0-9*?-]+$') { $e.Add("checks.accepted: '$r' is not a rule id (nes.*, snes.*, gb.*)") }
+            if (-not [string](Get-BdProp $a 'reason' '')) { $e.Add("checks.accepted: '$r' at '$([string](Get-BdProp $a 'at' '*'))' has no reason (an accepted finding always says why)") }
+        }
+        foreach ($o in @(Get-BdProp $checks 'off' @())) {
+            if (-not [string](Get-BdProp $o 'rule' '')) { $e.Add('checks.off: an entry has no rule') }
+            if (-not [string](Get-BdProp $o 'reason' '')) { $e.Add("checks.off: '$([string](Get-BdProp $o 'rule' ''))' has no reason (an opt-out always says why)") }
+        }
+    }
+    $budgets = Get-BdProp $M 'budgets' $null
+    if ($null -ne $budgets) {
+        foreach ($p in $budgets.PSObject.Properties) {
+            switch ($p.Name) {
+                { $_ -in 'lagFrames', 'busyPercent' } { if ($null -eq (Get-BdProp $p.Value 'max' $null)) { $e.Add("budgets.$($p.Name) needs 'max'") } }
+                'stackFree' { if ($null -eq (Get-BdProp $p.Value 'min' $null)) { $e.Add("budgets.stackFree needs 'min'") } }
+                'romBankFree' { if ($null -eq (Get-BdProp $p.Value 'min' $null) -and $null -eq (Get-BdProp $p.Value 'banks' $null)) { $e.Add("budgets.romBankFree needs 'min' or 'banks'") } }
+                'memoryFree' { }
+                'what' { }
+                default { $e.Add("budgets: unknown budget '$($p.Name)' (lagFrames, busyPercent, romBankFree, memoryFree, stackFree)") }
+            }
+        }
+    }
     # optional: the multi-emulator compatibility recipe (lib\Compat.ps1 interprets it; validated when that library is loaded)
     $compat = Get-BdProp $M 'compat' $null
     if ($compat -and (Get-Command Test-BdCompatSection -ErrorAction SilentlyContinue)) {

@@ -12,7 +12,7 @@ namespace NesEmulator.Debugging.Checks;
 public sealed class GbChecks : ConsoleChecks
 {
     private readonly BOARD_GB board;
-    private readonly WrittenMap wram, hram = new(0x7F), oam = new(0xA0), vram;
+    private readonly WrittenMap wram, hram = new(0x7F), oam = new(0xA0), vram, wramRead, hramRead = new(0x7F), vramData;
     private readonly StackCollisions stack = new(0x10000);
     private readonly bool cgb;
 
@@ -20,7 +20,7 @@ public sealed class GbChecks : ConsoleChecks
     {
         board = ((GbDebugMachine)debugger.Machine).Board;
         wram = new WrittenMap(board.Wram.Length);
-        vram = new WrittenMap(board.Ppu.Vram.Length);
+        vram = new WrittenMap(board.Ppu.Vram.Length); vramData = new WrittenMap(board.Ppu.Vram.Length); wramRead = new WrittenMap(board.Wram.Length);
         cgb = board.Model == GbModel.Cgb;
     }
 
@@ -125,6 +125,7 @@ public sealed class GbChecks : ConsoleChecks
             }
             else
             {
+                (isHram ? hramRead : wramRead).Set(k.Offset);
                 if (!map[k.Offset]) Report("gb.ram-uninit", MemoryPlace(c, f, text), text, c, curPc, "read before it was ever written");
                 if (isStack) stack.Stack(f, false); else stack.Data(f, false, curSp);
             }
@@ -156,7 +157,7 @@ public sealed class GbChecks : ConsoleChecks
         if (a >= 0x8000 && a < 0xA000)
         {
             if (Ppu.VramBlocked) Report("gb.vram-mode3", CodePlace(c, curPc), $"${a:X4}", c, curPc, $"VRAM ${a:X4} written in mode 3 (the write was dropped)");
-            else { MarkVram(c, a); NoteUpload(M.Cycle); }
+            else { MarkVram(c, a, value); NoteUpload(M.Cycle); }
         }
         else if (a >= 0xFE00 && a < 0xFEA0)
         {
@@ -167,11 +168,11 @@ public sealed class GbChecks : ConsoleChecks
             Report("gb.cgb-palette-mode3", CodePlace(c, curPc), $"${a:X4}", c, curPc, $"palette data ${a:X4} written in mode 3 (the write was dropped)");
     }
 
-    private void MarkVram(DebugCpu c, ushort a)
+    private void MarkVram(DebugCpu c, ushort a, byte value)
     {
         Span<SpaceKey> keys = stackalloc SpaceKey[4];
         int n = c.AccessKeys(a, true, keys);
-        if (n > 1 && keys[1].Space == Sm83.SpaceVram) vram.Set(keys[1].Offset);
+        if (n > 1 && keys[1].Space == Sm83.SpaceVram) { vram.Set(keys[1].Offset); if (value != 0) vramData.Set(keys[1].Offset); }
     }
 
     private void DmaAccess(DebugCpu c, ushort a, byte value, bool write, AccessSource source)
@@ -179,7 +180,7 @@ public sealed class GbChecks : ConsoleChecks
         if (write)
         {
             if (source == AccessSource.OamDma) oam.Set(a - 0xFE00);
-            else { MarkVram(c, a); NoteDma(1); NoteUpload(M.Cycle); }
+            else { MarkVram(c, a, value); NoteDma(1); NoteUpload(M.Cycle); }
             return;
         }
         uint f = a >= 0xE000 && a < 0xFE00 ? (uint)(a - 0x2000) : a;
@@ -216,10 +217,9 @@ public sealed class GbChecks : ConsoleChecks
 
     public override IEnumerable<(string name, long size, long written)> MemoryUse()
     {
-        yield return ("wram", wram.Size, wram.Count());
-        yield return ("hram", hram.Size, hram.Count());
-        yield return ("vram", vram.Size, vram.Count());
-        yield return ("oam", oam.Size, oam.Count());
+        yield return ("wram", wramRead.Size, wramRead.Count());
+        yield return ("hram", hramRead.Size, hramRead.Count());
+        yield return ("vram", vramData.Size, vramData.Count());
     }
 
     public override (long deepest, long free) StackUse()

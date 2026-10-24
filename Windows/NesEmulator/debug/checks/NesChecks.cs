@@ -12,7 +12,8 @@ namespace NesEmulator.Debugging.Checks;
 public sealed class NesChecks : ConsoleChecks
 {
     private readonly NES nes;
-    private readonly WrittenMap ram = new(0x800);
+    private readonly WrittenMap ram = new(0x800), ramRead = new(0x800);
+    private readonly Dictionary<byte, SortedSet<byte>> unstableOperands = new();
     private readonly StackCollisions page1 = new(0x100);
 
     public NesChecks(Debugger debugger, CheckOptions options) : base(debugger, options)
@@ -90,8 +91,9 @@ public sealed class NesChecks : ConsoleChecks
         byte x = g.X, y = g.Y;
         var mode = Op6502.Mode(op);
 
+        if (op is 0xAB or 0x8B) { if (!unstableOperands.TryGetValue(op, out var set)) unstableOperands[op] = set = new SortedSet<byte>(); if (set.Count < 16) set.Add(lo); }
         if (!Op6502.Official(op))
-            Report("nes.unofficial-opcode", CodePlace(cpu, pc), "", cpu, pc, $"opcode ${op:X2} ({Op6502.Name(op)})");
+            Report("nes.unofficial-opcode", Op6502.Describe(op), "", cpu, pc, $"opcode ${op:X2} ({Op6502.Name(op)}) in {CodePlace(cpu, pc)}: {Op6502.Stability(op)}");
 
         // the instruction's real reads
         Span<byte> b = stackalloc byte[3] { op, lo, hi };
@@ -139,6 +141,7 @@ public sealed class NesChecks : ConsoleChecks
         ushort a = (ushort)address;
         if (source == AccessSource.OamDma)
         {
+            if (!write && a < 0x2000) ramRead.Set(a & 0x7FF);
             if (!write && a < 0x2000 && !ram[a & 0x7FF])
             {
                 string place = MemoryPlace(cpu, a, "");
@@ -159,6 +162,7 @@ public sealed class NesChecks : ConsoleChecks
             }
             else if (IsRealRead(a))
             {
+                ramRead.Set(r);
                 if (!ram[r]) Report("nes.ram-uninit", MemoryPlace(cpu, (uint)r, $"ram:${r:X4}"), $"ram:${r:X4}", cpu, curPc, "read before it was ever written");
                 if (r >= 0x100 && r < 0x200) { if (stack) page1.Stack((uint)(r & 0xFF), false); else page1.Data((uint)(r & 0xFF), false, curS); }
             }
@@ -242,6 +246,11 @@ public sealed class NesChecks : ConsoleChecks
     {
         base.Finish();
         foreach (var f in Findings)
+            if (f.Rule == "nes.unofficial-opcode" && (f.Place.StartsWith("$AB") || f.Place.StartsWith("$8B")) && unstableOperands.TryGetValue(f.Place.StartsWith("$AB") ? (byte)0xAB : (byte)0x8B, out var ops))
+                f.Detail += ops.All(o => o == 0)
+                    ? "; every one the game ran had the operand #$00, which gives 0 whatever the console's constant: stable as used"
+                    : $"; operands seen: {string.Join(" ", ops.Select(o => "#$" + o.ToString("X2")))} (only #$00 is safe on every console)";
+        foreach (var f in Findings)
             if (f.Rule == "nes.dmc-conflict")
             {
                 long h = dmcHits.TryGetValue(f.Key, out long x) ? x : 0;
@@ -251,7 +260,7 @@ public sealed class NesChecks : ConsoleChecks
 
     public override IEnumerable<(string name, long size, long written)> MemoryUse()
     {
-        yield return ("ram", 0x800, ram.Count());
+        yield return ("ram", 0x800, ramRead.Count());
     }
 
     public override (long deepest, long free) StackUse() =>
@@ -314,6 +323,22 @@ internal static class Op6502
     }
 
     public static M Mode(byte op) => Modes[op];
+
+    /// <summary>An unofficial opcode as a finding's place: "$AB LAX #imm" (the opcode, not the function: a game accepts each one it uses on purpose).</summary>
+    public static string Describe(byte op) => $"${op:X2} {Names[op]}" + Modes[op] switch
+    {
+        M.Imm => " #imm", M.Zp => " zp", M.Zpx => " zp,X", M.Zpy => " zp,Y", M.Abs => " abs", M.Abx => " abs,X", M.Aby => " abs,Y",
+        M.Ind => " (abs)", M.Izx => " (zp,X)", M.Izy => " (zp),Y", _ => "",
+    };
+
+    /// <summary>How far an unofficial opcode can be trusted on hardware (the NesDev wiki's classification).</summary>
+    public static string Stability(byte op) => op switch
+    {
+        0x8B or 0xAB => "HIGHLY UNSTABLE: its result depends on analog effects and differs between consoles",
+        0x93 or 0x9F or 0x9B or 0x9C or 0x9E => "unstable: wrong when the address crosses a page or a DMA lands on it",
+        0x02 or 0x12 or 0x22 or 0x32 or 0x42 or 0x52 or 0x62 or 0x72 or 0x92 or 0xB2 or 0xD2 or 0xF2 => "jams the CPU",
+        _ => "stable on the 2A03, but not on every clone",
+    };
     public static bool Official(byte op) => official[op];
     public static string Name(byte op) => Names[op];
     public static int Length(byte op) => Modes[op] switch { M.Imp or M.Acc => 1, M.Abs or M.Abx or M.Aby or M.Ind => 3, _ => 2 };

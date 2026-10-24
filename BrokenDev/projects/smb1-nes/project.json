@@ -126,6 +126,119 @@
       }
     ]
   },
+  "checks": {
+    "what": "BrokenDev hardware checks (docs/projects/brokendev-debugging-plan.md, D4): every verify scenario runs again with the checks on; a finding not accepted here fails verify. Each acceptance says why.",
+    "accepted": [
+      {
+        "rule": "nes.lag-frame",
+        "at": "*",
+        "reason": "known: the remake lags while it boots and for 4 frames at each level (re)load (frames 268, 981, 1567, 2354 of play); its own pipeline lists Fire Mario lag in five levels (knownIssues); the lagFrames budget gates the play scenario"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$AB LAX #imm",
+        "reason": "known: NESFab's unofficial-opcode ISA emits LAX #imm, the highly unstable $AB; every one the game ran has the operand #$00, which gives 0 on every console (stable as used); a non-zero operand would not be"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$0C NOP abs",
+        "reason": "known: NESFab's unofficial-opcode ISA (a 3-byte NOP, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$A7 LAX zp",
+        "reason": "known: NESFab's unofficial-opcode ISA (LAX, stable on the 2A03; not on every clone)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$AF LAX abs",
+        "reason": "known: NESFab's unofficial-opcode ISA (LAX, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$BF LAX abs,Y",
+        "reason": "known: NESFab's unofficial-opcode ISA (LAX, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$B3 LAX (zp),Y",
+        "reason": "known: NESFab's unofficial-opcode ISA (LAX, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$0B ANC #imm",
+        "reason": "known: NESFab's unofficial-opcode ISA (ANC, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$CB AXS #imm",
+        "reason": "known: NESFab's unofficial-opcode ISA (AXS / SBX, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$4B ALR #imm",
+        "reason": "known: NESFab's unofficial-opcode ISA (ALR / ASR, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$6B ARR #imm",
+        "reason": "known: NESFab's unofficial-opcode ISA (ARR, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$47 SRE zp",
+        "reason": "known: NESFab's unofficial-opcode ISA (SRE / LSE, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$07 SLO zp",
+        "reason": "known: NESFab's unofficial-opcode ISA (SLO / ASO, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$87 SAX zp",
+        "reason": "known: NESFab's unofficial-opcode ISA (SAX, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$8F SAX abs",
+        "reason": "known: NESFab's unofficial-opcode ISA (SAX, stable on the 2A03)"
+      }
+    ]
+  },
+  "budgets": {
+    "what": "Over a limit fails verify, near it (90%) warns; the report compares with the previous build (out/<id>/budget-history.json). romBankFree is an estimate (padding runs of 64 or more equal $00 / $FF bytes).",
+    "lagFrames": {
+      "max": 16,
+      "fromFrame": 300,
+      "scenarios": [
+        "play"
+      ],
+      "what": "after the first level start; 12 on 2026-10-24 (three level reloads of 4 frames)"
+    },
+    "busyPercent": {
+      "max": 95,
+      "fromFrame": 300,
+      "scenarios": [
+        "play"
+      ],
+      "what": "the busiest frame that made it: 70.1% on 2026-10-24"
+    },
+    "memoryFree": {
+      "ram": 512,
+      "what": "RAM never read in the scenarios: 1159 bytes on 2026-10-24 (the remake's own count by allocation is 3 bytes free: knownIssues)"
+    },
+    "stackFree": {
+      "min": 64,
+      "what": "221 bytes on 2026-10-24"
+    },
+    "romBankFree": {
+      "banks": {
+        "31": 1024
+      },
+      "what": "the fixed bank 31: 1240 bytes of padding runs on 2026-10-24 (the project measures 1098 as the trailing zero run; its floor is about 1100)"
+    }
+  },
   "knownIssues": [
     "FIXED 2026-10-22 in the live workspace (engine commit f10dbd6, ROM md5 dff94356dea7a008e1fe10f270c9e082): the remake relied on work RAM powering on as zeros (the project's own Mesen is set to AllZeros). With FCEUX's and BizHawk NesHawk's 00 00 00 00 FF FF FF FF (and on hardware, where it is undefined) chr_test_active ($07FC) read $FF: placeholder digits, a World card that never ends (compat: NesHawk and FCEUX failed). Mesen's uninitialised-read report over the 159 replay cases found 34 variables read before written (147 bytes), not two; zeroing only chr_test_active and fire_anim_timer still failed case 2-1k under the FCEUX pattern and under all-FF (ecoll_bits: a Paratroopa one pixel off at frame 3491). The fix: game.cfg ram-init = 1, NESFab's reset code zeroes all 2 KB between its two vblank waits, before its runtime initialises anything (bank 31 free unchanged at 1,098; the first NMI on the same frame; RAM addresses unchanged). Proof: verify.sh all checks 3/3; the 159-case suite gives the archived ROM's report line for line, with ours' replay logs byte-identical; under the FCEUX pattern, all-FF and random power-on RAM every case gives the same replay and the same written RAM on every frame. verify now runs play-fceux-ram and play-ones-ram as real scenarios and compares their pictures with play's.",
     "Video memory still powers on as it likes: with Mesen's AllOnes or Random (which also fill nametable RAM) one or two pixels of screen row 31, the status-bar split line, show the second nametable before the game has written it, from the level start on (checked row by row in 6 cases; every other row and every CPU-RAM byte identical). Fixing it means clearing nametable $2400 at boot (about 9,000 cycles of PPU writes), which does not fit the boot's tuned timing without moving the first NMI: the developer's decision.",

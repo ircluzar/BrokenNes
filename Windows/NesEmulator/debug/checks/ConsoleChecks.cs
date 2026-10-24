@@ -131,7 +131,7 @@ public abstract class ConsoleChecks : DebugObserver
         if (executes)
         {
             // spin detection: a backward branch or jump to the same place twice with no write in between (stack writes aside)
-            if (InterruptDepth == 0 && (lastFlow is FlowKind.Branch or FlowKind.Jump) && pc < lastPc && lastPc - pc <= 64)
+            if (InterruptDepth == 0 && (lastFlow is FlowKind.Branch or FlowKind.Jump) && pc <= lastPc && lastPc - pc <= 64)
             {
                 spinning = spinHead == pc && writesSinceJump == 0;
                 spinHead = pc; writesSinceJump = 0;
@@ -210,14 +210,25 @@ public abstract class ConsoleChecks : DebugObserver
     /// <summary>In one of the manifest's frame-wait functions (their symbols' extents, by canonical address: a banked function only in its bank).</summary>
     private bool InFrameWait(DebugCpu cpu, uint pc)
     {
-        if (Opt.FrameWait.Count == 0 || !Symbols) return false;
+        if (Opt.FrameWait.Count == 0) return false;
         if (waitRanges == null)
         {
-            waitRanges = new List<SpaceRange>();
-            var globs = Opt.FrameWait.Select(AcceptedFinding.Glob).ToList();
-            foreach (var sym in Dbg.Symbols.All)
-                if (globs.Any(g => g.IsMatch(AcceptedFinding.BaseName(sym.Name)) || g.IsMatch(sym.Name)) && cpu.BindSymbol(sym, out var k))
-                    waitRanges.Add(new SpaceRange(k.Space, k.Offset, k.Offset + (uint)Math.Max(1, sym.Size) - 1));
+            // a symbol (or glob) names a function's extent; "$80A739" names a function by its entry (a game without symbols): the main
+            // program waits while that function is on top of its call stack
+            waitRanges = new List<SpaceRange>(); waitEntries = new List<uint>();
+            foreach (var w in Opt.FrameWait.Where(w => w.StartsWith("$")))
+                if (uint.TryParse(w[1..], System.Globalization.NumberStyles.HexNumber, null, out uint e)) waitEntries.Add(e);
+            var globs = Opt.FrameWait.Where(w => !w.StartsWith("$")).Select(AcceptedFinding.Glob).ToList();
+            if (globs.Count > 0)
+                foreach (var sym in Dbg.Symbols.All)
+                    if (globs.Any(g => g.IsMatch(AcceptedFinding.BaseName(sym.Name)) || g.IsMatch(PlaceName(sym.Name))) && cpu.BindSymbol(sym, out var k))
+                        waitRanges.Add(new SpaceRange(k.Space, k.Offset, k.Offset + (uint)Math.Max(1, sym.Size) - 1));
+        }
+        if (waitEntries!.Count > 0)
+        {
+            var st = cpu.State.Stack;
+            if (waitEntries.Contains(pc)) return true;
+            for (int i = st.Count - 1; i >= 0; i--) if (waitEntries.Contains(st[i].Target)) return true;
         }
         if (waitRanges.Count == 0) return false;
         Span<SpaceKey> keys = stackalloc SpaceKey[4];
@@ -226,6 +237,7 @@ public abstract class ConsoleChecks : DebugObserver
         return false;
     }
     private List<SpaceRange>? waitRanges;
+    private List<uint>? waitEntries;
 
     // ======================================================================================== frames and the profile
 
@@ -324,10 +336,11 @@ public abstract class ConsoleChecks : DebugObserver
         public uint Lowest = uint.MaxValue;
         public StackCollisions(int size) { state = new byte[size]; }
 
-        /// <summary>A data access (not the stack's): a read below the stack pointer marks the byte as the game's data.</summary>
+        /// <summary>A data access (not the stack's): a read below the stack pointer of a byte the stack never used marks it as the game's data
+        /// (a byte the stack used before is stack peeking: TSX / LDA $0100,X, a freed slot).</summary>
         public void Data(uint offset, bool write, uint sp)
         {
-            if (!write && offset < state.Length && offset <= sp) state[offset] |= 1;
+            if (!write && offset < state.Length && offset <= sp && (state[offset] & 2) == 0) state[offset] |= 1;
         }
 
         public bool Stack(uint offset, bool write)
@@ -351,7 +364,8 @@ public abstract class ConsoleChecks : DebugObserver
 
     // ======================================================================================== the report
 
-    /// <summary>Memory the game wrote (for the budgets' headroom): name, size, bytes written at least once.</summary>
+    /// <summary>Memory the game uses (for the budgets' headroom): name, size, bytes used. Work RAM and HRAM: bytes read at least once (a
+    /// boot-time clear writes everything and reads nothing); VRAM and sound RAM: bytes written a non-zero value at least once (a clear writes zeros).</summary>
     public abstract IEnumerable<(string name, long size, long written)> MemoryUse();
 
     /// <summary>The stack: the deepest it went and the bytes free below it (-1: unknown).</summary>

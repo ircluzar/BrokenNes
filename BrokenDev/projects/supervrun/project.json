@@ -108,6 +108,56 @@
       }
     ]
   },
+  "checks": {
+    "what": "BrokenDev hardware checks (docs/projects/brokendev-debugging-plan.md, D4): every verify scenario runs again with the checks on; a finding not accepted here fails verify. Each acceptance says why.",
+    "accepted": [
+      {
+        "rule": "snes.lag-frame",
+        "at": "*",
+        "reason": "known: Super VRUN lags while it boots and loads (the title effects, the title-to-game fade at frames 308-336 and the room setup at 529-610: tccs_bgfx, ctwwall_load, fast_room_tiles...); its HUD's LAG counter is for play, which the lagFrames budget holds at 0"
+      },
+      {
+        "rule": "snes.cgram-uninit",
+        "at": "BG1 colours",
+        "reason": "unverified: the end-of-frame picture model (no HDMA, modes 0-4) says BG1 draws colour 27 (cgram $036) which is never written, from play frame 358 for 23 frames (the title-to-game fade); on hardware that colour powers on random. To look at in the game: which BG1 tiles use palette 1 colour 11 then"
+      }
+    ]
+  },
+  "budgets": {
+    "what": "Over a limit fails verify, near it (90%) warns; the report compares with the previous build (out/<id>/budget-history.json). romBankFree is an estimate (padding runs of 64 or more equal $00 / $FF bytes).",
+    "lagFrames": {
+      "max": 0,
+      "fromFrame": 620,
+      "scenarios": [
+        "play"
+      ],
+      "what": "no lag frame in play once the first room is set up (the game's own rule: its HUD's LAG counter stays at 0); 0 on 2026-10-24"
+    },
+    "busyPercent": {
+      "max": 95,
+      "fromFrame": 620,
+      "scenarios": [
+        "play"
+      ],
+      "what": "the busiest frame that made it: 56.0% on 2026-10-24 (knownIssues: rare frames end at line 234-261)"
+    },
+    "memoryFree": {
+      "wram": 16384,
+      "vram": 8192,
+      "aram": 2048,
+      "what": "work RAM never read 111029, VRAM never written non-zero 33312, sound RAM 7019 bytes on 2026-10-24"
+    },
+    "stackFree": {
+      "min": 1024,
+      "what": "7598 bytes on 2026-10-24"
+    },
+    "romBankFree": {
+      "banks": {
+        "0": 512
+      },
+      "what": "bank 0 (the reset code and the vectors): 1201 bytes of padding runs on 2026-10-24"
+    }
+  },
   "knownIssues": [
     "Per the project's own retrospective: the S-CPU HDMA/DMA freeze and the INIDISP erratum are real-console behaviours that Mesen (and BrokenNes) do not emulate; the project keeps DMAs out of lines with HDMA live by rule.",
     "Baseline has no frame-time slack by design: rare frames end around scanline 234 to 261 of 262. The game's own HUD shows a LAG counter; it should stay at 0.",

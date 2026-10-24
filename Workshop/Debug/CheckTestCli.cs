@@ -132,7 +132,7 @@ internal static class CheckTestCli
         var pad = B(0xA9, 0x01, 0x8D, 0x16, 0x40, 0xA9, 0x00, 0x8D, 0x16, 0x40, 0xAD, 0x16, 0x40);
         Pair("nes.dmc-conflict", () => NesRun(new() { Init = B(0xA9, 0x4F, 0x8D, 0x10, 0x40, 0xA9, 0x00, 0x8D, 0x12, 0x40, 0xA9, 0xFF, 0x8D, 0x13, 0x40, 0xA9, 0x10, 0x8D, 0x15, 0x40), Main = pad }, 60),
             () => NesRun(new() { Main = pad }, 60), place: "main");
-        Pair("nes.unofficial-opcode", () => NesRun(new() { Main = B(0xA7, 0x20) }), () => NesRun(new() { Main = B(0xA5, 0x20, 0xAA) }), place: "main",
+        Pair("nes.unofficial-opcode", () => NesRun(new() { Main = B(0xA7, 0x20) }), () => NesRun(new() { Main = B(0xA5, 0x20, 0xAA) }), place: "$A7 LAX zp",
             also: f => f.Detail.Contains("LAX"));
         Pair("nes.open-bus", () => NesRun(new() { Main = B(0xAD, 0x01, 0x20) }), () => NesRun(new() { Main = B(0xAD, 0x02, 0x20) }), place: "$2001",
             also: f => f.PcSymbol == "main");

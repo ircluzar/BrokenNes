@@ -112,6 +112,24 @@ try {
     Test-Case 'every oracle section in a shipped manifest names a Mesen folder and a frame list' {
         foreach ($id in $ids) { $m = Read-BdJson (Get-BdManifestPath $id); $o = Get-BdProp $m 'oracle' $null; if ($o) { Assert-True ([bool](Get-BdProp $o 'mesenDir' '')) "$id has no oracle.mesenDir"; Assert-True ($null -ne (Get-BdProp $o 'frames' $null)) "$id has no oracle.frames" } }
     }
+    Test-Case 'every shipped game manifest has a checks section (verify runs the hardware checks on it) and budgets' {
+        foreach ($id in 'smb1-nes', 'smb1-nested', 'vrun-nes', 'vrun-nested', 'vrun-nested-enhanced', 'supervrun', 'widemess-sample') {
+            $m = Read-BdJson (Get-BdManifestPath $id)
+            Assert-True ($null -ne (Get-BdProp $m 'checks' $null)) "$id has no checks section"
+            Assert-True ($null -ne (Get-BdProp $m 'budgets' $null)) "$id has no budgets"
+            foreach ($a in @($m.checks.accepted)) { Assert-True ([string]$a.reason -match '^(known|unverified|by design|test)') "$id accepts $($a.rule) at $($a.at) without an honest reason: '$($a.reason)'" }
+        }
+    }
+    Test-Case 'NEGATIVE: an accepted finding without a reason is rejected' {
+        $e = & $mut { param($m) $m | Add-Member -NotePropertyName checks -NotePropertyValue ([pscustomobject]@{ accepted = @([pscustomobject]@{ rule = 'nes.lag-frame'; at = '*' }) }) -Force }
+        Assert-True (($e -join ';') -match 'has no reason') "errors were: $($e -join '; ')"
+    }
+    Test-Case 'NEGATIVE: an opt-out without a reason, a checks scenario that does not exist and an unknown budget are rejected' {
+        $e = & $mut { param($m) $m | Add-Member -NotePropertyName checks -NotePropertyValue ([pscustomobject]@{ off = @([pscustomobject]@{ rule = 'nes.open-bus' }); scenarios = @('nope') }) -Force
+                                    $m | Add-Member -NotePropertyName budgets -NotePropertyValue ([pscustomobject]@{ speed = [pscustomobject]@{ max = 1 }; lagFrames = [pscustomobject]@{ fromFrame = 3 } }) -Force }
+        $j = $e -join ';'
+        Assert-True ($j -match "checks.off: 'nes.open-bus' has no reason" -and $j -match "no verify scenario 'nope'" -and $j -match "unknown budget 'speed'" -and $j -match "lagFrames needs 'max'") "errors were: $j"
+    }
     Test-Case 'NEGATIVE: outputs without a rom are rejected' {
         $e = & $mut { param($m) $m.build.outputs[0].id = 'notrom' }
         Assert-True (($e -join ';') -match "id 'rom'") "errors were: $($e -join '; ')"
@@ -1056,10 +1074,11 @@ try {
     # a manifest for the verifier itself; the ROMs are the repo's own smoke-test ROM and synthetic bad ones
     $vProj = Join-Path $tmpRoot 'vprojects'
     function New-VerifyManifest {
-        param([string]$Id, $Scenarios, $Compare = @())
+        param([string]$Id, $Scenarios, $Compare = @(), [hashtable]$Extra = @{})
         $m = [ordered]@{ schema = 1; id = $Id; title = $Id; family = 'synth'; kind = 'nes'; console = 'nes'; source = @{ archive = 'x'; path = 'x' }; requires = @{ tools = @() }; knownIssues = @()
                          build = @{ steps = @(); outputs = @(@{ id = 'rom'; path = 'x'; publishAs = 'rom.nes' }) }
                          verify = @{ cores = @{ cpu = 'FIX'; ppu = 'FIX'; apu = 'FIX' }; scenarios = $Scenarios; compare = $Compare } }
+        foreach ($k in $Extra.Keys) { $m[$k] = $Extra[$k] }
         New-Item -ItemType Directory -Force -Path (Join-Path $vProj $Id) | Out-Null
         Save-BdJson -Object $m -Path (Join-Path (Join-Path $vProj $Id) 'project.json') -Depth 20
     }
@@ -1154,6 +1173,67 @@ try {
         $v = Invoke-WsVerify -Id 'v-badram' -Rom $testRom
         Assert-Equal $v.Exit 1
         Assert-True ($v.Json.scenarios[0].result -eq 'refused') "result was $($v.Json.scenarios[0].result)"
+    }
+    # the hardware checks and budgets (milestone D4): the RAM-colour ROM reads $07FC before it ever writes it, a real nes.ram-uninit finding
+    $chkScen = @(@{ id = 'boot'; frames = 60; checkpoints = @(60) })
+    New-VerifyManifest -Id 'v-chk-new' -Scenarios $chkScen -Extra @{ checks = @{ accepted = @() } }
+    New-VerifyManifest -Id 'v-chk-acc' -Scenarios $chkScen -Extra @{ checks = @{ accepted = @(@{ rule = 'nes.ram-uninit'; at = 'ram:$07FC'; reason = 'test: the ROM paints its backdrop with power-on RAM on purpose' }) } }
+    New-VerifyManifest -Id 'v-chk-badrule' -Scenarios $chkScen -Extra @{ checks = @{ accepted = @(@{ rule = 'nes.no-such-rule'; at = '*'; reason = 'x' }, @{ rule = 'nes.ram-uninit'; at = '*'; reason = 'test' }) } }
+    Test-Case 'checks: verify FAILS on a new finding (the ROM reads RAM before writing it), naming the rule, place, frame and PC' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $v = Invoke-WsVerify -Id 'v-chk-new' -Rom $ramRom
+        Assert-Equal $v.Exit 1 "output: $(Select-BdTail $v.Output 8)"
+        Assert-True (-not $v.Json.checks.ok) 'the checks say ok'
+        $f = @($v.Json.checks.findings | Where-Object { $_.rule -eq 'nes.ram-uninit' })
+        Assert-True ($f.Count -eq 1 -and $f[0].place -eq 'ram:$07FC' -and -not $f[0].accepted -and $f[0].pc -match '^\$C0' -and $f[0].firstFrame -le 1) "findings: $($v.Json.checks.findings | ConvertTo-Json -Compress -Depth 4)"
+        Assert-Equal $v.Json.checks.newFindings 1
+        Assert-True ($v.Output -match 'NEW nes.ram-uninit at ram:\$07FC') 'the summary does not name the new finding'
+    }
+    Test-Case 'checks: the same finding accepted with a reason PASSES, and the checked run ends on the unchecked run''s picture' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $v = Invoke-WsVerify -Id 'v-chk-acc' -Rom $ramRom
+        Assert-Equal $v.Exit 0 "output: $(Select-BdTail $v.Output 8)"
+        Assert-True ($v.Json.checks.ok -and $v.Json.checks.newFindings -eq 0 -and $v.Json.checks.acceptedFindings -eq 1) 'not ok / counts wrong'
+        Assert-True ($v.Json.checks.findings[0].reason -like 'test:*') 'the accepted reason is not in the report'
+        Assert-True $v.Json.checks.scenarios[0].frameIdentical "not frame-identical: $($v.Json.checks.scenarios[0].identity)"
+    }
+    Test-Case 'NEGATIVE: an accepted entry naming no rule of the catalogue fails verify (a typo cannot accept everything)' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $v = Invoke-WsVerify -Id 'v-chk-badrule' -Rom $ramRom
+        Assert-Equal $v.Exit 1
+        Assert-True (@($v.Json.checks.problems | Where-Object { $_ -match 'nes.no-such-rule' }).Count -eq 1) "problems: $($v.Json.checks.problems -join '; ')"
+    }
+    Test-Case 'budgets: under the limit passes, at 90% of it WARNS, over it FAILS (busyPercent, measured first)' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        New-VerifyManifest -Id 'v-bud-probe' -Scenarios $chkScen -Extra @{ checks = @{ accepted = @(@{ rule = 'nes.*'; at = '*'; reason = 'test' }) }; budgets = @{ busyPercent = @{ max = 100 } } }
+        $p = Invoke-WsVerify -Id 'v-bud-probe' -Rom $testRom
+        $busy = [double]($p.Json.checks.budgets | Where-Object { $_.id -eq 'busyPercent' }).value
+        Assert-True ($busy -gt 0) "busy $busy"
+        foreach ($case in @(@{ max = [math]::Round($busy * 2, 2); want = 'ok'; exit = 0 }, @{ max = [math]::Round($busy / 0.95, 2); want = 'warn'; exit = 0 }, @{ max = [math]::Round($busy / 2, 2); want = 'fail'; exit = 1 })) {
+            New-VerifyManifest -Id 'v-bud' -Scenarios $chkScen -Extra @{ checks = @{ accepted = @(@{ rule = 'nes.*'; at = '*'; reason = 'test' }) }; budgets = @{ busyPercent = @{ max = $case.max } } }
+            $v = Invoke-WsVerify -Id 'v-bud' -Rom $testRom
+            $b = $v.Json.checks.budgets | Where-Object { $_.id -eq 'busyPercent' }
+            Assert-Equal $b.status $case.want "max $($case.max) for busy $busy"
+            Assert-Equal $v.Exit $case.exit "max $($case.max)"
+        }
+    }
+    Test-Case 'budgets: the report shows the trend since the previous build (the history file keeps one entry per ROM sha256)' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        New-VerifyManifest -Id 'v-trend' -Scenarios $chkScen -Extra @{ checks = @{ accepted = @(@{ rule = 'nes.*'; at = '*'; reason = 'test' }) }; budgets = @{ romBankFree = @{ min = 0 }; busyPercent = @{ max = 100 } } }
+        $hist = Join-Path $tmpRoot 'trend-history.json'
+        $romB = Join-Path $tmpRoot 'ramcolour-b.nes'
+        $bb = [System.IO.File]::ReadAllBytes($ramRom); $bb[16 + 0x2000] = 0x60; [System.IO.File]::WriteAllBytes($romB, $bb)   # another build: a byte of padding changed
+        $outA = Join-Path $tmpRoot 'v-trend-a.json'; $outB = Join-Path $tmpRoot 'v-trend-b.json'
+        [void](Invoke-Ws -WsArgs @('--brokendev', 'verify', 'v-trend', '--manifests', $vProj, '--home', $wsHome, '--rom', $ramRom, '--out', $outA, '--history', $hist) -ExtraEnv @{ BROKENNES_DEV = '1' })
+        [void](Invoke-Ws -WsArgs @('--brokendev', 'verify', 'v-trend', '--manifests', $vProj, '--home', $wsHome, '--rom', $ramRom, '--out', $outA, '--history', $hist) -ExtraEnv @{ BROKENNES_DEV = '1' })
+        $a = Read-BdJson $outA
+        Assert-True ($null -eq $a.checks.previousBuild) 'the same ROM verified twice has no previous build'
+        [void](Invoke-Ws -WsArgs @('--brokendev', 'verify', 'v-trend', '--manifests', $vProj, '--home', $wsHome, '--rom', $romB, '--out', $outB, '--history', $hist) -ExtraEnv @{ BROKENNES_DEV = '1' })
+        $b = Read-BdJson $outB
+        $bank = $b.checks.budgets | Where-Object { $_.id -eq 'romBankFree' }
+        Assert-True ($null -ne $b.checks.previousBuild -and $null -ne $bank.previous) "no trend: $($b.checks.budgets | ConvertTo-Json -Compress -Depth 4)"
+        Assert-True ([double]$bank.delta -lt 0) "the changed byte should cost free space: delta $($bank.delta)"
+        Assert-Equal @(Read-BdJson $hist).Count 2 'one history entry per build'
     }
     Test-Case 'NEGATIVE: verify exits 2 for a ROM that does not exist' {
         if (-not $ws) { Skip-Test $wsSkip }

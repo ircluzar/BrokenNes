@@ -388,7 +388,7 @@ picture (proof the checks did not disturb the game).
 spin loop (a backward jump to the same place with no RAM written in the loop, the stack aside), WAI (SNES), HALT (Game Boy), or a symbol the
 manifest names (`checks.frameWait`). Interrupt handlers do not count as waiting or working for the main program.
 
-### NES (12 rules)
+### NES (11 rules)
 
 | Rule | What it reports |
 |---|---|
@@ -397,11 +397,11 @@ manifest names (`checks.frameWait`). Interrupt handlers do not count as waiting 
 | `nes.oam-dma-render` | OAM DMA (`$4014`) started while the PPU renders, or late enough in vblank to run into the pre-render line. |
 | `nes.frame-irq` | An IRQ taken while the APU frame counter's IRQ is raised, whose handler returns (RTI) without acknowledging it (`$4015` read): the SMB3 red clouds. |
 | `nes.dmc-conflict` | `$4016` / `$4017` / `$2007` read while a DMC sample plays (a DMC DMA can land on the read on hardware); the detail counts the reads a DMA actually hit in the run. |
-| `nes.unofficial-opcode` | An unofficial (illegal) opcode executed. |
+| `nes.unofficial-opcode` | An unofficial (illegal) opcode executed. The place is the opcode ("$AB LAX #imm"), not the function: a game accepts each opcode it uses on purpose, and the detail says how stable it is on hardware (the highly unstable `$8B` / `$AB` with the operands seen). |
 | `nes.open-bus` | A read of a write-only register (`$2000`, `$2001`, `$2003`, `$2005`, `$2006`, `$4000-$4014`) or of an address no device answers (`$4018-$5FFF`, `$6000-$7FFF` without PRG RAM: the mapper decides). |
 | `nes.stack-wrap` | The stack pointer wraps (`$00` to `$FF` on a push, `$FF` to `$00` on a pull). |
-| `nes.stack-overflow` | The stack reaches a page-1 byte the game also uses as data. |
-| `nes.lag-frame` | A lag frame; the place is the function the NMI interrupted. |
+| `nes.stack-overflow` | The stack grows onto a page-1 byte the game read as data while it lay below the stack pointer and the stack had never used it. |
+| `nes.lag-frame` | A lag frame; the place is the function the main program was in. Where a frame runs out moves with every build, so a game accepts its lag frames as a rule and gates them with the `lagFrames` budget. |
 | `nes.flash-write` | A mapper-30 flash command (a write to `$8000-$BFFF` on the self-flashing board); the place is the function that wrote, so a game accepts its save routine and anything else is new. |
 
 ### SNES and WideMess (14 rules)
@@ -419,13 +419,13 @@ manifest names (`checks.frameWait`). Interrupt handlers do not count as waiting 
 | `snes.muldiv-early` | `$4214-$4217` read fewer than 8 CPU cycles after a multiply (`$4203`) or 16 after a divide (`$4206`). |
 | `snes.spc-handshake` | The 65816 polls an APU port (`$2140-$2143`) from one place for a second or more without the value changing: the SPC700 never answered. |
 | `snes.echo-overrun` | With echo writes on (FLG bit 5 clear), the SPC700 runs code or reads data inside the echo buffer (`ESA` x 256, `EDL` x 2 KB, at least 4 bytes), or a playing voice's samples or sample directory lie there. |
-| `snes.stack-overflow` | The 65816 stack reaches bytes the game also uses as data. |
+| `snes.stack-overflow` | The 65816 stack grows onto a byte the game read as data while it lay below the stack pointer and the stack had never used it (data written inside the live stack is not a finding: compiled code keeps its locals there). |
 | `snes.open-bus` | A read of a write-only register or an address nothing answers. The WideMess detection read of `$4221` (the spec's protocol) is not reported; on the WideMess console `$4220-$423F` are registers. |
 | `snes.lag-frame` | A lag frame (WAI counts as waiting). |
 
 **The picture's own reads** (VRAM, CGRAM, OAM) are checked once per frame, at the start of vblank, from the registers then: the visible
 tile-map entries of every background on the main or sub screen, the tiles they name, the colours those tiles draw with, the on-screen
-sprites' tiles. This is a model of the PPU's fetches, not a hook in the renderer (the hottest code there is): **modes 0-6 only** (Mode 7
+sprites' tiles. This is a model of the PPU's fetches, not a hook in the renderer (the hottest code there is): **modes 0-4 only** (modes 5-7
 and the offset-per-tile tables are not modelled), and **HDMA-driven per-line register changes are not followed** (the end-of-picture
 registers stand for the frame). On the WideMess console the picture model is off (its 512 KB VRAM and 8-layer mode are not modelled); the
 port and DMA reads are still checked.
@@ -446,7 +446,7 @@ port and DMA reads are still checked.
 | `gb.speed-switch` | KEY1 armed for a speed switch without a STOP to perform it, or STOP with IE not `$00` or JOYP not `$30`. |
 | `gb.cart-ram-disabled` | `$A000-$BFFF` read or written while the cartridge RAM is disabled, or on a cartridge without RAM. |
 | `gb.halt-bug` | HALT with IME clear and an interrupt pending (the next byte is read twice); EI then HALT is not the bug. |
-| `gb.stack-overflow` | The stack reaches bytes the game also uses as data. |
+| `gb.stack-overflow` | The stack grows onto a byte the game read as data while it lay below SP and the stack had never used it. |
 | `gb.lag-frame` | A lag frame (HALT counts as waiting). |
 
 ### Not built, and why

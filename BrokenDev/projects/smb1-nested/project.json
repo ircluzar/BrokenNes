@@ -108,6 +108,37 @@
       }
     ]
   },
+  "checks": {
+    "what": "BrokenDev hardware checks (docs/projects/brokendev-debugging-plan.md, D4): every verify scenario runs again with the checks on; a finding not accepted here fails verify. Each acceptance says why.",
+    "frameWait": [
+      "$80A739"
+    ],
+    "accepted": [
+      {
+        "rule": "snes.lag-frame",
+        "at": "*",
+        "reason": "unverified: from play frame 406 on, 382 of 2600 SNES vblanks find the nested engine outside its frame wait ($80A739) in long runs although it is only 28% busy on average; it may wait elsewhere (the status-bar split runs from an IRQ on the NES) - not budgeted until Project Nested's symbols say where"
+      },
+      {
+        "rule": "snes.open-bus",
+        "at": "$420D",
+        "reason": "known: the nested engine's reset does ROL $420D: MEMSEL is write-only, so the read is open bus and the FastROM bit it writes back depends on the open-bus value ($42 on hardware, the operand's high byte, which turns FastROM on); harmless on hardware, worth a plain STA in the engine"
+      }
+    ]
+  },
+  "budgets": {
+    "what": "Over a limit fails verify, near it (90%) warns; the report compares with the previous build (out/<id>/budget-history.json). romBankFree is an estimate (padding runs of 64 or more equal $00 / $FF bytes).",
+    "memoryFree": {
+      "wram": 16384,
+      "vram": 8192,
+      "aram": 8192,
+      "what": "115832 / 52536 / 40418 bytes on 2026-10-24"
+    },
+    "stackFree": {
+      "min": 128,
+      "what": "280 bytes on 2026-10-24"
+    }
+  },
   "knownIssues": [
     "Built from smb1-nes' ROM, which since 2026-10-22 comes from the live workspace (PROJECTS\\SMB1_Remake_dev) with the power-on RAM fix (its reset code zeroes NES RAM; smb1-nes knownIssues). The Nested build did not need it (the pipeline zeroes NES RAM too) and behaves the same with it: the same checks pass on the same frames.",
     "Project Nested never clears the DMC-active bit of $4015 and never delivers the DMC IRQ; the dmc_status post-build step fixes the first, the second stays unemulated (the status-bar split runs from that IRQ on the NES; the profile of the 20261002 build records that play matched the NES anyway).",

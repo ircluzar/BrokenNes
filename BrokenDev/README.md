@@ -61,6 +61,23 @@ BrokenDev\tests\apu-regress.ps1 -Workshop <Workshop.exe>   # APU_FIX guards meas
 Inside BrokenNes (developers only): `BrokenNes.Workshop.exe --brokendev list` and `--brokendev verify <id>` (needs
 `BROKENNES_DEV=1`), and a **BrokenDev** menu in the desktop app that opens the built ROMs.
 
+## Hardware checks, budgets and the profile (in verify)
+
+A manifest with a `checks` section has its verify scenarios run a second time with BrokenNes's **hardware checks** on (37 rules for the
+NES, the SNES and WideMess, the Game Boy: RAM read before written, picture writes during rendering, unofficial opcodes, lag frames, flash
+writes, DMA and HDMA conflicts, echo-buffer overruns, the HALT bug...; the catalogue is in `docs/projects/brokendev-debugging-plan.md`).
+The first, unchecked run keeps its hashes and speed; the checked run must end on the same picture.
+
+- A **finding** names the rule, the place (the variable or the function, by the game's symbols; the address without one), the first frame,
+  the PC and the count. `checks.accepted` lists what the game accepts, each with a reason (`"known: ..."`, `"unverified: ..."`); **anything
+  new fails verify**. `checks.off` switches a rule off for the game (with a reason).
+- **Budgets** (`budgets`): `lagFrames` (max, from a frame, in some scenarios), `busyPercent` (the busiest frame that made it), `romBankFree`
+  (free bytes per bank: padding runs), `memoryFree` (work RAM / HRAM never read, VRAM / sound RAM never written a non-zero value),
+  `stackFree`. Over a limit fails, near it (90%) warns. The report shows each against the previous build (`out\<id>\budget-history.json`).
+- The **profile** of each checked scenario: CPU busy time per frame, lag frames, vblank time used for uploads, DMA bytes, the top functions
+  (inclusive and exclusive). The same outside verify: `BrokenNes.Workshop.exe --profile --rom <rom> --sym <symbols> --frames N --input ...`
+  and `--checks` (findings too).
+
 ## The WideMess devkit
 
 BrokenDev is also the devkit of WideMess, BrokenNes's fantasy console: `widemess/` holds PVSnesLib's WideMess extensions (`lib/`), the

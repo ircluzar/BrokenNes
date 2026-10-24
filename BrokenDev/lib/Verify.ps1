@@ -63,7 +63,8 @@ function Invoke-BdProjectVerify {
     $vjson = Join-Path $out 'verify.json'
     if (Test-Path -LiteralPath $vjson) { Remove-Item -LiteralPath $vjson -Force }
     $timeout = [int](Get-BdProp $m.verify 'timeoutSec' 1800)
-    $args = @('--brokendev', 'verify', $Id, '--manifests', (Get-BdProjectsDir), '--home', (Get-BdHome), '--rom', $rom.published, '--out', $vjson, '--png-dir', (Join-Path $out 'shots'))
+    # the budgets' trend: one entry per build (by the ROM's sha256) in out\<id>\budget-history.json; the report compares with the previous build
+    $args = @('--brokendev', 'verify', $Id, '--manifests', (Get-BdProjectsDir), '--home', (Get-BdHome), '--rom', $rom.published, '--out', $vjson, '--png-dir', (Join-Path $out 'shots'), '--history', (Join-Path $out 'budget-history.json'))
     if ($Only) { $args += @('--only', $Only) }
     $r = Invoke-BdProcess -FilePath $Exe -Arguments $args -TimeoutSec $timeout -Env (Get-BdChildEnv) -LogFile (Join-Path $out 'logs\verify.log')
     if ($r.TimedOut) { throw "verify of $Id timed out after $timeout s" }
@@ -85,7 +86,33 @@ function Invoke-BdProjectVerify {
         else { Write-BdFail $line; foreach ($c in $chk) { Write-BdFail ("      {0}: {1}" -f $c.id, $c.detail) }; if ($sc.result -ne 'ok') { Write-BdFail "      $($sc.result): $($sc.crashInfo)" } }
     }
     foreach ($c in $rec.compare) { $l = "  compare {0}: {1}" -f $c.id, $(if ($c.ok) { 'ok' } else { 'FAIL ' + $c.detail }); if ($c.ok) { Write-BdOk $l } else { Write-BdFail $l } }
+    if ($rec.PSObject.Properties['checks'] -and $rec.checks) { Write-BdChecks $rec.checks }
     $rec
+}
+
+function Write-BdChecks {
+    <# The hardware checks, budgets and profile of a verify record (the manifest's checks / budgets sections; milestone D4). #>
+    param($Checks)
+    $c = $Checks
+    $line = '  checks: {0} new finding(s), {1} accepted' -f $c.newFindings, $c.acceptedFindings
+    if ($c.ok) { Write-BdOk $line } else { Write-BdFail $line }
+    foreach ($p in @($c.problems)) { Write-BdFail "      manifest: $p" }
+    foreach ($s in @($c.scenarios)) {
+        $pr = $s.profile
+        $l = '    {0,-14} busy {1,5:F1}% (worst {2,5:F1}% at frame {3}), {4} lag frame(s), vblank uploads worst {5:F1}%, {6:F0} fps checked' -f $s.id, $pr.busyPercentAverage, $pr.busyPercentWorst, $pr.busyWorstFrame, $pr.lagFrames, $pr.vblankUploadPercentWorst, $s.fpsChecked
+        if ($s.result -ne 'ok') { Write-BdFail "$l  ($($s.result): $($s.error))" }
+        elseif (-not $s.frameIdentical) { Write-BdFail "$l  ($($s.identity))" }
+        else { Write-BdInfo $l }
+    }
+    foreach ($f in @($c.findings | Where-Object { -not $_.accepted })) {
+        Write-BdFail ('      NEW {0} at {1} ({2} frame {3}, pc {4} {5}, {6}x): {7}' -f $f.rule, $f.place, $f.scenario, $f.firstFrame, $f.pc, $f.pcSymbol, $f.count, $f.detail)
+    }
+    foreach ($b in @($c.budgets)) {
+        $trend = if ($null -ne $b.previous) { ' (previous build {0}, {1}{2})' -f $b.previous, $(if ($b.delta -ge 0) { '+' } else { '' }), $b.delta } else { '' }
+        $l = '    budget {0}: {1} ({2} {3}){4} - {5}' -f $b.id, $b.value, $(if ($b.kind -eq 'max') { 'at most' } else { 'at least' }), $b.limit, $trend, $b.detail
+        switch ($b.status) { 'fail' { Write-BdFail $l } 'warn' { Write-BdWarn $l } default { Write-BdOk $l } }
+    }
+    foreach ($a in @($c.staleAccepted)) { Write-BdWarn ("      the accepted {0} at '{1}' matched nothing in this run (still needed?)" -f $a.rule, $a.at) }
 }
 
 function Invoke-BdProjectRun {

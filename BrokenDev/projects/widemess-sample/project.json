@@ -79,6 +79,77 @@
       }
     ]
   },
+  "checks": {
+    "what": "BrokenDev hardware checks (docs/projects/brokendev-debugging-plan.md, D4): every verify scenario runs again with the checks on; a finding not accepted here fails verify. Each acceptance says why.",
+    "accepted": [
+      {
+        "rule": "snes.lag-frame",
+        "at": "*",
+        "reason": "known: the sample's start-up lags its first 11 frames (dmaClearVram, wmsUpload, wmsSpritesInit, the tables, wmsSoundStart); the lagFrames budget holds the rest at 0"
+      },
+      {
+        "rule": "snes.wram-uninit",
+        "at": "game_frame",
+        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
+      },
+      {
+        "rule": "snes.wram-uninit",
+        "at": "rec_pos",
+        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
+      },
+      {
+        "rule": "snes.wram-uninit",
+        "at": "tcc__registers_nmi_isr",
+        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
+      },
+      {
+        "rule": "snes.wram-uninit",
+        "at": "tccs_main.asm_fire_wait",
+        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
+      },
+      {
+        "rule": "snes.wram-uninit",
+        "at": "tccs_main.asm_spawn_wait",
+        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
+      },
+      {
+        "rule": "snes.wram-uninit",
+        "at": "tccs_widemess.asm_wms_scroll_dirty",
+        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
+      },
+      {
+        "rule": "snes.wram-uninit",
+        "at": "tccs_widemess.asm_wms_hofs",
+        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
+      },
+      {
+        "rule": "snes.wram-uninit",
+        "at": "tccs_widemess.asm_wms_vofs",
+        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
+      }
+    ]
+  },
+  "budgets": {
+    "what": "Over a limit fails verify, near it (90%) warns; the report compares with the previous build (out/<id>/budget-history.json). romBankFree is an estimate (padding runs of 64 or more equal $00 / $FF bytes).",
+    "lagFrames": {
+      "max": 0,
+      "fromFrame": 30,
+      "what": "no lag frame once started; 0 on 2026-10-24"
+    },
+    "busyPercent": {
+      "max": 95,
+      "fromFrame": 30
+    },
+    "memoryFree": {
+      "wram": 16384,
+      "wramhi": 65536,
+      "what": "work RAM never read: 130256 and 912555 (of the 896 KB) on 2026-10-24"
+    },
+    "stackFree": {
+      "min": 1024,
+      "what": "7845 bytes on 2026-10-24"
+    }
+  },
   "knownIssues": [
     "PVSnesLib counts the loading frames (graphics and the sound RAM image, about 360 KB through DMA) as lag: lag_frame_counter is 9 at the first frame of play and stays there."
   ]
