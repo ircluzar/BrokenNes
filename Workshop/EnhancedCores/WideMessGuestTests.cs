@@ -560,6 +560,7 @@ internal static class WideMessGuestTests
         new Game("Super Mario Land", ConsoleKind.GameBoy, $@"{Lib}\GameBoy\Super Mario Land (W) (V1.1) [!].zip", "200:Start,210:," + Walk(300, 1300, "Right", "A", 36, 20), 1400, new[] { 350, 600, 900, 1200 }),
         new Game("Kirby's Dream Land", ConsoleKind.GameBoy, $@"{Lib}\GameBoy\Kirby's Dream Land (UE) [!].zip", "300:Start,310:,600:Start,610:," + Walk(900, 1500), 1600, new[] { 400, 900, 1200, 1550 }),
         new Game("Link's Awakening", ConsoleKind.GameBoy, $@"{Lib}\GameBoy\Legend of Zelda, The - Link's Awakening (U) (V1.2) [!].zip", "300:Start,310:,500:Start,510:,700:A,710:,900:A,910:", 1200, new[] { 400, 800, 1150 }),
+        new Game("Super Mario Bros. Deluxe", ConsoleKind.GameBoyColor, $@"{Lib}\GameBoy Color\Super Mario Bros. Deluxe (USA, Europe).gbc", "300:Start,310:,450:A,460:,600:A,610:,750:A,760:,900:Start,910:,1000:A,1010:," + Walk(1100, 1800, "Right+B", "A", 40, 20), 1900, new[] { 400, 1100, 1450, 1850 }),
         new Game("Sonic the Hedgehog (Master System)", ConsoleKind.MasterSystem, System.IO.Path.Combine(Roster, @"sms\Sonic The Hedgehog (USA, Europe).sms"), "400:A,410:," + Walk(600, 1400, "Right", "A", 60, 15), 1500, new[] { 300, 800, 1100, 1450 }),
         new Game("Alex Kidd in Miracle World", ConsoleKind.MasterSystem, System.IO.Path.Combine(Roster, @"sms\Alex Kidd in Miracle World (USA, Europe) (v1.1).sms"), "300:Start,310:,500:Start,510:," + Walk(700, 1300, "Right", "B", 50, 15), 1400, new[] { 400, 900, 1350 }),
         new Game("Sonic the Hedgehog (Game Gear)", ConsoleKind.GameGear, System.IO.Path.Combine(Roster, @"gg\Sonic The Hedgehog (U) (V1.1) [!].gg"), "700:Start,710:,800:Start,810:,900:Start,910:," + Walk(1000, 1800, "Right", "A", 60, 15), 1900, new[] { 750, 1200, 1500, 1850 }),
@@ -631,9 +632,16 @@ internal static class WideMessGuestTests
         public void Dispose() { wide?.Dispose(); refer?.Dispose(); own?.Dispose(); }
     }
 
+    /// <summary>The games a run checks: every one, or those whose names contain one of BROKENNES_WMS_GAMES's comma-separated words (to check one game again).</summary>
+    private static IEnumerable<Game> Chosen()
+    {
+        var only = (Environment.GetEnvironmentVariable("BROKENNES_WMS_GAMES") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return Games().Where(g => only.Length == 0 || only.Any(o => g.Name.Contains(o, StringComparison.OrdinalIgnoreCase)));
+    }
+
     public static void GamesCheck()
     {
-        foreach (var g in Games())
+        foreach (var g in Chosen())
         {
             if (!File.Exists(g.Path)) { Console.WriteLine($"  NOT RUN  {g.Name}: no ROM at {g.Path}"); continue; }
             using var run = new Run(g, withOwn: false, wideApu: Route2(g.Console));
@@ -696,7 +704,7 @@ internal static class WideMessGuestTests
 
     private static void Alloc()
     {
-        foreach (var g in Games().Where(g => g.Console != ConsoleKind.Snes).GroupBy(g => g.Console).Select(x => x.First()))
+        foreach (var g in Chosen().Where(g => g.Console != ConsoleKind.Snes).GroupBy(g => g.Console).Select(x => x.First()))
         {
             if (!File.Exists(g.Path)) continue;
             if (g.Console == ConsoleKind.Nes)

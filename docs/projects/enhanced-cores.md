@@ -433,11 +433,11 @@ other chip shows what the SNES registers say) and frames sounding voices 8-31 (t
     Genesis). The sound chip: 11 voices on 1 bank, 18 on 1 bank, 440 Hz within 0.2 cent on a PCM voice and on a BRR voice, stereo; every guest's bridge with no voice dropped (the stock route through the
     NES drops 4 of the SNES's 8); a NES game on `APU_WMSS`; states.
   - `wmsown`: section 6.5, with the WideMess test ROMs `layers.wms` and `sound.wms` as the counted cases.
-  - `wmsgames`: 11 games of the user's library in lockstep with `SNES:SFCS` (`SNESS`): Super Mario Bros., Ice Climber, Kirby's Adventure (NES), Super Mario Land, Kirby's Dream Land, Link's Awakening
-    (Game Boy), Sonic and Alex Kidd (Master System), Sonic (Game Gear), Sonic 1 (Genesis), Super Mario World (SNES): the middle identical every frame (1,100 to 2,400 frames each), no layer
+  - `wmsgames`: 12 games of the user's library in lockstep with `SNES:SFCS` (`SNESS`): Super Mario Bros., Ice Climber, Kirby's Adventure (NES), Super Mario Land, Kirby's Dream Land, Link's Awakening
+    (Game Boy), Super Mario Bros. Deluxe (Game Boy Color), Sonic and Alex Kidd (Master System), Sonic (Game Gear), Sonic 1 (Genesis), Super Mario World (SNES): the middle identical every frame (1,100 to 2,400 frames each), no layer
     unreported, the sound with no voice dropped; allocation: no object a frame beyond what the same translator allocates on `SNES:SFCS` (the synthetic scenes measure 0 bytes), the sound chip 0 bytes a frame.
 - `--picture-bridge-test` (alloc group): 0 bytes a frame on `WMS:WMSS` for the Master System, Game Gear and Genesis scenes.
-- `Workshop --wms-guest-sheet --out <dir>`: contact sheets of those 11 games (the game's own picture beside the same frame 400 wide, the guest's edges marked, the rules and counts under it):
+- `Workshop --wms-guest-sheet --out <dir>`: contact sheets of those 12 games (the game's own picture beside the same frame 400 wide, the guest's edges marked, the rules and counts under it):
   docs/projects/widemess-images/m7/.
 - `UAT/entrypoints/widemess-desktop-smoke.ps1` step GUEST: the NES's test.nes on `WMSS` shown 400 x 240 by the desktop app and 256 x 240 again on FIX; Sonic (Master System) on `WMS:WMSS` picture
   and sound, 400 x 192.
