@@ -124,8 +124,11 @@ public sealed class Debugger
 
     // ---------------------------------------------------------------- address specs
 
-    /// <summary>Resolves an address spec on a CPU to canonical ranges (see <see cref="Add"/>).</summary>
-    public List<SpaceRange> Resolve(DebugCpu cpu, string spec, AccessKind kind, out string resolved)
+    /// <summary>Resolves an address spec on a CPU to canonical ranges (see <see cref="Add"/>), with this debugger's symbols.</summary>
+    public List<SpaceRange> Resolve(DebugCpu cpu, string spec, AccessKind kind, out string resolved) => ResolveSpec(cpu, Symbols, spec, kind, out resolved);
+
+    /// <summary>Resolves an address spec without a debugger (a tool that only reads memory): <paramref name="symbols"/> may be empty.</summary>
+    public static List<SpaceRange> ResolveSpec(DebugCpu cpu, SymbolTable symbols, string spec, AccessKind kind, out string resolved)
     {
         spec = spec.Trim();
         if (spec.Length == 0) throw new FormatException("empty address");
@@ -158,7 +161,7 @@ public sealed class Debugger
             else throw new FormatException($"'{head}' is not a memory space of the {cpu.Name} (it has: {string.Join(", ", cpu.Spaces.Select(s => s.Name))})");
         }
         SplitRange(body, out string first, out string? second);
-        var ka = Endpoint(cpu, first, explicitSpace, out int sizeA, out bool symA);
+        var ka = Endpoint(cpu, symbols, first, explicitSpace, out int sizeA, out bool symA);
         if (second == null)
         {
             var list = new List<SpaceRange>();
@@ -171,7 +174,7 @@ public sealed class Debugger
             resolved = Describe(cpu, list);
             return list;
         }
-        var kb = Endpoint(cpu, second, explicitSpace >= 0 ? explicitSpace : ka.space, out _, out _);
+        var kb = Endpoint(cpu, symbols, second, explicitSpace >= 0 ? explicitSpace : ka.space, out _, out _);
         if (ka.space < 0 && kb.space < 0)
         {
             // a CPU range: every address through the mirror folding, merged
@@ -218,20 +221,20 @@ public sealed class Debugger
     }
 
     /// <summary>One end of a spec: (space, offset) for a named space or a symbol; space -1 for a CPU address.</summary>
-    private (int space, uint offset) Endpoint(DebugCpu cpu, string text, int space, out int size, out bool isSymbol)
+    private static (int space, uint offset) Endpoint(DebugCpu cpu, SymbolTable symbols, string text, int space, out int size, out bool isSymbol)
     {
         size = 1; isSymbol = false;
         long plus = 0;
         int p = text.LastIndexOf('+');
         if (p > 0 && TryNumber(text[(p + 1)..], out long off)) { plus = off; text = text[..p].Trim(); }
-        if (!text.StartsWith("$") && !text.StartsWith("0x", StringComparison.OrdinalIgnoreCase) && Symbols.TryFind(text, out var sym, out string? err))
+        if (!text.StartsWith("$") && !text.StartsWith("0x", StringComparison.OrdinalIgnoreCase) && symbols.TryFind(text, out var sym, out string? err))
         {
             if (!cpu.BindSymbol(sym, out var key)) throw new FormatException($"symbol '{text}' ({sym}) is not on the {cpu.Name}");
             isSymbol = true; size = plus == 0 ? sym.Size : 1;
             return (key.Space == 0 && space < 0 ? -1 : key.Space, (uint)(key.Offset + plus));
         }
         if (TryNumber(text, out long v)) return (space, (uint)(v + plus));
-        throw new FormatException($"'{text}' is neither an address nor a loaded symbol{(Symbols.All.Count == 0 ? " (no symbols are loaded)" : "")}");
+        throw new FormatException($"'{text}' is neither an address nor a loaded symbol{(symbols.All.Count == 0 ? " (no symbols are loaded)" : "")}");
     }
 
     /// <summary>A number in a spec: $hex, 0xhex, or bare hex (addresses are written in hex).</summary>

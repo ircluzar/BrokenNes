@@ -101,8 +101,51 @@ About 160 routes across 20 registration files (the tables below were generated f
 | POST | `/api/memory/poke-range` | Write N bytes (`Data` is `int[]`) |
 | GET | `/api/memory/test-poke?domain=&address=&value=` | Diagnostic write/read-back/restore round trip |
 
-Memory domains (from `NesMemoryExtensions`): `System RAM` (2 KB), `CPU Bus` (64 KB), `PRG ROM`,
+Memory domains while the NES runs (from `NesMemoryExtensions`): `System RAM` (2 KB), `CPU Bus` (64 KB), `PRG ROM`,
 `PRG RAM` (8 KB), `CHR` (8 KB). Names contain spaces and must be URL-encoded in query strings.
+
+**Every console (BrokenDev D1):** while a SNES / WideMess / Game Boy / Sega game runs, the same routes answer with that
+console's memories (the response of `/api/memory/domains` then carries `console`, and each domain its `kind`, `writable` and why it
+is `unavailable`); peeks and pokes run between frames. SNES and WideMess: `WRAM`, `VRAM`, `CGRAM`, `OAM`, `SRAM`, `ROM`, `ARAM`
+(sound RAM), `DSP`, `REGS` ($4200-$421F, $4300-$437F), `BUS` (the 65816's 24-bit space, side-effect free), `WRAMHI` (a WideMess-map
+game's work RAM). Game Boy: `WRAM`, `HRAM`, `VRAM`, `OAM`, `CRAM` (Color), `SRAM`, `ROM`, `WAVE`, `IO` ($FF00-$FF7F, IE at $80),
+`BUS`. Master System / Game Gear / Genesis: their `RAM`, `VRAM`, `CRAM`, ... as `/api/console/domains` lists them.
+
+### Debugger - `WebApiServer.Endpoints.Debug.cs` (BrokenDev D1: NES, SNES with its SPC700, WideMess, Game Boy)
+
+The debugger engine (`Windows/NesEmulator/debug`) behind the live MCP sessions of milestone D3. **Reading is always allowed**;
+the **control** routes answer `403` unless the config has `"enableDebuggerControl": true` (BrokenDev's live sessions ask the user
+first; tests use a scratch config, `UAT\entrypoints\debugger-desktop-smoke.ps1`). A debugger is made on the first control request
+and costs the game nothing until then; it is released (every hook removed) when the emulation stops or the game changes. A break
+parks the emulation thread at an instruction boundary (the emulation lock is released, so the app and these routes keep answering);
+`continue` or a step lets it go.
+
+Specs (breakpoints, run-to, memory): `$8000`, `$8000-$80FF`, `7E:0010` (bank:address; on the Game Boy a ROM / RAM bank), `wram:$10`,
+`vram:$2000-$27FF`, `prg:$1234`, `oam:$05`, `spc:$0200`, a symbol (`player_hp`, its whole size for a watch), `player_hp+1`. A CPU
+address matches every mirror of what it reaches (NES `$0812` is `$0012`; SNES `$80:0013` is `$7E:0013`, `$80:420B` is `$00:420B`;
+Game Boy `$E011` is `$C011`); DMA and HDMA bytes are accesses (a VRAM watch sees a DMA upload). Conditions: registers, `[addr]`,
+`{addr}` (word), `[symbol]`, `value`, `address`, `source` (0 CPU, 1 DMA, 2 HDMA, 3 OAM DMA, 4 VRAM DMA), `frame`, `scanline`, C operators.
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/debug/state` | Console, CPUs (registers, PC, symbol, spaces), attached / armed / parked, the last break, breakpoints, symbol files, limitations |
+| GET | `/api/debug/registers?cpu=main\|spc` | One CPU's registers |
+| GET | `/api/debug/callstack?cpu=` | Call frames (JSR/JSL/CALL/RST/TCALL, NMI/IRQ/VBLANK...), outermost first, with symbols |
+| GET | `/api/debug/trace?cpu=&count=` | The last instructions, in Mesen's trace logger columns |
+| GET | `/api/debug/breakpoints`, `/api/debug/hits?count=` | Breakpoints with hit counts; the hit log (tracepoint lines too) |
+| GET | `/api/debug/wait?timeoutMs=` | Waits for the emulation to park; answers with the break |
+| GET | `/api/debug/symbol?name=` / `?address=&cpu=` | A symbol's place and size / the label at an address |
+| GET | `/api/debug/memory?spec=&length=&cpu=` | Memory by spec or symbol, side-effect free |
+| GET | `/api/debug/disasm?address=&count=&cpu=` | Disassembly (from the PC by default), with symbols |
+| GET | `/api/debug/eval?expr=&cpu=` | An expression now (`[player_hp] + 1`) |
+| POST | `/api/debug/attach`, `/api/debug/detach` | **Control.** Attach (tracks the call stack) / detach (the game runs as if never debugged) |
+| POST | `/api/debug/symbols` `{path}` | **Control.** Load a `.mlb` (NESFab / Mesen), WLA-DX `.sym`, bgb / GBDK `.sym` or GBDK `.noi` |
+| POST | `/api/debug/breakpoints` `{spec, kind: exec\|read\|write\|rw, cpu, condition, hits, tracepoint, log}` | **Control.** Add a breakpoint, watch or tracepoint |
+| DELETE | `/api/debug/breakpoints/{id}`, `/api/debug/breakpoints` | **Control.** Remove one / all |
+| POST | `/api/debug/pause?waitMs=`, `/api/debug/continue` | **Control.** Break at the next instruction / let it go |
+| POST | `/api/debug/step` `{mode: into\|over\|out\|scanline\|frame, cpu}` or `{to}` / `{frame}` / `{scanline}` | **Control.** Step or run to; waits for the break (`waitMs`, default 5000) |
+| POST | `/api/debug/registers` `{cpu, name, value}` | **Control.** Write a register |
+| POST / DELETE | `/api/debug/trace-file` `{path, cpu, function, ranges, fromFrame, toFrame}` | **Control.** Start / stop a filtered trace file |
 
 ### Emulator control - `WebApiServer.Endpoints.Emulator.cs`
 

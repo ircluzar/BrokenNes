@@ -31,6 +31,25 @@ internal static class DebugTestCli
     public static int Run(string[] args)
     {
         string Opt(string n, string d) { int i = Array.IndexOf(args, "--" + n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
+        if (Opt("write-roms", "") is { Length: > 0 } romDir)
+        {
+            // the test ROMs and their symbol files, for the desktop app's debugger smoke (UAT\entrypoints\debugger-desktop-smoke.ps1)
+            Directory.CreateDirectory(romDir);
+            var (nr, na, nm) = DebugTestRoms.Nes();
+            var (sr, sa, ss, sy) = DebugTestRoms.Snes();
+            var (gr, ga, gs, gn) = DebugTestRoms.GameBoy();
+            DebugTestRoms.Write(romDir, "debugtest.nes", nr); DebugTestRoms.Write(romDir, "debugtest.mlb", nm);
+            DebugTestRoms.Write(romDir, "debugtest.sfc", sr); DebugTestRoms.Write(romDir, "debugtest.sym", sy);
+            DebugTestRoms.Write(romDir, "debugtest.gb", gr); DebugTestRoms.Write(romDir, "debugtest_gb.sym", gs); DebugTestRoms.Write(romDir, "debugtest_gb.noi", gn);
+            var labels = new Dictionary<string, object>
+            {
+                ["nes"] = na.Labels.ToDictionary(k => k.Key, k => k.Value), ["snes"] = sa.Labels.ToDictionary(k => k.Key, k => k.Value),
+                ["spc"] = ss.Labels.ToDictionary(k => k.Key, k => k.Value), ["gb"] = ga.Labels.ToDictionary(k => k.Key, k => k.Value),
+            };
+            File.WriteAllText(Path.Combine(romDir, "labels.json"), System.Text.Json.JsonSerializer.Serialize(labels));
+            Console.WriteLine($"wrote the debugger test ROMs to {romDir}");
+            return 0;
+        }
         var only = Opt("only", "nes,snes,gb,wms,games").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
         string dir = Opt("keep", Path.Combine(Path.GetTempPath(), "brokennes-debug-test-" + Environment.ProcessId));
         Directory.CreateDirectory(dir);
