@@ -21,7 +21,7 @@
 extern u8 far_frames[];
 
 static s16 ship_x, ship_y;
-static u16 frame;
+u16 game_frame;                        /* global: BrokenDev compat reads it by its symbol */
 
 static void vblank(void)
 {
@@ -68,12 +68,12 @@ int main(void)
         if (pad_keysdown[0] & KEY_A) sndPlayEffect(SND_SFX_DING);
         if (pad_keysdown[0] & KEY_START) sndPlaySong(SND_SONG_HELLO);
 
-        wmsSpriteSet(0, ship_x, ship_y, GFX_SHIP_TILE((frame >> 3) & 1), GFX_SHIP_ATTR6, GFX_SHIP_ATTR7 | WMS_SPR_PRIO(3));
-        wmsScroll(GFX_HILLS_LAYER, frame >> 1, 0);
-        wmsScroll(GFX_TITLE_LAYER, 0, (u16)(-24 - (s16)((frame >> 2) & 15)));
+        wmsSpriteSet(0, ship_x, ship_y, GFX_SHIP_TILE((game_frame >> 3) & 1), GFX_SHIP_ATTR6, GFX_SHIP_ATTR7 | WMS_SPR_PRIO(3));
+        wmsScroll(GFX_HILLS_LAYER, game_frame >> 1, 0);
+        wmsScroll(GFX_TITLE_LAYER, 0, (u16)(-24 - (s16)((game_frame >> 2) & 15)));
 
         far_frames[0]++;                /* proof of life in the 1 MB work RAM */
-        frame++;
+        game_frame++;
         WaitForVBlank();
     }
     return 0;

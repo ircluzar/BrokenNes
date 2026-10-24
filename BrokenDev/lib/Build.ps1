@@ -143,8 +143,10 @@ function Invoke-BdProjectBuild {
 
     # The project builds in its live workspace when there is one (the user's own folder: outputs land in its git-ignored build folders,
     # exactly like his own builds), else in the restored copy, which must then be completely restored.
-    $ws = Get-BdWorkspace -Id ([string]$m.source.archive)
-    if ($ws.Kind -notin 'live', 'restored' -and -not $DryRun) { throw "project ${Id}: archive '$($m.source.archive)' has no live workspace and its restored copy is $($ws.Kind) ($($ws.Detail)). Run 'brokendev.ps1 restore $Id'." }
+    # A project with source.folder (a WideMess project) builds in that folder.
+    $ws = Get-BdProjectWorkspace -Manifest $m
+    if ($ws.Kind -eq 'absent' -and $m.source.PSObject.Properties['folder'] -and -not $DryRun) { throw "project ${Id}: $($ws.Detail)" }
+    if ($ws.Kind -notin 'live', 'restored', 'folder' -and -not $DryRun) { throw "project ${Id}: archive '$($m.source.archive)' has no live workspace and its restored copy is $($ws.Kind) ($($ws.Detail)). Run 'brokendev.ps1 restore $Id'." }
     if (-not $DryRun) { Write-BdInfo ("  workspace: {0} ({1})" -f $ws.Kind, $ws.Path) }
 
     $inputs = @{}

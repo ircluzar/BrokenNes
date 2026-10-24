@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "id": "{{ID}}",
+  "title": "{{TITLE}} (WideMess game made from the devkit's template)",
+  "family": "widemess",
+  "kind": "wms",
+  "console": "wms",
+  "description": "A WideMess game (BrokenNes's fantasy console, docs/projects/widemess-spec.md), made by 'brokendev new widemess {{ID}}'. C and 65816 on PVSnesLib with the WideMess extensions (BrokenDev/widemess), built on the WideMess map into a .wms. The devkit guide: docs/projects/widemess-devkit.md.",
+  "source": { "folder": "{{FOLDER}}" },
+  "requires": {
+    "tools": ["python", "workshop"],
+    "projects": [],
+    "inputs": [],
+    "toolchain": ["PVSnesLib 4.6.0 (816-tcc, 816-opt, wla-65816, wla-spc700, wlalink, snesbrr), the copy in the Super VRUN workspace (snes-stub/toolchain/pvsneslib): read, never changed", "BrokenNes Workshop (--wms-pack)"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "ps5",
+        "cwd": "{src}",
+        "file": "{bd}/widemess/tools/wmsbuild.ps1",
+        "args": ["-Project", "{src}", "-Pvsneslib", "{root:svrunrepo}/snes-stub/toolchain/pvsneslib", "-Workshop", "{workshop}"],
+        "timeoutSec": 900,
+        "note": "wmsbuild.ps1: the converters (wms.json's graphics and sound), 816-tcc, wla-65816, wla-spc700, wlalink on PVSnesLib's HiROM libraries, Workshop --wms-pack --map 2."
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{src}/build/{{NAME}}.wms", "publishAs": "{{NAME}}.wms", "kind": "wms" },
+      { "id": "sym", "path": "{src}/build/{{NAME}}.sym", "publishAs": "{{NAME}}.sym", "kind": "symbols" }
+    ]
+  },
+  "run": { "console": "wms", "note": "The d-pad moves the ship, A plays the effect, Start the song again." },
+  "verify": {
+    "timeoutSec": 600,
+    "scenarios": [
+      {
+        "id": "boot",
+        "frames": 300,
+        "input": "",
+        "checkpoints": [120, 300],
+        "expect": {
+          "minDistinctColors": 16,
+          "pictureDiffers": [120, 300],
+          "audio": { "fromFrame": 30, "minPeak": 0.05, "minNonSilentFrames": 120 },
+          "wms": { "unlocked": true, "width": 400, "layers8": true, "fastCpu": true, "minLayers": 3, "minSprites": 1, "minVoices": 1, "minVoiceFrames": 60, "minBigWramBytes": 1 },
+          "minRealtime": 1.0
+        }
+      },
+      {
+        "id": "play",
+        "frames": 300,
+        "input": "60:Right,180:Right+Up,240:A,246:",
+        "checkpoints": [300],
+        "expect": { "minDistinctColors": 16, "wms": { "unlocked": true, "width": 400 } }
+      }
+    ],
+    "compare": [
+      { "a": "play@300", "b": "boot@300", "expect": "differ", "why": "the pad reached the game: the ship moved" }
+    ]
+  },
+  "compat": {
+    "what": "The game on BrokenNes only: no other emulator runs WideMess (the compat column is BrokenNes's alone). game_frame is the main loop's frame counter (main.c).",
+    "symbols": { "file": "{out}/{{NAME}}.sym" },
+    "reads": { "frame": "game_frame" },
+    "frameTolerance": 30,
+    "scenarios": [
+      {
+        "id": "boot",
+        "verify": "boot",
+        "shots": [200],
+        "what": "power-on, the starter scene",
+        "checks": [
+          { "id": "runs", "what": "the main loop runs (its frame counter ticks)", "changes": "frame", "within": [60, 300], "min": 100 },
+          { "id": "drawn", "what": "the scene is drawn", "picture": 200, "minColors": 16 }
+        ]
+      }
+    ]
+  },
+  "knownIssues": []
+}

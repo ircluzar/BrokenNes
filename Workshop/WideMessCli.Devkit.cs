@@ -214,6 +214,14 @@ internal static partial class WideMessCli
         return n;
     }
 
+    /// <summary>Voices 8-31 sounding (ENVX above 0) right now; 0 when the sound chip is not the WideMess's or is locked.</summary>
+    internal static int WideVoicesSounding(SnesSession s)
+    {
+        var r = new DevkitReport();
+        CountVoices(s, r);
+        return Math.Max(0, r.WideVoices);
+    }
+
     /// <summary>The voices sounding: the S-DSP's ENVX ($x8) for voices 0-7 and, through the second page, voices 8-31 (WBANK put back after).
     /// Leaves the counts at -1 when the sound chip is not the WideMess's, or when it is locked (the second page is then the S-DSP's mirror).</summary>
     private static void CountVoices(SnesSession s, DevkitReport r)
