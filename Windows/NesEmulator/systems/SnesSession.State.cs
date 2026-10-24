@@ -24,8 +24,9 @@ public sealed partial class SnesSession
 {
     /// <summary>The layout of the payload: bump it whenever the board, a core or a chip changes what it writes, so an old state is refused rather than misread.</summary>
     public const string StateFormat = "sfc-1";
-    /// <summary>The WideMess console's layout: the SNES payload, then the WideMess registers and its picture chip's own memories (<see cref="PPU_WMS.SaveWide"/>).</summary>
-    public const string WideMessStateFormat = "wms-1";
+    /// <summary>The WideMess console's layout: the SNES payload, then the WideMess registers and its picture chip's own memories (<see cref="PPU_WMS.SaveWide"/>).
+    /// wms-2 (milestone 2): + the sprite table, the sprite / window / colour-math registers and the rows drawn 400 wide.</summary>
+    public const string WideMessStateFormat = "wms-2";
     private const byte PayloadVersion = 1;
     private const byte UnitSfc = 0, UnitHle = 1, UnitNes = 2, UnitChip = 3;
 

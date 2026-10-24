@@ -17,7 +17,7 @@ namespace BrokenNes.Workshop;
 /// and on the WideMess console. Exit 0 when every check passes, 1 when one fails, 2 on usage or a missing file.</item>
 /// </list>
 /// </summary>
-internal static class WideMessCli
+internal static partial class WideMessCli
 {
     private static string Opt(string[] args, string n, string d)
     {
@@ -42,7 +42,8 @@ internal static class WideMessCli
         return 0;
     }
 
-    /// <summary><c>--wms-shot --rom game.wms --out shot.png [--frames 60] [--scale 3] [--console wms|snes]</c>: the picture after N frames, as a PNG at its own size times the scale.</summary>
+    /// <summary><c>--wms-shot --rom game.wms --out shot.png [--frames 60] [--scale 3] [--console wms|snes] [--wide]</c>: the picture after N frames, as a PNG at its own size times the scale.
+    /// <c>--wide</c> draws a SNES game's modes 400 wide (WMCTRL = WIDE set on the chip; the game itself stays locked).</summary>
     public static int Shot(string[] args)
     {
         RomTestCli.EnsureConsole();
@@ -51,6 +52,7 @@ internal static class WideMessCli
         if (!File.Exists(rom) || output == "") { Console.Error.WriteLine("usage: --wms-shot --rom game.wms --out shot.png [--frames 60] [--scale 3] [--console wms|snes]"); return 2; }
         int frames = int.Parse(Opt(args, "frames", "60")), scale = int.Parse(Opt(args, "scale", "3"));
         using var s = Session(Consoles.FromKey(Opt(args, "console", "wms")), RomDetect.Unwrap(File.ReadAllBytes(rom), rom, out _));
+        if (args.Contains("--wide", StringComparer.OrdinalIgnoreCase)) s.WideMessPpu?.WriteWide(0xC0, 0x01);   // a SNES game drawn 400 wide (milestone 2), the extension still locked
         Run(s, frames);
         int w = s.FrameWidth, h = s.FrameHeight;
         using var bmp = new System.Drawing.Bitmap(w * scale, h * scale, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
@@ -193,6 +195,7 @@ internal static class WideMessCli
                 Identity(path, frames);
             }
         }
+        WideSnesGames(snes, frames);   // milestone 2: the same games drawn 400 wide (WideMessCli.Picture.cs)
         Console.WriteLine($"{passes} passed, {fails} failed");
         return fails == 0 ? 0 : 1;
     }
