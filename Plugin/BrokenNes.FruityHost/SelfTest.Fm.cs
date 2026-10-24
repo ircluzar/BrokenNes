@@ -17,7 +17,7 @@ public sealed unsafe partial class SelfTest
         // ---- the chip list: appended last, so every saved project keeps its chip ----
         List<string> chips;
         using (var probe = lib.Create()) chips = Chips(probe);
-        t.Expect(chips.Count == 29 && chips.IndexOf(Chip) == 22 && chips.IndexOf("SMS") == 20 && chips.IndexOf("MD") == 21, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected the last, 22)");
+        t.Expect(chips.Count == 30 && chips[29] == "WMS" && chips.IndexOf(Chip) == 22 && chips.IndexOf("SMS") == 20 && chips.IndexOf("MD") == 21, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected the last, 22)");
         byte[] blob;
         using (var a = lib.Create()) { a.SetParam(PCore, chips.IndexOf(Chip)); a.SetParam(PInstrument, 9); blob = a.SaveState(); }
         using (var b = lib.Create())

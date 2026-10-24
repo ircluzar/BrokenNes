@@ -149,6 +149,8 @@ public sealed unsafe partial class SelfTest
             ("rom-md", "ROM mode on Genesis games (a tiny ROM made by the test): it loads, runs, draws, plays its PSG tones and YM2612 sines through Mix, Runaway freezes it, files switch the emulator to the Genesis console", RomMd),
             ("stems-sega", "Per-channel stems of Sega games: PSG tone 1-3 and noise, the Genesis' FM voices, the Master System FM chip's, each its own voice, adding up to the game's mix; voices a console does not have are refused", SegaStems),
             ("rom-sms", "ROM mode on Master System and Game Gear games (tiny ROMs made by the test): they load, run, draw at their own size, play their PSG tone through Mix, switch the emulator's console", RomSms),
+            ("wms", "WideMess sound chip (WMS, WideMess milestone 7a), console 2: appended last (chip 29, after the Presets chips), the chip itself played polyphonically in Direct mode: 24 notes at once on one instance (every frequency in the mix; a 25th takes the oldest's voice; 8 voices as a deliberate bug and the SNES chip's one note per channel are caught), 16-bit samples (the sine's harmonics below -60 dB), the Instrument parameter's 14 built-in instruments measured against their formulas, pitch exact from A0 to C8 (a deliberate bug caught), level against the NES chip, slides across the loops, real time, no allocation, Reset Console", Wms),
+            ("rom-wms", "WideMess games in ROM mode (WideMess milestone 7a): a .wms file goes to the SNES console on the WMS chip and runs on the WideMess console at 400 x 224, its pictures pixel for pixel the spec's model's, its new voices heard (the locked control and the SNES chip are not), a SNES game on the WMS chip is frame and sample identical to the SNES chip, a chip swap under a running game, Instrument Runaway plays the game's own 16-bit PCM and BRR samples at their pitch with many notes at once and no allocation, the project keeps them (WMS1; a damaged section is refused with a note), the locked control stays the SNES sampler's", RomWms),
             ("mono", "Each channel is monophonic: the newest note wins and the older one resumes", Mono_),
             ("lifecycle", "Voices: released voices are handed back (Voice_Kill), bad handles are harmless", Lifecycle),
             ("cores", "Every NES sound chip produces the note; accurate ones at the right pitch", Cores),
@@ -1352,7 +1354,7 @@ public sealed unsafe partial class SelfTest
             int qn = chips.IndexOf("QN");
             ClickControl(t, p, 4, "chip dropdown");
             t.Expect(p.Test(31) == 4, "the chip list did not open");
-            t.Expect(p.Test(32) == chips.Count - 10, $"the chip list has {p.Test(32)} items, expected the {chips.Count - 10} NES chips (the Game Boy, SNES, Master System and Genesis chips are under their own consoles; the NES list has the Presets chip for every console and its own NES one)");
+            t.Expect(p.Test(32) == chips.Count - 11, $"the chip list has {p.Test(32)} items, expected the {chips.Count - 11} NES chips (the Game Boy, SNES, Master System and Genesis chips and the WideMess chip are under their own consoles; the NES list has the Presets chip for every console and its own NES one)");
             int before = p.Host.ParamChanges.Count;
             // scroll the list until QN is visible, then click it
             for (int guard = 0; guard < 40 && p.Test(30, 100 + qn) == 0; guard++) Win32Host.Wheel(hwnd, -1);
@@ -1388,6 +1390,9 @@ public sealed unsafe partial class SelfTest
             Win32Host.Click(hwnd, 20, 20);
             ClickControl(t, p, 52, "SNES segment");
             t.Expect(p.GetParam(PConsole) == 2 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "SNES", "SNES segment");
+            ClickControl(t, p, 4, "chip dropdown (SNES)");
+            t.Expect(p.Test(32) == 3, $"the SNES chip list has {p.Test(32)} items, expected SNES, the Presets shortcut PRE-SNES and the WideMess chip WMS");
+            Win32Host.Click(hwnd, 20, 20);
             ClickControl(t, p, 53, "SMS segment");
             t.Expect(p.GetParam(PConsole) == 3 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "SMS", $"SMS segment: console {p.GetParam(PConsole)}, chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}");
             ClickControl(t, p, 4, "chip dropdown (SMS)");
@@ -1534,7 +1539,7 @@ public sealed unsafe partial class SelfTest
         {
             var p = lib.Create(); all.Add(p);
             var chips = Chips(p);
-            t.Expect(chips.Count == 29 && chips[0] == "FIX" && chips[22] == "SMSFM" && string.Join(",", chips.Skip(23)) == "PRESETS,PRE-NES,PRE-GB,PRE-SNES,PRE-SMS,PRE-MD", $"{chips.Count} chips, first {chips[0]} (expected the 17 NES chips with FIX first, then DMG, DMGS, SNES, SMS, MD, SMSFM appended, and the six Presets chips last of all)");
+            t.Expect(chips.Count == 30 && chips[0] == "FIX" && chips[22] == "SMSFM" && string.Join(",", chips.Skip(23)) == "PRESETS,PRE-NES,PRE-GB,PRE-SNES,PRE-SMS,PRE-MD,WMS", $"{chips.Count} chips, first {chips[0]} (expected the 17 NES chips with FIX first, then DMG, DMGS, SNES, SMS, MD, SMSFM appended, the six Presets chips, and the WideMess chip WMS last of all)");
             // each console starts with its own chip
             foreach (var (console, chip) in new[] { (1, "DMG"), (2, "SNES"), (3, "SMS"), (4, "MD"), (0, "FIX") })
             {
@@ -1606,7 +1611,7 @@ public sealed unsafe partial class SelfTest
         // ---- the chip list: appended, so every saved project keeps its chip ----
         List<string> chips;
         using (var probe = lib.Create()) chips = Chips(probe);
-        t.Expect(chips.Count == 29 && chips.IndexOf(Chip) == 20 && chips.IndexOf("MD") == 21 && chips.IndexOf("SMSFM") == 22, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected 20, with the Genesis chip and then the Master System FM chip appended after it)");
+        t.Expect(chips.Count == 30 && chips[29] == "WMS" && chips.IndexOf(Chip) == 20 && chips.IndexOf("MD") == 21 && chips.IndexOf("SMSFM") == 22, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected 20, with the Genesis chip and then the Master System FM chip appended after it)");
         t.Expect(chips.IndexOf("FIX") == 0 && chips.IndexOf("DMG") == 17 && chips.IndexOf("DMGS") == 18 && chips.IndexOf("SNES") == 19, "an existing chip moved (the chip index is part of saved projects: append only)");
         byte[] blob;
         using (var a = lib.Create()) { a.SetParam(PCore, chips.IndexOf(Chip)); blob = a.SaveState(); }
@@ -1763,7 +1768,7 @@ public sealed unsafe partial class SelfTest
         // ---- the chip list: appended, so every saved project keeps its chip ----
         List<string> chips;
         using (var probe = lib.Create()) chips = Chips(probe);
-        t.Expect(chips.Count == 29 && chips.IndexOf(Chip) == 21 && chips.IndexOf("SMSFM") == 22, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected 21, with the Master System FM chip appended after it)");
+        t.Expect(chips.Count == 30 && chips[29] == "WMS" && chips.IndexOf(Chip) == 21 && chips.IndexOf("SMSFM") == 22, $"the {Chip} chip is index {chips.IndexOf(Chip)} of {chips.Count} (expected 21, with the Master System FM chip appended after it)");
         t.Expect(chips.IndexOf("FIX") == 0 && chips.IndexOf("DMG") == 17 && chips.IndexOf("DMGS") == 18 && chips.IndexOf("SNES") == 19 && chips.IndexOf("SMS") == 20, "an existing chip moved (the chip index is part of saved projects: append only)");
         byte[] blob;
         using (var a = lib.Create()) { a.SetParam(PCore, chips.IndexOf(Chip)); a.SetParam(PInstrument, 9); blob = a.SaveState(); }

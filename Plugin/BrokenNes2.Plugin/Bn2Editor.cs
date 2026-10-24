@@ -307,7 +307,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         DrawStatus(dc, a, emu);
         DrawTabStrip(dc);                                   // tabs (Ui/Bn2Editor.Tabs.cs)
 
-        bool frozen = emu?.Runaway == true, sampler = emu?.SamplerMode == true, gbSampler = emu?.GbSamplerMode == true, segaSampler = emu?.SegaSamplerMode == true, presetMode = emu?.PresetMode == true;
+        bool frozen = emu?.Runaway == true, sampler = emu?.SamplerMode == true, gbSampler = emu?.GbSamplerMode == true, segaSampler = emu?.SegaSamplerMode == true, presetMode = emu?.PresetMode == true, wmsSampler = emu?.WmsSamplerMode == true;
         if (tab == 0) {   // the Emulator tab: today's right column, untouched
 
         // EMULATOR
@@ -335,18 +335,18 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         Txt(dc, frozen ? "Instrument Runaway" : "Channels", R(x, y, 200, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE, frozen ? Accent : Dim, fontSmall);
         if (!frozen) Txt(dc, CellHint(emu), R(x + 80, y, w - 80, 16), Win32.DT_RIGHT | Win32.DT_SINGLELINE, Faint, fontSmall);
         y += 18;
-        if (presetMode) DrawPresetBanner(dc, emu!, x, y, w); else if (frozen) DrawRunawayBanner(dc, sampler ? 1 : gbSampler ? 2 : segaSampler ? 3 : 0, x, y, w, sampler ? emu!.Snapshot!.ListenNote : segaSampler ? emu!.SegaState!.ListenNote : ""); else DrawCells(dc, emu, a, x, y, w);
+        if (presetMode) DrawPresetBanner(dc, emu!, x, y, w); else if (frozen) DrawRunawayBanner(dc, sampler || wmsSampler ? 1 : gbSampler ? 2 : segaSampler ? 3 : 0, x, y, w, sampler ? emu!.Snapshot!.ListenNote : segaSampler ? emu!.SegaState!.ListenNote : wmsSampler ? emu!.WmsState!.ListenNote : ""); else DrawCells(dc, emu, a, x, y, w);
         y += 56 + 14;
 
         // THIS INSTANCE
         Section(dc, "THIS INSTANCE", null, x, y, w);
         y += 30;
         if (presetMode && PresetHasVoices) DrawPresetVoice(dc, x, y, w);
-        else if (sampler || segaSampler || presetMode)
+        else if (sampler || segaSampler || presetMode || wmsSampler)
         {
             Txt(dc, "Channel", R(x, y, 86, RowH), Win32.DT_LEFT | Mid, Dim, fontLabel);
             Box(dc, R(x + 86, y, w - 86, RowH), Panel, Line, 5);
-            Txt(dc, presetMode ? "Sampler  -  this instance's preset" : segaSampler ? "Sampler  -  game's sound chips" : "Sampler  -  game's instruments", R(x + 96, y, w - 106, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Dim, fontLabel);
+            Txt(dc, presetMode ? "Sampler  -  this instance's preset" : segaSampler ? "Sampler  -  game's sound chips" : wmsSampler ? "Sampler  -  game's WideMess instruments" : "Sampler  -  game's instruments", R(x + 96, y, w - 106, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Dim, fontLabel);
         }
         else
         {
@@ -380,6 +380,17 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 : found.Count == 0 ? "the game's sample table has no sample the plugin can read" : $"nothing in this slot   ({found.Count} found: pick one from the list)";
             Txt(dc, info, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
         }
+        else if (wmsSampler)
+        {
+            // WideMess milestone 7a: the picker lists the game's instruments from both directories (the new voices' 16-byte entries first, then the S-DSP's)
+            var ws = emu!.WmsState!;
+            var found = ws.Instruments();
+            int ins = ws.Resolve(plugin.Get(P.Instrument));
+            Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, found.Count == 0 ? "no instruments found" : $"#{ins}   {found[ins].Name}");
+            string info = found.Count == 0 ? "the game's sample directories have no sample the plugin can read"
+                : $"{found[ins].Milliseconds:0} ms, {(found[ins].Loops ? "loops" : "one-shot")}, {(found[ins].WideDir ? "a new voice (24 at once)" : "an S-DSP voice (8 at once)")}{(found[ins].Sounding ? ", the game was playing it" : "")}   ({found.Count} found)";
+            Txt(dc, info, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+        }
         else if (segaSampler)
         {
             // the picker lists the game's instruments: what its chips were set up with, and the sounds found in the Genesis DAC's stream
@@ -405,6 +416,13 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             else if (gch == 3) Slider(dc, P.NoiseMode, "Noise mode", x, y, w);
             else Txt(dc, "the game's own waveform (its wave RAM)", R(x + 86, y, w - 86, RowH), Win32.DT_LEFT | Mid, Faint, fontSmall);
         }
+        else if (PatchBank(mode) == 3)
+        {
+            // WideMess milestone 7a: the WideMess chip plays its built-in 16-bit instruments on every channel, many notes at once; the Instrument parameter picks one (0 = the channel's own)
+            var patch = Cx.PatchItems(3)[Cx.PatchClamp(3, plugin.Get(P.Instrument))];
+            Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, patch.Name);
+            Txt(dc, patch.Description, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+        }
         else if (PatchBank(mode) != 0 && (ch == Ch.Pulse1 || ch == Ch.Pulse2))
         {
             // the FM chips (Genesis, Master System FM) play a pulse as an FM voice with a patch of the chip's own bank; the Instrument parameter picks it. (The pulse duty only sets the loudness there.)
@@ -429,7 +447,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         bool canRun = emu?.CanRunaway == true;
         if (canRun || frozen) Button(dc, IdRunaway, frozen ? "Runaway ON  -  release" : "Instrument Runaway", runBtn, primary: frozen);
         else { Box(dc, runBtn, Panel, Line, 5); Txt(dc, "Instrument Runaway", runBtn, Win32.DT_CENTER | Mid, Faint, fontLabel); }
-        string runHint = frozen ? (sampler ? "FL notes play its samples" : gbSampler ? "FL notes play its channels" : segaSampler ? "FL notes play its chips" : "frozen and silent") : canRun ? "freeze it, keep its sounds" : "needs ROM mode and a game";
+        string runHint = frozen ? (sampler || wmsSampler ? "FL notes play its samples" : gbSampler ? "FL notes play its channels" : segaSampler ? "FL notes play its chips" : "frozen and silent") : canRun ? "freeze it, keep its sounds" : "needs ROM mode and a game";
         Txt(dc, runHint, R(runBtn.Right + 8, by, ColX - runBtn.Right - 16, 30), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
 
         // Reset Console, bottom right: starts this emulator over for every instance on it (the Emulator tab's; the other tabs leave it out)
@@ -1268,7 +1286,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 if (nes) { items.Add(("VRUN (built-in)", path == null && !songOn ? "loaded" : null)); vals.Add(0); }
                 if (path != null) { items.Add((Path.GetFileName(path), songOn ? null : "loaded")); vals.Add(1); }
                 if (nes && emu?.Song is { } held) { items.Add(("MIDI test: " + held.FileName, songOn ? "loaded" : "Test MIDI export's song")); vals.Add(3); }
-                items.Add(("Load a game file...", ".nes  .gb  .gbc  .sfc  .smc  .sms  .gg  .md  .gen  .zip")); vals.Add(2);
+                items.Add(("Load a game file...", ".nes  .gb  .gbc  .sfc  .smc  .wms  .sms  .gg  .md  .gen  .zip")); vals.Add(2);
                 int current = songOn ? 3 : path == null ? (nes ? 0 : -1) : 1;
                 return (items.ToArray(), vals.ToArray(), current);
             }
@@ -1284,6 +1302,14 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 for (int k = 0; k < sn.Recipes.Length; k++) { var (name, note) = sn.Recipes[k].Describe(k); items.Add((name, note)); vals.Add(RecipeValue + k); }
                 int grp = plugin.Get(P.Recipe);
                 return (items.ToArray(), vals.ToArray(), grp > 0 && grp <= sn.Recipes.Length ? RecipeValue + grp - 1 : Math.Clamp(plugin.Get(P.Instrument), 0, sn.InstrumentCount));
+            }
+            case IdInstrument when emu?.WmsSamplerMode == true:
+            {
+                // WideMess milestone 7a: the frozen WideMess game's instruments (both directories), numbered as the Instrument parameter numbers them
+                var ws = emu.WmsState!;
+                var found = ws.Instruments();
+                var items = found.Select(i => ($"#{i.Index}   {i.Name}", (string?)$"{i.Milliseconds:0} ms, {(i.Loops ? "loops" : "one-shot")}{(i.Sounding ? ", game was playing it" : "")}")).ToArray();
+                return (items, found.Select(i => i.Index).ToArray(), ws.Resolve(plugin.Get(P.Instrument)));
             }
             case IdInstrument when PatchBank(plugin.Get(P.Mode)) != 0 && emu?.SamplerMode != true:
             {

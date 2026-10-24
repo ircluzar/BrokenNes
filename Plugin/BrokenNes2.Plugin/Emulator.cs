@@ -87,7 +87,7 @@ public sealed partial class Emulator : IDisposable
     /// <summary>The sound chips' registers (and, on a Genesis game, the DAC sounds found) captured when Runaway started on a Master System, Game Gear or Genesis game; null for the other consoles.</summary>
     public SegaSnapshot? SegaState => Volatile.Read(ref segaState);
     /// <summary>What listening to the game's sound driver found, in one line for the window ("" when nothing was captured).</summary>
-    public string ListenNote => Snapshot?.ListenNote ?? SegaState?.ListenNote ?? "";
+    public string ListenNote => Snapshot?.ListenNote ?? SegaState?.ListenNote ?? WmsState?.ListenNote ?? "";
     /// <summary>How many game voices (recipes) Instrument Runaway holds for the game's sound driver (SNES, Genesis).</summary>
     public int RecipeCount => Snapshot?.Recipes.Length ?? SegaState?.Recipes.Length ?? 0;
     /// <summary>Runaway on a SNES game: every instance plays the game's samples through its own S-DSP.</summary>
@@ -97,7 +97,7 @@ public sealed partial class Emulator : IDisposable
     /// <summary>Runaway on a Master System, Game Gear or Genesis game: every instance plays the game's sound chips, set up as the game had them, on chips of its own.</summary>
     public bool SegaSamplerMode => Runaway && SegaState != null;
     /// <summary>Any of the sampler modes: the instances are samplers of the frozen game's instruments, not channels of it.</summary>
-    public bool AnySamplerMode => SamplerMode || GbSamplerMode || SegaSamplerMode || PresetMode;
+    public bool AnySamplerMode => SamplerMode || GbSamplerMode || SegaSamplerMode || WmsSamplerMode || PresetMode;
     /// <summary>Runaway needs a running game.</summary>
     public bool CanRunaway => Mode == 1 && RomLoaded;
 
@@ -111,11 +111,14 @@ public sealed partial class Emulator : IDisposable
             if (on)
             {
                 if (!CanRunaway) return;
-                SpcSnapshot? snap; GbSnapshot? gb; SegaSnapshot? sega;
-                lock (romLock) { ApplyPending(); snap = game?.CaptureSpc(); gb = game?.CaptureGb(); sega = game?.CaptureSega(); }
+                SpcSnapshot? snap; GbSnapshot? gb; SegaSnapshot? sega; WmsSnapshot? wms;
+                lock (romLock) { ApplyPending(); wms = (game as SessionGame)?.CaptureWms(); snap = wms == null ? game?.CaptureSpc() : null; gb = game?.CaptureGb(); sega = game?.CaptureSega(); }
+                // a WideMess game whose sound unit is unlocked: the WideMess sampler plays its instruments (both its directories); the samplers are made here, on this thread, not on the audio threads
+                if (wms != null) PrepareWmsSamplers(wms);
                 Volatile.Write(ref snapshot, snap);
                 Volatile.Write(ref gbState, gb);
                 Volatile.Write(ref segaState, sega);
+                Volatile.Write(ref wmsState, wms);
                 Volatile.Write(ref runaway, 1);
             }
             else ClearRunaway();
@@ -143,6 +146,7 @@ public sealed partial class Emulator : IDisposable
         Volatile.Write(ref snapshot, null);
         Volatile.Write(ref gbState, null);
         Volatile.Write(ref segaState, null);
+        Volatile.Write(ref wmsState, null);
     }
 
     // ---- claims (EmulatorHub.Gate held) ----
@@ -293,12 +297,14 @@ public sealed partial class Emulator : IDisposable
     {
         string name = Path.GetFileName(path);
         int console;
+        bool wideMessGame = false;
         try
         {
             var rom = RomDetect.Unwrap(File.ReadAllBytes(path), path, out string inner);
             var kind = RomDetect.Detect(rom, inner) ?? NesEmulator.Sega.SegaRomFormat.Detect(rom, inner);
-            if (kind == null) { RomStatus = "not a NES, Game Boy, SNES, Master System, Game Gear or Genesis ROM: " + name; return RomStatus; }
+            if (kind == null) { RomStatus = "not a NES, Game Boy, SNES, WideMess, Master System, Game Gear or Genesis ROM: " + name; return RomStatus; }
             console = Cx.FromKind(kind.Value);
+            wideMessGame = kind == ConsoleKind.WideMess;
         }
         catch (Exception e)
         {
@@ -310,7 +316,8 @@ public sealed partial class Emulator : IDisposable
             romPaths[console] = path;
             if (console == Cx.Nes) DropSongLocked();         // a NES file replaces the Test MIDI export's song as the NES game (the song stays held: the window and the Game list can bring it back)
             Volatile.Write(ref mode, 1);
-            if (console != Console) Volatile.Write(ref chip, Cx.DefaultChip(console));
+            if (wideMessGame) Volatile.Write(ref chip, Cx.IndexOfChip(Cx.WmsChip));     // a WideMess game file takes its console's own sound chip (the SNES chip can still be picked under it: its WideMess voices are then not heard, and the status line says so)
+            else if (console != Console) Volatile.Write(ref chip, Cx.DefaultChip(console));
             else LeavePresetChipLocked();
             ResetOutputs();
             StartLoad();
@@ -355,7 +362,7 @@ public sealed partial class Emulator : IDisposable
 
     /// <summary>Applies what a restored instance carries, when it is the first on a new emulator.</summary>
     internal void Adopt(int newMode, int newChip, string? rom, SpcSnapshot? restoredSnapshot = null, GbSnapshot? restoredGb = null, SegaSnapshot? restoredSega = null, GameStateSection? restoredGame = null, string? gameProblem = null, CorruptionSection? restoredCorruption = null,
-        Music.SongSection? restoredSong = null, string? songProblem = null)
+        Music.SongSection? restoredSong = null, string? songProblem = null, WmsSnapshot? restoredWms = null)
     {
         lock (EmulatorHub.Gate)
         {
@@ -402,6 +409,14 @@ public sealed partial class Emulator : IDisposable
                 {
                     // a project saved in Instrument Runaway: the game starts frozen and its instruments come back from the copy in the project
                     Volatile.Write(ref snapshot, restoredSnapshot);
+                    Volatile.Write(ref runaway, 1);
+                    EmulatorHub.ReResolveAll(this);
+                }
+                if (restoredWms != null && console == Cx.Snes && restoredSnapshot == null)
+                {
+                    // the same for a WideMess game (section WMS1): its instruments come back from the project's copy of the WideMess sound chip
+                    PrepareWmsSamplers(restoredWms);
+                    Volatile.Write(ref wmsState, restoredWms);
                     Volatile.Write(ref runaway, 1);
                     EmulatorHub.ReResolveAll(this);
                 }

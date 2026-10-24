@@ -121,6 +121,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     internal void RequestReset()
     {
         PrepareAgainForPreset();                 // a preset's engine is made again here, on the UI thread, before the audio thread drops the old one (Bn2Plugin.Presets.cs)
+        if (assignment.Emulator?.WmsDirectMode == true) { wmsEngine = null; PrepareWms(); }      // the WideMess chip is made again here too (the audio thread takes the new one; its notes start over on it)
         Interlocked.Exchange(ref resetRequested, 1);
     }
 
@@ -147,8 +148,12 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         samplerFor = null;
         segaSampler = null;
         segaFor = null;
+        wmsSampler = null;
+        wmsFor = null;
+        wmsVoicesOf = null;
         Array.Clear(dspUsed);
         Array.Clear(slotUsed);
+        Array.Clear(wmsUsed);
         foreach (var v in voices) { v.Dsp = -1; v.Slot = -1; v.Instr = -1; v.Silenced = false; v.Recipe = null; }
     }
 
@@ -322,7 +327,12 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             RenderSegaSampler(emu, dest, length, gl, gr);
             return;
         }
-        if (sampler != null || gbSampler != null || segaSampler != null) DropSampler();
+        if (emu.WmsSamplerMode)
+        {
+            RenderWmsSampler(emu, dest, length, gl, gr);     // WideMess milestone 7a: Runaway on a WideMess game (Bn2Plugin.Wms.cs)
+            return;
+        }
+        if (sampler != null || gbSampler != null || segaSampler != null || wmsSampler != null) DropSampler();
 
         if (emu.Mode == 1)
         {
@@ -355,6 +365,12 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         {
             FinishReleased();
             new Span<float>(dest, length * 2).Clear();
+            return;
+        }
+
+        if (emu.WmsDirectMode)
+        {
+            RenderWmsDirect(emu, a.Channel, dest, length, gl, gr);     // WideMess milestone 7a: the WideMess chip itself, many notes at once (Bn2Plugin.Wms.cs)
             return;
         }
 
@@ -653,7 +669,11 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     {
         var a = assignment;
         var e = a.Emulator;
-        if (e != null && e.Mode == 0 && a.Channel is >= 0 and < Ch.ToneCount) EnsureChip(e);
+        if (e != null && e.Mode == 0 && a.Channel is >= 0 and < Ch.ToneCount)
+        {
+            if (e.WmsDirectMode) PrepareWms();        // the WideMess chip is played by the plugin itself, not through a NES-register bridge (Bn2Plugin.Wms.cs)
+            else EnsureChip(e);
+        }
     }
 
     private void DropChip()
@@ -823,6 +843,16 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                     fixed (byte* p = spoBytes) stream.Write(p, (uint)spoLen);
                 }
             }
+            // A project saved in Instrument Runaway on a WideMess game keeps a copy of the WideMess sound chip (WideMess milestone 7a, WmsSnapshot.cs: the 1 MB deflated, a CRC-32); a build that does not know the tag skips it.
+            if (a.Emulator is { Runaway: true } wmsRunning && wmsRunning.WmsState is { } wmsSnap)
+            {
+                uint wmsMagic = WmsSnapshot.Tag;
+                var wmsBytes = wmsSnap.ToBytes();
+                int wmsLen = wmsBytes.Length;
+                stream.Write(&wmsMagic, 4);
+                stream.Write(&wmsLen, 4);
+                fixed (byte* p = wmsBytes) stream.Write(p, (uint)wmsLen);
+            }
             // The preset this instance plays (Direct mode, the Presets chips): its own versioned section, so the project plays when the library file is moved or gone (Presets/PresetSection.cs).
             if (PresetSectionBytes() is { } presetSection)
             {
@@ -899,6 +929,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         string? overlayProblem = null;
         GbSnapshot? restoredGb = null;
         SegaSnapshot? restoredSega = null;
+        WmsSnapshot? restoredWms = null;
+        string? wmsProblem = null;
         GameStateSection? restoredGame = null;
         string? gameProblem = null;
         CorruptionSection? restoredCorruption = null;
@@ -974,6 +1006,21 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                             var segaBuf = new byte[slen];
                             fixed (byte* p = segaBuf) if (!stream.Read(p, (uint)slen)) break; else restoredSega = SegaSnapshot.FromBytes(segaBuf);
                             if (restoredSega != null && restoredSega.Tag != tag) restoredSega = null;
+                        }
+                        else if (tag == WmsSnapshot.Tag)
+                        {
+                            // a WideMess game's sound chip saved in Instrument Runaway: read and checked, never trusted (a damaged or newer one is dropped and the Instruments tab says so)
+                            if (slen < 9 || slen > WmsSnapshot.MaxSection)
+                            {
+                                wmsProblem = "damaged (its length)";
+                                if (!(slen is >= 0 and <= GameStateSection.MaxRead && SkipSection(stream, slen))) break;
+                            }
+                            else
+                            {
+                                var wmsBuf = new byte[slen];
+                                fixed (byte* p = wmsBuf) if (!stream.Read(p, (uint)slen)) { wmsProblem = "cut short"; break; }
+                                restoredWms = WmsSnapshot.FromBytes(wmsBuf, out wmsProblem);
+                            }
                         }
                         else if (tag == Instruments.SnesOverlay.Tag && slen is >= 7 and <= Instruments.SnesOverlay.MaxBytes)
                         {
@@ -1082,15 +1129,16 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         if (emu2 != null && emu2.MemberCount == 1)
         {
             emu2.SetInjectRestore(injectPayload, injectProblem);
-            emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem, restoredCorruption, restoredSong, songProblem);
-            emu2.SetInstrumentNote(overlayProblem == null ? null : "The project's instrument edits were not restored: " + overlayProblem);
+            emu2.Adopt(wMode, wChip, romPath, restoredSnapshot, restoredGb, restoredSega, restoredGame, gameProblem, restoredCorruption, restoredSong, songProblem, restoredWms);
+            emu2.SetInstrumentNote(overlayProblem != null ? "The project's instrument edits were not restored: " + overlayProblem
+                : wmsProblem != null ? "The project's WideMess instruments were not restored: their section is " + wmsProblem + "; the game is frozen at the state the project kept, switch Instrument Runaway off and on to take them again" : null);
         }
         RestorePreset(presetSectionBytes, presetSectionProblem);
         if (restoredRecord != null) emu2?.AdoptRecord(restoredRecord);         // (the first instance of the project that carries the recording gives it to the emulator)
         // whether this state makes the instance clearly the user's own (it holds a game, a preset or a track: it leaves the recording and never joins it by itself), or not (FL's empty or default
         // state, a fresh instance's own state, another channel's values: a joined instance stays joined; relink, 2026-10-18)
         var restoredTrack = trackBytes == null ? (null, null, false, -1) : ReadTrackSection(trackBytes);
-        bool hadGame = restoredGame != null || gameProblem != null || restoredSnapshot != null || restoredGb != null || restoredSega != null || restoredSong != null || restoredRecord != null || restoredCorruption != null || injectPayload != null;
+        bool hadGame = restoredGame != null || gameProblem != null || restoredSnapshot != null || restoredGb != null || restoredSega != null || restoredWms != null || restoredSong != null || restoredRecord != null || restoredCorruption != null || injectPayload != null;
         bool usersOwn = RestoredUsersOwn(hadGame, presetSectionBytes != null, trackBytes != null);
         bool wasPristine = RestoredPristine();
         if (usersOwn) MarkConfigured("its project state holds " + string.Join(", ", new[] { hadGame ? "a game" : null, presetSectionBytes != null ? "a preset" : null, trackBytes != null ? "a track" : null }.Where(x => x != null).DefaultIfEmpty("its own settings")));
@@ -1339,6 +1387,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 if (id - Fpd.TestBase is >= 740 and < 780) return NesRecordTestHook(id - Fpd.TestBase, index, value);                            // a NES game's recording (Bn2Plugin.RecordNes.cs)
                 if (id - Fpd.TestBase is >= 790 and < 820) return ReloadTestHook(id - Fpd.TestBase, index, value);                               // FL's real conventions, the notes followed, a recording offered from its files (Bn2Plugin.Reload.cs)
                 if (id - Fpd.TestBase is >= 840 and < 860) return CaptureTestHook(id - Fpd.TestBase, index, value);                              // round 9: Capture from FL (Bn2Plugin.Capture.cs; 790-819 are reload's)
+                if (id - Fpd.TestBase is >= 900 and < 940) return WmsTestHook(id - Fpd.TestBase, index, value);                                  // WideMess milestone 7a: the WMS chip and WideMess games (Bn2Plugin.Wms.cs)
                 return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }
     }

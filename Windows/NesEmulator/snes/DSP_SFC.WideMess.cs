@@ -31,6 +31,12 @@ public sealed partial class DSP_SFC
     /// <summary>True while voices 8-31 and the second page are live (the console is unlocked).</summary>
     public bool WideOn => wideOn;
 
+    /// <summary>Read-only views for tools that copy the sound unit without changing it (the FL plugin's Instrument Runaway, WideMess milestone 7a): the three banks' second pages (3 x 128 bytes, bank 0 first;
+    /// the playing addresses $xA/$xB/$xE are not in them), the new voices' directory address (WDIRH x $10000 + WDIRL x $100), the bank WBANK shows. Empty / 0 on a SNES S-DSP.</summary>
+    public ReadOnlySpan<byte> WideRegisters => wideRegs;
+    public int WideDirectory => wdirH << 16 | wdirL << 8;
+    public int WideBank => wbank;
+
     /// <summary>Gives this S-DSP the WideMess voices (<see cref="APU_WMS"/>'s constructor): <paramref name="high"/> is the sound RAM above the first 64 KB (960 KB). They stay off until <see cref="SetWideOn"/>.</summary>
     public void AttachWide(byte[] high)
     {

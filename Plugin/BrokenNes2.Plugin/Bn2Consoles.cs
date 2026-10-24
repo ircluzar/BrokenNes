@@ -9,7 +9,9 @@ namespace BrokenNes2;
 /// <param name="Console">0 NES, 1 Game Boy, 2 SNES, 3 Master System, 4 Genesis (see <see cref="Cx"/>).</param>
 /// <param name="Note">A few words shown beside it in the list.</param>
 /// <param name="IsPreset">One of the Presets chips (<see cref="Cx.PresetChips"/>): not a core, the plugin's own preset engines play. A flag so that asking it on the audio thread allocates nothing.</param>
-public sealed record Chip(string Id, int Console, string? Note, bool IsPreset = false);
+/// <param name="IsWms">The WideMess sound chip (WideMess milestone 7a; <see cref="Cx.WmsChip"/>): in Direct mode not a NES-register bridge but the chip itself, played polyphonically by the plugin (WmsSampler);
+/// in ROM mode the sound unit of the WideMess console (a .wms game, or a SNES game: locked, the WideMess is a SNES).</param>
+public sealed record Chip(string Id, int Console, string? Note, bool IsPreset = false, bool IsWms = false);
 
 /// <summary>
 /// The consoles BrokenNes2 offers and their sound chips. A console decides which chips are listed, and which CPU and PPU a running
@@ -18,6 +20,10 @@ public sealed record Chip(string Id, int Console, string? Note, bool IsPreset = 
 /// </summary>
 public static class Cx
 {
+    // WideMess milestone 7a: the plugin offers the WideMess (its sound chip WMS, its games in ROM mode). The switch is the emulator tree's own (the desktop app and Workshop set it at start-up; Lite in its Program.cs):
+    // with it on, RomDetect recognises a .wms file. Set before anything here is used (every road to a game goes through this class first).
+    static Cx() { Consoles.WideMessEnabled = true; }
+
     // Append-only (projects store these numbers). The Master System console (value 3) holds the SN76489 PSG chip (APU id SMS) and runs Master System and Game Gear games (the Game Gear's PSG is the same
     // chip); the Genesis console (value 4) holds the YM2612 + PSG chip (APU id MD) in Direct mode only: its games are NOT supported yet, see RomSupported.
     public const int Nes = 0, GameBoy = 1, Snes = 2, MasterSystem = 3, Genesis = 4, Count = 5;
@@ -61,6 +67,13 @@ public static class Cx
 
     public static bool IsPresetId(string id) => PresetChips.Any(p => p.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// The WideMess sound chip (WideMess milestone 7a, docs/projects/widemess-spec.md section 4), appended after the Presets chips: chip index 29 (a saved project stores the index: nothing before it moved).
+    /// It belongs to the SNES console, as the Master System's FM chip belongs to the Master System: the WideMess is a SNES superset, and its own console in BrokenNes is the SNES console with this sound chip.
+    /// Not a CoreRegistry core: in Direct mode the plugin plays the chip itself (its 24 new voices, 16-bit samples: WmsBank / WmsSampler); a game runs on the WideMess console with the chip's unit (APU_WMS).
+    /// </summary>
+    public const string WmsChip = "WMS";
+
     /// <summary>Whether a chip (an index into <see cref="Chips"/>) is one of the Presets chips.</summary>
     public static bool IsPresetChip(int chip) => (uint)chip < (uint)Chips.Count && Chips[chip].IsPreset;       // (read on the audio thread every block: no allocation)
 
@@ -96,25 +109,27 @@ public static class Cx
             int console = NesFamily(found) switch { "Master System" => MasterSystem, "Genesis" => Genesis, "SNES" => Snes, "Game Boy" => GameBoy, _ => Nes };
             list.Add(new Chip(found, console, Notes.GetValueOrDefault(found)));
         }
-        foreach (var p in PresetChips) list.Add(new Chip(p.Id, p.Console, p.Note, IsPreset: true));       // the Presets chips come last of all (append-only)
+        foreach (var p in PresetChips) list.Add(new Chip(p.Id, p.Console, p.Note, IsPreset: true));       // the Presets chips (append-only)
+        list.Add(new Chip(WmsChip, Snes, "WideMess sound chip: 24 notes at once, 16-bit samples", IsWms: true));   // WideMess milestone 7a: index 29, after the Presets chips (append-only)
         return list;
     }
 
     // ---- the instrument pickers: the Instrument parameter is a patch of the chip's own bank for the FM chips ----
 
     /// <summary>What the Instrument parameter picks for this chip: 0 nothing (the NES chips: Pulse duty is the control), 1 the Genesis chip's FM patch, 2 the Master System FM chip's instrument.</summary>
-    public static int PatchBankOf(string chipId) => chipId.ToUpperInvariant() switch { "MD" => 1, "SMSFM" => 2, _ => 0 };
+    public static int PatchBankOf(string chipId) => chipId.ToUpperInvariant() switch { "MD" => 1, "SMSFM" => 2, WmsChip => 3, _ => 0 };
 
-    public static int PatchCount(int bank) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Count, 2 => NesEmulator.Mix.OpllPatchBank.Count, _ => 0 };
+    public static int PatchCount(int bank) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Count, 2 => NesEmulator.Mix.OpllPatchBank.Count, 3 => WmsBank.Patches.Length, _ => 0 };
 
-    /// <summary>A patch index made safe (out of range is the bank's last entry, the PSG square, as the bridges clamp it).</summary>
-    public static int PatchClamp(int bank, int index) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Clamp(index), 2 => NesEmulator.Mix.OpllPatchBank.Clamp(index), _ => index };
+    /// <summary>A patch index made safe (out of range is the bank's last entry, the PSG square, as the bridges clamp it; the WideMess chip's last instrument).</summary>
+    public static int PatchClamp(int bank, int index) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Clamp(index), 2 => NesEmulator.Mix.OpllPatchBank.Clamp(index), 3 => WmsBank.Clamp(index), _ => index };
 
     /// <summary>The picker's rows: a name, a note beside it, and a line that says what the patch is.</summary>
     public static (string Name, string Note, string Description)[] PatchItems(int bank) => bank switch
     {
         1 => NesEmulator.Mix.FmPatchBank.Patches.Select(p => (p.Name, p.Psg ? "PSG tones, no FM" : $"algorithm {p.Algorithm}", p.Description)).ToArray(),
         2 => NesEmulator.Mix.OpllPatchBank.Patches.Select(p => (p.Name, p.Psg ? "PSG tones, no FM" : p.Rom > 0 ? $"chip instrument {p.Rom}" : "designed", p.Description)).ToArray(),
+        3 => WmsBank.Patches.Select(p => (p.Name, p.Note, p.Description)).ToArray(),
         _ => [],
     };
 
@@ -137,7 +152,7 @@ public static class Cx
     /// <summary>The plugin console a game of this kind runs on. The Master System and the Game Gear (and the SG-1000) share the Master System console. A kind the plugin does not run throws, never quietly becoming a NES game.</summary>
     public static int FromKind(ConsoleKind k) => k switch
     {
-        ConsoleKind.Snes => Snes,
+        ConsoleKind.Snes or ConsoleKind.WideMess => Snes,       // (the WideMess runs on the SNES console with its own sound chip, WMS)
         ConsoleKind.GameBoy or ConsoleKind.GameBoyColor => GameBoy,
         ConsoleKind.Nes => Nes,
         ConsoleKind.MasterSystem or ConsoleKind.GameGear => MasterSystem,
@@ -172,9 +187,12 @@ public static class Cx
         GameBoy => chip.Id.Equals("DMGS", StringComparison.OrdinalIgnoreCase) ? "GBS" : "GB",
         MasterSystem => chip.Id.Equals("SMSFM", StringComparison.OrdinalIgnoreCase) ? "SMS-FM" : "SMS",   // the stock unit (the PSG; a Game Gear game takes its own menu id in SessionGame), or the Japanese console's PSG + YM2413 for the FM chip
         Genesis => "MD",         // the stock Genesis unit (GenesisSoundFactories id): the Z80, the YM2612 with its DAC and the PSG
-        _ => "SFC",
+        _ => chip.IsWms ? "WMS" : "SFC",     // the WideMess sound chip's unit (APU_WMS: the SNES's until a game unlocks it), or the SNES's
     };
 
+    /// <summary>The console a game runs on: the file's own, except that a SNES game on the WMS chip runs on the WideMess (locked, a SNES: the same picture and sound).</summary>
+    public static ConsoleKind SessionKind(ConsoleKind fileKind, Chip chip) => fileKind == ConsoleKind.Snes && chip.IsWms ? ConsoleKind.WideMess : fileKind;
+
     /// <summary>The file types the Load dialog and the Game list take.</summary>
-    public const string RomFilter = "Game ROMs (*.nes;*.gb;*.gbc;*.sfc;*.smc;*.sms;*.gg;*.sg;*.sc;*.md;*.gen;*.smd;*.zip)|*.nes;*.gb;*.gbc;*.sfc;*.smc;*.sms;*.gg;*.sg;*.sc;*.md;*.gen;*.smd;*.zip|All files (*.*)|*.*";
+    public const string RomFilter = "Game ROMs (*.nes;*.gb;*.gbc;*.sfc;*.smc;*.wms;*.sms;*.gg;*.sg;*.sc;*.md;*.gen;*.smd;*.zip)|*.nes;*.gb;*.gbc;*.sfc;*.smc;*.wms;*.sms;*.gg;*.sg;*.sc;*.md;*.gen;*.smd;*.zip|All files (*.*)|*.*";
 }

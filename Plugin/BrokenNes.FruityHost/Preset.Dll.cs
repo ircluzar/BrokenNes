@@ -116,7 +116,7 @@ public sealed unsafe partial class SelfTest
         List<string> chips;
         using (var probe = lib.Create()) chips = Chips(probe);
         string[] last = ["PRESETS", "PRE-NES", "PRE-GB", "PRE-SNES", "PRE-SMS", "PRE-MD"];
-        t.Expect(chips.Count == 29 && chips.Skip(23).SequenceEqual(last) && chips[22] == "SMSFM" && chips[0] == "FIX" && chips.IndexOf("DMG") == 17 && chips.IndexOf("SNES") == 19, $"the Presets chips must be appended after every earlier chip: {string.Join(",", chips.Skip(15))}");
+        t.Expect(chips.Count == 30 && chips.Skip(23).Take(6).SequenceEqual(last) && chips[29] == "WMS" && chips[22] == "SMSFM" && chips[0] == "FIX" && chips.IndexOf("DMG") == 17 && chips.IndexOf("SNES") == 19, $"the Presets chips must be appended after every earlier chip: {string.Join(",", chips.Skip(15))}");
         // each is under its own console, and picking it keeps the console in step
         var home = new[] { 0, 0, 1, 2, 3, 4 };
         using var p = lib.Create();

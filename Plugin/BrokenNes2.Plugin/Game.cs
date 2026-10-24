@@ -482,6 +482,22 @@ internal sealed class SessionGame : IGame, IGameStems
         return Instruments.SnesPusher.Carry(s, snap);     // (a game with instruments pushed into it hands the Runaway copy the same overrides)
     }
 
+    /// <summary>WideMess milestone 7a: the WideMess sound chip's memory and registers when this game's sound unit is the WideMess one and a WideMess game unlocked it (Instrument Runaway then plays its instruments
+    /// on the WideMess sampler); null otherwise (a SNES game, a locked WideMess, the SNES sound chip: the SNES sampler's).</summary>
+    public WmsSnapshot? CaptureWms()
+    {
+        if (s is not SnesSession snes || snes.Apu is not NesEmulator.Snes.APU_WMS wms) return null;
+        var snap = WmsSnapshot.FromUnit(wms);
+        if (snap != null)
+        {
+            var list = snap.Instruments();
+            int wide = 0, pcm = 0;
+            foreach (var i in list) { if (i.WideDir) wide++; if (i.Pcm) pcm++; }
+            snap.ListenNote = $"WideMess instruments: {list.Count} found, {wide} from the new voices' directory ({pcm} of them 16-bit PCM), {list.Count - wide} from the S-DSP's.";
+        }
+        return snap;
+    }
+
     public GbSnapshot? CaptureGb() =>
         s is GbSession gb && gb.Apu is NesEmulator.Gb.APU_GB apu ? GbSnapshot.FromApu(apu) : null;
 

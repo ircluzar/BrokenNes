@@ -21,6 +21,7 @@ public sealed unsafe partial class Bn2Plugin
             SpcSnapshot a => new SnesSampler(a, rate),
             GbSnapshot g => new GbSampler(g, rate),
             SegaSnapshot x => x.Kind switch { SegaSnapshot.KindOpn => new OpnSampler(x, rate), SegaSnapshot.KindOpll => new OpllSampler(x, rate), _ => (SegaSampler)new PsgSampler(x, rate) },
+            WmsSnapshot w => new WmsSampler(w, rate),          // WideMess milestone 7a: Runaway on a WideMess game
             _ => null,
         };
         if (s != null) Volatile.Write(ref prepared, new PreparedSampler(snap, rate, s));

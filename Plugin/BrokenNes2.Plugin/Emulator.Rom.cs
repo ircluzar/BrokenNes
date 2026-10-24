@@ -206,6 +206,7 @@ public sealed partial class Emulator
                     var rom = RomDetect.Unwrap(File.ReadAllBytes(path!), path!, out string inner);
                     // a Master System console runs Master System, SG-1000 and Game Gear files: which one is in the file itself
                     var kind = RomDetect.Detect(rom, inner) ?? NesEmulator.Sega.SegaRomFormat.Detect(rom, inner) ?? Cx.Kind(console);
+                    kind = Cx.SessionKind(kind, chip);          // (a SNES game on the WMS chip runs on the WideMess console: locked, a SNES)
                     g = new SessionGame(rom, kind, chip, rate, Path.GetFileName(path!));
                 }
                 g.ChipIndex = chipIdx;
