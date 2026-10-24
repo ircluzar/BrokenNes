@@ -423,7 +423,8 @@ other chip shows what the SNES registers say) and frames sounding voices 8-31 (t
 
 ### 6.6 Tests and numbers (2026-10-24)
 
-- `Workshop --enhanced-test --only wmsmenu,wms,wmsown,wmsgames` (Workshop/EnhancedCores/WideMessGuestTests.cs):
+- `Workshop --enhanced-test`: 435 checks, 0 failed (the 329 of sections 3 and 5.5 as before, output identical but the NES board's new ids in two id lists; 106 new). `--only wmsmenu,wms,wmsown,wmsgames`
+  (Workshop/EnhancedCores/WideMessGuestTests.cs; 19, 55, 5 and 27 checks):
   - `wmsmenu`: the route on every other console's picture and sound menus and `WMSS` on the NES's, in the right section and order; none of it with the WideMess hidden, and a running game refuses it there.
   - `wms`: a scene per guest: 400 wide; the middle equal to `SNES:SFCS` (`SNESS` on the NES board) pixel for pixel; each rule as reported; **a NES game with vertical mirroring shows the real
     neighbouring nametable** (the right side is exactly the game scrolled 72 pixels on), with horizontal mirroring the screen repeats; a Game Boy's sides are the game scrolled there (96 real columns, then
