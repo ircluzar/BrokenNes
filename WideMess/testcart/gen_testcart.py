@@ -964,6 +964,17 @@ def page_mode7(rom):
     rom.b(0x2100, 0x0F)
 page('mode7', page_mode7)
 
+def png_pixels(path):
+    """The size and the raw rows of a PNG that gen_picture.write_png wrote (8-bit RGB, filter 0): its pixels, whatever zlib compressed them."""
+    with open(path, 'rb') as f: data = f.read()
+    pos, idat, size = 8, b'', None
+    while pos < len(data):
+        n, kind = struct.unpack('>I', data[pos:pos + 4])[0], data[pos + 4:pos + 8]
+        if kind == b'IHDR': size = data[pos + 8:pos + 16]
+        if kind == b'IDAT': idat += data[pos + 8:pos + 8 + n]
+        pos += 12 + n
+    return size, zlib.decompress(idat)
+
 def page_scripts():
     """Each page's script into the ROM (after every blob its DMAs take), its picture and its variants' pictures into BIN."""
     out = []
@@ -983,8 +994,7 @@ def page_scripts():
             print(f'{file}: {len(frame[0])} x {len(frame)}, {len({p for r in frame for p in r})} colours')
             if name.startswith('ref-'):     # the reference pages draw exactly what milestone 2's ROMs draw
                 m2 = os.path.join(HERE, '..', 'testroms', 'bin', file.replace('widemess-testcart.ref-', ''))
-                if os.path.exists(m2):
-                    with open(m2, 'rb') as a, open(path, 'rb') as b: assert a.read() == b.read(), f'{file} is not {m2}'
+                if os.path.exists(m2): assert png_pixels(m2) == png_pixels(path), f'{file} is not {m2}'
         out.append((name, label, variants))
     return out
 

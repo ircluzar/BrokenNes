@@ -224,7 +224,7 @@ internal static partial class WideMessCli
         var pages = new (int test, string[] names, int settle)[] { (1, new[] { "t1-layers" }, 60), (2, new[] { "t2-swarm", "t2-ref-sprites" }, 60), (3, new[] { "t3-spot", "t3-ref-windows" }, 60),
                                                                    (4, new[] { "t4-mode1", "t4-mode0", "t4-mode5", "t4-mode2", "t4-mode7", "t4-ref-widesnes" }, 60), (5, new[] { "t5-sound" }, 30),
                                                                    (6, new[] { "t6-speed" }, 60), (7, new[] { "t7-memories" }, 30), (8, new[] { "t8-identity" }, 30) };
-        string[] labels = { "", "1 Eight layers", "2 Sprites", "3 Windows and colour math", "4 The SNES modes drawn 400 wide", "5 Sound: 32 voices", "6 Fast CPU and fast DMA", "7 Memories", "8 Identity" };
+        string[] labels = { "", "1 Eight layers", "2 Sprites", "3 Windows, colour math", "4 SNES modes, 400 wide", "5 Sound: 32 voices", "6 Fast CPU and fast DMA", "7 Memories", "8 Identity" };
         foreach (var (test, names, settle) in pages)
         {
             using var s = Session(ConsoleKind.WideMess, wms);
@@ -235,7 +235,7 @@ internal static partial class WideMessCli
                 if (k > 0) { Tap(s, PadButtons.Right); Run(s, 40); }
                 if (test == 5) { Tap(s, PadButtons.X); Run(s, 3); }     // all 32 voices: the grid lit
                 Run(s, settle);
-                Take(s, names[k] + ".png", labels[test] + (names.Length > 1 ? $", page {k + 1}: {names[k][3..]}" : ""));
+                Take(s, names[k] + ".png", labels[test] + (names.Length > 1 ? $", page {k + 1}: {PageCaption(names[k][3..])}" : ""));
             }
         }
         using (var s = Session(ConsoleKind.WideMess, wms))
@@ -248,7 +248,10 @@ internal static partial class WideMessCli
         {
             byte[] masked = (byte[])image.Clone(); masked[TcMaskOffset] = 0xFB;
             using var s = Session(ConsoleKind.WideMess, WmsFile.Pack(masked, "masked", 2, 0));
-            if (OpenTest(s, 5)) { Run(s, 10); Take(s, "not-available.png", "WMFEAT without bit 2: test 5 not available"); }
+            Run(s, 20); Tap(s, PadButtons.Start); WaitRam(s, TcScreen, 1); Run(s, 30);
+            for (int k = 1; k < 5; k++) Tap(s, PadButtons.Down);
+            Tap(s, PadButtons.A);
+            if (WaitRam(s, TcScreen, 12)) { Run(s, 10); Take(s, "not-available.png", "WMFEAT without bit 2: test 5 not available"); }
         }
         // the sheet: two columns, each picture at 400 wide (256-wide ones centred), its label above it
         const int W = 400, H = 224, gap = 12, label = 20, cols = 2;
@@ -271,6 +274,12 @@ internal static partial class WideMessCli
         Console.WriteLine($"{sheetPath}: {shots.Count} screens, {sheet.Width} x {sheet.Height}");
         return 0;
     }
+
+    private static string PageCaption(string page) => page switch
+    {
+        "swarm" => "the swarm (live)", "spot" => "a spotlight (live)", "mode1" => "mode 1 (live)", "mode0" => "mode 0 (live)", "mode5" => "hi-res mode 5 (live)",
+        "mode2" => "mode 2 (live)", "mode7" => "Mode 7 (live)", _ => "the reference (milestone 2)",
+    };
 
     /// <summary>One frame; the loudest sample of its audio.</summary>
     private static int RunFramePeak(IConsoleSession s)

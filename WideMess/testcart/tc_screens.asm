@@ -539,7 +539,7 @@ SummaryFrame:
   jmp BackOnB
 TxtSumHead: .DB S_YELLOW, "SELF-CHECKS: THE RESULTS", EOS
 TxtSumCols: .DB S_CYAN, "TEST                              RESULT #", EOS
-TxtSumPass: .DB S_GREEN, "EVERY SELF-CHECK PASSED.", NL, S_GREY, "EYE: TESTS 3 AND 4 ARE JUDGED BY THEIR PICTURES.", EOS
+TxtSumPass: .DB S_GREEN, "EVERY SELF-CHECK PASSED.", NL, S_GREY, "EYE: TESTS 3 AND 4, BY THEIR PICTURES.", EOS
 TxtSumFail: .DB S_RED, "A SELF-CHECK FAILED.", NL, S_GREY, "OPEN THE TEST TO SEE WHICH.", EOS
 
 ; ================================================================================================ "not available"
