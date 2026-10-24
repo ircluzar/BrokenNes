@@ -892,9 +892,6 @@ TxtIdResult:   .DB S_WHITE, "RESULT  ", STATUS, (RES_STATUS + 7) & $FF, (RES_STA
 
 RefEnter:
   jmp BackToMenu
-T2Enter:
-T3Enter:
-T4Enter:
 T5Enter:
 .ACCU 8
 .INDEX 16
@@ -912,9 +909,6 @@ T5Enter:
   jmp RunAllNext
 +
   rts
-T2Frame:
-T3Frame:
-T4Frame:
 T5Frame:
 RefFrame:
   jmp BackOnB

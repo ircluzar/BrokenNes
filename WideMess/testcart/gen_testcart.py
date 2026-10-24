@@ -439,7 +439,80 @@ for name, off, p, lo, hi, need in spd:
     tables.append(f'  .DW {lo}, {hi}, {p}\n  .DB ${off:02X}, ${need:02X}')
 define('SPD_ROWS', len(spd))
 
+# ------------------------------------------------------------------ the picture pages (tests 2-4): scripts the cartridge plays, and the model's pictures
+
+class CartRom(GP.Rom):
+    """Milestone 2's script builder with the cartridge's ROM: every blob a DMA takes goes into the data banks ($C1-$C7, 64 KB each)."""
+    def put(self, blob):
+        return pack.put(bytes(blob))
+    def dma_rom(self, reg, addr24, data, mode=0):
+        """A DMA from bytes already in ROM (addr24) without placing them again; the model is fed the same bytes."""
+        n = len(data)
+        assert 0 < n <= 0x10000
+        self.script += bytes([3, mode, reg & 0xFF, addr24 & 0xFF, (addr24 >> 8) & 0xFF, addr24 >> 16, n & 0xFF, (n >> 8) & 0xFF])
+        pattern = GP.DMA_PATTERN[mode]
+        for k, v in enumerate(data): self.m.write_b((reg & 0xFF) + pattern[k % len(pattern)], v)
+
+PAGES = []   # (name, CartRom, [(variant, [(B-bus register, value), ...])]) in the cartridge's page order
+def page(name, build, variants=()):
+    rom = CartRom(name, name)
+    build(rom)
+    PAGES.append((name, rom, list(variants)))
+
+# the three reference pages: milestone 2's scenes exactly (WideMess/testroms/picture/gen_picture.py), from the power-on state the cartridge
+# restores before it plays a script (every register at its reset value, the video RAM, colours and both sprite tables cleared). Their
+# variants are register writes made after the script (SELECT on the page); they are milestone 2's (gen_picture.SCENES), written out as data
+# so the cartridge makes the same writes.
+REF_VARIANTS = {
+    'sprites': [('snes_table', [(0xA0, 0x00)]), ('narrow', [(0xC0, 0x02)])],
+    'windows': [('snes_positions', [(0xB4, 0x00)])],
+    'widesnes': [('wide_windows', [(0xB4, 1), (0xB0, 10), (0xB0, 0), (0xB1, 389 & 0xFF), (0xB1, 1), (0xB2, 300 & 0xFF), (0xB2, 1), (0xB3, 399 & 0xFF), (0xB3, 1)]),
+                 ('widemess_table', [(0xA0, 0x01)])],
+}
+for name, _title, scene, m2variants in GP.SCENES:
+    assert [v for v, _ in REF_VARIANTS[name]] == list(m2variants), f'milestone 2 changed the variants of {name}'
+    page('ref-' + name, scene, REF_VARIANTS[name])
+
+def page_scripts():
+    """Each page's script into the ROM (after every blob its DMAs take), its picture and its variants' pictures into BIN."""
+    out = []
+    for i, (name, rom, variants) in enumerate(PAGES):
+        rom.end()
+        label = 'SCR_' + name.upper().replace('-', '_')
+        pack.put(bytes(rom.script), label)
+        pictures = [(f'widemess-testcart.{name}.expect.png', rom.m)]
+        for v, writes in variants:
+            m = GP.copy.deepcopy(rom.m)
+            for r, val in writes: m.write_b(r, val)
+            pictures.append((f'widemess-testcart.{name}.{v}.expect.png', m))
+        for file, m in pictures:
+            frame = m.frame()
+            path = os.path.join(BIN, file)
+            GP.write_png(path, frame)
+            print(f'{file}: {len(frame[0])} x {len(frame)}, {len({p for r in frame for p in r})} colours')
+            if name.startswith('ref-'):     # the reference pages draw exactly what milestone 2's ROMs draw
+                m2 = os.path.join(HERE, '..', 'testroms', 'bin', file.replace('widemess-testcart.ref-', ''))
+                if os.path.exists(m2):
+                    with open(m2, 'rb') as a, open(path, 'rb') as b: assert a.read() == b.read(), f'{file} is not {m2}'
+        out.append((name, label, variants))
+    return out
+
 # ------------------------------------------------------------------ output
+
+page_list = page_scripts()
+for i, (name, label, variants) in enumerate(page_list):
+    define('PG_' + name.upper().replace('-', '_'), i)
+tables.append('PageScripts:')
+for name, label, variants in page_list: tables.append(f'  .DL {label}')
+# each page's variants: a count, then for each one its number of writes and its (B-bus register, value) pairs
+tables.append('PageVariants: .DW ' + ', '.join(f'PageVar{i}' for i in range(len(page_list))))
+for i, (name, label, variants) in enumerate(page_list):
+    b = [len(variants)]
+    for v, writes in variants:
+        b.append(len(writes))
+        for r, val in writes: b += [r, val]
+    tables.append(f'PageVar{i}: .DB ' + ', '.join(f'${x:02X}' for x in b))
+define('PAGE_COUNT', len(page_list))
 
 def write_png(path, rows): GP.write_png(path, rows)
 

@@ -862,6 +862,7 @@ PanelRowTile:
 .INCLUDE "tc_mem.asm"
 .INCLUDE "tc_speed.asm"
 .INCLUDE "tc_layers.asm"
+.INCLUDE "tc_picture.asm"
 .INCLUDE "tc_tables.inc"
 
 .ENDS

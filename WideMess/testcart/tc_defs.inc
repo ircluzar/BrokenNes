@@ -260,6 +260,13 @@
   row         dw                ; (words: their high bytes stay 0, so 16-bit index loads read them whole)
   col         dw
   st          dw
+  pgidx       dw                ; tests 2-4: the page (its place in the test's list), how many, its number, x 2, its variant, still
+  pgcount     dw
+  pgpage      dw
+  pgcur       dw
+  pgvariant   dw
+  pgstill     dw
+  scrptr      dsb 4             ; the script being played
   t1dirty     db                ; test 1: the legend changed
   nocount     db                ; 1: Judge judges again (a live test's later rounds) without counting; a failure fails the test
   saved       dw
