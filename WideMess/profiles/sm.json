@@ -1,0 +1,51 @@
+{
+  "format": "widemess-profile-1",
+  "title": "Super Metroid",
+  "file": "Super Metroid (JU) [!].smc",
+  "sha1": [
+    "da957f0d63d14cb441d215462904c4fa8519c613"
+  ],
+  "widescreen": {
+    "layers": {
+      "bg1": "extend",
+      "bg2": "extend",
+      "bg3": "extend",
+      "bg4": "extend",
+      "sprites": "extend"
+    },
+    "masks": [
+      {
+        "why": "the energy, missiles and map display are BG3 laid out for 256 columns on a 32-tile map that would repeat",
+        "layers": [
+          "bg3"
+        ],
+        "rows": [
+          0,
+          31
+        ],
+        "rule": "fill"
+      }
+    ]
+  },
+  "enhancements": {
+    "widescreen": "risky",
+    "noFlicker": "good",
+    "betterSound": "good",
+    "fastCpu": "risky"
+  },
+  "recommended": [
+    "widescreen",
+    "noFlicker"
+  ],
+  "issues": [
+    "The game draws only inside the current room: near a room's left or right wall, the side columns show the patterned tiles that lie beyond the room.",
+    "Rooms are drawn as Samus scrolls: on entering a room the sides can show old tiles for a moment.",
+    "The status display's sides are left empty (BG3 filled in rows 0-31).",
+    "No flicker: in the 6,300 frames checked the game never drew more sprites on a line than a SNES shows, so it changed nothing; it changes only lines over the limits.",
+    "Fast CPU ran the 6,300 frames checked; the attract demos play differently (the game's timing changes from frame 10)."
+  ],
+  "verified": {
+    "date": "2026-10-24",
+    "how": "Workshop --wms-test (E6), 6,300 frames of the attract demos in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/sm.png."
+  }
+}

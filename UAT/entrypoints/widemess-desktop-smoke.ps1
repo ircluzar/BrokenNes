@@ -14,6 +14,10 @@
              switching the console to the SNES moves it to the SNES, where it draws its red "not a WideMess" screen at 256 x 224.
     CONTROL  the negative-control ROM (layers_nounlock.wms: the WideMess registers written without the unlock) stays a SNES picture: 256 wide, black.
     SOUND    the sound test ROM (sound.wms, milestone 3) runs on the WideMess sound chip (APU WMS) and unlocks it (Workshop --wms-test measures its sound).
+    M6       the SNES games' enhancements (milestone 6): the Console menu has "WideMess enhancements"; a SNES game with no profile (sprites_nounlock's SNES image, written
+             to the work folder) is told "no profile for this game" and widescreen is refused; a scratch profile through POST /api/widemess/profile lets widescreen and no flicker
+             switch on: the picture is 400 wide and its centre 256 columns are exactly the SNES picture (sprites_nounlock.expect.png); "use the profile: off" gives the SNES
+             picture back, 256 wide; the API's switches leave the settings file without a kept choice.
     GUEST    milestone 7b: the NES (its embedded test.nes) on the NES board's WideMess widescreen chip (PPU WMSS) is shown 400 x 240, and 256 x 240 again back on FIX; a Master System game
              (the local Sega roster's Sonic, when it is there) on WMS:WMSS picture and sound is 400 x 192 (Workshop --enhanced-test --only wms,wmsgames measures what the sides show).
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
@@ -150,6 +154,43 @@ try {
     do { Start-Sleep -Milliseconds 400; $st = Get-Status $id } while ((Get-Date) -lt $end -and -not ($st.description -match 'WideMess sound' -and $st.description -match 'unlocked'))
     Check 'sound_chip' ($st.console -eq 'wms' -and $st.apu -eq 'WMS' -and $st.description -match 'WideMess sound' -and $st.description -match '\| unlocked') "console $($st.console), APU $($st.apu), $($st.description)"
 
+    # M6: the SNES games' enhancements. A SNES game that never unlocks: sprites_nounlock.wms's image (its 64-byte header off) as a .sfc
+    Check 'm6_menu' ($names -contains 'WideMess enhancements') ("Console menu: " + ($names -join ', '))
+    $wmsBytes = [IO.File]::ReadAllBytes((Join-Path $bin 'sprites_nounlock.wms'))
+    $locked = Join-Path $WorkDir 'sprites_locked.sfc'
+    [IO.File]::WriteAllBytes($locked, $wmsBytes[64..($wmsBytes.Length - 1)])
+    Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/console/select/wms' | Out-Null
+    Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/load-rom' -Body @{ path = $locked } | Out-Null
+    $expect = Join-Path $bin 'sprites_nounlock.expect.png'
+    $end = (Get-Date).AddSeconds(10); $diff = 'no frame'
+    do { Start-Sleep -Milliseconds 400; $diff = Compare-Expect $id $expect } while ($diff -ne 0 -and (Get-Date) -lt $end)
+    $en = (Invoke-BrokenNesApi -ProcessId $id -Method GET -Path '/api/widemess/enhance').state
+    Check 'm6_no_profile' ($diff -eq 0 -and $en.running -and $en.profileStatus -eq 'no profile for this game' -and "$($en.offered.widescreen.refusal)" -like '*no profile for this game*') "picture: $(if ($diff -eq 0) { 'the SNES picture' } else { $diff }); $($en.profileStatus); widescreen: $($en.offered.widescreen.refusal)"
+    $r = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/widemess/enhance' -Body @{ widescreen = $true }
+    Check 'm6_widescreen_refused' ((-not $r.success) -and "$($r.error)" -like '*no profile*' -and -not $r.state.on.widescreen) "$($r.error)"
+    $scratch = [ordered]@{
+        format = 'widemess-profile-1'; title = 'UAT scratch profile'; sha1 = @($en.sha1)
+        widescreen = [ordered]@{ layers = [ordered]@{ bg1 = 'extend'; bg2 = 'extend'; bg3 = 'extend'; bg4 = 'extend'; sprites = 'extend' } }
+        enhancements = [ordered]@{ widescreen = 'risky'; noFlicker = 'risky'; betterSound = 'risky'; fastCpu = 'risky' }
+        recommended = @('widescreen', 'noFlicker'); issues = @(); verified = [ordered]@{ date = ''; how = 'UAT' }
+    }
+    $p = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/widemess/profile' -Body $scratch
+    $r = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/widemess/enhance' -Body @{ useProfile = $true }
+    $end = (Get-Date).AddSeconds(10); $wide = $null
+    do { Start-Sleep -Milliseconds 400; $wide = Invoke-BrokenNesApi -ProcessId $id -Method GET -Path '/api/console/framebuffer' } while ([int]$wide.width -ne 400 -and (Get-Date) -lt $end)
+    $centreDiff = 'not 400 wide'
+    if ([int]$wide.width -eq 400) {
+        $bytes = [Convert]::FromBase64String([string]$wide.data); $bmp = [System.Drawing.Bitmap]::new($expect); $centreDiff = 0
+        try { for ($y = 0; $y -lt 224; $y++) { for ($x = 0; $x -lt 256; $x++) { $c = $bmp.GetPixel($x, $y); $o = ($y * 400 + 72 + $x) * 4; if ($bytes[$o] -ne $c.R -or $bytes[$o + 1] -ne $c.G -or $bytes[$o + 2] -ne $c.B) { $centreDiff++ } } } }
+        finally { $bmp.Dispose() }
+    }
+    Check 'm6_widescreen' ($p.success -and $r.success -and $r.state.on.widescreen -and $r.state.on.noFlicker -and $centreDiff -eq 0) "scratch profile: $($p.success); on: widescreen $($r.state.on.widescreen), no flicker $($r.state.on.noFlicker); $($wide.width) x $($wide.height), centre: $(if ($centreDiff -eq 0) { 'the SNES picture, pixel for pixel' } else { "$centreDiff pixels differ" })"
+    $r = Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/widemess/enhance' -Body @{ useProfile = $false }
+    $end = (Get-Date).AddSeconds(10); $diff = 'no frame'
+    do { Start-Sleep -Milliseconds 400; $diff = Compare-Expect $id $expect } while ($diff -ne 0 -and (Get-Date) -lt $end)
+    $cfg = Get-Content -LiteralPath (Join-Path $cfgDir 'config.json') -Raw -ErrorAction SilentlyContinue
+    $kept = $cfg -and ($cfg -match '"wideMessEnhancements"\s*:\s*\{\s*"')
+    Check 'm6_off_is_snes' ($r.success -and -not $r.state.on.widescreen -and $diff -eq 0 -and -not $kept) "all off: $(if ($diff -eq 0) { 'the SNES picture again, 256 x 224' } else { $diff }); a choice kept in the settings: $kept"
     # GUEST (milestone 7b): another console's game on the WideMess widescreen chip. The NES (its embedded test.nes) on the NES board's WMSS: the app shows the picture 400 wide, and 256 x 240 again on FIX;
     # a Master System game (the local Sega roster, when it is there) on WMS:WMSS picture and sound: 400 x 192, its sound on the WideMess sound chip.
     Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/console/select/nes' | Out-Null

@@ -1,0 +1,28 @@
+{
+  "format": "widemess-profile-1",
+  "title": "Chrono Trigger",
+  "file": "Chrono Trigger (U) [!].smc",
+  "sha1": [
+    "de5822f4f2f7a55acb8926d4c0eaa63d5d989312"
+  ],
+  "enhancements": {
+    "widescreen": "unavailable",
+    "noFlicker": "good",
+    "betterSound": "good",
+    "fastCpu": "broken"
+  },
+  "recommended": [
+    "noFlicker",
+    "betterSound"
+  ],
+  "issues": [
+    "Widescreen is not offered: the game keeps unrelated tiles in the parts of its maps the SNES does not show (fields, towns, cutscenes and the Epoch scenes show scrambled tiles there), and the battle menu repeats. No layer rule can make the sides right.",
+    "The contact sheet shows why: it is drawn with every layer extended.",
+    "No flicker: in the 6,750 frames checked the game never drew more sprites on a line than a SNES shows, so it changed nothing; it changes only lines over the limits.",
+    "Fast CPU hangs the game on a black screen at a scene change, even switched on after the title: the 65816 loops in forced blank, probably waiting for its sound driver (the kind of handshake that hangs Super Mario World at power-on; not traced)."
+  ],
+  "verified": {
+    "date": "2026-10-24",
+    "how": "Workshop --wms-test (E6), 6,750 frames of the attract sequence in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame (checked on every layer extended, as widescreen is unavailable), STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/ct.png."
+  }
+}

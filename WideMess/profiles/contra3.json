@@ -1,0 +1,38 @@
+{
+  "format": "widemess-profile-1",
+  "title": "Contra III: The Alien Wars",
+  "file": "Contra III - The Alien Wars (U) [!].smc",
+  "sha1": [
+    "265886e3f665adf2507e7b2f08b6b2ed9d0018b2"
+  ],
+  "widescreen": {
+    "layers": {
+      "bg1": "extend",
+      "bg2": "extend",
+      "bg3": "fill",
+      "bg4": "extend",
+      "sprites": "extend"
+    }
+  },
+  "enhancements": {
+    "widescreen": "risky",
+    "noFlicker": "good",
+    "betterSound": "good",
+    "fastCpu": "broken"
+  },
+  "recommended": [
+    "widescreen",
+    "noFlicker"
+  ],
+  "issues": [
+    "BG3 is filled in the sides: the game uses it for the players' status line and the title menu's text, both laid out for 256 columns on a 32-tile map that would repeat.",
+    "The game draws a stage into video RAM only near the SNES picture: ahead of the players the side columns can show another part of the stage (a building, fire) until the game draws there.",
+    "The intro's city scene shows a different, ruined city in the sides: the game keeps the next scene's picture there.",
+    "No flicker: in the 6,300 frames checked it showed more sprites on 2,946 lines, all of them over the SNES's limits (15,680 lines went over).",
+    "Fast CPU hangs the game on a black screen when the attract demo changes scene (frame 4,500), even switched on after the title: the 65816 loops in forced blank, probably waiting for its sound driver (the kind of handshake that hangs Super Mario World at power-on; not traced)."
+  ],
+  "verified": {
+    "date": "2026-10-24",
+    "how": "Workshop --wms-test (E6), 6,300 frames of the attract demos in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/contra3.png."
+  }
+}
