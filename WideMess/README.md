@@ -4,6 +4,8 @@ WideMess is BrokenNes's souped-up SNES fantasy console.
 - The plan: `docs/projects/widemess-plan.md`.
 - The hardware contract, spec v1: `docs/projects/widemess-spec.md`.
 
+- Making a game for it, the devkit (milestone 5): `docs/projects/widemess-devkit.md`; the devkit itself is `BrokenDev/widemess/`.
+
 This folder holds what is built for WideMess outside the emulator code.
 
 | Path | What |
@@ -13,7 +15,9 @@ This folder holds what is built for WideMess outside the emulator code.
 | `testroms/sound/` | Milestone 3's test ROM, the sound chip: a 65816 program (`sound.asm`) and an SPC700 program (`spc.asm`), WLA-DX; `gen_data.py` makes the samples, the DMA jobs, the SPC700's step lists and the manifest the checks measure against. `build.ps1` builds it and its negative control into `testroms/bin/`. |
 | `testroms/cpu/` | Milestone 4's test ROMs (WLA-DX; `build.ps1` builds them into `testroms/bin/`): `speed.asm`, the fast CPU and fast DMA measured against the spec's cycle model, with its no-unlock control; `bigmap.asm` + `gen_bigmap.py`, a 4 MB game on the WideMess map (1 MB work RAM, the 20-bit WRAM port, 256 KB battery RAM, 64 ROM banks). |
 | `profiles/` | Milestone 6: the SNES games' enhancement profiles (spec section 6.2, format `widemess-profile-1`), one JSON file per game, found by the ROM image's SHA-1. The desktop app and Workshop ship them beside the program. |
-| `testroms/bin/` | The built test ROMs: `layers.wms`, `layers.sfc` (the same game as a SNES image) and `layers_nounlock.wms` (the negative control); `sprites`, `windows`, `widesnes` (`.wms`, `_nounlock.wms`) with the model's pictures (`.expect.png`, `_nounlock.expect.png`, `.<variant>.expect.png`); `sound.wms`, `sound.sfc`, `sound_nounlock.wms` and `sound.json` (the manifest); `speed.wms`, `speed.sfc`, `speed_nounlock.wms`; `bigmap.wms` (its controls, cut to 2 MB or on the HiROM map, are made by `--wms-test`). |
+| `sample/` | Milestone 5's sample game, **Wide Blaster**, made with the devkit (`brokendev new widemess widemess-sample`): C and 65816 on PVSnesLib with the WideMess extensions, its PNG, WAV and MIDI sources and `wms.json`. BrokenDev project `widemess-sample`. |
+| `testroms/devkit/` | Milestone 5's test ROMs: `build.ps1` builds the devkit's template and the sample game, each with its negative controls, into `testroms/bin/` with BrokenDev's devkit. |
+| `testroms/bin/` | The built test ROMs: `devkit_template.wms`, `devkit_template_nounlock.wms`, `devkit_sample.wms` (+ `.sym`), `devkit_sample_nounlock.wms`, `devkit_sample_snesspeed.wms`; `layers.wms`, `layers.sfc` (the same game as a SNES image) and `layers_nounlock.wms` (the negative control); `sprites`, `windows`, `widesnes` (`.wms`, `_nounlock.wms`) with the model's pictures (`.expect.png`, `_nounlock.expect.png`, `.<variant>.expect.png`); `sound.wms`, `sound.sfc`, `sound_nounlock.wms` and `sound.json` (the manifest); `speed.wms`, `speed.sfc`, `speed_nounlock.wms`; `bigmap.wms` (its controls, cut to 2 MB or on the HiROM map, are made by `--wms-test`). |
 
 **The emulator side** is in `Windows/NesEmulator/snes/`:
 - `WideMess.cs`: the unlock and registers (`WmsExtension`), the `.wms` file (`WmsFile`) and the picture chip (`PPU_WMS`).
@@ -39,6 +43,7 @@ BrokenNes.Workshop.exe --wms-test  [--roms WideMess\testroms\bin] [--snes "a.sfc
 BrokenNes.Workshop.exe --wms-pack  --in game.sfc --out game.wms [--title T] [--features 1] [--map 0|1|2] [--sram BYTES] [--battery]
 BrokenNes.Workshop.exe --wms-shot  --rom game.wms --out shot.png [--frames 60] [--scale 3] [--console wms|snes] [--wide]
 BrokenNes.Workshop.exe --wms-sheet --rom game.wms --out sheet.png [--frames 120]
+BrokenNes.Workshop.exe --wms-run   --rom game.wms [--frames N] [--input "f:Buttons,..."] [--png-at f,...] [--out-dir d] [--voices] [--wram ADDR:LEN] [--ram-trap] [--trap-pc BBXXXX]
 BrokenNes.Workshop.exe --wms-enhance-sheet (--game KEY | --rom game.sfc [--input SCRIPT]) --out sheet.png [--at F1,F2] [--no-flicker] [--all-extend] [--scratch-profile p.json]
 BrokenNes.Workshop.exe --wms-enhance-film  (--game KEY | --rom game.sfc [--input SCRIPT]) --out film.png [--every 300] [--frames 6000] [--fast-cpu]
 BrokenNes.Workshop.exe --wms-enhance-test  [--roms DIR] [--snes-dir DIR] [--enhance-games KEY;KEY] [--profiles DIR]
@@ -52,6 +57,10 @@ BrokenNes.Workshop.exe --wms-fast-probe    --rom game.sfc [--frames 300] [--from
 - `--wms-pack --map 2` packs a WideMess-map ROM; `--sram` is its battery RAM in bytes and `--battery` makes it the game's save.
 - `--wms-shot --wide` draws a SNES game's modes 400 wide, the way the wide SNES modes show it.
 - `--wms-sheet` draws the 400-wide picture and each of the 8 layers alone.
+- `--wms-run` (milestone 5) runs a game and reports what it uses (unlocked, picture, layers drawing, sprites on the picture, fast CPU and DMA,
+  work RAM above 128 KB, voices sounding: the measure BrokenDev's `verify` checks), the sound unit, the audio and the hottest PCs; `--voices`
+  lists the voices' registers and the WideMess directory, `--wram` dumps work RAM, `--ram-trap` / `--trap-pc` stop at a crash and list the
+  instructions before it.
 - `--wms-enhance-sheet` (milestone 6) draws a SNES game's contact sheet: the SNES picture beside WideMess widescreen with the game's profile, at several
   moments of one run (widescreen leaves the game as it is, so the SNES chip's own line is drawn beside every enhanced line and compared). `--game` is one
   of the proven games (`smw`, `yoshi`, `dkc`, `sm`, `alttp`, `fzero`, `smk`, `ct`, `mmx`, `contra3`, `scv4`: their pad scripts and moments are in
@@ -200,6 +209,49 @@ The sound ROM's checks measure the samples by FFT against the generator's manife
 - **UAT 125 pass, 0 fail** (16 skip, 3 info); the desktop smoke test passes 7 of 7; Lite and Core build.
 - Not covered by a test ROM: HDMA tables in the new work RAM (HDMA reads it through the same path as DMA, which is tested), and the old joypad
   ports' 12 clocks in fast mode (the I/O rule is tested through `$4214`).
+
+## Milestone 5 result (2026-10-24): the devkit
+
+**What it is** (the guide: `docs/projects/widemess-devkit.md`; the code: `BrokenDev/widemess/`):
+- **PVSnesLib with WideMess extensions:** `widemess.h` (every register of the spec, the unlock and ID check) and a library in C and 65816 for
+  the 8-layer mode, the video RAM and colour ports, the 256-sprite table, fast CPU and DMA, the 1 MB work RAM and the sound RAM port; the
+  WideMess map's memory setup (`wmshdr.asm.in`: PVSnesLib's HiROM map, far RAM in banks `$70-$7D` through its SLOT 3).
+- **Converters:** `wmsgfx.py` (PNG to 8-bpp layers and 4/8-bpp sprites, one palette of up to 1,024 colours, a video RAM layout and an upload
+  table), `wmssnd.py` (WAV to 16-bit PCM or BRR through PVSnesLib's snesbrr, MIDI to songs with drum kits, effects, the whole sound RAM image).
+- **A sound driver** for the 32-voice chip (`driver/wmsdrv.asm`, SPC700): songs on 24 channels (voices 8-31), effects on any voice, loaded
+  through the sound RAM port.
+- **`brokendev new widemess <name>`**, the template, and WideMess projects in BrokenDev: `build`, `verify` (with `expect.wms` checks), `run`,
+  `compat` (BrokenNes's column only).
+- **The sample game, Wide Blaster** (`sample/`): 8 layers in parallax, up to 199 sprites with a 64 x 64 256-colour boss, a song on up to 12 of
+  the new voices with 16-bit PCM and BRR, fast CPU and DMA, its pools and a 64 KB recorder in the far work RAM.
+
+![Wide Blaster](../docs/projects/widemess-images/m5/m5-sample-play.png)
+
+**How it is tested.** The devkit's ROMs are built by the devkit (`testroms/devkit/build.ps1`) and measured from outside the game
+(`WideMessCli.Measure`: the console's state, each layer drawn alone, the WideMess sprite table, the voices' envelopes through the DSP's second
+page, the work RAM above 128 KB).
+
+| `--wms-test` | What it shows | Its negative control |
+|---|---|---|
+| M5.1 | the template unlocks, draws 400 x 224 in the 8-layer mode with its 3 layers and its sprite, plays its song on voices 8-31 (243 of 300 frames), runs in fast mode with far RAM in use | M5.2: the same template built with `-D WMS_NOUNLOCK` (every WideMess register written, locked): 256 wide, no layer, no sprite, no voice, one colour |
+| M5.3 | the sample draws 8 layers, 147 sprites on the picture (more than a SNES table's 128), up to 12 of voices 8-31 at once (more than the S-DSP's 8) in 881 of 900 frames, fast CPU and DMA, 3.7 KB of far RAM, and its main loop keeps 60 frames a second (game_frame 888 after 900 frames) | M5.4: the sample without the unlock (nothing), the template against the sample's thresholds (3 layers, 1 sprite, 4 voices: the checks say no), the sample at SNES speed (game_frame 439 after 900: fast mode is what keeps it at 60) |
+
+- **BrokenDev's tests** (`BrokenDev/tests/run-tests.ps1`, section *widemess devkit*): WideMess manifests and their refusals, `new widemess` and
+  its refusals, a missing project folder refused, `wmsgfx`'s 8-bpp tiles byte-identical to gfx4snes's (one changed byte caught), flip
+  deduplication, colour limits refused, PCM groups and BRR blocks, 24 notes at once built and 25 refused, a pitch above 4x refused, and a
+  project made by `new` built with PVSnesLib that passes `verify` while its no-unlock build fails every WideMess check. 115 passed, 0 failed,
+  0 skipped.
+- **`brokendev verify widemess-sample`** passes (8 layers, 147 sprites, 12 voices, 830 of 840 frames sounding); `compat` works on BrokenNes, with
+  game_frame changing on every frame of 600-900.
+- **The existing BrokenDev projects** with this BrokenDev (the user's workspaces and his BrokenDev home only read): dry-run builds of all seven
+  pass; `verify` of his own built ROMs gives every checkpoint hash of his records for vrun-nes, vrun-nested, vrun-nested-enhanced, smb1-nes and
+  smb1-nested, and passes for supervrun (his record is of an older ROM); real builds of vrun-nes and supervrun in scratch copies of the
+  workspaces pass, supervrun byte-identical to its reference md5, and verify.
+- **Emulator changes:** none in the chips. `PPU_WMS.MainLayers` (a read-only view of `WMTM`, for the measure); Workshop's `--brokendev verify`
+  and `run` take console `wms`.
+- **The whole branch** (milestones 1-5, main 43edc4d merged): `--wms-test` 153 of 153, the same with `--reference-paths`; UAT `run-suite.ps1`
+  125 pass, 0 fail, 16 skip, 3 info; the desktop smoke test 10 of 10; `brokendev run widemess-sample` opens it in the desktop app (console
+  `wms`, unlocked, 400 x 224, 61 fps); Lite, the plugin's Core and the desktop app build.
 
 ## Milestone 6 result (2026-10-24): SNES games enhanced
 

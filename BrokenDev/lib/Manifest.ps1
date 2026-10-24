@@ -5,7 +5,7 @@
 
 Set-StrictMode -Version Latest
 
-$script:BdKinds    = @('nes', 'snes', 'nested')
+$script:BdKinds    = @('nes', 'snes', 'nested', 'wms')
 $script:BdShells   = @('bash', 'ps5', 'python', 'exe')
 $script:BdToolIds  = @('gitbash', 'python', 'node', 'dotnet', 'ps5', '7zip', 'workshop')
 
@@ -35,13 +35,22 @@ function Test-BdManifest {
     if ($ExpectedId -and [string]$M.id -ne $ExpectedId) { $e.Add("id '$($M.id)' does not match its folder '$ExpectedId'") }
     if ([string]$M.id -notmatch '^[a-z0-9][a-z0-9\-]*$') { $e.Add("id '$($M.id)' must be lower-case letters, digits and dashes") }
     if ($script:BdKinds -notcontains [string]$M.kind) { $e.Add("kind '$($M.kind)' must be one of: $($script:BdKinds -join ', ')") }
-    if (@('nes', 'snes') -notcontains [string]$M.console) { $e.Add("console '$($M.console)' must be nes or snes") }
-    # nes -> runs as a NES; snes and nested -> run as a SNES
+    if (@('nes', 'snes', 'wms') -notcontains [string]$M.console) { $e.Add("console '$($M.console)' must be nes, snes or wms") }
+    # nes -> runs as a NES; snes and nested -> run as a SNES; wms (a WideMess game, BrokenDev/widemess) -> runs on the WideMess console
     if ($M.kind -eq 'nes' -and $M.console -ne 'nes') { $e.Add("kind nes must run on console nes") }
     if ($M.kind -in 'snes', 'nested' -and $M.console -ne 'snes') { $e.Add("kind $($M.kind) must run on console snes") }
+    if (($M.kind -eq 'wms') -ne ($M.console -eq 'wms')) { $e.Add("kind wms and console wms go together (a WideMess game runs on the WideMess console only)") }
 
+    # the source: an archive and a path in it (the user's games), or a folder ({repo}, {home}, {env:...} or an absolute path: a WideMess
+    # project made by 'brokendev new widemess', or the devkit's sample game in the repository)
     $src = $M.source
-    foreach ($f in 'archive', 'path') { if ($null -eq $src.PSObject.Properties[$f] -or -not [string]$src.$f) { $e.Add("source.$f is required") } }
+    $hasFolder = $null -ne $src.PSObject.Properties['folder']
+    if ($hasFolder) {
+        if (-not [string]$src.folder) { $e.Add('source.folder is empty') }
+        if ($src.PSObject.Properties['archive']) { $e.Add('source has both a folder and an archive: name one') }
+    } else {
+        foreach ($f in 'archive', 'path') { if ($null -eq $src.PSObject.Properties[$f] -or -not [string]$src.$f) { $e.Add("source.$f is required (or source.folder)") } }
+    }
     if ($ArchiveIds -and $src.PSObject.Properties['archive'] -and -not $ArchiveIds.ContainsKey([string]$src.archive)) { $e.Add("source.archive '$($src.archive)' is not in archives.json") }
 
     foreach ($t in @($M.requires.tools)) { if ($script:BdToolIds -notcontains [string]$t) { $e.Add("requires.tools: unknown tool '$t' (known: $($script:BdToolIds -join ', '))") } }
@@ -116,10 +125,28 @@ function Read-BdManifest {
     $m
 }
 
+function Get-BdProjectWorkspace {
+    <#
+      Where a project's source is: its archive's workspace (Get-BdWorkspace: live, restored, partial, absent), or, for a project with
+      source.folder, that folder (Kind folder, or absent when it does not exist). The same shape either way: { Id; Kind; Path; Source; Detail }.
+    #>
+    param([Parameter(Mandatory)]$Manifest, $Table = $null)
+    $src = $Manifest.source
+    if ($src.PSObject.Properties['folder']) {
+        $p = [System.IO.Path]::GetFullPath((Expand-BdPath -Text ([string]$src.folder)))
+        $ok = Test-Path -LiteralPath $p -PathType Container
+        return [pscustomobject]@{ Id = [string]$Manifest.id; Kind = $(if ($ok) { 'folder' } else { 'absent' }); Path = $p; Source = 'source.folder'
+                                  Detail = $(if ($ok) { 'the project''s own folder' } else { "source.folder $p does not exist" }) }
+    }
+    if ($Table) { return Get-BdWorkspace -Id ([string]$src.archive) -Table $Table }
+    Get-BdWorkspace -Id ([string]$src.archive)
+}
+
 function New-BdContext {
-    <# Placeholder context for one project: archive roots, the project's output folder, the chosen Python. #>
+    <# Placeholder context for one project: archive roots, the project's output folder, the chosen Python; {src} = source.folder when it has one. #>
     param([Parameter(Mandatory)]$Manifest)
     $ctx = @{ Roots = (Get-BdArchiveRoots); Out = (Join-Path (Join-Path (Get-BdHome) 'out') ([string]$Manifest.id)); Id = [string]$Manifest.id }
+    if ($Manifest.source.PSObject.Properties['folder']) { $ctx['src'] = [System.IO.Path]::GetFullPath((Expand-BdPath -Text ([string]$Manifest.source.folder))) }
     $ctx['Work'] = Join-Path (Join-Path (Get-BdHome) 'work') ([string]$Manifest.id)
     $py = Find-BdPython
     if ($py) { $ctx['python'] = $py.Path; $ctx['pythondir'] = Split-Path -Parent $py.Path }

@@ -26,7 +26,7 @@ namespace BrokenNes.Workshop;
 /// number of colours are recorded) and <c>expect</c> (see <see cref="Evaluate"/>). The NES runs on the NES class with the cores named in
 /// <c>verify.cores</c> (the app defaults, CPU/PPU/APU FIX, when absent); the SNES runs as the apps run it (ConsoleSessions, its default cores).
 /// </summary>
-internal static class BrokenDevCli
+internal static partial class BrokenDevCli
 {
     private const string Usage =
         "Usage: --brokendev list   [--manifests DIR] [--home DIR]\n" +
@@ -184,10 +184,10 @@ internal static class BrokenDevCli
                 Console.Error.WriteLine($"spec line {lineNo}: {ex.Message}: {raw}"); return 2;
             }
         }
-        if (console is not ("nes" or "snes") || rom.Length == 0 || outDir.Length == 0 || frames <= 0) { Console.Error.WriteLine("spec needs console nes|snes, rom, out and frames > 0"); return 2; }
+        if (console is not ("nes" or "snes" or "wms") || rom.Length == 0 || outDir.Length == 0 || frames <= 0) { Console.Error.WriteLine("spec needs console nes|snes|wms, rom, out and frames > 0"); return 2; }
         if (!File.Exists(rom)) { Console.Error.WriteLine($"ROM not found: {rom}"); return 2; }
         foreach (var r in reads)
-            if ((console == "nes" && r.Domain != "ram") || (console == "snes" && r.Domain != "wram")) { Console.Error.WriteLine($"read {r.Name}: domain {r.Domain} does not belong to the {console}"); return 2; }
+            if ((console == "nes" && r.Domain != "ram") || (console is "snes" or "wms" && r.Domain != "wram")) { Console.Error.WriteLine($"read {r.Name}: domain {r.Domain} does not belong to the {console}"); return 2; }
         steps = steps.OrderBy(s => s.Frame).ToList();
         Directory.CreateDirectory(outDir);
         string savePath = saveDir.Length > 0 ? Path.Combine(saveDir, "brokennes.sav") : "";
@@ -201,7 +201,7 @@ internal static class BrokenDevCli
         int done = 0;
         try
         {
-            using IRunner runner = console == "nes" ? new NesRunner(rom, romBytes, verifyDoc.RootElement, ntsc, ram) : new SnesRunner(romBytes, Path.GetFileName(rom), verifyDoc.RootElement);
+            using IRunner runner = console == "nes" ? new NesRunner(rom, romBytes, verifyDoc.RootElement, ntsc, ram) : new SnesRunner(romBytes, Path.GetFileName(rom), verifyDoc.RootElement, console);
             w.WriteLine($"emu BrokenNes Workshop {runner.Cores}");
             w.WriteLine("reads " + string.Join(' ', reads.Select(r => r.Name)));
             w.WriteLine($"note {runner.Description}");
@@ -254,7 +254,7 @@ internal static class BrokenDevCli
 
     private sealed class CheckResult { public string Id = ""; public bool Ok; public string Detail = ""; }
 
-    private sealed class ScenarioResult
+    private sealed partial class ScenarioResult
     {
         public string Id = "", Cores = "", Description = "", Result = "ok", CrashInfo = "";
         /// <summary>An information scenario is run and recorded but does not decide the verdict (the manifest says why, e.g. a known project bug it documents).</summary>
@@ -335,7 +335,7 @@ internal static class BrokenDevCli
 
         try
         {
-            using IRunner runner = console == "nes" ? new NesRunner(romPath, rom, verify, ntsc, powerOnRam) : new SnesRunner(rom, Path.GetFileName(romPath), verify);
+            using IRunner runner = console == "nes" ? new NesRunner(romPath, rom, verify, ntsc, powerOnRam) : new SnesRunner(rom, Path.GetFileName(romPath), verify, console);
             res.Cores = runner.Cores; res.Description = runner.Description;
             var held = new List<string>();
             int next = 0;
@@ -360,6 +360,7 @@ internal static class BrokenDevCli
                 var samples = runner.DrainAudio();
                 Accumulate(res.Audio, samples, true);
                 if (f + 1 > audioFrom) Accumulate(res.AudioWindow, samples, true);
+                if (runner is SnesRunner { WideMessSession: { } wmsFrame }) WideMessFrame(res, wmsFrame, f + 1 > audioFrom);
                 if (checkpoints.Contains(f + 1))
                 {
                     var (hash, colors) = runner.Picture();
@@ -373,6 +374,7 @@ internal static class BrokenDevCli
             res.Realtime = res.Fps / NtscFps;
             res.Width = runner.Width; res.Height = runner.Height;
             res.Colors = res.Checkpoints.Count > 0 ? res.Checkpoints[^1].Colors : 0;
+            if (runner is SnesRunner { WideMessSession: { } wmsEnd }) res.Wms = WideMessCli.Measure(wmsEnd);   // after the last picture: measuring redraws
         }
         catch (Exception ex2) when (ex2 is ArgumentException or NotSupportedException or InvalidDataException or Cartridge.UnsupportedMapperException)
         {
@@ -383,7 +385,7 @@ internal static class BrokenDevCli
             res.Result = "crashed"; res.CrashInfo = ex3.GetType().Name + ": " + ex3.Message;
         }
 
-        if (res.Result == "ok") Evaluate(res, expect);
+        if (res.Result == "ok") { Evaluate(res, expect); EvaluateWideMess(res, expect); }
         return res;
     }
 
@@ -481,6 +483,7 @@ internal static class BrokenDevCli
                     ["windowPeak"] = Math.Round(r.AudioWindow.Peak, 4), ["windowNonSilentFrames"] = r.AudioWindow.NonSilentFrames,
                 },
                 ["checks"] = new JsonArray(r.Checks.Select(c => (JsonNode)new JsonObject { ["id"] = c.Id, ["ok"] = c.Ok, ["detail"] = c.Detail }).ToArray()),
+                ["wms"] = WideMessJson(r),
             });
         }
         return new JsonObject
@@ -637,7 +640,10 @@ internal static class BrokenDevCli
         public int Width => s.FrameWidth;
         public int Height => s.FrameHeight;
 
-        public SnesRunner(byte[] rom, string fileName, JsonElement verify)
+        /// <summary>The WideMess console's session (a "wms" project), for the devkit's checks; null on the SNES.</summary>
+        public SnesSession? WideMessSession => s is SnesSession ss && ss.WideMess != null ? ss : null;
+
+        public SnesRunner(byte[] rom, string fileName, JsonElement verify, string consoleKey = "snes")
         {
             string cpu = "", ppu = "", apu = "";
             if (verify.TryGetProperty("cores", out var cores) && cores.ValueKind == JsonValueKind.Object)
@@ -646,13 +652,15 @@ internal static class BrokenDevCli
                 ppu = cores.TryGetProperty("ppu", out var p) ? p.GetString() ?? "" : "";
                 apu = cores.TryGetProperty("apu", out var a) ? a.GetString() ?? "" : "";
             }
-            var console = ConsoleKind.Snes;
+            // "wms": a WideMess project (BrokenDev/widemess) runs on the WideMess console, with its own menu's defaults
+            var console = consoleKey == "wms" ? ConsoleKind.WideMess : ConsoleKind.Snes;
+            if (console == ConsoleKind.WideMess) Consoles.WideMessEnabled = true;
             cpu = cpu == "" ? CoreCatalog.Default(console, CoreSlot.Cpu) : cpu;
             ppu = ppu == "" ? CoreCatalog.Default(console, CoreSlot.Ppu) : ppu;
             apu = apu == "" ? CoreCatalog.Default(console, CoreSlot.Apu) : apu;
             foreach (var (slot, id) in new[] { (CoreSlot.Cpu, cpu), (CoreSlot.Ppu, ppu), (CoreSlot.Apu, apu) })
                 if (!CoreCatalog.Options(console, slot).Any(o => o.Id.Equals(id, StringComparison.OrdinalIgnoreCase)))
-                    throw new ArgumentException($"the SNES {slot} menu does not offer {id}");
+                    throw new ArgumentException($"the {(console == ConsoleKind.WideMess ? "WideMess" : "SNES")} {slot} menu does not offer {id}");
             Cores = $"{cpu}/{ppu}/{apu}";
             byte[] unwrapped = RomDetect.Unwrap(rom, fileName, out string inner);
             s = ConsoleSessions.Create(console, unwrapped, cpu, ppu, apu, null, inner);

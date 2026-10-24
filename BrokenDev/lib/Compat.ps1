@@ -39,7 +39,7 @@ $script:BdSnesButtons = @('B', 'Y', 'Select', 'Start', 'Up', 'Down', 'Left', 'Ri
 
 function ConvertTo-BdInputSteps {
     <# "120:Start,132:,400:Right+B" -> @({Frame=120;Buttons=@('Start')}, ...), sorted. Unknown buttons for the console are an error. #>
-    param([AllowEmptyString()][string]$Script, [ValidateSet('nes', 'snes')][string]$Console = 'nes')
+    param([AllowEmptyString()][string]$Script, [ValidateSet('nes', 'snes', 'wms')][string]$Console = 'nes')
     $known = if ($Console -eq 'nes') { $script:BdNesButtons } else { $script:BdSnesButtons }
     $steps = @()
     foreach ($part in @(([string]$Script) -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
@@ -64,7 +64,7 @@ function New-BdCompatSpecText {
     #>
     param([Parameter(Mandatory)]$Run)
     $c = [string]$Run.Console
-    if (@('nes', 'snes') -notcontains $c) { throw "spec: console '$c' must be nes or snes" }
+    if (@('nes', 'snes', 'wms') -notcontains $c) { throw "spec: console '$c' must be nes, snes or wms" }
     $frames = [int]$Run.Frames
     if ($frames -le 0) { throw 'spec: frames must be positive' }
     $lines = @('# bdcompat-spec 1', "console $c", "rom $($Run.Rom)", "out $($Run.Out)", "savedir $($Run.SaveDir)", "frames $frames")

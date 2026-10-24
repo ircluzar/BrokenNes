@@ -28,6 +28,7 @@ $bd = Split-Path -Parent $here
 . (Join-Path $bd 'lib\DevTools.ps1')
 . (Join-Path $bd 'lib\Emulators.ps1')
 . (Join-Path $bd 'lib\Compat.ps1')
+. (Join-Path $bd 'lib\WideMess.ps1')
 
 $script:pass = 0; $script:fail = 0; $script:skip = 0
 $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('bdtests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -888,6 +889,126 @@ try {
         }
     }
 
+    # ------------------------------------------------------------------------------------------ the WideMess devkit (BrokenDev/widemess)
+    Write-Host 'widemess devkit'
+    Restore-Env $savedEnv
+    $env:BROKENDEV_HOME = Join-Path $tmpRoot 'wmshome'
+    $wmsProj = Join-Path $tmpRoot 'wmsprojects'
+    New-Item -ItemType Directory -Force -Path $wmsProj, $env:BROKENDEV_HOME | Out-Null
+    $env:BROKENDEV_PROJECTS = $wmsProj
+    $wmsTools = Join-Path $bd 'widemess\tools'
+    $wmsHelper = Join-Path $here 'wms-converters.py'
+    $wmsPy = Find-BdPython
+    $wmsPvs = Find-BdPvsneslib
+    $wmsGame = Join-Path $tmpRoot 'wms-new'
+    function Invoke-WmsPy {
+        param([string[]]$PyArgs)
+        $r = Invoke-BdProcess -FilePath $wmsPy.Path -Arguments (@('-I', '-B') + $PyArgs) -TimeoutSec 120   # -B: no __pycache__ in the repository
+        [pscustomobject]@{ Exit = $r.ExitCode; Output = $r.Output }
+    }
+    Test-Case 'a WideMess manifest (kind and console wms, source.folder) validates; NEGATIVE: wms on a SNES console, a folder and an archive together, and neither, are rejected' {
+        $m = Read-BdJson (Join-Path $bd 'projects\widemess-sample\project.json')
+        $e = @(Test-BdManifest -M $m -ExpectedId 'widemess-sample')
+        Assert-True ($e.Count -eq 0) ($e -join '; ')
+        $copy = { ($m | ConvertTo-Json -Depth 30) | ConvertFrom-Json }
+        $c = & $copy; $c.console = 'snes'
+        Assert-True ((@(Test-BdManifest -M $c) -join ';') -match 'kind wms and console wms') 'wms on console snes was accepted'
+        $c = & $copy; $c.source | Add-Member -NotePropertyName archive -NotePropertyValue 'x'; $c.source | Add-Member -NotePropertyName path -NotePropertyValue 'y'
+        Assert-True ((@(Test-BdManifest -M $c) -join ';') -match 'both a folder and an archive') 'a folder and an archive together were accepted'
+        $c = & $copy; $c.source = [pscustomobject]@{}
+        Assert-True ((@(Test-BdManifest -M $c) -join ';') -match 'source.archive is required') 'a source with neither was accepted'
+    }
+    Test-Case 'new widemess makes the template''s folder and a manifest that validates, the name filled in everywhere; NEGATIVE: the same name again, a folder that is not empty and a bad name are refused and write nothing' {
+        $p = New-BdWideMessProject -Name 'test-game' -Path $wmsGame -Title 'TEST GAME'
+        $m = Read-BdManifest -Id 'test-game'
+        Assert-Equal $m.kind 'wms'
+        Assert-Equal ([string]$m.source.folder) ($wmsGame.Replace('\', '/'))
+        $cfg = Read-BdJson (Join-Path $wmsGame 'wms.json')
+        Assert-Equal $cfg.name 'test_game'; Assert-Equal $cfg.title 'TEST GAME'
+        foreach ($f in 'wms.json', 'src\main.c', 'src\far.asm') { Assert-True (-not ([System.IO.File]::ReadAllText((Join-Path $wmsGame $f)).Contains('{{'))) "$f still has a placeholder" }
+        foreach ($f in '.gitignore', 'gfx\sky.png', 'audio\chime.wav', 'audio\hello.mid') { Assert-True (Test-Path -LiteralPath (Join-Path $wmsGame $f)) "$f was not made" }
+        Assert-Throws { New-BdWideMessProject -Name 'test-game' -Path (Join-Path $tmpRoot 'wms-other') } 'exists already'
+        $full = Join-Path $tmpRoot 'wms-full'; New-Item -ItemType Directory -Force -Path $full | Out-Null; Set-Content -LiteralPath (Join-Path $full 'mine.txt') 'x'
+        Assert-Throws { New-BdWideMessProject -Name 'test-two' -Path $full } 'not empty'
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $wmsProj 'test-two'))) 'a refused project left a manifest'
+        Assert-Throws { New-BdWideMessProject -Name 'Bad_Name' -Path (Join-Path $tmpRoot 'wms-bad') } 'lower-case'
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $tmpRoot 'wms-bad'))) 'a refused name made its folder'
+    }
+    Test-Case 'a folder project builds in its folder ({src} is it); NEGATIVE: a manifest whose folder does not exist is refused, not built elsewhere' {
+        $m = Read-BdManifest -Id 'test-game'
+        $w = Get-BdProjectWorkspace -Manifest $m
+        Assert-Equal $w.Kind 'folder'; Assert-Equal $w.Path $wmsGame
+        Assert-Equal (New-BdContext $m)['src'] $wmsGame
+        $g = Read-BdJson (Join-Path $wmsProj 'test-game\project.json'); $g.id = 'test-gone'; $g.source.folder = (Join-Path $tmpRoot 'no-such-folder').Replace('\', '/')
+        New-Item -ItemType Directory -Force -Path (Join-Path $wmsProj 'test-gone') | Out-Null
+        Save-BdJson -Object $g -Path (Join-Path $wmsProj 'test-gone\project.json') -Depth 30
+        Assert-Equal (Get-BdProjectWorkspace -Manifest (Read-BdManifest -Id 'test-gone')).Kind 'absent'
+        if (-not $wmsPy) { Skip-Test 'no Python with pillow and numpy (the build checks its tools first)' }
+        $env:BROKENDEV_WORKSHOP = $env:ComSpec   # any existing file: the refusal must come before any step runs
+        try { Assert-Throws { Invoke-BdProjectBuild -Id 'test-gone' } 'does not exist' } finally { $env:BROKENDEV_WORKSHOP = $null }
+        Remove-Item -LiteralPath (Join-Path $wmsProj 'test-gone') -Recurse -Force
+    }
+    Test-Case 'wmsgfx: its 8-bpp tiles are gfx4snes''s bytes for the same indexed picture; NEGATIVE: one changed byte is caught' {
+        if (-not $wmsPy) { Skip-Test 'no Python with pillow and numpy' }
+        if (-not $wmsPvs) { Skip-Test 'PVSnesLib (gfx4snes) not found' }
+        $d = Join-Path $tmpRoot 'wms-g4s'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        $png = Join-Path $d 'g.png'
+        Assert-Equal (Invoke-WmsPy @($wmsHelper, 'indexed', $png)).Exit 0
+        $r = Invoke-BdProcess -FilePath (Join-Path $wmsPvs 'devkitsnes\tools\gfx4snes.exe') -Arguments @('-s', '8', '-u', '256', '-R', '-p', '-m', '-t', 'png', '-i', $png) -WorkingDirectory $d -TimeoutSec 60
+        Assert-True (Test-Path -LiteralPath (Join-Path $d 'g.pic')) "gfx4snes wrote no g.pic: $(Select-BdTail $r.Output 4)"
+        $x = Invoke-WmsPy @($wmsHelper, 'same-tiles', $wmsTools, $png, (Join-Path $d 'g.pic'))
+        Assert-Equal $x.Exit 0 $x.Output
+        $b = [System.IO.File]::ReadAllBytes((Join-Path $d 'g.pic')); $b[100] = $b[100] -bxor 0x10; [System.IO.File]::WriteAllBytes((Join-Path $d 'bad.pic'), $b)
+        Assert-Equal (Invoke-WmsPy @($wmsHelper, 'same-tiles', $wmsTools, $png, (Join-Path $d 'bad.pic'))).Exit 1
+    }
+    Test-Case 'wmsgfx: a tile and its mirror become one tile and a map entry with the flip bit' {
+        if (-not $wmsPy) { Skip-Test 'no Python with pillow and numpy' }
+        $d = Join-Path $tmpRoot 'wms-flip'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        $x = Invoke-WmsPy @($wmsHelper, 'flips', $wmsTools, $d)
+        Assert-Equal $x.Exit 0 $x.Output
+    }
+    Test-Case 'wmsgfx: 255 colours fill a bank; NEGATIVE: 256 in one bank and 16 in a 4-bpp sprite are refused, saying what to change' {
+        if (-not $wmsPy) { Skip-Test 'no Python with pillow and numpy' }
+        $d = Join-Path $tmpRoot 'wms-col'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        foreach ($n in 255, 256, 16) { Assert-Equal (Invoke-WmsPy @($wmsHelper, 'colours', (Join-Path $d "c$n.png"), [string]$n)).Exit 0 }
+        Assert-Equal (Invoke-WmsPy @((Join-Path $wmsTools 'wmsgfx.py'), 'layer', (Join-Path $d 'c255.png'), (Join-Path $d 'c255'))).Exit 0
+        $x = Invoke-WmsPy @((Join-Path $wmsTools 'wmsgfx.py'), 'layer', (Join-Path $d 'c256.png'), (Join-Path $d 'c256'))
+        Assert-Equal $x.Exit 1; Assert-True ($x.Output -match 'bank 0 is full') $x.Output
+        $x = Invoke-WmsPy @((Join-Path $wmsTools 'wmsgfx.py'), 'sprite', (Join-Path $d 'c16.png'), (Join-Path $d 'c16'), '--frame', '32x32', '--bpp', '4')
+        Assert-Equal $x.Exit 1; Assert-True ($x.Output -match 'a 4-bpp sprite has 15') $x.Output
+    }
+    Test-Case 'wmssnd: 16-bit PCM is whole groups of 4 samples with its loop on a group; BRR through snesbrr is whole 9-byte blocks' {
+        if (-not $wmsPy) { Skip-Test 'no Python with pillow and numpy' }
+        $d = Join-Path $tmpRoot 'wms-snd'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        $wav = Join-Path $d 't.wav'
+        Assert-Equal (Invoke-WmsPy @($wmsHelper, 'wav', $wav, '1001')).Exit 0
+        $x = Invoke-WmsPy @((Join-Path $wmsTools 'wmssnd.py'), 'pcm', $wav, (Join-Path $d 't.pcm'), '--loop', '7')
+        Assert-Equal $x.Exit 0 $x.Output
+        Assert-Equal (Get-Item -LiteralPath (Join-Path $d 't.pcm')).Length 2008
+        Assert-True ($x.Output -match 'loop at 4\b') "the loop was not put on a group of 4: $($x.Output)"
+        if ($wmsPvs) {
+            $x = Invoke-WmsPy @((Join-Path $wmsTools 'wmssnd.py'), 'brr', $wav, (Join-Path $d 't.brr'), '--snesbrr', (Join-Path $wmsPvs 'devkitsnes\tools\snesbrr.exe'))
+            Assert-Equal $x.Exit 0 $x.Output
+            $n = (Get-Item -LiteralPath (Join-Path $d 't.brr')).Length
+            Assert-True ($n -gt 0 -and $n % 9 -eq 0) "BRR of $n bytes"
+        }
+    }
+    Test-Case 'wmssnd: a song with 24 notes at once builds; NEGATIVE: 25 at once (the driver has 24 channels) and a note above 4x are refused' {
+        if (-not $wmsPy) { Skip-Test 'no Python with pillow and numpy' }
+        $d = Join-Path $tmpRoot 'wms-song'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+        $drv = Join-Path $d 'drv.bin'; [System.IO.File]::WriteAllBytes($drv, (New-Object byte[] 64))
+        $try = {
+            param([int]$Count, [int]$Note)
+            $mid = Join-Path $d "m$Count-$Note.mid"; $p = Join-Path $d "p$Count-$Note"
+            Assert-Equal (Invoke-WmsPy @($wmsHelper, 'midi', $mid, [string]$Count, [string]$Note)).Exit 0
+            Assert-Equal (Invoke-WmsPy @($wmsHelper, 'project', $p, $mid)).Exit 0
+            Invoke-WmsPy @((Join-Path $wmsTools 'wmssnd.py'), 'build', (Join-Path $p 'wms.json'), (Join-Path $p 'gen'), '--driver', $drv)
+        }
+        $x = & $try 24 50; Assert-Equal $x.Exit 0 $x.Output
+        $x = & $try 25 50; Assert-Equal $x.Exit 1; Assert-True ($x.Output -match 'more than 24 notes') $x.Output
+        $x = & $try 1 94; Assert-Equal $x.Exit 1; Assert-True ($x.Output -match 'up to 4x') $x.Output
+    }
+
     # ------------------------------------------------------------------------------------------ BrokenNes integration (Workshop)
     Write-Host 'BrokenNes integration'
     Restore-Env $savedEnv
@@ -1071,6 +1192,32 @@ try {
         Assert-Equal $x.Exit 2
         $x = Invoke-WsRun @{ Out = (Join-Path $crOut 'd'); Text = "console nes`nrom $ramRom`nout $(Join-Path $crOut 'd')`nframes 5`nteleport 3`n" }
         Assert-Equal $x.Exit 2
+    }
+
+    # the WideMess devkit end to end: the project 'new widemess' made above, built with PVSnesLib and verified on the WideMess console
+    Test-Case 'a game from new widemess builds and PASSES verify on the WideMess console (unlocked, 400 wide, its layers, sprite and song); NEGATIVE: the same game built without the unlock FAILS every WideMess check' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        if (-not $wmsPy) { Skip-Test 'no Python with pillow and numpy' }
+        if (-not $wmsPvs) { Skip-Test 'PVSnesLib not found (BROKENDEV_PVSNESLIB, or the Super VRUN workspace beside the repository)' }
+        if (-not (Test-Path -LiteralPath (Join-Path $wmsGame 'wms.json'))) { Skip-Test 'the new widemess test above did not make its project' }
+        $env:BROKENDEV_HOME = Join-Path $tmpRoot 'wmshome'; $env:BROKENDEV_PROJECTS = $wmsProj; $env:BROKENDEV_WORKSHOP = $ws
+        try {
+            $rec = Invoke-BdProjectBuild -Id 'test-game'
+            Assert-True $rec.ok 'the build failed'
+            $v = Invoke-BdProjectVerify -Id 'test-game' -Exe $ws
+            Assert-True $v.ok ('verify failed: ' + ((@($v.scenarios | ForEach-Object { $_.checks } | Where-Object { -not $_.ok } | ForEach-Object { "$($_.id): $($_.detail)" })) -join '; '))
+            $ids = @($v.scenarios[0].checks | ForEach-Object { $_.id })
+            foreach ($want in 'wms-unlocked', 'wms-width', 'wms-layers', 'wms-sprites', 'wms-voices') { Assert-True ($ids -contains $want) "verify did not check $want" }
+            # the negative control: the same source with -D WMS_NOUNLOCK, through the same recipe
+            $no = Join-Path $tmpRoot 'wms-nounlock'
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $wmsTools 'wmsbuild.ps1') -Project $wmsGame -Workshop $ws -Python $wmsPy.Path -Pvsneslib $wmsPvs -Define WMS_NOUNLOCK -Out $no | Out-Null
+            Assert-True (Test-Path -LiteralPath (Join-Path $no 'test_game.wms')) 'the no-unlock build made no ROM'
+            $out = Join-Path $tmpRoot 'wms-nounlock.json'
+            $r = Invoke-Ws -WsArgs @('--brokendev', 'verify', 'test-game', '--manifests', $wmsProj, '--home', $env:BROKENDEV_HOME, '--rom', (Join-Path $no 'test_game.wms'), '--out', $out) -ExtraEnv @{ BROKENNES_DEV = '1' }
+            Assert-Equal $r.ExitCode 1
+            $bad = @((Read-BdJson $out).scenarios[0].checks | Where-Object { -not $_.ok } | ForEach-Object { $_.id })
+            foreach ($want in 'wms-unlocked', 'wms-width', 'wms-layers', 'wms-sprites', 'wms-voices', 'wms-fast-cpu') { Assert-True ($bad -contains $want) "the no-unlock game passed $want" }
+        } finally { Restore-Env $savedEnv }
     }
 }
 finally {
