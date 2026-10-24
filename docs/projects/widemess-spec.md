@@ -647,6 +647,7 @@ No flicker changed nothing in eight of the eleven games' checked play: most SNES
 | SNES games enhanced: widescreen, no flicker, better sound, fast CPU, profiles | 6 | done (`WideMess.Enhance.cs`, `WideMess.Profiles.cs`, `DSP_SFC.Enhance.cs`, `SnesSession.Enhance.cs`; `WideMess/profiles`, 11 games proven, 6.4) |
 | The WideMess chips on the other consoles (the widescreen chip, the sound chip), theirs on the WideMess | 7b | done (section 8; `WmsWideChip`, `WmsVoiceChip`, NES board `PPU_WMSS` / `APU_WMSS`: mix/WideMessEnhanced.cs; `Workshop --enhanced-test --only wmsmenu,wms,wmsown,wmsgames`) |
 | Debug port | BrokenDev debugging toolkit | reserved |
+| Conformance: the test cartridge (any implementation of this spec runs it; its expected results, its results table, its reference pictures) | - | done (`WideMess/testcart`, `WideMess/testroms/bin/widemess-testcart.wms`; `Workshop --wms-testcart`) |
 
 ## 8. The WideMess chips on the other consoles (milestone 7b)
 

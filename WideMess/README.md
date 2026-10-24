@@ -5,6 +5,7 @@ WideMess is BrokenNes's souped-up SNES fantasy console.
 - The hardware contract, spec v1: `docs/projects/widemess-spec.md`.
 
 - Making a game for it, the devkit (milestone 5): `docs/projects/widemess-devkit.md`; the devkit itself is `BrokenDev/widemess/`.
+- **The test cartridge**, a conformance cartridge any WideMess (BrokenNes, a C++ port, an FPGA core) can run: `testcart/README.md`. In the desktop app: Console > WideMess test cartridge.
 
 This folder holds what is built for WideMess outside the emulator code.
 
@@ -16,8 +17,9 @@ This folder holds what is built for WideMess outside the emulator code.
 | `testroms/cpu/` | Milestone 4's test ROMs (WLA-DX; `build.ps1` builds them into `testroms/bin/`): `speed.asm`, the fast CPU and fast DMA measured against the spec's cycle model, with its no-unlock control; `bigmap.asm` + `gen_bigmap.py`, a 4 MB game on the WideMess map (1 MB work RAM, the 20-bit WRAM port, 256 KB battery RAM, 64 ROM banks). |
 | `profiles/` | Milestone 6: the SNES games' enhancement profiles (spec section 6.2, format `widemess-profile-1`), one JSON file per game, found by the ROM image's SHA-1. The desktop app and Workshop ship them beside the program. |
 | `sample/` | Milestone 5's sample game, **Wide Blaster**, made with the devkit (`brokendev new widemess widemess-sample`): C and 65816 on PVSnesLib with the WideMess extensions, its PNG, WAV and MIDI sources and `wms.json`. BrokenDev project `widemess-sample`. |
+| `testcart/` | **The WideMess test cartridge**: one cartridge whose menu runs the eight tests live (eight layers, sprites, windows and colour math, the SNES modes 400 wide, the 32 voices, fast CPU and DMA, the memories, identity), judges itself and keeps its results in a table at `$7E:1000`; SELECT held at power-on runs every self-check. 65816 and SPC700 (WLA-DX) with `gen_testcart.py`; `build.ps1` builds it into `testroms/bin/`. BrokenDev project `widemess-testcart`. Its conformance: `testcart/README.md`. |
 | `testroms/devkit/` | Milestone 5's test ROMs: `build.ps1` builds the devkit's template and the sample game, each with its negative controls, into `testroms/bin/` with BrokenDev's devkit. |
-| `testroms/bin/` | The built test ROMs: `devkit_template.wms`, `devkit_template_nounlock.wms`, `devkit_sample.wms` (+ `.sym`), `devkit_sample_nounlock.wms`, `devkit_sample_snesspeed.wms`; `layers.wms`, `layers.sfc` (the same game as a SNES image) and `layers_nounlock.wms` (the negative control); `sprites`, `windows`, `widesnes` (`.wms`, `_nounlock.wms`) with the model's pictures (`.expect.png`, `_nounlock.expect.png`, `.<variant>.expect.png`); `sound.wms`, `sound.sfc`, `sound_nounlock.wms` and `sound.json` (the manifest); `speed.wms`, `speed.sfc`, `speed_nounlock.wms`; `bigmap.wms` (its controls, cut to 2 MB or on the HiROM map, are made by `--wms-test`). |
+| `testroms/bin/` | The built test ROMs: `devkit_template.wms`, `devkit_template_nounlock.wms`, `devkit_sample.wms` (+ `.sym`), `devkit_sample_nounlock.wms`, `devkit_sample_snesspeed.wms`; `layers.wms`, `layers.sfc` (the same game as a SNES image) and `layers_nounlock.wms` (the negative control); `sprites`, `windows`, `widesnes` (`.wms`, `_nounlock.wms`) with the model's pictures (`.expect.png`, `_nounlock.expect.png`, `.<variant>.expect.png`); `sound.wms`, `sound.sfc`, `sound_nounlock.wms` and `sound.json` (the manifest); `speed.wms`, `speed.sfc`, `speed_nounlock.wms`; `bigmap.wms` (its controls, cut to 2 MB or on the HiROM map, are made by `--wms-test`); `widemess-testcart.wms` (the test cartridge), `.sfc` (its SNES image), `.sym`, `.json` (its pages and results table, for harnesses) and its 20 reference pictures (`widemess-testcart.<page>[.<variant>].expect.png`). |
 
 **The emulator side** is in `Windows/NesEmulator/snes/`:
 - `WideMess.cs`: the unlock and registers (`WmsExtension`), the `.wms` file (`WmsFile`) and the picture chip (`PPU_WMS`).
@@ -50,6 +52,8 @@ BrokenNes.Workshop.exe --wms-enhance-test  [--roms DIR] [--snes-dir DIR] [--enha
 BrokenNes.Workshop.exe --wms-fast-probe    --rom game.sfc [--frames 300] [--from 0] [--every 10]
 BrokenNes.Workshop.exe --enhanced-test --only wmsmenu,wms,wmsown,wmsgames
 BrokenNes.Workshop.exe --wms-guest-sheet --out dir [--only "name,name"] [--scale 2]
+BrokenNes.Workshop.exe --wms-testcart [--roms WideMess	estromsin] [--reference-paths]
+BrokenNes.Workshop.exe --wms-testcart-shots --rom WideMess	estromsin\widemess-testcart.wms --out dir
 ```
 
 - `--wms-test` runs the milestones' checks, each with a negative control (milestone 3's sound checks are its sections S1-S6). With `--snes`, it also runs each SNES game frame for frame on the SNES
@@ -74,6 +78,8 @@ BrokenNes.Workshop.exe --wms-guest-sheet --out dir [--only "name,name"] [--scale
 - `--enhanced-test --only wmsmenu,wms,wmsown,wmsgames` (milestone 7b) checks the WideMess chips on the other consoles' menus (docs/projects/enhanced-cores.md section 6);
   `wmsgames` needs the user's library (X:\EMULATION, the local Sega roster) and `wmsown` the test ROMs here (run it from the repository).
 - `--wms-guest-sheet` (milestone 7b) draws contact sheets of other consoles' games on the widescreen chip beside their own picture.
+- `--wms-testcart` runs the test cartridge's checks alone (section TC of `--wms-test`): its run-all read from its results table, its claims measured from outside,
+  every picture page against its reference picture, its negative controls. `--wms-testcart-shots` draws every screen of it and a contact sheet.
 - Workshop is a GUI-subsystem program. In PowerShell, run it with `Start-Process -Wait -NoNewWindow -RedirectStandardOutput`.
 
 The desktop app's own check is `UAT/entrypoints/widemess-desktop-smoke.ps1 -Exe <BrokenNes.Windows.exe>`. It uses a scratch settings folder.

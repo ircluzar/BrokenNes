@@ -122,6 +122,9 @@ Neither is planned yet. Two things already built make them possible:
   - it can run every self-checking test in sequence, unattended;
   - it relies only on the spec.
 
+  It is built: `WideMess/testcart/README.md` holds its expected results (the conformance section), its results table and how a harness drives
+  it; its picture pages each have a reference picture drawn by milestone 2's model of the spec.
+
 ## Super VRUN: WideMess edition (later)
 
 **Only after Super VRUN is complete.**
