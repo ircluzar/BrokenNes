@@ -41,7 +41,9 @@ public static class Cx
     /// <summary>Cores that are not offered: MNES and WF turn the sound into MIDI-style playback rather than emulating a chip. SNESS, SMSS and MDS (2026-10-23, the enhanced cores phase 3: a NES game on the SNES /
     /// Master System / Genesis enhanced sound chips) are left out so that no saved chip index moves (they would sort into the SNES, Master System and Genesis groups, before chips appended since); offering them
     /// would mean appending them to <see cref="Appended"/>.</summary>
-    private static readonly HashSet<string> Hidden = new(StringComparer.OrdinalIgnoreCase) { "MNES", "WF", "SNESS", "SMSS", "MDS" };
+    // WMSS (WideMess milestone 7b: a NES game on the WideMess enhanced sound chip, a NES-register bridge like SNESS) is left out the same way: the plugin has the WideMess sound chip itself as WMS
+    // (chip 29, played polyphonically, Bn2Plugin.Wms.cs), and the explicit entry keeps chip 29 where it is whatever family the core table gives WMSS.
+    private static readonly HashSet<string> Hidden = new(StringComparer.OrdinalIgnoreCase) { "MNES", "WF", "SNESS", "SMSS", "MDS", "WMSS" };
 
     private static readonly Dictionary<string, string> Notes = new(StringComparer.OrdinalIgnoreCase)
     {
