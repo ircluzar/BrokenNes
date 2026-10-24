@@ -50,7 +50,8 @@ int main(void)
     wmsSpritesShow(1);
     wmsScreen(WMCTRL_WIDE | WMCTRL_LAYERS8);
 
-    sndInit();                          /* the sound driver and the samples, through the sound RAM port */
+    /* the sound driver and the samples, through the sound RAM port; if the sound unit does not answer, say so (a red backdrop) */
+    if (!sndInit()) wmsColor(0, RGB5(31, 0, 0));
     sndPlaySong(SND_SONG_HELLO);
 
     ship_x = 192;

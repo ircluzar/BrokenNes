@@ -354,7 +354,7 @@ int main(void)
     init_tables();
     reset_game();
 
-    sndInit();
+    if (!sndInit()) wmsColor(0, RGB5(31, 0, 0));   /* the sound unit did not answer: a red backdrop says so */
     sndPlaySong(SND_SONG_THEME);
 
     nmiSet(vblank);
