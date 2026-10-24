@@ -1011,6 +1011,26 @@ for col, n in (('PageHooks', 0), ('PageFrames', 1), ('PageInits', 2)):
     tables.append(col + ': .DW ' + ', '.join(PAGE_CODE.get(name, ('VbNone', 'Nothing', 'Nothing'))[n] for name, _, _ in page_list))
 tables.append('PageTexts: .DL ' + ', '.join(PAGE_TEXT.get(name, '0') for name, _, _ in page_list))
 
+# the manifest a harness reads (README.md, "Running it from a harness"): the pages, the pictures, the results table
+TEST_PAGES = {2: ['swarm', 'ref-sprites'], 3: ['spot', 'ref-windows'], 4: ['mode1', 'mode0', 'mode5', 'mode2', 'mode7', 'ref-widesnes']}
+LIVE = {'swarm', 'spot', 'mode1', 'mode0', 'mode5', 'mode2', 'mode7'}
+number = {name: i for i, (name, _, _) in enumerate(page_list)}
+variants_of = {name: [v for v, _ in variants] for name, _, variants in page_list}
+manifest = {
+    'format': 'widemess-testcart-1',
+    'cartridge': 'widemess-testcart.wms',
+    'resultsTable': {'address': '$7E:1000', 'magic': 'WMTC', 'version': 1, 'state': '$7E:1007', 'status': '$7E:1020', 'checks': '$7E:1028',
+                     'fails': '$7E:1030', 'detail': '$7E:1100 + (test - 1) x $40', 'done': 'state = 3'},
+    'expected': {'status': 'PPVVPPPP', 'checks': [3, 5, 0, 0, 38, 12, 45, 6]},
+    'featureMask': {'romOffset': '$FF87', 'note': 'WMFEAT is ANDed with this byte of ROM bank 0 ($00:FF87); patch it (and the .wms CRC) to see the not-available paths'},
+    'pages': [{'test': t, 'index': k, 'page': number[name], 'name': name, 'live': name in LIVE,
+               'picture': f'widemess-testcart.{name}.expect.png',
+               'variants': [{'select': j + 1, 'name': v, 'picture': f'widemess-testcart.{name}.{v}.expect.png'} for j, v in enumerate(variants_of[name])]}
+              for t, names in TEST_PAGES.items() for k, name in enumerate(names)],
+}
+import json
+with open(os.path.join(BIN, 'widemess-testcart.json'), 'w', newline='\n') as f: json.dump(manifest, f, indent=1)
+
 def write_png(path, rows): GP.write_png(path, rows)
 
 pack.write(os.path.join(WORK, 'tc_data.inc'))
