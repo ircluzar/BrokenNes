@@ -266,9 +266,13 @@ public sealed class Debugger
     /// <summary>Records every instruction into the per-CPU ring (always on while anything else keeps the hooks armed).</summary>
     public bool TraceRing { get => traceRing; set { traceRing = value; Rearm(); } }
 
-    /// <summary>Rebuilds the matching tables and arms exactly the hooks something needs.</summary>
-    public void Rearm()
+    /// <summary>Rebuilds the matching tables and arms exactly the hooks something needs. While parked a hook that is no longer needed stays
+    /// armed until the machine resumes (<paramref name="resuming"/>): the CPU has not moved, so its call stack is still right for a step.</summary>
+    public void Rearm() => Rearm(resuming: false);
+
+    private void Rearm(bool resuming)
     {
+        bool keepParked = !resuming && IsParked;
         var cpus = Machine.Cpus;
         var na = Armed.Empty(cpus.Count);
         lock (sync)
@@ -300,7 +304,7 @@ public sealed class Debugger
             var ca = na.Cpus[i];
             mem[i] = ca.Read.Length + ca.Write.Length > 0;
             exec[i] = mem[i] || ca.Exec.Length > 0 || cpus[i].State.Step != StepMode.None || trackCallStack || traceRing
-                      || (traceFile != null && traceFile.CpuIndex == i) || (i == 0 && global);
+                      || (traceFile != null && traceFile.CpuIndex == i) || (i == 0 && global) || (keepParked && hooked[i]);
             if (exec[i] && !hooked[i]) ResetState(cpus[i]);   // the call stack is tracked from the moment the hook is armed
             hooked[i] = exec[i];
             if (exec[i] && cpus[i].State.Ring == null && TraceRingSize > 0) cpus[i].State.Ring = new TraceRecord[TraceRingSize];
@@ -328,7 +332,7 @@ public sealed class Debugger
         trackCallStack = false; traceRing = false;
         StopTraceFile();
         foreach (var c in Machine.Cpus) { c.State.Step = StepMode.None; c.State.PendingBreak = null; }
-        Rearm();
+        Rearm(resuming: true);
         lock (gate) { parked = false; Monitor.PulseAll(gate); }
     }
 
@@ -347,7 +351,7 @@ public sealed class Debugger
     /// <summary>Lets a parked emulation run on.</summary>
     public void Continue()
     {
-        Rearm();
+        Rearm(resuming: true);
         lock (gate) { parked = false; Monitor.PulseAll(gate); }
     }
 
@@ -620,6 +624,7 @@ public sealed class Debugger
     /// <summary>Condition, hit count, hit log, tracepoint line. True when the breakpoint fires (breaks, or logs for a tracepoint).</summary>
     private bool Fire(DebugCpu cpu, CpuDebugState st, Breakpoint bp, uint address, byte value, AccessKind kind, AccessSource source, int channel, uint accessPc)
     {
+        st.Ctx.Source = (long)source;
         if (bp.Cond != null)
         {
             st.Ctx.Value = value; st.Ctx.Address = address;

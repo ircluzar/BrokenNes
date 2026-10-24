@@ -93,9 +93,16 @@ public sealed class SymbolTable
             var bytes = bl.Where(x => Regex.IsMatch(x.Name, "@\\d+$")).ToList();
             if (bytes.Count == bl.Count && bytes.Count > 0)
             {
-                var first = bytes.OrderBy(x => int.Parse(x.Name[(x.Name.LastIndexOf('@') + 1)..], CultureInfo.InvariantCulture)).First();
-                sym = new DebugSymbol { Name = name, Domain = first.Domain, Address = first.Address, Bank = first.Bank, Size = bytes.Count, SizeKnown = true, File = first.File };
-                return true;
+                var ordered = bytes.Select(x => (k: int.Parse(x.Name[(x.Name.LastIndexOf('@') + 1)..], CultureInfo.InvariantCulture), s: x)).OrderBy(x => x.k).ToList();
+                var first = ordered[0].s;
+                bool contiguous = ordered.All(x => x.s.Domain == first.Domain && x.s.Bank == first.Bank && x.s.Address == first.Address + (uint)(x.k - ordered[0].k));
+                if (contiguous && ordered[0].k == 0)
+                {
+                    sym = new DebugSymbol { Name = name, Domain = first.Domain, Address = first.Address, Bank = first.Bank, Size = bytes.Count, SizeKnown = true, File = first.File };
+                    return true;
+                }
+                error = $"'{name}' is {bytes.Count} bytes that are not side by side ({string.Join(", ", ordered.Take(6).Select(x => $"{x.s.Name} ${x.s.Address:X}"))}): name one";
+                return false;
             }
             if (bl.Count == 1) { sym = bl[0]; return true; }
             error = $"'{name}' is ambiguous: {string.Join(", ", bl.Take(8).Select(x => x.Name))}{(bl.Count > 8 ? ", ..." : "")}";

@@ -11,6 +11,8 @@ public sealed class ExprContext
     public long Value;
     /// <summary>The CPU address accessed (the PC for an execute breakpoint).</summary>
     public long Address;
+    /// <summary>Who accessed it: 0 the CPU, 1 DMA, 2 HDMA, 3 OAM DMA, 4 VRAM DMA (<see cref="AccessSource"/>).</summary>
+    public long Source;
 }
 
 /// <summary>What the compiler resolves names against (one CPU of one machine).</summary>
@@ -180,6 +182,7 @@ public sealed class DebugExpr
             string lower = name.ToLowerInvariant();
             if (lower == "value") return Node.Of(c => c.Value);
             if (lower == "address") return Node.Of(c => c.Address);
+            if (lower == "source") return Node.Of(c => c.Source);
             if (env.TryRegister(name, out var reg)) return Node.Of(_ => reg());
             if (env.TryMachineValue(lower, out var mv)) return Node.Of(_ => mv());
             if (env.TrySymbol(name, out long symAddr, out int symSpace, out string? err)) return Node.Of(_ => symAddr, symSpace);
