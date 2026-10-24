@@ -89,7 +89,7 @@ ORDER = {
     7: [('obj', 3), ('obj', 2), ('obj', 1), ('bg', 0, 0), ('obj', 0)],
 }
 BPP = {0: [2, 2, 2, 2], 1: [4, 4, 2, 0], 7: [8, 0, 0, 0]}
-DMA_PATTERN = {0: [0], 1: [0, 1], 2: [0, 0], 3: [0, 0, 1, 1]}
+DMA_PATTERN = {0: [0], 1: [0, 1], 2: [0, 0], 3: [0, 0, 1, 1], 4: [0, 1, 2, 3]}
 
 class Model:
     def __init__(self):
@@ -685,10 +685,14 @@ def scene_windows(rom):
         l, r = 200 - hw, 199 + hw
         diamond.append((8, [l & 0xFF, l >> 8, r & 0xFF, r >> 8]))
     rom.hdma(1, 0x21B0, 3, diamond)
-    # each layer's window: BG1 W1, BG2 W2, BG3 W1 inverted, BG4 W1 or W2, BG5 and, BG6 xor, BG7 xnor, BG8 W2 (sub screen only)
-    rom.b(0x21B8, 0x82); rom.b(0x21B9, 0xA3); rom.b(0x21BA, 0xAA); rom.b(0x21BB, 0x8A)
-    rom.b(0x21BC, 0x00); rom.b(0x21BD, 0x01 | 0x08 | 0x30)
+    # each layer's window (A = outside both windows, B = window 1 only, C = window 2 only, D = both):
+    #   BG1 W1 or W2 (shows in A), BG2 W1 (C), BG3 W1 xnor W2 (B), BG4 W1 xor W2 (D);
+    #   BG5 W1 or W2 (A), BG6 W1 and not W2 (C, D), BG7 W2 (B); BG8 W2, on the sub screen only
+    rom.b(0x21B8, 0x2A); rom.b(0x21B9, 0xAA); rom.b(0x21BA, 0xEA); rom.b(0x21BB, 0x88)
+    rom.b(0x21BC, 3 << 4 | 2 << 6); rom.b(0x21BD, 1 << 2)
     rom.b(0x21B6, 0x7F)                                              # WMTMW: BG1-BG7 masked on the main screen
+    # the main screen per band (HDMA on WMTM): BG1-BG4; BG5-BG8; BG1 and BG8; BG1-BG4
+    rom.hdma(3, 0x21C1, 0, [(56, [0x0F]), (56, [0xF0]), (56, [0x81]), (56, [0x0F])])
     rom.b(0x21B5, 0x80); rom.b(0x21B7, 0x80)                         # WMTS: BG8 on the sub screen, masked there by window 2
     rom.b(0x21BE, 0x55)                                              # WMCMATH: BG1, BG3, BG5, BG7
     rom.b(0x2125, 0x20)                                              # WOBJSEL: the colour window is window 1
@@ -707,7 +711,7 @@ def scene_windows(rom):
     rom.b(0x21A1, 2); rom.b(0x21A0, 1)
     rom.b(0x212C, 0x10)
     rom.b(0x21C0, 0x03)
-    rom.cpu(0x420C, 0x06)                                            # HDMA channels 1 and 2
+    rom.cpu(0x420C, 0x0E)                                            # HDMA channels 1, 2 and 3
     rom.b(0x2100, 0x0F)
     rom.end()
 

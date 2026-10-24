@@ -184,6 +184,8 @@ internal static partial class WideMessCli
             Check(a.SequenceEqual(b) && s.FrameWidth == 400, "save at frame 100, run 30, load, run 30: the same 400-wide picture", $"{state.Length / 1024} KB");
         }
 
+        if (!PictureTests(dir)) return 2;   // milestone 2: the picture test ROMs (WideMessCli.Picture.cs)
+
         string snes = Opt(args, "snes", "");
         int frames = int.Parse(Opt(args, "frames", "900"));
         if (snes != "")
