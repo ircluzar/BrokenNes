@@ -826,7 +826,8 @@ public sealed partial class PPU_WMS
 
     // ---------------------------------------------------------------- state
 
-    private void SavePicture(BinaryWriter w)
+    /// <summary>Milestone 2's part of a WideMess state (the session writes it after milestone 4's work RAM): the sprite table, the registers of $21A0-$21BF and the rows drawn 400 wide.</summary>
+    public void SavePicture(BinaryWriter w)
     {
         w.Write(objCtrl); w.Write(objBase); w.Write(objStat); w.Write(oamAddr);
         w.Write(objSlot);
@@ -843,7 +844,7 @@ public sealed partial class PPU_WMS
             if (rowWide[row]) w.Write(MemoryMarshal.AsBytes(WideBuffer.AsSpan(row * WideWidth, WideWidth)));
     }
 
-    private void LoadPicture(BinaryReader r)
+    public void LoadPicture(BinaryReader r)
     {
         objCtrl = (byte)(r.ReadByte() & 1); objBase = (byte)(r.ReadByte() & 7); objStat = r.ReadByte(); oamAddr = r.ReadInt32() & (OamBytes - 1);
         r.Read(objSlot);

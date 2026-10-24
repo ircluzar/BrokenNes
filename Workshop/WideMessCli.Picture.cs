@@ -181,7 +181,7 @@ internal static partial class WideMessCli
     {
         byte[] rom = RomDetect.Unwrap(File.ReadAllBytes(path), path, out _);
         bool fast = PPU_SFC.FastPaths;
-        PPU_SFC.FastPaths = !reference;
+        PPU_SFC.FastPaths = fast && !reference;   // --reference-paths (all fast paths off) keeps both passes on the reference paths
         try
         {
             using var s = Session(ConsoleKind.WideMess, rom);
@@ -200,8 +200,8 @@ internal static partial class WideMessCli
                         for (int x = 0; x < PPU_WMS.SnesOrigin; x++)
                             if (s.Frame[y * 400 + x] != 0xFF000000u || s.Frame[y * 400 + 399 - x] != 0xFF000000u) sideDrawn++;
             }
-            string paths = reference ? "reference paths" : "fast paths";
-            if (!reference)
+            string paths = PPU_SFC.FastPaths ? "fast paths" : "reference paths";
+            if (PPU_SFC.FastPaths || !reference)
             {
                 var u = ppu.CompareUse;
                 var modes = string.Join(" ", Enumerable.Range(0, 8).Where(m => u[m] > 0).Select(m => $"mode {m} {u[m]:N0}"));

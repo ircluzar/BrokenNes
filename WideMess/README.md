@@ -10,12 +10,15 @@ This folder holds what is built for WideMess outside the emulator code.
 |---|---|
 | `testroms/layers/` | Test ROM 1, eight layers of 256 colours at 400 x 224 (65816 assembly, WLA-DX), with its negative control. `build.ps1` builds both into `testroms/bin/`. |
 | `testroms/picture/` | Milestone 2's test ROMs: `sprites`, `windows`, `widesnes`. One 65816 register player (`player.asm`) plays the script of register writes, DMA and HDMA that `gen_picture.py` generates for each scene; the same writes drive the generator's own model of spec section 3, which draws the picture each ROM must produce (`<rom>.expect.png`). `build.ps1` builds the ROMs, their negative controls and the pictures into `testroms/bin/`. |
-| `testroms/bin/` | The built test ROMs: `layers.wms`, `layers.sfc` (the same game as a SNES image) and `layers_nounlock.wms` (the negative control); `sprites`, `windows`, `widesnes` (`.wms`, `_nounlock.wms`) with the model's pictures (`.expect.png`, `_nounlock.expect.png`, `.<variant>.expect.png`). |
+| `testroms/cpu/` | Milestone 4's test ROMs (WLA-DX; `build.ps1` builds them into `testroms/bin/`): `speed.asm`, the fast CPU and fast DMA measured against the spec's cycle model, with its no-unlock control; `bigmap.asm` + `gen_bigmap.py`, a 4 MB game on the WideMess map (1 MB work RAM, the 20-bit WRAM port, 256 KB battery RAM, 64 ROM banks). |
+| `testroms/bin/` | The built test ROMs: `layers.wms`, `layers.sfc` (the same game as a SNES image) and `layers_nounlock.wms` (the negative control); `sprites`, `windows`, `widesnes` (`.wms`, `_nounlock.wms`) with the model's pictures (`.expect.png`, `_nounlock.expect.png`, `.<variant>.expect.png`); `speed.wms`, `speed.sfc`, `speed_nounlock.wms`; `bigmap.wms` (its controls, cut to 2 MB or on the HiROM map, are made by `--wms-test`). |
 
 **The emulator side** is in `Windows/NesEmulator/snes/`:
 - `WideMess.cs`: the unlock and registers (`WmsExtension`), the `.wms` file (`WmsFile`) and the picture chip (`PPU_WMS`).
 - `WideMess.Picture.cs` (milestone 2): `PPU_WMS`'s wide compositor, one for the WideMess mode and the SNES modes drawn 400 wide (main and sub
   screens, windows, colour math), both sprite tables and the registers `$21A0-$21BF`.
+- `WideMess.Memory.cs` (milestone 4): the WideMess map's limits and the cartridge a `.wms` file becomes (`SnesCartridge.LoadWideMessMap`).
+- `BOARD_SFC.WideMess.cs` (milestone 4): fast mode, the 1 MB work RAM and its 20-bit WRAM port, fast DMA.
 - The hooks in `BOARD_SFC.cs` and `PPU_SFC.WideMess.cs` (read-only views of the SNES chip's registers; the SNES chip's own drawing is untouched).
 - The console is registered in `Windows/NesEmulator/systems/ConsoleSystems.cs` (key `wms`).
 - It runs on `SnesSession` with `wideMess: true`.
@@ -23,15 +26,17 @@ This folder holds what is built for WideMess outside the emulator code.
 ## Tools (BrokenNes Workshop)
 
 ```
-BrokenNes.Workshop.exe --wms-test  [--roms WideMess\testroms\bin] [--snes "a.sfc;b.smc"] [--frames 900]
-BrokenNes.Workshop.exe --wms-pack  --in game.sfc --out game.wms [--title T] [--features 1] [--map 0|1]
+BrokenNes.Workshop.exe --wms-test  [--roms WideMess	estromsin] [--snes "a.sfc;b.smc"] [--frames 900] [--reference-paths]
+BrokenNes.Workshop.exe --wms-pack  --in game.sfc --out game.wms [--title T] [--features 1] [--map 0|1|2] [--sram BYTES] [--battery]
 BrokenNes.Workshop.exe --wms-shot  --rom game.wms --out shot.png [--frames 60] [--scale 3] [--console wms|snes] [--wide]
 BrokenNes.Workshop.exe --wms-sheet --rom game.wms --out sheet.png [--frames 120]
 ```
 
-- `--wms-test` runs milestone 1's checks and milestone 2's (sections P1-P5), each with a negative control. With `--snes`, it also runs each SNES
-  game frame for frame on the SNES console and on the WideMess console and requires identical pictures and sound; then draws each game 400 wide
-  (WIDE set on the chip, the game itself still locked) and requires every line's columns 72-327 to be the SNES chip's own line.
+- `--wms-test` runs the milestones' checks, each with a negative control. With `--snes`, it also runs each SNES game frame for frame on the SNES
+  console and on the WideMess console and requires identical pictures and sound; then draws each game 400 wide (WIDE set on the chip, the game
+  itself still locked) and requires every line's columns 72-327 to be the SNES chip's own line. `--reference-paths` turns the SNES chips' fast
+  paths off.
+- `--wms-pack --map 2` packs a WideMess-map ROM; `--sram` is its battery RAM in bytes and `--battery` makes it the game's save.
 - `--wms-shot --wide` draws a SNES game's modes 400 wide, the way the wide SNES modes show it.
 - `--wms-sheet` draws the 400-wide picture and each of the 8 layers alone.
 - Workshop is a GUI-subsystem program. In PowerShell, run it with `Start-Process -Wait -NoNewWindow -RedirectStandardOutput`.
@@ -93,3 +98,23 @@ with it pixel for pixel.
   noise on a shared CPU, the code is the same).
 - **UAT `run-suite.ps1`: 125 pass, 0 fail, 16 skip, 3 info.** Lite and the plugin's Core build (WideMess stays hidden there).
 - **The desktop app smoke test passes 9 of 9**: it now also checks that the app shows `sprites.wms` and `widesnes.wms` exactly as the model draws them.
+
+## Milestone 4 result (2026-10-24): CPU and memory
+
+- **`--wms-test` checks M4.1-M4.6 pass** (64 checks in all with milestone 1's), the same on the reference paths (`--reference-paths`).
+  - Fast mode: the speed ROM's loops run the iterations the spec's cycle model predicts, to one iteration (loop A 3,208 a frame at SNES speed,
+    12,386 fast: 3.86x; loop B, with one I/O read, 2,407 and 7,539: 3.13x). From FastROM, loop A runs 3,610 at SNES speed (the 96-clock
+    prediction) and the same 12,385 in fast mode: `MEMSEL` does nothing there.
+  - Fast DMA: 5,632 bytes a vblank in 512-byte transfers, 10,752 with fast DMA; fast CPU alone leaves DMA as it was.
+  - The WideMess map: a 4 MB game with 256 KB of battery RAM finds all 64 ROM banks and their mirrors, the 1 MB work RAM over `$70-$7F`
+    (A bus, 20-bit WRAM port, DMA both ways), and its battery save comes back in a new session.
+  - Save states carry the new work RAM, the 20-bit port and fast mode. The new paths allocate nothing.
+  - The negative controls hold: locked, the speed ROM measures exactly what a SNES does; a LoROM cartridge has no work RAM at `$70-$7D` and a
+    17-bit port; the 4 MB game cut to 2 MB loses banks 32-63; on the HiROM map it finds ROM, not RAM; the loader refuses map-2 files the
+    map cannot hold, and maps 0 / 1 that disagree with their image.
+- **SNES games stay SNES:** the 9 games of the milestone (Super Mario World, A Link to the Past, Star Fox, Super Mario RPG, Pilotwings,
+  F-Zero, Super Metroid, Donkey Kong Country, Chrono Trigger) are frame-for-frame identical on both consoles; the speed-pass goldens are
+  unchanged with and without the reference paths; SNES speed is unchanged (interleaved A/B).
+- **UAT 125 pass, 0 fail** (16 skip, 3 info); the desktop smoke test passes 7 of 7; Lite and Core build.
+- Not covered by a test ROM: HDMA tables in the new work RAM (HDMA reads it through the same path as DMA, which is tested), and the old joypad
+  ports' 12 clocks in fast mode (the I/O rule is tested through `$4214`).

@@ -207,7 +207,8 @@ internal static class SnesStateTest
     private static readonly SnesFieldWalker.Exclusion[] Exclusions =
     {
         new(@"\.(romBytes|Rom|rom|program|dataRom)$", "the game's ROM / the chip's firmware image: the game's identity (the header names the game and the firmware hash), not state"),
-        new(@"\.Cart\.(HiRom|MapMode|HasBattery|ChipsetByte|Chip|Title)$", "the cartridge's header facts, decoded from the ROM: the game's identity"),
+        new(@"\.Cart\.(HiRom|MapMode|HasBattery|ChipsetByte|Chip|Title|WideMessMap)$", "the cartridge's header facts, decoded from the ROM: the game's identity"),
+        new(@"\.board\.(fastCpu|idleClocks|dmaByteClocks|wramPortMask)$", "the WideMess modes (BOARD_SFC.WideMess.cs): derived from the WideMess registers, which are state, and re-applied when they load; a SNES keeps their SNES values"),
         new(@"\.(map|dspPerMaster|ramMask|bwMask|version|ownsRam|ownsBwram)$", "chip wiring fixed at construction from the cartridge (mapping, clock ratio, address masks): identity, not state"),
         new(@"^SnesSession\.(frame|width|height|mid|down|snesPpu|apuId|cpuId|ppuId|chipLabel)$", "the apps' copy of the picture and the picture bridge: views of the S-PPU, rebuilt after a load"),
         new(@"\.Ppu\.(bgColor|bgPrio|objColor|objPrio|objMath|rankMain|rankSub|colorMain|colorSub|layerMain|layerSub)(\[\d+\])?$", "S-PPU per-line scratch: rewritten whole for every line before it is read"),

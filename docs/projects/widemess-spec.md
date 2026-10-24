@@ -25,8 +25,8 @@ emulates decodes this range: the SA-1 is at `$2200-$23FF`, the Super FX at `$300
 | `$4222` | WMVER | R | Spec major version (1). |
 | `$4223` | WMREV | R | Spec minor version (0). |
 | `$4224` | WMFEAT | R | Features this console has (bit = 1): 0 picture (wide output, 8-layer mode); 1 sprites+ (the rest of the picture, section 3: the 256-sprite table, windows and colour math at 400, the SNES modes wide); 2 sound+ ; 3 fast CPU; 4 1 MB work RAM; 5 fast DMA; 7 debug port. |
-| `$4225` | WMSPEED | R/W | Bit 0: fast CPU (milestone 4). |
-| `$4226` | WMDMA | R/W | Bit 0: fast general DMA (milestone 4). |
+| `$4225` | WMSPEED | R/W | Bit 0: fast CPU (section 2). 0 at reset. |
+| `$4226` | WMDMA | R/W | Bit 0: fast general DMA (section 2). 0 at reset. |
 | `$4227-$422F` | | | Reserved: read 0, write ignored. |
 | `$4230-$423F` | | | Reserved for the BrokenDev debug port (`docs/projects/brokendev-debugging-plan.md`). |
 
@@ -34,21 +34,60 @@ Detection, in a game: write `$57`, `$4D` to `$4220`, then read `$4221`. `$57` me
 
 ## 2. CPU and memory (milestone 4)
 
-- **The 65816 at SNES speed** at power-on. **Fast mode** (`WMSPEED` bit 0) makes every CPU access and internal cycle take 2 master
-  clocks (10.74 MHz, the SA-1's speed), except the I/O registers (`$2100-$21FF`, `$4000-$43FF`), which keep their SNES timing.
-  DMA, HDMA, the picture and the sound keep theirs.
-- **1 MB of work RAM** on cartridges that use the WideMess map (game file, section 5):
-  - banks `$70-$7F` are all work RAM, 1 MB in one block, with the SNES's own 128 KB at `$7E-$7F`;
-  - `$00-$3F:0000-1FFF` still mirrors `$7E:0000-1FFF`;
-  - the WRAM port `$2180-$2183` takes a 20-bit address (`$2183` bits 0-3) once unlocked.
+**What needs the unlock.** The registers do: `WMSPEED`, `WMDMA` and the 20-bit WRAM port are live only once unlocked, and a reset locks them
+again (SNES speed, normal DMA, a 17-bit port). The WideMess map does not: it is the cartridge's wiring, so on a map-2 cartridge banks `$70-$7D`
+are work RAM from power-on, as a HiROM cartridge's ROM is at `$C0` from power-on. A SNES game is never on map 2: that map exists only in
+`.wms` files.
 
-  Cartridges with a LoROM or HiROM map keep the SNES's 128 KB and its map.
-- **The WideMess map:**
-  - ROM up to 4 MB at `$C0-$FF`, with HiROM-style mirrors at `$00-$3F` / `$80-$BF:8000-FFFF`;
-  - battery RAM up to 256 KB at `$20-$3F` / `$A0-$BF:6000-7FFF` (8 KB per bank);
-  - work RAM at `$70-$7F`.
-- **Fast DMA** (`WMDMA` bit 0): general DMA moves a byte every 4 master clocks instead of 8. About 12 KB fits in a vblank instead of 6,
-  enough to scroll a 400-wide screen. HDMA keeps its timing.
+**The 65816 at SNES speed** at power-on. **Fast mode** (`WMSPEED` bit 0):
+- Every CPU access and internal cycle takes 2 master clocks (10.74 MHz, the SA-1's speed). That covers work RAM, ROM, battery RAM, the
+  expansion areas (`$2000-$20FF`, `$2200-$3FFF`, `$4400-$5FFF` of banks `$00-$3F` / `$80-$BF`) and open bus.
+- **Except the I/O registers**, which keep their SNES timing: the B bus `$2100-$21FF` 6 master clocks, the old joypad ports `$4000-$41FF`
+  12, the CPU registers `$4200-$43FF` 6 (WideMess's own `$4220-$423F` included).
+- `MEMSEL` (`$420D`) does nothing in fast mode: ROM takes 2 clocks either way. Its value is kept and counts again when fast mode is turned off.
+- **Unchanged:** the DRAM refresh (40 master clocks a line, which the CPU waits for), DMA and HDMA (they take master clocks, not CPU cycles),
+  the picture, the sound, the H/V counters and IRQs, the auto joypad read.
+- **Open bus** is the SNES's: the last value on the data bus. A 2-clock cycle changes when the bus is driven, not what it holds; nothing decays.
+- The switch takes effect at the access after the write to `WMSPEED`.
+- **What it buys:** code that touches only ROM, work RAM and internal cycles runs 3 to 4 times faster (6 or 8 clocks a cycle become 2); code
+  that reads I/O registers gains less. Test ROM `WideMess/testroms/cpu/speed.asm` counts two loops a frame:
+
+  | Loop | Its cycles | SNES (SlowROM) | Fast | Speed-up |
+  |---|---|---|---|---|
+  | A: `inc dp` + `lda dp` + `beq` (16-bit) | 6 ROM, 6 work RAM, 2 internal | 108 clocks | 28 | 3.86x |
+  | B: loop A + `lda $4214` (16-bit) | + 3 ROM, 2 I/O | 144 clocks | 46 | 3.13x |
+
+**1 MB of work RAM** (on the WideMess map):
+- **Work-RAM addresses** run from `$00000` to `$FFFFF`. `$00000-$1FFFF` are the SNES's 128 KB (`$7E:0000-$7F:FFFF`), `$20000-$FFFFF` are
+  banks `$70-$7D`: bank `$70 + n` is work-RAM bank `n + 2`, i.e. work-RAM bank = (bank + 2) AND `$0F`. Example: `$7B:4000` is work-RAM
+  address `$D4000`. The SNES's 128 KB come first so that SNES code keeps meaning what it meant (`$2183 = $00` is still `$7E`).
+- **On the A bus,** banks `$70-$7F` are all work RAM: 1 MB in one block, in address order from `$70:0000` to `$7F:FFFF`. 8 master clocks an
+  access, as `$7E-$7F` (2 in fast mode).
+- `$00-$3F` / `$80-$BF:0000-1FFF` still mirror `$7E:0000-1FFF`.
+- **The WRAM port** `$2180-$2183`: once unlocked, `$2181-$2183` hold a 20-bit work-RAM address (`$2183` bits 0-3). The port steps through all
+  1 MB and wraps from `$FFFFF` to `$00000`. Before the unlock it is the SNES's 17 bits (`$2183` bit 0).
+- **DMA** reaches the new RAM on the A bus like any memory.
+- Cartridges with a LoROM or HiROM map keep the SNES's 128 KB and its map: `$70-$7D` are the cartridge's (LoROM battery RAM, HiROM ROM),
+  and the WRAM port keeps 17 bits, unlocked or not.
+
+**The WideMess map** (game-file map 2):
+- **ROM:** 64 KB to 4 MB, in whole 64 KB banks, at `$C0-$FF`. HiROM-style mirrors: `$40-$6F` (= `$C0-$EF`), and `$00-$3F` / `$80-$BF:8000-FFFF`
+  (the upper halves of ROM banks 0-63). A smaller ROM repeats. The 65816's vectors are ROM bytes `$FFE0-$FFFF` (`$00:FFE0`). An internal
+  SNES header at `$FFC0` is optional and not read. Access time as on the SNES: `MEMSEL` decides `$80-$BF:8000-FFFF` and `$C0-$FF` (6 or 8
+  clocks), the rest is 8 (2 in fast mode).
+- **Battery RAM:** the size in the `.wms` header, 0 or a power of two from 2 KB to 256 KB. It sits at `$20-$3F` / `$A0-$BF:6000-7FFF`,
+  8 KB per bank: bank `$20` holds bytes `$0000-$1FFF`, bank `$3F` the last 8 KB of 256 KB. A smaller size repeats. The header's battery flag
+  makes it the game's save, and needs battery RAM. 8 clocks an access (2 in fast mode).
+- **Work RAM** at `$70-$7F` (above).
+- **No cartridge chips** on this map.
+- Everything else (`$00-$1F` / `$80-$9F:6000-7FFF`, the system area's unused addresses) is open bus.
+
+**Fast DMA** (`WMDMA` bit 0):
+- General DMA moves a byte every 4 master clocks instead of 8. The 8 clocks that start a transfer and each channel stay 8.
+- About 12 KB fits in a vblank instead of 6, enough to scroll a 400-wide screen. A vblank has 37 lines of 1,324 clocks free of refresh
+  (48,988): 6,123 bytes at 8 clocks, 12,247 at 4.
+- HDMA keeps its timing.
+- It is independent of fast mode: fast mode alone leaves DMA at 8 clocks a byte.
 
 ## 3. Picture (milestone 1 for the 8-layer mode; milestone 2 for the rest)
 
@@ -278,7 +317,7 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
 | `$0A` | 1 | Map: 0 LoROM, 1 HiROM, 2 WideMess map (section 2) |
 | `$0B` | 1 | Flags: bit 0 battery |
 | `$0C` | 4 | ROM size in bytes (the payload) |
-| `$10` | 4 | Battery RAM size in bytes |
+| `$10` | 4 | Battery RAM size in bytes (map 2; maps 0 and 1 take theirs from the SNES header) |
 | `$14` | 4 | Required features (`WMFEAT` bits the game needs) |
 | `$18` | 1 | Region: 0 NTSC |
 | `$19` | 3 | Reserved (0) |
@@ -288,9 +327,12 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
 
 - For maps 0 and 1 the payload is an ordinary SNES image (with its internal header), so a PVSnesLib or WLA-DX build becomes a `.wms`
   by prepending the header: BrokenDev's `wms-pack` does it.
+- For map 2 the payload is the ROM as section 2 maps it (64 KB to 4 MB, whole 64 KB banks; the vectors at `$FFE0-$FFFF` of its first bank),
+  and the header's battery RAM size and battery flag are the cartridge's.
 - BrokenNes refuses a file:
   - whose magic, size or CRC is wrong;
-  - whose map disagrees with the image;
+  - whose map disagrees with the image (map 0 or 1 when the image is the other kind);
+  - on map 2, whose ROM or battery RAM the map cannot hold, or with a battery and no battery RAM;
   - that needs a newer spec or a feature this console does not have.
 
   It says which, rather than running it.
@@ -311,5 +353,5 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
 | 512 KB video RAM, 1,024 colours, the 8-layer mode, wide output | 1 | done (`PPU_WMS`; test ROM `WideMess/testroms/layers`) |
 | SNES modes and Mode 7 wide, sprites, windows, colour math at 400 | 2 | done (`PPU_WMS`'s wide compositor, `WideMess.Picture.cs`; test ROMs `WideMess/testroms/picture`; `WMFEAT` bit 1) |
 | Sound | 3 | not yet |
-| Fast CPU, 1 MB work RAM, the WideMess map, fast DMA | 4 | not yet |
+| Fast CPU, 1 MB work RAM, the WideMess map, fast DMA | 4 | done (`BOARD_SFC.WideMess.cs`, `WideMess.Memory.cs`; test ROMs `WideMess/testroms/cpu`) |
 | Debug port | BrokenDev debugging toolkit | reserved |
