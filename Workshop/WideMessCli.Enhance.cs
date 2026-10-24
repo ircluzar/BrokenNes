@@ -121,7 +121,7 @@ internal static partial class WideMessCli
         if (scratch != "") s.SetScratchProfile(WmsProfile.Parse(File.ReadAllText(scratch), Path.GetFileName(scratch)));
         if (args.Contains("--all-extend", StringComparer.OrdinalIgnoreCase)) s.SetScratchProfile(AllExtendProfile(s.ImageSha1));
         profileNote = s.EnhanceProfile.Describe();
-        string? why = s.SetEnhancements(widescreen: true, noFlicker: args.Contains("--no-flicker", StringComparer.OrdinalIgnoreCase));
+        string? why = s.SetEnhancements(widescreen: true, noFlicker: args.Contains("--no-flicker", StringComparer.OrdinalIgnoreCase), fastCpu: args.Contains("--fast-cpu", StringComparer.OrdinalIgnoreCase));
         if (why != null) { Console.Error.WriteLine($"{Path.GetFileName(rom)}: {why} (SHA-1 {s.ImageSha1})"); s.Dispose(); return null; }
         s.WideMessPpu!.CompareEnhanced = true;
         s.WideMessPpu.DebugLineRegisters = new PPU_SFC.RegisterSnapshot[PPU_SFC.MaxHeight + 2];
@@ -225,6 +225,31 @@ internal static partial class WideMessCli
         }
         sheet.Save(output, ImageFormat.Png);
         Console.WriteLine($"{output}: {shots} pictures, {name}, {note}, SHA-1 {s.ImageSha1}");
+        return 0;
+    }
+
+    /// <summary><c>--wms-fast-probe --rom game.sfc [--frames 300] [--from 0] [--every 10]</c>: fast CPU on from frame <c>--from</c>; every N frames the 65816's PC and INIDISP beside the SNES
+    /// console's, and the picture's colours.</summary>
+    public static int FastProbe(string[] args)
+    {
+        RomTestCli.EnsureConsole();
+        Consoles.WideMessEnabled = true;
+        string rom = Opt(args, "rom", "");
+        int frames = int.Parse(Opt(args, "frames", "300")), from = int.Parse(Opt(args, "from", "0")), every = int.Parse(Opt(args, "every", "10"));
+        using var s = Session(ConsoleKind.WideMess, RomDetect.Unwrap(File.ReadAllBytes(rom), rom, out _));
+        using var snes = Session(ConsoleKind.Snes, RomDetect.Unwrap(File.ReadAllBytes(rom), rom, out _));
+        for (int f = 1; f <= frames; f++)
+        {
+            if (f == from + 1) Console.WriteLine($"  fast CPU: {s.SetEnhancements(fastCpu: true) ?? "on"}");
+            s.RunFrame(); snes.RunFrame();
+            while (s.ReadSamples(audio) > 0) { }
+            while (snes.ReadSamples(audio) > 0) { }
+            if (f % every != 0) continue;
+            var c = s.Board.Cpu; var r = s.Ppu.GetRegisterSnapshot();
+            var c2 = snes.Board.Cpu; var r2 = snes.Ppu.GetRegisterSnapshot();
+            int colours = s.Frame.AsSpan(0, s.FrameWidth * s.FrameHeight).ToArray().Distinct().Count();
+            Console.WriteLine($"  {f}: fast PC {c.PC:X4} INIDISP {r.Inidisp:X2} colours {colours} | SNES PC {c2.PC:X4} INIDISP {r2.Inidisp:X2} | board fast {s.Board.FastCpu}");
+        }
         return 0;
     }
 

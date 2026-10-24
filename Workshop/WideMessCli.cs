@@ -207,6 +207,7 @@ internal static partial class WideMessCli
             }
         }
         WideSnesGames(snes, frames);   // milestone 2: the same games drawn 400 wide (WideMessCli.Picture.cs)
+        EnhanceTests(args, dir);       // milestone 6: SNES games enhanced (WideMessCli.EnhanceTests.cs)
         Console.WriteLine($"{passes} passed, {fails} failed");
         return fails == 0 ? 0 : 1;
     }

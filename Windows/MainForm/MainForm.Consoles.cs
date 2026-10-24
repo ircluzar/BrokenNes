@@ -119,6 +119,7 @@ namespace BrokenNes.Windows
                 };
             };
             server.QuickStateReason = () => quickStateReason;
+            WireWideMessApi(server);   // WideMess milestone 6 (MainForm.WideMess.cs)
             server.GetSegaSettings = () => new
             {
                 region = NesEmulator.Sega.SegaOptions.Key(NesEmulator.Sega.SegaOptions.RegionFromKey(config.SegaRegion)),
@@ -223,6 +224,7 @@ namespace BrokenNes.Windows
             consoleMenu.DropDownItems.Add(new ToolStripSeparator());
             consoleMenu.DropDownItems.Add(BuildGbLookMenu());
             consoleMenu.DropDownItems.Add(BuildSegaMenu());
+            consoleMenu.DropDownItems.Add(BuildWideMessMenu());   // WideMess milestone 6: the SNES games' enhancements (MainForm.WideMess.cs)
             consoleMenu.DropDownOpening += (s, e) => RefreshConsoleMenu();
             RefreshConsoleMenu();
             return consoleMenu;
@@ -432,7 +434,7 @@ namespace BrokenNes.Windows
                 : nes != null && !string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase) ? Path.GetFileNameWithoutExtension(nes.RomName) : "";
             string console = Consoles.DisplayName(session?.Console ?? SelectedConsole);
             string note = session != null && consoleNote.Length > 0 ? $" ({consoleNote})" : "";
-            Text = game.Length > 0 ? $"BrokenNes 2 - {console} - {game}{note}" : $"BrokenNes 2 - {console} - Emulator > Load ROM";
+            Text = game.Length > 0 ? $"BrokenNes 2 - {console} - {game}{note}{WideMessTitleNote()}" : $"BrokenNes 2 - {console} - Emulator > Load ROM";
         }
 
         /// <summary>A short remark the title carries after an event the user should know about (a core swap that restarted the game, and why); cleared by the next swap or ROM.</summary>
@@ -491,6 +493,7 @@ namespace BrokenNes.Windows
             Helpers.ConfigHelper.Update(config, c => c.SelectedConsole = Consoles.Key(console));
             FarmAttach(s, rom, romName);        // record the game from its power-on (before the save RAM is loaded, so the farm can note it)
             LoadSessionSave();
+            ApplySavedWideMessEnhancements();   // WideMess milestone 6: the enhancements kept for this SNES game (MainForm.WideMess.cs)
             RefreshConsoleMenu();
             UpdateCoresMenus();
             UpdateConsoleTitle();

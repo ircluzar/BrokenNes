@@ -251,6 +251,10 @@ namespace BrokenNes.Windows
         [JsonPropertyName("consoleCores")]
         public Dictionary<string, ConsoleCoreSelection> ConsoleCores { get; set; } = new();
 
+        /// <summary>WideMess milestone 6: the enhancements chosen for each SNES game on the WideMess console, by the game's image SHA-1 (docs/projects/widemess-spec.md 6.3). Applied when the game starts again.</summary>
+        [JsonPropertyName("wideMessEnhancements")]
+        public Dictionary<string, WideMessEnhanceChoice> WideMessEnhancements { get; set; } = new();
+
         /// <summary>BrokenNes 1 behaviour: cores, shaders and tools are locked until the Deck Builder campaign unlocks them.
         /// Off in BrokenNes 2, where the emulator comes first and everything is available.</summary>
         [JsonPropertyName("legacyProgressionLocks")]
@@ -599,6 +603,14 @@ namespace BrokenNes.Windows
             RecentRoms.Clear();
             Save();
         }
+    }
+
+    /// <summary>WideMess milestone 6: the enhancements switched on for one SNES game on the WideMess console.</summary>
+    public class WideMessEnhanceChoice
+    {
+        [JsonPropertyName("widescreen")] public bool Widescreen { get; set; }
+        [JsonPropertyName("noFlicker")] public bool NoFlicker { get; set; }
+        [JsonPropertyName("betterSound")] public bool BetterSound { get; set; }
     }
 
     /// <summary>BrokenNes 2: the cores picked for one console.</summary>
