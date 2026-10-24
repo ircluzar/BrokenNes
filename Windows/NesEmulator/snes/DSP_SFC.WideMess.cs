@@ -125,8 +125,11 @@ public sealed partial class DSP_SFC
     //  One sample of voices 8-31 (called by RunSample after voice 7, before the echo)
     // =====================================================================================
 
-    private void RunWide(ref int mainL, ref int mainR, ref int echoL, ref int echoR, int prevOutput)
+    private int wideMainL, wideMainR, wideEchoL, wideEchoR;   // the S-DSP's sums in and out of RunWide (fields: RunSample's own locals stay unexposed)
+
+    private void RunWide(int prevOutput)
     {
+        int mainL = wideMainL, mainR = wideMainR, echoL = wideEchoL, echoR = wideEchoR;
         var regs = wideRegs!; var vs = wideVoices!; var pcmOf = widePcm!;
         var newKonB = wideNewKon!; var konB = wideKon!; var koffB = wideKoff!;
         if (everyOther)
@@ -214,6 +217,7 @@ public sealed partial class DSP_SFC
             }
             regs[rb + ENDX] = endx;
         }
+        wideMainL = mainL; wideMainR = mainR; wideEchoL = echoL; wideEchoR = echoR;
     }
 
     /// <summary>The next 4 samples of a 16-bit PCM voice; at the sample's end, the loop address (and silence when the sample does not loop). True when it reached the end.</summary>
