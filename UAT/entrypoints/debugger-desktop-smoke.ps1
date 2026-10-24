@@ -57,6 +57,7 @@ $inst = $null
 $savedConfigDir = $env:BROKENNES_CONFIG_DIR
 try {
     . (Join-Path $repo 'UAT\lib\ApiClient.ps1')
+    New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
     $roms = Join-Path $WorkDir 'roms'
     $p = Start-Process -FilePath $Workshop -ArgumentList @('--debug-test', '--write-roms', "`"$roms`"") -Wait -PassThru -NoNewWindow -RedirectStandardOutput (Join-Path $WorkDir 'write-roms.txt')
     if ($p.ExitCode -ne 0) { throw "Workshop --debug-test --write-roms failed ($($p.ExitCode))" }
