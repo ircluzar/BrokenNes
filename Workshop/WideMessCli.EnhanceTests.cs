@@ -163,6 +163,7 @@ internal static partial class WideMessCli
         Put(50, 0x1FC, 150);                                             // X = -4: 4 columns in the SNES picture, 4 in the left side
         Put(51, 300, 150);                                               // X = 300: off a SNES, at picture column 372 on a wide one
         Put(52, 260, 150);                                               // X = 260: off a SNES, at picture column 332 (4-11 out from the SNES edge)
+        Put(53, 0x100, 150);                                             // X = 256: the SNES's -256, where games hide sprites (columns 328-335 if it were drawn)
         p.WriteRegister(0x01, 0x00);                                     // OBSEL (also refreshes the chip's sprite cache)
         p.WriteRegister(0x2C, 0x10);                                     // TM: sprites
         p.WriteRegister(0x00, 0x0F);                                     // full brightness
@@ -210,6 +211,7 @@ internal static partial class WideMessCli
         Check(centre && wFlags == snesFlags, "widescreen: the centre 256 columns are the SNES chip's picture on every line, STAT77 the same");
         Check(left == 4 && centreEdge == 4 && right == 8, "widescreen, sprites extended: X = -4 shows 4 columns in the centre and its other 4 in the left side; X = 300 (off a SNES) shows at picture column 372", $"left side {left}, centre {centreEdge}, right side {right}");
         Check(White(wf, 400, 100, 0, 72) == 0 && White(wf, 400, 100, 328, 400) == 0, "widescreen alone keeps the SNES's limit: the 8 sprites past 32 on row 100 are not drawn in the sides either (they are inside the SNES picture)");
+        Check(White(wf, 400, 150, 328, 332) == 0 && White(wf, 400, 150, 332, 340) == 8, "a sprite at X = 256 (the SNES's -256, where games hide sprites) is not drawn in the sides; one at X = 260 is", $"328-331: {White(wf, 400, 150, 328, 332)}, 332-339: {White(wf, 400, 150, 332, 340)}");
 
         var fill = WmsWidescreen.AllExtend(); fill.Layers[WmsWidescreen.Sprites] = WmsSideRule.Fill;
         wms.SetEnhancements(fill, false);

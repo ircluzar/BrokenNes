@@ -2,16 +2,37 @@
   "format": "widemess-profile-1",
   "title": "Mega Man X",
   "file": "Mega Man X (U) (V1.1) [!].smc",
-  "sha1": ["c65216760ba99178100a10d98457cf11496c2097"],
+  "sha1": [
+    "c65216760ba99178100a10d98457cf11496c2097"
+  ],
   "widescreen": {
-    "layers": { "bg1": "extend", "bg2": "extend", "bg3": "extend", "bg4": "extend", "sprites": "extend" }
+    "layers": {
+      "bg1": "extend",
+      "bg2": "extend",
+      "bg3": "extend",
+      "bg4": "extend",
+      "sprites": "extend"
+    }
   },
-  "enhancements": { "widescreen": "risky", "noFlicker": "good", "betterSound": "good", "fastCpu": "risky" },
-  "recommended": ["widescreen", "noFlicker"],
+  "enhancements": {
+    "widescreen": "risky",
+    "noFlicker": "good",
+    "betterSound": "good",
+    "fastCpu": "risky"
+  },
+  "recommended": [
+    "widescreen",
+    "noFlicker"
+  ],
   "issues": [
     "The game draws a stage into video RAM only near the SNES picture: at the start of a stage, and ahead of X when he runs, the side columns show flat colour until the game draws there.",
     "Enemies appear near the SNES edge (the game creates them as they come near).",
-    "The title screen's ribbons continue into the sides."
+    "The title screen's ribbons continue into the sides.",
+    "No flicker: in the 5,600 frames checked it showed more sprites on 254 lines, all of them over the SNES's limits (254 lines went over).",
+    "Fast CPU ran the 5,600 frames checked; the game's timing changes."
   ],
-  "verified": { "date": "2026-10-24", "how": "pending" }
+  "verified": {
+    "date": "2026-10-24",
+    "how": "Workshop --wms-test (E6), 5,600 frames of a pad script (title, the highway stage) in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/mmx.png."
+  }
 }

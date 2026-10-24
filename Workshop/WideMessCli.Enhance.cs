@@ -178,7 +178,10 @@ internal static partial class WideMessCli
                     for (int xx = 0; xx < W; xx++) wide.SetPixel(xx, yy, Color.FromArgb(unchecked((int)(s.FrameWidth == W ? s.Frame[yy * W + xx] : 0xFF000000u))));
                 }
                 gr.DrawString($"frame {moments[i]}: SNES", font, Brushes.White, gap, y);
-                gr.DrawString($"WideMess widescreen{(ppu.EnhCompareDiffer == 0 ? ", centre identical" : $", {ppu.EnhCompareDiffer} lines differ in the centre")}", font, Brushes.White, SW + 2 * gap, y);
+                string what = s.Enhancements.NoFlicker
+                    ? $"+ no flicker: {(ppu.EnhCompareDiffer == 0 ? "centre identical" : $"{ppu.EnhCompareDiffer} lines with more sprites, {ppu.EnhCompareDifferOverflow} over the limits")}"
+                    : $"WideMess widescreen{(ppu.EnhCompareDiffer == 0 ? ", centre identical" : $", {ppu.EnhCompareDiffer} lines differ in the centre")}";
+                gr.DrawString(what, font, Brushes.White, SW + 2 * gap, y);
                 gr.DrawImageUnscaled(snes, gap, y + label);
                 gr.DrawImageUnscaled(wide, SW + 2 * gap, y + label);
                 using var pen = new Pen(Color.FromArgb(90, 255, 255, 255));
@@ -238,6 +241,13 @@ internal static partial class WideMessCli
         int frames = int.Parse(Opt(args, "frames", "300")), from = int.Parse(Opt(args, "from", "0")), every = int.Parse(Opt(args, "every", "10"));
         using var s = Session(ConsoleKind.WideMess, RomDetect.Unwrap(File.ReadAllBytes(rom), rom, out _));
         using var snes = Session(ConsoleKind.Snes, RomDetect.Unwrap(File.ReadAllBytes(rom), rom, out _));
+        // --trace-ports: the 65816's writes to the sound ports $2140-$2143 in both runs, compared value for value
+        var fastPorts = new List<(uint port, byte v, long clock)>(); var snesPorts = new List<(uint port, byte v, long clock)>();
+        if (args.Contains("--trace-ports", StringComparer.OrdinalIgnoreCase))
+        {
+            s.Board.WriteWatch = (b, o, v) => { if (o is >= 0x2140 and <= 0x2143 && fastPorts.Count < 200000) fastPorts.Add((o, v, s.Board.MasterClock)); };
+            snes.Board.WriteWatch = (b, o, v) => { if (o is >= 0x2140 and <= 0x2143 && snesPorts.Count < 200000) snesPorts.Add((o, v, snes.Board.MasterClock)); };
+        }
         for (int f = 1; f <= frames; f++)
         {
             if (f == from + 1) Console.WriteLine($"  fast CPU: {s.SetEnhancements(fastCpu: true) ?? "on"}");
@@ -249,6 +259,14 @@ internal static partial class WideMessCli
             var c2 = snes.Board.Cpu; var r2 = snes.Ppu.GetRegisterSnapshot();
             int colours = s.Frame.AsSpan(0, s.FrameWidth * s.FrameHeight).ToArray().Distinct().Count();
             Console.WriteLine($"  {f}: fast PC {c.PC:X4} INIDISP {r.Inidisp:X2} colours {colours} | SNES PC {c2.PC:X4} INIDISP {r2.Inidisp:X2} | board fast {s.Board.FastCpu}");
+        }
+        if (fastPorts.Count + snesPorts.Count > 0)
+        {
+            int n = Math.Min(fastPorts.Count, snesPorts.Count), d = 0;
+            while (d < n && fastPorts[d].port == snesPorts[d].port && fastPorts[d].v == snesPorts[d].v) d++;
+            Console.WriteLine($"  sound-port writes: fast {fastPorts.Count:N0}, SNES {snesPorts.Count:N0}; the same for the first {d:N0}");
+            for (int i = Math.Max(0, d - 6); i < Math.Min(n, d + 6); i++)
+                Console.WriteLine($"    #{i}: fast ${fastPorts[i].port:X4}={fastPorts[i].v:X2} @{fastPorts[i].clock} | SNES ${snesPorts[i].port:X4}={snesPorts[i].v:X2} @{snesPorts[i].clock}");
         }
         return 0;
     }

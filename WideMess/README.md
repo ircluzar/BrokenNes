@@ -12,6 +12,7 @@ This folder holds what is built for WideMess outside the emulator code.
 | `testroms/picture/` | Milestone 2's test ROMs: `sprites`, `windows`, `widesnes`. One 65816 register player (`player.asm`) plays the script of register writes, DMA and HDMA that `gen_picture.py` generates for each scene; the same writes drive the generator's own model of spec section 3, which draws the picture each ROM must produce (`<rom>.expect.png`). `build.ps1` builds the ROMs, their negative controls and the pictures into `testroms/bin/`. |
 | `testroms/sound/` | Milestone 3's test ROM, the sound chip: a 65816 program (`sound.asm`) and an SPC700 program (`spc.asm`), WLA-DX; `gen_data.py` makes the samples, the DMA jobs, the SPC700's step lists and the manifest the checks measure against. `build.ps1` builds it and its negative control into `testroms/bin/`. |
 | `testroms/cpu/` | Milestone 4's test ROMs (WLA-DX; `build.ps1` builds them into `testroms/bin/`): `speed.asm`, the fast CPU and fast DMA measured against the spec's cycle model, with its no-unlock control; `bigmap.asm` + `gen_bigmap.py`, a 4 MB game on the WideMess map (1 MB work RAM, the 20-bit WRAM port, 256 KB battery RAM, 64 ROM banks). |
+| `profiles/` | Milestone 6: the SNES games' enhancement profiles (spec section 6.2, format `widemess-profile-1`), one JSON file per game, found by the ROM image's SHA-1. The desktop app and Workshop ship them beside the program. |
 | `testroms/bin/` | The built test ROMs: `layers.wms`, `layers.sfc` (the same game as a SNES image) and `layers_nounlock.wms` (the negative control); `sprites`, `windows`, `widesnes` (`.wms`, `_nounlock.wms`) with the model's pictures (`.expect.png`, `_nounlock.expect.png`, `.<variant>.expect.png`); `sound.wms`, `sound.sfc`, `sound_nounlock.wms` and `sound.json` (the manifest); `speed.wms`, `speed.sfc`, `speed_nounlock.wms`; `bigmap.wms` (its controls, cut to 2 MB or on the HiROM map, are made by `--wms-test`). |
 
 **The emulator side** is in `Windows/NesEmulator/snes/`:
@@ -21,7 +22,11 @@ This folder holds what is built for WideMess outside the emulator code.
 - `WideMess.Sound.cs` (milestone 3): the sound chip `APU_WMS` (an `APU_SFC` subclass: the sound RAM above 64 KB and the port `$21F0-$21F3`), and
   `DSP_SFC.WideMess.cs`: the S-DSP's voices 8-31 and its second register page.
 - `WideMess.Memory.cs` (milestone 4): the WideMess map's limits and the cartridge a `.wms` file becomes (`SnesCartridge.LoadWideMessMap`).
-- `BOARD_SFC.WideMess.cs` (milestone 4): fast mode, the 1 MB work RAM and its 20-bit WRAM port, fast DMA.
+- `BOARD_SFC.WideMess.cs` (milestone 4): fast mode, the 1 MB work RAM and its 20-bit WRAM port, fast DMA; and (milestone 6) `ConsoleFastCpu`, the
+  console's fast CPU for a locked SNES game.
+- Milestone 6, SNES games enhanced: `WideMess.Enhance.cs` (the enhanced line of a locked SNES game on `PPU_WMS`: the side rules, masks, the sprite pass
+  with the SNES's own count), `WideMess.Profiles.cs` (the profile format and the profiles folder), `DSP_SFC.Enhance.cs` (cubic interpolation), and
+  `Windows/NesEmulator/systems/SnesSession.Enhance.cs` (the four switches, "use the profile", the unlock taking them away).
 - The hooks in `BOARD_SFC.cs`, `PPU_SFC.WideMess.cs` (read-only views of the SNES chip's registers; the SNES chip's own drawing is untouched), `DSP_SFC.cs` (one
   test a sample) and `APU_SFC.cs` (`$F3` with `$F2` at `$80-$FF`).
 - The console is registered in `Windows/NesEmulator/systems/ConsoleSystems.cs` (key `wms`).
@@ -34,6 +39,10 @@ BrokenNes.Workshop.exe --wms-test  [--roms WideMess\testroms\bin] [--snes "a.sfc
 BrokenNes.Workshop.exe --wms-pack  --in game.sfc --out game.wms [--title T] [--features 1] [--map 0|1|2] [--sram BYTES] [--battery]
 BrokenNes.Workshop.exe --wms-shot  --rom game.wms --out shot.png [--frames 60] [--scale 3] [--console wms|snes] [--wide]
 BrokenNes.Workshop.exe --wms-sheet --rom game.wms --out sheet.png [--frames 120]
+BrokenNes.Workshop.exe --wms-enhance-sheet (--game KEY | --rom game.sfc [--input SCRIPT]) --out sheet.png [--at F1,F2] [--no-flicker] [--all-extend] [--scratch-profile p.json]
+BrokenNes.Workshop.exe --wms-enhance-film  (--game KEY | --rom game.sfc [--input SCRIPT]) --out film.png [--every 300] [--frames 6000] [--fast-cpu]
+BrokenNes.Workshop.exe --wms-enhance-test  [--roms DIR] [--snes-dir DIR] [--enhance-games KEY;KEY] [--profiles DIR]
+BrokenNes.Workshop.exe --wms-fast-probe    --rom game.sfc [--frames 300] [--from 0] [--every 10]
 ```
 
 - `--wms-test` runs the milestones' checks, each with a negative control (milestone 3's sound checks are its sections S1-S6). With `--snes`, it also runs each SNES game frame for frame on the SNES
@@ -43,6 +52,14 @@ BrokenNes.Workshop.exe --wms-sheet --rom game.wms --out sheet.png [--frames 120]
 - `--wms-pack --map 2` packs a WideMess-map ROM; `--sram` is its battery RAM in bytes and `--battery` makes it the game's save.
 - `--wms-shot --wide` draws a SNES game's modes 400 wide, the way the wide SNES modes show it.
 - `--wms-sheet` draws the 400-wide picture and each of the 8 layers alone.
+- `--wms-enhance-sheet` (milestone 6) draws a SNES game's contact sheet: the SNES picture beside WideMess widescreen with the game's profile, at several
+  moments of one run (widescreen leaves the game as it is, so the SNES chip's own line is drawn beside every enhanced line and compared). `--game` is one
+  of the proven games (`smw`, `yoshi`, `dkc`, `sm`, `alttp`, `fzero`, `smk`, `ct`, `mmx`, `contra3`, `scv4`: their pad scripts and moments are in
+  `Workshop/WideMessCli.Enhance.cs`). `--all-extend` draws every layer extended instead of the profile's rules.
+- `--wms-enhance-film` draws the wide picture every N frames and prints each moment's register set-up per band of rows (for writing a profile).
+- `--wms-enhance-test` runs milestone 6's checks alone; `--wms-test` runs them after the others. The proven games are read from `--snes-dir`
+  (default `X:\EMULATION\Super Nintendo\Super Nintendo (U)`); a game not found there is skipped.
+- `--wms-fast-probe` switches the console's fast CPU on at a frame and prints the 65816's PC beside the SNES console's.
 - Workshop is a GUI-subsystem program. In PowerShell, run it with `Start-Process -Wait -NoNewWindow -RedirectStandardOutput`.
 
 The desktop app's own check is `UAT/entrypoints/widemess-desktop-smoke.ps1 -Exe <BrokenNes.Windows.exe>`. It uses a scratch settings folder.
@@ -183,3 +200,62 @@ The sound ROM's checks measure the samples by FFT against the generator's manife
 - **UAT 125 pass, 0 fail** (16 skip, 3 info); the desktop smoke test passes 7 of 7; Lite and Core build.
 - Not covered by a test ROM: HDMA tables in the new work RAM (HDMA reads it through the same path as DMA, which is tested), and the old joypad
   ports' 12 clocks in fast mode (the I/O rule is tested through `$4214`).
+
+## Milestone 6 result (2026-10-24): SNES games enhanced
+
+**What it is** (spec section 6). A SNES game on the WideMess console can have four enhancements. They are the console's: the game stays
+locked and reads exactly what a SNES gives it, `STAT77`'s sprite flags included; only fast CPU changes its timing, by nature.
+- **Widescreen** (needs the game's profile): 400 x 224. The centre 256 columns are the SNES picture; the 72 columns either side come from what
+  the game keeps in video RAM, per layer: **extend**, **repeat** or **fill**. Masks (rows, a band of the sides, layers, fill / repeat / black,
+  optional scene conditions on the SNES registers) handle HUDs, title screens and the like. Sprites are extended (their side parts drawn in
+  addition, never counted) or filled.
+- **No sprite flicker**: the SNES sprite table at WideMess's limits, 64 sprites and 128 slivers a line; a line within the SNES's 32 / 34 is
+  drawn exactly as on the SNES.
+- **Better sound**: 4-point cubic interpolation instead of the S-DSP's Gaussian, for what is mixed only (`OUTX` and pitch modulation stay
+  the S-DSP's).
+- **Fast CPU**: spec 2's fast mode, forced by the console. Switch it on after the game has started (spec 6.1); it is never kept.
+- **Profiles**: `WideMess/profiles/*.json` (`widemess-profile-1`), found by the image's SHA-1, every key checked. A game without a
+  profile is told so (no widescreen; the other three marked "not verified").
+- **Desktop**: Console > **WideMess enhancements** (the profile line, "Use the profile", the four switches with the profile's verdicts,
+  "Known issues..."), kept per game. **HTTP API**: `GET/POST /api/widemess/enhance`, `POST /api/widemess/profile` (a scratch profile,
+  memory only).
+
+**The games proven** (spec 6.4). Each contact sheet shows the SNES picture beside WideMess widescreen at five moments of one run, the
+centre compared line by line.
+
+| Game | Widescreen | No flicker | Fast CPU | Sheet |
+|---|---|---|---|---|
+| Super Mario World | good | 0 lines changed | risky (hangs if on at power-on) | `m6/smw.png` |
+| Super Mario World 2: Yoshi's Island | risky (old tiles at a stage's start) | 18 lines | risky | `m6/yoshi.png` |
+| Donkey Kong Country | risky (a seam on the side DK runs to) | 0 | risky | `m6/dkc.png` |
+| Super Metroid | risky (tiles beyond a room's walls) | 0 | risky | `m6/sm.png` |
+| A Link to the Past | risky (indoor rooms beside rooms) | 0 | risky | `m6/alttp.png` |
+| F-Zero | good | 0 | risky | `m6/fzero.png` |
+| Super Mario Kart | good | 0 | risky | `m6/smk.png` |
+| Chrono Trigger | unavailable (the sheet shows every layer extended: why) | 0 | broken | `m6/ct.png` |
+| Mega Man X | risky (flat colour until the game draws there) | 254 lines | risky | `m6/mmx.png` |
+| Contra III | risky (another part of the stage ahead) | 2,946 lines (`m6/contra3-noflicker.png`) | broken | `m6/contra3.png` |
+| Super Castlevania IV | risky (old tiles at a stage's start) | 0 | risky | `m6/scv4.png` |
+
+(The sheets are in `docs/projects/widemess-images/m6/`.)
+
+![F-Zero: the SNES and WideMess widescreen](../docs/projects/widemess-images/m6/fzero.png)
+
+**How it is tested** (`--wms-test`'s E checks, also alone as `--wms-enhance-test`), each enhancement against a negative control:
+- E1 the profiles folder reads; 11 kinds of malformed profile are refused, each saying why; a broken file is reported for its game.
+- E2 synthetic sprite scenes on the picture chip:
+  - no flicker shows 40 sprites where the SNES drops 8, and leaves every line within the limits pixel-identical with `STAT77` unchanged;
+  - widescreen draws the side sprites (X = -4, 260, 300) but not X = 256, the SNES's hiding place;
+  - fill, masks and a black mask with a scene condition do what they say;
+  - all off is the SNES chip's picture.
+- E3 the S-DSP: a tone at a quarter of the rate comes out 1.57x stronger with the cubic than the Gaussian; a 1 kHz tone within 6%; off,
+  bit-identical.
+- E4 fast CPU on the locked speed ROM: 12,386 / 7,539 loops a frame (spec 2's fast-mode prediction) with `WMSPEED` still reading open bus;
+  off, 3,209 / 2,407 (the SNES's).
+- E5 who gets them: not a `.wms` game, not the SNES console, no widescreen without a profile; a SNES game that unlocks WideMess loses them,
+  and its picture is then its own.
+- E6 the eleven games in lockstep with the SNES console (above).
+- E7 speed: widescreen + no flicker runs at 461 (SMW), 422 (F-Zero) and 553 (Super Mario Kart) frames a second in Workshop, the picture
+  alone 589-829; drawing allocates nothing.
+
+**Results**: RESULTS-PENDING

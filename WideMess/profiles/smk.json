@@ -2,19 +2,53 @@
   "format": "widemess-profile-1",
   "title": "Super Mario Kart",
   "file": "Super Mario Kart (U) [!].smc",
-  "sha1": ["47e103d8398cf5b7cbb42b95df3a3c270691163b"],
+  "sha1": [
+    "47e103d8398cf5b7cbb42b95df3a3c270691163b"
+  ],
   "widescreen": {
-    "layers": { "bg1": "extend", "bg2": "extend", "bg3": "extend", "bg4": "extend", "sprites": "fill" },
+    "layers": {
+      "bg1": "extend",
+      "bg2": "extend",
+      "bg3": "extend",
+      "bg4": "extend",
+      "sprites": "fill"
+    },
     "masks": [
-      { "why": "the title screen's logo is laid out for 256 columns on a 32-tile map that would repeat (BG1 map at $1000)", "layers": ["all"], "rows": [0, 223], "rule": "black", "when": { "bg1sc": "$10" } }
+      {
+        "why": "the title screen's logo is laid out for 256 columns on a 32-tile map that would repeat (BG1 map at $1000)",
+        "layers": [
+          "all"
+        ],
+        "rows": [
+          0,
+          223
+        ],
+        "rule": "black",
+        "when": {
+          "bg1sc": "$10"
+        }
+      }
     ]
   },
-  "enhancements": { "widescreen": "good", "noFlicker": "good", "betterSound": "good", "fastCpu": "risky" },
-  "recommended": ["widescreen", "noFlicker"],
+  "enhancements": {
+    "widescreen": "good",
+    "noFlicker": "good",
+    "betterSound": "good",
+    "fastCpu": "risky"
+  },
+  "recommended": [
+    "widescreen",
+    "noFlicker"
+  ],
   "issues": [
     "Both Mode 7 views (the track and the course map, or the two players' tracks) continue to both edges; the hills behind repeat seamlessly.",
     "Sprites are filled in the sides: the game places the karts, shadows and items it does not show around the SNES picture, so rivals appear only in the centre 256 columns.",
-    "The title screen is shown with black sides."
+    "The title screen is shown with black sides.",
+    "No flicker: in the 6,750 frames checked the game never drew more sprites on a line than a SNES shows, so it changed nothing; it changes only lines over the limits.",
+    "Fast CPU ran the 6,750 frames checked; the attract races play differently from frame 4."
   ],
-  "verified": { "date": "2026-10-24", "how": "pending" }
+  "verified": {
+    "date": "2026-10-24",
+    "how": "Workshop --wms-test (E6), 6,750 frames of the attract demos (one and two players) in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/smk.png."
+  }
 }

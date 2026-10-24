@@ -337,6 +337,7 @@ public sealed partial class PPU_WMS
             var (w, h) = SnesObjSize(sizeSel, (hi & 2) != 0);
             if (((row - oam[n * 4 + 1]) & 0xFF) >= h) continue;
             int x = oam[n * 4] | (hi & 1) << 8;
+            if (x == 256) continue;                                    // the SNES's X = -256, where games hide sprites: never drawn in the sides (spec 6.1)
             if (x >= split) x -= 512;                                 // spec 3.3: 0-327 at 72 + X, 328-511 at X - 512 + 72
             int left = SnesOrigin + x, right = left + w;               // picture columns [left, right)
             bool inLeft = left < SnesOrigin && right > 0, inRight = right > SnesOrigin + Width && left < WideWidth;

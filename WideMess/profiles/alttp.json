@@ -2,16 +2,37 @@
   "format": "widemess-profile-1",
   "title": "The Legend of Zelda: A Link to the Past",
   "file": "Legend of Zelda, The - A Link to the Past (U) [!].smc",
-  "sha1": ["6d4f10a8b10e10dbe624cb23cf03b88bb8252973"],
+  "sha1": [
+    "6d4f10a8b10e10dbe624cb23cf03b88bb8252973"
+  ],
   "widescreen": {
-    "layers": { "bg1": "extend", "bg2": "extend", "bg3": "extend", "bg4": "extend", "sprites": "extend" }
+    "layers": {
+      "bg1": "extend",
+      "bg2": "extend",
+      "bg3": "extend",
+      "bg4": "extend",
+      "sprites": "extend"
+    }
   },
-  "enhancements": { "widescreen": "risky", "noFlicker": "good", "betterSound": "good", "fastCpu": "risky" },
-  "recommended": ["widescreen", "noFlicker"],
+  "enhancements": {
+    "widescreen": "risky",
+    "noFlicker": "good",
+    "betterSound": "good",
+    "fastCpu": "risky"
+  },
+  "recommended": [
+    "widescreen",
+    "noFlicker"
+  ],
   "issues": [
     "Outdoors the side columns show the overworld as it really continues.",
     "Indoors (houses, dungeons) the sides show the rest of the 512 x 512 map the room is drawn in: other rooms' walls and floors beside a small room.",
-    "Enemies appear near the SNES edge (the game creates them as they come near)."
+    "Enemies appear near the SNES edge (the game creates them as they come near).",
+    "No flicker: in the 5,600 frames checked the game never drew more sprites on a line than a SNES shows (8 lines went over the SNES's limits with sprites that draw nothing there), so it changed nothing; it changes only lines over the limits.",
+    "Fast CPU ran the 5,600 frames checked; the game's timing changes."
   ],
-  "verified": { "date": "2026-10-24", "how": "pending" }
+  "verified": {
+    "date": "2026-10-24",
+    "how": "Workshop --wms-test (E6), 5,600 frames of a pad script (intro, name entry, Link's house, outside in the rain) in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/alttp.png."
+  }
 }
