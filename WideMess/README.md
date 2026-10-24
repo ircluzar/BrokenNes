@@ -232,3 +232,6 @@ page, the work RAM above 128 KB).
   workspaces pass, supervrun byte-identical to its reference md5, and verify.
 - **Emulator changes:** none in the chips. `PPU_WMS.MainLayers` (a read-only view of `WMTM`, for the measure); Workshop's `--brokendev verify`
   and `run` take console `wms`.
+- **The whole branch** (milestones 1-5, main 43edc4d merged): `--wms-test` 153 of 153, the same with `--reference-paths`; UAT `run-suite.ps1`
+  125 pass, 0 fail, 16 skip, 3 info; the desktop smoke test 10 of 10; `brokendev run widemess-sample` opens it in the desktop app (console
+  `wms`, unlocked, 400 x 224, 61 fps); Lite, the plugin's Core and the desktop app build.
