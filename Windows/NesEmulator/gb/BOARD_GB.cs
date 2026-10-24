@@ -133,8 +133,20 @@ public sealed class BOARD_GB : IGbCpuBus
             else { Idle(); return; }
         }
         InstructionHook?.Invoke(Core.PC);
+        DebugHook?.BeforeInstruction();
         Core.Step();
     }
+
+    // ---- the debugger (Windows/NesEmulator/debug); each null unless a debugger armed it ----
+    /// <summary>Called before every CPU step (instruction, interrupt dispatch or halted cycle).</summary>
+    public IGbInstructionHook? DebugHook;
+    /// <summary>Every CPU read and write, every OAM DMA and VRAM DMA byte.</summary>
+    public IGbBusDebugTap? DebugTap;
+    /// <summary>The work RAM bank at $D000-$DFFF (1-7; 1 on a monochrome Game Boy).</summary>
+    public int DebugWramBank => wramBank;
+    /// <summary>IE and IF as the CPU sees them.</summary>
+    public byte DebugIe => ie;
+    public byte DebugIf => (byte)(iflag | 0xE0);
 
     // =================================================================================== one M-cycle
     private int clockAccumulator;
@@ -163,6 +175,7 @@ public sealed class BOARD_GB : IGbCpuBus
     {
         if (hdmaRequest) RunHdmaBlock();
         Cycle();
+        if (DebugTap != null) { byte v = ReadBus(address, cpu: true); DebugTap.OnRead(address, v, GbBusSource.Cpu); return v; }
         return ReadBus(address, cpu: true);
     }
 
@@ -170,6 +183,7 @@ public sealed class BOARD_GB : IGbCpuBus
     {
         if (hdmaRequest) RunHdmaBlock();
         Cycle();
+        DebugTap?.OnWrite(address, value, GbBusSource.Cpu);
         WriteBus(address, value);
     }
 
@@ -377,7 +391,9 @@ public sealed class BOARD_GB : IGbCpuBus
         {
             ushort src = (ushort)(dmaSource + dmaIndex);
             if (src >= 0xE000) src -= 0x2000;                  // $E0-$FF sources read the WRAM echo
-            Ppu.Oam[dmaIndex] = ReadBus(src, cpu: false);
+            byte v = ReadBus(src, cpu: false);
+            if (DebugTap is { } tap) { tap.OnRead((ushort)(dmaSource + dmaIndex), v, GbBusSource.OamDma); tap.OnWrite((ushort)(0xFE00 + dmaIndex), v, GbBusSource.OamDma); }
+            Ppu.Oam[dmaIndex] = v;
             if (++dmaIndex == 0xA0) dmaActive = false;
         }
         if (dmaPendingCycles > 0 && --dmaPendingCycles == 0)
@@ -419,7 +435,9 @@ public sealed class BOARD_GB : IGbCpuBus
     {
         for (int i = 0; i < 16; i++)
         {
-            Ppu.DmaWriteVram(hdmaDst, ReadBus(hdmaSrc, cpu: false));
+            byte v = ReadBus(hdmaSrc, cpu: false);
+            if (DebugTap is { } tap) { tap.OnRead(hdmaSrc, v, GbBusSource.VramDma); tap.OnWrite((ushort)(0x8000 + hdmaDst), v, GbBusSource.VramDma); }
+            Ppu.DmaWriteVram(hdmaDst, v);
             hdmaSrc++; hdmaDst = (ushort)((hdmaDst + 1) & 0x1FFF);
         }
         hdmaBlocks--;

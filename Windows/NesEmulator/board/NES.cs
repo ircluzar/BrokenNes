@@ -866,6 +866,7 @@ namespace NesEmulator
 				targetCycles -= overshootCarry; overshootCarry = 0;
 			}
 			int executed = 0; // cycles executed this frame (relative)
+			var dbg = DebugHook; // the debugger (Windows/NesEmulator/debug): null when none is armed, one test per instruction
 			long frameEndCycle = globalCpuCycle + targetCycles; // absolute cycle where this frame ends
 			nextFrameBoundaryCycle = frameEndCycle; // update per-frame boundary
 			bus!.PpuCaughtUpPerInstruction = false; // set below by the paths that guarantee it
@@ -891,6 +892,7 @@ namespace NesEmulator
 						// Execute instructions until we reach or exceed the next event boundary
 						while (batchCpu < remaining)
 						{
+							dbg?.BeforeInstruction(globalCpuCycle + batchCpu);
 							int cpuCycles = bus!.cpu.ExecuteInstruction();
 							batchCpu += cpuCycles;
 							executed += cpuCycles;
@@ -973,6 +975,7 @@ namespace NesEmulator
 								// than in one lump after it. This is the same machinery the DMC
 								// predictive split below uses; the difference is only that it is
 								// armed unconditionally, which makes the DMC prediction redundant.
+								dbg?.BeforeInstruction(globalCpuCycle);
 								bus!.MarkInstructionStart(globalCpuCycle);
 								if (InstructionTracer.Enabled && bus!.ppu is IPpuFixTiming tracedPpu) { InstructionTracer.NotePpuPosition(tracedPpu.ProbeScanline, tracedPpu.ProbeDot); InstructionTracer.NotePpuScroll(tracedPpu.ProbeV, tracedPpu.ProbeFineX); }
 								bus!.BeginPreciseWindow();
@@ -1027,6 +1030,7 @@ namespace NesEmulator
 								if (untilDma <= batchCpu + MaxInstructionCycles)
 								{
 									if (batchCpu > 0) { FlushBatch(batchCpu); batchCpu = 0; adaptiveAccumulator = 0; }
+									dbg?.BeforeInstruction(globalCpuCycle);
 									bus!.MarkInstructionStart(globalCpuCycle);
 									bus!.BeginPreciseWindow();
 									int preciseCycles = bus!.cpu!.ExecuteInstruction();
@@ -1045,6 +1049,7 @@ namespace NesEmulator
 									continue;
 								}
 							}
+							dbg?.BeforeInstruction(globalCpuCycle + batchCpu);
 							bus!.MarkInstructionStart(globalCpuCycle + batchCpu); // batchCpu = cycles already run but not yet flushed
 							int cpuCycles = bus!.cpu!.ExecuteInstruction();
 							executed += cpuCycles;
@@ -1400,6 +1405,15 @@ namespace NesEmulator
 			bus.MarkInstructionStart(-1);
 		}
 
+		// === Debugger (Windows/NesEmulator/debug) ===
+		/// <summary>The debugger's per-instruction hook: null unless a breakpoint, watch, step or trace is armed (RunFrame then pays one null test per instruction).</summary>
+		public INesInstructionHook? DebugHook;
+		/// <summary>The bus and cartridge, for the debugger (registers, side-effect-free memory, the watch tap). Null before a ROM is loaded.</summary>
+		public Bus? DebugBus => bus;
+		public Cartridge? DebugCartridge => cartridge;
+		/// <summary>RunFrame calls since the NES was made (the frame a RunFrame is running is FramesExecuted - 1).</summary>
+		public long FramesExecuted => framesExecutedTotal;
+
 		// Allow caller to rapidly run multiple frames (used for fast-forward / warm-up)
 		public void RunFrames(int frames)
 		{
@@ -1418,6 +1432,7 @@ namespace NesEmulator
 			if (bus == null || crashed) return 0;
 			try
 			{
+				DebugHook?.BeforeInstruction(globalCpuCycle);
 				int cpuCycles = bus.cpu!.ExecuteInstruction();
 				FlushBatch(cpuCycles);
 				return cpuCycles;
