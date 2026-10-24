@@ -54,9 +54,10 @@ The desktop app's own check is `UAT/entrypoints/widemess-desktop-smoke.ps1 -Exe 
 
 ## Milestone 4 result (2026-10-24): CPU and memory
 
-- **`--wms-test` checks M4.1-M4.6 pass** (62 checks in all with milestone 1's), the same on the reference paths (`--reference-paths`).
+- **`--wms-test` checks M4.1-M4.6 pass** (64 checks in all with milestone 1's), the same on the reference paths (`--reference-paths`).
   - Fast mode: the speed ROM's loops run the iterations the spec's cycle model predicts, to one iteration (loop A 3,208 a frame at SNES speed,
-    12,386 fast: 3.86x; loop B, with one I/O read, 2,407 and 7,539: 3.13x).
+    12,386 fast: 3.86x; loop B, with one I/O read, 2,407 and 7,539: 3.13x). From FastROM, loop A runs 3,610 at SNES speed (the 96-clock
+    prediction) and the same 12,385 in fast mode: `MEMSEL` does nothing there.
   - Fast DMA: 5,632 bytes a vblank in 512-byte transfers, 10,752 with fast DMA; fast CPU alone leaves DMA as it was.
   - The WideMess map: a 4 MB game with 256 KB of battery RAM finds all 64 ROM banks and their mirrors, the 1 MB work RAM over `$70-$7F`
     (A bus, 20-bit WRAM port, DMA both ways), and its battery save comes back in a new session.
@@ -67,3 +68,6 @@ The desktop app's own check is `UAT/entrypoints/widemess-desktop-smoke.ps1 -Exe 
 - **SNES games stay SNES:** the 9 games of the milestone (Super Mario World, A Link to the Past, Star Fox, Super Mario RPG, Pilotwings,
   F-Zero, Super Metroid, Donkey Kong Country, Chrono Trigger) are frame-for-frame identical on both consoles; the speed-pass goldens are
   unchanged with and without the reference paths; SNES speed is unchanged (interleaved A/B).
+- **UAT 125 pass, 0 fail** (16 skip, 3 info); the desktop smoke test passes 7 of 7; Lite and Core build.
+- Not covered by a test ROM: HDMA tables in the new work RAM (HDMA reads it through the same path as DMA, which is tested), and the old joypad
+  ports' 12 clocks in fast mode (the I/O rule is tested through `$4214`).
