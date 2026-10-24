@@ -41,12 +41,24 @@ public sealed class CPU_GB : IGbCpu
     public bool Locked { get; private set; }
     public long Instructions { get; private set; }
 
-    private readonly IGbCpuBus bus;
+    private IGbCpuBus bus;        // not readonly: the debugger interposes a watching bus while a watch is set (DebugInterpose)
     private bool imePending;      // EI: IME becomes 1 after the next instruction
     private bool haltBug;         // HALT with IME=0 and an interrupt pending: next opcode byte is read twice
     private bool eiBeforeThis;    // the instruction being executed directly follows EI
 
     public CPU_GB(IGbCpuBus bus) { this.bus = bus; }
+
+    private IGbCpuBus? debugRealBus;
+    /// <summary>The bus the CPU really runs on, whatever the debugger interposed.</summary>
+    public IGbCpuBus DebugRealBus => debugRealBus ?? bus;
+    public bool DebugInterposed => debugRealBus != null;
+    /// <summary>The debugger's watches (Windows/NesEmulator/debug): every access goes through <paramref name="watching"/>, which forwards to
+    /// <see cref="DebugRealBus"/>; null puts the CPU back on its own bus. Nothing else changes, and the board is not touched.</summary>
+    public void DebugInterpose(IGbCpuBus? watching)
+    {
+        if (watching != null) { debugRealBus ??= bus; bus = watching; }
+        else if (debugRealBus != null) { bus = debugRealBus; debugRealBus = null; }
+    }
 
     public ushort AF { get => (ushort)(A << 8 | F); set { A = (byte)(value >> 8); F = (byte)(value & 0xF0); } }
     public ushort BC { get => (ushort)(B << 8 | C); set { B = (byte)(value >> 8); C = (byte)value; } }
