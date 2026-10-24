@@ -20,7 +20,8 @@ internal static partial class WideMessCli
     //   loop A = inc dp (16-bit) + lda dp (16-bit) + beq (taken): 6 ROM, 6 work RAM, 2 internal          -> 108 / 28
     //   loop B = loop A + lda $4214 (16-bit): + 3 ROM, 2 I/O                                             -> 144 / 46
     // and the NMI handler that ends each frame's count (entry, rep, pha, sep, lda $4210, rep, inc, pla, rti): 16 ROM, 16 work RAM, 11 internal, 1 I/O -> 328 / 92
-    private const int LoopA = 108, LoopAFast = 28, LoopB = 144, LoopBFast = 46, Nmi = 328, NmiFast = 92;
+    //   loop A from FastROM (MEMSEL = 1, bank $80): its 6 ROM cycles at 6 clocks                       -> 96 / 28
+    private const int LoopA = 108, LoopAFast = 28, LoopB = 144, LoopBFast = 46, LoopAFastRom = 96, Nmi = 328, NmiFast = 92;
     private static double PredictedCount(int loop, int nmi) => (FrameClocks - RefreshClocks - nmi) / (double)loop;
     // general DMA's bytes in one vblank (lines 225-261, less the refresh): 8 or 4 clocks a byte
     private const int VblankClocks = 1364 * 37 - 40 * 37;
@@ -40,6 +41,9 @@ internal static partial class WideMessCli
             Check(Near(on.AFast, paf, 0.005) && Near(on.BFast, pbf, 0.005), "fast mode: 2 master clocks a cycle, the I/O register at its SNES 6 (within 0.5%)", $"A {on.AFast} (predicted {paf:F0}), B {on.BFast} (predicted {pbf:F0})");
             double ra = on.AFast / (double)on.A, rb = on.BFast / (double)on.B;
             Check(Near(ra, (double)LoopA / LoopAFast, 0.005) && Near(rb, (double)LoopB / LoopBFast, 0.005), "the speed-ups are the spec's: loop A 108/28 = 3.86x, loop B (one I/O read) 144/46 = 3.13x", $"A {ra:F3}x, B {rb:F3}x");
+            double pr = PredictedCount(LoopAFastRom, Nmi);
+            Check(Near(on.AFastRom, pr, 0.005) && Math.Abs(on.AFastRomFast - on.AFast) <= 1, "MEMSEL: from FastROM loop A takes 96 clocks at SNES speed, and in fast mode MEMSEL changes nothing (28 either way)",
+                  $"FastROM {on.AFastRom} (predicted {pr:F0}), fast {on.AFastRomFast} vs {on.AFast}");
             int ideal = VblankClocks / 8, idealFast = VblankClocks / 4;
             Check(on.Dma <= ideal + 512 && on.Dma >= ideal - 1536, $"general DMA moves about 6 KB a vblank (8 clocks a byte: {ideal:N0} fit)", $"{on.Dma:N0} bytes in 512-byte transfers");
             Check(on.DmaFast <= idealFast + 512 && on.DmaFast >= idealFast - 2560 && on.DmaFast >= 1.8 * on.Dma, $"fast DMA moves about 12 KB a vblank (4 clocks a byte: {idealFast:N0} fit), nearly twice as much", $"{on.DmaFast:N0} bytes, {on.DmaFast / (double)on.Dma:F2}x");
@@ -53,7 +57,9 @@ internal static partial class WideMessCli
         if (off != null)
         {
             Check(off.Id == 0x42 && off.SpeedRead == 0x42, "locked: WMID and WMSPEED read open bus", $"{off.Id:X2} {off.SpeedRead:X2}");
-            Check(Math.Abs(off.AFast - off.A) <= 1 && Math.Abs(off.BFast - off.B) <= 1, "locked: WMSPEED changes nothing (SNES timing)", $"A {off.A}/{off.AFast}, B {off.B}/{off.BFast}");
+            Check(Math.Abs(off.AFast - off.A) <= 1 && Math.Abs(off.BFast - off.B) <= 1 && Math.Abs(off.AFastRomFast - off.AFastRom) <= 1, "locked: WMSPEED changes nothing (SNES timing)",
+                  $"A {off.A}/{off.AFast}, B {off.B}/{off.BFast}, FastROM {off.AFastRom}/{off.AFastRomFast}");
+            Check(Near(off.AFastRom, PredictedCount(LoopAFastRom, Nmi), 0.005), "locked: FastROM works as on a SNES (the control's FastROM count is the 96-clock one, so the fast-mode check above can fail)", $"{off.AFastRom}");
             Check(off.DmaFast == off.Dma, "locked: WMDMA changes nothing", $"{off.Dma:N0} / {off.DmaFast:N0} bytes");
             if (on != null) Check(Math.Abs(off.A - on.A) <= 1 && Math.Abs(off.B - on.B) <= 1 && off.Dma == on.Dma, "locked, the SNES-speed halves equal the unlocked game's within one iteration (the unlock alone changes no timing)");
             // the very same ROM image (the control's payload) on the SNES console: the locked WideMess must measure exactly what a SNES does
@@ -62,7 +68,7 @@ internal static partial class WideMessCli
         }
         var snes = SpeedRun(ConsoleKind.Snes, File.ReadAllBytes(speedSfc));
         if (snes != null)
-            Check(snes.Id == 0x42 && Math.Abs(snes.AFast - snes.A) <= 1 && Math.Abs(snes.BFast - snes.B) <= 1 && snes.DmaFast == snes.Dma && snes.DmaFastCpu == snes.Dma,
+            Check(snes.Id == 0x42 && Math.Abs(snes.AFast - snes.A) <= 1 && Math.Abs(snes.BFast - snes.B) <= 1 && Math.Abs(snes.AFastRomFast - snes.AFastRom) <= 1 && snes.DmaFast == snes.Dma && snes.DmaFastCpu == snes.Dma,
                   "the WideMess game's SNES image on a SNES: no WideMess (WMID open bus), both halves of every measurement equal", $"A {snes.A}/{snes.AFast}, B {snes.B}/{snes.BFast}, DMA {snes.Dma:N0}/{snes.DmaFast:N0}/{snes.DmaFastCpu:N0}");
 
         byte[] big = File.ReadAllBytes(bigmap);
@@ -169,7 +175,7 @@ internal static partial class WideMessCli
         return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
-    private sealed record SpeedResult(byte Id, byte SpeedRead, int A, int AFast, int B, int BFast, int Dma, int DmaFast, int DmaFastCpu, byte LoRomRam, byte PortWrap);
+    private sealed record SpeedResult(byte Id, byte SpeedRead, int A, int AFast, int B, int BFast, int Dma, int DmaFast, int DmaFastCpu, byte LoRomRam, byte PortWrap, int AFastRom, int AFastRomFast);
 
     /// <summary>Runs speed.asm until it says it is done ($7E:01FF = $A5) and reads its results.</summary>
     private static SpeedResult? SpeedRun(ConsoleKind console, byte[] rom)
@@ -179,8 +185,8 @@ internal static partial class WideMessCli
         for (int f = 0; f < 120 && w[0x1FF] != 0xA5; f++) Run(s, 1);
         if (w[0x1FF] != 0xA5) { Check(false, $"the speed ROM finishes on the {Consoles.DisplayName(console)}", "it did not reach its end in 120 frames"); return null; }
         int Wd(int o) => w[0x100 + o] | w[0x101 + o] << 8;
-        var r = new SpeedResult(w[0x100], w[0x101], Wd(0x02), Wd(0x04), Wd(0x06), Wd(0x08), Wd(0x0A), Wd(0x0C), Wd(0x0E), w[0x110], w[0x111]);
-        Console.WriteLine($"     {Consoles.DisplayName(console)}: loop A {r.A} / {r.AFast} fast, loop B {r.B} / {r.BFast} fast, DMA {r.Dma:N0} / {r.DmaFast:N0} fast DMA / {r.DmaFastCpu:N0} fast CPU");
+        var r = new SpeedResult(w[0x100], w[0x101], Wd(0x02), Wd(0x04), Wd(0x06), Wd(0x08), Wd(0x0A), Wd(0x0C), Wd(0x0E), w[0x110], w[0x111], Wd(0x12), Wd(0x14));
+        Console.WriteLine($"     {Consoles.DisplayName(console)}: loop A {r.A} / {r.AFast} fast (FastROM {r.AFastRom} / {r.AFastRomFast} fast), loop B {r.B} / {r.BFast} fast, DMA {r.Dma:N0} / {r.DmaFast:N0} fast DMA / {r.DmaFastCpu:N0} fast CPU");
         return r;
     }
 

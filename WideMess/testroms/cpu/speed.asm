@@ -4,6 +4,7 @@
 ;   - loop A (ROM, work RAM and internal cycles only) and loop B (the same plus a 16-bit read of the I/O register $4214): iterations in one frame
 ;     (NMI to NMI) at SNES speed and in fast mode (WMSPEED = 1). The spec predicts the ratio from each loop's mix of accesses: 108 / 28 master clocks
 ;     for loop A, 144 / 46 for loop B (the I/O read keeps its 6 clocks a byte in fast mode);
+;   - loop A again from FastROM (MEMSEL = 1, running at $80:xxxx): 96 clocks at SNES speed, still 28 in fast mode (MEMSEL does nothing there);
 ;   - the bytes general DMA moves in one vblank, in 512-byte transfers from ROM to the WRAM port: normal, fast DMA (WMDMA = 1), and fast CPU alone
 ;     (WMSPEED = 1, WMDMA = 0: DMA keeps its 8 clocks a byte);
 ;   - the LoROM negative probes: no RAM at $70-$7D (the WideMess map's work RAM is not there on a LoROM cartridge), and the WRAM port keeps the
@@ -13,6 +14,7 @@
 ;
 ; Results ($7E:0100): +$00 WMID read  +$01 WMSPEED read back after writing 1  +$02/$04 loop A SNES/fast  +$06/$08 loop B SNES/fast
 ;   +$0A/$0C/$0E DMA bytes per vblank: normal / fast DMA / fast CPU only  +$10 RAM found at $70-$7D (of 5 probes)  +$11 1 = the port wrapped to $7E
+;   +$12/$14 loop A from FastROM ($80:xxxx, MEMSEL = 1) SNES/fast
 ;   $7E:01FF = $A5 when done.
 ;
 ; Assemble: build.ps1 (WLA-DX 65816 from the PVSnesLib toolchain, then BrokenNes Workshop --wms-pack).
@@ -133,6 +135,25 @@ Start:
 .ACCU 8
   stz WMSPEED
 
+  ; ---- loop A from FastROM: MEMSEL = 1 and the code at $80:xxxx (the same bytes as $00:xxxx). At SNES speed its 6 ROM cycles take 6 clocks
+  ;      instead of 8 (96 a loop); in fast mode MEMSEL changes nothing (28 a loop either way).
+  lda #$01
+  sta $420D
+  jsl $800000+MeasureAFar
+.ACCU 16
+  sta RESULTS+$12
+  sep #$20
+.ACCU 8
+  lda #$01
+  sta WMSPEED
+  jsl $800000+MeasureAFar
+.ACCU 16
+  sta RESULTS+$14
+  sep #$20
+.ACCU 8
+  stz WMSPEED
+  stz $420D
+
   ; ---- loop B at SNES speed, then fast
   jsr MeasureB
 .ACCU 16
@@ -226,6 +247,12 @@ LoopA:
   beq LoopA             ; 2 ROM, 1 internal (taken)
   lda counter
   rts
+
+; MeasureA called with JSL: from $80:xxxx it runs in bank $80, where MEMSEL applies.
+.ACCU 8
+MeasureAFar:
+  jsr MeasureA
+  rtl
 
 ; Iterations of loop B (loop A plus a 16-bit read of $4214) in one frame. Returns with A 16 bits = the count.
 .ACCU 8
