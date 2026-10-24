@@ -35,19 +35,30 @@ public sealed class GbDebugMachine : DebugMachine, IGbInstructionHook, IGbBusDeb
 
     public override void ApplyHooks(bool[] exec, bool[] memory)
     {
+        memArmed = memory[0];
         board.DebugHook = exec[0] ? this : null;
         board.DebugTap = memory[0] ? this : null;   // OAM and VRAM DMA bytes
-        if (board.Core is CPU_GB c) c.DebugInterpose(memory[0] ? watchingBus ??= new WatchingBus(this) : null);   // the CPU's own accesses
+        Interpose();                                // the CPU's own accesses
     }
 
-    private WatchingBus? watchingBus;
+    private bool memArmed;
+    private CPU_GB? interposed;
+
+    // The watching bus sits in front of the CPU running now; a session that swaps its CPU (GbSession.TrySwapCore) gets it moved (BeforeInstruction).
+    private void Interpose()
+    {
+        var core = board.Core as CPU_GB;
+        if (interposed != null && (!memArmed || !ReferenceEquals(interposed, core))) { interposed.DebugInterpose(null); interposed = null; }
+        if (memArmed && core != null && interposed == null) { core.DebugInterpose(new WatchingBus(this, core)); interposed = core; }
+    }
 
     /// <summary>Sits between the SM83 and the board while a watch is set: reads are reported after they happen, writes before they land.</summary>
     private sealed class WatchingBus : IGbCpuBus
     {
         private readonly GbDebugMachine m;
-        public WatchingBus(GbDebugMachine machine) { m = machine; }
-        private IGbCpuBus Real => ((CPU_GB)m.board.Core).DebugRealBus;
+        private readonly CPU_GB cpu;
+        public WatchingBus(GbDebugMachine machine, CPU_GB cpu) { m = machine; this.cpu = cpu; }
+        private IGbCpuBus Real => cpu.DebugRealBus;
         public byte Read(ushort address)
         {
             byte v = Real.Read(address);
@@ -65,7 +76,11 @@ public sealed class GbDebugMachine : DebugMachine, IGbInstructionHook, IGbBusDeb
         public bool Stop() => Real.Stop();
     }
 
-    void IGbInstructionHook.BeforeInstruction() => Debugger?.OnInstruction(cpu, board.CycleCount);
+    void IGbInstructionHook.BeforeInstruction()
+    {
+        if (memArmed && !ReferenceEquals(board.Core, interposed)) Interpose();
+        Debugger?.OnInstruction(cpu, board.CycleCount);
+    }
 
     void IGbBusDebugTap.OnRead(ushort address, byte value, GbBusSource source) =>
         Debugger?.OnAccess(cpu, address, value, false, source == GbBusSource.Cpu ? AccessSource.Cpu : source == GbBusSource.OamDma ? AccessSource.OamDma : AccessSource.VramDma, -1);
