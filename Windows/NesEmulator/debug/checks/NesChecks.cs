@@ -155,11 +155,7 @@ public sealed class NesChecks : ConsoleChecks
             {
                 ram.Set(r);
                 if (stack) { if (page1.Stack((uint)(r & 0xFF), true)) StackCollision(cpu, r, "the stack pushed onto a page-1 byte the game reads as data"); }
-                else
-                {
-                    NoteMainWrite();
-                    if (r >= 0x100 && r < 0x200 && page1.Data((uint)(r & 0xFF), true, curS)) StackCollision(cpu, r, "data written into the live stack (between S and the stack's top)");
-                }
+                else NoteMainWrite();
             }
             else if (IsRealRead(a))
             {

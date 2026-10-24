@@ -46,25 +46,40 @@ public abstract class ConsoleChecks : DebugObserver
         return f;
     }
 
-    /// <summary>A memory rule's place: the variable's symbol (its base name) or the address as the canonical memory names it.</summary>
+    /// <summary>A memory rule's place: the variable's symbol (its stable name) or the address as the canonical memory names it.</summary>
     protected string MemoryPlace(DebugCpu cpu, uint cpuAddress, string addressText)
     {
         string? s = Symbols ? Dbg.SymbolAt(cpu, cpuAddress) : null;
-        return s != null ? AcceptedFinding.BaseName(s) : addressText;
+        return s != null ? PlaceName(s) : addressText;
     }
 
-    /// <summary>A code rule's place: the function the PC is in (its symbol, else the function the call stack entered), or the PC.</summary>
+    /// <summary>
+    /// A code rule's place: the function the PC is in. Its symbol when it is a global name; a local or generated label (WLA's __local_N,
+    /// _loop, @next) gives way to the function the call stack entered, so the place survives a rebuild; else the PC.
+    /// </summary>
     protected string CodePlace(DebugCpu cpu, uint pc)
     {
-        if (Symbols)
+        if (!Symbols) return cpu.FormatAddress(pc);
+        string? s = Dbg.SymbolAt(cpu, pc);
+        if (s != null && !IsLocalLabel(PlaceName(s))) return PlaceName(s);
+        var st = cpu.State.Stack;
+        for (int i = st.Count - 1; i >= 0; i--)
         {
-            string? s = Dbg.SymbolAt(cpu, pc);
-            if (s != null) return AcceptedFinding.BaseName(s);
-            var st = cpu.State.Stack;
-            for (int i = st.Count - 1; i >= 0; i--) { string? t = Dbg.SymbolAt(cpu, st[i].Target); if (t != null) return AcceptedFinding.BaseName(t); }
+            string? t = Dbg.SymbolAt(cpu, st[i].Target);
+            if (t != null && !IsLocalLabel(PlaceName(t))) return PlaceName(t);
         }
-        return cpu.FormatAddress(pc);
+        return s != null ? PlaceName(s) : cpu.FormatAddress(pc);
     }
+
+    /// <summary>A symbol as a place: without "+$N" inside it and without NESFab's "@bank_n" suffix (it moves when the function changes bank).</summary>
+    public static string PlaceName(string symbol)
+    {
+        string b = AcceptedFinding.BaseName(symbol);
+        int at = b.IndexOf('@');
+        return at > 0 ? b[..at] : b;
+    }
+
+    private static bool IsLocalLabel(string name) => name.Length == 0 || name[0] is '_' or '@' or '.' || name.Contains("__local", StringComparison.Ordinal);
 
     protected bool Symbols => Dbg.Symbols.All.Count > 0;
 
@@ -77,7 +92,7 @@ public abstract class ConsoleChecks : DebugObserver
         {
             if (sb.Length > 0) sb.Append(" > ");
             string? t = Symbols ? Dbg.SymbolAt(cpu, st[i].Target) : null;
-            sb.Append(st[i].Kind == "JSR" || st[i].Kind == "JSL" || st[i].Kind == "CALL" ? "" : st[i].Kind + " ").Append(t != null ? AcceptedFinding.BaseName(t) : cpu.FormatAddress(st[i].Target));
+            sb.Append(st[i].Kind == "JSR" || st[i].Kind == "JSL" || st[i].Kind == "CALL" ? "" : st[i].Kind + " ").Append(t != null ? PlaceName(t) : cpu.FormatAddress(st[i].Target));
         }
         return sb.ToString();
     }
@@ -105,16 +120,9 @@ public abstract class ConsoleChecks : DebugObserver
     public sealed override void OnStep(DebugCpu cpu, long cycle, bool executes, string? interrupt)
     {
         if (cpu.Index != 0) { OtherCpuStep(cpu, cycle, executes, interrupt); return; }
-        if (haveStep)
-        {
-            long d = cycle - lastCycle;
-            if (d < 0 || d > 10_000_000) d = 0;
-            frameCycles += d;
-            if (lastIdle) frameIdle += d;
-            bucket.Exclusive += d;
-        }
-        else { frameStartCycle = cycle; frameNumber = M.Frame; }
-        lastCycle = cycle; haveStep = true;
+        if (haveStep) Account(cycle);
+        else { frameStartCycle = cycle; frameNumber = M.Frame; lastCycle = cycle; }
+        haveStep = true;
         if (FrameBoundary()) { CloseFrame(cycle, partial: false); }
 
         uint pc = cpu.PC;
@@ -135,6 +143,17 @@ public abstract class ConsoleChecks : DebugObserver
         lastIdle = InterruptDepth == 0 && (spinning || MainWaiting(cpu, executes) || InFrameWait(cpu, pc));
     }
 
+    /// <summary>The cycles since the last accounting go to the frame (busy or waiting) and to the function running.</summary>
+    private void Account(long cycle)
+    {
+        long d = cycle - lastCycle;
+        if (d < 0 || d > 10_000_000) d = 0;
+        frameCycles += d;
+        if (lastIdle) frameIdle += d;
+        bucket.Exclusive += d;
+        lastCycle = cycle;
+    }
+
     /// <summary>The main CPU's step for the console's rules (after the frame bookkeeping).</summary>
     protected abstract void MainStep(DebugCpu cpu, long cycle, bool executes, string? interrupt, uint pc);
     protected virtual void OtherCpuStep(DebugCpu cpu, long cycle, bool executes, string? interrupt) { }
@@ -148,6 +167,7 @@ public abstract class ConsoleChecks : DebugObserver
     public override void OnCall(DebugCpu cpu, CallFrame frame)
     {
         if (cpu.Index != 0) return;
+        if (haveStep) Account(M.Cycle);   // the call (or interrupt entry) itself is the caller's time
         bool irq = IsInterrupt(frame.Kind);
         if (irq) InterruptDepth++;
         if (!Opt.Profile && !irq) return;
@@ -160,6 +180,7 @@ public abstract class ConsoleChecks : DebugObserver
     public override void OnReturn(DebugCpu cpu, CallFrame frame)
     {
         if (cpu.Index != 0) return;
+        if (haveStep) Account(M.Cycle);   // the return instruction is the callee's time
         bool irq = IsInterrupt(frame.Kind);
         if (irq && InterruptDepth > 0) InterruptDepth--;
         if (callStack.Count == 0) return;
@@ -251,7 +272,11 @@ public abstract class ConsoleChecks : DebugObserver
     }
 
     /// <summary>A write to the picture's memory (or a DMA to it) at <paramref name="cycle"/>: the vblank upload time ends there.</summary>
-    protected void NoteUpload(long cycle) { if (vblankStartCycle >= 0 && InVblank()) lastUpload = cycle; }
+    protected void NoteUpload(long cycle)
+    {
+        // an upload landing in the next vblank by the instruction that crossed into it belongs to the next frame (its boundary is seen at the next step)
+        if (vblankStartCycle >= 0 && InVblank() && cycle - vblankStartCycle < NominalFrameCycles / 2) lastUpload = cycle;
+    }
     protected abstract bool InVblank();
     protected void NoteDma(long bytes) => frameDma += bytes;
 
@@ -279,7 +304,7 @@ public abstract class ConsoleChecks : DebugObserver
         ulong key = (ulong)(uint)k.Space << 32 | k.Offset;
         if (functions.TryGetValue(key, out var fs)) return fs;
         string? s = Symbols ? Dbg.SymbolAt(cpu, target) : null;
-        string name = s != null ? AcceptedFinding.BaseName(s) : cpu.FormatAddress(target);
+        string name = s != null ? PlaceName(s) : cpu.FormatAddress(target);
         if (!functionsByName.TryGetValue(name, out fs)) functionsByName[name] = fs = new FunctionStat(name);
         functions[key] = fs;
         return fs;
@@ -289,7 +314,8 @@ public abstract class ConsoleChecks : DebugObserver
 
     /// <summary>
     /// Stack-overflow bookkeeping over one RAM region (by canonical offset): a byte read as data while it lay below the stack pointer, later
-    /// pushed onto (the stack grew into the data), or a byte written as data while it lay inside the live stack (the data overwrote the stack).
+    /// pushed onto: the stack grew into the game's data. (Data written inside the live stack is not a finding: compiled code keeps its
+    /// locals in stack frames and writes them through the direct page or HL.)
     /// </summary>
     protected sealed class StackCollisions
     {
@@ -298,13 +324,10 @@ public abstract class ConsoleChecks : DebugObserver
         public uint Lowest = uint.MaxValue;
         public StackCollisions(int size) { state = new byte[size]; }
 
-        /// <summary>Returns true when this access is a collision (reported once per byte).</summary>
-        public bool Data(uint offset, bool write, uint sp)
+        /// <summary>A data access (not the stack's): a read below the stack pointer marks the byte as the game's data.</summary>
+        public void Data(uint offset, bool write, uint sp)
         {
-            if (offset >= state.Length) return false;
-            if (!write) { if (offset <= sp) state[offset] |= 1; return false; }
-            if (offset > sp && offset <= Top && (state[offset] & 2) != 0 && (state[offset] & 4) == 0) { state[offset] |= 4; return true; }
-            return false;
+            if (!write && offset < state.Length && offset <= sp) state[offset] |= 1;
         }
 
         public bool Stack(uint offset, bool write)

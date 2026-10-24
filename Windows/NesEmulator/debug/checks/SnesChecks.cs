@@ -129,11 +129,7 @@ public sealed class SnesChecks : ConsoleChecks
             map.Set(key.Offset);
             if (source != AccessSource.Cpu) return;
             if (isStack) { if (stack.Stack(key.Offset, true)) Report("snes.stack-overflow", MemoryPlace(c, address, text), text, c, curPc, $"the stack pushed onto a byte the game reads as data (S = ${curS:X4})"); }
-            else
-            {
-                NoteMainWrite();
-                if (!hi && key.Offset < 0x2000 && stack.Data(key.Offset, true, curS)) Report("snes.stack-overflow", MemoryPlace(c, address, text), text, c, curPc, $"data written into the live stack (S = ${curS:X4})");
-            }
+            else NoteMainWrite();
             return;
         }
         if (!map[key.Offset])

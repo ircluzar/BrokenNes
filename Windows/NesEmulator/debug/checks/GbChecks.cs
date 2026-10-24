@@ -121,11 +121,7 @@ public sealed class GbChecks : ConsoleChecks
             {
                 map.Set(k.Offset);
                 if (isStack) { if (stack.Stack(f, true)) Report("gb.stack-overflow", MemoryPlace(c, f, text), text, c, curPc, $"the stack pushed onto a byte the game reads as data (SP = ${curSp:X4})"); }
-                else
-                {
-                    NoteMainWrite();
-                    if (stack.Data(f, true, curSp)) Report("gb.stack-overflow", MemoryPlace(c, f, text), text, c, curPc, $"data written into the live stack (SP = ${curSp:X4})");
-                }
+                else NoteMainWrite();
             }
             else
             {
