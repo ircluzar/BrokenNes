@@ -117,7 +117,7 @@ public sealed class WmsProfile
     private static WmsWidescreen ParseWidescreen(JsonElement w, string source)
     {
         if (w.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{source}: widescreen is an object");
-        Keys(w, source, "widescreen", new[] { "layers" }, new[] { "masks", "windows", "drawnAhead" });
+        Keys(w, source, "widescreen", new[] { "layers" }, new[] { "masks", "windows", "drawnAhead", "memory", "level" });
         var layers = w.GetProperty("layers");
         if (layers.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{source}: widescreen.layers is an object");
         Keys(layers, source, "widescreen.layers", LayerKeys, Array.Empty<string>());
@@ -147,6 +147,47 @@ public sealed class WmsProfile
                 if (px < 0 || px > PPU_WMS.SnesOrigin) throw new InvalidDataException($"{source}: widescreen.drawnAhead.{p.Name} is {px} (0-72 pixels)");
                 ws.DrawnAhead[i] = px;
             }
+        }
+        if (w.TryGetProperty("memory", out var mem))
+        {
+            // ["bg1"]: the map memory (spec 6.1) for layers on the drawn rule
+            if (mem.ValueKind != JsonValueKind.Array) throw new InvalidDataException($"{source}: widescreen.memory is a list of layers");
+            foreach (var e in mem.EnumerateArray())
+            {
+                string name = e.ValueKind == JsonValueKind.String ? e.GetString()! : "";
+                int i = Array.IndexOf(LayerKeys, name);
+                if (i < 0 || i > 3) throw new InvalidDataException($"{source}: widescreen.memory: '{name}' is not a layer (bg1-bg4)");
+                if (ws.Layers[i] != WmsSideRule.Drawn) throw new InvalidDataException($"{source}: widescreen.memory.{name}: the layer's rule is not drawn");
+                if (ws.Memory[i]) throw new InvalidDataException($"{source}: widescreen.memory lists {name} twice");
+                ws.Memory[i] = true;
+            }
+        }
+        if (w.TryGetProperty("level", out var lv))
+        {
+            // the level in work RAM (spec 6.1): every key required, the addresses in work RAM ($7E0000-$7FFFFF), the bit fields apart
+            if (lv.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{source}: widescreen.level is an object");
+            var keys = new[] { "layer", "blocks", "width", "height", "tiles", "index", "flipX", "flipY" };
+            Keys(lv, source, "widescreen.level", keys, Array.Empty<string>());
+            string ln = Str(lv, "layer", source);
+            int li = Array.IndexOf(LayerKeys, ln);
+            if (li < 0 || li > 3) throw new InvalidDataException($"{source}: widescreen.level.layer is '{ln}' (bg1-bg4)");
+            if (ws.Layers[li] != WmsSideRule.Drawn) throw new InvalidDataException($"{source}: widescreen.level.layer {ln}: the layer's rule is not drawn");
+            int Addr(string k)
+            {
+                int a = Hex(Str(lv, k, source), $"widescreen.level.{k}", source);
+                if (a < 0x7E0000 || a > 0x7FFFFF) throw new InvalidDataException($"{source}: widescreen.level.{k} is ${a:X6} (work RAM is $7E0000-$7FFFFF)");
+                return a - 0x7E0000;
+            }
+            int Bits(string k)
+            {
+                int b = Hex(Str(lv, k, source), $"widescreen.level.{k}", source);
+                if (b <= 0 || b > 0xFFFF) throw new InvalidDataException($"{source}: widescreen.level.{k} is ${b:X} (bits of a 16-bit word)");
+                return b;
+            }
+            var level = new WmsLevel { Layer = li, Blocks = Addr("blocks"), Width = Addr("width"), Height = Addr("height"), Tiles = Addr("tiles"), Index = Bits("index"), FlipX = Bits("flipX"), FlipY = Bits("flipY") };
+            if ((level.Index & level.FlipX) != 0 || (level.Index & level.FlipY) != 0 || (level.FlipX & level.FlipY) != 0)
+                throw new InvalidDataException($"{source}: widescreen.level: index, flipX and flipY overlap");
+            ws.Level = level;
         }
         if (w.TryGetProperty("windows", out var wn))
         {
@@ -228,6 +269,16 @@ public sealed class WmsProfile
         if (s.StartsWith('$')) s = s[1..]; else if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) s = s[2..];
         b = 0;
         return s.Length is 1 or 2 && byte.TryParse(s, System.Globalization.NumberStyles.HexNumber, null, out b);
+    }
+
+    /// <summary>"$7F0002" (or 0x7F0002): a hex number of up to 6 digits.</summary>
+    private static int Hex(string s, string what, string source)
+    {
+        string t = s.Trim();
+        if (t.StartsWith('$')) t = t[1..]; else if (t.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) t = t[2..];
+        if (t.Length is < 1 or > 6 || !int.TryParse(t, System.Globalization.NumberStyles.HexNumber, null, out int v))
+            throw new InvalidDataException($"{source}: {what} is '{s}' (\"$hex\")");
+        return v;
     }
 
     private static void Keys(JsonElement o, string source, string what, string[] required, string[] optional)

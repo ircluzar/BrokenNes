@@ -60,6 +60,10 @@ internal static partial class WideMessCli
         SyntheticSprites();
         Console.WriteLine("E2b. The drawn side rule on a synthetic game that streams its map as it scrolls");
         SyntheticDrawn();
+        Console.WriteLine("E2c. The map memory on a synthetic game whose map holds only the screen's width");
+        SyntheticMemory();
+        Console.WriteLine("E2d. The level in work RAM on a synthetic game that keeps its level as blocks");
+        SyntheticLevel();
 
         Console.WriteLine("E3. Better sound: cubic interpolation on the S-DSP (a synthetic voice)");
         SyntheticSound();
@@ -101,9 +105,21 @@ internal static partial class WideMessCli
                 $"{d.wrong:N0} wrong of {dj:N0} ({d.right:N0} right, {d.empty:N0} left to the layers behind)");
             Check(xj >= 100 && x.wrong * 5 >= xj, $"{truthGames[i].Key}: negative control, BG1 extended: at least 20% wrong (the old tiles the drawn rule leaves out)", $"{x.wrong:N0} wrong of {xj:N0}");
         }
+        // the level in work RAM (milestone 6 climb): Super Metroid's profile names where its rooms live; without it the sides ahead are empty
+        var smg = games.FirstOrDefault(x => x.Key == "sm");
+        if (smg != null && WmsProfiles.All.FirstOrDefault(p => p.Title == smg.Title)?.Widescreen?.Level != null)
+        {
+            var common = new[] { "--game", "sm", "--layer", "bg1", "--snes-dir", snesDir }.Concat(profiles != "" ? new[] { "--profiles", profiles } : Array.Empty<string>()).ToArray();
+            (long right, long empty, long wrong) lv = default, nl = default;
+            Parallel.Invoke(() => lv = SideTruthCounts(common), () => nl = SideTruthCounts(common.Append("--no-level").ToArray()));
+            long lj = lv.right + lv.empty + lv.wrong, nj = nl.right + nl.empty + nl.wrong;
+            Check(lj >= 1000 && lv.wrong * 100 <= lj && lv.empty * 20 <= lj, "sm: BG1 with its level in work RAM: at most 1% of the side columns wrong and at most 5% empty (the side ahead drawn from the room before the game draws it)",
+                $"{lv.right:N0} right, {lv.empty:N0} empty, {lv.wrong:N0} wrong of {lj:N0}");
+            Check(nj >= 1000 && nl.empty * 2 >= nj, "sm: negative control, the same profile without its level: at least half the side columns empty", $"{nl.empty:N0} empty of {nj:N0}");
+        }
 
         Console.WriteLine("E7. Speed: the enhanced picture (widescreen, every line through the wide compositor and the profile's rules)");
-        foreach (var key in new[] { "smw", "fzero", "smk" })
+        foreach (var key in new[] { "smw", "fzero", "smk", "sm" })   // sm: the level in work RAM (milestone 6 climb)
         {
             var g = games.FirstOrDefault(x => x.Key == key);
             if (g != null) EnhancedSpeed(g, Path.Combine(snesDir, g.File));
@@ -111,6 +127,8 @@ internal static partial class WideMessCli
     }
 
     // ------------------------------------------------------------------ E1
+
+    private const string LevelJson = "\"level\": { \"layer\": \"bg1\", \"blocks\": \"$7F0002\", \"width\": \"$7E07A5\", \"height\": \"$7E07A7\", \"tiles\": \"$7EA000\", \"index\": \"$03FF\", \"flipX\": \"$0400\", \"flipY\": \"$0800\" }";
 
     private static void ProfileRefusals()
     {
@@ -127,6 +145,11 @@ internal static partial class WideMessCli
             Check(p.Widescreen!.Layers[1] == WmsSideRule.Repeat && p.Widescreen.Masks[0].When.Length == 2 && p.Widescreen.Masks[0].When[1].Mask == 0xFC, "a well-formed profile reads (rules, masks, scene conditions)");
             var d = WmsProfile.Parse(good.Replace("\"bg1\": \"extend\"", "\"bg1\": \"drawn\"").Replace("\"masks\": [", "\"drawnAhead\": { \"bg1\": 8 }, \"masks\": ["), "drawn.json");
             Check(d.Widescreen!.Layers[0] == WmsSideRule.Drawn && d.Widescreen.DrawnAhead[0] == 8 && d.Widescreen.DrawnAhead[1] == 16, "a profile with a drawn layer reads (its ahead, the others' default 16)");
+            var mm = WmsProfile.Parse(good.Replace("\"bg1\": \"extend\"", "\"bg1\": \"drawn\"").Replace("\"masks\": [", "\"memory\": [\"bg1\"], \"masks\": ["), "memory.json");
+            Check(mm.Widescreen!.Memory[0] && !mm.Widescreen.Memory[1] && !d.Widescreen.Memory[0], "a profile with the map memory on its drawn layer reads (and without the key, no memory)");
+            var lv = WmsProfile.Parse(good.Replace("\"bg1\": \"extend\"", "\"bg1\": \"drawn\"").Replace("\"masks\": [", LevelJson + ", \"masks\": ["), "level.json");
+            Check(lv.Widescreen!.Level is { Layer: 0, Blocks: 0x10002, Width: 0x07A5, Height: 0x07A7, Tiles: 0xA000, Index: 0x3FF, FlipX: 0x400, FlipY: 0x800 } && d.Widescreen.Level == null,
+                "a profile with the level in work RAM reads (its addresses as offsets into work RAM, its bits; without the key, no level)");
         }
         catch (Exception e) { Check(false, "a well-formed profile reads", e.Message); }
         (string change, string from, string to, string mustSay)[] bad =
@@ -145,12 +168,20 @@ internal static partial class WideMessCli
             ("sprites on the drawn rule", "\"sprites\": \"fill\"", "\"sprites\": \"drawn\"", "extend or fill"),
             ("a drawn ahead for a layer not on the drawn rule", "\"masks\": [", "\"drawnAhead\": { \"bg2\": 8 }, \"masks\": [", "not drawn"),
             ("a drawn ahead past the side", "\"bg1\": \"extend\"", "\"bg1\": \"drawn\"", "0-72 pixels"),
+            ("the map memory for a layer not on the drawn rule", "\"masks\": [", "\"memory\": [\"bg2\"], \"masks\": [", "not drawn"),
+            ("the map memory for the sprites", "\"masks\": [", "\"memory\": [\"sprites\"], \"masks\": [", "not a layer"),
+            ("the map memory not a list", "\"masks\": [", "\"memory\": \"bg1\", \"masks\": [", "a list of layers"),
+            ("the level for a layer not on the drawn rule", "\"masks\": [", LevelJson.Replace("\"bg1\"", "\"bg2\"") + ", \"masks\": [", "not drawn"),
+            ("the level outside work RAM", "\"masks\": [", LevelJson.Replace("$7F0002", "$800002") + ", \"masks\": [", "work RAM is"),
+            ("the level's bits overlapping", "\"masks\": [", LevelJson.Replace("\"flipX\": \"$0400\"", "\"flipX\": \"$0200\"") + ", \"masks\": [", "overlap"),
+            ("the level without its block table", "\"masks\": [", LevelJson.Replace(", \"tiles\": \"$7EA000\"", "") + ", \"masks\": [", "no 'tiles'"),
         };
         foreach (var (change, from, to, mustSay) in bad)
         {
             string json = good.Replace(from, to);
             if (change.StartsWith("recommending")) json = json.Replace("\"recommended\": [\"widescreen\"]", "\"recommended\": [\"fastCpu\"]");
             if (change.StartsWith("a drawn ahead past")) json = json.Replace("\"masks\": [", "\"drawnAhead\": { \"bg1\": 80 }, \"masks\": [");
+            if (change.StartsWith("the level")) json = json.Replace("\"bg1\": \"extend\"", "\"bg1\": \"drawn\"");
             if (change.StartsWith("widescreen offered")) json = System.Text.RegularExpressions.Regex.Replace(json, "\"unused\": \\{.*?\\] \\},", "", System.Text.RegularExpressions.RegexOptions.Singleline);
             try { WmsProfile.Parse(json, "bad.json"); Check(false, $"refuses a profile with {change}", "it was read"); }
             catch (InvalidDataException e) { Check(e.Message.Contains(mustSay, StringComparison.OrdinalIgnoreCase), $"refuses a profile with {change}, and says why", e.Message); }
