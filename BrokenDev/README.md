@@ -19,6 +19,7 @@ The app shows nothing of BrokenDev unless it is switched on: set the environment
 | `smb1-nested` | the remake on the SNES through Project Nested | SNES (nested) | `smb1-nes`, then `m30pipe` |
 | `supervrun` | Super VRUN, the current native SNES project | SNES | PVSnesLib 4.6.0 (shipped), `bash build.sh` |
 | `widemess-sample` | Wide Blaster, the WideMess devkit's sample game (`WideMess/sample` in this repository) | WideMess | PVSnesLib + the WideMess devkit, `widemess/tools/wmsbuild.ps1` |
+| `vrun-voc` | VRUN: Vaults of Obsolete Code, today its V0 hello world (`docs/projects/vrun-voc-plan.md`), in its live workspace `PROJECTS\VRUN_VOC_dev` | Game Boy (dual mode: console `gbc`, also run as `gb`), MBC5 1 MB + 32 KB battery RAM | GBDK-2020 4.5.0 (pinned, `toolchains.json`), the workspace's `build.ps1` |
 
 Each project is a manifest, `projects/<id>/project.json`: where its source comes from (an archive and a path), the tools it
 needs, the build steps and outputs, how to verify it on BrokenNes, and what is known to be wrong with it. The scripts in this
@@ -45,6 +46,7 @@ BrokenDev\brokendev.ps1 tools                  # the editors and checkers of the
 BrokenDev\brokendev.ps1 tool <id> [args]       # start one
 BrokenDev\brokendev.ps1 emulators              # the other emulators the games are tested on (see "Other emulators" below)
 BrokenDev\brokendev.ps1 emulators install all  # Mesen, BizHawk, FCEUX, Snes9x: the pinned official releases, portable
+BrokenDev\brokendev.ps1 toolchains             # the pinned toolchains (GBDK-2020): ready, or what is wrong (never downloads)
 BrokenDev\brokendev.ps1 compat vrun-nes        # the game on BrokenNes (the reference) and every installed emulator of its console
 BrokenDev\brokendev.ps1 play vrun-nes -Emu fceux   # open the built ROM in one of them, by hand
 BrokenDev\brokendev.ps1 new widemess my-game   # a new WideMess game from the devkit's template (its folder and projects\my-game)
@@ -85,6 +87,25 @@ converters and the build (`tools/`), the sound driver (`driver/`) and the templa
 manifest has kind and console `wms` and its source in its own folder (`source.folder`); `verify` runs it on the WideMess console and checks
 its `expect.wms`; `compat` has BrokenNes's column only. The guide: `docs/projects/widemess-devkit.md`.
 
+## The Game Boy (GBDK-2020, `vrun-voc`)
+
+- **The toolchain** is pinned in `toolchains.json` like the emulators: GBDK-2020 4.5.0 at `BROKENDEV_HOME\toolchains\gbdk\4.5.0\gbdk`, its
+  release zip kept in `toolchains\gbdk\_downloads` (size and sha256 pinned), ten key files by size and sha256, the ChangeLog's version.
+  `doctor` and `brokendev.ps1 toolchains` check it; a manifest needs it with `requires.tools` `toolchain:gbdk` and names its folder
+  `{toolchain:gbdk}`. BrokenDev never downloads or unpacks a toolchain.
+- **A Game Boy project** has kind `gb` and console `gb` or `gbc` (a dual-mode or Color game). `vrun-voc`'s source is `{live:VRUN_VOC_dev}`:
+  a game's own live workspace, the folder of that name beside the repository or one of its parents (`BROKENDEV_LIVE_VRUN_VOC_DEV` names
+  another).
+- **verify** runs it on BrokenNes's Game Boy Color, and a scenario's `"console": "gb"` runs the same cartridge on the original Game Boy.
+  Three more scenario keys (any console): `"batteryFrom": "<scenario>"` powers on with the battery save an earlier scenario left (a boot
+  counter, a save game); `expect.memory` reads the game's variables by the build's symbols (`{ "symbol": "_boot_count", "size": 2, "is": 2 }`,
+  NES system RAM or the Game Boy's bus); `expect.maxDistinctColors`. The hardware checks are the Game Boy's 12 rules.
+- **compat** has four Game Boy columns: BrokenNes, Mesen (its Game Boy Color or Game Boy model, from `gbModels`), BizHawk Gambatte and BizHawk
+  SameBoy (`bizhawk-gambatte`, `bizhawk-sameboy`: one core pinned for EmuHawk's systems GB and GBC). Reads take a CPU address or a GBDK symbol
+  (`.noi`, or the bgb `.sym`) and become BrokenDev's Game Boy domains: `wram` (`$C000` + bank x `$1000`), `hram` (`$FF80`), `cartram` (bank x
+  `$2000`). The other emulators play their boot animations first (BrokenNes starts at the documented post-boot state), so the scenarios
+  wait before pressing anything.
+
 ## The tools (editors and checkers of the games)
 
 The tools made while developing the games (the tile editor, the SFX configurator, the AudioPlayer configurator, the Nested Builder, the
@@ -122,12 +143,14 @@ frames to picture), a `result.txt` and pictures out.
 
 | Emulator id | Consoles | How it is driven | Its column can check |
 |---|---|---|---|
-| `brokennes` | NES, SNES | the Workshop, `--brokendev run` (the same cores as `verify`) | everything: state, pictures, sound, saves (the reference) |
-| `mesen` | NES, SNES | Mesen 2.1.1, Lua through `--testRunner`, a private home | state, pictures, NES sound activity, saves; lists RAM read before written |
+| `brokennes` | NES, SNES, WideMess, Game Boy | the Workshop, `--brokendev run` (the same cores as `verify`) | everything: state, pictures, sound, saves (the reference) |
+| `mesen` | NES, SNES, Game Boy | Mesen 2.1.1, Lua through `--testRunner`, a private home | state, pictures, NES sound activity, saves; lists RAM read before written |
 | `bizhawk-neshawk` | NES | BizHawk 2.11.1 EmuHawk, `--lua`, a scratch `--config` pinning NesHawk | state, pictures, saves |
 | `fceux` | NES | FCEUX 2.7.0, `-lua` on a private copy | state, pictures, sound activity, saves |
 | `snes9x` | SNES | Snes9x 1.63 standalone (no scripting): its own menu commands by window message, a .smv movie, Frame Advance, its screenshots and save states | state, pictures, saves |
 | `bizhawk-bsnes` | SNES | BizHawk 2.11.1 EmuHawk, `--lua`, a scratch `--config` pinning BSNES | state, pictures, saves |
+| `bizhawk-gambatte` | Game Boy | BizHawk 2.11.1 EmuHawk, `--lua`, a scratch `--config` pinning Gambatte (GB and GBC) | state, pictures, saves |
+| `bizhawk-sameboy` | Game Boy | BizHawk 2.11.1 EmuHawk, `--lua`, a scratch `--config` pinning SameBoy (GB and GBC) | state, pictures, saves |
 
 A project's manifest has a `compat` section: the bytes to read (by the game's own symbols, `.mlb` or `.sym`), and scenarios (a `verify`
 scenario reused, or their own input) with checks: a state reached or held in a frame window, a heartbeat that keeps changing, pictures with
@@ -140,7 +163,7 @@ pictures; `out/compat.html` (and `compat-matrix.json`) is the matrix of every pr
 ## Live workspaces
 
 The projects are built and the tools run in the user's **live** workspaces when they sit beside the repository (`VRUN_Nes_Dev`,
-`SuperVRUN_dev`; a git worktree finds them too), not in the copies `restore` extracted into `BROKENDEV_HOME`. `list` shows which one each
+`SuperVRUN_dev`, `VRUN_VOC_dev`; a git worktree finds them too), not in the copies `restore` extracted into `BROKENDEV_HOME`. `list` shows which one each
 project uses. `BROKENDEV_LIVE_<ARCHIVE>` (for example `BROKENDEV_LIVE_VRUN_NES_DEV`) names another folder, or `off` for the restored
 copy; a machine with no live workspace (a new one) uses the restored copy, as before. Builds in a live workspace write to its git-ignored
 `build` folders, exactly like the user's own builds.
@@ -171,6 +194,8 @@ copy; a machine with no live workspace (a new one) uses the restored copy, as be
 | `BROKENDEV_TRACE_LUA` | another Mesen tracer for `diff` of the NES projects | BrokenDev's copy of the user's `state_trace.lua`, `tools\vrun\mesen\` |
 | `BROKENDEV_DEVTOOLS` | another tools registry (the tests use it) | `devtools.json` |
 | `BROKENDEV_EMULATORS` | another emulator registry (the tests use it) | `emulators.json` |
+| `BROKENDEV_TOOLCHAINS` | another toolchain registry (the tests use it) | `toolchains.json` |
+| `BROKENDEV_LIVE_<FOLDER>` | the live workspace a `{live:<folder>}` source names (`BROKENDEV_LIVE_VRUN_VOC_DEV`) | the folder of that name beside the repository |
 | `BROKENDEV_SNES9X_WORK` | a local folder for Snes9x's per-frame pictures and save states during compat | the run's scratch, or `%TEMP%\brokendev-snes9x` when that is on a network share |
 | `SMB1_ORIG_ROM` | the user's own original SMB1 ROM | `P:\BrokenDev\SMB1 Topaz\smb1.nes` |
 | `BROKENNES_DEV` | `1` switches BrokenDev on inside BrokenNes | off |

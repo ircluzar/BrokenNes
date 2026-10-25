@@ -4,13 +4,15 @@
 # The adapter contract (every emulator, BrokenNes included, speaks it)
 #
 #   SPEC (written by BrokenDev, read by the adapter; UTF-8 text, one directive per line, '#' starts a comment)
-#     console nes|snes
+#     console nes|snes|wms|gb|gbc
 #     rom <path>                    the ROM (a copy in the run's scratch folder: nothing is ever written beside the built ROM)
 #     out <dir>                     where result.txt and the pictures go
 #     savedir <dir>                 where the emulator's battery save must live (a second run with the same folder is a fresh boot that finds it)
 #     frames <N>                    stop after N completed frames
 #     read <name> <domain> <hex>    a byte to record every frame. domain ram = the NES 2 KB internal RAM ($0000-$07FF);
-#                                   wram = the SNES 128 KB work RAM ($00000-$1FFFF, bank $7E:0000 = 0)
+#                                   wram = the SNES 128 KB work RAM ($00000-$1FFFF, bank $7E:0000 = 0). The Game Boy (gb, gbc): wram = work
+#                                   RAM ($C000 = 0, bank n at n x $1000: 32 KB on a Color), hram ($FF80 = 0), cartram (the cartridge's RAM,
+#                                   bank n at n x $2000); its buttons are the NES's eight
 #     input <frame> <buttons>       from frame index <frame> (0-based: held while the (frame+1)-th frame runs) until the next input line.
 #                                   '-' = nothing; names joined with '+': NES A B Select Start Up Down Left Right; SNES B Y Select Start Up Down
 #                                   Left Right A X L R

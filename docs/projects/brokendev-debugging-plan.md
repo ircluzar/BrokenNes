@@ -2,7 +2,8 @@
 
 Plan of 2026-10-23, written after an interview with the user. It starts **after WideMess milestone 1** (the week of 2026-10-26).
 **Milestone D1 (the debugger engine) is built** (2026-10-24): see "D1 as built" after the milestones. **Milestone D4 (checks, budgets,
-profiler) is built** (2026-10-24): see "D4 as built"; the Game Boy hello world's accepted findings wait for D2. The rest is not.
+profiler) is built** (2026-10-24): see "D4 as built". **Milestone D2 (the Game Boy hello world) is built** (2026-10-24): see "D2 as built";
+its accepted findings list is empty. The rest is not.
 
 ## Why
 
@@ -337,7 +338,7 @@ They follow WideMess milestone 1. Each one is merged, tested and pushed before t
 | | Milestone | Done when |
 |---|---|---|
 | **D1** | **Debugger engine** | Breakpoints, mirror-aware watches, stepping, call stack, trace and symbols on the NES, SNES (65816 + SPC700) and Game Boy. Memory domains for all three in the HTTP API. Every golden unchanged and speed unchanged with it off. |
-| **D2** | **Game Boy hello world** | GBDK-2020 installed (after approval). `VRUN_VOC_dev` builds a dual-mode hello world that runs on BrokenNes (desktop and Lite), Mesen and BizHawk, as a BrokenDev project. The D1 debugger reads its symbols. |
+| **D2** | **Game Boy hello world** | GBDK-2020 installed (after approval). `VRUN_VOC_dev` builds a dual-mode hello world that runs on BrokenNes (desktop and Lite), Mesen and BizHawk, as a BrokenDev project. The D1 debugger reads its symbols. **Built 2026-10-24** ("D2 as built"): GBDK-2020 4.5.0 pinned; project `vrun-voc` verifies (0 findings, every budget in) and works on BrokenNes, Mesen, BizHawk Gambatte and SameBoy; desktop and Lite proven; the debug port is a placeholder until D7. |
 | **D3** | **MCP server** | Headless and live sessions with the tools above, registered at user level, used by an agent to find a planted bug in a test ROM without Mesen. The client test passes. |
 | **D4** | **Checks, budgets, profiler** | The first catalogue for the three consoles, each rule with its test ROM and negative control. Accepted findings recorded for VRUN, Nested VRUN, Super VRUN, the SMB1 remake and the hello world. `verify` fails on new findings and over budget. |
 | **D5** | **Movies, diff, bisect** | Our movie format with `.fm2` / `.bk2` export, divergence finder, state diff by symbol, step back, promoted movie tests in verify, bisect over a game's commits (proven on a planted regression). |
@@ -493,6 +494,50 @@ port and DMA reads are still checked.
 - **Left open:** the Game Boy hello world's accepted list (D2); named timers in the profile (D7's debug port); the SNES picture model's
   limits (modes 0-4, no HDMA); RAM headroom by allocation from the symbols (today: bytes read, a lower bound of use); the WideMess's VRAM and
   sound RAM headroom; where the SMB1 Nested build waits; the devkit's start-up clear.
+
+## D2 as built (2026-10-24)
+
+- **The toolchain:** GBDK-2020 4.5.0, downloaded with the user's approval, unpacked at `P:\BrokenDev\env\toolchains\gbdk\4.5.0\gbdk`.
+  `BrokenDev/toolchains.json` pins it like the emulators: the zip (`toolchains/gbdk/_downloads/gbdk-win64-4.5.0.zip`, 8,636,233 bytes, sha256
+  `266854ce...5c890`), ten key files by size and sha256 (lcc, sdcc, sdasgb, sdldgb, makebin, romusage, crt0, the libraries, gb.h) and the
+  ChangeLog's version line. `lib/Toolchains.ps1` checks it (`doctor`, a `toolchains` verb, `requires.tools` `toolchain:gbdk`, the build
+  placeholder `{toolchain:gbdk}`); BrokenDev never downloads or unpacks one.
+- **The workspace:** `PROJECTS\VRUN_VOC_dev`, its own git (local commits only, no remote), a README. `build.ps1` (lcc on `src/*.c` and
+  `src/*.s`; makebin `-yc -yt0x1B -yo64 -ya4 -yS`; it checks the header: `$80` dual mode, `$1B` MBC5+RAM+battery, `$05` 1 MB, `$03` 32 KB) writes
+  `build/vrun_voc.gbc` with `.noi`, `.sym` (bgb format) and `.map`.
+- **The hello world** (`src/main.c`): a few lines of text in its own 5 x 7 font (GBDK's console is not used: its font loader switches the LCD
+  on mid-start-up, which made lag frames), an `@` sprite moved with the d-pad (`move_player`), an 880 Hz beep on A (`play_beep`), a
+  battery-RAM boot counter with a magic and a checksum (`count_boot`), colours on a Color and four shades on an original (`is_color`).
+  **Clean start-up:** GBDK's crt0 zeroes the C variables' area (`_DATA`) but, since 4.x, not the rest of work RAM; `src/start_up.s` clears the
+  rest (to `$DEFF`, and banks 2-7 on a Color with interrupts off and no stack use while another bank is in). The screen is built with the LCD
+  off; the LCD goes off only in vblank (GBDK's `DISPLAY_OFF`); the cartridge RAM is enabled only around its use.
+- **The debug port:** `src/debug.h` is a placeholder (print, assert, timers, markers as macros that compile to nothing): D7 has not defined
+  the port. GBDK 4.5.0 ships `gbdk/emu_debug.h` (the bgb / Emulicious message convention), a candidate for open question 1.
+- **BrokenDev project `vrun-voc`** (kind `gb`, console `gbc`, source `{live:VRUN_VOC_dev}`: a new placeholder for a game's own live
+  workspace found beside the repository, `BROKENDEV_LIVE_VRUN_VOC_DEV` overrides it). **verify** (Workshop `--brokendev verify`, which now runs
+  the Game Boy): `color` (5 colours, the sprite moves 60 + 40 pixels, two beeps, boot 1), `original` (the same cartridge on a Game Boy:
+  `"console": "gb"` on a scenario, at most 4 colours), `idle` (no sound, no movement), `second-boot` and `third-boot-original`
+  (`"batteryFrom"`: a power-on with the save an earlier scenario left; boot 2, then 3 on the other model), all checked by symbol
+  (`expect.memory`); the hardware checks: **0 findings, nothing accepted**; budgets: 0 lag frames from frame 0, the busiest frame 2.9%, 13.5 KB
+  free in bank 0, 8 KB of work RAM and 113 bytes of HRAM never read, 7.9 KB of stack. **compat:** BrokenNes, Mesen 2.1.1 (its Game Boy Color
+  model), BizHawk 2.11.1 Gambatte and SameBoy (new registry entries; the Mesen and BizHawk adapters learned the Game Boy) all **work**: the
+  sprite at x 144, one beep, boot 1 then 2 from each emulator's own battery file, pictures structurally identical to BrokenNes's; each
+  starts with its own power-on RAM (Mesen random, SameBoy pseudo-random, Gambatte a fixed fill) and SameBoy plays its boot animation (189
+  frames) first. **run / play:** the desktop app (`run`), Mesen and BizHawk (`play -Emu ...`).
+- **The D1 debugger on its symbols:** `Workshop --debug --rom vrun_voc.gbc --sym vrun_voc.noi --do "break move_player; ..."` hits at frame 9;
+  `watch player_x w` stays silent for 120 idle frames and fires once `pad Right` holds the d-pad (84, 85, 86); `break play_beep` hits on A.
+  `--debug` gained `pad <buttons>`, and a C name finds SDCC's `_name` symbol.
+- **The desktop app** (`UAT/entrypoints/vrun-voc-desktop-smoke.ps1`, HTTP API, a scratch `BROKENNES_CONFIG_DIR` and the new
+  `BROKENNES_SAVES_DIR` test hook for the console battery saves): colour on the Color, Right moves the sprite, A beeps (NR52 channel 1 on), the
+  save written on close gives boot 2, the Game Boy console shows 3 shades and boot 3; the user's `%APPDATA%\BrokenNes` is unchanged (names,
+  sizes, times). **Lite** (`UAT/lite/test-lite-vrun-voc.mjs`, the AOT build in Edge): the Color console in colour, Right moves the sprite, A
+  sounds, the IndexedDB battery save (`VOC0`, boot 1, then 2 in a fresh page), 3 shades on the Game Boy console.
+- **One change to D4:** a Game Boy frame with the LCD off is no lag frame (the hardware has no vblank then); `--check-test` still 109.
+- **Tests:** BrokenDev `run-tests` gains the toolchain registry and state (with negative controls), the Game Boy manifest, `{live:}`, GBDK
+  symbols and specs, the registry's Game Boy columns, BizHawk's Game Boy config, and the hello world end to end with a planted read before the
+  RAM clear (`build.ps1 -Define VOC_PLANT_UNINIT`) that must fail verify with a new `gb.ram-uninit`.
+- **Left for the game (the VOC plan's V1 on):** the debug port (D7), the real character set and tile pairs, banked code and data (only bank 0
+  is used), the music and sound-effect drivers, the suspend save, the flash cartridge test.
 
 ## Open questions (to settle at the start of the track)
 

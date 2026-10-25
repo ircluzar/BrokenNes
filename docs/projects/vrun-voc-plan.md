@@ -2,7 +2,8 @@
 
 Plan of 2026-10-23, written after studying the original and an interview with the user. This is the **third sprint of the week of
 2026-10-26**, after WideMess milestone 1 and the BrokenDev debugging toolkit (`docs/projects/brokendev-debugging-plan.md`).
-It may start early if there is spare capacity. Nothing is built yet.
+It may start early if there is spare capacity. **Milestone V0, the skeleton, is built** (2026-10-24, as the toolkit's D2): the workspace
+`PROJECTS\VRUN_VOC_dev`, GBDK-2020 4.5.0, the hello world on the final cartridge and the BrokenDev project `vrun-voc`. The game itself is not.
 
 ## What it is
 
@@ -218,7 +219,7 @@ Sources: `StepBack\Assets\Microprograms\Caverns\MP_VirusRun.cs` (the game), `Run
 
 | | Milestone | Done when |
 |---|---|---|
-| **V0** | **Skeleton** (= debugging toolkit D2) | `VRUN_VOC_dev` exists with GBDK-2020. The hello world has the final cartridge setup (MBC5, 1 MB, 32 KB battery RAM, dual mode). It is a BrokenDev project that builds, runs and plays on BrokenNes, Mesen and BizHawk. |
+| **V0** | **Skeleton** (= debugging toolkit D2) | `VRUN_VOC_dev` exists with GBDK-2020. The hello world has the final cartridge setup (MBC5, 1 MB, 32 KB battery RAM, dual mode). It is a BrokenDev project that builds, runs and plays on BrokenNes, Mesen and BizHawk. **Done 2026-10-24** (the debugging plan's "D2 as built"): GBDK-2020 4.5.0 pinned in BrokenDev; `VRUN_VOC_dev` (own git, local commits) builds `vrun_voc.gbc` (text, a sprite on the d-pad, a beep on A, a battery boot counter, work RAM cleared at start-up); project `vrun-voc` passes verify with no hardware finding and works on BrokenNes (desktop, Lite, Workshop), Mesen, BizHawk Gambatte and SameBoy. |
 | **V1** | **Reference and maps** | The original's code and files are copied with their sources recorded. The C# reference writes per-tick states. The baker makes the 32 maps and passes the equivalence check. The 4 x 8 character set and the tile-pair builder exist. |
 | **V2** | **The tutorial** | TUTORIAL is playable on VRUN3: the 24 Hz physics and every quirk, matching the reference tick for tick; rooms, spikes, eating, ♦ ♠ ♣, lives, materials, portals, dash, HUD and messages; room memory, shimmer, instant room changes and the clear screen. First hardware test ROM. |
 | **V3** | **Sound effects** | The Fourier tool and all 16 effects on the Game Boy sound chip, each with its spectral comparison; the effect driver in the game. |

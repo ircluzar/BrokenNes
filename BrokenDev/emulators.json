@@ -87,8 +87,9 @@
       "can": { "memory": true, "pictures": true, "audio": true, "saves": true, "exactFrames": true },
       "defaults": {
         "region": "Auto (NTSC for these ROMs)",
-        "ramInit": "NES: all zeros; SNES work RAM: random (both measured before the first frame on 2026-10-22, recorded per run)",
-        "overscan": "none: NES 256x240, SNES 256x224 or 239"
+        "ramInit": "NES: all zeros; SNES work RAM: random; Game Boy work RAM: random (measured before the first frame on 2026-10-22 and 2026-10-24, recorded per run)",
+        "overscan": "none: NES 256x240, SNES 256x224 or 239, Game Boy 160x144",
+        "gameBoy": "the model pinned per console by gbModels (gb Gameboy, gbc GameboyColor), a Game Boy pad; no boot ROM file in its private home: the Color model starts the game after about 14 frames (measured 2026-10-24). Lua reads gbWorkRam, gbHighRam, gbCartRam; no sound activity on the Game Boy"
       },
       "notes": "Driven with Lua through --testRunner (the API the 20 VRUN tracers use) from a private home (a copy of Mesen.exe with its own settings.json under work\\compat). Input is set on the inputPolled event; a settings file must give port 1 a pad (without one setInput does nothing). Sound activity: NES only, from the APU status register's length counters ($4015, debug read). Its stdout must be a file, not a pipe (the test runner never starts with a pipe); it lists every RAM byte the game reads before writing it ('Uninitialized memory read'), which compat records."
     },
@@ -164,9 +165,10 @@
       "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
       "defaults": {
         "region": "none (the Game Boy has one)",
-        "ramInit": "Gambatte's own power-on fill (recorded per run)",
+        "ramInit": "Gambatte's fixed fill: FF x 8, 00 x 8 repeated (measured before the first frame on 2026-10-24, recorded per run)",
         "overscan": "none: 160x144",
-        "model": "from the cartridge header (ConsoleMode Detect): a dual-mode cartridge runs as a Game Boy Color"
+        "model": "from the cartridge header (ConsoleMode 0, Detect): a dual-mode cartridge runs as a Game Boy Color (system GBC)",
+        "boot": "no boot ROM (EnableBIOS false, Gambatte's default; BizHawk ships none): the game starts at once, as on BrokenNes"
       },
       "notes": "As bizhawk-neshawk with GB and GBC -> Gambatte pinned; the pad has no player prefix ('Up', 'A'); memory through the core's 'WRAM' (32 KB on a Color), 'HRAM' and 'CartRAM' domains; the battery save is <game>.SaveRAM in the save folder (paths entry GB_GBC_SGB)."
     },
@@ -181,11 +183,12 @@
       "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
       "defaults": {
         "region": "none (the Game Boy has one)",
-        "ramInit": "SameBoy's own power-on fill (recorded per run)",
+        "ramInit": "pseudo-random (00 62 DB 7B 42 41 6B 10 ..., the same every run; measured 2026-10-24)",
         "overscan": "none: 160x144",
-        "model": "from the cartridge header: a dual-mode cartridge runs as a Game Boy Color"
+        "model": "from the cartridge header (ConsoleMode -1, auto): a dual-mode cartridge runs as a Game Boy Color (system GBC)",
+        "boot": "SameBoy's own open-source boot ROM (EnableBIOS false: no firmware file), whose animation runs about 189 frames before the game starts"
       },
-      "notes": "As bizhawk-gambatte with SameBoy pinned (its own open-source boot ROMs: no firmware)."
+      "notes": "As bizhawk-gambatte with SameBoy pinned. Its memory domains are WRAM (32 KB on a Color), CartRAM, HRAM and others (BIOS, MMIO, OAM...); the battery save is <game>.SaveRAM as with Gambatte."
     }
   ]
 }
