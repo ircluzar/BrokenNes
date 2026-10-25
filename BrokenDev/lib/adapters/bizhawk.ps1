@@ -210,7 +210,10 @@ function Invoke-BdAdapterBizhawk {
     $lua = Join-Path (Get-BdRoot) 'tools\compat\bizhawk.lua'
     $resultFile = Join-Path ([string]$Spec.Out) 'result.txt'
     # The ROM goes last (EmuHawk's --help says so). --lua opens the Lua console too.
-    $argv = @("--config=$cfgPath", '--chromeless', "--lua=$lua", [string]$Spec.Rom)
+    $argv = @("--config=$cfgPath", '--chromeless', "--lua=$lua")
+    # a movie run (D5): EmuHawk plays the .bk2 from power-on (the Lua script then sets no pad)
+    if ((Get-BdProp $Spec 'Movie' '')) { $argv += "--movie=$([System.IO.Path]::GetFullPath([string]$Spec.Movie))" }
+    $argv += [string]$Spec.Rom
     $r = Invoke-BdWatchedProcess -FilePath $Exe -Arguments $argv -WorkingDirectory $Scratch -Env @{ BDC_SPEC = $SpecPath } -ResultFile $resultFile `
         -TimeoutSec $TimeoutSec -HangSec $HangSec -LogFile (Join-Path $Scratch 'bizhawk.log')
     $settings = Get-BdBizhawkRunSettings -ConfigPath $cfgPath -ResultFile $resultFile -System $ec.System -Core $ec.Core -SaveDir $saveDir -Version $version

@@ -47,6 +47,20 @@ internal static class Tools
 
     private static JsonObject Enum(params string[] v) => new() { ["enum"] = J.Strs(v) };
 
+    private static NesEmulator.Debugging.Movies.Movie LoadMovie(string path)
+    {
+        if (!File.Exists(path)) throw new ToolError($"no movie at '{path}'");
+        try { return NesEmulator.Debugging.Movies.Movie.Load(path); }
+        catch (FormatException e) { throw new ToolError(e.Message); }
+    }
+
+    /// <summary>The Workshop's movie code says no with these; a tool says it as a refusal.</summary>
+    private static T Wrap<T>(Func<T> f)
+    {
+        try { return f(); }
+        catch (Exception e) when (e is ArgumentException or InvalidDataException or NotSupportedException or FileNotFoundException or InvalidOperationException or FormatException) { throw new ToolError(e.Message); }
+    }
+
     public static List<ToolDef> All()
     {
         var t = new List<ToolDef>();
@@ -264,6 +278,100 @@ internal static class Tools
             a => On(a, s => s.Checks("profile", new(), new(), a.LongOr("from", 0), a.Int("top", 15))), ro: true);
 
         // ------------------------------------------------------------------------------------------------ BrokenDev
+        // ------------------------------------------------------------------------------------------------ movies, step back, divergence, bisect (D5)
+        Add("step_back",
+            "Steps a HEADLESS session back: by instructions (the main CPU, to the exact instruction: the newest state before it is loaded and the logged input replayed, " +
+            "breakpoints and the checks off during the replay; the machine is then stopped there) or by frames (to the start of the n-th frame before now). Running on afterwards replays the same input; " +
+            "a new input rewrites the future from there. The history keeps a state every 60 frames, the last 30 (30 s). By instructions needs the call stack tracking (open_rom's call_stack, on by default).",
+            Schema(S(), ("instructions", P("integer", "how many instructions back"), false), ("frames", P("integer", "how many frame starts back"), false)),
+            a => On(a, s => s.StepBack(a.Long("instructions"), a.Long("frames"))));
+
+        Add("open_movie",
+            $"Opens a {NesEmulator.Debugging.Movies.MovieFormat.Name} ({NesEmulator.Debugging.Movies.MovieFormat.Extension}) in a new HEADLESS session on a ROM (the movie's console, cores, power-on and frame timing) and plays it: " +
+            "its input drives the session and every keyframe (picture and work-RAM hashes) is checked, so the result says in sync or the first frame it went off course. " +
+            "Stop early with frames, then debug from there (breakpoints, step, step_back...); running on plays the rest. The ROM may be another build than the movie's (said in sameRom).",
+            Schema(("movie", P("string", "the movie file"), true), ("rom", P("string", "the ROM to play it on"), true), ("symbols", P("string[]", "symbol files"), false),
+                   ("frames", P("integer", "play this many frames (default: the whole movie)"), false), ("checks", P("boolean", "the hardware checks from power-on"), false),
+                   ("call_stack", P("boolean", "track the call stack (default true; needed for step_back by instructions)"), false)),
+            a =>
+            {
+                var m = LoadMovie(a.Req("movie"));
+                var cp = m.Cores.Split('/');
+                var s = HeadlessSession.Open(Sessions.NewId("h"), a.Req("rom"), m.Console, cp.Length == 3 ? cp[0] : "", cp.Length == 3 ? cp[1] : "", cp.Length == 3 ? cp[2] : "", a.List("symbols"),
+                    a.Bool("call_stack", true), a.Bool("checks", false), new List<string>(), new List<string>());
+                if (m.Console == "nes" && (m.NtscTiming || m.PowerOn != "fceux")) { s.Close(); throw new ToolError($"this movie needs {(m.NtscTiming ? "NTSC frame timing" : "")}{(m.NtscTiming && m.PowerOn != "fceux" ? " and " : "")}{(m.PowerOn != "fceux" ? "power-on RAM " + m.PowerOn : "")}, which headless sessions do not set yet: replay it with the movie tool (action play)"); }
+                Sessions.Add(s);
+                JsonObject j;
+                lock (s.Gate) j = s.PlayMovie(m, Path.GetFullPath(a.Req("movie")), a.Long("frames") ?? -1);
+                j["session"] = s.Id;
+                return j;
+            });
+
+        Add("movie",
+            $"BrokenNes's own movies ({NesEmulator.Debugging.Movies.MovieFormat.Name}, {NesEmulator.Debugging.Movies.MovieFormat.Extension}): " +
+            "save (a headless session's input since it began, with its keyframes, as a movie file), info, play (replays a movie on a ROM, headless, and says in sync or where it went off course), " +
+            "export (fm2 for FCEUX, bk2 for BizHawk: cross-checks only), diverge (the divergence finder: the movie on two runs, rom/rom_b or cores/cores_b or ntsc_b, gives the first frame, " +
+            "then the first instruction, where they part, and the variables that differ by symbol; or against another emulator's BrokenDev compat run folder), " +
+            "test (bisect's oracle on one ROM: good, bad, or can't tell when the replay loses its course).",
+            Schema(("action", P("string", "save, info, play, export, diverge or test", Enum("save", "info", "play", "export", "diverge", "test")), true),
+                   ("session", P("string", "save: the session"), false), ("path", P("string", "save: the file to write (default: the session's folder)"), false),
+                   ("movie", P("string", "the movie file (info, play, export, diverge, test)"), false), ("rom", P("string", "the ROM (play, export, diverge side a, test)"), false),
+                   ("symbols", P("string[]", "symbol files (side a)"), false), ("format", P("string", "export: fm2 or bk2", Enum("fm2", "bk2")), false), ("out", P("string", "export: the file to write"), false),
+                   ("rom_b", P("string", "diverge: side b's ROM (default: rom)"), false), ("symbols_b", P("string[]", "diverge: side b's symbols"), false),
+                   ("cores", P("string", "CPU/PPU/APU for side a (default: the movie's)"), false), ("cores_b", P("string", "diverge: side b's cores"), false),
+                   ("ntsc_b", P("boolean", "diverge: side b with NTSC frame timing"), false), ("against", P("string", "diverge: another emulator's compat run folder (spec.txt + result.txt)"), false),
+                   ("test", P("string", "test: no-crash | no-lag [from N] | picture at N | <expression> at N"), false), ("frames", P("integer", "play / diverge: stop after this many frames"), false)),
+            a =>
+            {
+                string act = a.Req("action");
+                if (act == "save") return On(a, s => s.MovieSave(a.Str("path")));
+                var m = LoadMovie(a.Req("movie"));
+                switch (act)
+                {
+                    case "info": return BrokenNes.Workshop.Movies.MovieCli.InfoJson(m);
+                    case "play":
+                    {
+                        using var mm = Wrap(() => BrokenNes.Workshop.Movies.MovieMachine.OpenFor(m, a.Req("rom"), true, a.List("symbols"), a.Str("cores")));
+                        var r = BrokenNes.Workshop.Movies.MoviePlayer.Play(m, mm, a.Long("frames") ?? -1);
+                        return BrokenNes.Workshop.Movies.MovieCli.ReportJson(m, mm, r);
+                    }
+                    case "export":
+                    {
+                        byte[] rom = File.ReadAllBytes(a.Req("rom"));
+                        string sha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(rom)).ToLowerInvariant();
+                        if (!sha.Equals(m.RomSha256, StringComparison.OrdinalIgnoreCase)) throw new ToolError($"the ROM is not the movie's (sha256 {sha[..12]}, the movie's {m.RomSha256[..Math.Min(12, m.RomSha256.Length)]}): an export names the ROM it plays on");
+                        string fmt = a.Str("format") ?? "bk2";
+                        string outFile = a.Str("out") ?? Path.ChangeExtension(Path.GetFullPath(a.Req("movie")), fmt);
+                        var res = Wrap(() => fmt == "fm2" ? BrokenNes.Workshop.Movies.MovieExport.ToFm2(m, rom, outFile) : BrokenNes.Workshop.Movies.MovieExport.ToBk2(m, rom, outFile));
+                        return new JsonObject { ["file"] = res.Path, ["frames"] = res.Frames, ["notes"] = J.Strs(res.Notes), ["use"] = "a cross-check on the other emulator (agents debug on BrokenNes)" };
+                    }
+                    case "diverge":
+                    {
+                        var sideA = new BrokenNes.Workshop.Movies.DivergeSide(a.Req("rom"), a.List("symbols"), a.Str("cores"), null, "a");
+                        if (a.Str("against") is { Length: > 0 } dir) return Wrap(() => BrokenNes.Workshop.Movies.MovieDiverge.Against(m, sideA, dir, 60));
+                        var sideB = new BrokenNes.Workshop.Movies.DivergeSide(a.Str("rom_b") ?? a.Req("rom"), a.Has("symbols_b") ? a.List("symbols_b") : a.List("symbols"), a.Str("cores_b") ?? a.Str("cores"), a.Has("ntsc_b") ? a.Bool("ntsc_b", false) : null, "b");
+                        return Wrap(() => BrokenNes.Workshop.Movies.MovieDiverge.Run(m, sideA, sideB, a.Long("frames") ?? -1));
+                    }
+                    case "test":
+                    {
+                        var (code, j) = Wrap(() => BrokenNes.Workshop.Movies.MovieCli.Test(m, a.Req("rom"), a.List("symbols"), a.Req("test"), new List<string>()));
+                        j["exitCode"] = code;
+                        return j;
+                    }
+                    default: throw new ToolError("action is save, info, play, export, diverge or test");
+                }
+            });
+
+        Add("bisect",
+            "Bisects a BrokenDev project's GAME commits (brokendev.ps1 bisect) for the first one where a movie's test turns bad, with today's BrokenNes: a scratch clone of the game's " +
+            "repository (never the user's folder, never pushed: the clone has no remote), built halfway back each time (about 6 builds for 60 commits). A commit that does not build is skipped; " +
+            "one where the replay loses its course (the movie's course variables differ from the recording before the test frame) is can't tell. Record the movie with course variables (brokendev movie record -Course).",
+            Schema(("project", P("string", "the project id"), true), ("movie", P("string", "the movie (a file, or a name in projects\\<id>\\movies or out\\<id>\\movies)"), true),
+                   ("test", P("string", "no-crash | no-lag [from N] | picture at N | <expression> at N (for example \"[lives] >= 1 at 600\")"), true),
+                   ("good", P("string", "a commit where the test holds (default: the movie's recorded commit)"), false), ("bad", P("string", "a commit where it fails (default HEAD)"), false),
+                   ("timeout_sec", P("integer", "give up after this long (default 3600)"), false)),
+            a => BrokenDevBridge.Bisect(a.Req("project"), a.Req("movie"), a.Req("test"), a.Str("good") ?? "", a.Str("bad") ?? "HEAD", a.Int("timeout_sec", 3600)));
+
         Add("brokendev",
             "Runs a BrokenDev verb on a project (BrokenDev/brokendev.ps1): build, verify (the checks, budgets and accepted findings), compat (the other emulators), run (opens it in the desktop app: its PID comes back for attach_live), " +
             "list (the projects), status, doctor. Returns the exit code, the output and the record file.",

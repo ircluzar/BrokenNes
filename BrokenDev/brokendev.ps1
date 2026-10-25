@@ -30,6 +30,16 @@
                                  the project's compat scenarios on BrokenNes (the reference column, always first) and on every installed
                                  emulator of its console: the game's state read every frame, pictures, saves; a verdict per emulator
                                  (works / differs / fails / cannot be tested) in out\<id>\compat\compat.json and compat.html
+    movie   record|play|export|promote|list <project>
+                                 BrokenNes's own movies (milestone D5; the format's working name and extension: Workshop --movie format):
+                                 'record' (-Scenario <verify id>, or -Script "120:Start,..." -Frames N; -Name, -Course sym,sym) a movie of the
+                                 built ROM into out\<id>\movies; 'play' (-Movie) replays it: in sync or where it went off course; 'export'
+                                 (-Movie, -Format fm2|bk2) for FCEUX / BizHawk; 'promote' (-Movie, -Name, -Why, -Sync same-rom|required|off)
+                                 makes it a verify test (projects\<id>\movies + the manifest's movies section; only promoted movies are tests)
+    bisect  <project> -Movie <file|name> -Test "<test>" [-Good <commit>] [-Bad <commit>] [-Repo <folder>]
+                                 the first of the GAME's commits where the movie's test turns bad, with today's BrokenNes: a scratch clone
+                                 (never pushed, no remote), built halfway back each time; a commit that does not build is skipped, one where
+                                 the replay loses its course says can't tell. Tests: no-crash | no-lag [from N] | picture at N | <expression> at N
     mcp     install|uninstall|build|status|test
                                  the BrokenNes MCP server (BrokenDev/mcp): 'install' builds it into BROKENDEV_HOME\bnbuild\mcp and registers it
                                  for Claude Code at USER scope ('claude mcp add --scope user brokennes', every session and game repo);
@@ -83,6 +93,20 @@ param(
     [string[]]$Emu = @(),
     # 'compat': only these scenarios of the project's compat section (comma list)
     [string[]]$Scenario = @(),
+    # 'movie' / 'bisect' (milestone D5)
+    [string]$Movie = '',
+    [string]$Name = '',
+    [string]$Why = '',
+    [string]$Sync = 'same-rom',
+    [string]$Script = '',
+    [int]$Frames = 0,
+    [string[]]$Course = @(),
+    [string]$Format = 'bk2',
+    [string]$Test = '',
+    # (-Good / -Bad: aliases; the variables are named apart from the $bad lists the other verbs keep)
+    [Alias('Good')][string]$GoodCommit = '',
+    [Alias('Bad')][string]$BadCommit = 'HEAD',
+    [string]$Repo = '',
     # 'tool <id> <args...>': the arguments after the tool id are passed to the tool
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @()
 )
@@ -103,6 +127,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\Compat.ps1')
 . (Join-Path $here 'lib\WideMess.ps1')
 . (Join-Path $here 'lib\Mcp.ps1')
+. (Join-Path $here 'lib\Movies.ps1')
 
 function Show-BdHelp { Write-Host (Get-Help (Join-Path $here 'brokendev.ps1') -Full | Out-String) }
 
@@ -140,7 +165,7 @@ function Get-BdProjectStatus {
 }
 
 try {
-    if ($Rest.Count -gt 0 -and @('tool', 'emulators', 'new') -notcontains $Verb.ToLowerInvariant()) { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
+    if ($Rest.Count -gt 0 -and @('tool', 'emulators', 'new', 'movie') -notcontains $Verb.ToLowerInvariant()) { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
     # -Emu a,b and -Scenario a,b: one comma list or several values, the same either way (pwsh -File passes a,b as one string)
     $Emu = @($Emu | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $Scenario = @($Scenario | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -334,6 +359,48 @@ try {
                 default     { throw "mcp: install, uninstall, build, status or test" }
             }
         }
+        'movie' {
+            # brokendev.ps1 movie <action> <project> ...
+            if ($Rest.Count -ne 1) { throw 'movie needs an action and a project: brokendev.ps1 movie record|play|export|promote|list <project>' }
+            $proj = $Rest[0]
+            [void](Resolve-BdTargets $proj)
+            switch ($Target.ToLowerInvariant()) {
+                'record' { $f = Invoke-BdMovieRecord -Id $proj -Scenario $(if ($Scenario.Count -gt 0) { $Scenario[0] } else { '' }) -Script $Script -Frames $Frames -Name $Name -Course $Course -Exe $Exe; Write-BdOk "movie: $f"; exit 0 }
+                'play' {
+                    if (-not $Movie) { throw 'movie play needs -Movie <file or name>' }
+                    $j = Invoke-BdMoviePlay -Id $proj -Movie $Movie -Exe $Exe
+                    if ($Json) { $j | ConvertTo-Json -Depth 6 } elseif ($j.inSync) { Write-BdOk $j.summary } else { Write-BdFail $j.summary }
+                    if ($j.inSync) { exit 0 } else { exit 1 }
+                }
+                'export' { if (-not $Movie) { throw 'movie export needs -Movie' }; Write-BdOk "exported: $(Invoke-BdMovieExport -Id $proj -Movie $Movie -Format $Format -Exe $Exe)"; exit 0 }
+                'promote' {
+                    if (-not $Movie -or -not $Name -or -not $Why) { throw 'movie promote needs -Movie, -Name and -Why (what it plays and why it is a test)' }
+                    $r = Invoke-BdMoviePromote -Id $proj -Movie $Movie -Name $Name -Why $Why -Sync $Sync -Exe $Exe
+                    Write-BdOk "promoted '$($r.Id)': $($r.File) (sync $($r.Sync)); $($r.Play)"
+                    Write-BdInfo "  verify $proj now replays it; give it expectations in the manifest's movies entry ('expect', as a verify scenario's)"
+                    exit 0
+                }
+                'list' {
+                    $m = Read-BdManifest -Id $proj
+                    Write-Host 'PROMOTED (verify tests)'
+                    foreach ($e in @(Get-BdProp $m 'movies' @())) { '  {0,-22} {1,-9} {2}' -f $e.id, (Get-BdProp $e 'sync' 'same-rom'), $e.why | Write-Host }
+                    Write-Host "RECORDED (out\$proj\movies)"
+                    $d = Join-Path (Get-BdOutDir $proj) 'movies'
+                    if (Test-Path -LiteralPath $d) { foreach ($f in Get-ChildItem -LiteralPath $d -File -Filter ('*' + (Get-BdMovieExtension -Exe $Exe))) { '  {0}' -f $f.Name | Write-Host } }
+                    exit 0
+                }
+                default { throw "movie: record, play, export, promote or list" }
+            }
+        }
+        'bisect' {
+            [void](Resolve-BdTargets $Target)
+            if (-not $Movie -or -not $Test) { throw 'bisect needs -Movie <file or name> and -Test "<test>" (no-crash | no-lag [from N] | picture at N | <expression> at N)' }
+            $r = Invoke-BdBisect -Id $Target -Movie $Movie -Test $Test -Good $GoodCommit -Bad $BadCommit -Repo $Repo -Exe $Exe
+            if ($Json) { $r | ConvertTo-Json -Depth 6 }
+            if ($r.firstBad) { Write-BdOk $r.verdict } else { Write-BdWarn $r.verdict }
+            Write-BdInfo ("  {0} build(s); skipped (no build): {1}; can't tell: {2}" -f $r.builds, @($r.skipped).Count, @($r.cantTell).Count)
+            if ($r.firstBad) { exit 0 } else { exit 1 }
+        }
         'new' {
             if ($Target -ne 'widemess') { throw "new: the one kind of project BrokenDev makes is 'widemess' (brokendev.ps1 new widemess <name> [-Path folder] [-Title T])" }
             if ($Rest.Count -ne 1) { throw 'new widemess needs one name: brokendev.ps1 new widemess <name> [-Path folder] [-Title T]' }
@@ -345,7 +412,7 @@ try {
             Write-BdInfo "  guide:    docs/projects/widemess-devkit.md"
             exit 0
         }
-        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, toolchains, play, compat, mcp, new"; exit 2 }
+        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, toolchains, play, compat, movie, bisect, mcp, new"; exit 2 }
     }
 } catch {
     Write-BdFail $_.Exception.Message

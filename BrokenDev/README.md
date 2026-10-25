@@ -52,6 +52,9 @@ BrokenDev\brokendev.ps1 play vrun-nes -Emu fceux   # open the built ROM in one o
 BrokenDev\brokendev.ps1 new widemess my-game   # a new WideMess game from the devkit's template (its folder and projects\my-game)
 BrokenDev\brokendev.ps1 mcp install            # build the BrokenNes MCP server and register it for Claude Code at user scope (see below)
 BrokenDev\brokendev.ps1 mcp test               # its scripted MCP client test and the planted-bug demo
+BrokenDev\brokendev.ps1 movie record vrun-nes -Scenario play -Course app_state,current_room   # a BrokenNes movie of the built ROM (see "Movies" below)
+BrokenDev\brokendev.ps1 movie promote vrun-nes -Movie play -Name first-room -Why "..."        # it becomes a verify test
+BrokenDev\brokendev.ps1 bisect vrun-nes -Movie first-room -Test "[player_hp] >= 1 at 900"     # the first of the game's commits where it breaks
 
 # the music path, Phase 0 (no plugin): a MIDI file -> VRUN's converter -> a one-song ROM -> BrokenNes, checked frame by frame
 BrokenDev\tools\music-replay-check.ps1 -Mid some.mid -Name mysong -Frames 2400 -Template
@@ -59,6 +62,8 @@ BrokenDev\tools\music-replay-check.ps1 -Mid some.mid -Name mysong -Frames 2400 -
 BrokenDev\tools\music\build-musictest.ps1 -Out <folder>
 BrokenDev\tools\music\build-musictest.ps1 -Mode song -Mid some.mid -Name mysong -Out <folder>
 BrokenDev\tests\run-tests.ps1                  # the scripts' own tests (each has a negative control)
+BrokenDev\tests\bisect-proof.ps1 -WorkshopExe <exe>     # bisect on a throwaway game repository with a planted regression (run-tests runs it)
+BrokenDev\tests\movie-cross.ps1 [-Project vrun-nes]     # the .bk2 / .fm2 exports played by BizHawk and FCEUX (cross-check; the emulators installed)
 BrokenDev\tests\apu-regress.ps1 -Workshop <Workshop.exe>   # APU_FIX guards measured on Mesen
 ```
 
@@ -82,6 +87,40 @@ The first, unchecked run keeps its hashes and speed; the checked run must end on
   (inclusive and exclusive). The same outside verify: `BrokenNes.Workshop.exe --profile --rom <rom> --sym <symbols> --frames N --input ...`
   and `--checks` (findings too).
 
+## Movies, divergence, step back and bisect
+
+BrokenNes has its own movie format (milestone D5). Its name and extension are a **working name** (the plan's open question 2):
+**"BrokenNes movie", `.bnm`**, one constant in `Windows/NesEmulator/debug/movies/Movie.cs` (`MovieFormat`); BrokenDev asks the Workshop
+(`--movie format`), so a rename changes nothing else. A movie is plain text: the ROM (name, sha256, size) and the build it was made with,
+the console and cores, the NES's power-on RAM and frame timing, the start (power-on or a save state), every frame's input for two pads
+(as changes: `i 120 Start -`), and every 60 frames a keyframe with the picture and work-RAM hashes and the values of the movie's **course
+variables** (`var app_state [app_state]`), so a replay knows the frame it went off course.
+
+- **Record and replay:** `brokendev.ps1 movie record <project> -Scenario <verify id>` (or `-Script "120:Start,..." -Frames N`; `-Course sym,sym`)
+  records the built ROM into `out\<id>\movies`; `movie play` replays it: in sync, or the first keyframe off course. The MCP server's
+  sessions record their input from the start (`movie` save) and replay a movie (`open_movie`). Workshop: `--movie record|play|info`.
+- **Exports** (cross-checks only, the user's decision): `movie export -Format bk2|fm2` for BizHawk (NesHawk, BSNESv115+, Gambatte) and FCEUX;
+  `--movie import --fm2` brings an FCEUX movie in. `tests\movie-cross.ps1` plays the exports in the real emulators against the same input
+  given by the compat scripts (the compat spec's `movie` line); a movie recorded with BrokenNes's 60 fps frames says so on export (the others
+  run NTSC frames).
+- **Promoted movies are verify tests** (only those): `movie promote` copies the movie to `projects\<id>\movies` and lists it in the
+  manifest's `movies` section; verify replays it as a scenario (`movie-<name>`) with its keyframes checked (`movie-in-sync`), the entry's
+  `expect` (as a scenario's: pictures, `memory` by symbol, sound), and the checks and budgets. `sync`: `same-rom` (default: the keyframes
+  must match on the build the movie was recorded with; on another build they are information), `required`, `off`.
+- **The divergence finder:** `--movie diverge --movie M --rom A [--rom-b B | --cores-b C/P/A | --ntsc-b on]` plays the movie on both in
+  lockstep: the first frame whose picture or RAM differs, then that frame again with the trace on, the first instruction where the main CPU
+  parts (or the same instructions at another scanline and dot), and the **state diff by symbol** before and after it ("lives: 1 against 0").
+  `--against <compat run folder>` compares with another emulator's run (the game's variables every frame, the boot shift found).
+- **Step back:** the MCP tool `step_back` (instructions or frames) and Workshop `--debug` (`history; ... back 5; back frames 2`): a state
+  every 60 frames (the last 30) and every frame's input; going back loads the newest state before the place and replays the input to the
+  exact instruction. Running on replays the same input; a new input rewrites the future.
+- **Bisect over a game's commits** (`brokendev.ps1 bisect <project> -Movie M -Test T [-Good c] [-Bad c]`): with today's BrokenNes, a scratch
+  clone of the game's repository (in `BROKENDEV_HOME\work\<id>\bisect`, its remote removed: it can never push; the user's folder is only
+  read) is built halfway back each time, the movie replayed and tested: `no-crash`, `no-lag [from N]`, `picture at N` (the recording's
+  keyframe), `<expression> at N` (`[lives] >= 1 at 600`). A commit that does not build is skipped and reported; a commit where the replay
+  loses its course (a course variable differs from the recording before the test frame: a different menu) is **can't tell**, never a
+  guess. Endpoints that do not hold stop it with no answer. Proven on a 17-commit planted regression (`tests\bisect-proof.ps1`).
+
 ## The MCP server (agents drive BrokenNes directly)
 
 `BrokenDev/mcp` is an MCP server (C#, the official SDK `ModelContextProtocol` 2.2.0, stdio) that lets a Claude Code session drive
@@ -90,7 +129,7 @@ BrokenNes: it is how agents debug the games on BrokenNes instead of Mesen (Mesen
 ```powershell
 BrokenDev\brokendev.ps1 mcp install     # builds it into BROKENDEV_HOME\bnbuild\mcp, then: claude mcp add --scope user brokennes -- <exe> --repo <main checkout>
 BrokenDev\brokendev.ps1 mcp status      # built? registered? (claude mcp get brokennes)
-BrokenDev\brokendev.ps1 mcp test        # the client test (60 checks) and the planted-bug demo (6)
+BrokenDev\brokendev.ps1 mcp test        # the client test (75 checks) and the planted-bug demo (6)
 BrokenDev\brokendev.ps1 mcp uninstall   # claude mcp remove brokennes --scope user (nothing else is touched)
 BrokenDev\tests\mcp-live.ps1 -App <BrokenNes.Windows.exe> -Mcp <BrokenNes.Mcp.exe>   # live sessions against two desktop apps with scratch configs
 ```
@@ -121,6 +160,7 @@ exe locked).
 | sound | `record_sound` (levels and a .wav) |
 | states | `save_state`, `load_state` (in the server's memory only), `diff_states` (by symbol) |
 | analysis | `checks` (start, report, stop: the D4 findings), `profile` |
+| movies (D5) | `step_back` (instructions or frames), `open_movie` (a movie replayed in a new session, keyframes checked), `movie` (save a session's movie, info, play, export fm2 / bk2, diverge, test), `bisect` |
 | BrokenDev | `brokendev` (build, verify, compat, run, list, status, doctor) |
 
 Results are JSON (also as structured content), pictures PNG images. Session files (traces, .wav) go to

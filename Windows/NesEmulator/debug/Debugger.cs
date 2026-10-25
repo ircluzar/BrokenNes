@@ -341,7 +341,7 @@ public sealed class Debugger
         }
         var exec = new bool[cpus.Count];
         var mem = new bool[cpus.Count];
-        bool global = pauseRequested || gstep != GlobalStep.None || runToFrame >= 0 || runToScanline >= 0;
+        bool global = pauseRequested || gstep != GlobalStep.None || runToFrame >= 0 || runToScanline >= 0 || runToCount >= 0;
         var obs = observers;
         for (int i = 0; i < cpus.Count; i++)
         {
@@ -374,7 +374,7 @@ public sealed class Debugger
     public void Detach()
     {
         lock (sync) { bps.Clear(); observers = Array.Empty<DebugObserver>(); }
-        pauseRequested = false; gstep = GlobalStep.None; runToFrame = -1; runToScanline = -1;
+        pauseRequested = false; gstep = GlobalStep.None; runToFrame = -1; runToScanline = -1; runToCount = -1;
         trackCallStack = false; traceRing = false;
         StopTraceFile();
         foreach (var c in Machine.Cpus) { c.State.Step = StepMode.None; c.State.PendingBreak = null; }
@@ -389,6 +389,7 @@ public sealed class Debugger
     private GlobalStep gstep;
     private long gStartFrame; private int gStartScanline;
     private long runToFrame = -1;
+    private long runToCount = -1;
     private int runToScanline = -1; private bool runToScanlineLeft;
 
     /// <summary>Break at the next instruction of the main CPU.</summary>
@@ -418,6 +419,17 @@ public sealed class Debugger
     public void StepScanline() { gStartFrame = Machine.Frame; gStartScanline = Machine.Scanline; gstep = GlobalStep.Scanline; Continue(); }
     public void StepFrame() { gStartFrame = Machine.Frame; gstep = GlobalStep.Frame; Continue(); }
     public void RunToFrame(long frame) { runToFrame = frame; Continue(); }
+
+    /// <summary>Runs until the main CPU has run <paramref name="count"/> instructions in all (<see cref="InstructionCount"/>), then breaks before
+    /// the next one ("step-back": the replay of D5's step back lands here).</summary>
+    public void RunToInstructionCount(long count) { runToCount = count; Continue(); }
+
+    /// <summary>The instructions a CPU has run while the debugger's hook was armed (with <see cref="TrackCallStack"/> on: since it was turned on).
+    /// Step back (D5) counts positions with it.</summary>
+    public long InstructionCount(string cpu = "main") => CpuOf(cpu).State.Executed;
+
+    /// <summary>Sets <see cref="InstructionCount"/> (after a state load puts the machine back where the count was taken).</summary>
+    public void SetInstructionCount(long value, string cpu = "main") => CpuOf(cpu).State.Executed = value;
     public void RunToScanline(int line) { runToScanline = line; runToScanlineLeft = Machine.Scanline != line; Continue(); }
 
     /// <summary>Runs to an address (a temporary execute breakpoint, removed when it breaks).</summary>
@@ -735,7 +747,7 @@ public sealed class Debugger
     {
         cpu.State.Step = StepMode.None;
         if (cpu.Index != 0) return;
-        pauseRequested = false; gstep = GlobalStep.None; runToFrame = -1; runToScanline = -1;
+        pauseRequested = false; gstep = GlobalStep.None; runToFrame = -1; runToScanline = -1; runToCount = -1;
     }
 
     private BreakInfo? CheckStep(DebugCpu cpu, CpuDebugState st)
@@ -759,6 +771,7 @@ public sealed class Debugger
         if (gstep == GlobalStep.Scanline && (Machine.Scanline != gStartScanline || Machine.Frame != gStartFrame)) { gstep = GlobalStep.None; return new BreakInfo { Reason = "scanline", CpuId = cpu.Id }; }
         if (gstep == GlobalStep.Frame && Machine.Frame > gStartFrame) { gstep = GlobalStep.None; return new BreakInfo { Reason = "frame", CpuId = cpu.Id }; }
         if (runToFrame >= 0 && Machine.Frame >= runToFrame) { runToFrame = -1; return new BreakInfo { Reason = "frame", CpuId = cpu.Id }; }
+        if (runToCount >= 0 && st.Executed >= runToCount) { runToCount = -1; return new BreakInfo { Reason = "step-back", CpuId = cpu.Id }; }
         if (runToScanline >= 0)
         {
             int s = Machine.Scanline;

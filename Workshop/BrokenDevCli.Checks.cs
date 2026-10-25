@@ -90,7 +90,7 @@ internal static partial class BrokenDevCli
                 }
             if (chk.TryGetProperty("scenarios", out var ss)) foreach (var s in ss.EnumerateArray()) scenarioIds.Add(s.GetString() ?? "");
         }
-        var allScenarios = verify.GetProperty("scenarios").EnumerateArray().ToList();
+        var allScenarios = verify.GetProperty("scenarios").EnumerateArray().Concat(promotedScenarios).ToList();
         if (scenarioIds.Count == 0)
             scenarioIds = allScenarios.Where(s => !(s.TryGetProperty("info", out var inf) && inf.ValueKind == JsonValueKind.True)).Select(s => s.GetProperty("id").GetString() ?? "").ToList();
         if (only.Length > 0) scenarioIds = scenarioIds.Where(s => s.Equals(only, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -198,6 +198,7 @@ internal static partial class BrokenDevCli
         bool ntsc = sc.TryGetProperty("ntscFrameTiming", out var nt) && nt.ValueKind == JsonValueKind.True;
         string powerOnRam = sc.TryGetProperty("powerOnRam", out var por) ? por.GetString() ?? "fceux" : "fceux";
         var steps = ParseInput(sc.TryGetProperty("input", out var ip) ? ip.GetString() ?? "" : "");
+        var steps2 = ParseInput(sc.TryGetProperty("input2", out var ip2) ? ip2.GetString() ?? "" : "");
         var pokes = new List<(int Frame, int Addr, byte Value)>();
         if (sc.TryGetProperty("pokes", out var pk))
             foreach (var p in pk.EnumerateArray())
@@ -213,13 +214,14 @@ internal static partial class BrokenDevCli
             var dbg = new Debugger(runner.DebugMachine());
             foreach (var s in symbolFiles) dbg.Symbols.Load(s, CheckCatalogue.FamilyOf(dbg.Machine.Console));
             var checks = CheckRun.Attach(dbg, opt);
-            var held = new List<string>(); int next = 0;
+            var held = new List<string>(); var held2 = new List<string>(); int next = 0, next2 = 0;
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int f = 0; f < frames; f++)
             {
                 foreach (var p in pokes) if (p.Frame == f && runner is NesRunner nr) nr.Poke(p.Addr, p.Value);
                 while (next < steps.Count && steps[next].Frame <= f) { held = steps[next].Names; next++; }
-                runner.Step(held);
+                while (next2 < steps2.Count && steps2[next2].Frame <= f) { held2 = steps2[next2].Names; next2++; }
+                runner.Step(held, held2);
                 if (runner.Crashed) { res.Result = "crashed"; res.Error = runner.CrashInfo; break; }
                 runner.DrainAudio();
             }

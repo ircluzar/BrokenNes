@@ -77,7 +77,7 @@ internal static class ClientTest
             string[] want = { "open_rom", "open_project", "attach_live", "list_instances", "list_sessions", "close_session", "status", "run", "run_until", "pause", "reset", "input",
                 "read_memory", "write_memory", "search_memory", "list_domains", "symbols", "breakpoint_add", "breakpoint_list", "breakpoint_remove", "watch", "step", "call_stack",
                 "registers", "trace", "trace_frame", "disassemble", "evaluate", "screenshot", "layers", "tiles", "sprites", "record_sound", "save_state", "load_state", "diff_states",
-                "checks", "profile", "brokendev" };
+                "checks", "profile", "brokendev", "step_back", "open_movie", "movie", "bisect" };
             var missing = want.Where(w => !names.Contains(w)).ToList();
             Check("tools_listed", missing.Count == 0 && tools.All(t => t.JsonSchema.ValueKind == JsonValueKind.Object), $"{tools.Count} tools over stdio; missing: {(missing.Count == 0 ? "none" : string.Join(", ", missing))}");
             switch (suite)
@@ -310,6 +310,87 @@ internal static class ClientTest
             await Call("close_session", new { session = hv });
         }
         foreach (var x in new[] { h1, hp, hs, hw, hg, hm }) await Call("close_session", new { session = x }, log: false);
+        await MovieSuite(dir, sms);
+    }
+
+    // ==================================================================================================================== movies, step back, divergence (D5)
+
+    private static async Task MovieSuite(string dir, string sms)
+    {
+        string Planted(string name, string settings)
+        {
+            var (rom, mlb) = BrokenNes.Workshop.Movies.MovieTestRoms.PlantedGame(BrokenNes.Workshop.Movies.MovieTestRoms.ParseSettings(settings));
+            File.WriteAllText(Path.Combine(dir, name + ".mlb"), mlb);
+            return DebugTestRoms.Write(dir, name + ".nes", rom);
+        }
+        string good = Planted("mgood", "version 1\nstart Start\nfloor 1\nbonus 1\n"), bad = Planted("mbad", "version 1\nstart Start\nfloor 0\nbonus 1\n"), menu = Planted("mmenu", "version 1\nstart Select\nfloor 1\nbonus 1\n");
+        string Sym(string rom) => Path.ChangeExtension(rom, ".mlb");
+
+        // a session's input since power-on, saved as a movie, replayed in sync; on the regression it goes off course
+        var o = await Call("open_rom", new { path = good, symbols = new[] { Sym(good) } });
+        string h = S(o["session"]);
+        await Call("input", new { session = h, mode = "script", script = "60:Start,66:,200:A,260:", run_frames = 600 });
+        var sv = await Call("movie", new { action = "save", session = h, path = Path.Combine(dir, "session") });
+        string mv = S(sv["file"]);
+        Check("movie_save", !sv.IsError && File.Exists(mv) && L(sv["frames"]) == 600 && L(sv["keyframes"]) == 10 && S(sv["start"]) == "power-on", $"{mv}: {L(sv["frames"])} frames, {L(sv["inputChanges"])} input changes, {L(sv["keyframes"])} keyframes");
+        var info = await Call("movie", new { action = "info", movie = mv });
+        Check("movie_info", S(info["script1"]) == "60:Start,66:,200:A,260:" && S(info["format"]).Length > 0, $"{S(info["format"])} {S(info["extension"])}: {S(info["script1"])}");
+        var om = await Call("open_movie", new { movie = mv, rom = good, symbols = new[] { Sym(good) } });
+        Check("open_movie_in_sync", om["inSync"]?.GetValue<bool>() == true && L(om["keyframesMatched"]) == 10 && om["sameRom"]?.GetValue<bool>() == true, $"{L(om["keyframesMatched"])} of {L(om["keyframesChecked"])} keyframes, frame {L(om["frame"])}");
+        await Call("close_session", new { session = S(om["session"]) }, log: false);
+        var ob = await Call("open_movie", new { movie = mv, rom = bad, symbols = new[] { Sym(bad) } });
+        Check("open_movie_off_course_on_the_regression", ob["inSync"]?.GetValue<bool>() == false && S(ob["offCourse"]).Contains("300") && ob["sameRom"]?.GetValue<bool>() == false, S(ob["offCourse"]));
+        await Call("close_session", new { session = S(ob["session"]) }, log: false);
+
+        // step back: to the exact instruction, and by frames
+        await Call("close_session", new { session = h }, log: false);
+        o = await Call("open_rom", new { path = good, symbols = new[] { Sym(good) } });
+        h = S(o["session"]);
+        await Call("input", new { session = h, mode = "script", script = "60:Start,66:", run_frames = 70 });
+        var r = await Call("run_until", new { session = h, spec = "lose_life" });
+        var at = await Call("registers", new { session = h });
+        await Call("step", new { session = h, count = 4 });
+        var moved = await Call("registers", new { session = h });
+        var back = await Call("step_back", new { session = h, instructions = 4 });
+        var again = await Call("registers", new { session = h });
+        string Regs(Res x) => $"{S(x["pc"])} {x["registers"]?.ToJsonString()} {S(x["cycle"])}";
+        Check("step_back_instructions", !back.IsError && r["reached"]?.GetValue<bool>() == true && Regs(again) == Regs(at) && Regs(moved) != Regs(at), $"{Regs(again)} (the breakpoint's {Regs(at)}); {back["steppedBack"]?.ToJsonString()}");
+        await Call("run", new { session = h, frames = 5 });
+        var f0 = await Call("status", new { session = h });
+        var m0 = await Call("read_memory", new { session = h, spec = "frames" });
+        await Call("run", new { session = h, frames = 3 });
+        var bf = await Call("step_back", new { session = h, frames = 3 });
+        var m1 = await Call("read_memory", new { session = h, spec = "frames" });
+        Check("step_back_frames", !bf.IsError && L(bf["steppedBack"]?["toFrame"]) == L(f0["framesRun"]) && L(m1["value"]) == L(m0["value"]), $"to frame {L(bf["steppedBack"]?["toFrame"])} (was {L(f0["framesRun"])}); frames {L(m1["value"])} (then {L(m0["value"])})");
+        var far = await Call("step_back", new { session = h, frames = 100000 });
+        Check("step_back_too_far_refused", far.IsError, far.Text);
+        var both = await Call("step_back", new { session = h });
+        Check("step_back_needs_a_count", both.IsError, both.Text);
+        await Call("close_session", new { session = h }, log: false);
+        var sm = await Call("open_rom", new { path = sms });
+        string hs = S(sm["session"]);
+        await Call("run", new { session = hs, frames = 130 });
+        var smi = await Call("step_back", new { session = hs, instructions = 1 });
+        var smf = await Call("step_back", new { session = hs, frames = 60 });
+        Check("step_back_sega_frames_only", smi.IsError && smi.Text.Contains("debugger") && !smf.IsError && L(smf["steppedBack"]?["toFrame"]) == 70, $"instructions: {smi.Text}; frames: to {L(smf["steppedBack"]?["toFrame"])}");
+        await Call("close_session", new { session = hs }, log: false);
+
+        // the divergence finder, the state diff by symbol, bisect's test, the exports
+        var dv = await Call("movie", new { action = "diverge", movie = mv, rom = good, symbols = new[] { Sym(good) }, rom_b = bad, symbols_b = new[] { Sym(bad) } });
+        var v0 = dv["stateAfter"]?["variables"]?[0];
+        Check("movie_diverge", dv["diverged"]?.GetValue<bool>() == true && L(dv["frame"]) == 252 && S(dv["firstInstruction"]?["pcSymbolA"]) == "lose_life+$2" && S(v0?["variable"]) == "lives", S(dv["summary"]));
+        var same = await Call("movie", new { action = "diverge", movie = mv, rom = good, symbols = new[] { Sym(good) } });
+        Check("movie_diverge_same_build_does_not", same["diverged"]?.GetValue<bool>() == false, S(same["summary"]));
+        var tg = await Call("movie", new { action = "test", movie = mv, rom = good, symbols = new[] { Sym(good) }, test = "[lives] >= 1 at 600" });
+        var tb = await Call("movie", new { action = "test", movie = mv, rom = bad, symbols = new[] { Sym(bad) }, test = "[lives] >= 1 at 600" });
+        var tm = await Call("movie", new { action = "test", movie = mv, rom = menu, symbols = new[] { Sym(menu) }, test = "[app_state] == 1 at 600" });
+        Check("movie_test_verdicts", L(tg["exitCode"]) == 0 && L(tb["exitCode"]) == 1 && S(tm["verdict"]) is "bad" or "cant-tell", $"good {S(tg["verdict"])}, regression {S(tb["verdict"])}, menu {S(tm["verdict"])} ({S(tm["why"])})");
+        var ex = await Call("movie", new { action = "export", movie = mv, rom = good, format = "bk2", @out = Path.Combine(dir, "session.bk2") });
+        Check("movie_export_bk2", !ex.IsError && File.Exists(Path.Combine(dir, "session.bk2")), $"{S(ex["file"])} {ex["notes"]?.ToJsonString()}");
+        var exBad = await Call("movie", new { action = "export", movie = mv, rom = bad, format = "fm2" });
+        Check("movie_export_refuses_another_rom", exBad.IsError && exBad.Text.Contains("not the movie's"), exBad.Text);
+        var nomovie = await Call("movie", new { action = "info", movie = Path.Combine(dir, "nothing.bnm") });
+        Check("movie_missing_refused", nomovie.IsError && nomovie.Text.Contains("no movie"), nomovie.Text);
     }
 
     // ==================================================================================================================== the demo (done when)

@@ -65,6 +65,9 @@ internal abstract class Session
     public virtual JsonObject DiffStates(string a, string b, int limit) => throw No("state diffs");
     // analysis
     public virtual JsonObject Checks(string action, List<string> off, List<string> wait, long from, int top) => throw No("the hardware checks");
+    // movies and step back (D5)
+    public virtual JsonObject StepBack(long? instructions, long? frames) => throw No("step back");
+    public virtual JsonObject MovieSave(string? path) => throw No("saving the session as a movie");
 }
 
 /// <summary>Every open session, by id ("h1", "h2", ... headless; "live-<pid>-n" live).</summary>

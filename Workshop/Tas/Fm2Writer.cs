@@ -34,6 +34,8 @@ public sealed class Fm2Writer
     public int Port2;
     public string RomFilename = string.Empty;
     public byte[]? RomChecksumMd5;
+    /// <summary>Write romChecksum as "base64:..." (what FCEUX itself writes) instead of the spec's "0x..." form.</summary>
+    public bool ChecksumBase64;
     public string Guid = System.Guid.NewGuid().ToString("D").ToUpperInvariant();
     public List<string> Comments { get; } = new();
 
@@ -58,7 +60,7 @@ public sealed class Fm2Writer
         Line("rerecordCount", RerecordCount.ToString(CultureInfo.InvariantCulture));
         Line("palFlag", PalFlag ? "1" : "0");
         Line("romFilename", RomFilename);
-        Line("romChecksum", "0x" + Convert.ToHexString(RomChecksumMd5 ?? Array.Empty<byte>()));
+        Line("romChecksum", ChecksumBase64 ? "base64:" + Convert.ToBase64String(RomChecksumMd5 ?? Array.Empty<byte>()) : "0x" + Convert.ToHexString(RomChecksumMd5 ?? Array.Empty<byte>()));
         Line("guid", Guid);
         Line("fourscore", Fourscore ? "1" : "0");
         Line("port0", Port0.ToString(CultureInfo.InvariantCulture));
@@ -80,6 +82,7 @@ public sealed class Fm2Writer
             else
             {
                 sb.Append(frame.P2 != null ? EncodeGamepadField(frame.P2) : string.Empty).Append('|');
+                sb.Append('|');   // port2 (the Famicom expansion port): empty, as FCEUX writes it ("|0|........|........||")
             }
             sb.Append('\n');
         }

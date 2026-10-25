@@ -26,7 +26,11 @@ public sealed class NesDebugMachine : DebugMachine, INesInstructionHook, IBusDeb
     public NES Nes => nes;
     public override string Console => "nes";
     public override IReadOnlyList<DebugCpu> Cpus => cpus;
-    public override long Frame => Math.Max(0, nes.FramesExecuted - 1);
+    public override long Frame => Math.Max(0, nes.FramesExecuted - 1 + frameOffset);
+    private long frameOffset;
+
+    /// <summary>The NES's save state does not hold its frame count: after a state load the debugger's frame is put back by an offset.</summary>
+    public override void RestoreFrame(long frame) => frameOffset += frame - Frame;
     public override int Scanline => nes.DebugBus?.ppu is IPpuFrameClock c ? c.ProbeScanline : -1;
     public override int Dot => nes.DebugBus?.ppu is IPpuProbe p ? p.ProbeDot : -1;
     public override long Cycle => cycle;
