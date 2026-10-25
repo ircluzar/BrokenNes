@@ -529,11 +529,13 @@ port and DMA reads are still checked.
   `claude mcp add --scope user brokennes -- <exe> --repo <main checkout>` (the CLI on PATH, else the one the Claude desktop app keeps under
   `%APPDATA%\Claude\claude-code`; with no CLI it writes the documented `mcpServers.brokennes` entry of `%USERPROFILE%\.claude.json` and
   nothing else); `mcp uninstall` removes that one entry; `mcp status`, `mcp test`. Registered on the user's machine on 2026-10-24
-  (REGISTRATION).
-- **Tests:** `BrokenNes.Mcp.exe --client-test` (a scripted MCP client over stdio with the SDK's client: CLIENT checks, among them the
+  with `brokendev.ps1 mcp install`: the CLI (`%APPDATA%\Claude\claude-code\2.1.308\...\claude.exe`) wrote the one `mcpServers.brokennes`
+  entry of `%USERPROFILE%\.claude.json` (`type stdio`, command `P:\BrokenDev\env\bnbuild\mcp\bin\BrokenNes.Mcp\release\BrokenNes.Mcp.exe`,
+  args `--repo C:\Users\philt\OneDrive\Documents\PROJECTS\BrokenNes`); `claude mcp get brokennes` says connected.
+- **Tests:** `BrokenNes.Mcp.exe --client-test` (a scripted MCP client over stdio with the SDK's client: 60 checks, among them the
   negative controls: an unknown symbol, a past frame, an unknown state, a closed session, a Sega breakpoint, checks that are off, an unknown
   button, an unknown project are refused; the silent ROM records silence; a session one frame apart differs); `BrokenDev\tests\mcp-live.ps1`
-  (two desktop apps with scratch `BROKENNES_CONFIG_DIR`s, one without and one with `enableDebuggerControl`: LIVE checks: reading works
+  (two desktop apps with scratch `BROKENNES_CONFIG_DIR`s, one without and one with `enableDebuggerControl`: 15 checks: reading works
   everywhere; a read-only session refuses pause, writes, breakpoints, even where the app allows control; a control session where the app
   forbids it is refused by the app; a control session where both allow it breaks on a symbol, shows the call stack, steps, writes, presses A;
   closing it lets the game go and the process keeps running; nothing saves); `run-tests.ps1` runs the client test and the demo when given
@@ -550,7 +552,9 @@ port and DMA reads are still checked.
   3. **the negative control:** the fixed build (with `STA bonus`, `BNE`) under the same tools: no game over after two hits (lives 1),
      0 read-before-written findings.
 - **Unchanged when the server is not used:** the emulator, the desktop app and Lite gain nothing; Workshop gains one
-  `InternalsVisibleTo BrokenNes.Mcp` (the tests reuse the debugger tests' assembler and ROMs). GATES
+  `InternalsVisibleTo BrokenNes.Mcp` (the tests reuse the debugger tests' assembler and ROMs). On the branch merged with main 166090e: UAT 125 pass, 0 fail, 16 skip, 3 info;
+  `--debug-test` 101 of 101; `--check-test` 111 of 111 (main's count); `--wms-test` 288 passed, 0 failed; BrokenDev `run-tests` 124 passed
+  (the MCP case included); Core and Lite build; the client test 60 of 60, the demo 6 of 6, the live test 15 of 15.
 - **Left open:** live sessions have no checks, sound recorder, RAM search, tiles / sprites / layers or whole-frame trace (the desktop app's
   API has no routes for them: they run in a headless session of the same ROM); `bugs`, `bisect`, `coverage` and movie playback arrive with
   D5, D6 and D9; SNES coprocessor firmware is not loaded in headless sessions (DSP-1 games use the homemade chip, as in the debugger tests);
