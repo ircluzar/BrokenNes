@@ -382,15 +382,16 @@ How WideMess appears in each host, and why the plugin differs, is spec section 9
 | plugin `wms` | chip 29 and every earlier index; pitch A0-C8 worst 0.196 cent; the sine's harmonics below -100 dB; each instrument's harmonics on its formula; 24 notes = 24 frequencies in the mix, a 25th takes the oldest's voice; level 0.0 dB from the NES chip; 9x real time and 0 bytes with 4 x 6 sliding notes; Reset Console | deliberate bugs (8 voices; the pitch for the wrong loop) caught; the same chord on the SNES chip: 1 note |
 | plugin `rom-wms` | a `.wms` file takes WMS from a NES emulator; 400 x 224 in the editor; `sprites` / `widesnes`: the plugin's picture hash = the PNG's; `sound.wms` rms 0.083; Super Mario World frame and sample identical on the SNES and WMS chips (10 pictures over 600 frames, 143,872 samples); a chip swap under a running game; Runaway lists 28 instruments (14 16-bit PCM and 12 BRR of the new voices' directory, 2 of the S-DSP's), plays the game's 1 kHz PCM sine at C5, A4, C6, a 6-note chord, 0 bytes; the project's `WMS1` | the locked control (0.008) and the SNES chip (no new voices, said); a damaged `WMS1` refused with a note; the locked control's Runaway is the SNES sampler's |
 
+| Lite `testcart` | the WideMess row's Test cartridge button starts the built-in test cartridge on the WideMess console, 400 x 224 | |
 | Lite `chips` | milestone 7b's chips, which follow the console into Lite: a NES game (VRUN) on the NES board's widescreen chip `WMSS` is shown whole, 400 x 240; Super Mario World on the route `WMS:WMSS` (picture and sound) is 400 wide and keeps its sound | |
 
-**Results** (the branch merged with main 4b3e643: milestones 6, 7b and the debugger D1):
+**Results** (the branch merged with main 3679448: milestones 6, 7b, the debugger D1 and the test cartridge):
 - **The plugin's self-test: 67 results, 66 pass, the QLQ warning (the QLQ core plays an octave sharp on purpose), 0 failed** (29.6 minutes; 65 before this milestone: `wms` and
   `rom-wms` are new; the chip-count assertions of `consoles`, `psg`, `md`, `fm`, `presets` and `editor` follow the appended chip).
-- **Lite:** every suite passes on the AOT build: the WideMess suite (`lite-widemess.ps1`) 41 checks, the SNES states 18, the d-pad 32, the Sega suite 137.
-- **`--wms-test` 269 of 269** with the nine SNES games of the rules (Super Mario World, A Link to the Past, Star Fox, Super Mario RPG, Pilotwings, F-Zero, Super Metroid,
-  Donkey Kong Country, Chrono Trigger: frame- and sound-identical on both consoles) and milestone 6's checks; **269 of 269 with `--reference-paths`**.
-- **UAT `run-suite.ps1`: 125 pass, 0 fail, 16 skip, 3 info.** The desktop smoke test passes 18 of 18.
+- **Lite:** every suite passes on the AOT build: the WideMess suite (`lite-widemess.ps1`) 42 checks (with the test cartridge button), the SNES states 18, the d-pad 32, the Sega suite 137.
+- **`--wms-test` 315 of 315** with the nine SNES games of the rules (Super Mario World, A Link to the Past, Star Fox, Super Mario RPG, Pilotwings, F-Zero, Super Metroid,
+  Donkey Kong Country, Chrono Trigger: frame- and sound-identical on both consoles), milestone 6's and the test cartridge's checks; **315 of 315 with `--reference-paths`**.
+- **UAT `run-suite.ps1`: 125 pass, 0 fail, 16 skip, 3 info.** The desktop smoke test passes 21 of 21.
 - Nothing changes for the other consoles in Lite and the plugin: their suites and checks pass as before; the chip indexes 0-28 are where they were.
 
 **Open:**
