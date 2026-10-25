@@ -425,7 +425,7 @@ internal static class ClientTest
         Check("live_control_break", !sy.IsError && until["parked"]?.GetValue<bool>() == true && S(until["lastBreak"]?["pcSymbol"]) == "sub2", $"symbols {S(sy["load"]?["loaded"])}; {S(until["lastBreak"]?["text"])}");
         var cs = await Call("call_stack", new { session = b });
         var frames = cs["frames"] as JsonArray;
-        Check("live_call_stack", frames?.Count == 2 && S(frames[1]?["targetSymbol"]) == "sub2", string.Join(" | ", frames?.Select(f => S(f?["text"])) ?? Array.Empty<string>()));
+        Check("live_call_stack", frames?.Count == 2 && S(frames[0]?["targetSymbol"]) == "sub2" && S(frames[1]?["targetSymbol"]) == "sub1", string.Join(" | ", frames?.Select(f => S(f?["text"])) ?? Array.Empty<string>()));
         var step = await Call("step", new { session = b, mode = "over" });
         Check("live_step", step["parked"]?.GetValue<bool>() == true, S(step["lastBreak"]?["text"]));
         var wr = await Call("write_memory", new { session = b, domain = "System RAM", address = 0x30, data = new[] { 0x5A } });

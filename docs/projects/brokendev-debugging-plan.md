@@ -2,7 +2,8 @@
 
 Plan of 2026-10-23, written after an interview with the user. It starts **after WideMess milestone 1** (the week of 2026-10-26).
 **Milestone D1 (the debugger engine) is built** (2026-10-24): see "D1 as built" after the milestones. **Milestone D4 (checks, budgets,
-profiler) is built** (2026-10-24): see "D4 as built"; the Game Boy hello world's accepted findings wait for D2. The rest is not.
+profiler) is built** (2026-10-24): see "D4 as built"; the Game Boy hello world's accepted findings wait for D2. **Milestone D3 (the MCP
+server) is built** (2026-10-24): see "D3 as built". The rest is not.
 
 ## Why
 
@@ -338,7 +339,7 @@ They follow WideMess milestone 1. Each one is merged, tested and pushed before t
 |---|---|---|
 | **D1** | **Debugger engine** | Breakpoints, mirror-aware watches, stepping, call stack, trace and symbols on the NES, SNES (65816 + SPC700) and Game Boy. Memory domains for all three in the HTTP API. Every golden unchanged and speed unchanged with it off. |
 | **D2** | **Game Boy hello world** | GBDK-2020 installed (after approval). `VRUN_VOC_dev` builds a dual-mode hello world that runs on BrokenNes (desktop and Lite), Mesen and BizHawk, as a BrokenDev project. The D1 debugger reads its symbols. |
-| **D3** | **MCP server** | Headless and live sessions with the tools above, registered at user level, used by an agent to find a planted bug in a test ROM without Mesen. The client test passes. |
+| **D3** | **MCP server** | Headless and live sessions with the tools above, registered at user level, used by an agent to find a planted bug in a test ROM without Mesen. The client test passes. **Built 2026-10-24** (see "D3 as built"). |
 | **D4** | **Checks, budgets, profiler** | The first catalogue for the three consoles, each rule with its test ROM and negative control. Accepted findings recorded for VRUN, Nested VRUN, Super VRUN, the SMB1 remake and the hello world. `verify` fails on new findings and over budget. |
 | **D5** | **Movies, diff, bisect** | Our movie format with `.fm2` / `.bk2` export, divergence finder, state diff by symbol, step back, promoted movie tests in verify, bisect over a game's commits (proven on a planted regression). |
 | **D6** | **Bug capture** | The key in the desktop app and Lite (download). Bundles land in the game's `bugs\`; `brokendev bug` replays them exactly. Lite still holds 60 fps with it on. |
@@ -494,6 +495,66 @@ port and DMA reads are still checked.
   limits (modes 0-4, no HDMA); RAM headroom by allocation from the symbols (today: bytes read, a lower bound of use); the WideMess's VRAM and
   sound RAM headroom; where the SMB1 Nested build waits; the devkit's start-up clear.
 
+## D3 as built (2026-10-24)
+
+- **The server:** `BrokenDev/mcp` (`BrokenNes.Mcp.exe`, a console program), C# on the official MCP SDK for .NET, **`ModelContextProtocol`
+  2.2.0, pinned** (approved by the user; NuGet pulled `ModelContextProtocol.Core` 2.2.0 and `Microsoft.Extensions.AI.Abstractions` 10.8.3 /
+  `Microsoft.Extensions.*.Abstractions` 10.0.10 with it, nothing else). Stdio, tools listed and called through the SDK's low-level handlers
+  (each tool's JSON schema written by hand), results as JSON text plus the same object as structured content, pictures as PNG images.
+  Stdout belongs to the protocol: anything the emulator prints goes to stderr.
+- **Headless sessions** run on the Workshop engine in the server's own process (a project reference to Workshop: the very same emulator
+  build): the NES (the desktop app's FIX cores by default), every console session (SNES, WideMess, Game Boy / Color, Master System, Game Gear,
+  Genesis) with their core menus; the D1 `Debugger` and `DebugRunner` (frames on their own thread, so a break parks mid-frame) for the
+  NES, SNES with the SPC700, WideMess and Game Boy; the Sega consoles run frames, input, memory domains, the picture, sound and states with
+  no debugger (said up front, and the debugger's tools refuse with the reason). Sessions are deterministic (two sessions given the same calls
+  hold the same RAM; one more frame differs: the client test checks both).
+- **Live sessions** attach by PID through the discovery file and the HTTP API. They open **read-only** (registers, memory by spec or
+  domain, the call stack, the trace ring, breakpoints and hits, disassembly, expressions, the screenshot). **Control** (pause, continue, run
+  frames, run until, step, breakpoints, symbol loads, memory and register writes, buttons, loading the quick state) needs both the session
+  opened with `control: true` (the tool says: only when the user asked in chat) and the app's `enableDebuggerControl`; the server checks
+  both before every control call, so even the app's ungated routes (`/api/memory/poke*`, `/api/input/*`) are never reached from a read-only
+  session. Never: saves, resets, progression, stopping the process (closing a control session detaches the debugger: the game runs on).
+- **The tools (41):** sessions (`open_rom`, `open_project`, `list_instances`, `attach_live`, `list_sessions`, `status`, `close_session`);
+  running (`run` with an optional pad script, `run_until` a frame / scanline / address access with a condition / a condition per frame,
+  `pause`, `continue`, `reset`); `input` (press, hold, release, script); memory (`read_memory`, `write_memory`, `search_memory`,
+  `list_domains`, `symbols`); the debugger (`breakpoint_add` / `_list` / `_remove`, `watch` expressions returned with every result, `step`,
+  `call_stack`, `registers`, `set_register`, `trace`, `trace_frame`, `disassemble` by address or code symbol, `evaluate`); the picture
+  (`screenshot`, `layers` for the SNES and WideMess: one frame drawn with the chosen layers and the machine put back by a state, `tiles`,
+  `sprites`); `record_sound` (levels, frames with sound, a .wav); states in the server's memory (`save_state`, `load_state`, `diff_states` by
+  symbol, NESFab's `name@n` bytes as one variable); `checks` (start, report, stop) and `profile`; `brokendev` (build, verify, compat, run with
+  the new PID returned, list, status, doctor). The call stack is innermost first in both kinds of session.
+- **Registration:** `brokendev.ps1 mcp install` builds the server into `BROKENDEV_HOME\bnbuild\mcp` and runs Claude Code's own
+  `claude mcp add --scope user brokennes -- <exe> --repo <main checkout>` (the CLI on PATH, else the one the Claude desktop app keeps under
+  `%APPDATA%\Claude\claude-code`; with no CLI it writes the documented `mcpServers.brokennes` entry of `%USERPROFILE%\.claude.json` and
+  nothing else); `mcp uninstall` removes that one entry; `mcp status`, `mcp test`. Registered on the user's machine on 2026-10-24
+  (REGISTRATION).
+- **Tests:** `BrokenNes.Mcp.exe --client-test` (a scripted MCP client over stdio with the SDK's client: CLIENT checks, among them the
+  negative controls: an unknown symbol, a past frame, an unknown state, a closed session, a Sega breakpoint, checks that are off, an unknown
+  button, an unknown project are refused; the silent ROM records silence; a session one frame apart differs); `BrokenDev\tests\mcp-live.ps1`
+  (two desktop apps with scratch `BROKENNES_CONFIG_DIR`s, one without and one with `enableDebuggerControl`: LIVE checks: reading works
+  everywhere; a read-only session refuses pause, writes, breakpoints, even where the app allows control; a control session where the app
+  forbids it is refused by the app; a control session where both allow it breaks on a symbol, shows the call stack, steps, writes, presses A;
+  closing it lets the game go and the process keeps running; nothing saves); `run-tests.ps1` runs the client test and the demo when given
+  `-McpExe` (or `BROKENDEV_MCP`).
+- **The "done when" demo** (`BrokenNes.Mcp.exe --demo`, a scripted agent session, no Mesen): `PlantedBug.cs` assembles a small NES game with
+  two planted bugs and its fixed build. Told only "the game ends too early" and given the game's `.mlb`, the tools find:
+  1. **a variable read before it is written:** `open_rom` with `checks: true`, `run` 300, `checks report` names `nes.ram-uninit` at
+     `bonus` (`ram:$0042`), first frame 59, in `add_bonus`, stack `update > add_bonus`. A second, identical session with a read watch on
+     `bonus` (`hits ==1`) stops at that read (value `$00`, the power-on RAM), stack `add_bonus <- update`; a third with a write watch shows the
+     first write is `add_bonus+$5`, 7 cycles after the read: nothing initialises it (the start-up forgot `STA bonus`).
+  2. **a wrong branch:** a write watch on `game_over` with `value != 0` stops at frame 59 in `set_game_over+$2` with `lives` = 2; the call
+     stack names `lose_life`; `disassemble lose_life` reads `DEC lives; BEQ alive; LDA #$01`, and the trace shows the `BEQ` not taken just
+     before the store: `BEQ` where `BNE` was meant (the game ends at the first hit instead of at 0 lives).
+  3. **the negative control:** the fixed build (with `STA bonus`, `BNE`) under the same tools: no game over after two hits (lives 1),
+     0 read-before-written findings.
+- **Unchanged when the server is not used:** the emulator, the desktop app and Lite gain nothing; Workshop gains one
+  `InternalsVisibleTo BrokenNes.Mcp` (the tests reuse the debugger tests' assembler and ROMs). GATES
+- **Left open:** live sessions have no checks, sound recorder, RAM search, tiles / sprites / layers or whole-frame trace (the desktop app's
+  API has no routes for them: they run in a headless session of the same ROM); `bugs`, `bisect`, `coverage` and movie playback arrive with
+  D5, D6 and D9; SNES coprocessor firmware is not loaded in headless sessions (DSP-1 games use the homemade chip, as in the debugger tests);
+  the SNES sprite boxes assume 8 / 16 pixels (OBSEL is write-only); a state load restarts the call stack, and the checks keep what they
+  learned before it.
+
 ## Open questions (to settle at the start of the track)
 
 1. The debug port's registers on each console, checked against mapper 30, the SNES coprocessors' ranges and the Game Boy Color's
@@ -502,4 +563,4 @@ port and DMA reads are still checked.
 3. The bug-capture key and how the note is typed.
 4. The first check catalogue per console, and which findings today's games accept (for example Super VRUN's SNESMOD sound-RAM reads).
 5. The checkup command's name and where its report lives (a BrokenDev page or a dashboard).
-6. Approvals when the work reaches them: the MCP SDK's NuGet package and the GBDK-2020 download (exact files, sources and sizes asked then).
+6. Approvals when the work reaches them: the MCP SDK's NuGet package (approved 2026-10-24: `ModelContextProtocol` 2.2.0) and the GBDK-2020 download (exact files, sources and sizes asked then).

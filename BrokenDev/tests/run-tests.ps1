@@ -12,7 +12,7 @@
   Exit code: 0 all run tests passed (skips are listed), 1 a test failed.
 #>
 [CmdletBinding()]
-param([string]$WorkshopExe = '', [switch]$NoWorkshop)
+param([string]$WorkshopExe = '', [switch]$NoWorkshop, [string]$McpExe = '')
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -29,6 +29,7 @@ $bd = Split-Path -Parent $here
 . (Join-Path $bd 'lib\Emulators.ps1')
 . (Join-Path $bd 'lib\Compat.ps1')
 . (Join-Path $bd 'lib\WideMess.ps1')
+. (Join-Path $bd 'lib\Mcp.ps1')
 
 $script:pass = 0; $script:fail = 0; $script:skip = 0
 $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('bdtests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -1299,6 +1300,21 @@ try {
             $bad = @((Read-BdJson $out).scenarios[0].checks | Where-Object { -not $_.ok } | ForEach-Object { $_.id })
             foreach ($want in 'wms-unlocked', 'wms-width', 'wms-layers', 'wms-sprites', 'wms-voices', 'wms-fast-cpu') { Assert-True ($bad -contains $want) "the no-unlock game passed $want" }
         } finally { Restore-Env $savedEnv }
+    }
+    # ------------------------------------------------------------------ the MCP server (D3): its scripted MCP clients, over stdio
+    $mcpExe = if ($McpExe) { $McpExe } elseif ($env:BROKENDEV_MCP) { $env:BROKENDEV_MCP } else { $null }
+    Test-Case 'the MCP server: the client test (headless sessions on every console, with negative controls) and the planted-bug demo pass; SKIP without a built server' {
+        if (-not $mcpExe -or -not (Test-Path -LiteralPath $mcpExe)) { Skip-Test 'no MCP server (-McpExe, or BROKENDEV_MCP; brokendev.ps1 mcp build makes one)' }
+        foreach ($suite in '--client-test', '--demo') {
+            $lines = @(& $mcpExe $suite --repo (Get-BdRepoRoot) 2>&1 | ForEach-Object { "$_" })
+            $last = $lines | Where-Object { $_ -like '{*' } | Select-Object -Last 1
+            Assert-True ($LASTEXITCODE -eq 0) "$suite failed: $(@($lines | Where-Object { $_ -like '`[FAIL`]*' }) -join ' | ')"
+            $j = $last | ConvertFrom-Json
+            Assert-True ($j.pass -and $j.checks -ge 6) "$suite reported $last"
+        }
+        # the tools tell an agent the live-control rule (read freely, control only when the user asked)
+        $lines = @(& $mcpExe --list-tools)
+        Assert-True (($lines -join "`n") -match 'attach_live .*ONLY when the user asked') 'attach_live does not say that control is only for when the user asked'
     }
 }
 finally {

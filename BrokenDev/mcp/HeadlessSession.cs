@@ -253,7 +253,7 @@ internal sealed class HeadlessSession : Session
         };
         if (o == RunOutcome.Break && D?.LastBreak is { } b) j["break"] = BreakJson(b);
         if (o == RunOutcome.Error) j["error"] = R?.Error?.Message;
-        if (o == RunOutcome.Timeout) j["note"] = "the call's time limit passed before the run ended; the machine is still running its frames in the background and will stop when they are done";
+        if (o == RunOutcome.Timeout) j["note"] = "the call's time limit (300 s) passed before the run ended: the machine was paused where it was (run again to go on)";
         if (watches.Count > 0) j["watches"] = WatchValues();
         if (checks != null) j["checkFindings"] = checks.Findings.Count;
         return j;
@@ -294,7 +294,13 @@ internal sealed class HeadlessSession : Session
     {
         frames = Math.Clamp(frames, 0, 1_000_000);
         if (frames == 0) return RunOutcome.Frames;
-        if (R != null) return R.Run(frames, 300_000);
+        if (R != null)
+        {
+            var o = R.Run(frames, 300_000);
+            // a run past the call's time limit is stopped where it is (parked at an instruction), so the session is still between calls
+            if (o == RunOutcome.Timeout) { D!.Pause(); D.WaitForPark(10_000); }
+            return o;
+        }
         for (long i = 0; i < frames; i++) Frame();
         return RunOutcome.Frames;
     }

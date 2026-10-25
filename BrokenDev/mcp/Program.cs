@@ -26,6 +26,17 @@ internal static class Program
         if (Flag("client-test")) return ClientTest.Run(args, ClientTest.Suite.Client);
         if (Flag("demo")) return ClientTest.Run(args, ClientTest.Suite.Demo);
         if (Flag("live-test")) return ClientTest.Run(args, ClientTest.Suite.Live);
+        if (Opt("write-test-roms") is { Length: > 0 } romDir)
+        {
+            // the live test's ROM (the debugger tests' NES ROM, its labels) for the desktop apps it starts
+            Directory.CreateDirectory(romDir);
+            var (nr, na, nm) = BrokenNes.Workshop.Debug.DebugTestRoms.Nes();
+            BrokenNes.Workshop.Debug.DebugTestRoms.Write(romDir, "debugtest.nes", nr);
+            BrokenNes.Workshop.Debug.DebugTestRoms.Write(romDir, "debugtest.mlb", nm);
+            File.WriteAllText(Path.Combine(romDir, "labels.json"), JsonSerializer.Serialize(new { nes = na.Labels.ToDictionary(k => k.Key, k => k.Value) }));
+            Console.WriteLine($"wrote the live test's ROM to {romDir}");
+            return 0;
+        }
         if (Flag("list-tools")) { foreach (var t in Tools.All()) Console.WriteLine($"{t.Name,-18} {t.Description}"); return 0; }
         if (Flag("version")) { Console.WriteLine($"BrokenNes MCP server {Version}"); return 0; }
         return Serve().GetAwaiter().GetResult();

@@ -128,7 +128,7 @@ internal sealed class LiveSession : Session
         var st = Get("/api/debug/state", allowFail: true);
         if (st != null) { j["appAllowsControl"] = st["controlEnabled"]?.DeepClone(); j["attached"] = st["attached"]?.DeepClone(); j["parked"] = st["parked"]?.DeepClone(); j["frame"] = st["frame"]?.DeepClone(); }
         var con = Get("/api/console", allowFail: true);
-        if (con?["status"] is JsonNode s) j["game"] = s["description"]?.DeepClone() ?? s.DeepClone();
+        if (con?["status"] is JsonNode s) j["game"] = s["description"]?.ToString() ?? $"{s["console"]} {s["title"] ?? s["game"]} {s["cpu"]}/{s["ppu"]}/{s["apu"]}".Trim();
         var rom = Get("/api/emulator/current-rom", allowFail: true);
         if (rom?["name"] != null) j["rom"] = rom["name"]!.DeepClone();
         return j;
@@ -154,7 +154,19 @@ internal sealed class LiveSession : Session
     // ================================================================================================ reading (always allowed)
 
     public override JsonObject Registers(string cpu) => Obj(Get($"/api/debug/registers?cpu={Q(cpu)}"));
-    public override JsonObject CallStack(string cpu) => Obj(Get($"/api/debug/callstack?cpu={Q(cpu)}"));
+    public override JsonObject CallStack(string cpu)
+    {
+        // the app lists outermost first; headless and live sessions both answer innermost first (depth 0: the function the CPU is in)
+        var j = Obj(Get($"/api/debug/callstack?cpu={Q(cpu)}"));
+        if (j["frames"] is JsonArray a)
+        {
+            var inner = new JsonArray();
+            for (int i = a.Count - 1; i >= 0; i--) { var f = a[i]!.DeepClone(); f["depth"] = a.Count - 1 - i; inner.Add(f); }
+            j["frames"] = inner;
+        }
+        j["order"] = "innermost first (depth 0 is the function the CPU is in)";
+        return j;
+    }
     public override JsonObject Trace(int count, string cpu) => Obj(Get($"/api/debug/trace?cpu={Q(cpu)}&count={Math.Clamp(count, 1, 5000)}"));
     public override JsonObject Disassemble(string? address, int count, string cpu) => Obj(Get($"/api/debug/disasm?cpu={Q(cpu)}&count={Math.Clamp(count, 1, 512)}{(string.IsNullOrWhiteSpace(address) || address == "pc" ? "" : "&address=" + Q(address!.TrimStart('$')))}"));
     public override JsonObject Evaluate(string expr, string cpu) => Obj(Get($"/api/debug/eval?cpu={Q(cpu)}&expr={Q(expr)}"));
