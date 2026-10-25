@@ -131,6 +131,26 @@ internal sealed class DebugShell
                 Console.WriteLine($"  pad 1 holds {(held.Count == 0 ? "nothing" : string.Join("+", held))}");
                 break;
             }
+            case "history":
+            {
+                // history [every] [keep]: from now on a state every <every> frames (the last <keep>) and every frame's input, for 'back'
+                int every = words.Count > 1 ? int.Parse(words[1], CultureInfo.InvariantCulture) : 60, keep = words.Count > 2 ? int.Parse(words[2], CultureInfo.InvariantCulture) : 30;
+                if (h.Dbg.IsParked || h.Runner.FramesDone > 0) throw new InvalidOperationException("turn the history on before the first run (it starts at power-on)");
+                h.EnableHistory(every, keep);
+                Console.WriteLine($"  history on: a state every {every} frames, the last {keep} kept");
+                break;
+            }
+            case "back":
+            {
+                // back [n] | back frames <n>: step back n instructions (default 1), or to the start of the n-th frame before now
+                var hist = h.History ?? throw new InvalidOperationException("no history: give 'history' before the first run");
+                bool frames = words.Count > 1 && words[1].Equals("frames", StringComparison.OrdinalIgnoreCase);
+                long n = words.Count > (frames ? 2 : 1) ? long.Parse(words[frames ? 2 : 1], CultureInfo.InvariantCulture) : 1;
+                var r = frames ? hist.BackFrames(h.Runner, n, D.IsParked, h.LoadState, h.EnsureBetweenFrames) : hist.BackInstructions(h.Runner, n, h.LoadState, h.EnsureBetweenFrames);
+                Console.WriteLine($"  back {(frames ? n + " frame(s)" : n + " instruction(s)")}: from frame {r.FromFrame}{(r.FromInstruction >= 0 ? $" instruction {r.FromInstruction}" : "")} to frame {r.ToFrame}{(r.ToInstruction >= 0 ? $" instruction {r.ToInstruction}" : "")} (the state of frame {r.SnapshotFrame}, {r.FramesReplayed} frame(s) replayed){(r.Note.Length > 0 ? "; " + r.Note : "")}");
+                if (D.IsParked) Report(RunOutcome.Break);
+                break;
+            }
             case "regs": Regs(); break;
             case "where": Console.WriteLine("  " + (D.LastBreak?.ToString() ?? "(not stopped)")); break;
             case "stack":

@@ -88,6 +88,8 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--session-test", StringComparison.OrdinalIgnoreCase)) return Sega.SessionTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--debug-test", StringComparison.OrdinalIgnoreCase)) return Debug.DebugTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--debug", StringComparison.OrdinalIgnoreCase)) return Debug.DebugRunCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--movie", StringComparison.OrdinalIgnoreCase)) return Movies.MovieCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--movie-test", StringComparison.OrdinalIgnoreCase)) return Movies.MovieTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--checks", StringComparison.OrdinalIgnoreCase)) return Debug.CheckRunCli.Run(args, profileOnly: false);
         if (args.Length > 0 && args[0].Equals("--profile", StringComparison.OrdinalIgnoreCase)) return Debug.CheckRunCli.Run(args, profileOnly: true);
         if (args.Length > 0 && args[0].Equals("--check-test", StringComparison.OrdinalIgnoreCase)) return Debug.CheckTestCli.Run(args);
