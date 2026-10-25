@@ -385,8 +385,8 @@ How WideMess appears in each host, and why the plugin differs, is spec section 9
 | Lite `testcart` | the WideMess row's Test cartridge button starts the built-in test cartridge on the WideMess console, 400 x 224 | |
 | Lite `chips` | milestone 7b's chips, which follow the console into Lite: a NES game (VRUN) on the NES board's widescreen chip `WMSS` is shown whole, 400 x 240; Super Mario World on the route `WMS:WMSS` (picture and sound) is 400 wide and keeps its sound | |
 
-**Results** (the branch merged with main 3679448: milestones 6, 7b, the debugger D1 and the test cartridge):
-- **The plugin's self-test: 67 results, 66 pass, the QLQ warning (the QLQ core plays an octave sharp on purpose), 0 failed** (29.6 minutes; 65 before this milestone: `wms` and
+**Results** (the branch merged with main f0af507: milestones 6, 7b, the debugger D1 and D4, the test cartridge):
+- **The plugin's self-test: 67 results, 66 pass, the QLQ warning (the QLQ core plays an octave sharp on purpose), 0 failed** on main 4b3e643's merge (29.6 minutes; on f0af507's merge one full run had `record-nes` count 120 bytes in its first recorded block and `presets` a one-off 3,280-byte window, on a machine shared with other agents; both pass alone on the same DLL, 0 bytes; 65 before this milestone: `wms` and
   `rom-wms` are new; the chip-count assertions of `consoles`, `psg`, `md`, `fm`, `presets` and `editor` follow the appended chip).
 - **Lite:** every suite passes on the AOT build: the WideMess suite (`lite-widemess.ps1`) 42 checks (with the test cartridge button), the SNES states 18, the d-pad 32, the Sega suite 137.
 - **`--wms-test` 315 of 315** with the nine SNES games of the rules (Super Mario World, A Link to the Past, Star Fox, Super Mario RPG, Pilotwings, F-Zero, Super Metroid,
