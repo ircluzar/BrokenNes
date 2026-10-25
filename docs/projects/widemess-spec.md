@@ -500,14 +500,29 @@ filter, which dulls the high frequencies.
 
 **Fast CPU**: section 2's fast mode, forced on by the console while the game stays locked.
 - Every CPU access takes 2 master clocks except the I/O registers.
-- It removes slowdown and can break games that time things by counting CPU cycles. A profile marks it safe, risky or broken.
+- **The sound-port guard.** A SNES game's sound driver was written for a 3.58 MHz 65816, and its handshakes count on the 65816 taking
+  SNES time between reading the SPC700's answer and writing the next value. So every access to the sound ports (`$2140-$217F`)
+  starts one scan line (1,364 master clocks) of SNES timing: every access and internal cycle takes what it takes on a SNES (`MEMSEL`
+  deciding ROM). Each port access restarts it, so a handshake runs at SNES time from its first port access to one line after its last;
+  the code between handshakes runs fast. WMSPEED's own fast mode (a `.wms` game, written for it) has no guard.
+  - Why: Contra III's sound loader. After its driver echoes `$FF` on port 0 the driver clears its input ports 147 master clocks later;
+    a fast 65816 wrote the next value (`$CC`) 80 clocks after the echo, before the clear, so it was wiped and the two waited for each
+    other forever. With the guard it lands after the clear (240 clocks or more), as on a SNES.
+  - What it costs: the time a game spends talking to its sound driver runs at SNES speed. Milestone 6's games, fast CPU switched on
+    at their sheets' first moment (`--wms-test` E6): Super Metroid and Chrono Trigger 0.0%, Super Mario Kart 0.2%, F-Zero 0.5%,
+    Contra III 0.6%, A Link to the Past 1.2%, Mega Man X 1.8%, Yoshi's Island 2.0%, Super Castlevania IV 5.2%, Super Mario World 9.8%,
+    Donkey Kong Country 14.2%.
+- It removes slowdown and can break games that time things by counting CPU cycles or by the beam. A profile marks it good, risky or broken.
 - **Switch it on after the game has started.** Super Mario World hangs if fast CPU is on while it starts. It sends its sound driver to
-  the SPC700 exactly as at SNES speed (the first 23,973 port writes are identical), starts the driver, then writes `$FF` to `$2141`
-  8 ms later instead of 31 ms. The driver is still setting up and clears its input ports, so that write is lost and the two wait for
-  each other forever. A real 65816 at 10.74 MHz would do the same: this is the game's timing, not an emulation fault. Switched on
-  after the title, the game runs.
-- Chrono Trigger and Contra III hang at a later scene change (a black screen, the 65816 in a loop), even with fast CPU switched on
-  after the title: probably the same kind of handshake with the sound driver, not traced. Their profiles call fast CPU broken.
+  the SPC700 exactly as at SNES speed (the first 23,973 port writes are identical), starts the driver, clears 8 KB of work RAM, then
+  writes `$FF` to `$2141`: 8 ms after starting the driver instead of 31 ms. The driver is still setting up and clears its input ports,
+  so that write is lost and the two wait for each other forever. The 31 ms are the RAM clear, with no sound-port access, so the guard
+  cannot help. A real 65816 at 10.74 MHz would do the same: this is the game's timing, not an emulation fault. Switched on after the
+  title, the game runs.
+- **Chrono Trigger times itself by the beam.** Each frame its main loop latches the scanline counter (`$2137`, `$213D`) and starts the
+  next scene's loading only on lines 240 and later or before line 72; otherwise it waits a frame. At SNES speed the loop gets there on
+  line 257; with fast CPU it finishes its work earlier and arrives on line 238 every frame, so the next scene never loads (a black
+  screen). Its profile calls fast CPU broken, with this reason.
 - So the desktop app never keeps fast CPU for a game's next start.
 
 ### 6.2 Profiles
@@ -617,9 +632,9 @@ by `--wms-test` in lockstep with the SNES console, through a pad script or the g
 | A Link to the Past | risky | all extended | 0 | risky |
 | F-Zero | good | all extended, sprites filled; BG3 filled above the horizon | 0 | risky |
 | Super Mario Kart (DSP-1) | good | all extended, sprites filled; black sides for the title | 0 | risky |
-| Chrono Trigger | unavailable | (the sides hold unrelated tiles) | 0 | broken |
+| Chrono Trigger | unavailable | (the sides hold unrelated tiles) | 0 | broken: times itself by the beam |
 | Mega Man X | risky | all extended | 254 | risky |
-| Contra III | risky | all extended, BG3 filled | 2,946 | broken |
+| Contra III | risky | all extended, BG3 filled | 2,946 | risky (needed the sound-port guard) |
 | Super Castlevania IV | risky | all extended, BG3 filled; black sides for the title | 0 | risky |
 
 What the sheets show, by kind of game:

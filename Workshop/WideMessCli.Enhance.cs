@@ -267,6 +267,10 @@ internal static partial class WideMessCli
             Console.WriteLine($"  sound-port writes: fast {fastPorts.Count:N0}, SNES {snesPorts.Count:N0}; the same for the first {d:N0}");
             for (int i = Math.Max(0, d - 6); i < Math.Min(n, d + 6); i++)
                 Console.WriteLine($"    #{i}: fast ${fastPorts[i].port:X4}={fastPorts[i].v:X2} @{fastPorts[i].clock} | SNES ${snesPorts[i].port:X4}={snesPorts[i].v:X2} @{snesPorts[i].clock}");
+            // the longer run's next writes (where the other stopped)
+            var longer = fastPorts.Count > snesPorts.Count ? fastPorts : snesPorts;
+            for (int i = n; i < Math.Min(longer.Count, n + 12); i++)
+                Console.WriteLine($"    #{i}: {(longer == fastPorts ? "fast" : "SNES")} only ${longer[i].port:X4}={longer[i].v:X2} @{longer[i].clock}");
         }
         return 0;
     }

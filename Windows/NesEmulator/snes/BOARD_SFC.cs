@@ -165,6 +165,7 @@ public sealed partial class BOARD_SFC : ISnesBus
             return;
         }
         TickReference(clocks);
+        if (soundGuard && MasterClock >= soundGuardUntil) EndSoundGuard();   // the console fast CPU's sound-port guard (BOARD_SFC.WideMess.cs)
         UpdateNextEvent();
     }
 
@@ -178,6 +179,11 @@ public sealed partial class BOARD_SFC : ISnesBus
         {
             int target = htime * 4;
             if (target > lineClock && target < next) next = target;
+        }
+        if (soundGuard)
+        {
+            long end = soundGuardUntil - MasterClock + lineClock;
+            if (end < next) next = (int)Math.Max(end, lineClock + 1);
         }
         nextEvent = next;
     }
@@ -272,7 +278,7 @@ public sealed partial class BOARD_SFC : ISnesBus
         busAddress = address;
         if (FastPaths)
         {
-            ref Page page = ref pages[address >> 12];
+            ref Page page = ref livePages[address >> 12];
             byte[]? data = page.Data;
             if (data != null)
             {
@@ -292,7 +298,7 @@ public sealed partial class BOARD_SFC : ISnesBus
         busAddress = address;
         if (FastPaths)
         {
-            ref Page page = ref pages[address >> 12];
+            ref Page page = ref livePages[address >> 12];
             if (page.Writable)
             {
                 byte[] data = page.Data!;
@@ -322,9 +328,20 @@ public sealed partial class BOARD_SFC : ISnesBus
     }
 
     private readonly Page[] pages = new Page[4096];
+    /// <summary>The table the CPU's accesses use: <see cref="pages"/>, or <see cref="soundGuardPages"/> (the same pages at SNES speeds) while the console fast CPU's sound-port guard runs.</summary>
+    private Page[] livePages = null!;   // set by BuildPageTable in the constructor
 
     private void BuildPageTable()
     {
+        BuildPages(pages, fastCpu);
+        // the console fast CPU (milestone 6) keeps a second table at SNES speeds for its sound-port guard
+        if (consoleFastCpu && fastCpu) BuildPages(soundGuardPages ??= new Page[4096], false);
+        livePages = soundGuard && soundGuardPages != null ? soundGuardPages : pages;
+    }
+
+    private void BuildPages(Page[] pages, bool fast)
+    {
+        int AccessClocks(uint bank, uint offset) => TimedAccessClocks(bank, offset, fast);
         for (int p = 0; p < pages.Length; p++)
         {
             uint bank = (uint)p >> 4, offset = (uint)(p & 15) << 12;
@@ -355,9 +372,11 @@ public sealed partial class BOARD_SFC : ISnesBus
         }
     }
 
-    private int AccessClocks(uint bank, uint offset)
+    private int AccessClocks(uint bank, uint offset) => TimedAccessClocks(bank, offset, fastCpu && !soundGuard);
+
+    private int TimedAccessClocks(uint bank, uint offset, bool fast)
     {
-        if (fastCpu) return FastAccessClocks(bank, offset);   // WideMess fast mode (BOARD_SFC.WideMess.cs)
+        if (fast) return FastAccessClocks(bank, offset);   // WideMess fast mode (BOARD_SFC.WideMess.cs)
         if ((bank & 0x40) != 0)                           // $40-$7F, $C0-$FF
             return bank >= 0xC0 && (memsel & 1) != 0 ? 6 : 8;
         if (offset < 0x2000) return 8;
@@ -409,7 +428,7 @@ public sealed partial class BOARD_SFC : ISnesBus
     private byte ReadBBus(byte reg)
     {
         if (reg < 0x40) { int v = Ppu.ReadRegister(reg); return v < 0 ? mdr : (byte)v; }
-        if (reg < 0x80) { Apu.RunTo(MasterClock); return Apu.ReadPort(reg & 3); }
+        if (reg < 0x80) { if (consoleFastCpu) SoundPortAccess(); Apu.RunTo(MasterClock); return Apu.ReadPort(reg & 3); }
         if (reg == 0x80) return ReadWramPort();
         if (reg >= WmsExtension.FirstBBus && WideMess is { Unlocked: true } wm) return wm.ReadB(reg, mdr);
         return mdr;
@@ -421,7 +440,7 @@ public sealed partial class BOARD_SFC : ISnesBus
     private void WriteBBus(byte reg, byte value)
     {
         if (reg < 0x40) { Ppu.WriteRegister(reg, value); return; }
-        if (reg < 0x80) { Apu.RunTo(MasterClock); Apu.WritePort(reg & 3, value); return; }
+        if (reg < 0x80) { if (consoleFastCpu) SoundPortAccess(); Apu.RunTo(MasterClock); Apu.WritePort(reg & 3, value); return; }
         switch (reg)
         {
             // the port's address: 17 bits ($2183 bit 0), or 20 bits ($2183 bits 0-3) on an unlocked WideMess with the WideMess map (wramPortMask)

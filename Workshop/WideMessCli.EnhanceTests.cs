@@ -64,6 +64,8 @@ internal static partial class WideMessCli
 
         Console.WriteLine("E4. Fast CPU from the console: the speed ROM, never unlocked (its SNES image on the WideMess console)");
         FastCpuSpeedRom(dir);
+        Console.WriteLine("E4b. Fast CPU's sound-port guard: a synthetic handshake that needs SNES time between the SPC700's echo and the next write");
+        SoundGuardHandshake();
 
         Console.WriteLine("E5. Who gets enhancements, and the unlock taking them away");
         WhoGetsThem(dir);
@@ -275,6 +277,8 @@ internal static partial class WideMessCli
 
     // ------------------------------------------------------------------ E4
 
+    private static long speedRomGuard = -1;
+
     private static void FastCpuSpeedRom(string dir)
     {
         string speedNo = Path.Combine(dir, "speed_nounlock.wms");
@@ -287,6 +291,7 @@ internal static partial class WideMessCli
             var w = s.Board.Wram;
             for (int f = 0; f < 120 && w[0x1FF] != 0xA5; f++) Run(s, 1);
             int Wd(int o) => w[0x100 + o] | w[0x101 + o] << 8;
+            if (fast) speedRomGuard = s.Board.SoundGuardMasterClocks;
             return new[] { Wd(0x02), Wd(0x06), w[0x101] | (s.WideMess!.Unlocked ? 0x100 : 0) };
         }
         var off = Measure(false); var on = Measure(true);
@@ -294,6 +299,88 @@ internal static partial class WideMessCli
         Check(Near(off[0], pa, 0.005) && Near(off[1], pb, 0.005), "off: the locked game runs at SNES speed (loops A and B as spec 2 predicts)", $"A {off[0]} (predicted {pa:F0}), B {off[1]} (predicted {pb:F0})");
         Check(Near(on[0], paf, 0.005) && Near(on[1], pbf, 0.005), "on: the same locked game runs at fast mode's speed (2 clocks a cycle, the I/O register at 6)", $"A {on[0]} (predicted {paf:F0}), B {on[1]} (predicted {pbf:F0})");
         Check(on[2] == 0x42 && off[2] == 0x42, "the game never sees it: WMSPEED reads open bus ($42), the extension stays locked", $"WMSPEED read {on[2] & 0xFF:X2}{((on[2] & 0x100) != 0 ? ", UNLOCKED" : "")}");
+        Check(speedRomGuard == 0, "the speed ROM never touches the sound ports, so the sound-port guard never runs: the loops above are fast mode's own", $"{speedRomGuard:N0} clocks in the guard");
+    }
+
+    // ------------------------------------------------------------------ E4b
+
+    /// <summary>
+    /// A LoROM test ROM (assembled here) with the handshake that hangs Contra III's loader at fast speed: the 65816 uploads a small SPC700 program through
+    /// the IPL; the program says it runs ($5A on port 1), waits for $55 on port 0, echoes it and clears its input ports ($F1 bit 4) 7 SPC700 cycles later
+    /// (about 145 master clocks, as Contra III's driver), then waits for $CC and echoes it. The 65816 writes $55, waits for the echo, writes ports 2 and 3, then $CC: about
+    /// 150-230 master clocks after seeing the echo at SNES speed (after the clear: it arrives), 50-70 at fast speed (before it: wiped).
+    /// Work RAM $0010: $01 the 65816 saw $CC come back, $EE it gave up.
+    /// </summary>
+    internal static byte[] HandshakeRom()
+    {
+        var s = new BrokenNes.Workshop.Debug.Asm(0x0200);
+        s.B(0xE8, 0x5A, 0xC4, 0xF5)                                  // MOV A,#$5A; MOV $F5,A: running
+         .L("l1").B(0xE4, 0xF4, 0x68, 0x55, 0xD0).R("l1")           // MOV A,$F4; CMP A,#$55; BNE l1
+         .B(0xC4, 0xF4)                                              // MOV $F4,A: the echo
+         .B(0x00)                                                    // NOP (the driver's set-up)
+         .B(0x8F, 0x10, 0xF1)                                        // MOV $F1,#$10: clear the input ports 0 and 1
+         .L("l2").B(0xE4, 0xF4, 0x68, 0xCC, 0xD0).R("l2")           // MOV A,$F4; CMP A,#$CC; BNE l2
+         .B(0xC4, 0xF4)                                              // MOV $F4,A: $CC back
+         .L("l3").B(0x2F).R("l3");                                   // BRA l3
+        var spc = s.Build();
+        var a = new BrokenNes.Workshop.Debug.Asm(0x8000);
+        a.L("reset").B(0x78, 0x18, 0xFB, 0xE2, 0x30, 0xA9, 0x80, 0x8D, 0x00, 0x21)      // SEI CLC XCE SEP #$30; forced blank
+         .B(0x9C, 0x10, 0x00)                                                           // STZ $0010
+         .L("w1").B(0xAD, 0x40, 0x21, 0xC9, 0xAA, 0xD0).R("w1")
+         .B(0xA9, 0x00, 0x8D, 0x42, 0x21, 0xA9, 0x02, 0x8D, 0x43, 0x21)                 // to $0200
+         .B(0xA9, 0x01, 0x8D, 0x41, 0x21, 0xA9, 0xCC, 0x8D, 0x40, 0x21)
+         .L("w2").B(0xAD, 0x40, 0x21, 0xC9, 0xCC, 0xD0).R("w2")
+         .B(0xA2, 0x00)
+         .L("send").B(0xBD).A("spc").B(0x8D, 0x41, 0x21, 0x8A, 0x8D, 0x40, 0x21)
+         .L("w3").B(0xCD, 0x40, 0x21, 0xD0).R("w3")
+         .B(0xE8, 0xE0, (byte)spc.Length, 0xD0).R("send")
+         .B(0xA9, 0x00, 0x8D, 0x42, 0x21, 0xA9, 0x02, 0x8D, 0x43, 0x21)                 // entry $0200
+         .B(0x9C, 0x41, 0x21, 0x8A, 0x1A, 0x8D, 0x40, 0x21)                             // run it
+         .L("w4").B(0xAD, 0x41, 0x21, 0xC9, 0x5A, 0xD0).R("w4")                         // until it says it runs
+         .B(0xA9, 0x55, 0x8D, 0x40, 0x21)                                               // LDA #$55 STA $2140
+         .L("w5").B(0xCD, 0x40, 0x21, 0xD0).R("w5")                                     // CMP $2140 BNE w5: the echo
+         .B(0xA9, 0x00, 0x8D, 0x42, 0x21, 0xA9, 0x00, 0x8D, 0x43, 0x21)                 // ports 2 and 3
+         .B(0xA9, 0xCC, 0x8D, 0x40, 0x21)                                               // then $CC
+         .B(0xC2, 0x10, 0xA2, 0x00, 0x00)                                               // REP #$10 LDX #0
+         .L("w6").B(0xAD, 0x40, 0x21, 0xC9, 0xCC, 0xF0).R("ok")                         // LDA $2140 CMP #$CC BEQ ok
+         .B(0xCA, 0xD0).R("w6")                                                         // DEX BNE w6
+         .B(0xA9, 0xEE, 0x8D, 0x10, 0x00, 0x80).R("done")                               // gave up
+         .L("ok").B(0xA9, 0x01, 0x8D, 0x10, 0x00)
+         .L("done").B(0x80).R("done")
+         .L("nmi").B(0x40)
+         .L("spc").B(spc);
+        var code = a.Build();
+        var rom = new byte[0x8000];
+        code.CopyTo(rom, 0);
+        void Vec(int at, string l) { rom[at] = (byte)a[l]; rom[at + 1] = (byte)(a[l] >> 8); }
+        Vec(0x7FEA, "nmi"); Vec(0x7FEE, "nmi"); Vec(0x7FFC, "reset"); Vec(0x7FFA, "nmi"); Vec(0x7FFE, "nmi");
+        System.Text.Encoding.ASCII.GetBytes("WIDEMESS HANDSHAKE   ").CopyTo(rom, 0x7FC0);
+        rom[0x7FD5] = 0x20; rom[0x7FD7] = 0x05; rom[0x7FD9] = 0x01;
+        int sum = 0; foreach (byte b in rom) sum += b;
+        rom[0x7FDE] = (byte)sum; rom[0x7FDF] = (byte)(sum >> 8); rom[0x7FDC] = (byte)~sum; rom[0x7FDD] = (byte)(~sum >> 8);
+        return rom;
+    }
+
+    private static void SoundGuardHandshake()
+    {
+        byte[] rom = HandshakeRom();
+        (byte result, long guard) Play(ConsoleKind console, bool fast, bool guardOff)
+        {
+            using var s = Session(console, rom);
+            if (fast && s.SetEnhancements(fastCpu: true) is { } why) { Check(false, "the console's fast CPU switches on for the handshake ROM", why); return (0, 0); }
+            s.Board.SoundGuardOffForTest = guardOff;
+            for (int f = 0; f < 90 && s.Board.Wram[0x10] == 0; f++) Run(s, 1);
+            return (s.Board.Wram[0x10], s.Board.SoundGuardMasterClocks + (s.Board.InSoundGuard ? 1 : 0));
+        }
+        string R(byte r) => r switch { 0x01 => "$CC came back", 0xEE => "the $CC was wiped: the 65816 gave up", _ => $"no answer (${r:X2})" };
+        var snes = Play(ConsoleKind.Snes, false, false);
+        Check(snes.result == 0x01, "the SNES console: the handshake completes (the 65816's $CC lands after the driver's port clear)", R(snes.result));
+        var off = Play(ConsoleKind.WideMess, false, false);
+        Check(off.result == 0x01 && off.guard == 0, "the WideMess console, fast CPU off: the same, and no guard", $"{R(off.result)}, guard {off.guard:N0} clocks");
+        var on = Play(ConsoleKind.WideMess, true, false);
+        Check(on.result == 0x01 && on.guard > 0, "fast CPU on: the sound-port guard keeps SNES time after each port access, so the handshake completes", $"{R(on.result)}, {on.guard:N0} master clocks at SNES time");
+        var neg = Play(ConsoleKind.WideMess, true, true);
+        Check(neg.result == 0xEE, "negative control: fast CPU without the guard, the $CC lands before the clear and is lost (Contra III's hang)", R(neg.result));
     }
 
     // ------------------------------------------------------------------ E5
@@ -336,7 +423,7 @@ internal static partial class WideMessCli
         int WideCentreFrames, int WideCentreFirst, int WideLineDiffer, int WideFlagFrames, bool WideSound, int OffFrames, int OffDiffer,
         long NfLines, long NfDifferOutsideOverflow, long NfOverflowRows, int NfFlagFrames, bool NfSound,
         int BsPictureDiffer, bool BsSoundDiffers, int BsFlagFrames, bool SnesSilent,
-        int FastFirstDiff, bool FastAlive, int LateFirstDiff, bool LateAlive, double Seconds);
+        int FastFirstDiff, bool FastAlive, int LateFirstDiff, bool LateAlive, double LateGuardShare, double Seconds);
 
     /// <summary>One proven game: the SNES console and three WideMess consoles in lockstep (widescreen with its profile, no flicker, better sound), then fast CPU on its own.</summary>
     private static GameResult ProveGame(EnhanceGame g, string path)
@@ -353,7 +440,7 @@ internal static partial class WideMessCli
         bool offered = look.Profile?.Verdict(WmsEnhancement.Widescreen) is WmsVerdict.Good or WmsVerdict.Risky or WmsVerdict.Broken;
         if (!offered) wide.SetScratchProfile(AllExtendProfile(wide.ImageSha1));   // widescreen unavailable for the game: the centre is still proven, on every layer extended
         string? why = wide.SetEnhancements(widescreen: true) ?? nf.SetEnhancements(noFlicker: true) ?? bs.SetEnhancements(betterSound: true);
-        if (why != null) return new GameResult(g, why, 0, look.Describe(), offered, 0, -1, 0, 0, false, 0, 0, 0, 0, 0, 0, false, 0, false, 0, false, -1, false, -1, false, 0);
+        if (why != null) return new GameResult(g, why, 0, look.Describe(), offered, 0, -1, 0, 0, false, 0, 0, 0, 0, 0, 0, false, 0, false, 0, false, -1, false, -1, false, 0, 0);
         wide.WideMessPpu!.CompareEnhanced = true;
         nf.WideMessPpu!.CompareEnhanced = true;
         var snesHashes = new ulong[frames + 1];
@@ -400,15 +487,16 @@ internal static partial class WideMessCli
         var wp = wide.WideMessPpu; var np = nf.WideMessPpu;
         // fast CPU on its own: when does it first depart from the SNES picture, and is the game alive at the end
         // twice: from power-on, and switched on at the contact sheet's first moment (after the game has loaded its sound driver)
-        (int first, bool alive) FastRun(int from)
+        (int first, bool alive, double guard) FastRun(int from)
         {
             using var fast = Session(ConsoleKind.WideMess, rom);
             if (from == 0) fast.SetEnhancements(fastCpu: true);
+            long onAt = 0;
             PadButtons hold = 0;
             int maxColours = 0, firstDiff = -1; var lastHashes = new HashSet<ulong>();
             for (int f = 1; f <= frames; f++)
             {
-                if (f == from + 1 && from > 0) fast.SetEnhancements(fastCpu: true);
+                if (f == from + 1 && from > 0) { fast.SetEnhancements(fastCpu: true); onAt = fast.Board.MasterClock; }
                 if (pad.TryGetValue(f, out var b)) hold = b;
                 fast.SetPad(0, hold); fast.RunFrame(); Audio(fast, 0, false);
                 ulong fh = Hash(fast.Frame.AsSpan(0, fast.FrameWidth * fast.FrameHeight));
@@ -419,13 +507,14 @@ internal static partial class WideMessCli
                     maxColours = Math.Max(maxColours, fast.Frame.AsSpan(0, fast.FrameWidth * fast.FrameHeight).ToArray().Distinct().Take(8).Count());
                 }
             }
-            return (firstDiff, maxColours >= 8 && lastHashes.Count >= 3);   // over its last 900 frames the game drew pictures of 8+ colours, and they changed
+            double share = fast.Board.SoundGuardMasterClocks / (double)Math.Max(1, fast.Board.MasterClock - onAt);   // of the time fast CPU was on, the share at SNES time in sound-port guards
+            return (firstDiff, maxColours >= 8 && lastHashes.Count >= 3, share);   // over its last 900 frames the game drew pictures of 8+ colours, and they changed
         }
-        var (fastFirst, alive) = FastRun(0);
-        var (lateFirst, lateAlive) = FastRun(g.Moments[0]);
+        var (fastFirst, alive, _) = FastRun(0);
+        var (lateFirst, lateAlive, lateGuard) = FastRun(g.Moments[0]);
         return new GameResult(g, null, frames, look.Describe(), offered, centreFrames, centreFirst, wp.EnhCompareDiffer, wideFlags, hw == hs, offFrames, offDiffer,
             np.EnhCompareDiffer, np.EnhCompareDiffer - np.EnhCompareDifferOverflow, nfOverflowRows, nfFlags, hn == hs,
-            bsPic, hb != hs, bsFlags, silent, fastFirst, alive, lateFirst, lateAlive, sw.Elapsed.TotalSeconds);
+            bsPic, hb != hs, bsFlags, silent, fastFirst, alive, lateFirst, lateAlive, lateGuard, sw.Elapsed.TotalSeconds);
     }
 
     private static void ReportGame(GameResult r)
@@ -444,7 +533,7 @@ internal static partial class WideMessCli
             $"{r.Game.Key}: better sound: the picture identical every frame, the sound {(r.SnesSilent ? "(the game was silent)" : "different")}",
             $"{r.BsPictureDiffer} frames differ");
         string Fast(int first, bool alive) => $"{(first < 0 ? "never departs from the SNES's picture" : $"departs from the SNES's picture at frame {first:N0}")}, {(alive ? "alive at the end (pictures of 8+ colours, changing)" : "NOT drawing a changing picture at the end")}";
-        Console.WriteLine($"     fast CPU (risky by nature, reported, not gated): from power-on {Fast(r.FastFirstDiff, r.FastAlive)}; switched on at frame {r.Game.Moments[0]:N0} {Fast(r.LateFirstDiff, r.LateAlive)}");
+        Console.WriteLine($"     fast CPU (risky by nature, reported, not gated): from power-on {Fast(r.FastFirstDiff, r.FastAlive)}; switched on at frame {r.Game.Moments[0]:N0} {Fast(r.LateFirstDiff, r.LateAlive)}, {r.LateGuardShare:P1} of its time at SNES speed in sound-port guards");
     }
 
     // ------------------------------------------------------------------ E7
