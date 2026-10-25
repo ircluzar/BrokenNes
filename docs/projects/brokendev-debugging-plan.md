@@ -489,10 +489,12 @@ port and DMA reads are still checked.
     back is open-bus luck); one read of INIDISP in play; 0 lag in play once its frame wait (`$80A739`) is declared.
   - The SMB1 Nested build: the same `ROL $420D`; 382 SNES vblanks outside the engine's frame wait in play (unverified, not budgeted).
   - The WideMess sample: **8 variables read before written: the devkit's start-up does not clear work RAM** (BrokenNes powers it on as
-    zeros; a WideMess powers on as a SNES); a game made from the template inherits it.
+    zeros; a WideMess powers on as a SNES); a game made from the template inherits it. **Fixed 2026-10-24:** the devkit's RESET now
+    DMA-clears the 128 KB and the far work-RAM sections before crt0 (`BrokenDev/widemess/lib/wmsboot.asm`, widemess-devkit.md "The
+    start-up clears work RAM"); 0 findings, the 8 acceptances removed, `-D WMS_NOCLEAR` is the negative control (`--check-test`, group wms).
 - **Left open:** the Game Boy hello world's accepted list (D2); named timers in the profile (D7's debug port); the SNES picture model's
   limits (modes 0-4, no HDMA); RAM headroom by allocation from the symbols (today: bytes read, a lower bound of use); the WideMess's VRAM and
-  sound RAM headroom; where the SMB1 Nested build waits; the devkit's start-up clear.
+  sound RAM headroom; where the SMB1 Nested build waits.
 
 ## Open questions (to settle at the start of the track)
 

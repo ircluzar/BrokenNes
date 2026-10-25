@@ -13,6 +13,8 @@ namespace BrokenNes.Workshop.Debug;
 /// <c>--check-test [--only nes,snes,wms,gb,games] [--keep &lt;dir&gt;]</c>: the hardware checks' conformance suite (BrokenDev milestone D4). Every
 /// rule of the catalogue has a test ROM that must trigger it (with the finding naming the rule, the first frame, the PC and its symbol) and
 /// a clean one that must not; the clean templates break no rule at all; a game checked runs frame-identical to the same game unchecked.
+/// The wms group also runs the WideMess devkit's sample game and its -D WMS_NOCLEAR control from <c>--wmsroms &lt;dir&gt;</c> (default
+/// WideMess/testroms/bin): the devkit's start-up clears work RAM.
 /// Exit 0 when every check passes.
 /// </summary>
 internal static class CheckTestCli
@@ -33,6 +35,7 @@ internal static class CheckTestCli
         string Opt(string n, string d) { int i = Array.IndexOf(args, "--" + n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
         var only = Opt("only", "nes,snes,wms,gb,games").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
         dir = Opt("keep", Path.Combine(Path.GetTempPath(), "brokennes-check-test-" + Environment.ProcessId));
+        wmsRoms = Opt("wmsroms", wmsRoms);
         Directory.CreateDirectory(dir);
         var sw = Stopwatch.StartNew();
         void Group(string key, string title, Action body)
@@ -273,7 +276,42 @@ internal static class CheckTestCli
             $"{f.Count(x => x.Rule == "snes.open-bus")} open-bus findings, {port} debug-port writes");
         var (g, _) = SnesRun(new() { Main = B(0xAD, 0x21, 0x42) }, ConsoleKind.Snes, 10, "snes_detect");
         Check("SNES: the WideMess detection read of $4221 is the spec's protocol, not an open-bus finding", !g.Any(x => x.Rule == "snes.open-bus"), $"{g.Count(x => x.Rule == "snes.open-bus")} open-bus findings");
+        DevkitStartupClear();
     }
+
+    /// <summary>The WideMess devkit's start-up clear of work RAM (BrokenDev/widemess/lib/wmsboot.asm): the sample game, Wide Blaster, reads no
+    /// work RAM before writing it; the same game built with -D WMS_NOCLEAR (the start-up before the clear, byte for byte) does. The ROMs are
+    /// WideMess/testroms/devkit/build.ps1's, in WideMess/testroms/bin (or --wmsroms).</summary>
+    private static void DevkitStartupClear()
+    {
+        string bin = wmsRoms;
+        string smp = Path.Combine(bin, "devkit_sample.wms"), noclr = Path.Combine(bin, "devkit_sample_noclear.wms");
+        if (!File.Exists(smp) || !File.Exists(noclr) || !File.Exists(Path.ChangeExtension(smp, ".sym")) || !File.Exists(Path.ChangeExtension(noclr, ".sym")))
+        {
+            Console.WriteLine($"  NOT RUN  the devkit's start-up clear: {smp}, {noclr} or their symbols are missing (WideMess/testroms/devkit/build.ps1; --wmsroms <dir>)");
+            notRun++;
+            return;
+        }
+        List<Finding> Uninit(string path)
+        {
+            Consoles.WideMessEnabled = true;
+            var rom = File.ReadAllBytes(path);
+            using var g = CheckedGame.Open(rom, Path.GetFileName(path), ConsoleKind.WideMess);
+            g.Dbg.Symbols.Load(Path.ChangeExtension(path, ".sym"), g.Family);
+            var c = g.Attach(new CheckOptions());
+            g.Run(120, CheckedGame.ParseInput("30:Right+B"));
+            c.Finish();
+            return c.Findings.Where(f => f.Rule == "snes.wram-uninit").ToList();
+        }
+        var clean = Uninit(smp);
+        Check("WideMess devkit: the sample game reads no work RAM before writing it (the start-up clears it)", clean.Count == 0,
+            clean.Count == 0 ? "no snes.wram-uninit in 120 frames" : string.Join("; ", clean));
+        var old = Uninit(noclr);
+        Check("WideMess devkit: built with -D WMS_NOCLEAR (no clear) it does: the rule still sees the bug", old.Any(f => f.Place == "game_frame"),
+            $"{old.Count} variables: " + string.Join(", ", old.Select(f => f.Place)));
+    }
+
+    private static string wmsRoms = Path.Combine("WideMess", "testroms", "bin");
 
     // ================================================================================================================================ Game Boy
     private static (List<Finding>, ConsoleChecks) GbRun(CheckTestRoms.Slots s, int frames = 30, string name = "gb")

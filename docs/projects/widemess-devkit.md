@@ -82,6 +82,40 @@ C sees it as an ordinary array (`extern s16 my_table[];`): 816-tcc addresses glo
 Bank `$70` `$0000-$07FF` is the library's sprite table; the rest of `$70-$7D` (896 KB) is the game's. Battery RAM is PVSnesLib's SLOT 4
 (`$20-$3F:6000-7FFF`). The minimum ROM is 2 banks (PVSnesLib's libraries were assembled with 2).
 
+**The start-up clears work RAM** (`lib/wmsboot.asm`, 2026-10-24). A WideMess powers on as a SNES (spec section 1), and a SNES's work RAM
+powers on in any state; PVSnesLib's crt0 clears only the first object's `.bss` (wlalink names every object's `.bss` the same, so
+`SECTIONSTART_.bss` is the first one's), so the rest of the C globals, the library's and 816-tcc's registers started as whatever was there:
+BrokenDev's hardware checks (D4) found Wide Blaster reading 8 variables before writing them (`game_frame`, `rec_pos`,
+`tcc__registers_nmi_isr`, `fire_wait`, `spawn_wait`, the library's `wms_scroll_dirty`, `wms_hofs`, `wms_vofs`). The RESET vector now points
+at `wms_boot`, which runs before crt0 (no stack, no interrupts in use yet) and then jumps to crt0 as before:
+
+| What | How | Cleared to 0 |
+|---|---|---|
+| the SNES's 128 KB, `$7E:0000-$7F:FFFF` (low RAM, the stack, `.bss`, the heap, the `$7F` bank) | two 64 KB DMA fills from one zero byte through `WMDATA` (`$2180`), channel 0 | all of it |
+| the far work RAM, banks `$70-$7D` | one DMA fill through the 20-bit WRAM port per section | every `.RAMSECTION` with `BANK $70`-`$7D` in the assembly the build assembles (`src/*.asm`, `lib/wmsfar.asm`, the converters'): the template's `far_template` and the library's `wms_far_lib`, the sample's `far_actors`, `far_path`, `far_recorder` too |
+
+- **Not cleared:** far work RAM that no section declares (a game that reaches `$70-$7D` through a computed address, `wmsWramFill` or an
+  upload table owns those bytes and writes them first), video RAM, colours, OAM and sound RAM (the game's uploads write them).
+- **The far sections' table** is written by `wmsbuild.ps1` as `build/gen/wmsclear.asm`: each section's `SECTIONSTART_` label and size
+  (`SECTIONEND_ - SECTIONSTART_`, which the linker fills in; a 64 KB section's is 0, which a DMA takes as 64 KB). The build prints what it
+  clears (`start-up clear: the SNES's 128 KB and 4 far RAM section(s): ...`). A far section's name must be letters, digits, `_` and `.`, and
+  each name used once (the clear finds a section by its name): anything else is a build error, never a section silently left out.
+- **How fast:** the start-up unlocks the console and switches on fast DMA (a byte every 4 master clocks; on a SNES those writes go nowhere),
+  then puts `WMDMA` and the WRAM port's address back to 0 and returns to emulation mode with 8-bit registers, the state crt0 starts from.
+  The console stays unlocked (only a reset locks it; `wmsInit()` unlocks it again anyway). Cost: (128 KB + the far sections) x 4 clocks,
+  once, in forced blank: about 1.5 frames for the template, 2.3 for the sample (its 69 KB of far sections); the sample's `game_frame` after
+  900 frames of `--wms-test` went from 888 to 886.
+- **Bank 0:** only a 4-byte `jml` sits in bank 0's upper half, where a vector can reach it (the sample's bank 0 had 35 bytes free); the clear
+  is a SUPERFREE section.
+- **`-D WMS_NOUNLOCK`** (the control that never unlocks): no unlock, so normal-speed DMA and no 20-bit port: the 128 KB are cleared, the far
+  work RAM is not. **`-D WMS_NOCLEAR`**: RESET is crt0 itself and neither file is assembled, the start-up before the clear byte for byte
+  (the sample's image is identical to the one built before this change): the checks' negative control.
+
+The proof: `brokendev verify widemess-sample` with the checks on has 0 `snes.wram-uninit` findings and its manifest no longer accepts any (the
+8 are gone from `checks.accepted`, so verify fails if one comes back); the sample built with `-D WMS_NOCLEAR` and published in its place
+fails verify with the 8 findings. `Workshop --check-test` (group `wms`) runs both from `WideMess/testroms/bin` (`devkit_sample.wms`,
+`devkit_sample_noclear.wms`, built by `WideMess/testroms/devkit/build.ps1`).
+
 **816-tcc's traps** (each cost a crash or a failed link while the library was written; the library avoids them, a game should too):
 - a pointer made from a computed address (`(vuint8 *)(0x21D0 + n)`) gets a stale bank: index registers in 65816 (as `wmslib.asm` does);
 - `(u32)pointer` keeps only the 16-bit address, sign-extended: pass pointers as pointers;
