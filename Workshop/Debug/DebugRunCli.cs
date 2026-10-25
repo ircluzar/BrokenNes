@@ -22,6 +22,8 @@ namespace BrokenNes.Workshop.Debug;
 ///   step [n] | over | out | scanline | frame | runto &lt;spec&gt; | tofr &lt;frame&gt; | toline &lt;line&gt; | pause
 ///   regs | stack | trace [n] | mem &lt;spec&gt; [len] | print &lt;expr&gt; | var &lt;name&gt; | set &lt;reg|var&gt; &lt;value&gt; | hits [n] | where
 ///   pad &lt;Btn+Btn|none&gt;           pad 1 holds these buttons from now on (Right, A, ...), for the next runs and steps
+///   history [every] [keep]       (D5) before the first run: a state every N frames (default 60, the last 30) and every frame's input
+///   back [n] | back frames &lt;n&gt;    (D5) step back n instructions (to the exact one), or to the start of the n-th frame before now
 ///   tracefile &lt;path&gt; [fn &lt;symbol&gt;] [range &lt;spec&gt;] [frames &lt;a-b&gt;] | endtrace | sym &lt;file&gt; | domains | limits | detach
 /// </code>
 /// Specs: <c>$8000</c>, <c>$8000-$80FF</c>, <c>7E:0010</c>, <c>wram:$10</c>, <c>vram:$2000-$27FF</c>, <c>spc:$0200</c>, <c>player_hp</c>, <c>player_hp+1</c>.
