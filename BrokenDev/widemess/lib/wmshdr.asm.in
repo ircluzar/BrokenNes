@@ -16,6 +16,8 @@
 ; Banks $7E-$7F are the SNES's 128 KB, as always (PVSnesLib's .bss lives there). The minimum ROM is 2 banks (128 KB):
 ; PVSnesLib's libraries were assembled with .ROMBANKS 2 and the linker takes the largest.
 ; Battery RAM (the .wms header's size) sits at $20-$3F:6000-7FFF, 8 KB a bank: PVSnesLib's SLOT 4.
+; RESET is wms_boot (lib\wmsboot.asm): it clears the SNES's 128 KB and the far RAM sections, then runs PVSnesLib's crt0 (tcc__start).
+; With -D WMS_NOCLEAR it is tcc__start itself, the start-up before the clear (a negative control).
 ;===================================================================================
 
 .DEFINE HIROM 1
@@ -60,7 +62,7 @@
   COP EmptyHandler
   ABORT EmptyHandler
   NMI EmptyHandler
-  RESET tcc__start
+  RESET @RESET@
   IRQBRK EmptyHandler
 .ENDEMUVECTOR
 

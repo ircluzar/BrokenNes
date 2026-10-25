@@ -86,46 +86,6 @@
         "rule": "snes.lag-frame",
         "at": "*",
         "reason": "known: the sample's start-up lags its first 11 frames (dmaClearVram, wmsUpload, wmsSpritesInit, the tables, wmsSoundStart); the lagFrames budget holds the rest at 0"
-      },
-      {
-        "rule": "snes.wram-uninit",
-        "at": "game_frame",
-        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
-      },
-      {
-        "rule": "snes.wram-uninit",
-        "at": "rec_pos",
-        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
-      },
-      {
-        "rule": "snes.wram-uninit",
-        "at": "tcc__registers_nmi_isr",
-        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
-      },
-      {
-        "rule": "snes.wram-uninit",
-        "at": "tccs_main.asm_fire_wait",
-        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
-      },
-      {
-        "rule": "snes.wram-uninit",
-        "at": "tccs_main.asm_spawn_wait",
-        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
-      },
-      {
-        "rule": "snes.wram-uninit",
-        "at": "tccs_widemess.asm_wms_scroll_dirty",
-        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
-      },
-      {
-        "rule": "snes.wram-uninit",
-        "at": "tccs_widemess.asm_wms_hofs",
-        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
-      },
-      {
-        "rule": "snes.wram-uninit",
-        "at": "tccs_widemess.asm_wms_vofs",
-        "reason": "known (found by D4): the devkit's start-up does not clear work RAM, so this variable starts at the zeros BrokenNes powers on with; a WideMess powers on as a SNES (widemess-spec.md section 1: random work RAM). The fix belongs in the devkit's start-up (clear work RAM), and a game made from the template inherits it"
       }
     ]
   },
