@@ -95,7 +95,8 @@ function Get-BdToolchainState {
         $vf = Get-BdProp $Spec 'versionFile' $null
         if ($vf) {
             $vp = Join-Path $dir (([string]$vf.path) -replace '/', '\')
-            $first = if (Test-Path -LiteralPath $vp) { ([System.IO.File]::ReadLines($vp) | Select-Object -First 1) } else { $null }
+            $first = $null
+            if (Test-Path -LiteralPath $vp) { $sr = New-Object System.IO.StreamReader($vp); try { $first = $sr.ReadLine() } finally { $sr.Dispose() } }   # (ReadLines | Select -First 1 leaves the file open)
             if ($null -eq $first) { $problems.Add("its version file $($vf.path) is missing"); if ($state -eq 'ready') { $state = 'missing' } }
             elseif ($first.Trim() -ne [string]$vf.firstLine) { $problems.Add("$($vf.path) says '$($first.Trim())', pinned '$($vf.firstLine)'"); if ($state -eq 'ready') { $state = 'changed' } }
         }

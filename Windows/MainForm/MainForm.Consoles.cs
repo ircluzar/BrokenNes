@@ -558,17 +558,20 @@ namespace BrokenNes.Windows
         // SNES: %APPDATA%\BrokenNes\SnesSaves\sfc<sha1>.srm (a save left in BatterySaves\ by an older player is only read).
         // Game Boy: %APPDATA%\BrokenNes\GbSaves\<sha1>.sav (with the RTC trailer; BGB/VBA-compatible).
         private static string AppDataDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BrokenNes");
+        /// <summary>Where the console sessions' battery saves and save states live: AppDataDir, or BROKENNES_SAVES_DIR when set (a test hook, like
+        /// BROKENNES_CONFIG_DIR: a test that plays a battery game in the real app keeps the player's saves folder untouched).</summary>
+        private static string SaveRoot => Environment.GetEnvironmentVariable("BROKENNES_SAVES_DIR") is { Length: > 0 } d ? d : AppDataDir;
 
         // Sega: SmsSaves\<sha1>.sav, GgSaves\<sha1>.sav (cartridge RAM / EEPROM), MdSaves\<sha1>.srm (SRAM / EEPROM, kept in the Genesis cartridge's own layout).
         private string? SessionSavePath(IConsoleSession s) => s.Console switch
         {
-            ConsoleKind.Snes => Path.Combine(AppDataDir, "SnesSaves", s.GameId + ".srm"),
+            ConsoleKind.Snes => Path.Combine(SaveRoot, "SnesSaves", s.GameId + ".srm"),
             // a SNES game on the WideMess keeps its SNES save (same id, same file); a WideMess game has its own folder
-            ConsoleKind.WideMess => Path.Combine(AppDataDir, s.GameId.StartsWith("sfc", StringComparison.Ordinal) ? "SnesSaves" : "WideMessSaves", s.GameId + ".srm"),
-            ConsoleKind.MasterSystem => Path.Combine(AppDataDir, "SmsSaves", s.GameId + ".sav"),
-            ConsoleKind.GameGear => Path.Combine(AppDataDir, "GgSaves", s.GameId + ".sav"),
-            ConsoleKind.Genesis => Path.Combine(AppDataDir, "MdSaves", s.GameId + ".srm"),
-            _ => Path.Combine(AppDataDir, "GbSaves", s.GameId + ".sav"),
+            ConsoleKind.WideMess => Path.Combine(SaveRoot, s.GameId.StartsWith("sfc", StringComparison.Ordinal) ? "SnesSaves" : "WideMessSaves", s.GameId + ".srm"),
+            ConsoleKind.MasterSystem => Path.Combine(SaveRoot, "SmsSaves", s.GameId + ".sav"),
+            ConsoleKind.GameGear => Path.Combine(SaveRoot, "GgSaves", s.GameId + ".sav"),
+            ConsoleKind.Genesis => Path.Combine(SaveRoot, "MdSaves", s.GameId + ".srm"),
+            _ => Path.Combine(SaveRoot, "GbSaves", s.GameId + ".sav"),
         };
 
         private void LoadSessionSave()
@@ -583,7 +586,7 @@ namespace BrokenNes.Windows
                 string? from = File.Exists(path) ? path : null;
                 if (from == null && s.Console == ConsoleKind.Snes)
                 {
-                    string legacy = Path.Combine(AppDataDir, "BatterySaves", s.GameId + ".srm");
+                    string legacy = Path.Combine(SaveRoot, "BatterySaves", s.GameId + ".srm");
                     if (File.Exists(legacy)) from = legacy;
                 }
                 if (from != null) { var saved = File.ReadAllBytes(from); s.ImportSave(saved); farm.SetInitialBattery(s.ExportSave()); }   // (a replay from power-on has to start with the same save RAM)

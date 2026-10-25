@@ -15,7 +15,7 @@ namespace BrokenNes.Windows
     {
         private System.Windows.Forms.Timer? stateFlashTimer;
 
-        private string SessionStateRoot => AppDataDir;
+        private string SessionStateRoot => SaveRoot;
 
         /// <summary>Quick-saves the running session. False (with the reason shown when <paramref name="showDialogs"/>) when there is none, it has no states, or the save failed.</summary>
         private bool TrySessionQuickSave(bool showDialogs)

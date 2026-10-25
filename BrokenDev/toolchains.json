@@ -26,7 +26,7 @@
         { "path": "include/gb/gb.h", "bytes": 79584, "sha256": "53c219e6d06026e3727b859e5704d43be8c5ddf04aa792b9e3e8e956ff403e9f" }
       ],
       "versionFile": { "path": "ChangeLog", "firstLine": "gbdk-4.5.0" },
-      "notes": "GBDK's start-up (crt0) does not clear work RAM since 4.x (its ChangeLog: so emulators can flag reads before writes): a game writes its variables before it reads them, which BrokenDev's gb.ram-uninit check proves. Its console library (printf, font_init) switches the LCD on while it loads its font."
+      "notes": "GBDK's start-up (crt0) zeroes the C variables' own area (_DATA) but, since 4.x, not the rest of work RAM (its ChangeLog: so emulators can flag reads before writes); VRUN: Vaults of Obsolete Code clears the rest itself (src/start_up.s) and BrokenDev's gb.ram-uninit check proves nothing is read unwritten. Its console library (printf, font_init) switches the LCD on while it loads its font, which makes lag frames at start-up: the game draws its own text."
     }
   ]
 }

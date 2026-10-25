@@ -58,7 +58,8 @@ function Assert-Throws {
 function Save-Env { param([string[]]$Names) $h = @{}; foreach ($n in $Names) { $h[$n] = [Environment]::GetEnvironmentVariable($n) }; $h }
 function Restore-Env { param($Saved) foreach ($k in $Saved.Keys) { [Environment]::SetEnvironmentVariable($k, $Saved[$k]) } }
 $envNames = @('BROKENDEV_HOME', 'BROKENDEV_ARCHIVES', 'BROKENDEV_PROJECTS', 'BROKENDEV_ARCHIVES_JSON', 'BROKENDEV_PYTHON', 'BROKENDEV_WORKSHOP', 'BROKENNES_DEV', 'BROKENNES_CONFIG_DIR',
-              'BROKENDEV_DEVTOOLS', 'BROKENDEV_TRACE_LUA', 'BROKENDEV_LIVE_SYNTH', 'BROKENDEV_LIVE_MISSING', 'BD_TEST_TOOL_VAR', 'BROKENDEV_EMULATORS')
+              'BROKENDEV_DEVTOOLS', 'BROKENDEV_TRACE_LUA', 'BROKENDEV_LIVE_SYNTH', 'BROKENDEV_LIVE_MISSING', 'BD_TEST_TOOL_VAR', 'BROKENDEV_EMULATORS',
+              'BROKENDEV_TOOLCHAINS', 'BROKENDEV_LIVE_BDTEST_GB_WS', 'BROKENDEV_LIVE_BDTEST_NO_SUCH_WS')
 $savedEnv = Save-Env $envNames
 
 try {
@@ -908,6 +909,119 @@ try {
         }
     }
 
+    # ------------------------------------------------------------------------------------------ the Game Boy (D2: GBDK-2020, vrun-voc)
+    Write-Host 'game boy'
+    Restore-Env $savedEnv
+    $tcGood = Read-BdJson (Join-Path $bd 'toolchains.json')
+    $tcMut = { param([scriptblock]$Edit) $c = ($tcGood | ConvertTo-Json -Depth 30) | ConvertFrom-Json; & $Edit $c; @(Test-BdToolchains -J $c) }
+    Test-Case 'the shipped toolchains.json validates: GBDK-2020 4.5.0 pinned by its zip''s size and sha256 and its key files; NEGATIVE: a bad sha256, a path out of BROKENDEV_HOME, no pinned files are rejected' {
+        $e = @(Test-BdToolchains -J $tcGood); Assert-True ($e.Count -eq 0) ($e -join '; ')
+        $g = @($tcGood.toolchains | Where-Object { $_.id -eq 'gbdk' })
+        Assert-Equal $g.Count 1; Assert-Equal $g[0].version '4.5.0'; Assert-Equal $g[0].sha256 '266854ce92e3064871c5b28cd3436cc2a6cb136af9e7cf617140108f8c1c5890'
+        Assert-True (@($g[0].files | Where-Object { $_.path -eq 'bin/lcc.exe' }).Count -eq 1) 'lcc.exe is not pinned'
+        $e = & $tcMut { param($j) $j.toolchains[0].sha256 = 'abc' }; Assert-True (($e -join ';') -match 'sha256 must be') ($e -join '; ')
+        $e = & $tcMut { param($j) $j.toolchains[0].dir = '..\elsewhere' }; Assert-True (($e -join ';') -match 'inside BROKENDEV_HOME') ($e -join '; ')
+        $e = & $tcMut { param($j) $j.toolchains[0].files = @() }; Assert-True (($e -join ';') -match 'files is empty') ($e -join '; ')
+    }
+    Test-Case 'a toolchain whose zip and pinned files match is ready and {toolchain:id} names its folder; NEGATIVE: a changed file is ''changed'', a missing folder ''missing'', and both refuse {toolchain:id} and the build' {
+        $h = Join-Path $tmpRoot 'tchome'; $env:BROKENDEV_HOME = $h
+        $dir = Join-Path $h 'toolchains\fake\1.0'; New-Item -ItemType Directory -Force -Path (Join-Path $dir 'bin'), (Join-Path $h 'toolchains\fake\_dl') | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $dir 'bin\cc.exe'), 'a compiler'); [System.IO.File]::WriteAllText((Join-Path $dir 'VERSION'), "fake-1.0`n")
+        $zip = Join-Path $h 'toolchains\fake\_dl\fake-1.0.zip'; [System.IO.File]::WriteAllText($zip, 'the release zip')
+        $reg = [ordered]@{ schema = 1; toolchains = @([ordered]@{ id = 'fake'; title = 'Fake'; version = '1.0'; source = 'a test'; zip = 'toolchains/fake/_dl/fake-1.0.zip'; bytes = (Get-Item $zip).Length; sha256 = (Get-BdSha256 $zip)
+                                                                 dir = 'toolchains/fake/1.0'; files = @([ordered]@{ path = 'bin/cc.exe'; bytes = (Get-Item (Join-Path $dir 'bin\cc.exe')).Length; sha256 = (Get-BdSha256 (Join-Path $dir 'bin\cc.exe')) })
+                                                                 versionFile = [ordered]@{ path = 'VERSION'; firstLine = 'fake-1.0' } }) }
+        $rp = Join-Path $tmpRoot 'toolchains-test.json'; Save-BdJson -Object $reg -Path $rp -Depth 8; $env:BROKENDEV_TOOLCHAINS = $rp
+        try {
+            $st = Get-BdToolchainState -Spec (Get-BdToolchainSpec -Id fake) -NoCache
+            Assert-Equal $st.State 'ready' $st.Detail
+            Assert-Equal (Expand-BdPath -Text '{toolchain:fake}\bin' -Context @{}) ((Join-Path $dir 'bin'))
+            [System.IO.File]::WriteAllText((Join-Path $dir 'bin\cc.exe'), 'another compiler')
+            $st = Get-BdToolchainState -Spec (Get-BdToolchainSpec -Id fake) -NoCache
+            Assert-Equal $st.State 'changed' $st.Detail
+            Assert-True ($st.Detail -match 'bin/cc.exe') $st.Detail
+            $script:BdToolchainCache = @{}
+            Assert-Throws { Expand-BdPath -Text '{toolchain:fake}' -Context @{} } 'changed'
+            Remove-Item -LiteralPath $dir -Recurse -Force
+            $st = Get-BdToolchainState -Spec (Get-BdToolchainSpec -Id fake) -SkipZip -NoCache
+            Assert-Equal $st.State 'missing' $st.Detail
+            Assert-Throws { Get-BdToolchainSpec -Id 'nope' } 'unknown toolchain'
+        } finally { $script:BdToolchainCache = @{}; Restore-Env $savedEnv }
+    }
+    Test-Case 'the pinned GBDK-2020 on this machine is ready (when it is unpacked)' {
+        $st = Get-BdToolchainState -Spec (Get-BdToolchainSpec -Id gbdk) -NoCache
+        if ($st.State -eq 'missing') { Skip-Test "GBDK-2020 is not unpacked here ($($st.Detail))" }
+        Assert-Equal $st.State 'ready' $st.Detail
+    }
+    $gbM = Read-BdJson (Join-Path $bd 'projects\vrun-voc\project.json')
+    Test-Case 'the Game Boy manifest (kind gb, console gbc, source {live:VRUN_VOC_dev}, toolchain:gbdk) validates; NEGATIVE: kind gb on a SNES console, gbc on a NES kind and an unknown tool form are rejected' {
+        $e = @(Test-BdManifest -M $gbM -ExpectedId 'vrun-voc'); Assert-True ($e.Count -eq 0) ($e -join '; ')
+        $copy = { ($gbM | ConvertTo-Json -Depth 30) | ConvertFrom-Json }
+        $c = & $copy; $c.console = 'snes'; Assert-True ((@(Test-BdManifest -M $c) -join ';') -match 'kind gb and console gb or gbc') 'gb on a SNES console was accepted'
+        $c = & $copy; $c.kind = 'nes'; Assert-True ((@(Test-BdManifest -M $c) -join ';') -match 'kind gb and console gb or gbc|must run on console nes') 'console gbc on kind nes was accepted'
+        $c = & $copy; $c.requires.tools = @('toolchain:'); Assert-True ((@(Test-BdManifest -M $c) -join ';') -match "unknown tool 'toolchain:'") 'a toolchain tool without an id was accepted'
+        Assert-True (@($gbM.checks.accepted).Count -eq 0) 'the hello world accepts findings: it should have none'
+    }
+    Test-Case '{live:NAME} is the folder BROKENDEV_LIVE_<NAME> names (and a project on it is a live workspace); NEGATIVE: a name found nowhere, and an env folder that does not exist, are errors' {
+        $wsd = Join-Path $tmpRoot 'BDTEST_GB_WS'; New-Item -ItemType Directory -Force -Path $wsd | Out-Null
+        $env:BROKENDEV_LIVE_BDTEST_GB_WS = $wsd
+        try {
+            Assert-Equal (Expand-BdPath -Text '{live:BDTEST_GB_WS}\src' -Context @{}) (Join-Path $wsd 'src')
+            $c = ($gbM | ConvertTo-Json -Depth 30) | ConvertFrom-Json; $c.source.folder = '{live:BDTEST_GB_WS}'
+            $w = Get-BdProjectWorkspace -Manifest $c
+            Assert-Equal $w.Kind 'live'; Assert-Equal $w.Path $wsd
+            Assert-Throws { Expand-BdPath -Text '{live:BDTEST_NO_SUCH_WS}' -Context @{} } 'was not found'
+            $c.source.folder = '{live:BDTEST_NO_SUCH_WS}'
+            Assert-Equal (Get-BdProjectWorkspace -Manifest $c).Kind 'absent'
+            $env:BROKENDEV_LIVE_BDTEST_NO_SUCH_WS = (Join-Path $tmpRoot 'not-there')
+            Assert-Throws { Expand-BdPath -Text '{live:BDTEST_NO_SUCH_WS}' -Context @{} } 'does not exist'
+        } finally { Restore-Env $savedEnv }
+    }
+    Test-Case 'Game Boy symbols: GBDK''s .noi and the bgb .sym are read; CPU addresses map to wram, hram and cartram; NEGATIVE: a ROM address is not RAM, and the linker''s area names are not symbols' {
+        $noi = Join-Path $tmpRoot 'g.noi'; [System.IO.File]::WriteAllText($noi, "DEF _player_x 0xC0B1`nDEF _move_player 0x511`nDEF s__DATA 0xC0A0`nDEF l__DATA 0x3B`nDEF _hi 0xFF90`nDEF _banked 0x2D004`n")
+        $t = Read-BdSymbols -Path $noi
+        Assert-Equal $t['_player_x'] 0xC0B1; Assert-True (-not $t.ContainsKey('s__DATA')) 'the linker area start s__DATA was read as a symbol'
+        $sym = Join-Path $tmpRoot 'gb.sym'; [System.IO.File]::WriteAllText($sym, "; bgb`n00:C0B1 _player_x`n02:D004 _far`n")
+        $s = Read-BdSymbols -Path $sym
+        $d = ConvertTo-BdGbDomain -Address $s['_player_x']; Assert-Equal $d.Domain 'wram'; Assert-Equal $d.Addr 0xB1
+        $d = ConvertTo-BdGbDomain -Address $s['_far']; Assert-Equal $d.Addr (2 * 0x1000 + 4)
+        $d = ConvertTo-BdGbDomain -Address $t['_banked']; Assert-Equal $d.Addr (2 * 0x1000 + 4)
+        $d = ConvertTo-BdGbDomain -Address $t['_hi']; Assert-Equal $d.Domain 'hram'; Assert-Equal $d.Addr 0x10
+        $d = ConvertTo-BdGbDomain -Address 0x1A005; Assert-Equal $d.Domain 'cartram'; Assert-Equal $d.Addr (0x2000 + 5)
+        Assert-Throws { ConvertTo-BdGbDomain -Address $t['_move_player'] } 'not Game Boy work RAM'
+        $sec = [pscustomobject]@{ symbols = [pscustomobject]@{ file = $noi }; reads = [pscustomobject]@{ x = '_player_x'; h = '$FF90' } }
+        $r = @(Resolve-BdCompatReads -Compat $sec -Console 'gbc')
+        Assert-Equal $r[0].Domain 'wram'; Assert-Equal $r[0].Addr 0xB1; Assert-Equal $r[1].Domain 'hram'
+    }
+    Test-Case 'a Game Boy compat spec takes the pad''s eight buttons and the wram / hram / cartram domains; NEGATIVE: a SNES button, the NES ram domain and an offset past high RAM are never written' {
+        $run = @{ Console = 'gbc'; Rom = 'C:\x\a b.gbc'; Out = 'C:\o'; SaveDir = 'C:\s'; Frames = 60; Reads = @([pscustomobject]@{ Name = 'x'; Domain = 'wram'; Addr = 0xB1 }, [pscustomobject]@{ Name = 'c'; Domain = 'cartram'; Addr = 4 }); Input = '10:Right+A,20:'; Shots = @(60) }
+        $s = Read-BdCompatSpec -Text (New-BdCompatSpecText -Run $run)
+        Assert-Equal $s.Console 'gbc'; Assert-Equal @($s.Reads).Count 2; Assert-Equal (@($s.Inputs)[0].Buttons -join '+') 'Right+A'
+        $bad = $run.Clone(); $bad.Input = '10:Y'; Assert-Throws { New-BdCompatSpecText -Run $bad } 'not a gbc button'
+        $bad = $run.Clone(); $bad.Reads = @([pscustomobject]@{ Name = 'r'; Domain = 'ram'; Addr = 1 }); Assert-Throws { New-BdCompatSpecText -Run $bad } 'does not belong to the gbc'
+        $bad = $run.Clone(); $bad.Reads = @([pscustomobject]@{ Name = 'h'; Domain = 'hram'; Addr = 0x7F }); Assert-Throws { New-BdCompatSpecText -Run $bad } 'outside hram'
+    }
+    Test-Case 'the registry has the Game Boy columns (BrokenNes, Mesen, BizHawk Gambatte and SameBoy); NEGATIVE: a BizHawk id running gb and nes, or gb and gbc without system GB, is rejected' {
+        $gbEmus = @($emuGood.emulators | Where-Object { @($_.consoles) -contains 'gbc' } | ForEach-Object { $_.id })
+        foreach ($w in 'brokennes', 'mesen', 'bizhawk-gambatte', 'bizhawk-sameboy') { Assert-True ($gbEmus -contains $w) "no gbc column $w (have: $($gbEmus -join ', '))" }
+        $e = & $emuMut { param($j) ($j.emulators | Where-Object { $_.id -eq 'bizhawk-gambatte' }).consoles = @('gb', 'nes') }
+        Assert-True (($e -join ';') -match 'pins one core') ($e -join '; ')
+        $e = & $emuMut { param($j) ($j.emulators | Where-Object { $_.id -eq 'bizhawk-sameboy' }).system = 'GBC' }
+        Assert-True (($e -join ';') -match 'pins one core') ($e -join '; ')
+        Assert-Equal (Get-BdMesenGbModel -Emu ($emuGood.emulators | Where-Object { $_.id -eq 'mesen' }) -Console 'gbc') 'GameboyColor'
+        Assert-Equal (Get-BdMesenGbModel -Emu ($emuGood.emulators | Where-Object { $_.id -eq 'mesen' }) -Console 'nes') ''
+    }
+    Test-Case 'BizHawk''s Game Boy config pins the core for both GB and GBC and puts the battery save in the run''s folder; NEGATIVE: a NES config is exactly as before (no Game Boy entries)' {
+        $sc = Join-Path $tmpRoot 'bhgb'
+        $c = New-BdBizhawkConfig -System GB -Core Gambatte -SaveDir (Join-Path $sc 'saves') -Scratch $sc -InstallDir (Join-Path $tmpRoot 'bhinst')
+        Assert-Equal $c.PreferredCores.GB 'Gambatte'; Assert-Equal $c.PreferredCores.GBC 'Gambatte'
+        $sr = @($c.PathEntries.Paths | Where-Object { $_.System -eq 'GB_GBC_SGB' -and $_.Type -eq 'Save RAM' })
+        Assert-Equal $sr.Count 1; Assert-Equal $sr[0].Path (Join-Path $sc 'saves')
+        $n = New-BdBizhawkConfig -System NES -Core NesHawk -SaveDir (Join-Path $sc 'nsaves') -Scratch $sc -InstallDir (Join-Path $tmpRoot 'bhinst')
+        Assert-Equal (@($n.PreferredCores.Keys) -join ',') 'NES'
+        Assert-True (@($n.PathEntries.Paths | Where-Object { $_.System -eq 'GB_GBC_SGB' }).Count -eq 0) 'a NES config gained Game Boy path entries'
+    }
+
     # ------------------------------------------------------------------------------------------ the WideMess devkit (BrokenDev/widemess)
     Write-Host 'widemess devkit'
     Restore-Env $savedEnv
@@ -1300,6 +1414,42 @@ try {
             $bad = @((Read-BdJson $out).scenarios[0].checks | Where-Object { -not $_.ok } | ForEach-Object { $_.id })
             foreach ($want in 'wms-unlocked', 'wms-width', 'wms-layers', 'wms-sprites', 'wms-voices', 'wms-fast-cpu') { Assert-True ($bad -contains $want) "the no-unlock game passed $want" }
         } finally { Restore-Env $savedEnv }
+    }
+
+    # the Game Boy end to end (D2): the hello world of VRUN: Vaults of Obsolete Code, built from its live workspace into a scratch folder
+    # (never its own build folder) with the pinned GBDK, verified with the shipped manifest; the negative control is the same source with
+    # a planted read of work RAM before the start-up clears it
+    Test-Case 'the Game Boy hello world builds with GBDK and PASSES verify (Color and original, the sprite, the beep, the boot counter over three power-ons, no hardware finding); NEGATIVE: a planted read before the RAM clear FAILS verify with a new gb.ram-uninit' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $gst = Get-BdToolchainState -Spec (Get-BdToolchainSpec -Id gbdk) -SkipZip
+        if ($gst.State -ne 'ready') { Skip-Test "GBDK-2020 is not ready here ($($gst.Detail))" }
+        $voc = Find-BdLiveWorkspace -Name 'VRUN_VOC_dev'
+        if (-not $voc -or -not (Test-Path -LiteralPath (Join-Path $voc 'build.ps1'))) { Skip-Test 'the VRUN_VOC_dev workspace is not beside the repository' }
+        $ps5 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $verifyRom = {
+            param([string]$Dir, [string]$Json)
+            Invoke-Ws -WsArgs @('--brokendev', 'verify', 'vrun-voc', '--manifests', (Join-Path $bd 'projects'), '--home', (Join-Path $tmpRoot 'gbhome'), '--rom', (Join-Path $Dir 'vrun_voc.gbc'), '--out', $Json) -ExtraEnv @{ BROKENNES_DEV = '1' }
+        }
+        $good = Join-Path $tmpRoot 'voc-good'
+        $b = Invoke-BdProcess -FilePath $ps5 -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $voc 'build.ps1'), '-Gbdk', $gst.Dir, '-Out', $good) -TimeoutSec 300
+        Assert-Equal $b.ExitCode 0 "the build failed: $(Select-BdTail $b.Output 6)"
+        $json = Join-Path $tmpRoot 'voc-good.json'
+        $r = & $verifyRom $good $json
+        $v = Read-BdJson $json
+        Assert-True ($r.ExitCode -eq 0 -and $v.ok) ('verify failed: ' + ((@($v.scenarios | ForEach-Object { $_.checks } | Where-Object { -not $_.ok } | ForEach-Object { "$($_.id): $($_.detail)" })) -join '; '))
+        Assert-Equal (@($v.scenarios | ForEach-Object { $_.id }) -join ',') 'color,original,idle,second-boot,third-boot-original'
+        Assert-Equal $v.checks.newFindings 0
+        Assert-True ((@($v.scenarios[0].checks | ForEach-Object { $_.id })) -contains 'memory-player_x') 'verify did not read player_x by its symbol'
+        Assert-True ((@($v.scenarios[1].checks | ForEach-Object { $_.id })) -contains 'max-distinct-colors') 'the original Game Boy scenario did not check its shades'
+        $bad = Join-Path $tmpRoot 'voc-planted'
+        $b = Invoke-BdProcess -FilePath $ps5 -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $voc 'build.ps1'), '-Gbdk', $gst.Dir, '-Out', $bad, '-Define', 'VOC_PLANT_UNINIT') -TimeoutSec 300
+        Assert-Equal $b.ExitCode 0 "the planted build failed: $(Select-BdTail $b.Output 6)"
+        $json = Join-Path $tmpRoot 'voc-planted.json'
+        $r = & $verifyRom $bad $json
+        Assert-Equal $r.ExitCode 1
+        $v = Read-BdJson $json
+        $new = @($v.checks.findings | Where-Object { -not $_.accepted })
+        Assert-True (@($new | Where-Object { $_.rule -eq 'gb.ram-uninit' }).Count -ge 1) "the planted read was not a new gb.ram-uninit (new: $((@($new | ForEach-Object { $_.rule + ' ' + $_.place })) -join ', '))"
     }
 }
 finally {
