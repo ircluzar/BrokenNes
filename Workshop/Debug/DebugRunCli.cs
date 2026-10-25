@@ -22,12 +22,9 @@ namespace BrokenNes.Workshop.Debug;
 ///   step [n] | over | out | scanline | frame | runto &lt;spec&gt; | tofr &lt;frame&gt; | toline &lt;line&gt; | pause
 ///   regs | stack | trace [n] | mem &lt;spec&gt; [len] | print &lt;expr&gt; | var &lt;name&gt; | set &lt;reg|var&gt; &lt;value&gt; | hits [n] | where
 ///   pad &lt;Btn+Btn|none&gt;           pad 1 holds these buttons from now on (Right, A, ...), for the next runs and steps
-<<<<<<< HEAD
 ///   history [every] [keep]       (D5) before the first run: a state every N frames (default 60, the last 30) and every frame's input
 ///   back [n] | back frames &lt;n&gt;    (D5) step back n instructions (to the exact one), or to the start of the n-th frame before now
-=======
 ///   enhance &lt;fastcpu|widescreen|noflicker|sound&gt; &lt;on|off&gt;   the WideMess console's enhancements for a SNES game (spec 6.1)
->>>>>>> refs/heads/main
 ///   tracefile &lt;path&gt; [fn &lt;symbol&gt;] [range &lt;spec&gt;] [frames &lt;a-b&gt;] | endtrace | sym &lt;file&gt; | domains | limits | detach
 /// </code>
 /// Specs: <c>$8000</c>, <c>$8000-$80FF</c>, <c>7E:0010</c>, <c>wram:$10</c>, <c>vram:$2000-$27FF</c>, <c>spc:$0200</c>, <c>player_hp</c>, <c>player_hp+1</c>.
@@ -137,7 +134,6 @@ internal sealed class DebugShell
                 Console.WriteLine($"  pad 1 holds {(held.Count == 0 ? "nothing" : string.Join("+", held))}");
                 break;
             }
-<<<<<<< HEAD
             case "history":
             {
                 // history [every] [keep]: from now on a state every <every> frames (the last <keep>) and every frame's input, for 'back'
@@ -156,7 +152,8 @@ internal sealed class DebugShell
                 var r = frames ? hist.BackFrames(h.Runner, n, D.IsParked, h.LoadState, h.EnsureBetweenFrames) : hist.BackInstructions(h.Runner, n, h.LoadState, h.EnsureBetweenFrames);
                 Console.WriteLine($"  back {(frames ? n + " frame(s)" : n + " instruction(s)")}: from frame {r.FromFrame}{(r.FromInstruction >= 0 ? $" instruction {r.FromInstruction}" : "")} to frame {r.ToFrame}{(r.ToInstruction >= 0 ? $" instruction {r.ToInstruction}" : "")} (the state of frame {r.SnapshotFrame}, {r.FramesReplayed} frame(s) replayed){(r.Note.Length > 0 ? "; " + r.Note : "")}");
                 if (D.IsParked) Report(RunOutcome.Break);
-=======
+                break;
+            }
             case "enhance":
             {
                 // enhance fastcpu|widescreen|noflicker|sound on|off: a WideMess console's enhancements for the SNES game (spec 6.1), switched while parked
@@ -169,7 +166,6 @@ internal sealed class DebugShell
                     _ => throw new ArgumentException($"unknown enhancement '{words[1]}'"),
                 };
                 Console.WriteLine($"  {words[1]} {(why == null ? (on ? "on" : "off") : "refused: " + why)}");
->>>>>>> refs/heads/main
                 break;
             }
             case "regs": Regs(); break;
