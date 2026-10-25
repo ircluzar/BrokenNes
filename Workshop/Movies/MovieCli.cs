@@ -130,6 +130,10 @@ internal static class MovieCli
                     else Console.WriteLine($"{j["verdict"]}: {j["why"]}");
                     return code;
                 }
+                case "format":
+                    // the format's (working) name, extension and magic, for BrokenDev's scripts: renaming the format is a change of MovieFormat only
+                    Console.WriteLine(new JsonObject { ["name"] = MovieFormat.Name, ["extension"] = MovieFormat.Extension, ["magic"] = MovieFormat.Magic, ["version"] = MovieFormat.Version }.ToJsonString());
+                    return 0;
                 case "build-planted":
                     // the movie tests' planted game, built from its settings file (the bisect proof's throwaway repository builds with this)
                     return MovieTestRoms.Build(Need(Opt("settings"), "--settings"), Need(Opt("out"), "--out"));

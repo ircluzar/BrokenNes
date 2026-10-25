@@ -31,6 +31,7 @@ $bd = Split-Path -Parent $here
 . (Join-Path $bd 'lib\Compat.ps1')
 . (Join-Path $bd 'lib\WideMess.ps1')
 . (Join-Path $bd 'lib\Mcp.ps1')
+. (Join-Path $bd 'lib\Movies.ps1')
 
 $script:pass = 0; $script:fail = 0; $script:skip = 0
 $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('bdtests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -1452,6 +1453,88 @@ try {
         $new = @($v.checks.findings | Where-Object { -not $_.accepted })
         Assert-True (@($new | Where-Object { $_.rule -eq 'gb.ram-uninit' }).Count -ge 1) "the planted read was not a new gb.ram-uninit (new: $((@($new | ForEach-Object { $_.rule + ' ' + $_.place })) -join ', '))"
     }
+    # ------------------------------------------------------------------ movies, promoted movie tests and bisect (D5)
+    Write-Host 'movies and bisect (D5)'
+    Test-Case 'the movie format''s name and extension come from the Workshop (one constant); NEGATIVE: an unknown --movie verb fails' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $env:BROKENDEV_WORKSHOP = $ws
+        try {
+            $script:BdMovieFormat = $null
+            $f = Get-BdMovieFormat
+            Assert-True ($f.extension -match '^\.[a-z0-9]+$' -and $f.name -and $f.magic) "format: $($f | ConvertTo-Json -Compress)"
+            Assert-Equal (Get-BdMovieExtension) $f.extension
+            $r = Invoke-BdWorkshopMovie -Arguments @('nonsense')
+            Assert-Equal $r.ExitCode 2
+        } finally { Restore-Env $savedEnv }
+    }
+    Test-Case 'movie record + promote: the movie becomes a verify test that passes; NEGATIVE: the promoted movie with Start one frame late FAILS verify (movie-in-sync), promote refuses a movie that is off course, a movies entry without a why is rejected' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $mh = Join-Path $tmpRoot 'moviehome'; $mp = Join-Path $tmpRoot 'movieprojects'; $src = Join-Path $tmpRoot 'moviegame'
+        New-Item -ItemType Directory -Force -Path $mh, (Join-Path $mp 'mgame'), $src | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $src 'game.txt'), "version 1`nstart Start`nfloor 1`nbonus 1`n")
+        [System.IO.File]::WriteAllText((Join-Path $src 'build.ps1'), @'
+param([Parameter(Mandatory)][string]$Workshop)
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+New-Item -ItemType Directory -Force -Path (Join-Path $here 'build') | Out-Null
+$p = Start-Process -FilePath $Workshop -ArgumentList @('--movie', 'build-planted', '--settings', "`"$(Join-Path $here 'game.txt')`"", '--out', "`"$(Join-Path $here 'build\game.nes')`"") -Wait -PassThru -NoNewWindow
+exit $p.ExitCode
+'@)
+        $man = [ordered]@{
+            schema = 1; id = 'mgame'; title = 'the movie tests'' planted game'; family = 'test'; kind = 'nes'; console = 'nes'; description = 'D5 run-tests'
+            source = @{ folder = $src }; requires = @{ tools = @('ps5'); projects = @(); inputs = @() }
+            build = @{ steps = @(@{ name = 'build'; shell = 'ps5'; cwd = '{src}'; file = '{src}/build.ps1'; args = @('-Workshop', '{workshop}'); timeoutSec = 120 })
+                       outputs = @(@{ id = 'rom'; path = '{src}/build/game.nes'; publishAs = 'game.nes'; kind = 'nes' }, @{ id = 'mlb'; path = '{src}/build/game.mlb'; publishAs = 'game.mlb'; kind = 'symbols' }) }
+            verify = @{ scenarios = @(@{ id = 'play'; frames = 600; input = '60:Start,66:,200:A,260:' }) }; knownIssues = @()
+        }
+        Save-BdJson -Object $man -Path (Join-Path (Join-Path $mp 'mgame') 'project.json')
+        $env:BROKENDEV_HOME = $mh; $env:BROKENDEV_PROJECTS = $mp; $env:BROKENDEV_WORKSHOP = $ws; $script:BdMovieFormat = $null
+        try {
+            [void](Invoke-BdProjectBuild -Id 'mgame')
+            $movie = Invoke-BdMovieRecord -Id 'mgame' -Scenario 'play' -Course @('app_state')
+            $pr = Invoke-BdMoviePromote -Id 'mgame' -Movie $movie -Name 'first' -Why 'Start, then A: three lives lost down to one'
+            Assert-True (Test-Path -LiteralPath $pr.File) 'the promoted movie was not copied beside the manifest'
+            $m2 = Read-BdManifest -Id 'mgame'
+            Assert-Equal (@($m2.movies).Count) 1
+            Assert-Equal ([string]$m2.verify.scenarios[0].input) '60:Start,66:,200:A,260:' 'the manifest''s other fields changed'
+            $v = Invoke-BdProjectVerify -Id 'mgame' -Exe $ws
+            $ms = @($v.scenarios | Where-Object { $_.id -eq 'movie-first' })
+            Assert-True ($v.ok -and $ms.Count -eq 1) "verify: ok $($v.ok), scenarios $(@($v.scenarios | ForEach-Object { $_.id }) -join ', ')"
+            Assert-True (@($ms[0].checks | Where-Object { $_.id -eq 'movie-in-sync' -and $_.ok }).Count -eq 1) 'no passing movie-in-sync check'
+            # the negative control: the same movie with Start one frame late, on the same build
+            $txt = [System.IO.File]::ReadAllText($pr.File)
+            [System.IO.File]::WriteAllText($pr.File, $txt.Replace("i 60 Start -", "i 61 Start -"))
+            $v2 = Invoke-BdProjectVerify -Id 'mgame' -Exe $ws
+            $bad = @(@($v2.scenarios | Where-Object { $_.id -eq 'movie-first' })[0].checks | Where-Object { -not $_.ok } | ForEach-Object { $_.id })
+            Assert-True (-not $v2.ok -and $bad -contains 'movie-in-sync') "the late-Start movie passed verify (failed checks: $($bad -join ', '))"
+            # promote refuses a movie that does not replay in sync on today's build
+            $late = Join-Path $tmpRoot 'late.bnm'
+            [System.IO.File]::WriteAllText($late, $txt.Replace("i 60 Start -", "i 61 Start -"))
+            Assert-Throws { Invoke-BdMoviePromote -Id 'mgame' -Movie $late -Name 'late' -Why 'x' } 'does not replay in sync'
+            [System.IO.File]::WriteAllText($pr.File, $txt)
+            # a movies entry without its why is rejected by the manifest check
+            $bm = Read-BdJson (Get-BdManifestPath 'mgame'); $bm.movies[0].why = ''
+            Assert-True (@(Test-BdManifest -M $bm) | Where-Object { $_ -like '*no why*' }) 'a movie without a why was accepted'
+            # another (harmless) build: the keyframes are information under sync same-rom, a failure under sync required
+            [System.IO.File]::WriteAllText((Join-Path $src 'game.txt'), "version 2`nstart Start`nfloor 1`nbonus 1`n")
+            [void](Invoke-BdProjectBuild -Id 'mgame')
+            $v3 = Invoke-BdProjectVerify -Id 'mgame' -Exe $ws
+            $c3 = @(@($v3.scenarios | Where-Object { $_.id -eq 'movie-first' })[0].checks | Where-Object { $_.id -eq 'movie-in-sync' })[0]
+            Assert-True ($v3.ok -and $c3.ok -and $c3.detail -like 'information only*') "another build under same-rom: $($c3.detail)"
+            $mpath = Get-BdManifestPath 'mgame'
+            [System.IO.File]::WriteAllText($mpath, ([System.IO.File]::ReadAllText($mpath)).Replace('"sync": "same-rom"', '"sync": "required"'))
+            $v4 = Invoke-BdProjectVerify -Id 'mgame' -Exe $ws
+            Assert-True (-not $v4.ok) 'sync required passed on another build that is off course'
+        } finally { Restore-Env $savedEnv; $script:BdMovieFormat = $null }
+    }
+    Test-Case 'bisect over a throwaway game''s commits with a planted regression names it, skips the commit that does not build, says can''t tell where the menu changed; NEGATIVE: endpoints that do not hold name no commit (tests\bisect-proof.ps1)' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        if (-not (Find-BdExecutable -Name 'git.exe' -Candidates @("$env:ProgramFiles\Git\cmd\git.exe"))) { Skip-Test 'git is not installed' }
+        $exe = if ($PSVersionTable.PSEdition -eq 'Core') { (Get-Process -Id $PID).Path } else { Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe' }
+        $r = Invoke-BdProcess -FilePath $exe -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $here 'bisect-proof.ps1'), '-WorkshopExe', $ws) -TimeoutSec 900
+        $last = @($r.Output -split "`r?`n" | Where-Object { $_ -like '{*' }) | Select-Object -Last 1
+        Assert-True ($r.ExitCode -eq 0 -and $last -match '"pass": true') "bisect proof: $last $(@($r.Output -split "`r?`n" | Where-Object { $_ -like '*FAIL*' }) -join ' | ')"
+    }
+
     # ------------------------------------------------------------------ the MCP server (D3): its scripted MCP clients, over stdio
     $mcpExe = if ($McpExe) { $McpExe } elseif ($env:BROKENDEV_MCP) { $env:BROKENDEV_MCP } else { $null }
     Test-Case 'the MCP server: the client test (headless sessions on every console, with negative controls) and the planted-bug demo pass; SKIP without a built server' {

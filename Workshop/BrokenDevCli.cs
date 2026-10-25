@@ -246,7 +246,7 @@ internal static partial class BrokenDevCli
 
     // ---- verify --------------------------------------------------------------------------------
 
-    private sealed class Checkpoint { public int Frame; public string Hash = ""; public int Colors; public string Png = ""; }
+    private sealed class Checkpoint { public int Frame; public string Hash = ""; public int Colors; public string Png = ""; public string Ram = ""; }
 
     private sealed class AudioStats
     {
@@ -292,7 +292,10 @@ internal static partial class BrokenDevCli
         var results = new List<ScenarioResult>();
         var symbols = LoadSymbols(PublishedSymbolFiles(root, rom), console);
         var keepBattery = BatterySources(verify);
-        foreach (var sc in verify.GetProperty("scenarios").EnumerateArray())
+        // the promoted movies (the manifest's movies section): each one a scenario, replayed with its keyframes checked (BrokenDevCli.Movies.cs)
+        var movieProblems = new List<string>();
+        promotedScenarios = PromotedMovies(root, Path.Combine(manifests, id), console, romBytes, movieProblems);
+        foreach (var sc in verify.GetProperty("scenarios").EnumerateArray().Concat(promotedScenarios))
         {
             string sid = sc.GetProperty("id").GetString() ?? "?";
             if (only.Length > 0 && !sid.Equals(only, StringComparison.OrdinalIgnoreCase)) continue;
@@ -306,12 +309,14 @@ internal static partial class BrokenDevCli
             foreach (var c in cmp.EnumerateArray())
                 cross.Add(EvaluateCompare(c, results));
 
-        bool ok = results.Where(r => !r.Info).All(r => r.Ok) && cross.All(c => c.Ok);
+        bool ok = results.Where(r => !r.Info).All(r => r.Ok) && cross.All(c => c.Ok) && movieProblems.Count == 0;
         // the hardware checks, budgets and profile (a manifest's checks / budgets sections; BrokenDevCli.Checks.cs)
         var checks = RunChecksAndBudgets(root, verify, console, rom, romBytes, results, only, historyPath, out bool checksOk);
         ok &= checksOk;
         var report = BuildReport(id, rom, romBytes, console, results, cross, ok);
         if (checks != null) report["checks"] = checks;
+        if (movieProblems.Count > 0 || promotedScenarios.Count > 0)
+            report["movies"] = new JsonObject { ["promoted"] = promotedScenarios.Count, ["problems"] = new JsonArray(movieProblems.Select(p => (JsonNode)p).ToArray()) };
         string text = report.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
         if (outFile.Length > 0) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outFile))!); File.WriteAllText(outFile, text); }
         Console.WriteLine(text);
@@ -319,6 +324,7 @@ internal static partial class BrokenDevCli
         foreach (var r in results) foreach (var c in r.Checks.Where(c => !c.Ok)) Console.Error.WriteLine($"  [{r.Id}] FAIL {c.Id}: {c.Detail}");
         foreach (var c in cross.Where(c => !c.Ok)) Console.Error.WriteLine($"  [compare] FAIL {c.Id}: {c.Detail}");
         foreach (var r in results.Where(r => r.Result != "ok")) Console.Error.WriteLine($"  [{r.Id}] {r.Result}: {r.CrashInfo}");
+        foreach (var p in movieProblems) Console.Error.WriteLine($"  [movies] FAIL {p}");
         if (checks != null) PrintChecks(checks);
         return ok ? 0 : 1;
     }
@@ -334,6 +340,8 @@ internal static partial class BrokenDevCli
         string batteryFrom = sc.TryGetProperty("batteryFrom", out var bf) ? bf.GetString() ?? "" : "";
         int frames = sc.GetProperty("frames").GetInt32();
         string input = sc.TryGetProperty("input", out var ip) ? ip.GetString() ?? "" : "";
+        string input2 = sc.TryGetProperty("input2", out var ip2) ? ip2.GetString() ?? "" : "";
+        var movie = MovieOf(sc);
         var checkpoints = new SortedSet<int>();
         if (sc.TryGetProperty("checkpoints", out var cps)) foreach (var c in cps.EnumerateArray()) checkpoints.Add(c.GetInt32());
         checkpoints.Add(frames);
@@ -346,6 +354,7 @@ internal static partial class BrokenDevCli
         if (expect is { } e0 && e0.TryGetProperty("audio", out var a0) && a0.TryGetProperty("fromFrame", out var af)) audioFrom = af.GetInt32();
 
         var steps = ParseInput(input);
+        var steps2 = ParseInput(input2);
         if (pngDir.Length > 0) Directory.CreateDirectory(pngDir);
 
         try
@@ -359,8 +368,9 @@ internal static partial class BrokenDevCli
                 if (src?.BatteryOut is not { Length: > 0 } save) res.BatteryNote = $"no battery save from scenario '{batteryFrom}' (it must run earlier in this verify and leave one)";
                 else { res.BatteryIn = save; res.BatteryNote = runner.ImportBattery(save) + $" ({save.Length} bytes from '{batteryFrom}')"; }
             }
-            var held = new List<string>();
-            int next = 0;
+            var held = new List<string>(); var held2 = new List<string>();
+            int next = 0, next2 = 0;
+            if (movie != null) RefuseMovieCores(movie, runner.Cores);
             // pokes: [{ "frame": 2, "addr": "0x07FC", "value": 0 }] writes work RAM before that frame runs (NES only): a forced state is a probe, never a proof
             var pokes = new List<(int Frame, int Addr, byte Value)>();
             if (sc.TryGetProperty("pokes", out var pk))
@@ -376,7 +386,8 @@ internal static partial class BrokenDevCli
             {
                 foreach (var pk2 in pokes) if (pk2.Frame == f && runner is NesRunner nr) nr.Poke(pk2.Addr, pk2.Value);
                 while (next < steps.Count && steps[next].Frame <= f) { held = steps[next].Names; next++; }
-                runner.Step(held);
+                while (next2 < steps2.Count && steps2[next2].Frame <= f) { held2 = steps2[next2].Names; next2++; }
+                runner.Step(held, held2);
                 res.FramesRun = f + 1;
                 if (runner.Crashed) { res.Result = "crashed"; res.CrashInfo = runner.CrashInfo; break; }
                 var samples = runner.DrainAudio();
@@ -386,7 +397,7 @@ internal static partial class BrokenDevCli
                 if (checkpoints.Contains(f + 1))
                 {
                     var (hash, colors) = runner.Picture();
-                    var cp = new Checkpoint { Frame = f + 1, Hash = hash.ToString("X16"), Colors = colors };
+                    var cp = new Checkpoint { Frame = f + 1, Hash = hash.ToString("X16"), Colors = colors, Ram = movie != null ? runner.MovieRam().ToString("X16") : "" };
                     if (pngDir.Length > 0) { cp.Png = Path.Combine(pngDir, $"{res.Id}_f{f + 1:D5}.png"); runner.SavePng(cp.Png); }
                     res.Checkpoints.Add(cp);
                 }
@@ -410,6 +421,7 @@ internal static partial class BrokenDevCli
         }
 
         if (res.Result == "ok") { Evaluate(res, expect); EvaluateWideMess(res, expect); EvaluateGb(res, expect); }
+        if (movie != null) EvaluateMovie(res, movie, rom, sc.TryGetProperty("movieSync", out var msy) ? msy.GetString() ?? "same-rom" : "same-rom");
         return res;
     }
 
@@ -510,6 +522,7 @@ internal static partial class BrokenDevCli
                 ["wms"] = WideMessJson(r),
             });
             if (IsGameBoyKey(r.Console)) ((JsonObject)scen[^1]!)["gb"] = GbJson(r);   // only Game Boy reports carry the key
+            if (r.MovieSync.Length > 0) ((JsonObject)scen[^1]!)["movie"] = new JsonObject { ["sync"] = r.MovieSync, ["sameRom"] = r.MovieSameRom, ["offCourseAfter"] = r.MovieOffCourse };   // only promoted movies carry it
         }
         return new JsonObject
         {
@@ -549,6 +562,10 @@ internal static partial class BrokenDevCli
         int Width { get; }
         int Height { get; }
         void Step(List<string> held);
+        /// <summary>One frame with both pads (a promoted movie's pad 2).</summary>
+        void Step(List<string> held, List<string> held2);
+        /// <summary>The work-RAM hash a movie's keyframes hold (NesEmulator.Debugging.Movies.MovieHash.Ram).</summary>
+        ulong MovieRam();
         float[] DrainAudio();
         (ulong hash, int colors) Picture();
         void SavePng(string path);
@@ -563,6 +580,8 @@ internal static partial class BrokenDevCli
         /// <summary>The machine as the debugger sees it, for the hardware checks (BrokenDevCli.Checks.cs).</summary>
         NesEmulator.Debugging.DebugMachine DebugMachine();
     }
+
+    private static readonly List<string> NoButtons = new();
 
     private static string Fnv(byte[] d) { ulong h = 14695981039346656037UL; foreach (byte b in d) { h ^= b; h *= 1099511628211UL; } return h.ToString("X16"); }
 
@@ -609,13 +628,21 @@ internal static partial class BrokenDevCli
             fix = nes.GetApuStateProbe() as APU_FIX;
         }
 
-        public void Step(List<string> held)
+        public void Step(List<string> held) => Step(held, NoButtons);
+
+        public void Step(List<string> held, List<string> held2)
         {
-            var h = new bool[8];
-            foreach (string n in held) { if (!Index.TryGetValue(n, out int i)) throw new ArgumentException($"unknown NES button '{n}'"); h[i] = true; }
-            nes.SetInputs(h, null);
+            bool[] Pad(List<string> names)
+            {
+                var h = new bool[8];
+                foreach (string n in names) { if (!Index.TryGetValue(n, out int i)) throw new ArgumentException($"unknown NES button '{n}'"); h[i] = true; }
+                return h;
+            }
+            nes.SetInputs(Pad(held), held2.Count > 0 ? Pad(held2) : null);
             nes.RunFrame();
         }
+
+        public ulong MovieRam() => NesEmulator.Debugging.Movies.MovieHash.Ram(NesEmulator.Corruption.MachineDomains.For(nes));
 
         public float[] DrainAudio()
         {
@@ -700,13 +727,17 @@ internal static partial class BrokenDevCli
             s = ConsoleSessions.Create(console, unwrapped, cpu, ppu, apu, null, inner);
         }
 
-        public void Step(List<string> held)
+        public void Step(List<string> held) => Step(held, NoButtons);
+
+        public void Step(List<string> held, List<string> held2)
         {
-            PadButtons b = PadButtons.None;
-            foreach (string n in held) b |= Enum.Parse<PadButtons>(n, true);
-            s.SetPad(0, b);
+            PadButtons Pad(List<string> names) { PadButtons b = PadButtons.None; foreach (string n in names) b |= Enum.Parse<PadButtons>(n, true); return b; }
+            s.SetPad(0, Pad(held));
+            if (held2.Count > 0 || s.Console != ConsoleKind.GameBoy && s.Console != ConsoleKind.GameBoyColor) s.SetPad(1, Pad(held2));
             s.RunFrame();
         }
+
+        public ulong MovieRam() => NesEmulator.Debugging.Movies.MovieHash.Ram(NesEmulator.Corruption.MachineDomains.For(s));
 
         public float[] DrainAudio()
         {

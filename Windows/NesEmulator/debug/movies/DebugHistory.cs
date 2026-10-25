@@ -73,15 +73,38 @@ public sealed class DebugHistory
         return (live1, live2);
     }
 
-    /// <summary>The end of a frame (emulation thread): the keyframe when due.</summary>
+    /// <summary>The end of a frame (emulation thread): the keyframe when due, and the check against a preloaded movie's keyframe.</summary>
     public void AfterFrame()
     {
         FrameIndex++;
-        if (hashes != null && KeyEvery > 0 && FrameIndex % KeyEvery == 0 && !keys.Any(k => k.Frame == FrameIndex))
+        if (hashes == null) return;
+        bool due = KeyEvery > 0 && FrameIndex % KeyEvery == 0 && !keys.Any(k => k.Frame == FrameIndex);
+        MovieKey? want = null;
+        if (expected != null && OffCourseFrame == null) expected.TryGetValue(FrameIndex, out want);
+        if (!due && want == null) return;
+        var (p, r) = hashes();
+        if (due) keys.Add(new MovieKey { Frame = FrameIndex, Picture = p, Ram = r });
+        if (want != null)
         {
-            var (p, r) = hashes();
-            keys.Add(new MovieKey { Frame = FrameIndex, Picture = p, Ram = r });
+            KeysChecked++;
+            if (p == want.Picture && r == want.Ram) KeysMatched++;
+            else { OffCourseFrame = FrameIndex; OffCourseWhat = (p != want.Picture ? "the picture" : "") + (p != want.Picture && r != want.Ram ? " and " : "") + (r != want.Ram ? "the work RAM" : ""); }
         }
+    }
+
+    private Dictionary<long, MovieKey>? expected;
+    /// <summary>A preloaded movie's keyframes: checked, and the first that does not match.</summary>
+    public int KeysChecked { get; private set; }
+    public int KeysMatched { get; private set; }
+    public long? OffCourseFrame { get; private set; }
+    public string OffCourseWhat { get; private set; } = "";
+
+    /// <summary>Plays a movie from here: its input becomes the log (replayed as the session runs, live input after its end) and its keyframes are checked.</summary>
+    public void Preload(Movie m)
+    {
+        if (FrameIndex != 0 || log.Count != 0) throw new InvalidOperationException("a movie is preloaded before the first frame");
+        for (long f = 0; f < m.Frames; f++) { var (a, b) = m.PadsAt(f); log.Add((a, b)); }
+        expected = m.Keys.ToDictionary(k => k.Frame);
     }
 
     /// <summary>A new input while behind the end of the log: the future is rewritten from the current frame (its log, states and keys after it go).</summary>
@@ -191,12 +214,14 @@ public sealed class DebugHistory
     }
 
     /// <summary>The logged input as a movie (the frames logged so far; the caller fills in the ROM, cores and the rest).</summary>
-    public Movie ToMovie()
+    public Movie ToMovie(long? upTo = null)
     {
-        var m = new Movie { Frames = log.Count, KeyEvery = KeyEvery, Start = StartState != null ? MovieStart.State : MovieStart.PowerOn, StartState = StartState };
-        for (int i = 0; i < log.Count; i++) m.SetPads(i, log[i].P1, log[i].P2);
+        long n = Math.Min(log.Count, upTo ?? log.Count);
+        if (n <= 0) throw new InvalidOperationException("no frame has run yet: a movie needs at least one");
+        var m = new Movie { Frames = n, KeyEvery = KeyEvery, Start = StartState != null ? MovieStart.State : MovieStart.PowerOn, StartState = StartState };
+        for (int i = 0; i < n; i++) m.SetPads(i, log[i].P1, log[i].P2);
         if (m.Inputs.Count == 0) m.SetPads(0, PadButtons.None, PadButtons.None);
-        foreach (var k in keys.Where(k => k.Frame <= log.Count)) m.Keys.Add(new MovieKey { Frame = k.Frame, Picture = k.Picture, Ram = k.Ram });
+        foreach (var k in keys.Where(k => k.Frame <= n)) m.Keys.Add(new MovieKey { Frame = k.Frame, Picture = k.Picture, Ram = k.Ram });
         return m;
     }
 }

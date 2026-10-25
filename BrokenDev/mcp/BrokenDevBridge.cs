@@ -66,12 +66,45 @@ internal static class BrokenDevBridge
             b["finishedAtUtc"]?.ToString() ?? "");
     }
 
+    /// <summary>brokendev.ps1 bisect (milestone D5): the game's commits, a movie and a test; returns the bisect report (its JSON) and the output.</summary>
+    public static JsonObject Bisect(string project, string movie, string test, string good, string bad, int timeoutSec)
+    {
+        if (!ProjectIds().Contains(project)) throw new ToolError($"unknown project '{project}' (known: {string.Join(", ", ProjectIds())})");
+        var args = new List<string> { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Script, "bisect", project, "-Movie", movie, "-Test", test, "-Bad", bad, "-Json" };
+        if (good.Length > 0) { args.Add("-Good"); args.Add(good); }
+        var (code, text, done, secs) = RunScript(args, timeoutSec, killTree: true);
+        var j = new JsonObject { ["project"] = project, ["exitCode"] = done ? code : -1, ["seconds"] = secs, ["firstBadFound"] = done && code == 0 };
+        if (!done) j["error"] = $"bisect ran longer than {timeoutSec} s and was stopped (only this server's own child process)";
+        int s = text.IndexOf('{'), e = text.LastIndexOf('}');
+        try { if (s >= 0 && e > s) j["report"] = JsonNode.Parse(text[s..(e + 1)]); } catch { }
+        var lines = text.Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0 && !l.TrimStart().StartsWith('{') ).ToList();
+        j["output"] = J.Strs(lines.Where(l => !l.Contains("step build:")).TakeLast(60));
+        return j;
+    }
+
+    private static (int code, string text, bool done, double seconds) RunScript(List<string> args, int timeoutSec, bool killTree)
+    {
+        var psi = new ProcessStartInfo("powershell.exe") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Repo };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        var sb = new StringBuilder();
+        var sw = Stopwatch.StartNew();
+        using var p = Process.Start(psi) ?? throw new ToolError("powershell.exe did not start");
+        p.OutputDataReceived += (_, e) => { if (e.Data != null) lock (sb) sb.AppendLine(e.Data); };
+        p.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (sb) sb.AppendLine(e.Data); };
+        p.BeginOutputReadLine(); p.BeginErrorReadLine();
+        bool done = p.WaitForExit(Math.Clamp(timeoutSec, 10, 7200) * 1000);
+        if (!done) { try { p.Kill(entireProcessTree: killTree); } catch { } }
+        else p.WaitForExit();
+        string text; lock (sb) text = sb.ToString();
+        return (done ? p.ExitCode : -1, text, done, Math.Round(sw.Elapsed.TotalSeconds, 1));
+    }
+
     /// <summary>Runs one brokendev.ps1 verb; returns its exit code, its output's last lines and the record it wrote.</summary>
     public static JsonObject RunVerb(string verb, string project, List<string> emu, List<string> scenario, int timeoutSec)
     {
         verb = verb.Trim().ToLowerInvariant();
         if (verb is not ("build" or "verify" or "compat" or "run" or "list" or "status" or "doctor"))
-            throw new ToolError("verb is build, verify, compat, run, list, status or doctor (bisect, bugs and coverage come with milestones D5, D6 and D9)");
+            throw new ToolError("verb is build, verify, compat, run, list, status or doctor (bisect is its own tool; bugs and coverage come with milestones D6 and D9)");
         var ids = ProjectIds();
         if (verb is "build" or "verify" or "compat" or "run" or "status" && !ids.Contains(project) && !(project == "all" && verb is "build" or "verify" or "compat"))
             throw new ToolError($"unknown project '{project}' (known: {string.Join(", ", ids)}{(verb is "run" or "status" ? "" : ", all")})");

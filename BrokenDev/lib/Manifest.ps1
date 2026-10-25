@@ -134,6 +134,22 @@ function Test-BdManifest {
             }
         }
     }
+    # optional: the promoted movies (milestone D5: brokendev.ps1 movie promote; verify replays each one as a scenario). The movie files
+    # themselves are checked by verify (it reads them); here only the entries' shape.
+    $movies = Get-BdProp $M 'movies' $null
+    if ($null -ne $movies) {
+        $mids = @{}
+        foreach ($mv in @($movies)) {
+            $mid = [string](Get-BdProp $mv 'id' '')
+            if ($mid -notmatch '^[A-Za-z0-9_.\-]+$') { $e.Add("movies: '$mid' is not an id (letters, digits, - _ .)"); continue }
+            if ($mids.ContainsKey($mid)) { $e.Add("movies: '$mid' is listed twice") }
+            $mids[$mid] = $true
+            if (-not [string](Get-BdProp $mv 'file' '')) { $e.Add("movies: '$mid' has no file") }
+            if (-not [string](Get-BdProp $mv 'why' '')) { $e.Add("movies: '$mid' has no why (what it plays and why it is a test)") }
+            $sync = [string](Get-BdProp $mv 'sync' 'same-rom')
+            if ($sync -notin 'same-rom', 'required', 'off') { $e.Add("movies: '$mid': sync '$sync' must be same-rom, required or off") }
+        }
+    }
     # optional: the multi-emulator compatibility recipe (lib\Compat.ps1 interprets it; validated when that library is loaded)
     $compat = Get-BdProp $M 'compat' $null
     if ($compat -and (Get-Command Test-BdCompatSection -ErrorAction SilentlyContinue)) {
