@@ -18,3 +18,6 @@ scripts/ftp_credentials.conf
 
 # Presets ripped from games hold copyrighted samples: never commit them (the "hygiene" check of FruityHost preset-test and UAT/entrypoints/notices-check.ps1 fail if one is tracked)
 *.bn2preset
+
+# stray screenshots written to the repository root by test runs (game frames, never committed)
+/*_f[0-9][0-9][0-9][0-9][0-9].png

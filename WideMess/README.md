@@ -397,7 +397,7 @@ ALttP speed-pass golden IDENTICAL; interleaved A/B against `ad4d81c` (ALttP 2,40
 the desktop app build.
 
 **Found along the way** (reported, not WideMess): two game screenshots are committed at the repository root
-(`Super Mario World (U) [!]_snes_f01500.png`, a Link's Awakening DX one), added by BrokenDev D4's commit `5c0186b`.
+(`Super Mario World (U) [!]_snes_f01500.png`, a Link's Awakening DX one), added by BrokenDev D4's commit `5c0186b`; removed from git on 2026-10-25, and the repository root now ignores such screenshots.
 
 ## Milestone 7a result (2026-10-24): WideMess in BrokenNes Lite and in the FL plugin
 
