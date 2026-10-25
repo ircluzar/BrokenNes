@@ -197,7 +197,9 @@ function Invoke-BdMoviePromote {
     if (Test-Path -LiteralPath $dst) { throw "$dst already exists" }
     Copy-Item -LiteralPath $src -Destination $dst
     $entry = [ordered]@{ id = $Name; file = "movies/$Name$([string]$ij.extension)"; why = $Why; sync = $Sync; frames = [long]$ij.frames; recordedOn = [string]$ij.romSha256 }
-    try { Add-BdManifestMovie -Path (Get-BdManifestPath $Id) -EntryJson (($entry | ConvertTo-Json -Compress) -replace '":', '": ' -replace '","', '", "') }
+    # one line, in the manifests' own style ({ "key": value, ... })
+    $inline = '{ ' + ((@($entry.Keys | ForEach-Object { '"{0}": {1}' -f $_, ($entry[$_] | ConvertTo-Json -Compress) })) -join ', ') + ' }'
+    try { Add-BdManifestMovie -Path (Get-BdManifestPath $Id) -EntryJson $inline }
     catch { Remove-Item -LiteralPath $dst -Force; throw }
     [void](Read-BdManifest -Id $Id)   # still valid
     [pscustomobject]@{ Id = $Name; File = $dst; Sync = $Sync; Play = $play.summary }

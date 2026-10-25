@@ -17,6 +17,9 @@
 #                                   '-' = nothing; names joined with '+': NES A B Select Start Up Down Left Right; SNES B Y Select Start Up Down
 #                                   Left Right A X L R
 #     shot <frame>                  after <frame> completed frames, save the picture as shot_<frame, 5 digits>.png (or .bmp) in out
+#     movie <path>                  optional (milestone D5): the emulator plays this movie file in its own format (BizHawk .bk2, FCEUX .fm2,
+#                                   exported from a BrokenNes movie) instead of the input lines (a spec with a movie has none); the adapter
+#                                   notes the pad the movie presses each time it changes ('note movie-pad <frame> <buttons>')
 #
 #   RESULT (<out>\result.txt, written by the adapter)
 #     # bdcompat-result 1
@@ -89,6 +92,11 @@ function New-BdCompatSpecText {
         if ($a -lt 0 -or $a -gt $max) { throw ("spec: read {0}: address {1:X} is outside {2} (0-{3:X})" -f $n, $a, $d, $max) }
         $lines += ('read {0} {1} {2:X}' -f $n, $d, $a)
     }
+    if ($Run.ContainsKey('Movie') -and $Run.Movie) {
+        if ([string]$Run.Input) { throw 'spec: a movie run has no input lines (the movie is the input)' }
+        if (-not (Test-Path -LiteralPath ([string]$Run.Movie))) { throw "spec: no movie at $($Run.Movie)" }
+        $lines += "movie $($Run.Movie)"
+    }
     foreach ($s in (ConvertTo-BdInputSteps -Script ([string]$Run.Input) -Console $c)) {
         $lines += ('input {0} {1}' -f $s.Frame, $(if (@($s.Buttons).Count -gt 0) { @($s.Buttons) -join '+' } else { '-' }))
     }
@@ -102,7 +110,7 @@ function New-BdCompatSpecText {
 function Read-BdCompatSpec {
     <# The spec text back as an object (the adapters written in PowerShell use it; the tests check the round trip). #>
     param([Parameter(Mandatory)][string]$Text)
-    $s = [ordered]@{ Console = ''; Rom = ''; Out = ''; SaveDir = ''; Frames = 0; Reads = @(); Inputs = @(); Shots = @() }
+    $s = [ordered]@{ Console = ''; Rom = ''; Out = ''; SaveDir = ''; Frames = 0; Reads = @(); Inputs = @(); Shots = @(); Movie = '' }
     foreach ($raw in ($Text -split "`r?`n")) {
         $line = $raw.Trim()
         if (-not $line -or $line.StartsWith('#')) { continue }
@@ -116,6 +124,7 @@ function Read-BdCompatSpec {
             'read' { $p = $v -split '\s+'; $s.Reads += [pscustomobject]@{ Name = $p[0]; Domain = $p[1]; Addr = [Convert]::ToInt32($p[2], 16) } }
             'input' { $p = $v -split '\s+'; $s.Inputs += [pscustomobject]@{ Frame = [int]$p[0]; Buttons = $(if ($p[1] -eq '-') { @() } else { @($p[1] -split '\+') }) } }
             'shot' { $s.Shots += [int]$v }
+            'movie' { $s.Movie = $v }
             default { throw "spec: unknown directive '$k'" }
         }
     }

@@ -103,8 +103,9 @@ param(
     [string[]]$Course = @(),
     [string]$Format = 'bk2',
     [string]$Test = '',
-    [string]$Good = '',
-    [string]$Bad = 'HEAD',
+    # (-Good / -Bad: aliases; the variables are named apart from the $bad lists the other verbs keep)
+    [Alias('Good')][string]$GoodCommit = '',
+    [Alias('Bad')][string]$BadCommit = 'HEAD',
     [string]$Repo = '',
     # 'tool <id> <args...>': the arguments after the tool id are passed to the tool
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @()
@@ -394,7 +395,7 @@ try {
         'bisect' {
             [void](Resolve-BdTargets $Target)
             if (-not $Movie -or -not $Test) { throw 'bisect needs -Movie <file or name> and -Test "<test>" (no-crash | no-lag [from N] | picture at N | <expression> at N)' }
-            $r = Invoke-BdBisect -Id $Target -Movie $Movie -Test $Test -Good $Good -Bad $Bad -Repo $Repo -Exe $Exe
+            $r = Invoke-BdBisect -Id $Target -Movie $Movie -Test $Test -Good $GoodCommit -Bad $BadCommit -Repo $Repo -Exe $Exe
             if ($Json) { $r | ConvertTo-Json -Depth 6 }
             if ($r.firstBad) { Write-BdOk $r.verdict } else { Write-BdWarn $r.verdict }
             Write-BdInfo ("  {0} build(s); skipped (no build): {1}; can't tell: {2}" -f $r.builds, @($r.skipped).Count, @($r.cantTell).Count)

@@ -93,7 +93,7 @@ internal static class MovieCli
                     if (!sha.Equals(mv.RomSha256, StringComparison.OrdinalIgnoreCase)) { Console.Error.WriteLine($"the ROM is not the movie's (sha256 {sha}, the movie's {mv.RomSha256}): an export names the ROM it plays on"); return 2; }
                     MovieExport.Result res;
                     if (Opt("fm2") is { Length: > 0 } f) res = MovieExport.ToFm2(mv, rom, f);
-                    else if (Opt("bk2") is { Length: > 0 } b) res = MovieExport.ToBk2(mv, rom, b);
+                    else if (Opt("bk2") is { Length: > 0 } b) res = MovieExport.ToBk2(mv, rom, b, Opt("core"));
                     else { Console.Error.WriteLine("export needs --fm2 OUT or --bk2 OUT"); return 2; }
                     Console.WriteLine($"wrote {res.Path}: {res.Frames} frames");
                     foreach (var n in res.Notes) Console.WriteLine("note: " + n);

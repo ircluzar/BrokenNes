@@ -1497,6 +1497,12 @@ exit $p.ExitCode
             Assert-Equal (@($m2.movies).Count) 1
             Assert-Equal ([string]$m2.verify.scenarios[0].input) '60:Start,66:,200:A,260:' 'the manifest''s other fields changed'
             $v = Invoke-BdProjectVerify -Id 'mgame' -Exe $ws
+            # the verbs themselves (the dispatcher, its parameters): verify and movie list through brokendev.ps1
+            $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { (Get-Process -Id $PID).Path } else { Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe' }
+            $vv = Invoke-BdProcess -FilePath $psExe -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $bd 'brokendev.ps1'), 'verify', 'mgame') -TimeoutSec 600 -Env @{ BROKENDEV_HOME = $mh; BROKENDEV_PROJECTS = $mp; BROKENDEV_WORKSHOP = $ws }
+            Assert-True ($vv.ExitCode -eq 0 -and $vv.Output -notmatch 'FAIL') "brokendev.ps1 verify mgame: exit $($vv.ExitCode) $(Select-BdTail $vv.Output 4)"
+            $vl = Invoke-BdProcess -FilePath $psExe -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $bd 'brokendev.ps1'), 'movie', 'list', 'mgame') -TimeoutSec 120 -Env @{ BROKENDEV_HOME = $mh; BROKENDEV_PROJECTS = $mp; BROKENDEV_WORKSHOP = $ws }
+            Assert-True ($vl.ExitCode -eq 0 -and $vl.Output -match 'first') "brokendev.ps1 movie list mgame: exit $($vl.ExitCode) $(Select-BdTail $vl.Output 4)"
             $ms = @($v.scenarios | Where-Object { $_.id -eq 'movie-first' })
             Assert-True ($v.ok -and $ms.Count -eq 1) "verify: ok $($v.ok), scenarios $(@($v.scenarios | ForEach-Object { $_.id }) -join ', ')"
             Assert-True (@($ms[0].checks | Where-Object { $_.id -eq 'movie-in-sync' -and $_.ok }).Count -eq 1) 'no passing movie-in-sync check'

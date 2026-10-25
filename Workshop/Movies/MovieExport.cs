@@ -104,7 +104,8 @@ internal static class MovieExport
             new[] { ("Up", PadButtons.Up, 'U'), ("Down", PadButtons.Down, 'D'), ("Left", PadButtons.Left, 'L'), ("Right", PadButtons.Right, 'R'),
                     ("Select", PadButtons.Select, 's'), ("Start", PadButtons.Start, 'S'), ("Y", PadButtons.Y, 'Y'), ("B", PadButtons.B, 'B'),
                     ("X", PadButtons.X, 'X'), ("A", PadButtons.A, 'A'), ("L", PadButtons.L, 'l'), ("R", PadButtons.R, 'r') }, true),
-        "gb" or "gbc" => new Bk2Pad(console == "gb" ? "GB" : "GBC", "Gambatte", "", new[] { "Power" },
+        // BizHawk 2.11.1 checks a movie's platform against the loaded one, which is GB for a Color game on Gambatte too (measured: "GBC" is refused)
+        "gb" or "gbc" => new Bk2Pad("GB", "Gambatte", "", new[] { "Power" },
             new[] { ("Up", PadButtons.Up, 'U'), ("Down", PadButtons.Down, 'D'), ("Left", PadButtons.Left, 'L'), ("Right", PadButtons.Right, 'R'),
                     ("Start", PadButtons.Start, 'S'), ("Select", PadButtons.Select, 's'), ("B", PadButtons.B, 'B'), ("A", PadButtons.A, 'A') }, false),
         _ => throw new NotSupportedException($"BizHawk .bk2 export covers the NES, SNES and Game Boy / Color, not the {console}"),
@@ -122,10 +123,26 @@ internal static class MovieExport
         return Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(data));
     }
 
-    public static Result ToBk2(Movie mv, byte[] romFile, string path)
+    /// <summary>The BizHawk cores a .bk2 can name per console (the first is the default). The Game Boy's default is SameBoy: EmuHawk 2.11.1 plays a
+    /// Gambatte movie only with the Game Boy boot ROM ("Missing Firmware", measured even with the movie's sync settings saying EnableBIOS false),
+    /// which BrokenNes does not have and never asks for (the no-firmware rule); SameBoy runs its own boot ROM.</summary>
+    public static readonly IReadOnlyDictionary<string, string[]> Bk2Cores = new Dictionary<string, string[]>
+    {
+        ["nes"] = new[] { "NesHawk" }, ["snes"] = new[] { "BSNESv115+" }, ["gb"] = new[] { "SameBoy", "Gambatte" }, ["gbc"] = new[] { "SameBoy", "Gambatte" },
+    };
+
+    public static Result ToBk2(Movie mv, byte[] romFile, string path, string core = "")
     {
         var pad = PadFor(mv.Console);
-        var notes = CommonNotes(mv, "BizHawk");
+        if (Bk2Cores.TryGetValue(mv.Console, out var cores))
+        {
+            if (core.Length == 0) core = cores[0];
+            if (!cores.Contains(core)) throw new NotSupportedException($"a {mv.Console} .bk2 names one of {string.Join(", ", cores)}, not '{core}'");
+            pad = pad with { Core = core };
+        }
+        var notes = CommonNotes(mv, "BizHawk " + pad.Core);
+        if (pad.Core == "Gambatte") notes.Add("EmuHawk 2.11.1 plays a Gambatte movie only with the Game Boy boot ROM, which BrokenDev does not provide: name SameBoy (the default) to play it without one");
+        if (pad.Core == "SameBoy") notes.Add("SameBoy plays its boot animation before the game (about 189 frames), BrokenNes starts after the boot ROM: the same input lands that much earlier in the game; compare on BizHawk with the same input given frame by frame (tests/movie-cross.ps1)");
         if (!pad.TwoPads && mv.UsesPad2) throw new NotSupportedException($"the movie presses pad 2, which the {pad.Platform} does not have");
         var header = new StringBuilder();
         void H(string k, string v) => header.Append(k).Append(' ').Append(v).Append('\n');
@@ -168,6 +185,15 @@ internal static class MovieExport
             Entry("Input Log.txt", log.ToString());
             Entry("Comments.txt", $"exported from a {MovieFormat.Name} ({MovieFormat.Extension}) by {MovieMachine.EmulatorBuild()}; recorded on BrokenNes {mv.Cores}\n");
             Entry("Subtitles.txt", "");
+            if (pad.Core == "Gambatte")
+            {
+                // A movie plays with the sync settings it carries; without them EmuHawk 2.11.1 asks Gambatte for the boot ROM and stops ("Missing
+                // Firmware": measured). BrokenNes has no boot ROM (the no-firmware rule), so the movie names Gambatte's own defaults without one:
+                // the settings EmuHawk itself writes back after a run without a movie (EnableBIOS false, ConsoleMode 0 = the cartridge decides).
+                Entry("SyncSettings.json", "{\"o\":{\"$type\":\"BizHawk.Emulation.Cores.Nintendo.Gameboy.Gameboy+GambatteSyncSettings, BizHawk.Emulation.Cores\",\"EnableBIOS\":false,\"ConsoleMode\":0,"
+                    + "\"CartBusPullUpTime\":8,\"RealTimeRTC\":false,\"RTCDivisorOffset\":0,\"InitialTime\":0,\"EnableRemote\":false,\"FrameLength\":0,\"DisplayBG\":true,\"DisplayOBJ\":true,\"DisplayWindow\":true}}");
+                notes.Add("the movie asks Gambatte to run without a boot ROM (its sync settings: EnableBIOS false), as BrokenNes does");
+            }
         }
         return new Result(path, mv.Frames, notes);
     }
