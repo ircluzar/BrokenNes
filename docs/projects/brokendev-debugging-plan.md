@@ -671,7 +671,7 @@ port and DMA reads are still checked.
   finder, bisect's verdicts, step back on the three consoles, VRUN and Super VRUN; each with a negative control); the MCP client test
   (75 of 75, 15 new), the demo (6 of 6); BrokenDev `run-tests` (137 passed, 0 failed: the movie format from the Workshop, record + promote + verify with
   the late-Start movie failing it, the verbs through `brokendev.ps1`, the bisect proof); `tests/movie-cross.ps1` (12 checks on 4 emulators);
-  `--debug-test` 101 of 101, `--check-test` 111 of 111, `--wms-test` 288 passed 0 failed, UAT 125 pass 0 fail 16 skip 3 info (the goldens unchanged); the desktop app, Core, Lite and the plugin build.
+  `--debug-test` 101 of 101, `--check-test` 111 of 111, `--wms-test` 306 passed 0 failed, UAT 125 pass 0 fail 16 skip 3 info (the goldens unchanged), all on the branch merged with main 329f98d (WideMess M6 follow-up; the one conflict, `Workshop/Debug/DebugRunCli.cs`, resolved as a union); the desktop app, Core, Lite and the plugin build.
 - **Left open:** the format's name (open question 2); the desktop app and Lite record no movies yet (D6's bug capture records them, on the same
   format and `DebugHistory`); movie resets (an `.fm2` with a reset is refused); headless MCP sessions run NTSC timing or another power-on RAM
   only through `movie play` (not `open_movie`); instruction-level divergence against another emulator (their compat runs record variables,
