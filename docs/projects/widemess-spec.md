@@ -451,6 +451,19 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
   - **repeat**: the layer's own 256 visible columns repeat side by side. Picture column c shows the layer's column
     72 + ((c - 72) mod 256). For a 32-tile map this is the same as extend; for a 64-tile map it hides the off-screen half.
   - **fill**: the layer is transparent in the sides, so the layers behind it, or the backdrop, show there.
+  - **drawn** (BG1-BG4, milestone 6 follow-up): extend, but only where the game has drawn the layer's map for the place shown; elsewhere
+    fill. For games that draw new columns of their map only as they reach the SNES edge, leaving old tiles (another part of the level, the
+    last level) further out. The console follows the layer's horizontal scroll once a frame (HOFS unwrapped: a frame's step is taken the
+    short way round) and keeps the span of the level, in those unwrapped pixels, that the game has drawn into the map:
+    - the SNES picture's own 256 columns are drawn every frame; in a frame the layer scrolls right (left), also the profile's `ahead`
+      pixels past the right (left) edge (`drawnAhead`, 0-72, default 16: how far ahead the game draws);
+    - the map holds one map width (256 or 512 pixels, twice that with 16-pixel tiles), so drawing past one end of the span overwrites
+      the columns one map width back: the other end moves along;
+    - a cut starts the span again at the picture's own columns: a step of more than 64 pixels in a frame, or the layer's map, tile size
+      or BGMODE changing (a new scene);
+    - vertical scroll is not followed (the sides show the centre's rows), and in Mode 7 drawn is extend.
+    A side column whose place is outside the span is filled. The game sees nothing of it: it is the picture chip's reading of the registers
+    and of its own map, as the side rules are.
 - **Sprites** follow one of two rules:
   - **extend**: the SNES's sprite pass draws the centre unchanged: 32 sprites and 34 slivers, counted on the SNES's 256 columns.
     The parts of sprites that fall in the side columns are drawn in addition and never counted. Their X follows section 3.3:
@@ -500,14 +513,29 @@ filter, which dulls the high frequencies.
 
 **Fast CPU**: section 2's fast mode, forced on by the console while the game stays locked.
 - Every CPU access takes 2 master clocks except the I/O registers.
-- It removes slowdown and can break games that time things by counting CPU cycles. A profile marks it safe, risky or broken.
+- **The sound-port guard.** A SNES game's sound driver was written for a 3.58 MHz 65816, and its handshakes count on the 65816 taking
+  SNES time between reading the SPC700's answer and writing the next value. So every access to the sound ports (`$2140-$217F`)
+  starts one scan line (1,364 master clocks) of SNES timing: every access and internal cycle takes what it takes on a SNES (`MEMSEL`
+  deciding ROM). Each port access restarts it, so a handshake runs at SNES time from its first port access to one line after its last;
+  the code between handshakes runs fast. WMSPEED's own fast mode (a `.wms` game, written for it) has no guard.
+  - Why: Contra III's sound loader. After its driver echoes `$FF` on port 0 the driver clears its input ports 147 master clocks later;
+    a fast 65816 wrote the next value (`$CC`) 80 clocks after the echo, before the clear, so it was wiped and the two waited for each
+    other forever. With the guard it lands after the clear (240 clocks or more), as on a SNES.
+  - What it costs: the time a game spends talking to its sound driver runs at SNES speed. Milestone 6's games, fast CPU switched on
+    at their sheets' first moment (`--wms-test` E6): Super Metroid and Chrono Trigger 0.0%, Super Mario Kart 0.2%, F-Zero 0.5%,
+    Contra III 0.6%, A Link to the Past 1.2%, Mega Man X 1.8%, Yoshi's Island 2.0%, Super Castlevania IV 5.2%, Super Mario World 9.8%,
+    Donkey Kong Country 14.2%.
+- It removes slowdown and can break games that time things by counting CPU cycles or by the beam. A profile marks it good, risky or broken.
 - **Switch it on after the game has started.** Super Mario World hangs if fast CPU is on while it starts. It sends its sound driver to
-  the SPC700 exactly as at SNES speed (the first 23,973 port writes are identical), starts the driver, then writes `$FF` to `$2141`
-  8 ms later instead of 31 ms. The driver is still setting up and clears its input ports, so that write is lost and the two wait for
-  each other forever. A real 65816 at 10.74 MHz would do the same: this is the game's timing, not an emulation fault. Switched on
-  after the title, the game runs.
-- Chrono Trigger and Contra III hang at a later scene change (a black screen, the 65816 in a loop), even with fast CPU switched on
-  after the title: probably the same kind of handshake with the sound driver, not traced. Their profiles call fast CPU broken.
+  the SPC700 exactly as at SNES speed (the first 23,973 port writes are identical), starts the driver, clears 8 KB of work RAM, then
+  writes `$FF` to `$2141`: 8 ms after starting the driver instead of 31 ms. The driver is still setting up and clears its input ports,
+  so that write is lost and the two wait for each other forever. The 31 ms are the RAM clear, with no sound-port access, so the guard
+  cannot help. A real 65816 at 10.74 MHz would do the same: this is the game's timing, not an emulation fault. Switched on after the
+  title, the game runs.
+- **Chrono Trigger times itself by the beam.** Each frame its main loop latches the scanline counter (`$2137`, `$213D`) and starts the
+  next scene's loading only on lines 240 and later or before line 72; otherwise it waits a frame. At SNES speed the loop gets there on
+  line 257; with fast CPU it finishes its work earlier and arrives on line 238 every frame, so the next scene never loads (a black
+  screen). Its profile calls fast CPU broken, with this reason.
 - So the desktop app never keeps fast CPU for a game's next start.
 
 ### 6.2 Profiles
@@ -546,7 +574,8 @@ profile already claims is refused with the reason. It is never half-read.
 ```
 
 - `widescreen` is required when `enhancements.widescreen` is anything but `"unavailable"`, and refused when it is `"unavailable"`.
-  Its keys: `layers` (required: `bg1`-`bg4` extend / repeat / fill, `sprites` extend / fill), `masks` and `windows` (6.1).
+  Its keys: `layers` (required: `bg1`-`bg4` extend / repeat / fill / drawn, `sprites` extend / fill), `masks`, `windows` and `drawnAhead`
+  (6.1; `{ "bg1": 8 }`, only for layers on the drawn rule, 0-72).
 - A mask's keys: `why`, `layers` (`bg1`-`bg4`, `sprites`, or `all`; a black mask covers `all`), `rows` (`[top, bottom]`, 0-238),
   `rule` (fill / repeat / black; sprites cannot repeat), and optionally `side` (both / left / right), `from` and `to` (0-72, from < to)
   and `when` (`{ "register": "$VV" }` or `"$VV/$MM"`, hex; a value with bits outside its mask is refused, it could never match).
@@ -589,6 +618,10 @@ profile already claims is refused with the reason. It is never half-read.
   picture beside WideMess widescreen at several moments of play. `--game` names a proven game (6.4: its pad script and moments).
   `--all-extend` draws every layer extended instead of the profile (why a game's widescreen is unavailable); `--no-flicker` adds it.
 - `--wms-enhance-film`: the wide picture every N frames, with each moment's register set-up per band of rows (for writing profiles).
+- `--wms-side-truth (--game <key> | --rom <game>) --layer bg1` (milestone 6 follow-up): how true a layer's side columns are. Every side column a
+  frame shows claims what the layer looks like at that place; when the place later scrolls into the SNES picture, the SNES picture is the
+  truth, and the claim is right, empty (the layer shows nothing there) or wrong. The layer's own colours are compared (a capture before windows,
+  colour math and brightness), only on frames whose lines share one scroll.
 - `--wms-enhance-test`: milestone 6's checks alone.
 - `--wms-fast-probe --rom <game> --from <frame>`: fast CPU switched on at a frame, the 65816's PC beside the SNES console's.
 - `--wms-test` checks every enhancement against a negative control:
@@ -611,16 +644,33 @@ by `--wms-test` in lockstep with the SNES console, through a pad script or the g
 | Game | Widescreen | Its rules | No flicker (lines with more sprites) | Fast CPU |
 |---|---|---|---|---|
 | Super Mario World | good | all extended; BG3 filled where it is drawn in front (status bar, title frame) | 0 | risky: hangs if on at power-on |
-| Yoshi's Island (Super FX 2) | risky | all extended | 18 | risky |
-| Donkey Kong Country | risky | all extended; black sides for the intro and level-name screens | 0 | risky |
-| Super Metroid | risky | all extended; BG3 filled in the status rows | 0 | risky |
+| Yoshi's Island (Super FX 2) | risky | BG1 drawn, the rest extended | 18 | risky |
+| Donkey Kong Country | good | BG1 drawn (ahead 0), the rest extended; black sides for the intro and level-name screens | 0 | risky |
+| Super Metroid | risky | BG1 drawn (ahead 0), the rest extended; BG3 filled in the status rows | 0 | risky |
 | A Link to the Past | risky | all extended | 0 | risky |
 | F-Zero | good | all extended, sprites filled; BG3 filled above the horizon | 0 | risky |
 | Super Mario Kart (DSP-1) | good | all extended, sprites filled; black sides for the title | 0 | risky |
-| Chrono Trigger | unavailable | (the sides hold unrelated tiles) | 0 | broken |
-| Mega Man X | risky | all extended | 254 | risky |
-| Contra III | risky | all extended, BG3 filled | 2,946 | broken |
-| Super Castlevania IV | risky | all extended, BG3 filled; black sides for the title | 0 | risky |
+| Chrono Trigger | unavailable | (the sides hold unrelated tiles) | 0 | broken: times itself by the beam |
+| Mega Man X | risky | BG1 drawn, the rest extended | 254 | risky |
+| Contra III | risky | BG1 and BG2 drawn, BG3 filled | 2,946 | risky (needed the sound-port guard) |
+| Super Castlevania IV | risky | BG1 and BG2 drawn, BG3 filled; black sides for the title | 0 | risky |
+
+**Side truth** (`--wms-side-truth`, the side columns of one layer later shown by the SNES picture, over each game's checked play): wrong with the
+layer extended, then on the drawn rule (the rest of the claims right, or empty where the layers behind show):
+
+| Game, layer | Extended: wrong | Drawn: wrong | Drawn: right / empty |
+|---|---|---|---|
+| Donkey Kong Country, BG1 (ahead 0) | 49% | 0% | 22% / 78% |
+| Super Metroid, BG1 (ahead 0) | 87% | 0.6% | 6% / 93% |
+| Super Castlevania IV, BG1 / BG2 | 68% / 50% | 0% / 0% | 1% / 99%, 0% / 100% |
+| Contra III, BG1 / BG2 | 34% / 100% | 0% / 0% | 4% / 96%, 0% / 100% |
+| Mega Man X, BG1 | 59% | 0% | 9% / 91% |
+| Chrono Trigger, BG1 / BG2 (widescreen stays unavailable) | 78% / 9% | 0% / 6% | 15% / 85%, 27% / 67% |
+
+Layers left extended because they were already true: Donkey Kong Country BG2 (95% right, 0% wrong), Super Metroid BG2 (96% / 3.8%),
+A Link to the Past BG1 (100% right; BG2 17% wrong outdoors, where drawn would empty the sides). Yoshi's Island changes BG1's scroll within a
+frame, so the tool cannot judge it; its sheet shows the old tiles gone. The drawn rule trades wrong tiles for empty sides: only Donkey Kong
+Country, whose jungle (BG2) shows behind the level, looks right with it at every moment of its sheet.
 
 What the sheets show, by kind of game:
 - **Mode 7 games** (F-Zero, Super Mario Kart) extend best: the plane continues to both edges.

@@ -58,12 +58,16 @@ internal static partial class WideMessCli
 
         Console.WriteLine("E2. Synthetic sprite scenes on the WideMess picture chip");
         SyntheticSprites();
+        Console.WriteLine("E2b. The drawn side rule on a synthetic game that streams its map as it scrolls");
+        SyntheticDrawn();
 
         Console.WriteLine("E3. Better sound: cubic interpolation on the S-DSP (a synthetic voice)");
         SyntheticSound();
 
         Console.WriteLine("E4. Fast CPU from the console: the speed ROM, never unlocked (its SNES image on the WideMess console)");
         FastCpuSpeedRom(dir);
+        Console.WriteLine("E4b. Fast CPU's sound-port guard: a synthetic handshake that needs SNES time between the SPC700's echo and the next write");
+        SoundGuardHandshake();
 
         Console.WriteLine("E5. Who gets enhancements, and the unlock taking them away");
         WhoGetsThem(dir);
@@ -78,6 +82,25 @@ internal static partial class WideMessCli
         Parallel.For(0, games.Length, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Math.Min(4, Environment.ProcessorCount / 4)) },
             i => results[i] = ProveGame(games[i], Path.Combine(snesDir, games[i].File)));
         foreach (var r in results) ReportGame(r);
+
+        Console.WriteLine("E8. Side truth: the drawn rule's side columns against what the SNES picture shows when the place scrolls into it (every layer extended: the negative control)");
+        var truthGames = games.Where(x => x.Key is "dkc" or "sm").ToArray();
+        var truth = new ((long right, long empty, long wrong) drawn, (long right, long empty, long wrong) ext)[truthGames.Length];
+        Parallel.For(0, truthGames.Length, i =>
+        {
+            var common = new[] { "--game", truthGames[i].Key, "--layer", "bg1", "--snes-dir", snesDir }.Concat(profiles != "" ? new[] { "--profiles", profiles } : Array.Empty<string>()).ToArray();
+
+            truth[i].drawn = SideTruthCounts(common);
+            truth[i].ext = SideTruthCounts(common.Append("--all-extend").ToArray());
+        });
+        for (int i = 0; i < truthGames.Length; i++)
+        {
+            var (d, x) = truth[i];
+            long dj = d.right + d.empty + d.wrong, xj = x.right + x.empty + x.wrong;
+            Check(dj >= 100 && d.wrong * 100 <= dj, $"{truthGames[i].Key}: BG1 on its profile's drawn rule: at most 1% of the side columns the SNES picture later shows are wrong",
+                $"{d.wrong:N0} wrong of {dj:N0} ({d.right:N0} right, {d.empty:N0} left to the layers behind)");
+            Check(xj >= 100 && x.wrong * 5 >= xj, $"{truthGames[i].Key}: negative control, BG1 extended: at least 20% wrong (the old tiles the drawn rule leaves out)", $"{x.wrong:N0} wrong of {xj:N0}");
+        }
 
         Console.WriteLine("E7. Speed: the enhanced picture (widescreen, every line through the wide compositor and the profile's rules)");
         foreach (var key in new[] { "smw", "fzero", "smk" })
@@ -102,6 +125,8 @@ internal static partial class WideMessCli
         {
             var p = WmsProfile.Parse(good, "good.json");
             Check(p.Widescreen!.Layers[1] == WmsSideRule.Repeat && p.Widescreen.Masks[0].When.Length == 2 && p.Widescreen.Masks[0].When[1].Mask == 0xFC, "a well-formed profile reads (rules, masks, scene conditions)");
+            var d = WmsProfile.Parse(good.Replace("\"bg1\": \"extend\"", "\"bg1\": \"drawn\"").Replace("\"masks\": [", "\"drawnAhead\": { \"bg1\": 8 }, \"masks\": ["), "drawn.json");
+            Check(d.Widescreen!.Layers[0] == WmsSideRule.Drawn && d.Widescreen.DrawnAhead[0] == 8 && d.Widescreen.DrawnAhead[1] == 16, "a profile with a drawn layer reads (its ahead, the others' default 16)");
         }
         catch (Exception e) { Check(false, "a well-formed profile reads", e.Message); }
         (string change, string from, string to, string mustSay)[] bad =
@@ -117,11 +142,15 @@ internal static partial class WideMessCli
             ("recommending what it calls unavailable", "\"fastCpu\": \"risky\"", "\"fastCpu\": \"unavailable\" ", "fastCpu"),
             ("a bad SHA-1", "01234567\"]", "0123456\"]", "not a SHA-1"),
             ("another format", "widemess-profile-1", "widemess-profile-9", "format"),
+            ("sprites on the drawn rule", "\"sprites\": \"fill\"", "\"sprites\": \"drawn\"", "extend or fill"),
+            ("a drawn ahead for a layer not on the drawn rule", "\"masks\": [", "\"drawnAhead\": { \"bg2\": 8 }, \"masks\": [", "not drawn"),
+            ("a drawn ahead past the side", "\"bg1\": \"extend\"", "\"bg1\": \"drawn\"", "0-72 pixels"),
         };
         foreach (var (change, from, to, mustSay) in bad)
         {
             string json = good.Replace(from, to);
             if (change.StartsWith("recommending")) json = json.Replace("\"recommended\": [\"widescreen\"]", "\"recommended\": [\"fastCpu\"]");
+            if (change.StartsWith("a drawn ahead past")) json = json.Replace("\"masks\": [", "\"drawnAhead\": { \"bg1\": 80 }, \"masks\": [");
             if (change.StartsWith("widescreen offered")) json = System.Text.RegularExpressions.Regex.Replace(json, "\"unused\": \\{.*?\\] \\},", "", System.Text.RegularExpressions.RegexOptions.Singleline);
             try { WmsProfile.Parse(json, "bad.json"); Check(false, $"refuses a profile with {change}", "it was read"); }
             catch (InvalidDataException e) { Check(e.Message.Contains(mustSay, StringComparison.OrdinalIgnoreCase), $"refuses a profile with {change}, and says why", e.Message); }
@@ -238,6 +267,99 @@ internal static partial class WideMessCli
         Check(off.SequenceEqual(snesFrame), "every enhancement off again: the SNES chip's own picture");
     }
 
+    // ------------------------------------------------------------------ E2b
+
+    /// <summary>
+    /// The drawn rule on a synthetic streaming game, written straight into a picture chip: BG1 on a 64-tile map (512 pixels) full of red tiles (what an old level left in video RAM).
+    /// The level is stripes 96 pixels wide, white and green (tile column t is white when (t / 12) is even), so a map column the game drew 512 pixels earlier holds other stripes than
+    /// the place it is shown for. Each frame the "game" scrolls BG1 by <paramref name="step"/> pixels and, like Donkey Kong Country, draws the place the SNES picture shows plus 8 pixels
+    /// ahead of the edge it scrolls towards, wrapping in the 512-pixel map. Returns the last frame and the scroll it showed.
+    /// </summary>
+    private static (uint[] wide, uint[] snes, int x) DrawnScene(PPU_WMS wms, PPU_SFC snes, WmsWidescreen? rules, int frames, int step, int jumpAt = -1)
+    {
+        foreach (var p in new PPU_SFC[] { wms, snes })
+        {
+            p.Reset();
+            for (int w = 16; w < 24; w++) p.Vram[w] = 0x00FF;   // tile 1: colour 1 (white)
+            for (int w = 32; w < 40; w++) p.Vram[w] = 0xFF00;   // tile 2: colour 2 (red)
+            for (int w = 48; w < 56; w++) p.Vram[w] = 0xFFFF;   // tile 3: colour 3 (green)
+            p.Cgram[0] = 0; p.Cgram[1] = 0x7FFF; p.Cgram[2] = 0x001F; p.Cgram[3] = 0x03E0;
+            for (int a = 0x1000; a < 0x1800; a++) p.Vram[a] = 2;
+            p.WriteRegister(0x05, 0x01);   // BGMODE 1
+            p.WriteRegister(0x07, 0x11);   // BG1 map at word $1000, 64 tiles wide
+            p.WriteRegister(0x0B, 0x00);
+            p.WriteRegister(0x2C, 0x01);   // TM: BG1
+            p.WriteRegister(0x00, 0x0F);
+        }
+        wms.SetEnhancements(rules, false);
+        int x = 1024;
+        void Draw(int from, int to)
+        {
+            for (int px = from & ~7; px < to; px += 8)
+            {
+                int t = px >> 3, col = t & 63;
+                ushort tile = (ushort)(t / 12 % 2 == 0 ? 1 : 3);
+                for (int row = 0; row < 32; row++) foreach (var p in new PPU_SFC[] { wms, snes }) p.Vram[0x1000 + (col & 31) + ((col & 32) != 0 ? 0x400 : 0) + row * 32] = tile;
+            }
+        }
+        Draw(x, x + 256);
+        uint[] wf = Array.Empty<uint>(), sf = Array.Empty<uint>();
+        for (int f = 0; f < frames; f++)
+        {
+            x += f == jumpAt ? 200 : step;
+            if (f == jumpAt) Draw(x, x + 256);                      // a new scene: the game draws the picture's columns
+            else if (step > 0) Draw(x + 256 - step, x + 256 + 8);   // the columns coming in on the right, 8 pixels ahead
+            else Draw(x - 8, x - step);                             // on the left
+            foreach (var p in new PPU_SFC[] { wms, snes }) { p.WriteRegister(0x0D, (byte)(x & 0xFF)); p.WriteRegister(0x0D, (byte)((x >> 8) & 3)); }
+            wf = DrawFrame(wms, out _); sf = DrawFrame(snes, out _);
+        }
+        return (wf, sf, x);
+    }
+
+    private static void SyntheticDrawn()
+    {
+        var wms = new PPU_WMS(); var snes = new PPU_SFC();
+        bool Centre(uint[] w, uint[] s) => Enumerable.Range(0, 224).All(r => w.AsSpan(r * 400 + 72, 256).SequenceEqual(s.AsSpan(r * 256, 256)));
+        // the colours as the chips draw them, from the SNES picture: white and green stripes (the level), black the backdrop
+        (int wrong, int level, int backdrop) Judge(uint[] f, uint[] s, int x, int from, int to)
+        {
+            uint white = 0, green = 0;
+            for (int c = 0; c < 256; c++) { int t = (x + c) >> 3; if (t / 12 % 2 == 0) white = s[c]; else green = s[c]; }
+            int wrong = 0, level = 0, back = 0;
+            for (int r = 0; r < 224; r++)
+                for (int c = from; c < to; c++)
+                {
+                    int t = (x + c - 72) >> 3;
+                    uint v = f[r * 400 + c], want = t / 12 % 2 == 0 ? white : green;
+                    if (v == want) level++; else if (v == 0xFF000000u) back++; else wrong++;
+                }
+            return (wrong, level, back);
+        }
+        var (ext, es, ex) = DrawnScene(wms, snes, WmsWidescreen.AllExtend(), 150, 4);
+        var er = Judge(ext, es, ex, 336, 400);
+        Check(er.wrong > 0 && Centre(ext, es), "negative control, BG1 extended: scrolling right, the right side beyond the 8 pixels the game draws ahead shows old tiles (not the stripes of the place)",
+            $"{er.wrong:N0} wrong pixels in the right side");
+        var drawn = WmsWidescreen.AllExtend(); drawn.Layers[0] = WmsSideRule.Drawn; drawn.DrawnAhead[0] = 8;
+        var (dr, ds, dx) = DrawnScene(wms, snes, drawn, 150, 4);
+        var dl = Judge(dr, ds, dx, 0, 72); var da = Judge(dr, ds, dx, 328, 336); var db = Judge(dr, ds, dx, 336, 400);
+        Check(dl.wrong + da.wrong + db.wrong == 0 && Centre(dr, ds), "BG1 drawn (ahead 8): no wrong pixel in either side, the centre the SNES chip's picture", $"wrong {dl.wrong + da.wrong + db.wrong}");
+        Check(da.level == 224 * 8 && db.backdrop == 224 * 64 && dl.level == 224 * 72,
+            "drawn: the 8 pixels ahead and the whole left side (drawn as the picture passed) show the level; beyond the 8, the backdrop",
+            $"ahead {da.level:N0} level, beyond {db.backdrop:N0} backdrop, left {dl.level:N0} level");
+        var (lf, ls, lx) = DrawnScene(wms, snes, drawn, 150, -4);
+        var ll = Judge(lf, ls, lx, 0, 64); var la = Judge(lf, ls, lx, 64, 72); var lr = Judge(lf, ls, lx, 328, 400);
+        Check(ll.wrong + la.wrong + lr.wrong == 0 && la.level == 224 * 8 && ll.backdrop == 224 * 64 && lr.level == 224 * 72 && Centre(lf, ls),
+            "drawn, scrolling left: the same on the other side", $"left ahead {la.level:N0} level, beyond {ll.backdrop:N0} backdrop, right {lr.level:N0} level, wrong {ll.wrong + la.wrong + lr.wrong}");
+        var (jf, js, jx) = DrawnScene(wms, snes, drawn, 150, 4, jumpAt: 149);
+        var jl = Judge(jf, js, jx, 0, 72); var jr = Judge(jf, js, jx, 328, 400);
+        var (xf, xs, xx) = DrawnScene(wms, snes, WmsWidescreen.AllExtend(), 150, 4, jumpAt: 149);
+        var xr = Judge(xf, xs, xx, 328, 400);
+        Check(jl.wrong + jr.wrong == 0 && jl.backdrop == 224 * 72 && jr.backdrop == 224 * 72 && xr.wrong > 0 && Centre(jf, js),
+            "a cut (a jump of 200 pixels: a new scene): the drawn span starts again at the picture's own columns, both sides the backdrop until the game draws there; extended, the right side shows old tiles",
+            $"drawn: left {jl.backdrop:N0} / right {jr.backdrop:N0} backdrop; extended: {xr.wrong:N0} wrong on the right");
+        wms.SetEnhancements(null, false);
+    }
+
     // ------------------------------------------------------------------ E3
 
     /// <summary>One voice of a BRR loop (16 samples a block) at pitch 1.0, at full gain and volume: the left output's peak over 4,000 samples.</summary>
@@ -275,6 +397,8 @@ internal static partial class WideMessCli
 
     // ------------------------------------------------------------------ E4
 
+    private static long speedRomGuard = -1;
+
     private static void FastCpuSpeedRom(string dir)
     {
         string speedNo = Path.Combine(dir, "speed_nounlock.wms");
@@ -287,6 +411,7 @@ internal static partial class WideMessCli
             var w = s.Board.Wram;
             for (int f = 0; f < 120 && w[0x1FF] != 0xA5; f++) Run(s, 1);
             int Wd(int o) => w[0x100 + o] | w[0x101 + o] << 8;
+            if (fast) speedRomGuard = s.Board.SoundGuardMasterClocks;
             return new[] { Wd(0x02), Wd(0x06), w[0x101] | (s.WideMess!.Unlocked ? 0x100 : 0) };
         }
         var off = Measure(false); var on = Measure(true);
@@ -294,6 +419,88 @@ internal static partial class WideMessCli
         Check(Near(off[0], pa, 0.005) && Near(off[1], pb, 0.005), "off: the locked game runs at SNES speed (loops A and B as spec 2 predicts)", $"A {off[0]} (predicted {pa:F0}), B {off[1]} (predicted {pb:F0})");
         Check(Near(on[0], paf, 0.005) && Near(on[1], pbf, 0.005), "on: the same locked game runs at fast mode's speed (2 clocks a cycle, the I/O register at 6)", $"A {on[0]} (predicted {paf:F0}), B {on[1]} (predicted {pbf:F0})");
         Check(on[2] == 0x42 && off[2] == 0x42, "the game never sees it: WMSPEED reads open bus ($42), the extension stays locked", $"WMSPEED read {on[2] & 0xFF:X2}{((on[2] & 0x100) != 0 ? ", UNLOCKED" : "")}");
+        Check(speedRomGuard == 0, "the speed ROM never touches the sound ports, so the sound-port guard never runs: the loops above are fast mode's own", $"{speedRomGuard:N0} clocks in the guard");
+    }
+
+    // ------------------------------------------------------------------ E4b
+
+    /// <summary>
+    /// A LoROM test ROM (assembled here) with the handshake that hangs Contra III's loader at fast speed: the 65816 uploads a small SPC700 program through
+    /// the IPL; the program says it runs ($5A on port 1), waits for $55 on port 0, echoes it and clears its input ports ($F1 bit 4) 7 SPC700 cycles later
+    /// (about 145 master clocks, as Contra III's driver), then waits for $CC and echoes it. The 65816 writes $55, waits for the echo, writes ports 2 and 3, then $CC: about
+    /// 150-230 master clocks after seeing the echo at SNES speed (after the clear: it arrives), 50-70 at fast speed (before it: wiped).
+    /// Work RAM $0010: $01 the 65816 saw $CC come back, $EE it gave up.
+    /// </summary>
+    internal static byte[] HandshakeRom()
+    {
+        var s = new BrokenNes.Workshop.Debug.Asm(0x0200);
+        s.B(0xE8, 0x5A, 0xC4, 0xF5)                                  // MOV A,#$5A; MOV $F5,A: running
+         .L("l1").B(0xE4, 0xF4, 0x68, 0x55, 0xD0).R("l1")           // MOV A,$F4; CMP A,#$55; BNE l1
+         .B(0xC4, 0xF4)                                              // MOV $F4,A: the echo
+         .B(0x00)                                                    // NOP (the driver's set-up)
+         .B(0x8F, 0x10, 0xF1)                                        // MOV $F1,#$10: clear the input ports 0 and 1
+         .L("l2").B(0xE4, 0xF4, 0x68, 0xCC, 0xD0).R("l2")           // MOV A,$F4; CMP A,#$CC; BNE l2
+         .B(0xC4, 0xF4)                                              // MOV $F4,A: $CC back
+         .L("l3").B(0x2F).R("l3");                                   // BRA l3
+        var spc = s.Build();
+        var a = new BrokenNes.Workshop.Debug.Asm(0x8000);
+        a.L("reset").B(0x78, 0x18, 0xFB, 0xE2, 0x30, 0xA9, 0x80, 0x8D, 0x00, 0x21)      // SEI CLC XCE SEP #$30; forced blank
+         .B(0x9C, 0x10, 0x00)                                                           // STZ $0010
+         .L("w1").B(0xAD, 0x40, 0x21, 0xC9, 0xAA, 0xD0).R("w1")
+         .B(0xA9, 0x00, 0x8D, 0x42, 0x21, 0xA9, 0x02, 0x8D, 0x43, 0x21)                 // to $0200
+         .B(0xA9, 0x01, 0x8D, 0x41, 0x21, 0xA9, 0xCC, 0x8D, 0x40, 0x21)
+         .L("w2").B(0xAD, 0x40, 0x21, 0xC9, 0xCC, 0xD0).R("w2")
+         .B(0xA2, 0x00)
+         .L("send").B(0xBD).A("spc").B(0x8D, 0x41, 0x21, 0x8A, 0x8D, 0x40, 0x21)
+         .L("w3").B(0xCD, 0x40, 0x21, 0xD0).R("w3")
+         .B(0xE8, 0xE0, (byte)spc.Length, 0xD0).R("send")
+         .B(0xA9, 0x00, 0x8D, 0x42, 0x21, 0xA9, 0x02, 0x8D, 0x43, 0x21)                 // entry $0200
+         .B(0x9C, 0x41, 0x21, 0x8A, 0x1A, 0x8D, 0x40, 0x21)                             // run it
+         .L("w4").B(0xAD, 0x41, 0x21, 0xC9, 0x5A, 0xD0).R("w4")                         // until it says it runs
+         .B(0xA9, 0x55, 0x8D, 0x40, 0x21)                                               // LDA #$55 STA $2140
+         .L("w5").B(0xCD, 0x40, 0x21, 0xD0).R("w5")                                     // CMP $2140 BNE w5: the echo
+         .B(0xA9, 0x00, 0x8D, 0x42, 0x21, 0xA9, 0x00, 0x8D, 0x43, 0x21)                 // ports 2 and 3
+         .B(0xA9, 0xCC, 0x8D, 0x40, 0x21)                                               // then $CC
+         .B(0xC2, 0x10, 0xA2, 0x00, 0x00)                                               // REP #$10 LDX #0
+         .L("w6").B(0xAD, 0x40, 0x21, 0xC9, 0xCC, 0xF0).R("ok")                         // LDA $2140 CMP #$CC BEQ ok
+         .B(0xCA, 0xD0).R("w6")                                                         // DEX BNE w6
+         .B(0xA9, 0xEE, 0x8D, 0x10, 0x00, 0x80).R("done")                               // gave up
+         .L("ok").B(0xA9, 0x01, 0x8D, 0x10, 0x00)
+         .L("done").B(0x80).R("done")
+         .L("nmi").B(0x40)
+         .L("spc").B(spc);
+        var code = a.Build();
+        var rom = new byte[0x8000];
+        code.CopyTo(rom, 0);
+        void Vec(int at, string l) { rom[at] = (byte)a[l]; rom[at + 1] = (byte)(a[l] >> 8); }
+        Vec(0x7FEA, "nmi"); Vec(0x7FEE, "nmi"); Vec(0x7FFC, "reset"); Vec(0x7FFA, "nmi"); Vec(0x7FFE, "nmi");
+        System.Text.Encoding.ASCII.GetBytes("WIDEMESS HANDSHAKE   ").CopyTo(rom, 0x7FC0);
+        rom[0x7FD5] = 0x20; rom[0x7FD7] = 0x05; rom[0x7FD9] = 0x01;
+        int sum = 0; foreach (byte b in rom) sum += b;
+        rom[0x7FDE] = (byte)sum; rom[0x7FDF] = (byte)(sum >> 8); rom[0x7FDC] = (byte)~sum; rom[0x7FDD] = (byte)(~sum >> 8);
+        return rom;
+    }
+
+    private static void SoundGuardHandshake()
+    {
+        byte[] rom = HandshakeRom();
+        (byte result, long guard) Play(ConsoleKind console, bool fast, bool guardOff)
+        {
+            using var s = Session(console, rom);
+            if (fast && s.SetEnhancements(fastCpu: true) is { } why) { Check(false, "the console's fast CPU switches on for the handshake ROM", why); return (0, 0); }
+            s.Board.SoundGuardOffForTest = guardOff;
+            for (int f = 0; f < 90 && s.Board.Wram[0x10] == 0; f++) Run(s, 1);
+            return (s.Board.Wram[0x10], s.Board.SoundGuardMasterClocks + (s.Board.InSoundGuard ? 1 : 0));
+        }
+        string R(byte r) => r switch { 0x01 => "$CC came back", 0xEE => "the $CC was wiped: the 65816 gave up", _ => $"no answer (${r:X2})" };
+        var snes = Play(ConsoleKind.Snes, false, false);
+        Check(snes.result == 0x01, "the SNES console: the handshake completes (the 65816's $CC lands after the driver's port clear)", R(snes.result));
+        var off = Play(ConsoleKind.WideMess, false, false);
+        Check(off.result == 0x01 && off.guard == 0, "the WideMess console, fast CPU off: the same, and no guard", $"{R(off.result)}, guard {off.guard:N0} clocks");
+        var on = Play(ConsoleKind.WideMess, true, false);
+        Check(on.result == 0x01 && on.guard > 0, "fast CPU on: the sound-port guard keeps SNES time after each port access, so the handshake completes", $"{R(on.result)}, {on.guard:N0} master clocks at SNES time");
+        var neg = Play(ConsoleKind.WideMess, true, true);
+        Check(neg.result == 0xEE, "negative control: fast CPU without the guard, the $CC lands before the clear and is lost (Contra III's hang)", R(neg.result));
     }
 
     // ------------------------------------------------------------------ E5
@@ -336,7 +543,7 @@ internal static partial class WideMessCli
         int WideCentreFrames, int WideCentreFirst, int WideLineDiffer, int WideFlagFrames, bool WideSound, int OffFrames, int OffDiffer,
         long NfLines, long NfDifferOutsideOverflow, long NfOverflowRows, int NfFlagFrames, bool NfSound,
         int BsPictureDiffer, bool BsSoundDiffers, int BsFlagFrames, bool SnesSilent,
-        int FastFirstDiff, bool FastAlive, int LateFirstDiff, bool LateAlive, double Seconds);
+        int FastFirstDiff, bool FastAlive, int LateFirstDiff, bool LateAlive, double LateGuardShare, double Seconds);
 
     /// <summary>One proven game: the SNES console and three WideMess consoles in lockstep (widescreen with its profile, no flicker, better sound), then fast CPU on its own.</summary>
     private static GameResult ProveGame(EnhanceGame g, string path)
@@ -353,7 +560,7 @@ internal static partial class WideMessCli
         bool offered = look.Profile?.Verdict(WmsEnhancement.Widescreen) is WmsVerdict.Good or WmsVerdict.Risky or WmsVerdict.Broken;
         if (!offered) wide.SetScratchProfile(AllExtendProfile(wide.ImageSha1));   // widescreen unavailable for the game: the centre is still proven, on every layer extended
         string? why = wide.SetEnhancements(widescreen: true) ?? nf.SetEnhancements(noFlicker: true) ?? bs.SetEnhancements(betterSound: true);
-        if (why != null) return new GameResult(g, why, 0, look.Describe(), offered, 0, -1, 0, 0, false, 0, 0, 0, 0, 0, 0, false, 0, false, 0, false, -1, false, -1, false, 0);
+        if (why != null) return new GameResult(g, why, 0, look.Describe(), offered, 0, -1, 0, 0, false, 0, 0, 0, 0, 0, 0, false, 0, false, 0, false, -1, false, -1, false, 0, 0);
         wide.WideMessPpu!.CompareEnhanced = true;
         nf.WideMessPpu!.CompareEnhanced = true;
         var snesHashes = new ulong[frames + 1];
@@ -400,15 +607,16 @@ internal static partial class WideMessCli
         var wp = wide.WideMessPpu; var np = nf.WideMessPpu;
         // fast CPU on its own: when does it first depart from the SNES picture, and is the game alive at the end
         // twice: from power-on, and switched on at the contact sheet's first moment (after the game has loaded its sound driver)
-        (int first, bool alive) FastRun(int from)
+        (int first, bool alive, double guard) FastRun(int from)
         {
             using var fast = Session(ConsoleKind.WideMess, rom);
             if (from == 0) fast.SetEnhancements(fastCpu: true);
+            long onAt = 0;
             PadButtons hold = 0;
             int maxColours = 0, firstDiff = -1; var lastHashes = new HashSet<ulong>();
             for (int f = 1; f <= frames; f++)
             {
-                if (f == from + 1 && from > 0) fast.SetEnhancements(fastCpu: true);
+                if (f == from + 1 && from > 0) { fast.SetEnhancements(fastCpu: true); onAt = fast.Board.MasterClock; }
                 if (pad.TryGetValue(f, out var b)) hold = b;
                 fast.SetPad(0, hold); fast.RunFrame(); Audio(fast, 0, false);
                 ulong fh = Hash(fast.Frame.AsSpan(0, fast.FrameWidth * fast.FrameHeight));
@@ -419,13 +627,14 @@ internal static partial class WideMessCli
                     maxColours = Math.Max(maxColours, fast.Frame.AsSpan(0, fast.FrameWidth * fast.FrameHeight).ToArray().Distinct().Take(8).Count());
                 }
             }
-            return (firstDiff, maxColours >= 8 && lastHashes.Count >= 3);   // over its last 900 frames the game drew pictures of 8+ colours, and they changed
+            double share = fast.Board.SoundGuardMasterClocks / (double)Math.Max(1, fast.Board.MasterClock - onAt);   // of the time fast CPU was on, the share at SNES time in sound-port guards
+            return (firstDiff, maxColours >= 8 && lastHashes.Count >= 3, share);   // over its last 900 frames the game drew pictures of 8+ colours, and they changed
         }
-        var (fastFirst, alive) = FastRun(0);
-        var (lateFirst, lateAlive) = FastRun(g.Moments[0]);
+        var (fastFirst, alive, _) = FastRun(0);
+        var (lateFirst, lateAlive, lateGuard) = FastRun(g.Moments[0]);
         return new GameResult(g, null, frames, look.Describe(), offered, centreFrames, centreFirst, wp.EnhCompareDiffer, wideFlags, hw == hs, offFrames, offDiffer,
             np.EnhCompareDiffer, np.EnhCompareDiffer - np.EnhCompareDifferOverflow, nfOverflowRows, nfFlags, hn == hs,
-            bsPic, hb != hs, bsFlags, silent, fastFirst, alive, lateFirst, lateAlive, sw.Elapsed.TotalSeconds);
+            bsPic, hb != hs, bsFlags, silent, fastFirst, alive, lateFirst, lateAlive, lateGuard, sw.Elapsed.TotalSeconds);
     }
 
     private static void ReportGame(GameResult r)
@@ -444,7 +653,7 @@ internal static partial class WideMessCli
             $"{r.Game.Key}: better sound: the picture identical every frame, the sound {(r.SnesSilent ? "(the game was silent)" : "different")}",
             $"{r.BsPictureDiffer} frames differ");
         string Fast(int first, bool alive) => $"{(first < 0 ? "never departs from the SNES's picture" : $"departs from the SNES's picture at frame {first:N0}")}, {(alive ? "alive at the end (pictures of 8+ colours, changing)" : "NOT drawing a changing picture at the end")}";
-        Console.WriteLine($"     fast CPU (risky by nature, reported, not gated): from power-on {Fast(r.FastFirstDiff, r.FastAlive)}; switched on at frame {r.Game.Moments[0]:N0} {Fast(r.LateFirstDiff, r.LateAlive)}");
+        Console.WriteLine($"     fast CPU (risky by nature, reported, not gated): from power-on {Fast(r.FastFirstDiff, r.FastAlive)}; switched on at frame {r.Game.Moments[0]:N0} {Fast(r.LateFirstDiff, r.LateAlive)}, {r.LateGuardShare:P1} of its time at SNES speed in sound-port guards");
     }
 
     // ------------------------------------------------------------------ E7

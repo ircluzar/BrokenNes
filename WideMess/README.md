@@ -74,7 +74,10 @@ BrokenNes.Workshop.exe --wms-testcart-shots --rom WideMess	estromsin\widemess-t
 - `--wms-enhance-film` draws the wide picture every N frames and prints each moment's register set-up per band of rows (for writing a profile).
 - `--wms-enhance-test` runs milestone 6's checks alone; `--wms-test` runs them after the others. The proven games are read from `--snes-dir`
   (default `X:\EMULATION\Super Nintendo\Super Nintendo (U)`); a game not found there is skipped.
-- `--wms-fast-probe` switches the console's fast CPU on at a frame and prints the 65816's PC beside the SNES console's.
+- `--wms-fast-probe` switches the console's fast CPU on at a frame and prints the 65816's PC beside the SNES console's (`--trace-ports`: the sound-port
+  writes of both runs, where they part and what the other run writes next).
+- `--wms-side-truth --game KEY --layer bg1 [--scratch-profile p.json | --all-extend] [--detail N]` (milestone 6 follow-up): how true a layer's side
+  columns are, judged by the SNES picture when the place scrolls into it.
 - `--enhanced-test --only wmsmenu,wms,wmsown,wmsgames` (milestone 7b) checks the WideMess chips on the other consoles' menus (docs/projects/enhanced-cores.md section 6);
   `wmsgames` needs the user's library (X:\EMULATION, the local Sega roster) and `wmsown` the test ROMs here (run it from the repository).
 - `--wms-guest-sheet` (milestone 7b) draws contact sheets of other consoles' games on the widescreen chip beside their own picture.
@@ -293,16 +296,16 @@ centre compared line by line.
 | Game | Widescreen | No flicker | Fast CPU | Sheet |
 |---|---|---|---|---|
 | Super Mario World | good | 0 lines changed | risky (hangs if on at power-on) | `m6/smw.png` |
-| Super Mario World 2: Yoshi's Island | risky (old tiles at a stage's start) | 18 lines | risky | `m6/yoshi.png` |
-| Donkey Kong Country | risky (a seam on the side DK runs to) | 0 | risky | `m6/dkc.png` |
-| Super Metroid | risky (tiles beyond a room's walls) | 0 | risky | `m6/sm.png` |
+| Super Mario World 2: Yoshi's Island | risky (BG1 drawn: the old tiles are gone, the hills show there) | 18 lines | risky | `m6/yoshi.png` |
+| Donkey Kong Country | **good** (BG1 drawn: no old tile, the jungle behind shows ahead of DK) | 0 | risky | `m6/dkc.png` |
+| Super Metroid | risky (BG1 drawn: no stray tiles beyond a room's walls, the sides mostly empty) | 0 | risky | `m6/sm.png` |
 | A Link to the Past | risky (indoor rooms beside rooms) | 0 | risky | `m6/alttp.png` |
 | F-Zero | good | 0 | risky | `m6/fzero.png` |
 | Super Mario Kart | good | 0 | risky | `m6/smk.png` |
-| Chrono Trigger | unavailable (the sheet shows every layer extended: why) | 0 | broken | `m6/ct.png` |
-| Mega Man X | risky (flat colour until the game draws there) | 254 lines | risky | `m6/mmx.png` |
-| Contra III | risky (another part of the stage ahead) | 2,946 lines (`m6/contra3-noflicker.png`) | broken | `m6/contra3.png` |
-| Super Castlevania IV | risky (old tiles at a stage's start) | 0 | risky | `m6/scv4.png` |
+| Chrono Trigger | unavailable (measured: drawn leaves 85% of the sides empty) | 0 | broken (times itself by the beam) | `m6/ct.png` |
+| Mega Man X | risky (BG1 drawn; flat colour until the game draws there) | 254 lines | risky | `m6/mmx.png` |
+| Contra III | risky (BG1, BG2 drawn: no other part of the stage, the sides mostly empty) | 2,946 lines (`m6/contra3-noflicker.png`) | risky (with the sound-port guard) | `m6/contra3.png` |
+| Super Castlevania IV | risky (BG1, BG2 drawn: no old tiles, the sides mostly empty) | 0 | risky | `m6/scv4.png` |
 
 (The sheets are in `docs/projects/widemess-images/m6/`.)
 
@@ -338,12 +341,63 @@ centre compared line by line.
 - In the real app, Super Mario World finds its profile beside the program; "use the profile" plus better sound gives 400 x 224 at the
   app's 60 fps.
 
-**Open:**
+**Open** (as left by milestone 6; see the follow-up below for what changed):
 - Fast CPU's hang in Chrono Trigger and Contra III is not traced (Super Mario World's is: the game's own sound-driver timing).
 - No flicker had little to do in this play: eight of the eleven games never went over the SNES's limits with visible sprites. A
   shoot-'em-up (Gradius III, R-Type III) would exercise it more.
 - Games that stream their maps just past the SNES edge (Donkey Kong Country, Super Castlevania IV, Contra III) could look better with
   a direction-aware rule. Today's rules are static per scene.
+
+## Milestone 6 follow-up (2026-10-25): fast CPU traced, the drawn side rule
+
+**Fast CPU.** The three hangs were traced with the D1 debugger (Workshop `--debug ... --do "enhance fastcpu on; ..."`, a new shell command):
+- **Contra III, fixed.** After its sound driver echoes `$FF` on port 0, the driver clears its input ports 147 master clocks later; a fast 65816
+  wrote the next value (`$CC`) 80 clocks after the echo, so it was wiped and both waited forever. The console's fast CPU now has a
+  **sound-port guard** (spec 6.1): every access to `$2140-$217F` starts one scan line of SNES timing (the board swaps in a second page table at
+  SNES speeds, so it costs nothing per access), restarted by each port access. The game runs from power-on and switched on later.
+  WMSPEED's own fast mode (a `.wms` game) has no guard.
+- **Chrono Trigger, genuinely cannot run fast.** It times itself by the beam: its main loop latches the scanline (`$2137`, `$C0:5A46`) and
+  starts loading the next scene only on lines 240 and later or before 72. At SNES speed it gets there on line 257, with fast CPU on line 238
+  every frame, so the scene never loads. Its profile calls fast CPU broken with that reason.
+- **Super Mario World at power-on, genuinely cannot.** The 31 ms between starting its driver and writing `$FF` are an 8 KB RAM clear with no
+  port access: no guard can keep that at SNES time. Switched on after the title it runs (as before).
+- What the guard costs, fast CPU switched on at each game's first moment: 0-2% of the time at SNES speed for most games, Super Castlevania IV
+  5.2%, Super Mario World 9.8%, Donkey Kong Country 14.2% (they talk to their drivers a lot).
+
+**Widescreen: the drawn rule.** A new BG side rule, `drawn` (with `drawnAhead`): the layer extends only where the game has drawn its map for
+the place shown, else it is filled. The picture chip follows the layer's scroll and keeps the span the game has drawn (the picture's columns
+each frame, plus `ahead` pixels on the side it scrolls towards, the map's width pushing the far end along, a cut starting again). Spec 6.1.
+- **`Workshop --wms-side-truth --game KEY --layer bg1`** measures it: every side column a frame shows is a claim about that place of the layer,
+  judged when the place scrolls into the SNES picture (right, empty or wrong), on the layer's own colours.
+
+| Game, layer | Extended: wrong | Drawn: wrong (right / empty) | Profile now |
+|---|---|---|---|
+| Donkey Kong Country, BG1 | 49% | 0% (22% / 78%) | BG1 drawn, ahead 0: widescreen **good** |
+| Super Metroid, BG1 | 87% | 0.6% (6% / 93%) | BG1 drawn, ahead 0 |
+| Super Castlevania IV, BG1 / BG2 | 68% / 50% | 0% / 0% | both drawn |
+| Contra III, BG1 / BG2 | 34% / 100% | 0% / 0% | both drawn |
+| Mega Man X, BG1 | 59% | 0% (9% / 91%) | BG1 drawn |
+| Yoshi's Island, BG1 | (scroll changes within a frame: not measurable) | | BG1 drawn (the sheet shows the old tiles gone) |
+| Chrono Trigger, BG1 / BG2 | 78% / 9% | 0% / 6%, 85% / 67% empty | stays unavailable: nothing true to show |
+
+- Only Donkey Kong Country becomes **good**: its jungle (BG2, already true) shows behind the level where the game has not drawn. In the
+  others the drawn rule trades wrong tiles for empty sides, which is honest but not yet good widescreen: they stay risky.
+- A Link to the Past is unchanged: outdoors both layers are true when extended (BG1 100% right), and drawn would empty them; its indoor
+  rooms still show the rooms beside them. A scene condition could tell them apart (Link's house has `CGADSUB` `$B3`, the rainy outdoors `$72`)
+  but the checked play sees one room only, so that is not proven.
+- Sheets re-drawn in `docs/projects/widemess-images/m6/` (dkc, sm, scv4, contra3, mmx, yoshi).
+
+**Checks added** (each with a negative control): E1 (drawn profiles read; drawn sprites, a stray `drawnAhead`, an out-of-range one refused);
+E2b (a synthetic streaming game: extended shows old tiles, drawn none, both directions, a cut); E4b (a synthetic sound handshake: completes on
+the SNES, with fast CPU off and with the guard; without the guard the `$CC` is lost; the speed ROM never enters the guard); E6 now reports each
+game's guard share; E8 (side truth on Donkey Kong Country and Super Metroid, every layer extended as the control).
+
+**Results** (branch on main `ad4d81c`): `--wms-test` 306 of 306; `--debug-test` 101/0; `--check-test` 111/0; `--snes-state-test` 147/0; UAT `run-suite.ps1` 125 pass, 0 fail, 16 skip, 3 info; the
+ALttP speed-pass golden IDENTICAL; interleaved A/B against `ad4d81c` (ALttP 2,400 frames, 10 pairs, CPU time) 0.991: noise; Lite, Core and
+the desktop app build.
+
+**Found along the way** (reported, not WideMess): two game screenshots are committed at the repository root
+(`Super Mario World (U) [!]_snes_f01500.png`, a Link's Awakening DX one), added by BrokenDev D4's commit `5c0186b`.
 
 ## Milestone 7a result (2026-10-24): WideMess in BrokenNes Lite and in the FL plugin
 

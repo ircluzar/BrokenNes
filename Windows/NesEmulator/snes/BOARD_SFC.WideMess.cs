@@ -57,7 +57,59 @@ public sealed partial class BOARD_SFC
     public bool ConsoleFastCpu
     {
         get => consoleFastCpu;
-        set { consoleFastCpu = value && wideMess != null; ApplyWideMess(); }
+        set
+        {
+            bool was = consoleFastCpu;
+            consoleFastCpu = value && wideMess != null;
+            if (!consoleFastCpu) soundGuard = false;
+            ApplyWideMess();
+            if (was != consoleFastCpu) BuildPageTable();   // the sound-port guard's table comes and goes with it
+        }
+    }
+
+    // ---- the console fast CPU's sound-port guard (docs/projects/widemess-spec.md section 6.1)
+    // A SNES game's sound driver was written for a 3.58 MHz 65816: its handshakes count on the 65816 taking SNES time between reading the SPC700's
+    // answer and writing the next value (Contra III's loader: the driver clears its input ports 147 master clocks after its echo; at fast speed
+    // the 65816's next write lands 80 clocks after it and is wiped, at SNES speed 240). So while the console's fast CPU is on, every access to the
+    // sound ports ($2140-$217F) starts SoundGuardClocks of SNES timing (the access times of the SNES's own table, MEMSEL included, and 6-clock
+    // internal cycles); each port access restarts it, and it ends that many master clocks after the last one. WMSPEED's own fast mode (a .wms
+    // game, written for it) has no guard.
+
+    /// <summary>Master clocks of SNES timing after each sound-port access while the console fast CPU is on: one scan line.</summary>
+    public const int SoundGuardClocks = ClocksPerLine;
+    private bool soundGuard;
+    private long soundGuardUntil;
+    private Page[]? soundGuardPages;
+    /// <summary>Master clocks the console fast CPU has spent at SNES speed in sound-port guards since power-on (for the tools: how much of the speed-up the guard takes back).</summary>
+    public long SoundGuardMasterClocks { get; private set; }
+    private long soundGuardFrom;
+    /// <summary>True while the console fast CPU runs at SNES timing after a sound-port access.</summary>
+    public bool InSoundGuard => soundGuard;
+
+    /// <summary>The checks' negative control only (Workshop --wms-test E4): the console fast CPU without its sound-port guard, which shows the handshakes it
+    /// exists for failing. The apps never set it.</summary>
+    public bool SoundGuardOffForTest { get; set; }
+
+    private void SoundPortAccess()
+    {
+        if (SoundGuardOffForTest) return;
+        soundGuardUntil = MasterClock + SoundGuardClocks;
+        if (!soundGuard && fastCpu && soundGuardPages != null)
+        {
+            soundGuard = true;
+            soundGuardFrom = MasterClock;
+            livePages = soundGuardPages;
+            idleClocks = 6;
+        }
+        if (soundGuard) UpdateNextEvent();
+    }
+
+    private void EndSoundGuard()
+    {
+        soundGuard = false;
+        SoundGuardMasterClocks += MasterClock - soundGuardFrom;
+        livePages = pages;
+        idleClocks = fastCpu ? 2 : 6;
     }
 
     /// <summary>The board's view of the WideMess registers, after any change (the unlock, WMSPEED, WMDMA, a reset, a loaded state).</summary>
@@ -65,7 +117,8 @@ public sealed partial class BOARD_SFC
     {
         var wm = wideMess;
         bool fast = wm is { FastCpu: true } || (consoleFastCpu && wm != null);
-        idleClocks = fast ? 2 : 6;
+        if (!fast && soundGuard) { soundGuard = false; SoundGuardMasterClocks += MasterClock - soundGuardFrom; }
+        idleClocks = fast && !soundGuard ? 2 : 6;
         dmaByteClocks = wm is { FastDma: true } ? 4 : 8;
         // the 20-bit WRAM port: the WideMess map's 1 MB, once unlocked; otherwise the SNES's 17 bits (and an address left from an unlocked time drops to them)
         wramPortMask = wramHigh != null && wm is { Unlocked: true } ? 0xFFFFFu : 0x1FFFFu;

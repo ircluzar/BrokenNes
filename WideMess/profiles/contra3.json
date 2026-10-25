@@ -7,32 +7,38 @@
   ],
   "widescreen": {
     "layers": {
-      "bg1": "extend",
-      "bg2": "extend",
+      "bg1": "drawn",
+      "bg2": "drawn",
       "bg3": "fill",
       "bg4": "extend",
       "sprites": "extend"
+    },
+    "drawnAhead": {
+      "bg1": 16,
+      "bg2": 16
     }
   },
   "enhancements": {
     "widescreen": "risky",
     "noFlicker": "good",
     "betterSound": "good",
-    "fastCpu": "broken"
+    "fastCpu": "risky"
   },
   "recommended": [
     "widescreen",
     "noFlicker"
   ],
   "issues": [
+    "The stage layers (BG1 and BG2) are drawn: shown in the sides only where the game has drawn its map for the place shown, so old tiles of another part of the stage no longer show; where the game has not drawn, the layers behind or the backdrop show.",
+    "Side truth (Workshop --wms-side-truth, 2026-10-25): BG1 extended was wrong in 34% of the side columns later seen in the SNES picture, BG2 in 100%; drawn, 0% for both (most side columns are left to the backdrop: the game draws its stage only as it reaches the SNES edge).",
     "BG3 is filled in the sides: the game uses it for the players' status line and the title menu's text, both laid out for 256 columns on a 32-tile map that would repeat.",
     "The game draws a stage into video RAM only near the SNES picture: ahead of the players the side columns can show another part of the stage (a building, fire) until the game draws there.",
     "The intro's city scene shows a different, ruined city in the sides: the game keeps the next scene's picture there.",
     "No flicker: in the 6,300 frames checked it showed more sprites on 2,946 lines, all of them over the SNES's limits (15,680 lines went over).",
-    "Fast CPU hangs the game on a black screen when the attract demo changes scene (frame 4,500), even switched on after the title: the 65816 loops in forced blank, probably waiting for its sound driver (the kind of handshake that hangs Super Mario World at power-on; not traced)."
+    "Fast CPU runs the game, from power-on and switched on later; its timing changes. Its sound loader needed the console's sound-port guard (spec 6.1): after the driver echoes $FF on port 0 it clears its input ports 147 master clocks later, and a fast 65816 wrote the next value ($CC) 80 clocks after the echo, before the clear, so both waited forever on a black screen. With the guard the 65816 keeps SNES time after each sound-port access and the $CC lands after the clear, as on a SNES."
   ],
   "verified": {
-    "date": "2026-10-24",
+    "date": "2026-10-25",
     "how": "Workshop --wms-test (E6), 6,300 frames of the attract demos in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/contra3.png."
   }
 }

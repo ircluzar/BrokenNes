@@ -237,6 +237,8 @@ public sealed partial class PPU_WMS : PPU_SFC
     public override void BeginFrame()
     {
         base.BeginFrame();
+        enhFrame++;   // milestone 6's drawn rule follows each layer's scroll once a frame (WideMess.Enhance.cs)
+        if (DebugCapture != null) Array.Fill(DebugCapture, CaptureClear);   // a tool's layer capture (WideMess.Picture.cs): rows the layer does not draw show nothing
         if (anyWide) { Array.Clear(rowWide); anyWide = false; }
         BeginFramePicture();
     }

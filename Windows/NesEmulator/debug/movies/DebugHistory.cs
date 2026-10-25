@@ -47,6 +47,8 @@ public sealed class DebugHistory
     public bool Replaying => FrameIndex < log.Count;
     public IReadOnlyList<Snapshot> Snapshots => snaps;
     public IReadOnlyList<MovieKey> Keys => keys;
+    /// <summary>Why the history stopped taking states (the machine refused one), or null. Step back then reaches only the states before.</summary>
+    public string? SaveError { get; private set; }
     /// <summary>Where the history began: null at power-on, else the state it began from.</summary>
     public byte[]? StartState { get; }
 
@@ -62,11 +64,18 @@ public sealed class DebugHistory
     public (PadButtons P1, PadButtons P2) BeforeFrame(PadButtons live1, PadButtons live2)
     {
         long f = FrameIndex;
-        if (f % Every == 0 && !snaps.Any(s => s.Frame == f))
+        if (f % Every == 0 && SaveError == null && !snaps.Any(s => s.Frame == f))
         {
-            snaps.Add(new Snapshot { Frame = f, Instructions = debugger != null ? debugger.InstructionCount() : -1, MachineFrame = debugger?.Machine.Frame ?? 0, State = save() });
-            snaps.Sort((a, b) => a.Frame.CompareTo(b.Frame));
-            while (snaps.Count > Keep) snaps.RemoveAt(0);
+            // a machine whose state cannot be taken (a chip without one) keeps running: the history stops taking states and says why
+            byte[]? st = null;
+            try { st = save(); }
+            catch (Exception e) when (e is NotSupportedException or InvalidOperationException) { SaveError = $"no states after frame {f}: {e.Message}"; }
+            if (st != null)
+            {
+                snaps.Add(new Snapshot { Frame = f, Instructions = debugger != null ? debugger.InstructionCount() : -1, MachineFrame = debugger?.Machine.Frame ?? 0, State = st });
+                snaps.Sort((a, b) => a.Frame.CompareTo(b.Frame));
+                while (snaps.Count > Keep) snaps.RemoveAt(0);
+            }
         }
         if (f < log.Count) return log[(int)f];
         log.Add((live1, live2));

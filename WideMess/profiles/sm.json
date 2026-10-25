@@ -7,11 +7,14 @@
   ],
   "widescreen": {
     "layers": {
-      "bg1": "extend",
+      "bg1": "drawn",
       "bg2": "extend",
       "bg3": "extend",
       "bg4": "extend",
       "sprites": "extend"
+    },
+    "drawnAhead": {
+      "bg1": 0
     },
     "masks": [
       {
@@ -38,14 +41,15 @@
     "noFlicker"
   ],
   "issues": [
-    "The game draws only inside the current room: near a room's left or right wall, the side columns show the patterned tiles that lie beyond the room.",
+    "The room layer (BG1) is drawn: shown in the sides only where the game has drawn its map for the place shown. Beyond a room's walls the game draws nothing, so there the sides show the room's background (BG2) or the backdrop instead of stray tiles; a room that does not scroll keeps its sides nearly empty.",
+    "Side truth (Workshop --wms-side-truth, 2026-10-25): BG1 extended showed a wrong column in 87% of the side columns later seen in the SNES picture; drawn, 0.6%. BG2 extended: 96% right, 3.8% wrong.",
     "Rooms are drawn as Samus scrolls: on entering a room the sides can show old tiles for a moment.",
     "The status display's sides are left empty (BG3 filled in rows 0-31).",
     "No flicker: in the 6,300 frames checked the game never drew more sprites on a line than a SNES shows, so it changed nothing; it changes only lines over the limits.",
     "Fast CPU ran the 6,300 frames checked; the attract demos play differently (the game's timing changes from frame 10)."
   ],
   "verified": {
-    "date": "2026-10-24",
+    "date": "2026-10-25",
     "how": "Workshop --wms-test (E6), 6,300 frames of the attract demos in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/sm.png."
   }
 }

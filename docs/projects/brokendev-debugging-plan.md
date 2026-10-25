@@ -3,7 +3,8 @@
 Plan of 2026-10-23, written after an interview with the user. It starts **after WideMess milestone 1** (the week of 2026-10-26).
 **Milestone D1 (the debugger engine) is built** (2026-10-24): see "D1 as built" after the milestones. **Milestone D4 (checks, budgets,
 profiler) is built** (2026-10-24): see "D4 as built". **Milestone D2 (the Game Boy hello world) is built** (2026-10-24): see "D2 as built";
-its accepted findings list is empty. **Milestone D3 (the MCP server) is built** (2026-10-24): see "D3 as built". The rest is not.
+its accepted findings list is empty. **Milestone D3 (the MCP server) is built** (2026-10-24): see "D3 as built". **Milestone D5 (movies, diff, bisect) is built** (2026-10-25):
+see "D5 as built"; the movie format's name is a working name ("BrokenNes movie", `.bnm`: open question 2). The rest is not.
 
 ## Why
 
@@ -341,7 +342,7 @@ They follow WideMess milestone 1. Each one is merged, tested and pushed before t
 | **D2** | **Game Boy hello world** | GBDK-2020 installed (after approval). `VRUN_VOC_dev` builds a dual-mode hello world that runs on BrokenNes (desktop and Lite), Mesen and BizHawk, as a BrokenDev project. The D1 debugger reads its symbols. **Built 2026-10-24** ("D2 as built"): GBDK-2020 4.5.0 pinned; project `vrun-voc` verifies (0 findings, every budget in) and works on BrokenNes, Mesen, BizHawk Gambatte and SameBoy; desktop and Lite proven; the debug port is a placeholder until D7. |
 | **D3** | **MCP server** | Headless and live sessions with the tools above, registered at user level, used by an agent to find a planted bug in a test ROM without Mesen. The client test passes. **Built 2026-10-24** (see "D3 as built"). |
 | **D4** | **Checks, budgets, profiler** | The first catalogue for the three consoles, each rule with its test ROM and negative control. Accepted findings recorded for VRUN, Nested VRUN, Super VRUN, the SMB1 remake and the hello world. `verify` fails on new findings and over budget. |
-| **D5** | **Movies, diff, bisect** | Our movie format with `.fm2` / `.bk2` export, divergence finder, state diff by symbol, step back, promoted movie tests in verify, bisect over a game's commits (proven on a planted regression). |
+| **D5** | **Movies, diff, bisect** | Our movie format with `.fm2` / `.bk2` export, divergence finder, state diff by symbol, step back, promoted movie tests in verify, bisect over a game's commits (proven on a planted regression). **Built 2026-10-25** (see "D5 as built"): the format's working name "BrokenNes movie" (`.bnm`); exports played by BizHawk and FCEUX exactly as the same input; bisect found the planted regression in a 17-commit throwaway game; VRUN's first promoted movie. |
 | **D6** | **Bug capture** | The key in the desktop app and Lite (download). Bundles land in the game's `bugs\`; `brokendev bug` replays them exactly. Lite still holds 60 fps with it on. |
 | **D7** | **Debug port** | Print, assert, timers and markers on the three consoles, with NESFab, PVSnesLib and GBDK libraries, stripped from release builds. Other emulators run the dev builds unharmed. |
 | **D8** | **Viewers** | The desktop windows (debugger, memory, tiles, maps, sprites, palettes, event view, sound monitor), then the BrokenDev web pages. |
@@ -606,11 +607,81 @@ port and DMA reads are still checked.
   the SNES sprite boxes assume 8 / 16 pixels (OBSEL is write-only); a state load restarts the call stack, and the checks keep what they
   learned before it.
 
+## D5 as built (2026-10-25)
+
+- **The movie format** (`Windows/NesEmulator/debug/movies/Movie.cs`, compiled by the desktop app and Workshop like the debugger): plain text,
+  one fact per line. The ROM (name, sha256, size) and the build it was made with (`build commit <sha>` when the game's workspace is a git
+  repository: bisect's default good commit), the BrokenNes build, the console and the cores, the NES's power-on RAM (`fceux`, `zeros`, `ones`)
+  and frame timing (BrokenNes's 60 fps frames or NTSC's), the start (power-on, or a save state: gzip + base64), every frame's input for two pads
+  as changes (`i 120 Start -`), and every 60 frames a keyframe (`k 60 <picture> <RAM> <course values>`): FNV-1a 64 of the picture (the hash
+  verify's checkpoints use) and of the work RAM (every memory domain of kind Work), and the values of the movie's **course variables**
+  (`var app_state [app_state]`, debugger expressions on the symbols). **The name and extension are a working name** (open question 2):
+  "BrokenNes movie", `.bnm`, magic `bnmovie`; they are the constants of `MovieFormat` and nowhere else (BrokenDev asks the Workshop:
+  `--movie format`), and the reader takes the magics of earlier names (`FormerMagics`), so a rename is one edit.
+- **Workshop `--movie`:** `record` (a pad script for both pads, `--var` course variables, optional start state), `play` (in sync, or the first
+  keyframe off course; another build of the ROM is said), `info`, `export --fm2 | --bk2 [--core]`, `import --fm2`, `diverge`, `test`
+  (bisect's verdict), `format`, `build-planted` (the tests' planted game). `MovieMachine` opens the movie's console with its cores (a core the
+  menu does not offer is refused), power-on and timing; the D1 debugger is attached with no hook armed (frame-identical, checked).
+- **Exports, cross-checks only:** `.fm2` (FCEUX's layout `|0|RLDUTSBA|RLDUTSBA||`, the checksum as FCEUX writes it: base64 of the MD5 of PRG +
+  CHR; `Fm2Writer` gained the base64 form and the port-2 field) and `.bk2` (BizHawk 2.11.1: Header with the SHA-1 BizHawk names, the
+  controllers' own names from its `defctrl.json`; NesHawk, BSNESv115+, and SameBoy for the Game Boy by default: EmuHawk plays a **Gambatte**
+  movie only with the Game Boy boot ROM, "Missing Firmware" even with the movie's sync settings saying EnableBIOS false, measured; BrokenNes has
+  none and asks for none). A movie recorded with BrokenNes's 60 fps frames says on export that the others run NTSC frames. **Proven in the real
+  emulators** (`BrokenDev/tests/movie-cross.ps1`, the compat spec's new `movie <file>` line: EmuHawk `--movie`, FCEUX `-playmovie`, the Lua sets
+  no pad and notes what the movie pressed): VRUN on BizHawk NesHawk and on FCEUX, Super VRUN on BizHawk bsnes, the Game Boy hello world on
+  BizHawk SameBoy each play the exported movie **exactly** as the same input given frame by frame (every compat variable, every frame: 900,
+  900, 1200, 900 frames), press the movie's buttons at the movie's frames, and the negative control (the first press one frame late) differs.
+- **The divergence finder** (`--movie diverge`, the MCP `movie` tool): the movie on two runs in lockstep (two builds, two cores, two frame
+  timings) gives the first frame whose picture or work RAM differs; that frame is replayed on both from the newest snapshot with the trace on,
+  giving the first instruction where the main CPU's runs part (the instruction's own bytes, the registers, the byte it read; else the first
+  timing difference, scanline and dot; else "the CPU ran the same: the difference is elsewhere"), the other CPUs too (the SPC700), and the
+  **state diff by symbol** before and after the frame. Against another emulator's BrokenDev compat run (`--against`): the frame shift that lines
+  the boots up and the first differing frame and variables (instruction level needs both runs on BrokenNes; said). On the planted regression it
+  names frame 252, `CMP #$01` against `CMP #$00` at `lose_life+$2`, and `lives` 1 against 0; on VRUN, FIX against FMC parts at the `BIT $2002`
+  whose vblank flag differs.
+- **The state diff by symbol** is one engine class (`SymbolDiff`): variables matched by name (two builds may place them differently), NESFab's
+  `name@n` bytes one variable, then the bytes no symbol names per space. The MCP server's `diff_states` uses it now (same results).
+- **Step back** (`DebugHistory`, shared): a state every 60 frames (the last 30), every frame's input since the session began (its movie), the
+  keyframes. Back by instructions loads the newest state before the place and replays the logged input to the exact instruction
+  (`Debugger.RunToInstructionCount`, counted on the per-instruction hook: the call stack tracking must be on), breakpoints and the checks off
+  during the replay; back by frames ends between frames. Running on replays the same input; a new input rewrites the future. The NES's save
+  state has no frame count, so its debug machine keeps an offset (`RestoreFrame`). MCP `step_back` (and the Sega consoles by frames: no
+  debugger), Workshop `--debug` (`history; ... back 5; back frames 2`).
+- **Promoted movies in verify** (only those): a manifest's `movies` section (`id`, `file` beside the manifest, `why`, `sync`, `expect`); verify
+  replays each as a scenario `movie-<id>` (its input for both pads, power-on, timing; cores other than the recording's are refused) with
+  `movie-in-sync` (every keyframe; `sync same-rom`: required on the recorded build, information on another), the entry's `expect` and the
+  checks and budgets like any scenario. `brokendev.ps1 movie record|play|export|promote|list`; promote refuses a movie that starts from a state
+  or does not replay in sync today, and edits the manifest as text (every other field unchanged, checked). **VRUN's first promoted movie:**
+  `projects/vrun-nes/movies/first-room.bnm` (verify's play script, 2400 frames, course `app_state`, `current_room`); `verify vrun-nes` passes
+  with it in sync (40 of 40 keyframes), its expectations (colours, sound, `app_state` 1 at the end), 0 new findings.
+- **Bisect over a game's commits** (`brokendev.ps1 bisect <project> -Movie -Test [-Good] [-Bad] [-Repo]`, the MCP `bisect` tool): a scratch
+  clone of the game's repository in `BROKENDEV_HOME\work\<id>\bisect` with its remote removed (it can never push; the user's folder is only
+  read), each commit built with the manifest's steps moved into the clone (outputs to the bisect's own folder, never the project's `out`),
+  the movie replayed and tested (`no-crash`, `no-lag [from N]`, `picture at N`, `<expression> at N`): good, bad, **skip** (no build) or
+  **can't tell** (a course variable differs from the recording before the test frame). Endpoints that do not hold stop it with no answer.
+  **The proof** (`BrokenDev/tests/bisect-proof.ps1`, run by `run-tests`): a throwaway 17-commit repository of the planted game (a typo that does
+  not build at c09, a different menu at c10, the regression at c12): bisect names c12 in 7 tests / 6 builds (c01 good, c17 bad, c09 skip,
+  c08 good, c12 bad, c10 can't tell, c11 good), the throwaway repository unchanged, the clone without a remote; the negative controls (a test that
+  holds everywhere, a good commit after the regression) name no commit.
+- **The MCP server** (45 tools): `step_back`, `open_movie` (a movie replayed in a new session, keyframes checked as it runs), `movie` (save a
+  session's movie, info, play, export, diverge, test), `bisect`; headless sessions keep the history from their start.
+- **Unchanged when not used:** no core and no board changed; the debugger's additions run only inside its armed hooks (a run-to-count test in
+  `CheckStep`); the desktop app, Core, Lite and the plugin build. Results below.
+- **Tests:** `--movie-test` (69 of 69: the format and its refusals, record / replay on the NES, SNES and Game Boy, the exports, the divergence
+  finder, bisect's verdicts, step back on the three consoles, VRUN and Super VRUN; each with a negative control); the MCP client test
+  (75 of 75, 15 new), the demo (6 of 6); BrokenDev `run-tests` (137 passed, 0 failed: the movie format from the Workshop, record + promote + verify with
+  the late-Start movie failing it, the verbs through `brokendev.ps1`, the bisect proof); `tests/movie-cross.ps1` (12 checks on 4 emulators);
+  `--debug-test` 101 of 101, `--check-test` 111 of 111, `--wms-test` 288 passed 0 failed, UAT 125 pass 0 fail 16 skip 3 info (the goldens unchanged); the desktop app, Core, Lite and the plugin build.
+- **Left open:** the format's name (open question 2); the desktop app and Lite record no movies yet (D6's bug capture records them, on the same
+  format and `DebugHistory`); movie resets (an `.fm2` with a reset is refused); headless MCP sessions run NTSC timing or another power-on RAM
+  only through `movie play` (not `open_movie`); instruction-level divergence against another emulator (their compat runs record variables,
+  not instructions); a real game's bisect (the user's game repositories: VRUN's history is in its archive; none has a known regression to find).
+
 ## Open questions (to settle at the start of the track)
 
 1. The debug port's registers on each console, checked against mapper 30, the SNES coprocessors' ranges and the Game Boy Color's
    registers, reusing a convention other emulators already show where one exists.
-2. The movie format's name and file extension.
+2. The movie format's name and file extension. (D5 uses a working name, "BrokenNes movie", `.bnm`: the constants of `MovieFormat`.)
 3. The bug-capture key and how the note is typed.
 4. The first check catalogue per console, and which findings today's games accept (for example Super VRUN's SNESMOD sound-RAM reads).
 5. The checkup command's name and where its report lives (a BrokenDev page or a dashboard).

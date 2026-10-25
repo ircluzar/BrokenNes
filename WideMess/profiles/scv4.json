@@ -7,11 +7,15 @@
   ],
   "widescreen": {
     "layers": {
-      "bg1": "extend",
-      "bg2": "extend",
+      "bg1": "drawn",
+      "bg2": "drawn",
       "bg3": "fill",
       "bg4": "extend",
       "sprites": "extend"
+    },
+    "drawnAhead": {
+      "bg1": 16,
+      "bg2": 16
     },
     "masks": [
       {
@@ -41,6 +45,8 @@
     "noFlicker"
   ],
   "issues": [
+    "The stage layers (BG1 and BG2) are drawn: shown in the sides only where the game has drawn its map for the place shown, so old tiles of another part of the stage no longer show; where the game has not drawn, the layers behind or the backdrop show.",
+    "Side truth (Workshop --wms-side-truth, 2026-10-25): BG1 extended was wrong in 68% of the side columns later seen in the SNES picture, BG2 in 50%; drawn, 0% for both (most side columns are left to the backdrop: the game draws its map only as it reaches the SNES edge).",
     "At the start of a stage the left side shows old tiles: the game has not drawn the level there yet.",
     "The game draws new columns of the level only a few tiles ahead of the SNES edge: ahead of Simon the far side columns can show old tiles.",
     "BG3 (the score and timer, and the title's text) is filled in the sides.",
@@ -49,7 +55,7 @@
     "Fast CPU ran the 5,200 frames checked; the game's timing changes."
   ],
   "verified": {
-    "date": "2026-10-24",
+    "date": "2026-10-25",
     "how": "Workshop --wms-test (E6), 5,200 frames of a pad script (title, stage 1-1) in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/scv4.png."
   }
 }

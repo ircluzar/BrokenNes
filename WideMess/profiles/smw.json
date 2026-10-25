@@ -45,7 +45,7 @@
     "At the start of a level the left side is empty: the level begins at the SNES picture's left edge.",
     "Levels whose water or clouds are BG3 drawn in front (the layer-3 tides) lose that layer in the side columns.",
     "No flicker: in the 4,000 frames checked the game never drew more sprites on a line than a SNES shows, so it changed nothing; it changes only lines over the limits.",
-    "Fast CPU switched on while the game starts hangs it on a black screen: the 65816 reaches the next step of its sound-driver handshake (writing $FF to $2141) about 8 ms after starting the driver instead of 31 ms, while the driver is still setting up and clears its input ports, so both wait for each other forever. A real 10.74 MHz 65816 would do the same. Switched on after the title appears, the game ran the 4,000 frames checked."
+    "Fast CPU switched on while the game starts hangs it on a black screen: the 65816 reaches the next step of its sound-driver handshake (writing $FF to $2141) about 8 ms after starting the driver instead of 31 ms, while the driver is still setting up and clears its input ports, so both wait for each other forever. A real 10.74 MHz 65816 would do the same. Traced: the 31 ms are the game clearing its work RAM ($00:8A4E, 8 KB) between the two steps, with no sound-port access, so the console's sound-port guard cannot keep it at SNES time. Switched on after the title appears, the game ran the 4,000 frames checked."
   ],
   "verified": {
     "date": "2026-10-24",

@@ -16,13 +16,13 @@
     "betterSound"
   ],
   "issues": [
-    "Widescreen is not offered: the game keeps unrelated tiles in the parts of its maps the SNES does not show (fields, towns, cutscenes and the Epoch scenes show scrambled tiles there), and the battle menu repeats. No layer rule can make the sides right.",
+    "Widescreen is not offered: the game keeps unrelated tiles in the parts of its maps the SNES does not show (fields, towns, cutscenes and the Epoch scenes show scrambled tiles there), and the battle menu repeats. Measured (Workshop --wms-side-truth, 2026-10-25, the 6,750 frames of the attract sequence): BG1 extended is wrong in 78% of the side columns the SNES picture later shows, BG2 in 9%. The drawn rule (extend only where the game has drawn the map for the place shown) makes BG1 0% wrong but leaves 85% of the side columns empty: the scenes hardly scroll and the game draws nothing beside the screen, so the picture would be the SNES's with black sides. No layer rule gives the sides something true to show.",
     "The contact sheet shows why: it is drawn with every layer extended.",
     "No flicker: in the 6,750 frames checked the game never drew more sprites on a line than a SNES shows, so it changed nothing; it changes only lines over the limits.",
-    "Fast CPU hangs the game on a black screen at a scene change, even switched on after the title: the 65816 loops in forced blank, probably waiting for its sound driver (the kind of handshake that hangs Super Mario World at power-on; not traced)."
+    "Fast CPU hangs the game on a black screen at a scene change (the attract sequence's first, at frame 2,150), even switched on after the title. Traced: the game times itself by the beam. Each frame its main loop latches the scanline counter ($2137, $213D at $C0:5A46) and starts the next scene's loading (decompression, the new music's upload) only on lines 240 and later or before line 72; otherwise it waits for the next frame. At SNES speed the loop gets there on line 257; with fast CPU it finishes its frame's work earlier and arrives on line 238 every frame, so the scene never loads. A real 10.74 MHz 65816 would do the same: the game's own timing, not a sound handshake (the sound-port guard does not change it). Switch fast CPU off before a scene changes."
   ],
   "verified": {
-    "date": "2026-10-24",
+    "date": "2026-10-25",
     "how": "Workshop --wms-test (E6), 6,750 frames of the attract sequence in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame (checked on every layer extended, as widescreen is unavailable), STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/ct.png."
   }
 }

@@ -364,7 +364,7 @@ internal sealed class HeadlessSession : Session
         if (watches.Count > 0) j["watches"] = WatchValues();
         if (checks != null) j["checkFindings"] = checks.Findings.Count;
         j["savedStates"] = J.Strs(states.Keys);
-        j["history"] = history == null ? historyNote : $"{historyNote}; {history.FrameIndex} frames, step back to frame {history.OldestFrame}{(history.Replaying ? $"; replaying the log ({history.Logged - history.FrameIndex} frames ahead)" : "")}";
+        j["history"] = history == null ? historyNote : $"{historyNote}; {history.FrameIndex} frames, step back to frame {history.OldestFrame}{(history.Replaying ? $"; replaying the log ({history.Logged - history.FrameIndex} frames ahead)" : "")}{(history.SaveError != null ? "; " + history.SaveError : "")}";
         if (playingMovie != null && history != null)
             j["movie"] = new JsonObject { ["file"] = playingFile, ["frames"] = playingMovie.Frames, ["keyframesChecked"] = history.KeysChecked, ["keyframesMatched"] = history.KeysMatched, ["offCourseAfter"] = history.OffCourseFrame, ["offCourse"] = history.OffCourseFrame != null ? history.OffCourseWhat : null };
         return j;
