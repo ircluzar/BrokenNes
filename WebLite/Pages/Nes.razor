@@ -138,6 +138,7 @@
                             <label class="mini-label" title="@(string.IsNullOrEmpty(emu!.WideMessEnhanceIssues) ? "A SNES game on the WideMess console: widescreen, no sprite flicker, better sound, fast CPU (the console's, never the game's)" : "Known issues:\n" + emu!.WideMessEnhanceIssues)">WideMess</label>
                             <div class="wms-enh-box">
                                 <span class="wms-enh-status" id="wms-enh-status">@emu!.WideMessEnhanceStatus</span>
+                                <button type="button" class="btn btn-rf btn-sm" id="wms-testcart" title="The WideMess conformance cartridge: every feature tested from inside, a results table, run-all" @onclick="(() => emu!.StartWideMessTestCartAsync())">Test cartridge</button>
                                 <button type="button" class="btn btn-rf btn-sm" id="wms-use-profile" @onclick="(() => emu!.ToggleWideMessProfileAsync())">@(emu!.WideMessProfileOn ? "Profile on" : "Use the profile")</button>
                                 @for (int i = 0; i < 4; i++)
                                 {

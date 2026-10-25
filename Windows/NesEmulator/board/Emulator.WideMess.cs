@@ -121,6 +121,20 @@ namespace BrokenNes
             await AfterWideMessChangeAsync(s, why);
         }
 
+        /// <summary>The WideMess test cartridge (WideMess/testcart, built into the app) on the WideMess console, as the desktop's Console > WideMess test cartridge. Said on the status line if it cannot start.</summary>
+        public async Task StartWideMessTestCartAsync()
+        {
+            byte[]? cart = null;
+            try
+            {
+                using var s = typeof(Emulator).Assembly.GetManifestResourceStream("widemess-testcart.wms");
+                if (s != null) { using var ms = new MemoryStream(); s.CopyTo(ms); cart = ms.ToArray(); }
+            }
+            catch (Exception ex) { Logger.LogWarning(ex, "WideMess test cartridge"); }
+            if (cart == null) { Status.Set("This build of Lite carries no WideMess test cartridge"); StateHasChanged(); return; }
+            await StartSessionAsync(ConsoleKind.WideMess, cart, "widemess-testcart.wms");
+        }
+
         private static string WideMessKey(SnesSession s) => "pref_wmsenh_" + s.ImageSha1;
 
         private async Task AfterWideMessChangeAsync(SnesSession s, string? why)

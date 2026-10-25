@@ -189,6 +189,8 @@
        profile reader (WmsProfiles) finds them, as the desktop app finds them beside its exe. -->
   <ItemGroup>
     <EmbeddedResource Include="..\WideMess\profiles\*.json" LogicalName="WideMess.profiles.%(Filename)%(Extension)" />
+    <!-- the WideMess test cartridge (WideMess/testcart), started by the WideMess row's "Test cartridge" button, as the desktop's Console > WideMess test cartridge -->
+    <EmbeddedResource Include="..\WideMess\testroms\bin\widemess-testcart.wms" LogicalName="widemess-testcart.wms" />
   </ItemGroup>
 
   <!-- Third-party notices are served with the site (Notices link in the header): the ported cores (Z80, 68000, ymfm, emu2413, BizHawk mappers) are under licenses that ask for it.

@@ -427,6 +427,20 @@ if (want('chips')) {
   });
 }
 
+// ============================================================================================= the WideMess test cartridge, built into the app (the desktop's Console > WideMess test cartridge)
+if (want('testcart')) await withLab(async lab => {
+  const page = await lab.open('/', { timeout: 240000 });
+  await page.waitFor("!!document.getElementById('consoleSelect')", 120000);
+  await selectOption(page, '#consoleSelect', 'wms');
+  await page.waitFor("!!document.getElementById('wms-testcart')", 30000).catch(() => {});
+  const clicked = await page.eval(`(() => { const b = document.getElementById('wms-testcart'); if (!b) return false; b.click(); return true; })()`);
+  await page.waitFor("document.body.innerText.includes('widemess-testcart.wms')", 60000).catch(() => {});
+  await page.eval(HELPERS);
+  const r = await page.eval(`window.__frames(240, null, { colours: true })`);
+  check('testcart', 'the WideMess row\'s Test cartridge button starts the built-in WideMess test cartridge on the WideMess console: 400 x 224, its own picture', clicked && (await console_(page)) === 'wms' && r.w === 400 && r.h === 224 && r.colours > 8,
+    `clicked ${clicked}, console ${await console_(page)}, ${r.w} x ${r.h}, ${r.colours} colours`);
+});
+
 // ============================================================================================= speed
 const speed = [];
 if (want('speed')) {
