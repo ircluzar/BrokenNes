@@ -139,6 +139,49 @@
       }
     ]
   },
+  "checks": {
+    "what": "BrokenDev hardware checks (docs/projects/brokendev-debugging-plan.md, D4): every verify scenario runs again with the checks on; a finding not accepted here fails verify. Each acceptance says why.",
+    "accepted": [
+      {
+        "rule": "nes.lag-frame",
+        "at": "*",
+        "reason": "known: VRUN lags while it boots (frames 3-13: ppu_upload_pbz unpacks the title) and while a room loads (2 frames after Start, 5 at a room change: decompress_room, close_all_doors, spawn_hazards_from_markers); the lagFrames budget gates normal play"
+      }
+    ]
+  },
+  "budgets": {
+    "what": "Over a limit fails verify, near it (90%) warns; the report compares with the previous build (out/<id>/budget-history.json). romBankFree is an estimate (padding runs of 64 or more equal $00 / $FF bytes).",
+    "lagFrames": {
+      "max": 8,
+      "fromFrame": 130,
+      "scenarios": [
+        "play"
+      ],
+      "what": "after the first room has loaded; 5 on 2026-10-24 (one room change, frames 608-612)"
+    },
+    "busyPercent": {
+      "max": 95,
+      "fromFrame": 130,
+      "scenarios": [
+        "play"
+      ],
+      "what": "the busiest frame that made it: 58.5% on 2026-10-24"
+    },
+    "memoryFree": {
+      "ram": 512,
+      "what": "RAM never read in the scenarios: 825 bytes on 2026-10-24"
+    },
+    "stackFree": {
+      "min": 64,
+      "what": "217 bytes between the deepest stack and the data below it on 2026-10-24"
+    },
+    "romBankFree": {
+      "banks": {
+        "31": 1024
+      },
+      "what": "the fixed bank 31 (the code every bank calls): 1548 bytes of padding runs on 2026-10-24"
+    }
+  },
   "knownIssues": [
     "start_at_option_check fails in the project's own regression suite (the START AT spawn bug, blocked by the ROM budget); 67 of 68 checks pass.",
     "The ROM is at its ceiling: fixed bank 31 has no slack and each extra 'mode main()' branch costs about 1200 IR nodes.",

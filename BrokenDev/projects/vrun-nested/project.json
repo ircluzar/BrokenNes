@@ -142,6 +142,50 @@
       }
     ]
   },
+  "checks": {
+    "what": "BrokenDev hardware checks (docs/projects/brokendev-debugging-plan.md, D4): every verify scenario runs again with the checks on; a finding not accepted here fails verify. Each acceptance says why.",
+    "frameWait": [
+      "$80A739"
+    ],
+    "accepted": [
+      {
+        "rule": "snes.lag-frame",
+        "at": "*",
+        "reason": "known: Project Nested runs the NES game's frame across the SNES vblank and cannot reproduce NES lag frames (knownIssues); the boot's recompile and loading frames lag"
+      },
+      {
+        "rule": "snes.open-bus",
+        "at": "$420D",
+        "reason": "known: the nested engine's reset does ROL $420D: MEMSEL is write-only, so the read is open bus and the FastROM bit it writes back depends on the open-bus value ($42 on hardware, the operand's high byte, which turns FastROM on); harmless on hardware, worth a plain STA in the engine"
+      },
+      {
+        "rule": "snes.open-bus",
+        "at": "$2100",
+        "reason": "unverified: the nested runtime reads INIDISP ($2100, write-only: open bus) once in play (frame 246, pc $C23809); to look at in Project Nested"
+      }
+    ]
+  },
+  "budgets": {
+    "what": "Over a limit fails verify, near it (90%) warns; the report compares with the previous build (out/<id>/budget-history.json). romBankFree is an estimate (padding runs of 64 or more equal $00 / $FF bytes).",
+    "lagFrames": {
+      "max": 0,
+      "fromFrame": 300,
+      "scenarios": [
+        "play"
+      ],
+      "what": "with the engine's frame wait declared ($80A739): 0 on 2026-10-24"
+    },
+    "memoryFree": {
+      "wram": 16384,
+      "vram": 8192,
+      "aram": 8192,
+      "what": "121149 / 56245 / 40295 bytes on 2026-10-24"
+    },
+    "stackFree": {
+      "min": 128,
+      "what": "387 bytes on 2026-10-24"
+    }
+  },
   "knownIssues": [
     "Project Nested cannot reproduce NES lag frames: the exact fix would be a NES cycle clock in the recompiler (not started). The room-load timing race and RNG phase differ from the NES by a few frames.",
     "This recipe builds without entry-point feedback; the first execution of each code path recompiles at run time and freezes briefly. The Nested Builder's 'Harvest' (bootstrap, 10 to 20 minutes, needs Mesen) removes that; BrokenDev records the variant without it.",

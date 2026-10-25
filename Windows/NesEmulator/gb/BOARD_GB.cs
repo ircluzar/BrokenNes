@@ -147,6 +147,10 @@ public sealed class BOARD_GB : IGbCpuBus
     /// <summary>IE and IF as the CPU sees them.</summary>
     public byte DebugIe => ie;
     public byte DebugIf => (byte)(iflag | 0xE0);
+    /// <summary>For the hardware checks (D4): an OAM DMA is copying (the CPU may only use HRAM), KEY1's armed speed switch, JOYP's select bits.</summary>
+    public bool DebugOamDmaActive => dmaActive;
+    public byte DebugKey1 => key1;
+    public byte DebugJoypSelect => joypSelect;
 
     // =================================================================================== one M-cycle
     private int clockAccumulator;

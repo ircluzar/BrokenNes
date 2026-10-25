@@ -613,6 +613,10 @@ public sealed class PPU_GB
     public bool OamBlocked => LcdOn && (visMode >= 2 || (ly < Height && phase == PhDot4 && !firstLine));
     private bool OamWriteBlocked => LcdOn && (visMode == 3 || (visMode == 2 && !drawing));
 
+    /// <summary>For the hardware checks (D4): the blocking the CPU's VRAM reads and OAM writes see now.</summary>
+    public bool DebugVramReadBlocked => VramReadBlocked;
+    public bool DebugOamWriteBlocked => OamWriteBlocked;
+
     public byte ReadVram(ushort a) => VramReadBlocked ? (byte)0xFF : Vram[(a & 0x1FFF) | (Cgb || Model == GbModel.Cgb ? (vbk & 1) << 13 : 0)];
     public void WriteVram(ushort a, byte v) { if (!VramBlocked) Vram[(a & 0x1FFF) | (Model == GbModel.Cgb ? (vbk & 1) << 13 : 0)] = v; }
     /// <summary>Direct VRAM write for CGB HDMA (the transfer happens in HBlank, so blocking does not apply).</summary>

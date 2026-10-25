@@ -30,7 +30,7 @@ internal static partial class BrokenDevCli
 {
     private const string Usage =
         "Usage: --brokendev list   [--manifests DIR] [--home DIR]\n" +
-        "       --brokendev verify <id> [--manifests DIR] [--home DIR] [--rom PATH] [--only SCENARIO] [--png-dir DIR] [--out FILE]\n" +
+        "       --brokendev verify <id> [--manifests DIR] [--home DIR] [--rom PATH] [--only SCENARIO] [--png-dir DIR] [--out FILE] [--history FILE]\n" +
         "       --brokendev dump-chr --rom PATH --out FILE [--frames N] [--input \"f:Buttons,...\"]   (a NES game's CHR RAM after N frames)\n" +
         "       --brokendev run --spec FILE [--ram fceux|zeros|ones] [--cpu ID --ppu ID --apu ID] [--ntsc]   (a compat run: BrokenDev's emulator-neutral spec in, result.txt + pictures out)\n" +
         "BrokenDev is developer-only: set BROKENNES_DEV=1 (or brokenDevEnabled in config.json) first.";
@@ -66,7 +66,7 @@ internal static partial class BrokenDevCli
             case "list": return List(manifests, home);
             case "verify":
                 if (args.Length < 3 || args[2].StartsWith("--")) { Console.Error.WriteLine(Usage); return 2; }
-                return Verify(args[2], manifests, home, Opt("rom", ""), Opt("only", ""), Opt("png-dir", ""), Opt("out", ""));
+                return Verify(args[2], manifests, home, Opt("rom", ""), Opt("only", ""), Opt("png-dir", ""), Opt("out", ""), Opt("history", ""));
             default:
                 Console.Error.WriteLine($"Unknown BrokenDev command '{args[1]}'.\n{Usage}");
                 return 2;
@@ -267,7 +267,7 @@ internal static partial class BrokenDevCli
         public bool Ok => Result == "ok" && Checks.All(c => c.Ok);
     }
 
-    private static int Verify(string id, string manifests, string home, string romOpt, string only, string pngDir, string outFile)
+    private static int Verify(string id, string manifests, string home, string romOpt, string only, string pngDir, string outFile, string historyPath = "")
     {
         string mp = Path.Combine(manifests, id, "project.json");
         if (!File.Exists(mp)) { Console.Error.WriteLine($"No manifest for '{id}' ({mp})."); return 2; }
@@ -303,7 +303,11 @@ internal static partial class BrokenDevCli
                 cross.Add(EvaluateCompare(c, results));
 
         bool ok = results.Where(r => !r.Info).All(r => r.Ok) && cross.All(c => c.Ok);
+        // the hardware checks, budgets and profile (a manifest's checks / budgets sections; BrokenDevCli.Checks.cs)
+        var checks = RunChecksAndBudgets(root, verify, console, rom, romBytes, results, only, historyPath, out bool checksOk);
+        ok &= checksOk;
         var report = BuildReport(id, rom, romBytes, console, results, cross, ok);
+        if (checks != null) report["checks"] = checks;
         string text = report.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
         if (outFile.Length > 0) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outFile))!); File.WriteAllText(outFile, text); }
         Console.WriteLine(text);
@@ -311,6 +315,7 @@ internal static partial class BrokenDevCli
         foreach (var r in results) foreach (var c in r.Checks.Where(c => !c.Ok)) Console.Error.WriteLine($"  [{r.Id}] FAIL {c.Id}: {c.Detail}");
         foreach (var c in cross.Where(c => !c.Ok)) Console.Error.WriteLine($"  [compare] FAIL {c.Id}: {c.Detail}");
         foreach (var r in results.Where(r => r.Result != "ok")) Console.Error.WriteLine($"  [{r.Id}] {r.Result}: {r.CrashInfo}");
+        if (checks != null) PrintChecks(checks);
         return ok ? 0 : 1;
     }
 
@@ -533,6 +538,8 @@ internal static partial class BrokenDevCli
         byte[]? ExportBattery();
         /// <summary>Puts a battery save back before the first frame; returns what happened, in words.</summary>
         string ImportBattery(byte[] data);
+        /// <summary>The machine as the debugger sees it, for the hardware checks (BrokenDevCli.Checks.cs).</summary>
+        NesEmulator.Debugging.DebugMachine DebugMachine();
     }
 
     private static string Fnv(byte[] d) { ulong h = 14695981039346656037UL; foreach (byte b in d) { h ^= b; h *= 1099511628211UL; } return h.ToString("X16"); }
@@ -619,6 +626,8 @@ internal static partial class BrokenDevCli
 
         public string ImportBattery(byte[] data) => nes.HasMapperBatteryMemory ? nes.ImportMapperBatteryMemory(data).ToString() : "the cartridge has no mapper-side battery memory";
 
+        public NesEmulator.Debugging.DebugMachine DebugMachine() => NesEmulator.Debugging.DebugMachines.For(nes);
+
         public byte[] DumpChr()
         {
             int n = nes.GetChrSize(); var b = new byte[n];
@@ -703,6 +712,8 @@ internal static partial class BrokenDevCli
             try { s.ImportSave(data); return "Applied"; }
             catch (Exception ex) { return "refused: " + ex.Message; }
         }
+
+        public NesEmulator.Debugging.DebugMachine DebugMachine() => NesEmulator.Debugging.DebugMachines.For(s);
 
         public void Dispose() => s.Dispose();
     }

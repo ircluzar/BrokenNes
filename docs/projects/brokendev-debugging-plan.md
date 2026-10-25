@@ -1,7 +1,8 @@
 # BrokenDev debugging toolkit: a debugger, hardware checks and an MCP server
 
 Plan of 2026-10-23, written after an interview with the user. It starts **after WideMess milestone 1** (the week of 2026-10-26).
-**Milestone D1 (the debugger engine) is built** (2026-10-24): see "D1 as built" after the milestones. The rest is not.
+**Milestone D1 (the debugger engine) is built** (2026-10-24): see "D1 as built" after the milestones. **Milestone D4 (checks, budgets,
+profiler) is built** (2026-10-24): see "D4 as built"; the Game Boy hello world's accepted findings wait for D2. The rest is not.
 
 ## Why
 
@@ -371,6 +372,127 @@ They follow WideMess milestone 1. Each one is merged, tested and pushed before t
 - **Left for later milestones:** the MCP server on these routes and on `DebugRunner` (D3); step back (D5, from save states and
   replay); the checks, profiler and coverage built on the same hooks (D4, D9); the windows (D8). Lite does not wire the debugger
   (single-threaded WASM cannot park a thread: Lite's debugging comes through D3's web pages).
+
+## D4 settled (2026-10-24): the first check catalogue
+
+Settled before coding milestone D4. Every rule has an id, a test ROM that must trigger it and a clean one that must not. A finding names
+the rule, the first frame, the PC with its symbol, the address with its symbol where the rule is about memory, and how many times it
+happened. Findings are keyed by (rule, place): the place is the address (memory rules) or the function the PC is in (code rules), so a
+game accepts one bug once, by symbol, and a rebuild that moves addresses keeps its acceptances.
+
+**How the checks see the machine.** They are an observer of the D1 engine: they arm the same hooks (none when off, so goldens and speed are
+unchanged) and run only in headless check runs (Workshop `--checks`, `--check-test`, `brokendev verify`). A check run is a second pass of a
+verify scenario, so the scenario's own hashes and speed are never measured with the checks on, and the checked pass must end on the same
+picture (proof the checks did not disturb the game).
+
+**Lag frames** (all three consoles): a frame is lagged when vblank arrives while the main program is still working. "Waiting" is a
+spin loop (a backward jump to the same place with no RAM written in the loop, the stack aside), WAI (SNES), HALT (Game Boy), or a symbol the
+manifest names (`checks.frameWait`). Interrupt handlers do not count as waiting or working for the main program.
+
+### NES (11 rules)
+
+| Rule | What it reports |
+|---|---|
+| `nes.ram-uninit` | Work RAM (`$0000-$07FF`) read before it was ever written: the CPU's real reads (its dummy reads excluded, they are not used) and OAM DMA's reads. |
+| `nes.ppu-render-write` | `$2007` read or written, `$2003` / `$2004` written, while the PPU renders (background or sprites on, lines 0-239 and the pre-render line). `$2006` alone is the documented scroll-split technique and is not reported. |
+| `nes.oam-dma-render` | OAM DMA (`$4014`) started while the PPU renders, or late enough in vblank to run into the pre-render line. |
+| `nes.frame-irq` | An IRQ taken while the APU frame counter's IRQ is raised, whose handler returns (RTI) without acknowledging it (`$4015` read): the SMB3 red clouds. |
+| `nes.dmc-conflict` | `$4016` / `$4017` / `$2007` read while a DMC sample plays (a DMC DMA can land on the read on hardware); the detail counts the reads a DMA actually hit in the run. |
+| `nes.unofficial-opcode` | An unofficial (illegal) opcode executed. The place is the opcode ("$AB LAX #imm"), not the function: a game accepts each opcode it uses on purpose, and the detail says how stable it is on hardware (the highly unstable `$8B` / `$AB` with the operands seen). |
+| `nes.open-bus` | A read of a write-only register (`$2000`, `$2001`, `$2003`, `$2005`, `$2006`, `$4000-$4014`) or of an address no device answers (`$4018-$5FFF`, `$6000-$7FFF` without PRG RAM: the mapper decides). |
+| `nes.stack-wrap` | The stack pointer wraps (`$00` to `$FF` on a push, `$FF` to `$00` on a pull). |
+| `nes.stack-overflow` | The stack grows onto a page-1 byte the game read as data while it lay below the stack pointer and the stack had never used it. |
+| `nes.lag-frame` | A lag frame; the place is the function the main program was in. Where a frame runs out moves with every build, so a game accepts its lag frames as a rule and gates them with the `lagFrames` budget. |
+| `nes.flash-write` | A mapper-30 flash command (a write to `$8000-$BFFF` on the self-flashing board); the place is the function that wrote, so a game accepts its save routine and anything else is new. |
+
+### SNES and WideMess (14 rules)
+
+| Rule | What it reports |
+|---|---|
+| `snes.wram-uninit` | Work RAM read before written (the CPU, DMA and the `$2180` port; WideMess: also its 896 KB). |
+| `snes.vram-uninit` | VRAM read before written: through `$2139`/`$213A` or DMA, and by the picture (below). |
+| `snes.cgram-uninit` | Palette read before written: through `$213B` or DMA, and by the picture (the backdrop colour, and the colours drawn tiles use). |
+| `snes.oam-uninit` | OAM read before written: through `$2138` or DMA, and by the picture (all 544 bytes once sprites are on a screen: the PPU scans them all). |
+| `snes.dma-hdma` | An HDMA transfer (or table fetch) during a general DMA: what freezes the first 5A22 revision. |
+| `snes.hdma-midframe` | An HDMA channel switched on mid-picture (after the line-0 init, before vblank): it starts from stale table pointers. |
+| `snes.ppu-write-active` | VRAM, CGRAM or OAM written during the picture without forced blank (dropped, or landing at the address the PPU is reading), by the CPU or by a DMA started outside vblank. HDMA to CGRAM lands in h-blank and is fine. |
+| `snes.dma-overrun` | A DMA started in vblank whose VRAM / CGRAM / OAM bytes run into the picture. |
+| `snes.muldiv-early` | `$4214-$4217` read fewer than 8 CPU cycles after a multiply (`$4203`) or 16 after a divide (`$4206`). |
+| `snes.spc-handshake` | The 65816 polls an APU port (`$2140-$2143`) from one place for a second or more without the value changing: the SPC700 never answered. |
+| `snes.echo-overrun` | With echo writes on (FLG bit 5 clear), the SPC700 runs code or reads data inside the echo buffer (`ESA` x 256, `EDL` x 2 KB, at least 4 bytes), or a playing voice's samples or sample directory lie there. |
+| `snes.stack-overflow` | The 65816 stack grows onto a byte the game read as data while it lay below the stack pointer and the stack had never used it (data written inside the live stack is not a finding: compiled code keeps its locals there). |
+| `snes.open-bus` | A read of a write-only register or an address nothing answers. The WideMess detection read of `$4221` (the spec's protocol) is not reported; on the WideMess console `$4220-$423F` are registers. |
+| `snes.lag-frame` | A lag frame (WAI counts as waiting). |
+
+**The picture's own reads** (VRAM, CGRAM, OAM) are checked once per frame, at the start of vblank, from the registers then: the visible
+tile-map entries of every background on the main or sub screen, the tiles they name, the colours those tiles draw with, the on-screen
+sprites' tiles. This is a model of the PPU's fetches, not a hook in the renderer (the hottest code there is): **modes 0-4 only** (modes 5-7
+and the offset-per-tile tables are not modelled), and **HDMA-driven per-line register changes are not followed** (the end-of-picture
+registers stand for the frame). On the WideMess console the picture model is off (its 512 KB VRAM and 8-layer mode are not modelled); the
+port and DMA reads are still checked.
+
+**WideMess debug port:** writes to `$4230-$423F` reach a reserved hook in the checks (counted, decoded by D7), never an open-bus finding.
+
+### Game Boy and Game Boy Color (12 rules)
+
+| Rule | What it reports |
+|---|---|
+| `gb.ram-uninit` | Work RAM or HRAM read before written; OAM never written when sprites are shown (LCD and OBJ on: the PPU scans all 40 entries). |
+| `gb.vram-mode3` | VRAM written or read by the CPU in mode 3 with the LCD on (the write is dropped, the read gives `$FF`). |
+| `gb.oam-mode23` | OAM written or read by the CPU in modes 2-3 with the LCD on, or during OAM DMA. |
+| `gb.oam-dma-hram` | During OAM DMA the CPU touches memory outside HRAM and I/O (an instruction fetched from ROM or work RAM, a stack in work RAM): the bus belongs to the DMA. |
+| `gb.lcd-off` | The LCD switched off outside vblank (it can damage an original Game Boy). |
+| `gb.unusable` | `$FEA0-$FEFF` read or written. |
+| `gb.cgb-palette-mode3` | Game Boy Color palette data (`$FF69`/`$FF6B`) written or read in mode 3. |
+| `gb.speed-switch` | KEY1 armed for a speed switch without a STOP to perform it, or STOP with IE not `$00` or JOYP not `$30`. |
+| `gb.cart-ram-disabled` | `$A000-$BFFF` read or written while the cartridge RAM is disabled, or on a cartridge without RAM. |
+| `gb.halt-bug` | HALT with IME clear and an interrupt pending (the next byte is read twice); EI then HALT is not the bug. |
+| `gb.stack-overflow` | The stack grows onto a byte the game read as data while it lay below SP and the stack had never used it. |
+| `gb.lag-frame` | A lag frame (HALT counts as waiting). |
+
+### Not built, and why
+
+- **The picture chip's reads on the NES** (CHR or nametables never written): the NES boots with CHR ROM or with CHR RAM a game must fill
+  before showing it, and every one of our NES games clears its nametables; a renderer hook for it would sit in the hottest NES code.
+- **Exact DMC collisions as the only test**: a collision depends on where the DMC's timer starts at power-on, which differs between consoles
+  and runs, so the strict rule reports every read that *can* collide and the run's actual collisions are only counted.
+- **"HDMA just after a DMA ends"** (the other trigger of the 5A22 v1 freeze): its window is not documented to a cycle, so only an HDMA
+  during the DMA is reported.
+
+## D4 as built (2026-10-24)
+
+- **Engine:** `Windows/NesEmulator/debug/checks` (compiled by the desktop app and Workshop, like D1). The checks are a `DebugObserver` of the
+  D1 `Debugger`: it arms the hooks they ask for and calls them before its breakpoint matching (D1 gained observers and four events: a write
+  after it landed, the 65816's idle cycles, call frames pushed and popped, the NES DMC halt). `ConsoleChecks` (findings by rule and place,
+  frames and lag frames, the profiler, stack collisions), `NesChecks`, `SnesChecks` (also the WideMess, with the reserved debug-port hook at
+  `$4230-$423F`), `GbChecks`, `CheckRun` (attach, the profile summary, the report, ROM bank free space).
+- **Zero cost when off:** the boards gained read-only accessors that nothing calls with the checks off, and `Bus.PreciseTick` one null test
+  inside its rare DMC-halt branch. The ALttP golden is IDENTICAL, SMW's result is unchanged (video `e0fe6fe55bd52156`, audio
+  `3d7b8c7da7a360eb`), `--debug-test` 101 of 101, and the speed A/B is within noise (below).
+- **The catalogue as built:** the 37 rules of "D4 settled" (11 NES, 14 SNES and WideMess, 12 Game Boy), none dropped. Not built: the NES
+  picture chip's own reads, exact-only DMC collisions, the "HDMA just after a DMA" freeze (reasons in "D4 settled").
+- **Workshop:** `--check-test` (109 checks: every rule's test ROM triggers it, naming the rule, the first frame, the PC and its symbol, and its
+  negative control stays silent; the clean templates break no rule; the 6502's dummy reads are not reads; the profiler's busy time, lag
+  frames, DMA bytes and vblank use; checks on frame-identical to checks off on the NES, SNES, WideMess, Game Boy, VRUN and Super VRUN),
+  `--checks` and `--profile` (`--rom --sym --frames --input --wait --frames-csv --json`), which replace the hand-written Lua profilers.
+- **verify:** a manifest's `checks` section runs every (or the listed) scenario a second time with the checks on; anything not in
+  `checks.accepted` fails; `budgets` fail over and warn near; the report has the previous build's values (`out/<id>/budget-history.json`).
+  Cost with the checks on: VRUN x1.5, Super VRUN x4.5 (114 checked frames a second); a project's verify takes 20 to 90 s more.
+- **The user's games, today's findings (all accepted, with reasons, in their manifests):**
+  - VRUN: lag frames only (boot; the first room load; 5 frames at a room change). Budgets: lag 5 of 8 in play from frame 130, the busiest
+    frame 58.5% of 95%.
+  - The SMB1 remake: 14 unofficial opcodes (NESFab's unofficial ISA), among them the **highly unstable `$AB` LAX #imm, used only with
+    `#$00`** (safe as used); lag at boot and 4 frames per level reload (12 in play from frame 300, budget 16).
+  - Super VRUN: lag while booting and loading, **0 in play** (its own rule; budget 0); one unverified picture finding (BG1 draws colour 27,
+    never written, during the title-to-game fade). No work RAM is read before it is written in today's build (October's 61 were fixed or seen by a Mesen script that missed DMA writes).
+  - Nested VRUN and its enhanced build: the Nested engine's reset does **`ROL $420D` on a write-only register** (the FastROM bit it writes
+    back is open-bus luck); one read of INIDISP in play; 0 lag in play once its frame wait (`$80A739`) is declared.
+  - The SMB1 Nested build: the same `ROL $420D`; 382 SNES vblanks outside the engine's frame wait in play (unverified, not budgeted).
+  - The WideMess sample: **8 variables read before written: the devkit's start-up does not clear work RAM** (BrokenNes powers it on as
+    zeros; a WideMess powers on as a SNES); a game made from the template inherits it.
+- **Left open:** the Game Boy hello world's accepted list (D2); named timers in the profile (D7's debug port); the SNES picture model's
+  limits (modes 0-4, no HDMA); RAM headroom by allocation from the symbols (today: bytes read, a lower bound of use); the WideMess's VRAM and
+  sound RAM headroom; where the SMB1 Nested build waits; the devkit's start-up clear.
 
 ## Open questions (to settle at the start of the track)
 

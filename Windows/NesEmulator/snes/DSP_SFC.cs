@@ -54,6 +54,11 @@ public sealed partial class DSP_SFC
     /// <summary>Optional: told of every register write the audio unit's program makes (address, value) before it lands. A probe for tools and tests; null by default.</summary>
     public Action<int, byte>? WriteTap;
 
+    /// <summary>For the hardware checks (D4): the echo buffer's length in bytes as the DSP uses it now (EDL takes effect when the buffer wraps; 0 means 4 bytes).</summary>
+    public int DebugEchoLength => echoLength;
+    /// <summary>For the hardware checks (D4): the address of the BRR block voice <paramref name="v"/> plays now.</summary>
+    public int DebugVoiceBrrAddress(int v) => voices[v & 7].BrrAddr;
+
     public DSP_SFC(byte[] aram)
     {
         ram = aram;

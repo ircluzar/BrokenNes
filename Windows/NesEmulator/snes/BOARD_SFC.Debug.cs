@@ -29,6 +29,9 @@ public sealed partial class BOARD_SFC
     public bool DebugNmiFlag => nmiFlag;
     public bool DebugIrqFlag => irqFlag;
     public byte DebugOpenBus => mdr;
+    /// <summary>For the hardware checks (D4): in vblank (from the vblank line to the end of the frame), and the line vblank starts on (225, or 240 with overscan).</summary>
+    public bool DebugInVBlank => inVBlank;
+    public int DebugVBlankLine => vblankLine;
 
     /// <summary>One DMA or HDMA byte with the debugger watching: the same reads and writes in the same order as the untapped lines in RunDma / RunHdmaLine.</summary>
     private void DebugDmaByte(bool toA, uint aBank, uint aAddr, byte bReg, int channel, SnesBusSource source)
@@ -103,4 +106,9 @@ public partial class PPU_SFC
     public int DebugCgramByteAddress => cgadd * 2 + (cgHigh ? 1 : 0);
     /// <summary>The OAM byte the $2104 port writes next (0-543).</summary>
     public int DebugOamByteAddress => oamInternal < 0x200 ? oamInternal : 0x200 + (oamInternal & 0x1F);
+    /// <summary>For the hardware checks (D4): the picture is being drawn (line 0 to the start of vblank), whatever forced blank says.</summary>
+    public bool DebugInDisplay => inDisplay;
+    /// <summary>The VRAM word $2139/$213A loads its prefetch from next, and VMAIN (which port increments, by how much).</summary>
+    public int DebugVramReadWordAddress => VramAddress();
+    public byte DebugVmain => vmain;
 }
