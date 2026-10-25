@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The BrokenNes MCP server (BrokenDev milestone D3, docs/projects/brokendev-debugging-plan.md section 8). A console program that talks
+       MCP over stdio. Headless sessions run on the Workshop engine in this process (the Workshop assembly is referenced, so the emulator
+       code is the very same build); live sessions talk to a running desktop app through its HTTP API. Nothing in the emulator, the desktop
+       app, Workshop or Lite depends on this project: when it is not used, nothing changes. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>BrokenNes.Mcp</RootNamespace>
+    <AssemblyName>BrokenNes.Mcp</AssemblyName>
+    <NoWarn>$(NoWarn);CA1416;CS8602;CS8618</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The official MCP SDK for .NET, pinned (approved by the user, 2026-10-24: 2.2.0, published 2026-08-13). -->
+    <PackageReference Include="ModelContextProtocol" Version="[2.2.0]" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The Workshop engine: DebugHost, the debugger shell's machinery, the checks runner, the test-ROM assembler. -->
+    <ProjectReference Include="..\..\Workshop\BrokenNes.Workshop.csproj" />
+  </ItemGroup>
+
+</Project>
