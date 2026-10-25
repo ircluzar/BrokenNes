@@ -677,6 +677,30 @@ port and DMA reads are still checked.
   only through `movie play` (not `open_movie`); instruction-level divergence against another emulator (their compat runs record variables,
   not instructions); a real game's bisect (the user's game repositories: VRUN's history is in its archive; none has a known regression to find).
 
+## D6 settled (2026-10-25): the bug bundle
+
+Refined from section 5 before the code, measured on this machine:
+- **The rolling buffer** (`Windows/NesEmulator/debug/capture`, shared by the desktop app, Lite and Workshop): every 60 frames a save state, a
+  picture and the keyframe hashes of D5's movies; every frame the two pads (two bytes each); every sound sample the app queued (mono floats).
+  32 slots, so a capture always holds at least 30 s. Buffers made once; between the states nothing is allocated (measured: 0 bytes over 590
+  frames). Cost: a VRUN state is 745 KB and takes up to 10.5 ms once a second; a Super VRUN state 92 KB, 2.6 ms; armed against off is within
+  noise on the planted game, VRUN and Super VRUN (Workshop, best of three, interleaved).
+- **Breaks:** something outside the game (a state load, a reset, a corruption, a memory write through the API, a core swap or the NES's
+  frame timing switched) means the frames before cannot replay into the ones after: the history starts again there, and the bundle says
+  when and why. Core swaps and the timing are watched by the ring itself (once a second); the others are told by the app.
+- **The bundle** (a folder on the desktop, the same files as one zip in Lite): `bug.json` (the note, when, the app, the ROM, the BrokenDev
+  project, the cores and settings, how long and why it starts where it does), `capture.bnm` (a D5 movie from the oldest state: replays
+  exactly), `rom/` (the very ROM: the bug replays after the game is rebuilt), `symbols/` (from the project's build record), `audio.wav`,
+  `pictures/fNNNNNN.png` (one a second), `strip.png` (all of them at half size), `last.png`. A console without save states (a Game Boy on
+  a foreign CPU) still gets a movie from its power-on while the history reaches it; after that the bundle has pictures and sound and says
+  why there is no movie.
+- **Where:** a ROM whose sha256 is the ROM of a successful BrokenDev build record goes to `<game workspace>\bugs\<yyyy-MM-dd_HHmmss>\`
+  (the record's `bugs`, else its live workspace); any other ROM, and a project whose record names no workspace (VRUN's frozen build), to
+  `%LOCALAPPDATA%\BrokenNes\bugs\` (said in the bundle); `BROKENNES_BUGS_DIR` replaces that folder for tests. Never `%APPDATA%\BrokenNes`.
+- **Open question 3, answered for now:** the key is **F9** (F12 is the screenshot, F5 / F7 the quick states), the menu item is
+  Emulator > Capture Bug (last 30 s); the note is typed in a small box after the key (the game paused
+  meanwhile; Enter saves, an empty note is fine, Esc discards the capture); the HTTP API takes the note in the request.
+
 ## Open questions (to settle at the start of the track)
 
 1. The debug port's registers on each console, checked against mapper 30, the SNES coprocessors' ranges and the Game Boy Color's
