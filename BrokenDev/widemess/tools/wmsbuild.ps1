@@ -7,9 +7,10 @@
   and its assets (PNG, WAV, MIDI). This script, run by 'brokendev.ps1 build <project>' (or by hand), does:
     1. the converters: wmsgfx.py (PNG -> 8-bpp layers, 4/8-bpp sprites, one 1,024-colour palette) and wmssnd.py (WAV -> 16-bit PCM
        or BRR, MIDI -> the sound driver's songs), into build\gen;
-    2. hdr.asm for the WideMess map (lib\wmshdr.asm.in: PVSnesLib's HiROM memory map plus the far work-RAM slot);
+    2. hdr.asm for the WideMess map (lib\wmshdr.asm.in: PVSnesLib's HiROM memory map plus the far work-RAM slot), and build\gen\wmsclear.asm,
+       the far work-RAM sections the start-up clears (lib\wmsboot.asm: the RESET vector clears all work RAM the game uses before crt0);
     3. 816-tcc + 816-opt + wla-65816 for every src\*.c and the library (lib\widemess.c, lib\wmssound.c), wla-65816 for src\*.asm,
-       lib\wmsfar.asm and the generated assets, wla-spc700 for the sound driver (driver\wmsdrv.asm);
+       lib\wmsfar.asm, lib\wmslib.asm, lib\wmsboot.asm and the generated assets, wla-spc700 for the sound driver (driver\wmsdrv.asm);
     4. wlalink against PVSnesLib's HiROM libraries;
     5. Workshop --wms-pack --map 2: build\<name>.wms (plus build\<name>.sym, build\<name>.sfc the bare image).
   It never writes outside the project's build folder. PVSnesLib is only read.
@@ -23,7 +24,8 @@
 .PARAMETER Python
   Python 3.10+ with Pillow and NumPy. Default: $env:BROKENDEV_PYTHON, else the first one BrokenDev finds.
 .PARAMETER Define
-  Extra -D names for the C and assembly sources (e.g. WMS_NOUNLOCK, the negative control: no unlock).
+  Extra -D names for the C and assembly sources (e.g. WMS_NOUNLOCK, the negative control: no unlock; WMS_NOCLEAR, the start-up without
+  its work-RAM clear: RESET goes straight to PVSnesLib's crt0, the checks' negative control).
 .PARAMETER Out
   The build folder (default <Project>\build). With -Define, use another folder so the normal build is not overwritten.
 #>
@@ -139,10 +141,49 @@ $t21 = $t21.PadRight(21)
 $hdr = (Get-Content -LiteralPath (Join-Path $libDir 'wmshdr.asm.in') -Raw)
 $hdr = $hdr.Replace('@FASTROMDEF@', $(if ($fastRom) { '.DEFINE FASTROM 1' } else { '' })).Replace('@ROMSPEED@', $(if ($fastRom) { 'FASTROM' } else { 'SLOWROM' }))
 $hdr = $hdr.Replace('@ROMBANKS@', [string]$romBanks).Replace('@ROMTITLE@', $t21).Replace('@ROMSIZE@', ('{0:X2}' -f $romSizeCode))
+$hdr = $hdr.Replace('@RESET@', $(if ($Define -contains 'WMS_NOCLEAR') { 'tcc__start' } else { 'wms_boot' }))
 foreach ($d in $Define) { $hdr = ".DEFINE $d 1`r`n" + $hdr }
 [System.IO.File]::WriteAllText((Join-Path $Out 'hdr.asm'), $hdr, (New-Object System.Text.UTF8Encoding($false)))
 [void](Run 'hdr' $as @('-d', '-s', '-x', '-o', 'hdr.obj', 'hdr.asm'))
 $objs.Add('hdr.obj')
+
+# ---- 2b. the start-up clear's table of far work RAM (lib\wmsboot.asm): every .RAMSECTION in banks $70-$7D of the assembly this build
+# assembles (src\*.asm, the library's, the converters'), by its SECTIONSTART_ / SECTIONEND_ labels, which the linker fills in. A 64 KB
+# section's end wraps to its start: its size is 0, which a DMA reads as 64 KB.
+$farSrc = @(Get-ChildItem -LiteralPath (Join-Path $Project 'src') -Filter '*.asm' -File -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { $_.FullName })
+$farSrc += (Join-Path $libDir 'wmsfar.asm')
+$farSrc += $genAsm
+$farNames = New-Object System.Collections.Generic.List[string]
+foreach ($s in $farSrc) {
+    foreach ($line in [System.IO.File]::ReadAllLines($s)) {
+        $code = ($line -split ';', 2)[0]
+        if ($code -notmatch '^\s*\.RAMSECTION\s+"([^"]*)"(.*)$') { continue }
+        $secName = $Matches[1]; $rest = $Matches[2]
+        if ($rest -notmatch '\bBANK\s+(\$[0-9A-Fa-f]+|[0-9]+)\b') { continue }
+        $bankText = $Matches[1]
+        $bank = if ($bankText.StartsWith('$')) { [Convert]::ToInt32($bankText.Substring(1), 16) } else { [int]$bankText }
+        if ($bank -lt 0x70 -or $bank -gt 0x7D) { continue }
+        if ($secName -notmatch '^[A-Za-z0-9_.]+$') { Fail "$s`: far RAM section `"$secName`" (bank `$$('{0:X2}' -f $bank)): name it with letters, digits, _ and . only (the start-up clear names it by its SECTIONSTART_ label)" }
+        if ($farNames.Contains($secName)) { Fail "$s`: a second far RAM section named `"$secName`": the start-up clear finds a section by its name, give each its own" }
+        $farNames.Add($secName)
+    }
+}
+$clr = New-Object System.Text.StringBuilder
+[void]$clr.AppendLine('; wmsclear.asm: written by wmsbuild.ps1, the far work RAM the start-up clears (lib\wmsboot.asm): 24-bit start, 16-bit size (0 = 64 KB).')
+[void]$clr.AppendLine('.include "hdr.asm"')
+[void]$clr.AppendLine('.SECTION ".wms_far_clear" SUPERFREE')
+[void]$clr.AppendLine('wms_far_clear:')
+foreach ($n in $farNames) {
+    [void]$clr.AppendLine("  .dl SECTIONSTART_$n")
+    [void]$clr.AppendLine("  .dw (SECTIONEND_$n - SECTIONSTART_$n) & `$FFFF")
+}
+[void]$clr.AppendLine('  .db 0, 0, 0                   ; the end: a bank byte of 0')
+[void]$clr.AppendLine('.ENDS')
+$clrAsm = Join-Path $gen 'wmsclear.asm'
+[System.IO.File]::WriteAllText($clrAsm, $clr.ToString(), (New-Object System.Text.UTF8Encoding($false)))
+if ($Define -contains 'WMS_NOCLEAR') { Write-Host "  start-up clear: off (-D WMS_NOCLEAR: RESET runs crt0 at once)" }
+elseif ($Define -contains 'WMS_NOUNLOCK') { Write-Host "  start-up clear: the SNES's 128 KB (-D WMS_NOUNLOCK: no 20-bit port for the far work RAM)" }
+else { Write-Host "  start-up clear: the SNES's 128 KB and $($farNames.Count) far RAM section(s)$(if ($farNames.Count) { ': ' + ($farNames -join ', ') })" }
 
 # ---- 3. C and assembly
 $incs = @("-I$(Join-Path $Pvsneslib 'pvsneslib\include')", "-I$(Join-Path $Pvsneslib 'devkitsnes\include')", "-I$libDir", "-I$(Join-Path $Project 'src')", "-I$gen")
@@ -166,6 +207,7 @@ $sfiles += @(Get-ChildItem -LiteralPath (Join-Path $Project 'src') -Filter '*.as
 $sfiles += (Join-Path $libDir 'wmsfar.asm')
 $sfiles += (Join-Path $libDir 'wmslib.asm')
 $sfiles += $genAsm
+if ($Define -notcontains 'WMS_NOCLEAR') { $sfiles += @((Join-Path $libDir 'wmsboot.asm'), $clrAsm) }   # WMS_NOCLEAR: the image as before the clear
 foreach ($s in $sfiles) {
     $base = [System.IO.Path]::GetFileNameWithoutExtension($s) + '_s'
     if ($seen.ContainsKey($base)) { Fail "two assembly files are called $base" }

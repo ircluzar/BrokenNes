@@ -6,7 +6,9 @@
     devkit_sample.wms (+ .sym)     the sample game, Wide Blaster (WideMess\sample)
     devkit_sample_nounlock.wms     its negative control
     devkit_sample_snesspeed.wms    the sample with fast mode off (-D SAMPLE_SNES_SPEED): the control for "fast mode keeps 60 frames a second"
-  Workshop --wms-test checks them (WideMessCli.Devkit.cs, section M5).
+    devkit_sample_noclear.wms (+ .sym)  the sample without the start-up's work-RAM clear (-D WMS_NOCLEAR): the old start-up, byte for byte
+  Workshop --wms-test checks them (WideMessCli.Devkit.cs, section M5); Workshop --check-test (group wms) checks the sample and its
+  no-clear control with the hardware checks (the start-up clear: no work RAM read before written).
 .PARAMETER Pvsneslib
   PVSnesLib's folder. Default: wmsbuild.ps1's (BROKENDEV_PVSNESLIB, else the Super VRUN workspace beside the repository).
 .PARAMETER Workshop
@@ -48,10 +50,13 @@ try {
     Build $sample (Join-Path $work 's')
     Build $sample (Join-Path $work 'sn') @('WMS_NOUNLOCK')
     Build $sample (Join-Path $work 'ss') @('SAMPLE_SNES_SPEED')
+    Build $sample (Join-Path $work 'sc') @('WMS_NOCLEAR')
     Copy-Item (Join-Path $work 's\widemess_sample.wms') (Join-Path $bin 'devkit_sample.wms') -Force
     Copy-Item (Join-Path $work 's\widemess_sample.sym') (Join-Path $bin 'devkit_sample.sym') -Force
     Copy-Item (Join-Path $work 'sn\widemess_sample.wms') (Join-Path $bin 'devkit_sample_nounlock.wms') -Force
     Copy-Item (Join-Path $work 'ss\widemess_sample.wms') (Join-Path $bin 'devkit_sample_snesspeed.wms') -Force
+    Copy-Item (Join-Path $work 'sc\widemess_sample.wms') (Join-Path $bin 'devkit_sample_noclear.wms') -Force
+    Copy-Item (Join-Path $work 'sc\widemess_sample.sym') (Join-Path $bin 'devkit_sample_noclear.sym') -Force
 } finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }
