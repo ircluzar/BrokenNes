@@ -18,6 +18,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The BrokenNes MCP server (BrokenDev/mcp, milestone D3) builds on this engine; its client test assembles its ROMs with the debugger tests' assembler. -->
+    <InternalsVisibleTo Include="BrokenNes.Mcp" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Forced by NES.cs: it hard-references NesEmulator.APU_WF (NAudio.Midi) and
          NesEmulator.APU_MNES (MeltySynth) by type name on 27 lines - same requirement Web/
          already discovered. Neither is actually wired to audio output here (Workshop ships

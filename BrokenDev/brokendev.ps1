@@ -30,6 +30,10 @@
                                  the project's compat scenarios on BrokenNes (the reference column, always first) and on every installed
                                  emulator of its console: the game's state read every frame, pictures, saves; a verdict per emulator
                                  (works / differs / fails / cannot be tested) in out\<id>\compat\compat.json and compat.html
+    mcp     install|uninstall|build|status|test
+                                 the BrokenNes MCP server (BrokenDev/mcp): 'install' builds it into BROKENDEV_HOME\bnbuild\mcp and registers it
+                                 for Claude Code at USER scope ('claude mcp add --scope user brokennes', every session and game repo);
+                                 'uninstall' removes that one entry; 'test' runs the scripted MCP client test and the planted-bug demo
 
   Workspaces
     Every project works on the user's LIVE workspace when one sits beside the repository (VRUN_Nes_Dev, SuperVRUN_dev), else on the
@@ -98,6 +102,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\Emulators.ps1')
 . (Join-Path $here 'lib\Compat.ps1')
 . (Join-Path $here 'lib\WideMess.ps1')
+. (Join-Path $here 'lib\Mcp.ps1')
 
 function Show-BdHelp { Write-Host (Get-Help (Join-Path $here 'brokendev.ps1') -Full | Out-String) }
 
@@ -319,6 +324,16 @@ try {
             if ($bad.Count -gt 0) { Write-BdFail ("compat found problems in: " + ($bad -join ', ') + ' (see out\<project>\compat\compat.html)'); exit 1 }
             exit 0
         }
+        'mcp' {
+            switch ($Target.ToLowerInvariant()) {
+                'build'     { Write-BdOk "mcp server: $(Invoke-BdBuildMcp -ArtifactsPath $ArtifactsPath)"; exit 0 }
+                'install'   { $r = Install-BdMcp -Exe $Exe -DryRun:$DryRun; $r | Format-List | Out-String | Write-Host; Write-BdOk "registered '$($r.name)' at user scope: $($r.how)"; Write-BdInfo 'new Claude Code sessions have its tools (mcp__brokennes__*)'; exit 0 }
+                'uninstall' { $r = Uninstall-BdMcp; Write-BdInfo $r.how; if ($r.removed) { Write-BdOk 'removed' }; exit 0 }
+                'status'    { Get-BdMcpStatus | Format-List | Out-String | Write-Host; exit 0 }
+                'test'      { if (Invoke-BdMcpTest -Exe $Exe) { Write-BdOk 'mcp tests passed'; exit 0 } else { Write-BdFail 'mcp tests failed'; exit 1 } }
+                default     { throw "mcp: install, uninstall, build, status or test" }
+            }
+        }
         'new' {
             if ($Target -ne 'widemess') { throw "new: the one kind of project BrokenDev makes is 'widemess' (brokendev.ps1 new widemess <name> [-Path folder] [-Title T])" }
             if ($Rest.Count -ne 1) { throw 'new widemess needs one name: brokendev.ps1 new widemess <name> [-Path folder] [-Title T]' }
@@ -330,7 +345,7 @@ try {
             Write-BdInfo "  guide:    docs/projects/widemess-devkit.md"
             exit 0
         }
-        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, toolchains, play, compat, new"; exit 2 }
+        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, toolchains, play, compat, mcp, new"; exit 2 }
     }
 } catch {
     Write-BdFail $_.Exception.Message

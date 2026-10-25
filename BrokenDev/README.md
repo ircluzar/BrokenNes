@@ -50,6 +50,8 @@ BrokenDev\brokendev.ps1 toolchains             # the pinned toolchains (GBDK-202
 BrokenDev\brokendev.ps1 compat vrun-nes        # the game on BrokenNes (the reference) and every installed emulator of its console
 BrokenDev\brokendev.ps1 play vrun-nes -Emu fceux   # open the built ROM in one of them, by hand
 BrokenDev\brokendev.ps1 new widemess my-game   # a new WideMess game from the devkit's template (its folder and projects\my-game)
+BrokenDev\brokendev.ps1 mcp install            # build the BrokenNes MCP server and register it for Claude Code at user scope (see below)
+BrokenDev\brokendev.ps1 mcp test               # its scripted MCP client test and the planted-bug demo
 
 # the music path, Phase 0 (no plugin): a MIDI file -> VRUN's converter -> a one-song ROM -> BrokenNes, checked frame by frame
 BrokenDev\tools\music-replay-check.ps1 -Mid some.mid -Name mysong -Frames 2400 -Template
@@ -79,6 +81,50 @@ The first, unchecked run keeps its hashes and speed; the checked run must end on
 - The **profile** of each checked scenario: CPU busy time per frame, lag frames, vblank time used for uploads, DMA bytes, the top functions
   (inclusive and exclusive). The same outside verify: `BrokenNes.Workshop.exe --profile --rom <rom> --sym <symbols> --frames N --input ...`
   and `--checks` (findings too).
+
+## The MCP server (agents drive BrokenNes directly)
+
+`BrokenDev/mcp` is an MCP server (C#, the official SDK `ModelContextProtocol` 2.2.0, stdio) that lets a Claude Code session drive
+BrokenNes: it is how agents debug the games on BrokenNes instead of Mesen (Mesen stays for cross-checks).
+
+```powershell
+BrokenDev\brokendev.ps1 mcp install     # builds it into BROKENDEV_HOME\bnbuild\mcp, then: claude mcp add --scope user brokennes -- <exe> --repo <main checkout>
+BrokenDev\brokendev.ps1 mcp status      # built? registered? (claude mcp get brokennes)
+BrokenDev\brokendev.ps1 mcp test        # the client test (60 checks) and the planted-bug demo (6)
+BrokenDev\brokendev.ps1 mcp uninstall   # claude mcp remove brokennes --scope user (nothing else is touched)
+BrokenDev\tests\mcp-live.ps1 -App <BrokenNes.Windows.exe> -Mcp <BrokenNes.Mcp.exe>   # live sessions against two desktop apps with scratch configs
+```
+
+It is registered **once, at user scope**, so every Claude Code session (in BrokenNes and in every game repo) has the tools as
+`mcp__brokennes__<tool>`; new sessions pick it up. The CLI is `claude` on PATH, else the one the Claude desktop app keeps in
+`%APPDATA%\Claude\claude-code\<version>`; without a CLI the installer writes the one documented entry `mcpServers.brokennes` in
+`%USERPROFILE%\.claude.json`. Reinstalling rebuilds the same folder: close Claude Code sessions that use it first (Windows keeps a running
+exe locked).
+
+- **Headless sessions** (`open_rom`, `open_project`): BrokenNes's emulator inside the server, invisible and deterministic, as many as
+  wanted; every console (NES with the FIX cores, SNES, WideMess, Game Boy / Color, Master System, Game Gear, Genesis). The D1 debugger
+  covers the NES, the SNES with its SPC700, WideMess and the Game Boy; `checks: true` runs the D4 checks and the profiler from power-on.
+  `open_project` takes a project's last build (ROM, symbols, console, cores, frame-wait symbols).
+- **Live sessions** (`attach_live` by PID, `list_instances`): the user's running desktop app through its HTTP API. **Read freely, control
+  when asked**: a live session opens read-only; `control: true` (pause, step, breakpoints, writes, input, the quick-state load) is only for
+  when the user asked in chat, and the app must also have `"enableDebuggerControl": true`. A live session never saves, never touches
+  progression, never stops the process; closing a control session detaches the debugger and lets the game go.
+
+| Group | Tools |
+|---|---|
+| sessions | `open_rom`, `open_project`, `list_instances`, `attach_live`, `list_sessions`, `status`, `close_session` |
+| running | `run` (frames, with an optional pad script), `run_until` (frame, scanline, an address executed / read / written with a condition, a condition per frame), `pause`, `continue`, `reset` |
+| input | `input` (press, hold, release, a scripted pad `0:Start,10:,60:Right+A`) |
+| memory | `read_memory` / `write_memory` (by spec: `$0010`, `7E:0010`, `wram:$10`, `spc:$0200`, a symbol; or by domain), `search_memory` (a RAM search), `list_domains`, `symbols` |
+| debugger | `breakpoint_add` (exec, mirror-aware watches incl. DMA, tracepoints, conditions, hit counts), `breakpoint_list`, `breakpoint_remove`, `watch` (expressions shown with every result), `step` (into, over, out, scanline, frame, run to), `call_stack`, `registers`, `set_register`, `trace`, `trace_frame` (one whole frame to a file), `disassemble`, `evaluate` |
+| picture | `screenshot` (an image), `layers` (SNES / WideMess: only some layers), `tiles`, `sprites` (OAM list and boxes) |
+| sound | `record_sound` (levels and a .wav) |
+| states | `save_state`, `load_state` (in the server's memory only), `diff_states` (by symbol) |
+| analysis | `checks` (start, report, stop: the D4 findings), `profile` |
+| BrokenDev | `brokendev` (build, verify, compat, run, list, status, doctor) |
+
+Results are JSON (also as structured content), pictures PNG images. Session files (traces, .wav) go to
+`%LOCALAPPDATA%\BrokenNes\mcp\sessions\`. The plan's section 8 and "D3 as built": `docs/projects/brokendev-debugging-plan.md`.
 
 ## The WideMess devkit
 
