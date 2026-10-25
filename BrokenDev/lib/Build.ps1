@@ -137,6 +137,14 @@ function Invoke-BdProjectBuild {
             'ps5'      { if (-not (Test-BdWindowsPowerShell).Ok) { $missing += 'Windows PowerShell 5.1' } }
             '7zip'     { if (-not (Find-Bd7Zip)) { $missing += '7-Zip' } }
             'workshop' { if (-not $ctx.ContainsKey('workshop')) { $missing += 'BrokenNes Workshop (run: brokendev.ps1 build-workshop)' } }
+            default {
+                # a pinned toolchain (toolchains.json): there and unchanged, or the build does not start
+                if ([string]$t -match '^toolchain:(.+)$') {
+                    $tid = $Matches[1]
+                    try { $st = Get-BdToolchainState -Spec (Get-BdToolchainSpec -Id $tid) -SkipZip; if ($st.State -ne 'ready') { $missing += "toolchain $tid ($($st.State): $($st.Detail))" } }
+                    catch { $missing += "toolchain ${tid}: $($_.Exception.Message)" }
+                }
+            }
         }
     }
     if ($missing.Count -gt 0) { throw "project ${Id}: missing tools: $($missing -join ', '). Run 'brokendev.ps1 doctor'." }

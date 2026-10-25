@@ -1,4 +1,4 @@
--- BrokenDev compat adapter for Mesen 2 (NES and SNES). Run by lib\adapters\mesen.ps1:
+-- BrokenDev compat adapter for Mesen 2 (NES, SNES and the Game Boy: gb, gbc). Run by lib\adapters\mesen.ps1:
 --   Mesen.exe <rom> --luaScriptsToLoad mesen.lua --testRunner --timeout=<s>      with BDC_SPEC = the spec file
 -- The spec and the result formats are described at the top of BrokenDev\lib\Compat.ps1.
 --
@@ -46,7 +46,11 @@ end
 table.sort(spec.inputs, function(a, b) return a.frame < b.frame end)
 
 local isNes = spec.console == "nes"
-local memType = isNes and emu.memType.nesInternalRam or emu.memType.snesWorkRam
+-- the Game Boy (gb, gbc): work RAM, high RAM and the cartridge's RAM are Mesen's gbWorkRam, gbHighRam and gbCartRam, the same offsets
+-- as BrokenDev's domains (wram 0 = $C000, bank n at n x $1000; hram 0 = $FF80; cartram bank n at n x $2000)
+local isGb = spec.console == "gb" or spec.console == "gbc"
+local memType = isNes and emu.memType.nesInternalRam or (isGb and emu.memType.gbWorkRam or emu.memType.snesWorkRam)
+local gbTypes = isGb and { wram = emu.memType.gbWorkRam, hram = emu.memType.gbHighRam, cartram = emu.memType.gbCartRam } or nil
 local sep = "/"
 local out = io.open(spec.out .. sep .. "result.txt", "w")
 if not out then fail("cannot write " .. spec.out .. sep .. "result.txt") return end
@@ -54,12 +58,18 @@ out:write("# bdcompat-result 1\n")
 local names = {}
 for i, r in ipairs(spec.reads) do
   names[i] = r.name
-  if (isNes and r.domain ~= "ram") or ((not isNes) and r.domain ~= "wram") then fail("read " .. r.name .. ": domain " .. r.domain .. " does not belong to the " .. spec.console) return end
+  if isGb then
+    r.memType = gbTypes[r.domain]
+    if not r.memType then fail("read " .. r.name .. ": domain " .. r.domain .. " does not belong to the " .. spec.console) return end
+  else
+    r.memType = memType
+    if (isNes and r.domain ~= "ram") or ((not isNes) and r.domain ~= "wram") then fail("read " .. r.name .. ": domain " .. r.domain .. " does not belong to the " .. spec.console) return end
+  end
 end
 local rom = emu.getRomInfo() or {}
-out:write("emu Mesen 2.1.1 " .. (isNes and "NES" or "SNES") .. "\n")
+out:write("emu Mesen 2.1.1 " .. (isNes and "NES" or (isGb and "Game Boy" or "SNES")) .. "\n")
 out:write("reads " .. table.concat(names, " ") .. "\n")
-out:write("note memory: " .. (isNes and "emu.memType.nesInternalRam (2 KB system RAM)" or "emu.memType.snesWorkRam (128 KB work RAM)") .. "\n")
+out:write("note memory: " .. (isNes and "emu.memType.nesInternalRam (2 KB system RAM)" or (isGb and "emu.memType.gbWorkRam / gbHighRam / gbCartRam" or "emu.memType.snesWorkRam (128 KB work RAM)")) .. "\n")
 out:write("note rom: " .. tostring(rom.name) .. "\n")
 -- Mesen's power-on RAM fill as this run got it (the script loads before the first frame runs): a census of the first 2 KB
 do
@@ -103,7 +113,7 @@ emu.addEventCallback(function()
   done = done + 1
   local ok, err = pcall(function()
     local vals = {}
-    for i, r in ipairs(spec.reads) do vals[i] = emu.read(r.addr, memType) end
+    for i, r in ipairs(spec.reads) do vals[i] = emu.read(r.addr, r.memType) end
     out:write("t " .. done .. (#vals > 0 and (" " .. table.concat(vals, " ")) or "") .. "\n")
     sampleAudio()
     if isNes and done % 30 == 0 then out:write("audio " .. done .. " " .. (audioActive and 1 or 0) .. "\n"); audioActive = false end

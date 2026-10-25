@@ -31,6 +31,8 @@ public sealed class GbChecks : ConsoleChecks
     private PPU_GB Ppu => board.Ppu;
     private CPU_GB Core => (CPU_GB)board.Core;
     protected override bool InVblank() => Ppu.LcdOn && Ppu.Mode == 1;
+    // with the LCD off the emulator keeps its frame cadence, but the hardware has no vblank (no mode 1, no interrupt): no lag frame then
+    protected override bool VblankCanArrive() => Ppu.LcdOn;
     protected override bool MainWaiting(DebugCpu c, bool executes) => !executes && (Core.Halted || Core.Stopped);
 
     private long lastFrame = -1;

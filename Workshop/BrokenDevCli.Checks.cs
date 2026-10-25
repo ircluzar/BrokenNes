@@ -207,7 +207,9 @@ internal static partial class BrokenDevCli
             }
         try
         {
-            using IRunner runner = console == "nes" ? new NesRunner(romPath, rom, verify, ntsc, powerOnRam) : new SnesRunner(rom, Path.GetFileName(romPath), verify, console);
+            // the scenario's own console (a gb scenario of a gbc project) and the battery save it powered on with, as the unchecked run
+            using IRunner runner = MakeRunner(ScenarioConsole(console, sc), romPath, rom, verify, ntsc, powerOnRam);
+            if (plain?.BatteryIn is { } save) runner.ImportBattery(save);
             var dbg = new Debugger(runner.DebugMachine());
             foreach (var s in symbolFiles) dbg.Symbols.Load(s, CheckCatalogue.FamilyOf(dbg.Machine.Console));
             var checks = CheckRun.Attach(dbg, opt);

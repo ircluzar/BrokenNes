@@ -36,11 +36,13 @@ Set-StrictMode -Version Latest
 
 $script:BdNesButtons = @('A', 'B', 'Select', 'Start', 'Up', 'Down', 'Left', 'Right')
 $script:BdSnesButtons = @('B', 'Y', 'Select', 'Start', 'Up', 'Down', 'Left', 'Right', 'A', 'X', 'L', 'R')
+# the Game Boy (gb, gbc) has the NES's eight buttons
+$script:BdCompatConsoles = @('nes', 'snes', 'wms', 'gb', 'gbc')
 
 function ConvertTo-BdInputSteps {
     <# "120:Start,132:,400:Right+B" -> @({Frame=120;Buttons=@('Start')}, ...), sorted. Unknown buttons for the console are an error. #>
-    param([AllowEmptyString()][string]$Script, [ValidateSet('nes', 'snes', 'wms')][string]$Console = 'nes')
-    $known = if ($Console -eq 'nes') { $script:BdNesButtons } else { $script:BdSnesButtons }
+    param([AllowEmptyString()][string]$Script, [ValidateSet('nes', 'snes', 'wms', 'gb', 'gbc')][string]$Console = 'nes')
+    $known = if ($Console -in 'nes', 'gb', 'gbc') { $script:BdNesButtons } else { $script:BdSnesButtons }
     $steps = @()
     foreach ($part in @(([string]$Script) -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
         if ($part -notmatch '^(\d+):(.*)$') { throw "bad input step '$part' (expected frame:Buttons)" }
@@ -64,7 +66,7 @@ function New-BdCompatSpecText {
     #>
     param([Parameter(Mandatory)]$Run)
     $c = [string]$Run.Console
-    if (@('nes', 'snes', 'wms') -notcontains $c) { throw "spec: console '$c' must be nes, snes or wms" }
+    if ($script:BdCompatConsoles -notcontains $c) { throw "spec: console '$c' must be nes, snes, wms, gb or gbc" }
     $frames = [int]$Run.Frames
     if ($frames -le 0) { throw 'spec: frames must be positive' }
     $lines = @('# bdcompat-spec 1', "console $c", "rom $($Run.Rom)", "out $($Run.Out)", "savedir $($Run.SaveDir)", "frames $frames")
@@ -75,8 +77,13 @@ function New-BdCompatSpecText {
         if ($names.ContainsKey($n)) { throw "spec: read '$n' twice" }
         $names[$n] = $true
         $d = [string]$r.Domain; $a = [int]$r.Addr
-        $max = if ($d -eq 'ram') { 0x7FF } elseif ($d -eq 'wram') { 0x1FFFF } else { throw "spec: read ${n}: domain '$d' must be ram or wram" }
-        if (($c -eq 'nes') -ne ($d -eq 'ram')) { throw "spec: read ${n}: domain $d does not belong to the $c" }
+        if ($c -in 'gb', 'gbc') {
+            # the Game Boy: wram (32 KB on a Color), hram (127 bytes), cartram (the cartridge's RAM, up to 128 KB)
+            $max = switch ($d) { 'wram' { 0x7FFF } 'hram' { 0x7E } 'cartram' { 0x1FFFF } default { throw "spec: read ${n}: domain $d does not belong to the $c (wram, hram, cartram)" } }
+        } else {
+            $max = if ($d -eq 'ram') { 0x7FF } elseif ($d -eq 'wram') { 0x1FFFF } else { throw "spec: read ${n}: domain '$d' must be ram or wram" }
+            if (($c -eq 'nes') -ne ($d -eq 'ram')) { throw "spec: read ${n}: domain $d does not belong to the $c" }
+        }
         if ($a -lt 0 -or $a -gt $max) { throw ("spec: read {0}: address {1:X} is outside {2} (0-{3:X})" -f $n, $a, $d, $max) }
         $lines += ('read {0} {1} {2:X}' -f $n, $d, $a)
     }
@@ -360,9 +367,34 @@ function Read-BdSymbols {
     } elseif ($Path -match '\.sym$') {
         foreach ($line in [System.IO.File]::ReadAllLines($Path)) {
             if ($line -match '^([0-9a-fA-F]{8})\s+(\S+)\s*$') { $t[$Matches[2]] = [Convert]::ToInt32($Matches[1], 16) }
+            # bgb / GBDK (makebin -yS) / RGBDS: 'bb:aaaa name' = bank bb, CPU address aaaa (as bank << 16 | address)
+            elseif ($line -match '^([0-9a-fA-F]{2}):([0-9a-fA-F]{4})\s+(\S+)\s*$') { $t[$Matches[3]] = ([Convert]::ToInt32($Matches[1], 16) -shl 16) -bor [Convert]::ToInt32($Matches[2], 16) }
         }
-    } else { throw "unknown symbol file kind: $Path (.mlb or .sym)" }
+    } elseif ($Path -match '\.noi$') {
+        # GBDK / SDCC: 'DEF name 0xVALUE', a banked address with its bank above bit 16; the linker's area starts, lengths and bank numbers are not names
+        foreach ($line in [System.IO.File]::ReadAllLines($Path)) {
+            if ($line -match '^DEF\s+(\S+)\s+0x([0-9a-fA-F]+)\s*$') {
+                $n = $Matches[1]
+                if ($n -like 'l__*' -or $n -like 's__*' -or $n -like 'b_*' -or $n -like '___bank*' -or $n -like '.__.*') { continue }
+                $t[$n] = [Convert]::ToInt32($Matches[2], 16)
+            }
+        }
+    } else { throw "unknown symbol file kind: $Path (.mlb, .sym or .noi)" }
     $t
+}
+
+function ConvertTo-BdGbDomain {
+    <#
+      A Game Boy CPU address (with its bank above bit 16, as a .sym or .noi gives it) -> @{ Domain; Addr } in BrokenDev's Game Boy domains:
+      $C000-$CFFF wram 0-$FFF; $D000-$DFFF wram bank x $1000 (bank 1 when none is named); $FF80-$FFFE hram; $A000-$BFFF cartram bank x $2000.
+    #>
+    param([Parameter(Mandatory)][int]$Address)
+    $bank = ($Address -shr 16) -band 0xFF; $a = $Address -band 0xFFFF
+    if ($a -ge 0xC000 -and $a -le 0xCFFF) { return @{ Domain = 'wram'; Addr = $a - 0xC000 } }
+    if ($a -ge 0xD000 -and $a -le 0xDFFF) { return @{ Domain = 'wram'; Addr = ([math]::Max(1, $bank) * 0x1000) + ($a - 0xD000) } }
+    if ($a -ge 0xFF80 -and $a -le 0xFFFE) { return @{ Domain = 'hram'; Addr = $a - 0xFF80 } }
+    if ($a -ge 0xA000 -and $a -le 0xBFFF) { return @{ Domain = 'cartram'; Addr = ($bank * 0x2000) + ($a - 0xA000) } }
+    throw ("address {0:X4} is not Game Boy work RAM, high RAM or cartridge RAM" -f $a)
 }
 
 function ConvertTo-BdWramOffset {
@@ -392,6 +424,11 @@ function Resolve-BdCompatReads {
         elseif ($table.ContainsKey($what)) { $raw = [int]$table[$what] }
         else { throw "compat read '$($p.Name)': symbol '$what' is not in $file" }
         if ($Console -eq 'nes') { $dom = 'ram'; $addr = $raw -band 0xFFFF; if ($addr -gt 0x7FF) { throw ("compat read '{0}': {1:X4} is not NES RAM" -f $p.Name, $addr) } }
+        elseif ($Console -in 'gb', 'gbc') {
+            # a symbol or a literal '$hex' is a CPU address ($C0B1); the domain and offset follow from it
+            try { $g = ConvertTo-BdGbDomain -Address $raw } catch { throw "compat read '$($p.Name)': $($_.Exception.Message)" }
+            $dom = $g.Domain; $addr = $g.Addr
+        }
         elseif ($file -match '\.mlb$') {
             if ($nesBase -lt 0) { throw "compat: a NES symbol file on a SNES game needs symbols.nesRamInWram (where the recompiler keeps NES RAM in work RAM)" }
             $dom = 'wram'; $addr = $nesBase + ($raw -band 0x7FF)
@@ -1098,6 +1135,8 @@ function Invoke-BdPlay {
     New-Item -ItemType Directory -Force -Path $scratch | Out-Null
     $copy = Join-Path $scratch (Split-Path -Leaf ([string]$rom.published))
     Copy-Item -LiteralPath ([string]$rom.published) -Destination $copy -Force
-    $p = & $fn -Emu $e -Package $pkg -Exe $exe -Rom $copy -SaveDir $saves -Scratch $scratch
+    # the Game Boy's adapters (Mesen, BizHawk) start the model / system the console names; the other adapters' launchers take no console
+    $more = @{}; if ([string]$m.console -in 'gb', 'gbc') { $more['Console'] = [string]$m.console }
+    $p = & $fn -Emu $e -Package $pkg -Exe $exe -Rom $copy -SaveDir $saves -Scratch $scratch @more
     Write-BdOk "$($e.title): $Project started (PID $($p.Id)); saves in $saves"
 }

@@ -31,6 +31,8 @@ $script:BdBizhawkCores = @{
     # BizHawk's legacy bsnes v0.87 (LibsnesCore); 'BSNESv115+' is bsnes v115 (BsnesCore).
     'NES'  = @('quickerNES', 'NesHawk', 'SubNESHawk')
     'SNES' = @('Snes9x', 'BSNESv115+', 'SubBSNESv115+', 'Faust', 'BSNES')
+    # 'GB' stands for both of EmuHawk's systems GB and GBC (one core is pinned for both: a dual-mode cartridge loads as GBC)
+    'GB'   = @('Gambatte', 'SameBoy', 'GBHawk', 'SubGBHawk')
 }
 
 # The hotkeys 2.11.1 binds by default (read from the config it writes; the others are unbound already).
@@ -54,7 +56,7 @@ function Test-BdBizhawkEmu {
     param([Parameter(Mandatory)]$Emu)
     $system = [string](Get-BdProp $Emu 'system' '')
     $core = [string](Get-BdProp $Emu 'core' '')
-    if (-not $script:BdBizhawkCores.ContainsKey($system)) { throw "bizhawk: system '$system' of emulator $(Get-BdProp $Emu 'id' '?') is not one BrokenDev runs (NES, SNES)" }
+    if (-not $script:BdBizhawkCores.ContainsKey($system)) { throw "bizhawk: system '$system' of emulator $(Get-BdProp $Emu 'id' '?') is not one BrokenDev runs (NES, SNES, GB)" }
     if ($script:BdBizhawkCores[$system] -cnotcontains $core) { throw "bizhawk: core '$core' is not a $system core of EmuHawk 2.11.1 (known: $($script:BdBizhawkCores[$system] -join ', '))" }
     @{ System = $system; Core = $core }
 }
@@ -99,6 +101,17 @@ function New-BdBizhawkConfig {
         & $add $sys 'Cheats' $p.cheats
     }
     & $add 'NES' 'Palettes' $p.palettes
+    if ($System -eq 'GB') {
+        # the Game Boy's paths are one entry set in EmuHawk 2.11.1, 'GB_GBC_SGB' (read from the config it writes back)
+        $gs = 'GB_GBC_SGB'
+        & $add $gs 'Base' (Join-Path $base 'Gameboy')
+        & $add $gs 'ROM' $p.roms
+        & $add $gs 'Savestates' $p.states
+        & $add $gs 'Save RAM' $SaveDir
+        & $add $gs 'Screenshots' $p.screenshots
+        & $add $gs 'Cheats' $p.cheats
+        & $add $gs 'Palettes' $p.palettes
+    }
     foreach ($d in $p.Values) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
     New-Item -ItemType Directory -Force -Path $SaveDir | Out-Null
     $c = [ordered]@{
@@ -108,7 +121,7 @@ function New-BdBizhawkConfig {
         SkipOutdatedOsCheck = $true
         SkipSuperuserPrivsCheck = $true
         RAAutostart = $false
-        PreferredCores = [ordered]@{ $System = $Core }
+        PreferredCores = $(if ($System -eq 'GB') { [ordered]@{ GB = $Core; GBC = $Core } } else { [ordered]@{ $System = $Core } })
         DontTryOtherCores = $true
         SingleInstanceMode = $false
         AutoLoadLastSaveSlot = $false; AutoSaveLastSaveSlot = $false
@@ -185,7 +198,7 @@ function Invoke-BdAdapterBizhawk {
     param([Parameter(Mandatory)]$Emu, $Package, [Parameter(Mandatory)][string]$Exe, [Parameter(Mandatory)][string]$SpecPath, [Parameter(Mandatory)]$Spec,
           [Parameter(Mandatory)][string]$Scratch, [int]$TimeoutSec = 600, [int]$HangSec = 90)
     $ec = Test-BdBizhawkEmu -Emu $Emu
-    $want = if ([string]$Spec.Console -eq 'nes') { 'NES' } elseif ([string]$Spec.Console -eq 'snes') { 'SNES' } else { '?' }
+    $want = if ([string]$Spec.Console -eq 'nes') { 'NES' } elseif ([string]$Spec.Console -eq 'snes') { 'SNES' } elseif ([string]$Spec.Console -in 'gb', 'gbc') { 'GB' } else { '?' }
     if ($want -ne $ec.System) { throw "bizhawk: emulator $(Get-BdProp $Emu 'id' '?') runs the $($ec.System), the spec is for the '$($Spec.Console)'" }
     $version = if ($Package) { [string]$Package.version } else { '2.11.1' }
     $installDir = Split-Path -Parent $Exe
@@ -212,7 +225,9 @@ function Start-BdPlayBizhawk {
       System.Diagnostics.Process (started through the shell, so no pipe is left for EmuHawk to fill).
     #>
     param([Parameter(Mandatory)]$Emu, $Package, [Parameter(Mandatory)][string]$Exe, [Parameter(Mandatory)][string]$Rom, [Parameter(Mandatory)][string]$SaveDir,
-          [Parameter(Mandatory)][string]$Scratch)
+          [Parameter(Mandatory)][string]$Scratch,
+          # a Game Boy project's console (gb / gbc): the emulator's pinned core runs both, so it only has to be accepted
+          [string]$Console = '')
     $ec = Test-BdBizhawkEmu -Emu $Emu
     if (-not (Test-Path -LiteralPath $Exe)) { throw "bizhawk: $Exe is not there (install the package first)" }
     if (-not (Test-Path -LiteralPath $Rom)) { throw "bizhawk: the ROM $Rom is not there" }

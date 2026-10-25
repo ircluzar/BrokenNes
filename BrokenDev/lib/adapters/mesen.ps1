@@ -31,7 +31,9 @@ function Get-BdMesenHome {
 
 function Set-BdMesenSettings {
     <# Writes the private home's settings.json for one run (the pinned keys above; Mesen fills every other key with its default). #>
-    param([Parameter(Mandatory)][string]$HomeDir, [Parameter(Mandatory)][string]$SaveDir, [Parameter(Mandatory)][string]$Scratch, [string]$Version = '2.1.1', [switch]$Play)
+    param([Parameter(Mandatory)][string]$HomeDir, [Parameter(Mandatory)][string]$SaveDir, [Parameter(Mandatory)][string]$Scratch, [string]$Version = '2.1.1', [switch]$Play,
+          # the Game Boy (a gb / gbc run only; NES and SNES runs write exactly the keys they always did): Mesen's Model, and its pad
+          [string]$GbModel = '')
     foreach ($d in $SaveDir, (Join-Path $Scratch 'states'), (Join-Path $Scratch 'pictures')) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
     $s = [ordered]@{
         Version = $Version; ConfigUpgrade = 5
@@ -53,16 +55,34 @@ function Set-BdMesenSettings {
         }
         Debug = [ordered]@{ ScriptWindow = [ordered]@{ AllowIoOsAccess = $true } }
     }
+    if ($GbModel) {
+        # Model: the Game Boy Mesen plays (an invalid value makes Mesen reset its whole configuration and exit: only these are written).
+        # The pad: a standard Game Boy controller, as the NES and SNES ports above. Everything else (the boot ROM it plays, blending, colour
+        # correction, power-on RAM) stays Mesen's default.
+        if (@('Gameboy', 'GameboyColor') -cnotcontains $GbModel) { throw "mesen: Game Boy model '$GbModel' must be Gameboy or GameboyColor" }
+        $s['Gameboy'] = [ordered]@{ Model = $GbModel; Controller = [ordered]@{ Type = 'GameboyController' } }
+    }
     Save-BdJson -Object $s -Path (Join-Path $HomeDir 'settings.json') -Depth 6
+}
+
+function Get-BdMesenGbModel {
+    <# The Mesen model for a Game Boy console: the registry's gbModels.<console> (emulators.json), else gb -> Gameboy, gbc -> GameboyColor. '' for NES / SNES. #>
+    param([Parameter(Mandatory)]$Emu, [string]$Console = '')
+    if ($Console -notin 'gb', 'gbc') { return '' }
+    $map = Get-BdProp $Emu 'gbModels' $null
+    $m = if ($map) { [string](Get-BdProp $map $Console '') } else { '' }
+    if ($m) { return $m }
+    if ($Console -eq 'gbc') { 'GameboyColor' } else { 'Gameboy' }
 }
 
 function Start-BdPlayMesen {
     <# 'play': the ROM in the private Mesen home for hand testing (sound on, normal speed, saves in $SaveDir). Does not wait. #>
-    param([Parameter(Mandatory)]$Emu, $Package, [Parameter(Mandatory)][string]$Exe, [Parameter(Mandatory)][string]$Rom, [Parameter(Mandatory)][string]$SaveDir, [Parameter(Mandatory)][string]$Scratch)
+    param([Parameter(Mandatory)]$Emu, $Package, [Parameter(Mandatory)][string]$Exe, [Parameter(Mandatory)][string]$Rom, [Parameter(Mandatory)][string]$SaveDir, [Parameter(Mandatory)][string]$Scratch,
+          [string]$Console = '')
     $version = if ($Package) { [string]$Package.version } else { '2.1.1' }
     $mesen = Get-BdMesenHome -InstalledExe $Exe -Version $version
     $homeDir = Split-Path -Parent $mesen
-    Set-BdMesenSettings -HomeDir $homeDir -SaveDir $SaveDir -Scratch $Scratch -Version $version -Play
+    Set-BdMesenSettings -HomeDir $homeDir -SaveDir $SaveDir -Scratch $Scratch -Version $version -Play -GbModel (Get-BdMesenGbModel -Emu $Emu -Console $Console)
     Start-Process -FilePath $mesen -ArgumentList @('"' + $Rom + '"') -WorkingDirectory $homeDir -PassThru
 }
 
@@ -72,7 +92,8 @@ function Invoke-BdAdapterMesen {
     $version = if ($Package) { [string]$Package.version } else { '2.1.1' }
     $mesen = Get-BdMesenHome -InstalledExe $Exe -Version $version
     $homeDir = Split-Path -Parent $mesen
-    Set-BdMesenSettings -HomeDir $homeDir -SaveDir ([string]$Spec.SaveDir) -Scratch $Scratch -Version $version
+    $gbModel = Get-BdMesenGbModel -Emu $Emu -Console ([string]$Spec.Console)
+    Set-BdMesenSettings -HomeDir $homeDir -SaveDir ([string]$Spec.SaveDir) -Scratch $Scratch -Version $version -GbModel $gbModel
     $lua = Join-Path (Get-BdRoot) 'tools\compat\mesen.lua'
     $resultFile = Join-Path ([string]$Spec.Out) 'result.txt'
     # Mesen's test runner ends a script after its --timeout (about 100 s by default): give it the run's own limit.
@@ -85,7 +106,8 @@ function Invoke-BdAdapterMesen {
     $settings = [ordered]@{ home = $homeDir; settings = (Join-Path $homeDir 'settings.json'); audio = 'off'; saveData = [string]$Spec.SaveDir }
     try {
         $j = Read-BdJson (Join-Path $homeDir 'settings.json')
-        $sec = if ([string]$Spec.Console -eq 'nes') { Get-BdProp $j 'Nes' $null } else { Get-BdProp $j 'Snes' $null }
+        $sec = if ([string]$Spec.Console -eq 'nes') { Get-BdProp $j 'Nes' $null } elseif ($gbModel) { Get-BdProp $j 'Gameboy' $null } else { Get-BdProp $j 'Snes' $null }
+        if ($gbModel) { $settings['GameboyModel'] = $gbModel }
         if ($sec) {
             foreach ($k in 'Region', 'RamPowerOnState', 'EnableRandomPowerOnState', 'RandomizeMapperPowerOnState', 'RandomizeCpuPpuAlignment', 'ConsoleType', 'DisableFrameSkipping') {
                 $v = Get-BdProp $sec $k $null; if ($null -ne $v) { $settings[$k] = $v }

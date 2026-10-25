@@ -20,6 +20,7 @@
                                  what each one's column can check
     emulators install <id|all>   unpack the PINNED release (Mesen, BizHawk, FCEUX, Snes9x) portable into BROKENDEV_HOME\emulators; a zip
                                  already in emulators\_downloads with the pinned size and sha256 is used, anything else is refused
+    toolchains                   the pinned toolchains (toolchains.json: GBDK-2020 for the Game Boy): ready, or what is wrong (never downloads)
     play    <project> -Emu <id>  open the built ROM in that emulator for hand testing (saves in work\play\<project>\<emu>; BrokenNes: 'run')
     new widemess <name> [-Path folder] [-Title T]
                                  a new WideMess game from the devkit's template (BrokenDev/widemess): its folder (default
@@ -88,6 +89,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\Common.ps1')
 . (Join-Path $here 'lib\Tools.ps1')
 . (Join-Path $here 'lib\Archive.ps1')
+. (Join-Path $here 'lib\Toolchains.ps1')
 . (Join-Path $here 'lib\Manifest.ps1')
 . (Join-Path $here 'lib\Build.ps1')
 . (Join-Path $here 'lib\Verify.ps1')
@@ -291,6 +293,14 @@ try {
             if ($bad.Count -gt 0) { exit 1 }
             exit 0
         }
+        'toolchains' {
+            # the pinned toolchains (toolchains.json): ready (the zip and every pinned file match) or what is wrong; never downloads
+            $rows = foreach ($t in @((Read-BdToolchains).toolchains)) { $st = Get-BdToolchainState -Spec $t; [pscustomobject]@{ Id = [string]$t.id; Version = [string]$t.version; State = $st.State; Dir = $st.Dir; Detail = $st.Detail; Title = [string]$t.title } }
+            if ($Json) { $rows | ConvertTo-Json -Depth 3; exit 0 }
+            foreach ($r in $rows) { '{0,-8} {1,-8} {2,-8} {3}' -f $r.Id, $r.Version, $r.State, $r.Dir | Write-Host; Write-Host "         $($r.Detail)" -ForegroundColor DarkGray }
+            if (@($rows | Where-Object { $_.State -ne 'ready' }).Count -gt 0) { exit 1 }
+            exit 0
+        }
         'play' {
             [void](Resolve-BdTargets $Target)
             if ($Emu.Count -ne 1) { throw 'play needs one emulator: -Emu <id> (see: brokendev.ps1 emulators)' }
@@ -320,7 +330,7 @@ try {
             Write-BdInfo "  guide:    docs/projects/widemess-devkit.md"
             exit 0
         }
-        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, play, compat, new"; exit 2 }
+        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, toolchains, play, compat, new"; exit 2 }
     }
 } catch {
     Write-BdFail $_.Exception.Message

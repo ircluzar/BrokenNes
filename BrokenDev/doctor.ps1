@@ -28,6 +28,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\Common.ps1')
 . (Join-Path $here 'lib\Tools.ps1')
 . (Join-Path $here 'lib\Archive.ps1')
+. (Join-Path $here 'lib\Toolchains.ps1')
 
 function Get-BdDotNetFramework48 {
     # Project Nested's injector is a .NET Framework 4.8 assembly: Release >= 528040 means 4.8 or newer is installed.
@@ -72,6 +73,16 @@ if ($homeInfo) {
         $detail = "installed: $(if ($inst.Count) { $inst -join ', ' } else { 'none' })$(if ($miss.Count) { '; not installed: ' + ($miss -join ', ') })$(if ($pre.Count) { '; ' + ($pre -join '; ') })"
         $checks.Add((New-BdCheck 'Other emulators (compat)' $ok $false "$($inst.Count) of $(@($ej.packages).Count)" (Get-BdEmuHome) $detail 'brokendev.ps1 emulators install all'))
     } catch { $checks.Add((New-BdCheck 'Other emulators (compat)' $false $false '' '' $_.Exception.Message 'see BrokenDev\emulators.json')) }
+}
+
+# the pinned toolchains (toolchains.json: GBDK-2020 for the Game Boy), each checked against its zip's sha256 and its pinned files
+if ($homeInfo) {
+    try {
+        foreach ($t in @((Read-BdToolchains).toolchains)) {
+            $st = Get-BdToolchainState -Spec $t
+            $checks.Add((New-BdCheck "Toolchain: $($t.title)" ($st.State -eq 'ready') $false ([string]$t.version) $st.Dir "$($st.State): $($st.Detail)" "unpack the pinned zip ($($t.zip)) into $($t.dir); BrokenDev never downloads it (toolchains.json)"))
+        }
+    } catch { $checks.Add((New-BdCheck 'Toolchains' $false $false '' '' $_.Exception.Message 'see BrokenDev\toolchains.json')) }
 }
 
 # ---- archives and the toolchains that ship in them ---------------------------------------------

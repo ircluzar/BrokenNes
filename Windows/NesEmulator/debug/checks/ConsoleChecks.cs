@@ -260,7 +260,7 @@ public abstract class ConsoleChecks : DebugObserver
     {
         if (frameCycles > 0)
         {
-            bool lag = !partial && !lastIdle && frames.Count > 0;
+            bool lag = !partial && !lastIdle && frames.Count > 0 && VblankCanArrive();
             if (lag) LagFrame(frameNumber);
             if (!partial) OnFrameEnd(lastPc);
             frames.Add(new FrameStat
@@ -272,6 +272,10 @@ public abstract class ConsoleChecks : DebugObserver
         frameCycles = 0; frameIdle = 0; frameDma = 0; lastUpload = -1;
         vblankStartCycle = cycle; frameStartCycle = cycle; frameNumber = M.Frame;
     }
+
+    /// <summary>False when no vblank can arrive at this boundary on the hardware (the Game Boy with its LCD off: no mode 1, no vblank
+    /// interrupt), so the main program cannot have missed one: a game loading with the display off is not lagging.</summary>
+    protected virtual bool VblankCanArrive() => true;
 
     /// <summary>At each frame boundary (vblank started), with the main program's last PC: the console's once-a-frame checks.</summary>
     protected virtual void OnFrameEnd(uint mainPc) { }

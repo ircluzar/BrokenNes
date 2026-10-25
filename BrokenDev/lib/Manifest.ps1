@@ -5,8 +5,9 @@
 
 Set-StrictMode -Version Latest
 
-$script:BdKinds    = @('nes', 'snes', 'nested', 'wms')
+$script:BdKinds    = @('nes', 'snes', 'nested', 'wms', 'gb')
 $script:BdShells   = @('bash', 'ps5', 'python', 'exe')
+# and 'toolchain:<id>': a pinned toolchain of toolchains.json (lib\Toolchains.ps1), which must be there and unchanged
 $script:BdToolIds  = @('gitbash', 'python', 'node', 'dotnet', 'ps5', '7zip', 'workshop')
 
 function Get-BdProjectsDir {
@@ -35,11 +36,13 @@ function Test-BdManifest {
     if ($ExpectedId -and [string]$M.id -ne $ExpectedId) { $e.Add("id '$($M.id)' does not match its folder '$ExpectedId'") }
     if ([string]$M.id -notmatch '^[a-z0-9][a-z0-9\-]*$') { $e.Add("id '$($M.id)' must be lower-case letters, digits and dashes") }
     if ($script:BdKinds -notcontains [string]$M.kind) { $e.Add("kind '$($M.kind)' must be one of: $($script:BdKinds -join ', ')") }
-    if (@('nes', 'snes', 'wms') -notcontains [string]$M.console) { $e.Add("console '$($M.console)' must be nes, snes or wms") }
-    # nes -> runs as a NES; snes and nested -> run as a SNES; wms (a WideMess game, BrokenDev/widemess) -> runs on the WideMess console
+    if (@('nes', 'snes', 'wms', 'gb', 'gbc') -notcontains [string]$M.console) { $e.Add("console '$($M.console)' must be nes, snes, wms, gb or gbc") }
+    # nes -> runs as a NES; snes and nested -> run as a SNES; wms (a WideMess game, BrokenDev/widemess) -> runs on the WideMess console;
+    # gb (a Game Boy game) -> runs on the Game Boy (console gb) or the Game Boy Color (console gbc: a dual-mode or Color game)
     if ($M.kind -eq 'nes' -and $M.console -ne 'nes') { $e.Add("kind nes must run on console nes") }
     if ($M.kind -in 'snes', 'nested' -and $M.console -ne 'snes') { $e.Add("kind $($M.kind) must run on console snes") }
     if (($M.kind -eq 'wms') -ne ($M.console -eq 'wms')) { $e.Add("kind wms and console wms go together (a WideMess game runs on the WideMess console only)") }
+    if (($M.kind -eq 'gb') -ne ($M.console -in 'gb', 'gbc')) { $e.Add("kind gb and console gb or gbc go together (a Game Boy game runs on the Game Boy or the Game Boy Color)") }
 
     # the source: an archive and a path in it (the user's games), or a folder ({repo}, {home}, {env:...} or an absolute path: a WideMess
     # project made by 'brokendev new widemess', or the devkit's sample game in the repository)
@@ -53,7 +56,7 @@ function Test-BdManifest {
     }
     if ($ArchiveIds -and $src.PSObject.Properties['archive'] -and -not $ArchiveIds.ContainsKey([string]$src.archive)) { $e.Add("source.archive '$($src.archive)' is not in archives.json") }
 
-    foreach ($t in @($M.requires.tools)) { if ($script:BdToolIds -notcontains [string]$t) { $e.Add("requires.tools: unknown tool '$t' (known: $($script:BdToolIds -join ', '))") } }
+    foreach ($t in @($M.requires.tools)) { if ($script:BdToolIds -notcontains [string]$t -and [string]$t -notmatch '^toolchain:[a-z0-9][a-z0-9\-]*$') { $e.Add("requires.tools: unknown tool '$t' (known: $($script:BdToolIds -join ', '), toolchain:<id>)") } }
 
     $steps = @($M.build.steps)
     if ($steps.Count -eq 0) { $e.Add('build.steps is empty') }
@@ -162,6 +165,15 @@ function Get-BdProjectWorkspace {
     param([Parameter(Mandatory)]$Manifest, $Table = $null)
     $src = $Manifest.source
     if ($src.PSObject.Properties['folder']) {
+        # {live:<name>}: the game's live workspace, found beside the repository (Find-BdLiveWorkspace); 'absent' when there is none
+        if ([string]$src.folder -match '^\{live:([A-Za-z0-9_\-\.]+)\}') {
+            $name = $Matches[1]
+            $found = Find-BdLiveWorkspace -Name $name
+            if (-not $found) { return [pscustomobject]@{ Id = [string]$Manifest.id; Kind = 'absent'; Path = ''; Source = 'source.folder {live:}'; Detail = "no live workspace '$name' beside the repository (or set $(Get-BdLiveWorkspaceEnv $name))" } }
+            $p = [System.IO.Path]::GetFullPath((Expand-BdPath -Text ([string]$src.folder)))
+            $how = if ([Environment]::GetEnvironmentVariable((Get-BdLiveWorkspaceEnv $name))) { Get-BdLiveWorkspaceEnv $name } else { 'beside the repository' }
+            return [pscustomobject]@{ Id = [string]$Manifest.id; Kind = 'live'; Path = $p; Source = $how; Detail = "the game's live workspace ($how)" }
+        }
         $p = [System.IO.Path]::GetFullPath((Expand-BdPath -Text ([string]$src.folder)))
         $ok = Test-Path -LiteralPath $p -PathType Container
         return [pscustomobject]@{ Id = [string]$Manifest.id; Kind = $(if ($ok) { 'folder' } else { 'absent' }); Path = $p; Source = 'source.folder'
@@ -175,7 +187,10 @@ function New-BdContext {
     <# Placeholder context for one project: archive roots, the project's output folder, the chosen Python; {src} = source.folder when it has one. #>
     param([Parameter(Mandatory)]$Manifest)
     $ctx = @{ Roots = (Get-BdArchiveRoots); Out = (Join-Path (Join-Path (Get-BdHome) 'out') ([string]$Manifest.id)); Id = [string]$Manifest.id }
-    if ($Manifest.source.PSObject.Properties['folder']) { $ctx['src'] = [System.IO.Path]::GetFullPath((Expand-BdPath -Text ([string]$Manifest.source.folder))) }
+    if ($Manifest.source.PSObject.Properties['folder']) {
+        # a {live:} workspace that is not there leaves {src} unset (the build says so; list and validation still work)
+        try { $ctx['src'] = [System.IO.Path]::GetFullPath((Expand-BdPath -Text ([string]$Manifest.source.folder))) } catch { if ([string]$Manifest.source.folder -notmatch '^\{live:') { throw } }
+    }
     $ctx['Work'] = Join-Path (Join-Path (Get-BdHome) 'work') ([string]$Manifest.id)
     $py = Find-BdPython
     if ($py) { $ctx['python'] = $py.Path; $ctx['pythondir'] = Split-Path -Parent $py.Path }

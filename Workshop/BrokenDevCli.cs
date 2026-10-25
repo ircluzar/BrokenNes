@@ -184,10 +184,11 @@ internal static partial class BrokenDevCli
                 Console.Error.WriteLine($"spec line {lineNo}: {ex.Message}: {raw}"); return 2;
             }
         }
-        if (console is not ("nes" or "snes" or "wms") || rom.Length == 0 || outDir.Length == 0 || frames <= 0) { Console.Error.WriteLine("spec needs console nes|snes|wms, rom, out and frames > 0"); return 2; }
+        if (console is not ("nes" or "snes" or "wms" or "gb" or "gbc") || rom.Length == 0 || outDir.Length == 0 || frames <= 0) { Console.Error.WriteLine("spec needs console nes|snes|wms|gb|gbc, rom, out and frames > 0"); return 2; }
         if (!File.Exists(rom)) { Console.Error.WriteLine($"ROM not found: {rom}"); return 2; }
         foreach (var r in reads)
-            if ((console == "nes" && r.Domain != "ram") || (console is "snes" or "wms" && r.Domain != "wram")) { Console.Error.WriteLine($"read {r.Name}: domain {r.Domain} does not belong to the {console}"); return 2; }
+            if ((console == "nes" && r.Domain != "ram") || (console is "snes" or "wms" && r.Domain != "wram") || (IsGameBoyKey(console) && r.Domain is not ("wram" or "hram" or "cartram")))
+            { Console.Error.WriteLine($"read {r.Name}: domain {r.Domain} does not belong to the {console}"); return 2; }
         steps = steps.OrderBy(s => s.Frame).ToList();
         Directory.CreateDirectory(outDir);
         string savePath = saveDir.Length > 0 ? Path.Combine(saveDir, "brokennes.sav") : "";
@@ -201,11 +202,12 @@ internal static partial class BrokenDevCli
         int done = 0;
         try
         {
-            using IRunner runner = console == "nes" ? new NesRunner(rom, romBytes, verifyDoc.RootElement, ntsc, ram) : new SnesRunner(romBytes, Path.GetFileName(rom), verifyDoc.RootElement, console);
+            using IRunner runner = MakeRunner(console, rom, romBytes, verifyDoc.RootElement, ntsc, ram);
             w.WriteLine($"emu BrokenNes Workshop {runner.Cores}");
             w.WriteLine("reads " + string.Join(' ', reads.Select(r => r.Name)));
             w.WriteLine($"note {runner.Description}");
             w.WriteLine(console == "nes" ? $"note power-on RAM: {ram} (BrokenNes' own fill is the FCEUX pattern 00 00 00 00 FF FF FF FF)" : "note power-on work RAM: zeros");
+            if (IsGameBoyKey(console)) w.WriteLine("note memory: wram = $C000 + bank x $1000, hram = $FF80, cartram = the cartridge's RAM (a fresh one is $FF); no boot ROM (the documented post-boot state)");
             if (savePath.Length > 0 && File.Exists(savePath))
             {
                 byte[] save = File.ReadAllBytes(savePath);
@@ -288,11 +290,13 @@ internal static partial class BrokenDevCli
         byte[] romBytes = File.ReadAllBytes(rom);
 
         var results = new List<ScenarioResult>();
+        var symbols = LoadSymbols(PublishedSymbolFiles(root, rom), console);
+        var keepBattery = BatterySources(verify);
         foreach (var sc in verify.GetProperty("scenarios").EnumerateArray())
         {
             string sid = sc.GetProperty("id").GetString() ?? "?";
             if (only.Length > 0 && !sid.Equals(only, StringComparison.OrdinalIgnoreCase)) continue;
-            results.Add(RunScenario(console, rom, romBytes, verify, sc, pngDir));
+            results.Add(RunScenario(console, rom, romBytes, verify, sc, pngDir, results, symbols, keepBattery.Contains(sid)));
         }
         if (results.Count == 0) { Console.Error.WriteLine("No scenario ran (check --only)."); return 2; }
 
@@ -319,9 +323,15 @@ internal static partial class BrokenDevCli
         return ok ? 0 : 1;
     }
 
-    private static ScenarioResult RunScenario(string console, string romPath, byte[] rom, JsonElement verify, JsonElement sc, string pngDir)
+    private static ScenarioResult RunScenario(string projectConsole, string romPath, byte[] rom, JsonElement verify, JsonElement sc, string pngDir,
+                                              List<ScenarioResult>? earlier = null, NesEmulator.Debugging.SymbolTable? symbols = null, bool keepBattery = false)
     {
         var res = new ScenarioResult { Id = sc.GetProperty("id").GetString() ?? "?", Info = sc.TryGetProperty("info", out var inf) && inf.ValueKind == JsonValueKind.True };
+        string console = projectConsole;
+        try { console = ScenarioConsole(projectConsole, sc); }
+        catch (ArgumentException ex0) { res.Result = "refused"; res.CrashInfo = ex0.Message; return res; }
+        res.Console = console;
+        string batteryFrom = sc.TryGetProperty("batteryFrom", out var bf) ? bf.GetString() ?? "" : "";
         int frames = sc.GetProperty("frames").GetInt32();
         string input = sc.TryGetProperty("input", out var ip) ? ip.GetString() ?? "" : "";
         var checkpoints = new SortedSet<int>();
@@ -340,8 +350,15 @@ internal static partial class BrokenDevCli
 
         try
         {
-            using IRunner runner = console == "nes" ? new NesRunner(romPath, rom, verify, ntsc, powerOnRam) : new SnesRunner(rom, Path.GetFileName(romPath), verify, console);
+            using IRunner runner = MakeRunner(console, romPath, rom, verify, ntsc, powerOnRam);
             res.Cores = runner.Cores; res.Description = runner.Description;
+            if (batteryFrom.Length > 0)
+            {
+                // a second power-on of the same cartridge: the battery save the earlier scenario left
+                var src = earlier?.FirstOrDefault(x => x.Id == batteryFrom);
+                if (src?.BatteryOut is not { Length: > 0 } save) res.BatteryNote = $"no battery save from scenario '{batteryFrom}' (it must run earlier in this verify and leave one)";
+                else { res.BatteryIn = save; res.BatteryNote = runner.ImportBattery(save) + $" ({save.Length} bytes from '{batteryFrom}')"; }
+            }
             var held = new List<string>();
             int next = 0;
             // pokes: [{ "frame": 2, "addr": "0x07FC", "value": 0 }] writes work RAM before that frame runs (NES only): a forced state is a probe, never a proof
@@ -380,6 +397,8 @@ internal static partial class BrokenDevCli
             res.Width = runner.Width; res.Height = runner.Height;
             res.Colors = res.Checkpoints.Count > 0 ? res.Checkpoints[^1].Colors : 0;
             if (runner is SnesRunner { WideMessSession: { } wmsEnd }) res.Wms = WideMessCli.Measure(wmsEnd);   // after the last picture: measuring redraws
+            if (res.Result == "ok") ReadMemoryExpectations(res, runner, expect, symbols);
+            if (keepBattery) res.BatteryOut = runner.ExportBattery();
         }
         catch (Exception ex2) when (ex2 is ArgumentException or NotSupportedException or InvalidDataException or Cartridge.UnsupportedMapperException)
         {
@@ -390,7 +409,7 @@ internal static partial class BrokenDevCli
             res.Result = "crashed"; res.CrashInfo = ex3.GetType().Name + ": " + ex3.Message;
         }
 
-        if (res.Result == "ok") { Evaluate(res, expect); EvaluateWideMess(res, expect); }
+        if (res.Result == "ok") { Evaluate(res, expect); EvaluateWideMess(res, expect); EvaluateGb(res, expect); }
         return res;
     }
 
@@ -490,6 +509,7 @@ internal static partial class BrokenDevCli
                 ["checks"] = new JsonArray(r.Checks.Select(c => (JsonNode)new JsonObject { ["id"] = c.Id, ["ok"] = c.Ok, ["detail"] = c.Detail }).ToArray()),
                 ["wms"] = WideMessJson(r),
             });
+            if (IsGameBoyKey(r.Console)) ((JsonObject)scen[^1]!)["gb"] = GbJson(r);   // only Game Boy reports carry the key
         }
         return new JsonObject
         {
@@ -534,6 +554,8 @@ internal static partial class BrokenDevCli
         void SavePng(string path);
         /// <summary>One byte of the game's memory without side effects: domain "ram" (NES 2 KB system RAM) or "wram" (SNES 128 KB work RAM).</summary>
         int Peek(string domain, int addr);
+        /// <summary>One byte as the CPU sees it, without side effects (verify's expect.memory): the NES's system RAM, the Game Boy's whole bus.</summary>
+        int PeekCpu(uint addr);
         /// <summary>The battery save as the apps persist it (NES: the mapper's flash or other mapper-side memory; SNES: the cartridge SRAM), or null.</summary>
         byte[]? ExportBattery();
         /// <summary>Puts a battery save back before the first frame; returns what happened, in words.</summary>
@@ -622,6 +644,8 @@ internal static partial class BrokenDevCli
 
         public int Peek(string domain, int addr) => domain == "ram" ? nes.PeekSystemRam(addr & 0x7FF) : throw new ArgumentException($"the NES has no memory domain '{domain}' here (ram)");
 
+        public int PeekCpu(uint addr) => addr < 0x2000 ? nes.PeekSystemRam((int)(addr & 0x7FF)) : throw new ArgumentException($"expect.memory on the NES reads system RAM ($0000-$1FFF), not ${addr:X4}");
+
         public byte[]? ExportBattery() => nes.ExportMapperBatteryMemory();
 
         public string ImportBattery(byte[] data) => nes.HasMapperBatteryMemory ? nes.ImportMapperBatteryMemory(data).ToString() : "the cartridge has no mapper-side battery memory";
@@ -661,15 +685,16 @@ internal static partial class BrokenDevCli
                 ppu = cores.TryGetProperty("ppu", out var p) ? p.GetString() ?? "" : "";
                 apu = cores.TryGetProperty("apu", out var a) ? a.GetString() ?? "" : "";
             }
-            // "wms": a WideMess project (BrokenDev/widemess) runs on the WideMess console, with its own menu's defaults
-            var console = consoleKey == "wms" ? ConsoleKind.WideMess : ConsoleKind.Snes;
+            // "wms": a WideMess project (BrokenDev/widemess) runs on the WideMess console, with its own menu's defaults; "gb" / "gbc": the
+            // Game Boy or the Game Boy Color (a dual-mode cartridge runs in colour on the Color, in shades on the original)
+            var console = consoleKey switch { "wms" => ConsoleKind.WideMess, "gb" => ConsoleKind.GameBoy, "gbc" => ConsoleKind.GameBoyColor, _ => ConsoleKind.Snes };
             if (console == ConsoleKind.WideMess) Consoles.WideMessEnabled = true;
             cpu = cpu == "" ? CoreCatalog.Default(console, CoreSlot.Cpu) : cpu;
             ppu = ppu == "" ? CoreCatalog.Default(console, CoreSlot.Ppu) : ppu;
             apu = apu == "" ? CoreCatalog.Default(console, CoreSlot.Apu) : apu;
             foreach (var (slot, id) in new[] { (CoreSlot.Cpu, cpu), (CoreSlot.Ppu, ppu), (CoreSlot.Apu, apu) })
                 if (!CoreCatalog.Options(console, slot).Any(o => o.Id.Equals(id, StringComparison.OrdinalIgnoreCase)))
-                    throw new ArgumentException($"the {(console == ConsoleKind.WideMess ? "WideMess" : "SNES")} {slot} menu does not offer {id}");
+                    throw new ArgumentException($"the {(console == ConsoleKind.WideMess ? "WideMess" : console == ConsoleKind.Snes ? "SNES" : Consoles.DisplayName(console))} {slot} menu does not offer {id}");
             Cores = $"{cpu}/{ppu}/{apu}";
             byte[] unwrapped = RomDetect.Unwrap(rom, fileName, out string inner);
             s = ConsoleSessions.Create(console, unwrapped, cpu, ppu, apu, null, inner);
@@ -702,7 +727,11 @@ internal static partial class BrokenDevCli
 
         public void SavePng(string path) => MixLab.MixLabCli.SaveArgb(s.Frame, s.FrameWidth, s.FrameHeight, path);
 
-        public int Peek(string domain, int addr) => domain == "wram" && s is SnesSession ss ? ss.Board.Wram[addr & 0x1FFFF] : throw new ArgumentException($"the SNES has no memory domain '{domain}' here (wram)");
+        public int Peek(string domain, int addr) => s is GbSession gs ? PeekGb(gs, domain, addr)
+            : domain == "wram" && s is SnesSession ss ? ss.Board.Wram[addr & 0x1FFFF] : throw new ArgumentException($"the SNES has no memory domain '{domain}' here (wram)");
+
+        public int PeekCpu(uint addr) => s is GbSession gs ? gs.Board.Peek((ushort)addr)
+            : throw new ArgumentException("expect.memory reads the NES and the Game Boy; on the SNES use the compat section's reads");
 
         public byte[]? ExportBattery() => s.HasBattery ? s.ExportSave() : null;
 

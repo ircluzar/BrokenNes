@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "note": "The toolchains BrokenDev builds games with that do not ship inside a project archive, pinned like the emulators (emulators.json): the release zip by name, size and sha256, the folder it is unpacked into under BROKENDEV_HOME, and key files by size and sha256, so 'doctor' and every build can tell the pinned toolchain is there and unchanged. BrokenDev never downloads or unpacks a toolchain: the user approves each download, and the zip stays in its _downloads folder as the proof of what was unpacked. Validated by lib\\Toolchains.ps1 (Test-BdToolchains) and tests\\run-tests.ps1. Build steps name a toolchain's folder as {toolchain:<id>}; a project needing one lists 'toolchain:<id>' in requires.tools.",
+  "toolchains": [
+    {
+      "id": "gbdk",
+      "title": "GBDK-2020 (C and assembly for the Game Boy: lcc, SDCC, sdasgb, sdldgb, makebin)",
+      "version": "4.5.0",
+      "source": "the GBDK-2020 4.5.0 release for 64-bit Windows (https://github.com/gbdk-2020/gbdk-2020/releases), downloaded with the user's approval on 2026-10-24 for VRUN: Vaults of Obsolete Code",
+      "homepage": "https://github.com/gbdk-2020/gbdk-2020",
+      "zip": "toolchains/gbdk/_downloads/gbdk-win64-4.5.0.zip",
+      "bytes": 8636233,
+      "sha256": "266854ce92e3064871c5b28cd3436cc2a6cb136af9e7cf617140108f8c1c5890",
+      "sha256Source": "measured when it was downloaded (recorded beside the zip in gbdk-win64-4.5.0.zip.sha256)",
+      "dir": "toolchains/gbdk/4.5.0/gbdk",
+      "files": [
+        { "path": "bin/lcc.exe", "bytes": 82432, "sha256": "9dcb6d32e159181014df9023ffda74995969a137170299910c780ebd0b87c920" },
+        { "path": "bin/sdcc.exe", "bytes": 3112448, "sha256": "2df20160727609dd4e078660ee2bc97ec83a0408b851b6373149b0bb28bd3473" },
+        { "path": "bin/sdasgb.exe", "bytes": 129536, "sha256": "038318c5abd21e8aca9cc49fdb74bc7b7c0716b1b38c937c7bb82b65ea39b2ee" },
+        { "path": "bin/sdldgb.exe", "bytes": 183296, "sha256": "b47a30f0ba7e82424b2662776f951e54139356a1b9af81ac6c25adb8886e6baf" },
+        { "path": "bin/makebin.exe", "bytes": 57856, "sha256": "10c9298bf6c44f67c9dad9479f9e3245f60bd6771ceeb1fe93232acea1141cc6" },
+        { "path": "bin/romusage.exe", "bytes": 120832, "sha256": "77d23f4a218fb3f8cea4dca529f0ab4b603e53972d6f314f6ee35207c51369f1" },
+        { "path": "lib/gb/crt0.o", "bytes": 8669, "sha256": "454b60801079e384fb2480feb540e7a445aec205a8cf026f4df9ad8cb61deb55" },
+        { "path": "lib/gb/gb.lib", "bytes": 163654, "sha256": "b35ea49f1efa7e2a3b9752bf6f509fec156132238214a2cd80b8b857f2f27e12" },
+        { "path": "lib/sm83/sm83.lib", "bytes": 82000, "sha256": "8839b0935a1637fcac46c76d33963e3941f5b93906bf7615c619c97f378f5b4d" },
+        { "path": "include/gb/gb.h", "bytes": 79584, "sha256": "53c219e6d06026e3727b859e5704d43be8c5ddf04aa792b9e3e8e956ff403e9f" }
+      ],
+      "versionFile": { "path": "ChangeLog", "firstLine": "gbdk-4.5.0" },
+      "notes": "GBDK's start-up (crt0) does not clear work RAM since 4.x (its ChangeLog: so emulators can flag reads before writes): a game writes its variables before it reads them, which BrokenDev's gb.ram-uninit check proves. Its console library (printf, font_init) switches the LCD on while it loads its font."
+    }
+  ]
+}

@@ -21,6 +21,7 @@ $bd = Split-Path -Parent $here
 . (Join-Path $bd 'lib\Common.ps1')
 . (Join-Path $bd 'lib\Tools.ps1')
 . (Join-Path $bd 'lib\Archive.ps1')
+. (Join-Path $bd 'lib\Toolchains.ps1')
 . (Join-Path $bd 'lib\Manifest.ps1')
 . (Join-Path $bd 'lib\Build.ps1')
 . (Join-Path $bd 'lib\Verify.ps1')

@@ -64,15 +64,16 @@
       "id": "brokennes",
       "title": "BrokenNes (Workshop, headless)",
       "package": null,
-      "consoles": ["nes", "snes", "wms"],
+      "consoles": ["nes", "snes", "wms", "gb", "gbc"],
       "adapter": "workshop",
       "reference": true,
       "can": { "memory": true, "pictures": true, "audio": true, "saves": true, "exactFrames": true },
       "defaults": {
         "region": "NTSC",
-        "ramInit": "NES: the FCEUX pattern 00 00 00 00 FF FF FF FF (the app default; a project may ask powerOnRam zeros). SNES: zeros.",
-        "overscan": "none: the NES picture is 256x240, the SNES 256x224 (or 239)",
-        "cores": "the app defaults: NES CPU/PPU/APU FIX, SNES SFC; a project's verify.cores wins"
+        "ramInit": "NES: the FCEUX pattern 00 00 00 00 FF FF FF FF (the app default; a project may ask powerOnRam zeros). SNES: zeros. Game Boy: work RAM zeros, a fresh cartridge RAM $FF.",
+        "overscan": "none: the NES picture is 256x240, the SNES 256x224 (or 239), the Game Boy 160x144",
+        "cores": "the app defaults: NES CPU/PPU/APU FIX, SNES SFC, Game Boy GB; a project's verify.cores wins",
+        "boot": "Game Boy: no boot ROM (the documented post-boot state, frame 1 is the game's): the other emulators play their boot animation first"
       },
       "notes": "The same Workshop and cores as 'verify'; deterministic, so a reference result can be compared run to run."
     },
@@ -80,7 +81,8 @@
       "id": "mesen",
       "title": "Mesen 2.1.1",
       "package": "mesen",
-      "consoles": ["nes", "snes"],
+      "consoles": ["nes", "snes", "gb", "gbc"],
+      "gbModels": { "gb": "Gameboy", "gbc": "GameboyColor" },
       "adapter": "mesen",
       "can": { "memory": true, "pictures": true, "audio": true, "saves": true, "exactFrames": true },
       "defaults": {
@@ -150,6 +152,40 @@
         "overscan": "256x224 (ShowOverscan off)"
       },
       "notes": "As bizhawk-neshawk with SNES -> BSNESv115+ pinned; work RAM through the 'WRAM' domain (128 KB), cartridge SRAM in 'CARTRAM'. 'BSNESv115+' is the current bsnes in BizHawk 2.11.1; the core 2.11.1 names plain 'BSNES' is the legacy bsnes v0.87 (LibsnesCore), which stops the Nested ROMs on Project Nested's own 'SRAM is missing' screen (measured by BrokenDev on 2026-10-22): it is not the bsnes players mean, so it is not the column. Its Snes9x core is not used either (the standalone Snes9x is its own column)."
+    },
+    {
+      "id": "bizhawk-gambatte",
+      "title": "BizHawk 2.11.1, Gambatte core",
+      "package": "bizhawk",
+      "core": "Gambatte",
+      "system": "GB",
+      "consoles": ["gb", "gbc"],
+      "adapter": "bizhawk",
+      "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
+      "defaults": {
+        "region": "none (the Game Boy has one)",
+        "ramInit": "Gambatte's own power-on fill (recorded per run)",
+        "overscan": "none: 160x144",
+        "model": "from the cartridge header (ConsoleMode Detect): a dual-mode cartridge runs as a Game Boy Color"
+      },
+      "notes": "As bizhawk-neshawk with GB and GBC -> Gambatte pinned; the pad has no player prefix ('Up', 'A'); memory through the core's 'WRAM' (32 KB on a Color), 'HRAM' and 'CartRAM' domains; the battery save is <game>.SaveRAM in the save folder (paths entry GB_GBC_SGB)."
+    },
+    {
+      "id": "bizhawk-sameboy",
+      "title": "BizHawk 2.11.1, SameBoy core",
+      "package": "bizhawk",
+      "core": "SameBoy",
+      "system": "GB",
+      "consoles": ["gb", "gbc"],
+      "adapter": "bizhawk",
+      "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
+      "defaults": {
+        "region": "none (the Game Boy has one)",
+        "ramInit": "SameBoy's own power-on fill (recorded per run)",
+        "overscan": "none: 160x144",
+        "model": "from the cartridge header: a dual-mode cartridge runs as a Game Boy Color"
+      },
+      "notes": "As bizhawk-gambatte with SameBoy pinned (its own open-source boot ROMs: no firmware)."
     }
   ]
 }

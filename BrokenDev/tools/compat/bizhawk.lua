@@ -74,7 +74,7 @@ local function readSpec()
       else error("unknown spec directive '" .. key .. "'") end
     end
   end
-  if spec.console ~= "nes" and spec.console ~= "snes" then error("spec: console must be nes or snes, not " .. tostring(spec.console)) end
+  if spec.console ~= "nes" and spec.console ~= "snes" and spec.console ~= "gb" and spec.console ~= "gbc" then error("spec: console must be nes, snes, gb or gbc, not " .. tostring(spec.console)) end
   if not spec.out or spec.out == "" then error("spec: no out folder") end
   if not spec.frames or spec.frames <= 0 then error("spec: frames must be positive") end
   table.sort(spec.inputs, function(a, b) return a.frame < b.frame end)
@@ -82,7 +82,8 @@ end
 
 -- ------------------------------------------------------------------------------------------------ the core
 
-local isNes, domain, domainSize, system, coreName
+local isNes, isGb, domain, domainSize, system, coreName
+local prefix = "P1 "      -- the pad's button prefix ("" on the Game Boy cores)
 local startedAt, rebooted = nil, false
 local padNames = {}       -- BizHawk's names of pad 1's buttons ("P1 A", ...)
 local steps = {}          -- spec.inputs, each a full set of pad 1 values
@@ -125,28 +126,55 @@ local function setup()
   system = emu.getsystemid()
   if system == "NULL" then error("no ROM is loaded (EmuHawk could not open " .. tostring(spec.rom) .. " with the pinned core)") end
   isNes = spec.console == "nes"
-  if (isNes and system ~= "NES") or ((not isNes) and system ~= "SNES") then error("the spec is for the " .. spec.console .. " but EmuHawk runs system " .. system) end
+  isGb = spec.console == "gb" or spec.console == "gbc"
+  if isGb then
+    -- the Game Boy cores (Gambatte, SameBoy) say GB or GBC (a dual-mode cartridge runs as GBC on them)
+    if system ~= "GB" and system ~= "GBC" then error("the spec is for the " .. spec.console .. " but EmuHawk runs system " .. system) end
+  elseif (isNes and system ~= "NES") or ((not isNes) and system ~= "SNES") then error("the spec is for the " .. spec.console .. " but EmuHawk runs system " .. system) end
   coreName = runningCore()
   domain = isNes and "RAM" or "WRAM"
-  local want = isNes and 0x800 or 0x20000
   local domains = listOf(memory.getmemorydomainlist())
-  local found = false
-  for _, d in ipairs(domains) do if d == domain then found = true end end
-  if not found then error("the core has no memory domain " .. domain .. " (it has: " .. table.concat(domains, ", ") .. ")") end
+  local function has(d) for _, x in ipairs(domains) do if x == d then return true end end return false end
+  if not has(domain) then error("the core has no memory domain " .. domain .. " (it has: " .. table.concat(domains, ", ") .. ")") end
   domainSize = memory.getmemorydomainsize(domain)
-  if domainSize ~= want then error(string.format("memory domain %s is %d bytes, expected %d", domain, domainSize, want)) end
-  for _, r in ipairs(spec.reads) do
-    if (isNes and r.domain ~= "ram") or ((not isNes) and r.domain ~= "wram") then error("read " .. r.name .. ": domain " .. r.domain .. " does not belong to the " .. spec.console) end
-    if r.addr < 0 or r.addr >= domainSize then error(string.format("read %s: address %X is outside %s", r.name, r.addr, domain)) end
+  if isGb then
+    -- BrokenDev's Game Boy domains -> the cores' own: WRAM (8 KB, or 32 KB on a Color), HRAM, CartRAM
+    local gbNames = { wram = "WRAM", hram = "HRAM", cartram = "CartRAM" }
+    for _, r in ipairs(spec.reads) do
+      r.bizDomain = gbNames[r.domain]
+      if not r.bizDomain then error("read " .. r.name .. ": domain " .. r.domain .. " does not belong to the " .. spec.console) end
+      if not has(r.bizDomain) then error("read " .. r.name .. ": the core has no memory domain " .. r.bizDomain .. " (it has: " .. table.concat(domains, ", ") .. ")") end
+      local size = memory.getmemorydomainsize(r.bizDomain)
+      if r.addr < 0 or r.addr >= size then error(string.format("read %s: address %X is outside %s (%d bytes)", r.name, r.addr, r.bizDomain, size)) end
+    end
+  else
+    local want = isNes and 0x800 or 0x20000
+    if domainSize ~= want then error(string.format("memory domain %s is %d bytes, expected %d", domain, domainSize, want)) end
+    for _, r in ipairs(spec.reads) do
+      r.bizDomain = domain
+      if (isNes and r.domain ~= "ram") or ((not isNes) and r.domain ~= "wram") then error("read " .. r.name .. ": domain " .. r.domain .. " does not belong to the " .. spec.console) end
+      if r.addr < 0 or r.addr >= domainSize then error(string.format("read %s: address %X is outside %s", r.name, r.addr, domain)) end
+    end
   end
 
-  -- pad 1's buttons, as the core names them (joypad.get(1) gives them without the "P1 " prefix)
+  -- pad 1's buttons, as the core names them (joypad.get(1) gives them without the "P1 " prefix). The Game Boy cores' pad has no player
+  -- prefix at all ("Up", "A"): joypad.get() lists those
   local have = {}
-  for k, _ in pairs(joypad.get(1) or {}) do have["P1 " .. tostring(k)] = true end
-  local consoleButtons = isNes and { "A", "B", "Select", "Start", "Up", "Down", "Left", "Right" }
+  if isGb then
+    prefix = ""
+    for k, _ in pairs(joypad.get() or {}) do have[tostring(k)] = true end
+    if not have["Up"] then
+      prefix = "P1 "
+      have = {}
+      for k, _ in pairs(joypad.get(1) or {}) do have["P1 " .. tostring(k)] = true end
+    end
+  else
+    for k, _ in pairs(joypad.get(1) or {}) do have["P1 " .. tostring(k)] = true end
+  end
+  local consoleButtons = (isNes or isGb) and { "A", "B", "Select", "Start", "Up", "Down", "Left", "Right" }
                                 or { "B", "Y", "Select", "Start", "Up", "Down", "Left", "Right", "A", "X", "L", "R" }
   for _, b in ipairs(consoleButtons) do
-    local n = "P1 " .. b
+    local n = prefix .. b
     if not have[n] then
       local list = {}
       for k, _ in pairs(have) do list[#list + 1] = k end
@@ -160,8 +188,8 @@ local function setup()
     for _, n in ipairs(padNames) do held[n] = false end
     for _, b in ipairs(s.names) do
       local c = canon[b:lower()]
-      if not c or held["P1 " .. c] == nil then error("input " .. s.frame .. ": '" .. b .. "' is not a " .. spec.console .. " button") end
-      held["P1 " .. c] = true
+      if not c or held[prefix .. c] == nil then error("input " .. s.frame .. ": '" .. b .. "' is not a " .. spec.console .. " button") end
+      held[prefix .. c] = true
     end
     steps[#steps + 1] = { frame = s.frame, held = held }
   end
@@ -218,7 +246,7 @@ local function afterFrame()
     out:write("note frames: after " .. done .. " frame advances emu.framecount() is " .. emu.framecount() .. "\n")
   end
   local line = { "t", tostring(done) }
-  for _, r in ipairs(spec.reads) do line[#line + 1] = tostring(memory.read_u8(r.addr, domain)) end
+  for _, r in ipairs(spec.reads) do line[#line + 1] = tostring(memory.read_u8(r.addr, r.bizDomain)) end
   out:write(table.concat(line, " ") .. "\n")
   if spec.shots[done] then
     local file = string.format("shot_%05d.png", done)

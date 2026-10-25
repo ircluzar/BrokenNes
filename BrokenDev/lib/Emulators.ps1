@@ -69,7 +69,7 @@ function Test-BdEmulators {
         if (-not [string](Get-BdProp $m 'title' '')) { $e.Add("emulator ${id}: 'title' is required") }
         $cons = @(Get-BdProp $m 'consoles' @())
         if ($cons.Count -eq 0) { $e.Add("emulator ${id}: consoles is empty") }
-        foreach ($c in $cons) { if (@('nes', 'snes', 'wms') -notcontains [string]$c) { $e.Add("emulator ${id}: console '$c' must be nes, snes or wms") } }
+        foreach ($c in $cons) { if (@('nes', 'snes', 'wms', 'gb', 'gbc') -notcontains [string]$c) { $e.Add("emulator ${id}: console '$c' must be nes, snes, wms, gb or gbc") } }
         $ad = [string](Get-BdProp $m 'adapter' '')
         if ($script:BdEmuAdapters -notcontains $ad) { $e.Add("emulator ${id}: adapter '$ad' must be one of: $($script:BdEmuAdapters -join ', ')") }
         $pkg = Get-BdProp $m 'package' $null
@@ -78,7 +78,9 @@ function Test-BdEmulators {
         elseif (-not $pk.ContainsKey([string]$pkg)) { $e.Add("emulator ${id}: package '$pkg' is not in packages") }
         if ($ad -eq 'bizhawk') {
             foreach ($f in 'core', 'system') { if (-not [string](Get-BdProp $m $f '')) { $e.Add("emulator ${id}: a bizhawk emulator needs '$f' (the core to pin and its system)") } }
-            if ($cons.Count -ne 1) { $e.Add("emulator ${id}: a bizhawk emulator pins one core, so it runs one console") }
+            # one core, one console; the Game Boy's two models are one console family to a Game Boy core (system GB: EmuHawk's GB and GBC)
+            $gbPair = ($cons.Count -eq 2 -and @($cons | Where-Object { [string]$_ -in 'gb', 'gbc' }).Count -eq 2 -and [string](Get-BdProp $m 'system' '') -eq 'GB')
+            if ($cons.Count -ne 1 -and -not $gbPair) { $e.Add("emulator ${id}: a bizhawk emulator pins one core, so it runs one console (or gb and gbc with system GB)") }
         }
         if (Get-BdProp $m 'reference' $false) { $refs++; if ($ad -ne 'workshop') { $e.Add("emulator ${id}: only BrokenNes (the workshop adapter) is the reference") } }
         $can = Get-BdProp $m 'can' $null

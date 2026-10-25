@@ -76,12 +76,52 @@ function Expand-BdPath {
                 if ([string]::IsNullOrEmpty($v)) { throw "environment variable $($Matches[1]) is not set (needed by: $Text)" }
                 return $v
             }
+            '^toolchain:(.+)$' {
+                # a pinned toolchain's folder (toolchains.json, lib\Toolchains.ps1): only when it is there and unchanged
+                $tid = $Matches[1]
+                if (-not (Get-Command Get-BdToolchainDir -ErrorAction SilentlyContinue)) { throw "placeholder {toolchain:$tid} needs lib\Toolchains.ps1 (in: $Text)" }
+                return (Get-BdToolchainDir -Id $tid)
+            }
+            '^live:(.+)$' {
+                # a game's own live workspace, by folder name: BROKENDEV_LIVE_<NAME> (a folder), else the folder of that name beside the
+                # repository or beside one of its parents (a git worktree finds the same one, as the archives' live workspaces)
+                $name = $Matches[1]
+                $f = Find-BdLiveWorkspace -Name $name
+                if (-not $f) { throw "the live workspace '$name' was not found beside the repository (or set $(Get-BdLiveWorkspaceEnv $name)) (needed by: $Text)" }
+                return $f
+            }
             default {
                 if ($Context.ContainsKey($key)) { return [string]$Context[$key] }
                 throw "unknown placeholder {$key} in: $Text"
             }
         }
     })
+}
+
+function Get-BdLiveWorkspaceEnv { param([Parameter(Mandatory)][string]$Name) 'BROKENDEV_LIVE_' + ($Name.ToUpperInvariant() -replace '[^A-Z0-9]', '_') }
+
+function Find-BdLiveWorkspace {
+    <#
+      The folder of a game's live workspace named $Name ({live:<name>} in a manifest's source.folder): BROKENDEV_LIVE_<NAME> when set (it
+      must exist: an explicit choice is never silently replaced), else a folder of that name beside the repository or one of its parents.
+      $null when there is none.
+    #>
+    param([Parameter(Mandatory)][string]$Name)
+    $ev = [Environment]::GetEnvironmentVariable((Get-BdLiveWorkspaceEnv $Name))
+    if ($ev) {
+        $full = [System.IO.Path]::GetFullPath($ev).TrimEnd('\')
+        if (-not (Test-Path -LiteralPath $full -PathType Container)) { throw "$(Get-BdLiveWorkspaceEnv $Name) points at $full, which does not exist" }
+        return $full
+    }
+    $dir = Split-Path -Parent ([System.IO.Path]::GetFullPath($script:BdRepo).TrimEnd('\'))
+    while ($dir) {
+        $cand = Join-Path $dir $Name
+        if (Test-Path -LiteralPath $cand -PathType Container) { return $cand }
+        $parent = Split-Path -Parent $dir
+        if (-not $parent -or $parent -eq $dir) { break }
+        $dir = $parent
+    }
+    $null
 }
 
 function ConvertTo-BdBashPath {
