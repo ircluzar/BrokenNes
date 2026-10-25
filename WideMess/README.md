@@ -392,7 +392,7 @@ E2b (a synthetic streaming game: extended shows old tiles, drawn none, both dire
 the SNES, with fast CPU off and with the guard; without the guard the `$CC` is lost; the speed ROM never enters the guard); E6 now reports each
 game's guard share; E8 (side truth on Donkey Kong Country and Super Metroid, every layer extended as the control).
 
-**Results** (branch on main `ad4d81c`): `--wms-test` 306 of 306; `--debug-test` 101/0; `--check-test` 111/0; `--snes-state-test` 147/0; the
+**Results** (branch on main `ad4d81c`): `--wms-test` 306 of 306; `--debug-test` 101/0; `--check-test` 111/0; `--snes-state-test` 147/0; UAT `run-suite.ps1` 125 pass, 0 fail, 16 skip, 3 info; the
 ALttP speed-pass golden IDENTICAL; interleaved A/B against `ad4d81c` (ALttP 2,400 frames, 10 pairs, CPU time) 0.991: noise; Lite, Core and
 the desktop app build.
 
