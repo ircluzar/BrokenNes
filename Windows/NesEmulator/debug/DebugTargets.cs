@@ -158,6 +158,8 @@ public abstract class DebugMachine
     public abstract IReadOnlyList<DebugCpu> Cpus { get; }
     /// <summary>The frame the emulation is in (for the NES the RunFrame count, for the SNES and Game Boy the vblanks counted so far).</summary>
     public abstract long Frame { get; }
+    /// <summary>After a state load: the frame <see cref="Frame"/> must say from now on (a console whose state holds its frame count needs nothing).</summary>
+    public virtual void RestoreFrame(long frame) { }
     public abstract int Scanline { get; }
     public abstract int Dot { get; }
     /// <summary>The main CPU's clock: NES CPU cycles, SNES master clocks, Game Boy M-cycles.</summary>

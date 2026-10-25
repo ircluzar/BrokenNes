@@ -71,6 +71,7 @@ local function readSpec()
         if buttons ~= "-" then for b in buttons:gmatch("[^+]+") do names[#names + 1] = b end end
         spec.inputs[#spec.inputs + 1] = { frame = tonumber(fr), names = names }
       elseif key == "shot" then spec.shots[tonumber(rest)] = true
+      elseif key == "movie" then spec.movie = rest
       else error("unknown spec directive '" .. key .. "'") end
     end
   end
@@ -225,7 +226,9 @@ local held = nil
 local frameMismatch = false
 local sizes = {}
 
+local lastPad = nil
 local function beforeFrame()
+  if spec.movie then return end   -- a movie run: EmuHawk's movie is the input (afterFrame notes what it pressed)
   while stepPos < #steps and steps[stepPos + 1].frame <= done do
     stepPos = stepPos + 1
     held = steps[stepPos].held
@@ -239,7 +242,20 @@ end
 
 local sep = package.config:sub(1, 1)
 
+local function moviePad()
+  -- the buttons the movie pressed in the frame that just ran (movie.getinput, by BizHawk's names), joined with '+'
+  local t = safe(movie.getinput, done)
+  if type(t) ~= "table" then return "?" end
+  local on = {}
+  for _, n in ipairs(padNames) do if t[n] == true then on[#on + 1] = n:gsub("^P1 ", "") end end
+  return #on > 0 and table.concat(on, "+") or "-"
+end
+
 local function afterFrame()
+  if spec.movie then
+    local p = moviePad()
+    if p ~= lastPad then out:write("note movie-pad " .. done .. " " .. p .. "\n"); lastPad = p end
+  end
   done = done + 1
   if not frameMismatch and emu.framecount() ~= done then
     frameMismatch = true
@@ -283,6 +299,10 @@ local names = {}
 for i, r in ipairs(spec.reads) do names[i] = r.name end
 out:write("emu BizHawk " .. client.getversion() .. " " .. tostring(coreName) .. " (" .. system .. ")\n")
 out:write("reads " .. table.concat(names, " ") .. "\n")
+if spec.movie then
+  out:write("note movie: " .. tostring(spec.movie) .. ", loaded " .. tostring(safe(movie.isloaded)) .. ", mode " .. tostring(safe(movie.mode)) .. ", " .. tostring(safe(movie.length)) .. " frames\n")
+  if not safe(movie.isloaded) then crash("EmuHawk did not load the movie " .. tostring(spec.movie)) return end
+end
 ok, err = pcall(writeNotes)
 if not ok then out:write("note notes failed: " .. oneLine(err) .. "\n") end
 out:flush()

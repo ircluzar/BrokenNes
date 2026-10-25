@@ -188,5 +188,16 @@
     "NESFab miscompiles are real (three confirmed in the disassembly). When a harmless edit breaks something, disassemble before theorising.",
     "The build is not byte-reproducible: two builds of the same source gave different ROMs (sha256 584a91bc... and 3cfce10c..., measured by BrokenDev on 2026-10-16) with the same picture at the end of both UAT cases (frames 900 and 2400). Compare behaviour (BrokenDev verify, UAT), not file hashes.",
     "On BrokenNes the NES runs 48.5 CPU cycles per frame more than hardware unless 'NTSC-accurate frame timing' is on (the app default is off, as an accuracy-for-speed trade). The play-ntsc scenario runs the same input with it on."
+  ],
+  "movies": [
+    {
+      "id": "first-room", "file": "movies/first-room.bnm", "sync": "same-rom", "frames": 2400, "recordedOn": "c48e39add7293f878a8af043ab87e3134c187b7a68cf536be5ff760ca18fe965",
+      "why": "verify's play script as a movie (Start, then running and jumping through the first rooms, D5's promoted-movie proof on a real game): on the build it was recorded on every keyframe must match; on a new build the keyframes are information and these expectations decide",
+      "expect": {
+        "minDistinctColors": 10,
+        "audio": { "fromFrame": 300, "minPeak": 0.05, "minNonSilentFrames": 300 },
+        "memory": [ { "symbol": "app_state", "is": 1, "what": "still in the game at the end (APP_GAME), no return to the title" } ]
+      }
+    }
   ]
 }

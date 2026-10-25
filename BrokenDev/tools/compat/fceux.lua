@@ -28,6 +28,7 @@ local emuText = os.getenv("BDC_EMU") or "FCEUX 2.7.0 (fceux64.exe)"
 local extraNotes = os.getenv("BDC_NOTES") or ""
 
 local out = nil          -- the result file, once open
+local lastMoviePad = nil  -- a movie run: the pad last noted
 local outDir = nil       -- the spec's out folder, as soon as the spec names it
 local done = 0           -- frames completed since power-on (emu.framecount())
 local finished = false
@@ -91,6 +92,7 @@ local function readSpec()
         end
         spec.inputs[#spec.inputs + 1] = { frame = tonumber(fr), held = held }
       elseif key == "shot" then spec.shots[tonumber(rest)] = true
+      elseif key == "movie" then spec.movie = rest
       else error("unknown spec directive '" .. key .. "'") end
     end
   end
@@ -188,7 +190,12 @@ local function run()
   out:write("note rom: " .. tostring(rom.getfilename()) .. " (md5 " .. tostring(rom.gethash("md5")) .. ")\n")
   out:write("note power-on RAM (read before the first frame): " .. describeRam() .. "\n")
   out:write("note pictures: gui.gdscreenshot(true) = the frame just completed, all 240 lines, FCEUX's palette, saved as 24-bit BMP\n")
-  out:write("note input: joypad.set before each frame (pads 1 and 2, every button forced on or off)\n")
+  if spec.movie then
+    out:write("note movie: " .. tostring(spec.movie) .. ", active " .. tostring(movie.active()) .. ", mode " .. tostring(movie.mode()) .. ", " .. tostring(movie.length()) .. " frames (the movie is the input; no joypad.set)\n")
+    if not movie.active() then error("FCEUX is not playing the movie " .. tostring(spec.movie)) end
+  else
+    out:write("note input: joypad.set before each frame (pads 1 and 2, every button forced on or off)\n")
+  end
   out:write("note audio: sound.get() channel volumes, one line per 30 frames (FCEUX's sound output is off; the APU is emulated all the same)\n")
   for n in extraNotes:gmatch("[^|]+") do out:write("note " .. oneLine(n) .. "\n") end
   out:flush()
@@ -208,8 +215,10 @@ local function run()
       pos = pos + 1
       held = spec.inputs[pos].held
     end
-    joypad.set(1, held)
-    joypad.set(2, released)
+    if not spec.movie then
+      joypad.set(1, held)
+      joypad.set(2, released)
+    end
     coroutine.yield()            -- the main chunk runs emu.frameadvance() (see the end of the file)
     done = emu.framecount()
     if done == before then
@@ -220,6 +229,13 @@ local function run()
       error("the frame counter jumped from " .. before .. " to " .. done)
     else
       stalls = 0
+      if spec.movie then
+        local j = joypad.get(1) or {}
+        local on = {}
+        for _, k in ipairs(ALL) do if j[k] then on[#on + 1] = k end end
+        local p = #on > 0 and table.concat(on, "+") or "-"
+        if p ~= lastMoviePad then out:write("note movie-pad " .. before .. " " .. p .. "\n"); lastMoviePad = p end
+      end
       local vals = {}
       for i, r in ipairs(spec.reads) do vals[i] = memory.readbyte(r.addr) end
       out:write("t " .. done .. (#vals > 0 and (" " .. table.concat(vals, " ")) or "") .. "\n")

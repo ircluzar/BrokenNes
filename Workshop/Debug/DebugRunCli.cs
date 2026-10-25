@@ -22,6 +22,8 @@ namespace BrokenNes.Workshop.Debug;
 ///   step [n] | over | out | scanline | frame | runto &lt;spec&gt; | tofr &lt;frame&gt; | toline &lt;line&gt; | pause
 ///   regs | stack | trace [n] | mem &lt;spec&gt; [len] | print &lt;expr&gt; | var &lt;name&gt; | set &lt;reg|var&gt; &lt;value&gt; | hits [n] | where
 ///   pad &lt;Btn+Btn|none&gt;           pad 1 holds these buttons from now on (Right, A, ...), for the next runs and steps
+///   history [every] [keep]       (D5) before the first run: a state every N frames (default 60, the last 30) and every frame's input
+///   back [n] | back frames &lt;n&gt;    (D5) step back n instructions (to the exact one), or to the start of the n-th frame before now
 ///   enhance &lt;fastcpu|widescreen|noflicker|sound&gt; &lt;on|off&gt;   the WideMess console's enhancements for a SNES game (spec 6.1)
 ///   tracefile &lt;path&gt; [fn &lt;symbol&gt;] [range &lt;spec&gt;] [frames &lt;a-b&gt;] | endtrace | sym &lt;file&gt; | domains | limits | detach
 /// </code>
@@ -130,6 +132,26 @@ internal sealed class DebugShell
                 var held = words.Count < 2 || words[1].Equals("none", StringComparison.OrdinalIgnoreCase) ? new List<string>() : words[1].Split('+', StringSplitOptions.RemoveEmptyEntries).ToList();
                 h.SetPad(held);
                 Console.WriteLine($"  pad 1 holds {(held.Count == 0 ? "nothing" : string.Join("+", held))}");
+                break;
+            }
+            case "history":
+            {
+                // history [every] [keep]: from now on a state every <every> frames (the last <keep>) and every frame's input, for 'back'
+                int every = words.Count > 1 ? int.Parse(words[1], CultureInfo.InvariantCulture) : 60, keep = words.Count > 2 ? int.Parse(words[2], CultureInfo.InvariantCulture) : 30;
+                if (h.Dbg.IsParked || h.Runner.FramesDone > 0) throw new InvalidOperationException("turn the history on before the first run (it starts at power-on)");
+                h.EnableHistory(every, keep);
+                Console.WriteLine($"  history on: a state every {every} frames, the last {keep} kept");
+                break;
+            }
+            case "back":
+            {
+                // back [n] | back frames <n>: step back n instructions (default 1), or to the start of the n-th frame before now
+                var hist = h.History ?? throw new InvalidOperationException("no history: give 'history' before the first run");
+                bool frames = words.Count > 1 && words[1].Equals("frames", StringComparison.OrdinalIgnoreCase);
+                long n = words.Count > (frames ? 2 : 1) ? long.Parse(words[frames ? 2 : 1], CultureInfo.InvariantCulture) : 1;
+                var r = frames ? hist.BackFrames(h.Runner, n, D.IsParked, h.LoadState, h.EnsureBetweenFrames) : hist.BackInstructions(h.Runner, n, h.LoadState, h.EnsureBetweenFrames);
+                Console.WriteLine($"  back {(frames ? n + " frame(s)" : n + " instruction(s)")}: from frame {r.FromFrame}{(r.FromInstruction >= 0 ? $" instruction {r.FromInstruction}" : "")} to frame {r.ToFrame}{(r.ToInstruction >= 0 ? $" instruction {r.ToInstruction}" : "")} (the state of frame {r.SnapshotFrame}, {r.FramesReplayed} frame(s) replayed){(r.Note.Length > 0 ? "; " + r.Note : "")}");
+                if (D.IsParked) Report(RunOutcome.Break);
                 break;
             }
             case "enhance":

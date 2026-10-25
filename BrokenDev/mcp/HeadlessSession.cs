@@ -6,6 +6,7 @@ using NesEmulator;
 using NesEmulator.Corruption;
 using NesEmulator.Debugging;
 using NesEmulator.Debugging.Checks;
+using NesEmulator.Debugging.Movies;
 using NesEmulator.Systems;
 
 namespace BrokenNes.Mcp;
@@ -48,6 +49,11 @@ internal sealed class HeadlessSession : Session
     private ConsoleChecks? checks;
     private long checksFrom;
     private SearchState? search;
+    // the history (D5): every frame's input since the session began (its movie), a state every 60 frames (step back), the keyframes
+    private DebugHistory? history;
+    private string historyNote = "";
+    private Movie? playingMovie;
+    private string playingFile = "";
 
     private sealed class Snapshot
     {
@@ -120,6 +126,7 @@ internal sealed class HeadlessSession : Session
             }
             else if (symbolFiles.Any() || startChecks)
                 throw new ToolError($"the debugger and the checks do not cover the {Consoles.DisplayName(c)} yet (D1 and D4: NES, SNES with its SPC700, WideMess, Game Boy)");
+            h.StartHistory(null);
         }
         catch { h.Close(); throw; }
         return h;
@@ -141,6 +148,21 @@ internal sealed class HeadlessSession : Session
         if (nes != null) nes.RunFrame(); else cs!.RunFrame();
         Interlocked.Increment(ref framesStarted);
         DrainAudio();
+        history?.AfterFrame();
+    }
+
+    private byte[] SaveRaw() => nes != null ? Encoding.UTF8.GetBytes(nes.SaveState()) : cs!.SaveState();
+    private void LoadRaw(byte[] s) { if (nes != null) nes.LoadState(Encoding.UTF8.GetString(s)); else cs!.LoadState(s); }
+    private ulong MoviePicture() => nes != null ? MovieHash.Picture(nes.GetFrameBuffer()) : MovieHash.Picture(cs!.Frame, cs.FrameWidth * cs.FrameHeight);
+    private ulong MovieRam() => MovieHash.Ram(nes != null ? MachineDomains.For(nes) : MachineDomains.For(cs!));
+
+    /// <summary>The history from now (null: power-on; else the state it starts from). A console without save states has none, and says so.</summary>
+    private void StartHistory(byte[]? startState)
+    {
+        if (cs != null && !cs.SupportsState) { history = null; historyNote = $"no history (step back, movies): {cs.StateUnsupportedReason}"; return; }
+        history = new DebugHistory(SaveRaw, D, 60, 30, 60, () => (MoviePicture(), MovieRam()), startState);
+        historyNote = startState == null ? "the history starts at power-on" : "the history (and the session's movie) starts from the state loaded";
+        playingMovie = null;
     }
 
     private void ApplyInput()
@@ -158,6 +180,7 @@ internal sealed class HeadlessSession : Session
             }
             p0 = held[0]; p1 = held[1];
         }
+        if (history != null) (p0, p1) = history.BeforeFrame(p0, p1);   // the log's input while replaying (after a step back, or a movie)
         if (nes != null) nes.SetInputs(NesPad(p0), NesPad(p1));
         else { cs!.SetPad(0, p0); cs.SetPad(1, p1); }
     }
@@ -341,6 +364,9 @@ internal sealed class HeadlessSession : Session
         if (watches.Count > 0) j["watches"] = WatchValues();
         if (checks != null) j["checkFindings"] = checks.Findings.Count;
         j["savedStates"] = J.Strs(states.Keys);
+        j["history"] = history == null ? historyNote : $"{historyNote}; {history.FrameIndex} frames, step back to frame {history.OldestFrame}{(history.Replaying ? $"; replaying the log ({history.Logged - history.FrameIndex} frames ahead)" : "")}{(history.SaveError != null ? "; " + history.SaveError : "")}";
+        if (playingMovie != null && history != null)
+            j["movie"] = new JsonObject { ["file"] = playingFile, ["frames"] = playingMovie.Frames, ["keyframesChecked"] = history.KeysChecked, ["keyframesMatched"] = history.KeysMatched, ["offCourseAfter"] = history.OffCourseFrame, ["offCourse"] = history.OffCourseFrame != null ? history.OffCourseWhat : null };
         return j;
     }
 
@@ -356,7 +382,7 @@ internal sealed class HeadlessSession : Session
     public override JsonObject Run(long frames, List<PadStep>? script)
     {
         long before = Interlocked.Read(ref framesStarted);
-        if (script != null) Schedule(script, 0);
+        if (script != null) { BranchHistory(); Schedule(script, 0); }
         var o = RunFrames(frames);
         return RunResult(o, before);
     }
@@ -421,6 +447,7 @@ internal sealed class HeadlessSession : Session
         string? note = EnsureBetweenFrames();
         if (nes != null) nes.Reset(); else cs!.Reset();
         FreshDebugState();
+        try { StartHistory(SaveRaw()); } catch (Exception e) when (e is NotSupportedException or InvalidOperationException) { history = null; historyNote = "no history after the reset: " + e.Message; }
         var j = Status(); j["reset"] = "the console's reset button (memory kept, the CPU restarted at its reset vector on the next frame); open the ROM again for a power-on";
         if (note != null) j["note"] = note;
         return j;
@@ -474,6 +501,7 @@ internal sealed class HeadlessSession : Session
     {
         if (player is < 0 or > 1) throw new ToolError("player is 1 or 2");
         long before = Interlocked.Read(ref framesStarted);
+        BranchHistory();
         switch (mode)
         {
             case "hold":
@@ -1206,6 +1234,7 @@ internal sealed class HeadlessSession : Session
         }
         catch (Exception e) when (e is InvalidDataException or NotSupportedException) { throw new ToolError(e.Message); }
         FreshDebugState();
+        StartHistory(s.State);
         var j = Status(); j["loaded"] = name; j["stateFrame"] = s.Frame;
         j["callStack"] = "restarted from here (the debugger's call stack and hooks start again after a jump)";
         if (checks != null) j["checksNote"] = "the hardware checks keep what they learned before the load (for example which RAM was written); stop and start them again for a clean run from this state";
@@ -1219,56 +1248,111 @@ internal sealed class HeadlessSession : Session
         Snapshot Get(string n) => n.Equals("current", StringComparison.OrdinalIgnoreCase) ? Take() : states.TryGetValue(n, out var s) ? s : throw new ToolError($"no state '{n}' (saved: {string.Join(", ", states.Keys)}; or 'current')");
         if (a.Equals("current", StringComparison.OrdinalIgnoreCase) || b.Equals("current", StringComparison.OrdinalIgnoreCase)) EnsureBetweenFrames();
         var A = Get(a); var B = Get(b);
-        var c = M.Main;
-        // variables: symbols bound to a data space of the main CPU (NESFab's name@0, name@1 bytes are one variable)
-        var vars = new Dictionary<string, List<(int idx, SpaceKey key, int size)>>();
-        foreach (var s in D!.Symbols.All)
-        {
-            if (!c.BindSymbol(s, out var key) || !A.Spaces.ContainsKey(key.Space)) continue;
-            var sp = c.Spaces.First(x => x.Id == key.Space);
-            if (sp.Name is "rom" or "prg") continue;
-            var m = Regex.Match(s.Name, "^(.*)@(\\d+)$");
-            string name = m.Success ? m.Groups[1].Value : s.Name; int idx = m.Success ? int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture) : 0;
-            if (!vars.TryGetValue(name, out var l)) vars[name] = l = new();
-            l.Add((idx, key, m.Success ? 1 : Math.Clamp(s.Size, 1, 256)));
-        }
+        // the state diff by symbol is the engine's (SymbolDiff, D5): the divergence finder and bisect use the same one
+        var r = SymbolDiff.Compare(M.Main, D!.Symbols, A.Spaces, B.Spaces, limit);
         var diffs = new JsonArray();
-        var covered = new HashSet<(int, uint)>();
-        int differing = 0;
-        foreach (var (name, parts) in vars.OrderBy(v => v.Key, StringComparer.Ordinal))
+        foreach (var v in r.Variables)
         {
-            var ba = new List<byte>(); var bb = new List<byte>();
-            string? place = null;
-            foreach (var (_, key, size) in parts.OrderBy(p => p.idx))
-                for (int i = 0; i < size; i++)
-                {
-                    uint off = key.Offset + (uint)i;
-                    var sa = A.Spaces[key.Space]; var sb = B.Spaces[key.Space];
-                    if (off >= sa.Length) break;
-                    ba.Add(sa[off]); bb.Add(sb[off]); covered.Add((key.Space, off));
-                    place ??= $"{c.Spaces.First(x => x.Id == key.Space).Name}:{Num.Hex(off, 4)}";
-                }
-            if (ba.SequenceEqual(bb)) continue;
-            differing++;
-            if (diffs.Count >= limit) continue;
-            var o = new JsonObject { ["variable"] = name, ["at"] = place, ["size"] = ba.Count, ["a"] = Num.HexBytes(ba.ToArray()), ["b"] = Num.HexBytes(bb.ToArray()) };
-            if (ba.Count <= 4) { long va = 0, vb = 0; for (int i = ba.Count - 1; i >= 0; i--) { va = va << 8 | ba[i]; vb = vb << 8 | bb[i]; } o["valueA"] = va; o["valueB"] = vb; }
+            var o = new JsonObject { ["variable"] = v.Name, ["at"] = v.Place, ["size"] = v.A.Length, ["a"] = Num.HexBytes(v.A), ["b"] = Num.HexBytes(v.B) };
+            if (v.ValueA is long va && v.ValueB is long vb) { o["valueA"] = va; o["valueB"] = vb; }
             diffs.Add(o);
         }
         var spaces = new JsonArray();
-        foreach (var (id, sa) in A.Spaces)
-        {
-            var sb = B.Spaces[id];
-            int n = 0, unnamed = 0; var firsts = new JsonArray();
-            for (int i = 0; i < sa.Length; i++)
-                if (sa[i] != sb[i]) { n++; if (!covered.Contains((id, (uint)i))) { unnamed++; if (firsts.Count < 16) firsts.Add($"{Num.Hex(i, 4)}: {sa[i]:X2} -> {sb[i]:X2}"); } }
-            if (n > 0) spaces.Add(new JsonObject { ["space"] = c.Spaces.First(x => x.Id == id).Name, ["bytesDiffering"] = n, ["withoutSymbol"] = unnamed, ["firstWithoutSymbol"] = firsts });
-        }
+        foreach (var sd in r.Spaces) spaces.Add(new JsonObject { ["space"] = sd.Space, ["bytesDiffering"] = sd.Differing, ["withoutSymbol"] = sd.WithoutSymbol, ["firstWithoutSymbol"] = J.Strs(sd.FirstWithoutSymbol) });
         return new JsonObject
         {
-            ["a"] = a, ["b"] = b, ["frameA"] = A.Frame, ["frameB"] = B.Frame, ["symbols"] = D.Symbols.All.Count, ["variablesDiffering"] = differing, ["variables"] = diffs, ["spaces"] = spaces,
+            ["a"] = a, ["b"] = b, ["frameA"] = A.Frame, ["frameB"] = B.Frame, ["symbols"] = D.Symbols.All.Count, ["variablesDiffering"] = r.VariablesDiffering, ["variables"] = diffs, ["spaces"] = spaces,
             ["note"] = D.Symbols.All.Count == 0 ? "no symbols loaded: only the raw bytes per space are compared (load the game's .mlb / .sym for names)" : null,
         };
+    }
+
+    // ================================================================================================ movies and step back (D5)
+
+    /// <summary>A new input while the session is behind the end of its log (after a step back, or inside a movie): the future is rewritten from here.</summary>
+    private void BranchHistory()
+    {
+        if (history == null || !history.Replaying) return;
+        history.Branch();
+        if (playingMovie != null) { playingMovie = null; historyNote += "; a new input stopped the movie: the session plays live from here"; }
+    }
+
+    /// <summary>Plays a movie from power-on in this new session: its input is the log, its keyframes are checked as the session runs.</summary>
+    public JsonObject PlayMovie(Movie m, string file, long frames)
+    {
+        if (history == null) throw new ToolError(historyNote);
+        if (m.Start == MovieStart.State)
+        {
+            try { LoadRaw(m.StartState!); } catch (Exception e) { throw new ToolError($"the movie's start state does not load here: {e.Message}"); }
+            StartHistory(m.StartState);
+        }
+        history.Preload(m);
+        playingMovie = m; playingFile = file;
+        long before = Interlocked.Read(ref framesStarted);
+        var o = RunFrames(Math.Clamp(frames < 0 ? m.Frames : frames, 0, m.Frames));
+        var j = RunResult(o, before);
+        j["movie"] = file; j["movieFrames"] = m.Frames;
+        j["keyframesChecked"] = history.KeysChecked; j["keyframesMatched"] = history.KeysMatched;
+        j["inSync"] = history.OffCourseFrame == null;
+        if (history.OffCourseFrame != null) j["offCourse"] = $"off course after {history.OffCourseFrame} frames ({history.OffCourseWhat})";
+        j["sameRom"] = m.RomSha256.Equals(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(romPath))), StringComparison.OrdinalIgnoreCase);
+        j["note"] = "run on to play the rest of the movie (its keyframes keep being checked); after its last frame the session plays live input; a new input before its end stops the movie there";
+        return j;
+    }
+
+    public override JsonObject StepBack(long? instructions, long? frames)
+    {
+        var h = history ?? throw new ToolError(historyNote);
+        if ((instructions == null) == (frames == null)) throw new ToolError("step back by instructions or by frames (one of them)");
+        DebugHistory.BackResult r;
+        try
+        {
+            if (instructions is long n)
+            {
+                if (D == null) throw new ToolError($"step back by instructions needs the debugger, which does not cover the {Consoles.DisplayName(console)} yet (by frames works)");
+                r = h.BackInstructions(R!, n, LoadRaw, () => EnsureBetweenFrames());
+            }
+            else r = h.BackFrames(R, frames!.Value, D?.IsParked ?? false, LoadRaw, () => EnsureBetweenFrames(), k => { for (long i = 0; i < k; i++) Frame(); });
+        }
+        catch (InvalidOperationException e) { throw new ToolError(e.Message); }
+        catch (ArgumentException e) { throw new ToolError(e.Message); }
+        Interlocked.Exchange(ref framesStarted, h.FrameIndex);
+        var j = Status();
+        j["steppedBack"] = new JsonObject
+        {
+            ["fromFrame"] = r.FromFrame, ["toFrame"] = r.ToFrame, ["fromInstruction"] = r.FromInstruction >= 0 ? r.FromInstruction : null, ["toInstruction"] = r.ToInstruction >= 0 ? r.ToInstruction : null,
+            ["stateOfFrame"] = r.SnapshotFrame, ["framesReplayed"] = r.FramesReplayed, ["note"] = r.Note.Length > 0 ? r.Note : null,
+        };
+        j["callStack"] = "restarted at the state the replay began from (the frames before it are not on it)";
+        if (checks != null) j["checksNote"] = "the hardware checks did not see the replay (they keep what they learned before the step back)";
+        j["future"] = "run or step to replay the same input forward; a new input from here rewrites the future";
+        return j;
+    }
+
+    public override JsonObject MovieSave(string? path)
+    {
+        var h = history ?? throw new ToolError(historyNote);
+        string? note = EnsureBetweenFrames();
+        Movie m;
+        try { m = h.ToMovie(h.FrameIndex); }
+        catch (InvalidOperationException e) { throw new ToolError(e.Message); }
+        byte[] file = File.ReadAllBytes(romPath);
+        static string Strip(string id, string prefix) => id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? id[prefix.Length..] : id;
+        var cp = cores.Split('/');
+        m.Console = nes != null ? "nes" : ConsoleKey; m.RomName = romName; m.RomSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(file)).ToLowerInvariant();
+        m.RomBytes = file.Length; m.Emulator = "BrokenNes MCP server " + Program.Version;
+        m.Cores = nes != null && cp.Length == 3 ? $"{Strip(cp[0], "CPU_")}/{Strip(cp[1], "PPU_")}/{Strip(cp[2], "APU_")}" : cores;
+        m.Build = $"{romName} as opened in an MCP session at {DateTime.Now:s}";
+        if (path == null || path.Trim().Length == 0) path = Path.Combine(Folder, $"session-{Id}-{DateTime.Now:yyyyMMdd-HHmmss}{MovieFormat.Extension}");
+        else if (!path.EndsWith(MovieFormat.Extension, StringComparison.OrdinalIgnoreCase)) path += MovieFormat.Extension;
+        m.Save(path);
+        var j = new JsonObject
+        {
+            ["file"] = Path.GetFullPath(path), ["format"] = MovieFormat.Name, ["frames"] = m.Frames, ["inputChanges"] = m.Inputs.Count, ["keyframes"] = m.Keys.Count,
+            ["start"] = m.Start == MovieStart.PowerOn ? "power-on" : "a save state (the one this session loaded or reset from)", ["cores"] = m.Cores,
+            ["next"] = "replay it with open_movie, export it (movie export: fm2 / bk2), or promote it into a project's verify tests (brokendev.ps1 movie promote, only when the user wants it)",
+        };
+        if (note != null) j["note"] = note;
+        return j;
     }
 
     // ================================================================================================ the checks and the profiler

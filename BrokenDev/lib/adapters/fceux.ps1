@@ -105,7 +105,10 @@ function Invoke-BdAdapterFceux {
 
     $before = Get-BdFceuxFolderState $installDir
     # The ROM goes last (FCEUX takes the first argument after its options as the ROM). FCEUX prints nothing on stdout: the log stays empty.
-    $argv = @('-lua', $lua, [string]$Spec.Rom)
+    $argv = @('-lua', $lua)
+    # a movie run (D5): FCEUX plays the .fm2 (it powers the game on for it; the Lua script then sets no pad)
+    if ((Get-BdProp $Spec 'Movie' '')) { $argv += @('-playmovie', [System.IO.Path]::GetFullPath([string]$Spec.Movie)) }
+    $argv += [string]$Spec.Rom
     $r = Invoke-BdWatchedProcess -FilePath $rt.Exe -Arguments $argv -WorkingDirectory (Split-Path -Parent $rt.Exe) -Env $env2 -ResultFile $resultFile `
         -TimeoutSec $TimeoutSec -HangSec $HangSec -LogFile (Join-Path $Scratch 'fceux.log')
     $after = Get-BdFceuxFolderState $installDir
