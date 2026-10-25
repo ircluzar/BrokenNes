@@ -345,7 +345,11 @@ public sealed partial class PPU_WMS
         ComputeWideWindows((lnMainWin & lnMain) | (fSubNeeded ? lnSubWin & lnSub : 0), fColourWindow, width, origin);
         int total = hires ? 2 * width : width, shift = hires ? 1 : 0;
         ClearScreens(total);
-        if (lnEnh && enhWide != null) BuildRemap(row);   // milestone 6: the widescreen profile's side rules for this row (WideMess.Enhance.cs)
+        if (lnEnh && enhWide != null)
+        {
+            BuildRemap(row);   // milestone 6: the widescreen profile's side rules for this row (WideMess.Enhance.cs)
+            if (anyDrawn) ApplyDrawn(row, mode, lnMain | lnSub);
+        }
         byte mosaic = RegMosaic;
         for (int bg = 0; bg < 4; bg++)
         {
@@ -353,8 +357,9 @@ public sealed partial class PPU_WMS
             if ((used & bit) == 0 || mode == 7 || bpp == 0) continue;
             bool onMain = (lnMain & bit) != 0, onSub = fSubNeeded && (lnSub & bit) != 0;
             bool mosaicActive = (mosaic & bit) != 0 && (mosaic >> 4) != 0;
-            if (FastPaths && !hires && !mosaicActive && mode is not (2 or 4 or 6) && !Remapped(bg)) { SnesBgFused(bg, bpp, mode, line, width, origin, onMain, onSub); continue; }
+            if (FastPaths && !hires && !mosaicActive && mode is not (2 or 4 or 6) && !Remapped(bg) && bg != DebugCaptureLayer) { SnesBgFused(bg, bpp, mode, line, width, origin, onMain, onSub); continue; }
             SnesBg(bg, bpp, mode, line, width, origin);
+            if (bg == DebugCaptureLayer && !hires) CaptureLayerRow(bg, row, width);
             ComposeBgLine(bg, onMain, onSub, total, shift);
         }
         if (mode == 7 && (used & 3) != 0)
@@ -565,6 +570,26 @@ public sealed partial class PPU_WMS
                 c2[sx] = c7 == 0 ? Clear : cgram[c7];
                 p2[sx] = (byte)(color >> 7);
             }
+        }
+    }
+
+    /// <summary>Tools (Workshop --wms-side-truth): one BG layer's own colours per picture pixel, after the widescreen side rules and before windows and colour math (<see cref="Clear"/> where
+    /// the layer is transparent or filled), for the SNES modes drawn wide; -1 (the default) captures nothing. <see cref="DebugCapture"/> holds the frame, <see cref="WideWidth"/> wide.</summary>
+    public int DebugCaptureLayer { get; set; } = -1;
+    public ushort[]? DebugCapture { get; private set; }
+    /// <summary>The value <see cref="DebugCapture"/> holds where the layer shows nothing.</summary>
+    public const ushort CaptureClear = Clear;
+
+    private void CaptureLayerRow(int layer, int row, int width)
+    {
+        var buf = DebugCapture ??= new ushort[WideWidth * MaxHeight];
+        var src = bgCol[layer];
+        var map = Remapped(layer) ? remap[layer] : null;
+        int at = row * WideWidth;
+        for (int c = 0; c < width; c++)
+        {
+            int m = map != null ? map[c] : c;
+            buf[at + c] = m < 0 ? Clear : src[m];
         }
     }
 

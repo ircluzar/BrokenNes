@@ -58,6 +58,8 @@ internal static partial class WideMessCli
 
         Console.WriteLine("E2. Synthetic sprite scenes on the WideMess picture chip");
         SyntheticSprites();
+        Console.WriteLine("E2b. The drawn side rule on a synthetic game that streams its map as it scrolls");
+        SyntheticDrawn();
 
         Console.WriteLine("E3. Better sound: cubic interpolation on the S-DSP (a synthetic voice)");
         SyntheticSound();
@@ -80,6 +82,25 @@ internal static partial class WideMessCli
         Parallel.For(0, games.Length, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Math.Min(4, Environment.ProcessorCount / 4)) },
             i => results[i] = ProveGame(games[i], Path.Combine(snesDir, games[i].File)));
         foreach (var r in results) ReportGame(r);
+
+        Console.WriteLine("E8. Side truth: the drawn rule's side columns against what the SNES picture shows when the place scrolls into it (every layer extended: the negative control)");
+        var truthGames = games.Where(x => x.Key is "dkc" or "sm").ToArray();
+        var truth = new ((long right, long empty, long wrong) drawn, (long right, long empty, long wrong) ext)[truthGames.Length];
+        Parallel.For(0, truthGames.Length, i =>
+        {
+            var common = new[] { "--game", truthGames[i].Key, "--layer", "bg1", "--snes-dir", snesDir }.Concat(profiles != "" ? new[] { "--profiles", profiles } : Array.Empty<string>()).ToArray();
+
+            truth[i].drawn = SideTruthCounts(common);
+            truth[i].ext = SideTruthCounts(common.Append("--all-extend").ToArray());
+        });
+        for (int i = 0; i < truthGames.Length; i++)
+        {
+            var (d, x) = truth[i];
+            long dj = d.right + d.empty + d.wrong, xj = x.right + x.empty + x.wrong;
+            Check(dj >= 100 && d.wrong * 100 <= dj, $"{truthGames[i].Key}: BG1 on its profile's drawn rule: at most 1% of the side columns the SNES picture later shows are wrong",
+                $"{d.wrong:N0} wrong of {dj:N0} ({d.right:N0} right, {d.empty:N0} left to the layers behind)");
+            Check(xj >= 100 && x.wrong * 5 >= xj, $"{truthGames[i].Key}: negative control, BG1 extended: at least 20% wrong (the old tiles the drawn rule leaves out)", $"{x.wrong:N0} wrong of {xj:N0}");
+        }
 
         Console.WriteLine("E7. Speed: the enhanced picture (widescreen, every line through the wide compositor and the profile's rules)");
         foreach (var key in new[] { "smw", "fzero", "smk" })
@@ -104,6 +125,8 @@ internal static partial class WideMessCli
         {
             var p = WmsProfile.Parse(good, "good.json");
             Check(p.Widescreen!.Layers[1] == WmsSideRule.Repeat && p.Widescreen.Masks[0].When.Length == 2 && p.Widescreen.Masks[0].When[1].Mask == 0xFC, "a well-formed profile reads (rules, masks, scene conditions)");
+            var d = WmsProfile.Parse(good.Replace("\"bg1\": \"extend\"", "\"bg1\": \"drawn\"").Replace("\"masks\": [", "\"drawnAhead\": { \"bg1\": 8 }, \"masks\": ["), "drawn.json");
+            Check(d.Widescreen!.Layers[0] == WmsSideRule.Drawn && d.Widescreen.DrawnAhead[0] == 8 && d.Widescreen.DrawnAhead[1] == 16, "a profile with a drawn layer reads (its ahead, the others' default 16)");
         }
         catch (Exception e) { Check(false, "a well-formed profile reads", e.Message); }
         (string change, string from, string to, string mustSay)[] bad =
@@ -119,11 +142,15 @@ internal static partial class WideMessCli
             ("recommending what it calls unavailable", "\"fastCpu\": \"risky\"", "\"fastCpu\": \"unavailable\" ", "fastCpu"),
             ("a bad SHA-1", "01234567\"]", "0123456\"]", "not a SHA-1"),
             ("another format", "widemess-profile-1", "widemess-profile-9", "format"),
+            ("sprites on the drawn rule", "\"sprites\": \"fill\"", "\"sprites\": \"drawn\"", "extend or fill"),
+            ("a drawn ahead for a layer not on the drawn rule", "\"masks\": [", "\"drawnAhead\": { \"bg2\": 8 }, \"masks\": [", "not drawn"),
+            ("a drawn ahead past the side", "\"bg1\": \"extend\"", "\"bg1\": \"drawn\"", "0-72 pixels"),
         };
         foreach (var (change, from, to, mustSay) in bad)
         {
             string json = good.Replace(from, to);
             if (change.StartsWith("recommending")) json = json.Replace("\"recommended\": [\"widescreen\"]", "\"recommended\": [\"fastCpu\"]");
+            if (change.StartsWith("a drawn ahead past")) json = json.Replace("\"masks\": [", "\"drawnAhead\": { \"bg1\": 80 }, \"masks\": [");
             if (change.StartsWith("widescreen offered")) json = System.Text.RegularExpressions.Regex.Replace(json, "\"unused\": \\{.*?\\] \\},", "", System.Text.RegularExpressions.RegexOptions.Singleline);
             try { WmsProfile.Parse(json, "bad.json"); Check(false, $"refuses a profile with {change}", "it was read"); }
             catch (InvalidDataException e) { Check(e.Message.Contains(mustSay, StringComparison.OrdinalIgnoreCase), $"refuses a profile with {change}, and says why", e.Message); }
@@ -238,6 +265,99 @@ internal static partial class WideMessCli
         wms.SetEnhancements(null, false);
         var off = DrawFrame(wms, out _);
         Check(off.SequenceEqual(snesFrame), "every enhancement off again: the SNES chip's own picture");
+    }
+
+    // ------------------------------------------------------------------ E2b
+
+    /// <summary>
+    /// The drawn rule on a synthetic streaming game, written straight into a picture chip: BG1 on a 64-tile map (512 pixels) full of red tiles (what an old level left in video RAM).
+    /// The level is stripes 96 pixels wide, white and green (tile column t is white when (t / 12) is even), so a map column the game drew 512 pixels earlier holds other stripes than
+    /// the place it is shown for. Each frame the "game" scrolls BG1 by <paramref name="step"/> pixels and, like Donkey Kong Country, draws the place the SNES picture shows plus 8 pixels
+    /// ahead of the edge it scrolls towards, wrapping in the 512-pixel map. Returns the last frame and the scroll it showed.
+    /// </summary>
+    private static (uint[] wide, uint[] snes, int x) DrawnScene(PPU_WMS wms, PPU_SFC snes, WmsWidescreen? rules, int frames, int step, int jumpAt = -1)
+    {
+        foreach (var p in new PPU_SFC[] { wms, snes })
+        {
+            p.Reset();
+            for (int w = 16; w < 24; w++) p.Vram[w] = 0x00FF;   // tile 1: colour 1 (white)
+            for (int w = 32; w < 40; w++) p.Vram[w] = 0xFF00;   // tile 2: colour 2 (red)
+            for (int w = 48; w < 56; w++) p.Vram[w] = 0xFFFF;   // tile 3: colour 3 (green)
+            p.Cgram[0] = 0; p.Cgram[1] = 0x7FFF; p.Cgram[2] = 0x001F; p.Cgram[3] = 0x03E0;
+            for (int a = 0x1000; a < 0x1800; a++) p.Vram[a] = 2;
+            p.WriteRegister(0x05, 0x01);   // BGMODE 1
+            p.WriteRegister(0x07, 0x11);   // BG1 map at word $1000, 64 tiles wide
+            p.WriteRegister(0x0B, 0x00);
+            p.WriteRegister(0x2C, 0x01);   // TM: BG1
+            p.WriteRegister(0x00, 0x0F);
+        }
+        wms.SetEnhancements(rules, false);
+        int x = 1024;
+        void Draw(int from, int to)
+        {
+            for (int px = from & ~7; px < to; px += 8)
+            {
+                int t = px >> 3, col = t & 63;
+                ushort tile = (ushort)(t / 12 % 2 == 0 ? 1 : 3);
+                for (int row = 0; row < 32; row++) foreach (var p in new PPU_SFC[] { wms, snes }) p.Vram[0x1000 + (col & 31) + ((col & 32) != 0 ? 0x400 : 0) + row * 32] = tile;
+            }
+        }
+        Draw(x, x + 256);
+        uint[] wf = Array.Empty<uint>(), sf = Array.Empty<uint>();
+        for (int f = 0; f < frames; f++)
+        {
+            x += f == jumpAt ? 200 : step;
+            if (f == jumpAt) Draw(x, x + 256);                      // a new scene: the game draws the picture's columns
+            else if (step > 0) Draw(x + 256 - step, x + 256 + 8);   // the columns coming in on the right, 8 pixels ahead
+            else Draw(x - 8, x - step);                             // on the left
+            foreach (var p in new PPU_SFC[] { wms, snes }) { p.WriteRegister(0x0D, (byte)(x & 0xFF)); p.WriteRegister(0x0D, (byte)((x >> 8) & 3)); }
+            wf = DrawFrame(wms, out _); sf = DrawFrame(snes, out _);
+        }
+        return (wf, sf, x);
+    }
+
+    private static void SyntheticDrawn()
+    {
+        var wms = new PPU_WMS(); var snes = new PPU_SFC();
+        bool Centre(uint[] w, uint[] s) => Enumerable.Range(0, 224).All(r => w.AsSpan(r * 400 + 72, 256).SequenceEqual(s.AsSpan(r * 256, 256)));
+        // the colours as the chips draw them, from the SNES picture: white and green stripes (the level), black the backdrop
+        (int wrong, int level, int backdrop) Judge(uint[] f, uint[] s, int x, int from, int to)
+        {
+            uint white = 0, green = 0;
+            for (int c = 0; c < 256; c++) { int t = (x + c) >> 3; if (t / 12 % 2 == 0) white = s[c]; else green = s[c]; }
+            int wrong = 0, level = 0, back = 0;
+            for (int r = 0; r < 224; r++)
+                for (int c = from; c < to; c++)
+                {
+                    int t = (x + c - 72) >> 3;
+                    uint v = f[r * 400 + c], want = t / 12 % 2 == 0 ? white : green;
+                    if (v == want) level++; else if (v == 0xFF000000u) back++; else wrong++;
+                }
+            return (wrong, level, back);
+        }
+        var (ext, es, ex) = DrawnScene(wms, snes, WmsWidescreen.AllExtend(), 150, 4);
+        var er = Judge(ext, es, ex, 336, 400);
+        Check(er.wrong > 0 && Centre(ext, es), "negative control, BG1 extended: scrolling right, the right side beyond the 8 pixels the game draws ahead shows old tiles (not the stripes of the place)",
+            $"{er.wrong:N0} wrong pixels in the right side");
+        var drawn = WmsWidescreen.AllExtend(); drawn.Layers[0] = WmsSideRule.Drawn; drawn.DrawnAhead[0] = 8;
+        var (dr, ds, dx) = DrawnScene(wms, snes, drawn, 150, 4);
+        var dl = Judge(dr, ds, dx, 0, 72); var da = Judge(dr, ds, dx, 328, 336); var db = Judge(dr, ds, dx, 336, 400);
+        Check(dl.wrong + da.wrong + db.wrong == 0 && Centre(dr, ds), "BG1 drawn (ahead 8): no wrong pixel in either side, the centre the SNES chip's picture", $"wrong {dl.wrong + da.wrong + db.wrong}");
+        Check(da.level == 224 * 8 && db.backdrop == 224 * 64 && dl.level == 224 * 72,
+            "drawn: the 8 pixels ahead and the whole left side (drawn as the picture passed) show the level; beyond the 8, the backdrop",
+            $"ahead {da.level:N0} level, beyond {db.backdrop:N0} backdrop, left {dl.level:N0} level");
+        var (lf, ls, lx) = DrawnScene(wms, snes, drawn, 150, -4);
+        var ll = Judge(lf, ls, lx, 0, 64); var la = Judge(lf, ls, lx, 64, 72); var lr = Judge(lf, ls, lx, 328, 400);
+        Check(ll.wrong + la.wrong + lr.wrong == 0 && la.level == 224 * 8 && ll.backdrop == 224 * 64 && lr.level == 224 * 72 && Centre(lf, ls),
+            "drawn, scrolling left: the same on the other side", $"left ahead {la.level:N0} level, beyond {ll.backdrop:N0} backdrop, right {lr.level:N0} level, wrong {ll.wrong + la.wrong + lr.wrong}");
+        var (jf, js, jx) = DrawnScene(wms, snes, drawn, 150, 4, jumpAt: 149);
+        var jl = Judge(jf, js, jx, 0, 72); var jr = Judge(jf, js, jx, 328, 400);
+        var (xf, xs, xx) = DrawnScene(wms, snes, WmsWidescreen.AllExtend(), 150, 4, jumpAt: 149);
+        var xr = Judge(xf, xs, xx, 328, 400);
+        Check(jl.wrong + jr.wrong == 0 && jl.backdrop == 224 * 72 && jr.backdrop == 224 * 72 && xr.wrong > 0 && Centre(jf, js),
+            "a cut (a jump of 200 pixels: a new scene): the drawn span starts again at the picture's own columns, both sides the backdrop until the game draws there; extended, the right side shows old tiles",
+            $"drawn: left {jl.backdrop:N0} / right {jr.backdrop:N0} backdrop; extended: {xr.wrong:N0} wrong on the right");
+        wms.SetEnhancements(null, false);
     }
 
     // ------------------------------------------------------------------ E3

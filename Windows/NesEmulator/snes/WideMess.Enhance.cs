@@ -20,6 +20,9 @@ public enum WmsSideRule : byte
     Fill,
     /// <summary>Masks only: the columns are black, every layer and the backdrop.</summary>
     Black,
+    /// <summary>BG layers: extend, but only where the game has drawn the layer's map for the place shown (spec 6.1): a game that draws new columns of its map just ahead of the
+    /// SNES edge as it scrolls leaves old tiles beyond them, and those side columns are filled instead. Tracked from the layer's horizontal scroll (<see cref="WmsWidescreen.DrawnAhead"/>).</summary>
+    Drawn,
 }
 
 /// <summary>A mask of a widescreen profile (spec 6.1): a rectangle of the side columns where <see cref="Rule"/> replaces the layers' own rules.</summary>
@@ -54,6 +57,8 @@ public sealed class WmsWidescreen
     /// <summary>True (the default, spec 3.4): a SNES window edge on the SNES picture's edge (left 0, right 255) reaches the picture's edge. False: the SNES's window positions stay where the
     /// SNES draws them (left 0 is column 72, right 255 column 327), for games that mask a few edge columns with a window.</summary>
     public bool WindowsReachEdge = true;
+    /// <summary>[0-3] BG1-BG4, for a layer whose rule is <see cref="WmsSideRule.Drawn"/>: how many pixels past the SNES edge the game draws its map ahead of where it scrolls (0-72).</summary>
+    public readonly int[] DrawnAhead = { 16, 16, 16, 16 };
 
     /// <summary>Every layer extended, the sprites too, no masks: what the tests and the profile tools start from (never applied to a game without its profile saying so).</summary>
     public static WmsWidescreen AllExtend() => new();
@@ -83,7 +88,9 @@ public sealed partial class PPU_WMS
             if (widescreen.Masks.Length > 63) throw new ArgumentException("a widescreen profile has at most 63 masks");
             if (widescreen.Layers[WmsWidescreen.Sprites] is not (WmsSideRule.Extend or WmsSideRule.Fill)) throw new ArgumentException("the sprites' side rule is extend or fill");
             for (int i = 0; i < 4; i++) if (widescreen.Layers[i] == WmsSideRule.Black) throw new ArgumentException("black is a mask's rule, not a layer's");
+            for (int i = 0; i < 4; i++) if (widescreen.DrawnAhead[i] is < 0 or > SnesOrigin) throw new ArgumentException("a drawn layer's ahead is 0-72 pixels");
         }
+        Array.Clear(drawn);
         enhWide = widescreen; enhNoFlicker = noFlicker;
         enhOn = widescreen != null || noFlicker;
         remapSig = -1;
@@ -151,12 +158,15 @@ public sealed partial class PPU_WMS
         if (sig == remapSig) return;
         remapSig = sig;
         blackOn = false;
+        anyDrawn = false;
         for (int layer = 0; layer < 5; layer++)
         {
             var map = remap[layer];
             bool any = false;
+            if (layer < 4) drawnOn[layer] = false;
             for (int c = 0; c < WideWidth; c++)
             {
+                if (layer < 4) drawnCol[layer][c] = false;
                 if (c >= SnesOrigin && c < SnesOrigin + Width) { map[c] = (short)c; continue; }
                 bool left = c < SnesOrigin;
                 int d = left ? SnesOrigin - 1 - c : c - (SnesOrigin + Width);   // 0 = the column next to the SNES edge
@@ -174,13 +184,88 @@ public sealed partial class PPU_WMS
                 if (black) blackOn = true;
                 map[c] = rule switch
                 {
-                    WmsSideRule.Extend => (short)c,
+                    WmsSideRule.Extend or WmsSideRule.Drawn => (short)c,
                     WmsSideRule.Repeat => (short)(SnesOrigin + FloorMod(c - SnesOrigin, Width)),
                     _ => FillColumn,
                 };
+                if (rule == WmsSideRule.Drawn && layer < 4) { drawnCol[layer][c] = true; drawnOn[layer] = true; anyDrawn = true; }
                 if (rule != WmsSideRule.Extend) any = true;
             }
             remapOn[layer] = any;
+            if (layer < 4 && drawnOn[layer]) map.AsSpan().CopyTo(remapBase[layer]);
+        }
+    }
+
+    // ---------------------------------------------------------------- the drawn rule: extend only where the game has drawn the map for the place shown
+
+    // Per BG layer, the scroll unwrapped across frames (HOFS is 10 bits; a frame's step is taken as the short way round) and the span of the layer's map, in those unwrapped
+    // pixels, that the game has drawn: from the left frontier L to the right frontier R. Each frame the SNES picture's columns are drawn, and the profile's ahead past the
+    // edge it scrolls towards (the game streams them as it scrolls): R = the furthest right the picture's right edge (+ ahead, in a frame it scrolled right) has reached,
+    // L likewise to the left. A map holds one map width: drawing past one frontier overwrites the columns one map width back, so a frontier that moves on pushes the other
+    // along (L >= R - mapWidth). The drawn span is [L, R). A cut (a step of more than 64 pixels in a
+    // frame, the layer's map, its tile size or BGMODE changing) starts the span again at the picture's own columns. Vertical scroll is not tracked: the side columns show the
+    // centre's rows.
+    private struct DrawnTrack { public bool Init; public int H, Sig; public long U, L, R, Frame; public int MapWidth; }
+    private readonly DrawnTrack[] drawn = new DrawnTrack[4];
+    private readonly short[][] remapBase = { new short[WideWidth], new short[WideWidth], new short[WideWidth], new short[WideWidth] };
+    private readonly bool[][] drawnCol = { new bool[WideWidth], new bool[WideWidth], new bool[WideWidth], new bool[WideWidth] };
+    private readonly bool[] drawnOn = new bool[4];
+    private bool anyDrawn;
+    private long enhFrame;
+    private const int DrawnCutPixels = 64;
+
+    /// <summary>Tools: a BG layer's drawn span this frame (unwrapped pixels: the picture's left edge, the span's left and right ends), or null when the layer is not on the drawn rule.</summary>
+    public (long left, long from, long to)? DrawnSpan(int bg)
+    {
+        var t = drawn[bg];
+        if (!t.Init || enhWide == null || enhWide.Layers[bg] != WmsSideRule.Drawn) return null;
+        return (t.U, t.L, t.R);
+    }
+
+    private static int Signed10(int d) => ((d + 512) & 1023) - 512;
+
+    /// <summary>This line's column maps for the layers on the drawn rule: the mask-resolved map, with the side columns the game has not drawn for the place they show filled.</summary>
+    private void ApplyDrawn(int row, int mode, int enabled)
+    {
+        if (mode == 7) { for (int bg = 0; bg < 4; bg++) if (drawnOn[bg]) remapBase[bg].AsSpan().CopyTo(remap[bg]); return; }
+        var w = enhWide!;
+        byte bgmode = RegBgmode;
+        for (int bg = 0; bg < 4; bg++)
+        {
+            if (!drawnOn[bg]) continue;
+            ref var t = ref drawn[bg];
+            int h = RegHofs(bg) & 0x3FF;
+            if (t.Frame != enhFrame && (enabled & (1 << bg)) != 0)
+            {
+                // once a frame, on the first line that draws the layer: follow its scroll
+                int sc = RegBgsc(bg), big = (bgmode >> (4 + bg) & 1) | (mode is 5 or 6 ? 1 : 0);
+                int sig = sc | big << 8 | mode << 9, ahead = w.DrawnAhead[bg];
+                bool cut = !t.Init || sig != t.Sig;
+                int d = 0;
+                if (t.Init) { d = Signed10(h - t.H); t.U += d; if (Math.Abs(d) > DrawnCutPixels) cut = true; }
+                else { t.U = h; t.Init = true; }
+                t.H = h; t.Sig = sig; t.Frame = enhFrame;
+                t.MapWidth = ((sc & 1) != 0 ? 512 : 256) << big;
+                // the game draws ahead only on the side it scrolls towards: the frontier on that side moves to the picture's edge + ahead, the other to the picture's edge
+                long l = t.U - (d < 0 && !cut ? ahead : 0), r = t.U + Width + (d > 0 && !cut ? ahead : 0);
+                if (cut) { t.L = l; t.R = r; }
+                else
+                {
+                    // a frontier that moves on pushes the other one along: the map holds one map width, so drawing past R overwrites what was drawn at R - mapWidth
+                    if (r > t.R) { t.R = r; t.L = Math.Max(t.L, r - t.MapWidth); }
+                    if (l < t.L) { t.L = l; t.R = Math.Min(t.R, l + t.MapWidth); }
+                }
+            }
+            var map = remap[bg]; var bas = remapBase[bg]; var col = drawnCol[bg];
+            if (!t.Init) { bas.AsSpan().CopyTo(map); continue; }
+            long lo = t.L, hi = t.R;
+            long left = t.U + Signed10(h - t.H) - SnesOrigin;   // the unwrapped pixel picture column 0 shows on this line
+            for (int c = 0; c < WideWidth; c++)
+            {
+                if (c == SnesOrigin) c = SnesOrigin + Width;
+                long x = left + c;
+                map[c] = col[c] && (x < lo || x >= hi) ? FillColumn : bas[c];
+            }
         }
     }
 

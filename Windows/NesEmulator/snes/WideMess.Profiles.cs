@@ -117,7 +117,7 @@ public sealed class WmsProfile
     private static WmsWidescreen ParseWidescreen(JsonElement w, string source)
     {
         if (w.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{source}: widescreen is an object");
-        Keys(w, source, "widescreen", new[] { "layers" }, new[] { "masks", "windows" });
+        Keys(w, source, "widescreen", new[] { "layers" }, new[] { "masks", "windows", "drawnAhead" });
         var layers = w.GetProperty("layers");
         if (layers.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{source}: widescreen.layers is an object");
         Keys(layers, source, "widescreen.layers", LayerKeys, Array.Empty<string>());
@@ -130,8 +130,23 @@ public sealed class WmsProfile
                 "extend" => WmsSideRule.Extend,
                 "repeat" when i < 4 => WmsSideRule.Repeat,
                 "fill" => WmsSideRule.Fill,
-                _ => throw new InvalidDataException($"{source}: widescreen.layers.{LayerKeys[i]} is '{r}' ({(i < 4 ? "extend, repeat or fill" : "extend or fill")})"),
+                "drawn" when i < 4 => WmsSideRule.Drawn,
+                _ => throw new InvalidDataException($"{source}: widescreen.layers.{LayerKeys[i]} is '{r}' ({(i < 4 ? "extend, repeat, fill or drawn" : "extend or fill")})"),
             };
+        }
+        if (w.TryGetProperty("drawnAhead", out var da))
+        {
+            // { "bg1": 16 }: pixels past the SNES edge the game draws a drawn layer's map ahead of its scroll (default 16)
+            if (da.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{source}: widescreen.drawnAhead is an object of layer: pixels");
+            Keys(da, source, "widescreen.drawnAhead", Array.Empty<string>(), LayerKeys[..4]);
+            foreach (var p in da.EnumerateObject())
+            {
+                int i = Array.IndexOf(LayerKeys, p.Name);
+                if (ws.Layers[i] != WmsSideRule.Drawn) throw new InvalidDataException($"{source}: widescreen.drawnAhead.{p.Name}: the layer's rule is not drawn");
+                int px = Int(p.Value, $"widescreen.drawnAhead.{p.Name}", source);
+                if (px < 0 || px > PPU_WMS.SnesOrigin) throw new InvalidDataException($"{source}: widescreen.drawnAhead.{p.Name} is {px} (0-72 pixels)");
+                ws.DrawnAhead[i] = px;
+            }
         }
         if (w.TryGetProperty("windows", out var wn))
         {

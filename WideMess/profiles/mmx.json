@@ -7,11 +7,14 @@
   ],
   "widescreen": {
     "layers": {
-      "bg1": "extend",
+      "bg1": "drawn",
       "bg2": "extend",
       "bg3": "extend",
       "bg4": "extend",
       "sprites": "extend"
+    },
+    "drawnAhead": {
+      "bg1": 16
     }
   },
   "enhancements": {
@@ -25,6 +28,8 @@
     "noFlicker"
   ],
   "issues": [
+    "The stage layer (BG1) is drawn: shown in the sides only where the game has drawn its map for the place shown, so old tiles of another part of the stage no longer show; where the game has not drawn, the layers behind or the backdrop show.",
+    "Side truth (Workshop --wms-side-truth, 2026-10-25): BG1 extended was wrong in 59% of the side columns later seen in the SNES picture; drawn, 0% (91% left to the layers behind).",
     "The game draws a stage into video RAM only near the SNES picture: at the start of a stage, and ahead of X when he runs, the side columns show flat colour until the game draws there.",
     "Enemies appear near the SNES edge (the game creates them as they come near).",
     "The title screen's ribbons continue into the sides.",
@@ -32,7 +37,7 @@
     "Fast CPU ran the 5,600 frames checked; the game's timing changes."
   ],
   "verified": {
-    "date": "2026-10-24",
+    "date": "2026-10-25",
     "how": "Workshop --wms-test (E6), 5,600 frames of a pad script (title, the highway stage) in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/mmx.png."
   }
 }

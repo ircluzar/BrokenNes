@@ -7,11 +7,14 @@
   ],
   "widescreen": {
     "layers": {
-      "bg1": "extend",
+      "bg1": "drawn",
       "bg2": "extend",
       "bg3": "extend",
       "bg4": "extend",
       "sprites": "extend"
+    },
+    "drawnAhead": {
+      "bg1": 0
     },
     "masks": [
       {
@@ -31,7 +34,7 @@
     ]
   },
   "enhancements": {
-    "widescreen": "risky",
+    "widescreen": "good",
     "noFlicker": "good",
     "betterSound": "good",
     "fastCpu": "risky"
@@ -40,7 +43,8 @@
     "widescreen"
   ],
   "issues": [
-    "The game draws new columns of the level only 8 to 16 pixels ahead of the SNES edge: on the side Donkey Kong runs towards, the side columns beyond that show old tiles (a visible seam) until he gets there.",
+    "The level layer (BG1) is drawn: shown in the sides only where the game has drawn its map for the place shown. The game draws new columns only as they reach the SNES edge, so on the side Donkey Kong runs towards the level layer stops at the edge and the jungle behind it (BG2, extended) shows there; behind him the sides keep the level.",
+    "Side truth (Workshop --wms-side-truth, 2026-10-25): BG1 extended showed a wrong column (an old tile) in 49% of the side columns later seen in the SNES picture; drawn, 0% wrong (22% right, 78% left to the layers behind). BG2 extended: 95% right, 0% wrong.",
     "Behind him the sides are right: the game keeps the columns it drew.",
     "Cranky's intro and the level-name screens are shown with black sides.",
     "Enemies appear near the SNES edge (the game creates them as they come near).",
@@ -48,7 +52,7 @@
     "Fast CPU ran the 4,400 frames checked, from power-on and switched on later; the game's timing changes."
   ],
   "verified": {
-    "date": "2026-10-24",
-    "how": "Workshop --wms-test (E6), 4,400 frames of a pad script (intro, Jungle Hijinxs) in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/dkc.png."
+    "date": "2026-10-25",
+    "how": "Workshop --wms-test (E6), 4,400 frames of a pad script (intro, Jungle Hijinxs) in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/dkc.png. Side rules and side truth re-checked 2026-10-25 (the drawn rule for BG1)."
   }
 }
