@@ -300,6 +300,13 @@ namespace BrokenNes.Windows
         /// </summary>
         [JsonPropertyName("enableDebuggerControl")]
         public bool EnableDebuggerControl { get; set; } = false;
+
+        /// <summary>
+        /// Keep the last 30 s of the running game for the bug capture (F9, Emulator > Capture Bug; BrokenDev D6). On by default (the plan: the
+        /// app always keeps them); off, nothing is recorded and the frame loop is as it was.
+        /// </summary>
+        [JsonPropertyName("bugCaptureEnabled")]
+        public bool BugCaptureEnabled { get; set; } = true;
         
         // Controller configuration - NEW SYSTEM
         /// <summary>

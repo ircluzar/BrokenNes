@@ -134,6 +134,7 @@ namespace BrokenNes.Windows
             var screenshotItem = new ToolStripMenuItem("Take Screenshot", null, TakeScreenshot_Click);
             screenshotItem.ShortcutKeys = Keys.F12;
             emulatorMenu.DropDownItems.Add(screenshotItem);
+            AddBugCaptureMenu(emulatorMenu);   // the bug capture (BrokenDev D6): F9, the keep-30-s switch, the bugs folder
 
             var openFolderItem = new ToolStripMenuItem("Open Emulator Folder", null, OpenEmulatorFolder_Click);
             emulatorMenu.DropDownItems.Add(openFolderItem);

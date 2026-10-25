@@ -375,6 +375,7 @@ namespace BrokenNes.Windows.WebApi
                 var m = Debuggers.Machine(DebugTarget(), out string? why);
                 var c = m?.Cpu(r?.Cpu ?? "main");
                 if (c == null || r?.Name == null) return Results.BadRequest(new { success = false, error = why ?? "cpu and name are required" });
+                ExternalChange?.Invoke($"the {c.Id} register {r.Name} was written through the debugger");
                 return Results.Ok(new { success = c.TrySetRegister(r.Name, r.Value), cpu = CpuView(Debuggers.Current(DebugTarget()), c) });
             });
 

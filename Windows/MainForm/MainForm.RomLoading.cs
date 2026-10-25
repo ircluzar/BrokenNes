@@ -116,6 +116,8 @@ namespace BrokenNes.Windows
                 nes.RomName = romName;
                 nes.RomPath = romPath ?? romName;
                 ApplyBrokenDevPowerOnRam(nes);   // BrokenDev only: a no-op unless that module is on and a power-on RAM fill was chosen
+                nes.StateLoaded = () => BugBreak("a state was loaded");   // the bug capture (D6): the history starts again after any state load
+                BugGameLoaded(romData, romName);
                 InitializeImagineEngine();
             }
 

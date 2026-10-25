@@ -536,6 +536,9 @@ namespace NesEmulator
 			static string Escape(string raw) => raw.Replace("\\","\\\\").Replace("\"","\\\"");
 		}
 
+		/// <summary>Called after a state was loaded (null unless a host listens: the apps' bug capture, BrokenDev D6, starts its history again there).</summary>
+		public Action? StateLoaded;
+
 		public void LoadState(string json)
 		{
 			if (string.IsNullOrWhiteSpace(json)) return;
@@ -715,6 +718,7 @@ namespace NesEmulator
 			try { bus.ActiveAPU?.ClearAudioBuffers(); } catch { }
 			// Restore controller
 			bus.input.DebugSetState(st.controllerState, st.controllerShift, st.controllerStrobe);
+			StateLoaded?.Invoke();
 			#if DIAG_LOG
 			try {
 				var activeCpuId = bus.cpu?.GetType().Name ?? "";

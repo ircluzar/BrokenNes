@@ -69,7 +69,8 @@ namespace BrokenNes.Windows
                     return;
                 }
                 consoleNote = "";
-                if (slot != CoreSlot.Ppu) FarmPoison($"the {slot} was swapped to {id}");   // (a picture chip is a view of the machine; the others change what it does)
+                if (slot != CoreSlot.Ppu) FarmPoison($"the {slot} was swapped to {id}");
+                BugBreak($"the {slot} was swapped to {id}");   // (a picture chip is a view of the machine; the others change what it does)
                 FarmCoresChanged(session);
                 Diagnostics.ShutdownDiagnostics.Log($"Core hot-swap: {console} {slot} -> {id} ({session.Description})");
                 UpdateCoresMenus();
@@ -124,6 +125,7 @@ namespace BrokenNes.Windows
                 };
             };
             server.QuickStateReason = () => quickStateReason;
+            WireBugApi(server);        // the bug capture (BrokenDev D6, MainForm.BugCapture.cs)
             WireWideMessApi(server);   // WideMess milestone 6 (MainForm.WideMess.cs)
             WireWideMessTestCartApi(server);   // POST /api/widemess/testcart (MainForm.WideMessTestCart.cs)
             server.GetSegaSettings = () => new
@@ -506,6 +508,7 @@ namespace BrokenNes.Windows
                 return;
             }
             session = s; sessionRom = rom; sessionRomName = romName; sessionFrames = 0; consoleNote = "";
+            BugGameLoaded(rom, romName);   // the bug capture records the new game from its power-on
             currentRomPath = romPath ?? romName;
             Helpers.ConfigHelper.Update(config, c => c.SelectedConsole = Consoles.Key(console));
             FarmAttach(s, rom, romName);        // record the game from its power-on (before the save RAM is loaded, so the farm can note it)
@@ -668,6 +671,7 @@ namespace BrokenNes.Windows
             lock (emulationLock)
             {
                 FarmBeforeFrame(p1, p2);
+                BugBeforeSessionFrame(s, p1, p2);   // the bug capture (D6): returns at once when it is off
                 s.SetPad(0, p1); s.SetPad(1, p2);
                 s.RunFrame();
                 FarmAfterFrame();
@@ -689,7 +693,7 @@ namespace BrokenNes.Windows
                 while ((n = s.ReadSamples(sessionAudio)) > 0)
                 {
                     var mono = sessionResampler.Convert(sessionAudio, n, s.SampleRate, config.SoundQuality);
-                    if (mono.Length > 0) audioManager.QueueSamples(mono);
+                    if (mono.Length > 0) { audioManager.QueueSamples(mono); BugAudio(mono, mono.Length); }
                 }
             }
 
