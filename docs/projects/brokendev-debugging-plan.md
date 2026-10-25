@@ -504,7 +504,8 @@ port and DMA reads are still checked.
   `266854ce...5c890`), ten key files by size and sha256 (lcc, sdcc, sdasgb, sdldgb, makebin, romusage, crt0, the libraries, gb.h) and the
   ChangeLog's version line. `lib/Toolchains.ps1` checks it (`doctor`, a `toolchains` verb, `requires.tools` `toolchain:gbdk`, the build
   placeholder `{toolchain:gbdk}`); BrokenDev never downloads or unpacks one.
-- **The workspace:** `PROJECTS\VRUN_VOC_dev`, its own git (local commits only, no remote), a README. `build.ps1` (lcc on `src/*.c` and
+- **The workspace:** `PROJECTS\VRUN_VOC_dev`, its own git (local commits only, no remote), a README, a backup bundle
+  (`P:\BrokenDev\env\backups\VRUN_VOC_dev-2026-10-24.bundle`). `build.ps1` (lcc on `src/*.c` and
   `src/*.s`; makebin `-yc -yt0x1B -yo64 -ya4 -yS`; it checks the header: `$80` dual mode, `$1B` MBC5+RAM+battery, `$05` 1 MB, `$03` 32 KB) writes
   `build/vrun_voc.gbc` with `.noi`, `.sym` (bgb format) and `.map`.
 - **The hello world** (`src/main.c`): a few lines of text in its own 5 x 7 font (GBDK's console is not used: its font loader switches the LCD
@@ -534,7 +535,7 @@ port and DMA reads are still checked.
   save written on close gives boot 2, the Game Boy console shows 3 shades and boot 3; the user's `%APPDATA%\BrokenNes` is unchanged (names,
   sizes, times). **Lite** (`UAT/lite/test-lite-vrun-voc.mjs`, the AOT build in Edge): the Color console in colour, Right moves the sprite, A
   sounds, the IndexedDB battery save (`VOC0`, boot 1, then 2 in a fresh page), 3 shades on the Game Boy console.
-- **One change to D4:** a Game Boy frame with the LCD off is no lag frame (the hardware has no vblank then); `--check-test` still 109.
+- **One change to D4:** a Game Boy frame with the LCD off is no lag frame (the hardware has no vblank then); `--check-test` still all pass (109, and 111 of 111 with main's two new checks).
 - **Tests:** BrokenDev `run-tests` gains the toolchain registry and state (with negative controls), the Game Boy manifest, `{live:}`, GBDK
   symbols and specs, the registry's Game Boy columns, BizHawk's Game Boy config, and the hello world end to end with a planted read before the
   RAM clear (`build.ps1 -Define VOC_PLANT_UNINIT`) that must fail verify with a new `gb.ram-uninit`.
