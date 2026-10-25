@@ -733,8 +733,14 @@ namespace NesEmulator
 			#endif
 		}
 
+		/// <summary>The ROM file the last <see cref="LoadROM"/> was given (the same array, not a copy), and how many loads this NES has had: the apps'
+		/// bug capture (BrokenDev D6) keeps the ROM in its bundle and starts its history again at each load.</summary>
+		public byte[]? RomFile { get; private set; }
+		public int RomLoads { get; private set; }
+
 		public void LoadROM(byte[] romData)
 		{
+			RomFile = romData; RomLoads++;
 			InvalidatePresentedFrame();
 			try {
 				// Preserve the APU core suffix so we don't

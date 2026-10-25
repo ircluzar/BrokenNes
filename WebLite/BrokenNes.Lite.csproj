@@ -119,6 +119,11 @@
     <Compile Include="$(NesRoot)board\Emulator.Consoles.cs"       Link="NesEmulator\board\Emulator.Consoles.cs" />
     <!-- WideMess milestone 7a: the milestone-6 enhancements of a SNES game on the WideMess console (the desktop's Console > WideMess enhancements). -->
     <Compile Include="$(NesRoot)board\Emulator.WideMess.cs"       Link="NesEmulator\board\Emulator.WideMess.cs" />
+    <!-- BrokenDev D6: the bug capture (the last 30 s as a zip download), on the shared rolling buffer and bundle code (debug\capture) and D5's
+         movie format. Only these files of debug\: the debugger itself stays out of Lite. -->
+    <Compile Include="$(NesRoot)board\Emulator.BugCapture.cs"     Link="NesEmulator\board\Emulator.BugCapture.cs" />
+    <Compile Include="$(NesRoot)debug\capture\*.cs"               LinkBase="NesEmulator\debug\capture" />
+    <Compile Include="$(NesRoot)debug\movies\Movie.cs"            Link="NesEmulator\debug\movies\Movie.cs" />
     <Compile Include="$(NesRoot)board\NesController.cs"           Link="NesEmulator\board\NesController.cs" />
     <Compile Include="$(NesRoot)board\NesControllerModels.cs"     Link="NesEmulator\board\NesControllerModels.cs" />
     <Compile Include="$(NesRoot)board\StatePersistence.cs"        Link="NesEmulator\board\StatePersistence.cs" />

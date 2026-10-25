@@ -209,6 +209,20 @@ window.nesInterop = {
             return true;
         } catch (e) { console.warn('idbSetBytes failed', key, e); return false; }
     },
+    // BrokenDev D6, the bug capture: the note (the browser's own prompt: null when cancelled), and the bundle handed to the browser as a download
+    askBugNote(message) {
+        const v = window.prompt(message, '');
+        return v === null ? null : String(v);
+    },
+    downloadBytes(name, bytes, mime) {
+        const blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = name; a.style.display = 'none';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+        return true;
+    },
     async idbGetBytes(key) {
         try {
             const store = await this._tx('kv', 'readonly');

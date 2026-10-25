@@ -24,6 +24,8 @@
     <!-- Routable pages + layout: found by the router via reflection. -->
     <type fullname="BrokenNes.Layout.MainLayout" preserve="all" />
     <type fullname="BrokenNes.Pages.*" preserve="all" />
+    <!-- BrokenDev D6: what CaptureBugZip hands to JavaScript (serialised by reflection) -->
+    <type fullname="BrokenNes.Emulator/BugZip" preserve="all" />
     <type fullname="Microsoft.AspNetCore.Components.RouteAttribute" preserve="all" />
 
     <!-- CPU: FIX is the accuracy target; SPD/LOW are the fast paths that matter on weak devices. -->

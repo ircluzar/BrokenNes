@@ -74,9 +74,9 @@ internal sealed class DebugHost : IDisposable
     private PadButtons live1, live2;
 
     /// <summary>Starts the history from now (states every <paramref name="every"/> frames, the last <paramref name="keep"/>); pad input then goes through it.</summary>
-    public NesEmulator.Debugging.Movies.DebugHistory EnableHistory(int every = 60, int keep = 30)
+    public NesEmulator.Debugging.Movies.DebugHistory EnableHistory(int every = 60, int keep = 30, byte[]? startState = null)
     {
-        History = new NesEmulator.Debugging.Movies.DebugHistory(SaveState, Dbg, every, keep, 60, () => (MoviePicture(), MovieRam()));
+        History = new NesEmulator.Debugging.Movies.DebugHistory(SaveState, Dbg, every, keep, 60, () => (MoviePicture(), MovieRam()), startState);
         return History;
     }
 

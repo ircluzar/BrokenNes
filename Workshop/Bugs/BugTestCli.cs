@@ -247,6 +247,14 @@ internal static class BugTestCli
                     File.WriteAllText(Path.Combine(b2, BugBundle.MovieFile), string.Join('\n', lines));
                     var (c2, j2) = PlayDir(b2);
                     Check("NEGATIVE: the same capture with the title's Start press a frame late is off course", c2 == 1, (string)j2["summary"]!);
+                    // the same two bundles opened in the debugger (Workshop --debug --bug): the replay through the debugger's history, then a step back
+                    var o = Console.Out; var sw1 = new StringWriter(); var sw2 = new StringWriter();
+                    int d1, d2;
+                    try { Console.SetOut(sw1); d1 = Debug.DebugRunCli.Run(new[] { "--debug", "--bug", be, "--do", "run 1200; back frames 30; where" }); Console.SetOut(sw2); d2 = Debug.DebugRunCli.Run(new[] { "--debug", "--bug", b2 }); }
+                    finally { Console.SetOut(o); }
+                    string t1 = sw1.ToString(), t2 = sw2.ToString();
+                    Check("the capture opened in the debugger replays in sync through its history, and steps back", d1 == 0 && t1.Contains("bug replay: in sync") && !t1.Contains("error:"), t1.Split('\n').LastOrDefault(l => l.Contains("bug replay")) ?? t1[^Math.Min(300, t1.Length)..]);
+                    Check("NEGATIVE: the late-Start bundle in the debugger says it went off course (exit 1)", d2 == 1 && t2.Contains("OFF COURSE"), t2.Split('\n').LastOrDefault(l => l.Contains("bug replay")) ?? t2[^Math.Min(300, t2.Length)..]);
                 }
                 string b3 = CopyBundle(b1, dir, "wrong-state");
                 var wrong = Movie.Load(Path.Combine(b1, BugBundle.MovieFile));

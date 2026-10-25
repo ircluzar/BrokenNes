@@ -516,7 +516,9 @@ namespace BrokenNes
                 bool autoStatic = string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase) && !nesController.AutoStaticSuppressed;
                 nes.EnableStatic(autoStatic);
                 nes.SetInputs(inputState, inputStateP2);
-                if (nesController.FastForward) nes.RunFrames(3); else nes.RunFrame();
+                // one frame (three when fast-forwarding: RunFrames(3) is three RunFrame calls), each told to the bug capture first (D6; it returns at once when off)
+                int runs = nesController.FastForward ? 3 : 1;
+                for (int r = 0; r < runs; r++) { BugBeforeNesFrame(); nes.RunFrame(); }
                 if (corruptor.AutoCorrupt)
                 {
                     autoCorruptFrameCounter++;
@@ -553,6 +555,7 @@ namespace BrokenNes
                 nesController.FrameCount++;
                 int queued = nes.GetQueuedAudioSamples();
                 float[] audioBuffer = nes.GetAudioBuffer();
+                BugAudio(audioBuffer, audioBuffer.Length);
                 bool queuedAudio = audioBuffer.Length > 0; int sampleRate = queuedAudio ? nes.GetAudioSampleRate() : 0;
                 nesController.framebuffer = nes.GetFrameBuffer();
                 if (nesController.FrameCount % nesController.StatsUpdateDivider == 0)
@@ -1121,7 +1124,7 @@ namespace BrokenNes
         private int GetApproxSize(Func<int,byte> peek)
         { int size = 1024; int lastNonZero = 0; for (int i=0;i<size;i+=128){ if (peek(i)!=0) lastNonZero=i; } for (int i=1024;i<=512*1024;i*=2) { byte v = peek(i-1); if (v!=0) lastNonZero = i-1; else { size = i; break; } } return Math.Max( (lastNonZero+256) & ~255, 0); }
 
-        private Task Blast() { if (nes == null) return Task.CompletedTask; corruptor.Blast(nes); return Task.CompletedTask; }
+        private Task Blast() { if (nes == null) return Task.CompletedTask; corruptor.Blast(nes); BugBreak("the game was corrupted"); return Task.CompletedTask; }
 
         // 8 buttons in NES order, optionally followed by X, Y, L, R (BrokenNes 2: SNES).
         [JSInvokable] public void UpdateInput(bool[] state) { try { if (state.Length >= 8) { for (int i=0;i<8;i++) inputState[i] = state[i]; for (int i=0;i<4;i++) extraP1[i] = state.Length >= 12 && state[8+i]; } } catch (Exception ex) { Logger.LogError(ex, "Error updating input"); } }

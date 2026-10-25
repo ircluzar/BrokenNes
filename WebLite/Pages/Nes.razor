@@ -218,6 +218,13 @@
                     <button class="btn btn-save-state" @onclick="(()=>emu!.SaveStateAsyncPublic())" disabled="@(emu!.Controller.nes==null)" title="Save state">Save</button>
                 </div>
             }
+            @if (!StageMode)
+            {
+                <div class="btn-group">
+                    @* BrokenDev D6: the last 30 s as a zip download (the movie, the ROM, the sound, a picture a second) for brokendev.ps1 bug *@
+                    <button class="btn btn-bug-capture" id="bugCaptureBtn" @onclick="(()=>emu!.CaptureBugDownloadAsync())" title="Capture a bug: download the last 30 seconds (replays exactly in BrokenDev)">Bug</button>
+                </div>
+            }
         </div>
         }
     <div class="screen-shell @(emu!.Controller.EmuScale == 0.5 ? "scale-50" : "scale-100")" id="screen-shell">

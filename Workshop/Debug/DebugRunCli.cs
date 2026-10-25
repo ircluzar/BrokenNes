@@ -35,13 +35,29 @@ internal static class DebugRunCli
     {
         string Opt(string n, string d) { int i = Array.IndexOf(args, "--" + n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
         string romPath = Opt("rom", "");
-        if (romPath == "") { Console.Error.WriteLine("usage: --debug --rom <file> [--console x] [--sym file]... [--do \"cmds\"] [--script file]"); return 2; }
+        // --bug <bundle>: a bug capture (D6) opened in the debugger: its ROM, console, cores and start state, its input preloaded as the
+        // history (so 'run' replays it and 'back' steps back through it), its symbols
+        Bugs.BugBundleReader? bug = Opt("bug", "") is { Length: > 0 } bp ? Bugs.BugBundleReader.Open(bp) : null;
+        NesEmulator.Debugging.Movies.Movie? bugMovie = null;
+        if (bug != null) { bugMovie = bug.LoadMovie(); if (romPath == "") romPath = bug.Rom(null, out _); }
+        if (romPath == "") { Console.Error.WriteLine("usage: --debug --rom <file> | --bug <bundle> [--console x] [--sym file]... [--do \"cmds\"] [--script file]"); return 2; }
         byte[] raw = File.ReadAllBytes(romPath);
         byte[] rom = RomDetect.Unwrap(raw, romPath, out string inner);
-        ConsoleKind? console = Opt("console", "") is { Length: > 0 } c ? Consoles.FromKey(c) : null;
-        using var h = DebugHost.Open(rom, inner, console, cpu: Opt("cpu", ""), ppu: Opt("ppu", ""), apu: Opt("apu", ""));
+        ConsoleKind? console = Opt("console", "") is { Length: > 0 } c ? Consoles.FromKey(c) : bugMovie != null ? Movies.MovieMachine.ParseConsole(bugMovie.Console) : null;
+        string[] bc = bugMovie != null && bugMovie.Cores.Split('/') is { Length: 3 } cs ? cs : new[] { "", "", "" };
+        using var h = DebugHost.Open(rom, inner, console, cpu: Opt("cpu", bc[0]), ppu: Opt("ppu", bc[1]), apu: Opt("apu", bc[2]),
+                                     powerOn: bugMovie?.Console == "nes" ? bugMovie.PowerOn : "fceux", ntsc: bugMovie?.NtscTiming ?? false);
         h.Dbg.Log = Console.Out;
         h.Dbg.TrackCallStack = true;   // an interactive session: the call stack from the first instruction
+        if (bug != null && bugMovie != null)
+        {
+            bool fromState = bugMovie.Start == NesEmulator.Debugging.Movies.MovieStart.State;
+            if (fromState) { h.LoadState(bugMovie.StartState!); h.Dbg.TrackCallStack = false; h.Dbg.TrackCallStack = true; }   // the call stack starts again at the state
+            h.EnableHistory(60, 30, fromState ? bugMovie.StartState : null).Preload(bugMovie);
+            if (Array.IndexOf(args, "--sym") < 0)
+                foreach (var s in bug.Symbols()) Console.WriteLine($"symbols: {h.Dbg.Symbols.Load(s, h.Machine.Console)} from {s} (the bundle's)");
+            Console.WriteLine($"bug {bug.Id}: {bug.S("note")} ({bug.S("history", "why")}); {bugMovie.Frames} frames from its {(fromState ? "start state" : "power-on")}, cores {bugMovie.Cores}");
+        }
         Console.WriteLine($"debug: {h.Machine.Console} {Path.GetFileName(romPath)}; CPUs {string.Join(", ", h.Machine.Cpus.Select(x => $"{x.Id} ({x.Name})"))}");
         foreach (var l in h.Machine.Limitations) Console.WriteLine("note: " + l);
         for (int i = 0; i < args.Length - 1; i++)
@@ -49,6 +65,7 @@ internal static class DebugRunCli
         var lines = new List<string>();
         if (Opt("script", "") is { Length: > 0 } sp) lines.AddRange(File.ReadAllLines(sp));
         if (Opt("do", "") is { Length: > 0 } d) lines.AddRange(SplitCommands(d));
+        if (lines.Count == 0 && bugMovie != null) lines.AddRange(new[] { $"run {bugMovie.Frames}", "where", "regs", "stack" });
         if (lines.Count == 0) lines.Add("run 600");
         var shell = new DebugShell(h);
         foreach (var raw0 in lines)
@@ -60,6 +77,13 @@ internal static class DebugRunCli
             Console.WriteLine("> " + line);
             try { if (!shell.Execute(line)) break; }
             catch (Exception e) when (e is FormatException or ArgumentException or InvalidOperationException) { Console.WriteLine("error: " + e.Message); shell.Errors++; }
+        }
+        if (bugMovie != null && h.History is { } hh)
+        {
+            Console.WriteLine(hh.OffCourseFrame != null
+                ? $"bug replay: OFF COURSE after {hh.OffCourseFrame} frames ({hh.OffCourseWhat}); {hh.KeysMatched} of {hh.KeysChecked} keyframes matched"
+                : $"bug replay: in sync, {hh.KeysMatched} of {hh.KeysChecked} keyframes matched ({hh.FrameIndex} of {bugMovie.Frames} frames run)");
+            if (hh.OffCourseFrame != null) shell.Errors++;
         }
         return shell.Errors == 0 ? 0 : 1;
     }
