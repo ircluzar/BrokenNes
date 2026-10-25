@@ -49,6 +49,22 @@ internal sealed class DebugHost : IDisposable
         return h;
     }
 
+    /// <summary>Holds pad 1's buttons from now on ("Right", "A"...; none releases them): set between runs, while the emulation is parked.</summary>
+    public void SetPad(System.Collections.Generic.IEnumerable<string> buttons)
+    {
+        if (Nes != null)
+        {
+            var names = new[] { "A", "B", "Select", "Start", "Up", "Down", "Left", "Right" };
+            var held = new bool[8];
+            foreach (var b in buttons) { int i = Array.FindIndex(names, n => n.Equals(b, StringComparison.OrdinalIgnoreCase)); if (i < 0) throw new ArgumentException($"unknown NES button '{b}'"); held[i] = true; }
+            Nes.SetInputs(held, null);
+            return;
+        }
+        PadButtons p = PadButtons.None;
+        foreach (var b in buttons) p |= Enum.TryParse<PadButtons>(b, true, out var v) ? v : throw new ArgumentException($"unknown button '{b}'");
+        Session!.SetPad(0, p);
+    }
+
     /// <summary>Runs frames on this thread (no debugger: the negative control).</summary>
     public void RunPlain(int frames) { for (int i = 0; i < frames; i++) runFrame(); }
 

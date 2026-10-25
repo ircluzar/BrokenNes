@@ -81,6 +81,8 @@ public sealed class SymbolTable
     {
         error = null;
         if (byName.TryGetValue(name, out sym!)) return true;
+        // a C name: SDCC (GBDK) writes C's player_x as _player_x; the C name finds it when nothing else has that name
+        if (!name.StartsWith('_') && byName.TryGetValue("_" + name, out var c) && !byLower.ContainsKey(name.ToLowerInvariant()) && !byBase.ContainsKey(name)) { sym = c; return true; }
         if (byLower.TryGetValue(name.ToLowerInvariant(), out var l))
         {
             if (l.Count == 1) { sym = l[0]; return true; }

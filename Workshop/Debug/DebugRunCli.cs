@@ -21,6 +21,7 @@ namespace BrokenNes.Workshop.Debug;
 ///   run [frames]                 run until a break or the frames are done (default 600)
 ///   step [n] | over | out | scanline | frame | runto &lt;spec&gt; | tofr &lt;frame&gt; | toline &lt;line&gt; | pause
 ///   regs | stack | trace [n] | mem &lt;spec&gt; [len] | print &lt;expr&gt; | var &lt;name&gt; | set &lt;reg|var&gt; &lt;value&gt; | hits [n] | where
+///   pad &lt;Btn+Btn|none&gt;           pad 1 holds these buttons from now on (Right, A, ...), for the next runs and steps
 ///   tracefile &lt;path&gt; [fn &lt;symbol&gt;] [range &lt;spec&gt;] [frames &lt;a-b&gt;] | endtrace | sym &lt;file&gt; | domains | limits | detach
 /// </code>
 /// Specs: <c>$8000</c>, <c>$8000-$80FF</c>, <c>7E:0010</c>, <c>wram:$10</c>, <c>vram:$2000-$27FF</c>, <c>spc:$0200</c>, <c>player_hp</c>, <c>player_hp+1</c>.
@@ -122,6 +123,14 @@ internal sealed class DebugShell
             case "tofr": Report(h.Runner.Step(() => D.RunToFrame(long.Parse(words[1], CultureInfo.InvariantCulture)), guardFrames: long.Parse(words[1], CultureInfo.InvariantCulture) + 2)); break;
             case "toline": Report(h.Runner.Step(() => D.RunToScanline(int.Parse(words[1], CultureInfo.InvariantCulture)))); break;
             case "pause": Report(h.Runner.Step(D.Pause)); break;
+            case "pad":
+            {
+                // pad Right+A | pad none: the buttons pad 1 holds from now on (the next run or step plays with them)
+                var held = words.Count < 2 || words[1].Equals("none", StringComparison.OrdinalIgnoreCase) ? new List<string>() : words[1].Split('+', StringSplitOptions.RemoveEmptyEntries).ToList();
+                h.SetPad(held);
+                Console.WriteLine($"  pad 1 holds {(held.Count == 0 ? "nothing" : string.Join("+", held))}");
+                break;
+            }
             case "regs": Regs(); break;
             case "where": Console.WriteLine("  " + (D.LastBreak?.ToString() ?? "(not stopped)")); break;
             case "stack":
