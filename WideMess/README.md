@@ -463,6 +463,11 @@ the check shows the wrong room). `Workshop --wms-level-probe --find` searched ev
 level in work RAM, 6 checks), E8 (Super Metroid's BG1 with its level at most 1% wrong and 5% empty; without it at least half empty), E7 (Super
 Metroid with its level: speed and no allocation).
 
+**Results** (the branch merged with main `0c03fe9`): `--wms-test` 331 of 331 (Super Metroid in lockstep with its level on: the centre identical
+over 6,000 frames, `STAT77` and the sound identical, off frame-identical); `--check-test` 111/0; `--debug-test` 101/0; `--snes-state-test` 147/0;
+UAT `run-suite.ps1` 125 pass, 0 fail, 16 skip, 3 info; the ALttP speed-pass golden IDENTICAL; interleaved A/B against `2128f42` (ALttP 2,400
+frames on the SNES console, 10 pairs, CPU time) 1.02: noise (the SNES console's code is untouched); Core, Lite and the desktop app build.
+
 ## Milestone 7a result (2026-10-24): WideMess in BrokenNes Lite and in the FL plugin
 
 How WideMess appears in each host, and why the plugin differs, is spec section 9.
