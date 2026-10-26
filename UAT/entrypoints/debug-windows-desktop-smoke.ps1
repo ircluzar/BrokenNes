@@ -167,8 +167,12 @@ function Show-Cell($w, [int]$cx, [int]$cy) { SetText (FindById $w 'cellx') "$cx"
 function PokeAll([int]$procId, [string]$domain, $pairs) { foreach ($pv in $pairs) { Api $procId POST '/api/memory/poke' @{ domain = $domain; address = $pv[0]; value = $pv[1] } | Out-Null } }
 function Open-Events([int]$procId) { Open-DebugWindow $procId 'Event View' 'BrokenNes Events' }
 function EventsCheck([int]$procId, [string]$name, [string]$wantWrite, [string]$wantIrq) {
+    $e0 = Api $procId GET '/api/debug/events'; $s0 = Api $procId GET '/api/debug/state'
+    Check "events_${name}_route_closed_negative" (-not $e0.success -and -not $e0.attached -and $e0.error -like '*Event View*' -and -not $s0.armed) "the route with no window: $($e0.error); armed $($s0.armed)"
     $win = Open-Events $procId
     Start-Sleep -Milliseconds 1500
+    $er = Api $procId GET '/api/debug/events'
+    Check "events_${name}_route" ($er.success -and $er.recording -and @($er.events | Where-Object { $_ -like "*write $wantWrite*" }).Count -eq 1) "the route with the window open: frame $($er.frame), $(@($er.events).Count) events: $(@($er.events | Where-Object { $_ -like "*write $wantWrite*" }) -join ' ')"
     $ev = @(Items (FindById $win 'events'))
     $st = Api $procId GET '/api/debug/state'
     $w = @($ev | Where-Object { $_ -like "*write $wantWrite*" }); $q = @($ev | Where-Object { $_ -like "*interrupt $wantIrq*" })

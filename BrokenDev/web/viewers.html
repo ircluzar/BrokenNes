@@ -6,7 +6,7 @@
 <title>BrokenDev Viewers</title>
 <!--
   BrokenDev milestone D8, the second web page: memory, palettes and tiles of a running BrokenNes desktop app, READ ONLY, over its HTTP API
-  (GET /api/memory/domains, /api/memory/peek-range, /api/debug/palettes, /api/debug/tiles, /api/debug/map, /api/debug/sprites, /api/debug/sound). Open it from disk with
+  (GET /api/memory/domains, /api/memory/peek-range, /api/debug/palettes, /api/debug/tiles, /api/debug/map, /api/debug/sprites, /api/debug/sound, /api/debug/events). Open it from disk with
   ?api=http://127.0.0.1:<port>. Options: &domain=<id> &address=<hex> (the memory panel), &start=<hex> &bpp=2|4|8 &palette=<n> (the tiles), &layer= &cellx= &celly= (the map),
   &once=1 (one refresh, for tests). It sends GET requests only.
 -->
@@ -35,6 +35,7 @@
   <section><h2>Tiles</h2><div id="tileinfo" style="color:var(--muted);font-size:12px"></div><canvas id="tiles" width="128" height="128"></canvas></section>
   <section><h2>Map</h2><div id="mapinfo" style="color:var(--muted);font-size:12px"></div><pre id="mapcell"></pre><canvas id="map" width="256" height="256"></canvas></section>
   <section><h2>Sprites on screen</h2><pre id="sprites"></pre></section>
+  <section><h2>Events (one frame; recorded by the app's Event View window)</h2><pre id="events"></pre></section>
   <section><h2>Sound</h2><div id="soundinfo" style="color:var(--muted);font-size:12px"></div><pre id="sound"></pre></section>
 </main>
 <script>
@@ -106,6 +107,9 @@
       const so = await get('/api/debug/sound');
       $('soundinfo').textContent = so.success ? `${so.what}; mute $${hex(so.mute, 2)}` : (so.error || '');
       $('sound').textContent = so.success ? so.channels.map(c => c.line).join('\n') : '';
+
+      const ev = await get('/api/debug/events');
+      $('events').textContent = ev.success ? `frame ${ev.frame}\n` + ev.events.join('\n') : (ev.error || '');
 
       $('status').textContent = `${doms.console}: ${dom} at $${hex(addr, 4)}; ${api}`;
       $('status').dataset.console = doms.console;

@@ -331,6 +331,23 @@ namespace BrokenNes.Windows.WebApi
                 return Results.Ok(new { success = true, console = m.Console, what, mute = DebugSound.Mute(g), channels = ch.Select(c => new { c.Name, c.On, c.Level, registers = c.Text, line = c.ToString() }) });
             });
 
+            // GET /api/debug/events - the last whole frame of the Event View window's recording (register writes, DMA runs, interrupts). Read only:
+            // it never attaches or arms anything, so it answers only while the app's Event View window is recording, and says how to get one otherwise.
+            app.MapGet("/api/debug/events", () =>
+            {
+                var g = DebugTarget();
+                var m = Debuggers.Machine(g, out string? why);
+                if (m == null) return Results.BadRequest(new { success = false, error = why });
+                var d = Debuggers.Current(g);
+                if (d == null)
+                    return Results.Ok(new { success = false, attached = false, recording = false, console = m.Console, error = "no debugger is attached, so nothing records events: open Emulator > Debug Windows > Event View in the app (this route never attaches one)" });
+                var rec = d.Observers.OfType<BrokenNes.Windows.DebugWindows.EventsWindow.Recorder>().FirstOrDefault();
+                if (rec == null)
+                    return Results.Ok(new { success = false, attached = true, recording = false, console = m.Console, error = "a debugger is attached but nothing records events: open Emulator > Debug Windows > Event View in the app" });
+                var (frame, lines) = rec.Last();
+                return Results.Ok(new { success = true, attached = true, recording = true, console = m.Console, frame, dropped = rec.Dropped, events = lines });
+            });
+
             // ---------------------------------------------------------------- control (enableDebuggerControl)
 
             app.MapPost("/api/debug/attach", () =>

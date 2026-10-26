@@ -141,6 +141,7 @@ Game Boy `$E011` is `$C011`); DMA and HDMA bytes are accesses (a VRAM watch sees
 | GET | `/api/debug/tiles?source=&bpp=&palette=&start=&count=` | A tile sheet from the shared decoder: width, height, ARGB pixels as base64 (`BrokenDev/web/viewers.html`) |
 | GET | `/api/debug/map?layer=&cellX=&cellY=` | A tile map drawn whole (NES nametables, SNES BG1-4, Game Boy background / window), the visible area, one cell's tile / palette / flags |
 | GET | `/api/debug/sprites` | The sprites on screen from OAM (place, size, tile, palette, flips) |
+| GET | `/api/debug/events` | The last whole frame the app's Event View window recorded; never attaches or arms: with no window open it answers `success: false` and says to open Emulator > Debug Windows > Event View |
 | GET | `/api/debug/sound` | One line per channel of the sound chip, and the sound monitor's mute in force |
 | GET | `/api/debug/eval?expr=&cpu=` | An expression now (`[player_hp] + 1`) |
 | POST | `/api/debug/attach`, `/api/debug/detach` | **Control.** Attach (tracks the call stack) / detach (the game runs as if never debugged) |

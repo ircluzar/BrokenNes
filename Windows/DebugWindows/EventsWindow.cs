@@ -44,7 +44,7 @@ namespace BrokenNes.Windows.DebugWindows
         }
 
         /// <summary>The observer: runs on the emulation thread.</summary>
-        private sealed class Recorder : DebugObserver
+        internal sealed class Recorder : DebugObserver
         {
             private readonly DebugMachine m;
             private readonly string family;

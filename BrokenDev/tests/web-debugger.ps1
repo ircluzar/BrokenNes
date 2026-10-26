@@ -103,6 +103,9 @@ try {
     Check 'viewers_tiles' ($t0row -eq $want0) "tile at VRAM `$2000 (2bpp, greys), row 0: $t0row ; decoded here from the API's bytes: $want0"
     Check 'viewers_tiles_negative' ((((Tile0 $vdom2) -split ' ') | Select-Object -Unique) -join ',' -eq '000000') "the zero tile at `$2010 is all black: $(((Tile0 $vdom2) -split ' ' | Select-Object -First 8) -join ' ')"
     Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/resume' | Out-Null
+    $evt = Pre $mdom 'events'
+    $stE = Invoke-BrokenNesApi -ProcessId $id -Path '/api/debug/state'
+    Check 'viewers_events_not_attached_negative' ($evt -like 'no debugger is attached*Event View*' -and -not $stE.attached -and -not $stE.armed) "with no Event View window open: '$evt'; attached $($stE.attached), armed $($stE.armed) (the route arms nothing)"
     $vsrc = Get-Content -LiteralPath $viewers -Raw
     Check 'viewers_read_only_source' ($vsrc -notmatch "method\s*:" -and $vsrc -notmatch "'POST'|""POST""|DELETE") "the viewers page's fetches are GETs only"
     $dead = Render ("api=" + [Uri]::EscapeDataString('http://127.0.0.1:1') + "&once=1")

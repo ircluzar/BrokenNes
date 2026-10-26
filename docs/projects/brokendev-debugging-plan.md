@@ -1007,10 +1007,15 @@ and the divergence finder's report (the last marker before the first difference)
   - a voice pitch poked into the S-DSP shows on voice 0 only, with the mute at `$00`.
   `web-debugger.ps1` passes 28 of 28. The first version of the sound route answered 500: its JSON had both `Text` and `text`, which
   collide once the serializer lower-cases names. It now sends `registers` and `line`.
-- **Not built, a decision for the user:** the event view page. Its data comes from a debug observer, which arms the debugger's hooks.
-  A plain GET (what the pages are limited to) should not arm anything. The options: let the route read only while the Event View
-  window or a control session has a debugger attached, or make it a control route behind `enableDebuggerControl`.
-- **Next:** that decision; a way to reach Lite and the phone (the desktop API listens on loopback only).
+- **Event view page (built; decided 2026-10-26: read only).** `GET /api/debug/events` never attaches or arms anything. It returns the
+  last whole frame that the app's Event View window recorded. With no window open, it answers `success: false` and says how to get a
+  recording (open Emulator > Debug Windows > Event View); it never returns an empty list silently. The viewers page shows that frame's
+  events, or the message.
+  - Tests: the smoke now passes 79 of 79. On the NES and the Game Boy the route says "no debugger" and the debugger stays unarmed
+    (negative control); with the window open, the route has that frame's `$4014` / `$FF46` write.
+  - `web-debugger.ps1` now passes 29 of 29: the page shows the message, and the app is not attached or armed.
+  - Not checked: the page itself rendering events with the window open. The route it prints is checked.
+- **Next:** how the pages reach Lite and the phone (spec below).
 
 ## Open questions (to settle at the start of the track)
 
