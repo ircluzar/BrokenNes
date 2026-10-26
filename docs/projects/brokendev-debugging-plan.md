@@ -1052,6 +1052,27 @@ Three cases, two mechanisms. Nothing changes until it is switched on; the deskto
 
 Order: case 2 first (the user's own games on the desktop, watched from a phone), then case 1.
 
+**Case 1 built (2026-10-26).** Case 2, the LAN share, waits for the user's approval: it opens a network listener.
+- **The bridge.** `Windows/NesEmulator/board/Emulator.DebugBridge.cs` has one `[JSInvokable] DebugJson(path)`; `window.brokenNesDebug.get(path)` (end of
+  `WebLite/wwwroot/lib/nesInterop.js`) calls it. It answers the read-only routes: state, registers, disasm, memory, domains,
+  peek-range, palettes, tiles, map, sprites, sound. For the call stack and events it says why it has none. Anything else is refused by
+  name, the control routes and pokes included.
+  - The JSON is built with `JsonNode`, with no reflection, which the AOT build needs.
+  - The palette reading moved into the engine as `DebugPictures.Palettes`, which the window, the HTTP route and the bridge share.
+  - Lite now compiles `debug\*.cs` at the top level only; the checks, the port and the movie tools stay out.
+- **The Debug button** opens `debug/viewers.html?lite=1`. Lite ships both pages under `wwwroot/debug/`, linked from `BrokenDev/web/`
+  so there is one copy. With `?lite=1` the pages read `window.opener` or `parent.brokenNesDebug` instead of `fetch`.
+- **Tests.** `UAT/lite/test-lite-debug.mjs` on the AOT publish passes 11 of 11:
+  - the state matches between two readings with no frame between, and one frame later the frame count moved;
+  - memory through the bridge equals the ROM file's own PRG bytes;
+  - both pages, in an iframe of Lite, show the bridge's PC and the ROM's bytes;
+  - the Debug button points at the viewers page with `?lite=1`;
+  - a Game Boy session works through the same bridge;
+  - negative controls: a control route and a poke are refused by name; with the bridge removed, the page says so;
+  - speed: frames take 4.80 ms before the bridge was ever used and 4.77 ms after.
+  `lite-bugs.ps1` on the same publish passes 8 of 8; with the capture off a frame takes 5.57 ms, as at D6.
+- Not tested: a real phone.
+
 ## Open questions (to settle at the start of the track)
 
 1. The debug port's registers on each console, checked against mapper 30, the SNES coprocessors' ranges and the Game Boy Color's

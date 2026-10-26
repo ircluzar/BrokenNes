@@ -124,6 +124,10 @@
     <Compile Include="$(NesRoot)board\Emulator.BugCapture.cs"     Link="NesEmulator\board\Emulator.BugCapture.cs" />
     <Compile Include="$(NesRoot)debug\capture\*.cs"               LinkBase="NesEmulator\debug\capture" />
     <Compile Include="$(NesRoot)debug\movies\Movie.cs"            Link="NesEmulator\debug\movies\Movie.cs" />
+    <!-- BrokenDev D8: the read-only debug bridge (window.brokenNesDebug) for the BrokenDev pages: the debug machines, disassemblers and the viewers'
+         decoders (debug\*.cs, top level only: the checks, the port and the movie tools stay out). Nothing of it runs until a page calls it. -->
+    <Compile Include="$(NesRoot)debug\*.cs"                       LinkBase="NesEmulator\debug" />
+    <Compile Include="$(NesRoot)board\Emulator.DebugBridge.cs"   Link="NesEmulator\board\Emulator.DebugBridge.cs" />
     <Compile Include="$(NesRoot)board\NesController.cs"           Link="NesEmulator\board\NesController.cs" />
     <Compile Include="$(NesRoot)board\NesControllerModels.cs"     Link="NesEmulator\board\NesControllerModels.cs" />
     <Compile Include="$(NesRoot)board\StatePersistence.cs"        Link="NesEmulator\board\StatePersistence.cs" />
@@ -203,6 +207,9 @@
   <ItemGroup>
     <Content Include="..\THIRD_PARTY_NOTICES.md" Link="wwwroot\THIRD_PARTY_NOTICES.md" />
     <Content Include="..\LICENSE.txt" Link="wwwroot\LICENSE.txt" />
+    <!-- BrokenDev D8: the read-only debug pages, opened from the Debug button with ?lite=1 (they read window.opener.brokenNesDebug) -->
+    <Content Include="..\BrokenDev\web\debugger.html" Link="wwwroot\debug\debugger.html" />
+    <Content Include="..\BrokenDev\web\viewers.html" Link="wwwroot\debug\viewers.html" />
     <Content Include="..\Windows\NesEmulator\gb\THIRD_PARTY_NOTICES.md" Link="wwwroot\THIRD_PARTY_NOTICES-gb.md" />
     <Content Include="..\Windows\NesEmulator\snes\THIRD_PARTY_NOTICES.md" Link="wwwroot\THIRD_PARTY_NOTICES-snes.md" />
     <Content Include="..\Windows\NesEmulator\sega\THIRD_PARTY_NOTICES.md" Link="wwwroot\THIRD_PARTY_NOTICES-sega.md" />

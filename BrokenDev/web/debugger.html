@@ -7,7 +7,7 @@
 <!--
   BrokenDev milestone D8, the first web page (docs/projects/brokendev-debugging-plan.md "D8 state"): the debugger of a running BrokenNes
   desktop app, READ ONLY, over its HTTP API (the D1 routes: /api/debug/state, /api/debug/disasm, /api/debug/callstack, /api/debug/memory).
-  Open it from disk with ?api=http://127.0.0.1:<port> (the port is in %LOCALAPPDATA%\BrokenNes\instances\<pid>.json; 42067 for the first
+  Open it from disk with ?api=http://127.0.0.1:<port>, or from BrokenNes Lite's Debug button (?lite=1: it reads that page through window.brokenNesDebug) (the port is in %LOCALAPPDATA%\BrokenNes\instances\<pid>.json; 42067 for the first
   app). It never calls a control route: pausing, stepping and breakpoints stay in the app's Debug Windows (or an agent session the user
   asked for). Options: &mem=<spec> (default the CPU's first bytes), &once=1 (one refresh, for tests).
 -->
@@ -45,7 +45,14 @@
   const memSpec = q.get('mem') || '$0000';
   const once = q.get('once') === '1';
   const $ = id => document.getElementById(id);
-  const get = path => fetch(api + path, { cache: 'no-store' }).then(r => r.json());
+  // ?lite=1: the page was opened from BrokenNes Lite's Debug button and reads that page through window.brokenNesDebug (no network)
+  const lite = q.get('lite') === '1';
+  let bridge = null;
+  try { bridge = lite ? ((window.opener && window.opener.brokenNesDebug) || (window.parent !== window && window.parent.brokenNesDebug) || null) : null; } catch { bridge = null; }
+  const get = lite
+    ? (path => bridge ? bridge.get(path) : Promise.reject(new Error("no Lite debug bridge: open this page from BrokenNes Lite's Debug button")))
+    : (path => fetch(api + path, { cache: 'no-store' }).then(r => r.json()));
+  const source = lite ? 'BrokenNes Lite (this browser)' : api;
   const hex = (v, n) => v.toString(16).toUpperCase().padStart(n, '0');
   function text(id, s) { $(id).textContent = s; }
 
@@ -56,7 +63,7 @@
       const cpu = st.cpus[0];
       const regs = Object.entries(cpu.registers).map(([k, v]) => `${k.padEnd(3)} = ${v}`).join('\n');
       text('registers', `${cpu.name}  PC ${cpu.pcHex}${cpu.symbol ? '  ' + cpu.symbol : ''}\n${regs}`);
-      $('status').textContent = `${st.console}: ${st.attached ? (st.parked ? 'PARKED' : 'debugger attached') : 'no debugger attached'}; frame ${st.frame}, scanline ${st.scanline}; ${api}`;
+      $('status').textContent = `${st.console}: ${st.attached ? (st.parked ? 'PARKED' : 'debugger attached') : 'no debugger attached'}; frame ${st.frame}, scanline ${st.scanline}; ${source}`;
       $('status').dataset.pc = cpu.pcHex; $('status').dataset.console = st.console; $('status').dataset.frame = st.frame;
 
       const dis = await get('/api/debug/disasm?count=16');
@@ -76,7 +83,7 @@
         text('memory', out);
       } else text('memory', mem.error || 'no memory');
     } catch (e) {
-      $('status').textContent = 'cannot reach ' + api + ': ' + e.message + ' (is the desktop app running? the port is in %LOCALAPPDATA%\\BrokenNes\\instances\\<pid>.json)';
+      $('status').textContent = lite ? e.message : 'cannot reach ' + api + ': ' + e.message + ' (is the desktop app running? the port is in %LOCALAPPDATA%\\BrokenNes\\instances\\<pid>.json)';
       $('status').className = 'err';
     } finally {
       document.body.dataset.refreshed = String(Number(document.body.dataset.refreshed || 0) + 1);

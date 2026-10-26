@@ -1,5 +1,7 @@
 // nesInterop.js - Blazor JS interop for NES framebuffer drawing
 window.nesInterop = {
+    // BrokenDev D8: the read-only debug bridge's .NET reference (Emulator.DebugJson); window.brokenNesDebug (end of file) uses it
+    registerDebugBridge: function (ref) { this._debugRef = ref; return true; },
     _cache: {},
     _loopActive: false,
     // Monotonic token used to invalidate any in-flight RAF steps when restarting/stopping the loop
@@ -2131,3 +2133,13 @@ document.addEventListener('fullscreenchange', ()=>{
         }
     } catch(e){ console.warn('fullscreenchange handler error', e); }
 });
+
+// BrokenDev D8 (docs/projects/brokendev-debugging-plan.md, "D8 spec: the pages on Lite and on a phone"): the BrokenDev pages' read-only routes answered
+// in this page. get(path) returns the same JSON the desktop's HTTP API gives for that GET path. Nothing runs until a page calls it.
+window.brokenNesDebug = {
+    get: async function (path) {
+        const ref = window.nesInterop && window.nesInterop._debugRef;
+        if (!ref) return { success: false, error: 'the Lite debug bridge is not ready (the emulator has not started)' };
+        return JSON.parse(await ref.invokeMethodAsync('DebugJson', String(path)));
+    }
+};

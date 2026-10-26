@@ -223,6 +223,8 @@
                 <div class="btn-group">
                     @* BrokenDev D6: the last 30 s as a zip download (the movie, the ROM, the sound, a picture a second) for brokendev.ps1 bug *@
                     <button class="btn btn-bug-capture" id="bugCaptureBtn" @onclick="(()=>emu!.CaptureBugDownloadAsync())" title="Capture a bug: download the last 30 seconds (replays exactly in BrokenDev)">Bug</button>
+                    @* BrokenDev D8: the read-only debug pages, in a new tab, reading this page through window.brokenNesDebug *@
+                    <button class="btn btn-bug-capture" id="debugPagesBtn" onclick="window.open('debug/viewers.html?lite=1', '_blank')" title="Open the BrokenDev debug pages (read only): memory, palettes, tiles, map, sprites, sound">Debug</button>
                 </div>
             }
         </div>

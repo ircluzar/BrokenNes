@@ -73,72 +73,14 @@ namespace BrokenNes.Windows.DebugWindows
             if (status.Text != st) status.Text = st;
         }
 
-        /// <summary>The console's palettes: one line of values and one row of colours each.</summary>
+        /// <summary>The console's palettes: one line of values and one row of colours each (read by the engine's
+        /// <see cref="DebugPictures.Palettes(DebugMachine, out string)"/>, which the HTTP route and Lite's bridge share).</summary>
         internal static void Read(DebugMachine m, List<string> lines, List<(string, Color[])> rows, out string what)
         {
-            var doms = m.Domains();
-            IMemoryDomain? D(string id) => doms.FirstOrDefault(x => x.Id == id && x.Unavailable == null && x.Size > 0);
-            switch (m.Console)
+            foreach (var (label, line, colours) in DebugPictures.Palettes(m, out what))
             {
-                case "nes":
-                {
-                    var ppu = D("PPU");
-                    if (ppu == null) { what = "no PPU space (this PPU core has no probe)"; return; }
-                    for (int p = 0; p < 8; p++)
-                    {
-                        var idx = Enumerable.Range(0, 4).Select(i => ppu.Peek(0x3F00 + p * 4 + i) & 0x3F).ToArray();
-                        string label = (p < 4 ? "BG" : "SP") + (p & 3);
-                        lines.Add($"{label}: {string.Join(" ", idx.Select(x => "$" + x.ToString("X2")))} | {string.Join(" ", idx.Select(x => "#" + NesEmulator.Mix.NesPalette.Rgb[x].ToString("X6")))}");
-                        rows.Add((label, idx.Select(x => Rgb(NesEmulator.Mix.NesPalette.Rgb[x])).ToArray()));
-                    }
-                    what = "palette RAM (PPU $3F00-$3F1F) through the NES colours";
-                    return;
-                }
-                case "snes":
-                case "widemess":
-                {
-                    var cg = D("CGRAM");
-                    if (cg == null) { what = "no CGRAM"; return; }
-                    int n = Math.Min(256, cg.Size / 2);
-                    for (int r = 0; r * 16 < n; r++)
-                    {
-                        var w = Enumerable.Range(0, 16).Select(i => cg.Peek((r * 16 + i) * 2) | cg.Peek((r * 16 + i) * 2 + 1) << 8).ToArray();
-                        string label = "row " + r.ToString("X");
-                        lines.Add($"{label}: {string.Join(" ", w.Select(x => x.ToString("X4")))}");
-                        rows.Add((label, w.Select(Bgr555).ToArray()));
-                    }
-                    what = $"CGRAM, {n} colours (BGR555)";
-                    return;
-                }
-                case "gb":
-                case "gbc":
-                {
-                    var io = D("IO");
-                    if (io == null) { what = "no I/O registers"; return; }
-                    foreach (var (name, reg) in new[] { ("BGP", 0x47), ("OBP0", 0x48), ("OBP1", 0x49) })
-                    {
-                        int v = io.Peek(reg);
-                        var shades = Enumerable.Range(0, 4).Select(i => v >> (2 * i) & 3).ToArray();
-                        lines.Add($"{name} ${v:X2}: {string.Join(" ", shades)}");
-                        rows.Add((name, shades.Select(s => DmgGreys[s]).ToArray()));
-                    }
-                    var cram = D("CRAM");
-                    if (cram != null)
-                    {
-                        for (int p = 0; p < 16; p++)
-                        {
-                            var w = Enumerable.Range(0, 4).Select(i => cram.Peek(p * 8 + i * 2) | cram.Peek(p * 8 + i * 2 + 1) << 8).ToArray();
-                            string label = (p < 8 ? "BG" : "OBJ") + (p & 7);
-                            lines.Add($"{label}: {string.Join(" ", w.Select(x => x.ToString("X4")))}");
-                            rows.Add((label, w.Select(Bgr555).ToArray()));
-                        }
-                    }
-                    what = cram != null ? "BGP / OBP0 / OBP1 and the colour RAM" : "BGP / OBP0 / OBP1 (greys; a monochrome game has no colour RAM)";
-                    return;
-                }
-                default:
-                    what = $"no palette view for {m.Console}";
-                    return;
+                lines.Add(line);
+                rows.Add((label, colours.Select(c => Color.FromArgb(255, (int)(c >> 16 & 0xFF), (int)(c >> 8 & 0xFF), (int)(c & 0xFF))).ToArray()));
             }
         }
 

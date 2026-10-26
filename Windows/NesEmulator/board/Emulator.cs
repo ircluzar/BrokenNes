@@ -315,6 +315,7 @@ namespace BrokenNes
                     Logger.LogInformation("NES Emulator initializing...");
                     Status.Set("Loading default ROM...");
                     _selfRef = DotNetObjectReference.Create(this);
+                    try { await JS.InvokeVoidAsync("nesInterop.registerDebugBridge", _selfRef); } catch {}   // BrokenDev D8: window.brokenNesDebug (read only)
                     try {
                         var pShader = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_shader"); if(!string.IsNullOrWhiteSpace(pShader)) nesController.ActiveShaderKey = pShader;
                         var pCpu = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_cpuCore"); if(!string.IsNullOrWhiteSpace(pCpu)) nesController.CpuCoreSel = pCpu;

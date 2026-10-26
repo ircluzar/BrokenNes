@@ -126,6 +126,73 @@ public static class DebugPictures
                 }
     }
 
+    /// <summary>The console's palettes, one entry each: a label, a line of values, the colours (0xAARRGGBB). The Palettes window, the
+    /// /api/debug/palettes route and Lite's bridge all read them here. <paramref name="what"/> says what was read.</summary>
+    public static List<(string label, string line, uint[] colours)> Palettes(DebugMachine m) => Palettes(m, out _);
+
+    public static List<(string label, string line, uint[] colours)> Palettes(DebugMachine m, out string what)
+    {
+        var list = new List<(string, string, uint[])>();
+        var doms = m.Domains();
+        IMemoryDomain? D(string id) => doms.FirstOrDefault(x => x.Id == id && x.Unavailable == null && x.Size > 0);
+        uint[] dmgGreys = { 0xFFFFFFFF, 0xFFAAAAAA, 0xFF555555, 0xFF000000 };
+        switch (Family(m.Console))
+        {
+            case "nes":
+            {
+                var ppu = D("PPU");
+                if (ppu == null) { what = "no PPU space (this PPU core has no probe)"; return list; }
+                for (int p = 0; p < 8; p++)
+                {
+                    var idx = Enumerable.Range(0, 4).Select(i => ppu.Peek(0x3F00 + p * 4 + i) & 0x3F).ToArray();
+                    string label = (p < 4 ? "BG" : "SP") + (p & 3);
+                    list.Add((label, $"{label}: {string.Join(" ", idx.Select(x => "$" + x.ToString("X2")))} | {string.Join(" ", idx.Select(x => "#" + NesEmulator.Mix.NesPalette.Rgb[x].ToString("X6")))}",
+                              idx.Select(x => 0xFF000000u | (uint)NesEmulator.Mix.NesPalette.Rgb[x]).ToArray()));
+                }
+                what = "palette RAM (PPU $3F00-$3F1F) through the NES colours";
+                return list;
+            }
+            case "snes":
+            {
+                var cg = D("CGRAM");
+                if (cg == null) { what = "no CGRAM"; return list; }
+                int n = Math.Min(256, cg.Size / 2);
+                for (int r = 0; r * 16 < n; r++)
+                {
+                    var w = Enumerable.Range(0, 16).Select(i => cg.Peek((r * 16 + i) * 2) | cg.Peek((r * 16 + i) * 2 + 1) << 8).ToArray();
+                    string label = "row " + r.ToString("X");
+                    list.Add((label, $"{label}: {string.Join(" ", w.Select(x => x.ToString("X4")))}", w.Select(Bgr555).ToArray()));
+                }
+                what = $"CGRAM, {n} colours (BGR555)";
+                return list;
+            }
+            case "gb":
+            {
+                var io = D("IO");
+                if (io == null) { what = "no I/O registers"; return list; }
+                foreach (var (name, reg) in new[] { ("BGP", 0x47), ("OBP0", 0x48), ("OBP1", 0x49) })
+                {
+                    int v = io.Peek(reg);
+                    var shades = Enumerable.Range(0, 4).Select(i => v >> (2 * i) & 3).ToArray();
+                    list.Add((name, $"{name} ${v:X2}: {string.Join(" ", shades)}", shades.Select(s => dmgGreys[s]).ToArray()));
+                }
+                var cram = D("CRAM");
+                if (cram != null)
+                    for (int p = 0; p < 16; p++)
+                    {
+                        var w = Enumerable.Range(0, 4).Select(i => cram.Peek(p * 8 + i * 2) | cram.Peek(p * 8 + i * 2 + 1) << 8).ToArray();
+                        string label = (p < 8 ? "BG" : "OBJ") + (p & 7);
+                        list.Add((label, $"{label}: {string.Join(" ", w.Select(x => x.ToString("X4")))}", w.Select(Bgr555).ToArray()));
+                    }
+                what = cram != null ? "BGP / OBP0 / OBP1 and the colour RAM" : "BGP / OBP0 / OBP1 (greys; a monochrome game has no colour RAM)";
+                return list;
+            }
+            default:
+                what = $"no palette view for {m.Console}";
+                return list;
+        }
+    }
+
     /// <summary>A tile map drawn whole: the NES's four nametables, a SNES background layer, the Game Boy's background or window map.</summary>
     public sealed class MapView
     {

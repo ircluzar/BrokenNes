@@ -44,7 +44,14 @@
   const api = (q.get('api') || 'http://127.0.0.1:42067').replace(/\/$/, '');
   const once = q.get('once') === '1';
   const $ = id => document.getElementById(id);
-  const get = path => fetch(api + path, { cache: 'no-store' }).then(r => r.json());
+  // ?lite=1: the page was opened from BrokenNes Lite's Debug button and reads that page through window.brokenNesDebug (no network)
+  const lite = q.get('lite') === '1';
+  let bridge = null;
+  try { bridge = lite ? ((window.opener && window.opener.brokenNesDebug) || (window.parent !== window && window.parent.brokenNesDebug) || null) : null; } catch { bridge = null; }
+  const get = lite
+    ? (path => bridge ? bridge.get(path) : Promise.reject(new Error("no Lite debug bridge: open this page from BrokenNes Lite's Debug button")))
+    : (path => fetch(api + path, { cache: 'no-store' }).then(r => r.json()));
+  const source = lite ? 'BrokenNes Lite (this browser)' : api;
   const hex = (v, n) => v.toString(16).toUpperCase().padStart(n, '0');
   let console_ = null;
 
@@ -111,10 +118,10 @@
       const ev = await get('/api/debug/events');
       $('events').textContent = ev.success ? `frame ${ev.frame}\n` + ev.events.join('\n') : (ev.error || '');
 
-      $('status').textContent = `${doms.console}: ${dom} at $${hex(addr, 4)}; ${api}`;
+      $('status').textContent = `${doms.console}: ${dom} at $${hex(addr, 4)}; ${source}`;
       $('status').dataset.console = doms.console;
     } catch (e) {
-      $('status').textContent = 'cannot reach ' + api + ': ' + e.message;
+      $('status').textContent = lite ? e.message : 'cannot reach ' + api + ': ' + e.message;
     } finally {
       document.body.dataset.refreshed = String(Number(document.body.dataset.refreshed || 0) + 1);
       if (!once) setTimeout(refresh, 1000);
