@@ -1074,71 +1074,22 @@ internal sealed class HeadlessSession : Session
         return res;
     }
 
-    private static uint Bgr555(int v) { int r = v & 31, g = v >> 5 & 31, b = v >> 10 & 31; return 0xFF000000u | (uint)(r << 3 | r >> 2) << 16 | (uint)(g << 3 | g >> 2) << 8 | (uint)(b << 3 | b >> 2); }
-    private static readonly uint[] Greys = { 0xFF000000, 0xFF555555, 0xFFAAAAAA, 0xFFFFFFFF };
 
     public override ToolOut Tiles(string? source, int bpp, int palette, long start, int count, int scale)
     {
-        Func<int, byte> peek; int size; int tileBytes; int planes; bool gbFormat = false; string what; uint[] pal;
-        if (nes != null)
-        {
-            var d = string.Equals(source, "chr", StringComparison.OrdinalIgnoreCase) ? Domain("CHR") : AllDomains().FirstOrDefault(x => x.Id == "PPU") ?? Domain("CHR");
-            peek = d.Peek; size = d.Id == "PPU" ? 0x2000 : d.Size; planes = 2; tileBytes = 16; what = d.Id == "PPU" ? "the pattern tables as the PPU sees them now ($0000-$1FFF)" : "CHR";
-            pal = Greys;
-        }
-        else if (cs is GbSession)
-        {
-            var d = Domain("VRAM"); peek = d.Peek; size = Math.Min(d.Size, 0x4000); planes = 2; tileBytes = 16; gbFormat = true; what = "VRAM tile data";
-            pal = Greys.Reverse().ToArray();
-            var cram = AllDomains().FirstOrDefault(x => x.Id == "CRAM" && x.Unavailable == null && x.Size >= 64);
-            if (palette >= 0 && cram != null) pal = Enumerable.Range(0, 4).Select(i => Bgr555(cram.Peek(palette * 8 + i * 2) | cram.Peek(palette * 8 + i * 2 + 1) << 8)).ToArray();
-        }
-        else if (cs is SnesSession)
-        {
-            var d = Domain("VRAM"); peek = d.Peek; size = d.Size;
-            planes = bpp is 2 or 4 or 8 ? bpp : 4; tileBytes = 8 * planes; what = $"VRAM as {planes}bpp tiles";
-            int colours = 1 << planes;
-            pal = planes == 2 ? Greys : Enumerable.Range(0, colours).Select(i => { uint g = (uint)(i * 255 / (colours - 1)); return 0xFF000000u | g << 16 | g << 8 | g; }).ToArray();
-            var cg = AllDomains().FirstOrDefault(x => x.Id == "CGRAM");
-            if (palette >= 0 && cg != null)
-            {
-                int baseIdx = planes == 8 ? 0 : palette * colours;
-                pal = Enumerable.Range(0, colours).Select(i => { int at = (baseIdx + i) * 2; return Bgr555(cg.Peek(at) | cg.Peek(at + 1) << 8); }).ToArray();
-            }
-        }
-        else throw new ToolError($"the tile viewer covers the NES, SNES, WideMess and Game Boy; not the {Consoles.DisplayName(console)} yet");
-
-        long first = Math.Clamp(start, 0, Math.Max(0, size - tileBytes));
-        int total = (int)((size - first) / tileBytes);
-        int n = Math.Clamp(count <= 0 ? Math.Min(total, 512) : count, 1, Math.Min(total, 4096));
-        int cols = 16, rows = (n + cols - 1) / cols;
-        int W = cols * 8, H = rows * 8;
-        var px = new uint[W * H];
-        for (int t = 0; t < n; t++)
-        {
-            int at = (int)first + t * tileBytes, tx = t % cols * 8, ty = t / cols * 8;
-            for (int y = 0; y < 8; y++)
-                for (int x = 0; x < 8; x++)
-                {
-                    int bit = 7 - x, v = 0;
-                    if (nes != null) v = (peek(at + y) >> bit & 1) | (peek(at + y + 8) >> bit & 1) << 1;
-                    else if (gbFormat) v = (peek(at + y * 2) >> bit & 1) | (peek(at + y * 2 + 1) >> bit & 1) << 1;
-                    else
-                        for (int p = 0; p < planes; p++)
-                        {
-                            int pairBase = at + (p / 2) * 16;   // SNES: planes in pairs, each pair 16 bytes (rows interleaved)
-                            v |= (peek(pairBase + y * 2 + (p & 1)) >> bit & 1) << p;
-                        }
-                    px[(ty + y) * W + tx + x] = pal[Math.Min(v, pal.Length - 1)];
-                }
-        }
+        // one decoder with the desktop's Tiles window (BrokenDev D8): NesEmulator.Debugging.DebugPictures
+        string family = nes != null ? "nes" : cs is GbSession ? "gb" : cs is SnesSession ? "snes" : "";
+        if (family == "") throw new ToolError($"the tile viewer covers the NES, SNES, WideMess and Game Boy; not the {Consoles.DisplayName(console)} yet");
+        DebugPictures.TileSheet t;
+        try { t = DebugPictures.Tiles(AllDomains(), family, source, bpp, palette, start, count); }
+        catch (ArgumentException e) { throw new ToolError(e.Message); }
         var o = new ToolOut(new JsonObject
         {
-            ["what"] = what, ["start"] = Num.Hex(first, 4), ["tiles"] = n, ["tileBytes"] = tileBytes, ["columns"] = cols, ["width"] = W, ["height"] = H,
-            ["palette"] = palette >= 0 && nes == null ? palette : null,
-            ["colours"] = nes != null ? "greys (index 0 black)" : palette >= 0 ? "the game's palette" : "greys",
+            ["what"] = t.What, ["start"] = Num.Hex(t.Start, 4), ["tiles"] = t.Tiles, ["tileBytes"] = t.TileBytes, ["columns"] = t.Columns, ["width"] = t.Width, ["height"] = t.Height,
+            ["palette"] = t.Palette,
+            ["colours"] = t.Colours,
         });
-        o.Pngs.Add(Png.FromArgb(px, W, H, Math.Clamp(scale, 1, 4)));
+        o.Pngs.Add(Png.FromArgb(t.Pixels, t.Width, t.Height, Math.Clamp(scale, 1, 4)));
         return o;
     }
 

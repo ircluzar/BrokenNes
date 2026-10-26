@@ -21,6 +21,8 @@
     PALETTES  Emulator > Debug Windows > Palettes. NES: 8 palettes, every index through the 2C02 colours, $3F10 mirroring $3F00 (the NES's
               HTTP routes have no PPU space, so the decoding is the check). SNES: a CGRAM word poked through the API (7C00) shows in row 0
               exactly as the API reads CGRAM, and not in row 1. Game Boy: BGP / OBP0 / OBP1 as the API reads them, shades decoded.
+    TILES     Emulator > Debug Windows > Tiles: a tile's colour indices in the window equal the script's own decoding of the API's bytes
+              (NES CHR, SNES VRAM $2000 as 2bpp, Game Boy VRAM), and the next tile is its own bytes, not the first's.
     SNES / GB the same window on the SNES (the CPU picker offers the SPC700, whose registers show) and the Game Boy.
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
 
@@ -124,6 +126,26 @@ function RowBytes([string]$row) { if ($row -match '^[0-9A-F]+: (.{49})') { retur
 function ApiRow([int]$procId, [string]$domain, [int]$address) { ((Api $procId GET "/api/memory/peek-range?domain=$domain&address=$address&length=16").data | ForEach-Object { '{0:X2}' -f [int]$_ }) -join ' ' }
 function Open-Palettes([int]$procId) { Open-DebugWindow $procId 'Palettes' 'BrokenNes Palettes' }
 function PalLine($w, [string]$prefix) { (Items (FindById $w 'palettes')) | Where-Object { $_ -like "$prefix*" } | Select-Object -First 1 }
+function Open-Tiles([int]$procId) { Open-DebugWindow $procId 'Tiles' 'BrokenNes Tiles' }
+function Pick-Item($w, [string]$boxId, [string]$name) {
+    $box = FindById $w $boxId
+    Expand-El $box; Start-Sleep -Milliseconds 300
+    $it = @($box.FindAll($TS::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::ListItem)))) | Where-Object { $_.Current.Name -eq $name } | Select-Object -First 1
+    if ($it) { $it.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select() }
+    $box.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse()
+    Start-Sleep -Milliseconds 400
+    return [bool]$it
+}
+function Show-Tile($w, [string]$start, [int]$tile) { SetText (FindById $w 'start') $start; SetText (FindById $w 'tile') "$tile"; Invoke-El (FindById $w 'show'); Start-Sleep -Milliseconds 600; ((TextOf (FindById $w 'tilepixels')) -split "`r?`n" | Where-Object { $_ }) -join '/' }
+# a 2-bit tile's colour indices from its 16 bytes: NES planes 8 bytes apart, Game Boy and SNES 2bpp rows interleaved
+function Decode2([int[]]$b, [bool]$nes) {
+    $rows = for ($y = 0; $y -lt 8; $y++) {
+        $lo = $(if ($nes) { $b[$y] } else { $b[2 * $y] }); $hi = $(if ($nes) { $b[$y + 8] } else { $b[2 * $y + 1] })
+        (0..7 | ForEach-Object { '{0:X}' -f ((($lo -shr (7 - $_)) -band 1) -bor ((($hi -shr (7 - $_)) -band 1) -shl 1)) }) -join ''
+    }
+    $rows -join '/'
+}
+function ApiBytes([int]$procId, [string]$domain, [int]$address, [int]$len) { @((Api $procId GET "/api/memory/peek-range?domain=$domain&address=$address&length=$len").data | ForEach-Object { [int]$_ }) }
 function PcLine($w) { (Items (FindById $w 'disassembly')) | Where-Object { $_ -like '>*' } | Select-Object -First 1 }
 
 $inst = $null
@@ -246,6 +268,23 @@ try {
     $wrongRow = $nl[0] -replace '#000000', '#FFFFFF'
     Check 'palettes_nes_negative' ($wrongRow -eq $nl[0] -or -not ($wrongRow -match '\| #(\w{6})' -and $nesRgb[[Convert]::ToInt32(($bg0).TrimStart('$'), 16)] -eq $Matches[1])) "a colour that is not the index's would fail the decoding check ($wrongRow)"
     Close-Window $win
+    # ---------------------------------------------------------------- TILES (NES): the cartridge's CHR, decoded here from the API's bytes
+    $win = Open-Tiles $id
+    Pick-Item $win 'source' 'chr' | Out-Null
+    # the test ROM's CHR is blank: a pattern of its own is written into tile 5 through the API first (16 bytes), so the tile is not zeros
+    $pat = @(0x81, 0x42, 0x24, 0x18, 0x18, 0x24, 0x42, 0x81, 0xFF, 0x00, 0xFF, 0x00, 0x0F, 0xF0, 0x0F, 0xF0)
+    for ($k = 0; $k -lt 16; $k++) { Api $id POST '/api/memory/poke' @{ domain = 'CHR'; address = 0x50 + $k; value = $pat[$k] } | Out-Null }
+    $chr = ApiBytes $id 'CHR' 0 8192
+    $t1 = -1; for ($t = 0; $t -lt 512; $t++) { if (@($chr[($t * 16)..($t * 16 + 15)] | Where-Object { $_ -ne 0 }).Count -gt 0) { $t1 = $t; break } }
+    $t2 = -1; for ($t = $t1 + 1; $t -lt 512; $t++) { if ((Decode2 $chr[($t * 16)..($t * 16 + 15)] $true) -ne (Decode2 $chr[($t1 * 16)..($t1 * 16 + 15)] $true)) { $t2 = $t; break } }
+    if ($t1 -lt 0) { $t1 = 0; $t2 = 1 }
+    $got = Show-Tile $win '0' $t1
+    $want = Decode2 $chr[($t1 * 16)..($t1 * 16 + 15)] $true
+    Check 'tiles_nes_chr' ($got -eq $want) "CHR tile $t1 in the window: $got ; from the API's bytes: $want"
+    $got2 = Show-Tile $win '0' $t2
+    Check 'tiles_nes_chr_negative' ($t2 -ge 0 -and $got2 -ne $want -and $got2 -eq (Decode2 $chr[($t2 * 16)..($t2 * 16 + 15)] $true)) "tile $t2 is its own bytes, not tile $t1's: $got2"
+    Close-Window $win
+
     # ---------------------------------------------------------------- SNES (the SPC700 in the CPU picker)
     Load $id (Join-Path $roms 'debugtest.sfc')
     $win = Open-Debugger $id
@@ -285,6 +324,15 @@ try {
     Check 'palettes_snes' ($r0 -eq ('row 0: ' + ($words -join ' ')) -and $r0 -like 'row 0: * 7C00 *') "window: $r0 ; API: $($words -join ' ')"
     Check 'palettes_snes_negative' (@(Items (FindById $win 'palettes')).Count -eq 16 -and (PalLine $win 'row 1:') -notlike 'row 1: * 7C00 *') "16 rows; row 1: $(PalLine $win 'row 1:')"
     Close-Window $win
+    $win = Open-Tiles $id
+    Pick-Item $win 'bpp' '2' | Out-Null
+    $vb = ApiBytes $id 'VRAM' 0x2000 32
+    $got = Show-Tile $win '$2000' 0
+    $want = Decode2 $vb[0..15] $false
+    Check 'tiles_snes_2bpp' ($got -eq $want -and $want -ne '00000000/00000000/00000000/00000000/00000000/00000000/00000000/00000000') "VRAM `$2000 as 2bpp in the window: $got ; from 11 22 33 44 ...: $want"
+    $got1 = Show-Tile $win '$2000' 1
+    Check 'tiles_snes_2bpp_negative' ($got1 -ne $want -and $got1 -eq (Decode2 $vb[16..31] $false)) "the next tile is its own bytes: $got1"
+    Close-Window $win
 
     # ---------------------------------------------------------------- Game Boy
     Load $id (Join-Path $roms 'debugtest.gb')
@@ -319,6 +367,11 @@ try {
     Check 'palettes_gb' ($gbBad.Count -eq 0 -and $gl.Count -eq 3) "$($gl -join ' ; ')"
     $flip = "BGP `$1B: 3 2 1 0"
     Check 'palettes_gb_negative' ($gl[0] -ne $flip -or ((Api $id GET '/api/memory/peek?domain=IO&address=71').value -eq 0x1B)) "the window is not showing another value's shades ($flip); no colour RAM rows on a monochrome game: $(-not (PalLine $win 'BG0:'))"
+    Close-Window $win
+    $win = Open-Tiles $id
+    $gv = ApiBytes $id 'VRAM' 0 32
+    $got = Show-Tile $win '0' 0
+    Check 'tiles_gb' ($got -eq (Decode2 $gv[0..15] $false)) "Game Boy VRAM tile 0 in the window: $got"
     Close-Window $win
 
     $result.pass = -not ($checks.Values | Where-Object { -not $_.ok })
