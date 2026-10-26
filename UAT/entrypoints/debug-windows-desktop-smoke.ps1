@@ -30,6 +30,8 @@
               window names, read back from VRAM, the Game Boy's map LCDC picks) shows in its cell; the next cell shows its own.
     EVENTS    Emulator > Debug Windows > Event View: one frame of the NES (one $4014 write, the NMI) and the Game Boy (one $FF46 write,
               the VBlank interrupt) with the debugger armed while it is open; closed, nothing is attached or armed.
+    SOUND     Emulator > Debug Windows > Sound Monitor: the NES's five channels from APU_FIX's probe; a SNES voice pitch poked into the
+              S-DSP shows on voice 0 only; the Game Boy's NR52 and its channel switches as the API reads them.
     SNES / GB the same window on the SNES (the CPU picker offers the SPC700, whose registers show) and the Game Boy.
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
 
@@ -171,6 +173,7 @@ function EventsCheck([int]$procId, [string]$name, [string]$wantWrite, [string]$w
     $c = Api $procId GET '/api/debug/state'
     Check "events_${name}_closed_negative" (-not $c.attached -and -not $c.armed) "closed: attached $($c.attached), armed $($c.armed) (the observer and its debugger are gone)"
 }
+function Open-Sound([int]$procId) { Open-DebugWindow $procId 'Sound Monitor' 'BrokenNes Sound' }
 function PcLine($w) { (Items (FindById $w 'disassembly')) | Where-Object { $_ -like '>*' } | Select-Object -First 1 }
 
 $inst = $null
@@ -327,6 +330,15 @@ try {
     Close-Window $win
     # ---------------------------------------------------------------- EVENTS (NES): one OAM DMA write a frame, the NMI
     EventsCheck $id 'nes' '$4014 = $02' 'NMI'
+    # ---------------------------------------------------------------- SOUND (NES): APU_FIX's five channels
+    $win = Open-Sound $id
+    Start-Sleep -Milliseconds 500
+    $ch = @(Items (FindById $win 'channels')); $si = TextOf (FindById $win 'info')
+    $names = @($ch | ForEach-Object { ($_ -split ':')[0] })
+    $outs = @($ch | Where-Object { $_ -match ' out\s+(\d+)$' } | ForEach-Object { [int]($_ -replace '.* out\s+(\d+)$', '$1') })
+    Check 'sound_nes' (($names -join ',') -eq 'Pulse 1,Pulse 2,Triangle,Noise,DMC' -and $si -like '*APU_FIX*' -and $outs.Count -eq 4) "$($ch -join ' | ') ; $si"
+    Check 'sound_nes_negative' (@($outs | Where-Object { $_ -gt 15 }).Count -eq 0 -and -not ($ch -match 'Voice')) "the outputs are 4-bit ($($outs -join ' ')); no SNES voice lines on the NES"
+    Close-Window $win
 
     # ---------------------------------------------------------------- SNES (the SPC700 in the CPU picker)
     Load $id (Join-Path $roms 'debugtest.sfc')
@@ -397,6 +409,15 @@ try {
     Check 'maps_snes' ($mapAt -ge 0 -and $we -eq 0x4523 -and $c -like ('cell 6,1: tile $' + ('{0:X}' -f ($we -band 0x3FF)) + ' palette ' + (($we -shr 10) -band 7) + ' entry $4523*')) "$c ; $mi"
     Check 'maps_snes_negative' ($c2 -like 'cell 7,1: tile $0 palette 0*') "the next cell: $c2"
     Close-Window $win
+    $win = Open-Sound $id
+    Api $id POST '/api/emulator/pause' | Out-Null; Start-Sleep -Milliseconds 300
+    foreach ($pv in @(@(2, 0x34), @(3, 0x12), @(0x12, 0x00), @(0x13, 0x00))) { Api $id POST '/api/memory/poke' @{ domain = 'DSP'; address = $pv[0]; value = $pv[1] } | Out-Null }
+    Start-Sleep -Milliseconds 500
+    $ch = @(Items (FindById $win 'channels'))
+    Api $id POST '/api/emulator/resume' | Out-Null
+    Check 'sound_snes' ($ch.Count -eq 8 -and $ch[0] -like 'Voice 0:*pitch $1234*') "$($ch[0])"
+    Check 'sound_snes_negative' ($ch[1] -like 'Voice 1:*pitch $0000*') "voice 1 keeps its own pitch: $($ch[1])"
+    Close-Window $win
 
     # ---------------------------------------------------------------- Game Boy
     Load $id (Join-Path $roms 'debugtest.gb')
@@ -455,6 +476,14 @@ try {
     Close-Window $win
     # the Game Boy's VBlank handler: one write to $FF46 (OAM DMA) a frame
     EventsCheck $id 'gb' '$FF46 = $C1' ''
+    $win = Open-Sound $id
+    Start-Sleep -Milliseconds 500
+    $ch = @(Items (FindById $win 'channels')); $si = TextOf (FindById $win 'info')
+    $nr52 = (Api $id GET '/api/memory/peek?domain=IO&address=38').value
+    $onOk = $true; for ($k = 0; $k -lt 4; $k++) { $want = $(if ($nr52 -band (1 -shl $k)) { ': on ' } else { ': off' }); if ($ch[$k] -notlike "*$want*") { $onOk = $false } }
+    Check 'sound_gb' ($ch.Count -eq 4 -and $si -like ('*NR52 $' + ('{0:X2}' -f $nr52) + ' *') -and $onOk) "$si ; $($ch -join ' | ')"
+    Check 'sound_gb_negative' ($ch[2] -like 'Wave:*wave *' -and $ch[0] -notlike '*wave*') "the wave RAM is on the wave channel only"
+    Close-Window $win
 
     $result.pass = -not ($checks.Values | Where-Object { -not $_.ok })
 }
