@@ -468,6 +468,41 @@ over 6,000 frames, `STAT77` and the sound identical, off frame-identical); `--ch
 UAT `run-suite.ps1` 125 pass, 0 fail, 16 skip, 3 info; the ALttP speed-pass golden IDENTICAL; interleaved A/B against `2128f42` (ALttP 2,400
 frames on the SNES console, 10 pairs, CPU time) 1.02: noise (the SNES console's code is untouched); Core, Lite and the desktop app build.
 
+## Milestone 6 climb, part 2 (2026-10-25): side truth on palette entries
+
+**The palette fix.** `--wms-side-truth` compared the layer's colours: a side column claimed at one frame and the SNES picture showing the
+place ~90 frames later disagreed whenever the game had faded or cycled a palette in between, although the side shows the same tiles in the
+live palette, as the centre does. It now compares what the layer *draws*: per pixel the palette entry (the CGRAM index, or the direct-colour
+value), transparent as nothing (spec 6.3). The capture is the picture chip's tool path (`DebugCaptureIndices` beside `DebugCaptureLayer`): off,
+nothing is recorded and the picture is the same. `--compare colour` keeps the old comparison (it reproduces the old numbers exactly: Super
+Metroid BG2 96.3 / 0 / 3.7).
+
+Every game and layer re-measured (right / empty / wrong, % of the side columns the SNES picture later showed; changes in bold):
+
+| Game, layer | Every layer extended | The profile's rule |
+|---|---|---|
+| Super Metroid, BG1 | 6.7 / 5.2 / 88.0 | level: 99.4 / 0.0 / 0.6 (drawn without the level 10.7 / 88.7 / 0.6) |
+| Super Metroid, BG2 | **100 / 0 / 0** (was 96.3 / 0 / 3.7) | extended, the same |
+| Yoshi's Island, BG1 | **60.8 / 0 / 39.2** (was 42.2 / 0 / 57.8) | drawn + memory: 10.8 / 89.1 / 0.1 |
+| Yoshi's Island, BG2 | **100 / 0 / 0** (was 72.7 / 0 / 27.3) | extended, the same |
+| Donkey Kong Country, BG1 / BG2 | 9.5 / 0 / 90.5; 100 / 0 / 0 | drawn 17.8 / 82.2 / 0; extended |
+| Super Castlevania IV, BG1 / BG2 | 21.3 / 11.9 / 66.8; 15.2 / 37.4 / 47.4 | drawn 2.2 / 97.8 / 0; 0 / 100 / 0 |
+| Contra III, BG1 / BG2 | 58.5 / 15.5 / 26.0; 100 / 0 / 0 (212) | drawn 1.5 / 98.5 / 0; 0 / 100 / 0 |
+| Mega Man X, BG1 / BG2 | 10.4 / 29.3 / 60.4; 39.8 / 60.2 / 0 | drawn 4.7 / 95.3 / 0; extended |
+| Chrono Trigger, BG1 / BG2 | 8.5 / 4.6 / 86.9; **90.8 / 9.2 / 0** (was 82.8 / 9.2 / 8.1) | (unavailable) |
+| A Link to the Past, BG1 / BG2 | (0 judged); 91.9 / 0 / 8.1 | extended |
+
+- **Super Metroid stays good** (the user's decision): BG1 99.4 / 0 / 0.6, BG2 now 100 / 0 / 0. Its BG2's 3.7% was entirely palette animation:
+  one room's spores, CGRAM 113-115 fading over frames 4985-5074 (traced by the lead in the debugger), exactly the claims the colour comparison
+  flagged. BG1's 0.6% (72 columns, one moment at frame 2973) is the same either way: it is not a palette change.
+- Yoshi's Island's layers had palette animation too: BG2 extended is fully right, BG1 extended's old tiles are 39% (not 58%).
+- Mega Man X's, Super Castlevania IV's, Contra III's and Donkey Kong Country's numbers are unchanged to the column (their wrong columns are
+  real tile differences).
+- **Checks** (each with its negative control): E2e, a synthetic game whose palette fades every frame while it scrolls, every layer extended
+  over a map holding the whole level: palette entries 0 wrong; the same judged by colour almost all wrong; without the fade both agree; a real
+  change of the map ahead (columns turned red before they scroll in) still counted wrong with the fade on. E8: Super Metroid BG2, palette
+  entries 0 wrong, by colour (the control) wrong. The judge is the tool's own (`SideJudge`), shared by the tool and E2e.
+
 ## Milestone 7a result (2026-10-24): WideMess in BrokenNes Lite and in the FL plugin
 
 How WideMess appears in each host, and why the plugin differs, is spec section 9.

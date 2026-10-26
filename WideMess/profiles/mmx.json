@@ -29,7 +29,7 @@
   ],
   "issues": [
     "The stage layer (BG1) is drawn: shown in the sides only where the game has drawn its map for the place shown, so old tiles of another part of the stage no longer show; where the game has not drawn, the layers behind or the backdrop show.",
-    "Side truth (Workshop --wms-side-truth, 2026-10-25): BG1 extended was wrong in 59% of the side columns later seen in the SNES picture; drawn, 0% (91% left to the layers behind).",
+    "Side truth (Workshop --wms-side-truth, palette entries compared, 2026-10-25, right / empty / wrong of the side columns later seen in the SNES picture): BG1 extended 10.4 / 29.3 / 60.4%, drawn 4.7 / 95.3 / 0% (left to the layers behind); BG2 extended 39.8 / 60.2 / 0%.",
     "The game draws a stage into video RAM only near the SNES picture: at the start of a stage, and ahead of X when he runs, the side columns show flat colour until the game draws there.",
     "Enemies appear near the SNES edge (the game creates them as they come near).",
     "The title screen's ribbons continue into the sides.",

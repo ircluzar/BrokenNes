@@ -119,6 +119,16 @@ internal static partial class WideMessCli
                 $"{lv.right:N0} right, {lv.empty:N0} empty, {lv.wrong:N0} wrong of {lj:N0}");
             Check(nj >= 1000 && nl.empty * 2 >= nj, "sm: negative control, the same profile without its level: at least half the side columns empty", $"{nl.empty:N0} empty of {nj:N0}");
         }
+        // the palette fix (spec 6.3): Super Metroid's BG2 (extended) fades a room's spores' palette between a side showing a place and the SNES picture showing it
+        if (smg != null)
+        {
+            var common = new[] { "--game", "sm", "--layer", "bg2", "--snes-dir", snesDir }.Concat(profiles != "" ? new[] { "--profiles", profiles } : Array.Empty<string>()).ToArray();
+            (long right, long empty, long wrong) ix = default, co = default;
+            Parallel.Invoke(() => ix = SideTruthCounts(common), () => co = SideTruthCounts(common.Append("--compare").Append("colour").ToArray()));
+            long ij = ix.right + ix.empty + ix.wrong, cj = co.right + co.empty + co.wrong;
+            Check(ij >= 1000 && ix.wrong == 0, "sm: BG2 extended, palette entries compared: 0 wrong (its palette animation is the same drawing)", $"{ix.right:N0} right, {ix.empty:N0} empty, {ix.wrong:N0} wrong of {ij:N0}");
+            Check(cj == ij && co.wrong > 0, "sm: negative control, the same run compared by colour (--compare colour): the fading spores count as wrong", $"{co.wrong:N0} wrong of {cj:N0}");
+        }
 
         Console.WriteLine("E7. Speed: the enhanced picture (widescreen, every line through the wide compositor and the profile's rules)");
         foreach (var key in new[] { "smw", "fzero", "smk", "sm" })   // sm: the level in work RAM (milestone 6 climb)
