@@ -230,22 +230,29 @@ public sealed class WmsProfile
     /// <summary>The SNES registers a scene condition names, as JSON keys, in <see cref="WmsRegister"/> order.</summary>
     public static readonly string[] RegisterKeys = { "bgmode", "bg1sc", "bg2sc", "bg3sc", "bg4sc", "bg12nba", "bg34nba", "tm", "ts", "obsel", "setini", "cgwsel", "cgadsub" };
 
-    /// <summary>A mask's scene conditions: { "register": "$VV" or "$VV/$MM" } (hex; the register ANDed with the mask must equal the value; no mask = all 8 bits).</summary>
+    /// <summary>A mask's scene conditions: { "register": "$VV" or "$VV/$MM" } (hex; the register ANDed with the mask must equal the value; no mask = all 8 bits); a key "ram:$7EXXXX"
+    /// tests a byte of work RAM ($7E0000-$7FFFFF) the same way.</summary>
     private static WmsCondition[] ParseWhen(JsonElement w, string source, string at)
     {
         if (w.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{source}: {at} is an object of register: \"$VV\" or \"$VV/$MM\"");
         var list = new List<WmsCondition>();
         foreach (var p in w.EnumerateObject())
         {
-            int r = Array.IndexOf(RegisterKeys, p.Name);
-            if (r < 0) throw new InvalidDataException($"{source}: {at} names '{p.Name}' (one of {string.Join(", ", RegisterKeys)})");
+            int r = Array.IndexOf(RegisterKeys, p.Name), address = 0;
+            if (p.Name.StartsWith("ram:", StringComparison.Ordinal))
+            {
+                int a = Hex(p.Name[4..], $"{at}.{p.Name}", source);
+                if (a < 0x7E0000 || a > 0x7FFFFF) throw new InvalidDataException($"{source}: {at}.{p.Name}: ${a:X6} is not in work RAM ($7E0000-$7FFFFF)");
+                r = (int)WmsRegister.Ram; address = a - 0x7E0000;
+            }
+            if (r < 0) throw new InvalidDataException($"{source}: {at} names '{p.Name}' (one of {string.Join(", ", RegisterKeys)}, or ram:$7EXXXX)");
             string text = p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString()! : "";
             var parts = text.Split('/');
             byte value = 0, mask = 0xFF;
             bool ok = parts.Length <= 2 && TryHexByte(parts[0], out value) && (parts.Length == 1 || TryHexByte(parts[1], out mask));
             if (!ok) throw new InvalidDataException($"{source}: {at}.{p.Name} is '{text}' (\"$VV\" or \"$VV/$MM\", hex)");
             if ((value & ~mask) != 0) throw new InvalidDataException($"{source}: {at}.{p.Name}: the value ${value:X2} has bits outside the mask ${mask:X2}, so it never matches");
-            list.Add(new WmsCondition((WmsRegister)r, mask, value));
+            list.Add(new WmsCondition((WmsRegister)r, mask, value, address));
         }
         return list.ToArray();
     }

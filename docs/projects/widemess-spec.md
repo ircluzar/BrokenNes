@@ -545,6 +545,10 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
     with a value, so a mask can apply to one scene only. Examples: a title screen whose BG1 map is at `$1000`; the rows where
     `BGMODE` puts BG3 in front. The registers are `BGMODE`, `BG1SC`-`BG4SC`, `BG12NBA`, `BG34NBA`, `TM`, `TS`, `OBSEL`,
     `SETINI`, `CGWSEL` and `CGADSUB`.
+    **Work RAM** (milestone 6 climb, part 2): a condition can also test a byte of work RAM (`"ram:$7E001B": "$01"`, any address
+    `$7E0000-$7FFFFF`), for a game whose scene is told by its own flag rather than by its registers (A Link to the Past's indoors
+    flag). The byte is the one the game last wrote when the line is drawn, read as a debugger reads: no side effect, the game sees
+    nothing (the extension stays locked). Without a console's work RAM (a bare picture chip) such a condition never holds.
   Masks can never touch the centre. A later mask in the list wins over an earlier one.
 - **Window edges** (`windows`): `reach` (the default, section 3.4) or `snes`, which keeps the SNES's window positions where the
   SNES draws them. Use `snes` for a game that masks a few edge columns with a window, which would otherwise black out a whole side.
@@ -647,7 +651,8 @@ profile already claims is refused with the reason. It is never half-read.
   default) the word map above; either may have `columns` (`["$left", "$right"]`, the addresses of two bytes).
 - A mask's keys: `why`, `layers` (`bg1`-`bg4`, `sprites`, or `all`; a black mask covers `all`), `rows` (`[top, bottom]`, 0-238),
   `rule` (fill / repeat / black; sprites cannot repeat), and optionally `side` (both / left / right), `from` and `to` (0-72, from < to)
-  and `when` (`{ "register": "$VV" }` or `"$VV/$MM"`, hex; a value with bits outside its mask is refused, it could never match).
+  and `when` (`{ "register": "$VV" }` or `"$VV/$MM"`, hex; a value with bits outside its mask is refused, it could never match; a key
+  `"ram:$7EXXXX"` tests a work RAM byte, an address outside work RAM is refused).
 - `file` (optional) names the ROM file the profile was made with.
 - In `enhancements`, each of the four is one of:
   - `good`: verified;
@@ -729,7 +734,7 @@ by `--wms-test` in lockstep with the SNES console, through a pad script or the g
 | Yoshi's Island (Super FX 2) | risky | BG1 drawn with the map memory, the rest extended | 18 | risky |
 | Donkey Kong Country | good | BG1 drawn (ahead 0), the rest extended; black sides for the intro and level-name screens | 0 | risky |
 | Super Metroid | **good** (milestone 6 climb) | BG1 drawn (ahead 0) with the level in work RAM, the rest extended; BG3 filled in the status rows | 0 | risky |
-| A Link to the Past | risky | all extended | 0 | risky |
+| A Link to the Past | risky | all extended; BG1 and BG2 filled indoors (its indoors flag, work RAM `$7E:001B`; climb part 2) | 0 | risky |
 | F-Zero | good | all extended, sprites filled; BG3 filled above the horizon | 0 | risky |
 | Super Mario Kart (DSP-1) | good | all extended, sprites filled; black sides for the title | 0 | risky |
 | Chrono Trigger | **risky** (climb part 2) | BG1 and BG2 drawn with their levels in work RAM (the byte format, the room's columns), BG3 drawn | 0 | broken: times itself by the beam |

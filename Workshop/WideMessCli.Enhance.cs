@@ -56,7 +56,7 @@ internal static partial class WideMessCli
             Taps(200, 1900, 50, "Start", "A", "B", "Right", "A", "Down", "Right+B") + "," + Hold(2500, 6000, 70, "Right+Y", "B"), new[] { 800, 2000, 2800, 3600, 4400 }),
         new("sm", "Super Metroid", "Super Metroid (JU) [!].smc", "", new[] { 2250, 3150, 4050, 5400, 6300 }),
         new("alttp", "The Legend of Zelda: A Link to the Past", "Legend of Zelda, The - A Link to the Past (U) [!].smc",
-            "1300:Start,1308:," + Taps(1500, 2400, 60, "Start", "A", "Down", "A") + "," + Taps(2400, 4000, 50, "A") + ",4000:Down,4040:Right,4060:Down,4300:Down+Right,4400:Down,4700:Right,5000:Down,5400:", new[] { 1200, 2000, 3600, 4800, 5600 }),
+            "1300:Start,1308:," + Taps(1500, 2400, 60, "Start", "A", "Down", "A") + "," + Taps(2400, 4000, 50, "A") + ",4000:Down,4040:Right,4060:Down,4300:Right,4500:Up,4900:Down,5250:Left,5390:Up,5540:", new[] { 2000, 3600, 4250, 4800, 5600 }),   // climb part 2: out of the house, up to the castle and back (indoors, outdoors)
         new("fzero", "F-Zero", "F-ZERO (U) [!].smc", "", new[] { 450, 1800, 2700, 5400, 6750 }),
         new("smk", "Super Mario Kart", "Super Mario Kart (U) [!].smc", "", new[] { 450, 2700, 3600, 5850, 6750 }),
         new("ct", "Chrono Trigger", "Chrono Trigger (U) [!].smc", "", new[] { 3000, 4800, 5850, 6600, 7950 }),   // the field scenes (milestone 6 climb, part 2: the levels in work RAM)

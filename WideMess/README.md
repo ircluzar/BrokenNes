@@ -537,6 +537,25 @@ bit 0 (BG1) / bit 1 (BG2) of the byte at `+$C0`, the block table at `$7E:B000` (
   least half empty; every layer extended at least 20% wrong); E6 (Chrono Trigger in lockstep with its levels on: the centre identical over
   7,650 frames, `STAT77` and the sound identical, off frame-identical).
 
+**A Link to the Past indoors: scene conditions on work RAM** (spec 6.1, 6.2). A mask's `when` can now test a byte of work RAM
+(`"ram:$7E001B": "$01"`), read as a debugger reads when the line is drawn (no side effect; without a console's work RAM it never holds).
+A Link to the Past's own indoors flag is `$7E:001B` (1 in Link's house, at night and in the morning; 0 on the title, the menus and
+outdoors), and its profile now fills BG1 and BG2 in the sides while it is 1: indoors the sides show the backdrop instead of the other
+rooms of the 512 x 512 map; outdoors every layer stays extended.
+- The pad script now goes on after the house: out in the rain, up to the castle's moat (area `$1B`) and back towards the house (frames
+  4000-5540; the sheet's moments 2000, 3600, 4250, 4800, 5600). **Not reached: a second indoor room.** The secret passage into the castle
+  (the next indoor place) was not found by the scripted route within this round, so the indoors rule is proven on one room (Link's house,
+  two scenes: the dream at night and the morning), 2,327 indoor frames; the flag is the game's own, so other rooms use the same condition.
+- Side truth (palette entries, 5,600 frames): BG2 91.4 / 0 / 8.6 (claims of frames 4354-4358 beside the house), BG1 no side column judged;
+  every layer extended the same (indoors nothing scrolls, so the tool judges no indoor column: the indoors proof is E8's).
+- Sheets: `docs/projects/widemess-images/m6/alttp.png` (the profile: black sides indoors, the overworld outdoors),
+  `m6d/alttp-all-extended.png` (every layer extended: the other rooms beside Link's house).
+- **Checks** (each with its negative control): E1 (a work RAM condition reads beside a register one; an address outside work RAM and
+  `ram:` without an address refused); E2g (a synthetic mask on work RAM byte `$10`: filled while it is 1, extended at 0 and 3, work RAM only
+  read; without work RAM it never holds); E8 (A Link to the Past: on all 2,327 indoor frames BG1 and BG2 draw nothing in the sides; without
+  the mask BG2 draws 73 million side pixels there; on all 2,520 outdoor frames the picture is the same with and without the mask); E6 (the
+  new script in lockstep: the centre identical, `STAT77` and the sound identical, off frame-identical).
+
 ## Milestone 7a result (2026-10-24): WideMess in BrokenNes Lite and in the FL plugin
 
 How WideMess appears in each host, and why the plugin differs, is spec section 9.

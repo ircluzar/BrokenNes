@@ -81,6 +81,12 @@ internal static partial class WideMessCli
                     if (n > best) { best = n; bestTx = tx; bestTy = ty; }
                 }
             Console.WriteLine($"  frame {m}: {layerName} HOFS {hofs} VOFS {vofs} SC {sc:X2}, room width {width} blocks; best: world tile ({bestTx}, {bestTy}) at map tile ({c0}, {r0}), {best} of {total} sampled tiles match");
+            // --peek $7E001B,...: research, work RAM bytes at each moment (a game's scene flags)
+            foreach (var pk in Opt(args, "peek", "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                int pa = Convert.ToInt32(pk.TrimStart('$'), 16) - 0x7E0000;
+                Console.WriteLine($"    frame {m} ${0x7E0000 + pa:X6} = ${wram[pa]:X2}; CGADSUB {r.Cgadsub:X2} BGMODE {r.Bgmode:X2} BG1SC {r.Bg1sc:X2} BG2SC {r.Bg2sc:X2}");
+            }
             string saveTo = Opt(args, "save-ram", "");
             if (saveTo != "")
             {

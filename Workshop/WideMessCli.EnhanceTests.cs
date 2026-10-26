@@ -66,6 +66,8 @@ internal static partial class WideMessCli
         SyntheticLevel();
         Console.WriteLine("E2f. The level in work RAM in the byte format, the room's columns and a level per layer (Chrono Trigger's layout) on a synthetic game");
         SyntheticLevelBytes();
+        Console.WriteLine("E2g. Scene conditions on work RAM (a game's own scene flag) on a synthetic scene");
+        SyntheticRamCondition();
         Console.WriteLine("E2e. Side truth compares what a layer draws (palette entries): a synthetic game whose palette fades while it scrolls");
         SyntheticSideTruth();
 
@@ -135,6 +137,9 @@ internal static partial class WideMessCli
             Check(nj >= 300 && nl.empty * 2 >= nj, "ct: negative control, the same profile without its levels: at least half the side columns empty", $"{nl.empty:N0} empty of {nj:N0}");
             Check(xj >= 300 && ex.wrong * 5 >= xj, "ct: negative control, every layer extended: at least 20% wrong (the unrelated tiles the game keeps beside its rooms)", $"{ex.wrong:N0} wrong of {xj:N0}");
         }
+        // scene conditions on work RAM (milestone 6 climb, part 2): A Link to the Past's indoors flag
+        var zg = games.FirstOrDefault(x => x.Key == "alttp");
+        if (zg != null) IndoorMaskCheck(zg, Path.Combine(snesDir, zg.File), profiles);
         // the palette fix (spec 6.3): Super Metroid's BG2 (extended) fades a room's spores' palette between a side showing a place and the SNES picture showing it
         if (smg != null)
         {
@@ -186,6 +191,9 @@ internal static partial class WideMessCli
             Check(by.Widescreen!.Levels.Length == 2 && by.Widescreen.Levels[0] is { Layer: 0, Bytes: true, Blocks: 0x4000, Stride: 256, High: 0x40C0, HighBit: 0, Width: 0x0BCB, Tiles: 0xB000, Left: 0x1D1A, Right: 0x1D1B }
                 && by.Widescreen.Levels[1] is { Layer: 1, Blocks: 0x4040, HighBit: 1 } && lv.Widescreen.Level!.Left == -1 && !lv.Widescreen.Level.Bytes,
                 "a profile with a list of byte levels and the room's columns reads (Chrono Trigger's layout; the word format without columns as before)");
+            var rc = WmsProfile.Parse(good.Replace("\"bgmode\": \"$09\"", "\"ram:$7E001B\": \"$01\""), "ram.json");
+            Check(rc.Widescreen!.Masks[0].When[0] is { Register: WmsRegister.Ram, Address: 0x1B, Value: 1, Mask: 0xFF } && rc.Widescreen.Masks[0].When[1].Register == WmsRegister.Bg1sc,
+                "a scene condition on a work RAM byte reads (ram:$7E001B, beside a register condition)");
         }
         catch (Exception e) { Check(false, "a well-formed profile reads", e.Message); }
         (string change, string from, string to, string mustSay)[] bad =
@@ -196,6 +204,8 @@ internal static partial class WideMessCli
             ("a black mask over one layer", "\"rule\": \"fill\"", "\"rule\": \"black\"", "every layer"),
             ("a mask reaching into the centre", "\"rule\": \"fill\",", "\"rule\": \"fill\", \"to\": 80,", "0-72"),
             ("a scene condition that can never match", "\"$7C/$FC\"", "\"$7D/$FC\"", "never matches"),
+            ("a condition on a byte outside work RAM", "\"bgmode\"", "\"ram:$800000\"", "not in work RAM"),
+            ("a condition on work RAM without an address", "\"bgmode\"", "\"ram:\"", "ram:"),
             ("a condition on an unknown register", "\"bgmode\"", "\"vram\"", "'vram'"),
             ("widescreen offered without rules", "\"widescreen\": { \"layers\"", "\"unused\": { \"layers\"", "no widescreen rules"),
             ("recommending what it calls unavailable", "\"fastCpu\": \"risky\"", "\"fastCpu\": \"unavailable\" ", "fastCpu"),

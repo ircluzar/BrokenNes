@@ -42,10 +42,11 @@ public sealed class WmsMask
 }
 
 /// <summary>The SNES registers a mask's scene condition can test (spec 6.2's <c>when</c> keys).</summary>
-public enum WmsRegister : byte { Bgmode, Bg1sc, Bg2sc, Bg3sc, Bg4sc, Bg12nba, Bg34nba, Tm, Ts, Obsel, Setini, Cgwsel, Cgadsub }
+public enum WmsRegister : byte { Bgmode, Bg1sc, Bg2sc, Bg3sc, Bg4sc, Bg12nba, Bg34nba, Tm, Ts, Obsel, Setini, Cgwsel, Cgadsub, Ram }
 
-/// <summary>One scene condition: (register AND mask) == value.</summary>
-public readonly record struct WmsCondition(WmsRegister Register, byte Mask, byte Value);
+/// <summary>One scene condition: (register AND mask) == value. <see cref="WmsRegister.Ram"/>: a byte of work RAM (<paramref name="Address"/>, an offset into the 128 KB) as the game last
+/// wrote it, read as a debugger reads (spec 6.1, the climb's part 2: a game's own scene flag, A Link to the Past's indoors).</summary>
+public readonly record struct WmsCondition(WmsRegister Register, byte Mask, byte Value, int Address = 0);
 
 /// <summary>The level in work RAM (spec 6.1): where a game keeps its whole level as 16 x 16-pixel blocks of 2 x 2 map entries. Offsets into the board's 128 KB work RAM.</summary>
 public sealed class WmsLevel
@@ -719,7 +720,8 @@ public sealed partial class PPU_WMS
                 WmsRegister.Bg1sc => RegBgsc(0), WmsRegister.Bg2sc => RegBgsc(1), WmsRegister.Bg3sc => RegBgsc(2), WmsRegister.Bg4sc => RegBgsc(3),
                 WmsRegister.Bg12nba => RegBg12nba, WmsRegister.Bg34nba => RegBg34nba,
                 WmsRegister.Tm => RegTm, WmsRegister.Ts => RegTs, WmsRegister.Obsel => RegObsel, WmsRegister.Setini => RegSetini,
-                WmsRegister.Cgwsel => RegCgwsel, _ => RegCgadsub,
+                WmsRegister.Cgwsel => RegCgwsel, WmsRegister.Cgadsub => RegCgadsub,
+                _ => WorkRam is { } ram && (uint)c.Address < (uint)ram.Length ? ram[c.Address] : (byte)~c.Value,   // work RAM; without it (no console) the condition never holds
             };
             if ((v & c.Mask) != c.Value) return false;
         }
