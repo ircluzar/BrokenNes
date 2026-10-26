@@ -6,7 +6,7 @@ profiler) is built** (2026-10-24): see "D4 as built". **Milestone D2 (the Game B
 its accepted findings list is empty. **Milestone D3 (the MCP server) is built** (2026-10-24): see "D3 as built". **Milestone D5 (movies, diff, bisect) is built** (2026-10-25):
 see "D5 as built"; the movie format's name is a working name ("BrokenNes movie", `.bnm`: open question 2). **Milestone D6 (bug capture) is built**
 (2026-10-25): see "D6 settled" and "D6 as built"; the key is F9 for now (open question 3). **Milestone D7 (the debug port) is built**
-(2026-10-25): see "D7 settled" (the registers: open question 1, answered for review) and "D7 as built". The rest is not.
+(2026-10-25): see "D7 settled" (the registers: open question 1, answered for review) and "D7 as built". **Milestone D8 (the viewers) is under way**: see "D8 settled". The rest is not.
 
 ## Why
 
@@ -894,6 +894,39 @@ and the divergence finder's report (the last marker before the first difference)
   emulators); NintendulatorDX's `__timerN_title` symbol names are not read (timers are named by command 7 or by name); the desktop app shows an
   assert in the title bar and the log, no dialog (automation must never meet a modal box); the GB assert text carries the line, not the file
   (a Windows path in sdas's `.ascii` would need escaping); D6's speed check is sensitive to the machine's load.
+
+## D8 settled (2026-10-25): the desktop windows
+
+- **Where:** Emulator > **Debug Windows** (a submenu, so the menu bar of a normal install is unchanged): Debugger, Memory, Palettes, Tiles,
+  Maps, Sprites, Event View, Sound Monitor. Each is a plain WinForms tool window owned by the main form (it stays above the game, closes
+  with it, one of each), off by default, nothing saved (no config key, no file: the windows never write under `%APPDATA%\BrokenNes`).
+- **Costs nothing when closed:** a window reads through the D1 `DebuggerHub` that the HTTP API already owns (`webApiServer.Debuggers`, the
+  same hub, so a window and an agent's live session see the same breakpoints). Reading (registers, memory, disassembly) uses
+  `DebuggerHub.Machine`, which arms no hook. Only the debugger window's control buttons and breakpoints call `DebuggerHub.Attach`, and
+  closing that window detaches the debugger it attached (the game runs on as if it never had one). Each window refreshes on a UI timer
+  (~10 per second) that exists only while it is open. Closed: no timer, no hook, no allocation: the goldens and the speed A/B are unchanged.
+- **The user's own UI is not an agent:** the window's buttons work without `enableDebuggerControl` (that switch gates the HTTP routes, for
+  agents). Nothing in a window touches saves or progression.
+- **The windows, in build order, and what each uses:**
+
+| # | Window | Layout | Engine APIs |
+|---|---|---|---|
+| 1 | **Debugger** | Top: a toolbar (Pause, Continue, Step Into, Step Over, Step Out, Step Frame; a CPU picker: main, and `spc` on the SNES / WideMess). Left: the disassembly around the PC (the PC's line marked, symbols as labels). Right: registers and flags, the call stack, the breakpoints (add by spec or symbol, kind exec / read / write, remove), the last break. Bottom: a status line (attached / parked / running, frame, scanline). | `DebuggerHub.Machine` / `Attach` / `Detach`; `DebugCpu` (`PC`, `RegisterNames`, `TryGetRegister`, `FetchBytes`, `Classify`, `Disassembler.Format`, `NextAddress`); `Debugger` (`Add`, `Remove`, `Breakpoints`, `Pause`, `Continue`, `StepInto` / `Over` / `Out`, `StepFrame`, `CallStack`, `LastBreak`, `IsParked`, `SymbolAt`, `Symbols.Load`) |
+| 2 | **Memory** | A domain picker (the CPU's spaces: NES RAM / PRG / CHR ...; SNES WRAM, VRAM, CGRAM, OAM, ARAM ...; Game Boy WRAM, VRAM, OAM, HRAM, I/O ...), a go-to box (address or symbol), live hex + ASCII rows with changed bytes highlighted, a watch list (expressions or symbols, re-evaluated each refresh). | `DebugCpu.Spaces`, `PeekSpace`; `Debugger.ResolveSpec`; `Debugger.Evaluate` (watches need the symbols of an attached debugger; plain addresses do not) |
+| 3 | **Palettes** | The console's palette as swatches with index and value: NES palette RAM (32) through the NES master palette; SNES CGRAM (256, BGR555); Game Boy BGP / OBP0 / OBP1 and the Color's BG / OBJ palette RAM. | the memory spaces above (palette RAM / CGRAM / I/O) |
+| 4 | **Tiles** | CHR / VRAM as a tile sheet, a palette picker and (SNES) the bit depth. | the spaces above; the decoding of the MCP server's `tiles` tool (`BrokenDev/mcp/HeadlessSession.cs`) moved into the shared engine so both use one decoder |
+| 5 | **Maps** | Nametables / tile maps with the visible area outlined; SNES per layer, Game Boy background and window. | as Tiles, plus the scroll registers |
+| 6 | **Sprites** | The OAM list and boxes on the picture. | the MCP `sprites` decoding, shared the same way |
+| 7 | **Event view** | Register writes per scanline and dot, DMA / HDMA, interrupts. | a `DebugObserver` on the attached debugger (armed only while the window is open) |
+| 8 | **Sound monitor** | Channel registers, levels, mute / solo. | the APU state and the existing channel mutes |
+
+- **Tests:** `UAT/entrypoints/debug-windows-desktop-smoke.ps1`: the real app with scratch `BROKENNES_CONFIG_DIR`, `BROKENNES_SAVES_DIR`,
+  `BROKENNES_BUGS_DIR` and `BROKENDEV_HOME`, the D1 test ROMs; it opens each window through UI Automation (the menu), reads its controls
+  (registers, disassembly, hex) and drives its buttons, cross-checks against the HTTP API (`/api/debug/state`), checks the user's
+  `%APPDATA%\BrokenNes` is unchanged, and has a negative control per check (closed, the debugger is detached and nothing is armed; a wrong
+  address shows the wrong bytes). The goldens (UAT) and Workshop's suites stay green; the desktop's speed with every window closed is the
+  build without them (the A/B).
+- **Then** the web pages in BrokenDev, on the same routes (after the eight windows).
 
 ## Open questions (to settle at the start of the track)
 
