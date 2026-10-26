@@ -143,13 +143,25 @@ namespace BrokenNes.Windows.DebugWindows
             if (d.Symbols.All.Count > 0) return;
             string? rom = romPath();
             if (string.IsNullOrEmpty(rom)) return;
-            foreach (var ext in new[] { ".mlb", ".sym", ".noi" })
+            string? p = SymbolFileBeside(rom, d.Machine.Console);
+            if (p == null) return;
+            try { int n = d.Symbols.Load(p, d.Machine.Console); if (symPath.Text.Length == 0) symPath.Text = p; Console.WriteLine($"[debugger] {n} symbols from {p}"); }
+            catch (Exception e) { Console.WriteLine($"[debugger] symbols {p}: {e.Message}"); }
+        }
+
+        /// <summary>The symbol file beside a ROM for its console, or null: the NES's NESFab / Mesen .mlb; the SNES's and WideMess's WLA-DX .sym;
+        /// the Game Boy's .sym or GBDK .noi. Only that console's kind: a SNES game.sym beside a NES game.nes is another game's.</summary>
+        internal static string? SymbolFileBeside(string rom, string console)
+        {
+            string[] exts = console.ToLowerInvariant() switch
             {
-                string p = Path.ChangeExtension(rom, ext);
-                if (!File.Exists(p)) continue;
-                try { int n = d.Symbols.Load(p, d.Machine.Console); if (symPath.Text.Length == 0) symPath.Text = p; Console.WriteLine($"[debugger] {n} symbols from {p}"); }
-                catch (Exception e) { Console.WriteLine($"[debugger] symbols {p}: {e.Message}"); }
-            }
+                "nes" => new[] { ".mlb" },
+                "snes" or "widemess" or "wms" => new[] { ".sym" },
+                "gb" or "gbc" => new[] { ".sym", ".noi" },
+                _ => Array.Empty<string>(),
+            };
+            foreach (var ext in exts) { string p = Path.ChangeExtension(rom, ext); if (File.Exists(p)) return p; }
+            return null;
         }
 
         private void LoadSymbols(string path)

@@ -13,7 +13,11 @@
               would not match: the check compares the text, not "something is there"); the symbols beside the ROM load by themselves; a
               breakpoint on sub2 typed into the window stops there with sub1 > sub2 in the window's call stack; Step Over moves the PC; the
               breakpoint's removal empties the API's list; the HTTP control routes still answer 403 (the window opened no gate).
+              Only the NES's own kind of symbol file loads (the SNES test ROM's debugtest.sym beside debugtest.nes does not).
     CLOSE     closing the window detaches its debugger: nothing armed, frames run.
+    MEMORY    Emulator > Debug Windows > Memory: a PRG row agrees with /api/memory/peek-range (and is not another row's bytes); RAM moves
+              live while PRG does not; a watch on a symbol resolves and reads, an unknown one says so; nothing is attached. SNES: the
+              domains, VRAM $2000 holds the test ROM's DMA bytes and $2010 does not. Game Boy: the domains, a BUS row agrees with the API.
     SNES / GB the same window on the SNES (the CPU picker offers the SPC700, whose registers show) and the Game Boy.
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
 
@@ -74,8 +78,9 @@ function Items($el) {
 }
 function Click([string]$id) { Invoke-El (FindById $script:win $id); Start-Sleep -Milliseconds 400 }
 
-# Opens Emulator > Debug Windows > Debugger through the menu; returns the window's element.
-function Open-Debugger([int]$procId) {
+# Opens Emulator > Debug Windows > <item> through the menu; returns the window's element.
+function Open-Debugger([int]$procId) { Open-DebugWindow $procId 'Debugger (registers, disassembly, breakpoints, step)' 'BrokenNes Debugger' }
+function Open-DebugWindow([int]$procId, [string]$itemName, [string]$title) {
     $main = WaitFor { $AE::RootElement.FindFirst($TS::Children, (New-Object System.Windows.Automation.AndCondition((Cond $AE::ProcessIdProperty $procId), (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::Window))))) }
     if (-not $main) { throw 'the main window was not found' }
     $emu = WaitFor { FindByName $main 'Emulator' }
@@ -83,16 +88,37 @@ function Open-Debugger([int]$procId) {
     $sub = WaitFor { FindByName $AE::RootElement 'Debug Windows' }
     if (-not $sub) { $sub = WaitFor { FindByName $main 'Debug Windows' } }
     Expand-El $sub; Start-Sleep -Milliseconds 400
-    $item = WaitFor { FindByName $AE::RootElement 'Debugger (registers, disassembly, breakpoints, step)' }
-    if (-not $item) { throw 'the Debugger menu item was not found' }
+    $item = WaitFor { FindByName $AE::RootElement $itemName }
+    if (-not $item) { throw "the menu item '$itemName' was not found" }
     Invoke-El $item
-    $w = WaitFor { $AE::RootElement.FindFirst($TS::Descendants, (New-Object System.Windows.Automation.AndCondition((Cond $AE::ProcessIdProperty $procId), (Cond $AE::NameProperty 'BrokenNes Debugger')))) }
-    if (-not $w) { throw 'the debugger window did not open' }
+    $w = WaitFor { $AE::RootElement.FindFirst($TS::Descendants, (New-Object System.Windows.Automation.AndCondition((Cond $AE::ProcessIdProperty $procId), (Cond $AE::NameProperty $title)))) }
+    if (-not $w) { throw "the window '$title' did not open" }
     Start-Sleep -Milliseconds 500
     return $w
 }
 function Close-Window($w) { $w.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close(); Start-Sleep -Milliseconds 800 }
 function RegPc([string]$regsText) { if ($regsText -match 'PC (\$[0-9A-F]+)') { return $Matches[1] } else { return '' } }
+function Open-Memory([int]$procId) { Open-DebugWindow $procId 'Memory (live hex, watches)' 'BrokenNes Memory' }
+function Pick-Domain($w, [string]$id) {
+    $box = FindById $w 'domain'
+    Expand-El $box; Start-Sleep -Milliseconds 300
+    $it = @($box.FindAll($TS::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::ListItem)))) | Where-Object { $_.Current.Name -like "$id (*" } | Select-Object -First 1
+    if ($it) { $it.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select() }
+    $box.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse()
+    Start-Sleep -Milliseconds 400
+    return [bool]$it
+}
+function Domains($w) {
+    $box = FindById $w 'domain'
+    Expand-El $box; Start-Sleep -Milliseconds 300
+    $n = @($box.FindAll($TS::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::ListItem))) | ForEach-Object { ($_.Current.Name -split ' ')[0] })
+    $box.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse(); Start-Sleep -Milliseconds 200
+    return $n
+}
+function GoTo($w, [string]$where) { SetText (FindById $w 'goto') $where; Invoke-El (FindById $w 'gobutton'); Start-Sleep -Milliseconds 400 }
+function HexRow($w, [int]$i) { (Items (FindById $w 'hex'))[$i] }
+function RowBytes([string]$row) { if ($row -match '^[0-9A-F]+: (.{49})') { return (($Matches[1] -replace '\s+', ' ').Trim()) } else { return '' } }
+function ApiRow([int]$procId, [string]$domain, [int]$address) { ((Api $procId GET "/api/memory/peek-range?domain=$domain&address=$address&length=16").data | ForEach-Object { '{0:X2}' -f [int]$_ }) -join ' ' }
 function PcLine($w) { (Items (FindById $w 'disassembly')) | Where-Object { $_ -like '>*' } | Select-Object -First 1 }
 
 $inst = $null
@@ -136,7 +162,10 @@ try {
     Check 'disassembly_pc_line' ($pl -and $pl.Contains($apiPc)) "the marked line: $pl"
     $wrong = '$' + ('{0:X4}' -f (([Convert]::ToInt32($apiPc.TrimStart('$'), 16) + 0x111) -band 0xFFFF))
     Check 'disassembly_pc_line_negative' (-not $pl.Contains($wrong)) "the marked line does not name a PC that is not the API's ($wrong)"
-    Check 'symbols_beside_rom' ($st.symbols -gt 0 -or (Api $id GET '/api/debug/state').symbols -gt 0) "$((Api $id GET '/api/debug/state').symbols) symbols loaded from debugtest.mlb by themselves"
+    $sf = Api $id GET '/api/debug/state'
+    $files = @($sf.symbolFiles | ForEach-Object { Split-Path -Leaf $_ })
+    Check 'symbols_beside_rom' ($sf.symbols -gt 0 -and ($files -join ',') -eq 'debugtest.mlb') "$($sf.symbols) symbols loaded by themselves from $($files -join ', ')"
+    Check 'symbols_other_console_negative' (-not ($files -contains 'debugtest.sym')) "the SNES test ROM's debugtest.sym beside debugtest.nes is not loaded into the NES debugger"
 
     SetText (FindById $win 'bpspec') 'sub2'
     Click 'addbreakpoint'
@@ -168,6 +197,27 @@ try {
     $c1 = Api $id GET '/api/debug/state'; Start-Sleep -Milliseconds 700; $c2 = Api $id GET '/api/debug/state'
     Check 'close_detaches' (-not $c2.attached -and -not $c2.armed -and -not $c2.parked -and $c2.frame -gt $c1.frame) "closed: attached $($c2.attached), armed $($c2.armed), frames $($c1.frame) -> $($c2.frame)"
 
+    # ---------------------------------------------------------------- MEMORY (NES)
+    $win = Open-Memory $id
+    $ok = Pick-Domain $win 'PRG'
+    GoTo $win '20'
+    $r = HexRow $win 0; $apiRow = ApiRow $id 'PRG ROM' 0x20; $apiRow0 = ApiRow $id 'PRG ROM' 0
+    Check 'memory_prg_row' ($ok -and $r -like '0020:*' -and (RowBytes $r) -eq $apiRow) "PRG row: $r ; API PRG `$20: $apiRow"
+    Check 'memory_prg_row_negative' ($apiRow0 -eq $apiRow -or (RowBytes $r) -ne $apiRow0) "the row is not PRG `$00's bytes ($apiRow0)"
+    Pick-Domain $win 'RAM' | Out-Null
+    $a1 = HexRow $win 1; Start-Sleep -Milliseconds 600; $a2 = HexRow $win 1
+    $p1 = Items (FindById $win 'hex'); Pick-Domain $win 'PRG' | Out-Null; $q1 = HexRow $win 0; Start-Sleep -Milliseconds 600; $q2 = HexRow $win 0
+    Check 'memory_live' ($a1 -like '0010:*' -and $a1 -ne $a2) "RAM `$10 (inc10 counts) moves: '$a1' -> '$a2'"
+    Check 'memory_live_negative' ($q1 -eq $q2) "PRG does not: '$q1'"
+    SetText (FindById $win 'watchspec') 'mirror_target'; Invoke-El (FindById $win 'addwatch'); Start-Sleep -Milliseconds 400
+    SetText (FindById $win 'watchspec') 'no_such_symbol'; Invoke-El (FindById $win 'addwatch'); Start-Sleep -Milliseconds 400
+    $wl = Items (FindById $win 'watches')
+    Check 'memory_watch_symbol' ($wl.Count -eq 2 -and $wl[0] -like 'mirror_target (*$12*' -and $wl[0] -match ': [0-9A-F]{2} = \d+$') "watch: $($wl[0])"
+    Check 'memory_watch_unknown_negative' ($wl[1] -like 'no_such_symbol:*' -and $wl[1] -notmatch '= \d+$') "watch: $($wl[1])"
+    $sm = Api $id GET '/api/debug/state'
+    Check 'memory_reads_only' (-not $sm.attached -and -not $sm.armed) "the memory window open: attached $($sm.attached), armed $($sm.armed)"
+    Close-Window $win
+
     # ---------------------------------------------------------------- SNES (the SPC700 in the CPU picker)
     Load $id (Join-Path $roms 'debugtest.sfc')
     $win = Open-Debugger $id
@@ -188,6 +238,15 @@ try {
     Close-Window $win
     $sc = Api $id GET '/api/debug/state'
     Check 'snes_close_detaches' (-not $sc.attached -and -not $sc.armed) "closed: attached $($sc.attached), armed $($sc.armed)"
+    $win = Open-Memory $id
+    $sd = Domains $win
+    Check 'memory_snes_domains' (($sd -contains 'WRAM') -and ($sd -contains 'VRAM') -and ($sd -contains 'CGRAM') -and ($sd -contains 'OAM') -and ($sd -contains 'ARAM')) "SNES domains: $($sd -join ', ')"
+    Pick-Domain $win 'VRAM' | Out-Null
+    GoTo $win '2000'; $v0 = HexRow $win 0
+    Check 'memory_snes_vram' ($v0 -like '2000:*' -and (RowBytes $v0) -like '11 22 33 44*') "VRAM row: $v0 (the test ROM's DMA put 11 22 33 44 at `$2000)"
+    GoTo $win '2010'; $v1 = HexRow $win 0
+    Check 'memory_snes_vram_negative' ($v1 -like '2010:*' -and (RowBytes $v1) -notlike '11 22 33 44*') "VRAM `$2010: $v1"
+    Close-Window $win
 
     # ---------------------------------------------------------------- Game Boy
     Load $id (Join-Path $roms 'debugtest.gb')
@@ -201,6 +260,13 @@ try {
     Close-Window $win
     $gc = Api $id GET '/api/debug/state'
     Check 'gb_close_detaches' (-not $gc.attached -and -not $gc.armed) "closed: attached $($gc.attached), armed $($gc.armed)"
+    $win = Open-Memory $id
+    $gd = Domains $win
+    Check 'memory_gb_domains' (($gd -contains 'WRAM') -and ($gd -contains 'HRAM') -and ($gd -contains 'OAM') -and ($gd -contains 'IO')) "Game Boy domains: $($gd -join ', ')"
+    Pick-Domain $win 'BUS' | Out-Null
+    GoTo $win '100'; $g0 = HexRow $win 0; $gApi = ApiRow $id 'BUS' 0x100
+    Check 'memory_gb_bus_row' ($g0 -like '0100:*' -and (RowBytes $g0) -eq $gApi) "BUS row: $g0 ; API: $gApi"
+    Close-Window $win
 
     $result.pass = -not ($checks.Values | Where-Object { -not $_.ok })
 }
