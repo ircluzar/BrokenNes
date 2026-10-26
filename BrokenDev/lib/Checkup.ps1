@@ -162,7 +162,7 @@ function Invoke-BdCheckupProject {
 function Get-BdSuiteCount {
     <# "N passed, M failed" or "N of M" from a suite's output (the last one), as "passed/total"; '' when it prints neither. #>
     param([string]$Text)
-    $m = [regex]::Matches($Text, '(\d+) passed, (\d+) failed')
+    $m = [regex]::Matches($Text, '(\d+) pass(?:ed)?, (\d+) fail(?:ed)?')
     if ($m.Count) { $l = $m[$m.Count - 1]; $p = [int]$l.Groups[1].Value; return "$p/$($p + [int]$l.Groups[2].Value)" }
     $m = [regex]::Matches($Text, '(\d+) (?:of|/) (\d+)')
     if ($m.Count) { $l = $m[$m.Count - 1]; return "$($l.Groups[1].Value)/$($l.Groups[2].Value)" }

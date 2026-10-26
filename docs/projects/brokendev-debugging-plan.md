@@ -1133,6 +1133,33 @@ only when asked; coverage yes). It answers open question 5: the command is **`br
   a new check finding, a debug-port assert.
 - The report: `out\<id>\chaos\chaos.json` (each problem with its seed, movie and first frame) and its coverage added to the map.
 
+## D9 state (2026-10-26): checkup and the coverage map built, chaos bots specified only
+
+- **`brokendev.ps1 checkup`** (`BrokenDev/lib/Checkup.ps1`), as settled above. Each step's state is `ok`, `warn`, `FAIL` or `skip` with its
+  reason; a project that does not build skips the rest. The bug captures are read with Workshop `--bug list`. A capture is a `warn`, never a
+  failure. `verify` gained `-Coverage` and checkup passes it.
+  - Measured: `checkup vrun-voc -NoCompat` (build with GBDK, verify with 5 scenarios, the checks and budgets, the bug list) takes 12.9 s.
+  - Its tests in `run-tests.ps1` (the negative controls):
+    - a throwaway project with a planted `nes.ram-uninit` makes checkup exit 1, and the summary names `NEW nes.ram-uninit at ram:$07FC`;
+    - the same project with the finding accepted passes, keeps `checkup-previous.json` and lists the change;
+    - a project that does not build fails at its build step and skips verify;
+    - an unknown project is refused.
+- **The coverage map** (`Windows/NesEmulator/debug/checks/CodeCoverage.cs`, `Workshop/BrokenDevCli.Coverage.cs`):
+  - an observer on the main CPU's steps; each instruction marks its opcode and operand bytes by the CPU's canonical ROM key;
+  - it runs on the checks' debugger in verify's checked runs, or on runs of its own when the manifest has no checks;
+  - verify's `coverage`: the share, banks, never-run ROM symbols, `mustRun` and `minPercent`; `out\<id>\coverage.html` has a bar per bank.
+  - The Game Boy hello world: 53.2% of its code bytes ran (1,744 of 3,279, all in bank 0); 46 of its 89 ROM symbols never ran.
+    Some of those are GBDK constants the `.noi` file places at ROM addresses (`_rRAMG` at 0), so the list is a lead, not a verdict.
+  - Tests in `run-tests.ps1`:
+    - the RAM-colour ROM's 35 code bytes are exactly what ran;
+    - a `mustRun` on code that runs passes;
+    - NEGATIVE: a `mustRun` that never ran, an unknown symbol and a floor above the share each fail verify by name;
+    - with coverage not asked for, verify adds no coverage section.
+- **Tests on this branch:** BrokenDev `run-tests` 145 passed, 0 failed, 1 skipped (the MCP case: no `-McpExe`); Workshop `--debug-test` 103 of 103,
+  `--check-test` 111 of 111, `--movie-test` 69 of 69. Coverage is off unless asked for, so verify without it is unchanged.
+- **Not built:** chaos bots (specified above, run only when the user asks); branches never taken; the dashboard reading `checkup.json`;
+  a timed `checkup all` with compat (its 15 to 30 minute estimate is not measured yet).
+
 ## Open questions (to settle at the start of the track)
 
 1. The debug port's registers on each console, checked against mapper 30, the SNES coprocessors' ranges and the Game Boy Color's

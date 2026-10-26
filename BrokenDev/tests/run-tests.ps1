@@ -1372,6 +1372,36 @@ try {
             Assert-Throws { Invoke-BdCheckup -Target 'no-such-project' -Exe $ws -NoSuites -Quiet } 'unknown project'
         } finally { Restore-Env $savedEnv }
     }
+    # the coverage map (D9): the RAM-colour ROM runs 35 bytes of code at PRG offset 0 and loops; nothing at offset $100
+    $covAcc = @{ accepted = @(@{ rule = 'nes.ram-uninit'; at = 'ram:$07FC'; reason = 'test: the ROM paints its backdrop with power-on RAM on purpose' }) }
+    Test-Case 'coverage: verify maps the code run per bank (the ROM''s 35 code bytes, each instruction''s operands included) and a mustRun on code that runs PASSES' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        New-VerifyManifest -Id 'v-cov-ok' -Scenarios $chkScen -Extra @{ checks = $covAcc; coverage = @{ mustRun = @('rom:$0', 'prg:$20'); minPercent = 1 } }
+        $v = Invoke-WsVerify -Id 'v-cov-ok' -Rom $ramRom
+        Assert-Equal $v.Exit 0 "output: $(Select-BdTail $v.Output 10)"
+        $c = $v.Json.coverage
+        Assert-True ($null -ne $c -and $c.ok) "no coverage or not ok: $($c | ConvertTo-Json -Compress -Depth 4)"
+        Assert-Equal $c.ranBytes 35 'the bytes run (every instruction of the program, operands included)'
+        Assert-Equal @($c.banks).Count 1
+        Assert-True (@($c.mustRun | Where-Object { $_.ran }).Count -eq 2) 'the mustRun entries did not run'
+    }
+    Test-Case 'coverage: NEGATIVE: a mustRun on code that never runs, an unknown symbol and a floor above the share FAIL verify, each named' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        New-VerifyManifest -Id 'v-cov-bad' -Scenarios $chkScen -Extra @{ checks = $covAcc; coverage = @{ mustRun = @('rom:$100', 'no_such_routine'); minPercent = 99 } }
+        $v = Invoke-WsVerify -Id 'v-cov-bad' -Rom $ramRom
+        Assert-Equal $v.Exit 1 "output: $(Select-BdTail $v.Output 10)"
+        $p = @($v.Json.coverage.problems) -join ' | '
+        Assert-True ($p -match "'rom:\`$100' \(rom:\`$100\) never ran") "problems: $p"
+        Assert-True ($p -match "'no_such_routine' is no ROM symbol") "problems: $p"
+        Assert-True ($p -match 'under the floor of 99%') "problems: $p"
+        Assert-True ($v.Output -match '\[coverage\] FAIL') 'the summary does not say coverage failed'
+    }
+    Test-Case 'coverage: NEGATIVE control of the map itself: with no coverage asked, verify adds no coverage section (it costs nothing when off)' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $v = Invoke-WsVerify -Id 'v-chk-acc' -Rom $ramRom
+        Assert-Equal $v.Exit 0
+        Assert-True ($null -eq (Get-BdProp $v.Json 'coverage' $null)) 'a coverage section appeared without being asked for'
+    }
     Test-Case 'budgets: under the limit passes, at 90% of it WARNS, over it FAILS (busyPercent, measured first)' {
         if (-not $ws) { Skip-Test $wsSkip }
         New-VerifyManifest -Id 'v-bud-probe' -Scenarios $chkScen -Extra @{ checks = @{ accepted = @(@{ rule = 'nes.*'; at = '*'; reason = 'test' }) }; budgets = @{ busyPercent = @{ max = 100 } } }

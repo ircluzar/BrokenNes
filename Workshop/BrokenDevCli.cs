@@ -30,7 +30,7 @@ internal static partial class BrokenDevCli
 {
     private const string Usage =
         "Usage: --brokendev list   [--manifests DIR] [--home DIR]\n" +
-        "       --brokendev verify <id> [--manifests DIR] [--home DIR] [--rom PATH] [--only SCENARIO] [--png-dir DIR] [--out FILE] [--history FILE]\n" +
+        "       --brokendev verify <id> [--manifests DIR] [--home DIR] [--rom PATH] [--only SCENARIO] [--png-dir DIR] [--out FILE] [--history FILE] [--coverage]\n" +
         "       --brokendev dump-chr --rom PATH --out FILE [--frames N] [--input \"f:Buttons,...\"]   (a NES game's CHR RAM after N frames)\n" +
         "       --brokendev run --spec FILE [--ram fceux|zeros|ones] [--cpu ID --ppu ID --apu ID] [--ntsc]   (a compat run: BrokenDev's emulator-neutral spec in, result.txt + pictures out)\n" +
         "BrokenDev is developer-only: set BROKENNES_DEV=1 (or brokenDevEnabled in config.json) first.";
@@ -65,6 +65,7 @@ internal static partial class BrokenDevCli
         {
             case "list": return List(manifests, home);
             case "verify":
+                coverageWanted = args.Any(a => a.Equals("--coverage", StringComparison.OrdinalIgnoreCase));
                 if (args.Length < 3 || args[2].StartsWith("--")) { Console.Error.WriteLine(Usage); return 2; }
                 return Verify(args[2], manifests, home, Opt("rom", ""), Opt("only", ""), Opt("png-dir", ""), Opt("out", ""), Opt("history", ""));
             default:
@@ -312,10 +313,19 @@ internal static partial class BrokenDevCli
 
         bool ok = results.Where(r => !r.Info).All(r => r.Ok) && cross.All(c => c.Ok) && movieProblems.Count == 0;
         // the hardware checks, budgets and profile (a manifest's checks / budgets sections; BrokenDevCli.Checks.cs)
-        var checks = RunChecksAndBudgets(root, verify, console, rom, romBytes, results, only, historyPath, out bool checksOk);
+        bool wantCoverage = WantsCoverage(root);
+        var checks = RunChecksAndBudgets(root, verify, console, rom, romBytes, results, only, historyPath, out bool checksOk, out var checkedRuns, wantCoverage);
         ok &= checksOk;
+        // the coverage map (D9; BrokenDevCli.Coverage.cs): from the checked runs, or runs of its own when the manifest has no checks / budgets
+        JsonObject? coverage = null;
+        if (wantCoverage)
+        {
+            coverage = BuildCoverage(root, console, rom, romBytes, checkedRuns ?? RunForCoverage(root, verify, console, rom, romBytes, results, only), out bool covOk);
+            ok &= covOk;
+        }
         var report = BuildReport(id, rom, romBytes, console, results, cross, ok);
         if (checks != null) report["checks"] = checks;
+        if (coverage != null) report["coverage"] = coverage;
         if (movieProblems.Count > 0 || promotedScenarios.Count > 0)
             report["movies"] = new JsonObject { ["promoted"] = promotedScenarios.Count, ["problems"] = new JsonArray(movieProblems.Select(p => (JsonNode)p).ToArray()) };
         string text = report.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
@@ -327,6 +337,7 @@ internal static partial class BrokenDevCli
         foreach (var r in results.Where(r => r.Result != "ok")) Console.Error.WriteLine($"  [{r.Id}] {r.Result}: {r.CrashInfo}");
         foreach (var p in movieProblems) Console.Error.WriteLine($"  [movies] FAIL {p}");
         if (checks != null) PrintChecks(checks);
+        if (coverage != null) PrintCoverage(coverage);
         PrintPort(results);
         return ok ? 0 : 1;
     }

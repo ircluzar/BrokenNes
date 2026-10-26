@@ -96,7 +96,47 @@ function Invoke-BdProjectVerify {
     }
     foreach ($c in $rec.compare) { $l = "  compare {0}: {1}" -f $c.id, $(if ($c.ok) { 'ok' } else { 'FAIL ' + $c.detail }); if ($c.ok) { Write-BdOk $l } else { Write-BdFail $l } }
     if ($rec.PSObject.Properties['checks'] -and $rec.checks) { Write-BdChecks $rec.checks }
+    if ($rec.PSObject.Properties['coverage'] -and $rec.coverage) {
+        $cv = $rec.coverage
+        $l = '  coverage: {0}% of the code bytes ran ({1} of {2}), {3} of {4} ROM symbols never ran; page: {5}' -f $cv.percent, $cv.ranBytes, $cv.codeBytes, $cv.symbols.neverRun, $cv.symbols.inRom, (Join-Path $out 'coverage.html')
+        if ($cv.ok) { Write-BdOk $l } else { Write-BdFail $l }
+        foreach ($p in @($cv.problems)) { Write-BdFail "      $p" }
+        Write-BdCoveragePage -Id $Id -Coverage $cv -Path (Join-Path $out 'coverage.html')
+    }
     $rec
+}
+
+function Write-BdCoveragePage {
+    <# The coverage map's page (D9): one bar per ROM bank (run / not run / padding), the share, the check, the ROM symbols never run. #>
+    param([Parameter(Mandatory)][string]$Id, [Parameter(Mandatory)]$Coverage, [Parameter(Mandatory)][string]$Path)
+    $H = { param($s) [System.Net.WebUtility]::HtmlEncode([string]$s) }
+    $c = $Coverage
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append("<!doctype html><html><head><meta charset=`"utf-8`"><meta name=`"viewport`" content=`"width=device-width, initial-scale=1`"><title>Coverage: $(& $H $Id)</title><style>")
+    [void]$sb.Append(':root{--bg:#fff;--fg:#1d1d1f;--muted:#6b6b70;--ran:#2f7d4f;--not:#c9a227;--free:#d9d9de;--bad:#b3261e}@media (prefers-color-scheme:dark){:root{--bg:#161618;--fg:#ececef;--muted:#9a9aa2;--ran:#4fb27a;--not:#d8b545;--free:#3a3a40;--bad:#ff6b5e}}')
+    [void]$sb.Append('body{background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;margin:16px;max-width:980px}h1{font-size:20px}.muted{color:var(--muted)}.bar{display:flex;height:14px;border-radius:3px;overflow:hidden;background:var(--free);min-width:120px}.bar span{display:block}.r{background:var(--ran)}.n{background:var(--not)}table{border-collapse:collapse;width:100%}td,th{padding:3px 8px;text-align:left;border-bottom:1px solid var(--free)}.bad{color:var(--bad)}.key span{display:inline-block;width:10px;height:10px;margin:0 4px 0 12px}</style></head><body>')
+    [void]$sb.Append("<h1>Coverage map: $(& $H $Id)</h1><p><b>$($c.percent)%</b> of the code bytes ran ($($c.ranBytes) of $($c.codeBytes); $($c.romBytes) ROM bytes, banks of $($c.bankSize)), over the checked scenarios: $(& $H ((@($c.scenarios)) -join ', ')).</p>")
+    [void]$sb.Append('<p class="key"><span class="r"></span>ran<span class="n"></span>not run<span style="background:var(--free)"></span>padding (free)</p>')
+    foreach ($p in @($c.problems)) { [void]$sb.Append("<p class=`"bad`">FAIL $(& $H $p)</p>") }
+    [void]$sb.Append('<table><tr><th>Bank</th><th>Share run</th><th>Bytes run / not run / free</th><th style="width:50%"></th></tr>')
+    $empty = 0
+    foreach ($b in @($c.banks)) {
+        if ([int]$b.ran -eq 0 -and [int]$b.free -eq [int]$b.size) { $empty++; continue }
+        $size = [math]::Max(1, [int]$b.size); $not = [math]::Max(0, [int]$b.size - [int]$b.free - [int]$b.ran)
+        $wr = [math]::Round(100 * [int]$b.ran / $size, 2); $wn = [math]::Round(100 * $not / $size, 2)
+        [void]$sb.Append("<tr><td>$($b.bank)</td><td>$($b.percent)%</td><td>$($b.ran) / $not / $($b.free)</td><td><div class=`"bar`"><span class=`"r`" style=`"width:$wr%`"></span><span class=`"n`" style=`"width:$wn%`"></span></div></td></tr>")
+    }
+    [void]$sb.Append('</table>')
+    if ($empty) { [void]$sb.Append("<p class=`"muted`">$empty bank(s) all padding, not listed.</p>") }
+    if (@($c.mustRun).Count) {
+        [void]$sb.Append('<h2>The check: must run</h2><ul>')
+        foreach ($m in @($c.mustRun)) { [void]$sb.Append("<li class=`"$(if ($m.ran) { '' } else { 'bad' })`">$(& $H $m.spec) $(& $H (Get-BdProp $m 'at' '')): $(if ($m.ran) { 'ran' } else { 'NEVER RAN' })</li>") }
+        [void]$sb.Append('</ul>')
+    }
+    [void]$sb.Append("<h2>ROM symbols never run ($($c.symbols.neverRun) of $($c.symbols.inRom))</h2><p class=`"muted`">Data labels kept in ROM and constants the symbol file places there show here too: they are never run.</p><table>")
+    foreach ($s in @($c.symbols.neverRunList)) { [void]$sb.Append("<tr><td>$(& $H $s.name)</td><td>$(& $H $s.at)</td></tr>") }
+    [void]$sb.Append('</table></body></html>')
+    [System.IO.File]::WriteAllText($Path, $sb.ToString(), (New-Object System.Text.UTF8Encoding($false)))
 }
 
 function Write-BdChecks {

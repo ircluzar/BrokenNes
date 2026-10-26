@@ -40,6 +40,8 @@ internal static partial class BrokenDevCli
         public bool Identical = true; public string IdentityDetail = "";
         public string Result = "ok", Error = "";
         public double Fps;
+        /// <summary>The coverage map of this run (D9): the ROM bytes the main CPU ran, and the ROM symbols' offsets.</summary>
+        public bool[]? Ran; public Dictionary<string, uint> RomSymbols = new();
     }
 
     private sealed class BudgetResult
@@ -55,9 +57,9 @@ internal static partial class BrokenDevCli
     }
 
     /// <summary>Runs the checks and budgets of a manifest; null when it has neither (verify as before).</summary>
-    private static JsonObject? RunChecksAndBudgets(JsonElement root, JsonElement verify, string console, string romPath, byte[] romBytes, List<ScenarioResult> results, string only, string historyPath, out bool ok)
+    private static JsonObject? RunChecksAndBudgets(JsonElement root, JsonElement verify, string console, string romPath, byte[] romBytes, List<ScenarioResult> results, string only, string historyPath, out bool ok, out List<CheckedScenario>? checkedRuns, bool coverage = false)
     {
-        ok = true;
+        ok = true; checkedRuns = null;
         bool hasChecks = root.TryGetProperty("checks", out var chk) && chk.ValueKind == JsonValueKind.Object;
         bool hasBudgets = root.TryGetProperty("budgets", out var bud) && bud.ValueKind == JsonValueKind.Object;
         if (!hasChecks && !hasBudgets) return null;
@@ -113,7 +115,7 @@ internal static partial class BrokenDevCli
                 var sc = allScenarios.FirstOrDefault(x => x.GetProperty("id").GetString() == sid);
                 if (sc.ValueKind != JsonValueKind.Object) continue;
                 var plain = results.FirstOrDefault(r => r.Id == sid);
-                runs.Add(RunChecked(console, romPath, romBytes, verify, sc, opt, symbolFiles, profileFrom, plain));
+                runs.Add(RunChecked(console, romPath, romBytes, verify, sc, opt, symbolFiles, profileFrom, plain, coverage));
             }
 
         // ---- findings: merged over the scenarios, matched against the accepted list
@@ -160,6 +162,7 @@ internal static partial class BrokenDevCli
             ["previousBuild"] = previous?.DeepClone(),
         };
         if (historyPath.Length > 0 && only.Length == 0) WriteHistory(historyPath, history, romBytes, budgets);
+        checkedRuns = runs;
         return report;
     }
 
@@ -191,7 +194,7 @@ internal static partial class BrokenDevCli
     private static byte[] RomFor(byte[] rom, string path) => RomDetect.Unwrap(rom, Path.GetFileName(path), out _);
 
     /// <summary>One scenario again, with the checks on: the same cores, power-on RAM, frame timing, pokes and pad script.</summary>
-    private static CheckedScenario RunChecked(string console, string romPath, byte[] rom, JsonElement verify, JsonElement sc, CheckOptions opt, List<string> symbolFiles, long profileFrom, ScenarioResult? plain)
+    private static CheckedScenario RunChecked(string console, string romPath, byte[] rom, JsonElement verify, JsonElement sc, CheckOptions opt, List<string> symbolFiles, long profileFrom, ScenarioResult? plain, bool coverage = false)
     {
         var res = new CheckedScenario { Id = sc.GetProperty("id").GetString() ?? "?" };
         int frames = sc.GetProperty("frames").GetInt32();
@@ -214,6 +217,7 @@ internal static partial class BrokenDevCli
             var dbg = new Debugger(runner.DebugMachine());
             foreach (var s in symbolFiles) dbg.Symbols.Load(s, CheckCatalogue.FamilyOf(dbg.Machine.Console));
             var checks = CheckRun.Attach(dbg, opt);
+            var cov = coverage ? CodeCoverage.Attach(dbg) : null;
             var held = new List<string>(); var held2 = new List<string>(); int next = 0, next2 = 0;
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int f = 0; f < frames; f++)
@@ -230,6 +234,7 @@ internal static partial class BrokenDevCli
             checks.Finish();
             dbg.Detach();
             res.Findings = checks.Findings.ToList();
+            if (cov != null) { res.Ran = cov.Ran; res.RomSymbols = cov.RomSymbols(dbg); }
             res.Profile = CheckRun.Summarize(checks, profileFrom);
             res.Frames = checks.Frames.ToList();
             res.FrameCycles = checks.NominalFrameCycles;
