@@ -47,6 +47,17 @@ public enum WmsRegister : byte { Bgmode, Bg1sc, Bg2sc, Bg3sc, Bg4sc, Bg12nba, Bg
 /// <summary>One scene condition: (register AND mask) == value.</summary>
 public readonly record struct WmsCondition(WmsRegister Register, byte Mask, byte Value);
 
+/// <summary>The level in work RAM (spec 6.1): where a game keeps its whole level as 16 x 16-pixel blocks of 2 x 2 map entries. Offsets into the board's 128 KB work RAM.</summary>
+public sealed class WmsLevel
+{
+    /// <summary>The BG layer (0-3) it describes.</summary>
+    public int Layer;
+    /// <summary>The blocks (one 16-bit word each, row by row), the two 16-bit words holding the level's width and height in blocks, the block table (8 bytes a block number).</summary>
+    public int Blocks, Width, Height, Tiles;
+    /// <summary>The block word's bits: the block number, flipped in x, flipped in y.</summary>
+    public int Index = 0x03FF, FlipX = 0x0400, FlipY = 0x0800;
+}
+
 /// <summary>A profile's widescreen rules (spec 6.1): one rule per layer (BG1-BG4, sprites) and the masks.</summary>
 public sealed class WmsWidescreen
 {
@@ -59,9 +70,22 @@ public sealed class WmsWidescreen
     public bool WindowsReachEdge = true;
     /// <summary>[0-3] BG1-BG4, for a layer whose rule is <see cref="WmsSideRule.Drawn"/>: how many pixels past the SNES edge the game draws its map ahead of where it scrolls (0-72).</summary>
     public readonly int[] DrawnAhead = { 16, 16, 16, 16 };
+    /// <summary>[0-3] BG1-BG4, for a layer whose rule is <see cref="WmsSideRule.Drawn"/>: the map memory (spec 6.1) fills side columns outside the drawn span with the place as the SNES
+    /// picture last showed it.</summary>
+    public readonly bool[] Memory = new bool[4];
+    /// <summary>The level in work RAM (spec 6.1) for one layer on the drawn rule, or null.</summary>
+    public WmsLevel? Level;
 
     /// <summary>Every layer extended, the sprites too, no masks: what the tests and the profile tools start from (never applied to a game without its profile saying so).</summary>
     public static WmsWidescreen AllExtend() => new();
+
+    /// <summary>A copy (tools: the same rules with a part taken away, as a negative control).</summary>
+    public WmsWidescreen Copy()
+    {
+        var c = new WmsWidescreen { Masks = Masks, WindowsReachEdge = WindowsReachEdge, Level = Level };
+        Layers.CopyTo(c.Layers, 0); DrawnAhead.CopyTo(c.DrawnAhead, 0); Memory.CopyTo(c.Memory, 0);
+        return c;
+    }
 }
 
 public sealed partial class PPU_WMS
@@ -89,8 +113,17 @@ public sealed partial class PPU_WMS
             if (widescreen.Layers[WmsWidescreen.Sprites] is not (WmsSideRule.Extend or WmsSideRule.Fill)) throw new ArgumentException("the sprites' side rule is extend or fill");
             for (int i = 0; i < 4; i++) if (widescreen.Layers[i] == WmsSideRule.Black) throw new ArgumentException("black is a mask's rule, not a layer's");
             for (int i = 0; i < 4; i++) if (widescreen.DrawnAhead[i] is < 0 or > SnesOrigin) throw new ArgumentException("a drawn layer's ahead is 0-72 pixels");
+            for (int i = 0; i < 4; i++) if (widescreen.Memory[i] && widescreen.Layers[i] != WmsSideRule.Drawn) throw new ArgumentException("the map memory is for layers on the drawn rule");
+            if (widescreen.Level is { } lv && (lv.Layer is < 0 or > 3 || widescreen.Layers[lv.Layer] != WmsSideRule.Drawn)) throw new ArgumentException("the level in work RAM is for a layer on the drawn rule");
         }
         Array.Clear(drawn);
+        for (int i = 0; i < 4; i++)
+        {
+            memory[i] = widescreen != null && widescreen.Memory[i] ? memory[i] ?? new MapMemory() : null;
+            memory[i]?.Forget();
+        }
+        level = widescreen?.Level != null ? new LevelTrack() : null;
+        Array.Clear(sideLine);
         enhWide = widescreen; enhNoFlicker = noFlicker;
         enhOn = widescreen != null || noFlicker;
         remapSig = -1;
@@ -205,7 +238,7 @@ public sealed partial class PPU_WMS
     // along (L >= R - mapWidth). The drawn span is [L, R). A cut (a step of more than 64 pixels in a
     // frame, the layer's map, its tile size or BGMODE changing) starts the span again at the picture's own columns. Vertical scroll is not tracked: the side columns show the
     // centre's rows.
-    private struct DrawnTrack { public bool Init; public int H, Sig; public long U, L, R, Frame; public int MapWidth; }
+    private struct DrawnTrack { public bool Init, VInit; public int H, V, Sig; public long U, Vu, L, R, Frame; public int MapWidth; }
     private readonly DrawnTrack[] drawn = new DrawnTrack[4];
     private readonly short[][] remapBase = { new short[WideWidth], new short[WideWidth], new short[WideWidth], new short[WideWidth] };
     private readonly bool[][] drawnCol = { new bool[WideWidth], new bool[WideWidth], new bool[WideWidth], new bool[WideWidth] };
@@ -224,7 +257,8 @@ public sealed partial class PPU_WMS
 
     private static int Signed10(int d) => ((d + 512) & 1023) - 512;
 
-    /// <summary>This line's column maps for the layers on the drawn rule: the mask-resolved map, with the side columns the game has not drawn for the place they show filled.</summary>
+    /// <summary>This line's column maps for the layers on the drawn rule: the mask-resolved map, with the side columns the game has not drawn for the place they show filled, or,
+    /// on a line of the layer's main scroll with the level in work RAM or the map memory, drawn from them (<see cref="SideFill"/>).</summary>
     private void ApplyDrawn(int row, int mode, int enabled)
     {
         if (mode == 7) { for (int bg = 0; bg < 4; bg++) if (drawnOn[bg]) remapBase[bg].AsSpan().CopyTo(remap[bg]); return; }
@@ -234,10 +268,13 @@ public sealed partial class PPU_WMS
         {
             if (!drawnOn[bg]) continue;
             ref var t = ref drawn[bg];
+            var mem = memory[bg];
+            bool lvl = level != null && w.Level!.Layer == bg;
             int h = RegHofs(bg) & 0x3FF;
             if (t.Frame != enhFrame && (enabled & (1 << bg)) != 0)
             {
                 // once a frame, on the first line that draws the layer: follow its scroll
+                long prevFrame = t.Frame;
                 int sc = RegBgsc(bg), big = (bgmode >> (4 + bg) & 1) | (mode is 5 or 6 ? 1 : 0);
                 int sig = sc | big << 8 | mode << 9, ahead = w.DrawnAhead[bg];
                 bool cut = !t.Init || sig != t.Sig;
@@ -255,18 +292,371 @@ public sealed partial class PPU_WMS
                     if (r > t.R) { t.R = r; t.L = Math.Max(t.L, r - t.MapWidth); }
                     if (l < t.L) { t.L = l; t.R = Math.Min(t.R, l + t.MapWidth); }
                 }
+                // the vertical scroll, unwrapped the same way (the drawn span does not use it; the memory and the level do), and the main scroll's rows of last frame
+                int v = RegVofs(bg) & 0x3FF;
+                int dv = t.VInit ? Signed10(v - t.V) : 0;
+                bool vcut = !t.VInit || Math.Abs(dv) > DrawnCutPixels;
+                if (t.VInit) t.Vu += dv; else t.Vu = v;
+                t.V = v; t.VInit = true;
+                (bandPrev[bg], bandCur[bg]) = (bandCur[bg], bandPrev[bg]);
+                Array.Clear(bandCur[bg]);
+                if (mem != null) TrackMemory(bg, mem, ref t, cut || vcut, prevFrame);
+                if (lvl) TrackLevel(bg, t, cut || vcut);
             }
             var map = remap[bg]; var bas = remapBase[bg]; var col = drawnCol[bg];
+            sideLine[bg] = false;
             if (!t.Init) { bas.AsSpan().CopyTo(map); continue; }
             long lo = t.L, hi = t.R;
             long left = t.U + Signed10(h - t.H) - SnesOrigin;   // the unwrapped pixel picture column 0 shows on this line
+            // a line of the layer's main scroll (this frame's HOFS and VOFS), in a mode the memory and the level read
+            bool main = t.Frame == enhFrame && h == t.H && (RegVofs(bg) & 0x3FF) == t.V && mode is 0 or 1 or 3
+                && ((RegMosaic & (1 << bg)) == 0 || (RegMosaic >> 4) == 0);
+            if (main)
+            {
+                bandCur[bg][row] = true;
+                if (mem != null) RecordLine(bg, mem, t.U, t.Vu, row + 1);
+            }
+            bool fromSource = main && (mem != null || (lvl && level!.Verified));
+            sideLine[bg] = fromSource;
+            var src = sideCol[bg];
             for (int c = 0; c < WideWidth; c++)
             {
                 if (c == SnesOrigin) c = SnesOrigin + Width;
                 long x = left + c;
-                map[c] = col[c] && (x < lo || x >= hi) ? FillColumn : bas[c];
+                bool outside = col[c] && (x < lo || x >= hi);
+                if (fromSource) { src[c] = outside; map[c] = outside ? (short)c : bas[c]; }
+                else map[c] = outside ? FillColumn : bas[c];
             }
         }
+    }
+
+    // Per BG layer on the drawn rule: the rows of the main scroll last frame and this one, and this line's side columns drawn from the level or the memory.
+    private bool[][] bandPrev = { new bool[MaxHeight], new bool[MaxHeight], new bool[MaxHeight], new bool[MaxHeight] };
+    private bool[][] bandCur = { new bool[MaxHeight], new bool[MaxHeight], new bool[MaxHeight], new bool[MaxHeight] };
+    private readonly bool[] sideLine = new bool[4];
+    private readonly bool[][] sideCol = { new bool[WideWidth], new bool[WideWidth], new bool[WideWidth], new bool[WideWidth] };
+
+    // ---------------------------------------------------------------- the map memory (spec 6.1): what the SNES picture showed of a drawn layer, by place in the level
+
+    /// <summary>One BG layer's map memory: map entries by world tile (the tile column of the unwrapped horizontal scroll, the tile row of the unwrapped vertical scroll plus the line),
+    /// a direct-mapped table of 131,072 tiles (a tile that collides with another is forgotten: filled). Emptied by a new generation, so forgetting costs nothing.</summary>
+    private sealed class MapMemory
+    {
+        public const int Bits = 17, Slots = 1 << Bits;
+        private readonly long[] key = new long[Slots];
+        private readonly ushort[] entry = new ushort[Slots];
+        private readonly int[] gen = new int[Slots];
+        private int generation = 1;
+        public bool Init;
+        public long Writes, Pixels, Remembered, CutsScroll, CutsGap, CutsDisagree, Compared, Differed;
+        public bool DisagreeCut = true;   // tests: false shows why the disagreement cut is needed (the negative control)
+        public void Forget() { generation++; Init = false; }
+        public void Clear() => generation++;
+        private static int Slot(long k) => (int)(((ulong)k * 0x9E3779B97F4A7C15UL) >> (64 - Bits));
+        public static long Key(long tx, long ty) => tx << 32 ^ (ty & 0xFFFFFFFFL);
+        public bool TryGet(long k, out ushort e)
+        {
+            int s = Slot(k);
+            if (gen[s] == generation && key[s] == k) { e = entry[s]; return true; }
+            e = 0; return false;
+        }
+        public void Set(long k, ushort e) { int s = Slot(k); key[s] = k; entry[s] = e; gen[s] = generation; }
+    }
+
+    private readonly MapMemory?[] memory = new MapMemory?[4];
+
+    /// <summary>Tools: the map memory's and the level's counters for a BG layer (null: the layer has neither).</summary>
+    public string? MemoryStats(int bg)
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        if (memory[bg] is { } m)
+            parts.Add($"memory: {m.Writes:N0} tiles written; {m.Pixels:N0} side pixels asked, {m.Remembered:N0} remembered; emptied {m.CutsScroll:N0}x by a cut of the scroll or map, "
+                    + $"{m.CutsGap:N0}x by a frame without the layer, {m.CutsDisagree:N0}x by the game's map disagreeing ({m.Differed:N0} of {m.Compared:N0} entries compared differed)");
+        if (level is { } l && enhWide?.Level?.Layer == bg)
+            parts.Add($"level in work RAM: verified on {l.FramesVerified:N0} of {l.FramesChecked:N0} frames ({l.Searches:N0} searches, {l.Found:N0} found an alignment); {l.Pixels:N0} side pixels from the level"
+                    + $" ({l.Outside:N0} asked outside it); last check {l.LastMatch:N0} of {l.LastCompared:N0} entries agreed; the level {l.Width} x {l.Height} blocks");
+        return parts.Count == 0 ? null : string.Join("; ", parts);
+    }
+
+    /// <summary>Tests: the map memory's disagreement cut on (the default) or off (the negative control).</summary>
+    public void SetMemoryDisagreeCut(bool on) { foreach (var m in memory) if (m != null) m.DisagreeCut = on; }
+
+    /// <summary>The geometry of a SNES layer's map for the memory and the level: the map's base, its width and height in tiles, the tile's size.</summary>
+    private (int mapBase, bool wide, bool tall, int shift) MemoryGeometry(int bg)
+    {
+        int sc = RegBgsc(bg);
+        return ((sc & 0xFC) << 8, (sc & 1) != 0, (sc & 2) != 0, (RegBgmode & (0x10 << bg)) != 0 ? 4 : 3);
+    }
+
+    /// <summary>Once a frame, on the first line that draws the layer (before any of the frame is drawn): forget at a cut, after a frame without the layer, or when the map the SNES
+    /// picture will show disagrees with the memory (spec 6.1).</summary>
+    private void TrackMemory(int bg, MapMemory mem, ref DrawnTrack t, bool cut, long prevFrame)
+    {
+        bool gap = mem.Init && prevFrame != enhFrame - 1;
+        bool scrollCut = cut || !mem.Init;
+        mem.Init = true;
+        if (scrollCut || gap)
+        {
+            mem.Clear();
+            if (gap && !scrollCut) mem.CutsGap++; else mem.CutsScroll++;
+            return;
+        }
+        // the map entries of last frame's main-scroll rows, at this frame's scroll, against the memory wherever it holds the same place
+        var (mapBase, wide, tall, shift) = MemoryGeometry(bg);
+        int colMask = wide ? 63 : 31, rowMask = tall ? 63 : 31;
+        var (tx0, tx1) = UnaliasedTiles(t.U, shift, colMask);
+        long lastTy = long.MinValue;
+        int compared = 0, differ = 0;
+        var rows = bandPrev[bg];
+        for (int y = 0; y < VisibleHeight; y++)
+        {
+            if (!rows[y]) continue;
+            long ty = (t.Vu + y + 1) >> shift;
+            if (ty == lastTy) continue;
+            lastTy = ty;
+            for (long tx = tx0; tx <= tx1; tx++)
+            {
+                if (!mem.TryGet(MapMemory.Key(tx, ty), out ushort e)) continue;
+                compared++;
+                if (SnesMapEntry(mapBase, wide, tall, (int)(tx & colMask), (int)(ty & rowMask)) != e) differ++;
+            }
+        }
+        mem.Compared += compared; mem.Differed += differ;
+        if (mem.DisagreeCut && compared >= 64 && differ * 8 > compared) { mem.Clear(); mem.CutsDisagree++; }
+    }
+
+    /// <summary>The tile columns under the SNES picture's 256 columns whose map column holds them alone: when the picture shows more tile columns than the map has (a 32-tile map
+    /// not on a tile boundary shows 33), the two at its ends share one map column and the picture shows one of them for both: neither is remembered (nor compared).</summary>
+    private static (long from, long to) UnaliasedTiles(long u, int shift, int colMask)
+    {
+        long from = u >> shift, to = (u + Width - 1) >> shift;
+        if (to - from + 1 > colMask + 1) { from++; to--; }
+        return (from, to);
+    }
+
+    /// <summary>A line of the layer's main scroll: the map entries of the tiles under the SNES picture's 256 columns, at their places.</summary>
+    private void RecordLine(int bg, MapMemory mem, long u, long vu, int line)
+    {
+        var (mapBase, wide, tall, shift) = MemoryGeometry(bg);
+        int colMask = wide ? 63 : 31, rowMask = tall ? 63 : 31;
+        long ty = (vu + line) >> shift;
+        int rowT = (int)(ty & rowMask);
+        var (from, to) = UnaliasedTiles(u, shift, colMask);
+        for (long tx = from; tx <= to; tx++)
+        {
+            mem.Set(MapMemory.Key(tx, ty), SnesMapEntry(mapBase, wide, tall, (int)(tx & colMask), rowT));
+            mem.Writes++;
+        }
+    }
+
+    // ---------------------------------------------------------------- the level in work RAM (spec 6.1)
+
+    /// <summary>The console's reading of the game's work RAM for the level source (the board's 128 KB; set by the session). Read only, as a debugger reads: no side effects.</summary>
+    public byte[]? WorkRam { get; set; }
+
+    /// <summary>The level source's state: the alignment (level tile = unwrapped scroll tile + offset), this frame's verdict, the counters.</summary>
+    private sealed class LevelTrack
+    {
+        public bool Verified, Aligned;
+        public long Ox, Oy, LastSearch = -LevelSearchEvery;
+        public long FramesChecked, FramesVerified, Searches, Found, Pixels, Outside;
+        public int LastMatch, LastCompared;
+        public int Width, Height;
+        public readonly int[] Seen = new int[65536];   // the search's count of each map entry in the picture (reused: no allocation)
+    }
+    private LevelTrack? level;
+    /// <summary>Tests only (the negative control): once aligned, keep showing the level although the check fails (what a level source without the check would do).</summary>
+    public bool LevelTrustWithoutCheck { get; set; }
+    /// <summary>Tools: told each entry the level check finds different (null: nothing).</summary>
+    public static Action<string>? LevelDebug;
+    private const int LevelSearchEvery = 8;
+
+    /// <summary>The level's map entry at level tile (lx, ly) (8 x 8 tiles, 2 x 2 to a block), or -1 outside the level or the work RAM.</summary>
+    private int LevelEntry(WmsLevel d, byte[] ram, int width, int height, long lx, long ly)
+    {
+        if (lx < 0 || ly < 0) return -1;
+        long bx = lx >> 1, by = ly >> 1;
+        if (bx >= width || by >= height) return -1;
+        long i = d.Blocks + 2 * (by * width + bx);
+        if (i + 1 >= ram.Length) return -1;
+        int wv = ram[i] | ram[i + 1] << 8;
+        bool fx = (wv & d.FlipX) != 0, fy = (wv & d.FlipY) != 0;
+        int qx = (int)(lx & 1), qy = (int)(ly & 1);
+        if (fx) qx ^= 1;
+        if (fy) qy ^= 1;
+        long ti = d.Tiles + (long)(wv & d.Index) * 8 + (qy * 2 + qx) * 2;
+        if (ti + 1 >= ram.Length) return -1;
+        int e = ram[ti] | ram[ti + 1] << 8;
+        if (fx) e ^= 0x4000;
+        if (fy) e ^= 0x8000;
+        return e;
+    }
+
+    /// <summary>Once a frame, before any of the frame is drawn: is the level in work RAM, at the alignment found before, what the SNES picture shows? (spec 6.1) If not, search for the
+    /// alignment again (at most every 8 frames). The frame shows the level only when verified.</summary>
+    private void TrackLevel(int bg, DrawnTrack t, bool cut)
+    {
+        var lt = level!; var d = enhWide!.Level!; var ram = WorkRam;
+        lt.Verified = false;
+        lt.FramesChecked++;
+        if (ram == null) return;
+        var (mapBase, wide, tall, shift) = MemoryGeometry(bg);
+        if (shift != 3) return;   // the level's blocks are 2 x 2 tiles of 8 x 8
+        lt.Width = ram[d.Width & 0x1FFFF] | ram[(d.Width + 1) & 0x1FFFF] << 8;
+        lt.Height = ram[d.Height & 0x1FFFF] | ram[(d.Height + 1) & 0x1FFFF] << 8;
+        if (lt.Width <= 0 || lt.Height <= 0 || (long)lt.Width * lt.Height > 0x10000) return;
+        int colMask = wide ? 63 : 31, rowMask = tall ? 63 : 31;
+        var (tx0, tx1) = UnaliasedTiles(t.U, shift, colMask);
+        var rows = bandPrev[bg];
+        bool any = false;
+        for (int y = 0; y < VisibleHeight && !any; y++) any = rows[y];
+        if (!any) return;   // no main-scroll rows last frame: nothing to check against
+        (int match, int compared) Check(long ox, long oy, int step)
+        {
+            int match = 0, compared = 0; long lastTy = long.MinValue;
+            for (int y = 0; y < VisibleHeight; y += 1)
+            {
+                if (!rows[y]) continue;
+                long ty = (t.Vu + y + 1) >> 3;
+                if (ty == lastTy || (step > 1 && ty % step != 0)) continue;
+                lastTy = ty;
+                for (long tx = tx0; tx <= tx1; tx += step)
+                {
+                    compared++;
+                    int e = LevelEntry(d, ram, lt.Width, lt.Height, tx + ox, ty + oy);
+                    if (e >= 0 && e == SnesMapEntry(mapBase, wide, tall, (int)(tx & colMask), (int)(ty & rowMask))) match++;
+                    else if (LevelDebug != null && step == 1) LevelDebug($"frame {enhFrame} tile ({tx}, {ty}) + ({ox}, {oy}): map {SnesMapEntry(mapBase, wide, tall, (int)(tx & colMask), (int)(ty & rowMask)):X4} level {e:X4}");
+                }
+            }
+            return (match, compared);
+        }
+        if (lt.Aligned && !cut)
+        {
+            var (m, n) = Check(lt.Ox, lt.Oy, 1);
+            lt.LastMatch = m; lt.LastCompared = n;
+            if (n >= 200 && (n - m) * 50 <= n) { lt.Verified = true; lt.FramesVerified++; return; }
+            if (LevelTrustWithoutCheck) { lt.Verified = true; return; }   // tests only: the negative control of the check
+        }
+        // search: a distinctive tile of the picture (its entry appears once among the checked ones), every level place holding it tried
+        if (enhFrame - lt.LastSearch < LevelSearchEvery) return;
+        lt.LastSearch = enhFrame; lt.Searches++; lt.Aligned = false;
+        long ay = long.MinValue, ax = 0; ushort ae = 0;
+        var seen = lt.Seen;
+        long lastRow = long.MinValue;
+        for (int y = 0; y < VisibleHeight; y++)
+        {
+            if (!rows[y]) continue;
+            long ty = (t.Vu + y + 1) >> 3;
+            if (ty == lastRow) continue;
+            lastRow = ty;
+            for (long tx = tx0; tx <= tx1; tx++)
+            {
+                ushort e = SnesMapEntry(mapBase, wide, tall, (int)(tx & colMask), (int)(ty & rowMask));
+                seen[e]++;
+            }
+        }
+        lastRow = long.MinValue;
+        for (int y = 0; y < VisibleHeight && ay == long.MinValue; y++)
+        {
+            if (!rows[y]) continue;
+            long ty = (t.Vu + y + 1) >> 3;
+            if (ty == lastRow) continue;
+            lastRow = ty;
+            for (long tx = tx0; tx <= tx1; tx++)
+            {
+                ushort e = SnesMapEntry(mapBase, wide, tall, (int)(tx & colMask), (int)(ty & rowMask));
+                if (seen[e] == 1) { ax = tx; ay = ty; ae = e; break; }
+            }
+        }
+        // the counts back to 0 for the next search
+        lastRow = long.MinValue;
+        for (int y = 0; y < VisibleHeight; y++)
+        {
+            if (!rows[y]) continue;
+            long ty = (t.Vu + y + 1) >> 3;
+            if (ty == lastRow) continue;
+            lastRow = ty;
+            for (long tx = tx0; tx <= tx1; tx++) seen[SnesMapEntry(mapBase, wide, tall, (int)(tx & colMask), (int)(ty & rowMask))] = 0;
+        }
+        if (ay == long.MinValue) return;
+        for (long ly = 0; ly < lt.Height * 2L; ly++)
+            for (long lx = 0; lx < lt.Width * 2L; lx++)
+            {
+                if (LevelEntry(d, ram, lt.Width, lt.Height, lx, ly) != ae) continue;
+                long ox = lx - ax, oy = ly - ay;
+                var (sm, sn) = Check(ox, oy, 3);
+                if (sn == 0 || (sn - sm) * 50 > sn) continue;
+                var (m, n) = Check(ox, oy, 1);
+                lt.LastMatch = m; lt.LastCompared = n;
+                if (n >= 200 && (n - m) * 50 <= n)
+                {
+                    lt.Ox = ox; lt.Oy = oy; lt.Aligned = true; lt.Verified = true; lt.Found++; lt.FramesVerified++;
+                    return;
+                }
+            }
+    }
+
+    /// <summary>The side columns this line draws from the level in work RAM or the map memory (after <see cref="SnesBg"/>): each place's tile, with the game's tiles and colours of
+    /// now; a place neither holds is transparent (filled).</summary>
+    private void SideFill(int bg, int bpp, int mode, int line)
+    {
+        var mem = memory[bg];
+        var lt = level != null && enhWide!.Level!.Layer == bg && level.Verified ? level : null;
+        var d = lt != null ? enhWide!.Level : null; var ram = WorkRam;
+        var colors = bgCol[bg]; var prios = bgPri[bg]; var src = sideCol[bg];
+        var (_, _, _, shift) = MemoryGeometry(bg);
+        int size = 1 << shift, charBase = CharBase(bg), wordsPerTile = bpp * 4;
+        int paletteBase = mode == 0 ? bg * 32 : 0;
+        bool direct = bpp == 8 && (RegCgwsel & 0x01) != 0;
+        ref var t = ref drawn[bg];
+        long left = t.U - SnesOrigin;   // a line of the main scroll: HOFS is the frame's
+        long wy = t.Vu + line, ty = wy >> shift;
+        int pyRaw = (int)(wy & (size - 1));
+        var vram = Vram; var cgram = Cgram;
+        long lastTx = long.MinValue; int entry = -1; bool memHit = false;
+        for (int c = 0; c < WideWidth; c++)
+        {
+            if (c == SnesOrigin) c = SnesOrigin + Width;
+            if (!src[c]) continue;
+            long wx = left + c, tx = wx >> shift;
+            if (tx != lastTx)
+            {
+                lastTx = tx; entry = -1; memHit = false;
+                if (lt != null)
+                {
+                    entry = LevelEntry(d!, ram!, lt.Width, lt.Height, tx + lt.Ox, ty + lt.Oy);
+                    if (entry < 0) lt.Outside++;
+                }
+                if (entry < 0 && mem != null && mem.TryGet(MapMemory.Key(tx, ty), out ushort me)) { entry = me; memHit = true; }
+            }
+            if (mem != null) { mem.Pixels++; if (memHit) mem.Remembered++; }
+            if (entry < 0) { colors[c] = Clear; continue; }
+            if (lt != null && !memHit) lt.Pixels++;
+            int px = (int)(wx & (size - 1)), py = pyRaw;
+            if ((entry & 0x4000) != 0) px = size - 1 - px;
+            if ((entry & 0x8000) != 0) py = size - 1 - py;
+            int tile = entry & 0x3FF;
+            if (px >= 8) tile += 1;
+            if (py >= 8) tile += 16;
+            int addr = charBase + (tile & 0x3FF) * wordsPerTile + (py & 7);
+            int bit = 7 - (px & 7), v = 0;
+            for (int plane = 0; plane < bpp; plane += 2)
+            {
+                ushort wd = vram[(addr + plane * 4) & 0x7FFF];
+                v |= ((wd >> bit) & 1) << plane | ((wd >> (8 + bit)) & 1) << (plane + 1);
+            }
+            if (v == 0) { colors[c] = Clear; continue; }
+            int pal = (entry >> 10) & 7;
+            colors[c] = direct ? SnesDirectColour(v, pal) : cgram[(paletteBase + (bpp == 8 ? 0 : pal << bpp) + v) & 0xFF];
+            prios[c] = (byte)((entry >> 13) & 1);
+        }
+    }
+
+    /// <summary>A state load: the map memory and the level's alignment describe the machine that was here before (spec 6.1: forgotten).</summary>
+    private void ForgetMemory()
+    {
+        foreach (var m in memory) m?.Forget();
+        if (level != null) { level.Aligned = false; level.Verified = false; level.LastSearch = enhFrame - LevelSearchEvery; }
     }
 
     /// <summary>True when every scene condition holds on this line (the registers as the game last wrote them).</summary>

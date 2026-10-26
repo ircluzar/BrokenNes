@@ -347,6 +347,7 @@ public sealed partial class PPU_WMS
         ClearScreens(total);
         if (lnEnh && enhWide != null)
         {
+            Array.Clear(sideLine);
             BuildRemap(row);   // milestone 6: the widescreen profile's side rules for this row (WideMess.Enhance.cs)
             if (anyDrawn) ApplyDrawn(row, mode, lnMain | lnSub);
         }
@@ -359,6 +360,7 @@ public sealed partial class PPU_WMS
             bool mosaicActive = (mosaic & bit) != 0 && (mosaic >> 4) != 0;
             if (FastPaths && !hires && !mosaicActive && mode is not (2 or 4 or 6) && !Remapped(bg) && bg != DebugCaptureLayer) { SnesBgFused(bg, bpp, mode, line, width, origin, onMain, onSub); continue; }
             SnesBg(bg, bpp, mode, line, width, origin);
+            if (lnEnh && sideLine[bg]) SideFill(bg, bpp, mode, line);   // the side columns from the level in work RAM or the map memory (WideMess.Enhance.cs)
             if (bg == DebugCaptureLayer && !hires) CaptureLayerRow(bg, row, width);
             ComposeBgLine(bg, onMain, onSub, total, shift);
         }
@@ -909,5 +911,6 @@ public sealed partial class PPU_WMS
             if (rowWide[row]) SnesStateIo.Get(r, WideBuffer.AsSpan(row * WideWidth, WideWidth));
         Array.Fill(winSig, -1L);   // the masks describe the machine that was here before
         rankOrder = null;
+        ForgetMemory();            // and so does milestone 6's map memory (spec 6.1)
     }
 }

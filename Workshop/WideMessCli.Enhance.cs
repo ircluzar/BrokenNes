@@ -121,6 +121,12 @@ internal static partial class WideMessCli
         string scratch = Opt(args, "scratch-profile", "");
         if (scratch != "") s.SetScratchProfile(WmsProfile.Parse(File.ReadAllText(scratch), Path.GetFileName(scratch)));
         if (args.Contains("--all-extend", StringComparer.OrdinalIgnoreCase)) s.SetScratchProfile(AllExtendProfile(s.ImageSha1));
+        if (args.Contains("--no-level", StringComparer.OrdinalIgnoreCase) && s.EnhanceProfile.Profile is { Widescreen: { } ws0 } p0)
+        {
+            // the profile without its level in work RAM (the negative control of E8)
+            var ws1 = ws0.Copy(); ws1.Level = null;
+            s.SetScratchProfile(new WmsProfile { Source = p0.Source + " without its level", Title = p0.Title, Sha1 = p0.Sha1, Widescreen = ws1, Verdicts = p0.Verdicts, VerifiedHow = "scratch" });
+        }
         profileNote = s.EnhanceProfile.Describe();
         string? why = s.SetEnhancements(widescreen: true, noFlicker: args.Contains("--no-flicker", StringComparer.OrdinalIgnoreCase), fastCpu: args.Contains("--fast-cpu", StringComparer.OrdinalIgnoreCase));
         if (why != null) { Console.Error.WriteLine($"{Path.GetFileName(rom)}: {why} (SHA-1 {s.ImageSha1})"); s.Dispose(); return null; }
@@ -276,106 +282,6 @@ internal static partial class WideMessCli
                 Console.WriteLine($"    #{i}: {(longer == fastPorts ? "fast" : "SNES")} only ${longer[i].port:X4}={longer[i].v:X2} @{longer[i].clock}");
         }
         return 0;
-    }
-
-    /// <summary>
-    /// <c>--wms-side-truth (--game KEY | --rom game.sfc [--input S]) --layer bg1 [--frames N] [--scratch-profile p.json]</c>: how true one layer's side columns are. The layer is captured
-    /// (the picture chip's tool capture: the game is unaffected) and its scroll followed across frames (HOFS unwrapped, a step of more than 64 pixels or a new map starts again). Every side
-    /// column a frame shows is a claim: "at this place of the layer (unwrapped x, VOFS) the game's map looks like this". When the place later scrolls into the SNES picture, the SNES picture is the
-    /// truth: the claim is right (the same pixels, but for at most 2% of them), empty (the layer shows nothing there, a filled side, where the truth shows something) or wrong. The pixels are the layer's own colours (the
-    /// picture chip's capture, before windows, colour math and brightness). Frames whose lines do not share one scroll are skipped.
-    /// </summary>
-    /// <summary>The last <see cref="SideTruth"/> run's counts (for the checks, E8).</summary>
-    [ThreadStatic] internal static (long right, long empty, long wrong) LastSideTruth;
-    internal static (long right, long empty, long wrong) SideTruthCounts(string[] args) { SideTruth(args); return LastSideTruth; }
-
-    public static int SideTruth(string[] args)
-    {
-        LastSideTruth = (0, 0, 0);
-        RomTestCli.EnsureConsole();
-        var g = GameArgs(args);
-        string layerName = Opt(args, "layer", "bg1");
-        int layer = Array.IndexOf(new[] { "bg1", "bg2", "bg3", "bg4" }, layerName);
-        if (g == null || layer < 0) { Console.Error.WriteLine("usage: --wms-side-truth (--game KEY | --rom game.sfc [--input S]) --layer bg1..bg4 [--frames N] [--scratch-profile p.json]"); return 2; }
-        var (rom, script, moments, name) = g.Value;
-        int frames = int.Parse(Opt(args, "frames", moments.Max().ToString()));
-        using var s = EnhancedSession(rom, args, out string note);
-        if (s == null) return 1;
-        var ppu = s.WideMessPpu!;
-        ppu.CompareEnhanced = true;   // the SNES chip draws each line too: it fills DebugLineRegisters
-        ppu.DebugCaptureLayer = layer;   // the layer's own colours, before windows and colour math (the sky's fixed-colour gradients and fades would change every pixel)
-        var pad = ParsePad(script);
-        const int W = PPU_WMS.WideWidth, O = PPU_WMS.SnesOrigin;
-        var pending = new Dictionary<(long x, int v), List<(int frame, uint[] col)>>();
-        long u = 0; int prevH = -1, prevSig = -1; int epoch = 0;
-        long right = 0, empty = 0, wrong = 0, skipped = 0, claims = 0;
-        var firstWrong = new List<int>();
-        int detail = int.Parse(Opt(args, "detail", "0"));
-        int at = 0; PadButtons held = 0;
-        for (int f = 1; f <= frames; f++)
-        {
-            PlayTo(s, pad, ref at, f, ref held);
-            var lines = ppu.DebugLineRegisters!;
-            int h = ppu.VisibleHeight;
-            if (s.FrameWidth != W || (lines[1].Inidisp & 0x80) != 0) { prevH = -1; skipped++; continue; }
-            int hofs = Hofs(lines[1], layer), vofs = Vofs(lines[1], layer), sig = Sc(lines[1], layer) | lines[1].Bgmode << 8;
-            bool uniform = true;
-            for (int line = 1; line <= h && uniform; line++) uniform = Hofs(lines[line], layer) == hofs && Vofs(lines[line], layer) == vofs && (lines[line].Inidisp & 0x80) == 0;
-            if (prevH < 0 || sig != prevSig) { epoch++; pending.Clear(); u = hofs; }
-            else
-            {
-                int d = ((hofs - prevH + 512) & 1023) - 512;
-                if (Math.Abs(d) > 64) { epoch++; pending.Clear(); u = hofs; } else u += d;
-            }
-            prevH = hofs; prevSig = sig;
-            if (!uniform) { skipped++; continue; }
-            var fr = ppu.DebugCapture;
-            if (fr == null) { skipped++; continue; }
-            uint[] Column(int c) { var col = new uint[h]; for (int y = 0; y < h; y++) col[y] = fr[y * W + c]; return col; }
-            // the truth: every SNES column of this frame settles the claims made about its place
-            for (int c = O; c < O + 256; c++)
-            {
-                var key = (u + (c - O), vofs);
-                if (!pending.TryGetValue(key, out var list)) continue;
-                var truth = Column(c);
-                if (truth.All(p => p == PPU_WMS.CaptureClear)) continue;   // the layer shows nothing there (or is off on this frame): no truth to judge by
-                foreach (var (frame, col) in list)
-                {
-                    int differ = 0; for (int y = 0; y < h; y++) if (col[y] != truth[y]) differ++;
-                    if (differ <= h / 50) right++;   // right: all but at most 2% of its pixels (a row at the map's edge the game streams vertically)
-                    else if (col.All(p => p == PPU_WMS.CaptureClear)) empty++;
-                    else
-                    {
-                        wrong++; if (firstWrong.Count < 8 && (firstWrong.Count == 0 || firstWrong[^1] != frame)) firstWrong.Add(frame);
-                        if (detail-- > 0)
-                        {
-                            int nd = 0, fy = -1; for (int y = 0; y < h; y++) if (col[y] != truth[y]) { nd++; if (fy < 0) fy = y; }
-                            Console.WriteLine($"    wrong: claimed at frame {frame}, shown at frame {f} column {c}: {nd} of {h} pixels differ, first row {fy}: {col[fy]:X8} vs {truth[fy]:X8}");
-                        }
-                    }
-                }
-                pending.Remove(key);
-            }
-            // the claims: the side columns
-            for (int c = 0; c < W; c++)
-            {
-                if (c == O) c = O + 256;
-                var key = (u + (c - O), vofs);
-                if (!pending.TryGetValue(key, out var list)) pending[key] = list = new List<(int, uint[])>();
-                if (list.Count < 4) { list.Add((f, Column(c))); claims++; }
-            }
-            if (f % 600 == 0) foreach (var k in pending.Where(kv => kv.Value[^1].frame < f - 600).Select(kv => kv.Key).ToList()) pending.Remove(k);
-        }
-        long judged = right + empty + wrong;
-        LastSideTruth = (right, empty, wrong);
-        double P(long n) => judged == 0 ? 0 : 100.0 * n / judged;
-        Console.WriteLine($"{name}, {layerName}, {note}: {frames:N0} frames ({skipped:N0} skipped: blank, another width or per-line scroll), {claims:N0} side columns claimed, {judged:N0} later shown by the SNES picture:");
-        Console.WriteLine($"  right {right:N0} ({P(right):F1}%), empty {empty:N0} ({P(empty):F1}%), wrong {wrong:N0} ({P(wrong):F1}%){(firstWrong.Count > 0 ? $"; wrong claims made at frames {string.Join(", ", firstWrong)}..." : "")}");
-        return 0;
-
-        static int Hofs(PPU_SFC.RegisterSnapshot r, int bg) => bg switch { 0 => r.Bg1hofs, 1 => r.Bg2hofs, 2 => r.Bg3hofs, _ => r.Bg4hofs } & 0x3FF;
-        static int Vofs(PPU_SFC.RegisterSnapshot r, int bg) => bg switch { 0 => r.Bg1vofs, 1 => r.Bg2vofs, 2 => r.Bg3vofs, _ => r.Bg4vofs } & 0x3FF;
-        static int Sc(PPU_SFC.RegisterSnapshot r, int bg) => bg switch { 0 => r.Bg1sc, 1 => r.Bg2sc, 2 => r.Bg3sc, _ => r.Bg4sc };
     }
 
     /// <summary>The picture's set-up in bands of rows (for writing profiles): BGMODE, TM / TS and each layer's map width (w = 64 tiles, n = 32) per run of lines with the same set-up,

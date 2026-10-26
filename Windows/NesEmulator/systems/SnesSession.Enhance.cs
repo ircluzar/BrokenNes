@@ -108,6 +108,7 @@ public sealed partial class SnesSession
             enhanceHooked = true;
         }
         enhancements = e;
+        wms.WorkRam = board.Wram;   // the level in work RAM (spec 6.1): the picture chip reads it as a debugger does
         wms.SetEnhancements(e.Widescreen ? EnhanceProfile.Profile?.Widescreen : null, e.NoFlicker);
         board.ConsoleFastCpu = e.FastCpu;
         ApplySoundEnhancement();

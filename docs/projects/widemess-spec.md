@@ -464,6 +464,55 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
     - vertical scroll is not followed (the sides show the centre's rows), and in Mode 7 drawn is extend.
     A side column whose place is outside the span is filled. The game sees nothing of it: it is the picture chip's reading of the registers
     and of its own map, as the side rules are.
+  - **The map memory** (`memory`, for layers on the drawn rule; milestone 6 climb): the console remembers what the SNES picture showed of
+    the layer's map at each place of the level, so a side column outside the drawn span shows the place as the game last showed it, instead
+    of nothing. For games that keep only the screen's width of their level in the map: scrolling back, or standing still after a run, fills
+    the side behind with the level as it was.
+    - **What is remembered:** only what the SNES picture itself showed. On every line of the layer's main scroll (below), the map entries of
+      the tiles under the SNES picture's 256 columns, at their place in the level: the tile column of the unwrapped horizontal scroll (as the
+      drawn rule follows it) and the tile row of the unwrapped vertical scroll (followed the same way, once a frame) plus the line. The entry
+      (tile number, palette, priority, flips) is kept, not its pixels: a remembered place is drawn with the tiles and colours the game has now,
+      as the game's own picture is.
+    - **The main scroll:** the layer's HOFS and VOFS on the frame's first line that draws it. Lines with another scroll (a status bar, a split,
+      a wobble) are another part of the picture: nothing is remembered from them and they show no memory (their sides are the drawn rule's).
+    - **Where it shows:** a side column on a line of the main scroll whose place is outside the drawn span and whose tile is remembered. Not on
+      lines of Mode 7, the hi-res modes 5 and 6, the offset-per-tile modes 2, 4 and 6, or with mosaic on the layer (filled there, as before).
+    - **Forgetting (a cut: the memory is emptied).** The memory must never show a place of another scene. It is emptied:
+      - at every cut of the drawn rule (a step of more than 64 pixels, the layer's map, tile size or BGMODE changing), and when the vertical
+        scroll steps more than 64 pixels in a frame;
+      - when a frame does not draw the layer (it is switched off, or the whole frame is forced blank or at brightness 0: games change scenes
+        behind a black screen);
+      - **when the game's map disagrees with the memory:** on the first line that draws the layer, before any of the frame is drawn, the map
+        entries the SNES picture will show (the tiles of last frame's main-scroll lines, at this frame's scroll) are compared with the memory
+        wherever it holds the same place. If at least 64 are compared and more than one in eight differ, the scene has changed under the same
+        scroll (a level reloaded behind a fade the game does with colour math, a door that swaps the room in place): the memory is emptied before
+        the frame is drawn. A few entries that differ (a broken block, a door opened) are only updated;
+      - at a state load, and when the enhancements are switched.
+    - **What it cannot know:** what the game changes in a place while it is not shown (a door opened off screen shows closed until it scrolls
+      in), and anything ahead that the game has never shown. It holds up to 131,072 tiles per layer; a place it had to forget is filled.
+    - The game reads nothing of it: it is the picture chip's own memory, as the drawn span is.
+  - **The level in work RAM** (`level`, one layer on the drawn rule; milestone 6 climb): some games keep the whole level (the room, the
+    stage) in work RAM as 16 x 16-pixel blocks, and draw the map from it as they scroll. The profile says where; the console then draws the
+    side columns ahead from the level itself, before the game has drawn them. It is the profile's description of the game's RAM, checked
+    against the game's own picture every frame, never trusted:
+    - **The description:** `blocks` (the address of the level's blocks, one 16-bit word each, row by row), `width` and `height` (the
+      addresses of two 16-bit words: the level's size in blocks), `tiles` (the block table: 8 bytes a block number, the four map entries
+      top-left, top-right, bottom-left, bottom-right) and the block word's bits: `index` (the block number), `flipX`, `flipY` (the block
+      flipped: its quadrants swapped and each entry's flip bit toggled). Addresses are in work RAM, `$7E0000-$7FFFFF`. The layer has 8 x 8
+      tiles (a block is 2 x 2 of them).
+    - **The check, every frame**, on the first line that draws the layer, before any of the frame is drawn: the map entries the SNES picture
+      will show (the tiles of last frame's main-scroll rows, at this frame's scroll, as the memory's check) are compared with the level's at the
+      alignment found before (the level's tile at the place = the unwrapped scroll's tile plus an offset). At least 200 compared and at most 2%
+      different: the level is **verified** for this frame. Otherwise the alignment is searched again (on a distinctive tile of the picture: one
+      whose entry appears once there, every level place holding it tried; at most once every 8 frames) and verified the same way; until then the
+      level shows nothing.
+    - **Where it shows:** a side column on a line of the main scroll whose place is outside the drawn span, on a verified frame, inside the
+      level's width and height: the level's tile there, with the game's tiles and colours of now. Outside the level, or on a frame that is not
+      verified, the memory (if on) and then fill, as before. Not on the lines and modes the memory leaves out.
+    - **Why it is safe:** the side shows the level only while the game's own picture, that frame, is the level at that alignment. A room left
+      behind in RAM, a profile with a wrong address, a game that keeps something else there: the check fails and nothing is shown. What it
+      cannot know: what the game draws on the layer that is not in the level (it would show the level's tile there until the place scrolls in).
+    - The game reads nothing of it: the console reads work RAM as a debugger does (no side effects), the extension stays locked.
 - **Sprites** follow one of two rules:
   - **extend**: the SNES's sprite pass draws the centre unchanged: 32 sprites and 34 slivers, counted on the SNES's 256 columns.
     The parts of sprites that fall in the side columns are drawn in addition and never counted. Their X follows section 3.3:
@@ -575,7 +624,10 @@ profile already claims is refused with the reason. It is never half-read.
 
 - `widescreen` is required when `enhancements.widescreen` is anything but `"unavailable"`, and refused when it is `"unavailable"`.
   Its keys: `layers` (required: `bg1`-`bg4` extend / repeat / fill / drawn, `sprites` extend / fill), `masks`, `windows` and `drawnAhead`
-  (6.1; `{ "bg1": 8 }`, only for layers on the drawn rule, 0-72).
+  (6.1; `{ "bg1": 8 }`, only for layers on the drawn rule, 0-72) and `memory` (6.1, the map memory: a list of layers, `["bg1"]`, each on
+  the drawn rule; a layer listed twice or not drawn is refused) and `level` (6.1, the level in work RAM: `{ "layer": "bg1", "blocks":
+  "$7F0002", "width": "$7E07A5", "height": "$7E07A7", "tiles": "$7EA000", "index": "$03FF", "flipX": "$0400", "flipY": "$0800" }`, every key
+  required; the layer on the drawn rule, the addresses in work RAM, the three bit fields not overlapping).
 - A mask's keys: `why`, `layers` (`bg1`-`bg4`, `sprites`, or `all`; a black mask covers `all`), `rows` (`[top, bottom]`, 0-238),
   `rule` (fill / repeat / black; sprites cannot repeat), and optionally `side` (both / left / right), `from` and `to` (0-72, from < to)
   and `when` (`{ "register": "$VV" }` or `"$VV/$MM"`, hex; a value with bits outside its mask is refused, it could never match).
@@ -621,7 +673,11 @@ profile already claims is refused with the reason. It is never half-read.
 - `--wms-side-truth (--game <key> | --rom <game>) --layer bg1` (milestone 6 follow-up): how true a layer's side columns are. Every side column a
   frame shows claims what the layer looks like at that place; when the place later scrolls into the SNES picture, the SNES picture is the
   truth, and the claim is right, empty (the layer shows nothing there) or wrong. The layer's own colours are compared (a capture before windows,
-  colour math and brightness), only on frames whose lines share one scroll.
+  colour math and brightness). Since the milestone 6 climb it works per line: a frame's claims and truths use only its band, the lines the
+  picture shows (not forced blank, brightness above 0) with the scroll, map and BGMODE of the first shown line; other lines (a status bar, a
+  parallax split, blank lines the game keeps at the top for DMA) are left out. The vertical scroll is followed too (unwrapped as the horizontal),
+  so a claim is judged on the world rows it and the truth both show (at least 32; until then it waits). The first version judged only frames whose
+  lines all shared one scroll, at the same vertical scroll: Yoshi's Island (blank top lines every frame) could not be measured at all.
 - `--wms-enhance-test`: milestone 6's checks alone.
 - `--wms-fast-probe --rom <game> --from <frame>`: fast CPU switched on at a frame, the 65816's PC beside the SNES console's.
 - `--wms-test` checks every enhancement against a negative control:
@@ -644,9 +700,9 @@ by `--wms-test` in lockstep with the SNES console, through a pad script or the g
 | Game | Widescreen | Its rules | No flicker (lines with more sprites) | Fast CPU |
 |---|---|---|---|---|
 | Super Mario World | good | all extended; BG3 filled where it is drawn in front (status bar, title frame) | 0 | risky: hangs if on at power-on |
-| Yoshi's Island (Super FX 2) | risky | BG1 drawn, the rest extended | 18 | risky |
+| Yoshi's Island (Super FX 2) | risky | BG1 drawn with the map memory, the rest extended | 18 | risky |
 | Donkey Kong Country | good | BG1 drawn (ahead 0), the rest extended; black sides for the intro and level-name screens | 0 | risky |
-| Super Metroid | risky | BG1 drawn (ahead 0), the rest extended; BG3 filled in the status rows | 0 | risky |
+| Super Metroid | **good** (milestone 6 climb) | BG1 drawn (ahead 0) with the level in work RAM, the rest extended; BG3 filled in the status rows | 0 | risky |
 | A Link to the Past | risky | all extended | 0 | risky |
 | F-Zero | good | all extended, sprites filled; BG3 filled above the horizon | 0 | risky |
 | Super Mario Kart (DSP-1) | good | all extended, sprites filled; black sides for the title | 0 | risky |
@@ -671,6 +727,27 @@ Layers left extended because they were already true: Donkey Kong Country BG2 (95
 A Link to the Past BG1 (100% right; BG2 17% wrong outdoors, where drawn would empty the sides). Yoshi's Island changes BG1's scroll within a
 frame, so the tool cannot judge it; its sheet shows the old tiles gone. The drawn rule trades wrong tiles for empty sides: only Donkey Kong
 Country, whose jungle (BG2) shows behind the level, looks right with it at every moment of its sheet.
+
+**The milestone 6 climb** (the tool's second version: per line, vertical scroll followed, truth 8 columns inside the SNES edge; right / empty /
+wrong):
+
+| Game, layer | Every layer extended | Drawn | Now |
+|---|---|---|---|
+| Super Metroid, BG1 | 6.7 / 5.2 / 88.0 | 10.7 / 88.7 / 0.6 | with the level in work RAM: **99.4 / 0.0 / 0.6** (verified on 2,807 of 2,808 frames): widescreen **good** |
+| Super Metroid, BG2 | 96.3 / 0.0 / 3.7 | | extended |
+| Yoshi's Island, BG1 (first measured) | 42.2 / 0.0 / 57.8 | 10.1 / 89.9 / 0.0 | with the map memory: 10.8 / 89.1 / 0.1 (the layer draws 16.9% of the side pixels, was 7.6%) |
+| Yoshi's Island, BG2 (first measured) | 72.7 / 0.0 / 27.3 | 2.4 / 96.0 / 1.6 | extended |
+| Donkey Kong Country, BG1 / BG2 | 9.5 / 0 / 90.5; 100 / 0 / 0 | 17.8 / 82.2 / 0 | unchanged |
+| Super Castlevania IV, BG1 / BG2 | 21.3 / 11.9 / 66.8; 15.2 / 37.4 / 47.4 | 2.2 / 97.8 / 0; 0 / 100 / 0 | unchanged |
+| Contra III, BG1 / BG2 | 58.5 / 15.5 / 26.0; 100 / 0 / 0 (212 columns) | 1.5 / 98.5 / 0; 0 / 100 / 0 | unchanged |
+| Mega Man X, BG1 / BG2 | 8.2 / 29.3 / 62.5; 35.4 / 60.2 / 4.4 | 4.4 / 95.3 / 0.3 | unchanged |
+| Chrono Trigger, BG1 / BG2 | 8.5 / 4.6 / 86.9; 82.8 / 9.2 / 8.1 | 4.9 / 95.1 / 0; 0.1 / 99.9 / 0 | unavailable |
+| A Link to the Past, BG2 | 91.9 / 0 / 8.1 | | extended |
+
+The map memory fills the sides behind the player, but the sides the tool judges are mostly the ones ahead, which a game has never shown; only the
+level in work RAM can fill those, and of the games checked only Super Metroid keeps its level there in the form the console reads
+(`Workshop --wms-level-probe --find`: Chrono Trigger keeps its block table in work RAM but its maps as bytes; the others keep their block tables in
+ROM).
 
 What the sheets show, by kind of game:
 - **Mode 7 games** (F-Zero, Super Mario Kart) extend best: the plane continues to both edges.

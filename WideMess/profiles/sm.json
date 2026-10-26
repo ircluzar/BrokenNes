@@ -16,6 +16,16 @@
     "drawnAhead": {
       "bg1": 0
     },
+    "level": {
+      "layer": "bg1",
+      "blocks": "$7F0002",
+      "width": "$7E07A5",
+      "height": "$7E07A7",
+      "tiles": "$7EA000",
+      "index": "$03FF",
+      "flipX": "$0400",
+      "flipY": "$0800"
+    },
     "masks": [
       {
         "why": "the energy, missiles and map display are BG3 laid out for 256 columns on a 32-tile map that would repeat",
@@ -31,7 +41,7 @@
     ]
   },
   "enhancements": {
-    "widescreen": "risky",
+    "widescreen": "good",
     "noFlicker": "good",
     "betterSound": "good",
     "fastCpu": "risky"
@@ -41,15 +51,15 @@
     "noFlicker"
   ],
   "issues": [
-    "The room layer (BG1) is drawn: shown in the sides only where the game has drawn its map for the place shown. Beyond a room's walls the game draws nothing, so there the sides show the room's background (BG2) or the backdrop instead of stray tiles; a room that does not scroll keeps its sides nearly empty.",
-    "Side truth (Workshop --wms-side-truth, 2026-10-25): BG1 extended showed a wrong column in 87% of the side columns later seen in the SNES picture; drawn, 0.6%. BG2 extended: 96% right, 3.8% wrong.",
-    "Rooms are drawn as Samus scrolls: on entering a room the sides can show old tiles for a moment.",
+    "The room layer (BG1) is drawn, with the level in work RAM: the game keeps the whole room in work RAM as 16 x 16 blocks ($7F:0002, its width and height at $7E:07A5 and $07A7, the block table at $7E:A000), so the sides show the room ahead before the game draws it, checked against the game's own picture every frame (shown only while the room in RAM is what the SNES picture shows). Beyond the room's edges the sides show the room's background (BG2) or the backdrop.",
+    "Side truth (Workshop --wms-side-truth, milestone 6 climb, 6,300 frames of the attract demos): BG1 99.4% right, 0% empty, 0.6% wrong (one moment: a place that changed between the side showing it and the SNES picture showing it 300 frames later). Before the level: 10.7% right, 88.7% empty; every layer extended, 88% wrong. BG2 extended: 96.3% right, 3.7% wrong (one room whose background changes 5-15 rows of a column over 200 frames).",
+    "The room's level is verified on 2,807 of the 2,808 frames that drew it; on a frame where it is not (a room loading) the sides fall back to what the game has drawn.",
     "The status display's sides are left empty (BG3 filled in rows 0-31).",
     "No flicker: in the 6,300 frames checked the game never drew more sprites on a line than a SNES shows, so it changed nothing; it changes only lines over the limits.",
     "Fast CPU ran the 6,300 frames checked; the attract demos play differently (the game's timing changes from frame 10)."
   ],
   "verified": {
     "date": "2026-10-25",
-    "how": "Workshop --wms-test (E6), 6,300 frames of the attract demos in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/sm.png."
+    "how": "Workshop --wms-test (E6), 6,300 frames of the attract demos in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame (the level in work RAM on), STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound; E8 side truth. Contact sheet docs/projects/widemess-images/m6/sm.png."
   }
 }

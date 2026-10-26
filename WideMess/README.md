@@ -77,7 +77,12 @@ BrokenNes.Workshop.exe --wms-testcart-shots --rom WideMess	estromsin\widemess-t
 - `--wms-fast-probe` switches the console's fast CPU on at a frame and prints the 65816's PC beside the SNES console's (`--trace-ports`: the sound-port
   writes of both runs, where they part and what the other run writes next).
 - `--wms-side-truth --game KEY --layer bg1 [--scratch-profile p.json | --all-extend] [--detail N]` (milestone 6 follow-up): how true a layer's side
-  columns are, judged by the SNES picture when the place scrolls into it.
+  columns are, judged by the SNES picture when the place scrolls into it. Since the milestone 6 climb it works per line (only the lines of the layer's
+  main scroll; blank top lines and splits are left out), follows the vertical scroll, takes the truth 8 columns inside the SNES edge (`--truth-margin`),
+  reports how much of the sides the layer draws, and the map memory's and the level's counters; `--no-level` takes the profile's level away (a control).
+- `--wms-level-probe --game KEY --at F1,F2 [--find]` (milestone 6 climb): research for the level in work RAM. Without `--find` it checks Super Metroid's
+  layout (`--blocks`, `--width`, `--tiles` to try others); with it, it searches work RAM for any block table (8 bytes, a 2 x 2 group of the picture) and a
+  block map of bytes or words that names those blocks.
 - `--enhanced-test --only wmsmenu,wms,wmsown,wmsgames` (milestone 7b) checks the WideMess chips on the other consoles' menus (docs/projects/enhanced-cores.md section 6);
   `wmsgames` needs the user's library (X:\EMULATION, the local Sega roster) and `wmsown` the test ROMs here (run it from the repository).
 - `--wms-guest-sheet` (milestone 7b) draws contact sheets of other consoles' games on the widescreen chip beside their own picture.
@@ -398,6 +403,70 @@ the desktop app build.
 
 **Found along the way** (reported, not WideMess): two game screenshots are committed at the repository root
 (`Super Mario World (U) [!]_snes_f01500.png`, a Link's Awakening DX one), added by BrokenDev D4's commit `5c0186b`; removed from git on 2026-10-25, and the repository root now ignores such screenshots.
+
+## Milestone 6 climb (2026-10-25): from empty sides to true ones
+
+The drawn rule had traded wrong tiles for empty sides. This round tried to fill them with true content, measured by `--wms-side-truth` (right / empty /
+wrong per side column). Spec 6.1 (the map memory, the level in work RAM) and 6.3 (the tool).
+
+**The tool, second version.** It now works per line: a frame's claims and truths are only the lines of the layer's main scroll (Yoshi's Island blanks
+its top lines every frame, so the first version could not judge one frame of it), it follows the vertical scroll (claims are judged on the world rows
+both show), and it takes the truth 8 columns or more inside the SNES edge, where games have finished drawing a column that scrolls in (at the edge
+Super Metroid's BG2 is still being drawn). It also says how much of the sides the layer draws on every frame. All numbers below are this version's
+(the first version's are in the follow-up above; Contra III's BG2, 100% wrong there, is 100% right of 212 columns here, on too little play to change
+its rule).
+
+**The map memory** (`memory`): the console remembers the map entries the SNES picture showed of a drawn layer, by place in the level, and draws a
+side column outside the drawn span from it; forgotten at every cut, after a frame without the layer, and when the game's map disagrees with it (more
+than 1 in 8 of at least 64 compared places, checked before the frame is drawn). Synthetic checks E2c with controls (without it the sides are empty;
+without the disagreement cut a new level at the same scroll leaves the old one in the side). On the games it is honest but small: the sides the
+player sees are mostly the ones ahead, which the game has never shown. Yoshi's Island's level layer draws 16.9% of its side pixels instead of 7.6%
+(10.8% right, 89.1% empty, 0.1% wrong: one column the game had changed 800 frames later); elsewhere it changes the judged numbers by 0-1.5 points.
+Only Yoshi's Island's profile uses it.
+
+**The level in work RAM** (`level`): Super Metroid keeps the whole room in work RAM as 16 x 16 blocks (`$7F:0002`, the width and height at
+`$7E:07A5` / `$07A7`, the block table at `$7E:A000`). Its profile now says so, and the console draws the side ahead from the room, checked every
+frame against the game's own picture (at least 200 map entries, at most 2% different) and searched again when it fails. Synthetic checks E2d with
+controls (without it the side ahead is empty; an address one byte off is never verified; a room left behind in RAM is refused; trusting RAM without
+the check shows the wrong room). `Workshop --wms-level-probe --find` searched every game's work RAM for such a layout.
+
+| Game, layer | Every layer extended | The previous rule | Now | Profile |
+|---|---|---|---|---|
+| Super Metroid, BG1 | 6.7 / 5.2 / **88.0** | drawn: 10.7 / **88.7** / 0.6 | **level: 99.4 / 0.0 / 0.6** (verified on 2,807 of 2,808 frames) | **good** (was risky) |
+| Super Metroid, BG2 | 96.3 / 0 / 3.7 | extended | unchanged | |
+| Yoshi's Island, BG1 | 42.2 / 0 / **57.8** | drawn: 10.1 / **89.9** / 0.0 (first measured) | drawn + memory: 10.8 / 89.1 / 0.1 | risky |
+| Yoshi's Island, BG2 | 72.7 / 0 / **27.3** (first measured) | extended | unchanged (drawn: 2.4 / 96.0 / 1.6) | |
+| Donkey Kong Country, BG1 / BG2 | 9.5 / 0 / 90.5; 100 / 0 / 0 | drawn 17.8 / 82.2 / 0; extended | unchanged | good |
+| Super Castlevania IV, BG1 / BG2 | 21.3 / 11.9 / 66.8; 15.2 / 37.4 / 47.4 | drawn 2.2 / 97.8 / 0; 0 / 100 / 0 | unchanged (memory: 2.4 / 97.6 / 0) | risky |
+| Contra III, BG1 / BG2 | 58.5 / 15.5 / 26.0; 100 / 0 / 0 (212) | drawn 1.5 / 98.5 / 0; 0 / 100 / 0 | unchanged | risky |
+| Mega Man X, BG1 / BG2 | 8.2 / 29.3 / 62.5; 35.4 / 60.2 / 4.4 | drawn 4.4 / 95.3 / 0.3; extended | unchanged | risky |
+| Chrono Trigger, BG1 / BG2 | 8.5 / 4.6 / 86.9; 82.8 / 9.2 / 8.1 | drawn 4.9 / 95.1 / 0; 0.1 / 99.9 / 0 | memory: 6.4 / 93.6 / 0; 0.9 / 98.9 / 0.2 | unavailable |
+| A Link to the Past, BG1 / BG2 | (0 judged); 91.9 / 0 / 8.1 | extended | unchanged | risky |
+
+(right / empty / wrong, % of the side columns the SNES picture later showed, over each game's checked play.)
+
+- **Super Metroid becomes good.** Its sides are the room, ahead of Samus too (sheet `docs/projects/widemess-images/m6/sm.png`; the same moments
+  without the level: `m6c/sm-without-level.png`). The 0.6% wrong on BG1 is one place that changed between the side showing it and the SNES picture
+  showing it 300 frames later (it is the same with the drawn rule alone); BG2's 3.7% is one room whose background changes 5-15 rows of a column over
+  200 frames.
+- **Why the others stay risky:** their block tables are not in work RAM. Mega Man X, Donkey Kong Country, Yoshi's Island and A Link to the Past keep
+  them in ROM (none of their 2 x 2 groups is found in work RAM); Contra III and Super Castlevania IV keep pieces of their stage around
+  `$7E:5000-$7E:6FFF` (a third of the groups); a level source that reads the ROM's tables (and each game's map format) would be the next step.
+- **Chrono Trigger** keeps its block table in work RAM (188 of 188 groups, `$7E:B800` in the scene checked) and its maps as bytes in rows of 256 at
+  `$7E:4000` and up; the level source reads only word maps whose size is in RAM, so this is a lead, not built. Its scenes hardly scroll, so what the
+  sides would show beyond the camera's reach could not be judged by the tool anyway. It stays unavailable.
+- **A Link to the Past indoors** is not proven. The play reaches two indoor scenes (Zelda's cell in the opening dream and Link's house), both with
+  `CGADSUB` `$B3`, and the outdoors in the rain, `$72`: a mask on that would be a guess from two rooms. The game's own indoor flag is in work RAM, which
+  scene conditions do not read (they read SNES registers); a condition on work RAM, like the level, would be the clean way. Left open.
+
+**Checks added** (each with its negative control): E1 (the `memory` and `level` keys read and refused), E2c (the map memory, 7 checks), E2d (the
+level in work RAM, 6 checks), E8 (Super Metroid's BG1 with its level at most 1% wrong and 5% empty; without it at least half empty), E7 (Super
+Metroid with its level: speed and no allocation).
+
+**Results** (the branch merged with main `0c03fe9`): `--wms-test` 331 of 331 (Super Metroid in lockstep with its level on: the centre identical
+over 6,000 frames, `STAT77` and the sound identical, off frame-identical); `--check-test` 111/0; `--debug-test` 101/0; `--snes-state-test` 147/0;
+UAT `run-suite.ps1` 125 pass, 0 fail, 16 skip, 3 info; the ALttP speed-pass golden IDENTICAL; interleaved A/B against `2128f42` (ALttP 2,400
+frames on the SNES console, 10 pairs, CPU time) 1.02: noise (the SNES console's code is untouched); Core, Lite and the desktop app build.
 
 ## Milestone 7a result (2026-10-24): WideMess in BrokenNes Lite and in the FL plugin
 

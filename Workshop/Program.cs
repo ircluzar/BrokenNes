@@ -106,6 +106,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--wms-testcart-shots", StringComparison.OrdinalIgnoreCase)) return WideMessCli.TestCartShots(args);
         if (args.Length > 0 && args[0].Equals("--wms-fast-probe", StringComparison.OrdinalIgnoreCase)) return WideMessCli.FastProbe(args);
         if (args.Length > 0 && args[0].Equals("--wms-side-truth", StringComparison.OrdinalIgnoreCase)) return WideMessCli.SideTruth(args);
+        if (args.Length > 0 && args[0].Equals("--wms-level-probe", StringComparison.OrdinalIgnoreCase)) return WideMessCli.LevelProbe(args);
         if (args.Length > 0 && args[0].Equals("--wms-run", StringComparison.OrdinalIgnoreCase)) return WideMessCli.RunGame(args);
         if (args.Length > 0 && args[0].Equals("--swap-matrix-test", StringComparison.OrdinalIgnoreCase)) return Sega.SwapMatrixTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-bridge-scenes", StringComparison.OrdinalIgnoreCase)) return Sega.MdBridgeScenesCli.Run(args);
