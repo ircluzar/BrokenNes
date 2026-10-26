@@ -135,7 +135,8 @@ namespace BrokenNes.Windows
             screenshotItem.ShortcutKeys = Keys.F12;
             emulatorMenu.DropDownItems.Add(screenshotItem);
             AddBugCaptureMenu(emulatorMenu);
-            AddDebugPortMenu(emulatorMenu);   // the BrokenDev debug port (D7): homebrew prints, asserts, timers   // the bug capture (BrokenDev D6): F9, the keep-30-s switch, the bugs folder
+            AddDebugPortMenu(emulatorMenu);   // the BrokenDev debug port (D7): homebrew prints, asserts, timers
+            AddDebugWindowsMenu(emulatorMenu);   // the BrokenDev debug windows (D8): debugger, memory, ...
 
             var openFolderItem = new ToolStripMenuItem("Open Emulator Folder", null, OpenEmulatorFolder_Click);
             emulatorMenu.DropDownItems.Add(openFolderItem);
