@@ -12,7 +12,27 @@
       "bg3": "extend",
       "bg4": "extend",
       "sprites": "extend"
-    }
+    },
+    "masks": [
+      {
+        "why": "indoors (the game's own flag: work RAM $7E:001B is 1) a room is drawn in a 512 x 512 map whose other parts hold other rooms: BG1 and BG2 are filled in the sides",
+        "layers": [
+          "bg1",
+          "bg2"
+        ],
+        "rows": [
+          0,
+          223
+        ],
+        "side": "both",
+        "from": 0,
+        "to": 72,
+        "rule": "fill",
+        "when": {
+          "ram:$7E001B": "$01"
+        }
+      }
+    ]
   },
   "enhancements": {
     "widescreen": "risky",
@@ -25,14 +45,14 @@
     "noFlicker"
   ],
   "issues": [
-    "Outdoors the side columns show the overworld as it really continues.",
-    "Indoors (houses, dungeons) the sides show the rest of the 512 x 512 map the room is drawn in: other rooms' walls and floors beside a small room.",
+    "Outdoors the side columns show the overworld as it continues. Side truth (Workshop --wms-side-truth, palette entries compared, 2026-10-25, 5,600 frames): BG2 91.4% right, 8.6% wrong (claims made at frames 4354-4358, beside Link's house: the map beside the screen there is not what the SNES picture shows later); BG1 has no side columns the SNES picture later shows.",
+    "Indoors (houses, dungeons: the game's own indoors flag, work RAM $7E:001B) the room's layers are filled in the sides, so they show the backdrop, not the other rooms the 512 x 512 map holds beside it; a room wider than the screen therefore shows black sides too. Outdoors every layer is extended (the overworld as it really continues).",
     "Enemies appear near the SNES edge (the game creates them as they come near).",
     "No flicker: in the 5,600 frames checked the game never drew more sprites on a line than a SNES shows (8 lines went over the SNES's limits with sprites that draw nothing there), so it changed nothing; it changes only lines over the limits.",
     "Fast CPU ran the 5,600 frames checked; the game's timing changes."
   ],
   "verified": {
-    "date": "2026-10-24",
-    "how": "Workshop --wms-test (E6), 5,600 frames of a pad script (intro, name entry, Link's house, outside in the rain) in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/alttp.png."
+    "date": "2026-10-25",
+    "how": "Workshop --wms-test (E6), 5,600 frames of a pad script (intro, name entry, Link's house at night and in the morning, out in the rain, up to the castle and back) in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound; E8 the indoors mask (sides empty on every indoor frame, extended outdoors). Contact sheet docs/projects/widemess-images/m6/alttp.png."
   }
 }

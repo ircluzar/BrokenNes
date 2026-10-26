@@ -412,6 +412,7 @@ public sealed partial class PPU_WMS
         int total = hires ? 2 * width : width, org = hires ? 2 * origin : origin;
         int hofsBg = RegHofs(bg), vofsBg = RegVofs(bg);
         var vram = Vram; var cgram = Cgram;
+        var idx = DebugCaptureIndices && bg == DebugCaptureLayer ? captureIdx : null;   // tools only: what the layer draws, as palette entries (null: nothing captured)
         int lastKey = -1; ushort entry = 0;
         for (int sx = 0; sx < total; sx++)
         {
@@ -437,9 +438,10 @@ public sealed partial class PPU_WMS
                 ushort w = vram[(addr + plane * 4) & 0x7FFF];
                 c |= ((w >> bit) & 1) << plane | ((w >> (8 + bit)) & 1) << (plane + 1);
             }
-            if (c == 0) { colors[sx] = Clear; continue; }
+            if (c == 0) { colors[sx] = Clear; if (idx != null) idx[sx] = Clear; continue; }
             int pal = (entry >> 10) & 7;
             colors[sx] = direct ? SnesDirectColour(c, pal) : cgram[(paletteBase + (bpp == 8 ? 0 : pal << bpp) + c) & 0xFF];
+            if (idx != null) idx[sx] = CaptureEntry(direct, c, pal, paletteBase, bpp);
             prios[sx] = (byte)((entry >> 13) & 1);
         }
     }
@@ -581,11 +583,19 @@ public sealed partial class PPU_WMS
     public ushort[]? DebugCapture { get; private set; }
     /// <summary>The value <see cref="DebugCapture"/> holds where the layer shows nothing.</summary>
     public const ushort CaptureClear = Clear;
+    /// <summary>Tools (spec 6.3): true, <see cref="DebugCapture"/> holds what the layer draws as palette entries instead of colours: the CGRAM index (palette and colour, 1-255), or for
+    /// direct colour <c>$4000 | palette &lt;&lt; 8 | value</c>; <see cref="CaptureClear"/> where the layer draws nothing. A palette that fades or cycles leaves it unchanged. False (the default): the colours.</summary>
+    public bool DebugCaptureIndices { get; set; }
+    private readonly ushort[] captureIdx = new ushort[MaxHalf];
+
+    /// <summary>The palette entry a layer pixel draws (<see cref="DebugCaptureIndices"/>).</summary>
+    private static ushort CaptureEntry(bool direct, int c, int pal, int paletteBase, int bpp) =>
+        direct ? (ushort)(0x4000 | pal << 8 | c) : (ushort)((paletteBase + (bpp == 8 ? 0 : pal << bpp) + c) & 0xFF);
 
     private void CaptureLayerRow(int layer, int row, int width)
     {
         var buf = DebugCapture ??= new ushort[WideWidth * MaxHeight];
-        var src = bgCol[layer];
+        var src = DebugCaptureIndices ? captureIdx : bgCol[layer];
         var map = Remapped(layer) ? remap[layer] : null;
         int at = row * WideWidth;
         for (int c = 0; c < width; c++)

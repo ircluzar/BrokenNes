@@ -46,7 +46,7 @@
   ],
   "issues": [
     "The stage layers (BG1 and BG2) are drawn: shown in the sides only where the game has drawn its map for the place shown, so old tiles of another part of the stage no longer show; where the game has not drawn, the layers behind or the backdrop show.",
-    "Side truth (Workshop --wms-side-truth, 2026-10-25): BG1 extended was wrong in 68% of the side columns later seen in the SNES picture, BG2 in 50%; drawn, 0% for both (most side columns are left to the backdrop: the game draws its map only as it reaches the SNES edge).",
+    "Side truth (Workshop --wms-side-truth, palette entries compared, 2026-10-25, right / empty / wrong of the side columns later seen in the SNES picture): BG1 extended 21.3 / 11.9 / 66.8%, drawn 2.2 / 97.8 / 0%; BG2 extended 15.2 / 37.4 / 47.4%, drawn 0 / 100 / 0% (most side columns are left to the backdrop: the game draws its map only as it reaches the SNES edge).",
     "At the start of a stage the left side shows old tiles: the game has not drawn the level there yet.",
     "The game draws new columns of the level only a few tiles ahead of the SNES edge: ahead of Simon the far side columns can show old tiles.",
     "BG3 (the score and timer, and the title's text) is filled in the sides.",

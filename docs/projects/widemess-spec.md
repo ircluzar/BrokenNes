@@ -505,7 +505,10 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
       alignment found before (the level's tile at the place = the unwrapped scroll's tile plus an offset). At least 200 compared and at most 2%
       different: the level is **verified** for this frame. Otherwise the alignment is searched again (on a distinctive tile of the picture: one
       whose entry appears once there, every level place holding it tried; at most once every 8 frames) and verified the same way; until then the
-      level shows nothing.
+      level shows nothing. Two kinds of place are left out of the comparison (milestone 6 climb, part 2): places outside the level (or the
+      room's columns), where the level says nothing and the game shows its own border (Chrono Trigger's camera shows a strip above its rooms),
+      and the first and last tile rows of the main scroll, which a game scrolling vertically draws as they reach the edge. The 200 are counted
+      without them.
     - **Where it shows:** a side column on a line of the main scroll whose place is outside the drawn span, on a verified frame, inside the
       level's width and height: the level's tile there, with the game's tiles and colours of now. Outside the level, or on a frame that is not
       verified, the memory (if on) and then fill, as before. Not on the lines and modes the memory leaves out.
@@ -513,6 +516,17 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
       behind in RAM, a profile with a wrong address, a game that keeps something else there: the check fails and nothing is shown. What it
       cannot know: what the game draws on the layer that is not in the level (it would show the level's tile there until the place scrolls in).
     - The game reads nothing of it: the console reads work RAM as a debugger does (no side effects), the extension stays locked.
+    - **The byte format** (milestone 6 climb, part 2; Chrono Trigger): some games keep a layer's level as one byte a block. `"format": "bytes"`:
+      the block at (bx, by) is the byte at `blocks` + by x `stride` + bx (the rows `stride` bytes apart, however wide the level), its value the
+      block number's low 8 bits; with `high` and `highBit`, bit 8 of the number is bit `highBit` of the byte at `high` + the same offset. The
+      number indexes the block table (`tiles`, 8 bytes a block) as in the word format; the format has no flips (the table's entries carry their own).
+      `width` and `height` are still the addresses of two 16-bit words, the level's size in blocks.
+    - **The room's columns** (`columns`, either format, optional): the addresses of two bytes holding the first and the last block column of the
+      room the game's camera shows. A game that packs several rooms side by side in one level (Chrono Trigger's maps hold up to 64 x 64 blocks,
+      a room often 16 wide) would otherwise show the next room beside the screen; outside these columns the level shows nothing (the memory, then
+      fill, as outside the level).
+    - **One level per layer**: a profile can name a level for each layer on the drawn rule (Chrono Trigger's BG1 and BG2 are two planes of the
+      same rows). Each is checked, searched and shown on its own, as above.
 - **Sprites** follow one of two rules:
   - **extend**: the SNES's sprite pass draws the centre unchanged: 32 sprites and 34 slivers, counted on the SNES's 256 columns.
     The parts of sprites that fall in the side columns are drawn in addition and never counted. Their X follows section 3.3:
@@ -531,6 +545,10 @@ A 64-byte header, then the ROM image as the 65816 sees it under the header's map
     with a value, so a mask can apply to one scene only. Examples: a title screen whose BG1 map is at `$1000`; the rows where
     `BGMODE` puts BG3 in front. The registers are `BGMODE`, `BG1SC`-`BG4SC`, `BG12NBA`, `BG34NBA`, `TM`, `TS`, `OBSEL`,
     `SETINI`, `CGWSEL` and `CGADSUB`.
+    **Work RAM** (milestone 6 climb, part 2): a condition can also test a byte of work RAM (`"ram:$7E001B": "$01"`, any address
+    `$7E0000-$7FFFFF`), for a game whose scene is told by its own flag rather than by its registers (A Link to the Past's indoors
+    flag). The byte is the one the game last wrote when the line is drawn, read as a debugger reads: no side effect, the game sees
+    nothing (the extension stays locked). Without a console's work RAM (a bare picture chip) such a condition never holds.
   Masks can never touch the centre. A later mask in the list wins over an earlier one.
 - **Window edges** (`windows`): `reach` (the default, section 3.4) or `snes`, which keeps the SNES's window positions where the
   SNES draws them. Use `snes` for a game that masks a few edge columns with a window, which would otherwise black out a whole side.
@@ -627,10 +645,14 @@ profile already claims is refused with the reason. It is never half-read.
   (6.1; `{ "bg1": 8 }`, only for layers on the drawn rule, 0-72) and `memory` (6.1, the map memory: a list of layers, `["bg1"]`, each on
   the drawn rule; a layer listed twice or not drawn is refused) and `level` (6.1, the level in work RAM: `{ "layer": "bg1", "blocks":
   "$7F0002", "width": "$7E07A5", "height": "$7E07A7", "tiles": "$7EA000", "index": "$03FF", "flipX": "$0400", "flipY": "$0800" }`, every key
-  required; the layer on the drawn rule, the addresses in work RAM, the three bit fields not overlapping).
+  required; the layer on the drawn rule, the addresses in work RAM, the three bit fields not overlapping). Since the climb's part 2, `level` may
+  also be a list of such objects (one per layer, a layer at most once); `"format": "bytes"` describes a byte map (6.1: `blocks`, `stride` (1-4096),
+  `width`, `height`, `tiles`, optionally `high` and `highBit` (0-7) together; `index`, `flipX` and `flipY` refused) and `"format": "words"` (the
+  default) the word map above; either may have `columns` (`["$left", "$right"]`, the addresses of two bytes).
 - A mask's keys: `why`, `layers` (`bg1`-`bg4`, `sprites`, or `all`; a black mask covers `all`), `rows` (`[top, bottom]`, 0-238),
   `rule` (fill / repeat / black; sprites cannot repeat), and optionally `side` (both / left / right), `from` and `to` (0-72, from < to)
-  and `when` (`{ "register": "$VV" }` or `"$VV/$MM"`, hex; a value with bits outside its mask is refused, it could never match).
+  and `when` (`{ "register": "$VV" }` or `"$VV/$MM"`, hex; a value with bits outside its mask is refused, it could never match; a key
+  `"ram:$7EXXXX"` tests a work RAM byte, an address outside work RAM is refused).
 - `file` (optional) names the ROM file the profile was made with.
 - In `enhancements`, each of the four is one of:
   - `good`: verified;
@@ -672,12 +694,21 @@ profile already claims is refused with the reason. It is never half-read.
 - `--wms-enhance-film`: the wide picture every N frames, with each moment's register set-up per band of rows (for writing profiles).
 - `--wms-side-truth (--game <key> | --rom <game>) --layer bg1` (milestone 6 follow-up): how true a layer's side columns are. Every side column a
   frame shows claims what the layer looks like at that place; when the place later scrolls into the SNES picture, the SNES picture is the
-  truth, and the claim is right, empty (the layer shows nothing there) or wrong. The layer's own colours are compared (a capture before windows,
-  colour math and brightness). Since the milestone 6 climb it works per line: a frame's claims and truths use only its band, the lines the
+  truth, and the claim is right, empty (the layer shows nothing there) or wrong. The layer's own pixels are compared (a capture before windows,
+  colour math and brightness; since the palette fix below, its palette entries rather than its colours). Since the milestone 6 climb it works per line: a frame's claims and truths use only its band, the lines the
   picture shows (not forced blank, brightness above 0) with the scroll, map and BGMODE of the first shown line; other lines (a status bar, a
   parallax split, blank lines the game keeps at the top for DMA) are left out. The vertical scroll is followed too (unwrapped as the horizontal),
   so a claim is judged on the world rows it and the truth both show (at least 32; until then it waits). The first version judged only frames whose
   lines all shared one scroll, at the same vertical scroll: Yoshi's Island (blank top lines every frame) could not be measured at all.
+  - **What is compared (the palette fix, 2026-10-25):** what the layer *draws*, not the colour it comes out in. Per pixel the capture holds the
+    layer's palette entry: the CGRAM index (the palette and the colour index, 1-255), or for direct colour the raw value with its palette bits
+    (`$4000 | palette << 8 | value`); a pixel the layer leaves transparent, or a filled side, is "nothing". A game that fades or cycles a palette
+    between the frame a side claims a place and the frame the SNES picture shows it draws the same thing there: the side shows it with the live
+    palette, as the centre does, so it is never counted wrong. (Super Metroid's BG2 was 3.7% wrong by colour: all of it one room's spores, CGRAM
+    entries 113-115 fading over 90 frames.) A real change of the map or of the tiles is still a difference. `--compare colour` compares the layer's
+    own colours instead (before windows, colour math and brightness), as the first versions did, so their numbers can be reproduced.
+  - The capture is the picture chip's tool path (`DebugCaptureLayer`, with `DebugCaptureIndices` for the entries): off, it costs nothing and the
+    picture is the same; on, it only records, the picture is still the same.
 - `--wms-enhance-test`: milestone 6's checks alone.
 - `--wms-fast-probe --rom <game> --from <frame>`: fast CPU switched on at a frame, the 65816's PC beside the SNES console's.
 - `--wms-test` checks every enhancement against a negative control:
@@ -703,10 +734,10 @@ by `--wms-test` in lockstep with the SNES console, through a pad script or the g
 | Yoshi's Island (Super FX 2) | risky | BG1 drawn with the map memory, the rest extended | 18 | risky |
 | Donkey Kong Country | good | BG1 drawn (ahead 0), the rest extended; black sides for the intro and level-name screens | 0 | risky |
 | Super Metroid | **good** (milestone 6 climb) | BG1 drawn (ahead 0) with the level in work RAM, the rest extended; BG3 filled in the status rows | 0 | risky |
-| A Link to the Past | risky | all extended | 0 | risky |
+| A Link to the Past | risky | all extended; BG1 and BG2 filled indoors (its indoors flag, work RAM `$7E:001B`; climb part 2) | 0 | risky |
 | F-Zero | good | all extended, sprites filled; BG3 filled above the horizon | 0 | risky |
 | Super Mario Kart (DSP-1) | good | all extended, sprites filled; black sides for the title | 0 | risky |
-| Chrono Trigger | unavailable | (the sides hold unrelated tiles) | 0 | broken: times itself by the beam |
+| Chrono Trigger | **risky** (climb part 2) | BG1 and BG2 drawn with their levels in work RAM (the byte format, the room's columns), BG3 drawn | 0 | broken: times itself by the beam |
 | Mega Man X | risky | BG1 drawn, the rest extended | 254 | risky |
 | Contra III | risky | BG1 and BG2 drawn, BG3 filled | 2,946 | risky (needed the sound-port guard) |
 | Super Castlevania IV | risky | BG1 and BG2 drawn, BG3 filled; black sides for the title | 0 | risky |

@@ -5,8 +5,54 @@
   "sha1": [
     "de5822f4f2f7a55acb8926d4c0eaa63d5d989312"
   ],
+  "widescreen": {
+    "layers": {
+      "bg1": "drawn",
+      "bg2": "drawn",
+      "bg3": "drawn",
+      "bg4": "fill",
+      "sprites": "extend"
+    },
+    "drawnAhead": {
+      "bg1": 0,
+      "bg2": 0,
+      "bg3": 0
+    },
+    "level": [
+      {
+        "layer": "bg1",
+        "format": "bytes",
+        "blocks": "$7E4000",
+        "stride": 256,
+        "high": "$7E40C0",
+        "highBit": 0,
+        "width": "$7E0BCB",
+        "height": "$7E0BCD",
+        "tiles": "$7EB000",
+        "columns": [
+          "$7E1D1A",
+          "$7E1D1B"
+        ]
+      },
+      {
+        "layer": "bg2",
+        "format": "bytes",
+        "blocks": "$7E4040",
+        "stride": 256,
+        "high": "$7E40C0",
+        "highBit": 1,
+        "width": "$7E0BCF",
+        "height": "$7E0BD1",
+        "tiles": "$7EB000",
+        "columns": [
+          "$7E1D1A",
+          "$7E1D1B"
+        ]
+      }
+    ]
+  },
   "enhancements": {
-    "widescreen": "unavailable",
+    "widescreen": "risky",
     "noFlicker": "good",
     "betterSound": "good",
     "fastCpu": "broken"
@@ -16,13 +62,16 @@
     "betterSound"
   ],
   "issues": [
-    "Widescreen is not offered: the game keeps unrelated tiles in the parts of its maps the SNES does not show (fields, towns, cutscenes and the Epoch scenes show scrambled tiles there), and the battle menu repeats. Measured (Workshop --wms-side-truth, 2026-10-25, the 6,750 frames of the attract sequence): BG1 extended is wrong in 78% of the side columns the SNES picture later shows, BG2 in 9%. The drawn rule (extend only where the game has drawn the map for the place shown) makes BG1 0% wrong but leaves 85% of the side columns empty: the scenes hardly scroll and the game draws nothing beside the screen, so the picture would be the SNES's with black sides. No layer rule gives the sides something true to show.",
-    "The contact sheet shows why: it is drawn with every layer extended.",
+    "On the field maps the sides are the room itself: the game keeps each field layer in work RAM as a byte map (rows of 256 bytes at $7E:4000, BG1 at +$00 and BG2 at +$40, the block number's bit 8 in bit 0 / bit 1 of the byte at +$C0, the block table at $7E:B000, the layers' sizes at $7E:0BCB-$0BD2, the room's first and last block columns at $7E:1D1A / $1D1B), and the console draws the sides from it, checked against the game's own picture every frame (shown only while the map in RAM is what the SNES picture shows).",
+    "Most rooms are exactly the SNES screen's width (16 blocks): there the sides are black, because the room ends there. Rooms wider than the screen (the factory in the attract sequence) show their true continuation, ahead of the camera too.",
+    "The world map, the battles and the cutscenes keep their layers some other way: their sides are only what the game has drawn (mostly black). BG3 (fog, roofs, effects) is drawn the same way.",
+    "Side truth (Workshop --wms-side-truth, palette entries compared, 2026-10-25, 9,000 frames of the attract sequence; right / empty / wrong of the side columns the SNES picture later shows): BG1 13.3 / 86.7 / 0%, on the field scenes alone 100 / 0 / 0% (600 columns; every layer extended there 3.3 / 52.7 / 44.0%); BG2 7.3 / 92.5 / 0.2%, on the field scenes 20.1 / 79.3 / 0.6% (20 columns of a starfield that repeats past its map's width: its stars stop at the room's edge). The empty columns are the world map's, the battles' and the cutscenes', which the level does not cover.",
+    "BG1's level is verified on 1,976 of the 7,238 frames that draw the layer (the field scenes), BG2's on 1,046 of 6,723.",
     "No flicker: in the 6,750 frames checked the game never drew more sprites on a line than a SNES shows, so it changed nothing; it changes only lines over the limits.",
     "Fast CPU hangs the game on a black screen at a scene change (the attract sequence's first, at frame 2,150), even switched on after the title. Traced: the game times itself by the beam. Each frame its main loop latches the scanline counter ($2137, $213D at $C0:5A46) and starts the next scene's loading (decompression, the new music's upload) only on lines 240 and later or before line 72; otherwise it waits for the next frame. At SNES speed the loop gets there on line 257; with fast CPU it finishes its frame's work earlier and arrives on line 238 every frame, so the scene never loads. A real 10.74 MHz 65816 would do the same: the game's own timing, not a sound handshake (the sound-port guard does not change it). Switch fast CPU off before a scene changes."
   ],
   "verified": {
     "date": "2026-10-25",
-    "how": "Workshop --wms-test (E6), 6,750 frames of the attract sequence in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame (checked on every layer extended, as widescreen is unavailable), STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/ct.png."
+    "how": "Workshop --wms-test (E6), 7,950 frames of the attract sequence in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame (the levels in work RAM on), STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound; E8 side truth on the field scenes. Contact sheet docs/projects/widemess-images/m6/ct.png."
   }
 }

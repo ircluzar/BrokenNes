@@ -468,6 +468,101 @@ over 6,000 frames, `STAT77` and the sound identical, off frame-identical); `--ch
 UAT `run-suite.ps1` 125 pass, 0 fail, 16 skip, 3 info; the ALttP speed-pass golden IDENTICAL; interleaved A/B against `2128f42` (ALttP 2,400
 frames on the SNES console, 10 pairs, CPU time) 1.02: noise (the SNES console's code is untouched); Core, Lite and the desktop app build.
 
+## Milestone 6 climb, part 2 (2026-10-25): side truth on palette entries
+
+**The palette fix.** `--wms-side-truth` compared the layer's colours: a side column claimed at one frame and the SNES picture showing the
+place ~90 frames later disagreed whenever the game had faded or cycled a palette in between, although the side shows the same tiles in the
+live palette, as the centre does. It now compares what the layer *draws*: per pixel the palette entry (the CGRAM index, or the direct-colour
+value), transparent as nothing (spec 6.3). The capture is the picture chip's tool path (`DebugCaptureIndices` beside `DebugCaptureLayer`): off,
+nothing is recorded and the picture is the same. `--compare colour` keeps the old comparison (it reproduces the old numbers exactly: Super
+Metroid BG2 96.3 / 0 / 3.7).
+
+Every game and layer re-measured (right / empty / wrong, % of the side columns the SNES picture later showed; changes in bold):
+
+| Game, layer | Every layer extended | The profile's rule |
+|---|---|---|
+| Super Metroid, BG1 | 6.7 / 5.2 / 88.0 | level: 99.4 / 0.0 / 0.6 (drawn without the level 10.7 / 88.7 / 0.6) |
+| Super Metroid, BG2 | **100 / 0 / 0** (was 96.3 / 0 / 3.7) | extended, the same |
+| Yoshi's Island, BG1 | **60.8 / 0 / 39.2** (was 42.2 / 0 / 57.8) | drawn + memory: 10.8 / 89.1 / 0.1 |
+| Yoshi's Island, BG2 | **100 / 0 / 0** (was 72.7 / 0 / 27.3) | extended, the same |
+| Donkey Kong Country, BG1 / BG2 | 9.5 / 0 / 90.5; 100 / 0 / 0 | drawn 17.8 / 82.2 / 0; extended |
+| Super Castlevania IV, BG1 / BG2 | 21.3 / 11.9 / 66.8; 15.2 / 37.4 / 47.4 | drawn 2.2 / 97.8 / 0; 0 / 100 / 0 |
+| Contra III, BG1 / BG2 | 58.5 / 15.5 / 26.0; 100 / 0 / 0 (212) | drawn 1.5 / 98.5 / 0; 0 / 100 / 0 |
+| Mega Man X, BG1 / BG2 | 10.4 / 29.3 / 60.4; 39.8 / 60.2 / 0 | drawn 4.7 / 95.3 / 0; extended |
+| Chrono Trigger, BG1 / BG2 | 8.5 / 4.6 / 86.9; **90.8 / 9.2 / 0** (was 82.8 / 9.2 / 8.1) | (unavailable) |
+| A Link to the Past, BG1 / BG2 | (0 judged); 91.9 / 0 / 8.1 | extended |
+
+- **Super Metroid stays good** (the user's decision): BG1 99.4 / 0 / 0.6, BG2 now 100 / 0 / 0. Its BG2's 3.7% was entirely palette animation:
+  one room's spores, CGRAM 113-115 fading over frames 4985-5074 (traced by the lead in the debugger), exactly the claims the colour comparison
+  flagged. BG1's 0.6% (72 columns, one moment at frame 2973) is the same either way: it is not a palette change.
+- Yoshi's Island's layers had palette animation too: BG2 extended is fully right, BG1 extended's old tiles are 39% (not 58%).
+- Mega Man X's, Super Castlevania IV's, Contra III's and Donkey Kong Country's numbers are unchanged to the column (their wrong columns are
+  real tile differences).
+- **Checks** (each with its negative control): E2e, a synthetic game whose palette fades every frame while it scrolls, every layer extended
+  over a map holding the whole level: palette entries 0 wrong; the same judged by colour almost all wrong; without the fade both agree; a real
+  change of the map ahead (columns turned red before they scroll in) still counted wrong with the fade on. E8: Super Metroid BG2, palette
+  entries 0 wrong, by colour (the control) wrong. The judge is the tool's own (`SideJudge`), shared by the tool and E2e.
+
+**Chrono Trigger: its rooms from work RAM** (spec 6.1, the byte format, the room's columns, a level per layer). Found with `--wms-level-probe`
+(new: `--format bytes --stride N`, `--dump`, `--save-ram`, `--scan N`) and the D1 debugger (the game's own map copy at `$C0:A521` reads the sizes):
+each field layer is a byte map in rows of 256 bytes at `$7E:4000` (BG1 at `+$00`, BG2 at `+$40`, BG3 at `+$80`), the block number's bit 8 in
+bit 0 (BG1) / bit 1 (BG2) of the byte at `+$C0`, the block table at `$7E:B000` (512 blocks of 8 bytes), the layers' sizes as bytes at
+`$7E:0BCB-$0BD6`, the room's first and last block columns at `$7E:1D1A` / `$1D1B` (the maps pack several rooms, up to 64 x 64 blocks).
+- The level source now reads that (`"format": "bytes"`, `stride`, `high` + `highBit`, `columns`, sizes as bytes) and takes a level per layer.
+  Two refinements of its check, both in spec 6.1: places outside the level (or the room's columns) are left out of the comparison (Chrono
+  Trigger's camera shows a border above its rooms), and so are the band's first and last tile rows (the rows a game streams in as it scrolls
+  vertically); Super Metroid's numbers are unchanged by them (99.4 / 0 / 0.6, verified on 2,807 of 2,808 frames).
+- **Chrono Trigger: unavailable -> risky.** Side truth, 9,000 frames of the attract sequence (right / empty / wrong):
+
+| Chrono Trigger | Every layer extended | Drawn only | Drawn with its level in work RAM |
+|---|---|---|---|
+| BG1, whole play | 8.5 / 4.6 / 86.9 | 4.9 / 95.1 / 0 | **13.3 / 86.7 / 0** (verified on 1,976 of 7,238 frames) |
+| BG1, the field scenes (E8) | 3.3 / 52.7 / 44.0 | 0 / 100 / 0 | **100 / 0 / 0** (600 columns) |
+| BG2, whole play | 90.8 / 9.2 / 0 | 0.1 / 99.9 / 0 | 7.3 / 92.5 / 0.2 |
+| BG2, the field scenes | | | 20.1 / 79.3 / 0.6 |
+
+  The field scenes are where the level covers the game (frames 2950-3300, 3650-3900, 4400-4500, 4750-4900, 5700-6650, 7400-8000, the
+  `--judge` ranges of the new research option). The whole play's empty columns are the world map's, the battles' and the cutscenes',
+  which keep their layers another way: their sides are what the game has drawn (mostly black). BG2's 0.6% wrong is a starfield behind the
+  Lavos scene that repeats past its map's width: its stars stop at the room's edge. Most rooms are exactly the screen's width, so their
+  sides are black (the room ends there); the factory (frames 7700-8000) is wider and shows its true continuation, ahead of the camera too.
+  **Why risky, not good:** the sides are never wrong where the level is verified, but over the whole checked play most judged side columns
+  are still empty (the criterion "low empty" holds only on the field scenes), and most rooms give only black sides. The user may overrule.
+- Sheets: `docs/projects/widemess-images/m6/ct.png` (the profile, field moments), `m6d/ct-without-level.png` (the same moments, drawn only).
+- **Checks** (each with its negative control): E1 (the byte format, a level list and the columns read; flips in bytes, no stride, bit 8
+  without its byte, bit 8 past 7, an unknown format, columns not two addresses, a layer listed twice refused); E2f (a synthetic byte level:
+  the side ahead right at every pixel; without the bit-8 byte never verified; a wrong stride never verified; the room's columns with the camera
+  stopped at the room's edge show nothing past it, without them the next room packed in RAM fills the side; two layers each with a level
+  taken, one layer with two refused); E8 (Chrono Trigger's BG1 on the field scenes at most 1% wrong and 5% empty; without its levels at
+  least half empty; every layer extended at least 20% wrong); E6 (Chrono Trigger in lockstep with its levels on: the centre identical over
+  7,650 frames, `STAT77` and the sound identical, off frame-identical).
+
+**A Link to the Past indoors: scene conditions on work RAM** (spec 6.1, 6.2). A mask's `when` can now test a byte of work RAM
+(`"ram:$7E001B": "$01"`), read as a debugger reads when the line is drawn (no side effect; without a console's work RAM it never holds).
+A Link to the Past's own indoors flag is `$7E:001B` (1 in Link's house, at night and in the morning; 0 on the title, the menus and
+outdoors), and its profile now fills BG1 and BG2 in the sides while it is 1: indoors the sides show the backdrop instead of the other
+rooms of the 512 x 512 map; outdoors every layer stays extended.
+- The pad script now goes on after the house: out in the rain, up to the castle's moat (area `$1B`) and back towards the house (frames
+  4000-5540; the sheet's moments 2000, 3600, 4250, 4800, 5600). **Not reached: a second indoor room.** The secret passage into the castle
+  (the next indoor place) was not found by the scripted route within this round, so the indoors rule is proven on one room (Link's house,
+  two scenes: the dream at night and the morning), 2,327 indoor frames; the flag is the game's own, so other rooms use the same condition.
+- Side truth (palette entries, 5,600 frames): BG2 91.4 / 0 / 8.6 (claims of frames 4354-4358 beside the house), BG1 no side column judged;
+  every layer extended the same (indoors nothing scrolls, so the tool judges no indoor column: the indoors proof is E8's).
+- Sheets: `docs/projects/widemess-images/m6/alttp.png` (the profile: black sides indoors, the overworld outdoors),
+  `m6d/alttp-all-extended.png` (every layer extended: the other rooms beside Link's house).
+- **Checks** (each with its negative control): E1 (a work RAM condition reads beside a register one; an address outside work RAM and
+  `ram:` without an address refused); E2g (a synthetic mask on work RAM byte `$10`: filled while it is 1, extended at 0 and 3, work RAM only
+  read; without work RAM it never holds); E8 (A Link to the Past: on all 2,327 indoor frames BG1 and BG2 draw nothing in the sides; without
+  the mask BG2 draws 73 million side pixels there; on all 2,520 outdoor frames the picture is the same with and without the mask); E6 (the
+  new script in lockstep: the centre identical, `STAT77` and the sound identical, off frame-identical).
+
+**Super Metroid BG2** (the third lead) needed no rule of its own: its 3.7% was the palette fade, and it is 100% right on palette entries.
+
+**Results** (the branch merged with main `7faca67`): `--wms-test` 363 of 363; `--check-test` 111/0; `--debug-test` 101/0; `--snes-state-test`
+147/0; `--movie-test` 69/0; UAT `run-suite.ps1` 125 pass, 0 fail, 16 skip, 3 info; the ALttP speed-pass golden IDENTICAL on every run;
+interleaved A/B against main `7faca67` (ALttP 2,400 frames on the SNES console, 10 pairs, CPU time) 1.02: noise (the SNES console's code is
+untouched; the new code is the WideMess picture chip's and the tools').
+
 ## Milestone 7a result (2026-10-24): WideMess in BrokenNes Lite and in the FL plugin
 
 How WideMess appears in each host, and why the plugin differs, is spec section 9.

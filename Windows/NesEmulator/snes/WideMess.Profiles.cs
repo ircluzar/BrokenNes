@@ -162,32 +162,19 @@ public sealed class WmsProfile
                 ws.Memory[i] = true;
             }
         }
-        if (w.TryGetProperty("level", out var lv))
+        if (w.TryGetProperty("level", out var lvs))
         {
-            // the level in work RAM (spec 6.1): every key required, the addresses in work RAM ($7E0000-$7FFFFF), the bit fields apart
-            if (lv.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{source}: widescreen.level is an object");
-            var keys = new[] { "layer", "blocks", "width", "height", "tiles", "index", "flipX", "flipY" };
-            Keys(lv, source, "widescreen.level", keys, Array.Empty<string>());
-            string ln = Str(lv, "layer", source);
-            int li = Array.IndexOf(LayerKeys, ln);
-            if (li < 0 || li > 3) throw new InvalidDataException($"{source}: widescreen.level.layer is '{ln}' (bg1-bg4)");
-            if (ws.Layers[li] != WmsSideRule.Drawn) throw new InvalidDataException($"{source}: widescreen.level.layer {ln}: the layer's rule is not drawn");
-            int Addr(string k)
+            // the level in work RAM (spec 6.1): one object, or a list of them (a layer at most once)
+            if (lvs.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array)) throw new InvalidDataException($"{source}: widescreen.level is an object or a list of objects");
+            var list = new List<WmsLevel>();
+            foreach (var lv in lvs.ValueKind == JsonValueKind.Array ? lvs.EnumerateArray().ToArray() : new[] { lvs })
             {
-                int a = Hex(Str(lv, k, source), $"widescreen.level.{k}", source);
-                if (a < 0x7E0000 || a > 0x7FFFFF) throw new InvalidDataException($"{source}: widescreen.level.{k} is ${a:X6} (work RAM is $7E0000-$7FFFFF)");
-                return a - 0x7E0000;
+                var level = ParseLevel(lv, ws, source);
+                if (list.Any(x => x.Layer == level.Layer)) throw new InvalidDataException($"{source}: widescreen.level lists {LayerKeys[level.Layer]} twice");
+                list.Add(level);
             }
-            int Bits(string k)
-            {
-                int b = Hex(Str(lv, k, source), $"widescreen.level.{k}", source);
-                if (b <= 0 || b > 0xFFFF) throw new InvalidDataException($"{source}: widescreen.level.{k} is ${b:X} (bits of a 16-bit word)");
-                return b;
-            }
-            var level = new WmsLevel { Layer = li, Blocks = Addr("blocks"), Width = Addr("width"), Height = Addr("height"), Tiles = Addr("tiles"), Index = Bits("index"), FlipX = Bits("flipX"), FlipY = Bits("flipY") };
-            if ((level.Index & level.FlipX) != 0 || (level.Index & level.FlipY) != 0 || (level.FlipX & level.FlipY) != 0)
-                throw new InvalidDataException($"{source}: widescreen.level: index, flipX and flipY overlap");
-            ws.Level = level;
+            if (list.Count == 0) throw new InvalidDataException($"{source}: widescreen.level is an empty list");
+            ws.Levels = list.ToArray();
         }
         if (w.TryGetProperty("windows", out var wn))
         {
@@ -243,22 +230,29 @@ public sealed class WmsProfile
     /// <summary>The SNES registers a scene condition names, as JSON keys, in <see cref="WmsRegister"/> order.</summary>
     public static readonly string[] RegisterKeys = { "bgmode", "bg1sc", "bg2sc", "bg3sc", "bg4sc", "bg12nba", "bg34nba", "tm", "ts", "obsel", "setini", "cgwsel", "cgadsub" };
 
-    /// <summary>A mask's scene conditions: { "register": "$VV" or "$VV/$MM" } (hex; the register ANDed with the mask must equal the value; no mask = all 8 bits).</summary>
+    /// <summary>A mask's scene conditions: { "register": "$VV" or "$VV/$MM" } (hex; the register ANDed with the mask must equal the value; no mask = all 8 bits); a key "ram:$7EXXXX"
+    /// tests a byte of work RAM ($7E0000-$7FFFFF) the same way.</summary>
     private static WmsCondition[] ParseWhen(JsonElement w, string source, string at)
     {
         if (w.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{source}: {at} is an object of register: \"$VV\" or \"$VV/$MM\"");
         var list = new List<WmsCondition>();
         foreach (var p in w.EnumerateObject())
         {
-            int r = Array.IndexOf(RegisterKeys, p.Name);
-            if (r < 0) throw new InvalidDataException($"{source}: {at} names '{p.Name}' (one of {string.Join(", ", RegisterKeys)})");
+            int r = Array.IndexOf(RegisterKeys, p.Name), address = 0;
+            if (p.Name.StartsWith("ram:", StringComparison.Ordinal))
+            {
+                int a = Hex(p.Name[4..], $"{at}.{p.Name}", source);
+                if (a < 0x7E0000 || a > 0x7FFFFF) throw new InvalidDataException($"{source}: {at}.{p.Name}: ${a:X6} is not in work RAM ($7E0000-$7FFFFF)");
+                r = (int)WmsRegister.Ram; address = a - 0x7E0000;
+            }
+            if (r < 0) throw new InvalidDataException($"{source}: {at} names '{p.Name}' (one of {string.Join(", ", RegisterKeys)}, or ram:$7EXXXX)");
             string text = p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString()! : "";
             var parts = text.Split('/');
             byte value = 0, mask = 0xFF;
             bool ok = parts.Length <= 2 && TryHexByte(parts[0], out value) && (parts.Length == 1 || TryHexByte(parts[1], out mask));
             if (!ok) throw new InvalidDataException($"{source}: {at}.{p.Name} is '{text}' (\"$VV\" or \"$VV/$MM\", hex)");
             if ((value & ~mask) != 0) throw new InvalidDataException($"{source}: {at}.{p.Name}: the value ${value:X2} has bits outside the mask ${mask:X2}, so it never matches");
-            list.Add(new WmsCondition((WmsRegister)r, mask, value));
+            list.Add(new WmsCondition((WmsRegister)r, mask, value, address));
         }
         return list.ToArray();
     }
@@ -272,6 +266,63 @@ public sealed class WmsProfile
     }
 
     /// <summary>"$7F0002" (or 0x7F0002): a hex number of up to 6 digits.</summary>
+    /// <summary>One level in work RAM (spec 6.2): every key checked; the words format (Super Metroid) or the bytes format (Chrono Trigger); the room's columns optional.</summary>
+    private static WmsLevel ParseLevel(JsonElement lv, WmsWidescreen ws, string source)
+    {
+        if (lv.ValueKind != JsonValueKind.Object) throw new InvalidDataException($"{source}: widescreen.level is an object");
+        string format = lv.TryGetProperty("format", out var fm) ? (fm.ValueKind == JsonValueKind.String ? fm.GetString()! : "") : "words";
+        if (format is not ("words" or "bytes")) throw new InvalidDataException($"{source}: widescreen.level.format is '{format}' (words or bytes)");
+        bool bytes = format == "bytes";
+        if (bytes) Keys(lv, source, "widescreen.level", new[] { "layer", "format", "blocks", "stride", "width", "height", "tiles" }, new[] { "high", "highBit", "columns" });
+        else Keys(lv, source, "widescreen.level", new[] { "layer", "blocks", "width", "height", "tiles", "index", "flipX", "flipY" }, new[] { "format", "columns" });
+        string ln = Str(lv, "layer", source);
+        int li = Array.IndexOf(LayerKeys, ln);
+        if (li < 0 || li > 3) throw new InvalidDataException($"{source}: widescreen.level.layer is '{ln}' (bg1-bg4)");
+        if (ws.Layers[li] != WmsSideRule.Drawn) throw new InvalidDataException($"{source}: widescreen.level.layer {ln}: the layer's rule is not drawn");
+        int AddrOf(string text, string k)
+        {
+            int a = Hex(text, $"widescreen.level.{k}", source);
+            if (a < 0x7E0000 || a > 0x7FFFFF) throw new InvalidDataException($"{source}: widescreen.level.{k} is ${a:X6} (work RAM is $7E0000-$7FFFFF)");
+            return a - 0x7E0000;
+        }
+        int Addr(string k) => AddrOf(Str(lv, k, source), k);
+        int Bits(string k)
+        {
+            int b = Hex(Str(lv, k, source), $"widescreen.level.{k}", source);
+            if (b <= 0 || b > 0xFFFF) throw new InvalidDataException($"{source}: widescreen.level.{k} is ${b:X} (bits of a 16-bit word)");
+            return b;
+        }
+        var level = new WmsLevel { Layer = li, Blocks = Addr("blocks"), Width = Addr("width"), Height = Addr("height"), Tiles = Addr("tiles") };
+        if (bytes)
+        {
+            level.Bytes = true;
+            level.Stride = Int(lv.GetProperty("stride"), "widescreen.level.stride", source);
+            if (level.Stride < 1 || level.Stride > 4096) throw new InvalidDataException($"{source}: widescreen.level.stride is {level.Stride} (1-4096 bytes)");
+            bool hasHigh = lv.TryGetProperty("high", out _), hasBit = lv.TryGetProperty("highBit", out var hbit);
+            if (hasHigh != hasBit) throw new InvalidDataException($"{source}: widescreen.level: high and highBit go together");
+            if (hasHigh)
+            {
+                level.High = Addr("high");
+                level.HighBit = Int(hbit, "widescreen.level.highBit", source);
+                if (level.HighBit is < 0 or > 7) throw new InvalidDataException($"{source}: widescreen.level.highBit is {level.HighBit} (0-7)");
+            }
+        }
+        else
+        {
+            level.Index = Bits("index"); level.FlipX = Bits("flipX"); level.FlipY = Bits("flipY");
+            if ((level.Index & level.FlipX) != 0 || (level.Index & level.FlipY) != 0 || (level.FlipX & level.FlipY) != 0)
+                throw new InvalidDataException($"{source}: widescreen.level: index, flipX and flipY overlap");
+        }
+        if (lv.TryGetProperty("columns", out var cols))
+        {
+            if (cols.ValueKind != JsonValueKind.Array || cols.GetArrayLength() != 2 || cols.EnumerateArray().Any(c => c.ValueKind != JsonValueKind.String))
+                throw new InvalidDataException($"{source}: widescreen.level.columns is [\"$left\", \"$right\"] (the addresses of two bytes)");
+            level.Left = AddrOf(cols[0].GetString()!, "columns");
+            level.Right = AddrOf(cols[1].GetString()!, "columns");
+        }
+        return level;
+    }
+
     private static int Hex(string s, string what, string source)
     {
         string t = s.Trim();
