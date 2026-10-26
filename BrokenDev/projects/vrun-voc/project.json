@@ -52,7 +52,8 @@
             { "symbol": "_beep_count", "size": 2, "is": 2, "what": "each press of A beeped once (A is edge-triggered)" },
             { "symbol": "_boot_count", "size": 2, "is": 1, "what": "the first power-on of a new cartridge" },
             { "symbol": "_save_was_fresh", "is": 1, "what": "a new cartridge's battery RAM holds no save" }
-          ]
+          ],
+          "port": { "markers": ["started", "beep"], "prints": ["VRUN: Vaults of Obsolete Code, dev build", "boot 1"], "timers": ["move_player"], "maxErrors": 0 }
         },
         "why": "on a Game Boy Color: the picture in colour (more than an original's four shades), the sprite moving with the d-pad, the sound of A, the save counting its first boot"
       },

@@ -1444,6 +1444,9 @@ try {
         Assert-Equal $v.checks.newFindings 0
         Assert-True ((@($v.scenarios[0].checks | ForEach-Object { $_.id })) -contains 'memory-player_x') 'verify did not read player_x by its symbol'
         Assert-True ((@($v.scenarios[1].checks | ForEach-Object { $_.id })) -contains 'max-distinct-colors') 'the original Game Boy scenario did not check its shades'
+        # the debug port (D7): the dev build's messages reach verify (expect.port: the markers, the prints, the move_player timer)
+        $pc = @($v.scenarios[0].checks | Where-Object { $_.id -like 'debug-port-*' })
+        Assert-True ($pc.Count -ge 5 -and @($pc | Where-Object { -not $_.ok }).Count -eq 0) ('the debug port checks: ' + ((@($pc | ForEach-Object { "$($_.id)=$($_.ok)" })) -join ', '))
         $bad = Join-Path $tmpRoot 'voc-planted'
         $b = Invoke-BdProcess -FilePath $ps5 -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $voc 'build.ps1'), '-Gbdk', $gst.Dir, '-Out', $bad, '-Define', 'VOC_PLANT_UNINIT') -TimeoutSec 300
         Assert-Equal $b.ExitCode 0 "the planted build failed: $(Select-BdTail $b.Output 6)"
@@ -1453,6 +1456,76 @@ try {
         $v = Read-BdJson $json
         $new = @($v.checks.findings | Where-Object { -not $_.accepted })
         Assert-True (@($new | Where-Object { $_.rule -eq 'gb.ram-uninit' }).Count -ge 1) "the planted read was not a new gb.ram-uninit (new: $((@($new | ForEach-Object { $_.rule + ' ' + $_.place })) -join ', '))"
+    }
+    # ------------------------------------------------------------------ the debug port (D7)
+    Write-Host 'the debug port (D7)'
+    Test-Case 'the debug port on the Game Boy hello world: NEGATIVE: a planted bug the dev build''s assert catches FAILS verify (debug-port-asserts, a port.assert finding no manifest can accept); the GBDK release-strip proof: the release ROM is byte-identical to the source without any DBG_ call' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $gst = Get-BdToolchainState -Spec (Get-BdToolchainSpec -Id gbdk) -SkipZip
+        if ($gst.State -ne 'ready') { Skip-Test "GBDK-2020 is not ready here ($($gst.Detail))" }
+        $voc = Find-BdLiveWorkspace -Name 'VRUN_VOC_dev'
+        if (-not $voc -or -not (Test-Path -LiteralPath (Join-Path $voc 'build.ps1'))) { Skip-Test 'the VRUN_VOC_dev workspace is not beside the repository' }
+        $ps5 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $bad = Join-Path $tmpRoot 'voc-assert'
+        $b = Invoke-BdProcess -FilePath $ps5 -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $voc 'build.ps1'), '-Gbdk', $gst.Dir, '-Out', $bad, '-Define', 'VOC_PLANT_ASSERT') -TimeoutSec 300
+        Assert-Equal $b.ExitCode 0 "the planted build failed: $(Select-BdTail $b.Output 6)"
+        $json = Join-Path $tmpRoot 'voc-assert.json'
+        $r = Invoke-Ws -WsArgs @('--brokendev', 'verify', 'vrun-voc', '--manifests', (Join-Path $bd 'projects'), '--home', (Join-Path $tmpRoot 'gbhome'), '--rom', (Join-Path $bad 'vrun_voc.gbc'), '--out', $json) -ExtraEnv @{ BROKENNES_DEV = '1' }
+        Assert-Equal $r.ExitCode 1
+        $v = Read-BdJson $json
+        $fail = @($v.scenarios[0].checks | Where-Object { $_.id -eq 'debug-port-asserts' -and -not $_.ok })
+        Assert-True ($fail.Count -eq 1 -and $fail[0].detail -match 'player_x' -and $fail[0].detail -match '_move_player') "no failed debug-port-asserts naming the assert and move_player: $((@($v.scenarios[0].checks | Where-Object { -not $_.ok } | ForEach-Object { "$($_.id): $($_.detail)" })) -join '; ')"
+        $pa = @($v.checks.findings | Where-Object { $_.rule -eq 'port.assert' })
+        Assert-True ($pa.Count -ge 1 -and -not $pa[0].accepted) "the checks did not report a new port.assert ($((@($v.checks.findings | ForEach-Object { $_.rule })) -join ', '))"
+        $proof = Invoke-BdProcess -FilePath $ps5 -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $bd 'debugport\gbdk\build-proof.ps1'), '-Game', $voc, '-Gbdk', $gst.Dir, '-Out', (Join-Path $tmpRoot 'gbproof')) -TimeoutSec 600
+        Assert-True ($proof.ExitCode -eq 0 -and $proof.Output -match 'PASS') "the GBDK proof: $(Select-BdTail $proof.Output 6)"
+    }
+    Test-Case 'the NESFab library''s release-strip proof: the sample built with brokendev_dbg_off.fab is byte-identical to the sample without any dbg_ call, the dev build differs and its port speaks (prints, the assert, the timer); SKIP without NESFab' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $nf = 'C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\sys0\simulations\VRUN\tools\nesfab'
+        if ($env:BROKENDEV_NESFAB) { $nf = $env:BROKENDEV_NESFAB }
+        if (-not (Test-Path -LiteralPath (Join-Path $nf 'nesfab.exe'))) { Skip-Test "no NESFab at $nf (BROKENDEV_NESFAB)" }
+        $ps5 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $out = Join-Path $tmpRoot 'nfproof'
+        $proof = Invoke-BdProcess -FilePath $ps5 -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $bd 'debugport\nesfab\build-proof.ps1'), '-NesFab', $nf, '-Out', $out) -TimeoutSec 600
+        Assert-True ($proof.ExitCode -eq 0 -and $proof.Output -match 'PASS') "the NESFab proof: $(Select-BdTail $proof.Output 6)"
+        $json = Join-Path $tmpRoot 'nfport.json'
+        $r = Invoke-Ws -WsArgs @('--port', '--rom', (Join-Path $out 'dev\game.nes'), '--sym', (Join-Path $out 'dev\game.mlb'), '--frames', '10', '--quiet', '--json', $json)
+        Assert-Equal $r.ExitCode 1 '(the sample asserts from its fourth frame)'
+        $j = Read-BdJson $json
+        Assert-True ($j.counts.print -ge 5 -and $j.counts.assert -ge 1 -and $j.counts.marker -eq 2 -and @($j.timers | Where-Object { $_.name -eq 'timer 1' -or $_.name -eq 'work' }).Count -eq 1) "the dev build's port: $($j.counts | ConvertTo-Json -Compress)"
+        $rr = Invoke-Ws -WsArgs @('--port', '--rom', (Join-Path $out 'release\game.nes'), '--frames', '10', '--quiet', '--json', $json)
+        Assert-Equal $rr.ExitCode 0 '(the release build sends nothing)'
+        Assert-Equal (Read-BdJson $json).writes 0
+    }
+    Test-Case 'the debug port on the WideMess sample: the dev build PASSES verify with its markers and timers (C and WLA-DX); the release build is byte-identical to the committed devkit_sample.wms (built before the calls were written); NEGATIVE: a planted bug the assert catches FAILS verify' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        if (-not $wmsPy) { Skip-Test 'no Python with pillow and numpy' }
+        if (-not $wmsPvs) { Skip-Test 'PVSnesLib not found (BROKENDEV_PVSNESLIB, or the Super VRUN workspace beside the repository)' }
+        $sample = Join-Path (Split-Path -Parent $bd) 'WideMess\sample'
+        $build = {
+            param([string]$Out, [string[]]$Define)
+            $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $wmsTools 'wmsbuild.ps1'), '-Project', $sample, '-Workshop', $ws, '-Python', $wmsPy.Path, '-Pvsneslib', $wmsPvs, '-Out', $Out)
+            if ($Define) { $a += @('-Define', ($Define -join ',')) }
+            $r = Invoke-BdProcess -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -Arguments $a -TimeoutSec 900
+            Assert-True (Test-Path -LiteralPath (Join-Path $Out 'widemess_sample.wms')) "the build made no ROM: $(Select-BdTail $r.Output 6)"
+            Join-Path $Out 'widemess_sample.wms'
+        }
+        $rel = & $build (Join-Path $tmpRoot 'wms-rel') @()
+        $committed = Join-Path (Split-Path -Parent $bd) 'WideMess\testroms\bin\devkit_sample.wms'
+        Assert-Equal (Get-FileHash $rel).Hash (Get-FileHash $committed).Hash '(the release build is not the committed sample)'
+        $dev = & $build (Join-Path $tmpRoot 'wms-dev') @('BROKENDEV_DEBUG')
+        Assert-True ((Get-FileHash $dev).Hash -ne (Get-FileHash $rel).Hash) 'the dev build is the release build'
+        $json = Join-Path $tmpRoot 'wms-dev.json'
+        $r = Invoke-Ws -WsArgs @('--brokendev', 'verify', 'widemess-sample', '--manifests', (Join-Path $bd 'projects'), '--home', (Join-Path $tmpRoot 'wmshome2'), '--rom', $dev, '--only', 'play', '--out', $json) -ExtraEnv @{ BROKENNES_DEV = '1' }
+        $v = Read-BdJson $json
+        $pc = @($v.scenarios[0].checks | Where-Object { $_.id -like 'debug-port-*' })
+        Assert-True ($r.ExitCode -eq 0 -and $pc.Count -ge 5 -and @($pc | Where-Object { -not $_.ok }).Count -eq 0) ('verify: ' + ((@($v.scenarios[0].checks | Where-Object { -not $_.ok -or $_.id -like 'debug-port-*' } | ForEach-Object { "$($_.id)=$($_.ok) $($_.detail)" })) -join '; '))
+        $bad = & $build (Join-Path $tmpRoot 'wms-plant') @('BROKENDEV_DEBUG', 'SAMPLE_PLANT_ASSERT')
+        $r2 = Invoke-Ws -WsArgs @('--brokendev', 'verify', 'widemess-sample', '--manifests', (Join-Path $bd 'projects'), '--home', (Join-Path $tmpRoot 'wmshome2'), '--rom', $bad, '--only', 'play', '--out', $json) -ExtraEnv @{ BROKENNES_DEV = '1' }
+        Assert-Equal $r2.ExitCode 1
+        $f = @((Read-BdJson $json).scenarios[0].checks | Where-Object { $_.id -eq 'debug-port-asserts' -and -not $_.ok })
+        Assert-True ($f.Count -eq 1 -and $f[0].detail -match 'ship_x') "no failed debug-port-asserts: $((@((Read-BdJson $json).scenarios[0].checks | Where-Object { -not $_.ok } | ForEach-Object { $_.id })) -join ', ')"
     }
     # ------------------------------------------------------------------ movies, promoted movie tests and bisect (D5)
     Write-Host 'movies and bisect (D5)'

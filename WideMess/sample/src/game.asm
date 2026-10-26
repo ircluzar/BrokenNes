@@ -4,6 +4,7 @@
 ; ABI (widemess.c and wmslib.asm say more): arguments pushed last first, the first at 4,s after jsl; a result in tcc__r0.
 
 .include "hdr.asm"
+.include "brokendev_dbg.inc"        ; the BrokenDev debug port: a timer around bullet_hit in dev builds, nothing in release builds
 
 .SECTION ".game_text" SUPERFREE
 
@@ -18,6 +19,7 @@
 bullet_hit:
     php
     rep #$30
+    DBG_TIMER_START 2
     phx
     phy
     ldx.w #0
@@ -43,6 +45,7 @@ _bh_loop:
     txa
     lsr a
     sta.b tcc__r0           ; the bullet
+    DBG_TIMER_STOP 2
     ply
     plx
     plp
@@ -57,6 +60,7 @@ _bh_next:
     bne _bh_loop
     lda.w #255
     sta.b tcc__r0
+    DBG_TIMER_STOP 2
     ply
     plx
     plp

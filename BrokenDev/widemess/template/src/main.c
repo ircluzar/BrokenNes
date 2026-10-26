@@ -9,13 +9,16 @@
       - three of the 8 layers at 400 x 224 (wms.json "graphics" -> gfx.h; gfxLoadAll() uploads it all);
       - a sprite of the 256-sprite table, moved with the d-pad;
       - fast mode (10.74 MHz) and a counter in the 1 MB work RAM (src/far.asm);
-      - a song on the WideMess sound chip (wms.json "sound" -> snd.h; the sound driver plays it).
+      - a song on the WideMess sound chip (wms.json "sound" -> snd.h; the sound driver plays it);
+      - the BrokenDev debug port (brokendev_dbg.h): a print, a marker, a timer and an assert that BrokenNes shows in dev builds
+        (brokendev build: -D BROKENDEV_DEBUG) and that compile to nothing in release builds.
 ---------------------------------------------------------------------------------*/
 #include <snes.h>
 #include "widemess.h"
 #include "wmssound.h"
 #include "gfx.h"
 #include "snd.h"
+#include "brokendev_dbg.h"
 
 /* src/far.asm: work RAM in bank $71, above the SNES's 128 KB */
 extern u8 far_frames[];
@@ -58,15 +61,19 @@ int main(void)
     ship_y = 120;
     nmiSet(vblank);
     setScreenOn();
+    DBG_PRINT("{{TITLE}}: dev build");
+    DBG_TIMER_NAME(1, "frame");
+    DBG_MARKER("started");
 
     while (1)
     {
+        DBG_TIMER_START(1);
         pad = pad_keys[0];
         if ((pad & KEY_LEFT) && ship_x > 0) ship_x -= 2;
         if ((pad & KEY_RIGHT) && ship_x < WMS_WIDTH - 16) ship_x += 2;
         if ((pad & KEY_UP) && ship_y > 0) ship_y -= 2;
         if ((pad & KEY_DOWN) && ship_y < WMS_HEIGHT - 16) ship_y += 2;
-        if (pad_keysdown[0] & KEY_A) sndPlayEffect(SND_SFX_DING);
+        if (pad_keysdown[0] & KEY_A) { sndPlayEffect(SND_SFX_DING); DBG_MARKER("ding"); }
         if (pad_keysdown[0] & KEY_START) sndPlaySong(SND_SONG_HELLO);
 
         wmsSpriteSet(0, ship_x, ship_y, GFX_SHIP_TILE((game_frame >> 3) & 1), GFX_SHIP_ATTR6, GFX_SHIP_ATTR7 | WMS_SPR_PRIO(3));
@@ -75,6 +82,8 @@ int main(void)
 
         far_frames[0]++;                /* proof of life in the 1 MB work RAM */
         game_frame++;
+        DBG_ASSERT(ship_x >= 0 && ship_x <= WMS_WIDTH - 16);
+        DBG_TIMER_STOP(1);
         WaitForVBlank();
     }
     return 0;

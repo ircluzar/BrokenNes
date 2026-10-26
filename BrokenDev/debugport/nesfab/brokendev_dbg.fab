@@ -1,0 +1,86 @@
+// The BrokenDev debug port for NESFab: the DEV build (milestone D7 of docs/projects/brokendev-debugging-plan.md, "D7 settled").
+//
+// BrokenNes listens to $401C-$401F while its debugger or dev mode is on; real hardware and other emulators ignore the writes (the 2A03's
+// dead CPU-test range). The RELEASE build gives the build the twin file brokendev_dbg_off.fab instead of this one: the same functions,
+// empty and inlined, so every call compiles to nothing (nesfab/build-proof.ps1 proves the ROM byte-identical; docs/projects/brokendev-debugging-plan.md, "D7 as built").
+//
+// Needs NESFab's lib/charmap/ascii.fab (the strings are @"..."ascii pointers, as NESFab's own lua_log.fab takes them):
+//     input = lib/charmap/ascii.fab
+//     input = <BrokenDev>/debugport/nesfab/brokendev_dbg.fab          (dev)  |  brokendev_dbg_off.fab  (release)
+//
+//   dbg_print(@"room loaded"ascii)
+//   dbg_print_1(@"room %u loaded"ascii, room)                 every value goes as 16 bits: %u %d %x %X (a byte: UU(x)); widths, 0
+//   dbg_print_2(@"x=%u y=%u"ascii, x, y)
+//   dbg_assert(hp <= max_hp, @"main.fab: hp <= max_hp"ascii)   a failed assert stops BrokenNes's debugger; fails brokendev verify
+//   dbg_mark(@"boss phase 2"ascii)                             a marker: in movies, bug captures, the divergence report
+//   dbg_timer_name(1, @"draw_hud"ascii)                        once, then around the code:
+//   dbg_timer_start(1) ... dbg_timer_stop(1)                   one STA each: cycles per call, worst, per frame in the profile
+//   dbg_break()                                                the debugger stops here
+
+ct AA BROKENDEV_DBG_DATA  = $401C
+ct AA BROKENDEV_DBG_CMD   = $401D
+ct AA BROKENDEV_DBG_START = $401E
+ct AA BROKENDEV_DBG_STOP  = $401F
+ct Bool BROKENDEV_DBG_ON = true
+
+// the text's bytes (without its sentinel) to DATA
+fn dbg_text(PPP/ascii str)
+: -inline
+    U i = 0
+    while str[i] != ascii.sentinel
+        {BROKENDEV_DBG_DATA}(str[i])
+        i += 1
+
+fn dbg_value(UU v)
+: +inline
+    {BROKENDEV_DBG_DATA}(v.a)
+    {BROKENDEV_DBG_DATA}(v.b)
+
+fn dbg_print(PPP/ascii str)
+    dbg_text(str)
+    {BROKENDEV_DBG_CMD}($01)
+
+fn dbg_print_1(PPP/ascii str, UU a)
+    dbg_text(str)
+    {BROKENDEV_DBG_DATA}(0)
+    dbg_value(a)
+    {BROKENDEV_DBG_CMD}($01)
+
+fn dbg_print_2(PPP/ascii str, UU a, UU b)
+    dbg_text(str)
+    {BROKENDEV_DBG_DATA}(0)
+    dbg_value(a)
+    dbg_value(b)
+    {BROKENDEV_DBG_CMD}($01)
+
+fn dbg_assert(Bool ok, PPP/ascii what)
+: +inline
+    if !ok
+        dbg_text(what)
+        {BROKENDEV_DBG_CMD}($02)
+
+fn dbg_mark(PPP/ascii name)
+    dbg_text(name)
+    {BROKENDEV_DBG_CMD}($03)
+
+fn dbg_timer_name(U id, PPP/ascii name)
+    {BROKENDEV_DBG_DATA}(id)
+    dbg_text(name)
+    {BROKENDEV_DBG_CMD}($07)
+
+// the fences keep the compiler from moving the timed work across the timer's writes (NESFab reorders loads and stores otherwise)
+fn dbg_timer_start(U id)
+: +inline
+    fence
+    {BROKENDEV_DBG_START}(id)
+    fence
+
+fn dbg_timer_stop(U id)
+: +inline
+    fence
+    {BROKENDEV_DBG_STOP}(id)
+    fence
+
+fn dbg_break()
+: +inline
+    {BROKENDEV_DBG_CMD}($06)

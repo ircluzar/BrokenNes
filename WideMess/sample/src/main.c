@@ -19,6 +19,7 @@
 #include "wmssound.h"
 #include "gfx.h"
 #include "snd.h"
+#include "brokendev_dbg.h"                 /* the BrokenDev debug port: on in dev builds (-D BROKENDEV_DEBUG), nothing in release builds */
 
 #define MAX_BUL   24
 #define MAX_EN    20
@@ -174,6 +175,9 @@ static void reset_game(void)
     for (i = 0; i < MAX_FX; i++) fx_t[i] = 0;
     ship_x = 40;
     ship_y = 110;
+#ifdef SAMPLE_PLANT_ASSERT                 /* the debug port's negative control: a bug that puts the ship off the screen, which the assert catches */
+    ship_x = WMS_WIDTH;
+#endif
     score = 0;
     lives = 3;
     invulnerable = 90;
@@ -189,8 +193,10 @@ static void hit_ship(void)
     sndPlayEffect(SND_SFX_BOOM);
     invulnerable = 120;
     if (lives > 0) lives--;
+    DBG_PRINT1("ship hit, lives %u", lives);
     if (lives == 0)
     {
+        DBG_MARKER("game over");
         game_over = 1;
         msg_dirty = 1;
         wmsSpriteHide(SLOT_SHIP);
@@ -255,7 +261,7 @@ static void update_boss(void)
     s16 y;
     if (!boss_on)
     {
-        if ((game_frame & 1023) == 600) { boss_on = 1; boss_hp = 20; boss_x = WMS_WIDTH; boss_y0 = 60; boss_t = 0; }
+        if ((game_frame & 1023) == 600) { boss_on = 1; boss_hp = 20; boss_x = WMS_WIDTH; boss_y0 = 60; boss_t = 0; DBG_MARKER("boss"); }
         else { wmsSpriteHide(SLOT_BOSS); return; }
     }
     boss_t = (boss_t + 2) & 1023;
@@ -275,6 +281,7 @@ static void update_boss(void)
             boom_at(boss_x + 32, y + 32);
             sndPlayEffect(SND_SFX_BOOM);
             score += 50;
+            DBG_PRINT1("boss down, score %u", score);
             hud_update();
             wmsSpriteHide(SLOT_BOSS);
             return;
@@ -359,6 +366,10 @@ int main(void)
 
     nmiSet(vblank);
     setScreenOn();
+    DBG_PRINT("Wide Blaster, dev build");
+    DBG_TIMER_NAME(1, "update");
+    DBG_TIMER_NAME(2, "bullet_hit");      /* timed in game.asm */
+    DBG_MARKER("started");
 
     while (1)
     {
@@ -383,11 +394,14 @@ int main(void)
         if (spawn_wait) spawn_wait--;
         else { spawn_enemy(); spawn_wait = 14 + (rand() & 15); }
 
+        DBG_TIMER_START(1);
         update_bullets();
         update_enemies();
         update_boss();
         update_fx();
         update_sparkles();
+        DBG_TIMER_STOP(1);
+        DBG_ASSERT(ship_x >= 0 && ship_x <= WMS_WIDTH - 16 && ship_y >= 0 && ship_y <= WMS_HEIGHT - 16);
 
         /* parallax: each layer at its own speed (in eighths of a pixel a frame) */
         wmsScroll(GFX_GROUND_LAYER, game_frame << 2, 0);

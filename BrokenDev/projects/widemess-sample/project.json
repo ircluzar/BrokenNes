@@ -20,9 +20,9 @@
         "shell": "ps5",
         "cwd": "{src}",
         "file": "{bd}/widemess/tools/wmsbuild.ps1",
-        "args": ["-Project", "{src}", "-Pvsneslib", "{root:svrunrepo}/snes-stub/toolchain/pvsneslib", "-Workshop", "{workshop}"],
+        "args": ["-Project", "{src}", "-Pvsneslib", "{root:svrunrepo}/snes-stub/toolchain/pvsneslib", "-Workshop", "{workshop}", "-Define", "BROKENDEV_DEBUG"],
         "timeoutSec": 900,
-        "note": "wmsbuild.ps1: the converters (wms.json's graphics and sound), 816-tcc, wla-65816, wla-spc700, wlalink on PVSnesLib's HiROM libraries, Workshop --wms-pack --map 2."
+        "note": "wmsbuild.ps1: the converters (wms.json's graphics and sound), 816-tcc, wla-65816, wla-spc700, wlalink on PVSnesLib's HiROM libraries, Workshop --wms-pack --map 2. -Define BROKENDEV_DEBUG: the dev build, with the debug port's calls (BrokenDev/debugport); a release build leaves it out."
       }
     ],
     "outputs": [
@@ -44,7 +44,8 @@
           "pictureDiffers": [600, 900],
           "audio": { "fromFrame": 60, "minPeak": 0.1, "minNonSilentFrames": 800 },
           "wms": { "unlocked": true, "width": 400, "layers8": true, "fastCpu": true, "minLayers": 8, "minSprites": 129, "minVoices": 9, "minVoiceFrames": 800, "minBigWramBytes": 2000 },
-          "minRealtime": 1.0
+          "minRealtime": 1.0,
+          "port": { "markers": ["started", "boss"], "prints": ["Wide Blaster, dev build"], "timers": ["update", "bullet_hit"], "maxErrors": 0 }
         },
         "why": "8 layers drawing, more sprites on the picture than a SNES table holds (128), more of the new voices sounding at once than the S-DSP has (8), the far work RAM in use, fast mode on"
       },

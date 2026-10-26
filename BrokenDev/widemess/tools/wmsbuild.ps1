@@ -25,7 +25,9 @@
   Python 3.10+ with Pillow and NumPy. Default: $env:BROKENDEV_PYTHON, else the first one BrokenDev finds.
 .PARAMETER Define
   Extra -D names for the C and assembly sources (e.g. WMS_NOUNLOCK, the negative control: no unlock; WMS_NOCLEAR, the start-up without
-  its work-RAM clear: RESET goes straight to PVSnesLib's crt0, the checks' negative control).
+  its work-RAM clear: RESET goes straight to PVSnesLib's crt0, the checks' negative control). BROKENDEV_DEBUG is the dev build: the
+  BrokenDev debug port's calls (BrokenDev\debugport\snes\brokendev_dbg.h for C, brokendev_dbg.inc for assembly, both on the include
+  path) send their prints, asserts, markers and timers to BrokenNes; without it they compile to nothing (the release build).
 .PARAMETER Out
   The build folder (default <Project>\build). With -Define, use another folder so the normal build is not overwritten.
 #>
@@ -45,6 +47,7 @@ $wmsRoot = Split-Path -Parent $PSScriptRoot                        # BrokenDev\w
 . (Join-Path (Split-Path -Parent $wmsRoot) 'lib\Tools.ps1')         # Find-BdPython
 . (Join-Path (Split-Path -Parent $wmsRoot) 'lib\WideMess.ps1')      # Find-BdPvsneslib
 $libDir = Join-Path $wmsRoot 'lib'
+$Define = @($Define | ForEach-Object { ([string]$_) -split ',' } | Where-Object { $_ })   # -Define A,B from powershell.exe -File arrives as one string
 $drvDir = Join-Path $wmsRoot 'driver'
 
 function Fail([string]$m) { throw "wmsbuild: $m" }
@@ -186,7 +189,9 @@ elseif ($Define -contains 'WMS_NOUNLOCK') { Write-Host "  start-up clear: the SN
 else { Write-Host "  start-up clear: the SNES's 128 KB and $($farNames.Count) far RAM section(s)$(if ($farNames.Count) { ': ' + ($farNames -join ', ') })" }
 
 # ---- 3. C and assembly
-$incs = @("-I$(Join-Path $Pvsneslib 'pvsneslib\include')", "-I$(Join-Path $Pvsneslib 'devkitsnes\include')", "-I$libDir", "-I$(Join-Path $Project 'src')", "-I$gen")
+$dbgDir = Join-Path (Split-Path -Parent $wmsRoot) 'debugport\snes'   # the BrokenDev debug port's C header and WLA-DX macros (D7)
+$incs = @("-I$(Join-Path $Pvsneslib 'pvsneslib\include')", "-I$(Join-Path $Pvsneslib 'devkitsnes\include')", "-I$libDir", "-I$dbgDir", "-I$(Join-Path $Project 'src')", "-I$gen")
+Copy-Item -LiteralPath (Join-Path $dbgDir 'brokendev_dbg.inc') -Destination (Join-Path $Out 'brokendev_dbg.inc') -Force   # .include "brokendev_dbg.inc" from src\*.asm
 $cflags = @('-Wall', '-c', '-H') + $(if ($fastRom) { @('-F') } else { @() }) + @($Define | ForEach-Object { "-D$_" })
 $cfiles = @()
 $cfiles += @(Get-ChildItem -LiteralPath (Join-Path $Project 'src') -Filter '*.c' -File -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { $_.FullName })

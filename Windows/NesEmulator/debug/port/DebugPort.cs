@@ -225,9 +225,29 @@ public sealed class DebugPort : IDisposable
 
     // ================================================================================================ events
 
+    private static readonly System.Text.RegularExpressions.Regex Helper = new(@"(^|[._@])_?(bdbg_\w+|EMU_printf|EMU_fmtbuf|dbg_(text|value|print\w*|mark|timer_name|assert))", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Where a message comes from: the library's helper that wrote the port (bdbg_say, dbg_print, EMU_printf) is not the place, its
+    /// caller is. The debugger's call stack names the caller when it is tracked (checks runs, MCP sessions); else the helper is given.</summary>
+    private uint PlaceOf(uint pc)
+    {
+        var d = Debugger;
+        if (d == null) return pc;
+        string? s = d.SymbolAt(cpu, pc);
+        if (s == null || !Helper.IsMatch(s)) return pc;
+        var st = cpu.State.Stack;
+        for (int i = st.Count - 1; i >= 0; i--)
+        {
+            string? c = d.SymbolAt(cpu, st[i].CallerPc);
+            if (c == null || !Helper.IsMatch(c)) return st[i].CallerPc;
+        }
+        return pc;
+    }
+
     private void Emit(PortEventKind kind, string text, uint pc)
     {
         PortEvent e;
+        pc = PlaceOf(pc);
         string? sym = Debugger?.SymbolAt(cpu, pc);
         lock (sync)
         {
@@ -498,6 +518,9 @@ public sealed class DebugPort : IDisposable
         {
             var c = GbCpu;
             text = GbPrintf(c.HL, c.DE, pc);
+            // GBDK's EMU_printf / EMU_fmtbuf push nothing before the message: the caller's CALL is just below the return address at SP
+            uint ret = (uint)(b.Peek(c.SP) | b.Peek((ushort)(c.SP + 1)) << 8);
+            if (ret >= 3 && b.Peek((ushort)(ret - 3)) == 0xCD) pc = (ushort)(ret - 3);
         }
         else { Emit(PortEventKind.Error, $"a debug message of type ${type:X4} (BrokenNes reads $0000 inline and $0200 printf)", pc); return; }
         Dispatch(text, pc);

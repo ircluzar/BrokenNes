@@ -20,9 +20,9 @@
         "shell": "ps5",
         "cwd": "{src}",
         "file": "{bd}/widemess/tools/wmsbuild.ps1",
-        "args": ["-Project", "{src}", "-Pvsneslib", "{root:svrunrepo}/snes-stub/toolchain/pvsneslib", "-Workshop", "{workshop}"],
+        "args": ["-Project", "{src}", "-Pvsneslib", "{root:svrunrepo}/snes-stub/toolchain/pvsneslib", "-Workshop", "{workshop}", "-Define", "BROKENDEV_DEBUG"],
         "timeoutSec": 900,
-        "note": "wmsbuild.ps1: the converters (wms.json's graphics and sound), 816-tcc, wla-65816, wla-spc700, wlalink on PVSnesLib's HiROM libraries, Workshop --wms-pack --map 2."
+        "note": "wmsbuild.ps1: the converters (wms.json's graphics and sound), 816-tcc, wla-65816, wla-spc700, wlalink on PVSnesLib's HiROM libraries, Workshop --wms-pack --map 2. -Define BROKENDEV_DEBUG: the dev build, with the debug port's calls (BrokenDev/debugport); a release build leaves it out."
       }
     ],
     "outputs": [
@@ -52,7 +52,7 @@
         "frames": 300,
         "input": "60:Right,180:Right+Up,240:A,246:",
         "checkpoints": [300],
-        "expect": { "minDistinctColors": 16, "wms": { "unlocked": true, "width": 400 } }
+        "expect": { "minDistinctColors": 16, "wms": { "unlocked": true, "width": 400 }, "port": { "markers": ["started", "ding"], "timers": ["frame"], "maxErrors": 0 } }
       }
     ],
     "compare": [
