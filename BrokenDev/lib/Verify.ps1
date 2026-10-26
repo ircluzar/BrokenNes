@@ -84,6 +84,13 @@ function Invoke-BdProjectVerify {
         if ($sc.ok) { Write-BdOk $line }
         elseif ($isInfo) { Write-BdWarn ($line + '  (information scenario: recorded, does not decide the verdict)'); foreach ($c in $chk) { Write-BdWarn ("      {0}: {1}" -f $c.id, $c.detail) } }
         else { Write-BdFail $line; foreach ($c in $chk) { Write-BdFail ("      {0}: {1}" -f $c.id, $c.detail) }; if ($sc.result -ne 'ok') { Write-BdFail "      $($sc.result): $($sc.crashInfo)" } }
+        # the debug port (D7): what the game said, when it said anything
+        $dp = if ($sc.PSObject.Properties['debugPort']) { $sc.debugPort } else { $null }
+        if ($dp -and $dp.PSObject.Properties['counts'] -and ($dp.counts.print + $dp.counts.marker + $dp.counts.assert + $dp.counts.error + @($dp.timers).Count) -gt 0) {
+            $tm = (@($dp.timers | Select-Object -First 4 | ForEach-Object { '{0} {1}x avg {2} worst {3}' -f $_.name, $_.calls, $_.average, $_.worst })) -join '; '
+            Write-Host ('      port: {0} print(s), {1} marker(s), {2} assert(s), {3} error(s){4}' -f $dp.counts.print, $dp.counts.marker, $dp.counts.assert, $dp.counts.error, $(if ($tm) { "; timers ($($dp.cycleUnit)): $tm" } else { '' }))
+            foreach ($e in @($dp.events | Where-Object { $_.kind -in 'print', 'marker', 'assert', 'error' } | Select-Object -First 6)) { Write-Host ('        frame {0} {1}: {2}' -f $e.frame, $e.kind, $e.text) }
+        }
     }
     foreach ($c in $rec.compare) { $l = "  compare {0}: {1}" -f $c.id, $(if ($c.ok) { 'ok' } else { 'FAIL ' + $c.detail }); if ($c.ok) { Write-BdOk $l } else { Write-BdFail $l } }
     if ($rec.PSObject.Properties['checks'] -and $rec.checks) { Write-BdChecks $rec.checks }
