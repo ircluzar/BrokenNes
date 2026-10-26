@@ -48,6 +48,9 @@ internal sealed class HeadlessSession : Session
     private readonly List<string> watches = new();
     private ConsoleChecks? checks;
     private long checksFrom;
+    // the debug port (D7): listening from power-on; an assert or a break command parks the machine with the message
+    private NesEmulator.Debugging.Port.DebugPort? port;
+    private long portReported;
     private SearchState? search;
     // the history (D5): every frame's input since the session began (its movie), a state every 60 frames (step back), the keyframes
     private DebugHistory? history;
@@ -122,6 +125,8 @@ internal sealed class HeadlessSession : Session
                 if (callStack) h.D.TrackCallStack = true;   // an interactive session: the call stack (and the trace ring) from the first instruction
                 h.R = new DebugRunner(h.D, h.Frame);
                 foreach (var f in symbolFiles) h.D.Symbols.Load(f, h.M.Console);
+                h.port = new NesEmulator.Debugging.Port.DebugPort(h.M, h.D) { BreakOnAssert = true, BreakOnBreak = true, Keep = 4096 };
+                h.port.Attach();
                 if (startChecks) h.Checks("start", checksOff, frameWait, 0, 15);
             }
             else if (symbolFiles.Any() || startChecks)
@@ -243,8 +248,10 @@ internal sealed class HeadlessSession : Session
         {
             var on = D.Breakpoints.Where(b => b.Enabled).Select(b => b.Id).ToList();
             foreach (var id in on) D.SetEnabled(id, false);
+            bool pa = port?.BreakOnAssert ?? false, pb = port?.BreakOnBreak ?? false;
+            if (port != null) { port.BreakOnAssert = false; port.BreakOnBreak = false; }   // the debug port's asserts too
             try { R!.Run(1); }
-            finally { foreach (var id in on) D.SetEnabled(id, true); }
+            finally { foreach (var id in on) D.SetEnabled(id, true); if (port != null) { port.BreakOnAssert = pa; port.BreakOnBreak = pb; } }
         }
         if (D.IsParked) throw new ToolError("the machine is parked and a step keeps it there; run some frames first");
         return $"the machine was stopped inside frame {f0}; that frame was finished first (breakpoints off for it)";
@@ -279,7 +286,57 @@ internal sealed class HeadlessSession : Session
         if (o == RunOutcome.Timeout) j["note"] = "the call's time limit (300 s) passed before the run ended: the machine was paused where it was (run again to go on)";
         if (watches.Count > 0) j["watches"] = WatchValues();
         if (checks != null) j["checkFindings"] = checks.Findings.Count;
+        PortNews(j);
         return j;
+    }
+
+    /// <summary>The debug port's events since the last result (at most 40 here; the debug_port tool has them all).</summary>
+    private void PortNews(JsonObject j)
+    {
+        var p = port;
+        if (p == null) return;
+        var news = p.Since(portReported);
+        if (news.Count == 0) return;
+        portReported = news[^1].Seq;
+        j["debugPort"] = new JsonObject
+        {
+            ["new"] = news.Count,
+            ["events"] = J.Arr(news.TakeLast(40).Select(e => (JsonNode)PortEventJson(e))),
+            ["asserts"] = news.Count(e => e.Kind == NesEmulator.Debugging.Port.PortEventKind.Assert),
+            ["note"] = news.Count > 40 ? $"the last 40 of {news.Count} new events (debug_port action events has them all)" : null,
+        };
+    }
+
+    private static JsonObject PortEventJson(NesEmulator.Debugging.Port.PortEvent e) => new()
+    {
+        ["seq"] = e.Seq, ["kind"] = e.KindName, ["text"] = e.Text, ["frame"] = e.Frame, ["pc"] = e.PcText, ["pcSymbol"] = e.PcSymbol,
+    };
+
+    public override JsonObject DebugPort(string action, long since, int limit, List<string> kinds)
+    {
+        var p = port ?? throw new ToolError($"no debug port on this session: the debugger does not cover the {Consoles.DisplayName(console)}");
+        limit = Math.Clamp(limit, 1, 4096);
+        switch (action)
+        {
+            case "events":
+            {
+                var ev = p.Since(since).Where(e => kinds.Count == 0 || kinds.Contains(e.KindName, StringComparer.OrdinalIgnoreCase)).ToList();
+                if (ev.Count > 0) portReported = Math.Max(portReported, ev[^1].Seq);
+                return new JsonObject
+                {
+                    ["where"] = p.Where, ["total"] = p.EventCount, ["matching"] = ev.Count, ["events"] = J.Arr(ev.TakeLast(limit).Select(e => (JsonNode)PortEventJson(e))),
+                    ["note"] = ev.Count > limit ? $"the last {limit} of {ev.Count}" : (p.EventCount > p.Keep ? $"the port keeps the last {p.Keep} events; asserts and markers are all kept (action status)" : null),
+                };
+            }
+            case "timers":
+                return new JsonObject { ["cycleUnit"] = p.CycleUnit, ["timers"] = J.Arr(p.Timers.Select(t => (JsonNode)t.Json())), ["text"] = J.Strs(p.TimerText()) };
+            case "status":
+                return p.Json(Math.Min(limit, 50));
+            case "clear":
+                p.Clear(); portReported = 0;
+                return new JsonObject { ["cleared"] = true };
+            default: throw new ToolError("action is events, timers, status or clear");
+        }
     }
 
     private JsonObject BreakJson(BreakInfo b)
@@ -363,6 +420,7 @@ internal sealed class HeadlessSession : Session
         lock (padLock) j["held"] = J.Strs(new[] { held[0].ToString(), held[1].ToString() });
         if (watches.Count > 0) j["watches"] = WatchValues();
         if (checks != null) j["checkFindings"] = checks.Findings.Count;
+        if (port != null) j["debugPort"] = new JsonObject { ["events"] = port.EventCount, ["asserts"] = port.Count(NesEmulator.Debugging.Port.PortEventKind.Assert), ["markers"] = port.Count(NesEmulator.Debugging.Port.PortEventKind.Marker), ["timers"] = port.Timers.Count };
         j["savedStates"] = J.Strs(states.Keys);
         j["history"] = history == null ? historyNote : $"{historyNote}; {history.FrameIndex} frames, step back to frame {history.OldestFrame}{(history.Replaying ? $"; replaying the log ({history.Logged - history.FrameIndex} frames ahead)" : "")}{(history.SaveError != null ? "; " + history.SaveError : "")}";
         if (playingMovie != null && history != null)
@@ -372,6 +430,8 @@ internal sealed class HeadlessSession : Session
 
     public override void Close()
     {
+        try { port?.Detach(); } catch { }
+        port = null;
         try { R?.Dispose(); } catch { }
         try { cs?.Dispose(); } catch { }
         R = null; D = null;
@@ -1304,6 +1364,8 @@ internal sealed class HeadlessSession : Session
         var h = history ?? throw new ToolError(historyNote);
         if ((instructions == null) == (frames == null)) throw new ToolError("step back by instructions or by frames (one of them)");
         DebugHistory.BackResult r;
+        bool portOn = port?.Attached == true;
+        port?.Detach();   // the replay's frames were heard already: the debug port listens again from where the replay ends
         try
         {
             if (instructions is long n)
@@ -1315,6 +1377,7 @@ internal sealed class HeadlessSession : Session
         }
         catch (InvalidOperationException e) { throw new ToolError(e.Message); }
         catch (ArgumentException e) { throw new ToolError(e.Message); }
+        finally { if (portOn) port!.Attach(); }
         Interlocked.Exchange(ref framesStarted, h.FrameIndex);
         var j = Status();
         j["steppedBack"] = new JsonObject

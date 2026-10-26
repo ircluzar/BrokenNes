@@ -117,10 +117,13 @@ public sealed class DebugPort : IDisposable
     private Bus? nesBus;
     private Snes.BOARD_SFC? snesBoard;
     private Gb.BOARD_GB? gbBoard;
-    private Action<ushort>? gbPrev, gbMine;
+    private Action<ushort, byte>? nesMine;
+    private Action<uint, byte>? snesMine;
+    private Action<ushort>? gbMine;
     public bool Attached { get; private set; }
 
-    /// <summary>Starts listening. NES: on the bus the NES has now (a ROM load makes a new one: attach again).</summary>
+    /// <summary>Starts listening. NES: on the bus the NES has now (a ROM load makes a new one: attach again). Several ports may listen to
+    /// one machine at once (a session's own and the checks'): each adds itself to the machine's listener and removes only itself.</summary>
     public void Attach()
     {
         if (Attached) Detach();
@@ -128,28 +131,29 @@ public sealed class DebugPort : IDisposable
         {
             case NesDebugMachine n:
                 nesBus = n.Nes.DebugBus ?? throw new InvalidOperationException("the NES has no ROM loaded");
-                nesBus.DebugPortWrite = OnNesWrite;
+                nesMine = OnNesWrite;
+                nesBus.DebugPortWrite += nesMine;
                 break;
             case SnesDebugMachine s:
                 snesBoard = s.Board;
-                snesBoard.DebugPortWrite = OnSnesWrite;
+                snesMine = OnSnesWrite;
+                snesBoard.DebugPortWrite += snesMine;
                 break;
             case GbDebugMachine g:
                 gbBoard = g.Board;
-                gbPrev = gbBoard.InstructionHook;
-                gbMine = gbPrev == null ? OnGbInstruction : pc => { gbPrev(pc); OnGbInstruction(pc); };
-                gbBoard.InstructionHook = gbMine;
+                gbMine = OnGbInstruction;
+                gbBoard.InstructionHook += gbMine;   // after any hook the host had (a multicast delegate: the host's own stays)
                 break;
         }
         Attached = true;
     }
 
-    /// <summary>Stops listening: the machine is exactly as without the port again.</summary>
+    /// <summary>Stops listening: with no other listener the machine is exactly as without the port again (the fields are null).</summary>
     public void Detach()
     {
-        if (nesBus != null) { nesBus.DebugPortWrite = null; nesBus = null; }
-        if (snesBoard != null) { snesBoard.DebugPortWrite = null; snesBoard = null; }
-        if (gbBoard != null) { if (ReferenceEquals(gbBoard.InstructionHook, gbMine)) gbBoard.InstructionHook = gbPrev; gbBoard = null; gbPrev = gbMine = null; }
+        if (nesBus != null) { nesBus.DebugPortWrite -= nesMine; nesBus = null; nesMine = null; }
+        if (snesBoard != null) { snesBoard.DebugPortWrite -= snesMine; snesBoard = null; snesMine = null; }
+        if (gbBoard != null) { gbBoard.InstructionHook -= gbMine; gbBoard = null; gbMine = null; }
         Attached = false;
     }
 

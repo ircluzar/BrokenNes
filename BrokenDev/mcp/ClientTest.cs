@@ -77,7 +77,7 @@ internal static class ClientTest
             string[] want = { "open_rom", "open_project", "attach_live", "list_instances", "list_sessions", "close_session", "status", "run", "run_until", "pause", "reset", "input",
                 "read_memory", "write_memory", "search_memory", "list_domains", "symbols", "breakpoint_add", "breakpoint_list", "breakpoint_remove", "watch", "step", "call_stack",
                 "registers", "trace", "trace_frame", "disassemble", "evaluate", "screenshot", "layers", "tiles", "sprites", "record_sound", "save_state", "load_state", "diff_states",
-                "checks", "profile", "brokendev", "step_back", "open_movie", "movie", "bisect", "bugs" };
+                "checks", "profile", "brokendev", "step_back", "open_movie", "movie", "bisect", "bugs", "debug_port" };
             var missing = want.Where(w => !names.Contains(w)).ToList();
             Check("tools_listed", missing.Count == 0 && tools.All(t => t.JsonSchema.ValueKind == JsonValueKind.Object), $"{tools.Count} tools over stdio; missing: {(missing.Count == 0 ? "none" : string.Join(", ", missing))}");
             switch (suite)
@@ -99,6 +99,17 @@ internal static class ClientTest
     }
 
     // ==================================================================================================================== the client test
+
+    /// <summary>The debug port's test ROMs (Workshop's PortTestRoms) per console: the ROM, its symbols, and the negative control's ROM.</summary>
+    private static IEnumerable<(string key, string rom, string sym, string neg)> PortRoms(string dir)
+    {
+        var (nr, _, nm) = PortTestRoms.Nes(); var (nn, _, _) = PortTestRoms.Nes(0x4018);
+        yield return ("nes", DebugTestRoms.Write(dir, "porttest.nes", nr), DebugTestRoms.Write(dir, "porttest.mlb", nm), DebugTestRoms.Write(dir, "porttest_neg.nes", nn));
+        var (sr, _, ss) = PortTestRoms.Snes(); var (sn, _, _) = PortTestRoms.Snes(0x4240);
+        yield return ("snes", DebugTestRoms.Write(dir, "porttest.sfc", sr), DebugTestRoms.Write(dir, "porttest.sym", ss), DebugTestRoms.Write(dir, "porttest_neg.sfc", sn));
+        var (gr, _, gs) = PortTestRoms.GameBoy(); var (gn, _, _) = PortTestRoms.GameBoy(false);
+        yield return ("gb", DebugTestRoms.Write(dir, "porttest.gb", gr), DebugTestRoms.Write(dir, "porttest_gb.sym", gs), DebugTestRoms.Write(dir, "porttest_neg.gb", gn));
+    }
 
     private static async Task ClientSuite(string dir)
     {
@@ -391,6 +402,42 @@ internal static class ClientTest
         Check("movie_export_refuses_another_rom", exBad.IsError && exBad.Text.Contains("not the movie's"), exBad.Text);
         var nomovie = await Call("movie", new { action = "info", movie = Path.Combine(dir, "nothing.bnm") });
         Check("movie_missing_refused", nomovie.IsError && nomovie.Text.Contains("no movie"), nomovie.Text);
+
+        // the debug port (D7): the port test ROMs' messages, an assert that parks the session, the timers; the negative control writes beside the port
+        foreach (var (key, file, symf, neg) in PortRoms(dir))
+        {
+            var po = await Call("open_rom", new { path = file, symbols = new[] { symf } });
+            string ph = S(po["session"]);
+            var pr1 = await Call("run", new { session = ph, frames = 10 });
+            long newEvents = L(pr1["debugPort"]?["new"]);
+            if (key == "gb")
+            {
+                // the Game Boy ROM's bare ld b,b comes first: the game's own break; the next run reaches the assert
+                Check("port_gb_break_parks", S(pr1["outcome"]) == "break" && S(pr1["break"]?["reason"]) == "port-break" && S(pr1["break"]?["pcSymbol"]) == "bare_break", $"{S(pr1["outcome"])}: {S(pr1["break"]?["text"])}");
+                pr1 = await Call("run", new { session = ph, frames = 10 });
+                newEvents += L(pr1["debugPort"]?["new"]);
+            }
+            Check($"port_{key}_assert_parks", S(pr1["outcome"]) == "break" && S(pr1["break"]?["reason"]) == "assert" && S(pr1["break"]?["text"]).Contains("frame counter < 3"), $"{S(pr1["outcome"])}: {S(pr1["break"]?["text"])}");
+            Check($"port_{key}_run_result_has_new_events", newEvents >= 3 && L(pr1["debugPort"]?["asserts"]) == 1, $"{newEvents} new events in the run results");
+            await Call("run", new { session = ph, frames = 6 }, log: false);
+            var pe = await Call("debug_port", new { session = ph, action = "events", kinds = new[] { "print", "marker" } });
+            var texts = (pe["events"] as JsonArray)?.Select(e => S(e?["text"])).ToList() ?? new();
+            Check($"port_{key}_events", texts.Contains("hello from the port") && texts.Contains("start") && texts.Contains("five frames"), string.Join(" | ", texts));
+            var pt = await Call("debug_port", new { session = ph, action = "timers" });
+            var work = (pt["timers"] as JsonArray)?.FirstOrDefault(t => S(t?["name"]) == "work");
+            Check($"port_{key}_timers", work != null && L(work["calls"]) >= 4 && L(work["best"]) == L(work["worst"]) && (key != "nes" || L(work["worst"]) == 57), $"work: {work?.ToJsonString()}");
+            await Call("close_session", new { session = ph }, log: false);
+            var no = await Call("open_rom", new { path = neg });
+            string nh = S(no["session"]);
+            var nr1 = await Call("run", new { session = nh, frames = 10 });
+            var ne = await Call("debug_port", new { session = nh, action = "events" });
+            Check($"port_{key}_negative_control", S(nr1["outcome"]) == "frames" && nr1["debugPort"] == null && L(ne["total"]) == 0, $"{S(nr1["outcome"])}, {L(ne["total"])} events");
+            await Call("close_session", new { session = nh }, log: false);
+        }
+        var smsPort = await Call("open_rom", new { path = sms });
+        var smsNo = await Call("debug_port", new { session = S(smsPort["session"]), action = "events" });
+        Check("port_sega_refused", smsNo.IsError && smsNo.Text.Contains("no debug port"), smsNo.Text);
+        await Call("close_session", new { session = S(smsPort["session"]) }, log: false);
 
         // the bug captures (D6): a capture made the way the apps make one (the last 30 s of 40 s of play), listed, replayed, opened in a session
         string bugs = Path.Combine(dir, "bugs");

@@ -68,6 +68,8 @@ internal abstract class Session
     // movies and step back (D5)
     public virtual JsonObject StepBack(long? instructions, long? frames) => throw No("step back");
     public virtual JsonObject MovieSave(string? path) => throw No("saving the session as a movie");
+    // the debug port (D7)
+    public virtual JsonObject DebugPort(string action, long since, int limit, List<string> kinds) => throw No("the debug port");
 }
 
 /// <summary>Every open session, by id ("h1", "h2", ... headless; "live-<pid>-n" live).</summary>

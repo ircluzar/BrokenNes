@@ -124,6 +124,22 @@ internal static class PortTestCli
             Check($"{C}: detached, the port hears nothing more", port.EventCount == seq && !port.Attached, $"{port.EventCount - seq} events after detaching");
         }
 
+        // two ports on one machine (a session's own and the checks'): both hear everything; each detach removes only itself
+        var (h2, p1) = Open(dir, console);
+        using (h2)
+        {
+            var p2 = new DebugPort(h2.Machine, h2.Dbg);
+            p2.Attach();
+            h2.RunPlain(3);
+            long a1 = p1.EventCount, a2 = p2.EventCount;
+            p1.Detach();
+            h2.RunPlain(3);
+            bool p2Hears = p2.EventCount > a2 && p1.EventCount == a1;
+            p2.Detach();
+            bool clean = h2.Nes != null ? h2.Nes.DebugBus!.DebugPortWrite == null : h2.Session is SnesSession sn ? sn.Board.DebugPortWrite == null : true;
+            Check($"{C}: two ports on one machine both hear it, each detach removes only itself, and the listener is null again", a1 == a2 && a1 > 0 && p2Hears && clean, $"{a1} and {a2} events; after one detach the other heard {p2.EventCount - a2} more; listener null: {clean}");
+        }
+
         // negative control: the same ROM writing beside the port
         var (hn, pn) = Open(dir, console, real: false);
         using (hn)
@@ -204,7 +220,10 @@ internal static class PortTestCli
             pc.Attach();
             hc.RunPlain(2);
             pc.Detach();
-            Check("GB: the port chains a host's instruction hook and gives it back", seen > 1000 && pc.EventCount > 0 && ReferenceEquals(board.InstructionHook, mine), $"{seen} host calls, {pc.EventCount} events");
+            Check("GB: the port chains a host's instruction hook and gives it back", seen > 1000 && pc.EventCount > 0 && board.InstructionHook == mine, $"{seen} host calls, {pc.EventCount} events");
+            board.InstructionHook = null;
+            pc.Attach(); pc.Detach();
+            Check("GB: attached and detached alone, the instruction hook is null again", board.InstructionHook == null, "");
         }
     }
 }

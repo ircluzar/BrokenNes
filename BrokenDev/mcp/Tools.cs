@@ -313,6 +313,16 @@ internal static class Tools
             Schema(S(), ("from", P("integer", "count frames from this one (skip the boot)"), false), ("top", P("integer", "functions (default 15)"), false)),
             a => On(a, s => s.Checks("profile", new(), new(), a.LongOr("from", 0), a.Int("top", 15))), ro: true);
 
+        Add("debug_port",
+            "The game's own debug messages (D7, headless sessions; the port listens from power-on): prints, asserts, markers, breaks and wrong-use errors " +
+            "(NES $401C-$401F, SNES / WideMess $4230-$423F, Game Boy the bgb / Emulicious ld d,d messages), and the named timers in the machine's cycles. " +
+            "An assert or the game's break command parks the session (run returns outcome break, reason assert / port-break, with the message). " +
+            "Every run result also carries the events new since the last result. action: events (since a seq, by kind), timers, status, clear.",
+            Schema(S(), ("action", P("string", "events, timers, status or clear", Enum("events", "timers", "status", "clear")), true),
+                   ("since", P("integer", "events: after this seq (default 0: all kept)"), false), ("limit", P("integer", "events: at most this many, the newest (default 200)"), false),
+                   ("kinds", P("string[]", "events: only these kinds (print, assert, marker, break, error)"), false)),
+            a => On(a, s => s.DebugPort(a.Req("action").ToLowerInvariant(), a.LongOr("since", 0), a.Int("limit", 200), a.List("kinds"))), ro: true);
+
         // ------------------------------------------------------------------------------------------------ BrokenDev
         // ------------------------------------------------------------------------------------------------ movies, step back, divergence, bisect (D5)
         Add("step_back",
