@@ -40,6 +40,12 @@
                                  the first of the GAME's commits where the movie's test turns bad, with today's BrokenNes: a scratch clone
                                  (never pushed, no remote), built halfway back each time; a commit that does not build is skipped, one where
                                  the replay loses its course says can't tell. Tests: no-crash | no-lag [from N] | picture at N | <expression> at N
+    bugs    [project]            the bug captures (milestone D6: the desktop app's F9, Lite's Bug button) of one project or all: its game
+                                 workspace's bugs\ folder and the default folder's (%LOCALAPPDATA%\BrokenNes\bugs) that belong to it; and
+                                 whether each workspace keeps bugs\ out of git (exit 1 when one does not)
+    bug     <id|folder|zip> [-Debugger] [-Script "cmds"]
+                                 replays one capture headless (every keyframe and the last picture checked, the hardware checks on; exit 0
+                                 in sync); -Debugger opens it in the headless debugger ('run' replays it, 'back' steps back; -Script the commands)
     mcp     install|uninstall|build|status|test
                                  the BrokenNes MCP server (BrokenDev/mcp): 'install' builds it into BROKENDEV_HOME\bnbuild\mcp and registers it
                                  for Claude Code at USER scope ('claude mcp add --scope user brokennes', every session and game repo);
@@ -107,6 +113,8 @@ param(
     [Alias('Good')][string]$GoodCommit = '',
     [Alias('Bad')][string]$BadCommit = 'HEAD',
     [string]$Repo = '',
+    # 'bug' (milestone D6): open the capture in the headless debugger
+    [switch]$Debugger,
     # 'tool <id> <args...>': the arguments after the tool id are passed to the tool
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @()
 )
@@ -128,6 +136,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\WideMess.ps1')
 . (Join-Path $here 'lib\Mcp.ps1')
 . (Join-Path $here 'lib\Movies.ps1')
+. (Join-Path $here 'lib\Bugs.ps1')
 
 function Show-BdHelp { Write-Host (Get-Help (Join-Path $here 'brokendev.ps1') -Full | Out-String) }
 
@@ -392,6 +401,42 @@ try {
                 default { throw "movie: record, play, export, promote or list" }
             }
         }
+        'bugs' {
+            if ($Target) { [void](Resolve-BdTargets $Target) }
+            $b = Get-BdBugs -Id $Target -Exe $Exe
+            if ($Json) { $b | ConvertTo-Json -Depth 8 }
+            $bad = 0
+            foreach ($f in $b.Folders) {
+                $g = if ($f.Git) { "$($f.Git.State): $($f.Git.Detail)" } else { 'no workspace' }
+                $line = '{0,-22} {1}  [{2}]' -f $f.Project, $(if ($f.Dir) { $f.Dir } else { $f.Why }), $g
+                if ($f.Git -and $f.Git.State -eq 'NOT IGNORED') { Write-BdFail $line; $bad++ } else { Write-BdInfo $line }
+            }
+            Write-BdInfo "default folder (ROMs of no project, and projects whose build record names no workspace): $($b.Default)"
+            if ($b.Rows.Count -eq 0) { Write-BdInfo '(no captures)' }
+            foreach ($r in $b.Rows) {
+                $x = $r.Bug
+                $what = if (Get-BdProp $x 'error' $null) { "unreadable: $($x.error)" } else { '{0}  {1,6} s  {2}{3}' -f $x.captured, $x.seconds, $(if ($x.movie) { 'movie from ' + $x.start } else { 'NO MOVIE: ' + $x.noMovie }), $(if ($x.note) { '  note: ' + $x.note } else { '' }) }
+                Write-Host ('  {0,-22} {1,-22} {2}' -f $r.Project, $x.id, $what)
+                Write-Host ('  {0,-22} {1}' -f '', $x.path) -ForegroundColor DarkGray
+            }
+            if ($bad -gt 0) { Write-BdFail "$bad workspace(s) would put the captures in git: add '/bugs/' to the .gitignore"; exit 1 }
+            exit 0
+        }
+        'bug' {
+            if (-not $Target) { throw 'bug needs a capture: its id (brokendev.ps1 bugs lists them), its folder or its zip' }
+            $r = Invoke-BdBug -Bug $Target -Debugger:$Debugger -Script $Script -Exe $Exe
+            if ($Debugger) {
+                Write-Host $r.Output
+                if ($r.ExitCode -eq 0) { Write-BdOk "debugger session on $($r.Path) ended (the replay in sync)"; exit 0 } else { Write-BdFail "debugger session on $($r.Path): exit $($r.ExitCode)"; exit 1 }
+            }
+            if ($Json) { $r | ConvertTo-Json -Depth 8 }
+            if ($r.exitCode -eq 0) { Write-BdOk $r.summary } else { Write-BdFail $r.summary }
+            if (Get-BdProp $r 'replayLast' $null) { Write-BdInfo "  the replay's last picture: $($r.replayLast)" }
+            if (Get-BdProp $r 'last' $null) { Write-BdInfo "  the captured last picture: $($r.last)" }
+            if (Get-BdProp $r 'checksNote' $null) { Write-BdInfo "  checks: $($r.checksNote)" }
+            foreach ($f in @(Get-BdProp $r 'checks' @())) { Write-BdInfo ('  finding {0} at {1}, first frame {2}' -f $f.rule, $f.place, $f.firstFrame) }
+            exit $(if ($r.exitCode -eq 0) { 0 } else { 1 })
+        }
         'bisect' {
             [void](Resolve-BdTargets $Target)
             if (-not $Movie -or -not $Test) { throw 'bisect needs -Movie <file or name> and -Test "<test>" (no-crash | no-lag [from N] | picture at N | <expression> at N)' }
@@ -412,7 +457,7 @@ try {
             Write-BdInfo "  guide:    docs/projects/widemess-devkit.md"
             exit 0
         }
-        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, toolchains, play, compat, movie, bisect, mcp, new"; exit 2 }
+        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, toolchains, play, compat, movie, bisect, bugs, bug, mcp, new"; exit 2 }
     }
 } catch {
     Write-BdFail $_.Exception.Message

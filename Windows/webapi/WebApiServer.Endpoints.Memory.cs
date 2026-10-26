@@ -129,6 +129,7 @@ namespace BrokenNes.Windows.WebApi
             // POST /api/memory/poke - Write single byte
             app.MapPost("/api/memory/poke", async (HttpContext context) =>
             {
+                ExternalChange?.Invoke("the game's memory was written through the HTTP API");
                 if (ConsoleMemory(out _) is { } cd)
                 {
                     var f = await context.Request.ReadFromJsonAsync<PokeRequest>();
@@ -237,6 +238,7 @@ namespace BrokenNes.Windows.WebApi
             // POST /api/memory/poke-range - Write multiple bytes
             app.MapPost("/api/memory/poke-range", async (HttpContext context) =>
             {
+                ExternalChange?.Invoke("the game's memory was written through the HTTP API");
                 if (ConsoleMemory(out _) is { } cd)
                 {
                     var f = await context.Request.ReadFromJsonAsync<PokeRangeRequest>();

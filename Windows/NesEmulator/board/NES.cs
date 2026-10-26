@@ -536,6 +536,9 @@ namespace NesEmulator
 			static string Escape(string raw) => raw.Replace("\\","\\\\").Replace("\"","\\\"");
 		}
 
+		/// <summary>Called after a state was loaded (null unless a host listens: the apps' bug capture, BrokenDev D6, starts its history again there).</summary>
+		public Action? StateLoaded;
+
 		public void LoadState(string json)
 		{
 			if (string.IsNullOrWhiteSpace(json)) return;
@@ -715,6 +718,7 @@ namespace NesEmulator
 			try { bus.ActiveAPU?.ClearAudioBuffers(); } catch { }
 			// Restore controller
 			bus.input.DebugSetState(st.controllerState, st.controllerShift, st.controllerStrobe);
+			StateLoaded?.Invoke();
 			#if DIAG_LOG
 			try {
 				var activeCpuId = bus.cpu?.GetType().Name ?? "";
@@ -729,8 +733,14 @@ namespace NesEmulator
 			#endif
 		}
 
+		/// <summary>The ROM file the last <see cref="LoadROM"/> was given (the same array, not a copy), and how many loads this NES has had: the apps'
+		/// bug capture (BrokenDev D6) keeps the ROM in its bundle and starts its history again at each load.</summary>
+		public byte[]? RomFile { get; private set; }
+		public int RomLoads { get; private set; }
+
 		public void LoadROM(byte[] romData)
 		{
+			RomFile = romData; RomLoads++;
 			InvalidatePresentedFrame();
 			try {
 				// Preserve the APU core suffix so we don't

@@ -68,7 +68,7 @@ namespace BrokenNes.Windows
             try
             {
                 byte[] state = File.ReadAllBytes(path);
-                lock (emulationLock) { s.LoadState(state); farm.Poison("a saved state was loaded"); }
+                lock (emulationLock) { s.LoadState(state); farm.Poison("a saved state was loaded"); BugBreak("a state was loaded"); }
                 Console.WriteLine($"State loaded: {s.Title}");
                 FlashTitle("state loaded");
                 return true;

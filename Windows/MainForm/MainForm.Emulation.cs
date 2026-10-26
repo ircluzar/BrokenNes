@@ -363,6 +363,7 @@ namespace BrokenNes.Windows
                                 BrokenNes.Windows.WebApi.ApiInputInjector.Apply(p1Inputs, p2Inputs);
 
                                 nes.SetInputs(p1Inputs, p2Inputs);
+                                BugBeforeNesFrame(nes, p1Inputs, p2Inputs);   // the bug capture (D6): the pads the frame gets; returns at once when it is off
 
                                 // Publish the state the NES actually received so GET /api/input/state
                                 // reports reality rather than only what was requested.
@@ -390,7 +391,7 @@ namespace BrokenNes.Windows
                                     autoCorruptFrameCounter = 0;
                                     lock (corruptorLock)
                                     {
-                                        try { corruptor.Blast(nes); }
+                                        try { corruptor.Blast(nes); BugBreak("the game was corrupted (auto-corrupt)"); }
                                         catch (Exception ex) { Console.WriteLine($"Auto-corrupt error: {ex.Message}"); }
                                     }
                                 }
@@ -434,6 +435,7 @@ namespace BrokenNes.Windows
                                         if (audioSamples != null && audioSamples.Length > 0)
                                         {
                                             audioManager.QueueSamples(audioSamples);
+                                            BugAudio(audioSamples, audioSamples.Length);
                                         }
                                     }
                                     catch (Exception audioEx)

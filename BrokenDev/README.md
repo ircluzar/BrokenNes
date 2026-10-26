@@ -121,6 +121,24 @@ variables** (`var app_state [app_state]`), so a replay knows the frame it went o
   loses its course (a course variable differs from the recording before the test frame: a different menu) is **can't tell**, never a
   guess. Endpoints that do not hold stop it with no answer. Proven on a 17-commit planted regression (`tests\bisect-proof.ps1`).
 
+## Bug captures
+
+The desktop app and Lite keep the last 30 s of the game being played (milestone D6). **F9** (Emulator > Capture Bug) in the desktop app,
+the **Bug** button in Lite, saves them as a bundle: a movie from a save state that replays exactly, the very ROM, the sound (`audio.wav`),
+a picture a second (and `strip.png`, all of them on one sheet), the last picture, the game's symbols, the note typed after the key
+(`bug.json` says the rest: the cores, how long, why the history starts where it does). The desktop app puts it in the game workspace's
+`bugs\<date_time>\` when the ROM is a BrokenDev project's build (the build record's `bugs`), else `%LOCALAPPDATA%\BrokenNes\bugs`; Lite gives
+a `.zip` download. Every workspace keeps `bugs\` out of git (`bugs` checks it).
+
+```powershell
+BrokenDev\brokendev.ps1 bugs [vrun-nes]                 # the captures, and whether each workspace ignores bugs\ (exit 1 when one does not)
+BrokenDev\brokendev.ps1 bug 2026-10-25_194721           # replay one: in sync (every keyframe, the last picture), the hardware checks
+BrokenDev\brokendev.ps1 bug <Lite zip> -Debugger -Script "run 1800; back frames 60; where; stack"   # in the headless debugger
+```
+
+The MCP server's `bugs` tool lists, replays and opens them (`open` gives a headless session at the moment of the capture: read memory,
+breakpoints, `step_back` through the 30 s).
+
 ## The MCP server (agents drive BrokenNes directly)
 
 `BrokenDev/mcp` is an MCP server (C#, the official SDK `ModelContextProtocol` 2.2.0, stdio) that lets a Claude Code session drive

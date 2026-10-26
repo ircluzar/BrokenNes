@@ -32,6 +32,7 @@ $bd = Split-Path -Parent $here
 . (Join-Path $bd 'lib\WideMess.ps1')
 . (Join-Path $bd 'lib\Mcp.ps1')
 . (Join-Path $bd 'lib\Movies.ps1')
+. (Join-Path $bd 'lib\Bugs.ps1')
 
 $script:pass = 0; $script:fail = 0; $script:skip = 0
 $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('bdtests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -61,7 +62,7 @@ function Save-Env { param([string[]]$Names) $h = @{}; foreach ($n in $Names) { $
 function Restore-Env { param($Saved) foreach ($k in $Saved.Keys) { [Environment]::SetEnvironmentVariable($k, $Saved[$k]) } }
 $envNames = @('BROKENDEV_HOME', 'BROKENDEV_ARCHIVES', 'BROKENDEV_PROJECTS', 'BROKENDEV_ARCHIVES_JSON', 'BROKENDEV_PYTHON', 'BROKENDEV_WORKSHOP', 'BROKENNES_DEV', 'BROKENNES_CONFIG_DIR',
               'BROKENDEV_DEVTOOLS', 'BROKENDEV_TRACE_LUA', 'BROKENDEV_LIVE_SYNTH', 'BROKENDEV_LIVE_MISSING', 'BD_TEST_TOOL_VAR', 'BROKENDEV_EMULATORS',
-              'BROKENDEV_TOOLCHAINS', 'BROKENDEV_LIVE_BDTEST_GB_WS', 'BROKENDEV_LIVE_BDTEST_NO_SUCH_WS')
+              'BROKENDEV_TOOLCHAINS', 'BROKENDEV_LIVE_BDTEST_GB_WS', 'BROKENDEV_LIVE_BDTEST_NO_SUCH_WS', 'BROKENNES_BUGS_DIR')
 $savedEnv = Save-Env $envNames
 
 try {
@@ -1539,6 +1540,69 @@ exit $p.ExitCode
         $r = Invoke-BdProcess -FilePath $exe -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $here 'bisect-proof.ps1'), '-WorkshopExe', $ws) -TimeoutSec 900
         $last = @($r.Output -split "`r?`n" | Where-Object { $_ -like '{*' }) | Select-Object -Last 1
         Assert-True ($r.ExitCode -eq 0 -and $last -match '"pass": true') "bisect proof: $last $(@($r.Output -split "`r?`n" | Where-Object { $_ -like '*FAIL*' }) -join ' | ')"
+    }
+
+    # ------------------------------------------------------------------ bug captures (D6)
+    Write-Host 'bug captures (D6)'
+    Test-Case 'bugs + bug: the build record names the workspace''s bugs folder, a capture there and one in the default folder are listed, bug replays it exactly and opens it in the debugger; NEGATIVE: a workspace repository that does not ignore bugs\ fails bugs, a capture with Start one frame late fails bug, an unknown id is refused' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        if (-not (Find-BdExecutable -Name 'git.exe' -Candidates @("$env:ProgramFiles\Git\cmd\git.exe"))) { Skip-Test 'git is not installed' }
+        $bh = Join-Path $tmpRoot 'bughome'; $bp = Join-Path $tmpRoot 'bugprojects'; $src = Join-Path $tmpRoot 'buggame'; $dflt = Join-Path $tmpRoot 'bugdefault'
+        New-Item -ItemType Directory -Force -Path $bh, (Join-Path $bp 'bgame'), $src, $dflt | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $src 'game.txt'), "version 1`nstart Start`nfloor 1`nbonus 1`n")
+        [System.IO.File]::WriteAllText((Join-Path $src 'build.ps1'), @'
+param([Parameter(Mandatory)][string]$Workshop)
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+New-Item -ItemType Directory -Force -Path (Join-Path $here 'build') | Out-Null
+$p = Start-Process -FilePath $Workshop -ArgumentList @('--movie', 'build-planted', '--settings', "`"$(Join-Path $here 'game.txt')`"", '--out', "`"$(Join-Path $here 'build\game.nes')`"") -Wait -PassThru -NoNewWindow
+exit $p.ExitCode
+'@)
+        $man = [ordered]@{
+            schema = 1; id = 'bgame'; title = 'the bug tests'' planted game'; family = 'test'; kind = 'nes'; console = 'nes'; description = 'D6 run-tests'
+            source = @{ folder = $src }; requires = @{ tools = @('ps5'); projects = @(); inputs = @() }
+            build = @{ steps = @(@{ name = 'build'; shell = 'ps5'; cwd = '{src}'; file = '{src}/build.ps1'; args = @('-Workshop', '{workshop}'); timeoutSec = 120 })
+                       outputs = @(@{ id = 'rom'; path = '{src}/build/game.nes'; publishAs = 'game.nes'; kind = 'nes' }) }
+            verify = @{ scenarios = @(@{ id = 'play'; frames = 300; input = '60:Start,66:' }) }; knownIssues = @()
+        }
+        Save-BdJson -Object $man -Path (Join-Path (Join-Path $bp 'bgame') 'project.json')
+        $env:BROKENDEV_HOME = $bh; $env:BROKENDEV_PROJECTS = $bp; $env:BROKENDEV_WORKSHOP = $ws; $env:BROKENNES_BUGS_DIR = $dflt
+        $childEnv = @{ BROKENDEV_HOME = $bh; BROKENDEV_PROJECTS = $bp; BROKENDEV_WORKSHOP = $ws; BROKENNES_BUGS_DIR = $dflt }
+        $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { (Get-Process -Id $PID).Path } else { Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe' }
+        function BD([string[]]$A, [int]$T = 600) { Invoke-BdProcess -FilePath $psExe -Arguments (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $bd 'brokendev.ps1')) + $A) -TimeoutSec $T -Env $childEnv }
+        try {
+            [void](Invoke-BdProjectBuild -Id 'bgame')
+            $rec = Read-BdJson (Join-Path (Get-BdOutDir 'bgame') 'build.json')
+            $bugs = Join-Path $src 'bugs'
+            Assert-Equal $rec.bugs $bugs 'the build record''s bugs folder'
+            $rom = @($rec.outputs | Where-Object { $_.id -eq 'rom' })[0].published
+            $mk = Invoke-BdProcess -FilePath $ws -Arguments @('--bug', 'make', '--rom', $rom, '--frames', '900', '--input', '60:Start,66:,200:A,260:', '--note', 'run-tests', '--out', $bugs, '--json') -TimeoutSec 300
+            $made = Get-BdJsonFromOutput $mk.Output
+            Assert-True ($mk.ExitCode -eq 0 -and $made.movie) "--bug make: exit $($mk.ExitCode) $(Select-BdTail $mk.Output 4)"
+            $mk2 = Invoke-BdProcess -FilePath $ws -Arguments @('--bug', 'make', '--rom', $rom, '--frames', '400', '--input', '60:Start,66:', '--note', 'in the default folder', '--out', $dflt, '--json') -TimeoutSec 300
+            Assert-True ($mk2.ExitCode -eq 0) "--bug make into the default folder: $(Select-BdTail $mk2.Output 4)"
+            # the workspace is a git repository that does not ignore bugs\: 'bugs' says so and fails
+            [void](Invoke-BdGit -Repo $src -GitArgs @('init', '-q'))
+            $l1 = BD @('bugs', 'bgame')
+            Assert-True ($l1.ExitCode -eq 1 -and $l1.Output -match 'NOT IGNORED') "bugs on a repository that does not ignore bugs\: exit $($l1.ExitCode) $(Select-BdTail $l1.Output 4)"
+            [System.IO.File]::WriteAllText((Join-Path $src '.gitignore'), "/bugs/`n/build/`n")
+            $l2 = BD @('bugs', 'bgame')
+            Assert-True ($l2.ExitCode -eq 0 -and $l2.Output -match [regex]::Escape($made.id) -and $l2.Output -match 'note: run-tests' -and $l2.Output -match 'note: in the default folder' -and $l2.Output -match 'ignored') "bugs bgame: exit $($l2.ExitCode) $(Select-BdTail $l2.Output 8)"
+            $b1 = BD @('bug', $made.id)
+            Assert-True ($b1.ExitCode -eq 0 -and $b1.Output -match 'in sync' -and $b1.Output -match 'replay''s last picture') "bug $($made.id): exit $($b1.ExitCode) $(Select-BdTail $b1.Output 4)"
+            $b2 = BD @('bug', $made.id, '-Debugger', '-Script', 'run 600; back frames 10; where')
+            Assert-True ($b2.ExitCode -eq 0 -and $b2.Output -match 'bug replay: in sync') "bug -Debugger: exit $($b2.ExitCode) $(Select-BdTail $b2.Output 4)"
+            # the negative controls: the same capture with Start one frame late; an id no bugs folder has
+            $late = Join-Path $tmpRoot 'late-bug'
+            Copy-Item -LiteralPath $made.path -Destination $late -Recurse
+            $mv = Join-Path $late 'capture.bnm'
+            $t = [System.IO.File]::ReadAllText($mv)
+            Assert-True ($t.Contains("i 60 Start -")) 'the capture''s movie has no Start press at frame 60'
+            [System.IO.File]::WriteAllText($mv, $t.Replace("i 60 Start -", "i 61 Start -"))
+            $b3 = BD @('bug', $late)
+            Assert-True ($b3.ExitCode -eq 1 -and $b3.Output -match 'OFF COURSE') "the late-Start capture: exit $($b3.ExitCode) $(Select-BdTail $b3.Output 4)"
+            $b4 = BD @('bug', 'no-such-capture')
+            Assert-True ($b4.ExitCode -eq 1 -and $b4.Output -match 'no bug') "an unknown id: exit $($b4.ExitCode) $(Select-BdTail $b4.Output 3)"
+        } finally { Restore-Env $savedEnv }
     }
 
     # ------------------------------------------------------------------ the MCP server (D3): its scripted MCP clients, over stdio

@@ -133,6 +133,7 @@ namespace BrokenNes.Windows
                 return new ApplyReport();
             }
             var report = farm.Blast(selected, intensity, BlastGenerator.Parse(blast), Random.Shared.NextInt64(), false, out _);
+            BugBreak("the game was corrupted");
             corruptor.LastBlastInfo = $"{blast}: {report.Describe()} over {selected.Count} domain(s)";
             if (report.Applied > 0 && farm.SaveRamTouched) Console.WriteLine("[Corruption] the game's save RAM was written: it will not be saved over the player's save");
             return report;
@@ -157,7 +158,7 @@ namespace BrokenNes.Windows
 
             public ConsoleFarm? Farm => form.session != null && form.farm.Attached ? form.farm : null;
 
-            public T BetweenFrames<T>(Func<T> work) { lock (form.emulationLock) return work(); }
+            public T BetweenFrames<T>(Func<T> work) { lock (form.emulationLock) { form.BugBreak("the Glitch Harvester changed the game"); return work(); } }
 
             public StartResult StartEntry(StockpileEntry entry, bool allowOtherGame) => form.StartFarmEntry(entry, allowOtherGame);
         }
@@ -183,6 +184,7 @@ namespace BrokenNes.Windows
                 lock (emulationLock)
                 {
                     if (session == null || !farm.Attached) return new StartResult { Ok = false, Message = "no console game is running" };
+                    BugBreak("a Glitch Harvester entry was started");
                     r = farm.Start(entry, null, options, ns =>
                     {
                         if (generation != Volatile.Read(ref farmGeneration)) return false;   // the game was changed while the replay ran

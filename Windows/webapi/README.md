@@ -147,6 +147,19 @@ Game Boy `$E011` is `$C011`); DMA and HDMA bytes are accesses (a VRAM watch sees
 | POST | `/api/debug/registers` `{cpu, name, value}` | **Control.** Write a register |
 | POST / DELETE | `/api/debug/trace-file` `{path, cpu, function, ranges, fromFrame, toFrame}` | **Control.** Start / stop a filtered trace file |
 
+### Bug capture - `WebApiServer.Endpoints.Bugs.cs` (BrokenDev D6)
+
+The app keeps the last 30 s of the running game (a save state, a picture and the keyframe hashes a second, every frame's pads, the sound);
+F9 (Emulator > Capture Bug) saves them with a note typed in a small box. These routes do the same without the box. A bundle lands in the
+game's BrokenDev workspace `bugs\` folder when the ROM is a project's build, else in `%LOCALAPPDATA%\BrokenNes\bugs` (`BROKENNES_BUGS_DIR`
+replaces it). Memory and register writes through this API (and corruptions) start the history again: the movie could not replay across them.
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/bugs/status` | On / recording, the console and game, seconds held, the last break (why the history started again), a state's cost, the folder a capture would go to and why |
+| POST | `/api/bugs/capture` `{note}` | Save a capture now: `{success, path, message, seconds, frames, start: state\|power-on\|none, noMovie}`; 400 with the reason when there is nothing to capture (off, the idle screen) |
+| POST | `/api/bugs/enabled` `{enabled}` | Emulator > Keep the Last 30 s (config `bugCaptureEnabled`, on by default); off, nothing is recorded |
+
 ### Emulator control - `WebApiServer.Endpoints.Emulator.cs`
 
 | Verb | Route | Purpose |

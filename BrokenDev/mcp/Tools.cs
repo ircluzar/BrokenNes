@@ -54,6 +54,42 @@ internal static class Tools
         catch (FormatException e) { throw new ToolError(e.Message); }
     }
 
+    /// <summary>
+    /// The bugs folders to look in (D6): a folder given; a project's (its build record's bugs folder, else its live workspace's, and the default
+    /// folder's bundles of that project or its ROM); or, with neither, the default folder. Each with why, and a filter for its bundles.
+    /// </summary>
+    private static List<(string dir, string why, Func<JsonObject, bool> filter)> BugDirs(string? project, string? folder)
+    {
+        var l = new List<(string, string, Func<JsonObject, bool>)>();
+        string dflt = NesEmulator.Debugging.Capture.BugPlaces.DefaultFolder();
+        if (folder is { Length: > 0 }) { l.Add((Path.GetFullPath(folder), "the folder given", _ => true)); return l; }
+        if (project is not { Length: > 0 }) { l.Add((dflt, "the default folder", _ => true)); return l; }
+        if (!BrokenDevBridge.ProjectIds().Contains(project)) throw new ToolError($"unknown project '{project}' (known: {string.Join(", ", BrokenDevBridge.ProjectIds())})");
+        string rec = Path.Combine(BrokenDevBridge.Home, "out", project, "build.json");
+        string? sha = null;
+        if (File.Exists(rec))
+        {
+            var b = JsonNode.Parse(File.ReadAllText(rec))!;
+            sha = (b["outputs"] as JsonArray)?.OfType<JsonObject>().FirstOrDefault(o => (string?)o["id"] == "rom")?["sha256"]?.GetValue<string>();
+            string? bugs = b["bugs"]?.GetValue<string>();
+            string? ws = b["workspace"]?["kind"]?.GetValue<string>() is "live" or "folder" ? b["workspace"]?["path"]?.GetValue<string>() : null;
+            if (bugs is { Length: > 0 }) l.Add((bugs, $"project {project}'s game workspace (its build record)", _ => true));
+            else if (ws is { Length: > 0 }) l.Add((Path.Combine(ws, "bugs"), $"project {project}'s live workspace", _ => true));
+        }
+        l.Add((dflt, $"the default folder: the bundles of project {project} or of its built ROM", x => (string?)x["project"] == project || (sha != null && ((string?)x["romSha256"] ?? "").Equals(sha, StringComparison.OrdinalIgnoreCase))));
+        return l;
+    }
+
+    /// <summary>A bug by path, or by id in the folders <see cref="BugDirs"/> gives (refused when none or several have it).</summary>
+    private static string ResolveBug(string bug, List<(string dir, string why, Func<JsonObject, bool> filter)> dirs)
+    {
+        if (Directory.Exists(bug) || File.Exists(bug)) return bug;
+        var hits = dirs.SelectMany(d => new[] { Path.Combine(d.dir, bug), Path.Combine(d.dir, bug + ".zip") }).Where(p => Directory.Exists(p) || File.Exists(p)).Distinct().ToList();
+        if (hits.Count == 1) return hits[0];
+        if (hits.Count > 1) throw new ToolError($"bug '{bug}' is in more than one folder: {string.Join("; ", hits)} (give its path)");
+        throw new ToolError($"no bug '{bug}' (a bundle folder or zip, or an id in: {string.Join("; ", dirs.Select(d => d.dir))}); list them with action list");
+    }
+
     /// <summary>The Workshop's movie code says no with these; a tool says it as a refusal.</summary>
     private static T Wrap<T>(Func<T> f)
     {
@@ -371,6 +407,62 @@ internal static class Tools
                    ("good", P("string", "a commit where the test holds (default: the movie's recorded commit)"), false), ("bad", P("string", "a commit where it fails (default HEAD)"), false),
                    ("timeout_sec", P("integer", "give up after this long (default 3600)"), false)),
             a => BrokenDevBridge.Bisect(a.Req("project"), a.Req("movie"), a.Req("test"), a.Str("good") ?? "", a.Str("bad") ?? "HEAD", a.Int("timeout_sec", 3600)));
+
+        // ------------------------------------------------------------------------------------------------ bug captures (D6)
+        Add("bugs",
+            "The bug captures (BrokenDev D6: the desktop app's F9 key and Lite's Bug button save the last 30 s: a movie from a save state that replays exactly, the ROM, the sound, a picture a second, " +
+            "the player's note). list: a project's (its game workspace's bugs folder, and the default folder's that belong to it), a folder's, or the default folder's (%LOCALAPPDATA%\\BrokenNes\\bugs); " +
+            "info: one bundle; play: replays one headless (every keyframe and the last picture checked, the hardware checks on) and says in sync or where it went off course; " +
+            "open: opens one in a new HEADLESS session and plays it to its end (or to frames), so the bug can be debugged there: read memory, breakpoints, step_back through the last 30 s. " +
+            "A bug is a bundle folder, its bug.json, Lite's .zip, or a bundle id from list (with project or folder).",
+            Schema(("action", P("string", "list, info, play or open", Enum("list", "info", "play", "open")), true),
+                   ("project", P("string", "list / id lookup: a BrokenDev project id"), false), ("folder", P("string", "list / id lookup: a bugs folder"), false),
+                   ("bug", P("string", "info, play, open: the bundle (path or id)"), false), ("rom", P("string", "play / open: another ROM than the bundle's own copy"), false),
+                   ("symbols", P("string[]", "symbol files (default: the bundle's)"), false), ("frames", P("integer", "open: play this many frames (default: the whole capture)"), false),
+                   ("checks", P("boolean", "open: the hardware checks during the replay (play always runs them)"), false)),
+            a =>
+            {
+                string act = a.Req("action");
+                var dirs = BugDirs(a.Str("project"), a.Str("folder"));
+                if (act == "list")
+                {
+                    var arr = new JsonArray();
+                    foreach (var (dir, why, filter) in dirs)
+                        foreach (var x in BrokenNes.Workshop.Bugs.BugCli.List(dir).OfType<JsonObject>())
+                            if (filter(x)) { x["folder"] = dir; x["folderWhy"] = why; arr.Add(x.DeepClone()); }
+                    return new JsonObject { ["bugs"] = arr, ["folders"] = J.Strs(dirs.Select(d => $"{d.dir} ({d.why})")), ["count"] = arr.Count };
+                }
+                var b = Wrap(() => BrokenNes.Workshop.Bugs.BugBundleReader.Open(ResolveBug(a.Req("bug"), dirs)));
+                switch (act)
+                {
+                    case "info": return BrokenNes.Workshop.Bugs.BugCli.Summary(b);
+                    case "play":
+                    {
+                        string outDir = Path.Combine(Path.GetTempPath(), "brokennes-mcp-bugs");
+                        var (code, j) = Wrap(() => BrokenNes.Workshop.Bugs.BugCli.Play(b, a.Str("rom"), a.List("symbols"), true, outDir));
+                        j["exitCode"] = code;
+                        return j;
+                    }
+                    case "open":
+                    {
+                        if (!b.HasMovie) throw new ToolError($"this capture has no movie to replay: {b.S("noMovie")}");
+                        var m = Wrap(() => b.LoadMovie());
+                        string rom = Wrap(() => b.Rom(a.Str("rom"), out _));
+                        var syms = a.List("symbols").Count > 0 ? a.List("symbols") : b.Symbols();
+                        var cp = m.Cores.Split('/');
+                        var s = HeadlessSession.Open(Sessions.NewId("h"), rom, m.Console, cp.Length == 3 ? cp[0] : "", cp.Length == 3 ? cp[1] : "", cp.Length == 3 ? cp[2] : "", syms,
+                            true, a.Bool("checks", false), new List<string>(), new List<string>());
+                        if (m.Console == "nes" && m.NtscTiming) { s.Close(); throw new ToolError("this capture was made with NTSC frame timing, which headless sessions do not set yet: use action play"); }
+                        Sessions.Add(s);
+                        JsonObject j;
+                        lock (s.Gate) j = s.PlayMovie(m, b.File_(b.S("movie")), a.Long("frames") ?? -1);
+                        j["session"] = s.Id;
+                        j["bug"] = BrokenNes.Workshop.Bugs.BugCli.Summary(b);
+                        return j;
+                    }
+                    default: throw new ToolError("action is list, info, play or open");
+                }
+            });
 
         Add("brokendev",
             "Runs a BrokenDev verb on a project (BrokenDev/brokendev.ps1): build, verify (the checks, budgets and accepted findings), compat (the other emulators), run (opens it in the desktop app: its PID comes back for attach_live), " +

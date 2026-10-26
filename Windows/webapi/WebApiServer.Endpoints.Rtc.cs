@@ -202,10 +202,12 @@ namespace BrokenNes.Windows.WebApi
                     {
                         // a console game (SNES, Game Boy, Master System, Game Gear, Genesis): blast its memories, between frames
                         var report = corruptor.GlitchHarvester.LiveBlast(consoleGh);
+                        ExternalChange?.Invoke("the game was corrupted through the HTTP API");
                         corruptor.LastBlastInfo = $"{corruptor.BlastType}: {report.Describe()}";
                         return Results.Ok(new { success = true, message = corruptor.LastBlastInfo, writesApplied = report.Applied, changed = report.Changed, problems = report.Problems });
                     }
                     corruptor.Blast(nes!);
+                    ExternalChange?.Invoke("the game was corrupted through the HTTP API");
                     return Results.Ok(new
                     {
                         success = true,

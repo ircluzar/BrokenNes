@@ -77,7 +77,7 @@ internal static class ClientTest
             string[] want = { "open_rom", "open_project", "attach_live", "list_instances", "list_sessions", "close_session", "status", "run", "run_until", "pause", "reset", "input",
                 "read_memory", "write_memory", "search_memory", "list_domains", "symbols", "breakpoint_add", "breakpoint_list", "breakpoint_remove", "watch", "step", "call_stack",
                 "registers", "trace", "trace_frame", "disassemble", "evaluate", "screenshot", "layers", "tiles", "sprites", "record_sound", "save_state", "load_state", "diff_states",
-                "checks", "profile", "brokendev", "step_back", "open_movie", "movie", "bisect" };
+                "checks", "profile", "brokendev", "step_back", "open_movie", "movie", "bisect", "bugs" };
             var missing = want.Where(w => !names.Contains(w)).ToList();
             Check("tools_listed", missing.Count == 0 && tools.All(t => t.JsonSchema.ValueKind == JsonValueKind.Object), $"{tools.Count} tools over stdio; missing: {(missing.Count == 0 ? "none" : string.Join(", ", missing))}");
             switch (suite)
@@ -391,6 +391,38 @@ internal static class ClientTest
         Check("movie_export_refuses_another_rom", exBad.IsError && exBad.Text.Contains("not the movie's"), exBad.Text);
         var nomovie = await Call("movie", new { action = "info", movie = Path.Combine(dir, "nothing.bnm") });
         Check("movie_missing_refused", nomovie.IsError && nomovie.Text.Contains("no movie"), nomovie.Text);
+
+        // the bug captures (D6): a capture made the way the apps make one (the last 30 s of 40 s of play), listed, replayed, opened in a session
+        string bugs = Path.Combine(dir, "bugs");
+        var cap = BrokenNes.Workshop.Bugs.BugCli.Make(good, null, "", 2400, "60:Start,66:,200:A,260:,900:Start,906:,1500:A,1506:", "", out var meta);
+        meta.Note = "client test";
+        string bundle = NesEmulator.Debugging.Capture.BugBundle.WriteFolder(bugs, NesEmulator.Debugging.Capture.BugBundle.Files(cap, meta), DateTime.Now);
+        string bugId = Path.GetFileName(bundle);
+        var bl = await Call("bugs", new { action = "list", folder = bugs });
+        Check("bugs_list", !bl.IsError && L(bl["count"]) == 1 && S(bl["bugs"]?[0]?["id"]) == bugId && S(bl["bugs"]?[0]?["note"]) == "client test", $"{L(bl["count"])} bundle(s): {S(bl["bugs"]?[0]?["id"])} '{S(bl["bugs"]?[0]?["note"])}'");
+        var bp = await Call("bugs", new { action = "play", bug = bugId, folder = bugs });
+        Check("bugs_play_in_sync", !bp.IsError && bp["inSync"]?.GetValue<bool>() == true && L(bp["exitCode"]) == 0, S(bp["summary"]));
+        var bo = await Call("bugs", new { action = "open", bug = bundle, symbols = new[] { Sym(good) } });
+        string bh = S(bo["session"]);
+        Check("bugs_open_session_in_sync", !bo.IsError && bo["inSync"]?.GetValue<bool>() == true && L(bo["keyframesMatched"]) >= 30, $"session {bh}: {L(bo["keyframesMatched"])} of {L(bo["keyframesChecked"])} keyframes, frame {L(bo["frame"])}");
+        var lives = await Call("read_memory", new { session = bh, spec = "lives" });
+        var bback = await Call("step_back", new { session = bh, frames = 60 });
+        Check("bugs_open_debuggable", !lives.IsError && !bback.IsError, $"lives {lives["values"]?.ToJsonString() ?? lives.Text}; step_back {(bback.IsError ? bback.Text : "ok")}");
+        await Call("close_session", new { session = bh }, log: false);
+        // the negative controls: the same capture without its A press; an id no folder has; a project that does not exist
+        string late = Path.Combine(dir, "late-bug");
+        foreach (var f in Directory.GetFiles(bundle, "*", SearchOption.AllDirectories)) { string t = Path.Combine(late, Path.GetRelativePath(bundle, f)); Directory.CreateDirectory(Path.GetDirectoryName(t)!); File.Copy(f, t, true); }
+        string mvf = Path.Combine(late, NesEmulator.Debugging.Capture.BugBundle.MovieFile), text = File.ReadAllText(mvf);
+        var lines = text.Split('\n').ToList();
+        int aAt = lines.FindIndex(l => l.StartsWith("i ") && l.Split(' ').Length > 2 && l.Split(' ')[2].Split('+').Contains("A"));
+        var aParts = lines[aAt].Split(' '); aParts[2] = "-"; lines[aAt] = string.Join(' ', aParts);   // the A press (a life lost) taken out
+        File.WriteAllText(mvf, string.Join('\n', lines));
+        var bpl = await Call("bugs", new { action = "play", bug = late });
+        Check("bugs_play_without_the_a_press_off_course", !bpl.IsError && bpl["inSync"]?.GetValue<bool>() == false && L(bpl["exitCode"]) == 1, S(bpl["summary"]));
+        var bu = await Call("bugs", new { action = "info", bug = "no-such-bug", folder = bugs });
+        Check("bugs_unknown_refused", bu.IsError && bu.Text.Contains("no bug"), bu.Text);
+        var bpr = await Call("bugs", new { action = "list", project = "no-such-project" });
+        Check("bugs_unknown_project_refused", bpr.IsError && bpr.Text.Contains("unknown project"), bpr.Text);
     }
 
     // ==================================================================================================================== the demo (done when)

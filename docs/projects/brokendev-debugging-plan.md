@@ -4,7 +4,8 @@ Plan of 2026-10-23, written after an interview with the user. It starts **after 
 **Milestone D1 (the debugger engine) is built** (2026-10-24): see "D1 as built" after the milestones. **Milestone D4 (checks, budgets,
 profiler) is built** (2026-10-24): see "D4 as built". **Milestone D2 (the Game Boy hello world) is built** (2026-10-24): see "D2 as built";
 its accepted findings list is empty. **Milestone D3 (the MCP server) is built** (2026-10-24): see "D3 as built". **Milestone D5 (movies, diff, bisect) is built** (2026-10-25):
-see "D5 as built"; the movie format's name is a working name ("BrokenNes movie", `.bnm`: open question 2). The rest is not.
+see "D5 as built"; the movie format's name is a working name ("BrokenNes movie", `.bnm`: open question 2). **Milestone D6 (bug capture) is built**
+(2026-10-25): see "D6 settled" and "D6 as built"; the key is F9 for now (open question 3). The rest is not.
 
 ## Why
 
@@ -343,7 +344,7 @@ They follow WideMess milestone 1. Each one is merged, tested and pushed before t
 | **D3** | **MCP server** | Headless and live sessions with the tools above, registered at user level, used by an agent to find a planted bug in a test ROM without Mesen. The client test passes. **Built 2026-10-24** (see "D3 as built"). |
 | **D4** | **Checks, budgets, profiler** | The first catalogue for the three consoles, each rule with its test ROM and negative control. Accepted findings recorded for VRUN, Nested VRUN, Super VRUN, the SMB1 remake and the hello world. `verify` fails on new findings and over budget. |
 | **D5** | **Movies, diff, bisect** | Our movie format with `.fm2` / `.bk2` export, divergence finder, state diff by symbol, step back, promoted movie tests in verify, bisect over a game's commits (proven on a planted regression). **Built 2026-10-25** (see "D5 as built"): the format's working name "BrokenNes movie" (`.bnm`); exports played by BizHawk and FCEUX exactly as the same input; bisect found the planted regression in a 17-commit throwaway game; VRUN's first promoted movie. |
-| **D6** | **Bug capture** | The key in the desktop app and Lite (download). Bundles land in the game's `bugs\`; `brokendev bug` replays them exactly. Lite still holds 60 fps with it on. |
+| **D6** | **Bug capture** | The key in the desktop app and Lite (download). Bundles land in the game's `bugs\`; `brokendev bug` replays them exactly. Lite still holds 60 fps with it on. **Built 2026-10-25** (see "D6 as built"): F9 and the note box in the desktop app, the Bug button's zip in Lite; every capture of the tests (VRUN, Super VRUN, the Game Boy hello world, the test ROMs) replays exactly; Lite 172 fps recording; `bugs` checks every workspace keeps them out of git. |
 | **D7** | **Debug port** | Print, assert, timers and markers on the three consoles, with NESFab, PVSnesLib and GBDK libraries, stripped from release builds. Other emulators run the dev builds unharmed. |
 | **D8** | **Viewers** | The desktop windows (debugger, memory, tiles, maps, sprites, palettes, event view, sound monitor), then the BrokenDev web pages. |
 | **D9** | **Checkup, chaos, coverage** | `brokendev checkup` over every game, `brokendev chaos`, the coverage pages. |
@@ -677,12 +678,95 @@ port and DMA reads are still checked.
   only through `movie play` (not `open_movie`); instruction-level divergence against another emulator (their compat runs record variables,
   not instructions); a real game's bisect (the user's game repositories: VRUN's history is in its archive; none has a known regression to find).
 
+## D6 settled (2026-10-25): the bug bundle
+
+Refined from section 5 before the code, measured on this machine:
+- **The rolling buffer** (`Windows/NesEmulator/debug/capture`, shared by the desktop app, Lite and Workshop): every 60 frames a save state, a
+  picture and the keyframe hashes of D5's movies; every frame the two pads (two bytes each); every sound sample the app queued (mono floats).
+  32 slots, so a capture always holds at least 30 s. Buffers made once; between the states nothing is allocated (measured: 0 bytes over 590
+  frames). Cost: a VRUN state is 745 KB and takes up to 10.5 ms once a second; a Super VRUN state 92 KB, 2.6 ms; armed against off is within
+  noise on the planted game, VRUN and Super VRUN (Workshop, best of three, interleaved).
+- **Breaks:** something outside the game (a state load, a reset, a corruption, a memory write through the API, a core swap or the NES's
+  frame timing switched) means the frames before cannot replay into the ones after: the history starts again there, and the bundle says
+  when and why. Core swaps and the timing are watched by the ring itself (once a second); the others are told by the app.
+- **The bundle** (a folder on the desktop, the same files as one zip in Lite): `bug.json` (the note, when, the app, the ROM, the BrokenDev
+  project, the cores and settings, how long and why it starts where it does), `capture.bnm` (a D5 movie from the oldest state: replays
+  exactly), `rom/` (the very ROM: the bug replays after the game is rebuilt), `symbols/` (from the project's build record), `audio.wav`,
+  `pictures/fNNNNNN.png` (one a second), `strip.png` (all of them at half size), `last.png`. A console without save states (a Game Boy on
+  a foreign CPU) still gets a movie from its power-on while the history reaches it; after that the bundle has pictures and sound and says
+  why there is no movie.
+- **Where:** a ROM whose sha256 is the ROM of a successful BrokenDev build record goes to `<game workspace>\bugs\<yyyy-MM-dd_HHmmss>\`
+  (the record's `bugs`, else its live workspace); any other ROM, and a project whose record names no workspace (VRUN's frozen build), to
+  `%LOCALAPPDATA%\BrokenNes\bugs\` (said in the bundle); `BROKENNES_BUGS_DIR` replaces that folder for tests. Never `%APPDATA%\BrokenNes`.
+- **Open question 3, answered for now:** the key is **F9** (F12 is the screenshot, F5 / F7 the quick states), the menu item is
+  Emulator > Capture Bug (last 30 s); the note is typed in a small box after the key (the game paused
+  meanwhile; Enter saves, an empty note is fine, Esc discards the capture); the HTTP API takes the note in the request.
+
+## D6 as built (2026-10-25)
+
+- **The engine** (`Windows/NesEmulator/debug/capture`, compiled by the desktop app and Workshop with the debugger, and by Lite with only these
+  files and D5's `Movie.cs`): `BugCaptureRing` (the rolling buffer of "D6 settled": 32 one-second slots of a save state, a picture and the
+  keyframe hashes; two bytes a pad a frame; the sound), `BugCaptureSource` (what it reads of a NES or a console session; the cores and the NES's
+  frame timing watched once a second, so a core swapped while the game runs starts the history again), `BugBundle` (the files, a folder or a
+  zip), `BugPlaces` (where a bundle goes), `BugMedia` (PNG and WAV writers in plain managed code: the desktop, Lite and Workshop write the same
+  bytes). The bundle's movie is a D5 movie (`capture.bnm`) from the oldest second's state, with a keyframe a second and one at the moment of
+  the capture; a console without save states gets a movie from its power-on while the history reaches it, else pictures and sound and the
+  reason. Three small hooks outside the engine: `NES.StateLoaded` (called after a state load: the apps' history starts again),
+  `NES.RomFile` / `RomLoads` (the ROM a load was given, the count), both null or plain fields until a host uses them.
+- **The desktop app** (`Windows/MainForm/MainForm.BugCapture.cs`): **F9** and Emulator > Capture Bug (last 30 s) (open question 3: F9, a note
+  box with the game paused, Enter saves, Esc discards), Keep the Last 30 s for Bug Capture (config `bugCaptureEnabled`, on by default; off,
+  the frame loop's two calls return at their first test), Open Bugs Folder. The ring is fed from the NES and the session frame loops on
+  the emulation thread; breaks (the history starts again, the bundle says when and why) on state loads, resets, core swaps, corruptions (auto
+  and manual, the Glitch Harvester's console changes), memory and register writes through the HTTP API; anything not told is caught by the
+  replay (off course, said). HTTP: `GET /api/bugs/status`, `POST /api/bugs/capture {note}`, `POST /api/bugs/enabled` (`Windows/webapi/README.md`).
+  **Where:** a ROM that is a BrokenDev project's build (its sha256 in a build record) goes to the record's `bugs` folder (new: every build
+  writes it), else to its live workspace's `bugs\`; any other ROM, and a record with no workspace, to `%LOCALAPPDATA%\BrokenNes\bugs`
+  (`BROKENNES_BUGS_DIR` for tests). One fix on the way: the NES battery saves now honour `BROKENNES_SAVES_DIR` like the consoles' (a smoke
+  test with a scratch saves folder had written an empty `.sav` into the user's `BatterySaves`; it was removed, nothing else was touched).
+- **Lite** (`Windows/NesEmulator/board/Emulator.BugCapture.cs`, the **Bug** button): the same ring fed from the page's frame call (a
+  fast-forward tick frame by frame), the note through the browser's prompt (Cancel discards), the zip handed to the browser as a download
+  (`bug_<rom>_<date_time>.zip`). `SetBugCapture`, `BugStatusJson`, `CaptureBugZip` for the page and the tests.
+- **BrokenDev:** `brokendev.ps1 bugs [project]` (each workspace's captures and the default folder's that name the project or its ROM; it
+  checks every workspace keeps `bugs\` out of git and fails when one does not: it found SuperVRUN_dev and the two WideMess projects in this
+  repository; SuperVRUN_dev got `/bugs/` in a local commit there, `aff9ea5`, never pushed; this repository ignores `/WideMess/*/bugs/` (not a
+  bare `bugs/`: on Windows git matches it without case and `Workshop/Bugs` is source); VRUN_Nes_Dev and SMB1_Remake_dev hold their `bugs\`
+  outside any repository; VRUN_VOC_dev already ignored it), `brokendev.ps1 bug <id|folder|zip>` (the replay with the hardware checks: from a
+  state the read-before-written rules are off, said) and `-Debugger [-Script "..."]` (Workshop `--debug --bug`: the capture's ROM, cores and
+  state, its input preloaded as the history, so `run` replays it with the keyframes checked and `back` steps back through it).
+  Workshop: `--bug info|play|list|make`, `--bug-test`. **The MCP server's `bugs` tool** (the one D3 left): list, info, play, open (a headless
+  session at the capture's end: memory, breakpoints, `step_back` through the 30 s); 46 tools.
+- **Measured:** the desktop app with VRUN: 59.7 fps recording against 59.6 off (the app's own counter, 10 s each); a VRUN state is 763 KB and
+  takes 2.4 ms (10.8 ms at worst) once a second. Lite (AOT, Edge, VRUN): 5.82 ms a frame recording (172 fps), p95 9.8 ms, 3 frames of 1200
+  over 16.7 ms (the once-a-second state: 6.6 ms in WebAssembly), against 5.39 ms off: it holds 60 fps (a second run on the merged head,
+  the machine busier: 7.01 ms against 6.51, 143 fps, 7 frames of 1200 over 16.7 ms, the worst 23 ms: one late frame now and then, at a state). Workshop A/B (best of three,
+  interleaved): within noise on the planted game, VRUN and Super VRUN.
+- **Tests:** `--bug-test` (frame-identical armed against off on the NES, SNES and Game Boy, and the negative control of a capture that writes
+  RAM; no allocation between states, and the measurement seeing a state's; captures replay exactly from the folder and the zip on the three
+  consoles, VRUN, Super VRUN and the VOC hello world; the debugger path; breaks, core swaps, a console without states; the folders; the cost;
+  each with a negative control: one Start press a frame late, the start state of another moment, a load the ring was not told of, a core swap
+  not watched on VRUN), `UAT/entrypoints/bug-capture-desktop-smoke.ps1` (the real app with scratch config, saves, BrokenDev home and bugs
+  folder: F9 posted to the window opens the note box, which UI Automation fills and saves; Discard saves nothing; the API capture; a quick
+  load and a memory write start the history again; off records nothing; every bundle replays in sync; the user's `%APPDATA%\BrokenNes`
+  unchanged), `UAT/lite/test-lite-bugs.mjs` + `UAT/entrypoints/lite-bugs.ps1` (the real Bug button on the AOT build, its zip replayed in sync;
+  cancel and off give nothing; a Game Boy session; the frame times), BrokenDev `run-tests` (a planted project: its build record's bugs folder,
+  bugs listing with the git check and its negative control, bug replay, the debugger, a late Start fails, an unknown id refused), the MCP client
+  test (7 new checks).
+- **Results on the branch merged with main aa1b401** (WideMess M6 climb; no conflict): `--bug-test` 48 passed 0 failed, `--movie-test` 69 of 69,
+  `--debug-test` 101 of 101, `--check-test` 111 of 111, `--wms-test` 331 passed 0 failed, UAT 125 pass 0 fail 16 skip 3 info (the goldens
+  unchanged), BrokenDev `run-tests` 138 passed 0 failed 0 skipped (with `-McpExe`: the MCP client test 82 of 82 and the demo), the desktop
+  smoke 18 of 18, Lite 8 of 8; the desktop app, Workshop, the MCP server, Lite (AOT publish), Core and the plugin build.
+- **Left open:** VRUN's build record today is a hand-published frozen one with no workspace, so F9 on that build goes to the default folder
+  (`brokendev bugs vrun-nes` still lists it, by the ROM's sha256); the next `brokendev.ps1 build vrun-nes` writes `bugs` and F9 lands in
+  `VRUN_Nes_Devugs`. A capture of a Sega game in another region or model, or of a SNES game with real coprocessor firmware, replays on
+  the defaults (the settings are in `bug.json`; the replay says off course rather than guessing). The NES state carries the whole ROM (763 KB
+  for VRUN): a lighter state would make Lite's once-a-second cost smaller. The key and the note box are open question 3's answer for now.
+
 ## Open questions (to settle at the start of the track)
 
 1. The debug port's registers on each console, checked against mapper 30, the SNES coprocessors' ranges and the Game Boy Color's
    registers, reusing a convention other emulators already show where one exists.
 2. The movie format's name and file extension. (D5 uses a working name, "BrokenNes movie", `.bnm`: the constants of `MovieFormat`.)
-3. The bug-capture key and how the note is typed.
+3. The bug-capture key and how the note is typed. (D6, for now: F9, a one-line note box with the game paused; Lite: the Bug button and the browser's prompt.)
 4. The first check catalogue per console, and which findings today's games accept (for example Super VRUN's SNESMOD sound-RAM reads).
 5. The checkup command's name and where its report lives (a BrokenDev page or a dashboard).
 6. Approvals when the work reaches them: the MCP SDK's NuGet package (approved 2026-10-24: `ModelContextProtocol` 2.2.0) and the GBDK-2020 download (exact files, sources and sizes asked then).

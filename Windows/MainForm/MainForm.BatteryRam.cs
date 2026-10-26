@@ -47,10 +47,9 @@ namespace BrokenNes.Windows
                 return null;
             }
 
-            var saveDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "BrokenNes",
-                "BatterySaves");
+            // %APPDATA%\BrokenNes\BatterySaves, or the BROKENNES_SAVES_DIR test hook's folder (as the console sessions' saves: SaveRoot), so a
+            // test with a scratch saves folder never writes the user's NES saves either
+            var saveDir = Path.Combine(SaveRoot, "BatterySaves");
             return Path.Combine(saveDir, safeName + ".sav");
         }
 

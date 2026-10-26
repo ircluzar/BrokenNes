@@ -136,6 +136,7 @@ namespace BrokenNes.Windows
                     corruptor.BlastType = safeBlastType;
                     corruptor.Blast(nes);
                 }
+                BugBreak("the game was corrupted");
                 NotifyCorruptorChanged();
             });
         }

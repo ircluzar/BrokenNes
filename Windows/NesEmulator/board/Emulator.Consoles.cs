@@ -249,6 +249,7 @@ namespace BrokenNes
                 var data = await JS.InvokeAsync<byte[]?>("nesInterop.idbGetBytes", ConsoleStateFile.SlotKey(s.Console, s.GameId));
                 if (data == null || data.Length == 0) { Status.Set("No saved state for this game"); StateHasChanged(); return; }
                 s.LoadState(data);   // refuses a state of another game / sound unit with the reason; the game keeps running as it was
+                BugBreak("a state was loaded");
                 try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
                 Status.Set("State loaded");
             }
@@ -373,10 +374,11 @@ namespace BrokenNes
             try
             {
                 long tBody = System.Diagnostics.Stopwatch.GetTimestamp();
-                s.SetPad(0, PadFrom(inputState, extraP1));
-                s.SetPad(1, PadFrom(inputStateP2, extraP2));
+                var bp1 = PadFrom(inputState, extraP1); var bp2 = PadFrom(inputStateP2, extraP2);
+                s.SetPad(0, bp1);
+                s.SetPad(1, bp2);
                 int runs = nesController.FastForward ? 3 : 1;
-                for (int i = 0; i < runs; i++) s.RunFrame();
+                for (int i = 0; i < runs; i++) { BugBeforeSessionFrame(s, bp1, bp2); s.RunFrame(); }   // the bug capture (D6) first: it returns at once when off
                 sessionFrames += runs;
                 if (sessionFrames % 600 < runs) _ = SaveSessionBatteryAsync(force: false);
                 long tRun = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -391,6 +393,7 @@ namespace BrokenNes
                         for (int i = 0; i + 1 < n; i += 2) mono.Add((sessionAudio[i] + sessionAudio[i + 1]) * (0.5f / 32768f));
                     monoCount = mono.Count;
                     if (monoCount > 0) monoArray = mono.ToArray();
+                    BugAudio(monoArray, monoCount);
                 }
                 else
                 {
@@ -402,6 +405,7 @@ namespace BrokenNes
                         for (int i = 0, o = monoCount; i + 1 < n; i += 2, o++) sc[o] = (sessionAudio[i] + sessionAudio[i + 1]) * (0.5f / 32768f);
                         monoCount += add;
                     }
+                    BugAudio(monoScratch, monoCount);
                     if (monoCount > 0)
                     {
                         // one exact-size buffer per sample count (a frame is 734 to 736 samples, a fast-forward three of them): the interop serialises the whole array

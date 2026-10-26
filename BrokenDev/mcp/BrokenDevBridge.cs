@@ -104,7 +104,7 @@ internal static class BrokenDevBridge
     {
         verb = verb.Trim().ToLowerInvariant();
         if (verb is not ("build" or "verify" or "compat" or "run" or "list" or "status" or "doctor"))
-            throw new ToolError("verb is build, verify, compat, run, list, status or doctor (bisect is its own tool; bugs and coverage come with milestones D6 and D9)");
+            throw new ToolError("verb is build, verify, compat, run, list, status or doctor (bisect and bugs are their own tools; coverage comes with milestone D9)");
         var ids = ProjectIds();
         if (verb is "build" or "verify" or "compat" or "run" or "status" && !ids.Contains(project) && !(project == "all" && verb is "build" or "verify" or "compat"))
             throw new ToolError($"unknown project '{project}' (known: {string.Join(", ", ids)}{(verb is "run" or "status" ? "" : ", all")})");
