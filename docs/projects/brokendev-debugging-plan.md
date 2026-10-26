@@ -1099,7 +1099,15 @@ Order: case 2 first (the user's own games on the desktop, watched from a phone),
   - Skipped: rendering the page in headless Edge. Edge renders nothing on this machine today, not even a local file (an update to 156 is
     staged). For the same reason `web-debugger.ps1` fails at its first render (2 pass, 2 fail). The page scripts pass `node --check`, and the
     token logic gives the right URLs.
-- Also probed by hand: with `debugPagesLan: true` in a scratch config, the share starts on at launch and the window shows the URL.
+- Also checked by hand: with `debugPagesLan: true` in a scratch config, the share starts on at launch and the window shows the URL. With
+  that app on `debugtest.nes`, paused, the Claude desktop app's browser pane opened both LAN URLs. The debugger page showed PC `$C012`, the
+  API's PC, with the disassembly and memory. The viewers page showed the domains and the System RAM hex. Every request it sent was a GET
+  carrying the token, and each answered 200. This covers the headless render that was skipped.
+- **The MCP server refresh (2026-10-26): not done in place.** The installed `P:\BrokenDev\env\bnbuild\mcp\...\BrokenNes.Mcp.exe` is
+  locked: two Claude Code sessions run it (pids 5804 and 24168, not started by this work, left alone). This code's build passes
+  `--client-test` 99 of 99 and `--demo` 6 of 6 from a scratch folder. The registration is already right: exactly one
+  `mcpServers.brokennes`, pointing at that exe with `--repo` the main checkout, and no project-level copies. To refresh: close the other
+  sessions, then run `brokendev.ps1 mcp install`.
 - Rerun: the desktop smoke 79 of 79, `--debug-test` 103 of 103.
 - Not tested: a real phone on the real LAN address (Windows will ask its firewall question then; the user answers it).
 
