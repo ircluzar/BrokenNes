@@ -220,6 +220,7 @@ internal static class SnesStateTest
         new(@"\.Ppu\.HiResBuffer$", "S-PPU: only the rows drawn at 512 width are state (rowHiRes marks them, and the state test compares those rows); the others are rebuilt from the 256-wide frame on request"),
         new(@"\.Ppu\.(BridgeLines|DebugLineRegisters|DebugLayerMask|DropVramWritesDuringDisplay)$", "S-PPU settings and hooks of tools"),
         new(@"\.board\.pages(\[\d+\])?$", "the board's page table: derived from $420D and the chip's bank registers, rebuilt at the end of a load"),
+        new(@"\.Apu\.Dsp\.DebugMute$", "the sound monitor's per-voice mute (D8): a debug window's setting, cleared when the window closes; never part of the machine a state keeps"),
         new(@"\.board\.(livePages|soundGuardPages|soundGuard|soundGuardUntil|soundGuardFrom|SoundGuardMasterClocks|SoundGuardOffForTest)(\[\d+\])?$", "the console fast CPU's sound-port guard (BOARD_SFC.WideMess.cs, milestone 6): only while the console's fast CPU is on, a setting no state keeps (see consoleFastCpu); the second page table and the live-table choice are derived like the page table, and a guard ends within one line"),
         new(@"\.board\.(InstructionHook|WriteWatch)$", "hooks of tools"),
         new(@"(^|\.)(ring|ringRead)$", "audio output ring: only the unread samples (ringCount, compared with the samples themselves) are state, not where in the ring they sit"),
