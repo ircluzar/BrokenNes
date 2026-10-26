@@ -1073,6 +1073,66 @@ Order: case 2 first (the user's own games on the desktop, watched from a phone),
   `lite-bugs.ps1` on the same publish passes 8 of 8; with the capture off a frame takes 5.57 ms, as at D6.
 - Not tested: a real phone.
 
+## D9 settled (2026-10-26): checkup, coverage, chaos
+
+Settled before coding milestone D9, from the decisions (regular run before every hand-off and on request, **no scheduled task**; chaos bots
+only when asked; coverage yes). It answers open question 5: the command is **`brokendev.ps1 checkup`**, its report lives in
+`BROKENDEV_HOME\out\checkup\` (the dashboard can read it; nothing updates a dashboard by itself).
+
+### `brokendev.ps1 checkup [project|all|brokennes]`
+
+- **When:** before every hand-off and when the user asks. It is never scheduled, never run by a hook.
+- **Targets:** `checkup <project>` checks one game; `checkup all` (the default) every project and then the BrokenNes repo itself;
+  `checkup brokennes` only the repo.
+- **Per project, in order** (a step that cannot run is `skip` with its reason, never a silent pass):
+  1. **build** (`build`, dependencies first). A failed build fails the project and its later steps are `skip` ("not built").
+  2. **verify**, with coverage on (`verify -Coverage`): the scenarios, the hardware checks (new findings by rule and place), the budgets
+     (fail over, warn near), the promoted movies (in sync and their expectations), the debug-port asserts and errors (they fail verify).
+  3. **compat** on every installed emulator of its console, when the manifest has a compat section (`-NoCompat` leaves it out: it is the
+     slow part). A verdict other than works / cannot be tested fails it.
+  4. **bug captures:** the open ones are **listed** (id, date, note) and counted; they do not fail the checkup, since a capture is a
+     report, not a regression. A workspace that would put `bugs\` in git fails, as `brokendev bugs` does.
+  5. **coverage:** the share of code bytes run in verify, per bank, from the verify record (below); the manifest's coverage check fails it.
+- **The BrokenNes repo** (`brokennes`): Workshop `--debug-test`, `--check-test --wmsroms WideMess\testroms\bin`, `--movie-test`, and
+  BrokenDev `tests\run-tests.ps1 -WorkshopExe` (with `-McpExe` when the MCP server is built), on the Workshop that checkup's verify uses
+  (`-Exe`, else `BROKENDEV_WORKSHOP`, else the last `build-workshop`), never the repo's stale `Workshop\bin\Release` copy.
+- **The one-screen summary:** one line per project (`build verify findings budgets movies port compat bugs coverage`, each `ok`, `warn`,
+  `FAIL` or `skip`), one line per repo suite (passed / total), then every failure named (the project, the step, the first lines of why: the
+  rule and place of a new finding, the budget over its limit, the movie off course, the emulator that differs, the suite that failed), then
+  **what changed since the last checkup** (a step whose state changed, a coverage share that moved by a point or more) and the time taken.
+- **The report:** `out\checkup\checkup.json` (every step's state, detail, seconds and the paths of its own records: `build.json`,
+  `verify.json`, `compat.json`); the previous one is kept as `checkup-previous.json` for the "changed" list.
+- **Exit code:** 0 everything passed (warnings and skips are allowed and listed), 1 something failed, 2 usage, 3 no Workshop.
+- **How long:** a project's verify takes 20 to 90 s with the checks (D4); a full `checkup all` with compat on the nine projects is about
+  15 to 30 minutes, the repo suites about 5 more; `checkup <project> -NoCompat` about a minute or two. The measured times go in "D9 as
+  built".
+- **The negative control** (`run-tests.ps1`): a throwaway project whose ROM reads RAM before writing it, with no acceptance, makes
+  `checkup` exit 1 and name `nes.ram-uninit` at `ram:$07FC`; the same project with the finding accepted passes.
+
+### The coverage map
+
+- **From the D1 engine:** the checks' observer (D4) already sees every step of the main CPU; with coverage on it also marks the ROM bytes
+  of every instruction run (its opcode and operands, by the CPU's canonical ROM key, so a bank-switched ROM is counted by offset, whatever
+  bank maps it). Off unless asked: verify turns it on for a manifest with a `coverage` section or with `--coverage` (checkup passes it).
+- **Over what:** every checked scenario of verify, the promoted movies included (they are verify scenarios). Chaos runs add to it later.
+- **The report** (verify's `coverage`): per bank: its size, the bytes run, the free (padding) bytes, the share of the non-padding bytes
+  run; the code symbols never run (functions never run), when the build publishes symbols; the whole ROM's share.
+  `out\<id>\coverage.html`, one page per game, draws the banks as a bar of run / not run / free.
+- **The check** (the manifest's `coverage` section): `mustRun` (symbols or ROM offsets that must run: a scenario that stops reaching
+  them fails verify, naming them) and `minPercent` (the whole ROM's share, a floor). Its negative control: a `mustRun` naming code that
+  never runs fails, and the same check on code that runs passes.
+- **Not in D9:** branches never taken (it needs the branch outcome per instruction; the same observer can add it later).
+
+### Chaos bots (spec only: they run only when the user asks)
+
+- `brokendev.ps1 chaos <project> -Minutes N [-Bots K] [-Seed S]`, never from checkup, never scheduled.
+- K headless sessions (Workshop, the checks on) from the start and from each saved state the project names (its rooms), with input from
+  a seeded generator: random presses, held directions, jump spam, menu mashing (weights per project in the manifest's `chaos` section).
+- They stop a run and keep a movie (`.bnm`, ready for `bisect` and `movie play`) on: a crash (a jammed CPU, a BRK loop, the PC outside
+  the code the coverage map knows), a softlock (input changes but the picture and RAM do not for N seconds), a lag spike over the budget,
+  a new check finding, a debug-port assert.
+- The report: `out\<id>\chaos\chaos.json` (each problem with its seed, movie and first frame) and its coverage added to the map.
+
 ## Open questions (to settle at the start of the track)
 
 1. The debug port's registers on each console, checked against mapper 30, the SNES coprocessors' ranges and the Game Boy Color's
@@ -1082,5 +1142,6 @@ Order: case 2 first (the user's own games on the desktop, watched from a phone),
 2. The movie format's name and file extension. (D5 uses a working name, "BrokenNes movie", `.bnm`: the constants of `MovieFormat`.)
 3. The bug-capture key and how the note is typed. (D6, for now: F9, a one-line note box with the game paused; Lite: the Bug button and the browser's prompt.)
 4. The first check catalogue per console, and which findings today's games accept (for example Super VRUN's SNESMOD sound-RAM reads).
-5. The checkup command's name and where its report lives (a BrokenDev page or a dashboard).
+5. The checkup command's name and where its report lives (a BrokenDev page or a dashboard). **Answered 2026-10-26** ("D9 settled"):
+   `brokendev.ps1 checkup`, its report in `BROKENDEV_HOME\out\checkup\checkup.json`.
 6. Approvals when the work reaches them: the MCP SDK's NuGet package (approved 2026-10-24: `ModelContextProtocol` 2.2.0) and the GBDK-2020 download (exact files, sources and sizes asked then).
