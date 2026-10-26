@@ -9,6 +9,7 @@
     restore <project|archive|all>  extract the project archives into BROKENDEV_HOME (-Full: also the bulky extras, -Force: again)
     build   <project|all>        run the project's build steps (dependencies first); outputs go to BROKENDEV_HOME\out\<id>\
     verify  <project|all>        run the built ROM on BrokenNes (headless Workshop) and record the checks in out\<id>\verify.json
+                                 (-Coverage: also the coverage map, the code run per ROM bank, and out\<id>\coverage.html)
     diff    <project|all>        differential replay of the built ROM, BrokenNes against Mesen 2 (a black-box oracle); out\<id>\diff.json
     run     <project>            launch the built ROM in the BrokenNes desktop app (through its HTTP API)
     build-workshop               build the BrokenNes Workshop (the headless runner verify uses)
@@ -46,6 +47,12 @@
     bug     <id|folder|zip> [-Debugger] [-Script "cmds"]
                                  replays one capture headless (every keyframe and the last picture checked, the hardware checks on; exit 0
                                  in sync); -Debugger opens it in the headless debugger ('run' replays it, 'back' steps back; -Script the commands)
+    checkup [project|all|brokennes] [-NoCompat] [-NoSuites] [-McpExe exe]
+                                 before every hand-off and on request (never scheduled; milestone D9): per project build, verify with the
+                                 coverage map (checks, budgets, promoted movies, debug-port asserts), compat, the open bug captures; for
+                                 'all' (the default) and 'brokennes' the repo's suites (Workshop --debug-test, --check-test, --movie-test,
+                                 tests\run-tests.ps1) on the same Workshop. One screen: a line per project and suite, every failure named,
+                                 what changed since the last checkup; the report in out\checkup\checkup.json. Exit 1 when anything failed
     mcp     install|uninstall|build|status|test
                                  the BrokenNes MCP server (BrokenDev/mcp): 'install' builds it into BROKENDEV_HOME\bnbuild\mcp and registers it
                                  for Claude Code at USER scope ('claude mcp add --scope user brokennes', every session and game repo);
@@ -115,6 +122,12 @@ param(
     [string]$Repo = '',
     # 'bug' (milestone D6): open the capture in the headless debugger
     [switch]$Debugger,
+    # 'checkup' (milestone D9)
+    [switch]$NoCompat,
+    # 'verify -Coverage': the coverage map (D9) in verify.json
+    [switch]$Coverage,
+    [switch]$NoSuites,
+    [string]$McpExe = '',
     # 'tool <id> <args...>': the arguments after the tool id are passed to the tool
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @()
 )
@@ -137,6 +150,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\Mcp.ps1')
 . (Join-Path $here 'lib\Movies.ps1')
 . (Join-Path $here 'lib\Bugs.ps1')
+. (Join-Path $here 'lib\Checkup.ps1')
 
 function Show-BdHelp { Write-Host (Get-Help (Join-Path $here 'brokendev.ps1') -Full | Out-String) }
 
@@ -274,7 +288,7 @@ try {
             $bad = @()
             foreach ($id in $ids) {
                 Write-BdInfo "== verify $id"
-                try { $rec = Invoke-BdProjectVerify -Id $id -Exe $Exe; if (-not $rec.ok) { $bad += $id } }
+                try { $rec = Invoke-BdProjectVerify -Id $id -Exe $Exe -Coverage:$Coverage; if (-not $rec.ok) { $bad += $id } }
                 catch { Write-BdFail $_.Exception.Message; $bad += $id }
             }
             if ($bad.Count -gt 0) { Write-BdFail ("verify failed: " + ($bad -join ', ')); exit 1 }
@@ -446,6 +460,12 @@ try {
             Write-BdInfo ("  {0} build(s); skipped (no build): {1}; can't tell: {2}" -f $r.builds, @($r.skipped).Count, @($r.cantTell).Count)
             if ($r.firstBad) { exit 0 } else { exit 1 }
         }
+        'checkup' {
+            try { $r = Invoke-BdCheckup -Target $(if ($Target) { $Target } else { 'all' }) -Exe $Exe -McpExe $McpExe -NoCompat:$NoCompat -NoSuites:$NoSuites -Quiet:$Json }
+            catch { if ($_.Exception.Data['exit'] -eq 3) { Write-BdFail $_.Exception.Message; exit 3 }; throw }
+            if ($Json) { $r | ConvertTo-Json -Depth 10 }
+            if ($r.ok) { exit 0 } else { exit 1 }
+        }
         'new' {
             if ($Target -ne 'widemess') { throw "new: the one kind of project BrokenDev makes is 'widemess' (brokendev.ps1 new widemess <name> [-Path folder] [-Title T])" }
             if ($Rest.Count -ne 1) { throw 'new widemess needs one name: brokendev.ps1 new widemess <name> [-Path folder] [-Title T]' }
@@ -457,7 +477,7 @@ try {
             Write-BdInfo "  guide:    docs/projects/widemess-devkit.md"
             exit 0
         }
-        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, toolchains, play, compat, movie, bisect, bugs, bug, mcp, new"; exit 2 }
+        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, toolchains, play, compat, movie, bisect, bugs, bug, checkup, mcp, new"; exit 2 }
     }
 } catch {
     Write-BdFail $_.Exception.Message

@@ -47,7 +47,7 @@ function Invoke-BdProjectVerify {
       Runs a built project's verify recipe through 'BrokenNes.Workshop.exe --brokendev verify' and records out\<id>\verify.json.
       Returns the parsed record (its .ok is the verdict). Throws when the prerequisites are missing (no Workshop, not built).
     #>
-    param([Parameter(Mandatory)][string]$Id, [string]$Exe = '', [string]$Only = '')
+    param([Parameter(Mandatory)][string]$Id, [string]$Exe = '', [string]$Only = '', [switch]$Coverage)
     $m = Read-BdManifest -Id $Id
     $out = Get-BdOutDir $Id
     $bp = Join-Path $out 'build.json'
@@ -66,6 +66,8 @@ function Invoke-BdProjectVerify {
     # the budgets' trend: one entry per build (by the ROM's sha256) in out\<id>\budget-history.json; the report compares with the previous build
     $args = @('--brokendev', 'verify', $Id, '--manifests', (Get-BdProjectsDir), '--home', (Get-BdHome), '--rom', $rom.published, '--out', $vjson, '--png-dir', (Join-Path $out 'shots'), '--history', (Join-Path $out 'budget-history.json'))
     if ($Only) { $args += @('--only', $Only) }
+    # the coverage map (D9): the code run in the checked scenarios, per bank (a manifest's coverage section turns it on by itself)
+    if ($Coverage) { $args += @('--coverage') }
     $r = Invoke-BdProcess -FilePath $Exe -Arguments $args -TimeoutSec $timeout -Env (Get-BdChildEnv) -LogFile (Join-Path $out 'logs\verify.log')
     if ($r.TimedOut) { throw "verify of $Id timed out after $timeout s" }
     if (-not (Test-Path -LiteralPath $vjson)) { throw "verify of $Id produced no result (exit $($r.ExitCode)):`n$(Select-BdTail $r.Output 15)" }

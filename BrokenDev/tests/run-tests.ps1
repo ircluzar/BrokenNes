@@ -33,6 +33,7 @@ $bd = Split-Path -Parent $here
 . (Join-Path $bd 'lib\Mcp.ps1')
 . (Join-Path $bd 'lib\Movies.ps1')
 . (Join-Path $bd 'lib\Bugs.ps1')
+. (Join-Path $bd 'lib\Checkup.ps1')
 
 $script:pass = 0; $script:fail = 0; $script:skip = 0
 $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('bdtests-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -1320,6 +1321,56 @@ try {
         $v = Invoke-WsVerify -Id 'v-chk-badrule' -Rom $ramRom
         Assert-Equal $v.Exit 1
         Assert-True (@($v.Json.checks.problems | Where-Object { $_ -match 'nes.no-such-rule' }).Count -eq 1) "problems: $($v.Json.checks.problems -join '; ')"
+    }
+    # checkup (D9): a throwaway project (its own folder; a build step that copies the RAM-colour ROM) through the real checkup
+    function New-CheckupProject {
+        param([string]$Id, $Checks)
+        $src = Join-Path $tmpRoot "cu-src-$Id"; New-Item -ItemType Directory -Force -Path $src | Out-Null
+        Copy-Item -LiteralPath $ramRom -Destination (Join-Path $src 'game-src.nes') -Force
+        Set-Content -LiteralPath (Join-Path $src 'build.ps1') -Value "`$ErrorActionPreference = 'Stop'; New-Item -ItemType Directory -Force -Path (Join-Path `$PSScriptRoot 'build') | Out-Null; Copy-Item -LiteralPath (Join-Path `$PSScriptRoot 'game-src.nes') -Destination (Join-Path `$PSScriptRoot 'build\game.nes') -Force; (Get-Item (Join-Path `$PSScriptRoot 'build\game.nes')).LastWriteTimeUtc = [datetime]::UtcNow"
+        $m = [ordered]@{ schema = 1; id = $Id; title = $Id; family = 'synth'; kind = 'nes'; console = 'nes'; source = @{ folder = $src }; requires = @{ tools = @(); projects = @(); inputs = @() }; knownIssues = @()
+                         build = @{ steps = @(@{ name = 'copy'; shell = 'ps5'; cwd = '{src}'; file = '{src}/build.ps1'; timeoutSec = 120 }); outputs = @(@{ id = 'rom'; path = '{src}/build/game.nes'; publishAs = 'game.nes' }) }
+                         verify = @{ cores = @{ cpu = 'FIX'; ppu = 'FIX'; apu = 'FIX' }; scenarios = @(@{ id = 'boot'; frames = 60; checkpoints = @(60) }) }; checks = $Checks }
+        $pd = Join-Path (Join-Path $tmpRoot 'cuprojects') $Id; New-Item -ItemType Directory -Force -Path $pd | Out-Null
+        Save-BdJson -Object $m -Path (Join-Path $pd 'project.json') -Depth 20
+    }
+    Test-Case 'checkup: NEGATIVE: a project with a new finding (a planted read of RAM before it is written) FAILS checkup (exit 1) and names the rule and place; the same project with it accepted PASSES, and the second checkup lists what changed' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        New-CheckupProject -Id 'cu-bad' -Checks @{ accepted = @() }
+        New-CheckupProject -Id 'cu-good' -Checks @{ accepted = @(@{ rule = 'nes.ram-uninit'; at = 'ram:$07FC'; reason = 'test: the ROM paints its backdrop with power-on RAM on purpose' }) }
+        $env:BROKENDEV_HOME = Join-Path $tmpRoot 'cuhome'; $env:BROKENDEV_PROJECTS = Join-Path $tmpRoot 'cuprojects'; $env:BROKENDEV_WORKSHOP = $ws
+        $env:BROKENNES_BUGS_DIR = Join-Path $tmpRoot 'cubugs'
+        try {
+            $bdps = Join-Path $bd 'brokendev.ps1'
+            $o = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bdps checkup cu-bad -Exe $ws -NoSuites 2>&1 | Out-String
+            Assert-Equal $LASTEXITCODE 1 "checkup of the planted project: $(Select-BdTail $o 12)"
+            Assert-True ($o -match 'cu-bad findings: NEW nes\.ram-uninit at ram:\$07FC') "the summary does not name the finding: $(Select-BdTail $o 12)"
+            $j = Read-BdJson (Join-Path $env:BROKENDEV_HOME 'out\checkup\checkup.json')
+            Assert-True (-not $j.ok) 'the report says ok'
+            $fs = @($j.projects[0].steps | Where-Object { $_.step -eq 'findings' })[0]
+            Assert-Equal $fs.state 'FAIL'
+            Assert-Equal (@($j.projects[0].steps | Where-Object { $_.step -eq 'build' })[0].state) 'ok'
+            $o2 = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $bdps checkup cu-good -Exe $ws -NoSuites 2>&1 | Out-String
+            Assert-Equal $LASTEXITCODE 0 "checkup of the accepted project: $(Select-BdTail $o2 12)"
+            $j2 = Read-BdJson (Join-Path $env:BROKENDEV_HOME 'out\checkup\checkup.json')
+            Assert-True $j2.ok 'the accepted project did not pass'
+            Assert-True (Test-Path (Join-Path $env:BROKENDEV_HOME 'out\checkup\checkup-previous.json')) 'the previous report was not kept'
+            Assert-True (@($j2.changed) -match 'cu-good: first checkup') "changed: $($j2.changed -join '; ')"
+        } finally { Restore-Env $savedEnv }
+    }
+    Test-Case 'checkup: NEGATIVE: a project that does not build FAILS at build and skips the rest (never a silent pass); an unknown project is refused' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        New-CheckupProject -Id 'cu-nobuild' -Checks @{ accepted = @() }
+        Remove-Item -LiteralPath (Join-Path (Join-Path $tmpRoot 'cu-src-cu-nobuild') 'game-src.nes') -Force
+        $env:BROKENDEV_HOME = Join-Path $tmpRoot 'cuhome2'; $env:BROKENDEV_PROJECTS = Join-Path $tmpRoot 'cuprojects'; $env:BROKENDEV_WORKSHOP = $ws
+        $env:BROKENNES_BUGS_DIR = Join-Path $tmpRoot 'cubugs'
+        try {
+            $r = Invoke-BdCheckup -Target 'cu-nobuild' -Exe $ws -NoSuites -Quiet
+            Assert-True (-not $r.ok) 'a project that does not build passed checkup'
+            $st = @{}; foreach ($s in $r.projects[0].steps) { $st[$s.step] = $s.state }
+            Assert-Equal $st['build'] 'FAIL'; Assert-True (@($r.projects[0].steps | Where-Object { $_.step -eq 'build' })[0].detail -match "step 'copy' failed") 'the build did not fail at its step'; Assert-Equal $st['verify'] 'skip'; Assert-Equal $st['findings'] 'skip'
+            Assert-Throws { Invoke-BdCheckup -Target 'no-such-project' -Exe $ws -NoSuites -Quiet } 'unknown project'
+        } finally { Restore-Env $savedEnv }
     }
     Test-Case 'budgets: under the limit passes, at 90% of it WARNS, over it FAILS (busyPercent, measured first)' {
         if (-not $ws) { Skip-Test $wsSkip }
