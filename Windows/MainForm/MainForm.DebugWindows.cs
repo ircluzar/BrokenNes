@@ -25,6 +25,7 @@ namespace BrokenNes.Windows
             menu.DropDownItems.Add(new ToolStripMenuItem("&Tiles", null, (_, _) => OpenDebugWindow("tiles")) { Name = "debugWindowTiles" });
             menu.DropDownItems.Add(new ToolStripMenuItem("M&aps", null, (_, _) => OpenDebugWindow("maps")) { Name = "debugWindowMaps" });
             menu.DropDownItems.Add(new ToolStripMenuItem("&Sprites", null, (_, _) => OpenDebugWindow("sprites")) { Name = "debugWindowSprites" });
+            menu.DropDownItems.Add(new ToolStripMenuItem("&Event View", null, (_, _) => OpenDebugWindow("events")) { Name = "debugWindowEvents" });
             emulatorMenu.DropDownItems.Add(menu);
         }
 
@@ -40,6 +41,7 @@ namespace BrokenNes.Windows
                 "tiles" => new TilesWindow(() => webApiServer?.Debuggers, () => DebugWindowGame),
                 "sprites" => new SpritesWindow(() => webApiServer?.Debuggers, () => DebugWindowGame),
                 "maps" => new MapsWindow(() => webApiServer?.Debuggers, () => DebugWindowGame),
+                "events" => new EventsWindow(() => webApiServer?.Debuggers, () => DebugWindowGame),
                 _ => throw new ArgumentException("no debug window " + which),
             };
             f.Location = new Point(Right + 8 < Screen.FromControl(this).WorkingArea.Right - 200 ? Right + 8 : Left + 40, Top + 40);

@@ -28,6 +28,8 @@
               is not.
     MAPS      Emulator > Debug Windows > Maps: a map entry written through the API (the NES's nametable, the SNES's BG1 map at the base the
               window names, read back from VRAM, the Game Boy's map LCDC picks) shows in its cell; the next cell shows its own.
+    EVENTS    Emulator > Debug Windows > Event View: one frame of the NES (one $4014 write, the NMI) and the Game Boy (one $FF46 write,
+              the VBlank interrupt) with the debugger armed while it is open; closed, nothing is attached or armed.
     SNES / GB the same window on the SNES (the CPU picker offers the SPC700, whose registers show) and the Game Boy.
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
 
@@ -157,6 +159,18 @@ function Norm([string]$t) { ($t -replace '\s+', ' ').Trim() }
 function Open-Maps([int]$procId) { Open-DebugWindow $procId 'Maps' 'BrokenNes Maps' }
 function Show-Cell($w, [int]$cx, [int]$cy) { SetText (FindById $w 'cellx') "$cx"; SetText (FindById $w 'celly') "$cy"; Invoke-El (FindById $w 'show'); Start-Sleep -Milliseconds 700; TextOf (FindById $w 'cell') }
 function PokeAll([int]$procId, [string]$domain, $pairs) { foreach ($pv in $pairs) { Api $procId POST '/api/memory/poke' @{ domain = $domain; address = $pv[0]; value = $pv[1] } | Out-Null } }
+function Open-Events([int]$procId) { Open-DebugWindow $procId 'Event View' 'BrokenNes Events' }
+function EventsCheck([int]$procId, [string]$name, [string]$wantWrite, [string]$wantIrq) {
+    $win = Open-Events $procId
+    Start-Sleep -Milliseconds 1500
+    $ev = @(Items (FindById $win 'events'))
+    $st = Api $procId GET '/api/debug/state'
+    $w = @($ev | Where-Object { $_ -like "*write $wantWrite*" }); $q = @($ev | Where-Object { $_ -like "*interrupt $wantIrq*" })
+    Check "events_$name" ($st.attached -and $st.armed -and $w.Count -eq 1 -and $q.Count -ge 1) "open: attached $($st.attached), armed $($st.armed); $($w -join ' ') | $($q | Select-Object -First 1); $(TextOf (FindById $win 'info'))"
+    Close-Window $win
+    $c = Api $procId GET '/api/debug/state'
+    Check "events_${name}_closed_negative" (-not $c.attached -and -not $c.armed) "closed: attached $($c.attached), armed $($c.armed) (the observer and its debugger are gone)"
+}
 function PcLine($w) { (Items (FindById $w 'disassembly')) | Where-Object { $_ -like '>*' } | Select-Object -First 1 }
 
 $inst = $null
@@ -311,6 +325,8 @@ try {
     Check 'maps_nes' ($c -like 'cell 3,2: tile $5A palette *') "$c ($mi)"
     Check 'maps_nes_negative' ($c2 -like 'cell 4,2: tile $0 palette *') "the next cell is its own byte: $c2"
     Close-Window $win
+    # ---------------------------------------------------------------- EVENTS (NES): one OAM DMA write a frame, the NMI
+    EventsCheck $id 'nes' '$4014 = $02' 'NMI'
 
     # ---------------------------------------------------------------- SNES (the SPC700 in the CPU picker)
     Load $id (Join-Path $roms 'debugtest.sfc')
@@ -437,6 +453,8 @@ try {
     Check 'maps_gb' ($c -like 'cell 5,1: tile $33 palette *') "$c ($(TextOf (FindById $win 'info')))"
     Check 'maps_gb_negative' ($c2 -like 'cell 6,1: tile $0 palette *') "the next cell: $c2"
     Close-Window $win
+    # the Game Boy's VBlank handler: one write to $FF46 (OAM DMA) a frame
+    EventsCheck $id 'gb' '$FF46 = $C1' ''
 
     $result.pass = -not ($checks.Values | Where-Object { -not $_.ok })
 }
