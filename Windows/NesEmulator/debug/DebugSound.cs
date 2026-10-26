@@ -23,6 +23,31 @@ public static class DebugSound
         public override string ToString() => $"{Name}: {(On ? "on " : "off")} {Text}";
     }
 
+    /// <summary>The sound monitor's mute (one bit a channel, in <see cref="Channels"/>' order) on the SNES / WideMess S-DSP or the Game Boy's
+    /// APU_GB: only the mix changes, never the config; 0 puts it back exactly. False (with the reason) where the chip has no such switch.</summary>
+    public static bool SetMute(object? game, int mask, out string why)
+    {
+        switch (game)
+        {
+            case NesEmulator.Systems.SnesSession s when s.Spc is { } spc:
+                spc.Dsp.DebugMute = (byte)mask; why = ""; return true;
+            case NesEmulator.Systems.GbSession g when g.Board.Apu is NesEmulator.Gb.APU_GB apu:
+                apu.DebugMute = mask & 15; why = ""; return true;
+            case NES:
+                why = "the NES's channels are muted in Sound > Sound Channels"; return false;
+            default:
+                why = "this sound chip has no mute the monitor can use"; return false;
+        }
+    }
+
+    /// <summary>The mute now in force (0: none).</summary>
+    public static int Mute(object? game) => game switch
+    {
+        NesEmulator.Systems.SnesSession s when s.Spc is { } spc => spc.Dsp.DebugMute,
+        NesEmulator.Systems.GbSession g when g.Board.Apu is NesEmulator.Gb.APU_GB apu => apu.DebugMute,
+        _ => 0,
+    };
+
     public static List<Channel> Channels(DebugMachine m, object? game, out string what)
     {
         var list = new List<Channel>();

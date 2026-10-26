@@ -35,6 +35,8 @@ public readonly struct GbApuChannelView
 /// </summary>
 public sealed class APU_GB : IGbApu
 {
+    /// <summary>Channels the sound monitor (BrokenDev D8) silences, one bit each (1 pulse 1, 2 pulse 2, 4 wave, 8 noise): 0, and nothing changes, unless its window is open and a channel muted. Only the mix: NR52 and every register read as before.</summary>
+    public int DebugMute;
     public string CoreName => "GB";
     private const int BaseClock = 4194304;
     public int SampleRate => 48000;
@@ -270,7 +272,7 @@ public sealed class APU_GB : IGbApu
             bool dac = c == 2 ? (regs[0x0A] & 0x80) != 0 : PulseNoiseDac(c);
             if (!dac || !power) continue;
             int d = 0;
-            if (enabled[c])
+            if (enabled[c] && (DebugMute & (1 << c)) == 0)   // DebugMute: the sound monitor's mute (BrokenDev D8), 0 unless it is open
             {
                 switch (c)
                 {

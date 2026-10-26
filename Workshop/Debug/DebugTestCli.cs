@@ -621,6 +621,26 @@ internal static class DebugTestCli
             Check("Super VRUN: a VRAM watch sees the DMA uploads", dmaW.Hits > 1000, $"{dmaW.Hits} VRAM bytes by DMA, {cpuW.Hits} by the CPU in {h.Runner.FramesDone} frames");
             Check("Super VRUN: debugger attached (every CPU access through the watching bus, every DMA byte tapped), frame-identical to no debugger", h.PictureHash() == plain.PictureHash() && h.RamHash() == plain.RamHash(),
                   $"{h.Runner.FramesDone} frames, picture {h.PictureHash():X16} vs {plain.PictureHash():X16}");
+
+            // the sound monitor's mute (D8): 0 is exactly no mute; every voice muted is silence; the game runs on unchanged (the picture)
+            (ulong hash, int peak, ulong pic) Sound(int mask, bool set)
+            {
+                using var s = DebugHost.Open(rom, Path.GetFileName(superPath), ConsoleKind.Snes, debugger: false);
+                var buf = new short[16384]; ulong fnv = 14695981039346656037UL; int peak = 0;
+                for (int f = 0; f < 600; f++)
+                {
+                    if (f == 300 && set) DebugSound.SetMute(s.Session, mask, out _);
+                    s.RunPlain(1);
+                    int n = s.Session!.ReadSamples(buf);
+                    for (int i = 0; i < n; i++) { fnv = (fnv ^ (ushort)buf[i]) * 1099511628211UL; if (f >= 310) peak = Math.Max(peak, Math.Abs((int)buf[i])); }
+                }
+                return (fnv, peak, s.PictureHash());
+            }
+            var none = Sound(0, false); var zero = Sound(0, true); var all = Sound(0xFF, true);
+            bool can = DebugSound.SetMute(plain.Session, 0, out string why);
+            Check("Super VRUN: sound monitor mute 0 is identical to no mute (the negative control)", can && zero.hash == none.hash, $"{why} sound {zero.hash:X16} vs {none.hash:X16}");
+            Check("Super VRUN: sound monitor mute of all 8 voices is silence, the picture unchanged", none.peak > 1000 && all.peak < none.peak / 20 && all.hash != none.hash && all.pic == none.pic,
+                  $"peak after frame 310: {all.peak} muted vs {none.peak}; picture {all.pic:X16} vs {none.pic:X16}");
         }
     }
 }

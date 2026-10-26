@@ -11,7 +11,7 @@ namespace BrokenNes.Windows.DebugWindows
     /// <summary>
     /// The sound monitor (BrokenDev D8, "D8 settled"): one line per channel of the running console's sound chip and a level bar each
     /// (<see cref="DebugSound.Channels"/>). Read only, nothing attached or armed; the timer lives only while the window is open. Muting the
-    /// NES's channels stays in Sound > Sound Channels.
+    /// NES's channels stays in Sound > Sound Channels; the SNES / WideMess voices and the Game Boy channels mute and solo here, in the mix only (never the config), and closing the window un-mutes.
     /// </summary>
     public sealed class SoundWindow : Form
     {
@@ -23,6 +23,8 @@ namespace BrokenNes.Windows.DebugWindows
         private readonly TextBox info = new() { Name = "info", AccessibleName = "info", Dock = DockStyle.Bottom, ReadOnly = true };
         private List<DebugSound.Channel> channels = new();
         private string lastKey = "";
+        private object? muteGame;   // the game the mute was set on (a new game starts with none)
+        private int mute;
 
         public SoundWindow(Func<DebuggerHub?> hub, Func<object?> game)
         {
@@ -35,12 +37,27 @@ namespace BrokenNes.Windows.DebugWindows
             Font = new Font("Segoe UI", 9f);
             typeof(Panel).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.SetValue(bars, true);
             bars.Paint += PaintBars;
+            var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 32, WrapContents = false };
+            Button B(string t, string n, Func<int, int, int> f) { var b = new Button { Text = t, Name = n, AccessibleName = n, AutoSize = true, Height = 24 }; b.Click += (_, _) => ApplyMute(f); bar.Controls.Add(b); return b; }
+            B("Mute / unmute", "mute", (m, i) => m ^ (1 << i));
+            B("Solo", "solo", (m, i) => ~(1 << i) & ((1 << Math.Max(1, channels.Count)) - 1));
+            B("All on", "clearmute", (m, i) => 0);
             Controls.Add(list);
             Controls.Add(bars);
+            Controls.Add(bar);
             Controls.Add(info);
             timer.Tick += (_, _) => RefreshView();
             Shown += (_, _) => { RefreshView(); timer.Start(); };
-            FormClosed += (_, _) => { timer.Stop(); timer.Dispose(); };
+            FormClosed += (_, _) => { timer.Stop(); timer.Dispose(); if (mute != 0) DebugSound.SetMute(muteGame, 0, out _); mute = 0; };
+        }
+
+        private void ApplyMute(Func<int, int, int> f)
+        {
+            var g = game();
+            if (!ReferenceEquals(g, muteGame)) { muteGame = g; mute = 0; }
+            int next = f(mute, Math.Max(0, list.SelectedIndex));
+            if (DebugSound.SetMute(g, next, out string why)) mute = next; else info.Text = why;
+            lastKey = ""; RefreshView();
         }
 
         private void RefreshView()
@@ -51,14 +68,17 @@ namespace BrokenNes.Windows.DebugWindows
             var m = h?.Machine(g, out why);
             if (m == null) { info.Text = h == null ? "the app's debugger hub is not up yet" : "no game: " + why; return; }
             channels = DebugSound.Channels(m, g, out string what);
-            var lines = channels.Select(c => c.ToString()).ToArray();
+            if (!ReferenceEquals(g, muteGame)) { muteGame = g; mute = 0; }
+            var lines = channels.Select((c, i) => c.ToString() + ((mute >> i & 1) != 0 ? "  [muted]" : "")).ToArray();
             string key = string.Join("\n", lines);
             if (key != lastKey)
             {
                 lastKey = key;
+                int sel = list.SelectedIndex;
                 list.BeginUpdate(); list.Items.Clear(); list.Items.AddRange(lines.Cast<object>().ToArray()); list.EndUpdate();
+                if (sel < list.Items.Count) list.SelectedIndex = sel;
             }
-            string it = $"{m.Console}: {what}";
+            string it = $"{m.Console}: {what}; mute ${DebugSound.Mute(g):X2}";
             if (info.Text != it) info.Text = it;
             bars.Invalidate();
         }

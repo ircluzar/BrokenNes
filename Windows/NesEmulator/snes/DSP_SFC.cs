@@ -20,6 +20,8 @@ namespace NesEmulator.Snes;
 /// </summary>
 public sealed partial class DSP_SFC
 {
+    /// <summary>Voices the sound monitor (BrokenDev D8) silences in the mix, one bit each: 0, and nothing changes, unless its window is open and a voice muted. OUTX, ENDX and the envelopes run on as before; a muted voice is also out of the echo input (the echo buffer in sound RAM then differs).</summary>
+    public byte DebugMute;
     private readonly byte[] ram;          // the audio unit's 64KB ARAM (BRR samples, echo buffer)
     public readonly byte[] Regs = new byte[128];
 
@@ -273,6 +275,7 @@ public sealed partial class DSP_SFC
             v.InterpPos = Math.Min((v.InterpPos & 0x3FFF) + pitch, 0x7FFF);
 
             int ampL = (heard * volL) >> 7, ampR = (heard * volR) >> 7;
+            if ((DebugMute & bit) != 0) { ampL = 0; ampR = 0; }   // the sound monitor's mute (BrokenDev D8): 0 unless it is open
             mainL = Clamp16(mainL + ampL); mainR = Clamp16(mainR + ampR);
             if (useEcho) { echoL = Clamp16(echoL + ampL); echoR = Clamp16(echoR + ampR); }
 

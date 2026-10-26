@@ -34,6 +34,8 @@
               S-DSP shows on voice 0 only; the Game Boy's NR52 and its channel switches as the API reads them.
     WIDEMESS  the devkit sample (WideMess\testroms\bin\devkit_sample.wms, copied with its .sym): the debugger parks, its PC matches the
               API's, the WLA-DX symbols load by themselves; closing detaches; the memory and tile windows read its VRAM.
+    MUTE      the sound monitor's mute and solo on the SNES voices and the Game Boy channels (the mask in the window and the [muted]
+              mark); closing the window un-mutes, and the config file is not written. (The audible effect is --debug-test's: Super VRUN.)
     SNES / GB the same window on the SNES (the CPU picker offers the SPC700, whose registers show) and the Game Boy.
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
 
@@ -176,6 +178,28 @@ function EventsCheck([int]$procId, [string]$name, [string]$wantWrite, [string]$w
     Check "events_${name}_closed_negative" (-not $c.attached -and -not $c.armed) "closed: attached $($c.attached), armed $($c.armed) (the observer and its debugger are gone)"
 }
 function Open-Sound([int]$procId) { Open-DebugWindow $procId 'Sound Monitor' 'BrokenNes Sound' }
+function SelectItem($w, [string]$listId, [int]$index) {
+    $l = FindById $w $listId
+    $it = @($l.FindAll($TS::Children, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::ListItem))))[$index]
+    $it.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select(); Start-Sleep -Milliseconds 200
+}
+function MuteOf($w) { $t = TextOf (FindById $w 'info'); if ($t -match 'mute \$([0-9A-F]+)') { $Matches[1] } else { '?' } }
+function MuteCheck([int]$procId, [string]$name, [int]$count, [string]$soloWant) {
+    $cfg = Join-Path $env:BROKENNES_CONFIG_DIR 'config.json'
+    $cfgBefore = $(if (Test-Path $cfg) { (Get-FileHash $cfg).Hash } else { 'none' })
+    $win = Open-Sound $procId
+    SelectItem $win 'channels' 0; Invoke-El (FindById $win 'mute'); Start-Sleep -Milliseconds 600
+    $m1 = MuteOf $win; $l0 = @(Items (FindById $win 'channels'))[0]
+    SelectItem $win 'channels' 1; Invoke-El (FindById $win 'solo'); Start-Sleep -Milliseconds 600
+    $m2 = MuteOf $win
+    Close-Window $win
+    $win = Open-Sound $procId; Start-Sleep -Milliseconds 300
+    $m3 = MuteOf $win
+    Close-Window $win
+    $cfgAfter = $(if (Test-Path $cfg) { (Get-FileHash $cfg).Hash } else { 'none' })
+    Check "mute_$name" ($m1 -eq '01' -and $l0.EndsWith('[muted]') -and $m2 -eq $soloWant) "mute voice 0: `$$m1 ($l0); solo voice 1: `$$m2 (want `$$soloWant)"
+    Check "mute_${name}_closed_negative" ($m3 -eq '00' -and $cfgBefore -eq $cfgAfter) "after closing the window: mute `$$m3; the config file $(if ($cfgBefore -eq $cfgAfter) { 'unchanged' } else { 'CHANGED' })"
+}
 function PcLine($w) { (Items (FindById $w 'disassembly')) | Where-Object { $_ -like '>*' } | Select-Object -First 1 }
 
 $inst = $null
@@ -420,6 +444,7 @@ try {
     Check 'sound_snes' ($ch.Count -eq 8 -and $ch[0] -like 'Voice 0:*pitch $1234*') "$($ch[0])"
     Check 'sound_snes_negative' ($ch[1] -like 'Voice 1:*pitch $0000*') "voice 1 keeps its own pitch: $($ch[1])"
     Close-Window $win
+    MuteCheck $id 'snes' 8 'FD'
 
     # ---------------------------------------------------------------- Game Boy
     Load $id (Join-Path $roms 'debugtest.gb')
@@ -486,6 +511,7 @@ try {
     Check 'sound_gb' ($ch.Count -eq 4 -and $si -like ('*NR52 $' + ('{0:X2}' -f $nr52) + ' *') -and $onOk) "$si ; $($ch -join ' | ')"
     Check 'sound_gb_negative' ($ch[2] -like 'Wave:*wave *' -and $ch[0] -notlike '*wave*') "the wave RAM is on the wave channel only"
     Close-Window $win
+    MuteCheck $id 'gb' 4 '0D'
 
     # ---------------------------------------------------------------- WideMess: the devkit sample (WideMess\testroms\bin) through the same windows
     $wmsRom = Join-Path $repo 'WideMess\testroms\bin\devkit_sample.wms'
