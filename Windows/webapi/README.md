@@ -160,6 +160,18 @@ replaces it). Memory and register writes through this API (and corruptions) star
 | POST | `/api/bugs/capture` `{note}` | Save a capture now: `{success, path, message, seconds, frames, start: state\|power-on\|none, noMovie}`; 400 with the reason when there is nothing to capture (off, the idle screen) |
 | POST | `/api/bugs/enabled` `{enabled}` | Emulator > Keep the Last 30 s (config `bugCaptureEnabled`, on by default); off, nothing is recorded |
 
+### Debug port - `WebApiServer.Endpoints.Port.cs` (BrokenDev D7)
+
+A homebrew dev build's prints, asserts, markers and timers (the BrokenDev debug port: NES `$401C-$401F`, SNES / WideMess `$4230-$423F`,
+Game Boy the bgb / Emulicious `ld d,d` messages; docs/projects/brokendev-debugging-plan.md "D7 settled"). Emulator > Debug Port (config
+`debugPortEnabled`, off by default); a failed assert pauses the game (`debugPortPauseOnAssert`, on). The events go to the log (`[port] ...`)
+and into the bug capture (bug.json's `debugPort`, the movie's markers). The port only listens: reading it changes nothing.
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/debug/port?since=&limit=` | On / listening, where, the counts, the events after a seq (kind, text, frame, PC, symbol), the named timers (calls, average, best, worst, per frame) |
+| POST | `/api/debug/port/enabled` `{enabled}` | Emulator > Debug Port; off, nothing listens (at once, even while the game is paused) |
+
 ### Emulator control - `WebApiServer.Endpoints.Emulator.cs`
 
 | Verb | Route | Purpose |

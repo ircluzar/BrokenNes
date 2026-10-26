@@ -363,6 +363,7 @@ namespace BrokenNes.Windows
                                 BrokenNes.Windows.WebApi.ApiInputInjector.Apply(p1Inputs, p2Inputs);
 
                                 nes.SetInputs(p1Inputs, p2Inputs);
+                                PortBeforeFrame(nes);                         // the debug port (D7): returns at once when it is off
                                 BugBeforeNesFrame(nes, p1Inputs, p2Inputs);   // the bug capture (D6): the pads the frame gets; returns at once when it is off
 
                                 // Publish the state the NES actually received so GET /api/input/state

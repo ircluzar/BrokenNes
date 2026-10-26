@@ -307,6 +307,17 @@ namespace BrokenNes.Windows
         /// </summary>
         [JsonPropertyName("bugCaptureEnabled")]
         public bool BugCaptureEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Listen to the BrokenDev debug port (D7: a homebrew dev build's prints, asserts, markers and timers; Emulator > Debug Port). Off by
+        /// default: off, nothing is attached and the machine is exactly as without it.
+        /// </summary>
+        [JsonPropertyName("debugPortEnabled")]
+        public bool DebugPortEnabled { get; set; } = false;
+
+        /// <summary>With the debug port on, a failed assert pauses the game (the message and the place in the title bar and the log).</summary>
+        [JsonPropertyName("debugPortPauseOnAssert")]
+        public bool DebugPortPauseOnAssert { get; set; } = true;
         
         // Controller configuration - NEW SYSTEM
         /// <summary>

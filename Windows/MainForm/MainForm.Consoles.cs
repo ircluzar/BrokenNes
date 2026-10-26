@@ -125,7 +125,8 @@ namespace BrokenNes.Windows
                 };
             };
             server.QuickStateReason = () => quickStateReason;
-            WireBugApi(server);        // the bug capture (BrokenDev D6, MainForm.BugCapture.cs)
+            WireBugApi(server);
+            WirePortApi(server);       // the debug port (BrokenDev D7, MainForm.DebugPort.cs)        // the bug capture (BrokenDev D6, MainForm.BugCapture.cs)
             WireWideMessApi(server);   // WideMess milestone 6 (MainForm.WideMess.cs)
             WireWideMessTestCartApi(server);   // POST /api/widemess/testcart (MainForm.WideMessTestCart.cs)
             server.GetSegaSettings = () => new
@@ -671,6 +672,7 @@ namespace BrokenNes.Windows
             lock (emulationLock)
             {
                 FarmBeforeFrame(p1, p2);
+                PortBeforeFrame(s);                 // the debug port (D7): returns at once when it is off
                 BugBeforeSessionFrame(s, p1, p2);   // the bug capture (D6): returns at once when it is off
                 s.SetPad(0, p1); s.SetPad(1, p2);
                 s.RunFrame();

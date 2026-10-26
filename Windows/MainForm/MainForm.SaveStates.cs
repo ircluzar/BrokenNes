@@ -689,11 +689,9 @@ namespace BrokenNes.Windows
 
         private string GetContinueStatePath(string directoryName, string romKey)
         {
-            var continueDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "BrokenNes",
-                directoryName
-            );
+            // %APPDATA%\BrokenNes, or the BROKENNES_SAVES_DIR test hook's folder (SaveRoot, as the battery saves): a test app's continue
+            // state never lands in the user's folder
+            var continueDir = Path.Combine(SaveRoot, directoryName);
 
             var normalized = romKey.Trim().ToLowerInvariant();
             var fileName = Path.GetFileName(normalized);

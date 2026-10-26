@@ -41,6 +41,10 @@ internal static class PortTestCli
             var (nr, _, nm) = PortTestRoms.Nes(); DebugTestRoms.Write(romDir, "porttest.nes", nr); DebugTestRoms.Write(romDir, "porttest.mlb", nm);
             var (sr, _, ss) = PortTestRoms.Snes(); DebugTestRoms.Write(romDir, "porttest.sfc", sr); DebugTestRoms.Write(romDir, "porttest.sym", ss);
             var (gr, _, gs) = PortTestRoms.GameBoy(); DebugTestRoms.Write(romDir, "porttest.gb", gr); DebugTestRoms.Write(romDir, "porttest_gb.sym", gs);
+            // the negative controls: the same code writing beside the port ($4018 / $4240) and the Game Boy's messages without their signature
+            DebugTestRoms.Write(romDir, "porttest_neg.nes", PortTestRoms.Nes(0x4018).rom);
+            DebugTestRoms.Write(romDir, "porttest_neg.sfc", PortTestRoms.Snes(0x4240).rom);
+            DebugTestRoms.Write(romDir, "porttest_neg.gb", PortTestRoms.GameBoy(false).rom);
             Console.WriteLine($"wrote the debug port test ROMs to {romDir}");
             return 0;
         }
