@@ -882,18 +882,18 @@ and the divergence finder's report (the last marker before the first difference)
 - **Zero cost when off:** the goldens are unchanged (UAT, `--debug-test`, `--check-test`, `--wms-test` below); interleaved A/B against main's
   Workshop (best of three, the same pictures): VRUN 0.997, Super VRUN 1.016 / 0.988 / 1.008, the hello world's release build 0.993 / 0.999,
   the WideMess sample 0.969 / 1.040: noise.
-- **Results on the branch merged with main 7faca67** (main had not moved: the merge is empty): `--port-test` 94 of 94, `--debug-test` 101 of
-  101, `--check-test` 111 of 111, `--wms-test` 331 passed 0 failed, `--movie-test` 69 of 69, `--bug-test` 47 of 48: the one failure is
-  D6's speed check of the capture armed against off (Super VRUN +5.3%, another run VRUN +7.3%), and **main's own Workshop fails it the
-  same way on this machine now** (Super VRUN +6.7%): the machine's load, not D7 (the capture's ring is unchanged but for a list it fills only
-  when told); UAT 125 pass 0 fail 16 skip 3 info (with the main checkout's ignored ROM folders linked in read-only, then unlinked);
-  BrokenDev `run-tests` 141 passed 0 failed 0 skipped (with `-McpExe`: the client test 99 of 99 and the demo); the bug-capture desktop smoke
-  18 of 18, the debug-port desktop smoke 10 of 10; the desktop app, Workshop, the MCP server, Core, Lite and the plugin build.
+- **Results on the branch merged with main 0ec37a6** (WideMess M6 climb part 2; no conflict): `--port-test` 94 of 94, `--debug-test` 101 of
+  101, `--check-test` 111 of 111, `--wms-test` 363 passed 0 failed, `--movie-test` 69 of 69, `--bug-test` 48 of 48, UAT 125 pass 0 fail 16
+  skip 3 info (with the main checkout's ignored ROM folders linked in read-only, then unlinked), BrokenDev `run-tests` 141 passed 0 failed 0
+  skipped (with `-McpExe`: the client test 99 of 99 and the demo), the bug-capture desktop smoke 18 of 18, the debug-port desktop smoke 10
+  of 10; the desktop app, Workshop, the MCP server, Core, Lite and the plugin build. (Before the merge, on a loaded machine, D6's speed
+  check of the capture armed against off failed once at +5.3% / +7.3%, and main's own Workshop failed it the same way then, +6.7%: load,
+  not D7; it passes on the merged head.)
 - **Left open:** Lite has no debug port (its debugging comes through D3's pages, as D1 said); the ca65 include is not assembled (no ca65
   here); the NES and SNES dev builds were run on BrokenNes only (their port is writes nothing decodes; the Game Boy's ran on three other
   emulators); NintendulatorDX's `__timerN_title` symbol names are not read (timers are named by command 7 or by name); the desktop app shows an
   assert in the title bar and the log, no dialog (automation must never meet a modal box); the GB assert text carries the line, not the file
-  (a Windows path in sdas's `.ascii` would need escaping); the D6 speed check is flaky on a loaded machine.
+  (a Windows path in sdas's `.ascii` would need escaping); D6's speed check is sensitive to the machine's load.
 
 ## Open questions (to settle at the start of the track)
 
