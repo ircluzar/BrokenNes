@@ -928,6 +928,42 @@ and the divergence finder's report (the last marker before the first difference)
   build without them (the A/B).
 - **Then** the web pages in BrokenDev, on the same routes (after the eight windows).
 
+## D8 state (2026-10-26): six of the eight windows built
+
+- **Built** (Emulator > Debug Windows; `Windows/DebugWindows/*.cs`, the menu in `Windows/MainForm/MainForm.DebugWindows.cs`):
+  1. **Debugger**: registers, the disassembly around the PC (a back-scan for the lines before it, labels from the symbols), Pause /
+     Continue / Step Into / Over / Out / Frame, the CPU picker (the SPC700 on the SNES and WideMess), breakpoints by spec or symbol
+     (exec / read / write / rw, remove), the call stack innermost first, the last break, symbols typed or browsed. The symbols beside the
+     ROM load by themselves, **only that console's kind** (`.mlb` for the NES, `.sym` for the SNES / WideMess, `.sym` / `.noi` for the
+     Game Boy): the first version loaded every kind, and the memory window's watch check caught a SNES `debugtest.sym` filling the NES
+     debugger (`mirror_target` at `$13`). Closing the window detaches the debugger it attached (not an agent's).
+  2. **Memory**: every domain (`DebugMachine.Domains()`, the list `/api/memory/domains` gives), live hex + ASCII with the changed bytes in
+     red, go to an address or a symbol (the SNES bus by bank), watches by address / range / symbol, with the window's own symbol table:
+     it never attaches.
+  3. **Palettes**: NES palette RAM through the 2C02 colours, SNES CGRAM, Game Boy BGP / OBP0 / OBP1 and the Color's colour RAM.
+  4. **Tiles**, 5. **Sprites**, 6. **Maps**: one shared decoder in the engine, `NesEmulator.Debugging.DebugPictures` (`Tiles`, `Sprites`,
+     `Frame`, `DrawBoxes`, `Map`, `DrawView`). The MCP server's `tiles` and `sprites` tools now use it (their JSON unchanged). Maps: the NES's
+     four nametables with the scroll outlined; SNES BG1-BG4 in the current mode (mode 7 says it is not drawn); the Game Boy's background or
+     window map.
+- **A real bug found on the way:** the NES debugger's `oam` space read 0 for every byte, so the MCP `sprites` tool listed 64 sprites at
+  y 1 on every NES game (its test only checked that a list came back). PPU_FIX now implements `IPpuViewProbe` (`ProbeOam`, `ProbeCtrl`,
+  `ProbeT`, `ProbeFineX`: read only, no latch touched); other PPU cores say so in the machine's limitations. The client test's NES game
+  now has 32 sprites on screen.
+- **Zero cost closed:** no window exists until its menu item is clicked; reads use `DebuggerHub.Machine` (no hook); the timers live with
+  the windows; PPU_FIX gained only read-only members. The window's buttons work without `enableDebuggerControl` (the HTTP routes still
+  answer 403: checked).
+- **Tests:** `UAT/entrypoints/debug-windows-desktop-smoke.ps1` (UI Automation on the real app with scratch `BROKENNES_CONFIG_DIR`,
+  `BROKENNES_SAVES_DIR`, `BROKENNES_BUGS_DIR`, `BROKENDEV_HOME`; the user's `%APPDATA%\BrokenNes` listed before and after): **57 of 57**,
+  every window on the NES, SNES and Game Boy test ROMs, each check with its negative control (a wrong PC, another console's symbols, an
+  unknown watch, the next tile / cell / sprite being its own bytes, a sprite moved off screen, the rows of another palette).
+- **Results** on the branch (main af3506a merged: already up to date): `--debug-test` 101 of 101, `--port-test` 94, `--bug-test` 48 of 48,
+  `--movie-test` 69 of 69, `--check-test` 111 of 111, `--wms-test` 363 passed 0 failed, UAT 125 pass 0 fail 16 skip 3 info (the goldens
+  unchanged; the corpus and story ROM folders linked from the main checkout for the run, then unlinked), the MCP client test 99 of 99, the
+  desktop smoke 57 of 57. Speed A/B (Workshop `--romtest` VRUN 3600 frames on FIX, interleaved best of three, main's build against this
+  one): 12.01 s against 12.01 s, the same picture hash.
+- **Next:** 7. the event view (a `DebugObserver` armed only while it is open), 8. the sound monitor; then the BrokenDev web pages. The
+  smoke uses the D1 test ROMs only: a WideMess ROM through the same windows (the SNES machine) is not in it yet.
+
 ## Open questions (to settle at the start of the track)
 
 1. The debug port's registers on each console, checked against mapper 30, the SNES coprocessors' ranges and the Game Boy Color's
