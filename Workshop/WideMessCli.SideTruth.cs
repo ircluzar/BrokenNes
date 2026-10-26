@@ -14,7 +14,8 @@ internal static partial class WideMessCli
     /// unwrapped; a step of more than 64 pixels, or a new map or BGMODE, starts again). Every side column a frame shows is a claim: "at this place of the layer (unwrapped x, from
     /// the unwrapped VOFS down) the game's map looks like this". When the place later scrolls into the SNES picture, the SNES picture is the truth, on the world rows both show:
     /// the claim is right (the same pixels, but for at most 2% of those rows), empty (the layer shows nothing there, a filled side, where the truth shows something) or wrong.
-    /// The pixels are the layer's own colours (before windows, colour math and brightness). The truth is taken 8 columns or more inside the SNES picture's edges (<c>--truth-margin</c>),
+    /// The pixels are what the layer draws: its palette entries (CGRAM index, or the direct-colour value), so palette animation is never a difference; <c>--compare colour</c> compares
+    /// the layer's own colours instead (before windows, colour math and brightness), as the first versions did. The truth is taken 8 columns or more inside the SNES picture's edges (<c>--truth-margin</c>),
     /// where games have finished drawing a column that scrolls in.
     /// <para>Per line (milestone 6 climb): a frame's claims and truths use only its band, the lines the picture shows (not forced blank, brightness above 0) whose scroll, map and
     /// BGMODE are the first shown line's. Lines of another scroll (a status bar, a parallax split, blank lines at the top for DMA) show other places and are left out; a frame
@@ -38,21 +39,18 @@ internal static partial class WideMessCli
         if (s == null) return 1;
         var ppu = s.WideMessPpu!;
         ppu.CompareEnhanced = true;   // the SNES chip draws each line too: it fills DebugLineRegisters
-        ppu.DebugCaptureLayer = layer;   // the layer's own colours, before windows and colour math (the sky's fixed-colour gradients and fades would change every pixel)
+        ppu.DebugCaptureLayer = layer;   // the layer's own pixels, before windows and colour math (the sky's fixed-colour gradients and fades would change every pixel)
+        // what the layer draws, as palette entries (the default since the palette fix): a palette that fades or cycles between a claim and its truth is the same drawing, and the side
+        // shows it with the live palette as the centre does. --compare colour: the colours as the first versions compared them (their numbers reproduced).
+        string compare = Opt(args, "compare", "index");
+        if (compare is not ("index" or "colour")) { Console.Error.WriteLine("--compare is index or colour"); return 2; }
+        ppu.DebugCaptureIndices = compare == "index";
         var pad = ParsePad(script);
-        const int W = PPU_WMS.WideWidth, O = PPU_WMS.SnesOrigin;
-        const ushort NotShown = 0xFFFF;   // a row outside the frame's band (a BGR555 colour never sets bit 15; Clear is 0x8000)
-        // claims by place: the unwrapped x of the layer; each a column of world rows from its top (the unwrapped VOFS of the frame it was made in)
-        var pending = new Dictionary<long, List<(int frame, long top, ushort[] col)>>();
-        long u = 0, vu = 0; int prevH = -1, prevV = -1, prevSig = -1;
-        long right = 0, empty = 0, wrong = 0, skipped = 0, claims = 0, bandRows = 0, shownRows = 0, sidePixels = 0, sideFilled = 0;
-        var firstWrong = new List<int>();
         int detail = int.Parse(Opt(args, "detail", "0")), showBands = int.Parse(Opt(args, "show-bands", "0"));
         // the truth is taken 8 columns or more inside the SNES picture's edges: games finish drawing a column of their map as it scrolls in there (and hide the seam there),
         // so the outermost columns can show a place before it is drawn (--truth-margin 0: the first version's every column)
-        int margin = int.Parse(Opt(args, "truth-margin", "8"));
+        var judge = new SideJudge(layer, int.Parse(Opt(args, "truth-margin", "8"))) { Detail = detail };
         int at = 0; PadButtons held = 0;
-        var inBand = new bool[PPU_SFC.MaxHeight];
         for (int f = 1; f <= frames; f++)
         {
             PlayTo(s, pad, ref at, f, ref held);
@@ -63,13 +61,47 @@ internal static partial class WideMessCli
                 var sb = new System.Text.StringBuilder($"  bands {f} (width {s.FrameWidth}):");
                 int st = 1;
                 for (int line = 2; line <= h + 1; line++)
-                    if (line == h + 1 || Hofs(lines[line], layer) != Hofs(lines[st], layer) || Vofs(lines[line], layer) != Vofs(lines[st], layer) || Shown(lines[line]) != Shown(lines[st]))
-                    { sb.Append($" {st - 1}-{line - 2}:{(Shown(lines[st]) ? "" : "blank ")}{Hofs(lines[st], layer)},{Vofs(lines[st], layer)}"); st = line; }
+                    if (line == h + 1 || SideJudge.Hofs(lines[line], layer) != SideJudge.Hofs(lines[st], layer) || SideJudge.Vofs(lines[line], layer) != SideJudge.Vofs(lines[st], layer) || SideJudge.Shown(lines[line]) != SideJudge.Shown(lines[st]))
+                    { sb.Append($" {st - 1}-{line - 2}:{(SideJudge.Shown(lines[st]) ? "" : "blank ")}{SideJudge.Hofs(lines[st], layer)},{SideJudge.Vofs(lines[st], layer)}"); st = line; }
                 Console.WriteLine(sb.ToString());
             }
+            judge.Frame(f, lines, h, s.FrameWidth, ppu.DebugCapture);
+        }
+        long right = judge.Right, empty = judge.Empty, wrong = judge.Wrong, skipped = judge.Skipped, claims = judge.Claims, bandRows = judge.BandRows, shownRows = judge.ShownRows;
+        long sidePixels = judge.SidePixels, sideFilled = judge.SideFilled; var firstWrong = judge.FirstWrong;
+        long judged = right + empty + wrong;
+        LastSideTruth = (right, empty, wrong);
+        double P(long n) => judged == 0 ? 0 : 100.0 * n / judged;
+        Console.WriteLine($"{name}, {layerName} ({(compare == "index" ? "palette entries" : "colours")} compared), {note}: {frames:N0} frames ({skipped:N0} skipped: blank, another width or under 32 lines of the layer's main scroll; {(shownRows == 0 ? 0 : 100.0 * bandRows / shownRows):F0}% of the shown lines in the band), {claims:N0} side columns claimed, {judged:N0} later shown by the SNES picture:");
+        Console.WriteLine($"  right {right:N0} ({P(right):F1}%), empty {empty:N0} ({P(empty):F1}%), wrong {wrong:N0} ({P(wrong):F1}%){(firstWrong.Count > 0 ? $"; wrong claims made at frames {string.Join(", ", firstWrong)}..." : "")}");
+        Console.WriteLine($"  the sides as shown: the layer draws {(sidePixels == 0 ? 0 : 100.0 * sideFilled / sidePixels):F1}% of the side pixels of its main scroll (every frame judged, whether or not the place is shown later)");
+        var mem = ppu.MemoryStats(layer);
+        if (mem != null) Console.WriteLine($"  map memory: {mem}");
+        return 0;
+
+    }
+
+    /// <summary>The judge of <see cref="SideTruth"/> (spec 6.3), one frame at a time: the frame's line registers and the layer's capture (palette entries or colours, the tool capture
+    /// <see cref="PPU_WMS.DebugCapture"/>) in, the claims kept and settled, the counts out. The tool runs it on a game; E2e runs it on a synthetic one.</summary>
+    internal sealed class SideJudge
+    {
+        private const int W = PPU_WMS.WideWidth, O = PPU_WMS.SnesOrigin;
+        private const ushort NotShown = 0xFFFF;   // a row outside the frame's band (never a BGR555 colour, nor a palette entry; Clear is 0x8000)
+        private readonly int layer, margin;
+        // claims by place: the unwrapped x of the layer; each a column of world rows from its top (the unwrapped VOFS of the frame it was made in)
+        private readonly Dictionary<long, List<(int frame, long top, ushort[] col)>> pending = new();
+        private long u, vu; private int prevH = -1, prevV = -1, prevSig = -1;
+        private readonly bool[] inBand = new bool[PPU_SFC.MaxHeight];
+        public long Right, Empty, Wrong, Skipped, Claims, BandRows, ShownRows, SidePixels, SideFilled;
+        public readonly List<int> FirstWrong = new();
+        public int Detail;
+        public SideJudge(int layer, int margin) { this.layer = layer; this.margin = margin; }
+
+        public void Frame(int f, PPU_SFC.RegisterSnapshot[] lines, int h, int frameWidth, ushort[]? fr)
+        {
             int refLine = 1;
             while (refLine <= h && !Shown(lines[refLine])) refLine++;
-            if (s.FrameWidth != W || refLine > h) { prevH = -1; skipped++; continue; }
+            if (frameWidth != W || refLine > h) { prevH = -1; Skipped++; return; }
             var rr = lines[refLine];
             int hofs = Hofs(rr, layer), vofs = Vofs(rr, layer), sig = Sc(rr, layer) | rr.Bgmode << 8;
             int band = 0;
@@ -77,11 +109,11 @@ internal static partial class WideMessCli
             {
                 var r = lines[line];
                 bool shown = Shown(r);
-                if (shown) shownRows++;
+                if (shown) ShownRows++;
                 inBand[line - 1] = shown && Hofs(r, layer) == hofs && Vofs(r, layer) == vofs && Sc(r, layer) == Sc(rr, layer) && r.Bgmode == rr.Bgmode;
                 if (inBand[line - 1]) band++;
             }
-            bandRows += band;
+            BandRows += band;
             bool cut = prevH < 0 || sig != prevSig;
             int d = 0, dv = 0;
             if (!cut)
@@ -91,9 +123,8 @@ internal static partial class WideMessCli
             }
             if (cut) { pending.Clear(); u = hofs; vu = vofs; } else { u += d; vu += dv; }
             prevH = hofs; prevV = vofs; prevSig = sig;
-            if (band < 32) { skipped++; continue; }   // too little of the layer's main scroll shown to judge by
-            var fr = ppu.DebugCapture;
-            if (fr == null) { skipped++; continue; }
+            if (band < 32) { Skipped++; return; }   // too little of the layer's main scroll shown to judge by
+            if (fr == null) { Skipped++; return; }
             ushort[] Column(int c) { var col = new ushort[h]; for (int y = 0; y < h; y++) col[y] = inBand[y] ? fr[y * W + c] : NotShown; return col; }
             // the truth: every SNES column of this frame settles the claims made about its place, on the world rows both show
             for (int c = O + margin; c < O + 256 - margin; c++)
@@ -117,13 +148,13 @@ internal static partial class WideMessCli
                         if (col[cy] != truth[y]) { differ++; if (fy < 0) fy = y; }
                     }
                     if (common < 32) continue;   // the two share too few world rows: the claim waits for a better view
-                    if (differ <= common / 50) right++;   // right: all but at most 2% of the rows both show (a row at the map's edge the game streams vertically)
-                    else if (claimed == 0) empty++;
+                    if (differ <= common / 50) Right++;   // right: all but at most 2% of the rows both show (a row at the map's edge the game streams vertically)
+                    else if (claimed == 0) Empty++;
                     else
                     {
-                        wrong++;
-                        if (firstWrong.Count < 8 && (firstWrong.Count == 0 || firstWrong[^1] != frame)) firstWrong.Add(frame);
-                        if (detail-- > 0)
+                        Wrong++;
+                        if (FirstWrong.Count < 8 && (FirstWrong.Count == 0 || FirstWrong[^1] != frame)) FirstWrong.Add(frame);
+                        if (Detail-- > 0)
                             Console.WriteLine($"    wrong: claimed at frame {frame}, shown at frame {f} column {c}: {differ} of {common} rows differ, first row {fy}: {col[vu + fy - top]:X4} vs {truth[fy]:X4}");
                     }
                     list.RemoveAt(i);
@@ -135,26 +166,17 @@ internal static partial class WideMessCli
             {
                 if (c == O) c = O + 256;
                 for (int y = 0; y < h; y++)
-                    if (inBand[y]) { sidePixels++; if (fr[y * W + c] != PPU_WMS.CaptureClear) sideFilled++; }
+                    if (inBand[y]) { SidePixels++; if (fr[y * W + c] != PPU_WMS.CaptureClear) SideFilled++; }
                 long key = u + (c - O);
                 if (!pending.TryGetValue(key, out var list)) pending[key] = list = new List<(int, long, ushort[])>();
-                if (list.Count < 4) { list.Add((f, vu, Column(c))); claims++; }
+                if (list.Count < 4) { list.Add((f, vu, Column(c))); Claims++; }
             }
             if (f % 600 == 0) foreach (var k in pending.Where(kv => kv.Value[^1].frame < f - 600).Select(kv => kv.Key).ToList()) pending.Remove(k);
         }
-        long judged = right + empty + wrong;
-        LastSideTruth = (right, empty, wrong);
-        double P(long n) => judged == 0 ? 0 : 100.0 * n / judged;
-        Console.WriteLine($"{name}, {layerName}, {note}: {frames:N0} frames ({skipped:N0} skipped: blank, another width or under 32 lines of the layer's main scroll; {(shownRows == 0 ? 0 : 100.0 * bandRows / shownRows):F0}% of the shown lines in the band), {claims:N0} side columns claimed, {judged:N0} later shown by the SNES picture:");
-        Console.WriteLine($"  right {right:N0} ({P(right):F1}%), empty {empty:N0} ({P(empty):F1}%), wrong {wrong:N0} ({P(wrong):F1}%){(firstWrong.Count > 0 ? $"; wrong claims made at frames {string.Join(", ", firstWrong)}..." : "")}");
-        Console.WriteLine($"  the sides as shown: the layer draws {(sidePixels == 0 ? 0 : 100.0 * sideFilled / sidePixels):F1}% of the side pixels of its main scroll (every frame judged, whether or not the place is shown later)");
-        var mem = ppu.MemoryStats(layer);
-        if (mem != null) Console.WriteLine($"  map memory: {mem}");
-        return 0;
 
-        static int Hofs(PPU_SFC.RegisterSnapshot r, int bg) => bg switch { 0 => r.Bg1hofs, 1 => r.Bg2hofs, 2 => r.Bg3hofs, _ => r.Bg4hofs } & 0x3FF;
-        static int Vofs(PPU_SFC.RegisterSnapshot r, int bg) => bg switch { 0 => r.Bg1vofs, 1 => r.Bg2vofs, 2 => r.Bg3vofs, _ => r.Bg4vofs } & 0x3FF;
-        static int Sc(PPU_SFC.RegisterSnapshot r, int bg) => bg switch { 0 => r.Bg1sc, 1 => r.Bg2sc, 2 => r.Bg3sc, _ => r.Bg4sc };
-        static bool Shown(PPU_SFC.RegisterSnapshot r) => (r.Inidisp & 0x80) == 0 && (r.Inidisp & 0x0F) != 0;
+        public static int Hofs(PPU_SFC.RegisterSnapshot r, int bg) => bg switch { 0 => r.Bg1hofs, 1 => r.Bg2hofs, 2 => r.Bg3hofs, _ => r.Bg4hofs } & 0x3FF;
+        public static int Vofs(PPU_SFC.RegisterSnapshot r, int bg) => bg switch { 0 => r.Bg1vofs, 1 => r.Bg2vofs, 2 => r.Bg3vofs, _ => r.Bg4vofs } & 0x3FF;
+        public static int Sc(PPU_SFC.RegisterSnapshot r, int bg) => bg switch { 0 => r.Bg1sc, 1 => r.Bg2sc, 2 => r.Bg3sc, _ => r.Bg4sc };
+        public static bool Shown(PPU_SFC.RegisterSnapshot r) => (r.Inidisp & 0x80) == 0 && (r.Inidisp & 0x0F) != 0;
     }
 }

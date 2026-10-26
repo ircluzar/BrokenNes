@@ -64,6 +64,8 @@ internal static partial class WideMessCli
         SyntheticMemory();
         Console.WriteLine("E2d. The level in work RAM on a synthetic game that keeps its level as blocks");
         SyntheticLevel();
+        Console.WriteLine("E2e. Side truth compares what a layer draws (palette entries): a synthetic game whose palette fades while it scrolls");
+        SyntheticSideTruth();
 
         Console.WriteLine("E3. Better sound: cubic interpolation on the S-DSP (a synthetic voice)");
         SyntheticSound();

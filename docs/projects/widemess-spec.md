@@ -672,12 +672,21 @@ profile already claims is refused with the reason. It is never half-read.
 - `--wms-enhance-film`: the wide picture every N frames, with each moment's register set-up per band of rows (for writing profiles).
 - `--wms-side-truth (--game <key> | --rom <game>) --layer bg1` (milestone 6 follow-up): how true a layer's side columns are. Every side column a
   frame shows claims what the layer looks like at that place; when the place later scrolls into the SNES picture, the SNES picture is the
-  truth, and the claim is right, empty (the layer shows nothing there) or wrong. The layer's own colours are compared (a capture before windows,
-  colour math and brightness). Since the milestone 6 climb it works per line: a frame's claims and truths use only its band, the lines the
+  truth, and the claim is right, empty (the layer shows nothing there) or wrong. The layer's own pixels are compared (a capture before windows,
+  colour math and brightness; since the palette fix below, its palette entries rather than its colours). Since the milestone 6 climb it works per line: a frame's claims and truths use only its band, the lines the
   picture shows (not forced blank, brightness above 0) with the scroll, map and BGMODE of the first shown line; other lines (a status bar, a
   parallax split, blank lines the game keeps at the top for DMA) are left out. The vertical scroll is followed too (unwrapped as the horizontal),
   so a claim is judged on the world rows it and the truth both show (at least 32; until then it waits). The first version judged only frames whose
   lines all shared one scroll, at the same vertical scroll: Yoshi's Island (blank top lines every frame) could not be measured at all.
+  - **What is compared (the palette fix, 2026-10-25):** what the layer *draws*, not the colour it comes out in. Per pixel the capture holds the
+    layer's palette entry: the CGRAM index (the palette and the colour index, 1-255), or for direct colour the raw value with its palette bits
+    (`$4000 | palette << 8 | value`); a pixel the layer leaves transparent, or a filled side, is "nothing". A game that fades or cycles a palette
+    between the frame a side claims a place and the frame the SNES picture shows it draws the same thing there: the side shows it with the live
+    palette, as the centre does, so it is never counted wrong. (Super Metroid's BG2 was 3.7% wrong by colour: all of it one room's spores, CGRAM
+    entries 113-115 fading over 90 frames.) A real change of the map or of the tiles is still a difference. `--compare colour` compares the layer's
+    own colours instead (before windows, colour math and brightness), as the first versions did, so their numbers can be reproduced.
+  - The capture is the picture chip's tool path (`DebugCaptureLayer`, with `DebugCaptureIndices` for the entries): off, it costs nothing and the
+    picture is the same; on, it only records, the picture is still the same.
 - `--wms-enhance-test`: milestone 6's checks alone.
 - `--wms-fast-probe --rom <game> --from <frame>`: fast CPU switched on at a frame, the 65816's PC beside the SNES console's.
 - `--wms-test` checks every enhancement against a negative control:

@@ -613,6 +613,7 @@ public sealed partial class PPU_WMS
         long wy = t.Vu + line, ty = wy >> shift;
         int pyRaw = (int)(wy & (size - 1));
         var vram = Vram; var cgram = Cgram;
+        var idx = DebugCaptureIndices && bg == DebugCaptureLayer ? captureIdx : null;   // tools only (spec 6.3): the palette entries drawn
         long lastTx = long.MinValue; int entry = -1; bool memHit = false;
         for (int c = 0; c < WideWidth; c++)
         {
@@ -630,7 +631,7 @@ public sealed partial class PPU_WMS
                 if (entry < 0 && mem != null && mem.TryGet(MapMemory.Key(tx, ty), out ushort me)) { entry = me; memHit = true; }
             }
             if (mem != null) { mem.Pixels++; if (memHit) mem.Remembered++; }
-            if (entry < 0) { colors[c] = Clear; continue; }
+            if (entry < 0) { colors[c] = Clear; if (idx != null) idx[c] = Clear; continue; }
             if (lt != null && !memHit) lt.Pixels++;
             int px = (int)(wx & (size - 1)), py = pyRaw;
             if ((entry & 0x4000) != 0) px = size - 1 - px;
@@ -645,9 +646,10 @@ public sealed partial class PPU_WMS
                 ushort wd = vram[(addr + plane * 4) & 0x7FFF];
                 v |= ((wd >> bit) & 1) << plane | ((wd >> (8 + bit)) & 1) << (plane + 1);
             }
-            if (v == 0) { colors[c] = Clear; continue; }
+            if (v == 0) { colors[c] = Clear; if (idx != null) idx[c] = Clear; continue; }
             int pal = (entry >> 10) & 7;
             colors[c] = direct ? SnesDirectColour(v, pal) : cgram[(paletteBase + (bpp == 8 ? 0 : pal << bpp) + v) & 0xFF];
+            if (idx != null) idx[c] = CaptureEntry(direct, v, pal, paletteBase, bpp);
             prios[c] = (byte)((entry >> 13) & 1);
         }
     }
