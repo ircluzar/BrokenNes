@@ -928,7 +928,7 @@ and the divergence finder's report (the last marker before the first difference)
   build without them (the A/B).
 - **Then** the web pages in BrokenDev, on the same routes (after the eight windows).
 
-## D8 state (2026-10-26): six of the eight windows built
+## D8 state (2026-10-26): the eight desktop windows built
 
 - **Built** (Emulator > Debug Windows; `Windows/DebugWindows/*.cs`, the menu in `Windows/MainForm/MainForm.DebugWindows.cs`):
   1. **Debugger**: registers, the disassembly around the PC (a back-scan for the lines before it, labels from the symbols), Pause /
@@ -961,8 +961,18 @@ and the divergence finder's report (the last marker before the first difference)
   unchanged; the corpus and story ROM folders linked from the main checkout for the run, then unlinked), the MCP client test 99 of 99, the
   desktop smoke 57 of 57. Speed A/B (Workshop `--romtest` VRUN 3600 frames on FIX, interleaved best of three, main's build against this
   one): 12.01 s against 12.01 s, the same picture hash.
-- **Next:** 7. the event view (a `DebugObserver` armed only while it is open), 8. the sound monitor; then the BrokenDev web pages. The
-  smoke uses the D1 test ROMs only: a WideMess ROM through the same windows (the SNES machine) is not in it yet.
+- **Then built (all eight windows now):**
+  7. **Event view**: one frame's register writes by scanline and dot, DMA / HDMA runs (a run of bytes to one register is one line with
+     its count), interrupt entries; a `DebugObserver` added while the window is open (it attaches the debugger if nobody had, and
+     removes the observer and that debugger when it closes: the smoke checks nothing is attached or armed after).
+  8. **Sound monitor** (`NesEmulator.Debugging.DebugSound`, read only): the NES's five channels from APU_FIX's phase probe (another APU
+     core says it has none), the S-DSP's eight voices, the Game Boy's NR52 and channel registers; a level bar each. Mute and solo are
+     not in it: the NES's channel mutes stay in Sound > Sound Channels (they write the config); per-voice mute for the SNES and Game Boy
+     is still to do.
+- **The smoke covers WideMess** (the devkit sample with its `.sym`: the debugger parks with 1815 symbols, detaches on close; memory and
+  tiles on its VRAM): **71 of 71**, the user's `%APPDATA%\BrokenNes` unchanged. Rerun after these: `--debug-test` 101 of 101, the MCP
+  client test 99 of 99 (only new engine files since the full run above, none on the run path).
+- **Next:** mute / solo in the sound monitor for the SNES and Game Boy; then the BrokenDev web pages on the same routes.
 
 ## Open questions (to settle at the start of the track)
 
