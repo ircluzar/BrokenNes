@@ -757,14 +757,63 @@ Refined from section 5 before the code, measured on this machine:
   smoke 18 of 18, Lite 8 of 8; the desktop app, Workshop, the MCP server, Lite (AOT publish), Core and the plugin build.
 - **Left open:** VRUN's build record today is a hand-published frozen one with no workspace, so F9 on that build goes to the default folder
   (`brokendev bugs vrun-nes` still lists it, by the ROM's sha256); the next `brokendev.ps1 build vrun-nes` writes `bugs` and F9 lands in
-  `VRUN_Nes_Devugs`. A capture of a Sega game in another region or model, or of a SNES game with real coprocessor firmware, replays on
+  `VRUN_Nes_Dev\bugs`. A capture of a Sega game in another region or model, or of a SNES game with real coprocessor firmware, replays on
   the defaults (the settings are in `bug.json`; the replay says off course rather than guessing). The NES state carries the whole ROM (763 KB
   for VRUN): a lighter state would make Lite's once-a-second cost smaller. The key and the note box are open question 3's answer for now.
+
+## D7 settled (2026-10-25): the debug port's registers (open question 1)
+
+Settled before the code, for the user to review. **One protocol, three ways in:** a game sends a message (print, assert, marker), starts and
+stops timers, or asks for a break; BrokenNes acts on it only while the debugger or its dev mode is on (Workshop's debug, check, profile and
+verify runs, the MCP server's sessions, the desktop app's "Debug Port" switch). With it off nothing is attached: the addresses behave exactly as
+the hardware's (the writes go nowhere), so every golden and the speed are unchanged. With it on the emulation is still frame-identical (the
+port only listens: it never answers a read, never changes a register; measured). In a release build the library calls compile to nothing.
+
+**What other emulators already do** (looked up 2026-10-25):
+- **Game Boy:** a real convention exists and is the one GBDK 4.5.0 ships (`gbdk/emu_debug.h`): the **bgb / Emulicious debug message**,
+  `ld d,d; jr .end; dw $6464; dw $0000; db "text"; .end:` (an inline message; `%A%`, `%HL%`, `%ROMBANK%`, `%ZEROCLKS%`, `%LASTCLKS%`... are
+  expanded), GBDK's `EMU_printf` (`ld d,d; jr; dw $6464; dw $0200` with the format in HL and the arguments in DE: Emulicious's printf),
+  `EMU_PROFILE_BEGIN/END` (two messages with `%ZEROCLKS%` and `%-8+LASTCLKS%`: bgb's profiling idiom), and the **`ld b,b` source
+  breakpoint** (bgb, Emulicious, SameBoy, mGBA). These are instructions, not registers: `ld d,d` and `ld b,b` do nothing on the hardware and
+  `jr` skips the message, so the Color's registers are never touched.
+- **NES:** no register is shared by the common emulators (Mesen, FCEUX, BizHawk have none). NintendulatorDX has the closest thing:
+  cycle-counting **timers at `$402x` (start) and `$403x` (stop)**, with **`$401E` / `$401F` as their aliases "for VirtuaNES compatibility"**,
+  timer names from a `__timerN_title` symbol, and a print register at `$4040` (thefox's README, nesdev forum t6773). `$402x`-`$40xx` are the
+  Famicom Disk System's registers (`$4020-$4026`, `$4030-$4033`, wave RAM `$4040-$407F`), so only the `$401E` / `$401F` aliases are safe.
+- **SNES:** no shared register convention (no$sns and Mesen break on `WDM`, nothing prints).
+
+**The choice:**
+
+| Console | Where | Why |
+|---|---|---|
+| **NES** (every mapper, mapper 30's boards included) | **`$401C-$401F`**: `$401C` DATA (append a byte to the message), `$401D` COMMAND, `$401E` TIMER START (the value is the timer number), `$401F` TIMER STOP | The 2A03's CPU-test range (`$4018-$401F`), dead on a retail console; BrokenNes's bus sends nothing there (no mapper sees `$4018-$401F`). Mapper 30 (UNROM-512 and the self-flashing board) decodes `$8000-$FFFF` only; no board we run decodes below `$4020` (FDS `$4020+`, MMC5 `$5000+`, Namco 163 `$4800+`, NSF `$5FF8+`). `$401E` / `$401F` keep the VirtuaNES / NintendulatorDX meaning (start / stop: timer 0 when the value is 0, so a game written for NintendulatorDX's aliases times the same). The game only writes (a read of `$4018-$5FFF` is the `nes.open-bus` check's business and nothing answers it). |
+| **SNES** (any cartridge, the coprocessors included) | **`$4230-$423F`** in banks `$00-$3F` / `$80-$BF`: `$4230` / `$4231` DATA (both append, so a 16-bit store appends its two bytes, low first), `$4232` COMMAND, `$4234` TIMER START, `$4236` TIMER STOP (`$4233`, `$4235`, `$4237` ignored: the high byte of a 16-bit store), `$4238-$423F` reserved | The S-CPU decodes nothing between `$4220` and `$42FF` (open bus); no coprocessor maps it (SA-1 `$2200-$23FF`, Super FX `$3000-$34FF`, S-DD1 / SPC7110 `$4800+`, DSP-n / CX4 / OBC1 / ST01x `$6000-$7FFF` or ROM, S-RTC `$2800`, MSU-1 `$2000-$2007`, Satellaview `$2188-$219F` and `$5000+`): checked against every chip's `Owns` in BrokenNes. The 16-bit-safe layout is for 816-tcc and `rep #$20` code. An unused B-bus register (the plan's other candidate) is worse: `$2184-$21FF` is the expansion port's, where Satellaview and others live. |
+| **WideMess** | **the same `$4230-$423F`**, the range its spec v1 reserved | One library and one decoder for the SNES and the WideMess. The port works locked or unlocked (it is BrokenNes's, not the console's): a WideMess game and a SNES game debug the same way. `WMFEAT` bit 7 ("debug port") stays 0: answering it would let a game behave differently under the debugger, which the port never does. |
+| **Game Boy / Color** | **the bgb / Emulicious messages and `ld b,b`**, no register | The convention exists, GBDK ships it, and bgb, Emulicious and SameBoy already show these messages: the VOC dev build prints in them too. No I/O register is safe on the Color (`$FF4C-$FF7F` are the Color's or locked to the boot ROM; `$FF72-$FF75` are undocumented read/write registers that a test ROM reads). BrokenNes reads the inline message (`$0000`) and the printf one (`$0200`). |
+
+**The protocol on the NES and SNES** (the commands written to COMMAND; DATA's bytes are the command's argument, emptied after each command):
+`$01` print, `$02` assert failed, `$03` marker: the text, optionally followed by a `$00` and the values its `%` fields take (`%hu %hd %hx %c`
+one byte, `%u %d %x` two bytes low first, `%lu %lx` four, widths and `0` padding as in C); `$04` / `$05` start / stop a timer by name;
+`$06` break (the debugger stops; a headless run notes it); `$07` name timer N (the first byte, then the name); `$08` clear. `$81-$87`: the
+same with a pointer instead of the text (2 bytes on the NES, 3 on the SNES: low, high, bank) to a zero-ended text BrokenNes reads without side
+effects. An unknown command, a buffer past 255 bytes or a missing value is an `error` event, never silence.
+
+**On the Game Boy** the message's text says what it is: plain text prints; `@assert ...`, `@mark ...`, `@timer+ name`, `@timer- name` and
+`@break` are the port's other events (the library writes them; bgb and Emulicious show the same lines, and the timer lines carry
+`%ZEROCLKS%` / `%-8+LASTCLKS%`, so their profiler reads the same timers). An `ld b,b` alone is a break.
+
+**Where each event goes:** print to the Workshop / desktop log, the MCP results and verify's report; **assert** pauses the game in the
+debugger with the message and the place (the PC, its symbol; the library adds the file and line), and in a headless run is a finding
+`port.assert` that always fails verify (an assert cannot be accepted); **timers** report calls, cycles per call (average, worst) and per frame
+(in the profiler's units: NES CPU cycles, SNES master clocks, Game Boy M-cycles) in D4's profile; **markers** go into D5's movies (`m` lines)
+and the divergence finder's report (the last marker before the first difference), and into D6's bug captures (`bug.json`, the last 30 s).
 
 ## Open questions (to settle at the start of the track)
 
 1. The debug port's registers on each console, checked against mapper 30, the SNES coprocessors' ranges and the Game Boy Color's
-   registers, reusing a convention other emulators already show where one exists.
+   registers, reusing a convention other emulators already show where one exists. **Answered 2026-10-25 for review** ("D7 settled"): the NES
+   `$401C-$401F` (`$401E` / `$401F` the VirtuaNES / NintendulatorDX timer aliases), the SNES and WideMess `$4230-$423F` (the range the WideMess
+   spec reserved), the Game Boy the bgb / Emulicious messages (`ld d,d`) and the `ld b,b` breakpoint that GBDK ships.
 2. The movie format's name and file extension. (D5 uses a working name, "BrokenNes movie", `.bnm`: the constants of `MovieFormat`.)
 3. The bug-capture key and how the note is typed. (D6, for now: F9, a one-line note box with the game paused; Lite: the Bug button and the browser's prompt.)
 4. The first check catalogue per console, and which findings today's games accept (for example Super VRUN's SNESMOD sound-RAM reads).
