@@ -27,6 +27,7 @@ namespace BrokenNes.Windows
             menu.DropDownItems.Add(new ToolStripMenuItem("&Sprites", null, (_, _) => OpenDebugWindow("sprites")) { Name = "debugWindowSprites" });
             menu.DropDownItems.Add(new ToolStripMenuItem("&Event View", null, (_, _) => OpenDebugWindow("events")) { Name = "debugWindowEvents" });
             menu.DropDownItems.Add(new ToolStripMenuItem("S&ound Monitor", null, (_, _) => OpenDebugWindow("sound")) { Name = "debugWindowSound" });
+            AddLanShareMenu(menu);   // Share Read-Only Pages on the LAN (MainForm.LanShare.cs)
             emulatorMenu.DropDownItems.Add(menu);
         }
 

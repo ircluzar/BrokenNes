@@ -12,6 +12,8 @@ namespace BrokenNes.Windows.WebApi
         /// <summary>The debug port's state and events after a seq, at most N (set by the main form).</summary>
         public Func<long, int, object>? GetDebugPort { get; set; }
         public Action<bool>? SetDebugPortEnabled { get; set; }
+        /// <summary>The LAN share's state (on, address, port, the shared routes; never the token: only the app's window shows it).</summary>
+        public Func<object>? GetLanShare { get; set; }
 
         /// <summary>
         /// The BrokenDev debug port (milestone D7): GET /api/debug/port?since=&amp;limit= (on or off, where it listens, the counts, the events after
@@ -27,6 +29,9 @@ namespace BrokenNes.Windows.WebApi
                 int limit = int.TryParse(ctx.Request.Query["limit"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var l) ? l : 200;
                 return Results.Ok(GetDebugPort(since, limit));
             });
+
+            // GET /api/debug/lan: the read-only pages' LAN share (Emulator > Debug Windows > Share Read-Only Pages on the LAN; D8). Switched from the menu only.
+            app.MapGet("/api/debug/lan", () => GetLanShare == null ? Results.BadRequest(new { success = false, error = "the LAN share is not wired" }) : Results.Ok(GetLanShare()));
 
             app.MapPost("/api/debug/port/enabled", async (HttpContext ctx) =>
             {

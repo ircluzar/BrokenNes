@@ -1052,7 +1052,7 @@ Three cases, two mechanisms. Nothing changes until it is switched on; the deskto
 
 Order: case 2 first (the user's own games on the desktop, watched from a phone), then case 1.
 
-**Case 1 built (2026-10-26).** Case 2, the LAN share, waits for the user's approval: it opens a network listener.
+**Case 1 built (2026-10-26).** Case 2, the LAN share, was then approved by the user and built (below).
 - **The bridge.** `Windows/NesEmulator/board/Emulator.DebugBridge.cs` has one `[JSInvokable] DebugJson(path)`; `window.brokenNesDebug.get(path)` (end of
   `WebLite/wwwroot/lib/nesInterop.js`) calls it. It answers the read-only routes: state, registers, disasm, memory, domains,
   peek-range, palettes, tiles, map, sprites, sound. For the call stack and events it says why it has none. Anything else is refused by
@@ -1072,6 +1072,36 @@ Order: case 2 first (the user's own games on the desktop, watched from a phone),
   - speed: frames take 4.80 ms before the bridge was ever used and 4.77 ms after.
   `lite-bugs.ps1` on the same publish passes 8 of 8; with the capture off a frame takes 5.57 ms, as at D6.
 - Not tested: a real phone.
+
+**Case 2 built (2026-10-26, approved by the user): the LAN share.** `Windows/webapi/DebugPagesLanShare.cs`, the menu and window in
+`Windows/MainForm/MainForm.LanShare.cs`.
+- Emulator > Debug Windows > **Share Read-Only Pages on the LAN** switches it for this run. Config `debugPagesLan` (false by default) only
+  says whether it starts on at launch; the menu never writes it, and the token is never saved.
+- On: a second Kestrel listener on the LAN IPv4 address (an interface that is up with a gateway) and a free port. A small window,
+  "BrokenNes LAN Share", shows the URL to type on the phone (`http://<lan-ip>:<port>/debug/viewers.html?t=<token>`, and the debugger page's).
+  The token is 36 hex digits, new each switch-on, compared in constant time.
+- Order of refusal: no or wrong token 401 (`?t=` or the `X-BrokenNes-Token` header), then any method but GET 405, then any path other than
+  the two pages (embedded in the app from `BrokenDev/web/`) and the 13 read-only GET routes 404. The routes are forwarded to the app's own
+  loopback API, so their JSON is the same. `GET /api/debug/lan` (loopback only) says on, address and port, never the token.
+- The pages: with `?t=` and no `?api=` they read their own origin and add the token to every request.
+- Off: the listener closes at once (a connect is refused).
+- **Tests:** `UAT/entrypoints/debug-pages-lan-smoke.ps1` passes 18 of 18, 1 skipped. It uses scratch config, saves, bugs and BrokenDev
+  folders and drives the real menu through UI Automation, reading the URL from the window. It binds the share's real code path to the
+  loopback alias `127.0.0.2` (`BROKENNES_DEBUG_LAN_ADDRESS`, tests only), because binding the LAN address would raise the Windows firewall
+  question. Checked:
+  - off: the app listens only on 127.0.0.1 (the negative control);
+  - on: both pages and all 13 routes answer with the token, memory and domains equal the loopback routes, the header token works;
+  - refused: no token, a zero token or a shortened one gives 401; POST poke and attach, DELETE and PUT give 405, and RAM and the debugger
+    are unchanged; 17 other paths (control routes, poke, progression, saves, the status route, the root) give 404;
+  - the listener is bound to that one address, never all;
+  - off closes it; on again makes a new token and the old one gets 401;
+  - the scratch config.json is byte for byte the same, and the user's `%APPDATA%\BrokenNes` is unchanged.
+  - Skipped: rendering the page in headless Edge. Edge renders nothing on this machine today, not even a local file (an update to 156 is
+    staged). For the same reason `web-debugger.ps1` fails at its first render (2 pass, 2 fail). The page scripts pass `node --check`, and the
+    token logic gives the right URLs.
+- Also probed by hand: with `debugPagesLan: true` in a scratch config, the share starts on at launch and the window shows the URL.
+- Rerun: the desktop smoke 79 of 79, `--debug-test` 103 of 103.
+- Not tested: a real phone on the real LAN address (Windows will ask its firewall question then; the user answers it).
 
 ## D9 settled (2026-10-26): checkup, coverage, chaos
 

@@ -41,7 +41,10 @@
 <script>
 (function () {
   const q = new URLSearchParams(location.search);
-  const api = (q.get('api') || 'http://127.0.0.1:42067').replace(/\/$/, '');
+  // ?t=<token>: served by the desktop app's LAN share (Emulator > Debug Windows > Share Read-Only Pages on the LAN): same origin, the token on every request
+  const token = q.get('t');
+  const api = (q.get('api') || (token && /^https?:$/.test(location.protocol) ? location.origin : 'http://127.0.0.1:42067')).replace(/\/$/, '');
+  const withToken = path => token ? path + (path.indexOf('?') >= 0 ? '&' : '?') + 't=' + encodeURIComponent(token) : path;
   const memSpec = q.get('mem') || '$0000';
   const once = q.get('once') === '1';
   const $ = id => document.getElementById(id);
@@ -51,7 +54,7 @@
   try { bridge = lite ? ((window.opener && window.opener.brokenNesDebug) || (window.parent !== window && window.parent.brokenNesDebug) || null) : null; } catch { bridge = null; }
   const get = lite
     ? (path => bridge ? bridge.get(path) : Promise.reject(new Error("no Lite debug bridge: open this page from BrokenNes Lite's Debug button")))
-    : (path => fetch(api + path, { cache: 'no-store' }).then(r => r.json()));
+    : (path => fetch(api + withToken(path), { cache: 'no-store' }).then(r => r.json()));
   const source = lite ? 'BrokenNes Lite (this browser)' : api;
   const hex = (v, n) => v.toString(16).toUpperCase().padStart(n, '0');
   function text(id, s) { $(id).textContent = s; }

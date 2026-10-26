@@ -64,6 +64,9 @@
     <EmbeddedResource Include="Resources\test.nes" />
     <!-- the WideMess test cartridge (WideMess/testcart): Console > WideMess test cartridge -->
     <EmbeddedResource Include="..\WideMess\testroms\bin\widemess-testcart.wms" Link="Resources\widemess-testcart.wms" LogicalName="widemess-testcart.wms" />
+    <!-- the BrokenDev debug pages, served by the LAN share (Emulator > Debug Windows > Share Read-Only Pages on the LAN; D8) -->
+    <EmbeddedResource Include="..\BrokenDev\web\debugger.html" Link="Resources\debugpages\debugger.html" LogicalName="debugpages/debugger.html" />
+    <EmbeddedResource Include="..\BrokenDev\web\viewers.html" Link="Resources\debugpages\viewers.html" LogicalName="debugpages/viewers.html" />
   </ItemGroup>
 
   <ItemGroup>

@@ -883,6 +883,7 @@ namespace BrokenNes.Windows
                     if (webApiServer.IsRunning)
                     {
                         webApiStartFailure = null;
+                        if (config.DebugPagesLan) _ = SetLanShareAsync(true);   // the read-only debug pages on the LAN from the start (D8; off by default)
                         Console.WriteLine($"Web API server started successfully on {webApiServer.BaseUrl} (https port {webApiServer.HttpsPort})"
                             + (webApiServer.UsingFallbackPorts
                                 ? " - preferred ports were taken, this instance is using OS-assigned ports"

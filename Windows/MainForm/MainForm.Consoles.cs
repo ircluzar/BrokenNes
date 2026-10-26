@@ -126,6 +126,7 @@ namespace BrokenNes.Windows
             };
             server.QuickStateReason = () => quickStateReason;
             WireBugApi(server);
+            server.GetLanShare = LanShareStatus;   // the LAN share's state (D8, MainForm.LanShare.cs): never the token
             WirePortApi(server);       // the debug port (BrokenDev D7, MainForm.DebugPort.cs)        // the bug capture (BrokenDev D6, MainForm.BugCapture.cs)
             WireWideMessApi(server);   // WideMess milestone 6 (MainForm.WideMess.cs)
             WireWideMessTestCartApi(server);   // POST /api/widemess/testcart (MainForm.WideMessTestCart.cs)

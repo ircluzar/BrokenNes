@@ -316,6 +316,13 @@ namespace BrokenNes.Windows
         public bool DebugPortEnabled { get; set; } = false;
 
         /// <summary>With the debug port on, a failed assert pauses the game (the message and the place in the title bar and the log).</summary>
+        /// <summary>
+        /// Share the read-only debug pages on the LAN from the start (BrokenDev D8; Emulator > Debug Windows > Share Read-Only Pages on the LAN). Off by
+        /// default. The menu switches the share for this run only and never writes this; the token is new every time and never saved.
+        /// </summary>
+        [JsonPropertyName("debugPagesLan")]
+        public bool DebugPagesLan { get; set; } = false;
+
         [JsonPropertyName("debugPortPauseOnAssert")]
         public bool DebugPortPauseOnAssert { get; set; } = true;
         
