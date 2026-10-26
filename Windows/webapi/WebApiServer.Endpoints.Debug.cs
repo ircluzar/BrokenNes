@@ -284,6 +284,53 @@ namespace BrokenNes.Windows.WebApi
                 catch (Exception e) when (e is ArgumentException or NotSupportedException) { return Results.BadRequest(new { success = false, error = e.Message }); }
             });
 
+            // GET /api/debug/map?layer=bg1&cellX=0&cellY=0 - a tile map drawn whole (the Maps window's renderer), the visible area, one cell
+            app.MapGet("/api/debug/map", (string? layer, int? cellX, int? cellY) =>
+            {
+                var g = DebugTarget();
+                var m = Debuggers.Machine(g, out string? why);
+                if (m == null) return Results.BadRequest(new { success = false, error = why });
+                try
+                {
+                    var layers = DebugPictures.MapLayers(m.Console);
+                    var v = DebugPictures.Map(m, g, layer ?? layers.FirstOrDefault() ?? "");
+                    int cx = Math.Clamp(cellX ?? 0, 0, v.CellsX - 1), cy = Math.Clamp(cellY ?? 0, 0, v.CellsY - 1);
+                    var c = v.Cell(cx, cy);
+                    var bytes = new byte[v.Pixels.Length * 4];
+                    Buffer.BlockCopy(v.Pixels, 0, bytes, 0, bytes.Length);
+                    return Results.Ok(new
+                    {
+                        success = true, console = m.Console, layers, what = v.What, v.Width, v.Height, v.CellsX, v.CellsY, v.CellSize,
+                        view = new { x = v.ViewX, y = v.ViewY, w = v.ViewW, h = v.ViewH },
+                        cell = new { x = cx, y = cy, c.tile, c.palette, c.flags }, argb = Convert.ToBase64String(bytes),
+                    });
+                }
+                catch (Exception e) when (e is ArgumentException or NotSupportedException) { return Results.BadRequest(new { success = false, error = e.Message }); }
+            });
+
+            // GET /api/debug/sprites - the sprites on screen from OAM (the Sprites window's decoder)
+            app.MapGet("/api/debug/sprites", () =>
+            {
+                var m = Debuggers.Machine(DebugTarget(), out string? why);
+                if (m == null) return Results.BadRequest(new { success = false, error = why });
+                try
+                {
+                    var list = DebugPictures.Sprites(m, out string note);
+                    return Results.Ok(new { success = true, console = m.Console, note, count = list.Count, sprites = list.Select(s => new { s.Index, s.X, s.Y, s.Width, s.Height, s.Tile, s.Palette, s.FlipX, s.FlipY, s.Behind, s.Priority, text = s.ToString() }) });
+                }
+                catch (Exception e) when (e is ArgumentException or NotSupportedException) { return Results.BadRequest(new { success = false, error = e.Message }); }
+            });
+
+            // GET /api/debug/sound - one line per channel of the sound chip (the Sound Monitor's reading), and the monitor's mute in force
+            app.MapGet("/api/debug/sound", () =>
+            {
+                var g = DebugTarget();
+                var m = Debuggers.Machine(g, out string? why);
+                if (m == null) return Results.BadRequest(new { success = false, error = why });
+                var ch = DebugSound.Channels(m, g, out string what);
+                return Results.Ok(new { success = true, console = m.Console, what, mute = DebugSound.Mute(g), channels = ch.Select(c => new { c.Name, c.On, c.Level, registers = c.Text, line = c.ToString() }) });
+            });
+
             // ---------------------------------------------------------------- control (enableDebuggerControl)
 
             app.MapPost("/api/debug/attach", () =>

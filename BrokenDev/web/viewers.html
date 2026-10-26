@@ -6,8 +6,8 @@
 <title>BrokenDev Viewers</title>
 <!--
   BrokenDev milestone D8, the second web page: memory, palettes and tiles of a running BrokenNes desktop app, READ ONLY, over its HTTP API
-  (GET /api/memory/domains, /api/memory/peek-range, /api/debug/palettes, /api/debug/tiles). Open it from disk with
-  ?api=http://127.0.0.1:<port>. Options: &domain=<id> &address=<hex> (the memory panel), &start=<hex> &bpp=2|4|8 &palette=<n> (the tiles),
+  (GET /api/memory/domains, /api/memory/peek-range, /api/debug/palettes, /api/debug/tiles, /api/debug/map, /api/debug/sprites, /api/debug/sound). Open it from disk with
+  ?api=http://127.0.0.1:<port>. Options: &domain=<id> &address=<hex> (the memory panel), &start=<hex> &bpp=2|4|8 &palette=<n> (the tiles), &layer= &cellx= &celly= (the map),
   &once=1 (one refresh, for tests). It sends GET requests only.
 -->
 <style>
@@ -33,6 +33,9 @@
   <section><h2>Memory</h2><select id="domain"></select><pre id="memory"></pre></section>
   <section><h2>Palettes</h2><div id="swatches"></div><pre id="palettes"></pre></section>
   <section><h2>Tiles</h2><div id="tileinfo" style="color:var(--muted);font-size:12px"></div><canvas id="tiles" width="128" height="128"></canvas></section>
+  <section><h2>Map</h2><div id="mapinfo" style="color:var(--muted);font-size:12px"></div><pre id="mapcell"></pre><canvas id="map" width="256" height="256"></canvas></section>
+  <section><h2>Sprites on screen</h2><pre id="sprites"></pre></section>
+  <section><h2>Sound</h2><div id="soundinfo" style="color:var(--muted);font-size:12px"></div><pre id="sound"></pre></section>
 </main>
 <script>
 (function () {
@@ -86,6 +89,24 @@
         cv.dataset.tile0 = first.join(' ');
         $('tileinfo').textContent = `${ts.what}; ${ts.tiles} tiles from $${hex(ts.start, 4)}; ${ts.colours}`;
       } else $('tileinfo').textContent = ts.error || 'no tiles';
+      const mp = await get(`/api/debug/map?cellX=${q.get('cellx') || 0}&cellY=${q.get('celly') || 0}` + (q.get('layer') ? '&layer=' + q.get('layer') : ''));
+      if (mp.success) {
+        const bin = atob(mp.argb), cv = $('map'); cv.width = mp.width; cv.height = mp.height;
+        const ctx = cv.getContext('2d'), img = ctx.createImageData(mp.width, mp.height);
+        for (let i = 0; i < mp.width * mp.height; i++) { img.data[i * 4] = bin.charCodeAt(i * 4 + 2); img.data[i * 4 + 1] = bin.charCodeAt(i * 4 + 1); img.data[i * 4 + 2] = bin.charCodeAt(i * 4); img.data[i * 4 + 3] = 255; }
+        ctx.putImageData(img, 0, 0);
+        if (mp.view.w > 0) { ctx.strokeStyle = '#ff00ff'; ctx.strokeRect(mp.view.x + 0.5, mp.view.y + 0.5, mp.view.w - 1, mp.view.h - 1); }
+        $('mapinfo').textContent = mp.what;
+        $('mapcell').textContent = `cell ${mp.cell.x},${mp.cell.y}: tile $${hex(mp.cell.tile, 1)} palette ${mp.cell.palette}${mp.cell.flags ? ' ' + mp.cell.flags : ''}`;
+      } else { $('mapinfo').textContent = mp.error || 'no map'; $('mapcell').textContent = ''; }
+
+      const sp = await get('/api/debug/sprites');
+      $('sprites').textContent = sp.success ? (sp.sprites.map(x => x.text).join('\n') || '(none)') + (sp.note ? '\n' + sp.note : '') : (sp.error || '');
+
+      const so = await get('/api/debug/sound');
+      $('soundinfo').textContent = so.success ? `${so.what}; mute $${hex(so.mute, 2)}` : (so.error || '');
+      $('sound').textContent = so.success ? so.channels.map(c => c.line).join('\n') : '';
+
       $('status').textContent = `${doms.console}: ${dom} at $${hex(addr, 4)}; ${api}`;
       $('status').dataset.console = doms.console;
     } catch (e) {

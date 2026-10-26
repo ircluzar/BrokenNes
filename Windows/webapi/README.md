@@ -139,6 +139,9 @@ Game Boy `$E011` is `$C011`); DMA and HDMA bytes are accesses (a VRAM watch sees
 | GET | `/api/debug/disasm?address=&count=&cpu=` | Disassembly (from the PC by default), with symbols |
 | GET | `/api/debug/palettes` | The console's palettes as the Palettes window shows them (label, values line, `#RRGGBB` colours) |
 | GET | `/api/debug/tiles?source=&bpp=&palette=&start=&count=` | A tile sheet from the shared decoder: width, height, ARGB pixels as base64 (`BrokenDev/web/viewers.html`) |
+| GET | `/api/debug/map?layer=&cellX=&cellY=` | A tile map drawn whole (NES nametables, SNES BG1-4, Game Boy background / window), the visible area, one cell's tile / palette / flags |
+| GET | `/api/debug/sprites` | The sprites on screen from OAM (place, size, tile, palette, flips) |
+| GET | `/api/debug/sound` | One line per channel of the sound chip, and the sound monitor's mute in force |
 | GET | `/api/debug/eval?expr=&cpu=` | An expression now (`[player_hp] + 1`) |
 | POST | `/api/debug/attach`, `/api/debug/detach` | **Control.** Attach (tracks the call stack) / detach (the game runs as if never debugged) |
 | POST | `/api/debug/symbols` `{path}` | **Control.** Load a `.mlb` (NESFab / Mesen), WLA-DX `.sym`, bgb / GBDK `.sym` or GBDK `.noi` |

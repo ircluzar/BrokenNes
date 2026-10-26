@@ -1000,8 +1000,17 @@ and the divergence finder's report (the last marker before the first difference)
   - the zero tile at `$2010` is all black;
   - the page sends GET requests only.
   `web-debugger.ps1` passes 23 of 23.
-- **Next:** pages for maps, sprites, the event view and sound on the same pattern (each needs a GET route like `/api/debug/tiles`); a
-  way to reach Lite and the phone (the desktop API listens on loopback only).
+- **Maps, sprites and sound on the viewers page (built):** three new GET routes, `/api/debug/map`, `/api/debug/sprites` and
+  `/api/debug/sound`, each using the windows' code. The SNES checks, with the game paused:
+  - a BG1 map entry poked to `$4523` shows as cell 6,1 with tile `$123`, palette 1 and flipX; the next cell is its own;
+  - a sprite poked into OAM is listed; one moved to y 224 is not;
+  - a voice pitch poked into the S-DSP shows on voice 0 only, with the mute at `$00`.
+  `web-debugger.ps1` passes 28 of 28. The first version of the sound route answered 500: its JSON had both `Text` and `text`, which
+  collide once the serializer lower-cases names. It now sends `registers` and `line`.
+- **Not built, a decision for the user:** the event view page. Its data comes from a debug observer, which arms the debugger's hooks.
+  A plain GET (what the pages are limited to) should not arm anything. The options: let the route read only while the Event View
+  window or a control session has a debugger attached, or make it a control route behind `enableDebuggerControl`.
+- **Next:** that decision; a way to reach Lite and the phone (the desktop API listens on loopback only).
 
 ## Open questions (to settle at the start of the track)
 

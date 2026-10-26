@@ -27,7 +27,7 @@ function Render([string]$query, [string]$file = $page) {
     $url = ([Uri]$file).AbsoluteUri + '?' + $query
     $prof = Join-Path $WorkDir 'edge-profile'
     $out = Join-Path $WorkDir ('dom_' + [guid]::NewGuid().ToString('N').Substring(0, 6) + '.html')
-    $p = Start-Process -FilePath $Edge -ArgumentList @('--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', "--user-data-dir=`"$prof`"", '--virtual-time-budget=8000', '--dump-dom', "`"$url`"") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError "$out.err"
+    $p = Start-Process -FilePath $Edge -ArgumentList @('--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', "--user-data-dir=`"$prof`"", '--virtual-time-budget=30000', '--dump-dom', "`"$url`"") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError "$out.err"
     Get-Content -LiteralPath $out -Raw
 }
 function Tile0([string]$dom) { if ($dom -match 'data-tile0="([^"]*)"') { $Matches[1] } else { '' } }
@@ -78,6 +78,20 @@ try {
     Start-Sleep -Seconds 2
     Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/pause' | Out-Null; Start-Sleep -Milliseconds 500
     foreach ($pv in @(@(2, 0x00), @(3, 0x7C))) { Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/memory/poke' -Body @{ domain = 'CGRAM'; address = $pv[0]; value = $pv[1] } | Out-Null }
+    function PokeAll([string]$domain, $pairs) { foreach ($pv in $pairs) { Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/memory/poke' -Body @{ domain = $domain; address = $pv[0]; value = $pv[1] } | Out-Null } }
+    PokeAll 'OAM' @(@(0, 0x20), @(1, 0x30), @(2, 0x05), @(3, 0x04), @(5, 0xE0))
+    PokeAll 'VRAM' @(@(((1 * 32 + 6) * 2), 0x23), @(((1 * 32 + 6) * 2 + 1), 0x45), @(((1 * 32 + 7) * 2), 0), @(((1 * 32 + 7) * 2 + 1), 0))
+    PokeAll 'DSP' @(@(2, 0x34), @(3, 0x12), @(0x12, 0), @(0x13, 0))
+    $mdom = Render ("api=" + [Uri]::EscapeDataString($api) + "&once=1&layer=bg1&cellx=6&celly=1") $viewers
+    $mdom2 = Render ("api=" + [Uri]::EscapeDataString($api) + "&once=1&layer=bg1&cellx=7&celly=1") $viewers
+    $mc = Pre $mdom 'mapcell'; $mc2 = Pre $mdom2 'mapcell'
+    Check 'viewers_map' ($mc -like 'cell 6,1: tile $123 palette 1 entry $4523*') "$mc"
+    Check 'viewers_map_negative' ($mc2 -like 'cell 7,1: tile $0 palette 0*') "the next cell: $mc2"
+    $spr = Pre $mdom 'sprites'
+    Check 'viewers_sprites' ([bool](($spr -split "`n") -match '^#0\s+x\s+32 y\s+48 8x8 tile \$005 pal 2')) "$(($spr -split "`n")[0])"
+    Check 'viewers_sprites_negative' (-not [bool](($spr -split "`n") -match '^#1\s')) "sprite 1 (y 224) is off screen and not listed"
+    $snd = Pre $mdom 'sound'
+    Check 'viewers_sound' ((($snd -split "`n")[0]) -like 'Voice 0:*pitch $1234*' -and (($snd -split "`n")[1]) -like 'Voice 1:*pitch $0000*' -and $mdom -match 'mute \$00') "$(($snd -split "`n")[0]) ; $(($snd -split "`n")[1])"
     $vdom = Render ("api=" + [Uri]::EscapeDataString($api) + "&once=1&domain=VRAM&address=2000&start=2000&bpp=2") $viewers
     $vdom2 = Render ("api=" + [Uri]::EscapeDataString($api) + "&once=1&domain=VRAM&address=2010&start=2010&bpp=2") $viewers
     $vb = @((Invoke-BrokenNesApi -ProcessId $id -Path '/api/memory/peek-range?domain=VRAM&address=8192&length=16').data | ForEach-Object { [int]$_ })
