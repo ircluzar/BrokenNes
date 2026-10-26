@@ -1017,6 +1017,41 @@ and the divergence finder's report (the last marker before the first difference)
   - Not checked: the page itself rendering events with the window open. The route it prints is checked.
 - **Next:** how the pages reach Lite and the phone (spec below).
 
+### D8 spec (2026-10-26): the pages on Lite and on a phone
+
+Three cases, two mechanisms. Nothing changes until it is switched on; the desktop API stays loopback-only by default.
+
+1. **Lite in a browser (desktop or phone): an in-page bridge, no network.** Lite is WebAssembly in a page and has no HTTP server. It
+   gains a small JavaScript object, `window.brokenNesDebug`, with one read-only function per route. Each returns the same JSON as the
+   desktop route: `state`, `disasm`, `callstack`, `memory`, `domains`, `peekRange`, `palettes`, `tiles`, `map`, `sprites`, `sound`.
+   `events` is left out (Lite has no Event View).
+   - The engine side is already shared (`DebugPictures`, `DebugSound`, the debug machines). Lite compiles today only the capture and
+     movie files of `debug/`, so the bridge adds the machine and picture files to Lite's explicit `<Compile Include>` list.
+   - The pages gain a second transport: with `?lite=1` they call `window.opener.brokenNesDebug` or `parent.brokenNesDebug` (opened from
+     Lite's new **Debug** button, same origin) instead of `fetch`. Lite ships the two pages under `wwwroot/debug/`.
+   - No breakpoints: Lite's single thread cannot park, the D1 limitation.
+   - Cost when unused: the object exists, but nothing runs until a page calls it.
+   - Tests: a `UAT/lite` script opens the AOT build in Edge, then the page with `?lite=1`. It compares the page's PC and memory with
+     the same numbers read through the bridge directly. Negative control: without Lite the page says that there is no bridge.
+2. **A phone looking at the desktop app: an opt-in LAN listener, read only.**
+   - Config `debugPagesLan: false` (default), plus Emulator > Debug Windows > Share Read-Only Pages on the LAN. Switched on, the app opens
+     a second listener on the machine's LAN address and a free port.
+   - That listener answers **only** the read-only GET debug routes listed above, and the two pages at `/debug/*.html`, embedded in the
+     app. Every other path answers 404, and every non-GET method answers 405.
+   - So control routes, memory pokes, input, saves and progression are unreachable from the LAN whatever `enableDebuggerControl` says.
+   - Each request must carry a random token, made at switch-on and shown in the app as the URL to type (`http://<lan-ip>:<port>/debug/viewers.html?t=<token>`).
+     A missing or wrong token answers 401. Switching the share off closes the listener at once, and nothing about it is saved.
+   - Windows asks its firewall question the first time; the user answers it (we never change firewall settings).
+   - Tests (`UAT/entrypoints/debug-pages-lan-smoke.ps1`, scratch folders):
+     - off: nothing listens on the LAN address (a connect is refused). This is the negative control.
+     - on: GET with the token works and matches the loopback route.
+     - refused: no token gives 401; a POST to a control route or `/api/memory/poke` gives 405 or 404.
+     - off again: the listener is gone, and the user's `%APPDATA%\BrokenNes` is unchanged.
+3. **A phone looking at Lite running on the desktop:** Lite's bridge covers it only on the same device, so this case is out of scope.
+   Run Lite on the phone itself (case 1).
+
+Order: case 2 first (the user's own games on the desktop, watched from a phone), then case 1.
+
 ## Open questions (to settle at the start of the track)
 
 1. The debug port's registers on each console, checked against mapper 30, the SNES coprocessors' ranges and the Game Boy Color's
