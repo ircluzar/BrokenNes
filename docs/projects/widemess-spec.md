@@ -28,7 +28,7 @@ emulates decodes this range: the SA-1 is at `$2200-$23FF`, the Super FX at `$300
 | `$4225` | WMSPEED | R/W | Bit 0: fast CPU (section 2). 0 at reset. |
 | `$4226` | WMDMA | R/W | Bit 0: fast general DMA (section 2). 0 at reset. |
 | `$4227-$422F` | | | Reserved: read 0, write ignored. |
-| `$4230-$423F` | | | Reserved for the BrokenDev debug port (`docs/projects/brokendev-debugging-plan.md`). |
+| `$4230-$423F` | | W | The BrokenDev debug port (`docs/projects/brokendev-debugging-plan.md`, "D7 settled"), the SNES's too: `$4230` / `$4231` DATA, `$4232` COMMAND, `$4234` TIMER START, `$4236` TIMER STOP, `$4238-$423F` reserved. Locked or unlocked; BrokenNes listens only while its debugger or dev mode is on, and the writes go nowhere on the console. `WMFEAT` bit 7 reads 0 (answering it would let a game behave differently under the debugger). |
 
 Detection, in a game: write `$57`, `$4D` to `$4220`, then read `$4221`. `$57` means WideMess; check `WMFEAT` for each feature you use.
 
@@ -774,7 +774,7 @@ No flicker changed nothing in eight of the eleven games' checked play: most SNES
 | SNES games enhanced: widescreen, no flicker, better sound, fast CPU, profiles | 6 | done (`WideMess.Enhance.cs`, `WideMess.Profiles.cs`, `DSP_SFC.Enhance.cs`, `SnesSession.Enhance.cs`; `WideMess/profiles`, 11 games proven, 6.4) |
 | BrokenNes Lite and the FL plugin (section 9) | 7a | done (Lite: `Emulator.Consoles.cs`, `Emulator.WideMess.cs`, `UAT/lite/test-lite-widemess.mjs`; plugin: chip `WMS`, `WmsBank.cs`, `WmsSampler.cs`, `WmsSnapshot.cs`, self-test `wms` / `rom-wms`) |
 | The WideMess chips on the other consoles (the widescreen chip, the sound chip), theirs on the WideMess | 7b | done (section 8; `WmsWideChip`, `WmsVoiceChip`, NES board `PPU_WMSS` / `APU_WMSS`: mix/WideMessEnhanced.cs; `Workshop --enhanced-test --only wmsmenu,wms,wmsown,wmsgames`) |
-| Debug port | BrokenDev debugging toolkit | reserved |
+| Debug port | BrokenDev debugging toolkit | defined (D7: `$4230-$423F`) |
 | Conformance: the test cartridge (any implementation of this spec runs it; its expected results, its results table, its reference pictures) | - | done (`WideMess/testcart`, `WideMess/testroms/bin/widemess-testcart.wms`; `Workshop --wms-testcart`) |
 
 ## 8. The WideMess chips on the other consoles (milestone 7b)

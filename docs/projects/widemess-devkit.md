@@ -209,6 +209,14 @@ the game (Workshop's `WideMessCli.Measure`):
 
 `compat` has a BrokenNes column for WideMess projects (`--brokendev run` takes console `wms`; the other emulators say they do not run it).
 
+**The debug port** (BrokenDev D7, `$4230-$423F`, the range the spec reserved): `#include "brokendev_dbg.h"` in C, `.include
+"brokendev_dbg.inc"` in assembly (both on the build's include path, `BrokenDev/debugport/snes`): `DBG_PRINT`, `DBG_PRINT1/2` (16-bit
+values, `%u %d %x`), `DBG_ASSERT(cond)`, `DBG_MARKER`, `DBG_TIMER_NAME(id, name)` then `DBG_TIMER_START(id)` / `DBG_TIMER_STOP(id)`,
+`DBG_BREAK()`; the assembly macros for 16-bit A. A project made by `new widemess` builds the **dev** build (`-Define BROKENDEV_DEBUG` in its
+manifest): verify shows what the game said, fails on a failed assert, and checks `expect.port` (`markers`, `prints`, `timers`,
+`maxErrors`); the timers are in the profile. Without the define (`wmsbuild.ps1` by hand, the devkit's test ROMs) every call compiles to
+nothing: the sample's and the template's release builds are byte-identical to the ones built before they called the port.
+
 **`Workshop --wms-run --rom game.wms [--frames N] [--input "f:Buttons,..."] [--png-at f,...] [--out-dir d] [--voices] [--wram ADDR:LEN] [--ram-trap] [--trap-pc BBXXXX]`**
 reports what a game uses (the same measure), the sound unit, the audio and where the CPU spent the last 30 frames; `--ram-trap` stops at
 the first instruction fetched from RAM (a crash) and lists the 64 before it.

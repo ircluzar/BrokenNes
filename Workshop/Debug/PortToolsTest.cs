@@ -10,6 +10,7 @@ using NesEmulator.Debugging.Capture;
 using NesEmulator.Debugging.Checks;
 using NesEmulator.Debugging.Movies;
 using NesEmulator.Debugging.Port;
+using NesEmulator.Systems;
 using static BrokenNes.Workshop.Debug.PortTestCli;
 
 namespace BrokenNes.Workshop.Debug;
@@ -164,5 +165,46 @@ internal static class PortToolsTest
         }
     }
 
-    public static void Games(string dir) { }
+    /// <summary>The real games: the Game Boy hello world's dev build speaks (BrokenDev's build of vrun-voc); games that do not use the port
+    /// (VRUN, Super VRUN, the WideMess sample's release build) say nothing: no false events. A game not on this machine is NOT RUN.</summary>
+    public static void Games(string dir)
+    {
+        void Run(string name, string path, string? sym, ConsoleKind? kind, int frames, string input, Action<DebugPort> check)
+        {
+            if (!File.Exists(path)) { NotRun(name, $"{path} is not on this machine"); return; }
+            if (kind == ConsoleKind.WideMess) NesEmulator.Systems.Consoles.WideMessEnabled = true;
+            byte[] rom = RomDetect.Unwrap(File.ReadAllBytes(path), Path.GetFileName(path), out string inner);
+            using var g = CheckedGame.Open(rom, inner, kind);
+            if (sym != null && File.Exists(sym)) g.Dbg.Symbols.Load(sym, g.Family);
+            using var port = new DebugPort(g.Host.Machine, g.Dbg);
+            port.Attach();
+            g.Run(frames, CheckedGame.ParseInput(input));
+            check(port);
+        }
+        Run("the Game Boy hello world's dev build", @"P:\BrokenDev\env\out\vrun-voc\vrun_voc.gbc", @"P:\BrokenDev\env\out\vrun-voc\vrun_voc.noi", null, 400, "120:Right,180:,200:A,206:", p =>
+        {
+            var prints = p.Events.Where(e => e.Kind == PortEventKind.Print).Select(e => e.Text).ToList();
+            var t = p.Timer("move_player");
+            Check("VOC dev build: its prints, markers and the move_player timer, no assert, no error", prints.Contains("boot 1") && p.Markers.Select(m => m.Text).SequenceEqual(new[] { "started", "beep" })
+                  && t is { Calls: > 300 } && p.Asserts.Count == 0 && p.Count(PortEventKind.Error) == 0 && p.Events.First(e => e.Text == "boot 1").PcSymbol?.StartsWith("_count_boot") == true,
+                  $"{string.Join(" | ", p.Events.Select(e => e.Text))}; move_player {t?.Calls} calls, worst {t?.Worst}");
+        });
+        Run("VRUN (does not use the port)", @"C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\builds\2026-10-23_poweron\vrun_game.nes", null, null, 900, "120:Start,132:,400:Right", p =>
+            Check("VRUN: a game that does not use the port hears nothing (no false events)", p.EventCount == 0 && p.Writes == 0, $"{p.EventCount} events, {p.Writes} writes"));
+        Run("Super VRUN (does not use the port)", @"P:\BrokenDev\env\out\supervrun\supervrun.sfc", null, null, 900, "120:Start,132:", p =>
+            Check("Super VRUN: a game that does not use the port hears nothing (no false events)", p.EventCount == 0 && p.Writes == 0, $"{p.EventCount} events, {p.Writes} writes"));
+        string sample = FindUp("WideMess\\testroms\\bin\\devkit_sample.wms");
+        Run("the WideMess sample's release build", sample, null, ConsoleKind.WideMess, 600, "30:Right+B", p =>
+            Check("WideMess sample, release build (the committed devkit_sample.wms): its compiled-away calls send nothing", p.EventCount == 0 && p.Writes == 0, $"{p.EventCount} events, {p.Writes} writes"));
+    }
+
+    private static string FindUp(string rel)
+    {
+        for (var d = new DirectoryInfo(Environment.CurrentDirectory); d != null; d = d.Parent)
+        {
+            string p = Path.Combine(d.FullName, rel);
+            if (File.Exists(p)) return p;
+        }
+        return rel;
+    }
 }

@@ -28,7 +28,9 @@ foreach ($v in 'dev', 'release', 'none') {
     }
     $args = @('-Profile', $(if ($v -eq 'dev') { 'dev' } else { 'release' }), '-Out', (Join-Path $dir 'build'))
     if ($Gbdk) { $args += @('-Gbdk', $Gbdk) }
+    $ErrorActionPreference = 'Continue'   # the build's notes on stderr (makebin's "Converted ...") are not failures: its exit code is
     $log = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dir 'build.ps1') @args 2>&1 | Out-String
+    $ErrorActionPreference = 'Stop'
     $rom = Join-Path $dir 'build\vrun_voc.gbc'
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $rom)) { Write-Host "FAIL: the $v build failed`n$log"; exit 1 }
     $hash[$v] = (Get-FileHash $rom -Algorithm SHA256).Hash.ToLowerInvariant()

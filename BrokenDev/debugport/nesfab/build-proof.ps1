@@ -10,10 +10,11 @@
 #>
 param(
     [string]$NesFab = 'C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\sys0\simulations\VRUN\tools\nesfab',
-    [string]$Sample = (Join-Path $PSScriptRoot 'sample\main.fab'),
+    [string]$Sample = '',
     [Parameter(Mandatory)][string]$Out
 )
 $ErrorActionPreference = 'Stop'
+if (-not $Sample) { $Sample = Join-Path $PSScriptRoot 'sample\main.fab' }   # (Windows PowerShell 5.1 has no $PSScriptRoot in a param default)
 if (-not (Test-Path (Join-Path $NesFab 'nesfab.exe'))) { Write-Host "no nesfab.exe in $NesFab"; exit 2 }
 New-Item -ItemType Directory -Force $Out | Out-Null
 $fwd = { param($p) $p -replace '\\', '/' }
@@ -26,7 +27,8 @@ foreach ($v in 'dev', 'release', 'none') {
     $lib = switch ($v) { 'dev' { "input = $(& $fwd (Join-Path $PSScriptRoot 'brokendev_dbg.fab'))" } 'release' { "input = $(& $fwd (Join-Path $PSScriptRoot 'brokendev_dbg_off.fab'))" } default { '' } }
     @("nesfab-dir = $(& $fwd $NesFab)/", 'input = lib/charmap/ascii.fab', $lib, 'input = main.fab', 'output = game.nes', 'mlb = game.mlb') | Where-Object { $_ } | Set-Content (Join-Path $dir 'game.cfg')
     Push-Location $dir
-    try { $log = & (Join-Path $NesFab 'nesfab.exe') 'game.cfg' 2>&1 | Out-String } finally { Pop-Location }
+    $ErrorActionPreference = 'Continue'   # NESFab's warnings on stderr are not failures; the ROM's presence is the verdict
+    try { $log = & (Join-Path $NesFab 'nesfab.exe') 'game.cfg' 2>&1 | Out-String } finally { Pop-Location; $ErrorActionPreference = 'Stop' }
     $rom = Join-Path $dir 'game.nes'
     if (-not (Test-Path $rom)) { Write-Host "FAIL: the $v build made no ROM`n$log"; exit 1 }
     $results[$v] = (Get-FileHash $rom -Algorithm SHA256).Hash.ToLowerInvariant()

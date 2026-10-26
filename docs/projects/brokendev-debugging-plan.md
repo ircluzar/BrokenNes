@@ -5,7 +5,8 @@ Plan of 2026-10-23, written after an interview with the user. It starts **after 
 profiler) is built** (2026-10-24): see "D4 as built". **Milestone D2 (the Game Boy hello world) is built** (2026-10-24): see "D2 as built";
 its accepted findings list is empty. **Milestone D3 (the MCP server) is built** (2026-10-24): see "D3 as built". **Milestone D5 (movies, diff, bisect) is built** (2026-10-25):
 see "D5 as built"; the movie format's name is a working name ("BrokenNes movie", `.bnm`: open question 2). **Milestone D6 (bug capture) is built**
-(2026-10-25): see "D6 settled" and "D6 as built"; the key is F9 for now (open question 3). The rest is not.
+(2026-10-25): see "D6 settled" and "D6 as built"; the key is F9 for now (open question 3). **Milestone D7 (the debug port) is built**
+(2026-10-25): see "D7 settled" (the registers: open question 1, answered for review) and "D7 as built". The rest is not.
 
 ## Why
 
@@ -345,7 +346,7 @@ They follow WideMess milestone 1. Each one is merged, tested and pushed before t
 | **D4** | **Checks, budgets, profiler** | The first catalogue for the three consoles, each rule with its test ROM and negative control. Accepted findings recorded for VRUN, Nested VRUN, Super VRUN, the SMB1 remake and the hello world. `verify` fails on new findings and over budget. |
 | **D5** | **Movies, diff, bisect** | Our movie format with `.fm2` / `.bk2` export, divergence finder, state diff by symbol, step back, promoted movie tests in verify, bisect over a game's commits (proven on a planted regression). **Built 2026-10-25** (see "D5 as built"): the format's working name "BrokenNes movie" (`.bnm`); exports played by BizHawk and FCEUX exactly as the same input; bisect found the planted regression in a 17-commit throwaway game; VRUN's first promoted movie. |
 | **D6** | **Bug capture** | The key in the desktop app and Lite (download). Bundles land in the game's `bugs\`; `brokendev bug` replays them exactly. Lite still holds 60 fps with it on. **Built 2026-10-25** (see "D6 as built"): F9 and the note box in the desktop app, the Bug button's zip in Lite; every capture of the tests (VRUN, Super VRUN, the Game Boy hello world, the test ROMs) replays exactly; Lite 172 fps recording; `bugs` checks every workspace keeps them out of git. |
-| **D7** | **Debug port** | Print, assert, timers and markers on the three consoles, with NESFab, PVSnesLib and GBDK libraries, stripped from release builds. Other emulators run the dev builds unharmed. |
+| **D7** | **Debug port** | Print, assert, timers and markers on the three consoles, with NESFab, PVSnesLib and GBDK libraries, stripped from release builds. Other emulators run the dev builds unharmed. **Built 2026-10-25** (see "D7 settled" and "D7 as built"): NES `$401C-$401F`, SNES / WideMess `$4230-$423F`, Game Boy the bgb / Emulicious messages; libraries for NESFab, ca65 (not assembled here), PVSnesLib / WideMess C and WLA-DX, GBDK, each release build proven byte-identical to the source without the calls; the hello world and the WideMess template and sample speak through it; the hello world's dev build works on Mesen and BizHawk. |
 | **D8** | **Viewers** | The desktop windows (debugger, memory, tiles, maps, sprites, palettes, event view, sound monitor), then the BrokenDev web pages. |
 | **D9** | **Checkup, chaos, coverage** | `brokendev checkup` over every game, `brokendev chaos`, the coverage pages. |
 | next | **VRUN: Vaults of Obsolete Code** | Its own plan: `docs/projects/vrun-voc-plan.md`. |
@@ -807,6 +808,70 @@ debugger with the message and the place (the PC, its symbol; the library adds th
 `port.assert` that always fails verify (an assert cannot be accepted); **timers** report calls, cycles per call (average, worst) and per frame
 (in the profiler's units: NES CPU cycles, SNES master clocks, Game Boy M-cycles) in D4's profile; **markers** go into D5's movies (`m` lines)
 and the divergence finder's report (the last marker before the first difference), and into D6's bug captures (`bug.json`, the last 30 s).
+
+## D7 as built (2026-10-25)
+
+- **The registers** are "D7 settled"'s (open question 1, answered for the user's review): the NES `$401C-$401F`, the SNES and WideMess
+  `$4230-$423F`, the Game Boy the bgb / Emulicious `ld d,d` messages and `ld b,b`.
+- **The engine** (`Windows/NesEmulator/debug/port/DebugPort.cs`, compiled by the desktop app and Workshop with the debugger): one `DebugPort`
+  per machine decodes the protocol (print with printf values, assert, marker, numbered and named timers, break, timer names, pointer forms,
+  clear), keeps the events (the last N, every assert and marker), the timers (calls, total, best, worst and its frame, the worst frame's sum)
+  in the machine's cycles (the D4 profiler's units), and names the place: the store that wrote the port, its symbol, and when that is a library
+  helper (`bdbg_say`, `dbg_print`, GBDK's `EMU_printf`) its caller (from the call stack where it is tracked; `EMU_printf`'s return address). Wrong
+  use is an `error` event, never silence: an unknown command, a reserved register, a message past 255 bytes, a value a `%` field wants and
+  the message lacks, a stop without a start, an unknown bgb field. **The listeners are fields that stay null:** `Bus.DebugPortWrite` (tested
+  at the very end of `WriteSlow`, which only the dead `$4018-$4FFF` writes reach), `BOARD_SFC.DebugPortWrite` (inside the existing
+  `$4220-$423F` test), and the Game Boy's existing `BOARD_GB.InstructionHook` (multicast: a host's own hook stays). Several ports may listen
+  to one machine (a session's and the checks'); each detach removes only itself. `NES.DebugCpuCycle` (read only) gives the NES timers the
+  cycle; `Debugger.Pause(reason, text)` lets an assert park the debugger with its message.
+- **Where the events go:**
+  - **Workshop** `--port --rom [--sym] [--frames] [--input] [--json]` (every event as it happens, the timers; exit 1 on an assert), and the
+    port in `--checks` / `--profile`: an assert is a **`port.assert`** finding at the function that asserted, which **no accepted entry can
+    match** (not even `*`); the **named timers are in the profile** (text and JSON: calls, average, worst, per frame and its share of a
+    frame) - the D4 item left for D7.
+  - **verify**: every scenario listens (it never changes the game); a failed assert fails the scenario (`debug-port-asserts`, the message,
+    the place, the frame); `expect.port` asks for markers, prints, timers, `maxErrors`, or a number of asserts (a negative control); the
+    report's `debugPort` and `brokendev verify`'s summary show what the game said.
+  - **Movies**: `MovieMachine` listens; a recording gets the markers as `m` lines, a replay compares them (`markersNote`); the divergence
+    finder names the last marker of each run before the first difference and the first marker they disagree on.
+  - **Bug captures**: `BugCaptureRing.Note` keeps the events with their frame (Lite compiles it and pays nothing: no port there); the
+    bundle's movie has the markers, `bug.json` a `debugPort` list; `--bug make` listens.
+  - **The debugger**: with `BreakOnAssert` an assert parks it (reason `assert`, the message and place in the break's text); a `break`
+    command / bare `ld b,b` parks it with `BreakOnBreak`.
+  - **The MCP server**: every headless session listens from power-on with both on (run returns `break` / `assert` with the message), run
+    results carry the events new since the last result, `status` the counts, and the new **`debug_port`** tool lists events by seq and
+    kind, the timers, the status, or clears them (47 tools); step back's replay is not heard twice.
+  - **The desktop app**: Emulator > Debug Port (config `debugPortEnabled`, **off by default**; `debugPortPauseOnAssert` on): the port
+    follows the running game from the frame loops, the `[port]` log lines, a failed assert pauses the game with the message in the title bar,
+    the events into F9's ring; `GET /api/debug/port`, `POST /api/debug/port/enabled` (`Windows/webapi/README.md`).
+- **The libraries** (`BrokenDev/debugport`), every call compiled to nothing without the dev define:
+  - **NESFab** (`nesfab/brokendev_dbg.fab` dev, `brokendev_dbg_off.fab` release: the same functions, empty and inlined; strings as
+    `@"..."ascii`, the timers fenced so the compiler cannot move the timed work across them), a sample and `build-proof.ps1`;
+  - **ca65** (`ca65/brokendev_dbg.inc`, `.ifdef BROKENDEV_DEBUG`): **written, not assembled** (no ca65 on this machine; a download needs the
+    user's approval);
+  - **PVSnesLib / WideMess** C (`snes/brokendev_dbg.h`) and **WLA-DX** (`snes/brokendev_dbg.inc`: for 16-bit A, no SEP / REP because
+    WLA-DX follows them, two-register stores: DATA + DATA for the address, DATA + COMMAND for the bank and the command in one store);
+    `wmsbuild.ps1` puts them on the include path, `-Define BROKENDEV_DEBUG` is the dev build;
+  - **GBDK** (`gbdk/brokendev_dbg.h`: inline bgb messages of up to four literals, `EMU_printf` for values, `@assert line N: cond` then
+    `ld b,b`, `@timer+ / @timer-` with `%ZEROCLKS%` / `%-8+LASTCLKS%` so bgb's profiler reads the same timers) and `build-proof.ps1`;
+  - `Strip-DebugCalls.ps1`: the "source without any debug call" the proofs compare with.
+- **The release strip, proven byte for byte:** the NESFab sample (release = the sample without its `dbg_` lines, sha256 `25e861b2...`; dev
+  differs); the Game Boy hello world (release = its sources without the 7 `DBG_` calls, `ebb08f95...`; dev `1f4b9f16...`); **the WideMess
+  sample and template: their release builds with the calls written in are byte-identical to the `devkit_sample.wms` / `devkit_template.wms`
+  committed before D7** (`3556497A...`, `16437B85...`), so `--wms-test`'s devkit ROMs did not change.
+- **The games wired:** the Game Boy hello world (`VRUN_VOC_dev`, local commit `f828fbe`, never pushed: `src/brokendev_dbg.h` a copy of the
+  library, `debug.h` on `VOC_DEV`; prints of the build and the boot counter, markers `started` and `beep`, a `move_player` timer, an assert
+  that the sprite stays on the screen; `VOC_PLANT_ASSERT` the negative control); the WideMess template (a print, markers `started` and
+  `ding`, a `frame` timer, an assert) and sample (prints at a hit and the boss's fall, markers `started`, `boss`, `game over`, an `update`
+  timer in C and a `bullet_hit` timer in `game.asm` through the WLA-DX macros, an assert that the ship stays on the screen;
+  `SAMPLE_PLANT_ASSERT`). BrokenDev builds both dev (`-Define BROKENDEV_DEBUG` in their manifests); `expect.port` in vrun-voc,
+  widemess-sample and the template.
+- **Other emulators run the dev builds unharmed:** `brokendev compat vrun-voc` on the dev build: BrokenNes, Mesen 2.1.1, BizHawk Gambatte and
+  SameBoy all WORK (every check). The NES and SNES ports are writes to addresses nothing decodes on the hardware (by construction; the NES
+  and WideMess dev samples were run on BrokenNes only).
+- **Found and fixed on the way:** the desktop app's continue-state screenshots ignored `BROKENNES_SAVES_DIR` (a smoke run wrote
+  `ContinueStates\porttest_nes-....png` into the user's `%APPDATA%\BrokenNes`; that one file was removed, nothing else touched): they now
+  follow it, as the battery saves do. A `debugtest_nes-....png` of 2026-10-24 there is an earlier milestone's (left as it is).
 
 ## Open questions (to settle at the start of the track)
 
