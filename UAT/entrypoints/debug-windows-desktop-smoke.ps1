@@ -23,6 +23,9 @@
               exactly as the API reads CGRAM, and not in row 1. Game Boy: BGP / OBP0 / OBP1 as the API reads them, shades decoded.
     TILES     Emulator > Debug Windows > Tiles: a tile's colour indices in the window equal the script's own decoding of the API's bytes
               (NES CHR, SNES VRAM $2000 as 2bpp, Game Boy VRAM), and the next tile is its own bytes, not the first's.
+    SPRITES   Emulator > Debug Windows > Sprites: a sprite written through the API (the NES's page 2 and the Game Boy's $C100, which the test
+              ROMs DMA every frame; the SNES's OAM with the game paused) is listed with its place, tile, palette and flip; one moved off screen
+              is not.
     SNES / GB the same window on the SNES (the CPU picker offers the SPC700, whose registers show) and the Game Boy.
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
 
@@ -146,6 +149,9 @@ function Decode2([int[]]$b, [bool]$nes) {
     $rows -join '/'
 }
 function ApiBytes([int]$procId, [string]$domain, [int]$address, [int]$len) { @((Api $procId GET "/api/memory/peek-range?domain=$domain&address=$address&length=$len").data | ForEach-Object { [int]$_ }) }
+function Open-Sprites([int]$procId) { Open-DebugWindow $procId 'Sprites' 'BrokenNes Sprites' }
+function SpriteLine($w, [int]$i) { (Items (FindById $w 'sprites')) | Where-Object { $_ -match "^#$i\s" } | Select-Object -First 1 }
+function Norm([string]$t) { ($t -replace '\s+', ' ').Trim() }
 function PcLine($w) { (Items (FindById $w 'disassembly')) | Where-Object { $_ -like '>*' } | Select-Object -First 1 }
 
 $inst = $null
@@ -284,6 +290,14 @@ try {
     $got2 = Show-Tile $win '0' $t2
     Check 'tiles_nes_chr_negative' ($t2 -ge 0 -and $got2 -ne $want -and $got2 -eq (Decode2 $chr[($t2 * 16)..($t2 * 16 + 15)] $true)) "tile $t2 is its own bytes, not tile $t1's: $got2"
     Close-Window $win
+    # ---------------------------------------------------------------- SPRITES (NES): OAM DMA'd from page 2 every frame; page 2 written through the API
+    $win = Open-Sprites $id
+    foreach ($pv in @(@(0x200, 0x40), @(0x201, 0x12), @(0x202, 0x41), @(0x203, 0x50), @(0x204, 0xF0))) { Api $id POST '/api/memory/poke' @{ domain = 'System RAM'; address = $pv[0]; value = $pv[1] } | Out-Null }
+    Start-Sleep -Milliseconds 800
+    $s0 = Norm (SpriteLine $win 0); $s1 = SpriteLine $win 1
+    Check 'sprites_nes' ($s0 -eq '#0 x 80 y 65 8x8 tile $12 pal 1 flipX') "sprite 0 after `$0200 = 40 12 41 50: $s0"
+    Check 'sprites_nes_negative' (-not $s1) "sprite 1 with y `$F0 is off screen and not listed: $(if ($s1) { $s1 } else { 'not listed' })"
+    Close-Window $win
 
     # ---------------------------------------------------------------- SNES (the SPC700 in the CPU picker)
     Load $id (Join-Path $roms 'debugtest.sfc')
@@ -333,6 +347,15 @@ try {
     $got1 = Show-Tile $win '$2000' 1
     Check 'tiles_snes_2bpp_negative' ($got1 -ne $want -and $got1 -eq (Decode2 $vb[16..31] $false)) "the next tile is its own bytes: $got1"
     Close-Window $win
+    $win = Open-Sprites $id
+    Api $id POST '/api/emulator/pause' | Out-Null; Start-Sleep -Milliseconds 300
+    foreach ($pv in @(@(0, 0x20), @(1, 0x30), @(2, 0x05), @(3, 0x04), @(5, 0xE0))) { Api $id POST '/api/memory/poke' @{ domain = 'OAM'; address = $pv[0]; value = $pv[1] } | Out-Null }
+    Start-Sleep -Milliseconds 700
+    $s0 = Norm (SpriteLine $win 0); $s1 = SpriteLine $win 1
+    Api $id POST '/api/emulator/resume' | Out-Null
+    Check 'sprites_snes' ($s0 -like '#0 x 32 y 48 8x8 tile $005 pal 2*') "sprite 0 after OAM 20 30 05 04: $s0"
+    Check 'sprites_snes_negative' (-not $s1) "sprite 1 with y 224 is off screen and not listed: $(if ($s1) { $s1 } else { 'not listed' })"
+    Close-Window $win
 
     # ---------------------------------------------------------------- Game Boy
     Load $id (Join-Path $roms 'debugtest.gb')
@@ -372,6 +395,14 @@ try {
     $gv = ApiBytes $id 'VRAM' 0 32
     $got = Show-Tile $win '0' 0
     Check 'tiles_gb' ($got -eq (Decode2 $gv[0..15] $false)) "Game Boy VRAM tile 0 in the window: $got"
+    Close-Window $win
+    # the Game Boy test ROM's VBlank handler DMAs OAM from $C100 (work RAM offset $100)
+    $win = Open-Sprites $id
+    foreach ($pv in @(@(0x100, 0x50), @(0x101, 0x30), @(0x102, 0x07), @(0x103, 0x20), @(0x104, 0x00))) { Api $id POST '/api/memory/poke' @{ domain = 'WRAM'; address = $pv[0]; value = $pv[1] } | Out-Null }
+    Start-Sleep -Milliseconds 800
+    $s0 = Norm (SpriteLine $win 0); $s1 = SpriteLine $win 1
+    Check 'sprites_gb' ($s0 -like '#0 x 40 y 64 8x* tile $07 pal 0 flipX') "sprite 0 after `$C100 = 50 30 07 20: $s0"
+    Check 'sprites_gb_negative' (-not $s1) "sprite 1 with y 0 is off screen and not listed: $(if ($s1) { $s1 } else { 'not listed' })"
     Close-Window $win
 
     $result.pass = -not ($checks.Values | Where-Object { -not $_.ok })

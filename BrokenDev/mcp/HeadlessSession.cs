@@ -1095,63 +1095,32 @@ internal sealed class HeadlessSession : Session
 
     public override ToolOut Sprites(bool draw, int scale)
     {
+        // one decoder with the desktop's Sprites window (BrokenDev D8): NesEmulator.Debugging.DebugPictures
+        if (M == null || !(nes != null || cs is GbSession || cs is SnesSession))
+            throw new ToolError($"the sprite list covers the NES, SNES, WideMess and Game Boy; not the {Consoles.DisplayName(console)} yet");
+        List<DebugPictures.SpriteInfo> sprites;
+        string note;
+        try { sprites = DebugPictures.Sprites(M, out note); }
+        catch (ArgumentException e) { throw new ToolError(e.Message); }
         var list = new JsonArray();
-        var boxes = new List<(int x, int y, int w, int h)>();
-        if (nes != null)
+        foreach (var p in sprites)
         {
-            var c = M!.Main;
-            var oamSpace = c.FindSpace("oam") ?? throw new ToolError("this NES has no OAM space in the debugger");
-            for (int i = 0; i < 64; i++)
-            {
-                int y = c.PeekSpace(oamSpace.Id, (uint)(i * 4)), tile = c.PeekSpace(oamSpace.Id, (uint)(i * 4 + 1)), attr = c.PeekSpace(oamSpace.Id, (uint)(i * 4 + 2)), x = c.PeekSpace(oamSpace.Id, (uint)(i * 4 + 3));
-                bool visible = y < 0xEF;
-                if (!visible) continue;
-                list.Add(new JsonObject { ["index"] = i, ["x"] = x, ["y"] = y + 1, ["tile"] = Num.Hex(tile), ["palette"] = attr & 3, ["behind"] = (attr & 0x20) != 0, ["flipX"] = (attr & 0x40) != 0, ["flipY"] = (attr & 0x80) != 0 });
-                boxes.Add((x, y + 1, 8, 8));
-            }
+            if (nes != null)
+                list.Add(new JsonObject { ["index"] = p.Index, ["x"] = p.X, ["y"] = p.Y, ["tile"] = Num.Hex(p.Tile), ["palette"] = p.Palette, ["behind"] = p.Behind, ["flipX"] = p.FlipX, ["flipY"] = p.FlipY });
+            else if (cs is GbSession)
+                list.Add(new JsonObject { ["index"] = p.Index, ["x"] = p.X, ["y"] = p.Y, ["tile"] = Num.Hex(p.Tile), ["flags"] = Num.Hex(p.Flags), ["behind"] = p.Behind, ["flipY"] = p.FlipY, ["flipX"] = p.FlipX, ["dmgPalette"] = p.DmgPalette, ["cgbPalette"] = p.CgbPalette, ["vramBank"] = p.VramBank });
+            else
+                list.Add(new JsonObject { ["index"] = p.Index, ["x"] = p.X, ["y"] = p.Y, ["tile"] = Num.Hex(p.Tile, 3), ["palette"] = p.Palette, ["priority"] = p.Priority, ["flipX"] = p.FlipX, ["flipY"] = p.FlipY, ["large"] = p.Large });
         }
-        else if (cs is GbSession)
-        {
-            var oam = Domain("OAM"); var io = Domain("IO");
-            bool tall = (io.Peek(0x40) & 4) != 0;
-            for (int i = 0; i < 40; i++)
-            {
-                int y = oam.Peek(i * 4) - 16, x = oam.Peek(i * 4 + 1) - 8, tile = oam.Peek(i * 4 + 2), f = oam.Peek(i * 4 + 3);
-                if (y <= -16 || y >= 144 || x <= -8 || x >= 160) continue;
-                list.Add(new JsonObject { ["index"] = i, ["x"] = x, ["y"] = y, ["tile"] = Num.Hex(tile), ["flags"] = Num.Hex(f), ["behind"] = (f & 0x80) != 0, ["flipY"] = (f & 0x40) != 0, ["flipX"] = (f & 0x20) != 0, ["dmgPalette"] = f >> 4 & 1, ["cgbPalette"] = f & 7, ["vramBank"] = f >> 3 & 1 });
-                boxes.Add((x, y, 8, tall ? 16 : 8));
-            }
-        }
-        else if (cs is SnesSession)
-        {
-            var oam = Domain("OAM");
-            for (int i = 0; i < 128; i++)
-            {
-                int lo = oam.Peek(i * 4), y = oam.Peek(i * 4 + 1), tile = oam.Peek(i * 4 + 2), attr = oam.Peek(i * 4 + 3);
-                int hi = oam.Peek(512 + i / 4) >> (i % 4 * 2) & 3;
-                int x = lo | (hi & 1) << 8; if (x >= 256) x -= 512;
-                if (y >= 224 && y < 240) continue;
-                list.Add(new JsonObject { ["index"] = i, ["x"] = x, ["y"] = y, ["tile"] = Num.Hex(tile | (attr & 1) << 8, 3), ["palette"] = attr >> 1 & 7, ["priority"] = attr >> 4 & 3, ["flipX"] = (attr & 0x40) != 0, ["flipY"] = (attr & 0x80) != 0, ["large"] = (hi & 2) != 0 });
-                boxes.Add((x, y, (hi & 2) != 0 ? 16 : 8, (hi & 2) != 0 ? 16 : 8));
-            }
-        }
-        else throw new ToolError($"the sprite list covers the NES, SNES, WideMess and Game Boy; not the {Consoles.DisplayName(console)} yet");
         var o = new ToolOut(new JsonObject
         {
             ["sprites"] = list, ["count"] = list.Count, ["frame"] = Frames,
-            ["note"] = nes != null ? "boxes are 8x8 (the 8x16 mode is in PPUCTRL, a write-only register)" : cs is SnesSession ? "boxes are 8x8 or 16x16 for small or large: the real sizes are in OBSEL ($2101, write-only); y in 224-239 is off screen" : "",
+            ["note"] = note,
         });
         if (draw)
         {
             var (px, w, h) = Picture();
-            foreach (var (x, y, bw, bh) in boxes)
-                for (int k = 0; k < bw; k++)
-                    for (int e = 0; e < bh; e++)
-                    {
-                        if (k != 0 && k != bw - 1 && e != 0 && e != bh - 1) continue;
-                        int X = x + k, Y = y + e;
-                        if (X >= 0 && X < w && Y >= 0 && Y < h) px[Y * w + X] = 0xFFFF00FF;
-                    }
+            DebugPictures.DrawBoxes(px, w, h, sprites);
             o.Pngs.Add(Png.FromArgb(px, w, h, scale));
         }
         return o;

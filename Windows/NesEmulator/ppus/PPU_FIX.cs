@@ -5,7 +5,7 @@ namespace NesEmulator
 // control component" baseline - every other named core is either a speed/perf tradeoff or an
 // intentional gimmick/personality core (see project_ppu_core_personalities memory) and is
 // frozen going forward. Accuracy fixes land here, not on PPU_FMC or any other named core.
-public class PPU_FIX : IPPU, IPpuFixTiming
+public class PPU_FIX : IPPU, IPpuFixTiming, IPpuOamProbe
 {
 	// Core metadata (new IPPU contract)
 	public string CoreName => "Fix";
@@ -1281,5 +1281,6 @@ public class PPU_FIX : IPPU, IPpuFixTiming
 	public byte ProbeMask => PPUMASK;
 	public byte ProbePpuBusRead(ushort address) => Read(address);
 	public void ProbePpuBusWrite(ushort address, byte value) => Write(address, value);
+	public byte ProbeOam(int index) => oam[index & 0xFF];
 }
 }

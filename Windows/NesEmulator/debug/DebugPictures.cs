@@ -25,6 +25,107 @@ public static class DebugPictures
     public static uint Bgr555(int v) { int r = v & 31, g = v >> 5 & 31, b = v >> 10 & 31; return 0xFF000000u | (uint)(r << 3 | r >> 2) << 16 | (uint)(g << 3 | g >> 2) << 8 | (uint)(b << 3 | b >> 2); }
     public static readonly uint[] Greys = { 0xFF000000, 0xFF555555, 0xFFAAAAAA, 0xFFFFFFFF };
 
+    /// <summary>One sprite of the OAM list (what the hardware's attribute bytes say; the fields a console has not are left at their defaults).</summary>
+    public sealed class SpriteInfo
+    {
+        public int Index, X, Y, Width = 8, Height = 8, Tile, TileDigits = 2, Palette, Flags;
+        public bool Behind, FlipX, FlipY, Large;
+        public int Priority, DmgPalette, CgbPalette, VramBank;
+        public override string ToString() =>
+            $"#{Index,-3} x {X,4} y {Y,4} {Width}x{Height} tile ${Tile.ToString(TileDigits == 3 ? "X3" : "X2")} pal {Palette}" +
+            (Behind ? " behind" : "") + (FlipX ? " flipX" : "") + (FlipY ? " flipY" : "") + (Priority != 0 ? $" pri {Priority}" : "");
+    }
+
+    /// <summary>The sprites on screen, from OAM: the NES's 64 (y below $EF), the Game Boy's 40 (in the 160x144 picture), the SNES's 128 (y not
+    /// 224-239). <paramref name="note"/> says what the boxes cannot know (sizes held in write-only registers).</summary>
+    public static List<SpriteInfo> Sprites(DebugMachine m, out string note)
+    {
+        var list = new List<SpriteInfo>();
+        var doms = m.Domains();
+        IMemoryDomain Need(string id) => doms.FirstOrDefault(x => x.Id == id && x.Unavailable == null && x.Size > 0) ?? throw new ArgumentException($"this machine has no {id} memory");
+        switch (Family(m.Console))
+        {
+            case "nes":
+            {
+                var c = m.Main;
+                var oamSpace = c.FindSpace("oam") ?? throw new ArgumentException("this NES has no OAM space in the debugger");
+                for (int i = 0; i < 64; i++)
+                {
+                    int y = c.PeekSpace(oamSpace.Id, (uint)(i * 4)), tile = c.PeekSpace(oamSpace.Id, (uint)(i * 4 + 1)), attr = c.PeekSpace(oamSpace.Id, (uint)(i * 4 + 2)), x = c.PeekSpace(oamSpace.Id, (uint)(i * 4 + 3));
+                    if (y >= 0xEF) continue;
+                    list.Add(new SpriteInfo { Index = i, X = x, Y = y + 1, Tile = tile, Palette = attr & 3, Flags = attr, Behind = (attr & 0x20) != 0, FlipX = (attr & 0x40) != 0, FlipY = (attr & 0x80) != 0 });
+                }
+                note = "boxes are 8x8 (the 8x16 mode is in PPUCTRL, a write-only register)";
+                return list;
+            }
+            case "gb":
+            {
+                var oam = Need("OAM"); var io = Need("IO");
+                bool tall = (io.Peek(0x40) & 4) != 0;
+                for (int i = 0; i < 40; i++)
+                {
+                    int y = oam.Peek(i * 4) - 16, x = oam.Peek(i * 4 + 1) - 8, tile = oam.Peek(i * 4 + 2), f = oam.Peek(i * 4 + 3);
+                    if (y <= -16 || y >= 144 || x <= -8 || x >= 160) continue;
+                    list.Add(new SpriteInfo { Index = i, X = x, Y = y, Height = tall ? 16 : 8, Tile = tile, Flags = f, Behind = (f & 0x80) != 0, FlipY = (f & 0x40) != 0, FlipX = (f & 0x20) != 0,
+                                              DmgPalette = f >> 4 & 1, CgbPalette = f & 7, VramBank = f >> 3 & 1, Palette = m.Console == "gbc" ? f & 7 : f >> 4 & 1 });
+                }
+                note = "";
+                return list;
+            }
+            case "snes":
+            {
+                var oam = Need("OAM");
+                for (int i = 0; i < 128; i++)
+                {
+                    int lo = oam.Peek(i * 4), y = oam.Peek(i * 4 + 1), tile = oam.Peek(i * 4 + 2), attr = oam.Peek(i * 4 + 3);
+                    int hi = oam.Peek(512 + i / 4) >> (i % 4 * 2) & 3;
+                    int x = lo | (hi & 1) << 8; if (x >= 256) x -= 512;
+                    if (y >= 224 && y < 240) continue;
+                    bool large = (hi & 2) != 0;
+                    list.Add(new SpriteInfo { Index = i, X = x, Y = y, Width = large ? 16 : 8, Height = large ? 16 : 8, Tile = tile | (attr & 1) << 8, TileDigits = 3, Palette = attr >> 1 & 7, Priority = attr >> 4 & 3,
+                                              Flags = attr, FlipX = (attr & 0x40) != 0, FlipY = (attr & 0x80) != 0, Large = large });
+                }
+                note = "boxes are 8x8 or 16x16 for small or large: the real sizes are in OBSEL ($2101, write-only); y in 224-239 is off screen";
+                return list;
+            }
+            default:
+                throw new NotSupportedException($"the sprite list covers the NES, SNES, WideMess and Game Boy; not '{m.Console}' yet");
+        }
+    }
+
+    /// <summary>The game's last picture as ARGB: a NES's frame buffer (256x240) or a console session's.</summary>
+    public static (uint[] px, int w, int h) Frame(object? game)
+    {
+        if (game is NES n)
+        {
+            var fb = n.GetFrameBuffer();
+            var a = new uint[256 * 240];
+            for (int i = 0; i < a.Length && i * 4 + 2 < fb.Length; i++) a[i] = 0xFF000000u | (uint)fb[i * 4] << 16 | (uint)fb[i * 4 + 1] << 8 | fb[i * 4 + 2];
+            return (a, 256, 240);
+        }
+        if (game is NesEmulator.Systems.IConsoleSession s)
+        {
+            int w = s.FrameWidth, h = s.FrameHeight;
+            var px = new uint[w * h];
+            Array.Copy(s.Frame, px, Math.Min(px.Length, s.Frame.Length));
+            return (px, w, h);
+        }
+        return (Array.Empty<uint>(), 0, 0);
+    }
+
+    /// <summary>Draws each sprite's box (magenta) onto a picture.</summary>
+    public static void DrawBoxes(uint[] px, int w, int h, IEnumerable<SpriteInfo> sprites, uint colour = 0xFFFF00FF)
+    {
+        foreach (var s in sprites)
+            for (int k = 0; k < s.Width; k++)
+                for (int e = 0; e < s.Height; e++)
+                {
+                    if (k != 0 && k != s.Width - 1 && e != 0 && e != s.Height - 1) continue;
+                    int X = s.X + k, Y = s.Y + e;
+                    if (X >= 0 && X < w && Y >= 0 && Y < h) px[Y * w + X] = colour;
+                }
+    }
+
     /// <summary>The console family a debug machine's <c>Console</c> belongs to for the viewers: nes, snes (also WideMess), gb (also the Color).</summary>
     public static string Family(string console) => console.ToLowerInvariant() switch { "widemess" or "wms" or "snes" => "snes", "gbc" or "gb" => "gb", var c => c };
 

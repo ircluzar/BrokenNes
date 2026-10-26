@@ -73,6 +73,13 @@ public interface IPpuProbe : IPpuFrameClock
 	void ProbePpuBusWrite(ushort address, byte value);
 }
 
+/// <summary>Side-effect-free reading of a PPU's sprite RAM (OAM, 256 bytes): the debugger's <c>oam</c> space and the sprite viewers
+/// (BrokenDev D8). Unlike a $2004 read it touches no OAM address or latch.</summary>
+public interface IPpuOamProbe
+{
+	byte ProbeOam(int index);
+}
+
 /// <summary>
 /// The FIX-family timing contract: what the board and CPU_FIX need from a dot-accurate PPU to run it cycle-precise
 /// (catch-up on every bus access, interrupt dots, the reset-sequence flush). PPU_FIX has it, and so do the variant

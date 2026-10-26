@@ -92,6 +92,8 @@ public sealed class NesDebugMachine : DebugMachine, INesInstructionHook, IBusDeb
                 yield return $"{id} reads and writes RAM without the bus (a speed shortcut), so RAM watches miss some of its accesses; CPU_FIX (the default) goes through the bus every time.";
             if (id != "CPU_FIX")
                 yield return $"{id} does not say when an interrupt is about to be taken: the call stack finds interrupt entries afterwards, and an execute breakpoint on the instruction an NMI interrupts can be reported twice.";
+            if (nes.DebugBus?.ppu is not IPpuOamProbe)
+                yield return "this PPU core does not show its sprite RAM: the oam space reads 0 (PPU_FIX, the default, does).";
             if (nes.DebugBus?.ppu is not IPpuProbe)
                 yield return "this PPU core has no scanline / dot counter: V and H read -1.";
         }
@@ -190,7 +192,7 @@ internal sealed class NesCpu : DebugCpu
     {
         SpacePrg => nes.PeekPrg((int)offset),
         SpacePrgRam => nes.PeekPrgRam((int)offset),
-        SpaceOam => 0,
+        SpaceOam => nes.DebugBus?.ppu is IPpuOamProbe op ? op.ProbeOam((int)offset) : (byte)0,
         _ => Peek(offset),
     };
 
