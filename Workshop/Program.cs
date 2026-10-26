@@ -95,6 +95,8 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--checks", StringComparison.OrdinalIgnoreCase)) return Debug.CheckRunCli.Run(args, profileOnly: false);
         if (args.Length > 0 && args[0].Equals("--profile", StringComparison.OrdinalIgnoreCase)) return Debug.CheckRunCli.Run(args, profileOnly: true);
         if (args.Length > 0 && args[0].Equals("--check-test", StringComparison.OrdinalIgnoreCase)) return Debug.CheckTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--port-test", StringComparison.OrdinalIgnoreCase)) return Debug.PortTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--port", StringComparison.OrdinalIgnoreCase)) return Debug.PortRunCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--wms-pack", StringComparison.OrdinalIgnoreCase)) return WideMessCli.Pack(args);
         if (args.Length > 0 && args[0].Equals("--wms-test", StringComparison.OrdinalIgnoreCase)) return WideMessCli.Test(args);
         if (args.Length > 0 && args[0].Equals("--wms-shot", StringComparison.OrdinalIgnoreCase)) return WideMessCli.Shot(args);

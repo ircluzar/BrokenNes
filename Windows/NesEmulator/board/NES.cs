@@ -1420,6 +1420,8 @@ namespace NesEmulator
 		public INesInstructionHook? DebugHook;
 		/// <summary>The bus and cartridge, for the debugger (registers, side-effect-free memory, the watch tap). Null before a ROM is loaded.</summary>
 		public Bus? DebugBus => bus;
+		/// <summary>The CPU cycle count at the start of the instruction running now (the debug port's timers, D7; read only).</summary>
+		public long DebugCpuCycle => globalCpuCycle;
 		public Cartridge? DebugCartridge => cartridge;
 		/// <summary>RunFrame calls since the NES was made (the frame a RunFrame is running is FramesExecuted - 1).</summary>
 		public long FramesExecuted => framesExecutedTotal;

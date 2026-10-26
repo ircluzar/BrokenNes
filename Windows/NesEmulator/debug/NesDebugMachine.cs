@@ -33,7 +33,7 @@ public sealed class NesDebugMachine : DebugMachine, INesInstructionHook, IBusDeb
     public override void RestoreFrame(long frame) => frameOffset += frame - Frame;
     public override int Scanline => nes.DebugBus?.ppu is IPpuFrameClock c ? c.ProbeScanline : -1;
     public override int Dot => nes.DebugBus?.ppu is IPpuProbe p ? p.ProbeDot : -1;
-    public override long Cycle => cycle;
+    public override long Cycle => execArmed ? cycle : nes.DebugCpuCycle;   // the same count: the hook is handed it before each instruction
 
     public override void ApplyHooks(bool[] exec, bool[] memory)
     {

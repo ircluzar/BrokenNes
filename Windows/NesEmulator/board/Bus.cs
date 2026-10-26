@@ -814,7 +814,14 @@ public class Bus : IBus
 			if (MapperRegisterWriteObserver != null && address >= 0x8000) NotifyMapperRegisterWrite(address, value);
 			return;
 		}
+		// Only $4018-$4FFF get here, where nothing answers on a NES. The BrokenDev debug port ($401C-$401F, milestone D7 of
+		// docs/projects/brokendev-debugging-plan.md) listens to its four while BrokenNes's debugger or dev mode attaches it: the write still
+		// goes nowhere, and with the port off this is one null test that only these dead writes ever reach.
+		if (DebugPortWrite != null && address >= 0x401C && address <= 0x401F) DebugPortWrite(address, value);
 	}
+
+	/// <summary>The BrokenDev debug port (Windows/NesEmulator/debug/port): called with the CPU's writes to $401C-$401F. Null unless attached.</summary>
+	public System.Action<ushort, byte>? DebugPortWrite;
 
 	// === OAM DMA Fast Path ===
 	// If source page is internal RAM (0x0000-0x1FFF mirrors) perform a single BlockCopy instead of 256 bus.Read calls.

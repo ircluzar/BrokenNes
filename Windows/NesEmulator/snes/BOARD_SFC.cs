@@ -293,6 +293,10 @@ public sealed partial class BOARD_SFC : ISnesBus
         return mdr = ReadNoTick(bank, offset);
     }
 
+    /// <summary>The BrokenDev debug port (Windows/NesEmulator/debug/port): called with the writes to $4230-$423F of the system banks (24-bit
+    /// address). Null unless attached; the write still lands where it always did (nowhere on a SNES; the WideMess's reserved range).</summary>
+    public System.Action<uint, byte>? DebugPortWrite;
+
     public void Write(uint address, byte value)
     {
         busAddress = address;
@@ -417,7 +421,12 @@ public sealed partial class BOARD_SFC : ISnesBus
             if (offset == 0x4016) { WriteJoyLatch(value); return; }
             if (offset >= 0x4200 && offset < 0x4220) { WriteCpuIo(offset, value); return; }
             if (offset >= 0x4300 && offset < 0x4380) { dmaRegs[offset & 0x7F] = value; return; }
-            if (offset >= 0x4220 && offset < 0x4240 && WideMess != null && WideMess.WriteCpu(offset, value)) return;
+            if (offset >= 0x4220 && offset < 0x4240)
+            {
+                // the BrokenDev debug port ($4230-$423F, milestone D7): it only listens, the write goes on exactly as before (null when off)
+                if (DebugPortWrite != null && offset >= 0x4230) DebugPortWrite(bank << 16 | offset, value);
+                if (WideMess != null && WideMess.WriteCpu(offset, value)) return;
+            }
         }
         if (Coprocessor != null && Coprocessor.Owns(bank, offset)) { Coprocessor.Write(bank, offset, value, MasterClock); return; }
         Cart.Write(bank, offset, value);

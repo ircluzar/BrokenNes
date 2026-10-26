@@ -395,6 +395,18 @@ public sealed class Debugger
     /// <summary>Break at the next instruction of the main CPU.</summary>
     public void Pause() { pauseRequested = true; Rearm(); }
 
+    /// <summary>Break at the next instruction of the main CPU with a reason of its own ("assert", "port-break": the debug port of D7) and
+    /// the text the break shows.</summary>
+    public void Pause(string reason, string text) { pauseReason = reason; pauseText = text; pauseRequested = true; Rearm(); }
+    private volatile string? pauseReason, pauseText;
+    private BreakInfo PauseBreak(DebugCpu cpu)
+    {
+        var b = new BreakInfo { Reason = pauseReason ?? "pause", CpuId = cpu.Id };
+        if (pauseText != null) b.Text = pauseText;
+        pauseReason = null; pauseText = null;
+        return b;
+    }
+
     /// <summary>Lets a parked emulation run on.</summary>
     public void Continue()
     {
@@ -542,7 +554,7 @@ public sealed class Debugger
             }
             // a watch hit or a pause is still honoured at an interrupt entry or on a halted CPU (an instruction boundary)
             var hb = st.PendingBreak; st.PendingBreak = null;
-            if (hb == null && cpu.Index == 0 && pauseRequested) { pauseRequested = false; hb = new BreakInfo { Reason = "pause", CpuId = cpu.Id }; }
+            if (hb == null && cpu.Index == 0 && pauseRequested) { pauseRequested = false; hb = PauseBreak(cpu); }
             if (hb != null) Park(cpu, hb);
             return;
         }
@@ -767,7 +779,7 @@ public sealed class Debugger
                 break;
         }
         if (cpu.Index != 0) return null;
-        if (pauseRequested) { pauseRequested = false; return new BreakInfo { Reason = "pause", CpuId = cpu.Id }; }
+        if (pauseRequested) { pauseRequested = false; return PauseBreak(cpu); }
         if (gstep == GlobalStep.Scanline && (Machine.Scanline != gStartScanline || Machine.Frame != gStartFrame)) { gstep = GlobalStep.None; return new BreakInfo { Reason = "scanline", CpuId = cpu.Id }; }
         if (gstep == GlobalStep.Frame && Machine.Frame > gStartFrame) { gstep = GlobalStep.None; return new BreakInfo { Reason = "frame", CpuId = cpu.Id }; }
         if (runToFrame >= 0 && Machine.Frame >= runToFrame) { runToFrame = -1; return new BreakInfo { Reason = "frame", CpuId = cpu.Id }; }
