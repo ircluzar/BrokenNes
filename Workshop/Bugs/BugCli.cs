@@ -9,6 +9,7 @@ using BrokenNes.Workshop.Movies;
 using NesEmulator.Debugging.Capture;
 using NesEmulator.Debugging.Checks;
 using NesEmulator.Debugging.Movies;
+using NesEmulator.Systems;
 
 namespace BrokenNes.Workshop.Bugs;
 
@@ -19,7 +20,7 @@ internal sealed class BugBundleReader
     /// <summary>The folder holding bug.json (the bundle itself, or where its zip was unpacked).</summary>
     public string Dir { get; private init; } = "";
     public JsonObject Info { get; private init; } = new();
-    public string Id => System.IO.Path.GetFileName(Path.TrimEnd('\\', '/'));
+    public string Id => Path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? System.IO.Path.GetFileNameWithoutExtension(Path) : System.IO.Path.GetFileName(Path.TrimEnd('\\', '/'));
 
     public static BugBundleReader Open(string path)
     {
@@ -77,6 +78,8 @@ internal sealed class BugBundleReader
 ///                                                     hardware checks if asked (from a state: the read-before-written rules are off);
 ///                                                     exit 0 in sync | 1 off course or crashed | 3 no movie to replay | 2 usage
 ///   --bug list --dir D [--json]                       the bundles in a bugs folder, newest first
+///   --bug make --rom R --frames N [--input S] [--input2 S] [--console c] [--cores C/P/A] [--note T] (--out BUGSDIR | --zip FILE) [--json]
+///                                                     a capture made headless the way the apps make one (the tests', the MCP server's)
 /// </code>
 /// B: a bundle folder, its bug.json, or Lite's .zip.
 /// </summary>
@@ -118,8 +121,22 @@ internal static class BugCli
                     Console.WriteLine(Has("json") ? j.ToJsonString(opts) : (string)j["summary"]!);
                     return code;
                 }
+                case "make":
+                {
+                    string rom = Need(Opt("rom"), "--rom");
+                    if (!long.TryParse(Opt("frames"), out long frames) || frames <= 0) throw new ArgumentException("make needs --frames N");
+                    var d = Make(rom, Opt("console") is { Length: > 0 } c ? c : null, Opt("cores"), frames, Opt("input"), Opt("input2"), out var meta);
+                    meta.Note = Opt("note");
+                    var files = BugBundle.Files(d, meta);
+                    string path;
+                    if (Opt("zip") is { Length: > 0 } zip) { Directory.CreateDirectory(System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(zip))!); File.WriteAllBytes(zip, BugBundle.Zip(files)); path = zip; }
+                    else path = BugBundle.WriteFolder(Need(Opt("out"), "--out (a bugs folder) or --zip"), files, meta.CapturedLocal);
+                    var j = Summary(BugBundleReader.Open(path));
+                    Console.WriteLine(Has("json") ? j.ToJsonString(opts) : $"captured {path}: {Text(j)}");
+                    return 0;
+                }
                 default:
-                    Console.Error.WriteLine($"unknown --bug verb '{verb}' (info, play, list)");
+                    Console.Error.WriteLine($"unknown --bug verb '{verb}' (info, play, list, make)");
                     return 2;
             }
         }
@@ -219,6 +236,32 @@ internal static class BugCli
         j["summary"] = $"{b.Id}: {(string)rep["summary"]!}; the last picture {((bool)j["lastPictureSame"]! ? "is the captured one" : $"DIFFERS from the captured one ({lastNow:X16}, captured {lastRec})")}" +
                        (c != null ? $"; {c.Findings.Count} finding(s)" : "") + $" ({romNote})";
         return (ok ? 0 : 1, j);
+    }
+
+    /// <summary>
+    /// A capture made headless, the way the apps make one: the ROM run <paramref name="frames"/> frames with the pad scripts (verify's
+    /// "120:Start,132:" syntax) through the same rolling buffer, then captured. The tests' and the MCP server's way to a bundle.
+    /// </summary>
+    public static BugCaptureData Make(string rom, string? console, string cores, long frames, string script1, string script2, out BugMeta meta)
+    {
+        using var m = MovieMachine.Open(rom, console, cores, "fceux", false, false);
+        var ring = new BugCaptureRing();
+        var src = m.Host.Nes != null ? BugCaptureSource.For(m.Host.Nes) : BugCaptureSource.For(m.Host.Session!);
+        ring.Attach(src, 44100, m.Host.Session?.FramesPerSecond ?? 60, powerOn: true);
+        var s1 = Movie.ParseScript(script1); var s2 = Movie.ParseScript(script2);
+        PadButtons p1 = PadButtons.None, p2 = PadButtons.None;
+        var pcm = new short[8192]; var mono = new float[4096];
+        for (long f = 0; f < frames; f++)
+        {
+            if (s1.TryGetValue(f, out var a)) p1 = a;
+            if (s2.TryGetValue(f, out var b)) p2 = b;
+            ring.Frame(p1, p2);
+            m.Frame(p1, p2);
+            if (m.Host.Nes is { } n) { var au = n.GetAudioBuffer(); ring.Audio(au, au.Length); }
+            else { int k; while ((k = m.Host.Session!.ReadSamples(pcm)) > 0) { int fr = Math.Min(k / 2, mono.Length); for (int i = 0; i < fr; i++) mono[i] = (pcm[i * 2] + pcm[i * 2 + 1]) / 65536f; ring.Audio(mono, fr); } }
+        }
+        meta = new BugMeta { App = MovieMachine.EmulatorBuild() + " (--bug make)", RomName = System.IO.Path.GetFileName(rom), Rom = File.ReadAllBytes(rom), RomPath = System.IO.Path.GetFullPath(rom), Cores = m.Cores };
+        return ring.Capture();
     }
 
     /// <summary>The machine's picture now, as the capture keeps one.</summary>

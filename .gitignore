@@ -21,3 +21,7 @@ scripts/ftp_credentials.conf
 
 # stray screenshots written to the repository root by test runs (game frames, never committed)
 /*_f[0-9][0-9][0-9][0-9][0-9].png
+
+# bug captures (BrokenDev D6: the desktop app's F9) of the WideMess projects whose game workspace is this repository: game data, never committed
+# (not a bare bugs/: on Windows git matches it without case, and Workshop/Bugs is source)
+/WideMess/*/bugs/

@@ -175,6 +175,8 @@ function Invoke-BdProjectBuild {
 
     if (-not $DryRun) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
     $record = [ordered]@{ project = $Id; title = [string]$m.title; startedAtUtc = $started.ToString('o'); ok = $false; workspace = [ordered]@{ kind = $ws.Kind; path = $ws.Path; source = $ws.Source }; steps = @(); outputs = @(); python = $(if ($ctx.ContainsKey('python')) { [string]$ctx['python'] } else { $null }); error = $null }
+    # where the apps put this build's bug captures (D6): the game workspace's bugs\ (the desktop app reads it from here), none for a restored copy
+    $record['bugs'] = $(if ($ws.Kind -in 'live', 'folder' -and $ws.Path) { Join-Path $ws.Path 'bugs' } else { $null })
     $failed = $null
     foreach ($s in @($m.build.steps)) {
         $r = Invoke-BdBuildStep -Step $s -Ctx $ctx -LogDir $logDir -BaseEnv $baseEnv -DryRun:$DryRun
