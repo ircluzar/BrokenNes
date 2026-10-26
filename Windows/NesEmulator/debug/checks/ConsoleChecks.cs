@@ -97,10 +97,29 @@ public abstract class ConsoleChecks : DebugObserver
         return sb.ToString();
     }
 
-    /// <summary>Called once when the run ends (pending states become findings, the last frame is closed).</summary>
+    /// <summary>Called once when the run ends (pending states become findings, the last frame is closed, the debug port detached).</summary>
     public virtual void Finish()
     {
         if (haveStep) CloseFrame(M.Cycle, partial: true);
+        Port?.Detach();
+    }
+
+    // ======================================================================================== the debug port (D7)
+
+    /// <summary>The debug port listened to during the run (null when <see cref="CheckOptions.DebugPort"/> is off): its timers go into the profile.</summary>
+    public Port.DebugPort? Port { get; private set; }
+
+    /// <summary>Attaches the debug port: a failed assert is a <c>port.assert</c> finding at the function that asserted (the message is the detail).</summary>
+    public Port.DebugPort AttachPort()
+    {
+        var p = new Port.DebugPort(M, Dbg);
+        p.Event += e =>
+        {
+            if (e.Kind == NesEmulator.Debugging.Port.PortEventKind.Assert) Report(AcceptedFinding.PortAssertRule, CodePlace(Main, e.Pc), "", Main, e.Pc, $"assert failed: {e.Text}");
+        };
+        p.Attach();
+        Port = p;
+        return p;
     }
 
     // ======================================================================================== the observer plumbing

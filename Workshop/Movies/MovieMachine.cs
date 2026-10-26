@@ -81,6 +81,13 @@ internal sealed class MovieMachine : IDisposable
         var m = new MovieMachine(h, c == ConsoleKind.Nes ? "nes" : Consoles.Key(c), romPath, file, powerOn, ntsc);
         if (symbols != null && h.Dbg != null) foreach (var s in symbols) h.Dbg.Symbols.Load(s, h.Machine.Console);
         else if (symbols != null && symbols.Any()) { m.Dispose(); throw new ArgumentException($"symbols need the debugger, which does not cover the {Consoles.DisplayName(c)} yet"); }
+        if (h.Dbg != null)
+        {
+            // the debug port (D7) listens: its markers, at the movie frame they happen in, go into a recording and a replay's report
+            m.Port = new NesEmulator.Debugging.Port.DebugPort(h.Machine, h.Dbg);
+            m.Port.Event += e => { if (e.Kind == NesEmulator.Debugging.Port.PortEventKind.Marker) m.MarksSeen.Add(new MovieMark(m.FramesRun, e.Text)); };
+            m.Port.Attach();
+        }
         return m;
     }
 
@@ -111,6 +118,10 @@ internal sealed class MovieMachine : IDisposable
         FramesRun++;
     }
 
+    /// <summary>The debug port on this machine (null without the debugger) and the markers it heard, by movie frame.</summary>
+    public NesEmulator.Debugging.Port.DebugPort? Port { get; private set; }
+    public readonly List<MovieMark> MarksSeen = new();
+
     public ulong Picture() => Host.MoviePicture();
     public ulong Ram() => Host.MovieRam();
     public bool Crashed => Host.Crashed;
@@ -123,5 +134,5 @@ internal sealed class MovieMachine : IDisposable
         return mv.Vars.Select(v => d.Evaluate(v.Expr)).ToArray();
     }
 
-    public void Dispose() => Host.Dispose();
+    public void Dispose() { Port?.Detach(); Host.Dispose(); }
 }

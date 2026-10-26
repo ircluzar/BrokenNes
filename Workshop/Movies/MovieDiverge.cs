@@ -63,6 +63,20 @@ internal static class MovieDiverge
         }
         j["diverged"] = true;
         j["frame"] = first;
+        // where the game was (the debug port's markers, D7): the last marker each run gave before the frame, and the first one they disagree on
+        static string? LastMark(MovieMachine m, long upTo)
+        {
+            var k = m.MarksSeen.Where(x => x.Frame <= upTo).ToList();
+            return k.Count == 0 ? null : $"'{k[^1].Text}' at frame {k[^1].Frame}";
+        }
+        j["lastMarker"] = new JsonObject { ["a"] = LastMark(ma, first), ["b"] = LastMark(mb, first) };
+        {
+            var ka = ma.MarksSeen.Where(k => k.Frame <= first).ToList(); var kb = mb.MarksSeen.Where(k => k.Frame <= first).ToList();
+            int i = 0;
+            while (i < ka.Count && i < kb.Count && ka[i] == kb[i]) i++;
+            if (i < ka.Count || i < kb.Count)
+                j["markersDiffer"] = $"marker {i + 1}: a {(i < ka.Count ? $"'{ka[i].Text}' at frame {ka[i].Frame}" : "none")}, b {(i < kb.Count ? $"'{kb[i].Text}' at frame {kb[i].Frame}" : "none")}";
+        }
         j["framesRunWhenFound"] = first + 1;
         j["what"] = what;
         if (what.Contains("crashed")) { j["summary"] = $"frame {first}: {what}"; return j; }

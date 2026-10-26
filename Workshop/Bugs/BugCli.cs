@@ -244,10 +244,12 @@ internal static class BugCli
     /// </summary>
     public static BugCaptureData Make(string rom, string? console, string cores, long frames, string script1, string script2, out BugMeta meta)
     {
-        using var m = MovieMachine.Open(rom, console, cores, "fceux", false, false);
+        using var m = MovieMachine.Open(rom, console, cores, "fceux", false, true);
         var ring = new BugCaptureRing();
         var src = m.Host.Nes != null ? BugCaptureSource.For(m.Host.Nes) : BugCaptureSource.For(m.Host.Session!);
         ring.Attach(src, 44100, m.Host.Session?.FramesPerSecond ?? 60, powerOn: true);
+        // the debug port's events (D7) go into the ring as the apps' do: the bundle's movie gets the markers, bug.json every event
+        if (m.Port != null) m.Port.Event += e => ring.Note(e.KindName, e.Text);
         var s1 = Movie.ParseScript(script1); var s2 = Movie.ParseScript(script2);
         PadButtons p1 = PadButtons.None, p2 = PadButtons.None;
         var pcm = new short[8192]; var mono = new float[4096];

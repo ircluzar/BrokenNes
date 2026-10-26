@@ -27,8 +27,9 @@ internal static class PortTestRoms
 
     // ------------------------------------------------------------------------------------------------------------------ NES
 
-    /// <summary>NROM-128 at $C000 writing its messages to <paramref name="port"/> ($401C: the real port; $4018: the negative control).</summary>
-    public static (byte[] rom, Asm asm, string mlb) Nes(ushort port = 0x401C)
+    /// <summary>NROM-128 at $C000 writing its messages to <paramref name="port"/> ($401C: the real port; $4018: the negative control).
+    /// <paramref name="noFiveMark"/>: another build, which on the fifth frame bumps a RAM byte instead of marking (the divergence test).</summary>
+    public static (byte[] rom, Asm asm, string mlb) Nes(ushort port = 0x401C, bool noFiveMark = false)
     {
         byte lo(int v) => (byte)v; byte hi(int v) => (byte)(v >> 8);
         var a = new Asm(0xC000);
@@ -56,7 +57,7 @@ internal static class PortTestRoms
         a.B(0xE6, 0x10, 0xA5, 0x10, 0xC9, 0x03, 0xF0, 0x03, 0x4C).A("no_assert");   // INC counter; LDA; CMP #3; BEQ +3; JMP              // INC counter; LDA; CMP #3; BNE
         a.L("do_assert"); Text(AssertText); Bytes(0x00); a.B(0xA5, 0x10); Sta(0); Cmd(0x02);
         a.L("no_assert").B(0xA5, 0x10, 0xC9, 0x05, 0xF0, 0x03, 0x4C).A("no_mark");
-        a.L("do_mark"); Text(FiveMark); Cmd(0x03);
+        a.L("do_mark"); if (noFiveMark) a.B(0xE6, 0x11); else { Text(FiveMark); Cmd(0x03); }
         a.L("no_mark").B(0x4C).A("main_loop");
         a.L("nmi").B(0xE6, 0x20, 0x40);                                             // INC frames; RTI
         a.L("irq").B(0x40);

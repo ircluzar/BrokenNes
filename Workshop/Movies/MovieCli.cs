@@ -168,6 +168,8 @@ internal static class MovieCli
             ["keyframesChecked"] = r.KeysChecked, ["keyframesMatched"] = r.KeysMatched, ["inSync"] = r.InSync,
             ["offCourseAfter"] = r.OffCourseFrame, ["offCourse"] = r.OffCourseFrame != null ? r.OffCourseWhat : null,
             ["courseLostAfter"] = r.CourseLostFrame, ["courseLost"] = r.CourseLostFrame != null ? r.CourseLostWhat : null, ["courseNote"] = r.CourseNote,
+            ["markers"] = new JsonArray(r.Marks.Take(200).Select(k => (JsonNode)new JsonObject { ["frame"] = k.Frame, ["text"] = k.Text }).ToArray()),
+            ["markersNote"] = r.MarksNote,
         };
         string rom = r.SameRom ? "the recorded ROM" : $"ANOTHER ROM than the recording's ({m.RomSha256[..12]}, recorded {mv.RomSha256[..Math.Min(12, mv.RomSha256.Length)]})";
         j["summary"] = r.Crashed ? $"crashed after {r.FramesRun} frames on {rom}: {r.CrashInfo}"

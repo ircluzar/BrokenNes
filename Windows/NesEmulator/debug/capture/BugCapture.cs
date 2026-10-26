@@ -239,6 +239,19 @@ public sealed class BugCaptureRing
     /// <summary>The NES's pads as the board takes them (A, B, Select, Start, Up, Down, Left, Right).</summary>
     public void Frame(bool[]? p1, bool[]? p2) => Frame(FromNes(p1), FromNes(p2));
 
+    // ---- notes: the debug port's markers, prints and asserts (D7), told by the host while a frame runs; the last 512 are kept
+    private readonly (long Frame, string Kind, string Text)[] notes = new (long, string, string)[512];
+    private long noteCount;
+
+    /// <summary>A debug-port event of the frame running now (<paramref name="kind"/>: marker, print, assert, break, error). Kept with the
+    /// frame, so a capture's bundle has the markers in its movie and the events in bug.json.</summary>
+    public void Note(string kind, string text)
+    {
+        if (src == null) return;
+        notes[noteCount % notes.Length] = (Math.Max(0, frame - 1), kind, text);
+        noteCount++;
+    }
+
     public static PadButtons FromNes(bool[]? b)
     {
         if (b == null || b.Length < 8) return PadButtons.None;
@@ -350,6 +363,12 @@ public sealed class BugCaptureRing
             if (sl.Frame > start) d.Keys.Add(new MovieKey { Frame = sl.Frame - start, Picture = sl.Picture, Ram = sl.Ram });
             if (sl.Shot.Width > 0) { var c = sl.Shot.Clone(); c.Frame = sl.Frame - start; d.Pictures.Add(c); }
         }
+        // the debug port's events since the start (frames counted from it)
+        for (long k = Math.Max(0, noteCount - notes.Length); k < noteCount; k++)
+        {
+            var (nf, kind, text) = notes[k % notes.Length];
+            if (nf >= start && nf < frame) d.Notes.Add((nf - start, kind, text));
+        }
         // the last keyframe and picture: now
         d.Keys.Add(new MovieKey { Frame = n, Picture = s.PictureHash(), Ram = s.RamHash() });
         var last = new BugPicture(); s.CopyPicture(last); last.Frame = n;
@@ -380,6 +399,8 @@ public sealed class BugCaptureData
     public ushort[] Pads = Array.Empty<ushort>();
     public readonly List<MovieKey> Keys = new();
     public readonly List<BugPicture> Pictures = new();
+    /// <summary>The debug port's events of the capture (D7): the frame from the capture's start, the kind, the text.</summary>
+    public readonly List<(long Frame, string Kind, string Text)> Notes = new();
     public BugPicture? Last;
     public float[] Audio = Array.Empty<float>();
     /// <summary>Samples at the start of the capture the sound buffer no longer held (0 normally): the sound file starts that late.</summary>

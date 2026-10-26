@@ -23,6 +23,7 @@ public static class CheckRun
         };
         debugger.TraceRingSize = 0;   // the checks need no trace ring (it costs every instruction)
         debugger.AddObserver(c);
+        if (options.DebugPort) c.AttachPort();
         return c;
     }
 
@@ -47,6 +48,11 @@ public static class CheckRun
             if (up.Count > 0) { s.UploadAverage = up.Average(); s.UploadWorst = up.Max(); }
             s.DmaAverage = frames.Average(f => (double)f.DmaBytes); s.DmaWorst = frames.Max(f => f.DmaBytes);
         }
+        if (c.Port != null)
+        {
+            s.Timers = c.Port.Timers.ToList();
+            s.PortCounts = $"{c.Port.Count(Port.PortEventKind.Print)} prints, {c.Port.Count(Port.PortEventKind.Assert)} asserts, {c.Port.Count(Port.PortEventKind.Marker)} markers, {c.Port.Count(Port.PortEventKind.Error)} errors";
+        }
         long total = Math.Max(1, c.Frames.Sum(f => f.Cycles));
         int n = Math.Max(1, c.Frames.Count);
         s.Functions = c.Functions.Where(f => f.Inclusive > 0 || f.Exclusive > 0)
@@ -70,6 +76,7 @@ public static class CheckRun
             ["profile"] = ProfileJson(p),
             ["memory"] = new JsonArray(c.MemoryUse().Select(m => (JsonNode)new JsonObject { ["name"] = m.name, ["size"] = m.size, ["written"] = m.written, ["free"] = m.size - m.written }).ToArray()),
             ["stack"] = new JsonObject { ["deepest"] = deep, ["free"] = free },
+            ["debugPort"] = c.Port?.Json(100),
         };
     }
 
@@ -93,6 +100,8 @@ public static class CheckRun
             ["inclusivePercent"] = Math.Round(f.InclusivePercent, 2), ["exclusivePercent"] = Math.Round(f.ExclusivePercent, 2),
             ["inclusivePerFrame"] = Math.Round(f.InclusivePerFrame, 1),
         }).ToArray()),
+        ["timers"] = new JsonArray(p.Timers.Select(t => (JsonNode)t.Json()).ToArray()),
+        ["debugPort"] = p.PortCounts,
     };
 
     /// <summary>The profile as text (Workshop --profile, and the end of a check run).</summary>
@@ -104,6 +113,9 @@ public static class CheckRun
         yield return $"{"function",-40} {"calls",9} {"inclusive %",12} {"exclusive %",12} {"incl./frame",12}";
         foreach (var f in p.Functions.Take(top))
             yield return $"{(f.Name.Length > 40 ? f.Name[..40] : f.Name),-40} {f.Calls,9} {f.InclusivePercent,11:F2}% {f.ExclusivePercent,11:F2}% {f.InclusivePerFrame,12:F0}";
+        if (p.PortCounts.Length > 0) yield return $"debug port: {p.PortCounts}; {p.Timers.Count} named timer(s) (every frame of the run, in {p.Unit})";
+        foreach (var t in p.Timers)
+            yield return $"  timer {(t.Name.Length > 32 ? t.Name[..32] : t.Name),-32} {t.Calls,8} calls, average {t.Average,9:F0}, worst {t.Worst,9} (frame {t.WorstFrame}), per frame at most {t.FrameWorst,9} ({100.0 * t.FrameWorst / Math.Max(1, p.FrameCycles):F1}% of a frame){(t.Unmatched > 0 ? $", {t.Unmatched} unmatched" : "")}";
     }
 }
 
@@ -114,6 +126,9 @@ public sealed class ProfileSummary
     public int LagFrames; public List<long> LagFrameList = new();
     public double UploadAverage, UploadWorst, DmaAverage; public long DmaWorst;
     public List<FunctionSummary> Functions = new();
+    /// <summary>The debug port's named timers (D7), over every frame of the run.</summary>
+    public List<Port.PortTimer> Timers = new();
+    public string PortCounts = "";
 }
 
 public sealed class FunctionSummary

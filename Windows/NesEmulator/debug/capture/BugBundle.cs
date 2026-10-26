@@ -84,6 +84,7 @@ public static class BugBundle
             for (long f = 0; f < d.Frames; f++) mv.SetPads(f, (PadButtons)d.Pads[f * 2], (PadButtons)d.Pads[f * 2 + 1]);
             if (mv.Inputs.Count == 0) mv.SetPads(0, PadButtons.None, PadButtons.None);
             foreach (var k in d.Keys) if (mv.Keys.Count == 0 || k.Frame > mv.Keys[^1].Frame) mv.Keys.Add(k);
+            foreach (var nt in d.Notes) if (nt.Kind == "marker") mv.Marks.Add(new MovieMark(nt.Frame, nt.Text));
             files[MovieFile] = new UTF8Encoding(false).GetBytes(mv.ToText());
         }
 
@@ -158,6 +159,9 @@ public static class BugBundle
             j.WriteEndArray();
             j.WriteString("strip", files.ContainsKey("strip.png") ? "strip.png" : "");
             j.WriteStartArray("symbols"); foreach (var s in symFiles) j.WriteStringValue(s); j.WriteEndArray();
+            j.WriteStartArray("debugPort");
+            foreach (var (nf, kind, text) in d.Notes) { j.WriteStartObject(); j.WriteNumber("frame", nf); j.WriteString("kind", kind); j.WriteString("text", text); j.WriteEndObject(); }
+            j.WriteEndArray();
             j.WriteEndObject();
         }
         files[InfoFile] = ms.ToArray();

@@ -93,6 +93,9 @@ public sealed class Finding
 /// <summary>A finding a game accepts (its manifest's checks.accepted): the rule, where (a glob over the place or the address), and why.</summary>
 public sealed class AcceptedFinding
 {
+    /// <summary>The rule a failed debug-port assert is reported as (D7). Not in the catalogue and never acceptable.</summary>
+    public const string PortAssertRule = "port.assert";
+
     public string Rule { get; init; } = "";
     public string At { get; init; } = "*";
     public string Reason { get; init; } = "";
@@ -101,6 +104,7 @@ public sealed class AcceptedFinding
     private Regex? re;
     public bool Matches(Finding f)
     {
+        if (f.Rule.StartsWith(PortAssertRule, StringComparison.Ordinal)) return false;   // a debug-port assert is the game's own test: never accepted
         if (!Glob(Rule).IsMatch(f.Rule)) return false;
         re ??= Glob(At);
         return re.IsMatch(f.Place) || (f.Address.Length > 0 && re.IsMatch(f.Address)) || (f.PcSymbol != null && re.IsMatch(BaseName(f.PcSymbol)));
@@ -125,4 +129,6 @@ public sealed class CheckOptions
     /// <summary>Collect the profile (cycles per frame and per function); the checks always run.</summary>
     public bool Profile { get; set; } = true;
     public bool IsOn(string rule) => !Off.Contains(rule);
+    /// <summary>Listen to the debug port (D7) during the run: its asserts become <c>port.assert</c> findings, its timers go into the profile.</summary>
+    public bool DebugPort { get; set; } = true;
 }

@@ -290,7 +290,8 @@ internal static partial class BrokenDevCli
         byte[] romBytes = File.ReadAllBytes(rom);
 
         var results = new List<ScenarioResult>();
-        var symbols = LoadSymbols(PublishedSymbolFiles(root, rom), console);
+        portSymbolFiles = PublishedSymbolFiles(root, rom);
+        var symbols = LoadSymbols(portSymbolFiles, console);
         var keepBattery = BatterySources(verify);
         // the promoted movies (the manifest's movies section): each one a scenario, replayed with its keyframes checked (BrokenDevCli.Movies.cs)
         var movieProblems = new List<string>();
@@ -326,6 +327,7 @@ internal static partial class BrokenDevCli
         foreach (var r in results.Where(r => r.Result != "ok")) Console.Error.WriteLine($"  [{r.Id}] {r.Result}: {r.CrashInfo}");
         foreach (var p in movieProblems) Console.Error.WriteLine($"  [movies] FAIL {p}");
         if (checks != null) PrintChecks(checks);
+        PrintPort(results);
         return ok ? 0 : 1;
     }
 
@@ -356,6 +358,7 @@ internal static partial class BrokenDevCli
         var steps = ParseInput(input);
         var steps2 = ParseInput(input2);
         if (pngDir.Length > 0) Directory.CreateDirectory(pngDir);
+        NesEmulator.Debugging.Port.DebugPort? port = null;
 
         try
         {
@@ -381,6 +384,7 @@ internal static partial class BrokenDevCli
                     pokes.Add((p.GetProperty("frame").GetInt32(), addr, (byte)p.GetProperty("value").GetInt32()));
                 }
             if (pokes.Count > 0 && runner is not NesRunner) throw new ArgumentException("pokes work on a NES scenario only");
+            port = ScenarioPort(runner, res);   // the debug port listens (D7: BrokenDevCli.Port.cs); it never changes the game
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int f = 0; f < frames; f++)
             {
@@ -403,6 +407,7 @@ internal static partial class BrokenDevCli
                 }
             }
             sw.Stop();
+            FinishPort(res, port);
             res.Fps = res.FramesRun / Math.Max(sw.Elapsed.TotalSeconds, 1e-9);
             res.Realtime = res.Fps / NtscFps;
             res.Width = runner.Width; res.Height = runner.Height;
@@ -421,6 +426,7 @@ internal static partial class BrokenDevCli
         }
 
         if (res.Result == "ok") { Evaluate(res, expect); EvaluateWideMess(res, expect); EvaluateGb(res, expect); }
+        EvaluatePort(res, expect);
         if (movie != null) EvaluateMovie(res, movie, rom, sc.TryGetProperty("movieSync", out var msy) ? msy.GetString() ?? "same-rom" : "same-rom");
         return res;
     }
@@ -520,6 +526,7 @@ internal static partial class BrokenDevCli
                 },
                 ["checks"] = new JsonArray(r.Checks.Select(c => (JsonNode)new JsonObject { ["id"] = c.Id, ["ok"] = c.Ok, ["detail"] = c.Detail }).ToArray()),
                 ["wms"] = WideMessJson(r),
+                ["debugPort"] = r.PortJson?.DeepClone(),
             });
             if (IsGameBoyKey(r.Console)) ((JsonObject)scen[^1]!)["gb"] = GbJson(r);   // only Game Boy reports carry the key
             if (r.MovieSync.Length > 0) ((JsonObject)scen[^1]!)["movie"] = new JsonObject { ["sync"] = r.MovieSync, ["sameRom"] = r.MovieSameRom, ["offCourseAfter"] = r.MovieOffCourse };   // only promoted movies carry it

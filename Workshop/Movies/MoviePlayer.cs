@@ -21,6 +21,9 @@ internal sealed class PlayReport
     public string CourseLostWhat = "";
     /// <summary>Why the course variables were not checked (no symbols, no debugger), or null when they were (or the movie has none).</summary>
     public string? CourseNote;
+    /// <summary>The debug port's markers seen in the replay (D7), and how they compare with the recording's (null: the movie has none).</summary>
+    public List<MovieMark> Marks = new();
+    public string? MarksNote;
     public bool InSync => OffCourseFrame == null && !Crashed;
 }
 
@@ -49,6 +52,7 @@ internal static class MoviePlayer
             if (m.Crashed) throw new InvalidOperationException($"the game crashed at frame {f + 1} while recording: {m.CrashInfo}");
             if (Movie.IsKeyFrame(f + 1, frames, keyEvery)) mv.Keys.Add(new MovieKey { Frame = f + 1, Picture = m.Picture(), Ram = m.Ram(), Vars = m.EvalVars(mv) });
         }
+        mv.Marks.AddRange(m.MarksSeen.Where(k => k.Frame < frames));   // the debug port's markers (D7) as 'm' lines
         return mv;
     }
 
@@ -106,6 +110,17 @@ internal static class MoviePlayer
                 if (stopWhenOffCourse && r.OffCourseFrame != null) { afterFrame?.Invoke(f + 1); break; }
             }
             afterFrame?.Invoke(f + 1);
+        }
+        r.Marks = m.MarksSeen.ToList();
+        if (mv.Marks.Count > 0)
+        {
+            var rec = mv.Marks.Where(k => k.Frame < r.FramesRun).ToList();
+            int i = 0;
+            while (i < rec.Count && i < r.Marks.Count && rec[i] == r.Marks[i]) i++;
+            r.MarksNote = i == rec.Count && r.Marks.Count == rec.Count ? $"the {rec.Count} recorded marker(s) came at the same frames"
+                : i < rec.Count && i < r.Marks.Count ? $"marker {i + 1} differs: '{r.Marks[i].Text}' at frame {r.Marks[i].Frame} (recorded '{rec[i].Text}' at frame {rec[i].Frame})"
+                : i < rec.Count ? $"the replay gave {r.Marks.Count} of the {rec.Count} recorded markers (the next: '{rec[i].Text}' at frame {rec[i].Frame})"
+                : $"the replay gave {r.Marks.Count - rec.Count} marker(s) more than the recording (the first: '{r.Marks[i].Text}' at frame {r.Marks[i].Frame})";
         }
         return r;
     }
