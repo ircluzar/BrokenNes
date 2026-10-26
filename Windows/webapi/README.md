@@ -137,6 +137,8 @@ Game Boy `$E011` is `$C011`); DMA and HDMA bytes are accesses (a VRAM watch sees
 | GET | `/api/debug/symbol?name=` / `?address=&cpu=` | A symbol's place and size / the label at an address |
 | GET | `/api/debug/memory?spec=&length=&cpu=` | Memory by spec or symbol, side-effect free |
 | GET | `/api/debug/disasm?address=&count=&cpu=` | Disassembly (from the PC by default), with symbols |
+| GET | `/api/debug/palettes` | The console's palettes as the Palettes window shows them (label, values line, `#RRGGBB` colours) |
+| GET | `/api/debug/tiles?source=&bpp=&palette=&start=&count=` | A tile sheet from the shared decoder: width, height, ARGB pixels as base64 (`BrokenDev/web/viewers.html`) |
 | GET | `/api/debug/eval?expr=&cpu=` | An expression now (`[player_hp] + 1`) |
 | POST | `/api/debug/attach`, `/api/debug/detach` | **Control.** Attach (tracks the call stack) / detach (the game runs as if never debugged) |
 | POST | `/api/debug/symbols` `{path}` | **Control.** Load a `.mlb` (NESFab / Mesen), WLA-DX `.sym`, bgb / GBDK `.sym` or GBDK `.noi` |

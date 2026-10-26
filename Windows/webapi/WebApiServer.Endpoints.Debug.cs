@@ -255,6 +255,35 @@ namespace BrokenNes.Windows.WebApi
                 catch (Exception e) when (e is FormatException or ArgumentException) { return Results.BadRequest(new { success = false, error = e.Message }); }
             });
 
+            // GET /api/debug/palettes - the console's palettes as the Palettes window shows them (BrokenDev D8): one entry per palette, colours as #RRGGBB
+            app.MapGet("/api/debug/palettes", () =>
+            {
+                var m = Debuggers.Machine(DebugTarget(), out string? why);
+                if (m == null) return Results.BadRequest(new { success = false, error = why });
+                var lines = new List<string>(); var rows = new List<(string, System.Drawing.Color[])>();
+                BrokenNes.Windows.DebugWindows.PalettesWindow.Read(m, lines, rows, out string what);
+                return Results.Ok(new
+                {
+                    success = true, console = m.Console, what,
+                    palettes = rows.Select((r, i) => new { label = r.Item1, line = lines[i], colours = r.Item2.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}") }),
+                });
+            });
+
+            // GET /api/debug/tiles?source=chr&bpp=4&palette=-1&start=0&count=256 - a tile sheet (the Tiles window's decoder): ARGB pixels as base64
+            app.MapGet("/api/debug/tiles", (string? source, int? bpp, int? palette, long? start, int? count) =>
+            {
+                var m = Debuggers.Machine(DebugTarget(), out string? why);
+                if (m == null) return Results.BadRequest(new { success = false, error = why });
+                try
+                {
+                    var t = DebugPictures.Tiles(m.Domains(), DebugPictures.Family(m.Console), source, bpp ?? 4, palette ?? -1, start ?? 0, Math.Clamp(count ?? 256, 1, 1024));
+                    var bytes = new byte[t.Pixels.Length * 4];
+                    Buffer.BlockCopy(t.Pixels, 0, bytes, 0, bytes.Length);
+                    return Results.Ok(new { success = true, console = m.Console, what = t.What, colours = t.Colours, t.Width, t.Height, t.Tiles, t.TileBytes, t.Columns, t.Start, argb = Convert.ToBase64String(bytes) });
+                }
+                catch (Exception e) when (e is ArgumentException or NotSupportedException) { return Results.BadRequest(new { success = false, error = e.Message }); }
+            });
+
             // ---------------------------------------------------------------- control (enableDebuggerControl)
 
             app.MapPost("/api/debug/attach", () =>

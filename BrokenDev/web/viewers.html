@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrokenDev Viewers</title>
+<!--
+  BrokenDev milestone D8, the second web page: memory, palettes and tiles of a running BrokenNes desktop app, READ ONLY, over its HTTP API
+  (GET /api/memory/domains, /api/memory/peek-range, /api/debug/palettes, /api/debug/tiles). Open it from disk with
+  ?api=http://127.0.0.1:<port>. Options: &domain=<id> &address=<hex> (the memory panel), &start=<hex> &bpp=2|4|8 &palette=<n> (the tiles),
+  &once=1 (one refresh, for tests). It sends GET requests only.
+-->
+<style>
+  :root { --bg: #f6f6f4; --fg: #1d1d1b; --muted: #6b6b66; --panel: #ffffff; --line: #dcdcd6; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #161615; --fg: #e8e8e3; --muted: #9a9a93; --panel: #20201e; --line: #34342f; } }
+  :root[data-theme="dark"] { --bg: #161615; --fg: #e8e8e3; --muted: #9a9a93; --panel: #20201e; --line: #34342f; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; }
+  header { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 16px; margin: 0; } #status { color: var(--muted); }
+  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; padding: 12px 16px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+  h2 { font-size: 13px; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
+  pre { margin: 0; font: 12px/1.45 ui-monospace, Consolas, monospace; overflow-x: auto; white-space: pre; }
+  .row { display: flex; gap: 2px; align-items: center; margin: 1px 0; } .row b { font: 11px ui-monospace, monospace; width: 48px; }
+  .sw { width: 14px; height: 14px; border: 1px solid var(--line); }
+  canvas { image-rendering: pixelated; width: 100%; max-width: 512px; background: #202020; }
+  select { max-width: 100%; }
+</style>
+</head>
+<body>
+<header><h1>BrokenDev Viewers <span style="font-weight:400;color:var(--muted)">(read only)</span></h1><div id="status">connecting...</div></header>
+<main>
+  <section><h2>Memory</h2><select id="domain"></select><pre id="memory"></pre></section>
+  <section><h2>Palettes</h2><div id="swatches"></div><pre id="palettes"></pre></section>
+  <section><h2>Tiles</h2><div id="tileinfo" style="color:var(--muted);font-size:12px"></div><canvas id="tiles" width="128" height="128"></canvas></section>
+</main>
+<script>
+(function () {
+  const q = new URLSearchParams(location.search);
+  const api = (q.get('api') || 'http://127.0.0.1:42067').replace(/\/$/, '');
+  const once = q.get('once') === '1';
+  const $ = id => document.getElementById(id);
+  const get = path => fetch(api + path, { cache: 'no-store' }).then(r => r.json());
+  const hex = (v, n) => v.toString(16).toUpperCase().padStart(n, '0');
+  let console_ = null;
+
+  async function refresh() {
+    try {
+      const doms = await get('/api/memory/domains');
+      const names = (doms.domains || []).filter(d => !d.unavailable && d.size > 0).map(d => d.name);
+      if (doms.console !== console_) {
+        console_ = doms.console;
+        const sel = $('domain'); sel.textContent = '';
+        names.forEach(n => { const o = document.createElement('option'); o.value = o.textContent = n; sel.appendChild(o); });
+        const want = q.get('domain'); if (want && names.includes(want)) sel.value = want;
+      }
+      const dom = $('domain').value || names[0];
+      const addr = parseInt(q.get('address') || '0', 16) || 0;
+      const pk = await get(`/api/memory/peek-range?domain=${encodeURIComponent(dom)}&address=${addr}&length=256`);
+      let out = '';
+      const data = pk.data || [];
+      for (let r = 0; r < data.length; r += 16) out += hex(addr + r, 4) + ': ' + data.slice(r, r + 16).map(b => hex(b, 2)).join(' ') + '\n';
+      $('memory').textContent = out || (pk.error || 'no data');
+
+      const pal = await get('/api/debug/palettes');
+      const sw = $('swatches'); sw.textContent = '';
+      (pal.palettes || []).forEach(p => {
+        const row = document.createElement('div'); row.className = 'row';
+        const b = document.createElement('b'); b.textContent = p.label; row.appendChild(b);
+        p.colours.forEach(c => { const s = document.createElement('span'); s.className = 'sw'; s.style.background = c; s.title = c; row.appendChild(s); });
+        sw.appendChild(row);
+      });
+      $('palettes').textContent = (pal.palettes || []).map(p => p.line).join('\n') || (pal.error || '');
+
+      const ts = await get(`/api/debug/tiles?start=${parseInt(q.get('start') || '0', 16) || 0}&bpp=${q.get('bpp') || 4}&palette=${q.get('palette') || -1}&count=256` + (q.get('source') ? '&source=' + q.get('source') : ''));
+      if (ts.success) {
+        const bin = atob(ts.argb), cv = $('tiles'); cv.width = ts.width; cv.height = ts.height;
+        const ctx = cv.getContext('2d'), img = ctx.createImageData(ts.width, ts.height);
+        let first = [];
+        for (let i = 0; i < ts.width * ts.height; i++) {
+          const b = bin.charCodeAt(i * 4), g = bin.charCodeAt(i * 4 + 1), r = bin.charCodeAt(i * 4 + 2);   // little-endian ARGB: B G R A
+          img.data[i * 4] = r; img.data[i * 4 + 1] = g; img.data[i * 4 + 2] = b; img.data[i * 4 + 3] = 255;
+        }
+        for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const i = y * ts.width + x; first.push(hex(bin.charCodeAt(i * 4 + 2), 2) + hex(bin.charCodeAt(i * 4 + 1), 2) + hex(bin.charCodeAt(i * 4), 2)); }
+        ctx.putImageData(img, 0, 0);
+        cv.dataset.tile0 = first.join(' ');
+        $('tileinfo').textContent = `${ts.what}; ${ts.tiles} tiles from $${hex(ts.start, 4)}; ${ts.colours}`;
+      } else $('tileinfo').textContent = ts.error || 'no tiles';
+      $('status').textContent = `${doms.console}: ${dom} at $${hex(addr, 4)}; ${api}`;
+      $('status').dataset.console = doms.console;
+    } catch (e) {
+      $('status').textContent = 'cannot reach ' + api + ': ' + e.message;
+    } finally {
+      document.body.dataset.refreshed = String(Number(document.body.dataset.refreshed || 0) + 1);
+      if (!once) setTimeout(refresh, 1000);
+    }
+  }
+  refresh();
+})();
+</script>
+</body>
+</html>

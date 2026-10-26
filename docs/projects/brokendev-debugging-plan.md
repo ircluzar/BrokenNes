@@ -988,7 +988,20 @@ and the divergence finder's report (the last marker before the first difference)
   `debugtest.nes`) as the idle ROM and ignored it; they now compare the file name. **Still open:** `/api/emulator/pause` does not stop
   a console session (SNES, Game Boy), so the page test cannot compare a SNES PC. The page cannot reach Lite or a phone yet, because the
   desktop API listens on loopback only.
-- **Next:** web pages for memory, tiles and palettes on the same routes; a session-aware `/api/emulator/pause`.
+- **Session-aware pause (built):** `/api/emulator/pause` and `resume` now stop and restart SNES, WideMess and Game Boy games as well (a
+  console session counts as a loaded game). `web-debugger.ps1` therefore compares the PC, registers and disassembly on the SNES, Game
+  Boy and NES. On each console the frame holds while paused, and the frame moving after the resume is the negative control.
+- **Second web page (built):** `BrokenDev/web/viewers.html` shows memory (every domain, 256 bytes hex), palettes (swatches and value
+  lines) and tiles (a canvas), read only. Two new GET routes feed it: `/api/debug/palettes` and `/api/debug/tiles`, both using the
+  windows' decoders. Its checks are in the same test, on the SNES:
+  - a CGRAM word poked to 7C00 shows in palette row 0;
+  - the VRAM rows match the API;
+  - the tile at `$2000` matches the script's own 2bpp decoding of the API's bytes;
+  - the zero tile at `$2010` is all black;
+  - the page sends GET requests only.
+  `web-debugger.ps1` passes 23 of 23.
+- **Next:** pages for maps, sprites, the event view and sound on the same pattern (each needs a GET route like `/api/debug/tiles`); a
+  way to reach Lite and the phone (the desktop API listens on loopback only).
 
 ## Open questions (to settle at the start of the track)
 

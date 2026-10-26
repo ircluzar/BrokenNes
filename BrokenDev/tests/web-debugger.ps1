@@ -23,13 +23,14 @@ $page = Join-Path $repo 'BrokenDev\web\debugger.html'
 $checks = [ordered]@{}
 function Check($name, [bool]$ok, $detail) { $script:checks[$name] = [ordered]@{ ok = $ok; detail = "$detail" }; Write-Host ("[{0}] {1} - {2}" -f $(if ($ok) { 'PASS' } else { 'FAIL' }), $name, $detail) }
 function Listing([string]$dir) { if (-not (Test-Path -LiteralPath $dir)) { return '' }; (@(Get-ChildItem -LiteralPath $dir -Recurse -File -Force -ErrorAction SilentlyContinue | Sort-Object FullName | ForEach-Object { "$($_.FullName)|$($_.Length)|$($_.LastWriteTimeUtc.Ticks)" })) -join "`n" }
-function Render([string]$query) {
-    $url = ([Uri]$page).AbsoluteUri + '?' + $query
+function Render([string]$query, [string]$file = $page) {
+    $url = ([Uri]$file).AbsoluteUri + '?' + $query
     $prof = Join-Path $WorkDir 'edge-profile'
     $out = Join-Path $WorkDir ('dom_' + [guid]::NewGuid().ToString('N').Substring(0, 6) + '.html')
     $p = Start-Process -FilePath $Edge -ArgumentList @('--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', "--user-data-dir=`"$prof`"", '--virtual-time-budget=8000', '--dump-dom', "`"$url`"") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError "$out.err"
     Get-Content -LiteralPath $out -Raw
 }
+function Tile0([string]$dom) { if ($dom -match 'data-tile0="([^"]*)"') { $Matches[1] } else { '' } }
 function Pre([string]$dom, [string]$id) { if ($dom -match "id=`"$id`"[^>]*>([\s\S]*?)</pre>") { [System.Net.WebUtility]::HtmlDecode(($Matches[1] -replace '<[^>]+>', '')) } else { '' } }
 
 $inst = $null
@@ -70,6 +71,26 @@ try {
         $st3 = Invoke-BrokenNesApi -ProcessId $id -Path '/api/debug/state'
         Check "${c}_resumed_negative" ($st3.frame -gt $st2.frame) "resumed: frame $($st2.frame) -> $($st3.frame) (the pause is what held it)"
     }
+
+    # ---------------------------------------------------------------- viewers.html: memory, palettes and tiles (SNES, paused)
+    $viewers = Join-Path $repo 'BrokenDev\web\viewers.html'
+    Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/load-rom' -Body @{ path = (Join-Path $roms 'debugtest.sfc') } | Out-Null
+    Start-Sleep -Seconds 2
+    Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/pause' | Out-Null; Start-Sleep -Milliseconds 500
+    foreach ($pv in @(@(2, 0x00), @(3, 0x7C))) { Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/memory/poke' -Body @{ domain = 'CGRAM'; address = $pv[0]; value = $pv[1] } | Out-Null }
+    $vdom = Render ("api=" + [Uri]::EscapeDataString($api) + "&once=1&domain=VRAM&address=2000&start=2000&bpp=2") $viewers
+    $vdom2 = Render ("api=" + [Uri]::EscapeDataString($api) + "&once=1&domain=VRAM&address=2010&start=2010&bpp=2") $viewers
+    $vb = @((Invoke-BrokenNesApi -ProcessId $id -Path '/api/memory/peek-range?domain=VRAM&address=8192&length=16').data | ForEach-Object { [int]$_ })
+    $grey = @('000000', '555555', 'AAAAAA', 'FFFFFF')
+    $want0 = (0..7 | ForEach-Object { $grey[((($vb[0] -shr (7 - $_)) -band 1) -bor ((($vb[1] -shr (7 - $_)) -band 1) -shl 1))] }) -join ' '
+    $t0 = Tile0 $vdom; $t0row = (($t0 -split ' ') | Select-Object -First 8) -join ' '
+    Check 'viewers_memory' ((Pre $vdom 'memory') -like '2000: 11 22 33 44 55*' -and (Pre $vdom2 'memory') -like '2010: 00 00 00 00*') "VRAM `$2000: $(((Pre $vdom 'memory') -split "`n")[0]) ; `$2010: $(((Pre $vdom2 'memory') -split "`n")[0])"
+    Check 'viewers_palettes' ((Pre $vdom 'palettes') -like 'row 0: 0000 7C00 *' -and ([regex]::Matches($vdom, 'class="sw"')).Count -ge 256) "$(((Pre $vdom 'palettes') -split "`n")[0]); $(([regex]::Matches($vdom, 'class="sw"')).Count) swatches"
+    Check 'viewers_tiles' ($t0row -eq $want0) "tile at VRAM `$2000 (2bpp, greys), row 0: $t0row ; decoded here from the API's bytes: $want0"
+    Check 'viewers_tiles_negative' ((((Tile0 $vdom2) -split ' ') | Select-Object -Unique) -join ',' -eq '000000') "the zero tile at `$2010 is all black: $(((Tile0 $vdom2) -split ' ' | Select-Object -First 8) -join ' ')"
+    Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/resume' | Out-Null
+    $vsrc = Get-Content -LiteralPath $viewers -Raw
+    Check 'viewers_read_only_source' ($vsrc -notmatch "method\s*:" -and $vsrc -notmatch "'POST'|""POST""|DELETE") "the viewers page's fetches are GETs only"
     $dead = Render ("api=" + [Uri]::EscapeDataString('http://127.0.0.1:1') + "&once=1")
     Check 'unreachable_negative' ($dead -match 'cannot reach http://127.0.0.1:1' -and (Pre $dead 'registers') -eq '') "a page pointed at port 1 says it cannot reach the app and shows no registers"
     $src = Get-Content -LiteralPath $page -Raw
