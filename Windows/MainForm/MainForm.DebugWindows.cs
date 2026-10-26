@@ -23,6 +23,7 @@ namespace BrokenNes.Windows
             menu.DropDownItems.Add(new ToolStripMenuItem("&Memory (live hex, watches)", null, (_, _) => OpenDebugWindow("memory")) { Name = "debugWindowMemory" });
             menu.DropDownItems.Add(new ToolStripMenuItem("&Palettes", null, (_, _) => OpenDebugWindow("palettes")) { Name = "debugWindowPalettes" });
             menu.DropDownItems.Add(new ToolStripMenuItem("&Tiles", null, (_, _) => OpenDebugWindow("tiles")) { Name = "debugWindowTiles" });
+            menu.DropDownItems.Add(new ToolStripMenuItem("M&aps", null, (_, _) => OpenDebugWindow("maps")) { Name = "debugWindowMaps" });
             menu.DropDownItems.Add(new ToolStripMenuItem("&Sprites", null, (_, _) => OpenDebugWindow("sprites")) { Name = "debugWindowSprites" });
             emulatorMenu.DropDownItems.Add(menu);
         }
@@ -38,6 +39,7 @@ namespace BrokenNes.Windows
                 "palettes" => new PalettesWindow(() => webApiServer?.Debuggers, () => DebugWindowGame),
                 "tiles" => new TilesWindow(() => webApiServer?.Debuggers, () => DebugWindowGame),
                 "sprites" => new SpritesWindow(() => webApiServer?.Debuggers, () => DebugWindowGame),
+                "maps" => new MapsWindow(() => webApiServer?.Debuggers, () => DebugWindowGame),
                 _ => throw new ArgumentException("no debug window " + which),
             };
             f.Location = new Point(Right + 8 < Screen.FromControl(this).WorkingArea.Right - 200 ? Right + 8 : Left + 40, Top + 40);

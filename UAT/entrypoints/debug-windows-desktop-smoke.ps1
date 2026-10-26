@@ -26,6 +26,8 @@
     SPRITES   Emulator > Debug Windows > Sprites: a sprite written through the API (the NES's page 2 and the Game Boy's $C100, which the test
               ROMs DMA every frame; the SNES's OAM with the game paused) is listed with its place, tile, palette and flip; one moved off screen
               is not.
+    MAPS      Emulator > Debug Windows > Maps: a map entry written through the API (the NES's nametable, the SNES's BG1 map at the base the
+              window names, read back from VRAM, the Game Boy's map LCDC picks) shows in its cell; the next cell shows its own.
     SNES / GB the same window on the SNES (the CPU picker offers the SPC700, whose registers show) and the Game Boy.
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
 
@@ -152,6 +154,9 @@ function ApiBytes([int]$procId, [string]$domain, [int]$address, [int]$len) { @((
 function Open-Sprites([int]$procId) { Open-DebugWindow $procId 'Sprites' 'BrokenNes Sprites' }
 function SpriteLine($w, [int]$i) { (Items (FindById $w 'sprites')) | Where-Object { $_ -match "^#$i\s" } | Select-Object -First 1 }
 function Norm([string]$t) { ($t -replace '\s+', ' ').Trim() }
+function Open-Maps([int]$procId) { Open-DebugWindow $procId 'Maps' 'BrokenNes Maps' }
+function Show-Cell($w, [int]$cx, [int]$cy) { SetText (FindById $w 'cellx') "$cx"; SetText (FindById $w 'celly') "$cy"; Invoke-El (FindById $w 'show'); Start-Sleep -Milliseconds 700; TextOf (FindById $w 'cell') }
+function PokeAll([int]$procId, [string]$domain, $pairs) { foreach ($pv in $pairs) { Api $procId POST '/api/memory/poke' @{ domain = $domain; address = $pv[0]; value = $pv[1] } | Out-Null } }
 function PcLine($w) { (Items (FindById $w 'disassembly')) | Where-Object { $_ -like '>*' } | Select-Object -First 1 }
 
 $inst = $null
@@ -298,6 +303,14 @@ try {
     Check 'sprites_nes' ($s0 -eq '#0 x 80 y 65 8x8 tile $12 pal 1 flipX') "sprite 0 after `$0200 = 40 12 41 50: $s0"
     Check 'sprites_nes_negative' (-not $s1) "sprite 1 with y `$F0 is off screen and not listed: $(if ($s1) { $s1 } else { 'not listed' })"
     Close-Window $win
+    # ---------------------------------------------------------------- MAPS (NES): a nametable byte written through the API shows in its cell
+    $win = Open-Maps $id
+    PokeAll $id 'Nametable' @(@((2 * 32 + 3), 0x5A), @((2 * 32 + 4), 0x00))
+    $c = Show-Cell $win 3 2; $c2 = Show-Cell $win 4 2
+    $mi = TextOf (FindById $win 'info')
+    Check 'maps_nes' ($c -like 'cell 3,2: tile $5A palette *') "$c ($mi)"
+    Check 'maps_nes_negative' ($c2 -like 'cell 4,2: tile $0 palette *') "the next cell is its own byte: $c2"
+    Close-Window $win
 
     # ---------------------------------------------------------------- SNES (the SPC700 in the CPU picker)
     Load $id (Join-Path $roms 'debugtest.sfc')
@@ -356,6 +369,18 @@ try {
     Check 'sprites_snes' ($s0 -like '#0 x 32 y 48 8x8 tile $005 pal 2*') "sprite 0 after OAM 20 30 05 04: $s0"
     Check 'sprites_snes_negative' (-not $s1) "sprite 1 with y 224 is off screen and not listed: $(if ($s1) { $s1 } else { 'not listed' })"
     Close-Window $win
+    $win = Open-Maps $id
+    $mi = TextOf (FindById $win 'info')
+    $mapAt = $(if ($mi -match 'map at VRAM \$([0-9A-F]+)') { [Convert]::ToInt32($Matches[1], 16) } else { -1 })
+    $cellAt = $mapAt + (1 * 32 + 6) * 2
+    Api $id POST '/api/emulator/pause' | Out-Null; Start-Sleep -Milliseconds 300
+    PokeAll $id 'VRAM' @(@($cellAt, 0x23), @(($cellAt + 1), 0x45), @(($cellAt + 2), 0x00), @(($cellAt + 3), 0x00))
+    $c = Show-Cell $win 6 1; $c2 = Show-Cell $win 7 1
+    Api $id POST '/api/emulator/resume' | Out-Null
+    $w = (ApiBytes $id 'VRAM' $cellAt 2); $we = $w[0] -bor ($w[1] -shl 8)
+    Check 'maps_snes' ($mapAt -ge 0 -and $we -eq 0x4523 -and $c -like ('cell 6,1: tile $' + ('{0:X}' -f ($we -band 0x3FF)) + ' palette ' + (($we -shr 10) -band 7) + ' entry $4523*')) "$c ; $mi"
+    Check 'maps_snes_negative' ($c2 -like 'cell 7,1: tile $0 palette 0*') "the next cell: $c2"
+    Close-Window $win
 
     # ---------------------------------------------------------------- Game Boy
     Load $id (Join-Path $roms 'debugtest.gb')
@@ -403,6 +428,14 @@ try {
     $s0 = Norm (SpriteLine $win 0); $s1 = SpriteLine $win 1
     Check 'sprites_gb' ($s0 -like '#0 x 40 y 64 8x* tile $07 pal 0 flipX') "sprite 0 after `$C100 = 50 30 07 20: $s0"
     Check 'sprites_gb_negative' (-not $s1) "sprite 1 with y 0 is off screen and not listed: $(if ($s1) { $s1 } else { 'not listed' })"
+    Close-Window $win
+    $win = Open-Maps $id
+    $lcdc = (Api $id GET '/api/memory/peek?domain=IO&address=64').value
+    $mapOff = $(if ($lcdc -band 8) { 0x1C00 } else { 0x1800 })
+    PokeAll $id 'VRAM' @(@(($mapOff + 1 * 32 + 5), 0x33), @(($mapOff + 1 * 32 + 6), 0x00))
+    $c = Show-Cell $win 5 1; $c2 = Show-Cell $win 6 1
+    Check 'maps_gb' ($c -like 'cell 5,1: tile $33 palette *') "$c ($(TextOf (FindById $win 'info')))"
+    Check 'maps_gb_negative' ($c2 -like 'cell 6,1: tile $0 palette *') "the next cell: $c2"
     Close-Window $win
 
     $result.pass = -not ($checks.Values | Where-Object { -not $_.ok })

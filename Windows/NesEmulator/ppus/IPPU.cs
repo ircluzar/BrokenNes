@@ -73,11 +73,17 @@ public interface IPpuProbe : IPpuFrameClock
 	void ProbePpuBusWrite(ushort address, byte value);
 }
 
-/// <summary>Side-effect-free reading of a PPU's sprite RAM (OAM, 256 bytes): the debugger's <c>oam</c> space and the sprite viewers
-/// (BrokenDev D8). Unlike a $2004 read it touches no OAM address or latch.</summary>
-public interface IPpuOamProbe
+/// <summary>Side-effect-free reading of what the debug viewers need of a PPU (BrokenDev D8): its sprite RAM (OAM, 256 bytes: the debugger's <c>oam</c> space), PPUCTRL and the scroll register t (both write-only on the chip), for the sprite and map viewers.
+/// Unlike a $2004 read nothing here touches an address or a latch.</summary>
+public interface IPpuViewProbe
 {
 	byte ProbeOam(int index);
+	/// <summary>The last value written to PPUCTRL ($2000).</summary>
+	byte ProbeCtrl { get; }
+	/// <summary>The temporary VRAM address t (the scroll the next frame starts from: coarse X, coarse Y, nametable, fine Y).</summary>
+	ushort ProbeT { get; }
+	/// <summary>The fine X scroll (0-7).</summary>
+	byte ProbeFineX { get; }
 }
 
 /// <summary>
