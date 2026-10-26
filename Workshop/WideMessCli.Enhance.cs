@@ -59,7 +59,7 @@ internal static partial class WideMessCli
             "1300:Start,1308:," + Taps(1500, 2400, 60, "Start", "A", "Down", "A") + "," + Taps(2400, 4000, 50, "A") + ",4000:Down,4040:Right,4060:Down,4300:Down+Right,4400:Down,4700:Right,5000:Down,5400:", new[] { 1200, 2000, 3600, 4800, 5600 }),
         new("fzero", "F-Zero", "F-ZERO (U) [!].smc", "", new[] { 450, 1800, 2700, 5400, 6750 }),
         new("smk", "Super Mario Kart", "Super Mario Kart (U) [!].smc", "", new[] { 450, 2700, 3600, 5850, 6750 }),
-        new("ct", "Chrono Trigger", "Chrono Trigger (U) [!].smc", "", new[] { 1800, 2700, 4050, 5850, 6750 }),
+        new("ct", "Chrono Trigger", "Chrono Trigger (U) [!].smc", "", new[] { 3000, 4800, 5850, 6600, 7950 }),   // the field scenes (milestone 6 climb, part 2: the levels in work RAM)
         new("mmx", "Mega Man X", "Mega Man X (U) (V1.1) [!].smc",
             Taps(400, 1100, 90, "Start") + "," + Hold(1300, 6400, 30, "Right", "Y", "B", "Y"), new[] { 800, 1200, 2000, 3600, 5600 }),
         new("contra3", "Contra III: The Alien Wars", "Contra III - The Alien Wars (U) [!].smc", "", new[] { 900, 3600, 4500, 5400, 6300 }),

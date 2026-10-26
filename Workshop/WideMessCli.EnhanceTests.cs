@@ -64,6 +64,8 @@ internal static partial class WideMessCli
         SyntheticMemory();
         Console.WriteLine("E2d. The level in work RAM on a synthetic game that keeps its level as blocks");
         SyntheticLevel();
+        Console.WriteLine("E2f. The level in work RAM in the byte format, the room's columns and a level per layer (Chrono Trigger's layout) on a synthetic game");
+        SyntheticLevelBytes();
         Console.WriteLine("E2e. Side truth compares what a layer draws (palette entries): a synthetic game whose palette fades while it scrolls");
         SyntheticSideTruth();
 
@@ -119,6 +121,20 @@ internal static partial class WideMessCli
                 $"{lv.right:N0} right, {lv.empty:N0} empty, {lv.wrong:N0} wrong of {lj:N0}");
             Check(nj >= 1000 && nl.empty * 2 >= nj, "sm: negative control, the same profile without its level: at least half the side columns empty", $"{nl.empty:N0} empty of {nj:N0}");
         }
+        // the byte-format level (milestone 6 climb, part 2): Chrono Trigger's field scenes, its BG1 from work RAM; without the levels the sides are empty, every layer extended they are wrong
+        var ctg = games.FirstOrDefault(x => x.Key == "ct");
+        if (ctg != null && WmsProfiles.All.FirstOrDefault(p => p.Title == ctg.Title)?.Widescreen?.Levels.Length > 0)
+        {
+            var common = new[] { "--game", "ct", "--layer", "bg1", "--snes-dir", snesDir, "--frames", "8000", "--judge", CtFieldScenes }
+                .Concat(profiles != "" ? new[] { "--profiles", profiles } : Array.Empty<string>()).ToArray();
+            (long right, long empty, long wrong) lv = default, nl = default, ex = default;
+            Parallel.Invoke(() => lv = SideTruthCounts(common), () => nl = SideTruthCounts(common.Append("--no-level").ToArray()), () => ex = SideTruthCounts(common.Append("--all-extend").ToArray()));
+            long lj = lv.right + lv.empty + lv.wrong, nj = nl.right + nl.empty + nl.wrong, xj = ex.right + ex.empty + ex.wrong;
+            Check(lj >= 300 && lv.wrong * 100 <= lj && lv.empty * 20 <= lj, "ct: BG1 with its byte-format level, on the field scenes: at most 1% of the side columns wrong and at most 5% empty",
+                $"{lv.right:N0} right, {lv.empty:N0} empty, {lv.wrong:N0} wrong of {lj:N0}");
+            Check(nj >= 300 && nl.empty * 2 >= nj, "ct: negative control, the same profile without its levels: at least half the side columns empty", $"{nl.empty:N0} empty of {nj:N0}");
+            Check(xj >= 300 && ex.wrong * 5 >= xj, "ct: negative control, every layer extended: at least 20% wrong (the unrelated tiles the game keeps beside its rooms)", $"{ex.wrong:N0} wrong of {xj:N0}");
+        }
         // the palette fix (spec 6.3): Super Metroid's BG2 (extended) fades a room's spores' palette between a side showing a place and the SNES picture showing it
         if (smg != null)
         {
@@ -140,6 +156,9 @@ internal static partial class WideMessCli
 
     // ------------------------------------------------------------------ E1
 
+    /// <summary>Chrono Trigger's field scenes in its attract sequence (the frames E8 judges its side truth on: the rooms its levels in work RAM cover).</summary>
+    internal const string CtFieldScenes = "2950-3300,3650-3900,4400-4500,4750-4900,5700-6450,6500-6650,7400-8000";
+    private const string ByteLevelJson = "{ \"layer\": \"bg1\", \"format\": \"bytes\", \"blocks\": \"$7E4000\", \"stride\": 256, \"high\": \"$7E40C0\", \"highBit\": 0, \"width\": \"$7E0BCB\", \"height\": \"$7E0BCD\", \"tiles\": \"$7EB000\", \"columns\": [\"$7E1D1A\", \"$7E1D1B\"] }";
     private const string LevelJson = "\"level\": { \"layer\": \"bg1\", \"blocks\": \"$7F0002\", \"width\": \"$7E07A5\", \"height\": \"$7E07A7\", \"tiles\": \"$7EA000\", \"index\": \"$03FF\", \"flipX\": \"$0400\", \"flipY\": \"$0800\" }";
 
     private static void ProfileRefusals()
@@ -162,6 +181,11 @@ internal static partial class WideMessCli
             var lv = WmsProfile.Parse(good.Replace("\"bg1\": \"extend\"", "\"bg1\": \"drawn\"").Replace("\"masks\": [", LevelJson + ", \"masks\": ["), "level.json");
             Check(lv.Widescreen!.Level is { Layer: 0, Blocks: 0x10002, Width: 0x07A5, Height: 0x07A7, Tiles: 0xA000, Index: 0x3FF, FlipX: 0x400, FlipY: 0x800 } && d.Widescreen.Level == null,
                 "a profile with the level in work RAM reads (its addresses as offsets into work RAM, its bits; without the key, no level)");
+            var by = WmsProfile.Parse(good.Replace("\"bg1\": \"extend\"", "\"bg1\": \"drawn\"").Replace("\"bg2\": \"repeat\"", "\"bg2\": \"drawn\"")
+                .Replace("\"masks\": [", "\"level\": [" + ByteLevelJson + ", " + ByteLevelJson.Replace("\"bg1\"", "\"bg2\"").Replace("$7E4000", "$7E4040").Replace("\"highBit\": 0", "\"highBit\": 1") + "], \"masks\": ["), "bytes.json");
+            Check(by.Widescreen!.Levels.Length == 2 && by.Widescreen.Levels[0] is { Layer: 0, Bytes: true, Blocks: 0x4000, Stride: 256, High: 0x40C0, HighBit: 0, Width: 0x0BCB, Tiles: 0xB000, Left: 0x1D1A, Right: 0x1D1B }
+                && by.Widescreen.Levels[1] is { Layer: 1, Blocks: 0x4040, HighBit: 1 } && lv.Widescreen.Level!.Left == -1 && !lv.Widescreen.Level.Bytes,
+                "a profile with a list of byte levels and the room's columns reads (Chrono Trigger's layout; the word format without columns as before)");
         }
         catch (Exception e) { Check(false, "a well-formed profile reads", e.Message); }
         (string change, string from, string to, string mustSay)[] bad =
@@ -186,6 +210,13 @@ internal static partial class WideMessCli
             ("the level for a layer not on the drawn rule", "\"masks\": [", LevelJson.Replace("\"bg1\"", "\"bg2\"") + ", \"masks\": [", "not drawn"),
             ("the level outside work RAM", "\"masks\": [", LevelJson.Replace("$7F0002", "$800002") + ", \"masks\": [", "work RAM is"),
             ("the level's bits overlapping", "\"masks\": [", LevelJson.Replace("\"flipX\": \"$0400\"", "\"flipX\": \"$0200\"") + ", \"masks\": [", "overlap"),
+            ("the level in bytes with flips", "\"masks\": [", "\"level\": " + ByteLevelJson.Replace("\"stride\": 256", "\"stride\": 256, \"flipX\": \"$0400\"") + ", \"masks\": [", "unknown key 'flipX'"),
+            ("the level in bytes without its stride", "\"masks\": [", "\"level\": " + ByteLevelJson.Replace("\"stride\": 256, ", "") + ", \"masks\": [", "no 'stride'"),
+            ("the level's bit 8 without its byte", "\"masks\": [", "\"level\": " + ByteLevelJson.Replace("\"high\": \"$7E40C0\", ", "") + ", \"masks\": [", "go together"),
+            ("the level's bit 8 past bit 7", "\"masks\": [", "\"level\": " + ByteLevelJson.Replace("\"highBit\": 0", "\"highBit\": 8") + ", \"masks\": [", "0-7"),
+            ("the level in an unknown format", "\"masks\": [", "\"level\": " + ByteLevelJson.Replace("\"bytes\"", "\"nibbles\"") + ", \"masks\": [", "words or bytes"),
+            ("the level's columns not two addresses", "\"masks\": [", "\"level\": " + ByteLevelJson.Replace("[\"$7E1D1A\", \"$7E1D1B\"]", "[\"$7E1D1A\"]") + ", \"masks\": [", "two bytes"),
+            ("the level listing a layer twice", "\"masks\": [", "\"level\": [" + ByteLevelJson + ", " + ByteLevelJson + "], \"masks\": [", "twice"),
             ("the level without its block table", "\"masks\": [", LevelJson.Replace(", \"tiles\": \"$7EA000\"", "") + ", \"masks\": [", "no 'tiles'"),
         };
         foreach (var (change, from, to, mustSay) in bad)

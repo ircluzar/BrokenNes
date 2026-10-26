@@ -503,6 +503,40 @@ Every game and layer re-measured (right / empty / wrong, % of the side columns t
   change of the map ahead (columns turned red before they scroll in) still counted wrong with the fade on. E8: Super Metroid BG2, palette
   entries 0 wrong, by colour (the control) wrong. The judge is the tool's own (`SideJudge`), shared by the tool and E2e.
 
+**Chrono Trigger: its rooms from work RAM** (spec 6.1, the byte format, the room's columns, a level per layer). Found with `--wms-level-probe`
+(new: `--format bytes --stride N`, `--dump`, `--save-ram`, `--scan N`) and the D1 debugger (the game's own map copy at `$C0:A521` reads the sizes):
+each field layer is a byte map in rows of 256 bytes at `$7E:4000` (BG1 at `+$00`, BG2 at `+$40`, BG3 at `+$80`), the block number's bit 8 in
+bit 0 (BG1) / bit 1 (BG2) of the byte at `+$C0`, the block table at `$7E:B000` (512 blocks of 8 bytes), the layers' sizes as bytes at
+`$7E:0BCB-$0BD6`, the room's first and last block columns at `$7E:1D1A` / `$1D1B` (the maps pack several rooms, up to 64 x 64 blocks).
+- The level source now reads that (`"format": "bytes"`, `stride`, `high` + `highBit`, `columns`, sizes as bytes) and takes a level per layer.
+  Two refinements of its check, both in spec 6.1: places outside the level (or the room's columns) are left out of the comparison (Chrono
+  Trigger's camera shows a border above its rooms), and so are the band's first and last tile rows (the rows a game streams in as it scrolls
+  vertically); Super Metroid's numbers are unchanged by them (99.4 / 0 / 0.6, verified on 2,807 of 2,808 frames).
+- **Chrono Trigger: unavailable -> risky.** Side truth, 9,000 frames of the attract sequence (right / empty / wrong):
+
+| Chrono Trigger | Every layer extended | Drawn only | Drawn with its level in work RAM |
+|---|---|---|---|
+| BG1, whole play | 8.5 / 4.6 / 86.9 | 4.9 / 95.1 / 0 | **13.3 / 86.7 / 0** (verified on 1,976 of 7,238 frames) |
+| BG1, the field scenes (E8) | 3.3 / 52.7 / 44.0 | 0 / 100 / 0 | **100 / 0 / 0** (600 columns) |
+| BG2, whole play | 90.8 / 9.2 / 0 | 0.1 / 99.9 / 0 | 7.3 / 92.5 / 0.2 |
+| BG2, the field scenes | | | 20.1 / 79.3 / 0.6 |
+
+  The field scenes are where the level covers the game (frames 2950-3300, 3650-3900, 4400-4500, 4750-4900, 5700-6650, 7400-8000, the
+  `--judge` ranges of the new research option). The whole play's empty columns are the world map's, the battles' and the cutscenes',
+  which keep their layers another way: their sides are what the game has drawn (mostly black). BG2's 0.6% wrong is a starfield behind the
+  Lavos scene that repeats past its map's width: its stars stop at the room's edge. Most rooms are exactly the screen's width, so their
+  sides are black (the room ends there); the factory (frames 7700-8000) is wider and shows its true continuation, ahead of the camera too.
+  **Why risky, not good:** the sides are never wrong where the level is verified, but over the whole checked play most judged side columns
+  are still empty (the criterion "low empty" holds only on the field scenes), and most rooms give only black sides. The user may overrule.
+- Sheets: `docs/projects/widemess-images/m6/ct.png` (the profile, field moments), `m6d/ct-without-level.png` (the same moments, drawn only).
+- **Checks** (each with its negative control): E1 (the byte format, a level list and the columns read; flips in bytes, no stride, bit 8
+  without its byte, bit 8 past 7, an unknown format, columns not two addresses, a layer listed twice refused); E2f (a synthetic byte level:
+  the side ahead right at every pixel; without the bit-8 byte never verified; a wrong stride never verified; the room's columns with the camera
+  stopped at the room's edge show nothing past it, without them the next room packed in RAM fills the side; two layers each with a level
+  taken, one layer with two refused); E8 (Chrono Trigger's BG1 on the field scenes at most 1% wrong and 5% empty; without its levels at
+  least half empty; every layer extended at least 20% wrong); E6 (Chrono Trigger in lockstep with its levels on: the centre identical over
+  7,650 frames, `STAT77` and the sound identical, off frame-identical).
+
 ## Milestone 7a result (2026-10-24): WideMess in BrokenNes Lite and in the FL plugin
 
 How WideMess appears in each host, and why the plugin differs, is spec section 9.

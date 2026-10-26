@@ -56,6 +56,12 @@ public sealed class WmsLevel
     public int Blocks, Width, Height, Tiles;
     /// <summary>The block word's bits: the block number, flipped in x, flipped in y.</summary>
     public int Index = 0x03FF, FlipX = 0x0400, FlipY = 0x0800;
+    /// <summary>The byte format (Chrono Trigger): one byte a block, the block number's low 8 bits; rows <see cref="Stride"/> bytes apart; the number's bit 8 in bit <see cref="HighBit"/>
+    /// of the byte at <see cref="High"/> + the same offset (-1: none). No flips.</summary>
+    public bool Bytes;
+    public int Stride, High = -1, HighBit;
+    /// <summary>The room's columns: offsets of the two bytes holding the first and the last block column the game's camera shows (-1: the level's whole width).</summary>
+    public int Left = -1, Right = -1;
 }
 
 /// <summary>A profile's widescreen rules (spec 6.1): one rule per layer (BG1-BG4, sprites) and the masks.</summary>
@@ -73,8 +79,10 @@ public sealed class WmsWidescreen
     /// <summary>[0-3] BG1-BG4, for a layer whose rule is <see cref="WmsSideRule.Drawn"/>: the map memory (spec 6.1) fills side columns outside the drawn span with the place as the SNES
     /// picture last showed it.</summary>
     public readonly bool[] Memory = new bool[4];
-    /// <summary>The level in work RAM (spec 6.1) for one layer on the drawn rule, or null.</summary>
-    public WmsLevel? Level;
+    /// <summary>The levels in work RAM (spec 6.1), each for one layer on the drawn rule, a layer at most once.</summary>
+    public WmsLevel[] Levels = Array.Empty<WmsLevel>();
+    /// <summary>The first level in work RAM (null: none); setting it makes it the only one.</summary>
+    public WmsLevel? Level { get => Levels.Length > 0 ? Levels[0] : null; set => Levels = value == null ? Array.Empty<WmsLevel>() : new[] { value }; }
 
     /// <summary>Every layer extended, the sprites too, no masks: what the tests and the profile tools start from (never applied to a game without its profile saying so).</summary>
     public static WmsWidescreen AllExtend() => new();
@@ -82,7 +90,7 @@ public sealed class WmsWidescreen
     /// <summary>A copy (tools: the same rules with a part taken away, as a negative control).</summary>
     public WmsWidescreen Copy()
     {
-        var c = new WmsWidescreen { Masks = Masks, WindowsReachEdge = WindowsReachEdge, Level = Level };
+        var c = new WmsWidescreen { Masks = Masks, WindowsReachEdge = WindowsReachEdge, Levels = Levels };
         Layers.CopyTo(c.Layers, 0); DrawnAhead.CopyTo(c.DrawnAhead, 0); Memory.CopyTo(c.Memory, 0);
         return c;
     }
@@ -114,7 +122,13 @@ public sealed partial class PPU_WMS
             for (int i = 0; i < 4; i++) if (widescreen.Layers[i] == WmsSideRule.Black) throw new ArgumentException("black is a mask's rule, not a layer's");
             for (int i = 0; i < 4; i++) if (widescreen.DrawnAhead[i] is < 0 or > SnesOrigin) throw new ArgumentException("a drawn layer's ahead is 0-72 pixels");
             for (int i = 0; i < 4; i++) if (widescreen.Memory[i] && widescreen.Layers[i] != WmsSideRule.Drawn) throw new ArgumentException("the map memory is for layers on the drawn rule");
-            if (widescreen.Level is { } lv && (lv.Layer is < 0 or > 3 || widescreen.Layers[lv.Layer] != WmsSideRule.Drawn)) throw new ArgumentException("the level in work RAM is for a layer on the drawn rule");
+            int seen = 0;
+            foreach (var lv in widescreen.Levels)
+            {
+                if (lv.Layer is < 0 or > 3 || widescreen.Layers[lv.Layer] != WmsSideRule.Drawn) throw new ArgumentException("the level in work RAM is for a layer on the drawn rule");
+                if ((seen & 1 << lv.Layer) != 0) throw new ArgumentException("a layer has at most one level in work RAM");
+                seen |= 1 << lv.Layer;
+            }
         }
         Array.Clear(drawn);
         for (int i = 0; i < 4; i++)
@@ -122,7 +136,8 @@ public sealed partial class PPU_WMS
             memory[i] = widescreen != null && widescreen.Memory[i] ? memory[i] ?? new MapMemory() : null;
             memory[i]?.Forget();
         }
-        level = widescreen?.Level != null ? new LevelTrack() : null;
+        Array.Clear(levels); Array.Clear(levelOf);
+        if (widescreen != null) foreach (var lv in widescreen.Levels) { levels[lv.Layer] = new LevelTrack(); levelOf[lv.Layer] = lv; }
         Array.Clear(sideLine);
         enhWide = widescreen; enhNoFlicker = noFlicker;
         enhOn = widescreen != null || noFlicker;
@@ -269,7 +284,7 @@ public sealed partial class PPU_WMS
             if (!drawnOn[bg]) continue;
             ref var t = ref drawn[bg];
             var mem = memory[bg];
-            bool lvl = level != null && w.Level!.Layer == bg;
+            bool lvl = levels[bg] != null;
             int h = RegHofs(bg) & 0x3FF;
             if (t.Frame != enhFrame && (enabled & (1 << bg)) != 0)
             {
@@ -316,7 +331,7 @@ public sealed partial class PPU_WMS
                 bandCur[bg][row] = true;
                 if (mem != null) RecordLine(bg, mem, t.U, t.Vu, row + 1);
             }
-            bool fromSource = main && (mem != null || (lvl && level!.Verified));
+            bool fromSource = main && (mem != null || (lvl && levels[bg]!.Verified));
             sideLine[bg] = fromSource;
             var src = sideCol[bg];
             for (int c = 0; c < WideWidth; c++)
@@ -372,11 +387,16 @@ public sealed partial class PPU_WMS
         if (memory[bg] is { } m)
             parts.Add($"memory: {m.Writes:N0} tiles written; {m.Pixels:N0} side pixels asked, {m.Remembered:N0} remembered; emptied {m.CutsScroll:N0}x by a cut of the scroll or map, "
                     + $"{m.CutsGap:N0}x by a frame without the layer, {m.CutsDisagree:N0}x by the game's map disagreeing ({m.Differed:N0} of {m.Compared:N0} entries compared differed)");
-        if (level is { } l && enhWide?.Level?.Layer == bg)
+        if (levels[bg] is { } l)
             parts.Add($"level in work RAM: verified on {l.FramesVerified:N0} of {l.FramesChecked:N0} frames ({l.Searches:N0} searches, {l.Found:N0} found an alignment); {l.Pixels:N0} side pixels from the level"
-                    + $" ({l.Outside:N0} asked outside it); last check {l.LastMatch:N0} of {l.LastCompared:N0} entries agreed; the level {l.Width} x {l.Height} blocks");
+                    + $" ({l.Outside:N0} asked outside it); last check {l.LastMatch:N0} of {l.LastCompared:N0} entries agreed; the level {l.Width} x {l.Height} blocks"
+                    + (levelOf[bg]!.Left >= 0 ? $", the room's columns {l.ColL}-{l.ColR}" : ""));
         return parts.Count == 0 ? null : string.Join("; ", parts);
     }
+
+    /// <summary>Tools: this frame's check of a layer's level in work RAM (null: the layer has none): verified, the entries that agreed of those compared, the level's size, searches so far.</summary>
+    public (bool verified, int match, int compared, int width, int height, long searches)? LevelState(int bg) =>
+        levels[bg] is { } l ? (l.Verified, l.LastMatch, l.LastCompared, l.Width, l.Height, l.Searches) : null;
 
     /// <summary>Tests: the map memory's disagreement cut on (the default) or off (the negative control).</summary>
     public void SetMemoryDisagreeCut(bool on) { foreach (var m in memory) if (m != null) m.DisagreeCut = on; }
@@ -462,24 +482,44 @@ public sealed partial class PPU_WMS
         public long FramesChecked, FramesVerified, Searches, Found, Pixels, Outside;
         public int LastMatch, LastCompared;
         public int Width, Height;
+        /// <summary>This frame's columns of the room (blocks; the whole width without them).</summary>
+        public int ColL, ColR = int.MaxValue;
         public readonly int[] Seen = new int[65536];   // the search's count of each map entry in the picture (reused: no allocation)
     }
-    private LevelTrack? level;
+    private readonly LevelTrack?[] levels = new LevelTrack?[4];
+    private readonly WmsLevel?[] levelOf = new WmsLevel?[4];
     /// <summary>Tests only (the negative control): once aligned, keep showing the level although the check fails (what a level source without the check would do).</summary>
     public bool LevelTrustWithoutCheck { get; set; }
     /// <summary>Tools: told each entry the level check finds different (null: nothing).</summary>
     public static Action<string>? LevelDebug;
     private const int LevelSearchEvery = 8;
 
-    /// <summary>The level's map entry at level tile (lx, ly) (8 x 8 tiles, 2 x 2 to a block), or -1 outside the level or the work RAM.</summary>
-    private int LevelEntry(WmsLevel d, byte[] ram, int width, int height, long lx, long ly)
+    /// <summary>The level's map entry at level tile (lx, ly) (8 x 8 tiles, 2 x 2 to a block), or -1 outside the level (or the room's columns) or the work RAM.</summary>
+    private static int LevelEntry(WmsLevel d, byte[] ram, LevelTrack lt, long lx, long ly)
     {
         if (lx < 0 || ly < 0) return -1;
         long bx = lx >> 1, by = ly >> 1;
-        if (bx >= width || by >= height) return -1;
-        long i = d.Blocks + 2 * (by * width + bx);
+        if (bx >= lt.Width || by >= lt.Height || bx < lt.ColL || bx > lt.ColR) return -1;
+        int wv;
+        if (d.Bytes)
+        {
+            // the byte format: the block number's low 8 bits, its bit 8 from another byte at the same offset; no flips
+            long b = d.Blocks + by * d.Stride + bx;
+            if (b >= ram.Length) return -1;
+            wv = ram[b];
+            if (d.High >= 0)
+            {
+                long hb = d.High + by * d.Stride + bx;
+                if (hb >= ram.Length) return -1;
+                wv |= ((ram[hb] >> d.HighBit) & 1) << 8;
+            }
+            long tb = d.Tiles + (long)wv * 8 + ((ly & 1) * 2 + (lx & 1)) * 2;
+            if (tb + 1 >= ram.Length) return -1;
+            return ram[tb] | ram[tb + 1] << 8;
+        }
+        long i = d.Blocks + 2 * (by * lt.Width + bx);
         if (i + 1 >= ram.Length) return -1;
-        int wv = ram[i] | ram[i + 1] << 8;
+        wv = ram[i] | ram[i + 1] << 8;
         bool fx = (wv & d.FlipX) != 0, fy = (wv & d.FlipY) != 0;
         int qx = (int)(lx & 1), qy = (int)(ly & 1);
         if (fx) qx ^= 1;
@@ -496,21 +536,26 @@ public sealed partial class PPU_WMS
     /// alignment again (at most every 8 frames). The frame shows the level only when verified.</summary>
     private void TrackLevel(int bg, DrawnTrack t, bool cut)
     {
-        var lt = level!; var d = enhWide!.Level!; var ram = WorkRam;
+        var lt = levels[bg]!; var d = levelOf[bg]!; var ram = WorkRam;
         lt.Verified = false;
         lt.FramesChecked++;
         if (ram == null) return;
         var (mapBase, wide, tall, shift) = MemoryGeometry(bg);
         if (shift != 3) return;   // the level's blocks are 2 x 2 tiles of 8 x 8
-        lt.Width = ram[d.Width & 0x1FFFF] | ram[(d.Width + 1) & 0x1FFFF] << 8;
-        lt.Height = ram[d.Height & 0x1FFFF] | ram[(d.Height + 1) & 0x1FFFF] << 8;
+        // the level's size in blocks: 16-bit words (the byte format: bytes, as the game reads them)
+        lt.Width = ram[d.Width & 0x1FFFF] | (d.Bytes ? 0 : ram[(d.Width + 1) & 0x1FFFF] << 8);
+        lt.Height = ram[d.Height & 0x1FFFF] | (d.Bytes ? 0 : ram[(d.Height + 1) & 0x1FFFF] << 8);
         if (lt.Width <= 0 || lt.Height <= 0 || (long)lt.Width * lt.Height > 0x10000) return;
+        if (d.Left >= 0) { lt.ColL = ram[d.Left & 0x1FFFF]; lt.ColR = ram[d.Right & 0x1FFFF]; } else { lt.ColL = 0; lt.ColR = int.MaxValue; }
         int colMask = wide ? 63 : 31, rowMask = tall ? 63 : 31;
         var (tx0, tx1) = UnaliasedTiles(t.U, shift, colMask);
         var rows = bandPrev[bg];
         bool any = false;
         for (int y = 0; y < VisibleHeight && !any; y++) any = rows[y];
         if (!any) return;   // no main-scroll rows last frame: nothing to check against
+        // the band's first and last tile rows are left out of the check: a game scrolling vertically draws the row coming in as it reaches the edge (spec 6.1)
+        long tyFirst = long.MaxValue, tyLast = long.MinValue;
+        for (int y = 0; y < VisibleHeight; y++) if (rows[y]) { long ty = (t.Vu + y + 1) >> 3; tyFirst = Math.Min(tyFirst, ty); tyLast = Math.Max(tyLast, ty); }
         (int match, int compared) Check(long ox, long oy, int step)
         {
             int match = 0, compared = 0; long lastTy = long.MinValue;
@@ -518,13 +563,14 @@ public sealed partial class PPU_WMS
             {
                 if (!rows[y]) continue;
                 long ty = (t.Vu + y + 1) >> 3;
-                if (ty == lastTy || (step > 1 && ty % step != 0)) continue;
+                if (ty == lastTy || ty == tyFirst || ty == tyLast || (step > 1 && ty % step != 0)) continue;
                 lastTy = ty;
                 for (long tx = tx0; tx <= tx1; tx += step)
                 {
+                    int e = LevelEntry(d, ram, lt, tx + ox, ty + oy);
+                    if (e < 0) continue;   // a place outside the level (or the room's columns): the level says nothing there, the picture shows the game's border (spec 6.1)
                     compared++;
-                    int e = LevelEntry(d, ram, lt.Width, lt.Height, tx + ox, ty + oy);
-                    if (e >= 0 && e == SnesMapEntry(mapBase, wide, tall, (int)(tx & colMask), (int)(ty & rowMask))) match++;
+                    if (e == SnesMapEntry(mapBase, wide, tall, (int)(tx & colMask), (int)(ty & rowMask))) match++;
                     else if (LevelDebug != null && step == 1) LevelDebug($"frame {enhFrame} tile ({tx}, {ty}) + ({ox}, {oy}): map {SnesMapEntry(mapBase, wide, tall, (int)(tx & colMask), (int)(ty & rowMask)):X4} level {e:X4}");
                 }
             }
@@ -582,7 +628,7 @@ public sealed partial class PPU_WMS
         for (long ly = 0; ly < lt.Height * 2L; ly++)
             for (long lx = 0; lx < lt.Width * 2L; lx++)
             {
-                if (LevelEntry(d, ram, lt.Width, lt.Height, lx, ly) != ae) continue;
+                if (LevelEntry(d, ram, lt, lx, ly) != ae) continue;
                 long ox = lx - ax, oy = ly - ay;
                 var (sm, sn) = Check(ox, oy, 3);
                 if (sn == 0 || (sn - sm) * 50 > sn) continue;
@@ -601,8 +647,8 @@ public sealed partial class PPU_WMS
     private void SideFill(int bg, int bpp, int mode, int line)
     {
         var mem = memory[bg];
-        var lt = level != null && enhWide!.Level!.Layer == bg && level.Verified ? level : null;
-        var d = lt != null ? enhWide!.Level : null; var ram = WorkRam;
+        var lt = levels[bg] is { Verified: true } vl ? vl : null;
+        var d = lt != null ? levelOf[bg] : null; var ram = WorkRam;
         var colors = bgCol[bg]; var prios = bgPri[bg]; var src = sideCol[bg];
         var (_, _, _, shift) = MemoryGeometry(bg);
         int size = 1 << shift, charBase = CharBase(bg), wordsPerTile = bpp * 4;
@@ -625,7 +671,7 @@ public sealed partial class PPU_WMS
                 lastTx = tx; entry = -1; memHit = false;
                 if (lt != null)
                 {
-                    entry = LevelEntry(d!, ram!, lt.Width, lt.Height, tx + lt.Ox, ty + lt.Oy);
+                    entry = LevelEntry(d!, ram!, lt, tx + lt.Ox, ty + lt.Oy);
                     if (entry < 0) lt.Outside++;
                 }
                 if (entry < 0 && mem != null && mem.TryGet(MapMemory.Key(tx, ty), out ushort me)) { entry = me; memHit = true; }
@@ -658,7 +704,7 @@ public sealed partial class PPU_WMS
     private void ForgetMemory()
     {
         foreach (var m in memory) m?.Forget();
-        if (level != null) { level.Aligned = false; level.Verified = false; level.LastSearch = enhFrame - LevelSearchEvery; }
+        foreach (var level in levels) if (level != null) { level.Aligned = false; level.Verified = false; level.LastSearch = enhFrame - LevelSearchEvery; }
     }
 
     /// <summary>True when every scene condition holds on this line (the registers as the game last wrote them).</summary>

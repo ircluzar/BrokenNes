@@ -49,6 +49,12 @@ internal static partial class WideMessCli
         int detail = int.Parse(Opt(args, "detail", "0")), showBands = int.Parse(Opt(args, "show-bands", "0"));
         // the truth is taken 8 columns or more inside the SNES picture's edges: games finish drawing a column of their map as it scrolls in there (and hide the seam there),
         // so the outermost columns can show a place before it is drawn (--truth-margin 0: the first version's every column)
+        int levelLog = int.Parse(Opt(args, "level-log", "0"));   // research: every N frames, the layer's level check
+        // research: --judge "a-b,c-d": claims and truths only on those frames (the scenes a question is about); the default every frame
+        var judgeRanges = Opt(args, "judge", "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(r => r.Split('-')).Select(p => (from: int.Parse(p[0]), to: int.Parse(p[1]))).ToArray();
+        bool Judged(int f) => judgeRanges.Length == 0 || judgeRanges.Any(r => f >= r.from && f <= r.to);
+        int levelDebugFrom = int.Parse(Opt(args, "level-debug", "-1")), levelDebugLeft = 40;   // research: the first 40 entries the level check finds different, from that frame
+        PPU_WMS.LevelDebug = levelDebugFrom < 0 ? null : m => { if (levelDebugLeft > 0 && int.Parse(m.Split(' ')[1]) >= levelDebugFrom) { levelDebugLeft--; Console.WriteLine("    level check: " + m); } };
         var judge = new SideJudge(layer, int.Parse(Opt(args, "truth-margin", "8"))) { Detail = detail };
         int at = 0; PadButtons held = 0;
         for (int f = 1; f <= frames; f++)
@@ -65,7 +71,9 @@ internal static partial class WideMessCli
                     { sb.Append($" {st - 1}-{line - 2}:{(SideJudge.Shown(lines[st]) ? "" : "blank ")}{SideJudge.Hofs(lines[st], layer)},{SideJudge.Vofs(lines[st], layer)}"); st = line; }
                 Console.WriteLine(sb.ToString());
             }
-            judge.Frame(f, lines, h, s.FrameWidth, ppu.DebugCapture);
+            judge.Frame(f, lines, h, s.FrameWidth, Judged(f) ? ppu.DebugCapture : null);   // outside --judge ranges: the scroll is followed, nothing claimed or judged
+            if (levelLog > 0 && f % levelLog == 0 && ppu.LevelState(layer) is { } ls)
+                Console.WriteLine($"  level {f}: {(ls.verified ? "verified" : "not verified")}, {ls.match} of {ls.compared} agreed, {ls.width} x {ls.height} blocks, {ls.searches} searches; HOFS {SideJudge.Hofs(lines[1], layer)} VOFS {SideJudge.Vofs(lines[1], layer)}");
         }
         long right = judge.Right, empty = judge.Empty, wrong = judge.Wrong, skipped = judge.Skipped, claims = judge.Claims, bandRows = judge.BandRows, shownRows = judge.ShownRows;
         long sidePixels = judge.SidePixels, sideFilled = judge.SideFilled; var firstWrong = judge.FirstWrong;
