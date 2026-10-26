@@ -32,6 +32,8 @@
               the VBlank interrupt) with the debugger armed while it is open; closed, nothing is attached or armed.
     SOUND     Emulator > Debug Windows > Sound Monitor: the NES's five channels from APU_FIX's probe; a SNES voice pitch poked into the
               S-DSP shows on voice 0 only; the Game Boy's NR52 and its channel switches as the API reads them.
+    WIDEMESS  the devkit sample (WideMess\testroms\bin\devkit_sample.wms, copied with its .sym): the debugger parks, its PC matches the
+              API's, the WLA-DX symbols load by themselves; closing detaches; the memory and tile windows read its VRAM.
     SNES / GB the same window on the SNES (the CPU picker offers the SPC700, whose registers show) and the Game Boy.
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
 
@@ -484,6 +486,35 @@ try {
     Check 'sound_gb' ($ch.Count -eq 4 -and $si -like ('*NR52 $' + ('{0:X2}' -f $nr52) + ' *') -and $onOk) "$si ; $($ch -join ' | ')"
     Check 'sound_gb_negative' ($ch[2] -like 'Wave:*wave *' -and $ch[0] -notlike '*wave*') "the wave RAM is on the wave channel only"
     Close-Window $win
+
+    # ---------------------------------------------------------------- WideMess: the devkit sample (WideMess\testroms\bin) through the same windows
+    $wmsRom = Join-Path $repo 'WideMess\testroms\bin\devkit_sample.wms'
+    if (Test-Path -LiteralPath $wmsRom) {
+        Copy-Item -LiteralPath $wmsRom -Destination (Join-Path $WorkDir 'devkit_sample.wms')
+        Copy-Item -LiteralPath ([IO.Path]::ChangeExtension($wmsRom, '.sym')) -Destination (Join-Path $WorkDir 'devkit_sample.sym')
+        Load $id (Join-Path $WorkDir 'devkit_sample.wms')
+        $win = Open-Debugger $id
+        Click 'pause'
+        $ws = WaitFor { $x = Api $id GET '/api/debug/state'; if ($x.parked) { $x } }
+        if (-not $ws) { $ws = Api $id GET '/api/debug/state' }
+        Start-Sleep -Milliseconds 400
+        $wr = TextOf (FindById $win 'registers')
+        $wf = @($ws.symbolFiles | ForEach-Object { Split-Path -Leaf $_ })
+        Check 'wms_debugger' ($ws.console -eq 'widemess' -and $ws.parked -and (RegPc $wr) -eq $ws.cpus[0].pcHex -and ($wf -join ',') -eq 'devkit_sample.sym' -and $ws.symbols -gt 0) "console $($ws.console), parked $($ws.parked), window PC $(RegPc $wr), API $($ws.cpus[0].pcHex), $($ws.symbols) symbols from $($wf -join ', ')"
+        Close-Window $win
+        $wc = Api $id GET '/api/debug/state'
+        Check 'wms_close_detaches' (-not $wc.attached -and -not $wc.armed -and -not $wc.parked) "closed: attached $($wc.attached), armed $($wc.armed)"
+        $win = Open-Memory $id
+        $wd = Domains $win
+        Pick-Domain $win 'VRAM' | Out-Null
+        GoTo $win '0'; $v0 = HexRow $win 0; $va = ApiRow $id 'VRAM' 0
+        Check 'wms_memory' (($wd -contains 'VRAM') -and ($wd -contains 'WRAM') -and (RowBytes $v0) -eq $va) "WideMess domains: $($wd -join ', '); VRAM row $v0 ; API $va"
+        Close-Window $win
+        $win = Open-Tiles $id
+        $ti = TextOf (FindById $win 'info')
+        Check 'wms_tiles' ($ti -like 'widemess: VRAM as*') "$ti"
+        Close-Window $win
+    } else { Check 'wms_rom_present' $false "missing $wmsRom" }
 
     $result.pass = -not ($checks.Values | Where-Object { -not $_.ok })
 }
