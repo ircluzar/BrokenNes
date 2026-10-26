@@ -556,6 +556,13 @@ rooms of the 512 x 512 map; outdoors every layer stays extended.
   the mask BG2 draws 73 million side pixels there; on all 2,520 outdoor frames the picture is the same with and without the mask); E6 (the
   new script in lockstep: the centre identical, `STAT77` and the sound identical, off frame-identical).
 
+**Super Metroid BG2** (the third lead) needed no rule of its own: its 3.7% was the palette fade, and it is 100% right on palette entries.
+
+**Results** (the branch merged with main `7faca67`): `--wms-test` 363 of 363; `--check-test` 111/0; `--debug-test` 101/0; `--snes-state-test`
+147/0; `--movie-test` 69/0; UAT `run-suite.ps1` 125 pass, 0 fail, 16 skip, 3 info; the ALttP speed-pass golden IDENTICAL on every run;
+interleaved A/B against main `7faca67` (ALttP 2,400 frames on the SNES console, 10 pairs, CPU time) 1.02: noise (the SNES console's code is
+untouched; the new code is the WideMess picture chip's and the tools').
+
 ## Milestone 7a result (2026-10-24): WideMess in BrokenNes Lite and in the FL plugin
 
 How WideMess appears in each host, and why the plugin differs, is spec section 9.
