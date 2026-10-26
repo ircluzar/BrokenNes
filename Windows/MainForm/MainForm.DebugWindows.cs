@@ -21,6 +21,7 @@ namespace BrokenNes.Windows
             var menu = new ToolStripMenuItem("Debug &Windows") { Name = "debugWindowsMenu" };
             menu.DropDownItems.Add(new ToolStripMenuItem("&Debugger (registers, disassembly, breakpoints, step)", null, (_, _) => OpenDebugWindow("debugger")) { Name = "debugWindowDebugger" });
             menu.DropDownItems.Add(new ToolStripMenuItem("&Memory (live hex, watches)", null, (_, _) => OpenDebugWindow("memory")) { Name = "debugWindowMemory" });
+            menu.DropDownItems.Add(new ToolStripMenuItem("&Palettes", null, (_, _) => OpenDebugWindow("palettes")) { Name = "debugWindowPalettes" });
             emulatorMenu.DropDownItems.Add(menu);
         }
 
@@ -32,6 +33,7 @@ namespace BrokenNes.Windows
             {
                 "debugger" => new DebuggerWindow(() => webApiServer?.Debuggers, () => DebugWindowGame, () => currentRomPath),
                 "memory" => new MemoryWindow(() => webApiServer?.Debuggers, () => DebugWindowGame, () => currentRomPath),
+                "palettes" => new PalettesWindow(() => webApiServer?.Debuggers, () => DebugWindowGame),
                 _ => throw new ArgumentException("no debug window " + which),
             };
             f.Location = new Point(Right + 8 < Screen.FromControl(this).WorkingArea.Right - 200 ? Right + 8 : Left + 40, Top + 40);

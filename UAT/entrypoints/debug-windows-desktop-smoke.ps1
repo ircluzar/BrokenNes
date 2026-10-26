@@ -18,6 +18,9 @@
     MEMORY    Emulator > Debug Windows > Memory: a PRG row agrees with /api/memory/peek-range (and is not another row's bytes); RAM moves
               live while PRG does not; a watch on a symbol resolves and reads, an unknown one says so; nothing is attached. SNES: the
               domains, VRAM $2000 holds the test ROM's DMA bytes and $2010 does not. Game Boy: the domains, a BUS row agrees with the API.
+    PALETTES  Emulator > Debug Windows > Palettes. NES: 8 palettes, every index through the 2C02 colours, $3F10 mirroring $3F00 (the NES's
+              HTTP routes have no PPU space, so the decoding is the check). SNES: a CGRAM word poked through the API (7C00) shows in row 0
+              exactly as the API reads CGRAM, and not in row 1. Game Boy: BGP / OBP0 / OBP1 as the API reads them, shades decoded.
     SNES / GB the same window on the SNES (the CPU picker offers the SPC700, whose registers show) and the Game Boy.
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
 
@@ -119,6 +122,8 @@ function GoTo($w, [string]$where) { SetText (FindById $w 'goto') $where; Invoke-
 function HexRow($w, [int]$i) { (Items (FindById $w 'hex'))[$i] }
 function RowBytes([string]$row) { if ($row -match '^[0-9A-F]+: (.{49})') { return (($Matches[1] -replace '\s+', ' ').Trim()) } else { return '' } }
 function ApiRow([int]$procId, [string]$domain, [int]$address) { ((Api $procId GET "/api/memory/peek-range?domain=$domain&address=$address&length=16").data | ForEach-Object { '{0:X2}' -f [int]$_ }) -join ' ' }
+function Open-Palettes([int]$procId) { Open-DebugWindow $procId 'Palettes' 'BrokenNes Palettes' }
+function PalLine($w, [string]$prefix) { (Items (FindById $w 'palettes')) | Where-Object { $_ -like "$prefix*" } | Select-Object -First 1 }
 function PcLine($w) { (Items (FindById $w 'disassembly')) | Where-Object { $_ -like '>*' } | Select-Object -First 1 }
 
 $inst = $null
@@ -218,6 +223,29 @@ try {
     Check 'memory_reads_only' (-not $sm.attached -and -not $sm.armed) "the memory window open: attached $($sm.attached), armed $($sm.armed)"
     Close-Window $win
 
+    # ---------------------------------------------------------------- PALETTES (NES): palette RAM (PPU $3F00-$3F1F) through the NES colours
+    # (the NES's old HTTP memory routes have no PPU space, and pokes of $2006 / $2007 meet the game's address latch, so the NES check is the
+    # decoding: every index through the 2C02 table, and the hardware's mirror of $3F10 onto $3F00)
+    $win = Open-Palettes $id
+    $nesRgb = @('666666','002A88','1412A7','3B00A4','5C007E','6E0040','6C0600','561D00','333500','0B4800','005200','004F08','00404D','000000','000000','000000',
+                'ADADAD','155FD9','4240FF','7527FE','A01ACC','B71E7B','B53120','994E00','6B6D00','388700','0C9300','008F32','007C8D','000000','000000','000000',
+                'FFFEFF','64B0FF','9290FF','C676FF','F36AFF','FE6ECC','FE8170','EA9E22','BCBE00','88D800','5CE430','45E082','48CDDE','4F4F4F','000000','000000',
+                'FFFEFF','C0DFFF','D3D2FF','E8C8FF','FBC2FF','FEC4EA','FECCC5','F7D8A5','E4E594','CFEF96','BDF4AB','B3F3CC','B5EBF2','B8B8B8','000000','000000')
+    $nl = @(Items (FindById $win 'palettes'))
+    $bad = @(); $labelsOk = $true
+    for ($k = 0; $k -lt $nl.Count; $k++) {
+        $want = $(if ($k -lt 4) { "BG$k" } else { "SP$($k - 4)" })
+        if ($nl[$k] -notlike "${want}:*") { $labelsOk = $false }
+        if ($nl[$k] -match ': (\$[0-9A-F]{2}) (\$[0-9A-F]{2}) (\$[0-9A-F]{2}) (\$[0-9A-F]{2}) \| #(\w{6}) #(\w{6}) #(\w{6}) #(\w{6})$') {
+            for ($c = 1; $c -le 4; $c++) { if ($nesRgb[[Convert]::ToInt32($Matches[$c].TrimStart('$'), 16)] -ne $Matches[$c + 4]) { $bad += "$want[$($c - 1)]" } }
+        } else { $bad += "$want (format)" }
+    }
+    Check 'palettes_nes' ($nl.Count -eq 8 -and $labelsOk -and $bad.Count -eq 0) "8 palettes, every index through the 2C02 colours: $($nl[0]) ; $($nl[4])"
+    $bg0 = ($nl[0] -split ' ')[1]; $sp0 = ($nl[4] -split ' ')[1]
+    Check 'palettes_nes_mirror' ($bg0 -eq $sp0) "SP0's colour 0 (`$3F10) mirrors BG0's (`$3F00): $sp0 = $bg0"
+    $wrongRow = $nl[0] -replace '#000000', '#FFFFFF'
+    Check 'palettes_nes_negative' ($wrongRow -eq $nl[0] -or -not ($wrongRow -match '\| #(\w{6})' -and $nesRgb[[Convert]::ToInt32(($bg0).TrimStart('$'), 16)] -eq $Matches[1])) "a colour that is not the index's would fail the decoding check ($wrongRow)"
+    Close-Window $win
     # ---------------------------------------------------------------- SNES (the SPC700 in the CPU picker)
     Load $id (Join-Path $roms 'debugtest.sfc')
     $win = Open-Debugger $id
@@ -247,6 +275,16 @@ try {
     GoTo $win '2010'; $v1 = HexRow $win 0
     Check 'memory_snes_vram_negative' ($v1 -like '2010:*' -and (RowBytes $v1) -notlike '11 22 33 44*') "VRAM `$2010: $v1"
     Close-Window $win
+    $win = Open-Palettes $id
+    Api $id POST '/api/memory/poke' @{ domain = 'CGRAM'; address = 2; value = 0x00 } | Out-Null
+    Api $id POST '/api/memory/poke' @{ domain = 'CGRAM'; address = 3; value = 0x7C } | Out-Null
+    Start-Sleep -Milliseconds 600
+    $r0 = PalLine $win 'row 0:'
+    $cg = (Api $id GET '/api/memory/peek-range?domain=CGRAM&address=0&length=32').data
+    $words = for ($i = 0; $i -lt 16; $i++) { '{0:X4}' -f ([int]$cg[2 * $i] -bor ([int]$cg[2 * $i + 1] -shl 8)) }
+    Check 'palettes_snes' ($r0 -eq ('row 0: ' + ($words -join ' ')) -and $r0 -like 'row 0: * 7C00 *') "window: $r0 ; API: $($words -join ' ')"
+    Check 'palettes_snes_negative' (@(Items (FindById $win 'palettes')).Count -eq 16 -and (PalLine $win 'row 1:') -notlike 'row 1: * 7C00 *') "16 rows; row 1: $(PalLine $win 'row 1:')"
+    Close-Window $win
 
     # ---------------------------------------------------------------- Game Boy
     Load $id (Join-Path $roms 'debugtest.gb')
@@ -266,6 +304,21 @@ try {
     Pick-Domain $win 'BUS' | Out-Null
     GoTo $win '100'; $g0 = HexRow $win 0; $gApi = ApiRow $id 'BUS' 0x100
     Check 'memory_gb_bus_row' ($g0 -like '0100:*' -and (RowBytes $g0) -eq $gApi) "BUS row: $g0 ; API: $gApi"
+    Close-Window $win
+    $win = Open-Palettes $id
+    # the Game Boy's palette registers are read only through the API (the I/O domain refuses writes), so the check is the values against
+    # the API's and their decoding: shade i of a register is bits 2i+1..2i
+    $gl = @(); $gbBad = @()
+    foreach ($r in @(@('BGP', 0x47), @('OBP0', 0x48), @('OBP1', 0x49))) {
+        $v = (Api $id GET "/api/memory/peek?domain=IO&address=$($r[1])").value
+        $want = "$($r[0]) `$$('{0:X2}' -f $v): $((0..3 | ForEach-Object { ($v -shr (2 * $_)) -band 3 }) -join ' ')"
+        $got = PalLine $win "$($r[0]) "
+        $gl += $got
+        if ($got -ne $want) { $gbBad += "$got (want $want)" }
+    }
+    Check 'palettes_gb' ($gbBad.Count -eq 0 -and $gl.Count -eq 3) "$($gl -join ' ; ')"
+    $flip = "BGP `$1B: 3 2 1 0"
+    Check 'palettes_gb_negative' ($gl[0] -ne $flip -or ((Api $id GET '/api/memory/peek?domain=IO&address=71').value -eq 0x1B)) "the window is not showing another value's shades ($flip); no colour RAM rows on a monochrome game: $(-not (PalLine $win 'BG0:'))"
     Close-Window $win
 
     $result.pass = -not ($checks.Values | Where-Object { -not $_.ok })
