@@ -50,7 +50,7 @@ try {
     $base = (Get-Content -LiteralPath (Join-Path $env:LOCALAPPDATA "BrokenNes\instances\$id.json") -Raw | ConvertFrom-Json)
     $api = $(if ($base.baseUrl) { $base.baseUrl } elseif ($base.httpPort) { "http://127.0.0.1:$($base.httpPort)" } else { "http://127.0.0.1:$($base.port)" })
 
-    foreach ($case in @(@('debugtest.sfc', 'snes', 'vram:$2000', '11 22 33 44'), @('debugtest.nes', 'nes', 'prg:$0', ''))) {
+    foreach ($case in @(@('debugtest.sfc', 'snes', 'vram:$2000', '11 22 33 44'), @('debugtest.gb', 'gb', 'rom:$100', '00 C3 50 01'), @('debugtest.nes', 'nes', 'prg:$0', ''))) {
         Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/load-rom' -Body @{ path = (Join-Path $roms $case[0]) } | Out-Null
         Start-Sleep -Seconds 2
         Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/pause' | Out-Null; Start-Sleep -Milliseconds 500
@@ -58,19 +58,17 @@ try {
         $mem = Invoke-BrokenNesApi -ProcessId $id -Path ('/api/debug/memory?spec=' + [Uri]::EscapeDataString($case[2]) + '&length=16')
         $dom = Render ("api=" + [Uri]::EscapeDataString($api) + "&once=1&mem=" + [Uri]::EscapeDataString($case[2]))
         $st2 = Invoke-BrokenNesApi -ProcessId $id -Path '/api/debug/state'
-        if ($st2.cpus[0].pcHex -ne $st.cpus[0].pcHex) { Write-Host "note: the PC moved while paused ($($st.cpus[0].pcHex) -> $($st2.cpus[0].pcHex)): the pause was late"; $st = $st2 }
+        Check "$($case[1])_paused" ($st2.frame -eq $st.frame -and $st2.cpus[0].pcHex -eq $st.cpus[0].pcHex) "paused through /api/emulator/pause: frame $($st.frame) -> $($st2.frame) over the render, PC $($st.cpus[0].pcHex) -> $($st2.cpus[0].pcHex)"
         $regs = Pre $dom 'registers'; $dis = Pre $dom 'disasm'; $memText = Pre $dom 'memory'
         $c = $case[1]; $pc = $st.cpus[0].pcHex
         $apiBytes = ($mem.data | ForEach-Object { '{0:X2}' -f [int]$_ }) -join ' '
-        if ($c -ne 'nes') {
-            # the app's /api/emulator/pause does not stop a console session (only the NES loop): a running PC cannot be compared
-            Check "${c}_console" ($dom -match "data-console=""$c""" -and $regs -match 'PC \$[0-9A-F]{6}') "page: $(($regs -split "`n")[0]) (running: the app cannot pause a console session over HTTP)"
-        } else {
         Check "${c}_registers" ($dom -match "data-console=`"$c`"" -and $dom -match "data-pc=`"\$pc`"" -and $regs -match [regex]::Escape("PC $pc")) "API PC $pc; page: $(($regs -split "`n")[0])"
         Check "${c}_disasm_at_pc" (($dis -split "`n" | Where-Object { $_ -like '>*' } | Select-Object -First 1) -like "> $pc*") "page: $(($dis -split "`n" | Where-Object { $_ -like '>*' } | Select-Object -First 1))"
-        }
         Check "${c}_memory" ($memText -like "*$apiBytes*" -and ($case[3] -eq '' -or $apiBytes -like "$($case[3])*")) "API $($case[2]): $apiBytes ; page: $((($memText -split "`n")[1]))"
         Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/resume' | Out-Null
+        Start-Sleep -Milliseconds 700
+        $st3 = Invoke-BrokenNesApi -ProcessId $id -Path '/api/debug/state'
+        Check "${c}_resumed_negative" ($st3.frame -gt $st2.frame) "resumed: frame $($st2.frame) -> $($st3.frame) (the pause is what held it)"
     }
     $dead = Render ("api=" + [Uri]::EscapeDataString('http://127.0.0.1:1') + "&once=1")
     Check 'unreachable_negative' ($dead -match 'cannot reach http://127.0.0.1:1' -and (Pre $dead 'registers') -eq '') "a page pointed at port 1 says it cannot reach the app and shows no registers"

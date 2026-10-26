@@ -153,7 +153,7 @@ namespace BrokenNes.Windows
         private void ResumeEmulationIfPaused()
         {
             // Check if there's a loaded game (not test ROM) and it's paused
-            bool hasLoadedGame = nes != null && !string.IsNullOrEmpty(currentRomPath);
+            bool hasLoadedGame = (nes != null || session != null) && !string.IsNullOrEmpty(currentRomPath);   // a SNES / WideMess / Game Boy game runs as a session (BrokenDev D8)
             bool isTestRom = !string.IsNullOrEmpty(currentRomPath) && string.Equals(System.IO.Path.GetFileName(currentRomPath), "test.nes", StringComparison.OrdinalIgnoreCase);
             
             if (hasLoadedGame && !isTestRom && isPaused && isEmulationRunning)
@@ -181,7 +181,7 @@ namespace BrokenNes.Windows
         /// </summary>
         private void PauseEmulationIfRunning()
         {
-            bool hasLoadedGame = nes != null && !string.IsNullOrEmpty(currentRomPath);
+            bool hasLoadedGame = (nes != null || session != null) && !string.IsNullOrEmpty(currentRomPath);   // a SNES / WideMess / Game Boy game runs as a session (BrokenDev D8)
             bool isTestRom = !string.IsNullOrEmpty(currentRomPath) && string.Equals(System.IO.Path.GetFileName(currentRomPath), "test.nes", StringComparison.OrdinalIgnoreCase);
 
             if (hasLoadedGame && !isTestRom && isEmulationRunning && !isPaused)
