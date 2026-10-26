@@ -872,6 +872,28 @@ and the divergence finder's report (the last marker before the first difference)
 - **Found and fixed on the way:** the desktop app's continue-state screenshots ignored `BROKENNES_SAVES_DIR` (a smoke run wrote
   `ContinueStates\porttest_nes-....png` into the user's `%APPDATA%\BrokenNes`; that one file was removed, nothing else touched): they now
   follow it, as the battery saves do. A `debugtest_nes-....png` of 2026-10-24 there is an earlier milestone's (left as it is).
+- **Tests:** `--port-test` (94 of 94: per console the messages read back exactly, the NES timer to the cycle (57), the GB timer (45
+  M-cycles), wrong use as error events, two ports on one machine, detach; the checks, profile, movies, divergence, bug captures and the
+  debugger; the real games; each with a negative control: the same code writing beside the port, the Game Boy messages without their
+  signature, the port off, a marker a frame late, BreakOnAssert off, games that do not use the port); the MCP client test (99 of 99, 17
+  new); BrokenDev `run-tests` (three new cases: the hello world's planted assert fails verify with `debug-port-asserts` and a new
+  `port.assert`, the GBDK and NESFab proofs, the WideMess sample's dev build passes verify with its markers and timers and its planted
+  assert fails it, its release build equals the committed ROM); `UAT/entrypoints/debug-port-desktop-smoke.ps1` (10 of 10).
+- **Zero cost when off:** the goldens are unchanged (UAT, `--debug-test`, `--check-test`, `--wms-test` below); interleaved A/B against main's
+  Workshop (best of three, the same pictures): VRUN 0.997, Super VRUN 1.016 / 0.988 / 1.008, the hello world's release build 0.993 / 0.999,
+  the WideMess sample 0.969 / 1.040: noise.
+- **Results on the branch merged with main 7faca67** (main had not moved: the merge is empty): `--port-test` 94 of 94, `--debug-test` 101 of
+  101, `--check-test` 111 of 111, `--wms-test` 331 passed 0 failed, `--movie-test` 69 of 69, `--bug-test` 47 of 48: the one failure is
+  D6's speed check of the capture armed against off (Super VRUN +5.3%, another run VRUN +7.3%), and **main's own Workshop fails it the
+  same way on this machine now** (Super VRUN +6.7%): the machine's load, not D7 (the capture's ring is unchanged but for a list it fills only
+  when told); UAT 125 pass 0 fail 16 skip 3 info (with the main checkout's ignored ROM folders linked in read-only, then unlinked);
+  BrokenDev `run-tests` 141 passed 0 failed 0 skipped (with `-McpExe`: the client test 99 of 99 and the demo); the bug-capture desktop smoke
+  18 of 18, the debug-port desktop smoke 10 of 10; the desktop app, Workshop, the MCP server, Core, Lite and the plugin build.
+- **Left open:** Lite has no debug port (its debugging comes through D3's pages, as D1 said); the ca65 include is not assembled (no ca65
+  here); the NES and SNES dev builds were run on BrokenNes only (their port is writes nothing decodes; the Game Boy's ran on three other
+  emulators); NintendulatorDX's `__timerN_title` symbol names are not read (timers are named by command 7 or by name); the desktop app shows an
+  assert in the title bar and the log, no dialog (automation must never meet a modal box); the GB assert text carries the line, not the file
+  (a Windows path in sdas's `.ascii` would need escaping); the D6 speed check is flaky on a loaded machine.
 
 ## Open questions (to settle at the start of the track)
 
