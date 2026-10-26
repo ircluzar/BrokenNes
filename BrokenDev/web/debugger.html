@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrokenDev Debugger</title>
+<!--
+  BrokenDev milestone D8, the first web page (docs/projects/brokendev-debugging-plan.md "D8 state"): the debugger of a running BrokenNes
+  desktop app, READ ONLY, over its HTTP API (the D1 routes: /api/debug/state, /api/debug/disasm, /api/debug/callstack, /api/debug/memory).
+  Open it from disk with ?api=http://127.0.0.1:<port> (the port is in %LOCALAPPDATA%\BrokenNes\instances\<pid>.json; 42067 for the first
+  app). It never calls a control route: pausing, stepping and breakpoints stay in the app's Debug Windows (or an agent session the user
+  asked for). Options: &mem=<spec> (default the CPU's first bytes), &once=1 (one refresh, for tests).
+-->
+<style>
+  :root { --bg: #f6f6f4; --fg: #1d1d1b; --muted: #6b6b66; --panel: #ffffff; --line: #dcdcd6; --accent: #8a2be2; --pc: #fff2b3; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #161615; --fg: #e8e8e3; --muted: #9a9a93; --panel: #20201e; --line: #34342f; --accent: #c08cff; --pc: #4a4220; } }
+  :root[data-theme="dark"] { --bg: #161615; --fg: #e8e8e3; --muted: #9a9a93; --panel: #20201e; --line: #34342f; --accent: #c08cff; --pc: #4a4220; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; }
+  header { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+  h1 { font-size: 16px; margin: 0; }
+  #status { color: var(--muted); }
+  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; padding: 12px 16px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+  h2 { font-size: 13px; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
+  pre { margin: 0; font: 12.5px/1.45 ui-monospace, Consolas, monospace; overflow-x: auto; white-space: pre; }
+  .pc { background: var(--pc); display: inline-block; min-width: 100%; }
+  .err { color: #c0392b; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BrokenDev Debugger <span style="font-weight:400;color:var(--muted)">(read only)</span></h1>
+  <span id="status">connecting...</span>
+</header>
+<main>
+  <section><h2>Registers</h2><pre id="registers"></pre></section>
+  <section><h2>Disassembly from the PC</h2><pre id="disasm"></pre></section>
+  <section><h2>Call stack (innermost first)</h2><pre id="callstack"></pre></section>
+  <section><h2>Memory</h2><pre id="memory"></pre></section>
+</main>
+<script>
+(function () {
+  const q = new URLSearchParams(location.search);
+  const api = (q.get('api') || 'http://127.0.0.1:42067').replace(/\/$/, '');
+  const memSpec = q.get('mem') || '$0000';
+  const once = q.get('once') === '1';
+  const $ = id => document.getElementById(id);
+  const get = path => fetch(api + path, { cache: 'no-store' }).then(r => r.json());
+  const hex = (v, n) => v.toString(16).toUpperCase().padStart(n, '0');
+  function text(id, s) { $(id).textContent = s; }
+
+  async function refresh() {
+    try {
+      const st = await get('/api/debug/state');
+      if (!st.success) { text('status', 'no game: ' + (st.error || '')); return; }
+      const cpu = st.cpus[0];
+      const regs = Object.entries(cpu.registers).map(([k, v]) => `${k.padEnd(3)} = ${v}`).join('\n');
+      text('registers', `${cpu.name}  PC ${cpu.pcHex}${cpu.symbol ? '  ' + cpu.symbol : ''}\n${regs}`);
+      $('status').textContent = `${st.console}: ${st.attached ? (st.parked ? 'PARKED' : 'debugger attached') : 'no debugger attached'}; frame ${st.frame}, scanline ${st.scanline}; ${api}`;
+      $('status').dataset.pc = cpu.pcHex; $('status').dataset.console = st.console; $('status').dataset.frame = st.frame;
+
+      const dis = await get('/api/debug/disasm?count=16');
+      const pre = $('disasm'); pre.textContent = '';
+      (dis.lines || []).forEach((l, i) => {
+        const line = `${l.label && !l.label.includes('+') ? l.label + ':\n' : ''}${i === 0 ? '>' : ' '} ${l.hex.padEnd(8)} ${l.bytes.padEnd(12)} ${l.text}\n`;
+        const span = document.createElement('span'); span.textContent = line; if (i === 0) span.className = 'pc'; pre.appendChild(span);
+      });
+
+      const cs = await get('/api/debug/callstack');
+      text('callstack', cs.attached ? (cs.frames.length ? cs.frames.slice().reverse().map(f => f.text).join('\n') : '(empty)') : '(tracked only while a debugger is attached: Emulator > Debug Windows > Debugger in the app)');
+
+      const mem = await get('/api/debug/memory?spec=' + encodeURIComponent(memSpec) + '&length=128');
+      if (mem.success) {
+        let out = `${mem.spec} = ${mem.resolved} (${mem.space})\n`;
+        for (let r = 0; r < mem.data.length; r += 16) out += hex(mem.offset + r, 4) + ': ' + mem.data.slice(r, r + 16).map(b => hex(b, 2)).join(' ') + '\n';
+        text('memory', out);
+      } else text('memory', mem.error || 'no memory');
+    } catch (e) {
+      $('status').textContent = 'cannot reach ' + api + ': ' + e.message + ' (is the desktop app running? the port is in %LOCALAPPDATA%\\BrokenNes\\instances\\<pid>.json)';
+      $('status').className = 'err';
+    } finally {
+      document.body.dataset.refreshed = String(Number(document.body.dataset.refreshed || 0) + 1);
+      if (!once) setTimeout(refresh, 500);
+    }
+  }
+  refresh();
+})();
+</script>
+</body>
+</html>

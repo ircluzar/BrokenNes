@@ -972,7 +972,23 @@ and the divergence finder's report (the last marker before the first difference)
 - **The smoke covers WideMess** (the devkit sample with its `.sym`: the debugger parks with 1815 symbols, detaches on close; memory and
   tiles on its VRAM): **71 of 71**, the user's `%APPDATA%\BrokenNes` unchanged. Rerun after these: `--debug-test` 101 of 101, the MCP
   client test 99 of 99 (only new engine files since the full run above, none on the run path).
-- **Next:** mute / solo in the sound monitor for the SNES and Game Boy; then the BrokenDev web pages on the same routes.
+- **Mute and solo** (the sound monitor's buttons) for the SNES / WideMess voices and the Game Boy channels: a debug-side mask in the mix
+  only (`DSP_SFC.DebugMute`, `APU_GB.DebugMute`; 0 is exactly the old code path), never the config, cleared when the window closes.
+  `--debug-test` 103 of 103 (Super VRUN: mask 0 gives the identical sound hash, all eight voices muted is silence, the picture
+  unchanged); the smoke 75 of 75 (the mask, the `[muted]` mark, solo, closing un-mutes, the config file not written). A muted SNES voice
+  is out of the echo input as well, so the echo buffer in sound RAM differs while it is muted. WideMess's extra voices are not covered by
+  the mask yet. Rerun on this: `--wms-test` 363/0, port 94, bug 48, movie 69, UAT 125/0/16/3.
+- **The first BrokenDev web page:** `BrokenDev/web/debugger.html`, one static file. It shows the running desktop app's debugger, read
+  only (registers, the disassembly from the PC, the call stack, a memory panel), over the D1 routes, refreshing twice a second. You open
+  it from disk with `?api=http://127.0.0.1:<port>`, and it never calls a control route. `BrokenDev/tests/web-debugger.ps1` renders it in
+  headless Edge (scratch profile) against the real app with scratch folders: 8 of 8 (the NES paused: PC, registers and disassembly are
+  the API's; the SNES console and VRAM; negative controls: an unreachable port, no POST / DELETE in the source, the user's APPDATA
+  unchanged).
+- **App fix found by it:** the API's pause / resume (and two view-mode checks) treated any ROM whose path *contained* `test.nes` (such as
+  `debugtest.nes`) as the idle ROM and ignored it; they now compare the file name. **Still open:** `/api/emulator/pause` does not stop
+  a console session (SNES, Game Boy), so the page test cannot compare a SNES PC. The page cannot reach Lite or a phone yet, because the
+  desktop API listens on loopback only.
+- **Next:** web pages for memory, tiles and palettes on the same routes; a session-aware `/api/emulator/pause`.
 
 ## Open questions (to settle at the start of the track)
 

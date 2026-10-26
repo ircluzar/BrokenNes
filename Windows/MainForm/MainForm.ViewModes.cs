@@ -118,7 +118,7 @@ namespace BrokenNes.Windows
                 
                 // Resume emulation if there's a loaded game and it's paused
                 bool hasLoadedGame = nes != null && !string.IsNullOrEmpty(currentRomPath);
-                bool isTestRom = currentRomPath.Contains("test.nes", StringComparison.OrdinalIgnoreCase);
+                bool isTestRom = string.Equals(System.IO.Path.GetFileName(currentRomPath), "test.nes", StringComparison.OrdinalIgnoreCase);
                 
                 if (hasLoadedGame && !isTestRom && isPaused && isEmulationRunning)
                 {
@@ -509,7 +509,7 @@ namespace BrokenNes.Windows
                 {
                     // Check if there's a loaded game (not test ROM) and it's currently running
                     bool hasLoadedGame = nes != null && !string.IsNullOrEmpty(currentRomPath);
-                    bool isTestRom = currentRomPath.Contains("test.nes", StringComparison.OrdinalIgnoreCase);
+                    bool isTestRom = string.Equals(System.IO.Path.GetFileName(currentRomPath), "test.nes", StringComparison.OrdinalIgnoreCase);
                     bool isCurrentlyRunning = isEmulationRunning && !isPaused;
                     
                     if (hasLoadedGame && !isTestRom && isCurrentlyRunning)
