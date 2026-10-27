@@ -4,8 +4,8 @@
 ; dead CPU-test range). Every macro assembles to NOTHING unless BROKENDEV_DEBUG is defined (ca65 -D BROKENDEV_DEBUG): the release build is
 ; the same source without the define.
 ;
-; NOT ASSEMBLED HERE: ca65 is not installed on this machine (a download needs the user's approval). The bytes each macro writes are the
-; protocol of Workshop/Debug/PortTestRoms.cs, which --port-test checks; the strip relies only on .ifdef.
+; Assembled with the pinned cc65 (toolchains.json 'cc65', 2.19-git5725066): build-proof.ps1 links sample\main.s into an NROM ROM, BrokenNes
+; hears every macro, and the release build is byte-identical to the sample without any DBG_ line (BrokenDev run-tests).
 ;
 ;   DBG_PRINT "room loaded"                 a print (A is clobbered by every macro)
 ;   DBG_PRINT_BYTE "room %hu", room         a print with one byte from memory (%hu %hd %hx %c)

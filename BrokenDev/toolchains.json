@@ -27,6 +27,30 @@
       ],
       "versionFile": { "path": "ChangeLog", "firstLine": "gbdk-4.5.0" },
       "notes": "GBDK's start-up (crt0) zeroes the C variables' own area (_DATA) but, since 4.x, not the rest of work RAM (its ChangeLog: so emulators can flag reads before writes); VRUN: Vaults of Obsolete Code clears the rest itself (src/start_up.s) and BrokenDev's gb.ram-uninit check proves nothing is read unwritten. Its console library (printf, font_init) switches the LCD on while it loads its font, which makes lag frames at start-up: the game draws its own text."
+    },
+    {
+      "id": "cc65",
+      "title": "cc65 (6502 C compiler and the ca65 assembler / ld65 linker, for the NES)",
+      "version": "2.19-git5725066",
+      "source": "the cc65 project's official Windows snapshot (https://sourceforge.net/projects/cc65/files/cc65-snapshot-win32.zip, linked from https://cc65.github.io/getting-started.html; the GitHub releases V2.17-V2.19 ship sources only, no Windows binaries), downloaded with the user's approval on 2026-10-26 for the ca65 debug-port library (BrokenDev D7); 'ca65 --version' says 'ca65 V2.19 - Git 5725066' (built 2026-10-24)",
+      "homepage": "https://cc65.github.io",
+      "zip": "toolchains/cc65/_downloads/cc65-snapshot-win32.zip",
+      "bytes": 29239613,
+      "sha256": "0c645591bbc5ec1c5d79bfd11723b84b9e24cba6c831ee0d4c559b106b29c24c",
+      "sha256Source": "measured when it was downloaded (recorded beside the zip in cc65-snapshot-win32.zip.sha256); the snapshot link always serves the newest build, so this pin is what proves which one was unpacked",
+      "dir": "toolchains/cc65/2.19-git5725066/cc65",
+      "files": [
+        { "path": "bin/ca65.exe", "bytes": 706860, "sha256": "da72a6309891cd08dfde4e6e9684dc62f3a58d237812393c026c62cb27d984fe" },
+        { "path": "bin/ld65.exe", "bytes": 567936, "sha256": "fdc0958724f11f886a3058f3227d21880fe8bb00f27d82007219f4ee1939e17e" },
+        { "path": "bin/cl65.exe", "bytes": 322354, "sha256": "dadfd00edc27b0ba428c02188e8c1f7e19c09315178c0d7027a4d3f35ee15603" },
+        { "path": "bin/cc65.exe", "bytes": 1121897, "sha256": "69d3cf5576bf6fd62e01352db97416dc19d554b0a3acd54b86ecca17fdee11b9" },
+        { "path": "bin/da65.exe", "bytes": 543321, "sha256": "d609c537a056c02113cf8d22d38bc33c7cb43c9f0d342da1697fe7c20ab11234" },
+        { "path": "bin/ar65.exe", "bytes": 289167, "sha256": "928d9c93a0a158f2e3797ec5390b55343dc596a50be7b467944093ddc97ddac9" },
+        { "path": "cfg/nes.cfg", "bytes": 2636, "sha256": "ba856e168f32a5329041f2327dcd7e98c4a0524bf7fb61af16fd469ffaa0cf67" },
+        { "path": "lib/nes.lib", "bytes": 1498279, "sha256": "de0ab01ce1db8277ef700217106da66afa522317b71f703b4215b49589328dfd" },
+        { "path": "asminc/nes.inc", "bytes": 2898, "sha256": "55bc31fed66ad3f4d0bb13da69f16b6ca42bdd7fef576ee1180e6b15092e4e6a" }
+      ],
+      "notes": "The snapshot has no version file; the pinned ca65.exe / ld65.exe hashes are the version. Used by BrokenDev\\debugport\\ca65\\build-proof.ps1 (the debug-port include assembled and linked into a small NROM test ROM)."
     }
   ]
 }

@@ -923,6 +923,9 @@ try {
         $g = @($tcGood.toolchains | Where-Object { $_.id -eq 'gbdk' })
         Assert-Equal $g.Count 1; Assert-Equal $g[0].version '4.5.0'; Assert-Equal $g[0].sha256 '266854ce92e3064871c5b28cd3436cc2a6cb136af9e7cf617140108f8c1c5890'
         Assert-True (@($g[0].files | Where-Object { $_.path -eq 'bin/lcc.exe' }).Count -eq 1) 'lcc.exe is not pinned'
+        $c = @($tcGood.toolchains | Where-Object { $_.id -eq 'cc65' })
+        Assert-Equal $c.Count 1; Assert-Equal $c[0].sha256 '0c645591bbc5ec1c5d79bfd11723b84b9e24cba6c831ee0d4c559b106b29c24c'
+        Assert-True (@($c[0].files | Where-Object { $_.path -eq 'bin/ca65.exe' -or $_.path -eq 'bin/ld65.exe' }).Count -eq 2) 'ca65.exe / ld65.exe are not pinned'
         $e = & $tcMut { param($j) $j.toolchains[0].sha256 = 'abc' }; Assert-True (($e -join ';') -match 'sha256 must be') ($e -join '; ')
         $e = & $tcMut { param($j) $j.toolchains[0].dir = '..\elsewhere' }; Assert-True (($e -join ';') -match 'inside BROKENDEV_HOME') ($e -join '; ')
         $e = & $tcMut { param($j) $j.toolchains[0].files = @() }; Assert-True (($e -join ';') -match 'files is empty') ($e -join '; ')
@@ -1575,6 +1578,27 @@ try {
         Assert-Equal $r.ExitCode 1 '(the sample asserts from its fourth frame)'
         $j = Read-BdJson $json
         Assert-True ($j.counts.print -ge 5 -and $j.counts.assert -ge 1 -and $j.counts.marker -eq 2 -and @($j.timers | Where-Object { $_.name -eq 'timer 1' -or $_.name -eq 'work' }).Count -eq 1) "the dev build's port: $($j.counts | ConvertTo-Json -Compress)"
+        $rr = Invoke-Ws -WsArgs @('--port', '--rom', (Join-Path $out 'release\game.nes'), '--frames', '10', '--quiet', '--json', $json)
+        Assert-Equal $rr.ExitCode 0 '(the release build sends nothing)'
+        Assert-Equal (Read-BdJson $json).writes 0
+    }
+    Test-Case 'the ca65 include assembled with the pinned cc65: the release build is byte-identical to the sample without any DBG_ line, the dev build''s port speaks (prints with a byte and a word, both markers, the named timer to the cycle) with no assert; NEGATIVE: the planted assert fails the run; SKIP without the cc65 toolchain' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $cst = Get-BdToolchainState -Spec (Get-BdToolchainSpec -Id cc65) -SkipZip
+        if ($cst.State -ne 'ready') { Skip-Test "the cc65 toolchain is $($cst.State): $($cst.Detail)" }
+        $ps5 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $out = Join-Path $tmpRoot 'caproof'
+        $proof = Invoke-BdProcess -FilePath $ps5 -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $bd 'debugport\ca65\build-proof.ps1'), '-Cc65', $cst.Dir, '-Out', $out) -TimeoutSec 300
+        Assert-True ($proof.ExitCode -eq 0 -and $proof.Output -match 'PASS') "the ca65 proof: $(Select-BdTail $proof.Output 6)"
+        $json = Join-Path $tmpRoot 'caport.json'
+        $r = Invoke-Ws -WsArgs @('--port', '--rom', (Join-Path $out 'dev\game.nes'), '--frames', '10', '--quiet', '--json', $json)
+        Assert-Equal $r.ExitCode 0 '(the dev build asserts nothing)'
+        $j = Read-BdJson $json
+        $t = @($j.timers | Where-Object { $_.name -eq 'work' })
+        Assert-True ($j.counts.print -eq 17 -and $j.counts.assert -eq 0 -and $j.counts.marker -eq 2 -and $j.counts.error -eq 0 -and $t.Count -eq 1 -and $t[0].calls -eq 8 -and $t[0].worst -eq 24) "the dev build's port: $($j.counts | ConvertTo-Json -Compress) timers $($j.timers | ConvertTo-Json -Compress)"
+        $p = Invoke-Ws -WsArgs @('--port', '--rom', (Join-Path $out 'planted\game.nes'), '--frames', '10', '--quiet', '--json', $json)
+        Assert-Equal $p.ExitCode 1 '(the planted assert fails from the fourth frame)'
+        Assert-True ((Read-BdJson $json).counts.assert -eq 5) 'the planted build did not assert five times'
         $rr = Invoke-Ws -WsArgs @('--port', '--rom', (Join-Path $out 'release\game.nes'), '--frames', '10', '--quiet', '--json', $json)
         Assert-Equal $rr.ExitCode 0 '(the release build sends nothing)'
         Assert-Equal (Read-BdJson $json).writes 0

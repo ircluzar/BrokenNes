@@ -10,7 +10,7 @@
 param([Parameter(Mandatory)][string]$Source, [Parameter(Mandatory)][string]$Destination)
 $ErrorActionPreference = 'Stop'
 $lines = [System.Collections.Generic.List[string]](Get-Content -LiteralPath $Source)
-$call = '^\s*(dbg_\w+\s*\(|DBG_\w+\s*\(|DBG_\w+\s*;|\s*DBG_\w+\s*$|#\s*include\s*[<"](brokendev_dbg|dbgport)|\.include\s+"(brokendev_dbg|dbgport))'
+$call = '^\s*(dbg_\w+\s*\(|DBG_\w+\s*\(|DBG_\w+\s*;|\s*DBG_\w+\s*$|DBG_[A-Z0-9_]+\s+[^\s=(]|#\s*include\s*[<"](brokendev_dbg|dbgport)|\.include\s+"(brokendev_dbg|dbgport))'
 $out = [System.Collections.Generic.List[string]]::new()
 for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -notmatch $call) { $out.Add($lines[$i]) } }
 # NESFab: an if / else whose body is now empty (the next non-blank line is not indented deeper)

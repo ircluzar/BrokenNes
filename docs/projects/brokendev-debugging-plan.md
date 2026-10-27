@@ -346,7 +346,7 @@ They follow WideMess milestone 1. Each one is merged, tested and pushed before t
 | **D4** | **Checks, budgets, profiler** | The first catalogue for the three consoles, each rule with its test ROM and negative control. Accepted findings recorded for VRUN, Nested VRUN, Super VRUN, the SMB1 remake and the hello world. `verify` fails on new findings and over budget. |
 | **D5** | **Movies, diff, bisect** | Our movie format with `.fm2` / `.bk2` export, divergence finder, state diff by symbol, step back, promoted movie tests in verify, bisect over a game's commits (proven on a planted regression). **Built 2026-10-25** (see "D5 as built"): the format's working name "BrokenNes movie" (`.bnm`); exports played by BizHawk and FCEUX exactly as the same input; bisect found the planted regression in a 17-commit throwaway game; VRUN's first promoted movie. |
 | **D6** | **Bug capture** | The key in the desktop app and Lite (download). Bundles land in the game's `bugs\`; `brokendev bug` replays them exactly. Lite still holds 60 fps with it on. **Built 2026-10-25** (see "D6 as built"): F9 and the note box in the desktop app, the Bug button's zip in Lite; every capture of the tests (VRUN, Super VRUN, the Game Boy hello world, the test ROMs) replays exactly; Lite 172 fps recording; `bugs` checks every workspace keeps them out of git. |
-| **D7** | **Debug port** | Print, assert, timers and markers on the three consoles, with NESFab, PVSnesLib and GBDK libraries, stripped from release builds. Other emulators run the dev builds unharmed. **Built 2026-10-25** (see "D7 settled" and "D7 as built"): NES `$401C-$401F`, SNES / WideMess `$4230-$423F`, Game Boy the bgb / Emulicious messages; libraries for NESFab, ca65 (not assembled here), PVSnesLib / WideMess C and WLA-DX, GBDK, each release build proven byte-identical to the source without the calls; the hello world and the WideMess template and sample speak through it; the hello world's dev build works on Mesen and BizHawk. |
+| **D7** | **Debug port** | Print, assert, timers and markers on the three consoles, with NESFab, PVSnesLib and GBDK libraries, stripped from release builds. Other emulators run the dev builds unharmed. **Built 2026-10-25** (see "D7 settled" and "D7 as built"): NES `$401C-$401F`, SNES / WideMess `$4230-$423F`, Game Boy the bgb / Emulicious messages; libraries for NESFab, ca65 (assembled with the pinned cc65 since 2026-10-26), PVSnesLib / WideMess C and WLA-DX, GBDK, each release build proven byte-identical to the source without the calls; the hello world and the WideMess template and sample speak through it; the hello world's dev build works on Mesen and BizHawk. |
 | **D8** | **Viewers** | The desktop windows (debugger, memory, tiles, maps, sprites, palettes, event view, sound monitor), then the BrokenDev web pages. |
 | **D9** | **Checkup, chaos, coverage** | `brokendev checkup` over every game, `brokendev chaos`, the coverage pages. |
 | next | **VRUN: Vaults of Obsolete Code** | Its own plan: `docs/projects/vrun-voc-plan.md`. |
@@ -847,8 +847,15 @@ and the divergence finder's report (the last marker before the first difference)
 - **The libraries** (`BrokenDev/debugport`), every call compiled to nothing without the dev define:
   - **NESFab** (`nesfab/brokendev_dbg.fab` dev, `brokendev_dbg_off.fab` release: the same functions, empty and inlined; strings as
     `@"..."ascii`, the timers fenced so the compiler cannot move the timed work across them), a sample and `build-proof.ps1`;
-  - **ca65** (`ca65/brokendev_dbg.inc`, `.ifdef BROKENDEV_DEBUG`): **written, not assembled** (no ca65 on this machine; a download needs the
-    user's approval);
+  - **ca65** (`ca65/brokendev_dbg.inc`, `.ifdef BROKENDEV_DEBUG`): **assembled 2026-10-26** with cc65 2.19-git5725066 (the download the
+    user approved that day: the official Windows snapshot `cc65-snapshot-win32.zip`, sha256 `0c645591...c24c`, pinned in `toolchains.json`
+    like GBDK, unpacked at `BROKENDEV_HOME\toolchains\cc65\2.19-git5725066\cc65`; the GitHub releases V2.17-V2.19 ship no Windows binaries).
+    `ca65/build-proof.ps1` links `sample/main.s` (every macro, an NROM-128 ROM, `sample/nrom.cfg`) four ways: dev (`-D BROKENDEV_DEBUG`),
+    planted (`-D PLANT_ASSERT` too), release (no define) and none (`Strip-DebugCalls.ps1`, which now also takes the ca65 / WLA-DX macro
+    lines `DBG_X arg`): release = none byte for byte (`087ae7b0...`), dev differs. On `--port` the dev build gives 17 prints (a byte with
+    `%hu`, a word with `%u`), the markers `start` and `six frames`, the named timer `work` 8 calls of exactly 24 CPU cycles, no assert
+    (exit 0); the planted build 5 asserts from the fourth frame (exit 1); the release build no port write. A BrokenDev `run-tests` case
+    (SKIP without the toolchain);
   - **PVSnesLib / WideMess** C (`snes/brokendev_dbg.h`) and **WLA-DX** (`snes/brokendev_dbg.inc`: for 16-bit A, no SEP / REP because
     WLA-DX follows them, two-register stores: DATA + DATA for the address, DATA + COMMAND for the bank and the command in one store);
     `wmsbuild.ps1` puts them on the include path, `-Define BROKENDEV_DEBUG` is the dev build;
@@ -889,8 +896,7 @@ and the divergence finder's report (the last marker before the first difference)
   of 10; the desktop app, Workshop, the MCP server, Core, Lite and the plugin build. (Before the merge, on a loaded machine, D6's speed
   check of the capture armed against off failed once at +5.3% / +7.3%, and main's own Workshop failed it the same way then, +6.7%: load,
   not D7; it passes on the merged head.)
-- **Left open:** Lite has no debug port (its debugging comes through D3's pages, as D1 said); the ca65 include is not assembled (no ca65
-  here); the NES and SNES dev builds were run on BrokenNes only (their port is writes nothing decodes; the Game Boy's ran on three other
+- **Left open:** Lite has no debug port (its debugging comes through D3's pages, as D1 said); the NES and SNES dev builds were run on BrokenNes only (their port is writes nothing decodes; the Game Boy's ran on three other
   emulators); NintendulatorDX's `__timerN_title` symbol names are not read (timers are named by command 7 or by name); the desktop app shows an
   assert in the title bar and the log, no dialog (automation must never meet a modal box); the GB assert text carries the line, not the file
   (a Windows path in sdas's `.ascii` would need escaping); D6's speed check is sensitive to the machine's load.
