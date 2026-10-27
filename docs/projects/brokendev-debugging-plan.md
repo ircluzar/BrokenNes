@@ -1201,7 +1201,15 @@ only when asked; coverage yes). It answers open question 5: the command is **`br
     - with coverage not asked for, verify adds no coverage section.
 - **Tests on this branch:** BrokenDev `run-tests` 145 passed, 0 failed, 1 skipped (the MCP case: no `-McpExe`); Workshop `--debug-test` 103 of 103,
   `--check-test` 111 of 111, `--movie-test` 69 of 69. Coverage is off unless asked for, so verify without it is unchanged.
-- **Not built:** chaos bots (specified above, run only when the user asks); branches never taken; the dashboard reading `checkup.json`;
+- **Chaos bots: paused at the usage cap (2026-10-26), a draft only.** `Workshop/Bugs/ChaosCli.cs` compiles but is **not wired** (no `--chaos`
+  in `Workshop/Program.cs`, no `brokendev.ps1 chaos` verb, never run, no test): `ChaosPad` (a SplitMix64 seeded pad: press / hold /
+  jump / mash segments by weight; bot k's seed derived from the run's), `RunBot` (a `MovieMachine` with the D4 checks, the D7 port, a
+  BRK / RST $38 loop watch and the coverage observer; stops at a crash, a softlock, a new finding not `--accept`ed, a port assert; keeps a
+  `.bnm` movie from the bot's start and a D6 capture under `out\<id>\chaos\bot<k>-seed<s>\`), `RunAll` (parallel bots, `chaos.json`).
+  Next: wire `--chaos` in Program.cs; the `chaos` verb (the built ROM, the manifest's `checks.off` / `accepted` and `chaos` section as
+  arguments); a `--chaos-test` with in-code NES ROMs (the `Asm` of `DebugTestRoms.cs`): a planted crash / assert / softlock / uninit read
+  the bot must find at a fixed seed and frame count, replayed exactly from its movie, and the clean ROM where it finds nothing.
+- **Not built:** chaos bots (above: draft only, run only when the user asks); branches never taken; the dashboard reading `checkup.json`;
   a timed `checkup all` with compat (its 15 to 30 minute estimate is not measured yet).
 
 ## Open questions (to settle at the start of the track)
