@@ -13,7 +13,7 @@ namespace BrokenNes.Workshop.Movies;
 
 /// <summary>
 /// <c>--movie</c>: BrokenNes's own movies (milestone D5 of docs/projects/brokendev-debugging-plan.md; the format: <see cref="Movie"/>, its
-/// working name and extension: <see cref="MovieFormat"/>).
+/// name and extension: <see cref="MovieFormat"/>).
 /// <code>
 ///   --movie record  --rom R --frames N [--input "120:Start,132:"] [--input2 S] [--console c] [--cores C/P/A] [--power-on fceux|zeros|ones] [--ntsc]
 ///                   [--key-every 60] [--sym F]... [--var name=expr]... [--build TEXT] [--start-state FILE] --out M.bnm

@@ -89,7 +89,7 @@ The first, unchecked run keeps its hashes and speed; the checked run must end on
 
 ## Movies, divergence, step back and bisect
 
-BrokenNes has its own movie format (milestone D5). Its name and extension are a **working name** (the plan's open question 2):
+BrokenNes has its own movie format (milestone D5). Its name and extension (settled 2026-10-26):
 **"BrokenNes movie", `.bnm`**, one constant in `Windows/NesEmulator/debug/movies/Movie.cs` (`MovieFormat`); BrokenDev asks the Workshop
 (`--movie format`), so a rename changes nothing else. A movie is plain text: the ROM (name, sha256, size) and the build it was made with,
 the console and cores, the NES's power-on RAM and frame timing, the start (power-on or a save state), every frame's input for two pads

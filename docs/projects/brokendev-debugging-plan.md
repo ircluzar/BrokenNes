@@ -4,7 +4,7 @@ Plan of 2026-10-23, written after an interview with the user. It starts **after 
 **Milestone D1 (the debugger engine) is built** (2026-10-24): see "D1 as built" after the milestones. **Milestone D4 (checks, budgets,
 profiler) is built** (2026-10-24): see "D4 as built". **Milestone D2 (the Game Boy hello world) is built** (2026-10-24): see "D2 as built";
 its accepted findings list is empty. **Milestone D3 (the MCP server) is built** (2026-10-24): see "D3 as built". **Milestone D5 (movies, diff, bisect) is built** (2026-10-25):
-see "D5 as built"; the movie format's name is a working name ("BrokenNes movie", `.bnm`: open question 2). **Milestone D6 (bug capture) is built**
+see "D5 as built"; the movie format is "BrokenNes movie", `.bnm` (open question 2, settled 2026-10-26). **Milestone D6 (bug capture) is built**
 (2026-10-25): see "D6 settled" and "D6 as built"; the key is F9 for now (open question 3). **Milestone D7 (the debug port) is built**
 (2026-10-25): see "D7 settled" (the registers: open question 1, answered for review) and "D7 as built". **Milestone D8 (the viewers) is under way**: see "D8 settled". The rest is not.
 
@@ -344,7 +344,7 @@ They follow WideMess milestone 1. Each one is merged, tested and pushed before t
 | **D2** | **Game Boy hello world** | GBDK-2020 installed (after approval). `VRUN_VOC_dev` builds a dual-mode hello world that runs on BrokenNes (desktop and Lite), Mesen and BizHawk, as a BrokenDev project. The D1 debugger reads its symbols. **Built 2026-10-24** ("D2 as built"): GBDK-2020 4.5.0 pinned; project `vrun-voc` verifies (0 findings, every budget in) and works on BrokenNes, Mesen, BizHawk Gambatte and SameBoy; desktop and Lite proven; the debug port is a placeholder until D7. |
 | **D3** | **MCP server** | Headless and live sessions with the tools above, registered at user level, used by an agent to find a planted bug in a test ROM without Mesen. The client test passes. **Built 2026-10-24** (see "D3 as built"). |
 | **D4** | **Checks, budgets, profiler** | The first catalogue for the three consoles, each rule with its test ROM and negative control. Accepted findings recorded for VRUN, Nested VRUN, Super VRUN, the SMB1 remake and the hello world. `verify` fails on new findings and over budget. |
-| **D5** | **Movies, diff, bisect** | Our movie format with `.fm2` / `.bk2` export, divergence finder, state diff by symbol, step back, promoted movie tests in verify, bisect over a game's commits (proven on a planted regression). **Built 2026-10-25** (see "D5 as built"): the format's working name "BrokenNes movie" (`.bnm`); exports played by BizHawk and FCEUX exactly as the same input; bisect found the planted regression in a 17-commit throwaway game; VRUN's first promoted movie. |
+| **D5** | **Movies, diff, bisect** | Our movie format with `.fm2` / `.bk2` export, divergence finder, state diff by symbol, step back, promoted movie tests in verify, bisect over a game's commits (proven on a planted regression). **Built 2026-10-25** (see "D5 as built"): the format "BrokenNes movie" (`.bnm`); exports played by BizHawk and FCEUX exactly as the same input; bisect found the planted regression in a 17-commit throwaway game; VRUN's first promoted movie. |
 | **D6** | **Bug capture** | The key in the desktop app and Lite (download). Bundles land in the game's `bugs\`; `brokendev bug` replays them exactly. Lite still holds 60 fps with it on. **Built 2026-10-25** (see "D6 as built"): F9 and the note box in the desktop app, the Bug button's zip in Lite; every capture of the tests (VRUN, Super VRUN, the Game Boy hello world, the test ROMs) replays exactly; Lite 172 fps recording; `bugs` checks every workspace keeps them out of git. |
 | **D7** | **Debug port** | Print, assert, timers and markers on the three consoles, with NESFab, PVSnesLib and GBDK libraries, stripped from release builds. Other emulators run the dev builds unharmed. **Built 2026-10-25** (see "D7 settled" and "D7 as built"): NES `$401C-$401F`, SNES / WideMess `$4230-$423F`, Game Boy the bgb / Emulicious messages; libraries for NESFab, ca65 (not assembled here), PVSnesLib / WideMess C and WLA-DX, GBDK, each release build proven byte-identical to the source without the calls; the hello world and the WideMess template and sample speak through it; the hello world's dev build works on Mesen and BizHawk. |
 | **D8** | **Viewers** | The desktop windows (debugger, memory, tiles, maps, sprites, palettes, event view, sound monitor), then the BrokenDev web pages. |
@@ -617,7 +617,7 @@ port and DMA reads are still checked.
   and frame timing (BrokenNes's 60 fps frames or NTSC's), the start (power-on, or a save state: gzip + base64), every frame's input for two pads
   as changes (`i 120 Start -`), and every 60 frames a keyframe (`k 60 <picture> <RAM> <course values>`): FNV-1a 64 of the picture (the hash
   verify's checkpoints use) and of the work RAM (every memory domain of kind Work), and the values of the movie's **course variables**
-  (`var app_state [app_state]`, debugger expressions on the symbols). **The name and extension are a working name** (open question 2):
+  (`var app_state [app_state]`, debugger expressions on the symbols). **The name and extension** (open question 2, kept as final by the user on 2026-10-26):
   "BrokenNes movie", `.bnm`, magic `bnmovie`; they are the constants of `MovieFormat` and nowhere else (BrokenDev asks the Workshop:
   `--movie format`), and the reader takes the magics of earlier names (`FormerMagics`), so a rename is one edit.
 - **Workshop `--movie`:** `record` (a pad script for both pads, `--var` course variables, optional start state), `play` (in sync, or the first
@@ -1204,7 +1204,7 @@ only when asked; coverage yes). It answers open question 5: the command is **`br
    registers, reusing a convention other emulators already show where one exists. **Answered 2026-10-25 for review** ("D7 settled"): the NES
    `$401C-$401F` (`$401E` / `$401F` the VirtuaNES / NintendulatorDX timer aliases), the SNES and WideMess `$4230-$423F` (the range the WideMess
    spec reserved), the Game Boy the bgb / Emulicious messages (`ld d,d`) and the `ld b,b` breakpoint that GBDK ships.
-2. The movie format's name and file extension. (D5 uses a working name, "BrokenNes movie", `.bnm`: the constants of `MovieFormat`.)
+2. ~~The movie format's name and file extension.~~ Settled 2026-10-26: "BrokenNes movie", `.bnm` (the constants of `MovieFormat`; a later rename stays one edit, the reader keeps `FormerMagics`).
 3. The bug-capture key and how the note is typed. (D6, for now: F9, a one-line note box with the game paused; Lite: the Bug button and the browser's prompt.)
 4. The first check catalogue per console, and which findings today's games accept (for example Super VRUN's SNESMOD sound-RAM reads).
 5. The checkup command's name and where its report lives (a BrokenDev page or a dashboard). **Answered 2026-10-26** ("D9 settled"):
