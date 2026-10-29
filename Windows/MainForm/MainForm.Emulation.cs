@@ -174,7 +174,8 @@ namespace BrokenNes.Windows
                     }
                 
                 // Get current audio buffer level to guide timing
-                int audioBufferMs = audioManager?.GetBufferedDurationMs() ?? TargetAudioBufferMs;
+                int audioBufferMs = audioManager?.GetBufferedDurationMs() ?? -1;
+                if (audioBufferMs < 0) audioBufferMs = TargetAudioBufferMs;   // no device open (or no audio at all): the clock alone paces the frames
 
                 // Core-based slowdown (CPU_ULQ) should not trigger audio-driven catch-up.
                 bool cpuUlq = false;

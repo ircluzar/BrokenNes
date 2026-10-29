@@ -24,6 +24,8 @@ namespace BrokenNes.Windows.WebApi
         public Func<object>? GetEmulationVolume { get; set; }
         /// <summary>Change any of the volume panel's settings; null fields are left alone.</summary>
         public Action<VolumeRequest>? SetEmulationVolume { get; set; }
+        /// <summary>The emulation's playback device state (GET /api/audio/device).</summary>
+        public Func<object>? GetAudioDevice { get; set; }
 
         /// <summary>
         /// Register Audio Engine API endpoints
@@ -34,6 +36,12 @@ namespace BrokenNes.Windows.WebApi
             app.MapGet("/api/audio/emulation-volume", () =>
                 GetEmulationVolume == null ? Results.BadRequest(new { success = false, error = "not available" })
                                            : Results.Ok(new { success = true, state = GetEmulationVolume() }));
+
+            // GET /api/audio/device - the playback device: Open / NoDevice / Lost (silent running, reopened when a device appears),
+            // how many times it was opened and lost, the last error, and Windows' own device count
+            app.MapGet("/api/audio/device", () =>
+                GetAudioDevice == null ? Results.BadRequest(new { success = false, error = "not available" })
+                                       : Results.Ok(new { success = true, device = GetAudioDevice() }));
 
             // POST /api/audio/emulation-volume {"volume": 0-100, "muted": bool, "removeHighPitched": bool, "highPitchCeilingNote": MIDI note}
             // - any field may be left out

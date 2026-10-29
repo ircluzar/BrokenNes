@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
@@ -11,7 +12,6 @@ namespace BrokenNes.Windows
     /// </summary>
     public class AudioManager : IDisposable
     {
-        private readonly WaveOutEvent waveOut;
         private readonly BufferedWaveProvider waveProvider;
         private readonly int sampleRate;
         private readonly int channels;
@@ -54,22 +54,149 @@ namespace BrokenNes.Windows
                 DiscardOnBufferOverflow = true // Drop samples if we can't keep up
             };
             
-            // Initialize WaveOut
-            waveOut = new WaveOutEvent
-            {
-                DesiredLatency = DesiredLatencyMs,
-                NumberOfBuffers = 3
-            };
-            
-            diag = new UnderrunMeter(waveProvider);
-            waveOut.Init(diag);
-            waveOut.Play();
-            
+            diag = new UnderrunMeter(waveProvider, () => Interlocked.Exchange(ref lastReadTicks, Environment.TickCount64));
+
             // Initialize sample buffer
             sampleBuffer = new float[BufferSize];
             bufferPosition = 0;
-            
-            Console.WriteLine($"AudioManager initialized: {sampleRate}Hz, {channels} channel(s), {DesiredLatencyMs}ms latency");
+
+            // The playback device: opened now if there is one. With none (no sound card, its power off, the headset
+            // unplugged) the emulator runs silently and the watcher below opens one as soon as it appears; a device that
+            // goes away mid-game is closed and reopened the same way. Nothing here throws for a missing device.
+            wantPlaying = true;
+            lock (deviceLock) TryOpenDevice("start-up");
+            monitor = new System.Threading.Timer(_ => WatchDevice(), null, MonitorIntervalMs, MonitorIntervalMs);
+
+            Console.WriteLine($"AudioManager initialized: {sampleRate}Hz, {channels} channel(s), {DesiredLatencyMs}ms latency, device: {DeviceState}");
+        }
+
+        // ------------------------------------------------------------------ the playback device: open, missing, lost, back
+        /// <summary>Open: sound plays. NoDevice: Windows has no playback device; silent until one appears.
+        /// Lost: the open device failed or stopped answering; silent until a device can be opened again.</summary>
+        public enum AudioDeviceState { Open, NoDevice, Lost }
+
+        private readonly object deviceLock = new();
+        private WaveOutEvent? waveOut;
+        private volatile bool deviceOpen;
+        private volatile bool deviceFailed;     // set by the device's own PlaybackStopped-with-an-error
+        private volatile bool wantPlaying;      // what the app asked (Play / Stop), applied to whatever device is open
+        private readonly System.Threading.Timer monitor;
+        private long lastReadTicks;             // the device's last Read (a device that stops reading while playing is gone)
+        private const int MonitorIntervalMs = 1000;
+        private const int StallMs = 2500;
+
+        public AudioDeviceState DeviceState { get; private set; } = AudioDeviceState.NoDevice;
+        /// <summary>Times a device was opened, and times an open device was lost (for the API and the tests).</summary>
+        public int DeviceOpens { get; private set; }
+        public int DeviceLosses { get; private set; }
+        public string? LastDeviceError { get; private set; }
+        /// <summary>Raised (on a worker thread) when <see cref="DeviceState"/> changes.</summary>
+        public event Action<AudioManager>? DeviceStateChanged;
+
+        /// <summary>Test hook: BROKENNES_TEST_AUDIO_DEVICE_FILE names a file whose text "none" makes Windows look as if it had no
+        /// playback device (anything else, or no file: the real device count). Used by UAT/entrypoints/audio-device-desktop-smoke.ps1
+        /// to take the device away and give it back without touching the machine's sound settings.</summary>
+        private static readonly string? TestDeviceFile = Environment.GetEnvironmentVariable("BROKENNES_TEST_AUDIO_DEVICE_FILE");
+
+        /// <summary>How many playback devices Windows has now (waveOutGetNumDevs), or 0 when the test hook says "none".</summary>
+        public static int PlaybackDeviceCount()
+        {
+            if (!string.IsNullOrEmpty(TestDeviceFile))
+            {
+                try { if (File.Exists(TestDeviceFile) && File.ReadAllText(TestDeviceFile).Trim().Equals("none", StringComparison.OrdinalIgnoreCase)) return 0; }
+                catch (IOException) { }   // being rewritten by the test: read it again next time
+            }
+            try { return WaveOut.DeviceCount; } catch { return 0; }
+        }
+
+        private void SetState(AudioDeviceState s, string why)
+        {
+            if (DeviceState == s) return;
+            DeviceState = s;
+            Console.WriteLine($"[Audio] playback device: {s} ({why})");
+            try { DeviceStateChanged?.Invoke(this); } catch (Exception ex) { Console.WriteLine($"[Audio] state listener failed: {ex.Message}"); }
+        }
+
+        /// <summary>Open the default playback device (under deviceLock). False, and silent running, when there is none or it refuses.</summary>
+        private bool TryOpenDevice(string why)
+        {
+            if (disposed) return false;
+            if (PlaybackDeviceCount() == 0)
+            {
+                LastDeviceError = "Windows has no playback device";
+                SetState(DeviceState == AudioDeviceState.Lost ? AudioDeviceState.Lost : AudioDeviceState.NoDevice, LastDeviceError);
+                return false;
+            }
+            WaveOutEvent? w = null;
+            try
+            {
+                w = new WaveOutEvent { DesiredLatency = DesiredLatencyMs, NumberOfBuffers = 3 };
+                w.PlaybackStopped += OnPlaybackStopped;
+                w.Init(diag);
+                waveProvider.ClearBuffer();              // nothing stale from the silent time
+                Interlocked.Exchange(ref lastReadTicks, Environment.TickCount64);
+                if (wantPlaying) w.Play();
+                waveOut = w; deviceOpen = true; deviceFailed = false; DeviceOpens++;
+                LastDeviceError = null;
+                SetState(AudioDeviceState.Open, why);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LastDeviceError = ex.Message;
+                Console.WriteLine($"[Audio] could not open the playback device ({why}): {ex.Message} - running silently, trying again every {MonitorIntervalMs} ms");
+                if (w != null) { w.PlaybackStopped -= OnPlaybackStopped; try { w.Dispose(); } catch { } }
+                SetState(DeviceState == AudioDeviceState.Lost ? AudioDeviceState.Lost : AudioDeviceState.NoDevice, ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>Close the open device after it went away (under deviceLock): silent running until it can be opened again.</summary>
+        private void CloseLostDevice(string why)
+        {
+            var w = waveOut; waveOut = null; deviceOpen = false;
+            if (w != null)
+            {
+                w.PlaybackStopped -= OnPlaybackStopped;
+                // a removed device can make waveOutReset slow: let it go off this thread
+                System.Threading.Tasks.Task.Run(() => { try { w.Dispose(); } catch { } });
+            }
+            waveProvider.ClearBuffer();
+            DeviceLosses++;
+            LastDeviceError = why;
+            SetState(AudioDeviceState.Lost, why);
+        }
+
+        private void OnPlaybackStopped(object? sender, StoppedEventArgs e)
+        {
+            if (e.Exception != null && ReferenceEquals(sender, waveOut))
+            {
+                Console.WriteLine($"[Audio] the playback device stopped with an error: {e.Exception.Message}");
+                deviceFailed = true;   // the watcher closes it and reopens when it can
+            }
+        }
+
+        /// <summary>The watcher (a timer thread, once a second): a lost device is closed, a missing one is opened when it appears.</summary>
+        private void WatchDevice()
+        {
+            if (disposed || !Monitor.TryEnter(deviceLock)) return;
+            try
+            {
+                if (disposed) return;
+                if (deviceOpen)
+                {
+                    string? lost = null;
+                    if (deviceFailed) lost = LastDeviceError ?? "the device reported an error";
+                    else if (PlaybackDeviceCount() == 0) lost = "the playback device went away";
+                    else if (wantPlaying && waveOut?.PlaybackState == PlaybackState.Playing
+                             && Environment.TickCount64 - Interlocked.Read(ref lastReadTicks) > StallMs)
+                        lost = $"the playback device stopped taking sound for more than {StallMs} ms";
+                    if (lost != null) { CloseLostDevice(lost); TryOpenDevice("reopened after: " + lost); }
+                }
+                else TryOpenDevice("a playback device appeared");
+            }
+            catch (Exception ex) { Console.WriteLine($"[Audio] device watcher: {ex.Message}"); }
+            finally { Monitor.Exit(deviceLock); }
         }
         
         /// <summary>
@@ -253,7 +380,8 @@ namespace BrokenNes.Windows
             }
             
             // Add samples to NAudio buffer (with safety check)
-            if (waveProvider != null && audioData.Length > 0)
+            // With no device open the samples are dropped (nothing would play them; queued up they would only be stale when one appears).
+            if (waveProvider != null && audioData.Length > 0 && deviceOpen)
             {
                 try
                 {
@@ -272,8 +400,10 @@ namespace BrokenNes.Windows
         /// <summary>
         /// Get the current buffered duration in milliseconds.
         /// </summary>
+        /// <returns>-1 while no device is open: there is no queue to steer by, so the emulation keeps its own clock.</returns>
         public int GetBufferedDurationMs()
         {
+            if (!deviceOpen) return -1;
             int bufferedBytes = waveProvider.BufferedBytes;
             int bytesPerSecond = sampleRate * bytesPerSample * channels;
             return (bufferedBytes * 1000) / bytesPerSecond;
@@ -294,7 +424,11 @@ namespace BrokenNes.Windows
         /// </summary>
         public void Stop()
         {
-            waveOut?.Stop();
+            wantPlaying = false;
+            lock (deviceLock)
+            {
+                try { waveOut?.Stop(); } catch (Exception ex) { Console.WriteLine($"[Audio] stop: {ex.Message}"); deviceFailed = true; }
+            }
         }
         
         /// <summary>
@@ -302,16 +436,20 @@ namespace BrokenNes.Windows
         /// </summary>
         public void Play()
         {
-            if (waveOut?.PlaybackState != PlaybackState.Playing)
+            wantPlaying = true;
+            lock (deviceLock)
             {
-                waveOut?.Play();
+                Interlocked.Exchange(ref lastReadTicks, Environment.TickCount64);
+                try { if (waveOut != null && waveOut.PlaybackState != PlaybackState.Playing) waveOut.Play(); }
+                catch (Exception ex) { Console.WriteLine($"[Audio] play: {ex.Message}"); deviceFailed = true; }
             }
         }
         
         /// <summary>
         /// Check if audio is currently playing.
         /// </summary>
-        public bool IsPlaying => waveOut?.PlaybackState == PlaybackState.Playing;
+        /// <summary>True while the app wants sound (between Play and Stop), whether or not a device is open to play it.</summary>
+        public bool IsPlaying => wantPlaying;
         
         /// <summary>
         /// Get the current playback state.
@@ -332,10 +470,12 @@ namespace BrokenNes.Windows
             private long lastLog, reads, underruns, minBuffered = long.MaxValue;
             public long TotalUnderruns;
             public WaveFormat WaveFormat => inner.WaveFormat;
-            public UnderrunMeter(BufferedWaveProvider p) { inner = p; }
+            private readonly Action onRead;
+            public UnderrunMeter(BufferedWaveProvider p, Action onRead) { inner = p; this.onRead = onRead; }
 
             public int Read(byte[] buffer, int offset, int count)
             {
+                onRead();
                 int buffered = inner.BufferedBytes;
                 reads++;
                 if (buffered < count) { underruns++; TotalUnderruns++; }
@@ -362,6 +502,7 @@ namespace BrokenNes.Windows
                 return;
             
             disposed = true;
+            try { monitor.Dispose(); } catch { }
             
             // Flush any remaining samples (with safety checks)
             try
@@ -376,8 +517,11 @@ namespace BrokenNes.Windows
             // Stop and dispose of NAudio components
             try
             {
-                waveOut?.Stop();
-                waveOut?.Dispose();
+                lock (deviceLock)
+                {
+                    var w = waveOut; waveOut = null; deviceOpen = false;
+                    if (w != null) { w.PlaybackStopped -= OnPlaybackStopped; w.Stop(); w.Dispose(); }
+                }
             }
             catch (Exception ex)
             {

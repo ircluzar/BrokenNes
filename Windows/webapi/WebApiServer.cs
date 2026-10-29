@@ -285,6 +285,7 @@ namespace BrokenNes.Windows.WebApi
             var app = builder.Build();
 
             app.UseCors();
+            app.Use(WaitForUiReadyAsync);   // nothing runs before the window exists (WebApiServer.UiReadyGate.cs)
             app.Use(ApplyProgressionGateAsync);
 
             // Register API endpoints

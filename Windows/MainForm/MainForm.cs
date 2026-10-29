@@ -157,6 +157,19 @@ namespace BrokenNes.Windows
             ShowContinueButton();
         }
 
+        /// <summary>The window is up (it has a handle and the constructor's start-up, the embedded ROM included, is done):
+        /// the Web API stops holding requests back (see WebApiServer.UiReadyGate.cs). The server may still be binding
+        /// (it starts asynchronously), so EnsureWebApiServerRunningAsync also marks it when it finds the window shown.</summary>
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            windowShown = true;
+            webApiServer?.MarkUiReady();
+        }
+
+        /// <summary>Set once by <see cref="OnShown"/>.</summary>
+        private volatile bool windowShown;
+
         /// <summary>
         /// Called when the form is closing - saves state and cleans up resources
         /// </summary>

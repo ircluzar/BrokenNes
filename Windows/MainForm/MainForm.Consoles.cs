@@ -455,7 +455,7 @@ namespace BrokenNes.Windows
                 : nes != null && !string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase) ? Path.GetFileNameWithoutExtension(nes.RomName) : "";
             string console = Consoles.DisplayName(session?.Console ?? SelectedConsole);
             string note = session != null && consoleNote.Length > 0 ? $" ({consoleNote})" : "";
-            Text = game.Length > 0 ? $"BrokenNes 2 - {console} - {game}{note}{WideMessTitleNote()}" : $"BrokenNes 2 - {console} - Emulator > Load ROM";
+            Text = (game.Length > 0 ? $"BrokenNes 2 - {console} - {game}{note}{WideMessTitleNote()}" : $"BrokenNes 2 - {console} - Emulator > Load ROM") + AudioTitleNote();
         }
 
         /// <summary>A short remark the title carries after an event the user should know about (a core swap that restarted the game, and why); cleared by the next swap or ROM.</summary>

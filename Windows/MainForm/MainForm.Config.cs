@@ -323,7 +323,42 @@ namespace BrokenNes.Windows
             }
         }
         
+        /// <summary>The thread that built the window (the UI thread), recorded before anything else can run.</summary>
+        private readonly int uiThreadId = Environment.CurrentManagedThreadId;
+
+        private bool coresMenusRebuilding, coresMenusRebuildPending;
+
+        /// <summary>Rebuild the Shader / CPU / PPU / APU menus. Always on the UI thread (a call from another thread is
+        /// marshalled to it; before the window has a handle there is nothing to marshal to, so such a call is a bug and
+        /// throws instead of racing the UI thread's own rebuild). A call made while a rebuild is under way (from something
+        /// the rebuild runs, or a dialog pumping messages inside it) is not dropped: it runs again once that rebuild ends.</summary>
         private void UpdateCoresMenus()
+        {
+            if (Environment.CurrentManagedThreadId != uiThreadId)
+            {
+                if (!IsHandleCreated)
+                    throw new InvalidOperationException("UpdateCoresMenus was called off the UI thread before the window exists");
+                Invoke(new Action(UpdateCoresMenus));
+                return;
+            }
+            if (coresMenusRebuilding) { coresMenusRebuildPending = true; return; }
+            coresMenusRebuilding = true;
+            try
+            {
+                do
+                {
+                    coresMenusRebuildPending = false;
+                    var dropDowns = new[] { shaderMenu.DropDown, cpuMenu.DropDown, ppuMenu.DropDown, apuMenu.DropDown };
+                    foreach (var d in dropDowns) d.SuspendLayout();
+                    try { RebuildCoresMenus(); }
+                    finally { foreach (var d in dropDowns) d.ResumeLayout(performLayout: true); }
+                }
+                while (coresMenusRebuildPending);
+            }
+            finally { coresMenusRebuilding = false; }
+        }
+
+        private void RebuildCoresMenus()
         {
             var progressionSave = LoadProgressionSnapshot();
             EnsureUnlockedProgressionSelections(progressionSave);

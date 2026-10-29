@@ -655,7 +655,9 @@ namespace BrokenNes.Windows
             // Initialize audio manager
             try
             {
+                // No playback device is not an error: the manager runs silently and opens one when it appears (the title says so meanwhile).
                 audioManager = new AudioManager(sampleRate: config.SoundQuality, channels: 1);
+                WatchAudioDevice(audioManager);
                 Console.WriteLine("AudioManager initialized successfully");
             }
             catch (Exception ex)
@@ -873,6 +875,7 @@ namespace BrokenNes.Windows
                         OpenControllerConfig  // Open player controller config window
                     );
                 }
+                if (windowShown) webApiServer.MarkUiReady();   // created after OnShown (normally it is created first, in the constructor)
 
                 if (!webApiServer.IsRunning)
                 {

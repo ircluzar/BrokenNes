@@ -92,7 +92,7 @@ About 160 routes across 20 registration files (the tables below were generated f
 
 | Verb | Route | Purpose |
 | --- | --- | --- |
-| GET | `/api/health` | Basic health check (`{ success, status, timestamp }`); the only endpoint that works before a NES exists |
+| GET | `/api/health` | Basic health check (`{ success, status, uiReady, timestamp }`); answered at once from start-up on. Every OTHER request waits until the window is shown (`uiReady` true; 503 after 90 s), so nothing runs beside the constructor's own start-up (WebApiServer.UiReadyGate.cs) |
 | GET | `/api/memory/domains` | List memory domains with name/size/description |
 | GET | `/api/memory/domain/{domainName}/size` | Size of one domain |
 | GET | `/api/memory/peek?domain=&address=` | Read a single byte |
@@ -296,6 +296,7 @@ The console keys are `nes`, `snes`, `gb`, `gbc`, `sms`, `gg`, `md`. Core ids are
 | Verb | Route | Purpose |
 | --- | --- | --- |
 | GET / POST | `/api/audio/emulation-volume` | The menu bar's volume panel: `volume` 0-100, `muted`, `removeHighPitched`, `highPitchCeilingNote`, the Genesis FM patch (`genesisFmPatch` 0-15, used by the NES APU core MD) and the Master System FM instrument (`smsFmPatch` 0-21, used by the core SMSFM). Any field may be left out |
+| GET | `/api/audio/device` | The emulation's playback device: `state` Open / NoDevice / Lost (no device: silent running, opened when one appears, reopened after a loss; no dialog), `opens`, `losses`, `lastError`, `bufferedMs` (-1 without a device), `windowsDevices` |
 
 ### Audio - `WebApiServer.Endpoints.Audio.cs`
 

@@ -350,7 +350,9 @@ namespace BrokenNes.Windows.WebApi
                     // Use the callback to properly save config if available
                     if (_setCrashBehavior != null)
                     {
-                        _setCrashBehavior(behavior);
+                        // it rebuilds the config menus: on the UI thread
+                        if (_uiControl != null && _uiControl.InvokeRequired) _uiControl.Invoke(() => _setCrashBehavior(behavior));
+                        else _setCrashBehavior(behavior);
                     }
                     else
                     {

@@ -69,6 +69,7 @@ namespace BrokenNes.Windows
                 
                 // Create new audio manager with updated settings
                 audioManager = new AudioManager(sampleRate: config.SoundQuality, channels: 1);
+                WatchAudioDevice(audioManager);
                 
                 // Resume playback if it was playing
                 if (wasPlaying && isEmulationRunning && !isPaused)
@@ -81,11 +82,45 @@ namespace BrokenNes.Windows
             catch (Exception ex)
             {
                 Console.WriteLine($"Failed to reinitialize audio: {ex.Message}");
-                MessageBox.Show($"Audio reinitialization failed: {ex.Message}\n\nThe emulator will continue without sound.",
-                    "Audio Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowAdvisoryWarning($"Audio reinitialization failed: {ex.Message}\n\nThe emulator will continue without sound.", "Audio Warning");
             }
         }
         
+        /// <summary>The title says when there is no sound because there is no playback device (no dialog: the game keeps running and
+        /// the sound starts by itself when a device appears).</summary>
+        private void WatchAudioDevice(AudioManager am)
+        {
+            am.DeviceStateChanged += m =>
+            {
+                if (!ReferenceEquals(m, audioManager) || IsDisposed) return;
+                try { if (IsHandleCreated) BeginInvoke(new Action(UpdateConsoleTitle)); } catch (InvalidOperationException) { }
+            };
+        }
+
+        /// <summary>The title's note while there is no sound for want of a device ("" when the device is open).</summary>
+        private string AudioTitleNote() => audioManager?.DeviceState switch
+        {
+            AudioManager.AudioDeviceState.NoDevice => " [no sound: no playback device yet]",
+            AudioManager.AudioDeviceState.Lost => " [no sound: the playback device went away]",
+            _ => "",
+        };
+
+        /// <summary>GET /api/audio/device.</summary>
+        private object AudioDeviceInfo()
+        {
+            var am = audioManager;
+            return new
+            {
+                state = am == null ? "none" : am.DeviceState.ToString(),
+                playing = am?.IsPlaying ?? false,
+                bufferedMs = am?.GetBufferedDurationMs() ?? -1,
+                opens = am?.DeviceOpens ?? 0,
+                losses = am?.DeviceLosses ?? 0,
+                lastError = am?.LastDeviceError,
+                windowsDevices = AudioManager.PlaybackDeviceCount(),
+            };
+        }
+
         private void ApplySoundSettings()
         {
             if (nes != null)

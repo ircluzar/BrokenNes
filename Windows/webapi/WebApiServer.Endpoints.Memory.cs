@@ -290,6 +290,7 @@ namespace BrokenNes.Windows.WebApi
                 {
                     success = true,
                     status = "running",
+                    uiReady = IsUiReady,   // false while the window is still starting (every other request waits for it)
                     timestamp = DateTime.UtcNow.ToString("o")
                 });
             });
