@@ -357,13 +357,17 @@ public abstract class ConsoleChecks : DebugObserver
         private readonly byte[] state;   // bit 0: read as data below S; bit 1: used by the stack; bit 2: reported
         public uint Top;                  // the highest stack byte seen (the live stack is S+1..Top)
         public uint Lowest = uint.MaxValue;
-        public StackCollisions(int size) { state = new byte[size]; }
+        private readonly bool spOnTop;
+        /// <param name="spOnTop">The stack pointer points at the last byte pushed (the SM83: the live stack is SP..Top), not at the next free
+        /// one (the 6502 and the 65816: S+1..Top). The byte at SP is then the stack's own: compiled code keeps a local there (GBDK-2020 /
+        /// SDCC: ADD SP,-n, then LD HL,SP+0 and (HL)); only a read below SP is a read below the stack.</param>
+        public StackCollisions(int size, bool spOnTop = false) { state = new byte[size]; this.spOnTop = spOnTop; }
 
         /// <summary>A data access (not the stack's): a read below the stack pointer of a byte the stack never used marks it as the game's data
         /// (a byte the stack used before is stack peeking: TSX / LDA $0100,X, a freed slot).</summary>
         public void Data(uint offset, bool write, uint sp)
         {
-            if (!write && offset < state.Length && offset <= sp && (state[offset] & 2) == 0) state[offset] |= 1;
+            if (!write && offset < state.Length && (spOnTop ? offset < sp : offset <= sp) && (state[offset] & 2) == 0) state[offset] |= 1;
         }
 
         public bool Stack(uint offset, bool write)

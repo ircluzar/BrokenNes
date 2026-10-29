@@ -451,7 +451,7 @@ port and DMA reads are still checked.
 | `gb.speed-switch` | KEY1 armed for a speed switch without a STOP to perform it, or STOP with IE not `$00` or JOYP not `$30`. |
 | `gb.cart-ram-disabled` | `$A000-$BFFF` read or written while the cartridge RAM is disabled, or on a cartridge without RAM. |
 | `gb.halt-bug` | HALT with IME clear and an interrupt pending (the next byte is read twice); EI then HALT is not the bug. |
-| `gb.stack-overflow` | The stack grows onto a byte the game read as data while it lay below SP and the stack had never used it. |
+| `gb.stack-overflow` | The stack grows onto a byte the game read as data while it lay below SP and the stack had never used it. The SM83's SP points at the last byte pushed, so the byte at SP is the stack's own (GBDK-2020 keeps a local there: `ADD SP,-n`, `LD HL,SP+0`); only a read below SP marks data (fixed 2026-10-29: the VOC room viewer's one finding, in `_set_bkg_palette`, was `_voc_room_get`'s SP+0 local, a false positive; `--check-test` has the GBDK frame as a negative control and a read at SP-1 as a trigger). |
 | `gb.lag-frame` | A lag frame (HALT counts as waiting). |
 
 ### Not built, and why

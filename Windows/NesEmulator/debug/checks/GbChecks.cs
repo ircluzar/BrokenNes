@@ -13,7 +13,7 @@ public sealed class GbChecks : ConsoleChecks
 {
     private readonly BOARD_GB board;
     private readonly WrittenMap wram, hram = new(0x7F), oam = new(0xA0), vram, wramRead, hramRead = new(0x7F), vramData;
-    private readonly StackCollisions stack = new(0x10000);
+    private readonly StackCollisions stack = new(0x10000, spOnTop: true);   // the SM83's SP points at the last byte pushed
     private readonly bool cgb;
 
     public GbChecks(Debugger debugger, CheckOptions options) : base(debugger, options)

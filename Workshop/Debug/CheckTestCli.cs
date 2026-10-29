@@ -352,6 +352,13 @@ internal static class CheckTestCli
             () => GbRun(new() { Init = B(0xF3, 0x3E, 0x01, 0xE0, 0xFF, 0xAF, 0xE0, 0x0F, 0x76, 0x00, 0x00) }), place: "init");
         Pair("gb.stack-overflow", () => GbRun(new() { Init = B(0xFA, 0x00, 0xD1, 0x31, 0x02, 0xD1, 0xF5, 0x31, 0x00, 0xE0) }),
             () => GbRun(new() { Init = B(0xFA, 0x00, 0xD1, 0x31, 0x02, 0xD2, 0xF5, 0x31, 0x00, 0xE0) }), place: "wram:$1100");
+        // The SM83's SP points at the last byte pushed (the live stack is SP..top), not at the next free one as on the 6502 and the 65816.
+        // Trigger: data read at SP-1 (the byte just below the stack), then pushed onto. Negative control: GBDK-2020's (SDCC's) frame,
+        // ADD SP,-2, a local written and read at SP+0 through LD HL,SP+0, ADD SP,+2, then a push onto the freed frame (a call, as in
+        // _voc_room_get then _set_bkg_palette in the VOC room viewer): the local was stack, not data below the stack.
+        Pair("gb.stack-overflow", () => GbRun(new() { Init = B(0x31, 0x02, 0xD1, 0xFA, 0x01, 0xD1, 0xF5, 0x31, 0x00, 0xE0) }, name: "gb_stack_sp1"),
+            () => GbRun(new() { Init = B(0x31, 0x02, 0xD1, 0xE8, 0xFE, 0x3E, 0x01, 0xF8, 0x00, 0x77, 0x7E, 0xE8, 0x02, 0xF5, 0x31, 0x00, 0xE0) }, name: "gb_stack_gbdk"),
+            place: "wram:$1101", what: "a read just below SP, then a push onto it; control: GBDK's SP+0 local");
         Pair("gb.lag-frame", () => GbRun(new() { Main = B(0x06, 0x40, 0x0E, 0x00, 0xEA, 0x00, 0xC1, 0x0D, 0x20, 0xFA, 0x05, 0x20, 0xF5) }, 60),
             () => GbRun(new() { Main = B(0x0E, 0x10, 0xEA, 0x00, 0xC1, 0x0D, 0x20, 0xFA) }, 60), place: "main", fromFrame: 10);
 
