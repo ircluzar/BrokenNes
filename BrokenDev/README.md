@@ -19,7 +19,7 @@ The app shows nothing of BrokenDev unless it is switched on: set the environment
 | `smb1-nested` | the remake on the SNES through Project Nested | SNES (nested) | `smb1-nes`, then `m30pipe` |
 | `supervrun` | Super VRUN, the current native SNES project | SNES | PVSnesLib 4.6.0 (shipped), `bash build.sh` |
 | `widemess-sample` | Wide Blaster, the WideMess devkit's sample game (`WideMess/sample` in this repository) | WideMess | PVSnesLib + the WideMess devkit, `widemess/tools/wmsbuild.ps1` |
-| `vrun-voc` | VRUN: Vaults of Obsolete Code, today its V0 hello world (`docs/projects/vrun-voc-plan.md`), in its live workspace `PROJECTS\VRUN_VOC_dev` | Game Boy (dual mode: console `gbc`, also run as `gb`), MBC5 1 MB + 32 KB battery RAM | GBDK-2020 4.5.0 (pinned, `toolchains.json`), the workspace's `build.ps1` |
+| `vrun-voc` | VRUN: Vaults of Obsolete Code, today its V2 tutorial (`docs/projects/vrun-voc-plan.md`), in its live workspace `PROJECTS\VRUN_VOC_dev` | Game Boy (dual mode: console `gbc`, also run as `gb`), MBC5 1 MB + 32 KB battery RAM | GBDK-2020 4.5.0 (pinned, `toolchains.json`), the workspace's `build.ps1` |
 
 Each project is a manifest, `projects/<id>/project.json`: where its source comes from (an archive and a path), the tools it
 needs, the build steps and outputs, how to verify it on BrokenNes, and what is known to be wrong with it. The scripts in this
@@ -199,7 +199,8 @@ its `expect.wms`; `compat` has BrokenNes's column only. The guide: `docs/project
   `{toolchain:gbdk}`. BrokenDev never downloads or unpacks a toolchain.
 - **A Game Boy project** has kind `gb` and console `gb` or `gbc` (a dual-mode or Color game). `vrun-voc`'s source is `{live:VRUN_VOC_dev}`:
   a game's own live workspace, the folder of that name beside the repository or one of its parents (`BROKENDEV_LIVE_VRUN_VOC_DEV` names
-  another).
+  another). BrokenDev's own tests do not follow the live game: they build the V0 hello world from the game repo's commit `f828fbe`
+  (exported with git's archive command, read only) and verify it with the frozen manifest `tests/fixtures/projects/vrun-voc-v0`.
 - **verify** runs it on BrokenNes's Game Boy Color, and a scenario's `"console": "gb"` runs the same cartridge on the original Game Boy.
   Three more scenario keys (any console): `"batteryFrom": "<scenario>"` powers on with the battery save an earlier scenario left (a boot
   counter, a save game); `expect.memory` reads the game's variables by the build's symbols (`{ "symbol": "_boot_count", "size": 2, "is": 2 }`,

@@ -418,6 +418,13 @@ try {
     Save-BdJson -Object $synthTools -Path (Join-Path $tmpRoot 'devtools.json') -Depth 10
     $env:BROKENDEV_DEVTOOLS = Join-Path $tmpRoot 'devtools.json'
     $toolsReady = ($sevenZip -and $hasBash -and (Test-Path (Join-Path $projDir 'synth-ok\project.json')))
+    function Invoke-ExpectedToolFailure {
+        # A negative control's call: its own 'FAIL  tool ...: step N exited X' line is the expected outcome, not a failed test, so it is
+        # captured (not printed, where it reads like one) and returned with the exit code for the test to assert
+        param([scriptblock]$Call)
+        $all = @(& $Call 6>&1)
+        [pscustomobject]@{ Code = @($all | Where-Object { $_ -is [int] })[-1]; Said = (@($all | Where-Object { $_ -isnot [int] } | ForEach-Object { [string]$_ }) -join "`n") }
+    }
     Test-Case 'a server tool starts hidden, answers its probe, is reused when started again, and stops by the PID BrokenDev recorded' {
         if (-not ($toolsReady -and (Find-BdPython))) { Skip-Test 'Python, 7-Zip or Git Bash missing' }
         $t = Get-BdTool -Id 'synth-server'; $ctx = New-BdToolContext $t
@@ -451,7 +458,8 @@ try {
             [void](Invoke-BdScriptTool -Tool $t -Ctx $ctx -Extra @('0'))
             Assert-True ([System.IO.File]::ReadAllText((Join-Path $ctx['work'] 'run.log')) -match 'var=from-caller') 'the caller''s own value did not win'
         } finally { $env:BD_TEST_TOOL_VAR = $null }
-        Assert-Equal (Invoke-BdScriptTool -Tool $t -Ctx $ctx -Extra @('3')) 3
+        $x = Invoke-ExpectedToolFailure { Invoke-BdScriptTool -Tool $t -Ctx $ctx -Extra @('3') }
+        Assert-Equal $x.Code 3; Assert-True ($x.Said -match 'synth-script: step 1 exited 3') "the failure was not reported: $($x.Said)"
     }
     Test-Case 'a page tool writes and offers its page; NEGATIVE: a page tool whose steps write nothing fails' {
         if (-not $toolsReady) { Skip-Test '7-Zip or Git Bash missing' }
@@ -463,7 +471,8 @@ try {
         if (-not $toolsReady) { Skip-Test '7-Zip or Git Bash missing' }
         $t = Get-BdTool -Id 'synth-okexit'; $ctx = New-BdToolContext $t
         Assert-Equal (Invoke-BdScriptTool -Tool $t -Ctx $ctx -Extra @('1')) 0
-        Assert-Equal (Invoke-BdScriptTool -Tool $t -Ctx $ctx -Extra @('2')) 2
+        $x = Invoke-ExpectedToolFailure { Invoke-BdScriptTool -Tool $t -Ctx $ctx -Extra @('2') }
+        Assert-Equal $x.Code 2; Assert-True ($x.Said -match 'synth-okexit: step 1 exited 2') "the failure was not reported: $($x.Said)"
     }
     Test-Case 'a tool that needs Python modules gets a Python that has them; NEGATIVE: a module no Python has is refused with its name' {
         if (-not ($toolsReady -and (Find-BdPython))) { Skip-Test 'Python, 7-Zip or Git Bash missing' }
@@ -960,14 +969,43 @@ try {
         if ($st.State -eq 'missing') { Skip-Test "GBDK-2020 is not unpacked here ($($st.Detail))" }
         Assert-Equal $st.State 'ready' $st.Detail
     }
+    # vrun-voc is the user's live game (today V2: the tutorial) and moves on with it; the hello-world tests use a frozen V0 instead:
+    # the fixture manifest tests\fixtures\projects\vrun-voc-v0 and the sources of the game repo's commit $vocV0Rev (git archive, read only)
     $gbM = Read-BdJson (Join-Path $bd 'projects\vrun-voc\project.json')
-    Test-Case 'the Game Boy manifest (kind gb, console gbc, source {live:VRUN_VOC_dev}, toolchain:gbdk) validates; NEGATIVE: kind gb on a SNES console, gbc on a NES kind and an unknown tool form are rejected' {
-        $e = @(Test-BdManifest -M $gbM -ExpectedId 'vrun-voc'); Assert-True ($e.Count -eq 0) ($e -join '; ')
-        $copy = { ($gbM | ConvertTo-Json -Depth 30) | ConvertFrom-Json }
+    $gbFixtures = Join-Path $here 'fixtures\projects'
+    $gbV0 = Read-BdJson (Join-Path $gbFixtures 'vrun-voc-v0\project.json')
+    $vocV0Rev = 'f828fbe223f2645ed7ccf8c873776f4afd1eab51'   # V0: the hello world with the D7 debug port, VOC_PLANT_UNINIT and VOC_PLANT_ASSERT
+    $script:vocV0Src = $null
+    function Get-VocV0Source {
+        # The V0 sources in this run's scratch folder (built once), or a SKIP naming what is missing. The game repo is only read.
+        if ($script:vocV0Src) { return $script:vocV0Src }
+        $voc = Find-BdLiveWorkspace -Name 'VRUN_VOC_dev'
+        if (-not $voc -or -not (Test-Path -LiteralPath (Join-Path $voc '.git'))) { Skip-Test 'the VRUN_VOC_dev game repository is not beside the repository' }
+        $git = Find-BdExecutable -Name 'git.exe' -Candidates @("$env:ProgramFiles\Git\cmd\git.exe")
+        if (-not $git) { Skip-Test 'no git' }
+        $zip = Join-Path $tmpRoot 'voc-v0.zip'; $dir = Join-Path $tmpRoot 'voc-v0-src'
+        $r = Invoke-BdProcess -FilePath $git -Arguments @('-C', $voc, 'archive', '--format=zip', '-o', $zip, $vocV0Rev) -TimeoutSec 120
+        if ($r.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $zip)) { Skip-Test "the game repository has no commit $($vocV0Rev.Substring(0, 7)) (the V0 hello world): $(Select-BdTail $r.Output 2)" }
+        Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
+        Assert-True (Test-Path -LiteralPath (Join-Path $dir 'build.ps1')) "commit $vocV0Rev has no build.ps1"
+        $script:vocV0Src = $dir; $dir
+    }
+    Test-Case 'the Game Boy hello-world fixture (kind gb, console gbc, source {live:VRUN_VOC_dev}, toolchain:gbdk; frozen V0) validates; NEGATIVE: kind gb on a SNES console, gbc on a NES kind and an unknown tool form are rejected' {
+        $e = @(Test-BdManifest -M $gbV0 -ExpectedId 'vrun-voc-v0'); Assert-True ($e.Count -eq 0) ($e -join '; ')
+        $copy = { ($gbV0 | ConvertTo-Json -Depth 30) | ConvertFrom-Json }
         $c = & $copy; $c.console = 'snes'; Assert-True ((@(Test-BdManifest -M $c) -join ';') -match 'kind gb and console gb or gbc') 'gb on a SNES console was accepted'
         $c = & $copy; $c.kind = 'nes'; Assert-True ((@(Test-BdManifest -M $c) -join ';') -match 'kind gb and console gb or gbc|must run on console nes') 'console gbc on kind nes was accepted'
         $c = & $copy; $c.requires.tools = @('toolchain:'); Assert-True ((@(Test-BdManifest -M $c) -join ';') -match "unknown tool 'toolchain:'") 'a toolchain tool without an id was accepted'
-        Assert-True (@($gbM.checks.accepted).Count -eq 0) 'the hello world accepts findings: it should have none'
+        Assert-True (@($gbV0.checks.accepted).Count -eq 0) 'the hello world accepts findings: it should have none'
+    }
+    Test-Case 'the shipped vrun-voc manifest (the live game, V2: the tutorial) validates: kind gb, console gbc, source {live:VRUN_VOC_dev}, toolchain:gbdk, the Color and original scenarios, its one accepted finding (gb.lag-frame) with a reason; NEGATIVE: an accepted finding without a reason is rejected' {
+        $e = @(Test-BdManifest -M $gbM -ExpectedId 'vrun-voc'); Assert-True ($e.Count -eq 0) ($e -join '; ')
+        Assert-Equal $gbM.kind 'gb'; Assert-Equal $gbM.console 'gbc'; Assert-Equal $gbM.source.folder '{live:VRUN_VOC_dev}'
+        Assert-True (@($gbM.requires.tools) -contains 'toolchain:gbdk') 'the manifest does not need the pinned GBDK'
+        Assert-Equal (@($gbM.verify.scenarios | ForEach-Object { $_.id }) -join ',') 'color,original'
+        Assert-Equal (@($gbM.checks.accepted | ForEach-Object { $_.rule }) -join ',') 'gb.lag-frame'
+        $c = ($gbM | ConvertTo-Json -Depth 30) | ConvertFrom-Json; $c.checks.accepted[0].reason = ''
+        Assert-True ((@(Test-BdManifest -M $c -ExpectedId 'vrun-voc') -join ';') -match 'gb.lag-frame.*has no reason') 'an accepted finding without a reason was accepted'
     }
     Test-Case '{live:NAME} is the folder BROKENDEV_LIVE_<NAME> names (and a project on it is a live workspace); NEGATIVE: a name found nowhere, and an env folder that does not exist, are errors' {
         $wsd = Join-Path $tmpRoot 'BDTEST_GB_WS'; New-Item -ItemType Directory -Force -Path $wsd | Out-Null
@@ -1503,19 +1541,18 @@ try {
         } finally { Restore-Env $savedEnv }
     }
 
-    # the Game Boy end to end (D2): the hello world of VRUN: Vaults of Obsolete Code, built from its live workspace into a scratch folder
-    # (never its own build folder) with the pinned GBDK, verified with the shipped manifest; the negative control is the same source with
-    # a planted read of work RAM before the start-up clears it
+    # the Game Boy end to end (D2): the hello world of VRUN: Vaults of Obsolete Code, frozen at V0 (the game repo's commit $vocV0Rev, taken
+    # with git archive into a scratch folder: the live game moves on and its own folders are never written), built with the pinned GBDK,
+    # verified with the V0 fixture manifest; the negative control is the same source with a planted read of work RAM before the start-up clears it
     Test-Case 'the Game Boy hello world builds with GBDK and PASSES verify (Color and original, the sprite, the beep, the boot counter over three power-ons, no hardware finding); NEGATIVE: a planted read before the RAM clear FAILS verify with a new gb.ram-uninit' {
         if (-not $ws) { Skip-Test $wsSkip }
         $gst = Get-BdToolchainState -Spec (Get-BdToolchainSpec -Id gbdk) -SkipZip
         if ($gst.State -ne 'ready') { Skip-Test "GBDK-2020 is not ready here ($($gst.Detail))" }
-        $voc = Find-BdLiveWorkspace -Name 'VRUN_VOC_dev'
-        if (-not $voc -or -not (Test-Path -LiteralPath (Join-Path $voc 'build.ps1'))) { Skip-Test 'the VRUN_VOC_dev workspace is not beside the repository' }
+        $voc = Get-VocV0Source
         $ps5 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
         $verifyRom = {
             param([string]$Dir, [string]$Json)
-            Invoke-Ws -WsArgs @('--brokendev', 'verify', 'vrun-voc', '--manifests', (Join-Path $bd 'projects'), '--home', (Join-Path $tmpRoot 'gbhome'), '--rom', (Join-Path $Dir 'vrun_voc.gbc'), '--out', $Json) -ExtraEnv @{ BROKENNES_DEV = '1' }
+            Invoke-Ws -WsArgs @('--brokendev', 'verify', 'vrun-voc-v0', '--manifests', $gbFixtures, '--home', (Join-Path $tmpRoot 'gbhome'), '--rom', (Join-Path $Dir 'vrun_voc.gbc'), '--out', $Json) -ExtraEnv @{ BROKENNES_DEV = '1' }
         }
         $good = Join-Path $tmpRoot 'voc-good'
         $b = Invoke-BdProcess -FilePath $ps5 -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $voc 'build.ps1'), '-Gbdk', $gst.Dir, '-Out', $good) -TimeoutSec 300
@@ -1541,20 +1578,38 @@ try {
         $new = @($v.checks.findings | Where-Object { -not $_.accepted })
         Assert-True (@($new | Where-Object { $_.rule -eq 'gb.ram-uninit' }).Count -ge 1) "the planted read was not a new gb.ram-uninit (new: $((@($new | ForEach-Object { $_.rule + ' ' + $_.place })) -join ', '))"
     }
-    # ------------------------------------------------------------------ the debug port (D7)
-    Write-Host 'the debug port (D7)'
-    Test-Case 'the debug port on the Game Boy hello world: NEGATIVE: a planted bug the dev build''s assert catches FAILS verify (debug-port-asserts, a port.assert finding no manifest can accept); the GBDK release-strip proof: the release ROM is byte-identical to the source without any DBG_ call' {
+    # the live game as it is today, with the shipped manifest: built from its live workspace into a scratch folder (its own folders are
+    # never written); it moves on with the user's work, so its scenarios are the manifest's own and this test only asks that they pass
+    Test-Case 'the live game (vrun-voc, the shipped manifest) builds with GBDK into a scratch folder and PASSES verify with no new hardware finding; SKIP without the workspace, GBDK or a Workshop' {
         if (-not $ws) { Skip-Test $wsSkip }
         $gst = Get-BdToolchainState -Spec (Get-BdToolchainSpec -Id gbdk) -SkipZip
         if ($gst.State -ne 'ready') { Skip-Test "GBDK-2020 is not ready here ($($gst.Detail))" }
         $voc = Find-BdLiveWorkspace -Name 'VRUN_VOC_dev'
         if (-not $voc -or -not (Test-Path -LiteralPath (Join-Path $voc 'build.ps1'))) { Skip-Test 'the VRUN_VOC_dev workspace is not beside the repository' }
         $ps5 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $live = Join-Path $tmpRoot 'voc-live'
+        $b = Invoke-BdProcess -FilePath $ps5 -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $voc 'build.ps1'), '-Gbdk', $gst.Dir, '-Out', $live) -TimeoutSec 600
+        Assert-Equal $b.ExitCode 0 "the build failed: $(Select-BdTail $b.Output 6)"
+        $json = Join-Path $tmpRoot 'voc-live.json'
+        $r = Invoke-Ws -WsArgs @('--brokendev', 'verify', 'vrun-voc', '--manifests', (Join-Path $bd 'projects'), '--home', (Join-Path $tmpRoot 'gbhome'), '--rom', (Join-Path $live 'vrun_voc.gbc'), '--out', $json) -ExtraEnv @{ BROKENNES_DEV = '1' }
+        $v = Read-BdJson $json
+        Assert-True ($r.ExitCode -eq 0 -and $v.ok) ('verify failed: ' + ((@($v.scenarios | ForEach-Object { $_.checks } | Where-Object { -not $_.ok } | ForEach-Object { "$($_.id): $($_.detail)" })) -join '; '))
+        Assert-Equal (@($v.scenarios | ForEach-Object { $_.id }) -join ',') (@($gbM.verify.scenarios | ForEach-Object { $_.id }) -join ',')
+        Assert-Equal $v.checks.newFindings 0
+    }
+    # ------------------------------------------------------------------ the debug port (D7)
+    Write-Host 'the debug port (D7)'
+    Test-Case 'the debug port on the Game Boy hello world: NEGATIVE: a planted bug the dev build''s assert catches FAILS verify (debug-port-asserts, a port.assert finding no manifest can accept); the GBDK release-strip proof: the release ROM is byte-identical to the source without any DBG_ call' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $gst = Get-BdToolchainState -Spec (Get-BdToolchainSpec -Id gbdk) -SkipZip
+        if ($gst.State -ne 'ready') { Skip-Test "GBDK-2020 is not ready here ($($gst.Detail))" }
+        $voc = Get-VocV0Source
+        $ps5 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
         $bad = Join-Path $tmpRoot 'voc-assert'
         $b = Invoke-BdProcess -FilePath $ps5 -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $voc 'build.ps1'), '-Gbdk', $gst.Dir, '-Out', $bad, '-Define', 'VOC_PLANT_ASSERT') -TimeoutSec 300
         Assert-Equal $b.ExitCode 0 "the planted build failed: $(Select-BdTail $b.Output 6)"
         $json = Join-Path $tmpRoot 'voc-assert.json'
-        $r = Invoke-Ws -WsArgs @('--brokendev', 'verify', 'vrun-voc', '--manifests', (Join-Path $bd 'projects'), '--home', (Join-Path $tmpRoot 'gbhome'), '--rom', (Join-Path $bad 'vrun_voc.gbc'), '--out', $json) -ExtraEnv @{ BROKENNES_DEV = '1' }
+        $r = Invoke-Ws -WsArgs @('--brokendev', 'verify', 'vrun-voc-v0', '--manifests', $gbFixtures, '--home', (Join-Path $tmpRoot 'gbhome'), '--rom', (Join-Path $bad 'vrun_voc.gbc'), '--out', $json) -ExtraEnv @{ BROKENNES_DEV = '1' }
         Assert-Equal $r.ExitCode 1
         $v = Read-BdJson $json
         $fail = @($v.scenarios[0].checks | Where-Object { $_.id -eq 'debug-port-asserts' -and -not $_.ok })
