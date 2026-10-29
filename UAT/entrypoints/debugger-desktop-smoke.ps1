@@ -48,6 +48,8 @@ function Start-App([string]$configJson) {
     New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
     if ($configJson) { Set-Content -LiteralPath (Join-Path $cfgDir 'config.json') -Value $configJson -Encoding UTF8 }
     $env:BROKENNES_CONFIG_DIR = $cfgDir
+    # battery saves and bug bundles too: debugtest.nes has a battery, and without this its save went to %APPDATA%\BrokenNes\BatterySaves
+    $env:BROKENNES_SAVES_DIR = Join-Path $WorkDir 'saves'; $env:BROKENNES_BUGS_DIR = Join-Path $WorkDir 'bugs'
     $i = Start-BrokenNesInstance -ExePath $Exe
     Start-Sleep -Seconds 4   # the app loads its embedded test.nes a few seconds after the API answers
     return $i
@@ -55,6 +57,7 @@ function Start-App([string]$configJson) {
 
 $inst = $null
 $savedConfigDir = $env:BROKENNES_CONFIG_DIR
+$savedSavesDir = $env:BROKENNES_SAVES_DIR; $savedBugsDir = $env:BROKENNES_BUGS_DIR
 try {
     . (Join-Path $repo 'UAT\lib\ApiClient.ps1')
     New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
@@ -153,6 +156,7 @@ catch {
 finally {
     if ($inst) { Stop-BrokenNesInstance -ProcessId $inst.ProcessId | Out-Null }
     $env:BROKENNES_CONFIG_DIR = $savedConfigDir
+    $env:BROKENNES_SAVES_DIR = $savedSavesDir; $env:BROKENNES_BUGS_DIR = $savedBugsDir
 }
 $result.checks = $checks
 $result | ConvertTo-Json -Compress -Depth 5
