@@ -9,7 +9,7 @@
 //   - the page's Bug button (a real click on it; the browser's note prompt answered, the download caught where the page hands it to the browser)
 //     gives a zip with the note, and Workshop --bug play replays that zip exactly (every keyframe and the last picture);
 //   - the negative controls: the prompt cancelled gives no download; the capture off records nothing and refuses;
-//   - a console session (the Game Boy hello world): its zip replays exactly;
+//   - a console session (the user's Game Boy game, BrokenDev's build of vrun-voc: any version replays): its zip replays exactly;
 //   - the speed: frame times with the capture on and off (600 frames each, interleaved twice): Lite still holds 60 fps with it on.
 // It cannot see the browser's own download bar or a phone.
 import fs from 'node:fs';
@@ -123,7 +123,7 @@ try {
         `on: ${sOn.mean.toFixed(2)} ms mean (${(1000 / sOn.mean).toFixed(0)} fps), p95 ${sOn.p95.toFixed(2)}, max ${sOn.max.toFixed(1)}, ${sOn.over} of 1200 over 16.7 ms; off: ${sOff.mean.toFixed(2)} ms (${(1000 / sOff.mean).toFixed(0)} fps), p95 ${sOff.p95.toFixed(2)}, max ${sOff.max.toFixed(1)}, ${sOff.over} over`);
   results.at(-1).speed = { on: sOn, off: sOff };
 
-  // ------------------------------------------------------------ a console session (the Game Boy hello world)
+  // ------------------------------------------------------------ a console session (the user's Game Boy game, BrokenDev's build of vrun-voc: any version replays)
   await page.eval(`(nesInterop._dotNetRef || window.__ref).invokeMethodAsync('SetBugCapture', true)`);
   page = await open(lab, 'roms/gb/vrun_voc.gbc');
   await run(page, 0, 1500);
@@ -133,7 +133,7 @@ try {
     const gz = path.join(a.out, z.name);
     fs.writeFileSync(gz, Buffer.from(z.b64, 'base64'));
     const r = replay(gz);
-    check('a Game Boy session (the hello world, 25 s): its zip replays exactly', r.code === 0 && r.j?.inSync && r.j?.console === 'gbc', r.j ? `${r.j.summary}` : r.text.slice(0, 400));
+    check('a Game Boy session (vrun-voc, 25 s): its zip replays exactly', r.code === 0 && r.j?.inSync && r.j?.console === 'gbc', r.j ? `${r.j.summary}` : r.text.slice(0, 400));
   }
   const errs = page.consoleErrors();
   check('no errors in the page', errs.length === 0, errs.slice(0, 3).join(' | '));

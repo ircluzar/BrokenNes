@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using BrokenNes.Workshop.Bugs;
 using BrokenNes.Workshop.Movies;
 using NesEmulator.Debugging;
@@ -181,7 +182,11 @@ internal static class PortToolsTest
             g.Run(frames, CheckedGame.ParseInput(input));
             check(port);
         }
-        Run("the Game Boy hello world's dev build", @"P:\BrokenDev\env\out\vrun-voc\vrun_voc.gbc", @"P:\BrokenDev\env\out\vrun-voc\vrun_voc.noi", null, 400, "120:Right,180:,200:A,206:", p =>
+        string home = Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } eh ? eh : @"P:\BrokenDev\env";
+        // the hello world is frozen at V0 (the game repo's commit f828fbe, built once by BrokenDev\tests\voc-v0.ps1): the live game moves on
+        string v0 = Path.Combine(home, "out", "vrun-voc-v0");
+        if (!File.Exists(Path.Combine(v0, "vrun_voc.gbc"))) NotRun("the Game Boy hello world's dev build", $"{v0}\\vrun_voc.gbc is not built here (powershell -File BrokenDev\\tests\\voc-v0.ps1)");
+        else Run("the Game Boy hello world's dev build", Path.Combine(v0, "vrun_voc.gbc"), Path.Combine(v0, "vrun_voc.noi"), null, 400, "120:Right,180:,200:A,206:", p =>
         {
             var prints = p.Events.Where(e => e.Kind == PortEventKind.Print).Select(e => e.Text).ToList();
             var t = p.Timer("move_player");
@@ -189,6 +194,31 @@ internal static class PortToolsTest
                   && t is { Calls: > 300 } && p.Asserts.Count == 0 && p.Count(PortEventKind.Error) == 0 && p.Events.First(e => e.Text == "boot 1").PcSymbol?.StartsWith("_count_boot") == true,
                   $"{string.Join(" | ", p.Events.Select(e => e.Text))}; move_player {t?.Calls} calls, worst {t?.Worst}");
         });
+        // the user's Game Boy game as it is today (BrokenDev's build of vrun-voc): its port says what the shipped manifest's first verify
+        // scenario expects (expect.port: markers, prints, timers), with the scenario's own pad script; it follows the manifest as the game moves on
+        string live = Path.Combine(home, "out", "vrun-voc", "vrun_voc.gbc"), manifest = FindUp("BrokenDev\\projects\\vrun-voc\\project.json");
+        if (!File.Exists(live)) NotRun("the Game Boy game's dev build (vrun-voc)", $"{live} is not built here (BrokenDev\\brokendev.ps1 build vrun-voc)");
+        else if (!File.Exists(manifest)) NotRun("the Game Boy game's dev build (vrun-voc)", "BrokenDev\\projects\\vrun-voc\\project.json not found from the current folder");
+        else
+        {
+            var sc = JsonNode.Parse(File.ReadAllText(manifest))!["verify"]!["scenarios"]![0]!;
+            var ep = sc["expect"]?["port"];
+            string[] Strs(string k) => ep?[k] is JsonArray a ? a.Select(n => (string)n!).ToArray() : Array.Empty<string>();
+            string[] markers = Strs("markers"), prints = Strs("prints"), timers = Strs("timers");
+            bool Meets(DebugPort p)
+            {
+                var got = p.Events.Where(e => e.Kind == PortEventKind.Print).Select(e => e.Text).ToHashSet();
+                var gotMarkers = p.Markers.Select(m => m.Text).ToHashSet();
+                return ep != null && markers.All(gotMarkers.Contains) && prints.All(got.Contains) && timers.All(n => p.Timer(n) is { Calls: > 0 }) && p.Asserts.Count == 0 && p.Count(PortEventKind.Error) == 0;
+            }
+            string Said(DebugPort p) => $"expects markers [{string.Join(", ", markers)}] prints [{string.Join(" | ", prints)}] timers [{string.Join(", ", timers)}]; got {string.Join(" | ", p.Events.Take(12).Select(e => e.Text))}; timers {string.Join(", ", timers.Select(n => $"{n} {p.Timer(n)?.Calls ?? 0}"))}";
+            int frames = (int)sc["frames"]!; string input = (string?)sc["input"] ?? "";
+            Run("the Game Boy game's dev build (vrun-voc)", live, Path.ChangeExtension(live, ".noi"), null, frames, input, p =>
+                Check("VOC (the live game): the port says what its manifest expects (markers, prints, timers), no assert, no error", Meets(p), Said(p)));
+            // the negative control: another game's port (the frozen V0 hello world) does not meet the live game's expectations
+            Run("the Game Boy game's expectations on the V0 hello world", Path.Combine(v0, "vrun_voc.gbc"), Path.Combine(v0, "vrun_voc.noi"), null, frames, input, p =>
+                Check("NEGATIVE: VOC: the V0 hello world's port does not meet the live game's manifest", !Meets(p), Said(p)));
+        }
         Run("VRUN (does not use the port)", @"C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\builds\2026-10-23_poweron\vrun_game.nes", null, null, 900, "120:Start,132:,400:Right", p =>
             Check("VRUN: a game that does not use the port hears nothing (no false events)", p.EventCount == 0 && p.Writes == 0, $"{p.EventCount} events, {p.Writes} writes"));
         Run("Super VRUN (does not use the port)", @"P:\BrokenDev\env\out\supervrun\supervrun.sfc", null, null, 900, "120:Start,132:", p =>

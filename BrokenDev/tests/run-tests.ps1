@@ -970,25 +970,20 @@ try {
         Assert-Equal $st.State 'ready' $st.Detail
     }
     # vrun-voc is the user's live game (today V2: the tutorial) and moves on with it; the hello-world tests use a frozen V0 instead:
-    # the fixture manifest tests\fixtures\projects\vrun-voc-v0 and the sources of the game repo's commit $vocV0Rev (git archive, read only)
+    # the fixture manifest tests\fixtures\projects\vrun-voc-v0 and the sources of the game repo's pinned V0 commit (tests\voc-v0.ps1: git archive,
+    # read only)
     $gbM = Read-BdJson (Join-Path $bd 'projects\vrun-voc\project.json')
     $gbFixtures = Join-Path $here 'fixtures\projects'
     $gbV0 = Read-BdJson (Join-Path $gbFixtures 'vrun-voc-v0\project.json')
-    $vocV0Rev = 'f828fbe223f2645ed7ccf8c873776f4afd1eab51'   # V0: the hello world with the D7 debug port, VOC_PLANT_UNINIT and VOC_PLANT_ASSERT
     $script:vocV0Src = $null
     function Get-VocV0Source {
-        # The V0 sources in this run's scratch folder (built once), or a SKIP naming what is missing. The game repo is only read.
+        # The V0 sources in this run's scratch folder (taken once), or a SKIP naming what is missing. The game repo is only read.
         if ($script:vocV0Src) { return $script:vocV0Src }
-        $voc = Find-BdLiveWorkspace -Name 'VRUN_VOC_dev'
-        if (-not $voc -or -not (Test-Path -LiteralPath (Join-Path $voc '.git'))) { Skip-Test 'the VRUN_VOC_dev game repository is not beside the repository' }
-        $git = Find-BdExecutable -Name 'git.exe' -Candidates @("$env:ProgramFiles\Git\cmd\git.exe")
-        if (-not $git) { Skip-Test 'no git' }
-        $zip = Join-Path $tmpRoot 'voc-v0.zip'; $dir = Join-Path $tmpRoot 'voc-v0-src'
-        $r = Invoke-BdProcess -FilePath $git -Arguments @('-C', $voc, 'archive', '--format=zip', '-o', $zip, $vocV0Rev) -TimeoutSec 120
-        if ($r.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $zip)) { Skip-Test "the game repository has no commit $($vocV0Rev.Substring(0, 7)) (the V0 hello world): $(Select-BdTail $r.Output 2)" }
-        Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
-        Assert-True (Test-Path -LiteralPath (Join-Path $dir 'build.ps1')) "commit $vocV0Rev has no build.ps1"
-        $script:vocV0Src = $dir; $dir
+        $r = Invoke-BdProcess -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $here 'voc-v0.ps1'), '-SourceOnly', '-Out', (Join-Path $tmpRoot 'voc-v0')) -TimeoutSec 180
+        $last = @(([string]$r.Output).Trim() -split "`r?`n")[-1].Trim()
+        if ($r.ExitCode -eq 2) { Skip-Test ($last -replace '^MISSING: ', '') }
+        Assert-True ($r.ExitCode -eq 0 -and (Test-Path -LiteralPath (Join-Path $last 'build.ps1'))) "voc-v0.ps1 -SourceOnly: $(Select-BdTail $r.Output 4)"
+        $script:vocV0Src = $last; $last
     }
     Test-Case 'the Game Boy hello-world fixture (kind gb, console gbc, source {live:VRUN_VOC_dev}, toolchain:gbdk; frozen V0) validates; NEGATIVE: kind gb on a SNES console, gbc on a NES kind and an unknown tool form are rejected' {
         $e = @(Test-BdManifest -M $gbV0 -ExpectedId 'vrun-voc-v0'); Assert-True ($e.Count -eq 0) ($e -join '; ')

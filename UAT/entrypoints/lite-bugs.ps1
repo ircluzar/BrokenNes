@@ -6,7 +6,7 @@
 .DESCRIPTION
   1. Publishes WebLite as AOT (`dotnet publish -c Release -p:EnableWasmAot=true`, under %LOCALAPPDATA%\VRUN_Nes_Dev_work\uat_lite_bugs) unless
      -Publish names an existing publish folder.
-  2. Runs UAT\lite\test-lite-bugs.mjs (node 22 or newer) on VRUN (BrokenDev's build) and the Game Boy hello world: the Bug button's zip (the note
+  2. Runs UAT\lite\test-lite-bugs.mjs (node 22 or newer) on VRUN and the user's Game Boy game (BrokenDev's builds; any version of vrun-voc: a capture replays exactly whatever the game is): the Bug button's zip (the note
      prompt, the download) replayed exactly by Workshop --bug play, the prompt cancelled and the capture off (negative controls), a console
      session's zip, and the frame times with the capture on and off.
   NOT VERIFIED: the browser's own download bar, a real phone.

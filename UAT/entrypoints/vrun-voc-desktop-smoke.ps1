@@ -7,7 +7,8 @@
   Starts the shipped WinForms app with a scratch settings folder (BROKENNES_CONFIG_DIR) and a scratch saves folder (BROKENNES_SAVES_DIR):
   the user's config.json and saves are never read or written, and the script proves it (a listing of %APPDATA%\BrokenNes before and after:
   the same names, sizes and times).
-    COLOR      the ROM (BrokenDev's build, out\vrun-voc\vrun_voc.gbc) opens on the Game Boy Color: the picture in colour (more than 4 colours),
+    COLOR      the ROM (the hello world frozen at V0, the game repo's commit f828fbe: BrokenDev\tests\voc-v0.ps1 builds it to
+               out\vrun-voc-v0\vrun_voc.gbc; the live game, out\vrun-voc, has moved on and has no boot counter or beep) opens on the Game Boy Color: the picture in colour (more than 4 colours),
                is_color = 1, the boot counter 1 (a new cartridge).
     INPUT      Right held through POST /api/input/set-buttons moves the sprite (player_x grows, the picture changes); A beeps (beep_count 1,
                channel 1 on in NR52).
@@ -24,7 +25,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Exe,
-    [string]$Rom = 'P:\BrokenDev\env\out\vrun-voc\vrun_voc.gbc',
+    [string]$Rom = 'P:\BrokenDev\env\out\vrun-voc-v0\vrun_voc.gbc',   # the frozen V0 hello world (powershell -File BrokenDev\tests\voc-v0.ps1)
     [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_vrun_voc_desktop')
 )
 $ErrorActionPreference = 'Stop'

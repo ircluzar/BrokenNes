@@ -2,6 +2,7 @@
 .SYNOPSIS
   The GBDK library's release-strip proof (BrokenDev milestone D7), on the Game Boy hello world (VRUN: Vaults of Obsolete Code).
 .DESCRIPTION
+  -Game defaults to the frozen V0 hello world (tests\voc-v0.ps1 -SourceOnly into <Out>\v0).
   Copies the game's build.ps1 and src\ (read only: the game's folder is never written) to three folders under -Out and builds:
   dev      build.ps1 -Profile dev       (VOC_DEV: the debug port on)
   release  build.ps1 -Profile release   (every DBG_ macro compiles to nothing)
@@ -9,11 +10,18 @@
   PASS when release is byte-identical to none and dev differs. Exit 0 pass, 1 fail, 2 usage.
 #>
 param(
-    [string]$Game = 'C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_VOC_dev',
+    [string]$Game = '',
     [string]$Gbdk = '',
     [Parameter(Mandatory)][string]$Out
 )
 $ErrorActionPreference = 'Stop'
+# -Game: a folder with the game's build.ps1 and a flat src\. Without one, the frozen V0 hello world (the game repo's commit f828fbe, taken
+# read only by BrokenDev\tests\voc-v0.ps1): the live game has moved on (V2 builds from src\maps and src\phys too, which this proof does not copy)
+if (-not $Game) {
+    $log = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot '..\..\tests\voc-v0.ps1') -SourceOnly -Out (Join-Path $Out 'v0') 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { Write-Host "no -Game, and the frozen V0 sources are not available:`n$log"; exit 2 }
+    $Game = (@($log.Trim() -split "`r?`n")[-1]).Trim()
+}
 if (-not (Test-Path (Join-Path $Game 'build.ps1'))) { Write-Host "no build.ps1 in $Game"; exit 2 }
 $strip = Join-Path $PSScriptRoot '..\Strip-DebugCalls.ps1'
 $hash = @{}

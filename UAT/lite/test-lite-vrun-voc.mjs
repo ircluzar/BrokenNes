@@ -3,7 +3,8 @@
 //
 //   node test-lite-vrun-voc.mjs --publish <AOT publish dir> --roms <scratch dir> --rom <vrun_voc.gbc> [--json out.json] [--show]
 //
-// The ROM is BrokenDev's build (out\vrun-voc\vrun_voc.gbc), copied to <roms>\gb\. Frames are run with the page's own FrameTick (as the other Lite
+// The ROM is the hello world frozen at V0 (the game repo's commit f828fbe; BrokenDev\tests\voc-v0.ps1 builds it to out\vrun-voc-v0\vrun_voc.gbc:
+// the live game, out\vrun-voc, has moved on), copied to <roms>\gb\. Frames are run with the page's own FrameTick (as the other Lite
 // suites), the pad through UpdateInput (Lite's pad array: A B Select Start Up Down Left Right ...). What it checks:
 //   - the page runs it on the Game Boy Color console, at 160 x 144, in colour (more than the original's 4 colours);
 //   - Right held moves the sprite (the pictures change while it is held, and stop changing when it is released: the hello world is still);
@@ -25,7 +26,7 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'} [vrun-voc] ${name}${detail !== '' ? ' - ' + detail : ''}`);
   return !!ok;
 }
-if (!a.rom || !fs.existsSync(a.rom)) { console.log(`the ROM is missing: ${a.rom} (build it: BrokenDev\\brokendev.ps1 build vrun-voc)`); process.exit(2); }
+if (!a.rom || !fs.existsSync(a.rom)) { console.log(`the ROM is missing: ${a.rom} (the frozen V0 hello world: powershell -File BrokenDev\\tests\\voc-v0.ps1, then --rom P:\\BrokenDev\\env\\out\\vrun-voc-v0\\vrun_voc.gbc)`); process.exit(2); }
 fs.mkdirSync(path.join(a.roms, 'gb'), { recursive: true });
 fs.copyFileSync(a.rom, path.join(a.roms, 'gb', 'vrun_voc.gbc'));
 const romBytes = fs.readFileSync(a.rom);

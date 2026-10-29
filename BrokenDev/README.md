@@ -201,6 +201,8 @@ its `expect.wms`; `compat` has BrokenNes's column only. The guide: `docs/project
   a game's own live workspace, the folder of that name beside the repository or one of its parents (`BROKENDEV_LIVE_VRUN_VOC_DEV` names
   another). BrokenDev's own tests do not follow the live game: they build the V0 hello world from the game repo's commit `f828fbe`
   (exported with git's archive command, read only) and verify it with the frozen manifest `tests/fixtures/projects/vrun-voc-v0`.
+  `tests/voc-v0.ps1` takes those sources and builds them once to `BROKENDEV_HOME\out\vrun-voc-v0` (the Workshop's `--port-test` and the
+  UAT hello-world scripts read the ROM there); `debugport/gbdk/build-proof.ps1` without `-Game` uses the same sources.
 - **verify** runs it on BrokenNes's Game Boy Color, and a scenario's `"console": "gb"` runs the same cartridge on the original Game Boy.
   Three more scenario keys (any console): `"batteryFrom": "<scenario>"` powers on with the battery save an earlier scenario left (a boot
   counter, a save game); `expect.memory` reads the game's variables by the build's symbols (`{ "symbol": "_boot_count", "size": 2, "is": 2 }`,
