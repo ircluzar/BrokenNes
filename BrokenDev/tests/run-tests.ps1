@@ -1831,6 +1831,54 @@ exit $p.ExitCode
         } finally { Restore-Env $savedTf }
     }
 
+    Test-Case 'timeflow search through brokendev.ps1 (T4): a project recorded with -Index, its planted bug (an enemy alive but not drawn) found by a code breakpoint and by the user''s state + picture condition, by project and by timeline, with the project''s own symbols; NEGATIVE: a condition that never holds gives 0 hits (exit 1), a near miss (the same write with another value) is not reported, an unknown clause fails' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $th = Join-Path $tmpRoot 'tf4home'; $tp = Join-Path $tmpRoot 'tf4projects'; $src = Join-Path $tmpRoot 'tf4game'
+        New-Item -ItemType Directory -Force -Path $th, (Join-Path $tp 'sgame'), $src | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $src 'build.ps1'), @'
+param([Parameter(Mandatory)][string]$Workshop)
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+New-Item -ItemType Directory -Force -Path (Join-Path $here 'build') | Out-Null
+$p = Start-Process -FilePath $Workshop -ArgumentList @('--timeflow', 'search-rom', '--out', "`"$(Join-Path $here 'build\game.nes')`"") -Wait -PassThru -NoNewWindow
+exit $p.ExitCode
+'@)
+        $man = [ordered]@{
+            schema = 1; id = 'sgame'; title = 'the T4 tests'' enemy game'; family = 'test'; kind = 'nes'; console = 'nes'; description = 'T4 run-tests'
+            source = @{ folder = $src }; requires = @{ tools = @('ps5'); projects = @(); inputs = @() }
+            build = @{ steps = @(@{ name = 'build'; shell = 'ps5'; cwd = '{src}'; file = '{src}/build.ps1'; args = @('-Workshop', '{workshop}'); timeoutSec = 120 })
+                       outputs = @(@{ id = 'rom'; path = '{src}/build/game.nes'; publishAs = 'game.nes'; kind = 'nes' }, @{ id = 'mlb'; path = '{src}/build/game.mlb'; publishAs = 'game.mlb'; kind = 'symbols' }) }
+            verify = @{ scenarios = @(@{ id = 'play'; frames = 200; input = '' }) }; knownIssues = @()
+        }
+        Save-BdJson -Object $man -Path (Join-Path (Join-Path $tp 'sgame') 'project.json')
+        $savedTf = Save-Env @('BROKENDEV_HOME', 'BROKENDEV_PROJECTS', 'BROKENDEV_WORKSHOP', 'BROKENDEV_TIMEFLOW')
+        $env:BROKENDEV_HOME = $th; $env:BROKENDEV_PROJECTS = $tp; $env:BROKENDEV_WORKSHOP = $ws; $env:BROKENDEV_TIMEFLOW = $null
+        $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { (Get-Process -Id $PID).Path } else { Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe' }
+        function Bd([string[]]$a) { Invoke-BdProcess -FilePath $psExe -Arguments (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $bd 'brokendev.ps1')) + $a) -TimeoutSec 600 -Env @{ BROKENDEV_HOME = $th; BROKENDEV_PROJECTS = $tp; BROKENDEV_WORKSHOP = $ws } }
+        function BdJ([string[]]$a) { $r = Bd ($a + '-Json'); $t = $r.Output; $i = $t.IndexOf('{'); $j = $t.LastIndexOf('}'); [pscustomobject]@{ Code = $r.ExitCode; J = $(if ($i -ge 0 -and $j -gt $i) { try { $t.Substring($i, $j - $i + 1) | ConvertFrom-Json } catch { $null } } else { $null }); Text = $t } }
+        try {
+            [void](Invoke-BdProjectBuild -Id 'sgame')
+            $rec = BdJ @('timeflow', 'record', 'sgame', '-Scenario', 'play', '-Index')
+            Assert-True ($rec.Code -eq 0 -and $rec.J.frames -eq 200 -and $rec.J.coverage -and $rec.J.accesses -and $rec.J.checks) "record -Index: exit $($rec.Code) coverage $($rec.J.coverage) accesses $($rec.J.accesses) $(Select-BdTail $rec.Text 4)"
+            $tid = [string]$rec.J.id
+            $ex = BdJ @('timeflow', 'search', 'sgame', '-Query', 'exec hide_enemy')
+            $frames = @($ex.J.hits | ForEach-Object { [long]$_.frame })
+            Assert-True ($ex.Code -eq 0 -and $ex.J.totalHits -eq 16 -and ($frames -join ',') -eq '33,34,35,36,37,38,39,40,161,162,163,164,165,166,167,168' -and @($ex.J.hits)[0].in -eq 'hide_enemy' -and $ex.J.cost.candidates -eq 16) "exec hide_enemy (project): exit $($ex.Code) $($ex.J.totalHits) hits ($($frames -join ',')), candidates $($ex.J.cost.candidates) $(Select-BdTail $ex.Text 4)"
+            $us = BdJ @('timeflow', 'search', $tid, '-Query', 'state [enemy_alive] != 0 and not color #982220')
+            $uf = @($us.J.hits | ForEach-Object { [long]$_.frame })
+            Assert-True ($us.Code -eq 0 -and ($uf -contains 36) -and ($uf -contains 40) -and -not ($uf -contains 20) -and -not ($uf -contains 100)) "the user's example (timeline): exit $($us.Code) frames $($uf -join ',')"
+            $txt = Bd @('timeflow', 'search', 'sgame', '-Query', 'exec hide_enemy')
+            Assert-True ($txt.ExitCode -eq 0 -and $txt.Output -match 'HIT .* frame 33 ' -and $txt.Output -match 'timeflow jump') "search (text): $(Select-BdTail $txt.Output 6)"
+            # the negative controls
+            $nv = BdJ @('timeflow', 'search', 'sgame', '-Query', 'exec never_called')
+            Assert-True ($nv.Code -eq 1 -and $nv.J.totalHits -eq 0 -and $nv.J.cost.reRunFrames -eq 0) "a condition that never holds: exit $($nv.Code) $($nv.J.totalHits) hits"
+            $nm = BdJ @('timeflow', 'search', 'sgame', '-Query', 'write bug_mark if value == $5A')
+            $nf = @($nm.J.hits | ForEach-Object { [long]$_.frame })
+            Assert-True ($nm.Code -eq 0 -and ($nf -join ',') -eq '33,34,35,36,37,38,39,40,161,162,163,164,165,166,167,168' -and $nm.J.cost.candidates -ge 24) "the near miss (`$A5 written in frames 97-104): hits $($nf -join ','), candidates $($nm.J.cost.candidates)"
+            $bad = Bd @('timeflow', 'search', 'sgame', '-Query', 'enemy alive')
+            Assert-True ($bad.ExitCode -ne 0 -and $bad.Output -match 'unknown clause') "an unknown clause: exit $($bad.ExitCode) $(Select-BdTail $bad.Output 3)"
+        } finally { Restore-Env $savedTf }
+    }
+
     Test-Case 'timeflow profile|profile-query|profiles|profile-keep|profile-drop through brokendev.ps1 (T3): the planted corruption''s write found by "writes hp" with the project''s own symbols, a kept profile queried and dropped, an unkept one gone when its command ended; NEGATIVE: the fixed build has no write to hp, an unknown profile and a span without -From fail' {
         if (-not $ws) { Skip-Test $wsSkip }
         $th = Join-Path $tmpRoot 'tf3home'; $tp = Join-Path $tmpRoot 'tf3projects'

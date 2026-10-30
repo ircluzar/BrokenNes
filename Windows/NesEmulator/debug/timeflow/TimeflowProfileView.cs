@@ -41,10 +41,17 @@ public sealed class ProfileMachine : IDisposable
     };
 
     /// <summary>Opens the machine a timeline was recorded on, with the debugger and these symbols (the Sega consoles are refused until T0).</summary>
-    public static ProfileMachine Open(string timelineDir, IEnumerable<string>? symbols = null)
+    public static ProfileMachine Open(string timelineDir, IEnumerable<string>? symbols = null) => Open(timelineDir, symbols, requireDebugger: true);
+
+    /// <summary>
+    /// The same, for a search (T4): with <paramref name="requireDebugger"/> false a console the debugger does not cover yet (the Sega consoles until
+    /// T0) opens without it (<see cref="Machine"/> and <see cref="Debugger"/> null): its searches take the clauses that need no debugger.
+    /// </summary>
+    public static ProfileMachine Open(string timelineDir, IEnumerable<string>? symbols, bool requireDebugger)
     {
         var meta = TimelineMeta.Load(timelineDir);
-        if (meta.Console is "sms" or "gg" or "md")
+        bool noDebugger = meta.Console is "sms" or "gg" or "md";
+        if (noDebugger && requireDebugger)
             throw new NotSupportedException($"profiling the {meta.Console} needs the debugger on its Z80 / 68000, which is milestone T0 (not built here yet): no profile is made");
         byte[] file = TimeflowStore.RomOf(timelineDir, meta);
         byte[] rom = RomDetect.Unwrap(file, meta.RomName.Length > 0 ? meta.RomName : "rom" + meta.RomExt, out string inner);
@@ -76,14 +83,25 @@ public sealed class ProfileMachine : IDisposable
             string ci = CoreCatalog.Resolve(c, CoreSlot.Cpu, Core(0)), pi = CoreCatalog.Resolve(c, CoreSlot.Ppu, Core(1)), ai = CoreCatalog.Resolve(c, CoreSlot.Apu, Core(2));
             var s = ConsoleSessions.Create(c, rom, ci, pi, ai, null, Path.GetFileName(inner));
             pm.Session = s;
-            pm.Machine = DebugMachines.For(s);
             pm.Source = TimeflowSource.For(s);
+            if (noDebugger) return pm;
+            pm.Machine = DebugMachines.For(s);
         }
         pm.Debugger = new Debugger(pm.Machine);
         foreach (var f in symbols ?? Array.Empty<string>()) if (File.Exists(f)) pm.Debugger.Symbols.Load(f, pm.Machine.Console);
         try { pm.Port = new DebugPort(pm.Machine, pm.Debugger); pm.Port.Attach(); } catch (NotSupportedException) { pm.Port = null; }
         return pm;
     }
+
+    /// <summary>This machine as a search's machine (T4): the engine opens it, the search closes it.</summary>
+    public SearchMachine ForSearch() => new()
+    {
+        Machine = Machine, Debugger = Machine != null ? Debugger : null, Source = Source, RunFrame = RunFrame, Port = Port,
+        Game = (object?)Nes ?? Session!, RomSha256 = Meta.RomSha256, OnDispose = Dispose,
+    };
+
+    /// <summary>The engine's own opener for searches (the desktop app's): <see cref="Open(string, IEnumerable{string}?, bool)"/> without requiring the debugger.</summary>
+    public static SearchMachine OpenForSearch(string timelineDir, TimelineMeta meta, IReadOnlyList<string> symbols) => Open(timelineDir, symbols, requireDebugger: false).ForSearch();
 
     public void Dispose()
     {

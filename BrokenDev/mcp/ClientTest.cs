@@ -80,7 +80,7 @@ internal static class ClientTest
                 "read_memory", "write_memory", "search_memory", "list_domains", "symbols", "breakpoint_add", "breakpoint_list", "breakpoint_remove", "watch", "step", "call_stack",
                 "registers", "trace", "trace_frame", "disassemble", "evaluate", "screenshot", "layers", "tiles", "sprites", "record_sound", "save_state", "load_state", "diff_states",
                 "checks", "profile", "brokendev", "step_back", "open_movie", "movie", "bisect", "bugs", "debug_port",
-                "timeflow_record", "timeflow_list", "timeflow_jump", "timeflow_resume", "timeflow_profile", "timeflow_profile_query" };
+                "timeflow_record", "timeflow_list", "timeflow_jump", "timeflow_resume", "timeflow_profile", "timeflow_profile_query", "timeflow_search" };
             var missing = want.Where(w => !names.Contains(w)).ToList();
             Check("tools_listed", missing.Count == 0 && tools.All(t => t.JsonSchema.ValueKind == JsonValueKind.Object), $"{tools.Count} tools over stdio; missing: {(missing.Count == 0 ? "none" : string.Join(", ", missing))}");
             switch (suite)
@@ -550,6 +550,7 @@ internal static class ClientTest
         Check("timeflow_replay_off_when_changed", !badReplay.IsError && off2["inSync"]?.GetValue<bool>() == false, $"a RAM byte written after the jump: in sync {S(off2["inSync"])}, off at {S(off2["offFrame"])} ({S(off2["offWhat"])})");
         foreach (var id in new[] { h, jh, sh }) await Call("close_session", new { session = id }, log: false);
         await ProfileSuite(dir, sms);
+        await SearchSuite(dir, sms);
     }
 
     /// <summary>A kept, unkept profile the server made: it must be gone once the server's session ended (checked after the client closes).</summary>
@@ -597,6 +598,48 @@ internal static class ClientTest
         var soff = await Call("timeflow_record", new { session = sh, action = "stop" });
         var sp = await Call("timeflow_profile", new { timeline = S(soff["closed"]?["id"]), from = 5, to = 10, queries = new[] { "summary" } });
         Check("timeflow_profile_sega_refused_until_t0", sp.IsError && sp.Text.Contains("T0"), sp.Text);
+        foreach (var id in new[] { h, sh }) await Call("close_session", new { session = id }, log: false);
+    }
+
+    /// <summary>Timeflow T4 over MCP: a headless recording with the search index, searched for the planted bug; negative controls.</summary>
+    private static async Task SearchSuite(string dir, string sms)
+    {
+        var (rom, asm, mlb) = BrokenNes.Workshop.Timeflow.TimeflowSearchRoms.EnemyGame();
+        string game = DebugTestRoms.Write(dir, "enemy.nes", rom), sym = DebugTestRoms.Write(dir, "enemy.mlb", mlb);
+        var o = await Call("open_rom", new { path = game, symbols = new[] { sym } });
+        string h = S(o["session"]);
+        var on = await Call("timeflow_record", new { session = h, action = "start", index = true });
+        await Call("run", new { session = h, frames = 200 });
+        var off = await Call("timeflow_record", new { session = h, action = "stop" });
+        string tid = S(off["closed"]?["id"]);
+        var tl = await Call("timeflow_list", new { timeline = tid });
+        Check("timeflow_record_index", !on.IsError && tid.Length > 0, $"timeline {tid}");
+        var ex = await Call("timeflow_search", new { condition = "exec hide_enemy", timeline = new[] { tid }, symbols = new[] { sym }, to = 199 });
+        var hits = ex["hits"]?.AsArray() ?? new JsonArray();
+        bool allAt = hits.Count > 0 && hits.All(x => S(x?["pc"]) == $"${asm["hide_enemy"]:X4}" && S(x?["in"]) == "hide_enemy" && L(x?["cycle"]) > 0);
+        Check("timeflow_search_exec", !ex.IsError && L(ex["totalHits"]) == 16 && allAt && L(ex["cost"]?["candidates"]) == 16, $"{L(ex["totalHits"])} hits (frames {string.Join(",", hits.Select(x => L(x?["frame"])))}), candidates {L(ex["cost"]?["candidates"])}, {S(ex["clauses"]?[0]?["coarse"])}");
+        var user = await Call("timeflow_search", new { condition = "state [enemy_alive] != 0 and not color #982220", timeline = new[] { tid }, symbols = new[] { sym } });
+        var uh = user["hits"]?.AsArray() ?? new JsonArray();
+        Check("timeflow_search_alive_not_visible", !user.IsError && uh.Count > 0 && uh.Any(x => L(x?["frame"]) == 36) && uh.All(x => S(x?["jump"]?["timeline"]) == tid), $"{uh.Count} hits: {string.Join(",", uh.Select(x => L(x?["frame"])))}");
+        var never = await Call("timeflow_search", new { condition = "exec never_called", timeline = new[] { tid }, symbols = new[] { sym } });
+        Check("timeflow_search_never_holds", !never.IsError && L(never["totalHits"]) == 0 && L(never["cost"]?["reRunFrames"]) == 0, $"{L(never["totalHits"])} hits, {L(never["cost"]?["reRunFrames"])} re-run");
+        var near = await Call("timeflow_search", new { condition = "write bug_mark if value == $5A", timeline = new[] { tid }, symbols = new[] { sym }, to = 199 });
+        var nh = near["hits"]?.AsArray() ?? new JsonArray();
+        Check("timeflow_search_near_miss_not_reported", !near.IsError && nh.Count == 16 && nh.All(x => L(x?["frame"]) is >= 33 and <= 40 or >= 161 and <= 168) && L(near["cost"]?["candidates"]) >= 24,
+              $"{nh.Count} hits ({string.Join(",", nh.Select(x => L(x?["frame"])))}); {L(near["cost"]?["candidates"])} candidates: the $A5 writes to the same byte (frames 97-104) re-run and rejected");
+        var bad = await Call("timeflow_search", new { condition = "enemy alive", timeline = new[] { tid } });
+        Check("timeflow_search_bad_condition_refused", bad.IsError && bad.Text.Contains("unknown clause"), bad.Text);
+        // the Sega consoles: state by a memory domain works; a breakpoint waits for T0 (the timeline skipped, saying so)
+        var so = await Call("open_rom", new { path = sms });
+        string sh = S(so["session"]);
+        await Call("timeflow_record", new { session = sh, action = "start" });
+        await Call("run", new { session = sh, frames = 30 });
+        var soff = await Call("timeflow_record", new { session = sh, action = "stop" });
+        string stid = S(soff["closed"]?["id"]);
+        var ss = await Call("timeflow_search", new { condition = "exec $0000", timeline = new[] { stid } });
+        Check("timeflow_search_sega_breakpoint_waits_for_t0", !ss.IsError && L(ss["totalHits"]) == 0 && S(ss["timelines"]?[0]?["skipped"]).Contains("T0"), S(ss["timelines"]?[0]?["skipped"]));
+        var sp = await Call("timeflow_search", new { condition = "picture still", timeline = new[] { stid } });
+        Check("timeflow_search_sega_picture", !sp.IsError && L(sp["totalHits"]) >= 0 && S(sp["timelines"]?[0]?["skipped"]).Length == 0, $"{L(sp["totalHits"])} hits");
         foreach (var id in new[] { h, sh }) await Call("close_session", new { session = id }, log: false);
     }
 

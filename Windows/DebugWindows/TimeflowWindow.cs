@@ -33,6 +33,12 @@ namespace BrokenNes.Windows.DebugWindows
         private readonly Button profile = new() { Name = "timeflowProfile", AccessibleName = "timeflowProfile", Text = "Profile selection", Width = 120 };
         private readonly Label result = new() { Name = "timeflowResult", AutoSize = false, Dock = DockStyle.Bottom, Height = 34, Padding = new Padding(4, 2, 4, 2) };
         private readonly TextBox info = new() { Name = "timeflowFrameInfo", AccessibleName = "timeflowFrameInfo", Dock = DockStyle.Bottom, ReadOnly = true, Height = 22 };
+        // T4: a search over the game's timelines; its hits are marked on the scrubber (the strip under it) and listed (a click goes there)
+        private readonly TextBox searchText = new() { Name = "timeflowSearchText", AccessibleName = "timeflowSearchText", Width = 470, Text = "" };
+        private readonly Button search = new() { Name = "timeflowSearch", AccessibleName = "timeflowSearch", Text = "Search", Width = 80 };
+        private readonly ListBox hits = new() { Name = "timeflowHits", AccessibleName = "timeflowHits", Dock = DockStyle.Bottom, Height = 96, IntegralHeight = false, Font = new Font("Consolas", 8.5f) };
+        private readonly Panel strip = new() { Name = "timeflowHitStrip", AccessibleName = "timeflowHitStrip", Dock = DockStyle.Top, Height = 10 };
+        private readonly List<SearchHit> found = new();
         private List<TimelineInfo> shown = new();
         private string listKey = "";
         private bool syncing;
@@ -42,7 +48,7 @@ namespace BrokenNes.Windows.DebugWindows
             this.form = form;
             Text = "BrokenNes Timeflow";
             Name = "TimeflowWindow";
-            ClientSize = new Size(760, 460);
+            ClientSize = new Size(760, 600);
             StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = false;
             Font = new Font("Segoe UI", 9f);
@@ -56,11 +62,18 @@ namespace BrokenNes.Windows.DebugWindows
             pbar.Controls.Add(new Label { Text = "frames from the chosen one:", AutoSize = true, Padding = new Padding(0, 6, 0, 0) });
             pbar.Controls.Add(profileFrames);
             pbar.Controls.Add(profileKeep);
+            var sbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 32, WrapContents = false, Padding = new Padding(4, 2, 4, 0) };
+            sbar.Controls.Add(new Label { Text = "Search", AutoSize = true, Padding = new Padding(0, 6, 0, 0) });
+            sbar.Controls.Add(searchText); sbar.Controls.Add(search);
+            new ToolTip().SetToolTip(searchText, "e.g. state [enemy_alive] != 0 and not color #982220  |  exec player_hit  |  write hp if value == 0  |  finding  |  sound silent  (" + SearchCondition.Help + ")");
             Controls.Add(list);
+            Controls.Add(hits);
             Controls.Add(info);
             Controls.Add(result);
+            Controls.Add(sbar);
             Controls.Add(pbar);
             Controls.Add(bar);
+            Controls.Add(strip);
             Controls.Add(scrub);
             Controls.Add(status);
             Controls.Add(top);
@@ -85,6 +98,27 @@ namespace BrokenNes.Windows.DebugWindows
                 try { result.Text = await form.TimeflowProfileAsync(t.Dir, from, to, profileKeep.Checked, s => { if (!IsDisposed) result.Text = s; }); }
                 finally { if (!IsDisposed) profile.Enabled = true; }
             };
+            search.Click += async (_, _) =>
+            {
+                if (form.TimeflowSearchBusy) { form.TimeflowSearchCancel(); return; }
+                found.Clear(); hits.Items.Clear(); strip.Invalidate();
+                search.Text = "Cancel";
+                result.Text = "searching on headless machines (your game runs on)...";
+                try { result.Text = await form.TimeflowSearchAsync(searchText.Text, AddHit, s => { if (!IsDisposed) result.Text = s; }); }
+                finally { if (!IsDisposed) search.Text = "Search"; }
+            };
+            searchText.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; search.PerformClick(); } };
+            hits.SelectedIndexChanged += (_, _) => GoToHit();
+            strip.Paint += (_, e) => PaintStrip(e.Graphics);
+            strip.MouseClick += (_, e) =>
+            {
+                // a click on the strip goes to the nearest hit of the shown timeline
+                var t = Current; if (t == null || scrub.Maximum <= scrub.Minimum) return;
+                long f = scrub.Minimum + (long)Math.Round((e.X - 8) / (double)Math.Max(1, strip.Width - 16) * (scrub.Maximum - scrub.Minimum));
+                int best = -1; long d = long.MaxValue;
+                for (int i = 0; i < found.Count; i++) if (found[i].Timeline == t.Meta.Id && Math.Abs(found[i].Frame - f) < d) { d = Math.Abs(found[i].Frame - f); best = i; }
+                if (best >= 0) hits.SelectedIndex = best;
+            };
             timer.Tick += (_, _) => Refresh2();
             FormClosed += (_, _) => { timer.Stop(); timer.Dispose(); };
             timer.Start();
@@ -92,6 +126,41 @@ namespace BrokenNes.Windows.DebugWindows
         }
 
         private TimelineInfo? Current => list.SelectedIndex >= 0 && list.SelectedIndex < shown.Count ? shown[list.SelectedIndex] : null;
+
+        private void AddHit(SearchHit h)
+        {
+            if (IsDisposed) return;
+            found.Add(h);
+            hits.Items.Add($"{h.Timeline}  frame {h.Frame,6}  {h.Via,-6}{(h.Pc != null ? $" pc {h.Pc}" : "")}{(h.Instruction != null ? $" {h.Instruction}" : "")}{(h.In != null ? $" in {h.In}" : "")}  {string.Join("; ", h.Context)}");
+            strip.Invalidate();
+        }
+
+        /// <summary>The chosen hit: its timeline chosen, the scrubber at its frame (Jump then puts the game there; Profile selection profiles from it).</summary>
+        private void GoToHit()
+        {
+            int i = hits.SelectedIndex;
+            if (i < 0 || i >= found.Count) return;
+            var h = found[i];
+            int ti = shown.FindIndex(t => t.Meta.Id == h.Timeline);
+            if (ti >= 0 && list.SelectedIndex != ti) list.SelectedIndex = ti;
+            if (h.Frame >= frame.Minimum && h.Frame <= frame.Maximum) frame.Value = h.Frame;
+            result.Text = $"hit: timeline {h.Timeline} frame {h.Frame}{(h.Cycle != null ? $" cycle {h.Cycle}" : "")}{(h.Pc != null ? $" pc {h.Pc}" : "")}: Jump to go there, Profile selection to profile it";
+        }
+
+        private void PaintStrip(Graphics g)
+        {
+            g.Clear(SystemColors.Control);
+            var t = Current;
+            if (t == null || scrub.Maximum <= scrub.Minimum) return;
+            int w = Math.Max(1, strip.Width - 16);
+            using var pen = new Pen(Color.Crimson, 2);
+            foreach (var h in found)
+            {
+                if (h.Timeline != t.Meta.Id) continue;
+                float x = 8 + (float)((h.Frame - scrub.Minimum) / (double)(scrub.Maximum - scrub.Minimum) * w);
+                g.DrawLine(pen, x, 0, x, strip.Height);
+            }
+        }
 
         private void Refresh2()
         {
@@ -134,6 +203,7 @@ namespace BrokenNes.Windows.DebugWindows
             if (frame.Value < start || frame.Value > end) frame.Value = start;
             scrub.Value = (int)frame.Value;
             syncing = false;
+            strip.Invalidate();
             ShowFrame();
         }
 

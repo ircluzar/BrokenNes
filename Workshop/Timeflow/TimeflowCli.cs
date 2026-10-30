@@ -30,6 +30,8 @@ namespace BrokenNes.Workshop.Timeflow;
 ///   --timeflow prune   [--project P | --game-dir DIR] [--cap-gb G] [--json]   retire the oldest until within the cap (keep-marked never)
 ///   --timeflow keep    --timeline ID|DIR [--off]
 ///   --timeflow status  [--json]                                                 the root, every game folder's use against its cap
+///   --timeflow search  --q "CONDITION" [--timeline ID]... [--project P | --game-dir DIR | --rom R] [--sym F]... [--max-hits N] [--coarse] [--from A] [--to B] [--json]   (T4)
+///   --timeflow search-measure [--timelines K] [--frames M] [--real] [--json OUT]       T4's measurements;  --timeflow search-rom --out F   the search test game
 ///   --timeflow measure --rom R [--console c] [--cores C/P/A] [--warm N] [--frames N] [--input ...|--movie M] [--json OUT]
 /// </code>
 /// Exit 0 done, 1 a check failed (verify off, a replay out of sync), 2 usage, 3 cannot run.
@@ -77,6 +79,17 @@ internal static class TimeflowCli
                 case "measure": return TimeflowMeasure.Run(Opt, All, Has);
                 case "search": return TimeflowSearching.Cli((n, d) => Opt(n, d), All, Has, json);
                 case "search-measure": return TimeflowSearchMeasure.Run((n, d) => Opt(n, d), All, Has, json);
+                case "search-rom":
+                {
+                    // T4's search test game (an enemy alive but not drawn, planted), as a game repo would ship it: the ROM and its .mlb
+                    string outRom = Need(Opt("out"), "--out");
+                    var (rom, _, mlb) = TimeflowSearchRoms.EnemyGame();
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outRom))!);
+                    File.WriteAllBytes(outRom, rom);
+                    File.WriteAllText(Path.ChangeExtension(outRom, ".mlb"), mlb);
+                    Console.WriteLine($"wrote {outRom} and {Path.ChangeExtension(outRom, ".mlb")}");
+                    return 0;
+                }
                 case "profile" or "profile-query" or "profiles" or "profile-keep" or "profile-drop" or "profile-sweep" or "profile-measure" or "profile-rom":
                     return TimeflowProfiling.Cli(args[1].ToLowerInvariant(), (n, d) => Opt(n, d), All, Has, json);
                 default: Console.Error.WriteLine($"unknown verb '{args[1]}'"); return 2;

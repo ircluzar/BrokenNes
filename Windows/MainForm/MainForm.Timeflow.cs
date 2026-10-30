@@ -297,6 +297,7 @@ namespace BrokenNes.Windows
             server.RequestTimeflow = (reason, from) => TimeflowRequest(reason, from);
             server.CancelTimeflowRequest = TimeflowCancelRequest;
             server.GetTimeflowProfile = TimeflowProfileStatus;
+            server.GetTimeflowSearch = TimeflowSearchStatus;
         }
 
         // ------------------------------------------------------------------------------------------------ jump and resume (the window: the user's own controls)

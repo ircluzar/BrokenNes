@@ -66,6 +66,12 @@
                                  variable; the project's symbols) and answers the queries (writes, reads, accesses, last-write, stack,
                                  between, became, when, histogram, events, trace, vars, summary); nothing is stored unless -Store (then in
                                  the game's profiles\ folder: deleted at the session's end unless -Keep, and when its TTL passes)
+    timeflow search [project|timeline] -Query "CONDITION" [-From A] [-To B] [-MaxHits N] [-CoarseOnly]
+                                 T4: the frames of a project's timelines (or one timeline; none: the whole corpus) where a condition held:
+                                 exec|read|write|access <spec> [if <expr>], state <expr>, finding [text], picture changed|still,
+                                 color #RRGGBB [in X Y W H], sound silent|above L, channel <name> silent|playing; 'and', 'not'. The index
+                                 rules frames out, only the unsure ones re-run (headless). 'record -Index' adds the search index (coverage,
+                                 access counts, checks). Hits: timeline, frame, cycle, PC; 'timeflow jump' / 'timeflow profile' them
     mcp     install|uninstall|build|status|test
                                  the BrokenNes MCP server (BrokenDev/mcp): 'install' builds it into BROKENDEV_HOME\bnbuild\mcp and registers it
                                  for Claude Code at USER scope ('claude mcp add --scope user brokennes', every session and game repo);
@@ -152,6 +158,10 @@ param(
     [switch]$Keep,
     [int]$TtlMinutes = 0,
     [int]$LimitMb = 0,
+    # 'timeflow search' (milestone T4): -Query is the condition; the hits kept; only the index; 'timeflow record -Index': the search index
+    [int]$MaxHits = 100,
+    [switch]$CoarseOnly,
+    [switch]$Index,
     # 'tool <id> <args...>': the arguments after the tool id are passed to the tool
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @()
 )
@@ -445,7 +455,7 @@ try {
             if ($Rest.Count -gt 1) { throw "timeflow: one project or timeline after the action (got: $($Rest -join ' '))" }
             $t = if ($Rest.Count -eq 1) { $Rest[0] } else { '' }
             exit (Invoke-BdTimeflow -Action $Target -Target $t -Scenario $(if ($Scenario.Count -gt 0) { $Scenario[0] } else { '' }) -Script $Script -Frames $Frames -Movie $Movie -Course $Course -Frame $Frame -Png $Path -Record:$Record -Coverage:$Coverage -Json:$Json -Exe $Exe `
-                  -From $From -To $To -Query $Query -Store:$Store -Keep:$Keep -TtlMinutes $TtlMinutes -LimitMb $LimitMb)
+                  -From $From -To $To -Query $Query -Store:$Store -Keep:$Keep -TtlMinutes $TtlMinutes -LimitMb $LimitMb -MaxHits $MaxHits -CoarseOnly:$CoarseOnly -Index:$Index)
         }
         'bugs' {
             if ($Target) { [void](Resolve-BdTargets $Target) }

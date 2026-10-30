@@ -19,6 +19,8 @@ namespace BrokenNes.Windows.WebApi
         public Func<object>? GetTimeflowTimelines { get; set; }
         /// <summary>T3: the last Profile selection (made by the user in the Timeflow window), the profile windows open, the kept profiles (reading only).</summary>
         public Func<object>? GetTimeflowProfile { get; set; }
+        /// <summary>T4: the last search the user made in the Timeflow window (busy, the condition, its report: hits, candidates, cost; reading only).</summary>
+        public Func<object>? GetTimeflowSearch { get; set; }
 
         /// <summary>
         /// BrokenDev Timeflow (milestones T1 / T2, docs/projects/brokendev-timeflow-plan.md). THE CONSENT RULE: recording is off until the user switches
@@ -31,6 +33,7 @@ namespace BrokenNes.Windows.WebApi
             app.MapGet("/api/timeflow/status", () => GetTimeflowStatus != null ? Results.Ok(GetTimeflowStatus()) : Results.BadRequest(new { success = false, error = "Timeflow is not wired" }));
             app.MapGet("/api/timeflow/timelines", () => GetTimeflowTimelines != null ? Results.Ok(GetTimeflowTimelines()) : Results.BadRequest(new { success = false, error = "Timeflow is not wired" }));
             app.MapGet("/api/timeflow/profile", () => GetTimeflowProfile != null ? Results.Ok(GetTimeflowProfile()) : Results.BadRequest(new { success = false, error = "Timeflow is not wired" }));
+            app.MapGet("/api/timeflow/search", () => GetTimeflowSearch != null ? Results.Ok(GetTimeflowSearch()) : Results.BadRequest(new { success = false, error = "Timeflow is not wired" }));
             app.MapPost("/api/timeflow/request", async (HttpContext ctx) =>
             {
                 if (RequestTimeflow == null) return Results.BadRequest(new { success = false, error = "Timeflow is not wired" });

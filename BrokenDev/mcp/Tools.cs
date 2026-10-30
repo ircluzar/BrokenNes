@@ -480,8 +480,17 @@ internal static class Tools
             "HEADLESS session (your own machine): action start / stop / status records that session (a state load, reset or memory write ends the timeline and a new one begins). " +
             "LIVE session (the user's app): you can only ASK: action request (with a reason) makes the app show the user a prompt that does not stop the game; nothing records unless the user allows it; status shows the answer and the recording; cancel withdraws your request. You can never switch the user's recording on or off.",
             Schema(S(), ("action", P("string", "headless: start, stop, status; live: request, status, cancel", Enum("start", "stop", "status", "request", "cancel")), true),
-                   ("reason", P("string", "live request: why you want the recording, shown to the user (e.g. 'to rewind to the frame before the crash you saw')"), false)),
-            a => On(a, s => s.TimeflowRecord(a.Req("action").ToLowerInvariant(), a.Str("reason"))));
+                   ("reason", P("string", "live request: why you want the recording, shown to the user (e.g. 'to rewind to the frame before the crash you saw')"), false),
+                   ("index", P("boolean", "headless start: also record the search index (each frame's code coverage and per-page memory access counts: timeflow_search then re-runs only the frames they point at; costs speed while recording)"), false)),
+            a => On(a, s =>
+            {
+                if (a.Bool("index", false) && a.Req("action").Equals("start", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (s is HeadlessSession hs) hs.TimeflowIndexOn();
+                    else throw new ToolError("index is for a headless session's own recording (the user's app records its own way)");
+                }
+                return s.TimeflowRecord(a.Req("action").ToLowerInvariant(), a.Str("reason"));
+            }));
 
         Add("timeflow_list",
             "The recorded timelines (reading only): every game folder under BROKENDEV_HOME\\timeflow (or one project's), each timeline with its frames, branches (a branch under its parent, with the frame it left at), status, size, and the folder's space against its 5 GB cap. With timeline: that one's details.",
@@ -580,6 +589,31 @@ internal static class Tools
                     default: throw new ToolError("action is query, list, keep, unkeep, drop or sweep");
                 }
             }));
+
+        // ------------------------------------------------------------------------------------------------ Timeflow (T4: search over the corpus)
+        Add("timeflow_search",
+            "Searches recorded timelines for the frames where a condition held (docs/projects/brokendev-timeflow-plan.md, T4): one timeline, a project's, a game's, or the whole corpus (default). " +
+            "Two phases: the per-frame index and the recorded states rule frames out (or decide them exactly), then only the unsure frames are re-run on NEW headless machines of each timeline's own ROM and cores " +
+            "(breakpoints by every instruction and access, checked against the recording; no open session is touched). Condition: clauses joined by 'and', each may start with 'not': " +
+            "'exec <addr|range|symbol> [cpu C] [if <expr>]' (code ran), 'read|write|access <spec> [if value == $5A]' (memory, all mirrors and DMA), 'state <expr>' (memory / watched variables at the frame's end: '[enemy_hp] > 0 && [enemy_x] < 240'; a memory domain '[WRAM:$10]'), " +
+            "'finding [<text>]' (a hardware-check finding first seen in the frame), 'picture changed|still', 'color #RRGGBB [in X Y W H] [min N] [tol T]', 'sound silent [below L] | sound above L', 'channel <name> silent|playing'. " +
+            "Example: 'state [enemy_alive] != 0 and not color #982220' (an enemy alive but not drawn). Hits: timeline, frame, cycle, PC, the instruction, access and call stack (for a breakpoint), and what each clause saw; " +
+            "each is a jump target (timeflow_jump) and a span to profile (timeflow_profile). Per clause: how the coarse phase decided it and its false-candidate rate. The Sega consoles take state / picture / sound clauses until T0.",
+            Schema(("condition", P("string", "the condition (see above)"), true), ("timeline", P("string[]", "timeline ids or folders (default: all of the corpus, or of project / game)"), false),
+                   ("project", P("string", "a BrokenDev project's timelines"), false), ("game_dir", P("string", "a Timeflow game folder's timelines"), false),
+                   ("symbols", P("string[]", "symbol files (.mlb, .sym, .noi): names in the condition and the answers"), false), ("from", P("integer", "first frame searched in each timeline"), false),
+                   ("to", P("integer", "last frame searched (included)"), false), ("max_hits", P("integer", "stop after this many hits (default 100; the candidates left are counted)"), false),
+                   ("coarse_only", P("boolean", "only the index: the candidates and the hits it decides alone, nothing re-run"), false)),
+            a => Wrap(() =>
+            {
+                var q = new BrokenNes.Workshop.Timeflow.SearchRequest
+                {
+                    Condition = a.Req("condition"), Timelines = a.List("timeline").Select(TimeflowTools.Find).ToList(), Project = a.Str("project") ?? "", GameDir = a.Str("game_dir") ?? "",
+                    Symbols = a.List("symbols"), MaxHits = a.Int("max_hits", 100), CoarseOnly = a.Bool("coarse_only", false), From = a.Long("from"), To = a.Long("to"),
+                };
+                try { return BrokenNes.Workshop.Timeflow.TimeflowSearching.Run(q).Json; }
+                catch (Exception e) when (e is IOException or FormatException or NotSupportedException or ArgumentException) { throw new ToolError(e.Message); }
+            }), ro: true);
 
         Add("brokendev",
             "Runs a BrokenDev verb on a project (BrokenDev/brokendev.ps1): build, verify (the checks, budgets and accepted findings), compat (the other emulators), run (opens it in the desktop app: its PID comes back for attach_live), " +

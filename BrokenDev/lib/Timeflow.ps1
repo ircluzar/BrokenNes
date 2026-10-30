@@ -14,6 +14,9 @@
 #   timeflow prune  [project]                       retires the oldest timelines until each game folder is within its cap (keep: never)
 #   timeflow keep | unkeep <timeline>
 #   timeflow status                                 the root (BROKENDEV_HOME\timeflow) and every game folder's use
+#   timeflow search [project|timeline] -Query "CONDITION" [-From A] [-To B] [-MaxHits N] [-CoarseOnly]
+#                   T4: the frames where a condition held (Workshop --timeflow search; the project's symbols); see the plan's "T4 as built"
+#   timeflow record ... -Index                      also the search index (coverage, per-page access counts, the hardware checks)
 #
 # Timelines live in BROKENDEV_HOME\timeflow\<project>\ (a ROM of no project: timeflow\_roms\<name>-<sha>\), never in git, never in
 # %APPDATA%\BrokenNes; each game folder has a cap (5 GB by default, timeflow.json).
@@ -41,7 +44,7 @@ function Invoke-BdTimeflowJson {
 }
 
 function Invoke-BdTimeflowRecord {
-    param([Parameter(Mandatory)][string]$Id, [string]$Scenario = '', [string]$Script = '', [int]$Frames = 0, [string]$Movie = '', [string[]]$Course = @(), [switch]$Coverage, [string]$Exe = '')
+    param([Parameter(Mandatory)][string]$Id, [string]$Scenario = '', [string]$Script = '', [int]$Frames = 0, [string]$Movie = '', [string[]]$Course = @(), [switch]$Coverage, [switch]$Index, [string]$Exe = '')
     $p = Get-BdProjectRomAndSymbols -Id $Id
     $m = $p.Manifest
     $a = @('record', '--rom', $p.Rom, '--note', "brokendev timeflow record $Id")
@@ -63,7 +66,8 @@ function Invoke-BdTimeflowRecord {
     if (@('gb', 'gbc', 'wms') -contains [string]$m.console) { $a += @('--console', [string]$m.console) }
     foreach ($s in $p.Symbols) { $a += @('--sym', $s) }
     foreach ($c in @($Course | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })) { $a += @('--var', "$c=[$c]") }
-    if ($Coverage) { $a += '--coverage' }
+    if ($Coverage -or $Index) { $a += '--coverage' }
+    if ($Index) { $a += @('--accesses', '--checks') }
     (Invoke-BdTimeflowJson -Arguments $a -Exe $Exe)
 }
 
@@ -109,8 +113,41 @@ function Invoke-BdTimeflow {
     <# brokendev.ps1 timeflow <action> [target] ...: returns the exit code. #>
     param([string]$Action, [string]$Target = '', [string]$Scenario = '', [string]$Script = '', [int]$Frames = 0, [string]$Movie = '', [string[]]$Course = @(),
           [long]$Frame = -1, [string]$Png = '', [switch]$Record, [switch]$Coverage, [switch]$Json, [string]$Exe = '',
-          [long]$From = -1, [long]$To = -1, [string[]]$Query = @(), [switch]$Store, [switch]$Keep, [int]$TtlMinutes = 0, [int]$LimitMb = 0)
+          [long]$From = -1, [long]$To = -1, [string[]]$Query = @(), [switch]$Store, [switch]$Keep, [int]$TtlMinutes = 0, [int]$LimitMb = 0,
+          [int]$MaxHits = 100, [switch]$CoarseOnly, [switch]$Index)
     switch ($Action.ToLowerInvariant()) {
+        'search' {
+            # T4: a condition over the corpus (a project's timelines, one timeline, or all)
+            $cond = (@($Query | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ }) -join ' and ')
+            if (-not $cond) { throw 'timeflow search needs -Query "CONDITION" (exec <spec> [if <expr>], write <spec>, state <expr>, finding, picture changed, color #RRGGBB, sound silent, channel <name> playing; and / not)' }
+            $a = @('search', '--q', $cond, '--max-hits', [string]$MaxHits)
+            $syms = @()
+            if ($Target) {
+                $isProject = $false
+                try { [void](Resolve-BdTargets $Target); $isProject = $true } catch { $isProject = $false }
+                if ($isProject) { $a += @('--project', $Target); try { $syms = @((Get-BdProjectRomAndSymbols -Id $Target).Symbols) } catch { $syms = @() } }
+                else { $a += @('--timeline', $Target); $syms = @(Get-BdTimelineSymbols -Timeline $Target -Exe $Exe) }
+            }
+            foreach ($s in $syms) { $a += @('--sym', $s) }
+            if ($From -ge 0) { $a += @('--from', [string]$From) }
+            if ($To -ge 0) { $a += @('--to', [string]$To) }
+            if ($CoarseOnly) { $a += '--coarse' }
+            $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
+            $j = $r.Json
+            if ($Json) { Write-Host ($j | ConvertTo-Json -Depth 12); return $(if ($j.totalHits -gt 0) { 0 } else { 1 }) }
+            $c = $j.cost
+            $line = "search '{0}': {1} hit(s) in {2} timeline(s); coarse {3} frames at {4} fps -> {5} candidate(s); {6} frame(s) re-run; first hit {7} ms, total {8} ms" -f $j.condition, $j.totalHits, $j.searched, $c.coarseFrames, $c.coarseFps, $c.candidates, $c.reRunFrames, $c.firstHitMs, $c.totalMs
+            if ($j.totalHits -gt 0) { Write-BdOk $line } else { Write-BdInfo $line }
+            foreach ($cl in @($j.clauses)) { Write-BdInfo ("  '{0}': {1}; false candidates {2:P1} of {3}" -f $cl.clause, $cl.coarse, [double]$cl.falseCandidateRate, $cl.maybeChecked) }
+            foreach ($h in @($j.hits)) {
+                $where = @(); if ($h.cycle) { $where += "cycle $($h.cycle)" }; if ($h.pc) { $where += "pc $($h.pc)" }; if ($null -ne $h.scanline) { $where += "line $($h.scanline)" }
+                $what = @(); if ($h.kind) { $what += $h.kind }; if ($h.address) { $what += "$($h.address) = $($h.value)" }; if ($h.instruction) { $what += "by $($h.instruction)" }; if ($h.in) { $what += "in $($h.in)" }
+                Write-Host ("  HIT {0} frame {1} ({2}) {3} {4}  [{5}]" -f $h.timeline, $h.frame, $h.via, ($where -join ' '), ($what -join ' '), (@($h.context) -join '; '))
+            }
+            foreach ($t in @($j.timelines)) { if ($t.skipped) { Write-BdInfo "  timeline $($t.id): skipped: $($t.skipped)" } }
+            if (@($j.hits).Count -gt 0) { $h0 = @($j.hits)[0]; Write-BdInfo "  next: timeflow jump $($h0.timeline) -Frame $($h0.frame); timeflow profile $($h0.timeline) -From $($h0.frame) -To $($h0.frame) -Query summary" }
+            return $(if ($j.totalHits -gt 0) { 0 } else { 1 })
+        }
         'profile' {
             # T3: a span re-run at full depth with streaming queries (and kept when -Store)
             if (-not $Target -or $From -lt 0 -or $To -lt 0) { throw 'timeflow profile needs a timeline, -From A and -To B (and -Query "writes <symbol>" ...)' }
@@ -164,7 +201,7 @@ function Invoke-BdTimeflow {
         'record' {
             if (-not $Target) { throw 'timeflow record needs a project' }
             [void](Resolve-BdTargets $Target)
-            $r = Invoke-BdTimeflowRecord -Id $Target -Scenario $Scenario -Script $Script -Frames $Frames -Movie $Movie -Course $Course -Coverage:$Coverage -Exe $Exe
+            $r = Invoke-BdTimeflowRecord -Id $Target -Scenario $Scenario -Script $Script -Frames $Frames -Movie $Movie -Course $Course -Coverage:$Coverage -Index:$Index -Exe $Exe
             if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 8) } else { Show-BdTimeline $r.Json }
             return $(if ($r.ExitCode -eq 0) { 0 } else { 1 })
         }
@@ -245,6 +282,6 @@ function Invoke-BdTimeflow {
             foreach ($g in @($r.Json.games)) { Write-Host ('  {0}: {1} timeline(s), {2:N1} MB of {3:N2} GB' -f $g.gameDir, $g.timelines, ($g.usedBytes / 1MB), ($g.capBytes / 1GB)) }
             return 0
         }
-        default { throw 'timeflow: record, list, info, verify, jump, resume, prune, keep, unkeep, status, profile, profile-query, profiles, profile-keep, profile-unkeep, profile-drop or profile-sweep' }
+        default { throw 'timeflow: record, list, info, verify, jump, resume, prune, keep, unkeep, status, search, profile, profile-query, profiles, profile-keep, profile-unkeep, profile-drop or profile-sweep' }
     }
 }

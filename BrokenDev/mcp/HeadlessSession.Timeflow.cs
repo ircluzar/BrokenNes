@@ -17,6 +17,18 @@ internal sealed partial class HeadlessSession
     private string romFileName = "";
     private string? tfBranchParent;
     private long tfBranchFrame;
+    // T4: the search index (the frame's coverage and access counts) the session's recordings carry once asked for (timeflow_record start index:true)
+    private FrameCoverage? tfCoverage;
+    private FrameAccesses? tfAccesses;
+
+    /// <summary>The session's recordings from now on carry the search index (coverage and per-page access counts): needs the debugger.</summary>
+    public void TimeflowIndexOn()
+    {
+        var d = D ?? throw new ToolError($"the search index (coverage, access counts) needs the debugger, which does not cover the {Consoles.DisplayName(console)} yet (T0 for the Sega consoles): record without index");
+        EnsureBetweenFrames();
+        if (tfCoverage == null) { tfCoverage = FrameCoverage.Attach(d); tfCoverage.TakeFrame(new()); }
+        if (tfAccesses == null) { tfAccesses = FrameAccesses.Attach(d); tfAccesses.TakeFrame(); }
+    }
     // the last jump: the timeline and frame the session was put at, for resume (replay)
     private string? jumpedDir;
     private long jumpedFrame, jumpedAtSessionFrame;
@@ -27,6 +39,7 @@ internal sealed partial class HeadlessSession
     {
         long now = Interlocked.Read(ref framesStarted);
         var o = new TimeflowOptions { Rom = romFile, RomName = romFileName, Cores = cores, Source = "mcp", Note = $"MCP headless session {Id}", StartFrame = now, PowerOnStart = now == 0 && jumpedDir == null };
+        o.Coverage = tfCoverage; o.Accesses = tfAccesses;
         if (tfBranchParent != null)
         {
             // a branch: its frames are numbered from the parent's frame it starts at
