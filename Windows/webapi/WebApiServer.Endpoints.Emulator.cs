@@ -89,7 +89,7 @@ namespace BrokenNes.Windows.WebApi
                         return Results.BadRequest(new { success = false, error = "Filename is required" });
                     }
 
-                    bool success = await _loadBuiltInRom(body.Filename, body.PreserveShader);
+                    bool success = await OnUiAsync(() => _loadBuiltInRom(body.Filename, body.PreserveShader));   // on the UI thread (it rebuilds menus)
 
                     return Results.Ok(new
                     {
@@ -321,7 +321,7 @@ namespace BrokenNes.Windows.WebApi
                         return Results.BadRequest(new { success = false, error = "RomKey is required" });
                     }
 
-                    bool success = await _loadRomByKey(body.RomKey);
+                    bool success = await OnUiAsync(() => _loadRomByKey(body.RomKey));   // on the UI thread (WebView2 + menus)
                     return Results.Ok(new { success, romKey = body.RomKey });
                 }
                 catch (Exception ex)

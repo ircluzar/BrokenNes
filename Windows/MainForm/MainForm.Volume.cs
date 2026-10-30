@@ -288,6 +288,7 @@ namespace BrokenNes.Windows
 
         private void WireVolumeApi(WebApi.WebApiServer server)
         {
+            server.GetAudioDevice = AudioDeviceInfo;
             server.GetEmulationVolume = () => new
             {
                 volume = config.EmulationVolume, muted = config.EmulationMuted,
