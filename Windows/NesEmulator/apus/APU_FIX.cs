@@ -231,7 +231,12 @@ namespace NesEmulator
                 // The old code set it here too, so a game that rewrites $4008 every frame kept reloading a counter that hardware lets run down.
                 case 0x4008: triangle_linearReg = value; triangle_lengthHalt = (value & 0x80)!=0; break;
                 case 0x400A: triangle_timer = (ushort)((triangle_timer & 0x0700) | value); break;
-                case 0x400B: triangle_timer = (ushort)((triangle_timer & 0x00FF) | ((value & 0x07)<<8)); triangle_lengthIdx = (byte)((value>>3)&0x1F); if(triangle_enabled) LoadLength(ref triangle_lengthCounter, triangle_lengthIdx); triangle_seqIndex=0; triangle_linearReloadFlag=true; triangle_timerCounter = triangle_timer+1; break;
+                case 0x400B: triangle_timer = (ushort)((triangle_timer & 0x00FF) | ((value & 0x07)<<8)); triangle_lengthIdx = (byte)((value>>3)&0x1F); if(triangle_enabled) LoadLength(ref triangle_lengthCounter, triangle_lengthIdx); triangle_linearReloadFlag=true; break;
+                // Hardware (nesdev "APU": "There is no way to reset the triangle channel's phase"): $400B loads the length counter and sets the linear
+                // counter's reload flag, and that is all. It used to zero the sequence step and reload the timer divider as $4003 does for a pulse, so a
+                // song that rewrites the triangle every frame or two (the VRUN NES songs satnkrt and vectorplane) restarted the waveform on every write and
+                // its low notes came out at the rewrite rate. Guarded by BrokenDev/tests/apu-regress.ps1 (triangle-phase: a $400B twin and a $400A twin
+                // must play identical steps; Mesen 2.1.1 does).
                 case 0x400C: noise_lengthHalt = (value & 0x20)!=0; noise_constantVolume = (value & 0x10)!=0; noise_volumeParam = value & 0x0F; break;
                 case 0x400E: noise_periodReg = value; break;
                 case 0x400F: noise_lengthIdx = (byte)((value>>3)&0x1F); if(noise_enabled) LoadLength(ref noise_lengthCounter, noise_lengthIdx); noise_envStart=true; break;
@@ -648,12 +653,16 @@ namespace NesEmulator
 
         private bool SweepWouldMute(ushort timer, bool negate, int shift, bool channel1)
         {
-            if(shift == 0) return false;
+            // Hardware (nesdev "APU Sweep"): the target period is computed continuously and a target above $7FF mutes the channel "regardless of the
+            // state of the sweep unit" - the enable flag and the shift count only decide whether the PERIOD is rewritten (Sweep()). At shift 0 the
+            // target is twice the period, so a game that never writes $4001/$4005 (power-on: shift 0, negate off) has every note of period >= $400
+            // muted; this returned "not muted" for shift 0. The other mute is the CURRENT period below 8 (the caller's timerMute), not the target:
+            // this also muted on a target below 8, which a negate sweep (target <= period, so never above $7FF) reaches without being silenced on
+            // hardware - and with the shift-0 case fixed that rule would have muted every channel switched off the documented way ($08: negate,
+            // shift 0, target -1 / 0). Guarded by BrokenDev/tests/apu-regress.ps1 (sweep mute 7a-7d, measured on Mesen 2.1.1).
             int change = timer >> shift;
             int target = negate ? (timer - change - (channel1?1:0)) : (timer + change);
-            if(target > 0x7FF) return true;
-            if(target < 8) return true;
-            return false;
+            return target > 0x7FF;
         }
         private void StoreSample(float sample){ if(ringCount >= AudioRingSize){ ringRead = (ringRead+1) & (AudioRingSize-1); ringCount--; } audioRing[ringWrite]=sample; ringWrite=(ringWrite+1)&(AudioRingSize-1); ringCount++; }
 

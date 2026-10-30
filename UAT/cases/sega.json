@@ -162,7 +162,7 @@
     },
     {
       "id": "sega-sms-sonic1-sound-on-nes-fix",
-      "description": "Master System Sonic with its PSG replayed on the NES FIX sound chip (APU menu id NES:FIX).",
+      "description": "Master System Sonic with its PSG replayed on the NES FIX sound chip (APU menu id NES:FIX). Re-baselined 2026-10-29 (audio peak 13668 -> 13117, picture unchanged): APU_FIX no longer resets the triangle's step and timer on a $400B write (nesdev 'APU': there is no way to reset the triangle's phase). The Sega hub sends low PSG voices to the triangle and rewrites $400B whenever a note's period high bits change, so each such note change used to restart the triangle waveform at step 0 (a click and a phase jump); now the waveform runs on through the pitch change as on hardware. Isolated: a build with only the triangle fix gives exactly the new value; the same commit's sweep-mute fix alone changes nothing here.",
       "kind": "sega-run",
       "rom": "{sms}/Sonic The Hedgehog (USA, Europe).7z",
       "apu": "NES:FIX",
@@ -178,7 +178,7 @@
         "frameBufferHash": "248D1DD7E4865A38",
         "size": "256x192",
         "distinctColors": 20,
-        "audioPeak": 13668,
+        "audioPeak": 13117,
         "battery": "False",
         "swapsRefused": 0
       }
@@ -499,5 +499,5 @@
       }
     }
   ],
-  "goldenGeneratedUtc": "2026-10-23T03:21:33Z"
+  "goldenGeneratedUtc": "2026-10-30T00:04:58Z"
 }

@@ -9,6 +9,12 @@
      The program counts the frames until pulse 1 falls silent (length index 0 = 10) and shows that count as its backdrop colour; the CPU's X register holds it.
   2. sweep-disabled: a sweep with its ENABLE flag clear ($4001 = $0F: negate, shift 7) must leave the period alone. The old code ground it down.
   3. sweep-reload: an upward sweep with P = 0 ($4001 = $84) must update on the first half-frame clock after the write, and every one after it.
+  (4, 5: envelope restart, linear-counter reload - see the programs.)
+  6. triangle-phase (2026-10-29): a $400B write must not reset the triangle's step or timer: a twin rewriting $400B every frame plays the same steps as
+     a twin rewriting $400A (read from 'Workshop --apu-audio --phase'). Mesen 2.1.1: both twins 6 1 29 24 19 14 10 5 0 28 ... at frames 5..; the old core
+     held the $400B twin at step 9 every frame.
+  7. sweep-mute (2026-10-29): a target period above $7FF mutes a pulse at shift 0 too ($4001 = $00, period $47C: 0 of 64 samples heard on Mesen), the
+     boundary $3FF plays (36), and a target below 8 does not mute ($08 / $47C: 30; $09 / $00A: 32). The old core played 7a and silenced 7d.
 
   The programs run through 'BrokenNes.Workshop --trace' (CPU/PPU/APU FIX); the checks read the trace's x, p1len and p1per columns at fixed frames.
   NEGATIVE CONTROLS (shown able to fail): every program is also run on a different, older APU core (FMC), which has the behaviour being guarded
@@ -52,6 +58,13 @@ function Invoke-Trace([string]$Rom, [int]$Frames, [string]$Apu) {
     $out = Join-Path $tmp ([System.IO.Path]::GetFileNameWithoutExtension($Rom) + ".$Apu.trace.txt")
     $r = & $Workshop --trace --rom $Rom --out $out --frames $Frames --cpu FIX --ppu FIX --apu $Apu --power-on-ram zeros 2>&1 | Out-String
     if (-not (Test-Path -LiteralPath $out)) { throw "no trace written:`n$r" }
+    $out
+}
+# the waveform-phase trace (ApuAudioCli --phase): tseq, ttimer, p1out, p2out ... in decimal, one row per frame
+function Invoke-Phase([string]$Rom, [int]$Frames) {
+    $out = Join-Path $tmp ([System.IO.Path]::GetFileNameWithoutExtension($Rom) + '.phase.txt')
+    $r = & $Workshop --apu-audio --rom $Rom --phase $out --frames $Frames --cpu FIX --ppu FIX --apu FIX 2>&1 | Out-String
+    if (-not (Test-Path -LiteralPath $out)) { throw "no phase trace written:`n$r" }
     $out
 }
 
@@ -122,6 +135,53 @@ $p5 = [byte[]](
 Check 'linear-counter program layout' (($p5.Length -eq 40) -and ($p5[24] -eq 0x2C) -and ($p5[37] -eq 0x4C)) "length $($p5.Length)"
 $r5 = Join-Path $tmp 'linear-reload.nes'; [System.IO.File]::WriteAllBytes($r5, (New-NesRom $p5))
 
+# ---- program 6: a write to $400B must NOT reset the triangle's phase (nesdev "APU": "There is no way to reset the triangle channel's phase") ---------
+# Twin programs, identical except for the register rewritten once per frame: 6a rewrites $400B (length, period high), 6b rewrites $400A (period low)
+# with the value already there. $4008 = $FF keeps the linear counter reloading and the length counter halted, so neither write changes WHEN the
+# triangle runs; on hardware the two must therefore play the identical waveform, step for step. The old core zeroed the sequence step (and the
+# timer divider) on every $400B write, so 6a sat on the same few steps every frame (the VRUN NES songs satnkrt / vectorplane, which rewrite the
+# triangle every two frames, came out at the rewrite rate).
+function New-TriangleProgram([byte]$RewriteReg, [byte]$RewriteVal) {
+    [byte[]](
+        0x78, 0xD8, 0xA9, 0x04, 0x8D, 0x15, 0x40,                               # SEI CLD, triangle on
+        0xA9, 0xFF, 0x8D, 0x08, 0x40,                                           # $4008 = $FF: control set (linear counter keeps reloading, length halted)
+        0xA9, 0xF1, 0x8D, 0x0A, 0x40,                                           # period low $F1 (242 cycles a step: ~27 steps of drift per frame)
+        0xA9, 0xF8, 0x8D, 0x0B, 0x40,                                           # $400B = $F8: length index 31, period high 0
+        0x2C, 0x02, 0x20, 0x10, 0xFB,                                           # loop ($C016): BIT $2002 / BPL loop   (wait for vblank)
+        0xA9, $RewriteVal, 0x8D, $RewriteReg, 0x40,                             # rewrite one register with the value it already holds
+        0x4C, 0x16, 0xC0)                                                       # JMP loop
+}
+$p6a = New-TriangleProgram 0x0B 0xF8; $p6b = New-TriangleProgram 0x0A 0xF1
+Check 'triangle-phase program layout' (($p6a.Length -eq 35) -and ($p6a[22] -eq 0x2C) -and ($p6a[32] -eq 0x4C)) "length $($p6a.Length)"
+$r6a = Join-Path $tmp 'tri-rewrite-400b.nes'; [System.IO.File]::WriteAllBytes($r6a, (New-NesRom $p6a))
+$r6b = Join-Path $tmp 'tri-rewrite-400a.nes'; [System.IO.File]::WriteAllBytes($r6b, (New-NesRom $p6b))
+
+# ---- program 7: the sweep unit mutes on target period > $7FF whatever the shift count (nesdev "APU Sweep": "This muting happens regardless of the
+# state of the sweep unit"; the shift only decides whether the period is updated). Both pulses at constant volume 15, duty 50%, sweep register as given:
+#   7a  $4001/$4005 = $00 (the power-on state: a game that never writes them), period $47C: target $8F8 > $7FF -> MUTED on hardware
+#   7b  $00, period $3FF: target $7FE -> plays (the boundary)
+#   7c  $08 (negate, shift 0: the documented way to switch a sweep off), period $47C: target <= period -> plays
+#   7d  $09 (negate, shift 1), period $00A: target 4 (pulse 1) / 5 (pulse 2) is below 8 but only the CURRENT period < 8 mutes -> plays
+# The old core returned "not muted" for every shift-0 case (7a was heard) and muted on a target below 8 (7d was silent).
+function New-SweepMuteProgram([byte]$Sweep, [byte]$Lo, [byte]$Hi) {
+    [byte[]](
+        0x78, 0xD8, 0xA9, 0x03, 0x8D, 0x15, 0x40,                               # SEI CLD, pulses 1 and 2 on
+        0xA9, 0xBF, 0x8D, 0x00, 0x40, 0x8D, 0x04, 0x40,                        # $4000 / $4004 = $BF: duty 50%, halt, constant volume 15
+        0xA9, $Sweep, 0x8D, 0x01, 0x40, 0x8D, 0x05, 0x40,                      # $4001 / $4005
+        0xA9, $Lo, 0x8D, 0x02, 0x40, 0x8D, 0x06, 0x40,                         # period low
+        0xA9, $Hi, 0x8D, 0x03, 0x40, 0x8D, 0x07, 0x40,                         # length index 1, period high
+        0x4C, 0x27, 0xC0)                                                       # JMP *
+}
+$sweepCases = [ordered]@{
+    '7a' = @{ Sweep = 0x00; Lo = 0x7C; Hi = 0x0C; Muted = $true;  What = 'shift 0, period $47C (target $8F8)' }
+    '7b' = @{ Sweep = 0x00; Lo = 0xFF; Hi = 0x0B; Muted = $false; What = 'shift 0, period $3FF (target $7FE)' }
+    '7c' = @{ Sweep = 0x08; Lo = 0x7C; Hi = 0x0C; Muted = $false; What = 'negate shift 0, period $47C' }
+    '7d' = @{ Sweep = 0x09; Lo = 0x0A; Hi = 0x08; Muted = $false; What = 'negate shift 1, period $00A (target < 8)' }
+}
+$p7 = New-SweepMuteProgram 0 0x7C 0x0C
+Check 'sweep-mute program layout' (($p7.Length -eq 42) -and ($p7[39] -eq 0x4C)) "length $($p7.Length)"
+foreach ($k in $sweepCases.Keys) { $c = $sweepCases[$k]; $c.Rom = Join-Path $tmp "sweep-mute-$k.nes"; [System.IO.File]::WriteAllBytes($c.Rom, (New-NesRom (New-SweepMuteProgram $c.Sweep $c.Lo $c.Hi))) }
+
 # expected values, MEASURED on Mesen 2.1.1 (the oracle) on 2026-10-16 with the same programs (power-on RAM zeros); re-measure with -Measure
 $expectX = 4          # frames until the length counter hits zero (two units per frame)
 $expectPer2 = '17c'   # sweep disabled: the period stays 0x17C
@@ -147,6 +207,28 @@ if ($Measure) {
     Write-Host ("Mesen envelope-restart: p1vol/p2vol/nvol at trace frames 5..16 = " + ((5..16 | ForEach-Object { 'f' + $_ + '=' + (Get-TraceColumn $m4 'p1vol' $_) + '/' + (Get-TraceColumn $m4 'p2vol' $_) + '/' + (Get-TraceColumn $m4 'nvol' $_) }) -join ' '))
     $m5 = Invoke-MesenTrace $r5 24
     Write-Host ("Mesen linear-reload: tlin at trace frames 5..16 = " + ((5..16 | ForEach-Object { 'f' + $_ + '=' + (Get-TraceColumn $m5 'tlin' $_) }) -join ' '))
+    # programs 6 and 7 through the phase tracer (apu_phase_trace.lua next to state_trace.lua). Its fields lag Mesen's CPU, but both twins of
+    # program 6 stop at the same instruction, so their lag is the same; and a muted pulse's output is 0 whatever the lag.
+    $phaseLua = Join-Path (Split-Path -Parent $TraceLua) 'apu_phase_trace.lua'
+    function Invoke-MesenPhase([string]$Rom, [int]$Frames) {
+        $out = Join-Path $tmp ([System.IO.Path]::GetFileNameWithoutExtension($Rom) + '.mesen.phase.txt')
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = Join-Path $MesenDir 'Mesen.exe'; $psi.Arguments = '"' + $Rom + '" --luaScriptsToLoad "' + $phaseLua + '" --testRunner'
+        $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true; $psi.WorkingDirectory = $MesenDir
+        $psi.EnvironmentVariables['VRUN_PHASE_OUT'] = $out; $psi.EnvironmentVariables['VRUN_PHASE_FRAMES'] = [string]$Frames
+        $psi.EnvironmentVariables['VRUN_PHASE_RAMFILL'] = 'none'; $psi.EnvironmentVariables['VRUN_PHASE_ROM'] = $Rom
+        $p = [System.Diagnostics.Process]::Start($psi); [void]$p.WaitForExit(120000)
+        if (-not (Test-Path -LiteralPath $out)) { throw "Mesen wrote no phase trace for $Rom" }
+        $out
+    }
+    $m6a = Invoke-MesenPhase $r6a 40; $m6b = Invoke-MesenPhase $r6b 40
+    Write-Host ("Mesen triangle-phase: tseq frames 5..20 `$400B twin = " + ((5..20 | ForEach-Object { Get-TraceColumn $m6a 'tseq' $_ }) -join ' '))
+    Write-Host ("Mesen triangle-phase: tseq frames 5..20 `$400A twin = " + ((5..20 | ForEach-Object { Get-TraceColumn $m6b 'tseq' $_ }) -join ' '))
+    foreach ($k in $sweepCases.Keys) {
+        $m = Invoke-MesenPhase $sweepCases[$k].Rom 40
+        $heard = 0; foreach ($f in 5..36) { foreach ($col in 'p1out', 'p2out') { if ((Get-TraceColumn $m $col $f) -ne '0') { $heard++ } } }
+        Write-Host ("Mesen sweep mute {0} ({1}): p1out/p2out non-zero on {2} of 64 frame samples" -f $k, $sweepCases[$k].What, $heard)
+    }
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue; exit 0
 }
 try {
@@ -191,6 +273,22 @@ try {
     $tlf = @(); foreach ($f in 5..16) { $tlf += [Convert]::ToInt32((Get-TraceColumn $tf 'tlin' $f), 16) }
     $monof = $true; for ($i = 1; $i -lt $tlf.Count; $i++) { if ($tlf[$i] -gt $tlf[$i - 1]) { $monof = $false } }
     Write-Host "         negative control: the older FMC core shows tlin $(($tlf | ForEach-Object { '{0:x}' -f $_ }) -join ' ') ($(if ($monof) { 'it also counts down, agrees with Mesen' } else { 'it jumps back up: DISAGREES, so the guard can fail' }))"
+    # a write to $400B must not reset the triangle's phase: the $400B twin and the $400A twin play the identical step sequence and divider
+    $ta = Invoke-Phase $r6a 40; $tb = Invoke-Phase $r6b 40
+    $seqA = @(); $seqB = @(); $same = $true
+    foreach ($f in 5..36) {
+        $a = (Get-TraceColumn $ta 'tseq' $f) + '/' + (Get-TraceColumn $ta 'ttimer' $f); $b = (Get-TraceColumn $tb 'tseq' $f) + '/' + (Get-TraceColumn $tb 'ttimer' $f)
+        $seqA += (Get-TraceColumn $ta 'tseq' $f); $seqB += (Get-TraceColumn $tb 'tseq' $f); if ($a -ne $b) { $same = $false }
+    }
+    $moving = (@($seqB | Sort-Object -Unique).Count -ge 8)
+    Check 'triangle: a $400B write does not reset the phase (the $400B twin plays the $400A twin''s steps)' ($same -and $moving) ("tseq frames 5..20: `$400B " + ($seqA[0..15] -join ' ') + "  /  `$400A " + ($seqB[0..15] -join ' ') + $(if (-not $moving) { '  (the $400A twin does not move: the program is wrong)' } else { '' }))
+    # the sweep unit mutes on target > $7FF at shift 0, and never on a target below 8
+    foreach ($k in $sweepCases.Keys) {
+        $c = $sweepCases[$k]; $t = Invoke-Phase $c.Rom 40
+        $heard = 0; foreach ($f in 5..36) { foreach ($col in 'p1out', 'p2out') { if ((Get-TraceColumn $t $col $f) -ne '0') { $heard++ } } }
+        $ok = if ($c.Muted) { $heard -eq 0 } else { $heard -ge 8 }
+        Check "sweep mute ${k}: $($c.What) is $(if ($c.Muted) { 'MUTED' } else { 'heard' })" $ok "p1out/p2out non-zero on $heard of 64 frame samples ($(if ($c.Muted) { 'hardware: 0' } else { 'hardware: about half' }))"
+    }
 } catch {
     Write-Host "setup problem: $($_.Exception.Message)"; Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue; exit 2
 }

@@ -76,7 +76,7 @@
     },
     {
       "id": "sega-sms-alexkidd-nes-sound",
-      "description": "Alex Kidd's PSG replayed on the NES chip FIX.",
+      "description": "Alex Kidd's PSG replayed on the NES chip FIX. Re-baselined 2026-10-29 (audio only, picture unchanged): APU_FIX no longer resets the triangle's step and timer on a $400B write (nesdev 'APU': there is no way to reset the triangle's phase). The Sega hub sends low PSG voices to the triangle and rewrites $400B whenever a note's period high bits change, so each such note change used to restart the triangle waveform at step 0 (a click and a phase jump); now the waveform runs on through the pitch change as on hardware. Isolated: a build with only the triangle fix gives exactly the new value; the same commit's sweep-mute fix alone changes nothing here.",
       "kind": "session",
       "rom": "{sms}/alexkidd.sms",
       "apu": "NES:FIX",
@@ -91,7 +91,7 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "21836C6B83A4FA30",
-        "audioHash": "9BDBD84AB81370F1",
+        "audioHash": "C1984C35373C8747",
         "framesRun": 400,
         "distinctColors": 16,
         "result": "ok"
@@ -142,7 +142,7 @@
     },
     {
       "id": "sega-sms-sonic-fm-on-nes",
-      "description": "The PSG and the FM chip together replayed on the NES chip FIX (NES-FM).",
+      "description": "The PSG and the FM chip together replayed on the NES chip FIX (NES-FM). Re-baselined 2026-10-29 (audio only, picture unchanged): APU_FIX no longer resets the triangle's step and timer on a $400B write (nesdev 'APU': there is no way to reset the triangle's phase). The Sega hub sends low PSG voices to the triangle and rewrites $400B whenever a note's period high bits change, so each such note change used to restart the triangle waveform at step 0 (a click and a phase jump); now the waveform runs on through the pitch change as on hardware. Isolated: a build with only the triangle fix gives exactly the new value; the same commit's sweep-mute fix alone changes nothing here.",
       "kind": "session",
       "rom": "{sms}/sonic.sms",
       "apu": "NES-FM:FIX",
@@ -158,7 +158,7 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "99A577D2C2DEF444",
-        "audioHash": "061BE5301A9AE75D",
+        "audioHash": "172B93311DCE9F49",
         "framesRun": 400,
         "distinctColors": 30,
         "result": "ok"
@@ -190,7 +190,7 @@
     },
     {
       "id": "sega-sms-fantasyzone-swap-sound",
-      "description": "Fantasy Zone with the sound unit swapped from the PSG to the NES chip FIX in the middle of the run, in place.",
+      "description": "Fantasy Zone with the sound unit swapped from the PSG to the NES chip FIX in the middle of the run, in place. Re-baselined 2026-10-29 (audio only, picture unchanged): APU_FIX no longer resets the triangle's step and timer on a $400B write (nesdev 'APU': there is no way to reset the triangle's phase). The Sega hub sends low PSG voices to the triangle and rewrites $400B whenever a note's period high bits change, so each such note change used to restart the triangle waveform at step 0 (a click and a phase jump); now the waveform runs on through the pitch change as on hardware. Isolated: a build with only the triangle fix gives exactly the new value; the same commit's sweep-mute fix alone changes nothing here.",
       "kind": "session",
       "rom": "{sms}/fantasyzone.sms",
       "swap": "150:apu:NES:FIX",
@@ -204,7 +204,7 @@
       "expect": {
         "exitCode": 0,
         "frameBufferHash": "B08BA80981A37C54",
-        "audioHash": "956473CE5BD3BB69",
+        "audioHash": "6155DF1A78E1D6A7",
         "framesRun": 400,
         "distinctColors": 26,
         "result": "ok"
@@ -500,5 +500,5 @@
       }
     }
   ],
-  "goldenGeneratedUtc": "2026-10-23T03:21:27Z"
+  "goldenGeneratedUtc": "2026-10-30T00:04:53Z"
 }
