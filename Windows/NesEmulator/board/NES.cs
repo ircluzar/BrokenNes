@@ -457,6 +457,12 @@ namespace NesEmulator
 			try { if (st != null) { st.romHash = cartridge.rom.Length > 0 ? ComputeHash(cartridge.rom) : string.Empty; Log("ROM hash computed length="+ (st.romHash?.Length ?? 0)); } } catch (Exception ex) { Log("ROM hash FAILED: "+ex.GetType().Name+" "+ex.Message); }
 			string json = string.Empty;
 			try { Log("Serializing NesState root - start"); json = PlainSerialize(st!); Log($"Serializing NesState root - done length={json.Length}"); } catch (Exception ex) { Log("Root serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
+			// A state taken between power-on (or a reset) and the first frame still owes the 6502's reset sequence (the 8 cycles the
+			// first frame runs before its first opcode fetch, FIX cores). Without this a loaded power-on state skipped them: its first
+			// frame's instructions fell 8 cycles earlier and the frame ended a cycle off (overshootCarry, the cycle count), so a
+			// Timeflow replay from frame 0 went off at the keyframe 60 (found by T3). Written only while pending, so every other state
+			// is byte for byte what it was, and an older state (which never has it) loads as before: not pending.
+			if (resetSequencePending && json.Length > 1 && json[0] == '{') json = "{\"resetSequencePending\":true," + json.Substring(1);
 			var elapsed = DateTime.UtcNow - startTimestamp; Log("SaveState() complete in "+elapsed.TotalMilliseconds.ToString("F2")+" ms");
 			return json;
 		}
@@ -548,11 +554,13 @@ namespace NesEmulator
 			resetSequencePending = false; // the state carries its own timing
 			NesState? st = null;
 			bool loadedFixedPointTiming = false;
+			bool loadedResetPending = false;
 			try {
 				using var doc = System.Text.Json.JsonDocument.Parse(json);
 				var root = doc.RootElement;
 				st = new NesState();
 				if (root.TryGetProperty("cycleRemainder", out var cr)) st.cycleRemainder = cr.GetDouble();
+				loadedResetPending = root.TryGetProperty("resetSequencePending", out var rsp) && rsp.ValueKind == System.Text.Json.JsonValueKind.True;
 				// These two were always written by SaveState but never read back, so every load reset the
 				// fractional-cycle accumulator to 0: frames after a load ran up to a cycle long or short,
 				// and a savestate only round-tripped cleanly on frames where it happened to be 0 already
@@ -629,6 +637,7 @@ namespace NesEmulator
 				} catch { return; }
 			}
 			if (bus == null || cartridge == null) return; // still cannot proceed
+			resetSequencePending = loadedResetPending; // a power-on / reset state still owes its reset sequence (see SaveState)
 			// Always refresh ROM-backed domains from the ROM image to ensure clean PRG/CHR at load
 			try { cartridge.RefreshRomDomainsFromRom(); } catch { }
 			// Restore fixed-point timing accumulators (fallback to double if new ints absent)

@@ -266,8 +266,11 @@ public sealed class ProfileTarget
     /// <summary>
     /// The machine was just powered on with the timeline's ROM, cores and power-on RAM, and has run nothing. A span in the first keyframe block of a
     /// timeline that starts at power-on then re-runs from this power-on itself (its state checked equal to the recorded frame-0 state) rather than
-    /// from the loaded frame-0 state: a NES loaded with its power-on state runs its first frame one CPU cycle longer than the real power-on did
-    /// (found by T3: something the NES state does not hold), which a keyframe check would report as a desync at frame 60.
+    /// from the loaded frame-0 state. T3 added this because a NES loaded with its power-on state ran its first frame a cycle off (its pending reset
+    /// sequence was not in the state: fixed in T4, the state now says it, and a replay from a loaded frame 0 stays in sync, --timeflow-test
+    /// group poweron). It is kept because it still guards something: a loaded NES shows the picture from before the load for one frame, so only a
+    /// re-run from the power-on itself compares frame 0's picture too (and timelines recorded before T4, whose frame-0 state lacks the field,
+    /// fall back to the loaded state, said in the notes).
     /// </summary>
     public bool PoweredOn { get; init; }
 }

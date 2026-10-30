@@ -12,7 +12,7 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 namespace BrokenNes.Workshop.Timeflow;
 
 /// <summary>
-/// <c>--timeflow-test [--only form,codec,consoles,damage,stop,cap,off,branch,places,index,apu,profile,psync,pstore,pconsoles,pmeasure] [--long N] [--pframes N] [--keep DIR]</c>: milestones T1, T2 and T3 (TimeflowTestCli.Profile.cs)
+/// <c>--timeflow-test [--only form,codec,consoles,damage,stop,cap,off,branch,places,index,apu,poweron,profile,psync,pstore,pconsoles,pmeasure] [--long N] [--pframes N] [--keep DIR]</c>: milestones T1, T2 and T3 (TimeflowTestCli.Profile.cs)
 /// (docs/projects/brokendev-timeflow-plan.md). Every check has a negative control. The user's games run when they are on this machine (a
 /// missing one is NOT RUN, never a pass). BROKENDEV_HOME points at a scratch folder for the whole run (nothing is written to the real one).
 /// </summary>
@@ -39,7 +39,7 @@ internal static partial class TimeflowTestCli
     {
         RomTestCli.EnsureConsole();
         string Opt(string n, string d) { int i = Array.IndexOf(args, "--" + n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
-        var only = Opt("only", "form,codec,consoles,damage,stop,cap,off,branch,places,index,apu,profile,psync,pstore,pconsoles").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var only = Opt("only", "form,codec,consoles,damage,stop,cap,off,branch,places,index,apu,poweron,profile,psync,pstore,pconsoles").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
         int longFrames = int.Parse(Opt("long", "1800"));
         string dir = Opt("keep", Path.Combine(Path.GetTempPath(), "brokennes-timeflow-test-" + Environment.ProcessId));
         Directory.CreateDirectory(dir);
@@ -72,6 +72,7 @@ internal static partial class TimeflowTestCli
             Group("places", "where timelines go (never %APPDATA%\\BrokenNes)", () => Places(dir));
             Group("index", "the per-frame index: watched variables, the frame's coverage, changed bytes per domain, findings", () => Index(dir, planted));
             Group("apu", "APU_FIX's state carries its frame sequencer's step (found by Timeflow: a load kept the step of the machine loaded into)", () => ApuStep(nes));
+            Group("poweron", "a NES power-on state carries its pending reset sequence: a replay from frame 0 stays in sync (found by T3)", () => PowerOnReplay(nes));
             Group("profile", "T3: a profiled span's queries find the planted corruption exactly (the fixed build: nothing)", () => ProfileBug(dir));
             Group("psync", "T3: a profile's re-run stays in sync with the recording; a forced desync is found at its frame", () => ProfileSync(dir));
             Group("pstore", "T3: kept profiles: the stream's answers, the size limit, the TTL, the cap, the session's end, a crashed session, nothing left", () => ProfileStoreGroup(dir, home));
@@ -535,6 +536,41 @@ internal static partial class TimeflowTestCli
         using var mid = Open(nes);
         for (int f = 0; f < 150; f++) mid.Frame(PadButtons.None, PadButtons.None);
         Check("apu (negative): the step of another machine is not the saved one", Field(fresh.Host.Nes!.SaveState(), "frameCycle") != Field(mid.Host.Nes!.SaveState(), "frameCycle"), $"fresh frameCycle {Field(fresh.Host.Nes.SaveState(), "frameCycle")}, saved {Field(mid.Host.Nes.SaveState(), "frameCycle")}");
+    }
+
+    // ------------------------------------------------------------------------------------------------ poweron (the T2 finding of T3)
+
+    private static void PowerOnReplay(string nes)
+    {
+        var (tdir, _) = Record(nes, 200, input: "auto:2");
+        using var pb = new TimeflowPlayback(tdir);
+        string json0 = NesStateForm.Join(pb.Reader.State(0)), json1 = NesStateForm.Join(pb.Reader.State(1));
+        const string field = "\"resetSequencePending\":true,";
+        Check("poweron: the power-on state says its reset sequence is still owed; frame 1's does not", json0.Contains(field) && !json1.Contains("resetSequencePending"), $"frame 0 {(json0.Contains(field) ? "has" : "lacks")} it, frame 1 {(json1.Contains("resetSequencePending") ? "has" : "lacks")} it");
+        using (var m = TimeflowMachines.OpenFor(tdir, pb.Meta, false))
+        {
+            var src = TimeflowMachines.SourceFor(m);
+            pb.Jump(src, 0);
+            var r = pb.Replay(src, 0, pb.Reader.EndFrame, (a, b) => m.Frame(a, b));
+            Check("poweron: a replay from frame 0 (a loaded power-on state) stays in sync past the keyframes 60, 120 and 180", r.InSync && r.FramesRun == 200, $"{r.FramesRun} frames, {r.Checked} checks{(r.OffFrame != null ? $", off at {r.OffFrame} ({r.OffWhat})" : "")}");
+        }
+        // negative control: the same power-on state without the field (what a state was before the fix) goes off at the keyframe 60
+        using (var m = TimeflowMachines.OpenFor(tdir, pb.Meta, false))
+        {
+            var src = TimeflowMachines.SourceFor(m);
+            m.Host.Nes!.LoadState(json0.Replace(field, ""));
+            var r = pb.Replay(src, 0, pb.Reader.EndFrame, (a, b) => m.Frame(a, b));
+            Check("poweron (negative): the power-on state without it goes off at the keyframe 60", r.OffFrame == 60 && r.OffWhat.Contains("keyframe"), r.OffFrame != null ? $"off at {r.OffFrame} ({r.OffWhat})" : "stayed in sync");
+        }
+        // an ordinary state (mid-game) is byte for byte what it was: no field
+        using (var m = Open(nes))
+        {
+            m.Frame(PadButtons.None, PadButtons.None);
+            string mid = m.Host.Nes!.SaveState();
+            m.Host.Nes.Reset();
+            string afterReset = m.Host.Nes.SaveState();
+            Check("poweron: a state after a frame has no field; one right after a reset has it", !mid.Contains("resetSequencePending") && afterReset.StartsWith("{" + field), $"after a frame {(mid.Contains("resetSequencePending") ? "has" : "lacks")} it, after a reset {(afterReset.Contains(field) ? "has" : "lacks")} it");
+        }
     }
 
     // ------------------------------------------------------------------------------------------------ places
