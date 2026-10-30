@@ -118,6 +118,10 @@ namespace BrokenNes.Windows
                 losses = am?.DeviceLosses ?? 0,
                 lastError = am?.LastDeviceError,
                 windowsDevices = AudioManager.PlaybackDeviceCount(),
+                stats = am?.Stats(),
+                // the pacing figures: every frame the emulation ran, and the rate it is paced at (the console's own)
+                framesEmulated = Interlocked.Read(ref framesEmulated),
+                pacedFps = session?.FramesPerSecond is double sf and > 20 and < 200 ? sf : 60.0988,
             };
         }
 

@@ -54,6 +54,8 @@ namespace BrokenNes.Windows
         // FPS tracking for audio speed adjustment
         private double currentFps = 60.0;
         private int fpsFrameCount = 0;
+        /// <summary>Every frame the emulation loop ran (NES and console sessions), for GET /api/audio/device's pacing figures.</summary>
+        private long framesEmulated;
         private System.Diagnostics.Stopwatch? fpsStopwatch;
         
         // Debug: Track render frame calls

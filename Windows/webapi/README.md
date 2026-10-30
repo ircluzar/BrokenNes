@@ -296,7 +296,7 @@ The console keys are `nes`, `snes`, `gb`, `gbc`, `sms`, `gg`, `md`. Core ids are
 | Verb | Route | Purpose |
 | --- | --- | --- |
 | GET / POST | `/api/audio/emulation-volume` | The menu bar's volume panel: `volume` 0-100, `muted`, `removeHighPitched`, `highPitchCeilingNote`, the Genesis FM patch (`genesisFmPatch` 0-15, used by the NES APU core MD) and the Master System FM instrument (`smsFmPatch` 0-21, used by the core SMSFM). Any field may be left out |
-| GET | `/api/audio/device` | The emulation's playback device: `state` Open / NoDevice / Lost (no device: silent running, opened when one appears, reopened after a loss; no dialog), `opens`, `losses`, `lastError`, `bufferedMs` (-1 without a device), `windowsDevices` |
+| GET | `/api/audio/device` | The emulation's playback device: `state` Open / NoDevice / Lost (no device: silent running, opened when one appears, reopened after a loss; no dialog), `opens`, `losses`, `lastError`, `bufferedMs` (-1 without a device), `windowsDevices`; `stats`: the output (`output` wasapi / waveout, `pacing` clock / legacy, `sampleRate`), what the device took (`reads`, `bytesRead`, `readRateHz` = the rate it really takes sound at, `underruns`, `maxReadGapMs`), what we gave it (`samplesSubmitted`, `primes`, `overflows` = trimmed frames, `rate`, `queueEmaMs`); `framesEmulated`, `pacedFps` (UAT/entrypoints/audio-pacing-desktop-smoke.ps1 reads these) |
 
 ### Audio - `WebApiServer.Endpoints.Audio.cs`
 

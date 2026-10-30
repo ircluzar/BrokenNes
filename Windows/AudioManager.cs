@@ -29,6 +29,46 @@ namespace BrokenNes.Windows
         // Latency control
         private const int DesiredLatencyMs = 50;
 
+        // ------------------------------------------------------------------ output and pacing (2026-10-29)
+        // WHY THIS CHANGED. The device used to be a WinMM WaveOutEvent (3 buffers of 17 ms = 750 samples) and the emulation loop
+        // made frames only when this queue drained (audio-driven pacing). On the dev machine's Focusrite USB device the WinMM path
+        // took each 750-sample buffer in whole device periods of 512 samples, so every buffer played as 1024 samples' worth of
+        // time (2 x 11.6 ms = 23.2 ms for 17 ms of sound): measured 43 reads a second, 32,150 samples a second taken for 44,100
+        // produced (73 %), a silent gap after every buffer (the "choppy" sound), and - since the queue then drained at 73 % -
+        // the game ran at 44 fps. Now: WASAPI shared mode, event-driven (the device takes exactly what it plays, at its own
+        // clock), the frames are paced by the clock at the console's own rate, and the queue is held near TargetQueueMs by
+        // resampling by at most +-0.5 % (dynamic rate control: a device clock a little off from ours never moves the frame rate).
+        // BROKENNES_AUDIO_LEGACY=1 brings back all of the old behaviour (WinMM, audio-driven pacing, 4096-sample chunks) for the
+        // negative control (UAT/entrypoints/audio-pacing-desktop-smoke.ps1); BROKENNES_AUDIO_OUTPUT=waveout keeps the new pacing
+        // on the old WinMM device.
+        /// <summary>BROKENNES_AUDIO_LEGACY=1: the old WinMM output, audio-driven frame pacing and 4096-sample chunks.</summary>
+        public static readonly bool Legacy = Environment.GetEnvironmentVariable("BROKENNES_AUDIO_LEGACY") == "1";
+        /// <summary>True when the emulation loop should make frames by the audio queue (the old way) instead of the clock.</summary>
+        public static bool LegacyPacing => Legacy;
+        private static readonly bool UseWaveOut = Legacy
+            || string.Equals(Environment.GetEnvironmentVariable("BROKENNES_AUDIO_OUTPUT"), "waveout", StringComparison.OrdinalIgnoreCase);
+        private const int WasapiLatencyMs = 30;   // the WASAPI buffer (the device period, 10 ms here, is taken out of it)
+        private const int TargetQueueMs = 60;     // our own queue in front of it (measured: ~80 ms just after a frame is added, + the 30 = ~110 ms; the old path ran ~120 + 50)
+        private const int PrimeBelowMs = 8;       // queue nearly empty (start-up, after a stall): top it up to the target with silence
+        private const int TrimAboveMs = 100;      // queue this deep (piled up after a stall + catch-up, or a device not taking sound): drop the frame's samples
+        private const double MaxRateAdjust = 0.005;   // +-0.5 % = at most 8.6 cents: inaudible
+        private double queueEma = -1;             // smoothed queue depth (ms) the rate control steers by
+        private double resamplePos;               // the streaming resampler: next output position, in input samples after `resamplePrev`
+        private float resamplePrev;
+        /// <summary>The output in use: "wasapi", "waveout" or "" with no device.</summary>
+        public string OutputName { get; private set; } = "";
+        private long primes, overflows, samplesSubmitted;
+        private double lastRate = 1.0;
+        private readonly System.Diagnostics.Stopwatch submitClock = System.Diagnostics.Stopwatch.StartNew();
+        /// <summary>BROKENNES_AUDIO_SUBMIT_LOG names a file: every submission is logged there as "ms samples queueMs" (for the
+        /// pacing smoke's gap analysis; off by default).</summary>
+        private static readonly string? SubmitLogPath = Environment.GetEnvironmentVariable("BROKENNES_AUDIO_SUBMIT_LOG");
+        private StreamWriter? submitLog;
+        /// <summary>BROKENNES_AUDIO_SUBMIT_WAV names a file: the samples the emulation handed over (before the rate conversion), as a
+        /// float mono WAV at their own rate, to compare with a headless render of the same ROM (off by default).</summary>
+        private static readonly string? SubmitWavPath = Environment.GetEnvironmentVariable("BROKENNES_AUDIO_SUBMIT_WAV");
+        private WaveFileWriter? submitWav;
+
         /// <summary>
         /// Emulation output volume, 0..1, set from the menu bar's volume button. App-wide rather than per
         /// instance so it survives the audio device being rebuilt (sound quality changes, console switches).
@@ -64,10 +104,14 @@ namespace BrokenNes.Windows
             // unplugged) the emulator runs silently and the watcher below opens one as soon as it appears; a device that
             // goes away mid-game is closed and reopened the same way. Nothing here throws for a missing device.
             wantPlaying = true;
+            if (!string.IsNullOrEmpty(SubmitLogPath))
+            {
+                try { submitLog = new StreamWriter(SubmitLogPath, append: false) { AutoFlush = false }; } catch (Exception ex) { Console.WriteLine($"[Audio] submit log: {ex.Message}"); }
+            }
             lock (deviceLock) TryOpenDevice("start-up");
             monitor = new System.Threading.Timer(_ => WatchDevice(), null, MonitorIntervalMs, MonitorIntervalMs);
 
-            Console.WriteLine($"AudioManager initialized: {sampleRate}Hz, {channels} channel(s), {DesiredLatencyMs}ms latency, device: {DeviceState}");
+            Console.WriteLine($"AudioManager initialized: {sampleRate}Hz, {channels} channel(s), output {(OutputName == "" ? "none" : OutputName)}, pacing {(Legacy ? "legacy (audio-driven)" : "clock + rate control")}, device: {DeviceState}");
         }
 
         // ------------------------------------------------------------------ the playback device: open, missing, lost, back
@@ -76,7 +120,7 @@ namespace BrokenNes.Windows
         public enum AudioDeviceState { Open, NoDevice, Lost }
 
         private readonly object deviceLock = new();
-        private WaveOutEvent? waveOut;
+        private IWavePlayer? waveOut;
         private volatile bool deviceOpen;
         private volatile bool deviceFailed;     // set by the device's own PlaybackStopped-with-an-error
         private volatile bool wantPlaying;      // what the app asked (Play / Stop), applied to whatever device is open
@@ -127,16 +171,42 @@ namespace BrokenNes.Windows
                 SetState(DeviceState == AudioDeviceState.Lost ? AudioDeviceState.Lost : AudioDeviceState.NoDevice, LastDeviceError);
                 return false;
             }
-            WaveOutEvent? w = null;
+            IWavePlayer? w = null;
             try
             {
-                w = new WaveOutEvent { DesiredLatency = DesiredLatencyMs, NumberOfBuffers = 3 };
-                w.PlaybackStopped += OnPlaybackStopped;
-                w.Init(diag);
+                string name = "waveout";
+                if (!UseWaveOut)
+                {
+                    // WASAPI's objects are made, started, stopped and freed on MTA threads only (OnMta), never on the STA UI
+                    // thread, where a call from another thread would need a COM proxy NAudio's interop does not have (and made off
+                    // the UI thread, NAudio raises PlaybackStopped on its own thread instead of posting it to the UI's).
+                    IWavePlayer? made = null;
+                    try
+                    {
+                        OnMta(() =>
+                        {
+                            var wo = new NAudio.Wave.WasapiOut(NAudio.CoreAudioApi.AudioClientShareMode.Shared, true, WasapiLatencyMs);
+                            try { wo.Init(diag); made = wo; } catch { wo.Dispose(); throw; }
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        // not hidden: said here, and GET /api/audio/device's stats.output says "waveout"
+                        Console.WriteLine($"[Audio] WASAPI would not open the device ({ex.Message}): using WinMM (waveOut) instead");
+                    }
+                    if (made != null) { w = made; name = "wasapi"; w.PlaybackStopped += OnPlaybackStopped; }
+                }
+                if (w == null)
+                {
+                    w = new WaveOutEvent { DesiredLatency = DesiredLatencyMs, NumberOfBuffers = 3 };
+                    w.PlaybackStopped += OnPlaybackStopped;
+                    w.Init(diag);
+                }
                 waveProvider.ClearBuffer();              // nothing stale from the silent time
+                queueEma = -1;
                 Interlocked.Exchange(ref lastReadTicks, Environment.TickCount64);
-                if (wantPlaying) w.Play();
-                waveOut = w; deviceOpen = true; deviceFailed = false; DeviceOpens++;
+                if (wantPlaying) { var p = w; OnMta(() => p.Play()); }
+                waveOut = w; deviceOpen = true; deviceFailed = false; DeviceOpens++; OutputName = name;
                 LastDeviceError = null;
                 SetState(AudioDeviceState.Open, why);
                 return true;
@@ -145,7 +215,8 @@ namespace BrokenNes.Windows
             {
                 LastDeviceError = ex.Message;
                 Console.WriteLine($"[Audio] could not open the playback device ({why}): {ex.Message} - running silently, trying again every {MonitorIntervalMs} ms");
-                if (w != null) { w.PlaybackStopped -= OnPlaybackStopped; try { w.Dispose(); } catch { } }
+                if (w != null) { w.PlaybackStopped -= OnPlaybackStopped; var d = w; try { OnMta(() => d.Dispose()); } catch { } }
+                OutputName = "";
                 SetState(DeviceState == AudioDeviceState.Lost ? AudioDeviceState.Lost : AudioDeviceState.NoDevice, ex.Message);
                 return false;
             }
@@ -154,7 +225,7 @@ namespace BrokenNes.Windows
         /// <summary>Close the open device after it went away (under deviceLock): silent running until it can be opened again.</summary>
         private void CloseLostDevice(string why)
         {
-            var w = waveOut; waveOut = null; deviceOpen = false;
+            var w = waveOut; waveOut = null; deviceOpen = false; OutputName = "";
             if (w != null)
             {
                 w.PlaybackStopped -= OnPlaybackStopped;
@@ -199,15 +270,25 @@ namespace BrokenNes.Windows
             finally { Monitor.Exit(deviceLock); }
         }
         
+        /// <summary>Runs <paramref name="a"/> on an MTA thread (this one when it is MTA already): the WASAPI objects never meet the UI thread's STA.</summary>
+        private static void OnMta(Action a)
+        {
+            if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA) { a(); return; }
+            System.Threading.Tasks.Task.Run(a).GetAwaiter().GetResult();
+        }
+
         /// <summary>
         /// Queue audio samples from the APU for playback.
         /// </summary>
         /// <param name="samples">Float samples in range [-1.0, 1.0]</param>
-        public void QueueSamples(float[] samples)
+        /// <param name="sourceRate">The rate the samples were made at (0 = the output's own rate): the NES APUs make 44100 whatever
+        /// Sound Quality says, so at 22050 / 48000 they are converted here rather than played at the wrong pitch and speed.</param>
+        public void QueueSamples(float[] samples, int sourceRate = 0)
         {
             if (disposed || samples == null || samples.Length == 0 || sampleBuffer == null)
                 return;
-            
+            if (!Legacy) { QueueSamplesPaced(samples, sourceRate <= 0 ? sampleRate : sourceRate); return; }
+
             try
             {
                 // Resample audio based on speed multiplier
@@ -253,6 +334,81 @@ namespace BrokenNes.Windows
             }
         }
         
+        /// <summary>The clock-paced path: rate-convert (source rate, speed, and the +-0.5 % that holds the queue at its target) with a
+        /// streaming linear resampler that carries its phase from frame to frame, then hand the frame's samples to the device at once
+        /// (no 4096-sample chunks: the queue moves by one frame at a time, so the rate control sees a smooth level).</summary>
+        private void QueueSamplesPaced(float[] samples, int sourceRate)
+        {
+            try
+            {
+                if (!deviceOpen) { queueEma = -1; return; }   // nothing would play them; queued up they would only be stale when one appears
+                int bytesPerFrame = bytesPerSample * channels;
+                double queueMs = waveProvider.BufferedBytes * 1000.0 / (sampleRate * bytesPerFrame);
+                if (queueMs > TrimAboveMs) { overflows++; Log(0, queueMs); return; }   // do not let latency pile up: skip this frame's sound (transients only)
+                if (queueMs < PrimeBelowMs)
+                {
+                    // start-up, after a pause, after a stall: start again from the target depth instead of creeping up to it
+                    int pad = (int)((TargetQueueMs - queueMs) * sampleRate / 1000.0);
+                    if (pad > 0) { AddPcm(new float[pad], pad, 0f); }
+                    queueMs += pad * 1000.0 / sampleRate;
+                    queueEma = queueMs;
+                    primes++;
+                }
+                queueEma = queueEma < 0 ? queueMs : queueEma + 0.05 * (queueMs - queueEma);
+                double adjust = Math.Clamp((TargetQueueMs - queueEma) / TargetQueueMs * MaxRateAdjust * 2, -MaxRateAdjust, MaxRateAdjust);
+                double speed = Math.Clamp(speedMultiplier, 0.1f, 10f);
+                double rate = (double)sampleRate / sourceRate / speed * (1.0 + adjust);   // output samples per input sample
+                lastRate = rate;
+                double step = 1.0 / rate;
+                int n = samples.Length;
+                int cap = (int)(n * rate) + 4;
+                float[] outBuf = cap <= sampleBuffer.Length ? sampleBuffer : new float[cap];
+                int o = 0;
+                double t = resamplePos;   // in input indices, -1 = resamplePrev (the last sample of the frame before)
+                while (t <= n - 1 && o < outBuf.Length)
+                {
+                    int i0 = (int)Math.Floor(t);
+                    float frac = (float)(t - i0);
+                    float a = i0 < 0 ? resamplePrev : samples[i0];
+                    float b = i0 + 1 < n ? samples[i0 + 1] : a;
+                    outBuf[o++] = a + (b - a) * frac;
+                    t += step;
+                }
+                resamplePos = Math.Max(-1.0, t - n);
+                resamplePrev = samples[n - 1];
+                if (SubmitWavPath is { Length: > 0 } && !disposed)
+                {
+                    try { submitWav ??= new WaveFileWriter(SubmitWavPath, WaveFormat.CreateIeeeFloatWaveFormat(sourceRate, 1)); submitWav.WriteSamples(samples, 0, n); } catch { }
+                }
+                AddPcm(outBuf, o, Muted ? 0f : MasterVolume);
+                Log(o, queueMs);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AudioManager] Error queueing samples: {ex.Message}");
+            }
+        }
+
+        private void Log(int count, double queueMs)
+        {
+            samplesSubmitted += count;
+            if (submitLog == null) return;
+            try { submitLog.WriteLine($"{submitClock.Elapsed.TotalMilliseconds:F2} {count} {queueMs:F1}"); } catch { }
+        }
+
+        private void AddPcm(float[] src, int count, float gain)
+        {
+            if (count <= 0) return;
+            byte[] audioData = new byte[count * bytesPerSample * channels];
+            int bi = 0;
+            for (int i = 0; i < count; i++)
+            {
+                short pcm = (short)(Math.Clamp(src[i] * gain, -1.0f, 1.0f) * short.MaxValue);
+                for (int c = 0; c < channels; c++) { audioData[bi++] = (byte)(pcm & 0xFF); audioData[bi++] = (byte)((pcm >> 8) & 0xFF); }
+            }
+            try { waveProvider.AddSamples(audioData, 0, audioData.Length); } catch { }
+        }
+
         /// <summary>
         /// Resample audio to match the current emulation speed.
         /// </summary>
@@ -414,6 +570,7 @@ namespace BrokenNes.Windows
         /// </summary>
         public void ClearBuffer()
         {
+            queueEma = -1;
             waveProvider.ClearBuffer();
             bufferPosition = 0;
             Array.Clear(sampleBuffer, 0, sampleBuffer.Length);
@@ -427,7 +584,7 @@ namespace BrokenNes.Windows
             wantPlaying = false;
             lock (deviceLock)
             {
-                try { waveOut?.Stop(); } catch (Exception ex) { Console.WriteLine($"[Audio] stop: {ex.Message}"); deviceFailed = true; }
+                try { var w = waveOut; if (w != null) OnMta(() => w.Stop()); } catch (Exception ex) { Console.WriteLine($"[Audio] stop: {ex.Message}"); deviceFailed = true; }
             }
         }
         
@@ -440,7 +597,7 @@ namespace BrokenNes.Windows
             lock (deviceLock)
             {
                 Interlocked.Exchange(ref lastReadTicks, Environment.TickCount64);
-                try { if (waveOut != null && waveOut.PlaybackState != PlaybackState.Playing) waveOut.Play(); }
+                try { var w = waveOut; if (w != null && w.PlaybackState != PlaybackState.Playing) OnMta(() => w.Play()); }
                 catch (Exception ex) { Console.WriteLine($"[Audio] play: {ex.Message}"); deviceFailed = true; }
             }
         }
@@ -455,6 +612,20 @@ namespace BrokenNes.Windows
         /// Get the current playback state.
         /// </summary>
         public PlaybackState PlaybackState => waveOut?.PlaybackState ?? PlaybackState.Stopped;
+
+        public object Stats()
+        {
+            double secs = (System.Diagnostics.Stopwatch.GetTimestamp() - diag.StartTs) / (double)System.Diagnostics.Stopwatch.Frequency;
+            return new
+            {
+                output = OutputName, pacing = Legacy ? "legacy" : "clock", sampleRate,
+                reads = diag.TotalReads, bytesRead = diag.TotalBytesRead, underruns = diag.TotalUnderruns, seconds = secs,
+                // how fast the device really takes sound, in samples a second (44100 at 44100 when it plays in real time)
+                readRateHz = diag.TotalBytesRead / (double)(bytesPerSample * channels) / Math.Max(secs, 1e-6),
+                maxReadGapMs = diag.MaxGapTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                samplesSubmitted, primes, overflows, rate = lastRate, queueEmaMs = queueEma,
+            };
+        }
         
         private readonly UnderrunMeter diag;
 
@@ -468,7 +639,8 @@ namespace BrokenNes.Windows
             private readonly string logPath = System.IO.Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BrokenNes", "audio-diag.log");
             private long lastLog, reads, underruns, minBuffered = long.MaxValue;
-            public long TotalUnderruns;
+            public long TotalUnderruns, TotalReads, TotalBytesRead, MaxGapTicks, lastReadTs;
+            public readonly long StartTs = System.Diagnostics.Stopwatch.GetTimestamp();
             public WaveFormat WaveFormat => inner.WaveFormat;
             private readonly Action onRead;
             public UnderrunMeter(BufferedWaveProvider p, Action onRead) { inner = p; this.onRead = onRead; }
@@ -476,6 +648,9 @@ namespace BrokenNes.Windows
             public int Read(byte[] buffer, int offset, int count)
             {
                 onRead();
+                long ts = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (lastReadTs != 0 && ts - lastReadTs > MaxGapTicks) MaxGapTicks = ts - lastReadTs;
+                lastReadTs = ts; TotalReads++; TotalBytesRead += count;
                 int buffered = inner.BufferedBytes;
                 reads++;
                 if (buffered < count) { underruns++; TotalUnderruns++; }
@@ -520,7 +695,7 @@ namespace BrokenNes.Windows
                 lock (deviceLock)
                 {
                     var w = waveOut; waveOut = null; deviceOpen = false;
-                    if (w != null) { w.PlaybackStopped -= OnPlaybackStopped; w.Stop(); w.Dispose(); }
+                    if (w != null) { w.PlaybackStopped -= OnPlaybackStopped; OnMta(() => { w.Stop(); w.Dispose(); }); }
                 }
             }
             catch (Exception ex)
@@ -528,6 +703,8 @@ namespace BrokenNes.Windows
                 Console.WriteLine($"[AudioManager] Error disposing WaveOut: {ex.Message}");
             }
             
+            try { submitLog?.Flush(); submitLog?.Dispose(); } catch { }
+            try { submitWav?.Dispose(); } catch { }
             Console.WriteLine("AudioManager disposed");
         }
     }

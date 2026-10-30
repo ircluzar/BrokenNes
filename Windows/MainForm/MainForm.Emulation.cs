@@ -251,9 +251,25 @@ namespace BrokenNes.Windows
                         Thread.Sleep(1);
                     }
                 }
+                else if (!AudioManager.LegacyPacing)
+                {
+                    // CLOCK TIMING (2026-10-29): one frame per period of the console's own rate, whatever the sound device does. The
+                    // audio queue is held at its depth by AudioManager's +-0.5 % rate control instead of by making more or fewer frames.
+                    // The audio-driven pacing below let the device's consumption set the frame rate: a device that took sound at 73 %
+                    // of real time (WinMM on a Focusrite USB device, see AudioManager) made the game run at 44 fps. It is kept behind
+                    // BROKENNES_AUDIO_LEGACY=1 as the negative control.
+                    long now = stopwatch.ElapsedTicks;
+                    if (now >= nextFrameTime)
+                    {
+                        framesToRun = 1;
+                        nextFrameTime += targetFrameTicks;   // from the previous deadline: a late wake-up is made up on the next frame
+                        if (now - nextFrameTime > targetFrameTicks * 8) nextFrameTime = now + targetFrameTicks;   // after a long stall: resync, do not fast-forward
+                    }
+                    else framesToRun = 0;
+                }
                 else
                 {
-                    // AUDIO-DRIVEN TIMING: Let audio buffer level guide frame production
+                    // AUDIO-DRIVEN TIMING (legacy, BROKENNES_AUDIO_LEGACY=1): Let audio buffer level guide frame production
                     // This prevents the doppler effect and audio pops
                     
                     long now = stopwatch.ElapsedTicks;
@@ -411,7 +427,7 @@ namespace BrokenNes.Windows
                             MaybeAutoSaveBatteryRam();
 
                             // Track FPS for display and audio speed adjustment
-                            fpsFrameCount++;
+                            fpsFrameCount++; Interlocked.Increment(ref framesEmulated);
                             if (fpsStopwatch != null && fpsStopwatch.Elapsed.TotalSeconds >= 0.5)
                             {
                                 currentFps = fpsFrameCount / fpsStopwatch.Elapsed.TotalSeconds;
@@ -436,7 +452,7 @@ namespace BrokenNes.Windows
                                         float[] audioSamples = nes.GetAudioBuffer();
                                         if (audioSamples != null && audioSamples.Length > 0)
                                         {
-                                            audioManager.QueueSamples(audioSamples);
+                                            audioManager.QueueSamples(audioSamples, nes.GetAudioSampleRate());
                                             BugAudio(audioSamples, audioSamples.Length);
                                         }
                                     }
