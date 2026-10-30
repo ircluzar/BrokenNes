@@ -20,7 +20,7 @@ namespace BrokenNes.Workshop.Timeflow;
 /// Workshop's own machines (never the user's play: the desktop app records only when the user switches it on).
 /// <code>
 ///   --timeflow record  --rom R [--console c] [--cores C/P/A] --frames N [--input "120:Start,132:" | --input auto[:seed] | --movie M.bnm] [--input2 S]
-///                      [--var name=expr]... [--sym F]... [--coverage] [--checks] [--key-every 60] [--page 256] [--codec brotli:1|deflate:0|none]
+///                      [--var name=expr]... [--sym F]... [--coverage] [--accesses] [--checks] [--key-every 60] [--page 256] [--codec brotli:1|deflate:0|none]
 ///                      [--game-dir DIR] [--cap-gb 5] [--note TEXT] [--json]
 ///   --timeflow list    [--project P | --game-dir DIR] [--json]                 every game's timelines (a branch under its parent), with the space used
 ///   --timeflow info    --timeline ID|DIR [--json]
@@ -44,7 +44,7 @@ internal static class TimeflowCli
         string Opt(string n, string d = "") { int i = Array.FindIndex(args, 2, a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
         List<string> All(string n) { var l = new List<string>(); for (int i = 2; i < args.Length - 1; i++) if (args[i].Equals("--" + n, StringComparison.OrdinalIgnoreCase)) l.Add(args[i + 1]); return l; }
         bool Has(string n) => args.Skip(2).Any(a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase));
-        if (args.Length < 2) { Console.Error.WriteLine("usage: --timeflow record|list|info|verify|jump|resume|prune|keep|status|measure|profile|profile-query|profiles|profile-keep|profile-drop|profile-sweep|profile-measure|profile-rom ... (see Workshop/Timeflow/TimeflowCli.cs and TimeflowProfileCli.cs)"); return 2; }
+        if (args.Length < 2) { Console.Error.WriteLine("usage: --timeflow record|list|info|verify|jump|resume|prune|keep|status|measure|search|search-measure|profile|profile-query|profiles|profile-keep|profile-drop|profile-sweep|profile-measure|profile-rom ... (see Workshop/Timeflow/TimeflowCli.cs and TimeflowProfileCli.cs)"); return 2; }
         if (Opt("home") is { Length: > 0 } home) Environment.SetEnvironmentVariable("BROKENDEV_HOME", home);
         bool json = Has("json");
         try
@@ -75,6 +75,8 @@ internal static class TimeflowCli
                 }
                 case "status": return Status(json);
                 case "measure": return TimeflowMeasure.Run(Opt, All, Has);
+                case "search": return TimeflowSearching.Cli((n, d) => Opt(n, d), All, Has, json);
+                case "search-measure": return TimeflowSearchMeasure.Run((n, d) => Opt(n, d), All, Has, json);
                 case "profile" or "profile-query" or "profiles" or "profile-keep" or "profile-drop" or "profile-sweep" or "profile-measure" or "profile-rom":
                     return TimeflowProfiling.Cli(args[1].ToLowerInvariant(), (n, d) => Opt(n, d), All, Has, json);
                 default: Console.Error.WriteLine($"unknown verb '{args[1]}'"); return 2;
@@ -108,9 +110,9 @@ internal static class TimeflowCli
         var input = TimeflowInput.Parse(Opt("input", ""), Opt("input2", ""), Opt("movie", "") is { Length: > 0 } mp ? mp : null);
         long frames = long.TryParse(Opt("frames", ""), out long fr) && fr > 0 ? fr : input.MovieFrames ?? throw new ArgumentException("--frames N is needed");
         var vars = All("var").Select(v => { int e = v.IndexOf('='); return e > 0 ? (Name: v[..e].Trim(), Expr: v[(e + 1)..].Trim()) : throw new ArgumentException($"--var '{v}': name=expression"); }).ToList();
-        bool coverage = Has("coverage"), checks = Has("checks");
+        bool coverage = Has("coverage"), checks = Has("checks"), accesses = Has("accesses");
         using var m = MovieMachine.Open(rom, Opt("console", "") is { Length: > 0 } c ? c : null, Opt("cores", ""), Opt("power-on", "fceux"), Has("ntsc"), true, All("sym"));
-        if ((vars.Count > 0 || coverage || checks) && !m.HasDebugger) throw new NotSupportedException($"watched variables, coverage and checks need the debugger, which does not cover the {m.ConsoleKey} yet (T0)");
+        if ((vars.Count > 0 || coverage || checks || accesses) && !m.HasDebugger) throw new NotSupportedException($"watched variables, coverage, access counts and checks need the debugger, which does not cover the {m.ConsoleKey} yet (T0)");
         var src = TimeflowMachines.SourceFor(m);
         var o = ParseCodec(new TimeflowOptions(), Opt("codec", ""));
         o.Rom = m.RomFile; o.RomName = m.RomName; o.Cores = m.Cores; o.PowerOn = m.PowerOn; o.Ntsc = m.PowerOnNtsc; o.Source = "workshop"; o.Note = Opt("note", "");
@@ -123,6 +125,8 @@ internal static class TimeflowCli
         if (vars.Count > 0) { var dbg = m.Host.Dbg; o.VarNames = vars.Select(v => $"{v.Name}={v.Expr}").ToList(); o.Vars = () => vars.Select(v => dbg.Evaluate(v.Expr)).ToArray(); }
         FrameCoverage? cov = coverage ? FrameCoverage.Attach(m.Host.Dbg) : null;
         o.Coverage = cov;
+        FrameAccesses? acc = accesses ? FrameAccesses.Attach(m.Host.Dbg) : null;
+        o.Accesses = acc;
         if (checks) o.Checks = CheckRun.Attach(m.Host.Dbg, new CheckOptions { Profile = false });
         var sw = Stopwatch.StartNew();
         var rec = TimeflowRecorder.Start(src, o);
@@ -139,6 +143,7 @@ internal static class TimeflowCli
         string dir = rec.Stop();
         double total = sw.Elapsed.TotalSeconds;
         cov?.Detach();
+        acc?.Detach();
         using var rd = new TimelineReader(dir);
         var j = InfoJson(dir, rd);
         j["fps"] = Math.Round(f / Math.Max(1e-9, emuSec), 1);
@@ -170,7 +175,7 @@ internal static class TimeflowCli
             ["bytesPerFrame"] = rd.Frames > 0 ? Math.Round((double)bytes / rd.Frames, 1) : 0,
             ["storedBytesPerFrame"] = rd.Frames > 0 ? Math.Round((double)m.StoredBytes / rd.Frames, 1) : 0,
             ["verifiedFrames"] = m.VerifiedFrames, ["verifyFailures"] = m.VerifyFailures, ["keep"] = m.Keep,
-            ["vars"] = new JsonArray(m.Vars.Select(v => (JsonNode)v).ToArray()), ["coverage"] = m.Coverage, ["checks"] = m.Checks,
+            ["vars"] = new JsonArray(m.Vars.Select(v => (JsonNode)v).ToArray()), ["coverage"] = m.Coverage, ["checks"] = m.Checks, ["accesses"] = m.Accesses,
             ["domains"] = new JsonArray(m.Domains.Select(d => (JsonNode)$"{d.Id} {d.Size}").ToArray()),
             ["created"] = m.CreatedUtc.ToString("o"), ["lastUsed"] = m.LastUsedUtc.ToString("o"),
         };

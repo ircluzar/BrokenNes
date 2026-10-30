@@ -46,6 +46,8 @@ public sealed class TimeflowOptions
     public Func<long[]>? Vars;
     /// <summary>The per-frame coverage (D9's map, by frame), when the debugger is attached and coverage is asked for.</summary>
     public FrameCoverage? Coverage;
+    /// <summary>T4: the per-frame access counts (reads and writes per 256-byte page), when the debugger is attached and they are asked for.</summary>
+    public FrameAccesses? Accesses;
     /// <summary>The hardware checks (D4), when they are on: the findings first seen in a frame go into its index row.</summary>
     public ConsoleChecks? Checks;
     /// <summary>The cap in bytes (null: the game folder's own, 5 GB by default).</summary>
@@ -75,6 +77,7 @@ public sealed class TimeflowRecorder : IDisposable
         public long[] Vars = Array.Empty<long>();
         public List<string> Findings = new();
         public List<(uint, uint)> Coverage = new();
+        public List<TimelineExtras.AccessPage>? Accesses;
     }
 
     private readonly TimeflowSource src;
@@ -155,7 +158,7 @@ public sealed class TimeflowRecorder : IDisposable
             Cores = TimeflowOptions.NormalizeCores(opt.Cores), PowerOn = opt.PowerOn, Ntsc = opt.Ntsc, Project = project, Source = opt.Source, Note = opt.Note,
             CreatedUtc = DateTime.UtcNow, LastUsedUtc = DateTime.UtcNow, StartFrame = opt.StartFrame, PowerOnStart = opt.PowerOnStart,
             ParentId = opt.ParentId, ParentFrame = opt.ParentFrame, KeyEvery = Math.Max(1, opt.KeyEvery), PageSize = Math.Max(16, opt.PageSize),
-            Compression = opt.Compression, Level = opt.Level, Vars = opt.VarNames.ToList(), Coverage = opt.Coverage != null, Checks = opt.Checks != null,
+            Compression = opt.Compression, Level = opt.Level, Vars = opt.VarNames.ToList(), Coverage = opt.Coverage != null, Checks = opt.Checks != null, Accesses = opt.Accesses != null,
         };
         if (src.Header is { } h) { meta.Units = new Dictionary<string, string>(h.Units); meta.GameId = h.GameId; meta.Title = h.Title; }
         foreach (var d in src.Domains.Where(d => d.Unavailable == null && d.Kind != DomainKind.Rom && d.Size > 0)) meta.Domains.Add(new TimelineDomain { Id = d.Id, Size = d.Size });
@@ -218,6 +221,7 @@ public sealed class TimeflowRecorder : IDisposable
         }
         if (opt.Vars != null) { try { it.Vars = opt.Vars(); } catch (Exception e) { Fail($"a watched variable could not be read: {e.Message}"); return; } }
         if (opt.Coverage != null) { opt.Coverage.TakeFrame(it.Coverage); }
+        if (opt.Accesses != null) it.Accesses = opt.Accesses.TakeFrame();
         if (opt.Checks != null)
             foreach (var f in opt.Checks.Findings)
                 if (findingsSeen.Add(f.Key)) it.Findings.Add($"{f.Rule} at {f.Place}");
@@ -263,7 +267,7 @@ public sealed class TimeflowRecorder : IDisposable
             {
                 if (stopReason != null) break;
                 var row = new TimelineRow { P1 = (ushort)it.P1, P2 = (ushort)it.P2, Picture = it.Picture, Ram = it.Ram };
-                var ex = new TimelineExtras { Vars = it.Vars, Findings = it.Findings, Coverage = it.Coverage };
+                var ex = new TimelineExtras { Vars = it.Vars, Findings = it.Findings, Coverage = it.Coverage, Accesses = it.Accesses };
                 int ip = writer.Meta.IndexPage;
                 for (int i = 0; i < it.Domains.Length; i++)
                 {
@@ -392,5 +396,47 @@ public sealed class FrameCoverage : DebugObserver
         }
         foreach (uint o in touched) ran[o] = false;
         touched.Clear();
+    }
+}
+
+/// <summary>
+/// T4: the memory accesses of each frame for the timeline's index (the coarse phase of a memory-breakpoint search): an observer on the D1
+/// debugger that counts the main CPU's (and its DMA's) reads and writes per 256-byte page of every canonical place each access touches (its
+/// mirrors folded, the ROM / RAM it lands in), and hands the frame's counts over at its end. A page with no count was not accessed that frame
+/// (exact), so a search re-runs only the frames whose pages were. Only while a recording asks for it (it arms the main CPU's access hook).
+/// </summary>
+public sealed class FrameAccesses : DebugObserver
+{
+    private readonly Debugger debugger;
+    private readonly SpaceKey[] keys = new SpaceKey[8];
+    private readonly Dictionary<long, (int R, int W)> counts = new();
+
+    public FrameAccesses(Debugger debugger) { this.debugger = debugger; }
+
+    public static FrameAccesses Attach(Debugger d) { var c = new FrameAccesses(d); d.AddObserver(c); return c; }
+    public void Detach() => debugger.RemoveObserver(this);
+
+    public override bool WantsAccesses(int cpuIndex) => cpuIndex == 0;
+
+    public override void OnAccess(DebugCpu cpu, uint address, byte value, bool write, AccessSource source, int channel)
+    {
+        if (cpu.Index != 0) return;
+        int n = cpu.AccessKeys(address, write, keys);
+        for (int i = 0; i < n; i++)
+        {
+            long k = (long)keys[i].Space << 32 | (keys[i].Offset >> 8);
+            counts.TryGetValue(k, out var c);
+            counts[k] = write ? (c.R, c.W + 1) : (c.R + 1, c.W);
+        }
+    }
+
+    /// <summary>The frame's counts, sorted by space then page; cleared for the next frame.</summary>
+    public List<TimelineExtras.AccessPage> TakeFrame()
+    {
+        var list = new List<TimelineExtras.AccessPage>(counts.Count);
+        foreach (var (k, c) in counts) list.Add(new TimelineExtras.AccessPage((int)(k >> 32), (uint)k, c.R, c.W));
+        list.Sort((a, b) => a.Space != b.Space ? a.Space.CompareTo(b.Space) : a.Page.CompareTo(b.Page));
+        counts.Clear();
+        return list;
     }
 }
