@@ -15,7 +15,7 @@ namespace BrokenNes.Windows.DebugWindows
     /// HTTP API and an agent's live session see). Reading arms nothing; the first breakpoint, pause or step attaches the debugger, and closing the
     /// window detaches the one it attached, so the game runs on exactly as without it. The refresh timer lives only while the window is open.
     /// </summary>
-    public sealed class DebuggerWindow : Form
+    public sealed partial class DebuggerWindow : Form
     {
         private readonly Func<DebuggerHub?> hub;
         private readonly Func<object?> game;

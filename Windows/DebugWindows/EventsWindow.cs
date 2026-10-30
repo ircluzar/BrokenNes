@@ -14,7 +14,7 @@ namespace BrokenNes.Windows.DebugWindows
     /// added when the window opens (attaching the debugger if nobody had) and removed when it closes (detaching the debugger it attached):
     /// closed, nothing is armed.
     /// </summary>
-    public sealed class EventsWindow : Form
+    public sealed partial class EventsWindow : Form
     {
         private readonly Func<DebuggerHub?> hub;
         private readonly Func<object?> game;
