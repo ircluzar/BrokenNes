@@ -237,8 +237,7 @@ namespace BrokenNes.Windows.WebApi
                 {
                     uint bytes = c.FetchBytes(pc);
                     var ic = c.Classify(bytes);
-                    var b = new byte[Math.Max(1, ic.Length)];
-                    for (int k = 0; k < b.Length; k++) b[k] = (byte)(bytes >> (8 * k));
+                    var b = c.InstructionBytes(pc, ic.Length);
                     string text = c.Disassembler.Format(pc, b, c.Context, d == null ? null : x => { var s = d.SymbolAt(c, x); return s != null && !s.Contains('+') ? s : null; });
                     lines.Add(new { address = pc, hex = H(pc, c.AddressDigits), bytes = string.Join(" ", b.Select(x => x.ToString("X2"))), text, label = d?.SymbolAt(c, pc) });
                     pc = c.NextAddress(pc, Math.Max(1, ic.Length));

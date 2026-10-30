@@ -141,6 +141,18 @@ public abstract class DebugCpu : IExprEnvironment
         return b;
     }
 
+    /// <summary>The bytes of the instruction at <paramref name="pc"/> (its length from <see cref="Classify"/>), read without side effects: what a disassembly line shows.
+    /// The 68000's instructions run to ten bytes, past the four <see cref="FetchBytes"/> packs.</summary>
+    public byte[] InstructionBytes(uint pc, int length)
+    {
+        var b = new byte[Math.Max(1, length)];
+        for (int i = 0; i < b.Length; i++) b[i] = Peek(NextAddress(pc, i));
+        return b;
+    }
+
+    /// <summary>The trace ring's size of the debugger this CPU is attached to (a CPU that keeps registers beside the ring sizes its own to match).</summary>
+    internal int MachineDebuggerRingSize => Machine.Debugger?.TraceRingSize ?? 16384;
+
     /// <summary>pc + i within the CPU's program space (16-bit wrap; the 65816 stays in its bank).</summary>
     public virtual uint NextAddress(uint pc, int i) => (uint)((pc + i) & 0xFFFF);
 

@@ -544,6 +544,10 @@ public sealed partial class Z80<TBus> where TBus : struct, IZ80Bus
     /// <summary>True when the next <see cref="Tick"/> starts an instruction (or an interrupt response, or a halted NOP cycle).</summary>
     public bool AtInstructionBoundary => boundary;
 
+    /// <summary>At an instruction boundary, what the next <see cref="Tick"/> starts: 0 an instruction (the M1 fetch), 1 an NMI response, 2 an interrupt response (IM 0, 1 or 2),
+    /// 3 a NOP cycle of a halted CPU. Read from the program the boundary installed (for the debugger; nothing in the core reads it).</summary>
+    public int BoundaryKind => cur_instr[2] == OP_F ? 0 : cur_instr[2] == IORQ ? 2 : cur_instr[3] == HALT_R ? 3 : 1;
+
     /// <summary>The CPU is executing HALT (it runs NOP cycles, with refresh, until an interrupt).</summary>
     public bool Halted => halted;
 

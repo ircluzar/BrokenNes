@@ -77,6 +77,10 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
 
     /// <summary>Called with each 68000 instruction's address just before it runs (for traces); null in normal runs.</summary>
     public Action<uint>? InstructionHook;
+    /// <summary>The debugger's per-instruction hook on the 68000 (BrokenDev T0); null in normal runs (one field test per instruction).</summary>
+    public ISegaInstructionHook? DebugHook;
+    /// <summary>The debugger's tap on the 68000's bus cycles and the VDP's DMA reads (BrokenDev T0); null in normal runs (one field test per bus cycle).</summary>
+    public ISegaBusDebugTap? DebugTap;
     /// <summary>Called for each write to the VDP, I/O chip, Z80 area, BUSREQ and RESET, with a text describing it (traces); null in normal runs.</summary>
     public Action<string>? WriteTrace;
     /// <summary>Called for each 68000 read outside the cartridge and the work RAM, with the address, the value returned and what the bus held before it (traces); null in normal runs.</summary>
@@ -150,6 +154,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         while (!Vdp.FrameCompleted && t < guard)
         {
             InstructionHook?.Invoke(Cpu.Pc - 4);
+            DebugHook?.BeforeInstruction();
             StepCpu();
             Vdp.RunTo(t);
         }
@@ -172,6 +177,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         while (!Reached() && t < guard)
         {
             InstructionHook?.Invoke(Cpu.Pc - 4);
+            DebugHook?.BeforeInstruction();
             StepCpu();
             Vdp.RunTo(t);
         }
@@ -197,6 +203,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public int StepInstruction()
     {
         InstructionHook?.Invoke(Cpu.Pc - 4);
+        DebugHook?.BeforeInstruction();
         int c = StepCpu();
         Vdp.RunTo(t);
         return c;
@@ -375,7 +382,15 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             if (ReadTrace != null) ReadTrace($"read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {v:X4} (bus {lastOpenBus:X4}) at {t}");
         }
         lastOpenBus = v;
+        var tap = DebugTap;
+        if (tap != null && (address != (Cpu.Pc & 0xFFFFFE) || !upper || !lower)) TapRead(tap, address, upper, lower, v);   // a program fetch (the prefetch, an extension word) is not a data read
         return v;
+    }
+
+    private static void TapRead(ISegaBusDebugTap tap, uint address, bool upper, bool lower, ushort v)
+    {
+        if (upper) tap.OnRead(address, (byte)(v >> 8));
+        if (lower) tap.OnRead(address | 1, (byte)v);
     }
 
     public void BusWrite(uint address, bool upper, bool lower, ushort data, int cycles)
@@ -384,8 +399,19 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         BeginAccess(cycles);
         BusWrites++;
         address &= 0xFFFFFE;
+        var tap = DebugTap;
+        if (tap != null)
+        {
+            if (upper) tap.OnWrite(address, (byte)(data >> 8));
+            if (lower) tap.OnWrite(address | 1, (byte)data);
+        }
         WriteWord(address, upper, lower, data, t);
         lastOpenBus = data;
+        if (tap != null)
+        {
+            if (upper) tap.OnWriteDone(address, (byte)(data >> 8));
+            if (lower) tap.OnWriteDone(address | 1, (byte)data);
+        }
     }
 
     private ushort ReadWord(uint address, bool upper, bool lower, long now)
@@ -543,9 +569,30 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public ushort ReadBusWord(uint address)
     {
         uint a = address & 0xFFFFFE;
-        if (a < 0x400000) return Cart.ReadWord(a);
-        if (a >= 0xE00000) { int i = (int)(a & 0xFFFE); return (ushort)(Ram[i] << 8 | Ram[i + 1]); }
-        return 0xFFFF;      // a DMA source in I/O or the Z80's space reads open bus
+        ushort w;
+        if (a < 0x400000) w = Cart.ReadWord(a);
+        else if (a >= 0xE00000) { int i = (int)(a & 0xFFFE); w = (ushort)(Ram[i] << 8 | Ram[i + 1]); }
+        else w = 0xFFFF;      // a DMA source in I/O or the Z80's space reads open bus
+        var tap = DebugTap;
+        if (tap != null) { tap.OnDmaRead(a, (byte)(w >> 8)); tap.OnDmaRead(a | 1, (byte)w); }
+        return w;
+    }
+
+    /// <summary>A byte of the 68000's space without side effects (the debugger's peek): the cartridge's ROM and RAM, work RAM, the Z80's RAM through its window; the
+    /// registers (VDP, I/O, the bus handshake) read as $FF, since reading them has effects.</summary>
+    public byte DebugPeek(uint address)
+    {
+        uint a = address & 0xFFFFFF;
+        if (a < 0x400000)
+        {
+            int s = Cart.DebugSramIndex(a);
+            if (s >= 0) return Cart.Sram[s];
+            int r = Cart.DebugRomIndex(a);
+            return r >= 0 ? Cart.Rom[r] : (byte)0xFF;
+        }
+        if (a >= 0xE00000) return Ram[a & 0xFFFF];
+        if (a >= 0xA00000 && a < 0xA04000 && Sound is MdSoundUnit u) return u.Z80Ram[a & 0x1FFF];
+        return 0xFF;
     }
 
     public void SetZ80Interrupt(bool asserted, long masterClock) => Sound.SetInterrupt(asserted, masterClock);

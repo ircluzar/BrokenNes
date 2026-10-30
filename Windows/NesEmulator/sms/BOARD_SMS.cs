@@ -28,7 +28,13 @@ public readonly struct SmsBus : IZ80Bus
     private readonly BOARD_SMS b;
     public SmsBus(BOARD_SMS board) { b = board; }
     public byte FetchOpcode(ushort address) => b.ReadMemory(address);
-    public byte Read(ushort address) => b.ReadMemory(address);
+    public byte Read(ushort address)
+    {
+        var tap = b.DebugTap;
+        byte v = b.ReadMemory(address);
+        if (tap != null) tap.OnRead(address, v);
+        return v;
+    }
     public void Write(ushort address, byte value) => b.WriteMemory(address, value);
     public byte In(ushort port) => b.ReadPort(port);
     public void Out(ushort port, byte value) => b.WritePort(port, value);
@@ -77,6 +83,10 @@ public sealed class BOARD_SMS
     public Action<ushort>? InstructionHook;
     /// <summary>Called for every port access: (is a write, port, value, frame line, Z80 cycle in the line). Tracing; a null hook costs nothing.</summary>
     public Action<bool, ushort, byte, int, int>? PortHook;
+    /// <summary>The debugger's per-instruction hook (BrokenDev T0); null = the plain loop runs.</summary>
+    public ISegaInstructionHook? DebugHook;
+    /// <summary>The debugger's memory and port tap (BrokenDev T0); null costs one field test per data access.</summary>
+    public ISegaBusDebugTap? DebugTap;
 
     /// <summary>A BIOS image running as the console's BIOS, with <see cref="Cart"/> an empty slot: the machine then powers up cold (BIOS enabled, nothing set up) and the BIOS does what a BIOS does, instead of starting in the state
     /// the BIOS leaves for a cartridge. Null for every cartridge.</summary>
@@ -199,7 +209,7 @@ public sealed class BOARD_SMS
         if (!lineOpen) { vdp.BeginLine(n); cpu.Irq = vdp.Irq; }
         int first = firstLineCycle;
         if (OracleZ80Timing != 0) RunLineOracleTiming(first, end);
-        else if (InstructionHook == null)
+        else if (InstructionHook == null && DebugHook == null)
         {
             for (lineCycle = first; lineCycle < end; lineCycle++)
             {
@@ -214,7 +224,7 @@ public sealed class BOARD_SMS
             {
                 int mc = lineCycle * 3 + EventPhaseMc;
                 if (mc >= vdp.NextEventMc) { vdp.RunTo(mc); cpu.Irq = vdp.Irq; }
-                if (cpu.AtInstructionBoundary) InstructionHook(cpu.PC);
+                if (cpu.AtInstructionBoundary) { InstructionHook?.Invoke(cpu.PC); DebugHook?.BeforeInstruction(); }
                 cpu.Tick();
             }
         }
@@ -271,6 +281,7 @@ public sealed class BOARD_SMS
                 if (q > 0) { parityStall = q; continue; }
                 if (q < 0) { paritySkip = -q; parityCycles += q; }   // the instruction ended early: the next ticks take no time
                 InstructionHook?.Invoke(cpu.PC);
+                DebugHook?.BeforeInstruction();
                 // an interrupt response starts here instead of the instruction at the program counter when the line is asserted, interrupts are on and the previous instruction was not EI
                 bool respond = cpu.Irq && cpu.IFF1 && parityPrevOp != 0xFB;
                 parityPending = respond ? 0 : OracleQuirk(cpu.PC);
@@ -306,6 +317,13 @@ public sealed class BOARD_SMS
     /// <summary>A read without side effects, for tools.</summary>
     public byte Peek(ushort address) => ReadMemory(address);
 
+    /// <summary>The line cycle being run (the debugger's dot).</summary>
+    public int LineCycle => lineCycle;
+    /// <summary>The memory control port $3E (the debugger shows what is mapped).</summary>
+    public byte MemoryControl => port3E;
+    /// <summary>True while the BIOS image (not the cartridge) answers the slot (a BIOS session before it hands over).</summary>
+    public bool DebugBiosMapped => BiosMapped;
+
     /// <summary>True when nothing answers a read of <paramref name="address"/> (the cartridge slot or the work RAM switched off through port $3E, or a plain cartridge read past its end): the bus floats high. A tool question
     /// (the sweep asks it of the program counter to tell a program that ran off the end of its code).</summary>
     public bool IsUnmapped(ushort address) => address >= 0xC000 ? !ramEnabled : BiosMapped ? Bios!.IsOpenBus(address) : !cartEnabled || Cart.IsOpenBus(address);
@@ -316,9 +334,12 @@ public sealed class BOARD_SMS
     public void WriteMemory(ushort address, byte value)
     {
         MemWriteHook?.Invoke(address, value, Vdp.Line, lineCycle);
+        var tap = DebugTap;
+        tap?.OnWrite(address, value);
         if (address >= 0xC000 && ramEnabled) Ram[address & 0x1FFF] = value;
         Cart.Write(address, value);
         Bios?.Write(address, value);                 // the BIOS ROM board has a mapper of its own on the same bus
+        tap?.OnWriteDone(address, value);
     }
 
     // =================================================================================== I/O ports
@@ -329,6 +350,7 @@ public sealed class BOARD_SMS
     {
         byte v = ReadPortCore(port);
         PortHook?.Invoke(false, port, v, Vdp.Line, lineCycle);
+        DebugTap?.OnPort(port, v, false);
         return v;
     }
 
@@ -361,6 +383,7 @@ public sealed class BOARD_SMS
     public void WritePort(ushort port, byte value)
     {
         PortHook?.Invoke(true, port, value, Vdp.Line, lineCycle);
+        DebugTap?.OnPort(port, value, true);
         int p = port & 0xFF;
         if (p is 0xF0 or 0xF1 or 0xF2)
         {

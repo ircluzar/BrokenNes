@@ -282,6 +282,15 @@ public sealed class SmsCartridge
     /// <summary>Reads $0000-$BFFF.</summary>
     public byte Read(ushort address) => rd[address >> 10][rdBase[address >> 10] + address];
 
+    /// <summary>The ROM offset an address of $0000-$BFFF reads now (the slots as mapped), or -1 where cartridge RAM, the EEPROM or nothing answers (the debugger's mirror folding).</summary>
+    public int DebugRomIndex(ushort address) => address < 0xC000 && ReferenceEquals(rd[address >> 10], Rom) ? rdBase[address >> 10] + address : -1;
+
+    /// <summary>The cartridge RAM offset an address of $0000-$BFFF reaches now, or -1.</summary>
+    public int DebugRamIndex(ushort address) => address < 0xC000 && Ram != null && ReferenceEquals(rd[address >> 10], Ram) ? rdBase[address >> 10] + address : -1;
+
+    /// <summary>The 16 KB page of a slot of the Sega mapper (0, 1, 2), for the debugger's banked symbols; -1 for other mappers.</summary>
+    public int DebugSlotPage(int slot) => Mapper is SmsMapperKind.Sega or SmsMapperKind.SegaEeprom or SmsMapperKind.Codemasters or SmsMapperKind.KoreanA000 && slot is >= 0 and < 3 ? pages[slot] % RomPages16 : -1;
+
     /// <summary>True when nothing is wired to this address of $0000-$BFFF (a plain cartridge past the end of its ROM).</summary>
     public bool IsOpenBus(ushort address) => address < 0xC000 && ReferenceEquals(rd[address >> 10], OpenBus);
 

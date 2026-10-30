@@ -578,7 +578,7 @@ public sealed class Debugger
         if (ic.Flow is FlowKind.Call or FlowKind.Software)
         {
             st.CallPending = true;
-            st.CallKind = CallName(cpu, (byte)bytes);
+            st.CallKind = cpu.Disassembler is DisasmM68k ? DisasmM68k.CallName((int)((bytes & 0xFF) << 8 | (bytes >> 8))) : CallName(cpu, (byte)bytes);
             st.CallPc = pc;
             st.CallReturnPc = cpu.NextAddress(pc, ic.Length);
             st.CallTargetSpExpected = cpu.StackAfterPush(sp, ic.PushBytes);
@@ -956,7 +956,7 @@ public sealed class Debugger
             for (int i = 0; i < 4; i++) bytes[i] = r.Byte(i);
             var ctx = c.ContextOf(in r);
             Func<uint, string?>? label = labels && Symbols.All.Count > 0 ? a => ExactSymbol(c, a) : null;
-            sb.Append(c.Disassembler.Format(r.Pc, bytes[..Math.Max(1, (int)r.Length)], ctx, label));
+            sb.Append(c.Disassembler.Format(r.Pc, bytes[..Math.Clamp((int)r.Length, 1, 4)], ctx, label));   // a record keeps four bytes (the 68000's disassembler reads the rest)
             if (r.Ea >= 0) sb.Append(" [").Append(((uint)r.Ea).ToString(c.AddressDigits == 6 && r.Ea > 0xFFFF ? "X6" : "X4")).Append("] = $").Append(r.EaValue.ToString("X2"));
         }
         int pad = start + 40 - sb.Length;

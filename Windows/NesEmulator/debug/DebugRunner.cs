@@ -10,12 +10,15 @@ public static class DebugMachines
 {
     public static DebugMachine For(NES nes) => new NesDebugMachine(nes);
 
-    /// <summary>A SNES / WideMess or Game Boy session (the consoles D1 covers); anything else is refused with the reason.</summary>
+    /// <summary>A SNES / WideMess, Game Boy, Master System / Game Gear or Genesis session (D1, and T0 for the Sega consoles); anything else is refused with the reason.</summary>
     public static DebugMachine For(IConsoleSession session) => session switch
     {
         SnesSession snes => new SnesDebugMachine(snes),
         GbSession gb => new GbDebugMachine(gb),
-        _ => throw new NotSupportedException($"the debugger does not cover the {Consoles.DisplayName(session.Console)} yet (D1: NES, SNES with its SPC700, WideMess, Game Boy)"),
+        NesEmulator.Mix.SegaPictureSession w => For(w.Inner),
+        NesEmulator.Sega.SmsSession sms => new SmsDebugMachine(sms),
+        NesEmulator.Sega.MdSession md => new MdDebugMachine(md),
+        _ => throw new NotSupportedException($"the debugger does not cover the {Consoles.DisplayName(session.Console)} yet (NES, SNES with its SPC700, WideMess, Game Boy, Master System, Game Gear, Genesis with its Z80)"),
     };
 }
 

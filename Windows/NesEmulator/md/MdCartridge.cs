@@ -246,6 +246,17 @@ public sealed class MdCartridge
         return (int)address & romMask;
     }
 
+    /// <summary>The ROM offset a cartridge address reads now (the SSF2 banks as mapped), or -1 where the battery RAM window or nothing answers (the debugger's mirror folding).</summary>
+    public int DebugRomIndex(uint address)
+    {
+        if (address > 0x3FFFFF || SramIndex(address) >= 0) return -1;
+        int a = RomAddress(address);
+        return a < Rom.Length ? a : -1;
+    }
+
+    /// <summary>The battery RAM offset a cartridge address reaches now, or -1.</summary>
+    public int DebugSramIndex(uint address) { int s = SramIndex(address); return s >= 0 && s < Sram.Length ? s : -1; }
+
     /// <summary>A byte of cartridge space ($000000-$3FFFFF).</summary>
     public byte ReadByte(uint address)
     {

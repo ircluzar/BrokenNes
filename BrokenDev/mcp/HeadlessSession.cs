@@ -969,8 +969,7 @@ internal sealed partial class HeadlessSession : Session
     {
         uint bytes = c.FetchBytes(pc);
         var ic = c.Classify(bytes);
-        var b = new byte[Math.Max(1, ic.Length)];
-        for (int k = 0; k < b.Length; k++) b[k] = (byte)(bytes >> (8 * k));
+        var b = c.InstructionBytes(pc, ic.Length);
         var d = D;
         string text = c.Disassembler.Format(pc, b, c.Context, d == null ? null : x => { var s = d.SymbolAt(c, x); return s != null && !s.Contains('+') ? s : null; });
         return new JsonObject { ["address"] = c.FormatAddress(pc), ["bytes"] = Num.HexBytes(b), ["text"] = text, ["label"] = d?.SymbolAt(c, pc), ["length"] = b.Length };

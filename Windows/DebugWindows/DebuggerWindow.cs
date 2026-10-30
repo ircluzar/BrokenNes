@@ -314,8 +314,7 @@ namespace BrokenNes.Windows.DebugWindows
                 uint bytes = c.FetchBytes(p);
                 var ic = c.Classify(bytes);
                 int len = Math.Max(1, ic.Length);
-                var b = new byte[len];
-                for (int k = 0; k < len; k++) b[k] = (byte)(bytes >> (8 * k));
+                var b = c.InstructionBytes(p, len);
                 string text = c.Disassembler.Format(p, b, c.Context, d == null ? null : x => { var s = d.SymbolAt(c, x); return s != null && !s.Contains('+') ? s : null; });
                 string? label = d?.SymbolAt(c, p);
                 if (label != null && !label.Contains('+')) lines.Add($"           {label}:");
