@@ -489,3 +489,38 @@ hotpatch, resume.
   `DebuggerHub`; the symbol file beside a ROM: `.sym` / `.noi` (Master System, Game Gear), `.sym` / `.txt` / `symbol.txt` (Genesis). Workshop:
   `MovieMachine` (movies, bug replays, Timeflow) attaches the debugger on the Sega consoles, so `--timeflow record --coverage --var ...`
   and the course variables work there. HTTP: `/api/debug/*` as before (Windows/webapi/README.md).
+- **Profiling (T3) on the Sega consoles**, from T3's notes: its two refusals are gone, the chip registers of the Event View / `events`
+  query know the Master System's ports and the Genesis's I/O / VDP / bus registers, the histogram's cycle unit is Z80 T-states on the
+  Master System and Game Gear; `pconsoles` profiles the Master System and the Genesis (both CPUs' instructions) in sync.
+- **Tests** (each with a negative control):
+  - `--debug-test` **205 of 205** (the groups `sega`: Master System, Game Gear, Genesis with its Z80, the disassemblers against the cores;
+    and `games`' real Sega games): a breakpoint at the exact instruction by symbol; the call stack from CALL / JSR / BSR; step out, step
+    over 400 / 300 times with interrupts landing inside some (negative: step into lands in the callee); the call stack through the frame
+    interrupt / VINT and step out of the handler back to where it interrupted; a planted write through the work RAM mirror caught (negative:
+    the byte beside it silent), the data port through a mirror, VRAM through the data port, a banked symbol in its bank only; the trace
+    equals the board's own instruction hook (count and the last 4000 PCs; negative: shifted by one differs), the 68000's own instruction
+    counter, and the Genesis Z80's loop arithmetic (7 a turn, 8 an interrupt); every Z80 form (1646) and every legal 68000 opcode word
+    (40243) runs on the core and moves the PC by the disassembler's length (negative: one longer differs everywhere); known code disassembles
+    as written; attached, watching everything and breaking is frame-identical to no debugger (the test ROMs, Sonic 2 SMS, Sonic GG, Sonic
+    Genesis over 600 frames; 482,560 bytes of the Genesis's DMA seen by a watch); detached leaves no hook.
+  - `--check-test` **129 of 129** (the six Sega rules, each a trigger and a negative control; the clean templates break no rule).
+  - `--timeflow-test` **203 of 203** (the new `index-sega`: the watched variables and the frame's coverage on the Master System, Game Gear,
+    Genesis; negative: code never run is not covered, without the extras none, and the recording frame-identical with and without them;
+    `pconsoles` on the Sega consoles). `--md-state-test` **168 of 168**.
+  - MCP `--client-test` **126 of 126** (Sega: a Master System breakpoint and disassembly, the Genesis's 68000 break and stack, a Z80
+    break and trace, an unknown CPU refused, step back by instructions, a Sega timeline profiled; the debug port still refused there),
+    `--demo` 6 of 6. BrokenDev `run-tests` **151 passed, 0 failed** (`-WorkshopExe`, `-McpExe`; one earlier run had 1 failure that did not
+    come back on the rerun). UAT `run-suite` **125 pass 0 fail 16 skip 3 info** (the story and corpus ROM folders linked from the main
+    checkout). `debugger-desktop-smoke` 19 of 19; `debug-windows-desktop-smoke` **93 of 93** with its new Sega section (two earlier runs
+    stopped on UI Automation errors in the NES / WideMess parts, not in the Sega checks). Core and Lite build.
+- **Zero cost when off, measured.** Goldens: the Sega bench suite (`--sega-bench --suite`, 19 cases: Master System, Game Gear, Genesis
+  and their bridges, 900 frames each) recorded by main's build and checked by this one: **all 19 bit-identical** (every frame's picture and
+  every sample). Speed (interleaved A/B on this shared machine, the same 19 cases): first round, quiet, three runs each with main's build
+  always first: Genesis -1 to +3.5 %, Master System / Game Gear +3 to +22 % on the plain cases (the bridges within noise); a later check
+  with the 6-instruction read tap removed showed no difference to the build with it (so not that tap); the final round, the order
+  alternated, the machine busy: every case within ±14 % either way, the total 7.7 % faster than main. Read: no cost the noise of this
+  machine can show on the Genesis; on the Master System possibly a few percent (a field test per data access and per line), which a run
+  on a quiet machine (`--sega-bench --suite --repeat 5`, alternating) should settle.
+- **Not built:** the Genesis's VRAM / CRAM / VSRAM write watches (the VDP's FIFO and DMA writes are not tapped; the spaces read and write);
+  VDP read watches on the Master System; a debug port (D7) on the Sega consoles; tile / sprite / map viewers for them (D8's viewers, MCP
+  `tiles` / `sprites` / `layers`, are still NES / SNES / Game Boy); the 68000's effective address in a trace line.
