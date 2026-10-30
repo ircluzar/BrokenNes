@@ -474,6 +474,48 @@ internal static class Tools
                 }
             });
 
+        // ------------------------------------------------------------------------------------------------ Timeflow (T1, T2)
+        Add("timeflow_record",
+            "Timeflow recording (docs/projects/brokendev-timeflow-plan.md): a state every frame (keyframes + page deltas + a per-frame index) in BROKENDEV_HOME\\timeflow, to jump back to any frame later. " +
+            "HEADLESS session (your own machine): action start / stop / status records that session (a state load, reset or memory write ends the timeline and a new one begins). " +
+            "LIVE session (the user's app): you can only ASK: action request (with a reason) makes the app show the user a prompt that does not stop the game; nothing records unless the user allows it; status shows the answer and the recording; cancel withdraws your request. You can never switch the user's recording on or off.",
+            Schema(S(), ("action", P("string", "headless: start, stop, status; live: request, status, cancel", Enum("start", "stop", "status", "request", "cancel")), true),
+                   ("reason", P("string", "live request: why you want the recording, shown to the user (e.g. 'to rewind to the frame before the crash you saw')"), false)),
+            a => On(a, s => s.TimeflowRecord(a.Req("action").ToLowerInvariant(), a.Str("reason"))));
+
+        Add("timeflow_list",
+            "The recorded timelines (reading only): every game folder under BROKENDEV_HOME\\timeflow (or one project's), each timeline with its frames, branches (a branch under its parent, with the frame it left at), status, size, and the folder's space against its 5 GB cap. With timeline: that one's details.",
+            Schema(("project", P("string", "one BrokenDev project's timelines"), false), ("timeline", P("string", "a timeline id or folder: its details"), false)),
+            a => Wrap(() => TimeflowTools.List(a.Str("project"), a.Str("timeline"))), ro: true);
+
+        Add("timeflow_jump",
+            "Puts a HEADLESS session at any recorded frame of a timeline: the frame's state restored from its keyframe and deltas, loaded, and proved equal to the recorded one (else refused with both hashes). " +
+            "Without session: opens a new headless session on the timeline's own ROM and cores (kept in the timeline's game folder) and jumps there. With session: that session (same ROM) jumps. " +
+            "Then debug from there (breakpoints, step, trace), or timeflow_resume. While a session records, its frames after a jump are a branch of the timeline.",
+            Schema(("timeline", P("string", "a timeline id (timeflow_list) or folder"), true), ("frame", P("integer", "the frame to jump to"), true),
+                   ("session", P("string", "an open headless session of the same ROM (default: open a new one)"), false), ("symbols", P("string[]", "symbol files for a new session"), false),
+                   ("call_stack", P("boolean", "a new session tracks the call stack (default true)"), false)),
+            a =>
+            {
+                string dir = TimeflowTools.Find(a.Req("timeline"));
+                long frame = a.Long("frame") ?? throw new ToolError("'frame' is required");
+                if (a.Str("session") is { Length: > 0 } sid) return On(a, s => s.TimeflowJump(dir, frame));
+                var hs = TimeflowTools.OpenFor(dir, a.List("symbols"), a.Bool("call_stack", true));
+                Sessions.Add(hs);
+                JsonObject j;
+                try { lock (hs.Gate) j = hs.TimeflowJump(dir, frame); }
+                catch { Sessions.Remove(hs.Id, out _); hs.Close(); throw; }
+                j["session"] = hs.Id;
+                return j;
+            });
+
+        Add("timeflow_resume",
+            "After timeflow_jump: mode replay runs the timeline's recorded inputs on from the frame (every frame's picture and RAM, and the whole state at keyframes, checked against the recording: in sync, or the first frame off); " +
+            "mode live runs frames with this session's own input (input / run with a script set it): a branch, recorded as a new timeline whose parent is the jumped one when record is true.",
+            Schema(S(), ("mode", P("string", "replay or live", Enum("replay", "live")), true), ("frames", P("integer", "frames to run (replay default: to the timeline's end; live default 60)"), false),
+                   ("record", P("boolean", "live: record the branch as a timeline (default false)"), false)),
+            a => On(a, s => s.TimeflowResume(a.Req("mode").ToLowerInvariant(), a.Long("frames") ?? (a.Str("mode") == "live" ? 60 : -1), a.Bool("record", false))));
+
         Add("brokendev",
             "Runs a BrokenDev verb on a project (BrokenDev/brokendev.ps1): build, verify (the checks, budgets and accepted findings), compat (the other emulators), run (opens it in the desktop app: its PID comes back for attach_live), " +
             "list (the projects), status, doctor. Returns the exit code, the output and the record file.",

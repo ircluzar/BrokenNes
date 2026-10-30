@@ -476,6 +476,13 @@ public sealed class GbSession : IConsoleSession
         return ConsoleStateFile.Wrap(Console, GameId, Title, units, board.SaveState());
     }
 
+    /// <summary>The payload <see cref="SaveState"/> wraps (no container, no compression): what BrokenDev Timeflow takes every frame.</summary>
+    public byte[] SaveStatePayload()
+    {
+        if (!SupportsState) throw new NotSupportedException(StateUnsupportedReason);
+        return board.SaveState();
+    }
+
     public void LoadState(byte[] state)
     {
         if (!SupportsState) throw new NotSupportedException(StateUnsupportedReason);

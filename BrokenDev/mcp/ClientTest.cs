@@ -67,6 +67,8 @@ internal static class ClientTest
         Directory.CreateDirectory(dir);
         var serverArgs = new List<string>();
         if (BrokenDevBridge.RepoOverride is { } repo) { serverArgs.Add("--repo"); serverArgs.Add(repo); }
+        // Timeflow's recordings go to a scratch folder (the server inherits it), never the real BROKENDEV_HOME\timeflow
+        Environment.SetEnvironmentVariable("BROKENDEV_TIMEFLOW", Path.Combine(dir, "timeflow"));
         var transport = new StdioClientTransport(new StdioClientTransportOptions { Name = "brokennes", Command = Environment.ProcessPath!, Arguments = serverArgs });
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
@@ -77,7 +79,8 @@ internal static class ClientTest
             string[] want = { "open_rom", "open_project", "attach_live", "list_instances", "list_sessions", "close_session", "status", "run", "run_until", "pause", "reset", "input",
                 "read_memory", "write_memory", "search_memory", "list_domains", "symbols", "breakpoint_add", "breakpoint_list", "breakpoint_remove", "watch", "step", "call_stack",
                 "registers", "trace", "trace_frame", "disassemble", "evaluate", "screenshot", "layers", "tiles", "sprites", "record_sound", "save_state", "load_state", "diff_states",
-                "checks", "profile", "brokendev", "step_back", "open_movie", "movie", "bisect", "bugs", "debug_port" };
+                "checks", "profile", "brokendev", "step_back", "open_movie", "movie", "bisect", "bugs", "debug_port",
+                "timeflow_record", "timeflow_list", "timeflow_jump", "timeflow_resume" };
             var missing = want.Where(w => !names.Contains(w)).ToList();
             Check("tools_listed", missing.Count == 0 && tools.All(t => t.JsonSchema.ValueKind == JsonValueKind.Object), $"{tools.Count} tools over stdio; missing: {(missing.Count == 0 ? "none" : string.Join(", ", missing))}");
             switch (suite)
@@ -470,9 +473,66 @@ internal static class ClientTest
         Check("bugs_unknown_refused", bu.IsError && bu.Text.Contains("no bug"), bu.Text);
         var bpr = await Call("bugs", new { action = "list", project = "no-such-project" });
         Check("bugs_unknown_project_refused", bpr.IsError && bpr.Text.Contains("unknown project"), bpr.Text);
+
+        // ---------------------------------------------------------------- Timeflow (T1, T2): a headless session's own recording, the list, jump, resume, a branch
+        await TimeflowSuite(dir, sms);
     }
 
     // ==================================================================================================================== the demo (done when)
+
+    /// <summary>Timeflow on headless sessions (milestones T1, T2): record, list, jump into a new session, replay in sync, a branch; each with a negative control.</summary>
+    private static async Task TimeflowSuite(string dir, string sms)
+    {
+        var (pr, _, pm) = PlantedBug.Build(fixedBuild: false);
+        string game = DebugTestRoms.Write(dir, "timeflow.nes", pr), gameSym = DebugTestRoms.Write(dir, "timeflow.mlb", pm);
+        var o = await Call("open_rom", new { path = game, symbols = new[] { gameSym } });
+        string h = S(o["session"]);
+        var st0 = await Call("timeflow_record", new { session = h, action = "status" });
+        Check("timeflow_off_by_default", !st0.IsError && st0["recording"]?.GetValue<bool>() == false && st0["timeline"] == null, st0.Text);
+        var on = await Call("timeflow_record", new { session = h, action = "start" });
+        await Call("run", new { session = h, frames = 300, input = "0:Start,8:,60:Right,120:Right+A,130:Right,200:Left,260:" });
+        var off = await Call("timeflow_record", new { session = h, action = "stop" });
+        string tid = S(off["closed"]?["id"]);
+        Check("timeflow_record_headless", !on.IsError && !off.IsError && L(off["closed"]?["frames"]) == 300 && off["recording"]?.GetValue<bool>() == false, $"{tid}: {L(off["closed"]?["frames"])} frames, {L(off["closed"]?["storedBytes"])} bytes");
+        var ls = await Call("timeflow_list", new { timeline = tid });
+        Check("timeflow_list", !ls.IsError && L(ls["frames"]) == 300 && S(ls["status"]) == "closed" && S(ls["source"]) == "mcp" && L(ls["verifyFailures"]) == 0 && L(ls["verifiedFrames"]) > 0, $"{S(ls["status"])}, {L(ls["frames"])} frames, restore = record checked on {L(ls["verifiedFrames"])}, {S(ls["dir"])}");
+        var all = await Call("timeflow_list");
+        Check("timeflow_list_all", !all.IsError && all.Text.Contains(tid) && S(all["root"]).Contains("timeflow"), S(all["root"]));
+        var j = await Call("timeflow_jump", new { timeline = tid, frame = 150, symbols = new[] { gameSym } });
+        string jh = S(j["session"]);
+        Check("timeflow_jump_new_session", !j.IsError && L(j["timelineFrame"]) == 150 && S(j["state"]).Length == 16 && jh.Length > 0, $"{jh} at frame {L(j["timelineFrame"])}, state {S(j["state"])}");
+        var rp = await Call("timeflow_resume", new { session = jh, mode = "replay" });
+        Check("timeflow_replay_in_sync", !rp.IsError && rp["inSync"]?.GetValue<bool>() == true && L(rp["framesRun"]) == 150, $"{L(rp["framesRun"])} frames, {L(rp["checks"])} checks, in sync {S(rp["inSync"])} {S(rp["offFrame"])} {S(rp["offWhat"])}");
+        var jx = await Call("timeflow_jump", new { timeline = tid, frame = 150, call_stack = false });
+        var rpx = await Call("timeflow_resume", new { session = S(jx["session"]), mode = "replay" });
+        Check("timeflow_replay_in_sync_no_call_stack", !rpx.IsError && rpx["inSync"]?.GetValue<bool>() == true, $"{L(rpx["framesRun"])} frames, in sync {S(rpx["inSync"])} {S(rpx["offFrame"])} {S(rpx["offWhat"])}");
+        await Call("close_session", new { session = S(jx["session"]) }, log: false);
+        // a branch: the jumped session records, plays new input: a timeline whose parent is tid at 150
+        var j2 = await Call("timeflow_jump", new { timeline = tid, frame = 150, session = jh });
+        await Call("timeflow_record", new { session = jh, action = "start" });
+        await Call("input", new { session = jh, mode = "hold", buttons = new[] { "Left", "B" } });
+        var lv = await Call("timeflow_resume", new { session = jh, mode = "live", frames = 90 });
+        var boff = await Call("timeflow_record", new { session = jh, action = "stop" });
+        string bid = S(boff["closed"]?["id"]);
+        var bl = await Call("timeflow_list", new { timeline = bid });
+        Check("timeflow_branch", !j2.IsError && !lv.IsError && S(bl["parent"]) == tid && L(bl["parentFrame"]) == 150 && L(bl["startFrame"]) == 150 && L(bl["frames"]) == 90, $"{bid}: parent {S(bl["parent"])} at {S(bl["parentFrame"])}, frames {L(bl["startFrame"])}+{L(bl["frames"])}");
+        // the negative controls
+        var far = await Call("timeflow_jump", new { timeline = tid, frame = 5000 });
+        Check("timeflow_jump_outside_refused", far.IsError && far.Text.Contains("not in timeline"), far.Text);
+        var none = await Call("timeflow_jump", new { timeline = "no-such-timeline", frame = 1 });
+        Check("timeflow_unknown_timeline_refused", none.IsError && none.Text.Contains("no timeline"), none.Text);
+        var so = await Call("open_rom", new { path = sms });
+        string sh = S(so["session"]);
+        var other = await Call("timeflow_jump", new { timeline = tid, frame = 10, session = sh });
+        Check("timeflow_jump_other_machine_refused", other.IsError && (other.Text.Contains("recorded on the nes") || other.Text.Contains("another ROM")), other.Text);
+        var nojump = await Call("timeflow_resume", new { session = sh, mode = "replay" });
+        Check("timeflow_resume_needs_a_jump", nojump.IsError && nojump.Text.Contains("follows a timeflow_jump"), nojump.Text);
+        var badReplay = await Call("timeflow_jump", new { timeline = tid, frame = 100, session = jh });
+        await Call("write_memory", new { session = jh, domain = "RAM", address = 0x40, data = new[] { 0x77 } });
+        var off2 = await Call("timeflow_resume", new { session = jh, mode = "replay", frames = 60 });
+        Check("timeflow_replay_off_when_changed", !badReplay.IsError && off2["inSync"]?.GetValue<bool>() == false, $"a RAM byte written after the jump: in sync {S(off2["inSync"])}, off at {S(off2["offFrame"])} ({S(off2["offWhat"])})");
+        foreach (var id in new[] { h, jh, sh }) await Call("close_session", new { session = id }, log: false);
+    }
 
     private static async Task DemoSuite(string dir, string outPath)
     {
@@ -600,6 +660,17 @@ internal static class ClientTest
         var s1 = await Call("status", new { session = c }); await Task.Delay(600); var s2 = await Call("status", new { session = c });
         Check("live_close_lets_the_game_go", !cl.IsError && s2["state"]?["attached"]?.GetValue<bool>() == false && L(s2["state"]?["frame"]) > L(s1["state"]?["frame"]),
             $"after close: attached {S(s2["state"]?["attached"])}, frames {L(s1["state"]?["frame"])} -> {L(s2["state"]?["frame"])}; the process is still running: {System.Diagnostics.Process.GetProcessById(ctlPid) is { HasExited: false }}");
+        // Timeflow: an agent can only ASK the user's app to record; nothing records until the user allows it (no one answers here)
+        var tr = await Call("timeflow_record", new { session = c, action = "request", reason = "the MCP live test asks (nobody answers)" });
+        await Task.Delay(1500);
+        var ts = await Call("timeflow_record", new { session = c, action = "status" });
+        Check("live_timeflow_request_records_nothing", !tr.IsError && S(tr["request"]) == "pending" && ts["recording"]?.GetValue<bool>() == false && S(ts["request"]?["state"]) == "pending" && ts["timeline"] == null,
+              $"request {S(tr["request"])}; 1.5 s later: recording {S(ts["recording"])}, request {S(ts["request"]?["state"])}, timeline {S(ts["timeline"])}");
+        var tstart = await Call("timeflow_record", new { session = c, action = "start" });
+        Check("live_timeflow_start_refused", tstart.IsError && tstart.Text.Contains("only the user"), tstart.Text);
+        var tc = await Call("timeflow_record", new { session = c, action = "cancel" });
+        var ts2 = await Call("timeflow_record", new { session = c, action = "status" });
+        Check("live_timeflow_cancel", !tc.IsError && S(ts2["request"]?["state"]) == "cancelled" && ts2["recording"]?.GetValue<bool>() == false, $"request {S(ts2["request"]?["state"])}, recording {S(ts2["recording"])}");
         await Call("close_session", new { session = c });
     }
 }

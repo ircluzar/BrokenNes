@@ -43,6 +43,8 @@ public sealed class ArrayDomain : IMemoryDomain
     public bool Writable { get; }
     public string? Unavailable => null;
     public int Size => data.Length;
+    /// <summary>The whole memory at once (BrokenDev Timeflow compares it frame to frame).</summary>
+    public void CopyTo(Span<byte> into) => data.AsSpan(0, Math.Min(data.Length, into.Length)).CopyTo(into);
     public byte Peek(int address) => (uint)address < (uint)data.Length ? data[address] : (byte)0;
     public void Poke(int address, byte value)
     {
@@ -65,6 +67,12 @@ public sealed class WordDomain : IMemoryDomain
     public bool Writable => true;
     public string? Unavailable => null;
     public int Size => data.Length * 2;
+    /// <summary>The whole memory at once, little-endian as <see cref="Peek"/> gives it (BrokenDev Timeflow compares it frame to frame).</summary>
+    public void CopyTo(Span<byte> into)
+    {
+        int n = Math.Min(data.Length, into.Length / 2);
+        for (int i = 0; i < n; i++) { ushort w = data[i]; into[2 * i] = (byte)w; into[2 * i + 1] = (byte)(w >> 8); }
+    }
     public byte Peek(int address)
     {
         if ((uint)address >= (uint)Size) return 0;

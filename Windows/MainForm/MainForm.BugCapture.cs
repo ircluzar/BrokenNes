@@ -37,6 +37,7 @@ namespace BrokenNes.Windows
         private void BugGameLoaded(byte[] rom, string romName)
         {
             bugRom = rom; bugRomName = romName;
+            TfGameLoaded();   // Timeflow: frames count from this game's power-on
             bugPowerOn = true;
         }
 
@@ -46,6 +47,7 @@ namespace BrokenNes.Windows
         /// </summary>
         internal void BugBreak(string why)
         {
+            tfSwitch.Break(why);   // Timeflow: the timeline ends here and a new one begins (when recording)
             if (!BugCaptureOn) return;
             Interlocked.Exchange(ref bugPendingBreak, why);
         }

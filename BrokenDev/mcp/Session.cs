@@ -70,6 +70,10 @@ internal abstract class Session
     public virtual JsonObject MovieSave(string? path) => throw No("saving the session as a movie");
     // the debug port (D7)
     public virtual JsonObject DebugPort(string action, long since, int limit, List<string> kinds) => throw No("the debug port");
+    // Timeflow (T1, T2)
+    public virtual JsonObject TimeflowRecord(string action, string? note) => throw No("Timeflow recording");
+    public virtual JsonObject TimeflowJump(string timelineDir, long frame) => throw No("a Timeflow jump");
+    public virtual JsonObject TimeflowResume(string mode, long frames, bool record) => throw No("a Timeflow resume");
 }
 
 /// <summary>Every open session, by id ("h1", "h2", ... headless; "live-<pid>-n" live).</summary>

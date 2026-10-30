@@ -17,7 +17,7 @@ namespace BrokenNes.Mcp;
 /// its <see cref="DebugRunner"/>, which runs frames on its own thread so a breakpoint can park it mid-frame. Every call is synchronous, so
 /// a session is deterministic: the same calls give the same machine. Nothing here touches a file of the user's (no saves, no config).
 /// </summary>
-internal sealed class HeadlessSession : Session
+internal sealed partial class HeadlessSession : Session
 {
     public override string Kind => "headless";
     public override string ConsoleKey => Consoles.Key(console);
@@ -89,7 +89,7 @@ internal sealed class HeadlessSession : Session
         byte[] rom = RomDetect.Unwrap(raw, path, out string inner);
         ConsoleKind? want = string.IsNullOrWhiteSpace(consoleKey) ? null : ParseConsole(consoleKey!);
         var c = want ?? RomDetect.Detect(rom, inner) ?? throw new ToolError($"{Path.GetFileName(path)}: not a ROM BrokenNes recognises (give console: nes, snes, wms, gb, gbc, sms, gg, md)");
-        var h = new HeadlessSession(id, c, Path.GetFileName(inner), Path.GetFullPath(path));
+        var h = new HeadlessSession(id, c, Path.GetFileName(inner), Path.GetFullPath(path)) { romFile = raw, romFileName = Path.GetFileName(path) };
         try
         {
             if (c == ConsoleKind.Nes)
@@ -149,28 +149,31 @@ internal sealed class HeadlessSession : Session
 
     private void Frame()
     {
-        ApplyInput();
+        ApplyInput();   // (Timeflow takes its state inside, before the pads reach the machine)
         if (nes != null) nes.RunFrame(); else cs!.RunFrame();
+        tf.AfterFrame();
         Interlocked.Increment(ref framesStarted);
         DrainAudio();
         history?.AfterFrame();
     }
 
     private byte[] SaveRaw() => nes != null ? Encoding.UTF8.GetBytes(nes.SaveState()) : cs!.SaveState();
-    private void LoadRaw(byte[] s) { if (nes != null) nes.LoadState(Encoding.UTF8.GetString(s)); else cs!.LoadState(s); }
+    private void LoadRaw(byte[] s) { tf.Break("a state was loaded into the session"); if (nes != null) nes.LoadState(Encoding.UTF8.GetString(s)); else cs!.LoadState(s); }
     private ulong MoviePicture() => nes != null ? MovieHash.Picture(nes.GetFrameBuffer()) : MovieHash.Picture(cs!.Frame, cs.FrameWidth * cs.FrameHeight);
     private ulong MovieRam() => MovieHash.Ram(nes != null ? MachineDomains.For(nes) : MachineDomains.For(cs!));
 
     /// <summary>The history from now (null: power-on; else the state it starts from). A console without save states has none, and says so.</summary>
     private void StartHistory(byte[]? startState)
     {
+        if (framesStarted > 0) tf.Break(startState == null ? "the session started again" : "the session was put at another state (a load, a reset, a movie)");
+        tfBranchParent = null; jumpedDir = null;   // a timeline recorded from here is no branch of a jumped-to one
         if (cs != null && !cs.SupportsState) { history = null; historyNote = $"no history (step back, movies): {cs.StateUnsupportedReason}"; return; }
         history = new DebugHistory(SaveRaw, D, 60, 30, 60, () => (MoviePicture(), MovieRam()), startState);
         historyNote = startState == null ? "the history starts at power-on" : "the history (and the session's movie) starts from the state loaded";
         playingMovie = null;
     }
 
-    private void ApplyInput()
+    private (PadButtons, PadButtons) ApplyInput()
     {
         PadButtons p0, p1;
         lock (padLock)
@@ -186,8 +189,10 @@ internal sealed class HeadlessSession : Session
             p0 = held[0]; p1 = held[1];
         }
         if (history != null) (p0, p1) = history.BeforeFrame(p0, p1);   // the log's input while replaying (after a step back, or a movie)
+        TimeflowBefore(p0, p1);   // Timeflow (T1): the state before this frame's pads reach the machine; returns at once unless recording was switched on
         if (nes != null) nes.SetInputs(NesPad(p0), NesPad(p1));
         else { cs!.SetPad(0, p0); cs.SetPad(1, p1); }
+        return (p0, p1);
     }
 
     private static bool[] NesPad(PadButtons b) => new[]
@@ -430,6 +435,7 @@ internal sealed class HeadlessSession : Session
 
     public override void Close()
     {
+        try { tf.CloseNow("closed: the session was closed"); } catch { }
         try { port?.Detach(); } catch { }
         port = null;
         try { R?.Dispose(); } catch { }
@@ -671,6 +677,7 @@ internal sealed class HeadlessSession : Session
     public override JsonObject WriteMemory(string? spec, string? domain, long? address, byte[] data, string cpu)
     {
         if (data.Length == 0) throw new ToolError("data is needed (bytes: [1,2,3] or \"01 02 03\")");
+        tf.Break("memory was written from outside the game (write_memory)");
         var j = new JsonObject();
         var before = new byte[data.Length]; var after = new byte[data.Length];
         if (!string.IsNullOrWhiteSpace(spec))
@@ -918,6 +925,7 @@ internal sealed class HeadlessSession : Session
     public override JsonObject SetRegister(string cpu, string name, long value)
     {
         var c = CpuOf(cpu);
+        tf.Break("a register was written from outside the game (set_register)");
         if (!c.TrySetRegister(name, value)) throw new ToolError($"the {c.Name} has no writable register '{name}' (it has: {string.Join(", ", c.RegisterNames.Distinct())})");
         return Registers(cpu);
     }
@@ -1209,6 +1217,7 @@ internal sealed class HeadlessSession : Session
         string? note = EnsureBetweenFrames();
         try
         {
+            tf.Break($"the state '{name}' was loaded");
             if (nes != null) nes.LoadState(Encoding.UTF8.GetString(s.State));
             else cs!.LoadState(s.State);
         }

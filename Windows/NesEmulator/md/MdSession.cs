@@ -123,6 +123,14 @@ public sealed class MdSession : IConsoleSession
         return ConsoleStateFile.Wrap(Console, GameId, Title, units, ms.ToArray());
     }
 
+    /// <summary>The payload <see cref="SaveState"/> wraps (no container, no compression): what BrokenDev Timeflow takes every frame.</summary>
+    public byte[] SaveStatePayload()
+    {
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) Board.SaveState(w);
+        return ms.ToArray();
+    }
+
     public void LoadState(byte[] state)
     {
         // the header is checked before anything is touched; a refusal leaves the machine as it was

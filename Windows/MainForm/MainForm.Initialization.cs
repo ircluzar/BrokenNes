@@ -444,6 +444,7 @@ namespace BrokenNes.Windows
             // BrokenDev (developer-only): present only when switched on, so the menu bar of a normal install is unchanged.
             if (BuildBrokenDevMenu() is { } brokenDevMenu) menuStrip.Items.Insert(menuStrip.Items.IndexOf(helpMenu), brokenDevMenu);
             
+            AddTimeflowMark(menuStrip);   // Timeflow's REC mark (shown only while recording)
             this.MainMenuStrip = menuStrip;
             this.Controls.Add(menuStrip);
 

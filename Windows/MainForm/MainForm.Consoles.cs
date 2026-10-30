@@ -126,6 +126,7 @@ namespace BrokenNes.Windows
             };
             server.QuickStateReason = () => quickStateReason;
             WireBugApi(server);
+            WireTimeflowApi(server);
             server.GetLanShare = LanShareStatus;   // the LAN share's state (D8, MainForm.LanShare.cs): never the token
             WirePortApi(server);       // the debug port (BrokenDev D7, MainForm.DebugPort.cs)        // the bug capture (BrokenDev D6, MainForm.BugCapture.cs)
             WireWideMessApi(server);   // WideMess milestone 6 (MainForm.WideMess.cs)
@@ -455,7 +456,7 @@ namespace BrokenNes.Windows
                 : nes != null && !string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase) ? Path.GetFileNameWithoutExtension(nes.RomName) : "";
             string console = Consoles.DisplayName(session?.Console ?? SelectedConsole);
             string note = session != null && consoleNote.Length > 0 ? $" ({consoleNote})" : "";
-            Text = (game.Length > 0 ? $"BrokenNes 2 - {console} - {game}{note}{WideMessTitleNote()}" : $"BrokenNes 2 - {console} - Emulator > Load ROM") + AudioTitleNote();
+            Text = (game.Length > 0 ? $"BrokenNes 2 - {console} - {game}{note}{WideMessTitleNote()}" : $"BrokenNes 2 - {console} - Emulator > Load ROM") + AudioTitleNote() + TimeflowTitleNote();
         }
 
         /// <summary>A short remark the title carries after an event the user should know about (a core swap that restarted the game, and why); cleared by the next swap or ROM.</summary>
@@ -674,9 +675,12 @@ namespace BrokenNes.Windows
             {
                 FarmBeforeFrame(p1, p2);
                 PortBeforeFrame(s);                 // the debug port (D7): returns at once when it is off
+                TfReplayPads(ref p1, ref p2);       // Timeflow (T2): a replay hands the recorded pads
                 BugBeforeSessionFrame(s, p1, p2);   // the bug capture (D6): returns at once when it is off
+                TfBeforeSessionFrame(s, p1, p2);    // Timeflow (T1): returns at once unless the user switched recording on
                 s.SetPad(0, p1); s.SetPad(1, p2);
                 s.RunFrame();
+                TfAfterFrame(s);
                 FarmAfterFrame();
             }
             sessionFrames++;

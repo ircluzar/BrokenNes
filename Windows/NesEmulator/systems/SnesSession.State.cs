@@ -68,6 +68,9 @@ public sealed partial class SnesSession
         return ConsoleStateFile.Wrap(Console, GameId, Title, units, SnapshotPayload());
     }
 
+    /// <summary>The payload <see cref="SaveState"/> wraps (no container, no compression): what BrokenDev Timeflow takes every frame.</summary>
+    public byte[] SaveStatePayload() => SnapshotPayload();
+
     private byte[] SnapshotPayload()
     {
         using var ms = new MemoryStream(1 << 20);

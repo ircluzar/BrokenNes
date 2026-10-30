@@ -116,6 +116,31 @@ internal sealed class LiveSession : Session
         attachedByUs = true;
     }
 
+    // ================================================================================================ Timeflow (T1): the user's own play: a request only
+
+    /// <summary>
+    /// The user's app records only when the user switches it on, or accepts a request: an agent can ask (action request: the app shows a
+    /// prompt that does not stop the game, Allow or Decline), see the answer and the recording's state (status), or withdraw its request
+    /// (cancel). It can never switch recording on or off itself.
+    /// </summary>
+    public override JsonObject TimeflowRecord(string action, string? note)
+    {
+        switch (action)
+        {
+            case "request":
+            {
+                var j = Post("/api/timeflow/request", new { reason = note ?? "", from = $"an agent (MCP session {Id})" }) as JsonObject ?? new JsonObject();
+                j["note"] = "asked: the app shows the user a prompt (the game keeps running). Nothing records until the user allows it; check with action status (request: pending, allowed, declined)";
+                return j;
+            }
+            case "status": return Get("/api/timeflow/status") as JsonObject ?? new JsonObject();
+            case "cancel": return Post("/api/timeflow/request/cancel") as JsonObject ?? new JsonObject();
+            case "start": case "stop":
+                throw new ToolError($"an agent cannot switch the user's recording {(action == "start" ? "on" : "off")}: only the user does (Emulator > Debug Windows > Timeflow). Use action request to ask the user (the app shows a prompt), status to see the answer.");
+            default: throw new ToolError("timeflow_record on a live session: action request, status or cancel");
+        }
+    }
+
     // ================================================================================================ describe / status
 
     public override JsonObject Describe()

@@ -92,6 +92,8 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--movie-test", StringComparison.OrdinalIgnoreCase)) return Movies.MovieTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--bug", StringComparison.OrdinalIgnoreCase)) return Bugs.BugCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--bug-test", StringComparison.OrdinalIgnoreCase)) return Bugs.BugTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--timeflow", StringComparison.OrdinalIgnoreCase)) return Timeflow.TimeflowCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--timeflow-test", StringComparison.OrdinalIgnoreCase)) return Timeflow.TimeflowTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--checks", StringComparison.OrdinalIgnoreCase)) return Debug.CheckRunCli.Run(args, profileOnly: false);
         if (args.Length > 0 && args[0].Equals("--profile", StringComparison.OrdinalIgnoreCase)) return Debug.CheckRunCli.Run(args, profileOnly: true);
         if (args.Length > 0 && args[0].Equals("--check-test", StringComparison.OrdinalIgnoreCase)) return Debug.CheckTestCli.Run(args);

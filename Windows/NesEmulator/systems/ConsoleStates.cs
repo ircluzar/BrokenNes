@@ -98,6 +98,13 @@ public static class ConsoleStateFile
         return payload;
     }
 
+    /// <summary>The payload of a state file with no check against a running session (its own checksum is checked): what <see cref="IConsoleSession.SaveStatePayload"/> gives by default.</summary>
+    public static byte[] PayloadOf(byte[] file)
+    {
+        var info = Peek(file);
+        return Unwrap(file, info.Console, info.GameId, info.Title, new Dictionary<string, string>());
+    }
+
     private static string Describe(string unit, string? saved, string running) => unit switch
     {
         "apu" => $"This state was saved with the {saved ?? "unknown"} sound unit, but the game is running the {running} sound unit. Switch the sound unit to {saved ?? "that one"} in the APU menu and load the state again: a state is never loaded into a different sound unit.",
@@ -138,6 +145,9 @@ public static class ConsoleStateFile
         foreach (byte b in data) crc = table[(crc ^ b) & 0xFF] ^ (crc >> 8);
         return ~crc;
     }
+
+    /// <summary>The same CRC-32 for other files (BrokenDev Timeflow's blocks).</summary>
+    public static uint Crc32Public(ReadOnlySpan<byte> data) => Crc32(data);
 
     /// <summary>The definition, bit by bit (for tests).</summary>
     internal static uint Crc32Reference(ReadOnlySpan<byte> data)

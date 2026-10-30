@@ -53,6 +53,13 @@
                                  'all' (the default) and 'brokennes' the repo's suites (Workshop --debug-test, --check-test, --movie-test,
                                  tests\run-tests.ps1) on the same Workshop. One screen: a line per project and suite, every failure named,
                                  what changed since the last checkup; the report in out\checkup\checkup.json. Exit 1 when anything failed
+    timeflow record|list|info|verify|jump|resume|prune|keep|unkeep|status [project|timeline]
+                                 BrokenDev Timeflow (docs/projects/brokendev-timeflow-plan.md, T1/T2): timelines (a state every frame as
+                                 keyframes + page deltas, a per-frame index) under BROKENDEV_HOME\timeflow\<project>, 5 GB cap per game.
+                                 'record' (-Scenario id | -Script S -Frames N | -Movie m; -Course sym,sym; -Coverage) records the built ROM
+                                 HEADLESS (the desktop app records the user's play only when the user switches it on); 'jump' (-Frame F,
+                                 -Path out.png); 'resume' (-Frame F: the recorded inputs replay, checked; -Script S -Frames N: new input,
+                                 -Record keeps the branch); 'verify' restore equals record; 'prune' retires the oldest (keep: never)
     mcp     install|uninstall|build|status|test
                                  the BrokenNes MCP server (BrokenDev/mcp): 'install' builds it into BROKENDEV_HOME\bnbuild\mcp and registers it
                                  for Claude Code at USER scope ('claude mcp add --scope user brokennes', every session and game repo);
@@ -128,6 +135,9 @@ param(
     [switch]$Coverage,
     [switch]$NoSuites,
     [string]$McpExe = '',
+    # 'timeflow jump|resume' (milestone T2): the frame; 'timeflow resume -Record': keep the branch as a timeline
+    [long]$Frame = -1,
+    [switch]$Record,
     # 'tool <id> <args...>': the arguments after the tool id are passed to the tool
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @()
 )
@@ -151,6 +161,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\Movies.ps1')
 . (Join-Path $here 'lib\Bugs.ps1')
 . (Join-Path $here 'lib\Checkup.ps1')
+. (Join-Path $here 'lib\Timeflow.ps1')
 
 function Show-BdHelp { Write-Host (Get-Help (Join-Path $here 'brokendev.ps1') -Full | Out-String) }
 
@@ -188,7 +199,7 @@ function Get-BdProjectStatus {
 }
 
 try {
-    if ($Rest.Count -gt 0 -and @('tool', 'emulators', 'new', 'movie') -notcontains $Verb.ToLowerInvariant()) { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
+    if ($Rest.Count -gt 0 -and @('tool', 'emulators', 'new', 'movie', 'timeflow') -notcontains $Verb.ToLowerInvariant()) { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
     # -Emu a,b and -Scenario a,b: one comma list or several values, the same either way (pwsh -File passes a,b as one string)
     $Emu = @($Emu | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $Scenario = @($Scenario | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -415,6 +426,12 @@ try {
                 default { throw "movie: record, play, export, promote or list" }
             }
         }
+        'timeflow' {
+            # brokendev.ps1 timeflow <action> [project|timeline] ... (milestones T1, T2)
+            if ($Rest.Count -gt 1) { throw "timeflow: one project or timeline after the action (got: $($Rest -join ' '))" }
+            $t = if ($Rest.Count -eq 1) { $Rest[0] } else { '' }
+            exit (Invoke-BdTimeflow -Action $Target -Target $t -Scenario $(if ($Scenario.Count -gt 0) { $Scenario[0] } else { '' }) -Script $Script -Frames $Frames -Movie $Movie -Course $Course -Frame $Frame -Png $Path -Record:$Record -Coverage:$Coverage -Json:$Json -Exe $Exe)
+        }
         'bugs' {
             if ($Target) { [void](Resolve-BdTargets $Target) }
             $b = Get-BdBugs -Id $Target -Exe $Exe
@@ -477,7 +494,7 @@ try {
             Write-BdInfo "  guide:    docs/projects/widemess-devkit.md"
             exit 0
         }
-        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, toolchains, play, compat, movie, bisect, bugs, bug, checkup, mcp, new"; exit 2 }
+        default { Write-Host "unknown verb '$Verb'. Verbs: doctor, list, restore, build, verify, diff, run, build-workshop, build-app, status, tools, tool, emulators, toolchains, play, compat, movie, bisect, bugs, bug, timeflow, checkup, mcp, new"; exit 2 }
     }
 } catch {
     Write-BdFail $_.Exception.Message

@@ -912,4 +912,11 @@ public interface IConsoleSession : IDisposable
     /// machine as it was; <see cref="NotSupportedException"/> when <see cref="SupportsState"/> is false. A state is never loaded into a different sound unit and no part is swapped to make it fit.
     /// </summary>
     void LoadState(byte[] state) => throw new NotSupportedException(StateUnsupportedReason);
+
+    /// <summary>
+    /// The payload <see cref="SaveState"/> wraps, without the container's compression and checksum: the very bytes <see cref="ConsoleStateFile.Unwrap"/> gives back from a
+    /// <see cref="SaveState"/>. BrokenDev Timeflow takes one every frame, so a session overrides this with its own cheap snapshot; this default is right but slow (it deflates and inflates).
+    /// Throws <see cref="NotSupportedException"/> when <see cref="SupportsState"/> is false.
+    /// </summary>
+    byte[] SaveStatePayload() => ConsoleStateFile.PayloadOf(SaveState());
 }

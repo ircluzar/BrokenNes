@@ -1770,6 +1770,66 @@ exit $p.ExitCode
         Assert-True ($r.ExitCode -eq 0 -and $last -match '"pass": true') "bisect proof: $last $(@($r.Output -split "`r?`n" | Where-Object { $_ -like '*FAIL*' }) -join ' | ')"
     }
 
+    # ------------------------------------------------------------------ Timeflow (T1, T2)
+    Write-Host 'Timeflow (T1, T2)'
+    Test-Case 'timeflow record|list|info|verify|jump|resume|prune|keep|status through brokendev.ps1: a project''s timeline in BROKENDEV_HOME\timeflow\<project>, restore equals record, a replay in sync, a branch under its parent; NEGATIVE: a frame outside the timeline and an unknown timeline fail, a replay of a changed input... (the Workshop suite has the rest)' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $th = Join-Path $tmpRoot 'tfhome'; $tp = Join-Path $tmpRoot 'tfprojects'; $src = Join-Path $tmpRoot 'tfgame'
+        New-Item -ItemType Directory -Force -Path $th, (Join-Path $tp 'tgame'), $src | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $src 'game.txt'), "version 1`nstart Start`nfloor 1`nbonus 1`n")
+        [System.IO.File]::WriteAllText((Join-Path $src 'build.ps1'), @'
+param([Parameter(Mandatory)][string]$Workshop)
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+New-Item -ItemType Directory -Force -Path (Join-Path $here 'build') | Out-Null
+$p = Start-Process -FilePath $Workshop -ArgumentList @('--movie', 'build-planted', '--settings', "`"$(Join-Path $here 'game.txt')`"", '--out', "`"$(Join-Path $here 'build\game.nes')`"") -Wait -PassThru -NoNewWindow
+exit $p.ExitCode
+'@)
+        $man = [ordered]@{
+            schema = 1; id = 'tgame'; title = 'the Timeflow tests'' planted game'; family = 'test'; kind = 'nes'; console = 'nes'; description = 'T1/T2 run-tests'
+            source = @{ folder = $src }; requires = @{ tools = @('ps5'); projects = @(); inputs = @() }
+            build = @{ steps = @(@{ name = 'build'; shell = 'ps5'; cwd = '{src}'; file = '{src}/build.ps1'; args = @('-Workshop', '{workshop}'); timeoutSec = 120 })
+                       outputs = @(@{ id = 'rom'; path = '{src}/build/game.nes'; publishAs = 'game.nes'; kind = 'nes' }, @{ id = 'mlb'; path = '{src}/build/game.mlb'; publishAs = 'game.mlb'; kind = 'symbols' }) }
+            verify = @{ scenarios = @(@{ id = 'play'; frames = 600; input = '60:Start,66:,200:A,260:' }) }; knownIssues = @()
+        }
+        Save-BdJson -Object $man -Path (Join-Path (Join-Path $tp 'tgame') 'project.json')
+        $savedTf = Save-Env @('BROKENDEV_HOME', 'BROKENDEV_PROJECTS', 'BROKENDEV_WORKSHOP', 'BROKENDEV_TIMEFLOW')
+        $env:BROKENDEV_HOME = $th; $env:BROKENDEV_PROJECTS = $tp; $env:BROKENDEV_WORKSHOP = $ws; $env:BROKENDEV_TIMEFLOW = $null
+        $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { (Get-Process -Id $PID).Path } else { Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe' }
+        function Bd([string[]]$a) { Invoke-BdProcess -FilePath $psExe -Arguments (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $bd 'brokendev.ps1')) + $a) -TimeoutSec 600 -Env @{ BROKENDEV_HOME = $th; BROKENDEV_PROJECTS = $tp; BROKENDEV_WORKSHOP = $ws } }
+        function BdJ([string[]]$a) { $r = Bd ($a + '-Json'); $t = $r.Output; $i = $t.IndexOf('{'); $j = $t.LastIndexOf('}'); [pscustomobject]@{ Code = $r.ExitCode; J = $(if ($i -ge 0 -and $j -gt $i) { try { $t.Substring($i, $j - $i + 1) | ConvertFrom-Json } catch { $null } } else { $null }); Text = $t } }
+        try {
+            [void](Invoke-BdProjectBuild -Id 'tgame')
+            $rec = BdJ @('timeflow', 'record', 'tgame', '-Scenario', 'play', '-Course', 'app_state')
+            Assert-True ($rec.Code -eq 0 -and $rec.J.frames -eq 600 -and $rec.J.status -eq 'closed' -and $rec.J.verifyFailures -eq 0) "record: exit $($rec.Code) $(Select-BdTail $rec.Text 4)"
+            $tid = [string]$rec.J.id
+            Assert-True ($rec.J.project -eq 'tgame' -and ([string]$rec.J.dir).StartsWith((Join-Path $th 'timeflow\tgame'), [StringComparison]::OrdinalIgnoreCase)) "the timeline is not in timeflow\tgame: $($rec.J.dir) (project '$($rec.J.project)')"
+            Assert-True (@($rec.J.vars) -contains 'app_state=[app_state]') "the watched variable is not in the timeline: $(@($rec.J.vars) -join ', ')"
+            $ls = Bd @('timeflow', 'list', 'tgame')
+            Assert-True ($ls.ExitCode -eq 0 -and $ls.Output -match [regex]::Escape($tid)) "list: $(Select-BdTail $ls.Output 4)"
+            $vf = Bd @('timeflow', 'verify', $tid)
+            Assert-True ($vf.ExitCode -eq 0 -and $vf.Output -match 'restore equals record on 600 of 600') "verify: exit $($vf.ExitCode) $(Select-BdTail $vf.Output 4)"
+            $jp = BdJ @('timeflow', 'jump', $tid, '-Frame', '300')
+            Assert-True ($jp.Code -eq 0 -and $jp.J.frame -eq 300 -and $null -ne $jp.J.vars.app_state) "jump: exit $($jp.Code) $(Select-BdTail $jp.Text 4)"
+            $rp = BdJ @('timeflow', 'resume', $tid, '-Frame', '300')
+            Assert-True ($rp.Code -eq 0 -and $rp.J.inSync -and $rp.J.framesRun -eq 300) "resume (replay): exit $($rp.Code) $(Select-BdTail $rp.Text 4)"
+            $br = BdJ @('timeflow', 'resume', $tid, '-Frame', '300', '-Script', '0:Left+B', '-Frames', '90', '-Record')
+            Assert-True ($br.Code -eq 0 -and $br.J.branch) "resume (a branch): exit $($br.Code) $(Select-BdTail $br.Text 4)"
+            $bi = BdJ @('timeflow', 'info', [string]$br.J.branch)
+            Assert-True ($bi.J.parent.id -eq $tid -and $bi.J.parent.frame -eq 300 -and $bi.J.startFrame -eq 300 -and $bi.J.frames -eq 90) "the branch: parent $($bi.J.parent.id) at $($bi.J.parent.frame), frames $($bi.J.startFrame)+$($bi.J.frames)"
+            $kp = Bd @('timeflow', 'keep', $tid); $st = BdJ @('timeflow', 'status')
+            Assert-True ($kp.ExitCode -eq 0 -and @($st.J.games).Count -ge 1 -and @($st.J.games)[0].timelines -eq 2) "keep / status: $(Select-BdTail $kp.Output 2) $(Select-BdTail $st.Text 4)"
+            $pr = Bd @('timeflow', 'prune', 'tgame')
+            Assert-True ($pr.ExitCode -eq 0 -and $pr.Output -match 'retired 0') "prune under the cap retired something: $(Select-BdTail $pr.Output 3)"
+            # the negative controls
+            $far = Bd @('timeflow', 'jump', $tid, '-Frame', '99999')
+            Assert-True ($far.ExitCode -ne 0 -and $far.Output -match 'not in timeline') "a frame outside the timeline: exit $($far.ExitCode) $(Select-BdTail $far.Output 3)"
+            $unk = Bd @('timeflow', 'info', 'no-such-timeline')
+            Assert-True ($unk.ExitCode -ne 0 -and $unk.Output -match 'no timeline') "an unknown timeline: exit $($unk.ExitCode) $(Select-BdTail $unk.Output 3)"
+            $bad = Bd @('timeflow', 'nonsense')
+            Assert-True ($bad.ExitCode -ne 0) 'an unknown timeflow action passed'
+        } finally { Restore-Env $savedTf }
+    }
+
     # ------------------------------------------------------------------ bug captures (D6)
     Write-Host 'bug captures (D6)'
     Test-Case 'bugs + bug: the build record names the workspace''s bugs folder, a capture there and one in the default folder are listed, bug replays it exactly and opens it in the debugger; NEGATIVE: a workspace repository that does not ignore bugs\ fails bugs, a capture with Start one frame late fails bug, an unknown id is refused' {

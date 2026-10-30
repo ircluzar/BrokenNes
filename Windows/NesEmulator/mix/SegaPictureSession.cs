@@ -80,6 +80,7 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
     public bool SupportsState => inner.SupportsState;
     public string StateUnsupportedReason => inner.StateUnsupportedReason;
     public byte[] SaveState() => inner.SaveState();
+    public byte[] SaveStatePayload() => inner.SaveStatePayload();
 
     public void LoadState(byte[] state)
     {
