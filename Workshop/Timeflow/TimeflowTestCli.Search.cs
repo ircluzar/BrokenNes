@@ -106,7 +106,9 @@ internal static partial class TimeflowTestCli
     {
         var want = expected.ToHashSet();
         var got = r.Hits.Select(h => h.Frame).ToHashSet();
-        bool ok = got.SetEquals(want) && r.Timelines.All(t => t.CoarseMissed == 0 && t.OffFrame == null && t.Skipped == null) && r.Clauses.All(c => c.Contradicted == 0) && (eachHit == null || r.Hits.All(eachHit));
+        // a frame-level condition hits a frame once (a breakpoint may fire more than once in a frame)
+        bool once = r.Clauses.Any(c => c.Family is "code" or "memory") || r.Hits.Count == got.Count;
+        bool ok = got.SetEquals(want) && once && r.Timelines.All(t => t.CoarseMissed == 0 && t.OffFrame == null && t.Skipped == null) && r.Clauses.All(c => c.Contradicted == 0) && (eachHit == null || r.Hits.All(eachHit));
         Check(name, ok, $"hits {Show(got.OrderBy(x => x))}; expected {Show(want.OrderBy(x => x))}" + (got.SetEquals(want) ? "" : $"; missing {Show(want.Except(got).OrderBy(x => x))}, extra {Show(got.Except(want).OrderBy(x => x))}") + $" | {Cost(r)}{extra}");
     }
 

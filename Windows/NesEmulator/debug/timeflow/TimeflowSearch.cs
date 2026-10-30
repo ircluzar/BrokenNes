@@ -513,12 +513,15 @@ public static class TimeflowSearch
         }
         bool stop = false;
         long decided = 0;
+        var decidedFrames = new HashSet<long>();
         int undecidedNotes = 0, missedNotes = 0;
         void Decide(long f, FrameTruth t, List<SearchHit>? firings)
         {
             if (stop) return;
             byFrame.TryGetValue(f, out var each);
             bool candidate = each != null;
+            // a frame is decided once (a run's frame before may be a candidate the picture cache also holds)
+            if (!decidedFrames.Add(f)) return;
             if (candidate) { tr.ExactFrames++; rep.ExactFrames++; decided++; }
             bool hit = true, undecided = false;
             for (int i = 0; i < g.B.Count; i++)
