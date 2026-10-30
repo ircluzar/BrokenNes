@@ -676,6 +676,15 @@ public sealed class Debugger
         OnAccessKeys(cpu, ca, keys, address, value, write, source, channel);
     }
 
+    /// <summary>A Z80 I/O port access (the Sega consoles): the observers see it at <paramref name="observerAddress"/> ($10000 + the port, outside the memory's
+    /// addresses), the watches match <paramref name="key"/> (the port the console decodes) and show <paramref name="port"/>.</summary>
+    internal void OnPortAccess(DebugCpu cpu, SpaceKey key, uint observerAddress, uint port, byte value, bool write)
+    {
+        var obs = observers;
+        for (int i = 0; i < obs.Length; i++) obs[i].OnAccess(cpu, observerAddress, value, write, AccessSource.Cpu, -1);
+        OnAccessKey(cpu, key, port, value, write, AccessSource.Cpu, -1);
+    }
+
     private void OnAccessKeys(DebugCpu cpu, CpuArmed ca, Span<SpaceKey> keys, uint address, byte value, bool write, AccessSource source, int channel)
     {
         var list = write ? ca.Write : ca.Read;

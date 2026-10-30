@@ -39,7 +39,7 @@ internal static class TimeflowTestCli
     {
         RomTestCli.EnsureConsole();
         string Opt(string n, string d) { int i = Array.IndexOf(args, "--" + n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
-        var only = Opt("only", "form,codec,consoles,damage,stop,cap,off,branch,places,index,apu").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var only = Opt("only", "form,codec,consoles,damage,stop,cap,off,branch,places,index,index-sega,apu").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
         int longFrames = int.Parse(Opt("long", "1800"));
         string dir = Opt("keep", Path.Combine(Path.GetTempPath(), "brokennes-timeflow-test-" + Environment.ProcessId));
         Directory.CreateDirectory(dir);
@@ -71,6 +71,7 @@ internal static class TimeflowTestCli
             Group("branch", "rewind and resume: jump, replay in sync, a branch with new input, the tree", () => Branch(nes, snes));
             Group("places", "where timelines go (never %APPDATA%\\BrokenNes)", () => Places(dir));
             Group("index", "the per-frame index: watched variables, the frame's coverage, changed bytes per domain, findings", () => Index(dir, planted));
+            Group("index-sega", "the per-frame index on the Sega consoles (T0): watched variables and the frame's coverage on the Master System, Game Gear and Genesis", () => IndexSega(dir));
             Group("apu", "APU_FIX's state carries its frame sequencer's step (found by Timeflow: a load kept the step of the machine loaded into)", () => ApuStep(nes));
         }
         finally
@@ -495,6 +496,59 @@ internal static class TimeflowTestCli
         var n300 = r0.Extras(300);
         Check("index (negative): without them, no variables, no coverage, no findings (the changed bytes stay)", n300.Vars.Length == 0 && n300.Coverage.Count == 0 && n300.Findings.Count == 0 && n300.Domains[ramIdx].ChangedBytes == e300.Domains[ramIdx].ChangedBytes, $"vars {n300.Vars.Length}, coverage {n300.Coverage.Count}, RAM changed {n300.Domains[ramIdx].ChangedBytes}");
         Check("index: the debugger's hooks leave the recording frame-identical", Enumerable.Range(0, 400).All(f => rd.Row(f).State == r0.Row(f).State && rd.Row(f).Picture == r0.Row(f).Picture), "every frame's state and picture hash the same with and without coverage and checks");
+    }
+
+    // ------------------------------------------------------------------------------------------------ index-sega
+
+    /// <summary>The debugger's test ROMs of the Sega consoles (Workshop/Debug/DebugTestRomsSega.cs) recorded with the index's extras: the watched variables follow the game,
+    /// the frame's coverage holds the code the frame ran (the main loop's subroutines, the bank-2 function at its ROM offset; on the Genesis the 68000's ROM), and the
+    /// recording is frame-identical with and without them (negative: without them, none).</summary>
+    private static void IndexSega(string dir)
+    {
+        var (smsRom, smsAsm, smsSym) = BrokenNes.Workshop.Debug.SegaDebugTestRoms.MasterSystem(false);
+        var (ggRom, _, ggSym) = BrokenNes.Workshop.Debug.SegaDebugTestRoms.MasterSystem(true);
+        var (mdRom, mdAsm, _, mdNm) = BrokenNes.Workshop.Debug.SegaDebugTestRoms.Genesis();
+        var cases = new (string tag, string rom, string sym, string console, string[] vars, uint covered, uint coveredLen, uint banked)[]
+        {
+            ("sms", DebugTestRoms.Write(dir, "indexed.sms", smsRom), DebugTestRoms.Write(dir, "indexed_sms.sym", smsSym), "sms", new[] { "counter=[counter]", "turns={turns}" }, smsAsm["sub2"], smsAsm["sub2_ret"] - smsAsm["sub2"] + 1, 0x8000),
+            ("gg", DebugTestRoms.Write(dir, "indexed.gg", ggRom), DebugTestRoms.Write(dir, "indexed_gg.sym", ggSym), "gg", new[] { "counter=[counter]", "turns={turns}" }, smsAsm["sub2"], smsAsm["sub2_ret"] - smsAsm["sub2"] + 1, 0x8000),
+            ("md", DebugTestRoms.Write(dir, "indexed.md", mdRom), DebugTestRoms.Write(dir, "indexed_md.txt", mdNm), "md", new[] { "counter=[$FF0001]", "vints=[$FF0007]" }, mdAsm["sub2"], mdAsm["sub2_ret"] - mdAsm["sub2"] + 2, uint.MaxValue),
+        };
+        foreach (var (tag, rom, sym, console, vars, covered, coveredLen, banked) in cases)
+        {
+            string Rec(bool extras)
+            {
+                using var m = MovieMachine.Open(rom, console, "", "fceux", false, true, new[] { sym });
+                var o = new TimeflowOptions { Rom = m.RomFile, RomName = m.RomName, Cores = m.Cores, Source = "test", PowerOnStart = true };
+                FrameCoverage? cov = null;
+                if (extras)
+                {
+                    var d = m.Host.Dbg;
+                    o.VarNames = vars.ToList();
+                    var exprs = vars.Select(v => v[(v.IndexOf('=') + 1)..]).ToArray();
+                    o.Vars = () => exprs.Select(e => d.Evaluate(e)).ToArray();
+                    cov = FrameCoverage.Attach(d); o.Coverage = cov;
+                }
+                var rec = TimeflowRecorder.Start(TimeflowMachines.SourceFor(m), o);
+                for (long f = 0; f < 240; f++) { rec.BeforeFrame(PadButtons.None, PadButtons.None); m.Frame(PadButtons.None, PadButtons.None); rec.AfterFrame(); }
+                cov?.Detach();
+                return rec.Stop();
+            }
+            string withX = Rec(true), without = Rec(false);
+            using var rd = new TimelineReader(withX);
+            using var r0 = new TimelineReader(without);
+            var e20 = rd.Extras(20); var e200 = rd.Extras(200);
+            Check($"index-sega {tag}: the watched variables by frame", rd.Meta.Vars.Count == 2 && e20.Vars.Length == 2 && e200.Vars.Length == 2 && e200.Vars[1] != e20.Vars[1],
+                  $"{vars[0]} {e20.Vars.ElementAtOrDefault(0)} at frame 20, {e200.Vars.ElementAtOrDefault(0)} at 200; {vars[1]} {e200.Vars.ElementAtOrDefault(1)}");
+            bool Covers(List<(uint Start, uint Length)> c, uint at, uint len) => c.Any(r => r.Start <= at && r.Start + r.Length >= at + len);
+            Check($"index-sega {tag}: the frame's coverage holds the code the frame ran", Covers(e200.Coverage, covered, coveredLen) && (banked == uint.MaxValue || Covers(e200.Coverage, banked, 6)),
+                  $"{e200.Coverage.Count} ROM ranges at frame 200: {string.Join(", ", e200.Coverage.Take(6).Select(r => $"${r.Start:X}+{r.Length}"))}; sub2 at ${covered:X}{(banked != uint.MaxValue ? $", bank 2 at ${banked:X}" : "")}");
+            Check($"index-sega {tag} (negative): code that never runs is not in the coverage", !Covers(e200.Coverage, banked == uint.MaxValue ? mdAsm["known"] : 0x4000, 2),
+                  banked == uint.MaxValue ? "the never-run known stretch is not covered" : "bank 1's function (ROM $4000) is not covered");
+            var n200 = r0.Extras(200);
+            Check($"index-sega {tag} (negative): without them, no variables and no coverage", n200.Vars.Length == 0 && n200.Coverage.Count == 0, $"vars {n200.Vars.Length}, coverage {n200.Coverage.Count}");
+            Check($"index-sega {tag}: the debugger's hooks leave the recording frame-identical", Enumerable.Range(0, 240).All(f => rd.Row(f).State == r0.Row(f).State && rd.Row(f).Picture == r0.Row(f).Picture), "every frame's state and picture hash the same with and without the extras");
+        }
     }
 
     // ------------------------------------------------------------------------------------------------ apu

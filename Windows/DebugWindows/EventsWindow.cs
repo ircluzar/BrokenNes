@@ -62,6 +62,8 @@ namespace BrokenNes.Windows.DebugWindows
                 "nes" => a >= 0x2000 && a < 0x4020,
                 "snes" => ((a >> 16) & 0x40) == 0 && ((a & 0xFFFF) is >= 0x2100 and < 0x2200 or >= 0x4200 and < 0x4380),
                 "gb" => a >= 0xFF00 && a < 0xFF80 || a == 0xFFFF,
+                "sms" or "gg" => a >= 0x10000,                                                   // the Z80's I/O ports (the VDP, the PSG, the pads), at $10000 + the port
+                "md" => a is >= 0xA10000 and < 0xA14004 || a is >= 0xC00000 and < 0xE00000,     // the I/O chip, the Z80 bus and reset, TMSS, the VDP and the PSG
                 _ => false,
             };
 
@@ -99,7 +101,7 @@ namespace BrokenNes.Windows.DebugWindows
                 bool dma = source != AccessSource.Cpu;
                 if (!dma && !IsRegister(address)) return;
                 Roll();
-                string reg = "$" + address.ToString(family == "snes" ? "X6" : "X4");
+                string reg = family is "sms" or "gg" && address >= 0x10000 ? "port $" + (address & 0xFF).ToString("X2") : "$" + address.ToString(family is "snes" or "md" ? "X6" : "X4");
                 if (dma)
                 {
                     string key = $"{source}:{channel}:{(IsRegister(address) ? reg : "mem")}";

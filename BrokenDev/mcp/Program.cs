@@ -44,8 +44,8 @@ internal static class Program
 
     private const string Instructions =
         "BrokenNes, driven directly. HEADLESS sessions (open_rom, open_project) are BrokenNes's own emulator inside this server: invisible, deterministic, many at once, every console " +
-        "(NES, SNES, WideMess, Game Boy / Color, Master System, Game Gear, Genesis); the debugger (breakpoints, mirror-aware watches, stepping, call stack, trace, symbols) covers NES, SNES with its SPC700, WideMess and Game Boy; " +
-        "the D4 hardware checks and the profiler run with checks:true. Debug games here, not on Mesen (Mesen is for cross-checks). " +
+        "(NES, SNES, WideMess, Game Boy / Color, Master System, Game Gear, Genesis); the debugger (breakpoints, mirror-aware watches, stepping, call stack, trace, symbols) covers every console (NES, SNES with its SPC700, WideMess, Game Boy, Master System and Game Gear (Z80), Genesis (68000 and its sound Z80)); " +
+        "the D4 hardware checks and the profiler run with checks:true (NES, SNES, WideMess, Game Boy). Debug games here, not on Mesen (Mesen is for cross-checks). " +
         "LIVE sessions (attach_live) read the user's running desktop app: read freely; open with control:true only when the user asked in chat to control their game (and the app must have enableDebuggerControl on); " +
         "a live session never saves, never touches progression and never stops the process. Results are JSON (pictures as images). Typical: open_rom with checks:true, run 600, checks report, then breakpoint_add on what a finding names, run, call_stack, trace.";
 

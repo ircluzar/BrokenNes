@@ -158,9 +158,12 @@ namespace BrokenNes.Windows.DebugWindows
                 "nes" => new[] { ".mlb" },
                 "snes" or "widemess" or "wms" => new[] { ".sym" },
                 "gb" or "gbc" => new[] { ".sym", ".noi" },
+                "sms" or "gg" => new[] { ".sym", ".noi" },   // WLA-DX (wla-z80) and devkitSMS (SDCC)
+                "md" => new[] { ".sym", ".txt" },             // GNU nm output (SGDK writes it as symbol.txt beside rom.bin)
                 _ => Array.Empty<string>(),
             };
             foreach (var ext in exts) { string p = Path.ChangeExtension(rom, ext); if (File.Exists(p)) return p; }
+            if (console.Equals("md", StringComparison.OrdinalIgnoreCase) && Path.GetDirectoryName(rom) is { } dir && File.Exists(Path.Combine(dir, "symbol.txt"))) return Path.Combine(dir, "symbol.txt");
             return null;
         }
 

@@ -118,19 +118,23 @@ internal sealed partial class HeadlessSession : Session
                 h.cores = $"{ci}/{pi}/{ai}";
             }
             try { h.M = h.nes != null ? DebugMachines.For(h.nes) : DebugMachines.For(h.cs!); }
-            catch (NotSupportedException) { h.M = null; }   // a Sega console: frames, input, memory, picture and sound, no debugger yet
+            catch (NotSupportedException) { h.M = null; }   // a console the debugger does not reach: frames, input, memory, picture and sound
             if (h.M != null)
             {
                 h.D = new Debugger(h.M) { TraceRingSize = 65536 };
                 if (callStack) h.D.TrackCallStack = true;   // an interactive session: the call stack (and the trace ring) from the first instruction
                 h.R = new DebugRunner(h.D, h.Frame);
                 foreach (var f in symbolFiles) h.D.Symbols.Load(f, h.M.Console);
-                h.port = new NesEmulator.Debugging.Port.DebugPort(h.M, h.D) { BreakOnAssert = true, BreakOnBreak = true, Keep = 4096 };
-                h.port.Attach();
+                // the debug port (D7): the NES, SNES / WideMess and Game Boy have one; the Sega consoles have none
+                if (h.M is not (SmsDebugMachine or MdDebugMachine))
+                {
+                    h.port = new NesEmulator.Debugging.Port.DebugPort(h.M, h.D) { BreakOnAssert = true, BreakOnBreak = true, Keep = 4096 };
+                    h.port.Attach();
+                }
                 if (startChecks) h.Checks("start", checksOff, frameWait, 0, 15);
             }
             else if (symbolFiles.Any() || startChecks)
-                throw new ToolError($"the debugger and the checks do not cover the {Consoles.DisplayName(c)} yet (D1 and D4: NES, SNES with its SPC700, WideMess, Game Boy)");
+                throw new ToolError($"the debugger and the checks do not cover the {Consoles.DisplayName(c)}");
             h.StartHistory(null);
         }
         catch { h.Close(); throw; }
@@ -223,7 +227,7 @@ internal sealed partial class HeadlessSession : Session
 
     // ================================================================================================ helpers
 
-    private Debugger Dbg => D ?? throw new ToolError($"the debugger does not cover the {Consoles.DisplayName(console)} yet (D1: NES, SNES with its SPC700, WideMess, Game Boy)");
+    private Debugger Dbg => D ?? throw new ToolError($"the debugger does not cover the {Consoles.DisplayName(console)}");
 
     private DebugCpu CpuOf(string id)
     {
@@ -319,7 +323,7 @@ internal sealed partial class HeadlessSession : Session
 
     public override JsonObject DebugPort(string action, long since, int limit, List<string> kinds)
     {
-        var p = port ?? throw new ToolError($"no debug port on this session: the debugger does not cover the {Consoles.DisplayName(console)}");
+        var p = port ?? throw new ToolError($"no debug port on this session: the debug port is the NES's, SNES / WideMess's and Game Boy's (D7), the {Consoles.DisplayName(console)} has none");
         limit = Math.Clamp(limit, 1, 4096);
         switch (action)
         {
@@ -409,7 +413,7 @@ internal sealed partial class HeadlessSession : Session
             j["symbols"] = D!.Symbols.All.Count;
             j["symbolFiles"] = J.Strs(D.Symbols.Files);
         }
-        else j["limitations"] = J.Strs(new[] { $"no debugger for the {Consoles.DisplayName(console)} yet: frames, input, memory domains, the picture, sound and states work" });
+        else j["limitations"] = J.Strs(new[] { $"no debugger for the {Consoles.DisplayName(console)}: frames, input, memory domains, the picture, sound and states work" });
         j["domains"] = J.Strs(AllDomains().Select(d => d.Id));
         j["checks"] = checks != null;
         if (cs != null) j["states"] = cs.SupportsState; else j["states"] = true;
@@ -1232,7 +1236,7 @@ internal sealed partial class HeadlessSession : Session
 
     public override JsonObject DiffStates(string a, string b, int limit)
     {
-        if (M == null) throw new ToolError("a diff by symbol needs the debugger's view of the memory (NES, SNES, WideMess, Game Boy)");
+        if (M == null) throw new ToolError("a diff by symbol needs the debugger's view of the memory");
         Snapshot Get(string n) => n.Equals("current", StringComparison.OrdinalIgnoreCase) ? Take() : states.TryGetValue(n, out var s) ? s : throw new ToolError($"no state '{n}' (saved: {string.Join(", ", states.Keys)}; or 'current')");
         if (a.Equals("current", StringComparison.OrdinalIgnoreCase) || b.Equals("current", StringComparison.OrdinalIgnoreCase)) EnsureBetweenFrames();
         var A = Get(a); var B = Get(b);

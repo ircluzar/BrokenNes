@@ -37,6 +37,11 @@
     MUTE      the sound monitor's mute and solo on the SNES voices and the Game Boy channels (the mask in the window and the [muted]
               mark); closing the window un-mutes, and the config file is not written. (The audible effect is --debug-test's: Super VRUN.)
     SNES / GB the same window on the SNES (the CPU picker offers the SPC700, whose registers show) and the Game Boy.
+    SEGA      (Timeflow T0) the debugger's Master System and Genesis test ROMs, each in a folder of its own with its symbol file beside it (a WLA-DX
+              .sym, an nm .txt): the debugger parks, its PC matches the API's, the symbols load by themselves, a breakpoint on sub2 typed into the
+              window stops there with sub1 > sub2 in its call stack (the Genesis: BSR over JSR; the CPU picker offers the Z80); closing detaches;
+              the memory window's domains and a BUS row against the API; Event View shows the frame's interrupt (IRQ / VINT) and, on the Master
+              System, the data port's writes as "port $BE" (negative: no port line on the Genesis, whose events are 68000 addresses).
   Rule zero (UAT\README.md): never kill by process name; only the PID started here is touched.
 
 .EXAMPLE
@@ -516,6 +521,56 @@ try {
     Check 'sound_gb_negative' ($ch[2] -like 'Wave:*wave *' -and $ch[0] -notlike '*wave*') "the wave RAM is on the wave channel only"
     Close-Window $win
     MuteCheck $id 'gb' 4 '0D'
+
+    # ---------------------------------------------------------------- Sega (Timeflow T0): the Master System and the Genesis, each ROM in a folder of its own with its symbols
+    $sega = Join-Path $WorkDir 'sega'
+    New-Item -ItemType Directory -Force -Path (Join-Path $sega 'sms'), (Join-Path $sega 'md') | Out-Null
+    Copy-Item -LiteralPath (Join-Path $roms 'debugtest.sms') -Destination (Join-Path $sega 'sms\debugtest.sms')
+    Copy-Item -LiteralPath (Join-Path $roms 'debugtest_sms.sym') -Destination (Join-Path $sega 'sms\debugtest.sym')
+    Copy-Item -LiteralPath (Join-Path $roms 'debugtest.md') -Destination (Join-Path $sega 'md\debugtest.md')
+    Copy-Item -LiteralPath (Join-Path $roms 'debugtest_md_symbols.txt') -Destination (Join-Path $sega 'md\debugtest.txt')
+    foreach ($seg in @(@{ n = 'sms'; rom = 'sms\debugtest.sms'; sym = 'debugtest.sym'; sub2 = $labels.sms.sub2; inner = 'CALL'; irq = 'IRQ'; domains = @('RAM', 'VRAM', 'CRAM', 'BUS') },
+                       @{ n = 'md'; rom = 'md\debugtest.md'; sym = 'debugtest.txt'; sub2 = $labels.md.sub2; inner = 'BSR'; irq = 'VINT'; domains = @('RAM', 'VRAM', 'CRAM', 'ZRAM', 'BUS', 'Z80BUS') })) {
+        $n = $seg.n
+        Load $id (Join-Path $sega $seg.rom)
+        $win = Open-Debugger $id
+        Click 'pause'
+        $ss = WaitFor { $x = Api $id GET '/api/debug/state'; if ($x.parked) { $x } }
+        if (-not $ss) { $ss = Api $id GET '/api/debug/state' }
+        Start-Sleep -Milliseconds 400
+        $sr = TextOf (FindById $win 'registers')
+        $sf = @($ss.symbolFiles | ForEach-Object { Split-Path -Leaf $_ })
+        Check "${n}_debugger" ($ss.console -eq $n -and $ss.parked -and (RegPc $sr) -eq $ss.cpus[0].pcHex -and ($sf -join ',') -eq $seg.sym -and $ss.symbols -gt 0) "console $($ss.console), parked $($ss.parked), window PC $(RegPc $sr), API $($ss.cpus[0].pcHex), $($ss.symbols) symbols from $($sf -join ', ')"
+        $cpuItems = @(); $cb = FindById $win 'cpu'; Expand-El $cb; Start-Sleep -Milliseconds 300
+        $cpuItems = @($cb.FindAll($TS::Descendants, (Cond $AE::ControlTypeProperty ([System.Windows.Automation.ControlType]::ListItem))) | ForEach-Object { $_.Current.Name })
+        $cb.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse(); Start-Sleep -Milliseconds 200
+        Check "${n}_cpu_picker" ($(if ($n -eq 'md') { ($cpuItems -join ',') -eq 'main,z80' } else { ($cpuItems -join ',') -eq 'main' })) "the CPU picker: $($cpuItems -join ', ')"
+        SetText (FindById $win 'bpspec') 'sub2'
+        Click 'addbreakpoint'
+        Click 'continue'
+        $sw = Api $id GET '/api/debug/wait?timeoutMs=5000'
+        Start-Sleep -Milliseconds 500
+        $sk = Items (FindById $win 'callstack')
+        Check "${n}_break_on_sub2" ($sw.parked -and $sw.lastBreak.pc -eq $seg.sub2 -and $sk.Count -eq 2 -and $sk[0] -like "$($seg.inner)*-> sub2*" -and $sk[1] -like '*-> sub1*') "parked at $('{0:X}' -f $sw.lastBreak.pc) (sub2 = $('{0:X}' -f $seg.sub2)); the window's stack: $($sk -join ' | ')"
+        Close-Window $win
+        $sc = Api $id GET '/api/debug/state'
+        Check "${n}_close_detaches" (-not $sc.attached -and -not $sc.armed -and -not $sc.parked) "closed: attached $($sc.attached), armed $($sc.armed), parked $($sc.parked)"
+        $win = Open-Memory $id
+        $sd = Domains $win
+        Pick-Domain $win 'BUS' | Out-Null
+        GoTo $win '200'; $b0 = HexRow $win 0; $ba = ApiRow $id 'BUS' 0x200
+        Check "${n}_memory" ((@($seg.domains | Where-Object { $sd -notcontains $_ }).Count -eq 0) -and $b0 -like '*0200:*' -and (RowBytes $b0) -eq $ba) "domains $($sd -join ', '); BUS row $b0 ; API $ba"
+        Close-Window $win
+        $win = Open-Events $id
+        Start-Sleep -Milliseconds 1500
+        $ev = @(Items (FindById $win 'events'))
+        $q = @($ev | Where-Object { $_ -like "*interrupt $($seg.irq)*" }); $pw = @($ev | Where-Object { $_ -like '*write port $BE*' })
+        if ($n -eq 'sms') { Check 'sms_events' ($q.Count -ge 1 -and $pw.Count -ge 1) "$($q | Select-Object -First 1) | $($pw | Select-Object -First 1) ($(@($ev).Count) lines)" }
+        else { Check 'md_events' ($q.Count -ge 1 -and $pw.Count -eq 0) "$($q | Select-Object -First 1) ($(@($ev).Count) lines; no port lines on the 68000)" }
+        Close-Window $win
+        $se = Api $id GET '/api/debug/state'
+        Check "${n}_events_closed_negative" (-not $se.attached -and -not $se.armed) "closed: attached $($se.attached), armed $($se.armed)"
+    }
 
     # ---------------------------------------------------------------- WideMess: the devkit sample (WideMess\testroms\bin) through the same windows
     $wmsRom = Join-Path $repo 'WideMess\testroms\bin\devkit_sample.wms'

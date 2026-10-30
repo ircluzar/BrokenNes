@@ -8,7 +8,7 @@ namespace NesEmulator.Debugging.Checks;
 /// <summary>One rule of the hardware-check catalogue (docs/projects/brokendev-debugging-plan.md, "D4 settled").</summary>
 public sealed record RuleInfo(string Id, string Console, string Title, string Why, bool MemoryRule);
 
-/// <summary>The catalogue: every rule the checks know, by console ("nes", "snes" (also the WideMess), "gb" (also the Color)).</summary>
+/// <summary>The catalogue: every rule the checks know, by console ("nes", "snes" (also the WideMess), "gb" (also the Color), "sms" (also the Game Gear), "md").</summary>
 public static class CheckCatalogue
 {
     public static readonly RuleInfo[] All =
@@ -53,13 +53,21 @@ public static class CheckCatalogue
         new("gb.halt-bug", "gb", "HALT with IME clear and an interrupt pending", "the next byte is read twice (the HALT bug)", false),
         new("gb.stack-overflow", "gb", "the stack reached bytes the game uses as data", "the stack and the data overwrite each other", true),
         new("gb.lag-frame", "gb", "a lag frame: vblank arrived while the main program was still working", "the frame's work spills into the next one", false),
+        // ---- Master System and Game Gear (Timeflow T0: the first Sega rules)
+        new("sms.ram-uninit", "sms", "work RAM read before it was written", "real RAM powers on with random contents", true),
+        new("sms.lag-frame", "sms", "a lag frame: the frame ended while the main program was still working", "the frame's work spills into the next one", false),
+        // ---- Genesis
+        new("md.ram-uninit", "md", "68000 work RAM read before it was written (by the 68000, the Z80's bank window or a DMA)", "real RAM powers on with random contents", true),
+        new("md.zram-uninit", "md", "the Z80's RAM read by the Z80 before it was written", "real RAM powers on with random contents", true),
+        new("md.z80-bus", "md", "the Z80's space used by the 68000 without the Z80's bus", "without BUSREQ granted (or RESET held) a read gives $FF and a write is lost", false),
+        new("md.lag-frame", "md", "a lag frame: the frame ended while the main program was still working", "the frame's work spills into the next one", false),
     };
 
     public static RuleInfo? Find(string id) => All.FirstOrDefault(r => r.Id == id);
     public static IEnumerable<RuleInfo> For(string console) => All.Where(r => r.Console == console);
 
     /// <summary>The rule family a debug machine's console uses ("widemess" -> "snes", "gbc" -> "gb").</summary>
-    public static string FamilyOf(string machineConsole) => machineConsole switch { "widemess" => "snes", "gbc" => "gb", _ => machineConsole };
+    public static string FamilyOf(string machineConsole) => machineConsole switch { "widemess" => "snes", "gbc" => "gb", "gg" => "sms", _ => machineConsole };
 }
 
 /// <summary>

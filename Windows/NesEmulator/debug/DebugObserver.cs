@@ -18,7 +18,8 @@ public abstract class DebugObserver
     public virtual void OnStep(DebugCpu cpu, long cycle, bool executes, string? interrupt) { }
 
     /// <summary>A memory access, at the moment the debugger's watches see it: reads after they happen; writes before they land on the
-    /// SNES and Game Boy (the picture ports still say where they go), after they land on the NES.</summary>
+    /// SNES, Game Boy and the Sega consoles (the picture ports still say where they go), after they land on the NES. A Z80 I/O port access (Master System, Game Gear,
+    /// the Genesis's Z80) comes at $10000 + the port (on the Master System and Game Gear the port the console decodes: $BE for any mirror of the data port).</summary>
     public virtual void OnAccess(DebugCpu cpu, uint address, byte value, bool write, AccessSource source, int channel) { }
 
     /// <summary>A CPU write after it landed (the SNES and Game Boy CPUs, whose watching bus reports a write before it lands too).</summary>

@@ -125,6 +125,8 @@ internal static class ClientTest
         string gb = DebugTestRoms.Write(dir, "debugtest.gb", gr), gbNoi = DebugTestRoms.Write(dir, "debugtest_gb.noi", gn);
         string game = DebugTestRoms.Write(dir, "planted.nes", pr), gameSym = DebugTestRoms.Write(dir, "planted.mlb", pm);
         string sms = DebugTestRoms.Write(dir, "idle.sms", PlantedBug.SmsIdle());
+        var (mdr, mdm, mdz, mdn) = SegaDebugTestRoms.Genesis();
+        string md = DebugTestRoms.Write(dir, "debugtest.md", mdr), mdSym = DebugTestRoms.Write(dir, "debugtest_md_symbols.txt", mdn);
         string H(Asm a, string l) => "$" + a[l].ToString("X4");
 
         // ---------------------------------------------------------------- NES: a session, a breakpoint on a symbol, the stack, the trace, stepping
@@ -298,8 +300,31 @@ internal static class ClientTest
         var mr = await Call("run", new { session = hm, frames = 30 });
         var ms = await Call("screenshot", new { session = hm });
         Check("sega_session", S(mo["console"]) == "sms" && S(mr["outcome"]) == "frames" && ms.Images.Count == 1, $"{hm}: {S(mo["description"])}; {L(mr["framesRun"])} frames, picture {L(ms["width"])}x{L(ms["height"])}");
-        var segaBp = await Call("breakpoint_add", new { session = hm, spec = "$0000" });
-        Check("sega_debugger_refused", segaBp.IsError && segaBp.Text.Contains("does not cover"), segaBp.Text);
+        // the Sega debugger (Timeflow T0): the Z80 of the Master System, the 68000 and the sound Z80 of the Genesis
+        await Call("breakpoint_add", new { session = hm, spec = "$0010" });
+        var smb = await Call("run", new { session = hm, frames = 30 });
+        var smd = await Call("disassemble", new { session = hm, address = "$7FE0", count = 1 });
+        var smr = await Call("registers", new { session = hm });
+        Check("sega_breakpoint", S(smb["outcome"]) == "break" && S(smb["break"]?["pc"]) == "$0010" && S(smd["lines"]?[0]?["text"]) == "JP $0003" && smr.Text.Contains("\"IX\""),
+              $"{S(smb["break"]?["text"])}; {S(smd["lines"]?[0]?["text"])}");
+        await Call("breakpoint_remove", new { session = hm, all = true });
+        var mdo = await Call("open_rom", new { path = md, symbols = new[] { mdSym } });
+        string hmd = S(mdo["session"]);
+        await Call("breakpoint_add", new { session = hmd, spec = "sub2" });
+        var mdb = await Call("run", new { session = hmd, frames = 30 });
+        var mds = await Call("call_stack", new { session = hmd });
+        var mdf = mds["frames"] as JsonArray;
+        Check("genesis_68000_break_and_stack", S(mdb["outcome"]) == "break" && S(mdb["break"]?["pcSymbol"]) == "sub2" && mdf?.Count == 2 && S(mdf[0]?["kind"]) == "BSR" && S(mdf[1]?["kind"]) == "JSR" && S(mdf[1]?["targetSymbol"]) == "sub1",
+              $"{S(mdb["break"]?["text"])}; {string.Join(" | ", mdf?.Select(f => S(f?["text"])) ?? Array.Empty<string>())}");
+        await Call("breakpoint_remove", new { session = hmd, all = true });
+        await Call("breakpoint_add", new { session = hmd, spec = "$" + mdz["zsub"].ToString("X4"), cpu = "z80" });
+        var zb = await Call("run", new { session = hmd, frames = 30 });
+        var zt = await Call("trace", new { session = hmd, count = 2, cpu = "z80" });
+        Check("genesis_z80_break_and_trace", S(zb["outcome"]) == "break" && S(zb["break"]?["cpu"]) == "z80" && (zt["lines"] as JsonArray)?.Select(S).Any(l => l.Contains("CALL $" + mdz["zsub"].ToString("X4"))) == true,
+              $"{S(zb["break"]?["text"])}; {string.Join(" || ", (zt["lines"] as JsonArray)?.Select(S) ?? Array.Empty<string>())}");
+        var noCpu = await Call("breakpoint_add", new { session = hmd, spec = "$0000", cpu = "spc" });
+        Check("genesis_unknown_cpu_refused", noCpu.IsError && noCpu.Text.Contains("z80"), noCpu.Text);
+        await Call("close_session", new { session = hmd }, log: false);
         var dom = await Call("list_domains", new { session = hm });
         Check("sega_domains", (dom["domains"] as JsonArray)?.Count > 0, string.Join(", ", (dom["domains"] as JsonArray)?.Select(d => S(d?["id"])) ?? Array.Empty<string>()));
 
@@ -386,7 +411,7 @@ internal static class ClientTest
         await Call("run", new { session = hs, frames = 130 });
         var smi = await Call("step_back", new { session = hs, instructions = 1 });
         var smf = await Call("step_back", new { session = hs, frames = 60 });
-        Check("step_back_sega_frames_only", smi.IsError && smi.Text.Contains("debugger") && !smf.IsError && L(smf["steppedBack"]?["toFrame"]) == 70, $"instructions: {smi.Text}; frames: to {L(smf["steppedBack"]?["toFrame"])}");
+        Check("step_back_sega", !smi.IsError && !smf.IsError && L(smf["steppedBack"]?["toFrame"]) == 70, $"instructions: {(smi.IsError ? smi.Text : "stepped back 1")}; frames: to {L(smf["steppedBack"]?["toFrame"])}");
         await Call("close_session", new { session = hs }, log: false);
 
         // the divergence finder, the state diff by symbol, bisect's test, the exports

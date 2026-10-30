@@ -299,3 +299,54 @@ hotpatch, resume.
   the temporary store (with its own limit and time to live) goes beside `timelines\` as `profiles\`; the Sega consoles need T0 first.
   Two things learned for it: capture the state before the frame's pads reach the machine (a desktop recording that took it after
   `SetInputs` went off at the first keyframe whose pads changed: fixed), and the NES's first picture after a load is the old one.
+
+## T0 as built (2026-10-30): the debugger on the Sega CPUs
+
+- **What it covers.** The D1 engine (`Windows/NesEmulator/debug`) now reaches every console: `DebugMachines.For` makes a `SmsDebugMachine`
+  for the Master System, Game Gear and SG-1000 (one CPU, `main`, the Z80) and an `MdDebugMachine` for the Genesis (`main` the 68000, `z80`
+  its sound CPU when the sound unit is the Genesis's own; an NES-chip sound bridge has no Z80 and says so in `Limitations`). Breakpoints
+  (exec / read / write, conditions, hit counts, tracepoints), stepping (into / over / out, scanline, frame, run to), the call stack (CALL,
+  RST, JSR, BSR, TRAP and the interrupts: `NMI` / `IRQ` on the Z80, `VINT` / `HINT` / `EXTINT` / `TRACE` on the 68000), the trace ring and
+  trace files, registers read and written (the Z80's whole set with `AF2`..`HL2`, `IXH`..., `IFF1/2`, `IM`; the 68000's `D0-D7`, `A0-A7`,
+  `SP`, `USP`, `SSP`, `SR`, `CCR`, `PC`: setting PC refills the prefetch queue), disassembly, symbols, the memory domains (plus `BUS`, and
+  the Genesis's `Z80BUS`) and the D4 observer hooks (steps, accesses, calls, returns, writes landed) that the coverage map and Timeflow's
+  index use. New files: `debug/SegaDebugMachine.cs`, `debug/SegaDisasm.cs` (`DisasmZ80`, `DisasmM68k`), `debug/checks/SegaChecks.cs`,
+  `sega/SegaDebugHooks.cs` (the two hook interfaces the boards hold).
+- **How each CPU is adapted (zero cost when off).** The boards gained null fields, as the NES / SNES / Game Boy did:
+  - `BOARD_SMS.DebugHook` (per instruction): `RunLine` keeps its plain loop while both it and the old tracer hook are null (one more field
+    test per line); `BOARD_SMS.DebugTap` (data reads, writes, ports): one field test per data access in `SmsBus.Read`, `WriteMemory` and
+    the port routines. Opcode fetches are not data reads (they stay on the untouched `FetchOpcode` path).
+  - `BOARD_MD.DebugHook` (one field test per 68000 instruction, beside the existing tracer hook) and `BOARD_MD.DebugTap` (one per bus
+    cycle and per DMA word in `ReadBusWord`). A word read at the 68000's program counter is the prefetch or an extension word, not data.
+  - `MdSoundUnit.DebugHook` / `DebugTap`: `RunInner` picks a debugger loop (the hook at each boundary, no polling-loop fast-forward)
+    only while the hook is set; setting it brings a parked loop up to date first (the fast-forward is exact, so this changes nothing).
+  - The cores gained read-only properties only: `Z80.BoundaryKind` (what the next T-state starts: an instruction, an NMI or interrupt
+    response, a halted NOP, read from the program the boundary installed), `M68k.TraceDue`, `M68k.DecodeGroup` (the core's own decode
+    table, which the disassembler uses for legality and lengths); the cartridges `DebugRomIndex` / `DebugRamIndex` / `DebugSramIndex`,
+    `SmsVdp.DebugAddress` / `DebugCode`, `BOARD_MD.DebugPeek`, `MdSoundUnit.DebugWindowOpen`. No state is added to any save state.
+- **Mirrors and canonical places.** Master System: work RAM `$E000-$FFFF` onto `$C000-$DFFF` (and `ram:` by offset), ROM and cartridge
+  RAM by offset through the mapper's slots (a banked symbol `02:4000` is `rom:$8000` and never breaks while bank 1 is mapped), the I/O
+  ports by the port the console decodes (`io:$BE` is every mirror of the data port: `OUT ($80)` hits it; the Game Gear's `$00-$06` and the
+  FM unit's `$F0-$F2` are their own), and VRAM / colour RAM written through the data port (the VDP's address register says where).
+  Genesis 68000: work RAM `$E00000-$FFFFFF` onto `$FF0000` (`ram:` by offset), the cartridge by ROM / battery-RAM offset (the SSF2 banks
+  as mapped), `zram:` the Z80's RAM through `$A00000`; the Z80: its RAM's mirror `$2000-$3FFF`, the bank window by its 68000 address
+  (`m68k:`, and `rom:` / `wram:` behind it). **Each CPU's watches see the other CPU's accesses into its memory** (source `OtherCpu`, the new
+  `AccessSource` value 5): a 68000 read watch on `rom:$100` sees the Z80's bank-window read, a Z80 write watch on `zram:$5` sees the 68000
+  load the sound driver. The 68000's watches see the VDP's DMA reads of ROM and work RAM (source `Dma`). A symbol in work RAM binds to
+  the RAM (so a watch covers its size through every mirror). I/O ports reach the observers at `$10000 + port`.
+- **Shared code, kept minimal and additive:** `DebugCpu.InstructionBytes` (a 68000 instruction runs to ten bytes, past the four a trace
+  record keeps: the four disassembly listings use it; the 68000's disassembler reads the rest from memory for a trace line),
+  `Debugger.OnPortAccess`, the trace line's byte span clamped to the record's four, the call-stack name for the 68000 (JSR / BSR /
+  TRAP), `AccessSource.OtherCpu`, `DebugSymbols`: GNU `nm` output (SGDK's `symbol.txt`, `nm -S` sizes), WLA-DX / devkitSMS banks for
+  `sms` / `gg`, Mesen's `Sms*` label types. Registers that do not fit a trace record (the Z80's IX / IY / shadows, the 68000's D0-A6)
+  are kept beside the ring by a sequence number the record carries (`TraceSide`).
+- **The checks (D4) on the Sega consoles**, the first rules of their catalogue: `sms.ram-uninit`, `sms.lag-frame` (also the Game Gear),
+  `md.ram-uninit` (by the 68000, the Z80's bank window or a DMA), `md.zram-uninit` (the Z80 reading its RAM before anyone wrote it),
+  `md.z80-bus` (the Z80's space used by the 68000 without its bus: reads give $FF, writes are lost), `md.lag-frame`; the profile. So the
+  index's findings column and the MCP's `checks:true` work there too. The Sega consoles have no debug port (D7).
+- **Interfaces.** MCP: the Sega headless sessions take every debugger tool (the refusal is gone; `cpu: "z80"` on the Genesis), the
+  server's instructions say so; `step_back` by instructions works there. Desktop: Emulator > Debug Windows > Debugger (the CPU picker
+  offers the Z80), Memory, Event View (the Master System's ports as `port $BE`, the Genesis's I/O, VDP and bus registers) through the same
+  `DebuggerHub`; the symbol file beside a ROM: `.sym` / `.noi` (Master System, Game Gear), `.sym` / `.txt` / `symbol.txt` (Genesis). Workshop:
+  `MovieMachine` (movies, bug replays, Timeflow) attaches the debugger on the Sega consoles, so `--timeflow record --coverage --var ...`
+  and the course variables work there. HTTP: `/api/debug/*` as before (Windows/webapi/README.md).

@@ -108,8 +108,8 @@ internal static class Tools
 
         Add("open_rom",
             "Opens a ROM in a new HEADLESS session: BrokenNes's own emulator inside this server, invisible, deterministic, as many at once as you like (no Mesen, no lock). " +
-            "Any console: NES (default cores CPU/PPU/APU FIX, as the desktop app), SNES, WideMess (.wms), Game Boy / Color, Master System, Game Gear, Genesis. The debugger covers the NES, SNES (65816 + SPC700), WideMess and Game Boy. " +
-            "Symbol files (.mlb NESFab/Mesen, WLA-DX .sym, GBDK .sym/.noi) give names to addresses. checks:true turns the D4 hardware checks and the profiler on from power-on (needed for 'RAM read before written').",
+            "Any console: NES (default cores CPU/PPU/APU FIX, as the desktop app), SNES, WideMess (.wms), Game Boy / Color, Master System, Game Gear, Genesis. The debugger covers every console: NES, SNES (65816 + SPC700), WideMess, Game Boy, Master System / Game Gear (Z80), Genesis (cpu main the 68000, cpu z80 its sound CPU). " +
+            "Symbol files (.mlb NESFab/Mesen, WLA-DX .sym (also wla-z80), GBDK / devkitSMS .sym/.noi, GNU nm output such as SGDK's symbol.txt for the 68000) give names to addresses. checks:true turns the D4 hardware checks and the profiler on from power-on (needed for 'RAM read before written').",
             Schema(("path", P("string", "the ROM file (.nes .sfc .smc .wms .gb .gbc .sms .gg .md .bin, or a .zip)"), true),
                    ("console", P("string", "force a console: nes, snes, wms, gb, gbc, sms, gg, md (default: detected from the ROM)"), false),
                    ("cpu", P("string", "CPU core id (default: the console's default, NES FIX)"), false), ("ppu", P("string", "PPU core id"), false), ("apu", P("string", "APU core id"), false),

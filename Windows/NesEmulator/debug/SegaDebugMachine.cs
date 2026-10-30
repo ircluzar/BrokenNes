@@ -97,7 +97,7 @@ public sealed class SmsDebugMachine : DebugMachine, ISegaInstructionHook, ISegaB
         var d = Debugger;
         if (d == null) return;
         int canon = cpu.FoldPort(port);
-        d.OnAccessKey(cpu, new SpaceKey(SmsZ80.SpaceIo, (uint)canon), port, value, write, AccessSource.Cpu, -1);
+        d.OnPortAccess(cpu, new SpaceKey(SmsZ80.SpaceIo, (uint)canon), 0x10000u | (uint)canon, port, value, write);
         // the data port: the VRAM or colour RAM byte the write reaches (the VDP's address register before it moves on)
         if (write && canon == 0xBE && !(board.IsGameGear && (port & 0xFF) < 7))
         {
@@ -459,7 +459,7 @@ public sealed class MdDebugMachine : DebugMachine
         public void OnDmaRead(uint address, byte value) { }
         public void OnPort(ushort port, byte value, bool write)
         {
-            if (m.Z != null) m.Debugger?.OnAccessKey(m.Z, new SpaceKey(MdZ80.SpaceIo, (uint)(port & 0xFF)), port, value, write, AccessSource.Cpu, -1);
+            if (m.Z != null) m.Debugger?.OnPortAccess(m.Z, new SpaceKey(MdZ80.SpaceIo, (uint)(port & 0xFF)), 0x10000u | (uint)(port & 0xFF), port, value, write);
         }
 
         private void Access(uint address, byte value, bool write)

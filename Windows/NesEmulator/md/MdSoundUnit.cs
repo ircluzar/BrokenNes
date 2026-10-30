@@ -334,6 +334,9 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
 
     private bool Reachable(long masterClock) => (requested && granted && masterClock >= grantTime) || inReset;
 
+    /// <summary>Whether the 68000's window into the Z80's space answers at <paramref name="masterClock"/> (the bus granted, or RESET held): the hardware checks' question, without side effects.</summary>
+    public bool DebugWindowOpen(long masterClock) => Reachable(masterClock);
+
     public byte Read(int offset, long masterClock)
     {
         RunTo(masterClock);

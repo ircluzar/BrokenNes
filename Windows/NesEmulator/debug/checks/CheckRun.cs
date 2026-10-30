@@ -19,11 +19,13 @@ public static class CheckRun
             NesDebugMachine => new NesChecks(debugger, options),
             SnesDebugMachine => new SnesChecks(debugger, options),
             GbDebugMachine => new GbChecks(debugger, options),
+            SmsDebugMachine => new SmsChecks(debugger, options),
+            MdDebugMachine => new MdChecks(debugger, options),
             _ => throw new NotSupportedException($"the checks do not cover the {debugger.Machine.Console}"),
         };
         debugger.TraceRingSize = 0;   // the checks need no trace ring (it costs every instruction)
         debugger.AddObserver(c);
-        if (options.DebugPort) c.AttachPort();
+        if (options.DebugPort && c is not (SmsChecks or MdChecks)) c.AttachPort();   // the Sega consoles have no debug port
         return c;
     }
 

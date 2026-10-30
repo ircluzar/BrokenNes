@@ -108,7 +108,7 @@ internal static class TimeflowCli
         var vars = All("var").Select(v => { int e = v.IndexOf('='); return e > 0 ? (Name: v[..e].Trim(), Expr: v[(e + 1)..].Trim()) : throw new ArgumentException($"--var '{v}': name=expression"); }).ToList();
         bool coverage = Has("coverage"), checks = Has("checks");
         using var m = MovieMachine.Open(rom, Opt("console", "") is { Length: > 0 } c ? c : null, Opt("cores", ""), Opt("power-on", "fceux"), Has("ntsc"), true, All("sym"));
-        if ((vars.Count > 0 || coverage || checks) && !m.HasDebugger) throw new NotSupportedException($"watched variables, coverage and checks need the debugger, which does not cover the {m.ConsoleKey} yet (T0)");
+        if ((vars.Count > 0 || coverage || checks) && !m.HasDebugger) throw new NotSupportedException($"watched variables, coverage and checks need the debugger, which does not cover the {m.ConsoleKey}");
         var src = TimeflowMachines.SourceFor(m);
         var o = ParseCodec(new TimeflowOptions(), Opt("codec", ""));
         o.Rom = m.RomFile; o.RomName = m.RomName; o.Cores = m.Cores; o.PowerOn = m.PowerOn; o.Ntsc = m.PowerOnNtsc; o.Source = "workshop"; o.Note = Opt("note", "");
