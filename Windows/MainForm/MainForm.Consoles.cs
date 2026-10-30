@@ -682,7 +682,7 @@ namespace BrokenNes.Windows
             sessionFrames++;
             if (sessionFrames % 600 == 0) SaveSessionBattery(force: false);
 
-            fpsFrameCount++;
+            fpsFrameCount++; Interlocked.Increment(ref framesEmulated);
             if (fpsStopwatch != null && fpsStopwatch.Elapsed.TotalSeconds >= 0.5)
             {
                 currentFps = fpsFrameCount / fpsStopwatch.Elapsed.TotalSeconds;

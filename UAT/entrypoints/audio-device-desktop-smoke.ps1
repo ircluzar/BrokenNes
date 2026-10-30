@@ -90,7 +90,8 @@ try {
     $fps = Fps $id 4
     Check 'real_device_opens_at_start' ($d -and $d.state -eq 'Open' -and $d.opens -eq 1 -and $d.windowsDevices -gt 0) (Line $d)
     $realFps = $fps
-    Check 'real_fps' ($fps -gt 30) ("{0:F2} fps with the device opened at start-up (the yardstick for the phases with a device: the emulation is paced by the device's own clock then)" -f $fps)
+    # since 2026-10-29 the frames are paced by the clock with a device too (it ran ~44 fps on WinMM before: audio-pacing-desktop-smoke.ps1)
+    Check 'real_fps' ($fps -gt 58 -and $fps -lt 62.5) ("{0:F2} fps with the device opened at start-up (the yardstick for the phases with a device)" -f $fps)
     Stop-BrokenNesInstance -ProcessId $id | Out-Null; $inst = $null
 
     # ---------------------------------------------------------------- START_NONE
