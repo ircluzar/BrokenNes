@@ -614,14 +614,14 @@ internal static class ClientTest
         // the session's end: an unkept profile of this server is deleted when the server stops (checked once the client has closed)
         var last = await Call("timeflow_profile", new { timeline = tid, from = 30, to = 35, store = true });
         sessionProfileDir = S(last["profile"]?["dir"]);
-        // the Sega consoles: no profile until T0 (refused, never an empty one)
+        // the Sega consoles (T0): a Master System timeline is profiled like any other
         var so = await Call("open_rom", new { path = sms });
         string sh = S(so["session"]);
         await Call("timeflow_record", new { session = sh, action = "start" });
         await Call("run", new { session = sh, frames = 30 });
         var soff = await Call("timeflow_record", new { session = sh, action = "stop" });
         var sp = await Call("timeflow_profile", new { timeline = S(soff["closed"]?["id"]), from = 5, to = 10, queries = new[] { "summary" } });
-        Check("timeflow_profile_sega_refused_until_t0", sp.IsError && sp.Text.Contains("T0"), sp.Text);
+        Check("timeflow_profile_sega", !sp.IsError && sp["inSync"]?.GetValue<bool>() == true, sp.IsError ? sp.Text : $"in sync {S(sp["inSync"])}, instructions {sp["instructions"]?.ToJsonString()}");
         foreach (var id in new[] { h, sh }) await Call("close_session", new { session = id }, log: false);
     }
 

@@ -40,12 +40,10 @@ public sealed class ProfileMachine : IDisposable
         (b & PadButtons.Up) != 0, (b & PadButtons.Down) != 0, (b & PadButtons.Left) != 0, (b & PadButtons.Right) != 0,
     };
 
-    /// <summary>Opens the machine a timeline was recorded on, with the debugger and these symbols (the Sega consoles are refused until T0).</summary>
+    /// <summary>Opens the machine a timeline was recorded on, with the debugger and these symbols (every console: the Sega consoles since T0).</summary>
     public static ProfileMachine Open(string timelineDir, IEnumerable<string>? symbols = null)
     {
         var meta = TimelineMeta.Load(timelineDir);
-        if (meta.Console is "sms" or "gg" or "md")
-            throw new NotSupportedException($"profiling the {meta.Console} needs the debugger on its Z80 / 68000, which is milestone T0 (not built here yet): no profile is made");
         byte[] file = TimeflowStore.RomOf(timelineDir, meta);
         byte[] rom = RomDetect.Unwrap(file, meta.RomName.Length > 0 ? meta.RomName : "rom" + meta.RomExt, out string inner);
         var pm = new ProfileMachine { Meta = meta };

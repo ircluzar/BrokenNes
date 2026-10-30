@@ -623,7 +623,7 @@ public sealed class HistogramQuery : ProfileQuery
     protected override void Answer(JsonObject j)
     {
         j["cpu"] = Ctx.Cpu(cpu).Name; j["instructions"] = count; j["functions"] = excl.Count;
-        j["cycleUnit"] = Ctx.Console == "nes" ? "CPU cycles" : Ctx.Console is "gb" or "gbc" ? "M-cycles" : "master clocks";
+        j["cycleUnit"] = Ctx.Console == "nes" ? "CPU cycles" : Ctx.Console is "gb" or "gbc" ? "M-cycles" : Ctx.Console is "sms" or "gg" ? "Z80 T-states" : "master clocks";
         var rows = new JsonArray();
         foreach (var kv in excl.OrderByDescending(kv => kv.Value).Take(Top))
             rows.Add(new JsonObject
@@ -642,13 +642,15 @@ public sealed class HistogramQuery : ProfileQuery
 /// <summary>The video and sound chips' registers of a console family (the event view's register writes).</summary>
 public static class ChipRegisters
 {
-    public static string Family(string console) => console switch { "nes" => "nes", "snes" or "widemess" => "snes", "gb" or "gbc" => "gb", _ => console };
+    public static string Family(string console) => console switch { "nes" => "nes", "snes" or "widemess" => "snes", "gb" or "gbc" => "gb", "sms" or "gg" => "sms", _ => console };
 
     public static bool IsRegister(string family, uint a) => family switch
     {
         "nes" => a >= 0x2000 && a < 0x4020,
         "snes" => ((a >> 16) & 0x40) == 0 && ((a & 0xFFFF) is >= 0x2100 and < 0x2200 or >= 0x4200 and < 0x4380),
         "gb" => a >= 0xFF00 && a < 0xFF80 || a == 0xFFFF,
+        "sms" => a >= 0x10000,                                                       // the Z80's I/O ports (VDP, PSG, pads) at $10000 + the port (T0)
+        "md" => a is >= 0xA10000 and < 0xA14004 || a is >= 0xC00000 and < 0xE00000,  // the I/O chip, the Z80's bus and reset, TMSS, the VDP and the PSG
         _ => false,
     };
 }

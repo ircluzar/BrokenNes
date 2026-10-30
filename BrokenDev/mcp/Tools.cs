@@ -528,7 +528,7 @@ internal static class Tools
             "(the recorded pads replayed, every frame checked against the recording: a desync is reported with its frame, never hidden) with every instruction of every debuggable CPU, every memory access, " +
             "the call stack, chip events and the named variables (the symbols' data symbols) seen by your queries. Nothing is stored unless store is true; then the profile is kept in the timeline's " +
             "profiles folder (its own size limit and time to live) and deleted when this MCP server stops unless keep is true. Query it later with timeflow_profile_query. " +
-            "The Master System, Game Gear and Genesis cannot be profiled until their CPUs' debugger exists (T0): refused with the reason.",
+            "Every console, the Master System, Game Gear and Genesis (68000 and its Z80) included (T0).",
             Schema(("timeline", P("string", "a timeline id (timeflow_list) or folder"), true), ("from", P("integer", "the first frame profiled"), true), ("to", P("integer", "the last frame profiled (included)"), true),
                    ("queries", P("string[]", QueriesDesc), false), ("symbols", P("string[]", "symbol files (.mlb, .sym, .noi): names in the answers, symbols in the queries, the variables followed"), false),
                    ("vars", P("string[]", "follow only these variables (default: every data symbol)"), false), ("store", P("boolean", "keep the profile (for later queries or the desktop's scrubbing; default false)"), false),

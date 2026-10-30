@@ -17,7 +17,7 @@ namespace BrokenNes.Workshop.Timeflow;
 /// <c>profile</c> (the planted bug's cause found exactly by the queries; the fixed build the negative control), <c>psync</c> (a forced desync
 /// is found at its frame; without it in sync), <c>pstore</c> (kept profiles: the same answers as the stream, the size limit, the TTL, the cap,
 /// the session's end, a crash-killed session's profile removed by the next sweep, nothing left behind), <c>pconsoles</c> (the SNES with its
-/// SPC700 and the Game Boy profiled; the Sega consoles refused until T0, never an empty profile), <c>pmeasure</c> (not in the default list:
+/// SPC700, the Game Boy, and since T0 the Master System and the Genesis with its Z80 profiled), <c>pmeasure</c> (not in the default list:
 /// the cost and bytes a frame on the user's games).
 /// </summary>
 internal static partial class TimeflowTestCli
@@ -297,7 +297,10 @@ internal static partial class TimeflowTestCli
 
     private static void ProfileConsoles(string dir, string snes, string gb)
     {
-        foreach (var (name, rom, console) in new[] { ("SNES test ROM", snes, (string?)null), ("Game Boy test ROM", gb, null) })
+        var (smsRom, _, _) = BrokenNes.Workshop.Debug.SegaDebugTestRoms.MasterSystem(false);
+        var (mdRom, _, _, _) = BrokenNes.Workshop.Debug.SegaDebugTestRoms.Genesis();
+        string smsT = DebugTestRoms.Write(dir, "pdebug.sms", smsRom), mdT = DebugTestRoms.Write(dir, "pdebug.md", mdRom);
+        foreach (var (name, rom, console) in new[] { ("SNES test ROM", snes, (string?)null), ("Game Boy test ROM", gb, null), ("Master System test ROM (T0)", smsT, "sms"), ("Genesis test ROM (T0: 68000 + Z80)", mdT, "md") })
         {
             var (tdir, _) = Record(rom, 240, console, "auto:2", full: false);
             var j = TimeflowProfiling.Run(new ProfileRequest { Timeline = tdir, From = 100, To = 130, Queries = new() { "summary", "histogram", "events 110 limit 20", "writes $0000-$FFFF limit 1" }, Store = true });
@@ -308,16 +311,11 @@ internal static partial class TimeflowTestCli
             Check($"pconsoles: {name}: the summary and the histogram answer", (long)Q(j, 0)["frames"]! == 31 && (long)Q(j, 1)["instructions"]! > 0, $"{Q(j, 1)["functions"]} functions");
             ProfileStore.Delete(S(j["profile"]!["dir"]));
         }
-        // the Sega consoles: no debugger until T0, so no profile (refused with the reason, never an empty one)
-        var sms = new byte[0x8000];
-        sms[0] = 0xF3; sms[1] = 0xED; sms[2] = 0x56; sms[0x7FE0] = 0xC3; sms[0x7FE1] = 0x03; sms[0x7FE2] = 0x00;
-        System.Text.Encoding.ASCII.GetBytes("TMR SEGA").CopyTo(sms, 0x7FF0); sms[0x7FFF] = 0x4C;
-        string smsPath = DebugTestRoms.Write(dir, "idle.sms", sms);
-        var (sdir, _) = Record(smsPath, 120, "sms", "", full: false);
-        bool refused = Throws(() => TimeflowProfiling.Run(new ProfileRequest { Timeline = sdir, From = 10, To = 20, Queries = new() { "summary" } }), out string why);
-        Check("pconsoles: a Master System timeline is refused for profiling until T0 (said, never an empty profile)", refused && why.Contains("T0"), why);
+        // a span outside the timeline is still refused, and writes nothing (the negative control of the console checks above)
+        var (sdir, _) = Record(smsT, 120, "sms", "", full: false);
+        bool refused = Throws(() => TimeflowProfiling.Run(new ProfileRequest { Timeline = sdir, From = 500, To = 520, Queries = new() { "summary" } }), out string why);
         string pd = ProfileStore.ProfilesDir(TimeflowStore.GameDirOf(sdir));
-        Check("pconsoles (negative): the refusal wrote nothing", !Directory.Exists(pd), pd);
+        Check("pconsoles (negative): a Master System span outside its timeline is refused and writes nothing", refused && why.Contains("not all in timeline") && !Directory.Exists(pd), why);
     }
 
     // ------------------------------------------------------------------------------------------------ pmeasure (not in the default list)

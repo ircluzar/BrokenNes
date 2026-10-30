@@ -49,10 +49,8 @@ internal static class TimeflowProfiling
 {
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
-    /// <summary>Why a console cannot be profiled (null: it can).</summary>
-    public static string? NoProfileWhy(string console) => console is "sms" or "gg" or "md"
-        ? $"profiling the {console} needs the debugger on its Z80 / 68000, which is milestone T0 (not built here yet): no profile is made"
-        : null;
+    /// <summary>Why a console cannot be profiled (null: it can). Since T0 every console can: the debugger covers the Sega consoles' Z80 and 68000 too.</summary>
+    public static string? NoProfileWhy(string console) => null;
 
     /// <summary>Re-runs the span with the queries (and the store when asked); the answer as JSON.</summary>
     public static JsonObject Run(ProfileRequest q)
@@ -63,7 +61,7 @@ internal static class TimeflowProfiling
         var queries = q.Queries.Select(ProfileQuery.Parse).ToList();
         ProfileStore.Sweep(TimeflowStore.GameDirOf(dir));
         using var m = TimeflowMachines.OpenFor(dir, pb.Meta, true, q.Symbols);
-        if (!m.HasDebugger) throw new NotSupportedException($"profiling the {pb.Meta.Console} needs the debugger, which does not cover it yet (T0): no profile is made");
+        if (!m.HasDebugger) throw new NotSupportedException($"profiling the {pb.Meta.Console} needs the debugger, which does not cover it: no profile is made");
         var src = TimeflowMachines.SourceFor(m);
         pb.CheckMachine(src, m.RomSha256);
         var target = new ProfileTarget { Machine = m.Host.Machine, Debugger = m.Host.Dbg, Source = src, RunFrame = (a, b) => m.Frame(a, b), Port = m.Port, PoweredOn = true };
