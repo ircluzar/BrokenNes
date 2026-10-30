@@ -506,7 +506,7 @@ namespace NesEmulator.Mix
             back = new NesApuHost(backId).Apu;
             Array.Fill(nesCache, -1);
             N(0x4017, 0x40); N(0x4015, 0x0F);
-            N(0x4001, 0x00); N(0x4005, 0x00); N(0x400F, 0x08);
+            N(0x4001, 0x08); N(0x4005, 0x08); N(0x400F, 0x08);
             ext = back as IApuExtChannels;
             bankWriters[0] = N;
             Array.Fill(extCache, -1);
@@ -523,7 +523,7 @@ namespace NesEmulator.Mix
                 int bank = k;
                 bankWriters[bank] = (a, v) => E(bank, a, v);
                 E(bank, 0x4017, 0x40); E(bank, 0x4015, 0x0F);
-                E(bank, 0x4001, 0x00); E(bank, 0x4005, 0x00); E(bank, 0x400F, 0x08);
+                E(bank, 0x4001, 0x08); E(bank, 0x4005, 0x08); E(bank, 0x400F, 0x08);
             }
             Banks = Math.Max(Banks, banks);
         }

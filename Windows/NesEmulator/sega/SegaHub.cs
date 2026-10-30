@@ -129,7 +129,7 @@ public sealed class NesVoiceWriter
         opened[b] = true;
         if (b == 0) W(0, 0x4017, 0x40);   // frame IRQ inhibited: the bridge's APU has no CPU to interrupt
         W(b, 0x4015, 0x0F);               // pulses, triangle and noise on; no DMC
-        W(b, 0x4001, 0x00); W(b, 0x4005, 0x00);   // sweeps off
+        W(b, 0x4001, 0x08); W(b, 0x4005, 0x08);   // sweeps off: negate, shift 0 (a $00 sweep mutes notes of period >= $400 on hardware, so low voices went silent)
     }
 
     /// <summary>The banks that carry <paramref name="pulses"/> pulse voices, <paramref name="triangles"/> triangle voices and <paramref name="noises"/> noise voices, each on a channel of its own kind (2 pulses, 1 triangle, 1 noise a bank).</summary>
