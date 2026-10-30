@@ -59,7 +59,7 @@ public sealed class TimeflowPlayback : IDisposable
         TimeflowStore.Touch(Dir);
     }
 
-    private static string Explain(TimeflowState want, TimeflowState got)
+    internal static string Explain(TimeflowState want, TimeflowState got)
     {
         if (!want.SameLayout(got)) return " (the layout differs: the machine is not the one recorded)";
         if (!want.Skeleton.AsSpan().SequenceEqual(got.Skeleton)) return $" (the registers / timing differ: {Where(want.Skeleton, got.Skeleton, true)})";

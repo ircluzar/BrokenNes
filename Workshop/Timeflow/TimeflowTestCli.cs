@@ -12,11 +12,11 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 namespace BrokenNes.Workshop.Timeflow;
 
 /// <summary>
-/// <c>--timeflow-test [--only form,codec,consoles,damage,stop,cap,off,branch,places,index,apu] [--long N] [--keep DIR]</c>: milestones T1 and T2
+/// <c>--timeflow-test [--only form,codec,consoles,damage,stop,cap,off,branch,places,index,apu,profile,psync,pstore,pconsoles,pmeasure] [--long N] [--pframes N] [--keep DIR]</c>: milestones T1, T2 and T3 (TimeflowTestCli.Profile.cs)
 /// (docs/projects/brokendev-timeflow-plan.md). Every check has a negative control. The user's games run when they are on this machine (a
 /// missing one is NOT RUN, never a pass). BROKENDEV_HOME points at a scratch folder for the whole run (nothing is written to the real one).
 /// </summary>
-internal static class TimeflowTestCli
+internal static partial class TimeflowTestCli
 {
     private static int pass, fail, notRun;
     private static readonly List<string> failures = new();
@@ -39,7 +39,7 @@ internal static class TimeflowTestCli
     {
         RomTestCli.EnsureConsole();
         string Opt(string n, string d) { int i = Array.IndexOf(args, "--" + n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
-        var only = Opt("only", "form,codec,consoles,damage,stop,cap,off,branch,places,index,index-sega,apu").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var only = Opt("only", "form,codec,consoles,damage,stop,cap,off,branch,places,index,index-sega,apu,profile,psync,pstore,pconsoles").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
         int longFrames = int.Parse(Opt("long", "1800"));
         string dir = Opt("keep", Path.Combine(Path.GetTempPath(), "brokennes-timeflow-test-" + Environment.ProcessId));
         Directory.CreateDirectory(dir);
@@ -73,6 +73,11 @@ internal static class TimeflowTestCli
             Group("index", "the per-frame index: watched variables, the frame's coverage, changed bytes per domain, findings", () => Index(dir, planted));
             Group("index-sega", "the per-frame index on the Sega consoles (T0): watched variables and the frame's coverage on the Master System, Game Gear and Genesis", () => IndexSega(dir));
             Group("apu", "APU_FIX's state carries its frame sequencer's step (found by Timeflow: a load kept the step of the machine loaded into)", () => ApuStep(nes));
+            Group("profile", "T3: a profiled span's queries find the planted corruption exactly (the fixed build: nothing)", () => ProfileBug(dir));
+            Group("psync", "T3: a profile's re-run stays in sync with the recording; a forced desync is found at its frame", () => ProfileSync(dir));
+            Group("pstore", "T3: kept profiles: the stream's answers, the size limit, the TTL, the cap, the session's end, a crashed session, nothing left", () => ProfileStoreGroup(dir, home));
+            Group("pconsoles", "T3: the SNES (with its SPC700) and the Game Boy profiled; the Sega consoles refused until T0", () => ProfileConsoles(dir, snes, gb));
+            Group("pmeasure", "T3: the cost (x slower than real time), the bytes a stored frame and the stored queries' speed, per console", () => ProfileMeasure(dir, nes, snes, gb, int.Parse(Opt("pframes", "120"))));
         }
         finally
         {

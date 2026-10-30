@@ -830,9 +830,18 @@ public sealed class Debugger
     public string? SymbolAt(DebugCpu cpu, uint address)
     {
         if (Symbols.All.Count == 0) return null;
-        var idx = IndexFor(cpu);
         Span<SpaceKey> keys = stackalloc SpaceKey[4];
         int n = cpu.AccessKeys(address, false, keys);
+        return SymbolAtKeys(cpu, keys[..n]);
+    }
+
+    /// <summary>The symbol at canonical keys taken earlier (T3's profiles keep an instruction's keys, so a later lookup names the bank it ran in):
+    /// the memory it maps to first, the CPU address last, as <see cref="SymbolAt"/>.</summary>
+    public string? SymbolAtKeys(DebugCpu cpu, ReadOnlySpan<SpaceKey> keys)
+    {
+        if (Symbols.All.Count == 0) return null;
+        var idx = IndexFor(cpu);
+        int n = keys.Length;
         string? best = null;
         for (int i = n - 1; i >= 0; i--)   // the memory it maps to first (a ROM offset names one bank), the CPU address last
         {

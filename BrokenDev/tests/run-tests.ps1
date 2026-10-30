@@ -12,7 +12,7 @@
   Exit code: 0 all run tests passed (skips are listed), 1 a test failed.
 #>
 [CmdletBinding()]
-param([string]$WorkshopExe = '', [switch]$NoWorkshop, [string]$McpExe = '')
+param([string]$WorkshopExe = '', [switch]$NoWorkshop, [string]$McpExe = '', [string]$Only = '')
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -41,6 +41,7 @@ New-Item -ItemType Directory -Force -Path $tmpRoot | Out-Null
 
 function Test-Case {
     param([string]$Name, [scriptblock]$Body)
+    if ($Only -and $Name -notlike "*$Only*") { return }   # -Only: just the cases whose name has this text (a quick rerun; a full run has none)
     try { & $Body; $script:pass++; Write-Host "  PASS  $Name" -ForegroundColor Green }
     catch {
         if ($_.Exception.Message -like 'SKIP:*') { $script:skip++; Write-Host "  SKIP  $Name  ($($_.Exception.Message.Substring(5).Trim()))" -ForegroundColor Yellow }
@@ -1827,6 +1828,73 @@ exit $p.ExitCode
             Assert-True ($unk.ExitCode -ne 0 -and $unk.Output -match 'no timeline') "an unknown timeline: exit $($unk.ExitCode) $(Select-BdTail $unk.Output 3)"
             $bad = Bd @('timeflow', 'nonsense')
             Assert-True ($bad.ExitCode -ne 0) 'an unknown timeflow action passed'
+        } finally { Restore-Env $savedTf }
+    }
+
+    Test-Case 'timeflow profile|profile-query|profiles|profile-keep|profile-drop through brokendev.ps1 (T3): the planted corruption''s write found by "writes hp" with the project''s own symbols, a kept profile queried and dropped, an unkept one gone when its command ended; NEGATIVE: the fixed build has no write to hp, an unknown profile and a span without -From fail' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $th = Join-Path $tmpRoot 'tf3home'; $tp = Join-Path $tmpRoot 'tf3projects'
+        New-Item -ItemType Directory -Force -Path $th | Out-Null
+        $savedTf = Save-Env @('BROKENDEV_HOME', 'BROKENDEV_PROJECTS', 'BROKENDEV_WORKSHOP', 'BROKENDEV_TIMEFLOW')
+        $env:BROKENDEV_HOME = $th; $env:BROKENDEV_PROJECTS = $tp; $env:BROKENDEV_WORKSHOP = $ws; $env:BROKENDEV_TIMEFLOW = $null
+        foreach ($pair in @(@('pgame', ''), @('pfixed', '-Fixed'))) {
+            $id = $pair[0]; $src = Join-Path $tmpRoot "tf3$id"
+            New-Item -ItemType Directory -Force -Path (Join-Path $tp $id), $src | Out-Null
+            [System.IO.File]::WriteAllText((Join-Path $src 'build.ps1'), @'
+param([Parameter(Mandatory)][string]$Workshop, [switch]$Fixed)
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+New-Item -ItemType Directory -Force -Path (Join-Path $here 'build') | Out-Null
+$a = @('--timeflow', 'profile-rom', '--out', "`"$(Join-Path $here 'build\game.nes')`""); if ($Fixed) { $a += '--fixed' }
+$p = Start-Process -FilePath $Workshop -ArgumentList $a -Wait -PassThru -NoNewWindow
+exit $p.ExitCode
+'@)
+            $args2 = @('-Workshop', '{workshop}'); if ($pair[1]) { $args2 += $pair[1] }
+            $man = [ordered]@{
+                schema = 1; id = $id; title = 'the T3 tests'' planted corruption'; family = 'test'; kind = 'nes'; console = 'nes'; description = 'T3 run-tests'
+                source = @{ folder = $src }; requires = @{ tools = @('ps5'); projects = @(); inputs = @() }
+                build = @{ steps = @(@{ name = 'build'; shell = 'ps5'; cwd = '{src}'; file = '{src}/build.ps1'; args = $args2; timeoutSec = 120 })
+                           outputs = @(@{ id = 'rom'; path = '{src}/build/game.nes'; publishAs = 'game.nes'; kind = 'nes' }, @{ id = 'mlb'; path = '{src}/build/game.mlb'; publishAs = 'game.mlb'; kind = 'symbols' }) }
+                verify = @{ scenarios = @(@{ id = 'play'; frames = 240; input = '' }) }; knownIssues = @()
+            }
+            Save-BdJson -Object $man -Path (Join-Path (Join-Path $tp $id) 'project.json')
+        }
+        $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { (Get-Process -Id $PID).Path } else { Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe' }
+        function Bd([string[]]$a) { Invoke-BdProcess -FilePath $psExe -Arguments (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $bd 'brokendev.ps1')) + $a) -TimeoutSec 600 -Env @{ BROKENDEV_HOME = $th; BROKENDEV_PROJECTS = $tp; BROKENDEV_WORKSHOP = $ws } }
+        function BdJ([string[]]$a) { $r = Bd ($a + '-Json'); $t = $r.Output; $i = $t.IndexOf('{'); $j = $t.LastIndexOf('}'); [pscustomobject]@{ Code = $r.ExitCode; J = $(if ($i -ge 0 -and $j -gt $i) { try { $t.Substring($i, $j - $i + 1) | ConvertFrom-Json } catch { $null } } else { $null }); Text = $t } }
+        try {
+            [void](Invoke-BdProjectBuild -Id 'pgame'); [void](Invoke-BdProjectBuild -Id 'pfixed')
+            $rec = BdJ @('timeflow', 'record', 'pgame', '-Scenario', 'play')
+            Assert-True ($rec.Code -eq 0 -and $rec.J.frames -eq 240) "record: exit $($rec.Code) $(Select-BdTail $rec.Text 4)"
+            $tid = [string]$rec.J.id
+            $p = BdJ @('timeflow', 'profile', $tid, '-From', '20', '-To', '60', '-Query', 'writes hp; last-write hp before 60; stack 0')
+            Assert-True ($p.J -and $p.J.PSObject.Properties['queries']) "profile gave no answer: exit $($p.Code) $(Select-BdTail $p.Text 12)"
+            $w = @($p.J.queries)[0]
+            Assert-True ($p.Code -eq 0 -and $p.J.inSync -and $w.total -eq 1 -and @($w.shown)[0].in -eq 'ft_store' -and @($w.shown)[0].frame -eq 32) "profile: exit $($p.Code) total $($w.total) in $(@($w.shown)[0].in) frame $(@($w.shown)[0].frame) $(Select-BdTail $p.Text 6)"
+            Assert-True (@($p.J.queries)[1].last.in -eq 'ft_store' -and $null -eq $p.J.profile) "last-write: $(@($p.J.queries)[1].last.in); stored: $($p.J.profile)"
+            $txt = Bd @('timeflow', 'profile', $tid, '-From', '30', '-To', '40', '-Query', 'writes hp')
+            Assert-True ($txt.ExitCode -eq 0 -and $txt.Output -match 'ft_store' -and $txt.Output -match 'in sync with the recording') "profile (text): $(Select-BdTail $txt.Output 6)"
+            # an unkept stored profile belongs to its command's session: gone when the command ended
+            $un = BdJ @('timeflow', 'profile', $tid, '-From', '20', '-To', '30', '-Store')
+            Assert-True ($un.Code -eq 0 -and $un.J.profile.id -and -not (Test-Path -LiteralPath ([string]$un.J.profile.dir))) "an unkept profile was left behind: $($un.J.profile.dir)"
+            $kp = BdJ @('timeflow', 'profile', $tid, '-From', '20', '-To', '40', '-Keep')
+            $pid2 = [string]$kp.J.profile.id
+            Assert-True ($kp.Code -eq 0 -and (Test-Path -LiteralPath ([string]$kp.J.profile.dir)) -and ([string]$kp.J.profile.dir).StartsWith((Join-Path $th 'timeflow\pgame\profiles'), [StringComparison]::OrdinalIgnoreCase)) "keep: $($kp.J.profile.dir)"
+            $q = BdJ @('timeflow', 'profile-query', $pid2, '-Query', 'vars hp')
+            Assert-True ($q.Code -eq 0 -and @($q.J.queries)[0].changes -eq 1) "profile-query: $(Select-BdTail $q.Text 6)"
+            $ls = Bd @('timeflow', 'profiles')
+            Assert-True ($ls.ExitCode -eq 0 -and $ls.Output -match [regex]::Escape($pid2)) "profiles: $(Select-BdTail $ls.Output 4)"
+            $dr = Bd @('timeflow', 'profile-drop', $pid2)
+            Assert-True ($dr.ExitCode -eq 0 -and -not (Test-Path -LiteralPath ([string]$kp.J.profile.dir))) "profile-drop: $(Select-BdTail $dr.Output 3)"
+            # the negative controls
+            $frec = BdJ @('timeflow', 'record', 'pfixed', '-Scenario', 'play')
+            $fp = BdJ @('timeflow', 'profile', [string]$frec.J.id, '-From', '20', '-To', '60', '-Query', 'writes hp')
+            Assert-True ($fp.Code -eq 0 -and @($fp.J.queries)[0].total -eq 0) "the fixed build: writes hp total $(@($fp.J.queries)[0].total)"
+            $unk = Bd @('timeflow', 'profile-query', 'p-no-such', '-Query', 'summary')
+            Assert-True ($unk.ExitCode -ne 0 -and $unk.Output -match 'no kept profile') "an unknown profile: exit $($unk.ExitCode) $(Select-BdTail $unk.Output 3)"
+            $nf = Bd @('timeflow', 'profile', $tid, '-Query', 'summary')
+            Assert-True ($nf.ExitCode -ne 0 -and $nf.Output -match '-From') "a span without -From: exit $($nf.ExitCode) $(Select-BdTail $nf.Output 3)"
+            $left = @(Get-ChildItem -LiteralPath (Join-Path $th 'timeflow') -Recurse -Directory -Filter 'profiles' -ErrorAction SilentlyContinue | ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Directory })
+            Assert-True ($left.Count -eq 0) "profiles left behind: $(@($left | ForEach-Object { $_.FullName }) -join ', ')"
         } finally { Restore-Env $savedTf }
     }
 

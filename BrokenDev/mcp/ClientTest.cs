@@ -80,7 +80,7 @@ internal static class ClientTest
                 "read_memory", "write_memory", "search_memory", "list_domains", "symbols", "breakpoint_add", "breakpoint_list", "breakpoint_remove", "watch", "step", "call_stack",
                 "registers", "trace", "trace_frame", "disassemble", "evaluate", "screenshot", "layers", "tiles", "sprites", "record_sound", "save_state", "load_state", "diff_states",
                 "checks", "profile", "brokendev", "step_back", "open_movie", "movie", "bisect", "bugs", "debug_port",
-                "timeflow_record", "timeflow_list", "timeflow_jump", "timeflow_resume" };
+                "timeflow_record", "timeflow_list", "timeflow_jump", "timeflow_resume", "timeflow_profile", "timeflow_profile_query" };
             var missing = want.Where(w => !names.Contains(w)).ToList();
             Check("tools_listed", missing.Count == 0 && tools.All(t => t.JsonSchema.ValueKind == JsonValueKind.Object), $"{tools.Count} tools over stdio; missing: {(missing.Count == 0 ? "none" : string.Join(", ", missing))}");
             switch (suite)
@@ -92,6 +92,23 @@ internal static class ClientTest
         }
         catch (Exception e) { Check("run", false, e.GetType().Name + ": " + e.Message); }
         finally { if (client != null) await client.DisposeAsync(); }
+        if (sessionProfileDir is { Length: > 0 } spd)
+        {
+            // the server's session ended when the client closed: its unkept profile must be gone (the server deletes it as it stops)
+            for (int i = 0; i < 30 && Directory.Exists(spd); i++) await Task.Delay(100);
+            bool gone = !Directory.Exists(spd);
+            string how = gone ? "deleted by the server as its session ended" : "the client killed the server (this SDK's client does), so the server could not delete it";
+            if (!gone)
+            {
+                // the next start: a new server sweeps at start-up, before any call, and the dead session's unkept profile goes
+                var t2 = new StdioClientTransport(new StdioClientTransportOptions { Name = "brokennes", Command = Environment.ProcessPath!, Arguments = serverArgs });
+                await using var c2 = await McpClient.CreateAsync(t2);
+                for (int i = 0; i < 100 && Directory.Exists(spd); i++) await Task.Delay(100);
+                gone = !Directory.Exists(spd);
+                how += gone ? "; the next server start swept it before any call" : "; a new server start did not sweep it either";
+            }
+            Check("timeflow_profile_gone_after_the_session", gone, $"{spd}: {how}");
+        }
         int pass = results.Count(r => r.ok), fail = results.Count - pass;
         Console.WriteLine(J.Text(new JsonObject
         {
@@ -557,6 +574,55 @@ internal static class ClientTest
         var off2 = await Call("timeflow_resume", new { session = jh, mode = "replay", frames = 60 });
         Check("timeflow_replay_off_when_changed", !badReplay.IsError && off2["inSync"]?.GetValue<bool>() == false, $"a RAM byte written after the jump: in sync {S(off2["inSync"])}, off at {S(off2["offFrame"])} ({S(off2["offWhat"])})");
         foreach (var id in new[] { h, jh, sh }) await Call("close_session", new { session = id }, log: false);
+        await ProfileSuite(dir, sms);
+    }
+
+    /// <summary>A kept, unkept profile the server made: it must be gone once the server's session ended (checked after the client closes).</summary>
+    private static string? sessionProfileDir;
+
+    /// <summary>Timeflow T3 over MCP: profile a span of a headless recording, find the planted corruption, keep / query / drop a profile; negative controls.</summary>
+    private static async Task ProfileSuite(string dir, string sms)
+    {
+        var (rom, asm, mlb) = BrokenNes.Workshop.Timeflow.TimeflowProfileRoms.Corrupting(fixedBuild: false);
+        string game = DebugTestRoms.Write(dir, "corrupt.nes", rom), sym = DebugTestRoms.Write(dir, "corrupt.mlb", mlb);
+        var o = await Call("open_rom", new { path = game, symbols = new[] { sym } });
+        string h = S(o["session"]);
+        await Call("timeflow_record", new { session = h, action = "start" });
+        await Call("run", new { session = h, frames = 120 });
+        var off = await Call("timeflow_record", new { session = h, action = "stop" });
+        string tid = S(off["closed"]?["id"]);
+        var p = await Call("timeflow_profile", new { timeline = tid, from = 20, to = 60, symbols = new[] { sym }, queries = new[] { "writes hp", "last-write hp before 60", "became hp != 5", "histogram top 5" } });
+        var w = p["queries"]?[0];
+        var hit = w?["shown"]?[0];
+        Check("timeflow_profile_finds_the_corruption", !p.IsError && p["inSync"]?.GetValue<bool>() == true && L(w?["total"]) == 1 && S(hit?["in"]) == "ft_store" && S(hit?["pc"]) == $"${asm["ft_store"]:X4}" && S(hit?["instruction"]).StartsWith("STA"),
+              $"{S(hit?["in"])} {S(hit?["pc"])} {S(hit?["instruction"])} frame {S(hit?["frame"])} value {S(hit?["value"])}; {S(p["cost"])}");
+        Check("timeflow_profile_last_write_and_became", S(p["queries"]?[1]?["last"]?["in"]) == "ft_store" && S(p["queries"]?[2]?["made"]?["in"]) == "ft_store", $"{S(p["queries"]?[1]?["last"]?["stack"])}");
+        Check("timeflow_profile_streams_nothing_stored", p["profile"] == null && S(p["stored"]).StartsWith("nothing stored"), S(p["stored"]));
+        var k = await Call("timeflow_profile", new { timeline = tid, from = 20, to = 40, symbols = new[] { sym }, store = true, queries = new[] { "summary" } });
+        string pid = S(k["profile"]?["id"]), pdir = S(k["profile"]?["dir"]);
+        Check("timeflow_profile_store", !k.IsError && pid.Length > 0 && Directory.Exists(pdir) && L(k["profile"]?["framesStored"]) == 21, $"{pid}: {L(k["profile"]?["bytes"])} bytes, {S(k["profile"]?["deletedWhen"])}");
+        var q = await Call("timeflow_profile_query", new { action = "query", profile = pid, queries = new[] { "writes hp", "trace frame 33 count 3" } });
+        Check("timeflow_profile_query", !q.IsError && S(q["queries"]?[0]?["shown"]?[0]?["in"]) == "ft_store" && q["queries"]?[1]?["lines"]?.AsArray().Count == 3, $"{S(q["queryMs"])} ms, {S(q["recordsPerSecond"])} records/s");
+        var ls = await Call("timeflow_profile_query", new { action = "list" });
+        Check("timeflow_profile_list", !ls.IsError && ls.Text.Contains(pid), $"{ls["profiles"]?.AsArray().Count} kept");
+        var dr = await Call("timeflow_profile_query", new { action = "drop", profile = pid });
+        Check("timeflow_profile_drop", !dr.IsError && !Directory.Exists(pdir), pdir);
+        var gone = await Call("timeflow_profile_query", new { action = "query", profile = pid, queries = new[] { "summary" } });
+        Check("timeflow_profile_unknown_refused", gone.IsError && gone.Text.Contains("no kept profile"), gone.Text);
+        var when = await Call("timeflow_profile", new { timeline = tid, from = 20, to = 40, queries = new[] { "explode" } });
+        Check("timeflow_profile_bad_query_refused", when.IsError && when.Text.Contains("unknown query"), when.Text);
+        // the session's end: an unkept profile of this server is deleted when the server stops (checked once the client has closed)
+        var last = await Call("timeflow_profile", new { timeline = tid, from = 30, to = 35, store = true });
+        sessionProfileDir = S(last["profile"]?["dir"]);
+        // the Sega consoles: no profile until T0 (refused, never an empty one)
+        var so = await Call("open_rom", new { path = sms });
+        string sh = S(so["session"]);
+        await Call("timeflow_record", new { session = sh, action = "start" });
+        await Call("run", new { session = sh, frames = 30 });
+        var soff = await Call("timeflow_record", new { session = sh, action = "stop" });
+        var sp = await Call("timeflow_profile", new { timeline = S(soff["closed"]?["id"]), from = 5, to = 10, queries = new[] { "summary" } });
+        Check("timeflow_profile_sega_refused_until_t0", sp.IsError && sp.Text.Contains("T0"), sp.Text);
+        foreach (var id in new[] { h, sh }) await Call("close_session", new { session = id }, log: false);
     }
 
     private static async Task DemoSuite(string dir, string outPath)

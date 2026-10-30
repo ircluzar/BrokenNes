@@ -158,6 +158,7 @@ namespace BrokenNes.Windows
             debugWindowsMenu.DropDownItems.Add(tfMenuItem);
             debugWindowsMenu.DropDownItems.Add(new ToolStripMenuItem("Time&flow (timelines, scrubber, jump, resume)", null, (_, _) => OpenTimeflowWindow()) { Name = "debugWindowTimeflow" });
             debugWindowsMenu.DropDownOpening += (_, _) => { if (tfMenuItem != null) tfMenuItem.Checked = tfSwitch.On; };
+            TimeflowProfileInit();   // T3: the start-up sweep of profiles a crashed app left, and the app's own deleted as it closes
         }
 
         /// <summary>The REC mark: a red label at the right of the menu bar, shown while recording is on.</summary>
@@ -295,6 +296,7 @@ namespace BrokenNes.Windows
             server.GetTimeflowTimelines = TimeflowTimelines;
             server.RequestTimeflow = (reason, from) => TimeflowRequest(reason, from);
             server.CancelTimeflowRequest = TimeflowCancelRequest;
+            server.GetTimeflowProfile = TimeflowProfileStatus;
         }
 
         // ------------------------------------------------------------------------------------------------ jump and resume (the window: the user's own controls)

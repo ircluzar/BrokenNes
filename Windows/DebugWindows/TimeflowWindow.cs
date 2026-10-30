@@ -27,6 +27,10 @@ namespace BrokenNes.Windows.DebugWindows
         private readonly Button jump = new() { Name = "timeflowJump", AccessibleName = "timeflowJump", Text = "Jump", Width = 70 };
         private readonly Button live = new() { Name = "timeflowResumeLive", AccessibleName = "timeflowResumeLive", Text = "Resume (live)", Width = 100 };
         private readonly Button replay = new() { Name = "timeflowReplay", AccessibleName = "timeflowReplay", Text = "Replay recorded", Width = 110 };
+        // T3: profile a selection (from the chosen frame, this many frames) on a headless machine, opened in the debugger and the event view
+        private readonly NumericUpDown profileFrames = new() { Name = "timeflowProfileFrames", AccessibleName = "timeflowProfileFrames", Width = 70, Minimum = 1, Maximum = 3600, Value = 60 };
+        private readonly CheckBox profileKeep = new() { Name = "timeflowProfileKeep", AccessibleName = "timeflowProfileKeep", Text = "keep after the app closes", AutoSize = true };
+        private readonly Button profile = new() { Name = "timeflowProfile", AccessibleName = "timeflowProfile", Text = "Profile selection", Width = 120 };
         private readonly Label result = new() { Name = "timeflowResult", AutoSize = false, Dock = DockStyle.Bottom, Height = 34, Padding = new Padding(4, 2, 4, 2) };
         private readonly TextBox info = new() { Name = "timeflowFrameInfo", AccessibleName = "timeflowFrameInfo", Dock = DockStyle.Bottom, ReadOnly = true, Height = 22 };
         private List<TimelineInfo> shown = new();
@@ -38,7 +42,7 @@ namespace BrokenNes.Windows.DebugWindows
             this.form = form;
             Text = "BrokenNes Timeflow";
             Name = "TimeflowWindow";
-            ClientSize = new Size(760, 420);
+            ClientSize = new Size(760, 460);
             StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = false;
             Font = new Font("Segoe UI", 9f);
@@ -47,9 +51,15 @@ namespace BrokenNes.Windows.DebugWindows
             var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 32, WrapContents = false, Padding = new Padding(4, 2, 4, 0) };
             bar.Controls.Add(new Label { Text = "Frame", AutoSize = true, Padding = new Padding(0, 6, 0, 0) });
             bar.Controls.Add(frame); bar.Controls.Add(jump); bar.Controls.Add(live); bar.Controls.Add(replay);
+            var pbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 32, WrapContents = false, Padding = new Padding(4, 2, 4, 0) };
+            pbar.Controls.Add(profile);
+            pbar.Controls.Add(new Label { Text = "frames from the chosen one:", AutoSize = true, Padding = new Padding(0, 6, 0, 0) });
+            pbar.Controls.Add(profileFrames);
+            pbar.Controls.Add(profileKeep);
             Controls.Add(list);
             Controls.Add(info);
             Controls.Add(result);
+            Controls.Add(pbar);
             Controls.Add(bar);
             Controls.Add(scrub);
             Controls.Add(status);
@@ -66,6 +76,15 @@ namespace BrokenNes.Windows.DebugWindows
             };
             live.Click += async (_, _) => result.Text = await form.TimeflowResumeAsync(false);
             replay.Click += async (_, _) => result.Text = await form.TimeflowResumeAsync(true);
+            profile.Click += async (_, _) =>
+            {
+                var t = Current; if (t == null) { result.Text = "choose a timeline"; return; }
+                long from = (long)frame.Value, to = Math.Min(t.Meta.StartFrame + t.Meta.Frames - 1, from + (long)profileFrames.Value - 1);
+                profile.Enabled = false;
+                result.Text = $"profiling frames {from}-{to} on a headless machine (your game runs on)...";
+                try { result.Text = await form.TimeflowProfileAsync(t.Dir, from, to, profileKeep.Checked, s => { if (!IsDisposed) result.Text = s; }); }
+                finally { if (!IsDisposed) profile.Enabled = true; }
+            };
             timer.Tick += (_, _) => Refresh2();
             FormClosed += (_, _) => { timer.Stop(); timer.Dispose(); };
             timer.Start();

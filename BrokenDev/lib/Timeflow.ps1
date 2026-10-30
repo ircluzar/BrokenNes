@@ -77,11 +77,90 @@ function Show-BdTimeline {
     Write-BdInfo "  $($J.dir)"
 }
 
+function Get-BdTimelineSymbols {
+    <# The symbol files of the project a timeline was recorded from (its build's published symbols), or none for a ROM of no project. #>
+    param([Parameter(Mandatory)][string]$Timeline, [string]$Exe = '')
+    $info = (Invoke-BdTimeflowJson -Arguments @('info', '--timeline', $Timeline) -Exe $Exe).Json
+    $project = [string](Get-BdProp $info 'project' '')
+    if (-not $project) { return @() }
+    try { return @((Get-BdProjectRomAndSymbols -Id $project).Symbols) } catch { Write-BdInfo "  (no symbols: $($_.Exception.Message))"; return @() }
+}
+
+function Show-BdProfileAnswer {
+    param($Q)
+    if (Get-BdProp $Q 'error' $null) { Write-BdFail "  $($Q.query): $($Q.error)"; return }
+    Write-Host "  $($Q.query):"
+    $copy = $Q | Select-Object -Property * -ExcludeProperty query
+    foreach ($line in (($copy | ConvertTo-Json -Depth 8) -split "`n")) { Write-Host "    $line" }
+}
+
+function Show-BdProfile {
+    param($J)
+    $c = $J.cost
+    $ins = ($J.instructions.PSObject.Properties | ForEach-Object { "$($_.Name) $($_.Value)" }) -join ', '
+    $line = 'profiled frames {0}-{1} of {2} ({3}): {4} frames, instructions {5}, {6:N0} accesses; {7} fps = {8}x slower than real time' -f $J.from, $J.to, $J.timeline, $J.console, $J.framesProfiled, $ins, $J.accesses, $c.profiledFps, $c.timesSlowerThanRealTime
+    if ($J.inSync) { Write-BdOk "$line; in sync with the recording" } else { Write-BdFail "$line; OUT OF SYNC at frame $($J.offFrame) ($($J.offWhat))" }
+    if ($J.profile) { Write-BdInfo ("  kept as {0} ({1}, {2:N0} bytes, {3} a frame): {4}; deleted when {5}" -f $J.profile.id, $J.profile.status, $J.profile.bytes, $J.profile.bytesPerFrame, $J.profile.dir, $J.profile.deletedWhen) }
+    else { Write-BdInfo "  $($J.stored)" }
+    foreach ($q in @($J.queries)) { Show-BdProfileAnswer $q }
+}
+
 function Invoke-BdTimeflow {
     <# brokendev.ps1 timeflow <action> [target] ...: returns the exit code. #>
     param([string]$Action, [string]$Target = '', [string]$Scenario = '', [string]$Script = '', [int]$Frames = 0, [string]$Movie = '', [string[]]$Course = @(),
-          [long]$Frame = -1, [string]$Png = '', [switch]$Record, [switch]$Coverage, [switch]$Json, [string]$Exe = '')
+          [long]$Frame = -1, [string]$Png = '', [switch]$Record, [switch]$Coverage, [switch]$Json, [string]$Exe = '',
+          [long]$From = -1, [long]$To = -1, [string[]]$Query = @(), [switch]$Store, [switch]$Keep, [int]$TtlMinutes = 0, [int]$LimitMb = 0)
     switch ($Action.ToLowerInvariant()) {
+        'profile' {
+            # T3: a span re-run at full depth with streaming queries (and kept when -Store)
+            if (-not $Target -or $From -lt 0 -or $To -lt 0) { throw 'timeflow profile needs a timeline, -From A and -To B (and -Query "writes <symbol>" ...)' }
+            $a = @('profile', '--timeline', $Target, '--from', [string]$From, '--to', [string]$To, '--note', 'brokendev timeflow profile')
+            foreach ($q in @($Query | ForEach-Object { ([string]$_) -split ";" } | ForEach-Object { $_.Trim() } | Where-Object { $_ })) { $a += @("--q", $q) }
+            foreach ($s in (Get-BdTimelineSymbols -Timeline $Target -Exe $Exe)) { $a += @('--sym', $s) }
+            if ($Store -or $Keep) { $a += '--store' }
+            if ($Keep) { $a += '--keep' }
+            if ($TtlMinutes -gt 0) { $a += @('--ttl-min', [string]$TtlMinutes) }
+            if ($LimitMb -gt 0) { $a += @('--limit-mb', [string]$LimitMb) }
+            $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 12); return $(if ($r.ExitCode -eq 0) { 0 } else { 1 }) }
+            Show-BdProfile $r.Json
+            return $(if ($r.ExitCode -eq 0) { 0 } else { 1 })
+        }
+        'profile-query' {
+            if (-not $Target -or $Query.Count -eq 0) { throw 'timeflow profile-query needs a kept profile (its id) and -Query Q' }
+            $a = @('profile-query', '--profile', $Target); foreach ($q in @($Query | ForEach-Object { ([string]$_) -split ";" } | ForEach-Object { $_.Trim() } | Where-Object { $_ })) { $a += @("--q", $q) }
+            $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 12); return 0 }
+            Write-BdInfo ("profile {0} ({1} frames {2}-{3}, {4}): read back in {5} ms" -f $r.Json.profile.id, $r.Json.profile.console, $r.Json.profile.from, $r.Json.profile.to, $r.Json.profile.status, $r.Json.queryMs)
+            foreach ($q in @($r.Json.queries)) { Show-BdProfileAnswer $q }
+            return 0
+        }
+        'profiles' {
+            $r = Invoke-BdTimeflowJson -Arguments @('profiles') -Exe $Exe
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 8); return 0 }
+            foreach ($s in @($r.Json.swept)) { Write-BdInfo "  swept $($s.id): $($s.why)" }
+            foreach ($p in @($r.Json.profiles)) { Write-Host ('  {0}  {1} timeline {2} frames {3}-{4}  {5}  {6:N0} KB  {7}expires {8}' -f $p.id, $p.console, $p.timeline, $p.from, $p.to, $p.status, ($p.bytes / 1KB), $(if ($p.keep) { 'KEEP ' } else { '' }), $p.expires) }
+            Write-BdInfo "$(@($r.Json.profiles).Count) kept profile(s) under $($r.Json.root)"
+            return 0
+        }
+        { $_ -in 'profile-keep', 'profile-unkeep' } {
+            if (-not $Target) { throw "timeflow $Action needs a profile" }
+            $a = @('profile-keep', '--profile', $Target); if ($Action -eq 'profile-unkeep') { $a += '--off' }; if ($TtlMinutes -gt 0) { $a += @('--ttl-min', [string]$TtlMinutes) }
+            $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
+            Write-BdOk "$($r.Json.id): keep $($r.Json.keep), expires $($r.Json.expires)"; return 0
+        }
+        'profile-drop' {
+            if (-not $Target) { throw 'timeflow profile-drop needs a profile (or all)' }
+            $a = if ($Target -eq 'all') { @('profile-drop', '--all') } else { @('profile-drop', '--profile', $Target) }
+            $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
+            Write-BdOk "dropped $(if ($Target -eq 'all') { @($r.Json.dropped).Count } else { $r.Json.dropped })"; return $(if ($r.ExitCode -eq 0) { 0 } else { 1 })
+        }
+        'profile-sweep' {
+            $r = Invoke-BdTimeflowJson -Arguments @('profile-sweep') -Exe $Exe
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 8); return 0 }
+            foreach ($s in @($r.Json.swept)) { Write-BdInfo "  swept $($s.id): $($s.why)" }
+            Write-BdOk "swept $(@($r.Json.swept).Count) profile(s); $($r.Json.left) left"; return 0
+        }
         'record' {
             if (-not $Target) { throw 'timeflow record needs a project' }
             [void](Resolve-BdTargets $Target)
@@ -166,6 +245,6 @@ function Invoke-BdTimeflow {
             foreach ($g in @($r.Json.games)) { Write-Host ('  {0}: {1} timeline(s), {2:N1} MB of {3:N2} GB' -f $g.gameDir, $g.timelines, ($g.usedBytes / 1MB), ($g.capBytes / 1GB)) }
             return 0
         }
-        default { throw 'timeflow: record, list, info, verify, jump, resume, prune, keep, unkeep or status' }
+        default { throw 'timeflow: record, list, info, verify, jump, resume, prune, keep, unkeep, status, profile, profile-query, profiles, profile-keep, profile-unkeep, profile-drop or profile-sweep' }
     }
 }

@@ -47,7 +47,8 @@ internal static class Program
         "(NES, SNES, WideMess, Game Boy / Color, Master System, Game Gear, Genesis); the debugger (breakpoints, mirror-aware watches, stepping, call stack, trace, symbols) covers every console (NES, SNES with its SPC700, WideMess, Game Boy, Master System and Game Gear (Z80), Genesis (68000 and its sound Z80)); " +
         "the D4 hardware checks and the profiler run with checks:true (NES, SNES, WideMess, Game Boy). Debug games here, not on Mesen (Mesen is for cross-checks). " +
         "LIVE sessions (attach_live) read the user's running desktop app: read freely; open with control:true only when the user asked in chat to control their game (and the app must have enableDebuggerControl on); " +
-        "a live session never saves, never touches progression and never stops the process. Results are JSON (pictures as images). Typical: open_rom with checks:true, run 600, checks report, then breakpoint_add on what a finding names, run, call_stack, trace.";
+        "a live session never saves, never touches progression and never stops the process. Results are JSON (pictures as images). Typical: open_rom with checks:true, run 600, checks report, then breakpoint_add on what a finding names, run, call_stack, trace. " +
+        "Timeflow: a recorded timeline (timeflow_record on your headless session, timeflow_list) can be profiled over any span at full depth with timeflow_profile and streaming queries ('writes hp', 'last-write hp before 900', 'became hp == 0', 'stack N', 'histogram'): the write that corrupted a variable, with its instruction and call stack, without playing again.";
 
     private static async Task<int> Serve()
     {
@@ -85,10 +86,17 @@ internal static class Program
             },
         };
 
+        // Timeflow T3: profiles an earlier server left behind (its process crashed or was killed) or that expired go now
+        _ = Task.Run(() => { try { NesEmulator.Debugging.Timeflow.ProfileStore.Sweep(); } catch (Exception e) { Console.Error.WriteLine("[timeflow] profile sweep: " + e.Message); } });
         var transport = new StreamServerTransport(stdin, stdout, "brokennes");
         await using var server = McpServer.Create(transport, options);
         try { await server.RunAsync(); }
-        finally { Sessions.CloseAll(); }
+        finally
+        {
+            // the session's end: this server's profiles go unless kept (first: a client that closes may not wait for the sessions to close)
+            try { int n = NesEmulator.Debugging.Timeflow.ProfileStore.EndSession(); if (n > 0) Console.Error.WriteLine($"[timeflow] {n} unkept profile(s) deleted at the session's end"); } catch (Exception) { }
+            Sessions.CloseAll();
+        }
         return 0;
     }
 
