@@ -1,24 +1,17 @@
 {
   "schema": 1,
   "id": "vrun-voc",
-  "title": "VRUN: Vaults of Obsolete Code (Game Boy), V2: the tutorial",
+  "title": "VRUN: Vaults of Obsolete Code (Game Boy), V4: the whole game (the music placeholders)",
   "family": "vrun",
   "kind": "gb",
   "console": "gbc",
-  "description": "The user's Game Boy game (docs/projects/vrun-voc-plan.md), milestone V2: TUTORIAL, 3 clovers on map 0 (VRUN3), with the physics of the original (Eternal Degrade's MP_VirusRun) reproduced tick for tick (tests/physics/compare.ps1 in the game repo). One dual-mode ROM (MBC5 + RAM + battery, 1 MB, 32 KB). Built with GBDK-2020 4.5.0 (toolchains.json) in its live workspace PROJECTS\\VRUN_VOC_dev (its own git, local commits only).",
-  "source": {
-    "folder": "{live:VRUN_VOC_dev}"
-  },
+  "description": "The user's Game Boy game (docs/projects/vrun-voc-plan.md), milestone V4: the title (MP_VRUN) and its menu (RUN 18 clovers, SHORT RUN 5-8, TUTORIAL 3 on VRUN3, Dashless, OPTIONS, CONTINUE), 32 maps, the dark grid, the box, the suspend save, the clear screen, the real sound effects (V3) and the music engine with placeholder songs (V5); the physics of the original (Eternal Degrade's MP_VirusRun) reproduced tick for tick (tests/physics/compare.ps1, compare_maps.ps1). One dual-mode ROM (MBC5 + RAM + battery, 1 MB, 32 KB). Built with GBDK-2020 4.5.0 (toolchains.json) in its live workspace PROJECTS/VRUN_VOC_dev (its own git, local commits only).",
+  "source": { "folder": "{live:VRUN_VOC_dev}" },
   "requires": {
-    "tools": [
-      "ps5",
-      "toolchain:gbdk"
-    ],
+    "tools": ["ps5", "toolchain:gbdk"],
     "projects": [],
     "inputs": [],
-    "toolchain": [
-      "GBDK-2020 4.5.0 (lcc, SDCC, sdasgb, sdldgb, makebin), pinned in toolchains.json"
-    ]
+    "toolchain": ["GBDK-2020 4.5.0 (lcc, SDCC, sdasgb, sdldgb, makebin), pinned in toolchains.json"]
   },
   "build": {
     "steps": [
@@ -27,128 +20,53 @@
         "shell": "ps5",
         "cwd": "{src}",
         "file": "{src}/build.ps1",
-        "args": [
-          "-Gbdk",
-          "{toolchain:gbdk}"
-        ],
+        "args": ["-Gbdk", "{toolchain:gbdk}"],
         "timeoutSec": 600,
         "note": "build.ps1: lcc -autobank on src, src/maps, src/phys; it checks the cartridge header and that bank 0 does not overflow."
       }
     ],
     "outputs": [
-      {
-        "id": "rom",
-        "path": "{src}/build/vrun_voc.gbc",
-        "publishAs": "vrun_voc.gbc",
-        "kind": "gbc"
-      },
-      {
-        "id": "noi",
-        "path": "{src}/build/vrun_voc.noi",
-        "publishAs": "vrun_voc.noi",
-        "kind": "symbols"
-      },
-      {
-        "id": "sym",
-        "path": "{src}/build/vrun_voc.sym",
-        "publishAs": "vrun_voc.sym",
-        "kind": "symbols-bgb"
-      },
-      {
-        "id": "map",
-        "path": "{src}/build/vrun_voc.map",
-        "publishAs": "vrun_voc.map",
-        "kind": "map"
-      }
+      { "id": "rom", "path": "{src}/build/vrun_voc.gbc", "publishAs": "vrun_voc.gbc", "kind": "gbc" },
+      { "id": "noi", "path": "{src}/build/vrun_voc.noi", "publishAs": "vrun_voc.noi", "kind": "symbols" },
+      { "id": "sym", "path": "{src}/build/vrun_voc.sym", "publishAs": "vrun_voc.sym", "kind": "symbols-bgb" },
+      { "id": "map", "path": "{src}/build/vrun_voc.map", "publishAs": "vrun_voc.map", "kind": "map" }
     ]
   },
-  "run": {
-    "console": "gbc",
-    "note": "The title, then A: the tutorial run. Left / Right run, Down brakes, A / B jump (mid-air: freeze, then a direction dashes), Select = the abort lottery, Start = pause."
-  },
+  "run": { "console": "gbc", "note": "The title (Left / Right: the mode), then A. Left / Right run, Down brakes, A / B jump (mid-air: freeze, then a direction dashes), Select = the abort lottery, Start = pause." },
   "verify": {
     "timeoutSec": 900,
     "scenarios": [
       {
         "id": "color",
-        "frames": 1500,
-        "input": "60:A,61:,200:Right,201:,400:A,401:,700:Left,701:,900:A,901:,903:Right,904:",
-        "checkpoints": [
-          50,
-          300,
-          1500
-        ],
+        "frames": 2000,
+        "input": "60:A,61:,400:Right,401:,600:A,601:,900:Left,901:,1100:A,1101:,1103:Right,1104:",
+        "checkpoints": [50, 500, 2000],
         "expect": {
           "minDistinctColors": 5,
-          "pictureDiffers": [
-            50,
-            300
-          ],
+          "pictureDiffers": [50, 500],
           "memory": [
-            {
-              "symbol": "_game_mode",
-              "is": 1,
-              "what": "the tutorial run is on (the title's A started it)"
-            },
-            {
-              "symbol": "_tick_late",
-              "size": 2,
-              "is": 0,
-              "what": "no picture came late: every tick on the screen on its 24 Hz boundary"
-            },
-            {
-              "symbol": "_voc_is_color",
-              "is": 1
-            }
+            { "symbol": "_game_mode", "is": 1, "what": "the run is on (the title's A started RUN)" },
+            { "symbol": "_tick_late", "size": 2, "is": 0, "what": "no picture came late: every tick on the screen on its 24 Hz boundary" },
+            { "symbol": "_voc_is_color", "is": 1 }
           ],
-          "port": {
-            "markers": [
-              "started"
-            ],
-            "prints": [
-              "VRUN: Vaults of Obsolete Code, V2 tutorial, dev build"
-            ],
-            "timers": [
-              "voc_tick",
-              "screen"
-            ],
-            "maxErrors": 0
-          }
+          "port": { "markers": ["started"], "prints": ["VRUN: Vaults of Obsolete Code, V4, dev build"], "timers": ["voc_tick", "screen"], "maxErrors": 0 }
         },
         "why": "on a Game Boy Color (double speed): the run plays, the pad reaches the physics, no tick late"
       },
       {
         "id": "original",
         "console": "gb",
-        "frames": 1500,
-        "input": "60:A,61:,200:Right,201:,400:A,401:,700:Left,701:,900:A,901:,903:Right,904:",
-        "checkpoints": [
-          50,
-          300,
-          1500
-        ],
+        "frames": 2000,
+        "input": "60:A,61:,400:Right,401:,600:A,601:,900:Left,901:,1100:A,1101:,1103:Right,1104:",
+        "checkpoints": [50, 500, 2000],
         "expect": {
           "maxDistinctColors": 4,
           "minDistinctColors": 3,
-          "pictureDiffers": [
-            50,
-            300
-          ],
+          "pictureDiffers": [50, 500],
           "memory": [
-            {
-              "symbol": "_game_mode",
-              "is": 1
-            },
-            {
-              "symbol": "_tick_late",
-              "size": 2,
-              "is": 0,
-              "what": "the original Game Boy, the slowest: still no late picture"
-            },
-            {
-              "symbol": "_voc_is_color",
-              "is": 0
-            }
+            { "symbol": "_game_mode", "is": 1 },
+            { "symbol": "_tick_late", "size": 2, "is": 0, "what": "the original Game Boy, the slowest: still no late picture" },
+            { "symbol": "_voc_is_color", "is": 0 }
           ]
         },
         "why": "the same cartridge on an original Game Boy: four shades, the same game, on time"
@@ -157,84 +75,23 @@
   },
   "compat": {
     "what": "The tutorial on every Game Boy emulator BrokenDev has, from power-on and the same pad script: the run's state read by the game's symbols every frame. The other emulators play their boot animation first, so the pad script waits until frame 400 and the checks allow for the difference.",
-    "symbols": {
-      "file": "{out}/vrun_voc.noi"
-    },
-    "reads": {
-      "mode": "_game_mode",
-      "ticks": "_tick_count",
-      "late": "_tick_late",
-      "frame": "_frame_count"
-    },
+    "symbols": { "file": "{out}/vrun_voc.noi" },
+    "reads": { "mode": "_game_mode", "ticks": "_tick_count", "late": "_tick_late", "frame": "_frame_count" },
     "frameTolerance": 250,
     "scenarios": [
       {
         "id": "play",
-        "frames": 1500,
-        "input": "400:A,401:,600:Right,601:,800:A,801:,1100:Left,1101:",
-        "shots": [
-          390,
-          1000,
-          1500
-        ],
+        "frames": 2200,
+        "input": "400:A,401:,800:Right,801:,1000:A,1001:,1300:Left,1301:",
+        "shots": [390, 1500, 2200],
         "what": "power-on, the title, A, a run with a few keys",
         "checks": [
-          {
-            "id": "alive",
-            "what": "the vblank handler runs (frame_count keeps changing)",
-            "changes": "frame",
-            "within": [
-              500,
-              1500
-            ],
-            "min": 300
-          },
-          {
-            "id": "running",
-            "what": "the run started (game_mode 1)",
-            "read": "mode",
-            "is": 1,
-            "within": [
-              700,
-              1500
-            ],
-            "hold": true
-          },
-          {
-            "id": "ticking",
-            "what": "the 24 Hz ticks run (tick_count's low byte keeps changing)",
-            "changes": "ticks",
-            "within": [
-              700,
-              1500
-            ],
-            "min": 100
-          },
-          {
-            "id": "on-time",
-            "what": "no late picture",
-            "read": "late",
-            "is": 0,
-            "within": [
-              700,
-              1500
-            ],
-            "hold": true
-          },
-          {
-            "id": "drawn",
-            "what": "the room is drawn",
-            "picture": 1500,
-            "minColors": 3
-          },
-          {
-            "id": "moved",
-            "what": "the picture changed between the title and the run",
-            "pictureDiffers": [
-              390,
-              1500
-            ]
-          }
+          { "id": "alive", "what": "the vblank handler runs (frame_count keeps changing)", "changes": "frame", "within": [500, 2200], "min": 300 },
+          { "id": "running", "what": "the run started (game_mode 1)", "read": "mode", "is": 1, "within": [900, 2200], "hold": true },
+          { "id": "ticking", "what": "the 24 Hz ticks run (tick_count's low byte keeps changing)", "changes": "ticks", "within": [900, 2200], "min": 100 },
+          { "id": "on-time", "what": "no late picture", "read": "late", "is": 0, "within": [900, 2200], "hold": true },
+          { "id": "drawn", "what": "the room is drawn", "picture": 2200, "minColors": 3 },
+          { "id": "moved", "what": "the picture changed between the title and the run", "pictureDiffers": [390, 2200] }
         ]
       }
     ]
@@ -242,31 +99,17 @@
   "checks": {
     "what": "BrokenDev hardware checks (D4). One finding is accepted, by design: gb.lag-frame.",
     "accepted": [
-      {
-        "rule": "gb.lag-frame",
-        "at": "*",
-        "reason": "The game ticks at 24 Hz, as the original: a tick's work (physics and picture, in the vblank handler) spans the 2 or 3 frames of the tick by design, so vblank always arrives in the middle of it. Lateness is measured where it matters, per tick: tick_late (verify's memory check) and the debug port's '@late' (tests/game/speed.ps1), both 0."
-      }
+      { "rule": "gb.lag-frame", "at": "*", "reason": "The game ticks at 24 Hz, as the original: a tick's work (its first part and its picture, in the main program and in the vblank handler) spans the 2 or 3 frames of the tick by design, so vblank always arrives in the middle of it. Lateness is measured where it matters, per tick: tick_late (verify's memory check) and the debug port's '@late' (tests/game/speed.ps1), both 0." }
     ]
   },
   "budgets": {
     "what": "Over a limit fails verify, near it (90%) warns.",
-    "romBankFree": {
-      "min": 0,
-      "what": "the map banks 33-36 are full by design (146 layouts of 112 bytes each); build.ps1 fails on a bank 0 overflow"
-    },
-    "memoryFree": {
-      "wram": 512,
-      "hram": 64,
-      "what": "an original Game Boy's 8 KB of work RAM"
-    },
-    "stackFree": {
-      "min": 512
-    }
+    "romBankFree": { "min": 0, "what": "the map banks 33-36 are full by design (146 layouts of 112 bytes each); build.ps1 fails on a bank 0 overflow" },
+    "memoryFree": { "wram": 512, "hram": 64, "what": "an original Game Boy's 8 KB of work RAM" },
+    "stackFree": { "min": 512 }
   },
   "knownIssues": [
-    "Sound effects are a stand-in blip per effect (milestone V3), no music (V5).",
-    "No title menu, RUN / SHORT RUN / Dashless, suspend save, box opening or dark-grid glitter yet (milestone V4).",
+    "The music is the music engine with placeholder songs (converted from the VRUN NES soundtrack) until the user's arrangements (V5).",
     "No hardware test on the user's flash cartridge yet."
   ]
 }
