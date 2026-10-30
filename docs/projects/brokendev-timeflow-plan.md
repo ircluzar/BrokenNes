@@ -1,8 +1,9 @@
 # BrokenDev Timeflow: rewind, deep profiling, hotpatch and a searchable gameplay corpus
 
-Status: **T1 (the timeline format), T2 (rewind and resume) and T3 (profiled spans) built** on 2026-10-30 (see "T1 as built", "T2 as
-built" and "T3 as built" at the end): rewind on every console, profiling on the NES, SNES (with its SPC700), WideMess and Game Boy; the Sega
-consoles are refused for profiling until T0 (the debugger on the Z80 and the 68000, built in parallel). Next: T0, then T4 (search).
+Status: **T1 (the timeline format), T2 (rewind and resume), T3 (profiled spans) and T4 (search) built** on 2026-10-30 (see "T1 as
+built" to "T4 as built" at the end): rewind on every console; profiling and breakpoint searches on the NES, SNES (with its SPC700), WideMess and
+Game Boy; the Sega consoles take state, picture and sound searches and are refused for profiling and breakpoints until T0 (the debugger on the
+Z80 and the 68000, built in parallel). Next: T0, then T5 (hotpatch).
 
 ## The idea (the user's words, condensed)
 
@@ -138,7 +139,7 @@ hotpatch, resume.
 ## Open questions (to settle as the work reaches them)
 
 1. The exact keyframe interval and page size per console (from T1's measurements). **Answered in T1:** one choice for every console, N 60, 1024-byte pages, Brotli 5 (see "T1 as built").
-2. Whether picture / sound search needs per-frame thumbnails or audio levels in the index, or re-rendering candidates is enough.
+2. Whether picture / sound search needs per-frame thumbnails or audio levels in the index, or re-rendering candidates is enough. **Answered in T4:** re-rendering (once per distinct picture) for now; a colour summary and an audio level are T6 items, with the numbers (see "T4 as built").
 3. Which of the user's games is T7's real-bug proof (Super VRUN's invisible enemies, if still open by then, is a natural candidate).
 4. How the desktop app asks the user to accept an agent's recording / play request (a non-blocking prompt in the app, like the
    no-sound notice). **Answered in T1:** a yellow bar under the menu bar, Allow / Decline, the game keeps running (see "T1 as built").
@@ -402,7 +403,7 @@ hotpatch, resume.
   A stored query reads 5 to 9 million records a second (a frame's 40 to 100 thousand records in 5 to 15 ms). The cost is the hooks (every
   instruction and access through the debugger), not the queries; the SNES pays most against its plain speed (12 to 24x) because its plain
   replay is so fast. The desktop's Profile selection ran VRUN at 17 to 43 fps beside the running game.
-- **Found on the way (a T2 finding, open):** a NES loaded with its **power-on state** (frame 0 of a timeline that starts at power-on) runs
+- **Found on the way (a T2 finding, fixed in T4: see "T4 as built"):** a NES loaded with its **power-on state** (frame 0 of a timeline that starts at power-on) runs
   its first frame one CPU cycle longer than the real power-on did, so a replay from frame 0 goes off at the keyframe 60 (`overshootCarry`
   and `globalCpuCycle` differ; the picture and RAM do not); from frame 1 on every jump replays in sync. It is something the NES state does
   not hold at power-on (not the debugger: a plain replay does the same). T3 does not hit it: a span in the first block re-runs from the
@@ -438,3 +439,174 @@ hotpatch, resume.
     skipped** (`-WorkshopExe`, `-McpExe`), UAT **125 pass 0 fail 16 skip 3 info** (the goldens unchanged; the corpus and story ROM folders
     linked from the main checkout for the run, then unlinked), `timeflow-desktop-smoke` (T2) passes, `debug-windows-desktop-smoke` 79 of 79
     (the Debugger and Event View windows gained their profile mode as partial classes; the live mode is unchanged).
+
+## T4 as built (2026-10-30): search over the corpus
+
+- **First, the T2 finding T3 left open (fixed):** the value the NES state did not hold is the **pending reset sequence** (`NES.resetSequencePending`:
+  set by power-on and a reset, consumed by the first frame, which on the FIX cores runs the 6502's 8 reset cycles through the PPU and APU before
+  the first opcode fetch). A loaded power-on state cleared it, so its first frame's instructions fell 8 cycles off the PPU and the frame ended a
+  cycle off (`overshootCarry` 1 instead of 0): the keyframe-60 desync. `NES.SaveState` now writes `"resetSequencePending":true` (first in the
+  JSON) only while it is pending, so every other state is byte for byte what it was and an older state (which never has it) loads as before (not
+  pending); `LoadState` restores it. `--timeflow-test` group `poweron`: the frame-0 state has the field and frame 1's does not; a replay from a
+  loaded frame 0 stays in sync past the keyframes 60, 120 and 180 (200 frames, 203 checks); **negative**: the same state with the field removed
+  goes off at the keyframe 60 ("cycleRemainder 1, overshootCarry 1" against 0); a state after a frame has no field, one right after a reset has
+  it. T3's power-on re-run (`ProfileTarget.PoweredOn`) is **kept**: it no longer guards the sync, but it still guards frame 0's picture (a loaded
+  NES shows the picture from before the load for one frame; only a re-run from the power-on itself compares frame 0's picture), and a timeline
+  recorded before T4 (whose frame 0 lacks the field) falls back to the loaded state, said in the notes.
+- **Also fixed (the coordinator's report):** `--timeflow-test`'s pstore check "profiles are outside the game's cap" was flaky by one byte (138285
+  vs 138286). The byte was `timeline.json` itself: every jump / replay / profile rewrites its `lastUsedUtc`, and System.Text.Json drops a time's
+  trailing fraction zeros, so the description's size moved with the clock. Times are now written at a fixed width (7 fraction digits, any older
+  form still reads). New checks: the description has one size for a round second and a 7-digit time; negative control: the game folder's whole
+  size grows by exactly the profile's bytes. 4 of 4 runs green.
+- **The engine** (`Windows/NesEmulator/debug/timeflow`): `TimeflowSearchCondition.cs` (the language), `TimeflowSearchMemory.cs` (`SearchMachine`,
+  the state map, the state clause's names), `TimeflowSearch.cs` (the two phases, the hits, the numbers, the JSON). The recorder gained an
+  optional index part: `FrameAccesses` (a D1 observer on the main CPU's accesses: per frame, the reads and writes per 256-byte page of every
+  canonical place each access touches, its mirrors folded) in a tagged trailer of `extra.tfx` (a T1-T3 record ends before it and still reads;
+  `TimelineMeta.Accesses` says it is there). `TimelineReader.ExtrasScan` (the extras file read once) and `StateView` (a frame's state without a copy,
+  its hash still checked) serve the scan. `ProfileMachine.Open(dir, symbols, requireDebugger: false)` opens a Sega timeline without the debugger
+  (the desktop's search machine).
+- **The condition language** (the same text everywhere): clauses joined by `and`, each may start with `not`; every clause is about one frame:
+  - `exec <addr|range|symbol> [cpu C] [if <expr>]`: an instruction there ran in the frame (D1's specs: all mirrors, banked symbols, `prg:` offsets);
+  - `read|write|access <spec> [cpu C] [if <expr>]`: a memory breakpoint (CPU and DMA; `value`, `address`, `source` in the expression);
+  - `state <expr>`: a D1 expression on memory **at the end of the frame**, and on the timeline's watched variables by name (`alive == 1`); memory
+    by CPU address, by the debugger's spaces (`[wram:$10]`) or by a memory domain (`[WRAM:$10]`, the only way on the Sega consoles until T0).
+    Registers and scanline / dot / cycle are refused ("a state is memory at the end of a frame: a register at an instruction is a breakpoint's
+    condition");
+  - `finding [<text>]`: a D4 finding first seen in the frame;
+  - `picture changed|still`; `color #RRGGBB [in X Y W H] [min N] [tol T]`: at least N pixels of the colour (each channel within T);
+  - `sound silent [below L] | sound below L | sound above L`: the frame's sound peak (0 to 1); `channel <name> silent|playing`: D8's channel
+    monitor at the frame's end.
+  A hit is a frame where every clause holds; with a positive breakpoint clause (the anchor), each of its firings in such a frame is a hit.
+- **Phase 1, coarse** (the index and the recorded states; each clause says No, Maybe or Yes for each frame, cheapest clause first, a No stops):
+  code breakpoints by the frame's **coverage** (the ROM code the main CPU ran: No when the range is not in it; a non-ROM address or another CPU:
+  Maybe, said); memory breakpoints by the **access counts** (No when no access of the kind touched the range's 256-byte pages; a timeline without
+  them: Maybe, said; the changed bytes were not used: a write of the same value changes nothing and would be missed); `state` **exactly from the
+  recorded states**: the state at the frame's end is the next frame's recorded state, and each memory byte the expression reads is located in it
+  by measuring on the machine (the byte changed, the state taken, the one state byte that changed with the new value is its place, the byte put
+  back and the state proved unchanged; a byte that is not exactly one state byte, a register, ROM, a port, is unmappable, said, and that clause
+  goes to the re-run; one map per state layout); `finding` and `picture changed|still` **exactly from the index**; `color`, `sound`, `channel`:
+  Maybe. A frame every clause says Yes for (and no anchor) is a hit **from the index alone** (`via: index`, no re-run).
+- **Phase 2, exact** (only the candidates): the unsure frames (and, with an anchor, every candidate, to find each firing) are grouped into runs
+  (a gap of up to N = 60 frames is run through) and re-run from the frame before the run on the game's machine (one per game and cores):
+  with a breakpoint clause as a **T3 profiled span** (`TimeflowProfiler.Run` with a `SearchSink`: every instruction and access of the span, the
+  `if` evaluated on the running machine at the firing, the call stack known from the keyframe; no variables followed), else as a plain replay
+  (T2's jump and the recorded pads). Every re-run frame is checked against the recording (picture and RAM, the whole state at keyframes): a desync
+  stops that timeline's search, said. At each frame's end: a `state` on the machine's own memory, a `color` on its picture (once per distinct
+  picture hash: a frame whose picture was already rendered is decided from the cache without a re-run; a picture that is not the recorded one,
+  the NES's held picture after a load, is undecided, said), a `sound` on the frame's samples, a `channel` on D8's monitor. Self-checks on every
+  run: a frame the coarse phase ruled out that a re-run finds true is counted (`coarseMissed`, must be 0, reported as a bug) and a Yes / No the
+  exact phase contradicts (`contradicted`, must be 0).
+- **A hit**: timeline, frame, `via` (index / re-run), and for a firing the cycle, CPU, PC, scanline, dot, the instruction, the access (address,
+  symbol, value, by DMA), the registers, the call stack (4 frames) and its T3 position `#N`; for a frame-level hit the machine's cycle and PC at
+  the frame's end; and what each clause saw ("[enemy_alive] != 0 = 1", "0 pixel(s) of #982220", "sound peak 0.000", "finding: ..."). Each is a
+  jump target (`jump: {timeline, frame}`: T2's jump puts the machine at the frame's start) and a span to profile (`profile: {timeline, from, to}`).
+  The report also gives, per clause, how the coarse phase decided it, its No / Maybe / Yes counts and its **false-candidate rate** (of the frames
+  it was unsure of, how many did not hold), per timeline what happened (skipped and why, desync), and the cost (frames scanned and the coarse fps,
+  candidates, frames re-run and their fps, the time to the first hit and in all). `max_hits` (100) stops the exact phase and counts the candidates
+  left; `coarse_only` gives the candidates and the index's own hits with nothing re-run; `from` / `to` limit the frames.
+- **What is refused, said, never guessed:** a breakpoint or a channel on a Sega console ("needs the debugger on the sms's CPU, which is milestone
+  T0": the timeline is skipped, its state / picture / sound clauses work); a CPU address on a Sega console ("name a memory domain, [RAM:$10]");
+  a `finding` on a timeline recorded without the checks (skipped: "record with the checks"); an unknown clause, CPU, symbol or channel (the
+  search's error, with the language or the channels).
+- **Interfaces:**
+  - Workshop: `--timeflow search --q "CONDITION" [--timeline T]... [--project P | --game-dir D | --rom R] [--sym F]... [--max-hits N] [--coarse]
+    [--from A] [--to B] [--json]` (no timeline / project / game / ROM: the whole corpus; exit 0 with hits, 1 none), `record ... --accesses` (the
+    access counts; `--coverage`, `--checks` as before), `search-measure` (below), `search-rom --out F` (the search test game and its .mlb).
+    `Workshop/Timeflow/TimeflowSearchCli.cs` is the code the MCP tool calls.
+  - BrokenDev: `brokendev.ps1 timeflow search [project|timeline] -Query "CONDITION" [-From A] [-To B] [-MaxHits N] [-CoarseOnly]` (the project's
+    own symbols), `timeflow record <project> ... -Index` (coverage, access counts and the checks).
+  - MCP (54 tools): `timeflow_search` (condition, timeline[], project, game_dir, symbols, from, to, max_hits, coarse_only; new headless machines of
+    each timeline's own ROM and cores, no open session touched), and `timeflow_record` action start with `index: true` on a headless session.
+  - The desktop app: Emulator > Debug Windows > Timeflow: a **search box** (Enter or Search; Cancel while it runs) over the running game's
+    timelines; the re-runs happen on headless machines in the background (the user's game plays on, the app's debugger untouched); the hits
+    arrive in a **hit list** as they are found and are **marked on the scrubber** (a strip under it; a click goes to the nearest hit); choosing a hit
+    chooses its timeline and puts the scrubber at its frame (then Jump, or Profile selection). `GET /api/timeflow/search` reads the last search; no
+    route starts one.
+- **The test game** (`Workshop/Timeflow/TimeflowSearchRoms.cs`, `search-rom`): NROM, an enemy sprite drawn red at line 100 while alive (64 frames
+  alive, 64 dead); **the planted bug**: alive with `(ct & $3F)` in $20-$27, `hide_enemy` moves the sprite off screen (alive but not visible), writes
+  `bug_mark` $5A and reads `secret`; the near misses: dead, `hide_enemy_dead` (a neighbouring routine) also hides it, and in the same window of a
+  dead period `bug_mark` is written $A5; `same_byte` is written 7 every 16 frames (never changing it); pulse 1 plays for 16 frames of 128; at
+  `ct == $50` it reads $0300, never written (`nes.ram-uninit`); `never_called` and `never` ($0600) never run / are never written.
+- **Measured** (`Workshop --timeflow search-measure --timelines 20 --frames 3600 --real`, this machine shared with other agents and with this
+  branch's own regression runs, so the speeds are lower bounds): a corpus of 20 timelines x 3600 frames of the search test game, recorded with
+  the full index (coverage, access counts, checks: 104 fps), 72,000 frames (20 minutes of play), 15.1 MB (210 bytes a frame). The coarse phase
+  over the whole corpus; the exact phase over two of its timelines (7,200 frames; sound and channel over one); the first hit over the whole corpus:
+
+| Condition (kind) | Coarse over 72,000 frames | Candidates (of 7,200) | Hits | Frames re-run | False candidates | First hit | Total (7,200 frames) |
+|---|---|---|---|---|---|---|---|
+| `exec hide_enemy` (code) | 266k fps (271 ms) | 446 | 448 (firings) | 2,242 | 0 % | 205 ms | 13.4 s |
+| `exec never_called` (code, never) | 426k fps | 0 | 0 | 0 | - | - | 19 ms |
+| `exec hide_enemy if [enemy_alive] == 0` (never true) | 519k fps | 446 | 0 | 2,242 | 100 % | - | 13.0 s |
+| `write bug_mark if value == $5A` (memory) | 391k fps | 895 | 448 | 7,103 | 50 % (the $A5 near misses) | 473 ms | 77 s |
+| `write same_byte` (writes that change nothing) | 389k fps | 451 | 451 | 7,185 | 0 % | 116 ms | 81 s |
+| `read secret` | 391k fps | 447 | 449 | 2,242 | 0 % | 52 ms | 32 s |
+| `write never` | 430k fps | 0 | 0 | 0 | - | - | 23 ms |
+| `state [enemy_alive] == 1 && [enemy_y] == $F0` | 49k fps (1.5 s, the states decoded) | 448 | 446 | 4 | (1 frame: the last) | 71 ms | 0.4 s |
+| `finding ram-uninit` | 368k fps | 4 | 4 | 0 | 0 % | 9 ms | 19 ms |
+| `picture changed` | 8.8M fps | 225 | 225 | 0 | 0 % | 1 ms | 2 ms |
+| `color #982220` | 2.2M fps | 7,200 | 3,169 | 8 (2 distinct pictures) | 56 % | 84 ms | 0.25 s |
+| `state [enemy_alive] != 0 and not color #982220` (the user's example) | 15k fps | 3,620 | 563 | 11 | 0 % / 16 % | 167 ms | 1.4 s |
+| `sound above 0.05` | 3.1M fps | 3,600 | 484 | 3,600 | 87 % | 105 ms | 21 s |
+| `channel "Pulse 1" playing` | 1.9M fps | 3,600 | 222 | 3,600 | 94 % | 129 ms | 22 s |
+| `write bug_mark and state [enemy_alive] == 0` | 33k fps | 449 | 449 | 2,223 | 0 % / 0 % | 92 ms | 26 s |
+
+  So the coarse scan reads the index at 266k to 520k frames a second (1.3 to 2.4 hours of play a second) and the recorded states at 15k to 49k;
+  code, state, finding and picture-changed clauses leave almost no false candidates; a memory clause's false candidates are the frames whose page
+  was touched by other bytes or values (here 50 %); the exact phase is the cost: a profiled re-run runs ~170 frames a second, and memory
+  candidates every 8 frames make it re-run nearly everything (the runs merge over 60-frame gaps). Self-checks over every search: `coarseMissed` 0,
+  `contradicted` 0. (Hits can exceed candidates for breakpoints: several firings in a frame.)
+- **Open question 2 (thumbnails / audio levels in the index), answered with numbers: not in T4.** The user's games, 3600 frames each with the
+  full index (`--real`; recording fps here: VRUN plain 56 / with coverage 45 / with coverage and access counts 38, Super VRUN 196 / 115 / 66, both
+  slower than T1's because of this machine's load; bytes a frame VRUN 272 / 650 / 1,050, Super VRUN 9.6 / 10.2 / 10.9 KB):
+  - pictures: VRUN shows 1,302 distinct pictures in 3,600 frames (36 %), Super VRUN 2,191 (61 %); a colour search re-renders each distinct
+    picture once at 5.7 / 6.3 ms (VRUN `color #D48820`: 634 hits, 7.5 s; Super VRUN `color #8B10B4`: 2,776 hits, 13.9 s). A per-frame colour
+    summary (a 256-bit set of the frame's colours, 32 bytes a frame) would rule out 82 % of VRUN's frames (2,966 of 3,600) but only 23 % of Super
+    VRUN's (824), costs 0.28-0.30 ms a frame to make while recording (VRUN's capture is already 4 ms) and helps only whole-picture colour clauses
+    (not a region, not "this sprite drawn"). The decision: **re-render, deduplicated by picture hash, is the T4 method**; a picture clause usually
+    comes with a state or breakpoint clause that narrows the candidates first (the user's example: 11 frames re-run of 7,200). Worth adding with
+    T6's corpus if whole-corpus picture-only searches on NES-like games become common (the numbers above: 5x faster on VRUN for +12 % bytes).
+  - sound: a sound clause re-runs every candidate frame (VRUN 120 fps, Super VRUN 345 fps: 600 frames in 5.0 / 1.8 s); a per-frame audio level
+    would make it index-only, but the recorder never sees the sound (the host drains it for its device), so it needs a tap in every host: left for
+    T6 too, with this cost as the reason. Picture changed / still from the stored hashes is exact and free (5-9M frames a second).
+- **Tests** (each with a negative control):
+  - `--timeflow-test` group `search` (39 checks, the search test game, 600 frames recorded with coverage, access counts, checks and a watched
+    variable; every expected frame comes from a plain run of the game read directly (its RAM, its frame buffer, its sound, the channel monitor),
+    never from the search code): code (`exec hide_enemy` exactly the frames it ran, at its first instruction, with the stack, the coverage making
+    the candidates exactly those frames; near miss: `exec hide_enemy_dead` only dead frames; never: `exec never_called` 0 hits, 0 candidates,
+    nothing re-run; `exec hide_enemy if [enemy_alive] == 0` 0 hits, its 39 candidates re-run and rejected); memory (`write bug_mark if value == $5A`
+    exactly the planted writes, the $A5 near misses candidates and rejected; `write same_byte` finds writes that never change the byte; `read
+    secret` the planted reads (and the reset's dummy read, STA abs,X, in frame 0); never: `write never`, a value never written); state (exact from
+    the recorded states, only the last frame re-run; a watched variable by name; never: `== 7`; a register refused); finding (the one frame, from
+    the index; never: `stack-overflow`); picture (`picture changed` from the index; `color` re-rendered once per distinct picture; near miss: the
+    colour in a region left of the enemy; never: a colour not on screen); **the user's example** `state [enemy_alive] != 0 and not color #982220`:
+    exactly the alive-and-not-drawn frames, 268 alive-and-drawn and 272 dead-and-hidden near misses not reported, every planted frame from its
+    window's third on a hit (the picture lags the state by two frames, and those lag frames are the others); sound (`sound above 0.05` against
+    the plain run's peaks; `channel "Pulse 1" playing` against the monitor; never: above 0.99; an unknown channel refused); combined (a breakpoint
+    filtered by a state: the near miss only; `exec update and not exec hide_enemy and state ... and not color ...`: only the lag frames); the hit
+    limit (5 hits, the candidates left counted, the first hit's time); coarse only; a timeline **without** coverage / access counts (every frame
+    re-run, the same hits, said) and without checks (a finding search skips it, saying why); from / to. Group `sconsoles` (14 checks): the SNES
+    and Game Boy test ROMs and a Master System program: `state [<domain>:$X] == V` exactly (by the recorded states, not re-runs), `and picture
+    still`, never (`== $1FF`); Master System: `exec` skipped "T0", a CPU address skipped "name a memory domain". Group `poweron` (4 checks, the T2
+    fix) and the pstore fix's 2 new checks.
+  - The MCP client test: 7 new checks (`timeflow_record` with `index`, `timeflow_search` exec / the user's example / never / the near miss / a bad
+    condition, the Sega breakpoint skipped until T0 and a Sega picture search).
+  - BrokenDev `run-tests`: the T4 case (a project built from `search-rom`, recorded with `-Index`, searched by project and by timeline with its
+    own symbols, text and JSON; negative: a condition that never holds (exit 1, nothing re-run), the near miss not reported, an unknown clause fails).
+  - `UAT/entrypoints/timeflow-search-desktop-smoke.ps1` (the real app, scratch config / saves / bugs / BrokenDev home, no sound device, the user's
+    `%APPDATA%\BrokenNes` listed before and after): **13 of 13**: the window lists a headless timeline with the index; `exec hide_enemy` gives the
+    16 planted frames (hide_enemy's first instruction, $C102), listed, the game ran on meanwhile (99 frames), choosing the first hit puts the frame
+    box at 33, the hit strip; the user's example (each frame once); never 0 hits; a bad condition refused with the language; the app's debugger
+    untouched; the user's APPDATA unchanged.
+  - **The runs** (main c9c031b, nothing newer to merge): `--timeflow-test` **244 passed, 0 failed, 0 not run** (T1-T3's 185 and T4's 59),
+    `--debug-test` 103 of 103, `--movie-test` 69 of 69, `--bug-test` 48 of 48, the MCP client test **131 of 131** (with `--repo`), BrokenDev `run-tests` **152 passed, 0 failed, 0 skipped** (`-WorkshopExe`, `-McpExe`),
+    UAT **125 pass 0 fail 16 skip 3 info** (the goldens unchanged) (the corpus and story ROM folders linked from the main checkout for the run, then unlinked), timeflow-search-desktop-smoke 13 of 13.
+    `--snes-state-test` / `--md-state-test` not run: nothing in the SNES or Sega states changed.
+- **For T0 (the Sega debugger, in parallel):** the search is console-neutral; once `MovieMachine` / `ProfileMachine` open the Sega consoles with
+  the debugger (and `DebugMachines.For` covers them), `TimeflowSearching.OpenMachine` and `ProfileMachine.Open(..., requireDebugger: false)` pass it
+  through unchanged: breakpoint and channel clauses then work there (the bind refusal in `TimeflowSearch.Bind` keys on `HasDebugger`, no console
+  list), `FrameCoverage` / `FrameAccesses` record their index, and CPU addresses in a state clause are measured like the others. `DebugSound` needs
+  a PSG / YM2612 monitor for `channel`. Turn `sconsoles`' two "T0" checks into searches that find.
+- **Left for later:** a colour summary and an audio level in the index (open question 2's numbers above: T6); the exact phase's re-run cost for
+  memory candidates on busy pages (finer pages, or the access counts by exact address for the symbols a project watches); searching a running
+  game the user plays (a search is over recorded timelines only); a `timeflow_search` that keeps its re-runs as profiles (today it re-runs and
+  answers; profile a hit with `timeflow_profile`).
