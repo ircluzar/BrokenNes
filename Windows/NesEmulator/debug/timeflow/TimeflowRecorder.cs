@@ -124,7 +124,7 @@ public sealed class TimeflowRecorder : IDisposable
         queue = new BlockingCollection<Item>(Math.Max(4, opt.QueueFrames));
         coresAtStart = SafeCores();
         CapBytes = opt.CapBytes ?? TimeflowStore.CapOf(gameDir);
-        GameBytes = TimeflowStore.DirBytes(gameDir);
+        GameBytes = TimeflowStore.GameBytes(gameDir);
         worker = new Thread(Work) { IsBackground = true, Name = "Timeflow writer", Priority = ThreadPriority.BelowNormal };
         worker.Start();
     }
@@ -326,7 +326,7 @@ public sealed class TimeflowRecorder : IDisposable
             stopReason ??= e.Message;
             try { writer.Meta.Status = "stopped"; writer.Meta.StopReason = stopReason; writer.Meta.Save(Dir); } catch (IOException) { }
         }
-        GameBytes = TimeflowStore.DirBytes(GameDir);
+        GameBytes = TimeflowStore.GameBytes(GameDir);
         return Dir;
     }
 

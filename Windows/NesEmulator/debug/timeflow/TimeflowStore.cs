@@ -94,6 +94,9 @@ public static class TimeflowStore
 
     public static long DirBytes(string dir) => Directory.Exists(dir) ? new DirectoryInfo(dir).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length) : 0;
 
+    /// <summary>A game folder's bytes against its cap: everything but <c>profiles\</c> (T3's profiled spans are temporary, on top of the cap, with their own limit).</summary>
+    public static long GameBytes(string gameDir) => DirBytes(gameDir) - DirBytes(Path.Combine(gameDir, "profiles"));
+
     public static List<TimelineInfo> List(string gameDir)
     {
         var l = new List<TimelineInfo>();
@@ -165,7 +168,7 @@ public static class TimeflowStore
         long cap = capOverride ?? CapOf(gameDir);
         var retired = new List<string>();
         // a timeline being written is counted by what its writer wrote (Windows lists an open file's size as it was when last closed)
-        long Size() => DirBytes(gameDir) - (openDir != null ? DirBytes(openDir) : 0) + openBytes;
+        long Size() => GameBytes(gameDir) - (openDir != null ? DirBytes(openDir) : 0) + openBytes;
         still = Size();
         if (still <= cap) return retired;
         var candidates = List(gameDir).Where(t => !t.Meta.Keep && t.Meta.Id != protectId && (t.Meta.Status != "recording" || Stale(t.Dir)))

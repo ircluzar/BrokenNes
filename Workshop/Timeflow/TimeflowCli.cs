@@ -75,6 +75,8 @@ internal static class TimeflowCli
                 }
                 case "status": return Status(json);
                 case "measure": return TimeflowMeasure.Run(Opt, All, Has);
+                case "profile" or "profile-query" or "profiles" or "profile-keep" or "profile-drop" or "profile-sweep" or "profile-measure":
+                    return TimeflowProfiling.Cli(args[1].ToLowerInvariant(), (n, d) => Opt(n, d), All, Has, json);
                 default: Console.Error.WriteLine($"unknown verb '{args[1]}'"); return 2;
             }
         }
