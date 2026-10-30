@@ -237,6 +237,17 @@ internal static class TimeflowProfiling
                 return 0;
             }
             case "profile-measure": return Measure(Opt, All, Has, json);
+            case "profile-rom":
+            {
+                // T3's planted corruption (and with --fixed its fixed build) as a game repo would ship it: the ROM and its .mlb (BrokenDev's run-tests build it)
+                string outRom = Need(Opt("out", ""), "--out");
+                var (rom, _, mlb) = TimeflowProfileRoms.Corrupting(Has("fixed"));
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outRom))!);
+                File.WriteAllBytes(outRom, rom);
+                File.WriteAllText(Path.ChangeExtension(outRom, ".mlb"), mlb);
+                Console.WriteLine($"wrote {outRom} and {Path.ChangeExtension(outRom, ".mlb")}");
+                return 0;
+            }
         }
         Console.Error.WriteLine($"unknown verb '{verb}'");
         return 2;

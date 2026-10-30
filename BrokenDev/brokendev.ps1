@@ -60,6 +60,12 @@
                                  HEADLESS (the desktop app records the user's play only when the user switches it on); 'jump' (-Frame F,
                                  -Path out.png); 'resume' (-Frame F: the recorded inputs replay, checked; -Script S -Frames N: new input,
                                  -Record keeps the branch); 'verify' restore equals record; 'prune' retires the oldest (keep: never)
+    timeflow profile <timeline> -From A -To B [-Query "writes hp; vars hp"] [-Store [-Keep] [-TtlMinutes M] [-LimitMb N]]
+    timeflow profile-query <profile> -Query "Q; Q"  |  profiles  |  profile-keep|profile-unkeep|profile-drop <profile>  |  profile-sweep
+                                 T3: re-runs frames A..B of a timeline at full depth (every instruction, access, call, chip event, named
+                                 variable; the project's symbols) and answers the queries (writes, reads, accesses, last-write, stack,
+                                 between, became, when, histogram, events, trace, vars, summary); nothing is stored unless -Store (then in
+                                 the game's profiles\ folder: deleted at the session's end unless -Keep, and when its TTL passes)
     mcp     install|uninstall|build|status|test
                                  the BrokenNes MCP server (BrokenDev/mcp): 'install' builds it into BROKENDEV_HOME\bnbuild\mcp and registers it
                                  for Claude Code at USER scope ('claude mcp add --scope user brokennes', every session and game repo);
@@ -138,6 +144,14 @@ param(
     # 'timeflow jump|resume' (milestone T2): the frame; 'timeflow resume -Record': keep the branch as a timeline
     [long]$Frame = -1,
     [switch]$Record,
+    # 'timeflow profile' (milestone T3): the span, the queries, whether to keep it
+    [long]$From = -1,
+    [long]$To = -1,
+    [string[]]$Query = @(),
+    [switch]$Store,
+    [switch]$Keep,
+    [int]$TtlMinutes = 0,
+    [int]$LimitMb = 0,
     # 'tool <id> <args...>': the arguments after the tool id are passed to the tool
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @()
 )
@@ -430,7 +444,8 @@ try {
             # brokendev.ps1 timeflow <action> [project|timeline] ... (milestones T1, T2)
             if ($Rest.Count -gt 1) { throw "timeflow: one project or timeline after the action (got: $($Rest -join ' '))" }
             $t = if ($Rest.Count -eq 1) { $Rest[0] } else { '' }
-            exit (Invoke-BdTimeflow -Action $Target -Target $t -Scenario $(if ($Scenario.Count -gt 0) { $Scenario[0] } else { '' }) -Script $Script -Frames $Frames -Movie $Movie -Course $Course -Frame $Frame -Png $Path -Record:$Record -Coverage:$Coverage -Json:$Json -Exe $Exe)
+            exit (Invoke-BdTimeflow -Action $Target -Target $t -Scenario $(if ($Scenario.Count -gt 0) { $Scenario[0] } else { '' }) -Script $Script -Frames $Frames -Movie $Movie -Course $Course -Frame $Frame -Png $Path -Record:$Record -Coverage:$Coverage -Json:$Json -Exe $Exe `
+                  -From $From -To $To -Query $Query -Store:$Store -Keep:$Keep -TtlMinutes $TtlMinutes -LimitMb $LimitMb)
         }
         'bugs' {
             if ($Target) { [void](Resolve-BdTargets $Target) }

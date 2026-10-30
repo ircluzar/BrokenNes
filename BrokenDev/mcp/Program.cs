@@ -85,10 +85,17 @@ internal static class Program
             },
         };
 
+        // Timeflow T3: profiles an earlier server left behind (its process crashed or was killed) or that expired go now
+        _ = Task.Run(() => { try { NesEmulator.Debugging.Timeflow.ProfileStore.Sweep(); } catch (Exception e) { Console.Error.WriteLine("[timeflow] profile sweep: " + e.Message); } });
         var transport = new StreamServerTransport(stdin, stdout, "brokennes");
         await using var server = McpServer.Create(transport, options);
         try { await server.RunAsync(); }
-        finally { Sessions.CloseAll(); }
+        finally
+        {
+            // the session's end: this server's profiles go unless kept (first: a client that closes may not wait for the sessions to close)
+            try { int n = NesEmulator.Debugging.Timeflow.ProfileStore.EndSession(); if (n > 0) Console.Error.WriteLine($"[timeflow] {n} unkept profile(s) deleted at the session's end"); } catch (Exception) { }
+            Sessions.CloseAll();
+        }
         return 0;
     }
 

@@ -516,6 +516,71 @@ internal static class Tools
                    ("record", P("boolean", "live: record the branch as a timeline (default false)"), false)),
             a => On(a, s => s.TimeflowResume(a.Req("mode").ToLowerInvariant(), a.Long("frames") ?? (a.Str("mode") == "live" ? 60 : -1), a.Bool("record", false))));
 
+        // ------------------------------------------------------------------------------------------------ Timeflow (T3: profiled spans)
+        const string QueriesDesc =
+            "streaming questions over the span, each answered compactly: 'writes <addr|range|symbol>' (every write, all mirrors and DMA, who made it, by function), 'reads <spec>', 'accesses <spec>', " +
+            "'last-write <spec> before <frame>[:<cycle>]', 'stack <N>' (the call stack at instruction #N, N from another answer's at), 'between <markerA> <markerB>' (debug-port marker text, #N or frame:F: what ran), " +
+            "'became <register|variable> <op> <value>' (the instruction that made A == 3 or hp = 0), 'when <expression>' (the first instruction after which [hp] != 5 && X == 2 holds), " +
+            "'histogram [cpu spc] [top N]' (instructions per function), 'events <F>[-<G>]' (register writes by scanline/dot, DMA runs, interrupts), 'trace <N> [before K] [after K]' or 'trace frame <F> [count K]', " +
+            "'vars [name]' (named variables' changes), 'summary'. Options inside a query: limit N, cpu spc.";
+        Add("timeflow_profile",
+            "Profiles a span of a recorded timeline at full depth (docs/projects/brokendev-timeflow-plan.md, T3): a NEW headless machine of the timeline's own ROM and cores re-runs frames from..to from the nearest keyframe " +
+            "(the recorded pads replayed, every frame checked against the recording: a desync is reported with its frame, never hidden) with every instruction of every debuggable CPU, every memory access, " +
+            "the call stack, chip events and the named variables (the symbols' data symbols) seen by your queries. Nothing is stored unless store is true; then the profile is kept in the timeline's " +
+            "profiles folder (its own size limit and time to live) and deleted when this MCP server stops unless keep is true. Query it later with timeflow_profile_query. " +
+            "The Master System, Game Gear and Genesis cannot be profiled until their CPUs' debugger exists (T0): refused with the reason.",
+            Schema(("timeline", P("string", "a timeline id (timeflow_list) or folder"), true), ("from", P("integer", "the first frame profiled"), true), ("to", P("integer", "the last frame profiled (included)"), true),
+                   ("queries", P("string[]", QueriesDesc), false), ("symbols", P("string[]", "symbol files (.mlb, .sym, .noi): names in the answers, symbols in the queries, the variables followed"), false),
+                   ("vars", P("string[]", "follow only these variables (default: every data symbol)"), false), ("store", P("boolean", "keep the profile (for later queries or the desktop's scrubbing; default false)"), false),
+                   ("keep", P("boolean", "keep it past this server's session (until its time to live passes; default false)"), false),
+                   ("ttl_minutes", P("integer", "minutes after its last use that a kept profile is deleted (default 60; with keep 7 days)"), false),
+                   ("limit_mb", P("integer", "this profile's size limit in MB (default 512): past it, frames are not stored (the streaming queries still see them)"), false)),
+            a => Wrap(() =>
+            {
+                var q = new BrokenNes.Workshop.Timeflow.ProfileRequest
+                {
+                    Timeline = TimeflowTools.Find(a.Req("timeline")), From = a.Long("from") ?? throw new ToolError("'from' is required"), To = a.Long("to") ?? throw new ToolError("'to' is required"),
+                    Queries = a.List("queries"), Symbols = a.List("symbols"), Vars = a.List("vars") is { Count: > 0 } v ? v : null,
+                    Store = a.Bool("store", false) || a.Bool("keep", false), Keep = a.Bool("keep", false), Note = "MCP timeflow_profile",
+                };
+                if (a.Long("ttl_minutes") is long ttl) q.TtlMinutes = (int)ttl;
+                if (a.Long("limit_mb") is long mb) q.LimitBytes = mb * 1024 * 1024;
+                try { return BrokenNes.Workshop.Timeflow.TimeflowProfiling.Run(q); }
+                catch (IOException e) { throw new ToolError(e.Message); }
+            }), ro: true);
+
+        Add("timeflow_profile_query",
+            "The kept profiles (timeflow_profile with store): action query runs queries over one (the same query language and answers as timeflow_profile; 'when' needs a re-run), list lists them (after a sweep), " +
+            "keep / unkeep marks one to survive this server's session or not, drop deletes one, sweep deletes the expired, the orphaned (their session crashed) and the over-cap ones.",
+            Schema(("action", P("string", "query, list, keep, unkeep, drop or sweep", Enum("query", "list", "keep", "unkeep", "drop", "sweep")), true), ("profile", P("string", "a profile id or folder"), false),
+                   ("queries", P("string[]", QueriesDesc), false), ("symbols", P("string[]", "more symbol files (the profile remembers its own)"), false),
+                   ("ttl_minutes", P("integer", "keep: its time to live"), false)),
+            a => Wrap(() =>
+            {
+                string action = a.Req("action").ToLowerInvariant();
+                string NeedProfile() => NesEmulator.Debugging.Timeflow.ProfileStore.Find(a.Str("profile") ?? throw new ToolError("'profile' is required")) ?? throw new ToolError($"no kept profile '{a.Str("profile")}' (action list lists them; a profile is deleted when its session ends unless kept)");
+                switch (action)
+                {
+                    case "query":
+                        try { return BrokenNes.Workshop.Timeflow.TimeflowProfiling.Query(NeedProfile(), a.List("queries"), a.List("symbols")); }
+                        catch (IOException e) { throw new ToolError(e.Message); }
+                    case "list": return BrokenNes.Workshop.Timeflow.TimeflowProfiling.List();
+                    case "keep" or "unkeep":
+                    {
+                        string dir = NeedProfile();
+                        var m = NesEmulator.Debugging.Timeflow.ProfileStore.SetKeep(dir, action == "keep", a.Long("ttl_minutes") is long t ? (int)t : null);
+                        return BrokenNes.Workshop.Timeflow.TimeflowProfiling.ProfileJson(dir, m);
+                    }
+                    case "drop":
+                    {
+                        string dir = NeedProfile();
+                        return new JsonObject { ["dropped"] = Path.GetFileName(dir), ["ok"] = NesEmulator.Debugging.Timeflow.ProfileStore.Delete(dir) };
+                    }
+                    case "sweep": return new JsonObject { ["swept"] = BrokenNes.Workshop.Timeflow.TimeflowProfiling.SweptJson(NesEmulator.Debugging.Timeflow.ProfileStore.Sweep()) };
+                    default: throw new ToolError("action is query, list, keep, unkeep, drop or sweep");
+                }
+            }));
+
         Add("brokendev",
             "Runs a BrokenDev verb on a project (BrokenDev/brokendev.ps1): build, verify (the checks, budgets and accepted findings), compat (the other emulators), run (opens it in the desktop app: its PID comes back for attach_live), " +
             "list (the projects), status, doctor. Returns the exit code, the output and the record file.",
