@@ -343,7 +343,7 @@ internal static partial class TimeflowTestCli
             {
                 var j = TimeflowProfiling.MeasureOne(path, console, frames, 300, "auto:1", syms);
                 Check($"pmeasure: {name}", j["inSync"]!.GetValue<bool>(),
-                      $"real {j["realFps"]} fps; plain replay {j["plainReplayFps"]} fps; profiled streaming {j["streamingFps"]} fps = {j["streamingTimesSlower"]}x slower than real time; stored {j["storedFps"]} fps ({j["storedTimesSlower"]}x); " +
+                      $"real {j["realFps"]} fps; plain replay {j["plainReplayFps"]} fps; profiled streaming {j["streamingFps"]} fps = {j["streamingTimesSlower"]}x real time, {j["streamingTimesSlowerThanPlainReplay"]}x the plain replay; stored {j["storedFps"]} fps ({j["storedTimesSlower"]}x real time, {j["storedTimesSlowerThanPlainReplay"]}x the plain replay); " +
                       $"{j["instructionsPerFrame"]} instructions + {j["accessesPerFrame"]} accesses a frame; {j["storedBytesPerFrame"]} bytes a stored frame (raw {j["rawBytesPerFrame"]}); stored query {j["storedQueryMs"]} ms ({j["storedRecordsPerSecond"]} records/s){(syms.Count > 0 ? "; symbols " + string.Join(", ", syms.Select(Path.GetFileName)) : "")}");
             }
             catch (Exception e) when (e is IOException or InvalidDataException or NotSupportedException or ArgumentException) { Check($"pmeasure: {name}", false, e.Message); }

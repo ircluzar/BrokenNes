@@ -322,6 +322,8 @@ internal static class TimeflowProfiling
             ["realFps"] = realFps, ["plainReplayFps"] = Math.Round(plainFps, 1), ["recordFps"] = Math.Round(recordFps, 1),
             ["streamingFps"] = streaming["cost"]!["profiledFps"]!.DeepClone(), ["streamingTimesSlower"] = streaming["cost"]!["timesSlowerThanRealTime"]!.DeepClone(),
             ["storedFps"] = stored["cost"]!["profiledFps"]!.DeepClone(), ["storedTimesSlower"] = stored["cost"]!["timesSlowerThanRealTime"]!.DeepClone(),
+            ["streamingTimesSlowerThanPlainReplay"] = Math.Round(plainFps / Math.Max(1e-9, streaming["cost"]!["profiledFps"]!.GetValue<double>()), 1),
+            ["storedTimesSlowerThanPlainReplay"] = Math.Round(plainFps / Math.Max(1e-9, stored["cost"]!["profiledFps"]!.GetValue<double>()), 1),
             ["instructionsPerFrame"] = Math.Round(((JsonObject)stored["instructions"]!).Sum(kv => kv.Value!.GetValue<long>()) / (double)frames),
             ["accessesPerFrame"] = Math.Round(stored["accesses"]!.GetValue<long>() / (double)frames),
             ["storedBytesPerFrame"] = pj["bytesPerFrame"]!.DeepClone(), ["rawBytesPerFrame"] = Math.Round(pj["rawBytes"]!.GetValue<long>() / (double)Math.Max(1, frames)),

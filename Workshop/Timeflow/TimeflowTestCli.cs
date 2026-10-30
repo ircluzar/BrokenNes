@@ -12,7 +12,7 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 namespace BrokenNes.Workshop.Timeflow;
 
 /// <summary>
-/// <c>--timeflow-test [--only form,codec,consoles,damage,stop,cap,off,branch,places,index,apu] [--long N] [--keep DIR]</c>: milestones T1 and T2
+/// <c>--timeflow-test [--only form,codec,consoles,damage,stop,cap,off,branch,places,index,apu,profile,psync,pstore,pconsoles,pmeasure] [--long N] [--pframes N] [--keep DIR]</c>: milestones T1, T2 and T3 (TimeflowTestCli.Profile.cs)
 /// (docs/projects/brokendev-timeflow-plan.md). Every check has a negative control. The user's games run when they are on this machine (a
 /// missing one is NOT RUN, never a pass). BROKENDEV_HOME points at a scratch folder for the whole run (nothing is written to the real one).
 /// </summary>

@@ -56,6 +56,7 @@ BrokenDev\brokendev.ps1 movie record vrun-nes -Scenario play -Course app_state,c
 BrokenDev\brokendev.ps1 movie promote vrun-nes -Movie play -Name first-room -Why "..."        # it becomes a verify test
 BrokenDev\brokendev.ps1 timeflow record vrun-nes -Scenario play -Course app_state             # a timeline (a state every frame) of the built ROM, headless
 BrokenDev\brokendev.ps1 timeflow resume <timeline> -Frame 600                                 # back to frame 600, the recorded inputs replayed and checked
+BrokenDev\brokendev.ps1 timeflow profile <timeline> -From 600 -To 780 -Query "writes player_hp; histogram"   # T3: that span at full depth, the answers only
 BrokenDev\brokendev.ps1 bisect vrun-nes -Movie first-room -Test "[player_hp] >= 1 at 900"     # the first of the game's commits where it breaks
 
 # the music path, Phase 0 (no plugin): a MIDI file -> VRUN's converter -> a one-song ROM -> BrokenNes, checked frame by frame

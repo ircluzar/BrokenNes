@@ -44,7 +44,7 @@ internal static class TimeflowCli
         string Opt(string n, string d = "") { int i = Array.FindIndex(args, 2, a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
         List<string> All(string n) { var l = new List<string>(); for (int i = 2; i < args.Length - 1; i++) if (args[i].Equals("--" + n, StringComparison.OrdinalIgnoreCase)) l.Add(args[i + 1]); return l; }
         bool Has(string n) => args.Skip(2).Any(a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase));
-        if (args.Length < 2) { Console.Error.WriteLine("usage: --timeflow record|list|info|verify|jump|resume|prune|keep|status|measure ... (see Workshop/Timeflow/TimeflowCli.cs)"); return 2; }
+        if (args.Length < 2) { Console.Error.WriteLine("usage: --timeflow record|list|info|verify|jump|resume|prune|keep|status|measure|profile|profile-query|profiles|profile-keep|profile-drop|profile-sweep|profile-measure|profile-rom ... (see Workshop/Timeflow/TimeflowCli.cs and TimeflowProfileCli.cs)"); return 2; }
         if (Opt("home") is { Length: > 0 } home) Environment.SetEnvironmentVariable("BROKENDEV_HOME", home);
         bool json = Has("json");
         try

@@ -47,7 +47,8 @@ internal static class Program
         "(NES, SNES, WideMess, Game Boy / Color, Master System, Game Gear, Genesis); the debugger (breakpoints, mirror-aware watches, stepping, call stack, trace, symbols) covers NES, SNES with its SPC700, WideMess and Game Boy; " +
         "the D4 hardware checks and the profiler run with checks:true. Debug games here, not on Mesen (Mesen is for cross-checks). " +
         "LIVE sessions (attach_live) read the user's running desktop app: read freely; open with control:true only when the user asked in chat to control their game (and the app must have enableDebuggerControl on); " +
-        "a live session never saves, never touches progression and never stops the process. Results are JSON (pictures as images). Typical: open_rom with checks:true, run 600, checks report, then breakpoint_add on what a finding names, run, call_stack, trace.";
+        "a live session never saves, never touches progression and never stops the process. Results are JSON (pictures as images). Typical: open_rom with checks:true, run 600, checks report, then breakpoint_add on what a finding names, run, call_stack, trace. " +
+        "Timeflow: a recorded timeline (timeflow_record on your headless session, timeflow_list) can be profiled over any span at full depth with timeflow_profile and streaming queries ('writes hp', 'last-write hp before 900', 'became hp == 0', 'stack N', 'histogram'): the write that corrupted a variable, with its instruction and call stack, without playing again.";
 
     private static async Task<int> Serve()
     {

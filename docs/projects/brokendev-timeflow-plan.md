@@ -1,8 +1,8 @@
 # BrokenDev Timeflow: rewind, deep profiling, hotpatch and a searchable gameplay corpus
 
-Status: **T1 (the timeline format) and T2 (rewind and resume) built** on 2026-10-30, every console (see "T1 as built" and "T2 as built"
-at the end); the Sega consoles have rewind without profiling until T0. Next: T0 (the debugger on the Z80 and the 68000), then T3 (profiled
-spans).
+Status: **T1 (the timeline format), T2 (rewind and resume) and T3 (profiled spans) built** on 2026-10-30 (see "T1 as built", "T2 as
+built" and "T3 as built" at the end): rewind on every console, profiling on the NES, SNES (with its SPC700), WideMess and Game Boy; the Sega
+consoles are refused for profiling until T0 (the debugger on the Z80 and the 68000, built in parallel). Next: T0, then T4 (search).
 
 ## The idea (the user's words, condensed)
 
@@ -299,3 +299,142 @@ hotpatch, resume.
   the temporary store (with its own limit and time to live) goes beside `timelines\` as `profiles\`; the Sega consoles need T0 first.
   Two things learned for it: capture the state before the frame's pads reach the machine (a desktop recording that took it after
   `SetInputs` went off at the first keyframe whose pads changed: fixed), and the NES's first picture after a load is the old one.
+
+## T3 as built (2026-10-30): profiled spans
+
+- **The engine** (`Windows/NesEmulator/debug/timeflow`): `TimeflowProfile.cs` (the records, `ProfileSink`, `ProfileContext`, the
+  `ProfileRecorder` observer, `TimeflowProfiler.Run`), `TimeflowProfileQueries.cs` (the query language and its streaming sinks),
+  `TimeflowProfileStore.cs` (kept profiles: `ProfileStore`, `ProfileWriter`, `ProfileReader`, the record codec), `TimeflowProfileView.cs`
+  (`ProfileMachine`: a timeline's own machine opened by the engine, for the desktop; `ProfileView`: a kept profile a frame at a time, for the
+  windows). One small change outside: `Debugger.SymbolAtKeys` (a symbol from canonical keys taken earlier), so a kept profile names the bank
+  an instruction ran in, whatever is mapped when it is read. Nothing in the CPU cores or the debugger's per-CPU adapters changed.
+- **The re-run.** `TimeflowProfiler.Run(playback, target, span, sinks)`: the keyframe at or before `From` is restored, loaded and proved equal
+  to the record (T2's `Jump`), the recorded pads replay with the call stack tracked from there (`Debugger.TrackCallStack`, not profiled),
+  and from `From` to `To` a `ProfileRecorder` (a D1 `DebugObserver` that wants every step and every access of every CPU) feeds the sinks.
+  Every frame's picture and RAM are compared with the recording and the whole state at every keyframe (with T2's explanation of where it
+  differs): a re-run that goes off is reported with the frame and what differed, stops there by default, and every answer carries the
+  warning ("what follows that frame is not the recorded game"). The sinks can stop the re-run early (a `last-write ... before F` is done at
+  F; a `stack N` once it saw N). The Sega consoles are refused before anything runs ("needs the debugger on its Z80 / 68000, which is
+  milestone T0: no profile is made"), never an empty profile.
+- **What is recorded** (in the order it happened; positions `#N` count every CPU's instructions from 0 at the span's first): every
+  instruction and interrupt entry of every CPU the debugger covers (the NES 6502; the SNES / WideMess 65816 **and SPC700**; the Game Boy
+  SM83): PC, bytes, the registers and flags before it ran (the adapter's own `FillTrace`), the effective address and its value, the machine's
+  cycle, scanline and dot, the PC's canonical keys; every memory access (CPU and DMA / HDMA / OAM DMA / VRAM DMA, with the channel): address,
+  value, read or write, the canonical keys of the place (every mirror folds to the same key), the instruction that made it; the call stack's
+  pushes and pops, and each CPU's whole stack at every frame's start (so a stored frame decodes on its own); the debug port's markers (D7);
+  the **named variables on change**: every data symbol of the loaded symbols (work RAM, cartridge RAM, high RAM, the NES's internal RAM; up
+  to 4096, the first by address, more said), 1-4 bytes as a number, larger ones byte by byte, old and new value and the instruction whose
+  write changed it. Chip events (D8's event view) are the register writes by scanline / dot, the DMA runs and the interrupts of these records
+  (`ChipRegisters`). Known gaps, said in the answers: call frames entered before the keyframe are not on the stack ("stackNote"); NES OAM
+  DMA is seen as its 256 reads (`OamDma` source), its writes into OAM are not observer accesses; the SPC700's writes are predicted from its
+  operands (as D1's watches).
+- **The queries** (`ProfileQuery.Parse`, the same text everywhere: Workshop `--q`, MCP `queries`, BrokenDev `-Query "q; q"`):
+  `writes|reads|accesses <addr|range|symbol> [limit N] [cpu spc]` (every one, all mirrors and DMA, the first N in full with the
+  instruction, registers and call stack, all counted by function and by value), `last-write <spec> [before F[:CYCLE] | before cycle C]`,
+  `stack <N>`, `between <a> <b>` (debug-port marker texts, `#N`, `frame:F`: the instructions, cycles, calls, writes, functions and variable
+  changes in between), `became <register|variable> <op> <value>` (the instruction that made `A == 3` or `hp != 5` true; registers read from
+  each CPU's own trace columns, so the Game Boy's pairs and every flags register work), `when <expression>` (any D1 expression, evaluated on
+  the running machine at every instruction boundary: a re-run only, refused on a kept profile with the reason), `histogram [cpu C] [top N]`
+  (per function: the innermost call frame's target, else the code symbol: exclusive and inclusive instructions, cycles, calls), `events
+  <F>[-<G>]`, `trace <N> [before K] [after K]` / `trace frame <F> [count K]` (Mesen's columns, then the position and the symbol), `vars
+  [name]`, `summary`. An unknown query, symbol or CPU is an error in that answer, never an empty list.
+- **Examples** (the planted corruption, `Workshop/Timeflow/TimeflowProfileRoms.cs`: `fill_table` compares its ring index with `#$21` instead
+  of `#$10`, so its `STA table,X` reaches `hp` at `$0050` on the 33rd update):
+  - `writes hp` over frames 20-60: `total 1`, `byFunction {"fill_table": 1}`, the hit `{"at": 127857, "frame": 32, "scanline": 241, "pc":
+    "$C072", "in": "ft_store", "instruction": "STA table,X", "value": "$21", "stack": ["fill_table <- update+$1B (JSR, frame 32)",
+    "update <- main_loop+$8 (JSR, frame 32)"]}`; `writes $0850` (a mirror) finds the same write.
+  - `last-write hp before 60`: the same write, with `"registers": "A:21 X:20 Y:00 S:FB P:nvUbdIzc"` (X = $20: the index ran past the table).
+  - `became hp != 5`: `{"in": "ft_store", "frame": 32, "old": "$05", "new": "$21"}`; `when [hp] != 5` names the same STA from a re-run.
+  - `stack 127857`; `trace 127857 before 3 after 1` (its `>` line: `C072  STA table,X [0050] = $05 ... Fr:32 Cyc:980469 #127857 ; ft_store`);
+    `between fill done` (the two debug-port markers around the call: 19 instructions in `update` and `fill_table`); `vars hp` (one change,
+    5 -> $21 by `ft_store`); `events 32` (the NMI and the debug port's `$401C` / `$401D` writes by scanline and dot).
+  - The negative control, the fixed build under the same queries: `writes hp` total 0, `last-write` null, `became` null, `vars hp` 0
+    changes, while `writes idx` still counts its 41 writes.
+- **Kept profiles** (only when asked: `--store` / `store: true` / the desktop's Profile selection; a profile for streaming queries writes no
+  file at all): `<game folder>\profiles\<id>\` beside `timelines\` (`BROKENDEV_HOME\timeflow\<project>\profiles\` for a project's build),
+  **outside the game's 5 GB cap** (`TimeflowStore.GameBytes` leaves `profiles\` out), with their own limits: **512 MB a profile** (past it
+  the frames after are not stored, the status says `truncated` and from where; the streaming queries of the same re-run still see every
+  frame), **2 GB a profiles folder** (`timeflow.json` `profilesCapBytes`; over it the least recently used unkept one goes, a kept one never;
+  still over, the new one stops storing, said), and a **time to live of 60 minutes after the last use** (7 days for a kept one; every query
+  or view is a use). `profile.json` (the span, the status, the owner process and its start time, the variables, the symbol files, the
+  expiry), `records.bin` (each frame's records, Brotli quality 4, a CRC-32 each: a damaged frame is refused with its number, never
+  answered), `frames.idx`. The same queries read a kept profile back (`ProfileReader.Feed`) with the same answers as the stream (7 of 7
+  identical in the test).
+- **Cleanup**: a profile belongs to the session that made it (the process: a Workshop command, the MCP server, the desktop app) and is deleted
+  when that session ends unless it is kept (`ProfileStore.EndSession`: as a Workshop command ends, as the MCP server stops, as the app
+  closes, at process exit); a session that was killed or crashed leaves its folder and the next sweep removes it ("process ... is gone: a
+  crash or a kill"), never one whose process still runs. A sweep runs before every profile is made, when profiles are listed, when the MCP
+  server starts and when the desktop app starts. An empty `profiles\` is removed. The MCP SDK's client kills the server as it closes, so an MCP
+  server's unkept profiles go at the next server start (checked), not at its own end.
+- **Interfaces**:
+  - Workshop: `--timeflow profile --timeline T --from A --to B [--q Q]... [--sym F]... [--var NAME]... [--store [--keep] [--ttl-min M]
+    [--limit-mb N]] [--json]`, `profile-query --profile P --q Q...`, `profiles`, `profile-keep [--off]`, `profile-drop --profile P | --all`,
+    `profile-sweep`, `profile-measure --rom R`, `profile-rom --out F [--fixed]` (the planted corruption and its `.mlb`).
+    `Workshop/Timeflow/TimeflowProfileCli.cs` holds the CLI and the calls the MCP tools make (the same code, the same answers).
+  - BrokenDev: `brokendev.ps1 timeflow profile <timeline> -From A -To B -Query "writes hp; vars hp" [-Store] [-Keep] [-TtlMinutes M]
+    [-LimitMb N]` (the project's own symbols from its build record), `profile-query <profile> -Query "..."`, `profiles`, `profile-keep`,
+    `profile-unkeep`, `profile-drop <profile|all>`, `profile-sweep`. Each brokendev call is its own session: `-Keep` to query it later.
+  - MCP (53 tools): `timeflow_profile` (timeline, from, to, queries, symbols, vars, store, keep, ttl_minutes, limit_mb; a new headless machine
+    of the timeline's own ROM and cores: no open session is touched) and `timeflow_profile_query` (action query / list / keep / unkeep /
+    drop / sweep).
+  - The desktop app: Emulator > Debug Windows > Timeflow: **Profile selection** (from the chosen frame, a number of frames, "keep after the
+    app closes"). The span re-runs on a headless machine of the timeline's ROM in the background (the user's game plays on; the app's own
+    debugger stays detached and unarmed), is kept for the session, and opens in **the Debugger window** (profile mode: the frame's trace of
+    the chosen CPU, the chosen instruction's registers and call stack, a frame scrubber, "go to #N") and **the Event View** (profile mode: the
+    frame's register writes, DMA runs and interrupts, a frame scrubber). `GET /api/timeflow/profile` reads the last result and the kept
+    profiles; no route starts a profile.
+- **Measured** (Workshop `--timeflow-test --only pmeasure --pframes 180` and a 120-frame run before it; this machine is shared with other
+  agents, so the ranges are the two runs: 180 frames after 300 of the seeded wanderer; "x real time" below 1 is faster than real time; the
+  plain replay is the same frames with no debugger hook):
+
+| Game (console) | Instructions + accesses a frame | Streaming (queries only) | Kept (stored) | Bytes a stored frame (raw) | Stored queries |
+|---|---|---|---|---|---|
+| VRUN (NES, mapper 30) | 9,836 + 29,573 | 125-134 fps = 0.45-0.48x real time (1.9x the plain replay) | 29-57 fps = 1.1-2.1x | 93-106 KB (907 KB) | 7.5-9.5 M records/s |
+| NES planted game | 9,934 + 29,830 | 85-127 fps = 0.47-0.71x | 72-74 fps = 0.82-0.84x | 44 KB (838 KB) | 8.1-9.1 M/s |
+| Super VRUN (SNES) | 8,576-10,201 + 21,333-25,601 | 70-100 fps = 0.6-0.85x | 24-44 fps = 1.4-2.6x | 132-158 KB (628-757 KB) | 6.6-8.1 M/s |
+| Super Mario World (SNES) | 18,831 + 41,939 | 79 fps = 0.76-0.77x | 36-37 fps = 1.6-1.7x | 107-128 KB (1.17 MB) | 7.3-8.3 M/s |
+| SNES test ROM (65816 + SPC700) | 13,286 + 43,409 | 91-104 fps = 0.58-0.66x | 40 fps = 1.5x | 123 KB (1.1 MB) | 7.9-8.5 M/s |
+| WideMess sample | 28,057 + 73,387 | 41 fps = 1.46x | 16 fps = 3.7x | 395 KB (2.08 MB) | 7.8 M/s |
+| Vaults of Obsolete Code (GBC) | 2,578-3,641 + 5,239-7,204 | 239-275 fps = 0.22-0.25x | 95-119 fps = 0.5-0.63x | 60-81 KB (196-273 KB) | 4.8-5.3 M/s |
+| Game Boy test ROM | 4,620 + 15,718 | 343-388 fps = 0.15-0.17x | 141-150 fps = 0.4x | 30 KB (482 KB) | 8.0-9.0 M/s |
+
+  So the typical unit (3 s, 180 frames) re-runs in 0.5 to 4.5 s, and kept takes 5 to 20 MB (WideMess 71 MB), well inside the 512 MB limit.
+  A stored query reads 5 to 9 million records a second (a frame's 40 to 100 thousand records in 5 to 15 ms). The cost is the hooks (every
+  instruction and access through the debugger), not the queries; the SNES pays most against its plain speed (12 to 24x) because its plain
+  replay is so fast. The desktop's Profile selection ran VRUN at 17 to 43 fps beside the running game.
+- **Found on the way (a T2 finding, open):** a NES loaded with its **power-on state** (frame 0 of a timeline that starts at power-on) runs
+  its first frame one CPU cycle longer than the real power-on did, so a replay from frame 0 goes off at the keyframe 60 (`overshootCarry`
+  and `globalCpuCycle` differ; the picture and RAM do not); from frame 1 on every jump replays in sync. It is something the NES state does
+  not hold at power-on (not the debugger: a plain replay does the same). T3 does not hit it: a span in the first block re-runs from the
+  machine's own power-on, its state checked equal to the recorded frame 0 (`ProfileTarget.PoweredOn`, said in the report's notes). T2's
+  `Replay` from frame 0 still has it.
+- **For T0 (the Sega debugger, built in parallel):** the profiler is console-neutral; once `DebugMachines.For` covers the Master System /
+  Game Gear / Genesis sessions and `MovieMachine` opens them with the debugger, remove the two refusals (`TimeflowProfiling.NoProfileWhy` in
+  `Workshop/Timeflow/TimeflowProfileCli.cs`, the first lines of `ProfileMachine.Open`), add the consoles to `ChipRegisters` (the VDP / PSG /
+  YM2612 ports) and to `HistogramQuery`'s cycle unit, and turn `--timeflow-test`'s `pconsoles` Sega check from "refused" to "profiled".
+- **Tests** (each with a negative control):
+  - `--timeflow-test` groups `profile` (the planted corruption: 23 checks, above), `psync` (a RAM byte changed before frame 75 of the
+    re-run: off at frame 75, the warning on every answer, stopped there; PRG RAM changed before frame 100, seen by neither hash: off at the
+    keyframe 120, "section prgRAM differs"; negative: the same re-run untouched stays in sync to the end), `pstore` (stored = streamed 7 of
+    7; `when` refused on a kept profile; a flipped byte refused with its frame; the size limit; the TTL; the cap: the oldest unkept retires,
+    the kept one stays; the session's end; a Workshop child that ended normally left nothing; a child killed while holding its profile left
+    it and the next sweep removed it; negative: a sweep leaves a live child's profile; nothing left, `profiles\` removed), `pconsoles` (the
+    SNES test ROM with both CPUs' instructions, the Game Boy test ROM; a Master System timeline refused with "T0", nothing written), and
+    `pmeasure` (opt-in: the table above).
+  - The MCP client test: 11 new checks (the corruption found, last-write / became, nothing stored, store / query / list / drop, an unknown
+    profile and an unknown query refused, the Sega refusal, the profile gone after the session).
+  - BrokenDev `run-tests`: the T3 case (a project built from `profile-rom`, recorded, profiled with its own symbols; `-Store` without
+    `-Keep` leaves nothing after its command; `-Keep`, `profile-query`, `profiles`, `profile-drop`; negative: the fixed build has no write
+    to hp, an unknown profile and a span without `-From` fail; nothing left). `run-tests.ps1 -Only <text>` runs just the cases whose name has
+    it.
+  - `UAT/entrypoints/timeflow-profile-desktop-smoke.ps1` (the real app, scratch config / saves / bugs / BrokenDev home, no sound device,
+    the user's `%APPDATA%\BrokenNes` listed before and after): **19 of 19**: the window lists a headless timeline of VRUN, Profile selection
+    of frames 200-229 in sync, kept under the scratch home's `profiles\`, the game ran on meanwhile, the app's debugger untouched, the
+    Debugger window's trace (9,809 lines of frame 200), a line's registers and stack (`runtime_wait_nmi@31_0 <- step_boss_boom@0_0+$BC`),
+    its frame scrubber; the Event View's frame and scrubber; a kept second profile; closing the app deletes the unkept one and keeps the
+    kept one; a killed app leaves its profile and the next start sweeps it; nothing left after a drop; the user's APPDATA unchanged.
+  - **The runs** (main bd74250, nothing newer to merge): `--timeflow-test` **185 passed, 0 failed, 0 not run** (T1/T2's 130 and T3's 55),
+    `--debug-test` 103 of 103, `--movie-test` 69 of 69, the MCP client test **123 of 123**, BrokenDev `run-tests` **151 passed, 0 failed, 0
+    skipped** (`-WorkshopExe`, `-McpExe`), UAT **125 pass 0 fail 16 skip 3 info** (the goldens unchanged; the corpus and story ROM folders
+    linked from the main checkout for the run, then unlinked), `timeflow-desktop-smoke` (T2) passes, `debug-windows-desktop-smoke` 79 of 79
+    (the Debugger and Event View windows gained their profile mode as partial classes; the live mode is unchanged).
