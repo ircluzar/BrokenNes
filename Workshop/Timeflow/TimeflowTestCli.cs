@@ -12,7 +12,7 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 namespace BrokenNes.Workshop.Timeflow;
 
 /// <summary>
-/// <c>--timeflow-test [--only form,codec,consoles,damage,stop,cap,off,branch,places,apu] [--long N] [--keep DIR]</c>: milestones T1 and T2
+/// <c>--timeflow-test [--only form,codec,consoles,damage,stop,cap,off,branch,places,index,apu] [--long N] [--keep DIR]</c>: milestones T1 and T2
 /// (docs/projects/brokendev-timeflow-plan.md). Every check has a negative control. The user's games run when they are on this machine (a
 /// missing one is NOT RUN, never a pass). BROKENDEV_HOME points at a scratch folder for the whole run (nothing is written to the real one).
 /// </summary>
@@ -39,7 +39,7 @@ internal static class TimeflowTestCli
     {
         RomTestCli.EnsureConsole();
         string Opt(string n, string d) { int i = Array.IndexOf(args, "--" + n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
-        var only = Opt("only", "form,codec,consoles,damage,stop,cap,off,branch,places,apu").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var only = Opt("only", "form,codec,consoles,damage,stop,cap,off,branch,places,index,apu").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
         int longFrames = int.Parse(Opt("long", "1800"));
         string dir = Opt("keep", Path.Combine(Path.GetTempPath(), "brokennes-timeflow-test-" + Environment.ProcessId));
         Directory.CreateDirectory(dir);
@@ -70,6 +70,7 @@ internal static class TimeflowTestCli
             Group("off", "recording off: nothing written, and recording leaves the game frame-identical", () => Off(nes, snes, gb, home));
             Group("branch", "rewind and resume: jump, replay in sync, a branch with new input, the tree", () => Branch(nes, snes));
             Group("places", "where timelines go (never %APPDATA%\\BrokenNes)", () => Places(dir));
+            Group("index", "the per-frame index: watched variables, the frame's coverage, changed bytes per domain, findings", () => Index(dir, planted));
             Group("apu", "APU_FIX's state carries its frame sequencer's step (found by Timeflow: a load kept the step of the machine loaded into)", () => ApuStep(nes));
         }
         finally
@@ -453,6 +454,47 @@ internal static class TimeflowTestCli
             Check($"branch: {name} (negative): a jump on another ROM is refused", Throws(() => pb.CheckMachine(TimeflowMachines.SourceFor(other), other.RomSha256), out string why), why);
             Check($"branch: {name} (negative): a frame outside the timeline is refused", Throws(() => pb.Jump(src, pb.Reader.EndFrame + 5), out string w2), w2);
         }
+    }
+
+    // ------------------------------------------------------------------------------------------------ index
+
+    private static void Index(string dir, byte[] planted)
+    {
+        var (_, mlb) = MovieTestRoms.PlantedGame(MovieTestRoms.ParseSettings("version 1\nstart Start\nfloor 1\nbonus 1\n"));
+        string rom = DebugTestRoms.Write(dir, "indexed.nes", planted), sym = DebugTestRoms.Write(dir, "indexed.mlb", mlb);
+        string Rec(bool extras)
+        {
+            using var m = MovieMachine.Open(rom, null, "", "fceux", false, true, new[] { sym });
+            var o = new TimeflowOptions { Rom = m.RomFile, RomName = m.RomName, Cores = m.Cores, Source = "test", PowerOnStart = true };
+            FrameCoverage? cov = null;
+            if (extras)
+            {
+                var d = m.Host.Dbg;
+                o.VarNames = new() { "app_state=[app_state]", "lives=[lives]" };
+                o.Vars = () => new[] { d.Evaluate("[app_state]"), d.Evaluate("[lives]") };
+                cov = FrameCoverage.Attach(d); o.Coverage = cov;
+                o.Checks = NesEmulator.Debugging.Checks.CheckRun.Attach(d, new NesEmulator.Debugging.Checks.CheckOptions { Profile = false });
+            }
+            var rec = TimeflowRecorder.Start(TimeflowMachines.SourceFor(m), o);
+            var inp = TimeflowInput.Parse("60:Start,66:,200:A,260:", "", null);
+            for (long f = 0; f < 400; f++) { var (a, b) = inp.At(f); rec.BeforeFrame(a, b); m.Frame(a, b); rec.AfterFrame(); }
+            cov?.Detach();
+            return rec.Stop();
+        }
+        string withX = Rec(true), without = Rec(false);
+        using var rd = new TimelineReader(withX);
+        using var r0 = new TimelineReader(without);
+        var e10 = rd.Extras(10); var e300 = rd.Extras(300);
+        Check("index: the watched variables by frame", rd.Meta.Vars.Count == 2 && e10.Vars.Length == 2 && e10.Vars[0] == 0 && e300.Vars[0] == 1, $"app_state {e10.Vars.ElementAtOrDefault(0)} at frame 10, {e300.Vars.ElementAtOrDefault(0)} at 300; lives {e300.Vars.ElementAtOrDefault(1)}");
+        Check("index: the frame's coverage (ROM ranges run)", e300.Coverage.Count > 0 && e300.Coverage.All(c => c.Length > 0), $"{e300.Coverage.Count} ranges at frame 300, {e300.Coverage.Sum(c => c.Length)} ROM bytes");
+        int ramIdx = rd.Meta.Domains.FindIndex(d => d.Id == "RAM");
+        Check("index: the changed bytes and pages of the work RAM", ramIdx >= 0 && e300.Domains[ramIdx].ChangedBytes > 0 && e300.Domains[ramIdx].Pages.Length > 0, $"RAM: {e300.Domains[ramIdx].ChangedBytes} bytes in pages {string.Join(",", e300.Domains[ramIdx].Pages)} at frame 300");
+        var all = Enumerable.Range(0, 400).Select(f => rd.Extras(f)).ToList();
+        int findingFrames = all.Count(x => x.Findings.Count > 0);
+        Check("index: the checks' findings, each in the frame it was first seen", all.Sum(x => x.Findings.Count) == all.SelectMany(x => x.Findings).Distinct().Count(), $"{all.Sum(x => x.Findings.Count)} finding(s) in {findingFrames} frame(s): {string.Join("; ", all.SelectMany(x => x.Findings).Take(3))}");
+        var n300 = r0.Extras(300);
+        Check("index (negative): without them, no variables, no coverage, no findings (the changed bytes stay)", n300.Vars.Length == 0 && n300.Coverage.Count == 0 && n300.Findings.Count == 0 && n300.Domains[ramIdx].ChangedBytes == e300.Domains[ramIdx].ChangedBytes, $"vars {n300.Vars.Length}, coverage {n300.Coverage.Count}, RAM changed {n300.Domains[ramIdx].ChangedBytes}");
+        Check("index: the debugger's hooks leave the recording frame-identical", Enumerable.Range(0, 400).All(f => rd.Row(f).State == r0.Row(f).State && rd.Row(f).Picture == r0.Row(f).Picture), "every frame's state and picture hash the same with and without coverage and checks");
     }
 
     // ------------------------------------------------------------------------------------------------ apu

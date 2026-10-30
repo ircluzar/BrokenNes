@@ -33,8 +33,7 @@ function Invoke-BdTimeflowJson {
     param([Parameter(Mandatory)][string[]]$Arguments, [string]$Exe = '')
     $r = Invoke-BdWorkshopTimeflow -Arguments ($Arguments + '--json') -Exe $Exe
     $text = $r.Output
-    $i = $text.IndexOf('{'); $k = $text.IndexOf('[')
-    if ($k -ge 0 -and ($i -lt 0 -or $k -lt $i)) { $i = $k; $j = $text.LastIndexOf(']') } else { $j = $text.LastIndexOf('}') }
+    $i = $text.IndexOf('{'); $j = $text.LastIndexOf('}')
     $o = $null
     if ($i -ge 0 -and $j -gt $i) { try { $o = $text.Substring($i, $j - $i + 1) | ConvertFrom-Json } catch { $o = $null } }
     if ($null -eq $o) { throw "timeflow $($Arguments[0]) failed (exit $($r.ExitCode)): $(Select-BdTail $text 6)" }
@@ -87,13 +86,13 @@ function Invoke-BdTimeflow {
             if (-not $Target) { throw 'timeflow record needs a project' }
             [void](Resolve-BdTargets $Target)
             $r = Invoke-BdTimeflowRecord -Id $Target -Scenario $Scenario -Script $Script -Frames $Frames -Movie $Movie -Course $Course -Coverage:$Coverage -Exe $Exe
-            if ($Json) { $r.Json | ConvertTo-Json -Depth 8 } else { Show-BdTimeline $r.Json }
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 8) } else { Show-BdTimeline $r.Json }
             return $(if ($r.ExitCode -eq 0) { 0 } else { 1 })
         }
         'list' {
             $a = @('list'); if ($Target) { [void](Resolve-BdTargets $Target); $a += @('--project', $Target) }
             $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
-            if ($Json) { $r.Json | ConvertTo-Json -Depth 8; return 0 }
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 8); return 0 }
             Write-BdInfo "Timeflow root: $($r.Json.root)"
             foreach ($g in @($r.Json.games)) {
                 Write-Host ('{0}  ({1:N1} MB of {2:N2} GB)' -f $g.gameDir, ($g.usedBytes / 1MB), ($g.capBytes / 1GB))
@@ -108,13 +107,13 @@ function Invoke-BdTimeflow {
         'info' {
             if (-not $Target) { throw 'timeflow info needs a timeline (its id or folder)' }
             $r = Invoke-BdTimeflowJson -Arguments @('info', '--timeline', $Target) -Exe $Exe
-            if ($Json) { $r.Json | ConvertTo-Json -Depth 8 } else { Show-BdTimeline $r.Json }
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 8) } else { Show-BdTimeline $r.Json }
             return 0
         }
         'verify' {
             if (-not $Target) { throw 'timeflow verify needs a timeline' }
             $r = Invoke-BdTimeflowJson -Arguments @('verify', '--timeline', $Target, '--machine') -Exe $Exe
-            if ($Json) { $r.Json | ConvertTo-Json -Depth 8 }
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 8) }
             $j = $r.Json
             $msg = "timeline $($j.id): restore equals record on $($j.restoreEqualsRecord) of $($j.checked) frames; loaded into a machine: $($j.machineChecked - $j.machineFailed) of $($j.machineChecked)"
             if ($r.ExitCode -eq 0) { Write-BdOk $msg; return 0 }
@@ -124,7 +123,7 @@ function Invoke-BdTimeflow {
             if (-not $Target -or $Frame -lt 0) { throw 'timeflow jump needs a timeline and -Frame F' }
             $a = @('jump', '--timeline', $Target, '--frame', [string]$Frame); if ($Png) { $a += @('--png', $Png) }
             $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
-            if ($Json) { $r.Json | ConvertTo-Json -Depth 8; return 0 }
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 8); return 0 }
             $j = $r.Json
             Write-BdOk "timeline $($j.id) frame $($j.frame): restored in $($j.restoreMs) ms; the machine's state is the recorded one ($($j.state))"
             Write-BdInfo "  pads $($j.pads); picture $($j.picture); RAM $($j.ram)$(if ($j.png) { "; picture saved to $($j.png)" })"
@@ -137,7 +136,7 @@ function Invoke-BdTimeflow {
             if ($Script) { $a += @('--input', $Script); if ($Frames -le 0) { throw 'resume with new input needs -Frames N' }; $a += @('--frames', [string]$Frames); if ($Record) { $a += '--record' } }
             else { $a += '--replay'; if ($Frames -gt 0) { $a += @('--frames', [string]$Frames) } }
             $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
-            if ($Json) { $r.Json | ConvertTo-Json -Depth 8 }
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 8) }
             $j = $r.Json
             if ($j.mode -eq 'replay') {
                 if ($j.inSync) { Write-BdOk "replayed frames $($j.from)-$($j.to - 1) of $($j.id): in sync with the recording ($($j.checks) checks)"; return 0 }
@@ -149,8 +148,8 @@ function Invoke-BdTimeflow {
         'prune' {
             $a = @('prune'); if ($Target) { [void](Resolve-BdTargets $Target); $a += @('--project', $Target) }
             $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
-            if ($Json) { $r.Json | ConvertTo-Json -Depth 8; return 0 }
-            foreach ($g in @($r.Json)) { Write-BdInfo ('{0}: retired {1} ({2}); {3:N1} MB of {4:N2} GB' -f $g.gameDir, @($g.retired).Count, (@($g.retired) -join ', '), ($g.usedBytes / 1MB), ($g.capBytes / 1GB)) }
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 8); return 0 }
+            foreach ($g in @($r.Json.games)) { Write-BdInfo ('{0}: retired {1} ({2}); {3:N1} MB of {4:N2} GB' -f $g.gameDir, @($g.retired).Count, (@($g.retired) -join ', '), ($g.usedBytes / 1MB), ($g.capBytes / 1GB)) }
             return 0
         }
         { $_ -in 'keep', 'unkeep' } {
@@ -162,7 +161,7 @@ function Invoke-BdTimeflow {
         }
         'status' {
             $r = Invoke-BdTimeflowJson -Arguments @('status') -Exe $Exe
-            if ($Json) { $r.Json | ConvertTo-Json -Depth 8; return 0 }
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 8); return 0 }
             Write-BdInfo "Timeflow root: $($r.Json.root)$(if (-not $r.Json.exists) { ' (nothing recorded yet)' })"
             foreach ($g in @($r.Json.games)) { Write-Host ('  {0}: {1} timeline(s), {2:N1} MB of {3:N2} GB' -f $g.gameDir, $g.timelines, ($g.usedBytes / 1MB), ($g.capBytes / 1GB)) }
             return 0

@@ -166,6 +166,12 @@ replaces it). Memory and register writes through this API (and corruptions) star
 | GET | `/api/bugs/status` | On / recording, the console and game, seconds held, the last break (why the history started again), a state's cost, the folder a capture would go to and why |
 | POST | `/api/bugs/capture` `{note}` | Save a capture now: `{success, path, message, seconds, frames, start: state\|power-on\|none, noMovie}`; 400 with the reason when there is nothing to capture (off, the idle screen) |
 | POST | `/api/bugs/enabled` `{enabled}` | Emulator > Keep the Last 30 s (config `bugCaptureEnabled`, on by default); off, nothing is recorded |
+| GET | `/api/timeflow/status` | BrokenDev Timeflow (T1/T2): recording on or off (and who switched it on), the timeline being written (id, folder, frames, bytes, the game folder's space against its cap), how the last one ended, an agent's request and its answer (`pending`, `allowed`, `declined`, `cancelled`), a replay in progress |
+| GET | `/api/timeflow/timelines` | The running game's timelines (a branch under its parent), its folder's space and cap |
+| POST | `/api/timeflow/request` `{reason, from}` | **An agent can only ask:** the app shows the user a prompt under the menu bar that does not stop the game (Allow / Decline); nothing records unless the user allows it. `"not needed"` while recording is on |
+| POST | `/api/timeflow/request/cancel` | Withdraw a request still waiting |
+
+There is deliberately no route that switches Timeflow recording on or off, or that jumps the user's game: the switch is the user's (Emulator > Debug Windows > Timeflow: Record, or the Timeflow window's REC box), off at every start.
 
 ### Debug port - `WebApiServer.Endpoints.Port.cs` (BrokenDev D7)
 

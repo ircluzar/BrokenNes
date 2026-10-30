@@ -54,6 +54,8 @@ BrokenDev\brokendev.ps1 mcp install            # build the BrokenNes MCP server 
 BrokenDev\brokendev.ps1 mcp test               # its scripted MCP client test and the planted-bug demo
 BrokenDev\brokendev.ps1 movie record vrun-nes -Scenario play -Course app_state,current_room   # a BrokenNes movie of the built ROM (see "Movies" below)
 BrokenDev\brokendev.ps1 movie promote vrun-nes -Movie play -Name first-room -Why "..."        # it becomes a verify test
+BrokenDev\brokendev.ps1 timeflow record vrun-nes -Scenario play -Course app_state             # a timeline (a state every frame) of the built ROM, headless
+BrokenDev\brokendev.ps1 timeflow resume <timeline> -Frame 600                                 # back to frame 600, the recorded inputs replayed and checked
 BrokenDev\brokendev.ps1 bisect vrun-nes -Movie first-room -Test "[player_hp] >= 1 at 900"     # the first of the game's commits where it breaks
 
 # the music path, Phase 0 (no plugin): a MIDI file -> VRUN's converter -> a one-song ROM -> BrokenNes, checked frame by frame

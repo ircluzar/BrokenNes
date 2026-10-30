@@ -238,7 +238,7 @@ internal static class TimeflowCli
             arr.Add(new JsonObject { ["gameDir"] = g, ["retired"] = new JsonArray(retired.Select(r => (JsonNode)r).ToArray()), ["usedBytes"] = still, ["capBytes"] = cap ?? TimeflowStore.CapOf(g) });
             if (!json) Console.WriteLine($"{g}: retired {retired.Count} ({string.Join(", ", retired)}), {still / (1024.0 * 1024):0.0} MB now");
         }
-        if (json) Console.WriteLine(arr.ToJsonString(Indented));
+        if (json) Console.WriteLine(new JsonObject { ["games"] = arr }.ToJsonString(Indented));
         return 0;
     }
 
