@@ -162,7 +162,19 @@ internal static partial class TimeflowTestCli
         string kdir = S(p["dir"]);
         Check("pstore: a kept profile is in <game>\\profiles\\<id> with every frame", Directory.Exists(kdir) && kdir.StartsWith(pdir, StringComparison.OrdinalIgnoreCase) && S(p["status"]) == "complete" && (long)p["framesStored"]! == 61,
               $"{p["id"]}: {p["framesStored"]} frames, {p["bytes"]} bytes ({p["bytesPerFrame"]} a frame; raw {p["rawBytes"]}), expires {p["expires"]}");
+        // exact: the timeline's description is rewritten by every use (lastUsedUtc), at a fixed width since T4 (it moved by a byte before)
         Check("pstore: profiles are outside the game's cap (the timelines' bytes unchanged)", TimeflowStore.GameBytes(gameDir) == timelinesBytes, $"{TimeflowStore.GameBytes(gameDir)} = {timelinesBytes}");
+        Check("pstore (negative): the folder's whole size does grow by the profile's bytes (the measure would see them if it counted them)",
+              TimeflowStore.DirBytes(gameDir) - timelinesBytes == TimeflowStore.DirBytes(pdir) && TimeflowStore.DirBytes(pdir) > 0, $"{TimeflowStore.DirBytes(gameDir)} - {timelinesBytes} = {TimeflowStore.DirBytes(pdir)} in profiles\\");
+        var lu = TimelineMeta.Load(tdir).LastUsedUtc;
+        var sizes = new List<long>();
+        foreach (var t in new[] { new DateTime(2026, 10, 30, 12, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 30, 12, 0, 0, DateTimeKind.Utc).AddTicks(1234567) })
+        {
+            var mm = TimelineMeta.Load(tdir); mm.LastUsedUtc = t; mm.Save(tdir);
+            sizes.Add(new FileInfo(Path.Combine(tdir, "timeline.json")).Length);
+        }
+        { var mm = TimelineMeta.Load(tdir); mm.LastUsedUtc = lu; mm.Save(tdir); }
+        Check("pstore: a timeline's description has one size whatever its last-use time (a round second and one with 7 fraction digits)", sizes.Distinct().Count() == 1 && TimelineMeta.Load(tdir).LastUsedUtc == lu, string.Join(" = ", sizes));
         var back = TimeflowProfiling.Query(S(p["id"]), queries, new());
         int same = 0; var diffs = new List<string>();
         for (int i = 0; i < queries.Count; i++)

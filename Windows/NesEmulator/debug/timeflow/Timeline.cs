@@ -55,6 +55,8 @@ public sealed class TimelineMeta
     public List<string> Vars { get; set; } = new();
     public bool Coverage { get; set; }
     public bool Checks { get; set; }
+    /// <summary>T4: the index counts each frame's reads and writes per 256-byte page of every place the main CPU (and its DMA) touched (<see cref="TimelineExtras.Accesses"/>).</summary>
+    public bool Accesses { get; set; }
     /// <summary>A console session's state header (the parts the state depends on): the restore wraps a payload with it.</summary>
     public Dictionary<string, string>? Units { get; set; }
     public string GameId { get; set; } = "";
@@ -73,7 +75,20 @@ public sealed class TimelineMeta
 
     [JsonIgnore] public long EndFrame => StartFrame + Frames;
 
-    public static readonly JsonSerializerOptions Json = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase, Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
+    public static readonly JsonSerializerOptions Json = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase, Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase), new FixedWidthUtc() } };
+
+    /// <summary>
+    /// Times written at a fixed width (7 fraction digits, always): System.Text.Json's own form drops trailing zeros, so every rewrite of
+    /// <c>lastUsedUtc</c> (each jump, replay or profile touches it) moved the description's size by a byte or two, and the game folder's
+    /// measured size with it (the pstore check's 138285 vs 138286). Reads any ISO form (older descriptions).
+    /// </summary>
+    private sealed class FixedWidthUtc : JsonConverter<DateTime>
+    {
+        public override DateTime Read(ref Utf8JsonReader r, Type t, JsonSerializerOptions o) =>
+            DateTime.Parse(r.GetString() ?? "", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind);
+        public override void Write(Utf8JsonWriter w, DateTime v, JsonSerializerOptions o) =>
+            w.WriteStringValue((v.Kind == DateTimeKind.Local ? v.ToUniversalTime() : v).ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", System.Globalization.CultureInfo.InvariantCulture));
+    }
 
     public void Save(string dir)
     {
@@ -136,6 +151,17 @@ public sealed class TimelineExtras
     public List<string> Findings = new();
     /// <summary>ROM offsets the main CPU ran this frame, as (start, length) ranges; empty when coverage is off.</summary>
     public List<(uint Start, uint Length)> Coverage = new();
+    /// <summary>
+    /// T4: the frame's memory accesses by the main CPU and its DMA, counted per 256-byte page of each canonical place they touched (the
+    /// debugger's spaces: a NES write to $0850 counts in the CPU space's page 0 and nowhere else; one to $6010 in the CPU space and the PRG
+    /// RAM's), sorted by space then page. Null when the timeline was recorded without them (<see cref="TimelineMeta.Accesses"/>).
+    /// </summary>
+    public List<AccessPage>? Accesses;
+
+    /// <summary>One page's accesses in a frame.</summary>
+    public readonly record struct AccessPage(int Space, uint Page, int Reads, int Writes);
+
+    private const int TagAccesses = 1;
 
     public byte[] Encode()
     {
@@ -163,6 +189,20 @@ public sealed class TimelineExtras
             using (var d = new DeflateStream(z, CompressionLevel.Fastest, true)) d.Write(raw.GetBuffer(), 0, (int)raw.Length);
             TimelineCodec.WriteVar(ms, (ulong)z.Length);
             ms.Write(z.GetBuffer(), 0, (int)z.Length);
+        }
+        // T4's tagged trailer (a T1-T3 record ends before it, and a reader of those stops there): the access counts
+        if (Accesses != null)
+        {
+            TimelineCodec.WriteVar(ms, TagAccesses);
+            TimelineCodec.WriteVar(ms, (ulong)Accesses.Count);
+            int ls = 0; uint lp = 0;
+            foreach (var a in Accesses)
+            {
+                if (a.Space != ls) lp = 0;
+                TimelineCodec.WriteVar(ms, (ulong)(a.Space - ls)); TimelineCodec.WriteVar(ms, a.Page - lp);
+                TimelineCodec.WriteVar(ms, (ulong)a.Reads); TimelineCodec.WriteVar(ms, (ulong)a.Writes);
+                ls = a.Space; lp = a.Page;
+            }
         }
         return ms.ToArray();
     }
@@ -193,6 +233,25 @@ public sealed class TimelineExtras
             var r = raw.ToArray().AsSpan(); int ra = 0;
             int n = (int)TimelineCodec.ReadVar(r, ref ra); uint last = 0;
             for (int i = 0; i < n; i++) { uint s = last + (uint)TimelineCodec.ReadVar(r, ref ra); uint l = (uint)TimelineCodec.ReadVar(r, ref ra); e.Coverage.Add((s, l)); last = s + l; }
+            at += zl;
+        }
+        while (at < b.Length)
+        {
+            int tag = (int)TimelineCodec.ReadVar(b, ref at);
+            if (tag != TagAccesses) throw new InvalidDataException($"a frame's index record has an unknown part {tag} (written by a newer build)");
+            int n = (int)TimelineCodec.ReadVar(b, ref at);
+            var list = new List<AccessPage>(n);
+            int ls = 0; uint lp = 0;
+            for (int i = 0; i < n; i++)
+            {
+                int ds = (int)TimelineCodec.ReadVar(b, ref at);
+                if (ds != 0) lp = 0;
+                int sp = ls + ds; uint pg = lp + (uint)TimelineCodec.ReadVar(b, ref at);
+                int rd = (int)TimelineCodec.ReadVar(b, ref at), wr = (int)TimelineCodec.ReadVar(b, ref at);
+                list.Add(new AccessPage(sp, pg, rd, wr));
+                ls = sp; lp = pg;
+            }
+            e.Accesses = list;
         }
         return e;
     }
@@ -424,6 +483,28 @@ public sealed class TimelineReader : IDisposable
 
     public (PadButtons P1, PadButtons P2) Pads(long frame) { var r = Row(frame); return ((PadButtons)r.P1, (PadButtons)r.P2); }
 
+    private byte[]? extraAll;
+
+    /// <summary>A frame's extras from the whole extras file read once (a scan over every frame: one read, not one seek a frame).</summary>
+    public TimelineExtras ExtrasScan(long frame)
+    {
+        var r = Row(frame);
+        if (extraAll == null || r.ExtraOffset + r.ExtraLength > extraAll.Length)
+            lock (extra) { extraAll = new byte[extra.Length]; extra.Position = 0; extra.ReadExactly(extraAll); }
+        if (r.ExtraOffset + r.ExtraLength > extraAll.Length) throw new InvalidDataException($"timeline {Meta.Id}: frame {frame}'s index record is past the end of extra.tfx");
+        return TimelineExtras.Decode(extraAll.AsSpan((int)r.ExtraOffset, r.ExtraLength));
+    }
+
+    /// <summary>
+    /// The state at the start of a frame, like <see cref="State"/> (its hash checked against the recorded one) but without a copy: the returned
+    /// object is the reader's own and changes at the next call (a scan reads it and moves on).
+    /// </summary>
+    public TimeflowState StateView(long frame)
+    {
+        State(frame, copy: false, out var st);
+        return st;
+    }
+
     /// <summary>The block that holds a frame (the blocks are in order; all but the last hold <see cref="TimelineMeta.KeyEvery"/> frames).</summary>
     private int BlockOf(long local)
     {
@@ -441,7 +522,9 @@ public sealed class TimelineReader : IDisposable
     /// The state at the start of <paramref name="frame"/>: the nearest keyframe before it (its block's first frame) and the deltas up to it.
     /// The result's hash is the recorded one, or this throws <see cref="InvalidDataException"/> saying where the timeline is damaged.
     /// </summary>
-    public TimeflowState State(long frame)
+    public TimeflowState State(long frame) { State(frame, copy: true, out var st); return st; }
+
+    private void State(long frame, bool copy, out TimeflowState result)
     {
         long local = Local(frame);
         int bi = BlockOf(local);
@@ -469,7 +552,7 @@ public sealed class TimelineReader : IDisposable
             var bad = cachedFrame; cachedState = null;
             throw new InvalidDataException($"timeline {Meta.Id}: frame {bad} restored from its keyframe (frame {b.FirstFrame}) and deltas hashes {h:x16}, but the recorded state hashes {row.State:x16}: a delta is damaged");
         }
-        return cachedState.Clone();
+        result = copy ? cachedState.Clone() : cachedState;
     }
 
     public void Dispose() { frames.Dispose(); extra.Dispose(); }
