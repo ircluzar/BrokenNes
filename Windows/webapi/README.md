@@ -109,9 +109,10 @@ console's memories (the response of `/api/memory/domains` then carries `console`
 is `unavailable`); peeks and pokes run between frames. SNES and WideMess: `WRAM`, `VRAM`, `CGRAM`, `OAM`, `SRAM`, `ROM`, `ARAM`
 (sound RAM), `DSP`, `REGS` ($4200-$421F, $4300-$437F), `BUS` (the 65816's 24-bit space, side-effect free), `WRAMHI` (a WideMess-map
 game's work RAM). Game Boy: `WRAM`, `HRAM`, `VRAM`, `OAM`, `CRAM` (Color), `SRAM`, `ROM`, `WAVE`, `IO` ($FF00-$FF7F, IE at $80),
-`BUS`. Master System / Game Gear / Genesis: their `RAM`, `VRAM`, `CRAM`, ... as `/api/console/domains` lists them.
+`BUS`. Master System / Game Gear / Genesis: their `RAM`, `VRAM`, `CRAM`, ... as `/api/console/domains` lists them, and `BUS` (the Z80's
+64 KB; the Genesis: the 68000's 16 MB, registers reading $FF) and on the Genesis `Z80BUS` (Timeflow T0).
 
-### Debugger - `WebApiServer.Endpoints.Debug.cs` (BrokenDev D1: NES, SNES with its SPC700, WideMess, Game Boy)
+### Debugger - `WebApiServer.Endpoints.Debug.cs` (BrokenDev D1: NES, SNES with its SPC700, WideMess, Game Boy; Timeflow T0: Master System, Game Gear, Genesis with its Z80)
 
 The debugger engine (`Windows/NesEmulator/debug`) behind the live MCP sessions of milestone D3. **Reading is always allowed**;
 the **control** routes answer `403` unless the config has `"enableDebuggerControl": true` (BrokenDev's live sessions ask the user
@@ -123,8 +124,10 @@ parks the emulation thread at an instruction boundary (the emulation lock is rel
 Specs (breakpoints, run-to, memory): `$8000`, `$8000-$80FF`, `7E:0010` (bank:address; on the Game Boy a ROM / RAM bank), `wram:$10`,
 `vram:$2000-$27FF`, `prg:$1234`, `oam:$05`, `spc:$0200`, a symbol (`player_hp`, its whole size for a watch), `player_hp+1`. A CPU
 address matches every mirror of what it reaches (NES `$0812` is `$0012`; SNES `$80:0013` is `$7E:0013`, `$80:420B` is `$00:420B`;
-Game Boy `$E011` is `$C011`); DMA and HDMA bytes are accesses (a VRAM watch sees a DMA upload). Conditions: registers, `[addr]`,
-`{addr}` (word), `[symbol]`, `value`, `address`, `source` (0 CPU, 1 DMA, 2 HDMA, 3 OAM DMA, 4 VRAM DMA), `frame`, `scanline`, C operators.
+Game Boy `$E011` is `$C011`; Master System `$E011` is `$C011`, `io:$BE` is every mirror of the data port; Genesis `$E00010` is `$FF0010`,
+`zram:$10` is the Z80's RAM from either CPU); DMA and HDMA bytes are accesses (a VRAM watch sees a DMA upload). The Genesis's CPUs are `main`
+(the 68000) and `z80`. Conditions: registers, `[addr]`, `{addr}` (word), `[symbol]`, `value`, `address`, `source` (0 CPU, 1 DMA, 2 HDMA,
+3 OAM DMA, 4 VRAM DMA, 5 the other CPU), `frame`, `scanline`, C operators.
 
 | Verb | Route | Purpose |
 | --- | --- | --- |

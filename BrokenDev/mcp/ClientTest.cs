@@ -142,6 +142,8 @@ internal static class ClientTest
         string gb = DebugTestRoms.Write(dir, "debugtest.gb", gr), gbNoi = DebugTestRoms.Write(dir, "debugtest_gb.noi", gn);
         string game = DebugTestRoms.Write(dir, "planted.nes", pr), gameSym = DebugTestRoms.Write(dir, "planted.mlb", pm);
         string sms = DebugTestRoms.Write(dir, "idle.sms", PlantedBug.SmsIdle());
+        var (mdr, mdm, mdz, mdn) = SegaDebugTestRoms.Genesis();
+        string md = DebugTestRoms.Write(dir, "debugtest.md", mdr), mdSym = DebugTestRoms.Write(dir, "debugtest_md_symbols.txt", mdn);
         string H(Asm a, string l) => "$" + a[l].ToString("X4");
 
         // ---------------------------------------------------------------- NES: a session, a breakpoint on a symbol, the stack, the trace, stepping
@@ -315,8 +317,31 @@ internal static class ClientTest
         var mr = await Call("run", new { session = hm, frames = 30 });
         var ms = await Call("screenshot", new { session = hm });
         Check("sega_session", S(mo["console"]) == "sms" && S(mr["outcome"]) == "frames" && ms.Images.Count == 1, $"{hm}: {S(mo["description"])}; {L(mr["framesRun"])} frames, picture {L(ms["width"])}x{L(ms["height"])}");
-        var segaBp = await Call("breakpoint_add", new { session = hm, spec = "$0000" });
-        Check("sega_debugger_refused", segaBp.IsError && segaBp.Text.Contains("does not cover"), segaBp.Text);
+        // the Sega debugger (Timeflow T0): the Z80 of the Master System, the 68000 and the sound Z80 of the Genesis
+        await Call("breakpoint_add", new { session = hm, spec = "$0010" });
+        var smb = await Call("run", new { session = hm, frames = 30 });
+        var smd = await Call("disassemble", new { session = hm, address = "$7FE0", count = 1 });
+        var smr = await Call("registers", new { session = hm });
+        Check("sega_breakpoint", S(smb["outcome"]) == "break" && S(smb["break"]?["pc"]) == "$0010" && S(smd["lines"]?[0]?["text"]) == "JP $0003" && smr.Text.Contains("\"IX\""),
+              $"{S(smb["break"]?["text"])}; {S(smd["lines"]?[0]?["text"])}");
+        await Call("breakpoint_remove", new { session = hm, all = true });
+        var mdo = await Call("open_rom", new { path = md, symbols = new[] { mdSym } });
+        string hmd = S(mdo["session"]);
+        await Call("breakpoint_add", new { session = hmd, spec = "sub2" });
+        var mdb = await Call("run", new { session = hmd, frames = 30 });
+        var mds = await Call("call_stack", new { session = hmd });
+        var mdf = mds["frames"] as JsonArray;
+        Check("genesis_68000_break_and_stack", S(mdb["outcome"]) == "break" && S(mdb["break"]?["pcSymbol"]) == "sub2" && mdf?.Count == 2 && S(mdf[0]?["kind"]) == "BSR" && S(mdf[1]?["kind"]) == "JSR" && S(mdf[1]?["targetSymbol"]) == "sub1",
+              $"{S(mdb["break"]?["text"])}; {string.Join(" | ", mdf?.Select(f => S(f?["text"])) ?? Array.Empty<string>())}");
+        await Call("breakpoint_remove", new { session = hmd, all = true });
+        await Call("breakpoint_add", new { session = hmd, spec = "$" + mdz["zsub"].ToString("X4"), cpu = "z80" });
+        var zb = await Call("run", new { session = hmd, frames = 30 });
+        var zt = await Call("trace", new { session = hmd, count = 2, cpu = "z80" });
+        Check("genesis_z80_break_and_trace", S(zb["outcome"]) == "break" && S(zb["break"]?["cpu"]) == "z80" && (zt["lines"] as JsonArray)?.Select(S).Any(l => l.Contains("CALL $" + mdz["zsub"].ToString("X4"))) == true,
+              $"{S(zb["break"]?["text"])}; {string.Join(" || ", (zt["lines"] as JsonArray)?.Select(S) ?? Array.Empty<string>())}");
+        var noCpu = await Call("breakpoint_add", new { session = hmd, spec = "$0000", cpu = "spc" });
+        Check("genesis_unknown_cpu_refused", noCpu.IsError && noCpu.Text.Contains("z80"), noCpu.Text);
+        await Call("close_session", new { session = hmd }, log: false);
         var dom = await Call("list_domains", new { session = hm });
         Check("sega_domains", (dom["domains"] as JsonArray)?.Count > 0, string.Join(", ", (dom["domains"] as JsonArray)?.Select(d => S(d?["id"])) ?? Array.Empty<string>()));
 
@@ -403,7 +428,7 @@ internal static class ClientTest
         await Call("run", new { session = hs, frames = 130 });
         var smi = await Call("step_back", new { session = hs, instructions = 1 });
         var smf = await Call("step_back", new { session = hs, frames = 60 });
-        Check("step_back_sega_frames_only", smi.IsError && smi.Text.Contains("debugger") && !smf.IsError && L(smf["steppedBack"]?["toFrame"]) == 70, $"instructions: {smi.Text}; frames: to {L(smf["steppedBack"]?["toFrame"])}");
+        Check("step_back_sega", !smi.IsError && !smf.IsError && L(smf["steppedBack"]?["toFrame"]) == 70, $"instructions: {(smi.IsError ? smi.Text : "stepped back 1")}; frames: to {L(smf["steppedBack"]?["toFrame"])}");
         await Call("close_session", new { session = hs }, log: false);
 
         // the divergence finder, the state diff by symbol, bisect's test, the exports
@@ -590,14 +615,14 @@ internal static class ClientTest
         // the session's end: an unkept profile of this server is deleted when the server stops (checked once the client has closed)
         var last = await Call("timeflow_profile", new { timeline = tid, from = 30, to = 35, store = true });
         sessionProfileDir = S(last["profile"]?["dir"]);
-        // the Sega consoles: no profile until T0 (refused, never an empty one)
+        // the Sega consoles (T0): a Master System timeline is profiled like any other
         var so = await Call("open_rom", new { path = sms });
         string sh = S(so["session"]);
         await Call("timeflow_record", new { session = sh, action = "start" });
         await Call("run", new { session = sh, frames = 30 });
         var soff = await Call("timeflow_record", new { session = sh, action = "stop" });
         var sp = await Call("timeflow_profile", new { timeline = S(soff["closed"]?["id"]), from = 5, to = 10, queries = new[] { "summary" } });
-        Check("timeflow_profile_sega_refused_until_t0", sp.IsError && sp.Text.Contains("T0"), sp.Text);
+        Check("timeflow_profile_sega", !sp.IsError && sp["inSync"]?.GetValue<bool>() == true, sp.IsError ? sp.Text : $"in sync {S(sp["inSync"])}, instructions {sp["instructions"]?.ToJsonString()}");
         foreach (var id in new[] { h, sh }) await Call("close_session", new { session = id }, log: false);
     }
 
@@ -629,7 +654,7 @@ internal static class ClientTest
               $"{nh.Count} hits ({string.Join(",", nh.Select(x => L(x?["frame"])))}); {L(near["cost"]?["candidates"])} candidates: the $A5 writes to the same byte (frames 97-104) re-run and rejected");
         var bad = await Call("timeflow_search", new { condition = "enemy alive", timeline = new[] { tid } });
         Check("timeflow_search_bad_condition_refused", bad.IsError && bad.Text.Contains("unknown clause"), bad.Text);
-        // the Sega consoles: state by a memory domain works; a breakpoint waits for T0 (the timeline skipped, saying so)
+        // the Sega consoles (the Z80 debugger since T0): a code breakpoint finds the reset, a picture search works
         var so = await Call("open_rom", new { path = sms });
         string sh = S(so["session"]);
         await Call("timeflow_record", new { session = sh, action = "start" });
@@ -637,7 +662,7 @@ internal static class ClientTest
         var soff = await Call("timeflow_record", new { session = sh, action = "stop" });
         string stid = S(soff["closed"]?["id"]);
         var ss = await Call("timeflow_search", new { condition = "exec $0000", timeline = new[] { stid } });
-        Check("timeflow_search_sega_breakpoint_waits_for_t0", !ss.IsError && L(ss["totalHits"]) == 0 && S(ss["timelines"]?[0]?["skipped"]).Contains("T0"), S(ss["timelines"]?[0]?["skipped"]));
+        Check("timeflow_search_sega_breakpoint", !ss.IsError && L(ss["totalHits"]) >= 1 && L(ss["hits"]?[0]?["frame"]) == 0 && S(ss["hits"]?[0]?["pc"]) == "$0000", $"{L(ss["totalHits"])} hit(s), first frame {L(ss["hits"]?[0]?["frame"])} pc {S(ss["hits"]?[0]?["pc"])} (the Z80 debugger since T0){S(ss["timelines"]?[0]?["skipped"])}");
         var sp = await Call("timeflow_search", new { condition = "picture still", timeline = new[] { stid } });
         Check("timeflow_search_sega_picture", !sp.IsError && L(sp["totalHits"]) >= 0 && S(sp["timelines"]?[0]?["skipped"]).Length == 0, $"{L(sp["totalHits"])} hits");
         foreach (var id in new[] { h, sh }) await Call("close_session", new { session = id }, log: false);

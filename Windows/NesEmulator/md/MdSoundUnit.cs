@@ -76,6 +76,19 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
     /// <summary>Called for every byte the Z80 reads through its bank window (the cartridge address): the sound driver's music, instrument and sample data. The plugin's Instrument Runaway lab uses it to tell which cartridge bytes the sound driver actually reads; null (the default) costs a field check per bank read.</summary>
     public Action<int>? BankReadTap;
 
+    private ISegaInstructionHook? debugHook;
+    /// <summary>The debugger's per-instruction hook on the Z80 (BrokenDev T0). Null in normal runs (the plain loop). While it is set the polling loops are not fast-forwarded
+    /// (every instruction must be seen; the output is the same either way, see <see cref="FastLoops"/>), and setting it brings a parked loop up to date first.</summary>
+    public ISegaInstructionHook? DebugHook
+    {
+        get => debugHook;
+        set { if (value != null) LoopBreak(); debugHook = value; }
+    }
+    /// <summary>The debugger's tap on the Z80's data reads, writes and ports (BrokenDev T0); null in normal runs (one field test per data access).</summary>
+    public ISegaBusDebugTap? DebugTap;
+    /// <summary>The master clock of the Z80's current T-state (the debugger's cycle).</summary>
+    public long Z80MasterClock => z80Master;
+
     /// <summary>Output gain of the FM chip's mix (before the 16-bit clip); 1 puts a full-scale FM channel at about 17% of full scale, as the chip's own 9-bit DAC range does.</summary>
     public float FmGain = 1.0f;
 
@@ -200,6 +213,21 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
             int ticks = machine.Timeline.Z80.Due(from > z80Master ? from : z80Master, masterClock);
             z80Master = Math.Max(z80Master, from);
             if (parked) { ParkedAdvance(ticks); ticks = 0; }       // a polling loop that is being fast-forwarded: the T-states are counted (MdSoundUnitLoops.cs)
+            var hook = debugHook;
+            if (hook != null)
+            {
+                // the debugger's loop: the hook before every instruction, no fast-forward
+                for (int i = 0; i < ticks; i++)
+                {
+                    if (stallTicks > 0) { stallTicks--; z80Master += machine.Timeline.Z80.Divider; continue; }
+                    if (z80.AtInstructionBoundary) hook.BeforeInstruction();
+                    z80.Tick();
+                    Z80Ticks++;
+                    z80Master += machine.Timeline.Z80.Divider;
+                    if (requested && z80.AtInstructionBoundary) { granted = true; grantTime = z80Master; break; }
+                }
+                ticks = 0;
+            }
             for (int i = 0; i < ticks; i++)
             {
                 if (stallTicks > 0) { stallTicks--; z80Master += machine.Timeline.Z80.Divider; continue; }
@@ -305,6 +333,9 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
     // =================================================================================================================
 
     private bool Reachable(long masterClock) => (requested && granted && masterClock >= grantTime) || inReset;
+
+    /// <summary>Whether the 68000's window into the Z80's space answers at <paramref name="masterClock"/> (the bus granted, or RESET held): the hardware checks' question, without side effects.</summary>
+    public bool DebugWindowOpen(long masterClock) => Reachable(masterClock);
 
     public byte Read(int offset, long masterClock)
     {
@@ -424,10 +455,22 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
     {
         public MdSoundUnit U;
         public byte FetchOpcode(ushort address) => U.Z80Read(address, U.z80Master, true);
-        public byte Read(ushort address) => U.Z80Read(address, U.z80Master, true);
-        public void Write(ushort address, byte value) => U.Z80Write(address, value, U.z80Master, true);
-        public byte In(ushort port) { U.loopImpure = true; return 0xFF; }
-        public void Out(ushort port, byte value) { U.loopImpure = true; }
+        public byte Read(ushort address)
+        {
+            byte v = U.Z80Read(address, U.z80Master, true);
+            var tap = U.DebugTap;
+            if (tap != null) tap.OnRead(address, v);
+            return v;
+        }
+        public void Write(ushort address, byte value)
+        {
+            var tap = U.DebugTap;
+            tap?.OnWrite(address, value);
+            U.Z80Write(address, value, U.z80Master, true);
+            tap?.OnWriteDone(address, value);
+        }
+        public byte In(ushort port) { U.loopImpure = true; U.DebugTap?.OnPort(port, 0xFF, false); return 0xFF; }
+        public void Out(ushort port, byte value) { U.loopImpure = true; U.DebugTap?.OnPort(port, value, true); }
         public byte InterruptVector() => 0xFF;
     }
 

@@ -97,8 +97,7 @@ namespace BrokenNes
                     {
                         uint bytes = c.FetchBytes(pc);
                         var ic = c.Classify(bytes);
-                        var b = new byte[Math.Max(1, ic.Length)];
-                        for (int k = 0; k < b.Length; k++) b[k] = (byte)(bytes >> (8 * k));
+                        var b = c.InstructionBytes(pc, ic.Length);
                         lines.Add(new JsonObject { ["address"] = pc, ["hex"] = H(pc, c.AddressDigits), ["bytes"] = string.Join(" ", b.Select(x => x.ToString("X2"))), ["text"] = c.Disassembler.Format(pc, b, c.Context, null), ["label"] = null });
                         pc = c.NextAddress(pc, b.Length);
                     }

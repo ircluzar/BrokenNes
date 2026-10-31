@@ -71,6 +71,9 @@ public partial class SmsVdp
     // ---- port state ----------------------------------------------------------------------------------------------------------------------------------
     private int addr;
     private int code;
+    /// <summary>The address register and the code register (0-1 VRAM, 3 colour RAM): where the next data-port byte goes (the debugger's VRAM watches).</summary>
+    public int DebugAddress => addr;
+    public int DebugCode => code;
     private bool latch;
     private byte latchByte;
     private byte readBuffer;

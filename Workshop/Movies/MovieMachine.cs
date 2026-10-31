@@ -50,7 +50,7 @@ internal sealed class MovieMachine : IDisposable
     /// <summary>
     /// Opens a ROM. <paramref name="cores"/>: "CPU/PPU/APU" ids, or "" for the console's defaults (the NES: FIX/FIX/FIX, as the desktop app);
     /// a core the console's menu does not offer is refused (never a quiet substitute). <paramref name="debugger"/>: attach the D1 debugger
-    /// (consoles it covers: NES, SNES, WideMess, Game Boy); its hooks stay off until something arms them.
+    /// (every console: NES, SNES, WideMess, Game Boy, and since Timeflow T0 the Master System, Game Gear and Genesis); its hooks stay off until something arms them.
     /// </summary>
     public static MovieMachine Open(string romPath, string? consoleKey, string cores, string powerOn, bool ntsc, bool debugger, IEnumerable<string>? symbols = null)
     {
@@ -69,7 +69,7 @@ internal sealed class MovieMachine : IDisposable
                 foreach (var (slot, id) in new[] { (CoreSlot.Cpu, cpu), (CoreSlot.Ppu, ppu), (CoreSlot.Apu, apu) })
                     if (CoreCatalog.Find(c, slot, id) == null) throw new ArgumentException($"the {Consoles.DisplayName(c)} {slot} menu does not offer {id}");
         }
-        bool canDebug = c is ConsoleKind.Nes or ConsoleKind.Snes or ConsoleKind.WideMess or ConsoleKind.GameBoy or ConsoleKind.GameBoyColor;
+        bool canDebug = c is ConsoleKind.Nes or ConsoleKind.Snes or ConsoleKind.WideMess or ConsoleKind.GameBoy or ConsoleKind.GameBoyColor or ConsoleKind.MasterSystem or ConsoleKind.GameGear or ConsoleKind.Genesis;
         DebugHost h;
         try { h = DebugHost.Open(rom, inner, c, debugger && canDebug, cpu, ppu, apu, powerOn, ntsc); }
         catch (InvalidOperationException e) { throw new ArgumentException($"cores '{cores}' did not apply: {e.Message}"); }
@@ -80,10 +80,10 @@ internal sealed class MovieMachine : IDisposable
         }
         var m = new MovieMachine(h, c == ConsoleKind.Nes ? "nes" : Consoles.Key(c), romPath, file, powerOn, ntsc);
         if (symbols != null && h.Dbg != null) foreach (var s in symbols) h.Dbg.Symbols.Load(s, h.Machine.Console);
-        else if (symbols != null && symbols.Any()) { m.Dispose(); throw new ArgumentException($"symbols need the debugger, which does not cover the {Consoles.DisplayName(c)} yet"); }
-        if (h.Dbg != null)
+        else if (symbols != null && symbols.Any()) { m.Dispose(); throw new ArgumentException($"symbols need the debugger, which does not cover the {Consoles.DisplayName(c)}"); }
+        if (h.Dbg != null && h.Machine is not (SmsDebugMachine or MdDebugMachine))
         {
-            // the debug port (D7) listens: its markers, at the movie frame they happen in, go into a recording and a replay's report
+            // the debug port (D7) listens (the NES, SNES / WideMess and Game Boy: the Sega consoles have none): its markers, at the movie frame they happen in, go into a recording and a replay's report
             m.Port = new NesEmulator.Debugging.Port.DebugPort(h.Machine, h.Dbg);
             m.Port.Event += e => { if (e.Kind == NesEmulator.Debugging.Port.PortEventKind.Marker) m.MarksSeen.Add(new MovieMark(m.FramesRun, e.Text)); };
             m.Port.Attach();

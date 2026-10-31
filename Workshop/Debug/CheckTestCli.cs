@@ -17,7 +17,7 @@ namespace BrokenNes.Workshop.Debug;
 /// WideMess/testroms/bin): the devkit's start-up clears work RAM.
 /// Exit 0 when every check passes.
 /// </summary>
-internal static class CheckTestCli
+internal static partial class CheckTestCli
 {
     private static int pass, fail, notRun;
     private static readonly List<string> failures = new();
@@ -33,7 +33,7 @@ internal static class CheckTestCli
     {
         RomTestCli.EnsureConsole();
         string Opt(string n, string d) { int i = Array.IndexOf(args, "--" + n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
-        var only = Opt("only", "nes,snes,wms,gb,games").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var only = Opt("only", "nes,snes,wms,gb,sega,games").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
         dir = Opt("keep", Path.Combine(Path.GetTempPath(), "brokennes-check-test-" + Environment.ProcessId));
         wmsRoms = Opt("wmsroms", wmsRoms);
         Directory.CreateDirectory(dir);
@@ -49,8 +49,9 @@ internal static class CheckTestCli
         Group("snes", "SNES rules", () => Snes(ConsoleKind.Snes));
         Group("wms", "WideMess (the SNES rules on the WideMess console, the debug port)", WideMess);
         Group("gb", "Game Boy rules", GameBoy);
+        Group("sega", "Master System, Game Gear and Genesis rules (Timeflow T0)", Sega);
         Group("games", "Real games", () => Games(Opt("vrun", @"P:\BrokenDev\env\out\vrun-nes\vrun_game.nes"), Opt("supervrun", @"P:\BrokenDev\env\out\supervrun\supervrun.sfc")));
-        if (only.Contains("nes") && only.Contains("snes") && only.Contains("gb"))
+        if (only.Contains("nes") && only.Contains("snes") && only.Contains("gb") && only.Contains("sega"))
         {
             var missing = CheckCatalogue.All.Where(r => !triggered.Contains(r.Id) || !cleared.Contains(r.Id)).Select(r => r.Id).ToList();
             Check("every rule of the catalogue has a trigger and a negative control", missing.Count == 0, missing.Count == 0 ? $"{CheckCatalogue.All.Length} rules" : "missing: " + string.Join(", ", missing));

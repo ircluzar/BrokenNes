@@ -245,7 +245,7 @@ public static class TimeflowSearch
             var c = q.Condition.Clauses[i];
             var b = new Bound { C = c, Index = i, Stats = rep.Clauses[i] };
             if (c.NeedsDebugger && (m == null || !m.HasDebugger))
-                throw new NotSupportedException($"'{c.Text}' needs the debugger on the {meta.Console}'s CPU" + (meta.Console is "sms" or "gg" or "md" ? ", which is milestone T0 (the Z80 / 68000 debugger, built in parallel): this console's searches take state, picture and sound clauses until then" : ", which this machine does not have"));
+                throw new NotSupportedException($"'{c.Text}' needs the debugger on the {meta.Console}'s CPU" + ", which this machine was opened without: its searches take the state, picture and sound clauses");
             if (c.IsBreakpoint)
             {
                 var mm = m!.Machine!;
@@ -309,7 +309,7 @@ public static class TimeflowSearch
         if (state != null && g.M != null)
         {
             // the machine holds a state of this timeline (its layout) for the state map's measurements
-            pb.Jump(g.M.Source, from);
+            g.M.Touched = true; pb.Jump(g.M.Source, from);
             foreach (var b in g.B.Where(b => b.C.Kind == SearchClauseKind.State)) b.CoarseOff = null;
         }
         var candidates = new List<(long F, SearchTri Combined, byte[] Each)>();
@@ -428,7 +428,7 @@ public static class TimeflowSearch
                 // a state's layout can change (a keyframe says so): each layout has its own map, measured on the machine holding a state of it
                 env.MapFor = (st, lay) =>
                 {
-                    if (!g.Maps.TryGetValue(lay, out var map)) { pb.Jump(g.M!.Source, f + 1); g.Maps[lay] = map = new SearchStateMap(g.M, lay); }
+                    if (!g.Maps.TryGetValue(lay, out var map)) { g.M!.Touched = true; pb.Jump(g.M.Source, f + 1); g.Maps[lay] = map = new SearchStateMap(g.M, lay); }
                     return map;
                 };
                 try
@@ -690,7 +690,7 @@ public static class TimeflowSearch
     {
         var m = g.M!;
         var rd = pb.Reader;
-        pb.Jump(m.Source, from);
+        m.Touched = true; pb.Jump(m.Source, from);
         m.DrainSound();
         for (long f = from; f <= to; f++)
         {
@@ -713,10 +713,25 @@ public static class TimeflowSearch
     /// <summary>A re-run with breakpoints: a T3 profiled span whose records feed a <see cref="SearchSink"/> (every instruction and access).</summary>
     private static void RunProfiled(SearchRequestCore q, SearchReport rep, SearchTimelineResult tr, TimeflowPlayback pb, Group g, long from, long to, Action<long, FrameTruth, List<SearchHit>?> decide, TimelineMeta meta, string dir)
     {
-        var m = g.M!;
-        var sink = new SearchSink(g, pb.Reader, meta, dir, decide);
+        // a span in the first block of a timeline that starts at power-on re-runs from a fresh power-on (T3's path: checked equal to the recorded
+        // frame 0), on a machine of its own when the game's machine was used already: a Master System's loaded frame-0 state goes off at frame 2
+        // in a profiled re-run (found by T4: see the plan), and a fresh power-on also compares frame 0's picture
+        Group? own = null;
+        long key = from; while (key > pb.Reader.StartFrame && !pb.Reader.Row(key).IsKey) key--;
+        if (g.M!.Touched && key == pb.Reader.StartFrame && meta.PowerOnStart)
+        {
+            own = new Group { Key = g.Key, M = q.Open(dir, meta, q.Symbols) };
+            Bind(q, own, meta, rep);
+        }
+        var gg = own ?? g;
+        var m = gg.M!;
+        var sink = new SearchSink(gg, pb.Reader, meta, dir, decide);
         var span = new ProfileSpan { From = from, To = to, Vars = new List<string>(), StopWhenOff = true, Cancel = q.Cancel };
-        var r = TimeflowProfiler.Run(pb, m.Profile(), span, new ProfileSink[] { sink });
+        var target = m.Profile();
+        m.Touched = true;
+        ProfileReport r;
+        try { r = TimeflowProfiler.Run(pb, target, span, new ProfileSink[] { sink }); }
+        finally { own?.Dispose(); }
         long ran = r.PreRollFrames + r.FramesProfiled;
         tr.ReRunFrames += ran; rep.ReRunFrames += ran;
         if (r.OffFrame != null) { tr.OffFrame = r.OffFrame; tr.OffWhat = r.OffWhat; }

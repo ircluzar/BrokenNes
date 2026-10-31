@@ -9,7 +9,13 @@ namespace NesEmulator.Debugging;
 public enum AccessKind : byte { None = 0, Exec = 1, Read = 2, Write = 4, ReadWrite = Read | Write }
 
 /// <summary>Who made a memory access: the CPU, or one of the consoles' DMA units.</summary>
-public enum AccessSource : byte { Cpu = 0, Dma = 1, Hdma = 2, OamDma = 3, VramDma = 4 }
+public enum AccessSource : byte
+{
+    Cpu = 0, Dma = 1, Hdma = 2, OamDma = 3, VramDma = 4,
+    /// <summary>The machine's other CPU reaching this one's memory: the Genesis's Z80 through its bank window (seen by the 68000's watches), the 68000 through its
+    /// window on the Z80's RAM (seen by the Z80's).</summary>
+    OtherCpu = 5,
+}
 
 /// <summary>A canonical location: every mirror of a byte has the same key (the RAM byte at NES $0010 is the one at $0810; SNES $80:0010 is
 /// $7E:0010; Game Boy $E010 is $C010).</summary>

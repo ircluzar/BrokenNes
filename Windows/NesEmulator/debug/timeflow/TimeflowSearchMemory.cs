@@ -29,8 +29,15 @@ public sealed class SearchMachine : IDisposable
 
     public bool HasDebugger => Machine != null && Debugger != null;
 
-    /// <summary>The machine as a T3 re-run target. Never "powered on": a search jumps (loads states) between its re-runs, so every re-run starts from a loaded state.</summary>
-    public ProfileTarget Profile() => new() { Machine = Machine!, Debugger = Debugger!, Source = Source, RunFrame = RunFrame, Port = Port, PoweredOn = false };
+    /// <summary>Set by the search once it loaded a state into the machine or ran it: until then it is the host's fresh power-on.</summary>
+    public bool Touched { get; set; }
+
+    /// <summary>
+    /// The machine as a T3 re-run target: "powered on" while the search has not touched it (a re-run in a power-on timeline's first block then
+    /// starts from the power-on itself, checked equal to the recorded frame 0: T3's path, which keeps frame 0's picture and which a Master System
+    /// timeline needs: its loaded frame-0 state goes off at frame 2 in a profiled re-run, found by T4, see the plan); else from a loaded state.
+    /// </summary>
+    public ProfileTarget Profile() => new() { Machine = Machine!, Debugger = Debugger!, Source = Source, RunFrame = RunFrame, Port = Port, PoweredOn = !Touched };
 
     /// <summary>The sound the machine made since the last call, as mono samples from -1 to 1 (the NES's APU_FIX queue or another core's buffer; a console session's stereo).</summary>
     public float[] DrainSound()

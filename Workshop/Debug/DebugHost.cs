@@ -198,6 +198,8 @@ internal sealed class DebugHost : IDisposable
         if (Nes != null) { var r = new byte[2048]; for (int i = 0; i < 2048; i++) r[i] = Nes.PeekSystemRam(i); Add(r); }
         else if (Session is SnesSession sn) Add(sn.Board.Wram);
         else if (Session is NesEmulator.Systems.GbSession gb) { Add(gb.Board.Wram); Add(gb.Board.Hram); }
+        else if ((Session as NesEmulator.Mix.SegaPictureSession)?.Inner is NesEmulator.Sega.SmsSession sms) Add(sms.Board.Ram);
+        else if ((Session as NesEmulator.Mix.SegaPictureSession)?.Inner is NesEmulator.Sega.MdSession md) { Add(md.Board.Ram); if (md.Board.Sound is NesEmulator.Sega.MdSoundUnit u) Add(u.Z80Ram); }
         return h;
     }
 

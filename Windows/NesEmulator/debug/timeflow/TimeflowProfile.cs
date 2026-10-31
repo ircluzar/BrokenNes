@@ -553,8 +553,7 @@ public static class TimeflowProfiler
         var meta = pb.Meta;
         var rd = pb.Reader;
         if (t.Machine == null || t.Debugger == null)
-            throw new NotSupportedException($"profiling needs the debugger on the console's CPUs, which does not cover the {meta.Console} yet" +
-                                            (meta.Console is "sms" or "gg" or "md" ? " (the Z80 / 68000 debugger is milestone T0): no profile is made" : ""));
+            throw new NotSupportedException($"profiling needs the debugger on the console's CPUs, which does not cover the {meta.Console}: no profile is made");
         if (span.From > span.To) throw new ArgumentException($"the span {span.From}-{span.To} ends before it starts");
         if (!rd.Has(span.From) || !rd.Has(span.To))
             throw new ArgumentOutOfRangeException(nameof(span), $"frames {span.From}-{span.To} are not all in timeline {meta.Id} (it holds frames {rd.StartFrame}-{rd.EndFrame - 1})");

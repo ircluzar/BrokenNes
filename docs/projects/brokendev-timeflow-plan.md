@@ -1,9 +1,8 @@
 # BrokenDev Timeflow: rewind, deep profiling, hotpatch and a searchable gameplay corpus
 
-Status: **T1 (the timeline format), T2 (rewind and resume), T3 (profiled spans) and T4 (search) built** on 2026-10-30 (see "T1 as
-built" to "T4 as built" at the end): rewind on every console; profiling and breakpoint searches on the NES, SNES (with its SPC700), WideMess and
-Game Boy; the Sega consoles take state, picture and sound searches and are refused for profiling and breakpoints until T0 (the debugger on the
-Z80 and the 68000, built in parallel). Next: T0, then T5 (hotpatch).
+Status: **T0 (the debugger on the Sega CPUs), T1 (the timeline format), T2 (rewind and resume), T3 (profiled spans) and T4 (search)
+built** on 2026-10-30 (see "T1 as built", "T2 as built", "T3 as built", "T0 as built" and "T4 as built" at the end): rewind, profiling and
+search on every console. Next: T5 (hotpatch).
 
 ## The idea (the user's words, condensed)
 
@@ -440,6 +439,91 @@ hotpatch, resume.
     linked from the main checkout for the run, then unlinked), `timeflow-desktop-smoke` (T2) passes, `debug-windows-desktop-smoke` 79 of 79
     (the Debugger and Event View windows gained their profile mode as partial classes; the live mode is unchanged).
 
+## T0 as built (2026-10-30): the debugger on the Sega CPUs
+
+- **What it covers.** The D1 engine (`Windows/NesEmulator/debug`) now reaches every console: `DebugMachines.For` makes a `SmsDebugMachine`
+  for the Master System, Game Gear and SG-1000 (one CPU, `main`, the Z80) and an `MdDebugMachine` for the Genesis (`main` the 68000, `z80`
+  its sound CPU when the sound unit is the Genesis's own; an NES-chip sound bridge has no Z80 and says so in `Limitations`). Breakpoints
+  (exec / read / write, conditions, hit counts, tracepoints), stepping (into / over / out, scanline, frame, run to), the call stack (CALL,
+  RST, JSR, BSR, TRAP and the interrupts: `NMI` / `IRQ` on the Z80, `VINT` / `HINT` / `EXTINT` / `TRACE` on the 68000), the trace ring and
+  trace files, registers read and written (the Z80's whole set with `AF2`..`HL2`, `IXH`..., `IFF1/2`, `IM`; the 68000's `D0-D7`, `A0-A7`,
+  `SP`, `USP`, `SSP`, `SR`, `CCR`, `PC`: setting PC refills the prefetch queue), disassembly, symbols, the memory domains (plus `BUS`, and
+  the Genesis's `Z80BUS`) and the D4 observer hooks (steps, accesses, calls, returns, writes landed) that the coverage map and Timeflow's
+  index use. New files: `debug/SegaDebugMachine.cs`, `debug/SegaDisasm.cs` (`DisasmZ80`, `DisasmM68k`), `debug/checks/SegaChecks.cs`,
+  `sega/SegaDebugHooks.cs` (the two hook interfaces the boards hold).
+- **How each CPU is adapted (zero cost when off).** The boards gained null fields, as the NES / SNES / Game Boy did:
+  - `BOARD_SMS.DebugHook` (per instruction): `RunLine` keeps its plain loop while both it and the old tracer hook are null (one more field
+    test per line); `BOARD_SMS.DebugTap` (data reads, writes, ports): one field test per data access in `SmsBus.Read`, `WriteMemory` and
+    the port routines. Opcode fetches are not data reads (they stay on the untouched `FetchOpcode` path).
+  - `BOARD_MD.DebugHook` (one field test per 68000 instruction, beside the existing tracer hook) and `BOARD_MD.DebugTap` (one per bus
+    cycle and per DMA word in `ReadBusWord`). A word read at the 68000's program counter is the prefetch or an extension word, not data.
+  - `MdSoundUnit.DebugHook` / `DebugTap`: `RunInner` picks a debugger loop (the hook at each boundary, no polling-loop fast-forward)
+    only while the hook is set; setting it brings a parked loop up to date first (the fast-forward is exact, so this changes nothing).
+  - The cores gained read-only properties only: `Z80.BoundaryKind` (what the next T-state starts: an instruction, an NMI or interrupt
+    response, a halted NOP, read from the program the boundary installed), `M68k.TraceDue`, `M68k.DecodeGroup` (the core's own decode
+    table, which the disassembler uses for legality and lengths); the cartridges `DebugRomIndex` / `DebugRamIndex` / `DebugSramIndex`,
+    `SmsVdp.DebugAddress` / `DebugCode`, `BOARD_MD.DebugPeek`, `MdSoundUnit.DebugWindowOpen`. No state is added to any save state.
+- **Mirrors and canonical places.** Master System: work RAM `$E000-$FFFF` onto `$C000-$DFFF` (and `ram:` by offset), ROM and cartridge
+  RAM by offset through the mapper's slots (a banked symbol `02:4000` is `rom:$8000` and never breaks while bank 1 is mapped), the I/O
+  ports by the port the console decodes (`io:$BE` is every mirror of the data port: `OUT ($80)` hits it; the Game Gear's `$00-$06` and the
+  FM unit's `$F0-$F2` are their own), and VRAM / colour RAM written through the data port (the VDP's address register says where).
+  Genesis 68000: work RAM `$E00000-$FFFFFF` onto `$FF0000` (`ram:` by offset), the cartridge by ROM / battery-RAM offset (the SSF2 banks
+  as mapped), `zram:` the Z80's RAM through `$A00000`; the Z80: its RAM's mirror `$2000-$3FFF`, the bank window by its 68000 address
+  (`m68k:`, and `rom:` / `wram:` behind it). **Each CPU's watches see the other CPU's accesses into its memory** (source `OtherCpu`, the new
+  `AccessSource` value 5): a 68000 read watch on `rom:$100` sees the Z80's bank-window read, a Z80 write watch on `zram:$5` sees the 68000
+  load the sound driver. The 68000's watches see the VDP's DMA reads of ROM and work RAM (source `Dma`). A symbol in work RAM binds to
+  the RAM (so a watch covers its size through every mirror). I/O ports reach the observers at `$10000 + port`.
+- **Shared code, kept minimal and additive:** `DebugCpu.InstructionBytes` (a 68000 instruction runs to ten bytes, past the four a trace
+  record keeps: the four disassembly listings use it; the 68000's disassembler reads the rest from memory for a trace line),
+  `Debugger.OnPortAccess`, the trace line's byte span clamped to the record's four, the call-stack name for the 68000 (JSR / BSR /
+  TRAP), `AccessSource.OtherCpu`, `DebugSymbols`: GNU `nm` output (SGDK's `symbol.txt`, `nm -S` sizes), WLA-DX / devkitSMS banks for
+  `sms` / `gg`, Mesen's `Sms*` label types. Registers that do not fit a trace record (the Z80's IX / IY / shadows, the 68000's D0-A6)
+  are kept beside the ring by a sequence number the record carries (`TraceSide`).
+- **The checks (D4) on the Sega consoles**, the first rules of their catalogue: `sms.ram-uninit`, `sms.lag-frame` (also the Game Gear),
+  `md.ram-uninit` (by the 68000, the Z80's bank window or a DMA), `md.zram-uninit` (the Z80 reading its RAM before anyone wrote it),
+  `md.z80-bus` (the Z80's space used by the 68000 without its bus: reads give $FF, writes are lost), `md.lag-frame`; the profile. So the
+  index's findings column and the MCP's `checks:true` work there too. The Sega consoles have no debug port (D7).
+- **Interfaces.** MCP: the Sega headless sessions take every debugger tool (the refusal is gone; `cpu: "z80"` on the Genesis), the
+  server's instructions say so; `step_back` by instructions works there. Desktop: Emulator > Debug Windows > Debugger (the CPU picker
+  offers the Z80), Memory, Event View (the Master System's ports as `port $BE`, the Genesis's I/O, VDP and bus registers) through the same
+  `DebuggerHub`; the symbol file beside a ROM: `.sym` / `.noi` (Master System, Game Gear), `.sym` / `.txt` / `symbol.txt` (Genesis). Workshop:
+  `MovieMachine` (movies, bug replays, Timeflow) attaches the debugger on the Sega consoles, so `--timeflow record --coverage --var ...`
+  and the course variables work there. HTTP: `/api/debug/*` as before (Windows/webapi/README.md).
+- **Profiling (T3) on the Sega consoles**, from T3's notes: its two refusals are gone, the chip registers of the Event View / `events`
+  query know the Master System's ports and the Genesis's I/O / VDP / bus registers, the histogram's cycle unit is Z80 T-states on the
+  Master System and Game Gear; `pconsoles` profiles the Master System and the Genesis (both CPUs' instructions) in sync.
+- **Tests** (each with a negative control):
+  - `--debug-test` **205 of 205** (the groups `sega`: Master System, Game Gear, Genesis with its Z80, the disassemblers against the cores;
+    and `games`' real Sega games): a breakpoint at the exact instruction by symbol; the call stack from CALL / JSR / BSR; step out, step
+    over 400 / 300 times with interrupts landing inside some (negative: step into lands in the callee); the call stack through the frame
+    interrupt / VINT and step out of the handler back to where it interrupted; a planted write through the work RAM mirror caught (negative:
+    the byte beside it silent), the data port through a mirror, VRAM through the data port, a banked symbol in its bank only; the trace
+    equals the board's own instruction hook (count and the last 4000 PCs; negative: shifted by one differs), the 68000's own instruction
+    counter, and the Genesis Z80's loop arithmetic (7 a turn, 8 an interrupt); every Z80 form (1646) and every legal 68000 opcode word
+    (40243) runs on the core and moves the PC by the disassembler's length (negative: one longer differs everywhere); known code disassembles
+    as written; attached, watching everything and breaking is frame-identical to no debugger (the test ROMs, Sonic 2 SMS, Sonic GG, Sonic
+    Genesis over 600 frames; 482,560 bytes of the Genesis's DMA seen by a watch); detached leaves no hook.
+  - `--check-test` **129 of 129** (the six Sega rules, each a trigger and a negative control; the clean templates break no rule).
+  - `--timeflow-test` **203 of 203** (the new `index-sega`: the watched variables and the frame's coverage on the Master System, Game Gear,
+    Genesis; negative: code never run is not covered, without the extras none, and the recording frame-identical with and without them;
+    `pconsoles` on the Sega consoles). `--md-state-test` **168 of 168**.
+  - MCP `--client-test` **126 of 126** (Sega: a Master System breakpoint and disassembly, the Genesis's 68000 break and stack, a Z80
+    break and trace, an unknown CPU refused, step back by instructions, a Sega timeline profiled; the debug port still refused there),
+    `--demo` 6 of 6. BrokenDev `run-tests` **151 passed, 0 failed** (`-WorkshopExe`, `-McpExe`; one earlier run had 1 failure that did not
+    come back on the rerun). UAT `run-suite` **125 pass 0 fail 16 skip 3 info** (the story and corpus ROM folders linked from the main
+    checkout). `debugger-desktop-smoke` 19 of 19; `debug-windows-desktop-smoke` **93 of 93** with its new Sega section (two earlier runs
+    stopped on UI Automation errors in the NES / WideMess parts, not in the Sega checks). Core and Lite build.
+- **Zero cost when off, measured.** Goldens: the Sega bench suite (`--sega-bench --suite`, 19 cases: Master System, Game Gear, Genesis
+  and their bridges, 900 frames each) recorded by main's build and checked by this one: **all 19 bit-identical** (every frame's picture and
+  every sample). Speed (interleaved A/B on this shared machine, the same 19 cases): first round, quiet, three runs each with main's build
+  always first: Genesis -1 to +3.5 %, Master System / Game Gear +3 to +22 % on the plain cases (the bridges within noise); a later check
+  with the 6-instruction read tap removed showed no difference to the build with it (so not that tap); the final round, the order
+  alternated, the machine busy: every case within ±14 % either way, the total 7.7 % faster than main. Read: no cost the noise of this
+  machine can show on the Genesis; on the Master System possibly a few percent (a field test per data access and per line), which a run
+  on a quiet machine (`--sega-bench --suite --repeat 5`, alternating) should settle.
+- **Not built:** the Genesis's VRAM / CRAM / VSRAM write watches (the VDP's FIFO and DMA writes are not tapped; the spaces read and write);
+  VDP read watches on the Master System; a debug port (D7) on the Sega consoles; tile / sprite / map viewers for them (D8's viewers, MCP
+  `tiles` / `sprites` / `layers`, are still NES / SNES / Game Boy); the 68000's effective address in a trace line.
 ## T4 as built (2026-10-30): search over the corpus
 
 - **First, the T2 finding T3 left open (fixed):** the value the NES state did not hold is the **pending reset sequence** (`NES.resetSequencePending`:
@@ -504,8 +588,9 @@ hotpatch, resume.
   it was unsure of, how many did not hold), per timeline what happened (skipped and why, desync), and the cost (frames scanned and the coarse fps,
   candidates, frames re-run and their fps, the time to the first hit and in all). `max_hits` (100) stops the exact phase and counts the candidates
   left; `coarse_only` gives the candidates and the index's own hits with nothing re-run; `from` / `to` limit the frames.
-- **What is refused, said, never guessed:** a breakpoint or a channel on a Sega console ("needs the debugger on the sms's CPU, which is milestone
-  T0": the timeline is skipped, its state / picture / sound clauses work); a CPU address on a Sega console ("name a memory domain, [RAM:$10]");
+- **What is refused, said, never guessed:** a breakpoint on a machine opened without the debugger ("needs the debugger on the <console>'s CPU":
+  the timeline is skipped, its state / picture / sound clauses work; built while T0 was in parallel, every console has the debugger since T0's
+  merge), a CPU address there ("name a memory domain, [RAM:$10]"), a `channel` on a console with no sound monitor (D8: the Sega consoles have none yet);
   a `finding` on a timeline recorded without the checks (skipped: "record with the checks"); an unknown clause, CPU, symbol or channel (the
   search's error, with the language or the channels).
 - **Interfaces:**
@@ -515,7 +600,7 @@ hotpatch, resume.
     `Workshop/Timeflow/TimeflowSearchCli.cs` is the code the MCP tool calls.
   - BrokenDev: `brokendev.ps1 timeflow search [project|timeline] -Query "CONDITION" [-From A] [-To B] [-MaxHits N] [-CoarseOnly]` (the project's
     own symbols), `timeflow record <project> ... -Index` (coverage, access counts and the checks).
-  - MCP (54 tools): `timeflow_search` (condition, timeline[], project, game_dir, symbols, from, to, max_hits, coarse_only; new headless machines of
+  - MCP (one more tool: `timeflow_search`): `timeflow_search` (condition, timeline[], project, game_dir, symbols, from, to, max_hits, coarse_only; new headless machines of
     each timeline's own ROM and cores, no open session touched), and `timeflow_record` action start with `index: true` on a headless session.
   - The desktop app: Emulator > Debug Windows > Timeflow: a **search box** (Enter or Search; Cancel while it runs) over the running game's
     timelines; the re-runs happen on headless machines in the background (the user's game plays on, the app's debugger untouched); the hits
@@ -586,10 +671,12 @@ hotpatch, resume.
     limit (5 hits, the candidates left counted, the first hit's time); coarse only; a timeline **without** coverage / access counts (every frame
     re-run, the same hits, said) and without checks (a finding search skips it, saying why); from / to. Group `sconsoles` (14 checks): the SNES
     and Game Boy test ROMs and a Master System program: `state [<domain>:$X] == V` exactly (by the recorded states, not re-runs), `and picture
-    still`, never (`== $1FF`); Master System: `exec` skipped "T0", a CPU address skipped "name a memory domain". Group `poweron` (4 checks, the T2
+    still`, never (`== $1FF`); Master System, with T0's Z80 debugger (merged before the hand-off): `exec $0004` (the counting loop) in every frame
+    of 70-75 at its PC, never: `exec $0000` (the reset) there; `state [$C000] == V` (a CPU address measured through the Z80) equal to the RAM
+    domain's answer; negative: a machine opened without the debugger skips a breakpoint, saying so. Group `poweron` (4 checks, the T2
     fix) and the pstore fix's 2 new checks.
   - The MCP client test: 7 new checks (`timeflow_record` with `index`, `timeflow_search` exec / the user's example / never / the near miss / a bad
-    condition, the Sega breakpoint skipped until T0 and a Sega picture search).
+    condition, a Master System breakpoint (the reset, with T0's Z80 debugger) and a Master System picture search).
   - BrokenDev `run-tests`: the T4 case (a project built from `search-rom`, recorded with `-Index`, searched by project and by timeline with its
     own symbols, text and JSON; negative: a condition that never holds (exit 1, nothing re-run), the near miss not reported, an unknown clause fails).
   - `UAT/entrypoints/timeflow-search-desktop-smoke.ps1` (the real app, scratch config / saves / bugs / BrokenDev home, no sound device, the user's
@@ -597,15 +684,26 @@ hotpatch, resume.
     16 planted frames (hide_enemy's first instruction, $C102), listed, the game ran on meanwhile (99 frames), choosing the first hit puts the frame
     box at 33, the hit strip; the user's example (each frame once); never 0 hits; a bad condition refused with the language; the app's debugger
     untouched; the user's APPDATA unchanged.
-  - **The runs** (main c9c031b, nothing newer to merge): `--timeflow-test` **244 passed, 0 failed, 0 not run** (T1-T3's 185 and T4's 59),
+  - **The runs** (on main c9c031b; then T0 merged from main f57256d and the T0-touched suites run again, below): `--timeflow-test` **244 passed, 0 failed, 0 not run** (T1-T3's 185 and T4's 59),
     `--debug-test` 103 of 103, `--movie-test` 69 of 69, `--bug-test` 48 of 48, the MCP client test **131 of 131** (with `--repo`), BrokenDev `run-tests` **152 passed, 0 failed, 0 skipped** (`-WorkshopExe`, `-McpExe`),
     UAT **125 pass 0 fail 16 skip 3 info** (the goldens unchanged) (the corpus and story ROM folders linked from the main checkout for the run, then unlinked), timeflow-search-desktop-smoke 13 of 13.
-    `--snes-state-test` / `--md-state-test` not run: nothing in the SNES or Sega states changed.
-- **For T0 (the Sega debugger, in parallel):** the search is console-neutral; once `MovieMachine` / `ProfileMachine` open the Sega consoles with
-  the debugger (and `DebugMachines.For` covers them), `TimeflowSearching.OpenMachine` and `ProfileMachine.Open(..., requireDebugger: false)` pass it
-  through unchanged: breakpoint and channel clauses then work there (the bind refusal in `TimeflowSearch.Bind` keys on `HasDebugger`, no console
-  list), `FrameCoverage` / `FrameAccesses` record their index, and CPU addresses in a state clause are measured like the others. `DebugSound` needs
-  a PSG / YM2612 monitor for `channel`. Turn `sconsoles`' two "T0" checks into searches that find.
+    `--snes-state-test` / `--md-state-test` not run: nothing in the SNES or Sega states changed. **After merging T0 (main f57256d):**
+    `--timeflow-test` **264 passed, 0 failed, 0 not run** (with T0's `index-sega` and Sega `pconsoles`), `--debug-test` 205 of 205, the MCP client
+    test 134 of 134, `timeflow-search-desktop-smoke` 13 of 13, `run-tests -Only timeflow` 3 of 3.
+- **With T0 (merged into this branch before the hand-off):** the search is console-neutral: `TimeflowSearching.OpenMachine` and
+  `ProfileMachine.OpenForSearch` open every console with its debugger, so breakpoints and CPU addresses work on the Master System, Game Gear and
+  Genesis (the bind refusal keys on `HasDebugger`, no console list; `sconsoles` and the MCP check now find on the Master System). Still open there:
+  `DebugSound` has no PSG / YM2612 monitor, so `channel` is refused on the Sega consoles (`sound above|silent` works), and the Sega timelines'
+  access counts (`FrameAccesses`) were not measured here (T0's own `index-sega` group covers their coverage).
+- **Found on the way (open, for T0's owner):** inside the `--timeflow-test` process, a profiled re-run of a Master System timeline's first
+  block (from frame 0, either from a fresh power-on or from the loaded frame-0 state) goes off at frame 2: "the whole state at a keyframe (the
+  layout differs: the machine is not the one recorded)", the recording having written frame 2 as a keyframe (its layout changed there). The very
+  same timeline (kept with `--keep`) profiles and searches in sync from frame 0 in a fresh process (`--timeflow profile --from 0`, `--timeflow
+  search --q "exec $0000"`: frame 0, PC $0000), and so does a timeline recorded and searched by the CLI or the MCP server (the MCP check finds the
+  reset at frame 0). So something process-wide (a static in a Sega session or in T0's debugger hooks, set by an earlier session of the process)
+  changes a Master System state's layout in its first frames. The search reports it as the desync it is (never a hit past it); `sconsoles` searches
+  frames 70-75 meanwhile. The search's own guard for the first block: a re-run there starts from a fresh power-on (T3's path), on a machine of its
+  own when the game's machine was already used (`SearchMachine.Touched`).
 - **Left for later:** a colour summary and an audio level in the index (open question 2's numbers above: T6); the exact phase's re-run cost for
   memory candidates on busy pages (finer pages, or the access counts by exact address for the symbols a project watches); searching a running
   game the user plays (a search is over recorded timelines only); a `timeflow_search` that keeps its re-runs as profiles (today it re-runs and

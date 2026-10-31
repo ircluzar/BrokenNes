@@ -15,7 +15,7 @@ namespace BrokenNes.Workshop.Debug;
 /// they are on this machine (VRUN NES with its .mlb, Super VRUN with its .sym; a missing one is NOT RUN, never a pass). Exit 0 when every
 /// check passes.
 /// </summary>
-internal static class DebugTestCli
+internal static partial class DebugTestCli
 {
     private static int pass, fail, notRun;
     private static readonly List<string> failures = new();
@@ -41,16 +41,23 @@ internal static class DebugTestCli
             DebugTestRoms.Write(romDir, "debugtest.nes", nr); DebugTestRoms.Write(romDir, "debugtest.mlb", nm);
             DebugTestRoms.Write(romDir, "debugtest.sfc", sr); DebugTestRoms.Write(romDir, "debugtest.sym", sy);
             DebugTestRoms.Write(romDir, "debugtest.gb", gr); DebugTestRoms.Write(romDir, "debugtest_gb.sym", gs); DebugTestRoms.Write(romDir, "debugtest_gb.noi", gn);
+            var (smr, sma, sms) = SegaDebugTestRoms.MasterSystem(false);
+            var (ggr, _, ggs) = SegaDebugTestRoms.MasterSystem(true);
+            var (mdr, mdm, mdz, mdn) = SegaDebugTestRoms.Genesis();
+            DebugTestRoms.Write(romDir, "debugtest.sms", smr); DebugTestRoms.Write(romDir, "debugtest_sms.sym", sms);
+            DebugTestRoms.Write(romDir, "debugtest.gg", ggr); DebugTestRoms.Write(romDir, "debugtest_gg.sym", ggs);
+            DebugTestRoms.Write(romDir, "debugtest.md", mdr); DebugTestRoms.Write(romDir, "debugtest_md_symbols.txt", mdn);
             var labels = new Dictionary<string, object>
             {
                 ["nes"] = na.Labels.ToDictionary(k => k.Key, k => k.Value), ["snes"] = sa.Labels.ToDictionary(k => k.Key, k => k.Value),
                 ["spc"] = ss.Labels.ToDictionary(k => k.Key, k => k.Value), ["gb"] = ga.Labels.ToDictionary(k => k.Key, k => k.Value),
+                ["sms"] = sma.Labels.ToDictionary(k => k.Key, k => k.Value), ["md"] = mdm.Labels.ToDictionary(k => k.Key, k => k.Value), ["mdz80"] = mdz.Labels.ToDictionary(k => k.Key, k => k.Value),
             };
             File.WriteAllText(Path.Combine(romDir, "labels.json"), System.Text.Json.JsonSerializer.Serialize(labels));
             Console.WriteLine($"wrote the debugger test ROMs to {romDir}");
             return 0;
         }
-        var only = Opt("only", "nes,snes,gb,wms,games").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var only = Opt("only", "nes,snes,gb,wms,sega,games").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
         string dir = Opt("keep", Path.Combine(Path.GetTempPath(), "brokennes-debug-test-" + Environment.ProcessId));
         Directory.CreateDirectory(dir);
         var sw = Stopwatch.StartNew();
@@ -65,6 +72,11 @@ internal static class DebugTestCli
         Group("snes", "SNES (65816 + SPC700)", () => Snes(dir));
         Group("gb", "Game Boy (SM83, MBC1)", () => GameBoy(dir));
         Group("wms", "WideMess", () => WideMess());
+        Group("sega", "Master System (Z80)", () => MasterSystem(dir, gg: false));
+        Group("sega", "Game Gear (Z80)", () => MasterSystem(dir, gg: true));
+        Group("sega", "Genesis (68000 + Z80)", () => Genesis(dir));
+        Group("sega", "Z80 and 68000 disassemblers against the cores", () => { Z80Lengths(); M68kLengths(); });
+        Group("games", "Real Sega games", () => SegaGames());
         Group("games", "Real games", () => Games(Opt("vrun", @"C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\builds\2026-10-23_poweron\vrun_game.nes"),
                                                   Opt("supervrun", @"P:\BrokenDev\env\out\supervrun\supervrun.sfc")));
         Console.WriteLine();

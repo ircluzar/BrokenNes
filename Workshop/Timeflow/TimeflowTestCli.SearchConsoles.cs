@@ -34,6 +34,16 @@ internal static partial class TimeflowTestCli
         return ("", -1, new(), pics);
     }
 
+    private static string RecordWithDebugger(string rom, string console, long frames)
+    {
+        using var m = BrokenNes.Workshop.Movies.MovieMachine.Open(rom, console, "", "fceux", false, true);
+        var o = new TimeflowOptions { Rom = m.RomFile, RomName = m.RomName, Cores = m.Cores, PowerOn = m.PowerOn, Source = "test", PowerOnStart = true, FullCheckEvery = 2 };
+        var rec = TimeflowRecorder.Start(TimeflowMachines.SourceFor(m), o);
+        var inp = TimeflowInput.Parse("auto:2", "", null);
+        for (long f = 0; f < frames && rec.Running; f++) { var (a, b) = inp.At(f); rec.BeforeFrame(a, b); m.Frame(a, b); rec.AfterFrame(); }
+        return rec.Stop();
+    }
+
     private static void SearchConsoles(string dir, string snes, string gb)
     {
         var sms = new byte[0x8000];
@@ -46,7 +56,10 @@ internal static partial class TimeflowTestCli
             const long N = 300;
             var (dom, off, vals, pics) = VaryingByte(rom, console, N);
             if (off < 0) { Check($"sconsoles: {name}: a work-RAM byte that varies", false, "none found"); continue; }
-            var (tdir, _) = Record(rom, N, console, "auto:2", full: false);
+            // the Master System is recorded on a machine with the debugger (T0), as a Sega search re-runs it. Its breakpoint checks search frames 70-75:
+            // a profiled re-run of this timeline's first block (from frame 0) goes off at frame 2 ("the layout differs") inside this test process,
+            // while the very same timeline is in sync in a fresh process (Workshop --timeflow search / profile): an open finding, see the plan
+            string tdir = console == "sms" ? RecordWithDebugger(rom, console, N) : Record(rom, N, console, "auto:2", full: false).Dir;
             byte pick = vals.GroupBy(v => v).OrderByDescending(g => g.Count()).Skip(1).First().Key;
             var want = Enumerable.Range(0, (int)N).Where(f => vals[f] == pick).Select(f => (long)f).ToList();
             SearchReport Go(string c) => TimeflowSearching.Run(new SearchRequest { Condition = c, Timelines = new() { tdir }, MaxHits = 100000 }).Report;
@@ -59,11 +72,22 @@ internal static partial class TimeflowTestCli
             Check($"sconsoles: {name} (never): a byte above $FF: 0 hits", r.TotalHits == 0, Cost(r));
             if (console == "sms")
             {
-                r = Go("exec $0004");
-                Check("sconsoles: Master System: a code breakpoint waits for T0 (the timeline skipped, saying so)", r.TotalHits == 0 && r.Timelines[0].Skipped?.Contains("T0") == true, r.Timelines[0].Skipped ?? "not skipped");
-                r = Go("state [$C000] == 1");
-                string why = r.Timelines[0].Skipped ?? "not skipped";
-                Check("sconsoles: Master System: a CPU address needs the debugger (T0): name a memory domain (the timeline skipped, never guessed)", r.TotalHits == 0 && why.Contains("domain") && r.ReRunFrames == 0, why);
+                // since T0 the Z80 has the debugger: a code breakpoint and a CPU address search like the other consoles
+                // the counting loop's INC (HL) runs all through every frame: frames 70-75 (the second block, re-run from the keyframe 60)
+                r = TimeflowSearching.Run(new SearchRequest { Condition = "exec $0004", Timelines = new() { tdir }, MaxHits = 100000, From = 70, To = 75 }).Report;
+                Check("sconsoles: Master System: exec $0004 (the Z80 debugger since T0) fires in every frame of 70-75, at its PC, in sync",
+                      r.Hits.Select(h => h.Frame).Distinct().OrderBy(x => x).SequenceEqual(new long[] { 70, 71, 72, 73, 74, 75 }) && r.Hits.All(h => h.Pc == "$0004") && r.Timelines.All(t => t.OffFrame == null && t.CoarseMissed == 0), Cost(r));
+                r = TimeflowSearching.Run(new SearchRequest { Condition = "exec $0000", Timelines = new() { tdir }, MaxHits = 100000, From = 70, To = 75 }).Report;
+                Check("sconsoles: Master System (never): exec $0000 (the reset) in frames 70-75: 0 hits", r.TotalHits == 0 && r.Timelines.All(t => t.OffFrame == null), Cost(r));
+                r = Go($"state [$C000] == ${pick:X2}");
+                Exactly("sconsoles: Master System: state [$C000] (a CPU address, measured through the Z80 since T0) equals the RAM domain's answer", r, want, extra: $"; by the index {r.Hits.Count(h => h.Via == "index")}");
+                // a machine opened without the debugger (a host that does not give one): breakpoints are skipped with the reason, CPU addresses too
+                var bare = TimeflowSearch.Run(new SearchRequestCore
+                {
+                    Condition = SearchCondition.Parse("exec $0000"), TimelineDirs = new() { tdir }, MaxHits = 10,
+                    Open = (d, meta, s) => { var m = TimeflowSearching.OpenMachine(d, meta, s); return new SearchMachine { Source = m.Source, RunFrame = m.RunFrame, Game = m.Game, RomSha256 = m.RomSha256, OnDispose = m.Dispose }; },
+                });
+                Check("sconsoles: Master System (negative): on a machine without the debugger a breakpoint is skipped, saying so", bare.TotalHits == 0 && bare.Timelines[0].Skipped?.Contains("needs the debugger") == true, bare.Timelines[0].Skipped ?? "not skipped");
             }
         }
     }

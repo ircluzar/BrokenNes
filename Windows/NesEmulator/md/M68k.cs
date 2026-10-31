@@ -481,6 +481,12 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
 
     private bool traceDue;
 
+    /// <summary>The instruction that just ran had the trace bit set: the next <see cref="Step"/> takes the trace exception (for the debugger).</summary>
+    public bool TraceDue => traceDue;
+
+    /// <summary>The handler group an opcode word decodes to (0 = illegal), from the table the core executes by: the debugger's disassembler takes the set of legal opcodes from here.</summary>
+    internal static byte DecodeGroup(ushort opcode) => Table[opcode];
+
     /// <summary>The processor stopped by a double fault (an address error while stacking one); only a reset restarts it.</summary>
     public bool Halted;
 

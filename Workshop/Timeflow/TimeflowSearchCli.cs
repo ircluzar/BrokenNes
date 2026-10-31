@@ -41,7 +41,7 @@ internal static class TimeflowSearching
     /// <summary>The Workshop's machine for a timeline (the movie machine: its ROM from the store, its cores; the debugger where the console has one).</summary>
     public static SearchMachine OpenMachine(string dir, TimelineMeta meta, IReadOnlyList<string> symbols)
     {
-        bool dbg = meta.Console is not ("sms" or "gg" or "md");
+        const bool dbg = true;   // every console has the debugger (the Sega consoles since T0)
         var m = TimeflowMachines.OpenFor(dir, meta, dbg, dbg ? symbols : null);
         return new SearchMachine
         {

@@ -158,9 +158,12 @@ namespace BrokenNes.Windows.DebugWindows
                 "nes" => new[] { ".mlb" },
                 "snes" or "widemess" or "wms" => new[] { ".sym" },
                 "gb" or "gbc" => new[] { ".sym", ".noi" },
+                "sms" or "gg" => new[] { ".sym", ".noi" },   // WLA-DX (wla-z80) and devkitSMS (SDCC)
+                "md" => new[] { ".sym", ".txt" },             // GNU nm output (SGDK writes it as symbol.txt beside rom.bin)
                 _ => Array.Empty<string>(),
             };
             foreach (var ext in exts) { string p = Path.ChangeExtension(rom, ext); if (File.Exists(p)) return p; }
+            if (console.Equals("md", StringComparison.OrdinalIgnoreCase) && Path.GetDirectoryName(rom) is { } dir && File.Exists(Path.Combine(dir, "symbol.txt"))) return Path.Combine(dir, "symbol.txt");
             return null;
         }
 
@@ -314,8 +317,7 @@ namespace BrokenNes.Windows.DebugWindows
                 uint bytes = c.FetchBytes(p);
                 var ic = c.Classify(bytes);
                 int len = Math.Max(1, ic.Length);
-                var b = new byte[len];
-                for (int k = 0; k < len; k++) b[k] = (byte)(bytes >> (8 * k));
+                var b = c.InstructionBytes(p, len);
                 string text = c.Disassembler.Format(p, b, c.Context, d == null ? null : x => { var s = d.SymbolAt(c, x); return s != null && !s.Contains('+') ? s : null; });
                 string? label = d?.SymbolAt(c, p);
                 if (label != null && !label.Contains('+')) lines.Add($"           {label}:");

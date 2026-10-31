@@ -108,8 +108,8 @@ internal static class Tools
 
         Add("open_rom",
             "Opens a ROM in a new HEADLESS session: BrokenNes's own emulator inside this server, invisible, deterministic, as many at once as you like (no Mesen, no lock). " +
-            "Any console: NES (default cores CPU/PPU/APU FIX, as the desktop app), SNES, WideMess (.wms), Game Boy / Color, Master System, Game Gear, Genesis. The debugger covers the NES, SNES (65816 + SPC700), WideMess and Game Boy. " +
-            "Symbol files (.mlb NESFab/Mesen, WLA-DX .sym, GBDK .sym/.noi) give names to addresses. checks:true turns the D4 hardware checks and the profiler on from power-on (needed for 'RAM read before written').",
+            "Any console: NES (default cores CPU/PPU/APU FIX, as the desktop app), SNES, WideMess (.wms), Game Boy / Color, Master System, Game Gear, Genesis. The debugger covers every console: NES, SNES (65816 + SPC700), WideMess, Game Boy, Master System / Game Gear (Z80), Genesis (cpu main the 68000, cpu z80 its sound CPU). " +
+            "Symbol files (.mlb NESFab/Mesen, WLA-DX .sym (also wla-z80), GBDK / devkitSMS .sym/.noi, GNU nm output such as SGDK's symbol.txt for the 68000) give names to addresses. checks:true turns the D4 hardware checks and the profiler on from power-on (needed for 'RAM read before written').",
             Schema(("path", P("string", "the ROM file (.nes .sfc .smc .wms .gb .gbc .sms .gg .md .bin, or a .zip)"), true),
                    ("console", P("string", "force a console: nes, snes, wms, gb, gbc, sms, gg, md (default: detected from the ROM)"), false),
                    ("cpu", P("string", "CPU core id (default: the console's default, NES FIX)"), false), ("ppu", P("string", "PPU core id"), false), ("apu", P("string", "APU core id"), false),
@@ -537,7 +537,7 @@ internal static class Tools
             "(the recorded pads replayed, every frame checked against the recording: a desync is reported with its frame, never hidden) with every instruction of every debuggable CPU, every memory access, " +
             "the call stack, chip events and the named variables (the symbols' data symbols) seen by your queries. Nothing is stored unless store is true; then the profile is kept in the timeline's " +
             "profiles folder (its own size limit and time to live) and deleted when this MCP server stops unless keep is true. Query it later with timeflow_profile_query. " +
-            "The Master System, Game Gear and Genesis cannot be profiled until their CPUs' debugger exists (T0): refused with the reason.",
+            "Every console, the Master System, Game Gear and Genesis (68000 and its Z80) included (T0).",
             Schema(("timeline", P("string", "a timeline id (timeflow_list) or folder"), true), ("from", P("integer", "the first frame profiled"), true), ("to", P("integer", "the last frame profiled (included)"), true),
                    ("queries", P("string[]", QueriesDesc), false), ("symbols", P("string[]", "symbol files (.mlb, .sym, .noi): names in the answers, symbols in the queries, the variables followed"), false),
                    ("vars", P("string[]", "follow only these variables (default: every data symbol)"), false), ("store", P("boolean", "keep the profile (for later queries or the desktop's scrubbing; default false)"), false),
@@ -598,7 +598,7 @@ internal static class Tools
             "'exec <addr|range|symbol> [cpu C] [if <expr>]' (code ran), 'read|write|access <spec> [if value == $5A]' (memory, all mirrors and DMA), 'state <expr>' (memory / watched variables at the frame's end: '[enemy_hp] > 0 && [enemy_x] < 240'; a memory domain '[WRAM:$10]'), " +
             "'finding [<text>]' (a hardware-check finding first seen in the frame), 'picture changed|still', 'color #RRGGBB [in X Y W H] [min N] [tol T]', 'sound silent [below L] | sound above L', 'channel <name> silent|playing'. " +
             "Example: 'state [enemy_alive] != 0 and not color #982220' (an enemy alive but not drawn). Hits: timeline, frame, cycle, PC, the instruction, access and call stack (for a breakpoint), and what each clause saw; " +
-            "each is a jump target (timeflow_jump) and a span to profile (timeflow_profile). Per clause: how the coarse phase decided it and its false-candidate rate. The Sega consoles take state / picture / sound clauses until T0.",
+            "each is a jump target (timeflow_jump) and a span to profile (timeflow_profile). Per clause: how the coarse phase decided it and its false-candidate rate. Every console (the Sega consoles with the Z80 / 68000 debugger since T0); a channel needs a sound monitor (none on the Sega consoles yet).",
             Schema(("condition", P("string", "the condition (see above)"), true), ("timeline", P("string[]", "timeline ids or folders (default: all of the corpus, or of project / game)"), false),
                    ("project", P("string", "a BrokenDev project's timelines"), false), ("game_dir", P("string", "a Timeflow game folder's timelines"), false),
                    ("symbols", P("string[]", "symbol files (.mlb, .sym, .noi): names in the condition and the answers"), false), ("from", P("integer", "first frame searched in each timeline"), false),

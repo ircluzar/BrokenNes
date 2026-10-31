@@ -49,6 +49,7 @@ public sealed class SymbolTable
         {
             ".mlb" => ReadMlb(lines, path),
             ".noi" => ReadNoi(lines, path),
+            _ when IsNm(lines) => ReadNm(lines, path),
             _ => lines.Any(l => l.TrimStart().StartsWith("DEF ", StringComparison.Ordinal)) ? ReadNoi(lines, path) : ReadSym(lines, path, console),
         };
         InferSizes(got);
@@ -131,13 +132,13 @@ public sealed class SymbolTable
                 "R" or "NesInternalRam" => "ram",
                 "S" or "NesSaveRam" or "W" or "NesWorkRam" => "sram",
                 "G" or "NesMemory" or "NesRegister" => "cpu",
-                "SnesPrgRom" or "GbPrgRom" => "rom",
-                "SnesWorkRam" or "GbWorkRam" => "wram",
-                "SnesSaveRam" or "GbCartRam" => "sram",
+                "SnesPrgRom" or "GbPrgRom" or "SmsPrgRom" => "rom",
+                "SnesWorkRam" or "GbWorkRam" or "SmsWorkRam" => "wram",
+                "SnesSaveRam" or "GbCartRam" or "SmsCartRam" => "sram",
                 "SnesRegister" or "GbRegister" => "io",
                 "SpcRam" => "spc",
                 "GbHighRam" => "hram",
-                "SnesMemory" or "GbMemory" or "SpcMemory" => "cpu",
+                "SnesMemory" or "GbMemory" or "SpcMemory" or "SmsMemory" => "cpu",
                 _ => "",
             };
             if (domain == "") continue;
@@ -167,7 +168,8 @@ public sealed class SymbolTable
     {
         var list = new List<DebugSymbol>();
         string section = "[labels]";
-        bool gb = console is "gb" or "gbc";
+        // banked 16-bit CPU addresses: the Game Boy, and the Z80 consoles (WLA-DX's wla-z80 and devkitSMS write "bank:address" too)
+        bool gb = console is "gb" or "gbc" or "sms" or "gg" or "sg" or "z80";
         foreach (var raw in lines)
         {
             string line = raw.Trim();
@@ -210,6 +212,42 @@ public sealed class SymbolTable
             if (name.StartsWith("l__") || name.StartsWith("s__") || name.StartsWith("b_") || name.StartsWith("___bank") || name.StartsWith(".__.")) continue;
             if (!DebugExpr.TryParseNumber(parts[2], out long v)) continue;
             list.Add(new DebugSymbol { Name = name, Domain = "cpu", Address = (uint)(v & 0xFFFF), Bank = (int)(v >> 16), File = file });
+        }
+        return list;
+    }
+
+    // ------------------------------------------------------------------------------------------------------------- GNU nm (SGDK's symbol.txt)
+    // "00ff0000 B _ram" / "00000200 T main" / "00ff0010 00000004 B player_x" (nm -S): an address, an optional size, a type letter, a name. The Genesis's toolchains (SGDK,
+    // a gcc m68k-elf build) write it; every name is a 68000 address. Absolute values (type A, a, and the linker's own __ names) are constants, skipped.
+    private static readonly Regex Nm = new(@"^([0-9A-Fa-f]{8})\s+(?:([0-9A-Fa-f]{8})\s+)?([A-Za-z])\s+(\S+)", RegexOptions.Compiled);
+
+    private static bool IsNm(string[] lines)
+    {
+        int seen = 0, ok = 0;
+        foreach (var raw in lines)
+        {
+            string line = raw.Trim();
+            if (line.Length == 0) continue;
+            if (++seen > 20) break;
+            if (Nm.IsMatch(line)) ok++;
+        }
+        return seen > 0 && ok * 2 > seen;
+    }
+
+    private static List<DebugSymbol> ReadNm(string[] lines, string file)
+    {
+        var list = new List<DebugSymbol>();
+        foreach (var raw in lines)
+        {
+            var m = Nm.Match(raw.Trim());
+            if (!m.Success) continue;
+            char type = m.Groups[3].Value[0];
+            string name = m.Groups[4].Value;
+            if (type is 'A' or 'a' or 'U' or 'w' or 'W' || name.StartsWith("__") || name.StartsWith(".L")) continue;
+            uint addr = uint.Parse(m.Groups[1].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture) & 0xFFFFFF;
+            var s = new DebugSymbol { Name = name, Domain = "cpu", Address = addr, File = file };
+            if (m.Groups[2].Success && uint.TryParse(m.Groups[2].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint size) && size > 0) { s.Size = (int)Math.Min(size, 0x10000); s.SizeKnown = true; }
+            list.Add(s);
         }
         return list;
     }

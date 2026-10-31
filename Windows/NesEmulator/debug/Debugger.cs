@@ -578,7 +578,7 @@ public sealed class Debugger
         if (ic.Flow is FlowKind.Call or FlowKind.Software)
         {
             st.CallPending = true;
-            st.CallKind = CallName(cpu, (byte)bytes);
+            st.CallKind = cpu.Disassembler is DisasmM68k ? DisasmM68k.CallName((int)((bytes & 0xFF) << 8 | (bytes >> 8))) : CallName(cpu, (byte)bytes);
             st.CallPc = pc;
             st.CallReturnPc = cpu.NextAddress(pc, ic.Length);
             st.CallTargetSpExpected = cpu.StackAfterPush(sp, ic.PushBytes);
@@ -674,6 +674,15 @@ public sealed class Debugger
         Span<SpaceKey> keys = stackalloc SpaceKey[1];
         keys[0] = key;
         OnAccessKeys(cpu, ca, keys, address, value, write, source, channel);
+    }
+
+    /// <summary>A Z80 I/O port access (the Sega consoles): the observers see it at <paramref name="observerAddress"/> ($10000 + the port, outside the memory's
+    /// addresses), the watches match <paramref name="key"/> (the port the console decodes) and show <paramref name="port"/>.</summary>
+    internal void OnPortAccess(DebugCpu cpu, SpaceKey key, uint observerAddress, uint port, byte value, bool write)
+    {
+        var obs = observers;
+        for (int i = 0; i < obs.Length; i++) obs[i].OnAccess(cpu, observerAddress, value, write, AccessSource.Cpu, -1);
+        OnAccessKey(cpu, key, port, value, write, AccessSource.Cpu, -1);
     }
 
     private void OnAccessKeys(DebugCpu cpu, CpuArmed ca, Span<SpaceKey> keys, uint address, byte value, bool write, AccessSource source, int channel)
@@ -965,7 +974,7 @@ public sealed class Debugger
             for (int i = 0; i < 4; i++) bytes[i] = r.Byte(i);
             var ctx = c.ContextOf(in r);
             Func<uint, string?>? label = labels && Symbols.All.Count > 0 ? a => ExactSymbol(c, a) : null;
-            sb.Append(c.Disassembler.Format(r.Pc, bytes[..Math.Max(1, (int)r.Length)], ctx, label));
+            sb.Append(c.Disassembler.Format(r.Pc, bytes[..Math.Clamp((int)r.Length, 1, 4)], ctx, label));   // a record keeps four bytes (the 68000's disassembler reads the rest)
             if (r.Ea >= 0) sb.Append(" [").Append(((uint)r.Ea).ToString(c.AddressDigits == 6 && r.Ea > 0xFFFF ? "X6" : "X4")).Append("] = $").Append(r.EaValue.ToString("X2"));
         }
         int pad = start + 40 - sb.Length;
