@@ -1984,6 +1984,8 @@ namespace NesEmulator
 		}
 		public byte PeekPrgRam(int index) => cartridge != null ? cartridge.PeekPrgRam(index) : (byte)0;
 		public void PokePrgRam(int index, byte val) { cartridge?.PokePrgRam(index, val); }
+		// The iNES header's battery flag: the cartridge keeps its save memory across power-off.
+		public bool HasBatteryFlag => cartridge != null && cartridge.hasBattery;
 
 		// === Mapper-side battery-backed storage (see IMapper.ExportNonVolatileMemory) ===
 		//

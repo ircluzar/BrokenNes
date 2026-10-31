@@ -135,7 +135,7 @@ internal static partial class BrokenDevCli
     /// One run of BrokenDev's emulator-neutral compat contract (BrokenDev/lib/Compat.ps1 describes it): the spec names the ROM, the frames, the
     /// pad script, the bytes to record every frame and the frames to picture; this writes <c>result.txt</c> and <c>shot_NNNNN.png</c> into the
     /// spec's out folder, exactly as the Mesen, BizHawk, FCEUX and Snes9x adapters do, so BrokenNes is the reference column of the same table.
-    /// The battery save (a NES mapper's flash, a SNES cartridge's SRAM) is read from and written back to the spec's savedir as brokennes.sav:
+    /// The battery save (a NES mapper's flash or its battery PRG-RAM at $6000, a SNES cartridge's SRAM) is read from and written back to the spec's savedir as brokennes.sav:
     /// a second run with the same savedir is a fresh boot that finds the game's save.
     /// Exit: 0 the run reached its last frame, 1 the game crashed, 2 a bad spec or a missing file.
     /// </summary>
@@ -696,9 +696,28 @@ internal static partial class BrokenDevCli
 
         public int PeekCpu(uint addr) => addr < 0x2000 ? nes.PeekSystemRam((int)(addr & 0x7FF)) : throw new ArgumentException($"expect.memory on the NES reads system RAM ($0000-$1FFF), not ${addr:X4}");
 
-        public byte[]? ExportBattery() => nes.ExportMapperBatteryMemory();
+        // A mapper's own battery memory (mapper 30's self-flash) first; otherwise a battery cartridge's PRG-RAM at $6000 (MMC1, MMC3, ...),
+        // which the desktop app keeps as <gameId>.sav. Before 2026-10-31 only the first was carried, so a battery-RAM game's compat
+        // 'continue' scenario booted with no save on BrokenNes alone (found certifying VRUN's MMC3 build).
+        public byte[]? ExportBattery()
+        {
+            if (nes.HasMapperBatteryMemory) return nes.ExportMapperBatteryMemory();
+            int size = nes.GetPrgRamSize();
+            if (!nes.HasBatteryFlag || size <= 0) return null;
+            var ram = new byte[size];
+            for (int i = 0; i < size; i++) ram[i] = nes.PeekPrgRam(i);
+            return ram;
+        }
 
-        public string ImportBattery(byte[] data) => nes.HasMapperBatteryMemory ? nes.ImportMapperBatteryMemory(data).ToString() : "the cartridge has no mapper-side battery memory";
+        public string ImportBattery(byte[] data)
+        {
+            if (nes.HasMapperBatteryMemory) return nes.ImportMapperBatteryMemory(data).ToString();
+            int size = nes.GetPrgRamSize();
+            if (!nes.HasBatteryFlag || size <= 0) return "the cartridge has no battery memory";
+            if (data.Length != size) return $"rejected: {data.Length} bytes, the battery PRG-RAM is {size}";
+            for (int i = 0; i < size; i++) nes.PokePrgRam(i, data[i]);
+            return $"battery PRG-RAM ({size} bytes)";
+        }
 
         public NesEmulator.Debugging.DebugMachine DebugMachine() => NesEmulator.Debugging.DebugMachines.For(nes);
 
