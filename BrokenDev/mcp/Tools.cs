@@ -558,7 +558,7 @@ internal static class Tools
                    ("verdicts", P("string[]", "tests to evaluate over the replayed span (see above)"), false),
                    ("branch", P("boolean", "record the new future as a branch (default true; verdicts need it)"), false),
                    ("compare_old", P("boolean", "also evaluate each verdict on the old future (default true)"), false)),
-            a => Wrap(() => TimeflowTools.Hotpatch(a, verdicts: true)), ro: true);
+            a => Wrap(() => TimeflowTools.Hotpatch(a, verdicts: true)));   // not read-only: it records the branch
 
         Add("timeflow_verdict",
             "Evaluates written tests over a span of any timeline (a hotpatch branch, its parent, a recording): 'never <condition>', 'sometime <condition>', 'always <condition>' (timeflow_search conditions; " +

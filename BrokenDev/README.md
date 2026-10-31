@@ -59,7 +59,9 @@ BrokenDev\brokendev.ps1 timeflow resume <timeline> -Frame 600                   
 BrokenDev\brokendev.ps1 timeflow profile <timeline> -From 600 -To 780 -Query "writes player_hp; histogram"   # T3: that span at full depth, the answers only
 BrokenDev\brokendev.ps1 timeflow record vrun-nes -Scenario play -Index                         # T4: with the search index (coverage, access counts, checks)
 BrokenDev\brokendev.ps1 timeflow search vrun-nes -Query "state [enemy_alive] != 0 and not color #982220"   # T4: the frames where it held, over the project's timelines
-BrokenDev\brokendev.ps1 bisect vrun-nes -Movie first-room -Test "[player_hp] >= 1 at 900"     # the first of the game's commits where it breaks
+BrokenDev\brokendev.ps1 timeflow patch <timeline> -Frame 600 -Patch "fix_x+1=21>10" -Verdict "never write hp by fill_table"   # T5: byte patches from frame 600, the replay, the divergence, the verdict
+BrokenDev\brokendev.ps1 timeflow rebuild-resume <timeline> -Frame 600 -Verdict "never state [hp] == 0"   # T5: the project rebuilt, frame 600 resumed on it (the symbol-map check; the manifest's timeflow.safe)
+BrokenDev\brokendev.ps1 timeflow verdict-promote <timeline> -Verdict "never ..." -Name hp-safe -Why "..."   # T5: a verdict into the project's verify, by this command onlyBrokenDev\brokendev.ps1 bisect vrun-nes -Movie first-room -Test "[player_hp] >= 1 at 900"     # the first of the game's commits where it breaks
 
 # the music path, Phase 0 (no plugin): a MIDI file -> VRUN's converter -> a one-song ROM -> BrokenNes, checked frame by frame
 BrokenDev\tools\music-replay-check.ps1 -Mid some.mid -Name mysong -Frames 2400 -Template

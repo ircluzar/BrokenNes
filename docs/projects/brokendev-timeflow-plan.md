@@ -1,8 +1,9 @@
 # BrokenDev Timeflow: rewind, deep profiling, hotpatch and a searchable gameplay corpus
 
-Status: **T0 (the debugger on the Sega CPUs), T1 (the timeline format), T2 (rewind and resume), T3 (profiled spans) and T4 (search)
-built** on 2026-10-30 (see "T1 as built", "T2 as built", "T3 as built", "T0 as built" and "T4 as built" at the end): rewind, profiling and
-search on every console. Next: T5 (hotpatch).
+Status: **T0 (the debugger on the Sega CPUs), T1 (the timeline format), T2 (rewind and resume), T3 (profiled spans), T4 (search) and T5
+(hotpatch and resume) built** on 2026-10-30 (see "T1 as built" ... "T5 as built" at the end): rewind, profiling, search and hotpatch on every
+console. Next: the three VRUN games on Sega (docs/projects/sega-vrun-ports-plan.md): its cross-console comparison replaces T6 (re-checking after
+rebuilds is kept), and the ports themselves are T7's proof on a real bug.
 
 ## The idea (the user's words, condensed)
 
@@ -695,7 +696,7 @@ hotpatch, resume.
   Genesis (the bind refusal keys on `HasDebugger`, no console list; `sconsoles` and the MCP check now find on the Master System). Still open there:
   `DebugSound` has no PSG / YM2612 monitor, so `channel` is refused on the Sega consoles (`sound above|silent` works), and the Sega timelines'
   access counts (`FrameAccesses`) were not measured here (T0's own `index-sega` group covers their coverage).
-- **Found on the way (open, for T0's owner):** inside the `--timeflow-test` process, a profiled re-run of a Master System timeline's first
+- **Found on the way (fixed in T5, see "T5 as built"; it was not a process-wide static: a Sega state held the sound its host had not read):** inside the `--timeflow-test` process, a profiled re-run of a Master System timeline's first
   block (from frame 0, either from a fresh power-on or from the loaded frame-0 state) goes off at frame 2: "the whole state at a keyframe (the
   layout differs: the machine is not the one recorded)", the recording having written frame 2 as a keyframe (its layout changed there). The very
   same timeline (kept with `--keep`) profiles and searches in sync from frame 0 in a fresh process (`--timeflow profile --from 0`, `--timeflow
@@ -708,3 +709,122 @@ hotpatch, resume.
   memory candidates on busy pages (finer pages, or the access counts by exact address for the symbols a project watches); searching a running
   game the user plays (a search is over recorded timelines only); a `timeflow_search` that keeps its re-runs as profiles (today it re-runs and
   answers; profile a hit with `timeflow_profile`).
+
+## T5 as built (2026-10-30): hotpatch and resume
+
+- **First, T4's open finding (fixed at its cause):** it was not a process-wide static. A Master System / Game Gear / Genesis state held **the sound
+  its host had not read yet**: `BandLimitedMixer.SaveState` wrote the read position and every finished sample still waiting (the PSG's and the
+  Genesis FM's mixers). The test's recording host never read the sound, so its states grew by ~736 samples a frame (the layout changed at frame 1,
+  2, ...); the search's profiled re-run reads the sound every frame (its `sound` clauses), so its state at frame 2 had another layout: "the layout
+  differs". (The CLI and MCP runs the finding compared were the same kind of host on both sides.) The fix: the timeline's form of a Sega state
+  (`IConsoleSession.SaveStatePayload`, inside `BandLimitedMixer.HostIndependent()`) is the machine's own: written as if every finished sample had been
+  read, the DC integrator carried over them with `Read`'s very operations, so a host that reads every frame, every 3rd or never gives the same bytes.
+  A save state file (`SaveState`) is unchanged: it keeps the unread samples, so a restored session goes on sample for sample (`--md-state-test` 168
+  of 168; a first try that changed the file form too failed 35 of its checks, which is why the form is Timeflow's only). Also fixed on the way: a
+  mixer whose host had not read for longer than its 4096-sample ring wrote new samples over unread ones (two times' sound mixed, the DC state with
+  it); it now integrates and drops the oldest finished samples exactly as a read would (`Consume`). Tests: `--timeflow-test` group **`sdrain`** (15
+  checks: the Master System tone program, Sonic 2 SMS, Sonic GG, Sonic and the test ROM on the Genesis; three hosts' states equal at all 600
+  frames; **negative**: the save-state file form differs between the hosts from frame 1; the sound a reader hears is the same at either pace and a
+  host that never read gets the last 4000 samples bit for bit (the Genesis output pairs its FM and PSG streams by what each has finished, so its
+  pace check is informational: the same before the fix); a build with the ring guard switched off fails the never-read checks); `sconsoles` searches
+  `exec $0000` **from frame 0** again (one hit, frame 0, in sync over the whole timeline). The Sega gate: 16 of 19 steps pass, the 3 failing steps
+  fail identically on the merge base 75c516a (`sega-test`'s Consoles.All checks, `md-golden`'s Titan Overdrive 1 frame 1007, `smstest`'s two
+  WMS:WMSS picture swaps): nothing new.
+- **The engine** (`Windows/NesEmulator/debug/timeflow`): `TimeflowHotpatch.cs` (`RomPatch`, `HotpatchMachine` and its opener, `ResumeCheck`,
+  `HotpatchRequest` / `HotpatchReport`, `TimeflowHotpatch.Run`, `CompareRecorded`, `DivergeRecorded`), `TimeflowVerdict.cs` (`VerdictTest`,
+  `VerdictResult`, `TimeflowVerdict.Evaluate`); the search's new **`by <function>`** after a breakpoint's address (the firing instruction is that
+  function's own code, or that function is the innermost call frame: `write hp by fill_table`); `TimelineMeta.Hotpatch / Patches / BaseRomSha256 /
+  Build` (written only on a hotpatched branch: older descriptions keep their size); `ProfileMachine.OpenForHotpatch` (the desktop's machines).
+- **Byte patches.** `AT=OLD>NEW` (`ft_limit+1=21>10`, `rom:$72=E0 21>E0 10`, `z80@$0100=00>C9`): AT is any debugger spec of the CPU: a symbol, a
+  CPU address (read through the banks mapped **at the rewound frame**: the ROM key the debugger's canonical keys give; a patch must be ROM and
+  contiguous there), a banked address, a ROM offset. Every patch is resolved and every old byte checked before anything is written: one mismatch
+  refuses them all ("refused, nothing applied: ... holds 21, not 10"), no branch is made. The patched ROM *file* is the stored ROM with the bytes
+  changed at their file offset (the header length whose bytes there are the old ones: 0, 16, 512, 528, or the file less the ROM); the patched game
+  is a machine **opened on that file** with the frame's state loaded (a NES state names its ROM by hash: a machine of the old ROM poked in place
+  recorded states its branch could not be jumped into later, found by the first run). A state that carries its own copy of the ROM (a
+  self-flashing board, VRUN's mapper 30) has the old build's bytes in it replaced by the new file's and keeps the bytes the game flashed itself
+  (where the state differs from the old ROM), said in the notes. Works on every console (`hconsoles`: NES, the SNES and Game Boy test ROMs, the
+  Master System, the Genesis).
+- **Rebuild-resume.** The new build's ROM and symbols (Workshop `--rom --sym-new`; BrokenDev builds the project; MCP `project` + `build`). The old
+  machine replays from the timeline's start (or 600 frames before the frame when far) with the call stack tracked, then **the symbol-map check** at
+  the frame start: the PC and every return address on each CPU's call stack must be the **same function and offset in both builds** (the nearest
+  symbol at or before it, however far: the display's 256-byte size cap does not apply) **and the same code there** (the instruction at the PC; the
+  call before a return address: a function that kept its place but whose code before that point changed is not the same code). A place no symbol
+  names in either build (a toolchain's start-up, a library routine) is the same only when the 32 ROM bytes around it are. Refused with the reason
+  ("main pc $C063 is slow_inner+$1 in the old build but slow_outer in the new one; slow_inner is at prg:$65 in the new build"; on the GBDK game:
+  "return of CALL at $08EB $08EE is _main+$127 in both builds, but the code before it (the call that returns there) differs") and **the nearest safe
+  resume point** offered: the old build runs on frame by frame (still checked against the recording) to the first frame start where the check holds
+  and, when the manifest names `timeflow.safe` (or `--safe` / MCP `safe`), whose PC is in one of those functions. `--at-safe` resumes there (said).
+  The new build then takes the frame's RAM and registers (a state its layout does not take is refused: "its memory layout changed").
+- **The new future and the divergence.** The recorded pads replay on the patched machine, **recorded as a branch** of the timeline at that frame
+  (its parent, its patches, the patched ROM stored by its sha256 in the game folder, `source hotpatch`; the index (coverage, access counts) when the
+  debugger is there; the build's symbols kept beside its ROM in `symbols\<sha256>\`, which `brokendev timeflow record` now does for every recording,
+  so a rebuild-resume has the old build's symbols after the rebuild overwrote the published ones). The old machine runs **in lockstep** with both
+  CPUs' trace rings on until the first instruction that differs (D5's comparison: PC, bytes, registers, the byte read; other CPUs said apart), and
+  each frame's picture and work RAM are compared with the recording: the first frame that differs, what (picture / RAM), and the variables that
+  differ after it by symbol (SymbolDiff, each build's own symbols). A recorded branch can be compared later (`diverge --timeline BRANCH`: the
+  recordings' hashes, then the two machines in lockstep).
+- **Verdicts** (decision 10): `never <condition>`, `sometime <condition>` (`must match`), `always <condition>` (frame-level: a breakpoint anchor is
+  refused), `query <T3 query> expect <field> <op> <value>` (`query writes hp expect total == 0`). Evaluated over the replayed span **on the branch**
+  (the patched future: T4's search and T3's profiler on the branch's own ROM) and, for comparison, **on the old future** (the timeline, the same
+  frames). Pass / fail with the evidence (the first hits with instruction and stack, the first frame that failed, the field's value); a span that
+  cannot be decided (a re-run out of sync, a skipped timeline) is a fail that says so, never a pass. **No automatic pinning** (decision 11):
+  `verdict-promote` (explicit, needs `-Why`) writes `<project>\verdicts\<name>.json` beside the manifest (the test, its frames, the pads from
+  power-on: the parent's before a branch's first frame); `brokendev verify` then records each on the build it verifies (a scratch folder, removed
+  after) and evaluates it: a failing verdict fails verify.
+- **Interfaces:**
+  - Workshop: `--timeflow patch --timeline T --frame F --patch "AT=OLD>NEW"... [--to B] [--sym F]... [--verdict "TEST"]... [--no-branch]
+    [--no-old] [--json]`, `rebuild-resume --timeline T --frame F --rom NEW [--sym OLD]... --sym-new NEW... [--safe f1,f2] [--scan N] [--at-safe]
+    [--build TEXT]`, `diverge` (the same arguments, no branch; or `--timeline BRANCH`), `verdict --timeline T --test "TEST"... [--from A] [--to B]`,
+    `verdict-promote --timeline T --test "TEST" --project P --manifests DIR --name ID --why TEXT`, `hotpatch-rom --out F --build planted|fixed|moved`;
+    `info` shows a branch's hotpatch, patches and kept symbols. `Workshop/Timeflow/TimeflowHotpatchCli.cs` is also what the MCP tools call.
+  - BrokenDev: `brokendev.ps1 timeflow patch <timeline> -Frame F -Patch "AT=OLD>NEW" [-Verdict "TEST"] [-To B]`, `rebuild-resume <timeline> -Frame F
+    [-NoBuild] [-Safe f1,f2] [-AtSafe] [-Verdict ...]` (the timeline's project built, its new ROM and symbols, the old build's kept ones, the
+    manifest's `timeflow.safe`), `diverge <branch>` or `diverge <timeline> -Frame F -Patch ...`, `verdict <timeline> -Verdict "TEST" [-From A] [-To B]`,
+    `verdict-promote <timeline> -Verdict "TEST" -Name id -Why text`.
+  - MCP (56 tools): **`timeflow_patch`** (timeline, frame, patches or rom + symbols_new or project (+ build), symbols, safe, at_safe, to, verdicts,
+    branch, compare_old), **`timeflow_resume`** with a patched ROM (timeline + frame + patches / rom instead of a session: the replay and the
+    divergence), **`timeflow_verdict`** (timeline, tests, from, to, symbols). New headless machines; no open session touched.
+  - The desktop app: Emulator > Debug Windows > Timeflow: a **Patch** box (patches, `;` between them), a **verdict** box and **Patch + resume** (from
+    the chosen frame of the chosen timeline, on headless machines: the user's game plays on, the app's debugger untouched); the result box shows the
+    resume, the branch (it appears under its parent in the list), the divergence and the verdict on the patched and the old future.
+    `GET /api/timeflow/hotpatch` reads the last one; no route starts one.
+- **The test game** (`Workshop/Timeflow/TimeflowHotpatchRoms.cs`, `hotpatch-rom`): T3's planted CPX corruption plus `slow`, a delay longer than a
+  frame called every 8th frame (so some frames start inside it, with `update`'s return on the stack), in three builds: planted, fixed (`CPX #$10`,
+  every routine in place) and moved (the fix and a NOP sled at `slow`'s start: `slow`'s loop and the NMI move).
+- **Tests** (each with a negative control):
+  - `--timeflow-test` group **`hotpatch`** (34 checks): search finds the planted write (`write hp by fill_table`; near miss: `write hp by check_hp`
+    0 while `read hp by check_hp` fires; an unknown `by` refused); the CPX operand patched at frame 10: the verdict "never write hp by fill_table"
+    PASSES on the patched future and **FAILS on the old one** with the write as evidence; the branch (parent, frame, patches, the patched ROM's sha256,
+    the base ROM) is reproducible (a jump into it proves equal and replays in sync, the patched byte there); the divergence: the CPUs part at frame
+    10 at `ft_limit`, the RAM first differs when the fixed ring wraps (idx back to 0), `idx` the variable; **near miss**: the same patch at frame 20 is
+    too late (idx already past $10) and the verdict fails, honestly; wrong old bytes refused with nothing applied (the other patch neither) and no
+    branch; a patch on RAM refused; a malformed patch refused; a patch that writes the bytes already there: no divergence; rebuild-resume with the fixed
+    build: safe, three verdicts (never, `query writes hp expect total == 0`, `always state [hp] == 5`) pass, each fails on the old future, the branch
+    keeps the new ROM; promotion: nothing promoted by itself, verdict-promote writes the test and the pads, verify plays it on the fixed build (PASS)
+    and the planted build (FAIL, the write), twice / no why refused, verify's recordings leave the store as it was; the moved build at frame 8 (it
+    starts in `slow_inner`): refused naming both builds, the safe point frame 10 in `main_loop` offered, `--at-safe` resumes there and the verdict
+    passes, the fixed build at the same frame is safe, no new symbols refused; verdicts on the recording (sometime PASS, always FAIL, query PASS), a
+    bad form and an anchored always refused; `diverge` on the recorded branch. Group **`hconsoles`** (16 checks): on the NES, the SNES and Game Boy
+    test ROMs, the Master System and the Genesis a patch at the frame's PC by CPU address resolves through the banks to a ROM and file offset,
+    applies and records a branch, the same bytes give no divergence, wrong bytes are refused; on the Master System `LD B,$40 -> $20` diverges in the
+    work RAM, the CPUs parting at the frame.
+  - The MCP client test **142 of 142** (8 new: timeflow_patch's verdict passes and fails on the old future, the branch and the divergence, wrong
+    bytes refused, a rebuild with a query verdict, timeflow_resume with a patched ROM, timeflow_verdict on the branch and the recording, a bad test).
+  - BrokenDev `run-tests`: the T5 case (a project built from `hotpatch-rom` with `timeflow.safe = [main_loop]`: record, search, patch with the
+    verdict, the text form, wrong bytes (exit 1, nothing applied), diverge on the branch, the source switched to the fix and `rebuild-resume` (built,
+    safe, passes), switched to the moved build (refused, safe point frame 10 in main_loop), `-AtSafe`, verdict on the branch and the recording,
+    verdict-promote then verify on the fixed build (PASS) and the planted build (FAIL)); and **a real Game Boy project built from source with
+    GBDK**: a scratch copy of the frozen V0 hello world (`tests\voc-v0.ps1 -SourceOnly`: the game repo only read), recorded with Right held, `main.c`
+    edited (the d-pad's right edge 160 -> 150), rebuilt and resumed at frame 60: safe, "never state [player_x] > 150" passes on the new future and
+    fails on the old one, the future diverges at frame 96; **negative**: an edit that grows the main loop (the call into `vsync` moves) is refused,
+    naming `_main+$127` and the changed code.
+  - `UAT/entrypoints/timeflow-hotpatch-desktop-smoke.ps1` (the real app, scratch config / saves / bugs / BrokenDev home, no sound device, the user's
+    `%APPDATA%\BrokenNes` listed before and after): **12 of 12** (the patch resumes, the verdict passes and fails on the old future, the divergence,
+    the branch under its parent, the game ran on, wrong bytes and a malformed patch refused, the app's debugger untouched, APPDATA unchanged).
+  - **The runs**: RUNS_PLACEHOLDER
+- **Left for later:** byte patches of CHR ROM / a second ROM space (the patch is on the CPU's ROM space); a patch of the running user's game (the
+  window patches a recorded timeline on headless machines, never the game being played); rebuild-resume across a change of the RAM layout (refused:
+  mapping variables by symbol between builds would be its next step); the safe point's scan is frame starts only (a mid-frame resume is not offered);
+  sound units that are not the Sega consoles' own (an NES-chip sound bridge's APU queue inside a Sega session) may still hold host-dependent
+  samples in a Sega state: not measured here.
