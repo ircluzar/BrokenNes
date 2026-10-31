@@ -133,14 +133,13 @@ hotpatch, resume.
 | **T3** | Profiled spans | Full-depth re-run of a span with streaming queries; temporary store with size limit and TTL; cleanup proven (nothing left behind). |
 | **T4** | Search | Two-phase search for all four condition kinds over many timelines; hits as jump targets; measured scan speed. |
 | **T5** | Hotpatch | Byte patches and rebuild-resume with the symbol-map safety check; divergence report; written-test verdicts. |
-| **T6** | Corpus | All sources (playtests, movies, bug captures, bots, agent sessions, play-until-it-happens requests), the 5 GB cap, retirement, re-sync on new builds with drift points. |
-| **T7** | Proof on a real bug | An agent uses only Timeflow (no new playing) to find, profile, hotpatch and verify a planted bug in a test ROM, and then a real one in one of the user's games. |
+| ~~T6~~ | Replaced | Replaced (the user's decision, 2026-10-30) by the Sega ports' cross-console comparison (docs/projects/sega-vrun-ports-plan.md, S0); its re-check after rebuilds is the one part kept. |
 
 ## Open questions (to settle as the work reaches them)
 
 1. The exact keyframe interval and page size per console (from T1's measurements). **Answered in T1:** one choice for every console, N 60, 1024-byte pages, Brotli 5 (see "T1 as built").
 2. Whether picture / sound search needs per-frame thumbnails or audio levels in the index, or re-rendering candidates is enough. **Answered in T4:** re-rendering (once per distinct picture) for now; a colour summary and an audio level are T6 items, with the numbers (see "T4 as built").
-3. Which of the user's games is T7's real-bug proof (Super VRUN's invisible enemies, if still open by then, is a natural candidate).
+3. ~~Which of the user's games is T7's real-bug proof~~ T7 dropped (2026-10-30): the Sega ports are the proof in use.
 4. How the desktop app asks the user to accept an agent's recording / play request (a non-blocking prompt in the app, like the
    no-sound notice). **Answered in T1:** a yellow bar under the menu bar, Allow / Decline, the game keeps running (see "T1 as built").
 5. Lite: whether Timeflow recording exists there (memory and storage are tighter in a browser) or stays desktop / Workshop / MCP.
