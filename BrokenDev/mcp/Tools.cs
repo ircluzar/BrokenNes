@@ -520,10 +520,58 @@ internal static class Tools
 
         Add("timeflow_resume",
             "After timeflow_jump: mode replay runs the timeline's recorded inputs on from the frame (every frame's picture and RAM, and the whole state at keyframes, checked against the recording: in sync, or the first frame off); " +
-            "mode live runs frames with this session's own input (input / run with a script set it): a branch, recorded as a new timeline whose parent is the jumped one when record is true.",
-            Schema(S(), ("mode", P("string", "replay or live", Enum("replay", "live")), true), ("frames", P("integer", "frames to run (replay default: to the timeline's end; live default 60)"), false),
-                   ("record", P("boolean", "live: record the branch as a timeline (default false)"), false)),
-            a => On(a, s => s.TimeflowResume(a.Req("mode").ToLowerInvariant(), a.Long("frames") ?? (a.Str("mode") == "live" ? 60 : -1), a.Bool("record", false))));
+            "mode live runs frames with this session's own input (input / run with a script set it): a branch, recorded as a new timeline whose parent is the jumped one when record is true. " +
+            "WITH A PATCHED ROM (T5): give timeline + frame and patches (byte patches) or rom + symbols_new (a new build) instead of a session: the recorded inputs replay from that frame on the patched ROM " +
+            "(new headless machines, recorded as a branch) and the answer says where the new future diverges from the old one (first frame, first instruction, differing variables); timeflow_patch also evaluates verdicts.",
+            Schema(("session", P("string", SessionDesc + " (not with a patched ROM)"), false), ("mode", P("string", "replay or live", Enum("replay", "live")), false), ("frames", P("integer", "frames to run (replay default: to the timeline's end; live default 60)"), false),
+                   ("record", P("boolean", "live: record the branch as a timeline (default false)"), false),
+                   ("timeline", P("string", "patched ROM: the timeline"), false), ("frame", P("integer", "patched ROM: the rewound frame"), false),
+                   ("patches", P("string[]", "patched ROM: byte patches 'AT=OLD>NEW' (ft_limit+1=21>10)"), false), ("rom", P("string", "patched ROM: a new build's ROM file (a rebuild-resume)"), false),
+                   ("symbols", P("string[]", "the timeline's (old build's) symbol files"), false), ("symbols_new", P("string[]", "a rebuild's symbol files"), false)),
+            a =>
+            {
+                if (a.List("patches").Count > 0 || a.Str("rom") is { Length: > 0 })
+                    return Wrap(() => TimeflowTools.Hotpatch(a, verdicts: false));
+                if (a.Str("session") is not { Length: > 0 }) throw new ToolError("timeflow_resume needs a session (after timeflow_jump), or timeline + frame + patches / rom for a patched ROM");
+                if (a.Str("mode") is not { Length: > 0 }) throw new ToolError("'mode' is required (replay or live)");
+                return On(a, s => s.TimeflowResume(a.Req("mode").ToLowerInvariant(), a.Long("frames") ?? (a.Str("mode") == "live" ? 60 : -1), a.Bool("record", false)));
+            });
+
+        // ------------------------------------------------------------------------------------------------ Timeflow (T5: hotpatch and resume, the verdict)
+        Add("timeflow_patch",
+            "Hotpatch and resume (docs/projects/brokendev-timeflow-plan.md, T5): from a rewound frame of a timeline, the game goes on with a changed ROM, on NEW headless machines (no open session is touched). " +
+            "Byte patches: patches ['AT=OLD>NEW'] (AT a symbol (ft_limit+1), a CPU address read through the banks mapped at that frame, a banked address 02:4000, or rom:$offset; the old bytes must match or nothing is applied). " +
+            "Rebuild: rom (the new build's ROM file) + symbols_new, or project (with build: true, BrokenDev builds it first): the frame's RAM and registers go into the new build after the symbol-map check " +
+            "(the PC and every return address on the call stack must be the same function and offset in both builds; else refused with the reason and the nearest safe resume point, a frame start in a function of safe [] when given; at_safe resumes there). " +
+            "Then the recorded inputs replay (recorded as a branch with its patches: reproducible) and the answer gives the divergence from the old future (first frame, first instruction, differing variables) " +
+            "and each verdict: a test you write, evaluated over the replayed span on the patched future and, for comparison, the old one: 'never <condition>' (a timeflow_search condition, e.g. 'never write hp by fill_table'), " +
+            "'sometime <condition>', 'always <condition>' (frame-level), 'query <timeflow_profile query> expect <field> <op> <value>' ('query writes hp expect total == 0'). Nothing is ever kept as a test by itself.",
+            Schema(("timeline", P("string", "a timeline id (timeflow_list) or folder"), true), ("frame", P("integer", "the rewound frame (the patched game starts at its start)"), true),
+                   ("patches", P("string[]", "byte patches 'AT=OLD>NEW'"), false), ("rom", P("string", "a rebuild: the new build's ROM file"), false),
+                   ("project", P("string", "a rebuild: the BrokenDev project whose current build (out\\<id>\\build.json) is the new ROM, with its symbols"), false),
+                   ("build", P("boolean", "with project: build it first (brokendev build; default false: its last build)"), false),
+                   ("symbols", P("string[]", "the timeline's (old build's) symbol files (default: none; a project's timeline: give its symbols)"), false),
+                   ("symbols_new", P("string[]", "the new build's symbol files (a rebuild; with project: its published ones)"), false),
+                   ("safe", P("string[]", "a rebuild: functions a refused resume may start in instead (the next frame start in one: e.g. main_loop, load_room)"), false),
+                   ("at_safe", P("boolean", "a rebuild: when the frame is refused and a safe point is found, resume there (default false: refuse and offer it)"), false),
+                   ("to", P("integer", "the last frame replayed (default: the timeline's last)"), false),
+                   ("verdicts", P("string[]", "tests to evaluate over the replayed span (see above)"), false),
+                   ("branch", P("boolean", "record the new future as a branch (default true; verdicts need it)"), false),
+                   ("compare_old", P("boolean", "also evaluate each verdict on the old future (default true)"), false)),
+            a => Wrap(() => TimeflowTools.Hotpatch(a, verdicts: true)), ro: true);
+
+        Add("timeflow_verdict",
+            "Evaluates written tests over a span of any timeline (a hotpatch branch, its parent, a recording): 'never <condition>', 'sometime <condition>', 'always <condition>' (timeflow_search conditions; " +
+            "'by <function>' after a breakpoint's address narrows it to that function: 'never write hp by fill_table'), or 'query <timeflow_profile query> expect <field> <op> <value>'. " +
+            "Each answer: PASS or FAIL with the evidence (the hits, the first frame that failed, the field's value); a span that cannot be decided (a re-run out of sync) is a FAIL that says so, never a pass. " +
+            "To keep one as a project test, the user (or you, when asked) runs brokendev.ps1 timeflow verdict-promote: nothing is promoted by itself.",
+            Schema(("timeline", P("string", "a timeline id or folder"), true), ("tests", P("string[]", "the tests"), true), ("from", P("integer", "first frame (default: the timeline's first)"), false),
+                   ("to", P("integer", "last frame (default: the timeline's last)"), false), ("symbols", P("string[]", "symbol files"), false)),
+            a => Wrap(() =>
+            {
+                try { return BrokenNes.Workshop.Timeflow.TimeflowHotpatching.Verdict(TimeflowTools.Find(a.Req("timeline")), a.List("tests"), a.Long("from"), a.Long("to"), a.List("symbols")).Json; }
+                catch (Exception e) when (e is IOException or FormatException or NotSupportedException or ArgumentException or InvalidDataException) { throw new ToolError(e.Message); }
+            }), ro: true);
 
         // ------------------------------------------------------------------------------------------------ Timeflow (T3: profiled spans)
         const string QueriesDesc =

@@ -56,6 +56,11 @@ public sealed class TimeflowOptions
     public int FullCheckEvery = 8;
     /// <summary>Frames that may wait for the writer before the emulation waits for it (it is never dropped).</summary>
     public int QueueFrames = 180;
+    /// <summary>T5: a hotpatched branch: "bytes" or "rebuild", its byte patches (as text), the ROM it was patched from (its sha256), what was built.</summary>
+    public string? Hotpatch;
+    public List<string>? Patches;
+    public string? BaseRomSha256;
+    public string? Build;
 }
 
 /// <summary>
@@ -160,6 +165,7 @@ public sealed class TimeflowRecorder : IDisposable
             ParentId = opt.ParentId, ParentFrame = opt.ParentFrame, KeyEvery = Math.Max(1, opt.KeyEvery), PageSize = Math.Max(16, opt.PageSize),
             Compression = opt.Compression, Level = opt.Level, Vars = opt.VarNames.ToList(), Coverage = opt.Coverage != null, Checks = opt.Checks != null, Accesses = opt.Accesses != null,
         };
+        if (opt.Hotpatch != null) { meta.Hotpatch = opt.Hotpatch; meta.Patches = opt.Patches?.ToList(); meta.BaseRomSha256 = opt.BaseRomSha256; meta.Build = opt.Build; }
         if (src.Header is { } h) { meta.Units = new Dictionary<string, string>(h.Units); meta.GameId = h.GameId; meta.Title = h.Title; }
         foreach (var d in src.Domains.Where(d => d.Unavailable == null && d.Kind != DomainKind.Rom && d.Size > 0)) meta.Domains.Add(new TimelineDomain { Id = d.Id, Size = d.Size });
         var w = new TimelineWriter(Path.Combine(TimeflowStore.TimelinesDir(gameDir), id), meta) { FullCheckEvery = opt.FullCheckEvery };

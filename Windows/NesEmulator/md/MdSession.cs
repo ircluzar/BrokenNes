@@ -127,7 +127,8 @@ public sealed class MdSession : IConsoleSession
     public byte[] SaveStatePayload()
     {
         using var ms = new MemoryStream();
-        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) Board.SaveState(w);
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true))
+        using (NesEmulator.Sega.BandLimitedMixer.HostIndependent()) Board.SaveState(w);   // the machine's state, not its host's (the sound it has not read: see BandLimitedMixer)
         return ms.ToArray();
     }
 

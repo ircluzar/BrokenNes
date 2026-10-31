@@ -72,6 +72,17 @@
                                  color #RRGGBB [in X Y W H], sound silent|above L, channel <name> silent|playing; 'and', 'not'. The index
                                  rules frames out, only the unsure ones re-run (headless). 'record -Index' adds the search index (coverage,
                                  access counts, checks). Hits: timeline, frame, cycle, PC; 'timeflow jump' / 'timeflow profile' them
+    timeflow patch <timeline> -Frame F -Patch "AT=OLD>NEW" [-Verdict "never write hp by fill_table"] [-To B]
+    timeflow rebuild-resume <timeline> -Frame F [-NoBuild] [-Safe main_loop,load_room] [-AtSafe] [-Verdict "TEST"] [-To B]
+    timeflow diverge <branch> | <timeline> -Frame F -Patch ...   timeflow verdict <timeline> -Verdict "TEST" [-From A] [-To B]
+    timeflow verdict-promote <timeline> -Verdict "TEST" -Name id -Why "what it tests" [-From A] [-To B]
+                                 T5: hotpatch and resume. 'patch': byte patches (a symbol, a CPU address through the frame's banks, 02:4000,
+                                 rom:$offset; the old bytes must match) from frame F; 'rebuild-resume': builds the timeline's project and
+                                 loads frame F's RAM and registers into the new build after the symbol-map check (PC and return addresses in
+                                 the same functions, else refused and the nearest safe point offered: the manifest's timeflow.safe list);
+                                 the recorded inputs replay (a branch), the divergence (first frame, instruction, variables) and the
+                                 verdicts (never|sometime|always <condition>, query <query> expect <field> <op> <value>) on the new future
+                                 and the old. 'verdict-promote' (explicit only) adds a verdict to the project's verify
     mcp     install|uninstall|build|status|test
                                  the BrokenNes MCP server (BrokenDev/mcp): 'install' builds it into BROKENDEV_HOME\bnbuild\mcp and registers it
                                  for Claude Code at USER scope ('claude mcp add --scope user brokennes', every session and game repo);
@@ -162,6 +173,12 @@ param(
     [int]$MaxHits = 100,
     [switch]$CoarseOnly,
     [switch]$Index,
+    # 'timeflow patch|rebuild-resume|diverge|verdict|verdict-promote' (milestone T5): byte patches, the tests, the safe functions, resume at the safe point, skip the build
+    [string[]]$Patch = @(),
+    [string[]]$Verdict = @(),
+    [string]$Safe = '',
+    [switch]$AtSafe,
+    [switch]$NoBuild,
     # 'tool <id> <args...>': the arguments after the tool id are passed to the tool
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @()
 )
@@ -455,7 +472,8 @@ try {
             if ($Rest.Count -gt 1) { throw "timeflow: one project or timeline after the action (got: $($Rest -join ' '))" }
             $t = if ($Rest.Count -eq 1) { $Rest[0] } else { '' }
             exit (Invoke-BdTimeflow -Action $Target -Target $t -Scenario $(if ($Scenario.Count -gt 0) { $Scenario[0] } else { '' }) -Script $Script -Frames $Frames -Movie $Movie -Course $Course -Frame $Frame -Png $Path -Record:$Record -Coverage:$Coverage -Json:$Json -Exe $Exe `
-                  -From $From -To $To -Query $Query -Store:$Store -Keep:$Keep -TtlMinutes $TtlMinutes -LimitMb $LimitMb -MaxHits $MaxHits -CoarseOnly:$CoarseOnly -Index:$Index)
+                  -From $From -To $To -Query $Query -Store:$Store -Keep:$Keep -TtlMinutes $TtlMinutes -LimitMb $LimitMb -MaxHits $MaxHits -CoarseOnly:$CoarseOnly -Index:$Index `
+                  -Patch $Patch -Verdict $Verdict -Safe $Safe -AtSafe:$AtSafe -NoBuild:$NoBuild -Name $Name -Why $Why)
         }
         'bugs' {
             if ($Target) { [void](Resolve-BdTargets $Target) }

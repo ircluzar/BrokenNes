@@ -80,7 +80,7 @@ internal static class ClientTest
                 "read_memory", "write_memory", "search_memory", "list_domains", "symbols", "breakpoint_add", "breakpoint_list", "breakpoint_remove", "watch", "step", "call_stack",
                 "registers", "trace", "trace_frame", "disassemble", "evaluate", "screenshot", "layers", "tiles", "sprites", "record_sound", "save_state", "load_state", "diff_states",
                 "checks", "profile", "brokendev", "step_back", "open_movie", "movie", "bisect", "bugs", "debug_port",
-                "timeflow_record", "timeflow_list", "timeflow_jump", "timeflow_resume", "timeflow_profile", "timeflow_profile_query", "timeflow_search" };
+                "timeflow_record", "timeflow_list", "timeflow_jump", "timeflow_resume", "timeflow_profile", "timeflow_profile_query", "timeflow_search", "timeflow_patch", "timeflow_verdict" };
             var missing = want.Where(w => !names.Contains(w)).ToList();
             Check("tools_listed", missing.Count == 0 && tools.All(t => t.JsonSchema.ValueKind == JsonValueKind.Object), $"{tools.Count} tools over stdio; missing: {(missing.Count == 0 ? "none" : string.Join(", ", missing))}");
             switch (suite)
@@ -576,6 +576,7 @@ internal static class ClientTest
         foreach (var id in new[] { h, jh, sh }) await Call("close_session", new { session = id }, log: false);
         await ProfileSuite(dir, sms);
         await SearchSuite(dir, sms);
+        await HotpatchSuite(dir);
     }
 
     /// <summary>A kept, unkept profile the server made: it must be gone once the server's session ended (checked after the client closes).</summary>
@@ -624,6 +625,38 @@ internal static class ClientTest
         var sp = await Call("timeflow_profile", new { timeline = S(soff["closed"]?["id"]), from = 5, to = 10, queries = new[] { "summary" } });
         Check("timeflow_profile_sega", !sp.IsError && sp["inSync"]?.GetValue<bool>() == true, sp.IsError ? sp.Text : $"in sync {S(sp["inSync"])}, instructions {sp["instructions"]?.ToJsonString()}");
         foreach (var id in new[] { h, sh }) await Call("close_session", new { session = id }, log: false);
+    }
+
+    /// <summary>Timeflow T5 over MCP: the planted CPX bug byte-patched from a rewound frame, its verdict passing (failing on the old future); a wrong patch refused; a rebuild; timeflow_resume with a patched ROM; timeflow_verdict.</summary>
+    private static async Task HotpatchSuite(string dir)
+    {
+        var (rom, _, mlb) = BrokenNes.Workshop.Timeflow.TimeflowHotpatchRoms.Game("planted");
+        var (from, _, fmlb) = BrokenNes.Workshop.Timeflow.TimeflowHotpatchRoms.Game("fixed");
+        string game = DebugTestRoms.Write(dir, "t5.nes", rom), sym = DebugTestRoms.Write(dir, "t5.mlb", mlb);
+        string fixedGame = DebugTestRoms.Write(dir, "t5-fixed.nes", from), fsym = DebugTestRoms.Write(dir, "t5-fixed.mlb", fmlb);
+        var o = await Call("open_rom", new { path = game, symbols = new[] { sym } });
+        string h = S(o["session"]);
+        await Call("timeflow_record", new { session = h, action = "start", index = true });
+        await Call("run", new { session = h, frames = 120 });
+        var off = await Call("timeflow_record", new { session = h, action = "stop" });
+        string tid = S(off["closed"]?["id"]);
+        var p = await Call("timeflow_patch", new { timeline = tid, frame = 10, patches = new[] { "ft_limit+1=21>10" }, symbols = new[] { sym }, verdicts = new[] { "never write hp by fill_table" } });
+        var v = p["verdicts"]?[0];
+        Check("timeflow_patch_verdict_passes", !p.IsError && p["resumed"]?.GetValue<bool>() == true && v?["pass"]?.GetValue<bool>() == true, p.IsError ? p.Text : $"{S(v?["verdict"])}: {S(v?["evidence"])}");
+        Check("timeflow_patch_verdict_fails_on_the_old_future", v?["old"]?["pass"]?.GetValue<bool>() == false && S(v?["old"]?["evidence"]).Contains("ft_store"), S(v?["old"]?["evidence"]));
+        Check("timeflow_patch_branch_and_divergence", S(p["branch"]).Length > 0 && S(p["divergence"]?["firstInstruction"]?["pcSymbolOld"]) == "ft_limit", $"branch {S(p["branch"])}; {S(p["divergence"]?["summary"])}");
+        var w = await Call("timeflow_patch", new { timeline = tid, frame = 10, patches = new[] { "ft_limit+1=10>21" }, symbols = new[] { sym } });
+        Check("timeflow_patch_wrong_bytes_refused", !w.IsError && w["resumed"]?.GetValue<bool>() == false && S(w["refused"]).Contains("nothing applied"), S(w["refused"]));
+        var r = await Call("timeflow_patch", new { timeline = tid, frame = 10, rom = fixedGame, symbols = new[] { sym }, symbols_new = new[] { fsym }, verdicts = new[] { "query writes hp expect total == 0" } });
+        Check("timeflow_patch_rebuild", !r.IsError && r["check"]?["safe"]?.GetValue<bool>() == true && r["verdictsPass"]?.GetValue<bool>() == true, r.IsError ? r.Text : S(r["verdictSummary"]));
+        var rs = await Call("timeflow_resume", new { timeline = tid, frame = 10, patches = new[] { "ft_limit+1=21>10" }, symbols = new[] { sym } });
+        Check("timeflow_resume_with_a_patched_rom", !rs.IsError && rs["resumed"]?.GetValue<bool>() == true && rs["divergence"]?["diverged"]?.GetValue<bool>() == true && rs["verdicts"]?.AsArray().Count == 0, rs.IsError ? rs.Text : S(rs["divergence"]?["summary"]));
+        var vd = await Call("timeflow_verdict", new { timeline = S(p["branch"]), tests = new[] { "never write hp by fill_table", "always state [hp] == 5" }, symbols = new[] { sym } });
+        var vo = await Call("timeflow_verdict", new { timeline = tid, from = 10, tests = new[] { "never write hp by fill_table" }, symbols = new[] { sym } });
+        Check("timeflow_verdict", !vd.IsError && vd["pass"]?.GetValue<bool>() == true && !vo.IsError && vo["pass"]?.GetValue<bool>() == false, $"branch: {S(vd["summary"])}; recording: {S(vo["summary"])}");
+        var bad = await Call("timeflow_verdict", new { timeline = tid, tests = new[] { "perhaps write hp" } });
+        Check("timeflow_verdict_bad_test_refused", bad.IsError && bad.Text.Contains("not a verdict"), bad.Text);
+        await Call("close_session", new { session = h }, log: false);
     }
 
     /// <summary>Timeflow T4 over MCP: a headless recording with the search index, searched for the planted bug; negative controls.</summary>

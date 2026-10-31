@@ -12,6 +12,7 @@ namespace NesEmulator.Debugging.Timeflow;
 //  A search condition is one or more clauses joined by "and", each optionally negated with "not". Every clause is about one frame:
 //    exec <spec> [cpu C] [if <expr>]              a code breakpoint: an instruction at the address / range / symbol ran in the frame
 //    read | write | access <spec> [cpu C] [if <expr>]   a memory breakpoint (all mirrors, DMA too; value, address, source in the expr)
+//    ... [by <function>]                          (T5) a breakpoint only when the instruction is in that function or it is the innermost call
 //    state <expr>                                 a game-state expression on memory (and the timeline's watched variables) at the frame's end
 //    finding [<text>]                             a D4 hardware-check finding first seen in the frame (its text contains <text>)
 //    picture changed | picture still              the frame's picture differs from (equals) the frame before's
@@ -36,6 +37,9 @@ public sealed class SearchClause
     /// <summary>A breakpoint's address, range or symbol, its CPU, its condition.</summary>
     public string Spec = "", CpuName = "main";
     public string? If;
+    /// <summary>A breakpoint only by this function (T5): the firing instruction is in it (its own code, the code symbol before any "+$N") or it is the
+    /// innermost call frame (a subroutine or interrupt handler called by that name): "write hp by fill_table".</summary>
+    public string? By;
     /// <summary>state: the expression.</summary>
     public string Expr = "";
     /// <summary>finding: the text a finding must contain ("" any).</summary>
@@ -75,7 +79,7 @@ public sealed class SearchCondition
     public static readonly string[] Kinds = { "exec", "read", "write", "access", "state", "finding", "picture changed|still", "color", "sound silent|above", "channel" };
 
     public static string Help =>
-        "clauses joined by 'and', each may start with 'not': exec <spec> [cpu C] [if <expr>]; read|write|access <spec> [cpu C] [if <expr>]; state <expr>; " +
+        "clauses joined by 'and', each may start with 'not': exec <spec> [cpu C] [by F] [if <expr>]; read|write|access <spec> [cpu C] [by F] [if <expr>]; state <expr>; " +
         "finding [<text>]; picture changed|still; color #RRGGBB [in X Y W H] [min N] [tol T]; sound silent [below L] | sound above L; channel <name> silent|playing";
 
     /// <summary>Reads a condition; throws <see cref="FormatException"/> saying what is wrong.</summary>
@@ -110,8 +114,9 @@ public sealed class SearchCondition
                 {
                     string k = t[i].ToLowerInvariant();
                     if (k == "cpu" && i + 1 < t.Count) { c.CpuName = t[i + 1]; i += 2; continue; }
+                    if (k == "by" && i + 1 < t.Count) { c.By = t[i + 1]; i += 2; continue; }
                     if (k == "if") { c.If = Rest(i + 1).Trim(); if (c.If.Length == 0) throw new FormatException($"'{s}': 'if' needs an expression"); i = t.Count; break; }
-                    throw new FormatException($"'{s}': '{t[i]}' is not understood here (after the address: cpu <id>, if <expression>)");
+                    throw new FormatException($"'{s}': '{t[i]}' is not understood here (after the address: cpu <id>, by <function>, if <expression>)");
                 }
                 // the expression's own text, not the tokens re-joined (quotes and spaces as written)
                 if (c.If != null) { int at = Regex.Match(s, @"\sif\s", RegexOptions.IgnoreCase).Index; if (at > 0) c.If = s[(at + 4)..].Trim(); }

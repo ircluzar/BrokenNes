@@ -74,11 +74,22 @@ public sealed class BandLimitedMixer
         int phase = (int)((pos - whole) * Phases);
         if (phase >= Phases) phase = Phases - 1;
         long first = whole - Taps / 2 + 1;
+        // a host that has not read for a while (a headless machine that never plays its sound): the ring is full, so the oldest finished samples are
+        // integrated and dropped exactly as a read would (never overwritten while unread: the ring would then mix two times' samples, and the DC state with them)
+        long over = first + Taps - consumed - (Mask + 1);
+        if (over > 0) Consume(over);
         for (int t = 0; t < Taps; t++) ring[(first + t) & Mask] += delta * Kernel[phase, t];
     }
 
     /// <summary>Tells the mixer the chip has run up to <paramref name="clock"/>: the samples before that (less the kernel's latency) are final.</summary>
-    public void Advance(long clock) => now = clock * samplesPerClock;
+    public void Advance(long clock)
+    {
+        now = clock * samplesPerClock;
+        // the ring holds every sample from the first unread one to the last the kernel can still touch (what a state writes): a host that has not read
+        // for longer than the ring has the oldest final samples integrated and dropped (see Step)
+        long over = (long)Math.Floor(now) + Taps + 1 - consumed - (Mask + 1);
+        if (over > 0) Consume(over);
+    }
 
     /// <summary>How many finished samples are waiting.</summary>
     public int Available => (int)Math.Max(0, (long)Math.Floor(now) - Taps / 2 - consumed);
@@ -98,6 +109,31 @@ public sealed class BandLimitedMixer
         return n;
     }
 
+    /// <summary>Integrates and drops the <paramref name="n"/> oldest finished samples with the very operations <see cref="Read"/> does (so the DC state is bit for bit a reader's).</summary>
+    private void Consume(long n)
+    {
+        for (long i = 0; i < n; i++)
+        {
+            int at = (int)((consumed + i) & Mask);
+            sum = sum * (1 - leak) + ring[at];
+            ring[at] = 0;
+        }
+        consumed += n;
+    }
+
+    [ThreadStatic] private static int hostIndependent;
+
+    /// <summary>
+    /// While the returned scope lives (on this thread), <see cref="SaveState"/> writes the machine's own state, never its host's: as if every finished sample
+    /// had been read (the DC integrator carried over them with <see cref="Read"/>'s own operations, the read position at the first sample not yet final). So
+    /// a machine whose host reads every frame, one whose host reads now and then and one whose host never reads save the same bytes. BrokenDev Timeflow takes
+    /// its states this way (<c>IConsoleSession.SaveStatePayload</c>): its re-runs compare states, and a re-run that reads the sound (a search) must equal a
+    /// recording that did not (found by Timeflow T4 on the Master System, fixed in T5). The layout is the same either way, and a save state file keeps the
+    /// unread samples (a restored session goes on sample for sample, the samples not read yet included).
+    /// </summary>
+    public static IDisposable HostIndependent() { hostIndependent++; return new Scope(); }
+    private sealed class Scope : IDisposable { private bool done; public void Dispose() { if (!done) { done = true; hostIndependent--; } } }
+
     /// <summary>Forgets what is buffered and the DC state; chip time keeps counting (the chip's clock is monotonic across its own reset).</summary>
     public void Reset() { Array.Clear(ring); sum = 0; consumed = Math.Max(0, (long)Math.Floor(now) - Taps / 2); }
 
@@ -108,10 +144,14 @@ public sealed class BandLimitedMixer
     /// <summary>The whole state: the DC integrator, the time, and the buffered samples from the first one not yet handed out to the last the kernel can still touch (a restored mixer carries on bit for bit).</summary>
     public void SaveState(System.IO.BinaryWriter w)
     {
-        w.Write(sum); w.Write(consumed); w.Write(now);
-        int count = (int)Math.Clamp((long)Math.Floor(now) + Taps - consumed + 1, 0, Mask + 1);
+        // inside HostIndependent(): as if every finished sample had been read (see there); else the unread samples too
+        float s = sum; long from = consumed;
+        if (hostIndependent > 0)
+            for (long end = consumed + Available; from < end; from++) s = s * (1 - leak) + ring[(int)(from & Mask)];
+        w.Write(s); w.Write(from); w.Write(now);
+        int count = (int)Math.Clamp((long)Math.Floor(now) + Taps - from + 1, 0, Mask + 1);
         w.Write(count);
-        for (int i = 0; i < count; i++) w.Write(ring[(int)((consumed + i) & Mask)]);
+        for (int i = 0; i < count; i++) w.Write(ring[(int)((from + i) & Mask)]);
     }
 
     public void LoadState(System.IO.BinaryReader r)

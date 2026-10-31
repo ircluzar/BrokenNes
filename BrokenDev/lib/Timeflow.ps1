@@ -17,6 +17,13 @@
 #   timeflow search [project|timeline] -Query "CONDITION" [-From A] [-To B] [-MaxHits N] [-CoarseOnly]
 #                   T4: the frames where a condition held (Workshop --timeflow search; the project's symbols); see the plan's "T4 as built"
 #   timeflow record ... -Index                      also the search index (coverage, per-page access counts, the hardware checks)
+#   timeflow patch <timeline> -Frame F -Patch "AT=OLD>NEW" [-Verdict "TEST"] [-To B]
+#                   T5: byte patches on the ROM from frame F, the recorded inputs replayed (a branch), the divergence and the verdicts
+#   timeflow rebuild-resume <timeline> -Frame F [-NoBuild] [-Safe f1,f2] [-AtSafe] [-Verdict "TEST"] [-To B]
+#                   T5: builds the timeline's project, resumes the frame on the new build after the symbol-map check (else the safe point)
+#   timeflow diverge <branch>  |  diverge <timeline> -Frame F -Patch ...     where the new future parts from the old one
+#   timeflow verdict <timeline> -Verdict "TEST" [-From A] [-To B]       a written test over a span (never|sometime|always COND, query Q expect ...)
+#   timeflow verdict-promote <timeline> -Verdict "TEST" -Name id -Why text [-From A] [-To B]   into the project's verify (explicit only)
 #
 # Timelines live in BROKENDEV_HOME\timeflow\<project>\ (a ROM of no project: timeflow\_roms\<name>-<sha>\), never in git, never in
 # %APPDATA%\BrokenNes; each game folder has a cap (5 GB by default, timeflow.json).
@@ -81,10 +88,25 @@ function Show-BdTimeline {
     Write-BdInfo "  $($J.dir)"
 }
 
+function Save-BdTimelineSymbols {
+    <# T5: keeps a build's symbol files beside its ROM in the timeline's game folder (symbols\<rom sha256>\): a rebuild overwrites the published ones. #>
+    param([Parameter(Mandatory)][string]$Timeline, [string[]]$Symbols = @(), [string]$Exe = '')
+    $info = (Invoke-BdTimeflowJson -Arguments @('info', '--timeline', $Timeline) -Exe $Exe).Json
+    $game = Split-Path -Parent (Split-Path -Parent ([string]$info.dir))
+    $to = Join-Path (Join-Path $game 'symbols') ([string]$info.romSha256)
+    New-Item -ItemType Directory -Force -Path $to | Out-Null
+    $kept = @()
+    foreach ($f in @($Symbols)) { if ($f -and (Test-Path -LiteralPath $f)) { $d = Join-Path $to (Split-Path -Leaf $f); Copy-Item -LiteralPath $f -Destination $d -Force; $kept += $d } }
+    $kept
+}
+
 function Get-BdTimelineSymbols {
-    <# The symbol files of the project a timeline was recorded from (its build's published symbols), or none for a ROM of no project. #>
+    <# The symbol files of a timeline's build: the ones kept beside its ROM (symbols\<sha256>\: brokendev timeflow record and every hotpatch keep them), else the
+       project's published ones (its build's symbols), or none for a ROM of no project. #>
     param([Parameter(Mandatory)][string]$Timeline, [string]$Exe = '')
     $info = (Invoke-BdTimeflowJson -Arguments @('info', '--timeline', $Timeline) -Exe $Exe).Json
+    $kept = @(Get-BdProp $info 'keptSymbols' @())
+    if ($kept.Count -gt 0) { return @($kept | ForEach-Object { [string]$_ }) }
     $project = [string](Get-BdProp $info 'project' '')
     if (-not $project) { return @() }
     try { return @((Get-BdProjectRomAndSymbols -Id $project).Symbols) } catch { Write-BdInfo "  (no symbols: $($_.Exception.Message))"; return @() }
@@ -109,12 +131,29 @@ function Show-BdProfile {
     foreach ($q in @($J.queries)) { Show-BdProfileAnswer $q }
 }
 
+function Show-BdHotpatch {
+    param($J)
+    foreach ($p in @($J.patches)) { Write-BdInfo "  patch $($p.patch): $($p.resolved), file offset $($p.fileOffset): $($p.old) -> $($p.new)" }
+    if ($J.check) { if ($J.check.safe) { Write-BdOk "  symbol-map check at frame $($J.check.frame): safe" } else { Write-BdFail "  symbol-map check at frame $($J.check.frame): $($J.check.why)" } }
+    if ($J.safeResume) { Write-BdInfo "  nearest safe resume point: frame $($J.safeResume.frame) (PC in $($J.safeResume.function)): -Frame $($J.safeResume.frame), or -AtSafe" }
+    if ($J.refused) { Write-BdFail "REFUSED: $($J.refused)"; return }
+    Write-BdOk ("hotpatch ({0}) of {1}: resumed at frame {2}, {3} frame(s) replayed{4}" -f $J.mode, $J.timeline, $J.resumedAt, $J.framesReplayed, $(if ($J.branch) { "; branch $($J.branch)" } else { '' }))
+    if ($J.divergence) { Write-BdInfo "  divergence: $($J.divergence.summary)" }
+    foreach ($v in @($J.verdicts)) {
+        $line = "  $($v.verdict)  $($v.test): $($v.evidence)$(if ($v.old) { "; on the old future: $($v.old.verdict) ($($v.old.evidence))" })"
+        if ($v.pass) { Write-BdOk $line } else { Write-BdFail $line }
+    }
+    if (@($J.verdicts).Count -gt 0) { Write-BdInfo "  $($J.verdictSummary)" }
+    foreach ($n in @($J.notes)) { Write-BdInfo "  note: $n" }
+}
+
 function Invoke-BdTimeflow {
     <# brokendev.ps1 timeflow <action> [target] ...: returns the exit code. #>
     param([string]$Action, [string]$Target = '', [string]$Scenario = '', [string]$Script = '', [int]$Frames = 0, [string]$Movie = '', [string[]]$Course = @(),
           [long]$Frame = -1, [string]$Png = '', [switch]$Record, [switch]$Coverage, [switch]$Json, [string]$Exe = '',
           [long]$From = -1, [long]$To = -1, [string[]]$Query = @(), [switch]$Store, [switch]$Keep, [int]$TtlMinutes = 0, [int]$LimitMb = 0,
-          [int]$MaxHits = 100, [switch]$CoarseOnly, [switch]$Index)
+          [int]$MaxHits = 100, [switch]$CoarseOnly, [switch]$Index,
+          [string[]]$Patch = @(), [string[]]$Verdict = @(), [string]$Safe = '', [switch]$AtSafe, [switch]$NoBuild, [string]$Name = '', [string]$Why = '')
     switch ($Action.ToLowerInvariant()) {
         'search' {
             # T4: a condition over the corpus (a project's timelines, one timeline, or all)
@@ -147,6 +186,76 @@ function Invoke-BdTimeflow {
             foreach ($t in @($j.timelines)) { if ($t.skipped) { Write-BdInfo "  timeline $($t.id): skipped: $($t.skipped)" } }
             if (@($j.hits).Count -gt 0) { $h0 = @($j.hits)[0]; Write-BdInfo "  next: timeflow jump $($h0.timeline) -Frame $($h0.frame); timeflow profile $($h0.timeline) -From $($h0.frame) -To $($h0.frame) -Query summary" }
             return $(if ($j.totalHits -gt 0) { 0 } else { 1 })
+        }
+        { $_ -in 'patch', 'rebuild-resume', 'diverge' } {
+            # T5: hotpatch and resume (byte patches, or the project rebuilt), the divergence, the verdicts
+            if (-not $Target) { throw "timeflow $Action needs a timeline" }
+            $act = $Action.ToLowerInvariant()
+            if ($act -eq 'diverge' -and $Frame -lt 0) {
+                $a = @('diverge', '--timeline', $Target); foreach ($s in (Get-BdTimelineSymbols -Timeline $Target -Exe $Exe)) { $a += @('--sym', $s) }
+                $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
+                if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 12); return 0 }
+                Write-BdInfo $r.Json.summary; Write-BdInfo "  lockstep: $($r.Json.lockstep.summary)"; return 0
+            }
+            if ($Frame -lt 0) { throw "timeflow $Action needs -Frame F (the rewound frame)" }
+            $info = (Invoke-BdTimeflowJson -Arguments @('info', '--timeline', $Target) -Exe $Exe).Json
+            $old = @(Get-BdTimelineSymbols -Timeline $Target -Exe $Exe)
+            $a = @($(if ($act -eq 'diverge') { 'diverge' } elseif ($act -eq 'patch') { 'patch' } else { 'rebuild-resume' }), '--timeline', $Target, '--frame', [string]$Frame)
+            foreach ($s in $old) { $a += @('--sym', $s) }
+            if ($To -ge 0) { $a += @('--to', [string]$To) }
+            foreach ($v in @($Verdict | Where-Object { $_ })) { $a += @('--verdict', [string]$v) }
+            if ($act -eq 'patch' -or ($act -eq 'diverge' -and $Patch.Count -gt 0)) {
+                if ($Patch.Count -eq 0) { throw 'timeflow patch needs -Patch "AT=OLD>NEW" (ft_limit+1=21>10)' }
+                foreach ($p in $Patch) { $a += @('--patch', [string]$p) }
+            } else {
+                # the rebuild: the timeline's project, built now (unless -NoBuild), its new ROM and symbols; the old build's symbols kept first
+                $project = if ($Name) { $Name } else { [string](Get-BdProp $info 'project' '') }
+                if (-not $project) { throw "timeline $Target is not a project's (give the project with -Name)" }
+                $m = Read-BdManifest -Id $project
+                if ($old.Count -eq 0) {
+                    try { $cur = Get-BdProjectRomAndSymbols -Id $project; if ((Get-FileHash -LiteralPath $cur.Rom -Algorithm SHA256).Hash.ToLowerInvariant() -eq ([string]$info.romSha256).ToLowerInvariant()) { $old = @(Save-BdTimelineSymbols -Timeline $Target -Symbols $cur.Symbols -Exe $Exe) } } catch { }
+                    if ($old.Count -eq 0) { throw "the old build's symbols are not kept for timeline $Target (record with brokendev timeflow record, which keeps them)" }
+                    foreach ($s in $old) { $a += @('--sym', $s) }
+                }
+                if (-not $NoBuild) { Write-BdInfo "building $project ..."; [void](Invoke-BdProjectBuild -Id $project) }
+                $nb = Get-BdProjectRomAndSymbols -Id $project
+                $a += @('--rom', $nb.Rom, '--build', "brokendev build $project")
+                foreach ($s in @($nb.Symbols)) { $a += @('--sym-new', $s) }
+                $safe = if ($Safe) { $Safe } else { @(Get-BdProp (Get-BdProp $m 'timeflow' $null) 'safe' @()) -join ',' }
+                if ($safe) { $a += @('--safe', $safe) }
+                if ($AtSafe) { $a += '--at-safe' }
+            }
+            $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 14); return $r.ExitCode }
+            Show-BdHotpatch $r.Json
+            return $r.ExitCode
+        }
+        'verdict' {
+            if (-not $Target -or $Verdict.Count -eq 0) { throw 'timeflow verdict needs a timeline and -Verdict "never write hp by fill_table" (never|sometime|always <condition>, query <query> expect <field> <op> <value>)' }
+            $a = @('verdict', '--timeline', $Target); foreach ($v in $Verdict) { $a += @('--test', [string]$v) }
+            foreach ($s in (Get-BdTimelineSymbols -Timeline $Target -Exe $Exe)) { $a += @('--sym', $s) }
+            if ($From -ge 0) { $a += @('--from', [string]$From) }
+            if ($To -ge 0) { $a += @('--to', [string]$To) }
+            $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 12); return $r.ExitCode }
+            foreach ($v in @($r.Json.verdicts)) { $line = "$($v.verdict)  $($v.test): $($v.evidence)"; if ($v.pass) { Write-BdOk $line } else { Write-BdFail $line } }
+            Write-BdInfo $r.Json.summary
+            return $r.ExitCode
+        }
+        'verdict-promote' {
+            # an explicit command only (no automatic regression pinning): the verdict joins the project's verify
+            if (-not $Target -or $Verdict.Count -ne 1 -or -not $Name -or -not $Why) { throw 'timeflow verdict-promote needs a timeline, one -Verdict "TEST", -Name id and -Why "what it tests"' }
+            $info = (Invoke-BdTimeflowJson -Arguments @('info', '--timeline', $Target) -Exe $Exe).Json
+            $project = [string](Get-BdProp $info 'project' '')
+            if (-not $project -and $info.parent) { $project = [string](Get-BdProp (Invoke-BdTimeflowJson -Arguments @('info', '--timeline', [string]$info.parent.id) -Exe $Exe).Json 'project' '') }
+            if (-not $project) { throw "timeline $Target is not a project's: nothing to promote it into" }
+            $a = @('verdict-promote', '--timeline', $Target, '--test', [string]$Verdict[0], '--project', $project, '--manifests', (Get-BdProjectsDir), '--name', $Name, '--why', $Why)
+            if ($From -ge 0) { $a += @('--from', [string]$From) }
+            if ($To -ge 0) { $a += @('--to', [string]$To) }
+            $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 8); return 0 }
+            Write-BdOk "promoted '$($r.Json.test)' (frames $($r.Json.from)-$($r.Json.to)) into $project as $($r.Json.id): $($r.Json.file); brokendev verify $project plays it from now on"
+            return 0
         }
         'profile' {
             # T3: a span re-run at full depth with streaming queries (and kept when -Store)
@@ -202,6 +311,8 @@ function Invoke-BdTimeflow {
             if (-not $Target) { throw 'timeflow record needs a project' }
             [void](Resolve-BdTargets $Target)
             $r = Invoke-BdTimeflowRecord -Id $Target -Scenario $Scenario -Script $Script -Frames $Frames -Movie $Movie -Course $Course -Coverage:$Coverage -Index:$Index -Exe $Exe
+            # T5: the build's symbols kept beside its ROM in the game folder (a rebuild overwrites the published ones; rebuild-resume needs the old build's)
+            try { Save-BdTimelineSymbols -Timeline ([string]$r.Json.id) -Symbols @((Get-BdProjectRomAndSymbols -Id $Target).Symbols) -Exe $Exe | Out-Null } catch { Write-BdWarn "the build's symbols were not kept: $($_.Exception.Message)" }
             if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 8) } else { Show-BdTimeline $r.Json }
             return $(if ($r.ExitCode -eq 0) { 0 } else { 1 })
         }
@@ -282,6 +393,6 @@ function Invoke-BdTimeflow {
             foreach ($g in @($r.Json.games)) { Write-Host ('  {0}: {1} timeline(s), {2:N1} MB of {3:N2} GB' -f $g.gameDir, $g.timelines, ($g.usedBytes / 1MB), ($g.capBytes / 1GB)) }
             return 0
         }
-        default { throw 'timeflow: record, list, info, verify, jump, resume, prune, keep, unkeep, status, search, profile, profile-query, profiles, profile-keep, profile-unkeep, profile-drop or profile-sweep' }
+        default { throw 'timeflow: record, list, info, verify, jump, resume, prune, keep, unkeep, status, search, patch, rebuild-resume, diverge, verdict, verdict-promote, profile, profile-query, profiles, profile-keep, profile-unkeep, profile-drop or profile-sweep' }
     }
 }

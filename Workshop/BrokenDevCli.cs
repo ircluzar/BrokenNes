@@ -323,7 +323,11 @@ internal static partial class BrokenDevCli
             coverage = BuildCoverage(root, console, rom, romBytes, checkedRuns ?? RunForCoverage(root, verify, console, rom, romBytes, results, only), out bool covOk);
             ok &= covOk;
         }
+        // T5: the verdicts promoted into this project (brokendev.ps1 timeflow verdict-promote: explicit only), played on this build and evaluated
+        var promotedVerdicts = BrokenNes.Workshop.Timeflow.TimeflowVerdictPromote.RunPromoted(Path.Combine(manifests, id), console, rom, portSymbolFiles.ToList(), only, out bool verdictsOk);
+        ok &= verdictsOk;
         var report = BuildReport(id, rom, romBytes, console, results, cross, ok);
+        if (promotedVerdicts != null) report["verdicts"] = promotedVerdicts;
         if (checks != null) report["checks"] = checks;
         if (coverage != null) report["coverage"] = coverage;
         if (movieProblems.Count > 0 || promotedScenarios.Count > 0)
@@ -336,6 +340,7 @@ internal static partial class BrokenDevCli
         foreach (var c in cross.Where(c => !c.Ok)) Console.Error.WriteLine($"  [compare] FAIL {c.Id}: {c.Detail}");
         foreach (var r in results.Where(r => r.Result != "ok")) Console.Error.WriteLine($"  [{r.Id}] {r.Result}: {r.CrashInfo}");
         foreach (var p in movieProblems) Console.Error.WriteLine($"  [movies] FAIL {p}");
+        foreach (var v in promotedVerdicts?.Where(v => v?["pass"]?.GetValue<bool>() == false) ?? Enumerable.Empty<System.Text.Json.Nodes.JsonNode?>()) Console.Error.WriteLine($"  [verdict {v!["id"]}] {v["verdict"]}: {v["test"]}: {v["evidence"]}");
         if (checks != null) PrintChecks(checks);
         if (coverage != null) PrintCoverage(coverage);
         PrintPort(results);

@@ -46,6 +46,45 @@ internal static class TimeflowTools
         return new JsonObject { ["root"] = TimeflowStore.Root(), ["games"] = games };
     }
 
+    /// <summary>
+    /// T5's timeflow_patch / timeflow_resume with a patched ROM: byte patches, or a rebuild (a ROM file, or a project's build: built first when asked, the
+    /// old build's symbols kept before it is rebuilt), on new headless machines (the Workshop's code: the same answers as the CLI).
+    /// </summary>
+    public static JsonObject Hotpatch(Args a, bool verdicts)
+    {
+        string dir = Find(a.Req("timeline"));
+        var meta = TimelineMeta.Load(dir);
+        var x = new BrokenNes.Workshop.Timeflow.HotpatchArgs
+        {
+            Timeline = dir, Frame = a.Long("frame") ?? throw new ToolError("'frame' is required"), To = a.Long("to"), Patches = a.List("patches"), Symbols = a.List("symbols"),
+            NewSymbols = a.List("symbols_new"), Safe = a.List("safe"), AtSafe = a.Bool("at_safe", false), Branch = a.Bool("branch", true), VerdictOnOld = a.Bool("compare_old", true),
+            Verdicts = verdicts ? a.List("verdicts") : new List<string>(), NewRom = a.Str("rom") ?? "",
+        };
+        if (x.Symbols.Count == 0) x.Symbols = BrokenNes.Workshop.Timeflow.TimeflowHotpatching.KeptSymbols(dir, meta.RomSha256);
+        if (a.Str("project") is { Length: > 0 } project)
+        {
+            if (x.NewRom.Length > 0 || x.Patches.Count > 0) throw new ToolError("project is a rebuild: not with rom or patches");
+            if (a.Bool("build", false))
+            {
+                // keep the old build's symbols first: the build overwrites the published ones
+                try
+                {
+                    var old = BrokenDevBridge.Built(project);
+                    if (x.Symbols.Count == 0 && File.Exists(old.Rom) && TimeflowStore.Sha256(File.ReadAllBytes(old.Rom)) == meta.RomSha256)
+                        x.Symbols = BrokenNes.Workshop.Timeflow.TimeflowHotpatching.KeepSymbols(TimeflowStore.GameDirOf(dir), meta.RomSha256, old.Symbols);
+                }
+                catch (ToolError) { }
+                var b = BrokenDevBridge.RunVerb("build", project, new List<string>(), new List<string>(), a.Int("timeout_sec", 1800));
+                if (b["exitCode"]?.GetValue<int>() != 0) throw new ToolError($"the build of {project} failed: {b["output"]}");
+            }
+            var nb = BrokenDevBridge.Built(project);
+            x.NewRom = nb.Rom; if (x.NewSymbols.Count == 0) x.NewSymbols = nb.Symbols; x.Build = $"project {project}, built {nb.BuiltAt}";
+            if (x.Symbols.Count == 0) throw new ToolError($"the old build's symbols are not known: give symbols, or record the timeline with brokendev timeflow record (it keeps them), or use build: true while the project's last build is still the timeline's");
+        }
+        try { return BrokenNes.Workshop.Timeflow.TimeflowHotpatching.Run(x).Json; }
+        catch (Exception e) when (e is IOException or FormatException or NotSupportedException or ArgumentException or InvalidDataException) { throw new ToolError(e.Message); }
+    }
+
     /// <summary>A new headless session on a timeline's own ROM (the copy in its game folder) and cores.</summary>
     public static HeadlessSession OpenFor(string dir, List<string> symbols, bool callStack)
     {

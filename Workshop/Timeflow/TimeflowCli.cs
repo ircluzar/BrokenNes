@@ -31,6 +31,7 @@ namespace BrokenNes.Workshop.Timeflow;
 ///   --timeflow keep    --timeline ID|DIR [--off]
 ///   --timeflow status  [--json]                                                 the root, every game folder's use against its cap
 ///   --timeflow search  --q "CONDITION" [--timeline ID]... [--project P | --game-dir DIR | --rom R] [--sym F]... [--max-hits N] [--coarse] [--from A] [--to B] [--json]   (T4)
+///   --timeflow patch|rebuild-resume|diverge|verdict ...   T5's hotpatch and resume, the divergence, the written tests (TimeflowHotpatchCli.cs)
 ///   --timeflow search-measure [--timelines K] [--frames M] [--real] [--json OUT]       T4's measurements;  --timeflow search-rom --out F   the search test game
 ///   --timeflow measure --rom R [--console c] [--cores C/P/A] [--warm N] [--frames N] [--input ...|--movie M] [--json OUT]
 /// </code>
@@ -46,7 +47,7 @@ internal static class TimeflowCli
         string Opt(string n, string d = "") { int i = Array.FindIndex(args, 2, a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
         List<string> All(string n) { var l = new List<string>(); for (int i = 2; i < args.Length - 1; i++) if (args[i].Equals("--" + n, StringComparison.OrdinalIgnoreCase)) l.Add(args[i + 1]); return l; }
         bool Has(string n) => args.Skip(2).Any(a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase));
-        if (args.Length < 2) { Console.Error.WriteLine("usage: --timeflow record|list|info|verify|jump|resume|prune|keep|status|measure|search|search-measure|profile|profile-query|profiles|profile-keep|profile-drop|profile-sweep|profile-measure|profile-rom ... (see Workshop/Timeflow/TimeflowCli.cs and TimeflowProfileCli.cs)"); return 2; }
+        if (args.Length < 2) { Console.Error.WriteLine("usage: --timeflow record|list|info|verify|jump|resume|prune|keep|status|measure|search|search-measure|profile|profile-query|profiles|profile-keep|profile-drop|profile-sweep|profile-measure|profile-rom|patch|rebuild-resume|diverge|verdict ... (see Workshop/Timeflow/TimeflowCli.cs and TimeflowProfileCli.cs)"); return 2; }
         if (Opt("home") is { Length: > 0 } home) Environment.SetEnvironmentVariable("BROKENDEV_HOME", home);
         bool json = Has("json");
         try
@@ -90,6 +91,28 @@ internal static class TimeflowCli
                     Console.WriteLine($"wrote {outRom} and {Path.ChangeExtension(outRom, ".mlb")}");
                     return 0;
                 }
+                case "hotpatch-rom":
+                {
+                    // T5's test game (T3's planted corruption, a frame that sometimes starts inside a long routine) in its builds: planted, fixed, moved
+                    string outRom = Need(Opt("out"), "--out");
+                    string build = Opt("build", "planted").ToLowerInvariant();
+                    if (build is not ("planted" or "fixed" or "moved")) throw new ArgumentException("--build planted|fixed|moved");
+                    var (rom, _, mlb) = TimeflowHotpatchRoms.Game(build);
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outRom))!);
+                    File.WriteAllBytes(outRom, rom);
+                    File.WriteAllText(Path.ChangeExtension(outRom, ".mlb"), mlb);
+                    Console.WriteLine($"wrote {outRom} and {Path.ChangeExtension(outRom, ".mlb")}");
+                    return 0;
+                }
+                case "verdict-promote":
+                {
+                    var j = TimeflowVerdictPromote.Promote(Need(Opt("timeline"), "--timeline"), Need(Opt("test"), "--test"), Need(Opt("manifests"), "--manifests"), Need(Opt("project"), "--project"),
+                                                           Need(Opt("name"), "--name"), Opt("why"), long.TryParse(Opt("from"), out long pf) ? pf : null, long.TryParse(Opt("to"), out long pt) ? pt : null);
+                    Console.WriteLine(json ? j.ToJsonString(Indented) : $"promoted verdict {j["id"]} ({j["test"]}, frames {j["from"]}-{j["to"]}) into {j["file"]}: brokendev verify plays it on every build from now on");
+                    return 0;
+                }
+                case "patch" or "rebuild-resume" or "diverge" or "verdict":
+                    return TimeflowHotpatching.Cli(args[1].ToLowerInvariant(), (n, d) => Opt(n, d), All, Has, json);
                 case "profile" or "profile-query" or "profiles" or "profile-keep" or "profile-drop" or "profile-sweep" or "profile-measure" or "profile-rom":
                     return TimeflowProfiling.Cli(args[1].ToLowerInvariant(), (n, d) => Opt(n, d), All, Has, json);
                 default: Console.Error.WriteLine($"unknown verb '{args[1]}'"); return 2;
@@ -183,6 +206,8 @@ internal static class TimeflowCli
             ["project"] = m.Project, ["source"] = m.Source, ["status"] = m.Status, ["stopReason"] = m.StopReason.Length > 0 ? m.StopReason : null,
             ["startFrame"] = m.StartFrame, ["frames"] = rd.Frames, ["endFrame"] = rd.EndFrame,
             ["parent"] = m.ParentId != null ? new JsonObject { ["id"] = m.ParentId, ["frame"] = m.ParentFrame } : null,
+            ["hotpatch"] = m.Hotpatch, ["patches"] = m.Patches is { } ps ? new JsonArray(ps.Select(x => (JsonNode)x).ToArray()) : null, ["baseRomSha256"] = m.BaseRomSha256, ["build"] = m.Build,
+            ["keptSymbols"] = new JsonArray(TimeflowHotpatching.KeptSymbols(dir, m.RomSha256).Select(x => (JsonNode)x).ToArray()),
             ["keyEvery"] = m.KeyEvery, ["pageSize"] = m.PageSize, ["codec"] = $"{m.Compression.ToString().ToLowerInvariant()}:{m.Level}",
             ["storedBytes"] = m.StoredBytes, ["rawBytes"] = m.RawBytes, ["folderBytes"] = bytes,
             ["bytesPerFrame"] = rd.Frames > 0 ? Math.Round((double)bytes / rd.Frames, 1) : 0,

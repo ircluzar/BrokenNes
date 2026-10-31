@@ -72,6 +72,12 @@ public sealed class TimelineMeta
     public long VerifyFailures { get; set; }
     /// <summary>Marked keep by the user: never retired by the cap.</summary>
     public bool Keep { get; set; }
+    /// <summary>T5: this branch runs a hotpatched ROM: "bytes" (byte patches on the parent's ROM, <see cref="Patches"/>) or "rebuild" (a new build,
+    /// <see cref="Build"/>); <see cref="BaseRomSha256"/> is the parent's ROM. Null on every other timeline (older descriptions read as before).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Hotpatch { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public List<string>? Patches { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? BaseRomSha256 { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Build { get; set; }
 
     [JsonIgnore] public long EndFrame => StartFrame + Frames;
 

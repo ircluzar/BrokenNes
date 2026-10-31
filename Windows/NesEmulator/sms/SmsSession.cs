@@ -114,7 +114,8 @@ public class SmsSession : IConsoleSession
     public byte[] SaveStatePayload()
     {
         using var ms = new MemoryStream();
-        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) board.SaveState(w);
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true))
+        using (NesEmulator.Sega.BandLimitedMixer.HostIndependent()) board.SaveState(w);   // the machine's state, not its host's (the sound it has not read: see there)
         return ms.ToArray();
     }
 

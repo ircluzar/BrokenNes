@@ -255,6 +255,7 @@ public static class TimeflowSearch
                 var cpu = mm.Cpus[b.Cpu];
                 b.Ranges = Debugger.ResolveSpec(cpu, m.Debugger!.Symbols, c.Spec, c.Access, out b.Resolved);
                 if (c.If != null) b.IfExpr = DebugExpr.Compile(c.If, cpu);
+                if (c.By != null && !m.Debugger!.Symbols.TryFind(c.By, out _, out string? byErr)) throw new FormatException($"'{c.Text}': by {c.By}: {byErr ?? "no such symbol"} (by names a function of the loaded symbols)");
                 var rom = cpu.Spaces.FirstOrDefault(s => s.Is("rom"));
                 b.RomSpace = rom?.Id ?? -1;
                 b.CoverageUsable = c.Kind == SearchClauseKind.Exec && b.Cpu == 0 && b.RomSpace >= 0 && b.Ranges.Count > 0 && b.Ranges.All(r => r.Space == b.RomSpace);
@@ -818,6 +819,7 @@ public static class TimeflowSearch
                 if (b.C.Kind != SearchClauseKind.Exec || b.Cpu != i.Cpu || i.R.Kind != 0) continue;
                 if (fired[b.Index] && b.Index != anchor) continue;
                 if (!Matches(b, keys)) continue;
+                if (b.C.By != null && !InFunction(b.C.By, in i)) continue;
                 if (b.IfExpr != null) { ec.Address = i.R.Pc; ec.Value = 0; ec.Source = 0; if (!b.IfExpr.IsTrue(ec)) continue; }
                 Fire(b, in i, i.R.Cycle, i.R.Scanline, i.R.Dot, null, null, "exec");
             }
@@ -833,11 +835,24 @@ public static class TimeflowSearch
                 if (b.C.Kind == SearchClauseKind.Read && a.Write || b.C.Kind == SearchClauseKind.Write && !a.Write) continue;
                 if (fired[b.Index] && b.Index != anchor) continue;
                 if (!Matches(b, keys)) continue;
+                if (b.C.By != null && !InFunction(b.C.By, in last.Of[a.Cpu])) continue;
                 if (b.IfExpr != null) { ec.Address = a.Address; ec.Value = a.Value; ec.Source = (long)a.Source; if (!b.IfExpr.IsTrue(ec)) continue; }
                 ref var ins = ref last.Of[a.Cpu];
                 Fire(b, in ins, a.Cycle, a.Scanline, a.Dot, Ctx.Address(a.Cpu, a.Address) + (Ctx.SymbolOfTarget(in a) is { } sym ? $" ({sym})" : ""), Hex(a.Value),
                      (a.Write ? "write" : "read") + (a.Source != AccessSource.Cpu ? " by " + a.Source + (a.Channel >= 0 ? " ch" + a.Channel : "") : ""));
             }
+        }
+
+        /// <summary>"by F": the instruction is F's own code, or F is the innermost call frame (what it called runs under another name).</summary>
+        private bool InFunction(string f, in ProfInstr ins)
+        {
+            if (Ctx.FunctionOf(in ins) == f) return true;
+            var st = stacks.Of(ins.Cpu);
+            if (st.Count == 0) return false;
+            string? n = Ctx.SymbolAtAddress(ins.Cpu, st[^1].Target);
+            if (n == null) return false;
+            int plus = n.IndexOf("+$", StringComparison.Ordinal);
+            return (plus > 0 ? n[..plus] : n) == f;
         }
 
         private static bool Matches(Bound b, ReadOnlySpan<SpaceKey> keys)
