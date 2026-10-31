@@ -40,13 +40,27 @@ public sealed class ProfileMachine : IDisposable
         (b & PadButtons.Up) != 0, (b & PadButtons.Down) != 0, (b & PadButtons.Left) != 0, (b & PadButtons.Right) != 0,
     };
 
-    /// <summary>Opens the machine a timeline was recorded on, with the debugger and these symbols (every console: the Sega consoles since T0).</summary>
-    public static ProfileMachine Open(string timelineDir, IEnumerable<string>? symbols = null)
+    /// <summary>T5: the engine's own hotpatch opener (the desktop app's): the timeline's console, cores and power-on on its ROM or on <paramref name="romFile"/> (a patched or rebuilt one).</summary>
+    public static HotpatchMachine OpenForHotpatch(string timelineDir, TimelineMeta meta, byte[]? romFile, IReadOnlyList<string> symbols)
+    {
+        var pm = Open(timelineDir, symbols, romFile);
+        return new HotpatchMachine
+        {
+            Machine = pm.Machine, Debugger = pm.Debugger, Source = pm.Source, RunFrame = pm.RunFrame, Port = pm.Port, Game = (object?)pm.Nes ?? pm.Session!,
+            RomFile = pm.RomFile, RomSha256 = TimeflowStore.Sha256(pm.RomFile), OnDispose = pm.Dispose,
+        };
+    }
+
+    /// <summary>The ROM file the machine was opened on (the timeline's stored one, or the one given).</summary>
+    public byte[] RomFile { get; private set; } = Array.Empty<byte>();
+
+    /// <summary>Opens the machine a timeline was recorded on, with the debugger and these symbols (every console: the Sega consoles since T0); <paramref name="romFile"/> another ROM for it (T5).</summary>
+    public static ProfileMachine Open(string timelineDir, IEnumerable<string>? symbols = null, byte[]? romFile = null)
     {
         var meta = TimelineMeta.Load(timelineDir);
-        byte[] file = TimeflowStore.RomOf(timelineDir, meta);
+        byte[] file = romFile ?? TimeflowStore.RomOf(timelineDir, meta);
         byte[] rom = RomDetect.Unwrap(file, meta.RomName.Length > 0 ? meta.RomName : "rom" + meta.RomExt, out string inner);
-        var pm = new ProfileMachine { Meta = meta };
+        var pm = new ProfileMachine { Meta = meta, RomFile = file };
         var cores = meta.Cores.Split('/');
         string Core(int i) => i < cores.Length ? cores[i].Trim() : "";
         if (meta.Console == "nes")

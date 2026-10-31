@@ -298,6 +298,7 @@ namespace BrokenNes.Windows
             server.CancelTimeflowRequest = TimeflowCancelRequest;
             server.GetTimeflowProfile = TimeflowProfileStatus;
             server.GetTimeflowSearch = TimeflowSearchStatus;
+            server.GetTimeflowHotpatch = TimeflowPatchStatus;
         }
 
         // ------------------------------------------------------------------------------------------------ jump and resume (the window: the user's own controls)

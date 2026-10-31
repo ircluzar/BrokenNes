@@ -13,7 +13,9 @@ namespace BrokenNes.Windows.DebugWindows
     /// Emulator > Debug Windows > Timeflow (BrokenDev T1 / T2): the REC switch (the user's own: recording is off until it is ticked), what is being
     /// recorded and the space used, the running game's timelines (a branch under its parent), and a scrubber over the chosen one: Jump puts the
     /// game at that frame (paused, its state proved to be the recorded one), Resume plays on live (a branch while recording), Replay plays the
-    /// recorded inputs (checked against the recording frame by frame). The window's timer lives only while it is open; nothing is saved.
+    /// recorded inputs (checked against the recording frame by frame). T5: Patch + resume applies byte patches from the chosen frame on headless machines,
+    /// replays the recorded inputs on the patched ROM (a branch) and shows where the new future diverges and the verdict of the test written beside it.
+    /// The window's timer lives only while it is open; nothing is saved.
     /// </summary>
     public sealed class TimeflowWindow : Form
     {
@@ -38,6 +40,11 @@ namespace BrokenNes.Windows.DebugWindows
         private readonly Button search = new() { Name = "timeflowSearch", AccessibleName = "timeflowSearch", Text = "Search", Width = 80 };
         private readonly ListBox hits = new() { Name = "timeflowHits", AccessibleName = "timeflowHits", Dock = DockStyle.Bottom, Height = 96, IntegralHeight = false, Font = new Font("Consolas", 8.5f) };
         private readonly Panel strip = new() { Name = "timeflowHitStrip", AccessibleName = "timeflowHitStrip", Dock = DockStyle.Top, Height = 10 };
+        // T5: byte patches from the chosen frame, the recorded inputs replayed on the patched ROM (a branch), the divergence and the verdict shown
+        private readonly TextBox patchText = new() { Name = "timeflowPatchText", AccessibleName = "timeflowPatchText", Width = 200, Text = "" };
+        private readonly TextBox verdictText = new() { Name = "timeflowVerdictText", AccessibleName = "timeflowVerdictText", Width = 250, Text = "" };
+        private readonly Button patch = new() { Name = "timeflowPatch", AccessibleName = "timeflowPatch", Text = "Patch + resume", Width = 110 };
+        private readonly TextBox patchResult = new() { Name = "timeflowPatchResult", AccessibleName = "timeflowPatchResult", Dock = DockStyle.Bottom, ReadOnly = true, Multiline = true, ScrollBars = ScrollBars.Vertical, Height = 64, Font = new Font("Consolas", 8.5f) };
         private readonly List<SearchHit> found = new();
         private List<TimelineInfo> shown = new();
         private string listKey = "";
@@ -48,7 +55,7 @@ namespace BrokenNes.Windows.DebugWindows
             this.form = form;
             Text = "BrokenNes Timeflow";
             Name = "TimeflowWindow";
-            ClientSize = new Size(760, 600);
+            ClientSize = new Size(760, 700);
             StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = false;
             Font = new Font("Segoe UI", 9f);
@@ -65,11 +72,21 @@ namespace BrokenNes.Windows.DebugWindows
             var sbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 32, WrapContents = false, Padding = new Padding(4, 2, 4, 0) };
             sbar.Controls.Add(new Label { Text = "Search", AutoSize = true, Padding = new Padding(0, 6, 0, 0) });
             sbar.Controls.Add(searchText); sbar.Controls.Add(search);
+            var hbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 32, WrapContents = false, Padding = new Padding(4, 2, 4, 0) };
+            hbar.Controls.Add(new Label { Text = "Patch", AutoSize = true, Padding = new Padding(0, 6, 0, 0) });
+            hbar.Controls.Add(patchText);
+            hbar.Controls.Add(new Label { Text = "verdict", AutoSize = true, Padding = new Padding(0, 6, 0, 0) });
+            hbar.Controls.Add(verdictText); hbar.Controls.Add(patch);
+            var tips = new ToolTip();
+            tips.SetToolTip(patchText, "byte patches from the chosen frame, ; between them: " + RomPatch.Help);
+            tips.SetToolTip(verdictText, "the test that judges the fix, over the replayed frames: " + VerdictTest.Help);
             new ToolTip().SetToolTip(searchText, "e.g. state [enemy_alive] != 0 and not color #982220  |  exec player_hit  |  write hp if value == 0  |  finding  |  sound silent  (" + SearchCondition.Help + ")");
             Controls.Add(list);
+            Controls.Add(patchResult);
             Controls.Add(hits);
             Controls.Add(info);
             Controls.Add(result);
+            Controls.Add(hbar);
             Controls.Add(sbar);
             Controls.Add(pbar);
             Controls.Add(bar);
@@ -106,6 +123,19 @@ namespace BrokenNes.Windows.DebugWindows
                 result.Text = "searching on headless machines (your game runs on)...";
                 try { result.Text = await form.TimeflowSearchAsync(searchText.Text, AddHit, s => { if (!IsDisposed) result.Text = s; }); }
                 finally { if (!IsDisposed) search.Text = "Search"; }
+            };
+            patch.Click += async (_, _) =>
+            {
+                var t = Current; if (t == null) { patchResult.Text = "choose a timeline"; return; }
+                patch.Enabled = false;
+                patchResult.Text = $"patching from frame {frame.Value} on headless machines (your game runs on)...";
+                try
+                {
+                    var ps = patchText.Text.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    var vs = verdictText.Text.Trim().Length > 0 ? new[] { verdictText.Text.Trim() } : Array.Empty<string>();
+                    patchResult.Text = await form.TimeflowPatchAsync(t.Dir, (long)frame.Value, ps, vs, s => { if (!IsDisposed) patchResult.Text = s; });
+                }
+                finally { if (!IsDisposed) patch.Enabled = true; }
             };
             searchText.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; search.PerformClick(); } };
             hits.SelectedIndexChanged += (_, _) => GoToHit();
