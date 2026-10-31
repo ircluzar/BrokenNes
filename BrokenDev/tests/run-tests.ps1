@@ -1879,6 +1879,120 @@ exit $p.ExitCode
         } finally { Restore-Env $savedTf }
     }
 
+    Test-Case 'timeflow patch|rebuild-resume|diverge|verdict|verdict-promote through brokendev.ps1 (T5): the planted CPX bug found by search, byte-patched from a rewound frame (the verdict "never write hp by fill_table" passes, fails on the old future), the project rebuilt and resumed (safe), a build that moved the frame''s code refused with the safe point offered (the manifest''s timeflow.safe) and resumed there with -AtSafe, a promoted verdict in verify; NEGATIVE: wrong old bytes refused (nothing applied), the planted build fails the promoted verdict' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        $th = Join-Path $tmpRoot 'tf5home'; $tp = Join-Path $tmpRoot 'tf5projects'; $src = Join-Path $tmpRoot 'tf5game'
+        New-Item -ItemType Directory -Force -Path $th, (Join-Path $tp 'hgame'), $src | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $src 'variant.txt'), 'planted')
+        [System.IO.File]::WriteAllText((Join-Path $src 'build.ps1'), @'
+param([Parameter(Mandatory)][string]$Workshop)
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+New-Item -ItemType Directory -Force -Path (Join-Path $here 'build') | Out-Null
+$v = ([System.IO.File]::ReadAllText((Join-Path $here 'variant.txt'))).Trim()
+$p = Start-Process -FilePath $Workshop -ArgumentList @('--timeflow', 'hotpatch-rom', '--build', $v, '--out', "`"$(Join-Path $here 'build\game.nes')`"") -Wait -PassThru -NoNewWindow
+exit $p.ExitCode
+'@)
+        $man = [ordered]@{
+            schema = 1; id = 'hgame'; title = 'the T5 tests'' planted game'; family = 'test'; kind = 'nes'; console = 'nes'; description = 'T5 run-tests'
+            source = @{ folder = $src }; requires = @{ tools = @('ps5'); projects = @(); inputs = @() }
+            build = @{ steps = @(@{ name = 'build'; shell = 'ps5'; cwd = '{src}'; file = '{src}/build.ps1'; args = @('-Workshop', '{workshop}'); timeoutSec = 120 })
+                       outputs = @(@{ id = 'rom'; path = '{src}/build/game.nes'; publishAs = 'game.nes'; kind = 'nes' }, @{ id = 'mlb'; path = '{src}/build/game.mlb'; publishAs = 'game.mlb'; kind = 'symbols' }) }
+            verify = @{ scenarios = @(@{ id = 'play'; frames = 200; input = '' }) }; knownIssues = @(); timeflow = @{ safe = @('main_loop') }
+        }
+        Save-BdJson -Object $man -Path (Join-Path (Join-Path $tp 'hgame') 'project.json')
+        $savedTf = Save-Env @('BROKENDEV_HOME', 'BROKENDEV_PROJECTS', 'BROKENDEV_WORKSHOP', 'BROKENDEV_TIMEFLOW')
+        $env:BROKENDEV_HOME = $th; $env:BROKENDEV_PROJECTS = $tp; $env:BROKENDEV_WORKSHOP = $ws; $env:BROKENDEV_TIMEFLOW = $null
+        $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { (Get-Process -Id $PID).Path } else { Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe' }
+        function Bd([string[]]$a) { Invoke-BdProcess -FilePath $psExe -Arguments (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $bd 'brokendev.ps1')) + $a) -TimeoutSec 900 -Env @{ BROKENDEV_HOME = $th; BROKENDEV_PROJECTS = $tp; BROKENDEV_WORKSHOP = $ws } }
+        function BdJ([string[]]$a) { $r = Bd ($a + '-Json'); $t = $r.Output; $i = $t.IndexOf('{'); $j = $t.LastIndexOf('}'); [pscustomobject]@{ Code = $r.ExitCode; J = $(if ($i -ge 0 -and $j -gt $i) { try { $t.Substring($i, $j - $i + 1) | ConvertFrom-Json } catch { $null } } else { $null }); Text = $t } }
+        $v = 'never write hp by fill_table'
+        try {
+            [void](Invoke-BdProjectBuild -Id 'hgame')
+            $rec = BdJ @('timeflow', 'record', 'hgame', '-Scenario', 'play', '-Index')
+            Assert-True ($rec.Code -eq 0 -and $rec.J.frames -eq 200) "record: exit $($rec.Code) $(Select-BdTail $rec.Text 4)"
+            $tid = [string]$rec.J.id
+            $inf = BdJ @('timeflow', 'info', $tid)
+            Assert-True (@($inf.J.keptSymbols).Count -eq 1) "the build's symbols are not kept beside its ROM: $(@($inf.J.keptSymbols) -join ', ')"
+            $se = BdJ @('timeflow', 'search', $tid, '-Query', 'write hp by fill_table')
+            Assert-True ($se.Code -eq 0 -and $se.J.totalHits -ge 2 -and @($se.J.hits)[0].in -eq 'ft_store') "search: $($se.J.totalHits) hits $(Select-BdTail $se.Text 4)"
+            $pa = BdJ @('timeflow', 'patch', $tid, '-Frame', '10', '-Patch', 'ft_limit+1=21>10', '-Verdict', $v)
+            $pv = @($pa.J.verdicts)[0]
+            Assert-True ($pa.Code -eq 0 -and $pa.J.resumed -and $pv.pass -and -not $pv.old.pass -and $pa.J.divergence.firstInstruction.pcSymbolOld -eq 'ft_limit') "patch: exit $($pa.Code) $($pv.verdict) ($($pv.evidence)); old $($pv.old.verdict); $($pa.J.divergence.summary) $(Select-BdTail $pa.Text 3)"
+            $txt = Bd @('timeflow', 'patch', $tid, '-Frame', '10', '-Patch', 'ft_limit+1=21>10', '-Verdict', $v)
+            Assert-True ($txt.ExitCode -eq 0 -and $txt.Output -match 'PASS' -and $txt.Output -match 'divergence') "patch (text): $(Select-BdTail $txt.Output 6)"
+            $wr = BdJ @('timeflow', 'patch', $tid, '-Frame', '10', '-Patch', 'ft_limit+1=10>21')
+            Assert-True ($wr.Code -eq 1 -and -not $wr.J.resumed -and ([string]$wr.J.refused) -match 'nothing applied') "a wrong old byte: exit $($wr.Code) $($wr.J.refused)"
+            $dv = BdJ @('timeflow', 'diverge', [string]$pa.J.branch)
+            Assert-True ($dv.Code -eq 0 -and $dv.J.diverged -and $dv.J.lockstep.firstInstruction.pcSymbolOld -eq 'ft_limit') "diverge (a branch): $($dv.J.summary) | $($dv.J.lockstep.summary)"
+            # the rebuild: the project's source fixed, BrokenDev builds it, the frame resumes on it
+            [System.IO.File]::WriteAllText((Join-Path $src 'variant.txt'), 'fixed')
+            $rb = BdJ @('timeflow', 'rebuild-resume', $tid, '-Frame', '10', '-Verdict', $v)
+            Assert-True ($rb.Code -eq 0 -and $rb.J.check.safe -and $rb.J.verdictsPass) "rebuild-resume (fixed): exit $($rb.Code) safe $($rb.J.check.safe) $($rb.J.verdictSummary) $($rb.J.refused) $(Select-BdTail $rb.Text 3)"
+            $fixedBranch = [string]$rb.J.branch
+            [System.IO.File]::WriteAllText((Join-Path $src 'variant.txt'), 'moved')
+            $mv = BdJ @('timeflow', 'rebuild-resume', $tid, '-Frame', '8', '-Verdict', $v)
+            Assert-True ($mv.Code -eq 1 -and -not $mv.J.resumed -and ([string]$mv.J.refused) -match 'slow' -and $mv.J.safeResume.frame -eq 10 -and $mv.J.safeResume.function -eq 'main_loop') "rebuild-resume (moved): exit $($mv.Code) $($mv.J.refused); safe point $($mv.J.safeResume.frame) $($mv.J.safeResume.function)"
+            $at = BdJ @('timeflow', 'rebuild-resume', $tid, '-Frame', '8', '-AtSafe', '-NoBuild', '-Verdict', $v)
+            Assert-True ($at.Code -eq 0 -and $at.J.resumedAt -eq 10 -and $at.J.verdictsPass) "rebuild-resume -AtSafe: exit $($at.Code) resumed at $($at.J.resumedAt) $($at.J.verdictSummary)"
+            $vb = BdJ @('timeflow', 'verdict', $fixedBranch, '-Verdict', $v)
+            $vo = BdJ @('timeflow', 'verdict', $tid, '-Verdict', $v, '-From', '10')
+            Assert-True ($vb.Code -eq 0 -and $vb.J.pass -and $vo.Code -eq 1 -and -not $vo.J.pass) "verdict: the branch exit $($vb.Code) $($vb.J.summary); the recording exit $($vo.Code) $($vo.J.summary)"
+            # promoted by an explicit command only: verify then plays it on every build
+            $vdir = Join-Path (Join-Path $tp 'hgame') 'verdicts'
+            Assert-True (-not (Test-Path -LiteralPath $vdir)) 'a verdict was promoted by itself'
+            $pr = BdJ @('timeflow', 'verdict-promote', $fixedBranch, '-Verdict', $v, '-Name', 'hp-safe', '-Why', 'the CPX fix keeps fill_table off hp')
+            Assert-True ($pr.Code -eq 0 -and (Test-Path -LiteralPath (Join-Path $vdir 'hp-safe.json'))) "verdict-promote: exit $($pr.Code) $(Select-BdTail $pr.Text 3)"
+            [System.IO.File]::WriteAllText((Join-Path $src 'variant.txt'), 'fixed'); [void](Invoke-BdProjectBuild -Id 'hgame')
+            $ok = Invoke-BdProjectVerify -Id 'hgame' -Exe $ws
+            Assert-True ($ok.ok -and @($ok.verdicts).Count -eq 1 -and @($ok.verdicts)[0].pass) "verify (fixed) with the promoted verdict: ok $($ok.ok) $(@($ok.verdicts)[0].evidence)"
+            [System.IO.File]::WriteAllText((Join-Path $src 'variant.txt'), 'planted'); [void](Invoke-BdProjectBuild -Id 'hgame')
+            $bad = Invoke-BdProjectVerify -Id 'hgame' -Exe $ws
+            Assert-True (-not $bad.ok -and -not @($bad.verdicts)[0].pass -and ([string]@($bad.verdicts)[0].evidence) -match 'ft_store') "verify (planted) passed the promoted verdict: $(@($bad.verdicts)[0].evidence)"
+        } finally { Restore-Env $savedTf }
+    }
+
+    Test-Case 'timeflow rebuild-resume on a real Game Boy project built from source with GBDK (T5): a copy of the frozen V0 hello world in scratch (the game repo only read), a timeline of it, the source edited (the d-pad''s right edge 160 -> 150), rebuilt and resumed at frame 60: safe, the verdict "never state [player_x] > 150" passes (fails on the old future); NEGATIVE: an edit that grows the main loop (the call into vsync moves) is refused, naming the return address' {
+        if (-not $ws) { Skip-Test $wsSkip }
+        if (-not (Test-Path 'P:\BrokenDev\env\toolchains\gbdk\4.5.0\gbdk\bin\lcc.exe')) { Skip-Test 'GBDK-2020 4.5.0 is not installed (toolchains.json gbdk)' }
+        $th = Join-Path $tmpRoot 'tf5ghome'; $tp = Join-Path $tmpRoot 'tf5gprojects'; $copy = Join-Path $tmpRoot 'tf5gv0'
+        New-Item -ItemType Directory -Force -Path $th, (Join-Path $tp 'vgame') | Out-Null
+        $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { (Get-Process -Id $PID).Path } else { Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe' }
+        $r0 = Invoke-BdProcess -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $here 'voc-v0.ps1'), '-SourceOnly', '-Out', $copy) -TimeoutSec 300
+        if ($r0.ExitCode -eq 2) { Skip-Test "the frozen V0 sources are not available: $(Select-BdTail $r0.Output 2)" }
+        $src = Join-Path $copy 'src'
+        Assert-True (Test-Path -LiteralPath (Join-Path $src 'src\main.c')) "voc-v0.ps1 -SourceOnly gave no sources: $(Select-BdTail $r0.Output 4)"
+        $man = [ordered]@{
+            schema = 1; id = 'vgame'; title = 'the frozen V0 hello world (a copy)'; family = 'test'; kind = 'gb'; console = 'gbc'; description = 'T5 run-tests: a real GBDK build'
+            source = @{ folder = $src }; requires = @{ tools = @('ps5'); projects = @(); inputs = @() }
+            build = @{ steps = @(@{ name = 'build'; shell = 'ps5'; cwd = '{src}'; file = '{src}/build.ps1'; args = @(); timeoutSec = 600 })
+                       outputs = @(@{ id = 'rom'; path = '{src}/build/vrun_voc.gbc'; publishAs = 'vrun_voc.gbc'; kind = 'gbc' }, @{ id = 'noi'; path = '{src}/build/vrun_voc.noi'; publishAs = 'vrun_voc.noi'; kind = 'symbols' }) }
+            verify = @{ scenarios = @(@{ id = 'play'; frames = 300; input = '30:Right' }) }; knownIssues = @()
+        }
+        Save-BdJson -Object $man -Path (Join-Path (Join-Path $tp 'vgame') 'project.json')
+        $savedTf = Save-Env @('BROKENDEV_HOME', 'BROKENDEV_PROJECTS', 'BROKENDEV_WORKSHOP', 'BROKENDEV_TIMEFLOW')
+        $env:BROKENDEV_HOME = $th; $env:BROKENDEV_PROJECTS = $tp; $env:BROKENDEV_WORKSHOP = $ws; $env:BROKENDEV_TIMEFLOW = $null
+        function Bd([string[]]$a) { Invoke-BdProcess -FilePath $psExe -Arguments (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $bd 'brokendev.ps1')) + $a) -TimeoutSec 1200 -Env @{ BROKENDEV_HOME = $th; BROKENDEV_PROJECTS = $tp; BROKENDEV_WORKSHOP = $ws } }
+        function BdJ([string[]]$a) { $r = Bd ($a + '-Json'); $t = $r.Output; $i = $t.IndexOf('{'); $j = $t.LastIndexOf('}'); [pscustomobject]@{ Code = $r.ExitCode; J = $(if ($i -ge 0 -and $j -gt $i) { try { $t.Substring($i, $j - $i + 1) | ConvertFrom-Json } catch { $null } } else { $null }); Text = $t } }
+        $mainC = Join-Path $src 'src\main.c'; $orig = [System.IO.File]::ReadAllText($mainC)
+        try {
+            [void](Invoke-BdProjectBuild -Id 'vgame')
+            $rec = BdJ @('timeflow', 'record', 'vgame', '-Scenario', 'play', '-Index')
+            Assert-True ($rec.Code -eq 0 -and $rec.J.frames -eq 300) "record: exit $($rec.Code) $(Select-BdTail $rec.Text 4)"
+            $tid = [string]$rec.J.id
+            $edited = $orig.Replace('player_x < 160u) player_x++', 'player_x < 150u) player_x++')
+            Assert-True ($edited -ne $orig) 'the edit did not apply to main.c'
+            [System.IO.File]::WriteAllText($mainC, $edited)
+            $rb = BdJ @('timeflow', 'rebuild-resume', $tid, '-Frame', '60', '-Verdict', 'never state [player_x] > 150')
+            $rv = @($rb.J.verdicts)[0]
+            Assert-True ($rb.Code -eq 0 -and $rb.J.check.safe -and $rv.pass -and -not $rv.old.pass -and $rb.J.divergence.diverged) "rebuild-resume (the edge): exit $($rb.Code) safe $($rb.J.check.safe) $($rv.verdict) ($($rv.evidence)); old $($rv.old.verdict); $($rb.J.divergence.summary) $($rb.J.refused) $(Select-BdTail $rb.Text 3)"
+            $grown = [regex]::Replace($orig, 'frame_count\+\+;(\r?\n)(\s*)vsync\(\);', 'frame_count++;$1$2NR50_REG = 0x77;$1$2vsync();')
+            Assert-True ($grown -ne $orig) 'the second edit did not apply to main.c'
+            [System.IO.File]::WriteAllText($mainC, $grown)
+            $mv = BdJ @('timeflow', 'rebuild-resume', $tid, '-Frame', '60')
+            Assert-True ($mv.Code -eq 1 -and -not $mv.J.resumed -and ([string]$mv.J.refused) -match '_main\+' -and ([string]$mv.J.refused) -match 'differs') "rebuild-resume (the main loop grew): exit $($mv.Code) $($mv.J.refused)"
+        } finally { [System.IO.File]::WriteAllText($mainC, $orig); Restore-Env $savedTf }
+    }
+
     Test-Case 'timeflow profile|profile-query|profiles|profile-keep|profile-drop through brokendev.ps1 (T3): the planted corruption''s write found by "writes hp" with the project''s own symbols, a kept profile queried and dropped, an unkept one gone when its command ended; NEGATIVE: the fixed build has no write to hp, an unknown profile and a span without -From fail' {
         if (-not $ws) { Skip-Test $wsSkip }
         $th = Join-Path $tmpRoot 'tf3home'; $tp = Join-Path $tmpRoot 'tf3projects'
