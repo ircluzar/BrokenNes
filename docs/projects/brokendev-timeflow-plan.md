@@ -822,7 +822,13 @@ hotpatch, resume.
   - `UAT/entrypoints/timeflow-hotpatch-desktop-smoke.ps1` (the real app, scratch config / saves / bugs / BrokenDev home, no sound device, the user's
     `%APPDATA%\BrokenNes` listed before and after): **12 of 12** (the patch resumes, the verdict passes and fails on the old future, the divergence,
     the branch under its parent, the game ran on, wrong bytes and a malformed patch refused, the app's debugger untouched, APPDATA unchanged).
-  - **The runs**: RUNS_PLACEHOLDER
+  - **The runs** (on main 75c516a, then main bdb48e1 merged: a plan document only): `--timeflow-test` **330 passed, 0 failed, 0 not run** (T1-T4's 264, T5's
+    `sdrain` 15, `hotpatch` 34, `hconsoles` 16 and the frame-0 `sconsoles` check), `--debug-test` 205 of 205, `--movie-test` 69 of 69, `--bug-test` 48 of 48,
+    `--md-state-test` 168 of 168, `--smstest` 608 pass / 2 fail (the two WMS:WMSS swaps, failing on the merge base too), the MCP client test **142 of 142**,
+    BrokenDev `run-tests` **154 passed, 0 failed, 0 skipped** (`-WorkshopExe`, `-McpExe`), UAT **125 pass 0 fail 16 skip 3 info** (the goldens unchanged; the
+    corpus and story ROM folders linked from the main checkout for the run, then unlinked), `timeflow-hotpatch-desktop-smoke` 12 of 12 (its first run stopped
+    on the Emulator menu not found yet: the wait is longer now), `timeflow-search-desktop-smoke` 13 of 13, `timeflow-desktop-smoke` 21 of 21 (one earlier
+    run failed a check the truncated output did not show; the rerun passed), the Sega gate as said above, Core and Lite build.
 - **Left for later:** byte patches of CHR ROM / a second ROM space (the patch is on the CPU's ROM space); a patch of the running user's game (the
   window patches a recorded timeline on headless machines, never the game being played); rebuild-resume across a change of the RAM layout (refused:
   mapping variables by symbol between builds would be its next step); the safe point's scan is frame starts only (a mid-frame resume is not offered);
