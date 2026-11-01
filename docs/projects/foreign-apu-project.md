@@ -66,7 +66,7 @@ The user picked all nine:
 
 **Still candidates:** TuxNES 0.75, VirtuaNES 0.97 (all the NES expansion chips), VBA-M 2007 (an almost-free variant of VBA), SNEmulDS, GameYob, PocketNES (ARM asm), Genesis Plus GX 1.3.0 `fm.c`.
 
-## Batch 4: the remaining candidates (2026-11-01, in progress)
+## Batch 4: the remaining candidates (2026-11-01, all seven done (MVP))
 
 The user asked for the rest of the research shortlist, using the same process. The budget is limited, so ports run in two waves and every merged core is pushed straight away.
 
@@ -78,7 +78,7 @@ The user asked for the rest of the research shortlist, using the same process. T
 | `GPGX` | Genesis APU + SMS/GG PSG | Genesis Plus GX 1.3.0 (tree 6f65ac3) `source/sound/fm.c` + `sn76489.c` (1.3.0 has no sn76496.c; fm.c is the default `fm_core=0`) | MAME license + Genesis Plus terms | The last GX before 1.3.1 dropped the old core: half-done SSG-EG, older envelopes and LFO | **done (MVP)**: `sega/GpgxYm2612.cs`, `sega/GpgxSn76489.cs`, `md/MdSoundUnitGpgx.cs`, `sega/SmsSoundGpgx.cs` (9f69d5ca; GX defaults: hq_fm (chip rate 1:1), output filter on, PSG x1.5; MD r=0.69 vs MD / 0.955 vs BLST (chords decay like real D1R); SMS r=0.994, ~4 dB quieter, mono) |
 | `SNDS` | SNES APU | SNEmulDS `arm7/source/dsp.c` + `dspMixer.S` (DSP from PocketSPC by gladius) (github.com/cotodevel/snemulds @79762ad) | GPL-2 | A Nintendo DS emulator's cheap DSP: no interpolation, broken echo, a cheap ARM mixer | **done (MVP)**: `snes/SnemulDsDsp.cs`, `snes/APU_SNDS.cs` (7ef6933e; ARM mixer translated line by line incl. its self-patching echo, 63 frames mixed / 62 played, 2.4% sharp, noise and pitch-mod silent, ~2.5x louder; r=0.64 vs SFC) |
 | `GYOB` | GB APU | GameYob (DS) `dssoundengine.cpp` + `arm7 sound.c` + `noise.h` (github.com/Stewmath/GameYob @45599fb) | MIT | Plays Game Boy channels on the DS's own sound hardware (emulated here); only its optional "hyperSound" sync handles effects like Pikachu accurately | **done (MVP)**: `gb/GameYobSound.cs`, `gb/APU_GYOB.cs` (0875ba89; default mode: commands once per GB frame, emulated DS mixer at 32,768 Hz, DS duty table, the DC hum; r=0.947 vs GB) |
-| `PNES` | NES APU | PocketNES (GBA) `src/sound.s` (github.com/Dwedit/PocketNES) | none stated | Plays NES channels on the GBA's Game Boy sound hardware (driven here through BrokenNes2's own `APU_GB`); users report dropped notes | planned |
+| `PNES` | NES APU | PocketNES (GBA) `src/sound.s` (github.com/Dwedit/PocketNES @9c07f3d) | none stated | Plays NES channels on the GBA's Game Boy sound hardware (driven here through BrokenNes2's own `APU_GB`); users report dropped notes | **done (MVP)**: `apus/PocketNesSound.cs`, `apus/APU_PNES.cs` (4e1950c5; software envelopes/length/sweep written as fixed GB volumes, a retrigger on every volume or period change, pitches re-quantised to GB periods, on/off triangle, DirectSound-style DMC; ~2.5x louder; r=0.53 vs FIX) |
 
 ## Resuming this work locally (or in any new session)
 

@@ -95,6 +95,9 @@ call was quick and dirty first, with a smoke test only.
 | FA-GYOB-1 | P3 | GYOB has no "hyperSound" (cycle-synced) mode: changes reach the DS once per frame, so sample-playback effects (Pikachu) are lost. | `gb/GameYobSound.cs` Deliver(): apply queued commands at their GB cycle timestamps as an option. | 2026-11-01, `0875ba89` | open |
 | FA-GYOB-2 | P3 | GYOB: GameYob's own NR52 handling and post-boot I/O values are guessed (`mmu.cpp` not fetched). | `gb/GameYobSound.cs` Write()/Reset(): check against GameYob's `mmu.cpp` / `gameboy.cpp`. | 2026-11-01, `0875ba89` | open |
 | FA-GYOB-3 | P3 | GYOB DS output stage simplified: no PCM FIFO delay, no 10-bit output; a DC blocker stands in for the output capacitor. | `gb/GameYobSound.cs` Render(). | 2026-11-01, `0875ba89` | open |
+| FA-PNES-1 | P3 | PNES DMC plays with no GBA timer-1 refill-buffer latency, and the sample address wraps at $FFFF instead of running into the next ROM bank. | `apus/PocketNesSound.cs` PcmBit; model the PCMWAVSIZE refill in timer1interrupt. | 2026-11-01, `4e1950c5` | open |
+| FA-PNES-2 | P3 | PNES is driven by `APU_GB` (DMG), not GBA sound hardware: NRx2-write quirks may differ, and the DMC/PSG mix balance is guessed. | `apus/PocketNesSound.cs`: add a GBA PSG/DirectSound mixer model. | 2026-11-01, `4e1950c5` | open |
+| FA-PNES-3 | P3 | PNES is NTSC only (freq_mult 0xFFED408C, 7,457-cycle frame interval); the PAL multiplier and tables are not wired. | `apus/PocketNesSound.cs` GbFreq/FrameInterval. | 2026-11-01, `4e1950c5` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
