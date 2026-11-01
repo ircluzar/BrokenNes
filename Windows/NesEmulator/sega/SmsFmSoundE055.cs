@@ -33,6 +33,7 @@ public sealed class SmsFmSoundE055 : SmsFmSound
         var o = Engine();
         o.Reset(); o.ResetPatch();
         phase = 0; held = 0;
+        ReplayFmRegisters();      // a state load / core swap: the game's instruments and held notes, from the stock chip
     }
 
     protected override void OnFmAddress(byte value) => Engine().WriteIO(0, value);

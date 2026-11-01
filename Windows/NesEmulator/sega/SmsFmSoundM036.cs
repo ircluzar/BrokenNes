@@ -41,6 +41,7 @@ public sealed class SmsFmSoundM036 : SmsFmSound
         opl!.ResetChip();
         ym!.Start();
         phase = 0; held = 0;
+        ReplayFmRegisters();      // a state load / core swap: the game's instruments and held notes, from the stock chip
     }
 
     protected override void OnFmAddress(byte value) => Engine().WriteRegister(value);

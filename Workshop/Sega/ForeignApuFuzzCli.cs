@@ -28,6 +28,7 @@ internal static class ForeignApuFuzzCli
     {
         if (M68kTestCli.Flag(args, "--swap")) return GbSwap();
         if (M68kTestCli.Flag(args, "--md-reload")) return MdReload();
+        if (M68kTestCli.Flag(args, "--fm-reload")) return FmReload();
         double seconds = double.TryParse(M68kTestCli.Arg(args, "--seconds"), out double s) ? s : 3;
         int seed = int.TryParse(M68kTestCli.Arg(args, "--seed"), out int sd) ? sd : 1234;
         var only = M68kTestCli.Arg(args, "--only")?.ToUpperInvariant().Split(',');
@@ -140,6 +141,36 @@ internal static class ForeignApuFuzzCli
             Console.WriteLine($"{id,-5} note after a state load: rms {rms,6:F0}{(ok ? "" : "   <- silent (the patch was lost)")}");
         }
         Console.WriteLine(bad == 0 ? "every Genesis unit keeps the game's instruments across a state load" : $"{bad} units lose the instruments");
+        return bad == 0 ? 0 : 1;
+    }
+
+    /// <summary>--apu-fuzz --fm-reload: a held YM2413 note, the state saved and loaded into a fresh unit of the same kind: is the note still heard?</summary>
+    private static int FmReload()
+    {
+        int bad = 0;
+        foreach (var id in new[] { "SMS-FM", "M036FM", "E055" })
+        {
+            var timeline = SegaTimeline.MasterSystem(SegaRegion.Ntsc);
+            var machine = new SegaMachine(timeline, GenesisModel.Model1, 44100);
+            ISmsSound Make() => SmsSoundFactories.Create(id, new SmsSoundRequest(machine, ConsoleKind.MasterSystem, PsgVariant.Sega));
+            var a = Make(); a.Reset(); a.WriteAudioControl(1);
+            void W(ISmsSound u, int r, int v) { u.WriteFmAddress((byte)r); u.WriteFmData((byte)v); }
+            W(a, 0x30, 0x30); W(a, 0x10, 0xAC); W(a, 0x20, 0x18);                     // piano, ~440 Hz, key on (held)
+            var buf = new short[16384];
+            for (int i = 0; i < 10; i++) { a.Run(10000); while (a.ReadSamples(buf) > 0) { } }
+            var b = Make();
+            using (var ms = new System.IO.MemoryStream())
+            {
+                using (var w = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) a.SaveState(w);
+                ms.Position = 0; using var r = new System.IO.BinaryReader(ms); b.LoadState(r);
+            }
+            double sum = 0; long n = 0;
+            for (int i = 0; i < 10; i++) { b.Run(10000); int k; while ((k = b.ReadSamples(buf)) > 0) for (int j = 0; j < k; j++) { sum += (double)buf[j] * buf[j]; n++; } }
+            double rms = n == 0 ? 0 : Math.Sqrt(sum / n);
+            bool ok = rms > 100; if (!ok) bad++;
+            Console.WriteLine($"{id,-7} held note after a state load: rms {rms,6:F0}{(ok ? "" : "   <- silent")}");
+        }
+        Console.WriteLine(bad == 0 ? "every FM unit keeps its held notes across a state load" : $"{bad} FM units go silent");
         return bad == 0 ? 0 : 1;
     }
 

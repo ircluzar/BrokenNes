@@ -286,6 +286,19 @@ public class SmsFmSound : ISmsSound, IVoiceStems
     /// <summary>After Reset and after a state load.</summary>
     protected virtual void OnReset() { }
 
+    /// <summary>
+    /// For a hooked FM engine after a state load or a core swap: replays the stock YM2412/YM2413's registers through <see cref="OnFmAddress"/> /
+    /// <see cref="OnFmData"/> (the custom instrument, then per channel the instrument/volume, F-number and key-on/block, then the rhythm register),
+    /// so the engine has the game's instruments and its held notes. The YM2413 keeps key-on in a register, so held notes sound again at once.
+    /// </summary>
+    protected void ReplayFmRegisters()
+    {
+        void W(int r) { OnFmAddress((byte)r); OnFmData(fm.Register(r)); }
+        for (int r = 0x00; r < 0x08; r++) W(r);
+        for (int ch = 0; ch < 9; ch++) { W(0x30 + ch); W(0x10 + ch); W(0x20 + ch); }
+        W(0x0E);
+    }
+
     public string Describe() =>
         $"SN76489 ({psg.Variant}) + YM2413: tones {psg.Period(0)}/{psg.Period(1)}/{psg.Period(2)} volumes {psg.Volume(0)}/{psg.Volume(1)}/{psg.Volume(2)}/{psg.Volume(3)} noise {psg.NoiseControl} | {fm.Describe()} | audio control ${audioControl:X2} (FM {(FmEnabled ? "on" : "off")}, PSG {(PsgEnabled ? "on" : "muted")})";
 }
