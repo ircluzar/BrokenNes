@@ -27,6 +27,7 @@ internal static class ForeignApuFuzzCli
     public static int Run(string[] args)
     {
         if (M68kTestCli.Flag(args, "--swap")) return GbSwap();
+        if (M68kTestCli.Flag(args, "--md-reload")) return MdReload();
         double seconds = double.TryParse(M68kTestCli.Arg(args, "--seconds"), out double s) ? s : 3;
         int seed = int.TryParse(M68kTestCli.Arg(args, "--seed"), out int sd) ? sd : 1234;
         var only = M68kTestCli.Arg(args, "--only")?.ToUpperInvariant().Split(',');
@@ -104,6 +105,41 @@ internal static class ForeignApuFuzzCli
                 Console.WriteLine($"{from,-5} -> {to,-5} note after swap: rms {rms[0],6:F0} without retrigger, {rms[1],6:F0} with{(heard ? "" : "   <- still silent")}");
             }
         Console.WriteLine(bad == 0 ? "every swap keeps the note sounding" : $"{bad} swaps still lose the note");
+        return bad == 0 ? 0 : 1;
+    }
+
+    /// <summary>--apu-fuzz --md-reload: a game sets up an FM patch, the state is saved and loaded into a fresh unit of the same kind (a save-state load),
+    /// then the game keys the next note on without rewriting the patch: does it sound? (KNOWN_GAPS FA-S-GENS-3 / FA-S-PICO-2 / FA-S-M036-3)</summary>
+    private static int MdReload()
+    {
+        string[] ids = { "MD", "GENS", "PICO", "M036", "BLST", "GPGX" };
+        int bad = 0;
+        foreach (var id in ids)
+        {
+            var timeline = SegaTimeline.Genesis(SegaRegion.Ntsc);
+            var machine = new SegaMachine(timeline, GenesisModel.Model1, 44100);
+            MdSoundUnit Make() => id == "MD" ? new MdSoundUnit(machine) : (MdSoundUnit)GenesisSoundFactories.Create(id, machine);
+            long master = 0; long step = (long)(timeline.MasterHz / 100);
+            void W(MdSoundUnit u, int reg, byte v) { u.WriteYm(0, (byte)reg, master); u.WriteYm(1, v, master); }
+            var a = Make(); a.Reset();
+            W(a, 0xB0, 0x07); W(a, 0xB4, 0xC0);                                               // algorithm 7: all four operators heard
+            foreach (int op in new[] { 0, 4, 8, 12 }) { W(a, 0x30 + op, 0x01); W(a, 0x40 + op, 0x10); W(a, 0x50 + op, 0x1F); W(a, 0x60 + op, 0); W(a, 0x70 + op, 0); W(a, 0x80 + op, 0x0F); }
+            W(a, 0xA4, 0x22); W(a, 0xA0, 0x69);                                               // ~440 Hz
+            for (int i = 0; i < 10; i++) { master += step; a.RunTo(master); a.ReadSamples(new short[16384]); }
+            var b = Make();
+            using (var ms = new System.IO.MemoryStream())
+            {
+                using (var w = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) a.SaveState(w);
+                ms.Position = 0; using var r = new System.IO.BinaryReader(ms); b.LoadState(r);
+            }
+            W(b, 0x28, 0xF0);                                                                  // the next note: key on, patch not rewritten
+            double sum = 0; long n = 0; var buf = new short[16384];
+            for (int i = 0; i < 20; i++) { master += step; b.RunTo(master); int k; while ((k = b.ReadSamples(buf)) > 0) for (int j = 0; j < k; j++) { sum += (double)buf[j] * buf[j]; n++; } }
+            double rms = n == 0 ? 0 : Math.Sqrt(sum / n);
+            bool ok = rms > 200; if (!ok) bad++;
+            Console.WriteLine($"{id,-5} note after a state load: rms {rms,6:F0}{(ok ? "" : "   <- silent (the patch was lost)")}");
+        }
+        Console.WriteLine(bad == 0 ? "every Genesis unit keeps the game's instruments across a state load" : $"{bad} units lose the instruments");
         return bad == 0 ? 0 : 1;
     }
 

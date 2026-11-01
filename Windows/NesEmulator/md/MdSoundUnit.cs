@@ -576,6 +576,26 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
     /// <summary>After Reset and after a state load (the state holds the stock chips, not a hooked engine).</summary>
     protected virtual void OnReset() { }
 
+    /// <summary>
+    /// For a hooked engine after a state load or a core swap: replays the stock YM2612's registers (modes, every operator and channel register of
+    /// both parts, the channel-3 frequencies, the DAC) through <see cref="OnYmWrite"/>, so the engine has the game's instruments without waiting
+    /// for the game to write them again. Key-on (register $28) is not a stored register: notes sound again at their next key-on.
+    /// </summary>
+    protected void ReplayFmRegisters()
+    {
+        void W(int part, int reg, byte v) { OnYmWrite(part * 2, (byte)reg); OnYmWrite(part * 2 + 1, v); }
+        W(0, 0x22, ym.Register(0x22)); W(0, 0x27, ym.Register(0x27)); W(0, 0x2b, ym.Register(0x2b));
+        for (int part = 0; part < 2; part++)
+        {
+            int b = part * 0x100;
+            for (int r = 0x30; r < 0xa0; r++) W(part, r, ym.Register(b + r));
+            for (int r = 0xa4; r < 0xa7; r++) { W(part, r, ym.Register(b + r)); W(part, r - 4, ym.Register(b + r - 4)); }
+            if (part == 0) for (int r = 0xac; r < 0xaf; r++) { W(0, r, ym.Register(r)); W(0, r - 4, ym.Register(r - 4)); }
+            for (int r = 0xb0; r < 0xb7; r++) W(part, r, ym.Register(b + r));
+        }
+        W(0, 0x2a, ym.Register(0x2a));
+    }
+
     public string Describe() { Unpark(); return DescribeCore(); }
 
     private string DescribeCore() =>

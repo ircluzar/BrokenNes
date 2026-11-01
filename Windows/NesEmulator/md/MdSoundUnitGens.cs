@@ -106,6 +106,7 @@ public sealed class MdSoundUnitGens : MdSoundUnit
     {
         if (ym == null) return;   // the base constructor's Reset: Init runs after it
         Init();
+        ReplayFmRegisters();      // a state load / core swap: the game's instruments, from the stock chip (KNOWN_GAPS FA-S-GENS-3)
     }
 
     protected override void OnYmWrite(int port, byte value)
