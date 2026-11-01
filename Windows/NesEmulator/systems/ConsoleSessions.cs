@@ -343,6 +343,7 @@ public sealed class GbSession : IConsoleSession
         if (apu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { MixConfig.GbBackNesApu = apu[4..]; return m => new GbApuOnNes(m); }
         if (CoreCatalog.IsDirectRoute(apu)) return m => new GbApuOnChip(m, apu);          // another console's enhanced sound chip, directly
         if (apu.Equals("GBS", StringComparison.OrdinalIgnoreCase)) return m => new APU_GBS(m);
+        if (apu.Equals("VBA", StringComparison.OrdinalIgnoreCase)) return m => new APU_VBA(m);   // VisualBoyAdvance 1.7.2's sound engine (foreign-apu-project)
         return null;
     }
 
