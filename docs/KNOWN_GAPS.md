@@ -70,6 +70,9 @@ call was quick and dirty first, with a smoke test only.
 | FA-ZS151-2 | P3 | ZS151: only the default path is ported (not the mono, non-interpolated, cubic and 8-tap mixers, low-pass filters, surround, reversed stereo). | `snes/Zs151Dsp.cs`: port the rest of `dspproc.asm` if options are wanted. | 2026-11-01, `33f7502b` | open |
 | FA-ZS151-3 | P3 | ZS151 echo, noise and pitch modulation are not checked by ear (musictest does not use them). | Render an echo-heavy SPC and compare with ZSNES 1.51. | 2026-11-01, `33f7502b` | open |
 | FA-ZS151-4 | P3 | ZS151 key-on timing is approximate (ZSNES's per-scanline key-on stepped every other sample; renders in 160-frame blocks). | `APU_ZS151.OnDspSample`: step it from the SNES scanline counter instead. | 2026-11-01, `33f7502b` | open |
+| FA-DEGA-1 | P3 | DEGA writes land at chunk granularity, not inside the chunk. | `SmsSoundDega.OnPsgSamples`; needs write timestamps from the `SmsSound` hooks. | 2026-11-01, `b86d07ac` | open |
+| FA-DEGA-2 | P3 | DEGA: the 44,100 Hz rate is assumed (Dega's frontend not checked); the non-enhanced mode is not on any menu; no upstream commit hash recorded. | `SmsSoundDega` (DegaRate, enhance flag). | 2026-11-01, `b86d07ac` | open |
+| FA-DEGA-3 | P3 | DEGA Game Gear stereo path not smoke-tested (the test VGM has no stereo writes). | Render a GG VGM with port $06 writes. | 2026-11-01, `b86d07ac` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
