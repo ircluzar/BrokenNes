@@ -92,6 +92,9 @@ call was quick and dirty first, with a smoke test only.
 | FA-SNDS-1 | P3 | SNDS echo uses a private zeroed 64 KB buffer; the original reads/writes the SPC's own RAM at ESA, so stale-RAM echo/DC and SPC RAM corruption are missing. | `snes/SnemulDsDsp.cs` echo loop; would need an ARAM overlay that does not fight the stock S-DSP. | 2026-11-01, `7ef6933e` | open |
 | FA-SNDS-2 | P3 | SNDS: the BRR sample cache (FNV hash, on only for Mega Man X2/X3 and Breath of Fire) and PocketSPC 1.0 key-on are not ported. | `snes/SnemulDsDsp.cs` DecodeSampleBlock. | 2026-11-01, `7ef6933e` | open |
 | FA-SNDS-3 | P3 | SNDS engine state is not saved; a state load replays the DSP registers and re-keys the voices. | `snes/APU_SNDS.cs` `OnReset`. | 2026-11-01, `7ef6933e` | open |
+| FA-GYOB-1 | P3 | GYOB has no "hyperSound" (cycle-synced) mode: changes reach the DS once per frame, so sample-playback effects (Pikachu) are lost. | `gb/GameYobSound.cs` Deliver(): apply queued commands at their GB cycle timestamps as an option. | 2026-11-01, `0875ba89` | open |
+| FA-GYOB-2 | P3 | GYOB: GameYob's own NR52 handling and post-boot I/O values are guessed (`mmu.cpp` not fetched). | `gb/GameYobSound.cs` Write()/Reset(): check against GameYob's `mmu.cpp` / `gameboy.cpp`. | 2026-11-01, `0875ba89` | open |
+| FA-GYOB-3 | P3 | GYOB DS output stage simplified: no PCM FIFO delay, no 10-bit output; a DC blocker stands in for the output capacitor. | `gb/GameYobSound.cs` Render(). | 2026-11-01, `0875ba89` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
