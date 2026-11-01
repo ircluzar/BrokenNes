@@ -34,6 +34,7 @@ namespace BrokenNes.Windows
         {
             var all = NesEmulator.Systems.Consoles.AllRomExtensions;
             string Pattern(IEnumerable<string> ext) => string.Join(";", ext.Select(x => "*" + x));
+            all = all.Append(Virtual.VirtualCartManifest.Extension).ToArray();   // WideMess Virtual (MainForm.WideMessVirtual.cs)
             var parts = new List<string> { $"All ROMs ({Pattern(all)})|{Pattern(all)}" };
             foreach (var k in NesEmulator.Systems.Consoles.All)
             {
@@ -43,6 +44,7 @@ namespace BrokenNes.Windows
                 if (k == NesEmulator.Systems.ConsoleKind.GameBoy) ext = ext.Concat(NesEmulator.Systems.Consoles.Extensions(NesEmulator.Systems.ConsoleKind.GameBoyColor)).Distinct().ToArray();
                 parts.Add($"{label} ({Pattern(ext)})|{Pattern(ext)}");
             }
+            parts.Add("WideMess virtual cartridges (*.wmv)|*.wmv");
             parts.Add("Zip archives (*.zip)|*.zip");
             parts.Add("All files (*.*)|*.*");
             return string.Join("|", parts);
@@ -73,6 +75,7 @@ namespace BrokenNes.Windows
         private void LoadRomFile(string path)
         {
             HideContinueButton();
+            if (Virtual.VirtualCartManifest.IsManifestPath(path)) { StartVirtualCart(path, showDialogs: true); return; }
 
             try
             {
@@ -208,6 +211,17 @@ namespace BrokenNes.Windows
 
         private void CloseRomFromApi()
         {
+            if (session != null)
+            {
+                // a console session (and a WideMess virtual cartridge, whose server stops here): the API's close used to ignore them and left the game running
+                Console.WriteLine($"[WebApi] Closing {session.Title}");
+                StopSession();
+                LoadEmbeddedRom(allowHomeWebModule: false);
+                HideContinueButton();
+                UpdateCoresMenus();
+                UpdateConsoleTitle();
+                return;
+            }
             if (nes == null || string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase))
                 return;
 
@@ -239,6 +253,7 @@ namespace BrokenNes.Windows
                     return false;
                 }
 
+                if (Virtual.VirtualCartManifest.IsManifestPath(path)) return StartVirtualCart(path, showDialogs: false);
                 LoadRomFile(path);
                 return true;
             }

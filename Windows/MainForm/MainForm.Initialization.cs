@@ -128,6 +128,16 @@ namespace BrokenNes.Windows
             var saveStateItem = new ToolStripMenuItem("Save State...", null, SaveStateToFile_Click);
             saveStateItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.S;
             emulatorMenu.DropDownItems.Add(saveStateItem);
+            // WideMess Virtual: a web game has no machine state - the state items are greyed out with the reason (MainForm.WideMessVirtual.cs)
+            emulatorMenu.DropDownOpening += (_, _) =>
+            {
+                bool virt = session is Virtual.VirtualCartSession;
+                foreach (var it in new[] { quickLoadItem, quickSaveItem, loadStateItem, saveStateItem })
+                {
+                    it.Enabled = !virt;
+                    it.ToolTipText = virt ? Virtual.VirtualCartSession.NoMachineReason : null;
+                }
+            };
 
             emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
 

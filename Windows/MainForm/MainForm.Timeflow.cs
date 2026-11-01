@@ -137,6 +137,7 @@ namespace BrokenNes.Windows
         /// <summary>The user's switch (the menu, the window's REC box) or the user's Allow on an agent's request.</summary>
         internal void TimeflowSetRecording(bool on, string origin = "you switched it on")
         {
+            if (on && session is Virtual.VirtualCartSession) { Console.WriteLine($"[Timeflow] not recorded: {Virtual.VirtualCartSession.NoMachineReason}"); if (tfMenuItem != null) tfMenuItem.Checked = false; TfRefreshMark(); return; }
             if (on == tfSwitch.On) { TfRefreshMark(); return; }
             if (on) { tfOrigin = origin; tfSwitch.SwitchOn(); }
             else
@@ -157,7 +158,14 @@ namespace BrokenNes.Windows
             tfMenuItem.CheckedChanged += (_, _) => { if (tfMenuItem.Checked != tfSwitch.On) TimeflowSetRecording(tfMenuItem.Checked); };
             debugWindowsMenu.DropDownItems.Add(tfMenuItem);
             debugWindowsMenu.DropDownItems.Add(new ToolStripMenuItem("Time&flow (timelines, scrubber, jump, resume)", null, (_, _) => OpenTimeflowWindow()) { Name = "debugWindowTimeflow" });
-            debugWindowsMenu.DropDownOpening += (_, _) => { if (tfMenuItem != null) tfMenuItem.Checked = tfSwitch.On; };
+            debugWindowsMenu.DropDownOpening += (_, _) =>
+            {
+                if (tfMenuItem == null) return;
+                tfMenuItem.Checked = tfSwitch.On;
+                bool virt = session is Virtual.VirtualCartSession;   // WideMess Virtual: greyed out, with the reason
+                tfMenuItem.Enabled = !virt;
+                tfMenuItem.ToolTipText = virt ? Virtual.VirtualCartSession.NoMachineReason : "Records a state every frame (keyframes + page deltas) into BROKENDEV_HOME\timeflow, to rewind to any frame. Off at every start; agents can only ask.";
+            };
             TimeflowProfileInit();   // T3: the start-up sweep of profiles a crashed app left, and the app's own deleted as it closes
         }
 

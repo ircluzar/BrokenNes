@@ -192,6 +192,7 @@ namespace BrokenNes.Windows
 
             StopEmulation();
             SaveSessionBattery(force: true);   // BrokenNes 2: a SNES / Game Boy game's battery save
+            if (session is Virtual.VirtualCartSession) StopSession();   // WideMess Virtual: its server stops with the app (the job object also kills it if the app dies)
             
             // Shut down Web API server - OFF the UI thread. Stopping the host waits for in-flight requests
             // (30 s by default), and many handlers marshal onto this thread with Control.Invoke (e.g.

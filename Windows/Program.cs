@@ -45,6 +45,10 @@ namespace BrokenNes.Windows
             if (args.Any(a => a.Equals("--install-vst", StringComparison.OrdinalIgnoreCase)))
                 return BrokenNes.Windows.Synth.InstallVstFlow.RunCommand(args);
 
+            // `--wmv-check <cartridge.wmv>`: boot a WideMess virtual cartridge offscreen and check it (Windows/Virtual/VirtualCartCheck.cs); no window, no config
+            if (BrokenNes.Windows.Virtual.VirtualCartCheck.IsRequested(args))
+                return BrokenNes.Windows.Virtual.VirtualCartCheck.Run(args);
+
             // `--synth`: BrokenNes 2 as a standalone synthesizer (the FL Studio plugin hosted in a window of its own), not the emulator
             if (BrokenNes.Windows.Synth.SynthMode.IsRequested(args))
                 return BrokenNes.Windows.Synth.SynthMode.Run(args);
