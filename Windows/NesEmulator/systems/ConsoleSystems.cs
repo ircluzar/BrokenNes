@@ -708,6 +708,7 @@ public static class CoreCatalog
                         list.Add(new("ZS15", "ZS15 (ZSNES 0.15 sound, 1997: mono, no echo or interpolation, janky envelopes)", "SNES"));
                         list.Add(new("OSPC", "OSPC (libOpenSPC sound, 2002: guessed envelopes, linear release, rand() noise)", "SNES"));
                         list.Add(new("S9X1", "S9X1 (Snes9x 1.43 sound, 2004: stereo, old envelopes, linear interpolation, private echo)", "SNES"));
+                        list.Add(new("ZS151", "ZS151 (ZSNES 1.51 sound, 2007: its own envelopes and echo, Gaussian look-ahead, 160-frame blocks)", "SNES"));
                         list.Add(new("HLE", "HLE (silent - no sound, fastest)", "SNES"));
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), NesFamilyOf(CoreSlot.Apu, id)));
                         if (CoreRegistry.ApuIds.Contains("DMG", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMG", "Game Boy sound chip (through NES registers)", "Game Boy"));
