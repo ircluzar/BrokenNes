@@ -1,7 +1,7 @@
 # Next pool: planned projects (not started)
 
 Status: plans only (the user's brief of 2026-11-01). Each project becomes its own card on the BrokenNes Next board; none starts
-until the user picks it. Two of them (P3, P4) need an interview first.
+until the user picks it. Two of them (P3, P4) need an interview first. P4 -> P5 -> P6 is one chain: the Remastered running in WideMess Virtual is the reference for Super VRUN WideMess, and then the back-ports are done once for both Super VRUN versions.
 
 | # | Project | When | Needs first |
 |---|---|---|---|
@@ -9,7 +9,8 @@ until the user picks it. Two of them (P3, P4) need an interview first.
 | P2 | Super VRUN: MS-DOS port | next week | your DOSBox-X debugging setup |
 | P3 | An "x86 console" in BrokenNes (DOS games) | stretch, investigate | an interview: scope and why |
 | P4 | WideMess Virtual: a web game as a WideMess "cartridge" | after an interview | the CTW Remastered HTML5 export, an interview |
-| P5 | Super VRUN: the map, the stats, the title effect and the options UI from CTW Remastered | later this week or next | the Remastered project files |
+| P5 | Super VRUN on the WideMess (a fork kept in step with the SNES version) | after P4 | P4 running CTW Remastered as the reference |
+| P6 | Super VRUN (SNES and WideMess together): the map, the stats, the title effect and the options UI from CTW Remastered | after P5 | the Remastered project files |
 
 ---
 
@@ -102,9 +103,30 @@ include for you.
 
 ---
 
-## P5. Super VRUN: back-ports from CTW Remastered
+## P5. Super VRUN on the WideMess
 
-**Goal.** Bring the Remaster's best UI to Super VRUN SNES (the WideMess variant later gets more of them):
+**Goal.** A WideMess version of Super VRUN: a fork of the SNES game for the WideMess fantasy console (almost the same spec: the
+SNES's chips plus the 400 x 224 picture, more layers, the big SPC700). Done at this stage on purpose: the user keeps maintaining
+all of Super VRUN's versions, and the next step (P6) changes the SNES and WideMess versions together.
+
+**Scope for now (the user's words: "nothing more").** The game centred in the middle of the 400-wide picture, and the
+backgrounds extended to fill the full width. Same game, same physics, same rooms, same 2P, same sound.
+
+**Plan.**
+- With P4 done, CTW Remastered runs in WideMess Virtual beside it: the reference for how wide play should look.
+- One source tree, two builds (a WideMess build flag / target in SuperVRUN_dev, not a copy that drifts): the shared game code,
+  the WideMess differences (screen width, the side backgrounds, the WideMess header) behind the flag.
+- Checks: the SNES build byte-identical before and after the fork work (its golden hash), the WideMess build's self-test and
+  continue checks, LAG 0, both builds on BrokenNes (the WideMess console) and the SNES build on the other emulators as today.
+
+**Open question.** How the extended backgrounds are made: repeat / mirror the room's edge tiles, or new art per room.
+
+---
+
+## P6. Super VRUN (SNES and WideMess): back-ports from CTW Remastered
+
+**Goal.** Bring the Remaster's best UI to Super VRUN, the SNES and WideMess versions in one pass (the reason P5 comes first), with the
+Remastered running in WideMess Virtual (P4) as the reference:
 1. **The pause screen** becomes the map, styled like the Remastered map, with **both players' stats** on the sides of the screen.
 2. **The title screen effect** from the Remastered title.
 3. **The options UI** adapted from the Remastered one.
