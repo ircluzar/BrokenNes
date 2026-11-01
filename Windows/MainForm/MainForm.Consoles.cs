@@ -808,8 +808,11 @@ namespace BrokenNes.Windows
         }
 
         // ------------------------------------------------------------------ core menus, per console
-        /// <summary>One core menu for the selected console, in the catalog's three sections, each under its heading: the console's own best cores
-        /// (stock, enhanced), the other consoles' best cores (stock, enhanced), then the rest (the NES gimmick cores and variants).</summary>
+        /// <summary>
+        /// One core menu for the selected console (the user's layout, 2026-11-01): the current core at the top, its "Enhancements" (the enhanced chips of the current chip, greyed out when it has none),
+        /// then "Change core to:" with one submenu per console (its own first), each listing that console's chips once: the best ones, the engines ported from other emulators, then the rest. An enhanced chip
+        /// is never a separate entry when its stock chip is on the menu: it is reached through "Enhancements".
+        /// </summary>
         private void BuildCoreMenu(ToolStripMenuItem menu, CoreSlot slot, GameSave progressionSave)
         {
             menu.DropDownItems.Clear();
@@ -817,44 +820,129 @@ namespace BrokenNes.Windows
             string current = console == ConsoleKind.Nes
                 ? (slot switch { CoreSlot.Cpu => config.SelectedCpuCore, CoreSlot.Ppu => config.SelectedPpuCore, _ => config.SelectedApuCore })
                 : SelectedCore(console, slot);
-            foreach (var group in CoreCatalog.Options(console, slot).GroupBy(o => o.Section))
+            var bold = new Font(menu.Font ?? SystemFonts.MenuFont!, FontStyle.Bold);
+            string card = slot switch { CoreSlot.Cpu => "cpu", CoreSlot.Ppu => "ppu", _ => "apu" };
+            string currentBase = CoreCatalog.MenuBase(console, slot, current);
+
+            bool Unlocked(string id) => console != ConsoleKind.Nes || slot switch
             {
-                if (menu.DropDownItems.Count > 0) menu.DropDownItems.Add(new ToolStripSeparator());
-                string heading = CoreCatalog.SectionTitle(console, group.Key);
-                menu.DropDownItems.Add(new ToolStripMenuItem(heading) { Enabled = false, Font = new Font(menu.Font ?? SystemFonts.MenuFont!, FontStyle.Bold) });
-                foreach (var opt in group)
+                CoreSlot.Cpu => IsCpuCoreUnlocked(id, progressionSave),
+                CoreSlot.Ppu => IsPpuCoreUnlocked(id, progressionSave),
+                _ => IsApuCoreUnlocked(id, progressionSave),
+            };
+            string listKey = Consoles.Key(console) + "|" + slot;
+            List<string> Recents() => config.CoreRecents.TryGetValue(listKey, out var r) ? r : new List<string>();
+            List<string> Stars() => config.CoreStars.TryGetValue(listKey, out var s) ? s : new List<string>();
+            void Select(string id)
+            {
+                // the "Recent" section: the cores picked from this menu, newest first (the one left is kept too, so going back is one click)
+                Helpers.ConfigHelper.Update(config, c =>
                 {
-                    string id = opt.Id;
-                    bool unlocked = console != ConsoleKind.Nes || slot switch
-                    {
-                        CoreSlot.Cpu => IsCpuCoreUnlocked(id, progressionSave),
-                        CoreSlot.Ppu => IsPpuCoreUnlocked(id, progressionSave),
-                        _ => IsApuCoreUnlocked(id, progressionSave),
-                    };
-                    if (!unlocked && !config.ShowLockedItems) continue;
-                    var item = new ToolStripMenuItem(unlocked ? opt.Label : $"{opt.Label} [Locked]", null, (s, e) =>
-                    {
-                        if (console != ConsoleKind.Nes) { SetConsoleCore(console, slot, id); return; }
-                        switch (slot)
-                        {
-                            case CoreSlot.Cpu: SetCpuCore(id); break;
-                            case CoreSlot.Ppu: SetPpuCore(id); break;
-                            default: SetApuCore(id); break;
-                        }
-                    })
-                    {
-                        Enabled = unlocked,
-                        Checked = id.Equals(current, StringComparison.OrdinalIgnoreCase),
-                        Padding = new Padding(8, 0, 0, 0),
-                    };
-                    if (console == ConsoleKind.Nes)
-                    {
-                        string card = slot switch { CoreSlot.Cpu => "cpu", CoreSlot.Ppu => "ppu", _ => "apu" };
-                        item.MouseEnter += (s, e) => RequestOverlayDisplayCard(card, id);
-                    }
-                    else item.ToolTipText = CoreCatalog.Tip(console, slot, opt);
-                    menu.DropDownItems.Add(item);
+                    var r = c.CoreRecents.TryGetValue(listKey, out var l) ? l : new List<string>();
+                    r.RemoveAll(x => x.Equals(id, StringComparison.OrdinalIgnoreCase) || x.Equals(current, StringComparison.OrdinalIgnoreCase));
+                    r.Insert(0, id); r.Insert(1, current);
+                    c.CoreRecents[listKey] = r.Take(6).ToList();
+                });
+                if (console != ConsoleKind.Nes) { SetConsoleCore(console, slot, id); return; }
+                switch (slot)
+                {
+                    case CoreSlot.Cpu: SetCpuCore(id); break;
+                    case CoreSlot.Ppu: SetPpuCore(id); break;
+                    default: SetApuCore(id); break;
                 }
+            }
+            ToolStripMenuItem Entry(CoreOption opt, string text, bool isChecked)
+            {
+                string id = opt.Id;
+                bool unlocked = Unlocked(id);
+                var item = new ToolStripMenuItem(unlocked ? text : $"{text} [Locked]", null, (s, e) => { if (!id.Equals(current, StringComparison.OrdinalIgnoreCase)) Select(id); }) { Enabled = unlocked, Checked = isChecked };
+                if (console == ConsoleKind.Nes) { item.MouseEnter += (s, e) => RequestOverlayDisplayCard(card, id); item.ToolTipText = opt.Label; }
+                else item.ToolTipText = CoreCatalog.Tip(console, slot, opt);
+                return item;
+            }
+            string Short(CoreOption o) => CoreCatalog.MenuLabel(o);
+            string Where(CoreOption o) { string f = CoreCatalog.MenuConsole(o); return f == Consoles.Family(console) ? "" : $"  ({(f == "Master System" ? "Master System / Game Gear" : f)})"; }
+
+            // the current core, so it is seen at once
+            var now = CoreCatalog.Find(console, slot, current);
+            var head = new ToolStripMenuItem("Current: " + (now != null ? Short(now) + Where(now) : current)) { Font = bold, Enabled = false };
+            if (now != null) head.ToolTipText = console != ConsoleKind.Nes ? CoreCatalog.Tip(console, slot, now) : now.Label;
+            menu.DropDownItems.Add(head);
+
+            // its enhancements: the current chip's enhanced chips (off = the stock chip), greyed out when it has none
+            var enhancements = new ToolStripMenuItem("Enhancements");
+            var baseOpt = CoreCatalog.Find(console, slot, currentBase);
+            var variants = CoreCatalog.EnhancementsOf(console, slot, currentBase);
+            if (baseOpt != null && variants.Count > 0)
+            {
+                enhancements.DropDownItems.Add(Entry(baseOpt, "Off (the stock chip)", current.Equals(currentBase, StringComparison.OrdinalIgnoreCase)));
+                foreach (var v in variants) enhancements.DropDownItems.Add(Entry(v, Short(v) + (variants.Count > 1 ? Where(v) : ""), current.Equals(v.Id, StringComparison.OrdinalIgnoreCase)));
+            }
+            // the Game Boy look's two lightness inversions (also in Console > Game Boy look) belong to the picture they change: a Game Boy picture of another console's game, or another
+            // console's picture of a Game Boy game. Both are off by default: the pictures are upright (Workshop --enhanced-test --only invert).
+            bool gbCross = slot == CoreSlot.Ppu && (Consoles.IsGameBoy(console) ? !current.Equals("GB", StringComparison.OrdinalIgnoreCase) : CoreCatalog.IsGameBoyPicture(console, current));
+            if (gbCross)
+            {
+                if (enhancements.DropDownItems.Count > 0) enhancements.DropDownItems.Add(new ToolStripSeparator());
+                enhancements.DropDownItems.Add(new ToolStripMenuItem("Invert background lightness", null, (s, e) => { SetGbLook(null, !config.GbInvertBackground, null); UpdateCoresMenus(); }) { Checked = config.GbInvertBackground, ToolTipText = "Off by default (upright: light stays light). Light and dark of the background swapped." });
+                enhancements.DropDownItems.Add(new ToolStripMenuItem("Invert sprite lightness", null, (s, e) => { SetGbLook(null, null, !config.GbInvertSprites); UpdateCoresMenus(); }) { Checked = config.GbInvertSprites, ToolTipText = "Off by default (upright: light stays light). Light and dark of the sprites swapped." });
+            }
+            if (enhancements.DropDownItems.Count == 0) { enhancements.Enabled = false; enhancements.Text = "Enhancements (none for this chip)"; }
+            menu.DropDownItems.Add(enhancements);
+
+            // recent and starred cores (the user's pick D, 2026-11-01): one click back to a favourite
+            var known = CoreCatalog.Options(console, slot);
+            CoreOption? Known(string id) => known.FirstOrDefault(o => o.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            var recents = Recents().Where(id => !id.Equals(current, StringComparison.OrdinalIgnoreCase)).Select(Known).OfType<CoreOption>().Take(4).ToList();
+            var stars = Stars().Select(Known).OfType<CoreOption>().ToList();
+            menu.DropDownItems.Add(new ToolStripSeparator());
+            menu.DropDownItems.Add(new ToolStripMenuItem("Recent") { Enabled = false, Font = bold });
+            if (recents.Count == 0) menu.DropDownItems.Add(new ToolStripMenuItem("(the cores you switch to appear here)") { Enabled = false, Padding = new Padding(8, 0, 0, 0) });
+            foreach (var o in recents) { var it = Entry(o, Short(o) + Where(o), false); it.Padding = new Padding(8, 0, 0, 0); menu.DropDownItems.Add(it); }
+            menu.DropDownItems.Add(new ToolStripMenuItem("Starred") { Enabled = false, Font = bold });
+            foreach (var o in stars) { var it = Entry(o, Short(o) + Where(o), o.Id.Equals(current, StringComparison.OrdinalIgnoreCase)); it.Padding = new Padding(8, 0, 0, 0); menu.DropDownItems.Add(it); }
+            bool starred = stars.Any(o => o.Id.Equals(current, StringComparison.OrdinalIgnoreCase));
+            menu.DropDownItems.Add(new ToolStripMenuItem(starred ? "☆ Unstar the current core" : "★ Star the current core", null, (s, e) =>
+            {
+                Helpers.ConfigHelper.Update(config, c =>
+                {
+                    var l = c.CoreStars.TryGetValue(listKey, out var x) ? x : new List<string>();
+                    if (l.RemoveAll(i => i.Equals(current, StringComparison.OrdinalIgnoreCase)) == 0) l.Add(current);
+                    c.CoreStars[listKey] = l;
+                });
+                UpdateCoresMenus();
+            }) { Padding = new Padding(8, 0, 0, 0) });
+
+            // change core to: one submenu per console
+            menu.DropDownItems.Add(new ToolStripSeparator());
+            menu.DropDownItems.Add(new ToolStripMenuItem("Change core to:") { Enabled = false, Font = bold });
+            foreach (var (name, entries) in CoreCatalog.MenuConsoles(console, slot))
+            {
+                string title = name == "Master System" ? "Master System / Game Gear" : name;
+                var sub = new ToolStripMenuItem(title) { Checked = entries.Any(o => o.Id.Equals(currentBase, StringComparison.OrdinalIgnoreCase)) };
+                var parts = new[]
+                {
+                    ("Best", entries.Where(o => o.Grade != CoreGrade.Other).ToList()),
+                    ("Ported from other emulators", entries.Where(o => o.Grade == CoreGrade.Other && CoreCatalog.PortedIds.Contains(o.Id[(o.Id.LastIndexOf(':') + 1)..])).ToList()),
+                    ("More", entries.Where(o => o.Grade == CoreGrade.Other && !CoreCatalog.PortedIds.Contains(o.Id[(o.Id.LastIndexOf(':') + 1)..])).ToList()),
+                }.Where(p => p.Item2.Count > 0).ToList();
+                foreach (var (heading, list) in parts)
+                {
+                    if (parts.Count > 1)
+                    {
+                        if (sub.DropDownItems.Count > 0) sub.DropDownItems.Add(new ToolStripSeparator());
+                        sub.DropDownItems.Add(new ToolStripMenuItem(heading) { Enabled = false, Font = bold });
+                    }
+                    foreach (var opt in list)
+                    {
+                        if (!Unlocked(opt.Id) && !config.ShowLockedItems) continue;
+                        var item = Entry(opt, Short(opt), opt.Id.Equals(currentBase, StringComparison.OrdinalIgnoreCase));
+                        if (parts.Count > 1) item.Padding = new Padding(8, 0, 0, 0);
+                        if (CoreCatalog.EnhancementsOf(console, slot, opt.Id).Count > 0) item.Text += "  +";
+                        sub.DropDownItems.Add(item);
+                    }
+                }
+                if (sub.DropDownItems.Count > 0) menu.DropDownItems.Add(sub);
             }
             menu.DropDownOpening -= BeginOverlayPreviewForMenu;
             menu.DropDownOpening += BeginOverlayPreviewForMenu;

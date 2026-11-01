@@ -764,6 +764,98 @@ public static class CoreCatalog
         return list.OrderBy(o => Array.IndexOf(order, o.Family) is var i and >= 0 ? i : 9).ToList();
     }
 
+    // ------------------------------------------------------------------ the core menus' layout (2026-11-01): the current core, its enhancements, then "Change core to:" with one submenu per console
+
+    /// <summary>The enhanced chips and their stock chip (bare ids; a "NES:" / "NES-FM:" prefix carries over), and the direct routes to another console's enhanced chips with the stock chip they enhance on the same menu.</summary>
+    private static readonly Dictionary<string, string> EnhancedChipStock = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["FIXS"] = "FIX", ["DMGS"] = "DMG", ["SNESS"] = "SNES", ["SMSS"] = "SMS", ["MDS"] = "MD", ["GBS"] = "GB", ["SFCS"] = "SFC", ["GGS"] = "GG",
+    };
+    private static readonly Dictionary<string, string> EnhancedRouteStock = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["SNES:SFCS"] = "NES:SNES", ["SMS:SMSS"] = "NES:SMS", ["GG:GGS"] = "NES:SMS", ["MD:MDS"] = "NES:MD",
+    };
+
+    /// <summary>The engines ported from other emulators (the Foreign APU project, docs/projects/foreign-apu-project.md): the core menus list them in their console's submenu under their own heading.</summary>
+    public static readonly HashSet<string> PortedIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "GENS", "PICO", "M036", "BLST", "GPGX", "DARC", "DEGA", "M036FM", "E055",
+        "FCEU", "INES", "NSTC", "TUXN", "VNES", "PNES",
+    };
+
+    /// <summary>
+    /// The chip an entry enhances (its stock entry on the same menu): FIXS -> FIX, "NES:DMGS" -> "NES:DMG", SFCS -> SFC, the route "MD:MDS" -> "NES:MD"; null for an entry that is not an enhanced chip or whose
+    /// stock chip this menu does not offer (WMSS, the WideMess's, has none). The menus show the stock entry in the console lists and its enhanced chips under "Enhancements".
+    /// </summary>
+    public static string? EnhancesWhich(ConsoleKind console, CoreSlot slot, string id)
+    {
+        string? stock = EnhancedRouteStock.TryGetValue(id, out var r) ? r : null;
+        if (stock == null)
+        {
+            int c = id.LastIndexOf(':');
+            string prefix = c >= 0 ? id[..(c + 1)] : "", chip = c >= 0 ? id[(c + 1)..] : id;
+            if (EnhancedChipStock.TryGetValue(chip, out var s)) stock = prefix + s;
+        }
+        return stock != null && Options(console, slot).Any(o => o.Id.Equals(stock, StringComparison.OrdinalIgnoreCase)) ? stock : null;
+    }
+
+    /// <summary>The entry a menu lists for <paramref name="id"/>: its stock chip when it is an enhanced chip of one, else itself.</summary>
+    public static string MenuBase(ConsoleKind console, CoreSlot slot, string id) => EnhancesWhich(console, slot, id) ?? id;
+
+    /// <summary>The enhanced chips of a listed entry (empty when it has none: its "Enhancements" menu is greyed out).</summary>
+    public static IReadOnlyList<CoreOption> EnhancementsOf(ConsoleKind console, CoreSlot slot, string baseId) =>
+        Options(console, slot).Where(o => !o.Id.Equals(baseId, StringComparison.OrdinalIgnoreCase) && baseId.Equals(EnhancesWhich(console, slot, o.Id), StringComparison.OrdinalIgnoreCase)).ToList();
+
+    /// <summary>The short names the core menus show for the ported engines (the full description is the tooltip; the overlay cards will carry more).</summary>
+    private static readonly Dictionary<string, string> ShortNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ZS15"] = "ZSNES 0.15", ["ZS151"] = "ZSNES 1.51", ["S916"] = "Snes9x 1.16a", ["S9X1"] = "Snes9x 1.43", ["S951"] = "Snes9x 1.51", ["OSPC"] = "libOpenSPC", ["SNDS"] = "SNEmulDS",
+        ["GNUB"] = "gnuboy 1.0.3", ["VBA"] = "VisualBoyAdvance 1.7.2", ["VBAM"] = "VBA-M 2007", ["TGBD"] = "TGB Dual", ["GYOB"] = "GameYob DS",
+        ["GENS"] = "Gens 2.10", ["PICO"] = "PicoDrive 1.85", ["M036"] = "MAME 0.36", ["M036FM"] = "MAME 0.36 FM", ["BLST"] = "BlastEm 0.3.1", ["GPGX"] = "Genesis Plus GX 1.3",
+        ["DARC"] = "DarcNES", ["DEGA"] = "Dega 1.16", ["E055"] = "emu2413 0.55", ["FCEU"] = "FCE Ultra", ["INES"] = "iNES", ["NSTC"] = "NESticle", ["TUXN"] = "TuxNES",
+        ["VNES"] = "VirtuaNES 0.97", ["PNES"] = "PocketNES", ["HLE"] = "silent", ["SMS-FM"] = "with the FM chip", ["SMSFM"] = "Master System FM",
+    };
+
+    /// <summary>
+    /// The short line a core menu shows for an entry (the user's rule, 2026-11-01: no long text bleeding to the right; the full label is the tooltip): the grade for a best core ("FIX (stock)"),
+    /// the id and a short name for a ported engine ("S951  Snes9x 1.51"), the id and the start of its description otherwise, at most about 40 characters.
+    /// </summary>
+    public static string MenuLabel(CoreOption o)
+    {
+        string bare = o.Id[(o.Id.LastIndexOf(':') + 1)..];
+        if (o.Wall) return $"{bare} (instruction-set wall: stops at once)";
+        if (o.Grade != CoreGrade.Other) { int d = o.Label.IndexOf(" - ", StringComparison.Ordinal); return Cap(d > 0 ? o.Label[..d] : o.Label); }
+        if (o.Id.StartsWith("NES-FM:", StringComparison.OrdinalIgnoreCase)) return $"{bare} with the FM chip";
+        if (ShortNames.TryGetValue(bare, out var n)) return $"{bare}  {n}";
+        string l = o.Label;
+        foreach (var h in new[] { o.Id + " - ", bare + " - " }) if (l.StartsWith(h, StringComparison.OrdinalIgnoreCase)) { l = l[h.Length..]; break; }
+        if (l.StartsWith(bare + " (", StringComparison.OrdinalIgnoreCase) && l.EndsWith(")")) l = l[(bare.Length + 2)..^1];
+        else if (l.StartsWith(o.Id, StringComparison.OrdinalIgnoreCase) || l.StartsWith(bare, StringComparison.OrdinalIgnoreCase)) l = "";
+        int cut = l.IndexOfAny(new[] { ',', ':', ';', '(' });
+        if (cut > 0) l = l[..cut];
+        l = l.Trim(' ', '-');
+        // the bridges' generic descriptions ("NES sound", "the PSG on a NES sound chip") say nothing the console submenu does not
+        if (o.Id.Contains(':') || l.Length == 0) return bare;
+        return Cap($"{bare}  {l}");
+    }
+
+    private static string Cap(string s) => s.Length <= 42 ? s : s[..41].TrimEnd() + "…";
+
+    /// <summary>The console submenu an entry sits in: its family's console (the NES ports of the Foreign family are NES chips).</summary>
+    public static string MenuConsole(CoreOption o) => o.Family == "Foreign" ? "NES" : o.Family;
+
+    /// <summary>The console submenus of a core menu in their order: the console's own family first, then NES, SNES, Game Boy, Master System, Genesis, WideMess.</summary>
+    public static IReadOnlyList<(string Console, IReadOnlyList<CoreOption> Entries)> MenuConsoles(ConsoleKind console, CoreSlot slot)
+    {
+        string own = Consoles.Family(console);
+        return Options(console, slot)
+            .Where(o => EnhancesWhich(console, slot, o.Id) == null)
+            .GroupBy(MenuConsole)
+            .OrderBy(g => g.Key == own ? -1 : Array.IndexOf(FamilyOrder, g.Key) is var i and >= 0 ? i : 99)
+            .Select(g => (g.Key, (IReadOnlyList<CoreOption>)g.ToList()))
+            .ToList();
+    }
+
     /// <summary>The default core of a slot (the console's own stock core, the first entry).</summary>
     public static string Default(ConsoleKind console, CoreSlot slot) => Options(console, slot).FirstOrDefault()?.Id ?? "FIX";
 

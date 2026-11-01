@@ -251,6 +251,14 @@ namespace BrokenNes.Windows
         [JsonPropertyName("consoleCores")]
         public Dictionary<string, ConsoleCoreSelection> ConsoleCores { get; set; } = new();
 
+        /// <summary>The core menus' "Recent" section: the last cores picked from a core menu, newest first, per console and slot (key "nes|Apu").</summary>
+        [JsonPropertyName("coreRecents")]
+        public Dictionary<string, List<string>> CoreRecents { get; set; } = new();
+
+        /// <summary>The core menus' "Starred" section: the cores starred from a core menu, per console and slot (key "nes|Apu").</summary>
+        [JsonPropertyName("coreStars")]
+        public Dictionary<string, List<string>> CoreStars { get; set; } = new();
+
         /// <summary>WideMess milestone 6: the enhancements chosen for each SNES game on the WideMess console, by the game's image SHA-1 (docs/projects/widemess-spec.md 6.3). Applied when the game starts again.</summary>
         [JsonPropertyName("wideMessEnhancements")]
         public Dictionary<string, WideMessEnhanceChoice> WideMessEnhancements { get; set; } = new();
