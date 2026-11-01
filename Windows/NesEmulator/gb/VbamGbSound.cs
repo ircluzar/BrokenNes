@@ -74,6 +74,9 @@ public sealed class VbamGbSound
 
     public VbamGbSound() { Reset(); }
 
+    /// <summary>The shadow period high bits (NRx4 reads are masked): for a live core swap.</summary>
+    public int PeriodHigh(int channel) => channel switch { 0 => freq1high & 7, 1 => freq2high & 7, 2 => freq3high & 7, _ => 0 };
+
     // ---- gbSoundReset ----
     public void Reset()
     {

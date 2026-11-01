@@ -14,7 +14,7 @@ namespace NesEmulator.Gb;
 /// APU_GB-based chip loads; the engine's own state follows behind a magic number (absent = start fresh from the
 /// registers).
 /// </summary>
-public sealed class APU_TGBD : IGbApu
+public sealed class APU_TGBD : IGbApu, IGbSoundingChannels
 {
     private const int BaseClock = 4194304;
     private const int Magic = 0x44424754;   // "TGBD"
@@ -114,4 +114,8 @@ public sealed class APU_TGBD : IGbApu
         for (int reg = 0x10; reg <= 0x25; reg++)
             e.Write(reg, reg is 0x14 or 0x19 or 0x1E or 0x23 ? (byte)(g.ReadRegister(reg) & 0x7F) : g.ReadRegister(reg), 0);
     }
+
+    // IGbSoundingChannels: TGB Dual masks NR52's square bits by the wave volume (a kept quirk), so a swap asks the engine
+    public int SoundingMask { get { var st = Engine.stat; return (st.sq1_playing ? 1 : 0) | (st.sq2_playing ? 2 : 0) | (st.wav_playing ? 4 : 0) | (st.noi_playing ? 8 : 0); } }
+    public int PeriodHigh(int channel) => channel switch { 0 => Engine.mem[0x14 - 0x10] & 7, 1 => Engine.mem[0x19 - 0x10] & 7, 2 => Engine.mem[0x1E - 0x10] & 7, _ => 0 };
 }

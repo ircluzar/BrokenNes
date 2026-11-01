@@ -14,7 +14,7 @@ namespace NesEmulator.Gb;
 /// with an APU_GB-format block (the registers and wave RAM), so a core swap to or from any APU_GB-based chip loads;
 /// the engine's own state follows behind a magic number (absent = start fresh from the registers).
 /// </summary>
-public sealed class APU_VBAM : IGbApu
+public sealed class APU_VBAM : IGbApu, IGbSoundingChannels
 {
     private const int TicksPerSample = VbamGbSound.ClockTicks * 4;   // M-cycles -> T-cycles
     private const int BaseClock = 4194304;
@@ -103,4 +103,8 @@ public sealed class APU_VBAM : IGbApu
             engine.Write(reg, reg is 0x14 or 0x19 or 0x1E or 0x23 ? (byte)(g.ReadRegister(reg) & 0x7F) : g.ReadRegister(reg));
         engineAcc = 0; outAcc = 0; lastL = lastR = 0;
     }
+
+    // IGbSoundingChannels: NRx4 reads are masked, so a swap takes the period from the engine's shadow registers
+    public int SoundingMask => ReadRegister(0x26) & 0x0F;
+    public int PeriodHigh(int channel) => engine.PeriodHigh(channel);
 }

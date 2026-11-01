@@ -26,6 +26,7 @@ internal static class ForeignApuFuzzCli
 
     public static int Run(string[] args)
     {
+        if (M68kTestCli.Flag(args, "--swap")) return GbSwap();
         double seconds = double.TryParse(M68kTestCli.Arg(args, "--seconds"), out double s) ? s : 3;
         int seed = int.TryParse(M68kTestCli.Arg(args, "--seed"), out int sd) ? sd : 1234;
         var only = M68kTestCli.Arg(args, "--only")?.ToUpperInvariant().Split(',');
@@ -56,6 +57,54 @@ internal static class ForeignApuFuzzCli
         foreach (var id in NesIds) Report("NES", id, rnd => FuzzNes(id, rnd, seconds));
         Console.WriteLine($"\n{runs - fails} of {runs} cores survived {seconds} s of random register writes (seed {seed})");
         return fails == 0 ? 0 : 1;
+    }
+
+    /// <summary>--apu-fuzz --swap: a held square note on one Game Boy sound chip, then a live swap to another (as GbSession.TrySwapCore does):
+    /// is the note still heard in the next 200 ms, without and with GbSession.RetriggerSounding (KNOWN_GAPS FA-4)?</summary>
+    private static int GbSwap()
+    {
+        static double Rms(IGbApu a, int tCycles)
+        {
+            var buf = new short[16384]; double sum = 0; long n = 0;
+            for (int done = 0, seq = 0; done < tCycles; done += 4096)
+            {
+                a.Tick(4096); if ((seq += 4096) >= 8192) { seq -= 8192; a.FrameSequencerStep(); }
+                int k; while ((k = a.ReadSamples(buf)) > 0) for (int i = 0; i < k; i++) { sum += (double)buf[i] * buf[i]; n++; }
+            }
+            return n == 0 ? 0 : Math.Sqrt(sum / n);
+        }
+        IGbApu Playing(string id)
+        {
+            var a = GbCores.CreateApu(id, GbModel.Dmg); a.ResetPostBoot();
+            a.WriteRegister(0x26, 0x80); a.WriteRegister(0x24, 0x77); a.WriteRegister(0x25, 0xFF);
+            a.WriteRegister(0x11, 0x80); a.WriteRegister(0x12, 0xF0); a.WriteRegister(0x13, 0x00); a.WriteRegister(0x14, 0x86);   // held square, ~ 440 Hz, no length
+            Rms(a, 4_194_304 / 10);
+            return a;
+        }
+        string[] ids = { "GB", "GNUB", "VBA", "VBAM", "TGBD", "GYOB" };
+        int bad = 0;
+        foreach (var from in ids)
+            foreach (var to in ids)
+            {
+                if (from == to) continue;
+                double[] rms = new double[2];
+                for (int fix = 0; fix < 2; fix++)
+                {
+                    var old = Playing(from); var next = GbCores.CreateApu(to, GbModel.Dmg);
+                    using (var ms = new System.IO.MemoryStream())
+                    {
+                        using (var w = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) old.SaveState(w);
+                        ms.Position = 0; using var r = new System.IO.BinaryReader(ms); next.LoadState(r);
+                    }
+                    if (fix == 1) NesEmulator.Systems.GbSession.RetriggerSounding(old, next);
+                    rms[fix] = Rms(next, 4_194_304 / 5);
+                }
+                bool heard = rms[1] > 200;
+                if (!heard) bad++;
+                Console.WriteLine($"{from,-5} -> {to,-5} note after swap: rms {rms[0],6:F0} without retrigger, {rms[1],6:F0} with{(heard ? "" : "   <- still silent")}");
+            }
+        Console.WriteLine(bad == 0 ? "every swap keeps the note sounding" : $"{bad} swaps still lose the note");
+        return bad == 0 ? 0 : 1;
     }
 
     private static string Where(Exception e)

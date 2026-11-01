@@ -384,6 +384,26 @@ public sealed class GbSession : IConsoleSession
 
     public string SwapRefusal(CoreSlot slot, string id) => ConsoleSessions.NotOffered(Console, slot, id);
 
+    /// <summary>
+    /// A swap between two different Game Boy sound chips (the stock one and the foreign APU ports: GNUB, VBA, VBAM, TGBD, GYOB) carries the registers, but a
+    /// port's own channel state does not survive the trip, so notes that were sounding would stay silent until the game keyed them again
+    /// (docs/KNOWN_GAPS.md FA-4). Every channel the old chip had sounding is triggered again on the new one (NRx4 bit 7 with the period's high bits;
+    /// the length counter is left off so the note does not cut out early).
+    /// </summary>
+    internal static void RetriggerSounding(IGbApu old, IGbApu next)
+    {
+        var ports = old as IGbSoundingChannels;
+        int sounding = ports?.SoundingMask ?? old.ReadRegister(0x26) & 0x0F;
+        if (sounding == 0) return;
+        ReadOnlySpan<int> nrx4 = stackalloc int[] { 0x14, 0x19, 0x1E, 0x23 };
+        for (int ch = 0; ch < 4; ch++)
+        {
+            if ((sounding & (1 << ch)) == 0) continue;
+            int hi = ch == 3 ? 0 : ports != null ? ports.PeriodHigh(ch) : old is APU_GB g ? (g.Channel(ch).Period >> 8) & 7 : old.ReadRegister(nrx4[ch]) & 7;
+            next.WriteRegister(nrx4[ch], (byte)(0x80 | hi));
+        }
+    }
+
     public bool TrySwapCore(CoreSlot slot, string id)
     {
         if (!ConsoleSessions.Offers(Console, slot, id)) return false;     // an id the menu does not list is refused: it would otherwise be swapped for the Game Boy's own chip under another name
@@ -396,13 +416,15 @@ public sealed class GbSession : IConsoleSession
                 // The new sound chip takes over the channels as they are (every Game Boy sound chip here carries APU_GB state).
                 var model = board.Model;
                 var next = SoundFactory(id)?.Invoke(model) ?? new APU_GB(model);
+                var old = board.Apu;
                 using (var ms = new System.IO.MemoryStream())
                 {
-                    using (var w = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) board.Apu.SaveState(w);
+                    using (var w = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) old.SaveState(w);
                     ms.Position = 0;
                     using var r = new System.IO.BinaryReader(ms);
                     next.LoadState(r);
                 }
+                if (old.GetType() != next.GetType()) RetriggerSounding(old, next);
                 board.SwapApu(next);
                 apuId = id; return true;
             }
