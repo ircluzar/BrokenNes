@@ -12,6 +12,18 @@ until the user picks it. Two of them (P3, P4) need an interview first. P4 -> P5 
 | P5 | Super VRUN on the WideMess (a fork kept in step with the SNES version) | after P4 | P4 running CTW Remastered as the reference |
 | P6 | Super VRUN (SNES and WideMess together): the map, the stats, the title effect and the options UI from CTW Remastered | after P5 | the Remastered project files |
 
+## Answers (interview, 2026-11-01)
+
+| Question | Answer |
+|---|---|
+| Super VRUN's maintained versions | **SNES, WideMess, Genesis** (the DOS port, P2, is its own track). |
+| P1: the original sound effects | The same files the Game Boy port's Fourier pass used (find them through the Vaults repo's history). |
+| P2: the DOS target | Whatever the DOS version uses now; read when the user hands over the project and the DOSBox-X setup. |
+| P4: where WideMess Virtual works first | **The desktop** (its web view); Lite later. |
+| P4 / P6: CTW Remastered | The full package is on the user's Desktop: `VRUN_CTW_Remastered-full-package.zip` (1 GB: the working copy with its `.git`, the soundtracks and videos git leaves out, the built launcher). **It is a separate git** (github.com/ircluzar/VRUN_CTW_Remastered, `main` @ `fae13ea`): it may be brought into the BrokenNes solution, but any change to it must be pushed to its own repository. It is the JS replacement engine (`vrun/*.js`, Node 18+ and Edge / Chrome), not a Clickteam runtime; its own rules (in the package's `_claude-memory/`): performance changes handled its way, retro looks only from emulated hardware limits, no flavour text. |
+| P5: the wide backgrounds | **Repeat each room's edges** to the sides (automatic, every room, no new art). |
+| P6: unvisited rooms on the map | **Like CTW Remastered** (copy what its map does). |
+
 ---
 
 ## P1. Vaults on the Super Game Boy: the original sound effects
@@ -98,8 +110,8 @@ resolution (400 x 224), shows it as the WideMess picture, and sends the emulator
   of those matter.
 - Timing: the web game runs at its own clock; frame pacing and input latency need measuring.
 
-**Open questions.** Where the Remastered HTML5 export is; desktop, Lite or both; what "running like a game in an emulator" must
-include for you.
+**Decided.** The desktop first. The Remastered is the JS engine in the package on the Desktop (see Answers). **Still open:** what
+"running like a game in an emulator" must include (the interview).
 
 ---
 
@@ -119,7 +131,7 @@ backgrounds extended to fill the full width. Same game, same physics, same rooms
 - Checks: the SNES build byte-identical before and after the fork work (its golden hash), the WideMess build's self-test and
   continue checks, LAG 0, both builds on BrokenNes (the WideMess console) and the SNES build on the other emulators as today.
 
-**Open question.** How the extended backgrounds are made: repeat / mirror the room's edge tiles, or new art per room.
+**Decided.** The extended backgrounds repeat each room's edge tiles to the sides.
 
 ---
 
