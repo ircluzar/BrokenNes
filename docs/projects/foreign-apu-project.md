@@ -218,7 +218,7 @@ Nobody has listened to them yet. The user checks them by ear on Windows.
   - the WAVE memory domain
   - the plugin's GbSnapshot, sampler and instrument push
   - FruityHost's inject checks
-- Swapping a running game to GNUB starts the engine fresh. VBA writes an `APU_GB`-format block first, so swaps load, but notes stay silent until they are re-triggered.
+- Swapping a running game to GNUB started the engine fresh, and notes stayed silent after a swap until re-triggered: fixed later (KNOWN_GAPS FA-4).
 
 ## Later (the polish pass)
 
