@@ -98,20 +98,50 @@ program, to measure the work and the speed in .NET and in Lite (WASM).
 
 ## P4. WideMess Virtual (needs an interview)
 
-**Goal.** A passthrough mode: a WideMess "cartridge" that is a web game. BrokenNes hosts an HTML5 canvas at the WideMess
-resolution (400 x 224), shows it as the WideMess picture, and sends the emulator's controls to the game. The proof of concept is
-**VRUN Corrupt The World Remastered** (a Clickteam Fusion HTML5 export whose canvases already use the WideMess resolution).
+**Goal.** A passthrough mode: a WideMess "cartridge" that is a web game. BrokenNes shows the game's picture as the WideMess picture
+and sends it the controls. The proof of concept is **VRUN Corrupt The World Remastered**.
 
-**What's realistic, to discuss.**
-- The desktop has WebView2 (it already hosts the overlay cards), so it can run the export offscreen, capture the canvas each frame
-  and inject keys. Lite is itself a web page, so the game could run in an iframe or a canvas beside the emulator.
-- What BrokenNes features can work: picture, input, sound (captured from the web page's audio), pause; probably not save states,
-  rewind / Timeflow, core swaps or corruption (the game is not emulated, so there is no machine state). The interview decides which
-  of those matter.
-- Timing: the web game runs at its own clock; frame pacing and input latency need measuring.
+**What the Remastered is (read from the package, 2026-11-01).**
+- The original Clickteam Fusion 2 **HTML5 game** (`vrun/src/Runtime.js`) plus the remaster's own modules (`vrun-*.js`: title,
+  settings, map, HUD modes, input, audio), served by a **local Node.js server** (`tools/replacement-engine/Launch-VRUN.mjs`,
+  `http://127.0.0.1:8766/`, Node 18+; this machine has Node 25) that also **generates the worlds** (seeded). `VRUN.exe` is a
+  launcher that hides the server and opens the game in its own browser window.
+- **Picture:** several stacked layers at **398 x 224**: a background video, the game canvas (`MMFCanvas`, drawn through WebGL with
+  `preserveDrawingBuffer: false`), a 2D overlay at the same size (HUD, effects), and the remaster's UI canvas (`VRUNUi`, title,
+  settings, map) over a title background canvas (`VRUNBg`). The WideMess is 400 x 224: the game sits in the middle with a 1-pixel
+  column on each side.
+- **Input:** `vrun-input.js` listens to the keyboard and gamepad first and turns bound inputs into the runtime's original key codes
+  (arrows, Z, X, Space, Enter, I/J/K/L) as synthetic events; menus get navigation events. That is the one place a host pad plugs in.
+- **Timing:** the game keeps its 60 ticks a second even when the browser draws at 30 fps.
+- **Sound:** Howler.js (Web Audio) for the music (soundtracks A-E and Vaults, streamed) and sound effects, plus mespeak voices;
+  the background videos are HTML5 video.
+- **Its own test** (`tools/uat`) already drives the real game in a headless Edge/Chrome (cheats in `agent.js`): the model for
+  driving it from BrokenNes.
 
-**Decided.** The desktop first. The Remastered is the JS engine in the package on the Desktop (see Answers). **Still open:** what
-"running like a game in an emulator" must include (the interview).
+**The plan (desktop first).**
+1. **Host:** BrokenNes starts the Remastered's Node server on a free port (the package path from a small cartridge manifest, e.g.
+   a `.wmv` JSON: the folder, the start command, the seed) and opens the page in an **offscreen WebView2** (the desktop already
+   ships WebView2 for the overlay cards). It stops the server when the cartridge is ejected.
+2. **Picture:** a small in-page compositor draws the stacked layers into one 398 x 224 frame each animation frame and hands the
+   pixels to BrokenNes (WebView2's shared buffer, or a post message if that's fast enough); BrokenNes puts it in the middle of the
+   WideMess's 400 x 224 output, so the shaders, scaling and recording work as for any game. Fallbacks if that costs too much: the
+   DevTools screencast, or showing the WebView2 itself where the picture goes (then the shaders don't apply).
+3. **Input:** BrokenNes's pad (keyboard or gamepad, 1P) becomes the runtime's keys through `vrun-input.js` (a "host" input source
+   it accepts from the page bridge), so the Remastered's own bindings stay the reference.
+4. **Sound:** first, the page plays its own sound through WebView2 (BrokenNes's volume sets the page's volume). Routing it into
+   BrokenNes's mixer (for recording, the synth tools) is a later step.
+5. **What BrokenNes can't do with it:** save states, rewind / Timeflow, core swaps and corruption need a machine state; the game
+   isn't emulated, so these are greyed out with a reason (no silent fallbacks). Pause = the page's own pause.
+6. **Checks:** a Workshop/UAT case that boots the cartridge, reaches the title, starts a seeded world and sees the picture change
+   and respond to input; frame pacing and input latency measured.
+
+**Changes to the Remastered** (a few lines: the compositor hook and the host input source in `vrun-input.js`) are made in its own
+repository and pushed there (`ircluzar/VRUN_CTW_Remastered`), never only in BrokenNes. BrokenNes refers to the package folder; it
+doesn't copy the game into its repo.
+
+**Still open (the interview).** What "running like a game in an emulator" must include beyond picture, input, sound and pause;
+whether the remaster's own title / settings / map screens show, or BrokenNes starts straight into a world; and the 2-pixel gap
+(398 in 400): black columns, or stretch.
 
 ---
 
