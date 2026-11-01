@@ -43,6 +43,10 @@ call was quick and dirty first, with a smoke test only.
 | FA-S-M036-2 | P3 | M036 PSG writes land at the next host drain, not at their exact time. | `Mame036Sn76496.FillHost`: queue the writes with timestamps (needs a time on `SmsSound.OnPsgWrite`). | 2026-11-01, `2c32d62d` | open |
 | FA-S-M036-3 | P3 | M036 state load or swap re-feeds the registers only; envelopes and phases restart and notes resume at their next key-on. | `MdSoundUnitM036` / `SmsSoundM036` `OnReset`: save the engine state. | 2026-11-01, `2c32d62d` | open |
 | FA-S-M036-4 | P3 | M036 is louder than stock (~1.6-1.9x AC RMS) and the PSG output carries a DC offset (the original's level, kept). | Scale in `OnFmSample` / `FillHost` if wanted. | 2026-11-01, `2c32d62d` | open |
+| FA-S-GENS-1 | P3 | GENS on Game Gear ignores the stereo port (Gens' PSG is mono). | `SmsSoundGens`: apply the GG $06 masks per channel in `GensPsg.Update`. | 2026-11-01, `3ef3944a` | open |
+| FA-S-GENS-2 | P3 | GENS (SMS/GG) places PSG writes at chunk granularity, not at their time. | A timed write hook in `SmsSound`, or queue the writes with the stock PSG's clock. | 2026-11-01, `3ef3944a` | open |
+| FA-S-GENS-3 | P3 | GENS (Genesis) loses its YM/PSG state on a state load or swap: silent until the game writes again. | `MdSoundUnitGens.OnReset`: replay the stock `Ym2612` / `Sn76489` registers into the Gens chips. | 2026-11-01, `3ef3944a` | open |
+| FA-S-GENS-4 | P3 | GENS clamps FM and PSG separately (Gens clamps their sum), halves Gens' level and adds about one frame of latency. | `MdSoundUnitGens` frame driver. | 2026-11-01, `3ef3944a` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
