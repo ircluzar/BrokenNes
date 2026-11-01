@@ -7,7 +7,7 @@ until the user picks it. Two of them (P3, P4) need an interview first. P4 -> P5 
 |---|---|---|---|
 | P1 | Vaults on the Super Game Boy: the original sound effects on the SNES's sampler | later this week or next | the original SFX files |
 | P2 | Super VRUN: MS-DOS port | next week | your DOSBox-X debugging setup |
-| P3 | An "x86 console" in BrokenNes (386 + DOS extenders, ported from tiny386, kept simple) | stretch | the FreeDOS and BIOS files |
+| P3 | An "x86 console" in BrokenNes (386 + DOS extenders, ported from tiny386, kept simple) | stretch | an approved FreeDOS / DOS32A download |
 | P4 | WideMess Virtual: a web game as a WideMess "cartridge" | after an interview | the CTW Remastered HTML5 export, an interview |
 | P5 | Super VRUN on the WideMess (a fork kept in step with the SNES version) | after P4 | P4 running CTW Remastered as the reference |
 | P6 | Super VRUN (SNES and WideMess together): the map, the stats, the title effect and the options UI from CTW Remastered | after P5 | the Remastered project files |
@@ -114,9 +114,12 @@ a DOS game needs.
   FM cores through the mesh), PC speaker.
 - **The rest (the "board"):** PIC, PIT, keyboard controller, CMOS clock, DMA, and one hard-disk image (IDE). Left out: networking
   (NE2000), the ESP32 / Android / Linux-boot parts.
-- **Firmware and DOS:** SeaBIOS as a loaded firmware file (LGPL-3, not compiled in) and **FreeDOS** on a disk image, both kept
-  outside git like game data (the Game Boy cores' no-firmware rule: a file the user provides, never bundled silently). DOS4GW and
-  other extenders then just work, because the CPU is a real 386.
+- **Firmware and DOS (decided 2026-11-01): fully open, nothing for the user to provide.**
+  - **Our own small BIOS in C#** instead of SeaBIOS: the BIOS services DOS and games use (INT 10h video, 13h disk, 16h keyboard,
+    1Ah clock, the equipment / memory calls), answered by the console itself the way DOSBox does. No firmware file, no licence.
+  - **FreeDOS** (GPL-2) on a disk image the console builds or ships beside the app (not compiled in).
+  - **DOS32A** (open source) as the DOS extender for Super VRUN DOS: a drop-in for DOS4GW, which is not open.
+  - Licences checked again before anything is downloaded (the user approves the download).
 - **The mesh:** the x86 console gets the same contract as the others: a CPU / PPU / APU per slot and the picture / sound bridges, so
   its VGA can draw another console's game and its Sound Blaster / OPL2 can play another console's notes (and the reverse).
 
@@ -126,7 +129,7 @@ compare, the way the Foreign APU ports were checked) → P3c VGA + timers + keyb
 SB16 / OPL2 / speaker → P3e the console in the desktop (Load ROM takes a disk image), save states → P3f Super VRUN DOS on it (P2) →
 P3g the mesh (bridges both ways), Lite last (speed in WASM measured).
 
-**Still open.** Where FreeDOS and the BIOS file come from (the user provides them, or a download the user approves).
+**Decided.** tiny386's 386 core + our own BIOS + FreeDOS + DOS32A: a fully open stack.
 
 ---
 
