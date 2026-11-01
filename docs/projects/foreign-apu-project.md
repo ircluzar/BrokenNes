@@ -27,7 +27,7 @@ on the NES and on other consoles through the existing bridges, for free:
 |---|---|---|---|---|
 | `ZS15` | SNES APU | ZSNES 0.15 (1997) sound engine, via [zsnes-asm2c](https://gitlab.com/ReverendGumby/zsnes-asm2c) `dsp.asm` + `mach.c`. This is the engine in ZSnes9x ([snes9x-cursed](https://gitlab.com/ReverendGumby/snes9x-cursed)) | GPL-2+/GPL-3+ | **done (MVP)**: `snes/Zs15Dsp.cs`, `snes/APU_ZS15.cs` |
 | `S9X1` | SNES APU | Snes9x 1.39–1.43 sound code (`soundux.cpp`, `apu.cpp` DSP side) | Snes9x non-commercial | planned |
-| `OSPC` | SNES APU | [libOpenSPC](https://github.com/bmartin427/libopenspc), with parts from SNEeSe (2002) | LGPL + SNEeSe license | planned |
+| `OSPC` | SNES APU | [libOpenSPC](https://github.com/bmartin427/libopenspc), with parts from SNEeSe (2002) | LGPL + SNEeSe license | **done (MVP)**: `snes/OspcDsp.cs`, `snes/APU_OSPC.cs` (32 kHz stereo, 1:1; echo uses a private buffer) |
 | `GNUB` | GB APU | [gnuboy](https://github.com/rofl0r/gnuboy) `sound.c` | GPL-2.0 | planned |
 | `VBA` | GB APU | VisualBoyAdvance 1.7.2 `gb/gbSound.cpp` ([vba-raspi mirror](https://github.com/weimingtom/vba-raspi)) | GPL-2.0 | planned |
 
