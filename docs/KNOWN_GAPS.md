@@ -53,6 +53,19 @@ call was quick and dirty first, with a smoke test only.
 | FA-DARC-1 | P3 | DARC engines' own state is not in save states. | `APU_DARC` / `SmsSoundDarc`: serialize the engine. | 2026-11-01, `e2adddae` | open |
 | FA-DARC-2 | P3 | DARC NES ignores PAL timing (NTSC 7,457-cycle sync and clock). | `APU_DARC`: take the region's CPU clock. | 2026-11-01, `e2adddae` | open |
 | FA-DARC-3 | P3 | DARC output is unipolar with a large DC offset (the original's). | A DC blocker in the polish pass, if it clicks. | 2026-11-01, `e2adddae` | open |
+| FA-NSTC-1 | P3 | NSTC engine state is not in save states; after a load it plays on until the next register write. | `apus/APU_NSTC.cs`: serialize the `NesticleSound` channels in GetState/SetState. | 2026-11-01, `4f1b056c` | open |
+| FA-NSTC-2 | P3 | No upstream commit hash recorded for NESticle (GitHub API/HTML blocked; raw files from branch master). | Header of `apus/NesticleSound.cs`: pin the hash when reachable. | 2026-11-01, `4f1b056c` | open |
+| FA-NSTC-3 | P3 | NSTC register writes take effect per sample, not at NESticle's per-tick block boundaries. | `apus/APU_NSTC.cs`: batch into ~367-sample blocks per frame if the sloppier timing is wanted. | 2026-11-01, `4f1b056c` | open |
+| FA-S951-1 | P3 | S951 engine state (envelopes, sample positions, echo buffer) is not in save states; a load/swap re-feeds the DSP registers and re-keys the voices. | `snes/APU_S951.cs` `OnReset`; serialize the `S951Dsp` channels. | 2026-11-01, `b5da264b` | open |
+| FA-S951-2 | P3 | S951 register writes take effect only at 533-frame block boundaries (one mix per frame). | `snes/APU_S951.cs`: render smaller blocks. | 2026-11-01, `b5da264b` | open |
+| FA-S951-3 | P3 | S951: MixMono, the 8-bit output paths and the Settings toggles (ReverseStereo, FixFrequency, FakeMuteFix, non-interpolated) are not ported. | `snes/S951Dsp.cs`. | 2026-11-01, `b5da264b` | open |
+| FA-INES-1 | P3 | INES engine state is not in save states (only APU_FIX's). | `APU_INES` GetState/SetState: add the `InfoNesApu` fields. | 2026-11-01, `a0b7ca52` | open |
+| FA-INES-2 | P3 | INES frame render runs on a 29,781-cycle counter, not the PPU's scanline 241 (~0.16% more samples than 44,100/s). | `APU_INES`: hook the PPU frame event. | 2026-11-01, `a0b7ca52` | open |
+| FA-INES-3 | P3 | InfoNES upstream commit SHA not recorded (API blocked). | Header of `apus/InfoNesApu.cs`. | 2026-11-01, `a0b7ca52` | open |
+| FA-FCEU-1 | P3 | FCEU's VRC7 (on OPL2), 5B, VRC6, N163 and FDS sound are not ported (`mappers/vrc7snd.c` + `fmopl.c`, `69.c`, `24and26.c`, `19.c`, `fds.c`); BrokenNes2 has no mappers for them. | Port as `apus/FceuExpansion*.cs` once the mappers exist. | 2026-11-01, `a3847f3f` | open |
+| FA-FCEU-2 | P3 | APU_FCEU's MMC5 sound is untested (no MMC5 ROM in the smoke test). | Render an MMC5 game, compare with FIX + `MMC5Audio`. | 2026-11-01, `a3847f3f` | open |
+| FA-FCEU-3 | P3 | APU_FCEU: NTSC only; the channel mask honours only "all off"; after a mid-game switch a channel is silent until its registers are written again. | `apus/FceuApu.cs`: PAL tables; replay the base's registers into the engine on switch. | 2026-11-01, `a3847f3f` | open |
+| FA-B3-1 | P3 | The DARC agent first put its id in `NesPpuFamily` instead of `NesApuFamily`; fixed at merge (the coordinator rebuilt both lines). Worth a check that every foreign NES id is in `NesApuFamily` only. | `systems/ConsoleSystems.cs` | 2026-11-01, merge of batch 3 wave 1 | fixed |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
