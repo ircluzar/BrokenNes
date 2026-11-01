@@ -66,6 +66,10 @@ call was quick and dirty first, with a smoke test only.
 | FA-FCEU-2 | P3 | APU_FCEU's MMC5 sound is untested (no MMC5 ROM in the smoke test). | Render an MMC5 game, compare with FIX + `MMC5Audio`. | 2026-11-01, `a3847f3f` | open |
 | FA-FCEU-3 | P3 | APU_FCEU: NTSC only; the channel mask honours only "all off"; after a mid-game switch a channel is silent until its registers are written again. | `apus/FceuApu.cs`: PAL tables; replay the base's registers into the engine on switch. | 2026-11-01, `a3847f3f` | open |
 | FA-B3-1 | P3 | The DARC agent first put its id in `NesPpuFamily` instead of `NesApuFamily`; fixed at merge (the coordinator rebuilt both lines). Worth a check that every foreign NES id is in `NesApuFamily` only. | `systems/ConsoleSystems.cs` | 2026-11-01, merge of batch 3 wave 1 | fixed |
+| FA-ZS151-1 | P3 | ZS151 engine state (envelopes, sample positions, echo buffer) is not saved; a state load re-keys the voices from the DSP registers. | `APU_ZS151.OnReset`; serialize the `Zs151Dsp` voice fields. | 2026-11-01, `33f7502b` | open |
+| FA-ZS151-2 | P3 | ZS151: only the default path is ported (not the mono, non-interpolated, cubic and 8-tap mixers, low-pass filters, surround, reversed stereo). | `snes/Zs151Dsp.cs`: port the rest of `dspproc.asm` if options are wanted. | 2026-11-01, `33f7502b` | open |
+| FA-ZS151-3 | P3 | ZS151 echo, noise and pitch modulation are not checked by ear (musictest does not use them). | Render an echo-heavy SPC and compare with ZSNES 1.51. | 2026-11-01, `33f7502b` | open |
+| FA-ZS151-4 | P3 | ZS151 key-on timing is approximate (ZSNES's per-scanline key-on stepped every other sample; renders in 160-frame blocks). | `APU_ZS151.OnDspSample`: step it from the SNES scanline counter instead. | 2026-11-01, `33f7502b` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
