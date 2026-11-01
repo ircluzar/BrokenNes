@@ -1,3 +1,5 @@
+// Foreign APU project unit (docs/projects/foreign-apu-project.md): the glue around sega/PicoSn76496.cs (PicoDrive v1.85, non-commercial + MAME license); it may follow the original's
+// driving code (clocking, mixing) as described in that engine file's header. A documented exception to the license policy: THIRD_PARTY_NOTICES.md section 2a.
 using System;
 
 namespace NesEmulator.Sega;

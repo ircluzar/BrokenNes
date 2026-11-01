@@ -1,3 +1,5 @@
+// Foreign APU project unit (docs/projects/foreign-apu-project.md): the glue around sega/GensYm2612.cs + GensPsg.cs (Gens 2.10, GPL-2.0); it may follow the original's
+// driving code (clocking, mixing) as described in that engine file's header. A documented exception to the license policy: THIRD_PARTY_NOTICES.md section 2a.
 using System;
 
 namespace NesEmulator.Sega;

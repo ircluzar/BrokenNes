@@ -1,3 +1,5 @@
+// Foreign APU project unit (docs/projects/foreign-apu-project.md): the glue around sega/BlastemPsg.cs (BlastEm 0.3.1, GPL-3.0-or-later); it may follow the original's
+// driving code (clocking, mixing) as described in that engine file's header. A documented exception to the license policy: THIRD_PARTY_NOTICES.md section 2a.
 using System;
 
 namespace NesEmulator.Sega;
