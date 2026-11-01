@@ -23,10 +23,23 @@ on the NES and on other consoles through the existing bridges, for free:
 
 Each core's source, version and quirks are in the batch tables below. Every shortcut is in `docs/KNOWN_GAPS.md`. The licenses are in `THIRD_PARTY_NOTICES.md` §2 and the family ledgers.
 
+**Review pass at the end of the session:**
+- `Workshop --apu-fuzz` checks every core (and the stock ones) against random register writes and corrupted sound RAM, round-trips save states between ports and stock in every direction, and reports allocations per emulated second. All 39 pass.
+- It found and fixed:
+  - a BLST crash (BlastEm reads past a 3-element array)
+  - Game Boy core swaps that went silent: all 30 chip-to-chip swaps now keep a held note (`--swap`)
+  - GENS and BLST losing the game's instruments on a state load (`--md-reload`)
+  - M036FM and E055 losing instruments and held notes (`--fm-reload`)
+- Also fixed: the experimental Web build. It had been broken on `main` since 2026-10-09, and PNES broke it again. The whole solution, Web, WebLite and the MCP server all build.
+- `UAT/entrypoints/notices-check.ps1` passes. The license list in `THIRD_PARTY_NOTICES.md` §2a is grouped by license class.
+
 **Next:**
 1. Listen on Windows.
 2. Decide the licensing question (FA-1, P1).
-3. Work through the P2 gaps: engine state in save states, GB swaps, cards and the blind bag.
+3. The remaining P2 gaps:
+   - FA-3: SNES engine state is not in save states; the ports replay the DSP registers and re-key the voices.
+   - FA-5: cards and the blind bag.
+   - FA-WEB-1 is now fixed.
 
 ## Decisions (user interviews, 2026-11-01)
 
