@@ -86,6 +86,9 @@ call was quick and dirty first, with a smoke test only.
 | FA-VNES-1 | P3 | VirtuaNES VRC6/VRC7/N106/FDS/FME7 sound not ported (no mappers in BrokenNes2). | VirtuaNES `NES/ApuEX/APU_*.cpp`: port when the mappers exist. | 2026-11-01, `14f1f9e2` | open |
 | FA-VNES-2 | P3 | VNES MMC5 sound path untested (no MMC5 smoke ROM); its defaults (22,050 Hz, 8-bit, no LPF) come from the porter's memory, not from Config.cpp (not in the mirror). | Render an MMC5 game with `--apu VNES`; check `CCfgSound::Default` in a 0.97 source. | 2026-11-01, `14f1f9e2` | open |
 | FA-VNES-3 | P3 | VNES: the .vtd wavetables (bChangeTone) and the PAL tables are not ported. | `apus/VirtuaNesApu.cs`; `APU_INTERNAL` ToneTableLoad / dpcm_cycles_pal. | 2026-11-01, `14f1f9e2` | open |
+| FA-GPGX-1 | P3 | GPGX DAC path untested (md-test.vgm has no DAC writes). | `md/MdSoundUnitGpgx.cs`: render a VGM with DAC writes. | 2026-11-01, `9f69d5ca` | open |
+| FA-GPGX-2 | P3 | GPGX's output filter runs on the FM at ~53 kHz and on the PSG separately, not once on the mix at the output rate. | `MdSoundUnitGpgx`: filter the mixed output at the host rate instead. | 2026-11-01, `9f69d5ca` | open |
+| FA-GPGX-3 | P3 | GPGX ignores Game Gear stereo (GX 1.3.0 was Genesis-only). | `SmsSoundGpgx`: pan by PSGStereo if wanted. | 2026-11-01, `9f69d5ca` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
