@@ -18,7 +18,7 @@ namespace NesEmulator.Sega;
 /// (peak 2,042 of 32,768) a little under a full-volume PSG tone (peak 3,277), the level the two chips have on the real console to within the accuracy measured in the record.</para>
 /// <para>Per-channel stems: <see cref="Fm"/>.<see cref="Ym2413.Mask"/> mutes FM voices, the PSG's volume registers silence its voices; nothing here allocates per sample.</para>
 /// </remarks>
-public sealed class SmsFmSound : ISmsSound, IVoiceStems
+public class SmsFmSound : ISmsSound, IVoiceStems
 {
     /// <summary>Gain of the FM part in the mix (1.0 is the chip's own scale: a full-volume channel peaks at about 2,042 of 32,768).</summary>
     public float FmGain = 1.0f;
@@ -80,6 +80,7 @@ public sealed class SmsFmSound : ISmsSound, IVoiceStems
         audioControl = 0; fmRemainder = 0;
         psgRead = psgWrite = fmRead = fmWrite = 0;
         RealignStems();
+        OnReset();
     }
 
     // =================================================================================================================
@@ -132,6 +133,7 @@ public sealed class SmsFmSound : ISmsSound, IVoiceStems
         int n;
         while ((n = psg.ReadSamples(drain)) > 0)
         {
+            OnPsgSamples(drain.AsSpan(0, n));
             long first = psgWrite;
             for (int i = 0; i + 1 < n; i += 2)
             {
@@ -149,7 +151,7 @@ public sealed class SmsFmSound : ISmsSound, IVoiceStems
         while (fmRemainder >= Ym2413.ClocksPerSample)
         {
             fmRemainder -= Ym2413.ClocksPerSample;
-            int s = fm.Calc();
+            int s = OnFmSample(fm.Calc());
             LastFmSample = s;
             resampler.Push((short)Math.Clamp(s, short.MinValue, short.MaxValue));
             if (fmStemBits != 0)
@@ -175,11 +177,11 @@ public sealed class SmsFmSound : ISmsSound, IVoiceStems
     /// <summary>Samples dropped because nothing read the queue (a probe that never drains the unit).</summary>
     public long Overflowed { get; private set; }
 
-    public void WritePsg(byte value) => psg.Write(value);
+    public void WritePsg(byte value) { psg.Write(value); OnPsgWrite(value); }
     public void WriteStereo(byte value) => psg.WriteStereo(value);
 
-    public void WriteFmAddress(byte value) => fm.WriteAddress(value);
-    public void WriteFmData(byte value) => fm.WriteData(value);
+    public void WriteFmAddress(byte value) { fm.WriteAddress(value); OnFmAddress(value); }
+    public void WriteFmData(byte value) { fm.WriteData(value); OnFmData(value); }
     public void WriteAudioControl(byte value) => audioControl = value & 3;
     public byte ReadAudioControl() => (byte)audioControl;
 
@@ -251,6 +253,7 @@ public sealed class SmsFmSound : ISmsSound, IVoiceStems
             fm.Reset(); fm.ResetPatch(); resampler.Reset(); audioControl = 0; fmRemainder = 0;
             psgRead = psgWrite = fmRead = fmWrite = 0;
             RealignStems();
+            OnReset();
             return;
         }
         fm.LoadState(r); resampler.LoadState(r);
@@ -265,6 +268,35 @@ public sealed class SmsFmSound : ISmsSound, IVoiceStems
         for (int i = 0; i < nf; i++) fmQ[i] = r.ReadInt16();
         fmWrite = nf;
         RealignStems();
+        OnReset();
+    }
+
+    // ---- Hooks for a unit that swaps the sound generator (the foreign APU project: Gens, PicoDrive, MAME 0.36 ... ports).
+    // The stock chips keep running and keep everything a game reads (status, timers, busy); the hooks decide what is heard.
+    /// <summary>Every PSG write, after the stock PSG has taken it.</summary>
+    protected virtual void OnPsgWrite(byte value) { }
+    /// <summary>The stock PSG's host-rate stereo samples (interleaved L, R) as they are queued: overwrite them to replace the PSG sound.</summary>
+    protected virtual void OnPsgSamples(Span<short> stereo) { }
+    /// <summary>Every YM2413 address-port write ($F0), after the stock chip has taken it.</summary>
+    protected virtual void OnFmAddress(byte value) { }
+    /// <summary>Every YM2413 data-port write ($F1), after the stock chip has taken it.</summary>
+    protected virtual void OnFmData(byte value) { }
+    /// <summary>Each stock YM2413 output sample (mono, at the chip's own rate, cpu clock / 72), before resampling: return a replacement to replace the FM sound.</summary>
+    protected virtual int OnFmSample(int sample) => sample;
+    /// <summary>After Reset and after a state load.</summary>
+    protected virtual void OnReset() { }
+
+    /// <summary>
+    /// For a hooked FM engine after a state load or a core swap: replays the stock YM2412/YM2413's registers through <see cref="OnFmAddress"/> /
+    /// <see cref="OnFmData"/> (the custom instrument, then per channel the instrument/volume, F-number and key-on/block, then the rhythm register),
+    /// so the engine has the game's instruments and its held notes. The YM2413 keeps key-on in a register, so held notes sound again at once.
+    /// </summary>
+    protected void ReplayFmRegisters()
+    {
+        void W(int r) { OnFmAddress((byte)r); OnFmData(fm.Register(r)); }
+        for (int r = 0x00; r < 0x08; r++) W(r);
+        for (int ch = 0; ch < 9; ch++) { W(0x30 + ch); W(0x10 + ch); W(0x20 + ch); }
+        W(0x0E);
     }
 
     public string Describe() =>

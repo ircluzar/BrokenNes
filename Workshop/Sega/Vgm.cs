@@ -14,6 +14,8 @@ internal enum VgmKind
     Ym0, Ym1,
     /// <summary>An SN76489 write: A = the byte.</summary>
     Psg,
+    /// <summary>A YM2413 register write: A = register, B = value (read by the SMS renderer; the Genesis renderer ignores it).</summary>
+    Opll,
 }
 
 internal static class VgmEventExtensions
@@ -102,7 +104,7 @@ internal sealed class VgmFile
                 }
                 case 0xE0: pcm = U32(d, p); p += 4; break;
                 case 0x51: case 0x54: case 0x55: case 0x56: case 0x57: case 0x58: case 0x59: case 0x5A: case 0x5B: case 0x5C: case 0x5D: case 0x5E: case 0x5F:
-                    if (c == 0x51) v.Ym2413Writes++; else v.UnsupportedCommands++;
+                    if (c == 0x51) { v.Ym2413Writes++; v.Events.Add(new VgmEvent(t, VgmKind.Opll, d[p], d[p + 1])); } else v.UnsupportedCommands++;
                     p += 2; break;
                 default:
                     if (c >= 0x70 && c <= 0x7F) t += (c & 0xF) + 1;

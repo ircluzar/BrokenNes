@@ -18,6 +18,11 @@ namespace NesEmulator.Mix
             ["GB"] = m => new APU_GB(m),
             ["NES"] = m => new GbApuOnNes(m),
             ["GBS"] = m => new APU_GBS(m),
+            ["GNUB"] = m => new APU_GNUB(m),     // gnuboy 1.0.3's sound engine (foreign-apu-project)
+            ["VBA"] = m => new APU_VBA(m),     // VisualBoyAdvance 1.7.2's sound engine (foreign-apu-project)
+            ["VBAM"] = m => new APU_VBAM(m),   // VBA-M 2007 (5e3902b4) pre-Gb_Apu sound engine (foreign-apu-project)
+            ["TGBD"] = m => new APU_TGBD(m),     // TGB Dual's apu.cpp (foreign-apu-project)
+            ["GYOB"] = m => new APU_GYOB(m),     // GameYob's DS sound mapping (foreign-apu-project)
         };
         public static IEnumerable<string> ApuIds => apus.Keys;
         public static IGbApu CreateApu(string id, GbModel model) =>

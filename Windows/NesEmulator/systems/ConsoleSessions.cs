@@ -102,6 +102,13 @@ public sealed partial class SnesSession : IConsoleSession
         else if (CoreCatalog.IsDirectRoute(apu)) unit = new SnesApuOnChip(apu, wideMess ? new APU_WMS() : null, 0);          // another console's enhanced sound chip, directly
         else if (apu.Equals("SFCS", StringComparison.OrdinalIgnoreCase)) unit = new APU_SFCS();   // the SNES's own, enhanced: the stock unit for a SNES game
         else if (apu.Equals("WMS", StringComparison.OrdinalIgnoreCase)) unit = new APU_WMS();     // the WideMess sound chip: the SNES's until a game unlocks it
+        else if (apu.Equals("ZS15", StringComparison.OrdinalIgnoreCase)) unit = new APU_ZS15();   // the SNES unit heard through ZSNES 0.15's sound engine (foreign-apu-project)
+        else if (apu.Equals("OSPC", StringComparison.OrdinalIgnoreCase)) unit = new APU_OSPC();   // the SNES unit heard through libOpenSPC's (2002) sound engine (foreign-apu-project)
+        else if (apu.Equals("S9X1", StringComparison.OrdinalIgnoreCase)) unit = new APU_S9X1();   // the SNES unit heard through Snes9x 1.43's sound engine (foreign-apu-project)
+        else if (apu.Equals("S951", StringComparison.OrdinalIgnoreCase)) unit = new APU_S951();   // the SNES unit heard through Snes9x 1.51 sound engine (foreign-apu-project)
+        else if (apu.Equals("ZS151", StringComparison.OrdinalIgnoreCase)) unit = new APU_ZS151(); // the SNES unit heard through ZSNES 1.51's sound engine (foreign-apu-project)
+        else if (apu.Equals("S916", StringComparison.OrdinalIgnoreCase)) unit = new APU_S916();
+        else if (apu.Equals("SNDS", StringComparison.OrdinalIgnoreCase)) unit = new APU_SNDS();   // the SNES unit heard through SNEmulDS's ARM7 DSP (foreign-apu-project)   // the SNES unit heard through Snes9x 1.16a sound engine (foreign-apu-project)
         else unit = new APU_SFC();
         var chip = SnesChips.Create(cart, loadFirmware, false, out string chipNote);
         if (wideMess)
@@ -189,10 +196,17 @@ public sealed partial class SnesSession : IConsoleSession
     {
         "SFCS" => unit is APU_SFCS,
         "WMS" => unit is APU_WMS,
+        "ZS15" => unit is APU_ZS15,
+        "OSPC" => unit is APU_OSPC,
+        "S9X1" => unit is APU_S9X1,
+        "S951" => unit is APU_S951,
+        "ZS151" => unit is APU_ZS151,
+        "S916" => unit is APU_S916,
+        "SNDS" => unit is APU_SNDS,
         _ => unit.GetType() == typeof(APU_SFC),
     };
 
-    private static APU_SFC NewUnit(string id) => id.ToUpperInvariant() switch { "SFCS" => new APU_SFCS(), "WMS" => new APU_WMS(), _ => new APU_SFC() };
+    private static APU_SFC NewUnit(string id) => id.ToUpperInvariant() switch { "SFCS" => new APU_SFCS(), "WMS" => new APU_WMS(), "ZS15" => new APU_ZS15(), "OSPC" => new APU_OSPC(), "S9X1" => new APU_S9X1(), "S951" => new APU_S951(), "ZS151" => new APU_ZS151(), "S916" => new APU_S916(), "SNDS" => new APU_SNDS(), _ => new APU_SFC() };
 
     /// <summary>The same SPC700 + S-DSP in a unit of the other kind (stock / enhanced / WideMess): its whole state moves, at the board's time.</summary>
     private static APU_SFC MoveSpc(APU_SFC from, APU_SFC to)
@@ -341,6 +355,11 @@ public sealed class GbSession : IConsoleSession
         if (apu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { MixConfig.GbBackNesApu = apu[4..]; return m => new GbApuOnNes(m); }
         if (CoreCatalog.IsDirectRoute(apu)) return m => new GbApuOnChip(m, apu);          // another console's enhanced sound chip, directly
         if (apu.Equals("GBS", StringComparison.OrdinalIgnoreCase)) return m => new APU_GBS(m);
+        if (apu.Equals("GNUB", StringComparison.OrdinalIgnoreCase)) return m => new APU_GNUB(m);   // gnuboy 1.0.3's sound engine (foreign-apu-project)
+        if (apu.Equals("VBA", StringComparison.OrdinalIgnoreCase)) return m => new APU_VBA(m);   // VisualBoyAdvance 1.7.2's sound engine (foreign-apu-project)
+        if (apu.Equals("VBAM", StringComparison.OrdinalIgnoreCase)) return m => new APU_VBAM(m); // VBA-M 2007 pre-Gb_Apu sound engine (foreign-apu-project)
+        if (apu.Equals("TGBD", StringComparison.OrdinalIgnoreCase)) return m => new APU_TGBD(m);   // TGB Dual's apu.cpp (foreign-apu-project)
+        if (apu.Equals("GYOB", StringComparison.OrdinalIgnoreCase)) return m => new APU_GYOB(m);   // GameYob's DS sound mapping (foreign-apu-project)
         return null;
     }
 
@@ -365,6 +384,26 @@ public sealed class GbSession : IConsoleSession
 
     public string SwapRefusal(CoreSlot slot, string id) => ConsoleSessions.NotOffered(Console, slot, id);
 
+    /// <summary>
+    /// A swap between two different Game Boy sound chips (the stock one and the foreign APU ports: GNUB, VBA, VBAM, TGBD, GYOB) carries the registers, but a
+    /// port's own channel state does not survive the trip, so notes that were sounding would stay silent until the game keyed them again
+    /// (docs/KNOWN_GAPS.md FA-4). Every channel the old chip had sounding is triggered again on the new one (NRx4 bit 7 with the period's high bits;
+    /// the length counter is left off so the note does not cut out early).
+    /// </summary>
+    internal static void RetriggerSounding(IGbApu old, IGbApu next)
+    {
+        var ports = old as IGbSoundingChannels;
+        int sounding = ports?.SoundingMask ?? old.ReadRegister(0x26) & 0x0F;
+        if (sounding == 0) return;
+        ReadOnlySpan<int> nrx4 = stackalloc int[] { 0x14, 0x19, 0x1E, 0x23 };
+        for (int ch = 0; ch < 4; ch++)
+        {
+            if ((sounding & (1 << ch)) == 0) continue;
+            int hi = ch == 3 ? 0 : ports != null ? ports.PeriodHigh(ch) : old is APU_GB g ? (g.Channel(ch).Period >> 8) & 7 : old.ReadRegister(nrx4[ch]) & 7;
+            next.WriteRegister(nrx4[ch], (byte)(0x80 | hi));
+        }
+    }
+
     public bool TrySwapCore(CoreSlot slot, string id)
     {
         if (!ConsoleSessions.Offers(Console, slot, id)) return false;     // an id the menu does not list is refused: it would otherwise be swapped for the Game Boy's own chip under another name
@@ -377,13 +416,15 @@ public sealed class GbSession : IConsoleSession
                 // The new sound chip takes over the channels as they are (every Game Boy sound chip here carries APU_GB state).
                 var model = board.Model;
                 var next = SoundFactory(id)?.Invoke(model) ?? new APU_GB(model);
+                var old = board.Apu;
                 using (var ms = new System.IO.MemoryStream())
                 {
-                    using (var w = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) board.Apu.SaveState(w);
+                    using (var w = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) old.SaveState(w);
                     ms.Position = 0;
                     using var r = new System.IO.BinaryReader(ms);
                     next.LoadState(r);
                 }
+                if (old.GetType() != next.GetType()) RetriggerSounding(old, next);
                 board.SwapApu(next);
                 apuId = id; return true;
             }

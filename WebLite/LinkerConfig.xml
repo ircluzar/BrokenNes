@@ -71,6 +71,18 @@
     <type fullname="NesEmulator.APU_MD" preserve="all" />
     <type fullname="NesEmulator.APU_SMSFM" preserve="all" />
     <type fullname="NesEmulator.APU_FIXS" preserve="all" />
+    <!-- Foreign APU: DarcNES 1.50 NES sound (APU_FIX underneath) -->
+    <type fullname="NesEmulator.APU_DARC" preserve="all" />
+    <!-- Foreign APU (docs/projects/foreign-apu-project.md): NESticle 1997's sound on APU_FIX. -->
+    <type fullname="NesEmulator.APU_NSTC" preserve="all" />
+    <!-- Foreign APU batch 3: InfoNES pAPU port (APU_INES, family "Foreign"). -->
+    <type fullname="NesEmulator.APU_INES" preserve="all" />
+    <type fullname="NesEmulator.APU_FCEU" preserve="all" />
+    <!-- Foreign APU batch 4: TuxNES 0.75 sound.c port (APU_TUXN, family "Foreign"). -->
+    <type fullname="NesEmulator.APU_TUXN" preserve="all" />
+    <!-- Foreign APU batch 4: PocketNES sound.s translator onto APU_GB (APU_PNES, family "Foreign"). -->
+    <type fullname="NesEmulator.APU_PNES" preserve="all" />
+    <type fullname="NesEmulator.APU_VNES" preserve="all" />
     <!-- Enhanced cores phase 3: a NES game on the other consoles' ENHANCED chips (CoreRegistry finds them by name, so they must be rooted).
          The other consoles reach those chips directly (EnhancedChips routes, plain code: no root needed). -->
     <type fullname="NesEmulator.PPU_SNESS" preserve="all" />

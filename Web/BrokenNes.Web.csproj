@@ -104,7 +104,10 @@
          on mix/ (NesApuHost, NesPalette), which this build deliberately does not compile (it has no snes/, gb/ or
          mix/; WebLite does), so they are excluded here and simply absent from the web core lists. -->
     <Compile Include="$(NesRoot)ppus\**\*.cs"      Exclude="$(NesRoot)ppus\PPU_FIXS.cs" LinkBase="NesEmulator\ppus" />
-    <Compile Include="$(NesRoot)apus\**\*.cs"      Exclude="$(NesRoot)apus\APU_WF.cs;$(NesRoot)apus\APU_MNES.cs;$(NesRoot)apus\APU_FIXS.cs" LinkBase="NesEmulator\apus" />
+    <Compile Include="$(NesRoot)apus\**\*.cs"      Exclude="$(NesRoot)apus\APU_WF.cs;$(NesRoot)apus\APU_MNES.cs;$(NesRoot)apus\APU_FIXS.cs;$(NesRoot)apus\APU_PNES.cs;$(NesRoot)apus\PocketNesSound.cs" LinkBase="NesEmulator\apus" />
+    <!-- APU_PNES (PocketNES, the foreign APU project) drives the Game Boy sound chip (gb/APU_GB), which this build does not compile: excluded above.
+         mix/BridgeCounters.cs is linked alone: NES.GetPictureBridge() names its IPictureBridgeInfo, and the file needs nothing but System. -->
+    <Compile Include="$(NesRoot)mix\BridgeCounters.cs" Link="NesEmulator\mix\BridgeCounters.cs" />
     <Compile Include="$(NesRoot)mappers\**\*.cs"   LinkBase="NesEmulator\mappers" />
     <Compile Include="$(NesRoot)expansion\**\*.cs" LinkBase="NesEmulator\expansion" />
 

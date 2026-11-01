@@ -7,6 +7,24 @@ certified once its entries here are complete. The policy and the root list are i
 Sourcing plan (decided 2026-10-03, `docs/projects/sega-cores-plan.md`): **hybrid per chip**. Commodity chips are ported from permissive sources with notices;
 both VDPs and all bus and cycle timing are written clean-room from documentation and black-box oracle comparisons.
 
+## 0. Exception: the foreign APU project (2026-11-01)
+
+Alternate Sega sound engines ported from old GPL / non-commercial emulators on purpose, for their sound: a documented exception to the policy
+(root `THIRD_PARTY_NOTICES.md` section 2, `docs/projects/foreign-apu-project.md`). The stock chips above are unaffected.
+
+| What | Where | Source | License |
+| --- | --- | --- | --- |
+| BLST: BlastEm 0.3.1 YM2612 + SN76489 engines (the last release before 0.4.0 fixed attack, sustain, key-on mapping and the LFO; no SSG-EG/CSM) | `BlastemYm2612.cs`, `BlastemPsg.cs`, `md/MdSoundUnitBlst.cs`, `SmsSoundBlst.cs` | https://retrodev.com/repos/blastem/archive/v0.3.1.tar.gz (`ym2612.c/h`, `psg.c/h`; clocking from `blastem.c`), Copyright 2013 Michael Pavone | GPL-3.0-or-later (documented exception) |
+| M036FM: MAME 0.36 YM2413 (Paul Leaman's ym2413.c translator to OPL2 + Tatsuyuki Satoh's fmopl.c v0.36f) | `Mame036Opl.cs`, `Mame036Ym2413.cs`, `SmsFmSoundM036.cs` | historic-mame tag `mame036` `src/sound/ym2413.c`, `fmopl.c/.h` | MAME legacy non-commercial license (documented exception) |
+| M036: MAME 0.36 YM2612 (Tatsuyuki Satoh's fm.c v0.36e, OPN/YM2612 path only) + SN76496 (Nicola Salmoria's sn76496.c) | `Mame036Opn2.cs`, `Mame036Sn76496.cs`, `SmsSoundM036.cs`, `md/MdSoundUnitM036.cs` | historic-mame tag `mame036` `src/sound/fm.c`, `fm.h`, `sn76496.c`, `sn76496.h` | MAME legacy non-commercial license (documented exception) |
+| GENS: Gens 2.10 YM2612 + PSG (Stéphane Dallongeville, 2002), the classic "Gens sound" | `GensYm2612.cs`, `GensPsg.cs`, `SmsSoundGens.cs`, `md/MdSoundUnitGens.cs` | Gens 2.10 source (sourceforge.net/projects/gens/files/OldFiles/Gens210Src.zip: `ym2612.c/h`, `psg.c/h`; defaults from `Gens.cpp`, `G_dsound.cpp`), (C) 2002 Stéphane Dallongeville | GPL-2.0 (the SourceForge project; no license line in the files) (documented exception) |
+| PICO: PicoDrive v1.85 YM2612 + SN76496 (notaz; MAME-derived, SSG-EG and CSM removed, guessed DAC level, noise taps 0x14002) | `PicoYm2612.cs`, `PicoSn76496.cs`, `SmsSoundPico.cs`, `md/MdSoundUnitPico.cs` | PicoDrive v1.85 tag (github.com/notaz/picodrive/tree/v1.85): `pico/sound/ym2612.c/h`, `sn76496.c/h`; behaviour from `sound.c`, `memory.c` | PicoDrive COPYING (non-commercial) + MAME license (documented exception) |
+| DARC: DarcNES 1.14 SMS PSG (`sms_psg.c`: 5-bit noise register, linear volume, per-frame updates); the NES half (`nes_psg.c` 1.50) is `apus/DarcNesPsg.cs` | `DarcSmsPsg.cs`, `SmsSoundDarc.cs` | github.com/ProjectZeroSlackr/iDarcNES @6f8eb3d `sms_psg.c` 1.14 (Alastair Bridgewater) | DarcNES readme: credit required, commercial use prohibited (documented exception) |
+| DEGA: Dega 1.16 "Enhanced PSG" (channel 0 plays a DSP sample, channel 1 a Moog sample, channel 2 a square; an added echo; volume jumps retrigger; Dega's volume table) | `DegaPsg.cs`, `DegaSamples.cs`, `SmsSoundDega.cs` | github.com/Plombo/dega master (fetched 2026-11-01): `mast/dpsg.cpp`, `samp.cpp`, `samples.h`, parts of `snd.cpp`, `mastint.h` | Dega README: free use, non-commercial only (documented exception) |
+| GPGX: Genesis Plus GX 1.3.0 YM2612 (MAME fm.c 1.4 + Eke-Eke's fixes: half-done SSG-EG, the "Nemesis tests" EG row) + SN76489 (Maxim) | `GpgxYm2612.cs`, `GpgxSn76489.cs`, `md/MdSoundUnitGpgx.cs`, `SmsSoundGpgx.cs` | github.com/ekeeke/Genesis-Plus-GX @6f65ac3 `source/sound/fm.c/h`, `sn76489.c/h` (Burczynski, Satoh, Eke-Eke, Maxim, MacDonald) | MAME license + Genesis Plus terms, non-commercial (documented exception) |
+| E055: emu2413 v0.55 YM2413 (Mitsutaka Okazaki, 2002: log-curve attack, two-sample averaging, early drum models, its own instrument ROM) | `Emu2413v055.cs`, `SmsFmSoundE055.cs` | github.com/digital-sound-antiques/emu2413-legacy tag `0.55` @2d92835 `emu2413.c/h`, `2413tone.h` (Mitsutaka Okazaki) | license not stated (emu2413-legacy, Mitsutaka Okazaki); documented exception |
+<!-- foreign-apu-exceptions -->
+
 ## 1. Taken from source files (direct derivation)
 
 | What | Where | Source | License | Status |

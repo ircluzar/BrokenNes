@@ -23,3 +23,16 @@ public interface IGbApu
     void SaveState(BinaryWriter w);
     void LoadState(BinaryReader r);
 }
+
+/// <summary>
+/// Optional, for Game Boy sound chips whose NR52 status or NRx4 read-back does not tell which channels are sounding and at what period (the foreign
+/// APU ports keep their originals' register quirks): a live core swap (GbSession.RetriggerSounding) asks this instead, so the notes keep playing.
+/// </summary>
+public interface IGbSoundingChannels
+{
+    /// <summary>Bit n set: channel n (0 = square 1, 1 = square 2, 2 = wave, 3 = noise) is sounding.</summary>
+    int SoundingMask { get; }
+    /// <summary>The high 3 bits of channel n's 11-bit period (NRx4 bits 0-2); 0 for noise.</summary>
+    int PeriodHigh(int channel);
+}
+

@@ -1,5 +1,7 @@
 using System;
+#if !WORKSHOP_CLI
 using System.Windows.Forms;
+#endif
 
 namespace BrokenNes.Workshop;
 
@@ -118,6 +120,8 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--sega-stems-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaStemsTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--ym-oracle-test", StringComparison.OrdinalIgnoreCase)) return Sega.YmOracleTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--ym-render", StringComparison.OrdinalIgnoreCase)) return Sega.YmRenderCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--sms-render", StringComparison.OrdinalIgnoreCase)) return Sega.SmsRenderCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--apu-fuzz", StringComparison.OrdinalIgnoreCase)) return Sega.ForeignApuFuzzCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-sound-bench", StringComparison.OrdinalIgnoreCase)) return Sega.MdSoundBenchCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--sms-run", StringComparison.OrdinalIgnoreCase)) return Sega.SmsRunCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--smstest", StringComparison.OrdinalIgnoreCase)) return Sega.SmsTestCli.Run(args);
@@ -128,7 +132,13 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--corrupt-apply", StringComparison.OrdinalIgnoreCase)) return Corruption.CorruptCli.Apply(args);
         if (args.Length > 0 && args[0].Equals("--runaway-lab", StringComparison.OrdinalIgnoreCase)) return Corruption.RunawayLab.Run(args);
         if (args.Length > 0 && args[0].Equals("--runaway-test", StringComparison.OrdinalIgnoreCase)) return Corruption.RunawayChecks.Run(args);
-        if (args.Length > 0 && args[0].Equals("--input-test", StringComparison.OrdinalIgnoreCase)) return InputTestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--input-test", StringComparison.OrdinalIgnoreCase))
+#if WORKSHOP_CLI
+            { Console.Error.WriteLine("This mode opens a window; it is not available in the Linux CLI build (Workshop/Cli)."); return 2; }
+#else
+            return InputTestCli.Run(args);
+#endif
+
         if (args.Length > 0 && args[0].Equals("--console-catalog", StringComparison.OrdinalIgnoreCase)) return ConsoleRunCli.Catalog(args);
         if (args.Length > 0 && args[0].Equals("--console-run", StringComparison.OrdinalIgnoreCase)) return ConsoleRunCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--enhanced-shots", StringComparison.OrdinalIgnoreCase)) return EnhancedCores.EnhancedShotsCli.Run(args);
@@ -148,7 +158,11 @@ internal static class Program
         }
         if (args.Length > 0 && args[0].Equals("--snes", StringComparison.OrdinalIgnoreCase))
         {
+#if WORKSHOP_CLI
+            { Console.Error.WriteLine("This mode opens a window; it is not available in the Linux CLI build (Workshop/Cli)."); return 2; }
+#else
             return SnesPlayerForm.Run(args);
+#endif
         }
         if (args.Length > 0 && args[0].Equals("--trace", StringComparison.OrdinalIgnoreCase))
         {
@@ -192,9 +206,17 @@ internal static class Program
         }
         if (args.Length > 0 && args[0].Equals("--gb", StringComparison.OrdinalIgnoreCase))
         {
+#if WORKSHOP_CLI
+            { Console.Error.WriteLine("This mode opens a window; it is not available in the Linux CLI build (Workshop/Cli)."); return 2; }
+#else
             return Gb.GbPlayerForm.Run(args);
+#endif
         }
 
+#if WORKSHOP_CLI
+        Console.Error.WriteLine("No mode given. The Linux CLI build (Workshop/Cli) has no window; pass a --mode (see Workshop/README.md).");
+        return 2;
+#else
         ApplicationConfiguration.Initialize();
 
         // A debug tool that silently vanishes on a crash defeats its own purpose - show the
@@ -206,5 +228,6 @@ internal static class Program
 
         Application.Run(new WorkshopForm());
         return 0;
+#endif
     }
 }

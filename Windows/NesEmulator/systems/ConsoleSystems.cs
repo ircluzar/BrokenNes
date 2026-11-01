@@ -311,7 +311,7 @@ public static class CoreCatalog
     // NES-board cores that are really another console's part (the mix bridges).
     private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy", ["Z80"] = "Master System", ["M68K"] = "Genesis" };
     private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess" };
-    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess" };
+    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess", ["DARC"] = "Foreign", ["NSTC"] = "Foreign", ["INES"] = "Foreign", ["FCEU"] = "Foreign", ["TUXN"] = "Foreign", ["VNES"] = "Foreign", ["PNES"] = "Foreign" };
 
     /// <summary>The NES board's ids of the other consoles' ENHANCED chips (a NES game on them). Only the NES menu offers them: the other consoles reach those chips directly (<see cref="DirectRoutes"/>), never through a NES.
     /// WMSS (the WideMess's, milestone 7) only where the WideMess console is offered (<see cref="Consoles.WideMessEnabled"/>).</summary>
@@ -634,6 +634,18 @@ public static class CoreCatalog
                         list.Add(gg ? new("GG", "GG (SN76489 PSG with stereo)", fam) : new("SMS", "SMS (SN76489 PSG)", fam));
                         // The Japanese Master System / Mark III also has the YM2413 FM chip (ports $F0-$F2); a game that detects it plays its FM music. Not the default: the export console has none.
                         if (!gg) list.Add(new("SMS-FM", "SMS-FM (SN76489 PSG + YM2413 FM, the Japanese console)", fam));
+                        list.Add(new("BLST", "BLST (BlastEm 0.3.1 PSG, mono)", fam));
+                        if (!gg) list.Add(new("M036FM", "M036FM (MAME 0.36 YM2413: Leaman's OPL2 translator + fmopl.c, janky patches)", fam));
+                        if (!gg) list.Add(new("E055", "E055 (emu2413 v0.55 YM2413, 2002: log attack, crude drums, 2-tap averaging)", fam));
+                        list.Add(new("M036", "M036 (MAME 0.36 sound, 1999: sn76496.c, mono, old noise taps, unipolar output)", fam));
+                        list.Add(new("GPGX", "GPGX (Genesis Plus GX 1.3.0 PSG, 2008: Maxim's SN76489, mono, GX's output filter)", fam));
+                        list.Add(new("GENS", "GENS (Gens 2.10 PSG, 2002: 22 kHz unipolar squares, no Game Gear stereo)", fam));
+                        // Foreign APU: PicoDrive 1.85's SN76496 (a MAME-derived PSG: mono, unipolar, white-noise taps 0x14002; no Game Gear stereo)
+                        list.Add(new("PICO", "PICO (PicoDrive 1.85 SN76496: MAME-style PSG, odd noise taps, mono)", fam));
+                        // Foreign APU: DarcNES 1.14's sms_psg.c (2000): a 5-bit noise register (metallic noise), linear volume, one block per frame, mono
+                        list.Add(new("DARC", "DARC (DarcNES 2000 PSG: 5-bit metallic noise, linear volume, per-frame updates, mono)", fam));
+                        // Foreign APU: Dega 1.16's "Enhanced PSG" (Dave / FinalBurn author): sampled instruments on tone channels 0-1, an echo, retrigger on volume jumps; Game Gear stereo the Dega way
+                        list.Add(new("DEGA", "DEGA (Dega 1.16 Enhanced PSG: sampled instruments instead of squares, echo, inaccurate on purpose)", fam));
                         // The game's PSG replayed on a NES sound chip (SmsSoundOnNes, unit id "NES:<chip>"). Lossy and said so: mono, PSG only.
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, SegaOnNesLabel(id), "NES"));
                         // The Japanese console's PSG and its YM2413 together on a NES chip (SmsFmSoundOnNes, unit id "NES-FM:<chip>"): the game finds the FM chip and plays its FM music; each FM voice becomes a pulse, a triangle or a noise. Master System only (the Game Gear has no FM).
@@ -654,6 +666,12 @@ public static class CoreCatalog
                         break;
                     default:
                         list.Add(new("MD", "MD (Z80 + YM2612 + PSG sound unit)", "Genesis"));
+                        list.Add(new("BLST", "BLST (BlastEm 0.3.1 YM2612 + PSG, pre-0.4 FM envelope/LFO/key-on bugs)", "Genesis"));
+                        list.Add(new("M036", "M036 (MAME 0.36 sound, 1999: fm.c 0.36e YM2612 + sn76496.c at 22 kHz, preliminary envelopes, LFO mostly off)", "Genesis"));
+                        list.Add(new("GPGX", "GPGX (Genesis Plus GX 1.3.0 sound, 2008: MAME fm.c 1.4 YM2612 with the old half-done SSG-EG + Maxim's SN76489)", "Genesis"));
+                        list.Add(new("GENS", "GENS (Gens 2.10 sound, 2002: YM2612 + PSG at 22 kHz, the classic Gens sound)", "Genesis"));
+                        // Foreign APU: PicoDrive 1.85's YM2612 + SN76496 (the handheld emulator's: no SSG-EG, guessed DAC level, odd PSG noise taps)
+                        list.Add(new("PICO", "PICO (PicoDrive 1.85 YM2612 + SN76496: no SSG-EG, guessed DAC level)", "Genesis"));
                         // The game's FM, DAC and PSG replayed on a NES sound chip (MdSoundOnNes, unit id "NES:<chip>"). Lossy and said so. WF and MNES are left out: they play a NES game's notes as MIDI through a
                         // SoundFont rather than emulating a chip, so a Genesis game's voices would reach no sound there (the verifier checks that every chip listed here sounds).
                         foreach (var id in NesSoundChips().Where(i => !i.Equals("WF", StringComparison.OrdinalIgnoreCase) && !i.Equals("MNES", StringComparison.OrdinalIgnoreCase))) list.Add(new("NES:" + id, GenesisOnNesLabel(id), "NES"));
@@ -694,6 +712,13 @@ public static class CoreCatalog
                         break;
                     default:
                         list.Add(new("SFC", "SFC (S-SMP + S-DSP)", "SNES"));
+                        list.Add(new("ZS15", "ZS15 (ZSNES 0.15 sound, 1997: mono, no echo or interpolation, janky envelopes)", "SNES"));
+                        list.Add(new("OSPC", "OSPC (libOpenSPC sound, 2002: guessed envelopes, linear release, rand() noise)", "SNES"));
+                        list.Add(new("S916", "S916 (Snes9x 1.16a sound, 1998: 22 kHz, no interpolation, additive pitch mod, sample cache, half-speed envelopes)", "SNES"));
+                        list.Add(new("SNDS", "SNDS (SNEmulDS / PocketSPC Nintendo DS sound: 32 kHz, no interpolation, 2.4% sharp, silent noise, broken echo)", "SNES"));
+                        list.Add(new("S9X1", "S9X1 (Snes9x 1.43 sound, 2004: stereo, old envelopes, linear interpolation, private echo)", "SNES"));
+                        list.Add(new("S951", "S951 (Snes9x 1.51 sound, 2007: gaussian interpolation, counter-table envelopes, private echo)", "SNES"));
+                        list.Add(new("ZS151", "ZS151 (ZSNES 1.51 sound, 2007: its own envelopes and echo, Gaussian look-ahead, 160-frame blocks)", "SNES"));
                         list.Add(new("HLE", "HLE (silent - no sound, fastest)", "SNES"));
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), NesFamilyOf(CoreSlot.Apu, id)));
                         if (CoreRegistry.ApuIds.Contains("DMG", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMG", "Game Boy sound chip (through NES registers)", "Game Boy"));
@@ -721,6 +746,11 @@ public static class CoreCatalog
                     default:
                         list.Add(new("GB", "GB (Game Boy sound chip)", "Game Boy"));
                         list.Add(new("GBS", "GBS (Game Boy sound chip + 4 channels for the bridges)", "Game Boy"));
+                        list.Add(new("GNUB", "GNUB (gnuboy 1.0.3 sound, 2001: 8-bit 44.6 kHz, unipolar pulses, swapped master volume)", "Game Boy"));
+                        list.Add(new("VBA", "VBA (VisualBoyAdvance 1.7.2 sound, 2004: 22 kHz, swapped stereo volumes, DC when idle)", "Game Boy"));
+                        list.Add(new("VBAM", "VBAM (VBA-M 2007 sound, pre-Gb_Apu: VBA 1.7.2 plus read masks and shadowed frequency registers)", "Game Boy"));
+                        list.Add(new("TGBD", "TGBD (TGB Dual sound, 2001: whole-frame 44.1 kHz blocks, ~299 Hz envelopes, swapped L/R)", "Game Boy"));
+                        list.Add(new("GYOB", "GYOB (GameYob DS sound, 2013: GB channels on DS PSG/PCM channels, per-frame updates, DC hum)", "Game Boy"));
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), "NES"));
                         if (CoreRegistry.ApuIds.Contains("SNES", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:SNES", "SNES sound (through NES registers)", "SNES"));
                         foreach (var id in HubSoundChips("Game Boy").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "SNES")) list.Add(new("NES:" + id, HubSoundLabel(id, "the Game Boy's channels"), NesFamilyOf(CoreSlot.Apu, id)));

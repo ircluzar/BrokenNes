@@ -146,6 +146,24 @@ Controls: D-pad `Arrows`/`WASD`, A `X`, B `Z`, Select `Space`, Start `Enter` —
 `Web/`, and the same index order documented in `Windows/NesEmulator/board/Input.cs:10`
 (`0=A 1=B 2=Select 3=Start 4=Up 5=Down 6=Left 7=Right`).
 
+## Run on Linux/macOS (CLI build)
+
+The headless modes don't need WinForms, so the same project also builds as a plain `net10.0`
+console app (`-p:WorkshopCli=true`; the windows - `WorkshopForm`, `--snes`, `--gb`,
+`--input-test` - are left out). `Workshop/setup-linux.sh` installs the .NET 10 SDK, PowerShell 7
+(for `UAT/*.ps1`) and the local GB test ROMs, then builds everything; `Workshop/cli.sh` rebuilds
+incrementally into `bin-cli/` and runs a mode:
+
+```bash
+Workshop/setup-linux.sh
+Workshop/cli.sh --snestest --rom Windows/Resources/snes-test-roms/spctest/spctest.sfc
+Workshop/cli.sh --apu-audio --rom game.nes --apu SNES --frames 600 --wav out.wav
+```
+
+GDI+ (`System.Drawing.Bitmap`) only works on Windows, so modes that read or write PNGs through it
+fail on Linux (e.g. the screenshot-compared `--gbtest` groups `dmg-acid2` and `mealybug`); the
+audio, trace and test-ROM verdict paths work.
+
 ## Run (headless)
 
 Shares the exact same linked cores and the exact same `DirectBitmap` rendering conversion as the
