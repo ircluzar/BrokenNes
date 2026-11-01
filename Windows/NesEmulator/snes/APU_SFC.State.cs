@@ -47,5 +47,6 @@ public partial class APU_SFC
         SnesStateIo.Get(r, ring.AsSpan(0, n));
         Smp.LoadState(r);
         Dsp.LoadState(r);
+        OnReset();
     }
 }

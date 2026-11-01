@@ -17,7 +17,7 @@ namespace NesEmulator.Snes;
 /// </summary>
 public partial class APU_SFC : ISnesApu
 {
-    public string CoreName => "SFC";
+    public virtual string CoreName => "SFC";
     public int SampleRate => 32000;
 
     public readonly byte[] Aram = new byte[0x10000];
@@ -48,7 +48,7 @@ public partial class APU_SFC : ISnesApu
     public APU_SFC()
     {
         Smp = new SMP_SFC(this);
-        Dsp = new DSP_SFC(Aram) { Output = PushSample };
+        Dsp = new DSP_SFC(Aram) { Output = OnDspSample };
         Reset();
     }
 
@@ -63,6 +63,7 @@ public partial class APU_SFC : ISnesApu
         ringRead = ringCount = 0;
         Dsp.Reset();
         Smp.Reset();
+        OnReset();
     }
 
     // =====================================================================================
@@ -136,7 +137,15 @@ public partial class APU_SFC : ISnesApu
         $"SFC pc=${Smp.PC:X4} ports={apuToCpu[0]:X2} {apuToCpu[1]:X2} {apuToCpu[2]:X2} {apuToCpu[3]:X2} " +
         $"samples={SamplesProduced:N0} kon/endx=${Dsp.Regs[0x4C]:X2}/${Dsp.Regs[0x7C]:X2}{(Smp.Halted ? " HALTED" : "")}";
 
-    private void PushSample(short l, short r)
+    /// <summary>Hooks for a unit that swaps the sound generator (APU_ZS15 and the other ported DSPs): the S-DSP keeps running and
+    /// keeps the registers the game reads, the hook decides what is heard. Each S-DSP sample (32 kHz) arrives here.</summary>
+    protected virtual void OnDspSample(short l, short r) => PushSample(l, r);
+    /// <summary>Every DSP register write the SPC700 makes ($F3, registers $00-$7F), after the S-DSP has taken it.</summary>
+    protected virtual void OnDspRegWrite(byte reg, byte value) { }
+    /// <summary>After <see cref="Reset"/> and after a state load (the state holds the S-DSP, not a hooked generator).</summary>
+    protected virtual void OnReset() { }
+
+    protected void PushSample(short l, short r)
     {
         SamplesProduced++;
         if (ringCount > ring.Length - 2) { ringRead = (ringRead + 2) & 0xFFFF; ringCount -= 2; }
@@ -198,7 +207,7 @@ public partial class APU_SFC : ISnesApu
                 break;
             case 0xF2: dspAddr = v; break;
             case 0xF3:
-                if (dspAddr < 0x80) { Dsp.Write(dspAddr, v); DspWriteTap?.Invoke(dspAddr, v, SamplesProduced); }
+                if (dspAddr < 0x80) { Dsp.Write(dspAddr, v); OnDspRegWrite(dspAddr, v); DspWriteTap?.Invoke(dspAddr, v, SamplesProduced); }
                 else Dsp.WriteHigh(dspAddr, v);   // nowhere on a SNES; the WideMess's second page once unlocked
                 break;
             case 0xF4: case 0xF5: case 0xF6: case 0xF7: apuToCpu[a - 0xF4] = v; break;

@@ -1,77 +1,73 @@
 # Foreign APU project
 
-## Concept
+Alternate **SNES and Game Boy sound chips** ported from old, janky, open-source emulators. When we
+ported the QuickNES APU from C++, the QN family ended up with a sound of its own; this project does
+the same for the other consoles. BrokenNes2 is intercompatible, so a new SNES or GB chip also works
+on the NES and on other consoles through the existing bridges, for free:
+- `APU_SNES` with `MixConfig.SnesApu` / `SnesCores`
+- `APU_DMG` with `GbCores`
+- `NesApuOnSnes`, `SnesApuOnChip`
 
-When we ported the APU from QuickNES (C++) to C#, the QN family ended up sounding noticeably
-different from our other cores, simply because it inherited another emulator's code. This project
-does the same thing with **sound chips from other consoles**. We port the audio engines of old,
-open-source **SNES and Game Boy** emulators to C#, preferring early versions whose sound was still
-rough, and feed NES audio through them.
-
-## Decisions (from the interview, 2026-11-01)
+## Decisions (user interviews, 2026-11-01)
 
 | Topic | Decision |
 |---|---|
-| Sound style | **Straight piping.** Each NES channel drives the matching voice on the foreign chip with the same pitch, volume and timing. Nothing extra is switched on: no SNES echo, no stereo panning, master volume neutral. The character comes only from the chip's own math and bugs. |
-| Port fidelity | **Bit-exact and verified.** The C# should be readable and match the original program sample for sample. Build the original here and compare outputs. Keep every quirk. Add a "fixes" toggle only where the original had one. |
-| DMC on chips without it | **Stream it through the chip.** Game Boy: play DMC through the wave channel or volume register. SNES: convert DMC output to BRR samples on the fly. |
-| Resampling | **Run the chip at its native rate and resample crudely** (nearest or linear) to 44.1 kHz, like 2000s emulators did. |
-| Naming | Short emulator tags: `APU_ZS15`, `APU_S9X1`, `APU_OSPC`, `APU_GNUB`, `APU_VBA`. Leave room for LOW/LQ variants later. |
-| Progression | **Blind-bag only.** The new cores are available only from the post-campaign random unlock pool. |
-| Licensing | Use these sources for research and art. Disclose every upstream project and license in the repo's license/credits docs, and put a header on each ported file. |
+| Speed | **Quick and dirty first, polish later.** Port fast, check that it works, push. No long suites. |
+| Verification | **Smoke test only.** It builds; one game or test ROM renders a WAV that is clearly music (non-silent, follows the song); the stock chip still works. |
+| Fidelity | Port the original's code and **keep its bugs**; they are the sound. No sound "improvements". |
+| Sound path | The flavor comes from the chip itself. Games drive it exactly as they drive the stock chip. Add no effects of our own. |
+| Resampling | Run each engine at its own rate and convert crudely (nearest/linear) to the unit's rate. |
+| Pacing | ZS15 first (it sets the pattern), then the other four in parallel. |
+| Access | Selectable in the console core menus now. Cards and the blind-bag pool come in the polish pass. |
+| Licensing | **Allowed for the sake of art, documented, revisited later.** The repo policy forbids GPL, LGPL and non-commercial code; these cores are a recorded exception in `THIRD_PARTY_NOTICES.md` §2 and in the family ledgers. Every ported file gets a header naming its source, authors and license. |
 
-## Candidates
+## Cores
 
-| ID | System | Source | Era | License | Notes |
-|---|---|---|---|---|---|
-| `APU_ZS15` | SNES | ZSNES 0.15 S-DSP via [zsnes-asm2c](https://gitlab.com/ReverendGumby/zsnes-asm2c), the engine used in [ZSnes9x / snes9x-cursed](https://gitlab.com/ReverendGumby/snes9x-cursed) | 1997 | GPLv3 (zsnes-asm2c); Snes9x license for the fork | First ZSNES beta with sound. `dsp.asm` is ~3.5k lines of x86, reconstructed by disassembling the 0.15 binary. Its `spcplay` tool is our reference output. |
-| `APU_S9X1` | SNES | Snes9x 1.39–1.43 `soundux` DSP | ~2002–04 | Snes9x non-commercial | Snes9x before its accuracy rewrites: wrong envelopes and interpolation. |
-| `APU_OSPC` | SNES | [libOpenSPC](https://github.com/bmartin427/libopenspc), with parts from SNEeSe | 2002 | LGPL + SNEeSe license | Brad Martin's best attempt at accuracy at the time. |
-| `APU_GNUB` | GB | [gnuboy](https://github.com/rofl0r/gnuboy) `sound.c` | ~2001 | GPL-2.0 | 464 lines of crude C. The quickest win. |
-| `APU_VBA` | GB | VisualBoyAdvance 1.7.2 GB sound ([vba-raspi mirror](https://github.com/weimingtom/vba-raspi)) | ~2004 | GPL-2.0 | Different shortcuts from gnuboy. |
+| ID | Console slot | Source | License | Status |
+|---|---|---|---|---|
+| `ZS15` | SNES APU | ZSNES 0.15 (1997) sound engine, via [zsnes-asm2c](https://gitlab.com/ReverendGumby/zsnes-asm2c) `dsp.asm` + `mach.c`. This is the engine in ZSnes9x ([snes9x-cursed](https://gitlab.com/ReverendGumby/snes9x-cursed)) | GPL-2+/GPL-3+ | **done (MVP)**: `snes/Zs15Dsp.cs`, `snes/APU_ZS15.cs` |
+| `S9X1` | SNES APU | Snes9x 1.39–1.43 sound code (`soundux.cpp`, `apu.cpp` DSP side) | Snes9x non-commercial | planned |
+| `OSPC` | SNES APU | [libOpenSPC](https://github.com/bmartin427/libopenspc), with parts from SNEeSe (2002) | LGPL + SNEeSe license | planned |
+| `GNUB` | GB APU | [gnuboy](https://github.com/rofl0r/gnuboy) `sound.c` | GPL-2.0 | planned |
+| `VBA` | GB APU | VisualBoyAdvance 1.7.2 `gb/gbSound.cpp` ([vba-raspi mirror](https://github.com/weimingtom/vba-raspi)) | GPL-2.0 | planned |
 
-Alternates: TGB Dual (GPL), early blargg Gb_Snd_Emu (LGPL), old MESS.
+## How a SNES sound engine plugs in (the ZS15 pattern)
 
-## Architecture
+- `APU_SFC` has three hooks:
+  - `OnDspSample(l, r)`: each 32 kHz S-DSP sample.
+  - `OnDspRegWrite(reg, value)`: every SPC700 write to DSP registers $00–$7F.
+  - `OnReset()`: called after `Reset` and after a state load.
+- A new unit `APU_XXX : APU_SFC` keeps the stock SPC700, timers and S-DSP running. The game's sound driver therefore reads correct DSP registers (ENDX, ENVX), and the WideMess, the bridges, the tools and the save states keep working.
+- The new unit mirrors every register write into its ported engine. In `OnDspSample` it pushes the engine's output instead of the S-DSP's, through `PushSample`, resampled crudely to 32 kHz.
+- `OnReset` re-feeds the engine the S-DSP's registers, the way `spcplay` loads a song: all registers, then key-on last. The engine's own internal state is not saved; that is MVP scope.
+- **Registration** takes one line in each of these places:
+  - `systems/ConsoleSessions.cs`: the `SnesSession` constructor `else if`, `IsUnitKind` and `NewUnit`.
+  - `systems/ConsoleSystems.cs`: the SNES APU menu list.
+  - `mix/SnesCoreContracts.cs`: `RegisterApu`.
+- **Smoke test** on Linux:
 
-```
-NES game ──$4000-$4017──▶ ForeignApuHost (IAPU)
-                            ├─ NES bookkeeping: $4015 status, frame counter + IRQ, length counters,
-                            │   DMC fetch/IRQ. Must stay NES-correct or games break; shared by every port.
-                            ├─ Translator (one per chip): NES channel state → chip register writes
-                            │     GB:   pulse1/2 → CH1/CH2 (same 4 duty cycles), triangle → CH3 wave RAM
-                            │           (32 × 4-bit triangle), noise → CH4 (15/7-bit LFSR), DMC → streamed
-                            │     SNES: pulse → looped BRR per duty, triangle → looped BRR, noise → DSP noise
-                            │           generator (FLG), DMC → BRR streamed on the fly; volume via GAIN
-                            ├─ Ported chip: the foreign DSP/APU running at its native rate (bit-exact port)
-                            └─ Crude resampler → the 44.1 kHz ring buffer that IAPU.GetAudioSamples returns
-```
+  ```bash
+  Workshop/cli.sh --mixlab nes --rom Plugin/BrokenNes2.Plugin/Resources/musictest.nes --apu SNES --snes-apu XXX \
+    --frames 900 --png-at 999999 --wav out.wav --out-dir /tmp/x
+  ```
 
-- We port only the **sound-generating chip**. The SNES SPC700 CPU is left out because the NES game
-  plays the role of the driver.
-- Follow `docs/core-lifecycle.md`. The core must support hot-swapping through
-  `GetState`/`SetState`, plus `ClearAudioBuffers` and `Reset`. Avoid reflection-heavy serialization.
+  This plays VRUN's music through the SNES unit. Then compare it against `--snes-apu SFC`: the loudness envelopes should correlate and the output should not be noise.
+  - ZS15 result: correlation 0.92, louder than stock (no master volume) and mono.
 
-## Verification
+## How a GB sound engine plugs in
 
-- **Chip port:** build the original (C or asm2c) in the container. Feed the same input to both the
-  original and the C# port, for example `.spc` files for SNES or register-write logs for GB, and
-  require identical PCM output.
-- **In BrokenNes:** `Tools/BrokenNes.Headless`
-  - `./suite.sh --apu ZS15`: the NES-side APU tests (`apu_test`, length, IRQ) must score at least
-    as well as `APU_FMC`, which shows the bookkeeping layer is correct.
-  - `./nesh compare <rom> --a apu=FMC --b apu=ZS15 --wav`: listening A/B, plus checks that pitch
-    and timing line up.
-  - `./nesh bench <rom> --kind apu`: the core must stay comfortably faster than real time.
-- **On Windows (user):** listening tests in the real host.
+- Implement `IGbApu` (`gb/IGbApu.cs`):
+  - `Tick(tCycles)` at 4.194304 MHz and `FrameSequencerStep()` at 512 Hz.
+  - `ReadRegister` / `WriteRegister` for $10–$3F (NR10–NR52 and wave RAM).
+  - `ReadSamples` (interleaved stereo int16) at `SampleRate`.
+  - `SaveState` / `LoadState`.
+- **Register** in `mix/GbSoundBridges.cs` `GbCores`, in `GbSession.SoundFactory` (`systems/ConsoleSessions.cs`) and in the GB APU menu (`systems/ConsoleSystems.cs`).
+- **Swap caveat:** `TrySwapCore(Apu)` copies the old unit's state into the new one. A variant that can't read `APU_GB`'s format must start fresh or have that swap path handled.
+- **Smoke test:** `--mixlab nes ... --apu DMG` with `--gb-apu XXX` plays NES music through the GB chip. `--gbrun --rom <gb rom> --wav` also works if a GB ROM with music is at hand.
 
-## Milestones
+## Later (the polish pass)
 
-1. **ZS15, playable.** Shared `ForeignApuHost`, ZSNES 0.15 DSP port verified bit-exact against
-   `spcplay`, and the NES→S-DSP translator. Selectable as an APU in the Windows build. Comes with
-   WAV samples from the story ROMs and test ROMs. Card/progression wiring is deferred.
-2. `APU_GNUB` (gnuboy), which also proves the host layer can be reused.
-3. `APU_VBA`, `APU_S9X1`, `APU_OSPC`.
-4. Game integration: card entries in both copies of `default-db.json`, card art in
-   `SvgFactory.cs`, the blind-bag pool, the lists in `continue.js` and `gameSave.js`, and the
-   license/credits doc.
+- Save the engines' own state, so a state load does not re-key the voices.
+- Cards, card art and the blind-bag pool. BrokenNes2's cards are NES-only today; the SNES and GB cores appear in the console menus through `CoreCatalog`.
+- Resolve the licensing question. See `THIRD_PARTY_NOTICES.md` §2.
+- Optional: bit-exact checks against the original programs.

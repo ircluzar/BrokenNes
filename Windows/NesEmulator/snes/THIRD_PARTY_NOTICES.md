@@ -12,6 +12,7 @@ was taken. Keep this file current: a "from scratch" replacement core should be c
 | 512-entry Gaussian interpolation table (hardware ROM data, copied verbatim) | `DSP_SFC.cs` `Gauss` | same file | LGPL 2.1 file; the data itself is measured hardware |
 | Envelope/noise rate period and offset tables (copied verbatim) | `DSP_SFC.cs` `RatePeriod`, `RateOffset` | same file | as above |
 | SPC700 per-opcode cycle-count table (copied verbatim) | `SMP_SFC.cs` `Cycles` | snes9x `apu/bapu/smp/core.cpp` (bsnes-derived S-SMP core), same BizHawk tree | snes9x license (non-commercial) / GPL-3 lineage; the data itself is hardware timing |
+| ZSNES 0.15 sound engine (mono 44.1 kHz mixer, BRR decode, envelope state machine, volume and rate tables, key on/off, the original's bugs), ported line by line | `Zs15Dsp.cs` (used by `APU_ZS15.cs`) | zsnes-asm2c `dsp.asm` + `mach.c` (https://gitlab.com/ReverendGumby/zsnes-asm2c), reconstructed ZSNES 0.15 source | GPL-2.0-or-later (`dsp.asm`) / GPL-3.0-or-later (zsnes-asm2c): a documented exception, root `THIRD_PARTY_NOTICES.md` section 2 |
 
 ## 2. Written from memory, recognizably bsnes/higan's approach (no file opened)
 
