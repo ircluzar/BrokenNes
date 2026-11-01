@@ -634,6 +634,7 @@ public static class CoreCatalog
                         list.Add(gg ? new("GG", "GG (SN76489 PSG with stereo)", fam) : new("SMS", "SMS (SN76489 PSG)", fam));
                         // The Japanese Master System / Mark III also has the YM2413 FM chip (ports $F0-$F2); a game that detects it plays its FM music. Not the default: the export console has none.
                         if (!gg) list.Add(new("SMS-FM", "SMS-FM (SN76489 PSG + YM2413 FM, the Japanese console)", fam));
+                        if (!gg) list.Add(new("M036FM", "M036FM (MAME 0.36 YM2413: Leaman's OPL2 translator + fmopl.c, janky patches)", fam));
                         // The game's PSG replayed on a NES sound chip (SmsSoundOnNes, unit id "NES:<chip>"). Lossy and said so: mono, PSG only.
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, SegaOnNesLabel(id), "NES"));
                         // The Japanese console's PSG and its YM2413 together on a NES chip (SmsFmSoundOnNes, unit id "NES-FM:<chip>"): the game finds the FM chip and plays its FM music; each FM voice becomes a pulse, a triangle or a noise. Master System only (the Game Gear has no FM).
