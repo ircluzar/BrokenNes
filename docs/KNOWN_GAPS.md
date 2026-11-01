@@ -83,6 +83,9 @@ call was quick and dirty first, with a smoke test only.
 | FA-TUXN-1 | P3 | TUXN's frame/V-blank is a free-running 29,781-cycle counter, not the PPU's NMI, so its frame boundary drifts against the game's. | `TuxnesSound.Clock`: drive UpdateAudio from the PPU's V-blank. | 2026-11-01, `bc59db7f` | open |
 | FA-TUXN-2 | P3 | TUXN drops the engine's DMC IRQ flag (APU_FIX's IRQ is used instead), so TuxNES's DMC interrupt behaviour is not reproduced. | `TuxnesSound` DMC block / `APU_TUXN`. | 2026-11-01, `bc59db7f` | open |
 | FA-TUXN-3 | P3 | TUXN: only the default u8 format is ported; the signed 16-bit mode (where the header's "noise fades in" bug lives) is not available. | `TuxnesSound`: add the signed/16-bit path as an option. | 2026-11-01, `bc59db7f` | open |
+| FA-VNES-1 | P3 | VirtuaNES VRC6/VRC7/N106/FDS/FME7 sound not ported (no mappers in BrokenNes2). | VirtuaNES `NES/ApuEX/APU_*.cpp`: port when the mappers exist. | 2026-11-01, `14f1f9e2` | open |
+| FA-VNES-2 | P3 | VNES MMC5 sound path untested (no MMC5 smoke ROM); its defaults (22,050 Hz, 8-bit, no LPF) come from the porter's memory, not from Config.cpp (not in the mirror). | Render an MMC5 game with `--apu VNES`; check `CCfgSound::Default` in a 0.97 source. | 2026-11-01, `14f1f9e2` | open |
+| FA-VNES-3 | P3 | VNES: the .vtd wavetables (bChangeTone) and the PAL tables are not ported. | `apus/VirtuaNesApu.cs`; `APU_INTERNAL` ToneTableLoad / dpcm_cycles_pal. | 2026-11-01, `14f1f9e2` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
