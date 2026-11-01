@@ -76,6 +76,8 @@ call was quick and dirty first, with a smoke test only.
 | FA-TGBD-1 | P3 | TGBD is not an `APU_GB`: BrokenDev mute, the WAVE domain, the plugin sampler and instrument push skip it (as GNUB/VBA, FA-6). | `gb/APU_TGBD.cs`. | 2026-11-01, `e1bc5ab9` | open |
 | FA-TGBD-2 | P3 | A swap to TGBD restarts the engine from the registers: notes stay silent until re-triggered. | `APU_TGBD.LoadState`: map the `APU_GB` channel state into `TgbdStat`. | 2026-11-01, `e1bc5ab9` | open |
 | FA-TGBD-3 | P3 | TGBD: echo not ported, the low-pass filter fixed off (its default), dual-GB mode not modelled, DC offset ~1,450. | `gb/TgbdApu.cs`: expose b_lowpass / port the echo if wanted. | 2026-11-01, `e1bc5ab9` | open |
+| FA-S916-1 | P3 | S916 engine state is not saved; a state load re-feeds the DSP registers and re-keys the voices. | `snes/APU_S916.cs` `OnReset`; serialize the `S916Dsp` channels. | 2026-11-01, `e7b8f2db` | open |
+| FA-S916-2 | P3 | S916: only the default 16-bit stereo mix is ported (mono/8-bit paths and other rates left out). | `snes/S916Dsp.cs` RenderBlock/MixStereo. | 2026-11-01, `e7b8f2db` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
