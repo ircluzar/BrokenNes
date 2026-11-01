@@ -634,6 +634,8 @@ public static class CoreCatalog
                         list.Add(gg ? new("GG", "GG (SN76489 PSG with stereo)", fam) : new("SMS", "SMS (SN76489 PSG)", fam));
                         // The Japanese Master System / Mark III also has the YM2413 FM chip (ports $F0-$F2); a game that detects it plays its FM music. Not the default: the export console has none.
                         if (!gg) list.Add(new("SMS-FM", "SMS-FM (SN76489 PSG + YM2413 FM, the Japanese console)", fam));
+                        // Foreign APU: PicoDrive 1.85's SN76496 (a MAME-derived PSG: mono, unipolar, white-noise taps 0x14002; no Game Gear stereo)
+                        list.Add(new("PICO", "PICO (PicoDrive 1.85 SN76496: MAME-style PSG, odd noise taps, mono)", fam));
                         // The game's PSG replayed on a NES sound chip (SmsSoundOnNes, unit id "NES:<chip>"). Lossy and said so: mono, PSG only.
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, SegaOnNesLabel(id), "NES"));
                         // The Japanese console's PSG and its YM2413 together on a NES chip (SmsFmSoundOnNes, unit id "NES-FM:<chip>"): the game finds the FM chip and plays its FM music; each FM voice becomes a pulse, a triangle or a noise. Master System only (the Game Gear has no FM).
@@ -654,6 +656,8 @@ public static class CoreCatalog
                         break;
                     default:
                         list.Add(new("MD", "MD (Z80 + YM2612 + PSG sound unit)", "Genesis"));
+                        // Foreign APU: PicoDrive 1.85's YM2612 + SN76496 (the handheld emulator's: no SSG-EG, guessed DAC level, odd PSG noise taps)
+                        list.Add(new("PICO", "PICO (PicoDrive 1.85 YM2612 + SN76496: no SSG-EG, guessed DAC level)", "Genesis"));
                         // The game's FM, DAC and PSG replayed on a NES sound chip (MdSoundOnNes, unit id "NES:<chip>"). Lossy and said so. WF and MNES are left out: they play a NES game's notes as MIDI through a
                         // SoundFont rather than emulating a chip, so a Genesis game's voices would reach no sound there (the verifier checks that every chip listed here sounds).
                         foreach (var id in NesSoundChips().Where(i => !i.Equals("WF", StringComparison.OrdinalIgnoreCase) && !i.Equals("MNES", StringComparison.OrdinalIgnoreCase))) list.Add(new("NES:" + id, GenesisOnNesLabel(id), "NES"));

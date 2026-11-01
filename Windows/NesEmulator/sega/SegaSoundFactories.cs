@@ -31,6 +31,7 @@ public static class SmsSoundFactories
         ["SMS-FM"] = r => new SmsFmSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // the Japanese console's sound: the PSG and the YM2413 (ports $F0-$F2)
         ["SMSS"] = r => new SmsSoundS(r.CpuClockHz, r.Machine.SampleRate, r.Variant, gameGear: false),   // the console's own enhanced unit: the stock unit for its own game, plus extra SN76489 sets for the cross-console bridges
         ["GGS"] = r => new SmsSoundS(r.CpuClockHz, r.Machine.SampleRate, r.Variant, gameGear: true),
+        ["PICO"] = r => new SmsSoundPico(r),   // foreign APU: PicoDrive 1.85's SN76496 (MAME-derived, noise taps 0x14002), Master System and Game Gear
     };
 
     public static IEnumerable<string> Ids => Factories.Keys;
@@ -60,6 +61,7 @@ public static class GenesisSoundFactories
         ["MDS"] = m => new MdSoundUnitS(m),   // the Genesis's own enhanced unit: the stock unit for a Genesis game, plus extra YM2612 + PSG sets for the cross-console bridges
         ["MD-STUB"] = m => new GenesisSoundStub(m),
         ["NES"] = m => new MdSoundOnNes(m),
+        ["PICO"] = m => new MdSoundUnitPico(m),   // foreign APU: PicoDrive 1.85's YM2612 (no SSG-EG, guessed DAC level) + SN76496
     };
 
     /// <summary>Units whose menu id carries a detail after a colon (<c>NES:FIXS</c>): looked up by the part before the colon, the rest handed over.</summary>
