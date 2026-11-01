@@ -31,7 +31,7 @@
     <PackageReference Include="MeltySynth" Version="2.4.0" />
     <!-- The SNES and Game Boy players (snes / gb modes): audio out (WaveOutEvent) and XInput pads. Same versions the desktop app uses. -->
     <PackageReference Include="NAudio" Version="2.2.1" />
-    <PackageReference Include="SharpDX.XInput" Version="4.2.0" />
+    <PackageReference Include="SharpDX.XInput" Version="4.2.0" Condition="'$(WorkshopCli)' != 'true'" />
   </ItemGroup>
 
   <!-- ==========================================================================
@@ -169,6 +169,29 @@
   <!-- WideMess milestone 6: the SNES games' enhancement profiles (docs/projects/widemess-spec.md 6.2), beside the program in WideMess\profiles, as the desktop app ships them. -->
   <ItemGroup>
     <None Include="..\WideMess\profiles\*.json" Link="WideMess\profiles\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- ==========================================================================
+       Linux/macOS CLI build: dotnet build -p:WorkshopCli=true (use Workshop/cli.sh, which also
+       keeps its outputs in bin-cli/ and obj-cli/). Same sources and modes, minus the windows
+       (WorkshopForm, the SNES/GB players, the input test). Program.cs guards those entry points
+       with WORKSHOP_CLI. GDI+ (DirectBitmap/Bitmap) compiles through System.Drawing.Common but
+       only runs on Windows, so the PNG-writing paths of a few modes fail on Linux.
+       ========================================================================== -->
+  <PropertyGroup Condition="'$(WorkshopCli)' == 'true'">
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseWindowsForms>false</UseWindowsForms>
+    <DefineConstants>$(DefineConstants);WORKSHOP_CLI</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(WorkshopCli)' == 'true'">
+    <Compile Remove="WorkshopForm.cs;SnesPlayerForm.cs;Gb\GbPlayerForm.cs;InputTestCli.cs" />
+    <Compile Remove="$(NesRoot)..\InputManager.cs;$(NesRoot)..\PlayerControllerConfig.cs;$(NesRoot)..\ControllerConfigWindow.cs" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
+  </ItemGroup>
+  <!-- Keep each build flavour's generated files (obj/ vs obj-cli/) out of the other one's default glob. -->
+  <ItemGroup>
+    <Compile Remove="bin\**;obj\**;bin-cli\**;obj-cli\**" />
   </ItemGroup>
 
 </Project>
