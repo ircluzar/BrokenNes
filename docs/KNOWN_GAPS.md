@@ -80,6 +80,9 @@ call was quick and dirty first, with a smoke test only.
 | FA-S916-2 | P3 | S916: only the default 16-bit stereo mix is ported (mono/8-bit paths and other rates left out). | `snes/S916Dsp.cs` RenderBlock/MixStereo. | 2026-11-01, `e7b8f2db` | open |
 | FA-VBAM-1 | P3 | A core swap away from VBAM loses frequencies: the `APU_GB`-format block saves the masked NR13/14/23/24/33/34 values ($FF). | `APU_VBAM.SaveState`: expose the engine's shadow frequency registers and save those. | 2026-11-01, `7605d654` | open |
 | FA-VBAM-2 | P3 | VBAM's SGB NR52 reset value ($F0) is unreachable: there is no SGB `GbModel`. | `VbamGbSound.Reset`: pick it once an SGB model exists. | 2026-11-01, `7605d654` | open |
+| FA-TUXN-1 | P3 | TUXN's frame/V-blank is a free-running 29,781-cycle counter, not the PPU's NMI, so its frame boundary drifts against the game's. | `TuxnesSound.Clock`: drive UpdateAudio from the PPU's V-blank. | 2026-11-01, `bc59db7f` | open |
+| FA-TUXN-2 | P3 | TUXN drops the engine's DMC IRQ flag (APU_FIX's IRQ is used instead), so TuxNES's DMC interrupt behaviour is not reproduced. | `TuxnesSound` DMC block / `APU_TUXN`. | 2026-11-01, `bc59db7f` | open |
+| FA-TUXN-3 | P3 | TUXN: only the default u8 format is ported; the signed 16-bit mode (where the header's "noise fades in" bug lives) is not available. | `TuxnesSound`: add the signed/16-bit path as an option. | 2026-11-01, `bc59db7f` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
