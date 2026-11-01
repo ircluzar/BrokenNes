@@ -32,6 +32,9 @@ call was quick and dirty first, with a smoke test only.
 | FA-10 | P3 | **S9X1's noise is snes9x2005's replacement LFSR** (blargg's, from Snes9x 1.53), not the original 1.43 noise generator. | `snes/S9x1Dsp.cs`. Port the noise code from a real Snes9x 1.43 source tree. | 2026-11-01, `99b8a7e5` | open |
 | FA-11 | P3 | **OSPC is from a 2003 snapshot.** The original 2002 tarball is not in the libopenspc history. | `snes/OspcDsp.cs`. Swap in the 2002 code if the tarball turns up (archive.org). | 2026-11-01, `67d29109` | open |
 | FA-12 | P3 | **The ported cores are not on the WideMess console's sound menu.** Only the SNES menu lists ZS15, S9X1 and OSPC. | `systems/ConsoleSystems.cs`, WideMess APU list. Needs a decision on how a ported engine and the WideMess's extra voices coexist. | 2026-11-01, foreign APU MVP | open |
+| FA-S-BLST-1 | P3 | BLST PSG writes land at host-buffer boundaries, not at their clock. | `md/MdSoundUnitBlst.cs`, `sega/SmsSoundBlst.cs` `OnPsgSamples`: queue the writes with timestamps. | 2026-11-01, `e3b41ed3` | open |
+| FA-S-BLST-2 | P3 | BLST PSG has no negative half and is ~9 dB quieter than stock on SMS/GG (BlastEm's own level, kept). | `sega/SmsSoundBlst.cs`: an optional gain / DC offset if wanted. | 2026-11-01, `e3b41ed3` | open |
+| FA-S-BLST-3 | P3 | BLST ignores Game Gear stereo, and a Z80 reset does not reset the BlastEm engines. | `SmsSoundBlst.OnStereoWrite`; `MdSoundUnit` needs a Z80-reset hook. | 2026-11-01, `e3b41ed3` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 

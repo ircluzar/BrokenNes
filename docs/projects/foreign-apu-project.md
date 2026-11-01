@@ -30,6 +30,7 @@ on the NES and on other consoles through the existing bridges, for free:
 | `OSPC` | SNES APU | [libOpenSPC](https://github.com/bmartin427/libopenspc), with parts from SNEeSe (2002) | LGPL + SNEeSe license | **done (MVP)**: `snes/OspcDsp.cs`, `snes/APU_OSPC.cs` (32 kHz stereo, 1:1; echo uses a private buffer) |
 | `GNUB` | GB APU | [gnuboy](https://github.com/rofl0r/gnuboy) `sound.c` | GPL-2.0 | **done (MVP)**: `gb/GnubSound.cs`, `gb/APU_GNUB.cs` (@4c2f6c4; 8-bit, 44,620 Hz) |
 | `VBA` | GB APU | VisualBoyAdvance 1.7.2 `gb/gbSound.cpp` ([vba-raspi mirror](https://github.com/weimingtom/vba-raspi)) | GPL-2.0 | **done (MVP)**: `gb/VbaGbSound.cs`, `gb/APU_VBA.cs` (@9fbd04f8; 22,050 Hz) |
+| `BLST` | Genesis APU + SMS/GG PSG | BlastEm 0.3.1 `ym2612.c`, `psg.c` | GPL-3.0+ | **done (MVP)**: `sega/BlastemYm2612.cs`, `sega/BlastemPsg.cs`, `md/MdSoundUnitBlst.cs`, `sega/SmsSoundBlst.cs` (e3b41ed3; Genesis r=0.67 vs MD, chords fade; SMS PSG positive-only, ~9 dB quieter) |
 
 ## How a SNES sound engine plugs in (the ZS15 pattern)
 

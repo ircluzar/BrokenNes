@@ -7,6 +7,16 @@ certified once its entries here are complete. The policy and the root list are i
 Sourcing plan (decided 2026-10-03, `docs/projects/sega-cores-plan.md`): **hybrid per chip**. Commodity chips are ported from permissive sources with notices;
 both VDPs and all bus and cycle timing are written clean-room from documentation and black-box oracle comparisons.
 
+## 0. Exception: the foreign APU project (2026-11-01)
+
+Alternate Sega sound engines ported from old GPL / non-commercial emulators on purpose, for their sound: a documented exception to the policy
+(root `THIRD_PARTY_NOTICES.md` section 2, `docs/projects/foreign-apu-project.md`). The stock chips above are unaffected.
+
+| What | Where | Source | License |
+| --- | --- | --- | --- |
+| BLST: BlastEm 0.3.1 YM2612 + SN76489 engines (the last release before 0.4.0 fixed attack, sustain, key-on mapping and the LFO; no SSG-EG/CSM) | `BlastemYm2612.cs`, `BlastemPsg.cs`, `md/MdSoundUnitBlst.cs`, `SmsSoundBlst.cs` | https://retrodev.com/repos/blastem/archive/v0.3.1.tar.gz (`ym2612.c/h`, `psg.c/h`; clocking from `blastem.c`), Copyright 2013 Michael Pavone | GPL-3.0-or-later (documented exception) |
+<!-- foreign-apu-exceptions -->
+
 ## 1. Taken from source files (direct derivation)
 
 | What | Where | Source | License | Status |
