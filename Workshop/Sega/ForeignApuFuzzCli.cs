@@ -90,7 +90,22 @@ internal static class ForeignApuFuzzCli
             apu.RunTo(master);
             int n; while ((n = apu.ReadSamples(buf)) > 0) samples += n;
         }
+        // state: same core, stock -> this, this -> stock (what a save state and a live core swap do)
+        APU_SFC Make(string i) => ((SfcApuAdapter)SnesCores.CreateApu(i)).Inner;
+        RoundTrip(apu.SaveState, Make(id).LoadState);
+        RoundTrip(Make("SFC").SaveState, Make(id).LoadState);
+        RoundTrip(apu.SaveState, Make("SFC").LoadState);
         return (samples, 0);
+    }
+
+    /// <summary>Saves one unit and loads the bytes into another: throws if the load does.</summary>
+    private static void RoundTrip(Action<System.IO.BinaryWriter> save, Action<System.IO.BinaryReader> load)
+    {
+        using var ms = new System.IO.MemoryStream();
+        using (var w = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) save(w);
+        ms.Position = 0;
+        using var r = new System.IO.BinaryReader(ms);
+        load(r);
     }
 
     private static (long, int) FuzzGb(string id, Random rnd, double seconds)
@@ -108,6 +123,9 @@ internal static class ForeignApuFuzzCli
             if ((seq += 2048) >= 8192) { seq -= 8192; apu.FrameSequencerStep(); }
             int n; while ((n = apu.ReadSamples(buf)) > 0) samples += n;
         }
+        RoundTrip(apu.SaveState, GbCores.CreateApu(id, GbModel.Dmg).LoadState);
+        RoundTrip(GbCores.CreateApu("GB", GbModel.Dmg).SaveState, GbCores.CreateApu(id, GbModel.Dmg).LoadState);
+        RoundTrip(apu.SaveState, GbCores.CreateApu("GB", GbModel.Dmg).LoadState);
         return (samples, 0);
     }
 
@@ -131,6 +149,10 @@ internal static class ForeignApuFuzzCli
             unit.RunTo(master);
             int n; while ((n = unit.ReadSamples(buf)) > 0) samples += n;
         }
+        MdSoundUnit MakeMd(string i) => i == "MD" ? new MdSoundUnit(machine) : (MdSoundUnit)GenesisSoundFactories.Create(i, machine);
+        RoundTrip(unit.SaveState, MakeMd(id).LoadState);
+        RoundTrip(MakeMd("MD").SaveState, MakeMd(id).LoadState);
+        RoundTrip(unit.SaveState, MakeMd("MD").LoadState);
         return (samples, 0);
     }
 
@@ -151,6 +173,11 @@ internal static class ForeignApuFuzzCli
             unit.Run(7000); done += 7000;
             int n; while ((n = unit.ReadSamples(buf)) > 0) samples += n;
         }
+        ISmsSound MakeSms(string i) => SmsSoundFactories.Create(i, new SmsSoundRequest(machine, ConsoleKind.MasterSystem, PsgVariant.Sega));
+        string stock = unit.HasFm ? "SMS-FM" : "SMS";
+        RoundTrip(unit.SaveState, MakeSms(id).LoadState);
+        RoundTrip(MakeSms(stock).SaveState, MakeSms(id).LoadState);
+        RoundTrip(unit.SaveState, MakeSms(stock).LoadState);
         return (samples, 0);
     }
 
@@ -175,6 +202,9 @@ internal static class ForeignApuFuzzCli
             foreach (var x in a) if (float.IsNaN(x) || float.IsInfinity(x)) throw new InvalidOperationException("NaN/Inf sample");
             samples += a.Length;
         }
+        string st = nes.SaveState();
+        var other = new NES(); other.LoadROM(rom); other.SetApuCore(id); other.LoadState(st); other.RunFrame();
+        var stockNes = new NES(); stockNes.LoadROM(rom); stockNes.SetApuCore("FIX"); stockNes.LoadState(st); stockNes.RunFrame();
         return (samples, 0);
     }
 }
