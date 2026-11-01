@@ -36,6 +36,67 @@ on the NES and on other consoles through the existing bridges, for free:
 | `GENS` | Genesis APU + SMS/GG PSG | Gens 2.10 `ym2612.c`, `psg.c` | GPL-2.0 | **done (MVP)**: `sega/GensYm2612.cs`, `sega/GensPsg.cs`, `md/MdSoundUnitGens.cs`, `sega/SmsSoundGens.cs` (3ef3944a; 22,050 Hz, Gens defaults (Improv off), scanline-driven DAC/timers, unipolar PSG) |
 | `PICO` | Genesis APU + SMS/GG PSG | PicoDrive v1.85 `ym2612.c`, `sn76496.c` | PicoDrive non-commercial + MAME | **done (MVP)**: `sega/PicoYm2612.cs`, `sega/PicoSn76496.cs`, `md/MdSoundUnitPico.cs`, `sega/SmsSoundPico.cs` (050cbcca; 44.1 kHz frame blocks, no SSG-EG/CSM, FM ch 6 sounds under the DAC, unipolar PSG; DAC path untested) |
 
+## Batch 3: the big batch (interview 2026-11-01, in progress)
+
+Picked from three research passes:
+- old Sega cores
+- **notoriously bad** open-source sound
+- **the last version before each emulator's sound breakthrough** ("the best of the bad")
+
+The user picked all nine:
+
+| ID | Console slot | Source | License | Why | Status |
+|---|---|---|---|---|---|
+| `FCEU` | NES APU (+ expansion: VRC7, 5B, MMC5, VRC6, N163, FDS where wired) | FCE Ultra 0.96 `sound.c` + `mappers/*snd*` (sourceforge fceultra 0.96 tarball) | GPL-2+ | The last version before 0.98.1 fixed expansion audio. VRC7 is faked on a MAME OPL2, 5B plays an octave high, MMC5 PCM is too loud. | planned |
+| `INES` | NES APU | InfoNES `InfoNES_pAPU.cpp` (github.com/jay-kumogata/InfoNES) | Apache-2.0 | 8-bit unsigned, the 5 channels averaged, square 2 sweeps the wrong way, tiny DMC | planned |
+| `DARC` | NES APU + SMS/GG PSG | DarcNES `nes_psg.c` 1.50 + `sms_psg.c` 1.14 (github.com/ProjectZeroSlackr/iDarcNES) | credit required, non-commercial | NES: no DMC, no triangle linear counter. SMS: 5-bit noise register (metallic), linear volume, per-frame updates | planned |
+| `DEGA` | SMS/GG PSG | Dega 1.16 `mast/dpsg.cpp` + `samp.cpp` + `samples.h`, Enhanced PSG mode (github.com/Plombo/dega) | non-commercial | Square waves replaced by sampled instruments, plus an added echo | planned |
+| `S951` | SNES APU | Snes9x 1.51 `soundux.cpp`, `apu.cpp` (snes9x-rr mirror) | Snes9x non-commercial | The mature old DSP, right before blargg's SNES_SPC took over in 1.52 | planned |
+| `S916` | SNES APU | Snes9x 1.16a `soundux.cpp`, `apu.cpp` (sources.debian.org snes9x 1.16a-1) | Snes9x non-commercial | 1998 sound; its PROBLEMS file admits sample-decode bugs | planned |
+| `TGBD` | GB APU | TGB Dual `gb_core/apu.cpp` (github.com/libretro/tgbdual-libretro) | GPL-2+ | Renders in 1/256 s blocks with a crude filter | planned |
+| `ZS151` | SNES APU | ZSNES 1.51 `src/cpu/dspproc.asm` + `dsp.asm` (github.com/emillon/zsnes, tag upstream/1.510) | GPL-2 | ZSNES's final DSP (its own echo/ADSR); about 8,000 lines of x86 asm | planned |
+| `NSTC` | NES APU | NESticle 1997 prototype `Source/NESSOUND.CPP` (github.com/athros/NESticle) | **none: leaked source** (user decision: include under the art exception, flagged) | Silent noise and DMC, squares about 2.75 semitones sharp, triangle about an octave sharp, a 58.5% duty step, flat envelopes | planned |
+
+**Decisions in this interview**
+- NES ports become ordinary NES `APU_*` cores, like the QN family, plus the source's expansion chips where it has them.
+- A new NES APU id needs a family in `CoreCatalog.NesApuFamily`, and one outside the five plugin families keeps the plugin's chip indices stable (`Plugin/CLAUDE.md`). It also needs a root in `WebLite/LinkerConfig.xml`.
+- NESticle is included even though it has no license.
+
+**Excluded:** iNES 0.5 and MasterGear 1.0. Both are leaked closed source that their author promised not to release, and the archive they came from also bundles an intrusion tool.
+
+**Still candidates:** TuxNES 0.75, VirtuaNES 0.97 (all the NES expansion chips), VBA-M 2007 (an almost-free variant of VBA), SNEmulDS, GameYob, PocketNES (ARM asm), Genesis Plus GX 1.3.0 `fm.c`.
+
+## Resuming this work locally (or in any new session)
+
+- **Everything is on the branch `claude/blissful-archimedes-i7zlbe` of `ircluzar/BrokenNes`.** It is pushed after every merged core. To continue on your machine:
+
+  ```bash
+  git fetch origin claude/blissful-archimedes-i7zlbe
+  git checkout -b foreign-apu origin/claude/blissful-archimedes-i7zlbe
+  ```
+
+  (Or `git switch claude/blissful-archimedes-i7zlbe` once fetched.) Note the repo also has a TAG named `main` (an old 2026-03-31 commit, see `docs/KNOWN_GAPS.md` LX-4): use `origin/main` or `refs/heads/main` explicitly when you mean the branch.
+- **State of the work:**
+  - This file: what is done and what is planned. The "Status" column says **done (MVP)** or planned.
+  - `docs/KNOWN_GAPS.md`: every shortcut taken.
+  - `THIRD_PARTY_NOTICES.md` §2 and the family ledgers (`snes/`, `gb/`, `sega/THIRD_PARTY_NOTICES.md`): what was copied from where.
+- **How to port one core:** the coordinator's recipe, used by every agent.
+  1. Read this file's "plugs in" sections and the newest similar core: `APU_ZS15` for SNES, `APU_GNUB` for GB, `MdSoundUnitGens` / `SmsSoundGens` for Sega, and for NES the QN family plus `CoreRegistry`.
+  2. Fetch the source into a scratch dir and only read it; don't run it.
+  3. Port it with its quirks kept. Header: source, version, license and the exception line.
+  4. Register it: the factory or registry, the console menu in `systems/ConsoleSystems.cs`, and for NES ids also `NesApuFamily` and `WebLite/LinkerConfig.xml`.
+  5. Smoke-test it (below).
+  6. Add the ledger row, a row in this file's table, and `KNOWN_GAPS` rows.
+  7. Commit.
+- **Smoke tests:**
+  - NES: `Workshop/cli.sh --mixlab nes --rom Plugin/BrokenNes2.Plugin/Resources/musictest.nes --apu <ID> --frames 900 --png-at 999999 --wav out.wav --out-dir dir`, compared with `--apu FIX`.
+  - SNES: the same, with `--apu SNES --snes-apu <ID>`.
+  - GB: `--apu DMG --gb-apu <ID>`.
+  - Genesis: `Workshop/cli.sh --ym-render Workshop/Sega/foreign-apu/md-test.vgm out.wav --unit <ID>`.
+  - SMS/GG: `--sms-render Workshop/Sega/foreign-apu/sms-test.vgm out.wav --unit <ID> [--console gg]`.
+  - On Windows use `Workshop/bin/Release/net10.0-windows/BrokenNes.Workshop.exe` with the same arguments.
+- **Linux/cloud only:** `Workshop/setup-linux.sh` sets everything up.
+
 ## How a SNES sound engine plugs in (the ZS15 pattern)
 
 - `APU_SFC` has three hooks:
