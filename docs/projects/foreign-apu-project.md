@@ -128,7 +128,7 @@ The user asked for the rest of the research shortlist, using the same process. T
   5. Smoke-test it (below).
   6. Add the ledger row, a row in this file's table, and `KNOWN_GAPS` rows.
   7. Commit.
-- **Swap / state checks:** `Workshop/cli.sh --apu-fuzz --swap` (Game Boy chip-to-chip swaps keep a held note) and `--apu-fuzz --md-reload` (Genesis units keep the instruments across a state load).
+- **Swap / state checks:** `Workshop/cli.sh --apu-fuzz --swap` (Game Boy chip-to-chip swaps keep a held note) `--apu-fuzz --md-reload` (Genesis units keep the instruments across a state load) and `--apu-fuzz --fm-reload` (the Japanese FM units keep instruments and held notes).
 - **Robustness check:** `Workshop/cli.sh --apu-fuzz [--seconds 3] [--seed N] [--only ID,...]` drives every foreign core (and the stock ones as controls) with random register writes and random sound RAM, as the corruption tools would. Exit code 0 = no core threw. Add new core ids to the lists in `Workshop/Sega/ForeignApuFuzzCli.cs`.
 - **Smoke tests:**
   - NES: `Workshop/cli.sh --mixlab nes --rom Plugin/BrokenNes2.Plugin/Resources/musictest.nes --apu <ID> --frames 900 --png-at 999999 --wav out.wav --out-dir dir`, compared with `--apu FIX`.
