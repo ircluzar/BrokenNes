@@ -36,11 +36,13 @@ internal static class ForeignApuFuzzCli
             if (!Want(id)) return;
             runs++;
             var sw = Stopwatch.StartNew();
+            long alloc0 = GC.GetAllocatedBytesForCurrentThread();
             string verdict;
             try
             {
                 var (n, bad) = body(new Random(seed));
-                verdict = n == 0 ? "FAIL no samples" : bad > 0 ? $"FAIL {bad} bad samples" : $"ok   {n:N0} samples";
+                double kbPerSec = (GC.GetAllocatedBytesForCurrentThread() - alloc0) / 1024.0 / seconds;
+                verdict = n == 0 ? "FAIL no samples" : bad > 0 ? $"FAIL {bad} bad samples" : $"ok   {n:N0} samples, {kbPerSec:N0} KB allocated per emulated second";
             }
             catch (Exception e) { verdict = $"FAIL {e.GetType().Name}: {e.Message.Split('\n')[0]} @ {Where(e)}"; }
             if (verdict.StartsWith("FAIL")) fails++;
