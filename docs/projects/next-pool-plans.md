@@ -23,6 +23,16 @@ until the user picks it. Two of them (P3, P4) need an interview first. P4 -> P5 
 | P4 / P6: CTW Remastered | The full package is on the user's Desktop: `VRUN_CTW_Remastered-full-package.zip` (1 GB: the working copy with its `.git`, the soundtracks and videos git leaves out, the built launcher). **It is a separate git** (github.com/ircluzar/VRUN_CTW_Remastered, `main` @ `fae13ea`): it may be brought into the BrokenNes solution, but any change to it must be pushed to its own repository. It is the JS replacement engine (`vrun/*.js`, Node 18+ and Edge / Chrome), not a Clickteam runtime; its own rules (in the package's `_claude-memory/`): performance changes handled its way, retro looks only from emulated hardware limits, no flavour text. |
 | P5: the wide backgrounds | **Repeat each room's edges** to the sides (automatic, every room, no new art). |
 | P6: unvisited rooms on the map | **Like CTW Remastered** (copy what its map does). |
+| P1: the Vaults music on a Super Game Boy | **Stays on the Game Boy** channels; only the sound effects move to the SNES samples. |
+| P2: 2P in the DOS version | **Kept, on two joysticks.** |
+| P3: why an x86 console | **All three:** run Super VRUN DOS inside BrokenNes (debugger, Timeflow, save states), mix the x86 with the other consoles' chips, and run DOS games in general (a real new console). |
+| P3: how much PC | **A 386 with DOS extenders** (most 90s DOS games). |
+| P3: own or ported | **Port an open-source one** under a documented licence exception, like the Foreign APU cores. |
+| P4: what you see first | **The Remastered's own title screen** (its settings and map screens included). |
+| P4: 398 in 400 | **Black columns**, 1 pixel each side, picture pixel-exact. |
+| P4: what must work | Picture, input, sound, pause, plus: **it scales with the emulator's viewport like an emulated game, and its volume follows BrokenNes's volume.** Nothing more (no save states, rewind, recording, or mixer routing needed). |
+| P6: the stats beside the map | **The Remastered's Pro HUD set**, for each player. |
+| P6: which versions | **SNES, WideMess and Genesis together.** |
 
 ---
 
@@ -139,9 +149,9 @@ and sends it the controls. The proof of concept is **VRUN Corrupt The World Rema
 repository and pushed there (`ircluzar/VRUN_CTW_Remastered`), never only in BrokenNes. BrokenNes refers to the package folder; it
 doesn't copy the game into its repo.
 
-**Still open (the interview).** What "running like a game in an emulator" must include beyond picture, input, sound and pause;
-whether the remaster's own title / settings / map screens show, or BrokenNes starts straight into a world; and the 2-pixel gap
-(398 in 400): black columns, or stretch.
+**Decided (interview).** It boots into the Remastered's own title screen; 398 sits in 400 with a black column each side; it must
+scale with the emulator's viewport like an emulated game and follow BrokenNes's volume, nothing more. So step 4 stays the simple
+one (the page's own sound, its volume set from BrokenNes), and recording / mixer routing are not needed.
 
 ---
 
