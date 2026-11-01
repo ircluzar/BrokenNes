@@ -1,0 +1,42 @@
+# Known gaps
+
+This file lists corners cut on purpose, plus gaps found along the way, so a later pass knows what is
+left to do. It covers the whole repo; each initiative adds its entries under its own area.
+
+- **Priority**
+  - **P1:** breaks something a player or a build would hit.
+  - **P2:** noticeable, or blocks a planned feature.
+  - **P3:** polish.
+- **Status**
+  - `open`
+  - `in progress`
+  - `fixed (<commit>)`: fixed entries stay here as history.
+- **Upkeep:** add or update an entry in the same commit as the shortcut or the fix.
+
+## Foreign APU project (`docs/projects/foreign-apu-project.md`)
+
+Alternate SNES and GB sound chips ported from old emulators: ZS15, S9X1, OSPC, GNUB, VBA. The user's
+call was quick and dirty first, with a smoke test only.
+
+| ID | Pri | Gap | Where / how to fix | Logged | Status |
+|---|---|---|---|---|---|
+| FA-1 | P1 | **Licensing is unresolved.** These are GPL, LGPL and non-commercial ports, a documented exception to the repo policy. Do not ship builds that include them outside personal/art use until this is decided. | Root `THIRD_PARTY_NOTICES.md` §2. The options are listed there: keep them as optional cores distributed separately, get permission from the authors, or replace them with clean-room cores that imitate the sound. | 2026-11-01, foreign APU MVP (`9cbfc3c1`…`6497e72a`) | open |
+| FA-2 | P2 | **Nobody has listened to them.** The only check is a smoke test (loudness-envelope correlation against the stock chip); there are no bit-exact checks against the original programs. | Listen on Windows. Optionally build the originals in a sandbox (for example zsnes-asm2c `spcplay`) and compare the PCM. | 2026-11-01, foreign APU MVP | open |
+| FA-3 | P2 | **The SNES cores do not save their engine state.** Save states hold the stock S-DSP only. A load or a unit swap re-feeds the registers and re-keys the voices, so held notes restart. | `snes/APU_ZS15.cs`, `APU_S9X1.cs`, `APU_OSPC.cs` and the engines. Add versioned engine state after `Dsp.SaveState` in `APU_SFC.State.cs` through a virtual hook, then serialize each engine's voice state. | 2026-11-01, `9cbfc3c1` | open |
+| FA-4 | P2 | **GB swaps lose sound.** Swapping a running game to GNUB starts the engine fresh. VBA loads `APU_GB`'s register block, but notes stay silent until the game triggers them again. | `gb/APU_GNUB.cs`, `APU_VBA.cs` `LoadState`, `TrySwapCore` in `systems/ConsoleSessions.cs`. Apply the old chip's registers and re-trigger the channels that were on. | 2026-11-01, `5e7293c4` / `095c3676` | open |
+| FA-5 | P2 | **No cards or progression.** The cores are only in the SNES and GB menus. The planned blind-bag-only card integration is not done. | `Windows/Data/default-db.json` + `Webmodules/shared/models/default-db.json`, `SvgFactory.cs` (both copies), `continue.js` `pickRandomBonusCards`. BrokenNes2's cards are NES-only today, so SNES/GB core cards need designing first. | 2026-11-01, foreign APU MVP | open |
+| FA-6 | P3 | **GNUB and VBA are not `APU_GB`.** These skip them through `is` checks, without crashing: BrokenDev channel mute (`debug/DebugSound.cs`), the WAVE memory domain, the plugin's GbSnapshot, sampler and instrument push, and FruityHost's inject checks. | Extract the members those tools use (`Channel(n)` views, `WaveRam`, `NR50/51`, `DebugMute`) into an interface that the ported chips implement. | 2026-11-01, `5e7293c4` / `095c3676` | open |
+| FA-7 | P3 | **The SNES cores run the stock S-DSP alongside the ported engine.** Games read ENDX, ENVX and OUTX from the stock DSP, not from the ported engine, so drivers that poll ENDX keep stock timing; this is less authentic. Each core also costs two DSPs' worth of CPU. | `snes/APU_SFC.cs` hooks. Let a unit answer `$F3` reads from its engine (a virtual `OnDspRegRead`), then see whether the stock DSP can stop mixing. | 2026-11-01, `9cbfc3c1` | open |
+| FA-8 | P3 | **OSPC and S9X1 echo uses a private buffer, not sound RAM at ESA.** The stock DSP still writes its own echo into ARAM, so the two cannot share it. Games that read echo RAM back, or rely on echo overwriting sample data, behave like stock. | `snes/OspcDsp.cs`, `S9x1Dsp.cs`. Fixable together with FA-7, once the stock DSP stops writing echo. | 2026-11-01, `67d29109` / `99b8a7e5` | open |
+| FA-9 | P3 | **DSP writes made by tools are not mirrored.** Corruption tools and debuggers call `Dsp.Write` directly, so they change the stock DSP and not the ported engine. Corrupting DSP registers therefore has no audible effect on these cores. | `snes/APU_SFC.cs`. Route tool writes through a method that also calls `OnDspRegWrite`, for example `corruption/MemoryDomains.cs` around line 240. | 2026-11-01, `9cbfc3c1` | open |
+| FA-10 | P3 | **S9X1's noise is snes9x2005's replacement LFSR** (blargg's, from Snes9x 1.53), not the original 1.43 noise generator. | `snes/S9x1Dsp.cs`. Port the noise code from a real Snes9x 1.43 source tree. | 2026-11-01, `99b8a7e5` | open |
+| FA-11 | P3 | **OSPC is from a 2003 snapshot.** The original 2002 tarball is not in the libopenspc history. | `snes/OspcDsp.cs`. Swap in the 2002 code if the tarball turns up (archive.org). | 2026-11-01, `67d29109` | open |
+| FA-12 | P3 | **The ported cores are not on the WideMess console's sound menu.** Only the SNES menu lists ZS15, S9X1 and OSPC. | `systems/ConsoleSystems.cs`, WideMess APU list. Needs a decision on how a ported engine and the WideMess's extra voices coexist. | 2026-11-01, foreign APU MVP | open |
+
+## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
+
+| ID | Pri | Gap | Where / how to fix | Logged | Status |
+|---|---|---|---|---|---|
+| LX-1 | P3 | **GDI+ does not exist on Linux.** Workshop modes that read or write PNGs through `System.Drawing` throw. Examples: the `--gbtest` groups `dmg-acid2` and `mealybug` (27 ROMs), `--mixlab` screenshots (work around with `--png-at 999999`), `MdRunCli`, `WideMessGuestSheet`. | Replace `Bitmap` in those paths with a small managed PNG encoder/decoder, for example in `Workshop/` shared helpers. | 2026-11-01, `260febe0` | open |
+| LX-2 | P3 | **Most BrokenDev and UAT PowerShell scripts call Windows `.exe` paths** (`Workshop/bin/Release/net10.0-windows/...`). Only `UAT/wav-compare.ps1` has been checked on Linux. `BrokenDev/doctor.ps1` requires Windows. | Let the scripts find `Workshop/cli.sh` (or `bin-cli/.../BrokenNes.Workshop.dll`) when `$IsLinux`. | 2026-11-01, `260febe0` | open |
+| LX-3 | P3 | **The Windows-only modes can't be checked here:** `WorkshopForm`, `--snes`, `--gb`, `--input-test` and the desktop app. Changes to them are compile-checked only (`-p:EnableWindowsTargeting=true`). | Needs a Windows runner (local or CI). | 2026-11-01, `260febe0` | open |
