@@ -39,6 +39,10 @@ call was quick and dirty first, with a smoke test only.
 | FA-S-M036FM-2 | P3 | M036FM FM is ~3x louder than stock SMS-FM (the original ignores volumes); the output scale (>>2) is a guess. | `SmsFmSoundM036.OutShift`. | 2026-11-01, `aa7bad36` | open |
 | FA-S-M036FM-3 | P3 | M036FM is not in the stems / hub voices: they still come from the stock YM2413. | `sega/SmsFmSound.cs` stem path. | 2026-11-01, `aa7bad36` | open |
 | FA-S-TOOL-1 | P3 | Before `aa7bad36`, `--sms-render` never enabled FM ($F2 bit 0): earlier SMS-FM reference renders were PSG only. Fixed in `aa7bad36`; ports smoke-tested against SMS-FM before then compared against PSG only. | `Workshop/Sega/SmsRenderCli.cs` | 2026-11-01, `aa7bad36` | fixed (`aa7bad36`) |
+| FA-S-M036-1 | P3 | M036 YM2612: CSM auto key-on (timer A) and the timers are not ported (the stock chip keeps the timers for the game). | `sega/Mame036Opn2.cs`: port `INTERNAL_TIMER_A` / `CSMKeyControll`, driven from the stock timer-A overflow. | 2026-11-01, `2c32d62d` | open |
+| FA-S-M036-2 | P3 | M036 PSG writes land at the next host drain, not at their exact time. | `Mame036Sn76496.FillHost`: queue the writes with timestamps (needs a time on `SmsSound.OnPsgWrite`). | 2026-11-01, `2c32d62d` | open |
+| FA-S-M036-3 | P3 | M036 state load or swap re-feeds the registers only; envelopes and phases restart and notes resume at their next key-on. | `MdSoundUnitM036` / `SmsSoundM036` `OnReset`: save the engine state. | 2026-11-01, `2c32d62d` | open |
+| FA-S-M036-4 | P3 | M036 is louder than stock (~1.6-1.9x AC RMS) and the PSG output carries a DC offset (the original's level, kept). | Scale in `OnFmSample` / `FillHost` if wanted. | 2026-11-01, `2c32d62d` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 

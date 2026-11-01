@@ -32,6 +32,7 @@ on the NES and on other consoles through the existing bridges, for free:
 | `VBA` | GB APU | VisualBoyAdvance 1.7.2 `gb/gbSound.cpp` ([vba-raspi mirror](https://github.com/weimingtom/vba-raspi)) | GPL-2.0 | **done (MVP)**: `gb/VbaGbSound.cs`, `gb/APU_VBA.cs` (@9fbd04f8; 22,050 Hz) |
 | `BLST` | Genesis APU + SMS/GG PSG | BlastEm 0.3.1 `ym2612.c`, `psg.c` | GPL-3.0+ | **done (MVP)**: `sega/BlastemYm2612.cs`, `sega/BlastemPsg.cs`, `md/MdSoundUnitBlst.cs`, `sega/SmsSoundBlst.cs` (e3b41ed3; Genesis r=0.67 vs MD, chords fade; SMS PSG positive-only, ~9 dB quieter) |
 | `M036FM` | Japanese SMS FM (YM2413) | MAME 0.36 `ym2413.c` (to-OPL2 translator) + `fmopl.c` | MAME non-commercial | **done (MVP)**: `sega/Mame036Opl.cs`, `sega/Mame036Ym2413.cs`, `sega/SmsFmSoundM036.cs` (aa7bad36; an octave low, volumes ignored, guessed rhythm; ~3x louder than stock FM) |
+| `M036` | Genesis APU + SMS/GG PSG | MAME 0.36 `fm.c` v0.36e (YM2612) + `sn76496.c` | MAME non-commercial | **done (MVP)**: `sega/Mame036Opn2.cs`, `sega/Mame036Sn76496.cs`, `md/MdSoundUnitM036.cs`, `sega/SmsSoundM036.cs` (2c32d62d; 22,050 Hz; x^8 attack, LFO mostly off, old noise taps, unipolar PSG; ~1.6-1.9x louder than stock) |
 
 ## How a SNES sound engine plugs in (the ZS15 pattern)
 
