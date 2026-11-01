@@ -50,6 +50,9 @@ call was quick and dirty first, with a smoke test only.
 | FA-S-PICO-1 | P3 | PICO DAC is not tied to scanlines (PicoDrive fills it by line) and was never exercised: the test VGM has no DAC writes. | `md/MdSoundUnitPico.cs` `OnFmSample`; add a DAC test VGM and a line-based fill. | 2026-11-01, `050cbcca` | open |
 | FA-S-PICO-2 | P3 | PICO after a state load or live swap: notes already playing go silent until the next key-on (the stock state has no key/envelope state to replay). | `MdSoundUnitPico.BuildYm`: replay the key state if the stock `Ym2612` exposes it. | 2026-11-01, `050cbcca` | open |
 | FA-S-PICO-3 | P3 | PICO mixes FM and PSG separately (the shared 16-bit clip is lost); FM is up to one frame late against live DAC writes. | `md/MdSoundUnitPico.cs`. | 2026-11-01, `050cbcca` | open |
+| FA-DARC-1 | P3 | DARC engines' own state is not in save states. | `APU_DARC` / `SmsSoundDarc`: serialize the engine. | 2026-11-01, `e2adddae` | open |
+| FA-DARC-2 | P3 | DARC NES ignores PAL timing (NTSC 7,457-cycle sync and clock). | `APU_DARC`: take the region's CPU clock. | 2026-11-01, `e2adddae` | open |
+| FA-DARC-3 | P3 | DARC output is unipolar with a large DC offset (the original's). | A DC blocker in the polish pass, if it clicks. | 2026-11-01, `e2adddae` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
