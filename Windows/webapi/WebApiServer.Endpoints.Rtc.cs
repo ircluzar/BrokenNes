@@ -177,7 +177,8 @@ namespace BrokenNes.Windows.WebApi
             app.MapPost("/api/rtc/blast", async () =>
             {
                 var nes = _getNes();
-                if (nes == null)
+                var consoleGh = ConsoleGhHost();
+                if (nes == null && consoleGh == null)
                 {
                     return Results.BadRequest(new { success = false, error = "Emulator not initialized" });
                 }
@@ -197,7 +198,16 @@ namespace BrokenNes.Windows.WebApi
                         return Results.BadRequest(new { success = false, error = "ImagineBug is locked" });
                     }
 
-                    corruptor.Blast(nes);
+                    if (consoleGh != null)
+                    {
+                        // a console game (SNES, Game Boy, Master System, Game Gear, Genesis): blast its memories, between frames
+                        var report = corruptor.GlitchHarvester.LiveBlast(consoleGh);
+                        ExternalChange?.Invoke("the game was corrupted through the HTTP API");
+                        corruptor.LastBlastInfo = $"{corruptor.BlastType}: {report.Describe()}";
+                        return Results.Ok(new { success = true, message = corruptor.LastBlastInfo, writesApplied = report.Applied, changed = report.Changed, problems = report.Problems });
+                    }
+                    corruptor.Blast(nes!);
+                    ExternalChange?.Invoke("the game was corrupted through the HTTP API");
                     return Results.Ok(new
                     {
                         success = true,
@@ -340,7 +350,9 @@ namespace BrokenNes.Windows.WebApi
                     // Use the callback to properly save config if available
                     if (_setCrashBehavior != null)
                     {
-                        _setCrashBehavior(behavior);
+                        // it rebuilds the config menus: on the UI thread
+                        if (_uiControl != null && _uiControl.InvokeRequired) _uiControl.Invoke(() => _setCrashBehavior(behavior));
+                        else _setCrashBehavior(behavior);
                     }
                     else
                     {

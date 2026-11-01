@@ -1,0 +1,45 @@
+{
+  "format": "widemess-profile-1",
+  "title": "Super Mario World 2: Yoshi's Island",
+  "file": "Super Mario World 2 - Yoshi's Island (U) (M3) (V1.1).smc",
+  "sha1": [
+    "34612a93741f156d6e497462ab7f253cb8a959a0"
+  ],
+  "widescreen": {
+    "layers": {
+      "bg1": "drawn",
+      "bg2": "extend",
+      "bg3": "extend",
+      "bg4": "extend",
+      "sprites": "extend"
+    },
+    "drawnAhead": {
+      "bg1": 16
+    },
+    "memory": [
+      "bg1"
+    ]
+  },
+  "enhancements": {
+    "widescreen": "risky",
+    "noFlicker": "good",
+    "betterSound": "good",
+    "fastCpu": "risky"
+  },
+  "recommended": [
+    "widescreen",
+    "noFlicker"
+  ],
+  "issues": [
+    "The level layer (BG1) is drawn, with the map memory: shown in the sides where the game has drawn its map for the place shown, and behind Yoshi where the SNES picture has shown the place before (the game keeps only the screen's width of its level in the map). Ahead of him the level layer stops near the SNES edge and the hills behind (BG2) show there.",
+    "Side truth (Workshop --wms-side-truth, palette entries compared, 2026-10-25, per line, the game's blank top lines left out; 5,200 frames): BG1 extended 60.8% right, 39.2% wrong; drawn with the map memory 10.8% right, 89.1% empty, 0.1% wrong (one column the game had changed 800 frames later), the layer drawing 16.9% of the side pixels instead of 7.6%. BG2 extended 100% right (by colour 27.3% looked wrong: palette animation).",
+    "The game draws only what is near the SNES picture: further out, the sides lag behind by a few frames when Yoshi moves fast.",
+    "Enemies appear near the SNES edge (the game creates them as they come near).",
+    "No flicker: in the 5,200 frames checked it showed more sprites on 18 lines, all of them over the SNES's limits (52 lines went over).",
+    "Fast CPU ran the 5,200 frames checked, from power-on and switched on later; the game's timing changes from frame 285."
+  ],
+  "verified": {
+    "date": "2026-10-25",
+    "how": "Workshop --wms-test (E6), 5,200 frames of a pad script (intro, the first stage) in lockstep with the SNES console: widescreen's centre 256 columns identical to the SNES picture every frame, STAT77 and the sound identical, switched off frame-identical; no flicker changes only lines over the SNES's limits; better sound changes only the sound. Contact sheet docs/projects/widemess-images/m6/yoshi.png."
+  }
+}

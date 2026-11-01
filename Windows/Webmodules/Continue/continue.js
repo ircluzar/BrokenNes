@@ -89,8 +89,11 @@
     CLOCK: [],
     SHADER: []
   };
+  // Cores that no longer exist (CPU_Z80, the joke Z80, was retired when the real Z80 chip arrived). A save written earlier may still
+  // own or prefer one; syncGameSaveCompatFields drops them. Keep in step with RETIRED_CORE_IDS in shared/gameSave.js.
+  const RETIRED_CORE_IDS = { CPU: ['Z80'], PPU: [], APU: [] };
   const fallbackCoreData = {
-    CPU: ['FMC', 'LOW', 'LW2', 'SPD', 'EIL', 'Z80'],
+    CPU: ['FMC', 'LOW', 'LW2', 'SPD', 'EIL'],
     PPU: ['FMC', 'LOW', 'LQ', 'SPD', 'BFR', 'CUBE', 'CUBEX', 'EIL'],
     APU: ['FMC', 'LOW', 'LQ', 'LQ2', 'QLOW', 'QLQ', 'QLQ2', 'QN', 'SPD', 'SPD2', 'WF', 'EIL', 'MNES'],
     CLOCK: ['FMC', 'TRB', 'CLR'],
@@ -1007,9 +1010,21 @@
       return save;
     }
 
-    save.ownedCpuIds = normalizeOwnedArray(save.ownedCpuIds, ['FMC']);
-    save.ownedPpuIds = normalizeOwnedArray(save.ownedPpuIds, ['FMC']);
-    save.ownedApuIds = normalizeOwnedArray(save.ownedApuIds, ['FMC']);
+    const withoutRetired = (domain, ids) => {
+      const kept = ids.filter(id => !RETIRED_CORE_IDS[domain].includes(id));
+      return kept.length > 0 ? kept : ['FMC'];
+    };
+    const notRetired = (domain, id) => (id && RETIRED_CORE_IDS[domain].includes(normalizeCoreId(id)) ? null : id);
+
+    save.ownedCpuIds = withoutRetired('CPU', normalizeOwnedArray(save.ownedCpuIds, ['FMC']));
+    save.ownedPpuIds = withoutRetired('PPU', normalizeOwnedArray(save.ownedPpuIds, ['FMC']));
+    save.ownedApuIds = withoutRetired('APU', normalizeOwnedArray(save.ownedApuIds, ['FMC']));
+    save.PreferredCpuId = notRetired('CPU', save.PreferredCpuId);
+    save.PreferredPpuId = notRetired('PPU', save.PreferredPpuId);
+    save.PreferredApuId = notRetired('APU', save.PreferredApuId);
+    if (save.Preferences && typeof save.Preferences === 'object') {
+      save.Preferences = { ...save.Preferences, CPU: notRetired('CPU', save.Preferences.CPU), PPU: notRetired('PPU', save.Preferences.PPU), APU: notRetired('APU', save.Preferences.APU) };
+    }
     save.ownedClockIds = normalizeOwnedArray(save.ownedClockIds, ['FMC']);
     save.ownedShaderIds = normalizeOwnedArray(save.ownedShaderIds, ['PX']);
 
@@ -1892,10 +1907,12 @@
       return '';
     }
 
+    // Prefer the shell-injected per-instance API base; fall back to the historical fixed URL.
+    const fallbackBaseUrl = window.BROKENNES_API_BASE || 'http://127.0.0.1:42067';
     const baseUrl = typeof window.webapi?.getBaseUrl === 'function'
       ? window.webapi.getBaseUrl()
-      : 'http://127.0.0.1:42067';
-    const requestUrl = new URL('/api/save/continue-preview', `${String(baseUrl || 'http://127.0.0.1:42067').replace(/\/$/, '')}/`);
+      : fallbackBaseUrl;
+    const requestUrl = new URL('/api/save/continue-preview', `${String(baseUrl || fallbackBaseUrl).replace(/\/$/, '')}/`);
     requestUrl.searchParams.set('romKey', romKey);
     requestUrl.searchParams.set('_t', cacheKey || String(Date.now()));
     return requestUrl.toString();

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#10171f" />
+    <title>BrokenNes 2 Lite</title>
+    <base href="./" />
+
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link href="BrokenNesLite.styles.css" rel="stylesheet" />
+
+    <!-- Deliberately NO Google Fonts. The original build pulled Orbitron + Press Start 2P from
+         fonts.googleapis.com, which is a render-blocking third-party request - a real cost on the
+         slow/flaky connections this build targets, and it breaks the offline story entirely.
+         css/app.css falls back to system stacks. -->
+    <script type="importmap"></script>
+</head>
+
+<body>
+    <div id="app">
+        <div class="loading-center">
+            <div class="loader-ring">
+                <svg class="loading-progress" viewBox="0 0 100 100" role="img" aria-label="Loading">
+                    <circle class="lp-fill" r="48" cx="50" cy="50" />
+                </svg>
+                <div class="loading-progress-text" aria-live="polite">0%</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+
+    <!-- BOTH details of this line are load-bearing: the #[.{fingerprint}] placeholder, and the
+         ABSENCE of a "./" prefix. Get either wrong and the published app never boots - it sits on
+         the loading spinner at "0%" forever with nothing in the console but a bare 404.
+
+         Publish emits this script under a content-hashed name (blazor.webassembly.<hash>.js) and
+         writes no unhashed copy. It also emits an <script type="importmap"> above mapping the plain
+         name to the hashed one - but an importmap resolves ES module specifiers only, and this is a
+         CLASSIC script tag, so that map never applies here. The placeholder is what makes the
+         publish-time rewrite (OverrideHtmlAssetPlaceholders, set in the csproj) substitute the real
+         hash into this tag.
+
+         The "./" is the subtle half. With it, the rewrite fails to match the asset's route and
+         silently STRIPS the placeholder to the plain "blazor.webassembly.js" instead of expanding
+         it - which is exactly the 404 above. Reproduced on a stock `dotnet new blazorwasm` project:
+         published as shipped it emits blazor.webassembly.<hash>.js, and after adding nothing but a
+         "./" to the same line it emits blazor.webassembly.js. <base href="./"> already resolves the
+         relative path, so dropping the prefix changes nothing else.
+
+         This stayed invisible during development because `dotnet run` uses the Blazor DevServer, an
+         ASP.NET Core host that resolves fingerprinted assets via
+         BrokenNesLite.staticwebassets.endpoints.json. An ordinary static host - which is what the
+         generated web.config configures, and what this build ships on - has no such mapping.
+         Verify any change here by serving bin/Release-Publish/wwwroot over plain HTTP, never by
+         `dotnet run`. -->
+    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <script>
+        // Mirror Blazor's CSS variable (--blazor-load-percentage-text) into visible text.
+        (function () {
+            const el = document.querySelector('.loading-progress-text');
+            if (!el) return;
+            let last = '';
+            function readVar() {
+                const raw = getComputedStyle(document.documentElement).getPropertyValue('--blazor-load-percentage-text');
+                if (raw) {
+                    const cleaned = raw.replace(/["']/g, '').trim();
+                    if (cleaned && cleaned !== last) { el.textContent = cleaned; last = cleaned; }
+                }
+                if (!document.body.classList.contains('loaded')) requestAnimationFrame(readVar);
+            }
+            requestAnimationFrame(readVar);
+        })();
+    </script>
+
+    <!-- Lean asset set. Deliberately dropped vs. the original: music.js (menu music for the
+         campaign UI that Lite drops) and continue-db.js (RetroAchievements/Continue lookup DB -
+         Lite ships no campaign or achievements, and this script fired an unconditional 404 fetch
+         on every page load). soundfont.js + mnesSf2.js ARE shipped: they're the JS SoundFont/
+         FluidSynth bridges behind APU_WF/APU_MNES (nesInterop.noteEvent -> here), both lazy-load
+         their own heavier dependencies (js-synthesizer/libfluidsynth under sf2player/, ~750KB)
+         only when one of those cores is actually selected, so they cost nothing until used. -->
+    <script src="lib/dpadGuard.js"></script>
+    <script src="lib/nesInterop.js"></script>
+    <script src="lib/soundfont.js"></script>
+    <script src="lib/mnesSf2.js"></script>
+    <script src="lib/nesInput.js"></script>
+    <script src="lib/imagine.js"></script>
+    <script src="lib/imagineTarget.js"></script>
+</body>
+
+</html>

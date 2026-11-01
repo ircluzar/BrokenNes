@@ -1,7 +1,7 @@
 namespace NesEmulator
 {
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
-public class PPU_LOW : IPPU
+public class PPU_LOW : IPPU, IPpuFrameClock
 {
 	    // Core metadata
 	public virtual string CoreName => "Low Power";
@@ -205,6 +205,8 @@ public class PPU_LOW : IPPU
 		if (sprEnabled) RenderSprites(scanline, bgMask);
 	}
 
+	public int ProbeScanline => scanline; // IPpuFrameClock: presentation only (NES.GetFrameBuffer)
+
 	public byte[] GetFrameBuffer() { EnsureFrameBuffer(); return frameBuffer!; }
 
 	public void ClearBuffers()
@@ -381,9 +383,24 @@ public class PPU_LOW : IPPU
 		bool isSprite8x16 = (PPUCTRL & 0x20) != 0;
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
 
-		// Process all 64 sprites in OAM
-		for (int i = 0; i < 64; i++)
+		// Real hardware evaluates at most 8 sprites per scanline and sets the overflow flag
+		// (PPUSTATUS bit 5) when a 9th in-range sprite exists - this also gates sprite-0-hit,
+		// since sprite 0 can only be hit on a line if it falls within the first 8 evaluated.
+		int spriteEvalCount = 0;
+		Span<int> spriteLineIdx = stackalloc int[8];
+		for (int si = 0; si < 64; si++)
 		{
+			byte sy = oam[si * 4];
+			int sh = isSprite8x16 ? 16 : 8;
+			if (scanline < sy || scanline >= sy + sh) continue;
+			if (spriteEvalCount < 8) spriteLineIdx[spriteEvalCount++] = si;
+			else { PPUSTATUS |= 0x20; break; }
+		}
+
+		// Process only the (up to 8) sprites selected above
+		for (int li = 0; li < spriteEvalCount; li++)
+		{
+			int i = spriteLineIdx[li];
 			int offset = i * 4;
 			byte spriteY = oam[offset];
 			byte tileIndex = oam[offset + 1];
@@ -396,10 +413,7 @@ public class PPU_LOW : IPPU
 			bool flipY = (attributes & 0x80) != 0;
 			bool priority = (attributes & 0x20) == 0; // 0 = in front of background
 
-			// Check if sprite is on this scanline
 			int tileHeight = isSprite8x16 ? 16 : 8;
-			if (scanline < spriteY || scanline >= spriteY + tileHeight)
-				continue;
 
 			// Calculate which row of the sprite we're rendering
 			int subY = scanline - spriteY;
@@ -572,18 +586,26 @@ public class PPU_LOW : IPPU
 			case 0x0004: // OAM Data
 				return oam[OAMADDR];
 			case 0x0007: // PPU Data
-				result = ppuDataBuffer;
-				ppuDataBuffer = Read(PPUADDR);
-				
 				if (PPUADDR >= 0x3F00)
 				{
-					result = ppuDataBuffer;
+					// Palette reads are immediate, but the internal read buffer still gets
+					// refilled with the underlying nametable byte "under" the palette mirror -
+					// a real hardware quirk (a bare Read(PPUADDR) here would refill the buffer
+					// with the palette byte itself, corrupting the next non-palette $2007 read).
+					result = Read(PPUADDR);
+					ppuDataBuffer = Read((ushort)(PPUADDR - 0x1000));
 				}
-				
+				else
+				{
+					result = ppuDataBuffer;
+					ppuDataBuffer = Read(PPUADDR);
+				}
 				PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1);
 				return result;
 			default:
-				return 0;
+				// Write-only/unimplemented registers reflect the CPU's open bus (last byte
+				// driven anywhere on the bus), not a hardcoded 0.
+				return bus!.GetOpenBus();
 		}
 	}
 
@@ -670,6 +692,7 @@ public class PPU_LOW : IPPU
 					if (mode == 1) return vram[(ushort)(0x400 + inner)]; // CIRAM B
 				}
 			}
+			if (bus?.cartridge?.mapper is IMapper mNt && mNt is not Mapper5 && mNt.TryPpuNametableRead(address, out byte ntv)) return ntv; // cartridge-supplied nametables (as PPU_FIX)
 			ushort mirrored = MirrorVRAMAddress(address);
 			return vram[mirrored];
 		}
@@ -706,6 +729,7 @@ public class PPU_LOW : IPPU
 					if (mode == 1) { vram[(ushort)(0x400 + inner)] = value; return; }
 				}
 			}
+			if (bus?.cartridge?.mapper is IMapper mNt && mNt is not Mapper5 && mNt.TryPpuNametableWrite(address, value)) return; // cartridge-supplied nametables (as PPU_FIX)
 			ushort mirrored = MirrorVRAMAddress(address);
 			vram[mirrored] = value;
 		}

@@ -6,6 +6,28 @@ public interface IBus
 	void Write(ushort address, byte value);
 }
 
+/// <summary>The debugger's view of the NES CPU bus (Windows/NesEmulator/debug). Installed only while a read or write watch is set:
+/// <see cref="Bus.DebugTap"/> is null otherwise, and the bus pays one null test on its slow path (the page-table RAM path pays nothing).</summary>
+public interface IBusDebugTap
+{
+	/// <summary>A CPU read that reached the slow path (every register, cartridge and, while the RAM pages are masked, RAM read), with the value read.</summary>
+	void OnRead(ushort address, byte value);
+	/// <summary>A CPU write that reached the slow path, after it landed.</summary>
+	void OnWrite(ushort address, byte value);
+	/// <summary>An OAM DMA from CPU page <paramref name="page"/> was just copied (256 bytes read by the DMA, written to OAM).</summary>
+	void OnOamDma(byte page);
+	/// <summary>A DMC sample fetch halted the CPU on its read of <paramref name="address"/> (the precise-DMA model; the hardware checks of D4
+	/// count the controller and $2007 reads a DMC DMA actually lands on). Called before the read itself.</summary>
+	void OnDmcDmaHalt(ushort address);
+}
+
+/// <summary>The debugger's per-instruction hook on the NES (<see cref="NES.DebugHook"/>; null = no debugger, one null test per instruction).</summary>
+public interface INesInstructionHook
+{
+	/// <summary>Called before each <c>ExecuteInstruction</c> with the CPU cycle the instruction starts on (may block: a breakpoint parks the emulation thread here).</summary>
+	void BeforeInstruction(long cpuCycle);
+}
+
 public class Bus : IBus
 {
 		// === Page Table ===
@@ -43,9 +65,260 @@ public class Bus : IBus
 		private Instrumentation instr;
 		public Instrumentation GetInstrumentation() => instr.Snapshot();
 		public void ResetInstrumentation() => instr.Reset();
+		// Open bus: real hardware has no "return 0" for unmapped reads - the data bus simply
+		// holds whatever byte was last driven onto it (decaying after ~600ms with no activity,
+		// which isn't modeled here; this is the same no-decay approximation most emulators use).
+		// Updated on every successful read/write so an unmapped-address read can fall back to it.
+		private byte lastBusValue = 0;
+		// Exposed so PPU cores can return real open-bus behavior for write-only/unimplemented
+		// PPU registers ($2000/$2001/$2003/$2005/$2006) instead of a hardcoded 0.
+		public byte GetOpenBus() => lastBusValue;
+		// Restores the open-bus value from a savestate - SaveState()/LoadState() previously dropped
+		// this silently (it lives on Bus, not inside any CPU/PPU/APU core's own GetState()), so a
+		// reload always reset it to 0 regardless of what the live bus was last driven with.
+		public void SetOpenBus(byte value) => lastBusValue = value;
 		// Accumulated CPU stall cycles injected by hardware operations (e.g., OAM DMA) for fast-path approximations.
 		internal int PendingCpuStallCycles = 0;
 		public int ConsumePendingCpuStallCycles(){ int c = PendingCpuStallCycles; PendingCpuStallCycles = 0; return c; }
+		// A DMC sample fetch halts the CPU while the APU takes the bus. Like OAM DMA's stall this is
+		// real hardware behavior, not a speed/accuracy trade-off, so it is unconditional. The exact
+		// cost is 3-4 cycles depending on where the request lands relative to the CPU's read/write
+		// cycle (and as little as 2 when it collides with an OAM DMA); a flat 4 is the standard
+		// approximation and is what the batched CPU->APU stepping here can actually express - the
+		// APU only runs after the CPU has already executed its cycles, so the stall is accounted at
+		// the next FlushBatch rather than injected mid-instruction. That makes the *aggregate* cycle
+		// budget correct (the CPU no longer gets free work during every DMA) without being able to
+		// place the stolen cycle exactly; tests that check which specific cycle a DMA steals still
+		// need genuine mid-instruction interleaving.
+		public void AddDmcDmaStallCycles(int cycles = 4)
+		{
+			// Inside a precise window the DMC's stall is applied on the spot by PreciseTick, so it
+			// goes to its own counter. Critically this keeps it separate from OAM DMA's 513-cycle
+			// stall, which shares PendingCpuStallCycles but must keep landing exactly where it
+			// always has (see CpuFastOamDmaStall) - letting PreciseTick swallow that one instead
+			// measurably breaks NMI timing.
+			if (preciseWindow) PendingDmcStallCycles += cycles; else PendingCpuStallCycles += cycles;
+		}
+		private int PendingDmcStallCycles;
+		// A DMC sample fetch requested under PPU_FIX's precise stepping: serviced at the CPU's next READ,
+		// as on hardware - see PreciseTick.
+		private bool dmcDmaPending;
+		private ushort preciseReadAddress; // the address of the read PreciseTick is stepping for
+		/// <summary>A requested DMC fetch not yet serviced - savestated, as it can span a frame boundary.</summary>
+		public bool DmcDmaPending { get => dmcDmaPending; set => dmcDmaPending = value; }
+		/// <summary>APU_FIX's DMC asks for its sample byte. Under precise stepping the CPU is halted at its next
+		/// read cycle (see PreciseTick); otherwise the flat 4-cycle stall is added as before.</summary>
+		public void RequestDmcDma() { if (PreciseSteppingActive) dmcDmaPending = true; else AddDmcDmaStallCycles(); }
+
+		// === Precise-DMA window ===
+		// The batched CPU->PPU/APU model above runs a whole instruction (in fact up to ~24 cycles
+		// of them) before the APU gets to see those cycles, so a DMC sample fetch always lands
+		// late: its bus read updates the open bus *after* the CPU reads that should have observed
+		// it, and its stall cycles apply at the next batch boundary instead of the exact cycle.
+		// When NES.RunFrame predicts a fetch is imminent (see IDmcDmaSchedulable) it opens this
+		// window for one instruction, and every CPU bus access then advances PPU/APU by exactly
+		// one CPU cycle first - the 6502 performs one bus access per cycle, so access count is
+		// cycle position. That places the fetch on its real cycle without per-cycle interleaving
+		// anywhere else: the window is armed for well under 1% of instructions, and when it's
+		// closed the only cost on the hot path is the predictable `preciseWindow` branch below.
+		private bool preciseWindow;
+		private bool insidePreciseTick; // re-entrancy guard: the DMA's OWN bus read must not re-tick
+		// Kept separate because they mean different things to the caller: AccessCycles are cycles
+		// the CPU itself spent (so they offset against the instruction's own cycle count), while
+		// StallCycles are cycles the CPU was halted for (pure extra elapsed time on top of it).
+		private int preciseAccessCycles;
+		private int preciseStallCycles;
+
+		/// <summary>
+		/// The active APU if it can predict its DMC fetches, else null (which leaves NES.RunFrame
+		/// on its plain batched path). Resolved per frame rather than cached on core-switch since
+		/// the APU core can be swapped from many places, including savestate loads.
+		/// </summary>
+		public IDmcDmaSchedulable? GetDmcSchedulable() => activeApu as IDmcDmaSchedulable;
+
+		public void BeginPreciseWindow() { preciseWindow = true; preciseAccessCycles = 0; preciseStallCycles = 0; }
+
+		// Absolute CPU cycle at which the current instruction started (-1 = unknown), and the bus
+		// access count at that moment; together they give the cycle of any access inside the
+		// instruction without adding work to Read/Write, which already count accesses.
+		private long instructionStartCycle = -1;
+		private long accessCountAtInstructionStart;
+		/// <summary>PPU_FIX's dot counter as the current instruction started (-1 = unknown).</summary>
+		public long InstructionStartDot = -1;
+		/// <summary>Called by NES.RunFrame before each instruction with the absolute CPU cycle it starts on.</summary>
+		public void MarkInstructionStart(long cpuCycle)
+		{
+			instructionStartCycle = cpuCycle;
+			accessCountAtInstructionStart = instr.Reads + instr.Writes;
+			// A write that landed past its own cycle already ran this instruction's first dot(s) - count from the true start.
+			InstructionStartDot = ppu is IPpuFixTiming fixPpu ? fixPpu.DotCounter + (preciseCarryDots < 0 ? preciseCarryDots : 0) : -1;
+		}
+		// The access being performed now: it has already been counted, hence the -1.
+		private long CurrentAccessCycle() => instructionStartCycle + (instr.Reads + instr.Writes - accessCountAtInstructionStart - 1);
+		// Parity alignment between NES.globalCpuCycle's origin and the hardware get/put phase.
+		// 1: Mesen 2.1.1 numbers the first opcode fetch cycle 7 where globalCpuCycle (with the 8-cycle
+		// reset sequence) has 8, so its 'odd' is our even. At 0 every DMA whose parity mattered took the
+		// other length and slipped the whole machine a cycle against the PPU from the first frame on.
+		public static int OamDmaParityOffset = 1;
+
+		/// <summary>
+		/// Set by NES.RunFrame for the frame: true when the PPU is caught up after every instruction
+		/// (or within it, in precise mode), so at any CPU access it is at most one instruction
+		/// behind. PPU_FIX gates timing-sensitive models on it - see its CollideDataAccessWithRender.
+		/// </summary>
+		public bool PpuCaughtUpPerInstruction;
+
+		/// <summary>
+		/// Closes the window. accessCycles = CPU cycles advanced by bus accesses (one per access);
+		/// stallCycles = extra cycles PPU/APU advanced while the CPU sat halted for a DMA.
+		/// </summary>
+		/// <summary>DMA cycles the CPU has spent halted so far in the running precise instruction (0 outside precise stepping).</summary>
+		public int InstructionStallCycles => preciseWindow ? preciseStallCycles : 0;
+		public (int accessCycles, int stallCycles) EndPreciseWindow()
+		{
+			preciseWindow = false;
+			if (preciseCarryDots > 0) { ppu!.Step(preciseCarryDots); preciseCarryDots = 0; } // a negative carry (dots already run ahead) is repaid by the next access
+			return (preciseAccessCycles, preciseStallCycles);
+		}
+
+		// Where in a CPU cycle the bus access falls, in PPU dots. The 3 dots of each cycle used to be
+		// stepped entirely BEFORE the access, which left register writes landing a whole CPU cycle
+		// (3 dots) later than Mesen 2.1.1 on every one of Bayou Billy's 270 per-line $2005 writes.
+		// Each access now sees a set number of its cycle's dots (below); the rest carry to the next
+		// access (settled at the end of the instruction, so per-instruction totals are unchanged).
+		// A first fit (reads 2, writes 0) matched Bayou's write dots and Zelda II's sprite-0-polled
+		// title split, but was made while the CPU/PPU phase was a whole cycle out (fixed since: 8-cycle
+		// reset sequence, OAM DMA parity, dot-exact interrupt landing). Refitted with the phase right,
+		// input fed on Mesen's schedule, and EVERY frame compared rather than one in 30: reads see 1 dot
+		// of their cycle, as in Mesen's master-clock model, and every write - PPU and mapper registers
+		// alike - takes effect 4 dots in, one dot into the following cycle. That extra dot is what
+		// PPU_FIX's background fetches need (they latch on the first dot of each 2-dot fetch where the
+		// hardware latches on the second) to see a mid-line write where Mesen 2.1.1 does. One uniform
+		// rule replaced per-register fits: frame by frame on the four games with mid-line raster
+		// effects, Bayou Billy 0 -> 61/61 exact, Lifeforce 38 -> 57/61, Kirby 23 -> 32/61, Mega Man 3
+		// unchanged; no certified game moved. A write landing past its own cycle borrows those dots
+		// from the next access (preciseCarryDots goes negative), so each instruction still totals
+		// exactly 3 dots a cycle.
+		private const int PreDotsRead = 1, PreDotsWrite = 4;
+		// $2002 reads see 3 dots more than that: Mesen 2.1.1's own read log stamps a PPUSTATUS read 3 dots
+		// later in its cycle than PreDotsRead places it. That decides whether a sprite-0 hit or VBlank
+		// raised in those dots is seen. Lifeforce polls for a sprite-0 hit at x=0 that rises on dot 1 of
+		// the line. Mesen's read catches it and BrokenNes's didn't, so it left its loop 14 cycles late
+		// and the sprite-disabling write missed the next row. Measured 0/1/2/3: every-frame Lifeforce
+		// 57/57/58/61 of 61 with Kirby, Bayou and Mega Man 3 unchanged, and all 15 certified games 59/59
+		// in both timing modes at 3.
+		private const int StatusReadExtraDots = 3;
+		private int preciseCarryDots;
+		/// <summary>For CPU_FIX's interrupt-poll timing: the bus access of the running instruction the PPU/APU is
+		/// being stepped for (0-based); int.MaxValue in precise mode outside the window (the instruction's tail);
+		/// -1 when not in precise stepping at all.</summary>
+		public int PreciseInterruptPhase => preciseWindow ? preciseAccessCycles : (PreciseSteppingActive ? int.MaxValue : -1);
+		public bool PreciseSteppingActive;
+		/// <summary>Dots already run ahead for the next access (a write landing past its cycle leaves this negative
+		/// across an instruction boundary) - part of the machine's timing, so savestated.</summary>
+		public int PreciseCarryDots { get => preciseCarryDots; set => preciseCarryDots = value; }
+		// Halt, dummy, then the sample read on the next get cycle: 3 cycles when that is the one right
+		// after the dummy, 4 when an alignment cycle is needed.
+		private int DmcDmaLength(long haltCycle) => ((haltCycle + 2 + OamDmaParityOffset) & 1) == 0 ? 3 : 4;
+		/// <summary>The cycles a precise instruction spent that CPU_FIX made no bus access for - dummy reads it
+		/// doesn't model (PLA's, RTS's, an implied op's second fetch) - run one at a time after its window closes,
+		/// as the reads they are: a DMC DMA pending at one halts the CPU there, as it would on the dummy read.
+		/// Flushing them as one lump let a fetch requested during them wait for the next instruction's opcode
+		/// fetch - a cycle late, with the other stall length. Returns cycles run: cycles plus any DMA stall.</summary>
+		/// <remarks>Not when the instruction's last access was a write (PHA, STA abs,X, RMW...): its unmodelled cycles
+		/// came BEFORE that write on hardware, and a write ends the instruction, so the halt waits for the next opcode fetch.</remarks>
+		public int RunInstructionTail(int cycles)
+		{
+			long c = instructionStartCycle + preciseAccessCycles + preciseStallCycles; int run = 0;
+			for (int i = 0; i < cycles; i++)
+			{
+				if (dmcDmaPending && !lastPreciseAccessWrite)
+				{
+					dmcDmaPending = false;
+					int dma = DmcDmaLength(c);
+					for (int k = 0; k < dma; k++) TickHaltedCycle();
+					c += dma; run += dma;
+				}
+				TickHaltedCycle(); c++; run++;
+			}
+			return run;
+		}
+		private bool oamDmaPending; private long oamDmaWriteCycle; private bool lastPreciseAccessWrite;
+		// One DMA cycle with the CPU halted: the PPU/APU advance a cycle (settling any dots a write borrowed).
+		private void TickHaltedCycle() { int dots = 3 + preciseCarryDots; preciseCarryDots = 0; if (dots > 0) ppu!.Step(dots); else preciseCarryDots = dots; StepAPU(1); }
+		/// <summary>Runs an OAM DMA started by the instruction that just finished, cycle by cycle, following
+		/// Mesen 2.1.1's DMA loop: a halt cycle, then 256 get/put read-write pairs, aligned to get cycles. A DMC
+		/// fetch requested meanwhile uses the DMA's cycles as its own halt and dummy cycles and then takes a get
+		/// cycle from it (usually costing 2 cycles, not a separate 3-4 cycle stall) - one landing inside Kirby's
+		/// per-frame sprite DMA was stalled again after it, putting the rest of the frame a cycle off Mesen's.
+		/// Returns the cycles run. The sprite copy itself already happened at the $4014 write.</summary>
+		public int RunPendingOamDma()
+		{
+			if (!oamDmaPending) return 0;
+			oamDmaPending = false;
+			long c = oamDmaWriteCycle + 1;
+			bool dmcRunning = dmcDmaPending, needHalt = false, needDummy = dmcDmaPending; dmcDmaPending = false;
+			TickHaltedCycle(); c++; int cycles = 1; // halt (also the DMC's, if one was already waiting)
+			if (dmcDmaPending) { dmcDmaPending = false; dmcRunning = true; needHalt = true; needDummy = true; }
+			int spriteCounter = 0; bool spriteActive = true;
+			while (dmcRunning || spriteActive)
+			{
+				bool get = ((c + OamDmaParityOffset) & 1) == 0, dmcRead = false;
+				if (get) { if (dmcRunning && !needHalt && !needDummy) dmcRead = true; else if (spriteActive) spriteCounter++; }
+				else if (spriteActive && (spriteCounter & 1) == 1) { if (++spriteCounter == 512) spriteActive = false; }
+				if (needHalt) needHalt = false; else if (needDummy) needDummy = false;
+				TickHaltedCycle(); c++; cycles++;
+				if (dmcRead) dmcRunning = false;
+				if (dmcDmaPending) { dmcDmaPending = false; dmcRunning = true; needHalt = true; needDummy = true; }
+			}
+			return cycles;
+		}
+		private void PreciseTick(bool isWrite)
+		{
+			if (insidePreciseTick) return;
+			insidePreciseTick = true;
+			// A pending DMC DMA halts the CPU on this read: halt cycle, dummy cycle, then the sample
+			// read on the next "get" cycle (1 alignment cycle if needed) - 3 or 4 cycles, all BEFORE the
+			// CPU's own read happens. Get cycles are Mesen's even cycles (OamDmaParityOffset maps ours).
+			// Stalling right after whichever access triggered it, read or write, for a flat 4 cycles put
+			// Kirby's DMC stalls a cycle or an instruction off Mesen's and moved its status-bar split.
+			if (!isWrite && dmcDmaPending)
+			{
+				dmcDmaPending = false;
+				DebugTap?.OnDmcDmaHalt(preciseReadAddress);   // the debugger's checks (null when none is armed; this branch is the rare DMC halt)
+				int dma = DmcDmaLength(instructionStartCycle + preciseAccessCycles + preciseStallCycles);
+				int dots = dma * 3 + preciseCarryDots; preciseCarryDots = 0;
+				if (dots > 0) ppu!.Step(dots);
+				StepAPU(dma);
+				preciseStallCycles += dma;
+				// The halt and dummy cycles re-read the address the CPU was about to read. For a controller
+				// port that is one extra shift-register clock (the reads before the DMC's own fetch run
+				// back to back, so they clock it once), which deletes a bit: NTSC's DPCM controller glitch,
+				// as Mesen 2.1.1 models it. Kirby reads the pad twice to catch exactly this; without it the
+				// two reads agreed where Mesen's disagreed, and its input handling took another path.
+				if (preciseReadAddress == 0x4016) input.Read4016(lastBusValue);
+				else if (preciseReadAddress == 0x4017) input2.Read4016(lastBusValue);
+			}
+			lastPreciseAccessWrite = isWrite;
+			int pre = isWrite ? PreDotsWrite : PreDotsRead;
+			int now = preciseCarryDots + pre; preciseCarryDots = 3 - pre;
+			if (now > 0) ppu!.Step(now); else preciseCarryDots += now; // a write landing past its own cycle borrows from the next
+			StepAPU(1); preciseAccessCycles++;
+			// If that cycle triggered a DMA, the CPU is halted for its duration right here - so
+			// advance PPU/APU across the stall while the CPU stands still, which is exactly what
+			// the DMA does on hardware. Outside this window the same cycles get consumed at the
+			// next FlushBatch instead (see ConsumePendingCpuStallCycles).
+			int stall = PendingDmcStallCycles;
+			if (stall > 0)
+			{
+				PendingDmcStallCycles = 0;
+				if (preciseCarryDots > 0) { ppu!.Step(preciseCarryDots); preciseCarryDots = 0; }
+				ppu!.Step(stall * 3);
+				StepAPU(stall);
+				preciseStallCycles += stall;
+			}
+			insidePreciseTick = false;
+		}
 		// Count a PPU/APU batch flush
 		[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 		public void CountBatchFlush() { instr.BatchFlushes++; }
@@ -67,6 +340,23 @@ public class Bus : IBus
 		public IAPU apuJank; // famiclone
 		public IAPU apuQN; // QuickNes
 		private readonly byte[] apuRegLatch = new byte[0x18]; // $4000-$4017 last written values
+		// Which of those latches the ROM has actually written, as a bitmask over the 24 registers.
+		// Without this, a core hot-swap replays the whole array - including registers the ROM never
+		// touched, whose latch still reads 0 - and a write of 0 to an APU register is NOT a no-op:
+		// $4000/$4004/$400C set the envelope start flag (loading the decay counter to 15), $4015
+		// silences every channel, $4017 resets the frame sequencer. Those phantom writes gave the
+		// incoming core state the cartridge never asked for, which showed up as pulse/noise
+		// envelope volumes disagreeing with Mesen on the first frames after a swap.
+		private uint apuRegLatchWritten;
+		// Plugin hosts only (null otherwise: the cost is one null check per APU register write): called for every CPU
+		// write to $4000-$4017 with <see cref="ApuClock"/>, the APU cycles stepped so far, so a host can replay the
+		// writes on other chips at exactly the same moments. ApuClock follows what the active APU is stepped by.
+		public System.Action<ushort, byte, long> ApuWriteTap;
+		public long ApuClock;
+		/// <summary>Copies the last value written to each APU register ($4000-$4017) into <paramref name="regs"/> and returns the bitmask of those the ROM has written.</summary>
+		public uint CopyApuLatch(byte[] regs) { System.Array.Copy(apuRegLatch, regs, System.Math.Min(regs.Length, apuRegLatch.Length)); return apuRegLatchWritten; }
+		/// <summary>Puts the latch back as <see cref="CopyApuLatch"/> gave it (a host that restores a saved machine: the latch is not part of the state, and a per-channel stem is made from it). Changes no APU register.</summary>
+		public void SetApuLatch(byte[] regs, uint written) { System.Array.Copy(regs, apuRegLatch, System.Math.Min(regs.Length, apuRegLatch.Length)); apuRegLatchWritten = written & 0xFFFFFF; }
 		// MMC5 expansion audio
 		private MMC5Audio mmc5Audio;
 	public Cartridge cartridge;
@@ -105,11 +395,34 @@ public class Bus : IBus
 		apuQN = GetOrCreateApu("QN") ?? apu;
 		activeApu = apuJank; // default famiclone selection
 		ram = new byte[2048];
+		InitializeRamPowerOnPattern(ram);
 		BuildPageTable();
 		// Optional: allow cores to run deferred initialization that requires a constructed Bus
 		TryInitializeCores();
 		// Initialize MMC5 audio with IRQ callback into CPU
 		mmc5Audio = new MMC5Audio((irq) => { if (irq) cpu?.RequestIRQ(true); });
+	}
+
+	/// <summary>
+	/// Fills power-on RAM with the repeating 8-byte pattern 00 00 00 00 FF FF FF FF, matching
+	/// FCEUX's default RAMInitOption=0 (its FCEU_MemoryRand, fceu.cpp) - and, per FCEUX's own
+	/// comment there, "used in FCEUX since time immemorial".
+	///
+	/// This is not cosmetic. Several real games read uninitialized RAM at boot (RNG seeding,
+	/// debug-mode checks, high-score tables) - FCEUX's source names Cybernoid, Huang Di, F-15 City
+	/// War, 1942 and Cheetahmen II as examples that visibly change behavior with the fill pattern.
+	/// Zero-filling instead makes those games take a different path from their very first frame,
+	/// which is exactly what breaks .fm2 movie portability: a movie recorded against one power-on
+	/// RAM state desyncs when replayed against another. Matching FCEUX's pattern is what lets the
+	/// same .fm2 replay identically in both emulators.
+	///
+	/// Deliberately matches FCEUX's *default* only; its other RAMInitOption modes (all-FF, all-00,
+	/// seeded-random) exist for hardware-variation testing and aren't modeled here.
+	/// </summary>
+	private static void InitializeRamPowerOnPattern(byte[] target)
+	{
+		for (int i = 0; i < target.Length; i++)
+			target[i] = (i & 4) != 0 ? (byte)0xFF : (byte)0x00;
 	}
 
 	// Optional extension point: cores may implement this to receive a post-ctor Bus reference
@@ -173,6 +486,7 @@ public class Bus : IBus
 	public bool SetPpuCoreById(string id)
 	{
 		if (string.IsNullOrWhiteSpace(id)) return false;
+		id = CoreRegistry.MigratePpuId(id);   // a retired id (DMGX ...) is its successor, never "no such core" (a save state, a setting, the HTTP API)
 		var newPpu = GetOrCreatePpu(id);
 		if (newPpu == null) return false;
 		if (ReferenceEquals(newPpu, activePpu)) { ppu = activePpu; return true; }
@@ -198,6 +512,7 @@ public class Bus : IBus
 		{
 			ushort addr = (ushort)(0x4000 + i);
 			if (addr == 0x4014) continue;
+			if ((apuRegLatchWritten & (1u << i)) == 0) continue; // never written - replaying 0 is a real write
 			try { activeApu.WriteAPURegister(addr, apuRegLatch[i]); } catch { }
 		}
 		return true;
@@ -294,6 +609,7 @@ public class Bus : IBus
 		{
 			ushort addr = (ushort)(0x4000 + i);
 			if (addr == 0x4014) continue; // skip OAMDMA
+			if ((apuRegLatchWritten & (1u << i)) == 0) continue; // never written - replaying 0 is a real write
 			activeApu.WriteAPURegister(addr, apuRegLatch[i]);
 		}
 	}
@@ -330,24 +646,37 @@ public class Bus : IBus
 		   SetApuCore(prev);
 		   // Clear latches to avoid carrying writes between games
 		   System.Array.Clear(apuRegLatch, 0, apuRegLatch.Length);
+		   apuRegLatchWritten = 0;
 		}
 
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	public byte Read(ushort address)
 	{
+		if (preciseWindow) // see BeginPreciseWindow - normally false, branch is free
+		{
+			preciseReadAddress = address; PreciseTick(false);
+			// PPUSTATUS reads see the PPU StatusReadExtraDots further into their cycle than other reads do,
+			// borrowing them from the next access like a late write (the cycle still totals 3 dots).
+			if (PreciseSteppingActive && (address & 0xE007) == 0x2002) { ppu!.Step(StatusReadExtraDots); preciseCarryDots -= StatusReadExtraDots; }
+		}
 		instr.Reads++;
 		// Page table fast path: internal RAM and any future linear mapped regions
 		var page = pages[address >> 8];
 		if (page.data != null)
 		{
 			// address & 0xFF + page.offset gives direct index (mirroring handled in offset computation)
-			return page.data[page.offset + (address & 0xFF)];
+			byte v = page.data[page.offset + (address & 0xFF)];
+			lastBusValue = v;
+			return v;
 		}
-		return ReadSlow(address);
+		byte r = ReadSlow(address);
+		lastBusValue = r;
+		return r;
 	}
 
 	private byte ReadSlow(ushort address)
 	{
+		if (DebugTap != null && !debugTapBusy) return DebugReadSlow(address);   // the debugger's watches (null when none is set)
 		// PPU registers 0x2000-0x3FFF (mirrored every 8)
 		if (address < 0x4000)
 		{
@@ -355,13 +684,14 @@ public class Bus : IBus
 			return ppu.ReadPPURegister(reg);
 		}
 		// Controllers are read from 0x4016 (P1) and 0x4017 (P2) on real hardware
-		if (address == 0x4016) return input.Read4016();
-		if (address == 0x4017) return input2.Read4016();
+		if (address == 0x4016) return input.Read4016(lastBusValue);
+		if (address == 0x4017) return input2.Read4016(lastBusValue);
 		// APU registers (e.g., 0x4015 status) remain handled here
 		if (address <= 0x4017 && address >= 0x4000) return activeApu.ReadAPURegister(address);
 	// Mapper expansion registers (e.g., MMC5 $5000-$5FFF)
 	if (address >= 0x5000 && address < 0x6000)
 	{
+		if (cartridge.IsCpuReadOpenBus(address)) return lastBusValue;
 		byte val = cartridge.CPURead(address);
 		// Merge in MMC5 audio status/IRQ where applicable
 		if (address == 0x5015)
@@ -378,18 +708,25 @@ public class Bus : IBus
 	}
 		if (address >= 0x6000)
 		{
+			if (cartridge.IsCpuReadOpenBus(address)) return lastBusValue;
 			byte v = cartridge.CPURead(address);
 			// Trigger MMC5 PCM only on PRG ROM range $8000-$BFFF
 			if (address >= 0x8000 && address <= 0xBFFF) mmc5Audio?.ReadROMTrigger(v);
 			return v;
 		}
-		return 0; // simplified open bus
+		// Open bus: no device drove the data bus for this address, so it holds whatever byte
+		// was last transferred anywhere on the bus (see lastBusValue's declaration).
+		return lastBusValue;
 	}
 
 	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 	public void Write(ushort address, byte value)
 	{
+		if (preciseWindow) PreciseTick(true); // see BeginPreciseWindow - normally false, branch is free
 		instr.Writes++;
+		// A write always drives its value onto the data bus, whether or not any device at this
+		// address latches it - so it always updates the open-bus value (see lastBusValue).
+		lastBusValue = value;
 		var page = pages[address >> 8];
 		if (page.data != null && page.writable)
 		{
@@ -400,24 +737,57 @@ public class Bus : IBus
 
 	private void WriteSlow(ushort address, byte value)
 	{
+		if (DebugTap != null && !debugTapBusy) { DebugWriteSlow(address, value); return; }   // the debugger's watches (null when none is set)
 		// Touch idle loop detector (direct call; avoids reflection cost)
 		if (cpu is CPU_SPD spdCpu) spdCpu.IdleLoopMaybeWriteTouch(address);
 		if (address < 0x4000)
 		{
 			ushort reg = (ushort)(0x2000 + (address & 0x0007));
-			ppu.WritePPURegister(reg, value); return;
+			ppu.WritePPURegister(reg, value);
+			// Zero cost when nobody is watching: one null test on a reference field, on a path that
+			// is already the SLOW path (the page table sends every RAM write straight to pages[],
+			// so WriteSlow is only reached for $2000-$3FFF, $4000-$401F and cartridge space). The
+			// dispatch itself lives in a separate non-inlined method so the JIT keeps this branch a
+			// predictable, never-taken test instead of inlining an observer's body into WriteSlow.
+			if (PpuRegisterWriteObserver != null) NotifyPpuRegisterWrite(reg, value);
+			return;
 		}
 		// Writing bit0 to 0x4016 controls controller strobe; apply to both ports
 		if (address == 0x4016) { input.Write4016(value); input2.Write4016(value); return; }
 		if (address == 0x4014) {
-			ppu.WriteOAMDMA(value); instr.OamDmaWrites++;
-			// Approximate 513 CPU cycle stall (NES hardware: 513 or 514 depending on alignment) if enabled
-			if (SpeedConfig.CpuFastOamDmaStall) PendingCpuStallCycles += 513;
+			// The copy itself must not tick the precise window. FastOamDma normally BlockCopies out
+			// of RAM and touches no bus at all, but its fallback for mapper-controlled source pages
+			// issues 256 Read()s - inside a precise window each of those would advance PPU/APU by a
+			// CPU cycle, on top of the flat 513-cycle stall applied just below, and the DMA would
+			// cost the PPU roughly 770 cycles instead of 513. The stall is the accounting for this
+			// transfer; the reads are not. (`insidePreciseTick` is PreciseTick's own re-entrancy
+			// guard, and reusing it here is exactly the same statement: these bus accesses belong to
+			// a cycle that has already been charged.)
+			bool wasInside = insidePreciseTick; insidePreciseTick = true;
+			try { ppu.WriteOAMDMA(value); } finally { insidePreciseTick = wasInside; }
+			instr.OamDmaWrites++;
+			// The CPU stall is real hardware behavior, not a speed/accuracy trade-off -
+			// CpuFastOamDmaStall previously gated this off entirely, meaning "strict" mode
+			// (which disables SpeedConfig toggles) made OAM DMA cost zero CPU cycles instead
+			// of restoring accuracy. Always apply it.
+			//
+			// 513 or 514: the DMA must start on an even ("get") CPU cycle, so a write landing on an
+			// odd cycle costs one extra alignment cycle. CPU_FIX gets the exact figure; the other
+			// CPU cores keep the flat 513 their goldens were recorded with. It matters beyond the
+			// cycle itself: a flat 513 drifts the NMI's landing point in the game's idle loop by
+			// half a cycle a frame, and Lifeforce stirs its RNG in exactly that loop - measured
+			// against Mesen 2.1.1, whose log shows a write on an odd cycle costing 514, even 513.
+			// Under precise stepping the DMA instead runs cycle by cycle after the instruction (see
+			// RunPendingOamDma), so a DMC fetch falling inside it shares its cycles as on hardware.
+			if (preciseWindow && PreciseSteppingActive && cpu is CPU_FIX) { oamDmaPending = true; oamDmaWriteCycle = instructionStartCycle + preciseAccessCycles - 1 + preciseStallCycles; return; }
+			PendingCpuStallCycles += (cpu is CPU_FIX && instructionStartCycle >= 0
+				&& ((CurrentAccessCycle() + OamDmaParityOffset) & 1) == 1) ? 514 : 513;
 			return; }
 		if (address <= 0x4017 && address >= 0x4000)
 		{
 			int idx = address - 0x4000;
-			if (idx >=0 && idx < apuRegLatch.Length) apuRegLatch[idx] = value;
+			if (idx >=0 && idx < apuRegLatch.Length) { apuRegLatch[idx] = value; apuRegLatchWritten |= 1u << idx; }
+			ApuWriteTap?.Invoke(address, value, ApuClock);
 			activeApu.WriteAPURegister(address, value); return;
 		}
 	// Mapper expansion registers (e.g., MMC5 $5000-$5FFF)
@@ -428,8 +798,30 @@ public class Bus : IBus
 		if (address <= 0x5015) mmc5Audio?.WriteExp(address, value);
 		return;
 	}
-		if (address >= 0x6000) { cartridge.CPUWrite(address, value); return; }
+		if (address >= 0x6000)
+		{
+			cartridge.CPUWrite(address, value);
+			// Same zero-cost-when-unattached shape as the PPU observer above: one null test on a
+			// reference field, on a path that is ALREADY the slow path (the page table routes every
+			// RAM write straight to pages[], so WriteSlow only ever sees $2000-$3FFF, $4000-$401F
+			// and cartridge space). The $8000 test is second so the common unattached case costs a
+			// single predictable never-taken branch. The dispatch lives in a separate non-inlined
+			// method so the JIT cannot pull an observer body into WriteSlow.
+			//
+			// Restricted to $8000-$FFFF because that is where every mapper's control registers live
+			// (and, on mapper 30's flash variant, the flash command protocol); $6000-$7FFF is cart
+			// WRAM, whose traffic is ordinary data and would bury the register writes.
+			if (MapperRegisterWriteObserver != null && address >= 0x8000) NotifyMapperRegisterWrite(address, value);
+			return;
+		}
+		// Only $4018-$4FFF get here, where nothing answers on a NES. The BrokenDev debug port ($401C-$401F, milestone D7 of
+		// docs/projects/brokendev-debugging-plan.md) listens to its four while BrokenNes's debugger or dev mode attaches it: the write still
+		// goes nowhere, and with the port off this is one null test that only these dead writes ever reach.
+		if (DebugPortWrite != null && address >= 0x401C && address <= 0x401F) DebugPortWrite(address, value);
 	}
+
+	/// <summary>The BrokenDev debug port (Windows/NesEmulator/debug/port): called with the CPU's writes to $401C-$401F. Null unless attached.</summary>
+	public System.Action<ushort, byte>? DebugPortWrite;
 
 	// === OAM DMA Fast Path ===
 	// If source page is internal RAM (0x0000-0x1FFF mirrors) perform a single BlockCopy instead of 256 bus.Read calls.
@@ -451,8 +843,9 @@ public class Bus : IBus
 			return;
 		}
 		
-		var srcPage = pages[pageIndex];
-		bool isRam = srcPage.data == ram; // all mirrors point to same array
+		// Pages $00-$1F are always the internal RAM (all mirrors point to the same array). Tested by index, not by the page's array, so a
+		// debugger that masks the RAM pages (DebugMaskRam) leaves the DMA exactly as it was: one block copy, no bus reads.
+		bool isRam = pageIndex < 0x20;
 		if (isRam)
 		{
 			// Compute linear offset inside 2KB RAM mirroring
@@ -484,6 +877,190 @@ public class Bus : IBus
 	}
 
 	// === Debug Peek/Poke (raw CPU address space) ===
+	// === PPU register write observer ===================================================
+	//
+	// Fires once for every CPU write that reaches a PPU register ($2000-$2007, and therefore every
+	// mirror of them up to $3FFF), carrying the register, the byte, and WHERE IN THE FRAME the
+	// write landed. That last part is the whole point: a $2005/$2007 write is only safe inside
+	// vblank, and "did this write land on a visible scanline" is a question no amount of
+	// after-the-fact memory comparison can answer - the evidence is gone by the end of the frame.
+	// See Workshop/VrunCorruptCli.cs (the late-PPU-write check) for the consumer this was added for.
+	//
+	// Contract:
+	//   * called AFTER ppu.WritePPURegister has applied the write, so an observer that wants to
+	//     read back the effect (e.g. the new PPUMASK) sees the post-write state.
+	//   * `mask` is PPUMASK sampled at that same instant. It is passed rather than left for the
+	//     observer to fetch because "was the PPU rendering when this happened" has to be answered
+	//     at the write's instant; asking a frame later is a different question with a different
+	//     answer.
+	//   * `scanline`/`dot` are -1/-1 when the active PPU core does not implement IPpuProbe (most
+	//     of the gimmick cores do not). An observer must treat -1 as "unknown", never as a line
+	//     number. Mask is 0 in that case for the same reason - see IPpuProbe's doc comment.
+	//   * `scanline`/`dot` carry the batching lag documented on PPU_FIX's IPpuProbe members: the
+	//     PPU is caught up between CPU instructions, not between CPU cycles.
+	//
+	// Instance state, not static: two NES instances in one process (the desktop app supports it)
+	// must not see each other's writes.
+	public delegate void PpuRegisterWriteHandler(ushort reg, byte value, int scanline, int dot, byte mask);
+	public PpuRegisterWriteHandler? PpuRegisterWriteObserver;
+
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+	private void NotifyPpuRegisterWrite(ushort reg, byte value)
+	{
+		var obs = PpuRegisterWriteObserver;
+		if (obs == null) return;
+		if (ppu is IPpuProbe probe) obs(reg, value, probe.ProbeScanline, probe.ProbeDot, probe.ProbeMask);
+		else obs(reg, value, -1, -1, 0);
+	}
+
+	// === Mapper register write observer ==============================================
+	//
+	// The mapper-side twin of PpuRegisterWriteObserver, and it exists for the same reason: a
+	// per-frame sample cannot see a register that is written and restored INSIDE one frame.
+	//
+	// Concretely, and this is the measurement that motivated it: a frame-boundary sample of
+	// mapper 30's CHR bank on a 60,000-frame VRUN run reported bank 0 on 59,997 frames and bank 1
+	// on 3. Not because the game barely banks CHR - it banks mid-frame, several times per frame,
+	// and restores bank 0 before the frame ends. "Zero divergences" from such a sample is not
+	// evidence of anything. A per-WRITE stream is, because it records the event itself rather
+	// than the state left behind afterwards.
+	//
+	// Contract:
+	//   * fires AFTER cartridge.CPUWrite has applied the write, so PrgBank/ChrBank/Mirroring are
+	//     the values the write PRODUCED, not the ones it replaced.
+	//   * only $8000-$FFFF; see the call site for why $6000-$7FFF is excluded.
+	//   * fires on EVERY write in that range, whether or not the mapper did anything with it -
+	//     including the flash command bytes of a mapper-30 battery cart, which change no bank at
+	//     all. A comparison against another emulator has to see the writes it ignored too, or a
+	//     one-sided extra write shifts the whole stream and every later line "diverges".
+	//   * Scanline/Dot are -1/-1 when the PPU core does not implement IPpuProbe, and carry the
+	//     same up-to-one-instruction batching lag documented there. Never read -1 as a line.
+	//   * EffectiveValue is the byte the BANK REGISTER most recently latched, which is this write's
+	//     byte exactly when LatchCount advanced on this write. It differs from Value only on boards
+	//     with BUS CONFLICTS, where the latched byte is the CPU's byte ANDed with the ROM byte at
+	//     the same address. Mapper 30's flash variant has no conflict (the write is decoded by the
+	//     flash chip, not driven against a ROM output), so the two are equal there - but a harness
+	//     must not assume that, because the plain-ROM variant of the same mapper does conflict.
+	//     When LatchCount did NOT advance the mapper ignored this write (a flash command byte, say)
+	//     and EffectiveValue still shows the previous latch; that is a fact about the write, not a
+	//     bug, and the consumer should print it as "no latch" rather than as this write's value.
+	//   * Instance state, not static: two NES instances in one process must not see each other's
+	//     writes.
+	public readonly struct MapperRegisterWrite
+	{
+		public readonly ushort Address;
+		public readonly byte Value;           // byte the CPU drove onto the bus
+		public readonly byte EffectiveValue;  // after any bus conflict; == Value when there is none
+		// Bank-register latches since power-on. The consumer diffs it across consecutive writes to
+		// tell "this write reprogrammed the register" from "the mapper ignored this write" - a
+		// question the bank numbers alone cannot answer, since rewriting the same value changes
+		// nothing observable. -1 when the mapper exposes no IMapperRegisterProbe.
+		public readonly long LatchCount;
+		public readonly int PrgBank;          // 16KB bank index visible at $8000, -1 if unresolvable
+		public readonly int ChrBank;          // mapper's CHR bank signature (mapper 30: 0-3)
+		public readonly int Mirroring;        // (int)Cartridge.mirroringMode after the write
+		// Mapper-private, mapper-defined: for mapper 30 it packs the flash command state machine.
+		// Compared only for interest, never as a divergence criterion - two emulators can model the
+		// same flash chip with different internal encodings and still behave identically.
+		public readonly int MapperStatus;
+		public readonly int Scanline;
+		public readonly int Dot;
+
+		public MapperRegisterWrite(ushort address, byte value, byte effectiveValue, long latchCount,
+			int prgBank, int chrBank, int mirroring, int mapperStatus, int scanline, int dot)
+		{
+			Address = address; Value = value; EffectiveValue = effectiveValue; LatchCount = latchCount;
+			PrgBank = prgBank; ChrBank = chrBank; Mirroring = mirroring; MapperStatus = mapperStatus;
+			Scanline = scanline; Dot = dot;
+		}
+	}
+
+	/// <summary>Optional mapper-side detail for MapperRegisterWriteObserver. Declared here rather
+	/// than on IMapper so that adding it costs nothing to the two dozen mappers that would only
+	/// ever return defaults - a mapper opts in by implementing it, and the observer degrades to
+	/// EffectiveValue == Value / LatchCount == -1 for every mapper that does not.</summary>
+	public interface IMapperRegisterProbe
+	{
+		byte ProbeLastRegisterValue { get; }
+		long ProbeRegisterLatchCount { get; }
+		int ProbeMapperStatus { get; }
+	}
+
+	public delegate void MapperRegisterWriteHandler(in MapperRegisterWrite write);
+	public MapperRegisterWriteHandler? MapperRegisterWriteObserver;
+
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+	private void NotifyMapperRegisterWrite(ushort address, byte value)
+	{
+		var obs = MapperRegisterWriteObserver;
+		if (obs == null) return;
+		var mapper = cartridge?.mapper;
+		if (mapper == null) return;
+
+		// $8000 rather than the written address on purpose: the question the log answers is "which
+		// bank is the CPU looking at now", and on a UxROM-style board only the LOW window moves.
+		// Resolving the written address instead would report the fixed bank for any write above
+		// $BFFF, which is exactly where mapper 30's flash carts put their bank-select writes.
+		int prgBank = mapper.TryCpuToPrgIndex(0x8000, out int prgIndex) ? prgIndex / 0x4000 : -1;
+		int chrBank = (int)mapper.GetChrBankSignature();
+		int mirroring = (int)cartridge.mirroringMode;
+
+		byte effective = value;
+		long latchCount = -1;
+		int status = 0;
+		if (mapper is IMapperRegisterProbe mp)
+		{
+			effective = mp.ProbeLastRegisterValue;
+			latchCount = mp.ProbeRegisterLatchCount;
+			status = mp.ProbeMapperStatus;
+		}
+
+		int sl = -1, dot = -1;
+		if (ppu is IPpuProbe probe) { sl = probe.ProbeScanline; dot = probe.ProbeDot; }
+
+		var w = new MapperRegisterWrite(address, value, effective, latchCount, prgBank, chrBank, mirroring, status, sl, dot);
+		obs(in w);
+	}
+
+	// === Debugger tap (Windows/NesEmulator/debug) ======================================
+	// Null unless the debugger has a read or write watch set. ReadSlow and WriteSlow test it first; the RAM fast path never sees it, so a
+	// watch on RAM masks the RAM pages (DebugMaskRam) and RAM accesses then come through the slow path too. Everything the machine does is
+	// unchanged with the tap on: the same values land in the same places on the same cycles (the debugger's checks prove it frame by frame).
+	public IBusDebugTap? DebugTap;
+	private bool debugTapBusy;   // re-entry guard: the tapped path calls the original one
+
+	/// <summary>Sends RAM accesses ($0000-$1FFF) through the slow path (where <see cref="DebugTap"/> sees them), or back to the page table.</summary>
+	public void DebugMaskRam(bool masked)
+	{
+		for (int p = 0x00; p <= 0x1F; p++)
+		{
+			pages[p].data = masked ? null : ram;
+			pages[p].offset = (p % 0x08) * 0x100;
+			pages[p].writable = !masked;
+		}
+	}
+
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+	private byte DebugReadSlow(ushort address)
+	{
+		var tap = DebugTap!;
+		byte v;
+		if (address < 0x2000) v = ram[address & 0x07FF];
+		else { debugTapBusy = true; try { v = ReadSlow(address); } finally { debugTapBusy = false; } }
+		tap.OnRead(address, v);
+		return v;
+	}
+
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+	private void DebugWriteSlow(ushort address, byte value)
+	{
+		var tap = DebugTap!;
+		if (address < 0x2000) ram[address & 0x07FF] = value;
+		else { debugTapBusy = true; try { WriteSlow(address, value); } finally { debugTapBusy = false; } }
+		tap.OnWrite(address, value);
+		if (address == 0x4014) tap.OnOamDma(value);
+	}
+
 	public byte PeekByte(ushort address) => Read(address);
 	public void PokeByte(ushort address, byte value) => Write(address, value);
 	public byte PeekRam(int index) => (index >=0 && index < ram.Length) ? ram[index] : (byte)0;
@@ -495,6 +1072,7 @@ public class Bus : IBus
 		if (activeCpu is IApuCycleScaler scaler)
 			apuCycles = scaler.ScaleApuCycles(cpuCycles);
 		activeApu.Step(apuCycles);
+		ApuClock += apuCycles;
 		mmc5Audio?.Step(apuCycles);
 		instr.ApuSteps += apuCycles;
 	}

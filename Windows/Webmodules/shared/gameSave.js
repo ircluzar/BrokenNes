@@ -344,8 +344,50 @@
     return values[0] || null;
   }
 
+  // Cores that no longer exist. A save written while one was available may still own or prefer it, so both are dropped on load and
+  // nothing asks the emulator for a core it no longer has. CPU_Z80 (the joke Z80) was retired when the real Z80 chip arrived.
+  // Keep the same list in Continue/continue.js (syncGameSaveCompatFields), which normalizes saves it did not load through here.
+  const RETIRED_CORE_IDS = {
+    CPU: ['Z80'],
+    PPU: [],
+    APU: []
+  };
+
+  function dropRetiredCores(save) {
+    if (!save || typeof save !== 'object') {
+      return save;
+    }
+
+    [['CPU', 'ownedCpuIds', 'PreferredCpuId'], ['PPU', 'ownedPpuIds', 'PreferredPpuId'], ['APU', 'ownedApuIds', 'PreferredApuId']].forEach(([domain, ownedKey, preferredKey]) => {
+      const retired = RETIRED_CORE_IDS[domain].map(id => id.toUpperCase());
+      if (retired.length === 0) {
+        return;
+      }
+
+      const isRetired = value => typeof value === 'string' && retired.includes(value.trim().toUpperCase());
+      if (Array.isArray(save[ownedKey])) {
+        const kept = save[ownedKey].filter(id => !isRetired(id));
+        save[ownedKey] = kept.length > 0 ? kept : ['FMC'];
+      }
+
+      if (isRetired(save[preferredKey])) {
+        save[preferredKey] = 'FMC';
+      }
+
+      if (save.Preferences && typeof save.Preferences === 'object' && isRetired(save.Preferences[domain])) {
+        save.Preferences = { ...save.Preferences, [domain]: 'FMC' };
+      }
+    });
+
+    return save;
+  }
+
   // Migrate old save format to new format
   function migrateSave(save) {
+    return dropRetiredCores(migrateSaveFormat(save));
+  }
+
+  function migrateSaveFormat(save) {
     if (!save) return createDefaultSave();
 
     // Check if save uses old OwnedCores format
@@ -667,7 +709,7 @@
       const updated = migrateSave({ ...save });
       
       // These must match the actual core class suffixes (CPU_FMC -> FMC, etc.)
-      updated.ownedCpuIds = ['FMC', 'LOW', 'LW2', 'SPD', 'EIL', 'Z80'];
+      updated.ownedCpuIds = ['FMC', 'LOW', 'LW2', 'SPD', 'EIL'];
       updated.ownedPpuIds = ['FMC', 'LOW', 'LQ', 'SPD', 'BFR', 'CUBE', 'CUBEX', 'EIL'];
       updated.ownedApuIds = ['FMC', 'LOW', 'LQ', 'LQ2', 'QLOW', 'QLQ', 'QLQ2', 'QN', 'SPD', 'SPD2', 'WF', 'EIL', 'MNES'];
       // Clock cores: CLOCK_FMC, CLOCK_TRB, CLOCK_CLR

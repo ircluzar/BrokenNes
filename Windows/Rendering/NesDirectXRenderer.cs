@@ -97,6 +97,11 @@ namespace BrokenNes.Windows.Rendering
         /// </summary>
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public bool ForceNativeAspectRatio { get; set; } = false;
+
+        /// <summary>BrokenNes 2: the width the picture is shown at when it differs from its pixel width (a 512-wide SNES
+        /// hi-res frame shows as 256). 0 = the pixel width.</summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public int AspectWidth { get; set; }
         
         /// <summary>
         /// Gets or sets whether shader effects are enabled
@@ -595,8 +600,11 @@ namespace BrokenNes.Windows.Rendering
             float clientWidth = ClientSize.Width;
             float clientHeight = ClientSize.Height;
             
-            // Native NES aspect ratio is approximately 8:7 (256:224 visible, but 256:240 buffer)
-            float nesAspect = ForceNativeAspectRatio ? (8.0f / 7.0f) : ((float)nesWidth / nesHeight);
+            // Native NES aspect ratio is approximately 8:7 (256:224 visible, but 256:240 buffer). The 8:7 option only
+            // applies to 256-wide pictures that are 224 or more lines high (NES, SNES, a Genesis in its 256-wide mode); a Game Boy screen keeps its own 10:9
+            // and the Master System's 256x192 its own 4:3 (192 lines at 8:7 would be a 1.14 picture, narrower than any television showed it).
+            int logicalWidth = AspectWidth > 0 ? AspectWidth : nesWidth;
+            float nesAspect = ForceNativeAspectRatio && logicalWidth == 256 && nesHeight >= 224 ? (8.0f / 7.0f) : ((float)logicalWidth / nesHeight);
             float clientAspect = clientWidth / clientHeight;
             
             float destWidth, destHeight;
@@ -604,11 +612,11 @@ namespace BrokenNes.Windows.Rendering
             if (PixelPerfect)
             {
                 // Calculate integer scale that fits in the window
-                int scaleX = (int)(clientWidth / nesWidth);
+                int scaleX = (int)(clientWidth / logicalWidth);
                 int scaleY = (int)(clientHeight / nesHeight);
                 int scale = Math.Max(1, Math.Min(scaleX, scaleY));
                 
-                destWidth = nesWidth * scale;
+                destWidth = logicalWidth * scale;
                 destHeight = nesHeight * scale;
             }
             else
@@ -802,6 +810,22 @@ namespace BrokenNes.Windows.Rendering
             // Calculate destination rectangle for glow effect
             var destRect = CalculateDestinationRect();
             
+            var context = device.ImmediateContext;
+
+            // Clear the whole back buffer FIRST, then draw the background over it, then the picture.
+            //
+            // The swap chain is BufferCount = 1 with SwapEffect.Discard, which means the back
+            // buffer's contents are UNDEFINED after every Present - the driver is free to hand back
+            // anything. The letterbox outside destRect and whatever the active shader discards (the
+            // TV/CRT shader's barrel distortion discards ~13.9% of the viewport, at the corners) are
+            // never written by the shader draw, so they must be covered before it. The clear
+            // guarantees that even with no background; the animated background (Direct2D) then
+            // paints the whole window on top. The clear used to come after the background and wiped
+            // it every frame - the "black behind the emulator" bug.
+            //
+            // ClearRenderTargetView ignores the viewport and covers the entire target.
+            context.ClearRenderTargetView(renderTargetView, new SharpDX.Color4(0f, 0f, 0f, 1f));
+
             if (d2dRenderTarget != null)
             {
                 d2dRenderTarget.BeginDraw();
@@ -809,8 +833,6 @@ namespace BrokenNes.Windows.Rendering
                 DrawGlowEffect(destRect);
                 d2dRenderTarget.EndDraw();
             }
-
-            var context = device.ImmediateContext;
 
             // Update shader texture with frame buffer data
             if (hasPreviousFrame)
@@ -849,6 +871,7 @@ namespace BrokenNes.Windows.Rendering
                 1.0f);
             context.Rasterizer.SetViewport(viewport);
             context.OutputMerger.SetRenderTargets(renderTargetView);
+
 
             // Apply shader and draw
             shaderManager.ApplyShader(context, shaderTextureView, constants, hasPreviousFrame ? previousShaderTextureView : shaderTextureView);

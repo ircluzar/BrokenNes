@@ -216,7 +216,7 @@ namespace BrokenNes
                 nes?.LoadState(full);
                 try { ApplySelectedCores(); } catch {}
                 try { nes?.RunFrame(); } catch {}
-                try { if(nes!=null){ var savedName = nes.GetSavedRomName(full); if(!string.IsNullOrWhiteSpace(savedName)) { nes.RomName = savedName; nesController.CurrentRomName = savedName; nesController.RomFileName = savedName; } } } catch {}
+                try { if(nes!=null){ var savedName = NesEmulator.NES.GetSavedRomName(full); if(!string.IsNullOrWhiteSpace(savedName)) { nes.RomName = savedName; nesController.CurrentRomName = savedName; nesController.RomFileName = savedName; } } } catch {}
                 nesController.AutoStaticSuppressed = true;
                 try { ApplySelectedCrashBehavior(); } catch {}
                 try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch {}

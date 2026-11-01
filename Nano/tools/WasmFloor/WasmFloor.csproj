@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+  <!-- Nano decision measurement (approach b): the BEST CASE for compiling the C# to WebAssembly. Only the real APU_FIX.cs and Core's StreamResampler.cs
+       (linked, not copied), a stub Bus, a minimal .NET WebAssembly app with no Blazor. If even this is far bigger and slower to start than a JS port,
+       the whole Core (which also drags in NES, CoreRegistry and every core by reflection) cannot be better.
+       Not part of BrokenNes.sln. Recipe: Nano/README.md ("Why JavaScript") and docs/projects/round5-nano.md. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RuntimeFrameworkVersion>10.0.10</RuntimeFrameworkVersion>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <WasmEnableSIMD>true</WasmEnableSIMD>
+    <EnableWasmAot Condition="'$(EnableWasmAot)'==''">false</EnableWasmAot>
+    <RunAOTCompilation>$(EnableWasmAot)</RunAOTCompilation>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>full</TrimMode>
+    <NoWarn>$(NoWarn);CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625;CS0675;CS0162;CS0168;CS0169;CS0219;CS0414;CS0649;CS0108</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\..\Windows\NesEmulator\apus\APU_FIX.cs" Link="APU_FIX.cs" />
+    <Compile Include="..\..\..\Windows\NesEmulator\apus\IAPU.cs" Link="IAPU.cs" />
+    <Compile Include="..\..\..\Windows\NesEmulator\apus\IDmcDmaSchedulable.cs" Link="IDmcDmaSchedulable.cs" />
+    <Compile Include="..\..\..\Windows\NesEmulator\apus\IApuStateProbe.cs" Link="IApuStateProbe.cs" />
+    <Compile Include="..\..\..\Core\StreamResampler.cs" Link="StreamResampler.cs" />
+  </ItemGroup>
+
+</Project>

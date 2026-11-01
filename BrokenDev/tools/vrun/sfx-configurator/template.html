@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VRUN SFX Configurator</title>
+<style>
+  :root {
+    --bg: #0a0d12;
+    --surface: #12171f;
+    --surface-2: #1a212b;
+    --surface-3: #212a36;
+    --border: #29323e;
+    --border-soft: #1d2530;
+    --text: #e7ecf2;
+    --text-dim: #93a1b3;
+    --text-faint: #5b6878;
+    --accent-sq2: #f2b544;
+    --accent-sq2-dim: #7a6631;
+    --accent-noise: #57d6c6;
+    --accent-noise-dim: #2f6b64;
+    --warn: #ff7a68;
+    --warn-dim: #4a2a26;
+    --good: #7cd992;
+    --focus: #6db4ff;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", "Consolas", "Roboto Mono", monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="light"]) {
+      --bg: #f3f1ea;
+      --surface: #fdfcf8;
+      --surface-2: #f4f2ec;
+      --surface-3: #eae7de;
+      --border: #d6d2c4;
+      --border-soft: #e2ded0;
+      --text: #201d17;
+      --text-dim: #5c574a;
+      --text-faint: #8b8574;
+      --accent-sq2: #a06a00;
+      --accent-sq2-dim: #e8d4a3;
+      --accent-noise: #10756b;
+      --accent-noise-dim: #b9e4de;
+      --warn: #c0392b;
+      --warn-dim: #f5d3cd;
+      --good: #2f7d43;
+      --focus: #1a66c2;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f3f1ea;
+    --surface: #fdfcf8;
+    --surface-2: #f4f2ec;
+    --surface-3: #eae7de;
+    --border: #d6d2c4;
+    --border-soft: #e2ded0;
+    --text: #201d17;
+    --text-dim: #5c574a;
+    --text-faint: #8b8574;
+    --accent-sq2: #a06a00;
+    --accent-sq2-dim: #e8d4a3;
+    --accent-noise: #10756b;
+    --accent-noise-dim: #b9e4de;
+    --warn: #c0392b;
+    --warn-dim: #f5d3cd;
+    --good: #2f7d43;
+    --focus: #1a66c2;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent-noise-dim); }
+  a { color: var(--focus); }
+  button:focus-visible, select:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 5px; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 22px 20px 80px; }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  header.top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-bottom: 16px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand .glyph {
+    font-size: 20px;
+    letter-spacing: -1px;
+  }
+  h1 {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .subtitle { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+  .stats { display: flex; gap: 18px; font-size: 12px; color: var(--text-dim); }
+  .stats b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .stats .gapcount b { color: var(--warn); }
+
+  /* ── Tabs ───────────────────────────────────────────────── */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    padding: 9px 14px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); border-bottom-color: var(--focus); }
+  .tab .n { color: var(--text-faint); margin-left: 5px; }
+  .tab.active .n { color: var(--focus); }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── Filter row ─────────────────────────────────────────── */
+  .filterrow {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .filterrow input[type="search"] {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    padding: 7px 10px;
+    border-radius: 3px;
+    min-width: 220px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .chip.on { color: var(--text); border-color: var(--focus); background: color-mix(in srgb, var(--focus) 12%, var(--surface)); }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+
+  /* ── Event groups ───────────────────────────────────────── */
+  .group { margin-bottom: 22px; }
+  .group h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-faint);
+    font-weight: 600;
+    margin: 0 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .group h2 .count { font-weight: 400; color: var(--text-faint); }
+
+  .evrow {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 10px;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    background: var(--surface);
+    margin-bottom: 5px;
+  }
+  .evrow.gap { border-color: color-mix(in srgb, var(--warn) 45%, var(--border-soft)); background: color-mix(in srgb, var(--warn) 5%, var(--surface)); }
+  .evinfo { min-width: 0; }
+  .evname { font-size: 12.5px; color: var(--text); }
+  .evdesc { font-size: 11px; color: var(--text-dim); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .evloc { font-size: 10px; color: var(--text-faint); margin-top: 2px; }
+  .evloc a { color: var(--text-faint); text-decoration: none; }
+  .evloc a:hover { color: var(--focus); text-decoration: underline; }
+
+  .badge {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 3px 7px;
+    border-radius: 3px;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+  .badge.unbound { background: var(--warn-dim); color: var(--warn); }
+
+  .playbtn {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    font-size: 11px;
+    padding: 0;
+  }
+  .playbtn:hover { border-color: var(--focus); }
+  .playbtn.playing { background: var(--focus); border-color: var(--focus); color: #041018; }
+  .playbtn[disabled] { opacity: 0.3; cursor: default; }
+
+  select.reassign {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 5px 7px;
+    border-radius: 3px;
+    max-width: 190px;
+  }
+  select.reassign.changed { border-color: var(--focus); background: color-mix(in srgb, var(--focus) 10%, var(--surface-2)); }
+
+  .clipname { font-size: 11.5px; }
+  .clipname .fam { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 5px; border-radius: 3px; margin-right: 6px; }
+  .fam.sq2 { background: var(--accent-sq2-dim); color: var(--accent-sq2); }
+  .fam.noise { background: var(--accent-noise-dim); color: var(--accent-noise); }
+
+  /* ── Library grid ───────────────────────────────────────── */
+  .libgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 8px;
+  }
+  .clipcard {
+    border: 1px solid var(--border-soft);
+    background: var(--surface);
+    border-radius: 4px;
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .clipcard .row1 { display: flex; align-items: center; gap: 9px; }
+  .clipcard .name { font-size: 13px; font-weight: 600; flex: 1; }
+  .clipcard .dur { font-size: 10.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  .clipcard .used {
+    font-size: 10px;
+    color: var(--text-dim);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .clipcard .used .tag {
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: 3px;
+    padding: 1px 5px;
+  }
+  .clipcard .used .none { color: var(--text-faint); font-style: normal; }
+  .wave {
+    height: 26px;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    flex: 1;
+  }
+  .wave .bar { flex: 1; background: var(--border); border-radius: 1px; min-width: 1px; }
+  .clipcard.sq2 .wave .bar { background: var(--accent-sq2-dim); }
+  .clipcard.noise .wave .bar { background: var(--accent-noise-dim); }
+  .clipcard.sq2.playing .wave .bar { background: var(--accent-sq2); }
+  .clipcard.noise.playing .wave .bar { background: var(--accent-noise); }
+
+  /* ── Save / export ──────────────────────────────────────── */
+  .savebar {
+    position: sticky;
+    bottom: 0;
+    margin-top: 24px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    box-shadow: 0 -8px 24px color-mix(in srgb, var(--bg) 70%, transparent);
+  }
+  .savebar .msg { font-size: 12px; color: var(--text-dim); flex: 1; min-width: 200px; }
+  .savebar .msg b { color: var(--text); }
+  .btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 14px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .btn:hover { border-color: var(--focus); }
+  .btn.primary { background: var(--focus); border-color: var(--focus); color: #041018; font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn[disabled] { opacity: 0.4; cursor: default; }
+
+  .jsonpreview {
+    display: none;
+    margin-top: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px;
+    font-size: 11px;
+    max-height: 240px;
+    overflow: auto;
+    white-space: pre;
+  }
+  .jsonpreview.show { display: block; }
+
+  footer.note {
+    margin-top: 26px;
+    font-size: 11px;
+    color: var(--text-faint);
+    line-height: 1.7;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+
+  @media (max-width: 640px) {
+    .evrow { grid-template-columns: 1fr; }
+    .evrow > * { justify-self: start; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div>
+        <h1>VRUN &mdash; SFX Configurator</h1>
+        <div class="subtitle">__N_CLIPS__ rendered clips &middot; browse, audition, and rebind every gameplay event</div>
+      </div>
+    </div>
+    <div class="stats">
+      <span>events <b id="statTotal">&mdash;</b></span>
+      <span>bound <b id="statBound">&mdash;</b></span>
+      <span class="gapcount">no sfx <b id="statGap">&mdash;</b></span>
+      <span>changed <b id="statChanged">0</b></span>
+    </div>
+  </header>
+
+  __WARNINGS__
+  <nav class="tabs">
+    <button class="tab active" data-tab="events">Events <span class="n" id="tabEventsN"></span></button>
+    <button class="tab" data-tab="library">SFX Library <span class="n">__N_CLIPS__</span></button>
+    <button class="tab" data-tab="about">How this works</button>
+  </nav>
+
+  <section class="panel active" id="panel-events">
+    <div class="filterrow">
+      <input type="search" id="search" placeholder="filter events&hellip;" />
+      <span class="chip on" data-filter="all">all</span>
+      <span class="chip" data-filter="gap"><span class="dot" style="background:var(--warn)"></span>gaps only</span>
+      <span class="chip" data-filter="changed">changed only</span>
+    </div>
+    <div id="eventGroups"></div>
+  </section>
+
+  <section class="panel" id="panel-library">
+    <div class="filterrow">
+      <input type="search" id="libSearch" placeholder="filter clips&hellip;" />
+      <span class="chip on" data-libfilter="all">all</span>
+      <span class="chip" data-libfilter="sq2"><span class="dot" style="background:var(--accent-sq2)"></span>square2 (tonal)</span>
+      <span class="chip" data-libfilter="noise"><span class="dot" style="background:var(--accent-noise)"></span>noise (percussive)</span>
+    </div>
+    <div class="libgrid" id="libGrid"></div>
+  </section>
+
+  <section class="panel" id="panel-about">
+    <div style="max-width:640px; font-size:12.5px; color:var(--text-dim); line-height:1.8;">
+      <p><b style="color:var(--text)">What this is.</b> Every clip is rendered directly from the game's own opcode data (<code>engine/audio/audio_engine.fab</code>'s <code>sfx_*</code> arrays) through an NES 2A03 APU pulse/noise-channel simulator &mdash; same duty cycle, same period tables, same DAC curve the real hardware uses. What you hear here is what plays in-game.</p>
+      <p><b style="color:var(--text)">Events</b> lists every place in the game that currently plays (or could plausibly play) a sound, grouped by category. Rows outlined in <span style="color:var(--warn)">amber</span> have no sound bound at all. Click a row's dropdown to try a different clip against that event &mdash; the change is tracked but nothing is written back to the game yet.</p>
+      <p><b style="color:var(--text)">SFX Library</b> is every clip on its own, independent of any event, so you can audition the full set before deciding.</p>
+      <p><b style="color:var(--text)">Saving.</b> Once you're happy, use Export at the bottom to download (or copy) a JSON file of your choices. Hand that back and the actual code changes get made from it &mdash; this page never touches the game itself.</p>
+      __ABOUT_GENERATED__
+    </div>
+  </section>
+
+  <div class="savebar">
+    <div class="msg" id="saveMsg">No changes yet &mdash; browse and reassign above.</div>
+    <button class="btn" id="btnPreview">Preview JSON</button>
+    <button class="btn" id="btnCopy">Copy JSON</button>
+    <button class="btn primary" id="btnDownload">Download config.json</button>
+  </div>
+  <div class="jsonpreview" id="jsonPreview"></div>
+
+  <footer class="note">
+    __FOOTER__
+  </footer>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   DATA
+   ══════════════════════════════════════════════════════════════════ */
+
+// family + display metadata for every rendered clip (BrokenDev: from tools/render_sfx_wav.py)
+const CLIPS = /*__CLIPS__*/;
+
+// one event per trigger call site of src/game/main.fab (BrokenDev: generated, see the How this works tab)
+const EVENTS = /*__EVENTS__*/;
+
+
+const AUDIO_DATA = /*__AUDIO_DATA__*/;
+
+/* ══════════════════════════════════════════════════════════════════
+   AUDIO ENGINE
+   ══════════════════════════════════════════════════════════════════ */
+const audioBuffers = {}; // clipId -> decoded AudioBuffer
+let actx = null;
+let currentSource = null;
+let currentBtns = [];
+
+function getActx() {
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  return actx;
+}
+
+function b64ToArrayBuffer(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+
+async function ensureDecoded(clipId) {
+  if (audioBuffers[clipId]) return audioBuffers[clipId];
+  const ctx = getActx();
+  const buf = await ctx.decodeAudioData(b64ToArrayBuffer(AUDIO_DATA[clipId]));
+  audioBuffers[clipId] = buf;
+  return buf;
+}
+
+function stopCurrent() {
+  if (currentSource) {
+    try { currentSource.stop(); } catch (e) {}
+    currentSource = null;
+  }
+  currentBtns.forEach(b => b.classList.remove("playing"));
+  currentBtns = [];
+}
+
+async function playClip(clipId, btns) {
+  if (!AUDIO_DATA[clipId]) return;
+  const wasPlayingThis = currentBtns.length && currentBtns[0].dataset.clip === clipId;
+  stopCurrent();
+  if (wasPlayingThis) return; // click-to-toggle-off
+  const ctx = getActx();
+  if (ctx.state === "suspended") await ctx.resume();
+  const buf = await ensureDecoded(clipId);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.onended = () => { if (currentSource === src) stopCurrent(); };
+  src.start();
+  currentSource = src;
+  currentBtns = btns || [];
+  currentBtns.forEach(b => b.classList.add("playing"));
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   STATE
+   ══════════════════════════════════════════════════════════════════ */
+const assignments = {}; // eventId -> clipId ("" = unbound), current working state
+EVENTS.forEach(ev => { assignments[ev.id] = ev.current || ""; });
+
+function clipDurSec(clipId) {
+  const buf = audioBuffers[clipId];
+  return buf ? buf.duration : null;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   RENDER: events panel
+   ══════════════════════════════════════════════════════════════════ */
+const CATEGORY_ORDER = /*__CATEGORY_ORDER__*/;
+
+function clipOptionLabel(clipId) {
+  const c = CLIPS[clipId];
+  return (c.fam === "sq2" ? "sq2:" : "noise:") + c.label;
+}
+
+function buildReassignSelect(ev) {
+  const sel = document.createElement("select");
+  sel.className = "reassign";
+  sel.dataset.event = ev.id;
+  const noneOpt = document.createElement("option");
+  noneOpt.value = "";
+  noneOpt.textContent = "(no sfx)";
+  sel.appendChild(noneOpt);
+  const groups = { sq2: document.createElement("optgroup"), noise: document.createElement("optgroup") };
+  groups.sq2.label = "square2 (tonal)";
+  groups.noise.label = "noise (percussive)";
+  Object.keys(CLIPS).forEach(clipId => {
+    const opt = document.createElement("option");
+    opt.value = clipId;
+    opt.textContent = CLIPS[clipId].label;
+    groups[CLIPS[clipId].fam].appendChild(opt);
+  });
+  sel.appendChild(groups.sq2);
+  sel.appendChild(groups.noise);
+  sel.value = assignments[ev.id] || "";
+  sel.addEventListener("change", () => {
+    assignments[ev.id] = sel.value;
+    sel.classList.toggle("changed", sel.value !== (ev.current || ""));
+    if (sel.value) playClip(sel.value, []);
+    refreshStats();
+    renderLibraryUsage();
+  });
+  return sel;
+}
+
+function renderEvents() {
+  const root = document.getElementById("eventGroups");
+  root.innerHTML = "";
+  const q = (document.getElementById("search").value || "").toLowerCase();
+  const filter = document.querySelector('#panel-events .chip.on')?.dataset.filter || "all";
+
+  const byCategory = {};
+  EVENTS.forEach(ev => {
+    const hay = (ev.name + " " + ev.desc + " " + ev.loc).toLowerCase();
+    if (q && !hay.includes(q)) return;
+    if (filter === "gap" && assignments[ev.id]) return;
+    if (filter === "changed" && assignments[ev.id] === (ev.current || "")) return;
+    (byCategory[ev.category] = byCategory[ev.category] || []).push(ev);
+  });
+
+  let shown = 0;
+  CATEGORY_ORDER.forEach(cat => {
+    const list = byCategory[cat];
+    if (!list || !list.length) return;
+    shown += list.length;
+    const g = document.createElement("div");
+    g.className = "group";
+    const h2 = document.createElement("h2");
+    h2.innerHTML = cat + ' <span class="count">(' + list.length + ')</span>';
+    g.appendChild(h2);
+    list.forEach(ev => g.appendChild(buildEventRow(ev)));
+    root.appendChild(g);
+  });
+  document.getElementById("tabEventsN").textContent = "(" + shown + ")";
+}
+
+function buildEventRow(ev) {
+  const row = document.createElement("div");
+  const cur = assignments[ev.id];
+  row.className = "evrow" + (!cur ? " gap" : "");
+
+  const info = document.createElement("div");
+  info.className = "evinfo";
+  const nameEl = document.createElement("div");
+  nameEl.className = "evname";
+  nameEl.textContent = ev.name;
+  const descEl = document.createElement("div");
+  descEl.className = "evdesc";
+  descEl.title = ev.desc;
+  descEl.textContent = ev.desc;
+  const locEl = document.createElement("div");
+  locEl.className = "evloc";
+  locEl.textContent = ev.loc;
+  info.appendChild(nameEl);
+  info.appendChild(descEl);
+  info.appendChild(locEl);
+  row.appendChild(info);
+
+  const badge = document.createElement("div");
+  if (!cur) {
+    badge.className = "badge unbound";
+    badge.textContent = "no sfx";
+  } else {
+    badge.className = "clipname";
+    const fam = document.createElement("span");
+    fam.className = "fam " + CLIPS[cur].fam;
+    fam.textContent = CLIPS[cur].fam;
+    badge.appendChild(fam);
+    badge.appendChild(document.createTextNode(CLIPS[cur].label));
+  }
+  row.appendChild(badge);
+
+  const playBtn = document.createElement("button");
+  playBtn.className = "playbtn";
+  playBtn.innerHTML = "&#9654;";
+  playBtn.disabled = !cur;
+  playBtn.dataset.clip = cur || "";
+  playBtn.title = cur ? "play " + CLIPS[cur].label : "no clip bound";
+  playBtn.addEventListener("click", () => {
+    const clipId = assignments[ev.id];
+    if (clipId) playClip(clipId, [playBtn]);
+  });
+  row.appendChild(playBtn);
+
+  const sel = buildReassignSelect(ev);
+  sel.addEventListener("change", () => {
+    playBtn.disabled = !sel.value;
+    playBtn.dataset.clip = sel.value;
+    playBtn.title = sel.value ? "play " + CLIPS[sel.value].label : "no clip bound";
+    row.classList.toggle("gap", !sel.value);
+    const b = row.querySelector(".badge, .clipname");
+    // re-render badge in place
+    const newBadge = document.createElement(sel.value ? "div" : "div");
+    if (!sel.value) {
+      newBadge.className = "badge unbound";
+      newBadge.textContent = "no sfx";
+    } else {
+      newBadge.className = "clipname";
+      const fam = document.createElement("span");
+      fam.className = "fam " + CLIPS[sel.value].fam;
+      fam.textContent = CLIPS[sel.value].fam;
+      newBadge.appendChild(fam);
+      newBadge.appendChild(document.createTextNode(CLIPS[sel.value].label));
+    }
+    b.replaceWith(newBadge);
+  });
+  row.appendChild(sel);
+
+  return row;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   RENDER: library panel
+   ══════════════════════════════════════════════════════════════════ */
+function usageFor(clipId) {
+  return EVENTS.filter(ev => assignments[ev.id] === clipId);
+}
+
+function randomWaveBars(seed, n) {
+  // deterministic pseudo-random bar heights per clip, purely decorative
+  let s = seed;
+  const bars = [];
+  for (let i = 0; i < n; i++) {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    bars.push(0.25 + (s % 100) / 100 * 0.75);
+  }
+  return bars;
+}
+
+function renderLibrary() {
+  const grid = document.getElementById("libGrid");
+  grid.innerHTML = "";
+  const q = (document.getElementById("libSearch").value || "").toLowerCase();
+  const filter = document.querySelector('#panel-library .chip.on')?.dataset.libfilter || "all";
+  let seed = 1;
+  Object.keys(CLIPS).forEach(clipId => {
+    seed++;
+    const c = CLIPS[clipId];
+    if (filter !== "all" && c.fam !== filter) return;
+    if (q && !clipId.toLowerCase().includes(q) && !c.label.includes(q)) return;
+
+    const card = document.createElement("div");
+    card.className = "clipcard " + c.fam;
+    card.dataset.clip = clipId;
+
+    const row1 = document.createElement("div");
+    row1.className = "row1";
+    const playBtn = document.createElement("button");
+    playBtn.className = "playbtn";
+    playBtn.innerHTML = "&#9654;";
+    playBtn.addEventListener("click", () => playClip(clipId, [playBtn, card]));
+    const nameEl = document.createElement("div");
+    nameEl.className = "name";
+    nameEl.innerHTML = '<span class="fam ' + c.fam + '">' + c.fam + "</span>" + c.label;
+    const durEl = document.createElement("div");
+    durEl.className = "dur";
+    durEl.textContent = "…";
+    row1.appendChild(playBtn);
+    row1.appendChild(nameEl);
+    row1.appendChild(durEl);
+    card.appendChild(row1);
+
+    const wave = document.createElement("div");
+    wave.className = "wave";
+    randomWaveBars(seed, 28).forEach(h => {
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      bar.style.height = Math.round(h * 100) + "%";
+      wave.appendChild(bar);
+    });
+    card.appendChild(wave);
+
+    const used = document.createElement("div");
+    used.className = "used";
+    used.dataset.usedFor = clipId;
+    card.appendChild(used);
+
+    grid.appendChild(card);
+
+    ensureDecoded(clipId).then(buf => { durEl.textContent = buf.duration.toFixed(2) + "s"; });
+  });
+  renderLibraryUsage();
+}
+
+function renderLibraryUsage() {
+  document.querySelectorAll("[data-used-for]").forEach(el => {
+    const clipId = el.dataset.usedFor;
+    const uses = usageFor(clipId);
+    el.innerHTML = "";
+    if (!uses.length) {
+      const s = document.createElement("span");
+      s.className = "none";
+      s.textContent = "not currently used";
+      el.appendChild(s);
+    } else {
+      uses.forEach(u => {
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = u.name;
+        el.appendChild(tag);
+      });
+    }
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   STATS + SAVE/EXPORT
+   ══════════════════════════════════════════════════════════════════ */
+function refreshStats() {
+  const total = EVENTS.length;
+  const bound = EVENTS.filter(ev => assignments[ev.id]).length;
+  const changed = EVENTS.filter(ev => assignments[ev.id] !== (ev.current || "")).length;
+  document.getElementById("statTotal").textContent = total;
+  document.getElementById("statBound").textContent = bound;
+  document.getElementById("statGap").textContent = total - bound;
+  document.getElementById("statChanged").textContent = changed;
+  document.getElementById("saveMsg").innerHTML = changed
+    ? "<b>" + changed + "</b> event" + (changed === 1 ? "" : "s") + " changed from the current build &mdash; export when ready."
+    : "No changes yet &mdash; browse and reassign above.";
+}
+
+function buildConfigJson() {
+  const out = { generated: "vrun-sfx-configurator", events: {} };
+  EVENTS.forEach(ev => {
+    out.events[ev.id] = {
+      name: ev.name,
+      loc: ev.loc,
+      previous: ev.current || null,
+      assigned: assignments[ev.id] || null,
+      changed: assignments[ev.id] !== (ev.current || ""),
+    };
+  });
+  return JSON.stringify(out, null, 2);
+}
+
+document.getElementById("btnPreview").addEventListener("click", () => {
+  const el = document.getElementById("jsonPreview");
+  el.textContent = buildConfigJson();
+  el.classList.toggle("show");
+});
+
+document.getElementById("btnCopy").addEventListener("click", async () => {
+  const text = buildConfigJson();
+  try {
+    await navigator.clipboard.writeText(text);
+    const btn = document.getElementById("btnCopy");
+    const old = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => { btn.textContent = old; }, 1400);
+  } catch (e) {
+    const el = document.getElementById("jsonPreview");
+    el.textContent = text;
+    el.classList.add("show");
+  }
+});
+
+document.getElementById("btnDownload").addEventListener("click", () => {
+  const blob = new Blob([buildConfigJson()], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "vrun-sfx-config.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   WIRING
+   ══════════════════════════════════════════════════════════════════ */
+document.querySelectorAll(".tab").forEach(t => {
+  t.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
+    t.classList.add("active");
+    document.getElementById("panel-" + t.dataset.tab).classList.add("active");
+  });
+});
+
+document.querySelectorAll("#panel-events .chip").forEach(c => {
+  c.addEventListener("click", () => {
+    document.querySelectorAll("#panel-events .chip").forEach(x => x.classList.remove("on"));
+    c.classList.add("on");
+    renderEvents();
+  });
+});
+document.querySelectorAll("#panel-library .chip").forEach(c => {
+  c.addEventListener("click", () => {
+    document.querySelectorAll("#panel-library .chip").forEach(x => x.classList.remove("on"));
+    c.classList.add("on");
+    renderLibrary();
+  });
+});
+document.getElementById("search").addEventListener("input", renderEvents);
+document.getElementById("libSearch").addEventListener("input", renderLibrary);
+
+renderEvents();
+renderLibrary();
+refreshStats();
+</script>
+
+</body>
+</html>

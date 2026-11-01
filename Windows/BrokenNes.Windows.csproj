@@ -28,6 +28,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- the standalone synth (Config > Synthesizer Mode > Restart as Standalone Synth) hosts the FL Studio plugin with this -->
+    <ProjectReference Include="..\Plugin\BrokenNes.SynthHost\BrokenNes.SynthHost.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Exclude Blazor-specific files from the NesEmulator folder (now local) -->
     <Compile Remove="NesEmulator\board\Emulator*.cs" />
     <Compile Remove="NesEmulator\board\NesController.cs" />
@@ -38,6 +43,10 @@
     <Compile Remove="NesEmulator\corruptor\GlitchHarvester.cs" />
     <Compile Remove="NesEmulator\StatusService.cs" />
     <Compile Remove="NesEmulator\clocks\**" />
+    <!-- Web/WebLite-exclusive APU_WF/APU_MNES builds (pure emulation, no NAudio/MeltySynth -
+         see the header comment in each file). Desktop keeps the native-backend versions below. -->
+    <Compile Remove="NesEmulator\apus\APU_WF.Web.cs" />
+    <Compile Remove="NesEmulator\apus\APU_MNES.Web.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -53,6 +62,11 @@
   <ItemGroup>
     <!-- Embed default ROM -->
     <EmbeddedResource Include="Resources\test.nes" />
+    <!-- the WideMess test cartridge (WideMess/testcart): Console > WideMess test cartridge -->
+    <EmbeddedResource Include="..\WideMess\testroms\bin\widemess-testcart.wms" Link="Resources\widemess-testcart.wms" LogicalName="widemess-testcart.wms" />
+    <!-- the BrokenDev debug pages, served by the LAN share (Emulator > Debug Windows > Share Read-Only Pages on the LAN; D8) -->
+    <EmbeddedResource Include="..\BrokenDev\web\debugger.html" Link="Resources\debugpages\debugger.html" LogicalName="debugpages/debugger.html" />
+    <EmbeddedResource Include="..\BrokenDev\web\viewers.html" Link="Resources\debugpages\viewers.html" LogicalName="debugpages/viewers.html" />
   </ItemGroup>
 
   <ItemGroup>
@@ -94,10 +108,43 @@
     </None>
   </ItemGroup>
 
+  <!-- Third-party notices ship beside the program (root ledger, one per console family, and the license): the ported cores (Z80, 68000, ymfm, emu2413, BizHawk mappers) are under licenses that ask for it.
+       UAT\entrypoints\notices-check.ps1 verifies a published folder holds them. -->
+  <ItemGroup>
+    <None Include="..\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+    <None Include="..\LICENSE.txt" Link="LICENSE.txt"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+    <None Include="NesEmulator\gb\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES-gb.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+    <None Include="NesEmulator\snes\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES-snes.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+    <None Include="NesEmulator\sega\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES-sega.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+  </ItemGroup>
+
+  <!-- WideMess milestone 6: the SNES games' enhancement profiles (docs/projects/widemess-spec.md 6.2) ship beside the program, in WideMess\profiles. -->
+  <ItemGroup>
+    <None Include="..\WideMess\profiles\*.json" Link="WideMess\profiles\%(Filename)%(Extension)"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+  </ItemGroup>
+
   <ItemGroup>
     <Content Include="BrokenNes.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <!-- The FL Studio plugin (BrokenNes 2 as an instrument) rides along as Plugin\BrokenNes2_x64.dll: Config > Synthesizer Mode installs it
+       into FL Studio, and the standalone synth hosts it. It is a Native AOT build that needs the MSVC tools, so it is built apart
+       (Plugin\build-dist.ps1 puts it in Plugin\dist); without it this build simply has no plugin to offer. -->
+  <PropertyGroup>
+    <PluginDll>$(MSBuildThisFileDirectory)..\Plugin\dist\BrokenNes2_x64.dll</PluginDll>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(PluginDll)')">
+    <None Include="$(PluginDll)" Link="Plugin\BrokenNes2_x64.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <!-- a real file beside the exe, not bundled into it: Install to FL Studio copies it, and the synth loads it from disk -->
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
+  </ItemGroup>
+  <Target Name="NotePluginDll" BeforeTargets="Build" Condition="!Exists('$(PluginDll)')">
+    <Message Importance="high" Text="BrokenNes2 plugin DLL not found ($(PluginDll)): this build has no FL Studio plugin to install and no standalone synth. Run Plugin\build-dist.ps1 first to bundle it." />
+  </Target>
 
 </Project>

@@ -1,0 +1,415 @@
+// BrokenNes.FruityHost: the plugin test bench.
+//
+//   selftest <plugin.dll> [--rom game.nes] [--only id,id] [--json report.json] [--md report.md]   run the certification suite (--rom or BROKENNES_TEST_ROM enables the ROM-mode tests)
+//   render   <plugin.dll> <fixture.json|name> <out.wav> [--rate 44100] [--block 256] [--chip FIX]
+//   fixture  <name> <out.json>                                                    write a built-in fixture (for the FL project generator)
+//   analyze  <audio.wav> <fixture.json> [--json out.json] [--offset-ms 0]         certify audio rendered by FL Studio against a fixture
+//   track    <audio.wav> <fromMs> <toMs> [--ref 440] [--window 40] [--hop 10]    print the pitch track (Hz and cents from --ref)
+//   regtrace <plugin.dll> <fixture.json> <channel 0-3> [--fromMs a --toMs b]      print every change of a channel's period register (dev aid)
+//   state    <plugin.dll> <out.bin> [--channel 1-5]                                               write the plugin's default saved-state blob (for the FL project generator)
+//   list                                                                          list built-in fixtures
+// Exit code 0 = everything passed (warnings allowed), 1 = a check failed, 2 = bad usage.
+using System.Text;
+using System.Text.Json;
+using BrokenNes.FruityHost;
+
+static string? Opt(string[] a, string name) { int i = Array.IndexOf(a, name); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
+
+if (args.Length == 0) { Console.Error.WriteLine("usage: selftest|render|fixture|analyze|list (see the header of Program.cs)"); return 2; }
+HostLogGuard.Install();          // the plugin's host log goes to a scratch file for the whole run, never to the user's Documents (HostLogGuard.cs; the selftest's `hostlog` check holds it)
+
+switch (args[0])
+{
+    case "logprobe":
+        SelfTest.LogProbe(args[1]);
+        return 0;
+
+    case "inject-test":
+        return InjectChecks.Main(args);
+
+    case "inject-hash":
+        return InjectNeutral.Main(args);
+
+    case "inject-probe":
+        return InjectProbe.Main(args);
+
+    case "imodel-test":
+        return ImodelChecks.Main(args);
+
+    case "preset-test":
+        return PresetChecks.Main(args);
+
+    case "midi-test":
+        return MidiChecks.Main(args);
+
+    case "capture-test":
+        return CaptureChecks.Main(args);
+
+    case "record-test":
+        return RecordChecks.Cli(args);
+
+    case "record-dump":
+        return RecordChecks.Dump(args);
+
+    case "nesrec-survey":
+        return NesRecSurvey.Main(args);
+
+    case "nesrec-test":
+        return NesRecChecks.Cli(args);
+
+    case "nesrec-dump":
+        return NesRecChecks.Dump(args);
+
+    case "midi-trace":
+        return MidiChecks.Trace(args);
+
+    case "song-compat":
+        return SelfTest.SongCompat(args);
+
+    case "alloc-probe":
+        return PresetChecks.AllocProbe(args);
+
+    case "alloc-probe-loop":
+        return PresetChecks.AllocProbeLoop(args);
+
+    case "alloc-gc-probe":
+        return SelfTest.AllocGcProbe(args);
+
+    case "imodel-fields":
+        return ImodelChecks.PrintFields();
+
+    case "imodel-real":
+        foreach (var line in ImodelGolden.Real()) Console.WriteLine(line);
+        return 0;
+
+    case "imodel-golden":
+        // prints the hashes of what the existing samplers play for the made-up snapshots (Imodel.Golden.cs): record them before changing a sampler, compare after
+        foreach (var (name, hash, rms) in ImodelGolden.Compute()) Console.WriteLine($"{name,-18} {hash}  rms {rms:0.00000}");
+        return 0;
+
+    case "track":
+    {
+        var (data, ch, rate) = Audio.ReadWav(args[1]);
+        var mono = Audio.Mono(data, ch);
+        double refHz = double.Parse(Opt(args, "--ref") ?? "440"), win = double.Parse(Opt(args, "--window") ?? "40"), hop = double.Parse(Opt(args, "--hop") ?? "10");
+        foreach (var (ms, hz) in Audio.Track(mono, rate, double.Parse(args[2]), double.Parse(args[3]), win, hop))
+            Console.WriteLine($"{ms,8:0.0} ms  {hz,9:0.00} Hz  {(double.IsNaN(hz) ? double.NaN : Audio.Cents(hz, refHz)),8:+0.0;-0.0} cents");
+        return 0;
+    }
+
+    case "regtrace":
+    {
+        var lib = new PluginLibrary(args[1]);
+        var scenario = Scenario.Load(args[2]);
+        int ch = int.Parse(args[3]);
+        double fromMs = double.Parse(Opt(args, "--fromMs") ?? "0"), toMs = double.Parse(Opt(args, "--toMs") ?? "1e9");
+        using var plugin = lib.Create();
+        long last = -1;
+        var mixer = new Mixer { SampleRate = 44100, BlockSize = 64, AfterBlock = sample =>
+        {
+            long period = plugin.Test(1, ch);
+            double ms = sample * 1000.0 / 44100;
+            if (period != last && ms >= fromMs && ms <= toMs) Console.WriteLine($"{ms,8:0.0} ms  period {period,4}  hi {(period >> 8) & 7}  $400{ch * 4 + 3:X}={plugin.Test(6, ch * 4 + 3):X2}");
+            last = period;
+        } };
+        mixer.Run(plugin, scenario);
+        return 0;
+    }
+
+    case "state":
+    {
+        using var plugin = new PluginLibrary(args[1]).Create();
+        if (Opt(args, "--channel") is { } sc) plugin.SetParam(6, int.Parse(sc));   // 1 pulse 1, 2 pulse 2, 3 triangle, 4 noise, 5 mix
+        File.WriteAllBytes(args[2], plugin.SaveState());
+        Console.WriteLine($"wrote {args[2]} ({new FileInfo(args[2]).Length} bytes)");
+        return 0;
+    }
+
+    case "editor-shot":
+    {
+        // editor-shot <plugin.dll> <out.bmp> [--mode rom|direct] [--rom game.nes] [--seconds 3] [--console 0-2] [--chip QN]
+        //             [--channel 1-5] [--emulator 0-8] [--instances N] [--open chip|game|channel|emulator|inputs|instrument|duty] [--runaway] [--sampler]
+        //             [--record seconds [--live] [--relink-shots prefix]]
+        // opens the editor the way FL would, lets the game run a little, and captures the window
+        var lib = new PluginLibrary(args[1]);
+        string? rom = Opt(args, "--rom");
+        // the About window: shown only with --about (the plugin's memory of having shown it lives in a temp file here, not the registry)
+        string aboutFile = Path.Combine(Path.GetTempPath(), $"bn2_shot_about_{Environment.ProcessId}.txt");
+        if (args.Contains("--about")) File.Delete(aboutFile); else File.WriteAllText(aboutFile, "AboutRevisionSeen=99\n");
+        Environment.SetEnvironmentVariable("BROKENNES_PREFS_FILE", aboutFile);
+        var extras = new List<PluginInstance>();
+        for (int i = 1; i < int.Parse(Opt(args, "--instances") ?? "1"); i++) extras.Add(lib.Create());   // other Auto instances: the channel strip shows them
+        using var plugin = lib.Create();
+        void SetByName(int param, string? id) { if (id == null) return; for (int i = 0; ; i++) { var n = plugin.GetName(BrokenNes.Fruity.Fpn.ParamValue, param, i); if (n is "?" or "") throw new ArgumentException($"no value {id} for parameter {param}"); if (n == id) { plugin.SetParam(param, i); return; } } }
+        plugin.Dispatcher(BrokenNes.Fruity.Fpd.SetSampleRate, 0, 48000);
+        if (Opt(args, "--emulator") is { } em) plugin.SetParam(9, int.Parse(em));
+        if (Opt(args, "--channel") is { } chn) plugin.SetParam(6, int.Parse(chn));
+        if (Opt(args, "--console") is { } cn) plugin.SetParam(10, int.Parse(cn));
+        SetByName(0, Opt(args, "--chip"));
+        if (Opt(args, "--mode") == "rom" || rom != null)
+        {
+            plugin.SetParam(8, 1);
+            if (rom != null)
+            {
+                var st = plugin.SaveState();
+                var keep = st.Take(12 + 4 * plugin.NumParams).ToList(); var path = System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(rom));
+                keep.AddRange(BitConverter.GetBytes(path.Length)); keep.AddRange(path);
+                plugin.LoadState(keep.ToArray());
+            }
+        }
+        nint parent = Win32Host.CreateParent();
+        plugin.ShowEditor(parent);
+        var buf = new float[1024];
+        if (args.Contains("--runaway") || args.Contains("--sampler")) { plugin.Test(47, 0, 1); if (args.Contains("--sampler")) plugin.Test(46); }
+        var until = Environment.TickCount64 + 600;
+        while (plugin.Test(9) != 1 && Opt(args, "--mode") == "rom" && Environment.TickCount64 < until + 20000) System.Threading.Thread.Sleep(10);
+        unsafe { fixed (float* f = buf) for (int b = 0; b < (int)(double.Parse(Opt(args, "--seconds") ?? "3") * 48000 / 512); b++) { plugin.NewTick(); plugin.GenRender(f, 512); if (b % 4 == 0) Win32Host.Pump(8); } }
+        Win32Host.Pump(300);
+        if (Opt(args, "--open") is { } open)
+        {
+            int id = open switch { "chip" => 4, "game" => 7, "channel" => 9, "emulator" => 1, "inputs" => 80, "instrument" => 90, "duty" => 91, _ => throw new ArgumentException("--open chip|game|channel|emulator|inputs|instrument|duty") };
+            long r = plugin.Test(30, id);
+            Win32Host.Click(plugin.EditorHandle, (int)(r & 0xFFFF) + (int)((r >> 32) & 0xFFFF) / 2, (int)((r >> 16) & 0xFFFF) + (int)((r >> 48) & 0xFFFF) / 2);
+            Win32Host.Pump(100);
+        }
+        // the tabs: --demo installs the demonstration models, --freeze switches Instrument Runaway on (ROM mode), --tab instruments|presets opens a tab,
+        // --click id,id,... clicks controls by id, --chars text types into the focused field
+        plugin.Host.EditorResized = () => Win32Host.FitFrame(parent, plugin.EditorHandle);
+        if (args.Contains("--demo")) plugin.Test(400 + 3, 0, 1);
+        if (args.Contains("--freeze")) { plugin.Test(47, 0, 1); Win32Host.Pump(150); }
+        void ClickId(int cid) { long r = plugin.Test(30, cid); if (r != 0) { Win32Host.Click(plugin.EditorHandle, (int)(r & 0xFFFF) + (int)((r >> 32) & 0xFFFF) / 2, (int)((r >> 16) & 0xFFFF) + (int)((r >> 48) & 0xFFFF) / 2); Win32Host.Pump(100); } else Console.Error.WriteLine($"control {cid} is not on screen"); }
+        if (Opt(args, "--tab") is { } tabName) ClickId(1000 + (tabName.StartsWith("i", StringComparison.OrdinalIgnoreCase) ? 1 : tabName.StartsWith("p", StringComparison.OrdinalIgnoreCase) ? 2 : 0));
+        if (Opt(args, "--click") is { } clicks) foreach (var cid in clicks.Split(',')) ClickId(int.Parse(cid));
+        // Test MIDI export (round 7): --midi song.mid opens the window and the file (as the Open button would), plays it a few seconds; --midi-close shows the editor behind it
+        if (Opt(args, "--midi") is { } midiFile)
+        {
+            ClickId(2000);
+            unsafe { fixed (char* c = Path.GetFullPath(midiFile) + "\0") plugin.Test(621, 0, (nint)c); }
+            ClickId(2002);
+            var stopAt = Environment.TickCount64 + 30000;
+            unsafe { fixed (float* f = buf) while (Environment.TickCount64 < stopAt && !(plugin.Test(601) == 0 && plugin.Test(602) == 1)) { plugin.NewTick(); plugin.GenRender(f, 512); Win32Host.Pump(8); } }
+            unsafe { fixed (float* f = buf) for (int b = 0; b < 48000 * 3 / 512; b++) { plugin.NewTick(); plugin.GenRender(f, 512); if (b % 4 == 0) Win32Host.Pump(8); } }
+            if (args.Contains("--midi-close")) ClickId(2001);
+            Win32Host.Pump(200);
+        }
+        // Record the music (round 8): --record seconds opens the window, records that long (the game running), stops, waits for the transcription; --live switches the live MIDI out on first
+        if (Opt(args, "--record") is { } recSeconds)
+        {
+            // (the recording's presets go into a scratch library, never the user's)
+            Environment.SetEnvironmentVariable("BROKENNES_PRESETS_DIR", Path.Combine(Path.GetTempPath(), "bn2_shot_presets_" + Environment.ProcessId));
+            ClickId(2020);
+            if (args.Contains("--live")) { ClickId(2031); var primedBy = Environment.TickCount64 + 20000; while (plugin.Test(681) == 3 && Environment.TickCount64 < primedBy) Win32Host.Pump(20); }
+            ClickId(2022);
+            unsafe { fixed (float* f = buf) for (int b = 0; b < (int)(double.Parse(recSeconds) * 48000 / 512); b++) { plugin.NewTick(); plugin.GenRender(f, 512); if (b % 4 == 0) Win32Host.Pump(8); } }
+            ClickId(2023);
+            var doneBy = Environment.TickCount64 + 120000;
+            unsafe { fixed (float* f = buf) while (plugin.Test(642) != 4 && Environment.TickCount64 < doneBy) { plugin.NewTick(); plugin.GenRender(f, 512); Win32Host.Pump(8); } }
+            Win32Host.Pump(300);
+            Console.WriteLine($"recording state {plugin.Test(642)}");
+        }
+        // Capture from FL (round 9): --capture opens the Test MIDI export window, arms a take, lets the FL-faithful host (Capture.FlHost.cs) play the capture checks' song on this instance and three
+        // more (Pulse 1, Pulse 2, Triangle, Noise on emulator #7, Direct mode), and waits until Test MIDI export plays it; [--capture-root 0] plays it as imported channels (root MIDI note 0)
+        var captureExtras = new List<PluginInstance>();
+        if (args.Contains("--capture"))
+        {
+            var song = CaptureChecks.Song(root: int.Parse(Opt(args, "--capture-root") ?? "60"));
+            using var run = new FlRun { Rate = 48000 };
+            run.Create(plugin, song);
+            plugin.SetParam(9, 7); plugin.SetParam(6, 1);
+            var rackx = new List<PluginInstance> { plugin };
+            for (int c = 1; c < 4; c++) { var q = lib.Create(); run.Create(q, song); q.SetParam(9, 7); q.SetParam(6, c + 1); rackx.Add(q); captureExtras.Add(q); }
+            Win32Host.Pump(100);
+            ClickId(2000);
+            ClickId(2120);
+            run.Play(rackx, song);
+            var doneBy = Environment.TickCount64 + 60000;
+            while (plugin.Test(842) != 4 && Environment.TickCount64 < doneBy) Win32Host.Pump(20);
+            unsafe { fixed (float* f = buf) while (Environment.TickCount64 < doneBy && !(plugin.Test(601) == 0 && plugin.Test(602) == 1)) { foreach (var q in rackx) { q.NewTick(); q.GenRender(f, 512); } Win32Host.Pump(8); } }
+            unsafe { fixed (float* f = buf) for (int b = 0; b < 48000 * 2 / 512; b++) { foreach (var q in rackx) { q.NewTick(); q.GenRender(f, 512); } if (b % 4 == 0) Win32Host.Pump(8); } }
+            Win32Host.Pump(300);
+            Console.WriteLine($"capture state {plugin.Test(842)}, song {plugin.Test(602)}");
+        }
+        if (Opt(args, "--chars") is { } chars) { Win32Host.Text(plugin.EditorHandle, chars); Win32Host.Pump(100); }
+        // relink (2026-10-18): --relink-shots <prefix> (after --record): two more instances made while the tracks are on offer, one joined, one unlinked (as Unlink leaves it); their editors are
+        // captured as <prefix>-joined.bmp and <prefix>-unlinked.bmp, and the Record window above counts them
+        var relinkExtras = new List<PluginInstance>();
+        if (Opt(args, "--relink-shots") is { } relinkPrefix)
+        {
+            var joined = lib.Create(); relinkExtras.Add(joined); joined.Dispatcher(BrokenNes.Fruity.Fpd.SetSampleRate, 0, 48000);
+            var unlinked = lib.Create(); relinkExtras.Add(unlinked); unlinked.Dispatcher(BrokenNes.Fruity.Fpd.SetSampleRate, 0, 48000); unlinked.SetParam(9, 5); unlinked.Test(722);   // (on emulator #5: a configured channel on the game's emulator counts as the recording's own)
+            foreach (var (q, suffix) in new[] { (joined, "joined"), (unlinked, "unlinked") })
+            {
+                nint qp = Win32Host.CreateParent();
+                q.ShowEditor(qp);
+                Win32Host.Pump(300);
+                Win32Host.CaptureWindow(qp, q.EditorHandle, 920, 670, relinkPrefix + "-" + suffix + ".bmp");
+                q.HideEditor();
+                Win32Host.DestroyParent(qp);
+                Console.WriteLine($"wrote {relinkPrefix}-{suffix}.bmp");
+            }
+            Win32Host.Pump(300);
+        }
+        Win32Host.CaptureWindow(parent, plugin.EditorHandle, 920, 670, args[2]);
+        foreach (var q in relinkExtras) q.Destroy();
+        foreach (var q in captureExtras) q.Destroy();
+        if (Opt(args, "--hold") is { } hold)
+        {
+            // keep the window open and the game running so a screen grab from outside can be compared with the capture
+            var stop = Environment.TickCount64 + (long)(double.Parse(hold) * 1000);
+            unsafe { fixed (float* f = buf) while (Environment.TickCount64 < stop) { plugin.NewTick(); plugin.GenRender(f, 512); Win32Host.Pump(8); } }
+        }
+        plugin.HideEditor();
+        Win32Host.DestroyParent(parent);
+        foreach (var e in extras) e.Destroy();
+        Console.WriteLine($"wrote {args[2]}");
+        return 0;
+    }
+
+    case "bmpdiff":
+    {
+        // bmpdiff <a.bmp> <b.bmp> [--mask x,y,w,h]...: pixels that differ between two 32-bit editor-shot captures, outside the masked rectangles; prints the count and the bounding box.
+        // (How the Emulator tab is shown to be unchanged: the baseline capture from the unmodified plugin against the new one, the tab strip masked.)
+        byte[] A = File.ReadAllBytes(args[1]), B = File.ReadAllBytes(args[2]);
+        int wa = BitConverter.ToInt32(A, 18), ha = Math.Abs(BitConverter.ToInt32(A, 22)), wb = BitConverter.ToInt32(B, 18), hb = Math.Abs(BitConverter.ToInt32(B, 22));
+        if (wa != wb || ha != hb) { Console.WriteLine($"different sizes: {wa}x{ha} against {wb}x{hb}"); return 1; }
+        var masks = new List<int[]>();
+        for (int i = 3; i + 1 < args.Length; i++) if (args[i] == "--mask") masks.Add(args[i + 1].Split(',').Select(int.Parse).ToArray());
+        int diff = 0, masked = 0, x0 = int.MaxValue, y0 = int.MaxValue, x1 = -1, y1 = -1;
+        for (int y = 0; y < ha; y++)
+            for (int x = 0; x < wa; x++)
+            {
+                int o = 54 + (y * wa + x) * 4;
+                bool same = A[o] == B[o] && A[o + 1] == B[o + 1] && A[o + 2] == B[o + 2];
+                if (same) continue;
+                if (masks.Any(m => x >= m[0] && x < m[0] + m[2] && y >= m[1] && y < m[1] + m[3])) { masked++; continue; }
+                diff++; x0 = Math.Min(x0, x); y0 = Math.Min(y0, y); x1 = Math.Max(x1, x); y1 = Math.Max(y1, y);
+            }
+        Console.WriteLine($"{wa}x{ha}: {diff} pixels differ outside the masks ({masked} inside them)" + (diff > 0 ? $", bounding box x {x0}..{x1}, y {y0}..{y1}" : ""));
+        return diff == 0 ? 0 : 1;
+    }
+
+    case "editor-golden":
+    {
+        // editor-golden <plugin.dll>: prints the rectangle of every control the Emulator tab draws in its default state (NES, Direct, Pulse 1) as C# table rows,
+        // the golden table of SelfTest.Ui.cs (captured from the unmodified plugin, so the self-test can say the tab's layout did not move)
+        var lib = new PluginLibrary(args[1]);
+        Environment.SetEnvironmentVariable("BROKENNES_PREFS_FILE", Path.Combine(Path.GetTempPath(), $"bn2_golden_{Environment.ProcessId}.txt"));
+        File.WriteAllText(Environment.GetEnvironmentVariable("BROKENNES_PREFS_FILE")!, "AboutRevisionSeen=99\n");
+        using var plugin = lib.Create();
+        plugin.Dispatcher(BrokenNes.Fruity.Fpd.SetSampleRate, 0, 48000);
+        plugin.SetParam(6, 1);
+        nint parent = Win32Host.CreateParent();
+        plugin.ShowEditor(parent);
+        Win32Host.Pump(300);
+        for (int id = 1; id < 1000; id++)
+        {
+            long r = plugin.Test(30, id);
+            if (r != 0) Console.WriteLine($"        ({id}, {r & 0xFFFF}, {(r >> 16) & 0xFFFF}, {(r >> 32) & 0xFFFF}, {(r >> 48) & 0xFFFF}),");
+        }
+        plugin.HideEditor();
+        Win32Host.DestroyParent(parent);
+        return 0;
+    }
+
+    case "romtrace":
+    {
+        // romtrace <plugin.dll> <seconds> [--set param value --at sec] [--seq param:value,...]: per-second level and frame count of ROM mode (dev aid)
+        var lib = new PluginLibrary(args[1]);
+        using var plugin = lib.Create();
+        plugin.Dispatcher(BrokenNes.Fruity.Fpd.SetSampleRate, 0, 48000);
+        plugin.SetParam(8, 1);
+        var until = Environment.TickCount64 + 20000;
+        while (plugin.Test(9) != 1 && Environment.TickCount64 < until) System.Threading.Thread.Sleep(10);
+        var buf = new float[1024];
+        int secs = int.Parse(args[2]);
+        // --set <param> <value name> --at <sec>: change a parameter by value name at that second (e.g. --set 9 LOW --at 2)
+        int setParam = Opt(args, "--set") is { } sp ? int.Parse(sp) : -1;
+        string? setName = setParam >= 0 ? args[Array.IndexOf(args, "--set") + 2] : null;
+        int at = int.Parse(Opt(args, "--at") ?? "2");
+        unsafe { fixed (float* f = buf)
+            for (int q = 0; q < secs * 4; q++)
+            {
+                if (Opt(args, "--seq") is { } seq && q >= 4 && q % 4 == 0 && (q / 4 - 1) < seq.Split(',').Length)
+                {
+                    var (pp, nn) = (int.Parse(seq.Split(',')[q / 4 - 1].Split(':')[0]), seq.Split(',')[q / 4 - 1].Split(':')[1]);
+                    for (int i = 0; ; i++) { var nm = plugin.GetName(BrokenNes.Fruity.Fpn.ParamValue, pp, i); if (nm is "?" or "") break; if (nm == nn) { plugin.SetParam(pp, i); Console.WriteLine($"--- set {pp} = {nn}"); break; } }
+                }
+                if (setParam >= 0 && q == at * 4)
+                    for (int i = 0; ; i++) { var nm = plugin.GetName(BrokenNes.Fruity.Fpn.ParamValue, setParam, i); if (nm is "?" or "") break; if (nm == setName) { plugin.SetParam(setParam, i); Console.WriteLine($"--- set {setParam} = {setName}"); break; } }
+                double sum = 0; int n = 0;
+                for (int b = 0; b < 48000 / 4 / 512 + 1; b++) { plugin.NewTick(); plugin.GenRender(f, 512); for (int i = 0; i < 1024; i++) { sum += buf[i] * buf[i]; n++; } }
+                Console.WriteLine($"{(q + 1) * 0.25,6:0.00} s  rms {Math.Sqrt(sum / n):0.0000}  frames {plugin.Test(11)}  crashed {plugin.Test(12)}  console {plugin.Test(15)}");
+            } }
+        return 0;
+    }
+
+    case "makerom":
+    {
+        // makerom gb|gbtone|sfc <out>: the tiny ROMs the tests use (a Game Boy / SNES game to try ROM mode with; gbtone plays a tone)
+        File.WriteAllBytes(args[2], args[1] == "gb" ? SelfTest.MakeGbRom() : args[1] == "gbtone" ? SelfTest.MakeGbRom(tone: true) : SelfTest.MakeSnesRom());
+        Console.WriteLine($"wrote {args[2]}");
+        return 0;
+    }
+
+    case "list":
+        foreach (var n in Fixtures.Names) Console.WriteLine(n);
+        return 0;
+
+    case "fixture":
+    {
+        var s = Fixtures.ByName(args[1]) ?? throw new ArgumentException($"no built-in fixture '{args[1]}'");
+        s.Save(args[2]);
+        Console.WriteLine($"wrote {args[2]} ({s.Notes.Count} notes, {s.LengthBeats:0.##} beats at {s.Tempo} bpm)");
+        return 0;
+    }
+
+    case "selftest":
+    {
+        if (args.Length < 2 || !File.Exists(args[1])) { Console.Error.WriteLine($"plugin DLL not found: {(args.Length > 1 ? args[1] : "(none)")}"); return 2; }
+        var suite = new SelfTest(args[1], Opt(args, "--rom") ?? Environment.GetEnvironmentVariable("BROKENNES_TEST_ROM"));
+        Console.WriteLine($"BrokenNes.FruityHost selftest: {Path.GetFullPath(args[1])}");
+        var results = suite.Run(Opt(args, "--only"), r =>
+            Console.WriteLine($"  {(r.Outcome == Outcome.Pass ? "PASS" : r.Outcome == Outcome.Warn ? "WARN" : "FAIL")}  {r.Id,-12} {r.Name}  [{r.Ms / 1000:0.0}s]" +
+                              (r.Detail.Length > 0 ? $"\n        {r.Detail}" : "")));
+        int fail = results.Count(r => r.Outcome == Outcome.Fail), warn = results.Count(r => r.Outcome == Outcome.Warn);
+        Console.WriteLine($"{results.Count - fail - warn} passed, {warn} warnings, {fail} failed");
+        if (Opt(args, "--json") is { } jp)
+            File.WriteAllText(jp, JsonSerializer.Serialize(new { plugin = Path.GetFullPath(args[1]), when = DateTime.Now, passed = results.Count - fail - warn, warnings = warn, failed = fail, results },
+                new JsonSerializerOptions { WriteIndented = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } }));
+        if (Opt(args, "--md") is { } mp)
+        {
+            var sb = new StringBuilder($"# BrokenNes2 self-test\n\n`{Path.GetFileName(args[1])}`, {DateTime.Now:yyyy-MM-dd HH:mm}: **{results.Count - fail - warn} passed, {warn} warnings, {fail} failed**\n\n| | Test | Detail |\n|---|---|---|\n");
+            foreach (var r in results) sb.AppendLine($"| {r.Outcome} | {r.Name} | {r.Detail.Replace("|", "/")} |");
+            File.WriteAllText(mp, sb.ToString());
+        }
+        return fail == 0 ? 0 : 1;
+    }
+
+    case "render":
+    {
+        var lib = new PluginLibrary(args[1]);
+        var scenario = File.Exists(args[2]) ? Scenario.Load(args[2]) : Fixtures.ByName(args[2]) ?? throw new ArgumentException($"no fixture '{args[2]}'");
+        int rate = int.Parse(Opt(args, "--rate") ?? "44100"), block = int.Parse(Opt(args, "--block") ?? "256");
+        using var plugin = lib.Create();
+        if (Opt(args, "--chip") is { } chip)
+            for (int i = 0; ; i++) { var n = plugin.GetName(BrokenNes.Fruity.Fpn.ParamValue, 0, i); if (n is "?" or "") throw new ArgumentException($"no chip {chip}"); if (n == chip) { plugin.SetParam(0, i); break; } }
+        var mixer = new Mixer { SampleRate = rate, BlockSize = block };
+        var audio = mixer.Run(plugin, scenario);
+        Audio.WriteWav(args[3], audio, 2, rate);
+        Console.WriteLine($"wrote {args[3]}: {audio.Length / 2 / (double)rate:0.0} s at {rate} Hz");
+        return 0;
+    }
+
+    case "analyze":
+    {
+        var (data, ch, rate) = Audio.ReadWav(args[1]);
+        var scenario = Scenario.Load(args[2]);
+        var report = Certify.Analyze(Audio.Mono(data, ch), rate, scenario, double.Parse(Opt(args, "--offset-ms") ?? "0"));
+        Console.WriteLine(report.Text);
+        if (Opt(args, "--json") is { } jp) File.WriteAllText(jp, JsonSerializer.Serialize(report.Rows, new JsonSerializerOptions { WriteIndented = true }));
+        return report.Failed ? 1 : 0;
+    }
+}
+
+Console.Error.WriteLine($"unknown command '{args[0]}'");
+return 2;

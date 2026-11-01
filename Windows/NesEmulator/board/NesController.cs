@@ -7,6 +7,22 @@ namespace BrokenNes
     // Handles NES emulation lifecycle, ROM management, and core selection
     public class NesController
     {
+        /// <summary>BrokenNes 2: the console a ROM is for, as a short label for the ROM list.</summary>
+        public static string ConsoleTag(byte[] data, string name)
+        {
+            try
+            {
+                var rom = NesEmulator.Systems.RomDetect.Unwrap(data, name, out var inner);
+                var k = NesEmulator.Systems.RomDetect.Detect(rom, inner);
+                return k == null ? "uploaded" : NesEmulator.Systems.Consoles.DisplayName(k.Value);
+            }
+            catch { return "uploaded"; }
+        }
+
+        /// <summary>The message for an archive the browser build cannot open.</summary>
+        public static string ArchiveMessage(string name, string kind) =>
+            $"'{name}' is a {kind} archive, which the browser cannot open. Unpack it first (for example with 7-Zip) and import the ROM inside, or put the ROM in a .zip.";
+
         public async Task LoadRomUpload(Func<Task<UploadedRom[]>> getUploadedRoms, Action<string> setStatus, Action stateHasChanged, Func<string, Task> loadSelectedRom)
         {
             try
@@ -20,29 +36,35 @@ namespace BrokenNes
                     return;
                 }
                 int added = 0;
+                string? archiveNote = null;
                 foreach (var f in files)
                 {
+                    // an archive the browser cannot open (7z, RAR): say so, never drop it silently
+                    if (!string.IsNullOrEmpty(f.unsupported)) { archiveNote = ArchiveMessage(f.name, f.unsupported); continue; }
                     if (string.IsNullOrWhiteSpace(f.name) || string.IsNullOrWhiteSpace(f.base64)) continue;
-                    if (!f.name.EndsWith(".nes", StringComparison.OrdinalIgnoreCase)) continue;
+                    // BrokenNes 2: NES, SNES, Game Boy / Color ROMs (and .zip holding one).
+                    if (!NesEmulator.Systems.Consoles.AllRomExtensions.Any(x => f.name.EndsWith(x, StringComparison.OrdinalIgnoreCase))) continue;
                     byte[] data;
                     try { data = Convert.FromBase64String(f.base64); } catch { continue; }
                     if (data.Length == 0) continue;
-                    if (data.Length > 4 * 1024 * 1024)
+                    if (data.Length > 16 * 1024 * 1024)
                     {
-                        setStatus($"File '{f.name}' too large (>4MB). Skipped.");
+                        setStatus($"File '{f.name}' too large (>16MB). Skipped.");
                         continue;
                     }
                     var key = f.name;
                     UploadedRoms[key] = data;
                     if (!RomOptions.Any(o => o.Key == key))
                     {
-                        RomOptions.Add(new RomOption { Key = key, Label = $"{f.name} (uploaded)", BuiltIn = false });
+                        RomOptions.Add(new RomOption { Key = key, Label = $"{f.name} ({ConsoleTag(data, f.name)})", BuiltIn = false });
                     }
                     added++;
                 }
                 if (added == 0)
                 {
-                    setStatus("No valid .nes files processed.");
+                    if (archiveNote != null) { ErrorMessage = archiveNote; setStatus(archiveNote); }
+                    else setStatus("No valid ROM files processed (" + string.Join(", ", NesEmulator.Systems.Consoles.AllRomExtensions) + ").");
+                    stateHasChanged();
                     return;
                 }
                 var last = files.Reverse().FirstOrDefault(f => !string.IsNullOrWhiteSpace(f.name) && UploadedRoms.ContainsKey(f.name));
@@ -51,7 +73,8 @@ namespace BrokenNes
                     RomFileName = last.name;
                     await loadSelectedRom(RomFileName);
                 }
-                setStatus(added == 1 ? "ROM uploaded." : $"{added} ROMs uploaded.");
+                setStatus((added == 1 ? "ROM uploaded." : $"{added} ROMs uploaded.") + (archiveNote != null ? " " + archiveNote : ""));
+                if (archiveNote != null) ErrorMessage = archiveNote;
                 stateHasChanged();
             }
             catch (Exception ex)
@@ -151,7 +174,26 @@ namespace BrokenNes
             return "?";
         }
     
-    public async Task LoadSelectedRom(Func<string, Task<byte[]>> loadRomFromWwwroot, Action<string> setStatus, Action stateHasChanged, Func<string, Task> jsDrawFrame, Func<Task> buildMemoryDomains, Func<Task> pauseEmulation, Func<Task> startEmulation)
+    // onRomLoaded runs after NES.LoadROM and BEFORE emulation restarts, with the ROM bytes.
+    //
+    // It is not optional decoration - without it this method silently changes the CPU core.
+    // NES.LoadROM constructs a fresh Bus, and Bus's constructor defaults activeCpu to CPU_SPD;
+    // nothing here put the player's selection back, so every ROM switch (row click, upload,
+    // drag-drop, ?rom=) quietly dropped to SPD while the picker went on displaying the core the
+    // player chose. Only the boot/Reload/Reset paths escaped it, because those go through
+    // LoadRomFromServer, which re-applies cores itself - which is exactly why this stayed invisible.
+    //
+    // The callback fires before startEmulation() on purpose: applying cores after this method
+    // returns would let the first frames run on the wrong one.
+    //
+    // onRomLoadedAsync runs immediately after onRomLoaded and still before emulation restarts, for
+    // load-time work that has to await - specifically pulling this cartridge's battery/flash save
+    // out of IndexedDB. It is a second parameter rather than making onRomLoaded async because the
+    // synchronous core-selection fix above must already have happened, and because this one has to
+    // be AWAITED: the "Play VRUN" button switches ROMs while another game is emulating, so an
+    // un-awaited read would let frames run against a blank save. That is safe here only because
+    // this method has already stopped the clock (pauseEmulation, at the top).
+    public async Task LoadSelectedRom(Func<string, Task<byte[]>> loadRomFromWwwroot, Action<string> setStatus, Action stateHasChanged, Func<string, Task> jsDrawFrame, Func<Task> buildMemoryDomains, Func<Task> pauseEmulation, Func<Task> startEmulation, Action<byte[]>? onRomLoaded = null, Func<Task>? onRomLoadedAsync = null)
         {
             try
             {
@@ -169,6 +211,8 @@ namespace BrokenNes
                     LastLoadedRomSize = data.Length;
                     setStatus($"ROM '{RomFileName}' loaded from upload.");
                     ErrorMessage = "";
+                    onRomLoaded?.Invoke(data);
+                    if (onRomLoadedAsync != null) await onRomLoadedAsync();
                     // UI: Collapse ROM Manager and expand Corruptor panel if not test.nes
                     if (wasRunning) await startEmulation();
                     stateHasChanged();
@@ -191,6 +235,8 @@ namespace BrokenNes
                     LastLoadedRomSize = romData.Length;
                     setStatus($"ROM '{RomFileName}' loaded successfully!");
                     ErrorMessage = "";
+                    onRomLoaded?.Invoke(romData);
+                    if (onRomLoadedAsync != null) await onRomLoadedAsync();
                     if (wasRunning) await startEmulation();
                     stateHasChanged();
                 }
@@ -267,6 +313,8 @@ namespace BrokenNes
     }
     private List<string> _ppuCoreOptions = new();
     
+    /// <summary>BrokenNes 2: the last SNES / Game Boy frame as RGBA (its own size).</summary>
+    public byte[]? sessionFrameBuffer;
     public byte[] framebuffer 
     {
         get => _framebuffer;
@@ -288,6 +336,27 @@ namespace BrokenNes
     public bool FamicloneOn = true;
     public string ApuCoreSel = "";
     public string CpuCoreSel = "";
+
+    // A CPU core forced for the CURRENTLY LOADED ROM, overriding the player's pick without
+    // replacing it. Some cartridges cannot run on the core that happens to be selected - a NESFab
+    // mapper-30 homebrew leans on the undocumented 6502 opcodes, which only CPU_FIX implements, and
+    // the shipped crash behaviour is IgnoreErrors, so a lesser core executes them as NOPs and runs
+    // a different program with nothing reported anywhere.
+    //
+    // Deliberately session state, not a preference: writing the player's chosen core away (which is
+    // what SetCpuCorePublic would do - it persists pref_cpuCore to IndexedDB) would silently change
+    // every OTHER ROM they load afterwards. Null means "no override, use CpuCoreSel".
+    public string? RuntimeCpuCoreOverride;
+
+    // The core actually in force, for display. The picker must not claim FMC while FIX is running.
+    public string EffectiveCpuCoreSel => string.IsNullOrEmpty(RuntimeCpuCoreOverride) ? CpuCoreSel : RuntimeCpuCoreOverride!;
+
+    // iNES/NES 2.0 mapper number straight out of a ROM image's 16-byte header, or -1 if the buffer
+    // is too short to have one. Same expression as Cartridge.cs, deliberately duplicated rather
+    // than shared: this has to run BEFORE NES.LoadROM builds a Cartridge, to decide which CPU core
+    // that load should use.
+    public static int PeekMapperId(byte[] rom)
+        => (rom == null || rom.Length < 16) ? -1 : ((rom[6] >> 4) | ((rom[7] >> 4) << 4));
     public string PpuCoreSel = "FMC";
     // Clock Core selection (new pluggable loop ownership)
     public List<string> ClockCoreOptions { get; set; } = new();

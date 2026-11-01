@@ -375,6 +375,7 @@ namespace BrokenNes.Windows
         
         private void LoadStateFromFile_Click(object? sender, EventArgs e)
         {
+            if (session != null) { LoadSessionStateFromFile(); return; }
             using var openDialog = new OpenFileDialog
             {
                 Filter = "State Images (*.png)|*.png|State Files (*.state)|*.state|All Files (*.*)|*.*",
@@ -390,6 +391,7 @@ namespace BrokenNes.Windows
         
         private async void SaveStateToFile_Click(object? sender, EventArgs e)
         {
+            if (session != null) { SaveSessionStateToFile(); return; }
             if (nes == null)
             {
                 MessageBox.Show("Please load a ROM first.", "No ROM Loaded", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -465,6 +467,7 @@ namespace BrokenNes.Windows
 
         private bool TryQuickSaveState(bool showDialogs)
         {
+            if (session != null) return TrySessionQuickSave(showDialogs);   // a console session (Master System, Game Gear ...): MainForm.SessionStates.cs; the NES path below is unchanged
             if (nes == null)
             {
                 if (showDialogs)
@@ -504,6 +507,7 @@ namespace BrokenNes.Windows
 
         private bool TryQuickLoadState(bool showDialogs)
         {
+            if (session != null) return TrySessionQuickLoad(showDialogs);
             if (nes == null)
             {
                 if (showDialogs)
@@ -555,25 +559,31 @@ namespace BrokenNes.Windows
             }
         }
 
-        private bool QuickSaveStateFromApi()
+        /// <summary>Why the last quick save / load over HTTP did not happen (see WebApiServer.QuickStateReason).</summary>
+        private string? quickStateReason;
+
+        private bool QuickStateFromApi(bool save)
         {
+            quickStateReason = null;
             if (!config.EnableWebmoduleSavestateDebugShortcuts)
             {
+                quickStateReason = "quick save / load over HTTP is an opt-in: set enableWebmoduleSavestateDebugShortcuts to true in config.json";
                 return false;
             }
-
-            return TryQuickSaveState(showDialogs: false);
-        }
-
-        private bool QuickLoadStateFromApi()
-        {
-            if (!config.EnableWebmoduleSavestateDebugShortcuts)
+            if (session != null && !session.SupportsState)
             {
+                quickStateReason = session.StateUnsupportedReason;
                 return false;
             }
-
-            return TryQuickLoadState(showDialogs: false);
+            lastStateMessage = null;
+            bool ok = save ? TryQuickSaveState(showDialogs: false) : TryQuickLoadState(showDialogs: false);
+            if (!ok) quickStateReason = lastStateMessage ?? $"the state could not be {(save ? "saved" : "loaded")} (the console log has the message)";
+            return ok;
         }
+
+        private bool QuickSaveStateFromApi() => QuickStateFromApi(save: true);
+
+        private bool QuickLoadStateFromApi() => QuickStateFromApi(save: false);
 
         private void SaveContinueState()
         {
@@ -679,11 +689,9 @@ namespace BrokenNes.Windows
 
         private string GetContinueStatePath(string directoryName, string romKey)
         {
-            var continueDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "BrokenNes",
-                directoryName
-            );
+            // %APPDATA%\BrokenNes, or the BROKENNES_SAVES_DIR test hook's folder (SaveRoot, as the battery saves): a test app's continue
+            // state never lands in the user's folder
+            var continueDir = Path.Combine(SaveRoot, directoryName);
 
             var normalized = romKey.Trim().ToLowerInvariant();
             var fileName = Path.GetFileName(normalized);

@@ -77,6 +77,14 @@ namespace BrokenNes.Windows
         [JsonPropertyName("gamepadIndex")]
         public int GamepadIndex { get; set; } = 0;
 
+        /// <summary>
+        /// D-pad protection is ON unless this is true: Left and Right held together (or Up and Down) are both held back, as on a real d-pad
+        /// (see <see cref="NesEmulator.Systems.DpadGuard"/>). A config saved before the setting existed has no such field and reads as false,
+        /// that is, protected. Only the human input (keyboard, pad) is affected, never the Web API, a movie or a replay.
+        /// </summary>
+        [JsonPropertyName("allowOppositeDpad")]
+        public bool AllowOppositeDpad { get; set; } = false;
+
         // NES button bindings
         [JsonPropertyName("a")]
         public ButtonBinding A { get; set; } = ButtonBinding.FromKey("X");
@@ -102,12 +110,20 @@ namespace BrokenNes.Windows
         [JsonPropertyName("right")]
         public ButtonBinding Right { get; set; } = ButtonBinding.FromKey("Right");
 
-        // Webmodule control buttons (not routed to NES)
+        // X and Y: SNES face buttons, and the webmodule control buttons
         [JsonPropertyName("x")]
         public ButtonBinding X { get; set; } = ButtonBinding.FromKey("A");
 
         [JsonPropertyName("y")]
         public ButtonBinding Y { get; set; } = ButtonBinding.FromKey("S");
+
+        // L and R: SNES shoulder buttons. The defaults carry a key and a shoulder button, so configs saved before
+        // BrokenNes 2 (which have no L/R) work with a keyboard and a pad alike.
+        [JsonPropertyName("l")]
+        public ButtonBinding L { get; set; } = new ButtonBinding { Key = "Q", GamepadButton = GamepadButtonFlags.LeftShoulder };
+
+        [JsonPropertyName("r")]
+        public ButtonBinding R { get; set; } = new ButtonBinding { Key = "W", GamepadButton = GamepadButtonFlags.RightShoulder };
 
         /// <summary>
         /// Get all button bindings in NES order (A, B, Select, Start, Up, Down, Left, Right)
@@ -117,6 +133,15 @@ namespace BrokenNes.Windows
             return new[] { A, B, Select, Start, Up, Down, Left, Right };
         }
         
+        /// <summary>
+        /// All 12 buttons: the NES order (A, B, Select, Start, Up, Down, Left, Right), then X, Y, L, R (SNES).
+        /// Indices 0-7 are what the NES reads; <see cref="InputManager.GetButton"/> takes the same indices.
+        /// </summary>
+        public ButtonBinding[] GetExtendedBindings()
+        {
+            return new[] { A, B, Select, Start, Up, Down, Left, Right, X, Y, L, R };
+        }
+
         /// <summary>
         /// Get webmodule button bindings (X, Y)
         /// </summary>
@@ -144,7 +169,9 @@ namespace BrokenNes.Windows
                 Left = ButtonBinding.FromKey("Left"),
                 Right = ButtonBinding.FromKey("Right"),
                 X = ButtonBinding.FromKey("A"),
-                Y = ButtonBinding.FromKey("S")
+                Y = ButtonBinding.FromKey("S"),
+                L = ButtonBinding.FromKey("Q"),
+                R = ButtonBinding.FromKey("W")
             };
         }
 
@@ -168,7 +195,9 @@ namespace BrokenNes.Windows
                 Left = ButtonBinding.FromGamepadButton(GamepadButtonFlags.DPadLeft),
                 Right = ButtonBinding.FromGamepadButton(GamepadButtonFlags.DPadRight),
                 X = ButtonBinding.FromGamepadButton(GamepadButtonFlags.X),
-                Y = ButtonBinding.FromGamepadButton(GamepadButtonFlags.Y)
+                Y = ButtonBinding.FromGamepadButton(GamepadButtonFlags.Y),
+                L = ButtonBinding.FromGamepadButton(GamepadButtonFlags.LeftShoulder),
+                R = ButtonBinding.FromGamepadButton(GamepadButtonFlags.RightShoulder)
             };
         }
     }

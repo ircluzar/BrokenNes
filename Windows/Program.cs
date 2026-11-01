@@ -37,8 +37,23 @@ namespace BrokenNes.Windows
         ///  The main entry point for the application.
         /// </summary>
         [STAThread]
-        static void Main()
+        static int Main(string[] args)
         {
+            NesEmulator.Systems.Consoles.WideMessEnabled = true;   // the WideMess console (docs/projects/widemess-spec.md): the desktop app offers it; Lite and the plugin do from its milestone 7
+
+            // `--install-vst`: put the FL Studio plugin where FL finds it and stop. No console, no diagnostics, no emulator.
+            if (args.Any(a => a.Equals("--install-vst", StringComparison.OrdinalIgnoreCase)))
+                return BrokenNes.Windows.Synth.InstallVstFlow.RunCommand(args);
+
+            // `--synth`: BrokenNes 2 as a standalone synthesizer (the FL Studio plugin hosted in a window of its own), not the emulator
+            if (BrokenNes.Windows.Synth.SynthMode.IsRequested(args))
+                return BrokenNes.Windows.Synth.SynthMode.Run(args);
+
+            // Forensics first, before anything else can die. See ShutdownDiagnostics for why this
+            // has to write to a flushed file rather than the console: the bug being hunted is a
+            // *clean* exit, which leaves no dump, no WER report and no event-log entry behind.
+            BrokenNes.Windows.Diagnostics.ShutdownDiagnostics.Install();
+
             // Allocate a console for debug output
             AllocConsole();
             Console.WriteLine("BrokenNes Windows Starting...");
@@ -56,6 +71,7 @@ namespace BrokenNes.Windows
                 // Add global exception handler
                 Application.ThreadException += (sender, e) =>
                 {
+                    BrokenNes.Windows.Diagnostics.ShutdownDiagnostics.Log($"Program.ThreadException: {e.Exception}");
                     Console.WriteLine($"Thread Exception: {e.Exception}");
                     MessageBox.Show($"Application Error:\n\n{e.Exception.Message}\n\nStack Trace:\n{e.Exception.StackTrace}",
                         "Fatal Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -71,6 +87,7 @@ namespace BrokenNes.Windows
                 
                 Console.WriteLine("Creating MainForm...");
                 Application.Run(new MainForm());
+                BrokenNes.Windows.Diagnostics.ShutdownDiagnostics.Log("Application.Run returned - message loop ended, Main is about to exit normally.");
             }
             catch (Exception ex)
             {
@@ -81,8 +98,10 @@ namespace BrokenNes.Windows
                 Console.WriteLine("Press any key to exit...");
                 Console.ReadKey();
 
+                return 1;
             }
-            
+
+            return 0;
 
         }
     }

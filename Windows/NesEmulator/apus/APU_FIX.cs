@@ -1,0 +1,892 @@
+using System;
+
+namespace NesEmulator
+{
+    // FIX family: the exclusive target for ongoing hardware-accuracy work (see
+    // project_fix_core_family memory). Started as an exact duplicate of APU_FMC, the "standard
+    // control component" baseline - every other named core is either a speed/perf tradeoff or an
+    // intentional gimmick/personality core (see project_ppu_core_personalities memory) and is
+    // frozen going forward. Accuracy fixes land here, not on APU_FMC or any other named core.
+    public class APU_FIX : IAPU, IDmcDmaSchedulable, IApuStateProbe
+    {
+    // Core metadata
+    public string CoreName => "Fix";
+    public string Description => "Hardware-accuracy target core, forked from the Famiclone (FMC) baseline. All ongoing APU accuracy work lands here; the other named cores are frozen.";
+    public int Performance => 0;
+    public int Rating => 3;
+    public string Category => "Accuracy";
+        private readonly Bus bus;
+        public APU_FIX(Bus bus) { this.bus = bus; }
+
+        // Precompute nonlinear audio mixing lookup tables to remove per-sample divides
+        // and keep the path float-only. Pulse channels (p1+p2) sum 0..30. Triangle (0..15),
+        // Noise (0..15), DMC (0..127) -> 16*16*128 = 32768 combinations. This LUT replicates
+        // the canonical NES mixing approximation exactly. Memory cost ~128KB (32768 * 4 bytes).
+        // If later a smaller footprint is desired for WASM, we can optionally collapse to a
+        // single (t+n+d) sum table (approximation) or generate on-demand. For now we prioritize
+        // accuracy + removing divides per sample.
+        private static readonly float[] PulseMixLut = new float[31];
+        private static readonly float[] TndMixLut = new float[16 * 16 * 128];
+        static APU_FIX()
+        {
+            // Pulse LUT
+            for (int sum = 0; sum < PulseMixLut.Length; sum++)
+            {
+                PulseMixLut[sum] = sum == 0 ? 0f : (95.88f / (8128f / sum + 100f));
+            }
+            // TND LUT (triangle, noise, dmc)
+            int idx = 0;
+            for (int t = 0; t < 16; t++)
+            {
+                float tf = t / 8227f;
+                for (int n = 0; n < 16; n++)
+                {
+                    float nf = n / 12241f;
+                    for (int d = 0; d < 128; d++, idx++)
+                    {
+                        if (t == 0 && n == 0 && d == 0)
+                        {
+                            TndMixLut[idx] = 0f;
+                        }
+                        else
+                        {
+                            float df = d / 22638f;
+                            float inv = (1.0f / (tf + nf + df)) + 100f;
+                            TndMixLut[idx] = 159.79f / inv;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ===== Channel core registers & state =====
+        // Pulse 1
+        private byte pulse1_duty, pulse1_lengthIdx, pulse1_sweepRaw; private ushort pulse1_timer; // registers
+        // Pulse 2
+        private byte pulse2_duty, pulse2_lengthIdx, pulse2_sweepRaw; private ushort pulse2_timer;
+        // Triangle
+        private byte triangle_linearReg, triangle_lengthIdx; private ushort triangle_timer;
+        // Noise
+        private byte noise_lengthIdx, noise_periodReg;
+        // DMC ($4010-$4013)
+        private byte dmc_ctrl, dmc_directLoad, dmc_addrReg, dmc_lenReg;
+
+        // Status ($4015 write latch + runtime flags)
+        private byte statusWriteLatch; // last written to $4015 (enable flags)
+
+        // Enable flags derived from $4015 (bit cleared -> clear length counter)
+        private bool pulse1_enabled, pulse2_enabled, triangle_enabled, noise_enabled, dmc_enabled;
+
+        // Length counters
+        private int pulse1_lengthCounter, pulse2_lengthCounter, triangle_lengthCounter, noise_lengthCounter;
+
+        // Envelope (pulse + noise)
+        private bool pulse1_envStart, pulse2_envStart, noise_envStart;
+        private int pulse1_envDivider, pulse1_envDecay, pulse2_envDivider, pulse2_envDecay, noise_envDivider, noise_envDecay;
+        private bool pulse1_constantVolume, pulse2_constantVolume, noise_constantVolume;
+        private bool pulse1_lengthHalt, pulse2_lengthHalt, noise_lengthHalt, triangle_lengthHalt; // length counter halt (envelope loop / control flag)
+        private int pulse1_volumeParam, pulse2_volumeParam, noise_volumeParam; // 0..15
+
+        // Sweep units
+        private bool pulse1_sweepNegate, pulse2_sweepNegate; private int pulse1_sweepShift, pulse2_sweepShift; private int pulse1_sweepPeriod = 1, pulse2_sweepPeriod = 1; /* P + 1; 1 at power-on ($4001 = 0). It was 0, and the sweep divider (period - 1) then counted down below zero for ever on a game that never writes $4001 */ private bool pulse1_sweepReload, pulse2_sweepReload; private int pulse1_sweepDivider, pulse2_sweepDivider;
+
+        // Triangle linear counter
+        private int triangle_linearCounter; private bool triangle_linearReloadFlag;
+
+        // Noise LFSR & timer
+        private ushort noiseShiftRegister = 1; private int noise_timerCounter;
+        // Pulse timers & sequencer indices
+        private int pulse1_timerCounter, pulse2_timerCounter, pulse1_seqIndex, pulse2_seqIndex;
+        // Triangle timer & seq
+        private int triangle_timerCounter, triangle_seqIndex;
+        // Outputs (raw amplitude 0..15 or DMC 0..127)
+        private int pulse1_output, pulse2_output, triangle_output, noise_output, dmc_output;
+
+        // DMC runtime
+        private int dmcStartDelay; // cycles until a $4015-started sample's first fetch (2 or 3, by CPU cycle parity)
+        private long dmcCycle;     // CPU cycles clocked, for that parity
+        private int dmc_timer = 428; private int dmc_timerPeriod = 428; /* hardware powers up at rate index 0 */ private int dmc_sampleAddress; private int dmc_sampleLengthRemaining; private bool dmc_irqEnable, dmc_loop; private int dmc_shiftReg; private int dmc_bitsRemaining = 8;
+        // Powers on at 0, not mid-scale. Hardware clears the DMC's 7-bit output level at power-up
+        // (a RESET leaves it alone, which is why $4011 is the only way back to a specific value),
+        // and Mesen matches that. Starting at 64 put a DC step on the mix that a ROM never asked
+        // for and left dmc_output disagreeing with the reference until the game's first $4011 write.
+        private int dmc_deltaCounter = 0;
+        private bool dmc_silence; private int dmc_sampleBuffer; private bool dmc_sampleBufferFilled; private bool dmc_irqFlag;
+
+        // Frame sequencer
+        private int frameCycle; // counts CPU cycles since last frame sequence reset
+        private bool frameMode5; private bool frameIRQInhibit; private bool frameIRQFlag; // flag set when frame IRQ pending
+        private int frameStep; // current step in sequence (0..3 or 0..4)
+        private int nextFrameEventCycle = 7457; // next CPU cycle (relative to frameCycle) at which a quarter/half frame event occurs
+
+    // Audio mixing / buffering
+    private const int audioSampleRate = 44100; private const int AudioRingSize = 32768; private readonly float[] audioRing = new float[AudioRingSize]; private int ringWrite, ringRead, ringCount; private double fractionalSampleAccumulator; // legacy save-state compatibility
+    // Integer Bresenham pacing
+    private const int CpuFreqInt = 1789773; // NTSC CPU frequency (Hz)
+    private int samplePhase; // accumulates +audioSampleRate each CPU cycle, emit while >= CpuFreqInt
+
+        // Filters state
+        private float lpLast, dcLastIn, dcLastOut; private const float LowPassCoeff = 0.15f; private const float DC_HPF_R = 0.995f;
+        private int channelEnableMask = 0x1F;
+
+        // Lookup tables
+        private static readonly int[] LengthTable = { 10,254,20,2,40,4,80,6,160,8,60,10,14,12,26,14,12,16,24,18,48,20,96,22,192,24,72,26,16,28,32,30 };
+        private static readonly int[] NoisePeriods = { 4,8,16,32,64,96,128,160,202,254,380,508,762,1016,2034,4068 };
+        private static readonly int[] DMCRatesNTSC = { 428,380,340,320,286,254,226,214,190,160,142,128,106,84,72,54 }; // CPU cycles per bit fetch
+        private static readonly byte[][] PulseDutyTable = {
+            new byte[]{0,1,0,0,0,0,0,0}, new byte[]{0,1,1,0,0,0,0,0}, new byte[]{0,1,1,1,1,0,0,0}, new byte[]{1,0,0,1,1,1,1,1}
+        };
+
+        // ===== Public API =====
+        public void Step() => Step(1);
+        public void Step(int cpuCycles)
+        {
+            if (cpuCycles <= 0) return;
+            for (int i = 0; i < cpuCycles; i++)
+            {
+                ClockFrameSequencer();
+                ClockDMC();
+                bool p1SweepMute = SweepWouldMute(pulse1_timer, pulse1_sweepNegate, pulse1_sweepShift, true);
+                bool p2SweepMute = SweepWouldMute(pulse2_timer, pulse2_sweepNegate, pulse2_sweepShift, false);
+                ClockPulse(ref pulse1_timer, ref pulse1_timerCounter, ref pulse1_seqIndex, ref pulse1_output, pulse1_enabled, pulse1_lengthCounter, pulse1_timer < 8, p1SweepMute, pulse1_duty, pulse1_constantVolume, pulse1_volumeParam, pulse1_envDecay, true);
+                ClockPulse(ref pulse2_timer, ref pulse2_timerCounter, ref pulse2_seqIndex, ref pulse2_output, pulse2_enabled, pulse2_lengthCounter, pulse2_timer < 8, p2SweepMute, pulse2_duty, pulse2_constantVolume, pulse2_volumeParam, pulse2_envDecay, false);
+                ClockTriangle();
+                ClockNoise();
+                frameCycle++;
+                samplePhase += audioSampleRate;
+                while (samplePhase >= CpuFreqInt)
+                {
+                    samplePhase -= CpuFreqInt;
+                    MixAndStore();
+                }
+            }
+        }
+
+        private void UpdatePulseOutput(bool first, bool sweepMute)
+        {
+            if (first)
+            {
+                if (!pulse1_enabled || pulse1_lengthCounter == 0 || pulse1_timer < 8 || sweepMute) { pulse1_output = 0; return; }
+                var pattern = PulseDutyTable[pulse1_duty & 3];
+                int bit = pattern[pulse1_seqIndex];
+                int vol = pulse1_constantVolume ? pulse1_volumeParam : pulse1_envDecay;
+                pulse1_output = bit == 1 ? vol : 0;
+            }
+            else
+            {
+                if (!pulse2_enabled || pulse2_lengthCounter == 0 || pulse2_timer < 8 || sweepMute) { pulse2_output = 0; return; }
+                var pattern = PulseDutyTable[pulse2_duty & 3];
+                int bit = pattern[pulse2_seqIndex];
+                int vol = pulse2_constantVolume ? pulse2_volumeParam : pulse2_envDecay;
+                pulse2_output = bit == 1 ? vol : 0;
+            }
+        }
+        private void UpdateTriangleOutput()
+        {
+            if (!triangle_enabled || triangle_lengthCounter == 0 || triangle_linearCounter == 0 || triangle_timer < 2) { triangle_output = 0; return; }
+            triangle_output = (triangle_seqIndex < 16) ? (15 - triangle_seqIndex) : (triangle_seqIndex - 16);
+        }
+        private void UpdateNoiseOutput()
+        {
+            if (!noise_enabled || noise_lengthCounter == 0) { noise_output = 0; return; }
+            int vol = noise_constantVolume ? noise_volumeParam : noise_envDecay;
+            noise_output = ((noiseShiftRegister & 1) == 0) ? vol : 0;
+        }
+
+        /// <summary>
+        /// Optional observer fired on every APU register write, for cross-emulator audio tracing.
+        ///
+        /// The register-write STREAM is the one part of the audio path that is exactly comparable
+        /// between two emulators: it is what the game asked for, in hardware units, at an
+        /// instruction boundary - no lazy-update lag, no resampler, no mixer. If the streams match,
+        /// any remaining audio difference is this core's fault; if they do not, the difference
+        /// entered before the APU and chasing it inside the APU is wasted effort. Nothing else in
+        /// this emulator could answer that question, hence the hook.
+        ///
+        /// Null in normal operation, so the cost is one null check per register write.
+        /// </summary>
+        public Action<ushort, byte>? RegisterWriteObserver;
+
+        // ===== Writes =====
+        public void WriteAPURegister(ushort address, byte value)
+        {
+            RegisterWriteObserver?.Invoke(address, value);
+            switch(address)
+            {
+                // Hardware: only the fourth register of a channel ($4003 / $4007 / $400F) sets the envelope START flag. A write to the
+                // envelope register ($4000 / $4004 / $400C) changes the loop, constant-volume and volume bits and nothing else, so a game that
+                // rewrites it every frame (the SMB1 remake does) must not pull a decayed envelope back to 15. Measured on Mesen 2.1.1 by
+                // BrokenDev/tests/apu-regress.ps1 (envelope-restart).
+                case 0x4000: // Pulse1 envelope/duty
+                    pulse1_duty = (byte)((value>>6)&3); pulse1_lengthHalt = (value & 0x20)!=0; pulse1_constantVolume = (value & 0x10)!=0; pulse1_volumeParam = value & 0x0F; break;
+                case 0x4001: // Pulse1 sweep
+                    pulse1_sweepRaw = value; pulse1_sweepPeriod = ((value>>4)&7)+1; pulse1_sweepNegate = (value & 0x08)!=0; pulse1_sweepShift = value & 0x07; pulse1_sweepReload = true; break;
+                case 0x4002: pulse1_timer = (ushort)((pulse1_timer & 0x0700) | value); break;
+                case 0x4003: pulse1_timer = (ushort)((pulse1_timer & 0x00FF) | ((value & 0x07)<<8)); pulse1_lengthIdx = (byte)((value>>3)&0x1F); if(pulse1_enabled) LoadLength(ref pulse1_lengthCounter, pulse1_lengthIdx); pulse1_seqIndex=0; pulse1_envStart=true; pulse1_timerCounter = (pulse1_timer+1)*2; break;
+                case 0x4004: pulse2_duty = (byte)((value>>6)&3); pulse2_lengthHalt = (value & 0x20)!=0; pulse2_constantVolume = (value & 0x10)!=0; pulse2_volumeParam = value & 0x0F; break;
+                case 0x4005: pulse2_sweepRaw = value; pulse2_sweepPeriod = ((value>>4)&7)+1; pulse2_sweepNegate = (value & 0x08)!=0; pulse2_sweepShift = value & 0x07; pulse2_sweepReload = true; break;
+                case 0x4006: pulse2_timer = (ushort)((pulse2_timer & 0x0700) | value); break;
+                case 0x4007: pulse2_timer = (ushort)((pulse2_timer & 0x00FF) | ((value & 0x07)<<8)); pulse2_lengthIdx = (byte)((value>>3)&0x1F); if(pulse2_enabled) LoadLength(ref pulse2_lengthCounter, pulse2_lengthIdx); pulse2_seqIndex=0; pulse2_envStart=true; pulse2_timerCounter = (pulse2_timer+1)*2; break;
+                // Hardware: $4008 sets the control flag and the reload VALUE only; the linear counter's reload FLAG is set by $400B alone.
+                // The old code set it here too, so a game that rewrites $4008 every frame kept reloading a counter that hardware lets run down.
+                case 0x4008: triangle_linearReg = value; triangle_lengthHalt = (value & 0x80)!=0; break;
+                case 0x400A: triangle_timer = (ushort)((triangle_timer & 0x0700) | value); break;
+                case 0x400B: triangle_timer = (ushort)((triangle_timer & 0x00FF) | ((value & 0x07)<<8)); triangle_lengthIdx = (byte)((value>>3)&0x1F); if(triangle_enabled) LoadLength(ref triangle_lengthCounter, triangle_lengthIdx); triangle_linearReloadFlag=true; break;
+                // Hardware (nesdev "APU": "There is no way to reset the triangle channel's phase"): $400B loads the length counter and sets the linear
+                // counter's reload flag, and that is all. It used to zero the sequence step and reload the timer divider as $4003 does for a pulse, so a
+                // song that rewrites the triangle every frame or two (the VRUN NES songs satnkrt and vectorplane) restarted the waveform on every write and
+                // its low notes came out at the rewrite rate. Guarded by BrokenDev/tests/apu-regress.ps1 (triangle-phase: a $400B twin and a $400A twin
+                // must play identical steps; Mesen 2.1.1 does).
+                case 0x400C: noise_lengthHalt = (value & 0x20)!=0; noise_constantVolume = (value & 0x10)!=0; noise_volumeParam = value & 0x0F; break;
+                case 0x400E: noise_periodReg = value; break;
+                case 0x400F: noise_lengthIdx = (byte)((value>>3)&0x1F); if(noise_enabled) LoadLength(ref noise_lengthCounter, noise_lengthIdx); noise_envStart=true; break;
+                case 0x4010: dmc_ctrl = value; dmc_irqEnable = (value & 0x80)!=0; if(!dmc_irqEnable) dmc_irqFlag=false; dmc_loop = (value & 0x40)!=0; dmc_timerPeriod = DMCRatesNTSC[value & 0x0F]; break;
+                case 0x4011: dmc_directLoad = value; dmc_deltaCounter = value & 0x7F; break;
+                case 0x4012: dmc_addrReg = value; break; // base address $C000 + value*64
+                case 0x4013: dmc_lenReg = value; break; // length = value*16+1
+                case 0x4015:
+                    statusWriteLatch = value;
+                    // enable bits
+                    pulse1_enabled = (value & 0x01)!=0; if(!pulse1_enabled) pulse1_lengthCounter=0;
+                    pulse2_enabled = (value & 0x02)!=0; if(!pulse2_enabled) pulse2_lengthCounter=0;
+                    triangle_enabled = (value & 0x04)!=0; if(!triangle_enabled) triangle_lengthCounter=0;
+                    noise_enabled = (value & 0x08)!=0; if(!noise_enabled) noise_lengthCounter=0;
+                    bool enableDMC = (value & 0x10)!=0;
+                    // Hardware: setting the DMC bit restarts the sample only if no bytes remain, and the
+                    // first fetch follows 2 or 3 cycles later by CPU cycle parity; clearing it zeroes the
+                    // bytes remaining. The rate timer and the output unit are NOT touched - they run
+                    // continuously from power-on (see ClockDMC). Restarting the timer here, and freezing
+                    // it while the channel was off, re-phased every sample's bit clock against Mesen
+                    // 2.1.1, which moved each DMC fetch's 4-cycle CPU stall by up to a scanline (Kirby).
+                    if (enableDMC) { if (dmc_sampleLengthRemaining == 0) { RestartDMC(); dmcStartDelay = ((dmcCycle & 1) == 1 ? 2 : 3); } }
+                    else dmc_sampleLengthRemaining = 0;
+                    dmc_enabled = enableDMC;
+                    dmc_irqFlag = false; frameIRQFlag = false; break;
+                case 0x4017: // frame counter
+                    frameMode5 = (value & 0x80)!=0; frameIRQInhibit = (value & 0x40)!=0; if(frameIRQInhibit) frameIRQFlag=false;
+                    // Reset sequencer timing per hardware approximation: counter cleared immediately
+                    frameCycle = 0; frameStep = 0; nextFrameEventCycle = 7457; // first event
+                    if(frameMode5){
+                        // In 5-step mode, writing with bit7=1 immediately clocks a quarter and half frame (no IRQ ever)
+                        QuarterFrameTick(); HalfFrameTick();
+                    }
+                    // Writing 4017 clears frame IRQ flag
+                    frameIRQFlag = false;
+                    UpdateIrqLine();
+                    break;
+            }
+        }
+
+        // Recomputes the CPU-visible IRQ line as the OR of this APU's own sources (frame counter +
+        // DMC). Must be called any time either flag changes - both when newly asserted *and* when
+        // cleared. Missing the clear side is the exact bug this fixes: without it, a stale IRQ
+        // request that was already acknowledged/disabled at the APU level (e.g. by writing $4017
+        // with the inhibit bit, or $4010 to disable DMC IRQs) stays latched on the CPU's side
+        // indefinitely - because CPU_FIX's IRQ line is a plain level with no automatic decay, it
+        // waits, however many instructions or frames later, for the next moment interrupts happen
+        // to be re-enabled, then fires as a "ghost" of a request whose source is long gone. That's
+        // fine for a game that never lets interrupts go quiet for long, but SMB3's title-screen boot
+        // path does exactly that (frame IRQ becomes pending at power-on before $4017 disables it,
+        // then nothing repolls until a CLI ~330,000 cycles later, deep inside a routine that assumes
+        // no interrupt is pending at that exact instant) - the stale request then fires mid-flight
+        // through a PRG-bank transition, executing whatever happens to be in the wrong bank.
+        private void UpdateIrqLine() { bus.cpu.RequestIRQ(frameIRQFlag || dmc_irqFlag); }
+
+        // ===== Reads =====
+        public byte ReadAPURegister(ushort address)
+        {
+            if(address==0x4015)
+            {
+                byte result = 0;
+                if(pulse1_lengthCounter>0) result |= 0x01; if(pulse2_lengthCounter>0) result |= 0x02; if(triangle_lengthCounter>0) result |= 0x04; if(noise_lengthCounter>0) result |= 0x08; if(dmc_sampleLengthRemaining>0) result |= 0x10;
+                // Bit 5 is genuinely open bus even on this one readable register - only 4/6/7 are driven.
+                result |= (byte)(bus.GetOpenBus() & 0x20);
+                if(frameIRQFlag) result |= 0x40; if(dmc_irqFlag) result |= 0x80; frameIRQFlag = false; return result;
+            }
+            // Every other APU register ($4000-$4013, $4016/$4017 write-only from this side) is
+            // write-only from the CPU's perspective - reading it returns whatever the CPU's open
+            // bus last held, not a hardcoded 0. This is also the second half of what AccuracyCoin's
+            // boot-time DMA/open-bus pre-test requires (see project_dmc_dma_stall_gap): it polls a
+            // write-only register expecting a DMC-driven byte, then immediately re-reads expecting
+            // open bus to have decayed back to the address high byte - a hardcoded 0 satisfies
+            // neither half correctly (it happens to look like a decayed-to-0 open bus, but fails
+            // the very next check that a nonzero address byte is there instead).
+            return bus.GetOpenBus();
+        }
+
+        // ===== Internal helpers =====
+        private void LoadLength(ref int counter, byte idx){ if(idx < LengthTable.Length) counter = LengthTable[idx]; }
+
+        // MUTING GATES THE MIXER, NOT THE DIVIDER.
+        //
+        // Every Clock* method below used to bail out BEFORE touching its timer whenever the channel
+        // was silent, so a muted channel's divider, duty sequencer and noise LFSR all stopped dead
+        // and resumed from wherever they had been parked. On hardware none of those stop: the timer
+        // is free-running and the length counter / sweep-mute / period-too-low conditions only force
+        // the value handed to the MIXER to zero. The distinction is inaudible for one channel in
+        // isolation and very audible across a mute, because it decides the PHASE the channel
+        // restarts at - and for the noise channel it decides WHICH pseudo-random sequence is played,
+        // since the LFSR is the generator's entire state.
+        //
+        // Measured against Mesen on game.nes, 2400 frames of gameplay, before this change: Mesen's
+        // noise LFSR never held a value across a whole frame (0 of 2400) while APU_FIX's did 12
+        // times; APU_FIX froze the pulse-2 duty position across 118 more whole frames than Mesen,
+        // its triangle divider across 1414 more, and its noise divider across 403 more. A divider
+        // cannot legitimately hold across a 29780-cycle frame - the slowest NTSC noise period is
+        // 4068 cycles, so it must tick at least seven times - which is what makes those counts a
+        // defect rather than a sampling artifact of Mesen's lazily-updated APU state.
+        private void ClockPulse(ref ushort timer, ref int timerCounter, ref int seqIndex, ref int output, bool enabled, int lengthCounter, bool timerMute, bool sweepMute, byte duty, bool constantVol, int volumeParam, int envDecay, bool isFirst)
+        {
+            // Divider and duty sequencer first, unconditionally.
+            if(--timerCounter <= 0){ timerCounter = (timer+1)*2; seqIndex = (seqIndex+1)&7; }
+            if(!enabled || lengthCounter==0 || timerMute || sweepMute){ output = 0; return; }
+            var pattern = PulseDutyTable[duty & 3]; int bit = pattern[seqIndex]; int vol = constantVol ? volumeParam : envDecay; output = bit==1 ? vol : 0;
+        }
+
+        private void ClockTriangle()
+        {
+            // The triangle is the one channel where hardware really does gate the SEQUENCER and not
+            // just the mixer: the sequence position advances only while both the linear counter and
+            // the length counter are non-zero. The TIMER still free-runs, which is what the old code
+            // got wrong. Keeping those two facts apart is the whole point of this shape.
+            bool seqRuns = triangle_enabled && triangle_lengthCounter != 0 && triangle_linearCounter != 0;
+            if(--triangle_timerCounter <= 0)
+            {
+                triangle_timerCounter = triangle_timer + 1;
+                if(seqRuns) triangle_seqIndex = (triangle_seqIndex+1) & 31;
+            }
+            // The `timer < 2` term is NOT a hardware rule - it is the conventional emulator guard
+            // against emitting an ultrasonic tone that no speaker reproduces and that aliases into
+            // audible hash. Left in place deliberately, and applied to the OUTPUT only, so it no
+            // longer also stops the sequencer.
+            if(!seqRuns || triangle_timer < 2) { triangle_output=0; return; }
+            triangle_output = (triangle_seqIndex < 16) ? (15 - triangle_seqIndex) : (triangle_seqIndex - 16);
+        }
+
+        private void ClockNoise()
+        {
+            // The LFSR is clocked by the timer unconditionally. It is the channel's entire state, so
+            // freezing it while muted means the next noise burst plays a different random sequence
+            // than hardware would - the single most audible item in this change.
+            if(--noise_timerCounter <= 0){
+                int period = NoisePeriods[noise_periodReg & 0x0F]; noise_timerCounter = period;
+                int bit0 = noiseShiftRegister & 1; int tap = ((noise_periodReg & 0x80)!=0) ? ((noiseShiftRegister >> 6)&1) : ((noiseShiftRegister >> 1)&1); int fb = bit0 ^ tap; noiseShiftRegister = (ushort)((noiseShiftRegister >> 1) | (fb<<14));
+            }
+            if(!noise_enabled || noise_lengthCounter==0){ noise_output=0; return; }
+            int vol = noise_constantVolume ? noise_volumeParam : noise_envDecay; noise_output = ((noiseShiftRegister & 1)==0) ? vol : 0;
+        }
+
+        private void ClockDMC()
+        {
+            dmcCycle++;
+            if(--dmc_timer <= 0){
+                dmc_timer = dmc_timerPeriod;
+                if(!dmc_silence){
+                    if((dmc_shiftReg & 1)!=0){ if(dmc_deltaCounter <= 125) dmc_deltaCounter +=2; }
+                    else { if(dmc_deltaCounter >= 2) dmc_deltaCounter -=2; }
+                }
+                dmc_shiftReg >>=1;
+                dmc_bitsRemaining--;
+                if(dmc_bitsRemaining==0){
+                    if(dmc_sampleBufferFilled){
+                        dmc_silence=false; dmc_shiftReg = dmc_sampleBuffer; dmc_bitsRemaining = 8; dmc_sampleBufferFilled=false;
+                    } else {
+                        dmc_silence=true; dmc_bitsRemaining=8;
+                    }
+                    TryDmcFetch();
+                }
+            }
+            // The memory reader refills an empty sample buffer whenever bytes remain - except in the
+            // short delay after a $4015 start.
+            if (dmcStartDelay > 0) { if (--dmcStartDelay == 0) TryDmcFetch(); }
+            else TryDmcFetch();
+            dmc_output = dmc_deltaCounter;
+        }
+
+        private void TryDmcFetch()
+        {
+            if(dmc_sampleBufferFilled) return; if(dmc_sampleLengthRemaining==0) return; // nothing to fetch
+            byte sample = bus.Read((ushort)dmc_sampleAddress);
+            bus.RequestDmcDma(); // the fetch halts the CPU - at its next read, under precise stepping (Bus.PreciseTick)
+            dmc_sampleAddress++; if(dmc_sampleAddress > 0xFFFF) dmc_sampleAddress = 0x8000; // wrap
+            dmc_sampleLengthRemaining--; dmc_sampleBuffer = sample; dmc_sampleBufferFilled = true;
+            if(dmc_sampleLengthRemaining==0){ if(dmc_loop){ RestartDMC(); } else if(dmc_irqEnable){ dmc_irqFlag = true; UpdateIrqLine(); } }
+        }
+
+        /// <summary>
+        /// IDmcDmaSchedulable: how many CPU cycles until TryDmcFetch will actually take the bus.
+        /// Pure prediction - reads state, mutates nothing - so NES.RunFrame can call it before
+        /// every instruction without side effects. See IDmcDmaSchedulable for why this exists.
+        /// </summary>
+        public int CyclesUntilDmcFetch()
+        {
+            if(!dmc_enabled || dmc_sampleLengthRemaining == 0) return int.MaxValue; // TryDmcFetch would early-out
+            // ClockDMC refills the buffer eagerly the same cycle it empties (its trailing
+            // TryDmcFetch), so an empty buffer means a fetch is due on the very next APU cycle.
+            if(!dmc_sampleBufferFilled) return dmcStartDelay > 0 ? dmcStartDelay - 1 : 0; // after a $4015 start, the fetch waits out its delay
+            // Otherwise the buffer isn't consumed until the shift register runs dry: dmc_timer
+            // cycles to finish the current bit (ClockDMC fires on `--dmc_timer <= 0`), then one
+            // full period for each remaining bit after it.
+            int bits = dmc_bitsRemaining > 0 ? dmc_bitsRemaining : 8;
+            return dmc_timer + (bits - 1) * dmc_timerPeriod;
+        }
+
+        private void RestartDMC(){ dmc_sampleAddress = 0xC000 + (dmc_addrReg << 6); dmc_sampleLengthRemaining = (dmc_lenReg << 4) + 1; }
+
+        private void QuarterFrameTick()
+        {
+            // Envelopes
+            ClockEnvelope(ref pulse1_envStart, ref pulse1_envDivider, ref pulse1_envDecay, pulse1_volumeParam, pulse1_lengthHalt);
+            ClockEnvelope(ref pulse2_envStart, ref pulse2_envDivider, ref pulse2_envDecay, pulse2_volumeParam, pulse2_lengthHalt);
+            ClockEnvelope(ref noise_envStart, ref noise_envDivider, ref noise_envDecay, noise_volumeParam, noise_lengthHalt);
+            // Triangle linear counter
+            if(triangle_linearReloadFlag){ triangle_linearCounter = triangle_linearReg & 0x7F; }
+            else if(triangle_linearCounter>0) triangle_linearCounter--;
+            if((triangle_linearReg & 0x80)==0) triangle_linearReloadFlag = false;
+        }
+        private void HalfFrameTick()
+        {
+            // Length counters
+            if(!pulse1_lengthHalt && pulse1_lengthCounter>0) pulse1_lengthCounter--;
+            if(!pulse2_lengthHalt && pulse2_lengthCounter>0) pulse2_lengthCounter--;
+            if(!triangle_lengthHalt && triangle_lengthCounter>0) triangle_lengthCounter--;
+            if(!noise_lengthHalt && noise_lengthCounter>0) noise_lengthCounter--;
+            // Sweeps
+            Sweep(ref pulse1_timer, (pulse1_sweepRaw & 0x80) != 0, pulse1_sweepNegate, pulse1_sweepShift, pulse1_sweepPeriod, ref pulse1_sweepDivider, ref pulse1_sweepReload, true);
+            Sweep(ref pulse2_timer, (pulse2_sweepRaw & 0x80) != 0, pulse2_sweepNegate, pulse2_sweepShift, pulse2_sweepPeriod, ref pulse2_sweepDivider, ref pulse2_sweepReload, false);
+        }
+        // The period is rewritten only while the sweep's ENABLE flag (bit 7 of $4001/$4005) is set. This ignored the flag, so a game that writes a shift and negate with the flag
+        // clear (the SMB1 remake writes $0F) had its pulse periods ground down by the sweep: the BrokenDev differential replay against Mesen saw the period register fall 0x17C ->
+        // 0x179 -> 0x176 here while Mesen held 0x17C.
+        // Hardware order (nesdev "APU Sweep"): the update tests the divider BEFORE it is reloaded or counted down, so a reload flag with a zero divider (P = 0, the usual case
+        // of a game that sets a sweep and wants it to run every half frame) updates on the very first clock. The earlier code only reloaded on that clock and so ran one
+        // half-frame behind Mesen (period 0x0EF where Mesen had 0x0FD at the first frame of an upward sweep, SMB1 remake). `period` is P + 1 here.
+        private void Sweep(ref ushort timer, bool enabled, bool negate, int shift, int period, ref int divider, ref bool reload, bool channel1)
+        {
+            if(divider <= 0 && enabled && shift != 0)
+            {
+                int change = timer >> shift;
+                int target = negate ? (timer - change - (channel1?1:0)) : (timer + change);
+                if(timer >= 8 && target <= 0x7FF) timer = (ushort)Math.Max(0, target);
+            }
+            if(divider <= 0 || reload){ divider = Math.Max(0, period - 1); reload = false; } else divider--;
+        }
+        private void ClockEnvelope(ref bool start, ref int divider, ref int decay, int volumeParam, bool loop){ if(start){ start=false; decay=15; divider=volumeParam+1; } else { if(--divider <=0){ divider = volumeParam+1; if(decay>0) decay--; else if(loop) decay=15; } } }
+
+        // Frame sequencer (NTSC): 4-step: 0:Q, 1:Q+H,2:Q,3:Q+H+IRQ; 5-step: 0:Q,1:Q+H,2:Q,3:---,4:Q+H (no IRQ)
+        private void ClockFrameSequencer()
+        {
+            while(frameCycle >= nextFrameEventCycle)
+            {
+                if(!frameMode5)
+                {
+                    switch(frameStep)
+                    {
+                        case 0: QuarterFrameTick(); nextFrameEventCycle = 14913; break;
+                        case 1: QuarterFrameTick(); HalfFrameTick(); nextFrameEventCycle = 22371; break;
+                        case 2: QuarterFrameTick(); nextFrameEventCycle = 29829; break;
+                        case 3:
+                            QuarterFrameTick(); HalfFrameTick();
+                            if(!frameIRQInhibit){ frameIRQFlag = true; UpdateIrqLine(); }
+                            frameStep = -1; 
+                            frameCycle -= 29830; 
+                            nextFrameEventCycle = 7457; 
+                            break;
+                    }
+                }
+                else
+                {
+                    // 5-step mode on hardware (nesdev "APU Frame Counter"): 7457 quarter; 14913 quarter + half; 22371 quarter; 29829 nothing; 37281 quarter + half.
+                    // This table had the half-frame clocks at the first and third steps (and none at the last), one step early: a game that writes $4017 with bit 7 set
+                    // every frame (the SMB1 remake does) then ran its length counters and sweeps three times a frame instead of two (found by the BrokenDev differential
+                    // replay against Mesen: pulse length 0xE2 -> 0xE0 -> 0xDE per frame in Mesen, 0xD4 -> 0xD1 -> 0xCE here).
+                    switch(frameStep)
+                    {
+                        case 0: QuarterFrameTick(); nextFrameEventCycle = 14913; break;
+                        case 1: QuarterFrameTick(); HalfFrameTick(); nextFrameEventCycle = 22371; break;
+                        case 2: QuarterFrameTick(); nextFrameEventCycle = 29829; break;
+                        case 3: nextFrameEventCycle = 37281; break;
+                        case 4:
+                            QuarterFrameTick(); HalfFrameTick();
+                            frameStep = -1;
+                            frameCycle -= 37282;
+                            nextFrameEventCycle = 7457;
+                            break;
+                    }
+                }
+                frameStep++;
+            }
+        }
+
+        private void MixAndStore()
+        {
+            // LUT-based nonlinear mixing (float-only)
+            int p1 = ChannelEnabled(0x01) ? pulse1_output : 0;
+            int p2 = ChannelEnabled(0x02) ? pulse2_output : 0;
+            int pulseSum = p1 + p2; // 0..30
+            float pulseMix = PulseMixLut[pulseSum];
+
+            int t = ChannelEnabled(0x04) ? triangle_output : 0; // 0..15
+            int n = ChannelEnabled(0x08) ? noise_output : 0;    // 0..15
+            int d = (ChannelEnabled(0x10) && dmc_enabled) ? dmc_output : 0; // 0..127
+            // Index layout: (t << (4+7)) | (n << 7) | d
+            int tndIndex = (t << 11) | (n << 7) | d;
+            float tnd = TndMixLut[tndIndex];
+
+            float mixed = pulseMix + tnd;
+            // Existing simple low-pass + DC high-pass chain kept intact
+            lpLast += (mixed - lpLast) * LowPassCoeff; float lp = lpLast; float hp = lp - dcLastIn + DC_HPF_R * dcLastOut; dcLastIn = lp; dcLastOut = hp;
+            StoreSample(hp * 1.05f);
+        }
+
+        // ===== Waveform-phase probe (audio differential tracing) ===========================
+        //
+        // ApuStateSnapshot / IApuStateProbe deliberately exclude every field below, and for a good
+        // reason: Mesen runs NesApu lazily, so at an arbitrary instant its copies of these lag the
+        // CPU by up to ~2500 cycles, and comparing them for EQUALITY would report a divergence on
+        // nearly every frame for a harness reason rather than an emulation one.
+        //
+        // That argument bounds how far apart two CORRECT emulators can look. It says nothing about
+        // a defect whose signature is unbounded - "this core stops clocking the noise LFSR while
+        // the channel is muted" desynchronises the two shift registers permanently, and no lag of
+        // 2500 cycles can explain a 15-bit register that never resynchronises. Signal far above the
+        // noise floor is still a measurement, so these are exposed separately, under their own name,
+        // for a differ that classifies per field instead of testing equality.
+        //
+        // Kept out of ApuStateSnapshot on purpose: that struct's contract is "lag-immune", and
+        // quietly adding lag-sensitive fields to it would break every existing comparison built on
+        // that promise.
+        public readonly struct ApuPhaseSnapshot
+        {
+            public readonly byte Pulse1Duty, Pulse2Duty;             // $4000/$4004 bits 7-6
+            public readonly byte Pulse1SeqIndex, Pulse2SeqIndex;     // duty step 0..7
+            public readonly int Pulse1TimerCounter, Pulse2TimerCounter;
+            public readonly ushort Pulse1Period, Pulse2Period;       // 11-bit period register
+            public readonly byte Pulse1Output, Pulse2Output;         // 0..15, this cycle's sample
+            public readonly byte TriangleSeqIndex;                   // 0..31
+            public readonly int TriangleTimerCounter;
+            public readonly ushort TrianglePeriod;
+            public readonly byte TriangleOutput;                     // 0..15
+            public readonly ushort NoiseShift;                       // the 15-bit LFSR
+            public readonly int NoiseTimerCounter;
+            public readonly ushort NoisePeriod;                      // CPU cycles, NTSC table
+            public readonly byte NoiseOutput;                        // 0..15
+            public readonly bool NoiseMode;
+            public readonly byte DmcOutput;                          // 0..127 delta counter
+            public readonly int DmcShiftReg, DmcBitsRemaining, DmcTimer;
+            public readonly bool DmcSilence;
+            public readonly byte FrameStep;
+
+            public ApuPhaseSnapshot(
+                byte p1Duty, byte p2Duty, byte p1Seq, byte p2Seq,
+                int p1TC, int p2TC, ushort p1Per, ushort p2Per, byte p1Out, byte p2Out,
+                byte tSeq, int tTC, ushort tPer, byte tOut,
+                ushort nShift, int nTC, ushort nPer, byte nOut, bool nMode,
+                byte dOut, int dShift, int dBits, int dTimer, bool dSilence, byte frameStep)
+            {
+                Pulse1Duty = p1Duty; Pulse2Duty = p2Duty;
+                Pulse1SeqIndex = p1Seq; Pulse2SeqIndex = p2Seq;
+                Pulse1TimerCounter = p1TC; Pulse2TimerCounter = p2TC;
+                Pulse1Period = p1Per; Pulse2Period = p2Per;
+                Pulse1Output = p1Out; Pulse2Output = p2Out;
+                TriangleSeqIndex = tSeq; TriangleTimerCounter = tTC;
+                TrianglePeriod = tPer; TriangleOutput = tOut;
+                NoiseShift = nShift; NoiseTimerCounter = nTC; NoisePeriod = nPer;
+                NoiseOutput = nOut; NoiseMode = nMode;
+                DmcOutput = dOut; DmcShiftReg = dShift; DmcBitsRemaining = dBits;
+                DmcTimer = dTimer; DmcSilence = dSilence; FrameStep = frameStep;
+            }
+        }
+
+        /// <summary>
+        /// Live waveform phase. Unlike ProbeApuState() this is NOT lag-immune - see the block
+        /// comment above ApuPhaseSnapshot for what it may and may not be used to conclude.
+        /// </summary>
+        public ApuPhaseSnapshot ProbeApuPhase() => new ApuPhaseSnapshot(
+            pulse1_duty, pulse2_duty,
+            (byte)pulse1_seqIndex, (byte)pulse2_seqIndex,
+            pulse1_timerCounter, pulse2_timerCounter,
+            pulse1_timer, pulse2_timer,
+            (byte)pulse1_output, (byte)pulse2_output,
+            (byte)triangle_seqIndex, triangle_timerCounter, triangle_timer, (byte)triangle_output,
+            noiseShiftRegister, noise_timerCounter,
+            (ushort)NoisePeriods[noise_periodReg & 0x0F], (byte)noise_output, (noise_periodReg & 0x80) != 0,
+            (byte)dmc_output, dmc_shiftReg, dmc_bitsRemaining, dmc_timer, dmc_silence,
+            (byte)frameStep);
+
+        // ===== Control-state probe (BrokenNes2's recording of a game's music, round 8) =====================
+        //
+        // Every counter and flag that decides WHEN a channel sounds and HOW LOUD - the envelope dividers and start flags, the sweep dividers
+        // and reload flags, the linear counter's reload flag, the frame sequencer's position - in this core's own units. The plugin's
+        // recording takes it once, between two frames, so that its own model of the chip (BrokenNes2.Record.NesApuModel) starts from exactly
+        // the state the game's chip was in and then follows the game's register writes. Read-only, allocation-free (a struct), and nothing in
+        // any machine state: the default path does not call it.
+        public readonly struct ApuControlSnapshot
+        {
+            public int P1Duty { get; init; } public bool P1Halt { get; init; } public bool P1Const { get; init; } public int P1Vol { get; init; }
+            public int P1SweepRaw { get; init; } public int P1SweepPeriod { get; init; } public bool P1SweepNegate { get; init; } public int P1SweepShift { get; init; } public bool P1SweepReload { get; init; } public int P1SweepDivider { get; init; }
+            public int P1Timer { get; init; } public int P1LengthIdx { get; init; } public int P1Length { get; init; } public bool P1Enabled { get; init; } public bool P1EnvStart { get; init; } public int P1EnvDivider { get; init; } public int P1EnvDecay { get; init; }
+            public int P2Duty { get; init; } public bool P2Halt { get; init; } public bool P2Const { get; init; } public int P2Vol { get; init; }
+            public int P2SweepRaw { get; init; } public int P2SweepPeriod { get; init; } public bool P2SweepNegate { get; init; } public int P2SweepShift { get; init; } public bool P2SweepReload { get; init; } public int P2SweepDivider { get; init; }
+            public int P2Timer { get; init; } public int P2LengthIdx { get; init; } public int P2Length { get; init; } public bool P2Enabled { get; init; } public bool P2EnvStart { get; init; } public int P2EnvDivider { get; init; } public int P2EnvDecay { get; init; }
+            public int TLinearReg { get; init; } public bool THalt { get; init; } public int TTimer { get; init; } public int TLengthIdx { get; init; } public int TLength { get; init; } public bool TEnabled { get; init; } public int TLinear { get; init; } public bool TLinearReload { get; init; }
+            public bool NHalt { get; init; } public bool NConst { get; init; } public int NVol { get; init; } public int NPeriodReg { get; init; } public int NLengthIdx { get; init; } public int NLength { get; init; } public bool NEnabled { get; init; } public bool NEnvStart { get; init; } public int NEnvDivider { get; init; } public int NEnvDecay { get; init; }
+            public int DmcCtrl { get; init; } public int DmcLoad { get; init; } public int DmcAddrReg { get; init; } public int DmcLenReg { get; init; } public bool DmcEnabled { get; init; } public int DmcAddress { get; init; } public int DmcRemaining { get; init; } public int DmcOutput { get; init; }
+            public int Status { get; init; } public int FrameCycle { get; init; } public int FrameStep { get; init; } public int NextFrameEvent { get; init; } public bool FrameMode5 { get; init; } public bool FrameIrqInhibit { get; init; }
+        }
+
+        public ApuControlSnapshot ProbeControl() => new ApuControlSnapshot
+        {
+            P1Duty = pulse1_duty, P1Halt = pulse1_lengthHalt, P1Const = pulse1_constantVolume, P1Vol = pulse1_volumeParam,
+            P1SweepRaw = pulse1_sweepRaw, P1SweepPeriod = pulse1_sweepPeriod, P1SweepNegate = pulse1_sweepNegate, P1SweepShift = pulse1_sweepShift, P1SweepReload = pulse1_sweepReload, P1SweepDivider = pulse1_sweepDivider,
+            P1Timer = pulse1_timer, P1LengthIdx = pulse1_lengthIdx, P1Length = pulse1_lengthCounter, P1Enabled = pulse1_enabled, P1EnvStart = pulse1_envStart, P1EnvDivider = pulse1_envDivider, P1EnvDecay = pulse1_envDecay,
+            P2Duty = pulse2_duty, P2Halt = pulse2_lengthHalt, P2Const = pulse2_constantVolume, P2Vol = pulse2_volumeParam,
+            P2SweepRaw = pulse2_sweepRaw, P2SweepPeriod = pulse2_sweepPeriod, P2SweepNegate = pulse2_sweepNegate, P2SweepShift = pulse2_sweepShift, P2SweepReload = pulse2_sweepReload, P2SweepDivider = pulse2_sweepDivider,
+            P2Timer = pulse2_timer, P2LengthIdx = pulse2_lengthIdx, P2Length = pulse2_lengthCounter, P2Enabled = pulse2_enabled, P2EnvStart = pulse2_envStart, P2EnvDivider = pulse2_envDivider, P2EnvDecay = pulse2_envDecay,
+            TLinearReg = triangle_linearReg, THalt = triangle_lengthHalt, TTimer = triangle_timer, TLengthIdx = triangle_lengthIdx, TLength = triangle_lengthCounter, TEnabled = triangle_enabled, TLinear = triangle_linearCounter, TLinearReload = triangle_linearReloadFlag,
+            NHalt = noise_lengthHalt, NConst = noise_constantVolume, NVol = noise_volumeParam, NPeriodReg = noise_periodReg, NLengthIdx = noise_lengthIdx, NLength = noise_lengthCounter, NEnabled = noise_enabled, NEnvStart = noise_envStart, NEnvDivider = noise_envDivider, NEnvDecay = noise_envDecay,
+            DmcCtrl = dmc_ctrl, DmcLoad = dmc_directLoad, DmcAddrReg = dmc_addrReg, DmcLenReg = dmc_lenReg, DmcEnabled = dmc_enabled, DmcAddress = dmc_sampleAddress, DmcRemaining = dmc_sampleLengthRemaining, DmcOutput = dmc_deltaCounter,
+            Status = statusWriteLatch, FrameCycle = frameCycle, FrameStep = frameStep, NextFrameEvent = nextFrameEventCycle, FrameMode5 = frameMode5, FrameIrqInhibit = frameIRQInhibit,
+        };
+
+        private bool ChannelEnabled(int bit) => (channelEnableMask & bit) != 0;
+
+        private bool SweepWouldMute(ushort timer, bool negate, int shift, bool channel1)
+        {
+            // Hardware (nesdev "APU Sweep"): the target period is computed continuously and a target above $7FF mutes the channel "regardless of the
+            // state of the sweep unit" - the enable flag and the shift count only decide whether the PERIOD is rewritten (Sweep()). At shift 0 the
+            // target is twice the period, so a game that never writes $4001/$4005 (power-on: shift 0, negate off) has every note of period >= $400
+            // muted; this returned "not muted" for shift 0. The other mute is the CURRENT period below 8 (the caller's timerMute), not the target:
+            // this also muted on a target below 8, which a negate sweep (target <= period, so never above $7FF) reaches without being silenced on
+            // hardware - and with the shift-0 case fixed that rule would have muted every channel switched off the documented way ($08: negate,
+            // shift 0, target -1 / 0). Guarded by BrokenDev/tests/apu-regress.ps1 (sweep mute 7a-7d, measured on Mesen 2.1.1).
+            int change = timer >> shift;
+            int target = negate ? (timer - change - (channel1?1:0)) : (timer + change);
+            return target > 0x7FF;
+        }
+        private void StoreSample(float sample){ if(ringCount >= AudioRingSize){ ringRead = (ringRead+1) & (AudioRingSize-1); ringCount--; } audioRing[ringWrite]=sample; ringWrite=(ringWrite+1)&(AudioRingSize-1); ringCount++; }
+
+        public float[] GetAudioSamples(int maxSamples=0){ if(ringCount==0) return Array.Empty<float>(); int toRead = ringCount; if(maxSamples>0 && maxSamples<toRead) toRead=maxSamples; if(toRead>4096 && maxSamples==0) toRead=4096; float[] result=new float[toRead]; int first = Math.Min(toRead, AudioRingSize - ringRead); Array.Copy(audioRing, ringRead, result,0, first); int rem=toRead-first; if(rem>0) Array.Copy(audioRing,0,result,first,rem); ringRead=(ringRead+toRead)&(AudioRingSize-1); ringCount-=toRead; return result; }
+        // IAPU.ReadSamples without the allocation of GetAudioSamples (plugin mode drains every block on the audio thread).
+        public int ReadSamples(Span<float> dest){ int toRead = Math.Min(dest.Length, ringCount); if(toRead==0) return 0; int first = Math.Min(toRead, AudioRingSize - ringRead); audioRing.AsSpan(ringRead, first).CopyTo(dest); int rem=toRead-first; if(rem>0) audioRing.AsSpan(0, rem).CopyTo(dest.Slice(first)); ringRead=(ringRead+toRead)&(AudioRingSize-1); ringCount-=toRead; return toRead; }
+        public float[] GetAudioBuffer()=>GetAudioSamples(); public int GetQueuedSampleCount()=>ringCount; public int GetSampleRate()=>audioSampleRate;
+        public void SetEnabledChannels(int channelMask) { channelEnableMask = channelMask & 0x1F; }
+
+    private void ResetInternal(){ ringRead=ringWrite=ringCount=0; fractionalSampleAccumulator=0; samplePhase=0; lpLast=dcLastIn=dcLastOut=0; frameCycle=0; frameIRQFlag=false; dmc_irqFlag=false; }
+
+    private class ApuState { public byte pulse1_duty,pulse1_lengthIdx,pulse1_sweepRaw; public ushort pulse1_timer; public byte pulse2_duty,pulse2_lengthIdx,pulse2_sweepRaw; public ushort pulse2_timer; public byte triangle_linearReg,triangle_lengthIdx; public ushort triangle_timer; public byte noise_lengthIdx,noise_periodReg; public byte dmc_ctrl,dmc_directLoad,dmc_addrReg,dmc_lenReg; public byte statusWriteLatch; public bool pulse1_enabled,pulse2_enabled,triangle_enabled,noise_enabled,dmc_enabled; public int p1Len,p2Len,tLen,nLen; public bool p1EnvStart,p2EnvStart,nEnvStart; public int p1EnvDiv,p1EnvDecay,p2EnvDiv,p2EnvDecay,nEnvDiv,nEnvDecay; public bool p1Const,p2Const,nConst,p1LenH,p2LenH,nLenH,tLenH; public int p1Vol,p2Vol,nVol; public bool p1SwNeg,p2SwNeg; public int p1SwShift,p2SwShift,p1SwPeriod,p2SwPeriod; public bool p1SwReload,p2SwReload; public int p1SwDiv,p2SwDiv; public int triLinCtr; public bool triLinReload; public ushort noiseShift; public int noiseTimer; public int p1TimerCtr,p2TimerCtr,p1Seq,p2Seq; public int triTimerCtr,triSeq; public int p1Out,p2Out,triOut,noiseOut,dmcOut; public int dmc_timer,dmc_timerPeriod,dmc_sampleAddress,dmc_sampleLengthRemaining,dmc_shiftReg,dmc_bitsRemaining,dmc_deltaCounter,dmc_sampleBuffer; public bool dmc_sampleBufferFilled,dmc_silence,dmc_irqEnable,dmc_loop,dmc_irqFlag; public int frameCycle; public bool frameMode5,frameIRQInhibit,frameIRQFlag; public int dmcStartDelay; public long dmcCycle; public float lpLast,dcLastIn,dcLastOut; public int ringWrite,ringRead,ringCount; public double frac; public int samplePhase; public int frameStep = -1, nextFrameEvent = -1; }
+    public object GetState()=> new ApuState { pulse1_duty=pulse1_duty,pulse1_lengthIdx=pulse1_lengthIdx,pulse1_sweepRaw=pulse1_sweepRaw,pulse1_timer=pulse1_timer,pulse2_duty=pulse2_duty,pulse2_lengthIdx=pulse2_lengthIdx,pulse2_sweepRaw=pulse2_sweepRaw,pulse2_timer=pulse2_timer,triangle_linearReg=triangle_linearReg,triangle_lengthIdx=triangle_lengthIdx,triangle_timer=triangle_timer,noise_lengthIdx=noise_lengthIdx,noise_periodReg=noise_periodReg,dmc_ctrl=dmc_ctrl,dmc_directLoad=dmc_directLoad,dmc_addrReg=dmc_addrReg,dmc_lenReg=dmc_lenReg,statusWriteLatch=statusWriteLatch,pulse1_enabled=pulse1_enabled,pulse2_enabled=pulse2_enabled,triangle_enabled=triangle_enabled,noise_enabled=noise_enabled,dmc_enabled=dmc_enabled,p1Len=pulse1_lengthCounter,p2Len=pulse2_lengthCounter,tLen=triangle_lengthCounter,nLen=noise_lengthCounter,p1EnvStart=pulse1_envStart,p2EnvStart=pulse2_envStart,nEnvStart=noise_envStart,p1EnvDiv=pulse1_envDivider,p1EnvDecay=pulse1_envDecay,p2EnvDiv=pulse2_envDivider,p2EnvDecay=pulse2_envDecay,nEnvDiv=noise_envDivider,nEnvDecay=noise_envDecay,p1Const=pulse1_constantVolume,p2Const=pulse2_constantVolume,nConst=noise_constantVolume,p1LenH=pulse1_lengthHalt,p2LenH=pulse2_lengthHalt,nLenH=noise_lengthHalt,tLenH=triangle_lengthHalt,p1Vol=pulse1_volumeParam,p2Vol=pulse2_volumeParam,nVol=noise_volumeParam,p1SwNeg=pulse1_sweepNegate,p2SwNeg=pulse2_sweepNegate,p1SwShift=pulse1_sweepShift,p2SwShift=pulse2_sweepShift,p1SwPeriod=pulse1_sweepPeriod,p2SwPeriod=pulse2_sweepPeriod,p1SwReload=pulse1_sweepReload,p2SwReload=pulse2_sweepReload,p1SwDiv=pulse1_sweepDivider,p2SwDiv=pulse2_sweepDivider,triLinCtr=triangle_linearCounter,triLinReload=triangle_linearReloadFlag,noiseShift=noiseShiftRegister,noiseTimer=noise_timerCounter,p1TimerCtr=pulse1_timerCounter,p2TimerCtr=pulse2_timerCounter,p1Seq=pulse1_seqIndex,p2Seq=pulse2_seqIndex,triTimerCtr=triangle_timerCounter,triSeq=triangle_seqIndex,p1Out=pulse1_output,p2Out=pulse2_output,triOut=triangle_output,noiseOut=noise_output,dmcOut=dmc_output,dmc_timer=dmc_timer,dmc_timerPeriod=dmc_timerPeriod,dmc_sampleAddress=dmc_sampleAddress,dmc_sampleLengthRemaining=dmc_sampleLengthRemaining,dmc_shiftReg=dmc_shiftReg,dmc_bitsRemaining=dmc_bitsRemaining,dmc_deltaCounter=dmc_deltaCounter,dmc_sampleBuffer=dmc_sampleBuffer,dmc_sampleBufferFilled=dmc_sampleBufferFilled,dmc_silence=dmc_silence,dmc_irqEnable=dmc_irqEnable,dmc_loop=dmc_loop,dmc_irqFlag=dmc_irqFlag,frameCycle=frameCycle,frameMode5=frameMode5,frameIRQInhibit=frameIRQInhibit,frameIRQFlag=frameIRQFlag,dmcStartDelay=dmcStartDelay,dmcCycle=dmcCycle,lpLast=lpLast,dcLastIn=dcLastIn,dcLastOut=dcLastOut,ringWrite=ringWrite,ringRead=ringRead,ringCount=ringCount,frac=fractionalSampleAccumulator,samplePhase=samplePhase,frameStep=frameStep,nextFrameEvent=nextFrameEventCycle };
+        public void SetState(object state){
+            if(state is ApuState s){ RestoreState(s); PostRestoreAudioResync(); return; }
+            if(state is System.Text.Json.JsonElement je){
+                try{
+                    if(je.ValueKind==System.Text.Json.JsonValueKind.Object){
+                        var tmp = new ApuState(); System.Text.Json.JsonElement v;
+                        if(je.TryGetProperty("pulse1_duty", out v)) tmp.pulse1_duty=(byte)v.GetByte();
+                        if(je.TryGetProperty("pulse1_lengthIdx", out v)) tmp.pulse1_lengthIdx=(byte)v.GetByte();
+                        if(je.TryGetProperty("pulse1_sweepRaw", out v)) tmp.pulse1_sweepRaw=(byte)v.GetByte();
+                        if(je.TryGetProperty("pulse1_timer", out v)) tmp.pulse1_timer=(ushort)v.GetUInt16();
+                        if(je.TryGetProperty("pulse2_duty", out v)) tmp.pulse2_duty=(byte)v.GetByte();
+                        if(je.TryGetProperty("pulse2_lengthIdx", out v)) tmp.pulse2_lengthIdx=(byte)v.GetByte();
+                        if(je.TryGetProperty("pulse2_sweepRaw", out v)) tmp.pulse2_sweepRaw=(byte)v.GetByte();
+                        if(je.TryGetProperty("pulse2_timer", out v)) tmp.pulse2_timer=(ushort)v.GetUInt16();
+                        if(je.TryGetProperty("triangle_linearReg", out v)) tmp.triangle_linearReg=(byte)v.GetByte();
+                        if(je.TryGetProperty("triangle_lengthIdx", out v)) tmp.triangle_lengthIdx=(byte)v.GetByte();
+                        if(je.TryGetProperty("triangle_timer", out v)) tmp.triangle_timer=(ushort)v.GetUInt16();
+                        if(je.TryGetProperty("noise_lengthIdx", out v)) tmp.noise_lengthIdx=(byte)v.GetByte();
+                        if(je.TryGetProperty("noise_periodReg", out v)) tmp.noise_periodReg=(byte)v.GetByte();
+                        if(je.TryGetProperty("dmc_ctrl", out v)) tmp.dmc_ctrl=(byte)v.GetByte();
+                        if(je.TryGetProperty("dmc_directLoad", out v)) tmp.dmc_directLoad=(byte)v.GetByte();
+                        if(je.TryGetProperty("dmc_addrReg", out v)) tmp.dmc_addrReg=(byte)v.GetByte();
+                        if(je.TryGetProperty("dmc_lenReg", out v)) tmp.dmc_lenReg=(byte)v.GetByte();
+                        if(je.TryGetProperty("statusWriteLatch", out v)) tmp.statusWriteLatch=(byte)v.GetByte();
+                        
+                        // Restored missing fields
+                        if(je.TryGetProperty("pulse1_enabled", out v)) tmp.pulse1_enabled=v.GetBoolean();
+                        if(je.TryGetProperty("pulse2_enabled", out v)) tmp.pulse2_enabled=v.GetBoolean();
+                        if(je.TryGetProperty("triangle_enabled", out v)) tmp.triangle_enabled=v.GetBoolean();
+                        if(je.TryGetProperty("noise_enabled", out v)) tmp.noise_enabled=v.GetBoolean();
+                        if(je.TryGetProperty("dmc_enabled", out v)) tmp.dmc_enabled=v.GetBoolean();
+
+                        if(je.TryGetProperty("p1Len", out v)) tmp.p1Len=v.GetInt32();
+                        if(je.TryGetProperty("p2Len", out v)) tmp.p2Len=v.GetInt32();
+                        if(je.TryGetProperty("tLen", out v)) tmp.tLen=v.GetInt32();
+                        if(je.TryGetProperty("nLen", out v)) tmp.nLen=v.GetInt32();
+
+                        if(je.TryGetProperty("p1EnvStart", out v)) tmp.p1EnvStart=v.GetBoolean();
+                        if(je.TryGetProperty("p2EnvStart", out v)) tmp.p2EnvStart=v.GetBoolean();
+                        if(je.TryGetProperty("nEnvStart", out v)) tmp.nEnvStart=v.GetBoolean();
+                        if(je.TryGetProperty("p1EnvDiv", out v)) tmp.p1EnvDiv=v.GetInt32();
+                        if(je.TryGetProperty("p1EnvDecay", out v)) tmp.p1EnvDecay=v.GetInt32();
+                        if(je.TryGetProperty("p2EnvDiv", out v)) tmp.p2EnvDiv=v.GetInt32();
+                        if(je.TryGetProperty("p2EnvDecay", out v)) tmp.p2EnvDecay=v.GetInt32();
+                        if(je.TryGetProperty("nEnvDiv", out v)) tmp.nEnvDiv=v.GetInt32();
+                        if(je.TryGetProperty("nEnvDecay", out v)) tmp.nEnvDecay=v.GetInt32();
+
+                        if(je.TryGetProperty("p1Const", out v)) tmp.p1Const=v.GetBoolean();
+                        if(je.TryGetProperty("p2Const", out v)) tmp.p2Const=v.GetBoolean();
+                        if(je.TryGetProperty("nConst", out v)) tmp.nConst=v.GetBoolean();
+                        if(je.TryGetProperty("p1LenH", out v)) tmp.p1LenH=v.GetBoolean();
+                        if(je.TryGetProperty("p2LenH", out v)) tmp.p2LenH=v.GetBoolean();
+                        if(je.TryGetProperty("nLenH", out v)) tmp.nLenH=v.GetBoolean();
+                        if(je.TryGetProperty("tLenH", out v)) tmp.tLenH=v.GetBoolean();
+                        if(je.TryGetProperty("p1Vol", out v)) tmp.p1Vol=v.GetInt32();
+                        if(je.TryGetProperty("p2Vol", out v)) tmp.p2Vol=v.GetInt32();
+                        if(je.TryGetProperty("nVol", out v)) tmp.nVol=v.GetInt32();
+
+                        if(je.TryGetProperty("p1SwNeg", out v)) tmp.p1SwNeg=v.GetBoolean();
+                        if(je.TryGetProperty("p2SwNeg", out v)) tmp.p2SwNeg=v.GetBoolean();
+                        if(je.TryGetProperty("p1SwShift", out v)) tmp.p1SwShift=v.GetInt32();
+                        if(je.TryGetProperty("p2SwShift", out v)) tmp.p2SwShift=v.GetInt32();
+                        if(je.TryGetProperty("p1SwPeriod", out v)) tmp.p1SwPeriod=v.GetInt32();
+                        if(je.TryGetProperty("p2SwPeriod", out v)) tmp.p2SwPeriod=v.GetInt32();
+                        if(je.TryGetProperty("p1SwReload", out v)) tmp.p1SwReload=v.GetBoolean();
+                        if(je.TryGetProperty("p2SwReload", out v)) tmp.p2SwReload=v.GetBoolean();
+                        if(je.TryGetProperty("p1SwDiv", out v)) tmp.p1SwDiv=v.GetInt32();
+                        if(je.TryGetProperty("p2SwDiv", out v)) tmp.p2SwDiv=v.GetInt32();
+
+                        if(je.TryGetProperty("triLinCtr", out v)) tmp.triLinCtr=v.GetInt32();
+                        if(je.TryGetProperty("triLinReload", out v)) tmp.triLinReload=v.GetBoolean();
+                        
+                        if(je.TryGetProperty("noiseShift", out v)) tmp.noiseShift=(ushort)v.GetUInt16(); // existing
+                        if(je.TryGetProperty("noiseTimer", out v)) tmp.noiseTimer=v.GetInt32(); // existing
+
+                        if(je.TryGetProperty("p1TimerCtr", out v)) tmp.p1TimerCtr=v.GetInt32();
+                        if(je.TryGetProperty("p2TimerCtr", out v)) tmp.p2TimerCtr=v.GetInt32();
+                        if(je.TryGetProperty("p1Seq", out v)) tmp.p1Seq=v.GetInt32();
+                        if(je.TryGetProperty("p2Seq", out v)) tmp.p2Seq=v.GetInt32();
+                        if(je.TryGetProperty("triTimerCtr", out v)) tmp.triTimerCtr=v.GetInt32();
+                        if(je.TryGetProperty("triSeq", out v)) tmp.triSeq=v.GetInt32();
+
+                        if(je.TryGetProperty("p1Out", out v)) tmp.p1Out=v.GetInt32();
+                        if(je.TryGetProperty("p2Out", out v)) tmp.p2Out=v.GetInt32();
+                        if(je.TryGetProperty("triOut", out v)) tmp.triOut=v.GetInt32();
+                        if(je.TryGetProperty("noiseOut", out v)) tmp.noiseOut=v.GetInt32();
+                        if(je.TryGetProperty("dmcOut", out v)) tmp.dmcOut=v.GetInt32();
+
+                        if(je.TryGetProperty("dmc_timer", out v)) tmp.dmc_timer=v.GetInt32();
+                if(je.TryGetProperty("dmcStartDelay", out v)) tmp.dmcStartDelay=v.GetInt32();
+                if(je.TryGetProperty("dmcCycle", out v)) tmp.dmcCycle=v.GetInt64();
+                        if(je.TryGetProperty("dmc_timerPeriod", out v)) tmp.dmc_timerPeriod=v.GetInt32();
+                        if(je.TryGetProperty("dmc_sampleAddress", out v)) tmp.dmc_sampleAddress=v.GetInt32();
+                        if(je.TryGetProperty("dmc_sampleLengthRemaining", out v)) tmp.dmc_sampleLengthRemaining=v.GetInt32();
+                        if(je.TryGetProperty("dmc_shiftReg", out v)) tmp.dmc_shiftReg=v.GetInt32();
+                        if(je.TryGetProperty("dmc_bitsRemaining", out v)) tmp.dmc_bitsRemaining=v.GetInt32();
+                        if(je.TryGetProperty("dmc_deltaCounter", out v)) tmp.dmc_deltaCounter=v.GetInt32();
+                        if(je.TryGetProperty("dmc_sampleBuffer", out v)) tmp.dmc_sampleBuffer=v.GetInt32();
+                        if(je.TryGetProperty("dmc_sampleBufferFilled", out v)) tmp.dmc_sampleBufferFilled=v.GetBoolean();
+                        if(je.TryGetProperty("dmc_silence", out v)) tmp.dmc_silence=v.GetBoolean();
+                        if(je.TryGetProperty("dmc_irqEnable", out v)) tmp.dmc_irqEnable=v.GetBoolean();
+                        if(je.TryGetProperty("dmc_loop", out v)) tmp.dmc_loop=v.GetBoolean();
+                        if(je.TryGetProperty("dmc_irqFlag", out v)) tmp.dmc_irqFlag=v.GetBoolean();
+
+                        if(je.TryGetProperty("frameCycle", out v)) tmp.frameCycle=v.GetInt32(); // existing
+                        if(je.TryGetProperty("frameMode5", out v)) tmp.frameMode5=v.GetBoolean();
+                        if(je.TryGetProperty("frameIRQInhibit", out v)) tmp.frameIRQInhibit=v.GetBoolean();
+                        if(je.TryGetProperty("frameIRQFlag", out v)) tmp.frameIRQFlag=v.GetBoolean();
+
+                        if(je.TryGetProperty("lpLast", out v)) tmp.lpLast=v.GetSingle();
+                        if(je.TryGetProperty("dcLastIn", out v)) tmp.dcLastIn=v.GetSingle();
+                        if(je.TryGetProperty("dcLastOut", out v)) tmp.dcLastOut=v.GetSingle();
+                        if(je.TryGetProperty("frac", out v)) tmp.frac=v.GetDouble();
+                        if(je.TryGetProperty("samplePhase", out v)) tmp.samplePhase=v.GetInt32();
+                        if(je.TryGetProperty("frameStep", out v)) tmp.frameStep=v.GetInt32();
+                        if(je.TryGetProperty("nextFrameEvent", out v)) tmp.nextFrameEvent=v.GetInt32();
+
+                        RestoreState(tmp);
+                        PostRestoreAudioResync();
+                    }
+                }catch{}
+            }
+        }
+    private void RestoreState(ApuState s){ pulse1_duty=s.pulse1_duty; pulse1_lengthIdx=s.pulse1_lengthIdx; pulse1_sweepRaw=s.pulse1_sweepRaw; pulse1_timer=s.pulse1_timer; pulse2_duty=s.pulse2_duty; pulse2_lengthIdx=s.pulse2_lengthIdx; pulse2_sweepRaw=s.pulse2_sweepRaw; pulse2_timer=s.pulse2_timer; triangle_linearReg=s.triangle_linearReg; triangle_lengthIdx=s.triangle_lengthIdx; triangle_timer=s.triangle_timer; noise_lengthIdx=s.noise_lengthIdx; noise_periodReg=s.noise_periodReg; dmc_ctrl=s.dmc_ctrl; dmc_directLoad=s.dmc_directLoad; dmc_addrReg=s.dmc_addrReg; dmc_lenReg=s.dmc_lenReg; statusWriteLatch=s.statusWriteLatch; pulse1_enabled=s.pulse1_enabled; pulse2_enabled=s.pulse2_enabled; triangle_enabled=s.triangle_enabled; noise_enabled=s.noise_enabled; dmc_enabled=s.dmc_enabled; pulse1_lengthCounter=s.p1Len; pulse2_lengthCounter=s.p2Len; triangle_lengthCounter=s.tLen; noise_lengthCounter=s.nLen; pulse1_envStart=s.p1EnvStart; pulse2_envStart=s.p2EnvStart; noise_envStart=s.nEnvStart; pulse1_envDivider=s.p1EnvDiv; pulse1_envDecay=s.p1EnvDecay; pulse2_envDivider=s.p2EnvDiv; pulse2_envDecay=s.p2EnvDecay; noise_envDivider=s.nEnvDiv; noise_envDecay=s.nEnvDecay; pulse1_constantVolume=s.p1Const; pulse2_constantVolume=s.p2Const; noise_constantVolume=s.nConst; pulse1_lengthHalt=s.p1LenH; pulse2_lengthHalt=s.p2LenH; noise_lengthHalt=s.nLenH; triangle_lengthHalt=s.tLenH; pulse1_volumeParam=s.p1Vol; pulse2_volumeParam=s.p2Vol; noise_volumeParam=s.nVol; pulse1_sweepNegate=s.p1SwNeg; pulse2_sweepNegate=s.p2SwNeg; pulse1_sweepShift=s.p1SwShift; pulse2_sweepShift=s.p2SwShift; pulse1_sweepPeriod=s.p1SwPeriod; pulse2_sweepPeriod=s.p2SwPeriod; pulse1_sweepReload=s.p1SwReload; pulse2_sweepReload=s.p2SwReload; pulse1_sweepDivider=s.p1SwDiv; pulse2_sweepDivider=s.p2SwDiv; triangle_linearCounter=s.triLinCtr; triangle_linearReloadFlag=s.triLinReload; noiseShiftRegister=s.noiseShift; noise_timerCounter=s.noiseTimer; pulse1_timerCounter=s.p1TimerCtr; pulse2_timerCounter=s.p2TimerCtr; pulse1_seqIndex=s.p1Seq; pulse2_seqIndex=s.p2Seq; triangle_timerCounter=s.triTimerCtr; triangle_seqIndex=s.triSeq; pulse1_output=s.p1Out; pulse2_output=s.p2Out; triangle_output=s.triOut; noise_output=s.noiseOut; dmc_output=s.dmcOut; dmc_timer=s.dmc_timer; dmc_timerPeriod=s.dmc_timerPeriod; dmc_sampleAddress=s.dmc_sampleAddress; dmc_sampleLengthRemaining=s.dmc_sampleLengthRemaining; dmc_shiftReg=s.dmc_shiftReg; dmc_bitsRemaining=s.dmc_bitsRemaining; dmc_deltaCounter=s.dmc_deltaCounter; dmc_sampleBuffer=s.dmc_sampleBuffer; dmc_sampleBufferFilled=s.dmc_sampleBufferFilled; dmc_silence=s.dmc_silence; dmc_irqEnable=s.dmc_irqEnable; dmc_loop=s.dmc_loop; dmc_irqFlag=s.dmc_irqFlag; frameCycle=s.frameCycle; frameMode5=s.frameMode5; frameIRQInhibit=s.frameIRQInhibit; frameIRQFlag=s.frameIRQFlag; dmcStartDelay=s.dmcStartDelay; dmcCycle=s.dmcCycle; lpLast=s.lpLast; dcLastIn=s.dcLastIn; dcLastOut=s.dcLastOut; ringWrite=s.ringWrite; ringRead=s.ringRead; ringCount=s.ringCount; fractionalSampleAccumulator=s.frac; samplePhase = s.samplePhase; RestoreFrameSequencerStep(s.frameStep, s.nextFrameEvent); }
+
+    // The frame sequencer's position (which quarter / half frame clock comes next, and at which cycle). States saved before it was part of
+    // the state (BrokenDev Timeflow found the gap: after a load the sequencer kept the step of the machine it was loaded into, so its quarter
+    // and half frame clocks, and with them the envelopes, sweeps and length counters, ran at other cycles than the saved machine's) carry -1:
+    // the step is then the one frameCycle has reached (the events at or before it were already clocked).
+    private void RestoreFrameSequencerStep(int step, int next)
+    {
+        if (step >= 0 && next > 0) { frameStep = step; nextFrameEventCycle = next; return; }
+        int[] at = frameMode5 ? new[] { 7457, 14913, 22371, 29829, 37281 } : new[] { 7457, 14913, 22371, 29829 };
+        int k = 0;
+        while (k < at.Length - 1 && frameCycle >= at[k]) k++;
+        frameStep = k; nextFrameEventCycle = at[k];
+    }
+
+        private void PostRestoreAudioResync()
+        {
+            ringRead = ringWrite = ringCount = 0;
+            fractionalSampleAccumulator = 0; samplePhase = 0;
+            lpLast = 0; dcLastIn = 0; dcLastOut = 0;
+        }
+
+        public void ClearAudioBuffers()
+        {
+            PostRestoreAudioResync();
+        }
+
+        // Minimal Reset: clear audio buffers and pacing; preserve register latches/state.
+        public void Reset()
+        {
+            ClearAudioBuffers();
+        }
+
+        // ===== IApuStateProbe =====
+        //
+        // A read-only view of the sound hardware in hardware units, so a differential tracer can
+        // compare it digit-for-digit against Mesen's emu.getState(). Mutates nothing: in particular
+        // it does NOT go through ReadAPURegister(0x4015), which would clear frameIRQFlag and change
+        // the behaviour of the very run being traced. See IApuStateProbe.cs for the unit contract
+        // and for why the sub-instruction phase fields are deliberately absent.
+        public ApuStateSnapshot ProbeApuState()
+        {
+            return new ApuStateSnapshot(
+                p1Period: pulse1_timer,
+                p2Period: pulse2_timer,
+                // "Volume in force" rather than the raw register, because the two emulators keep
+                // the constant-volume parameter and the envelope decay level in different places.
+                p1Vol: (byte)(pulse1_constantVolume ? pulse1_volumeParam : pulse1_envDecay),
+                p2Vol: (byte)(pulse2_constantVolume ? pulse2_volumeParam : pulse2_envDecay),
+                p1Len: ClampByte(pulse1_lengthCounter),
+                p2Len: ClampByte(pulse2_lengthCounter),
+                p1Duty: (byte)(pulse1_duty & 3),
+                p2Duty: (byte)(pulse2_duty & 3),
+                // The sweep ENABLE bit is only kept in the raw $4001/$4005 latch here - the decoded
+                // fields below never captured it, which is itself worth knowing (see Sweep()).
+                p1SwEn: (pulse1_sweepRaw & 0x80) != 0,
+                p2SwEn: (pulse2_sweepRaw & 0x80) != 0,
+                p1SwNeg: pulse1_sweepNegate,
+                p2SwNeg: pulse2_sweepNegate,
+                p1SwShift: (byte)(pulse1_sweepShift & 7),
+                p2SwShift: (byte)(pulse2_sweepShift & 7),
+                triPeriod: triangle_timer,
+                triLen: ClampByte(triangle_lengthCounter),
+                triLinear: (byte)(triangle_linearCounter & 0x7F),
+                // Hardware CPU-cycle period from the NTSC table, not the 4-bit register index -
+                // that is the unit both sides can agree on. See IApuStateProbe.NoisePeriod.
+                noisePeriod: (ushort)NoisePeriods[noise_periodReg & 0x0F],
+                noiseVol: (byte)(noise_constantVolume ? noise_volumeParam : noise_envDecay),
+                noiseLen: ClampByte(noise_lengthCounter),
+                noiseMode: (noise_periodReg & 0x80) != 0,
+                dmcOutput: (byte)(dmc_deltaCounter & 0x7F),
+                dmcCurrentAddr: (ushort)(dmc_sampleAddress & 0xFFFF),
+                dmcBytesRemaining: (ushort)(dmc_sampleLengthRemaining & 0xFFFF),
+                dmcIrqEnabled: dmc_irqEnable,
+                dmcIrqFlag: dmc_irqFlag,
+                dmcLoop: dmc_loop,
+                frameMode5: frameMode5,
+                frameStep: (byte)(frameStep & 0x07),
+                frameIrqInhibit: frameIRQInhibit,
+                frameIrqFlag: frameIRQFlag,
+                p1En: pulse1_enabled, p2En: pulse2_enabled,
+                triEn: triangle_enabled, noiseEn: noise_enabled,
+                p1Halt: pulse1_lengthHalt, p2Halt: pulse2_lengthHalt,
+                triHalt: triangle_lengthHalt, noiseHalt: noise_lengthHalt,
+                p1Const: pulse1_constantVolume, p2Const: pulse2_constantVolume,
+                noiseConst: noise_constantVolume);
+        }
+
+        private static byte ClampByte(int v) => v < 0 ? (byte)0 : (v > 255 ? (byte)255 : (byte)v);
+    }
+}

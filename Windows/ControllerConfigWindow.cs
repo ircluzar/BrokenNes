@@ -24,6 +24,7 @@ namespace BrokenNes.Windows
         // UI Controls
         private ComboBox inputModeCombo;
         private Button refreshButton;
+        private CheckBox allowOppositeCheck;
         private Dictionary<string, Button> bindingButtons = new();
         private bool isKeyboardMode = true;
         private int selectedControllerIndex = 0;
@@ -47,8 +48,8 @@ namespace BrokenNes.Windows
         private void InitializeComponent()
         {
             Text = $"Player {config.PlayerNumber} Controller Configuration";
-            Size = new Size(500, 620);
-            MinimumSize = new Size(500, 620);
+            Size = new Size(500, 760);          // 60 taller than before the d-pad protection box was added, so all twelve rows still show without scrolling
+            MinimumSize = new Size(500, 760);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -59,13 +60,14 @@ namespace BrokenNes.Windows
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 5,
+                RowCount = 6,
                 Padding = new Padding(15),
                 AutoSize = false
             };
             mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Title
             mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Input mode selector
             mainPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100f)); // Bindings
+            mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // D-pad protection
             mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Info
             mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // Buttons
 
@@ -128,6 +130,38 @@ namespace BrokenNes.Windows
             };
             bindingsContainer.Controls.Add(bindingsPanel);
 
+            // D-pad protection: a real d-pad cannot press opposite directions, so by default neither is sent when both are held.
+            var dpadPanel = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                Dock = DockStyle.Top,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
+                Margin = new Padding(0, 10, 0, 0)
+            };
+            allowOppositeCheck = new CheckBox
+            {
+                Name = "allowOppositeDpad",
+                AccessibleName = "Allow opposite d-pad directions",
+                Text = "Allow opposite d-pad directions",
+                AutoSize = true,
+                Checked = config.AllowOppositeDpad,
+                Margin = new Padding(5, 0, 0, 0)
+            };
+            allowOppositeCheck.CheckedChanged += (s, e) => config.AllowOppositeDpad = allowOppositeCheck.Checked;
+            var dpadNote = new Label
+            {
+                Text = "Off (the default): Left and Right, or Up and Down, pressed together send neither, as on a real d-pad. Turn it on only for a glitch that needs both.",
+                AutoSize = false,
+                Width = 440,
+                Height = 32,
+                Margin = new Padding(24, 0, 0, 0),
+                ForeColor = Color.Gray,
+                Font = new Font(Font.FontFamily, 8)
+            };
+            dpadPanel.Controls.Add(allowOppositeCheck);
+            dpadPanel.Controls.Add(dpadNote);
+
             // Info label
             var infoLabel = new Label
             {
@@ -183,8 +217,9 @@ namespace BrokenNes.Windows
             mainPanel.Controls.Add(titleLabel, 0, 0);
             mainPanel.Controls.Add(selectorPanel, 0, 1);
             mainPanel.Controls.Add(bindingsContainer, 0, 2);
-            mainPanel.Controls.Add(infoLabel, 0, 3);
-            mainPanel.Controls.Add(buttonPanel, 0, 4);
+            mainPanel.Controls.Add(dpadPanel, 0, 3);
+            mainPanel.Controls.Add(infoLabel, 0, 4);
+            mainPanel.Controls.Add(buttonPanel, 0, 5);
 
             Controls.Add(mainPanel);
         }
@@ -203,7 +238,23 @@ namespace BrokenNes.Windows
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
 
-            var buttonNames = new[] { "B", "A", "Y", "X", "Select", "Start", "Up", "Down", "Left", "Right" };
+            var buttonNames = new[] { "B", "A", "Y", "X", "L", "R", "Select", "Start", "Up", "Down", "Left", "Right" };
+
+            // What each of the twelve buttons is on each console (hover the name): the Sega pads are reached through these twelve, as the Genesis's C, Z and Mode and the
+            // Master System's Pause have no keys of their own.
+            var hints = new Dictionary<string, string>
+            {
+                ["A"] = "NES A, SNES A, Game Boy A, Genesis A, Master System / Game Gear button 1",
+                ["B"] = "NES B, SNES B, Game Boy B, Genesis B, Master System / Game Gear button 2",
+                ["X"] = "SNES X, Genesis X",
+                ["Y"] = "SNES Y, Genesis Y",
+                ["L"] = "SNES L, Genesis Z (six-button pad)",
+                ["R"] = "SNES R, Genesis C",
+                ["Select"] = "Select on the NES, SNES and Game Boy; Genesis Mode; Master System Pause (the Game Gear has no such button)",
+                ["Start"] = "Start; on the Master System also Pause, since the console has no Start button",
+                ["Up"] = "Directions on every console", ["Down"] = "Directions on every console", ["Left"] = "Directions on every console", ["Right"] = "Directions on every console",
+            };
+            var tips = new ToolTip { AutoPopDelay = 12000, InitialDelay = 300 };
 
             foreach (var name in buttonNames)
             {
@@ -215,6 +266,7 @@ namespace BrokenNes.Windows
                     Font = new Font(Font.FontFamily, 9, FontStyle.Bold),
                     Margin = new Padding(5, 7, 5, 5)
                 };
+                if (hints.TryGetValue(name, out var hint)) tips.SetToolTip(label, hint);
 
                 var button = new Button
                 {
@@ -250,6 +302,8 @@ namespace BrokenNes.Windows
                 UpdateButtonText("Right", config.Right.Key);
                 UpdateButtonText("X", config.X.Key);
                 UpdateButtonText("Y", config.Y.Key);
+                UpdateButtonText("L", config.L.Key);
+                UpdateButtonText("R", config.R.Key);
             }
             else
             {
@@ -263,6 +317,8 @@ namespace BrokenNes.Windows
                 UpdateButtonText("Right", config.Right.GamepadButton?.ToString());
                 UpdateButtonText("X", config.X.GamepadButton?.ToString());
                 UpdateButtonText("Y", config.Y.GamepadButton?.ToString());
+                UpdateButtonText("L", config.L.GamepadButton?.ToString());
+                UpdateButtonText("R", config.R.GamepadButton?.ToString());
             }
         }
 
@@ -407,6 +463,8 @@ namespace BrokenNes.Windows
                 "Right" => config.Right,
                 "X" => config.X,
                 "Y" => config.Y,
+                "L" => config.L,
+                "R" => config.R,
                 _ => throw new ArgumentException($"Unknown button: {buttonName}")
             };
         }
@@ -447,6 +505,7 @@ namespace BrokenNes.Windows
                 Enabled = source.Enabled,
                 DeviceType = source.DeviceType,
                 GamepadIndex = source.GamepadIndex,
+                AllowOppositeDpad = source.AllowOppositeDpad,
                 A = CloneBinding(source.A),
                 B = CloneBinding(source.B),
                 Select = CloneBinding(source.Select),
@@ -456,7 +515,9 @@ namespace BrokenNes.Windows
                 Left = CloneBinding(source.Left),
                 Right = CloneBinding(source.Right),
                 X = CloneBinding(source.X),
-                Y = CloneBinding(source.Y)
+                Y = CloneBinding(source.Y),
+                L = CloneBinding(source.L),
+                R = CloneBinding(source.R)
             };
         }
 
@@ -466,6 +527,7 @@ namespace BrokenNes.Windows
             target.Enabled = source.Enabled;
             target.DeviceType = source.DeviceType;
             target.GamepadIndex = source.GamepadIndex;
+            target.AllowOppositeDpad = source.AllowOppositeDpad;
             target.A = CloneBinding(source.A);
             target.B = CloneBinding(source.B);
             target.Select = CloneBinding(source.Select);
@@ -476,6 +538,8 @@ namespace BrokenNes.Windows
             target.Right = CloneBinding(source.Right);
             target.X = CloneBinding(source.X);
             target.Y = CloneBinding(source.Y);
+            target.L = CloneBinding(source.L);
+            target.R = CloneBinding(source.R);
         }
 
         private void CancelButton_Click(object? sender, EventArgs e)
@@ -594,7 +658,11 @@ namespace BrokenNes.Windows
                 config.Right = defaults.Right;
                 config.X = defaults.X;
                 config.Y = defaults.Y;
+                config.L = defaults.L;
+                config.R = defaults.R;
                 config.DeviceType = InputDeviceType.Keyboard;
+                config.AllowOppositeDpad = defaults.AllowOppositeDpad;   // protected again
+                allowOppositeCheck.Checked = config.AllowOppositeDpad;
 
                 if (inputModeCombo.Items.Count > 0)
                 {

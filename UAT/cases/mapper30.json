@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "suite": "mapper30",
+  "description": "The user's real work-in-progress UNROM-512 (mapper 30) homebrew. This is the regression guard for the mapper-30 + unofficial-6502-opcode work that landed on 2026-09-02: Mapper30.cs, the self-flashing battery variant, and the unofficial opcodes added to CPU_FIX. The ROM lives on the Desktop, not in the repo, so on any other machine these cases SKIP rather than fail.",
+  "roots": {
+    "desktop": "C:/Users/philt/Desktop"
+  },
+  "cases": [
+    {
+      "id": "mapper30-boot-fix",
+      "description": "Boot with no input at all. Guards that the mapper-30 cartridge still loads, banks and renders its title screen.",
+      "kind": "romtest",
+      "rom": "{desktop}/game.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "tags": [
+        "mapper30",
+        "fix"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "5D84BE6DF23091BB",
+        "framesRun": 600,
+        "distinctColors": 3,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapper30-start-fix",
+      "description": "The real regression guard for the unofficial-opcode work. Presses Start twice (frames 120 and 240) to get past the title screen into code that the boot case never reaches. Its framebuffer must differ from mapper30-boot-fix - it does (3 distinct colours on the title screen, 6 after Start) - so a golden match here proves input was delivered AND the post-title code path executed to the same pixels.",
+      "kind": "romtest",
+      "rom": "{desktop}/game.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 600,
+      "input": "120:Start,132:,240:Start,252:",
+      "tags": [
+        "mapper30",
+        "fix",
+        "input"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "9D9B47FFBF1642F5",
+        "framesRun": 600,
+        "distinctColors": 6,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapper30-start-fix-long",
+      "description": "Same input script run to 900 frames. Confirms the post-Start screen is stable rather than mid-transition at frame 600.",
+      "kind": "romtest",
+      "rom": "{desktop}/game.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 900,
+      "input": "120:Start,132:,240:Start,252:",
+      "tags": [
+        "mapper30",
+        "fix",
+        "input"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "9D9B47FFBF1642F5",
+        "framesRun": 900,
+        "distinctColors": 6,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "mapper30-boot-fmc-crashes",
+      "description": "A DELIBERATELY-FAILING-EMULATOR case: this ROM crashes CPU_FMC on frame 0 with 'Bad opcode A7' (LAX zp), because the unofficial opcodes were only ever added to CPU_FIX. Expected exit code is 1 (crashed), not 0. It exists for two reasons: it proves mapper30-boot-fix's green is meaningful rather than vacuous, and it will go red the day someone adds unofficial opcodes to CPU_FMC - at which point updating this golden is the correct response.",
+      "kind": "romtest",
+      "rom": "{desktop}/game.nes",
+      "cpu": "FMC",
+      "ppu": "FMC",
+      "apu": "FMC",
+      "frames": 600,
+      "tags": [
+        "mapper30",
+        "fmc",
+        "expected-crash"
+      ],
+      "expect": {
+        "exitCode": 1,
+        "frameBufferHash": "09A712A16FE94685",
+        "framesRun": 1,
+        "distinctColors": 2,
+        "result": "crashed",
+        "crashInfo": "Bad opcode A7 at C176 PC=C177"
+      }
+    },
+    {
+      "id": "mapper30-savestate-fix",
+      "description": "Save/load round trip on the mapper-30 cartridge. Mapper 30 is self-flashing (its battery variant writes back to PRG), so its state serialisation has more to get wrong than a plain UNROM.",
+      "kind": "savestate",
+      "rom": "{desktop}/game.nes",
+      "cpu": "FIX",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "warmupFrames": 180,
+      "continueFrames": 120,
+      "tags": [
+        "mapper30",
+        "savestate"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "verdict": "PASS (framebuffer-only difference, expected)",
+        "mismatchedFrameCount": 0,
+        "immediateLossy": false
+      }
+    }
+  ],
+  "goldenGeneratedUtc": "2026-09-03T04:16:42Z"
+}

@@ -1,0 +1,471 @@
+using BrokenNes.Fruity;
+using NesEmulator.Systems;
+
+namespace BrokenNes2;
+
+/// <summary>
+/// One emulator: a sound chip (Direct mode) or a running game with its picture (ROM mode), of one console (NES, Game Boy or SNES),
+/// with up to five channels that FL instances take: pulse 1, pulse 2, triangle, noise and (ROM mode) the game's whole mix. The
+/// configuration below is shared by all instances attached to it; the game and its channel stems are in <c>Emulator.Rom.cs</c>.
+/// </summary>
+public sealed partial class Emulator : IDisposable
+{
+    private readonly List<Bn2Plugin> members = new();            // under EmulatorHub.Gate
+    private readonly Bn2Plugin?[] owners = new Bn2Plugin?[Ch.Total];
+    private int mode, chip;
+    private int configVersion;
+    private int claimed;                                          // bit per channel (not Mix) somebody sits on (audio threads read it)
+    private readonly string?[] romPaths = new string?[Cx.Count];   // the game of each console (NES: null = the built-in one)
+    private readonly int[] activity = new int[Ch.Total];
+    private int runaway, padBits;
+    private SpcSnapshot? snapshot;
+    private GbSnapshot? gbState;
+    private SegaSnapshot? segaState;
+    private readonly Dictionary<object, int> padSources = new();
+
+    internal Emulator(int id, bool autoCreated)
+    {
+        Id = id;
+        AutoCreated = autoCreated;
+    }
+
+    /// <summary>1..8: the number the Emulator parameter names.</summary>
+    public int Id { get; }
+    /// <summary>Made by an Auto instance (only those fill up with other Auto instances).</summary>
+    public bool AutoCreated { get; }
+
+    /// <summary>0 Direct (FL's notes play bare chips), 1 ROM (a game runs).</summary>
+    public int Mode => Volatile.Read(ref mode);
+    /// <summary>The sound chip, as an index into <see cref="Cx.Chips"/>. The console is whatever console that chip belongs to.</summary>
+    public int Chip => Volatile.Read(ref chip);
+    public int Console => Cx.ConsoleOf(Chip);
+    public string ChipId => Cx.Chips[Math.Clamp(Chip, 0, Cx.Chips.Count - 1)].Id;
+    /// <summary>Counts up whenever the configuration changed (instances compare it to know when to look again).</summary>
+    public int ConfigVersion => Volatile.Read(ref configVersion);
+    /// <summary>The tone channels (0 to 3) somebody sits on: the NES stems that are made.</summary>
+    public int ClaimedTones => Volatile.Read(ref claimed) & ((1 << Ch.ToneCount) - 1);
+    /// <summary>Every channel (a bit per <see cref="Ch"/> id, Mix left out) somebody sits on: the stems that are made.</summary>
+    public int ClaimedChannels => Volatile.Read(ref claimed);
+
+    public int MemberCount { get { lock (EmulatorHub.Gate) return members.Count; } }
+    internal List<Bn2Plugin> MembersSnapshot() { lock (EmulatorHub.Gate) return members.ToList(); }
+
+    /// <summary>The instance sitting on a channel, or null.</summary>
+    public Bn2Plugin? Owner(int channel) { lock (EmulatorHub.Gate) return owners[channel]; }
+
+    /// <summary>How loud a channel is right now, 0..15 (the owning instance writes it; the editor shows it).</summary>
+    public int Activity(int channel) => Volatile.Read(ref activity[channel]);
+    internal void SetActivity(int channel, int level) => Volatile.Write(ref activity[channel], level);
+
+    // ---- the game's controller ----
+
+    /// <summary>Player 1's buttons (<see cref="NesEmulator.Systems.PadButtons"/> flags): every open editor adds what its keyboard, gamepad and
+    /// on-screen pad hold, so the controls are the union of them.</summary>
+    public int PadBits => Volatile.Read(ref padBits);
+
+    public void SetPad(object source, int bits)
+    {
+        lock (padSources)
+        {
+            if (bits == 0) padSources.Remove(source); else padSources[source] = bits;
+            int all = 0;
+            foreach (var b in padSources.Values) all |= b;
+            Volatile.Write(ref padBits, all);
+        }
+    }
+
+    public void ClearPad(object source) => SetPad(source, 0);
+
+    // ---- Instrument Runaway ----
+
+    /// <summary>The game is frozen (its CPU and picture chip stop, so its music and sound effects stop) and silent.</summary>
+    public bool Runaway => Volatile.Read(ref runaway) != 0;
+    /// <summary>The sound memory captured when Runaway started on a SNES game; null for the other consoles.</summary>
+    public SpcSnapshot? Snapshot => Volatile.Read(ref snapshot);
+    /// <summary>The sound registers and wave RAM captured when Runaway started on a Game Boy game; null for the other consoles.</summary>
+    public GbSnapshot? GbState => Volatile.Read(ref gbState);
+    /// <summary>The sound chips' registers (and, on a Genesis game, the DAC sounds found) captured when Runaway started on a Master System, Game Gear or Genesis game; null for the other consoles.</summary>
+    public SegaSnapshot? SegaState => Volatile.Read(ref segaState);
+    /// <summary>What listening to the game's sound driver found, in one line for the window ("" when nothing was captured).</summary>
+    public string ListenNote => Snapshot?.ListenNote ?? SegaState?.ListenNote ?? WmsState?.ListenNote ?? "";
+    /// <summary>How many game voices (recipes) Instrument Runaway holds for the game's sound driver (SNES, Genesis).</summary>
+    public int RecipeCount => Snapshot?.Recipes.Length ?? SegaState?.Recipes.Length ?? 0;
+    /// <summary>Runaway on a SNES game: every instance plays the game's samples through its own S-DSP.</summary>
+    public bool SamplerMode => Runaway && Snapshot != null;
+    /// <summary>Runaway on a Game Boy game: every instance plays one Game Boy channel, with the game's settings, on its own sound unit.</summary>
+    public bool GbSamplerMode => Runaway && GbState != null;
+    /// <summary>Runaway on a Master System, Game Gear or Genesis game: every instance plays the game's sound chips, set up as the game had them, on chips of its own.</summary>
+    public bool SegaSamplerMode => Runaway && SegaState != null;
+    /// <summary>Any of the sampler modes: the instances are samplers of the frozen game's instruments, not channels of it.</summary>
+    public bool AnySamplerMode => SamplerMode || GbSamplerMode || SegaSamplerMode || WmsSamplerMode || PresetMode;
+    /// <summary>Runaway needs a running game.</summary>
+    public bool CanRunaway => Mode == 1 && RomLoaded;
+
+    /// <summary>Freezes the game and keeps its instruments: the game's CPU, picture and sound driver stop (no more music or effects), the picture
+    /// stays as it was, and on a SNES game the sound memory is captured so FL notes can play the game's samples. Off: the game goes on where it stopped.</summary>
+    public void SetRunaway(bool on)
+    {
+        lock (EmulatorHub.Gate)
+        {
+            if (on == Runaway) return;
+            if (on)
+            {
+                if (!CanRunaway) return;
+                SpcSnapshot? snap; GbSnapshot? gb; SegaSnapshot? sega; WmsSnapshot? wms;
+                lock (romLock) { ApplyPending(); wms = (game as SessionGame)?.CaptureWms(); snap = wms == null ? game?.CaptureSpc() : null; gb = game?.CaptureGb(); sega = game?.CaptureSega(); }
+                // a WideMess game whose sound unit is unlocked: the WideMess sampler plays its instruments (both its directories); the samplers are made here, on this thread, not on the audio threads
+                if (wms != null) PrepareWmsSamplers(wms);
+                Volatile.Write(ref snapshot, snap);
+                Volatile.Write(ref gbState, gb);
+                Volatile.Write(ref segaState, sega);
+                Volatile.Write(ref wmsState, wms);
+                Volatile.Write(ref runaway, 1);
+            }
+            else ClearRunaway();
+            Interlocked.Increment(ref epoch);     // readers start again from now: nothing buffered from before the freeze (or the release) is heard
+            EmulatorHub.ReResolveAll(this);
+            Changed();
+        }
+    }
+
+    /// <summary>Test hook: puts a made-up snapshot in place of the captured one (a test ROM has no samples).</summary>
+    internal void ReplaceSnapshotForTests(SpcSnapshot snap)
+    {
+        lock (EmulatorHub.Gate)
+        {
+            Volatile.Write(ref snapshot, snap);
+            Volatile.Write(ref runaway, 1);
+            EmulatorHub.ReResolveAll(this);
+            Changed();
+        }
+    }
+
+    private void ClearRunaway()
+    {
+        Volatile.Write(ref runaway, 0);
+        Volatile.Write(ref snapshot, null);
+        Volatile.Write(ref gbState, null);
+        Volatile.Write(ref segaState, null);
+        Volatile.Write(ref wmsState, null);
+    }
+
+    // ---- claims (EmulatorHub.Gate held) ----
+
+    internal void RemoveMember(Bn2Plugin who)
+    {
+        ReleaseClaim(who);
+        members.Remove(who);
+    }
+
+    internal void ReleaseClaim(Bn2Plugin who)
+    {
+        for (int c = 0; c < Ch.Total; c++)
+            if (owners[c] == who) { owners[c] = null; Volatile.Write(ref activity[c], 0); }
+        UpdateClaimed();
+    }
+
+    private void UpdateClaimed()
+    {
+        int m = 0;
+        for (int c = 0; c < Ch.Total; c++) if (c != Ch.Mix && c != Ch.Sampler && owners[c] != null) m |= 1 << c;
+        Volatile.Write(ref claimed, m);
+    }
+
+    /// <summary>Which channels exist: in Direct mode the four tone channels (every console's chip takes the NES registers); in ROM mode
+    /// the game's Mix, and each voice that has a stem: a NES game's four tone channels, a Sega game's PSG, FM and DAC voices (<see cref="Cx.Channels"/>); a Game Boy or SNES game has no per-channel stems.</summary>
+    internal bool Usable(int channel)
+    {
+        if (channel == Ch.Mix) return Mode == 1;
+        if ((uint)channel >= Ch.Total || channel == Ch.Sampler) return false;
+        return Array.IndexOf(Cx.Channels(Console, Mode, ChipId), channel) >= 0;
+    }
+
+    private int[] AutoOrder() => Mode == 1 ? [Ch.Mix, .. Cx.Channels(Console, 1, ChipId)] : Cx.Channels(Console, 0, ChipId);
+
+    /// <summary>Puts an instance on this emulator and a channel of it. <paramref name="requested"/> is the Channel parameter (0 = Auto).
+    /// Returns null when an Auto emulator cannot give the instance what it asks for (the hub then tries another); an explicitly
+    /// named emulator always takes the instance in, with a Problem and no channel when the channel is not available.</summary>
+    internal Assignment? Attach(Bn2Plugin who, int requested, int hintChannel, bool explicitEmulator)
+    {
+        if (AnySamplerMode)
+        {
+            if (!members.Contains(who)) members.Add(who);
+            return new Assignment(this, Ch.Sampler, null);
+        }
+        int ch = -1;
+        string? problem = null;
+        bool unavailable = false;           // the channel does not exist on this emulator (its console, mode or chip has no such voice): another Auto emulator would not have it either
+        if (requested > 0)
+        {
+            int c = requested - 1;
+            if ((uint)c >= Ch.Total) problem = "no such channel";
+            else if (!Usable(c) && c != Ch.Mix && Mode == 1 && (owners[Ch.Mix] == null || owners[Ch.Mix] == who))
+                ch = Ch.Mix;                       // a Game Boy or SNES game has no tone channels of its own: its whole sound goes to this instance
+            else if (!Usable(c))
+            {
+                unavailable = true;
+                problem = c == Ch.Mix ? "Mix is the game's whole sound: it exists in ROM mode only"
+                        : Mode == 0 ? (Ch.IsChipVoice(c) ? $"{Ch.Label(c)} is a voice of the Sega FM chips in ROM mode: Direct mode has the four NES-register channels" : $"{Ch.Label(c)} is not a channel of this emulator")
+                        : Console is Cx.MasterSystem or Cx.Genesis ? $"{Ch.Label(c, Console, Mode)} is not a voice of the {ChipId} chip"
+                        : $"{Ch.Label(c)} on its own exists for NES and Sega games only: a {Cx.Names[Console]} game plays through Mix";
+            }
+            else if (owners[c] != null && owners[c] != who) problem = $"{Ch.Label(c, Console, Mode)} of emulator #{Id} is already used by another instance";
+            else ch = c;
+        }
+        else
+        {
+            var order = AutoOrder();
+            if (hintChannel >= 0 && Array.IndexOf(order, hintChannel) >= 0 && (owners[hintChannel] == null || owners[hintChannel] == who)) ch = hintChannel;
+            else foreach (int c in order) if (owners[c] == null || owners[c] == who) { ch = c; break; }
+            if (ch < 0) problem = $"all channels of emulator #{Id} are in use";
+        }
+
+        if (ch < 0 && !explicitEmulator && !unavailable) return null;     // (busy: another Auto emulator may have it free. Not there at all: the instance stays here, with the reason, and is placed again when this emulator's chip or mode changes)
+        if (!members.Contains(who)) members.Add(who);
+        if (ch >= 0) { owners[ch] = who; EnsureRing(ch); }
+        UpdateClaimed();
+        return new Assignment(this, ch, problem);
+    }
+
+    // ---- configuration (any thread; each change reaches every instance on the emulator) ----
+
+    private void Changed()
+    {
+        Interlocked.Increment(ref configVersion);
+        foreach (var m in members) m.SyncFromEmulator(this);
+    }
+
+    /// <summary>The console or the mode changed what can run: the game is (re)loaded when in ROM mode, outputs restart, channels are chosen again.</summary>
+    private void PlaceChanged()
+    {
+        ResetOutputs();
+        if (Mode == 1) EnsureRomLoaded();
+        EmulatorHub.ReResolveAll(this);
+    }
+
+    public void SetMode(int value)
+    {
+        lock (EmulatorHub.Gate)
+        {
+            value = Math.Clamp(value, 0, 1);
+            if (value == mode) return;
+            Volatile.Write(ref mode, value);
+            if (value == 0) ClearRunaway();
+            else LeavePresetChipLocked();           // a game is going to run: it needs the console's own sound chip, not a Presets chip
+            PlaceChanged();
+            Changed();
+        }
+    }
+
+    /// <summary>Picks the sound chip; when it belongs to another console, the emulator becomes that console.</summary>
+    public void SetChip(int value)
+    {
+        lock (EmulatorHub.Gate)
+        {
+            SetChipLocked(Math.Clamp(value, 0, Cx.Chips.Count - 1));
+            Changed();
+        }
+    }
+
+    private void SetChipLocked(int value)
+    {
+        if (value == chip) return;
+        int before = Console;
+        string chipBefore = ChipId;
+        bool presetBefore = PresetMode, modeChanged = false;
+        // a Presets chip plays without a game: picking one while a game runs leaves ROM mode (the Mode buttons show it)
+        if (Cx.IsPresetChip(value) && mode == 1) { Volatile.Write(ref mode, 0); ClearRunaway(); modeChanged = true; }
+        Volatile.Write(ref chip, value);
+        if (Console != before || modeChanged || presetBefore != PresetMode) PlaceChanged();
+        // a chip of the same console can offer other voices (the Master System FM chip has FM 1-9 where the PSG chip has none): instances are placed again, so those that asked for one get it (or lose it)
+        else if (Mode == 1 && !Cx.Channels(Console, 1, chipBefore).SequenceEqual(Cx.Channels(Console, 1, ChipId))) EmulatorHub.ReResolveAll(this);
+    }
+
+    /// <summary>Switches the console: the emulator takes that console's first chip (FIX, DMG, SNES), and in ROM mode its game.</summary>
+    public void SetConsole(int console)
+    {
+        lock (EmulatorHub.Gate)
+        {
+            console = Math.Clamp(console, 0, Cx.Count - 1);
+            if (console != Console) SetChipLocked(Cx.DefaultChip(console));
+            Changed();
+        }
+    }
+
+    /// <summary>Loads a game file of any console: the emulator becomes that console and goes to ROM mode. Returns why not when the file is not a ROM.</summary>
+    public string? LoadRomFile(string path)
+    {
+        string name = Path.GetFileName(path);
+        int console;
+        bool wideMessGame = false;
+        try
+        {
+            var rom = RomDetect.Unwrap(File.ReadAllBytes(path), path, out string inner);
+            var kind = RomDetect.Detect(rom, inner) ?? NesEmulator.Sega.SegaRomFormat.Detect(rom, inner);
+            if (kind == null) { RomStatus = "not a NES, Game Boy, SNES, WideMess, Master System, Game Gear or Genesis ROM: " + name; return RomStatus; }
+            console = Cx.FromKind(kind.Value);
+            wideMessGame = kind == ConsoleKind.WideMess;
+        }
+        catch (Exception e)
+        {
+            RomStatus = $"could not read {name}: {e.Message}";
+            return RomStatus;
+        }
+        lock (EmulatorHub.Gate)
+        {
+            romPaths[console] = path;
+            if (console == Cx.Nes) DropSongLocked();         // a NES file replaces the Test MIDI export's song as the NES game (the song stays held: the window and the Game list can bring it back)
+            Volatile.Write(ref mode, 1);
+            if (wideMessGame) Volatile.Write(ref chip, Cx.IndexOfChip(Cx.WmsChip));     // a WideMess game file takes its console's own sound chip (the SNES chip can still be picked under it: its WideMess voices are then not heard, and the status line says so)
+            else if (console != Console) Volatile.Write(ref chip, Cx.DefaultChip(console));
+            else LeavePresetChipLocked();
+            ResetOutputs();
+            StartLoad();
+            EmulatorHub.ReResolveAll(this);
+            Changed();
+        }
+        return null;
+    }
+
+    /// <summary>Starts the emulator over, for every instance on it: instruments are cleared (voices dropped, chips rebuilt, meters zeroed) and,
+    /// in ROM mode, the game restarts from power-on (which also recovers one that crashed). Nothing else about the emulator changes.</summary>
+    public void Reset()
+    {
+        lock (EmulatorHub.Gate)
+        {
+            foreach (var m in members) m.RequestReset();
+            for (int c = 0; c < Ch.Total; c++) Volatile.Write(ref activity[c], 0);
+            ResetOutputs();
+            bool wasRunaway = Runaway;
+            Volatile.Write(ref songStopped, 0);   // (the Test MIDI export's song plays from power-on like any game)
+            if (Mode == 1) StartLoad();       // the running game goes on until the new one is ready, then it is replaced
+            if (wasRunaway) EmulatorHub.ReResolveAll(this);
+        }
+    }
+
+    /// <summary>Back to the game built into the plugin (the NES one: VRUN), in ROM mode.</summary>
+    public void UseBuiltInRom()
+    {
+        lock (EmulatorHub.Gate)
+        {
+            romPaths[Cx.Nes] = null;
+            DropSongLocked();
+            Volatile.Write(ref mode, 1);
+            if (Console != Cx.Nes) Volatile.Write(ref chip, Cx.DefaultChip(Cx.Nes));
+            else LeavePresetChipLocked();
+            ResetOutputs();
+            StartLoad();
+            EmulatorHub.ReResolveAll(this);
+            Changed();
+        }
+    }
+
+    /// <summary>Applies what a restored instance carries, when it is the first on a new emulator.</summary>
+    internal void Adopt(int newMode, int newChip, string? rom, SpcSnapshot? restoredSnapshot = null, GbSnapshot? restoredGb = null, SegaSnapshot? restoredSega = null, GameStateSection? restoredGame = null, string? gameProblem = null, CorruptionSection? restoredCorruption = null,
+        Music.SongSection? restoredSong = null, string? songProblem = null, WmsSnapshot? restoredWms = null)
+    {
+        lock (EmulatorHub.Gate)
+        {
+            newChip = Math.Clamp(newChip, 0, Cx.Chips.Count - 1);
+            int console = Cx.ConsoleOf(newChip);
+            int modeBefore = mode, consoleBefore = Console;
+            bool presetBefore = PresetMode;
+            Volatile.Write(ref chip, newChip);
+            romPaths[console] = string.IsNullOrWhiteSpace(rom) ? null : rom;
+            AdoptSong(restoredSong, songProblem);       // the Test MIDI export's song (SNG1): when it was the NES game, the loading thread converts it and builds it as the game
+            bool songGame = console == Cx.Nes && songActive;
+            Volatile.Write(ref mode, Math.Clamp(newMode, 0, 1));
+            if (mode == 1) LeavePresetChipLocked();          // (a project cannot have a game running on a Presets chip; if one says so, the console's own chip it is)
+            if (mode != modeBefore || console != consoleBefore || PresetMode != presetBefore)
+            {
+                ResetOutputs();
+                EmulatorHub.ReResolveAll(this);     // (channels keep their places when nothing about the emulator changed)
+            }
+            if (Mode == 1)
+            {
+                var path = romPaths[console];
+                // the project's game state goes with the game: it is put back on the loading thread, before the game can run (a project saved in Instrument Runaway starts frozen)
+                var request = new RestoreRequest(restoredGame, gameProblem, restoredCorruption);
+                if (songGame || path == null || File.Exists(path)) StartLoad(request);
+                else
+                {
+                    RomStatus = "the project's game was not found: " + path;
+                    if (restoredGame != null || gameProblem != null) { Volatile.Write(ref stateRestore, 2); SetStateNote("The project's saved game state was not used, because its game file was not found"); }
+                }
+                if (restoredGb != null && console == Cx.GameBoy)
+                {
+                    Volatile.Write(ref gbState, restoredGb);
+                    Volatile.Write(ref runaway, 1);
+                    EmulatorHub.ReResolveAll(this);
+                }
+                if (restoredSega != null && (restoredSega.Kind == SegaSnapshot.KindOpn ? console == Cx.Genesis : console == Cx.MasterSystem))
+                {
+                    // a project saved in Instrument Runaway on a Master System, Game Gear or Genesis game: it starts frozen and the chips come back from the copy in the project
+                    Volatile.Write(ref segaState, restoredSega);
+                    Volatile.Write(ref runaway, 1);
+                    EmulatorHub.ReResolveAll(this);
+                }
+                if (restoredSnapshot != null && console == Cx.Snes)
+                {
+                    // a project saved in Instrument Runaway: the game starts frozen and its instruments come back from the copy in the project
+                    Volatile.Write(ref snapshot, restoredSnapshot);
+                    Volatile.Write(ref runaway, 1);
+                    EmulatorHub.ReResolveAll(this);
+                }
+                if (restoredWms != null && console == Cx.Snes && restoredSnapshot == null)
+                {
+                    // the same for a WideMess game (section WMS1): its instruments come back from the project's copy of the WideMess sound chip
+                    PrepareWmsSamplers(restoredWms);
+                    Volatile.Write(ref wmsState, restoredWms);
+                    Volatile.Write(ref runaway, 1);
+                    EmulatorHub.ReResolveAll(this);
+                }
+            }
+            Changed();
+        }
+    }
+
+    // ---- the game's state in a project (see GameState.cs) ----
+
+    private volatile string? stateNoteIdle, stateNoteRunaway;
+    private int stateRestore;
+
+    /// <summary>What the project could not do with the game's state, in words for the user (null: nothing to say): the SNES cannot keep a game's state yet, a state that does not belong to the game file now in place was not used, a state too big was not kept.
+    /// The editor shows it over the picture for as long as it is true (while the game waits frozen at power-on, it says what switching Instrument Runaway off will do).</summary>
+    public string? StateNote => Runaway && stateNoteRunaway != null && FramesRun == 0 ? stateNoteRunaway : stateNoteIdle;
+
+    /// <summary>How the last project restore went for the game's state: 0 none was in the project (or not tried yet), 1 put back, 2 refused or failed (<see cref="StateNote"/> says why).</summary>
+    public int StateRestoreResult => Volatile.Read(ref stateRestore);
+
+    /// <summary>The current console's game file (null: the built-in game for the NES, none for the others).</summary>
+    public string? RomPath { get { lock (EmulatorHub.Gate) return romPaths[Console]; } }
+
+    public string RomDisplayName
+    {
+        get
+        {
+            if (Console == Cx.Nes && songActive) return "MIDI test: " + (song?.FileName ?? Path.GetFileName(songPending?.Path ?? "song.mid"));
+            var path = romPaths[Console];
+            return path != null ? Path.GetFileName(path) : Console == Cx.Nes ? "VRUN (built-in)" : "none loaded";
+        }
+    }
+
+    /// <summary>The picture area's text when there is no picture to show.</summary>
+    public string? PictureMessage => Mode == 0 ? (PresetMode ? "Presets: instruments ripped from games, played without a ROM" : "Direct Mode: Bypassing the ROM") : (PictureValid ? null : Runaway ? "Instrument Runaway: game frozen" : RomStatus);
+
+    /// <summary>Test hook: puts a made-up Sega snapshot in place of the captured one (a test ROM has no DAC sounds worth the name, a bad project has a hostile one).</summary>
+    internal void ReplaceSegaForTests(SegaSnapshot snap)
+    {
+        lock (EmulatorHub.Gate)
+        {
+            Volatile.Write(ref segaState, snap);
+            Volatile.Write(ref runaway, 1);
+            EmulatorHub.ReResolveAll(this);
+            Changed();
+        }
+    }
+
+    internal void HostRateChanged() { }
+
+    public void Dispose() => DisposeRom();
+}

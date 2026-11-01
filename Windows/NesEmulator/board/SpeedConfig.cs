@@ -46,8 +46,10 @@ namespace NesEmulator
         public bool PpuTileBatching = true; // pairs well with pattern cache
         // PPU: Skip fully blank scanlines (all background color & no sprites) via batch detection
         public bool PpuSkipBlankScanlines = true; // requires batching to detect
-    // PPU: Evaluate only up to first 8 sprites on a scanline instead of all 64 (sets overflow flag when exceeded)
-    public bool PpuSpriteLineEvaluation = true; // hardware-accurate cap; improves sprite rendering performance
+    // Formerly gated whether the 8-sprites-per-scanline cap/overflow flag was evaluated at all
+    // (PPU_SPD/PPU_EIL); that's real hardware behavior, not a speed trade-off, so it is now
+    // unconditional in both. Field kept (unused) to avoid breaking anything that still sets it.
+    public bool PpuSpriteLineEvaluation = true;
     // PPU: Use unsafe pointer-based scanline renderer (avoids bounds checks)
     public bool PpuUnsafeScanline = true; // default enabled (guards ensure buffer allocated)
     // PPU: Defer attribute fetch until non-zero tile bits known (saves reads on blank tiles)
@@ -68,9 +70,10 @@ namespace NesEmulator
     public bool CpuIdleLoopSkip = true; // enabled by default for testing
     public int CpuIdleLoopSkipMaxIterations = 32; // redline: matches internal PPU burst cap
     public int CpuIdleLoopMaxSpanBytes = 32; // redline: wider loop body allowance (still reset on unrelated writes)
-    // CPU: Approximate OAM DMA stall by lumping 513 cycles instead of per-cycle stepping loop.
-    // Safe accuracy trade: exact parity (513 vs 514) minor; negligible gameplay impact while saving loop overhead.
-    public bool CpuFastOamDmaStall = true; // default enabled
+    // Formerly gated whether the OAM DMA CPU stall was applied at all; the stall is real
+    // hardware behavior (see Bus.WriteSlow's $4014 handler), not a speed trade-off, so it is
+    // now unconditional. Field kept (unused) to avoid breaking anything that still sets it.
+    public bool CpuFastOamDmaStall = true;
     // CPU: Allow skipping confirmed APU status ($4015) idle loops (higher risk; disabled by default)
     public bool CpuIdleLoopSkipApuStatus = true; // now enabled after completing safeguards
     // CPU: Separate conservative cap for APU status loop bursts (APU IRQ flags may appear unpredictably)
@@ -86,6 +89,53 @@ namespace NesEmulator
     public int CpuAdaptiveBatchTargetCycles = 64; // redline: larger batches to amortize overhead
     public int CpuAdaptiveBatchMinCycles = 24;
     public int CpuAdaptiveBatchMaxCycles = 128;
+
+    // Not a speed hack (lives here for convenience, alongside the other opt-in per-session
+    // toggles) - an ACCURACY correction. NES.RunFrame() otherwise targets an exact 60.000fps
+    // (29829 CPU cycles/frame), which is a deliberate simplification that does not match real
+    // NTSC hardware's true ~60.0988fps (89341.5 PPU dots/frame average = 29780.5 CPU
+    // cycles/frame, from the well-known "PPU skips one dot every other frame" quirk). The ~48.5
+    // cycle/frame gap is invisible for ordinary play but compounds into a real, growing desync
+    // over a TAS movie's tens of thousands of frames - this is what breaks .fm2 portability with
+    // FCEUX. Off by default: every other consumer (AccuracyCoin, benchmarks, existing
+    // savestate-based tooling) is tuned around and verified against the exact-60fps baseline, and
+    // changing it globally risks exactly the batch-boundary-timing regressions this project has
+    // already hit before (see project_fceux_movie_parity / project_dmc_dma_stall_gap memories).
+    // Only movie replay/export paths (TasCli et al.) opt in. See NES.RunFrame for the mechanism.
+    public bool NtscAccurateFrameRate = false;
+
+    // Also an ACCURACY correction rather than a speed hack. NES.RunFrame() runs a whole CPU
+    // instruction and only THEN advances the PPU/APU by that instruction's cycles, so a write on
+    // an instruction's last cycle reaches the PPU at the dot the PPU held BEFORE the instruction
+    // started - up to 7 CPU cycles / 21 dots early. Hardware locks the two rigidly at 3:1 off one
+    // master clock. With this on, every instruction runs inside Bus's precise window (the same
+    // machinery the DMC-DMA predictive split already uses) so each CPU bus access advances PPU and
+    // APU by exactly one CPU cycle FIRST - the 6502 makes one bus access per cycle, so access
+    // count is cycle position. Measured on VRUN: it moves the game's pre-render scroll-reset
+    // writes from dots 220/244/256 onto Mesen's 240/258/270.
+    //
+    // Off by default because it is not free (PPU/APU get stepped per bus access instead of per
+    // instruction) and because every golden, benchmark and AccuracyCoin baseline in the repo was
+    // recorded against the batched path. Opt in per session; see NES.RunFrame for the mechanism
+    // and Bus.BeginPreciseWindow for what a "precise" cycle actually does.
+    public bool CpuCyclePrecisePpu = false;
+
+    // Third ACCURACY correction, and the other half of the same defect. PPU_FIX renders a whole
+    // scanline at once from `renderAddr`, whose horizontal half (coarse X + nametable X) it took
+    // from the LIVE t at dot 256 of the scanline being drawn. Hardware freezes that half one whole
+    // scanline earlier, at the dot-257 hori(v) := hori(t) copy of the PREVIOUS line, so a CPU write
+    // to $2005/$2006 arriving in between changes the picture on this core and does not on hardware.
+    // With this on, renderAddr takes it from a latch captured at that dot instead.
+    //
+    // Measured consequence on VRUN: the game's pause-menu vblank flush overruns onto the pre-render
+    // line and its scroll-reset $2005 lands at dot 262, past the dot-257 copy. Mesen therefore draws
+    // one frame with the pre-reset scroll - a real 48-pixel tear on row 0 - and BrokenNes drew the
+    // settled row. Only the two fixes TOGETHER reproduce it: CpuCyclePrecisePpu alone puts the write
+    // on the right dot but this core still reads t a scanline later and never notices.
+    //
+    // Off by default: it changes rendering for every ROM, not just the late-write case, so it would
+    // move the recorded PPU_FIX goldens.
+    public bool PpuScanlineHoriFromLatch = false;
         // public bool CpuBatchExecute;
         // public bool PpuBackgroundTileBatching;
     }

@@ -1,0 +1,77 @@
+{
+  "_doc": "The event catalogue of the VRUN SFX Configurator. 'events' are the 44 events of the page of 2026-08-24 (id, category, name, desc copied from it, 'was' = its main.fab location then) plus a few events named by BrokenDev for call sites that appeared later ('since': the work that added them). 'match' ties an event to today's trigger call sites in src/game/main.fab: fn = the enclosing function (exact); clip = the clip the site plays (optional); prev = a regex that must match one of the 8 code lines before the call; last = a regex that must match the code line right before it; section = a regex that must match the nearest 'section marker' line above the call in the same function (sectionMarkers below: the menu row tests, app states, pause flips); 'match' may also be a list of such rules (any one matching is enough). The first event whose rule matches a site owns it; an event can own several sites (one row per site). A call site no rule owns is still listed, named from 'functions' (or from its function name). An event of 2026-08 that owns no site today is listed as 'not in today's game' unless an event that owns sites names it in 'replaces'.",
+  "sectionMarkers": [
+    "(title_cursor|options_cursor|sfxtest_cursor)\\s*==\\s*\\w+",
+    "app_state\\s*==\\s*APP_\\w+",
+    "\\bpaused\\s*=\\s*(true|false)",
+    "spawn_player_bullet\\("
+  ],
+  "categories": ["Player", "Enemy/Boss", "Pickups", "Shop", "Doors/Rooms", "Puzzles", "Menus/UI", "SFX Test menu (audition)", "Other", "Not in today's game"],
+  "events": [
+    { "id": "player_fire", "category": "Player", "name": "Player bullet fire", "desc": "Regular weapon shot, B button", "was": "main.fab:8716", "match": { "fn": "main", "section": "spawn_player_bullet" } },
+    { "id": "player_hurt", "category": "Player", "name": "Player takes damage", "desc": "damage_player() - any hit landing on the player", "was": "main.fab:3033", "match": { "fn": "damage_player" } },
+    { "id": "item_corner", "category": "Player", "name": "Corner-shot item use", "desc": "4-way diagonal burst from a held Corner item", "was": "main.fab:2880", "match": { "fn": "use_held_item", "prev": "cornershot|any_shot" } },
+    { "id": "item_laser", "category": "Player", "name": "Laser item use", "desc": "Single strong shot in aim direction", "was": "main.fab:2908", "match": { "fn": "use_held_item", "prev": "ITEM_LASER" } },
+    { "id": "item_field", "category": "Player", "name": "Field item use", "desc": "Damages every active hazard/boss on screen at once", "was": "main.fab:2893", "match": { "fn": "use_held_item", "prev": "damage_boss|damage_hazard" } },
+    { "id": "item_heal", "category": "Player", "name": "Heal item use", "desc": "Held Heal item - fills HP to max", "was": "main.fab:2894-2901", "match": { "fn": "use_held_item", "prev": "player_hp = player_hp_max" } },
+    { "id": "player_death", "category": "Player", "name": "Player death", "desc": "HP reaches 0 - cuts to the Death screen (today: the death explosion, begin_death_explosion())", "was": "main.fab:8697-8699", "match": { "fn": "begin_death_explosion" } },
+    { "id": "player_respawn", "category": "Player", "name": "Respawn (crush/wedged or out-of-bounds)", "desc": "respawn() - one call shared by the two respawn events of the 2026-08 page (player stuck too long, or position underflowed)", "was": "main.fab:8665-8675", "replaces": ["player_respawn_crush", "player_respawn_oob"], "match": { "fn": "respawn" } },
+    { "id": "player_respawn_crush", "category": "Player", "name": "Crush/wedged respawn", "desc": "Player stuck too long, repositioned in-room", "was": "main.fab:8665-8670", "match": { "fn": "-" } },
+    { "id": "player_respawn_oob", "category": "Player", "name": "Out-of-bounds respawn", "desc": "Player position underflowed, repositioned in-room", "was": "main.fab:8674-8675", "match": { "fn": "-" } },
+
+    { "id": "hazard_kill", "category": "Enemy/Boss", "name": "Hazard destroyed", "desc": "damage_hazard() lethal branch - a Mover/Block/Ghost dies", "was": "main.fab:3877-3890", "match": { "fn": "damage_hazard" } },
+    { "id": "brick_hit", "category": "Enemy/Boss", "name": "Breakable brick  -  non-lethal hit", "desc": "Damage accumulates, cell not yet cleared", "was": "main.fab:4235", "match": { "fn": "damage_breakable_cell" } },
+    { "id": "brick_break", "category": "Enemy/Boss", "name": "Breakable brick  -  destroyed", "desc": "Final hit clears the cell (break_cell())", "was": "main.fab:4210", "match": { "fn": "break_cell" } },
+    { "id": "tear_prime", "category": "Enemy/Boss", "name": "Tear cell primed", "desc": "Bullet hits a Tear cell, starts the shake-warning fuse", "was": "main.fab:4348", "match": { "fn": "trigger_tear" } },
+    { "id": "tear_detonate", "category": "Enemy/Boss", "name": "Tear detonation", "desc": "Fuse expires - infects neighbors, can damage the player", "was": "main.fab:4465", "match": { "fn": "update_tears" } },
+    { "id": "boss_hit", "category": "Enemy/Boss", "name": "Boss takes damage", "desc": "damage_boss() - any hit landing on the boss", "was": "main.fab:5478", "match": { "fn": "damage_boss" } },
+    { "id": "boss_phase_transition", "category": "Enemy/Boss", "name": "Boss phase transition", "desc": "HP threshold crossed - boss_start_phase() resets/escalates", "was": "main.fab:5435-5457", "match": { "fn": "boss_start_phase" } },
+    { "id": "boss_defeat", "category": "Enemy/Boss", "name": "Boss defeat", "desc": "Terminal phase completes (today: the boss death explosion, begin_boss_death_explosion())", "was": "main.fab:5590-5618", "match": { "fn": "begin_boss_death_explosion" } },
+
+    { "id": "pickup_health", "category": "Pickups", "name": "Health Square pickup", "desc": "Touch pickup, +1 HP", "was": "main.fab:2745", "match": { "fn": "check_health_pickup" } },
+    { "id": "pickup_ressource", "category": "Pickups", "name": "Ressource Square pickup", "desc": "Touch pickup, +3 HP and +3 score", "was": "main.fab:2775", "match": { "fn": "check_ressource_pickup" } },
+    { "id": "currency_pickup", "category": "Pickups", "name": "Currency/material pickup", "desc": "Normal drop pickup, +1 score - the single most frequent pickup in the game", "was": "main.fab:4685-4690", "match": { "fn": "update_currency", "clip": "sq2_bleep" } },
+    { "id": "currency_pickup_blue", "category": "Pickups", "name": "Healing-tagged material pickup", "desc": "Luck-tagged drop - fills the heal bar, occasionally grants +1 HP", "was": "main.fab:4691-4703", "match": { "fn": "update_currency", "clip": "sq2_chirp" } },
+
+    { "id": "shop_open", "category": "Shop", "name": "Shop opens", "desc": "open_shop_if_fresh() - door transition into a shop room", "was": "main.fab:5008-5022", "match": { "fn": "open_shop_if_fresh" } },
+    { "id": "shop_cursor", "category": "Shop", "name": "Shop cursor move", "desc": "Navigating between the offered items", "was": "main.fab:8979-8995", "match": { "fn": "start_shop_cursor_move" } },
+    { "id": "shop_purchase", "category": "Shop", "name": "Shop purchase confirmed", "desc": "try_purchase() succeeds, item bought", "was": "main.fab:8996-9003", "match": { "fn": "try_purchase", "clip": "sq2_chirp" } },
+    { "id": "shop_insufficient_funds", "category": "Shop", "name": "Shop  -  can't afford", "desc": "try_purchase() when score < price", "was": "main.fab:5164-5165", "match": { "fn": "try_purchase", "clip": "sq2_error" } },
+    { "id": "shop_leave", "category": "Shop", "name": "Shop leave", "desc": "exit_shop() - back to the room the shop was entered from", "was": "main.fab:5038-5048", "match": { "fn": "exit_shop" } },
+
+    { "id": "portal_touch", "category": "Doors/Rooms", "name": "Portal teleport", "desc": "Touching a Blue/Pink portal pair", "was": "main.fab:2831", "match": { "fn": "check_portal_touch" } },
+    { "id": "door_unlock", "category": "Doors/Rooms", "name": "Door unlock", "desc": "Room clear - locked doors swap to open art", "was": "main.fab:1072-1098", "match": { "fn": "unlock_room_doors" } },
+    { "id": "door_open", "category": "Doors/Rooms", "name": "Door opened", "desc": "Shooting an already-unlocked orange door", "was": "main.fab:4521-4527", "match": { "fn": "try_open_door_run" } },
+    { "id": "room_transition", "category": "Doors/Rooms", "name": "Room transition", "desc": "Crossing a screen edge into the next room", "was": "main.fab:2544-2559", "match": { "fn": "enter_room" } },
+    { "id": "boss_arena_entry", "category": "Doors/Rooms", "name": "Boss arena entry", "desc": "enter_boss_arena() - crossing into the boss room", "was": "main.fab:2316-2367", "match": { "fn": "enter_boss_arena" } },
+
+    { "id": "lens_beam", "category": "Puzzles", "name": "Lens fires a beam", "desc": "A bullet hits a Lens: the laser beam starts", "since": "the laser/mirror puzzles (after 2026-08-24)", "match": { "fn": "update_bullets", "prev": "spawn_lens_beam" } },
+    { "id": "mirror_flip", "category": "Puzzles", "name": "Mirror rotated by a shot", "desc": "A bullet flips a mirror", "since": "the laser/mirror puzzles (after 2026-08-24)", "match": { "fn": "update_bullets", "prev": "mirror_flip_timer" } },
+    { "id": "lens_keyblock", "category": "Puzzles", "name": "Lens key block destroyed", "desc": "The beam breaks a Lens key block (the room's puzzle lock)", "since": "the laser/mirror puzzles (after 2026-08-24)", "match": { "fn": "update_bullets", "prev": "room_lockblocks_remaining" } },
+    { "id": "beam_mirror", "category": "Puzzles", "name": "Beam reflects off a mirror", "desc": "The laser beam turns at a mirror", "since": "the laser/mirror puzzles (after 2026-08-24)", "match": { "fn": "update_bullets", "clip": "sq2_bleep" } },
+    { "id": "beam_portal", "category": "Puzzles", "name": "Beam goes through a portal", "desc": "The laser beam warps to the paired portal", "since": "the laser/mirror puzzles (after 2026-08-24)", "match": { "fn": "update_bullets", "prev": "beam_warped" } },
+
+    { "id": "pause_open", "category": "Menus/UI", "name": "Pause opened", "desc": "Start pressed during gameplay", "was": "main.fab:8965-8969", "match": { "fn": "main", "section": "paused\\s*=\\s*true" } },
+    { "id": "pause_close", "category": "Menus/UI", "name": "Pause closed", "desc": "Resuming from the pause screen", "was": "main.fab:8580-8584", "match": { "fn": "main", "section": "paused\\s*=\\s*false" } },
+    { "id": "title_cursor", "category": "Menus/UI", "name": "Title screen cursor move", "desc": "Navigating New Game / Continue / Options", "was": "main.fab:8368-8375", "match": { "fn": "start_title_cursor_move" } },
+    { "id": "title_newgame", "category": "Menus/UI", "name": "Title  -  New Game confirm", "desc": "Starting a fresh save", "was": "main.fab:8376-8426", "match": { "fn": "main", "section": "TITLE_OPT_NEWGAME" } },
+    { "id": "title_continue", "category": "Menus/UI", "name": "Title  -  Continue confirm", "desc": "Loading an existing save", "was": "main.fab:8427-8485", "match": { "fn": "main", "section": "TITLE_OPT_CONTINUE", "last": "goto_state\\(APP_GAME\\)" } },
+    { "id": "title_options", "category": "Menus/UI", "name": "Title -> Options confirm", "desc": "Entering the Options menu", "was": "main.fab:8486-8487", "match": { "fn": "main", "section": "TITLE_OPT_CONTINUE", "last": "goto_state\\(APP_OPTIONS\\)" } },
+    { "id": "options_cursor", "category": "Menus/UI", "name": "Options cursor / scheme cycle", "desc": "Navigating rows, L/R cycling the input scheme", "was": "main.fab:8494-8515", "match": [ { "fn": "start_options_cursor_move" }, { "fn": "main", "section": "OPTIONS_OPT_CONTROLS" } ] },
+    { "id": "options_startat", "category": "Menus/UI", "name": "Options START AT value change", "desc": "L/R/A on the START AT row (level 1-6 or the boss)", "since": "the START AT option (after 2026-08-24)", "match": { "fn": "main", "section": "OPTIONS_OPT_START_AT" } },
+    { "id": "options_boost", "category": "Menus/UI", "name": "Options BOOST value change", "desc": "L/R/A on the BOOST row (cycle_player_buff())", "since": "the BOOST option (after 2026-08-24)", "match": [ { "fn": "cycle_player_buff" }, { "fn": "main", "section": "OPTIONS_OPT_PLAYER_BUFF" } ] },
+    { "id": "options_confirm", "category": "Menus/UI", "name": "Options confirm", "desc": "Back / Sound Test / SFX Test row selected", "was": "main.fab:8516-8522", "match": { "fn": "main", "section": "OPTIONS_OPT_(BACK|SOUND_TEST|SFX_TEST)" } },
+    { "id": "soundtest_cursor", "category": "Menus/UI", "name": "Sound Test cursor move", "desc": "Navigating the music track list", "was": "main.fab:8543-8550", "match": { "fn": "start_soundtest_cursor_move" } },
+    { "id": "soundtest_confirm", "category": "Menus/UI", "name": "Sound Test confirm", "desc": "Back / audition a track (today: leaving the Sound Test, which is the shared AudioPlayer screen)", "was": "main.fab:8551-8564", "match": { "fn": "main", "section": "APP_SOUND_TEST" } },
+    { "id": "sfxtest_cursor", "category": "Menus/UI", "name": "SFX Test cursor move", "desc": "Navigating the clip list (auditioning itself already plays the clip)", "was": "main.fab:8525-8532", "match": { "fn": "start_sfxtest_cursor_move" } },
+    { "id": "sfxtest_back", "category": "Menus/UI", "name": "SFX Test -> Back confirm", "desc": "Leaving the SFX Test menu", "was": "main.fab:8533-8535", "match": { "fn": "main", "section": "SFXTEST_OPT_BACK" } },
+    { "id": "ending_to_title", "category": "Menus/UI", "name": "Ending -> Title", "desc": "Start pressed on the post-boss Ending screen", "was": "main.fab:9010-9012", "match": { "fn": "main", "section": "APP_ENDING" } }
+  ],
+  "functions": {
+    "sfxtest_trigger": { "category": "SFX Test menu (audition)", "name": "SFX Test row plays", "desc": "The SFX Test menu plays this clip for its row (changing it changes what the row auditions)" },
+    "step_death_sfx": { "category": "Player", "name": "Death sequence stage sound", "desc": "step_death_sfx(): the stages of the player's death sequence" },
+    "step_death_screen_sfx": { "category": "Player", "name": "Death screen glitch sound", "desc": "step_death_screen_sfx(): the glitches of the Death screen" },
+    "step_boss_boom": { "category": "Enemy/Boss", "name": "Boss death boom", "desc": "step_boss_boom(): the repeating booms of the boss death" },
+    "step_boss_death_sequence": { "category": "Enemy/Boss", "name": "Boss death sequence sound", "desc": "step_boss_death_sequence(): the random noises of the boss death and the SYSTEM CORRUPTED ending" }
+  }
+}

@@ -21,3 +21,84 @@ public interface IPPU
 	// allocation occurs on next use. This helps reduce memory after resets/state loads.
 	void ClearBuffers();
 }
+
+/// <summary>
+/// The line counter a core renders from, for presentation only: NES.GetFrameBuffer hands out the
+/// last COMPLETED frame (copied when this crosses into 240) instead of whatever the framebuffer
+/// holds when RunFrame returns, which in default timing is two frames stitched at a drifting seam.
+/// Frame-phase accuracy is all that is asked - unlike <see cref="IPpuProbe"/>, which promises a
+/// dot-accurate counter - and every core, gimmick ones included, does run a real 0-261 line counter
+/// to know which row it is drawing.
+/// </summary>
+public interface IPpuFrameClock
+{
+	/// <summary>Scanline the PPU counter currently sits on: 0-239 visible, 240 post-render,
+	/// 241-260 vblank, 261 pre-render. Never -1 - this codebase numbers pre-render as 261.</summary>
+	int ProbeScanline { get; }
+}
+
+/// <summary>
+/// OPTIONAL capability a PPU core may advertise on top of <see cref="IPPU"/>: side-effect-free
+/// access to the PPU's own timing counters and its own 16KB address space.
+///
+/// Deliberately a SEPARATE interface rather than new members on IPPU. Twelve cores implement
+/// IPPU, most of them gimmick/novelty renderers (PPU_LQ, PPU_CUBE, PPU_EXE, ...) that do not model
+/// a dot-accurate scanline counter at all; forcing them to implement one would either bloat every
+/// core or - worse - have them return a plausible-looking number that is not the counter anything
+/// actually renders from. A consumer tests for this interface and says so honestly when it is
+/// absent, instead of silently reading a fiction.
+///
+/// Everything here must be a pure observation: no latch is toggled, no buffer refilled, no flag
+/// cleared. That is what separates it from ReadPPURegister/WritePPURegister, which are the CPU's
+/// side-effect-bearing view of the same hardware.
+/// </summary>
+public interface IPpuProbe : IPpuFrameClock
+{
+
+	/// <summary>Dot (a.k.a. cycle) within <see cref="ProbeScanline"/>, 0-340.</summary>
+	int ProbeDot { get; }
+
+	/// <summary>Live PPUMASK ($2001). Bit 3 = background enabled, bit 4 = sprites enabled;
+	/// "the PPU is rendering" is those two OR'd together.</summary>
+	byte ProbeMask { get; }
+
+	/// <summary>Read one byte of the PPU's own address space ($0000-$3FFF, mirrored the same way
+	/// the renderer sees it: pattern tables through the mapper, nametables through the current
+	/// mirroring, palette at $3F00 with its four write-mirrors folded). Side-effect free: unlike a
+	/// $2007 read it does not touch the read buffer or advance the VRAM address.</summary>
+	byte ProbePpuBusRead(ushort address);
+
+	/// <summary>Write one byte of that same address space, again without touching any latch or
+	/// address register. For tooling (hex editors, corruption injection) only.</summary>
+	void ProbePpuBusWrite(ushort address, byte value);
+}
+
+/// <summary>Side-effect-free reading of what the debug viewers need of a PPU (BrokenDev D8): its sprite RAM (OAM, 256 bytes: the debugger's <c>oam</c> space), PPUCTRL and the scroll register t (both write-only on the chip), for the sprite and map viewers.
+/// Unlike a $2004 read nothing here touches an address or a latch.</summary>
+public interface IPpuViewProbe
+{
+	byte ProbeOam(int index);
+	/// <summary>The last value written to PPUCTRL ($2000).</summary>
+	byte ProbeCtrl { get; }
+	/// <summary>The temporary VRAM address t (the scroll the next frame starts from: coarse X, coarse Y, nametable, fine Y).</summary>
+	ushort ProbeT { get; }
+	/// <summary>The fine X scroll (0-7).</summary>
+	byte ProbeFineX { get; }
+}
+
+/// <summary>
+/// The FIX-family timing contract: what the board and CPU_FIX need from a dot-accurate PPU to run it cycle-precise
+/// (catch-up on every bus access, interrupt dots, the reset-sequence flush). PPU_FIX has it, and so do the variant
+/// chips forked from it, so a variant gets exactly the timing its parent gets instead of the batched path the
+/// other cores' goldens were recorded against.
+/// </summary>
+public interface IPpuFixTiming : IPpuProbe
+{
+	/// <summary>Dots run since power-on.</summary>
+	long DotCounter { get; }
+	/// <summary>The dot at which the PPU last raised NMI (CPU_FIX places the interrupt inside the instruction).</summary>
+	long LastInterruptDot { get; }
+	/// <summary>Live loopy v and fine X (tracing and bridges).</summary>
+	ushort ProbeV { get; }
+	byte ProbeFineX { get; }
+}

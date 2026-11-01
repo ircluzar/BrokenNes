@@ -12,6 +12,8 @@ namespace BrokenNes.Models
     {
         public string name { get; set; } = string.Empty;
         public string base64 { get; set; } = string.Empty;
+        /// <summary>Set by the page for a file it will not read (an archive format the browser cannot open, such as 7z): the format's name. base64 is then empty.</summary>
+        public string unsupported { get; set; } = string.Empty;
     }
     public class BenchHistoryEntry
     {

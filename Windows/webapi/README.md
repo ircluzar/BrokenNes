@@ -1,107 +1,521 @@
 # BrokenNes Web API
 
-This directory contains the Web API server for BrokenNes webmodules.
+The local HTTP control API hosted by `BrokenNes.Windows.exe`. It exists so webmodules (the
+WebView2-hosted front end) can drive the emulator, but it is a general-purpose control surface:
+anything that can make an HTTP request on loopback can load ROMs, swap cores, read the
+framebuffer, peek/poke memory and fire corruption blasts, with no UI automation involved.
 
-## Overview
+## Server details
 
-The Web API server provides HTTP endpoints for webmodules to interact with the emulator. It listens only on `localhost:42067` to avoid requiring admin privileges.
-
-## Server Details
-
-- **Port**: 42067
+- **Ports**: 42067 (HTTP) / 42068 (HTTPS) when available. If those are already taken - normally
+  because another BrokenNes instance is running - the server falls back to OS-assigned ephemeral
+  ports for **both**, so every instance gets its own working API. A lone instance therefore
+  behaves exactly as it always did.
 - **Address**: 127.0.0.1 (loopback only)
-- **Protocol**: HTTP
-- **Framework**: ASP.NET Core Minimal API
+- **Protocol**: HTTP, plus HTTPS with a self-signed cert generated at startup (for WebView2)
+- **Framework**: ASP.NET Core Minimal API, logging suppressed below Warning
+- **CORS**: `AllowAnyOrigin/Method/Header` - safe only because the listener is loopback-bound
+- Started from `MainForm.EnsureWebApiServerRunningAsync()`; stopped/disposed on shutdown.
 
-## Implemented Endpoints
+### Discovering an instance's port
 
-### Memory Access
+Each running instance writes a discovery file once it is genuinely listening:
 
-All memory access endpoints are implemented according to the webmodule-api-requirements.md specification.
-
-#### Health Check
-- `GET /api/health` - Check if API server is running
-
-#### Memory Domains
-- `GET /api/memory/domains` - Get list of available memory domains
-- `GET /api/memory/domain/{domainName}/size` - Get size of specific domain
-
-#### Peek/Poke Operations
-- `GET /api/memory/peek?domain={domain}&address={address}` - Read single byte
-- `POST /api/memory/poke` - Write single byte
-  - Body: `{ "Domain": "string", "Address": int, "Value": byte }`
-- `GET /api/memory/peek-range?domain={domain}&address={address}&length={length}` - Read multiple bytes
-- `POST /api/memory/poke-range` - Write multiple bytes
-  - Body: `{ "Domain": "string", "Address": int, "Data": byte[] }`
-
-## Available Memory Domains
-
-- **System RAM** - 2KB NES system RAM (mirrored at $0000-$07FF)
-- **CPU Bus** - Full 64KB CPU address space
-- **PRG ROM** - Cartridge PRG ROM data
-- **PRG RAM** - Cartridge PRG RAM/SRAM
-- **CHR** - Cartridge CHR ROM/RAM
-
-## Testing
-
-A complete test suite is available at:
 ```
-Windows/Webmodules/ApiTest/index.html
+%LOCALAPPDATA%\BrokenNes\instances\<pid>.json
 ```
 
-The ApiTest webmodule provides:
-- Interactive testing of all Memory Access endpoints
-- Hex editor-style memory viewer
-- Automated test runner
-- Example API calls with results
+```json
+{ "pid": 1234, "httpPort": 42067, "httpsPort": 42068, "startedUtc": "2026-09-02T12:34:56.7890123Z", "exePath": "C:\\...\\BrokenNes.Windows.exe" }
+```
 
-## Usage Example
+The file is deleted on graceful shutdown, and `WebApiServer` prunes provably-dead PIDs' files on
+startup. Readers must still tolerate stale files: a force-killed process leaves its file behind,
+so check that the PID is alive before trusting one.
+
+`WebApiServer` also exposes `HttpPort` / `HttpsPort` / `BaseUrl` / `UsingFallbackPorts` /
+`LastStartError` in-process, and the process-wide `WebApiEndpoint.BaseUrl` mirrors them.
+
+Inside the desktop shell, page scripts do not need the discovery file: the shell injects
+`window.BROKENNES_API_BASE` (e.g. `"http://127.0.0.1:42067"`) via
+`AddScriptToExecuteOnDocumentCreatedAsync` before any page script runs, and `shared/webapi.js`
+uses it automatically, falling back to `http://127.0.0.1:42067`.
+
+**Startup caveat:** initialization shows blocking `MessageBox`es (DirectX failure, "Audio
+Warning") *before* the API server is started. On a machine where audio init fails, nothing binds
+and no discovery file appears until that dialog is dismissed.
+
+## Conventions
+
+- Responses are JSON. Most carry `success: true/false`; failures return either **400** with
+  `{ "success": false, "error": "..." }` or **200** with `{ "success": false, ... }` depending on
+  whether the handler treats it as a bad request or a failed operation. **Check `success`, not
+  just the status code.**
+- Request bodies are `application/json` and bind to the DTOs in `WebApiModels.cs`. Property names
+  are matched case-insensitively.
+- Handlers that touch UI state marshal onto the WinForms UI thread via `Control.Invoke`.
+- **Encoding gotcha:** `/api/ppu/framebuffer` returns `data` as a **base64 string** (it is a C#
+  `byte[]`, which `System.Text.Json` base64-encodes), while `/api/memory/peek-range` deliberately
+  converts to `int[]` first and returns a **JSON array of numbers**. Same server, two encodings.
+
+### Progression gate
+
+`WebApiServer.ProgressionGate.cs` is middleware in front of everything. It answers **403**
+`{ "success": false, "error": "<feature> is locked" }` for:
+
+| Path prefix | Requires webmodule unlock |
+| --- | --- |
+| `/api/rtc/...` | `GlitchHarvester` |
+| `/api/gh/...` | `GlitchHarvester` |
+| `/api/timejump/...` | `TimeJump` |
+| `/api/imagine/...` | `ImagineBug` |
+
+The gate matches on the **path**, not on which file registered the route - so `/api/ppu/oam`,
+`/api/apu/channels` and `POST /api/cpu/registers`, which are registered inside
+`WebApiServer.Endpoints.Rtc.cs`, are **not** gated.
+
+### Destructive endpoints
+
+- `POST /api/save/reset` resets progression to a fresh canonical save and clears continue
+  artifacts. Do not call it casually against a real save.
+- `POST /api/progression/unlock-everything` grants everything.
+- `DELETE /api/gh/stash`, `DELETE /api/gh/stockpile/{id}` delete user data.
+- `POST /api/memory/poke*`, `/api/rtc/*` and `/api/imagine/*` mutate live emulator state by design.
+
+## Endpoint index
+
+About 160 routes across 20 registration files (the tables below were generated for the first 148; the Console, Emulation volume and Input injection tables were added for BrokenNes 2). Generated from the `app.MapX("...")` registrations in
+`WebApiServer.Endpoints.*.cs`; each file's `Register*Endpoints(app)` is called from
+`WebApiServer.BuildApp`.
+
+### Health & memory - `WebApiServer.Endpoints.Memory.cs`
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/health` | Basic health check (`{ success, status, uiReady, timestamp }`); answered at once from start-up on. Every OTHER request waits until the window is shown (`uiReady` true; 503 after 90 s), so nothing runs beside the constructor's own start-up (WebApiServer.UiReadyGate.cs) |
+| GET | `/api/memory/domains` | List memory domains with name/size/description |
+| GET | `/api/memory/domain/{domainName}/size` | Size of one domain |
+| GET | `/api/memory/peek?domain=&address=` | Read a single byte |
+| POST | `/api/memory/poke` | Write a single byte; echoes `beforeValue`/`afterValue`/`verified` |
+| GET | `/api/memory/peek-range?domain=&address=&length=` | Read N bytes as `int[]` |
+| POST | `/api/memory/poke-range` | Write N bytes (`Data` is `int[]`) |
+| GET | `/api/memory/test-poke?domain=&address=&value=` | Diagnostic write/read-back/restore round trip |
+
+Memory domains while the NES runs (from `NesMemoryExtensions`): `System RAM` (2 KB), `CPU Bus` (64 KB), `PRG ROM`,
+`PRG RAM` (8 KB), `CHR` (8 KB). Names contain spaces and must be URL-encoded in query strings.
+
+**Every console (BrokenDev D1):** while a SNES / WideMess / Game Boy / Sega game runs, the same routes answer with that
+console's memories (the response of `/api/memory/domains` then carries `console`, and each domain its `kind`, `writable` and why it
+is `unavailable`); peeks and pokes run between frames. SNES and WideMess: `WRAM`, `VRAM`, `CGRAM`, `OAM`, `SRAM`, `ROM`, `ARAM`
+(sound RAM), `DSP`, `REGS` ($4200-$421F, $4300-$437F), `BUS` (the 65816's 24-bit space, side-effect free), `WRAMHI` (a WideMess-map
+game's work RAM). Game Boy: `WRAM`, `HRAM`, `VRAM`, `OAM`, `CRAM` (Color), `SRAM`, `ROM`, `WAVE`, `IO` ($FF00-$FF7F, IE at $80),
+`BUS`. Master System / Game Gear / Genesis: their `RAM`, `VRAM`, `CRAM`, ... as `/api/console/domains` lists them, and `BUS` (the Z80's
+64 KB; the Genesis: the 68000's 16 MB, registers reading $FF) and on the Genesis `Z80BUS` (Timeflow T0).
+
+### Debugger - `WebApiServer.Endpoints.Debug.cs` (BrokenDev D1: NES, SNES with its SPC700, WideMess, Game Boy; Timeflow T0: Master System, Game Gear, Genesis with its Z80)
+
+The debugger engine (`Windows/NesEmulator/debug`) behind the live MCP sessions of milestone D3. **Reading is always allowed**;
+the **control** routes answer `403` unless the config has `"enableDebuggerControl": true` (BrokenDev's live sessions ask the user
+first; tests use a scratch config, `UAT\entrypoints\debugger-desktop-smoke.ps1`). A debugger is made on the first control request
+and costs the game nothing until then; it is released (every hook removed) when the emulation stops or the game changes. A break
+parks the emulation thread at an instruction boundary (the emulation lock is released, so the app and these routes keep answering);
+`continue` or a step lets it go.
+
+Specs (breakpoints, run-to, memory): `$8000`, `$8000-$80FF`, `7E:0010` (bank:address; on the Game Boy a ROM / RAM bank), `wram:$10`,
+`vram:$2000-$27FF`, `prg:$1234`, `oam:$05`, `spc:$0200`, a symbol (`player_hp`, its whole size for a watch), `player_hp+1`. A CPU
+address matches every mirror of what it reaches (NES `$0812` is `$0012`; SNES `$80:0013` is `$7E:0013`, `$80:420B` is `$00:420B`;
+Game Boy `$E011` is `$C011`; Master System `$E011` is `$C011`, `io:$BE` is every mirror of the data port; Genesis `$E00010` is `$FF0010`,
+`zram:$10` is the Z80's RAM from either CPU); DMA and HDMA bytes are accesses (a VRAM watch sees a DMA upload). The Genesis's CPUs are `main`
+(the 68000) and `z80`. Conditions: registers, `[addr]`, `{addr}` (word), `[symbol]`, `value`, `address`, `source` (0 CPU, 1 DMA, 2 HDMA,
+3 OAM DMA, 4 VRAM DMA, 5 the other CPU), `frame`, `scanline`, C operators.
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/debug/state` | Console, CPUs (registers, PC, symbol, spaces), attached / armed / parked, the last break, breakpoints, symbol files, limitations |
+| GET | `/api/debug/registers?cpu=main\|spc` | One CPU's registers |
+| GET | `/api/debug/callstack?cpu=` | Call frames (JSR/JSL/CALL/RST/TCALL, NMI/IRQ/VBLANK...), outermost first, with symbols |
+| GET | `/api/debug/trace?cpu=&count=` | The last instructions, in Mesen's trace logger columns |
+| GET | `/api/debug/breakpoints`, `/api/debug/hits?count=` | Breakpoints with hit counts; the hit log (tracepoint lines too) |
+| GET | `/api/debug/wait?timeoutMs=` | Waits for the emulation to park; answers with the break |
+| GET | `/api/debug/symbol?name=` / `?address=&cpu=` | A symbol's place and size / the label at an address |
+| GET | `/api/debug/memory?spec=&length=&cpu=` | Memory by spec or symbol, side-effect free |
+| GET | `/api/debug/disasm?address=&count=&cpu=` | Disassembly (from the PC by default), with symbols |
+| GET | `/api/debug/palettes` | The console's palettes as the Palettes window shows them (label, values line, `#RRGGBB` colours) |
+| GET | `/api/debug/tiles?source=&bpp=&palette=&start=&count=` | A tile sheet from the shared decoder: width, height, ARGB pixels as base64 (`BrokenDev/web/viewers.html`) |
+| GET | `/api/debug/map?layer=&cellX=&cellY=` | A tile map drawn whole (NES nametables, SNES BG1-4, Game Boy background / window), the visible area, one cell's tile / palette / flags |
+| GET | `/api/debug/sprites` | The sprites on screen from OAM (place, size, tile, palette, flips) |
+| GET | `/api/debug/events` | The last whole frame the app's Event View window recorded; never attaches or arms: with no window open it answers `success: false` and says to open Emulator > Debug Windows > Event View |
+| GET | `/api/debug/sound` | One line per channel of the sound chip, and the sound monitor's mute in force |
+| GET | `/api/debug/lan` | The read-only pages' LAN share (Emulator > Debug Windows > Share Read-Only Pages on the LAN; off by default; config `debugPagesLan` only says whether it starts on, the menu never writes it): on, address, port, the shared routes; never the token (only the app's window shows the URL with it). Switched on, a second listener on the LAN address and a free port answers only `/debug/debugger.html`, `/debug/viewers.html` (embedded) and the GET routes `state`, `registers`, `disasm`, `callstack`, `memory`, `palettes`, `tiles`, `map`, `sprites`, `sound`, `events`, `/api/memory/domains`, `/api/memory/peek-range` (forwarded to this API); a missing or wrong token (`?t=` or `X-BrokenNes-Token`) is 401, any method but GET 405, any other path 404. Off closes it at once; nothing is saved; firewall settings are never touched |
+| GET | `/api/debug/eval?expr=&cpu=` | An expression now (`[player_hp] + 1`) |
+| POST | `/api/debug/attach`, `/api/debug/detach` | **Control.** Attach (tracks the call stack) / detach (the game runs as if never debugged) |
+| POST | `/api/debug/symbols` `{path}` | **Control.** Load a `.mlb` (NESFab / Mesen), WLA-DX `.sym`, bgb / GBDK `.sym` or GBDK `.noi` |
+| POST | `/api/debug/breakpoints` `{spec, kind: exec\|read\|write\|rw, cpu, condition, hits, tracepoint, log}` | **Control.** Add a breakpoint, watch or tracepoint |
+| DELETE | `/api/debug/breakpoints/{id}`, `/api/debug/breakpoints` | **Control.** Remove one / all |
+| POST | `/api/debug/pause?waitMs=`, `/api/debug/continue` | **Control.** Break at the next instruction / let it go |
+| POST | `/api/debug/step` `{mode: into\|over\|out\|scanline\|frame, cpu}` or `{to}` / `{frame}` / `{scanline}` | **Control.** Step or run to; waits for the break (`waitMs`, default 5000) |
+| POST | `/api/debug/registers` `{cpu, name, value}` | **Control.** Write a register |
+| POST / DELETE | `/api/debug/trace-file` `{path, cpu, function, ranges, fromFrame, toFrame}` | **Control.** Start / stop a filtered trace file |
+
+### Bug capture - `WebApiServer.Endpoints.Bugs.cs` (BrokenDev D6)
+
+The app keeps the last 30 s of the running game (a save state, a picture and the keyframe hashes a second, every frame's pads, the sound);
+F9 (Emulator > Capture Bug) saves them with a note typed in a small box. These routes do the same without the box. A bundle lands in the
+game's BrokenDev workspace `bugs\` folder when the ROM is a project's build, else in `%LOCALAPPDATA%\BrokenNes\bugs` (`BROKENNES_BUGS_DIR`
+replaces it). Memory and register writes through this API (and corruptions) start the history again: the movie could not replay across them.
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/bugs/status` | On / recording, the console and game, seconds held, the last break (why the history started again), a state's cost, the folder a capture would go to and why |
+| POST | `/api/bugs/capture` `{note}` | Save a capture now: `{success, path, message, seconds, frames, start: state\|power-on\|none, noMovie}`; 400 with the reason when there is nothing to capture (off, the idle screen) |
+| POST | `/api/bugs/enabled` `{enabled}` | Emulator > Keep the Last 30 s (config `bugCaptureEnabled`, on by default); off, nothing is recorded |
+| GET | `/api/timeflow/status` | BrokenDev Timeflow (T1/T2): recording on or off (and who switched it on), the timeline being written (id, folder, frames, bytes, the game folder's space against its cap), how the last one ended, an agent's request and its answer (`pending`, `allowed`, `declined`, `cancelled`), a replay in progress |
+| GET | `/api/timeflow/timelines` | The running game's timelines (a branch under its parent), its folder's space and cap |
+| GET | `/api/timeflow/search` | T4 (reading only): the last search the user made in the Timeflow window's search box (busy, the condition, its report: hits with timeline / frame / cycle / PC, per clause the coarse decision and false candidates, the cost). No route starts a search: the user does, in the window (agents search with MCP `timeflow_search` or Workshop `--timeflow search`) |
+| GET | `/api/timeflow/hotpatch` | T5 (reading only): the last hotpatch the user made in the Timeflow window (busy, its report: the byte patches applied, the resume frame, the branch, the divergence from the old future, each verdict on the patched and the old future). No route starts a hotpatch: the user does, in the window (agents use MCP `timeflow_patch` or Workshop `--timeflow patch`) |
+| GET | `/api/timeflow/profile` | T3 (reading only): the last "Profile selection" the user made in the Timeflow window (busy, its result, its folder and description), the profile windows open (`DebuggerWindowProfile`, `EventsWindowProfile`), the kept profiles (id, timeline, span, status, keep, bytes, expiry, owner PID). No route starts a profile: the user does, in the window |
+| POST | `/api/timeflow/request` `{reason, from}` | **An agent can only ask:** the app shows the user a prompt under the menu bar that does not stop the game (Allow / Decline); nothing records unless the user allows it. `"not needed"` while recording is on |
+| POST | `/api/timeflow/request/cancel` | Withdraw a request still waiting |
+
+There is deliberately no route that switches Timeflow recording on or off, or that jumps the user's game: the switch is the user's (Emulator > Debug Windows > Timeflow: Record, or the Timeflow window's REC box), off at every start.
+
+### Debug port - `WebApiServer.Endpoints.Port.cs` (BrokenDev D7)
+
+A homebrew dev build's prints, asserts, markers and timers (the BrokenDev debug port: NES `$401C-$401F`, SNES / WideMess `$4230-$423F`,
+Game Boy the bgb / Emulicious `ld d,d` messages; docs/projects/brokendev-debugging-plan.md "D7 settled"). Emulator > Debug Port (config
+`debugPortEnabled`, off by default); a failed assert pauses the game (`debugPortPauseOnAssert`, on). The events go to the log (`[port] ...`)
+and into the bug capture (bug.json's `debugPort`, the movie's markers). The port only listens: reading it changes nothing.
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/debug/port?since=&limit=` | On / listening, where, the counts, the events after a seq (kind, text, frame, PC, symbol), the named timers (calls, average, best, worst, per frame) |
+| POST | `/api/debug/port/enabled` `{enabled}` | Emulator > Debug Port; off, nothing listens (at once, even while the game is paused) |
+
+### Emulator control - `WebApiServer.Endpoints.Emulator.cs`
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| POST | `/api/emulator/pause` | Pause emulation |
+| POST | `/api/emulator/resume` | Resume emulation |
+| POST | `/api/emulator/load-rom` | **Load a ROM by absolute disk path** (`{ Path }`) - no file dialog |
+| POST | `/api/emulator/load-rom-key` | Load a ROM by browser-storage key / built-in name (`{ RomKey }`) |
+| POST | `/api/emulator/load-rom-base64` | Load ROM bytes inline (`{ Name, Base64 }`) |
+| POST | `/api/emulator/load-builtin-rom` | Load a bundled ROM by filename (`{ Filename, PreserveShader }`) |
+| POST | `/api/emulator/close-rom` | Unload and fall back to the embedded test ROM |
+| GET | `/api/emulator/current-rom` | `{ success, path, name, isTestRom }` |
+| POST | `/api/emulator/quick-save-state` | Quick save (F7); `{ success, gated, reason }`; `reason` says why it failed (the opt-in flag is off, the session has no states, the state belongs to another game / sound unit / chip). NES, SNES, Game Boy, Master System, Game Gear and Genesis all have states |
+| POST | `/api/emulator/quick-load-state` | Quick load (F5); `{ success, gated, reason }` (a refused state leaves the game running as it was) |
+| POST | `/api/emulator/save-continue-state` | Capture the persistent continue checkpoint |
+| POST | `/api/emulator/load-continue-state` | Restore it (`{ ExpectedRomName }`, rejects a ROM mismatch) |
+| GET | `/api/emulator/backgrounds` | List available backgrounds |
+| POST | `/api/emulator/background` | Set the background (`{ Name }`; refuses locked ones) |
+| GET | `/api/emulator/null-providers` | List available null/static providers |
+| POST | `/api/emulator/null-provider` | Set the null provider (`{ Name }`; refuses locked ones) |
+
+### CPU - `WebApiServer.Endpoints.Cpu.cs` (plus one route in `...Rtc.cs`)
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/cpu/registers` | Registers as **hex strings** (`{ PC:"0xC16C", A, X, Y, P, SP }`) |
+| POST | `/api/cpu/registers` | Set registers (`SetRegistersRequest`; all fields optional) - registered in `...Rtc.cs`, not gated |
+| GET | `/api/cpu/core` | Active CPU core id |
+| GET | `/api/cpu/cores` | Available CPU core ids |
+| GET | `/api/cpu/state` | Full CPU state snapshot |
+
+### PPU - `WebApiServer.Endpoints.Ppu.cs` (plus one route in `...Rtc.cs`)
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/ppu/framebuffer` | `{ width:256, height:240, format:"RGBA", data:<base64 of 245760 bytes> }` |
+| GET | `/api/ppu/core` | Active PPU core id |
+| GET | `/api/ppu/cores` | Available PPU core ids |
+| GET | `/api/ppu/state` | PPU state snapshot |
+| GET | `/api/ppu/oam` | OAM / sprite data - registered in `...Rtc.cs`, not gated |
+
+### APU - `WebApiServer.Endpoints.Apu.cs` (plus one route in `...Rtc.cs`)
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/apu/core` | Active APU core id |
+| GET | `/api/apu/cores` | Available APU core ids |
+| POST | `/api/apu/channels/enable` | Set the channel enable mask (bit0 P1, 1 P2, 2 Tri, 3 Noise, 4 DMC) |
+| GET | `/api/apu/channels` | APU channel state - registered in `...Rtc.cs`, not gated |
+
+### Cores - `WebApiServer.Endpoints.Cores.cs`
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/cores` | Metadata for every CPU/PPU/APU/clock/shader core (id, name, description, performance, rating, category). Returns the object directly - no `success` field |
+| POST | `/api/cores/apply` | Hot-swap cores (`{ CpuId, PpuId, ApuId, OverrideReason }`). `OverrideReason` of `deck-enforced` or `story-cutscene` routes to the progression-bypassing setters |
+
+### Shader - `WebApiServer.Endpoints.Shader.cs`
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/shader/current` | `{ shader, enabled }` |
+| POST | `/api/shader/set` | Set by name (`{ ShaderName, OverrideReason }`) |
+| POST | `/api/shader/enable` | Enable shaders |
+| POST | `/api/shader/disable` | No-op - shaders are always on |
+
+### Navigation / view mode - `WebApiServer.Endpoints.Navigation.cs`
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| POST | `/api/navigation/navigate` | Navigate the WebView2 to a URL (`{ Url }`) |
+| GET | `/api/navigation/query-params` | Query parameters of the current page |
+| GET | `/api/navigation/build-url` | Build a URL with parameters |
+| GET | `/api/navigation/current-route` | Current page path |
+| POST | `/api/navigation/go-to-emulator` | Switch to the native emulator view (hides the webform) |
+| POST | `/api/navigation/go-to-overlay` | Transparent WebView over the emulator |
+| POST | `/api/navigation/go-to-widget` | Side-by-side WebView + emulator |
+| POST | `/api/navigation/go-to-web` | Full webmodule view |
+
+### UI shell - `WebApiServer.Endpoints.Ui.cs`
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| POST | `/api/ui/close-menus` | Close all open menus |
+| POST | `/api/ui/toggle-fullscreen` | Toggle fullscreen |
+| POST | `/api/ui/hide-menu` | Hide the native menu bar |
+| POST | `/api/ui/show-menu` | Show the native menu bar |
+| POST | `/api/ui/controller/{playerNumber:int}/config` | Open a player's controller config dialog (**opens a modal window**) |
+
+### Input - `WebApiServer.Endpoints.Input.cs`
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/input/button-event` | Poll for the last webmodule X/Y button event (only if <100 ms old; reading clears it) |
+| POST | `/api/input/set-buttons` | Hold buttons for a player (`{ player: 1 or 2, buttons: ["A","Right"], holdMs }`): names `A B Select Start Up Down Left Right X Y L R C Z Mode`, plus the aliases `sel`, `pause` (= Select, the Master System's Pause), `reset` (= Mode, the Master System's Reset), `u`, `d`, or an index 0-14. The NES reads the first eight; a console session reads all of them (the Genesis pad's C, Z and Mode are the last three) |
+| POST | `/api/input/clear` | Release everything for both players |
+| GET | `/api/input/state` | The held buttons: `held` is what the running game was handed last frame (a console session reports its own pad: the keyboard, a gamepad and the injected buttons together), `injected` what this API latches, `emulationActive` whether the game is running |
+
+### Console - `WebApiServer.Endpoints.Console.cs` (BrokenNes 2: the NES, SNES, Game Boy / Color, Master System, Game Gear and Genesis)
+
+The console keys are `nes`, `snes`, `gb`, `gbc`, `sms`, `gg`, `md`. Core ids are the ones in the menus (`GET /api/console/cores`): a console's own cores first, then the other consoles' parts that can stand in; an entry with `"wall": true` is an instruction-set wall (the chip really runs the game's machine code, which is another processor's, so the game stops almost at once; the label says so).
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/console` | The running console, game, cores, frame size, fps; for a picture drawn by a bridge its name, loss counters and a one-line summary; for a Sega game `region` and `model`; `hasBattery`, `supportsState` (and `stateUnsupportedReason` when it has none); `note` after a core swap that had to restart the game, and why |
+| GET | `/api/console/cores` | The CPU / PPU / APU menus of the selected console (`id`, `label`, `family`, `wall`) |
+| POST | `/api/console/select/{console}` | Switch the base console (a game the new console can run restarts on it) |
+| POST | `/api/console/core/{slot}/{id}` | Pick a core (`cpu`, `ppu`, `apu`; an id from the menu, 400 otherwise). The game keeps running when the session can swap the core in place; otherwise it restarts on it and `status.note` says why |
+| GET / POST | `/api/console/gb-look` | The Game Boy look (`look`: green, grey, pocket, color; `invertBackground`, `invertSprites`) |
+| GET / POST | `/api/console/sega` | The Sega machine settings: `region` (`auto`, `ntsc`, `pal`), `genesisModel` (`auto`, `1`, `2`, `3`), `masterSystemModel` (`auto`, `markiii`, `sms1`, `sms2`), the choices with their labels, and what the running game is. A change restarts a running game of a console it concerns |
+| GET | `/api/console/framebuffer` | The picture at its real size (RGBA), whichever console runs |
+
+### Emulation volume - `WebApiServer.Endpoints.Audio.cs`
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET / POST | `/api/audio/emulation-volume` | The menu bar's volume panel: `volume` 0-100, `muted`, `removeHighPitched`, `highPitchCeilingNote`, the Genesis FM patch (`genesisFmPatch` 0-15, used by the NES APU core MD) and the Master System FM instrument (`smsFmPatch` 0-21, used by the core SMSFM). Any field may be left out |
+| GET | `/api/audio/device` | The emulation's playback device: `state` Open / NoDevice / Lost (no device: silent running, opened when one appears, reopened after a loss; no dialog), `opens`, `losses`, `lastError`, `bufferedMs` (-1 without a device), `windowsDevices`; `stats`: the output (`output` wasapi / waveout, `pacing` clock / legacy, `sampleRate`), what the device took (`reads`, `bytesRead`, `readRateHz` = the rate it really takes sound at, `underruns`, `maxReadGapMs`), what we gave it (`samplesSubmitted`, `primes`, `overflows` = trimmed frames, `rate`, `queueEmaMs`); `framesEmulated`, `pacedFps` (UAT/entrypoints/audio-pacing-desktop-smoke.ps1 reads these) |
+
+### Audio - `WebApiServer.Endpoints.Audio.cs`
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/audio/music/current` | Currently playing music track |
+| GET | `/api/audio/music/list` | Available music files |
+| GET | `/api/audio/sfx/list` | Available SFX files |
+| POST | `/api/audio/sfx/play` | Play a sound effect |
+| POST | `/api/audio/music/play` | Play music directly |
+| POST | `/api/audio/music/request` | Request music with crossfade |
+| POST | `/api/audio/music/stop` | Stop music with fade-out |
+| GET | `/api/audio/volume` | Current music/SFX volumes |
+| POST | `/api/audio/volume` | Set volumes (`{ MusicVolume, SfxVolume }`) |
+| GET | `/api/audio/status` | Audio engine status |
+
+### RTC (Real-Time Corruptor) - `WebApiServer.Endpoints.Rtc.cs` - **gated on `GlitchHarvester`**
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/rtc/domains` | Domains available for corruption |
+| POST | `/api/rtc/domains/selection` | Set the selected domains (`{ SelectedDomains }`) |
+| GET | `/api/rtc/intensity` | Get corruption intensity |
+| POST | `/api/rtc/intensity` | Set corruption intensity (`{ Intensity }`) |
+| GET | `/api/rtc/blast-type` | Get blast type |
+| POST | `/api/rtc/blast-type` | Set blast type (`{ BlastType }`) |
+| POST | `/api/rtc/blast` | Fire one blast; `{ success, message, writesApplied }` |
+| GET | `/api/rtc/auto-corrupt` | Auto-corrupt on/off |
+| POST | `/api/rtc/auto-corrupt` | Toggle auto-corrupt (`{ Enabled }`) |
+| POST | `/api/rtc/let-it-rip` | Apply the "Let It Rip" preset |
+| GET | `/api/rtc/crash-behavior` | Current crash-handling mode |
+| POST | `/api/rtc/crash-behavior` | Set crash-handling mode (`{ Behavior }`) |
+| GET | `/api/rtc/stubborn-mode` | Stubborn mode state |
+| POST | `/api/rtc/stubborn-mode` | Set stubborn mode (`{ Enabled }`) |
+| GET | `/api/rtc/last-blast` | Info about the last corruption operation |
+
+(`/api/ppu/oam`, `/api/apu/channels` and `POST /api/cpu/registers` are also registered in this
+file but sit outside the `/api/rtc` prefix and are therefore ungated.)
+
+### Glitch Harvester - `WebApiServer.Endpoints.GlitchHarvester.cs` - **gated on `GlitchHarvester`**
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/gh/base-states` | List base states |
+| POST | `/api/gh/base-state` | Add a base state (`{ Name }`) |
+| DELETE | `/api/gh/base-state/{id}` | Delete a base state |
+| GET | `/api/gh/selected-base` | Selected base-state id |
+| POST | `/api/gh/select-base` | Select a base state (`{ Id }`) |
+| POST | `/api/gh/load-base` | Load a base state (by id, or the selected one) |
+| GET | `/api/gh/load-on-operation` | "Load on operation" setting |
+| POST | `/api/gh/load-on-operation` | Set it (`{ Enabled }`) |
+| POST | `/api/gh/corrupt-and-stash` | Corrupt and push the result onto the stash |
+| GET | `/api/gh/stash` | List stash entries |
+| POST | `/api/gh/stash/{id}/replay` | Replay a stash entry |
+| POST | `/api/gh/stash/{id}/promote` | Promote a stash entry to the stockpile |
+| DELETE | `/api/gh/stash/{id}` | Delete one stash entry |
+| DELETE | `/api/gh/stash` | Clear the stash |
+| GET | `/api/gh/stockpile` | List stockpile entries |
+| POST | `/api/gh/stockpile/{id}/replay` | Replay a stockpile entry |
+| PUT | `/api/gh/stockpile/{id}/rename` | Rename a stockpile entry (`{ Name }`) |
+| DELETE | `/api/gh/stockpile/{id}` | Delete a stockpile entry |
+| GET | `/api/gh/stockpile/export` | Export the stockpile as JSON |
+| POST | `/api/gh/stockpile/import` | Import a stockpile from JSON (`{ Json }`) |
+| GET | `/api/gh/status` | What the farm can store for the running game (console, how a position is kept, the recording), the stockpile file state, the default folder, the NES domain-size setting |
+| GET | `/api/gh/stockpile/files` | The `.json` stockpile files in the default folder (newest first) |
+| POST | `/api/gh/stockpile/save` | Save the stockpile to a v2 stockpile file (`{ path?, name? }`; no path asks with a Save dialog) |
+| POST | `/api/gh/stockpile/open` | Open a stockpile file (`{ path?, replace? }`; older exports too); returns what was added, refused and why |
+| GET | `/api/console/domains` | The running console game's memories (id, label, true size, kind, writable, why unavailable); not gated (the NES has `/api/memory/domains`) |
+| GET | `/api/console/peek` | `?domain=&address=&length=` up to 4096 bytes of one console memory, read between frames |
+| POST | `/api/console/poke` | `{ domain, address, value }` write one byte of a console memory between frames |
+| GET | `/api/rtc/true-domain-sizes` | Are the NES RTC domains at true sizes (default off: the probed sizes) |
+| POST | `/api/rtc/true-domain-sizes` | Set it (`{ Enabled }`) |
+
+### Imagine (AI corruption) - `WebApiServer.Endpoints.Imagine.cs` - **gated on `ImagineBug`**
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/imagine/model-loaded` | Is a model loaded |
+| GET | `/api/imagine/epoch` | Current epoch |
+| POST | `/api/imagine/epoch` | Set the epoch to load (`{ Epoch }`) |
+| POST | `/api/imagine/load-model` | Load the model for the selected epoch |
+| GET | `/api/imagine/generation-params` | Get generation parameters |
+| POST | `/api/imagine/generation-params` | Set them (`{ BytesToGenerate, Temperature, TopK }`) |
+| POST | `/api/imagine/freeze-and-fetch` | Capture a CPU state snapshot |
+| GET | `/api/imagine/cpu-snapshot` | Read the captured snapshot |
+| POST | `/api/imagine/run-prediction` | Generate predicted bytes |
+| GET | `/api/imagine/predicted-bytes` | Last prediction result |
+| POST | `/api/imagine/apply-patch` | Write predicted bytes to memory (`{ Pc, Bytes }`) |
+| POST | `/api/imagine/imagine-a-bug` | Automatic AI-driven corruption |
+| POST | `/api/imagine/imagine-targeted-bug` | Targeted scanline corruption |
+| POST | `/api/imagine/set-targeted-mode` | Configure scanline targeting |
+| GET | `/api/imagine/targeted-status` | Targeted-mode status |
+| GET | `/api/imagine/last-error` | Last Imagine error message |
+
+### TimeJump - `WebApiServer.Endpoints.TimeJump.cs` - **gated on `TimeJump`**
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| POST | `/api/timejump/start` | Start TimeJump mode (hides the menu, resets the game) |
+| POST | `/api/timejump/reset` | Clear states, reset the game, return to level 0 |
+| POST | `/api/timejump/stop` | Stop TimeJump mode |
+| GET | `/api/timejump/validate-rom` | Check that a valid ROM is loaded |
+| POST | `/api/timejump/capture` | Capture state atomically at a frame boundary |
+| POST | `/api/timejump/jump` | Perform a time jump |
+| POST | `/api/timejump/query` | Query and load a similar state |
+| GET | `/api/timejump/stats` | TimeJump statistics |
+
+### Achievements - `WebApiServer.Endpoints.Achievements.cs`
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| POST | `/api/achievements/init` | Initialize the achievements engine (`{ GameTitle, MaxAchievements, LoadAll }`) |
+| GET | `/api/achievements/list` | Achievements for the current game |
+| GET | `/api/achievements/state/{id}` | Unlock status of one achievement |
+| GET | `/api/achievements/progress/{id}` | Progress (hits, measured values) |
+| GET | `/api/achievements/conditions/{id}` | Condition details, for debugging |
+| POST | `/api/achievements/force-complete` | Debug: manually unlock (`{ Id }`) |
+| POST | `/api/achievements/evaluate-frame` | Run one evaluation step |
+| POST | `/api/achievements/reset` | Reset achievements for the current game |
+
+### Progression & save - `WebApiServer.Endpoints.Progression.cs`, `...Save.cs`
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/progression` | Unlocked webmodules/backgrounds/null providers, pending unlocks, legacy feature flags |
+| GET | `/api/progression/roster` | Full roster of webmodules with unlock state |
+| POST | `/api/progression/claim-pending` | Claim pending unlock bundles |
+| POST | `/api/progression/acknowledge` | Mark reward bundles as presented (`{ RewardIds }`) |
+| POST | `/api/progression/unlock-everything` | **Grants everything** |
+| POST | `/api/progression/equip-background` | Equip an unlocked background (`{ Name }`) |
+| POST | `/api/progression/equip-null-provider` | Equip an unlocked null provider (`{ Name }`) |
+| GET | `/api/save` | Read the canonical game save |
+| POST | `/api/save` | Merge and persist a save through the native progression authority |
+| POST | `/api/save/reset` | **Destructive** - reset progression to a fresh save |
+| GET | `/api/save/continue-preview?romKey=` | Trusted continue screenshot for a ROM |
+
+### Cards - `WebApiServer.Endpoints.Card.cs`
+
+| Verb | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/card/catalog` | Authored card definitions (domain, id, names, description, rating, performance, category) |
+| GET | `/api/card/{domain}/{id}` | Rendered SVG for one card |
+
+## Usage examples
+
+### From a webmodule (JavaScript)
 
 ```javascript
-// Health check
-const response = await fetch('http://127.0.0.1:42067/api/health');
-const data = await response.json();
+// This instance's API base, injected by the shell (falls back to the legacy fixed port).
+const API = window.BROKENNES_API_BASE || 'http://127.0.0.1:42067';
 
-// Peek memory
-const peek = await fetch('http://127.0.0.1:42067/api/memory/peek?domain=System%20RAM&address=0');
-const peekData = await peek.json();
+const health = await (await fetch(`${API}/api/health`)).json();
 
-// Poke memory
-const poke = await fetch('http://127.0.0.1:42067/api/memory/poke', {
+const peek = await (await fetch(`${API}/api/memory/peek?domain=System%20RAM&address=0`)).json();
+
+await fetch(`${API}/api/memory/poke`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ Domain: 'System RAM', Address: 0, Value: 255 })
 });
 ```
 
+Webmodules should normally just use `window.webapi` from `shared/webapi.js`, which already
+resolves the right base URL.
+
+### From outside the app (PowerShell)
+
+`UAT/lib/ApiClient.ps1` is a documented PowerShell client that does discovery, health-waiting,
+ROM loading by path, framebuffer decoding and memory access. See `UAT/README.md`.
+
+```powershell
+. .\UAT\lib\ApiClient.ps1
+$inst = Start-BrokenNesInstance
+Show-BrokenNesEmulator -ProcessId $inst.ProcessId
+Load-BrokenNesRom      -ProcessId $inst.ProcessId -Path 'C:\roms\game.nes'
+Get-BrokenNesFramebuffer -ProcessId $inst.ProcessId -OutPng .\frame.png
+Stop-BrokenNesInstance -ProcessId $inst.ProcessId
+```
+
+## Testing
+
+An interactive test webmodule lives at `Windows/Webmodules/ApiTest/index.html` (memory endpoints,
+hex viewer, automated runner).
+
 ## Architecture
 
-The Web API server is implemented as:
-- `WebApiServer.cs` - Main server class with ASP.NET Core setup
-- `NesMemoryExtensions.cs` - Extension methods for NES memory access
+| File | Contents |
+| --- | --- |
+| `WebApiServer.cs` | Host setup, port selection + ephemeral fallback, instance discovery file, self-signed cert, `WebApiEndpoint` |
+| `WebApiServer.ProgressionGate.cs` | Middleware that 403s locked feature areas |
+| `WebApiServer.Endpoints.*.cs` | One partial-class file per route group (19 files) |
+| `WebApiModels.cs` | Request DTOs |
+| `AuthoredCardCatalog.cs` | Card definitions served by `/api/card/*` |
+| `ProgressionSaveService.cs` | Save load/merge/reset, unlock checks |
+| `../NesExtensions.cs`, `../NesEmulator/board/NesMemoryExtensions.cs` | The NES-side accessors the endpoints call |
 
-The server is automatically started when BrokenNes launches and stopped when the application closes.
+The server is started when BrokenNes launches and stopped when the application closes.
 
 ## Security
 
-The server only listens on the loopback interface (127.0.0.1), meaning:
-- Only the local computer can access it
-- No admin privileges are required
-- No firewall configuration needed
-- External network access is impossible
+The listener is bound to 127.0.0.1 only:
 
-## Future Endpoints
+- only the local machine can reach it
+- no admin privileges are required
+- no firewall configuration is needed
+- external network access is impossible
 
-See `docs/webmodule-api-requirements.md` for the full list of planned endpoints including:
-- CPU State Access
-- PPU State Access
-- APU State Access
-- Real-Time Corruptor (RTC)
-- Glitch Harvester (GH)
-- Imagine (AI-Powered Corruption)
-- Achievements
-- Emulation Control
-- ROM Management
-- State Persistence
-- Display Settings
-- Core Selection
+Note that it is **unauthenticated**: any local process can drive the emulator, poke memory and
+overwrite the progression save. That is acceptable for a loopback-only desktop control API but is
+worth remembering before exposing it through any kind of proxy.

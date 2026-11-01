@@ -1,0 +1,103 @@
+<linker>
+  <!-- BrokenNes Lite trim roots.
+
+       Only takes effect when PublishTrimmed is true (i.e. -p:EnableWasmAot=true).
+
+       This is the PRIMARY leanness lever. Every core is discovered reflectively by
+       CoreRegistry/ClockRegistry via Assembly.GetTypes() + a name prefix, which the trimmer
+       cannot see through - so a core survives trimming ONLY if it is rooted here, and a core
+       that is trimmed simply never appears in the picker.
+
+       Web/ and the old webonly build rooted `NesEmulator.APU_*` etc. wholesale (all 37 cores).
+       Lite deliberately does NOT: it ships a curated set so the WASM payload stays small enough
+       for old mobile devices. Add a line here to ship another core; delete one to drop it.
+
+       Deliberately NOT rooted: the 16-core APU zoo (949KB of source, the single largest chunk),
+       and the gimmick PPUs (CUBE/CUBEX/EXE/BFR/IMG). APU_WF/APU_MNES ARE rooted despite
+       being "Enhanced" cores: they're genuinely web-native (JS SoundFont/FluidSynth bridge via
+       nesInterop.noteEvent, no NAudio/MeltySynth - see the *.Web.cs sibling files under
+       Windows/NesEmulator/apus/), not dead weight like the rest of the zoo. Without preserve="all"
+       the trimmer strips their reflection-only members (EmitAllNoteOff, the NoteEvent/PitchEvent
+       event-add methods) even though the bare types survive via NES.cs's `is` checks, which
+       would silently break FlushSoundFont()/note cleanup in a trimmed AOT build. -->
+  <assembly fullname="BrokenNesLite">
+    <!-- Routable pages + layout: found by the router via reflection. -->
+    <type fullname="BrokenNes.Layout.MainLayout" preserve="all" />
+    <type fullname="BrokenNes.Pages.*" preserve="all" />
+    <!-- BrokenDev D6: what CaptureBugZip hands to JavaScript (serialised by reflection) -->
+    <type fullname="BrokenNes.Emulator/BugZip" preserve="all" />
+    <type fullname="Microsoft.AspNetCore.Components.RouteAttribute" preserve="all" />
+
+    <!-- CPU: FIX is the accuracy target; SPD/LOW are the fast paths that matter on weak devices. -->
+    <type fullname="NesEmulator.CPU_FIX" preserve="all" />
+    <type fullname="NesEmulator.CPU_SPD" preserve="all" />
+    <type fullname="NesEmulator.CPU_LOW" preserve="all" />
+    <type fullname="NesEmulator.CPU_FMC" preserve="all" />
+
+    <!-- PPU: same three tiers. The gimmick renderers (CUBE/CUBEX/EXE/BFR) are the most expensive
+         per frame and are exactly what a low-end device should not be paying for. -->
+    <type fullname="NesEmulator.PPU_FIX" preserve="all" />
+    <type fullname="NesEmulator.PPU_SPD" preserve="all" />
+    <type fullname="NesEmulator.PPU_LOW" preserve="all" />
+    <type fullname="NesEmulator.PPU_FMC" preserve="all" />
+
+    <!-- APU: FIX for accuracy, SPD/LOW/LQ as the cheap options, WF/MNES as the web-native
+         SoundFont/MIDI enhanced cores. Notably absent: HI, HI2, HI2X, QN*, EIL, SPD2, ULQ, LQ2. -->
+    <type fullname="NesEmulator.APU_FIX" preserve="all" />
+    <type fullname="NesEmulator.APU_SPD" preserve="all" />
+    <type fullname="NesEmulator.APU_LOW" preserve="all" />
+    <type fullname="NesEmulator.APU_LQ" preserve="all" />
+    <type fullname="NesEmulator.APU_FMC" preserve="all" />
+    <type fullname="NesEmulator.APU_WF" preserve="all" />
+    <type fullname="NesEmulator.APU_MNES" preserve="all" />
+
+    <!-- BrokenNes 2: FIXS (SNES layers + all sprites) and the cross-console bridge cores, so the NES menus offer the
+         SNES / Game Boy parts and SNES / Game Boy games can be drawn on NES chips. NesPictureSink reads NES.bus by
+         reflection, so NES keeps its fields. -->
+    <type fullname="NesEmulator.PPU_FIXS" preserve="all" />
+    <type fullname="NesEmulator.PPU_SNES" preserve="all" />
+    <type fullname="NesEmulator.PPU_DMG" preserve="all" />
+    <type fullname="NesEmulator.PPU_DMGS" preserve="all" />
+    <type fullname="NesEmulator.PPU_SMS" preserve="all" />
+    <type fullname="NesEmulator.PPU_MD" preserve="all" />
+    <type fullname="NesEmulator.CPU_SNES" preserve="all" />
+    <type fullname="NesEmulator.CPU_SM83" preserve="all" />
+    <type fullname="NesEmulator.CPU_Z80" preserve="all" />
+    <type fullname="NesEmulator.CPU_M68K" preserve="all" />
+    <type fullname="NesEmulator.APU_SNES" preserve="all" />
+    <type fullname="NesEmulator.APU_DMG" preserve="all" />
+    <type fullname="NesEmulator.APU_DMGS" preserve="all" />
+    <type fullname="NesEmulator.APU_SMS" preserve="all" />
+    <type fullname="NesEmulator.APU_MD" preserve="all" />
+    <type fullname="NesEmulator.APU_SMSFM" preserve="all" />
+    <type fullname="NesEmulator.APU_FIXS" preserve="all" />
+    <!-- Enhanced cores phase 3: a NES game on the other consoles' ENHANCED chips (CoreRegistry finds them by name, so they must be rooted).
+         The other consoles reach those chips directly (EnhancedChips routes, plain code: no root needed). -->
+    <type fullname="NesEmulator.PPU_SNESS" preserve="all" />
+    <type fullname="NesEmulator.APU_SNESS" preserve="all" />
+    <type fullname="NesEmulator.PPU_MDS" preserve="all" />
+    <type fullname="NesEmulator.APU_MDS" preserve="all" />
+    <type fullname="NesEmulator.PPU_SMSS" preserve="all" />
+    <type fullname="NesEmulator.APU_SMSS" preserve="all" />
+    <!-- WideMess milestone 7b: a NES game on the WideMess widescreen and sound chips (NES board WMSS). Offered only where Consoles.WideMessEnabled is on (CoreCatalog hides them otherwise). -->
+    <type fullname="NesEmulator.PPU_WMSS" preserve="all" />
+    <type fullname="NesEmulator.APU_WMSS" preserve="all" />
+    <type fullname="NesEmulator.NES" preserve="fields" />
+
+    <!-- WideMess (its milestone 7, docs/projects/widemess-spec.md): the console runs on SnesSession(wideMess: true), which builds its picture chip, sound chip, registers and
+         cartridge with `new` (no name lookup today), so the trimmer already keeps them; they are rooted anyway, whole, so that no future lookup by name (the way CoreRegistry finds
+         the NES cores) can strip them into a silent black screen or a silent sound chip. UAT\lite\test-lite-widemess.mjs proves the trimmed AOT build runs every part. -->
+    <type fullname="NesEmulator.Snes.PPU_WMS" preserve="all" />
+    <type fullname="NesEmulator.Snes.APU_WMS" preserve="all" />
+    <type fullname="NesEmulator.Snes.WmsExtension" preserve="all" />
+    <type fullname="NesEmulator.Snes.WmsFile" preserve="all" />
+
+    <!-- Clocks are small and drive frame pacing; keep all of them. -->
+    <type fullname="NesEmulator.CLOCK_*" preserve="all" />
+
+    <!-- NullProviderRegistry throws if discovery yields nothing, and NES.GetFrameBuffer() calls
+         it, so at least one concrete provider must survive. -->
+    <type fullname="NesEmulator.NullProviders.*" preserve="all" />
+    <type fullname="BrokenNes.NullProviders.*" preserve="all" />
+  </assembly>
+</linker>

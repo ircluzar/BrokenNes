@@ -1,0 +1,635 @@
+using System;
+using System.IO;
+using NesEmulator.Systems;
+
+namespace NesEmulator.Sega;
+
+/// <summary>The 68000's view of the board: a struct that calls into <see cref="BOARD_MD"/> (see <see cref="IM68kBus"/> for why).</summary>
+public struct MdBus : IM68kBus
+{
+    public BOARD_MD B;
+    public ushort Read(uint address, bool upper, bool lower, int cycles) => B.BusRead(address, upper, lower, cycles);
+    public void Write(uint address, bool upper, bool lower, ushort data, int cycles) => B.BusWrite(address, upper, lower, data, cycles);
+    public void Idle(int cycles) => B.BusIdle(cycles);
+    public int InterruptLevel => B.InterruptSample;
+    public int Acknowledge(int level, int cycles) => B.BusAcknowledge(level, cycles);
+    public void ResetLine(int cycles) => B.BusIdle(cycles);
+}
+
+/// <summary>
+/// The Genesis / Mega Drive board on one master clock (53.693175 MHz NTSC, 53.203424 MHz PAL): the 68000 at master/7, the Z80 at master/15 (inside the sound unit), the VDP, and the memory map
+/// with its arbitration. The 68000 is the clock owner: every bus cycle it makes arrives with the clocks since its last one (<see cref="IM68kBus"/>), the board turns them into master
+/// clocks, runs the VDP and the sound unit up to that moment, and only then performs the access, so a register read sees the machine as it is at that instant, a stalled access (a full
+/// VDP FIFO, a DMA that holds the bus, a Z80 bank-window access, DRAM refresh) delays the 68000's own clock, and the Z80 and VDP go on while it waits.
+/// </summary>
+/// <remarks>
+/// <para><b>Memory map.</b> $000000-$3FFFFF cartridge (ROM, the SRAM window, the SSF2 banks), $A00000-$A0FFFF the Z80's space through the sound unit (while the 68000 holds the Z80 bus),
+/// $A10000-$A1001F the I/O chip (version, two pads, expansion port), $A11100 BUSREQ, $A11200 RESET, $A130F1-$A130FF the mapper, $A14000 TMSS (accepted and ignored: with no boot ROM the VDP is
+/// never locked), $C00000-$C0001F the VDP (data, control/status, H/V counter, PSG), $E00000-$FFFFFF the 64 KB of work RAM, mirrored. Everything else is open bus: a read returns the word of the 68000's last bus cycle (the next
+    /// instruction word for a read made right after the fetch of it, which is what MacDonald's memory-test ROM shows; the VDP status and the BUSREQ and RESET registers show it in the bits they do not drive).</para>
+/// <para><b>Choices recorded here (the plan lists the figures and says how the sources disagree).</b> DRAM refresh: <see cref="RefreshStallCycles"/> clocks lost every <see cref="RefreshPeriodCycles"/>
+/// clocks of 68000 time, on every access (the simplest reading of "about 2 of every 128"). Z80 bank-window stalls: the Z80 waits <see cref="MdSoundUnit.BankWindowZ80Stall"/> T-states and the 68000
+/// <see cref="MdSoundUnit.BankWindow68kStall"/> clocks per access (the test-ROM measurement; the 11-clock figure of other sources is a one-line change). The 68000 samples the interrupt lines at the
+/// start of its last bus cycle of an instruction, which with the VDP's short delay after a register write reproduces the one-instruction latency of the hardware.</para>
+/// </remarks>
+public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
+{
+    /// <summary>Master clocks per 68000 clock.</summary>
+    public const int ClocksPer68k = SegaTiming.GenesisM68kDivider;
+    /// <summary>DRAM refresh holds the 68000 for this many of its clocks ...</summary>
+    public const int RefreshStallCycles = 2;
+    /// <summary>... every this many clocks of its time.</summary>
+    public const int RefreshPeriodCycles = 128;
+
+    public MdCartridge Cart { get; }
+    public SegaTimeline Timeline { get; }
+    public SegaRegion Region => Timeline.Region;
+    public GenesisModel Model { get; }
+    public M68k<MdBus> Cpu { get; }
+    public MdVdp Vdp { get; }
+    public IGenesisSound Sound { get; private set; }
+    public MdPads Pads { get; }
+    public readonly byte[] Ram = new byte[0x10000];
+
+    private long t;                        // the 68000's clock, in master clocks (the end of its last access)
+    private int refreshAccumulator;
+    private long cpuStall;                 // master clocks the 68000 owes the Z80 for bank-window accesses made while the sound unit was catching up
+    private int iplSample;                 // the interrupt level the 68000 sees (sampled at the start of its last bus cycle)
+    private ushort lastOpenBus = 0xFFFF;
+
+    public long MasterClock => t;
+
+    /// <summary>
+    /// The interrupt level the 68000 sees. It is sampled where each bus cycle starts (<see cref="BeginAccess"/>), which is right while the processor runs; a processor stopped by STOP makes no bus cycles at all, so
+    /// its level is read from the VDP as the clock stands (the VDP has been brought to it by the run loop): without that a stopped game never wakes (Beast Wrestler, Valis, Mr. Nutz, the HardBall games and a dozen more
+    /// sit in STOP waiting for the vertical interrupt, which the stale sample hid).
+    /// </summary>
+    public int InterruptSample
+    {
+        get
+        {
+            if (Cpu.Stopped) iplSample = Vdp.IplAt(t);
+            else if (IplMode == 1) return iplForStep;
+            return iplSample;
+        }
+    }
+    public long Frames => Vdp.Frames;
+
+    /// <summary>Called with each 68000 instruction's address just before it runs (for traces); null in normal runs.</summary>
+    public Action<uint>? InstructionHook;
+    /// <summary>The debugger's per-instruction hook on the 68000 (BrokenDev T0); null in normal runs (one field test per instruction).</summary>
+    public ISegaInstructionHook? DebugHook;
+    /// <summary>The debugger's tap on the 68000's bus cycles and the VDP's DMA reads (BrokenDev T0); null in normal runs (one field test per bus cycle).</summary>
+    public ISegaBusDebugTap? DebugTap;
+    /// <summary>Called for each write to the VDP, I/O chip, Z80 area, BUSREQ and RESET, with a text describing it (traces); null in normal runs.</summary>
+    public Action<string>? WriteTrace;
+    /// <summary>Called for each 68000 read outside the cartridge and the work RAM, with the address, the value returned and what the bus held before it (traces); null in normal runs.</summary>
+    public Action<string>? ReadTrace;
+    /// <summary>Called for each 68000 write to work RAM with the offset into it (even), which bytes were written and the word (watching what changes a RAM location; the DMA and the Z80 do not come through here); null in normal runs.</summary>
+    public Action<int, bool, bool, ushort>? RamWriteHook;
+    /// <summary>Called for each 68000 access to $200000-$3FFFFF with a text describing it (the I2C EEPROM and mapper regions; traces); null in normal runs.</summary>
+    public Action<string>? CartTrace;
+    public long BusReads, BusWrites, OpenBusReads;
+    /// <summary>Diagnostics for the whole-library sweep: the last address a read found nothing at, writes nobody claimed (and the last one), and the last value written to the TMSS register at $A14000.</summary>
+    public uint LastOpenBusAddress, LastUnclaimedWrite;
+    public long UnclaimedWrites, TmssWrites;
+    public readonly ushort[] TmssWords = new ushort[2];
+    private readonly uint[] recentIoAddr = new uint[16];
+    private readonly ushort[] recentIoVal = new ushort[16];
+    private int recentIoPos;
+
+    /// <summary>The last reads the 68000 made outside the cartridge and the work RAM (VDP, I/O, Z80 area, unmapped), newest last, as "address=value" and merged by address: what a game that is stuck is polling.</summary>
+    public string RecentIoReads()
+    {
+        var seen = new System.Collections.Generic.List<(uint a, ushort v)>();
+        for (int k = 0; k < 16 && k < recentIoPos; k++)
+        {
+            int idx = (recentIoPos - 1 - k) & 15;
+            uint a = recentIoAddr[idx];
+            if (!seen.Exists(s => s.a == a)) seen.Add((a, recentIoVal[idx]));
+        }
+        return string.Join(",", seen.ConvertAll(s => $"{s.a:X6}={s.v:X4}"));
+    }
+
+    public BOARD_MD(MdCartridge cart, SegaRegion region, GenesisModel model, int sampleRate, SegaBoardParts<MdBus, M68k<MdBus>, MdVdp, IGenesisSound>? parts = null)
+    {
+        Cart = cart;
+        Timeline = SegaTimeline.Genesis(region);
+        Model = model;
+        parts ??= SegaBoardParts<MdBus, M68k<MdBus>, MdVdp, IGenesisSound>.Stock;
+
+        Vdp = parts.BuildPpu(() => new MdVdp(Timeline));
+        Vdp.Attach(this);
+        var machine = new SegaMachine(Timeline, model, sampleRate);
+        Sound = parts.BuildApu(machine, m => new MdSoundUnit(m));
+        Sound.Attach(this);
+        byte version = (byte)((cart.Overseas || region == SegaRegion.Pal ? 0x80 : 0) | (region == SegaRegion.Pal ? 0x40 : 0) | 0x20);
+        Pads = new MdPads(version);
+        Cpu = parts.BuildCpu(new MdBus { B = this }, bus => new M68k<MdBus>(bus));
+        // Mega Drive models 1 and 2 never complete a TAS write; the later board does
+        Cpu.TasWritesBack = model == GenesisModel.Model3;
+        Reset();
+    }
+
+    /// <summary>Power-on: the VDP, the sound unit and the pads at their reset state, the 68000 taking its stack pointer and start address from the cartridge's vectors.</summary>
+    public void Reset()
+    {
+        t = BootOffsetClocks; refreshAccumulator = 0; cpuStall = 0; iplSample = 0; iplForStep = iplAtPrevStart = 0; nextRefresh = RefreshPhaseClocks;
+        Array.Clear(Ram);
+        Vdp.Reset();
+        Sound.Reset();
+        Cpu.Power();
+        Cpu.Reset();
+    }
+
+    // =================================================================================================================
+    //  Running
+    // =================================================================================================================
+
+    /// <summary>Run until the VDP starts the next frame.</summary>
+    public void RunFrame()
+    {
+        Vdp.ClearFrameFlag();
+        long guard = t + Timeline.MasterClocksPerFrame * 4;
+        while (!Vdp.FrameCompleted && t < guard)
+        {
+            InstructionHook?.Invoke(Cpu.Pc - 4);
+            DebugHook?.BeforeInstruction();
+            StepCpu();
+            Vdp.RunTo(t);
+        }
+        Sound.RunTo(t);
+    }
+
+    /// <summary>
+    /// Run until the VDP reaches scanline <paramref name="line"/> (of this frame if it is still ahead, else of the next), the way an emulator that is stepped a frame at a time stops: BlastEm's pause and frame advance
+    /// stop about 200 master clocks before line 231 starts, after the vertical interrupt has begun (measured with a pad-polling probe ROM, run_padlat.py: a key pressed while it is paused is first seen by the game at V counter $E7, H $F8-$FB). Scripted input meant for
+    /// a comparison with it changes the pad here. Returns after the first instruction that starts the line (the 68000's granularity).
+    /// </summary>
+    public void RunUntilLine(int line, int clocksEarly = 0)
+    {
+        int perFrame = Region == SegaRegion.Pal ? 313 : 262;
+        long target = Vdp.Frames * perFrame + line;
+        // clocksEarly: stop that many master clocks before the line starts (the first instruction boundary at or after that point), for the replay of BlastEm's frame advance, which stops a little before line 231 starts
+        bool Reached() { long cur = Vdp.Frames * perFrame + Vdp.Line; return cur >= target || clocksEarly > 0 && cur == target - 1 && Vdp.LineOffset >= MdVdp.ClocksPerLine - clocksEarly; }
+        if (Reached()) target += perFrame;
+        long guard = t + Timeline.MasterClocksPerFrame * 4;
+        while (!Reached() && t < guard)
+        {
+            InstructionHook?.Invoke(Cpu.Pc - 4);
+            DebugHook?.BeforeInstruction();
+            StepCpu();
+            Vdp.RunTo(t);
+        }
+        Sound.RunTo(t);
+    }
+
+    /// <summary>
+    /// Replaces the sound unit mid-game (the APU menu): the old unit is brought to the 68000's clock, its state (the Z80 and its RAM, the bus handshake, the YM2612 registers and timers, the PSG) is loaded into the new
+    /// one, and the new one takes over from the same instant. Throws, leaving the old unit in place, when the new unit cannot take that state.
+    /// </summary>
+    public void SwapSound(IGenesisSound unit)
+    {
+        Sound.RunTo(t);
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) Sound.SaveState(w);
+        ms.Position = 0;
+        unit.Attach(this);
+        using (var r = new BinaryReader(ms, System.Text.Encoding.UTF8)) unit.LoadState(r);
+        Sound = unit;
+    }
+
+    /// <summary>One 68000 instruction (or interrupt, or stopped slice), then the VDP and the sound unit are brought to the 68000's clock. Returns the 68000 clocks it counted.</summary>
+    public int StepInstruction()
+    {
+        InstructionHook?.Invoke(Cpu.Pc - 4);
+        DebugHook?.BeforeInstruction();
+        int c = StepCpu();
+        Vdp.RunTo(t);
+        return c;
+    }
+
+    private int StepCpu()
+    {
+        if (M68k<MdBus>.BranchIplMask != 0) iplAtStart = Vdp.IplAt(t);
+        if (IplMode == 1)
+        {
+            iplForStep = iplAtPrevStart;
+            long at = t + IplLagClocks;                 // a little after the instruction starts (never past its first bus cycle's end: 28 clocks at most, the shortest instruction)
+            if (at > t) Vdp.RunTo(at);
+            iplAtPrevStart = Vdp.IplAt(at);
+        }
+        int cycles = Cpu.Step();
+        iplAtStart = 0;
+        return cycles;
+    }
+
+    /// <summary>
+    /// Experiment: 0 = the interrupt lines are sampled at the start of the last bus cycle of each instruction (as always); 1 = at the START of each instruction, minus <see cref="IplLeadClocks"/>, and used for the decision
+    /// before the instruction that follows it (the oracle takes an interrupt after the instruction that was running when the line went up, whatever its length).
+    /// </summary>
+    public static int IplMode = 0;
+    public static int IplLagClocks = 0;
+    private int iplForStep, iplAtPrevStart;
+    private int iplAtStart;                    // (BranchIplMask) the level at the start of the instruction that is running
+
+    // =================================================================================================================
+    //  The 68000's bus
+    // =================================================================================================================
+
+    private void BeginAccess(int cycles)
+    {
+        // the interrupt lines are sampled where this bus cycle starts (the last access of an instruction is its prefetch)
+        long start = t + (long)(cycles - 4) * ClocksPer68k;
+        if (Cpu.IplFromStart) { Vdp.RunTo(start); iplSample = iplAtStart; }
+        else if (Cpu.IplFrozen) Vdp.RunTo(start);
+        else if (!IplAtLastPrefetch)
+        {
+            Vdp.RunTo(start + (IplSampleAdjustClocks > 0 ? IplSampleAdjustClocks : 0));
+            iplSample = Vdp.IplAt(start + IplSampleAdjustClocks);
+        }
+        else if (Cpu.InPrefetch)
+        {
+            long at = start - IplLeadClocks;
+            Vdp.RunTo(at);
+            iplSample = Vdp.IplAt(at);
+            Vdp.RunTo(start);
+        }
+        else Vdp.RunTo(start);
+        t += (long)cycles * ClocksPer68k;
+        AddRefresh(cycles);
+        Vdp.RunTo(t);
+        SyncSound();
+    }
+
+    /// <summary>
+    /// Where the interrupt lines are sampled. False (as it always was): at the start of the last bus cycle of each instruction, whatever kind of cycle it is. True: at the start of the last <i>prefetch</i> cycle (the one that loads the next
+    /// opcode), <see cref="IplLeadClocks"/> master clocks earlier. The oracle (BlastEm) takes an interrupt one instruction later than the first rule after instructions that end in data writes (MOVEM to memory, and the like), and it samples
+    /// about 1.6 of the 68000's cycles earlier than the first rule does: <c>inthist.py</c> and the record say how this was measured. Experiment switches until the roster comparisons decide.
+    /// </summary>
+    public static bool IplAtLastPrefetch = false;
+    public static int IplLeadClocks = 0;
+
+    private void AddRefresh(int cycles)
+    {
+        if (TimeBasedRefresh)
+        {
+            // the refresh request comes every RefreshPeriodCycles of the 68000's clock whatever the 68000 is doing (a DMA that holds it does not stop the clock): when the master clock has passed the request, the access
+            // that crosses it is delayed
+            long period = RefreshPeriodClocks;
+            if (t >= nextRefresh)
+            {
+                t += RefreshStallClocks;
+                nextRefresh = (t / period + 1) * period;
+            }
+            return;
+        }
+        refreshAccumulator += cycles;
+        if (refreshAccumulator >= RefreshPeriodCycles)
+        {
+            refreshAccumulator -= RefreshPeriodCycles;
+            t += RefreshStallCycles * ClocksPer68k;
+        }
+    }
+
+    /// <summary>Experiment parameter (Track B4a): shifts the moment the interrupt priority lines are looked at within an instruction's last bus cycle, in master clocks.</summary>
+    public static int IplSampleAdjustClocks = 0;
+
+    private long nextRefresh = RefreshPhaseClocks;
+    /// <summary>Refresh follows the master clock instead of counting the cycles the 68000 ran.</summary>
+    public static bool TimeBasedRefresh = false;
+    /// <summary>Master clock the 68000 starts at when the VDP's time is 0 (negative: the 68000 has run that long before the first line starts); experiment parameter for matching the oracle from power-on.</summary>
+    public static int BootOffsetClocks = 0;
+    /// <summary>The master clock of the first refresh request (time-based refresh); experiment parameter.</summary>
+    public static int RefreshPhaseClocks = 896;
+    /// <summary>Master clocks between refresh requests when <see cref="TimeBasedRefresh"/> is on, and how long each one holds the 68000 (2 of its cycles).</summary>
+    public static int RefreshPeriodClocks = 896, RefreshStallClocks = 14;
+
+    /// <summary>Bring the sound unit to the 68000's clock; whatever its Z80 cost the 68000 on the way (bank-window accesses) is paid, and the unit and VDP run on through the stall.</summary>
+    private void SyncSound()
+    {
+        Sound.RunTo(t);
+        while (cpuStall > 0)
+        {
+            t += cpuStall; cpuStall = 0;
+            Vdp.RunTo(t);
+            Sound.RunTo(t);
+        }
+    }
+
+    /// <summary>The start of a 68000 bus cycle to the VDP's address window (data and control ports, the H/V counter, the PSG) is floored to a multiple of this many master clocks (0 = off: the cycle starts when the one before ended).
+    /// Found by Track B4b (wave 5) with loops of one VDP port instruction repeated, the laps counted per frame on BlastEm 1.0.0 (<c>oracle-tools/md-picture/rate.py</c>, <c>probes_b4b2.py</c>): the oracle's loops of VDP reads and writes
+    /// run 0 to 1 percent faster than the 68000's cycle counts say (0.2 clock per read in a loop of back-to-back reads, about 1 clock per <c>move.l</c> write) while its RAM loops run exactly at the cycle counts (its refresh is every 896
+    /// master clocks, 14 of them held, whatever the 68000 does: <c>TimeBasedRefresh</c>, not adopted: the direct colour demo does not tolerate it). Flooring the start of each VDP cycle to the 4-clock grid reproduces four of twelve probe loops
+    /// to 0.1 clock and lowers the squared error of all twelve from 771 to 395; it makes Strider's intro start a frame earlier than ours did, as the oracle's does (the six pictures after it were 0 of 6 exact, now 6; B4a's capture), and every
+    /// oracle-pinned golden picture still appears, one frame earlier (Strider, Ecco, the CRAM flicker test). It is not the whole rule: loops of 24 and 32 back-to-back reads, of 16 long reads and of a read between other cycles are 4 to 12 clocks a lap
+    /// off (record, Wave 5). With it <see cref="MdVdp.DmaStartDelay"/> is 72 (the demo's window is 69 to 74) and <see cref="MdVdp.DmaReleaseLatency"/> 12 (the Nemesis FIFO test passes for 8 to 13 and 20 to 24).</summary>
+    public static int VdpQuantum = 4;
+    /// <summary>Which of the VDP window's bus cycles the grid applies to (experiments: --slot-set vdpqr=0 / vdpqw=0).</summary>
+    public static bool VdpQuantumReads = true, VdpQuantumWrites = true;
+
+    /// <summary>A VDP port access can leave the VDP busy (a full FIFO, a DMA); the 68000 resumes when it is not.</summary>
+    private void AfterVdpAccess()
+    {
+        if (Vdp.Time > t) t = Vdp.Time;
+        bool halted = false;
+        while (Vdp.DmaHaltsCpu)
+        {
+            halted = true;
+            Vdp.AdvanceWork();
+            if (Vdp.Time > t) t = Vdp.Time;
+        }
+        if (halted) t += Vdp.DmaReleaseClocks;      // the 68000 runs again a little after the slot that finished the transfer
+        SyncSound();
+    }
+
+    public void BusIdle(int cycles)
+    {
+        t += (long)cycles * ClocksPer68k;
+        AddRefresh(cycles);
+    }
+
+    public int BusAcknowledge(int level, int cycles)
+    {
+        t += (long)cycles * ClocksPer68k;
+        Vdp.RunTo(t);
+        Vdp.AcknowledgeInterrupt(level);
+        iplSample = 0;
+        iplAtPrevStart = 0;           // (IplMode 1) the level that was seen when this interrupt began is spent
+        return 24 + level;
+    }
+
+    /// <summary>A bus cycle to the VDP port starts on the quantum's grid (floor).</summary>
+    private void AlignVdpAccess(uint address, bool write)
+    {
+        if (VdpQuantum > 1 && (write ? VdpQuantumWrites : VdpQuantumReads) && address >= 0xC00000 && address < 0xE00000)
+        {
+            long f = t - ((t % VdpQuantum) + VdpQuantum) % VdpQuantum;
+            t = f;       // the VDP may then be up to quantum - 1 clocks ahead of the 68000: its RunTo ignores a time in its past
+        }
+    }
+
+    public ushort BusRead(uint address, bool upper, bool lower, int cycles)
+    {
+        AlignVdpAccess(address, false);
+        BeginAccess(cycles);
+        BusReads++;
+        address &= 0xFFFFFE;
+        ushort v = ReadWord(address, upper, lower, t);
+        if (address >= 0x400000 && address < 0xE00000)
+        {
+            recentIoAddr[recentIoPos & 15] = address; recentIoVal[recentIoPos & 15] = v; recentIoPos++;
+            if (ReadTrace != null) ReadTrace($"read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {v:X4} (bus {lastOpenBus:X4}) at {t}");
+        }
+        lastOpenBus = v;
+        var tap = DebugTap;
+        if (tap != null && (address != (Cpu.Pc & 0xFFFFFE) || !upper || !lower)) TapRead(tap, address, upper, lower, v);   // a program fetch (the prefetch, an extension word) is not a data read
+        return v;
+    }
+
+    private static void TapRead(ISegaBusDebugTap tap, uint address, bool upper, bool lower, ushort v)
+    {
+        if (upper) tap.OnRead(address, (byte)(v >> 8));
+        if (lower) tap.OnRead(address | 1, (byte)v);
+    }
+
+    public void BusWrite(uint address, bool upper, bool lower, ushort data, int cycles)
+    {
+        AlignVdpAccess(address, true);
+        BeginAccess(cycles);
+        BusWrites++;
+        address &= 0xFFFFFE;
+        var tap = DebugTap;
+        if (tap != null)
+        {
+            if (upper) tap.OnWrite(address, (byte)(data >> 8));
+            if (lower) tap.OnWrite(address | 1, (byte)data);
+        }
+        WriteWord(address, upper, lower, data, t);
+        lastOpenBus = data;
+        if (tap != null)
+        {
+            if (upper) tap.OnWriteDone(address, (byte)(data >> 8));
+            if (lower) tap.OnWriteDone(address | 1, (byte)data);
+        }
+    }
+
+    private ushort ReadWord(uint address, bool upper, bool lower, long now)
+    {
+        if (address < 0x400000)
+        {
+            ushort cv = Cart.ReadWord(address);
+            if (CartTrace != null && address >= 0x200000) CartTrace($"cart read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {cv:X4}");
+            return cv;
+        }
+        if (address >= 0xE00000) { int a = (int)(address & 0xFFFE); return (ushort)(Ram[a] << 8 | Ram[a + 1]); }
+        if (address >= 0xC00000 && address < 0xE00000) return ReadVdp(address, now);
+        if (address >= 0xA00000 && address < 0xA10000)
+        {
+            byte b = Sound.Read((int)(address & 0xFFFF) | (!upper && lower ? 1 : 0), now);
+            return (ushort)(b << 8 | b);
+        }
+        if (address >= 0xA10000 && address < 0xA10020)
+        {
+            byte b = Pads.Read((int)(address & 0x1F) | (!upper && lower ? 1 : 0), now);
+            return (ushort)(b << 8 | b);
+        }
+        if (address == 0xA11100) return (ushort)(lastOpenBus & 0xFEFF | (Sound.IsBusGranted(now) ? 0x0000 : 0x0100));     // only bit 8 is the register's; the rest of the word is the bus's
+        // the RESET register reads back whether the line is released (bit 8; oracle-derived: BlastEm shows it, hardware not verified), the rest of the word is the bus's
+        if (address == 0xA11200) return (ushort)(lastOpenBus & 0xFEFF | (Sound.IsInReset ? 0x0000 : 0x0100));
+        if (address >= 0xA130F0 && address < 0xA13100) return 0xFFFF;
+        OpenBusReads++; LastOpenBusAddress = address;
+        return lastOpenBus;
+    }
+
+    private void WriteWord(uint address, bool upper, bool lower, ushort data, long now)
+    {
+        if (address < 0x400000)
+        {
+            if (CartTrace != null && address >= 0x200000) CartTrace($"cart write ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} = {data:X4}");
+            if (upper) Cart.WriteByte(address, (byte)(data >> 8));
+            if (lower) Cart.WriteByte(address | 1, (byte)data);
+            return;
+        }
+        if (address >= 0xE00000)
+        {
+            int a = (int)(address & 0xFFFE);
+            if (upper) Ram[a] = (byte)(data >> 8);
+            if (lower) Ram[a + 1] = (byte)data;
+            RamWriteHook?.Invoke(a, upper, lower, data);
+            return;
+        }
+        if (address >= 0xC00000 && address < 0xE00000) { WriteVdp(address, upper, lower, data, now); return; }
+        if (address >= 0xA00000 && address < 0xA10000)
+        {
+            byte v = upper ? (byte)(data >> 8) : (byte)data;
+            WriteTrace?.Invoke($"z80 area ${address | (!upper && lower ? 1u : 0u):X6} = {v:X2}");
+            Sound.Write((int)(address & 0xFFFF) | (!upper && lower ? 1 : 0), v, now);
+            return;
+        }
+        if (address >= 0xA10000 && address < 0xA10020)
+        {
+            if (lower)
+            {
+                WriteTrace?.Invoke($"io ${address | 1:X6} = {(byte)data:X2}");
+                Pads.Write((int)(address & 0x1F) | 1, (byte)data, now);
+            }
+            return;
+        }
+        if (address == 0xA11100)
+        {
+            if (upper) { bool req = (data >> 8 & 1) != 0; WriteTrace?.Invoke($"busreq {(req ? "request" : "release")}"); Sound.WriteBusRequest(req, now); }
+            return;
+        }
+        if (address == 0xA11200)
+        {
+            if (upper) { bool rel = (data >> 8 & 1) != 0; WriteTrace?.Invoke($"z80 reset {(rel ? "released" : "asserted")}"); Sound.WriteReset(rel, now); }
+            return;
+        }
+        if (address >= 0xA130F0 && address < 0xA13100)
+        {
+            if (lower) { WriteTrace?.Invoke($"mapper ${address | 1:X6} = {(byte)data:X2}"); Cart.WriteMapper(address | 1, (byte)data); }
+            return;
+        }
+        if (address >= 0xA14000 && address < 0xA14004) { TmssWrites++; TmssWords[(address - 0xA14000) >> 1] = data; return; }
+        // everything else: ignored (counted for the sweep)
+        UnclaimedWrites++; LastUnclaimedWrite = address;
+    }
+
+    // ---- the VDP's addresses
+
+    private ushort ReadVdp(uint address, long now)
+    {
+        if ((address & 0xE700E0) != 0xC00000) { OpenBusReads++; return lastOpenBus; }
+        ushort v;
+        switch ((int)(address & 0x1F))
+        {
+            case >= 0x00 and <= 0x03: v = Vdp.ReadData(now); break;
+            case >= 0x04 and <= 0x07: v = (ushort)(Vdp.ReadStatus(now) & MdVdp.StatusMask | lastOpenBus & ~MdVdp.StatusMask); break;
+            case >= 0x08 and <= 0x0F: v = Vdp.ReadHvCounter(now); break;
+            default: OpenBusReads++; return lastOpenBus;
+        }
+        AfterVdpAccess();
+        return v;
+    }
+
+    private void WriteVdp(uint address, bool upper, bool lower, ushort data, long now)
+    {
+        if ((address & 0xE700E0) != 0xC00000) return;
+        int reg = (int)(address & 0x1F);
+        if (reg <= 0x03)
+        {
+            WriteTrace?.Invoke($"vdp data {data:X4}");
+            Vdp.WriteData(data, now);
+            AfterVdpAccess();
+        }
+        else if (reg <= 0x07)
+        {
+            WriteTrace?.Invoke($"vdp ctrl {data:X4}");
+            Vdp.WriteControl(data, now);
+            AfterVdpAccess();
+        }
+        else if (reg >= 0x10 && reg <= 0x17)
+        {
+            if (lower) { WriteTrace?.Invoke($"psg {(byte)data:X2}"); Sound.WritePsg((byte)data, now); }
+        }
+    }
+
+    // =================================================================================================================
+    //  What the Z80 and the VDP's DMA see of the 68000's space
+    // =================================================================================================================
+
+    public byte ReadBus(int address, long masterClock, out int waitMasterClocks)
+    {
+        // the bank-window access stalls the Z80 and, a little later than it, the 68000
+        cpuStall += (long)(MdSoundUnit.BankWindow68kStall * ClocksPer68k);
+        waitMasterClocks = (int)(MdSoundUnit.BankWindowZ80Stall * SegaTiming.GenesisZ80Divider);
+        uint a = (uint)address & 0xFFFFFF;
+        long now = Math.Max(masterClock, Vdp.Time);
+        ushort w;
+        if (a >= 0xC00000 && a < 0xE00000)
+        {
+            // the Z80 can reach the VDP's ports; the VDP is brought to the later of the two clocks
+            w = ReadVdp(a & ~1u, now);
+        }
+        else w = ReadWord(a & ~1u, true, true, now);
+        return (byte)((a & 1) != 0 ? w : w >> 8);
+    }
+
+    public void WriteBus(int address, byte value, long masterClock, out int waitMasterClocks)
+    {
+        cpuStall += (long)(MdSoundUnit.BankWindow68kStall * ClocksPer68k);
+        waitMasterClocks = (int)(MdSoundUnit.BankWindowZ80Stall * SegaTiming.GenesisZ80Divider);
+        uint a = (uint)address & 0xFFFFFF;
+        long now = Math.Max(masterClock, Vdp.Time);
+        bool odd = (a & 1) != 0;
+        WriteWord(a & ~1u, !odd, odd, (ushort)(value << 8 | value), now);
+    }
+
+    public ushort ReadBusWord(uint address)
+    {
+        uint a = address & 0xFFFFFE;
+        ushort w;
+        if (a < 0x400000) w = Cart.ReadWord(a);
+        else if (a >= 0xE00000) { int i = (int)(a & 0xFFFE); w = (ushort)(Ram[i] << 8 | Ram[i + 1]); }
+        else w = 0xFFFF;      // a DMA source in I/O or the Z80's space reads open bus
+        var tap = DebugTap;
+        if (tap != null) { tap.OnDmaRead(a, (byte)(w >> 8)); tap.OnDmaRead(a | 1, (byte)w); }
+        return w;
+    }
+
+    /// <summary>A byte of the 68000's space without side effects (the debugger's peek): the cartridge's ROM and RAM, work RAM, the Z80's RAM through its window; the
+    /// registers (VDP, I/O, the bus handshake) read as $FF, since reading them has effects.</summary>
+    public byte DebugPeek(uint address)
+    {
+        uint a = address & 0xFFFFFF;
+        if (a < 0x400000)
+        {
+            int s = Cart.DebugSramIndex(a);
+            if (s >= 0) return Cart.Sram[s];
+            int r = Cart.DebugRomIndex(a);
+            return r >= 0 ? Cart.Rom[r] : (byte)0xFF;
+        }
+        if (a >= 0xE00000) return Ram[a & 0xFFFF];
+        if (a >= 0xA00000 && a < 0xA04000 && Sound is MdSoundUnit u) return u.Z80Ram[a & 0x1FFF];
+        return 0xFF;
+    }
+
+    public void SetZ80Interrupt(bool asserted, long masterClock) => Sound.SetInterrupt(asserted, masterClock);
+
+    // =================================================================================================================
+    //  State and status
+    // =================================================================================================================
+
+    public void SetPad(int player, PadButtons buttons) => Pads.SetButtons(player, buttons);
+
+    public string Describe() =>
+        $"BOARD_MD {Region} {Model} t={t} frames={Vdp.Frames} | 68000 pc={Cpu.Pc - 4:X6} sr={Cpu.ReadSr():X4} instr={Cpu.Instructions} addr-errors={Cpu.AddressErrorCount}{(Cpu.Halted ? " HALTED" : "")} | {Vdp.Describe()} | {Sound.Describe()} | {Pads.Describe()}";
+
+    /// <summary>
+    /// The whole board between two frames: its clock and the refresh and interrupt-sampling state, work RAM, the 68000, the VDP (with the picture), the sound unit (Z80, YM2612, PSG, the Z80's RAM and bus handshake), the
+    /// I/O chip and the cartridge (battery RAM, mapper banks, the EEPROM chip). The cartridge ROM, the region and the model are not (they are the game and the settings: a state is only loaded into the same ones, which
+    /// <see cref="MdSession"/> checks). The buttons held are not either: the app sends them every frame.
+    /// </summary>
+    public void SaveState(BinaryWriter w)
+    {
+        w.Write(t); w.Write(refreshAccumulator); w.Write(nextRefresh); w.Write(cpuStall); w.Write(iplSample); w.Write(iplForStep); w.Write(iplAtPrevStart); w.Write(lastOpenBus); w.Write(Ram);
+        w.Write(BusReads); w.Write(BusWrites); w.Write(OpenBusReads); w.Write(LastOpenBusAddress); w.Write(LastUnclaimedWrite); w.Write(UnclaimedWrites); w.Write(TmssWrites);
+        w.Write(TmssWords[0]); w.Write(TmssWords[1]);
+        for (int i = 0; i < 16; i++) { w.Write(recentIoAddr[i]); w.Write(recentIoVal[i]); }
+        w.Write(recentIoPos);
+        Cpu.SaveState(w); Pads.SaveState(w);
+        Vdp.SaveState(w); Sound.SaveState(w); Cart.SaveState(w);
+    }
+
+    public void LoadState(BinaryReader r)
+    {
+        t = r.ReadInt64(); refreshAccumulator = r.ReadInt32(); nextRefresh = r.ReadInt64(); cpuStall = r.ReadInt64(); iplSample = r.ReadInt32(); iplForStep = r.ReadInt32(); iplAtPrevStart = r.ReadInt32(); lastOpenBus = r.ReadUInt16(); MdVdp.ReadAll(r, Ram);
+        BusReads = r.ReadInt64(); BusWrites = r.ReadInt64(); OpenBusReads = r.ReadInt64(); LastOpenBusAddress = r.ReadUInt32(); LastUnclaimedWrite = r.ReadUInt32(); UnclaimedWrites = r.ReadInt64(); TmssWrites = r.ReadInt64();
+        TmssWords[0] = r.ReadUInt16(); TmssWords[1] = r.ReadUInt16();
+        for (int i = 0; i < 16; i++) { recentIoAddr[i] = r.ReadUInt32(); recentIoVal[i] = r.ReadUInt16(); }
+        recentIoPos = r.ReadInt32();
+        Cpu.LoadState(r); Pads.LoadState(r);
+        Vdp.LoadState(r); Sound.LoadState(r); Cart.LoadState(r);
+    }
+}

@@ -49,22 +49,22 @@ namespace BrokenNes.Windows
         public float ShaderStrength { get; set; } = 1.0f;
         
         /// <summary>
-        /// Selected CPU core (defaults to FMC)
+        /// Selected CPU core (defaults to FIX, the accuracy-certified family)
         /// </summary>
         [JsonPropertyName("selectedCpuCore")]
-        public string SelectedCpuCore { get; set; } = "FMC";
+        public string SelectedCpuCore { get; set; } = "FIX";
         
         /// <summary>
-        /// Selected PPU core (defaults to FMC)
+        /// Selected PPU core (defaults to FIX, the accuracy-certified family)
         /// </summary>
         [JsonPropertyName("selectedPpuCore")]
-        public string SelectedPpuCore { get; set; } = "FMC";
+        public string SelectedPpuCore { get; set; } = "FIX";
         
         /// <summary>
-        /// Selected APU core (defaults to FMC)
+        /// Selected APU core (defaults to FIX, the accuracy-certified family)
         /// </summary>
         [JsonPropertyName("selectedApuCore")]
-        public string SelectedApuCore { get; set; } = "FMC";
+        public string SelectedApuCore { get; set; } = "FIX";
         
         // Image configuration
         /// <summary>
@@ -109,6 +109,79 @@ namespace BrokenNes.Windows
         /// </summary>
         [JsonPropertyName("soundBuffer")]
         public int SoundBuffer { get; set; } = 2048;
+
+        /// <summary>
+        /// Emulation output volume in percent (0-100), from the menu bar's volume button
+        /// </summary>
+        [JsonPropertyName("emulationVolume")]
+        public int EmulationVolume { get; set; } = 100;
+
+        /// <summary>
+        /// Emulation output muted (keeps <see cref="EmulationVolume"/> for when it is unmuted)
+        /// </summary>
+        [JsonPropertyName("emulationMuted")]
+        public bool EmulationMuted { get; set; }
+
+        /// <summary>
+        /// "Remove high-pitched": the cross-console sound bridges mute notes above <see cref="HighPitchCeilingNote"/>
+        /// </summary>
+        [JsonPropertyName("removeHighPitched")]
+        public bool RemoveHighPitched { get; set; }
+
+        /// <summary>
+        /// Highest note that still plays when <see cref="RemoveHighPitched"/> is on, as a MIDI note number (108 = C8, 4186 Hz)
+        /// </summary>
+        [JsonPropertyName("highPitchCeilingNote")]
+        public int HighPitchCeilingNote { get; set; } = 108;
+
+        /// <summary>
+        /// The FM patch the Genesis sound chips (the NES APU core "MD") play the NES pulses with: an index into the built-in bank (0 is a synth brass, the last is the PSG square).
+        /// </summary>
+        [JsonPropertyName("genesisFmPatch")]
+        public int GenesisFmPatch { get; set; } = 0;
+
+        /// <summary>
+        /// The YM2413 instrument the Master System FM chip (the NES APU core "SMSFM") plays the NES pulses with: an index into the instrument bank (0 to 14 the chip's own, 15 to 20 designed here, the last the PSG square).
+        /// </summary>
+        [JsonPropertyName("smsFmPatch")]
+        public int SmsFmPatch { get; set; } = 0;
+
+        /// <summary>
+        /// Sega machine settings (Console menu): the video standard ("auto", "ntsc", "pal"), the Genesis board ("auto", "1", "2", "3") and the Master System board ("auto", "markiii", "sms1", "sms2"). Auto reads them from the game.
+        /// </summary>
+        /// <summary>
+        /// The Glitch Harvester / RTC's NES memory domains: false (the default, what the corruptor has always done) sizes PRG ROM, PRG RAM and CHR by probing them for non-zero bytes, which on most cartridges gives a size far
+        /// smaller than the memory (a blast then lands in the first few hundred bytes); true uses each memory's real size. Console games always use real sizes. A stockpile entry records which model its writes were drawn from.
+        /// </summary>
+        [JsonPropertyName("corruptionTrueDomainSizes")]
+        public bool CorruptionTrueDomainSizes { get; set; } = false;
+
+        [JsonPropertyName("segaRegion")]
+        public string SegaRegion { get; set; } = "auto";
+
+        [JsonPropertyName("genesisModel")]
+        public string GenesisModel { get; set; } = "auto";
+
+        [JsonPropertyName("masterSystemModel")]
+        public string MasterSystemModel { get; set; } = "auto";
+
+        /// <summary>
+        /// The Game Boy look: green (original DMG), grey, pocket, or color (Game Boy pictures run as a GBC)
+        /// </summary>
+        [JsonPropertyName("gbLook")]
+        public string GbLook { get; set; } = "green";
+
+        /// <summary>
+        /// Cross-console pictures to / from the Game Boy: background lightness inverted
+        /// </summary>
+        [JsonPropertyName("gbInvertBackground")]
+        public bool GbInvertBackground { get; set; }
+
+        /// <summary>
+        /// Cross-console pictures to / from the Game Boy: sprite lightness inverted
+        /// </summary>
+        [JsonPropertyName("gbInvertSprites")]
+        public bool GbInvertSprites { get; set; }
         
         /// <summary>
         /// Run emulation as fast as possible (no speed limit)
@@ -116,6 +189,17 @@ namespace BrokenNes.Windows
         [JsonPropertyName("noSpeedLimit")]
         public bool NoSpeedLimit { get; set; } = false;
         
+        /// <summary>
+        /// Emulate NTSC's true frame length (89341.5 PPU dots = 29780.5 CPU cycles) instead of the
+        /// exact-60fps simplification (29829.55). The ~49-cycle-per-frame surplus is invisible in
+        /// ordinary play but it hands a frame-budget-critical game cycles real hardware would not,
+        /// which can mask the very overruns such a game is written to avoid. Off by default because
+        /// AccuracyCoin, the benchmarks and the existing savestate tooling are all tuned against the
+        /// exact-60 baseline - see Bus.SpeedConfig.NtscAccurateFrameRate for the full reasoning.
+        /// </summary>
+        [JsonPropertyName("ntscAccurateFrameRate")]
+        public bool NtscAccurateFrameRate { get; set; } = false;
+
         /// <summary>
         /// Display FPS counter on screen
         /// </summary>
@@ -153,11 +237,38 @@ namespace BrokenNes.Windows
         public bool ShowConsole { get; set; } = false;
         
         /// <summary>
-        /// Boot directly to emulator mode instead of loading Home webmodule
+        /// Boot directly to emulator mode instead of loading the Home webmodule (the BrokenNes 1 campaign hub).
+        /// BrokenNes 2: the emulator is the default; the Deck Builder campaign is reached from the Legacy menu.
         /// </summary>
         [JsonPropertyName("bootToEmulator")]
-        public bool BootToEmulator { get; set; } = false;
-        
+        public bool BootToEmulator { get; set; } = true;
+
+        /// <summary>BrokenNes 2: the console the emulator runs ("nes", "snes", "gb", "gbc").</summary>
+        [JsonPropertyName("selectedConsole")]
+        public string SelectedConsole { get; set; } = "nes";
+
+        /// <summary>BrokenNes 2: the CPU/PPU/APU picked for each non-NES console (the NES keeps SelectedCpuCore etc.).</summary>
+        [JsonPropertyName("consoleCores")]
+        public Dictionary<string, ConsoleCoreSelection> ConsoleCores { get; set; } = new();
+
+        /// <summary>WideMess milestone 6: the enhancements chosen for each SNES game on the WideMess console, by the game's image SHA-1 (docs/projects/widemess-spec.md 6.3). Applied when the game starts again.</summary>
+        [JsonPropertyName("wideMessEnhancements")]
+        public Dictionary<string, WideMessEnhanceChoice> WideMessEnhancements { get; set; } = new();
+
+        /// <summary>BrokenNes 1 behaviour: cores, shaders and tools are locked until the Deck Builder campaign unlocks them.
+        /// Off in BrokenNes 2, where the emulator comes first and everything is available.</summary>
+        [JsonPropertyName("legacyProgressionLocks")]
+        public bool LegacyProgressionLocks { get; set; } = false;
+
+        /// <summary>Set once the BrokenNes 1 -> 2 settings migration has run (emulator-first boot).</summary>
+        [JsonPropertyName("brokenNes2Migrated")]
+        public bool BrokenNes2Migrated { get; set; } = true;
+
+        /// <summary>BrokenDev, the developer-only devkit module (BrokenDev/ in the repository): off by default. The environment variable BROKENNES_DEV=1
+        /// switches it on as well; <c>BrokenNes.Dev.BrokenDevGate</c> is the one place that decides. When off, the app shows nothing of it.</summary>
+        [JsonPropertyName("brokenDevEnabled")]
+        public bool BrokenDevEnabled { get; set; } = false;
+
         /// <summary>
         /// Show the Webmodules menu in the menu bar
         /// </summary>
@@ -181,6 +292,39 @@ namespace BrokenNes.Windows
         /// </summary>
         [JsonPropertyName("enableWebmoduleSavestateDebugShortcuts")]
         public bool EnableWebmoduleSavestateDebugShortcuts { get; set; } = false;
+
+        /// <summary>
+        /// Lets the HTTP API control the debugger (attach, breakpoints, pause, step, run to, write registers, trace files). Off by default:
+        /// the debugger's state is always readable (GET /api/debug/...), controlling it is opted into (BrokenDev's live MCP sessions ask
+        /// the user first; tests use a scratch config with this on).
+        /// </summary>
+        [JsonPropertyName("enableDebuggerControl")]
+        public bool EnableDebuggerControl { get; set; } = false;
+
+        /// <summary>
+        /// Keep the last 30 s of the running game for the bug capture (F9, Emulator > Capture Bug; BrokenDev D6). On by default (the plan: the
+        /// app always keeps them); off, nothing is recorded and the frame loop is as it was.
+        /// </summary>
+        [JsonPropertyName("bugCaptureEnabled")]
+        public bool BugCaptureEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Listen to the BrokenDev debug port (D7: a homebrew dev build's prints, asserts, markers and timers; Emulator > Debug Port). Off by
+        /// default: off, nothing is attached and the machine is exactly as without it.
+        /// </summary>
+        [JsonPropertyName("debugPortEnabled")]
+        public bool DebugPortEnabled { get; set; } = false;
+
+        /// <summary>With the debug port on, a failed assert pauses the game (the message and the place in the title bar and the log).</summary>
+        /// <summary>
+        /// Share the read-only debug pages on the LAN from the start (BrokenDev D8; Emulator > Debug Windows > Share Read-Only Pages on the LAN). Off by
+        /// default. The menu switches the share for this run only and never writes this; the token is new every time and never saved.
+        /// </summary>
+        [JsonPropertyName("debugPagesLan")]
+        public bool DebugPagesLan { get; set; } = false;
+
+        [JsonPropertyName("debugPortPauseOnAssert")]
+        public bool DebugPortPauseOnAssert { get; set; } = true;
         
         // Controller configuration - NEW SYSTEM
         /// <summary>
@@ -341,10 +485,38 @@ namespace BrokenNes.Windows
         /// </summary>
         [JsonPropertyName("hideMenuBarInFullscreen")]
         public bool HideMenuBarInFullscreen { get; set; } = true;
+
+        /// <summary>
+        /// Which core-default migration this config has been through. Absent (null) in configs written
+        /// before FIX became the default; those still on the old FMC/FMC/FMC default move to FIX once.
+        /// </summary>
+        [JsonPropertyName("coreDefaultsVersion")]
+        public int? CoreDefaultsVersion { get; set; }
+        public const int CurrentCoreDefaultsVersion = 1;
+
+        /// <summary>
+        /// One-time move off the old FMC default: FIX is the family the game certification campaign
+        /// fixes and verifies against Mesen (FMC still hangs Zelda II's pause menu, for one). Only an
+        /// untouched FMC/FMC/FMC selection is moved - any other combination was a deliberate choice.
+        /// </summary>
+        private bool MigrateCoreDefaults()
+        {
+            if (CoreDefaultsVersion >= CurrentCoreDefaultsVersion) return false;
+            if (SelectedCpuCore == "FMC" && SelectedPpuCore == "FMC" && SelectedApuCore == "FMC")
+            {
+                SelectedCpuCore = SelectedPpuCore = SelectedApuCore = "FIX";
+            }
+            CoreDefaultsVersion = CurrentCoreDefaultsVersion;
+            return true;
+        }
         
-        private static readonly string ConfigDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), 
-            "BrokenNes");
+        // BROKENNES_CONFIG_DIR (a test hook, also read by BrokenNes.Dev.BrokenDevGate) moves config.json to another folder, so a test can run the
+        // app with its own settings without reading or rewriting the user's. Everything else under %APPDATA%\BrokenNes is unaffected.
+        private static readonly string ConfigDirectory = Environment.GetEnvironmentVariable("BROKENNES_CONFIG_DIR") is { Length: > 0 } cfgDir
+            ? cfgDir
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "BrokenNes");
         private static readonly string ConfigFilePath = Path.Combine(ConfigDirectory, "config.json");
         
         /// <summary>
@@ -363,6 +535,15 @@ namespace BrokenNes.Windows
                         // Migrate legacy bindings if needed
                         config.MigrateLegacyBindings();
                         var bindingsChanged = config.NormalizePlayer1DefaultKeyboardBindings();
+                        var coreDefaultsChanged = config.MigrateCoreDefaults();
+                        // BrokenNes 1 -> 2: the emulator becomes the start screen (the campaign moves to the Legacy menu).
+                        // A config written by BrokenNes 1 has no brokenNes2Migrated field, which reads as false here.
+                        if (!json.Contains("\"brokenNes2Migrated\""))
+                        {
+                            config.BootToEmulator = true;
+                            config.BrokenNes2Migrated = true;
+                            coreDefaultsChanged = true;
+                        }
                         var shaderConfigChanged = false;
 
                         // Shaders are always-on; keep persisted configs aligned.
@@ -384,7 +565,7 @@ namespace BrokenNes.Windows
                             .Take(config.MaxRecentRoms)
                             .ToList();
 
-                        if (bindingsChanged || shaderConfigChanged)
+                        if (bindingsChanged || shaderConfigChanged || coreDefaultsChanged)
                         {
                             config.Save();
                         }
@@ -398,7 +579,7 @@ namespace BrokenNes.Windows
                 Console.WriteLine($"Error loading config: {ex.Message}");
             }
             
-            return new EmulatorConfig();
+            return new EmulatorConfig { CoreDefaultsVersion = CurrentCoreDefaultsVersion };
         }
         
         /// <summary>
@@ -455,5 +636,21 @@ namespace BrokenNes.Windows
             RecentRoms.Clear();
             Save();
         }
+    }
+
+    /// <summary>WideMess milestone 6: the enhancements switched on for one SNES game on the WideMess console.</summary>
+    public class WideMessEnhanceChoice
+    {
+        [JsonPropertyName("widescreen")] public bool Widescreen { get; set; }
+        [JsonPropertyName("noFlicker")] public bool NoFlicker { get; set; }
+        [JsonPropertyName("betterSound")] public bool BetterSound { get; set; }
+    }
+
+    /// <summary>BrokenNes 2: the cores picked for one console.</summary>
+    public class ConsoleCoreSelection
+    {
+        [JsonPropertyName("cpu")] public string? Cpu { get; set; }
+        [JsonPropertyName("ppu")] public string? Ppu { get; set; }
+        [JsonPropertyName("apu")] public string? Apu { get; set; }
     }
 }

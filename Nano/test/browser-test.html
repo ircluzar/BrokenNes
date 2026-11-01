@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nano browser test</title>
+<style>body{font:14px/1.4 system-ui,sans-serif;margin:16px;background:#111;color:#ddd}pre{white-space:pre-wrap}.ok{color:#7d7}.bad{color:#f77}.skip{color:#fc6}</style>
+</head>
+<body>
+<h1>BrokenNes Nano: browser test</h1>
+<p>Loads <code>../dist/nano.js</code> with a plain script tag, like an embedding page. <code>node Nano/test/browser-test.mjs</code> drives it in headless Edge; you can also open it from any static server and press the button.</p>
+<button id="run">Run</button>
+<pre id="out"></pre>
+<script src="../dist/nano.js"></script>
+<script>
+const Nano = window.BrokenNesNano;
+const out = document.getElementById('out');
+const results = [];
+function record(name, status, detail) {
+  results.push({ name, status, detail: detail === undefined ? '' : String(detail) });
+  const li = document.createElement('div'); li.className = status === 'pass' ? 'ok' : status === 'skip' ? 'skip' : 'bad';
+  li.textContent = `${status.toUpperCase().padEnd(5)} ${name}${detail ? '  (' + detail + ')' : ''}`; out.appendChild(li);
+}
+async function test(name, fn) {
+  try { const r = await fn(); if (r === 'skip' || (r && r.skip)) record(name, 'skip', r.skip); else record(name, r === false ? 'fail' : 'pass', r && r.detail); }
+  catch (e) { record(name, 'fail', 'threw ' + (e && e.message || e)); }
+}
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// the script both sides play: through the page API (timed events on an OfflineAudioContext) and through Nano.renderOffline
+const SCRIPT = [
+  { t: 0.05, note: 'C4', preset: 'lead', dur: 0.4, vel: 1 },
+  { t: 0.10, note: 'E4', preset: 'square', dur: 0.5, vel: 0.5 },
+  { t: 0.20, note: 'G4', preset: 'pluck', dur: 0.3, vel: 0.8 },       // a third pulse note: steals
+  { t: 0.05, note: 'C2', preset: 'bass', dur: 0.6, vel: 1 },
+  { t: 0.30, note: 38, preset: 'snare', dur: 0.1, vel: 1 },
+  { t: 0.30, note: 42, preset: 'hat', dur: 0.1, vel: 0.9 },
+  { t: 0.50, note: 36, preset: 'kick', dur: 0.1, vel: 1 },
+  { t: 0.70, note: 84, preset: 'laser', dur: 0.1, vel: 1 },
+  { t: 0.90, note: 72, preset: 'zap', dur: 0.1, vel: 1 },
+  { t: 1.00, note: 83, preset: 'coin', dur: 0.1, vel: 1 },
+  { t: 1.20, note: 72, preset: 'arp', dur: 0.5, vel: 0.7 },
+];
+const RATE = 44100, SECS = 2.0;
+function expected() {
+  const ev = [];
+  SCRIPT.forEach((s, i) => { ev.push({ time: s.t, type: 'on', note: s.note, velocity: s.vel, preset: s.preset, id: i + 1 }); ev.push({ time: s.t + s.dur, type: 'off', id: i + 1 }); });
+  return Nano.renderOffline(ev, SECS, { sampleRate: RATE, volume: 1 });
+}
+async function renderThroughWorklet(extraCreate = {}) {
+  const ctx = new OfflineAudioContext(1, RATE * SECS, RATE);
+  const synth = await Nano.create({ context: ctx, volume: 1, ...extraCreate });
+  SCRIPT.forEach((s) => { const n = synth.noteOn(s.note, s.vel, { preset: s.preset, time: s.t }); n.off({ time: s.t + s.dur }); });
+  await synth.sync();
+  const t0 = performance.now();
+  const buf = await ctx.startRendering();
+  return { data: buf.getChannelData(0), ms: performance.now() - t0, synth };
+}
+function compare(a, b) {
+  let diffs = 0, first = -1, peak = 0;
+  for (let i = 0; i < a.length; i++) { peak = Math.max(peak, Math.abs(a[i])); if (a[i] !== b[i]) { diffs++; if (first < 0) first = i; } }
+  return { diffs, first, peak, same: a.length === b.length && diffs === 0 };
+}
+
+async function runAll() {
+  out.textContent = ''; results.length = 0;
+  const env = `${navigator.userAgent.match(/(Edg|Chrome|Firefox|Version)\/[\d.]+/)?.[0] ?? navigator.userAgent}, ${location.protocol}, secure=${isSecureContext}`;
+  record('environment', 'pass', env);
+
+  await test('support() says yes here', async () => { const s = Nano.support(); return s.ok ? { detail: 'ok' } : false; });
+
+  if (location.protocol === 'file:') {
+    // Chromium refuses AudioWorklet modules on file:// pages (Blob and file URLs alike): the API has to say so, and the no-worklet functions still work
+    await test('create() on a file:// page rejects with an explanation (no silent fallback)', async () => {
+      const ctx = new OfflineAudioContext(1, 1000, RATE);
+      try { await Nano.create({ context: ctx }); return { skip: 'this browser loaded the worklet from file:// after all' }; }
+      catch (e) { return e.code === 'worklet' && e.message.includes('file://') ? { detail: 'code worklet, message mentions file://' } : false; }
+    });
+    await test('toAudioBuffer works from file://', async () => {
+      const ctx = new OfflineAudioContext(1, RATE, RATE);
+      const ev = [{ time: 0, type: 'on', note: 83, preset: 'coin', id: 1 }];
+      const buf = Nano.toAudioBuffer(ctx, ev, 1.0, { volume: 1 });
+      const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination); src.start();
+      return compare((await ctx.startRendering()).getChannelData(0), Nano.renderOffline(ev, 1.0, { sampleRate: RATE, volume: 1 })).same;
+    });
+    const failedF = results.filter(r => r.status === 'fail').length;
+    record('summary', failedF ? 'fail' : 'pass', 'file:// page: the worklet tests do not apply');
+    window.nanoBrowserResults = results;
+    return results;
+  }
+
+  const want = expected();
+  await test('the AudioWorklet (from the embedded Blob) renders the same samples as Nano.renderOffline, bit for bit', async () => {
+    const r = await renderThroughWorklet();
+    const c = compare(r.data, want);
+    if (!(c.peak > 0.05)) return false;
+    return c.same ? { detail: `${r.data.length} samples, peak ${c.peak.toFixed(3)}, ${r.ms.toFixed(0)} ms to render ${SECS} s` } : (record('  detail', 'fail', `${c.diffs} samples differ, first at ${c.first}`), false);
+  });
+
+  await test('the separate worklet file (create({workletUrl})) renders the same samples', async () => {
+    const r = await renderThroughWorklet({ workletUrl: new URL('../dist/nano-worklet.js', location.href).href });
+    const c = compare(r.data, want);
+    return c.same ? { detail: `${r.data.length} samples` } : (record('  detail', 'fail', `${c.diffs} differ, first ${c.first}, peak ${c.peak}`), false);
+  });
+
+  await test('two synths on one context do not collide (the processor registers once)', async () => {
+    const ctx = new OfflineAudioContext(1, 4410, RATE);
+    const a = await Nano.create({ context: ctx, volume: 1 }), b = await Nano.create({ context: ctx, volume: 1 });
+    a.noteOn('A4', 1, { preset: 'square', time: 0.02 }); b.noteOn('A5', 1, { preset: 'square', time: 0.02 });
+    await a.sync(); await b.sync();
+    const buf = await ctx.startRendering();
+    let p = 0; for (const v of buf.getChannelData(0)) p = Math.max(p, Math.abs(v));
+    return p > 0.05 ? { detail: `peak ${p.toFixed(3)}` } : false;
+  });
+
+  await test('toAudioBuffer bakes the same samples (and plays through an AudioBufferSourceNode)', async () => {
+    const ctx = new OfflineAudioContext(1, RATE, RATE);
+    const ev = [{ time: 0, type: 'on', note: 83, preset: 'coin', id: 1 }];
+    const buf = Nano.toAudioBuffer(ctx, ev, 1.0, { volume: 1 });
+    const direct = Nano.renderOffline(ev, 1.0, { sampleRate: RATE, volume: 1 });
+    const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination); src.start();
+    const rendered = (await ctx.startRendering()).getChannelData(0);
+    return compare(rendered, direct).same;
+  });
+
+  await test('bad arguments throw, they do not play something else', async () => {
+    const ctx = new OfflineAudioContext(1, 1000, RATE);
+    const s = await Nano.create({ context: ctx });
+    const bad = [() => s.noteOn('H9'), () => s.noteOn(60, 2), () => s.noteOn(60, 1, { preset: 'nope' }), () => s.noteOn(60, 1, { preset: 'square', channel: 3 }), () => s.setParam('volume', -1), () => s.setParam('wat', 1), () => s.play('nope'), () => s.addPreset('x', { kind: 'sine' })];
+    return bad.every(f => { try { f(); return false; } catch (e) { return e instanceof RangeError || e instanceof TypeError; } });
+  });
+
+  await test('presets listing: 24 entries with name, label, kind, description, note', async () => {
+    const ctx = new OfflineAudioContext(1, 1000, RATE);
+    const s = await Nano.create({ context: ctx });
+    return s.presets.length === 24 && Nano.presets.length === 24 && s.presets.every(p => p.name && p.label && p.kind && p.desc && Number.isFinite(p.note));
+  });
+
+  await test('a custom preset can be added and played', async () => {
+    const ctx = new OfflineAudioContext(1, RATE / 2, RATE);
+    const s = await Nano.create({ context: ctx, volume: 1 });
+    s.addPreset('mine', { kind: 'pulse', duty: 3, a: 5, d: 100, s: 0.7, r: 30 });
+    s.noteOn(69, 1, { preset: 'mine', time: 0.02, duration: 0.2 });
+    await s.sync();
+    const data = (await ctx.startRendering()).getChannelData(0);
+    const want = Nano.renderOffline([{ time: 0.02, type: 'on', note: 69, preset: 'mine', id: 1, duration: 0.2 }], 0.5, { sampleRate: RATE, volume: 1, presets: { mine: { kind: 'pulse', duty: 3, a: 5, d: 100, s: 0.7, r: 30 } } });
+    return compare(data, want).same;
+  });
+
+  await test('a DPCM sample added through the API plays through the worklet, bit for bit', async () => {
+    const sine = Float32Array.from({ length: 4410 }, (_, i) => 0.8 * Math.sin(2 * Math.PI * 441 * i / 44100));
+    const ctx = new OfflineAudioContext(1, RATE / 2, RATE);
+    const s = await Nano.create({ context: ctx, volume: 1 });
+    s.addSample('tone', sine, { sampleRate: 44100, rate: 15, loop: true });
+    s.noteOn(60, 1, { preset: 'tone', time: 0.02, duration: 0.3 });
+    await s.sync();
+    const data = (await ctx.startRendering()).getChannelData(0);
+    const want = Nano.renderOffline([{ time: 0.02, type: 'on', note: 60, preset: 'tone', id: 1, duration: 0.3 }], 0.5, { sampleRate: RATE, volume: 1, samples: { tone: { data: sine, sampleRate: 44100, rate: 15, loop: true } } });
+    return compare(data, want).same && compare(data, want).peak > 0.1;
+  });
+
+  await test('MIDI messages play notes, bends, drums and program changes (synthetic messages)', async () => {
+    const ctx = new OfflineAudioContext(1, RATE, RATE);
+    const s = await Nano.create({ context: ctx, volume: 1, preset: 'square' });
+    const midi = s._midiHandler({});
+    midi([0x90, 69, 100], 0.02); midi([0x90, 76, 64], 0.02); midi([0xE0, 0, 96], 0.10); midi([0x80, 69, 0], 0.25);
+    midi([0x99, 38, 120], 0.30); midi([0x99, 36, 100], 0.40); midi([0xC0, 8], 0.5); midi([0x90, 60, 90], 0.52); midi([0x90, 60, 0], 0.70); midi([0xB0, 123, 0], 0.80);
+    await s.sync();
+    const data = (await ctx.startRendering()).getChannelData(0);
+    // the same script by hand
+    const names = Object.keys(s._table);
+    const want = Nano.renderOffline([
+      { time: 0.02, type: 'on', note: 69, velocity: 100 / 127, preset: 'square', id: 1 }, { time: 0.02, type: 'on', note: 76, velocity: 64 / 127, preset: 'square', id: 2 },
+      { time: 0.10, type: 'param', name: 'pitchBend', value: ((96 << 7 | 0) - 8192) / 8192 * 200 }, { time: 0.25, type: 'off', id: 1 },
+      { time: 0.30, type: 'on', note: 38, velocity: 120 / 127, preset: 'snare', id: 3 }, { time: 0.40, type: 'on', note: 36, velocity: 100 / 127, preset: 'kick', id: 4 },
+      { time: 0.52, type: 'on', note: 60, velocity: 90 / 127, preset: names[8], id: 5 }, { time: 0.70, type: 'off', id: 5 }, { time: 0.80, type: 'alloff' },
+    ], 1, { sampleRate: RATE, volume: 1 });
+    const c = compare(data, want);
+    return c.same && c.peak > 0.05 ? { detail: 'note on/off, pitch bend, GM drums on channel 10, program change, all notes off' } : (record('  detail', 'fail', c.diffs + ' differ, first ' + c.first), false);
+  });
+
+  await test('connect() routes the node into a page graph (a GainNode at 0.5 halves the samples)', async () => {
+    const ctx = new OfflineAudioContext(1, RATE / 2, RATE);
+    const s = await Nano.create({ context: ctx, volume: 1, destination: false });
+    const g = ctx.createGain(); g.gain.value = 0.5; s.connect(g); g.connect(ctx.destination);
+    s.noteOn(69, 1, { preset: 'square', time: 0.02 });
+    await s.sync();
+    const data = (await ctx.startRendering()).getChannelData(0);
+    const want = Nano.renderOffline([{ time: 0.02, type: 'on', note: 69, preset: 'square', id: 1 }], 0.5, { sampleRate: RATE, volume: 1 });
+    let ok = true; for (let i = 0; i < data.length; i++) if (data[i] !== Math.fround(want[i] * 0.5)) { ok = false; break; }
+    return ok;
+  });
+
+  await test('speed: the worklet renders 10 s of a 4-voice passage in the offline context', async () => {
+    const ctx = new OfflineAudioContext(1, RATE * 10, RATE);
+    const s = await Nano.create({ context: ctx });
+    for (let b = 0; b < 20; b++) {
+      s.noteOn(48 + (b % 4), 1, { preset: 'bass', time: b * 0.5, duration: 0.4 }); s.noteOn(72 + (b % 5), 0.9, { preset: 'lead', time: b * 0.5, duration: 0.4 });
+      s.noteOn(76, 0.7, { preset: 'arp', time: b * 0.5 + 0.1, duration: 0.3 }); s.play(b % 2 ? 'snare' : 'kick', { time: b * 0.5 });
+    }
+    const t0 = performance.now(); await ctx.startRendering(); const ms = performance.now() - t0;
+    return { detail: `${ms.toFixed(0)} ms of wall time for 10 s of audio: ${(ms / 10).toFixed(1)} ms per audio second, ${(10000 / ms).toFixed(0)}x real time (includes the offline context's own overhead)` };
+  });
+
+  // real time: needs an audio device (or the browser's null device) and, in a normal tab, a user gesture
+  await test('real-time context: starts, plays, reports activity', async () => {
+    const t0 = performance.now();
+    const synth = await Nano.create();
+    const tCreate = performance.now() - t0;
+    if (synth.context.state !== 'running') { try { await Promise.race([synth.resume(), sleep(1500)]); } catch (e) { } }
+    if (synth.context.state !== 'running') { await synth.dispose(); return { skip: `AudioContext is '${synth.context.state}' (needs a user gesture here), create() took ${tCreate.toFixed(0)} ms` }; }
+    let msgs = 0, peak = 0, firstSound = -1;
+    const an = synth.context.createAnalyser(); an.fftSize = 8192; an.smoothingTimeConstant = 0; synth.connect(an);
+    const tOn = performance.now();
+    synth.onactivity = (a) => { msgs++; peak = Math.max(peak, a.peak); if (a.peak > 0.01 && firstSound < 0) firstSound = performance.now() - tOn; };
+    synth.noteOn('A4', 1, { preset: 'square' });
+    await sleep(500);
+    // what the browser's own analyser hears: the loudest frequency bin of the live output
+    const fd = new Float32Array(an.frequencyBinCount); an.getFloatFrequencyData(fd);
+    let bin = 1; for (let i = 2; i < fd.length / 4; i++) if (fd[i] > fd[bin]) bin = i;
+    const heard = bin * synth.sampleRate / an.fftSize;
+    const heardOk = Math.abs(heard - 440) < 2 * synth.sampleRate / an.fftSize;
+    synth.allOff();
+    await sleep(400);
+    const state = synth.context.state, sr = synth.sampleRate, lat = synth.context.baseLatency;
+    await synth.dispose();
+    return msgs > 3 && peak > 0.05 && heardOk ? { detail: `the analyser hears ${heard.toFixed(0)} Hz for A4 (440), ${state} at ${sr} Hz, create() ${tCreate.toFixed(0)} ms, first sound ${firstSound.toFixed(0)} ms after noteOn, baseLatency ${(lat * 1000).toFixed(1)} ms, ${msgs} activity reports, peak ${peak.toFixed(3)}` } : (record('  detail', 'fail', `state ${state}, ${msgs} reports, peak ${peak}`), false);
+  });
+
+  const failed = results.filter(r => r.status === 'fail').length;
+  record('summary', failed ? 'fail' : 'pass', `${results.filter(r => r.status === 'pass').length} passed, ${failed} failed, ${results.filter(r => r.status === 'skip').length} skipped`);
+  window.nanoBrowserResults = results;
+  return results;
+}
+window.runNanoBrowserTests = runAll;
+document.getElementById('run').onclick = runAll;
+</script>
+</body>
+</html>

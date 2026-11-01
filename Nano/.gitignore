@@ -1,0 +1,4 @@
+# build output of the two tool projects (the tests build them into an artifacts path outside the repository; this covers a plain dotnet build)
+tools/*/bin/
+tools/*/obj/
+.mutant-*.js

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- BrokenNes Nano: the reference side of the parity proof. It drives Core's NesApuInstrument (the chip behind the FL plugin) with the
+       register timelines and note scripts the web module produced, and writes the PCM the web module must match sample for sample.
+       Not part of BrokenNes.sln; built on demand by Nano/test/run-parity.mjs (see Nano/README.md). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>BrokenNes.Nano</RootNamespace>
+    <AssemblyName>NanoParity</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Core\BrokenNes.Core.csproj" />
+  </ItemGroup>
+
+</Project>

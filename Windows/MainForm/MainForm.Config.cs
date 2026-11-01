@@ -39,7 +39,14 @@ namespace BrokenNes.Windows
                 
                 // Update Config menu checkmarks
                 UpdateConfigMenus();
-                
+
+                // The volume button was built (in InitializeComponent) before the config was loaded: apply the saved
+                // volume, mute and "Remove high-pitched" now, or they would sit at their defaults until touched.
+                ApplyEmulationVolume();
+                ApplyPitchGuard();
+                RefreshVolumeUi();
+                ApplyGbLook();
+
                 // Apply image settings
                 ApplyImageSettings();
             }
@@ -142,6 +149,8 @@ namespace BrokenNes.Windows
                 {
                     if (item.Text.Contains("No Speed Limit"))
                         item.Checked = config.NoSpeedLimit;
+                    else if (item.Text.Contains("NTSC-Accurate Frame Timing"))
+                        item.Checked = config.NtscAccurateFrameRate;
                 }
             }
             
@@ -314,9 +323,43 @@ namespace BrokenNes.Windows
             }
         }
         
+        /// <summary>The thread that built the window (the UI thread), recorded before anything else can run.</summary>
+        private readonly int uiThreadId = Environment.CurrentManagedThreadId;
+
+        private bool coresMenusRebuilding, coresMenusRebuildPending;
+
+        /// <summary>Rebuild the Shader / CPU / PPU / APU menus. Always on the UI thread (a call from another thread is
+        /// marshalled to it; before the window has a handle there is nothing to marshal to, so such a call is a bug and
+        /// throws instead of racing the UI thread's own rebuild). A call made while a rebuild is under way (from something
+        /// the rebuild runs, or a dialog pumping messages inside it) is not dropped: it runs again once that rebuild ends.</summary>
         private void UpdateCoresMenus()
         {
-            if (nes == null) return;
+            if (Environment.CurrentManagedThreadId != uiThreadId)
+            {
+                if (!IsHandleCreated)
+                    throw new InvalidOperationException("UpdateCoresMenus was called off the UI thread before the window exists");
+                Invoke(new Action(UpdateCoresMenus));
+                return;
+            }
+            if (coresMenusRebuilding) { coresMenusRebuildPending = true; return; }
+            coresMenusRebuilding = true;
+            try
+            {
+                do
+                {
+                    coresMenusRebuildPending = false;
+                    var dropDowns = new[] { shaderMenu.DropDown, cpuMenu.DropDown, ppuMenu.DropDown, apuMenu.DropDown };
+                    foreach (var d in dropDowns) d.SuspendLayout();
+                    try { RebuildCoresMenus(); }
+                    finally { foreach (var d in dropDowns) d.ResumeLayout(performLayout: true); }
+                }
+                while (coresMenusRebuildPending);
+            }
+            finally { coresMenusRebuilding = false; }
+        }
+
+        private void RebuildCoresMenus()
+        {
             var progressionSave = LoadProgressionSnapshot();
             EnsureUnlockedProgressionSelections(progressionSave);
             
@@ -422,197 +465,11 @@ namespace BrokenNes.Windows
             shaderMenu.DropDownClosed -= EndOverlayPreviewForMenu;
             shaderMenu.DropDownClosed += EndOverlayPreviewForMenu;
 
-            // APU - single select with checkmarks
-            apuMenu.DropDownItems.Clear();
-            string currentApuCore = config.SelectedApuCore;
-            var orderedApuCores = new List<string>();
-            if (CoreRegistry.ApuIds.Any(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)))
-            {
-                orderedApuCores.Add(CoreRegistry.ApuIds.First(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)));
-            }
-
-            var remainingApuCores = CoreRegistry.ApuIds
-                .Where(id => !id.Equals("FMC", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (remainingApuCores.Count > 0 && orderedApuCores.Count > 0)
-            {
-                orderedApuCores.Add("---");
-            }
-
-            orderedApuCores.AddRange(remainingApuCores);
-
-            for (int i = 0; i < orderedApuCores.Count; i++)
-            {
-                var coreId = orderedApuCores[i];
-                if (coreId == "---")
-                {
-                    var hasVisibleBefore = apuMenu.DropDownItems.Count > 0;
-                    var hasVisibleAfter = orderedApuCores
-                        .Skip(i + 1)
-                        .Any(id =>
-                            id != "---"
-                            && (IsApuCoreUnlocked(id, progressionSave) || config.ShowLockedItems));
-                    if (hasVisibleBefore && hasVisibleAfter)
-                    {
-                        apuMenu.DropDownItems.Add(new ToolStripSeparator());
-                    }
-                    continue;
-                }
-
-                var unlocked = IsApuCoreUnlocked(coreId, progressionSave);
-                if (!unlocked && !config.ShowLockedItems)
-                {
-                    continue;
-                }
-                var item = new ToolStripMenuItem(coreId, null, (s, e) => SetApuCore(coreId));
-                item.Enabled = unlocked;
-                if (!unlocked)
-                {
-                    item.Text = $"{coreId} [Locked]";
-                }
-                item.Checked = (coreId == currentApuCore);
-                
-                // Add hover event to request overlay display
-                item.MouseEnter += (s, e) => RequestOverlayDisplayCard("apu", coreId);
-                
-                apuMenu.DropDownItems.Add(item);
-            }
-            
-            // Toggle overlay preview while APU menu is open
-            apuMenu.DropDownOpening -= BeginOverlayPreviewForMenu;
-            apuMenu.DropDownOpening += BeginOverlayPreviewForMenu;
-            apuMenu.DropDownClosed -= EndOverlayPreviewForMenu;
-            apuMenu.DropDownClosed += EndOverlayPreviewForMenu;
-
-            // CPU - single select with checkmarks
-            cpuMenu.DropDownItems.Clear();
-            string currentCpuCore = config.SelectedCpuCore;
-            var orderedCpuCores = new List<string>();
-            if (CoreRegistry.CpuIds.Any(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)))
-            {
-                orderedCpuCores.Add(CoreRegistry.CpuIds.First(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)));
-            }
-
-            var remainingCpuCores = CoreRegistry.CpuIds
-                .Where(id => !id.Equals("FMC", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (remainingCpuCores.Count > 0 && orderedCpuCores.Count > 0)
-            {
-                orderedCpuCores.Add("---");
-            }
-
-            orderedCpuCores.AddRange(remainingCpuCores);
-
-            for (int i = 0; i < orderedCpuCores.Count; i++)
-            {
-                var coreId = orderedCpuCores[i];
-                if (coreId == "---")
-                {
-                    var hasVisibleBefore = cpuMenu.DropDownItems.Count > 0;
-                    var hasVisibleAfter = orderedCpuCores
-                        .Skip(i + 1)
-                        .Any(id =>
-                            id != "---"
-                            && (IsCpuCoreUnlocked(id, progressionSave) || config.ShowLockedItems));
-                    if (hasVisibleBefore && hasVisibleAfter)
-                    {
-                        cpuMenu.DropDownItems.Add(new ToolStripSeparator());
-                    }
-                    continue;
-                }
-
-                var unlocked = IsCpuCoreUnlocked(coreId, progressionSave);
-                if (!unlocked && !config.ShowLockedItems)
-                {
-                    continue;
-                }
-                var item = new ToolStripMenuItem(coreId, null, (s, e) => SetCpuCore(coreId));
-                item.Enabled = unlocked;
-                if (!unlocked)
-                {
-                    item.Text = $"{coreId} [Locked]";
-                }
-                item.Checked = (coreId == currentCpuCore);
-                
-                // Add hover event to request overlay display
-                item.MouseEnter += (s, e) => RequestOverlayDisplayCard("cpu", coreId);
-                
-                cpuMenu.DropDownItems.Add(item);
-            }
-            
-            // Toggle overlay preview while CPU menu is open
-            cpuMenu.DropDownOpening -= BeginOverlayPreviewForMenu;
-            cpuMenu.DropDownOpening += BeginOverlayPreviewForMenu;
-            cpuMenu.DropDownClosed -= EndOverlayPreviewForMenu;
-            cpuMenu.DropDownClosed += EndOverlayPreviewForMenu;
-
-            // PPU - single select with checkmarks
-            ppuMenu.DropDownItems.Clear();
-            string currentPpuCore = config.SelectedPpuCore;
-            var orderedPpuCores = new List<string>();
-            if (CoreRegistry.PpuIds.Any(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)))
-            {
-                orderedPpuCores.Add(CoreRegistry.PpuIds.First(id => id.Equals("FMC", StringComparison.OrdinalIgnoreCase)));
-            }
-
-            var remainingPpuCores = CoreRegistry.PpuIds
-                .Where(id => !id.Equals("FMC", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (remainingPpuCores.Count > 0 && orderedPpuCores.Count > 0)
-            {
-                orderedPpuCores.Add("---");
-            }
-
-            orderedPpuCores.AddRange(remainingPpuCores);
-
-            for (int i = 0; i < orderedPpuCores.Count; i++)
-            {
-                var coreId = orderedPpuCores[i];
-                if (coreId == "---")
-                {
-                    var hasVisibleBefore = ppuMenu.DropDownItems.Count > 0;
-                    var hasVisibleAfter = orderedPpuCores
-                        .Skip(i + 1)
-                        .Any(id =>
-                            id != "---"
-                            && (IsPpuCoreUnlocked(id, progressionSave) || config.ShowLockedItems));
-                    if (hasVisibleBefore && hasVisibleAfter)
-                    {
-                        ppuMenu.DropDownItems.Add(new ToolStripSeparator());
-                    }
-                    continue;
-                }
-
-                var unlocked = IsPpuCoreUnlocked(coreId, progressionSave);
-                if (!unlocked && !config.ShowLockedItems)
-                {
-                    continue;
-                }
-                var item = new ToolStripMenuItem(coreId, null, (s, e) => SetPpuCore(coreId));
-                item.Enabled = unlocked;
-                if (!unlocked)
-                {
-                    item.Text = $"{coreId} [Locked]";
-                }
-                item.Checked = (coreId == currentPpuCore);
-                
-                // Add hover event to request overlay display
-                item.MouseEnter += (s, e) => RequestOverlayDisplayCard("ppu", coreId);
-                
-                ppuMenu.DropDownItems.Add(item);
-            }
-            
-            // Toggle overlay preview while PPU menu is open
-            ppuMenu.DropDownOpening -= BeginOverlayPreviewForMenu;
-            ppuMenu.DropDownOpening += BeginOverlayPreviewForMenu;
-            ppuMenu.DropDownClosed -= EndOverlayPreviewForMenu;
-            ppuMenu.DropDownClosed += EndOverlayPreviewForMenu;
+            // CPU / PPU / APU: the selected console's own family first, then the other consoles' parts (BrokenNes 2,
+            // see MainForm.Consoles.cs). The NES entries swap live; SNES / Game Boy entries restart the game.
+            BuildCoreMenu(cpuMenu, NesEmulator.Systems.CoreSlot.Cpu, progressionSave);
+            BuildCoreMenu(ppuMenu, NesEmulator.Systems.CoreSlot.Ppu, progressionSave);
+            BuildCoreMenu(apuMenu, NesEmulator.Systems.CoreSlot.Apu, progressionSave);
         }
         
         private void ApplySavedCoreSelections()
@@ -621,7 +478,7 @@ namespace BrokenNes.Windows
             var progressionSave = LoadProgressionSnapshot();
             EnsureUnlockedProgressionSelections(progressionSave);
             
-            // Apply CPU core (default to FMC if not valid)
+            // Apply CPU core (default to FIX if not valid - always available, see AlwaysAvailableCoreIds)
             if (!string.IsNullOrEmpty(config.SelectedCpuCore)
                 && CoreRegistry.CpuIds.Contains(config.SelectedCpuCore)
                 && IsCpuCoreUnlocked(config.SelectedCpuCore, progressionSave))
@@ -630,11 +487,11 @@ namespace BrokenNes.Windows
             }
             else
             {
-                Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = "FMC");
-                nes.SetCpuCore("FMC");
+                Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = "FIX");
+                nes.SetCpuCore("FIX");
             }
             
-            // Apply PPU core (default to FMC if not valid)
+            // Apply PPU core (default to FIX if not valid - always available, see AlwaysAvailableCoreIds)
             if (!string.IsNullOrEmpty(config.SelectedPpuCore)
                 && CoreRegistry.PpuIds.Contains(config.SelectedPpuCore)
                 && IsPpuCoreUnlocked(config.SelectedPpuCore, progressionSave))
@@ -643,11 +500,11 @@ namespace BrokenNes.Windows
             }
             else
             {
-                Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = "FMC");
-                nes.SetPpuCore("FMC");
+                Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = "FIX");
+                nes.SetPpuCore("FIX");
             }
             
-            // Apply APU core (default to FMC if not valid)
+            // Apply APU core (default to FIX if not valid - always available, see AlwaysAvailableCoreIds)
             if (!string.IsNullOrEmpty(config.SelectedApuCore)
                 && CoreRegistry.ApuIds.Contains(config.SelectedApuCore)
                 && IsApuCoreUnlocked(config.SelectedApuCore, progressionSave))
@@ -656,9 +513,10 @@ namespace BrokenNes.Windows
             }
             else
             {
-                Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = "FMC");
-                ApplyApuCoreSelection("FMC");
+                Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = "FIX");
+                ApplyApuCoreSelection("FIX");
             }
+            ApplyBridgeTiming();
             
             // Apply shader settings
             if (useDirectX && dxRenderer != null)

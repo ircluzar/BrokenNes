@@ -1,0 +1,16 @@
+{
+  "_comment": "The games of the C4b combination sweep (docs/projects/sega-track-c4b.md section 2). Put the ROMs in one folder (names below; no ROM is in the repo) and set BN_SWEEP_ROMS to it: Workshop --bridge-sweep --manifest Workshop\\Sega\\bridge-sweep-games.json --out <dir> --frames 400 --jobs 2 --menus | --swaps --ids smb1,smw,sml,zeldadx,alexkidd,sonic-gg,sonic1 [--frames 600 for sml] | --cross --ids smb1,smw,sml,alexkidd,sonic-gg,sonic1. The input scripts keep every picture moving in the second half of the run, which is where a swapped core is judged: the Game Boy game needs three Start presses and Right from frame 260, and 600 frames (a still title or a still level makes every swap cell 'static': nothing to judge).",
+  "games": [
+    { "id": "smb1",       "console": "nes",  "rom": "%BN_SWEEP_ROMS%\\smb1.nes",       "input": "90:Start,96:,150:Start,156:,200:Right" },
+    { "id": "vrun",       "console": "nes",  "rom": "%BN_SWEEP_ROMS%\\vrun.nes",       "input": "100:Start,106:,200:Start,206:" },
+    { "id": "smw",        "console": "snes", "rom": "%BN_SWEEP_ROMS%\\smw.smc",        "input": "150:Start,156:,260:Start,266:" },
+    { "id": "sml",        "console": "gb",   "rom": "%BN_SWEEP_ROMS%\\sml.zip",        "input": "100:Start,106:,160:Start,166:,220:Start,226:,260:Right" },
+    { "id": "zeldadx",    "console": "gbc",  "rom": "%BN_SWEEP_ROMS%\\zeldadx.gbc",    "input": "150:Start,156:,230:Start,236:" },
+    { "id": "alexkidd",   "console": "sms",  "rom": "%BN_SWEEP_ROMS%\\alexkidd.sms",   "input": "100:A,106:,200:A,206:" },
+    { "id": "sonic-sms",  "console": "sms",  "rom": "%BN_SWEEP_ROMS%\\sonic_sms.sms",  "input": "120:A,126:,220:A,226:" },
+    { "id": "sonic-gg",   "console": "gg",   "rom": "%BN_SWEEP_ROMS%\\sonic.gg",       "input": "120:Start,126:,220:Start,226:" },
+    { "id": "columns-gg", "console": "gg",   "rom": "%BN_SWEEP_ROMS%\\columns.gg",     "input": "100:Start,106:,160:A,166:" },
+    { "id": "sonic1",     "console": "md",   "rom": "%BN_SWEEP_ROMS%\\sonic1.md",      "input": "150:Start,156:,260:Start,266:" },
+    { "id": "sor2",       "console": "md",   "rom": "%BN_SWEEP_ROMS%\\sor2.md",        "input": "200:Start,206:,300:Start,306:" }
+  ]
+}

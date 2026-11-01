@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace NesEmulator
 {
 // Renamed original concrete PPU implementation to PPU_FMC. This file now hosts the FMC core logic.
-public class PPU_SPD : IPPU
+public class PPU_SPD : IPPU, IPpuFrameClock
 {
 	// Core metadata (new IPPU contract)
 	public string CoreName => "Speedhacks";
@@ -44,6 +44,13 @@ public class PPU_SPD : IPPU
 
 	// Cached nametable mirroring map (0x1000 bytes covering $2000-$2FFF)
 	private readonly ushort[] ntMirror = new ushort[0x1000];
+	/// <summary>A background nametable fetch: the cartridge may supply the byte (IMapper.TryPpuNametableRead, as PPU_FIX
+	/// honours it - MMC5 ExRAM/fill, cartridges that stream their own nametables); otherwise CIRAM through the mirroring map.</summary>
+	private byte NtFetch(int address)
+	{
+		if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableRead((ushort)(0x2000 | (address & 0x0FFF)), out byte v)) return v;
+		return vram[ntMirror[address & 0x0FFF]];
+	}
 	private Mirroring lastMirroringMode; // track last mode to rebuild map only when changed
 
 	// Lazy framebuffer allocation to reduce startup memory; allocate on first use
@@ -263,6 +270,8 @@ public class PPU_SPD : IPPU
 		if (sprEnabled) RenderSprites(scanline, bgMask);
 	}
 
+	public int ProbeScanline => scanline; // IPpuFrameClock: presentation only (NES.GetFrameBuffer)
+
 	public byte[] GetFrameBuffer() 
 	{ 
 		EnsureFrameBuffer(); 
@@ -400,7 +409,7 @@ public class PPU_SPD : IPPU
 				// Notify mapper of NT tile fetch (for MMC5 Mode 1 tracking)
 				if (bus!.cartridge!.mapper is IMapper mapperNt1) mapperNt1.PpuNtFetch((ushort)tileAddr);
 				// Fast path: pattern index fetch (nametable region) - avoid full Read overhead
-				byte tileIndex = vram[ntMirror[tileAddr & 0x0FFF]];
+				byte tileIndex = NtFetch(tileAddr);
 				int fineY = (renderV >> 12) & 0x7;
 				int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
 				ulong rowBits;
@@ -434,7 +443,7 @@ public class PPU_SPD : IPPU
 					int attributeX = coarseX / 4;
 					int attributeY = coarseY / 4;
 					int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-					byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]]; // fast nametable attribute read
+					byte attrByte = NtFetch(attrAddr); // fast nametable attribute read
 					int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
 					paletteIndex = (attrByte >> attrShift) & 0x03;
 				}
@@ -494,7 +503,7 @@ public class PPU_SPD : IPPU
 					int tileAddr = baseNTAddr + (coarseY * 32) + coarseX;
 					// Notify mapper of NT tile fetch (for MMC5 Mode 1 tracking)
 					if (bus!.cartridge!.mapper is IMapper mapperNt2) mapperNt2.PpuNtFetch((ushort)tileAddr);
-					byte tileIndex = vram[ntMirror[tileAddr & 0x0FFF]]; // fast nametable fetch
+					byte tileIndex = NtFetch(tileAddr); // fast nametable fetch
 					int fineY = (rv2 >> 12) & 0x7;
 					int patternTable = (PPUCTRL & 0x10) != 0 ? 0x1000 : 0x0000;
 					int patternAddr = patternTable + (tileIndex * 16) + fineY;
@@ -529,7 +538,7 @@ public class PPU_SPD : IPPU
 							int attributeX = coarseX / 4;
 							int attributeY = coarseY / 4;
 							int attrAddr = baseNTAddr + 0x3C0 + attributeY * 8 + attributeX;
-							byte attrByte = vram[ntMirror[attrAddr & 0x0FFF]];
+							byte attrByte = NtFetch(attrAddr);
 							int attrShift = ((coarseY % 4) / 2) * 4 + ((coarseX % 4) / 2) * 2;
 							paletteIndex = (attrByte >> attrShift) & 0x03;
 						}
@@ -576,7 +585,11 @@ public class PPU_SPD : IPPU
 			mSpr.PpuPhaseHint(true, isSprite8x16, (PPUMASK & 0x18) != 0);
 		Array.Clear(spritePixelDrawnReuse, 0, spritePixelDrawnReuse.Length);
 		var cfg = bus!.SpeedConfig;
-		bool eval = cfg?.PpuSpriteLineEvaluation != false;
+		// The 8-sprites-per-scanline cap and overflow flag are real hardware behavior, not a
+		// speed trade-off - PpuSpriteLineEvaluation previously gated this off entirely, meaning
+		// disabling SpeedConfig toggles for accuracy testing made sprite overflow detection
+		// disappear instead of restoring accuracy. Always evaluate it.
+		bool eval = true;
 		bool usePatternCache = cfg?.PpuSpritePatternCache == true && bus!.cartridge!.mapper != null;
 		bool fastSprite = cfg?.PpuSpriteFastPath == true;
 		bool palCache = cfg?.PpuPaletteCache == true;
@@ -760,18 +773,26 @@ public class PPU_SPD : IPPU
 			case 0x0004: // OAM Data
 				return oam[OAMADDR];
 			case 0x0007: // PPU Data
-				result = ppuDataBuffer;
-				ppuDataBuffer = Read(PPUADDR);
-				
 				if (PPUADDR >= 0x3F00)
 				{
-					result = ppuDataBuffer;
+					// Palette reads are immediate, but the internal read buffer still gets
+					// refilled with the underlying nametable byte "under" the palette mirror -
+					// a real hardware quirk (a bare Read(PPUADDR) here would refill the buffer
+					// with the palette byte itself, corrupting the next non-palette $2007 read).
+					result = Read(PPUADDR);
+					ppuDataBuffer = Read((ushort)(PPUADDR - 0x1000));
 				}
-				
+				else
+				{
+					result = ppuDataBuffer;
+					ppuDataBuffer = Read(PPUADDR);
+				}
 				PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1);
 				return result;
 			default:
-				return 0;
+				// Write-only/unimplemented registers reflect the CPU's open bus (last byte
+				// driven anywhere on the bus), not a hardcoded 0.
+				return bus!.GetOpenBus();
 		}
 	}
 

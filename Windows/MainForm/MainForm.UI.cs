@@ -153,8 +153,8 @@ namespace BrokenNes.Windows
         private void ResumeEmulationIfPaused()
         {
             // Check if there's a loaded game (not test ROM) and it's paused
-            bool hasLoadedGame = nes != null && !string.IsNullOrEmpty(currentRomPath);
-            bool isTestRom = !string.IsNullOrEmpty(currentRomPath) && currentRomPath.Contains("test.nes", StringComparison.OrdinalIgnoreCase);
+            bool hasLoadedGame = (nes != null || session != null) && !string.IsNullOrEmpty(currentRomPath);   // a SNES / WideMess / Game Boy game runs as a session (BrokenDev D8)
+            bool isTestRom = !string.IsNullOrEmpty(currentRomPath) && string.Equals(System.IO.Path.GetFileName(currentRomPath), "test.nes", StringComparison.OrdinalIgnoreCase);
             
             if (hasLoadedGame && !isTestRom && isPaused && isEmulationRunning)
             {
@@ -181,8 +181,8 @@ namespace BrokenNes.Windows
         /// </summary>
         private void PauseEmulationIfRunning()
         {
-            bool hasLoadedGame = nes != null && !string.IsNullOrEmpty(currentRomPath);
-            bool isTestRom = !string.IsNullOrEmpty(currentRomPath) && currentRomPath.Contains("test.nes", StringComparison.OrdinalIgnoreCase);
+            bool hasLoadedGame = (nes != null || session != null) && !string.IsNullOrEmpty(currentRomPath);   // a SNES / WideMess / Game Boy game runs as a session (BrokenDev D8)
+            bool isTestRom = !string.IsNullOrEmpty(currentRomPath) && string.Equals(System.IO.Path.GetFileName(currentRomPath), "test.nes", StringComparison.OrdinalIgnoreCase);
 
             if (hasLoadedGame && !isTestRom && isEmulationRunning && !isPaused)
             {
@@ -199,6 +199,11 @@ namespace BrokenNes.Windows
 
         private void ResetEmulator_Click(object? sender, EventArgs e)
         {
+            if (session != null)
+            {
+                lock (emulationLock) { session.Reset(); farm.Poison("the game was reset"); BugBreak("the game was reset"); }
+                return;
+            }
             if (nes != null && !string.IsNullOrEmpty(currentRomPath))
             {
                 // Reload the ROM to reset the emulator
@@ -211,8 +216,8 @@ namespace BrokenNes.Windows
             Helpers.ConfigHelper.Update(config, c => c.WindowZoom = zoom);
             
             // Calculate new window size based on NES resolution and zoom
-            int newWidth = NES_WIDTH * zoom;
-            int newHeight = NES_HEIGHT * zoom;
+            int newWidth = displayWidth * zoom;
+            int newHeight = displayHeight * zoom;
             
             // Add space for menu bar (approximate)
             int menuHeight = this.MainMenuStrip?.Height ?? 24;

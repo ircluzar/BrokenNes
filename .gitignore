@@ -1,6 +1,7 @@
 /bin
 .DS_Store
 /obj
+Workshop/SelfPlayOutput/
 /flatpublish
 /Tools/BrokenNes.Shaders.Generator/obj
 /Tools/BrokenNes.Shaders.Generator/bin
@@ -14,3 +15,13 @@ scripts/ftp_credentials.conf
 /SubProjects/OfflineRA/.vs
 /SubProjects/OfflineRA/obj
 /SubProjects/OfflineRA/bin
+
+# Presets ripped from games hold copyrighted samples: never commit them (the "hygiene" check of FruityHost preset-test and UAT/entrypoints/notices-check.ps1 fail if one is tracked)
+*.bn2preset
+
+# stray screenshots written to the repository root by test runs (game frames, never committed)
+/*_f[0-9][0-9][0-9][0-9][0-9].png
+
+# bug captures (BrokenDev D6: the desktop app's F9) of the WideMess projects whose game workspace is this repository: game data, never committed
+# (not a bare bugs/: on Windows git matches it without case, and Workshop/Bugs is source)
+/WideMess/*/bugs/

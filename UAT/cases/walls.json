@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "suite": "walls",
+  "description": "The instruction-set walls: a NES game (the in-repo story ROM, so these run anywhere the project is built) on another console's CPU. The goldens say what the wall does today: the chip really runs the game's 6502 bytes as its own instructions, and the picture is what comes of that (a dead screen for the Z80 and the 68000). The CPU cores themselves are proven by --cpu-wall-test (a Z80 program and a 68000 program drive the NES screen).",
+  "roots": {
+    "story": "Windows/Data/story"
+  },
+  "cases": [
+    {
+      "id": "wall-z80-on-nes",
+      "description": "A NES game on the Master System's Z80: no NES game is Z80 code.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "Z80",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 300,
+      "tags": [
+        "walls",
+        "sega"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "7DE47F17443053C1",
+        "framesRun": 300,
+        "distinctColors": 10,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "wall-m68k-on-nes",
+      "description": "A NES game on the Genesis's 68000.",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "M68K",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 300,
+      "tags": [
+        "walls",
+        "sega"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "1719DCA5CEF7A325",
+        "framesRun": 300,
+        "distinctColors": 1,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    },
+    {
+      "id": "wall-sm83-on-nes",
+      "description": "A NES game on the Game Boy's SM83 (the older wall, for comparison).",
+      "kind": "romtest",
+      "rom": "{story}/page1_binty.nes",
+      "cpu": "SM83",
+      "ppu": "FIX",
+      "apu": "FIX",
+      "frames": 300,
+      "tags": [
+        "walls",
+        "gb"
+      ],
+      "expect": {
+        "exitCode": 0,
+        "frameBufferHash": "1719DCA5CEF7A325",
+        "framesRun": 300,
+        "distinctColors": 1,
+        "result": "ok",
+        "crashInfo": ""
+      }
+    }
+  ],
+  "goldenGeneratedUtc": "2026-10-15T16:09:12Z"
+}

@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "id": "widemess-testcart",
+  "title": "The WideMess test cartridge (a conformance cartridge for spec 1.0)",
+  "family": "widemess",
+  "kind": "wms",
+  "console": "wms",
+  "description": "One WideMess cartridge whose menu runs the console's tests live and judges itself (docs/projects/widemess-spec.md): eight layers of 256 colours, the 256-sprite table and its line limits, windows and colour math at 400, the SNES modes drawn 400 wide, the 32 voices with 16-bit PCM and BRR, fast CPU and fast DMA against the spec's cycle model, the memories (1 MB work RAM, 512 KB video RAM, 1 MB sound RAM), the identity registers. Results in a table in work RAM ($7E:1000) and on screen; SELECT held at power-on runs every self-check. 65816 and SPC700 in WLA-DX, data from gen_testcart.py (with milestone 2's model of the spec drawing each picture page's reference). WideMess/testcart/README.md.",
+  "source": { "folder": "{repo}/WideMess/testcart" },
+  "requires": {
+    "tools": ["python", "workshop"],
+    "projects": [],
+    "inputs": [],
+    "toolchain": ["WLA-DX 10.7 (wla-65816, wla-spc700, wlalink) of PVSnesLib 4.6.0, the copy in the Super VRUN workspace (snes-stub/toolchain/pvsneslib/devkitsnes/bin): read, never changed", "BrokenNes Workshop (--wms-pack)"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "ps5",
+        "cwd": "{src}",
+        "file": "{src}/build.ps1",
+        "args": ["-Wla", "{root:svrunrepo}/snes-stub/toolchain/pvsneslib/devkitsnes/bin", "-Workshop", "{workshop}", "-Out", "{src}/build"],
+        "timeoutSec": 900,
+        "note": "build.ps1: gen_testcart.py (the data, the reference pictures), wla-spc700 and wla-65816, wlalink, Workshop --wms-pack --map 2. Into the project's build folder (WideMess\\testroms\\bin holds the copy the apps and --wms-test use)."
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{src}/build/widemess-testcart.wms", "publishAs": "widemess-testcart.wms", "kind": "wms" },
+      { "id": "sfc", "path": "{src}/build/widemess-testcart.sfc", "publishAs": "widemess-testcart.sfc", "kind": "sfc" },
+      { "id": "sym", "path": "{src}/build/widemess-testcart.sym", "publishAs": "widemess-testcart.sym", "kind": "symbols" }
+    ]
+  },
+  "run": { "console": "wms", "note": "The d-pad and A choose a test, B or START go back to the menu; SELECT held at power-on runs every self-check." },
+  "verify": {
+    "timeoutSec": 900,
+    "scenarios": [
+      {
+        "id": "runall",
+        "frames": 2400,
+        "input": "1:Select,30:",
+        "checkpoints": [2400],
+        "expect": {
+          "minDistinctColors": 16,
+          "wms": { "unlocked": true, "width": 400, "layers8": true }
+        },
+        "why": "SELECT held at power-on: every self-check runs unattended and the summary shows (the results table at $7E:1000 says state 3; Workshop --wms-testcart reads it)"
+      },
+      {
+        "id": "menu",
+        "frames": 300,
+        "input": "60:Start,62:",
+        "checkpoints": [300],
+        "expect": { "minDistinctColors": 16, "wms": { "unlocked": true, "width": 400, "layers8": true, "minLayers": 6 } }
+      }
+    ],
+    "compare": [
+      { "a": "runall@2400", "b": "menu@300", "expect": "differ", "why": "the run-all's summary is not the menu" }
+    ]
+  },
+  "knownIssues": []
+}

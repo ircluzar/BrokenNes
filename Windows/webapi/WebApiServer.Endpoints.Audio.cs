@@ -6,13 +6,55 @@ using Microsoft.AspNetCore.Http;
 
 namespace BrokenNes.Windows.WebApi
 {
+    public sealed class VolumeRequest
+    {
+        public int? Volume { get; set; }
+        public bool? Muted { get; set; }
+        public bool? RemoveHighPitched { get; set; }
+        public int? HighPitchCeilingNote { get; set; }
+        /// <summary>The FM patch (0-15) the Genesis sound chips play the NES pulses with.</summary>
+        public int? GenesisFmPatch { get; set; }
+        /// <summary>The YM2413 instrument (0-21) the Master System FM chip plays the NES pulses with.</summary>
+        public int? SmsFmPatch { get; set; }
+    }
+
     public partial class WebApiServer
     {
+        /// <summary>Emulation volume (percent), mute and "Remove high-pitched", as the menu bar's volume panel shows them.</summary>
+        public Func<object>? GetEmulationVolume { get; set; }
+        /// <summary>Change any of the volume panel's settings; null fields are left alone.</summary>
+        public Action<VolumeRequest>? SetEmulationVolume { get; set; }
+        /// <summary>The emulation's playback device state (GET /api/audio/device).</summary>
+        public Func<object>? GetAudioDevice { get; set; }
+
         /// <summary>
         /// Register Audio Engine API endpoints
         /// </summary>
         private void RegisterAudioEndpoints(WebApplication app)
         {
+            // GET /api/audio/emulation-volume - emulation output volume (0-100), mute, and the high-pitch guard
+            app.MapGet("/api/audio/emulation-volume", () =>
+                GetEmulationVolume == null ? Results.BadRequest(new { success = false, error = "not available" })
+                                           : Results.Ok(new { success = true, state = GetEmulationVolume() }));
+
+            // GET /api/audio/device - the playback device: Open / NoDevice / Lost (silent running, reopened when a device appears),
+            // how many times it was opened and lost, the last error, and Windows' own device count
+            app.MapGet("/api/audio/device", () =>
+                GetAudioDevice == null ? Results.BadRequest(new { success = false, error = "not available" })
+                                       : Results.Ok(new { success = true, device = GetAudioDevice() }));
+
+            // POST /api/audio/emulation-volume {"volume": 0-100, "muted": bool, "removeHighPitched": bool, "highPitchCeilingNote": MIDI note}
+            // - any field may be left out
+            app.MapPost("/api/audio/emulation-volume", async (HttpContext context) =>
+            {
+                if (GetEmulationVolume == null || SetEmulationVolume == null) return Results.BadRequest(new { success = false, error = "not available" });
+                var body = await context.Request.ReadFromJsonAsync<VolumeRequest>();
+                if (body == null || (body.Volume == null && body.Muted == null && body.RemoveHighPitched == null && body.HighPitchCeilingNote == null && body.GenesisFmPatch == null && body.SmsFmPatch == null))
+                    return Results.BadRequest(new { success = false, error = "volume, muted, removeHighPitched, highPitchCeilingNote, genesisFmPatch and/or smsFmPatch is required" });
+                SetEmulationVolume(body);
+                return Results.Ok(new { success = true, state = GetEmulationVolume() });
+            });
+
             // GET /api/audio/music/current - Get currently playing music
             app.MapGet("/api/audio/music/current", () =>
             {

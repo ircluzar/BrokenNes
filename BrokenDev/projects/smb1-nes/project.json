@@ -1,0 +1,252 @@
+{
+  "schema": 1,
+  "id": "smb1-nes",
+  "title": "SMB1 remake (frame-accurate Super Mario Bros. in NESFab, mapper 30)",
+  "family": "smb1",
+  "kind": "nes",
+  "console": "nes",
+  "description": "A homebrew NES remake of Super Mario Bros. (1985) in NESFab (patched 1.8) for mapper 30, aiming at parity with the original: the same buttons from power-on give the same frames, enemy positions, score, sound and timing. All 32 levels of the first quest are built from the original ROM's own data by generator scripts, and 159 same-input replay cases against the original are the parity suite. SMB1 is Nintendo's game: the original ROM, anything built from its data and anything extracted from it never goes into git or docs; this manifest only says how to build and prove the remake on the user's machine.",
+  "source": {
+    "archive": "smb1_topaz",
+    "path": "source/engine",
+    "docs": ["README.md and retrospective.md (archive root)", "source/engine/docs/parity-status-2026-10.md", "source/engine/docs/smb1-architecture.md"],
+    "referenceRom": "roms/final/SMB1_Repro_20261011.nes (md5 2b02d0777b42d1ae01b014c310588975, the archive's newest ROM); the live workspace (PROJECTS\\SMB1_Remake_dev, archives.json smb1_topaz.live) builds the 2026-10-22 power-on RAM fix on top of it, frozen as roms/final/SMB1_Repro_20261022.nes (md5 dff94356dea7a008e1fe10f270c9e082)",
+    "git": "source/engine in the live workspace is a git repository: main = the archive's tree committed on SYNC-71 of the four stream bundles (fix, lag, castle, route; kept as refs/remotes/<stream>/* and branches stream/<stream>), then the fix"
+  },
+  "requires": {
+    "tools": ["gitbash", "python"],
+    "projects": [],
+    "inputs": [],
+    "optionalInputs": [
+      { "id": "smb1_orig_rom", "env": "SMB1_ORIG_ROM", "default": "{archives}/SMB1 Topaz/smb1.nes", "neverInGit": true, "description": "the user's own copy of the original Super Mario Bros. ROM. NOT needed to build (measured: ./build.sh game gives the byte-identical ROM with SMB1_ORIG_ROM pointing nowhere: the level, music and sound data derived from it are already in the source tree). Needed only to regenerate that data and for the same-input parity suite; it is never copied into the repository or the output folder" }
+    ],
+    "toolchain": ["patched NESFab 1.8 shipped in tools/nesfab/nesfab.exe (a hand-edited compiler binary is a trap: the patches live in tools/nesfab-patches)", "Mesen 2.1.1 shipped in tools/mesen", "Python 3.12 shipped in tools/python"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build-game",
+        "shell": "bash",
+        "cwd": "{root:smb1}",
+        "run": "./build.sh game",
+        "timeoutSec": 1800,
+        "note": "A failed build leaves the old .nes but EMPTIES build/*.mlb: never build while something reads build/ (the retrospective's rule); BrokenDev publishes copies."
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{root:smb1}/build/smb1_game.nes", "publishAs": "smb1_game.nes", "kind": "nes" },
+      { "id": "mlb", "path": "{root:smb1}/build/smb1_game.mlb", "publishAs": "smb1_game.mlb", "kind": "symbols" }
+    ],
+    "reference": {
+      "note": "The live workspace's build of 2026-10-22 (engine commit f10dbd6: the archive's final source plus the power-on RAM fix, game.cfg ram-init = 1), the same md5 over verify.sh's 3 rebuilds. The archive's final ROM of 2026-10-11 (md5 2b02d0777b42d1ae01b014c310588975) is that source without the fix (the restored copy still builds it).",
+      "md5": "dff94356dea7a008e1fe10f270c9e082"
+    }
+  },
+  "run": { "console": "nes", "note": "Title screen with its attract demo; Start begins 1-1." },
+  "verify": {
+    "timeoutSec": 1800,
+    "cores": { "cpu": "FIX", "ppu": "FIX", "apu": "FIX" },
+    "scenarios": [
+      {
+        "id": "boot",
+        "frames": 900,
+        "powerOnRam": "zeros",
+        "input": "",
+        "checkpoints": [60, 300, 600, 900],
+        "expect": { "minDistinctColors": 4, "audio": { "fromFrame": 60, "minPeak": 0.02, "minNonSilentFrames": 60 }, "minRealtime": 2.0 }
+      },
+      {
+        "id": "play",
+        "frames": 2400,
+        "powerOnRam": "zeros",
+        "input": "120:Start,126:,420:Right,1100:Right+A,1160:Right,1300:Right+B,1500:Right+A+B,1560:Right+B",
+        "checkpoints": [300, 600, 900, 1200, 1800, 2400],
+        "expect": { "minDistinctColors": 6, "pictureDiffers": [900, 2400], "audio": { "fromFrame": 300, "minPeak": 0.02, "minNonSilentFrames": 100 }, "minRealtime": 2.0 }
+      },
+      {
+        "id": "play-fceux-ram",
+        "why": "The same play with BrokenNes' own power-on RAM fill (the FCEUX and BizHawk NesHawk pattern 00 00 00 00 FF FF FF FF, the app default). Until the 2026-10-22 fix the remake read 34 variables before writing them and stalled on the World card here (knownIssues); now its reset code zeroes RAM, so this play must give play's pictures (compare).",
+        "frames": 2400,
+        "powerOnRam": "fceux",
+        "input": "120:Start,126:,420:Right,1100:Right+A,1160:Right,1300:Right+B,1500:Right+A+B,1560:Right+B",
+        "checkpoints": [300, 900, 2400],
+        "expect": { "minDistinctColors": 6, "pictureDiffers": [900, 2400], "audio": { "fromFrame": 300, "minPeak": 0.02, "minNonSilentFrames": 100 } }
+      },
+      {
+        "id": "play-ones-ram",
+        "why": "The same play with every RAM byte powered on as FF (the worst case for a variable read before it is written).",
+        "frames": 2400,
+        "powerOnRam": "ones",
+        "input": "120:Start,126:,420:Right,1100:Right+A,1160:Right,1300:Right+B,1500:Right+A+B,1560:Right+B",
+        "checkpoints": [300, 900, 2400],
+        "expect": { "minDistinctColors": 6, "pictureDiffers": [900, 2400], "audio": { "fromFrame": 300, "minPeak": 0.02, "minNonSilentFrames": 100 } }
+      }
+    ],
+    "compare": [
+      { "a": "play@600", "b": "boot@600", "expect": "differ", "why": "scripted input reached the game" },
+      { "a": "play@900", "b": "play-fceux-ram@900", "expect": "same", "why": "the power-on RAM fill changes nothing (the World card ends, the level is the same)" },
+      { "a": "play@2400", "b": "play-fceux-ram@2400", "expect": "same", "why": "and nothing to the end of the play" },
+      { "a": "play@2400", "b": "play-ones-ram@2400", "expect": "same", "why": "nor does RAM full of FF" }
+    ]
+  },
+  "oracle": {
+    "kind": "mesen-trace",
+    "mesenDir": "{root:smb1}/tools/mesen",
+    "frames": 2400,
+    "input": "120:Start,126:,420:Right,1100:Right+A,1160:Right,1300:Right+B,1500:Right+A+B,1560:Right+B",
+    "ramFill": "zeros",
+    "why": "Same method as vrun-nes. Both emulators start from zeroed work RAM (the project's own Mesen setting). Before the 2026-10-22 fix another fill made the remake stall (knownIssues); since then its reset code zeroes RAM itself, so the fill no longer matters."
+  },
+  "compat": {
+    "what": "The remake on other NES emulators, each with ITS OWN default power-on RAM (BrokenNes runs verify's play, powerOnRam zeros; Mesen powers on zeros, NesHawk and FCEUX the 00 00 00 00 FF FF FF FF pattern). The uninit-ram check reads chr_test_active, the variable that stalled the World card before the 2026-10-22 fix (knownIssues): it must read 0 on every emulator now.",
+    "symbols": { "file": "{out}/smb1_game.mlb" },
+    "reads": {
+      "title_active": "title_active", "levelcard_state": "levelcard_state", "camera_x": "camera_x", "lives": "lives",
+      "chr_test_active": "chr_test_active", "fire_anim_timer": "fire_anim_timer", "nmi": "runtime_nmi_counter"
+    },
+    "frameTolerance": 30,
+    "scenarios": [
+      {
+        "id": "play",
+        "verify": "play",
+        "shots": [100],
+        "what": "power-on, the title, Start, verify's play script (walk right, jump, run)",
+        "checks": [
+          { "id": "title", "what": "boots to the title (title_active 1)", "read": "title_active", "is": 1, "within": [20, 119] },
+          { "id": "title-runs", "what": "the title runs (the NMI counter ticks)", "changes": "nmi", "within": [40, 119], "min": 30 },
+          { "id": "title-drawn", "what": "the title screen is drawn", "picture": 100, "minColors": 4 },
+          { "id": "title-like", "what": "the title looks like BrokenNes' title (structure, palette aside)", "similar": 100, "min": 0.8 },
+          { "id": "uninit-ram", "what": "chr_test_active reads 0 whatever the emulator's power-on RAM (the reset code zeroes RAM since the 2026-10-22 fix; before it, NesHawk and FCEUX read 255 here: knownIssues)", "read": "chr_test_active", "is": 0, "within": [20, 119], "hold": true },
+          { "id": "start", "what": "Start leaves the title (title_active 0)", "read": "title_active", "is": 0, "within": [121, 300], "compare": true },
+          { "id": "world-card", "what": "the World card ends and the level starts (levelcard_state back to 0)", "read": "levelcard_state", "is": 0, "after": "start", "within": [60, 400], "compare": true },
+          { "id": "scrolls", "what": "holding Right scrolls the level (camera_x moves)", "changes": "camera_x", "within": [420, 900], "min": 20 },
+          { "id": "alive", "what": "the game keeps running to the end (the NMI counter keeps ticking)", "changes": "nmi", "within": [2100, 2400], "min": 250 },
+          { "id": "drawn", "what": "a picture is drawn at the end", "picture": 2400, "minColors": 4 }
+        ]
+      }
+    ]
+  },
+  "checks": {
+    "what": "BrokenDev hardware checks (docs/projects/brokendev-debugging-plan.md, D4): every verify scenario runs again with the checks on; a finding not accepted here fails verify. Each acceptance says why.",
+    "accepted": [
+      {
+        "rule": "nes.lag-frame",
+        "at": "*",
+        "reason": "known: the remake lags while it boots and for 4 frames at each level (re)load (frames 268, 981, 1567, 2354 of play); its own pipeline lists Fire Mario lag in five levels (knownIssues); the lagFrames budget gates the play scenario"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$AB LAX #imm",
+        "reason": "known: NESFab's unofficial-opcode ISA emits LAX #imm, the highly unstable $AB; every one the game ran has the operand #$00, which gives 0 on every console (stable as used); a non-zero operand would not be"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$0C NOP abs",
+        "reason": "known: NESFab's unofficial-opcode ISA (a 3-byte NOP, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$A7 LAX zp",
+        "reason": "known: NESFab's unofficial-opcode ISA (LAX, stable on the 2A03; not on every clone)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$AF LAX abs",
+        "reason": "known: NESFab's unofficial-opcode ISA (LAX, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$BF LAX abs,Y",
+        "reason": "known: NESFab's unofficial-opcode ISA (LAX, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$B3 LAX (zp),Y",
+        "reason": "known: NESFab's unofficial-opcode ISA (LAX, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$0B ANC #imm",
+        "reason": "known: NESFab's unofficial-opcode ISA (ANC, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$CB AXS #imm",
+        "reason": "known: NESFab's unofficial-opcode ISA (AXS / SBX, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$4B ALR #imm",
+        "reason": "known: NESFab's unofficial-opcode ISA (ALR / ASR, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$6B ARR #imm",
+        "reason": "known: NESFab's unofficial-opcode ISA (ARR, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$47 SRE zp",
+        "reason": "known: NESFab's unofficial-opcode ISA (SRE / LSE, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$07 SLO zp",
+        "reason": "known: NESFab's unofficial-opcode ISA (SLO / ASO, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$87 SAX zp",
+        "reason": "known: NESFab's unofficial-opcode ISA (SAX, stable on the 2A03)"
+      },
+      {
+        "rule": "nes.unofficial-opcode",
+        "at": "$8F SAX abs",
+        "reason": "known: NESFab's unofficial-opcode ISA (SAX, stable on the 2A03)"
+      }
+    ]
+  },
+  "budgets": {
+    "what": "Over a limit fails verify, near it (90%) warns; the report compares with the previous build (out/<id>/budget-history.json). romBankFree is an estimate (padding runs of 64 or more equal $00 / $FF bytes).",
+    "lagFrames": {
+      "max": 16,
+      "fromFrame": 300,
+      "scenarios": [
+        "play"
+      ],
+      "what": "after the first level start; 12 on 2026-10-24 (three level reloads of 4 frames)"
+    },
+    "busyPercent": {
+      "max": 95,
+      "fromFrame": 300,
+      "scenarios": [
+        "play"
+      ],
+      "what": "the busiest frame that made it: 70.1% on 2026-10-24"
+    },
+    "memoryFree": {
+      "ram": 512,
+      "what": "RAM never read in the scenarios: 1159 bytes on 2026-10-24 (the remake's own count by allocation is 3 bytes free: knownIssues)"
+    },
+    "stackFree": {
+      "min": 64,
+      "what": "221 bytes on 2026-10-24"
+    },
+    "romBankFree": {
+      "banks": {
+        "31": 1024
+      },
+      "what": "the fixed bank 31: 1240 bytes of padding runs on 2026-10-24 (the project measures 1098 as the trailing zero run; its floor is about 1100)"
+    }
+  },
+  "knownIssues": [
+    "FIXED 2026-10-22 in the live workspace (engine commit f10dbd6, ROM md5 dff94356dea7a008e1fe10f270c9e082): the remake relied on work RAM powering on as zeros (the project's own Mesen is set to AllZeros). With FCEUX's and BizHawk NesHawk's 00 00 00 00 FF FF FF FF (and on hardware, where it is undefined) chr_test_active ($07FC) read $FF: placeholder digits, a World card that never ends (compat: NesHawk and FCEUX failed). Mesen's uninitialised-read report over the 159 replay cases found 34 variables read before written (147 bytes), not two; zeroing only chr_test_active and fire_anim_timer still failed case 2-1k under the FCEUX pattern and under all-FF (ecoll_bits: a Paratroopa one pixel off at frame 3491). The fix: game.cfg ram-init = 1, NESFab's reset code zeroes all 2 KB between its two vblank waits, before its runtime initialises anything (bank 31 free unchanged at 1,098; the first NMI on the same frame; RAM addresses unchanged). Proof: verify.sh all checks 3/3; the 159-case suite gives the archived ROM's report line for line, with ours' replay logs byte-identical; under the FCEUX pattern, all-FF and random power-on RAM every case gives the same replay and the same written RAM on every frame. verify now runs play-fceux-ram and play-ones-ram as real scenarios and compares their pictures with play's.",
+    "Video memory still powers on as it likes: with Mesen's AllOnes or Random (which also fill nametable RAM) one or two pixels of screen row 31, the status-bar split line, show the second nametable before the game has written it, from the level start on (checked row by row in 6 cases; every other row and every CPU-RAM byte identical). Fixing it means clearing nametable $2400 at boot (about 9,000 cycles of PPU writes), which does not fit the boot's tuned timing without moving the first NMI: the developer's decision.",
+    "First quest: all 32 levels play start to finish and every level matches the original in same-input replays, but 'full parity' cannot be proven by testing, only approached: every new kind of replay found real differences the earlier ones could not see.",
+    "Work in progress that is not merged (pipeline/*_STATE.md in the archive): fix 084, castle 061/062, lag 013/014. Five Fire Mario levels (2-1, 3-2, 4-1, 8-2, 8-3) still lag.",
+    "Known small differences: Hammer Bro / Lakitu / Spiny-egg slot order, an enemy landing one frame later under a freeze (7-1), a pit game-over card 21 frames late in one forced fire case (8-4), the invisible 7-4 to 8-1 level-change reset order. Accepted: fireworks live in their own ticker, 2 of 10 enemy scenarios in verify.sh.",
+    "Resource limits: fixed bank 31 had 1,095 bytes free at SYNC-71 (floor about 1,100); 1,098 measured on the archive's final ROM and on the fixed ROM (the trailing zero run, vectors excluded); RAM 3 bytes free at the end of the work.",
+    "The replay suite compared game state, never pixels: five visible bugs survived weeks of 'parity' (retrospective section 10). BrokenDev's verify records pictures and audio on BrokenNes; it is not a parity proof against the original.",
+    "The NESFab compiler is a suspect for impossible results: compile non-determinism exists (the project's verify.sh rebuilds three times and requires identical output)."
+  ]
+}

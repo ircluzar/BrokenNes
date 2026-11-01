@@ -70,31 +70,68 @@ namespace BrokenNes.Windows
             return ownedIds?.Any(value => value.Equals(coreId, StringComparison.OrdinalIgnoreCase)) == true;
         }
 
+        // --- FIX family exemption -------------------------------------------------
+        // CPU_FIX/PPU_FIX/APU_FIX are the project's designated accuracy cores: every accuracy fix
+        // lands there and the other cores are frozen. They are baseline engineering equipment, not
+        // collectibles, and no unlock card was ever authored for them - so without this exemption
+        // they never appear in the native core menus and ApplySavedCoreSelections force-downgrades
+        // a saved "FIX" selection back to FMC on every ROM load.
+        // To go back to pure ownership gating (e.g. after authoring real FIX unlock cards), clear
+        // AlwaysAvailableCoreIds below - nothing else needs to change.
+        private static readonly string[] AlwaysAvailableCoreIds = { "FIX" };
+
+        private static bool IsAlwaysAvailableCore(string coreId)
+        {
+            return AlwaysAvailableCoreIds.Any(id => id.Equals(coreId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static IEnumerable<string> WithAlwaysAvailableCores(IEnumerable<string>? ownedCoreIds)
+        {
+            return (ownedCoreIds ?? Array.Empty<string>()).Concat(AlwaysAvailableCoreIds);
+        }
+
+        /// <summary>BrokenNes 2: nothing is locked unless the legacy (BrokenNes 1 campaign) locks are switched on.</summary>
+        private bool LegacyLocksOff => config == null || !config.LegacyProgressionLocks;
+
         private bool IsCpuCoreUnlocked(string coreId, GameSave? save = null)
         {
+            if (LegacyLocksOff) return true;
+            if (IsAlwaysAvailableCore(coreId)) return true;
             save ??= LoadProgressionSnapshot();
             return IsOwnedCore(save.OwnedCpuIds, coreId);
         }
 
         private bool IsPpuCoreUnlocked(string coreId, GameSave? save = null)
         {
+            if (LegacyLocksOff) return true;
+            if (IsAlwaysAvailableCore(coreId)) return true;
             save ??= LoadProgressionSnapshot();
             return IsOwnedCore(save.OwnedPpuIds, coreId);
         }
 
         private bool IsApuCoreUnlocked(string coreId, GameSave? save = null)
         {
+            if (LegacyLocksOff) return true;
+            if (IsAlwaysAvailableCore(coreId)) return true;
             save ??= LoadProgressionSnapshot();
             return IsOwnedCore(save.OwnedApuIds, coreId);
         }
 
         private bool IsShaderUnlocked(string shaderId, GameSave? save = null)
         {
+            if (LegacyLocksOff) return true;
             save ??= LoadProgressionSnapshot();
             return IsOwnedCore(save.OwnedShaderIds, shaderId);
         }
 
+        // Cores go through WithAlwaysAvailableCores so the FIX family is treated as owned (see above);
+        // shaders deliberately do not, so shader gating is unchanged.
         private static string ResolveUnlockedCoreSelection(string? selectedCoreId, IEnumerable<string> availableCoreIds, IEnumerable<string>? ownedCoreIds, string fallbackCoreId)
+        {
+            return ResolveUnlockedSelection(selectedCoreId, availableCoreIds, WithAlwaysAvailableCores(ownedCoreIds), fallbackCoreId);
+        }
+
+        private static string ResolveUnlockedSelection(string? selectedCoreId, IEnumerable<string> availableCoreIds, IEnumerable<string>? ownedCoreIds, string fallbackCoreId)
         {
             var available = availableCoreIds
                 .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -124,7 +161,7 @@ namespace BrokenNes.Windows
 
         private static string ResolveUnlockedShaderSelection(string? selectedShaderId, IEnumerable<string> availableShaderIds, IEnumerable<string>? ownedShaderIds, string fallbackShaderId)
         {
-            return ResolveUnlockedCoreSelection(selectedShaderId, availableShaderIds, ownedShaderIds, fallbackShaderId);
+            return ResolveUnlockedSelection(selectedShaderId, availableShaderIds, ownedShaderIds, fallbackShaderId);
         }
 
         private bool IsRtcStackUnlocked(GameSave? save = null)
@@ -264,19 +301,22 @@ namespace BrokenNes.Windows
             save ??= LoadProgressionSnapshot();
             EnsureUnlockedProgressionCapabilities(save);
 
-            var safeCpuCore = ResolveUnlockedCoreSelection(config.SelectedCpuCore, CoreRegistry.CpuIds, save.OwnedCpuIds, "FMC");
+            // With the legacy locks off (BrokenNes 2's default) every core is unlocked (IsCpuCoreUnlocked and the others say so): a stored pick is only checked for
+            // existing, never reset because the BrokenNes 1 campaign save does not own it (before 2026-10-22 a pick of FIX enhanced or a Game Boy chip that save
+            // did not own was put back to FIX at every ROM load).
+            var safeCpuCore = ResolveUnlockedCoreSelection(config.SelectedCpuCore, CoreRegistry.CpuIds, LegacyLocksOff ? CoreRegistry.CpuIds : save.OwnedCpuIds, "FIX");
             if (!string.Equals(config.SelectedCpuCore, safeCpuCore, StringComparison.OrdinalIgnoreCase))
             {
                 Helpers.ConfigHelper.Update(config, c => c.SelectedCpuCore = safeCpuCore);
             }
 
-            var safePpuCore = ResolveUnlockedCoreSelection(config.SelectedPpuCore, CoreRegistry.PpuIds, save.OwnedPpuIds, "FMC");
+            var safePpuCore = ResolveUnlockedCoreSelection(config.SelectedPpuCore, CoreRegistry.PpuIds, LegacyLocksOff ? CoreRegistry.PpuIds : save.OwnedPpuIds, "FIX");
             if (!string.Equals(config.SelectedPpuCore, safePpuCore, StringComparison.OrdinalIgnoreCase))
             {
                 Helpers.ConfigHelper.Update(config, c => c.SelectedPpuCore = safePpuCore);
             }
 
-            var safeApuCore = ResolveUnlockedCoreSelection(config.SelectedApuCore, CoreRegistry.ApuIds, save.OwnedApuIds, "FMC");
+            var safeApuCore = ResolveUnlockedCoreSelection(config.SelectedApuCore, CoreRegistry.ApuIds, LegacyLocksOff ? CoreRegistry.ApuIds : save.OwnedApuIds, "FIX");
             if (!string.Equals(config.SelectedApuCore, safeApuCore, StringComparison.OrdinalIgnoreCase))
             {
                 Helpers.ConfigHelper.Update(config, c => c.SelectedApuCore = safeApuCore);

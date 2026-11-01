@@ -11,7 +11,7 @@
   <div class="container">
     <header>
       <h1>🔧 Web API Test Suite</h1>
-      <p class="subtitle">Testing Memory Access endpoints at <code>http://127.0.0.1:42067</code></p>
+      <p class="subtitle">Testing Memory Access endpoints at <code id="apiBaseLabel">http://127.0.0.1:42067</code></p>
     </header>
 
     <div class="test-section run-all-section">
@@ -410,6 +410,16 @@
   </div>
 
   <script src="../shared/webapi.js"></script>
+  <script>
+    // Show the API base this instance actually resolved to (may be an ephemeral port
+    // when more than one BrokenNes instance is running).
+    (function () {
+      var label = document.getElementById('apiBaseLabel');
+      if (label && window.webapi && typeof window.webapi.getBaseUrl === 'function') {
+        label.textContent = window.webapi.getBaseUrl() || label.textContent;
+      }
+    })();
+  </script>
   <script src="apitest.js"></script>
   <script src="achievement-tests.js"></script>
 </body>

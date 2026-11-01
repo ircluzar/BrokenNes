@@ -3,7 +3,7 @@ using System;
 namespace NesEmulator
 {
     // Secret PPU wrapper that builds on PPU_BFR while adding a hidden post-process.
-    public class PPU_EXE : IPPU
+    public class PPU_EXE : IPPU, IPpuFrameClock
     {
         public string CoreName => "EXE";
         public string Description => "Classified.";
@@ -27,6 +27,7 @@ namespace NesEmulator
 
         public void Step(int cycles) => inner.Step(cycles);
         public byte[] GetFrameBuffer() => inner.GetFrameBuffer();
+        public int ProbeScanline => inner.ProbeScanline; // IPpuFrameClock
 
         public void UpdateFrameBuffer()
         {

@@ -8,7 +8,7 @@ namespace NesEmulator
 //  * Fewer sprites per scanline.
 //  * Increased DRAM refresh stall probability.
 //  * Post-process downsample (blocky horizontal/vertical) and 1-1-1 color crush.
-public class PPU_ULQ : IPPU
+public class PPU_ULQ : IPPU, IPpuFrameClock
 {
     // Core metadata
     public string CoreName => "Ultra Low Quality";
@@ -207,6 +207,8 @@ public class PPU_ULQ : IPPU
         r = (byte)(r * 4 / 5); g = (byte)(g * 4 / 5); b = (byte)(b * 4 / 5);
     }
 
+    public int ProbeScanline => scanline; // IPpuFrameClock: presentation only (NES.GetFrameBuffer)
+
     public byte[] GetFrameBuffer() { EnsureFrameBuffer(); return frameBuffer!; }
 
     public void ClearBuffers()
@@ -368,8 +370,13 @@ public class PPU_ULQ : IPPU
         {
             case 0x0002: result = PPUSTATUS; PPUSTATUS &= 0x3F; addrLatch = false; return result;
             case 0x0004: return oam[OAMADDR];
-            case 0x0007: result = ppuDataBuffer; ppuDataBuffer = Read(PPUADDR); if (PPUADDR >= 0x3F00) result = ppuDataBuffer; PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1); return result;
-            default: return 0;
+            case 0x0007:
+                // Palette reads are immediate, but the internal buffer still refills from the
+                // underlying nametable byte "under" the palette mirror, not the palette byte.
+                if (PPUADDR >= 0x3F00) { result = Read(PPUADDR); ppuDataBuffer = Read((ushort)(PPUADDR - 0x1000)); }
+                else { result = ppuDataBuffer; ppuDataBuffer = Read(PPUADDR); }
+                PPUADDR += (ushort)((PPUCTRL & 0x04) != 0 ? 32 : 1); return result;
+            default: return bus.GetOpenBus(); // real open bus, not a hardcoded 0
         }
     }
 
@@ -403,7 +410,11 @@ public class PPU_ULQ : IPPU
             if (bus?.cartridge == null) return 0;
             return bus.cartridge.PPURead(address);
         }
-        else if (address <= 0x3EFF) { ushort mirrored = MirrorVRAMAddress(address); return vram[mirrored]; }
+        else if (address <= 0x3EFF)
+        {
+            if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableRead(address, out byte ntv)) return ntv; // cartridge-supplied nametables (as PPU_FIX)
+            ushort mirrored = MirrorVRAMAddress(address); return vram[mirrored];
+        }
         else if (address <= 0x3FFF) { ushort mirrored = (ushort)(address & 0x1F); if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10; return paletteRAM[mirrored]; }
         return 0;
     }
@@ -417,7 +428,11 @@ public class PPU_ULQ : IPPU
             if (bus?.cartridge == null) return;
             bus.cartridge.PPUWrite(address, value);
         }
-        else if (address <= 0x3EFF) { ushort mirrored = MirrorVRAMAddress(address); vram[mirrored] = value; }
+        else if (address <= 0x3EFF)
+        {
+            if (bus?.cartridge?.mapper is IMapper mNt && mNt.TryPpuNametableWrite(address, value)) return; // cartridge-supplied nametables (as PPU_FIX)
+            ushort mirrored = MirrorVRAMAddress(address); vram[mirrored] = value;
+        }
         else if (address <= 0x3FFF) { ushort mirrored = (ushort)(address & 0x1F); if (mirrored >= 0x10 && (mirrored % 4) == 0) mirrored -= 0x10; paletteRAM[mirrored] = value; }
     }
 

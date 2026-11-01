@@ -5,6 +5,9 @@ public class Input
 	private byte controllerState = 0;   // Latched buttons
 	private byte controllerShift = 0;   // Shift register for reads
 	private bool strobe = false;        // Current strobe bit
+	// Counts $4016/$4017 reads since the last ConsumeReadCount() call - used for TAS-style lag
+	// frame detection (a frame where the game never polled the controller port at all).
+	private int readCount = 0;
 
 	// For Blazor: set input state from UI.
 	// Standard NES Index Order: 0:A, 1:B, 2:Select, 3:Start, 4:Up, 5:Down, 6:Left, 7:Right
@@ -43,16 +46,28 @@ public class Input
 		strobe = newStrobe;
 	}
 
-	public byte Read4016()
+	// openBus: the CPU's data-bus latch value from the bus transaction immediately before this
+	// read (Bus.lastBusValue) - real hardware only drives bits 0-2 of $4016/$4017 (data plus the
+	// two expansion-port bits this emulator doesn't model), so bits 6-7 read back whatever the
+	// bus was last holding instead of a clean 0. Matches FCEUX's JPRead(): `ret|=X.DB&0xC0`.
+	public byte Read4016(byte openBus = 0)
 	{
+		readCount++;
 		byte result = (byte)(controllerShift & 1);
 		if (!strobe)
 		{
-			// Only shift when strobe low (during serial read phase)
-			controllerShift >>= 1;
+			// Real hardware's shift register floats/reads as 1 once the 8 real bits are shifted
+			// out (verified against AccuracyCoin's "Controller Clocking" test, which expects 1s
+			// past the 8th read) - shifting in a 1 from the top reproduces that naturally instead
+			// of needing a separate read-count.
+			controllerShift = (byte)((controllerShift >> 1) | 0x80);
 		}
+		result |= (byte)(openBus & 0xC0);
 		return result;
 	}
+
+	// Consume-and-reset accessor for the per-frame read counter (see readCount's declaration).
+	public int ConsumeReadCount() { int c = readCount; readCount = 0; return c; }
 
 	// Debug helpers for save state serialization (internal emulator use only)
 	public byte DebugGetRawState() => controllerState;

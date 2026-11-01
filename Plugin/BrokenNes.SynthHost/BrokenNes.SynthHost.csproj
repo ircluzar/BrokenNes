@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ==========================================================================
+       BrokenNes.SynthHost: hosting the BrokenNes2 plugin outside FL Studio.
+
+       The plugin is a native FL ("Fruity") plugin: only FL, or something that behaves like FL, can load it. This library is that
+       something, with no audio device and no window of its own, so it can be tested headless:
+         - HostSim / PluginInstance: the host side of the Fruity SDK (the object a plugin calls back into) and the calls into a loaded
+           plugin DLL, exactly as FL makes them. Shared with the test bench (BrokenNes.FruityHost), which plays scripted notes.
+         - SynthRack: a rack of plugin instances (Pulse 1, Pulse 2, Triangle, Noise on one emulator) played live: note, pitch-bend and
+           all-notes-off events in, stereo audio out, the way FL's mixer drives them.
+         - MidiRouter: raw MIDI bytes to rack events.
+       The desktop app (Windows/Synth) adds what needs a device or a window: audio output, MIDI input, the editor windows.
+       ========================================================================== -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>BrokenNes.SynthHost</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BrokenNes.Fruity\BrokenNes.Fruity.csproj" />
+  </ItemGroup>
+
+</Project>

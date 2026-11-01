@@ -1100,3 +1100,22 @@ body {
     width: 100%;
   }
 }
+
+/* ---- console farming and the stockpile file ---- */
+.gh-farm-status {
+  font-size: 0.8rem;
+  line-height: 1.35;
+  margin: 0 0 0.6rem 0;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #cfd3dc;
+  white-space: pre-wrap;
+}
+.gh-farm-status:empty { display: none; }
+.gh-farm-status.warn { background: rgba(255, 170, 60, 0.16); color: #ffd9a0; }
+.gh-file-line { font-size: 0.78rem; color: #aab; margin: 0.4rem 0; word-break: break-all; }
+.gh-file-line:empty { display: none; }
+.gh-detail { font-size: 0.78rem; color: #cfd3dc; margin: 0.3rem 0 0.6rem 0; white-space: pre-wrap; }
+.gh-detail:empty { display: none; }
+.gh-item-desc { font-size: 0.74rem; color: #aab; margin-top: 0.15rem; }

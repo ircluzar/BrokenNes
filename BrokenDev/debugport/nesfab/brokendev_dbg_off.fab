@@ -1,0 +1,31 @@
+// The BrokenDev debug port for NESFab: the RELEASE build. The same functions as brokendev_dbg.fab, empty and inlined: every call
+// compiles to nothing and the strings they name are never stowed (nesfab/build-proof.ps1 proves it byte-identical to a build without the calls).
+
+ct Bool BROKENDEV_DBG_ON = false
+
+fn dbg_print(PPP/ascii str)
+: +inline
+
+fn dbg_print_1(PPP/ascii str, UU a)
+: +inline
+
+fn dbg_print_2(PPP/ascii str, UU a, UU b)
+: +inline
+
+fn dbg_assert(Bool ok, PPP/ascii what)
+: +inline
+
+fn dbg_mark(PPP/ascii name)
+: +inline
+
+fn dbg_timer_name(U id, PPP/ascii name)
+: +inline
+
+fn dbg_timer_start(U id)
+: +inline
+
+fn dbg_timer_stop(U id)
+: +inline
+
+fn dbg_break()
+: +inline

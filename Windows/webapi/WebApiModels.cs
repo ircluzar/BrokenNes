@@ -85,6 +85,8 @@ namespace BrokenNes.Windows.WebApi
     internal class RenameRequest
     {
         public string Name { get; set; } = "";
+        /// <summary>Optional: the entry's description (free text); null leaves it as it is.</summary>
+        public string? Description { get; set; }
     }
 
     internal class ImportRequest

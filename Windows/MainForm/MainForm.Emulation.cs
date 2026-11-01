@@ -25,7 +25,7 @@ namespace BrokenNes.Windows
     {
         private void StartEmulation()
         {
-            if (nes == null) return;
+            if (nes == null && session == null) return;
             
             // Ensure form has focus so keyboard input works immediately
             this.Activate(); 
@@ -49,6 +49,9 @@ namespace BrokenNes.Windows
         
         private void StopEmulation()
         {
+            // A debugger stopped at a breakpoint parks the emulation thread mid-frame: detach it first (every hook removed, the thread let
+            // go), or the join below would wait on a parked thread. The debugger is made again for the next game on its first use.
+            try { webApiServer?.ReleaseDebugger(); } catch { }
             isEmulationRunning = false;
             isPaused = false; // Unpause to allow thread to exit loop
             
@@ -86,8 +89,9 @@ namespace BrokenNes.Windows
         
         private void EmulationThreadProc()
         {
+            TimerResolution.Enable();
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            const double targetFrameTime = 1.0 / 60.0; // 60 FPS
+            double targetFrameTime = 1.0 / 60.0; // 60 FPS (a console session sets its own below: a PAL Master System or Genesis runs at 50)
             double accumulator = 0;
             int framesSinceReport = 0;
             var reportStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -98,17 +102,38 @@ namespace BrokenNes.Windows
             fpsFrameCount = 0;
             
             // Audio-driven timing: target buffer level in ms
-            const int TargetAudioBufferMs = 60;  // Sweet spot: not too laggy, not too tight
-            const int MinAudioBufferMs = 30;     // Run more frames if below this
-            const int MaxAudioBufferMs = 100;    // Skip frames if above this
+            const int TargetAudioBufferMs = 90;  // headroom of several device reads so a late wake-up cannot underrun
+            const int MinAudioBufferMs = 60;     // Run more frames if below this
+            const int MaxAudioBufferMs = 140;    // Skip frames if above this
             
-            // High-resolution timer for more precise frame timing
+            // High-resolution timer for more precise frame timing.
+            // NTSC NES runs at 60.0988 fps (1789773 CPU Hz / 29780.5 cycles per frame), not a round
+            // 60 - the difference is small (0.16%) but it is a free correction and it matters for a
+            // game being developed against real hardware.
+            const double NtscFramesPerSecond = 60.0988;
             long ticksPerSecond = System.Diagnostics.Stopwatch.Frequency;
-            long targetFrameTicks = (long)(ticksPerSecond / 60.0);
+            long targetFrameTicks = (long)(ticksPerSecond / NtscFramesPerSecond);
             long nextFrameTime = stopwatch.ElapsedTicks;
-            
+            double pacedFps = NtscFramesPerSecond;
+
             while (isEmulationRunning)
             {
+                // A console session (SNES, Game Boy, Master System, Game Gear, Genesis) is paced at its own frame rate: the machine's, which for the Sega consoles
+                // is the region's (a PAL Master System or Genesis makes 50 frames a second, an NTSC Game Boy 59.73), not the NES's 60.0988. Otherwise a PAL game would be fed at 60,
+                // the audio buffer would fill and the pacer would skip frames to hold it, or with the audio off the game would run 20% fast.
+                {
+                    var sess = session;
+                    double fps = sess != null && sess.FramesPerSecond is > 20 and < 200 ? sess.FramesPerSecond : NtscFramesPerSecond;
+                    if (Math.Abs(fps - pacedFps) > 1e-6)
+                    {
+                        pacedFps = fps;
+                        targetFrameTicks = (long)(ticksPerSecond / fps);
+                        targetFrameTime = 1.0 / fps;
+                        nextFrameTime = stopwatch.ElapsedTicks;
+                        accumulator = 0;
+                    }
+                }
+
                 // Process queued actions
                 while (emulationActions.TryDequeue(out var act))
                 {
@@ -149,7 +174,8 @@ namespace BrokenNes.Windows
                     }
                 
                 // Get current audio buffer level to guide timing
-                int audioBufferMs = audioManager?.GetBufferedDurationMs() ?? TargetAudioBufferMs;
+                int audioBufferMs = audioManager?.GetBufferedDurationMs() ?? -1;
+                if (audioBufferMs < 0) audioBufferMs = TargetAudioBufferMs;   // no device open (or no audio at all): the clock alone paces the frames
 
                 // Core-based slowdown (CPU_ULQ) should not trigger audio-driven catch-up.
                 bool cpuUlq = false;
@@ -225,9 +251,25 @@ namespace BrokenNes.Windows
                         Thread.Sleep(1);
                     }
                 }
+                else if (!AudioManager.LegacyPacing)
+                {
+                    // CLOCK TIMING (2026-10-29): one frame per period of the console's own rate, whatever the sound device does. The
+                    // audio queue is held at its depth by AudioManager's +-0.5 % rate control instead of by making more or fewer frames.
+                    // The audio-driven pacing below let the device's consumption set the frame rate: a device that took sound at 73 %
+                    // of real time (WinMM on a Focusrite USB device, see AudioManager) made the game run at 44 fps. It is kept behind
+                    // BROKENNES_AUDIO_LEGACY=1 as the negative control.
+                    long now = stopwatch.ElapsedTicks;
+                    if (now >= nextFrameTime)
+                    {
+                        framesToRun = 1;
+                        nextFrameTime += targetFrameTicks;   // from the previous deadline: a late wake-up is made up on the next frame
+                        if (now - nextFrameTime > targetFrameTicks * 8) nextFrameTime = now + targetFrameTicks;   // after a long stall: resync, do not fast-forward
+                    }
+                    else framesToRun = 0;
+                }
                 else
                 {
-                    // AUDIO-DRIVEN TIMING: Let audio buffer level guide frame production
+                    // AUDIO-DRIVEN TIMING (legacy, BROKENNES_AUDIO_LEGACY=1): Let audio buffer level guide frame production
                     // This prevents the doppler effect and audio pops
                     
                     long now = stopwatch.ElapsedTicks;
@@ -250,22 +292,40 @@ namespace BrokenNes.Windows
                     {
                         // Normal case: time for a new frame
                         framesToRun = 1;
-                        
+
                         // Adjust timing slightly based on buffer level to stay centered
+                        long period = targetFrameTicks;
                         if (audioBufferMs < TargetAudioBufferMs)
                         {
                             // Running a bit behind, speed up slightly
-                            nextFrameTime = now + (long)(targetFrameTicks * 0.95);
+                            period = (long)(targetFrameTicks * 0.95);
                         }
                         else if (audioBufferMs > TargetAudioBufferMs + 20)
                         {
                             // Running a bit ahead, slow down slightly
-                            nextFrameTime = now + (long)(targetFrameTicks * 1.05);
+                            period = (long)(targetFrameTicks * 1.05);
                         }
-                        else
+
+                        // Advance the deadline from the PREVIOUS deadline, not from `now`.
+                        // `now` is already past nextFrameTime by however late this wake-up was, and
+                        // the Thread.Sleep(1) below is only accurate to ~1ms even when something
+                        // else on the system has raised the timer resolution. Re-basing on `now`
+                        // silently discarded that overshoot every single frame and never made it
+                        // back, so the real period became (target + mean oversleep). Measured cost
+                        // before this fix: a steady 57.65-57.75 fps against NTSC's 60.0988 - about
+                        // 4% slow, reproduced independently three times over 30-60s windows, which
+                        // is ~0.65ms of lost time per frame. Accumulating the deadline instead
+                        // makes the error self-correcting: a late frame leaves the next deadline
+                        // nearer, so the loop catches back up.
+                        nextFrameTime += period;
+
+                        // Guard against a catch-up spiral: after a long stall (breakpoint, host
+                        // hitch, save-state load) the deadline can be many frames in the past, and
+                        // chasing it one frame at a time would fast-forward the game. Resync
+                        // instead once we are more than ~8 frames behind.
+                        if (now - nextFrameTime > targetFrameTicks * 8)
                         {
-                            // Buffer is at ideal level
-                            nextFrameTime = now + targetFrameTicks;
+                            nextFrameTime = now + period;
                         }
                     }
                     else
@@ -313,8 +373,22 @@ namespace BrokenNes.Windows
                                     }
                                 }
                                 
+                                // Merge in any buttons the Web API is holding on behalf of an
+                                // automated test. This is additive (OR), never a replacement, so
+                                // real keyboard/gamepad input is untouched and an empty injection
+                                // is a no-op for normal play.
+                                BrokenNes.Windows.WebApi.ApiInputInjector.Apply(p1Inputs, p2Inputs);
+                                TfReplayPads(p1Inputs, p2Inputs);             // Timeflow (T2): a replay hands the recorded pads; returns at once otherwise
+                                TfBeforeNesFrame(nes, p1Inputs, p2Inputs);    // Timeflow (T1): the state BEFORE the frame's pads reach the NES; returns at once unless the user switched recording on
+
                                 nes.SetInputs(p1Inputs, p2Inputs);
-                                
+                                PortBeforeFrame(nes);                         // the debug port (D7): returns at once when it is off
+                                BugBeforeNesFrame(nes, p1Inputs, p2Inputs);   // the bug capture (D6): the pads the frame gets; returns at once when it is off
+
+                                // Publish the state the NES actually received so GET /api/input/state
+                                // reports reality rather than only what was requested.
+                                BrokenNes.Windows.WebApi.ApiInputInjector.PublishObserved(p1Inputs, p2Inputs);
+
                                 // Poll webmodule input (X/Y buttons) - separate from NES input
                                 webModuleInputManager?.Poll();
                             }
@@ -328,6 +402,7 @@ namespace BrokenNes.Windows
                             {
                                 nes.RunFrame();
                             }
+                            TfAfterFrame(nes);   // Timeflow: the recording's half and a replay's check (nothing when off)
 
                             if (corruptor.AutoCorrupt)
                             {
@@ -337,7 +412,7 @@ namespace BrokenNes.Windows
                                     autoCorruptFrameCounter = 0;
                                     lock (corruptorLock)
                                     {
-                                        try { corruptor.Blast(nes); }
+                                        try { corruptor.Blast(nes); BugBreak("the game was corrupted (auto-corrupt)"); }
                                         catch (Exception ex) { Console.WriteLine($"Auto-corrupt error: {ex.Message}"); }
                                     }
                                 }
@@ -346,9 +421,16 @@ namespace BrokenNes.Windows
                             {
                                 autoCorruptFrameCounter = 0;
                             }
-                            
+
+                            // Persist battery-backed save RAM periodically, so an abrupt end to the
+                            // process (crash, power loss, Task Manager, an external taskkill) costs
+                            // at most a few seconds of progress instead of the whole session. Cheap:
+                            // it no-ops on all but every 600th frame, and skips the disk write when
+                            // the save RAM has not changed.
+                            MaybeAutoSaveBatteryRam();
+
                             // Track FPS for display and audio speed adjustment
-                            fpsFrameCount++;
+                            fpsFrameCount++; Interlocked.Increment(ref framesEmulated);
                             if (fpsStopwatch != null && fpsStopwatch.Elapsed.TotalSeconds >= 0.5)
                             {
                                 currentFps = fpsFrameCount / fpsStopwatch.Elapsed.TotalSeconds;
@@ -373,7 +455,8 @@ namespace BrokenNes.Windows
                                         float[] audioSamples = nes.GetAudioBuffer();
                                         if (audioSamples != null && audioSamples.Length > 0)
                                         {
-                                            audioManager.QueueSamples(audioSamples);
+                                            audioManager.QueueSamples(audioSamples, nes.GetAudioSampleRate());
+                                            BugAudio(audioSamples, audioSamples.Length);
                                         }
                                     }
                                     catch (Exception audioEx)
@@ -387,8 +470,10 @@ namespace BrokenNes.Windows
                             // Only lock when actually copying to reduce contention
                             using (PerformanceProfiler.Time("FrameBuffer.Copy"))
                             {
-                                byte[]? nesFrameBuffer = nes.GetFrameBuffer();
-                                if (nesFrameBuffer != null && nesFrameBuffer.Length == NES_WIDTH * NES_HEIGHT * 4 && backBuffer != null)
+                                // a NES picture chip that draws wider than the NES (the WideMess widescreen chip, PPU_WMSS): its whole picture at its own size; back to the NES's 256 x 240 when another chip draws again
+                                byte[]? nesFrameBuffer = nes.WidePicture is { HasWidePicture: true } wide ? CopyWideNesFrame(wide) : nesWideShown && !NesDisplayIsBack() ? null : nes.GetFrameBuffer();
+                                if (nesFrameBuffer == WideFrameCopied) RequestRenderFrame();
+                                else if (nesFrameBuffer != null && nesFrameBuffer.Length == NES_WIDTH * NES_HEIGHT * 4 && backBuffer != null)
                                 {
                                     lock (emulationLock)
                                     {
@@ -404,6 +489,16 @@ namespace BrokenNes.Windows
                         {
                             Console.WriteLine($"Emulation error: {ex.Message}");
                             Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                            isEmulationRunning = false;
+                        }
+                    }
+                    else if (session != null)
+                    {
+                        // BrokenNes 2: a SNES / Game Boy game (see MainForm.Consoles.cs)
+                        try { RunSessionFrame(session); }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Console emulation error: {ex}");
                             isEmulationRunning = false;
                         }
                     }
@@ -493,6 +588,10 @@ namespace BrokenNes.Windows
                             currentInputs[i] = inputManager.GetButton(i);
                         }
                     }
+
+                    // Show API-injected buttons on the on-screen controller display too, so what
+                    // the user sees matches what the NES is being fed.
+                    BrokenNes.Windows.WebApi.ApiInputInjector.Apply(currentInputs, null);
                     
                     // Render using DirectX
                     using (PerformanceProfiler.Time("DirectX.DrawFrame"))
@@ -562,7 +661,7 @@ namespace BrokenNes.Windows
                 // Get the framebuffer from the PPU
                 byte[]? nesFrameBuffer = nes.GetFrameBuffer();
                 
-                if (nesFrameBuffer != null && nesFrameBuffer.Length == NES_WIDTH * NES_HEIGHT * 4)
+                if (nesFrameBuffer != null && nesFrameBuffer.Length == NES_WIDTH * NES_HEIGHT * 4 && frameBuffer.Bits.Length == NES_WIDTH * NES_HEIGHT)
                 {
                     // Copy framebuffer data to DirectBitmap (convert byte[] to expected format)
                     frameBuffer.CopyFromBytes(nesFrameBuffer);

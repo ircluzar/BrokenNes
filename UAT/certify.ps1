@@ -1,0 +1,321 @@
+<#
+.SYNOPSIS
+  Builds and certifies every way BrokenNes runs, and writes one report.
+.DESCRIPTION
+  The four entrypoints and how each is proven:
+
+    desktop    Windows\ (WinForms app)        UAT\entrypoints\desktop-smoke.ps1: launch, load VRUN through the control API,
+                                              frames advance, picture non-blank and animated, audio meter, clean shutdown
+    web-lite   WebLite\ (Blazor WASM)         UAT\entrypoints\web-smoke.ps1: publish, serve, headless browser boots a ROM
+    plugin-host  Plugin\ BrokenNes2 DLL       FruityHost selftest: the Native AOT plugin DLL loaded by a faithful FL host
+                                              stand-in; 21 checks of identity, parameters, pitch, slides, volume, pan, voices,
+                                              every sound chip, ROM mode (game, picture, live CPU/PPU/APU swaps), robustness, real-time and allocation
+    plugin-fl    the same DLL inside FL 2026  UAT\plugin\fl\fl-certify.ps1: FL renders a generated project, the audio is
+                                              measured against the fixture. Needs the plugin installed in FL (admin, once:
+                                              Config > Synthesizer Mode > Install to FL Studio, or BrokenNes.Windows.exe --install-vst);
+                                              otherwise reported as NOT RUN.
+    plugin-install  "Install to FL Studio"    UAT\plugin\install-smoke.ps1: BrokenNes.Windows.exe --install-vst against fake FL folders
+                                              (detection of real installs, fresh/idempotent/replace, FL running, needs-admin, the picker)
+    plugin-synth    standalone synth          UAT\plugin\synth-smoke.ps1: BrokenNes.Windows.exe --synth driven through its real window
+                                              (editors drawn, computer-keyboard piano, tab routing, saved settings) and the restart
+                                              handoff from the emulator's Config > Synthesizer Mode menu and back. Plays into a null
+                                              clock, not a sound card (BROKENNES_SYNTH_AUDIO=null)
+    cores      shared emulator cores          Workshop headless run of a VRUN ROM on the FIX cores must reproduce a recorded
+                                              picture hash (guards the shared tree both desktop and plugin modes use)
+    suite      golden-hash cases              UAT\run-suite.ps1 over every manifest: the NES cases, the story ROMs, the instruction-set walls and the Master
+                                              System, Game Gear and Genesis games (own cores, machine variants, bridges both ways, core swaps mid-run). Goldens
+                                              say "nothing moved", not "correct" (UAT\README.md); a ROM not on this machine SKIPs, never passes
+    sega-gate  Sega verifiers                 UAT\sega-gate.ps1: every Workshop verifier of the three Sega consoles in one table (the chips, the boards, the VDPs,
+                                              the oracles, the bridges, the stems, the CPU walls); refuses a stale exe
+    sega-preview  Sega in the desktop app     UAT\entrypoints\sega-preview-smoke.ps1: the Console menu, the real Master System / Game Gear / Genesis programs
+                                              through RomDetect into the real sessions, battery saves (UI-driven: rerun alone if it fails while the machine is busy)
+    lite-sega  Lite with the Sega consoles    UAT\entrypoints\lite-sega.ps1 (OPT-IN: -Only lite-sega; an AOT publish ~6 min and the suite ~15 min): the AOT build in a real Edge window over
+                                              the DevTools protocol, 100+ checks of the console dropdown, layouts, ROM loading, core pickers, swaps, saves, states, video, audio, pad.
+                                              NOT RUN, with the reason, when the script is not in the tree, node 22+ or Edge/Chrome is missing, the wasm-tools (AOT) workload is
+                                              missing, the -LitePublish folder holds no site, or the games are not on the machine (-LiteRoms); PASS or FAIL otherwise
+    nano       BrokenNes Nano (web synth)     UAT\entrypoints\nano-smoke.ps1: Nano\dist rebuilt and compared, the engine tests, the module against Core and (with the plugin built by plugin-host)
+                                              against the plugin DLL sample for sample, and the AudioWorklet in headless Edge/Chrome (NOT RUN, with the reason, without node or a browser)
+    notices    third-party notices            UAT\entrypoints\notices-check.ps1: the ledgers match the tree, the four license texts are there, and the desktop
+                                              folder, the Lite site and (in install-smoke) the installed plugin folder hold the notices
+
+  Build output goes to %LOCALAPPDATA%\VRUN_Nes_Dev_work (never into the repo). Exit code 0 = nothing FAILED
+  (NOT RUN entrypoints do not fail unless -RequireFl).
+.EXAMPLE
+  pwsh -File UAT\certify.ps1                    # everything
+  pwsh -File UAT\certify.ps1 -Only plugin-host  # one entrypoint
+  pwsh -File UAT\certify.ps1 -Only lite-sega    # the Lite Sega suite (opt-in: never part of a run without -Only); -LitePublish <dir> reuses an AOT publish, -LiteOnly rom,saves narrows it
+#>
+param(
+    [string[]]$Only,
+    [switch]$SkipBuild,
+    [switch]$RequireFl,
+    # lite-sega only (see the entry): an existing AOT publish folder (default: the script publishes one), a folder with sms\ gg\ md\ games (default: the script gathers them from X:\EMULATION), the suite groups to run (default: all)
+    [string]$LitePublish,
+    [string]$LiteRoms,
+    [string[]]$LiteOnly,
+    [string]$Rom = 'C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\builds\2026-09-27_nes\vrun_game.nes'
+)
+$ErrorActionPreference = 'Stop'
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$workRoot = Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work'
+$art = if ($env:BROKENNES_ART) { $env:BROKENNES_ART } else { Join-Path $workRoot 'bn_build' }      # BROKENNES_ART: a private build folder (several agents share the machine)
+$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+$outDir = Join-Path $workRoot "certify\$stamp"
+New-Item -ItemType Directory -Force $outDir | Out-Null
+$env:PATH += ";${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"   # Native AOT needs vswhere on PATH
+
+$results = New-Object System.Collections.ArrayList
+function Want($name) { (-not $Only) -or ($Only -contains $name) }
+function Record($name, $status, $detail, $seconds) {
+    [void]$results.Add([pscustomobject]@{ entrypoint = $name; status = $status; detail = $detail; seconds = [math]::Round($seconds, 1) })
+    $color = switch ($status) { 'PASS' { 'Green' } 'FAIL' { 'Red' } default { 'Yellow' } }
+    Write-Host ("{0,-12} {1,-8} {2}  ({3:0}s)" -f $name, $status, $detail, $seconds) -ForegroundColor $color
+}
+function Run($name, [scriptblock]$body) {
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    Write-Host "`n=== $name ===" -ForegroundColor Cyan
+    try { $r = & $body; Record $name $r.Status $r.Detail $sw.Elapsed.TotalSeconds }
+    catch { Record $name 'FAIL' $_.Exception.Message $sw.Elapsed.TotalSeconds }
+}
+# --disable-build-servers / nodeReuse off: otherwise MSBuild's worker processes inherit the output pipe and keep it open
+# after the build ends, so capturing the output would never return.
+function Invoke-Dotnet { & dotnet.exe @args --disable-build-servers -nodeReuse:false 2>&1 | Out-String }
+# The smoke scripts end with one JSON line whose "checks" is an object: name -> { ok, detail }.
+function CheckSummary($j) {
+    if (-not $j) { return 'no result line' }
+    $all = @($j.checks.PSObject.Properties)
+    $nr = @($all | Where-Object { $_.Value.notRun } | ForEach-Object { $_.Name })
+    $bad = @($all | Where-Object { -not $_.Value.ok -and -not $_.Value.notRun } | ForEach-Object { $_.Name })
+    "$($all.Count - $bad.Count - $nr.Count)/$($all.Count) checks" + $(if ($bad) { " (failed: $($bad -join ', '))" } else { '' }) + $(if ($nr) { " (not run: $($nr -join ', '))" } else { '' })
+}
+
+# ----------------------------------------------------------------------------------------------------
+Run 'cores' {
+    if (-not (Want 'cores')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    if (-not (Test-Path $Rom)) { return @{ Status = 'NOT RUN'; Detail = "ROM not found: $Rom" } }
+    if (-not $SkipBuild) { $o = Invoke-Dotnet build (Join-Path $repo 'Workshop\BrokenNes.Workshop.csproj') -c Release --artifacts-path $art; if ($LASTEXITCODE -ne 0) { throw "Workshop build failed: $($o.Substring([Math]::Max(0, $o.Length - 400)))" } }
+    $exe = Join-Path $art 'bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe'
+    $shots = Join-Path $outDir 'cores'; New-Item -ItemType Directory -Force $shots | Out-Null
+    $input = '200:Start,206:,320:Right,360:Right+A,380:Right,420:Right+B,470:Left+B'
+    & $exe --mixlab nes --rom $Rom --cpu FIX --ppu FIX --apu FIX --frames 600 --png-at '300,600' --input $input --out-dir $shots --tag fix | Out-Null
+    $golden = Join-Path $PSScriptRoot 'plugin\golden\cores-vrun-fix.json'
+    $now = [ordered]@{}
+    foreach ($f in 300, 600) { $now["f$f"] = (Get-FileHash (Join-Path $shots ("fix_f{0:D5}.png" -f $f)) -Algorithm SHA256).Hash }
+    $now['rom'] = (Get-FileHash $Rom -Algorithm SHA256).Hash
+    if (-not (Test-Path $golden)) {
+        New-Item -ItemType Directory -Force (Split-Path $golden) | Out-Null
+        $now | ConvertTo-Json | Set-Content $golden
+        return @{ Status = 'PASS'; Detail = "no golden yet: recorded $golden" }
+    }
+    $g = Get-Content $golden -Raw | ConvertFrom-Json
+    if ($g.rom -ne $now['rom']) { return @{ Status = 'NOT RUN'; Detail = 'the ROM differs from the golden run''s ROM' } }
+    $bad = @('f300', 'f600') | Where-Object { $g.$_ -ne $now[$_] }
+    if ($bad) { return @{ Status = 'FAIL'; Detail = "picture differs from the recorded run at: $($bad -join ', ')" } }
+    @{ Status = 'PASS'; Detail = 'VRUN on CPU/PPU/APU FIX reproduces the recorded pictures (frames 300, 600)' }
+}
+
+# The Workshop build the next entries share (built once, into the same artifacts folder as `cores`).
+$script:workshopExe = $null
+function Get-WorkshopExe {
+    if ($script:workshopExe) { return $script:workshopExe }
+    if (-not $SkipBuild) { $o = Invoke-Dotnet build (Join-Path $repo 'Workshop\BrokenNes.Workshop.csproj') -c Release --artifacts-path $art; if ($LASTEXITCODE -ne 0) { throw "Workshop build failed: $($o.Substring([Math]::Max(0, $o.Length - 400)))" } }
+    $script:workshopExe = Join-Path $art 'bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe'
+    $script:workshopExe
+}
+
+Run 'suite' {
+    if (-not (Want 'suite')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $exe = Get-WorkshopExe
+    & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'lib\Prepare-SegaRoms.ps1') | Out-File (Join-Path $outDir 'prepare-sega-roms.txt')
+    $json = Join-Path $outDir 'suite.json'
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'run-suite.ps1') -Exe $exe -Json $json 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'suite.txt')
+    $line = ($out | Where-Object { "$_" -match '\d+ pass' } | Select-Object -Last 1)
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = "NES, story, cores, corpus, Sega and wall cases (golden hashes: nothing moved, not proof of accuracy): $line" }
+}
+
+Run 'sega-gate' {
+    if (-not (Want 'sega-gate')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $exe = Get-WorkshopExe
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'sega-gate.ps1') -Exe $exe -ReportDir (Join-Path $outDir 'sega-gate') 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'sega-gate.txt')
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = ($out | Where-Object { "$_" -match 'step\(s\) passed' } | Select-Object -Last 1) }
+}
+
+Run 'sega-preview' {
+    if (-not (Want 'sega-preview')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\sega-preview-smoke.ps1') 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'sega-preview-smoke.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    if ($j -and $j.status -eq 'NOT RUN') { return @{ Status = 'NOT RUN'; Detail = "$($j.error); the rest: $(CheckSummary $j)" } }
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
+}
+
+Run 'plugin-host' {
+    if (-not (Want 'plugin-host')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    if (-not $SkipBuild) {
+        $o = Invoke-Dotnet publish (Join-Path $repo 'Plugin\BrokenNes2.Plugin\BrokenNes2.Plugin.csproj') -c Release --artifacts-path $art
+        if ($LASTEXITCODE -ne 0) { throw "plugin publish failed: $($o.Substring([Math]::Max(0, $o.Length - 600)))" }
+        $o = Invoke-Dotnet build (Join-Path $repo 'Plugin\BrokenNes.FruityHost\BrokenNes.FruityHost.csproj') -c Release --artifacts-path $art
+        if ($LASTEXITCODE -ne 0) { throw "test host build failed: $($o.Substring([Math]::Max(0, $o.Length - 600)))" }
+    }
+    $dll = Join-Path $art 'publish\BrokenNes2.Plugin\release_win-x64\BrokenNes2_x64.dll'
+    # A copy in the repo (Plugin\dist, git-ignored): the build output under %LOCALAPPDATA% can be a per-app private
+    # store (packaged apps such as the Claude desktop app are redirected there), invisible to the user's own shell.
+    $dist = Join-Path $repo 'Plugin\dist'
+    New-Item -ItemType Directory -Force (Join-Path $dist 'host') | Out-Null
+    Copy-Item (Join-Path $art 'publish\BrokenNes2.Plugin\release_win-x64\BrokenNes2_x64.dll') $dist -Force
+    Copy-Item (Join-Path $art 'bin\BrokenNes.FruityHost\release\*') (Join-Path $dist 'host') -Recurse -Force
+    $host_ = Join-Path $art 'bin\BrokenNes.FruityHost\release\BrokenNes.FruityHost.exe'
+    $json = Join-Path $outDir 'plugin-selftest.json'
+    $romArgs = if (Test-Path $Rom) { @('--rom', $Rom) } else { @() }   # enables the ROM-mode tests
+    & $host_ selftest $dll @romArgs --json $json --md (Join-Path $outDir 'plugin-selftest.md') | Out-Host
+    $code = $LASTEXITCODE
+    $r = Get-Content $json -Raw | ConvertFrom-Json
+    $detail = "$($r.passed) passed, $($r.warnings) warnings, $($r.failed) failed (DLL $([int]((Get-Item $dll).Length/1MB)) MB)"
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = $detail }
+}
+
+Run 'desktop' {
+    if (-not (Want 'desktop')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\desktop-smoke.ps1') 2>&1
+    $code = $LASTEXITCODE
+    $script:builtApp = Join-Path $workRoot 'uat_desktop\artifacts\bin\BrokenNes.Windows\release_win-x64'     # built by this run: the notices entry checks it
+    $out | Out-File (Join-Path $outDir 'desktop-smoke.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
+}
+
+Run 'web-lite' {
+    if (-not (Want 'web-lite')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\web-smoke.ps1') 2>&1
+    $code = $LASTEXITCODE
+    $liteWww = Get-ChildItem (Join-Path $workRoot 'uat_web') -Recurse -Directory -Filter wwwroot -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName 'index.html') } | Select-Object -First 1
+    if ($liteWww) { $script:builtLite = Split-Path $liteWww.FullName }
+    $out | Out-File (Join-Path $outDir 'web-smoke.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
+}
+
+Run 'lite-sega' {
+    # Opt-in: an AOT publish and a real browser window for a quarter of an hour do not belong in a default run. NOT RUN names what is missing; once it runs, its verdict is PASS or FAIL.
+    if (-not ($Only -contains 'lite-sega')) { return @{ Status = 'SKIPPED'; Detail = 'opt-in (an AOT publish ~6 min + the suite ~15 min in a real Edge window): -Only lite-sega' } }
+    $liteScript = Join-Path $PSScriptRoot 'entrypoints\lite-sega.ps1'
+    if (-not (Test-Path $liteScript)) { return @{ Status = 'NOT RUN'; Detail = "$liteScript is not in this tree" } }
+    $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+    if (-not $node) { return @{ Status = 'NOT RUN'; Detail = 'node (22 or newer) is not installed: the suite drives the browser from node' } }
+    $nodeVer = (& $node --version 2>&1 | Out-String).Trim()
+    if ($nodeVer -notmatch '^v(\d+)\.' -or [int]$Matches[1] -lt 22) { return @{ Status = 'NOT RUN'; Detail = "node 22 or newer is needed (found '$nodeVer')" } }
+    $browsers = @($env:LITELAB_BROWSER, "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+                  "$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe") | Where-Object { $_ -and (Test-Path $_) }
+    if (-not $browsers) { return @{ Status = 'NOT RUN'; Detail = 'no Edge or Chrome is installed (the suite drives a real browser window; set LITELAB_BROWSER to another)' } }
+    $a = @()
+    if ($LitePublish) {
+        if (-not ((Test-Path (Join-Path $LitePublish 'wwwroot\index.html')) -or (Test-Path (Join-Path $LitePublish 'index.html')))) { return @{ Status = 'NOT RUN'; Detail = "no AOT publish in -LitePublish $LitePublish (it must hold wwwroot\index.html): publish one, or leave it out and the script publishes" } }
+        $a += @('-Publish', $LitePublish)
+    }
+    elseif (-not ((& dotnet.exe workload list 2>&1 | Out-String) -match 'wasm-tools')) {
+        return @{ Status = 'NOT RUN'; Detail = 'the wasm-tools workload is not installed, so no AOT publish can be made: dotnet workload install wasm-tools (or pass -LitePublish <an AOT publish folder>)' }
+    }
+    if ($LiteRoms) {
+        foreach ($d in 'sms', 'gg', 'md') { if (-not (Test-Path (Join-Path $LiteRoms $d))) { return @{ Status = 'NOT RUN'; Detail = "-LiteRoms $LiteRoms has no $d\ folder (it needs sms\ gg\ md\)" } } }
+        $a += @('-Roms', $LiteRoms)
+    }
+    elseif (-not (Test-Path 'X:\EMULATION')) { return @{ Status = 'NOT RUN'; Detail = 'the games library X:\EMULATION is not on this machine (the script gathers its games there): pass -LiteRoms <a folder with sms\ gg\ md\>' } }
+    elseif (-not (Test-Path 'C:\Program Files\7-Zip\7z.exe')) { return @{ Status = 'NOT RUN'; Detail = '7-Zip is not installed (the script opens the Master System archives with it): pass -LiteRoms <a folder with sms\ gg\ md\>' } }
+    if ($LiteOnly) { $a += @('-Only', ($LiteOnly -join ',')) }
+    $out = & pwsh -NoProfile -File $liteScript @a 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'lite-sega.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    $sum = CheckSummary $j
+    if ($j -and $j.error) { $sum += "; error: $($j.error)" }
+    if ($j -and $j.notes) { $sum += "; $(@($j.notes) -join '; ')" }
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = $sum }
+}
+
+Run 'plugin-fl' {
+    if (-not (Want 'plugin-fl')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $installed = 'C:\Program Files\Image-Line\FL Studio 2026\Plugins\Fruity\Generators\BrokenNes2\BrokenNes2_x64.dll'
+    $dll = Join-Path $art 'publish\BrokenNes2.Plugin\release_win-x64\BrokenNes2_x64.dll'
+    $current = (Test-Path $installed) -and (Test-Path $dll) -and ((Get-FileHash $installed).Hash -eq (Get-FileHash $dll).Hash)
+    if (-not $current) {
+        $s = if ($RequireFl) { 'FAIL' } else { 'NOT RUN' }
+        return @{ Status = $s; Detail = 'the current plugin build is not installed in FL 2026 (needs administrator, once): BrokenNes.Windows.exe --install-vst (or Config > Synthesizer Mode > Install to FL Studio)' }
+    }
+    if (Get-Process -Name FL64 -ErrorAction SilentlyContinue) { return @{ Status = 'NOT RUN'; Detail = 'FL Studio is open: close it (a command-line render would be handed to the running instance)' } }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'plugin\fl\fl-certify.ps1') -WorkDir (Join-Path $outDir 'fl') 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'fl-certify.txt')
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = ($out | Where-Object { "$_" -match 'checks passed|FAIL' } | Select-Object -Last 1) }
+}
+
+Run 'plugin-install' {
+    if (-not (Want 'plugin-install')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'plugin\install-smoke.ps1') -WorkDir (Join-Path $outDir 'install') 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'install-smoke.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    if ($j -and $j.status -eq 'NOT RUN') { return @{ Status = 'NOT RUN'; Detail = $j.error } }
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
+}
+
+Run 'plugin-synth' {
+    if (-not (Want 'plugin-synth')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'plugin\synth-smoke.ps1') -WorkDir (Join-Path $outDir 'synth') 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'synth-smoke.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    if ($j -and $j.status -eq 'NOT RUN') { return @{ Status = 'NOT RUN'; Detail = "$($j.error); the rest: $(CheckSummary $j)" } }
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = (CheckSummary $j) }
+}
+
+Run 'nano' {
+    if (-not (Want 'nano')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    $a = @('-Artifacts', (Join-Path $workRoot 'uat_nano'))
+    $fh = Join-Path $art 'bin\BrokenNes.FruityHost\release\BrokenNes.FruityHost.exe'
+    $dllp = Join-Path $art 'publish\BrokenNes2.Plugin\release_win-x64\BrokenNes2_x64.dll'
+    if ((Test-Path $fh) -and (Test-Path $dllp)) { $a += @('-FruityHost', $fh, '-PluginDll', $dllp) }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\nano-smoke.ps1') @a 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'nano-smoke.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    if ($j -and $j.status -eq 'NOT RUN') { return @{ Status = 'NOT RUN'; Detail = "$($j.error)" } }
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = ((CheckSummary $j) + $(if ($j -and $j.notes) { "; $($j.notes)" } else { '' })) }
+}
+
+Run 'notices' {
+    if (-not (Want 'notices')) { return @{ Status = 'SKIPPED'; Detail = 'not selected' } }
+    # the ledgers against the tree, and the folders THIS run's other entries built (a folder left by an earlier run says nothing about this tree): the desktop app
+    # (the desktop entry) and the Lite site (the web-lite entry). This entry runs after them for that reason.
+    $a = @()
+    if ($script:builtApp -and (Test-Path $script:builtApp)) { $a += @('-AppDir', $script:builtApp) }
+    if ($script:builtLite -and (Test-Path $script:builtLite)) { $a += @('-LiteDir', $script:builtLite) }
+    $out = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'entrypoints\notices-check.ps1') @a 2>&1
+    $code = $LASTEXITCODE
+    $out | Out-File (Join-Path $outDir 'notices.txt')
+    $last = ($out | Where-Object { "$_" -like '{*' } | Select-Object -Last 1)
+    $j = if ($last) { $last | ConvertFrom-Json } else { $null }
+    $skipped = @($out | Where-Object { "$_" -like '`[SKIP`]*' }).Count
+    @{ Status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' }); Detail = ((CheckSummary $j) + $(if ($skipped) { ", $skipped folder check(s) skipped (no folder given: the desktop needs the desktop entry, the Lite site the web-lite entry; the installed plugin's folder is checked by plugin-install)" } else { '' })) }
+}
+
+# ----------------------------------------------------------------------------------------------------
+$summary ="# BrokenNes certification $stamp`n`n| Entrypoint | Result | Detail | Time |`n|---|---|---|---|`n"
+foreach ($r in $results) { $summary += "| $($r.entrypoint) | $($r.status) | $($r.detail -replace '\|', '/') | $($r.seconds)s |`n" }
+Set-Content (Join-Path $outDir 'summary.md') $summary
+$results | ConvertTo-Json | Set-Content (Join-Path $outDir 'summary.json')
+Write-Host "`n$summary"
+Write-Host "report: $outDir"
+$failed = @($results | Where-Object { $_.status -eq 'FAIL' }).Count
+exit $(if ($failed) { 1 } else { 0 })

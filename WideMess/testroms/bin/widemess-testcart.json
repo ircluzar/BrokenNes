@@ -1,0 +1,152 @@
+{
+ "format": "widemess-testcart-1",
+ "cartridge": "widemess-testcart.wms",
+ "resultsTable": {
+  "address": "$7E:1000",
+  "magic": "WMTC",
+  "version": 1,
+  "state": "$7E:1007",
+  "status": "$7E:1020",
+  "checks": "$7E:1028",
+  "fails": "$7E:1030",
+  "detail": "$7E:1100 + (test - 1) x $40",
+  "done": "state = 3"
+ },
+ "expected": {
+  "status": "PPVVPPPP",
+  "checks": [
+   3,
+   5,
+   0,
+   0,
+   38,
+   12,
+   45,
+   6
+  ]
+ },
+ "featureMask": {
+  "romOffset": "$FF87",
+  "note": "WMFEAT is ANDed with this byte of ROM bank 0 ($00:FF87); patch it (and the .wms CRC) to see the not-available paths"
+ },
+ "pages": [
+  {
+   "test": 2,
+   "index": 0,
+   "page": 3,
+   "name": "swarm",
+   "live": true,
+   "picture": "widemess-testcart.swarm.expect.png",
+   "variants": []
+  },
+  {
+   "test": 2,
+   "index": 1,
+   "page": 0,
+   "name": "ref-sprites",
+   "live": false,
+   "picture": "widemess-testcart.ref-sprites.expect.png",
+   "variants": [
+    {
+     "select": 1,
+     "name": "snes_table",
+     "picture": "widemess-testcart.ref-sprites.snes_table.expect.png"
+    },
+    {
+     "select": 2,
+     "name": "narrow",
+     "picture": "widemess-testcart.ref-sprites.narrow.expect.png"
+    }
+   ]
+  },
+  {
+   "test": 3,
+   "index": 0,
+   "page": 4,
+   "name": "spot",
+   "live": true,
+   "picture": "widemess-testcart.spot.expect.png",
+   "variants": []
+  },
+  {
+   "test": 3,
+   "index": 1,
+   "page": 1,
+   "name": "ref-windows",
+   "live": false,
+   "picture": "widemess-testcart.ref-windows.expect.png",
+   "variants": [
+    {
+     "select": 1,
+     "name": "snes_positions",
+     "picture": "widemess-testcart.ref-windows.snes_positions.expect.png"
+    }
+   ]
+  },
+  {
+   "test": 4,
+   "index": 0,
+   "page": 5,
+   "name": "mode1",
+   "live": true,
+   "picture": "widemess-testcart.mode1.expect.png",
+   "variants": []
+  },
+  {
+   "test": 4,
+   "index": 1,
+   "page": 6,
+   "name": "mode0",
+   "live": true,
+   "picture": "widemess-testcart.mode0.expect.png",
+   "variants": []
+  },
+  {
+   "test": 4,
+   "index": 2,
+   "page": 7,
+   "name": "mode5",
+   "live": true,
+   "picture": "widemess-testcart.mode5.expect.png",
+   "variants": []
+  },
+  {
+   "test": 4,
+   "index": 3,
+   "page": 8,
+   "name": "mode2",
+   "live": true,
+   "picture": "widemess-testcart.mode2.expect.png",
+   "variants": []
+  },
+  {
+   "test": 4,
+   "index": 4,
+   "page": 9,
+   "name": "mode7",
+   "live": true,
+   "picture": "widemess-testcart.mode7.expect.png",
+   "variants": []
+  },
+  {
+   "test": 4,
+   "index": 5,
+   "page": 2,
+   "name": "ref-widesnes",
+   "live": false,
+   "picture": "widemess-testcart.ref-widesnes.expect.png",
+   "variants": [
+    {
+     "select": 1,
+     "name": "wide_windows",
+     "picture": "widemess-testcart.ref-widesnes.wide_windows.expect.png"
+    },
+    {
+     "select": 2,
+     "name": "widemess_table",
+     "picture": "widemess-testcart.ref-widesnes.widemess_table.expect.png"
+    }
+   ]
+  }
+ ]
+}

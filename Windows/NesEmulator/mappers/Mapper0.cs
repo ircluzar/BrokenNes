@@ -24,6 +24,10 @@ public class Mapper0 : IMapper { //NROM
         return 0;
     }
 
+    public bool IsCpuReadOpenBus(ushort address) {
+        return !((address >= 0x6000 && address <= 0x7FFF) || (address >= 0x8000 && address <= 0xFFFF));
+    }
+
     public void CPUWrite(ushort address, byte value) {
         if (address >= 0x6000 && address <= 0x7FFF) {
             cartridge.prgRAM[address - 0x6000] = value;

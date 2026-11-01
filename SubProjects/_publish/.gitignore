@@ -1,0 +1,3 @@
+# Local publish outputs (AOT builds, may contain ROMs). Never committed.
+*
+!.gitignore

@@ -60,6 +60,24 @@ public class Mapper4 : IMapper { //MMC3 (Experimental)
         }
     }
 
+    // The counter clock as MMC3B/C hardware does it (and Mesen 2.1.1 by default), used by PPU_FIX
+    // only - RunScanlineIRQ above stays as the frozen cores recorded their goldens with. Two
+    // differences: a pending reload ($C001) takes effect on THIS clock rather than after it, and the
+    // IRQ fires whenever the counter is 0 after the clock, reloads included - so a latch of 0 raises
+    // an IRQ on every clocked scanline. Mega Man 3 enables its IRQ with latch 0 in vblank and relies
+    // on the pre-render line's clock to fire it; the decrement-only rule never did.
+    public void ClockScanlineCounterHardware() {
+        if (irqCounter == 0 || irqReloadPending) {
+            irqCounter = irqLatch;
+            irqReloadPending = false;
+        } else {
+            irqCounter--;
+        }
+        if (irqCounter == 0 && irqEnable) {
+            irqAsserted = true;
+        }
+    }
+
     public bool IRQPending() {
         return irqAsserted;
     }

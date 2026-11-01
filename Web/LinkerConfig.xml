@@ -1,0 +1,17 @@
+<linker>
+  <!-- fullname MUST equal <AssemblyName> in the csproj, or this roots nothing at all.
+       Only consumed when PublishTrimmed is turned on (off by default - see csproj). -->
+  <assembly fullname="BrokenNes">
+    <type fullname="BrokenNes.Pages.*" preserve="all" />
+    <type fullname="Microsoft.AspNetCore.Components.RouteAttribute" preserve="all" />
+
+    <!-- Core implementations are discovered by reflection over a name prefix
+         (CoreRegistry / ClockRegistry / NullProviderRegistry all use
+         Assembly.GetTypes() + StartsWith), so the trimmer cannot see the references. -->
+    <type fullname="NesEmulator.CPU_*" preserve="all" />
+    <type fullname="NesEmulator.PPU_*" preserve="all" />
+    <type fullname="NesEmulator.APU_*" preserve="all" />
+    <type fullname="NesEmulator.CLOCK_*" preserve="all" />
+    <type fullname="NesEmulator.NullProviders.*" preserve="all" />
+  </assembly>
+</linker>

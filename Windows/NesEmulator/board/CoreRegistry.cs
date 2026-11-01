@@ -62,6 +62,18 @@ namespace NesEmulator
             catch { }
         }
 
+        /// <summary>
+        /// A NES-board PPU id as it is today: the retired Game Boy picture chips <c>DMGX</c> (big screen, merged into the enhanced chip on 2026-10-22) and <c>DMGXI</c> / <c>DMGSI</c> (inverted
+        /// sprites, retired earlier) are <c>DMGS</c>, the enhanced Game Boy picture chip; any other id is returned as it is. Every way a stored pick reaches the board goes through here
+        /// (<see cref="Bus.SetPpuCoreById"/>: the apps' settings, a save state's core type name, the HTTP API), so an old pick is moved, never reset to the default
+        /// (<c>NesEmulator.Systems.CoreIdMigration</c> has the console-menu forms).
+        /// </summary>
+        public static string MigratePpuId(string id) => id?.ToUpperInvariant() switch
+        {
+            "DMGX" or "DMGXI" or "DMGSI" => "DMGS",
+            _ => id!,
+        };
+
         public static IReadOnlyList<string> CpuIds { get { Initialize(); return _cpuIds; } }
         public static IReadOnlyList<string> PpuIds { get { Initialize(); return _ppuIds; } }
         public static IReadOnlyList<string> ApuIds { get { Initialize(); return _apuIds; } }

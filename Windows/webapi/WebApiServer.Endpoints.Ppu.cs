@@ -15,6 +15,9 @@ namespace BrokenNes.Windows.WebApi
             app.MapGet("/api/ppu/framebuffer", () =>
             {
                 var nes = _getNes();
+                // BrokenNes 2: a SNES / Game Boy game is running - its picture, at its own size.
+                if (nes == null && GetConsoleFrame?.Invoke() is { } cf)
+                    return Results.Ok(new { success = true, width = cf.width, height = cf.height, format = "RGBA", data = cf.rgba });
                 if (nes == null)
                 {
                     return Results.BadRequest(new { success = false, error = "Emulator not initialized" });

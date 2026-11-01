@@ -24,6 +24,12 @@ namespace BrokenNes.Windows
 {
     public partial class MainForm
     {
+        /// <summary>
+        /// Null while the local Web API is healthy; otherwise the reason the last start attempt
+        /// failed. The API staying down is non-fatal, but it must never silently look like success.
+        /// </summary>
+        private string? webApiStartFailure;
+
         public MainForm()
         {
             try
@@ -61,8 +67,8 @@ namespace BrokenNes.Windows
 
         private void InitializeComponent()
         {
-            this.Text = "BrokenNes";
-            Console.WriteLine("BrokenNes - Windows");
+            this.Text = "BrokenNes 2";
+            Console.WriteLine("BrokenNes 2 - Windows");
             this.ClientSize = new Size(1280, 720);
             this.MinimumSize = new Size(1280, 720);
             this.StartPosition = FormStartPosition.CenterScreen;
@@ -76,8 +82,8 @@ namespace BrokenNes.Windows
             this.Deactivate += (_, _) => isMainWindowFocused = false;
             
             // Create menu bar
-            var menuStrip = new MenuStrip();
-            
+            var menuStrip = new MenuStrip { ShowItemToolTips = true };     // a MenuStrip shows no item tooltips unless asked: the core menus carry one each (what the part is and what it costs)
+
             // Emulator menu (merged File and Emulation)
             var emulatorMenu = new ToolStripMenuItem("&Emulator");
             
@@ -128,13 +134,24 @@ namespace BrokenNes.Windows
             var screenshotItem = new ToolStripMenuItem("Take Screenshot", null, TakeScreenshot_Click);
             screenshotItem.ShortcutKeys = Keys.F12;
             emulatorMenu.DropDownItems.Add(screenshotItem);
+            AddBugCaptureMenu(emulatorMenu);
+            AddDebugPortMenu(emulatorMenu);   // the BrokenDev debug port (D7): homebrew prints, asserts, timers
+            AddDebugWindowsMenu(emulatorMenu);   // the BrokenDev debug windows (D8): debugger, memory, ...
 
             var openFolderItem = new ToolStripMenuItem("Open Emulator Folder", null, OpenEmulatorFolder_Click);
             emulatorMenu.DropDownItems.Add(openFolderItem);
             
             emulatorMenu.DropDownItems.Add(new ToolStripSeparator());
             
-            var exitItem = new ToolStripMenuItem("E&xit", null, (s, e) => Application.Exit());
+            var exitItem = new ToolStripMenuItem("E&xit", null, (s, e) =>
+            {
+                // This is the ONLY clean-exit path in the whole app (nothing else calls
+                // Application.Exit / Environment.Exit / Form.Close), so if the process ever ends
+                // with exit code 0 and no exception, it came through here. Record the stack before
+                // the message loop is torn down.
+                Diagnostics.ShutdownDiagnostics.LogWithStack("Emulator > Exit menu item invoked -> Application.Exit()");
+                Application.Exit();
+            });
             exitItem.ShortcutKeys = Keys.Alt | Keys.F4;
             emulatorMenu.DropDownItems.Add(exitItem);
             
@@ -303,6 +320,14 @@ namespace BrokenNes.Windows
             
             var speedControlItem = new ToolStripMenuItem("Speed Control...", null, OpenSpeedControl_Click);
             emulationSpeedMenu.DropDownItems.Add(speedControlItem);
+
+            emulationSpeedMenu.DropDownItems.Add(new ToolStripSeparator());
+            var ntscAccurateItem = new ToolStripMenuItem("NTSC-Accurate Frame Timing", null, ToggleNtscAccurateFrameRate_Click);
+            ntscAccurateItem.CheckOnClick = true;
+            ntscAccurateItem.ToolTipText = "Emulate NTSC's true 60.0988fps frame length (29780.5 CPU cycles) "
+                + "instead of an exact 60.000fps (29829.55). More accurate; off by default because the "
+                + "benchmarks and AccuracyCoin are calibrated against the exact-60 baseline.";
+            emulationSpeedMenu.DropDownItems.Add(ntscAccurateItem);
             
             configMenu.DropDownItems.Add(emulationSpeedMenu);
             
@@ -336,7 +361,9 @@ namespace BrokenNes.Windows
             emulatorBehaviorsMenu.DropDownItems.Add(showFpsItem);
             
             configMenu.DropDownItems.Add(emulatorBehaviorsMenu);
-            
+
+            configMenu.DropDownItems.Add(BuildSynthesizerMenu());
+
             // Debug Tools submenu
             var debugToolsMenu = new ToolStripMenuItem("&Debug Tools");
             
@@ -407,10 +434,47 @@ namespace BrokenNes.Windows
             helpMenu.DropDownItems.Add(aboutItem);
             
             menuStrip.Items.Add(helpMenu);
+
+            // BrokenNes 2: the emulator comes first. Console picks NES / SNES / Game Boy / Game Boy Color, and the core
+            // menus follow it; the BrokenNes 1 campaign (Deck Builder) moves to Legacy.
+            var legacyMenu = BuildLegacyMenu();
+            var consoleMenuItem = BuildConsoleMenu();
+            menuStrip.Items.Clear();
+            menuStrip.Items.AddRange(new ToolStripItem[] { emulatorMenu, consoleMenuItem, cpuMenu, ppuMenu, apuMenu, shaderMenu, configMenu, toolsMenu, webModulesMenu, legacyMenu, helpMenu, BuildVolumeMenu(menuStrip) });
+            // BrokenDev (developer-only): present only when switched on, so the menu bar of a normal install is unchanged.
+            if (BuildBrokenDevMenu() is { } brokenDevMenu) menuStrip.Items.Insert(menuStrip.Items.IndexOf(helpMenu), brokenDevMenu);
             
+            AddTimeflowMark(menuStrip);   // Timeflow's REC mark (shown only while recording)
             this.MainMenuStrip = menuStrip;
             this.Controls.Add(menuStrip);
-            
+
+            // Diagnostics: the silent-process-death investigation needs to know exactly when the
+            // MenuStrip takes the keyboard, because a keystroke that reaches an open dropdown is
+            // interpreted as a mnemonic (and "E&xit" answers to a bare "x") instead of as gameplay
+            // input. Cheap to leave in - these events fire only on real menu interaction.
+            menuStrip.MenuActivate += (_, _) =>
+                Diagnostics.ShutdownDiagnostics.Log("MenuStrip.MenuActivate - the menu bar now owns the keyboard");
+            menuStrip.MenuDeactivate += (_, _) =>
+                Diagnostics.ShutdownDiagnostics.Log("MenuStrip.MenuDeactivate - keyboard released back to the app");
+            foreach (ToolStripItem topLevel in menuStrip.Items)
+            {
+                if (topLevel is ToolStripMenuItem tsmi)
+                {
+                    var name = tsmi.Text;
+                    tsmi.DropDownOpened += (_, _) =>
+                        Diagnostics.ShutdownDiagnostics.Log($"Menu dropdown OPENED: '{name}'");
+                    tsmi.DropDownClosed += (_, _) =>
+                        Diagnostics.ShutdownDiagnostics.Log($"Menu dropdown closed: '{name}'");
+                }
+            }
+
+            if (Diagnostics.ShutdownDiagnostics.VerboseInput)
+            {
+                Application.AddMessageFilter(new Diagnostics.InputTraceFilter(this));
+                Diagnostics.ShutdownDiagnostics.Log("InputTraceFilter installed (BROKENNES_DIAG set)");
+            }
+
+
             // Create display panel - positioned below menu bar
             displayPanel = new Panel
             {
@@ -457,10 +521,10 @@ namespace BrokenNes.Windows
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to initialize WebView2: {ex.Message}", 
-                    "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                // Advisory only - non-blocking so startup cannot be gated on a dialog.
+                ShowAdvisoryWarning($"Failed to initialize WebView2: {ex.Message}", "Warning");
             }
-            
+
             // Create DirectX renderer for hardware-accelerated rendering
             try
             {
@@ -487,8 +551,75 @@ namespace BrokenNes.Windows
             this.KeyUp += MainForm_KeyUp;
         }
 
+        /// <summary>
+        /// Set BROKENNES_NO_DIALOGS=1 to suppress advisory pop-ups entirely (unattended/automated
+        /// runs). The warning text is still written to the console either way.
+        /// </summary>
+        private static bool SuppressAdvisoryDialogs
+        {
+            get
+            {
+                var value = Environment.GetEnvironmentVariable("BROKENNES_NO_DIALOGS");
+                return !string.IsNullOrEmpty(value)
+                    && (value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        /// <summary>
+        /// Shows an advisory warning WITHOUT blocking startup or the WinForms message loop.
+        ///
+        /// These warnings (no audio device, DirectX unavailable, WebView2 unavailable) are purely
+        /// informational - the emulator runs fine without those subsystems. Showing them as modal
+        /// MessageBoxes on the UI thread during construction froze the whole process behind them,
+        /// including the local Web API control surface, until a human clicked OK. On a machine with
+        /// no audio device that happened on every single launch, which made unattended startup
+        /// impossible. The message is still shown to the user; it just runs on its own STA thread
+        /// so the main thread never waits for it.
+        /// </summary>
+        private static void ShowAdvisoryWarning(string message, string caption)
+        {
+            Console.WriteLine($"[Advisory] {caption}: {message.Replace('\r', ' ').Replace('\n', ' ')}");
+
+            if (SuppressAdvisoryDialogs)
+            {
+                return;
+            }
+
+            try
+            {
+                var thread = new Thread(() =>
+                {
+                    try
+                    {
+                        MessageBox.Show(message, caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Advisory] Dialog '{caption}' failed to display: {ex.Message}");
+                    }
+                })
+                {
+                    IsBackground = true,
+                    Name = "Advisory Dialog"
+                };
+                thread.SetApartmentState(ApartmentState.STA);
+                thread.Start();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Advisory] Could not display '{caption}': {ex.Message}");
+            }
+        }
+
         private void InitializeEmulator()
         {
+            // Start the local Web API FIRST, before anything that can put a dialog on screen or
+            // otherwise stall the UI thread. The API is the process's control surface: an
+            // automated harness has to be able to reach /api/health to bootstrap itself, and it
+            // cannot click "OK" on an advisory box. Nothing below this line is a prerequisite for
+            // the API - it handles a null NES and can be told to load a ROM.
+            _ = EnsureWebApiServerRunningAsync();
+
             // Initialize the framebuffers (double buffering)
             frameBuffer = new DirectBitmap(NES_WIDTH, NES_HEIGHT);
             backBuffer = new DirectBitmap(NES_WIDTH, NES_HEIGHT);
@@ -515,8 +646,9 @@ namespace BrokenNes.Windows
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"DirectX initialization failed: {ex.Message}\nFalling back to software rendering.",
-                        "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    // Advisory only - non-blocking so the API/control surface stays reachable.
+                    ShowAdvisoryWarning($"DirectX initialization failed: {ex.Message}\nFalling back to software rendering.",
+                        "Warning");
                     useDirectX = false;
                 }
             }
@@ -524,14 +656,18 @@ namespace BrokenNes.Windows
             // Initialize audio manager
             try
             {
+                // No playback device is not an error: the manager runs silently and opens one when it appears (the title says so meanwhile).
                 audioManager = new AudioManager(sampleRate: config.SoundQuality, channels: 1);
+                WatchAudioDevice(audioManager);
                 Console.WriteLine("AudioManager initialized successfully");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Failed to initialize audio: {ex.Message}");
-                MessageBox.Show($"Audio initialization failed: {ex.Message}\n\nThe emulator will run without sound.",
-                    "Audio Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                // Advisory only - a machine with no audio device must still be able to boot
+                // unattended, so this must never block the UI thread or the Web API.
+                ShowAdvisoryWarning($"Audio initialization failed: {ex.Message}\n\nThe emulator will run without sound.",
+                    "Audio Warning");
             }
             
             // Initialize high-level audio engine for music and SFX
@@ -556,10 +692,9 @@ namespace BrokenNes.Windows
                 autoScrambleTimer.Start();
             }
             
-            // Initialize Web API server immediately (before ROM loads)
-            // API will handle NES being null and can receive commands like loading ROMs
-            _ = EnsureWebApiServerRunningAsync();
-            
+            // (The Web API server was already started at the top of this method, before any
+            // subsystem that can raise a dialog.)
+
             // Load the default embedded ROM (but don't load Home yet - wait for WebView2)
             LoadEmbeddedRom(allowHomeWebModule: false);
             
@@ -582,6 +717,15 @@ namespace BrokenNes.Windows
             
             if (isWebViewInitialized)
             {
+                // Also give the Web API a moment to bind, so the first page load already sees
+                // THIS instance's window.BROKENNES_API_BASE rather than the legacy default
+                // (which, with several instances running, would belong to a different process).
+                for (int i = 0; i < 50; i++) // up to 5 seconds
+                {
+                    if (webApiServer?.IsRunning == true || webApiStartFailure != null) break;
+                    await Task.Delay(100);
+                }
+
                 Console.WriteLine("[LoadHomeWhenReady] WebView2 ready, loading Home...");
                 LoadHomeWebModule();
             }
@@ -592,8 +736,8 @@ namespace BrokenNes.Windows
             else
             {
                 Console.WriteLine("[LoadHomeWhenReady] WebView2 failed to initialize in time");
-                MessageBox.Show("WebView2 initialization took too long. You can manually switch to web modes from the menu.", 
-                    "Initialization Timeout", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowAdvisoryWarning("WebView2 initialization took too long. You can manually switch to web modes from the menu.",
+                    "Initialization Timeout");
             }
         }
 
@@ -725,31 +869,78 @@ namespace BrokenNes.Windows
                         LoadContinueStateFromApi,  // Restore persistent continue checkpoint
                         QuickSaveStateFromApi,  // Quick save (F7 equivalent)
                         QuickLoadStateFromApi,  // Quick load (F5 equivalent)
-                        () => nes?.RomPath,  // Current ROM path
-                        () => nes?.RomName,  // Current ROM name
+                        () => nes?.RomPath ?? (session != null ? currentRomPath : null),  // Current ROM path (a console session's too)
+                        () => nes?.RomName ?? (session != null ? sessionRomName : null),  // Current ROM name
                         LoadRomFromApi,  // Load ROM by path
                         RefreshProgressionUi,  // Refresh progression-gated WinForms menus/state
                         OpenControllerConfig  // Open player controller config window
                     );
                 }
+                if (windowShown) webApiServer.MarkUiReady();   // created after OnShown (normally it is created first, in the constructor)
 
                 if (!webApiServer.IsRunning)
                 {
+                    WireConsoleApi(webApiServer);
+                    WireVolumeApi(webApiServer);
                     await webApiServer.StartAsync();
-                    Console.WriteLine("Web API server started successfully on http://127.0.0.1:42067");
+
+                    if (webApiServer.IsRunning)
+                    {
+                        webApiStartFailure = null;
+                        if (config.DebugPagesLan) _ = SetLanShareAsync(true);   // the read-only debug pages on the LAN from the start (D8; off by default)
+                        Console.WriteLine($"Web API server started successfully on {webApiServer.BaseUrl} (https port {webApiServer.HttpsPort})"
+                            + (webApiServer.UsingFallbackPorts
+                                ? " - preferred ports were taken, this instance is using OS-assigned ports"
+                                : string.Empty));
+                    }
+                    else
+                    {
+                        // StartAsync returned without throwing but did not bind. Should not happen,
+                        // but never let it masquerade as success.
+                        webApiStartFailure = webApiServer.LastStartError ?? "Web API server did not bind";
+                        Console.WriteLine($"Web API server did NOT start: {webApiStartFailure}");
+                    }
                 }
+
+                // Tell any live WebView2 which endpoint belongs to THIS process. Safe to call
+                // repeatedly; it is a no-op until WebView2 has finished initializing.
+                ApplyWebApiBaseToWebViews();
             }
             catch (Exception ex)
             {
+                webApiStartFailure = webApiServer?.LastStartError ?? ex.Message;
                 Console.WriteLine($"Failed to start Web API server: {ex.Message}");
-                // Don't show error to user, API is optional
+                // Non-fatal to the user (the API is optional), but it is now observable to code
+                // via webApiStartFailure / WebApiServer.LastStartError instead of being swallowed.
             }
             finally
             {
                 webApiServerLock.Release();
             }
         }
-        
+
+        /// <summary>
+        /// Pushes this process's API base URL into the WebView2 (injected as
+        /// window.BROKENNES_API_BASE) once the server's real ports are known.
+        /// </summary>
+        private void ApplyWebApiBaseToWebViews()
+        {
+            try
+            {
+                if (IsHandleCreated && InvokeRequired)
+                {
+                    BeginInvoke(new Action(ApplyWebApiBaseToWebViews));
+                    return;
+                }
+
+                _ = Helpers.WebViewHelper.RefreshApiBaseAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MainForm] Could not push API base URL to WebView2: {ex.Message}");
+            }
+        }
+
         private async Task InitializeWebView2Async()
         {
             try
@@ -763,8 +954,8 @@ namespace BrokenNes.Windows
                 }
                 else
                 {
-                    MessageBox.Show("Failed to initialize WebView2. Web modules will remain unavailable for this session.",
-                        "WebView2 Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    ShowAdvisoryWarning("Failed to initialize WebView2. Web modules will remain unavailable for this session.",
+                        "WebView2 Error");
                 }
             }
             catch (Exception ex)
@@ -772,8 +963,7 @@ namespace BrokenNes.Windows
                 Console.WriteLine($"[MainForm] WebView2 initialization failed: {ex.Message}");
                 isWebViewInitialized = false;
                 isWebViewInitializationFailed = true;
-                MessageBox.Show($"Failed to initialize WebView2: {ex.Message}",
-                    "WebView2 Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowAdvisoryWarning($"Failed to initialize WebView2: {ex.Message}", "WebView2 Error");
             }
         }
     }

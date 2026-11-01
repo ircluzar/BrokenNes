@@ -157,11 +157,29 @@ namespace BrokenNes.Windows
             ShowContinueButton();
         }
 
+        /// <summary>The window is up (it has a handle and the constructor's start-up, the embedded ROM included, is done):
+        /// the Web API stops holding requests back (see WebApiServer.UiReadyGate.cs). The server may still be binding
+        /// (it starts asynchronously), so EnsureWebApiServerRunningAsync also marks it when it finds the window shown.</summary>
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            windowShown = true;
+            webApiServer?.MarkUiReady();
+        }
+
+        /// <summary>Set once by <see cref="OnShown"/>.</summary>
+        private volatile bool windowShown;
+
         /// <summary>
         /// Called when the form is closing - saves state and cleans up resources
         /// </summary>
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            // Diagnostics: CloseReason distinguishes a user clicking the X (UserClosing) from
+            // Application.Exit tearing the form down (ApplicationExitCall) from a shell/session
+            // shutdown - and the stack names whoever asked.
+            Diagnostics.ShutdownDiagnostics.LogWithStack($"MainForm.OnFormClosing reason={e.CloseReason} cancel={e.Cancel}");
+
             // Check if we're on the test ROM
             bool isTestRom = nes != null && string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase);
             
@@ -173,12 +191,23 @@ namespace BrokenNes.Windows
             }
 
             StopEmulation();
+            SaveSessionBattery(force: true);   // BrokenNes 2: a SNES / Game Boy game's battery save
             
-            // Shut down Web API server
+            // Shut down Web API server - OFF the UI thread. Stopping the host waits for in-flight requests
+            // (30 s by default), and many handlers marshal onto this thread with Control.Invoke (e.g.
+            // /api/cores/apply). Waiting for them here, on the UI thread that must run those invokes, is a
+            // deadlock: the window never finishes closing while a request is in flight. Done in the
+            // background, the UI thread keeps pumping, the blocked handlers complete (or fail once the
+            // window is gone) and the host stops normally. The instance file is also removed by the
+            // ProcessExit hook, so nothing is lost if the process exits first.
             if (webApiServer != null)
             {
-                _ = webApiServer.StopAsync();
-                webApiServer.Dispose();
+                var server = webApiServer;
+                _ = Task.Run(async () =>
+                {
+                    try { await server.StopAsync().ConfigureAwait(false); } catch { }
+                    try { server.Dispose(); } catch { }
+                });
             }
             
             audioManager?.Dispose();

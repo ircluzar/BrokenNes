@@ -1,0 +1,50 @@
+{
+  "name": "widemess_sample",
+  "title": "WIDE BLASTER",
+  "romBanks": 8,
+  "fastRom": true,
+  "features": ["picture", "sprites", "sound", "fastcpu", "bigwram", "fastdma"],
+  "graphics": {
+    "backdrop": "#000010",
+    "layers": [
+      { "name": "hud", "png": "gfx/l1_hud.png", "layer": 0, "bank": 0, "map": "64x32", "priority": true },
+      { "name": "ground", "png": "gfx/l2_ground.png", "layer": 1, "bank": 2, "map": "64x32" },
+      { "name": "city", "png": "gfx/l3_city.png", "layer": 2, "bank": 2, "map": "64x32" },
+      { "name": "mid", "png": "gfx/l4_mid.png", "layer": 3, "bank": 1, "map": "64x32" },
+      { "name": "far", "png": "gfx/l5_far.png", "layer": 4, "bank": 1, "map": "64x32" },
+      { "name": "nebula", "png": "gfx/l6_nebula.png", "layer": 5, "bank": 1, "map": "64x32" },
+      { "name": "stars", "png": "gfx/l7_stars.png", "layer": 6, "bank": 0, "map": "64x32" },
+      { "name": "sky", "png": "gfx/l8_sky.png", "layer": 7, "bank": 0 }
+    ],
+    "sprites": [
+      { "name": "ship", "png": "gfx/s_ship.png", "frame": "16x16", "bpp": 4, "palette": 48 },
+      { "name": "saucer", "png": "gfx/s_saucer.png", "frame": "16x16", "bpp": 4, "palette": 49 },
+      { "name": "dart", "png": "gfx/s_dart.png", "frame": "16x16", "bpp": 4, "palette": 50 },
+      { "name": "bullet", "png": "gfx/s_bullet.png", "frame": "8x8", "bpp": 4, "palette": 51 },
+      { "name": "boom", "png": "gfx/s_boom.png", "frame": "16x16", "bpp": 4, "palette": 52 },
+      { "name": "spark", "png": "gfx/s_spark.png", "frame": "8x8", "bpp": 4, "palette": 53 },
+      { "name": "boss", "png": "gfx/s_boss.png", "frame": "64x64", "bpp": 8, "bank": 3 }
+    ]
+  },
+  "sound": {
+    "samples": [
+      { "name": "bass", "wav": "audio/bass.wav", "format": "pcm16", "rate": 32000, "root": 45, "adsr": ["8F", "F1"] },
+      { "name": "pad", "wav": "audio/pad.wav", "format": "pcm16", "rate": 32000, "root": 57, "loop": 16000, "adsr": ["8A", "E0"] },
+      { "name": "lead", "wav": "audio/lead.wav", "format": "pcm16", "rate": 32000, "root": 69, "loop": 16000, "adsr": ["8F", "E0"] },
+      { "name": "kick", "wav": "audio/kick.wav", "format": "brr", "rate": 16000, "root": 60 },
+      { "name": "snare", "wav": "audio/snare.wav", "format": "brr", "rate": 16000, "root": 60 },
+      { "name": "hat", "wav": "audio/hat.wav", "format": "brr", "rate": 16000, "root": 60 },
+      { "name": "laser", "wav": "audio/laser.wav", "format": "brr", "rate": 16000, "root": 60 },
+      { "name": "boom", "wav": "audio/boom.wav", "format": "pcm16", "rate": 32000, "root": 60 }
+    ],
+    "songs": [
+      { "name": "theme", "mid": "audio/theme.mid", "volume": 0.2,
+        "instruments": { "0": "bass", "1": "pad", "2": "lead", "3": "lead", "9": { "36": "kick", "38": "snare", "42": "hat" } } }
+    ],
+    "effects": [
+      { "name": "laser", "sample": "laser", "voice": 0, "volume": 60 },
+      { "name": "hit", "sample": "boom", "note": 72, "voice": 30, "volume": 80 },
+      { "name": "boom", "sample": "boom", "voice": 31, "volume": 96 }
+    ]
+  }
+}

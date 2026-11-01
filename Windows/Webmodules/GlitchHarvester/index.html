@@ -24,6 +24,9 @@
       <!-- Section 0: Real-Time Corruptor -->
       <section class="gh-section gh-rtc active" data-section="rtc">
         <h3 class="gh-section-title">Real-Time Corruptor</h3>
+
+        <!-- What the farm can do with the running game (console games: how a position is stored) -->
+        <div id="farmStatus" class="gh-farm-status"></div>
         
         <!-- Auto-Corrupt Toggle -->
         <div class="gh-checkbox-row">
@@ -57,6 +60,16 @@
           <span id="intensityValue" class="gh-value">1</span>
         </div>
         
+        <div class="gh-checkbox-row" id="rowTrueSizes">
+          <label>
+            <input type="checkbox" id="chkTrueSizes">
+            <span>True domain sizes (NES)</span>
+          </label>
+          <div class="gh-tooltip">ⓘ
+            <span class="gh-tooltip-text">Off (the default): PRG ROM, PRG RAM and CHR are sized by probing them for non-zero bytes, as the corruptor always has, which is usually far smaller than the memory. On: each memory's real size, so a blast reaches all of it. Console games always use real sizes.</span>
+          </div>
+        </div>
+
         <!-- Quick Preset -->
         <div class="gh-actions">
           <button id="btnManualBlast" class="gh-btn gh-btn-warning">Manual Blast</button>
@@ -91,6 +104,7 @@
       <!-- Section 1: Base States / SaveStates -->
       <section class="gh-section gh-bases" data-section="bases">
         <h3 class="gh-section-title">SaveStates</h3>
+        <div id="baseHint" class="gh-farm-status"></div>
         
         <div class="gh-input-row">
           <label for="baseNameInput">New Name:</label>
@@ -169,10 +183,15 @@
           </div>
         </div>
         
+        <div id="stockpileFile" class="gh-file-line"></div>
+        <div id="stockpileDetail" class="gh-detail"></div>
+
         <div class="gh-actions">
           <button id="btnReplayStock" class="gh-btn" disabled>Replay</button>
           <button id="btnRenameStock" class="gh-btn" disabled>Rename</button>
           <button id="btnDeleteStock" class="gh-btn gh-btn-danger" disabled>Delete</button>
+          <button id="btnSaveFile" class="gh-btn gh-btn-primary" title="Save the stockpile to a file you can open here again or in the BrokenNes2 FL Studio plugin">Save file...</button>
+          <button id="btnOpenFile" class="gh-btn" title="Open a stockpile file (replaces what is listed)">Open file...</button>
           <button id="btnExport" class="gh-btn" disabled>Export</button>
           <label class="gh-btn gh-btn-file" for="fileImport" id="btnImportLabel">
             Import
@@ -327,6 +346,7 @@
       </div>
       <div class="gh-modal-body">
         <input type="text" id="renameInput" class="gh-input" placeholder="Enter new name">
+        <textarea id="renameDescription" class="gh-input" rows="3" placeholder="What it does, in your words (kept in the file)" style="margin-top: 0.5rem; width: 100%; resize: vertical;"></textarea>
       </div>
       <div class="gh-modal-footer">
         <button id="btnRenameCancel" class="gh-btn">Cancel</button>

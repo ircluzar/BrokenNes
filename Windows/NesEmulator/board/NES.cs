@@ -41,6 +41,32 @@ namespace NesEmulator
 		private const int ExtraCyclesNumerator = CpuFrequencyInt % TargetFpsInt; // 33
 		private const int ExtraCyclesDenominator = TargetFpsInt; // 60
 
+		// === Opt-in NTSC-accurate (FCEUX-parity) frame timing - see Bus.SpeedConfig.NtscAccurateFrameRate ===
+		// 89342 PPU dots/frame normally, 89341 every other frame (unconditional toggle - matches the
+		// FCEUX build this targets parity with, which does not gate the skip on rendering being
+		// enabled; see project_fceux_movie_parity memory). ntscDotBudget is the cumulative dot count
+		// the session should have reached by the end of the current frame; globalCpuCycle*3 is always
+		// the cumulative dot count actually stepped (every CPU cycle this emulator runs feeds the PPU
+		// exactly 3 dots via FlushBatch). 89342 and 89341 both leave a remainder mod 3, so the two
+		// cumulative sums can't be kept exactly equal through CPU-cycle stepping alone - the leftover
+		// 0-2 dots are trued up with a direct, targeted bus.ppu.Step() call after the main loop, the
+		// one deliberate place in this emulator where the PPU is stepped independently of a CPU cycle.
+		private long ntscDotBudget = 0;
+		private bool ntscFrameParityToggle = false;
+		// Whether the NTSC correction was on last frame, so RunFrame can spot it being switched ON
+		// mid-session and re-anchor ntscDotBudget instead of inheriting an unpayable deficit.
+		// Starts false: a machine that runs with the correction on from frame 0 re-baselines to
+		// globalCpuCycle * 3 == 0, which is exactly the initial budget, so nothing changes for it.
+		private bool ntscWasEnabled = false;
+
+		// === Opt-in cycle-accurate CPU->PPU interleave - see SpeedConfig.CpuCyclePrecisePpu ===
+		// Cycles the precise window has already given the PPU/APU beyond what the CPU actually
+		// executed, carried across instructions so an instruction whose modelled bus accounted for
+		// MORE accesses than its cycle count cannot leave the PPU permanently running ahead. Lives
+		// on the frame driver rather than in RunFrame because a frame boundary must not reset it:
+		// the debt is against the master clock, not against a frame.
+		private int precisePpuDebt = 0;
+
 		public NES() { }
 		public string RomName { get; set; } = string.Empty; // optional UI label propagated into savestates
 		public string RomPath { get; set; } = string.Empty; // optional full path to ROM file
@@ -237,9 +263,19 @@ namespace NesEmulator
 			public double cycleRemainder; // retained for backward compatibility.
 			public int extraCycleAcc; // new: accumulator for fractional cycles (0..ExtraCyclesDenominator-1)
 			public int overshootCarry; // new: instruction overshoot carry to next frame
+			// The frame driver's master clock. Without it a loaded machine restarts its cycle count, its
+			// NTSC dot budget and the half-dot parity toggle from wherever it happens to be, and every
+			// frame after the load is a cycle or so different from the one that was saved.
+			public bool hasFrameClock;
+			public long globalCpuCycle; public long ntscDotBudget; public bool ntscFrameParityToggle; public bool ntscWasEnabled; public int precisePpuDebt; public int preciseCarryDots; public bool dmcDmaPending;
 			public byte[] ram = Array.Empty<byte>();
 			public string cpu = string.Empty; public string ppu = string.Empty; public string apu = string.Empty; public string mapper = string.Empty; public byte[] prgRAM=Array.Empty<byte>(); public byte[] chrRAM=Array.Empty<byte>();
 			public byte controllerState; public byte controllerShift; public bool controllerStrobe; // input
+			// Bus-level state that lives outside any CPU/PPU/APU core's own GetState() - previously
+			// silently dropped by every SaveState()/LoadState() round trip (see project_tas_ml_
+			// integration memory for how the resulting transient post-reload desync was found).
+			public byte openBus;
+			public int pendingCpuStallCycles;
 			public byte[] romData = Array.Empty<byte>(); // full iNES ROM image (header+PRG+CHR) for auto-ROM restoration
 			public string romHash = string.Empty; // SHA256 of romData for quick comparison
 			public string romName = string.Empty; // optional metadata for UI labeling
@@ -293,11 +329,29 @@ namespace NesEmulator
 			catch { return (string.Empty, string.Empty); }
 		}
 
+		// MD5 of PRG+CHR only (no header/trainer) - the same convention FCEUX's internal
+		// GameInfo->MD5 uses, and what FM2's romChecksum key is meant to hold. Kept separate
+		// from ComputeGameIdentity() (SHA1, prefixed/formatted for BrokenNes's own save
+		// system) since movie-file compatibility specifically needs raw MD5 bytes.
+		public byte[] ComputeRomMd5()
+		{
+			if (cartridge == null) return Array.Empty<byte>();
+			using var md5 = System.Security.Cryptography.MD5.Create();
+			var prg = cartridge.prgROM ?? Array.Empty<byte>();
+			var chr = cartridge.chrROM ?? Array.Empty<byte>();
+			if (prg.Length > 0) md5.TransformBlock(prg, 0, prg.Length, null, 0);
+			md5.TransformFinalBlock(chr, 0, chr.Length);
+			return md5.Hash ?? Array.Empty<byte>();
+		}
+
 		// === UI Core Hot-Swap Helpers (CPU / PPU) ===
 		public object GetCpuState() => bus?.cpu.GetState() ?? new object();
 		public void SetCpuState(object state) { try { bus?.cpu.SetState(state); } catch { } }
 		public object GetPpuState() => bus?.ppu.GetState() ?? new object();
 		public void SetPpuState(object state) { try { bus?.ppu.SetState(state); } catch { } }
+		// Diagnostic: current mapper state (bank selections, IRQ counter, etc.) - useful for tools
+		// investigating bank-switching/timing bugs without needing a mapper-specific debug UI.
+		public object GetMapperState() => cartridge?.mapper?.GetMapperState() ?? new object();
 		public void SetCpuCore(Bus.CpuCore core) { try { bus?.SetCpuCore(core); } catch { } }
 		public void SetPpuCore(Bus.PpuCore core) { try { bus?.SetPpuCore(core); } catch { } }
 		// Generic reflection-based core selection (suffix id strings)
@@ -374,6 +428,9 @@ namespace NesEmulator
 					cycleRemainder = overshootCarry, // store overshoot for older loaders
 					extraCycleAcc = extraCycleAccumulator,
 					overshootCarry = overshootCarry,
+					hasFrameClock = true,
+					globalCpuCycle = globalCpuCycle, ntscDotBudget = ntscDotBudget, ntscFrameParityToggle = ntscFrameParityToggle,
+					ntscWasEnabled = ntscWasEnabled, precisePpuDebt = precisePpuDebt, preciseCarryDots = bus?.PreciseCarryDots ?? 0, dmcDmaPending = bus?.DmcDmaPending ?? false,
 					ram = ramClone,
 					cpu = cpuJson,
 					ppu = ppuJson,
@@ -387,6 +444,8 @@ namespace NesEmulator
 					controllerState = bus.input.DebugGetRawState(),
 					controllerShift = bus.input.DebugGetShift(),
 					controllerStrobe = bus.input.DebugGetStrobe(),
+					openBus = bus.GetOpenBus(),
+					pendingCpuStallCycles = bus.PendingCpuStallCycles,
 					apuCore = (int)bus.GetActiveApuCore(),
 					cpuCore = (int)bus.GetActiveCpuCore(),
 					cpuCoreId = bus.cpu.GetType().Name,
@@ -398,6 +457,12 @@ namespace NesEmulator
 			try { if (st != null) { st.romHash = cartridge.rom.Length > 0 ? ComputeHash(cartridge.rom) : string.Empty; Log("ROM hash computed length="+ (st.romHash?.Length ?? 0)); } } catch (Exception ex) { Log("ROM hash FAILED: "+ex.GetType().Name+" "+ex.Message); }
 			string json = string.Empty;
 			try { Log("Serializing NesState root - start"); json = PlainSerialize(st!); Log($"Serializing NesState root - done length={json.Length}"); } catch (Exception ex) { Log("Root serialization FAILED: "+ex.GetType().Name+" "+ex.Message); }
+			// A state taken between power-on (or a reset) and the first frame still owes the 6502's reset sequence (the 8 cycles the
+			// first frame runs before its first opcode fetch, FIX cores). Without this a loaded power-on state skipped them: its first
+			// frame's instructions fell 8 cycles earlier and the frame ended a cycle off (overshootCarry, the cycle count), so a
+			// Timeflow replay from frame 0 went off at the keyframe 60 (found by T3). Written only while pending, so every other state
+			// is byte for byte what it was, and an older state (which never has it) loads as before: not pending.
+			if (resetSequencePending && json.Length > 1 && json[0] == '{') json = "{\"resetSequencePending\":true," + json.Substring(1);
 			var elapsed = DateTime.UtcNow - startTimestamp; Log("SaveState() complete in "+elapsed.TotalMilliseconds.ToString("F2")+" ms");
 			return json;
 		}
@@ -477,15 +542,44 @@ namespace NesEmulator
 			static string Escape(string raw) => raw.Replace("\\","\\\\").Replace("\"","\\\"");
 		}
 
+		/// <summary>Called after a state was loaded (null unless a host listens: the apps' bug capture, BrokenDev D6, starts its history again there).</summary>
+		public Action? StateLoaded;
+
 		public void LoadState(string json)
 		{
 			if (string.IsNullOrWhiteSpace(json)) return;
+			// Keep showing the last good picture (rather than a half-drawn one) until the loaded machine
+			// has drawn a whole frame - see NotePpuProgress.
+			lastClockScanline = -1; awaitingFrameStart = true;
+			resetSequencePending = false; // the state carries its own timing
 			NesState? st = null;
+			bool loadedFixedPointTiming = false;
+			bool loadedResetPending = false;
 			try {
 				using var doc = System.Text.Json.JsonDocument.Parse(json);
 				var root = doc.RootElement;
 				st = new NesState();
 				if (root.TryGetProperty("cycleRemainder", out var cr)) st.cycleRemainder = cr.GetDouble();
+				loadedResetPending = root.TryGetProperty("resetSequencePending", out var rsp) && rsp.ValueKind == System.Text.Json.JsonValueKind.True;
+				// These two were always written by SaveState but never read back, so every load reset the
+				// fractional-cycle accumulator to 0: frames after a load ran up to a cycle long or short,
+				// and a savestate only round-tripped cleanly on frames where it happened to be 0 already
+				// (every 60th frame in default mode).
+				bool hasFixedPointTiming = root.TryGetProperty("extraCycleAcc", out var eca);
+				if (hasFixedPointTiming) st.extraCycleAcc = eca.GetInt32();
+				if (root.TryGetProperty("overshootCarry", out var osc)) { st.overshootCarry = osc.GetInt32(); hasFixedPointTiming = true; }
+				if (root.TryGetProperty("hasFrameClock", out var hfc) && hfc.GetBoolean())
+				{
+					st.hasFrameClock = true;
+					if (root.TryGetProperty("globalCpuCycle", out var gcc)) st.globalCpuCycle = gcc.GetInt64();
+					if (root.TryGetProperty("ntscDotBudget", out var ndb)) st.ntscDotBudget = ndb.GetInt64();
+					if (root.TryGetProperty("ntscFrameParityToggle", out var nfp)) st.ntscFrameParityToggle = nfp.GetBoolean();
+					if (root.TryGetProperty("ntscWasEnabled", out var nwe)) st.ntscWasEnabled = nwe.GetBoolean();
+					if (root.TryGetProperty("precisePpuDebt", out var ppd)) st.precisePpuDebt = ppd.GetInt32();
+				if (root.TryGetProperty("preciseCarryDots", out var pcd)) st.preciseCarryDots = pcd.GetInt32();
+				if (root.TryGetProperty("dmcDmaPending", out var ddp)) st.dmcDmaPending = ddp.GetBoolean();
+				}
+				loadedFixedPointTiming = hasFixedPointTiming;
 				if (root.TryGetProperty("ram", out var ramEl)) {
 					if (ramEl.ValueKind==System.Text.Json.JsonValueKind.Array) { var arr=ramEl; int len=arr.GetArrayLength(); st.ram=new byte[len]; int idx=0; foreach(var v in arr.EnumerateArray()){ if(idx>=len) break; st.ram[idx++]=(byte)v.GetByte(); } }
 					else if (ramEl.ValueKind==System.Text.Json.JsonValueKind.String) { try { st.ram = ramEl.GetBytesFromBase64(); } catch { st.ram=Array.Empty<byte>(); } }
@@ -505,6 +599,8 @@ namespace NesEmulator
 				if (root.TryGetProperty("controllerState", out var csEl)) st.controllerState = (byte)csEl.GetByte();
 				if (root.TryGetProperty("controllerShift", out var cshEl)) st.controllerShift = (byte)cshEl.GetByte();
 				if (root.TryGetProperty("controllerStrobe", out var cstEl)) st.controllerStrobe = cstEl.GetBoolean();
+				if (root.TryGetProperty("openBus", out var obEl)) st.openBus = (byte)obEl.GetByte();
+				if (root.TryGetProperty("pendingCpuStallCycles", out var pscEl)) st.pendingCpuStallCycles = pscEl.GetInt32();
 				if (root.TryGetProperty("romData", out var romEl)) {
 					if (romEl.ValueKind==System.Text.Json.JsonValueKind.Array){ int len=romEl.GetArrayLength(); st.romData=new byte[len]; int i=0; foreach(var v in romEl.EnumerateArray()){ if(i>=len) break; st.romData[i++]=(byte)v.GetByte(); } }
 					else if (romEl.ValueKind==System.Text.Json.JsonValueKind.String){ try { st.romData = romEl.GetBytesFromBase64(); } catch { st.romData=Array.Empty<byte>(); } }
@@ -541,10 +637,11 @@ namespace NesEmulator
 				} catch { return; }
 			}
 			if (bus == null || cartridge == null) return; // still cannot proceed
+			resetSequencePending = loadedResetPending; // a power-on / reset state still owes its reset sequence (see SaveState)
 			// Always refresh ROM-backed domains from the ROM image to ensure clean PRG/CHR at load
 			try { cartridge.RefreshRomDomainsFromRom(); } catch { }
 			// Restore fixed-point timing accumulators (fallback to double if new ints absent)
-			if (st.extraCycleAcc != 0 || st.overshootCarry != 0)
+			if (loadedFixedPointTiming || st.extraCycleAcc != 0 || st.overshootCarry != 0)
 			{
 				extraCycleAccumulator = st.extraCycleAcc;
 				overshootCarry = st.overshootCarry;
@@ -555,9 +652,26 @@ namespace NesEmulator
 				overshootCarry = st.cycleRemainder > 0 ? (int)st.cycleRemainder : 0;
 				extraCycleAccumulator = 0;
 			}
+			if (st.hasFrameClock)
+			{
+				globalCpuCycle = st.globalCpuCycle;
+				ntscDotBudget = st.ntscDotBudget; ntscFrameParityToggle = st.ntscFrameParityToggle; ntscWasEnabled = st.ntscWasEnabled;
+				precisePpuDebt = st.precisePpuDebt;
+				if (bus != null) bus.PreciseCarryDots = st.preciseCarryDots; // dots a late write already ran for the next access
+				if (bus != null) bus.DmcDmaPending = st.dmcDmaPending; // a DMC fetch requested at a frame's last access halts at the next read
+				// The event scheduler's next-event cycles are relative to the old clock; restoring an
+				// earlier cycle count must not leave them stranded in the future.
+				nextPpuEventCycle = nextApuEventCycle = nextFrameBoundaryCycle = globalCpuCycle;
+			}
 			if (st.ram != null && st.ram.Length == bus.ram.Length) Array.Copy(st.ram, bus.ram, st.ram.Length);
+			bus.SetOpenBus(st.openBus);
+			bus.PendingCpuStallCycles = st.pendingCpuStallCycles;
 			// Restore mapper first so CPU/PPU memory fetches align when we set their internals
 			if (!string.IsNullOrEmpty(st.mapper)) { try { using var md = System.Text.Json.JsonDocument.Parse(st.mapper); cartridge.mapper.SetMapperState(md.RootElement); } catch { } }
+			// A savestate load has just (possibly) rolled the cartridge's flash back to an older
+			// state. Block battery autosaves until the game writes flash again, so the rollback
+			// cannot be committed over a newer real save. See SuppressBatteryAutosave above.
+			SuppressBatteryAutosaveUntilNextFlashWrite();
 			if (st.prgRAM.Length == cartridge.prgRAM.Length) Array.Copy(st.prgRAM, cartridge.prgRAM, st.prgRAM.Length);
 			if (st.chrRAM.Length == cartridge.chrRAM.Length) Array.Copy(st.chrRAM, cartridge.chrRAM, st.chrRAM.Length);
 			// Finally restore CPU/PPU/APU internal state
@@ -613,6 +727,7 @@ namespace NesEmulator
 			try { bus.ActiveAPU?.ClearAudioBuffers(); } catch { }
 			// Restore controller
 			bus.input.DebugSetState(st.controllerState, st.controllerShift, st.controllerStrobe);
+			StateLoaded?.Invoke();
 			#if DIAG_LOG
 			try {
 				var activeCpuId = bus.cpu?.GetType().Name ?? "";
@@ -627,8 +742,15 @@ namespace NesEmulator
 			#endif
 		}
 
+		/// <summary>The ROM file the last <see cref="LoadROM"/> was given (the same array, not a copy), and how many loads this NES has had: the apps'
+		/// bug capture (BrokenDev D6) keeps the ROM in its bundle and starts its history again at each load.</summary>
+		public byte[]? RomFile { get; private set; }
+		public int RomLoads { get; private set; }
+
 		public void LoadROM(byte[] romData)
 		{
+			RomFile = romData; RomLoads++;
+			InvalidatePresentedFrame();
 			try {
 				// Preserve the APU core suffix so we don't
 				// collapse custom selections (e.g., SPD, WF, MNES) back to FMC when a new game loads.
@@ -654,6 +776,7 @@ namespace NesEmulator
 				}
 				try { bus.ppu?.ClearBuffers(); } catch { }
 				bus.cpu.Reset();
+				resetSequencePending = true;
 				// Apply current crash behavior to fresh CPU instance
 				bus.cpu.IgnoreInvalidOpcodes = crashBehavior == CrashBehavior.IgnoreErrors;
 				crashed = false; crashInfo = string.Empty; crashKind = CrashKind.Generic;
@@ -718,9 +841,40 @@ namespace NesEmulator
 			}
 			// Compute target cycles for this frame using integer fixed-point method.
 			// Base cycles plus an extra cycle on frames where accumulator crosses denominator.
-			int targetCycles = BaseCyclesPerFrame;
-			extraCycleAccumulator += ExtraCyclesNumerator; // accumulate fractional part (33 per frame)
-			if (extraCycleAccumulator >= ExtraCyclesDenominator) { targetCycles++; extraCycleAccumulator -= ExtraCyclesDenominator; }
+			int targetCycles;
+			if (bus!.SpeedConfig.NtscAccurateFrameRate)
+			{
+				// Re-baseline the budget whenever the correction is switched ON mid-session.
+				//
+				// ntscDotBudget only advances inside this branch, but globalCpuCycle advances on
+				// every frame regardless, and nothing ever reconciled the two. Run with the
+				// correction off for a while and globalCpuCycle races ahead of a budget that has
+				// been standing still; switch it back on and
+				//     targetCycles = ntscDotBudget / 3 - globalCpuCycle
+				// comes out NEGATIVE, so no CPU cycles execute at all. The machine then appears
+				// frozen - the framebuffer is bit-identical frame after frame - until the debt
+				// drains at one frame per frame. Measured: ~120 frames with it off bought 119
+				// frozen frames afterwards, so ten minutes off would mean a ten-minute freeze.
+				//
+				// Anchoring the budget to where the machine actually is makes the correction safe
+				// to toggle in both directions at any time. This is a no-op for anything that has
+				// the flag on from frame 0 - globalCpuCycle is 0 there, which is already the
+				// field's initial value - so traces, TAS replay and the golden suite are untouched.
+				if (!ntscWasEnabled) ntscDotBudget = globalCpuCycle * 3;
+				ntscWasEnabled = true;
+				ntscDotBudget += ntscFrameParityToggle ? 89341 : 89342;
+				ntscFrameParityToggle = !ntscFrameParityToggle;
+				targetCycles = (int)(ntscDotBudget / 3 - globalCpuCycle);
+			}
+			else
+			{
+				// Falling edge. The budget stops advancing here while globalCpuCycle does not, so
+				// the next rising edge MUST re-anchor - see the re-baseline above.
+				ntscWasEnabled = false;
+				targetCycles = BaseCyclesPerFrame;
+				extraCycleAccumulator += ExtraCyclesNumerator; // accumulate fractional part (33 per frame)
+				if (extraCycleAccumulator >= ExtraCyclesDenominator) { targetCycles++; extraCycleAccumulator -= ExtraCyclesDenominator; }
+			}
 			// Apply any overshoot carry from last frame (can reduce target this frame)
 			if (overshootCarry > 0) {
 				if (overshootCarry >= targetCycles) {
@@ -731,8 +885,12 @@ namespace NesEmulator
 				targetCycles -= overshootCarry; overshootCarry = 0;
 			}
 			int executed = 0; // cycles executed this frame (relative)
+			var dbg = DebugHook; // the debugger (Windows/NesEmulator/debug): null when none is armed, one test per instruction
 			long frameEndCycle = globalCpuCycle + targetCycles; // absolute cycle where this frame ends
 			nextFrameBoundaryCycle = frameEndCycle; // update per-frame boundary
+			bus!.PpuCaughtUpPerInstruction = false; // set below by the paths that guarantee it
+			bus!.PreciseSteppingActive = false;
+			bus!.MarkInstructionStart(-1); // unknown until a path below marks each instruction (the event scheduler never does)
 			if (EnableEventScheduler)
 			{
 				// --- Event-driven path (Feature flag gated) ---
@@ -753,6 +911,7 @@ namespace NesEmulator
 						// Execute instructions until we reach or exceed the next event boundary
 						while (batchCpu < remaining)
 						{
+							dbg?.BeforeInstruction(globalCpuCycle + batchCpu);
 							int cpuCycles = bus!.cpu.ExecuteInstruction();
 							batchCpu += cpuCycles;
 							executed += cpuCycles;
@@ -777,12 +936,140 @@ namespace NesEmulator
 				int batchCpu = 0;
 				if (nextPpuEventCycle < globalCpuCycle) nextPpuEventCycle = globalCpuCycle; // keep monotonic (placeholder)
 				try {
-					int dynamicThreshold = ConfigBatchCycleThreshold;
+					// Under NtscAccurateFrameRate, flush after every single instruction instead of
+					// batching ~24 cycles between PPU/APU catch-ups. Originally tried as a blunt
+					// stand-in for a narrower "catch up only on a $2002/$2004 register read" fix (that
+					// needs NES.cs's batch-cycle counter exposed to Bus.cs, plumbing that doesn't exist
+					// yet) hypothesized to close SMB1's frame-177 WORLD-1-1-banner desync - see
+					// project_fceux_movie_parity memory. Verified it does NOT: the frame-177 RAM
+					// divergence onset (diff=193 bytes) is bit-for-bit unchanged with this on, so
+					// stale-PPU-read-on-batch-boundary is not SMB1's actual root cause. Kept anyway
+					// because it independently and reproducibly fixes a real crash: Joe & Mac (3149M.fm2)
+					// hits an illegal JAM opcode at frame 326 under default batching and completes all
+					// 23471 frames clean with this on. ~415fps throughput measured (Joe & Mac, full
+					// movie) - comfortably above real-time, opt-in only for movie replay/export.
+					//
+					// PPU_FIX gets the same per-instruction flush unconditionally. It is the accuracy
+					// core, and batching up to ~24 cycles leaves both halves of a raster effect late:
+					// the PPU raises an IRQ or sprite-0 hit up to 72 dots after hardware, and the
+					// handler's register writes then land that much late too. Zelda II's title split
+					// ended up past the dot-256 Y increment (lower half 3 rows low), and catching up
+					// only on register access is not enough on its own - SMB3's MMC3 IRQ is still
+					// noticed a batch late, which put its status-bar split on the wrong line. Every
+					// other PPU core keeps the batched timing its goldens were recorded against.
+					bool perInstruction = bus!.SpeedConfig.NtscAccurateFrameRate || bus!.ppu is IPpuFixTiming;
+					int dynamicThreshold = perInstruction ? 1 : ConfigBatchCycleThreshold;
 					int adaptiveAccumulator = 0;
+					// Null unless the active APU can predict its DMC fetches (only APU_FIX does),
+					// which is what keeps every other core on the untouched batched path.
+					var dmcSchedulable = bus!.GetDmcSchedulable();
+					// Cycle-accurate CPU->PPU interleave; see SpeedConfig.CpuCyclePrecisePpu. Opt-in for
+					// every other PPU core; always on for PPU_FIX, the accuracy core, whose per-dot
+					// renderer only pays off if a register write lands on the right dot. Catching the
+					// PPU up once per instruction instead put writes at the instruction's START - up
+					// to ~20 dots early - and certification against Mesen showed it: Kirby and Metroid
+					// matched in precise timing but not in default. Costs 15-21% over per-instruction.
+					// Hoisted out of the loop because it cannot change mid-frame and this is the
+					// hot loop: with it off the only cost is this one local read.
+					bool precisePpu = bus!.SpeedConfig.CpuCyclePrecisePpu || bus!.ppu is IPpuFixTiming;
+					bus!.PpuCaughtUpPerInstruction = perInstruction || precisePpu;
+					bus!.PreciseSteppingActive = precisePpu;
+					// The 6502 spends 8 cycles on its reset sequence before the first opcode fetch, and the
+					// PPU and APU run through them. Skipping them left PPU_FIX a whole cycle (3 dots) out of
+					// phase with Mesen 2.1.1 for the rest of the run - after games re-sync on vblank the
+					// remainder shifted every raster split and interrupt landing. FIX cores only.
+					if (resetSequencePending)
+					{
+						resetSequencePending = false;
+						if (bus!.cpu is CPU_FIX && bus!.ppu is IPpuFixTiming) FlushBatch(ResetSequenceCycles);
+					}
 					while (globalCpuCycle < frameEndCycle)
 					{
 						for (int i = 0; i < ConfigMaxInstructionsPerBatch && globalCpuCycle < frameEndCycle; i++)
 						{
+							if (precisePpu)
+							{
+								// Every instruction runs inside the precise window, so PPU and APU
+								// advance one CPU cycle per bus access DURING the instruction rather
+								// than in one lump after it. This is the same machinery the DMC
+								// predictive split below uses; the difference is only that it is
+								// armed unconditionally, which makes the DMC prediction redundant.
+								dbg?.BeforeInstruction(globalCpuCycle);
+								bus!.MarkInstructionStart(globalCpuCycle);
+								if (InstructionTracer.Enabled && bus!.ppu is IPpuFixTiming tracedPpu) { InstructionTracer.NotePpuPosition(tracedPpu.ProbeScanline, tracedPpu.ProbeDot); InstructionTracer.NotePpuScroll(tracedPpu.ProbeV, tracedPpu.ProbeFineX); }
+								bus!.BeginPreciseWindow();
+								int preciseInstrCycles = bus!.cpu!.ExecuteInstruction();
+								var (accessCycles, stallCycles) = bus!.EndPreciseWindow();
+								globalCpuCycle += accessCycles + stallCycles;
+								// Cycles the instruction spent that no bus access accounted for.
+								// CPU_FIX does not touch the bus on literally every cycle (an
+								// implied 2-cycle op fetches once where hardware fetches twice), so
+								// this is normally positive and gets flushed to keep the aggregate
+								// budget exact. It can also go NEGATIVE - a modelled dummy access
+								// can outnumber the opcode's cycle count - and simply dropping that
+								// case would let the PPU run permanently ahead of the CPU, one or
+								// two cycles per occurrence, which is the very error this mode
+								// exists to remove. So an overshoot is carried as a debt and paid
+								// out of the next instructions' flushes instead.
+								int owed = preciseInstrCycles - accessCycles;
+								if (owed > 0 && precisePpuDebt > 0)
+								{
+									int pay = owed < precisePpuDebt ? owed : precisePpuDebt;
+									precisePpuDebt -= pay; owed -= pay;
+								}
+								else if (owed < 0) { precisePpuDebt += -owed; owed = 0; }
+								// Run those cycles one by one as the dummy reads they are (a pending DMC DMA
+								// halts on one - see Bus.RunInstructionTail), then flush only pending stalls.
+								if (owed > 0) { globalCpuCycle += bus!.RunInstructionTail(owed); owed = 0; }
+								// Called even for owed == 0: FlushBatch is also what drains a
+								// pending OAM DMA stall, and deferring that to the next instruction
+								// that happens to owe a cycle would put the 513-cycle stall in the
+								// wrong place.
+								FlushBatch(owed);
+								globalCpuCycle += bus!.RunPendingOamDma();
+								// Deliberately the instruction's own cycle count, exactly as the
+								// batched path below does - NOT the globalCpuCycle delta, which also
+								// contains DMA stall cycles. `executed` feeds overshootCarry, which
+								// shortens the next frame; counting stalls here made every frame
+								// with an OAM DMA end a few cycles early and walked the RunFrame
+								// boundary out of the pre-render line and into scanline 0, which
+								// silently re-indexes every frame the trace harness samples.
+								executed += preciseInstrCycles;
+								continue;
+							}
+							// Predictive DMA split: the APU is `batchCpu` cycles behind the CPU, so a
+							// fetch reported as `untilDma` cycles away is already in the CPU's past once
+							// untilDma <= batchCpu. Catch the APU up to exactly that point and run the
+							// next instruction cycle-by-cycle, so the fetch's bus read and stall land on
+							// their real cycle instead of at the next batch boundary. Cheap because it
+							// only triggers when a fetch is genuinely within reach - see Bus.PreciseTick.
+							if (dmcSchedulable != null)
+							{
+								int untilDma = dmcSchedulable.CyclesUntilDmcFetch();
+								if (untilDma <= batchCpu + MaxInstructionCycles)
+								{
+									if (batchCpu > 0) { FlushBatch(batchCpu); batchCpu = 0; adaptiveAccumulator = 0; }
+									dbg?.BeforeInstruction(globalCpuCycle);
+									bus!.MarkInstructionStart(globalCpuCycle);
+									bus!.BeginPreciseWindow();
+									int preciseCycles = bus!.cpu!.ExecuteInstruction();
+									var (accessCycles, stallCycles) = bus!.EndPreciseWindow();
+									// The window already advanced PPU/APU by accessCycles + stallCycles,
+									// so globalCpuCycle (which FlushBatch keeps level with them) owes the
+									// same. CPU_FIX doesn't touch the bus on literally every cycle
+									// (implied 2-cycle ops fetch once), so flush whatever the instruction
+									// spent beyond its accesses to keep the aggregate budget exact.
+									globalCpuCycle += accessCycles + stallCycles;
+									int residual = preciseCycles - accessCycles;
+									if (residual > 0) FlushBatch(residual);
+									// Stall cycles are real elapsed time the CPU spent halted, so they
+									// count against the frame budget on top of the instruction's own.
+									executed += preciseCycles + stallCycles;
+									continue;
+								}
+							}
+							dbg?.BeforeInstruction(globalCpuCycle + batchCpu);
+							bus!.MarkInstructionStart(globalCpuCycle + batchCpu); // batchCpu = cycles already run but not yet flushed
 							int cpuCycles = bus!.cpu!.ExecuteInstruction();
 							executed += cpuCycles;
 							batchCpu += cpuCycles;
@@ -791,7 +1078,7 @@ namespace NesEmulator
 							{
 								FlushBatch(batchCpu);
 								batchCpu = 0;
-								if (bus.SpeedConfig.CpuAdaptiveBatching)
+								if (bus.SpeedConfig.CpuAdaptiveBatching && !perInstruction)
 								{
 									// Simple proportional adjustment: if actual batch overshoots target, reduce threshold; if undershoots, increase.
 									int target = bus!.SpeedConfig.CpuAdaptiveBatchTargetCycles;
@@ -816,8 +1103,28 @@ namespace NesEmulator
 			// (Exceptions already handled within each scheduling branch)
 			// If we executed beyond the frame target (shouldn't with frameEndCycle guard) track overshoot for compatibility
 			if (executed > targetCycles) overshootCarry = executed - targetCycles; else overshootCarry = 0;
-			// Always update frame buffer (no frameskip) for smoother perceived motion
-			if (!crashed) bus!.ppu!.UpdateFrameBuffer();
+			// True up the PPU's absolute dot position against ntscDotBudget - see the field's doc
+			// comment for why this remainder (always 0-2 dots) can't be absorbed by CPU-cycle
+			// stepping alone. A negative delta (CPU overshoot pushed globalCpuCycle*3 past budget)
+			// needs no action - it isn't undoable, and the next frame's strictly-increasing budget
+			// naturally reconciles against the also-strictly-increasing globalCpuCycle*3.
+			// Not for PPU_FIX: it drops the odd-frame pre-render dot itself, so it gets its frame
+			// length right at exactly 3 dots per CPU cycle. Stepping it here as well would push it
+			// ahead of the CPU by the remainder every frame, never to be credited back, and vblank
+			// would land at a wandering CPU cycle (measured against Mesen as NMI-to-NMI periods
+			// jittering +/-2 cycles, which reshuffles any RNG stirred in an idle loop - Lifeforce).
+			if (bus!.SpeedConfig.NtscAccurateFrameRate && !crashed && bus!.ppu is not IPpuFixTiming)
+			{
+				long dotDelta = ntscDotBudget - globalCpuCycle * 3;
+				if (dotDelta > 0) bus!.ppu!.Step((int)dotDelta);
+			}
+			// The true-up above can itself carry the PPU over the end of the picture.
+			NotePpuProgress();
+			// Always update frame buffer (no frameskip) for smoother perceived motion - unless a
+			// completed frame was already finished and presented during this run (see NotePpuProgress).
+			if (!crashed && !presentedThisRun) bus!.ppu!.UpdateFrameBuffer();
+			presentedThisRun = false;
+			InstructionTracer.OnFrameComplete();
 
 			// === Targeted Imagine: apply captures if any were collected ===
 			if (_imagineTargetConfig != null && _imagineTargetConfig.Enabled && _imagineCaptureBuffer.Count > 0 && ImagineTargetedShot != null)
@@ -869,6 +1176,10 @@ namespace NesEmulator
 		private const int ConfigMaxInstructionsPerBatch = 32;
 		// Cycle threshold: once accumulated CPU cycles exceed this, we flush to PPU/APU.
 		private const int ConfigBatchCycleThreshold = 24; // allows combining several short (2-3 cycle) ops
+		// Worst-case cycles a single 6502 instruction (or interrupt sequence) can take. Used as the
+		// look-ahead margin for the precise-DMA window: a fetch this close could land inside the
+		// instruction we're about to run, so that instruction has to run cycle-by-cycle.
+		private const int MaxInstructionCycles = 8;
 		// If remaining cycles to frame end are below this guard after a loop, flush leftover to keep timing bounded.
 		private const int ConfigMinRemainingFlushGuard = 16;
 		// Limit for a single event-loop CPU instruction burst to avoid extremely large batches when events are sparse.
@@ -902,6 +1213,63 @@ namespace NesEmulator
 			nextApuEventCycle = target;
 		}
 		// Consolidated flush helper so later event-based stepping can reuse it
+		// === Presenting only completed frames ===
+		// RunFrame spends a CPU-cycle budget, not a PPU frame: in default timing it is 29829.55
+		// cycles against hardware's 29780.5, so where it stops drifts ~147 dots (~0.43 lines) a frame
+		// through the picture. The PPU writes its framebuffer a row at a time, so the buffer at that
+		// moment was the top of the new frame on the bottom of the previous one - a tear that walks
+		// down the screen whenever anything scrolls (measured on Zelda II and SMB3). So the frame is
+		// copied out when the PPU finishes its last visible row (the line counter crossing into 240)
+		// and that copy is what GetFrameBuffer hands every consumer. Presentation only: no emulation
+		// timing changes. In NTSC-accurate timing RunFrame already stops at line 0, dot 0 plus at
+		// most one instruction - before row 0 is redrawn at dot 341 - so the copy equals the live
+		// buffer there and traces are byte-identical.
+		private byte[]? presentedFrame;
+		private bool presentedValid;
+		private bool presentedThisRun;
+		private int lastClockScanline = -1;
+		private IPPU? presentClockOwner;
+
+		// Called after every PPU catch-up. The check only has to land somewhere between the end of
+		// row 239 and the start of row 0's redraw - about 7500 dots - so once per flush is plenty.
+		private void NotePpuProgress()
+		{
+			var ppu = bus?.ppu;
+			if (ppu is not IPpuFrameClock clock) return;
+			if (!ReferenceEquals(ppu, presentClockOwner)) { presentClockOwner = ppu; lastClockScanline = -1; }
+			int sl = clock.ProbeScanline;
+			// After a savestate load the frame in progress is missing every row drawn before the
+			// load point (the render target is not in a savestate), so the first frame is only
+			// presented once the PPU has started one from its top row.
+			if (awaitingFrameStart && lastClockScanline >= 240 && sl < 240) awaitingFrameStart = false;
+			if (sl >= 240 && lastClockScanline >= 0 && lastClockScanline < 240)
+			{
+				if (!awaitingFrameStart) PresentCompletedFrame(ppu);
+				PpuEnteredPostRender?.Invoke();
+			}
+			lastClockScanline = sl;
+		}
+		/// <summary>Raised when the PPU crosses from the visible lines into line 240 - where Mesen 2.1.1 ends a
+		/// frame. Test harnesses latch scripted input here to switch it at the same point Mesen does.</summary>
+		public event Action? PpuEnteredPostRender;
+		private bool awaitingFrameStart;
+
+		private void PresentCompletedFrame(IPPU ppu)
+		{
+			// UpdateFrameBuffer is where a core finishes a frame's image (PPU_EXE's echo, the no-ROM
+			// test pattern), so it belongs to the frame being presented, not to RunFrame's return.
+			ppu.UpdateFrameBuffer();
+			presentedThisRun = true;
+			var live = ppu.GetFrameBuffer();
+			if (presentedFrame == null || presentedFrame.Length != live.Length) presentedFrame = new byte[live.Length];
+			Buffer.BlockCopy(live, 0, presentedFrame, 0, live.Length);
+			presentedValid = true;
+		}
+
+		// After a ROM load or savestate load the PPU's position jumps; until it next completes a
+		// frame, fall back to the live buffer exactly as before.
+		private void InvalidatePresentedFrame() { presentedValid = false; lastClockScanline = -1; awaitingFrameStart = false; }
+
 		private void FlushBatch(int cpuCycles)
 		{
 			// Advance subsystems for accumulated cycles; incorporate any pending stall cycles (e.g., fast OAM DMA) as pure CPU delay.
@@ -910,6 +1278,7 @@ namespace NesEmulator
 			bus!.ppu!.Step(total * 3);
 			bus!.StepAPU(total);
 			bus!.CountBatchFlush();
+			NotePpuProgress();
 			globalCpuCycle += total;
 			// Enhanced freeze detector sampling (ImagineFix only): record PC at batch boundaries
 			if (crashBehavior == CrashBehavior.ImagineFix)
@@ -952,11 +1321,156 @@ namespace NesEmulator
 			RenderCrashScreen();
 		}
 
+		/// <summary>
+		/// One frame of a NES whose program is nothing but the picture sink's idle loop (<c>JMP $C000</c>, three cycles a turn): what <see cref="RunFrame"/> would have done, with the CPU not run. The cycle budget, the
+		/// overshoot carry, the dot budget and the PPU's progress through the frame are accounted exactly as <see cref="RunFrame"/> does for a loop of three-cycle instructions that touch no register; the PPU is stepped in
+		/// chunks of at most a scanline (so the entry into the post-render lines is seen and the finished frame presented as it always was) and the APU is not stepped, because nothing hears it and the CPU that
+		/// would have read it does not run. Used only by <c>NesPictureSink</c> (the picture bridges), whose output is bit for bit the same (checked by the speed suite's goldens).
+		/// </summary>
+		internal void RunIdleFrame()
+		{
+			if (bus == null || crashed) return;
+			framesExecutedTotal++;
+			int targetCycles;
+			if (bus!.SpeedConfig.NtscAccurateFrameRate)
+			{
+				if (!ntscWasEnabled) ntscDotBudget = globalCpuCycle * 3;
+				ntscWasEnabled = true;
+				ntscDotBudget += ntscFrameParityToggle ? 89341 : 89342;
+				ntscFrameParityToggle = !ntscFrameParityToggle;
+				targetCycles = (int)(ntscDotBudget / 3 - globalCpuCycle);
+			}
+			else
+			{
+				ntscWasEnabled = false;
+				targetCycles = BaseCyclesPerFrame;
+				extraCycleAccumulator += ExtraCyclesNumerator;
+				if (extraCycleAccumulator >= ExtraCyclesDenominator) { targetCycles++; extraCycleAccumulator -= ExtraCyclesDenominator; }
+			}
+			if (overshootCarry > 0)
+			{
+				if (overshootCarry >= targetCycles) { overshootCarry -= targetCycles; return; }
+				targetCycles -= overshootCarry; overshootCarry = 0;
+			}
+			nextFrameBoundaryCycle = globalCpuCycle + targetCycles;
+			bool perInstruction = bus.SpeedConfig.NtscAccurateFrameRate || bus.ppu is IPpuFixTiming;
+			bool precisePpu = bus.SpeedConfig.CpuCyclePrecisePpu || bus.ppu is IPpuFixTiming;
+			bus.PpuCaughtUpPerInstruction = perInstruction || precisePpu;
+			bus.PreciseSteppingActive = precisePpu;
+			bus.MarkInstructionStart(-1);
+			// the loop runs whole three-cycle instructions until the frame's cycles are spent
+			int executed = targetCycles > 0 ? (targetCycles + 2) / 3 * 3 : 0;
+			for (int left = executed; left > 0;)
+			{
+				int chunk = left < 114 ? left : 114;   // 114 = 38 instructions, a little over a scanline's 113.67 cycles
+				bus.ppu!.Step(chunk * 3);
+				globalCpuCycle += chunk;
+				NotePpuProgress();
+				left -= chunk;
+			}
+			if (executed > targetCycles) overshootCarry = executed - targetCycles; else overshootCarry = 0;
+			if (bus.SpeedConfig.NtscAccurateFrameRate && !crashed && bus.ppu is not IPpuFixTiming)
+			{
+				long dotDelta = ntscDotBudget - globalCpuCycle * 3;
+				if (dotDelta > 0) bus.ppu!.Step((int)dotDelta);
+			}
+			NotePpuProgress();
+			if (!crashed && !presentedThisRun) bus.ppu!.UpdateFrameBuffer();
+			presentedThisRun = false;
+		}
+
+		/// <summary>
+		/// For the picture sink's idle NES: steps the PPU, a scanline at a time and with nothing else running, from where it stands in the vertical blank (lines 241 to 261) through one whole picture (lines 0 to 239, presented
+		/// as it always is when the PPU crosses line 240) to the vertical blank again. The sink then programs the PPU in the blank, so the picture it asks for is drawn whole from its first line: one frame of PPU work
+		/// where the sink used to run two (the first only latched the new state, drawing the old picture's lower part). A PPU that is not in the blank when this is called (the sink's first frame) is first brought to it.
+		/// </summary>
+		internal void RunIdleToVblank()
+		{
+			if (bus == null || crashed) return;
+			if (bus.ppu is not IPpuFrameClock clock) { RunIdleFrame(); RunIdleFrame(); return; }
+			PrepareIdleStepping();
+			if (!InBlank(clock)) AlignIdleToVblank();
+			bool seenVisible = false;
+			for (int guard = 0; guard < 600; guard++)
+			{
+				bus.ppu!.Step(342);              // 114 CPU cycles: a little over a scanline's 341 dots
+				globalCpuCycle += 114;
+				NotePpuProgress();
+				int sl = clock.ProbeScanline;
+				if (sl <= 239) seenVisible = true;
+				else if (seenVisible && sl >= 241 && sl <= 260) break;
+			}
+			if (!crashed && !presentedThisRun) bus.ppu!.UpdateFrameBuffer();
+			presentedThisRun = false;
+		}
+
+		/// <summary>Steps the idle NES's PPU on, a scanline at a time, until it is in the vertical blank (the sink calls this once before it programs the PPU for the first time).</summary>
+		internal void AlignIdleToVblank()
+		{
+			if (bus == null || crashed || bus.ppu is not IPpuFrameClock clock) return;
+			PrepareIdleStepping();
+			for (int g = 0; g < 600 && !InBlank(clock); g++) { bus.ppu!.Step(342); globalCpuCycle += 114; NotePpuProgress(); }
+			presentedThisRun = false;
+		}
+
+		private static bool InBlank(IPpuFrameClock clock) { int s = clock.ProbeScanline; return s >= 241 && s <= 260; }
+
+		private void PrepareIdleStepping()
+		{
+			// the two flags RunFrame sets before its loop, from the same conditions
+			bool precisePpu = bus!.SpeedConfig.CpuCyclePrecisePpu || bus.ppu is IPpuFixTiming;
+			bus.PpuCaughtUpPerInstruction = bus.SpeedConfig.NtscAccurateFrameRate || bus.ppu is IPpuFixTiming || precisePpu;
+			bus.PreciseSteppingActive = precisePpu;
+			bus.MarkInstructionStart(-1);
+		}
+
+		// === Debugger (Windows/NesEmulator/debug) ===
+		/// <summary>The debugger's per-instruction hook: null unless a breakpoint, watch, step or trace is armed (RunFrame then pays one null test per instruction).</summary>
+		public INesInstructionHook? DebugHook;
+		/// <summary>The bus and cartridge, for the debugger (registers, side-effect-free memory, the watch tap). Null before a ROM is loaded.</summary>
+		public Bus? DebugBus => bus;
+		/// <summary>The CPU cycle count at the start of the instruction running now (the debug port's timers, D7; read only).</summary>
+		public long DebugCpuCycle => globalCpuCycle;
+		public Cartridge? DebugCartridge => cartridge;
+		/// <summary>RunFrame calls since the NES was made (the frame a RunFrame is running is FramesExecuted - 1).</summary>
+		public long FramesExecuted => framesExecutedTotal;
+
 		// Allow caller to rapidly run multiple frames (used for fast-forward / warm-up)
 		public void RunFrames(int frames)
 		{
 			for (int i = 0; i < frames; i++) RunFrame();
 		}
+
+		// Single-instruction step for interactive debugging (Workshop's "Step Instruction").
+		// Deliberately does NOT replicate RunFrame()'s event-scheduling optimizations
+		// (nextPpuEventCycle/nextIrqCycle bookkeeping, which exist to batch many
+		// instructions efficiently) - for one instruction at a time those are unnecessary,
+		// and FlushBatch already advances PPU/APU by the correct cycle count regardless.
+		// Reuses FlushBatch exactly as its own comment anticipates ("Consolidated flush
+		// helper so later event-based stepping can reuse it").
+		public int StepInstruction()
+		{
+			if (bus == null || crashed) return 0;
+			try
+			{
+				DebugHook?.BeforeInstruction(globalCpuCycle);
+				int cpuCycles = bus.cpu!.ExecuteInstruction();
+				FlushBatch(cpuCycles);
+				return cpuCycles;
+			}
+			catch (Exception ex) when (ex.GetType().Name == "CpuCrashException")
+			{
+				HandleCpuCrash(ex);
+				return 0;
+			}
+		}
+
+		// Exposes Bus.SpeedConfig's accuracy-for-speed shortcuts (approximate OAM DMA
+		// timing, idle-loop skip, blank-scanline skip, adaptive batching, ...) so a caller
+		// can force them off before an accuracy-sensitive run. These apply identically
+		// under every CPU/PPU/APU core combination; without a way to disable them,
+		// failures get misattributed to whichever core happened to be selected.
+		public SpeedConfig? GetSpeedConfig() => bus?.SpeedConfig;
 
 		// === Instrumentation & Benchmarks ===
 		private long framesExecutedTotal = 0;
@@ -1025,8 +1539,21 @@ namespace NesEmulator
 				staticFrameCounter++;
 				return frameBuffer;
 			}
-			if (bus?.ppu != null) return bus.ppu!.GetFrameBuffer();
+			if (bus?.ppu != null) return presentedValid && presentedFrame != null ? presentedFrame : bus.ppu!.GetFrameBuffer();
 			return new byte[256 * 240 * 4];
+		}
+
+		/// <summary>
+		/// The PPU's live render target - what GetFrameBuffer returned before completed-frame
+		/// presentation. Machine-state fingerprints (FrameWitness, savestate round trips, self-play
+		/// verification) want this: the presented copy is derived presentation, and it is not part
+		/// of a savestate, so a reloaded machine would disagree with a continuous one for a frame
+		/// for reasons that have nothing to do with emulation.
+		/// </summary>
+		public byte[] GetRenderTargetFrameBuffer()
+		{
+			if (crashed) return crashFrameBuffer;
+			return bus?.ppu?.GetFrameBuffer() ?? new byte[256 * 240 * 4];
 		}
 
 		// --- Zero-copy framebuffer support (HotPot: Zero/Low-Copy Framebuffer Transfer) ---
@@ -1143,6 +1670,20 @@ namespace NesEmulator
 		{
 			bus?.input.SetInput(buttons);
 		}
+
+		// Soft reset (CPU reset vector, not a full ROM reload) - needed to honor a TAS movie's
+		// in-band reset command (the FM2 input log's per-frame "c" bitfield, bit 0).
+		public void Reset() { bus?.cpu?.Reset(); resetSequencePending = true; }
+		private const int ResetSequenceCycles = 8;
+		private bool resetSequencePending; // set by power-on/reset, consumed by the first frame (cleared by a savestate load)
+
+		// === Bulk-dump support (TAS/self-play extraction, mirroring the source project's
+		// per-frame RAM+register+PPU-state trace format) ===
+		public byte GetP1RawInputState() => bus?.input.DebugGetRawState() ?? (byte)0;
+		public byte GetP2RawInputState() => bus?.input2.DebugGetRawState() ?? (byte)0;
+		public byte GetOpenBusValue() => bus?.GetOpenBus() ?? (byte)0;
+		public int ConsumeP1ReadCount() => bus?.input.ConsumeReadCount() ?? 0;
+		public int ConsumeP2ReadCount() => bus?.input2.ConsumeReadCount() ?? 0;
 
 		// New: set both player inputs at once
 		public void SetInputs(bool[]? p1, bool[]? p2)
@@ -1320,9 +1861,21 @@ namespace NesEmulator
 			return (r.PC, r.A, r.X, r.Y, r.P, r.SP);
 		}
 
+		/// <summary>
+		/// The active APU core's cross-emulator state probe, or null if that core does not implement
+		/// one. Used by the differential tracer (Workshop --trace --apu-trace) to compare the sound
+		/// hardware against Mesen; returning null rather than a zero-filled snapshot is deliberate,
+		/// so a core with no coverage is reported as uncovered instead of looking silently correct.
+		/// </summary>
+		public IApuStateProbe? GetApuStateProbe() => bus?.ActiveAPU as IApuStateProbe;
+
 		// New helpers: expose active core identifiers for UI (suffixes FMC/FIX etc.)
 		public string GetCpuCoreId() => bus?.cpu?.GetType().Name ?? string.Empty;
 		public string GetPpuCoreId() => bus?.ppu?.GetType().Name ?? string.Empty;
+		/// <summary>The picture chip when it draws wider than the NES (the WideMess widescreen chip, PPU_WMSS): an app that can show a wider picture shows <see cref="IWidePictureSource.WidePicture"/>; null otherwise.</summary>
+		public IWidePictureSource? WidePicture => bus?.ppu as IWidePictureSource;
+		/// <summary>The picture bridge the PPU core is, when it hands its picture to another console's chip (PPU_SMS, PPU_MD): its counters and the two pictures a fidelity measurement compares. Null for every other core.</summary>
+		public NesEmulator.Mix.IPictureBridgeInfo? GetPictureBridge() => bus?.ppu as NesEmulator.Mix.IPictureBridgeInfo;
 		public string GetApuCoreId() => bus?.ActiveAPU?.GetType().Name ?? string.Empty;
 		public bool IsApuNoteEventModeActive()
 		{
@@ -1381,15 +1934,25 @@ namespace NesEmulator
 		// APU channel enable/disable control
 		public void SetApuChannelEnableMask(int channelMask)
 		{
-			if (bus?.ActiveAPU == null) return;
-			// Call SetEnabledChannels on the active APU instance
-			var apu = bus.ActiveAPU;
-			var method = apu.GetType().GetMethod("SetEnabledChannels");
-			if (method != null)
-			{
-				method.Invoke(apu, new object[] { channelMask });
-			}
+			// SetEnabledChannels is part of IAPU: a direct call (it used to go through reflection,
+			// which trimming / Native AOT cannot follow).
+			bus?.ActiveAPU?.SetEnabledChannels(channelMask);
 		}
+
+		/// <summary>The APU core currently producing sound (null before a ROM is loaded). Plugin hosts
+		/// drain it directly with <see cref="IAPU.ReadSamples"/> instead of <see cref="GetAudioBuffer"/>,
+		/// which drops samples above a backlog and allocates.</summary>
+		public IAPU? ActiveApu => bus?.ActiveAPU;
+
+		/// <summary>Plugin hosts: called for every CPU write to the APU registers ($4000-$4017) with <see cref="ApuClock"/> at that moment
+		/// (set after the ROM is loaded).</summary>
+		public System.Action<ushort, byte, long>? ApuWriteTap { get => bus?.ApuWriteTap; set { if (bus != null) bus.ApuWriteTap = value!; } }
+		/// <summary>APU cycles stepped since the ROM loaded.</summary>
+		public long ApuClock => bus?.ApuClock ?? 0;
+		/// <summary>The last value the ROM wrote to each APU register ($4000-$4017); returns the mask of registers written.</summary>
+		public uint CopyApuLatch(byte[] regs) => bus?.CopyApuLatch(regs) ?? 0;
+		/// <summary>Puts the APU register latch back (see <see cref="Bus.SetApuLatch"/>).</summary>
+		public void SetApuLatch(byte[] regs, uint written) => bus?.SetApuLatch(regs, written);
 
 		// Lightweight RAM digest (sum of first 64 and last 64 bytes) to observe changes without hashing entire array repeatedly
 		public string GetStateDigest()
@@ -1421,8 +1984,123 @@ namespace NesEmulator
 		}
 		public byte PeekPrgRam(int index) => cartridge != null ? cartridge.PeekPrgRam(index) : (byte)0;
 		public void PokePrgRam(int index, byte val) { cartridge?.PokePrgRam(index, val); }
+
+		// === Mapper-side battery-backed storage (see IMapper.ExportNonVolatileMemory) ===
+		//
+		// A second, independent save medium alongside PRG-RAM, for boards that keep their save data
+		// somewhere the $6000-$7FFF window cannot see. Today that means UNROM-512's self-flashing
+		// variant, where "saving" means the game reprograms its own PRG flash chip.
+		//
+		// Gated on the iNES battery flag as well as the mapper's own answer, so that a board which
+		// merely CAN be built with flash does not start persisting on a cartridge that was pressed
+		// without a battery - matching hardware, where an unbatteried cart forgets on power-off.
+		public bool HasMapperBatteryMemory
+			=> cartridge != null && cartridge.hasBattery && cartridge.mapper != null && cartridge.mapper.HasNonVolatileMemory;
+
+		// Returns null when there is nothing to persist, so callers can skip writing a file entirely
+		// rather than leaving a stub behind for a game that has never saved.
+		public byte[]? ExportMapperBatteryMemory()
+			=> HasMapperBatteryMemory ? cartridge!.mapper.ExportNonVolatileMemory() : null;
+
+		// Returns what actually happened, because "did not load" must not be mistaken for "loaded and
+		// empty": the caller's next autosave would otherwise write this cartridge's blank flash over
+		// the very file it just failed to read. A non-Applied result therefore also arms
+		// SuppressBatteryAutosave here, so even a caller that ignores the return value cannot destroy
+		// the file - it has to opt back in by clearing the flag, or wait for the game to save again.
+		public NonVolatileImportResult ImportMapperBatteryMemory(byte[] data)
+		{
+			if (data == null || data.Length == 0) return NonVolatileImportResult.Rejected;
+			if (!HasMapperBatteryMemory) return NonVolatileImportResult.Rejected;
+			var result = cartridge!.mapper.ImportNonVolatileMemory(data);
+			if (result != NonVolatileImportResult.Applied) SuppressBatteryAutosaveUntilNextFlashWrite();
+			else ClearBatteryAutosaveSuppression();
+			return result;
+		}
+
+		// === Battery autosave suppression ===
+		//
+		// WHY THIS EXISTS: the mapper's flash contents are part of the savestate (deliberately - see
+		// the comment on Mapper30.GetMapperState), so loading an older savestate ROLLS THE FLASH BACK
+		// to whatever it held when that state was taken. That is right for emulation and ruinous for
+		// persistence, because the battery layer's next autosave would commit the rollback to disk,
+		// discarding every in-game save the player made after the savestate. Observed in practice: an
+		// 8232-byte .flash.sav becoming 4128 bytes.
+		//
+		// The fix is not to drop the flash from savestates - the differential-trace tooling depends on
+		// sectorWriteCount surviving a save/load - but to let the persistence layer know that memory
+		// and disk have deliberately diverged. While SuppressBatteryAutosave is true, the in-memory
+		// flash does NOT represent the player's on-disk save and must not be written out.
+		//
+		// It clears itself the moment the running game performs a genuine flash write, because from
+		// then on the flash is the game's own current intent and a save the player just made in-game
+		// has to reach the disk. That is polled off IMapper.NonVolatileWriteGeneration rather than
+		// pushed, so nothing in the per-cycle write path has to know about the persistence layer.
+		private ulong _batteryAutosaveSuppressGeneration;
+		private bool _batteryAutosaveSuppressed;
+
+		public bool SuppressBatteryAutosave
+			=> _batteryAutosaveSuppressed
+			   && cartridge?.mapper != null
+			   && cartridge.mapper.NonVolatileWriteGeneration == _batteryAutosaveSuppressGeneration;
+
+		// Arms the flag against the mapper's CURRENT write generation. No-op for a cartridge with no
+		// mapper-side save medium, where there is nothing to protect.
+		public void SuppressBatteryAutosaveUntilNextFlashWrite()
+		{
+			if (!HasMapperBatteryMemory) { _batteryAutosaveSuppressed = false; return; }
+			_batteryAutosaveSuppressGeneration = cartridge!.mapper.NonVolatileWriteGeneration;
+			_batteryAutosaveSuppressed = true;
+		}
+
+		// For the deliberate override: the user asking to write the save out anyway, or a fresh ROM
+		// load that has re-synced memory with disk.
+		public void ClearBatteryAutosaveSuppression() { _batteryAutosaveSuppressed = false; }
 		public byte PeekChr(int index) => cartridge != null ? cartridge.PeekChr(index) : (byte)0;
 		public void PokeChr(int index, byte val) { cartridge?.PokeChr(index, val); }
+
+		// === Nametable (CIRAM) domain ===
+		//
+		// The $2000-$2FFF view of the PPU bus, i.e. the four logical nametables AS THE RENDERER SEES
+		// THEM - mirroring already applied - rather than the raw 2KB of CIRAM. Both views have a
+		// use and they are NOT interchangeable: PpuSharedState.vram (what the trace's ntbhash
+		// hashes) is the physical 2KB, but a tool asking "what tile is drawn at screen cell (3,7)"
+		// wants $2000 + 7*32 + 3, and which half of CIRAM that lands in depends on the cartridge's
+		// current mirroring - which mapper 30 can change at runtime. Exposing only the raw 2KB
+		// would push that mapping onto every caller and get it wrong the first time the game
+		// switched mirroring. This matches Mesen's nesPpuMemory addressing, which is what the
+		// VRUN project's own corruption_detector.lua reads.
+		//
+		// Returns 0 when the active PPU core does not implement IPpuProbe; GetNametableSize()
+		// reports 0 in that case so a caller can tell "unsupported" from "reads as zero".
+		public int GetNametableSize() => (bus?.ppu is IPpuProbe) ? 0x1000 : 0;
+		public byte PeekNametable(int index)
+		{
+			if (index < 0 || index >= 0x1000) return 0;
+			return bus?.ppu is IPpuProbe p ? p.ProbePpuBusRead((ushort)(0x2000 + index)) : (byte)0;
+		}
+		public void PokeNametable(int index, byte val)
+		{
+			if (index < 0 || index >= 0x1000) return;
+			if (bus?.ppu is IPpuProbe p) p.ProbePpuBusWrite((ushort)(0x2000 + index), val);
+		}
+		/// <summary>Side-effect-free read of the whole PPU address space ($0000-$3FFF): pattern
+		/// tables through the mapper, nametables through the current mirroring, palette at $3F00.
+		/// Unlike a $2007 read this touches no latch, buffer or flag.</summary>
+		public byte PeekPpuBus(ushort address) => bus?.ppu is IPpuProbe p ? p.ProbePpuBusRead(address) : (byte)0;
+		public void PokePpuBus(ushort address, byte val) { if (bus?.ppu is IPpuProbe p) p.ProbePpuBusWrite(address, val); }
+		/// <summary>Live PPU scanline/dot/mask, or (-1,-1,0) if the active core has no dot-accurate
+		/// counter to report. Same caveats as IPpuProbe - read its doc comment before gating on it.</summary>
+		public (int Scanline, int Dot, byte Mask) GetPpuTiming()
+			=> bus?.ppu is IPpuProbe p ? (p.ProbeScanline, p.ProbeDot, p.ProbeMask) : (-1, -1, (byte)0);
+
+		/// <summary>Attach (or detach, with null) an observer called on every CPU write that reaches
+		/// a PPU register. See Bus.PpuRegisterWriteObserver for the full contract - in particular
+		/// that scanline/dot are -1 on PPU cores without IPpuProbe, and that they lag the true dot
+		/// by up to one CPU instruction.</summary>
+		public void SetPpuRegisterWriteObserver(Bus.PpuRegisterWriteHandler? observer)
+		{
+			if (bus != null) bus.PpuRegisterWriteObserver = observer;
+		}
 
 		// Audio system not yet implemented - would require APU (Audio Processing Unit)
 		// The APU generates square waves, triangle waves, noise, and DMC audio channels

@@ -1,0 +1,26 @@
+// The BrokenDev debug port's NESFab sample (D7): every call of the library once, then each frame a timed piece of work, a print with
+// values, an assert that fails on the fourth frame and a marker on the sixth. BrokenDev/debugport/build-proof.ps1 builds it three ways
+// (dev, release, and with every dbg_ line taken out) and proves the release ROM is byte-identical to the one without the calls.
+
+vars
+    U frames = 0
+    UU score = 0
+
+nmi main_nmi()
+    frames += 1
+
+mode main()
+: nmi main_nmi
+    dbg_print(@"hello from NESFab"ascii)
+    dbg_timer_name(1, @"work"ascii)
+    dbg_mark(@"start"ascii)
+    {$2000}(%10000000)
+    while true
+        nmi
+        dbg_timer_start(1)
+        score += 3
+        dbg_timer_stop(1)
+        dbg_print_2(@"frame %u score %u"ascii, UU(frames), score)
+        dbg_assert(frames < 4, @"main.fab: frames < 4"ascii)
+        if frames == 6
+            dbg_mark(@"six frames"ascii)

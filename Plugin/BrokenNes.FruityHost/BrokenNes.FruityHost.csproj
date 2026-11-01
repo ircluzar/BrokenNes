@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ==========================================================================
+       BrokenNes.FruityHost: the plugin test bench, outside FL Studio.
+
+       A faithful stand-in for FL's host: it loads a native Fruity plugin DLL (BrokenNes2_x64.dll),
+       gives it the host object FL would (the C++-vtable-shaped TFruityPlugHost), plays timelines of
+       notes with slides and bends the way FL's mixer does (voices, release, kill, ticks), and
+       checks the sound that comes out. `selftest` runs the whole certification suite;
+       `analyze` applies the same checks to a WAV rendered by real FL Studio (UAT/plugin).
+       ========================================================================== -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>BrokenNes.FruityHost</RootNamespace>
+    <AssemblyName>BrokenNes.FruityHost</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BrokenNes.Fruity\BrokenNes.Fruity.csproj" />
+    <!-- HostSim / PluginInstance / PluginLibrary live there now (still namespace BrokenNes.FruityHost): the desktop's standalone synth hosts the plugin with them too -->
+    <ProjectReference Include="..\BrokenNes.SynthHost\BrokenNes.SynthHost.csproj" />
+    <!-- Round 5 (corruption): the `corruption` check farms a corruption the way the desktop app does (the shared library: stockpile file, memory domains, anchors) and the synthetic SNES game
+         the library's own tests use, then drives the plugin's Corruption window with real mouse messages. Test-only; the plugin DLL does not come through here. -->
+    <ProjectReference Include="..\..\Core\BrokenNes.Core.csproj" />
+    <Compile Include="..\..\Workshop\Corruption\SynthSnesRom.cs" Link="SynthSnesRom.cs" />
+    <Compile Include="..\BrokenNes2.Plugin\SpcSnapshot.cs" Link="SpcSnapshot.cs" />
+    <Compile Include="..\BrokenNes2.Plugin\SpcRecipe.cs" Link="SpcRecipe.cs" />
+    <Compile Include="..\BrokenNes2.Plugin\GenRecipe.cs" Link="GenRecipe.cs" />
+    <!-- Round 6 (imodel): the instrument model and the samplers it is checked against (the `imodel` check renders PCM through the very sampler classes the plugin DLL uses, from the same source files) -->
+    <Compile Include="..\BrokenNes2.Plugin\SnesSampler.cs" Link="SnesSampler.cs" />
+    <Compile Include="..\BrokenNes2.Plugin\GbSampler.cs" Link="GbSampler.cs" />
+    <Compile Include="..\BrokenNes2.Plugin\SegaSnapshot.cs" Link="SegaSnapshot.cs" />
+    <Compile Include="..\BrokenNes2.Plugin\SegaSamplers.cs" Link="SegaSamplers.cs" />
+    <!-- (InstrumentsUi.cs is the glue to the plugin's tabs and emulator: it is tested through the DLL, not linked) -->
+    <Compile Include="..\BrokenNes2.Plugin\Instruments\*.cs" Exclude="..\BrokenNes2.Plugin\Instruments\InstrumentsUi.cs;..\BrokenNes2.Plugin\Instruments\InstrumentPushHandler.cs" LinkBase="Instruments" />
+    <!-- Round 6 (presets): the preset file, the engines' snapshots and the folder library (pure code; PresetLibrary, the plugin glue and the editor's picker are tested through the DLL) -->
+    <Compile Include="..\BrokenNes2.Plugin\Presets\*.cs" LinkBase="Presets" />
+    <!-- Round 7 (midi): VRUN's converter (the copy the plugin carries), the template, the facts and the project section (pure code; the window and the emulator glue are tested through the DLL) -->
+    <Compile Include="..\BrokenNes2.Plugin\Music\*.cs" LinkBase="Music" />
+    <Compile Include="..\BrokenNes2.Plugin\Music\Vrun\*.cs" LinkBase="Music\Vrun" />
+    <!-- Round 8 (record): the recording session, the notes, the root notes, the tempo, the MIDI writer, the transcription and the project section (pure code; the window, the capture glue and the drag source are tested through the DLL) -->
+    <Compile Include="..\BrokenNes2.Plugin\Record\*.cs" LinkBase="Record" />
+    <!-- Round 9 (capture): Capture from FL's lanes, clock, pitch conventions and MIDI builder (pure code; the hooks in the instance, the hub and the window are tested through the DLL) -->
+    <Compile Include="..\BrokenNes2.Plugin\Capture\*.cs" LinkBase="Capture" />
+  </ItemGroup>
+
+</Project>

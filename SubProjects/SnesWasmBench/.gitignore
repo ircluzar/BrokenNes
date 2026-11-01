@@ -1,0 +1,4 @@
+# ROMs are copied in locally for benchmarking and must never be committed.
+wwwroot/roms/
+bin/
+obj/

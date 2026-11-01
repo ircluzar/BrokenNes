@@ -68,6 +68,12 @@ This document lists all features/calls that need to be implemented as an API in 
 - [x] **Delete Stockpile Entry** - Remove from stockpile
 - [x] **Export Stockpile** - Export stockpile as JSON
 - [x] **Import Stockpile** - Import stockpile from JSON
+- [x] **Get Farm Status** - `GET /api/gh/status`: what the farm can store for the running game (console, how a position is kept: saved state, replay from power-on or neither, with the reason), the stockpile file's path / name / unsaved flag, the default folder
+- [x] **Save Stockpile File** - `POST /api/gh/stockpile/save` (`{ path?, name? }`; no path asks with a Save dialog): writes the v2 stockpile file (the format the BrokenNes2 plugin opens)
+- [x] **Open Stockpile File** - `POST /api/gh/stockpile/open` (`{ path?, replace? }`): reads a stockpile file (v2, or the older exports) and reports what was added, what was refused and why
+- [x] **List Stockpile Files** - `GET /api/gh/stockpile/files`: the `.json` files in the default stockpile folder
+- [x] **Console Memories** - `GET /api/console/domains` (the running console game's memories at true sizes), `GET /api/console/peek?domain=&address=&length=`, `POST /api/console/poke` (`{ domain, address, value }`)
+- [x] **True NES Domain Sizes** - `GET`/`POST /api/rtc/true-domain-sizes` (`{ Enabled }`): the NES RTC domains at their real sizes instead of the probed ones (default off)
 
 ### Imagine (AI-Powered Corruption)
 - [x] **Get Model Loaded State** - Check if model is loaded

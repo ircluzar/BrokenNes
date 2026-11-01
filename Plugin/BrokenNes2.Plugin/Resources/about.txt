@@ -1,0 +1,7 @@
+# Read this first
+* This software was made for FUN.
+* No actual research was made in the making of this plugin.
+* 100% of this plugin was written by AI.
+* This is not accurate emulation.
+- Nobody has compared it with real hardware. Its automated tests only check that it does what its author asked for.
+- The emulation cores are BrokenNes, the author's own experimental emulator project, also made for fun. Parts of the SNES cores derive from open-source work (see the third-party notices).

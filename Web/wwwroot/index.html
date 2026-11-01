@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BrokenNes Web</title>
+    <base href="./" />
+    <!-- These two empty elements are filled in by the .NET 10 asset-fingerprinting
+         pipeline (OverrideHtmlAssetPlaceholders=true). Do not remove. -->
+    <link rel="preload" id="webassembly" />
+    <script type="importmap"></script>
+    <link rel="stylesheet" href="css/app.css" />
+</head>
+
+<body>
+    <div id="app">
+        <div class="boot">Loading BrokenNes…</div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+    </div>
+
+    <!-- NOTE: do not write the fingerprint placeholder token anywhere else in this file,
+         including inside comments. The SDK's HTML rewriter substitutes the first occurrence
+         it finds and leaves the real script tag alone, which 404s at boot. -->
+    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <script src="lib/nesInterop.js"></script>
+</body>
+
+</html>

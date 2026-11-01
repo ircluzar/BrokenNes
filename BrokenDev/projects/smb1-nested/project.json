@@ -1,0 +1,149 @@
+{
+  "schema": 1,
+  "id": "smb1-nested",
+  "title": "SMB1 remake on the SNES (Nested version)",
+  "family": "smb1",
+  "kind": "nested",
+  "console": "snes",
+  "description": "The SMB1 remake recompiled to a Super Nintendo ROM by Project Nested and the m30pipe pipeline, the same way Nested VRUN is. The remake ROM is built from the user's own data of the original game, so the result is the user's personal build: it is never committed, never published.",
+  "source": {
+    "archive": "vrun_nes_dev",
+    "path": "Nested_VRUN/Project-Nested/tools/m30pipe (pipeline) + the smb1-nes build",
+    "docs": ["tools/m30pipe/games/d257beb1/game.json (the profile of SMB1_Repro_20261002 this recipe copies)", "tools/m30pipe/tools/dmc_status.py header", "claude/memory/nested/snes_qol_work.md (the SMB1_Repro build, 2026-10-02)"]
+  },
+  "requires": {
+    "tools": ["python", "ps5"],
+    "projects": ["smb1-nes"],
+    "inputs": [],
+    "toolchain": ["Project Nested injector and the pinned core shipped in the Nested package"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "nested-pipeline",
+        "shell": "ps5",
+        "cwd": "{root:m30pipe}",
+        "file": "{bd}/tools/nested-build.ps1",
+        "args": [
+          "-Nes", "{root:smb1}/build/smb1_game.nes",
+          "-Out", "{work}/smb1_game_SNES.smc",
+          "-Pipe", "{root:m30pipe}",
+          "-Python", "{python}",
+          "-Work", "{work}/nested",
+          "-BaseProfile", "d257beb1",
+          "-Post", "dmc_status",
+          "-Feedback", "none"
+        ],
+        "timeoutSec": 1800,
+        "note": "dmc_status is required: the remake's DMC-IRQ timing routine loops on BIT $4015 until the DMC-active bit clears, and Project Nested never clears it (the SNES build would freeze at the title otherwise). The DMC IRQ itself is not emulated by Nested; play matches the NES without it."
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{work}/smb1_game_SNES.smc", "publishAs": "smb1_game_SNES.smc", "kind": "snes" },
+      { "id": "buildjson", "path": "{work}/smb1_game_SNES.smc.build.json", "publishAs": "smb1_game_SNES.smc.build.json", "kind": "record" }
+    ]
+  },
+  "run": { "console": "snes", "note": "Same game as the NES remake." },
+  "verify": {
+    "timeoutSec": 1200,
+    "scenarios": [
+      {
+        "id": "boot",
+        "frames": 1200,
+        "input": "",
+        "checkpoints": [120, 300, 600, 1200],
+        "expect": { "minDistinctColors": 4, "audio": { "fromFrame": 120, "minPeak": 0.02, "minNonSilentFrames": 60 }, "minRealtime": 1.0 }
+      },
+      {
+        "id": "play",
+        "frames": 3000,
+        "input": "240:Start,246:,600:Right,1300:Right+A,1360:Right,1500:Right+B,1700:Right+A+B,1760:Right+B",
+        "checkpoints": [300, 600, 1200, 1800, 3000],
+        "expect": { "minDistinctColors": 6, "pictureDiffers": [1200, 3000], "audio": { "fromFrame": 400, "minPeak": 0.02, "minNonSilentFrames": 100 }, "minRealtime": 1.0 }
+      }
+    ],
+    "compare": [
+      { "a": "play@600", "b": "boot@600", "expect": "differ", "why": "scripted input reached the game" }
+    ]
+  },
+  "oracle": {
+    "kind": "mesen-screens",
+    "mesenDir": "{root:svrunrepo}/tools/Mesen2",
+    "mesenSettings": "{root:svrunpkg}/mesen2_user_folder/settings.json",
+    "frames": [300, 600, 900, 1200, 1800, 2400, 3000],
+    "input": "240:Start,246:,600:Right,1300:Right+A,1360:Right,1500:Right+B,1700:Right+A+B,1760:Right+B",
+    "inputShift": 3,
+    "window": [1, 5],
+    "crop": [7, 8],
+    "tolerance": 1,
+    "maxPixels": 400,
+    "why": "As supervrun. Six of seven frames are pixel-identical; frame 900 keeps a residue of about 290 pixels at every input shift and offset (a sprite animation phase in the walking scene), recorded as the bar to keep."
+  },
+  "compat": {
+    "what": "The Nested remake on other SNES emulators. Project Nested keeps the NES 2 KB RAM at SNES work RAM $0000-$07FF, so the NES symbols of smb1-nes read the same variables (checked on BrokenNes: runtime_nmi_counter at WRAM $000A ticks, title_active at $07BA flips on Start). The pipeline zeroes NES RAM itself (MemoryEmulation.ZeroMemoryReset), so the remake's old uninitialised-RAM bug (smb1-nes knownIssues, fixed 2026-10-22) never showed here whatever the emulator's power-on RAM; since the fix the NES ROM zeroes it as well.",
+    "symbols": { "file": "{home}/out/smb1-nes/smb1_game.mlb", "nesRamInWram": 0 },
+    "reads": {
+      "title_active": "title_active", "levelcard_state": "levelcard_state", "camera_x": "camera_x", "lives": "lives",
+      "chr_test_active": "chr_test_active", "nmi": "runtime_nmi_counter"
+    },
+    "frameTolerance": 30,
+    "scenarios": [
+      {
+        "id": "play",
+        "verify": "play",
+        "shots": [200],
+        "what": "power-on, the title, Start, verify's play script",
+        "checks": [
+          { "id": "title", "what": "boots to the title (title_active 1)", "read": "title_active", "is": 1, "within": [100, 239] },
+          { "id": "title-runs", "what": "the title runs (the NES NMI counter ticks)", "changes": "nmi", "within": [100, 239], "min": 30 },
+          { "id": "title-drawn", "what": "the title screen is drawn", "picture": 200, "minColors": 4 },
+          { "id": "title-like", "what": "the title looks like BrokenNes' title", "similar": 200, "min": 0.8 },
+          { "id": "uninit-ram", "what": "chr_test_active reads 0", "read": "chr_test_active", "is": 0, "within": [100, 239], "hold": true },
+          { "id": "start", "what": "Start leaves the title (title_active 0)", "read": "title_active", "is": 0, "within": [241, 500], "compare": true },
+          { "id": "world-card", "what": "the World card ends and the level starts", "read": "levelcard_state", "is": 0, "after": "start", "within": [60, 400], "compare": true },
+          { "id": "scrolls", "what": "holding Right scrolls the level (camera_x moves)", "changes": "camera_x", "within": [600, 1300], "min": 20 },
+          { "id": "alive", "what": "the game keeps running to the end (the NES NMI counter keeps ticking)", "changes": "nmi", "within": [2700, 3000], "min": 150 },
+          { "id": "drawn", "what": "a picture is drawn at the end", "picture": 3000, "minColors": 4 }
+        ]
+      }
+    ]
+  },
+  "checks": {
+    "what": "BrokenDev hardware checks (docs/projects/brokendev-debugging-plan.md, D4): every verify scenario runs again with the checks on; a finding not accepted here fails verify. Each acceptance says why.",
+    "frameWait": [
+      "$80A739"
+    ],
+    "accepted": [
+      {
+        "rule": "snes.lag-frame",
+        "at": "*",
+        "reason": "unverified: from play frame 406 on, 382 of 2600 SNES vblanks find the nested engine outside its frame wait ($80A739) in long runs although it is only 28% busy on average; it may wait elsewhere (the status-bar split runs from an IRQ on the NES) - not budgeted until Project Nested's symbols say where"
+      },
+      {
+        "rule": "snes.open-bus",
+        "at": "$420D",
+        "reason": "known: the nested engine's reset does ROL $420D: MEMSEL is write-only, so the read is open bus and the FastROM bit it writes back depends on the open-bus value ($42 on hardware, the operand's high byte, which turns FastROM on); harmless on hardware, worth a plain STA in the engine"
+      }
+    ]
+  },
+  "budgets": {
+    "what": "Over a limit fails verify, near it (90%) warns; the report compares with the previous build (out/<id>/budget-history.json). romBankFree is an estimate (padding runs of 64 or more equal $00 / $FF bytes).",
+    "memoryFree": {
+      "wram": 16384,
+      "vram": 8192,
+      "aram": 8192,
+      "what": "115832 / 52536 / 40418 bytes on 2026-10-24"
+    },
+    "stackFree": {
+      "min": 128,
+      "what": "280 bytes on 2026-10-24"
+    }
+  },
+  "knownIssues": [
+    "Built from smb1-nes' ROM, which since 2026-10-22 comes from the live workspace (PROJECTS\\SMB1_Remake_dev) with the power-on RAM fix (its reset code zeroes NES RAM; smb1-nes knownIssues). The Nested build did not need it (the pipeline zeroes NES RAM too) and behaves the same with it: the same checks pass on the same frames.",
+    "Project Nested never clears the DMC-active bit of $4015 and never delivers the DMC IRQ; the dmc_status post-build step fixes the first, the second stays unemulated (the status-bar split runs from that IRQ on the NES; the profile of the 20261002 build records that play matched the NES anyway).",
+    "No NES lag-frame emulation: long play drifts from the NES by a few frames (docs/GENERALITY.md row 21). Not specific to this game.",
+    "This recipe uses no entry-point feedback, so the first run of each code path recompiles at run time. The 20261002 build had 178 harvested entry points (profile d257beb1).",
+    "The SNES header title is the default 'Nested Emulator' unless a title is set."
+  ]
+}

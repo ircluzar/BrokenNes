@@ -29,12 +29,31 @@ namespace BrokenNes.Windows
             public string? Base64 { get; set; }
         }
 
+        /// <summary>The Load ROM file filter: every console that is available (the Sega ones only once their cores exist), then the archives and everything.</summary>
+        private static string RomDialogFilter()
+        {
+            var all = NesEmulator.Systems.Consoles.AllRomExtensions;
+            string Pattern(IEnumerable<string> ext) => string.Join(";", ext.Select(x => "*" + x));
+            var parts = new List<string> { $"All ROMs ({Pattern(all)})|{Pattern(all)}" };
+            foreach (var k in NesEmulator.Systems.Consoles.All)
+            {
+                var ext = NesEmulator.Systems.Consoles.Extensions(k);
+                if (k == NesEmulator.Systems.ConsoleKind.GameBoyColor) continue;   // .gb and .gbc are one "Game Boy / Color" entry
+                string label = k == NesEmulator.Systems.ConsoleKind.GameBoy ? "Game Boy / Color ROMs" : NesEmulator.Systems.Consoles.DisplayName(k) + " ROMs";
+                if (k == NesEmulator.Systems.ConsoleKind.GameBoy) ext = ext.Concat(NesEmulator.Systems.Consoles.Extensions(NesEmulator.Systems.ConsoleKind.GameBoyColor)).Distinct().ToArray();
+                parts.Add($"{label} ({Pattern(ext)})|{Pattern(ext)}");
+            }
+            parts.Add("Zip archives (*.zip)|*.zip");
+            parts.Add("All files (*.*)|*.*");
+            return string.Join("|", parts);
+        }
+
         private void LoadRom_Click(object? sender, EventArgs e)
         {
             using var openFileDialog = new OpenFileDialog
             {
-                Filter = "NES ROMs (*.nes)|*.nes|All files (*.*)|*.*",
-                Title = "Select a NES ROM"
+                Filter = RomDialogFilter(),
+                Title = $"Load a ROM ({NesEmulator.Systems.Consoles.DisplayName(SelectedConsole)} selected; the console follows the ROM)"
             };
             
             if (openFileDialog.ShowDialog() == DialogResult.OK)
@@ -80,6 +99,11 @@ namespace BrokenNes.Windows
                 throw new InvalidOperationException("ROM data is empty.");
             }
 
+            // BrokenNes 2: unpack a .zip and find the console; a SNES / Game Boy game starts as a console session here.
+            var routed = RouteRom(ref romName, romData, romPath);
+            if (routed == null) return;
+            romData = routed;
+
             // Stop current emulation if running
             StopEmulation();
 
@@ -91,6 +115,9 @@ namespace BrokenNes.Windows
                 nes.LoadROM(romData);
                 nes.RomName = romName;
                 nes.RomPath = romPath ?? romName;
+                ApplyBrokenDevPowerOnRam(nes);   // BrokenDev only: a no-op unless that module is on and a power-on RAM fill was chosen
+                nes.StateLoaded = () => BugBreak("a state was loaded");   // the bug capture (D6): the history starts again after any state load
+                BugGameLoaded(romData, romName);
                 InitializeImagineEngine();
             }
 
@@ -102,7 +129,14 @@ namespace BrokenNes.Windows
                 config.AddRecentRom(romPath);
             }
 
+            EnsureNesDisplaySize();
             ApplySavedCoreSelections();
+            // Must run after the saved selection is applied and before emulation starts: it can
+            // override the CPU core for this ROM when the selected one cannot execute it.
+            EnsureCpuCoreCanRunRom(romData, romName);
+            // Each NES gets a fresh SpeedConfig, so the frame-timing preference has to be reapplied
+            // to the new instance rather than surviving from the previous ROM.
+            ApplyNtscAccurateFrameRate();
             ApplyCrashBehavior();
             EnsureUnlockedProgressionSelections();
             nes.SetNullProvider(config.SelectedNullProvider);
@@ -111,6 +145,9 @@ namespace BrokenNes.Windows
             ApplySoundSettings();
             UpdateCoresMenus();
             LoadBatteryRamForCurrentRom();
+            // New ROM: the autosave cache describes the PREVIOUS game's save RAM, so
+            // clear it or the first autosave here would compare against the wrong bytes.
+            ResetBatteryRamAutoSaveTracking();
 
             var fileMenu = this.MainMenuStrip?.Items.OfType<ToolStripMenuItem>().FirstOrDefault(m => m.Text == "&Emulator");
             if (fileMenu != null)
@@ -122,6 +159,8 @@ namespace BrokenNes.Windows
                 }
             }
 
+            RefreshConsoleMenu();
+            UpdateConsoleTitle();
             StartEmulation();
         }
 
@@ -132,6 +171,13 @@ namespace BrokenNes.Windows
         
         private void CloseRom_Click(object? sender, EventArgs e)
         {
+            if (session != null)
+            {
+                StopSession();
+                LoadEmbeddedRom(allowHomeWebModule: false);
+                UpdateConsoleTitle();
+                return;
+            }
             if (nes == null || string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase)) 
                 return;
             
@@ -357,6 +403,7 @@ namespace BrokenNes.Windows
         
         private void LoadEmbeddedRom(bool allowHomeWebModule = true)
         {
+            StopSession();
             try
             {
                 // Load the embedded test.nes ROM
@@ -419,9 +466,14 @@ namespace BrokenNes.Windows
                     // Apply image settings (will force Pixel Perfect for Test ROM)
                     ApplyImageSettings();
                     LoadBatteryRamForCurrentRom();
+                    // New ROM: the autosave cache describes the PREVIOUS game's save RAM, so
+                    // clear it or the first autosave here would compare against the wrong bytes.
+                    ResetBatteryRamAutoSaveTracking();
                     
                     // Update cores menus
+                    EnsureNesDisplaySize();
                     UpdateCoresMenus();
+                    UpdateConsoleTitle();
                     
                     // Start emulation automatically
                     StartEmulation();
@@ -451,7 +503,7 @@ namespace BrokenNes.Windows
                 if (files != null && files.Length > 0)
                 {
                     string ext = Path.GetExtension(files[0]).ToLower();
-                    if (ext == ".nes" || ext == ".png")
+                    if (NesEmulator.Systems.Consoles.AllRomExtensions.Contains(ext) || ext == ".png")
                     {
                         e.Effect = DragDropEffects.Copy;
                         return;
@@ -471,7 +523,7 @@ namespace BrokenNes.Windows
                      string path = files[0];
                      string ext = Path.GetExtension(path).ToLower();
                      
-                     if (ext == ".nes")
+                     if (NesEmulator.Systems.Consoles.AllRomExtensions.Contains(ext))
                      {
                          LoadRomFile(path);
                      }
@@ -562,6 +614,9 @@ namespace BrokenNes.Windows
                         nes.LoadROM(romData);
                         currentRomPath = romPath;
                         LoadBatteryRamForCurrentRom();
+                        // New ROM: the autosave cache describes the PREVIOUS game's save RAM, so
+                        // clear it or the first autosave here would compare against the wrong bytes.
+                        ResetBatteryRamAutoSaveTracking();
                         
                         // Apply core selections
                         ApplySavedCoreSelections();

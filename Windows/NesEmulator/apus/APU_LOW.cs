@@ -363,9 +363,17 @@ namespace NesEmulator
                     }
                     // Writing 4017 clears frame IRQ flag
                     frameIRQFlag = false;
+                    UpdateIrqLine();
                     break;
             }
         }
+
+        // Recomputes the CPU-visible IRQ line as the OR of this APU's own sources (frame counter +
+        // DMC). See APU_FIX.cs's copy of this method for the full rationale: a stale IRQ request
+        // that's already been acknowledged/disabled at the APU level (e.g. by writing $4017 with
+        // the inhibit bit) must also deassert the CPU's line, or it survives indefinitely and fires
+        // as a "ghost" request at the next unrelated CLI - which is exactly what breaks SMB3's boot.
+        private void UpdateIrqLine() { bus.cpu.RequestIRQ(frameIRQFlag || dmc_irqFlag); }
 
         // ===== Reads =====
         public byte ReadAPURegister(ushort address)
@@ -436,7 +444,7 @@ namespace NesEmulator
             byte sample = bus.Read((ushort)dmc_sampleAddress);
             dmc_sampleAddress++; if(dmc_sampleAddress > 0xFFFF) dmc_sampleAddress = 0x8000; // wrap
             dmc_sampleLengthRemaining--; dmc_sampleBuffer = sample; dmc_sampleBufferFilled = true;
-            if(dmc_sampleLengthRemaining==0){ if(dmc_loop){ RestartDMC(); } else if(dmc_irqEnable){ dmc_irqFlag = true; bus.cpu.RequestIRQ(true); } }
+            if(dmc_sampleLengthRemaining==0){ if(dmc_loop){ RestartDMC(); } else if(dmc_irqEnable){ dmc_irqFlag = true; UpdateIrqLine(); } }
         }
 
         private void StartDMC(){ RestartDMC(); dmc_timer = 1; dmc_bitsRemaining = 8; dmc_silence = !dmc_sampleBufferFilled; }
@@ -486,7 +494,7 @@ namespace NesEmulator
                         case 2: QuarterFrameTick(); nextFrameEventCycle = 29829; break;
                         case 3:
                             QuarterFrameTick(); HalfFrameTick();
-                            if(!frameIRQInhibit){ frameIRQFlag = true; bus.cpu.RequestIRQ(true); }
+                            if(!frameIRQInhibit){ frameIRQFlag = true; UpdateIrqLine(); }
                             frameStep = -1; 
                             frameCycle -= 29830; 
                             nextFrameEventCycle = 7457; 
@@ -547,6 +555,8 @@ namespace NesEmulator
         }
         private void StoreSample(float sample){ if(ringCount >= AudioRingSize){ ringRead = (ringRead+1) & (AudioRingSize-1); ringCount--; } audioRing[ringWrite]=sample; ringWrite=(ringWrite+1)&(AudioRingSize-1); ringCount++; }
 
+        // IAPU.ReadSamples without the allocation of GetAudioSamples (plugin mode drains every block on the audio thread).
+        public int ReadSamples(Span<float> dest){ int toRead = Math.Min(dest.Length, ringCount); if(toRead==0) return 0; int first = Math.Min(toRead, AudioRingSize - ringRead); audioRing.AsSpan(ringRead, first).CopyTo(dest); int rem=toRead-first; if(rem>0) audioRing.AsSpan(0, rem).CopyTo(dest.Slice(first)); ringRead=(ringRead+toRead)&(AudioRingSize-1); ringCount-=toRead; return toRead; }
         public float[] GetAudioSamples(int maxSamples=0){ if(ringCount==0) return Array.Empty<float>(); int toRead = ringCount; if(maxSamples>0 && maxSamples<toRead) toRead=maxSamples; if(toRead>4096 && maxSamples==0) toRead=4096; float[] result=new float[toRead]; int first = Math.Min(toRead, AudioRingSize - ringRead); Array.Copy(audioRing, ringRead, result,0, first); int rem=toRead-first; if(rem>0) Array.Copy(audioRing,0,result,first,rem); ringRead=(ringRead+toRead)&(AudioRingSize-1); ringCount-=toRead; return result; }
         public float[] GetAudioBuffer()=>GetAudioSamples(); public int GetQueuedSampleCount()=>ringCount; public int GetSampleRate()=>audioSampleRate;
         public void SetEnabledChannels(int channelMask) { channelEnableMask = channelMask & 0x1F; }

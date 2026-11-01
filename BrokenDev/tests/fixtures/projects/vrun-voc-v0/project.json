@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "id": "vrun-voc-v0",
+  "title": "VRUN: Vaults of Obsolete Code (Game Boy), V0: the hello world (a frozen test fixture)",
+  "family": "vrun",
+  "kind": "gb",
+  "console": "gbc",
+  "description": "A frozen test fixture for BrokenDev's own tests (tests/run-tests.ps1): the user's Game Boy game at milestone V0, the hello world, exactly as its live workspace PROJECTS/VRUN_VOC_dev had it at commit f828fbe (the tests build it from that commit with git archive, read only, never from the moving live game). One dual-mode ROM on the game's final cartridge (MBC5 + RAM + battery, 1 MB ROM, 32 KB battery RAM) with a few lines of text, a sprite moved with the d-pad, a sound on A, a battery-RAM boot counter and the D7 debug port. The game itself is BrokenDev/projects/vrun-voc (today V2).",
+  "source": { "folder": "{live:VRUN_VOC_dev}" },
+  "requires": {
+    "tools": ["ps5", "toolchain:gbdk"],
+    "projects": [],
+    "inputs": [],
+    "toolchain": ["GBDK-2020 4.5.0 (lcc, SDCC, sdasgb, sdldgb, makebin), pinned in toolchains.json"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "ps5",
+        "cwd": "{src}",
+        "file": "{src}/build.ps1",
+        "args": ["-Gbdk", "{toolchain:gbdk}"],
+        "timeoutSec": 300,
+        "note": "build.ps1: lcc on src/*.c, makebin -yc -yt0x1B -yo64 -ya4 -yS (the .sym from the .noi); it checks the cartridge header ($80 dual mode, $1B MBC5+RAM+BATTERY, $05 1 MB, $03 32 KB) and fails otherwise."
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{src}/build/vrun_voc.gbc", "publishAs": "vrun_voc.gbc", "kind": "gbc" },
+      { "id": "noi", "path": "{src}/build/vrun_voc.noi", "publishAs": "vrun_voc.noi", "kind": "symbols" },
+      { "id": "sym", "path": "{src}/build/vrun_voc.sym", "publishAs": "vrun_voc.sym", "kind": "symbols-bgb" },
+      { "id": "map", "path": "{src}/build/vrun_voc.map", "publishAs": "vrun_voc.map", "kind": "map" }
+    ]
+  },
+  "run": { "console": "gbc", "note": "The d-pad moves the @, A beeps; the screen says which console it runs on and how many times the cartridge has been switched on." },
+  "verify": {
+    "timeoutSec": 600,
+    "scenarios": [
+      {
+        "id": "color",
+        "frames": 600,
+        "input": "120:Right,180:,200:A,206:,240:Down,280:,300:A,306:",
+        "checkpoints": [100, 190, 300, 600],
+        "expect": {
+          "minDistinctColors": 5,
+          "pictureDiffers": [100, 190],
+          "audio": { "fromFrame": 200, "minPeak": 0.05, "minNonSilentFrames": 20 },
+          "memory": [
+            { "symbol": "_is_color", "is": 1, "what": "the boot said Game Boy Color" },
+            { "symbol": "_player_x", "is": 144, "what": "60 frames of Right moved the sprite 60 pixels (from 84)" },
+            { "symbol": "_player_y", "is": 128, "what": "40 frames of Down moved it 40 pixels (from 88)" },
+            { "symbol": "_beep_count", "size": 2, "is": 2, "what": "each press of A beeped once (A is edge-triggered)" },
+            { "symbol": "_boot_count", "size": 2, "is": 1, "what": "the first power-on of a new cartridge" },
+            { "symbol": "_save_was_fresh", "is": 1, "what": "a new cartridge's battery RAM holds no save" }
+          ],
+          "port": { "markers": ["started", "beep"], "prints": ["VRUN: Vaults of Obsolete Code, dev build", "boot 1"], "timers": ["move_player"], "maxErrors": 0 }
+        },
+        "why": "on a Game Boy Color: the picture in colour (more than an original's four shades), the sprite moving with the d-pad, the sound of A, the save counting its first boot"
+      },
+      {
+        "id": "original",
+        "console": "gb",
+        "frames": 600,
+        "input": "120:Right,180:,200:A,206:,240:Down,280:,300:A,306:",
+        "checkpoints": [100, 190, 600],
+        "expect": {
+          "maxDistinctColors": 4,
+          "minDistinctColors": 3,
+          "pictureDiffers": [100, 190],
+          "audio": { "fromFrame": 200, "minPeak": 0.05, "minNonSilentFrames": 20 },
+          "memory": [
+            { "symbol": "_is_color", "is": 0, "what": "the boot said original Game Boy" },
+            { "symbol": "_player_x", "is": 144 },
+            { "symbol": "_player_y", "is": 128 },
+            { "symbol": "_beep_count", "size": 2, "is": 2 },
+            { "symbol": "_boot_count", "size": 2, "is": 1 }
+          ]
+        },
+        "why": "the same cartridge on an original Game Boy: four shades, the same game"
+      },
+      {
+        "id": "idle",
+        "frames": 600,
+        "input": "",
+        "checkpoints": [600],
+        "expect": {
+          "audio": { "fromFrame": 30, "silent": true },
+          "memory": [ { "symbol": "_player_x", "is": 84 }, { "symbol": "_beep_count", "size": 2, "is": 0 } ]
+        },
+        "why": "no input, no movement and no sound: the sound comes from A (from frame 30: the first two frames carry the click of the sound unit switched off and on at start-up)"
+      },
+      {
+        "id": "second-boot",
+        "batteryFrom": "color",
+        "frames": 120,
+        "input": "",
+        "checkpoints": [120],
+        "expect": {
+          "memory": [
+            { "symbol": "_boot_count", "size": 2, "is": 2, "what": "the battery RAM kept the first boot's count" },
+            { "symbol": "_save_was_fresh", "is": 0, "what": "the save was found (magic and checksum)" }
+          ]
+        },
+        "why": "the battery save: switched off and on again, the cartridge remembers"
+      },
+      {
+        "id": "third-boot-original",
+        "batteryFrom": "second-boot",
+        "console": "gb",
+        "frames": 120,
+        "input": "",
+        "checkpoints": [120],
+        "expect": { "memory": [ { "symbol": "_boot_count", "size": 2, "is": 3, "what": "the same save read on an original Game Boy" } ] },
+        "why": "one cartridge, both models: the save made on a Color is read on an original"
+      }
+    ],
+    "compare": [
+      { "a": "color@600", "b": "idle@600", "expect": "differ", "why": "the pad reached the game" },
+      { "a": "color@600", "b": "original@600", "expect": "differ", "why": "colours on a Color, shades on an original" },
+      { "a": "second-boot@120", "b": "idle@600", "expect": "differ", "why": "the screen shows the second boot (BOOTS 2, no NEW)" }
+    ]
+  },
+  "compat": {
+    "what": "The hello world on every Game Boy emulator BrokenDev has, from power-on and the same pad script: the sprite's position, the beep counter and the boot counter read by the game's symbols, every frame. The other emulators play their boot animation first (BrokenNes starts at the documented post-boot state), so the pad script waits until frame 400 and the checks allow for the difference.",
+    "symbols": { "file": "{out}/vrun_voc.noi" },
+    "reads": { "x": "_player_x", "beeps": "_beep_count", "boots": "_boot_count", "frame": "_frame_count" },
+    "frameTolerance": 250,
+    "scenarios": [
+      {
+        "id": "play",
+        "frames": 900,
+        "input": "400:Right,460:,500:A,506:",
+        "shots": [390, 900],
+        "what": "power-on, 60 frames of Right, one press of A",
+        "checks": [
+          { "id": "alive", "what": "the main loop runs (frame_count keeps changing)", "changes": "frame", "within": [500, 900], "min": 300 },
+          { "id": "first-boot", "what": "the boot counter says 1 (a new cartridge)", "read": "boots", "is": 1, "within": [300, 900], "hold": true },
+          { "id": "moved", "what": "60 frames of Right moved the sprite to x 144 (one frame either way: when an emulator samples the pad)", "read": "x", "is": [143, 144, 145], "within": [470, 900] },
+          { "id": "beeped", "what": "A beeped once", "read": "beeps", "is": 1, "within": [510, 900] },
+          { "id": "drawn", "what": "the screen is drawn (text and sprite)", "picture": 900, "minColors": 3 },
+          { "id": "sprite-moved", "what": "the picture changed while the sprite moved", "pictureDiffers": [390, 900] }
+        ]
+      },
+      {
+        "id": "second-boot",
+        "frames": 600,
+        "input": "",
+        "saves": "play",
+        "what": "power-on again with the battery save the play run left",
+        "checks": [
+          { "id": "second-boot", "what": "the boot counter says 2 (the save was kept)", "read": "boots", "is": 2, "within": [300, 600], "hold": true }
+        ]
+      }
+    ]
+  },
+  "checks": {
+    "what": "BrokenDev hardware checks (docs/projects/brokendev-debugging-plan.md, D4; the Game Boy's 12 rules): every verify scenario runs again with the checks on; a finding not accepted here fails verify. The hello world accepts none: it writes every variable before reading it, builds its screen with the LCD off, switches the LCD off only in vblank, touches VRAM and OAM only when the picture chip lets it, and enables the cartridge RAM before using it.",
+    "accepted": []
+  },
+  "budgets": {
+    "what": "Over a limit fails verify, near it (90%) warns; the report compares with the previous build (out/<id>/budget-history.json). romBankFree is an estimate (padding runs of 64 or more equal $00 / $FF bytes).",
+    "lagFrames": { "max": 0, "fromFrame": 0, "what": "no lag frame at all, start-up included (it builds the screen with the LCD off)" },
+    "busyPercent": { "max": 95, "fromFrame": 30 },
+    "romBankFree": { "min": 2048, "what": "every 16 KB bank keeps 2 KB free (63 of the 64 are empty today)" },
+    "memoryFree": { "wram": 4096, "hram": 64, "what": "work RAM and high RAM never read (the original's 8 KB of work RAM is the tighter: a Color has 32 KB)" },
+    "stackFree": { "min": 1024 }
+  },
+  "knownIssues": [
+    "Frozen at f828fbe: this manifest changes only when BrokenDev's tests need it to, never with the live game."
+  ]
+}

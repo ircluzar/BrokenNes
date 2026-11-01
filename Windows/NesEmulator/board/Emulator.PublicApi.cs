@@ -114,6 +114,22 @@ namespace BrokenNes
         }
 
         // Helper to apply the currently selected crash behavior to the active NES
+        // Cartridges that cannot run on an arbitrary CPU core, keyed off the ROM header.
+        //
+        // Mapper 30 (UNROM-512) is the self-flashing homebrew board, and in practice that means
+        // NESFab output, which emits the undocumented 6502 opcodes as a matter of course. Only
+        // CPU_FIX implements them. Every other core either throws "Bad opcode" or - under the
+        // shipped IgnoreErrors behaviour - executes them as 2-cycle NOPs, so the game runs a
+        // different program than the one on the cartridge, looks alive, and reports nothing.
+        //
+        // A header field, not a scan of PRG: a static scan cannot tell code from data and would
+        // demand FIX for nearly every commercial ROM. Deliberately not the desktop build's
+        // run-the-ROM probe either - that spends up to 90 frames on the browser's single thread on
+        // every ROM load, which is the wrong trade for a build whose whole point is old phones.
+        // Returns null when no core is required, meaning "honour the player's pick".
+        private static string? RequiredCpuCoreFor(byte[] romBytes)
+            => NesController.PeekMapperId(romBytes) == 30 ? "FIX" : null;
+
         private void ApplySelectedCrashBehavior()
         {
             try
@@ -178,7 +194,7 @@ namespace BrokenNes
         public Task GhCorruptAndStashAsync() => GhCorruptAndStash();
         public Task GhReplayEntryAsync(HarvestEntry e, bool fromStockpile) => GhReplayEntry(e, fromStockpile);
         public Task GhExportStockpileAsync() => GhExportStockpile();
-        public void GhAddBase() => GhAddBaseState();
+        public Task GhAddBase() => GhAddBaseState();
         public void GhOnBaseChangedPublic(ChangeEventArgs e) => GhOnBaseChanged(e);
         public void GhLoadSelected() => GhLoadSelectedBase();
         public void GhDeleteSelected() => GhDeleteSelectedBase();
@@ -202,12 +218,8 @@ namespace BrokenNes
                 var json = await JS.InvokeAsync<string>("eval", "window.ghStockpileData || ''");
                 if (!string.IsNullOrWhiteSpace(json))
                 {
-                    var imported = System.Text.Json.JsonSerializer.Deserialize<List<CorruptorModels.HarvestEntry>>(json);
-                    if (imported != null)
-                    {
-                        foreach (var entry in imported) corruptor.GhStockpile.Add(entry);
-                        Status.Set($"Imported {imported.Count} stockpile entries");
-                    }
+                    var result = corruptor.GlitchHarvester.ImportStockpile(json);
+                    Status.Set($"Imported: {result.Summary}" + (result.Refusals.Count > 0 ? " | " + string.Join(" | ", result.Refusals.Take(3)) : "") + (result.Warnings.Count > 0 ? " | " + result.Warnings[0] : ""));
                 }
             }
             catch (Exception ex) { Status.Set($"Import failed: {ex.Message}"); }
@@ -272,6 +284,124 @@ namespace BrokenNes
     // Event scheduler toggle
     public bool EventSchedulerOn { get => eventSchedulerOn; set { eventSchedulerOn = value; if(nes!=null) nes.EnableEventScheduler = value; try { JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_eventScheduler", value?"1":"0"); } catch {} StateHasChanged(); } }
 
+    // Real NTSC is 89341.5 PPU dots per frame = 29780.5 CPU cycles; the emulator's default frame
+    // budget is the round 60.000fps figure, 29829.55, which hands the ROM ~49 cycles a frame that
+    // hardware never gives it. That is 0.165% fast - imperceptible moment to moment, but it
+    // accumulates: measured against Mesen 2.1.1 over 6000 frames of VRUN, the exact-60 budget drifts
+    // roughly ten frames of game time and the per-frame picture stops lining up (framebuffer hash
+    // differing on 3633 of 6000 frames, rising steadily with elapsed time), while the NTSC-accurate
+    // budget matches on all but frame 0. The frames themselves are not WRONG in either mode - the
+    // game plays correctly - but only this one replays in step with hardware.
+    //
+    // Defaults ON here, unlike the desktop build. Lite exists to showcase the bundled homebrew and
+    // carries none of the exact-60 calibration the desktop does (no AccuracyCoin, no recorded
+    // benchmarks, no golden suite), so there is nothing here to trade away for it. The cost is a
+    // lower PPU/APU catch-up batch threshold, i.e. some speed - which is why it stays a toggle.
+    private bool ntscAccurateOn = true;
+    public bool NtscAccurateFrameRateOn
+    {
+        get => ntscAccurateOn;
+        set
+        {
+            ntscAccurateOn = value;
+            ApplyNtscAccurateFrameRate();
+            try { JS.InvokeVoidAsync("nesInterop.idbSetItem","pref_ntscAccurate", value?"1":"0"); } catch {}
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// True when <see cref="NtscAccurateFrameRateOn"/> is the player's stored preference but the
+    /// RUNNING machine is still on the other setting because switching it live would break the
+    /// picture. The Performance panel surfaces this and offers
+    /// <see cref="RestartForTimingAsync"/>. See <see cref="_ntscTaintedMachine"/> for why.
+    /// </summary>
+    public bool NtscAccurateNeedsRestart { get; private set; }
+
+    /// <summary>
+    /// The NES instance that has executed frames with NTSC-accurate timing OFF. Turning the
+    /// correction back ON for THAT SAME instance freezes the game, so it is refused.
+    ///
+    /// WHY: NES.RunFrame derives the accurate frame length from a running total -
+    /// `targetCycles = ntscDotBudget / 3 - globalCpuCycle`. `ntscDotBudget` only advances on frames
+    /// that ran with the correction on, while `globalCpuCycle` advances on every frame either way,
+    /// and NOTHING resets either of them - not LoadROM, not the Reset button; they live for the
+    /// lifetime of the NES object. So every frame spent with the correction off leaves
+    /// `globalCpuCycle` ~29829 cycles ahead of the budget, and the moment it is switched back on
+    /// `targetCycles` comes out hugely negative. RunFrame then executes no CPU at all and banks the
+    /// shortfall in `overshootCarry`, which drains at one frame per frame - so the game freezes for
+    /// as long as it previously ran with the setting off. MEASURED in Lite (VRUN, RIGHT held so the
+    /// picture changes every frame): with the correction on throughout, 11 of 59 consecutive frames
+    /// differ; after ~120 frames off and then back on, the framebuffer is bit-identical for the
+    /// next 119 frames and only then resumes. A player who played ten minutes with it off would
+    /// freeze for ten minutes.
+    ///
+    /// The real fix is to re-baseline `ntscDotBudget` to `globalCpuCycle * 3` when the flag rises,
+    /// which has to happen inside NES.cs. Until then this class simply never puts a machine into
+    /// that state: a fresh NES is the only thing that clears the debt, hence "restart to apply".
+    /// Reference identity is the test because ROM loads and resets REUSE the instance.
+    ///
+    /// The other direction (on -> off) is safe and applies live - it is also the direction that
+    /// matters when someone's phone is struggling, which is the whole point of exposing the toggle.
+    /// </summary>
+    private NesEmulator.NES? _ntscTaintedMachine;
+
+    // Every NES instance gets a fresh SpeedConfig, so this has to be reapplied after each ROM load
+    // rather than surviving from the previous cartridge. It is also the single place that decides
+    // whether the stored preference may reach the machine at all - see _ntscTaintedMachine.
+    internal void ApplyNtscAccurateFrameRate()
+    {
+        try
+        {
+            var sc = nes?.GetSpeedConfig();
+            if (sc == null) return;
+            if (ntscAccurateOn && ReferenceEquals(_ntscTaintedMachine, nes))
+            {
+                // Preference says on, this machine cannot honour it. Leave the hardware off and
+                // let the UI ask for a restart rather than silently freezing the picture.
+                sc.NtscAccurateFrameRate = false;
+                NtscAccurateNeedsRestart = true;
+                return;
+            }
+            sc.NtscAccurateFrameRate = ntscAccurateOn;
+            NtscAccurateNeedsRestart = false;
+            // Null on the "on" path so a discarded NES (with its ROM) is not held alive by this.
+            _ntscTaintedMachine = ntscAccurateOn ? null : nes;
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Power-cycle the cartridge so a pending NTSC-accurate timing change can take effect.
+    ///
+    /// Nulling <c>nes</c> first is the entire point and is not incidental: every other path here -
+    /// LoadSelectedRom, LoadRomFromServer, ResetAsync - reuses the existing NES
+    /// (`if (nes == null) nes = new NES()`), and reusing it keeps the stale cycle counters that made
+    /// the change unsafe in the first place. Only a genuinely new instance starts both counters at
+    /// zero.
+    ///
+    /// The battery/flash commit has to happen BEFORE the machine is dropped, because
+    /// LoadSelectedRomPublic's own commit sees a null NES and no-ops - without this, up to ten
+    /// seconds of play (the autosave interval) would be thrown away by a menu toggle.
+    /// </summary>
+    public async Task RestartForTimingAsync()
+    {
+        bool wasRunning = Controller.IsRunning;
+        if (wasRunning) await PauseAsync();
+        await SaveBatteryNowAsync();
+        nes = null;
+        Controller.FrameCount = 0; Controller.LastFrameCount = 0; Controller.Fps = 0;
+        if (!string.IsNullOrEmpty(Controller.CurrentRomName)) Controller.RomFileName = Controller.CurrentRomName;
+        // Rebuilds the machine, restores this cartridge's flash/battery save and re-applies the
+        // core selection; its onRomLoaded callback calls ApplyNtscAccurateFrameRate, which now sees
+        // an untainted instance and lets the preference through.
+        await LoadSelectedRomPublic();
+        try { await JS.InvokeVoidAsync("nesInterop.resetAudioTimeline"); } catch { }
+        if (wasRunning) await StartAsync();
+        Status.Set(ntscAccurateOn ? "Restarted with NTSC-accurate timing." : "Restarted.");
+        StateHasChanged();
+    }
+
     // SoundFont public projections
     public bool SoundFontMode => soundFontMode;
     public bool SampleFont => sampleFont;
@@ -297,6 +427,25 @@ namespace BrokenNes
         // Load the currently selected ROM (uploaded or built-in) using controller plumbing and present a warm-up frame.
         public async Task LoadSelectedRomPublic()
         {
+            // Commit the OUTGOING cartridge's save before its NES is thrown away. The periodic
+            // autosave only runs every ~10s, so without this, saving and then immediately picking
+            // another ROM loses the save that was just made.
+            await SaveBatteryNowAsync();
+            await FlushSessionSaveAsync();
+            // BrokenNes 2: a SNES / Game Boy ROM starts a console session instead of loading into the NES.
+            if (Controller.UploadedRoms.TryGetValue(Controller.RomFileName, out var uploaded))
+            {
+                if (await TryStartSessionAsync(Controller.RomFileName, uploaded)) return;
+            }
+            else if (!Controller.RomFileName.EndsWith(".nes", StringComparison.OrdinalIgnoreCase))
+            {
+                // A server ROM (?rom=testroms/smw.smc) - fetch it and route it the same way.
+                byte[] served = Array.Empty<byte>();
+                try { served = await Http.GetByteArrayAsync(Controller.RomFileName); } catch { }
+                if (served.Length > 0 && await TryStartSessionAsync(Controller.RomFileName, served)) return;
+                if (SessionActive) await StopSessionAsync();
+            }
+            else if (SessionActive) await StopSessionAsync();
             await Controller.LoadSelectedRom(
                 async fn => await Controller.LoadRomFromWwwroot(fn, f => Http.GetByteArrayAsync(f), s => Logger.LogInformation(s), s => Logger.LogError(new Exception(s), s)),
                 s => Status.Set(s),
@@ -304,7 +453,24 @@ namespace BrokenNes
                 async _ => await JS.InvokeVoidAsync("nesInterop.drawFrame", "nes-canvas", Controller.framebuffer),
                 async () => { BuildMemoryDomains(); await Task.CompletedTask; },
                 () => PauseAsync(),
-                () => StartAsync()
+                () => StartAsync(),
+                romBytes =>
+                {
+                    // NES.LoadROM built a new Bus, which defaults the CPU to SPD. Decide whether
+                    // this cartridge needs a specific core, then put the selection back - both
+                    // before the first frame runs.
+                    Controller.RuntimeCpuCoreOverride = RequiredCpuCoreFor(romBytes);
+                    ApplySelectedCores();
+                    ApplySelectedCrashBehavior();
+                    ApplyNtscAccurateFrameRate(); // fresh NES => fresh SpeedConfig, so reapply
+                },
+                // Restore the incoming cartridge's battery/flash from IndexedDB. Awaited inside
+                // LoadSelectedRom while the clock is stopped, so no frame runs against a blank save.
+                async () =>
+                {
+                    var notice = await LoadBatteryForCurrentRomAsync();
+                    if (notice != null) Status.Set(notice);
+                }
             );
             // After successful ROM load, ensure a corresponding Game entry exists in continue-db
             try { await EnsureGameInContinueDbAsync(Controller.CurrentRomName); } catch { }
@@ -453,8 +619,10 @@ namespace BrokenNes
         {
             if (roms == null || roms.Length == 0) return;
             int added = 0;
+            string? archiveNote = null;
             foreach (var f in roms)
             {
+                if (!string.IsNullOrEmpty(f.unsupported)) { archiveNote = NesController.ArchiveMessage(f.name, f.unsupported); continue; }
                 if (string.IsNullOrWhiteSpace(f.name) || string.IsNullOrWhiteSpace(f.base64)) continue;
                 try
                 {
@@ -469,9 +637,16 @@ namespace BrokenNes
                 }
                 catch { }
             }
-            Controller.RomFileName = roms.Last().name;
+            if (added == 0)
+            {
+                string msg = archiveNote ?? "No ROM in what was dropped (" + string.Join(", ", NesEmulator.Systems.Consoles.AllRomExtensions) + ").";
+                Controller.ErrorMessage = archiveNote ?? string.Empty; Status.Set(msg); StateHasChanged();
+                return;
+            }
+            Controller.RomFileName = roms.Last(r => Controller.UploadedRoms.ContainsKey(r.name)).name;
             await LoadSelectedRomPublic();
-            Status.Set($"Dropped {added} ROM(s).");
+            Status.Set($"Dropped {added} ROM(s)." + (archiveNote != null ? " " + archiveNote : ""));
+            if (archiveNote != null) Controller.ErrorMessage = archiveNote;
             if (!string.Equals(Controller.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase))
             {
                 try { await JS.InvokeVoidAsync("nesInterop.focusCorruptorPanel"); } catch {}
@@ -481,11 +656,105 @@ namespace BrokenNes
     // Expose memory domain rebuild for UI triggers (avoids duplicated logic in Razor)
     public void RebuildMemoryDomainsPublic() => BuildMemoryDomains();
 
-        // === Visibility forwarding for CLR clock throttling ===
+        // === Visibility forwarding for CLR clock throttling, plus the mobile save flush ===
+        //
+        // On mobile this is the ONLY lifecycle hook that fires reliably before the browser discards
+        // a backgrounded tab, so it doubles as the "the player is leaving, commit the save" signal.
+        // The clock notification stays first and synchronous - it runs before the first await, so
+        // frame pacing is throttled at exactly the same instant it always was; only the battery
+        // flush is deferred.
         [JSInvokable]
-        public void JsVisibilityChanged(bool visible)
+        public async Task JsVisibilityChanged(bool visible)
         {
+            PageHidden = !visible;
             try { _activeClock?.OnVisibilityChanged(visible); } catch {}
+            if (!visible)
+            {
+                // Best-effort: IndexedDB writes are async and the page can be frozen before the
+                // transaction commits. The periodic in-frame autosave below is what actually
+                // protects progress; this just narrows the window.
+                await SaveBatteryNowAsync();
+                await FlushSessionSaveAsync();
+            }
+        }
+
+        // ================= Cartridge battery / flash persistence =================
+        //
+        // Two entry points into BatterySaveService, kept here rather than in the service so the
+        // "which ROM is loaded, and is it the placeholder?" policy lives with the emulator that
+        // knows it. See BatterySaveService for why IndexedDB, why two media, and why the key is
+        // content-addressed and shared with the desktop build.
+
+        /// <summary>How many emulated frames between autosave checks (~10s at 60fps, matching the desktop).</summary>
+        private const int BatteryAutoSaveFrameInterval = 600;
+        private int batteryAutoSaveFrameCounter;
+
+        /// <summary>
+        /// Called once per emulated frame from RunFrameAndBuildPayload. Cost is near zero: it does
+        /// nothing at all on 599 frames out of 600, and on the 600th it still writes nothing unless
+        /// the cartridge actually has non-volatile memory whose contents changed.
+        ///
+        /// This periodic write - not the lifecycle hooks - is what genuinely protects progress. A
+        /// browser tab can be discarded with no usable notice at all, and the IndexedDB write that
+        /// visibilitychange kicks off may never commit; a save that is already ten seconds old on
+        /// disk survives that.
+        /// </summary>
+        private void MaybeAutoSaveBattery()
+        {
+            if (++batteryAutoSaveFrameCounter < BatteryAutoSaveFrameInterval) return;
+            batteryAutoSaveFrameCounter = 0;
+
+            var target = nes;
+            if (target == null) return;
+            // The embedded placeholder is not a game and has no progress worth keeping.
+            if (string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase)) return;
+
+            try { _batterySaveService.QueueAutosave(target); } catch (Exception ex) { Logger.LogWarning(ex, "Battery autosave failed"); }
+        }
+
+        /// <summary>Force a battery/flash write and wait for it. Safe to call when nothing changed.</summary>
+        private async Task SaveBatteryNowAsync()
+        {
+            var target = nes;
+            if (target == null) return;
+            if (string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase)) return;
+            try { await _batterySaveService.SaveNowAsync(target); }
+            catch (Exception ex) { Logger.LogWarning(ex, "Battery save failed"); }
+        }
+
+        /// <summary>
+        /// Restore this cartridge's battery/flash contents from IndexedDB.
+        ///
+        /// MUST be awaited after NES.LoadROM and BEFORE the first frame runs on every load path.
+        /// A frame that executes against a blank save is not merely cosmetic: VRUN reads
+        /// save_exists at boot, and a game that concludes there is no save is one keypress away
+        /// from writing a fresh one over the real thing.
+        /// </summary>
+        /// <returns>
+        /// A line worth showing the player, or null. Returned rather than pushed straight into
+        /// Status because every caller sets its own "ROM loaded" message immediately afterwards,
+        /// which would clobber it.
+        /// </returns>
+        private async Task<string?> LoadBatteryForCurrentRomAsync()
+        {
+            var target = nes;
+            if (target == null) return null;
+            if (string.Equals(nesController.CurrentRomName, "test.nes", StringComparison.OrdinalIgnoreCase)) return null;
+            try
+            {
+                var report = await _batterySaveService.LoadForAsync(target);
+                // A fresh cartridge starts its own autosave clock; otherwise a ROM switch could
+                // inherit a nearly-elapsed counter and write before the game has done anything.
+                batteryAutoSaveFrameCounter = 0;
+                if (report.Flash == BrokenNes.Services.BatterySaveService.FlashLoadOutcome.Applied)
+                    Logger.LogInformation("Cartridge flash save restored");
+                return report.Notice;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Battery load failed");
+                return null;
+            }
         }
 
     // ===== Achievements modal public accessors (for Razor) =====
