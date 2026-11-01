@@ -66,6 +66,20 @@ The user picked all nine:
 
 **Still candidates:** TuxNES 0.75, VirtuaNES 0.97 (all the NES expansion chips), VBA-M 2007 (an almost-free variant of VBA), SNEmulDS, GameYob, PocketNES (ARM asm), Genesis Plus GX 1.3.0 `fm.c`.
 
+## Batch 4: the remaining candidates (2026-11-01, in progress)
+
+The user asked for the rest of the research shortlist, using the same process. The budget is limited, so ports run in two waves and every merged core is pushed straight away.
+
+| ID | Console slot | Source | License | Why | Status |
+|---|---|---|---|---|---|
+| `TUXN` | NES APU | TuxNES 0.75 `src/sound.c` (github.com/tuxnes/tuxnes) | GPL-2+ | Its header admits "DMC pops periodically" and "Noise channel fades in signed 16 bit"; 8-bit default; a triangle hack "inspired by nosefart" | planned |
+| `VNES` | NES APU (+ MMC5 through `IApuExpansionAudio`) | VirtuaNES 0.97 `NES/ApuEX/APU_INTERNAL.cpp` (+ `APU_MMC5.cpp`) (github.com/ChillMagic/VirtuaNES mirror) | not stated in the files | Norix's own 2002 APU, not band-limited; the full expansion set exists (VRC6/VRC7/N106/FDS/FME7 left as gaps, no mappers) | planned |
+| `VBAM` | GB APU | VBA-M commit 5e3902b4 (2007-12-03) `src/gb/gbSound.cpp`, the VBA 1.8.0-beta core right before blargg's Gb_Apu | GPL-2+ | About 150 lines different from our VBA 1.7.2 port: read masks, length reload on retrigger, shadowed frequency registers | planned |
+| `GPGX` | Genesis APU + SMS/GG PSG | Genesis Plus GX 1.3.0 (tree 6f65ac3) `source/sound/fm.c` (MAME fm.c 1.4 + Eke's fixes) + its `sn76496.c` | MAME license | The last GX before 1.3.1 dropped the old core: half-done SSG-EG, older envelopes and LFO | planned |
+| `SNDS` | SNES APU | SNEmulDS `arm7/source/dsp.c` + `dspMixer.S` (DSP from PocketSPC by gladius) (github.com/cotodevel/snemulds) | GPL-2 | A Nintendo DS emulator's cheap DSP: echo forced off at init, a cheap ARM mixer | planned |
+| `GYOB` | GB APU | GameYob (DS) `dssoundengine.cpp` + `arm7 sound.c` (github.com/Stewmath/GameYob) | MIT | Plays Game Boy channels on the DS's own sound hardware (emulated here); only its optional "hyperSound" sync handles effects like Pikachu accurately | planned |
+| `PNES` | NES APU | PocketNES (GBA) `src/sound.s` (github.com/Dwedit/PocketNES) | none stated | Plays NES channels on the GBA's Game Boy sound hardware (driven here through BrokenNes2's own `APU_GB`); users report dropped notes | planned |
+
 ## Resuming this work locally (or in any new session)
 
 - **Everything is on the branch `claude/blissful-archimedes-i7zlbe` of `ircluzar/BrokenNes`.** It is pushed after every merged core. To continue on your machine:
