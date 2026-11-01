@@ -6,6 +6,7 @@
 | --- | --- | --- | --- |
 | GNUB: gnuboy 1.0.3 sound engine (`sound.c`, `pcm.h`, `noise.h` tables, sound clock from `cpu.c`) as a Game Boy sound chip | `GnubSound.cs`, `APU_GNUB.cs` | [gnuboy](https://github.com/rofl0r/gnuboy) @4c2f6c4, (C) Laguna, Gilgamesh and contributors | GPL-2.0 (documented exception) |
 | VBA: VisualBoyAdvance 1.7.2 Game Boy sound engine (`src/gb/gbSound.cpp`, the `Sound.cpp` tables, the `GB.cpp` sound tick) as a Game Boy sound chip | `VbaGbSound.cs`, `APU_VBA.cs` | [vba-raspi mirror](https://github.com/weimingtom/vba-raspi) @9fbd04f8, (C) Forgotten and the VBA development team | GPL-2.0 (documented exception) |
+| TGBD: TGB Dual `apu.cpp` (Hii) as a Game Boy sound chip: frame-block renderer, `update()` 5x per frame, phase never reset on trigger, L/R swapped, NR52 quirks | `TgbdApu.cs`, `APU_TGBD.cs` | [tgbdual-libretro](https://github.com/libretro/tgbdual-libretro) `gb_core/apu.cpp` (+ `gb.h`, `libretro/dmy_renderer.cpp`), (C) 2001 Hii | GPL-2.0-or-later (documented exception) |
 
 The rest of this ledger covers the stock cores.
 

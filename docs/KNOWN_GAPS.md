@@ -73,6 +73,9 @@ call was quick and dirty first, with a smoke test only.
 | FA-DEGA-1 | P3 | DEGA writes land at chunk granularity, not inside the chunk. | `SmsSoundDega.OnPsgSamples`; needs write timestamps from the `SmsSound` hooks. | 2026-11-01, `b86d07ac` | open |
 | FA-DEGA-2 | P3 | DEGA: the 44,100 Hz rate is assumed (Dega's frontend not checked); the non-enhanced mode is not on any menu; no upstream commit hash recorded. | `SmsSoundDega` (DegaRate, enhance flag). | 2026-11-01, `b86d07ac` | open |
 | FA-DEGA-3 | P3 | DEGA Game Gear stereo path not smoke-tested (the test VGM has no stereo writes). | Render a GG VGM with port $06 writes. | 2026-11-01, `b86d07ac` | open |
+| FA-TGBD-1 | P3 | TGBD is not an `APU_GB`: BrokenDev mute, the WAVE domain, the plugin sampler and instrument push skip it (as GNUB/VBA, FA-6). | `gb/APU_TGBD.cs`. | 2026-11-01, `e1bc5ab9` | open |
+| FA-TGBD-2 | P3 | A swap to TGBD restarts the engine from the registers: notes stay silent until re-triggered. | `APU_TGBD.LoadState`: map the `APU_GB` channel state into `TgbdStat`. | 2026-11-01, `e1bc5ab9` | open |
+| FA-TGBD-3 | P3 | TGBD: echo not ported, the low-pass filter fixed off (its default), dual-GB mode not modelled, DC offset ~1,450. | `gb/TgbdApu.cs`: expose b_lowpass / port the echo if wanted. | 2026-11-01, `e1bc5ab9` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
