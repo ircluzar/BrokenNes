@@ -80,6 +80,12 @@ The user asked for the rest of the research shortlist, using the same process. T
 | `GYOB` | GB APU | GameYob (DS) `dssoundengine.cpp` + `arm7 sound.c` + `noise.h` (github.com/Stewmath/GameYob @45599fb) | MIT | Plays Game Boy channels on the DS's own sound hardware (emulated here); only its optional "hyperSound" sync handles effects like Pikachu accurately | **done (MVP)**: `gb/GameYobSound.cs`, `gb/APU_GYOB.cs` (0875ba89; default mode: commands once per GB frame, emulated DS mixer at 32,768 Hz, DS duty table, the DC hum; r=0.947 vs GB) |
 | `PNES` | NES APU | PocketNES (GBA) `src/sound.s` (github.com/Dwedit/PocketNES @9c07f3d) | none stated | Plays NES channels on the GBA's Game Boy sound hardware (driven here through BrokenNes2's own `APU_GB`); users report dropped notes | **done (MVP)**: `apus/PocketNesSound.cs`, `apus/APU_PNES.cs` (4e1950c5; software envelopes/length/sweep written as fixed GB volumes, a retrigger on every volume or period change, pitches re-quantised to GB periods, on/off triangle, DirectSound-style DMC; ~2.5x louder; r=0.53 vs FIX) |
 
+## Batch 5: one last port (2026-11-01)
+
+| ID | Console slot | Source | License | Why | Status |
+|---|---|---|---|---|---|
+| `E055` | Japanese SMS FM (YM2413) | emu2413 v0.55 (Mitsutaka Okazaki, 2002) `emu2413.c` + `2413tone.h` (github.com/digital-sound-antiques/emu2413-legacy) | none stated in the legacy repo | The author's own README: "Its quality is extremely low". Early drum and hi-hat models, a crude low-pass filter. The second alternate for the FM unit after M036FM | planned |
+
 ## Resuming this work locally (or in any new session)
 
 - **Everything is on the branch `claude/blissful-archimedes-i7zlbe` of `ircluzar/BrokenNes`.** It is pushed after every merged core. To continue on your machine:
