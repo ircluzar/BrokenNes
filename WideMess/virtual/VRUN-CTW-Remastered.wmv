@@ -1,0 +1,13 @@
+{
+  "format": "widemess-virtual",
+  "version": 1,
+  "title": "VRUN Corrupt The World Remastered",
+  "folder": "../../../VRUN_CTW_Remastered",
+  "command": "node",
+  "args": ["tools/replacement-engine/Launch-VRUN.mjs", "--port", "{port}"],
+  "ready": "server ready",
+  "page": "/",
+  "width": 398,
+  "height": 224,
+  "layers": "#screen canvas, #screen video"
+}

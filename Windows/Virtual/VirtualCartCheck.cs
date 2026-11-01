@@ -135,6 +135,24 @@ namespace BrokenNes.Windows.Virtual
                 bool resumed = WaitFor(() => !s.PagePaused, 3000);
                 long pfb = s.PageFrames; Thread.Sleep(1000); long after = s.PageFrames - pfb;
                 Add("pause", frozen && during <= 2 && resumed && after > 30, $"paused: {frozen}, page frames in 1 s while paused: {during}; resumed: {resumed}, frames in the next 1 s: {after}");
+                // 6. in the game (Start on the title starts it): the WebGL layer read back every frame
+                if (args.Any(a => a.Equals("--play", StringComparison.OrdinalIgnoreCase)))
+                {
+                    Press(PadButtons.Start);
+                    bool inGame = WaitFor(() => s.Evaluate("(function(){var c=document.getElementById('game');return c?getComputedStyle(c).opacity:'0';})()") == "\"1\"", 60000);
+                    Thread.Sleep(4000);
+                    for (int i = 0; i < 6; i++) { Press(PadButtons.Start); Thread.Sleep(900); }   // (past the engine's own title and the story)
+                    long g0 = s.PageFrames, gr = s.FramesRepeated, go = s.FramesOverwritten;
+                    var gA = Snap();
+                    Thread.Sleep(5000);
+                    var gB = Snap(); Save(gB, Path.Combine(outDir, "game.png"));
+                    double gfps = (s.PageFrames - g0) / 5.0;
+                    metrics["gamePageFramesPerSecond"] = Math.Round(gfps, 1);
+                    metrics["gameRepeatedPerSecond"] = Math.Round((s.FramesRepeated - gr) / 5.0, 1);
+                    metrics["gameOverwrittenPerSecond"] = Math.Round((s.FramesOverwritten - go) / 5.0, 1);
+                    Add("in the game", inGame && gfps >= 50 && Colours(gB) > 4, $"the game layer is shown: {inGame}; {gfps:0.0} page frames/s, repeated {metrics["gameRepeatedPerSecond"]}/s, overwritten {metrics["gameOverwrittenPerSecond"]}/s; {Diff(gA, gB)} pixels changed in 5 s");
+                }
+
                 Add("no page errors", s.PageErrors == 0 && s.Problem == null, s.PageErrors == 0 ? "none" : $"{s.PageErrors}: {s.LastPageError}");
             }
             finally
