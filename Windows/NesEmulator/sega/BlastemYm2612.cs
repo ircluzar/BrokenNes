@@ -52,7 +52,10 @@ public sealed class BlastemYm2612
 
     private readonly Op[] operators = new Op[NUM_OPERATORS];
     private readonly Chan[] channels = new Chan[NUM_CHANNELS];
-    private readonly Supp[] ch3_supp = new Supp[3];
+    // BlastEm 0.3.1 declares ch3_supp[3] but UpdatePhaseInc indexes it with (op - 8) ^ 2, which is 3 for operator 9: C reads past the
+    // array into the next fields (ch3_mode, current_op, ...). C# would throw, so a 4th slot that is never written stands in for that
+    // memory (it reads as zeros: operator 9 in channel-3 special mode gets frequency 0). Found by Workshop --apu-fuzz.
+    private readonly Supp[] ch3_supp = new Supp[4];
     private ushort env_counter;
     private byte ch3_mode, current_op, current_env_op, dac_enable, lfo_enable, lfo_freq, lfo_counter, lfo_am_step, lfo_pm_step;
     private byte selected_reg, selected_part;
@@ -125,7 +128,7 @@ public sealed class BlastemYm2612
     {
         for (int i = 0; i < NUM_OPERATORS; i++) operators[i] = new Op();
         for (int i = 0; i < NUM_CHANNELS; i++) channels[i] = new Chan();
-        for (int i = 0; i < 3; i++) ch3_supp[i] = new Supp();
+        for (int i = 0; i < ch3_supp.Length; i++) ch3_supp[i] = new Supp();
         Reset();
     }
 

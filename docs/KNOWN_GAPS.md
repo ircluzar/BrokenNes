@@ -100,6 +100,7 @@ call was quick and dirty first, with a smoke test only.
 | FA-PNES-3 | P3 | PNES is NTSC only (freq_mult 0xFFED408C, 7,457-cycle frame interval); the PAL multiplier and tables are not wired. | `apus/PocketNesSound.cs` GbFreq/FrameInterval. | 2026-11-01, `4e1950c5` | open |
 | FA-E055-1 | P3 | E055 runs emu2413 at 44,100 Hz and is sample-and-held up to the 49,716 Hz chip rate (aliasing, slightly uneven steps); quality mode (internal 49,716 Hz + interpolation) is ported but off, as in the original default. | `sega/SmsFmSoundE055.cs` OnFmSample; set `Quality` or run at 49,716 Hz. | 2026-11-01, `a41e3ce6` | open |
 | FA-E055-2 | P3 | E055 is mono FM only: the stereo/pan path (OPLL_calc_stereo) and the VRC7 tone set are not ported; no per-voice FM stems (only the stock chip feeds the stems). | `sega/Emu2413v055.cs`; port calc_stereo / vrc7tone.h if needed. | 2026-11-01, `a41e3ce6` | open |
+| FA-S-BLST-4 | P1 | BLST crashed (IndexOutOfRange) when a game put YM2612 channel 3 in special mode: BlastEm 0.3.1 reads `ch3_supp[3]` past its 3-element array (harmless in C, a throw in C#). | `sega/BlastemYm2612.cs`: a 4th never-written slot stands in for the memory C read. Found by `Workshop --apu-fuzz`. | 2026-11-01, review pass | fixed (this commit) |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
