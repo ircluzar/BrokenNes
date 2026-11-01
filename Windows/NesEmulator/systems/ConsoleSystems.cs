@@ -637,6 +637,7 @@ public static class CoreCatalog
                         list.Add(new("BLST", "BLST (BlastEm 0.3.1 PSG, mono)", fam));
                         if (!gg) list.Add(new("M036FM", "M036FM (MAME 0.36 YM2413: Leaman's OPL2 translator + fmopl.c, janky patches)", fam));
                         list.Add(new("M036", "M036 (MAME 0.36 sound, 1999: sn76496.c, mono, old noise taps, unipolar output)", fam));
+                        list.Add(new("GPGX", "GPGX (Genesis Plus GX 1.3.0 PSG, 2008: Maxim's SN76489, mono, GX's output filter)", fam));
                         list.Add(new("GENS", "GENS (Gens 2.10 PSG, 2002: 22 kHz unipolar squares, no Game Gear stereo)", fam));
                         // Foreign APU: PicoDrive 1.85's SN76496 (a MAME-derived PSG: mono, unipolar, white-noise taps 0x14002; no Game Gear stereo)
                         list.Add(new("PICO", "PICO (PicoDrive 1.85 SN76496: MAME-style PSG, odd noise taps, mono)", fam));
@@ -666,6 +667,7 @@ public static class CoreCatalog
                         list.Add(new("MD", "MD (Z80 + YM2612 + PSG sound unit)", "Genesis"));
                         list.Add(new("BLST", "BLST (BlastEm 0.3.1 YM2612 + PSG, pre-0.4 FM envelope/LFO/key-on bugs)", "Genesis"));
                         list.Add(new("M036", "M036 (MAME 0.36 sound, 1999: fm.c 0.36e YM2612 + sn76496.c at 22 kHz, preliminary envelopes, LFO mostly off)", "Genesis"));
+                        list.Add(new("GPGX", "GPGX (Genesis Plus GX 1.3.0 sound, 2008: MAME fm.c 1.4 YM2612 with the old half-done SSG-EG + Maxim's SN76489)", "Genesis"));
                         list.Add(new("GENS", "GENS (Gens 2.10 sound, 2002: YM2612 + PSG at 22 kHz, the classic Gens sound)", "Genesis"));
                         // Foreign APU: PicoDrive 1.85's YM2612 + SN76496 (the handheld emulator's: no SSG-EG, guessed DAC level, odd PSG noise taps)
                         list.Add(new("PICO", "PICO (PicoDrive 1.85 YM2612 + SN76496: no SSG-EG, guessed DAC level)", "Genesis"));
