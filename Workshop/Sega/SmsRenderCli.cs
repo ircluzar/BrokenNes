@@ -26,6 +26,7 @@ internal static class SmsRenderCli
         var machine = new SegaMachine(timeline, GenesisModel.Model1, rate);
         var unit = SmsSoundFactories.Create(unitId, new SmsSoundRequest(machine, console, PsgVariant.Sega));
         unit.Reset();
+        if (unit.HasFm) unit.WriteAudioControl(1);   // a VGM has no $F2 write: switch the FM output on (PSG stays on), as a game that found the chip does
         double cpuHz = timeline.MasterHz / timeline.Z80.Divider;
         var pcm = new List<short>();
         var buf = new short[8192];
