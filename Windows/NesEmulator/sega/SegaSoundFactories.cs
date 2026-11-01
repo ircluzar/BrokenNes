@@ -36,6 +36,7 @@ public static class SmsSoundFactories
         ["M036"] = r => new SmsSoundM036(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // Foreign APU: MAME 0.36's sn76496.c (1999)
         ["GENS"] = r => new SmsSoundGens(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // foreign APU: Gens 2.10's PSG (quick port; the Master System and Game Gear menus)
         ["PICO"] = r => new SmsSoundPico(r),   // foreign APU: PicoDrive 1.85's SN76496 (MAME-derived, noise taps 0x14002), Master System and Game Gear
+        ["DARC"] = r => new SmsSoundDarc(r),   // foreign APU: DarcNES 1.14's sms_psg.c (5-bit noise register, linear volume, per-frame blocks), Master System and Game Gear
     };
 
     public static IEnumerable<string> Ids => Factories.Keys;

@@ -310,7 +310,7 @@ public static class CoreCatalog
 {
     // NES-board cores that are really another console's part (the mix bridges).
     private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy", ["Z80"] = "Master System", ["M68K"] = "Genesis" };
-    private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess" };
+    private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess", ["DARC"] = "Foreign" };
     private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess" };
 
     /// <summary>The NES board's ids of the other consoles' ENHANCED chips (a NES game on them). Only the NES menu offers them: the other consoles reach those chips directly (<see cref="DirectRoutes"/>), never through a NES.
@@ -640,6 +640,8 @@ public static class CoreCatalog
                         list.Add(new("GENS", "GENS (Gens 2.10 PSG, 2002: 22 kHz unipolar squares, no Game Gear stereo)", fam));
                         // Foreign APU: PicoDrive 1.85's SN76496 (a MAME-derived PSG: mono, unipolar, white-noise taps 0x14002; no Game Gear stereo)
                         list.Add(new("PICO", "PICO (PicoDrive 1.85 SN76496: MAME-style PSG, odd noise taps, mono)", fam));
+                        // Foreign APU: DarcNES 1.14's sms_psg.c (2000): a 5-bit noise register (metallic noise), linear volume, one block per frame, mono
+                        list.Add(new("DARC", "DARC (DarcNES 2000 PSG: 5-bit metallic noise, linear volume, per-frame updates, mono)", fam));
                         // The game's PSG replayed on a NES sound chip (SmsSoundOnNes, unit id "NES:<chip>"). Lossy and said so: mono, PSG only.
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, SegaOnNesLabel(id), "NES"));
                         // The Japanese console's PSG and its YM2413 together on a NES chip (SmsFmSoundOnNes, unit id "NES-FM:<chip>"): the game finds the FM chip and plays its FM music; each FM voice becomes a pulse, a triangle or a noise. Master System only (the Game Gear has no FM).
