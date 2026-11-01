@@ -15,6 +15,7 @@ Alternate Sega sound engines ported from old GPL / non-commercial emulators on p
 | What | Where | Source | License |
 | --- | --- | --- | --- |
 | BLST: BlastEm 0.3.1 YM2612 + SN76489 engines (the last release before 0.4.0 fixed attack, sustain, key-on mapping and the LFO; no SSG-EG/CSM) | `BlastemYm2612.cs`, `BlastemPsg.cs`, `md/MdSoundUnitBlst.cs`, `SmsSoundBlst.cs` | https://retrodev.com/repos/blastem/archive/v0.3.1.tar.gz (`ym2612.c/h`, `psg.c/h`; clocking from `blastem.c`), Copyright 2013 Michael Pavone | GPL-3.0-or-later (documented exception) |
+| M036FM: MAME 0.36 YM2413 (Paul Leaman's ym2413.c translator to OPL2 + Tatsuyuki Satoh's fmopl.c v0.36f) | `Mame036Opl.cs`, `Mame036Ym2413.cs`, `SmsFmSoundM036.cs` | historic-mame tag `mame036` `src/sound/ym2413.c`, `fmopl.c/.h` | MAME legacy non-commercial license (documented exception) |
 <!-- foreign-apu-exceptions -->
 
 ## 1. Taken from source files (direct derivation)
