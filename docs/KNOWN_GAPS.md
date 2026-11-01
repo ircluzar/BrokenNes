@@ -98,6 +98,8 @@ call was quick and dirty first, with a smoke test only.
 | FA-PNES-1 | P3 | PNES DMC plays with no GBA timer-1 refill-buffer latency, and the sample address wraps at $FFFF instead of running into the next ROM bank. | `apus/PocketNesSound.cs` PcmBit; model the PCMWAVSIZE refill in timer1interrupt. | 2026-11-01, `4e1950c5` | open |
 | FA-PNES-2 | P3 | PNES is driven by `APU_GB` (DMG), not GBA sound hardware: NRx2-write quirks may differ, and the DMC/PSG mix balance is guessed. | `apus/PocketNesSound.cs`: add a GBA PSG/DirectSound mixer model. | 2026-11-01, `4e1950c5` | open |
 | FA-PNES-3 | P3 | PNES is NTSC only (freq_mult 0xFFED408C, 7,457-cycle frame interval); the PAL multiplier and tables are not wired. | `apus/PocketNesSound.cs` GbFreq/FrameInterval. | 2026-11-01, `4e1950c5` | open |
+| FA-E055-1 | P3 | E055 runs emu2413 at 44,100 Hz and is sample-and-held up to the 49,716 Hz chip rate (aliasing, slightly uneven steps); quality mode (internal 49,716 Hz + interpolation) is ported but off, as in the original default. | `sega/SmsFmSoundE055.cs` OnFmSample; set `Quality` or run at 49,716 Hz. | 2026-11-01, `a41e3ce6` | open |
+| FA-E055-2 | P3 | E055 is mono FM only: the stereo/pan path (OPLL_calc_stereo) and the VRC7 tone set are not ported; no per-voice FM stems (only the stock chip feeds the stems). | `sega/Emu2413v055.cs`; port calc_stereo / vrc7tone.h if needed. | 2026-11-01, `a41e3ce6` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 

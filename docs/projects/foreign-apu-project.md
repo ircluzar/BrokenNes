@@ -80,11 +80,11 @@ The user asked for the rest of the research shortlist, using the same process. T
 | `GYOB` | GB APU | GameYob (DS) `dssoundengine.cpp` + `arm7 sound.c` + `noise.h` (github.com/Stewmath/GameYob @45599fb) | MIT | Plays Game Boy channels on the DS's own sound hardware (emulated here); only its optional "hyperSound" sync handles effects like Pikachu accurately | **done (MVP)**: `gb/GameYobSound.cs`, `gb/APU_GYOB.cs` (0875ba89; default mode: commands once per GB frame, emulated DS mixer at 32,768 Hz, DS duty table, the DC hum; r=0.947 vs GB) |
 | `PNES` | NES APU | PocketNES (GBA) `src/sound.s` (github.com/Dwedit/PocketNES @9c07f3d) | none stated | Plays NES channels on the GBA's Game Boy sound hardware (driven here through BrokenNes2's own `APU_GB`); users report dropped notes | **done (MVP)**: `apus/PocketNesSound.cs`, `apus/APU_PNES.cs` (4e1950c5; software envelopes/length/sweep written as fixed GB volumes, a retrigger on every volume or period change, pitches re-quantised to GB periods, on/off triangle, DirectSound-style DMC; ~2.5x louder; r=0.53 vs FIX) |
 
-## Batch 5: one last port (2026-11-01)
+## Batch 5: one last port (2026-11-01) (done (MVP))
 
 | ID | Console slot | Source | License | Why | Status |
 |---|---|---|---|---|---|
-| `E055` | Japanese SMS FM (YM2413) | emu2413 v0.55 (Mitsutaka Okazaki, 2002) `emu2413.c` + `2413tone.h` (github.com/digital-sound-antiques/emu2413-legacy) | none stated in the legacy repo | The author's own README: "Its quality is extremely low". Early drum and hi-hat models, a crude low-pass filter. The second alternate for the FM unit after M036FM | planned |
+| `E055` | Japanese SMS FM (YM2413) | emu2413 v0.55 (Mitsutaka Okazaki, 2002) `emu2413.c` + `emu2413.h` + `2413tone.h` (github.com/digital-sound-antiques/emu2413-legacy, tag `0.55` @2d92835) | none stated in the legacy repo | The author's own README: "Its quality is extremely low". Early drum and hi-hat models, a crude low-pass filter. The second alternate for the FM unit after M036FM | **done (MVP)**: `sega/Emu2413v055.cs`, `sega/SmsFmSoundE055.cs` (a41e3ce6; sample2413.c default OPLL_new(3579545, 44100), quality 0, held up to the chip rate; log-curve attack, 2-tap averaging "LPF", early drums doubled, its own tone ROM; FM-only RMS 638 vs stock 650, envelope r=0.85 FM-only / 0.976 full mix) |
 
 ## Resuming this work locally (or in any new session)
 
