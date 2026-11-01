@@ -7,7 +7,7 @@ until the user picks it. Two of them (P3, P4) need an interview first. P4 -> P5 
 |---|---|---|---|
 | P1 | Vaults on the Super Game Boy: the original sound effects on the SNES's sampler | later this week or next | the original SFX files |
 | P2 | Super VRUN: MS-DOS port | next week | your DOSBox-X debugging setup |
-| P3 | An "x86 console" in BrokenNes (DOS games) | stretch, investigate | an interview: scope and why |
+| P3 | An "x86 console" in BrokenNes (386 + DOS extenders, ported from tiny386, kept simple) | stretch | the FreeDOS and BIOS files |
 | P4 | WideMess Virtual: a web game as a WideMess "cartridge" | after an interview | the CTW Remastered HTML5 export, an interview |
 | P5 | Super VRUN on the WideMess (a fork kept in step with the SNES version) | after P4 | P4 running CTW Remastered as the reference |
 | P6 | Super VRUN (SNES and WideMess together): the map, the stats, the title effect and the options UI from CTW Remastered | after P5 | the Remastered project files |
@@ -89,20 +89,44 @@ whether 2P stays (keyboard sharing, two joysticks).
 
 ---
 
-## P3. An "x86 console" in BrokenNes (investigation only)
+## P3. An "x86 console" in BrokenNes (386 + DOS extenders, kept simple)
 
-**Goal.** Find out whether BrokenNes could run DOS / PC x86 programs as another console, and what that would mean. Far-fetched:
-the outcome may be "no", or "only a narrow slice".
+**Decided (interview).** A 386 with DOS extenders, **ported** from an open-source emulator under a documented licence exception,
+for all three reasons (Super VRUN DOS inside BrokenNes, mixing the x86 with the other consoles' chips, DOS games in general). The
+user's rule on top (2026-11-01): **simplicity is king**; an x86 PC at scale is a mess, so port a small emulator and only the parts
+a DOS game needs.
 
-**Questions for the interview.**
-- Why: to run Super VRUN DOS (P2) inside BrokenNes with its debugger, Timeflow and core mixing? To mix an x86 CPU with the other
-  consoles' chips (corruption, gimmick cores)? Both?
-- How much PC: a real-mode 8086/286 with VGA mode 13h, a PC speaker / AdLib / Sound Blaster, and enough DOS (INT 21h) to load one
-  program, is a very different size from a 386 with DOS extenders.
-- Write our own (a big emulator project) or port an existing open-source one (licensing, like the Foreign APU exception)?
+**Candidates looked at (2026-11-01).**
 
-**First step if we go.** A one-week spike: an 8086 core + mode 13h + a minimal DOS loader in Workshop, running one small test
-program, to measure the work and the speed in .NET and in Lite (WASM).
+| Emulator | Licence | CPU | Picture / sound | Fit |
+|---|---|---|---|---|
+| **tiny386** (hchunhui) | **BSD-3** (CPU and devices; some MIT parts from QEMU / TinyEMU; the optional AdLib `fmopl` LGPL; SeaBIOS LGPL-3) | i386 written from scratch, **~6K lines of C99**; 486/586/686, FPU, MMX/SSE, amd64 optional | VGA + Bochs VBE; Sound Blaster 16, AdLib OPL2, PC speaker | **Best fit.** One C file per chip (`i386.c`, `vga.c`, `sb16.c`, `i8259.c`, `i8254.c`, `ide.c`, ...) with `pc.c` as the bus: that is our CPU / PPU / APU + bus shape. Small enough to port like the Foreign APU engines. |
+| 8086tiny | MIT | 8086 only, under 25 KB of source | CGA / Hercules | Simplest of all, but no 386, so no DOS extenders. |
+| emu2 | GPL-2 | 8086 / slow 286, DOS calls emulated (no real DOS) | text mode only | Too small: no graphics, no 386. |
+| Halfix | GPL-3 | x86-32 with SSE2 | VGA (ET4000-like); **no sound** | Boots every DOS, but bigger, GPL-3, no sound, timing "completely off". |
+| NXVM | (unchecked) | 80386, 37K lines | VGA | Runs MS-DOS; three times tiny386's size. |
+| DOSBox / DOSBox-X, 86Box / PCem, Bochs | GPL / LGPL | everything | everything | Far too big for "keep it simple" (DOSBox-X is the debugging tool for P2, not a core). |
+
+**Recommendation: tiny386, cut down.**
+- **CPU slot:** its i386 core only (gen = 386/486; no amd64, SSE or the `fast/` path at first; the x87 FPU only if a game needs it).
+- **Picture slot:** its VGA: text modes, mode 13h, Mode X (unchained 320x240). No VBE at first.
+- **Sound slot:** Sound Blaster 16 (digital), AdLib OPL2 (music; `fmopl` is LGPL: the exception, or a later swap for one of our own
+  FM cores through the mesh), PC speaker.
+- **The rest (the "board"):** PIC, PIT, keyboard controller, CMOS clock, DMA, and one hard-disk image (IDE). Left out: networking
+  (NE2000), the ESP32 / Android / Linux-boot parts.
+- **Firmware and DOS:** SeaBIOS as a loaded firmware file (LGPL-3, not compiled in) and **FreeDOS** on a disk image, both kept
+  outside git like game data (the Game Boy cores' no-firmware rule: a file the user provides, never bundled silently). DOS4GW and
+  other extenders then just work, because the CPU is a real 386.
+- **The mesh:** the x86 console gets the same contract as the others: a CPU / PPU / APU per slot and the picture / sound bridges, so
+  its VGA can draw another console's game and its Sound Blaster / OPL2 can play another console's notes (and the reverse).
+
+**Milestones.** P3a pick confirmed by a spike: the C code built as-is, FreeDOS + a small test program + one DOS4GW program running,
+to measure the port's size → P3b the C# port of the CPU in Workshop, checked against tiny386 instruction by instruction (a trace
+compare, the way the Foreign APU ports were checked) → P3c VGA + timers + keyboard: FreeDOS boots headless, golden pictures → P3d
+SB16 / OPL2 / speaker → P3e the console in the desktop (Load ROM takes a disk image), save states → P3f Super VRUN DOS on it (P2) →
+P3g the mesh (bridges both ways), Lite last (speed in WASM measured).
+
+**Still open.** Where FreeDOS and the BIOS file come from (the user provides them, or a download the user approves).
 
 ---
 
