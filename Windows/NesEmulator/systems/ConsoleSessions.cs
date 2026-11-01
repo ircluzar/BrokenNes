@@ -103,6 +103,7 @@ public sealed partial class SnesSession : IConsoleSession
         else if (apu.Equals("SFCS", StringComparison.OrdinalIgnoreCase)) unit = new APU_SFCS();   // the SNES's own, enhanced: the stock unit for a SNES game
         else if (apu.Equals("WMS", StringComparison.OrdinalIgnoreCase)) unit = new APU_WMS();     // the WideMess sound chip: the SNES's until a game unlocks it
         else if (apu.Equals("ZS15", StringComparison.OrdinalIgnoreCase)) unit = new APU_ZS15();   // the SNES unit heard through ZSNES 0.15's sound engine (foreign-apu-project)
+        else if (apu.Equals("S9X1", StringComparison.OrdinalIgnoreCase)) unit = new APU_S9X1();   // the SNES unit heard through Snes9x 1.43's sound engine (foreign-apu-project)
         else unit = new APU_SFC();
         var chip = SnesChips.Create(cart, loadFirmware, false, out string chipNote);
         if (wideMess)
@@ -191,10 +192,11 @@ public sealed partial class SnesSession : IConsoleSession
         "SFCS" => unit is APU_SFCS,
         "WMS" => unit is APU_WMS,
         "ZS15" => unit is APU_ZS15,
+        "S9X1" => unit is APU_S9X1,
         _ => unit.GetType() == typeof(APU_SFC),
     };
 
-    private static APU_SFC NewUnit(string id) => id.ToUpperInvariant() switch { "SFCS" => new APU_SFCS(), "WMS" => new APU_WMS(), "ZS15" => new APU_ZS15(), _ => new APU_SFC() };
+    private static APU_SFC NewUnit(string id) => id.ToUpperInvariant() switch { "SFCS" => new APU_SFCS(), "WMS" => new APU_WMS(), "ZS15" => new APU_ZS15(), "S9X1" => new APU_S9X1(), _ => new APU_SFC() };
 
     /// <summary>The same SPC700 + S-DSP in a unit of the other kind (stock / enhanced / WideMess): its whole state moves, at the board's time.</summary>
     private static APU_SFC MoveSpc(APU_SFC from, APU_SFC to)
