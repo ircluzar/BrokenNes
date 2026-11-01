@@ -34,6 +34,7 @@ public static class SmsSoundFactories
         ["GGS"] = r => new SmsSoundS(r.CpuClockHz, r.Machine.SampleRate, r.Variant, gameGear: true),
         ["BLST"] = r => new SmsSoundBlst(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // foreign APU: BlastEm 0.3.1's PSG (GPL-3.0-or-later)
         ["M036"] = r => new SmsSoundM036(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // Foreign APU: MAME 0.36's sn76496.c (1999)
+        ["GENS"] = r => new SmsSoundGens(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // foreign APU: Gens 2.10's PSG (quick port; the Master System and Game Gear menus)
     };
 
     public static IEnumerable<string> Ids => Factories.Keys;
@@ -63,6 +64,7 @@ public static class GenesisSoundFactories
         ["MDS"] = m => new MdSoundUnitS(m),   // the Genesis's own enhanced unit: the stock unit for a Genesis game, plus extra YM2612 + PSG sets for the cross-console bridges
         ["MD-STUB"] = m => new GenesisSoundStub(m),
         ["BLST"] = m => new MdSoundUnitBlst(m),   // foreign APU: BlastEm 0.3.1's YM2612 + PSG (GPL-3.0-or-later)
+        ["GENS"] = m => new MdSoundUnitGens(m),   // foreign APU: Gens 2.10's YM2612 + PSG (quick port)
         ["NES"] = m => new MdSoundOnNes(m),
         ["M036"] = m => new MdSoundUnitM036(m),   // Foreign APU: MAME 0.36's fm.c (YM2612) + sn76496.c (1999)
     };
