@@ -746,6 +746,7 @@ public static class CoreCatalog
                         list.Add(new("VBA", "VBA (VisualBoyAdvance 1.7.2 sound, 2004: 22 kHz, swapped stereo volumes, DC when idle)", "Game Boy"));
                         list.Add(new("VBAM", "VBAM (VBA-M 2007 sound, pre-Gb_Apu: VBA 1.7.2 plus read masks and shadowed frequency registers)", "Game Boy"));
                         list.Add(new("TGBD", "TGBD (TGB Dual sound, 2001: whole-frame 44.1 kHz blocks, ~299 Hz envelopes, swapped L/R)", "Game Boy"));
+                        list.Add(new("GYOB", "GYOB (GameYob DS sound, 2013: GB channels on DS PSG/PCM channels, per-frame updates, DC hum)", "Game Boy"));
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), "NES"));
                         if (CoreRegistry.ApuIds.Contains("SNES", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:SNES", "SNES sound (through NES registers)", "SNES"));
                         foreach (var id in HubSoundChips("Game Boy").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "SNES")) list.Add(new("NES:" + id, HubSoundLabel(id, "the Game Boy's channels"), NesFamilyOf(CoreSlot.Apu, id)));

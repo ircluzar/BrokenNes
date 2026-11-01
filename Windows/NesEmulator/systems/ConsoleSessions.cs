@@ -357,6 +357,7 @@ public sealed class GbSession : IConsoleSession
         if (apu.Equals("VBA", StringComparison.OrdinalIgnoreCase)) return m => new APU_VBA(m);   // VisualBoyAdvance 1.7.2's sound engine (foreign-apu-project)
         if (apu.Equals("VBAM", StringComparison.OrdinalIgnoreCase)) return m => new APU_VBAM(m); // VBA-M 2007 pre-Gb_Apu sound engine (foreign-apu-project)
         if (apu.Equals("TGBD", StringComparison.OrdinalIgnoreCase)) return m => new APU_TGBD(m);   // TGB Dual's apu.cpp (foreign-apu-project)
+        if (apu.Equals("GYOB", StringComparison.OrdinalIgnoreCase)) return m => new APU_GYOB(m);   // GameYob's DS sound mapping (foreign-apu-project)
         return null;
     }
 
