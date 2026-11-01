@@ -642,6 +642,8 @@ public static class CoreCatalog
                         list.Add(new("PICO", "PICO (PicoDrive 1.85 SN76496: MAME-style PSG, odd noise taps, mono)", fam));
                         // Foreign APU: DarcNES 1.14's sms_psg.c (2000): a 5-bit noise register (metallic noise), linear volume, one block per frame, mono
                         list.Add(new("DARC", "DARC (DarcNES 2000 PSG: 5-bit metallic noise, linear volume, per-frame updates, mono)", fam));
+                        // Foreign APU: Dega 1.16's "Enhanced PSG" (Dave / FinalBurn author): sampled instruments on tone channels 0-1, an echo, retrigger on volume jumps; Game Gear stereo the Dega way
+                        list.Add(new("DEGA", "DEGA (Dega 1.16 Enhanced PSG: sampled instruments instead of squares, echo, inaccurate on purpose)", fam));
                         // The game's PSG replayed on a NES sound chip (SmsSoundOnNes, unit id "NES:<chip>"). Lossy and said so: mono, PSG only.
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, SegaOnNesLabel(id), "NES"));
                         // The Japanese console's PSG and its YM2413 together on a NES chip (SmsFmSoundOnNes, unit id "NES-FM:<chip>"): the game finds the FM chip and plays its FM music; each FM voice becomes a pulse, a triangle or a noise. Master System only (the Game Gear has no FM).
