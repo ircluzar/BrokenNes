@@ -30,6 +30,7 @@ public static class SmsSoundFactories
         ["GG"] = r => new SmsSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // the Game Gear menu's id for the same unit (its stereo port is part of it)
         ["SMS-FM"] = r => new SmsFmSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // the Japanese console's sound: the PSG and the YM2413 (ports $F0-$F2)
         ["M036FM"] = r => new SmsFmSoundM036(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // foreign APU: the YM2413 as MAME 0.36 played it (ym2413.c translator onto fmopl.c's OPL2), stock PSG
+        ["E055"] = r => new SmsFmSoundE055(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // foreign APU: the YM2413 as emu2413 v0.55 (2002) played it ("quality is extremely low"), stock PSG
         ["SMSS"] = r => new SmsSoundS(r.CpuClockHz, r.Machine.SampleRate, r.Variant, gameGear: false),   // the console's own enhanced unit: the stock unit for its own game, plus extra SN76489 sets for the cross-console bridges
         ["GGS"] = r => new SmsSoundS(r.CpuClockHz, r.Machine.SampleRate, r.Variant, gameGear: true),
         ["BLST"] = r => new SmsSoundBlst(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // foreign APU: BlastEm 0.3.1's PSG (GPL-3.0-or-later)

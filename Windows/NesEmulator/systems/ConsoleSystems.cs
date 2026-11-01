@@ -636,6 +636,7 @@ public static class CoreCatalog
                         if (!gg) list.Add(new("SMS-FM", "SMS-FM (SN76489 PSG + YM2413 FM, the Japanese console)", fam));
                         list.Add(new("BLST", "BLST (BlastEm 0.3.1 PSG, mono)", fam));
                         if (!gg) list.Add(new("M036FM", "M036FM (MAME 0.36 YM2413: Leaman's OPL2 translator + fmopl.c, janky patches)", fam));
+                        if (!gg) list.Add(new("E055", "E055 (emu2413 v0.55 YM2413, 2002: log attack, crude drums, 2-tap averaging)", fam));
                         list.Add(new("M036", "M036 (MAME 0.36 sound, 1999: sn76496.c, mono, old noise taps, unipolar output)", fam));
                         list.Add(new("GPGX", "GPGX (Genesis Plus GX 1.3.0 PSG, 2008: Maxim's SN76489, mono, GX's output filter)", fam));
                         list.Add(new("GENS", "GENS (Gens 2.10 PSG, 2002: 22 kHz unipolar squares, no Game Gear stereo)", fam));
