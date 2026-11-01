@@ -351,6 +351,7 @@ public sealed class GbSession : IConsoleSession
         if (apu.Equals("GBS", StringComparison.OrdinalIgnoreCase)) return m => new APU_GBS(m);
         if (apu.Equals("GNUB", StringComparison.OrdinalIgnoreCase)) return m => new APU_GNUB(m);   // gnuboy 1.0.3's sound engine (foreign-apu-project)
         if (apu.Equals("VBA", StringComparison.OrdinalIgnoreCase)) return m => new APU_VBA(m);   // VisualBoyAdvance 1.7.2's sound engine (foreign-apu-project)
+        if (apu.Equals("TGBD", StringComparison.OrdinalIgnoreCase)) return m => new APU_TGBD(m);   // TGB Dual's apu.cpp (foreign-apu-project)
         return null;
     }
 
