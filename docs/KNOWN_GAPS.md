@@ -89,6 +89,9 @@ call was quick and dirty first, with a smoke test only.
 | FA-GPGX-1 | P3 | GPGX DAC path untested (md-test.vgm has no DAC writes). | `md/MdSoundUnitGpgx.cs`: render a VGM with DAC writes. | 2026-11-01, `9f69d5ca` | open |
 | FA-GPGX-2 | P3 | GPGX's output filter runs on the FM at ~53 kHz and on the PSG separately, not once on the mix at the output rate. | `MdSoundUnitGpgx`: filter the mixed output at the host rate instead. | 2026-11-01, `9f69d5ca` | open |
 | FA-GPGX-3 | P3 | GPGX ignores Game Gear stereo (GX 1.3.0 was Genesis-only). | `SmsSoundGpgx`: pan by PSGStereo if wanted. | 2026-11-01, `9f69d5ca` | open |
+| FA-SNDS-1 | P3 | SNDS echo uses a private zeroed 64 KB buffer; the original reads/writes the SPC's own RAM at ESA, so stale-RAM echo/DC and SPC RAM corruption are missing. | `snes/SnemulDsDsp.cs` echo loop; would need an ARAM overlay that does not fight the stock S-DSP. | 2026-11-01, `7ef6933e` | open |
+| FA-SNDS-2 | P3 | SNDS: the BRR sample cache (FNV hash, on only for Mega Man X2/X3 and Breath of Fire) and PocketSPC 1.0 key-on are not ported. | `snes/SnemulDsDsp.cs` DecodeSampleBlock. | 2026-11-01, `7ef6933e` | open |
+| FA-SNDS-3 | P3 | SNDS engine state is not saved; a state load replays the DSP registers and re-keys the voices. | `snes/APU_SNDS.cs` `OnReset`. | 2026-11-01, `7ef6933e` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
