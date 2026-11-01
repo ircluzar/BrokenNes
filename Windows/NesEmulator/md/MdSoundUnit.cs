@@ -128,6 +128,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
         lastFmL = lastFmR = 0;
         RealignStems();
         z80.Reset(); z80.Irq = false;
+        OnReset();
         ResetLoops();
     }
 
@@ -254,6 +255,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
     /// <summary>One YM2612 sample (the chip calls this as it completes each one): the new level is a step of the held output, added into the band-limited mixers.</summary>
     void IYm2612Sink.Sample(int left, int right)
     {
+        OnFmSample(ref left, ref right);
         float l = left * FmGain * (1f / 32768f), r = right * FmGain * (1f / 32768f);
         fmClock++;
         if (l != lastFmL) { fmLeft.Step(fmClock, l - lastFmL); lastFmL = l; }
@@ -365,6 +367,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
     {
         RunTo(masterClock);
         psg.Write(value);
+        OnPsgWrite(value);
         PsgWrites++;
         PsgWriteHook?.Invoke(value);
         PsgPortTap?.Invoke(masterClock, value);
@@ -419,7 +422,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
         if (address < 0x8000)
         {
             int reg = address & 0xFF;
-            if (reg >= 0x11 && reg <= 0x17 && (reg & 1) != 0) { psg.Write(value); PsgWrites++; PsgWriteHook?.Invoke(value); PsgPortTap?.Invoke(master, value); return; }
+            if (reg >= 0x11 && reg <= 0x17 && (reg & 1) != 0) { psg.Write(value); OnPsgWrite(value); PsgWrites++; PsgWriteHook?.Invoke(value); PsgPortTap?.Invoke(master, value); return; }
             if (fromZ80 && host != null) host.WriteBus(0xC00000 + reg, value, master, out _);
             return;
         }
@@ -437,6 +440,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
     private void YmWrite(int port, byte value, long master)
     {
         ym.Write(port, value, master / MasterPerYmClock);
+        OnYmWrite(port & 3, value);
         YmPortTap?.Invoke(master, port & 3, value);
         switch (port)
         {
@@ -491,6 +495,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
             if (frames <= 0) break;
             // the PSG delivers however many frames it has finished, up to what we ask for; both streams are at the same host-rate sample, so ask for exactly `frames`
             int got = psg.ReadSamples(psgBuf[..(frames * 2)]) / 2;
+            OnPsgSamples(psgBuf[..(got * 2)]);
             if (got < frames) frames = got;
             if (frames <= 0) break;
             fmLeft.Read(fl[..frames]); fmRight.Read(fr[..frames]);
@@ -555,7 +560,21 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
         BusRequests = r.ReadInt64(); BankReads = r.ReadInt64(); BankWrites = r.ReadInt64(); PsgWrites = r.ReadInt64(); YmWrites = r.ReadInt64(); Z80Ticks = r.ReadInt64();
         // the plugin's stems (one stream per voice, beside the mix) start again from the mix's time
         RealignStems();
+        OnReset();
     }
+
+    // ---- Hooks for a unit that swaps the sound generator (the foreign APU project: Gens, PicoDrive, MAME 0.36 ... ports).
+    // The stock chips keep running and keep everything a game reads (status, timers, busy); the hooks decide what is heard.
+    /// <summary>Every YM2612 port write (port 0-3: address/data of part I, address/data of part II), after the stock chip has taken it.</summary>
+    protected virtual void OnYmWrite(int port, byte value) { }
+    /// <summary>Every PSG write (from the 68000 or the Z80), after the stock PSG has taken it.</summary>
+    protected virtual void OnPsgWrite(byte value) { }
+    /// <summary>Each stock YM2612 output sample (about 53 kHz, the chip's own rate), before it is mixed: replace it to replace the FM sound.</summary>
+    protected virtual void OnFmSample(ref int left, ref int right) { }
+    /// <summary>The stock PSG's host-rate stereo samples (interleaved L, R) just before mixing: overwrite them to replace the PSG sound.</summary>
+    protected virtual void OnPsgSamples(Span<short> stereo) { }
+    /// <summary>After Reset and after a state load (the state holds the stock chips, not a hooked engine).</summary>
+    protected virtual void OnReset() { }
 
     public string Describe() { Unpark(); return DescribeCore(); }
 

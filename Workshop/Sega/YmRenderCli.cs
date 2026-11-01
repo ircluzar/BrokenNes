@@ -15,6 +15,9 @@ namespace BrokenNes.Workshop.Sega;
 /// </summary>
 internal static class YmRenderCli
 {
+    /// <summary>The Genesis sound unit to render through (a GenesisSoundFactories id deriving from MdSoundUnit: MD, MDS, or a foreign-apu port); --unit.</summary>
+    public static string UnitId = "MD";
+
     public sealed class Stats
     {
         public long Samples, Clipped, YmWrites, KeyOns, DacWrites, PsgWrites;
@@ -58,7 +61,7 @@ internal static class YmRenderCli
         if (args.Length > 1 && args[1] == "--compare-logs") return VgmCompare.Run(args);
         string? input = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
         string? output = args.Length > 2 && !args[2].StartsWith("--") ? args[2] : null;
-        if (input == null) { Console.WriteLine("usage: --ym-render in.vgm [out.wav] [--model 1|2|3] [--rate 44100] [--loops N] [--seconds S] [--tail S] [--stems dir] [--solo n] [--mute mask] [--no-psg] [--info]"); return 2; }
+        if (input == null) { Console.WriteLine("usage: --ym-render in.vgm [out.wav] [--model 1|2|3] [--rate 44100] [--loops N] [--seconds S] [--tail S] [--stems dir] [--solo n] [--mute mask] [--no-psg] [--info] [--unit MD|<GenesisSoundFactories id>]"); return 2; }
         VgmFile v;
         try { v = VgmFile.Load(input); }
         catch (Exception e) { Console.WriteLine($"cannot read {input}: {e.Message}"); return 2; }
@@ -72,10 +75,12 @@ internal static class YmRenderCli
         int solo = int.TryParse(M68kTestCli.Arg(args, "--solo"), out int sl) ? sl : 0;
         string? stems = M68kTestCli.Arg(args, "--stems");
         var gm = model switch { 2 => GenesisModel.Model2, 3 => GenesisModel.Model3, _ => GenesisModel.Model1 };
+        UnitId = M68kTestCli.Arg(args, "--unit") ?? "MD";
 
         Console.WriteLine($"== {Path.GetFileName(input)}: VGM version {v.Version >> 8}.{v.Version & 0xFF:X2}, YM2612 clock {v.Ym2612Clock:N0}, SN76489 clock {v.Sn76489Clock:N0}, {v.TotalSamples / 44100.0:F1} s, {v.Events.Count:N0} writes{(v.LoopEvent >= 0 ? $", loops from {v.LoopStartSample / 44100.0:F1} s" : "")}{(v.Gd3Title.Length > 0 ? $", \"{v.Gd3Title}\"" : "")}");
         if (v.Ym2612Clock == 0) Console.WriteLine("   WARNING: the file has no YM2612 clock (it is not a Genesis recording); its YM2612 writes, if any, are played anyway");
         if (v.Ym2413Writes > 0 || v.UnsupportedCommands > 0) Console.WriteLine($"   not played: {v.Ym2413Writes:N0} YM2413 writes, {v.UnsupportedCommands:N0} commands for other chips");
+        Console.WriteLine($"   unit: {M68kTestCli.Arg(args, "--unit") ?? "MD"}");
         if (M68kTestCli.Flag(args, "--info")) return 0;
         if (output == null && stems == null) { Console.WriteLine("no output file given (use out.wav or --stems dir)"); return 2; }
 
@@ -116,7 +121,10 @@ internal static class YmRenderCli
         double ymClock = v.Ym2612Clock > 0 ? v.Ym2612Clock : 7_670_453;
         var region = Math.Abs(ymClock - 7_600_489) < Math.Abs(ymClock - 7_670_453) ? SegaRegion.Pal : SegaRegion.Ntsc;
         var timeline = SegaTimeline.Genesis(region);
-        var unit = new MdSoundUnit(new SegaMachine(timeline, model, rate)) { FmMuteMask = fmMute };
+        var machine = new SegaMachine(timeline, model, rate);
+        var unit = UnitId.Equals("MD", StringComparison.OrdinalIgnoreCase) ? new MdSoundUnit(machine) : GenesisSoundFactories.Create(UnitId, machine) as MdSoundUnit
+            ?? throw new ArgumentException($"--unit {UnitId} is not a Genesis sound unit derived from MdSoundUnit");
+        unit.FmMuteMask = fmMute;
         unit.Reset();
         var st = new Stats();
         var pcm = new List<short>();
@@ -139,6 +147,8 @@ internal static class YmRenderCli
                 long sample = offset + e.Sample - baseSample;
                 if (sample > limit) { passLength = limit; break; }
                 long master = Master(sample);
+                // sparse files (long waits between writes): run and drain every 20 ms so the mixers (a 4,096-sample ring) never overflow
+                for (long at = lastWrittenAt; master - at > (long)(timeline.MasterHz / 50); ) { at += (long)(timeline.MasterHz / 50); unit.RunTo(at); Drain(); }
                 lastWrittenAt = Math.Max(lastWrittenAt, master);
                 switch (e.Kind)
                 {
@@ -163,8 +173,8 @@ internal static class YmRenderCli
         }
         long endSample = Math.Min(offset, limit);
         long endMaster = Master(endSample) + (long)(tail * timeline.MasterHz);
-        unit.RunTo(Math.Max(endMaster, lastWrittenAt));
-        Drain();
+        long stop = Math.Max(endMaster, lastWrittenAt);
+        for (long at = lastWrittenAt; at < stop; ) { at = Math.Min(stop, at + (long)(timeline.MasterHz / 50)); unit.RunTo(at); Drain(); }
         st.Pcm16 = pcm.ToArray();
         st.Samples = st.Pcm16.Length / 2;
         double sum = 0;

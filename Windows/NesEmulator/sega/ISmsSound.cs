@@ -67,10 +67,10 @@ public class SmsSound : ISmsSound, IVoiceStems
     public int SampleRate => psg.SampleRate;
     public Sn76489 Psg => psg;
 
-    public void Reset() => psg.Reset();
+    public void Reset() { psg.Reset(); OnReset(); }
     public void Run(int cpuClocks) => psg.Run(cpuClocks);
-    public void WritePsg(byte value) => psg.Write(value);
-    public void WriteStereo(byte value) => psg.WriteStereo(value);
+    public void WritePsg(byte value) { psg.Write(value); OnPsgWrite(value); }
+    public void WriteStereo(byte value) { psg.WriteStereo(value); OnStereoWrite(value); }
 
     public bool HasFm => false;
     public void WriteFmAddress(byte value) { }
@@ -78,7 +78,7 @@ public class SmsSound : ISmsSound, IVoiceStems
     public void WriteAudioControl(byte value) { }
     public byte ReadAudioControl() => 0xFF;
 
-    public int ReadSamples(Span<short> dest) => psg.ReadSamples(dest);
+    public int ReadSamples(Span<short> dest) { int n = psg.ReadSamples(dest); OnPsgSamples(dest[..n]); return n; }
     public int DescribeVoices(Span<HubVoice> voices) => psg.DescribeVoices(voices);
 
     // ---- the PSG's four voices on their own (the plugin's stems) ----
@@ -88,7 +88,18 @@ public class SmsSound : ISmsSound, IVoiceStems
     public int ReadStem(int stem, Span<float> dest) => psg.ReadVoiceStem(stem, dest);
 
     public void SaveState(BinaryWriter w) => psg.SaveState(w);
-    public void LoadState(BinaryReader r) => psg.LoadState(r);
+    public void LoadState(BinaryReader r) { psg.LoadState(r); OnReset(); }
+
+    // ---- Hooks for a unit that swaps the sound generator (the foreign APU project: Gens, PicoDrive, MAME 0.36 ... ports).
+    // The stock chips keep running and keep everything a game reads (status, timers, busy); the hooks decide what is heard.
+    /// <summary>Every PSG write, after the stock PSG has taken it.</summary>
+    protected virtual void OnPsgWrite(byte value) { }
+    /// <summary>Every Game Gear stereo-port write ($06), after the stock PSG has taken it.</summary>
+    protected virtual void OnStereoWrite(byte value) { }
+    /// <summary>The stock PSG's host-rate stereo samples (interleaved L, R) on their way out: overwrite them to replace the sound.</summary>
+    protected virtual void OnPsgSamples(Span<short> stereo) { }
+    /// <summary>After Reset and after a state load.</summary>
+    protected virtual void OnReset() { }
 
     public string Describe() =>
         $"SN76489 ({psg.Variant}): tones {psg.Period(0)}/{psg.Period(1)}/{psg.Period(2)} volumes {psg.Volume(0)}/{psg.Volume(1)}/{psg.Volume(2)}/{psg.Volume(3)} noise {psg.NoiseControl} stereo ${psg.StereoMask:X2}";
