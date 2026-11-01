@@ -80,6 +80,7 @@
     <type fullname="NesEmulator.APU_FCEU" preserve="all" />
     <!-- Foreign APU batch 4: TuxNES 0.75 sound.c port (APU_TUXN, family "Foreign"). -->
     <type fullname="NesEmulator.APU_TUXN" preserve="all" />
+    <type fullname="NesEmulator.APU_VNES" preserve="all" />
     <!-- Enhanced cores phase 3: a NES game on the other consoles' ENHANCED chips (CoreRegistry finds them by name, so they must be rooted).
          The other consoles reach those chips directly (EnhancedChips routes, plain code: no root needed). -->
     <type fullname="NesEmulator.PPU_SNESS" preserve="all" />
