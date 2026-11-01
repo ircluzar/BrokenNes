@@ -31,6 +31,7 @@ public static class SmsSoundFactories
         ["SMS-FM"] = r => new SmsFmSound(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // the Japanese console's sound: the PSG and the YM2413 (ports $F0-$F2)
         ["SMSS"] = r => new SmsSoundS(r.CpuClockHz, r.Machine.SampleRate, r.Variant, gameGear: false),   // the console's own enhanced unit: the stock unit for its own game, plus extra SN76489 sets for the cross-console bridges
         ["GGS"] = r => new SmsSoundS(r.CpuClockHz, r.Machine.SampleRate, r.Variant, gameGear: true),
+        ["GENS"] = r => new SmsSoundGens(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // foreign APU: Gens 2.10's PSG (quick port; the Master System and Game Gear menus)
     };
 
     public static IEnumerable<string> Ids => Factories.Keys;
@@ -59,6 +60,7 @@ public static class GenesisSoundFactories
         ["MD"] = m => new MdSoundUnit(m),
         ["MDS"] = m => new MdSoundUnitS(m),   // the Genesis's own enhanced unit: the stock unit for a Genesis game, plus extra YM2612 + PSG sets for the cross-console bridges
         ["MD-STUB"] = m => new GenesisSoundStub(m),
+        ["GENS"] = m => new MdSoundUnitGens(m),   // foreign APU: Gens 2.10's YM2612 + PSG (quick port)
         ["NES"] = m => new MdSoundOnNes(m),
     };
 
