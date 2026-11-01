@@ -47,6 +47,9 @@ call was quick and dirty first, with a smoke test only.
 | FA-S-GENS-2 | P3 | GENS (SMS/GG) places PSG writes at chunk granularity, not at their time. | A timed write hook in `SmsSound`, or queue the writes with the stock PSG's clock. | 2026-11-01, `3ef3944a` | open |
 | FA-S-GENS-3 | P3 | GENS (Genesis) loses its YM/PSG state on a state load or swap: silent until the game writes again. | `MdSoundUnitGens.OnReset`: replay the stock `Ym2612` / `Sn76489` registers into the Gens chips. | 2026-11-01, `3ef3944a` | open |
 | FA-S-GENS-4 | P3 | GENS clamps FM and PSG separately (Gens clamps their sum), halves Gens' level and adds about one frame of latency. | `MdSoundUnitGens` frame driver. | 2026-11-01, `3ef3944a` | open |
+| FA-S-PICO-1 | P3 | PICO DAC is not tied to scanlines (PicoDrive fills it by line) and was never exercised: the test VGM has no DAC writes. | `md/MdSoundUnitPico.cs` `OnFmSample`; add a DAC test VGM and a line-based fill. | 2026-11-01, `050cbcca` | open |
+| FA-S-PICO-2 | P3 | PICO after a state load or live swap: notes already playing go silent until the next key-on (the stock state has no key/envelope state to replay). | `MdSoundUnitPico.BuildYm`: replay the key state if the stock `Ym2612` exposes it. | 2026-11-01, `050cbcca` | open |
+| FA-S-PICO-3 | P3 | PICO mixes FM and PSG separately (the shared 16-bit clip is lost); FM is up to one frame late against live DAC writes. | `md/MdSoundUnitPico.cs`. | 2026-11-01, `050cbcca` | open |
 
 ## Linux / cloud dev setup (`Workshop/cli.sh`, `Workshop/setup-linux.sh`)
 
