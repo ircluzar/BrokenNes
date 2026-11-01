@@ -714,6 +714,7 @@ public static class CoreCatalog
                         list.Add(new("ZS15", "ZS15 (ZSNES 0.15 sound, 1997: mono, no echo or interpolation, janky envelopes)", "SNES"));
                         list.Add(new("OSPC", "OSPC (libOpenSPC sound, 2002: guessed envelopes, linear release, rand() noise)", "SNES"));
                         list.Add(new("S916", "S916 (Snes9x 1.16a sound, 1998: 22 kHz, no interpolation, additive pitch mod, sample cache, half-speed envelopes)", "SNES"));
+                        list.Add(new("SNDS", "SNDS (SNEmulDS / PocketSPC Nintendo DS sound: 32 kHz, no interpolation, 2.4% sharp, silent noise, broken echo)", "SNES"));
                         list.Add(new("S9X1", "S9X1 (Snes9x 1.43 sound, 2004: stereo, old envelopes, linear interpolation, private echo)", "SNES"));
                         list.Add(new("S951", "S951 (Snes9x 1.51 sound, 2007: gaussian interpolation, counter-table envelopes, private echo)", "SNES"));
                         list.Add(new("ZS151", "ZS151 (ZSNES 1.51 sound, 2007: its own envelopes and echo, Gaussian look-ahead, 160-frame blocks)", "SNES"));
