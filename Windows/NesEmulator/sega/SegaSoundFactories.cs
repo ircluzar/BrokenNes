@@ -35,6 +35,7 @@ public static class SmsSoundFactories
         ["BLST"] = r => new SmsSoundBlst(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // foreign APU: BlastEm 0.3.1's PSG (GPL-3.0-or-later)
         ["M036"] = r => new SmsSoundM036(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // Foreign APU: MAME 0.36's sn76496.c (1999)
         ["GENS"] = r => new SmsSoundGens(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // foreign APU: Gens 2.10's PSG (quick port; the Master System and Game Gear menus)
+        ["PICO"] = r => new SmsSoundPico(r),   // foreign APU: PicoDrive 1.85's SN76496 (MAME-derived, noise taps 0x14002), Master System and Game Gear
     };
 
     public static IEnumerable<string> Ids => Factories.Keys;
@@ -67,6 +68,7 @@ public static class GenesisSoundFactories
         ["GENS"] = m => new MdSoundUnitGens(m),   // foreign APU: Gens 2.10's YM2612 + PSG (quick port)
         ["NES"] = m => new MdSoundOnNes(m),
         ["M036"] = m => new MdSoundUnitM036(m),   // Foreign APU: MAME 0.36's fm.c (YM2612) + sn76496.c (1999)
+        ["PICO"] = m => new MdSoundUnitPico(m),   // foreign APU: PicoDrive 1.85's YM2612 (no SSG-EG, guessed DAC level) + SN76496
     };
 
     /// <summary>Units whose menu id carries a detail after a colon (<c>NES:FIXS</c>): looked up by the part before the colon, the rest handed over.</summary>
