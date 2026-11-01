@@ -227,6 +227,24 @@ Sources: `StepBack\Assets\Microprograms\Caverns\MP_VirusRun.cs` (the game), `Run
 | **V5** | **Music** | The music driver and the MIDI converter. The user's 22 arrangements in the game as they arrive. |
 | **V6** | **Release** | BrokenDev checkup green (verify, hardware checks, compat on every emulator, Lite), a hardware test on the flash cartridge, a release build. |
 
+### V6, round 1: the Super Game Boy round (2026-10-31 / 11-01)
+
+Result: `VRUN_VOC_dev` master f858c2d, hand-off ROM `voc_handoffrun_voc_f858c2d.gbc`. The user played the c89fdba ROM on a **Super Game Boy** (and a little on a Color in Mesen) and sent five notes; all done in
+`VRUN_VOC_dev` (local commits only), each with its check and a negative control:
+
+| Note | Cause / change | Check |
+|---|---|---|
+| The heal (materials) bar "randomly" flickers until the next ░ | The message line's 4-pair typing budget (original Game Boy only) survived an early return and limited the NEXT picture's HUD row to 4 changed pairs while its map was marked complete: the two background maps showed different bars. Every call now spends its budget, the HUD row has none, a map is complete only when both rows are | `tests/game/hudcheck.ps1` (`VOC_HUD_CHECK`; plant `VOC_HUD_PLANT`: 404 caught) |
+| The clover is hard to see in monochrome: flicker it | The '♣ ' tile written with and without the ♣ every 3 frames in the vblank handler (assembly, about 130 M-cycles); original Game Boy and Super Game Boy, and a Color only in its GAME BOY / GREY looks (the Color's yellow clover stays steady, as the user's reasoning implies) | `tests/game/clover.ps1` (control `VOC_CLV_OFF`) |
+| Message "Picked up an Ethereal Clover" | Centred in the 32-character line | play test picture |
+| A Color's sides of the play area black | The panel palette black in every look | gbc pictures |
+| Super Game Boy support | `src/voc_sgb.c`: header SGB flag $03 + licensee $33; `sgb_check` at power-on (a Color skips it); MASK_EN, a fully black border (CHR_TRN + PCT_TRN), ATTR_LIN (panel columns in palette 1; ATTR_BLK's blocks blackened the walls on Mesen), PAL01 per screen (shades through BGP: colour 0 white = objects / player / text, walls the level colour as on a Color, spikes red, background and panels black; pages with the dark red bar; reversed SCREEN: white background, black objects), level changes in a run sent from the vblank handler after the flip | `tests/game/sgb.ps1` in a private Mesen 2.1.1 home (Super Game Boy model, the user's own SGB / SGB2 programs from `X:\EMULATION\! Firmwaresizhawk`, nothing downloaded): 10 packets byte for byte, the border's VRAM, pictures, 0 late; control `VOC_SGB_NOATTR` caught |
+
+Speed after the round (full sweep): original Game Boy 0 late, smallest margin 113 lines (was 122: the HUD row is now always written
+whole); Color 0 late, 95. The physics are untouched (`src/phys` unchanged). BrokenNes's Game Boy cores do not emulate the Super Game
+Boy (no firmware rule): there the ROM behaves as on an original Game Boy. Mesen 2.1.1's scripted pad does not reach the Game Boy in
+its SGB model, so the SGB test ROMs press their own title keys (`VOC_AUTOSTART`) and play their keys by tick (`VOC_AUTOKEYS`).
+
 ## Open questions (to settle as the work reaches them)
 
 1. Which maps RUN and SHORT RUN draw from: all 32, or only the 31 generated ones (keeping VRUN3 for the tutorial).
