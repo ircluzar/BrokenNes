@@ -796,6 +796,7 @@ public class Bus : IBus
 		cartridge.CPUWrite(address, value);
 		// Mirror writes to MMC5 audio range ($5000-$5015)
 		if (address <= 0x5015) mmc5Audio?.WriteExp(address, value);
+		if (address <= 0x5015 && activeApu is IApuExpansionAudio expApu) expApu.WriteExpansionAudio(address, value);
 		return;
 	}
 		if (address >= 0x6000)
@@ -1079,7 +1080,7 @@ public class Bus : IBus
 	public float[] GetAudioSamples(int max=0)
 	{
 		var samples = activeApu.GetAudioSamples(max);
-		if (samples.Length == 0 || mmc5Audio == null) return samples;
+		if (samples.Length == 0 || mmc5Audio == null || activeApu is IApuExpansionAudio) return samples;
 		float add = mmc5Audio.GetCurrentSample();
 		if (add == 0f) return samples;
 		for (int i = 0; i < samples.Length; i++) samples[i] += add;
@@ -1089,7 +1090,7 @@ public class Bus : IBus
 	public int GetAudioSampleRate() => activeApu.GetSampleRate();
 
 	// Optional: expose expansion audio current sample for other mixers
-	public float GetExpansionAudioSample() => mmc5Audio?.GetCurrentSample() ?? 0f;
+	public float GetExpansionAudioSample() => activeApu is IApuExpansionAudio ? 0f : mmc5Audio?.GetCurrentSample() ?? 0f;
 
 	// --- QuickNes helpers ---
 	public void UseQuickNesAPU() => SetApuCore(ApuCore.QuickNes);
