@@ -77,6 +77,7 @@ public static class SnesCores
         RegisterApu("S9X1", () => new SfcApuAdapter(new APU_S9X1()));
         RegisterApu("S951", () => new SfcApuAdapter(new APU_S951()));
         RegisterApu("ZS151", () => new SfcApuAdapter(new APU_ZS151()));
+        RegisterApu("S916", () => new SfcApuAdapter(new APU_S916()));
         RegisterApu("NES", () => new NesApuOnSnes());
     }
 
