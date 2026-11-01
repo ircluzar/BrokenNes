@@ -21,7 +21,7 @@ on the NES and on other consoles through the existing bridges, for free:
 | Access | Selectable in the console core menus now. Cards and the blind-bag pool come in the polish pass. |
 | Licensing | **Allowed for the sake of art, documented, revisited later.** The repo policy forbids GPL, LGPL and non-commercial code; these cores are a recorded exception in `THIRD_PARTY_NOTICES.md` §2 and in the family ledgers. Every ported file gets a header naming its source, authors and license. |
 
-## Cores
+## Batches 1-2: the first SNES / GB ports and the Sega set
 
 | ID | Console slot | Source | License | Status |
 |---|---|---|---|---|
@@ -35,6 +35,26 @@ on the NES and on other consoles through the existing bridges, for free:
 | `M036` | Genesis APU + SMS/GG PSG | MAME 0.36 `fm.c` v0.36e (YM2612) + `sn76496.c` | MAME non-commercial | **done (MVP)**: `sega/Mame036Opn2.cs`, `sega/Mame036Sn76496.cs`, `md/MdSoundUnitM036.cs`, `sega/SmsSoundM036.cs` (2c32d62d; 22,050 Hz; x^8 attack, LFO mostly off, old noise taps, unipolar PSG; ~1.6-1.9x louder than stock) |
 | `GENS` | Genesis APU + SMS/GG PSG | Gens 2.10 `ym2612.c`, `psg.c` | GPL-2.0 | **done (MVP)**: `sega/GensYm2612.cs`, `sega/GensPsg.cs`, `md/MdSoundUnitGens.cs`, `sega/SmsSoundGens.cs` (3ef3944a; 22,050 Hz, Gens defaults (Improv off), scanline-driven DAC/timers, unipolar PSG) |
 | `PICO` | Genesis APU + SMS/GG PSG | PicoDrive v1.85 `ym2612.c`, `sn76496.c` | PicoDrive non-commercial + MAME | **done (MVP)**: `sega/PicoYm2612.cs`, `sega/PicoSn76496.cs`, `md/MdSoundUnitPico.cs`, `sega/SmsSoundPico.cs` (050cbcca; 44.1 kHz frame blocks, no SSG-EG/CSM, FM ch 6 sounds under the DAC, unipolar PSG; DAC path untested) |
+
+## Current status (end of the cloud session, 2026-11-01)
+
+**29 alternate sound cores, all done (MVP)**: smoke-tested, robustness-checked (`--apu-fuzz`), not yet heard by a person.
+
+| Console | Cores (menu ids) |
+|---|---|
+| SNES (sound unit) | ZS15, ZS151, S916, S9X1, S951, OSPC, SNDS |
+| Game Boy / GBC (sound chip) | GNUB, VBA, VBAM, TGBD, GYOB |
+| Genesis (sound unit) | GENS, PICO, M036, BLST, GPGX |
+| Master System / Game Gear (PSG) | GENS, PICO, M036, BLST, GPGX, DARC, DEGA |
+| Japanese Master System (FM unit; not on Game Gear) | M036FM, E055 |
+| NES (`APU_*` cores, family "Foreign") | FCEU, INES, NSTC, DARC, TUXN, VNES, PNES |
+
+Each core's source, version and quirks are in the batch tables below. Every shortcut is in `docs/KNOWN_GAPS.md`. The licenses are in `THIRD_PARTY_NOTICES.md` §2 and the family ledgers.
+
+**Next:**
+1. Listen on Windows.
+2. Decide the licensing question (FA-1, P1).
+3. Work through the P2 gaps: engine state in save states, GB swaps, cards and the blind bag.
 
 ## Batch 3: the big batch (interview 2026-11-01, all nine done (MVP))
 
@@ -152,7 +172,31 @@ The user asked for the rest of the research shortlist, using the same process. T
 - **Swap caveat:** `TrySwapCore(Apu)` copies the old unit's state into the new one. A variant that can't read `APU_GB`'s format must start fresh or have that swap path handled.
 - **Smoke test:** `--mixlab nes ... --apu DMG` with `--gb-apu XXX` plays NES music through the GB chip. `--gbrun --rom <gb rom> --wav` also works if a GB ROM with music is at hand.
 
-## MVP status (2026-11-01)
+## How a Sega sound engine plugs in (the GENS pattern)
+
+- **Genesis:** subclass `md/MdSoundUnit.cs` and override its hooks:
+  - `OnYmWrite(port, value)` and `OnPsgWrite(value)` receive the writes.
+  - `OnFmSample(ref left, ref right)` is called per stock YM2612 sample (about 53 kHz); replace the values to replace the FM sound.
+  - `OnPsgSamples(Span<short>)` holds the host-rate PSG audio; overwrite it in place.
+  - `OnReset()` runs after Reset and after LoadState.
+
+  Register the unit in `sega/SegaSoundFactories.cs` (`GenesisSoundFactories`) and the Genesis menu in `systems/ConsoleSystems.cs`. Examples: `md/MdSoundUnitGens.cs`, `MdSoundUnitGpgx.cs`.
+- **Master System / Game Gear:** subclass `SmsSound` (`sega/ISmsSound.cs`) with `OnPsgWrite`, `OnStereoWrite`, `OnPsgSamples` and `OnReset`. Register it in `SmsSoundFactories` and the Master System and Game Gear menus. Example: `sega/SmsSoundGens.cs`.
+- **Japanese FM:** subclass `SmsFmSound` with `OnFmAddress`, `OnFmData` and `int OnFmSample(int)` (mono, at cpuClock/72). Offer it on the Master System only. Examples: `sega/SmsFmSoundM036.cs`, `SmsFmSoundE055.cs`.
+- **Smoke tests:** the VGMs from `Workshop/Sega/foreign-apu/make_test_vgm.py`, played with `--ym-render --unit ID` and `--sms-render --unit ID`.
+
+## How a NES sound engine plugs in (the APU_DARC pattern)
+
+- Subclass `apus/APU_FIX.cs` as `APU_<ID>` (re-implement `IAPU` like `APU_FIXS`). The base keeps $4015 reads, IRQs and DMC DMA correct.
+  - Forward every register write to the engine.
+  - Clock the engine from `Step`.
+  - Return the engine's audio from the sample methods, and drop the base's ring.
+- `CoreRegistry` finds the class by its name.
+- **Required:** add the id to `NesApuFamily` in `systems/ConsoleSystems.cs` as `"Foreign"` (outside the five plugin families, so the plugin's chip indices stay put), and add a root in `WebLite/LinkerConfig.xml`.
+- **MMC5 audio:** comes through `apus/IApuExpansionAudio.cs` (see `APU_FCEU`, `APU_VNES`).
+- **Smoke test:** `--mixlab nes --rom Plugin/BrokenNes2.Plugin/Resources/musictest.nes --apu ID`.
+
+## MVP status of the first five cores (batch 1, kept for history)
 
 All five cores are merged. In the smoke test, VRUN's `musictest.nes` plays through `APU_SNES` (SNES
 cores) or `APU_DMG` (GB cores). Results are compared with the stock chip over 600 frames.
