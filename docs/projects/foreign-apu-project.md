@@ -26,10 +26,10 @@ on the NES and on other consoles through the existing bridges, for free:
 | ID | Console slot | Source | License | Status |
 |---|---|---|---|---|
 | `ZS15` | SNES APU | ZSNES 0.15 (1997) sound engine, via [zsnes-asm2c](https://gitlab.com/ReverendGumby/zsnes-asm2c) `dsp.asm` + `mach.c`. This is the engine in ZSnes9x ([snes9x-cursed](https://gitlab.com/ReverendGumby/snes9x-cursed)) | GPL-2+/GPL-3+ | **done (MVP)**: `snes/Zs15Dsp.cs`, `snes/APU_ZS15.cs` |
-| `S9X1` | SNES APU | Snes9x 1.39–1.43 sound code (`soundux.cpp`, `apu.cpp` DSP side) | Snes9x non-commercial | planned |
+| `S9X1` | SNES APU | Snes9x 1.39–1.43 sound code (`soundux.cpp`, `apu.cpp` DSP side) | Snes9x non-commercial | **done (MVP)**: `snes/S9x1Dsp.cs`, `snes/APU_S9X1.cs` (libretro/snes9x2005 @a79dfe9; stereo 32,040 Hz in 534-frame blocks; noise is snes9x2005's replacement LFSR, not 1.43's) |
 | `OSPC` | SNES APU | [libOpenSPC](https://github.com/bmartin427/libopenspc), with parts from SNEeSe (2002) | LGPL + SNEeSe license | **done (MVP)**: `snes/OspcDsp.cs`, `snes/APU_OSPC.cs` (32 kHz stereo, 1:1; echo uses a private buffer) |
-| `GNUB` | GB APU | [gnuboy](https://github.com/rofl0r/gnuboy) `sound.c` | GPL-2.0 | planned |
-| `VBA` | GB APU | VisualBoyAdvance 1.7.2 `gb/gbSound.cpp` ([vba-raspi mirror](https://github.com/weimingtom/vba-raspi)) | GPL-2.0 | planned |
+| `GNUB` | GB APU | [gnuboy](https://github.com/rofl0r/gnuboy) `sound.c` | GPL-2.0 | **done (MVP)**: `gb/GnubSound.cs`, `gb/APU_GNUB.cs` (@4c2f6c4; 8-bit, 44,620 Hz) |
+| `VBA` | GB APU | VisualBoyAdvance 1.7.2 `gb/gbSound.cpp` ([vba-raspi mirror](https://github.com/weimingtom/vba-raspi)) | GPL-2.0 | **done (MVP)**: `gb/VbaGbSound.cs`, `gb/APU_VBA.cs` (@9fbd04f8; 22,050 Hz) |
 
 ## How a SNES sound engine plugs in (the ZS15 pattern)
 
@@ -64,6 +64,30 @@ on the NES and on other consoles through the existing bridges, for free:
 - **Register** in `mix/GbSoundBridges.cs` `GbCores`, in `GbSession.SoundFactory` (`systems/ConsoleSessions.cs`) and in the GB APU menu (`systems/ConsoleSystems.cs`).
 - **Swap caveat:** `TrySwapCore(Apu)` copies the old unit's state into the new one. A variant that can't read `APU_GB`'s format must start fresh or have that swap path handled.
 - **Smoke test:** `--mixlab nes ... --apu DMG` with `--gb-apu XXX` plays NES music through the GB chip. `--gbrun --rom <gb rom> --wav` also works if a GB ROM with music is at hand.
+
+## MVP status (2026-11-01)
+
+All five cores are merged. In the smoke test, VRUN's `musictest.nes` plays through `APU_SNES` (SNES
+cores) or `APU_DMG` (GB cores). Results are compared with the stock chip over 600 frames.
+
+| Core | Rate | RMS | Loudness envelope r vs stock |
+|---|---|---|---|
+| ZS15 | 32 kHz (44.1 kHz engine, mono) | 12,896 | 0.92 vs SFC |
+| S9X1 | 32 kHz (32,040 Hz engine, stereo) | 4,269 | 0.85 vs SFC |
+| OSPC | 32 kHz (native, stereo) | 4,525 | 1.00 vs SFC |
+| GNUB | 44,620 Hz | 4,834 | 0.98 vs GB |
+| VBA | 22,050 Hz | 6,204 | 0.96 vs GB |
+
+Nobody has listened to them yet. The user checks them by ear on Windows.
+
+**Known MVP gaps**
+- SNES cores keep the engine's own state out of save states. A load or a swap re-feeds the registers and re-keys the voices.
+- GNUB and VBA are not `APU_GB`, so these skip them (with `is` checks, no crash):
+  - BrokenDev channel mute
+  - the WAVE memory domain
+  - the plugin's GbSnapshot, sampler and instrument push
+  - FruityHost's inject checks
+- Swapping a running game to GNUB starts the engine fresh. VBA writes an `APU_GB`-format block first, so swaps load, but notes stay silent until they are re-triggered.
 
 ## Later (the polish pass)
 
