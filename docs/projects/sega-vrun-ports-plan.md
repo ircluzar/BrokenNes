@@ -48,6 +48,22 @@ Timeflow T6 (a self-filling gameplay corpus) is replaced by what these ports nee
 | **S2** | **Corrupt The World demake on the Master System**: the view kept in 256x192, the game, PSG sound from the NES version, comparison, flash cart. |
 | **S3** | **Super VRUN on the Genesis**: 1P and 2P, FM + PSG music from the SNES version, comparison, flash cart. |
 
+## Decisions, second interview (2026-11-01)
+
+| Topic | Decision |
+|---|---|
+| S1 Vaults on the Game Gear: physics | **Tick-identical to Eternal Degrade**, like the Game Boy version (this replaces "faithful feel" for S1): the same physics code (`src/phys`, exact doubles, the RNG table) built with SDCC for the Z80, and the same compare checks. |
+| S1 colours | **Like the Game Boy Color version** (the same level colours). |
+| S2 CTW on the Master System: 192 lines vs 240 | **Shrink the HUD**, the way Super VRUN had to; the play area stays whole. |
+| S3 Super VRUN on the Genesis: the width | **Like the WideMess version (P5):** the game centred in 320, each room's edges repeated to the sides. |
+| S3 staying in step | **One shared game-logic source** for Super VRUN's SNES, WideMess and Genesis versions; each console keeps its own picture / sound layer and its own speed paths (the SNES's 65816 assembly stays SNES-only; the Genesis gets 68000 equivalents where it needs them). Super VRUN's maintained versions are SNES, WideMess and Genesis; P6's back-ports reach all three. |
+| S3 music | **Port Super VRUN's own music engine** to the Genesis (FM + PSG), not SGDK's XGM driver. |
+| The comparison's tolerance | **Same events, small drift:** rooms, pickups, deaths and clears in the same order; positions within a few pixels. (S1 is stricter: tick-identical.) |
+| Order | S0, then Game Gear, Master System, Genesis, as planned. |
+
+Open questions 2-4 below are answered by this table (the Master System's rows: the HUD shrinks; the Genesis sound: our own engine;
+the Game Gear: the Color's colours).
+
 ## Open questions (to settle per port, in their own interviews)
 
 1. Per game: which adaptations are wanted (e.g. a physics rate on the Master System), and the comparison's tolerances.
