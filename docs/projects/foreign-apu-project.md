@@ -8,6 +8,26 @@ on the NES and on other consoles through the existing bridges, for free:
 - `APU_DMG` with `GbCores`
 - `NesApuOnSnes`, `SnesApuOnChip`
 
+## Current status (end of the cloud session, 2026-11-01)
+
+**27 ported sound engines (ids) in 33 console slots, all done (MVP)**: smoke-tested, robustness-checked (`--apu-fuzz`), not yet heard by a person.
+
+| Console | Cores (menu ids) |
+|---|---|
+| SNES (sound unit) | ZS15, ZS151, S916, S9X1, S951, OSPC, SNDS |
+| Game Boy / GBC (sound chip) | GNUB, VBA, VBAM, TGBD, GYOB |
+| Genesis (sound unit) | GENS, PICO, M036, BLST, GPGX |
+| Master System / Game Gear (PSG) | GENS, PICO, M036, BLST, GPGX, DARC, DEGA |
+| Japanese Master System (FM unit; not on Game Gear) | M036FM, E055 |
+| NES (`APU_*` cores, family "Foreign") | FCEU, INES, NSTC, DARC, TUXN, VNES, PNES |
+
+Each core's source, version and quirks are in the batch tables below. Every shortcut is in `docs/KNOWN_GAPS.md`. The licenses are in `THIRD_PARTY_NOTICES.md` §2 and the family ledgers.
+
+**Next:**
+1. Listen on Windows.
+2. Decide the licensing question (FA-1, P1).
+3. Work through the P2 gaps: engine state in save states, GB swaps, cards and the blind bag.
+
 ## Decisions (user interviews, 2026-11-01)
 
 | Topic | Decision |
@@ -35,26 +55,6 @@ on the NES and on other consoles through the existing bridges, for free:
 | `M036` | Genesis APU + SMS/GG PSG | MAME 0.36 `fm.c` v0.36e (YM2612) + `sn76496.c` | MAME non-commercial | **done (MVP)**: `sega/Mame036Opn2.cs`, `sega/Mame036Sn76496.cs`, `md/MdSoundUnitM036.cs`, `sega/SmsSoundM036.cs` (2c32d62d; 22,050 Hz; x^8 attack, LFO mostly off, old noise taps, unipolar PSG; ~1.6-1.9x louder than stock) |
 | `GENS` | Genesis APU + SMS/GG PSG | Gens 2.10 `ym2612.c`, `psg.c` | GPL-2.0 | **done (MVP)**: `sega/GensYm2612.cs`, `sega/GensPsg.cs`, `md/MdSoundUnitGens.cs`, `sega/SmsSoundGens.cs` (3ef3944a; 22,050 Hz, Gens defaults (Improv off), scanline-driven DAC/timers, unipolar PSG) |
 | `PICO` | Genesis APU + SMS/GG PSG | PicoDrive v1.85 `ym2612.c`, `sn76496.c` | PicoDrive non-commercial + MAME | **done (MVP)**: `sega/PicoYm2612.cs`, `sega/PicoSn76496.cs`, `md/MdSoundUnitPico.cs`, `sega/SmsSoundPico.cs` (050cbcca; 44.1 kHz frame blocks, no SSG-EG/CSM, FM ch 6 sounds under the DAC, unipolar PSG; DAC path untested) |
-
-## Current status (end of the cloud session, 2026-11-01)
-
-**29 alternate sound cores, all done (MVP)**: smoke-tested, robustness-checked (`--apu-fuzz`), not yet heard by a person.
-
-| Console | Cores (menu ids) |
-|---|---|
-| SNES (sound unit) | ZS15, ZS151, S916, S9X1, S951, OSPC, SNDS |
-| Game Boy / GBC (sound chip) | GNUB, VBA, VBAM, TGBD, GYOB |
-| Genesis (sound unit) | GENS, PICO, M036, BLST, GPGX |
-| Master System / Game Gear (PSG) | GENS, PICO, M036, BLST, GPGX, DARC, DEGA |
-| Japanese Master System (FM unit; not on Game Gear) | M036FM, E055 |
-| NES (`APU_*` cores, family "Foreign") | FCEU, INES, NSTC, DARC, TUXN, VNES, PNES |
-
-Each core's source, version and quirks are in the batch tables below. Every shortcut is in `docs/KNOWN_GAPS.md`. The licenses are in `THIRD_PARTY_NOTICES.md` §2 and the family ledgers.
-
-**Next:**
-1. Listen on Windows.
-2. Decide the licensing question (FA-1, P1).
-3. Work through the P2 gaps: engine state in save states, GB swaps, cards and the blind bag.
 
 ## Batch 3: the big batch (interview 2026-11-01, all nine done (MVP))
 
