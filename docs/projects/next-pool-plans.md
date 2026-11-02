@@ -210,13 +210,17 @@ one (the page's own sound, its volume set from BrokenNes), and recording / mixer
 - **Refused with the reason** ("a web game shown through BrokenNes, not an emulated machine..."): save states (Emulator menu items
   greyed out, API refuses), Timeflow REC (greyed out), core menus (one greyed-out line), core swaps (refused, no restart), corruption
   (refused); the console status reports the cores as "none (virtual cartridge)". Reset reloads the page.
-- **Checks:** `BrokenNes.Windows.exe --wmv-check <cart.wmv> --out <dir> --bad <bad.wmv> --bad-server <dead.wmv>` (offscreen, no app
+- **Checks:** `BrokenNes.Windows.exe --wmv-check <cart.wmv> --out <dir> --bad <bad.wmv> --bad-server <dead.wmv> [--play]` (offscreen, no app
   window: title reached and animating, 400 x 224 + black columns, frame pacing, the pad moves the title menu and opens / closes the
   settings, pause, page errors, the server gone after the eject, a bad folder and a dead server refused) and `UAT/wmv-check.ps1
   -Exe <exe> -Cartridge <cart.wmv> -Bad <bad.wmv>` (the real app over HTTP: picture, input, pause, refusals, Close ROM and app exit
   stop the server, bad cartridge refused). Numbers on this machine: server up in 0.65-0.85 s, title in about 3 s, **60.0 page frames
   a second, 60 shown, 0 repeated, 0 overwritten**, pad change to the page's next frame 8-10 ms (plus the page's own frame and
-  BrokenNes's display frame: roughly 2-3 frames end to end).
+  BrokenNes's display frame: roughly 2-3 frames end to end). In the game (`--play`: START, past the engine's title and story, the
+  WebGL layer read back every frame): 60.2 page frames a second; with the machine busy (other agents' test runs), about 13 a second
+  of BrokenNes's 60 showed the previous frame again while the next arrived a moment later: the page's and BrokenNes's 60 Hz are two
+  clocks that are not locked together (title on an idle machine: 0). Locking them (BrokenNes asking the page for each frame) is the
+  next step if that judder is visible.
 - **Fixed on the way:** `POST /api/emulator/close-rom` ignored console sessions (the SNES / Game Boy / Sega game kept running); it now
   closes them.
 - **Not done (not asked):** Lite; routing the page's sound into BrokenNes's mixer (recording, synth); HTML5 media elements that are not
