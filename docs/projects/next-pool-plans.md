@@ -8,7 +8,7 @@ until the user picks it. Two of them (P3, P4) need an interview first. P4 -> P5 
 | P1 | Vaults on the Super Game Boy: the original sound effects on the SNES's sampler | later this week or next | the original SFX files |
 | P2 | Super VRUN: MS-DOS port | next week | your DOSBox-X debugging setup |
 | P3 | An "x86 console" in BrokenNes (386 + DOS extenders, ported from tiny386, kept simple) | stretch | an approved FreeDOS / DOS32A download |
-| P4 | WideMess Virtual: a web game as a WideMess "cartridge" | after an interview | the CTW Remastered HTML5 export, an interview |
+| P4 | WideMess Virtual: a web game as a WideMess "cartridge" | **built 2026-11-01 (desktop)** | - |
 | P5 | Super VRUN on the WideMess (a fork kept in step with the SNES version) | after P4 | P4 running CTW Remastered as the reference |
 | P6 | Super VRUN (SNES and WideMess together): the map, the stats, the title effect and the options UI from CTW Remastered | after P5 | the Remastered project files |
 
@@ -133,7 +133,7 @@ P3g the mesh (bridges both ways), Lite last (speed in WASM measured).
 
 ---
 
-## P4. WideMess Virtual (needs an interview)
+## P4. WideMess Virtual (built 2026-11-01, desktop)
 
 **Goal.** A passthrough mode: a WideMess "cartridge" that is a web game. BrokenNes shows the game's picture as the WideMess picture
 and sends it the controls. The proof of concept is **VRUN Corrupt The World Remastered**.
@@ -179,6 +179,52 @@ doesn't copy the game into its repo.
 **Decided (interview).** It boots into the Remastered's own title screen; 398 sits in 400 with a black column each side; it must
 scale with the emulator's viewport like an emulated game and follow BrokenNes's volume, nothing more. So step 4 stays the simple
 one (the page's own sound, its volume set from BrokenNes), and recording / mixer routing are not needed.
+
+**As built (2026-11-01, desktop).** Status: done and checked; Lite later.
+
+- **The cartridge:** a `.wmv` JSON manifest (`Windows/Virtual/VirtualCartManifest.cs`); the one for the Remastered is
+  `WideMess/virtual/VRUN-CTW-Remastered.wmv` (`"folder": "../../../VRUN_CTW_Remastered"`, i.e. the package unpacked at
+  `PROJECTS\VRUN_CTW_Remastered` beside the BrokenNes checkout; edit the folder if it lives elsewhere). Fields: `format`
+  (`widemess-virtual`), `version` 1, `title`, `folder` (absolute or relative to the manifest), `command` (`node`), `args` (`{port}`,
+  `{folder}` filled in), `ready` (a line of the server's output), `page`, `width` / `height` (398 x 224), `layers` (the stacked
+  layers, back to front). Load ROM (and `POST /api/emulator/load-rom`) takes it and selects the WideMess; the file dialog lists
+  "WideMess virtual cartridges (*.wmv)". No game file is copied into BrokenNes.
+- **Host** (`VirtualCartServer`, `VirtualCartSession`): the server on a free loopback port inside a kill-on-close **job object** (it
+  dies with the cartridge's eject, Close ROM, exit, and also when BrokenNes is killed: tested); the page in a WebView2 on its own STA
+  thread, in a window parked off-screen (tool window, never activated), with occlusion / background throttling switched off and
+  autoplay allowed; its own profile (`%LOCALAPPDATA%\BrokenNes\WebView2-virtual`, or under `BROKENNES_CONFIG_DIR`). If the server or
+  the page's process dies, the cartridge is ejected and you are told why.
+- **Picture:** a script injected by BrokenNes (`VirtualCartScript.cs`; **no change to the Remastered**) forces `preserveDrawingBuffer`
+  on WebGL, draws the layers back to front with their computed opacity into one 398 x 224 canvas at most 60 times a second, and copies
+  the RGBA into a **WebView2 shared buffer** (two slots), then posts one short message with the slot. The session puts it in the
+  middle of a 400 x 224 frame (columns 0 and 399 black) and the app shows it through the normal console-session display path, so the
+  viewport scaling and shaders apply as for any game. (postMessage of the pixels was not needed: the shared buffer holds 60 fps.)
+- **Input:** `navigator.getGamepads()` reports one standard-mapping pad that is BrokenNes's pad (1P): B 0, A 1, Y 2, X 3, L 4, R 5,
+  Select 8, Start 9, d-pad 12-15. `vrun-input.js` reads it like any gamepad, so the Remastered's own pad bindings and menus (title,
+  settings) work unchanged; its title shows "GAMEPAD READY". Real gamepads go through BrokenNes's own bindings.
+- **Sound:** the page plays its own sound. Every Web Audio context gets a host gain (the music bus, the sound effects and the menu
+  sounds all go through Web Audio) set from BrokenNes's volume; BrokenNes's mute mutes the whole web view. BrokenNes's own mixer
+  gets silence of the right length (it paces sessions by sound).
+- **Pause:** when BrokenNes stops asking for frames (pause, or anything that stops the emulation loop) for 250 ms, the page is muted,
+  hidden and **suspended** (`TrySuspendAsync`: scripts, timers and animation stop); the next frame resumes it.
+- **Refused with the reason** ("a web game shown through BrokenNes, not an emulated machine..."): save states (Emulator menu items
+  greyed out, API refuses), Timeflow REC (greyed out), core menus (one greyed-out line), core swaps (refused, no restart), corruption
+  (refused); the console status reports the cores as "none (virtual cartridge)". Reset reloads the page.
+- **Checks:** `BrokenNes.Windows.exe --wmv-check <cart.wmv> --out <dir> --bad <bad.wmv> --bad-server <dead.wmv> [--play]` (offscreen, no app
+  window: title reached and animating, 400 x 224 + black columns, frame pacing, the pad moves the title menu and opens / closes the
+  settings, pause, page errors, the server gone after the eject, a bad folder and a dead server refused) and `UAT/wmv-check.ps1
+  -Exe <exe> -Cartridge <cart.wmv> -Bad <bad.wmv>` (the real app over HTTP: picture, input, pause, refusals, Close ROM and app exit
+  stop the server, bad cartridge refused). Numbers on this machine: server up in 0.65-0.85 s, title in about 3 s, **60.0 page frames
+  a second, 60 shown, 0 repeated, 0 overwritten**, pad change to the page's next frame 8-10 ms (plus the page's own frame and
+  BrokenNes's display frame: roughly 2-3 frames end to end). In the game (`--play`: START, past the engine's title and story, the
+  WebGL layer read back every frame): 60.2 page frames a second; with the machine busy (other agents' test runs), about 13 a second
+  of BrokenNes's 60 showed the previous frame again while the next arrived a moment later: the page's and BrokenNes's 60 Hz are two
+  clocks that are not locked together (title on an idle machine: 0). Locking them (BrokenNes asking the page for each frame) is the
+  next step if that judder is visible.
+- **Fixed on the way:** `POST /api/emulator/close-rom` ignored console sessions (the SNES / Game Boy / Sega game kept running); it now
+  closes them.
+- **Not done (not asked):** Lite; routing the page's sound into BrokenNes's mixer (recording, synth); HTML5 media elements that are not
+  routed through Web Audio are covered only by the mute, not the volume (the Remastered routes its music through Web Audio).
 
 ---
 

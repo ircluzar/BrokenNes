@@ -118,6 +118,7 @@ namespace BrokenNes.Windows
                 return;
             }
 
+            if (session is Virtual.VirtualCartSession) { Console.WriteLine($"[Corruptor] nothing to corrupt: {Virtual.VirtualCartSession.NoMachineReason}"); return; }
             if (!IsEmulatorReady) return;
             var safeBlastType = ResolveUnlockedBlastType(corruptor.BlastType, save);
             if (session != null && farm.Attached)

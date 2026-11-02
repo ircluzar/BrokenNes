@@ -46,6 +46,7 @@ namespace BrokenNes.Windows
         /// NES's (the session carries memory, picture and sound state over).</summary>
         private void SetConsoleCore(ConsoleKind console, CoreSlot slot, string id)
         {
+            if (session is Virtual.VirtualCartSession) { Console.WriteLine($"[WideMess Virtual] {slot} {id} refused: {Virtual.VirtualCartSession.NoMachineReason}"); return; }
             Helpers.ConfigHelper.Update(config, c =>
             {
                 var key = Consoles.Key(console);
@@ -110,9 +111,9 @@ namespace BrokenNes.Windows
                     Console = Consoles.Key(console), ConsoleName = Consoles.DisplayName(console),
                     Game = s?.Title ?? (nes != null && !string.Equals(nes.RomName, "test.nes", StringComparison.OrdinalIgnoreCase) ? nes.RomName : null),
                     Description = s?.Description,
-                    Cpu = console == ConsoleKind.Nes ? nes?.GetCpuCoreId() : SelectedCore(console, CoreSlot.Cpu),
-                    Ppu = console == ConsoleKind.Nes ? nes?.GetPpuCoreId() : SelectedCore(console, CoreSlot.Ppu),
-                    Apu = console == ConsoleKind.Nes ? nes?.GetApuCoreId() : SelectedCore(console, CoreSlot.Apu),
+                    Cpu = s is Virtual.VirtualCartSession ? "none (virtual cartridge)" : console == ConsoleKind.Nes ? nes?.GetCpuCoreId() : SelectedCore(console, CoreSlot.Cpu),
+                    Ppu = s is Virtual.VirtualCartSession ? "none (virtual cartridge)" : console == ConsoleKind.Nes ? nes?.GetPpuCoreId() : SelectedCore(console, CoreSlot.Ppu),
+                    Apu = s is Virtual.VirtualCartSession ? "none (virtual cartridge)" : console == ConsoleKind.Nes ? nes?.GetApuCoreId() : SelectedCore(console, CoreSlot.Apu),
                     FrameWidth = s?.FrameWidth ?? (nes?.WidePicture is { HasWidePicture: true } nw ? nw.WideWidth : NES_WIDTH), FrameHeight = s?.FrameHeight ?? (nes?.WidePicture is { HasWidePicture: true } nh ? nh.WideHeight : NES_HEIGHT), Fps = currentFps,
                     // a picture that crosses a bridge says what it is and what it lost (Sega game on a NES chip, NES game on the Master System / Genesis chip)
                     PictureBridge = BridgeOf(s) is { } bi && bi.BridgeName != "none" ? bi.BridgeName : null,
@@ -431,7 +432,7 @@ namespace BrokenNes.Windows
             Helpers.ConfigHelper.Update(config, c => c.SelectedConsole = Consoles.Key(console));
             RefreshConsoleMenu();
             // the game itself decides where it can go (a SNES game on the WideMess goes back to the SNES; a WideMess game cannot)
-            if (session != null && sessionRom != null && RomDetect.Runs(console, RomDetect.Detect(sessionRom, sessionRomName) ?? session.Console))
+            if (session != null && sessionRom != null && session is not Virtual.VirtualCartSession && RomDetect.Runs(console, RomDetect.Detect(sessionRom, sessionRomName) ?? session.Console))
             {
                 StartSession(console, sessionRom, sessionRomName, currentRomPath);
                 return;
@@ -671,6 +672,12 @@ namespace BrokenNes.Windows
             WebApi.ApiInputInjector.PublishObserved(observedPad1, observedPad2);
             webModuleInputManager?.Poll();
 
+            if (s is Virtual.VirtualCartSession)
+            {
+                // WideMess Virtual: a web game, no machine - the farm, the debug port, Timeflow and the bug capture have nothing to hold (MainForm.WideMessVirtual.cs)
+                lock (emulationLock) { s.SetPad(0, p1); s.SetPad(1, p2); s.RunFrame(); }
+            }
+            else
             lock (emulationLock)
             {
                 FarmBeforeFrame(p1, p2);
@@ -816,6 +823,12 @@ namespace BrokenNes.Windows
         private void BuildCoreMenu(ToolStripMenuItem menu, CoreSlot slot, GameSave progressionSave)
         {
             menu.DropDownItems.Clear();
+            if (session is Virtual.VirtualCartSession)
+            {
+                // a virtual cartridge has no chips to choose: one greyed-out line says why (no silent fallback to the WideMess's own cores)
+                menu.DropDownItems.Add(new ToolStripMenuItem($"Virtual cartridge: no {slot} to choose") { Enabled = false, ToolTipText = Virtual.VirtualCartSession.NoMachineReason });
+                return;
+            }
             var console = session?.Console ?? SelectedConsole;
             string current = console == ConsoleKind.Nes
                 ? (slot switch { CoreSlot.Cpu => config.SelectedCpuCore, CoreSlot.Ppu => config.SelectedPpuCore, _ => config.SelectedApuCore })
