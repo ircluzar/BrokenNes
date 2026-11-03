@@ -171,3 +171,22 @@ All projects build with 0 errors (Workshop, Windows, Web, WebLite, BrokenDev/mcp
 `BrokenDev\mcp\bin` (removed; the check then passes); MCP client test 145 of 145; `xcompare.ps1` 14 of 14. **Lite:** `UAT/entrypoints/lite-sega.ps1
 -Only rom` with the three skeleton ROMs in place of its games (an AOT publish of 2026-10-23: no Lite code changed since): 18 of 18 (each loads by
 `?rom=`, 256x192 / 160x144 / 320x224, moves, sound every frame, 60 fps). No UAT case was touched. Not done: a flash-cart test (S1-S3).
+
+## S1 as built (partial, 2026-11-03)
+
+Port repo VRUN_VOC_GG_dev (local git): 6b52b02 physics, 0c354ac the game + PSG sound, 52f71e8 speed and start timing.
+
+- **The game** builds (build.ps1 + src/units.txt) and plays: title, runs, pause ("PAUSED   Start+1: save" at the bottom, Start+1 saves
+  again), battery-RAM saves, GBC colours, mono PSG sound (tools/psg/convert_sfx.py: a frame model of the Game Boy sound chip ->
+  PSG writes; tools/psg/convert_music.py + voc_sound.c: the Game Boy song bytes interpreted for the PSG, no envelopes/vibrato/panning).
+- **Fixes found on the way:** the Z80 LD A,I bug in gg_crit_enter (interrupts left off, the frame interrupt stopped for many frames);
+  SDCC's make_tile at 9-20 K cycles a tile (now Z80 rows); the run's 256 pair tiles baked (tools/gfx/make_pair_tiles.py, bank 61).
+- **Start timing:** the first title keeps the GBC's 24 Hz page phase (VOC_GG_TITLE_ANCHOR) and the box follows the GBC's frame
+  schedule (VOC_GG_RUN_AT 52 frames after the run is asked for, acc 1389): the run starts at the GBC's frame 239 for A at frame 60.
+- **Comparison** (manifest vrun-voc-gg "comparison": _voc offsets on both sides, _tick_count origin mode=1, input by frame, ticks 0 /
+  positions 0), against a GBC build with VOC_GAME_SEED=4321, VOC_GAME_MAP=7 (the release ROM's seed comes from DIV: not reproducible):
+  the run-start event matches on the same tick; the first drift is at tick 72 (x 25 vs 24), because the port's ticks run late.
+- **THE BLOCKER: speed.** The physics (portable C, unchanged) costs 118,411 Z80 cycles a tick on average, 621,984 at worst, of
+  148,668 at 24 Hz (tests/physics/compare_gg.ps1). With the pictures and sound the game runs at about half speed; the clock now waits
+  when the ticks fall 6 behind (GG_MAX_BEHIND), so no keys are lost. Next: Z80 assembly for the physics' hot paths (as the Game Boy
+  has SM83 paths), verified by the physics compare, then the strict comparison, the full 8-group physics run, the sweep.
