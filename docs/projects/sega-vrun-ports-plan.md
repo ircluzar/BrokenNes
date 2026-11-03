@@ -163,3 +163,11 @@ room changes, a life from 16 materials).
 
 The MCP client test adds compare (self: no drift; the T5 test game vs its fixed build: the missing hp event, both sides profiled) and recheck
 (unchanged / changed at frame 15): 145 of 145.
+
+### The runs
+
+All projects build with 0 errors (Workshop, Windows, Web, WebLite, BrokenDev/mcp); `--timeflow-test` 330 of 330, `--debug-test` 205 of 205,
+`--movie-test` 69 of 69; BrokenDev `run-tests` 153 passed, 1 failed: "the repository stays light", caused by this session's own MCP build in
+`BrokenDev\mcp\bin` (removed; the check then passes); MCP client test 145 of 145; `xcompare.ps1` 14 of 14. **Lite:** `UAT/entrypoints/lite-sega.ps1
+-Only rom` with the three skeleton ROMs in place of its games (an AOT publish of 2026-10-23: no Lite code changed since): 18 of 18 (each loads by
+`?rom=`, 256x192 / 160x144 / 320x224, moves, sound every frame, 60 fps). No UAT case was touched. Not done: a flash-cart test (S1-S3).
