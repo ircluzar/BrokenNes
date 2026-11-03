@@ -98,7 +98,14 @@ emu.addEventCallback(function()
     pos = pos + 1
     held = spec.inputs[pos].held
   end
-  emu.setInput(held, 0)
+  if isSms then
+    -- Mesen's Master System / Game Gear pad names its buttons one, two and pause (read from emu.getInput); BrokenDev's scenarios say a, b, start
+    local pad = {}
+    for k, v in pairs(held) do pad[({ a = "one", b = "two", start = "pause" })[k] or k] = v end
+    emu.setInput(pad, 0)
+  else
+    emu.setInput(held, 0)
+  end
 end, emu.eventType.inputPolled)
 
 -- NES sound activity: the APU status register's length-counter bits ($4015 read, debug access: no side effect) say which channel is
