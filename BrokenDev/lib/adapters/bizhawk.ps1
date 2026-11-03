@@ -33,6 +33,10 @@ $script:BdBizhawkCores = @{
     'SNES' = @('Snes9x', 'BSNESv115+', 'SubBSNESv115+', 'Faust', 'BSNES')
     # 'GB' stands for both of EmuHawk's systems GB and GBC (one core is pinned for both: a dual-mode cartridge loads as GBC)
     'GB'   = @('Gambatte', 'SameBoy', 'GBHawk', 'SubGBHawk')
+    # the Sega consoles (the VRUN ports, S0): EmuHawk's systems SMS and GG (SMSHawk, Genplus-gx) and GEN (Genplus-gx, PicoDrive)
+    'SMS'  = @('SMSHawk', 'Genplus-gx')
+    'GG'   = @('SMSHawk', 'Genplus-gx')
+    'GEN'  = @('Genplus-gx', 'PicoDrive')
 }
 
 # The hotkeys 2.11.1 binds by default (read from the config it writes; the others are unbound already).
@@ -56,7 +60,7 @@ function Test-BdBizhawkEmu {
     param([Parameter(Mandatory)]$Emu)
     $system = [string](Get-BdProp $Emu 'system' '')
     $core = [string](Get-BdProp $Emu 'core' '')
-    if (-not $script:BdBizhawkCores.ContainsKey($system)) { throw "bizhawk: system '$system' of emulator $(Get-BdProp $Emu 'id' '?') is not one BrokenDev runs (NES, SNES, GB)" }
+    if (-not $script:BdBizhawkCores.ContainsKey($system)) { throw "bizhawk: system '$system' of emulator $(Get-BdProp $Emu 'id' '?') is not one BrokenDev runs (NES, SNES, GB, SMS, GG, GEN)" }
     if ($script:BdBizhawkCores[$system] -cnotcontains $core) { throw "bizhawk: core '$core' is not a $system core of EmuHawk 2.11.1 (known: $($script:BdBizhawkCores[$system] -join ', '))" }
     @{ System = $system; Core = $core }
 }
@@ -92,7 +96,7 @@ function New-BdBizhawkConfig {
     & $add $g 'Multi-Disk Bundles' $p.bundles
     & $add $g 'External Tools' $p.exttools                     # an empty folder: no external tool is loaded
     & $add $g 'Temp Files' $p.temp
-    foreach ($sys in 'NES', 'SNES') {
+    foreach ($sys in @('NES', 'SNES') + @(if ($System -in 'SMS', 'GG', 'GEN') { $System })) {
         & $add $sys 'Base' (Join-Path $base $sys)
         & $add $sys 'ROM' $p.roms
         & $add $sys 'Savestates' $p.states
@@ -198,7 +202,7 @@ function Invoke-BdAdapterBizhawk {
     param([Parameter(Mandatory)]$Emu, $Package, [Parameter(Mandatory)][string]$Exe, [Parameter(Mandatory)][string]$SpecPath, [Parameter(Mandatory)]$Spec,
           [Parameter(Mandatory)][string]$Scratch, [int]$TimeoutSec = 600, [int]$HangSec = 90)
     $ec = Test-BdBizhawkEmu -Emu $Emu
-    $want = if ([string]$Spec.Console -eq 'nes') { 'NES' } elseif ([string]$Spec.Console -eq 'snes') { 'SNES' } elseif ([string]$Spec.Console -in 'gb', 'gbc') { 'GB' } else { '?' }
+    $want = if ([string]$Spec.Console -eq 'nes') { 'NES' } elseif ([string]$Spec.Console -eq 'snes') { 'SNES' } elseif ([string]$Spec.Console -in 'gb', 'gbc') { 'GB' } elseif ([string]$Spec.Console -eq 'sms') { 'SMS' } elseif ([string]$Spec.Console -eq 'gg') { 'GG' } elseif ([string]$Spec.Console -eq 'md') { 'GEN' } else { '?' }
     if ($want -ne $ec.System) { throw "bizhawk: emulator $(Get-BdProp $Emu 'id' '?') runs the $($ec.System), the spec is for the '$($Spec.Console)'" }
     $version = if ($Package) { [string]$Package.version } else { '2.11.1' }
     $installDir = Split-Path -Parent $Exe

@@ -85,6 +85,70 @@ internal static class TimeflowTools
         catch (Exception e) when (e is IOException or FormatException or NotSupportedException or ArgumentException or InvalidDataException) { throw new ToolError(e.Message); }
     }
 
+    /// <summary>
+    /// The cross-console comparison (Sega VRUN ports, S0): a port project (its manifest's 'comparison' section, its last build) or raw files; the original a
+    /// power-on timeline, or recorded now from the original project's last build (input + frames, or its verify scenario's pads). The Workshop's code.
+    /// </summary>
+    public static JsonObject Compare(Args a)
+    {
+        var x = new BrokenNes.Workshop.Timeflow.TimeflowComparing.CompareArgs
+        {
+            Original = a.Str("original") ?? "", Port = a.Str("port") ?? "", PortSymbols = a.List("port_symbols"), OriginalSymbols = a.List("original_symbols"),
+            Map = a.Str("map") ?? "", PortConsole = a.Str("port_console") ?? "", Window = a.Int("window", 30), Open = a.Bool("open", true), Frames = a.Long("frames") ?? 0,
+            Input = a.Str("input") ?? "",
+        };
+        if (x.Original.Length > 0) x.Original = Find(x.Original);
+        if (a.Str("project") is { Length: > 0 } project)
+        {
+            var m = BrokenDevBridge.Manifest(project);
+            string origId = m["comparison"]?["original"]?.GetValue<string>() ?? throw new ToolError($"project {project} has no comparison.original in its manifest");
+            var port = BrokenDevBridge.Built(project);
+            x.Port = port.Rom; if (x.PortSymbols.Count == 0) x.PortSymbols = port.Symbols; x.PortProject = project; x.PortConsole = port.Console;
+            x.Manifest = Path.Combine(BrokenDevBridge.Repo, "BrokenDev", "projects", project, "project.json");
+            if (x.Original.Length == 0)
+            {
+                var orig = BrokenDevBridge.Built(origId);
+                x.OriginalRom = orig.Rom; x.OriginalProject = origId; if (x.OriginalSymbols.Count == 0) x.OriginalSymbols = orig.Symbols; x.OriginalConsole = orig.Console;
+                if (x.Input.Length == 0 || x.Frames <= 0)
+                {
+                    // the original's verify scenario (the named one, else its first) gives the pads and the length
+                    var om = BrokenDevBridge.Manifest(origId);
+                    var scs = (om["verify"]?["scenarios"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().ToList();
+                    string want = a.Str("scenario") ?? "";
+                    var sc = scs.FirstOrDefault(s => want.Length == 0 || s["id"]?.GetValue<string>() == want) ?? throw new ToolError($"the original {origId} has no verify scenario '{want}'");
+                    if (x.Input.Length == 0) x.Input = sc["input"]?.GetValue<string>() ?? "";
+                    if (x.Frames <= 0) x.Frames = sc["frames"]?.GetValue<long>() ?? 0;
+                }
+            }
+            else if (x.OriginalSymbols.Count == 0) x.OriginalSymbols = BrokenNes.Workshop.Timeflow.TimeflowHotpatching.KeptSymbols(x.Original, TimelineMeta.Load(x.Original).RomSha256);
+        }
+        else if (x.Map.Length == 0) throw new ToolError("give project (a port project with a comparison section), or map (a mapping JSON) with original, port and port_symbols");
+        try { return BrokenNes.Workshop.Timeflow.TimeflowComparing.Compare(x); }
+        catch (Exception e) when (e is IOException or FormatException or NotSupportedException or ArgumentException or InvalidDataException) { throw new ToolError(e.Message); }
+    }
+
+    /// <summary>The re-check after a rebuild: a port project's recorded sessions (or one timeline) replayed on the new build (the project built first when asked, or a ROM).</summary>
+    public static JsonObject Recheck(Args a)
+    {
+        string timeline = a.Str("timeline") is { Length: > 0 } t ? Find(t) : "", rom = a.Str("rom") ?? "", map = a.Str("map") ?? "", manifest = "";
+        var syms = a.List("symbols_new");
+        string project = a.Str("project") ?? "";
+        if (project.Length > 0)
+        {
+            if (a.Bool("build", false))
+            {
+                var b = BrokenDevBridge.RunVerb("build", project, new List<string>(), new List<string>(), a.Int("timeout_sec", 1800));
+                if (b["exitCode"]?.GetValue<int>() != 0) throw new ToolError($"the build of {project} failed: {b["output"]}");
+            }
+            var nb = BrokenDevBridge.Built(project);
+            if (rom.Length == 0) rom = nb.Rom;
+            if (syms.Count == 0) syms = nb.Symbols;
+            manifest = Path.Combine(BrokenDevBridge.Repo, "BrokenDev", "projects", project, "project.json");
+        }
+        try { return BrokenNes.Workshop.Timeflow.TimeflowComparing.Recheck(timeline, timeline.Length > 0 ? "" : project, "", rom, syms, a.List("symbols_old"), map, manifest); }
+        catch (Exception e) when (e is IOException or FormatException or NotSupportedException or ArgumentException or InvalidDataException) { throw new ToolError(e.Message); }
+    }
+
     /// <summary>A new headless session on a timeline's own ROM (the copy in its game folder) and cores.</summary>
     public static HeadlessSession OpenFor(string dir, List<string> symbols, bool callStack)
     {

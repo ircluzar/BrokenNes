@@ -32,6 +32,7 @@ namespace BrokenNes.Workshop.Timeflow;
 ///   --timeflow status  [--json]                                                 the root, every game folder's use against its cap
 ///   --timeflow search  --q "CONDITION" [--timeline ID]... [--project P | --game-dir DIR | --rom R] [--sym F]... [--max-hits N] [--coarse] [--from A] [--to B] [--json]   (T4)
 ///   --timeflow patch|rebuild-resume|diverge|verdict ...   T5's hotpatch and resume, the divergence, the written tests (TimeflowHotpatchCli.cs)
+///   --timeflow compare|recheck ...                         the cross-console comparison of a port with its original, the re-check after a rebuild (TimeflowCompare.cs)
 ///   --timeflow search-measure [--timelines K] [--frames M] [--real] [--json OUT]       T4's measurements;  --timeflow search-rom --out F   the search test game
 ///   --timeflow measure --rom R [--console c] [--cores C/P/A] [--warm N] [--frames N] [--input ...|--movie M] [--json OUT]
 /// </code>
@@ -47,7 +48,7 @@ internal static class TimeflowCli
         string Opt(string n, string d = "") { int i = Array.FindIndex(args, 2, a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
         List<string> All(string n) { var l = new List<string>(); for (int i = 2; i < args.Length - 1; i++) if (args[i].Equals("--" + n, StringComparison.OrdinalIgnoreCase)) l.Add(args[i + 1]); return l; }
         bool Has(string n) => args.Skip(2).Any(a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase));
-        if (args.Length < 2) { Console.Error.WriteLine("usage: --timeflow record|list|info|verify|jump|resume|prune|keep|status|measure|search|search-measure|profile|profile-query|profiles|profile-keep|profile-drop|profile-sweep|profile-measure|profile-rom|patch|rebuild-resume|diverge|verdict ... (see Workshop/Timeflow/TimeflowCli.cs and TimeflowProfileCli.cs)"); return 2; }
+        if (args.Length < 2) { Console.Error.WriteLine("usage: --timeflow record|list|info|verify|jump|resume|prune|keep|status|measure|search|search-measure|profile|profile-query|profiles|profile-keep|profile-drop|profile-sweep|profile-measure|profile-rom|patch|rebuild-resume|diverge|verdict|compare|recheck ... (see Workshop/Timeflow/TimeflowCli.cs and TimeflowProfileCli.cs)"); return 2; }
         if (Opt("home") is { Length: > 0 } home) Environment.SetEnvironmentVariable("BROKENDEV_HOME", home);
         bool json = Has("json");
         try
@@ -111,6 +112,9 @@ internal static class TimeflowCli
                     Console.WriteLine(json ? j.ToJsonString(Indented) : $"promoted verdict {j["id"]} ({j["test"]}, frames {j["from"]}-{j["to"]}) into {j["file"]}: brokendev verify plays it on every build from now on");
                     return 0;
                 }
+                case "compare" or "recheck":
+                    // the cross-console comparison and the re-check after a rebuild (Sega VRUN ports, S0: TimeflowCompare.cs)
+                    return TimeflowComparing.Cli(args[1].ToLowerInvariant(), (n, d) => Opt(n, d), All, Has, json);
                 case "patch" or "rebuild-resume" or "diverge" or "verdict":
                     return TimeflowHotpatching.Cli(args[1].ToLowerInvariant(), (n, d) => Opt(n, d), All, Has, json);
                 case "profile" or "profile-query" or "profiles" or "profile-keep" or "profile-drop" or "profile-sweep" or "profile-measure" or "profile-rom":

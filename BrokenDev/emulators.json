@@ -64,7 +64,7 @@
       "id": "brokennes",
       "title": "BrokenNes (Workshop, headless)",
       "package": null,
-      "consoles": ["nes", "snes", "wms", "gb", "gbc"],
+      "consoles": ["nes", "snes", "wms", "gb", "gbc", "sms", "gg", "md"],
       "adapter": "workshop",
       "reference": true,
       "can": { "memory": true, "pictures": true, "audio": true, "saves": true, "exactFrames": true },
@@ -72,7 +72,7 @@
         "region": "NTSC",
         "ramInit": "NES: the FCEUX pattern 00 00 00 00 FF FF FF FF (the app default; a project may ask powerOnRam zeros). SNES: zeros. Game Boy: work RAM zeros, a fresh cartridge RAM $FF.",
         "overscan": "none: the NES picture is 256x240, the SNES 256x224 (or 239), the Game Boy 160x144",
-        "cores": "the app defaults: NES CPU/PPU/APU FIX, SNES SFC, Game Boy GB; a project's verify.cores wins",
+        "cores": "the app defaults: NES CPU/PPU/APU FIX, SNES SFC, Game Boy GB, Master System / Game Gear Z80 + SMS / GG, Genesis M68K + MD; a project's verify.cores wins",
         "boot": "Game Boy: no boot ROM (the documented post-boot state, frame 1 is the game's): the other emulators play their boot animation first"
       },
       "notes": "The same Workshop and cores as 'verify'; deterministic, so a reference result can be compared run to run."
@@ -81,7 +81,7 @@
       "id": "mesen",
       "title": "Mesen 2.1.1",
       "package": "mesen",
-      "consoles": ["nes", "snes", "gb", "gbc"],
+      "consoles": ["nes", "snes", "gb", "gbc", "sms", "gg"],
       "gbModels": { "gb": "Gameboy", "gbc": "GameboyColor" },
       "adapter": "mesen",
       "can": { "memory": true, "pictures": true, "audio": true, "saves": true, "exactFrames": true },
@@ -171,6 +171,57 @@
         "boot": "no boot ROM (EnableBIOS false, Gambatte's default; BizHawk ships none): the game starts at once, as on BrokenNes"
       },
       "notes": "As bizhawk-neshawk with GB and GBC -> Gambatte pinned; the pad has no player prefix ('Up', 'A'); memory through the core's 'WRAM' (32 KB on a Color), 'HRAM' and 'CartRAM' domains; the battery save is <game>.SaveRAM in the save folder (paths entry GB_GBC_SGB)."
+    },
+    {
+      "id": "bizhawk-gpgx-sms",
+      "title": "BizHawk 2.11.1, Genplus-gx core (Master System)",
+      "package": "bizhawk",
+      "core": "Genplus-gx",
+      "system": "SMS",
+      "consoles": ["sms"],
+      "adapter": "bizhawk",
+      "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
+      "defaults": {
+        "region": "from the ROM (export / NTSC for these ROMs)",
+        "ramInit": "Genesis Plus GX's fill, recorded per run",
+        "overscan": "256x192",
+        "boot": "no BIOS (BizHawk ships none), as BrokenNes"
+      },
+      "notes": "As bizhawk-neshawk with SMS -> Genplus-gx pinned (added for the Sega VRUN ports, S0). Not SMSHawk: for an export-region Master System cartridge SMSHawk stops on 'Missing Firmware! Couldn't find required firmware SMS+Export' (measured 2026-11-02; BizHawk ships no BIOS and BrokenDev downloads none), while its Game Gear needs none (bizhawk-smshawk-gg). Work RAM through the core's 8 KB work RAM domain ($C000 = 0, named in each result's notes)."
+    },
+    {
+      "id": "bizhawk-smshawk-gg",
+      "title": "BizHawk 2.11.1, SMSHawk core (Game Gear)",
+      "package": "bizhawk",
+      "core": "SMSHawk",
+      "system": "GG",
+      "consoles": ["gg"],
+      "adapter": "bizhawk",
+      "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
+      "defaults": {
+        "region": "from the ROM",
+        "ramInit": "zeros, recorded per run",
+        "overscan": "160x144 (the Game Gear's window)",
+        "boot": "no BIOS, as BrokenNes"
+      },
+      "notes": "As bizhawk-smshawk with system GG; Start is 'P1 Start'."
+    },
+    {
+      "id": "bizhawk-gpgx",
+      "title": "BizHawk 2.11.1, Genplus-gx core (Genesis / Mega Drive)",
+      "package": "bizhawk",
+      "core": "Genplus-gx",
+      "system": "GEN",
+      "consoles": ["md"],
+      "adapter": "bizhawk",
+      "can": { "memory": true, "pictures": true, "audio": false, "saves": true, "exactFrames": true },
+      "defaults": {
+        "region": "from the ROM header (JUE: NTSC)",
+        "ramInit": "Genesis Plus GX's fill, recorded per run",
+        "overscan": "320x224",
+        "boot": "no TMSS BIOS, as BrokenNes"
+      },
+      "notes": "As bizhawk-neshawk with GEN -> Genplus-gx pinned (added for Super VRUN on the Genesis, S0). The ROM must be named .md / .gen: EmuHawk asks which platform an unknown .bin is with a dialog, so the Genesis projects publish .md. Work RAM through the '68K RAM' domain (64 KB, $FF0000 = 0); the pad is 'P1 A' ... 'P1 Mode' (a 6-button pad when the core gives one)."
     },
     {
       "id": "bizhawk-sameboy",

@@ -1,4 +1,4 @@
--- BrokenDev compat adapter for Mesen 2 (NES, SNES and the Game Boy: gb, gbc). Run by lib\adapters\mesen.ps1:
+-- BrokenDev compat adapter for Mesen 2 (NES, SNES, the Game Boy: gb, gbc, the Master System and Game Gear: sms, gg). Run by lib\adapters\mesen.ps1:
 --   Mesen.exe <rom> --luaScriptsToLoad mesen.lua --testRunner --timeout=<s>      with BDC_SPEC = the spec file
 -- The spec and the result formats are described at the top of BrokenDev\lib\Compat.ps1.
 --
@@ -49,7 +49,9 @@ local isNes = spec.console == "nes"
 -- the Game Boy (gb, gbc): work RAM, high RAM and the cartridge's RAM are Mesen's gbWorkRam, gbHighRam and gbCartRam, the same offsets
 -- as BrokenDev's domains (wram 0 = $C000, bank n at n x $1000; hram 0 = $FF80; cartram bank n at n x $2000)
 local isGb = spec.console == "gb" or spec.console == "gbc"
-local memType = isNes and emu.memType.nesInternalRam or (isGb and emu.memType.gbWorkRam or emu.memType.snesWorkRam)
+-- the Master System / Game Gear (sms, gg): work RAM is Mesen's smsWorkRam (8 KB, offset 0 = $C000), BrokenDev's domain wram
+local isSms = spec.console == "sms" or spec.console == "gg"
+local memType = isNes and emu.memType.nesInternalRam or (isGb and emu.memType.gbWorkRam or (isSms and emu.memType.smsWorkRam or emu.memType.snesWorkRam))
 local gbTypes = isGb and { wram = emu.memType.gbWorkRam, hram = emu.memType.gbHighRam, cartram = emu.memType.gbCartRam } or nil
 local sep = "/"
 local out = io.open(spec.out .. sep .. "result.txt", "w")
@@ -67,14 +69,14 @@ for i, r in ipairs(spec.reads) do
   end
 end
 local rom = emu.getRomInfo() or {}
-out:write("emu Mesen 2.1.1 " .. (isNes and "NES" or (isGb and "Game Boy" or "SNES")) .. "\n")
+out:write("emu Mesen 2.1.1 " .. (isNes and "NES" or (isGb and "Game Boy" or (isSms and (spec.console == "gg" and "Game Gear" or "Master System") or "SNES"))) .. "\n")
 out:write("reads " .. table.concat(names, " ") .. "\n")
-out:write("note memory: " .. (isNes and "emu.memType.nesInternalRam (2 KB system RAM)" or (isGb and "emu.memType.gbWorkRam / gbHighRam / gbCartRam" or "emu.memType.snesWorkRam (128 KB work RAM)")) .. "\n")
+out:write("note memory: " .. (isNes and "emu.memType.nesInternalRam (2 KB system RAM)" or (isGb and "emu.memType.gbWorkRam / gbHighRam / gbCartRam" or (isSms and "emu.memType.smsWorkRam (8 KB work RAM)" or "emu.memType.snesWorkRam (128 KB work RAM)"))) .. "\n")
 out:write("note rom: " .. tostring(rom.name) .. "\n")
 -- Mesen's power-on RAM fill as this run got it (the script loads before the first frame runs): a census of the first 2 KB
 do
   local counts, distinct = {}, 0
-  for a = 0, 0x7FF do
+  for a = 0, (isSms and 0x1FFF or 0x7FF) do
     local v = emu.read(a, memType)
     if not counts[v] then counts[v] = 0; distinct = distinct + 1 end
     counts[v] = counts[v] + 1

@@ -573,6 +573,31 @@ internal static class Tools
                 catch (Exception e) when (e is IOException or FormatException or NotSupportedException or ArgumentException or InvalidDataException) { throw new ToolError(e.Message); }
             }), ro: true);
 
+        // ------------------------------------------------------------------------------------------------ the cross-console comparison (Sega VRUN ports, S0)
+        Add("timeflow_compare",
+            "The cross-console comparison of a port with its original (docs/projects/sega-vrun-ports-plan.md, S0): the original's power-on timeline (or one recorded now from the original project's build) " +
+            "replayed and checked, its pads mapped (by time when the frame rates differ, and by the mapping's buttons) onto the port's ROM from power-on (recorded as a timeline), both games' variables read by " +
+            "name every frame (each side's symbols), and compared per game-logic event (a mapped variable of kind event changing: rooms, items, deaths, clears) in order, the two tick rates mapped (a game's " +
+            "own tick counter, or frames at a tick rate, from an origin event), key positions within the per-game tolerances at every event and every N ticks. Answers no drift, or the FIRST drift (kind: " +
+            "missing, extra, different-event, time, position) with both sides' frame, tick and mapped state, and both sides opened at it with a T3 profile of the span before it (the drifting variable's writes). " +
+            "project: a port project (its manifest's comparison section names the original project and the mapping; its last build is the port). Or raw: original (timeline), port (ROM), port_symbols, map (a JSON file).",
+            Schema(("project", P("string", "the port's BrokenDev project (vrun-voc-gg, vrun-ctw-sms, supervrun-md)"), false), ("original", P("string", "a power-on timeline of the original (default: recorded now)"), false),
+                   ("scenario", P("string", "recording the original now: its verify scenario's pads and length (default: its first)"), false), ("input", P("string", "recording the original now: a pad script"), false),
+                   ("frames", P("integer", "recording the original now: its length (with input); with original: compare only this many frames"), false),
+                   ("port", P("string", "raw: the port's ROM"), false), ("port_symbols", P("string[]", "raw: the port's symbol files"), false), ("port_console", P("string", "raw: the port's console key"), false),
+                   ("original_symbols", P("string[]", "the original's symbol files (default: the ones kept beside its timeline's ROM)"), false), ("map", P("string", "raw: a mapping JSON (the manifest section's shape)"), false),
+                   ("window", P("integer", "frames profiled before the drift on each side (default 30)"), false), ("open", P("boolean", "profile both sides at the drift (default true)"), false)),
+            a => Wrap(() => TimeflowTools.Compare(a)));   // not read-only: it records the port's (and maybe the original's) timeline
+
+        Add("timeflow_recheck",
+            "The re-check after a rebuild (S0, the part of Timeflow T6 that stays): a port's recorded sessions (its project's power-on timelines, or one timeline) replayed on the new build; per session " +
+            "unchanged, or the first frame the change altered (the picture or the work RAM after the frame differs from the recording) with the mapped variables on both builds at that frame.",
+            Schema(("project", P("string", "the port's BrokenDev project (its timelines; its last build is the new ROM)"), false), ("build", P("boolean", "build the project first (default false)"), false),
+                   ("timeline", P("string", "one timeline instead of the project's"), false), ("rom", P("string", "the new ROM (default: the project's last build)"), false),
+                   ("symbols_new", P("string[]", "the new build's symbols (default: the project's)"), false), ("symbols_old", P("string[]", "the recorded build's symbols (default: kept beside its ROM)"), false),
+                   ("map", P("string", "a mapping JSON for the variables (default: the project's comparison section)"), false)),
+            a => Wrap(() => TimeflowTools.Recheck(a)), ro: true);
+
         // ------------------------------------------------------------------------------------------------ Timeflow (T3: profiled spans)
         const string QueriesDesc =
             "streaming questions over the span, each answered compactly: 'writes <addr|range|symbol>' (every write, all mirrors and DMA, who made it, by function), 'reads <spec>', 'accesses <spec>', " +

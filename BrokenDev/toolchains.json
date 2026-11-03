@@ -51,6 +51,97 @@
         { "path": "asminc/nes.inc", "bytes": 2898, "sha256": "55bc31fed66ad3f4d0bb13da69f16b6ca42bdd7fef576ee1180e6b15092e4e6a" }
       ],
       "notes": "The snapshot has no version file; the pinned ca65.exe / ld65.exe hashes are the version. Used by BrokenDev\\debugport\\ca65\\build-proof.ps1 (the debug-port include assembled and linked into a small NROM test ROM)."
+    },
+    {
+      "id": "sdcc",
+      "title": "SDCC (the Small Device C Compiler: sdcc, sdasz80, sdldz80, sdar, for the Master System and Game Gear)",
+      "version": "4.6.0",
+      "source": "the SDCC 4.6.0 release for 64-bit Windows, the official installer from https://sourceforge.net/projects/sdcc/files/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe (the newest release on 2026-11-02), downloaded with the user's approval (2026-10-30) for the Sega VRUN ports (S0); the NSIS installer is unpacked with 7-Zip (never run), its $PLUGINSDIR left out; 'sdcc --version' says '4.6.0 #16555 (MINGW64)'",
+      "homepage": "https://sdcc.sourceforge.net",
+      "zip": "toolchains/sdcc/_downloads/sdcc-4.6.0-x64-setup.exe",
+      "bytes": 9949266,
+      "sha256": "0a165e155a052fcf7c29ea703ee77d5a8eb578eba58279e79e885618dc4b2e1a",
+      "sha256Source": "measured when it was downloaded (recorded beside it in sdcc-4.6.0-x64-setup.exe.sha256); SourceForge publishes no sha256 for it",
+      "dir": "toolchains/sdcc/4.6.0/sdcc",
+      "files": [
+        { "path": "bin/sdcc.exe", "bytes": 7296512, "sha256": "843272575aeae50e0cde8b3ac64bca1386755252d5b12cbb37cfa33f513ffeae" },
+        { "path": "bin/sdasz80.exe", "bytes": 156160, "sha256": "2441f4ff0a830939811cbdc27ffb9f4d3e094320ea04f3cf0af6112787ad0af0" },
+        { "path": "bin/sdldz80.exe", "bytes": 187392, "sha256": "d96b5d404f1fb9b9b1f8c12a679d7d40a34e53a5a1bb1d1a78e0808964ee3eff" },
+        { "path": "bin/sdcpp.exe", "bytes": 2459451, "sha256": "4354128597aedfe434ed5d79c276105dfe38b706ff4925b7286880ed34d99d66" },
+        { "path": "bin/makebin.exe", "bytes": 51200, "sha256": "4acb27307dba1b72724acae6c23e5e4302b531ce136e84929ea76894e17e2aa6" },
+        { "path": "lib/z80/z80.lib", "bytes": 433366, "sha256": "800f7f0544352ac9f0bbadc7cb15a95ededbc62acab7f1ed948616961b8b479e" },
+        { "path": "include/stdint.h", "bytes": 8326, "sha256": "3802f413d6b807a9b22dcbda3629a211b7a638e8f493fa6c9cbeffb4f66b3106" }
+      ],
+      "notes": "Used with devkitSMS by the Master System and Game Gear ports (vrun-ctw-sms, vrun-voc-gg). GBDK carries its own SDCC build for the Game Boy: this one is separate."
+    },
+    {
+      "id": "devkitsms",
+      "title": "devkitSMS (sverx: SMSlib, PSGlib, crt0_sms, makesms, assets2banks; C for the Master System and Game Gear with SDCC)",
+      "version": "533ae57",
+      "source": "sverx/devkitSMS at commit 533ae572c897cf44f1da865013ebf690134301a3 (2026-09-29, the head of its master branch on 2026-11-02), the archive https://github.com/sverx/devkitSMS/archive/533ae572c897cf44f1da865013ebf690134301a3.zip; its newest tagged release (v1.2, 2022) is four years older, and the project is used from its repository, so the commit is the pin; downloaded with the user's approval (2026-10-30) for the Sega VRUN ports (S0)",
+      "homepage": "https://github.com/sverx/devkitSMS",
+      "zip": "toolchains/devkitsms/_downloads/devkitSMS-533ae572c897cf44f1da865013ebf690134301a3.zip",
+      "bytes": 7889171,
+      "sha256": "58d9a9693b7e31193e9ef771c70022342ebc4522a7b23a501556b3b45bd8c0f0",
+      "sha256Source": "measured when it was downloaded (recorded beside the zip)",
+      "dir": "toolchains/devkitsms/533ae57/devkitSMS",
+      "files": [
+        { "path": "SMSlib/SMSlib.lib", "bytes": 83272, "sha256": "caec44cd72ba47a7052c8f422600322e9ea0579e284bb8eae15e3d110c63d8cc" },
+        { "path": "SMSlib/SMSlib_GG.lib", "bytes": 81736, "sha256": "701ae8dc217ef5aaa1e03d3e07c25391e3ce727072302887d4aa30e78562a075" },
+        { "path": "SMSlib/src/SMSlib.h", "bytes": 28745, "sha256": "e78812815964866842e51ac092aa0750af7cc503bb3ad5a189ba800180959c91" },
+        { "path": "crt0/crt0_sms.rel", "bytes": 3687, "sha256": "a652979b91716663122090b9b468b48f707122ca3334451a8d83432fe0b48eff" },
+        { "path": "PSGlib/PSGlib.lib", "bytes": 31628, "sha256": "0461e87272021042145dc5c840aae3904cc4216399755d1267400ebe8e6434e9" },
+        { "path": "tools/makesms/Windows/makesms.exe", "bytes": 392018, "sha256": "0b884a5c38d6b88aa1cd29537adff4d04d1e95becbb1f0b9f12f3bfa6105a59b" },
+        { "path": "tools/assets2banks/Windows/assets2banks.exe", "bytes": 7268386, "sha256": "ab0864ecc00f54223cd26e7d4291bdd89bcb1d4c1f04bfdaffac473e3c9d287b" }
+      ],
+      "notes": "Unpacked as the zip's top folder renamed to devkitSMS. Its shipped SMSlib*.lib / crt0_sms.rel were built by an older SDCC: their modules record '-mz80' where SDCC 4.6.0 records '-mz80 sdcccall(1)', and SDCC 4.6.0's linker refuses to mix them ('Conflicting sdcc options', exit 1). The ports' build.ps1 therefore rebuild SMSlib and crt0 from this commit's own sources (SMSlib/src/Makefile's rules) once, into the port's build folder."
+    },
+    {
+      "id": "sgdk",
+      "title": "SGDK (Sega Genesis Development Kit: m68k gcc, make, libmd, rescomp; C for the Genesis / Mega Drive)",
+      "version": "2.11",
+      "source": "the SGDK 2.11 release (April 2025, the newest release on 2026-11-02), https://github.com/Stephane-D/SGDK/releases/download/v2.11/sgdk211.7z, downloaded with the user's approval (2026-10-30) for Super VRUN on the Genesis (S0); unpacked with 7-Zip",
+      "homepage": "https://github.com/Stephane-D/SGDK",
+      "zip": "toolchains/sgdk/_downloads/sgdk211.7z",
+      "bytes": 54060415,
+      "sha256": "5cc704b7e3a15183c33e721a1d7f84c067cf78808754556d03bb14764df51437",
+      "sha256Source": "measured when it was downloaded (recorded beside it); its size is the one GitHub's release lists",
+      "dir": "toolchains/sgdk/2.11/sgdk",
+      "files": [
+        { "path": "bin/gcc.exe", "bytes": 1712654, "sha256": "35eadf621f2bd40c41ee67b5f57c5a80745b55dcae20abb7dfc080aa9c442b03" },
+        { "path": "bin/as.exe", "bytes": 1317902, "sha256": "49fb7f41a35986daea8ea732740e881459cc29ed0f052a5cb6998f1bd6e8f113" },
+        { "path": "bin/ld.exe", "bytes": 1518606, "sha256": "1376cb818bfd35cb50fb653c7b091af0993f3e69c25d99139778a86b97d3f41c" },
+        { "path": "bin/objcopy.exe", "bytes": 1034254, "sha256": "b708cca31966e774bf36553cbf56c5e764f0c6153ae8eda1a1704558bccbf552" },
+        { "path": "bin/make.exe", "bytes": 165888, "sha256": "66a0de8073fd6c0b19e774512932420d79bfcce8859944b88598af52109a0807" },
+        { "path": "bin/nm.exe", "bytes": 905742, "sha256": "dbd7b527693b03d989f45fa255404f4ba57a44971ff30b0e683d608abb07358c" },
+        { "path": "lib/libmd.a", "bytes": 2610658, "sha256": "929ad17e859405244f7a22f2a96cde2c14e7f8edfd2bd6a86b0e0c921e4cd84b" },
+        { "path": "lib/libgcc.a", "bytes": 572736, "sha256": "ecbe7fac154c9ae1e44db135486b232cfd57badbc6806981fd0410e9edf81029" },
+        { "path": "inc/genesis.h", "bytes": 1590, "sha256": "8118a4ff1e8859d51aac27d100aa5f172692ef9815637ce0dbc9d18956951b59" },
+        { "path": "md.ld", "bytes": 2507, "sha256": "10cb1e7b1ef281f04d12ce4be543acc7469934a65964cc635211835370130fc2" },
+        { "path": "makefile.gen", "bytes": 6512, "sha256": "a3b782d8b28bf6f00c910ca5f19e8b396baad93a302b1dc0832e63f8d221ac74" }
+      ],
+      "versionFile": { "path": "changelog.txt", "firstLine": "SGDK 2.11 (April 2025)" },
+      "notes": "Its makefile.gen runs Java for sizebnd.jar (the ROM's padding and checksum) and rescomp.jar (resources): the machine's JDK is used, not pinned here. On Windows its LTO link prints 'Error 127 (ignored)' (-flto=auto's make jobserver); the ROM is complete. The symbols are SGDK's out/symbol.txt (m68k nm -n), which BrokenNes's symbol reader takes."
+    },
+    {
+      "id": "wladx",
+      "title": "WLA-DX (multi-CPU assembler and linker: wla-z80, wla-68000, wla-65816, wla-spc700, wla-gb, wlalink)",
+      "version": "10.7",
+      "source": "the WLA-DX v10.7 release for 64-bit Windows (2026-06-28, the newest release on 2026-11-02), https://github.com/vhelin/wla-dx/releases/download/v10.7/wla_dx_v10.7_Win64.zip, downloaded with the user's approval (2026-10-30) for assembly in the Sega VRUN ports (S0); the release's vc_redist installers were not downloaded (the zip carries vcruntime140.dll)",
+      "homepage": "https://github.com/vhelin/wla-dx",
+      "zip": "toolchains/wladx/_downloads/wla_dx_v10.7_Win64.zip",
+      "bytes": 3549451,
+      "sha256": "82922a530ae989bd5f8057fa4cfef3d0022d7353b5aeb7858b9320eae9b56ebd",
+      "sha256Source": "measured when it was downloaded (recorded beside the zip)",
+      "dir": "toolchains/wladx/10.7/wla_dx_v10.7_Win64",
+      "files": [
+        { "path": "wla-z80.exe", "bytes": 427008, "sha256": "e648f49ac371d8fde8a44828c7b0ff7a17f6fa546057766487b91e28cf330930" },
+        { "path": "wla-68000.exe", "bytes": 385024, "sha256": "7635c1ae74e09bc454b869a1d5fef9245f847e258f1a7e4ae991e5a0c3b495c8" },
+        { "path": "wla-65816.exe", "bytes": 361984, "sha256": "75cbd4d2f7145984fc19e051c2dda90b7b89105cd10278e14adb487c36dcb59d" },
+        { "path": "wlalink.exe", "bytes": 197120, "sha256": "bdafcb2dc13ab57ceb6610e71c22b705e96b40963df15f02f066f6ba1364a095" },
+        { "path": "vcruntime140.dll", "bytes": 101664, "sha256": "7d7ca28235fba5603a7f40514a552ac7efaa67a5d5792bb06273916aa8565c5f" }
+      ],
+      "notes": "Not used by the S0 skeletons (they are C); pinned for the ports' assembly (Z80 speed paths, 68000 equivalents of Super VRUN's 65816 routines). PVSnesLib ships its own older wla-65816 for the SNES projects."
     }
   ]
 }

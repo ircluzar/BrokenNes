@@ -80,7 +80,7 @@ internal static class ClientTest
                 "read_memory", "write_memory", "search_memory", "list_domains", "symbols", "breakpoint_add", "breakpoint_list", "breakpoint_remove", "watch", "step", "call_stack",
                 "registers", "trace", "trace_frame", "disassemble", "evaluate", "screenshot", "layers", "tiles", "sprites", "record_sound", "save_state", "load_state", "diff_states",
                 "checks", "profile", "brokendev", "step_back", "open_movie", "movie", "bisect", "bugs", "debug_port",
-                "timeflow_record", "timeflow_list", "timeflow_jump", "timeflow_resume", "timeflow_profile", "timeflow_profile_query", "timeflow_search", "timeflow_patch", "timeflow_verdict" };
+                "timeflow_record", "timeflow_list", "timeflow_jump", "timeflow_resume", "timeflow_profile", "timeflow_profile_query", "timeflow_search", "timeflow_patch", "timeflow_verdict", "timeflow_compare", "timeflow_recheck" };
             var missing = want.Where(w => !names.Contains(w)).ToList();
             Check("tools_listed", missing.Count == 0 && tools.All(t => t.JsonSchema.ValueKind == JsonValueKind.Object), $"{tools.Count} tools over stdio; missing: {(missing.Count == 0 ? "none" : string.Join(", ", missing))}");
             switch (suite)
@@ -656,6 +656,17 @@ internal static class ClientTest
         Check("timeflow_verdict", !vd.IsError && vd["pass"]?.GetValue<bool>() == true && !vo.IsError && vo["pass"]?.GetValue<bool>() == false, $"branch: {S(vd["summary"])}; recording: {S(vo["summary"])}");
         var bad = await Call("timeflow_verdict", new { timeline = tid, tests = new[] { "perhaps write hp" } });
         Check("timeflow_verdict_bad_test_refused", bad.IsError && bad.Text.Contains("not a verdict"), bad.Text);
+        // the cross-console comparison (S0) on the T5 game: against itself no drift; against the fixed build the first hp event is the drift; the re-check
+        string map = Path.Combine(dir, "t5-map.json");
+        File.WriteAllText(map, "{ \"variables\": [ { \"name\": \"hp\", \"kind\": \"event\", \"original\": \"hp\" }, { \"name\": \"idx\", \"kind\": \"position\", \"original\": \"idx\" } ] }");
+        var cs = await Call("timeflow_compare", new { original = tid, port = game, port_symbols = new[] { sym }, original_symbols = new[] { sym }, map, open = false });
+        Check("timeflow_compare_self", !cs.IsError && cs["drift"] == null, cs.IsError ? cs.Text : S(cs["verdict"]));
+        var cf = await Call("timeflow_compare", new { original = tid, port = fixedGame, port_symbols = new[] { fsym }, original_symbols = new[] { sym }, map });
+        Check("timeflow_compare_drift", !cf.IsError && cf["drift"] != null && cf["drift"]?["opened"]?["port"]?["profile"] != null, cf.IsError ? cf.Text : S(cf["verdict"]));
+        var k1 = await Call("timeflow_recheck", new { timeline = tid, rom = game, symbols_new = new[] { sym }, map });
+        var k2 = await Call("timeflow_recheck", new { timeline = tid, rom = fixedGame, symbols_new = new[] { fsym }, map });
+        Check("timeflow_recheck", !k1.IsError && k1["changed"]?.GetValue<bool>() == false && !k2.IsError && k2["changed"]?.GetValue<bool>() == true && k2["sessions"]?[0]?["firstAlteredFrame"] != null,
+              k1.IsError ? k1.Text : k2.IsError ? k2.Text : $"{S(k1["verdict"])} | {S(k2["sessions"]?[0]?["verdict"])}");
         await Call("close_session", new { session = h }, log: false);
     }
 

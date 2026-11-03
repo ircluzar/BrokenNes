@@ -1,6 +1,6 @@
 # VRUN on Sega: three ports (next week, from 2026-11-02)
 
-Status: plan (interview of 2026-10-30). Nothing built yet.
+Status: S0 built (2026-11-02, see "S0 as built" at the end); S1-S3 next.
 
 | Port | Original | Sega console | Screen |
 |---|---|---|---|
@@ -70,3 +70,104 @@ the Game Gear: the Color's colours).
 2. The Master System's 192 lines vs the NES's 240: which rows of the NES view the HUD gives up, or a scrolling view.
 3. The Genesis's sound driver (SGDK's XGM, or a port of the music engine).
 4. Whether the Game Gear version uses the Game Gear's colours (4096) or stays close to the Game Boy Color's look.
+
+## S0 as built (2026-11-02)
+
+### The toolchains (BrokenDev/toolchains.json, under `BROKENDEV_HOME\toolchains`, zips kept in each `_downloads`)
+
+| Id | Version | Source (downloaded with the user's approval of 2026-10-30) | sha256 of the download |
+|---|---|---|---|
+| `sdcc` | 4.6.0 (#16555) | sourceforge.net/projects/sdcc, `sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe` (9,949,266 bytes; the NSIS installer unpacked with 7-Zip, never run) | `0a165e155a052fcf7c29ea703ee77d5a8eb578eba58279e79e885618dc4b2e1a` |
+| `devkitsms` | commit 533ae57 (2026-09-29) | github.com/sverx/devkitSMS, the commit's archive (7,889,171 bytes); its last tagged release (v1.2) is from 2022 | `58d9a9693b7e31193e9ef771c70022342ebc4522a7b23a501556b3b45bd8c0f0` |
+| `sgdk` | 2.11 (April 2025) | github.com/Stephane-D/SGDK releases, `sgdk211.7z` (54,060,415 bytes, the size GitHub lists) | `5cc704b7e3a15183c33e721a1d7f84c067cf78808754556d03bb14764df51437` |
+| `wladx` | 10.7 (2026-06-28) | github.com/vhelin/wla-dx releases, `wla_dx_v10.7_Win64.zip` (3,549,451 bytes; its vc_redist installers not taken: the zip has vcruntime140.dll) | `82922a530ae989bd5f8057fa4cfef3d0022d7353b5aeb7858b9320eae9b56ebd` |
+
+Key files are pinned by size and sha256 (`brokendev.ps1 toolchains`: all six ready). Nothing else was downloaded. **Found:** SDCC 4.6.0's linker
+refuses devkitSMS's shipped `SMSlib*.lib` / `crt0_sms.rel` ("Conflicting sdcc options": built by an older SDCC that records `-mz80` where 4.6
+records `-mz80 sdcccall(1)`), so the ports' `build.ps1` rebuild SMSlib and crt0 from the pinned commit's own sources with its Makefile's rules,
+once, into `build\smslib-<target>` (about 110 s; a stamp of the compiler's and sources' hashes). SGDK's makefile runs Java for `sizebnd.jar`
+(the machine's JDK 11) and prints `Error 127 (ignored)` from its LTO step on Windows (the ROM is complete).
+
+### The skeletons (local git repositories, never pushed)
+
+| Repository | ROM | What it is |
+|---|---|---|
+| `PROJECTS\VRUN_VOC_GG_dev` | `build\vrun_voc_gg.gg` (32 KB, region 7) | SMSlib_GG hello: text in the 160x144 window, a frame counter, a cursor Left / Right move |
+| `PROJECTS\VRUN_CTW_SMS_dev` | `build\vrun_ctw_sms.sms` (32 KB, export region 4) | the same on the Master System, 256x192 |
+| `PROJECTS\SuperVRUN_MD_dev` | `build\supervrun_md.bin` + `supervrun_md.nm.txt` (128 KB) | SGDK hello: the text in the SNES's 256 centred in 320, both pads read, a cursor; `src/boot/rom_head.c` with the game's names, no SRAM |
+
+The SDSC header's date is fixed so the same sources give the same ROM. Each boots on BrokenNes's console and passes BrokenDev build + verify.
+**S3's shared game logic:** the proposal is in `SuperVRUN_MD_dev\README.md` (`logic/` inside `SuperVRUN_dev\snes-dev\supervrun`, used by the
+Genesis repository as a subtree or a `-Logic` path; `platform/snes|wms|md` for picture, sound, pads, timing, saves; a `logic/platform.h` contract
+enforced by a lint; fixed-width types and the SNES's fixed-point formats kept; C references beside the 65816 speed paths, 68000 ones only where
+the profiler says). `SuperVRUN_dev` was not changed.
+
+### BrokenDev's Sega consoles and the three projects
+
+- Manifests take kind = console `sms`, `gg`, `md`. `verify` runs them on BrokenNes's Master System, Game Gear and Genesis (the menus' default
+  cores); `expect.memory` reads work RAM by symbol (`"endian": "big"` for the 68000). `compat`: reads in `wram` by symbol (`.noi`, SGDK's
+  `nm` listing, `symbol+N`), the Sega pads' buttons (sms/gg A B Start Select(Pause); md A B C X Y Z Start Mode).
+- Emulators: Mesen 2.1.1 now runs `sms` and `gg` (`smsWorkRam`, an SmsController in port 1); BizHawk columns `bizhawk-gpgx-sms` (Genplus-gx:
+  SMSHawk stops on "Missing Firmware! ... SMS+Export" for an export cartridge, a modal dialog found by listing the hung EmuHawk's windows),
+  `bizhawk-smshawk-gg`, `bizhawk-gpgx` (the Genesis project publishes `.md`: an unknown `.bin` opens EmuHawk's "Choose a Platform" dialog).
+- `vrun-voc-gg`, `vrun-ctw-sms`, `supervrun-md`: build, verify (`hello`: running, drawn, the pad moved the cursor to the expected column) and
+  compat **works on every column** (Game Gear: BrokenNes, Mesen, SMSHawk; Master System: BrokenNes, Mesen, Genplus-gx; Genesis: BrokenNes,
+  Genplus-gx). Their `comparison` sections name the originals (`vrun-voc`, `vrun-nes`, `supervrun`); the variables come with S1-S3.
+- Lite: see "the runs" below.
+
+### The cross-console comparison (replaces T6)
+
+- **Engine:** `Workshop/Timeflow/TimeflowCompare.cs`. The original is a Timeflow power-on timeline (or recorded now from a ROM and a pad script),
+  replayed on a new machine and checked frame by frame against its recording. Its pads go to the port's ROM from power-on (by time when the
+  frame rates differ, through the mapping's `buttons`), recorded as the port's timeline (the port's symbols kept beside its ROM). Both games'
+  variables are read every frame by the debugger's expressions on each side's own symbols.
+- **The mapping** (a manifest's `comparison` section, or a file of that shape):
+  ```json
+  { "original": "vrun-voc",
+    "rate": { "original": { "tick": "le16 _tick_count" }, "port": { "tickHz": 24, "origin": "mode=1" } },
+    "tolerance": { "ticks": 1, "positions": 2 }, "sampleEveryTicks": 24, "input": "auto", "buttons": { "Select": "-" },
+    "variables": [ { "name": "room", "kind": "event", "original": "le16 _voc + 448", "port": "le16 _room" },
+                   { "name": "x", "kind": "position", "original": "[_voc + 459]", "port": "x_px", "scale": { "port": 0.125 }, "tolerance": 1 } ] }
+  ```
+  An expression is a bare symbol (its byte), `le16 x` / `be16 x` (a word), or any debugger expression. A side's time is its game's own tick
+  counter (`tick`) or its frames at `tickHz` (its fps by default, or `fps`), from an `origin` event (the two clocks start at different moments).
+  `kind event`: every change is an event; events must come in the same order with the same (scaled, offset) values, each within `ticks`.
+  `kind position`: compared at every event and every `sampleEveryTicks`, within its tolerance.
+- **The report:** no drift (the events matched), or the FIRST drift (`missing`, `extra`, `different-event`, `time`, `position`) with both sides'
+  frame, tick and every mapped variable, and **both sides opened there**: a T3 profile of the `window` (30) frames before the drift on each side's
+  timeline, watching the drifting variable's address range (`writes $D693-$D694`: who wrote it, from which function), with the resume command.
+- **The re-check after a rebuild:** every recorded power-on session of the port (its project's timelines) replayed on the new build; unchanged,
+  or the first frame whose picture or work RAM differs from the recording, with the mapped variables on the recorded build and the new one.
+- **Interfaces:** Workshop `--timeflow compare (--original T | --original-rom R --input S --frames N) --port R --port-sym F (--map F | --manifest M)
+  [--no-open] [--window N] [--json]`, `--timeflow recheck (--timeline T | --project P) --rom NEW --sym-new F [--map | --manifest]`;
+  `brokendev.ps1 timeflow compare <port project> [-Original <timeline>] [-Scenario id | -Script S -Frames N] [-NoOpen]`, `timeflow recheck
+  <port project> [-NoBuild]`; MCP `timeflow_compare` (project, or raw original / port / map), `timeflow_recheck`.
+
+### The tests, without the ports (BrokenDev/tests/xcompare.ps1: 14 of 14)
+
+The games were only read: Vaults' sources copied and built in scratch (the copy's ROM is byte-identical to the user's build), VRUN NES and Super
+VRUN from BrokenDev's published builds. A 6000-frame Vaults session (A on the title, a seeded wandering player): 31 events (the run's start, 29
+room changes, a life from 16 materials).
+
+| Check | Result |
+|---|---|
+| Vaults against itself | no drift, 31 events matched, positions every 24 ticks |
+| against an altered build (15 materials make a life: `voc_phys.c`) | **drift, kind time, at event #25 (lives -> 1), the first lives event, after 25 matches**: tick 1842 vs 1840; both sides profiled (the port's 2 writes to `lives`) |
+| tick tolerance edges | tolerance 2 ticks: no drift; 1: the drift at #25 |
+| position tolerance edges (the port's x + 1 cell) | tolerance 1: no drift; 0: a position drift at event #0 |
+| a mapped tick rate (the original by its 24 Hz tick counter, the port by its frames at 24 ticks a second, both from `mode=1`) | within 1 tick on all 31 events; a wrong rate (25 Hz) drifts at event #1 (5.66 ticks) |
+| re-check: the unchanged rebuild | unchanged, all 6000 frames as recorded |
+| re-check: the altered rebuild | first altered frame 4816 (the work RAM), before the first lives event (4821): `lives` 0 -> 1 |
+| VRUN NES / Super VRUN against themselves | no drift (111 / 5 events) |
+| `brokendev.ps1 timeflow compare` / `recheck` on scratch projects | the drift at the lives event with both sides opened; recheck unchanged, then (the source switched) changed at frame 4816, `lives 1 -> 0` |
+
+The MCP client test adds compare (self: no drift; the T5 test game vs its fixed build: the missing hp event, both sides profiled) and recheck
+(unchanged / changed at frame 15): 145 of 145.
+
+### The runs
+
+All projects build with 0 errors (Workshop, Windows, Web, WebLite, BrokenDev/mcp); `--timeflow-test` 330 of 330, `--debug-test` 205 of 205,
+`--movie-test` 69 of 69; BrokenDev `run-tests` 153 passed, 1 failed: "the repository stays light", caused by this session's own MCP build in
+`BrokenDev\mcp\bin` (removed; the check then passes); MCP client test 145 of 145; `xcompare.ps1` 14 of 14. **Lite:** `UAT/entrypoints/lite-sega.ps1
+-Only rom` with the three skeleton ROMs in place of its games (an AOT publish of 2026-10-23: no Lite code changed since): 18 of 18 (each loads by
+`?rom=`, 256x192 / 160x144 / 320x224, moves, sound every frame, 60 fps). No UAT case was touched. Not done: a flash-cart test (S1-S3).

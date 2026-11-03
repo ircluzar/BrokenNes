@@ -75,7 +75,8 @@ local function readSpec()
       else error("unknown spec directive '" .. key .. "'") end
     end
   end
-  if spec.console ~= "nes" and spec.console ~= "snes" and spec.console ~= "gb" and spec.console ~= "gbc" then error("spec: console must be nes, snes, gb or gbc, not " .. tostring(spec.console)) end
+  local okConsoles = { nes = true, snes = true, gb = true, gbc = true, sms = true, gg = true, md = true }
+  if not okConsoles[spec.console] then error("spec: console must be nes, snes, gb, gbc, sms, gg or md, not " .. tostring(spec.console)) end
   if not spec.out or spec.out == "" then error("spec: no out folder") end
   if not spec.frames or spec.frames <= 0 then error("spec: frames must be positive") end
   table.sort(spec.inputs, function(a, b) return a.frame < b.frame end)
@@ -83,14 +84,19 @@ end
 
 -- ------------------------------------------------------------------------------------------------ the core
 
-local isNes, isGb, domain, domainSize, system, coreName
+local isNes, isGb, isSega, domain, domainSize, system, coreName
 local prefix = "P1 "      -- the pad's button prefix ("" on the Game Boy cores)
 local startedAt, rebooted = nil, false
 local padNames = {}       -- BizHawk's names of pad 1's buttons ("P1 A", ...)
 local steps = {}          -- spec.inputs, each a full set of pad 1 values
 
 -- The spec's button names -> the pad's names (the same for NesHawk and the SNES cores: "P1 " + the name).
-local canon = { a = "A", b = "B", x = "X", y = "Y", l = "L", r = "R", select = "Select", start = "Start", up = "Up", down = "Down", left = "Left", right = "Right" }
+local canon = { a = "A", b = "B", x = "X", y = "Y", l = "L", r = "R", select = "Select", start = "Start", up = "Up", down = "Down", left = "Left", right = "Right",
+                c = "C", z = "Z", mode = "Mode" }
+-- The Sega consoles (sms, gg, md): the Master System / Game Gear pad's 1 and 2 are the cores' "B1" / "B2" (BrokenNes: A / B); the Master
+-- System's Pause is a console button without the player prefix (BrokenNes: Select); the Genesis pad has C, X, Y, Z and Mode
+local segaCanon = { sms = { A = "B1", B = "B2", Select = "Pause" }, gg = { A = "B1", B = "B2", Select = "Pause" }, md = {} }
+local padFull = {}        -- the spec's button (canonical) -> the pad's full name (the Sega consoles)
 
 local function listOf(t)
   -- NLua hands .NET arrays over as tables indexed from 0
@@ -128,14 +134,24 @@ local function setup()
   if system == "NULL" then error("no ROM is loaded (EmuHawk could not open " .. tostring(spec.rom) .. " with the pinned core)") end
   isNes = spec.console == "nes"
   isGb = spec.console == "gb" or spec.console == "gbc"
-  if isGb then
+  isSega = spec.console == "sms" or spec.console == "gg" or spec.console == "md"
+  local segaSystem = { sms = "SMS", gg = "GG", md = "GEN" }
+  if isSega then
+    if system ~= segaSystem[spec.console] then error("the spec is for the " .. spec.console .. " but EmuHawk runs system " .. system) end
+  elseif isGb then
     -- the Game Boy cores (Gambatte, SameBoy) say GB or GBC (a dual-mode cartridge runs as GBC on them)
     if system ~= "GB" and system ~= "GBC" then error("the spec is for the " .. spec.console .. " but EmuHawk runs system " .. system) end
   elseif (isNes and system ~= "NES") or ((not isNes) and system ~= "SNES") then error("the spec is for the " .. spec.console .. " but EmuHawk runs system " .. system) end
   coreName = runningCore()
-  domain = isNes and "RAM" or "WRAM"
   local domains = listOf(memory.getmemorydomainlist())
   local function has(d) for _, x in ipairs(domains) do if x == d then return true end end return false end
+  domain = isNes and "RAM" or "WRAM"
+  if isSega then
+    -- the cores' work RAM: SMSHawk's "Main RAM" (8 KB); Genplus-gx's "68K RAM" (64 KB) on the Genesis
+    domain = nil
+    for _, d in ipairs(spec.console == "md" and { "68K RAM" } or { "Main RAM", "System RAM", "Work RAM" }) do if has(d) then domain = d; break end end
+    if not domain then error("the core has no work RAM domain (it has: " .. table.concat(domains, ", ") .. ")") end
+  end
   if not has(domain) then error("the core has no memory domain " .. domain .. " (it has: " .. table.concat(domains, ", ") .. ")") end
   domainSize = memory.getmemorydomainsize(domain)
   if isGb then
@@ -147,6 +163,14 @@ local function setup()
       if not has(r.bizDomain) then error("read " .. r.name .. ": the core has no memory domain " .. r.bizDomain .. " (it has: " .. table.concat(domains, ", ") .. ")") end
       local size = memory.getmemorydomainsize(r.bizDomain)
       if r.addr < 0 or r.addr >= size then error(string.format("read %s: address %X is outside %s (%d bytes)", r.name, r.addr, r.bizDomain, size)) end
+    end
+  elseif isSega then
+    local want = spec.console == "md" and 0x10000 or 0x2000
+    if domainSize ~= want then error(string.format("memory domain %s is %d bytes, expected %d", domain, domainSize, want)) end
+    for _, r in ipairs(spec.reads) do
+      r.bizDomain = domain
+      if r.domain ~= "wram" then error("read " .. r.name .. ": domain " .. r.domain .. " does not belong to the " .. spec.console) end
+      if r.addr < 0 or r.addr >= domainSize then error(string.format("read %s: address %X is outside %s", r.name, r.addr, domain)) end
     end
   else
     local want = isNes and 0x800 or 0x20000
@@ -171,6 +195,41 @@ local function setup()
     end
   else
     for k, _ in pairs(joypad.get(1) or {}) do have["P1 " .. tostring(k)] = true end
+  end
+  if isSega then
+    -- every pad 1 and console button, with or without the "P1 " prefix (the Master System's Pause has none)
+    for k, _ in pairs(joypad.get() or {}) do have[tostring(k)] = true end
+    local required = spec.console == "md" and { "A", "B", "C", "Start", "Up", "Down", "Left", "Right" } or { "A", "B", "Up", "Down", "Left", "Right" }
+    local optional = spec.console == "md" and { "X", "Y", "Z", "Mode" } or { "Start", "Select" }
+    local function find(b)
+      local core = segaCanon[spec.console][b] or b
+      if have["P1 " .. core] then return "P1 " .. core end
+      if have[core] then return core end
+      return nil
+    end
+    for _, b in ipairs(required) do
+      local n = find(b)
+      if not n then
+        local list = {}
+        for k, _ in pairs(have) do list[#list + 1] = k end
+        table.sort(list)
+        error("the core's pad 1 has no button for '" .. b .. "' (it has: " .. table.concat(list, ", ") .. ")")
+      end
+      padNames[#padNames + 1] = n; padFull[b] = n
+    end
+    for _, b in ipairs(optional) do local n = find(b); if n then padNames[#padNames + 1] = n; padFull[b] = n end end
+    for _, s in ipairs(spec.inputs) do
+      local held = {}
+      for _, n in ipairs(padNames) do held[n] = false end
+      for _, b in ipairs(s.names) do
+        local c = canon[b:lower()]
+        local n = c and padFull[c] or nil
+        if not n then error("input " .. s.frame .. ": '" .. b .. "' is not a button the core's " .. spec.console .. " pad has") end
+        held[n] = true
+      end
+      steps[#steps + 1] = { frame = s.frame, held = held }
+    end
+    return
   end
   local consoleButtons = (isNes or isGb) and { "A", "B", "Select", "Start", "Up", "Down", "Left", "Right" }
                                 or { "B", "Y", "Select", "Start", "Up", "Down", "Left", "Right", "A", "X", "L", "R" }

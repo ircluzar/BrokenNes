@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "id": "vrun-voc-gg",
+  "title": "VRUN: Vaults of Obsolete Code on the Game Gear (S0: the skeleton)",
+  "family": "vrun",
+  "kind": "gg",
+  "console": "gg",
+  "description": "The Game Gear port of VRUN: Vaults of Obsolete Code (docs/projects/sega-vrun-ports-plan.md, S1: tick-identical to Eternal Degrade like the Game Boy version, the Game Boy Color's colours). Today the S0 skeleton: a hello ROM (text, a frame counter, a cursor that Left / Right move) that proves the toolchain and BrokenDev's build / verify / compat. Built with SDCC 4.6.0 + devkitSMS (toolchains.json) in its live workspace PROJECTS/VRUN_VOC_GG_dev (its own git, local only).",
+  "source": { "folder": "{live:VRUN_VOC_GG_dev}" },
+  "requires": {
+    "tools": ["ps5", "toolchain:sdcc", "toolchain:devkitsms"],
+    "projects": [],
+    "inputs": [],
+    "toolchain": ["SDCC 4.6.0 and devkitSMS 533ae57, pinned in toolchains.json (SMSlib and crt0 rebuilt from devkitSMS's sources by build.ps1)"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "ps5",
+        "cwd": "{src}",
+        "file": "{src}/build.ps1",
+        "args": ["-Sdcc", "{toolchain:sdcc}", "-DevkitSms", "{toolchain:devkitsms}"],
+        "timeoutSec": 900,
+        "note": "build.ps1: SMSlib_GG and crt0 rebuilt once (build/smslib-gg), sdcc -mz80 -DTARGET_GG, makesms; checks 'TMR SEGA' and the Game Gear region code (7)."
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{src}/build/vrun_voc_gg.gg", "publishAs": "vrun_voc_gg.gg", "kind": "gg" },
+      { "id": "noi", "path": "{src}/build/vrun_voc_gg.noi", "publishAs": "vrun_voc_gg.noi", "kind": "symbols" },
+      { "id": "sym", "path": "{src}/build/vrun_voc_gg.sym", "publishAs": "vrun_voc_gg.sym", "kind": "symbols-wla" },
+      { "id": "map", "path": "{src}/build/vrun_voc_gg.map", "publishAs": "vrun_voc_gg.map", "kind": "map" }
+    ]
+  },
+  "run": { "console": "gg", "note": "The skeleton: Left / Right move the cursor. Lite: the .gg opens in BrokenNes Lite's Game Gear (UAT/entrypoints/lite-sega.ps1 -Roms <folder with gg\\vrun_voc_gg.gg>)." },
+  "verify": {
+    "timeoutSec": 600,
+    "scenarios": [
+      {
+        "id": "hello",
+        "frames": 300,
+        "input": "100:Right,130:",
+        "checkpoints": [50, 300],
+        "expect": {
+          "minDistinctColors": 2,
+          "pictureDiffers": [50, 300],
+          "memory": [
+            { "symbol": "_hello_ok", "is": 1, "what": "the screen was set up" },
+            { "symbol": "_frame_count", "size": 2, "min": 250, "what": "the vblank loop runs every frame" },
+            { "symbol": "_cursor_x", "is": 19, "what": "Right reached the pad and moved the cursor to the window's right edge (20 columns)" },
+            { "symbol": "_pad_seen", "size": 2, "is": 8, "what": "only Right was pressed (PORT_A_KEY_RIGHT)" }
+          ]
+        },
+        "why": "the hello ROM on the Game Gear: it runs, draws and reads the pad"
+      }
+    ]
+  },
+  "compat": {
+    "what": "The hello ROM on every Game Gear emulator BrokenDev has, from power-on and the same pad script, its state read by the build's symbols every frame.",
+    "symbols": { "file": "{out}/vrun_voc_gg.noi" },
+    "reads": { "frame": "_frame_count", "ok": "_hello_ok", "cursor": "_cursor_x" },
+    "frameTolerance": 30,
+    "scenarios": [
+      {
+        "id": "hello",
+        "frames": 400,
+        "input": "100:Right,130:",
+        "shots": [50, 400],
+        "what": "power-on, the text, Right held 30 frames",
+        "checks": [
+          { "id": "alive", "what": "the main loop runs (frame_count keeps changing)", "changes": "frame", "within": [60, 400], "min": 200 },
+          { "id": "ready", "what": "the screen was set up", "read": "ok", "is": 1, "within": [60, 400], "hold": true },
+          { "id": "moved", "what": "Right moved the cursor to the right edge", "read": "cursor", "is": 19, "within": [200, 400], "hold": true },
+          { "id": "drawn", "what": "the text is drawn", "picture": 400, "minColors": 2 }
+        ]
+      }
+    ]
+  },
+  "comparison": {
+    "what": "The cross-console comparison (S0): the port against its original, VRUN: Vaults of Obsolete Code on the Game Boy (project vrun-voc). S1 is tick-identical: the strictest tolerances. Filled in by S1 when the game exists; the skeleton maps nothing yet.",
+    "original": "vrun-voc"
+  },
+  "knownIssues": [
+    "S0 skeleton only: the game is S1.",
+    "No hardware test on the user's Genesis flash cart yet (Game Gear through its backwards compatibility)."
+  ]
+}
