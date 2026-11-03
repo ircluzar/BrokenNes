@@ -150,6 +150,45 @@ $c = Ws @('--timeflow', 'compare', '--original-rom', "$snes\supervrun.sfc", '--i
           '--original-sym', "$snes\supervrun.sym", '--port', "$snes\supervrun.sfc", '--port-sym', "$snes\supervrun.sym", '--map', $mS, '--json')
 Check 'snes-self' ($c.Exit -eq 0 -and $null -eq $c.J.drift -and $c.J.eventsMatched -ge 2) "exit $($c.Exit), $($c.J.verdict)$(if ($c.Err) { ' / ' + $c.Err.Trim() })"
 
+# ---- BrokenDev's verbs: 'timeflow compare <port project>' and 'timeflow recheck <port project>' on scratch projects (a scratch BROKENDEV_HOME and
+# projects folder; each project's "build" copies a prebuilt ROM into its build folder, so a source switch is a rebuild)
+$bdh = Join-Path $Scratch 'bdhome'; $pj = Join-Path $Scratch 'bdprojects'
+foreach ($d in $bdh, $pj) { if (Test-Path $d) { Remove-Item -Recurse -Force $d }; New-Item -ItemType Directory -Force $d | Out-Null }
+$copy = "param([string]`$From)`n`$here = Split-Path -Parent `$MyInvocation.MyCommand.Path`nNew-Item -ItemType Directory -Force (Join-Path `$here 'build') | Out-Null`nCopy-Item ((Join-Path `$here `$From) + '\*') (Join-Path `$here 'build') -Force`nGet-ChildItem (Join-Path `$here 'build') -File | ForEach-Object { `$_.LastWriteTime = Get-Date }`nexit 0`n"
+function New-ScratchProject([string]$Id, [string]$Variant, $Comparison) {
+    $srcDir = Join-Path $Scratch "bdsrc_$Id"; if (Test-Path $srcDir) { Remove-Item -Recurse -Force $srcDir }
+    foreach ($v in 'unchanged', 'altered') { New-Item -ItemType Directory -Force (Join-Path $srcDir $v) | Out-Null }
+    Copy-Item $rom, $noi (Join-Path $srcDir 'unchanged'); Copy-Item $arom, $anoi (Join-Path $srcDir 'altered')
+    Set-Content -Encoding UTF8 (Join-Path $srcDir 'copy.ps1') $copy
+    $m = [ordered]@{
+        schema = 1; id = $Id; title = "xcompare scratch project $Id"; family = 'test'; kind = 'gb'; console = 'gbc'; description = 'BrokenDev\tests\xcompare.ps1'
+        source = @{ folder = $srcDir }; requires = @{ tools = @('ps5'); projects = @(); inputs = @() }
+        build = @{ steps = @(@{ name = 'copy'; shell = 'ps5'; cwd = '{src}'; file = '{src}/copy.ps1'; args = @('-From', $Variant); timeoutSec = 120 })
+                   outputs = @(@{ id = 'rom'; path = '{src}/build/vrun_voc.gbc'; publishAs = 'vrun_voc.gbc'; kind = 'gbc' }, @{ id = 'noi'; path = '{src}/build/vrun_voc.noi'; publishAs = 'vrun_voc.noi'; kind = 'symbols' }) }
+        verify = @{ scenarios = @(@{ id = 'play'; frames = 6000; input = $padScript; checkpoints = @(6000) }) }
+        knownIssues = @()
+    }
+    if ($Comparison) { $m['comparison'] = $Comparison }
+    New-Item -ItemType Directory -Force (Join-Path $pj $Id) | Out-Null
+    $m | ConvertTo-Json -Depth 10 | Set-Content -Encoding UTF8 (Join-Path (Join-Path $pj $Id) 'project.json')
+}
+New-ScratchProject 'voc-orig' 'unchanged' $null
+New-ScratchProject 'voc-port' 'altered' ([ordered]@{ original = 'voc-orig'; rate = $tickVar; tolerance = @{ ticks = 0; positions = 0 }; sampleEveryTicks = 24; variables = $vars })
+$bd = Join-Path $repo 'BrokenDev\brokendev.ps1'
+function Bd([string[]]$ArgList) {
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -Command "`$env:BROKENDEV_HOME='$bdh'; `$env:BROKENDEV_PROJECTS='$pj'; `$env:BROKENDEV_WORKSHOP='$WorkshopExe'; `$env:BROKENDEV_TIMEFLOW='$($env:BROKENDEV_TIMEFLOW)'; & '$bd' $($ArgList -join ' '); exit `$LASTEXITCODE" 2>&1 | Out-String
+    [pscustomobject]@{ Exit = $LASTEXITCODE; Text = $o }
+}
+$b1 = Bd @('build', 'voc-orig'); $b2 = Bd @('build', 'voc-port')
+$v = Bd @('timeflow', 'compare', 'voc-port', '-Scenario', 'play')
+Check 'bd-compare-verb' ($b1.Exit -eq 0 -and $b2.Exit -eq 0 -and $v.Exit -eq 1 -and $v.Text -match 'DRIFT \(time\) after \d+ matching event' -and $v.Text -match 'opened port') "exit $($v.Exit): $((($v.Text -split "`n") | Where-Object { $_ -match 'DRIFT|no drift|recorded' }) -join ' / ')"
+$k = Bd @('timeflow', 'recheck', 'voc-port')
+Check 'bd-recheck-unchanged' ($k.Exit -eq 0 -and $k.Text -match 'changed none') "exit $($k.Exit): $((($k.Text -split "`n") | Where-Object { $_ -match 'changed|unchanged' } | Select-Object -First 2) -join ' / ')"
+$pjm = Join-Path (Join-Path $pj 'voc-port') 'project.json'
+(Get-Content -Raw $pjm).Replace('"altered"', '"unchanged"') | Set-Content -Encoding UTF8 $pjm
+$k = Bd @('timeflow', 'recheck', 'voc-port')
+Check 'bd-recheck-changed' ($k.Exit -eq 1 -and $k.Text -match 'first frame the change altered is \d+' -and $k.Text -match 'lives') "exit $($k.Exit): $((($k.Text -split "`n") | Where-Object { $_ -match 'altered' } | Select-Object -First 2) -join ' / ')"
+
 $pass = @($results | Where-Object ok).Count; $fail = $results.Count - $pass
 [pscustomobject]@{ test = 'xcompare'; checks = $results.Count; pass = $pass; fail = $fail } | ConvertTo-Json -Compress
 if ($fail -gt 0) { exit 1 }

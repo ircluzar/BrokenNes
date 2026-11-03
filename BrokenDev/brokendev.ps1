@@ -76,6 +76,10 @@
     timeflow rebuild-resume <timeline> -Frame F [-NoBuild] [-Safe main_loop,load_room] [-AtSafe] [-Verdict "TEST"] [-To B]
     timeflow diverge <branch> | <timeline> -Frame F -Patch ...   timeflow verdict <timeline> -Verdict "TEST" [-From A] [-To B]
     timeflow verdict-promote <timeline> -Verdict "TEST" -Name id -Why "what it tests" [-From A] [-To B]
+    timeflow compare <port project> [-Original <timeline>] [-Scenario <the original's verify id> | -Script S -Frames N] [-NoOpen]
+                                 the cross-console comparison (Sega VRUN ports, S0): the original recorded, its pads on the port, events
+                                 and positions by the manifest's 'comparison' mapping; the first drift, both sides opened at it (T3)
+    timeflow recheck <port project> [-NoBuild]   the port rebuilt; its recorded sessions replayed on the new build: the first altered frame
                                  T5: hotpatch and resume. 'patch': byte patches (a symbol, a CPU address through the frame's banks, 02:4000,
                                  rom:$offset; the old bytes must match) from frame F; 'rebuild-resume': builds the timeline's project and
                                  loads frame F's RAM and registers into the new build after the symbol-map check (PC and return addresses in
@@ -179,6 +183,9 @@ param(
     [string]$Safe = '',
     [switch]$AtSafe,
     [switch]$NoBuild,
+    # 'timeflow compare' (Sega VRUN ports, S0): a recorded timeline of the original instead of recording it now; no profiles at the drift
+    [string]$Original = '',
+    [switch]$NoOpen,
     # 'tool <id> <args...>': the arguments after the tool id are passed to the tool
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @()
 )
@@ -473,7 +480,7 @@ try {
             $t = if ($Rest.Count -eq 1) { $Rest[0] } else { '' }
             exit (Invoke-BdTimeflow -Action $Target -Target $t -Scenario $(if ($Scenario.Count -gt 0) { $Scenario[0] } else { '' }) -Script $Script -Frames $Frames -Movie $Movie -Course $Course -Frame $Frame -Png $Path -Record:$Record -Coverage:$Coverage -Json:$Json -Exe $Exe `
                   -From $From -To $To -Query $Query -Store:$Store -Keep:$Keep -TtlMinutes $TtlMinutes -LimitMb $LimitMb -MaxHits $MaxHits -CoarseOnly:$CoarseOnly -Index:$Index `
-                  -Patch $Patch -Verdict $Verdict -Safe $Safe -AtSafe:$AtSafe -NoBuild:$NoBuild -Name $Name -Why $Why)
+                  -Patch $Patch -Verdict $Verdict -Safe $Safe -AtSafe:$AtSafe -NoBuild:$NoBuild -Name $Name -Why $Why -Original $Original -NoOpen:$NoOpen)
         }
         'bugs' {
             if ($Target) { [void](Resolve-BdTargets $Target) }

@@ -24,6 +24,11 @@
 #   timeflow diverge <branch>  |  diverge <timeline> -Frame F -Patch ...     where the new future parts from the old one
 #   timeflow verdict <timeline> -Verdict "TEST" [-From A] [-To B]       a written test over a span (never|sometime|always COND, query Q expect ...)
 #   timeflow verdict-promote <timeline> -Verdict "TEST" -Name id -Why text [-From A] [-To B]   into the project's verify (explicit only)
+#   timeflow compare <port project> [-Original <timeline>] [-Scenario <the original's verify id> | -Script S -Frames N] [-NoOpen]
+#                   Sega VRUN ports (S0): the cross-console comparison. The port project's manifest 'comparison' section names the original
+#                   project, the variables (by each side's symbols), the tick rates and the tolerances; the original is recorded (or -Original
+#                   names a power-on timeline of it), its pads replayed on the port, the first drift reported and both sides opened (T3)
+#   timeflow recheck <port project> [-NoBuild]      the port rebuilt, its recorded sessions replayed on the new build: the first altered frame
 #
 # Timelines live in BROKENDEV_HOME\timeflow\<project>\ (a ROM of no project: timeflow\_roms\<name>-<sha>\), never in git, never in
 # %APPDATA%\BrokenNes; each game folder has a cap (5 GB by default, timeflow.json).
@@ -70,7 +75,7 @@ function Invoke-BdTimeflowRecord {
     $cores = Get-BdProp $m.verify 'cores' $null
     if ($cores -and [string]$m.console -eq 'nes') { $a += @('--cores', ('{0}/{1}/{2}' -f (Get-BdProp $cores 'cpu' 'FIX'), (Get-BdProp $cores 'ppu' 'FIX'), (Get-BdProp $cores 'apu' 'FIX'))) }
     elseif ($cores) { $a += @('--cores', ('{0}/{1}/{2}' -f (Get-BdProp $cores 'cpu' ''), (Get-BdProp $cores 'ppu' ''), (Get-BdProp $cores 'apu' ''))) }
-    if (@('gb', 'gbc', 'wms') -contains [string]$m.console) { $a += @('--console', [string]$m.console) }
+    if (@('gb', 'gbc', 'wms', 'sms', 'gg', 'md') -contains [string]$m.console) { $a += @('--console', [string]$m.console) }
     foreach ($s in $p.Symbols) { $a += @('--sym', $s) }
     foreach ($c in @($Course | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })) { $a += @('--var', "$c=[$c]") }
     if ($Coverage -or $Index) { $a += '--coverage' }
@@ -153,8 +158,69 @@ function Invoke-BdTimeflow {
           [long]$Frame = -1, [string]$Png = '', [switch]$Record, [switch]$Coverage, [switch]$Json, [string]$Exe = '',
           [long]$From = -1, [long]$To = -1, [string[]]$Query = @(), [switch]$Store, [switch]$Keep, [int]$TtlMinutes = 0, [int]$LimitMb = 0,
           [int]$MaxHits = 100, [switch]$CoarseOnly, [switch]$Index,
-          [string[]]$Patch = @(), [string[]]$Verdict = @(), [string]$Safe = '', [switch]$AtSafe, [switch]$NoBuild, [string]$Name = '', [string]$Why = '')
+          [string[]]$Patch = @(), [string[]]$Verdict = @(), [string]$Safe = '', [switch]$AtSafe, [switch]$NoBuild, [string]$Name = '', [string]$Why = '',
+          [string]$Original = '', [switch]$NoOpen)
     switch ($Action.ToLowerInvariant()) {
+        'compare' {
+            # the cross-console comparison (Sega VRUN ports, S0): the port project's 'comparison' section is the mapping
+            if (-not $Target) { throw 'timeflow compare needs the port project (its manifest has a comparison section naming the original)' }
+            [void](Resolve-BdTargets $Target)
+            $pm = Read-BdManifest -Id $Target
+            $cmp = Get-BdProp $pm 'comparison' $null
+            if (-not $cmp) { throw "project $Target has no 'comparison' section in its manifest" }
+            $origId = [string](Get-BdProp $cmp 'original' '')
+            if (-not $origId) { throw "project ${Target}: comparison.original (the original's project id) is missing" }
+            $port = Get-BdProjectRomAndSymbols -Id $Target
+            $orig = Get-BdProjectRomAndSymbols -Id $origId
+            if (-not $Original) {
+                # the original recorded now (its verify scenario's pads, or -Script / -Frames), its symbols kept beside its ROM
+                $r = Invoke-BdTimeflowRecord -Id $origId -Scenario $Scenario -Script $Script -Frames $Frames -Exe $Exe
+                $Original = [string]$r.Json.id
+                Save-BdTimelineSymbols -Timeline $Original -Symbols @($orig.Symbols) -Exe $Exe | Out-Null
+                Write-BdInfo "  the original ($origId) recorded: timeline $Original ($($r.Json.frames) frames)"
+            }
+            $a = @('compare', '--original', $Original, '--port', $port.Rom, '--port-project', $Target, '--manifest', (Get-BdManifestPath $Target))
+            foreach ($s in (Get-BdTimelineSymbols -Timeline $Original -Exe $Exe)) { $a += @('--original-sym', $s) }
+            foreach ($s in @($port.Symbols)) { $a += @('--port-sym', $s) }
+            if (@('gb', 'gbc', 'wms', 'sms', 'gg', 'md') -contains [string]$pm.console) { $a += @('--port-console', [string]$pm.console) }
+            if ($NoOpen) { $a += '--no-open' }
+            $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 16); return $r.ExitCode }
+            $j = $r.Json
+            Write-BdInfo "  original $($j.original.console) $($j.original.rom): timeline $($j.original.timeline), $($j.original.frames) frames, $($j.original.events) events"
+            Write-BdInfo "  port     $($j.port.console) $($j.port.rom): timeline $($j.port.timeline), $($j.port.frames) frames, $($j.port.events) events"
+            if (Get-BdProp $j 'warning' $null) { Write-BdWarn $j.warning }
+            if ($r.ExitCode -eq 0) { Write-BdOk $j.verdict; return 0 }
+            Write-BdFail $j.verdict
+            Write-BdInfo ("  original at frame {0} (tick {1}): {2}" -f $j.drift.original.frame, $j.drift.original.tick, ($j.drift.original.state | ConvertTo-Json -Compress))
+            Write-BdInfo ("  port     at frame {0} (tick {1}): {2}" -f $j.drift.port.frame, $j.drift.port.tick, ($j.drift.port.state | ConvertTo-Json -Compress))
+            $op = Get-BdProp $j.drift 'opened' $null
+            if ($op) { foreach ($side in 'original', 'port') { $s = $op.$side; Write-BdInfo ("  opened {0}: timeline {1} frames {2}-{3}, watching {4}: {5}" -f $side, $s.timeline, $s.from, $s.to, $s.watch, $(if (Get-BdProp $s 'profileError' $null) { "profile failed: $($s.profileError)" } else { "$(@($s.profile.queries)[0].total) write(s) in the span; $($s.resume)" })) } }
+            return 1
+        }
+        'recheck' {
+            # the re-check after a rebuild: the port's recorded sessions replayed on the new build
+            if (-not $Target) { throw 'timeflow recheck needs the port project' }
+            [void](Resolve-BdTargets $Target)
+            if (-not $NoBuild) {
+                Write-BdInfo "  building $Target"
+                $rec = Invoke-BdProjectBuild -Id $Target
+                foreach ($o in $rec.outputs) { Write-BdInfo ("  {0}: {1} bytes sha256 {2}" -f $o.id, $o.bytes, $o.sha256.Substring(0, 16)) }
+            }
+            $port = Get-BdProjectRomAndSymbols -Id $Target
+            $a = @('recheck', '--project', $Target, '--rom', $port.Rom, '--manifest', (Get-BdManifestPath $Target))
+            foreach ($s in @($port.Symbols)) { $a += @('--sym-new', $s) }
+            $r = Invoke-BdTimeflowJson -Arguments $a -Exe $Exe
+            if ($Json) { Write-Host ($r.Json | ConvertTo-Json -Depth 12); return $r.ExitCode }
+            if ($r.Json.changed) { Write-BdWarn $r.Json.verdict } else { Write-BdOk $r.Json.verdict }
+            foreach ($s in @($r.Json.sessions)) {
+                $line = "  $($s.timeline) ($($s.frames) frames): $(if (Get-BdProp $s 'verdict' $null) { $s.verdict } else { $s.skipped })"
+                $v = Get-BdProp $s 'variables' $null
+                if ($v) { $d = @($v.PSObject.Properties | Where-Object { $_.Value.PSObject.Properties['differs'] -and $_.Value.differs } | ForEach-Object { "$($_.Name) $($_.Value.recorded) -> $($_.Value.new)" }); if ($d.Count -gt 0) { $line += '; ' + ($d -join ', ') } }
+                Write-BdInfo $line
+            }
+            return $r.ExitCode
+        }
         'search' {
             # T4: a condition over the corpus (a project's timelines, one timeline, or all)
             $cond = (@($Query | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ }) -join ' and ')
@@ -393,6 +459,6 @@ function Invoke-BdTimeflow {
             foreach ($g in @($r.Json.games)) { Write-Host ('  {0}: {1} timeline(s), {2:N1} MB of {3:N2} GB' -f $g.gameDir, $g.timelines, ($g.usedBytes / 1MB), ($g.capBytes / 1GB)) }
             return 0
         }
-        default { throw 'timeflow: record, list, info, verify, jump, resume, prune, keep, unkeep, status, search, patch, rebuild-resume, diverge, verdict, verdict-promote, profile, profile-query, profiles, profile-keep, profile-unkeep, profile-drop or profile-sweep' }
+        default { throw 'timeflow: record, list, info, verify, jump, resume, prune, keep, unkeep, status, search, patch, rebuild-resume, diverge, verdict, verdict-promote, compare, recheck, profile, profile-query, profiles, profile-keep, profile-unkeep, profile-drop or profile-sweep' }
     }
 }
