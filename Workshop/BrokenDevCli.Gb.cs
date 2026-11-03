@@ -38,6 +38,39 @@ internal static partial class BrokenDevCli
 
     internal static bool IsGameBoyKey(string console) => console is "gb" or "gbc";
 
+    /// <summary>The Sega consoles BrokenDev runs (the VRUN ports, S0): sms, gg, md.</summary>
+    internal static bool IsSegaKey(string console) => console is "sms" or "gg" or "md";
+
+    /// <summary>The Sega machine under the picture wrapper (ConsoleSessions puts every Sega session inside a SegaPictureSession).</summary>
+    private static IConsoleSession SegaMachine(IConsoleSession s) => s is NesEmulator.Mix.SegaPictureSession sp ? sp.Inner : s;
+
+    private static bool IsSegaSession(IConsoleSession s) => SegaMachine(s) is NesEmulator.Sega.SmsSession or NesEmulator.Sega.MdSession;
+
+    /// <summary>A Sega memory domain for compat: wram (the Master System / Game Gear's 8 KB at $C000, the Genesis's 64 KB at $FF0000).</summary>
+    private static int PeekSega(IConsoleSession s, string domain, int addr)
+    {
+        if (domain != "wram") throw new ArgumentException($"the {s.Console} has no memory domain '{domain}' here (wram)");
+        var m = SegaMachine(s);
+        byte[] ram = m is NesEmulator.Sega.MdSession md ? md.Board.Ram : ((NesEmulator.Sega.SmsSession)m).Board.Ram;
+        return (uint)addr < (uint)ram.Length ? ram[addr] : throw new ArgumentException($"wram offset {addr:X} is outside {ram.Length} bytes");
+    }
+
+    /// <summary>expect.memory on a Sega console: a CPU address in work RAM ($C000-$FFFF; the Genesis's $E00000-$FFFFFF, SGDK's $E0FFxxxx too).</summary>
+    private static int PeekSegaCpu(IConsoleSession s, uint addr)
+    {
+        var mm = SegaMachine(s);
+        if (mm is NesEmulator.Sega.MdSession md)
+        {
+            uint a = addr & 0xFFFFFF;
+            if (a < 0xE00000) throw new ArgumentException($"expect.memory on the Genesis reads work RAM ($E00000-$FFFFFF), not ${a:X6}");
+            return md.Board.Ram[a & 0xFFFF];
+        }
+        var sms = (NesEmulator.Sega.SmsSession)mm;
+        uint z = addr & 0xFFFF;
+        if (z < 0xC000) throw new ArgumentException($"expect.memory on the {s.Console} reads work RAM ($C000-$FFFF), not ${z:X4}");
+        return sms.Board.Ram[z & 0x1FFF];
+    }
+
     /// <summary>The console a scenario runs on: the project's, or its own "console" when it names the other model of the same family.</summary>
     private static string ScenarioConsole(string projectConsole, JsonElement sc)
     {
@@ -66,7 +99,7 @@ internal static partial class BrokenDevCli
     {
         if (files.Count == 0) return null;
         var t = new SymbolTable();
-        string family = console == "nes" ? "nes" : IsGameBoyKey(console) ? "gb" : "snes";
+        string family = console == "nes" ? "nes" : IsGameBoyKey(console) ? "gb" : IsSegaKey(console) ? console : "snes";
         foreach (var f in files) t.Load(f, family);
         return t;
     }
@@ -94,7 +127,9 @@ internal static partial class BrokenDevCli
                 where = $"${addr:X4}";
             }
             long v = 0;
-            for (int i = 0; i < size; i++) v |= (long)runner.PeekCpu(addr + (uint)i) << (8 * i);
+            // little-endian (the Z80s, the 6502, the 65816), or "endian": "big" (the Genesis's 68000)
+            bool big = m.TryGetProperty("endian", out var en) && en.GetString() == "big";
+            for (int i = 0; i < size; i++) v |= (long)runner.PeekCpu(addr + (uint)i) << (8 * (big ? size - 1 - i : i));
             res.Memory.Add((m.Clone(), v, where));
         }
     }

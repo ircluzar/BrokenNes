@@ -5,7 +5,7 @@
 
 Set-StrictMode -Version Latest
 
-$script:BdKinds    = @('nes', 'snes', 'nested', 'wms', 'gb')
+$script:BdKinds    = @('nes', 'snes', 'nested', 'wms', 'gb', 'sms', 'gg', 'md')
 $script:BdShells   = @('bash', 'ps5', 'python', 'exe')
 # and 'toolchain:<id>': a pinned toolchain of toolchains.json (lib\Toolchains.ps1), which must be there and unchanged
 $script:BdToolIds  = @('gitbash', 'python', 'node', 'dotnet', 'ps5', '7zip', 'workshop')
@@ -36,7 +36,9 @@ function Test-BdManifest {
     if ($ExpectedId -and [string]$M.id -ne $ExpectedId) { $e.Add("id '$($M.id)' does not match its folder '$ExpectedId'") }
     if ([string]$M.id -notmatch '^[a-z0-9][a-z0-9\-]*$') { $e.Add("id '$($M.id)' must be lower-case letters, digits and dashes") }
     if ($script:BdKinds -notcontains [string]$M.kind) { $e.Add("kind '$($M.kind)' must be one of: $($script:BdKinds -join ', ')") }
-    if (@('nes', 'snes', 'wms', 'gb', 'gbc') -notcontains [string]$M.console) { $e.Add("console '$($M.console)' must be nes, snes, wms, gb or gbc") }
+    if (@('nes', 'snes', 'wms', 'gb', 'gbc', 'sms', 'gg', 'md') -notcontains [string]$M.console) { $e.Add("console '$($M.console)' must be nes, snes, wms, gb, gbc, sms, gg or md") }
+    # sms / gg / md (the Sega VRUN ports): a Master System, Game Gear or Genesis game runs on its own console (kind = console)
+    foreach ($sk in 'sms', 'gg', 'md') { if (($M.kind -eq $sk) -ne ($M.console -eq $sk)) { $e.Add("kind $sk and console $sk go together") } }
     # nes -> runs as a NES; snes and nested -> run as a SNES; wms (a WideMess game, BrokenDev/widemess) -> runs on the WideMess console;
     # gb (a Game Boy game) -> runs on the Game Boy (console gb) or the Game Boy Color (console gbc: a dual-mode or Color game)
     if ($M.kind -eq 'nes' -and $M.console -ne 'nes') { $e.Add("kind nes must run on console nes") }

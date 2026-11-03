@@ -41,13 +41,16 @@ Set-StrictMode -Version Latest
 
 $script:BdNesButtons = @('A', 'B', 'Select', 'Start', 'Up', 'Down', 'Left', 'Right')
 $script:BdSnesButtons = @('B', 'Y', 'Select', 'Start', 'Up', 'Down', 'Left', 'Right', 'A', 'X', 'L', 'R')
-# the Game Boy (gb, gbc) has the NES's eight buttons
-$script:BdCompatConsoles = @('nes', 'snes', 'wms', 'gb', 'gbc')
+# the Game Boy (gb, gbc) has the NES's eight buttons. The Master System / Game Gear (sms, gg): A = button 1, B = button 2, Start (the Game
+# Gear's Start; the Master System's Pause is Select), BrokenNes's PadButtons names. The Genesis (md): the 6-button pad, A B C X Y Z Start Mode.
+$script:BdSmsButtons = @('A', 'B', 'Start', 'Select', 'Up', 'Down', 'Left', 'Right')
+$script:BdMdButtons = @('A', 'B', 'C', 'X', 'Y', 'Z', 'Start', 'Mode', 'Up', 'Down', 'Left', 'Right')
+$script:BdCompatConsoles = @('nes', 'snes', 'wms', 'gb', 'gbc', 'sms', 'gg', 'md')
 
 function ConvertTo-BdInputSteps {
     <# "120:Start,132:,400:Right+B" -> @({Frame=120;Buttons=@('Start')}, ...), sorted. Unknown buttons for the console are an error. #>
-    param([AllowEmptyString()][string]$Script, [ValidateSet('nes', 'snes', 'wms', 'gb', 'gbc')][string]$Console = 'nes')
-    $known = if ($Console -in 'nes', 'gb', 'gbc') { $script:BdNesButtons } else { $script:BdSnesButtons }
+    param([AllowEmptyString()][string]$Script, [ValidateSet('nes', 'snes', 'wms', 'gb', 'gbc', 'sms', 'gg', 'md')][string]$Console = 'nes')
+    $known = if ($Console -in 'nes', 'gb', 'gbc') { $script:BdNesButtons } elseif ($Console -in 'sms', 'gg') { $script:BdSmsButtons } elseif ($Console -eq 'md') { $script:BdMdButtons } else { $script:BdSnesButtons }
     $steps = @()
     foreach ($part in @(([string]$Script) -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
         if ($part -notmatch '^(\d+):(.*)$') { throw "bad input step '$part' (expected frame:Buttons)" }
@@ -71,7 +74,7 @@ function New-BdCompatSpecText {
     #>
     param([Parameter(Mandatory)]$Run)
     $c = [string]$Run.Console
-    if ($script:BdCompatConsoles -notcontains $c) { throw "spec: console '$c' must be nes, snes, wms, gb or gbc" }
+    if ($script:BdCompatConsoles -notcontains $c) { throw "spec: console '$c' must be nes, snes, wms, gb, gbc, sms, gg or md" }
     $frames = [int]$Run.Frames
     if ($frames -le 0) { throw 'spec: frames must be positive' }
     $lines = @('# bdcompat-spec 1', "console $c", "rom $($Run.Rom)", "out $($Run.Out)", "savedir $($Run.SaveDir)", "frames $frames")
@@ -85,6 +88,10 @@ function New-BdCompatSpecText {
         if ($c -in 'gb', 'gbc') {
             # the Game Boy: wram (32 KB on a Color), hram (127 bytes), cartram (the cartridge's RAM, up to 128 KB)
             $max = switch ($d) { 'wram' { 0x7FFF } 'hram' { 0x7E } 'cartram' { 0x1FFFF } default { throw "spec: read ${n}: domain $d does not belong to the $c (wram, hram, cartram)" } }
+        } elseif ($c -in 'sms', 'gg', 'md') {
+            # the Sega consoles: wram = the work RAM ($C000 = 0, 8 KB on the Master System / Game Gear; $FF0000 = 0, 64 KB on the Genesis)
+            if ($d -ne 'wram') { throw "spec: read ${n}: domain $d does not belong to the $c (wram)" }
+            $max = if ($c -eq 'md') { 0xFFFF } else { 0x1FFF }
         } else {
             $max = if ($d -eq 'ram') { 0x7FF } elseif ($d -eq 'wram') { 0x1FFFF } else { throw "spec: read ${n}: domain '$d' must be ram or wram" }
             if (($c -eq 'nes') -ne ($d -eq 'ram')) { throw "spec: read ${n}: domain $d does not belong to the $c" }
@@ -390,8 +397,29 @@ function Read-BdSymbols {
                 $t[$n] = [Convert]::ToInt32($Matches[2], 16)
             }
         }
-    } else { throw "unknown symbol file kind: $Path (.mlb, .sym or .noi)" }
+    } elseif ($Path -match '\.nm\.txt$|\.nm$') {
+        # GNU nm (SGDK's out/symbol.txt: 'e0ff006e b frame_count', -l may add a tab and the source line); data and code symbols alike
+        foreach ($line in [System.IO.File]::ReadAllLines($Path)) {
+            if ($line -match '^([0-9a-fA-F]{8})\s+[A-Za-z]\s+([^\s]+)') { $t[$Matches[2]] = [int]([Convert]::ToUInt32($Matches[1], 16) -band 0xFFFFFF) }
+        }
+    } else { throw "unknown symbol file kind: $Path (.mlb, .sym, .noi or .nm.txt)" }
     $t
+}
+
+function ConvertTo-BdSegaDomain {
+    <#
+      A Sega CPU address -> @{ Domain = 'wram'; Addr }: the Master System / Game Gear's $C000-$FFFF (8 KB, mirrored at $E000) and the
+      Genesis's $E00000-$FFFFFF (64 KB, mirrored every 64 KB; SGDK's symbols say $E0FFxxxx / $FFxxxx).
+    #>
+    param([Parameter(Mandatory)][int]$Address, [Parameter(Mandatory)][string]$Console)
+    if ($Console -eq 'md') {
+        $a = $Address -band 0xFFFFFF
+        if ($a -ge 0xE00000) { return @{ Domain = 'wram'; Addr = $a -band 0xFFFF } }
+        throw ("address {0:X6} is not Genesis work RAM" -f $a)
+    }
+    $a = $Address -band 0xFFFF
+    if ($a -ge 0xC000) { return @{ Domain = 'wram'; Addr = $a -band 0x1FFF } }
+    throw ("address {0:X4} is not {1} work RAM" -f $a, $(if ($Console -eq 'gg') { 'Game Gear' } else { 'Master System' }))
 }
 
 function ConvertTo-BdGbDomain {
@@ -433,11 +461,17 @@ function Resolve-BdCompatReads {
         $what = [string]$p.Value
         if ($what -match '^\$([0-9A-Fa-f]+)$') { $raw = [Convert]::ToInt32($Matches[1], 16) }
         elseif ($table.ContainsKey($what)) { $raw = [int]$table[$what] }
+        # 'name+N': a byte inside a variable (the Genesis's big-endian u16: its low byte is name+1)
+        elseif ($what -match '^(.+)\+(\d+)$' -and $table.ContainsKey($Matches[1])) { $raw = [int]$table[$Matches[1]] + [int]$Matches[2] }
         else { throw "compat read '$($p.Name)': symbol '$what' is not in $file" }
         if ($Console -eq 'nes') { $dom = 'ram'; $addr = $raw -band 0xFFFF; if ($addr -gt 0x7FF) { throw ("compat read '{0}': {1:X4} is not NES RAM" -f $p.Name, $addr) } }
         elseif ($Console -in 'gb', 'gbc') {
             # a symbol or a literal '$hex' is a CPU address ($C0B1); the domain and offset follow from it
             try { $g = ConvertTo-BdGbDomain -Address $raw } catch { throw "compat read '$($p.Name)': $($_.Exception.Message)" }
+            $dom = $g.Domain; $addr = $g.Addr
+        }
+        elseif ($Console -in 'sms', 'gg', 'md') {
+            try { $g = ConvertTo-BdSegaDomain -Address $raw -Console $Console } catch { throw "compat read '$($p.Name)': $($_.Exception.Message)" }
             $dom = $g.Domain; $addr = $g.Addr
         }
         elseif ($file -match '\.mlb$') {
@@ -1147,7 +1181,7 @@ function Invoke-BdPlay {
     $copy = Join-Path $scratch (Split-Path -Leaf ([string]$rom.published))
     Copy-Item -LiteralPath ([string]$rom.published) -Destination $copy -Force
     # the Game Boy's adapters (Mesen, BizHawk) start the model / system the console names; the other adapters' launchers take no console
-    $more = @{}; if ([string]$m.console -in 'gb', 'gbc') { $more['Console'] = [string]$m.console }
+    $more = @{}; if ([string]$m.console -in 'gb', 'gbc', 'sms', 'gg', 'md') { $more['Console'] = [string]$m.console }
     $p = & $fn -Emu $e -Package $pkg -Exe $exe -Rom $copy -SaveDir $saves -Scratch $scratch @more
     Write-BdOk "$($e.title): $Project started (PID $($p.Id)); saves in $saves"
 }

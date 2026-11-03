@@ -185,10 +185,10 @@ internal static partial class BrokenDevCli
                 Console.Error.WriteLine($"spec line {lineNo}: {ex.Message}: {raw}"); return 2;
             }
         }
-        if (console is not ("nes" or "snes" or "wms" or "gb" or "gbc") || rom.Length == 0 || outDir.Length == 0 || frames <= 0) { Console.Error.WriteLine("spec needs console nes|snes|wms|gb|gbc, rom, out and frames > 0"); return 2; }
+        if (console is not ("nes" or "snes" or "wms" or "gb" or "gbc" or "sms" or "gg" or "md") || rom.Length == 0 || outDir.Length == 0 || frames <= 0) { Console.Error.WriteLine("spec needs console nes|snes|wms|gb|gbc|sms|gg|md, rom, out and frames > 0"); return 2; }
         if (!File.Exists(rom)) { Console.Error.WriteLine($"ROM not found: {rom}"); return 2; }
         foreach (var r in reads)
-            if ((console == "nes" && r.Domain != "ram") || (console is "snes" or "wms" && r.Domain != "wram") || (IsGameBoyKey(console) && r.Domain is not ("wram" or "hram" or "cartram")))
+            if ((console == "nes" && r.Domain != "ram") || (console is "snes" or "wms" && r.Domain != "wram") || (IsGameBoyKey(console) && r.Domain is not ("wram" or "hram" or "cartram")) || (IsSegaKey(console) && r.Domain != "wram"))
             { Console.Error.WriteLine($"read {r.Name}: domain {r.Domain} does not belong to the {console}"); return 2; }
         steps = steps.OrderBy(s => s.Frame).ToList();
         Directory.CreateDirectory(outDir);
@@ -209,6 +209,7 @@ internal static partial class BrokenDevCli
             w.WriteLine($"note {runner.Description}");
             w.WriteLine(console == "nes" ? $"note power-on RAM: {ram} (BrokenNes' own fill is the FCEUX pattern 00 00 00 00 FF FF FF FF)" : "note power-on work RAM: zeros");
             if (IsGameBoyKey(console)) w.WriteLine("note memory: wram = $C000 + bank x $1000, hram = $FF80, cartram = the cartridge's RAM (a fresh one is $FF); no boot ROM (the documented post-boot state)");
+            if (IsSegaKey(console)) w.WriteLine(console == "md" ? "note memory: wram = the 64 KB work RAM ($FF0000 = 0); no TMSS BIOS" : "note memory: wram = the 8 KB work RAM ($C000 = 0); no BIOS (the post-BIOS state)");
             if (savePath.Length > 0 && File.Exists(savePath))
             {
                 byte[] save = File.ReadAllBytes(savePath);
@@ -756,7 +757,13 @@ internal static partial class BrokenDevCli
             }
             // "wms": a WideMess project (BrokenDev/widemess) runs on the WideMess console, with its own menu's defaults; "gb" / "gbc": the
             // Game Boy or the Game Boy Color (a dual-mode cartridge runs in colour on the Color, in shades on the original)
-            var console = consoleKey switch { "wms" => ConsoleKind.WideMess, "gb" => ConsoleKind.GameBoy, "gbc" => ConsoleKind.GameBoyColor, _ => ConsoleKind.Snes };
+            var console = consoleKey switch
+            {
+                "wms" => ConsoleKind.WideMess, "gb" => ConsoleKind.GameBoy, "gbc" => ConsoleKind.GameBoyColor,
+                // the Sega VRUN ports (S0): the Master System, Game Gear and Genesis with their menus' defaults
+                "sms" => ConsoleKind.MasterSystem, "gg" => ConsoleKind.GameGear, "md" => ConsoleKind.Genesis,
+                _ => ConsoleKind.Snes,
+            };
             if (console == ConsoleKind.WideMess) Consoles.WideMessEnabled = true;
             cpu = cpu == "" ? CoreCatalog.Default(console, CoreSlot.Cpu) : cpu;
             ppu = ppu == "" ? CoreCatalog.Default(console, CoreSlot.Ppu) : ppu;
@@ -801,9 +808,11 @@ internal static partial class BrokenDevCli
         public void SavePng(string path) => MixLab.MixLabCli.SaveArgb(s.Frame, s.FrameWidth, s.FrameHeight, path);
 
         public int Peek(string domain, int addr) => s is GbSession gs ? PeekGb(gs, domain, addr)
+            : IsSegaSession(s) ? PeekSega(s, domain, addr)
             : domain == "wram" && s is SnesSession ss ? ss.Board.Wram[addr & 0x1FFFF] : throw new ArgumentException($"the SNES has no memory domain '{domain}' here (wram)");
 
         public int PeekCpu(uint addr) => s is GbSession gs ? gs.Board.Peek((ushort)addr)
+            : IsSegaSession(s) ? PeekSegaCpu(s, addr)
             : throw new ArgumentException("expect.memory reads the NES and the Game Boy; on the SNES use the compat section's reads");
 
         public byte[]? ExportBattery() => s.HasBattery ? s.ExportSave() : null;
