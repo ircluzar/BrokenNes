@@ -693,7 +693,15 @@ public static class CoreCatalog
                         break;
                     default:
                         list.Add(new("WMS", "WMS (WideMess sound chip: the S-SMP + S-DSP, plus 24 more voices in BRR or 16-bit PCM and 1 MB of sound RAM once a game unlocks them)", "WideMess"));
-                        list.Add(new("SFC", "SFC (the SNES's S-SMP + S-DSP: 8 voices, 64 KB, no WideMess sound)", "WideMess"));
+                        list.Add(new("SFC", "SFC (the SNES's S-SMP + S-DSP: 8 voices, 64 KB, no WideMess sound)", "SNES"));
+                        // the SNES sound units ported from other emulators (foreign-apu-project): SnesSession builds them on the WideMess too (a SNES unit: no voices 8-31, no sound RAM above 64 KB)
+                        list.Add(new("ZS15", "ZS15 (ZSNES 0.15 sound, 1997: mono, no echo or interpolation, janky envelopes)", "SNES"));
+                        list.Add(new("OSPC", "OSPC (libOpenSPC sound, 2002: guessed envelopes, linear release, rand() noise)", "SNES"));
+                        list.Add(new("S916", "S916 (Snes9x 1.16a sound, 1998: 22 kHz, no interpolation, additive pitch mod, sample cache, half-speed envelopes)", "SNES"));
+                        list.Add(new("SNDS", "SNDS (SNEmulDS / PocketSPC Nintendo DS sound: 32 kHz, no interpolation, 2.4% sharp, silent noise, broken echo)", "SNES"));
+                        list.Add(new("S9X1", "S9X1 (Snes9x 1.43 sound, 2004: stereo, old envelopes, linear interpolation, private echo)", "SNES"));
+                        list.Add(new("S951", "S951 (Snes9x 1.51 sound, 2007: gaussian interpolation, counter-table envelopes, private echo)", "SNES"));
+                        list.Add(new("ZS151", "ZS151 (ZSNES 1.51 sound, 2007: its own envelopes and echo, Gaussian look-ahead, 160-frame blocks)", "SNES"));
                         list.Add(new("HLE", "HLE (silent - no sound, fastest)", "WideMess"));
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), NesFamilyOf(CoreSlot.Apu, id)));
                         if (CoreRegistry.ApuIds.Contains("DMG", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMG", "Game Boy sound chip (through NES registers)", "Game Boy"));
