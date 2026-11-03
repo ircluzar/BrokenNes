@@ -172,7 +172,7 @@ All projects build with 0 errors (Workshop, Windows, Web, WebLite, BrokenDev/mcp
 -Only rom` with the three skeleton ROMs in place of its games (an AOT publish of 2026-10-23: no Lite code changed since): 18 of 18 (each loads by
 `?rom=`, 256x192 / 160x144 / 320x224, moves, sound every frame, 60 fps). No UAT case was touched. Not done: a flash-cart test (S1-S3).
 
-## S1 as built (partial, 2026-11-03)
+## S1 as built (2026-11-03; full speed, open: Mesen's A, map 2's late pictures)
 
 Port repo VRUN_VOC_GG_dev (local git): 6b52b02 physics, 0c354ac the game + PSG sound, 52f71e8 speed and start timing.
 
@@ -186,7 +186,27 @@ Port repo VRUN_VOC_GG_dev (local git): 6b52b02 physics, 0c354ac the game + PSG s
 - **Comparison** (manifest vrun-voc-gg "comparison": _voc offsets on both sides, _tick_count origin mode=1, input by frame, ticks 0 /
   positions 0), against a GBC build with VOC_GAME_SEED=4321, VOC_GAME_MAP=7 (the release ROM's seed comes from DIV: not reproducible):
   the run-start event matches on the same tick; the first drift is at tick 72 (x 25 vs 24), because the port's ticks run late.
-- **THE BLOCKER: speed.** The physics (portable C, unchanged) costs 118,411 Z80 cycles a tick on average, 621,984 at worst, of
-  148,668 at 24 Hz (tests/physics/compare_gg.ps1). With the pictures and sound the game runs at about half speed; the clock now waits
-  when the ticks fall 6 behind (GG_MAX_BEHIND), so no keys are lost. Next: Z80 assembly for the physics' hot paths (as the Game Boy
-  has SM83 paths), verified by the physics compare, then the strict comparison, the full 8-group physics run, the sweep.
+- **Speed (was the blocker, fixed 2026-11-03, commits 8a5d613..682d469).** The physics (portable C) cost 118,411 Z80 cycles a tick on
+  average, 621,984 at worst, of 148,668 at 24 Hz, and the game ran at about half speed. Now (tests/physics/compare_gg.ps1, the harness
+  with the host check kept): 58,743 average, 552,672 worst (a room change; the 5-frame latency covers it). What did it:
+  - the exact doubles (add / sub / cmp / sgn): the Game Boy's SM83 assembly translated mechanically (tools/sm83_to_z80.py ->
+    src/phys/voc_dbl_z80.c: (hl+) forms, SWAP as 4 RRCA, the Z80 sdcccall(1) entries), voc_dbl.c's __SDCC branch: 118K -> 87K;
+  - a profile (harness: -Define VOC_GG_PROF, voc_phys.c's TP points into h_tp_acc; game: -Define VOC_GG_GPROF, gg_tp_acc): the big
+    cost was the host build's per-tick check that scans the raster for the '@' (find_char): CPIR in the harness, left out of the game
+    build (VOC_GG_GAME, as the Game Boy leaves it out): 84K -> 59K;
+  - glitter and wall shimmer in Z80 (src/phys/voc_gg_z80.c, voc_phys.c's VOC_GG_Z80 hooks: the only edits to the copied physics);
+  - the light picture's key capture in Z80 (voc_screen.c cap_light): the game reached the clock's rate (305 ticks in 758 frames).
+  Each step: compare_gg.ps1 0 differ on all 91,275 ticks (8 groups) and the -Perturb control caught (1002 lines).
+  GG_MAX_BEHIND (the clock waits when 6 ticks behind) is KEPT as a safety: at full speed it no longer triggers in the sweep.
+- **Strict comparison passes** (Workshop --timeflow compare with the vrun-voc-gg manifest, positions/ticks tolerance 0, both sides
+  fixed-seed builds VOC_GAME_SEED=4321 VOC_GAME_MAP=7; scratch s1_scratch\cmp.sh): no drift over 2000 frames (the manifest's input) and
+  over 2400 frames of a busier 26-press input. The run start re-measured at full speed: VOC_GG_RUN_AT 49 (48 and 50-52 drift).
+  The release's seed: page_rand() ^ (R register ^ V counter ^ frame count) << 8 at the run's start (gg_entropy), the GBC's is DIV:
+  neither is reproducible, so the comparison always uses the fixed-seed builds.
+- **Sweep:** maps 0, 2, 5, 7 (fixed seeds, 2400 frames, 20 presses): 953 ticks each (the clock's 952), 0 late on maps 0/5/7, 10
+  single-frame late pictures on map 2 (cause not found). The diagnostic counters (gg_marks, gg_title_at, gg_isr_*) only with
+  -Define VOC_GG_DIAG.
+- **Compat** (brokendev.ps1 compat vrun-voc-gg, BROKENDEV_WORKSHOP = a current Workshop, the shared one lacks gg in its compat spec):
+  BrokenNes works, BizHawk SMSHawk-gg works, Mesen FAILS: the title takes Right but never A (the run never starts): most likely the
+  Mesen adapter's 'a' on its SmsController is not the Game Gear's button 1 (the S0 hello only checked the d-pad). Not fixed.
+- **Hand-off:** %LOCALAPPDATA%\VRUN_Nes_Dev_work\gg_handoffrun_voc_gg_682d469.gg (sha256 865857fe...c320) + README.txt.
