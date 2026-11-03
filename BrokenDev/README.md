@@ -19,6 +19,9 @@ The app shows nothing of BrokenDev unless it is switched on: set the environment
 | `smb1-nested` | the remake on the SNES through Project Nested | SNES (nested) | `smb1-nes`, then `m30pipe` |
 | `supervrun` | Super VRUN, the current native SNES project | SNES | PVSnesLib 4.6.0 (shipped), `bash build.sh` |
 | `widemess-sample` | Wide Blaster, the WideMess devkit's sample game (`WideMess/sample` in this repository) | WideMess | PVSnesLib + the WideMess devkit, `widemess/tools/wmsbuild.ps1` |
+| `vrun-voc-gg` | VRUN: Vaults of Obsolete Code on the Game Gear (Sega ports S1; today the S0 skeleton), live workspace `PROJECTS\VRUN_VOC_GG_dev` (local git) | Game Gear | SDCC 4.6.0 + devkitSMS (pinned), the workspace's `build.ps1` |
+| `vrun-ctw-sms` | VRUN CTW on the Master System (S2; today the S0 skeleton), `PROJECTS\VRUN_CTW_SMS_dev` | Master System | SDCC 4.6.0 + devkitSMS (pinned) |
+| `supervrun-md` | Super VRUN on the Genesis (S3; today the S0 skeleton), `PROJECTS\SuperVRUN_MD_dev` | Genesis / Mega Drive | SGDK 2.11 (pinned) |
 | `vrun-voc` | VRUN: Vaults of Obsolete Code, today its V2 tutorial (`docs/projects/vrun-voc-plan.md`), in its live workspace `PROJECTS\VRUN_VOC_dev` | Game Boy (dual mode: console `gbc`, also run as `gb`), MBC5 1 MB + 32 KB battery RAM | GBDK-2020 4.5.0 (pinned, `toolchains.json`), the workspace's `build.ps1` |
 
 Each project is a manifest, `projects/<id>/project.json`: where its source comes from (an archive and a path), the tools it
@@ -46,7 +49,9 @@ BrokenDev\brokendev.ps1 tools                  # the editors and checkers of the
 BrokenDev\brokendev.ps1 tool <id> [args]       # start one
 BrokenDev\brokendev.ps1 emulators              # the other emulators the games are tested on (see "Other emulators" below)
 BrokenDev\brokendev.ps1 emulators install all  # Mesen, BizHawk, FCEUX, Snes9x: the pinned official releases, portable
-BrokenDev\brokendev.ps1 toolchains             # the pinned toolchains (GBDK-2020): ready, or what is wrong (never downloads)
+BrokenDev\brokendev.ps1 toolchains             # the pinned toolchains (GBDK-2020, cc65, SDCC, devkitSMS, SGDK, WLA-DX): ready, or what is wrong (never downloads)
+BrokenDev\brokendev.ps1 timeflow compare vrun-voc-gg     # the port against its original (the manifest's comparison section): the first drift, both sides opened
+BrokenDev\brokendev.ps1 timeflow recheck vrun-voc-gg     # the port rebuilt, its recorded sessions replayed: the first frame the change altered
 BrokenDev\brokendev.ps1 compat vrun-nes        # the game on BrokenNes (the reference) and every installed emulator of its console
 BrokenDev\brokendev.ps1 play vrun-nes -Emu fceux   # open the built ROM in one of them, by hand
 BrokenDev\brokendev.ps1 new widemess my-game   # a new WideMess game from the devkit's template (its folder and projects\my-game)
@@ -197,6 +202,25 @@ BrokenDev is also the devkit of WideMess, BrokenNes's fantasy console: `widemess
 converters and the build (`tools/`), the sound driver (`driver/`) and the template `new widemess` copies (`template/`). A WideMess project's
 manifest has kind and console `wms` and its source in its own folder (`source.folder`); `verify` runs it on the WideMess console and checks
 its `expect.wms`; `compat` has BrokenNes's column only. The guide: `docs/projects/widemess-devkit.md`.
+
+## The Sega consoles (the VRUN ports, `docs/projects/sega-vrun-ports-plan.md`)
+
+- **Toolchains** (`toolchains.json`, downloaded with the user's approval, never by BrokenDev): `sdcc` 4.6.0 (the official Windows installer,
+  unpacked with 7-Zip, never run), `devkitsms` at commit 533ae57 (its newest release is from 2022; the project is used from its repository),
+  `sgdk` 2.11 (its m68k gcc, make and libraries; its makefile also runs the machine's Java), `wladx` 10.7 (the assemblers, for the ports'
+  speed paths). SDCC 4.6's linker refuses devkitSMS's shipped libraries (built by an older SDCC): the ports' `build.ps1` rebuild SMSlib and
+  crt0 from devkitSMS's own sources once, into their build folder.
+- **Projects** have kind = console `sms`, `gg` or `md`. `verify`'s `expect.memory` reads work RAM by symbol (`.noi` for SDCC, SGDK's `nm` listing
+  `*.nm.txt`; `"endian": "big"` for the 68000's words). `compat`'s reads are `wram` (the 8 KB at `$C000`, the Genesis's 64 KB at `$FF0000`; a
+  read may name `symbol+N`). Columns: Master System BrokenNes, Mesen (`smsWorkRam`), BizHawk Genplus-gx (`bizhawk-gpgx-sms`: SMSHawk stops on a
+  missing-BIOS dialog for an export cartridge); Game Gear BrokenNes, Mesen, BizHawk SMSHawk (`bizhawk-smshawk-gg`); Genesis BrokenNes, BizHawk
+  Genplus-gx (`bizhawk-gpgx`; the ROM is published as `.md`: EmuHawk asks which platform an unknown `.bin` is).
+- **The cross-console comparison** (S0; it replaces Timeflow T6): a port project's manifest has a `comparison` section (the original's
+  project id, the variables by each side's symbols, the two tick rates, the tolerances); `brokendev.ps1 timeflow compare <port>` records the
+  original (its verify scenario, or `-Original <timeline>`), replays its pads on the port's build, compares per event and position and reports
+  the first drift with both sides opened (T3 profiles); `brokendev.ps1 timeflow recheck <port>` rebuilds the port and replays its recorded
+  sessions: unchanged, or the first altered frame. Workshop `--timeflow compare|recheck`, MCP `timeflow_compare`, `timeflow_recheck`. The
+  mapping's shape and the tests (`tests/xcompare.ps1`) are in the plan's "S0 as built".
 
 ## The Game Boy (GBDK-2020, `vrun-voc`)
 
