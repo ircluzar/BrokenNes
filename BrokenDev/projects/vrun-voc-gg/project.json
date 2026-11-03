@@ -1,17 +1,25 @@
 {
   "schema": 1,
   "id": "vrun-voc-gg",
-  "title": "VRUN: Vaults of Obsolete Code on the Game Gear (S0: the skeleton)",
+  "title": "VRUN: Vaults of Obsolete Code on the Game Gear (S1)",
   "family": "vrun",
   "kind": "gg",
   "console": "gg",
-  "description": "The Game Gear port of VRUN: Vaults of Obsolete Code (docs/projects/sega-vrun-ports-plan.md, S1: tick-identical to Eternal Degrade like the Game Boy version, the Game Boy Color's colours). Today the S0 skeleton: a hello ROM (text, a frame counter, a cursor that Left / Right move) that proves the toolchain and BrokenDev's build / verify / compat. Built with SDCC 4.6.0 + devkitSMS (toolchains.json) in its live workspace PROJECTS/VRUN_VOC_GG_dev (its own git, local only).",
-  "source": { "folder": "{live:VRUN_VOC_GG_dev}" },
+  "description": "The Game Gear port of VRUN: Vaults of Obsolete Code (docs/projects/sega-vrun-ports-plan.md, S1): the Game Boy version's physics C copied unchanged (tick-identical to Eternal Degrade), the Game Boy Color's colours, PSG sound (the effects converted from the Game Boy's, the placeholder songs through a PSG music driver), saves in the cartridge's battery RAM. Built with SDCC 4.6.0 + devkitSMS (toolchains.json) in its live workspace PROJECTS/VRUN_VOC_GG_dev (its own git, local only).",
+  "source": {
+    "folder": "{live:VRUN_VOC_GG_dev}"
+  },
   "requires": {
-    "tools": ["ps5", "toolchain:sdcc", "toolchain:devkitsms"],
+    "tools": [
+      "ps5",
+      "toolchain:sdcc",
+      "toolchain:devkitsms"
+    ],
     "projects": [],
     "inputs": [],
-    "toolchain": ["SDCC 4.6.0 and devkitSMS 533ae57, pinned in toolchains.json (SMSlib and crt0 rebuilt from devkitSMS's sources by build.ps1)"]
+    "toolchain": [
+      "SDCC 4.6.0 and devkitSMS 533ae57, pinned in toolchains.json (SMSlib and crt0 rebuilt from devkitSMS's sources by build.ps1)"
+    ]
   },
   "build": {
     "steps": [
@@ -20,68 +28,211 @@
         "shell": "ps5",
         "cwd": "{src}",
         "file": "{src}/build.ps1",
-        "args": ["-Sdcc", "{toolchain:sdcc}", "-DevkitSms", "{toolchain:devkitsms}"],
+        "args": [
+          "-Sdcc",
+          "{toolchain:sdcc}",
+          "-DevkitSms",
+          "{toolchain:devkitsms}"
+        ],
         "timeoutSec": 900,
-        "note": "build.ps1: SMSlib_GG and crt0 rebuilt once (build/smslib-gg), sdcc -mz80 -DTARGET_GG, makesms; checks 'TMR SEGA' and the Game Gear region code (7)."
+        "note": "build.ps1: SMSlib_GG and crt0 rebuilt once (build/smslib-gg), sdcc -mz80 -DTARGET_GG, the units of src/units.txt in their banks, makesms; checks the banks, the stack, 'TMR SEGA' and the Game Gear region code (7)."
       }
     ],
     "outputs": [
-      { "id": "rom", "path": "{src}/build/vrun_voc_gg.gg", "publishAs": "vrun_voc_gg.gg", "kind": "gg" },
-      { "id": "noi", "path": "{src}/build/vrun_voc_gg.noi", "publishAs": "vrun_voc_gg.noi", "kind": "symbols" },
-      { "id": "sym", "path": "{src}/build/vrun_voc_gg.sym", "publishAs": "vrun_voc_gg.sym", "kind": "symbols-wla" },
-      { "id": "map", "path": "{src}/build/vrun_voc_gg.map", "publishAs": "vrun_voc_gg.map", "kind": "map" }
+      {
+        "id": "rom",
+        "path": "{src}/build/vrun_voc_gg.gg",
+        "publishAs": "vrun_voc_gg.gg",
+        "kind": "gg"
+      },
+      {
+        "id": "noi",
+        "path": "{src}/build/vrun_voc_gg.noi",
+        "publishAs": "vrun_voc_gg.noi",
+        "kind": "symbols"
+      },
+      {
+        "id": "sym",
+        "path": "{src}/build/vrun_voc_gg.sym",
+        "publishAs": "vrun_voc_gg.sym",
+        "kind": "symbols-wla"
+      },
+      {
+        "id": "map",
+        "path": "{src}/build/vrun_voc_gg.map",
+        "publishAs": "vrun_voc_gg.map",
+        "kind": "map"
+      }
     ]
   },
-  "run": { "console": "gg", "note": "The skeleton: Left / Right move the cursor. Lite: the .gg opens in BrokenNes Lite's Game Gear (UAT/entrypoints/lite-sega.ps1 -Roms <folder with gg\\vrun_voc_gg.gg>)." },
+  "run": {
+    "console": "gg",
+    "note": "1 = A, 2 = B, Start pauses (the pause saves; Start+1 on the pause saves again); Start+1 in a run is the Game Boy's Select (the abort lottery)."
+  },
   "verify": {
     "timeoutSec": 600,
     "scenarios": [
       {
-        "id": "hello",
-        "frames": 300,
-        "input": "100:Right,130:",
-        "checkpoints": [50, 300],
+        "id": "run",
+        "frames": 1200,
+        "input": "60:A,61:,400:Right,401:,600:A,601:,900:Left,901:",
+        "checkpoints": [
+          100,
+          300,
+          1200
+        ],
         "expect": {
-          "minDistinctColors": 2,
-          "pictureDiffers": [50, 300],
+          "minDistinctColors": 3,
+          "pictureDiffers": [
+            100,
+            300
+          ],
           "memory": [
-            { "symbol": "_hello_ok", "is": 1, "what": "the screen was set up" },
-            { "symbol": "_frame_count", "size": 2, "min": 250, "what": "the vblank loop runs every frame" },
-            { "symbol": "_cursor_x", "is": 19, "what": "Right reached the pad and moved the cursor to the window's right edge (20 columns)" },
-            { "symbol": "_pad_seen", "size": 2, "is": 8, "what": "only Right was pressed (PORT_A_KEY_RIGHT)" }
+            {
+              "symbol": "_game_mode",
+              "is": 1,
+              "what": "a run is going (A on the title)"
+            },
+            {
+              "symbol": "_frame_count",
+              "size": 2,
+              "min": 1100,
+              "what": "the frame interrupt runs every frame"
+            },
+            {
+              "symbol": "_tick_count",
+              "size": 2,
+              "min": 300,
+              "what": "the run's ticks go on (24 a second)"
+            }
           ]
         },
-        "why": "the hello ROM on the Game Gear: it runs, draws and reads the pad"
+        "why": "power-on, the title, A starts a run, a few moves"
       }
     ]
   },
   "compat": {
-    "what": "The hello ROM on every Game Gear emulator BrokenDev has, from power-on and the same pad script, its state read by the build's symbols every frame.",
-    "symbols": { "file": "{out}/vrun_voc_gg.noi" },
-    "reads": { "frame": "_frame_count", "ok": "_hello_ok", "cursor": "_cursor_x" },
+    "what": "The game on every Game Gear emulator BrokenDev has: power-on, A on the title at frame 60 (the Game Boy Color's comparison scenario), the run's start frame and ticks read by the build's symbols.",
+    "symbols": {
+      "file": "{out}/vrun_voc_gg.noi"
+    },
+    "reads": {
+      "frame": "_frame_count",
+      "mode": "_game_mode",
+      "ticks": "_tick_count"
+    },
     "frameTolerance": 30,
     "scenarios": [
       {
-        "id": "hello",
-        "frames": 400,
-        "input": "100:Right,130:",
-        "shots": [50, 400],
-        "what": "power-on, the text, Right held 30 frames",
+        "id": "run",
+        "frames": 900,
+        "input": "60:A,61:,400:Right,401:,600:A,601:",
+        "shots": [
+          100,
+          300,
+          900
+        ],
+        "what": "the title, A, the run",
         "checks": [
-          { "id": "alive", "what": "the main loop runs (frame_count keeps changing)", "changes": "frame", "within": [60, 400], "min": 200 },
-          { "id": "ready", "what": "the screen was set up", "read": "ok", "is": 1, "within": [60, 400], "hold": true },
-          { "id": "moved", "what": "Right moved the cursor to the right edge", "read": "cursor", "is": 19, "within": [200, 400], "hold": true },
-          { "id": "drawn", "what": "the text is drawn", "picture": 400, "minColors": 2 }
+          {
+            "id": "alive",
+            "what": "the frame interrupt runs",
+            "changes": "frame",
+            "within": [
+              60,
+              900
+            ],
+            "min": 600
+          },
+          {
+            "id": "run",
+            "what": "A on the title started a run",
+            "read": "mode",
+            "is": 1,
+            "within": [
+              300,
+              900
+            ],
+            "hold": true
+          },
+          {
+            "id": "ticks",
+            "what": "the run's ticks go on",
+            "changes": "ticks",
+            "within": [
+              300,
+              900
+            ],
+            "min": 100
+          },
+          {
+            "id": "drawn",
+            "what": "the run is drawn",
+            "picture": 900,
+            "minColors": 3
+          }
         ]
       }
     ]
   },
   "comparison": {
-    "what": "The cross-console comparison (S0): the port against its original, VRUN: Vaults of Obsolete Code on the Game Boy (project vrun-voc). S1 is tick-identical: the strictest tolerances. Filled in by S1 when the game exists; the skeleton maps nothing yet.",
-    "original": "vrun-voc"
+    "what": "S1: the Game Gear port against VRUN: Vaults of Obsolete Code on the Game Boy Color (project vrun-voc), the strict Vaults tolerance: the same events on the same ticks, the same positions. Both sides' physics state (_voc: the same C struct, the same offsets) and their run tick counter (_tick_count, from the run's start: origin mode=1); the pads by frame (the port starts its run at the Game Boy Color's frame).",
+    "original": "vrun-voc",
+    "rate": {
+      "original": {
+        "tick": "le16 _tick_count",
+        "origin": "mode=1"
+      },
+      "port": {
+        "tick": "le16 _tick_count",
+        "origin": "mode=1"
+      }
+    },
+    "input": "frame",
+    "tolerance": {
+      "ticks": 0,
+      "positions": 0
+    },
+    "sampleEveryTicks": 24,
+    "variables": [
+      {
+        "name": "mode",
+        "kind": "event",
+        "original": "_game_mode"
+      },
+      {
+        "name": "room",
+        "kind": "event",
+        "original": "le16 _voc + 448"
+      },
+      {
+        "name": "lives",
+        "kind": "event",
+        "original": "le16 _voc + 503"
+      },
+      {
+        "name": "clovers",
+        "kind": "event",
+        "original": "[_voc + 505]"
+      },
+      {
+        "name": "result",
+        "kind": "event",
+        "original": "[_voc + 508]"
+      },
+      {
+        "name": "x",
+        "kind": "position",
+        "original": "[_voc + 459]"
+      },
+      {
+        "name": "y",
+        "kind": "position",
+        "original": "[_voc + 460]"
+      }
+    ]
   },
   "knownIssues": [
-    "S0 skeleton only: the game is S1.",
-    "No hardware test on the user's Genesis flash cart yet (Game Gear through its backwards compatibility)."
+    "No hardware test on the user's Genesis flash cart yet (its built-in Game Gear mode)."
   ]
 }
