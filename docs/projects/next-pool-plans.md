@@ -21,7 +21,7 @@ until the user picks it. Two of them (P3, P4) need an interview first. P4 -> P5 
 | P2: the DOS target | Whatever the DOS version uses now; read when the user hands over the project and the DOSBox-X setup. |
 | P4: where WideMess Virtual works first | **The desktop** (its web view); Lite later. |
 | P4 / P6: CTW Remastered | The full package is on the user's Desktop: `VRUN_CTW_Remastered-full-package.zip` (1 GB: the working copy with its `.git`, the soundtracks and videos git leaves out, the built launcher). **It is a separate git** (github.com/ircluzar/VRUN_CTW_Remastered, `main` @ `fae13ea`): it may be brought into the BrokenNes solution, but any change to it must be pushed to its own repository. It is the JS replacement engine (`vrun/*.js`, Node 18+ and Edge / Chrome), not a Clickteam runtime; its own rules (in the package's `_claude-memory/`): performance changes handled its way, retro looks only from emulated hardware limits, no flavour text. |
-| P5: the wide backgrounds | **Repeat each room's edges** to the sides (automatic, every room, no new art). |
+| P5: the wide backgrounds | ~~Repeat each room's edges~~ **Corrected 2026-11-03: no repeating.** The play area stays centred; the sides of the 400-wide picture become the **HUD** (side HUD). |
 | P6: unvisited rooms on the map | **Like CTW Remastered** (copy what its map does). |
 | P1: the Vaults music on a Super Game Boy | **Stays on the Game Boy** channels; only the sound effects move to the SNES samples. |
 | P2: 2P in the DOS version | **Kept, on two joysticks.** |
@@ -244,7 +244,7 @@ backgrounds extended to fill the full width. Same game, same physics, same rooms
 - Checks: the SNES build byte-identical before and after the fork work (its golden hash), the WideMess build's self-test and
   continue checks, LAG 0, both builds on BrokenNes (the WideMess console) and the SNES build on the other emulators as today.
 
-**Decided.** The extended backgrounds repeat each room's edge tiles to the sides.
+**Decided (corrected 2026-11-03).** No edge repeat: the play area is centred and the sides hold the HUD. Needs: the HUD layer's map 64 wide (2 KB more video RAM inside the 64 KB the wide mode reads, where none is free today) and the room layer's wrap hidden at the sides (the windows are taken by 2P's colour window). Next: find the 2 KB (move data to the WideMess's extra video RAM or pack tighter) and lay out the side HUD.
 
 **As built (2026-11-03, partial: step 1 of 2).** SuperVRUN_dev branch `widemess` (from `weapon-mods` 8953dbf, the newest branch),
 commit 345a941: `./build.sh --widemess` builds `build-wms/supervrun.wms` from the same tree (`SV_WMS`; `tools/wmspack.py` writes
