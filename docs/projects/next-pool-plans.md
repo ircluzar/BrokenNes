@@ -246,6 +246,17 @@ backgrounds extended to fill the full width. Same game, same physics, same rooms
 
 **Decided.** The extended backgrounds repeat each room's edge tiles to the sides.
 
+**As built (2026-11-03, partial: step 1 of 2).** SuperVRUN_dev branch `widemess` (from `weapon-mods` 8953dbf, the newest branch),
+commit 345a941: `./build.sh --widemess` builds `build-wms/supervrun.wms` from the same tree (`SV_WMS`; `tools/wmspack.py` writes
+the header: map 0 LoROM, battery, feature bit 0). The game unlocks the WideMess and sets `WMCTRL` WIDE: it runs centred in the
+400-wide picture on BrokenNes's `wms` console. The SNES ROM is byte-identical (md5 `2b1389428f70a98457ef0406836341ee` before and
+after). **Not done: the edge repeat.** The sides show the 32-wide maps wrapping (the room's far side, the HUD three times).
+Blocker: a 64-wide room map needs a second 1K-word screen beside `$6C00`, and both neighbours are in use (`$6800-$6BFF` the
+HUD / shadow / visor tiles, `$7000` the boss blocks); the wide SNES modes read only the first 64 KB, and VRAM has no free 2 KB.
+Windows cannot hide the sides either (the 2P colour window HDMAs `WH0-WH3`). The design for after the space is found, and the
+resume list, are in Super VRUN's memory note `project_widemess_p5.md` and `%LOCALAPPDATA%\VRUN_Nes_Dev_work\wms_progress\p5.log`.
+No BrokenDev project was added yet.
+
 ---
 
 ## P6. Super VRUN (SNES and WideMess): back-ports from CTW Remastered
