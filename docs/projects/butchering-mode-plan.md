@@ -126,3 +126,11 @@ The point is not to copy the Glitch Boy: it is to take the concepts its research
 | Strength | One strength slider: few gentle effects at low, many strong at high; Mutate nudges the current values by that amount. |
 | Solo | An S button on each effect: only that one runs while soloed; everything else is kept and comes back on un-solo. |
 | Rolls | A history of the last ~20 rolls to step back through; any roll can be saved as a preset (seed included). |
+
+## Wave 6 scope (2026-11-04): CPU pins on the full roster
+- **Save safety first**: while Butchering mode is on, no battery save is written to disk (leaving reloads the entry state, so the save on disk stays what it was).
+- CPU pins (unsafe) on every console's cartridge bus: Game Boy, Master System / Game Gear, Genesis, SNES (NES done).
+- The sound CPUs' buses: Genesis Z80, SNES SPC700.
+- NES expansion audio (VRC6, VRC7, N163, MMC5, FDS, Sunsoft 5B) reached by the sound filters.
+- Controller lines: joypad data lines stuck / bridged.
+- SNES coprocessors (SuperFX, SA-1, DSP-1) and the DMA / HDMA controllers (SNES, Genesis).
