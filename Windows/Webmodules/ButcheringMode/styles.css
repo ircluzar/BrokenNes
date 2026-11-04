@@ -41,3 +41,5 @@ summary { cursor: pointer; font-weight: 600; color: #ffd27a; }
 .bits label { display: flex; gap: 3px; align-items: center; }
 fieldset.disabled { opacity: .45; pointer-events: none; }
 fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.freeze { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; background: #5a1a00; border: 1px solid #e07a3a; border-radius: 4px; padding: 5px 7px; margin: 5px 0; }
+summary input[type=checkbox] { vertical-align: middle; }

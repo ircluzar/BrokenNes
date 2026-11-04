@@ -222,6 +222,29 @@ public class Mapper5 : IMapper
     }
 
     // --- PPU ---
+    // Butchering mode cartridge pins (IMapper.TryPpuToChrIndex): the index PPURead below picks - ExRAM mode 1 per-tile banks,
+    // the 8x16 A / B bank split - without reading the chip.
+    public bool TryPpuToChrIndex(ushort address, out int index)
+    {
+        index = 0;
+        if (address >= 0x2000) return false;
+        int len = cart.chrBanks > 0 ? cart.chrROM.Length : cart.chrRAM.Length;
+        if (len == 0) return false;
+        if (renderingOn && !ppuFetchIsSprite && exramMode == 1)
+        {
+            int bank = (chrHigh << 6) | (exram[lastNtReadIndex & 0x3FF] & 0x3F);
+            int final = (((bank << 2) | ((address >> 10) & 0x3)) * 0x400 + (address & 0x03FF)) % len;
+            index = final < 0 ? final + len : final;
+            return true;
+        }
+        int slot = address / 0x0400; if ((uint)slot > 7) slot = 7;
+        int baseOffset = !objSize16Mode ? chrSlotOffsetsSprite[slot]
+            : renderingOn ? (ppuFetchIsSprite ? chrSlotOffsetsSprite : chrSlotOffsetsBg)[slot]
+            : (lastChrIoSprite ? chrSlotOffsetsSprite : chrSlotOffsetsBg)[slot];
+        index = baseOffset + (address & 0x03FF);
+        return (uint)index < (uint)len;
+    }
+
     public byte PPURead(ushort address)
     {
         if (address < 0x2000)

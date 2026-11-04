@@ -44,7 +44,9 @@
         detune: { on: false, rate: 25, duration: 30, value: 1 }
       },
       bands: (() => { const b = () => ({ on: false, rate: 25, width: 30, strength: 8, lifetime: 30 }); return { shift: b(), slip: b(), patternSwap: b(), nametableSwap: b(), bgOff: b(), spritesOff: b(), spriteHeight: b(), bend: b(), extra1: b(), extra2: b(), extra3: b() }; })(),
-      ram: { on: false, rate: 25, step: 1, lifetime: 60, maxProbes: 3 }
+      ram: { on: false, rate: 25, step: 1, lifetime: 60, maxProbes: 3 },
+      palette: { on: false, mode: 0, invert: false, channelSwap: false, posterize: 0, cycleFrames: 0 },
+      groupsOff: { picture: false, sprites: false, sound: false, bands: false, ram: false, palette: false }
     };
   }
 
@@ -114,10 +116,11 @@
   // The PPU, APU and SHADER menus stay usable in this mode: when a core is swapped, what the mode can reach changes with it.
   setInterval(async () => {
     if (leaving || !reach) return;
-    if (settings?.ram?.on) {
-      const st = await api.butcher.getStats().catch(() => null);
+    const st = await api.butcher.getStats().catch(() => null);
+    if (st?.success) {
       const n = document.getElementById('ramStats');
-      if (st?.success && n) n.textContent = `Profiler: ${st.watches} watched, ${st.confirmed} confirmed variables, ${st.nudging} being nudged`;
+      if (n && settings?.ram?.on) n.textContent = `Profiler: ${st.watches} watched, ${st.confirmed} confirmed variables, ${st.nudging} being nudged`;
+      watchdog(st.stillFrames || 0);
     }
     const r = await api.butcher.getReach().catch(() => null);
     if (!r?.success || !r.supported) return;
@@ -129,6 +132,19 @@
     await push();
     status(`Cores changed. PPU core: ${reach.ppuCore || '?'} · mapper ${reach.mapper}`);
   }, 1500);
+
+  // Freeze watchdog: the game's RAM has not changed for about 3 seconds - offer the entry state.
+  let freezeDismissed = false;
+  function watchdog(still) {
+    let bar = document.getElementById('freezeBar');
+    if (still < 180) { if (bar) bar.remove(); freezeDismissed = false; return; }
+    if (bar || freezeDismissed) return;
+    bar = el('div', { id: 'freezeBar', class: 'freeze' },
+      el('span', {}, 'The game looks frozen.'),
+      el('button', { type: 'button', onclick: async () => { document.getElementById('freezeBar')?.remove(); await reloadState(); } }, 'Reload State'),
+      el('button', { type: 'button', onclick: () => { freezeDismissed = true; document.getElementById('freezeBar')?.remove(); } }, 'Keep going'));
+    document.querySelector('.head')?.after(bar);
+  }
 
   async function reloadState() {
     if (!baseStateId) return;
@@ -153,11 +169,35 @@
     try { await api.navigation.goToEmulator(); } catch (e) { console.error('[ButcheringMode] back to emulator failed', e); }
   }
 
+  // What the engine gets: a group switched off in the panel goes as its all-off defaults (its own values stay in the panel).
+  function effective() {
+    const e = JSON.parse(JSON.stringify(settings));
+    const off = settings.groupsOff || {};
+    const d = defaults(reach.cartAddressLines);
+    if (off.picture) { e.consolePins = d.consolePins; e.cartPins = d.cartPins; }
+    if (off.sprites) e.sprites = d.sprites;
+    if (off.sound) e.sound = d.sound;
+    if (off.bands) e.bands = d.bands;
+    if (off.ram) e.ram = d.ram;
+    if (off.palette) e.palette = d.palette;
+    delete e.groupsOff;
+    return e;
+  }
+
+  // A section header with its group switch (clicking the switch does not fold the section).
+  function groupSummary(title, key) {
+    settings.groupsOff = settings.groupsOff || {};
+    const box = el('input', { type: 'checkbox', checked: !settings.groupsOff[key], title: 'Group on / off (keeps its settings)',
+      onclick: (e) => e.stopPropagation(),
+      onchange: (e) => { settings.groupsOff[key] = !e.target.checked; push(); } });
+    return el('summary', {}, box, ' ', title);
+  }
+
   function push() {
     clearTimeout(syncTimer);
     return new Promise(res => {
       syncTimer = setTimeout(async () => {
-        const r = await api.butcher.setSettings(settings).catch(() => null);
+        const r = await api.butcher.setSettings(effective()).catch(() => null);
         if (!r?.success) status(r?.error || 'Could not apply the controls.', true);
         res();
       }, 40);
@@ -256,7 +296,7 @@
       el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', group.data),
       slider('Flicker', group, 'flicker', 0, 100, 1),
       el('div', { class: 'fx' }, check('Bend writes too', group, 'bendWrites'), el('div', { class: 'why' }, writesText)));
-    return el('details', { open: true }, el('summary', {}, title),
+    return el('details', { open: true }, groupSummary(title, 'picture'),
       el('div', { class: 'why' }, why),
       available ? null : el('div', { class: 'off' }, unavailableText),
       el('div', { class: 'legend' }, '· connected   L stuck low   H stuck high   B bridged to the next line'),
@@ -316,7 +356,7 @@
 
     const spritesWhy = reach.spritesDma ? (reach.sprites2004 || !isNes ? '' : 'Single $2004 writes are not filtered on this PPU core (DMA is).')
       : isNes ? `Not reachable on the ${reach.ppuCore} PPU core.` : 'Not reachable on this console yet.';
-    g.append(el('details', { open: true }, el('summary', {}, 'Sprites'),
+    g.append(el('details', { open: true }, groupSummary('Sprites', 'sprites'),
       el('div', { class: 'why' }, 'Bytes on their way into sprite memory. The game resends it every frame, so a hit lasts one frame.'),
       spritesWhy ? el('div', { class: 'off' }, spritesWhy) : null,
       el('fieldset', { class: reach.spritesDma ? '' : 'disabled' },
@@ -339,7 +379,7 @@
             el('label', {}, el('input', { type: 'checkbox', checked: sp.forceBit.high, onchange: (e) => { sp.forceBit.high = e.target.checked; push(); } }), 'Set (off = clear)'))
         ]))));
 
-    g.append(el('details', { open: true }, el('summary', {}, 'Sound'),
+    g.append(el('details', { open: true }, groupSummary('Sound', 'sound'),
       el('div', { class: 'why' }, isNes ? 'Writes on their way into the APU. DMC samples are left alone.' : 'Writes on their way into the sound chip.'),
       reach.soundNote ? el('div', { class: 'off' }, reach.soundNote) : null,
       el('div', { class: 'sub' }, 'Classic'),
@@ -360,15 +400,27 @@
     const bandFx = (label, why, fx, strengthLabel) => el('div', { class: 'fx' }, check(label, fx, 'on'), el('div', { class: 'why' }, why),
       slider('Rate', fx, 'rate', 0, 100, 1), slider('Width', fx, 'width', 1, 240, 1),
       strengthLabel ? slider(strengthLabel, fx, 'strength', 1, 64, 1) : null, slider('Frames', fx, 'lifetime', 1, 600, 1));
-    g.append(el('details', { open: true }, el('summary', {}, 'Bands (scanlines)'),
+    g.append(el('details', { open: true }, groupSummary('Bands (scanlines)', 'bands'),
       el('div', { class: 'why' }, 'Timed bands of lines with one effect each; up to six at once, drifting a line now and then.'),
       reach.bands ? null : el('div', { class: 'off' }, `Not reachable on the ${reach.ppuCore} picture chip.`),
       el('fieldset', { class: reach.bands ? '' : 'disabled' },
         ...bandList(bd, bandFx))));
 
+    const pl = settings.palette;
+    g.append(el('details', { open: true }, groupSummary('Palette (display only)', 'palette'),
+      el('div', { class: 'why' }, 'The picture’s colours through a transform, as the Glitch Boy does it: the game’s palette is never touched, so fades and flashes keep working.'),
+      el('div', { class: 'fx' }, check('Palette glitch', pl, 'on'),
+        el('div', { class: 'bits' }, el('label', {}, 'Mode ', el('select', { onchange: (e) => { pl.mode = Number(e.target.value); push(); } },
+          ...['Hue +60°', 'Hue +120°', 'Complement', 'Hue +240°', 'Hue + brightness flip'].map((n, i) => el('option', { value: i, selected: pl.mode === i }, n))))),
+        el('div', { class: 'bits' },
+          el('label', {}, el('input', { type: 'checkbox', checked: pl.invert, onchange: (e) => { pl.invert = e.target.checked; push(); } }), 'Invert'),
+          el('label', {}, el('input', { type: 'checkbox', checked: pl.channelSwap, onchange: (e) => { pl.channelSwap = e.target.checked; push(); } }), 'Channel swap')),
+        slider('Posterize', pl, 'posterize', 0, 8, 1),
+        slider('Cycle frames', pl, 'cycleFrames', 0, 240, 1))));
+
     const rm = settings.ram;
 
-    g.append(el('details', { open: true }, el('summary', {}, 'RAM nudges'),
+    g.append(el('details', { open: true }, groupSummary('RAM nudges', 'ram'),
       el('div', { class: 'why' }, 'Learns which RAM bytes are live game variables (positions, timers, speeds) and nudges them a step at a time, only inside the range the game itself used. Pointers and flags are filtered out.'),
       el('div', { class: 'fx' }, check('Nudge variables', rm, 'on'),
         slider('Rate', rm, 'rate', 0, 100, 1), slider('Step', rm, 'step', 1, 8, 1),

@@ -27,6 +27,21 @@ public sealed class ButcherSettings
 	public SoundSettings Sound { get; set; } = new();
 	public BandSettings Bands { get; set; } = new();
 	public RamSettings Ram { get; set; } = new();
+	public PaletteSettings Palette { get; set; } = new();
+}
+
+/// <summary>Glitch Boy's palette glitch: the picture's colours through a transform, never the game's own palette.</summary>
+public sealed class PaletteSettings
+{
+	public bool On { get; set; }
+	/// <summary>0 hue +60, 1 hue +120, 2 complement (+180), 3 hue +240, 4 hue + brightness flip (the device's 5 non-identity modes).</summary>
+	public int Mode { get; set; }
+	public bool Invert { get; set; }
+	public bool ChannelSwap { get; set; }
+	/// <summary>0 = off, else levels per channel (2-8).</summary>
+	public int Posterize { get; set; }
+	/// <summary>Steps to the next mode every N frames (0 = hold): the device's MIDI-clock auto mode.</summary>
+	public int CycleFrames { get; set; }
 }
 
 /// <summary>Glitch Boy's organic "Probe": learn which RAM bytes are live variables and nudge them within their own range.</summary>
@@ -316,6 +331,7 @@ public sealed class Butcher
 	public bool SoundActive { get; private set; }
 	public bool BandsActive { get; private set; }
 	public bool RamActive { get; private set; }
+	public bool PaletteActive { get; private set; }
 
 	private uint rngSprites = 0x1234567u, rngSound = 0x7654321u;
 
@@ -343,6 +359,8 @@ public sealed class Butcher
 			|| bd.Extra1.On || bd.Extra2.On || bd.Extra3.On);
 		if (!BandsActive) { Array.Clear(bandLife); LineBendMask = 0; TallXor = 0; }
 		RamActive = on && settings.Ram.On;
+		PaletteActive = on && settings.Palette.On;
+		paletteLut.Clear(); paletteMode = Math.Clamp(settings.Palette.Mode, 0, 4); paletteTick = 0;
 		if (!RamActive) Array.Clear(probeLife);
 		rngSprites = 0x1234567u; rngSound = 0x7654321u; rngBands = 0x2545F491u;
 		if (!SpritesActive) { lagLeft = cloneLeft = swapLeft = forceLeft = 0; }
@@ -351,7 +369,7 @@ public sealed class Butcher
 	}
 
 	/// <summary>Nothing is on: the hooks can be detached.</summary>
-	public bool Idle => Console == null && Cart == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive;
+	public bool Idle => Console == null && Cart == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive;
 
 	public static int AddressLinesFor(int size)
 	{
@@ -878,6 +896,57 @@ public sealed class Butcher
 		}
 	}
 
+	// ===================================================================================== palette (display only)
+	// The finished picture's colours go through a cached table (a game shows few colours), so fades and flashes keep working:
+	// the transform follows whatever the game draws. Nothing the game can read changes.
+	private readonly System.Collections.Generic.Dictionary<uint, uint> paletteLut = new();
+	private int paletteMode, paletteTick;
+
+	private void PaletteFrame()
+	{
+		var ps = settings.Palette;
+		if (ps.CycleFrames > 0 && ++paletteTick >= ps.CycleFrames) { paletteTick = 0; paletteMode = (paletteMode + 1) % 5; paletteLut.Clear(); }
+	}
+
+	/// <summary>0xAARRGGBB pictures (the console sessions).</summary>
+	public void ApplyPalette(uint[] argb, int count)
+	{
+		if (!PaletteActive) return;
+		count = Math.Min(count, argb.Length);
+		for (int i = 0; i < count; i++) argb[i] = MapColour(argb[i]);
+	}
+
+	/// <summary>R, G, B, A byte pictures (the NES).</summary>
+	public void ApplyPaletteRgba(byte[] rgba)
+	{
+		if (!PaletteActive) return;
+		for (int i = 0; i + 3 < rgba.Length; i += 4)
+		{
+			uint c = 0xFF000000u | (uint)rgba[i] << 16 | (uint)rgba[i + 1] << 8 | rgba[i + 2];
+			uint m = MapColour(c);
+			rgba[i] = (byte)(m >> 16); rgba[i + 1] = (byte)(m >> 8); rgba[i + 2] = (byte)m;
+		}
+	}
+
+	private uint MapColour(uint c)
+	{
+		if (paletteLut.TryGetValue(c, out var m)) return m;
+		var ps = settings.Palette;
+		double r = (c >> 16 & 255) / 255.0, g = (c >> 8 & 255) / 255.0, b = (c & 255) / 255.0;
+		double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b)), d = max - min, h = 0, sat = max == 0 ? 0 : d / max, v = max;
+		if (d > 0) h = max == r ? ((g - b) / d + 6) % 6 : max == g ? (b - r) / d + 2 : (r - g) / d + 4;
+		h = (h + new[] { 1.0, 2.0, 3.0, 4.0, 1.0 }[paletteMode]) % 6;      // 60-degree steps; greys keep no hue
+		if (paletteMode == 4) v = (v + 0.5) % 1.0;                           // the device's luma shift
+		int k = (int)h; double f = h - k, p = v * (1 - sat), q = v * (1 - sat * f), t = v * (1 - sat * (1 - f));
+		(r, g, b) = k switch { 0 => (v, t, p), 1 => (q, v, p), 2 => (p, v, t), 3 => (p, q, v), 4 => (t, p, v), _ => (v, p, q) };
+		if (ps.ChannelSwap) (r, g, b) = (g, b, r);
+		if (ps.Invert) (r, g, b) = (1 - r, 1 - g, 1 - b);
+		if (ps.Posterize >= 2) { int n = Math.Clamp(ps.Posterize, 2, 8) - 1; r = Math.Round(r * n) / n; g = Math.Round(g * n) / n; b = Math.Round(b * n) / n; }
+		m = (c & 0xFF000000u) | (uint)Math.Clamp((int)(r * 255 + 0.5), 0, 255) << 16 | (uint)Math.Clamp((int)(g * 255 + 0.5), 0, 255) << 8 | (uint)Math.Clamp((int)(b * 255 + 0.5), 0, 255);
+		if (paletteLut.Count < 65536) paletteLut[c] = m;
+		return m;
+	}
+
 	// ===================================================================================== the SN76489 PSG (Master System / Game Gear)
 	// One port: a latch byte (1 cc t dddd: channel, type 1 = volume, low data) or a data byte (0 x dddddd: the rest of the latched
 	// tone). Volume 0 is loudest, 15 is silent. Drop-outs hold a channel's volume at 15, drone at 0; tone bytes take the bit flips,
@@ -946,8 +1015,22 @@ public sealed class Butcher
 
 	// ===================================================================================== per frame
 	/// <summary>Once per frame, before it runs: starts and ends events. <paramref name="inject"/> writes straight to the APU.</summary>
+	// The panel's freeze watchdog: frames in a row in which the game's work RAM did not change at all (a crashed or hung game
+	// stops writing; a paused one usually still ticks a counter). Read by /api/butcher/stats.
+	public int StillFrames { get; private set; }
+	private ulong lastRamHash;
+	private void WatchRam()
+	{
+		var r = ram; if (r == null) return;
+		ulong h = 1469598103934665603UL; int step = r.Length > 0x10000 ? 2 : 1;
+		for (int i = 0; i < r.Length; i += step) { h ^= r[i]; h *= 1099511628211UL; }
+		StillFrames = h == lastRamHash ? StillFrames + 1 : 0; lastRamHash = h;
+	}
+
 	public void FrameStart(Action<ushort, byte> inject)
 	{
+		WatchRam();
+		if (PaletteActive) PaletteFrame();
 		if (BandsActive) BandsFrame(); else { TallXor = 0; LineBendMask = 0; }
 		if (RamActive) RamFrame();
 		var sp = settings.Sprites;

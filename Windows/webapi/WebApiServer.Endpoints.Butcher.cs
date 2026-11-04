@@ -99,9 +99,9 @@ namespace BrokenNes.Windows.WebApi
             app.MapGet("/api/butcher/stats", () =>
             {
                 var b = ButcherHost(out _)?.Butcher;
-                if (b == null) return Results.Ok(new { success = true, watches = 0, confirmed = 0, nudging = 0 });
+                if (b == null) return Results.Ok(new { success = true, watches = 0, confirmed = 0, nudging = 0, stillFrames = 0 });
                 var (w, c, n) = b.RamStats();
-                return Results.Ok(new { success = true, watches = w, confirmed = c, nudging = n });
+                return Results.Ok(new { success = true, watches = w, confirmed = c, nudging = n, stillFrames = b.StillFrames });
             });
 
             // POST /api/butcher/off - every effect off (the hooks detach at the next frame)

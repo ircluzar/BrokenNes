@@ -1308,6 +1308,7 @@ namespace NesEmulator
 			var live = ppu.GetFrameBuffer();
 			if (presentedFrame == null || presentedFrame.Length != live.Length) presentedFrame = new byte[live.Length];
 			Buffer.BlockCopy(live, 0, presentedFrame, 0, live.Length);
+			if (Butcher is { PaletteActive: true } bp) bp.ApplyPaletteRgba(presentedFrame);   // Butchering mode's palette: the presented copy only
 			presentedValid = true;
 		}
 

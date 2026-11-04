@@ -292,11 +292,16 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
             var f = down.Render(snesPpu!, mid);     // an enhanced chip: the SNES's own 256 x 224 / 239, all its layers (the WideMess widescreen chip: 400 wide); a stock one: the NES's 256 x 240
             Array.Copy(f.Argb, frame, f.Width * f.Height);
             width = f.Width; height = f.Height; wideBridge = f.Side > 0;
+            ButcherPalette();
             return;
         }
         wideBridge = false;
         PublishNativePicture();
+        ButcherPalette();
     }
+
+    /// <summary>Butchering mode's palette: the finished picture's colours only.</summary>
+    private void ButcherPalette() { if (Butcher is { PaletteActive: true } bp) bp.ApplyPalette(frame, width * height); }
 
     /// <summary>True while the WideMess widescreen chip draws the picture (route WMS:WMSS): the frame is 400 wide with square pixels.</summary>
     private bool wideBridge;
@@ -536,6 +541,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
         if (toNes != null) { var f = toNes.Render(board, cap!); Array.Copy(f.Argb, frame, f.Width * f.Height); width = f.Width; height = f.Height; }   // an enhanced chip: 160 x 144; a stock one: 256 x 240
         else if (toSnes != null) { var f = toSnes.Render(board, cap!); Array.Copy(f, frame, Math.Min(f.Length, frame.Length)); width = 256; height = f.Length / 256; }
         else { Array.Copy(board.Ppu.FrameBuffer, frame, PPU_GB.Width * PPU_GB.Height); width = PPU_GB.Width; height = PPU_GB.Height; }
+        if (Butcher is { PaletteActive: true } bp) bp.ApplyPalette(frame, width * height);
     }
 
     public void Reset() => board.Reset();
