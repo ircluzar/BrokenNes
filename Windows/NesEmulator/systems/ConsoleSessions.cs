@@ -80,14 +80,23 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
     }
     public ButcherReach GetButcherReach() => new(
         PpuCore: "SNES PPU", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
-        SpritesDma: true, Sprites2004: false, Sound: board.Apu is APU_SFC, Bands: false, Ram: true)
+        SpritesDma: true, Sprites2004: false, Sound: ButcherApu() != null, Bands: false, Ram: true)
     { Console = "snes", ConsoleAddressLines = ButcherProfile.Snes.ConsoleLines, ConsoleDataLines = 16, AttrNames = ButcherProfile.Snes.AttrNames, Channels = ButcherProfile.Snes.Channels,
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The word-wide bus between the PPU and its two 32 KB video RAM chips: tile maps, tile graphics (D0-D7 the low chip, D8-D15 the high one).",
-      SoundNote = board.Apu is APU_SFC ? "The S-DSP's voice registers, as the SPC700 writes them (echo, sample directory and key-on are left alone)." : "Not reachable with this sound core (it plays the music without an SPC700): pick another in the APU menu." };
+      SoundNote = ButcherApu() != null ? "The S-DSP's voice registers, as the SPC700 writes them (echo, sample directory and key-on are left alone)." : board.Apu is APU_HLE ? "This sound core makes no sound (HLE only fakes the boot-time upload): nothing to bend." : "Not reachable with this sound core." };
+    /// <summary>The real SPC700 + S-DSP unit, wherever it sits: the board's own, or inside the adapter / the NES-chip bridge (the guest's own writes are bent, whatever chip plays them).</summary>
+    private APU_SFC? ButcherApu() => board.Apu switch
+    {
+        APU_SFC a => a,
+        NesEmulator.Mix.SfcApuAdapter ad => ad.Inner,
+        NesEmulator.Mix.NesApuOnSnes nb => nb.Front as APU_SFC,
+        _ => null,
+    };
+
     private void ButcherFrame()
     {
         var b = Butcher;
-        var apu = board.Apu as APU_SFC;
+        var apu = ButcherApu();
         if (b != null) { b.AttachRam(board.Wram); b.FrameStart(apu != null ? apu.ButcherDspWrite : (_, _) => { }); }
         var on = b != null && !b.Idle ? b : null;
         board.Ppu.Butcher = on; if (apu != null) apu.Butcher = on;
@@ -271,7 +280,7 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
 
     public void RunFrame()
     {
-        if (Butcher != null || board.Ppu.Butcher != null || (board.Apu as APU_SFC)?.Butcher != null) ButcherFrame();
+        if (Butcher != null || board.Ppu.Butcher != null || ButcherApu()?.Butcher != null) ButcherFrame();
         mid = null;
         if (wms != null) BeforeFrameEnhance();   // milestone 6: the console's enhancements (SnesSession.Enhance.cs)
         board.RunFrame();

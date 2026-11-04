@@ -250,7 +250,9 @@ public sealed class ButcherProfile
 	{
 		Console = "md",
 		ConsoleLines = 16,
-		AttrBits = Array.Empty<int>(), AttrNames = Array.Empty<string>(),
+		HiddenYMin = 0x100, YMin = 0, YMax = 0xFF, XMax = 0xFF,
+		AttrBits = new[] { 4, 3, 7, 6, 5 },
+		AttrNames = new[] { "V-flip", "H-flip", "Priority", "Palette 1", "Palette 0" },
 		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise", "FM 1", "FM 2", "FM 3", "FM 4", "FM 5", "FM 6" },
 		Psg = true,
 		RamWindow = 0x10000, StackPage = 0xFF,

@@ -26,14 +26,23 @@ public sealed class MdSession : IConsoleSession, IButcherHost
     }
     public ButcherReach GetButcherReach() => new(
         PpuCore: "Genesis VDP", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
-        SpritesDma: false, Sprites2004: false, Sound: Board.Sound is MdSoundUnit, Bands: false, Ram: true)
+        SpritesDma: true, Sprites2004: false, Sound: ButcherUnit() != null, Bands: false, Ram: true)
     { Console = "md", ConsoleAddressLines = ButcherProfile.Md.ConsoleLines, AttrNames = ButcherProfile.Md.AttrNames, Channels = ButcherProfile.Md.Channels,
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the VDP and its 64 KB video RAM: plane maps, tile graphics, the sprite table and the scroll table.",
-      SoundNote = Board.Sound is MdSoundUnit ? "" : "Not reachable with this sound unit: it plays the Genesis sound on another console's chip (APU menu)." };
+      SoundNote = ButcherUnit() != null ? "" : "Not reachable with this sound unit." };
+    /// <summary>The real Genesis sound unit, wherever it sits: the board's own, or inside a bridge that plays it on another chip (the guest's own writes are bent).</summary>
+    private MdSoundUnit? ButcherUnit() => Board.Sound switch
+    {
+        MdSoundUnit u => u,
+        NesEmulator.Sega.MdSoundOnNes n => n.Inner,
+        NesEmulator.Mix.MdSoundOnChip c => c.Inner,
+        _ => null,
+    };
+
     private void ButcherFrame()
     {
         var b = Butcher;
-        var unit = Board.Sound as MdSoundUnit;
+        var unit = ButcherUnit();
         if (b != null) { b.FmInject = unit != null ? unit.ButcherYmWrite : null; b.AttachRam(Board.Ram); b.FrameStart(unit != null ? unit.ButcherPsgWrite : (_, _) => { }); }
         var on = b != null && !b.Idle ? b : null;
         Board.Vdp.Butcher = on; if (unit != null) unit.Butcher = on;

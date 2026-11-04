@@ -646,6 +646,23 @@ public partial class MdVdp
     /// <summary>H32 reads a sprite's position and attributes from the table's 512 bytes modulo: the sprites the link list reaches at 64 to 79 take them from sprites 0 to 15 (their Y, size and link come from the cache of 80). Found by the second seed of the attribute cache scenes and Nemesis' sprite masking ROM (sprite 64 there is at X 64 - 128 = off the left edge). False: they are read from beyond the table.</summary>
     public static bool H32AttrWrap = true;
 
+    // Butchering mode: a byte on its way into the sprite table (8-byte entries). Y low, attributes, tile low and X low take the
+    // sprite filters; size, link and the high bits of Y / X are never touched, so the list never loops or cuts short.
+    private byte ButcherSat(int addr, byte v)
+    {
+        int rel = addr - ((Reg[5] & (H40 ? 0x7E : 0x7F)) << 9) & 0xFFFF;
+        if (rel >= (H40 ? 0x280 : 0x200)) return v;
+        int sprite = rel >> 3;
+        return (rel & 7) switch
+        {
+            1 => Butcher!.FilterSpriteField(0, sprite, v),   // Y
+            4 => Butcher!.FilterSpriteField(2, sprite, v),   // priority, palette, flips, tile bits 8-10
+            5 => Butcher!.FilterSpriteField(1, sprite, v),   // tile
+            7 => Butcher!.FilterSpriteField(3, sprite, v),   // X
+            _ => v,
+        };
+    }
+
     private void SatNote(int addr, byte v)
     {
         int rel = addr - ((Reg[5] & (H40 ? 0x7E : 0x7F)) << 9) & 0xFFFF;
@@ -673,6 +690,7 @@ public partial class MdVdp
                 int a = (int)(addr & 0xFFFF);
                 if ((a & 1) != 0) data = (ushort)(data << 8 | data >> 8);
                 a &= ~1;
+                if (Butcher is { SpritesActive: true }) data = (ushort)(ButcherSat(a, (byte)(data >> 8)) << 8 | ButcherSat(a + 1, (byte)data));
                 Vram[a] = (byte)(data >> 8); Vram[a + 1] = (byte)data;
                 SatNote(a, Vram[a]); SatNote(a + 1, Vram[a + 1]);
                 break;
