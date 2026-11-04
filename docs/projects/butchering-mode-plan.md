@@ -82,3 +82,14 @@ The point is not to copy the Glitch Boy: it is to take the concepts its research
 - **SNES**: every sound core but HLE derives from `APU_SFC`: one hook at its S-DSP data port (`$F3`), through the generic sound path with an S-DSP profile - 8 voices; drop-outs hold the voice's KOF (`$5C`) bit set and release to the game's own KOF; drone = voice volume `$x0/$x1` at `$7F`; detune / nudges on pitch low `$x2`; bit flips on the per-voice registers; every global (KON, FLG, echo buffer address, sample directory, FIR...) left alone so the SPC's RAM is never overwritten. HLE: "not reachable" in the panel.
 - **Engine**: `DropRegDefault` per profile (what the drop register holds before the game writes it); the drop list grew to 16 channels.
 - **Verified** (headless, per console: never attached vs all-off vs sound effects, twice): SNES / Genesis MD / Genesis GENS / Master System / Mark III / Game Gear / Master System FM (Phantasy Star (Japan), 13 channels): all-off bit-identical, sound changed, deterministic. Golden suite 125 / 0, Sega 46 / 0, SNES 21 / 0, SMS 26 / 0, Genesis 10 / 0. Still not checked by ear.
+
+## Wave 4 decisions (interview 2026-11-03): finish the gaps
+| Topic | Decision |
+|---|---|
+| Scope | Genesis sprites, bands everywhere, HLE + bridged sound. (MMC5 cartridge pins and the unsafe round wait.) |
+| Bands on other consoles | **Native per chip**: each console's own registers (scroll, layer enables, tile bases); the panel lists what that console supports. |
+| Extra band types | **Yes, per console** on top of the shared 8 (e.g. SNES Mode 7 matrix wobble, extra BG layers off, Genesis plane swap, GB window shift). |
+| NES bands | **All NES PPU cores** where their structure allows; partial ones marked in the panel. |
+| Bridged sound + SNES HLE | Corrupt the **guest's original register writes**, before any bridge translates them: same effects whatever chip plays them. |
+| Genesis sprite links | **Never** corrupted (the list never loops or cuts); Y, tile, attributes, X are. |
+| How | Here, one piece at a time, each verified (golden suites, per-console checks) and committed before the next. |
