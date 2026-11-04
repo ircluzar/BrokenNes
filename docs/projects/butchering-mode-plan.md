@@ -144,3 +144,12 @@ The point is not to copy the Glitch Boy: it is to take the concepts its research
 - **Controller lines** (player 1, every console): per button stuck released / stuck pressed / bridged to the next, + flicker.
 - **DMA pins**: SNES general DMA source reads (HDMA tables not yet), Genesis VDP DMA from 68000 memory. **Coprocessor pins**: SA-1 CPU bus, Super FX bus, DSP-1 data port.
 - **Verified** headless: each changes the picture / sound, all-off identical; CPU pins freeze or crash games without taking the app down. Golden 137 / 0, Sega 46 / 0, SNES 23 / 0.
+
+## Next round interview (2026-11-04): polish + gaps
+| Topic | Decision |
+|---|---|
+| Focus | Polish + gaps (capture, MIDI / VST, Lite wait). The user will test everything later (a lot changed since the last test). |
+| Presets | A good set of **built-in presets per console**: at least Gentle, Heavy, Glitch art, Broken (unsafe), plus more where a console has its own character. |
+| Built-ins | **Read-only**, marked as built-in in the list; saving under the same name makes the user's own copy. |
+| Gaps | SNES HDMA tables through the DMA pins. |
+| Sound self-check | Render short WAV clips of each sound effect per console, so the listening test is quick. |
