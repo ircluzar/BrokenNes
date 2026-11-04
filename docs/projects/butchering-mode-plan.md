@@ -67,3 +67,11 @@ and built to extend across every console.
 - **Fix**: a drop-out no longer assumes every channel was off when the game had not written its enable register since the mode attached.
 - **Verified**: full golden suite (see commit); per console in a test instance: reach, every pin fault changes the picture, off + Reload State gives the exact entry frame (hash-identical) on NES, GB, SMS, GG, Genesis and SNES. Sound still only checked by hashes / RMS, not by ear. RAM profiler confirmed variables on SMB in play; title screens give it little to learn.
 - **Still open**: Genesis sprites + FM, SNES sound, bands beyond PPU FIX, MMC5 cartridge pins, Lite.
+
+## Direction (the user, 2026-11-03)
+The point is not to copy the Glitch Boy: it is to take the concepts its research uncovered (bus pin faults, transit filters, learned-variable nudges, timed bands, safety nets) and apply them to parts the device never covered - every console's picture chips and sound chips first, and later the **unsafe areas** (CPU, RAM, VRAM writes) where bending can leave permanent bugs until a reboot (the entry savestate / Reload State is the way back).
+
+### Agreed next scope: audio on every console
+- **Genesis**: move the PSG hook to the board so every sound unit is covered, and add a YM2612 filter on both the 68000 and Z80 address/data writes (detune, operator bit flips, key-off drop-outs, total-level drone).
+- **Master System (Japan)**: a small YM2413 port filter.
+- **SNES**: a hook at each sound core's DSP register write ($F2/$F3) - pitch, volume, envelope, key-on/off - shared if the cores share a DSP class (not checked). Not the $2140-$2143 ports (they break the CPU/SPC handshake: hangs, not glitches).
