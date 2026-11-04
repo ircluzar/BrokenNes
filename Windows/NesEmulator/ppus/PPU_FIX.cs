@@ -346,6 +346,9 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 				// DMA never runs again, so even switching every effect off would not free it. At the end of sprite 0's last row,
 				// with the hit still clear and BG + sprites on, the hit is forced. Off = one null test per line.
 				if (bus.Butcher != null && scanline < 240) ButcherSprite0Guarantee();
+				// Butchering mode's bands: finish this line (a shift band rotates it), then take the next line's overrides.
+				if (bus.Butcher is { BandsActive: true } bb) ButcherBands(bb);
+				else if (bandAny) ClearBands();
 
 				// (VBlank set / NMI assert moved to scanline 241 dot 1 in the per-dot section above -
 				// firing it here meant the end of scanline 241, i.e. 340 dots late.)
@@ -486,7 +489,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			}
 			if (dot == 257)
 			{
-				bus.cartridge?.mapper?.PpuPhaseHint(true, (PPUCTRL & 0x20) != 0, true);
+				bus.cartridge?.mapper?.PpuPhaseHint(true, ((PPUCTRL ^ bandTallXor) & 0x20) != 0, true);
 				EvaluateNextLineSprites();
 			}
 			else if (dot > 257 && dot <= 320)
@@ -496,7 +499,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			}
 			else if (dot == 321)
 			{
-				bus.cartridge?.mapper?.PpuPhaseHint(false, (PPUCTRL & 0x20) != 0, true);
+				bus.cartridge?.mapper?.PpuPhaseHint(false, ((PPUCTRL ^ bandTallXor) & 0x20) != 0, true);
 			}
 		}
 		else if (dot == 257)
@@ -516,18 +519,45 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		atShiftHi = (ushort)((atShiftHi & 0xFF00) | ((bgNextAt & 2) != 0 ? 0xFF : 0x00));
 	}
 
+	// Band overrides for the line being drawn (Butcher.BandLine). All zero when no band is active.
+	private int bandMaskClear, bandPtXor, bandNtXor, bandTallXor, bandShift; private bool bandAny;
+
+	private void ClearBands() { bandMaskClear = bandPtXor = bandNtXor = bandTallXor = bandShift = 0; bandAny = false; }
+
+	private void ButcherBands(Butcher bb)
+	{
+		if (bandShift != 0 && scanline < 240 && frameBuffer != null) ShiftRow(scanline, bandShift);
+		int next = scanline + 1;
+		if (next >= 240 || (PPUMASK & 0x18) == 0) { bandMaskClear = bandPtXor = bandNtXor = bandShift = 0; bandTallXor = bb.TallXor; bandAny = bandTallXor != 0; return; }
+		bb.BandLine(next, out bandMaskClear, out bandPtXor, out bandNtXor, out bandShift, out int ySteps);
+		bandTallXor = bb.TallXor;
+		if (ySteps != 0) { int n = ((ySteps % 240) + 240) % 240; for (int i = 0; i < n; i++) IncrementY(); }
+		bandAny = true;
+	}
+
+	/// <summary>A shift band: the finished row's picture moves left by <paramref name="by"/> pixels (right when negative), wrapping.</summary>
+	private void ShiftRow(int line, int by)
+	{
+		var fb = frameBuffer!; int w = ScreenWidth;
+		by = ((by % w) + w) % w; if (by == 0) return;
+		int row = line * w * 4;
+		var tmp = new byte[w * 4];
+		Buffer.BlockCopy(fb, row, tmp, 0, w * 4);
+		for (int x = 0; x < w; x++) Buffer.BlockCopy(tmp, ((x + by) % w) * 4, fb, row + x * 4, 4);
+	}
+
 	private void ButcherSprite0Guarantee()
 	{
 		if ((PPUSTATUS & 0x40) != 0 || (PPUMASK & 0x18) != 0x18) return;
 		int y = oam[0];
 		if (y >= 0xEF) return;
-		int h = (PPUCTRL & 0x20) != 0 ? 16 : 8;
+		int h = ((PPUCTRL ^ bandTallXor) & 0x20) != 0 ? 16 : 8;
 		if (scanline == y + h) PPUSTATUS |= 0x40;
 	}
 
 	private void FetchBgNametable()
 	{
-		ushort ntAddr = (ushort)(0x2000 | (v & 0x0FFF));
+		ushort ntAddr = (ushort)(0x2000 | ((v ^ bandNtXor) & 0x0FFF));
 		if (mmc5TileHooks) bus.cartridge!.mapper.PpuNtFetch(ntAddr); // MMC5 ExRAM mode 1 tracks which tile is being fetched
 		bgNextNt = Read(ntAddr);
 	}
@@ -539,13 +569,13 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 			int mmc5Pal = bus.cartridge!.mapper.GetMmc5Mode1BgPaletteIndex();
 			if (mmc5Pal >= 0) { bgNextAt = (byte)mmc5Pal; return; }
 		}
-		byte a = Read((ushort)(0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)));
+		byte a = Read((ushort)(0x23C0 | ((v ^ bandNtXor) & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)));
 		if ((v & 0x40) != 0) a >>= 4; // bottom half of the 32x32 attribute block
 		if ((v & 0x02) != 0) a >>= 2; // right half
 		bgNextAt = (byte)(a & 0x03);
 	}
 
-	private ushort BgPatternAddress() => (ushort)(((PPUCTRL & 0x10) << 8) + bgNextNt * 16 + ((v >> 12) & 0x07));
+	private ushort BgPatternAddress() => (ushort)((((PPUCTRL ^ bandPtXor) & 0x10) << 8) + bgNextNt * 16 + ((v >> 12) & 0x07));
 
 	// Line N's sprites are chosen during line N-1 (OAM Y is the row ABOVE the sprite's first row, so a
 	// sprite is on line N when N - (y + 1) is inside its height). The pre-render line evaluates
@@ -554,7 +584,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	{
 		nSprCount = 0; nSprZeroOnLine = false;
 		if (scanline >= 239) return; // pre-render (261) and the last visible line have no next visible line
-		int h = (PPUCTRL & 0x20) != 0 ? 16 : 8;
+		int h = ((PPUCTRL ^ bandTallXor) & 0x20) != 0 ? 16 : 8;
 		for (int i = 0; i < 64; i++)
 		{
 			int row = scanline - oam[i * 4];
@@ -572,7 +602,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 
 	private void FetchSpritePattern(int slot, bool high)
 	{
-		bool tall = (PPUCTRL & 0x20) != 0;
+		bool tall = ((PPUCTRL ^ bandTallXor) & 0x20) != 0;
 		int h = tall ? 16 : 8;
 		int row = nSprRow[slot];
 		if ((nSprAttr[slot] & 0x80) != 0) row = h - 1 - row;
@@ -598,7 +628,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		var fb = frameBuffer;
 		if (fb == null || !hasCartridge) return; // no ROM: leave the test pattern alone
 
-		int mask = PPUMASK;
+		int mask = PPUMASK & ~bandMaskClear;
 		int colour;
 		if ((mask & 0x18) == 0)
 		{
@@ -937,7 +967,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	{
 		address = (ushort)(address & 0x3FFF);
 		var bb = bus.Butcher;
-		if (bb?.Console == null || address >= 0x3F00) return ReadUnbent(address);
+		if (bb == null || !bb.ConsoleBent || address >= 0x3F00) return ReadUnbent(address);
 		int a = bb.ConsoleReadAddr(address, out bool bendData);
 		if (a < 0) return ReadUnbent(address);
 		byte v = ReadUnbent((ushort)a);

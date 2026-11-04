@@ -361,7 +361,7 @@ public class PPU_LQ : IPPU, IPpuFrameClock
             case 0x0001: PPUMASK = value; break;
             case 0x0002: PPUSTATUS &= 0x7F; scrollLatch = false; break;
             case 0x0003: OAMADDR = value; break;
-            case 0x0004: OAMDATA = value; oam[OAMADDR++] = OAMDATA; break;
+            case 0x0004: OAMDATA = value; oam[OAMADDR] = bus?.Butcher is { SpritesActive: true } sb ? sb.FilterOamWrite(OAMADDR, OAMDATA) : OAMDATA; OAMADDR++; break;
             case 0x0005:
                 if (!scrollLatch) { PPUSCROLLX = value; fineX = (byte)(value & 0x07); t = (ushort)((t & 0xFFE0) | (value >> 3)); }
                 else { PPUSCROLLY = value; t = (ushort)((t & 0x8FFF) | ((value & 0x07) << 12)); t = (ushort)((t & 0xFC1F) | ((value & 0xF8) << 2)); }
@@ -374,7 +374,31 @@ public class PPU_LQ : IPPU, IPpuFrameClock
         }
     }
 
+    // Butchering mode's console pins (corruption/Butcher.cs), the same hook as PPU_FIX: off = one null test per access.
     public byte Read(ushort address)
+    {
+        address = (ushort)(address & 0x3FFF);
+        var bb = bus?.Butcher;
+        if (bb?.Console == null || address >= 0x3F00) return ReadUnbent(address);
+        int a = bb.ConsoleReadAddr(address, out bool bendData);
+        if (a < 0) return ReadUnbent(address);
+        byte v = ReadUnbent((ushort)a);
+        return bendData ? bb.ConsoleData(v) : v;
+    }
+
+    public void Write(ushort address, byte value)
+    {
+        address = (ushort)(address & 0x3FFF);
+        var bb = bus?.Butcher;
+        if (bb?.Console is { BendWrites: true } bf && address < 0x3F00)
+        {
+            int a = bb.ConsoleReadAddr(address, out bool bendData);
+            if (a >= 0) { WriteUnbent((ushort)a, bendData ? bf.Data(value) : value); return; }
+        }
+        WriteUnbent(address, value);
+    }
+
+    private byte ReadUnbent(ushort address)
     {
         address = (ushort)(address & 0x3FFF);
         if (address < 0x2000)
@@ -392,7 +416,7 @@ public class PPU_LQ : IPPU, IPpuFrameClock
         return 0;
     }
 
-    public void Write(ushort address, byte value)
+    private void WriteUnbent(ushort address, byte value)
     {
         address = (ushort)(address & 0x3FFF);
         if (address < 0x2000)

@@ -816,7 +816,7 @@ public class PPU_SPD : IPPU, IPpuFrameClock
 				break;
 			case 0x0004: // OAM Data
 				OAMDATA = value;
-				oam[OAMADDR++] = OAMDATA;
+				oam[OAMADDR] = bus?.Butcher is { SpritesActive: true } sb ? sb.FilterOamWrite(OAMADDR, OAMDATA) : OAMDATA; OAMADDR++;
 				break;
 			case 0x0005: // PPU Scroll
 				if (!scrollLatch)
@@ -856,7 +856,31 @@ public class PPU_SPD : IPPU, IPpuFrameClock
 		}
 	}
 
+	// Butchering mode's console pins (corruption/Butcher.cs), the same hook as PPU_FIX: off = one null test per access.
 	public byte Read(ushort address)
+	{
+		address = (ushort)(address & 0x3FFF);
+		var bb = bus?.Butcher;
+		if (bb?.Console == null || address >= 0x3F00) return ReadUnbent(address);
+		int a = bb.ConsoleReadAddr(address, out bool bendData);
+		if (a < 0) return ReadUnbent(address);
+		byte v = ReadUnbent((ushort)a);
+		return bendData ? bb.ConsoleData(v) : v;
+	}
+
+	public void Write(ushort address, byte value)
+	{
+		address = (ushort)(address & 0x3FFF);
+		var bb = bus?.Butcher;
+		if (bb?.Console is { BendWrites: true } bf && address < 0x3F00)
+		{
+			int a = bb.ConsoleReadAddr(address, out bool bendData);
+			if (a >= 0) { WriteUnbent((ushort)a, bendData ? bf.Data(value) : value); return; }
+		}
+		WriteUnbent(address, value);
+	}
+
+	private byte ReadUnbent(ushort address)
 	{
 		address = (ushort)(address & 0x3FFF);
 		if (address < 0x2000)
@@ -883,7 +907,7 @@ public class PPU_SPD : IPPU, IPpuFrameClock
 		return paletteRAM[mirrored];
 	}
 
-	public void Write(ushort address, byte value)
+	private void WriteUnbent(ushort address, byte value)
 	{
 		address = (ushort)(address & 0x3FFF);
 		if (address < 0x2000)

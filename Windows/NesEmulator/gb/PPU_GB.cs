@@ -506,8 +506,8 @@ public sealed class PPU_GB
             int map = (Lcdc & 0x08) != 0 ? 0x1C00 : 0x1800;
             addr = map + (((ly + Scy) & 0xFF) >> 3) * 32 + (((Scx >> 3) + fetchX) & 31);
         }
-        tileIdx = Vram[addr];
-        tileAttr = Cgb ? Vram[0x2000 + addr] : (byte)0;
+        tileIdx = VR(addr);
+        tileAttr = Cgb ? VR(0x2000 + addr) : (byte)0;
     }
 
     private byte FetchTileData(int plane)
@@ -516,7 +516,7 @@ public sealed class PPU_GB
         if ((tileAttr & 0x40) != 0) row = 7 - row;
         int addr = (Lcdc & 0x10) != 0 ? tileIdx * 16 : 0x1000 + (sbyte)tileIdx * 16;
         if ((tileAttr & 0x08) != 0) addr += 0x2000;
-        byte b = Vram[addr + row * 2 + plane];
+        byte b = VR(addr + row * 2 + plane);
         if ((tileAttr & 0x20) != 0) b = Reverse(b);
         return b;
     }
@@ -540,7 +540,7 @@ public sealed class PPU_GB
         line &= h - 1;
         int addr = tile * 16 + line * 2;
         if (Cgb && (flags & 0x08) != 0) addr += 0x2000;
-        byte lo = Vram[addr], hi = Vram[addr + 1];
+        byte lo = VR(addr), hi = VR(addr + 1);
         if ((flags & 0x20) != 0) { lo = Reverse(lo); hi = Reverse(hi); }
         int x = spriteX[k];
         int skip = x < 8 ? 8 - x : 0;
@@ -617,8 +617,12 @@ public sealed class PPU_GB
     public bool DebugVramReadBlocked => VramReadBlocked;
     public bool DebugOamWriteBlocked => OamWriteBlocked;
 
+    /// <summary>Butchering mode (corruption/Butcher.cs): its VRAM-bus pin faults. Null when off: one null test per fetch.</summary>
+    public Butcher? Butcher;
+    private byte VR(int a) => Butcher == null ? Vram[a] : Butcher.PictureRead(Vram, a);
+
     public byte ReadVram(ushort a) => VramReadBlocked ? (byte)0xFF : Vram[(a & 0x1FFF) | (Cgb || Model == GbModel.Cgb ? (vbk & 1) << 13 : 0)];
-    public void WriteVram(ushort a, byte v) { if (!VramBlocked) Vram[(a & 0x1FFF) | (Model == GbModel.Cgb ? (vbk & 1) << 13 : 0)] = v; }
+    public void WriteVram(ushort a, byte v) { if (!VramBlocked) { int i = (a & 0x1FFF) | (Model == GbModel.Cgb ? (vbk & 1) << 13 : 0); if (Butcher == null) Vram[i] = v; else Butcher.PictureWrite(Vram, i, v); } }
     /// <summary>Direct VRAM write for CGB HDMA (the transfer happens in HBlank, so blocking does not apply).</summary>
     public void DmaWriteVram(int offset, byte v) => Vram[(offset & 0x1FFF) | (Model == GbModel.Cgb ? (vbk & 1) << 13 : 0)] = v;
     public byte ReadOam(ushort a) => OamBlocked ? (byte)0xFF : a < 0xFEA0 ? Oam[a - 0xFE00] : (byte)0x00;

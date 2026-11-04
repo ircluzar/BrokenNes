@@ -308,7 +308,7 @@ public sealed class BOARD_GB : IGbCpuBus
             case 0x55: if (Model == GbModel.Cgb) StartVramDma(v); return;
             case 0x70: if (Model == GbModel.Cgb) { wramBank = v & 7; if (wramBank == 0) wramBank = 1; } return;
         }
-        if (r >= 0x10 && r <= 0x3F) { Apu.WriteRegister(r, v); return; }
+        if (r >= 0x10 && r <= 0x3F) { if (Butcher is { SoundActive: true } bs) v = bs.FilterApuWrite((ushort)r, v); Apu.WriteRegister(r, v); return; }
         if (r >= 0x40 && r <= 0x4B || r == 0x4F || r >= 0x68 && r <= 0x6C) Ppu.WriteRegister(r, v);
     }
 
@@ -387,6 +387,11 @@ public sealed class BOARD_GB : IGbCpuBus
     private ushort dmaSource;
     private byte dmaReg;
 
+    /// <summary>Butchering mode (corruption/Butcher.cs): sprite and sound filters. Null when off.</summary>
+    public Butcher? Butcher;
+    /// <summary>Butchering mode's own sound writes (drop-outs, stutter): straight to the chip, not filtered.</summary>
+    public void ButcherSoundWrite(ushort reg, byte v) => Apu.WriteRegister(reg, v);
+
     private void TickOamDma()
     {
         if (dmaActive)
@@ -395,8 +400,13 @@ public sealed class BOARD_GB : IGbCpuBus
             if (src >= 0xE000) src -= 0x2000;                  // $E0-$FF sources read the WRAM echo
             byte v = ReadBus(src, cpu: false);
             if (DebugTap is { } tap) { tap.OnRead((ushort)(dmaSource + dmaIndex), v, GbBusSource.OamDma); tap.OnWrite((ushort)(0xFE00 + dmaIndex), v, GbBusSource.OamDma); }
+            if (dmaIndex == 0 && Butcher is { SpritesActive: true } bs) bs.BeforeOamDma(Ppu.Oam);
             Ppu.Oam[dmaIndex] = v;
-            if (++dmaIndex == 0xA0) dmaActive = false;
+            if (++dmaIndex == 0xA0)
+            {
+                dmaActive = false;
+                if (Butcher is { } bb) { if (bb.SpritesActive) bb.AfterOamDma(Ppu.Oam); bb.NoteDmaRamPage(dmaSource >= 0xC000 && dmaSource < 0xE000 ? (dmaSource - 0xC000) >> 8 : -1); }
+            }
         }
         if (dmaPendingCycles > 0 && --dmaPendingCycles == 0)
         {

@@ -8,7 +8,7 @@ using NesEmulator.NullProviders;
 
 namespace NesEmulator
 {
-	public class NES
+	public class NES : IButcherHost
 	{
 		private Cartridge? cartridge;
 		private Bus? bus;
@@ -810,20 +810,23 @@ namespace NesEmulator
 			bool dma = ppu != null && ppu is not PPU_EXE && ppu is not PPU_IMG;
 			return new ButcherReach(
 				PpuCore: ppu?.CoreName ?? "",
-				ConsolePins: ppu is PPU_FIX,
+				ConsolePins: ppu is PPU_FIX or PPU_BFR or PPU_CUBE or PPU_CUBEX or PPU_EIL or PPU_FMC or PPU_LOW or PPU_LQ or PPU_SPD or PPU_ULQ,
+				ConsolePinsPartial: ppu is PPU_EIL or PPU_SPD,
 				CartPins: cart,
 				CartAddressLines: cartridge != null ? NesEmulator.Butcher.AddressLinesFor(cartridge.ChrChipSize) : 0,
 				ChrIsRam: cartridge != null && cartridge.chrBanks == 0,
 				Mapper: cartridge?.mapperID ?? -1,
 				SpritesDma: dma,
-				Sprites2004: ppu is PPU_FIX,
-				Sound: bus != null);
+				Sprites2004: ppu is not null and not PPU_EXE and not PPU_IMG,
+				Sound: bus != null,
+				Bands: ppu is PPU_FIX,
+				Ram: bus?.ram != null);
 		}
 
 		private void ButcherFrame()
 		{
 			var b = Butcher;
-			if (b != null) b.FrameStart(bus!.ButcherApuWrite);
+			if (b != null) { b.AttachRam(bus!.ram); b.FrameStart(bus!.ButcherApuWrite); }
 			if (b == null || b.Idle) { bus!.Butcher = null; if (cartridge != null) cartridge.Butcher = null; return; }
 			bus!.Butcher = b;
 			if (cartridge != null) { cartridge.Butcher = b.Cart != null ? b : null; if (bus.cartridge != null && !ReferenceEquals(bus.cartridge, cartridge)) bus.cartridge.Butcher = cartridge.Butcher; }

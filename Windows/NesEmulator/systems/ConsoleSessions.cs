@@ -316,7 +316,7 @@ public sealed partial class SnesSession : IConsoleSession
 /// <summary>A Game Boy (DMG) or Game Boy Color game: the GB board with the SM83 at its own or another console's clock,
 /// or the 65816; the picture on the Game Boy chip, any NES chip or the SNES chip; the sound on the Game Boy unit or any
 /// NES APU.</summary>
-public sealed class GbSession : IConsoleSession
+public sealed class GbSession : IConsoleSession, IButcherHost
 {
     private readonly BOARD_GB board;
     /// <summary>The game's sound unit (plugin hosts read its registers and wave RAM: APU_GB when the sound is the Game Boy unit).</summary>
@@ -470,8 +470,30 @@ public sealed class GbSession : IConsoleSession
         if (g != board.Buttons) { board.Buttons = g; board.UpdateJoypadIrq(); }
     }
 
+    // ===================================================================== Butchering mode (corruption/Butcher.cs)
+    public Butcher? Butcher { get; private set; }
+    public void ApplyButcher(ButcherSettings settings)
+    {
+        var b = Butcher ?? new Butcher { Profile = ButcherProfile.Gb };
+        b.Apply(settings, 0);
+        Butcher = b;
+    }
+    public ButcherReach GetButcherReach() => new(
+        PpuCore: "Game Boy PPU", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
+        SpritesDma: true, Sprites2004: false, Sound: true, Bands: false, Ram: true)
+    { Console = "gb", ConsoleAddressLines = ButcherProfile.Gb.ConsoleLines, AttrNames = ButcherProfile.Gb.AttrNames, Channels = ButcherProfile.Gb.Channels,
+      PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the picture chip and its video RAM: tile maps, tile graphics and sprite graphics (A13 is the Color bank line)." };
+    private void ButcherFrame()
+    {
+        var b = Butcher;
+        if (b != null) { b.AttachRam(board.Wram); b.FrameStart(board.ButcherSoundWrite); }
+        var on = b != null && !b.Idle ? b : null;
+        board.Butcher = on; board.Ppu.Butcher = on is { Console: not null } ? on : null;
+    }
+
     public void RunFrame()
     {
+        if (Butcher != null || board.Butcher != null) ButcherFrame();
         var shades = board.Ppu.DmgColors;   // the Game Boy look, live (DMG games on a DMG)
         for (int i = 0; i < 4; i++) shades[i] = GbLook.Argb(i);
         board.RunFrame();

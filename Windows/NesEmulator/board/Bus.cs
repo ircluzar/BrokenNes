@@ -681,6 +681,7 @@ public class Bus : IBus
 		if (address < 0x4000)
 		{
 			ushort reg = (ushort)(0x2000 + (address & 0x0007));
+			if (Butcher != null && reg == 0x2002) return Butcher.Sprite0Guard(ppu.ReadPPURegister(reg), ppu);
 			return ppu.ReadPPURegister(reg);
 		}
 		// Controllers are read from 0x4016 (P1) and 0x4017 (P2) on real hardware
@@ -744,6 +745,7 @@ public class Bus : IBus
 		{
 			ushort reg = (ushort)(0x2000 + (address & 0x0007));
 			ppu.WritePPURegister(reg, value);
+			if (Butcher != null && reg <= 0x2001) Butcher.NotePpuRegister(reg, value);
 			// Zero cost when nobody is watching: one null test on a reference field, on a path that
 			// is already the SLOW path (the page table sends every RAM write straight to pages[],
 			// so WriteSlow is only reached for $2000-$3FFF, $4000-$401F and cartridge space). The
@@ -835,7 +837,14 @@ public class Bus : IBus
 
 	public void FastOamDma(byte page, byte[] destOam, ref byte oamAddr)
 	{
-		if (Butcher is { SpritesActive: true } bb) { bb.BeforeOamDma(destOam); FastOamDmaCore(page, destOam, ref oamAddr); bb.AfterOamDma(destOam); return; }
+		if (Butcher is { } bb)
+		{
+			if (bb.SpritesActive) { bb.BeforeOamDma(destOam); FastOamDmaCore(page, destOam, ref oamAddr); bb.AfterOamDma(destOam); }
+			else FastOamDmaCore(page, destOam, ref oamAddr);
+			if (destOam.Length > 0) bb.NoteSprite0(destOam[0]);
+			bb.NoteDmaPage(page);
+			return;
+		}
 		FastOamDmaCore(page, destOam, ref oamAddr);
 	}
 

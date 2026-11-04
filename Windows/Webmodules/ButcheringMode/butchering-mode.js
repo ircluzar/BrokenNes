@@ -19,6 +19,7 @@
   let leaving = false;
 
   const $ = (id) => document.getElementById(id);
+  const isNesReach = () => (reach?.console || 'nes') === 'nes';
 
   function defaults(cartLines) {
     const ev = () => ({ on: false, rate: 25, duration: 30 });
@@ -41,7 +42,9 @@
         stutter: ev(), drone: ev(),
         duty: { on: false, rate: 25, duration: 30, value: 0 },
         detune: { on: false, rate: 25, duration: 30, value: 1 }
-      }
+      },
+      bands: (() => { const b = () => ({ on: false, rate: 25, width: 30, strength: 8, lifetime: 30 }); return { shift: b(), slip: b(), patternSwap: b(), nametableSwap: b(), bgOff: b(), spritesOff: b(), spriteHeight: b(), bend: b() }; })(),
+      ram: { on: false, rate: 25, step: 1, lifetime: 60, maxProbes: 3 }
     };
   }
 
@@ -105,12 +108,17 @@
     render();
     await push();
     await refreshPresets();
-    status(`Entry state saved. PPU core: ${reach.ppuCore || '?'} · mapper ${reach.mapper}`);
+    status(isNesReach() ? `Entry state saved. PPU core: ${reach.ppuCore || '?'} · mapper ${reach.mapper}` : `Entry state saved. ${reach.ppuCore}`);
   }
 
   // The PPU, APU and SHADER menus stay usable in this mode: when a core is swapped, what the mode can reach changes with it.
   setInterval(async () => {
     if (leaving || !reach) return;
+    if (settings?.ram?.on) {
+      const st = await api.butcher.getStats().catch(() => null);
+      const n = document.getElementById('ramStats');
+      if (st?.success && n) n.textContent = `Profiler: ${st.watches} watched, ${st.confirmed} confirmed variables, ${st.nudging} being nudged`;
+    }
     const r = await api.butcher.getReach().catch(() => null);
     if (!r?.success || !r.supported) return;
     const before = JSON.stringify(reach), now = JSON.stringify(r.reach);
@@ -269,19 +277,22 @@
     g.replaceChildren();
     const sp = settings.sprites, so = settings.sound;
 
-    g.append(pinGroup('Picture bus · console pins',
-      'The PPU\'s own bus, before the cartridge\'s banking: tiles, nametables and attributes.',
+    if (reach.consolePinsPartial) g.append(el('div', { class: 'off' }, `The ${reach.ppuCore} PPU core fetches tile graphics through its own fast path: console pins reach its nametables and $2007, not every tile fetch (cartridge pins reach them).`));
+    const isNes = (reach.console || 'nes') === 'nes';
+    g.append(pinGroup(reach.pinsTitle || 'Picture bus · console pins',
+      reach.pinsWhy || '',
       settings.consolePins, reach.consolePins,
-      `Not reachable on the ${reach.ppuCore} PPU core (console pins need PPU FIX).`,
-      'PPU writes ($2007 and CHR-RAM) land bent too, so the damage stays until Reload State.'));
+      `Not reachable on the ${reach.ppuCore} PPU core (it has no PPU bus to bend).`,
+      isNes ? 'PPU writes ($2007 and CHR-RAM) land bent too, so the damage stays until Reload State.'
+            : 'Writes to video RAM land bent too, so the damage stays until Reload State.'));
 
-    g.append(pinGroup(`Picture bus · cartridge pins (${reach.chrIsRam ? 'CHR-RAM' : 'CHR-ROM'}, ${reach.cartAddressLines} address lines)`,
+    if (isNes) g.append(pinGroup(`Picture bus · cartridge pins (${reach.chrIsRam ? 'CHR-RAM' : 'CHR-ROM'}, ${reach.cartAddressLines} address lines)`,
       'The CHR chip\'s own pins, after the mapper\'s banking: only tile graphics.',
       settings.cartPins, reach.cartPins,
       `This cartridge (mapper ${reach.mapper}) does not expose its CHR chip yet.`,
       reach.chrIsRam ? 'Writes to CHR-RAM land bent too, so the damage stays until Reload State.' : 'CHR-ROM cannot be written: this has no effect here.'));
 
-    const spritesWhy = reach.spritesDma ? (reach.sprites2004 ? '' : 'Single $2004 writes are not filtered on this PPU core (DMA is).')
+    const spritesWhy = reach.spritesDma ? (reach.sprites2004 || !isNes ? '' : 'Single $2004 writes are not filtered on this PPU core (DMA is).')
       : `Not reachable on the ${reach.ppuCore} PPU core.`;
     g.append(el('details', { open: true }, el('summary', {}, 'Sprites'),
       el('div', { class: 'why' }, 'Bytes on their way into sprite memory. The game resends it every frame, so a hit lasts one frame.'),
@@ -292,7 +303,7 @@
         rateFx('Y jitter', 'Hidden sprites stay hidden.', sp.yJitter, [slider('Range px', sp.yJitter, 'range', 1, 64, 1)]),
         rateFx('Tile ±1', 'The neighbouring tile: wrong body part or animation frame.', sp.tile),
         el('div', { class: 'fx' }, el('label', { class: 'name' }, 'Attribute flips'),
-          bits(['V-flip', 'H-flip', 'Behind BG', 'Palette 1', 'Palette 0'], sp.attr.bits), slider('Rate', sp.attr, 'rate', 0, 100, 1)),
+          bits(reach.attrNames || ['V-flip', 'H-flip', 'Behind BG', 'Palette 1', 'Palette 0'], sp.attr.bits), slider('Rate', sp.attr, 'rate', 0, 100, 1)),
         el('div', { class: 'sub' }, 'Organic (events)'),
         eventFx('Group lag', 'A group of 8 sprites keeps last frame\'s bytes.', sp.groupLag),
         eventFx('Clones', 'Sprites copy the one two places back.', sp.clone),
@@ -307,19 +318,44 @@
         ]))));
 
     g.append(el('details', { open: true }, el('summary', {}, 'Sound'),
-      el('div', { class: 'why' }, 'Writes on their way into the APU. DMC samples are left alone.'),
+      el('div', { class: 'why' }, isNes ? 'Writes on their way into the APU. DMC samples are left alone.' : 'Writes on their way into the sound chip. Power and wave RAM are left alone.'),
       el('div', { class: 'sub' }, 'Classic'),
       el('div', { class: 'fx' }, el('label', { class: 'name' }, 'Bit flips (pitch / volume / envelope bits)'),
         bits(['Bit 0', 'Bit 1', 'Bit 2', 'Bit 3', 'Bit 4'], so.bitFlip.bits), slider('Rate', so.bitFlip, 'rate', 0, 100, 1)),
       rateFx('Detune ±1', 'Small pitch nudges on period writes.', so.nudge),
       el('div', { class: 'fx' }, el('label', { class: 'name' }, 'Channel drop-outs'),
         el('div', { class: 'why' }, 'A channel is switched off, then back on; it stays silent until its next note.'),
-        bits(['Pulse 1', 'Pulse 2', 'Triangle', 'Noise', 'DMC'], so.drops.channels),
+        bits(reach.channels || ['Pulse 1', 'Pulse 2', 'Triangle', 'Noise', 'DMC'], so.drops.channels),
         slider('Rate', so.drops, 'rate', 0, 100, 1), slider('Frames', so.drops, 'duration', 1, 600, 1)),
       el('div', { class: 'sub' }, 'Organic (events)'),
       eventFx('Stutter', 'Older register writes are replayed: notes and arpeggios repeat.', so.stutter),
-      eventFx('Drone', 'Pulse and noise forced to constant, full volume.', so.drone),
+      eventFx('Drone', 'Channels forced to constant, full volume.', so.drone),
       eventFx('Duty force', 'Both pulse channels forced to one duty.', so.duty, [slider('Duty', so.duty, 'value', 0, 3, 1)]),
       eventFx('Detune', 'Period low byte XORed: wrong notes.', so.detune, [slider('Amount', so.detune, 'value', 1, 255, 1)])));
+
+    const bd = settings.bands;
+    const bandFx = (label, why, fx, strengthLabel) => el('div', { class: 'fx' }, check(label, fx, 'on'), el('div', { class: 'why' }, why),
+      slider('Rate', fx, 'rate', 0, 100, 1), slider('Width', fx, 'width', 1, 240, 1),
+      strengthLabel ? slider(strengthLabel, fx, 'strength', 1, 64, 1) : null, slider('Frames', fx, 'lifetime', 1, 600, 1));
+    g.append(el('details', { open: true }, el('summary', {}, 'Bands (scanlines)'),
+      el('div', { class: 'why' }, 'Timed bands of lines with one effect each; up to six at once, drifting a line now and then.'),
+      reach.bands ? null : el('div', { class: 'off' }, isNes ? `Bands need the PPU FIX core (now ${reach.ppuCore}).` : 'Bands are NES-only for now (PPU FIX).'),
+      el('fieldset', { class: reach.bands ? '' : 'disabled' },
+        bandFx('Shift', 'The band slides sideways.', bd.shift, 'Pixels'),
+        bandFx('Slip', 'The picture below the band drops by some rows.', bd.slip, 'Rows'),
+        bandFx('Pattern swap', 'The band draws from the other pattern table.', bd.patternSwap),
+        bandFx('Nametable swap', 'The band shows the neighbouring screen.', bd.nametableSwap),
+        bandFx('Background off', 'A black band.', bd.bgOff),
+        bandFx('Sprites off', 'Sprites vanish inside the band.', bd.spritesOff),
+        bandFx('Sprite height', 'Sprites switch 8 / 16 pixels tall for the whole frame.', bd.spriteHeight),
+        bandFx('Bend', 'Address lines grounded inside the band only.', bd.bend, 'Lines'))));
+
+    const rm = settings.ram;
+    g.append(el('details', { open: true }, el('summary', {}, 'RAM nudges'),
+      el('div', { class: 'why' }, 'Learns which RAM bytes are live game variables (positions, timers, speeds) and nudges them a step at a time, only inside the range the game itself used. Pointers and flags are filtered out.'),
+      el('div', { class: 'fx' }, check('Nudge variables', rm, 'on'),
+        slider('Rate', rm, 'rate', 0, 100, 1), slider('Step', rm, 'step', 1, 8, 1),
+        slider('Frames', rm, 'lifetime', 1, 600, 1), slider('At once', rm, 'maxProbes', 1, 8, 1),
+        el('div', { id: 'ramStats', class: 'why' }, 'Profiler: learning…'))));
   }
 })();
