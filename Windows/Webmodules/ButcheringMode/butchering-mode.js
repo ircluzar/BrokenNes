@@ -67,6 +67,7 @@
     };
     const out = merge(d, s);
     out.enabled = true;
+    if (s && s.seed !== undefined) out.seed = s.seed;
     return out;
   }
 
@@ -175,9 +176,15 @@
 
   // What the engine gets: a group switched off in the panel goes as its all-off defaults (its own values stay in the panel).
   function effective() {
+    const d = defaults(reach.cartAddressLines);
+    if (solo?.path) {
+      const only = JSON.parse(JSON.stringify(d));
+      setPath(only, solo.path, JSON.parse(JSON.stringify(getPath(settings, solo.path))));
+      delete only.groupsOff;
+      return only;
+    }
     const e = JSON.parse(JSON.stringify(settings));
     const off = settings.groupsOff || {};
-    const d = defaults(reach.cartAddressLines);
     if (off.picture) { e.consolePins = d.consolePins; e.cartPins = d.cartPins; }
     if (off.sprites) e.sprites = d.sprites;
     if (off.sound) e.sound = d.sound;
@@ -195,7 +202,9 @@
     const box = el('input', { type: 'checkbox', checked: !settings.groupsOff[key], title: 'Group on / off (keeps its settings)',
       onclick: (e) => e.stopPropagation(),
       onchange: (e) => { settings.groupsOff[key] = !e.target.checked; push(); } });
-    return el('summary', {}, box, ' ', title);
+    const sm = el('summary', {}, box, ' ', title);
+    queueMicrotask(() => { if (sm.parentElement) sm.parentElement.dataset.tab = key; });
+    return sm;
   }
 
   function push() {
@@ -268,9 +277,37 @@
   }
 
   function check(label, obj, key) {
-    return el('label', { class: 'name' },
+    const l = el('label', { class: 'name' },
       el('input', { type: 'checkbox', checked: !!obj[key], onchange: (e) => { obj[key] = e.target.checked; push(); } }), label);
+    return key === 'on' ? el('div', { class: 'namerow' }, l, soloBtn(obj, label)) : l;
   }
+
+  // ---------------------------------------------------------------- solo
+  // Only the soloed effect is sent; everything else stays in the panel and comes back on un-solo.
+  let solo = null;   // { path, label }
+  function pathOf(target, node = settings, path = '') {
+    if (node === target) return path;
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return null;
+    for (const k of Object.keys(node)) { const r = pathOf(target, node[k], path ? path + '.' + k : k); if (r !== null) return r; }
+    return null;
+  }
+  function soloBtn(obj, label) {
+    return el('button', { type: 'button', class: 'solo', title: 'Solo: only this effect runs (click again to un-solo)',
+      onclick: (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const path = pathOf(obj);
+        solo = solo && solo.path === path ? null : { path, label };
+        paintSolo(); push();
+        status(solo ? `Solo: ${label}` : 'Solo off: every effect back.');
+      } }, 'S');
+  }
+  function paintSolo() {
+    document.querySelectorAll('button.solo').forEach(b => b.classList.remove('on'));
+    if (!solo) return;
+    document.querySelectorAll('button.solo').forEach(b => { if (b.closest('.namerow')?.querySelector('label')?.textContent === solo.label) b.classList.add('on'); });
+  }
+  function getPath(o, path) { return path.split('.').reduce((x, k) => x?.[k], o); }
+  function setPath(o, path, v) { const ks = path.split('.'); const last = ks.pop(); const t = ks.reduce((x, k) => x[k], o); t[last] = v; }
 
   function bits(names, arr) {
     return el('div', { class: 'bits' }, ...names.map((n, i) => el('label', {},
@@ -338,6 +375,38 @@
     return out;
   }
 
+  // ---------------------------------------------------------------- tabs + search
+  const TABS = [['picture', 'Picture'], ['sprites', 'Sprites'], ['sound', 'Sound'], ['bands', 'Bands'], ['palette', 'Palette'], ['ram', 'RAM'], ['unsafe', 'Unsafe']];
+  let activeTab = (() => { try { return localStorage.getItem('butcher.tab') || 'picture'; } catch { return 'picture'; } })();
+  let query = '';
+  function tabify() {
+    const g = $('groups');
+    let key = 'picture';
+    for (const c of g.children) { const sm = c.querySelector(':scope > summary [data-group]') || c.querySelector(':scope > summary'); if (c.tagName === 'DETAILS') { key = c.dataset.tab || key; c.open = true; } c.dataset.tab = key; }
+    let bar = $('tabs');
+    if (!bar) {
+      bar = el('div', { id: 'tabs', class: 'tabs' });
+      const search = el('input', { id: 'search', type: 'search', placeholder: 'Search effects…', 'aria-label': 'Search effects',
+        oninput: (e) => { query = e.target.value.trim().toLowerCase(); applyTabs(); } });
+      $('groups').before(bar, search);
+    }
+    bar.replaceChildren(...TABS.map(([k, n]) => el('button', { type: 'button', class: 'tab' + (k === activeTab ? ' on' : '') + (k === 'unsafe' ? ' red' : ''),
+      onclick: () => { activeTab = k; try { localStorage.setItem('butcher.tab', k); } catch { } $('search').value = ''; query = ''; tabify(); } }, n)));
+    applyTabs();
+  }
+  function applyTabs() {
+    const g = $('groups');
+    for (const c of g.children) {
+      if (!query) { c.style.display = c.dataset.tab === activeTab ? '' : 'none'; c.querySelectorAll('.fx').forEach(f => f.style.display = ''); continue; }
+      let hit = false;
+      c.querySelectorAll('.fx').forEach(f => { const m = f.textContent.toLowerCase().includes(query); f.style.display = m ? '' : 'none'; hit ||= m; });
+      const own = (c.querySelector(':scope > summary')?.textContent || '').toLowerCase().includes(query);
+      if (own) c.querySelectorAll('.fx').forEach(f => f.style.display = '');
+      c.style.display = hit || own ? '' : 'none';
+    }
+    document.querySelectorAll('#tabs .tab').forEach(b => b.style.opacity = query ? '.5' : '');
+  }
+
   function render() {
     const g = $('groups');
     g.replaceChildren();
@@ -368,7 +437,7 @@
         rateFx('X jitter', 'Sprites shake sideways and split apart.', sp.xJitter, [slider('Range px', sp.xJitter, 'range', 1, 64, 1)]),
         rateFx('Y jitter', 'Hidden sprites stay hidden.', sp.yJitter, [slider('Range px', sp.yJitter, 'range', 1, 64, 1)]),
         rateFx('Tile ±1', 'The neighbouring tile: wrong body part or animation frame.', sp.tile),
-        el('div', { class: 'fx' }, el('label', { class: 'name' }, 'Attribute flips'),
+        el('div', { class: 'fx' }, el('div', { class: 'namerow' }, el('label', { class: 'name' }, 'Attribute flips'), soloBtn(sp.attr, 'Attribute flips')),
           bits(reach.attrNames || ['V-flip', 'H-flip', 'Behind BG', 'Palette 1', 'Palette 0'], sp.attr.bits), slider('Rate', sp.attr, 'rate', 0, 100, 1)),
         el('div', { class: 'sub' }, 'Organic (events)'),
         eventFx('Group lag', 'A group of 8 sprites keeps last frame\'s bytes.', sp.groupLag),
@@ -387,10 +456,10 @@
       el('div', { class: 'why' }, isNes ? 'Writes on their way into the APU. DMC samples are left alone.' : 'Writes on their way into the sound chip.'),
       reach.soundNote ? el('div', { class: 'off' }, reach.soundNote) : null,
       el('div', { class: 'sub' }, 'Classic'),
-      el('div', { class: 'fx' }, el('label', { class: 'name' }, 'Bit flips (pitch / volume / envelope bits)'),
+      el('div', { class: 'fx' }, el('div', { class: 'namerow' }, el('label', { class: 'name' }, 'Bit flips (pitch / volume / envelope bits)'), soloBtn(so.bitFlip, 'Bit flips (pitch / volume / envelope bits)')),
         bits(['Bit 0', 'Bit 1', 'Bit 2', 'Bit 3', 'Bit 4'], so.bitFlip.bits), slider('Rate', so.bitFlip, 'rate', 0, 100, 1)),
       rateFx('Detune ±1', 'Small pitch nudges on period writes.', so.nudge),
-      el('div', { class: 'fx' }, el('label', { class: 'name' }, 'Channel drop-outs'),
+      el('div', { class: 'fx' }, el('div', { class: 'namerow' }, el('label', { class: 'name' }, 'Channel drop-outs'), soloBtn(so.drops, 'Channel drop-outs')),
         el('div', { class: 'why' }, 'A channel is switched off, then back on; it stays silent until its next note.'),
         bits(reach.channels || ['Pulse 1', 'Pulse 2', 'Triangle', 'Noise', 'DMC'], so.drops.channels),
         slider('Rate', so.drops, 'rate', 0, 100, 1), slider('Frames', so.drops, 'duration', 1, 600, 1)),
@@ -454,5 +523,99 @@
         slider('Rate', rm, 'rate', 0, 100, 1), slider('Step', rm, 'step', 1, 8, 1),
         slider('Frames', rm, 'lifetime', 1, 600, 1), slider('At once', rm, 'maxProbes', 1, 8, 1),
         el('div', { id: 'ramStats', class: 'why' }, 'Profiler: learning…'))));
+    queueMicrotask(() => { tabify(); paintSolo(); });
   }
+
+  // ---------------------------------------------------------------- randomize / mutate
+  // Seeded (mulberry32), so a roll can be saved with its seed and come back the same. One strength slider: few gentle
+  // effects at low, many strong ones at high. Unsafe effects only when "include unsafe" is ticked.
+  let strength = 35, includeUnsafe = false, history = [], historyAt = -1;
+  function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  function candidates(st) {
+    const c = [];
+    const sp = st.sprites, so = st.sound, bd = st.bands;
+    if (reach.spritesDma) for (const k of ['xJitter', 'yJitter', 'tile', 'groupLag', 'clone', 'fieldSwap', 'forceBit']) c.push(['fx', sp[k]]);
+    if (reach.spritesDma && (reach.attrNames || []).length) c.push(['bits', sp.attr, 'bits']);
+    if (reach.sound !== false) { c.push(['bits', so.bitFlip, 'bits'], ['fx', so.nudge], ['bits', so.drops, 'channels'], ['fx', so.stutter], ['fx', so.drone], ['fx', so.detune]); if (isNesReach()) c.push(['fx', so.duty]); }
+    if (reach.bands) { for (const k of (reach.bandKinds || [])) if (bd[k]) c.push(['fx', bd[k]]); (reach.extraBands || []).forEach((_, i) => c.push(['fx', bd['extra' + (i + 1)]])); }
+    c.push(['fx', st.palette]);
+    if (reach.ram) c.push(['fx', st.ram]);
+    if (reach.consolePins) c.push(['pins', st.consolePins]);
+    if (isNesReach() && reach.cartPins) c.push(['pins', st.cartPins]);
+    if (includeUnsafe) { c.push(['fx', st.unsafe.ramRot]); if (reach.vramRot !== false) c.push(['fx', st.unsafe.vramRot]); if (reach.cpuPins) c.push(['pins', st.unsafe.cpuPins]); }
+    return c;
+  }
+  function turnOn(kind, fx, r, k, listKey) {
+    const amt = 0.15 + 0.85 * k;
+    if (kind === 'pins') { const n = 1 + Math.floor(r() * (1 + 3 * k)); for (let i = 0; i < n; i++) fx.address[Math.floor(r() * fx.address.length)] = 1 + Math.floor(r() * 3); fx.flicker = Math.round(r() * 60 * (1 - k)); return; }
+    if (kind === 'bits') { const arr = fx[listKey]; const len = listKey === 'channels' ? (reach.channels || []).length : listKey === 'bits' && fx === settings.sprites?.attr ? (reach.attrNames || []).length : 5; for (let i = 0; i < Math.max(1, len); i++) arr[i] = r() < 0.5; if (!arr.some(Boolean)) arr[0] = true; }
+    else fx.on = true;
+    if ('rate' in fx) fx.rate = Math.round(10 + 85 * amt * r());
+    if ('range' in fx) fx.range = Math.max(1, Math.round(2 + 30 * amt * r()));
+    if ('duration' in fx) fx.duration = Math.round(5 + 120 * r());
+    if ('width' in fx) fx.width = Math.max(1, Math.round(4 + 100 * amt * r()));
+    if ('strength' in fx) fx.strength = Math.max(1, Math.round(2 + 40 * amt * r()));
+    if ('lifetime' in fx) fx.lifetime = Math.round(10 + 150 * r());
+    if ('mode' in fx && 'posterize' in fx) { fx.mode = Math.floor(r() * 5); fx.invert = r() < 0.2; fx.channelSwap = r() < 0.2; fx.posterize = r() < 0.2 ? 2 + Math.floor(r() * 5) : 0; }
+    if ('bits' in fx && typeof fx.bits === 'number') fx.bits = 1 + Math.floor(r() * 8 * amt);
+    if ('value' in fx && 'duration' in fx) fx.value = fx === settings.sound?.duty ? Math.floor(r() * 4) : 1 + Math.floor(r() * 20);
+  }
+  function randomize() {
+    const seed = (Math.random() * 4294967296) >>> 0, r = rng(seed), k = strength / 100;
+    const keepOff = settings.groupsOff;
+    settings = defaults(reach.cartAddressLines); settings.groupsOff = keepOff; settings.seed = seed;
+    const c = candidates(settings);
+    const n = Math.max(1, Math.round(1 + k * Math.min(10, c.length - 1)));
+    for (let i = 0; i < n && c.length; i++) { const [kind, fx, lk] = c.splice(Math.floor(r() * c.length), 1)[0]; turnOn(kind, fx, r, k, lk); }
+    record(`Roll #${seed.toString(16)} (strength ${strength})`);
+  }
+  function mutate() {
+    const seed = (Math.random() * 4294967296) >>> 0, r = rng(seed), k = strength / 100;
+    const nudge = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v + (r() * 2 - 1) * k * (hi - lo) * 0.5)));
+    for (const [kind, fx, lk] of candidates(settings)) {
+      const on = kind === 'pins' ? fx.address.some(Boolean) : kind === 'bits' ? fx[lk].some(Boolean) : fx.on;
+      if (!on) { if (r() < k * 0.15) turnOn(kind, fx, r, k, lk); continue; }
+      if (r() < k * 0.1) { if (kind === 'pins') fx.address.fill(0); else if (kind === 'bits') fx[lk].fill(false); else fx.on = false; continue; }
+      if (kind === 'pins') { if (r() < k) fx.address[Math.floor(r() * fx.address.length)] = Math.floor(r() * 4); continue; }
+      if ('rate' in fx) fx.rate = nudge(fx.rate, 0, 100);
+      if ('range' in fx) fx.range = nudge(fx.range, 1, 64);
+      if ('duration' in fx) fx.duration = nudge(fx.duration, 1, 600);
+      if ('width' in fx) fx.width = nudge(fx.width, 1, 240);
+      if ('strength' in fx) fx.strength = nudge(fx.strength, 1, 64);
+    }
+    settings.seed = seed;
+    record(`Mutation #${seed.toString(16)} (strength ${strength})`);
+  }
+  function record(label) {
+    history = history.slice(0, historyAt + 1);
+    history.push({ label, settings: JSON.parse(JSON.stringify(settings)) });
+    if (history.length > 20) history.shift();
+    historyAt = history.length - 1;
+    solo = null; render(); push(); paintHistory();
+    status(label);
+  }
+  function stepHistory(d) {
+    const i = historyAt + d;
+    if (i < 0 || i >= history.length) return;
+    historyAt = i; settings = fit(JSON.parse(JSON.stringify(history[i].settings)));
+    solo = null; render(); push(); paintHistory(); status(history[i].label);
+  }
+  function paintHistory() {
+    const n = $('histLabel'); if (n) n.textContent = history.length ? `${historyAt + 1} / ${history.length}` : '—';
+    const b = $('histBack'), f = $('histFwd'); if (b) b.disabled = historyAt <= 0; if (f) f.disabled = historyAt >= history.length - 1;
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    const head = document.querySelector('.head'); if (!head) return;
+    const out = el('output', {}, String(strength));
+    head.append(
+      el('div', { class: 'row roll' },
+        el('button', { type: 'button', onclick: randomize, title: 'A new random butcher' }, 'Randomize'),
+        el('button', { type: 'button', onclick: mutate, title: 'Nudge the current settings' }, 'Mutate'),
+        el('button', { id: 'histBack', type: 'button', onclick: () => stepHistory(-1), title: 'Previous roll', disabled: true }, '\u25C0'),
+        el('span', { id: 'histLabel', class: 'why' }, '\u2014'),
+        el('button', { id: 'histFwd', type: 'button', onclick: () => stepHistory(1), title: 'Next roll', disabled: true }, '\u25B6')),
+      el('div', { class: 'slider' }, el('span', {}, 'Strength'),
+        el('input', { type: 'range', min: 0, max: 100, step: 1, value: strength, 'aria-label': 'Randomize strength', oninput: (e) => { strength = Number(e.target.value); out.textContent = String(strength); } }), out),
+      el('label', { class: 'name unsafeopt' }, el('input', { type: 'checkbox', onchange: (e) => { includeUnsafe = e.target.checked; } }), 'Include unsafe effects in rolls'));
+  });
 })();

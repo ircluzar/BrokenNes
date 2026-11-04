@@ -45,3 +45,13 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 summary input[type=checkbox] { vertical-align: middle; }
 details.unsafe { border-color: #a33; background: rgba(120, 0, 0, .18); }
 details.unsafe > summary { color: #ff8a8a; }
+.tabs { display: flex; flex-wrap: wrap; gap: 3px; margin: 6px 0 4px; }
+.tab { padding: 2px 8px; border-radius: 10px; }
+.tab.on { background: #5a3a00; border-color: #ffd27a; color: #ffd27a; }
+.tab.red { border-color: #a33; }
+#search { width: 100%; margin-bottom: 4px; }
+.namerow { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+button.solo { padding: 0 6px; font-size: 10px; line-height: 16px; border-radius: 8px; }
+button.solo.on { background: #1f6a2a; border-color: #6fe07a; color: #fff; }
+.roll { margin-top: 4px; }
+.unsafeopt { color: #e88; font-size: 11px; }
