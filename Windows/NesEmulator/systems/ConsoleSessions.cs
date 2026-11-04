@@ -85,7 +85,7 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
       PadOrder = Butcher.PadSnes, PadNames = new[] { "Up", "Down", "Left", "Right", "B", "Y", "Select", "Start", "A", "X", "L", "R" },
       DmaLines = 24, DmaDataLines = 8,
       CoproName = board.Coprocessor switch { SA1_SFC => "SA-1", GSU_SFC => "Super FX", DSP1_SFC => "DSP-1", _ => "" },
-      SoundCpuLines = ButcherApu() != null ? 16 : 0, SoundCpuTitle = "Sound CPU bus · SPC700 over its 64 KB ARAM (A0-A15, D0-D7)",
+      SoundCpuLines = ButcherApu() != null ? 16 : 0, SoundBusLines = 7, SampleLines = 16, SoundRam = ButcherApu() != null, SamplePinsTitle = "Sample fetch · BRR reads from ARAM (A0-A15, D0-D7)", SoundCpuTitle = "Sound CPU bus · SPC700 over its 64 KB ARAM (A0-A15, D0-D7)",
       Console = "snes", ConsoleAddressLines = ButcherProfile.Snes.ConsoleLines, ConsoleDataLines = 16, AttrNames = ButcherProfile.Snes.AttrNames, Channels = ButcherProfile.Snes.Channels,
       BandKinds = new[] { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spritesOff", "bend" },
       ExtraBands = new[] { "Mode 7 wobble|The Mode 7 matrix is pushed out of shape inside the band.", "BG mode flip|The band is drawn in another background mode.", "Colour math flip|Colour addition becomes subtraction inside the band." },
@@ -104,9 +104,14 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
     {
         var b = Butcher;
         var apu = ButcherApu();
-        if (b != null) { b.AttachRam(board.Wram); b.AttachVramWords(board.Ppu.Vram); b.FrameStart(apu != null ? apu.ButcherDspWrite : (_, _) => { }); }
+        if (b != null)
+        {
+            b.AttachRam(board.Wram); b.AttachVramWords(board.Ppu.Vram); b.AttachSoundRam(apu?.Aram);
+            b.EchoInject = apu != null ? (r, v) => apu.ButcherDspWrite((ushort)r, v) : null; b.DspReadReg = apu != null ? r => apu.Dsp.Read(r) : null;
+            b.FrameStart(apu != null ? apu.ButcherDspWrite : (_, _) => { });
+        }
         var on = b != null && !b.Idle ? b : null;
-        board.Ppu.Butcher = on; if (apu != null) apu.Butcher = on;
+        board.Ppu.Butcher = on; if (apu != null) { apu.Butcher = on; apu.Dsp.Butcher = on; }
         board.ButcherCpu = on is { CpuPins: not null } || on is { Dma: not null } ? on : null;
         switch (board.Coprocessor) { case SA1_SFC sa: sa.Butcher = on; break; case GSU_SFC g: g.Butcher = on; break; case DSP1_SFC d: d.Butcher = on; break; }
     }
@@ -351,7 +356,7 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
     /// <summary>256 for a SNES picture (a 512-wide hi-res frame shows at 256); 400 for a WideMess wide frame, whose pixels are square.</summary>
     public int DisplayWidth => wideBridge || (width == PPU_WMS.WideWidth && wms != null) ? width : 256;
     public int SampleRate => board.Apu.SampleRate;
-    public int ReadSamples(short[] buffer) => board.Apu.ReadSamples(buffer);
+    public int ReadSamples(short[] buffer) { int n = board.Apu.ReadSamples(buffer); if (Butcher is { DacActive: true } bd) bd.DacShorts(buffer.AsSpan(0, n), 2); return n; }
     public bool HasBattery => board.Cart.HasBattery && board.Cart.Sram.Length > 0;
     public byte[] ExportSave() => (byte[])board.Cart.Sram.Clone();
     public void ImportSave(byte[] data) => Array.Copy(data, board.Cart.Sram, Math.Min(data.Length, board.Cart.Sram.Length));
@@ -531,15 +536,17 @@ public sealed class GbSession : IConsoleSession, IButcherHost
         SpritesDma: true, Sprites2004: false, Sound: true, Bands: true, Ram: true)
     { ExtraBands = new[] { "Window off|The window layer vanishes inside the band.", "Window shift|The window slides sideways inside the band.", "Window map swap|The window draws from the other tile map." },
       CpuPins = true, CpuAddressLines = 15, CpuDataLines = 8, CpuPinsTitle = "CPU bus · cartridge pins (A0-A14, D0-D7; MBC writes with bend writes)",
+      SoundBusLines = 6, SampleLines = 4, SoundRam = board.Apu is APU_GB, SamplePinsTitle = "Sample fetch · wave RAM (A0-A3, D0-D7)",
       PadOrder = Butcher.PadGb, PadNames = new[] { "A", "B", "Select", "Start", "Up", "Down", "Left", "Right" },
       Console = "gb", ConsoleAddressLines = ButcherProfile.Gb.ConsoleLines, AttrNames = ButcherProfile.Gb.AttrNames, Channels = ButcherProfile.Gb.Channels,
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the picture chip and its video RAM: tile maps, tile graphics and sprite graphics (A13 is the Color bank line)." };
     private void ButcherFrame()
     {
         var b = Butcher;
-        if (b != null) { b.AttachRam(board.Wram); b.AttachVram(board.Ppu.Vram); b.FrameStart(board.ButcherSoundWrite); }
+        if (b != null) { b.AttachRam(board.Wram); b.AttachVram(board.Ppu.Vram); b.AttachSoundRam((board.Apu as APU_GB)?.WaveRam); b.FrameStart(board.ButcherSoundWrite); }
         var on = b != null && !b.Idle ? b : null;
         board.Butcher = on; board.Ppu.Butcher = on;
+        if (board.Apu is APU_GB ag) ag.Butcher = on;
     }
 
     public void RunFrame()
@@ -560,7 +567,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
     public int FrameHeight => height;
     public int DisplayWidth => width;
     public int SampleRate => board.Apu.SampleRate;
-    public int ReadSamples(short[] buffer) => board.Apu.ReadSamples(buffer);
+    public int ReadSamples(short[] buffer) { int n = board.Apu.ReadSamples(buffer); if (Butcher is { DacActive: true } bd) bd.DacShorts(buffer.AsSpan(0, n), 2); return n; }
     public bool HasBattery => board.HasBattery;
     public byte[] ExportSave() => board.ExportSave();
     public void ImportSave(byte[] data) => board.ImportSave(data);

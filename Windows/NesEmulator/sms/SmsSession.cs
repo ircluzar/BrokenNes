@@ -28,6 +28,7 @@ public class SmsSession : IConsoleSession, IButcherHost
     { BandKinds = new[] { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spriteHeight", "bend" },
       ExtraBands = new[] { "Sprite zoom|Sprites drawn double size inside the band.", "Left column blank|The leftmost 8 pixels blanked inside the band.", "Sprite shift|Sprites pushed 8 pixels left inside the band." },
       CpuPins = true, CpuAddressLines = 14, CpuDataLines = 8, CpuPinsTitle = "CPU bus · cartridge slot pins (A0-A13 within a 16 KB slot, D0-D7)",
+      SoundBusLines = 0, SampleLines = 0,
       PadOrder = Butcher.PadSms, PadNames = new[] { "Up", "Down", "Left", "Right", "1", "2", "Start / Pause" },
       Console = IsGameGear ? "gg" : "sms", ConsoleAddressLines = ButcherProfile.Sms.ConsoleLines, AttrNames = ButcherProfile.Sms.AttrNames, Channels = board.Sound.HasFm ? ButcherProfile.SmsFm.Channels : ButcherProfile.Sms.Channels,
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the VDP and its 16 KB video RAM: name table, tile graphics and the sprite table." };
@@ -112,7 +113,7 @@ public class SmsSession : IConsoleSession, IButcherHost
     public virtual int FrameHeight => board.Vdp.FrameHeight;
     public virtual int DisplayWidth => 256;
     public int SampleRate => board.Sound.SampleRate;
-    public int ReadSamples(short[] buffer) => board.Sound.ReadSamples(buffer);
+    public int ReadSamples(short[] buffer) { int n = board.Sound.ReadSamples(buffer); if (Butcher is { DacActive: true } bd) bd.DacShorts(buffer.AsSpan(0, n), 2); return n; }
 
     public bool HasBattery => board.Cart.HasBattery;
     public byte[] ExportSave() => board.Cart.ExportSave();

@@ -43,6 +43,8 @@ public sealed class APU_GB : IGbApu
 
     public readonly GbModel Model;
     public readonly byte[] WaveRam = new byte[16];
+    /// <summary>Butchering mode (corruption/Butcher.cs): the wave channel's sample fetch pins. Null when off.</summary>
+    public Butcher? Butcher;
 
     /// <summary>Optional hook for the plugin's "push an instrument into the running game" (null, the default, leaves the unit exactly as it always was). See <see cref="IGbApuOverride"/>.</summary>
     public IGbApuOverride? Override { get; set; }
@@ -187,7 +189,7 @@ public sealed class APU_GB : IGbApu
                 {
                     timer[2] = (2048 - freq[2]) * 2;
                     wavePos = (wavePos + 1) & 31;
-                    waveBuffer = WaveRam[wavePos >> 1];
+                    waveBuffer = Butcher?.SampleFaults != null ? Butcher.SampleRead(wavePos >> 1, 4, a => WaveRam[a & 15]) : WaveRam[wavePos >> 1];
                     waveFetched = true; dirty = true;
                 }
                 if (enabled[3] && (timer[3] -= n) == 0)

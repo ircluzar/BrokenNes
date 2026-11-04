@@ -420,6 +420,7 @@ public sealed class BOARD_SMS
                 break;
             case 0x40:
                 SyncSound();
+                if (Butcher?.SoundBus != null) value = Butcher.SoundBusBend(0, value, 0).v;   // the PSG has one port: data lines only
                 if (Butcher is { SoundActive: true } bs) value = bs.FilterPsgWrite(value);
                 Sound.WritePsg(value);
                 break;

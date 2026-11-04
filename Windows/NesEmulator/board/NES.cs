@@ -1769,7 +1769,9 @@ namespace NesEmulator
 					// Drain in a single allocation instead of multiple 2k chunks to reduce GC pressure.
 					_ = bus.GetAudioSamples(toDrop);
 				}
-				return bus.GetAudioSamples(2048);
+				var audio = bus.GetAudioSamples(2048);
+				if (Butcher is { DacActive: true } bd) bd.DacFloats(audio);   // Butchering mode's DAC pins / wobble
+				return audio;
 			}
 			return Silent2048;
 		}

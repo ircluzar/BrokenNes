@@ -31,7 +31,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
       ExtraBands = new[] { "Shadow / highlight|Shadow and highlight mode flips inside the band.", "Plane size flip|The planes switch between 32 and 64 cells wide.", "Window side|The window jumps to the other side." },
       CpuPins = true, CpuAddressLines = 22, CpuDataLines = 16, CpuPinsTitle = "CPU bus · cartridge pins (68000: A0-A21, D0-D15)",
       PadOrder = Butcher.PadMd, PadNames = new[] { "Up", "Down", "Left", "Right", "A", "B", "C", "Start", "X", "Y", "Z", "Mode" },
-      DmaLines = 23, DmaDataLines = 16,
+      DmaLines = 23, DmaDataLines = 16, SoundBusLines = 2, SampleLines = 0, SoundRam = ButcherUnit() != null, SamplePinsTitle = "Sample fetch · the DAC's sample data (D0-D7)",
       SoundCpuLines = ButcherUnit() != null ? 13 : 0, SoundCpuTitle = "Sound CPU bus · Z80 over its 8 KB RAM (A0-A12, D0-D7)",
       Console = "md", ConsoleAddressLines = ButcherProfile.Md.ConsoleLines, AttrNames = ButcherProfile.Md.AttrNames, Channels = ButcherProfile.Md.Channels,
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the VDP and its 64 KB video RAM: plane maps, tile graphics, the sprite table and the scroll table.",
@@ -49,7 +49,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
     {
         var b = Butcher;
         var unit = ButcherUnit();
-        if (b != null) { b.FmInject = unit != null ? unit.ButcherYmWrite : null; b.AttachRam(Board.Ram); b.AttachVram(Board.Vdp.Vram); b.FrameStart(unit != null ? unit.ButcherPsgWrite : (_, _) => { }); }
+        if (b != null) { b.FmInject = unit != null ? unit.ButcherYmWrite : null; b.AttachRam(Board.Ram); b.AttachVram(Board.Vdp.Vram); b.AttachSoundRam(unit?.Z80Ram); b.FrameStart(unit != null ? unit.ButcherPsgWrite : (_, _) => { }); }
         var on = b != null && !b.Idle ? b : null;
         Board.Vdp.Butcher = on; if (unit != null) unit.Butcher = on;
         Board.ButcherCpu = on is { CpuPins: not null } ? on : null;
@@ -140,7 +140,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
     public int DisplayWidth => DebugView ? DebugWidth : frameHeight > 240 ? 640 : 320;
     public int SampleRate => sampleRate;
 
-    public int ReadSamples(short[] buffer) => Board.Sound.ReadSamples(buffer);
+    public int ReadSamples(short[] buffer) { int n = Board.Sound.ReadSamples(buffer); if (Butcher is { DacActive: true } bd) bd.DacShorts(buffer.AsSpan(0, n), 2); return n; }
 
     public bool HasBattery => Board.Cart.HasBattery;
     public byte[] ExportSave() => (byte[])Board.Cart.Sram.Clone();

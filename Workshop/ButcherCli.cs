@@ -35,15 +35,22 @@ public static class ButcherCli
         string Opt(string n, string d) { int i = Array.FindIndex(args, a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
         string outDir = Opt("out", "butcher-soundcheck"); Directory.CreateDirectory(outDir);
         int seconds = int.Parse(Opt("seconds", "8"));
-        var effects = new (string name, Action<SoundSettings> on)[] {
+        PinGroupSettings P(int lines, int line, int kind, int data = 8, int dline = -1, int dkind = 0, int flicker = 60) { var g = new PinGroupSettings { Address = new int[lines], Data = new int[data], Flicker = flicker }; if (line >= 0 && line < lines) g.Address[line] = kind; if (dline >= 0) g.Data[dline] = dkind; return g; }
+        var effects = new (string name, Action<ButcherSettings> on)[] {
             ("clean", _ => { }),
-            ("bit-flips", s => { s.BitFlip.Bits = new[] { true, true, true, true, true }; s.BitFlip.Rate = 70; }),
-            ("detune-1", s => { s.Nudge.On = true; s.Nudge.Rate = 80; }),
-            ("drop-outs", s => { s.Drops.Channels = Enumerable16(true); s.Drops.Rate = 70; s.Drops.Duration = 20; }),
-            ("stutter", s => { s.Stutter.On = true; s.Stutter.Rate = 80; s.Stutter.Duration = 60; }),
-            ("drone", s => { s.Drone.On = true; s.Drone.Rate = 70; s.Drone.Duration = 40; }),
-            ("duty-force", s => { s.Duty.On = true; s.Duty.Rate = 80; s.Duty.Duration = 60; s.Duty.Value = 3; }),
-            ("detune-xor", s => { s.Detune.On = true; s.Detune.Rate = 70; s.Detune.Duration = 40; s.Detune.Value = 5; }),
+            ("bit-flips", x => { x.Sound.BitFlip.Bits = new[] { true, true, true, true, true }; x.Sound.BitFlip.Rate = 70; }),
+            ("detune-1", x => { x.Sound.Nudge.On = true; x.Sound.Nudge.Rate = 80; }),
+            ("drop-outs", x => { x.Sound.Drops.Channels = Enumerable16(true); x.Sound.Drops.Rate = 70; x.Sound.Drops.Duration = 20; }),
+            ("stutter", x => { x.Sound.Stutter.On = true; x.Sound.Stutter.Rate = 80; x.Sound.Stutter.Duration = 60; }),
+            ("drone", x => { x.Sound.Drone.On = true; x.Sound.Drone.Rate = 70; x.Sound.Drone.Duration = 40; }),
+            ("duty-force", x => { x.Sound.Duty.On = true; x.Sound.Duty.Rate = 80; x.Sound.Duty.Duration = 60; x.Sound.Duty.Value = 3; }),
+            ("detune-xor", x => { x.Sound.Detune.On = true; x.Sound.Detune.Rate = 70; x.Sound.Detune.Duration = 40; x.Sound.Detune.Value = 5; }),
+            ("register-bus-pins", x => x.Sound.BusPins = P(8, 1, 1, 8, 6, 3)),
+            ("sample-pins", x => x.Sound.SamplePins = P(16, 3, 1, 8, 2, 2)),
+            ("dac-pins", x => x.Sound.DacPins = P(0, -1, 0, 16, 13, 3, 0)),
+            ("clock-wobble", x => { x.Sound.Wobble.On = true; x.Sound.Wobble.Depth = 50; x.Sound.Wobble.Speed = 10; }),
+            ("sound-ram-rot", x => { x.Unsafe.SoundRamRot.On = true; x.Unsafe.SoundRamRot.Rate = 60; x.Unsafe.SoundRamRot.Bits = 4; }),
+            ("echo-abuse", x => { x.Unsafe.EchoAbuse.On = true; x.Unsafe.EchoAbuse.Rate = 100; x.Unsafe.EchoAbuse.Duration = 600; }),
         };
         var index = new System.Text.StringBuilder("# Butchering mode sound self-check\n\nEach clip: the same game from the same frame, one sound effect alone (strong). Compare with `clean`.\n\n");
         foreach (var console in new[] { "nes", "gb", "sms", "gg", "md", "snes" })
@@ -53,7 +60,9 @@ public static class ButcherCli
             foreach (var (name, on) in effects)
             {
                 if (name == "duty-force" && console != "nes" && console != "gb") continue;   // only pulse channels with a duty
-                var b = new ButcherSettings { Enabled = true }; on(b.Sound);
+                if (name == "echo-abuse" && console != "snes") continue;
+                if (name == "sample-pins" && console is "sms" or "gg") continue;   // the PSG has no sample memory
+                var b = new ButcherSettings { Enabled = true }; on(b);
                 var (pcm, rate, ch) = Render(console, rom, name == "clean" ? null : b, seconds);
                 string file = Path.Combine(outDir, $"{console}-{name}.wav");
                 WriteWav(file, pcm, rate, ch);

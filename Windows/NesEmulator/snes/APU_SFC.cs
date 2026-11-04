@@ -218,6 +218,12 @@ public partial class APU_SFC : ISnesApu
                 break;
             case 0xF2: dspAddr = v; break;
             case 0xF3:
+                if (dspAddr < 0x80 && Butcher?.SoundBus != null)
+                {
+                    var (r2, v2) = Butcher.SoundBusBend(dspAddr, v, 7);
+                    if ((r2 & 0x0F) < 8 || (dspAddr & 0x0F) >= 8) dspAddr = (byte)(r2 & 0x7F);   // a voice write never lands on a global (echo, sample directory)
+                    v = v2;
+                }
                 if (dspAddr < 0x80 && Butcher is { SoundActive: true } bs) v = bs.FilterApuWrite(dspAddr, v);
                 if (dspAddr < 0x80) { Dsp.Write(dspAddr, v); OnDspRegWrite(dspAddr, v); DspWriteTap?.Invoke(dspAddr, v, SamplesProduced); }
                 else Dsp.WriteHigh(dspAddr, v);   // nowhere on a SNES; the WideMess's second page once unlocked

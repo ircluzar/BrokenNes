@@ -406,7 +406,7 @@ namespace NesEmulator
         private void TryDmcFetch()
         {
             if(dmc_sampleBufferFilled) return; if(dmc_sampleLengthRemaining==0) return; // nothing to fetch
-            byte sample = bus.Read((ushort)dmc_sampleAddress);
+            byte sample = bus.Butcher?.SampleFaults != null ? bus.Butcher.SampleRead(dmc_sampleAddress, 15, a => bus.Read((ushort)(a | 0x8000))) : bus.Read((ushort)dmc_sampleAddress);
             bus.RequestDmcDma(); // the fetch halts the CPU - at its next read, under precise stepping (Bus.PreciseTick)
             dmc_sampleAddress++; if(dmc_sampleAddress > 0xFFFF) dmc_sampleAddress = 0x8000; // wrap
             dmc_sampleLengthRemaining--; dmc_sampleBuffer = sample; dmc_sampleBufferFilled = true;

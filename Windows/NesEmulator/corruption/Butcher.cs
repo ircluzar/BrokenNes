@@ -46,6 +46,10 @@ public sealed class UnsafeSettings
 	/// 2 stuck pressed, 3 bridged to the next listed button (pressing either presses both).</summary>
 	public int[] PadLines { get; set; } = Array.Empty<int>();
 	public double PadFlicker { get; set; }
+	/// <summary>Bit rot in the sound chip's own RAM (SPC700 ARAM, Z80 RAM, Game Boy wave RAM): samples decay, the driver may lock up.</summary>
+	public RotEffect SoundRamRot { get; set; } = new();
+	/// <summary>SNES: echo pushed to its longest buffer and strongest feedback - the echo overwrites sample memory.</summary>
+	public EventEffect EchoAbuse { get; set; } = new();
 	/// <summary>Blind bit flips anywhere in work RAM (stack, pointers, flags included).</summary>
 	public RotEffect RamRot { get; set; } = new();
 	/// <summary>Blind bit flips anywhere in video RAM (tiles, maps, the sprite table on chips that keep it there).</summary>
@@ -166,7 +170,17 @@ public sealed class SoundSettings
 	public ValueEventEffect Duty { get; set; } = new();
 	/// <summary>Value = XOR applied to the period low byte (1-255).</summary>
 	public ValueEventEffect Detune { get; set; } = new();
+	/// <summary>The bus between the CPU and the sound chip's registers: a write lands on the wrong register / with bent bits.</summary>
+	public PinGroupSettings BusPins { get; set; } = new();
+	/// <summary>Where the sound chip fetches its own samples (NES DMC, SNES BRR, Game Boy wave RAM, Genesis DAC data).</summary>
+	public PinGroupSettings SamplePins { get; set; } = new();
+	/// <summary>The DAC's 16 input lines: the final sample with stuck / bridged bits (display-only, like the palette).</summary>
+	public PinGroupSettings DacPins { get; set; } = new();
+	/// <summary>A drifting crystal: the output's pitch wobbles (depth in cents, speed in tenths of a hertz).</summary>
+	public ClockWobble Wobble { get; set; } = new();
 }
+
+public sealed class ClockWobble { public bool On { get; set; } public int Depth { get; set; } = 30; public int Speed { get; set; } = 8; }
 
 /// <summary>One compiled pin group: what a fetch's address and data go through.</summary>
 internal sealed class PinFaults
@@ -277,7 +291,7 @@ public sealed class ButcherProfile
 		DropReg = 0x25,                                                         // NR51: a channel off on both sides
 		DropApply = (v, mask) => (byte)(v & ~(mask | (mask << 4))),
 		DropRegDefault = 0xFF,
-		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 144, CpuLines = 15,
+		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 144, CpuLines = 15, SoundBusLines = 6, SampleLines = 4,
 	};
 	/// <summary>Master System / Game Gear: the sprite table is in VRAM (no attribute byte), the PSG takes latch / data bytes.</summary>
 	public static readonly ButcherProfile Sms = new()
@@ -288,7 +302,7 @@ public sealed class ButcherProfile
 		AttrBits = Array.Empty<int>(), AttrNames = Array.Empty<string>(),
 		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise" },
 		Psg = true,
-		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192, CpuLines = 14,
+		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192, CpuLines = 14, SoundBusLines = 0, SampleLines = 0,
 	};
 	/// <summary>Master System with its FM unit (YM2413): the PSG's four channels, then FM 1-9.</summary>
 	public static readonly ButcherProfile SmsFm = new()
@@ -299,7 +313,7 @@ public sealed class ButcherProfile
 		AttrBits = Array.Empty<int>(), AttrNames = Array.Empty<string>(),
 		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise", "FM 1", "FM 2", "FM 3", "FM 4", "FM 5", "FM 6", "FM 7", "FM 8", "FM 9" },
 		Psg = true,
-		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192, CpuLines = 14,
+		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192, CpuLines = 14, SoundBusLines = 0, SampleLines = 0,
 	};
 	/// <summary>Genesis: 64 KB VRAM, PSG + YM2612, 64 KB work RAM.</summary>
 	public static readonly ButcherProfile Md = new()
@@ -311,7 +325,7 @@ public sealed class ButcherProfile
 		AttrNames = new[] { "V-flip", "H-flip", "Priority", "Palette 1", "Palette 0" },
 		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise", "FM 1", "FM 2", "FM 3", "FM 4", "FM 5", "FM 6" },
 		Psg = true,
-		RamWindow = 0x10000, StackPage = 0xFF, VisibleLines = 224, CpuLines = 22, CpuDataLines = 16, SoundCpuLines = 13, DmaLines = 23,
+		RamWindow = 0x10000, StackPage = 0xFF, VisibleLines = 224, CpuLines = 22, CpuDataLines = 16, SoundCpuLines = 13, DmaLines = 23, SoundBusLines = 2, SampleLines = 0,
 	};
 	/// <summary>SNES: word VRAM (A0-A14), OAM records X, Y, tile, attributes; 128 KB work RAM; sound (SPC700 + DSP) not yet.</summary>
 	public static readonly ButcherProfile Snes = new()
@@ -334,7 +348,7 @@ public sealed class ButcherProfile
 		DropReg = 0x5C,                                  // KOF: a dropped voice's key-off bit is held set
 		DropApply = (v, mask) => (byte)(v | mask),
 		DropRegDefault = 0x00,
-		RamWindow = 0x20000, StackPage = 0x1F, VisibleLines = 224, CpuLines = 24, SoundCpuLines = 16, DmaLines = 24,
+		RamWindow = 0x20000, StackPage = 0x1F, VisibleLines = 224, CpuLines = 24, SoundCpuLines = 16, DmaLines = 24, SoundBusLines = 7, SampleLines = 16,
 	};
 	public bool Psg;
 	public int DataLines = 8;
@@ -342,6 +356,8 @@ public sealed class ButcherProfile
 	public int CpuLines = 15, CpuDataLines = 8;
 	/// <summary>The sound CPU's address lines (0 = no separate sound CPU).</summary>
 	public int SoundCpuLines;
+	/// <summary>Sound-register bus address lines (0 = data only) and the sample-fetch address lines.</summary>
+	public int SoundBusLines = 5, SampleLines = 15;
 	/// <summary>The DMA controller's source address lines (0 = not reached).</summary>
 	public int DmaLines;
 	public int VisibleLines = 240;
@@ -359,6 +375,9 @@ public sealed class Butcher
 	internal PinFaults? CpuPins;  // null = no CPU-bus (PRG) pin fault - unsafe
 	internal PinFaults? SoundCpu; // null = no sound-CPU bus fault - unsafe
 	internal PinFaults? Dma, Copro; // null = no DMA / coprocessor bus fault - unsafe
+	internal PinFaults? SoundBus, SampleFaults, Dac; // the sound pins (safe)
+	public bool WobbleActive { get; private set; }
+	public bool DacActive => Dac != null || WobbleActive;
 	private int cartLines;
 	public bool SpritesActive { get; private set; }
 	public bool SoundActive { get; private set; }
@@ -399,11 +418,16 @@ public sealed class Butcher
 		CpuPins = on && cp.Active ? cp : null;
 		var sc = new PinFaults(settings.Unsafe.SoundCpuPins, Math.Max(1, Profile.SoundCpuLines), 0x27D4EB2Fu);
 		SoundCpu = on && Profile.SoundCpuLines > 0 && sc.Active ? sc : null;
+		var so2 = settings.Sound;
+		var sbp = new PinFaults(so2.BusPins, Math.Max(1, Profile.SoundBusLines), 0x7FEB352Du); SoundBus = on && sbp.Active ? sbp : null;
+		var smp = new PinFaults(so2.SamplePins, Math.Max(1, Profile.SampleLines), 0x846CA68Bu); SampleFaults = on && smp.Active ? smp : null;
+		var dac = new PinFaults(so2.DacPins, 1, 0x2C1B3C6Du, 16); Dac = on && dac.Active ? dac : null;
+		WobbleActive = on && so2.Wobble.On && so2.Wobble.Depth > 0;
 		var dm = new PinFaults(settings.Unsafe.DmaPins, Math.Max(1, Profile.DmaLines), 0x165667B1u, Profile.CpuDataLines);
 		Dma = on && Profile.DmaLines > 0 && dm.Active ? dm : null;
 		var co = new PinFaults(settings.Unsafe.CoproPins, 24, 0xD3A2646Cu);
 		Copro = on && Profile.Console == "snes" && co.Active ? co : null;
-		RotActive = on && (settings.Unsafe.RamRot.On || settings.Unsafe.VramRot.On);
+		RotActive = on && (settings.Unsafe.RamRot.On || settings.Unsafe.VramRot.On || settings.Unsafe.SoundRamRot.On || settings.Unsafe.EchoAbuse.On);
 		PadActive = on && settings.Unsafe.PadLines is { } pl && Array.Exists(pl, x => x != 0);
 		paletteLut.Clear(); paletteMode = Math.Clamp(settings.Palette.Mode, 0, 4); paletteTick = 0;
 		if (!RamActive) Array.Clear(probeLife);
@@ -414,7 +438,7 @@ public sealed class Butcher
 	}
 
 	/// <summary>Nothing is on: the hooks can be detached.</summary>
-	public bool Idle => !PadActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
+	public bool Idle => !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
 
 	public static int AddressLinesFor(int size)
 	{
@@ -932,6 +956,7 @@ public sealed class Butcher
 			if ((code & 3) != 3 && (dropMask & FmDropBit(ch)) != 0) return (byte)(v & 0x0F);
 			return v;
 		}
+		if (r == 0x2A && part == 0 && SampleFaults != null) return SampleData(v);   // the DAC's sample data: the sample pins
 		if (r < 0x30 || r > 0xB6) return v;                         // LFO, timers, DAC: left alone
 		if (r >= 0xA0) { int fc = (r & 3) == 3 ? -1 : (r & 3) + part * 3; if (fc >= 0) Remember(4 + fc, (ushort)(part << 8 | r), v); }   // stutter replays a channel's frequency writes
 		if (droneLeft > 0 && r >= 0x40 && r <= 0x4F) return 0;        // total level 0 = loudest
@@ -1045,6 +1070,75 @@ public sealed class Butcher
 	}
 	/// <summary>DSP-1's data port: only its data lines.</summary>
 	public byte CoproData(byte v) { var f = Copro; return f != null && f.DataActive && !f.Misses() ? f.Data(v) : v; }
+
+	// ---------------------------------------------------------------- sound pins
+	/// <summary>A register write on the CPU-to-sound-chip bus: the register index (low <paramref name="lines"/> bits) and the value, bent.</summary>
+	public (int reg, byte v) SoundBusBend(int reg, byte v, int lines)
+	{
+		var f = SoundBus!; if (f.Misses()) return (reg, v);
+		if (f.AddrActive && lines > 0) { int m = (1 << lines) - 1; reg = (f.Addr(reg & m) & m) | (reg & ~m); }
+		return (reg, f.DataActive ? f.Data(v) : v);
+	}
+	/// <summary>A sample byte the chip fetches, through its bent sample bus.</summary>
+	public byte SampleRead(int a, int lines, Func<int, byte> read)
+	{
+		var f = SampleFaults!; if (f.Misses()) return read(a);
+		int m = (1 << lines) - 1;
+		byte v = read(f.AddrActive && lines > 0 ? (f.Addr(a & m) & m) | (a & ~m) : a);
+		return f.DataActive ? f.Data(v) : v;
+	}
+	public byte SampleData(byte v) { var f = SampleFaults; return f != null && f.DataActive && !f.Misses() ? f.Data(v) : v; }
+
+	// The DAC: the final samples with stuck / bridged bits, then the wobble (a fractional delay swept by a slow LFO).
+	private readonly float[] wobBuf = new float[4096]; private int wobPos; private double wobPhase;
+	public void DacShorts(Span<short> s, int channels)
+	{
+		var f = Dac;
+		if (f != null) for (int i = 0; i < s.Length; i++) if (!f.Misses()) s[i] = (short)f.Data16((ushort)s[i]);
+		if (!WobbleActive) return;
+		for (int i = 0; i + channels - 1 < s.Length; i += channels)
+			for (int c = 0; c < channels; c++) s[i + c] = (short)Math.Clamp(Wob(s[i + c], c, channels), -32768, 32767);
+	}
+	public void DacFloats(float[] s)
+	{
+		var f = Dac;
+		if (f != null) for (int i = 0; i < s.Length; i++) if (!f.Misses()) s[i] = (short)f.Data16((ushort)(short)Math.Clamp(s[i] * 32767, -32768, 32767)) / 32768f;
+		if (!WobbleActive) return;
+		for (int i = 0; i < s.Length; i++) s[i] = (float)(Wob(s[i] * 32768, 0, 1) / 32768);
+	}
+	private double Wob(double x, int c, int channels)
+	{
+		var w = settings.Sound.Wobble;
+		int n = wobBuf.Length / channels;
+		if (c == 0) { wobPos = (wobPos + 1) % n; wobPhase += 2 * Math.PI * Math.Max(1, w.Speed) / 10.0 / 44100.0; }
+		wobBuf[wobPos * channels + c] = (float)x;
+		double delay = 60 + Math.Clamp(w.Depth, 0, 100) * 4 * (1 + Math.Sin(wobPhase));   // samples: a swept delay is a swept pitch
+		double rp = wobPos - delay; while (rp < 0) rp += n;
+		int i0 = (int)rp; double fr = rp - i0; int i1 = (i0 + 1) % n;
+		return wobBuf[i0 * channels + c] * (1 - fr) + wobBuf[i1 * channels + c] * fr;
+	}
+
+	// ---------------------------------------------------------------- sound RAM rot, SNES echo abuse
+	private byte[]? soundRam;
+	public void AttachSoundRam(byte[]? r) => soundRam = r;
+	public Action<int, byte>? EchoInject; public Func<int, byte>? DspReadReg;
+	private int echoLeft;
+	private void SoundRot()
+	{
+		var u = settings.Unsafe;
+		if (u.SoundRamRot.On && soundRam is { Length: > 0 } r && RT() < EventThreshold(u.SoundRamRot.Rate) * 4u)
+			for (int i = 0; i < Math.Clamp(u.SoundRamRot.Bits, 1, 64); i++) r[(int)(RT() % (uint)r.Length)] ^= (byte)(1 << (int)(RT() % 8));
+		if (u.EchoAbuse.On && EchoInject is { } inj)
+		{
+			if (echoLeft > 0) { if (--echoLeft == 0 && DspReadReg is { } rd) inj(0x6C, (byte)(rd(0x6C) | 0x20)); }   // echo writes off again
+			else if (RT() < EventThreshold(u.EchoAbuse.Rate))
+			{
+				echoLeft = Math.Clamp(u.EchoAbuse.Duration, 1, 3600);
+				inj(0x7D, 0x0F); inj(0x0D, 0x7F); inj(0x4D, 0xFF); inj(0x2C, 0x7F); inj(0x3C, 0x7F);   // longest delay, full feedback, every voice, echo volume up
+				if (DspReadReg is { } rd) inj(0x6C, (byte)(rd(0x6C) & ~0x20));                         // echo writes on: the buffer runs over sample memory
+			}
+		}
+	}
 
 	/// <summary>A sound CPU's read of its own memory through its bent bus.</summary>
 	public byte SoundCpuRead(int address, int lines, Func<int, byte> read)
@@ -1259,7 +1353,7 @@ public sealed class Butcher
 	{
 		WatchRam();
 		if (PaletteActive) PaletteFrame();
-		if (RotActive) RotFrame();
+		if (RotActive) { RotFrame(); SoundRot(); }
 		if (BandsActive) BandsFrame(); else { TallXor = 0; LineBendMask = 0; }
 		if (RamActive) RamFrame();
 		var sp = settings.Sprites;
@@ -1359,6 +1453,11 @@ public sealed record ButcherReach(string PpuCore, bool ConsolePins, bool Console
 	public int DmaLines { get; init; }
 	public int DmaDataLines { get; init; } = 8;
 	public string CoproName { get; init; } = "";
+	public int SoundBusLines { get; init; } = 5;
+	/// <summary>The sound chip has RAM of its own (SPC700 ARAM, Z80 RAM, Game Boy wave RAM) for the sound RAM rot.</summary>
+	public bool SoundRam { get; init; }
+	public int SampleLines { get; init; } = 15;
+	public string SamplePinsTitle { get; init; } = "Sample fetch · DMC (A0-A14, D0-D7)";
 	public bool VramRot { get; init; } = true;
 }
 

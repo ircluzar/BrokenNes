@@ -790,6 +790,13 @@ public class Bus : IBus
 			int idx = address - 0x4000;
 			if (idx >=0 && idx < apuRegLatch.Length) { apuRegLatch[idx] = value; apuRegLatchWritten |= 1u << idx; }
 			ApuWriteTap?.Invoke(address, value, ApuClock);
+			if (Butcher?.SoundBus != null && address != 0x4014 && address <= 0x4015)
+			{
+				var (r2, v2) = Butcher.SoundBusBend(address - 0x4000, value, 5);
+				int a2 = 0x4000 + (r2 & 0x1F);
+				if (a2 <= 0x4013 || a2 == 0x4015) address = (ushort)a2;   // a register the APU has: bent there; else the original stays
+				value = v2;
+			}
 			if (Butcher is { SoundActive: true } bs) value = bs.FilterApuWrite(address, value);
 			activeApu.WriteAPURegister(address, value); return;
 		}

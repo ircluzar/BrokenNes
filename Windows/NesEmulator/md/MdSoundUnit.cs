@@ -450,6 +450,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
     private void YmWrite(int port, byte value, long master)
     {
         butcherYmMaster = master;
+        if (Butcher?.SoundBus != null) { var (p2, v2) = Butcher.SoundBusBend(port & 3, value, 2); port = p2 & 3; value = v2; }   // the YM2612's A0-A1 (port) and data lines
         if (Butcher is { SoundActive: true } bs) value = bs.FilterYmWrite(port & 3, value);
         YmWriteRaw(port, value, master);
     }

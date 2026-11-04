@@ -309,7 +309,12 @@ public sealed class BOARD_GB : IGbCpuBus
             case 0x55: if (Model == GbModel.Cgb) StartVramDma(v); return;
             case 0x70: if (Model == GbModel.Cgb) { wramBank = v & 7; if (wramBank == 0) wramBank = 1; } return;
         }
-        if (r >= 0x10 && r <= 0x3F) { if (Butcher is { SoundActive: true } bs) v = bs.FilterApuWrite((ushort)r, v); Apu.WriteRegister(r, v); return; }
+        if (r >= 0x10 && r <= 0x3F)
+        {
+            if (Butcher?.SoundBus != null) { var (r2, v2) = Butcher.SoundBusBend(r - 0x10, v, 6); if (r2 + 0x10 <= 0x3F) r = r2 + 0x10; v = v2; }
+            if (Butcher is { SoundActive: true } bs) v = bs.FilterApuWrite((ushort)r, v);
+            Apu.WriteRegister(r, v); return;
+        }
         if (r >= 0x40 && r <= 0x4B || r == 0x4F || r >= 0x68 && r <= 0x6C) Ppu.WriteRegister(r, v);
     }
 

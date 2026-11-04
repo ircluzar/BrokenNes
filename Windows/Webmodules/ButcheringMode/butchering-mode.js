@@ -41,7 +41,11 @@
         drops: { channels: new Array(16).fill(false), rate: 25, duration: 30 },
         stutter: ev(), drone: ev(),
         duty: { on: false, rate: 25, duration: 30, value: 0 },
-        detune: { on: false, rate: 25, duration: 30, value: 1 }
+        detune: { on: false, rate: 25, duration: 30, value: 1 },
+        busPins: { address: new Array(reach?.soundBusLines ?? 5).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
+        samplePins: { address: new Array(reach?.sampleLines ?? 15).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
+        dacPins: { address: [], data: new Array(16).fill(0), flicker: 0, bendWrites: false },
+        wobble: { on: false, depth: 30, speed: 8 }
       },
       bands: (() => { const b = () => ({ on: false, rate: 25, width: 30, strength: 8, lifetime: 30 }); return { shift: b(), slip: b(), patternSwap: b(), nametableSwap: b(), bgOff: b(), spritesOff: b(), spriteHeight: b(), bend: b(), extra1: b(), extra2: b(), extra3: b() }; })(),
       ram: { on: false, rate: 25, step: 1, lifetime: 60, maxProbes: 3 },
@@ -50,6 +54,7 @@
                 soundCpuPins: { address: new Array(reach?.soundCpuLines || 0).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
                 ramRot: { on: false, rate: 25, bits: 1 }, vramRot: { on: false, rate: 25, bits: 1 },
                 padLines: new Array(15).fill(0), padFlicker: 0,
+                soundRamRot: { on: false, rate: 25, bits: 1 }, echoAbuse: { on: false, rate: 25, duration: 120 },
                 dmaPins: { address: new Array(reach?.dmaLines || 0).fill(0), data: new Array(reach?.dmaDataLines || 8).fill(0), flicker: 0, bendWrites: false },
                 coproPins: { address: new Array(reach?.coproName && reach.coproName !== 'DSP-1' ? 24 : 0).fill(0), data: new Array(reach?.coproName ? 8 : 0).fill(0), flicker: 0, bendWrites: false } },
       groupsOff: { picture: false, sprites: false, sound: false, bands: false, ram: false, palette: false, unsafe: false }
@@ -475,7 +480,19 @@
       eventFx('Stutter', 'Older register writes are replayed: notes and arpeggios repeat.', so.stutter),
       eventFx('Drone', 'Channels forced to constant, full volume.', so.drone),
       eventFx('Duty force', 'Both pulse channels forced to one duty.', so.duty, [slider('Duty', so.duty, 'value', 0, 3, 1)]),
-      eventFx('Detune', 'Period low byte XORed: wrong notes.', so.detune, [slider('Amount', so.detune, 'value', 1, 255, 1)])));
+      eventFx('Detune', 'Period low byte XORed: wrong notes.', so.detune, [slider('Amount', so.detune, 'value', 1, 255, 1)]),
+      el('div', { class: 'sub' }, 'Pins'),
+      el('div', { class: 'fx' }, el('div', { class: 'namerow' }, el('label', { class: 'name' }, 'Register bus'), soloBtn(so.busPins, 'Register bus')),
+        el('div', { class: 'why' }, 'The wires from the CPU to the sound chip: writes land on the wrong register (the bass plays the lead) or with bent bits.'),
+        (reach.soundBusLines || 0) > 0 ? pinGrid('A', so.busPins.address) : null, pinGrid('D', so.busPins.data), slider('Flicker', so.busPins, 'flicker', 0, 100, 1)),
+      (reach.sampleLines || 0) > 0 || reach.console === 'md' ? el('div', { class: 'fx' }, el('div', { class: 'namerow' }, el('label', { class: 'name' }, reach.samplePinsTitle || 'Sample fetch'), soloBtn(so.samplePins, 'Sample fetch')),
+        el('div', { class: 'why' }, 'Where the chip reads its own samples: drums crunch, instruments morph into noise.'),
+        (reach.sampleLines || 0) > 0 ? pinGrid('A', so.samplePins.address) : null, pinGrid('D', so.samplePins.data), slider('Flicker', so.samplePins, 'flicker', 0, 100, 1)) : null,
+      el('div', { class: 'fx' }, el('div', { class: 'namerow' }, el('label', { class: 'name' }, 'DAC pins (output)'), soloBtn(so.dacPins, 'DAC pins (output)')),
+        el('div', { class: 'why' }, 'The 16 lines into the DAC: bitcrush and distortion on the final sound. Display-only: the game never hears it.'),
+        pinGrid('D', so.dacPins.data), slider('Flicker', so.dacPins, 'flicker', 0, 100, 1)),
+      el('div', { class: 'fx' }, check('Clock wobble', so.wobble, 'on'), el('div', { class: 'why' }, 'A drifting crystal: the pitch sways like a worn tape.'),
+        slider('Depth', so.wobble, 'depth', 1, 100, 1), slider('Speed', so.wobble, 'speed', 1, 80, 1))));
 
     const bd = settings.bands;
     const bandFx = (label, why, fx, strengthLabel) => el('div', { class: 'fx' }, check(label, fx, 'on'), el('div', { class: 'why' }, why),
@@ -550,6 +567,9 @@
       el('div', { class: 'why' }, 'A wire per button: stuck released, stuck pressed (ghost presses), or bridged to the next one (pressing either presses both).'),
       el('div', { class: 'legend' }, '· connected   R stuck released   P stuck pressed   B bridged'),
       padGrid, slider('Flicker', un, 'padFlicker', 0, 100, 1));
+    if (reach.soundRam) unsafeBody.push(el('div', { class: 'sub' }, 'Sound memory'),
+      rotFx('Sound RAM rot', 'Bits flip in the sound chip’s own RAM (samples, the music driver): decay, then maybe silence.', un.soundRamRot));
+    if (reach.console === 'snes') unsafeBody.push(eventFx('Echo abuse', 'Echo at its longest and loudest, writing over sample memory: the famous SNES melt.', un.echoAbuse));
     unsafeBody.push(el('div', { class: 'sub' }, 'Bit rot'),
       rotFx('RAM rot', 'Random bits flip anywhere in work RAM: the stack and pointers too.', un.ramRot));
     if (reach.vramRot !== false) unsafeBody.push(rotFx('VRAM rot', 'Random bits flip in video RAM: tiles and maps decay.', un.vramRot));
@@ -578,7 +598,7 @@
     if (reach.spritesDma && (reach.attrNames || []).length) c.push(['bits', sp.attr, 'bits']);
     if (reach.sound !== false) { c.push(['bits', so.bitFlip, 'bits'], ['fx', so.nudge], ['bits', so.drops, 'channels'], ['fx', so.stutter], ['fx', so.drone], ['fx', so.detune]); if (isNesReach()) c.push(['fx', so.duty]); }
     if (reach.bands) { for (const k of (reach.bandKinds || [])) if (bd[k]) c.push(['fx', bd[k]]); (reach.extraBands || []).forEach((_, i) => c.push(['fx', bd['extra' + (i + 1)]])); }
-    c.push(['fx', st.palette]);
+    c.push(['fx', st.palette], ['fx', st.sound.wobble], ['pins', st.sound.busPins]);
     if (reach.ram) c.push(['fx', st.ram]);
     if (reach.consolePins) c.push(['pins', st.consolePins]);
     if (isNesReach() && reach.cartPins) c.push(['pins', st.cartPins]);

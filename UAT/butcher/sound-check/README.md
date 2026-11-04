@@ -12,6 +12,11 @@ Each clip: the same game from the same frame, one sound effect alone (strong). C
 - `nes-drone.wav`
 - `nes-duty-force.wav`
 - `nes-detune-xor.wav`
+- `nes-register-bus-pins.wav`
+- `nes-sample-pins.wav`
+- `nes-dac-pins.wav`
+- `nes-clock-wobble.wav`
+- `nes-sound-ram-rot.wav`
 
 ## gb: Super Mario Land (W) (V1.1) [!].zip
 
@@ -23,6 +28,11 @@ Each clip: the same game from the same frame, one sound effect alone (strong). C
 - `gb-drone.wav`
 - `gb-duty-force.wav`
 - `gb-detune-xor.wav`
+- `gb-register-bus-pins.wav`
+- `gb-sample-pins.wav`
+- `gb-dac-pins.wav`
+- `gb-clock-wobble.wav`
+- `gb-sound-ram-rot.wav`
 
 ## sms: Sonic The Hedgehog 2 (Europe) (v1.1).sms
 
@@ -33,6 +43,10 @@ Each clip: the same game from the same frame, one sound effect alone (strong). C
 - `sms-stutter.wav`
 - `sms-drone.wav`
 - `sms-detune-xor.wav`
+- `sms-register-bus-pins.wav`
+- `sms-dac-pins.wav`
+- `sms-clock-wobble.wav`
+- `sms-sound-ram-rot.wav`
 
 ## gg: Sonic & Tails (J) [!].gg
 
@@ -43,6 +57,10 @@ Each clip: the same game from the same frame, one sound effect alone (strong). C
 - `gg-stutter.wav`
 - `gg-drone.wav`
 - `gg-detune-xor.wav`
+- `gg-register-bus-pins.wav`
+- `gg-dac-pins.wav`
+- `gg-clock-wobble.wav`
+- `gg-sound-ram-rot.wav`
 
 ## md: Sonic the Hedgehog (JUE) [!].bin
 
@@ -53,6 +71,11 @@ Each clip: the same game from the same frame, one sound effect alone (strong). C
 - `md-stutter.wav`
 - `md-drone.wav`
 - `md-detune-xor.wav`
+- `md-register-bus-pins.wav`
+- `md-sample-pins.wav`
+- `md-dac-pins.wav`
+- `md-clock-wobble.wav`
+- `md-sound-ram-rot.wav`
 
 ## snes: Super Mario World (U) [!].smc
 
@@ -63,4 +86,10 @@ Each clip: the same game from the same frame, one sound effect alone (strong). C
 - `snes-stutter.wav`
 - `snes-drone.wav`
 - `snes-detune-xor.wav`
+- `snes-register-bus-pins.wav`
+- `snes-sample-pins.wav`
+- `snes-dac-pins.wav`
+- `snes-clock-wobble.wav`
+- `snes-sound-ram-rot.wav`
+- `snes-echo-abuse.wav`
 

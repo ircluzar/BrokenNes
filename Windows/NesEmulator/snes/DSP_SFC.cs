@@ -23,6 +23,9 @@ public sealed partial class DSP_SFC
     /// <summary>Voices the sound monitor (BrokenDev D8) silences in the mix, one bit each: 0, and nothing changes, unless its window is open and a voice muted. OUTX, ENDX and the envelopes run on as before; a muted voice is also out of the echo input (the echo buffer in sound RAM then differs).</summary>
     public byte DebugMute;
     private readonly byte[] ram;          // the audio unit's 64KB ARAM (BRR samples, echo buffer)
+    /// <summary>Butchering mode (corruption/Butcher.cs): the BRR sample-fetch pins. Null when off.</summary>
+    public Butcher? Butcher;
+    private byte SR(int a) => Butcher?.SampleFaults != null ? Butcher.SampleRead(a & 0xFFFF, 16, x => ram[x & 0xFFFF]) : ram[a & 0xFFFF];
     public readonly byte[] Regs = new byte[128];
 
     // Global register addresses
@@ -214,8 +217,8 @@ public sealed partial class DSP_SFC
             int nextAddr = ram[dirEntry & 0xFFFF] | ram[(dirEntry + 1) & 0xFFFF] << 8;
 
             int pitch = Regs[r + 2] | (Regs[r + 3] & 0x3F) << 8;
-            int brrByte = ram[(v.BrrAddr + v.BrrOffset) & 0xFFFF];
-            int header = ram[v.BrrAddr & 0xFFFF];
+            int brrByte = SR(v.BrrAddr + v.BrrOffset);
+            int header = SR(v.BrrAddr);
 
             // what the voice plays with: its registers, unless an override names the sample it plays (Overrides is null unless the plugin pushed an instrument into the game)
             bool usePmod = (pmon & bit) != 0, useNoise = (non & bit) != 0, useEcho = (eon & bit) != 0;
@@ -311,7 +314,7 @@ public sealed partial class DSP_SFC
 
     private void DecodeBrr(Voice v, int header, int firstByte)
     {
-        int nybbles = firstByte << 8 | ram[(v.BrrAddr + v.BrrOffset + 1) & 0xFFFF];
+        int nybbles = firstByte << 8 | SR(v.BrrAddr + v.BrrOffset + 1);
         int shift = header >> 4, filter = header & 0x0C;
         int pos = v.BufPos;
         v.BufPos = v.BufPos + 4 >= 12 ? 0 : v.BufPos + 4;
