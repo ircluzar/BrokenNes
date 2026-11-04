@@ -443,7 +443,18 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
     //  The YM2612's ports
     // =================================================================================================================
 
+    private long butcherYmMaster;
+    /// <summary>Butchering mode's own YM2612 writes (a key-off for a drop-out): straight to the chip.</summary>
+    public void ButcherYmWrite(int port, byte v) => YmWriteRaw(port, v, butcherYmMaster);
+
     private void YmWrite(int port, byte value, long master)
+    {
+        butcherYmMaster = master;
+        if (Butcher is { SoundActive: true } bs) value = bs.FilterYmWrite(port & 3, value);
+        YmWriteRaw(port, value, master);
+    }
+
+    private void YmWriteRaw(int port, byte value, long master)
     {
         ym.Write(port, value, master / MasterPerYmClock);
         OnYmWrite(port & 3, value);

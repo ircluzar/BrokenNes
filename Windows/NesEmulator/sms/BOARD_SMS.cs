@@ -384,6 +384,8 @@ public sealed class BOARD_SMS
     public Butcher? Butcher;
     /// <summary>Butchering mode's own PSG writes (drop-outs, drone, stutter): straight to the chip.</summary>
     public void ButcherPsgWrite(ushort _, byte v) { SyncSound(); Sound.WritePsg(v); }
+    /// <summary>Butchering mode's own FM writes (-1 = address, -2 = data): straight to the chip.</summary>
+    public void ButcherFmWrite(int port, byte v) { if (!Sound.HasFm) return; SyncSound(); if (port == -1) Sound.WriteFmAddress(v); else Sound.WriteFmData(v); }
 
     public void WritePort(ushort port, byte value)
     {
@@ -393,6 +395,7 @@ public sealed class BOARD_SMS
         if (p is 0xF0 or 0xF1 or 0xF2)
         {
             SyncSound();
+            if (p <= 0xF1 && Butcher is { SoundActive: true } bf) value = bf.FilterOpllWrite(p == 0xF1, value);
             if (p == 0xF0) Sound.WriteFmAddress(value); else if (p == 0xF1) Sound.WriteFmData(value); else Sound.WriteAudioControl(value);
             return;
         }

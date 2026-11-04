@@ -38,7 +38,7 @@
       sound: {
         bitFlip: { bits: [false, false, false, false, false], rate: 25 },
         nudge: { on: false, rate: 25 },
-        drops: { channels: [false, false, false, false, false], rate: 25, duration: 30 },
+        drops: { channels: new Array(16).fill(false), rate: 25, duration: 30 },
         stutter: ev(), drone: ev(),
         duty: { on: false, rate: 25, duration: 30, value: 0 },
         detune: { on: false, rate: 25, duration: 30, value: 1 }

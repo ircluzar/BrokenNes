@@ -18,19 +18,19 @@ public class SmsSession : IConsoleSession, IButcherHost
     private bool IsGameGear => this is GgSession;
     public void ApplyButcher(ButcherSettings settings)
     {
-        var b = Butcher ?? new Butcher { Profile = ButcherProfile.Sms };
+        var b = Butcher ?? new Butcher { Profile = board.Sound.HasFm ? ButcherProfile.SmsFm : ButcherProfile.Sms };
         b.Apply(settings, 0);
         Butcher = b;
     }
     public ButcherReach GetButcherReach() => new(
         PpuCore: IsGameGear ? "Game Gear VDP" : "Master System VDP", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
         SpritesDma: true, Sprites2004: false, Sound: true, Bands: false, Ram: true)
-    { Console = IsGameGear ? "gg" : "sms", ConsoleAddressLines = ButcherProfile.Sms.ConsoleLines, AttrNames = ButcherProfile.Sms.AttrNames, Channels = ButcherProfile.Sms.Channels,
+    { Console = IsGameGear ? "gg" : "sms", ConsoleAddressLines = ButcherProfile.Sms.ConsoleLines, AttrNames = ButcherProfile.Sms.AttrNames, Channels = board.Sound.HasFm ? ButcherProfile.SmsFm.Channels : ButcherProfile.Sms.Channels,
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the VDP and its 16 KB video RAM: name table, tile graphics and the sprite table." };
     protected void ButcherFrame()
     {
         var b = Butcher;
-        if (b != null) { b.AttachRam(board.Ram); b.FrameStart(board.ButcherPsgWrite); }
+        if (b != null) { b.FmInject = board.ButcherFmWrite; b.AttachRam(board.Ram); b.FrameStart(board.ButcherPsgWrite); }
         var on = b != null && !b.Idle ? b : null;
         board.Butcher = on; board.Vdp.Butcher = on;
     }

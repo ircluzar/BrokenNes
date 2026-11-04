@@ -198,6 +198,8 @@ public sealed class ButcherProfile
 	public Func<int, byte, byte> Drone = (r, v) => (byte)(v | 0x3F);
 	public int DropReg = 0x15;
 	public Func<byte, int, byte> DropApply = (v, mask) => (byte)(v & ~mask);
+	/// <summary>The drop register's value before the game has written it: every channel on (NES $0F), or nothing keyed off (SNES KOF 0).</summary>
+	public byte DropRegDefault = 0x0F;
 	// RAM window the profiler watches, and the page it never touches (the stack)
 	public int RamWindow = 0x800, StackPage = 1;
 
@@ -218,6 +220,7 @@ public sealed class ButcherProfile
 		Drone = (r, v) => r == 0x1C ? (byte)((v & 0x9F) | 0x20) : (byte)0xF0,  // full volume, envelope held
 		DropReg = 0x25,                                                         // NR51: a channel off on both sides
 		DropApply = (v, mask) => (byte)(v & ~(mask | (mask << 4))),
+		DropRegDefault = 0xFF,
 		RamWindow = 0x2000, StackPage = 0x1F,
 	};
 	/// <summary>Master System / Game Gear: the sprite table is in VRAM (no attribute byte), the PSG takes latch / data bytes.</summary>
@@ -231,13 +234,24 @@ public sealed class ButcherProfile
 		Psg = true,
 		RamWindow = 0x2000, StackPage = 0x1F,
 	};
-	/// <summary>Genesis: 64 KB VRAM, the PSG (FM not yet), 64 KB work RAM.</summary>
+	/// <summary>Master System with its FM unit (YM2413): the PSG's four channels, then FM 1-9.</summary>
+	public static readonly ButcherProfile SmsFm = new()
+	{
+		Console = "sms",
+		ConsoleLines = 14,
+		HiddenYMin = 0x100, HiddenYZero = 0xD0, YMin = 0, YMax = 0xCF, XMax = 0xFF,
+		AttrBits = Array.Empty<int>(), AttrNames = Array.Empty<string>(),
+		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise", "FM 1", "FM 2", "FM 3", "FM 4", "FM 5", "FM 6", "FM 7", "FM 8", "FM 9" },
+		Psg = true,
+		RamWindow = 0x2000, StackPage = 0x1F,
+	};
+	/// <summary>Genesis: 64 KB VRAM, PSG + YM2612, 64 KB work RAM.</summary>
 	public static readonly ButcherProfile Md = new()
 	{
 		Console = "md",
 		ConsoleLines = 16,
 		AttrBits = Array.Empty<int>(), AttrNames = Array.Empty<string>(),
-		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise" },
+		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise", "FM 1", "FM 2", "FM 3", "FM 4", "FM 5", "FM 6" },
 		Psg = true,
 		RamWindow = 0x10000, StackPage = 0xFF,
 	};
@@ -250,7 +264,18 @@ public sealed class ButcherProfile
 		HiddenYMin = 0xE0, YMin = 0, YMax = 0xDF, XMax = 0xFF,
 		AttrBits = new[] { 7, 6, 4, 3, 1 },
 		AttrNames = new[] { "V-flip", "H-flip", "Priority", "Palette 2", "Palette 0" },
-		Channels = Array.Empty<string>(),
+		// the S-DSP, reached at the SPC700's $F3 data port: voice n's registers at n*16 + 0-7, the globals at x8-xF
+		SoundBase = 0,
+		Channels = new[] { "Voice 1", "Voice 2", "Voice 3", "Voice 4", "Voice 5", "Voice 6", "Voice 7", "Voice 8" },
+		SoundExcluded = r => (r & 0x0F) >= 8,          // KON, FLG, the echo buffer, the sample directory...: left alone
+		ChannelOf = r => (r & 0x0F) < 8 ? r >> 4 : -1,
+		VolumeRegs = new[] { 0x00, 0x01, 0x10, 0x11, 0x20, 0x21, 0x30, 0x31, 0x40, 0x41, 0x50, 0x51, 0x60, 0x61, 0x70, 0x71 },
+		DutyRegs = Array.Empty<int>(),
+		PeriodLowRegs = new[] { 0x02, 0x12, 0x22, 0x32, 0x42, 0x52, 0x62, 0x72 },
+		Drone = (r, v) => 0x7F,
+		DropReg = 0x5C,                                  // KOF: a dropped voice's key-off bit is held set
+		DropApply = (v, mask) => (byte)(v | mask),
+		DropRegDefault = 0x00,
 		RamWindow = 0x20000, StackPage = 0x1F,
 	};
 	public bool Psg;
@@ -659,11 +684,11 @@ public sealed class Butcher
 	}
 
 	// ===================================================================================== sound
-	private readonly byte[] lastGame = new byte[0x40];
+	private readonly byte[] lastGame = new byte[0x80];
 	private bool dropRegKnown; // until the game writes its channel-enable register, every channel is taken to be on
 	private readonly (ushort a, byte v)[][] history = { new (ushort, byte)[8], new (ushort, byte)[8], new (ushort, byte)[8], new (ushort, byte)[8] };
 	private readonly int[] historyCount = new int[4];
-	private int dropMask; private readonly int[] dropLeft = new int[5]; private bool pendingDropRelease;
+	private int dropMask; private readonly int[] dropLeft = new int[16]; private bool pendingDropRelease;
 	private int stutterLeft, droneLeft, dutyLeft, detuneLeft;
 
 	/// <summary>Filters a game write to a sound register on its way into the chip (NES $4000-$4017, Game Boy NR10-NR52).</summary>
@@ -696,6 +721,76 @@ public sealed class Butcher
 		}
 		if (so.Nudge.On && periodLow && RA() < Threshold(so.Nudge.Rate)) v = (byte)(v + ((RA() & 1) != 0 ? 1 : -1));
 		return v;
+	}
+
+	// ===================================================================================== FM chips
+	// Channels after the PSG's four in the panel's drop list: Genesis FM 1-6 (YM2612), Master System FM 1-9 (YM2413).
+	// Both chips take an address latch then data. Drop-outs key a channel off (the game's next key-on brings it back),
+	// drone holds total level / volume at loudest, detune XORs the frequency low byte, nudges +-1 it, bit flips hit the
+	// operator and channel parameters. Key-on registers are only ever cleared, never set: no note the game did not play.
+	/// <summary>Writes straight to the FM chip (port, value): set by the host that owns one.</summary>
+	public Action<int, byte>? FmInject;
+	private readonly int[] fmAddr = new int[2];
+	private int FmDropBit(int fmCh) => 1 << (4 + fmCh);
+
+	/// <summary>YM2612 port write (0 / 2 = address of part 1 / 2, 1 / 3 = data).</summary>
+	public byte FilterYmWrite(int port, byte v)
+	{
+		int part = (port >> 1) & 1;
+		if ((port & 1) == 0) { fmAddr[part] = v; return v; }
+		int r = fmAddr[part];
+		var so = settings.Sound;
+		if (r == 0x28 && part == 0)                                   // key on / off: ops in bits 4-7, channel code in 0-2
+		{
+			int code = v & 7, ch = (code & 3) + ((code & 4) != 0 ? 3 : 0);
+			if ((code & 3) != 3 && (dropMask & FmDropBit(ch)) != 0) return (byte)(v & 0x0F);
+			return v;
+		}
+		if (r < 0x30 || r > 0xB6) return v;                         // LFO, timers, DAC: left alone
+		if (droneLeft > 0 && r >= 0x40 && r <= 0x4F) return 0;        // total level 0 = loudest
+		bool freqLow = r >= 0xA0 && r <= 0xA2;
+		if (detuneLeft > 0 && freqLow) v ^= (byte)Math.Clamp(so.Detune.Value, 1, 255);
+		if (so.Nudge.On && freqLow && RA() < Threshold(so.Nudge.Rate)) v = (byte)(v + ((RA() & 1) != 0 ? 1 : -1));
+		return FlipBits(v);
+	}
+
+	/// <summary>YM2413 (Master System FM unit): address port then data port.</summary>
+	public byte FilterOpllWrite(bool data, byte v)
+	{
+		if (!data) { fmAddr[0] = v; return v; }
+		int r = fmAddr[0];
+		var so = settings.Sound;
+		int ch = r & 0x0F;
+		if (r >= 0x20 && r <= 0x28 && (dropMask & FmDropBit(ch)) != 0) return (byte)(v & ~0x10);   // key off
+		if (r >= 0x30 && r <= 0x38 && droneLeft > 0) return (byte)(v & 0xF0);                       // volume 0 = loudest
+		bool freqLow = r >= 0x10 && r <= 0x18;
+		if (detuneLeft > 0 && freqLow) v ^= (byte)Math.Clamp(so.Detune.Value, 1, 255);
+		if (so.Nudge.On && freqLow && RA() < Threshold(so.Nudge.Rate)) v = (byte)(v + ((RA() & 1) != 0 ? 1 : -1));
+		if (r >= 0x20 && r <= 0x28) return v;                      // key / sustain / block: no flips (no new notes)
+		return r <= 0x38 ? FlipBits(v) : v;
+	}
+
+	private byte FlipBits(byte v)
+	{
+		var so = settings.Sound;
+		if (!Any(so.BitFlip.Bits) || RA() >= Threshold(so.BitFlip.Rate)) return v;
+		int n = 0; Span<int> picks = stackalloc int[5];
+		for (int i = 0; i < Math.Min(5, so.BitFlip.Bits.Length); i++) if (so.BitFlip.Bits[i]) picks[n++] = i;
+		return n == 0 ? v : (byte)(v ^ (1 << picks[(int)(RA() % (uint)n)]));
+	}
+
+	/// <summary>A newly dropped FM channel is keyed off at once (the next key-on the game writes is let through once the drop ends).</summary>
+	private void FmDrops(int oldDrop)
+	{
+		var inj = FmInject; if (inj == null) return;
+		int fmChannels = Profile.Channels.Length - 4;
+		for (int ch = 0; ch < fmChannels; ch++)
+		{
+			int bit = FmDropBit(ch);
+			if ((dropMask & bit) == 0 || (oldDrop & bit) != 0) continue;
+			if (Profile.Console == "md") { inj(0, 0x28); inj(1, (byte)(ch < 3 ? ch : ch + 1)); }
+			else { inj(-1, (byte)(0x20 + ch)); inj(-2, 0); }       // YM2413: address then data (key off, block 0)
+		}
 	}
 
 	// ===================================================================================== the SN76489 PSG (Master System / Game Gear)
@@ -737,7 +832,7 @@ public sealed class Butcher
 		int oldDrop = dropMask; bool droneWas = droneLeft > 0;
 		if (SoundActive)
 		{
-			for (int ch = 0; ch < 4; ch++)
+			for (int ch = 0; ch < Math.Min(Profile.Channels.Length, dropLeft.Length); ch++)
 			{
 				if (dropLeft[ch] > 0) { if (--dropLeft[ch] == 0) dropMask &= ~(1 << ch); continue; }
 				bool on = so.Drops.Channels != null && ch < so.Drops.Channels.Length && so.Drops.Channels[ch];
@@ -754,6 +849,7 @@ public sealed class Butcher
 		}
 		else { dropMask = 0; Array.Clear(dropLeft); droneLeft = 0; }
 		bool drone = droneLeft > 0;
+		FmDrops(oldDrop);
 		for (int ch = 0; ch < 4; ch++)
 		{
 			bool was = (oldDrop & (1 << ch)) != 0, now = (dropMask & (1 << ch)) != 0;
@@ -816,7 +912,7 @@ public sealed class Butcher
 		pendingDropRelease = false;
 		if (dropMask != oldDrop)
 		{
-			byte en = dropRegKnown ? lastGame[Profile.DropReg] : (byte)(Profile.Console == "gb" ? 0xFF : 0x0F);
+			byte en = dropRegKnown ? lastGame[Profile.DropReg] : Profile.DropRegDefault;
 			inject((ushort)(Profile.SoundBase + Profile.DropReg), Profile.DropApply(en, dropMask));
 		}
 	}

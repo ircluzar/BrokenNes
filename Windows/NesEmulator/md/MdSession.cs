@@ -29,14 +29,15 @@ public sealed class MdSession : IConsoleSession, IButcherHost
         SpritesDma: false, Sprites2004: false, Sound: Board.Sound is MdSoundUnit, Bands: false, Ram: true)
     { Console = "md", ConsoleAddressLines = ButcherProfile.Md.ConsoleLines, AttrNames = ButcherProfile.Md.AttrNames, Channels = ButcherProfile.Md.Channels,
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the VDP and its 64 KB video RAM: plane maps, tile graphics, the sprite table and the scroll table.",
-      SoundNote = Board.Sound is MdSoundUnit ? "The PSG only: the FM chip (YM2612) is not reached yet." : "Not reachable with this sound unit (pick the default Genesis sound in the APU menu)." };
+      SoundNote = Board.Sound is MdSoundUnit ? "" : "Not reachable with this sound unit: it plays the Genesis sound on another console's chip (APU menu)." };
     private void ButcherFrame()
     {
         var b = Butcher;
         var unit = Board.Sound as MdSoundUnit;
-        if (b != null) { b.AttachRam(Board.Ram); b.FrameStart(unit != null ? unit.ButcherPsgWrite : (_, _) => { }); }
+        if (b != null) { b.FmInject = unit != null ? unit.ButcherYmWrite : null; b.AttachRam(Board.Ram); b.FrameStart(unit != null ? unit.ButcherPsgWrite : (_, _) => { }); }
         var on = b != null && !b.Idle ? b : null;
         Board.Vdp.Butcher = on; if (unit != null) unit.Butcher = on;
+        if (b != null) b.FmInject = unit != null ? unit.ButcherYmWrite : null;
     }
 
     public const int DebugWidth = 512, DebugHeight = 272;

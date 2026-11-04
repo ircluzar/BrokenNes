@@ -81,6 +81,11 @@ public partial class APU_SFC : ISnesApu
     /// really plays its instruments; null (the default) costs a field check per DSP write.</summary>
     public Action<byte, byte, long>? DspWriteTap;
 
+    /// <summary>Butchering mode (corruption/Butcher.cs): the filter on the SPC700's writes to the S-DSP's registers. Null when off.</summary>
+    public Butcher? Butcher;
+    /// <summary>Butchering mode's own DSP writes (key-offs, drone, stutter): straight to the chip.</summary>
+    public void ButcherDspWrite(ushort reg, byte v) { if (reg < 0x80) Dsp.Write((byte)reg, v); }
+
     /// <summary>
     /// true: only run an SPC instruction if it ENDS by the target time, so the SPC trails the CPU by
     /// less than one instruction. An instruction runs all at once, so this puts its port writes at
@@ -207,6 +212,7 @@ public partial class APU_SFC : ISnesApu
                 break;
             case 0xF2: dspAddr = v; break;
             case 0xF3:
+                if (dspAddr < 0x80 && Butcher is { SoundActive: true } bs) v = bs.FilterApuWrite(dspAddr, v);
                 if (dspAddr < 0x80) { Dsp.Write(dspAddr, v); OnDspRegWrite(dspAddr, v); DspWriteTap?.Invoke(dspAddr, v, SamplesProduced); }
                 else Dsp.WriteHigh(dspAddr, v);   // nowhere on a SNES; the WideMess's second page once unlocked
                 break;
