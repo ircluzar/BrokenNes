@@ -302,7 +302,7 @@ public partial class PPU_SFC
             if ((oamInternal & 1) == 0) oamLatch = v;
             else { Oam[oamInternal - 1] = OF(oamInternal - 1, oamLatch); Oam[oamInternal] = OF(oamInternal, v); }
         }
-        else Oam[0x200 + (oamInternal & 0x1F)] = v;
+        else Oam[0x200 + (oamInternal & 0x1F)] = Butcher is { SpritesActive: true } bh ? bh.FilterSpriteHigh(v) : v;
         oamInternal = (ushort)((oamInternal + 1) & 0x3FF);
     }
 

@@ -495,15 +495,16 @@ public partial class MdVdp
     // highlight, plane size, window side) and an offset on the line's horizontal scroll; put back as the next line
     // starts unless the CPU rewrote them meanwhile.
     private readonly byte[] bandSaved = new byte[24], bandApplied = new byte[24];
-    private bool bandOn; private int bandHs;
+    private bool bandOn; private int bandHs, bandVs; private bool bandSpritesOff;
+    private byte SC(int idx) => Butcher is { ConsoleBent: true } ? VR(((Reg[5] & (H40 ? 0x7E : 0x7F)) << 9) + (idx >> 2) * 8 + (idx & 3) & 0xFFFF) : SpriteCache[idx];
 
     private void ButcherBandsBegin(Butcher bb, int line)
     {
-        bandHs = 0;
+        bandHs = 0; bandVs = 0; bandSpritesOff = false;
         var o = bb.BandLineEx(line);
         if (!o.Any && bb.LineBendMask == 0) return;
         Array.Copy(Reg, bandSaved, 24);
-        bandHs = o.Shift;
+        bandHs = o.Shift; bandVs = o.YOffset; bandSpritesOff = (o.LayersOff & 2) != 0;
         if ((o.LayersOff & 1) != 0) Reg[1] &= unchecked((byte)~0x40);
         if (o.MapSwap) { byte a = Reg[2], b = Reg[4]; Reg[2] = (byte)((a & ~0x38) | (b & 7) << 3); Reg[4] = (byte)((b & ~7) | (a >> 3) & 7); }
         if ((o.Extras & 1) != 0) Reg[12] ^= 0x08;   // shadow / highlight
@@ -515,7 +516,7 @@ public partial class MdVdp
 
     private void ButcherBandsEnd()
     {
-        bandOn = false; bandHs = 0;
+        bandOn = false; bandHs = 0; bandVs = 0; bandSpritesOff = false;
         for (int i = 0; i < 24; i++) if (Reg[i] == bandApplied[i]) Reg[i] = bandSaved[i];
     }
 

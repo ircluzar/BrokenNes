@@ -734,11 +734,35 @@ public sealed class Butcher
 		for (int i = 0; i < len; i++) oam[i] = FilterByte(i, oam[i], sp, organicGroups: true);
 	}
 
+	// Tables written a field at a time (Master System / Game Gear, Genesis, SNES, NES $2004): the organic events work on a
+	// per-sprite field table - last frame's values (group lag), the latest ones (clones from two sprites back, field swap).
+	// Y keeps its own value whenever either side is a hidden / end-of-list marker, so the list is never cut or revealed.
+	private readonly byte[] fieldPrev = new byte[128 * 4], fieldCur = new byte[128 * 4];
+
 	/// <summary>A sprite-table byte by canonical field (0 Y, 1 tile, 2 attributes, 3 X), for chips whose table is not 4-byte records.</summary>
-	public byte FilterSpriteField(int field, int sprite, byte b) => FilterField(field, b, settings.Sprites);
+	public byte FilterSpriteField(int field, int sprite, byte b)
+	{
+		var sp = settings.Sprites;
+		int s = sprite & 127, k = s * 4 + (field & 3);
+		byte orig = b;
+		if (lagLeft > 0 && s > 0 && (s >> 3) % 8 == lagGroup) b = fieldPrev[k];
+		else if (cloneLeft > 0 && s >= 2 && (s - cloneSprite) % 7 == 0) b = fieldCur[k - 8];
+		else if (swapLeft > 0 && field != 0) b = fieldCur[s * 4 + ((field - swapBy) & 3)];
+		if (field == 0 && (Hidden(orig) || Hidden(b))) b = orig;
+		fieldCur[k] = orig;
+		return FilterField(field, b, sp);
+	}
+
+	/// <summary>The SNES sprite high table (X bit 8 and the size bit of four sprites): the attribute-flip effect, one bit.</summary>
+	public byte FilterSpriteHigh(byte v)
+	{
+		var sp = settings.Sprites;
+		if (!Any(sp.Attr.Bits) || RS() >= Threshold(sp.Attr.Rate)) return v;
+		return (byte)(v ^ (1 << (int)(RS() % 8)));
+	}
 
 	/// <summary>A single OAM byte written through $2004.</summary>
-	public byte FilterOamWrite(int index, byte b) => FilterByte(index & 0xFF, b, settings.Sprites, organicGroups: false);
+	public byte FilterOamWrite(int index, byte b) => FilterSpriteField(Profile.FieldOfRaw[index & 3], (index & 0x1FF) >> 2, b);
 
 	private byte FilterByte(int idx, byte b, SpriteSettings sp, bool organicGroups)
 	{
@@ -789,8 +813,14 @@ public sealed class Butcher
 	// ===================================================================================== sound
 	private readonly byte[] lastGame = new byte[0x80];
 	private bool dropRegKnown; // until the game writes its channel-enable register, every channel is taken to be on
-	private readonly (ushort a, byte v)[][] history = { new (ushort, byte)[8], new (ushort, byte)[8], new (ushort, byte)[8], new (ushort, byte)[8] };
-	private readonly int[] historyCount = new int[4];
+	private readonly (ushort a, byte v)[][] history = Enumerable16();
+	private readonly int[] historyCount = new int[16];
+	private static (ushort a, byte v)[][] Enumerable16() { var h = new (ushort, byte)[16][]; for (int i = 0; i < 16; i++) h[i] = new (ushort, byte)[8]; return h; }
+	private void Remember(int ch, ushort a, byte v)
+	{
+		if ((uint)ch >= 16u) return;
+		var h = history[ch]; Array.Copy(h, 0, h, 1, 7); h[0] = (a, v); if (historyCount[ch] < 8) historyCount[ch]++;
+	}
 	private int dropMask; private readonly int[] dropLeft = new int[16]; private bool pendingDropRelease;
 	private int stutterLeft, droneLeft, dutyLeft, detuneLeft;
 
@@ -801,7 +831,7 @@ public sealed class Butcher
 		int r = address - pf.SoundBase;
 		if ((uint)r < (uint)lastGame.Length) lastGame[r] = v;
 		int ch = pf.ChannelOf(r);
-		if (ch >= 0 && ch < 4) { var h = history[ch]; Array.Copy(h, 0, h, 1, 7); h[0] = (address, v); if (historyCount[ch] < 8) historyCount[ch]++; }
+		if (ch >= 0) Remember(ch, address, v);
 		if (r == pf.DropReg) { dropRegKnown = true; return pf.DropApply(v, dropMask); }
 		if (pf.SoundExcluded(r)) return v; // NES: DMC samples and the frame counter; Game Boy: power and wave RAM
 		return Bend(address, v);
@@ -850,6 +880,7 @@ public sealed class Butcher
 			return v;
 		}
 		if (r < 0x30 || r > 0xB6) return v;                         // LFO, timers, DAC: left alone
+		if (r >= 0xA0) { int fc = (r & 3) == 3 ? -1 : (r & 3) + part * 3; if (fc >= 0) Remember(4 + fc, (ushort)(part << 8 | r), v); }   // stutter replays a channel's frequency writes
 		if (droneLeft > 0 && r >= 0x40 && r <= 0x4F) return 0;        // total level 0 = loudest
 		bool freqLow = r >= 0xA0 && r <= 0xA2;
 		if (detuneLeft > 0 && freqLow) v ^= (byte)Math.Clamp(so.Detune.Value, 1, 255);
@@ -864,6 +895,7 @@ public sealed class Butcher
 		int r = fmAddr[0];
 		var so = settings.Sound;
 		int ch = r & 0x0F;
+		if (r >= 0x10 && r <= 0x28 && ch < 9) Remember(4 + ch, (ushort)r, v);
 		if (r >= 0x20 && r <= 0x28 && (dropMask & FmDropBit(ch)) != 0) return (byte)(v & ~0x10);   // key off
 		if (r >= 0x30 && r <= 0x38 && droneLeft > 0) return (byte)(v & 0xF0);                       // volume 0 = loudest
 		bool freqLow = r >= 0x10 && r <= 0x18;
@@ -958,7 +990,7 @@ public sealed class Butcher
 		var so = settings.Sound;
 		if ((v & 0x80) != 0) { psgCh = (v >> 5) & 3; psgType = (v >> 4) & 1; }
 		int ch = psgCh;
-		{ var h = history[ch]; Array.Copy(h, 0, h, 1, 7); h[0] = (0, v); if (historyCount[ch] < 8) historyCount[ch]++; }
+		Remember(ch, 0, v);
 		if (psgType == 1)
 		{
 			int vol = v & 0x0F;
@@ -997,8 +1029,17 @@ public sealed class Butcher
 			Tick(ref detuneLeft, so.Detune.On, so.Detune.Rate, so.Detune.Duration, null);
 			if (stutterLeft > 0)
 			{
-				int ch = (int)(RA() % 4);
-				if (historyCount[ch] > 1) inject(0, history[ch][1 + (int)(RA() % (uint)(historyCount[ch] - 1))].v);
+				int ch = (int)(RA() % (uint)Math.Min(16, Profile.Channels.Length));
+				if (historyCount[ch] > 1)
+				{
+					var w = history[ch][1 + (int)(RA() % (uint)(historyCount[ch] - 1))];
+					if (ch < 4) inject(0, w.v);
+					else if (FmInject is { } fi)
+					{
+						if (Profile.Console == "md") { int part = w.a >> 8; fi(part * 2, (byte)w.a); fi(part * 2 + 1, w.v); }
+						else { fi(-1, (byte)w.a); fi(-2, w.v); }
+					}
+				}
 			}
 		}
 		else { dropMask = 0; Array.Clear(dropLeft); droneLeft = 0; }
@@ -1034,10 +1075,14 @@ public sealed class Butcher
 		if (BandsActive) BandsFrame(); else { TallXor = 0; LineBendMask = 0; }
 		if (RamActive) RamFrame();
 		var sp = settings.Sprites;
+		if (SpritesActive) Buffer.BlockCopy(fieldCur, 0, fieldPrev, 0, fieldCur.Length);
 		if (Profile.Psg)
 		{
 			if (SpritesActive)
 			{
+				Tick(ref lagLeft, sp.GroupLag.On, sp.GroupLag.Rate, sp.GroupLag.Duration, () => lagGroup = (int)(RS() % 8));
+				Tick(ref cloneLeft, sp.Clone.On, sp.Clone.Rate, sp.Clone.Duration, () => cloneSprite = 2 + (int)(RS() % 7));
+				Tick(ref swapLeft, sp.FieldSwap.On, sp.FieldSwap.Rate, sp.FieldSwap.Duration, () => swapBy = 1 + (int)(RS() % 3));
 				Tick(ref forceLeft, sp.ForceBit.On, sp.ForceBit.Rate, sp.ForceBit.Duration, null);
 			}
 			PsgFrame(inject);
@@ -1072,7 +1117,7 @@ public sealed class Butcher
 			if (detuneStart && detuneLeft > 0) foreach (var r in pf.PeriodLowRegs) inject(A(r), Bend(A(r), lastGame[r]));
 			if (stutterLeft > 0)
 			{
-				int ch = (int)(RA() % 4);
+				int ch = (int)(RA() % (uint)Math.Min(16, Profile.Channels.Length));
 				if (historyCount[ch] > 1) { var w = history[ch][1 + (int)(RA() % (uint)(historyCount[ch] - 1))]; inject(w.a, w.v); }
 			}
 		}

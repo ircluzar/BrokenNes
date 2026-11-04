@@ -351,7 +351,7 @@ public partial class MdVdp
         bool colV = (Reg[11] & 4) != 0;
         int vsOff = isA ? 0 : 1;
         int vsMask = dbl && VsramIm2Mask11 ? 0x7FF : 0x3FF;      // eleven bits of vertical scroll in interlace mode 2 (a 128-cell plane is 2048 lines there)
-        int vsFull = (VsFullLatch ? (isA ? vsLatchA : vsLatchB) : Vsram[vsOff]) & vsMask;
+        int vsFull = (VsFullLatch ? (isA ? vsLatchA : vsLatchB) : Vsram[vsOff]) - bandVs & vsMask;
         int x = xa;
         int bugColumn0 = bugX0 >= 0 ? (bugX0 - hs & wMask) >> 4 : 0;
         if (FastDraw && !colV && bugX0 < 0)
@@ -387,7 +387,7 @@ public partial class MdVdp
                     limit = Math.Min(xb, b0 + (col + 1 << 4));
                     // after a window at the left the part of the first pair that the window leaves (x from the window's edge to the edge plus the fine scroll) takes the entry of the pair after it (oracle: probe 3)
                     if (WindowStretchColumn && bugX0 >= 0 && x >= bugX0 && x < bugX0 + b0) { col = bugX0 >> 4; limit = Math.Min(xb, bugX0 + b0); }
-                    vs = Vsram[(col + VsramColumnShift << 1) + vsOff & 0x3F] & vsMask;
+                    vs = Vsram[(col + VsramColumnShift << 1) + vsOff & 0x3F] - bandVs & vsMask;
                 }
             }
             else vs = vsFull;
@@ -504,7 +504,7 @@ public partial class MdVdp
         {
             int a = sat + idx * 8;
             int ypos, size, link;
-            if (SpriteCacheOn) { int c = idx * 4; ypos = (SpriteCache[c] << 8 | SpriteCache[c + 1]) & SpriteYMask; size = SpriteCache[c + 2]; link = SpriteCache[c + 3] & 0x7F; }
+            if (SpriteCacheOn) { int c = idx * 4; ypos = (SC(c) << 8 | SC(c + 1)) & SpriteYMask; size = SC(c + 2); link = SC(c + 3) & 0x7F; }
             else { ypos = (VR(a & 0xFFFF) << 8 | VR(a + 1 & 0xFFFF)) & SpriteYMask; size = VR(a + 2 & 0xFFFF); link = VR(a + 3 & 0xFFFF) & 0x7F; }
             int h = (size & 3) + 1;
             int top = ypos - (128 << (dbl ? 1 : 0));
@@ -522,6 +522,7 @@ public partial class MdVdp
 
     private void DrawSpritesToLine()
     {
+        if (bandSpritesOff) return;   // Butchering mode: a sprites-off band
         if (sprDirty) { Array.Clear(sprLine, 0, lineWidth + 16); sprDirty = false; }
         if (lineSpriteCount == 0) { prevLineDotLimit = false; return; }
         sprDirty = true;
@@ -532,12 +533,12 @@ public partial class MdVdp
         for (int i = 0; i < lineSpriteCount && cellsLeft > 0; i++)
         {
             int a = sat + lineSprites[i] * 8;
-            int size = SpriteCacheOn ? SpriteCache[lineSprites[i] * 4 + 2] : VR(a + 2 & 0xFFFF);
+            int size = SpriteCacheOn ? SC(lineSprites[i] * 4 + 2) : VR(a + 2 & 0xFFFF);
             int w = (size >> 2 & 3) + 1, h = (size & 3) + 1;
             int aa = H40 || !H32AttrWrap ? a : sat + (lineSprites[i] * 8 & 0x1FF);       // H32: the table is 0x200 bytes and the position and attributes of sprite 64 to 79 come from sprite 0 to 15 (the sprite cache holds all 80 sprites' first words)
             int attr = VR(aa + 4 & 0xFFFF) << 8 | VR(aa + 5 & 0xFFFF);
             int xraw = (VR(aa + 6 & 0xFFFF) << 8 | VR(aa + 7 & 0xFFFF)) & 0x1FF;
-            int ypos = (SpriteCacheOn ? (SpriteCache[lineSprites[i] * 4] << 8 | SpriteCache[lineSprites[i] * 4 + 1]) & SpriteYMask : (VR(a & 0xFFFF) << 8 | VR(a + 1 & 0xFFFF)) & SpriteYMask) - (128 << (dbl ? 1 : 0));
+            int ypos = (SpriteCacheOn ? (SC(lineSprites[i] * 4) << 8 | SC(lineSprites[i] * 4 + 1)) & SpriteYMask : (VR(a & 0xFFFF) << 8 | VR(a + 1 & 0xFFFF)) & SpriteYMask) - (128 << (dbl ? 1 : 0));
             // a sprite at X=0 hides the sprites after it, but only once a sprite with another X has come before it on the line (or the line before ran out of pixels)
             if (xraw == 0) { if (seenVisible) masked = true; }
             else seenVisible = true;

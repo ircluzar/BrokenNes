@@ -119,7 +119,9 @@
     const st = await api.butcher.getStats().catch(() => null);
     if (st?.success) {
       const n = document.getElementById('ramStats');
-      if (n && settings?.ram?.on) n.textContent = `Profiler: ${st.watches} watched, ${st.confirmed} confirmed variables, ${st.nudging} being nudged`;
+      if (n && settings?.ram?.on) n.textContent = st.confirmed > 0
+        ? `Ready: ${st.confirmed} confirmed variable${st.confirmed === 1 ? '' : 's'}, ${st.nudging} being nudged (${st.watches} watched). What it learned survives Reload State.`
+        : `Learning… ${st.watches} byte${st.watches === 1 ? '' : 's'} watched, nothing confirmed yet (title screens give it little: play a bit).`;
       watchdog(st.stillFrames || 0);
     }
     const r = await api.butcher.getReach().catch(() => null);
