@@ -52,7 +52,7 @@
       palette: { on: false, mode: 0, invert: false, channelSwap: false, posterize: 0, cycleFrames: 0 },
       ciramA10: 0, ciramFlicker: 0,
       videoDac: { address: [], data: new Array(24).fill(0), flicker: 0, bendWrites: false },
-      paletteBus: { address: new Array(reach?.console === 'snes' ? 8 : 5).fill(0), data: new Array(reach?.console === 'snes' ? 15 : 6).fill(0), flicker: 0, bendWrites: false },
+      paletteBus: (() => { const z = { nes: [5, 6], snes: [8, 15], md: [6, 12], sms: [5, 0], gg: [5, 0], gb: [6, 8] }[reach?.console || 'nes'] || [5, 6]; return { address: new Array(z[0]).fill(0), data: new Array(z[1]).fill(0), flicker: 0, bendWrites: false }; })(),
       unsafe: { cpuPins: { address: new Array(reach?.cpuAddressLines || 15).fill(0), data: new Array(reach?.cpuDataLines || 8).fill(0), flicker: 0, bendWrites: false },
                 soundCpuPins: { address: new Array(reach?.soundCpuLines || 0).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
                 ramRot: { on: false, rate: 25, bits: 1 }, vramRot: { on: false, rate: 25, bits: 1 },
@@ -531,10 +531,10 @@
       el('div', { class: 'fx' }, el('div', { class: 'namerow' }, el('label', { class: 'name' }, 'Video DAC pins (R0-R7, G0-G7, B0-B7)'), soloBtn(settings.videoDac, 'Video DAC pins (R0-R7, G0-G7, B0-B7)')),
         el('div', { class: 'why' }, 'The 24 lines into the video DAC: stuck or bridged colour bits on the final picture.'),
         pinGrid('D', settings.videoDac.data)),
-      (reach.console === 'nes' && reach.ppuCore === 'Fix') || reach.console === 'snes' ? el('div', { class: 'fx' },
+      (reach.console !== 'nes' || reach.ppuCore === 'Fix') ? el('div', { class: 'fx' },
         el('div', { class: 'namerow' }, el('label', { class: 'name' }, 'Palette RAM bus'), soloBtn(settings.paletteBus, 'Palette RAM bus')),
         el('div', { class: 'why' }, 'The palette chip’s own lines: the picture reads the wrong colour entry or bent colour bits (the game’s palette stays intact).'),
-        pinGrid('A', settings.paletteBus.address), pinGrid('D', settings.paletteBus.data), slider('Flicker', settings.paletteBus, 'flicker', 0, 100, 1)) : null));
+        pinGrid('A', settings.paletteBus.address), settings.paletteBus.data.length ? pinGrid('D', settings.paletteBus.data) : null, slider('Flicker', settings.paletteBus, 'flicker', 0, 100, 1)) : null));
 
     const un = settings.unsafe;
     const rotFx = (label, why, fx) => el('div', { class: 'fx' }, check(label, fx, 'on'), el('div', { class: 'why' }, why),

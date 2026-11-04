@@ -80,6 +80,19 @@ public partial class MdVdp
         return 0xFF000000u | (uint)(Lv(r) << 16 | Lv(g) << 8 | Lv(b));
     }
 
+    // Butchering mode's palette bus: the colour cache rebuilt from CRAM read through the bent lines (6 index, 9 colour bits).
+    private readonly uint[] bentPal = new uint[192];
+    private uint[] ButcherPal()
+    {
+        var b = Butcher!;
+        for (int i = 0; i < 64; i++)
+        {
+            int c = b.PaletteRead(i, 6, x => Cram[x & 63]) & 0x0EEE;
+            bentPal[i] = Argb(c, 0); bentPal[64 + i] = Argb(c, 1); bentPal[128 + i] = Argb(c, 2);
+        }
+        return bentPal;
+    }
+
     private void UpdatePal(int i)
     {
         int c = Cram[i];
@@ -217,7 +230,7 @@ public partial class MdVdp
     {
         if (x1 > lineWidth) x1 = lineWidth;
         if (x1 <= colourX) return;
-        var dst = building; var idx = lineIdx; var p = pal;
+        var dst = building; var idx = lineIdx; var p = Butcher?.PaletteBusFaults != null ? ButcherPal() : pal;
         int o = rowBase;
         if (FastDraw)
         {

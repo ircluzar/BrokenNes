@@ -598,8 +598,8 @@ public sealed class PPU_GB
         {
             bool objWins = oc != 0 && (Lcdc & 0x02) != 0
                 && ((Lcdc & 0x01) == 0 || bc == 0 || ((oa & 0x80) == 0 && (attr & 0x80) == 0));
-            if (objWins) { color = CgbColor(ObjPalRam, oa & 7, oc); shade = (byte)oc; }
-            else { color = CgbColor(BgPalRam, attr & 7, bc); shade = (byte)bc; }
+            if (objWins) { color = CC(ObjPalRam, oa & 7, oc); shade = (byte)oc; }
+            else { color = CC(BgPalRam, attr & 7, bc); shade = (byte)bc; }
         }
         else
         {
@@ -613,17 +613,27 @@ public sealed class PPU_GB
                     ? (dot == obp1WriteDot ? (byte)(Obp1 | obp1Old) : Obp1)
                     : (dot == obp0WriteDot ? (byte)(Obp0 | obp0Old) : Obp0);
                 shade = (byte)(pal >> (oc * 2) & 3);
-                color = CompatMode ? CgbColor(ObjPalRam, (oa & 0x10) != 0 ? 1 : 0, shade) : DmgColors[shade];
+                color = CompatMode ? CC(ObjPalRam, (oa & 0x10) != 0 ? 1 : 0, shade) : DmgColors[shade];
             }
             else
             {
                 byte pal = dot == bgpWriteDot ? (byte)(Bgp | bgpOld) : Bgp;
                 shade = (byte)(pal >> (bc * 2) & 3);
-                color = CompatMode ? CgbColor(BgPalRam, 0, shade) : DmgColors[shade];
+                color = CompatMode ? CC(BgPalRam, 0, shade) : DmgColors[shade];
             }
         }
         FrameBuffer[i] = color;
         ShadeBuffer[i] = shade;
+    }
+
+    // Butchering mode's palette bus: the Color palette RAM read through the bent lines (6 index, 8 data).
+    private uint CC(byte[] pal, int palette, int index)
+    {
+        if (Butcher?.PaletteBusFaults == null) return CgbColor(pal, palette, index);
+        int o = palette * 8 + index * 2;
+        byte lo = (byte)Butcher.PaletteRead(o, 6, x => pal[x & 63]), hi = (byte)Butcher.PaletteRead(o + 1, 6, x => pal[x & 63]);
+        var tmp = new byte[2] { lo, hi };
+        return CgbColor(tmp, 0, 0);
     }
 
     private static uint CgbColor(byte[] pal, int palette, int index)

@@ -42,7 +42,10 @@ public partial class SmsVdp
     private bool Mode4Active => HasMode4 && (Regs[0] & 0x04) != 0;
 
     /// <summary>The colour shown when nothing else is: the sprite palette entry register 7 selects (Mode 4), or the TMS colour of its low nibble.</summary>
-    private uint Backdrop => Mode4Active ? palArgb[16 + (Regs[7] & 0x0F)] : TmsColors[Regs[7] & 0x0F];
+    // Butchering mode's palette bus: the CRAM index lines (5) bent.
+    private uint PA(int i) => Butcher?.PaletteBusFaults != null ? palArgb[Butcher.PaletteRead(i, 5, x => x) & 31] : palArgb[i];
+
+    private uint Backdrop => Mode4Active ? PA(16 + (Regs[7] & 0x0F)) : TmsColors[Regs[7] & 0x0F];
 
     /// <summary>Called when a picture line begins (before any of its pixels): works out which sprites sit on it.</summary>
     private void BeginLineSprites()
@@ -84,7 +87,7 @@ public partial class SmsVdp
 
         int ntBase = ext ? ((Regs[2] & 0x0C) << 10) | 0x700 : (Regs[2] & 0x0E) << 10;
         bool sms1Mask = Revision == SmsVdpRevision.Sms1 && (Regs[2] & 1) == 0;
-        uint backdrop = palArgb[16 + (Regs[7] & 0x0F)];
+        uint backdrop = PA(16 + (Regs[7] & 0x0F));
 
         int x = x0;
         while (x < x1)
@@ -115,7 +118,7 @@ public partial class SmsVdp
                 int color = ((p0 >> bit) & 1) | ((p1 >> bit) & 1) << 1 | ((p2 >> bit) & 1) << 2 | ((p3 >> bit) & 1) << 3;
                 int spr = sprLine[x];
                 int idx = spr != 0 && !(prio && color != 0) ? 16 + spr : palBase + color;
-                Frame[row + x] = palArgb[idx];
+                Frame[row + x] = PA(idx);
             }
         }
     }
