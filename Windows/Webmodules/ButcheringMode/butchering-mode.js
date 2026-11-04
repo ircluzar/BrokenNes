@@ -58,7 +58,7 @@
                 ramRot: { on: false, rate: 25, bits: 1 }, vramRot: { on: false, rate: 25, bits: 1 },
                 padLines: new Array(15).fill(0), padFlicker: 0,
                 soundRamRot: { on: false, rate: 25, bits: 1 }, echoAbuse: { on: false, rate: 25, duration: 120 },
-                ghostNmi: { on: false, rate: 25, duration: 1 }, z80BusHold: { on: false, rate: 25, duration: 60 }, z80ResetHold: { on: false, rate: 25, duration: 60 }, dropNmi: { on: false, rate: 25, duration: 10 }, stuckIrq: { on: false, rate: 25, duration: 10 },
+                ghostNmi: { on: false, rate: 25, duration: 1 }, clockStall: { on: false, rate: 25, duration: 10 }, clockRush: { on: false, rate: 25, duration: 30 }, z80BusHold: { on: false, rate: 25, duration: 60 }, z80ResetHold: { on: false, rate: 25, duration: 60 }, dropNmi: { on: false, rate: 25, duration: 10 }, stuckIrq: { on: false, rate: 25, duration: 10 },
                 ramBus: { address: new Array(reach?.ramBusLines || 11).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
                 videoBus: { address: new Array(reach?.videoBusLines || 3).fill(0), data: new Array(reach?.cpuDataLines || 8).fill(0), flicker: 0, bendWrites: false },
                 dmaPins: { address: new Array(reach?.dmaLines || 0).fill(0), data: new Array(reach?.dmaDataLines || 8).fill(0), flicker: 0, bendWrites: false },
@@ -586,6 +586,9 @@
     if (reach.console === 'md') unsafeBody.push(el('div', { class: 'sub' }, '68000 / Z80 bus arbitration'),
       eventFx('BUSREQ stuck', 'The 68000 keeps the Z80 off the bus: the sound CPU halts, the music freezes.', un.z80BusHold),
       eventFx('Z80 reset held', 'The sound CPU is held in reset: silence, then a restart from scratch.', un.z80ResetHold));
+    unsafeBody.push(el('div', { class: 'sub' }, 'Clock pins'),
+      eventFx('Clock stall', 'The CPU’s clock stops for a while: the picture and sound freeze.', un.clockStall),
+      eventFx('Clock rush', 'The clock runs double: the game races, the music doubles its tempo.', un.clockRush));
     unsafeBody.push(el('div', { class: 'sub' }, 'Video-chip register bus'),
       el('div', { class: 'why' }, 'The CPU’s wires to the picture chip’s registers: scroll, control and VRAM-address writes land bent or on the wrong register.'),
       el('div', { class: 'sub' }, 'Register lines'), pinGrid('A', un.videoBus.address),

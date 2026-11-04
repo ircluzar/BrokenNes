@@ -54,6 +54,9 @@ public sealed class UnsafeSettings
 	/// <summary>Genesis: the 68000 / Z80 bus arbitration - BUSREQ stuck (the Z80 halts, the music freezes), the Z80's reset held.</summary>
 	public EventEffect Z80BusHold { get; set; } = new();
 	public EventEffect Z80ResetHold { get; set; } = new();
+	/// <summary>Clock pins: the CPU's clock stops (frames freeze) or runs double (the game races).</summary>
+	public EventEffect ClockStall { get; set; } = new();
+	public EventEffect ClockRush { get; set; } = new();
 	/// <summary>The bus from the CPU to the video chip's registers (NES $2000-$2007, GB $FF40-$FF4B, SMS VDP ports, Genesis
 	/// VDP ports, SNES B-bus $21xx): writes land on the wrong register or with bent bits - a bent VRAM address can leave damage.</summary>
 	public PinGroupSettings VideoBus { get; set; } = new();
@@ -430,6 +433,9 @@ public sealed class Butcher
 	public bool IrqActive { get; private set; }
 	public bool DropNmiNow => dropLeft2 > 0;
 	public bool Z80BusHeldNow => busHoldLeft > 0;
+	public bool ClockStallNow => stallLeft > 0;
+	public bool ClockRushNow => rushLeft > 0;
+	private int stallLeft, rushLeft;
 	public bool Z80ResetHeldNow => resetHoldLeft > 0;
 	/// <summary>Genesis: (bus request, reset released) written straight to the sound unit when a hold starts / ends.</summary>
 	public Action<bool, bool>? Z80Lines;
@@ -445,6 +451,8 @@ public sealed class Butcher
 		bool irqWas = irqLeft > 0;
 		Tick(ref irqLeft, u.StuckIrq.On, u.StuckIrq.Rate, u.StuckIrq.Duration, null);
 		if (irqLeft > 0) HoldIrqLine?.Invoke(true); else if (irqWas) HoldIrqLine?.Invoke(false);
+		Tick(ref stallLeft, u.ClockStall.On, u.ClockStall.Rate, u.ClockStall.Duration, null);
+		Tick(ref rushLeft, u.ClockRush.On, u.ClockRush.Rate, u.ClockRush.Duration, null);
 		bool busWas = busHoldLeft > 0, rstWas = resetHoldLeft > 0;
 		Tick(ref busHoldLeft, u.Z80BusHold.On, u.Z80BusHold.Rate, u.Z80BusHold.Duration, null);
 		Tick(ref resetHoldLeft, u.Z80ResetHold.On, u.Z80ResetHold.Rate, u.Z80ResetHold.Duration, null);
@@ -525,7 +533,7 @@ public sealed class Butcher
 		Dma = on && Profile.DmaLines > 0 && dm.Active ? dm : null;
 		var co = new PinFaults(settings.Unsafe.CoproPins, 24, 0xD3A2646Cu);
 		Copro = on && Profile.Console == "snes" && co.Active ? co : null;
-		IrqActive = on && (settings.Unsafe.GhostNmi.On || settings.Unsafe.DropNmi.On || settings.Unsafe.StuckIrq.On || settings.Unsafe.Z80BusHold.On || settings.Unsafe.Z80ResetHold.On);
+		IrqActive = on && (settings.Unsafe.GhostNmi.On || settings.Unsafe.DropNmi.On || settings.Unsafe.StuckIrq.On || settings.Unsafe.Z80BusHold.On || settings.Unsafe.Z80ResetHold.On || settings.Unsafe.ClockStall.On || settings.Unsafe.ClockRush.On);
 		if (!IrqActive) { ghostLeft = dropLeft2 = 0; if (irqLeft > 0) { irqLeft = 0; HoldIrqLine?.Invoke(false); } }
 		RotActive = on && (settings.Unsafe.RamRot.On || settings.Unsafe.VramRot.On || settings.Unsafe.SoundRamRot.On || settings.Unsafe.EchoAbuse.On);
 		PadActive = on && settings.Unsafe.PadLines is { } pl && Array.Exists(pl, x => x != 0);

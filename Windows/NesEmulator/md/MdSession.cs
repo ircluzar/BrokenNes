@@ -18,6 +18,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
 {
     // ===================================================================== Butchering mode (corruption/Butcher.cs)
     public Butcher? Butcher { get; private set; }
+    private bool butcherRush;   // Butchering mode's clock rush: the frame being run twice
     public void ApplyButcher(ButcherSettings settings)
     {
         var b = Butcher ?? new Butcher { Profile = ButcherProfile.Md };
@@ -108,7 +109,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
 
     public void RunFrame()
     {
-        if (Butcher != null || Board.Vdp.Butcher != null) ButcherFrame();
+        if (Butcher != null || Board.Vdp.Butcher != null) ButcherFrame(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
         Board.RunFrame();
         var v = Board.Vdp;
         if (DebugView)

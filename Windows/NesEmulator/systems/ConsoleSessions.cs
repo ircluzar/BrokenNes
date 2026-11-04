@@ -72,6 +72,7 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
 {
     // ===================================================================== Butchering mode (corruption/Butcher.cs)
     public Butcher? Butcher { get; private set; }
+    private bool butcherRush;   // Butchering mode's clock rush: the frame being run twice
     public void ApplyButcher(ButcherSettings settings)
     {
         var b = Butcher ?? new Butcher { Profile = ButcherProfile.Snes };
@@ -295,7 +296,7 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
 
     public void RunFrame()
     {
-        if (Butcher != null || board.Ppu.Butcher != null || ButcherApu()?.Butcher != null) ButcherFrame();
+        if (Butcher != null || board.Ppu.Butcher != null || ButcherApu()?.Butcher != null) ButcherFrame(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
         mid = null;
         if (wms != null) BeforeFrameEnhance();   // milestone 6: the console's enhancements (SnesSession.Enhance.cs)
         board.RunFrame();
@@ -526,6 +527,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
 
     // ===================================================================== Butchering mode (corruption/Butcher.cs)
     public Butcher? Butcher { get; private set; }
+    private bool butcherRush;   // Butchering mode's clock rush: the frame being run twice
     public void ApplyButcher(ButcherSettings settings)
     {
         var b = Butcher ?? new Butcher { Profile = ButcherProfile.Gb };
@@ -552,7 +554,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
 
     public void RunFrame()
     {
-        if (Butcher != null || board.Butcher != null) ButcherFrame();
+        if (Butcher != null || board.Butcher != null) ButcherFrame(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
         var shades = board.Ppu.DmgColors;   // the Game Boy look, live (DMG games on a DMG)
         for (int i = 0; i < 4; i++) shades[i] = GbLook.Argb(i);
         board.RunFrame();

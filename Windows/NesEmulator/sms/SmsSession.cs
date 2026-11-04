@@ -15,6 +15,7 @@ public class SmsSession : IConsoleSession, IButcherHost
 {
     // ===================================================================== Butchering mode (corruption/Butcher.cs)
     public Butcher? Butcher { get; private set; }
+    protected bool butcherRush;   // Butchering mode's clock rush: the frame being run twice
     private bool IsGameGear => this is GgSession;
     public void ApplyButcher(ButcherSettings settings)
     {
@@ -105,7 +106,7 @@ public class SmsSession : IConsoleSession, IButcherHost
         board.SetPad(player, s);
     }
 
-    public virtual void RunFrame() { if (Butcher != null || board.Butcher != null) ButcherFrame(); board.RunFrame(); }
+    public virtual void RunFrame() { if (Butcher != null || board.Butcher != null) ButcherFrame(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } } board.RunFrame(); }
 
     public void Reset() => board.Reset();
     public virtual uint[] Frame => board.Vdp.Frame;
@@ -227,7 +228,7 @@ public sealed class GgSession : SmsSession
 
     public override void RunFrame()
     {
-        if (Butcher != null || board.Butcher != null) ButcherFrame();
+        if (Butcher != null || board.Butcher != null) ButcherFrame(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
         board.RunFrame();
         CropLcd();
     }

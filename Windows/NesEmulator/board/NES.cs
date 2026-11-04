@@ -793,6 +793,7 @@ namespace NesEmulator
 		// ===================================================================== Butchering mode (corruption/Butcher.cs)
 		/// <summary>Null = Butchering mode never used on this NES. Set through <see cref="ApplyButcher"/>.</summary>
 		public Butcher? Butcher { get; private set; }
+    private bool butcherRush;   // Butchering mode's clock rush: the frame being run twice
 
 		/// <summary>Takes the panel's controls. The hooks attach at the next frame start and detach once nothing is on.</summary>
 		public void ApplyButcher(ButcherSettings settings)
@@ -844,7 +845,7 @@ namespace NesEmulator
 		public void RunFrame()
 		{
 			if (bus == null || crashed) return;
-			if (Butcher != null || bus.Butcher != null) ButcherFrame();
+			if (Butcher != null || bus.Butcher != null) ButcherFrame(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
 
 			// --- Targeted Imagine: reset per-frame capture buffer and apply target configuration ---
 			if (bus.ppu is PPU_IMG imgPpu)
