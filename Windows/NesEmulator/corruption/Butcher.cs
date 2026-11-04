@@ -36,6 +36,16 @@ public sealed class UnsafeSettings
 {
 	/// <summary>NES: the cartridge's PRG pins on the CPU bus (A0-A14, D0-D7) - instruction fetches and data reads from the cart.</summary>
 	public PinGroupSettings CpuPins { get; set; } = new();
+	/// <summary>The sound CPU's own bus (Genesis Z80 over its 8 KB RAM, SNES SPC700 over its 64 KB ARAM): the music program gets bent.</summary>
+	public PinGroupSettings SoundCpuPins { get; set; } = new();
+	/// <summary>The DMA controller's source bus (SNES DMA + HDMA tables, Genesis VDP DMA): bytes copied from the wrong place, bent.</summary>
+	public PinGroupSettings DmaPins { get; set; } = new();
+	/// <summary>A coprocessor's own bus (SNES SA-1 CPU, Super FX; DSP-1's data port: data lines only).</summary>
+	public PinGroupSettings CoproPins { get; set; } = new();
+	/// <summary>Player 1's controller lines, one per button (indexed by the PadButtons bit): 0 connected, 1 stuck released,
+	/// 2 stuck pressed, 3 bridged to the next listed button (pressing either presses both).</summary>
+	public int[] PadLines { get; set; } = Array.Empty<int>();
+	public double PadFlicker { get; set; }
 	/// <summary>Blind bit flips anywhere in work RAM (stack, pointers, flags included).</summary>
 	public RotEffect RamRot { get; set; } = new();
 	/// <summary>Blind bit flips anywhere in video RAM (tiles, maps, the sprite table on chips that keep it there).</summary>
@@ -267,7 +277,7 @@ public sealed class ButcherProfile
 		DropReg = 0x25,                                                         // NR51: a channel off on both sides
 		DropApply = (v, mask) => (byte)(v & ~(mask | (mask << 4))),
 		DropRegDefault = 0xFF,
-		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 144,
+		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 144, CpuLines = 15,
 	};
 	/// <summary>Master System / Game Gear: the sprite table is in VRAM (no attribute byte), the PSG takes latch / data bytes.</summary>
 	public static readonly ButcherProfile Sms = new()
@@ -278,7 +288,7 @@ public sealed class ButcherProfile
 		AttrBits = Array.Empty<int>(), AttrNames = Array.Empty<string>(),
 		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise" },
 		Psg = true,
-		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192,
+		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192, CpuLines = 14,
 	};
 	/// <summary>Master System with its FM unit (YM2413): the PSG's four channels, then FM 1-9.</summary>
 	public static readonly ButcherProfile SmsFm = new()
@@ -289,7 +299,7 @@ public sealed class ButcherProfile
 		AttrBits = Array.Empty<int>(), AttrNames = Array.Empty<string>(),
 		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise", "FM 1", "FM 2", "FM 3", "FM 4", "FM 5", "FM 6", "FM 7", "FM 8", "FM 9" },
 		Psg = true,
-		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192,
+		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192, CpuLines = 14,
 	};
 	/// <summary>Genesis: 64 KB VRAM, PSG + YM2612, 64 KB work RAM.</summary>
 	public static readonly ButcherProfile Md = new()
@@ -301,7 +311,7 @@ public sealed class ButcherProfile
 		AttrNames = new[] { "V-flip", "H-flip", "Priority", "Palette 1", "Palette 0" },
 		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise", "FM 1", "FM 2", "FM 3", "FM 4", "FM 5", "FM 6" },
 		Psg = true,
-		RamWindow = 0x10000, StackPage = 0xFF, VisibleLines = 224,
+		RamWindow = 0x10000, StackPage = 0xFF, VisibleLines = 224, CpuLines = 22, CpuDataLines = 16, SoundCpuLines = 13, DmaLines = 23,
 	};
 	/// <summary>SNES: word VRAM (A0-A14), OAM records X, Y, tile, attributes; 128 KB work RAM; sound (SPC700 + DSP) not yet.</summary>
 	public static readonly ButcherProfile Snes = new()
@@ -324,10 +334,16 @@ public sealed class ButcherProfile
 		DropReg = 0x5C,                                  // KOF: a dropped voice's key-off bit is held set
 		DropApply = (v, mask) => (byte)(v | mask),
 		DropRegDefault = 0x00,
-		RamWindow = 0x20000, StackPage = 0x1F, VisibleLines = 224,
+		RamWindow = 0x20000, StackPage = 0x1F, VisibleLines = 224, CpuLines = 24, SoundCpuLines = 16, DmaLines = 24,
 	};
 	public bool Psg;
 	public int DataLines = 8;
+	/// <summary>The CPU-bus pins the unsafe group bends (cartridge reads): address lines (A0..) and data lines.</summary>
+	public int CpuLines = 15, CpuDataLines = 8;
+	/// <summary>The sound CPU's address lines (0 = no separate sound CPU).</summary>
+	public int SoundCpuLines;
+	/// <summary>The DMA controller's source address lines (0 = not reached).</summary>
+	public int DmaLines;
 	public int VisibleLines = 240;
 }
 
@@ -341,6 +357,8 @@ public sealed class Butcher
 	internal PinFaults? Console;  // null = no console-pin fault
 	internal PinFaults? Cart;     // null = no cartridge-pin fault
 	internal PinFaults? CpuPins;  // null = no CPU-bus (PRG) pin fault - unsafe
+	internal PinFaults? SoundCpu; // null = no sound-CPU bus fault - unsafe
+	internal PinFaults? Dma, Copro; // null = no DMA / coprocessor bus fault - unsafe
 	private int cartLines;
 	public bool SpritesActive { get; private set; }
 	public bool SoundActive { get; private set; }
@@ -348,6 +366,7 @@ public sealed class Butcher
 	public bool RamActive { get; private set; }
 	public bool PaletteActive { get; private set; }
 	public bool RotActive { get; private set; }
+	public bool PadActive { get; private set; }
 
 	private uint rngSprites = 0x1234567u, rngSound = 0x7654321u;
 
@@ -376,9 +395,16 @@ public sealed class Butcher
 		if (!BandsActive) { Array.Clear(bandLife); LineBendMask = 0; TallXor = 0; }
 		RamActive = on && settings.Ram.On;
 		PaletteActive = on && settings.Palette.On;
-		var cp = new PinFaults(settings.Unsafe.CpuPins, 15, 0xC2B2AE35u);
+		var cp = new PinFaults(settings.Unsafe.CpuPins, Profile.CpuLines, 0xC2B2AE35u, Profile.CpuDataLines);
 		CpuPins = on && cp.Active ? cp : null;
+		var sc = new PinFaults(settings.Unsafe.SoundCpuPins, Math.Max(1, Profile.SoundCpuLines), 0x27D4EB2Fu);
+		SoundCpu = on && Profile.SoundCpuLines > 0 && sc.Active ? sc : null;
+		var dm = new PinFaults(settings.Unsafe.DmaPins, Math.Max(1, Profile.DmaLines), 0x165667B1u, Profile.CpuDataLines);
+		Dma = on && Profile.DmaLines > 0 && dm.Active ? dm : null;
+		var co = new PinFaults(settings.Unsafe.CoproPins, 24, 0xD3A2646Cu);
+		Copro = on && Profile.Console == "snes" && co.Active ? co : null;
 		RotActive = on && (settings.Unsafe.RamRot.On || settings.Unsafe.VramRot.On);
+		PadActive = on && settings.Unsafe.PadLines is { } pl && Array.Exists(pl, x => x != 0);
 		paletteLut.Clear(); paletteMode = Math.Clamp(settings.Palette.Mode, 0, 4); paletteTick = 0;
 		if (!RamActive) Array.Clear(probeLife);
 		rngSprites = 0x1234567u; rngSound = 0x7654321u; rngBands = 0x2545F491u;
@@ -388,7 +414,7 @@ public sealed class Butcher
 	}
 
 	/// <summary>Nothing is on: the hooks can be detached.</summary>
-	public bool Idle => Console == null && Cart == null && CpuPins == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
+	public bool Idle => !PadActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
 
 	public static int AddressLinesFor(int size)
 	{
@@ -885,6 +911,14 @@ public sealed class Butcher
 	private readonly int[] fmAddr = new int[2];
 	private int FmDropBit(int fmCh) => 1 << (4 + fmCh);
 
+	/// <summary>MMC5's expansion sound ($5000-$5007: two pulse channels laid out like the APU's $4000-$4007): the same bends.
+	/// The PCM ($5010-$5011) and the enable register are left alone. (MMC5 is the only cartridge sound chip BrokenNes emulates.)</summary>
+	public byte FilterMmc5Write(ushort address, byte v)
+	{
+		if (Profile.Console != "nes" || address > 0x5007) return v;
+		return Bend((ushort)(0x4000 + (address - 0x5000)), v);
+	}
+
 	/// <summary>YM2612 port write (0 / 2 = address of part 1 / 2, 1 / 3 = data).</summary>
 	public byte FilterYmWrite(int port, byte v)
 	{
@@ -966,6 +1000,100 @@ public sealed class Butcher
 		write((ushort)a, f.DataActive ? f.Data(value) : value);
 		return true;
 	}
+
+	/// <summary>Any console's cartridge read through the bent CPU pins: the low <paramref name="lines"/> address bits are bent,
+	/// the rest of the address is kept (the same slot / bank stays selected).</summary>
+	public byte CpuRead8(uint address, int lines, Func<uint, byte> read)
+	{
+		var f = CpuPins!;
+		if (f.Misses()) return read(address);
+		uint mask = lines >= 32 ? uint.MaxValue : (1u << lines) - 1;
+		uint a = f.AddrActive ? ((uint)f.Addr((int)(address & mask)) & mask) | (address & ~mask) : address;
+		byte v = read(a);
+		return f.DataActive ? f.Data(v) : v;
+	}
+	public ushort CpuRead16(uint address, int lines, Func<uint, ushort> read)
+	{
+		var f = CpuPins!;
+		if (f.Misses()) return read(address);
+		uint mask = (1u << lines) - 1;
+		uint a = f.AddrActive ? ((uint)f.Addr((int)(address & mask)) & mask) | (address & ~mask) : address;
+		ushort v = read(a);
+		return f.DataActive ? f.Data16(v) : v;
+	}
+	private static uint BendWith(PinFaults f, uint a, int lines) { uint m = lines >= 32 ? uint.MaxValue : (1u << lines) - 1; return ((uint)f.Addr((int)(a & m)) & m) | (a & ~m); }
+	/// <summary>A DMA controller's source read through its bent bus (8-bit: the SNES).</summary>
+	public byte DmaRead8(uint a, Func<uint, byte> read)
+	{
+		var f = Dma!; if (f.Misses()) return read(a);
+		byte v = read(f.AddrActive ? BendWith(f, a, Profile.DmaLines) : a);
+		return f.DataActive ? f.Data(v) : v;
+	}
+	/// <summary>The same for a 16-bit transfer (the Genesis VDP's DMA).</summary>
+	public ushort DmaRead16(uint a, Func<uint, ushort> read)
+	{
+		var f = Dma!; if (f.Misses()) return read(a);
+		ushort v = read(f.AddrActive ? BendWith(f, a, Profile.DmaLines) & 0xFFFFFE : a);
+		return f.DataActive ? f.Data16(v) : v;
+	}
+	/// <summary>A coprocessor's read of its own bus (SA-1, Super FX) through its bent pins.</summary>
+	public byte CoproRead(uint a, Func<uint, byte> read)
+	{
+		var f = Copro!; if (f.Misses()) return read(a);
+		byte v = read(f.AddrActive ? BendWith(f, a, 24) : a);
+		return f.DataActive ? f.Data(v) : v;
+	}
+	/// <summary>DSP-1's data port: only its data lines.</summary>
+	public byte CoproData(byte v) { var f = Copro; return f != null && f.DataActive && !f.Misses() ? f.Data(v) : v; }
+
+	/// <summary>A sound CPU's read of its own memory through its bent bus.</summary>
+	public byte SoundCpuRead(int address, int lines, Func<int, byte> read)
+	{
+		var f = SoundCpu!;
+		if (f.Misses()) return read(address);
+		int mask = (1 << lines) - 1;
+		int a = f.AddrActive ? (f.Addr(address & mask) & mask) | (address & ~mask) : address;
+		byte v = read(a);
+		return f.DataActive ? f.Data(v) : v;
+	}
+
+	public void CpuWrite8(uint address, byte v, int lines, Action<uint, byte> write)
+	{
+		var f = CpuPins!;
+		if (!f.BendWrites || f.Misses()) { write(address, v); return; }
+		uint mask = (1u << lines) - 1;
+		uint a = f.AddrActive ? ((uint)f.Addr((int)(address & mask)) & mask) | (address & ~mask) : address;
+		write(a, f.DataActive ? f.Data(v) : v);
+	}
+
+	/// <summary>Player 1's buttons through the faulted controller lines (bits as PadButtons: Up 0 ... Mode 14).
+	/// <paramref name="order"/> is the console's button order, which "bridged to the next" follows.</summary>
+	public ushort FilterPad(ushort bits, int[] order)
+	{
+		if (!PadActive) return bits;
+		var lines = settings.Unsafe.PadLines;
+		uint thr = (uint)(Math.Clamp(settings.Unsafe.PadFlicker, 0, 99.9) / 100.0 * uint.MaxValue);
+		ushort input = bits;
+		for (int i = 0; i < order.Length; i++)
+		{
+			int b = order[i];
+			if (b >= lines.Length || lines[b] == 0) continue;
+			if (thr != 0 && RT() < thr) continue;   // the line made no contact this time
+			switch (lines[b])
+			{
+				case 1: bits &= (ushort)~(1 << b); break;
+				case 2: bits |= (ushort)(1 << b); break;
+				case 3:
+					int n = order[(i + 1) % order.Length];
+					if ((input & (1 << b | 1 << n)) != 0) bits |= (ushort)(1 << b | 1 << n);
+					break;
+			}
+		}
+		return bits;
+	}
+	/// <summary>Button orders the panel lists (PadButtons bits).</summary>
+	public static readonly int[] PadNes = { 4, 5, 11, 10, 0, 1, 2, 3 }, PadGb = { 4, 5, 11, 10, 0, 1, 2, 3 }, PadSms = { 0, 1, 2, 3, 4, 5, 10 },
+		PadMd = { 0, 1, 2, 3, 4, 5, 12, 10, 6, 7, 13, 14 }, PadSnes = { 0, 1, 2, 3, 5, 7, 11, 10, 4, 6, 8, 9 };
 
 	private byte[]? vram; private ushort[]? vramWords;
 	public void AttachVram(byte[]? v) { vram = v; vramWords = null; }
@@ -1220,6 +1348,17 @@ public sealed record ButcherReach(string PpuCore, bool ConsolePins, bool Console
 	public string[] ExtraBands { get; init; } = Array.Empty<string>();
 	/// <summary>Unsafe reach: the CPU-bus pins (NES cartridge PRG pins) and VRAM rot.</summary>
 	public bool CpuPins { get; init; }
+	public int CpuAddressLines { get; init; } = 15;
+	public int CpuDataLines { get; init; } = 8;
+	public string CpuPinsTitle { get; init; } = "CPU bus · cartridge PRG pins";
+	public int SoundCpuLines { get; init; }
+	/// <summary>The console's buttons in panel order (PadButtons bits) and their names.</summary>
+	public int[] PadOrder { get; init; } = Butcher.PadNes;
+	public string[] PadNames { get; init; } = { "A", "B", "Select", "Start", "Up", "Down", "Left", "Right" };
+	public string SoundCpuTitle { get; init; } = "";
+	public int DmaLines { get; init; }
+	public int DmaDataLines { get; init; } = 8;
+	public string CoproName { get; init; } = "";
 	public bool VramRot { get; init; } = true;
 }
 

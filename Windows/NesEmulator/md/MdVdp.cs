@@ -656,7 +656,7 @@ public partial class MdVdp
     private void FetchDmaWord()
     {
         SyncRender();
-        ushort w = host.ReadBusWord(dmaSource);
+        ushort w = Butcher?.Dma != null ? Butcher.DmaRead16(dmaSource, host.ReadBusWord) : host.ReadBusWord(dmaSource);
         Trace?.Invoke($"dma word at line {Line}+{LineOffset} fifo {fifoCount}");
         PushFifo(dmaTargetCode, address, w, true);
         DmaWords++;

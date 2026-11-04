@@ -46,8 +46,12 @@
       bands: (() => { const b = () => ({ on: false, rate: 25, width: 30, strength: 8, lifetime: 30 }); return { shift: b(), slip: b(), patternSwap: b(), nametableSwap: b(), bgOff: b(), spritesOff: b(), spriteHeight: b(), bend: b(), extra1: b(), extra2: b(), extra3: b() }; })(),
       ram: { on: false, rate: 25, step: 1, lifetime: 60, maxProbes: 3 },
       palette: { on: false, mode: 0, invert: false, channelSwap: false, posterize: 0, cycleFrames: 0 },
-      unsafe: { cpuPins: { address: new Array(15).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
-                ramRot: { on: false, rate: 25, bits: 1 }, vramRot: { on: false, rate: 25, bits: 1 } },
+      unsafe: { cpuPins: { address: new Array(reach?.cpuAddressLines || 15).fill(0), data: new Array(reach?.cpuDataLines || 8).fill(0), flicker: 0, bendWrites: false },
+                soundCpuPins: { address: new Array(reach?.soundCpuLines || 0).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
+                ramRot: { on: false, rate: 25, bits: 1 }, vramRot: { on: false, rate: 25, bits: 1 },
+                padLines: new Array(15).fill(0), padFlicker: 0,
+                dmaPins: { address: new Array(reach?.dmaLines || 0).fill(0), data: new Array(reach?.dmaDataLines || 8).fill(0), flicker: 0, bendWrites: false },
+                coproPins: { address: new Array(reach?.coproName && reach.coproName !== 'DSP-1' ? 24 : 0).fill(0), data: new Array(reach?.coproName ? 8 : 0).fill(0), flicker: 0, bendWrites: false } },
       groupsOff: { picture: false, sprites: false, sound: false, bands: false, ram: false, palette: false, unsafe: false }
     };
   }
@@ -503,13 +507,45 @@
     if (isNes) unsafeBody.push(el('div', { class: 'fx' }, check('Cartridge pins bend writes too', settings.cartPins, 'bendWrites'),
         el('div', { class: 'why' }, reach.chrIsRam ? 'CHR-RAM writes land bent: tile graphics stay damaged.' : 'CHR-ROM cannot be written: no effect on this cartridge.')));
     if (reach.cpuPins) unsafeBody.push(
-      el('div', { class: 'sub' }, 'CPU bus · cartridge PRG pins'),
+      el('div', { class: 'sub' }, reach.cpuPinsTitle || 'CPU bus · cartridge PRG pins'),
       el('div', { class: 'why' }, 'The CPU reads the game\u2019s code and data through these: wrong instructions, wrong numbers, often a crash.'),
       el('div', { class: 'legend' }, '· connected   L stuck low   H stuck high   B bridged to the next line'),
       el('div', { class: 'sub' }, 'Address lines'), pinGrid('A', un.cpuPins.address),
       el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', un.cpuPins.data),
       slider('Flicker', un.cpuPins, 'flicker', 0, 100, 1),
       el('div', { class: 'fx' }, check('Bend writes too (mapper registers)', un.cpuPins, 'bendWrites')));
+    if (reach.soundCpuLines > 0) unsafeBody.push(
+      el('div', { class: 'sub' }, reach.soundCpuTitle || 'Sound CPU bus'),
+      el('div', { class: 'why' }, 'The sound CPU runs the music program through these: wrong notes, broken tempos, a sound driver that locks up.'),
+      el('div', { class: 'sub' }, 'Address lines'), pinGrid('A', un.soundCpuPins.address),
+      el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', un.soundCpuPins.data),
+      slider('Flicker', un.soundCpuPins, 'flicker', 0, 100, 1));
+    if (reach.dmaLines > 0) unsafeBody.push(
+      el('div', { class: 'sub' }, `DMA controller · source bus (A0-A${reach.dmaLines - 1}, D0-D${(reach.dmaDataLines || 8) - 1})`),
+      el('div', { class: 'why' }, 'Block copies (tiles, maps, palettes, sprite tables) read from the wrong place or arrive bent.'),
+      el('div', { class: 'sub' }, 'Address lines'), pinGrid('A', un.dmaPins.address),
+      el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', un.dmaPins.data),
+      slider('Flicker', un.dmaPins, 'flicker', 0, 100, 1));
+    if (reach.coproName) unsafeBody.push(
+      el('div', { class: 'sub' }, `Coprocessor · ${reach.coproName}` + (reach.coproName === 'DSP-1' ? ' (data port: data lines only)' : ' bus (A0-A23, D0-D7)')),
+      el('div', { class: 'why' }, 'The cartridge chip that helps the console (3D, maths, a second CPU) reads its program and data through these.'),
+      reach.coproName === 'DSP-1' ? null : el('div', { class: 'sub' }, 'Address lines'), reach.coproName === 'DSP-1' ? null : pinGrid('A', un.coproPins.address),
+      el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', un.coproPins.data),
+      slider('Flicker', un.coproPins, 'flicker', 0, 100, 1));
+    // controller lines: one wire per button
+    const PAD = [['·', 'connected'], ['R', 'stuck released'], ['P', 'stuck pressed'], ['B', 'bridged to the next button']];
+    const padGrid = el('div', { class: 'pins' });
+    (reach.padOrder || []).forEach((bit, i) => {
+      const b = el('button', { type: 'button' });
+      const paint = () => { const f = un.padLines[bit] || 0; b.className = `pin f${f}`; b.replaceChildren(el('span', {}, PAD[f][0]), (reach.padNames || [])[i] || String(bit)); b.title = `${(reach.padNames || [])[i]}: ${PAD[f][1]}`; };
+      b.addEventListener('click', () => { un.padLines[bit] = ((un.padLines[bit] || 0) + 1) % 4; paint(); push(); });
+      b.addEventListener('contextmenu', (e) => { e.preventDefault(); un.padLines[bit] = 0; paint(); push(); });
+      paint(); padGrid.appendChild(b);
+    });
+    unsafeBody.push(el('div', { class: 'sub' }, 'Controller lines (player 1)'),
+      el('div', { class: 'why' }, 'A wire per button: stuck released, stuck pressed (ghost presses), or bridged to the next one (pressing either presses both).'),
+      el('div', { class: 'legend' }, '· connected   R stuck released   P stuck pressed   B bridged'),
+      padGrid, slider('Flicker', un, 'padFlicker', 0, 100, 1));
     unsafeBody.push(el('div', { class: 'sub' }, 'Bit rot'),
       rotFx('RAM rot', 'Random bits flip anywhere in work RAM: the stack and pointers too.', un.ramRot));
     if (reach.vramRot !== false) unsafeBody.push(rotFx('VRAM rot', 'Random bits flip in video RAM: tiles and maps decay.', un.vramRot));
@@ -542,7 +578,7 @@
     if (reach.ram) c.push(['fx', st.ram]);
     if (reach.consolePins) c.push(['pins', st.consolePins]);
     if (isNesReach() && reach.cartPins) c.push(['pins', st.cartPins]);
-    if (includeUnsafe) { c.push(['fx', st.unsafe.ramRot]); if (reach.vramRot !== false) c.push(['fx', st.unsafe.vramRot]); if (reach.cpuPins) c.push(['pins', st.unsafe.cpuPins]); }
+    if (includeUnsafe) { c.push(['fx', st.unsafe.ramRot]); if (reach.vramRot !== false) c.push(['fx', st.unsafe.vramRot]); if (reach.cpuPins) c.push(['pins', st.unsafe.cpuPins]); if (reach.soundCpuLines > 0) c.push(['pins', st.unsafe.soundCpuPins]); if (reach.dmaLines > 0) c.push(['pins', st.unsafe.dmaPins]); }
     return c;
   }
   function turnOn(kind, fx, r, k, listKey) {

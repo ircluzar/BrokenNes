@@ -223,7 +223,12 @@ public sealed partial class SA1_SFC : ISnesCoprocessor, ISnesBus
     private void BwAccess() { clock += 4; if (BusConflicts && snesBus != null && SnesOnBwram(snesBus())) clock += 4; }
     private void IramAccess() { clock += 2; if (BusConflicts && snesBus != null && SnesOnIram(snesBus())) clock += 4; }
 
-    byte ISnesBus.Read(uint address)
+    /// <summary>Butchering mode (corruption/Butcher.cs): the SA-1 CPU's own bus pins (unsafe). Null when off.</summary>
+    public Butcher? Butcher;
+
+    byte ISnesBus.Read(uint address) => Butcher?.Copro != null ? Butcher.CoproRead(address, Sa1ReadUnbent) : Sa1ReadUnbent(address);
+
+    private byte Sa1ReadUnbent(uint address)
     {
         uint bank = address >> 16, offset = address & 0xFFFF;
         if ((bank & 0x40) == 0)

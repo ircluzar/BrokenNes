@@ -165,6 +165,12 @@ public partial class APU_SFC : ISnesApu
 
     public byte SmpRead(ushort a)
     {
+        if (Butcher?.SoundCpu != null && (a < 0xF0 || a > 0xFF)) return Butcher.SoundCpuRead(a, 16, x => SmpReadUnbent((ushort)x));
+        return SmpReadUnbent(a);
+    }
+
+    private byte SmpReadUnbent(ushort a)
+    {
         if (a >= 0xF0 && a <= 0xFF) return ReadIo(a);
         if (a >= 0xFFC0 && iplEnabled) return Ipl[a - 0xFFC0];
         return Aram[a];

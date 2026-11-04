@@ -1719,7 +1719,18 @@ namespace NesEmulator
 
 		public void SetInput(bool[] buttons)
 		{
-			bus?.input.SetInput(buttons);
+			bus?.input.SetInput(ButcherPad(buttons));
+		}
+
+		// Butchering mode's controller lines (player 1). NES order: A, B, Select, Start, Up, Down, Left, Right.
+		private static readonly int[] NesPadBits = { 4, 5, 11, 10, 0, 1, 2, 3 };
+		private bool[] ButcherPad(bool[] b)
+		{
+			if (Butcher is not { PadActive: true } bp || b == null || b.Length < 8) return b!;
+			ushort bits = 0; for (int i = 0; i < 8; i++) if (b[i]) bits |= (ushort)(1 << NesPadBits[i]);
+			bits = bp.FilterPad(bits, Butcher.PadNes);
+			var o = (bool[])b.Clone(); for (int i = 0; i < 8; i++) o[i] = (bits & (1 << NesPadBits[i])) != 0;
+			return o;
 		}
 
 		// Soft reset (CPU reset vector, not a full ROM reload) - needed to honor a TAS movie's
@@ -1740,7 +1751,7 @@ namespace NesEmulator
 		public void SetInputs(bool[]? p1, bool[]? p2)
 		{
 			if (bus == null) return;
-			if (p1 != null) bus.input.SetInput(p1);
+			if (p1 != null) bus.input.SetInput(ButcherPad(p1));
 			if (p2 != null) bus.input2.SetInput(p2);
 		}
 

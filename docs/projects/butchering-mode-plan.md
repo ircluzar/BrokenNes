@@ -134,3 +134,13 @@ The point is not to copy the Glitch Boy: it is to take the concepts its research
 - NES expansion audio (VRC6, VRC7, N163, MMC5, FDS, Sunsoft 5B) reached by the sound filters.
 - Controller lines: joypad data lines stuck / bridged.
 - SNES coprocessors (SuperFX, SA-1, DSP-1) and the DMA / HDMA controllers (SNES, Genesis).
+
+## Wave 6 as built (2026-11-04)
+- **Save freeze**: `SaveBatteryRamForNes` / `SaveSessionBattery` write nothing while the mode is on.
+- **CPU pins, every console** (unsafe): Game Boy cart A0-A14 / D0-D7 (+ bent MBC writes), Master System / Game Gear slot A0-A13 / D0-D7, Genesis 68000 ROM reads A0-A21 / D0-D15, SNES A-bus ROM-region reads A0-A23 / D0-D7 (NES done earlier).
+- **SNES DMA re-entry guard**: a corrupted DMA aimed at $420B started DMA inside DMA until the stack overflowed (the whole app). Hardware cannot nest DMA; `RunDma` now ignores a start while one runs. Golden suites unchanged.
+- **Sound CPU pins**: Genesis Z80 over its 8 KB RAM (A0-A12), SNES SPC700 over ARAM (A0-A15, I/O block left alone).
+- **Expansion audio**: MMC5 pulses ($5000-$5007) take the sound bends. VRC6 / VRC7 / N163 / FDS / Sunsoft 5B are not emulated by BrokenNes at all: nothing to reach.
+- **Controller lines** (player 1, every console): per button stuck released / stuck pressed / bridged to the next, + flicker.
+- **DMA pins**: SNES general DMA source reads (HDMA tables not yet), Genesis VDP DMA from 68000 memory. **Coprocessor pins**: SA-1 CPU bus, Super FX bus, DSP-1 data port.
+- **Verified** headless: each changes the picture / sound, all-off identical; CPU pins freeze or crash games without taking the app down. Golden 137 / 0, Sega 46 / 0, SNES 23 / 0.

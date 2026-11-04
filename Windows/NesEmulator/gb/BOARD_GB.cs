@@ -221,7 +221,7 @@ public sealed class BOARD_GB : IGbCpuBus
         switch (a >> 12)
         {
             case 0x0: case 0x1: case 0x2: case 0x3: case 0x4: case 0x5: case 0x6: case 0x7:
-                return Cart.ReadRom(a);
+                return Butcher?.CpuPins != null && cpu ? Butcher.CpuRead8(a, 15, x => Cart.ReadRom((ushort)x)) : Cart.ReadRom(a);
             case 0x8: case 0x9: return Ppu.ReadVram(a);
             case 0xA: case 0xB: return Cart.ReadRam(a);
             case 0xC: return wram[a & 0x0FFF];
@@ -241,7 +241,8 @@ public sealed class BOARD_GB : IGbCpuBus
         switch (a >> 12)
         {
             case 0x0: case 0x1: case 0x2: case 0x3: case 0x4: case 0x5: case 0x6: case 0x7:
-                Cart.WriteRom(a, v); return;
+                if (Butcher?.CpuPins != null) Butcher.CpuWrite8(a, v, 15, (x, y) => Cart.WriteRom((ushort)x, y)); else Cart.WriteRom(a, v);
+                return;
             case 0x8: case 0x9: Ppu.WriteVram(a, v); return;
             case 0xA: case 0xB: Cart.WriteRam(a, v); return;
             case 0xC: wram[a & 0x0FFF] = v; return;

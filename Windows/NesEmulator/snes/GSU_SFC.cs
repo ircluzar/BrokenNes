@@ -235,7 +235,12 @@ public sealed partial class GSU_SFC : ISnesCoprocessor
     //  GSU bus
     // =====================================================================================
 
-    private byte GsuRead(uint address)
+    /// <summary>Butchering mode (corruption/Butcher.cs): the Super FX's own bus pins (unsafe). Null when off.</summary>
+    public Butcher? Butcher;
+
+    private byte GsuRead(uint address) => Butcher?.Copro != null ? Butcher.CoproRead(address, GsuReadUnbent) : GsuReadUnbent(address);
+
+    private byte GsuReadUnbent(uint address)
     {
         uint bank = (address >> 16) & 0x7F;
         if (bank < 0x40) { int i = (int)((bank & 0x3F) << 15 | (address & 0x7FFF)); return rom[i < rom.Length ? i : i % rom.Length]; }

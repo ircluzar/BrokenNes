@@ -399,7 +399,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
 
     private byte Z80Read(int address, long master, bool fromZ80)
     {
-        if (address < 0x4000) return ram[address & 0x1FFF];
+        if (address < 0x4000) return fromZ80 && Butcher?.SoundCpu != null ? Butcher.SoundCpuRead(address & 0x1FFF, 13, x => ram[x & 0x1FFF]) : ram[address & 0x1FFF];
         if (fromZ80) loopImpure = true;           // a read outside the Z80's own RAM (the YM2612's status, the bank window, the VDP) is not a read of something that only the 68000 can change
         if (address < 0x6000) return ym.Read(address & 3, master / MasterPerYmClock);
         if (address < 0x7F00) return 0xFF;

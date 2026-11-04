@@ -798,6 +798,7 @@ public class Bus : IBus
 	{
 		cartridge.CPUWrite(address, value);
 		// Mirror writes to MMC5 audio range ($5000-$5015)
+		if (address <= 0x5015 && Butcher is { SoundActive: true } bx) value = bx.FilterMmc5Write(address, value);   // Butchering mode: the cart's sound chip too
 		if (address <= 0x5015) mmc5Audio?.WriteExp(address, value);
 		if (address <= 0x5015 && activeApu is IApuExpansionAudio expApu) expApu.WriteExpansionAudio(address, value);
 		return;

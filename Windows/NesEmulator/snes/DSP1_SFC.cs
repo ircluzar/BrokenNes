@@ -57,7 +57,12 @@ public sealed partial class DSP1_SFC : ISnesCoprocessor
 
     private bool IsStatus(uint offset) => map == NECDSP_SFC.Mapping.HiRom ? (offset & 0x1000) != 0 : (offset & 0x4000) != 0;
 
-    public byte Read(uint bank, uint offset, long masterClock)
+    /// <summary>Butchering mode (corruption/Butcher.cs): DSP-1's data port lines (unsafe). Null when off.</summary>
+    public Butcher? Butcher;
+
+    public byte Read(uint bank, uint offset, long masterClock) => Butcher?.Copro != null ? Butcher.CoproData(ReadUnbent(bank, offset, masterClock)) : ReadUnbent(bank, offset, masterClock);
+
+    private byte ReadUnbent(uint bank, uint offset, long masterClock)
     {
         // Status: RQM (bit 7) always set - this implementation answers instantly. DRC (bit 2 of
         // the high byte) tells 8-bit command mode from 16-bit data mode.

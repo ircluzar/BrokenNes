@@ -273,7 +273,19 @@ public sealed partial class BOARD_SFC : ISnesBus
     // The SNES CPU's current bus address, for the SA-1's bus-conflict timing.
     private uint busAddress;
 
+    /// <summary>Butchering mode's cartridge pins on the CPU's A bus (unsafe; ROM-region reads, A0-A23, D0-D7). Null when off.</summary>
+    public Butcher? ButcherCpu;
+
     public byte Read(uint address)
+    {
+        if (ButcherCpu?.CpuPins != null && IsRomRegion(address)) return ButcherCpu.CpuRead8(address, 24, ReadUnbent);
+        return ReadUnbent(address);
+    }
+
+    // Banks 40-7D / C0-FF, and $8000-$FFFF of the others: where cartridges answer (7E-7F are the console's own RAM).
+    private static bool IsRomRegion(uint a) { uint bank = (a >> 16) & 0xFF; return bank != 0x7E && bank != 0x7F && ((bank & 0x40) != 0 || (a & 0x8000) != 0); }
+
+    private byte ReadUnbent(uint address)
     {
         busAddress = address;
         if (FastPaths)
@@ -548,9 +560,20 @@ public sealed partial class BOARD_SFC : ISnesBus
         new[] { 0, 1, 2, 3 }, new[] { 0, 1, 0, 1 }, new[] { 0, 0 }, new[] { 0, 0, 1, 1 },
     };
 
+    // A DMA cannot start another: on hardware the A-bus I/O registers ($420B among them) are not reachable by the DMA
+    // itself. Only a corrupted transfer (Butchering mode's CPU pins) aims one at $420B - without this guard each nested
+    // start recursed until the stack overflowed and took the whole app down.
+    private bool dmaRunning;
+
     private void RunDma(byte channels)
     {
-        if (channels == 0) return;
+        if (channels == 0 || dmaRunning) return;
+        dmaRunning = true;
+        try { RunDmaChannels(channels); } finally { dmaRunning = false; }
+    }
+
+    private void RunDmaChannels(byte channels)
+    {
         Tick(8);
         var tap = DebugTap;   // a debugger watch sees every DMA byte (null when none is set)
         for (int ch = 0; ch < 8; ch++)
@@ -572,7 +595,7 @@ public sealed partial class BOARD_SFC : ISnesBus
                 byte bReg = (byte)(bbad + pattern[n % pattern.Length]);
                 if (tap != null) DebugDmaByte(toA, aBank, aAddr, bReg, ch, SnesBusSource.Dma);
                 else if (toA) WriteNoTick(aBank, aAddr, ReadBBus(bReg));
-                else DmaWriteBBus(bReg, ReadNoTick(aBank, aAddr));
+                else DmaWriteBBus(bReg, ButcherCpu?.Dma != null ? ButcherCpu.DmaRead8((uint)(aBank << 16 | aAddr), x => ReadNoTick(x >> 16, x & 0xFFFF)) : ReadNoTick(aBank, aAddr));
                 aAddr = (ushort)(aAddr + step);
                 Tick(dmaByteClocks);   // 8; 4 with WideMess fast DMA
             }

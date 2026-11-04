@@ -27,6 +27,8 @@ public class SmsSession : IConsoleSession, IButcherHost
         SpritesDma: true, Sprites2004: false, Sound: true, Bands: true, Ram: true)
     { BandKinds = new[] { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spriteHeight", "bend" },
       ExtraBands = new[] { "Sprite zoom|Sprites drawn double size inside the band.", "Left column blank|The leftmost 8 pixels blanked inside the band.", "Sprite shift|Sprites pushed 8 pixels left inside the band." },
+      CpuPins = true, CpuAddressLines = 14, CpuDataLines = 8, CpuPinsTitle = "CPU bus · cartridge slot pins (A0-A13 within a 16 KB slot, D0-D7)",
+      PadOrder = Butcher.PadSms, PadNames = new[] { "Up", "Down", "Left", "Right", "1", "2", "Start / Pause" },
       Console = IsGameGear ? "gg" : "sms", ConsoleAddressLines = ButcherProfile.Sms.ConsoleLines, AttrNames = ButcherProfile.Sms.AttrNames, Channels = board.Sound.HasFm ? ButcherProfile.SmsFm.Channels : ButcherProfile.Sms.Channels,
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the VDP and its 16 KB video RAM: name table, tile graphics and the sprite table." };
     protected void ButcherFrame()
@@ -88,6 +90,7 @@ public class SmsSession : IConsoleSession, IButcherHost
     public void SetPad(int player, PadButtons b)
     {
         if (player > 1) return;
+        if (player == 0 && Butcher is { PadActive: true }) b = (PadButtons)Butcher.FilterPad((ushort)b, Butcher.PadSms);
         SmsButtons s = 0;
         if ((b & PadButtons.Up) != 0) s |= SmsButtons.Up; if ((b & PadButtons.Down) != 0) s |= SmsButtons.Down;
         if ((b & PadButtons.Left) != 0) s |= SmsButtons.Left; if ((b & PadButtons.Right) != 0) s |= SmsButtons.Right;
