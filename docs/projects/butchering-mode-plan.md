@@ -176,3 +176,7 @@ check GB video-bus (no change seen with A0 high) and Genesis (A0 high only swaps
 items 8 (GB OAM DMA source bus), 3 (work-RAM bus pins), 7 (Genesis BUSREQ / Z80 reset), 9 (clock pins);
 then golden suites + Butchering cases + sound self-check rerun, rebuild the user's exe.
 Fixed on the way: the Genesis ROM hook ran CPU pins whenever any board-level effect attached the engine (NullReference).
+
+Wave 8 continued (2026-11-04): dropped NMI on GB / SMS / GG / Genesis (no change seen on Sonic 2 SMS - check other Cpu.Irq
+sites), Game Boy OAM DMA source bus (DMA pins), work-RAM bus pins on every console. **Left**: palette bus on GBC / Sega,
+7 Genesis BUSREQ / Z80 reset, 9 clock pins; suites rerun + user exe rebuild after these.
