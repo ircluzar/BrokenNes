@@ -283,10 +283,12 @@ public sealed partial class BOARD_SFC : ISnesBus
     public byte Read(uint address)
     {
         if (ButcherCpu?.CpuPins != null && IsRomRegion(address)) return ButcherCpu.CpuRead8(address, 24, ReadUnbent);
+        if (ButcherCpu?.RamBusFaults != null && WramIndex(address) is int wi and >= 0) { ReadUnbent(address); return ButcherCpu.RamRead8(wi, 17, i => Wram[i & 0x1FFFF]); }   // timing as usual, the value through the bent RAM pins
         return ReadUnbent(address);
     }
 
     // Banks 40-7D / C0-FF, and $8000-$FFFF of the others: where cartridges answer (7E-7F are the console's own RAM).
+    private static int WramIndex(uint a) { uint bank = (a >> 16) & 0xFF, off = a & 0xFFFF; if (bank == 0x7E || bank == 0x7F) return (int)((bank & 1) << 16 | off); if ((bank & 0x40) == 0 && off < 0x2000) return (int)off; return -1; }
     private static bool IsRomRegion(uint a) { uint bank = (a >> 16) & 0xFF; return bank != 0x7E && bank != 0x7F && ((bank & 0x40) != 0 || (a & 0x8000) != 0); }
 
     private byte ReadUnbent(uint address)

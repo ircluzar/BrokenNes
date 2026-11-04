@@ -113,7 +113,7 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
         }
         var on = b != null && !b.Idle ? b : null;
         board.Ppu.Butcher = on; if (apu != null) { apu.Butcher = on; apu.Dsp.Butcher = on; }
-        board.ButcherCpu = on is { CpuPins: not null } || on is { Dma: not null } || on is { VideoBusFaults: not null } || on is { IrqActive: true } ? on : null;
+        board.ButcherCpu = on is { CpuPins: not null } || on is { Dma: not null } || on is { VideoBusFaults: not null } || on is { IrqActive: true } || on is { RamBusFaults: not null } ? on : null;
         switch (board.Coprocessor) { case SA1_SFC sa: sa.Butcher = on; break; case GSU_SFC g: g.Butcher = on; break; case DSP1_SFC d: d.Butcher = on; break; }
     }
 

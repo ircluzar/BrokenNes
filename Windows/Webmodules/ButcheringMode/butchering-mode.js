@@ -59,6 +59,7 @@
                 padLines: new Array(15).fill(0), padFlicker: 0,
                 soundRamRot: { on: false, rate: 25, bits: 1 }, echoAbuse: { on: false, rate: 25, duration: 120 },
                 ghostNmi: { on: false, rate: 25, duration: 1 }, dropNmi: { on: false, rate: 25, duration: 10 }, stuckIrq: { on: false, rate: 25, duration: 10 },
+                ramBus: { address: new Array(reach?.ramBusLines || 11).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
                 videoBus: { address: new Array(reach?.videoBusLines || 3).fill(0), data: new Array(reach?.cpuDataLines || 8).fill(0), flicker: 0, bendWrites: false },
                 dmaPins: { address: new Array(reach?.dmaLines || 0).fill(0), data: new Array(reach?.dmaDataLines || 8).fill(0), flicker: 0, bendWrites: false },
                 coproPins: { address: new Array(reach?.coproName && reach.coproName !== 'DSP-1' ? 24 : 0).fill(0), data: new Array(reach?.coproName ? 8 : 0).fill(0), flicker: 0, bendWrites: false } },
@@ -572,6 +573,12 @@
       reach.coproName === 'DSP-1' ? null : el('div', { class: 'sub' }, 'Address lines'), reach.coproName === 'DSP-1' ? null : pinGrid('A', un.coproPins.address),
       el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', un.coproPins.data),
       slider('Flicker', un.coproPins, 'flicker', 0, 100, 1));
+    unsafeBody.push(el('div', { class: 'sub' }, `Work-RAM bus (A0-A${(reach.ramBusLines || 11) - 1}, D0-D7)`),
+      el('div', { class: 'why' }, 'The CPU’s own RAM chip: every variable, the stack and pointers read through bent lines.'),
+      el('div', { class: 'sub' }, 'Address lines'), pinGrid('A', un.ramBus.address),
+      el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', un.ramBus.data),
+      slider('Flicker', un.ramBus, 'flicker', 0, 100, 1),
+      el('div', { class: 'fx' }, check('Bend writes too', un.ramBus, 'bendWrites')));
     unsafeBody.push(el('div', { class: 'sub' }, 'Interrupt lines'),
       eventFx('Ghost NMI', 'An extra vertical-blank interrupt: the game runs part of a frame twice.', un.ghostNmi),
       eventFx('Dropped NMI', 'Vertical-blank interrupts swallowed: frames freeze or skip.', un.dropNmi),

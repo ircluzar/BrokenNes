@@ -45,6 +45,8 @@ public sealed class UnsafeSettings
 	public PinGroupSettings CpuPins { get; set; } = new();
 	/// <summary>The sound CPU's own bus (Genesis Z80 over its 8 KB RAM, SNES SPC700 over its 64 KB ARAM): the music program gets bent.</summary>
 	public PinGroupSettings SoundCpuPins { get; set; } = new();
+	/// <summary>The CPU's own work-RAM chip pins: reads (and, with bend writes, writes) of RAM through bent lines.</summary>
+	public PinGroupSettings RamBus { get; set; } = new();
 	/// <summary>Interrupt lines: a ghost NMI (an extra vertical-blank interrupt), dropped NMIs, a stuck IRQ line.</summary>
 	public EventEffect GhostNmi { get; set; } = new();
 	public EventEffect DropNmi { get; set; } = new();
@@ -306,7 +308,7 @@ public sealed class ButcherProfile
 		DropReg = 0x25,                                                         // NR51: a channel off on both sides
 		DropApply = (v, mask) => (byte)(v & ~(mask | (mask << 4))),
 		DropRegDefault = 0xFF,
-		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 144, CpuLines = 15, SoundBusLines = 6, SampleLines = 4, VideoBusLines = 4, DmaLines = 16,
+		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 144, CpuLines = 15, SoundBusLines = 6, SampleLines = 4, VideoBusLines = 4, DmaLines = 16, RamBusLines = 13,
 	};
 	/// <summary>Master System / Game Gear: the sprite table is in VRAM (no attribute byte), the PSG takes latch / data bytes.</summary>
 	public static readonly ButcherProfile Sms = new()
@@ -317,7 +319,7 @@ public sealed class ButcherProfile
 		AttrBits = Array.Empty<int>(), AttrNames = Array.Empty<string>(),
 		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise" },
 		Psg = true,
-		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192, CpuLines = 14, SoundBusLines = 0, SampleLines = 0, VideoBusLines = 1,
+		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192, CpuLines = 14, SoundBusLines = 0, SampleLines = 0, VideoBusLines = 1, RamBusLines = 13,
 	};
 	/// <summary>Master System with its FM unit (YM2413): the PSG's four channels, then FM 1-9.</summary>
 	public static readonly ButcherProfile SmsFm = new()
@@ -328,7 +330,7 @@ public sealed class ButcherProfile
 		AttrBits = Array.Empty<int>(), AttrNames = Array.Empty<string>(),
 		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise", "FM 1", "FM 2", "FM 3", "FM 4", "FM 5", "FM 6", "FM 7", "FM 8", "FM 9" },
 		Psg = true,
-		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192, CpuLines = 14, SoundBusLines = 0, SampleLines = 0, VideoBusLines = 1,
+		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192, CpuLines = 14, SoundBusLines = 0, SampleLines = 0, VideoBusLines = 1, RamBusLines = 13,
 	};
 	/// <summary>Genesis: 64 KB VRAM, PSG + YM2612, 64 KB work RAM.</summary>
 	public static readonly ButcherProfile Md = new()
@@ -340,7 +342,7 @@ public sealed class ButcherProfile
 		AttrNames = new[] { "V-flip", "H-flip", "Priority", "Palette 1", "Palette 0" },
 		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise", "FM 1", "FM 2", "FM 3", "FM 4", "FM 5", "FM 6" },
 		Psg = true,
-		RamWindow = 0x10000, StackPage = 0xFF, VisibleLines = 224, CpuLines = 22, CpuDataLines = 16, SoundCpuLines = 13, DmaLines = 23, SoundBusLines = 2, SampleLines = 0, VideoBusLines = 4,
+		RamWindow = 0x10000, StackPage = 0xFF, VisibleLines = 224, CpuLines = 22, CpuDataLines = 16, SoundCpuLines = 13, DmaLines = 23, SoundBusLines = 2, SampleLines = 0, VideoBusLines = 4, RamBusLines = 16,
 	};
 	/// <summary>SNES: word VRAM (A0-A14), OAM records X, Y, tile, attributes; 128 KB work RAM; sound (SPC700 + DSP) not yet.</summary>
 	public static readonly ButcherProfile Snes = new()
@@ -363,7 +365,7 @@ public sealed class ButcherProfile
 		DropReg = 0x5C,                                  // KOF: a dropped voice's key-off bit is held set
 		DropApply = (v, mask) => (byte)(v | mask),
 		DropRegDefault = 0x00,
-		RamWindow = 0x20000, StackPage = 0x1F, VisibleLines = 224, CpuLines = 24, SoundCpuLines = 16, DmaLines = 24, SoundBusLines = 7, SampleLines = 16, VideoBusLines = 8,
+		RamWindow = 0x20000, StackPage = 0x1F, VisibleLines = 224, CpuLines = 24, SoundCpuLines = 16, DmaLines = 24, SoundBusLines = 7, SampleLines = 16, VideoBusLines = 8, RamBusLines = 17,
 	};
 	public bool Psg;
 	public int DataLines = 8;
@@ -375,6 +377,8 @@ public sealed class ButcherProfile
 	public int SoundBusLines = 5, SampleLines = 15;
 	/// <summary>The CPU-to-video register bus's address lines.</summary>
 	public int VideoBusLines = 3;
+	/// <summary>Work-RAM chip address lines.</summary>
+	public int RamBusLines = 11;
 	/// <summary>The DMA controller's source address lines (0 = not reached).</summary>
 	public int DmaLines;
 	public int VisibleLines = 240;
@@ -401,7 +405,23 @@ public sealed class Butcher
 	public bool BandsActive { get; private set; }
 	public bool RamActive { get; private set; }
 	public bool PaletteActive { get; private set; }
-	internal PinFaults? VideoDacFaults, PaletteBusFaults, VideoBusFaults;
+	internal PinFaults? VideoDacFaults, PaletteBusFaults, VideoBusFaults, RamBusFaults;
+	/// <summary>A work-RAM read through the bent RAM chip pins (index within the RAM, its address lines).</summary>
+	public byte RamRead8(int i, int lines, Func<int, byte> read)
+	{
+		var f = RamBusFaults!; if (f.Misses()) return read(i);
+		int m = (1 << lines) - 1;
+		byte v = read(f.AddrActive ? (f.Addr(i & m) & m) | (i & ~m) : i);
+		return f.DataActive ? f.Data(v) : v;
+	}
+	/// <summary>A work-RAM write through the same pins, when bend writes is on; false = write normally.</summary>
+	public bool RamWrite8(int i, byte v, int lines, Action<int, byte> write)
+	{
+		var f = RamBusFaults!; if (!f.BendWrites || f.Misses()) return false;
+		int m = (1 << lines) - 1;
+		write(f.AddrActive ? (f.Addr(i & m) & m) | (i & ~m) : i, f.DataActive ? f.Data(v) : v);
+		return true;
+	}
 	// interrupt lines: the host wires these to its CPU
 	public Action? GhostNmiLine; public Action<bool>? HoldIrqLine;
 	public bool IrqActive { get; private set; }
@@ -485,6 +505,8 @@ public sealed class Butcher
 		var smp = new PinFaults(so2.SamplePins, Math.Max(1, Profile.SampleLines), 0x846CA68Bu); SampleFaults = on && smp.Active ? smp : null;
 		var dac = new PinFaults(so2.DacPins, 1, 0x2C1B3C6Du, 16); Dac = on && dac.Active ? dac : null;
 		WobbleActive = on && so2.Wobble.On && so2.Wobble.Depth > 0;
+		var rb = new PinFaults(settings.Unsafe.RamBus, Profile.RamBusLines, 0x4CF5AD43u);
+		RamBusFaults = on && rb.Active ? rb : null;
 		var vb = new PinFaults(settings.Unsafe.VideoBus, Math.Max(1, Profile.VideoBusLines), 0x9E3779B1u, Profile.CpuDataLines);
 		VideoBusFaults = on && vb.Active ? vb : null;
 		var dm = new PinFaults(settings.Unsafe.DmaPins, Math.Max(1, Profile.DmaLines), 0x165667B1u, Profile.CpuDataLines);
@@ -504,7 +526,7 @@ public sealed class Butcher
 	}
 
 	/// <summary>Nothing is on: the hooks can be detached.</summary>
-	public bool Idle => !IrqActive && irqLeft == 0 && CiramFault == 0 && PaletteBusFaults == null && VideoBusFaults == null && !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
+	public bool Idle => RamBusFaults == null && !IrqActive && irqLeft == 0 && CiramFault == 0 && PaletteBusFaults == null && VideoBusFaults == null && !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
 
 	public static int AddressLinesFor(int size)
 	{
@@ -1535,6 +1557,7 @@ public sealed record ButcherReach(string PpuCore, bool ConsolePins, bool Console
 	/// <summary>The sound chip has RAM of its own (SPC700 ARAM, Z80 RAM, Game Boy wave RAM) for the sound RAM rot.</summary>
 	public bool SoundRam { get; init; }
 	public int VideoBusLines { get; init; } = 3;
+	public int RamBusLines { get; init; } = 11;
 	public int SampleLines { get; init; } = 15;
 	public string SamplePinsTitle { get; init; } = "Sample fetch · DMC (A0-A14, D0-D7)";
 	public bool VramRot { get; init; } = true;

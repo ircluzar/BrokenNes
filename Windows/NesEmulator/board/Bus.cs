@@ -677,6 +677,7 @@ public class Bus : IBus
 	private byte ReadSlow(ushort address)
 	{
 		if (DebugTap != null && !debugTapBusy) return DebugReadSlow(address);   // the debugger's watches (null when none is set)
+		if (address < 0x2000) return Butcher?.RamBusFaults != null ? Butcher.RamRead8(address & 0x7FF, 11, i => ram[i & 0x7FF]) : ram[address & 0x7FF];   // RAM here only while Butchering mode masks its pages
 		// PPU registers 0x2000-0x3FFF (mirrored every 8)
 		if (address < 0x4000)
 		{
@@ -739,6 +740,7 @@ public class Bus : IBus
 	private void WriteSlow(ushort address, byte value)
 	{
 		if (DebugTap != null && !debugTapBusy) { DebugWriteSlow(address, value); return; }   // the debugger's watches (null when none is set)
+		if (address < 0x2000) { if (Butcher?.RamBusFaults == null || !Butcher.RamWrite8(address & 0x7FF, value, 11, (i, v) => ram[i & 0x7FF] = v)) ram[address & 0x7FF] = value; return; }
 		// Touch idle loop detector (direct call; avoids reflection cost)
 		if (cpu is CPU_SPD spdCpu) spdCpu.IdleLoopMaybeWriteTouch(address);
 		if (address < 0x4000)
@@ -1062,6 +1064,14 @@ public class Bus : IBus
 	private bool debugTapBusy;   // re-entry guard: the tapped path calls the original one
 
 	/// <summary>Sends RAM accesses ($0000-$1FFF) through the slow path (where <see cref="DebugTap"/> sees them), or back to the page table.</summary>
+	/// <summary>Butchering mode's RAM bus: RAM through the slow path while its pins are faulted (the debugger's own mask wins).</summary>
+	private bool butcherRamMasked;
+	public void ButcherMaskRam(bool on)
+	{
+		if (on == butcherRamMasked || DebugTap != null) return;
+		butcherRamMasked = on; DebugMaskRam(on);
+	}
+
 	public void DebugMaskRam(bool masked)
 	{
 		for (int p = 0x00; p <= 0x1F; p++)

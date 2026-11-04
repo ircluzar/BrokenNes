@@ -309,7 +309,7 @@ public sealed class BOARD_SMS
 
     public byte ReadMemory(ushort address)
     {
-        if (address >= 0xC000) return ramEnabled ? Ram[address & 0x1FFF] : (byte)0xFF;
+        if (address >= 0xC000) return !ramEnabled ? (byte)0xFF : Butcher?.RamBusFaults != null ? Butcher.RamRead8(address & 0x1FFF, 13, i => Ram[i & 0x1FFF]) : Ram[address & 0x1FFF];
         if (BiosMapped) return Bios!.Read(address);
         if (cartEnabled && Butcher?.CpuPins != null) return Butcher.CpuRead8(address, 14, x => Cart.Read((ushort)x));   // Butchering mode: the slot's pins (A0-A13 within the 16 KB slot)
         return cartEnabled ? Cart.Read(address) : (byte)0xFF;

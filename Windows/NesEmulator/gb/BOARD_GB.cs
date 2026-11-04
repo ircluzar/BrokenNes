@@ -225,8 +225,8 @@ public sealed class BOARD_GB : IGbCpuBus
                 return Butcher?.CpuPins != null && cpu ? Butcher.CpuRead8(a, 15, x => Cart.ReadRom((ushort)x)) : Cart.ReadRom(a);
             case 0x8: case 0x9: return Ppu.ReadVram(a);
             case 0xA: case 0xB: return Cart.ReadRam(a);
-            case 0xC: return wram[a & 0x0FFF];
-            case 0xD: return wram[(wramBank << 12) | (a & 0x0FFF)];
+            case 0xC: return Butcher?.RamBusFaults != null && cpu ? Butcher.RamRead8(a & 0x0FFF, 13, i => wram[(i & 0x1000) != 0 ? (wramBank << 12) | (i & 0x0FFF) : i & 0x0FFF]) : wram[a & 0x0FFF];
+            case 0xD: return Butcher?.RamBusFaults != null && cpu ? Butcher.RamRead8(0x1000 | (a & 0x0FFF), 13, i => wram[(i & 0x1000) != 0 ? (wramBank << 12) | (i & 0x0FFF) : i & 0x0FFF]) : wram[(wramBank << 12) | (a & 0x0FFF)];
             case 0xE: return wram[a & 0x0FFF];
             default:
                 if (a < 0xFE00) return wram[(wramBank << 12) | (a & 0x0FFF)];

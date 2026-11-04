@@ -437,7 +437,12 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
             if (CartTrace != null && address >= 0x200000) CartTrace($"cart read ${address:X6}{(upper ? "u" : "-")}{(lower ? "l" : "-")} -> {cv:X4}");
             return cv;
         }
-        if (address >= 0xE00000) { int a = (int)(address & 0xFFFE); return (ushort)(Ram[a] << 8 | Ram[a + 1]); }
+        if (address >= 0xE00000)
+        {
+            int a = (int)(address & 0xFFFE);
+            if (ButcherCpu?.RamBusFaults != null) return (ushort)(ButcherCpu.RamRead8(a, 16, i => Ram[i & 0xFFFF]) << 8 | ButcherCpu.RamRead8(a + 1, 16, i => Ram[i & 0xFFFF]));
+            return (ushort)(Ram[a] << 8 | Ram[a + 1]);
+        }
         if (address >= 0xC00000 && address < 0xE00000) return ReadVdp(address, now);
         if (address >= 0xA00000 && address < 0xA10000)
         {

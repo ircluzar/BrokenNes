@@ -835,8 +835,9 @@ namespace NesEmulator
 				b.AttachVram(cartridge != null && cartridge.chrBanks == 0 && cartridge.chrRAM.Length > 0 ? cartridge.chrRAM : (bus.ppu as PPU_FIX)?.ButcherVram);
 				b.FrameStart(bus!.ButcherApuWrite);
 			}
-			if (b == null || b.Idle) { bus!.Butcher = null; if (cartridge != null) cartridge.Butcher = null; return; }
+			if (b == null || b.Idle) { bus!.ButcherMaskRam(false); bus!.Butcher = null; if (cartridge != null) cartridge.Butcher = null; return; }
 			bus!.Butcher = b;
+			bus.ButcherMaskRam(b.RamBusFaults != null);
 			if (cartridge != null) { cartridge.Butcher = b.Cart != null ? b : null; if (bus.cartridge != null && !ReferenceEquals(bus.cartridge, cartridge)) bus.cartridge.Butcher = cartridge.Butcher; }
 		}
 
