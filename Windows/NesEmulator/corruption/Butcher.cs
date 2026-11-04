@@ -33,6 +33,8 @@ public sealed class ButcherSettings
 	public double CiramFlicker { get; set; }
 	/// <summary>The video DAC's 24 input lines (R0-R7, G0-G7, B0-B7): stuck / bridged bits on the final colours (display only).</summary>
 	public PinGroupSettings VideoDac { get; set; } = new();
+	/// <summary>The palette RAM's own bus (NES palette, SNES CGRAM): the renderer reads the wrong entry / bent colour bits.</summary>
+	public PinGroupSettings PaletteBus { get; set; } = new();
 	public UnsafeSettings Unsafe { get; set; } = new();
 }
 
@@ -390,7 +392,15 @@ public sealed class Butcher
 	public bool BandsActive { get; private set; }
 	public bool RamActive { get; private set; }
 	public bool PaletteActive { get; private set; }
-	internal PinFaults? VideoDacFaults;
+	internal PinFaults? VideoDacFaults, PaletteBusFaults;
+	/// <summary>A palette RAM read by the renderer through the bent palette bus (index lines, data lines).</summary>
+	public int PaletteRead(int index, int lines, Func<int, int> read)
+	{
+		var f = PaletteBusFaults!; if (f.Misses()) return read(index);
+		int m = (1 << lines) - 1;
+		int v = read(f.AddrActive ? (f.Addr(index & m) & m) | (index & ~m) : index);
+		return f.DataActive ? f.Data16((ushort)v) : v;
+	}
 	public int CiramFault { get; private set; }
 	private uint rngCiram = 0x3C6EF372u;
 	/// <summary>A nametable RAM index (0-0x7FF) through the faulted A10 line.</summary>
@@ -432,6 +442,8 @@ public sealed class Butcher
 		VideoDacFaults = on && vd.DataActive ? vd : null;
 		PaletteActive = on && (settings.Palette.On || VideoDacFaults != null);
 		CiramFault = on ? Math.Clamp(settings.CiramA10, 0, 3) : 0;
+		var pb = new PinFaults(settings.PaletteBus, 8, 0x61C88647u, 16);
+		PaletteBusFaults = on && pb.Active ? pb : null;
 		var cp = new PinFaults(settings.Unsafe.CpuPins, Profile.CpuLines, 0xC2B2AE35u, Profile.CpuDataLines);
 		CpuPins = on && cp.Active ? cp : null;
 		var sc = new PinFaults(settings.Unsafe.SoundCpuPins, Math.Max(1, Profile.SoundCpuLines), 0x27D4EB2Fu);
@@ -456,7 +468,7 @@ public sealed class Butcher
 	}
 
 	/// <summary>Nothing is on: the hooks can be detached.</summary>
-	public bool Idle => CiramFault == 0 && !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
+	public bool Idle => CiramFault == 0 && PaletteBusFaults == null && !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
 
 	public static int AddressLinesFor(int size)
 	{

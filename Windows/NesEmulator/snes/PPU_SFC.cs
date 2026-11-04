@@ -294,6 +294,9 @@ public partial class PPU_SFC
     private void VW(int a, ushort v) { if (Butcher == null) Vram[a] = v; else Butcher.PictureWriteWord(Vram, a, v); }
     private byte OF(int index, byte v) => Butcher is { SpritesActive: true } b ? b.FilterOamWrite(index, v) : v;
 
+    // Butchering mode's palette bus: the renderer's CGRAM reads (8 index lines, 15 colour bits).
+    private ushort CG(int i) => Butcher?.PaletteBusFaults != null ? (ushort)(Butcher.PaletteRead(i, 8, x => Cgram[x & 0xFF]) & 0x7FFF) : Cgram[i];
+
     private void WriteOam(byte v)
     {
         oamVersion++;
@@ -836,7 +839,7 @@ public partial class PPU_SFC
             }
             if (c == 0) { colors[sx] = Transparent; continue; }
             int pal = (entry >> 10) & 7;
-            colors[sx] = direct ? DirectColor(c, pal) : Cgram[(paletteBase + (bpp == 8 ? 0 : pal << palShift) + c) & 0xFF];
+            colors[sx] = direct ? DirectColor(c, pal) : CG((paletteBase + (bpp == 8 ? 0 : pal << palShift) + c) & 0xFF);
             prios[sx] = (byte)((entry >> 13) & 1);
         }
     }
@@ -1012,11 +1015,11 @@ public partial class PPU_SFC
             }
             else tile = VR((((py >> 3) & 127) << 7) | ((px >> 3) & 127)) & 0xFF;
             int color = VR((tile << 6 | (py & 7) << 3 | (px & 7)) & 0x7FFF) >> 8;
-            c1[sx] = color == 0 ? Transparent : direct ? DirectColor(color, 0) : Cgram[color];
+            c1[sx] = color == 0 ? Transparent : direct ? DirectColor(color, 0) : CG(color);
             if (extbg)
             {
                 int c7 = color & 0x7F;
-                c2[sx] = c7 == 0 ? Transparent : Cgram[c7];
+                c2[sx] = c7 == 0 ? Transparent : CG(c7);
                 p2[sx] = (byte)(color >> 7);
             }
         }
@@ -1127,7 +1130,7 @@ public partial class PPU_SFC
                     {
                         int c = (int)(pixels >> (i << 3)) & 0xFF;
                         if (c == 0) continue;
-                        objColor[sx + i] = Cgram[128 + (pal << 4) + c];
+                        objColor[sx + i] = CG(128 + (pal << 4) + c);
                         objPrio[sx + i] = (byte)prio;
                         objMath[sx + i] = pal >= 4;
                     }
@@ -1140,7 +1143,7 @@ public partial class PPU_SFC
                     int bit = hflip ? i : 7 - i;
                     int c = (p01 >> bit & 1) | (p01 >> (8 + bit) & 1) << 1 | (p23 >> bit & 1) << 2 | (p23 >> (8 + bit) & 1) << 3;
                     if (c == 0) continue;
-                    objColor[px] = Cgram[128 + (pal << 4) + c];
+                    objColor[px] = CG(128 + (pal << 4) + c);
                     objPrio[px] = (byte)prio;
                     objMath[px] = pal >= 4;   // only palettes 4-7 take part in color math
                 }

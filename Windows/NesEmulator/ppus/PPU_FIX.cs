@@ -549,6 +549,9 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	/// <summary>Butchering mode's VRAM rot (unsafe): the console's own 2 KB nametable RAM.</summary>
 	public byte[] ButcherVram => vram;
 
+	// Butchering mode's palette bus: the renderer's palette reads (5 index lines, 6 colour bits).
+	private int PR(int i) => bus.Butcher?.PaletteBusFaults != null ? bus.Butcher.PaletteRead(i, 5, x => paletteRAM[x & 0x1F]) & 0x3F : paletteRAM[i];
+
 	private void ButcherSprite0Guarantee()
 	{
 		if ((PPUSTATUS & 0x40) != 0 || (PPUMASK & 0x18) != 0x18) return;
@@ -663,9 +666,9 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 					break;
 				}
 			}
-			if (spPix != 0 && (bgPix == 0 || spFront)) colour = paletteRAM[0x10 | (spPal << 2) | spPix];
-			else if (bgPix != 0) colour = paletteRAM[(bgPal << 2) | bgPix];
-			else colour = paletteRAM[0];
+			if (spPix != 0 && (bgPix == 0 || spFront)) colour = PR(0x10 | (spPal << 2) | spPix);
+			else if (bgPix != 0) colour = PR((bgPal << 2) | bgPix);
+			else colour = PR(0);
 		}
 		int pi = emphBase + (colour & greyMask) * 3;
 		int fi = (scanline * ScreenWidth + x) * 4;
