@@ -105,12 +105,15 @@
   });
 
   async function start() {
-    try {
-      const valid = await api.timejump.validateRom();
-      if (!valid?.valid) { status('Load a game first.', true); await back(); return; }
-    } catch { /* validation is advisory: the reach call below decides */ }
-
+    // The reach call decides first: it knows every console. The time-jump ROM check only knows the NES (while a SNES / Game Boy / Sega
+    // game runs, the NES holds its placeholder ROM, so the check said "no game" and the panel closed itself on every other console).
     const r = await api.butcher.getReach().catch(() => null);
+    if ((r?.console || r?.reach?.console || 'nes') === 'nes') {
+      try {
+        const valid = await api.timejump.validateRom();
+        if (!valid?.valid) { status('Load a game first.', true); await back(); return; }
+      } catch { /* validation is advisory */ }
+    }
     if (!r?.success) { status(r?.error || 'Butchering mode is not available.', true); return; }
     if (!r.supported) { status(r.reason || 'Not supported on this console yet.', true); return; }
     reach = r.reach;
