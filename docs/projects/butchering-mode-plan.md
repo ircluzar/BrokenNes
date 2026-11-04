@@ -93,3 +93,15 @@ The point is not to copy the Glitch Boy: it is to take the concepts its research
 | Bridged sound + SNES HLE | Corrupt the **guest's original register writes**, before any bridge translates them: same effects whatever chip plays them. |
 | Genesis sprite links | **Never** corrupted (the list never loops or cuts); Y, tile, attributes, X are. |
 | How | Here, one piece at a time, each verified (golden suites, per-console checks) and committed before the next. |
+
+## Wave 4 as built (2026-11-03)
+- **Genesis sprites**: the sprite filters on the table's Y low, attributes (V/H flip, priority, palette), tile low and X low bytes as they are written to VRAM (before the sprite cache records them). Size, link and the high bits are never touched.
+- **Bridged sound**: MdSoundOnNes / MdSoundOnChip and the SNES NES-chip bridge / adapter hold a real MdSoundUnit / APU_SFC: the engine attaches to that inner unit, so the guest's own writes are bent whatever chip plays them. SNES HLE makes no sound (it only fakes the IPL upload): the panel says so. (Master System bridges were already covered: the filter sits at the board's port.)
+- **Bands everywhere, native per chip**: `Butcher.BandLineEx(line)` returns a generic `BandOverride` (layers off, pattern swap, map swap, shift, slip offset, extras 1-3, bend lines); each renderer applies it to its own registers for that line and puts the game's values back (unless the CPU rewrote one meanwhile):
+  - SNES (`PPU_SFC.RenderLine`): TM/TS, BGnHOFS/VOFS, BGnSC, BG12/34NBA; extras Mode 7 wobble (M7A/M7D), BG mode flip, colour-math flip.
+  - Master System / Game Gear (`SmsVdp.BeginLine/EndLine`): h-scroll reg 8, latched v-scroll, name table reg 2, sprite patterns reg 6, sprite size reg 1, display; extras sprite zoom, left-column blank, sprite shift.
+  - Game Boy (`PPU_GB.NextLine`): SCX, SCY, LCDC (tile data, BG map, BG / OBJ enable, OBJ size), WX; extras window off, window shift, window map swap. A CPU read of LCDC / SCX inside a banded line sees the band's value.
+  - Genesis (`MdVdp.StartNextLine` + h-scroll read): h-scroll offset, plane A / B map swap, display; extras shadow / highlight, plane width, window side. No slip / pattern swap / sprites off / sprite height on this chip yet.
+  - NES frozen cores (BFR, CUBE, CUBEX, EIL, FMC, LOW, LQ, SPD, ULQ at their `scanline++`): PPUCTRL / PPUMASK overlays - pattern swap, sprite height, BG off, sprites off. **No bend** there (measured: these cores do not fetch line by line where a bend could land). PPU FIX keeps its full 8-type engine.
+  - The panel lists the band types each console / core supports (`reach.bandKinds`) and its extras (`reach.extraBands`).
+- **Verified**: headless per console (never attached vs all-off vs each band type at full rate): all-off identical everywhere; every listed band type changes the picture and the game keeps moving (SNES, Game Boy, Master System, Genesis, NES FMC / LQ). Extras that use a layer the test game does not show (Super Mario Land's window, Super Mario World's Mode 7) changed nothing there - game-dependent. Golden suites: 125 / 0, Sega 46 / 0, SNES 21 / 0, Game Boy 4 / 0.

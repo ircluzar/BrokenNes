@@ -491,9 +491,38 @@ public partial class MdVdp
     /// 2565..2580 give identical counts, 2555 and below and 2590 and above differ). It was a whole line (3420) before.</summary>
     public static int Z80IntClocks = 2573;
 
+    // Butchering mode's bands, natively: the VDP's registers for this line (display, plane A / B map bases, shadow /
+    // highlight, plane size, window side) and an offset on the line's horizontal scroll; put back as the next line
+    // starts unless the CPU rewrote them meanwhile.
+    private readonly byte[] bandSaved = new byte[24], bandApplied = new byte[24];
+    private bool bandOn; private int bandHs;
+
+    private void ButcherBandsBegin(Butcher bb, int line)
+    {
+        bandHs = 0;
+        var o = bb.BandLineEx(line);
+        if (!o.Any && bb.LineBendMask == 0) return;
+        Array.Copy(Reg, bandSaved, 24);
+        bandHs = o.Shift;
+        if ((o.LayersOff & 1) != 0) Reg[1] &= unchecked((byte)~0x40);
+        if (o.MapSwap) { byte a = Reg[2], b = Reg[4]; Reg[2] = (byte)((a & ~0x38) | (b & 7) << 3); Reg[4] = (byte)((b & ~7) | (a >> 3) & 7); }
+        if ((o.Extras & 1) != 0) Reg[12] ^= 0x08;   // shadow / highlight
+        if ((o.Extras & 2) != 0) Reg[16] ^= 0x01;   // plane width 32 <-> 64
+        if ((o.Extras & 4) != 0) Reg[17] ^= 0x80;   // window side
+        Array.Copy(Reg, bandApplied, 24);
+        bandOn = true;
+    }
+
+    private void ButcherBandsEnd()
+    {
+        bandOn = false; bandHs = 0;
+        for (int i = 0; i < 24; i++) if (Reg[i] == bandApplied[i]) Reg[i] = bandSaved[i];
+    }
+
     private void StartNextLine()
     {
         FinishLineRender();
+        if (bandOn) ButcherBandsEnd();
         lineStart += ClocksPerLine;
         Line++;
         if (Line >= linesPerFrame)
@@ -505,6 +534,7 @@ public partial class MdVdp
         hintEnCur = hintEnNext; hintEnNext = HintEnabled;
         // the vertical blank begins at the V counter's step in the last picture line; VINT follows that step by its delay (and so falls early in the first blank line)
         if (Line == ActiveLines - 1) vintTime = lineStart + VCounterStepOffset + VintDelay;
+        if (Butcher is { BandsActive: true } bb && Line < ActiveLines) ButcherBandsBegin(bb, Line);
         BeginLineRender();
     }
 

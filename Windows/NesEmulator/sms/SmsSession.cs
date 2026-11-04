@@ -24,8 +24,10 @@ public class SmsSession : IConsoleSession, IButcherHost
     }
     public ButcherReach GetButcherReach() => new(
         PpuCore: IsGameGear ? "Game Gear VDP" : "Master System VDP", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
-        SpritesDma: true, Sprites2004: false, Sound: true, Bands: false, Ram: true)
-    { Console = IsGameGear ? "gg" : "sms", ConsoleAddressLines = ButcherProfile.Sms.ConsoleLines, AttrNames = ButcherProfile.Sms.AttrNames, Channels = board.Sound.HasFm ? ButcherProfile.SmsFm.Channels : ButcherProfile.Sms.Channels,
+        SpritesDma: true, Sprites2004: false, Sound: true, Bands: true, Ram: true)
+    { BandKinds = new[] { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spriteHeight", "bend" },
+      ExtraBands = new[] { "Sprite zoom|Sprites drawn double size inside the band.", "Left column blank|The leftmost 8 pixels blanked inside the band.", "Sprite shift|Sprites pushed 8 pixels left inside the band." },
+      Console = IsGameGear ? "gg" : "sms", ConsoleAddressLines = ButcherProfile.Sms.ConsoleLines, AttrNames = ButcherProfile.Sms.AttrNames, Channels = board.Sound.HasFm ? ButcherProfile.SmsFm.Channels : ButcherProfile.Sms.Channels,
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the VDP and its 16 KB video RAM: name table, tile graphics and the sprite table." };
     protected void ButcherFrame()
     {

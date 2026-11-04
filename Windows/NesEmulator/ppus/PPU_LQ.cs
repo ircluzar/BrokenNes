@@ -122,7 +122,7 @@ public class PPU_LQ : IPPU, IPpuFrameClock
                     PPUSTATUS |= 0x80; if ((PPUCTRL & 0x80) != 0) bus.cpu.RequestNMI();
                 }
                 if (scanline == 261) v = t;
-                scanline++; if (scanline == TotalScanlines) scanline = 0;
+                scanline++; if (scanline == TotalScanlines) scanline = 0; if (bus?.Butcher is { } bnd) bnd.NesCoreLine(scanline, ref PPUCTRL, ref PPUMASK);
             }
         }
     }

@@ -253,6 +253,37 @@ public sealed class PPU_GB
         }
     }
 
+    // Butchering mode's bands, natively: LCDC, SCX, SCY and WX are changed for one line, then put back at the next line start
+    // unless the CPU rewrote them meanwhile. (A CPU read of those registers inside a banded line sees the band's value.)
+    private bool bandOn;
+    private byte bSavLcdc, bSavScx, bSavScy, bSavWx, bAppLcdc, bAppScx, bAppScy, bAppWx;
+
+    private void ButcherBandsLine()
+    {
+        if (bandOn)
+        {
+            bandOn = false;
+            if (Lcdc == bAppLcdc) Lcdc = bSavLcdc; if (Scx == bAppScx) Scx = bSavScx; if (Scy == bAppScy) Scy = bSavScy; if (Wx == bAppWx) Wx = bSavWx;
+        }
+        var bb = Butcher;
+        if (bb is not { BandsActive: true } || ly >= Height) return;
+        var o = bb.BandLineEx(ly);
+        if (!o.Any && bb.TallXor == 0) return;
+        bSavLcdc = Lcdc; bSavScx = Scx; bSavScy = Scy; bSavWx = Wx;
+        Scx = (byte)(Scx + o.Shift);
+        Scy = (byte)(Scy - o.YOffset);
+        if (o.PatternSwap) Lcdc ^= 0x10;
+        if (o.MapSwap) Lcdc ^= 0x08;
+        if ((o.LayersOff & 1) != 0) Lcdc &= unchecked((byte)~0x01);
+        if ((o.LayersOff & 2) != 0) Lcdc &= unchecked((byte)~0x02);
+        if (bb.TallXor != 0) Lcdc ^= 0x04;
+        if ((o.Extras & 1) != 0) Lcdc &= unchecked((byte)~0x20);   // window off
+        if ((o.Extras & 2) != 0) Wx = (byte)(Wx + o.Extra2);       // window shift
+        if ((o.Extras & 4) != 0) Lcdc ^= 0x40;                     // window map swap
+        bAppLcdc = Lcdc; bAppScx = Scx; bAppScy = Scy; bAppWx = Wx;
+        bandOn = true;
+    }
+
     private void NextLine()
     {
         if (ly < Height && windowRendered) windowLine++;
@@ -260,6 +291,7 @@ public sealed class PPU_GB
         firstLine = false;
         bgpWriteDot = obp0WriteDot = obp1WriteDot = lcdcWriteDot = -1;
         ly++;
+        if (bandOn || Butcher is { BandsActive: true }) ButcherBandsLine();
         lyReadsZero = false;
         if (ly == Lines) { ly = 0; windowLine = 0; windowYTriggered = false; }
         if (ly < Height) LineStarted?.Invoke(ly);

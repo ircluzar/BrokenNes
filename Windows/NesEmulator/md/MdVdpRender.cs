@@ -181,8 +181,8 @@ public partial class MdVdp
         // horizontal scroll: the table entry of this line (the hardware reads it as the line begins)
         int mask = (Reg[11] & 3) switch { 0 => 0, 1 => 7, 2 => 0xF8, _ => 0xFF };
         int ea = ((Reg[13] & 0x3F) << 10) + ((lineY & mask) << 2);
-        hscrollA = (VR(ea & 0xFFFF) << 8 | VR(ea + 1 & 0xFFFF)) & 0x3FF;
-        hscrollB = (VR(ea + 2 & 0xFFFF) << 8 | VR(ea + 3 & 0xFFFF)) & 0x3FF;
+        hscrollA = ((VR(ea & 0xFFFF) << 8 | VR(ea + 1 & 0xFFFF)) + bandHs) & 0x3FF;
+        hscrollB = ((VR(ea + 2 & 0xFFFF) << 8 | VR(ea + 3 & 0xFFFF)) + bandHs) & 0x3FF;
         BuildSprites();
     }
 

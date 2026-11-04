@@ -64,6 +64,23 @@ public sealed class BandSettings
 	public BandEffect SpritesOff { get; set; } = new();
 	public BandEffect SpriteHeight { get; set; } = new();
 	public BandEffect Bend { get; set; } = new();
+	/// <summary>Console-specific band types (the panel names them from the console's reach: Mode 7 wobble, window shift...).</summary>
+	public BandEffect Extra1 { get; set; } = new();
+	public BandEffect Extra2 { get; set; } = new();
+	public BandEffect Extra3 { get; set; } = new();
+}
+
+/// <summary>One line's band overrides, for any console: each renderer maps them onto its own registers.</summary>
+public struct BandOverride
+{
+	/// <summary>Layers off on this line: 1 background (BG1 / plane A), 2 sprites, 4 BG2 / plane B / window, 8 BG3, 16 BG4.</summary>
+	public int LayersOff;
+	public bool PatternSwap, MapSwap;
+	/// <summary>Horizontal slide (pixels) and the vertical slip in force on this line (sum of slips that started above).</summary>
+	public int Shift, YOffset;
+	/// <summary>Console extras active on this line (bit 0 = Extra1 ...) and their summed strengths.</summary>
+	public int Extras, Extra1, Extra2, Extra3;
+	public bool Any => LayersOff != 0 || PatternSwap || MapSwap || Shift != 0 || YOffset != 0 || Extras != 0;
 }
 
 /// <summary>Fault per line: 0 none, 1 stuck low, 2 stuck high, 3 bridged to the next line up (the top line bridges down).</summary>
@@ -221,7 +238,7 @@ public sealed class ButcherProfile
 		DropReg = 0x25,                                                         // NR51: a channel off on both sides
 		DropApply = (v, mask) => (byte)(v & ~(mask | (mask << 4))),
 		DropRegDefault = 0xFF,
-		RamWindow = 0x2000, StackPage = 0x1F,
+		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 144,
 	};
 	/// <summary>Master System / Game Gear: the sprite table is in VRAM (no attribute byte), the PSG takes latch / data bytes.</summary>
 	public static readonly ButcherProfile Sms = new()
@@ -232,7 +249,7 @@ public sealed class ButcherProfile
 		AttrBits = Array.Empty<int>(), AttrNames = Array.Empty<string>(),
 		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise" },
 		Psg = true,
-		RamWindow = 0x2000, StackPage = 0x1F,
+		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192,
 	};
 	/// <summary>Master System with its FM unit (YM2413): the PSG's four channels, then FM 1-9.</summary>
 	public static readonly ButcherProfile SmsFm = new()
@@ -243,7 +260,7 @@ public sealed class ButcherProfile
 		AttrBits = Array.Empty<int>(), AttrNames = Array.Empty<string>(),
 		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise", "FM 1", "FM 2", "FM 3", "FM 4", "FM 5", "FM 6", "FM 7", "FM 8", "FM 9" },
 		Psg = true,
-		RamWindow = 0x2000, StackPage = 0x1F,
+		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 192,
 	};
 	/// <summary>Genesis: 64 KB VRAM, PSG + YM2612, 64 KB work RAM.</summary>
 	public static readonly ButcherProfile Md = new()
@@ -255,7 +272,7 @@ public sealed class ButcherProfile
 		AttrNames = new[] { "V-flip", "H-flip", "Priority", "Palette 1", "Palette 0" },
 		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise", "FM 1", "FM 2", "FM 3", "FM 4", "FM 5", "FM 6" },
 		Psg = true,
-		RamWindow = 0x10000, StackPage = 0xFF,
+		RamWindow = 0x10000, StackPage = 0xFF, VisibleLines = 224,
 	};
 	/// <summary>SNES: word VRAM (A0-A14), OAM records X, Y, tile, attributes; 128 KB work RAM; sound (SPC700 + DSP) not yet.</summary>
 	public static readonly ButcherProfile Snes = new()
@@ -278,10 +295,11 @@ public sealed class ButcherProfile
 		DropReg = 0x5C,                                  // KOF: a dropped voice's key-off bit is held set
 		DropApply = (v, mask) => (byte)(v | mask),
 		DropRegDefault = 0x00,
-		RamWindow = 0x20000, StackPage = 0x1F,
+		RamWindow = 0x20000, StackPage = 0x1F, VisibleLines = 224,
 	};
 	public bool Psg;
 	public int DataLines = 8;
+	public int VisibleLines = 240;
 }
 
 public sealed class Butcher
@@ -321,7 +339,8 @@ public sealed class Butcher
 		SoundActive = on && (Any(so.BitFlip.Bits) || so.Nudge.On || Any(so.Drops.Channels)
 			|| so.Stutter.On || so.Drone.On || so.Duty.On || so.Detune.On);
 		var bd = settings.Bands;
-		BandsActive = on && (bd.Shift.On || bd.Slip.On || bd.PatternSwap.On || bd.NametableSwap.On || bd.BgOff.On || bd.SpritesOff.On || bd.SpriteHeight.On || bd.Bend.On);
+		BandsActive = on && (bd.Shift.On || bd.Slip.On || bd.PatternSwap.On || bd.NametableSwap.On || bd.BgOff.On || bd.SpritesOff.On || bd.SpriteHeight.On || bd.Bend.On
+			|| bd.Extra1.On || bd.Extra2.On || bd.Extra3.On);
 		if (!BandsActive) { Array.Clear(bandLife); LineBendMask = 0; TallXor = 0; }
 		RamActive = on && settings.Ram.On;
 		if (!RamActive) Array.Clear(probeLife);
@@ -378,8 +397,8 @@ public sealed class Butcher
 	public byte PictureRead(byte[] mem, int a)
 	{
 		var f = Console;
-		if (f == null || f.Misses()) return mem[a];
-		int b = f.AddrActive ? f.Addr(a) & (mem.Length - 1) : a;
+		if (f == null || f.Misses()) return LineBendMask == 0 ? mem[a] : mem[a & ~LineBendMask];
+		int b = (f.AddrActive ? f.Addr(a) : a) & ~LineBendMask & (mem.Length - 1);
 		byte v = mem[b];
 		return f.DataActive ? f.Data(v) : v;
 	}
@@ -388,8 +407,8 @@ public sealed class Butcher
 	public ushort PictureReadWord(ushort[] mem, int a)
 	{
 		var f = Console;
-		if (f == null || f.Misses()) return mem[a];
-		int b = f.AddrActive ? f.Addr(a) & (mem.Length - 1) : a;
+		if (f == null || f.Misses()) return LineBendMask == 0 ? mem[a] : mem[a & ~LineBendMask];
+		int b = (f.AddrActive ? f.Addr(a) : a) & ~LineBendMask & (mem.Length - 1);
 		ushort v = mem[b];
 		return f.DataActive ? f.Data16(v) : v;
 	}
@@ -545,10 +564,10 @@ public sealed class Butcher
 		{
 			if (bandLife[i] == 0) continue;
 			if (--bandLife[i] == 0) continue;
-			if ((RB() & 15) == 0 && bandStart[i] > 0 && bandEnd[i] < 240) { int s = (RB() & 1) != 0 ? 1 : -1; bandStart[i] += s; bandEnd[i] += s; }
+			if ((RB() & 15) == 0 && bandStart[i] > 0 && bandEnd[i] < Profile.VisibleLines) { int s = (RB() & 1) != 0 ? 1 : -1; bandStart[i] += s; bandEnd[i] += s; }
 			if (bandType[i] == 6) TallXor = 0x20;
 		}
-		var kinds = new[] { bd.Shift, bd.Slip, bd.PatternSwap, bd.NametableSwap, bd.BgOff, bd.SpritesOff, bd.SpriteHeight, bd.Bend };
+		var kinds = new[] { bd.Shift, bd.Slip, bd.PatternSwap, bd.NametableSwap, bd.BgOff, bd.SpritesOff, bd.SpriteHeight, bd.Bend, bd.Extra1, bd.Extra2, bd.Extra3 };
 		for (int t = 0; t < kinds.Length; t++)
 		{
 			var k = kinds[t];
@@ -556,14 +575,78 @@ public sealed class Butcher
 			int slot = Array.IndexOf(bandLife, 0);
 			if (slot < 0) break;
 			int width = Math.Clamp(k.Width, 1, 240), strength = Math.Clamp(k.Strength, 1, 64);
-			int start = (int)(RB() % 240), end = Math.Min(240, start + 1 + (int)(RB() % (uint)width));
+			int lines = Profile.VisibleLines;
+			int start = (int)(RB() % (uint)lines), end = Math.Min(lines, start + 1 + (int)(RB() % (uint)width));
 			int param = 1 + (int)(RB() % (uint)strength); if ((RB() & 1) != 0) param = -param;
-			if (t == 1) end = 240;                                   // a vertical slip carries to the bottom
-			if (t == 6) { start = 0; end = 240; TallXor = 0x20; }     // sprite height: the whole frame
-			if (t == 7) { param = 0; int lines = 1 + strength / 16; for (int j = 0; j < lines; j++) param |= 1 << (int)(RB() % 9); } // A0-A8
+			if (t == 1) end = lines;                                 // a vertical slip carries to the bottom
+			if (t == 6) { start = 0; end = lines; TallXor = 0x20; }   // sprite height: the whole frame
+			if (t == 7) { param = 0; int bendLines = 1 + strength / 16; for (int j = 0; j < bendLines; j++) param |= 1 << (int)(RB() % 9); } // A0-A8
 			bandType[slot] = t; bandStart[slot] = start; bandEnd[slot] = end; bandParam[slot] = param;
 			bandLife[slot] = Math.Clamp(k.Lifetime, 1, 3600);
 		}
+	}
+
+	/// <summary>The overrides for one visible line, for every console but the NES FIX path (which uses BandLine below).</summary>
+	public BandOverride BandLineEx(int line)
+	{
+		var o = new BandOverride();
+		int bend = 0;
+		for (int i = 0; i < BandSlots; i++)
+		{
+			if (bandLife[i] == 0) continue;
+			if (bandType[i] == 1) { if (line >= bandStart[i]) o.YOffset += bandParam[i]; continue; }   // a slip moves everything below its start
+			if (line < bandStart[i] || line >= bandEnd[i]) continue;
+			int p = bandParam[i];
+			switch (bandType[i])
+			{
+				case 0: o.Shift += p; break;
+				case 2: o.PatternSwap = true; break;
+				case 3: o.MapSwap = true; break;
+				case 4: o.LayersOff |= 1 | 4 | 8 | 16; break;   // every background layer
+				case 5: o.LayersOff |= 2; break;
+				case 7: bend |= p; break;
+				case 8: o.Extras |= 1; o.Extra1 += p; break;
+				case 9: o.Extras |= 2; o.Extra2 += p; break;
+				case 10: o.Extras |= 4; o.Extra3 += p; break;
+			}
+		}
+		LineBendMask = bend;
+		return o;
+	}
+
+	/// <summary>Slides one finished row of a 32-bit picture by <paramref name="by"/> pixels (left when positive), wrapping.</summary>
+	public static void ShiftRow(uint[] frame, int offset, int width, int by)
+	{
+		by = ((by % width) + width) % width; if (by == 0) return;
+		var tmp = System.Buffers.ArrayPool<uint>.Shared.Rent(width);
+		Array.Copy(frame, offset, tmp, 0, width);
+		for (int x = 0; x < width; x++) frame[offset + x] = tmp[(x + by) % width];
+		System.Buffers.ArrayPool<uint>.Shared.Return(tmp);
+	}
+
+	// The NES PPU cores other than FIX: bands through PPUCTRL / PPUMASK for the coming line (pattern table swap, sprite height,
+	// background / sprites off) plus the bend lines on their PPU reads; put back at the next line unless the CPU rewrote them.
+	private bool nesOverlayOn; private byte nesSavCtrl, nesSavMask, nesAppCtrl, nesAppMask;
+
+	/// <summary>Called by a NES PPU core as it moves to <paramref name="newLine"/>.</summary>
+	public void NesCoreLine(int newLine, ref byte ctrl, ref byte mask)
+	{
+		if (nesOverlayOn)
+		{
+			nesOverlayOn = false;
+			if (ctrl == nesAppCtrl) ctrl = nesSavCtrl;
+			if (mask == nesAppMask) mask = nesSavMask;
+		}
+		if (!BandsActive || newLine >= 240) { LineBendMask = 0; return; }
+		var o = BandLineEx(newLine);
+		if (!o.Any && TallXor == 0) return;
+		nesSavCtrl = ctrl; nesSavMask = mask;
+		if (o.PatternSwap) ctrl ^= 0x10;
+		if (TallXor != 0) ctrl ^= 0x20;
+		if ((o.LayersOff & 1) != 0) mask &= unchecked((byte)~0x08);
+		if ((o.LayersOff & 2) != 0) mask &= unchecked((byte)~0x10);
+		nesAppCtrl = ctrl; nesAppMask = mask;
+		nesOverlayOn = true;
 	}
 
 	/// <summary>The overrides for one visible line (PPU FIX calls this at the end of the line before it).</summary>
@@ -943,6 +1026,10 @@ public sealed record ButcherReach(string PpuCore, bool ConsolePins, bool Console
 	public string PinsWhy { get; init; } = "The PPU's own bus, before the cartridge's banking: tiles, nametables and attributes.";
 	/// <summary>A limit of this console's sound reach, shown in the panel (empty = none).</summary>
 	public string SoundNote { get; init; } = "";
+	/// <summary>The shared band types this console's chip can do (ids: shift, slip, patternSwap, nametableSwap, bgOff, spritesOff, spriteHeight, bend).</summary>
+	public string[] BandKinds { get; init; } = { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spritesOff", "spriteHeight", "bend" };
+	/// <summary>Names of this console's own extra band types (Extra1-3), with what each does.</summary>
+	public string[] ExtraBands { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>A running system Butchering mode can drive (the NES, a Game Boy session).</summary>

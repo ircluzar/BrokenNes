@@ -141,7 +141,7 @@ public class PPU_FMC : IPPU, IPpuFrameClock
 					v = t;
 				}
 
-				scanline++;
+				scanline++; if (bus?.Butcher is { } bnd) bnd.NesCoreLine(scanline, ref PPUCTRL, ref PPUMASK);
 				if (scanline == TotalScanlines)
 				{
 					scanline = 0;

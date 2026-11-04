@@ -236,6 +236,39 @@ public partial class SmsVdp
         colAtMc = ovrAtMc = int.MaxValue;
         lineDisplayOn = (Regs[1] & 0x40) != 0;
         Refresh();
+        if (Butcher is { BandsActive: true } bb && n < 240) ButcherBandsBegin(bb, n);
+    }
+
+    // Butchering mode's bands, natively: the VDP's own registers are changed for this line (scroll, name table and sprite
+    // pattern bases, sprite size / zoom, the display) and put back at its end - unless the CPU rewrote one meanwhile.
+    private readonly byte[] bandSaved = new byte[16], bandApplied = new byte[16];
+    private bool bandOn; private int bandVsSaved, bandVsApplied;
+
+    private void ButcherBandsBegin(Butcher bb, int n)
+    {
+        var o = bb.BandLineEx(n);
+        if (!o.Any && bb.TallXor == 0 && bb.LineBendMask == 0) return;
+        int k = Math.Min(16, Regs.Length);
+        Array.Copy(Regs, bandSaved, k); bandVsSaved = vscrollLatched;
+        Regs[8] = (byte)(Regs[8] + o.Shift);
+        vscrollLatched = ((vscrollLatched - o.YOffset) % 224 + 224) % 224;
+        if (o.MapSwap) Regs[2] ^= 0x02;
+        if (o.PatternSwap) Regs[6] ^= 0x04;
+        if (bb.TallXor != 0) Regs[1] ^= 0x02;
+        if ((o.LayersOff & 1) != 0) lineDisplayOn = false;
+        if ((o.Extras & 1) != 0) Regs[1] ^= 0x01;   // sprite zoom
+        if ((o.Extras & 2) != 0) Regs[0] ^= 0x20;   // left column blanked
+        if ((o.Extras & 4) != 0) Regs[0] ^= 0x08;   // sprites shifted 8 left
+        Array.Copy(Regs, bandApplied, k); bandVsApplied = vscrollLatched;
+        bandOn = true;
+    }
+
+    private void ButcherBandsEnd()
+    {
+        bandOn = false;
+        int k = Math.Min(16, Regs.Length);
+        for (int i = 0; i < k; i++) if (Regs[i] == bandApplied[i]) Regs[i] = bandSaved[i];
+        if (vscrollLatched == bandVsApplied) vscrollLatched = bandVsSaved;
     }
 
     private void Queue(int time, int kind)
@@ -256,6 +289,7 @@ public partial class SmsVdp
         RunTo(LineMc);
         if (Line < activeHeight && renderedX < 256) RenderSpan(renderedX, 256);
         renderedX = 256;
+        if (bandOn) ButcherBandsEnd();
         if (Line == activeHeight - 1) { FrameHeight = activeHeight; }
         if (Line == TotalLines - 1) Frames++;
     }

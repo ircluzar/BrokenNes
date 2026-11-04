@@ -43,7 +43,7 @@
         duty: { on: false, rate: 25, duration: 30, value: 0 },
         detune: { on: false, rate: 25, duration: 30, value: 1 }
       },
-      bands: (() => { const b = () => ({ on: false, rate: 25, width: 30, strength: 8, lifetime: 30 }); return { shift: b(), slip: b(), patternSwap: b(), nametableSwap: b(), bgOff: b(), spritesOff: b(), spriteHeight: b(), bend: b() }; })(),
+      bands: (() => { const b = () => ({ on: false, rate: 25, width: 30, strength: 8, lifetime: 30 }); return { shift: b(), slip: b(), patternSwap: b(), nametableSwap: b(), bgOff: b(), spritesOff: b(), spriteHeight: b(), bend: b(), extra1: b(), extra2: b(), extra3: b() }; })(),
       ram: { on: false, rate: 25, step: 1, lifetime: 60, maxProbes: 3 }
     };
   }
@@ -272,6 +272,28 @@
       slider('Rate', fx, 'rate', 0, 100, 1), slider('Frames', fx, 'duration', 1, 600, 1), ...(extra || []));
   }
 
+  // The band types this console's chip does (reach.bandKinds), then its own extras (reach.extraBands: "Name|what it does").
+  function bandList(bd, bandFx) {
+    const shared = {
+      shift: () => bandFx('Shift', 'The band slides sideways.', bd.shift, 'Pixels'),
+      slip: () => bandFx('Slip', 'The picture below the band drops by some rows.', bd.slip, 'Rows'),
+      patternSwap: () => bandFx('Pattern swap', 'The band draws from the other tile set.', bd.patternSwap),
+      nametableSwap: () => bandFx('Map swap', 'The band shows another tile map.', bd.nametableSwap),
+      bgOff: () => bandFx('Background off', 'The background vanishes inside the band.', bd.bgOff),
+      spritesOff: () => bandFx('Sprites off', 'Sprites vanish inside the band.', bd.spritesOff),
+      spriteHeight: () => bandFx('Sprite height', 'Sprites switch size for the whole frame.', bd.spriteHeight),
+      bend: () => bandFx('Bend', 'Address lines grounded inside the band only.', bd.bend, 'Lines'),
+    };
+    const kinds = reach.bandKinds || Object.keys(shared);
+    const out = kinds.filter(k => shared[k]).map(k => shared[k]());
+    (reach.extraBands || []).forEach((e, i) => {
+      const [name, why] = String(e).split('|');
+      const fx = bd['extra' + (i + 1)];
+      if (fx) out.push(bandFx(name, why || '', fx, 'Strength'));
+    });
+    return out;
+  }
+
   function render() {
     const g = $('groups');
     g.replaceChildren();
@@ -340,18 +362,12 @@
       strengthLabel ? slider(strengthLabel, fx, 'strength', 1, 64, 1) : null, slider('Frames', fx, 'lifetime', 1, 600, 1));
     g.append(el('details', { open: true }, el('summary', {}, 'Bands (scanlines)'),
       el('div', { class: 'why' }, 'Timed bands of lines with one effect each; up to six at once, drifting a line now and then.'),
-      reach.bands ? null : el('div', { class: 'off' }, isNes ? `Bands need the PPU FIX core (now ${reach.ppuCore}).` : 'Bands are NES-only for now (PPU FIX).'),
+      reach.bands ? null : el('div', { class: 'off' }, `Not reachable on the ${reach.ppuCore} picture chip.`),
       el('fieldset', { class: reach.bands ? '' : 'disabled' },
-        bandFx('Shift', 'The band slides sideways.', bd.shift, 'Pixels'),
-        bandFx('Slip', 'The picture below the band drops by some rows.', bd.slip, 'Rows'),
-        bandFx('Pattern swap', 'The band draws from the other pattern table.', bd.patternSwap),
-        bandFx('Nametable swap', 'The band shows the neighbouring screen.', bd.nametableSwap),
-        bandFx('Background off', 'A black band.', bd.bgOff),
-        bandFx('Sprites off', 'Sprites vanish inside the band.', bd.spritesOff),
-        bandFx('Sprite height', 'Sprites switch 8 / 16 pixels tall for the whole frame.', bd.spriteHeight),
-        bandFx('Bend', 'Address lines grounded inside the band only.', bd.bend, 'Lines'))));
+        ...bandList(bd, bandFx))));
 
     const rm = settings.ram;
+
     g.append(el('details', { open: true }, el('summary', {}, 'RAM nudges'),
       el('div', { class: 'why' }, 'Learns which RAM bytes are live game variables (positions, timers, speeds) and nudges them a step at a time, only inside the range the game itself used. Pointers and flags are filtered out.'),
       el('div', { class: 'fx' }, check('Nudge variables', rm, 'on'),

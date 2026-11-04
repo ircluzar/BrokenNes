@@ -819,8 +819,10 @@ namespace NesEmulator
 				SpritesDma: dma,
 				Sprites2004: ppu is not null and not PPU_EXE and not PPU_IMG,
 				Sound: bus != null,
-				Bands: ppu is PPU_FIX,
-				Ram: bus?.ram != null);
+				Bands: ppu is not null and not PPU_EXE and not PPU_IMG,
+				Ram: bus?.ram != null)
+			{ BandKinds = ppu is PPU_FIX ? new[] { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spritesOff", "spriteHeight", "bend" }
+				: new[] { "patternSwap", "bgOff", "spritesOff", "spriteHeight" } };   // the other cores do not fetch line by line where a bend band could land
 		}
 
 		private void ButcherFrame()

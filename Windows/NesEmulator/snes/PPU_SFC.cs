@@ -443,7 +443,36 @@ public partial class PPU_SFC
             try { RenderLineCore(line); } finally { tm = savedTm; ts = savedTs; }
             return;
         }
-        RenderLineCore(line);
+        if (Butcher is { BandsActive: true } bb) ButcherLine(line, bb);
+        else RenderLineCore(line);
+    }
+
+    // Butchering mode's bands, natively: the line is drawn with the PPU's own registers changed (layers, scroll, map and tile
+    // bases, the Mode 7 matrix, BG mode, colour math), then the game's values come back - the CPU never sees them.
+    private void ButcherLine(int line, Butcher bb)
+    {
+        var o = bb.BandLineEx(line - 1);
+        if (!o.Any && bb.LineBendMask == 0) { RenderLineCore(line); return; }
+        byte sTm = tm, sTs = ts, sNba12 = bg12nba, sNba34 = bg34nba, sMode = bgmode, sAdd = cgadsub;
+        Span<ushort> sH = stackalloc ushort[4], sV = stackalloc ushort[4]; Span<byte> sSc = stackalloc byte[4];
+        hofs.CopyTo(sH); vofs.CopyTo(sV); bgsc.CopyTo(sSc);
+        short sA = m7a, sD = m7d;
+        try
+        {
+            int off = ((o.LayersOff & (1 | 4 | 8 | 16)) != 0 ? 0x0F : 0) | ((o.LayersOff & 2) != 0 ? 0x10 : 0);
+            tm &= (byte)~off; ts &= (byte)~off;
+            for (int i = 0; i < 4; i++) { hofs[i] = (ushort)(hofs[i] + o.Shift); vofs[i] = (ushort)(vofs[i] - o.YOffset); if (o.MapSwap) bgsc[i] ^= 0x04; }
+            if (o.PatternSwap) { bg12nba ^= 0x11; bg34nba ^= 0x11; }
+            if ((o.Extras & 1) != 0) { m7a = (short)(m7a + o.Extra1 * 16); m7d = (short)(m7d - o.Extra1 * 16); }   // Mode 7 wobble
+            if ((o.Extras & 2) != 0) bgmode = (byte)((bgmode & 0xF8) | ((bgmode + (o.Extra2 & 1) + 1) & 7));   // BG mode flip
+            if ((o.Extras & 4) != 0) cgadsub ^= 0x80;                                                        // colour math add <-> subtract
+            RenderLineCore(line);
+        }
+        finally
+        {
+            tm = sTm; ts = sTs; bg12nba = sNba12; bg34nba = sNba34; bgmode = sMode; cgadsub = sAdd; m7a = sA; m7d = sD;
+            sH.CopyTo(hofs); sV.CopyTo(vofs); sSc.CopyTo(bgsc);
+        }
     }
 
     private void RenderLineCore(int line)

@@ -80,8 +80,10 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
     }
     public ButcherReach GetButcherReach() => new(
         PpuCore: "SNES PPU", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
-        SpritesDma: true, Sprites2004: false, Sound: ButcherApu() != null, Bands: false, Ram: true)
+        SpritesDma: true, Sprites2004: false, Sound: ButcherApu() != null, Bands: true, Ram: true)
     { Console = "snes", ConsoleAddressLines = ButcherProfile.Snes.ConsoleLines, ConsoleDataLines = 16, AttrNames = ButcherProfile.Snes.AttrNames, Channels = ButcherProfile.Snes.Channels,
+      BandKinds = new[] { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spritesOff", "bend" },
+      ExtraBands = new[] { "Mode 7 wobble|The Mode 7 matrix is pushed out of shape inside the band.", "BG mode flip|The band is drawn in another background mode.", "Colour math flip|Colour addition becomes subtraction inside the band." },
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The word-wide bus between the PPU and its two 32 KB video RAM chips: tile maps, tile graphics (D0-D7 the low chip, D8-D15 the high one).",
       SoundNote = ButcherApu() != null ? "The S-DSP's voice registers, as the SPC700 writes them (echo, sample directory and key-on are left alone)." : board.Apu is APU_HLE ? "This sound core makes no sound (HLE only fakes the boot-time upload): nothing to bend." : "Not reachable with this sound core." };
     /// <summary>The real SPC700 + S-DSP unit, wherever it sits: the board's own, or inside the adapter / the NES-chip bridge (the guest's own writes are bent, whatever chip plays them).</summary>
@@ -513,15 +515,16 @@ public sealed class GbSession : IConsoleSession, IButcherHost
     }
     public ButcherReach GetButcherReach() => new(
         PpuCore: "Game Boy PPU", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
-        SpritesDma: true, Sprites2004: false, Sound: true, Bands: false, Ram: true)
-    { Console = "gb", ConsoleAddressLines = ButcherProfile.Gb.ConsoleLines, AttrNames = ButcherProfile.Gb.AttrNames, Channels = ButcherProfile.Gb.Channels,
+        SpritesDma: true, Sprites2004: false, Sound: true, Bands: true, Ram: true)
+    { ExtraBands = new[] { "Window off|The window layer vanishes inside the band.", "Window shift|The window slides sideways inside the band.", "Window map swap|The window draws from the other tile map." },
+      Console = "gb", ConsoleAddressLines = ButcherProfile.Gb.ConsoleLines, AttrNames = ButcherProfile.Gb.AttrNames, Channels = ButcherProfile.Gb.Channels,
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the picture chip and its video RAM: tile maps, tile graphics and sprite graphics (A13 is the Color bank line)." };
     private void ButcherFrame()
     {
         var b = Butcher;
         if (b != null) { b.AttachRam(board.Wram); b.FrameStart(board.ButcherSoundWrite); }
         var on = b != null && !b.Idle ? b : null;
-        board.Butcher = on; board.Ppu.Butcher = on is { Console: not null } ? on : null;
+        board.Butcher = on; board.Ppu.Butcher = on;
     }
 
     public void RunFrame()

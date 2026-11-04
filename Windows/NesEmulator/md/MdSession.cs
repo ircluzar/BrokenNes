@@ -26,8 +26,10 @@ public sealed class MdSession : IConsoleSession, IButcherHost
     }
     public ButcherReach GetButcherReach() => new(
         PpuCore: "Genesis VDP", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
-        SpritesDma: true, Sprites2004: false, Sound: ButcherUnit() != null, Bands: false, Ram: true)
-    { Console = "md", ConsoleAddressLines = ButcherProfile.Md.ConsoleLines, AttrNames = ButcherProfile.Md.AttrNames, Channels = ButcherProfile.Md.Channels,
+        SpritesDma: true, Sprites2004: false, Sound: ButcherUnit() != null, Bands: true, Ram: true)
+    { BandKinds = new[] { "shift", "nametableSwap", "bgOff", "bend" },
+      ExtraBands = new[] { "Shadow / highlight|Shadow and highlight mode flips inside the band.", "Plane size flip|The planes switch between 32 and 64 cells wide.", "Window side|The window jumps to the other side." },
+      Console = "md", ConsoleAddressLines = ButcherProfile.Md.ConsoleLines, AttrNames = ButcherProfile.Md.AttrNames, Channels = ButcherProfile.Md.Channels,
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the VDP and its 64 KB video RAM: plane maps, tile graphics, the sprite table and the scroll table.",
       SoundNote = ButcherUnit() != null ? "" : "Not reachable with this sound unit." };
     /// <summary>The real Genesis sound unit, wherever it sits: the board's own, or inside a bridge that plays it on another chip (the guest's own writes are bent).</summary>
