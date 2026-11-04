@@ -429,7 +429,12 @@ public sealed partial class BOARD_SFC : ISnesBus
         if (IsSystemBank(bank) && offset < 0x8000)
         {
             if (offset < 0x2000) { Wram[offset] = value; return; }
-            if (offset >= 0x2100 && offset < 0x2200) { WriteBBus((byte)offset, value); return; }
+            if (offset >= 0x2100 && offset < 0x2200)
+            {
+                byte br = (byte)offset;
+                if (ButcherCpu?.VideoBusFaults != null) { var (r2, v2) = ButcherCpu.VideoBusBend(br, value, 8); br = (byte)r2; value = (byte)v2; }
+                WriteBBus(br, value); return;
+            }
             if (offset == 0x4016) { WriteJoyLatch(value); return; }
             if (offset >= 0x4200 && offset < 0x4220) { WriteCpuIo(offset, value); return; }
             if (offset >= 0x4300 && offset < 0x4380) { dmaRegs[offset & 0x7F] = value; return; }

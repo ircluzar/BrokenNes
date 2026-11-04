@@ -58,6 +58,7 @@
                 ramRot: { on: false, rate: 25, bits: 1 }, vramRot: { on: false, rate: 25, bits: 1 },
                 padLines: new Array(15).fill(0), padFlicker: 0,
                 soundRamRot: { on: false, rate: 25, bits: 1 }, echoAbuse: { on: false, rate: 25, duration: 120 },
+                videoBus: { address: new Array(reach?.videoBusLines || 3).fill(0), data: new Array(reach?.cpuDataLines || 8).fill(0), flicker: 0, bendWrites: false },
                 dmaPins: { address: new Array(reach?.dmaLines || 0).fill(0), data: new Array(reach?.dmaDataLines || 8).fill(0), flicker: 0, bendWrites: false },
                 coproPins: { address: new Array(reach?.coproName && reach.coproName !== 'DSP-1' ? 24 : 0).fill(0), data: new Array(reach?.coproName ? 8 : 0).fill(0), flicker: 0, bendWrites: false } },
       groupsOff: { picture: false, sprites: false, sound: false, bands: false, ram: false, palette: false, unsafe: false }
@@ -570,6 +571,11 @@
       reach.coproName === 'DSP-1' ? null : el('div', { class: 'sub' }, 'Address lines'), reach.coproName === 'DSP-1' ? null : pinGrid('A', un.coproPins.address),
       el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', un.coproPins.data),
       slider('Flicker', un.coproPins, 'flicker', 0, 100, 1));
+    unsafeBody.push(el('div', { class: 'sub' }, 'Video-chip register bus'),
+      el('div', { class: 'why' }, 'The CPU’s wires to the picture chip’s registers: scroll, control and VRAM-address writes land bent or on the wrong register.'),
+      el('div', { class: 'sub' }, 'Register lines'), pinGrid('A', un.videoBus.address),
+      el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', un.videoBus.data),
+      slider('Flicker', un.videoBus, 'flicker', 0, 100, 1));
     // controller lines: one wire per button
     const PAD = [['·', 'connected'], ['R', 'stuck released'], ['P', 'stuck pressed'], ['B', 'bridged to the next button']];
     const padGrid = el('div', { class: 'pins' });

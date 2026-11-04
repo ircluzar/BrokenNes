@@ -744,6 +744,7 @@ public class Bus : IBus
 		if (address < 0x4000)
 		{
 			ushort reg = (ushort)(0x2000 + (address & 0x0007));
+			if (Butcher?.VideoBusFaults != null) { var (r2, v2) = Butcher.VideoBusBend(reg & 7, value, 3); reg = (ushort)(0x2000 + (r2 & 7)); value = (byte)v2; }
 			ppu.WritePPURegister(reg, value);
 			if (Butcher != null && reg <= 0x2001) Butcher.NotePpuRegister(reg, value);
 			// Zero cost when nobody is watching: one null test on a reference field, on a path that

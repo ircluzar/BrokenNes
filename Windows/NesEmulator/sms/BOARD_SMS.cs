@@ -425,6 +425,7 @@ public sealed class BOARD_SMS
                 Sound.WritePsg(value);
                 break;
             case 0x80:
+                if (Butcher?.VideoBusFaults != null) { var (r2, v2) = Butcher.VideoBusBend(p & 1, value, 1); p = (p & ~1) | (r2 & 1); value = (byte)v2; }
                 if ((p & 1) == 0) Vdp.WriteData(value, PortMc);
                 else Vdp.WriteControl(value, PortMc);
                 Cpu.Irq = Vdp.Irq;

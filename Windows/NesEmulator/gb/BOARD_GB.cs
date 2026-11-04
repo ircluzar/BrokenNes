@@ -315,6 +315,7 @@ public sealed class BOARD_GB : IGbCpuBus
             if (Butcher is { SoundActive: true } bs) v = bs.FilterApuWrite((ushort)r, v);
             Apu.WriteRegister(r, v); return;
         }
+        if (r >= 0x40 && r <= 0x4B && Butcher?.VideoBusFaults != null) { var (r2, v2) = Butcher.VideoBusBend(r - 0x40, v, 4); if (r2 <= 0x0B) r = r2 + 0x40; v = (byte)v2; }
         if (r >= 0x40 && r <= 0x4B || r == 0x4F || r >= 0x68 && r <= 0x6C) Ppu.WriteRegister(r, v);
     }
 

@@ -519,6 +519,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     private void WriteVdp(uint address, bool upper, bool lower, ushort data, long now)
     {
         if ((address & 0xE700E0) != 0xC00000) return;
+        if (ButcherCpu?.VideoBusFaults != null) { var (r2, v2) = ButcherCpu.VideoBusBend((int)(address & 0x1F) >> 1, data, 4); address = (address & ~0x1Fu) | (uint)((r2 & 0xF) << 1) | (address & 1); data = (ushort)v2; }
         int reg = (int)(address & 0x1F);
         if (reg <= 0x03)
         {
