@@ -180,3 +180,6 @@ Fixed on the way: the Genesis ROM hook ran CPU pins whenever any board-level eff
 Wave 8 continued (2026-11-04): dropped NMI on GB / SMS / GG / Genesis (no change seen on Sonic 2 SMS - check other Cpu.Irq
 sites), Game Boy OAM DMA source bus (DMA pins), work-RAM bus pins on every console. **Left**: palette bus on GBC / Sega,
 7 Genesis BUSREQ / Z80 reset, 9 clock pins; suites rerun + user exe rebuild after these.
+
+Wave 8 finished (2026-11-04): + Genesis BUSREQ / Z80 reset holds, clock stall / rush on every console. Golden suites
+green after the whole wave. **Only left**: palette bus on Game Boy Color / Master System / Game Gear / Genesis CRAM.
