@@ -710,7 +710,7 @@ public class Bus : IBus
 		if (address >= 0x6000)
 		{
 			if (cartridge.IsCpuReadOpenBus(address)) return lastBusValue;
-			byte v = cartridge.CPURead(address);
+			byte v = address >= 0x8000 && Butcher?.CpuPins != null ? Butcher.CpuPrgRead(address, cartridge.CPURead) : cartridge.CPURead(address);
 			// Trigger MMC5 PCM only on PRG ROM range $8000-$BFFF
 			if (address >= 0x8000 && address <= 0xBFFF) mmc5Audio?.ReadROMTrigger(v);
 			return v;
@@ -804,6 +804,7 @@ public class Bus : IBus
 	}
 		if (address >= 0x6000)
 		{
+			if (address >= 0x8000 && Butcher?.CpuPins != null && Butcher.CpuPrgWrite(address, value, cartridge.CPUWrite)) return;
 			cartridge.CPUWrite(address, value);
 			// Same zero-cost-when-unattached shape as the PPU observer above: one null test on a
 			// reference field, on a path that is ALREADY the slow path (the page table routes every

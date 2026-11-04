@@ -28,7 +28,21 @@ public sealed class ButcherSettings
 	public BandSettings Bands { get; set; } = new();
 	public RamSettings Ram { get; set; } = new();
 	public PaletteSettings Palette { get; set; } = new();
+	public UnsafeSettings Unsafe { get; set; } = new();
 }
+
+/// <summary>The unsafe round: damage the game itself can trip over - it can crash or stay broken until Reload State.</summary>
+public sealed class UnsafeSettings
+{
+	/// <summary>NES: the cartridge's PRG pins on the CPU bus (A0-A14, D0-D7) - instruction fetches and data reads from the cart.</summary>
+	public PinGroupSettings CpuPins { get; set; } = new();
+	/// <summary>Blind bit flips anywhere in work RAM (stack, pointers, flags included).</summary>
+	public RotEffect RamRot { get; set; } = new();
+	/// <summary>Blind bit flips anywhere in video RAM (tiles, maps, the sprite table on chips that keep it there).</summary>
+	public RotEffect VramRot { get; set; } = new();
+}
+
+public sealed class RotEffect { public bool On { get; set; } public double Rate { get; set; } = 25; public int Bits { get; set; } = 1; }
 
 /// <summary>Glitch Boy's palette glitch: the picture's colours through a transform, never the game's own palette.</summary>
 public sealed class PaletteSettings
@@ -326,12 +340,14 @@ public sealed class Butcher
 	private ButcherSettings settings = new();
 	internal PinFaults? Console;  // null = no console-pin fault
 	internal PinFaults? Cart;     // null = no cartridge-pin fault
+	internal PinFaults? CpuPins;  // null = no CPU-bus (PRG) pin fault - unsafe
 	private int cartLines;
 	public bool SpritesActive { get; private set; }
 	public bool SoundActive { get; private set; }
 	public bool BandsActive { get; private set; }
 	public bool RamActive { get; private set; }
 	public bool PaletteActive { get; private set; }
+	public bool RotActive { get; private set; }
 
 	private uint rngSprites = 0x1234567u, rngSound = 0x7654321u;
 
@@ -360,6 +376,9 @@ public sealed class Butcher
 		if (!BandsActive) { Array.Clear(bandLife); LineBendMask = 0; TallXor = 0; }
 		RamActive = on && settings.Ram.On;
 		PaletteActive = on && settings.Palette.On;
+		var cp = new PinFaults(settings.Unsafe.CpuPins, 15, 0xC2B2AE35u);
+		CpuPins = on && cp.Active ? cp : null;
+		RotActive = on && (settings.Unsafe.RamRot.On || settings.Unsafe.VramRot.On);
 		paletteLut.Clear(); paletteMode = Math.Clamp(settings.Palette.Mode, 0, 4); paletteTick = 0;
 		if (!RamActive) Array.Clear(probeLife);
 		rngSprites = 0x1234567u; rngSound = 0x7654321u; rngBands = 0x2545F491u;
@@ -369,7 +388,7 @@ public sealed class Butcher
 	}
 
 	/// <summary>Nothing is on: the hooks can be detached.</summary>
-	public bool Idle => Console == null && Cart == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive;
+	public bool Idle => Console == null && Cart == null && CpuPins == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
 
 	public static int AddressLinesFor(int size)
 	{
@@ -928,6 +947,46 @@ public sealed class Butcher
 		}
 	}
 
+	// ===================================================================================== unsafe: CPU pins, RAM / VRAM rot
+	/// <summary>NES cartridge PRG pins: the byte a CPU read of $8000-$FFFF gets through the bent bus (A15 stays: the cart is still selected).</summary>
+	public byte CpuPrgRead(ushort address, Func<ushort, byte> read)
+	{
+		var f = CpuPins!;
+		if (f.Misses()) return read(address);
+		int a = f.AddrActive ? (f.Addr(address & 0x7FFF) & 0x7FFF) | 0x8000 : address;
+		byte v = read((ushort)a);
+		return f.DataActive ? f.Data(v) : v;
+	}
+	/// <summary>A CPU write to the cart (mapper registers) through the same pins, with "bend writes too".</summary>
+	public bool CpuPrgWrite(ushort address, byte value, Action<ushort, byte> write)
+	{
+		var f = CpuPins!;
+		if (!f.BendWrites || f.Misses()) return false;
+		int a = f.AddrActive ? (f.Addr(address & 0x7FFF) & 0x7FFF) | 0x8000 : address;
+		write((ushort)a, f.DataActive ? f.Data(value) : value);
+		return true;
+	}
+
+	private byte[]? vram; private ushort[]? vramWords;
+	public void AttachVram(byte[]? v) { vram = v; vramWords = null; }
+	public void AttachVramWords(ushort[]? v) { vramWords = v; vram = null; }
+	public bool HasVram => vram != null || vramWords != null;
+	private uint rngRot = 0x5BD1E995u;
+	private uint RT() => Step(ref rngRot);
+
+	private void RotFrame()
+	{
+		var u = settings.Unsafe;
+		if (u.RamRot.On && ram is { Length: > 0 } r && RT() < EventThreshold(u.RamRot.Rate) * 4u)
+			for (int i = 0; i < Math.Clamp(u.RamRot.Bits, 1, 64); i++) r[(int)(RT() % (uint)r.Length)] ^= (byte)(1 << (int)(RT() % 8));
+		if (u.VramRot.On && RT() < EventThreshold(u.VramRot.Rate) * 4u)
+			for (int i = 0; i < Math.Clamp(u.VramRot.Bits, 1, 64); i++)
+			{
+				if (vram is { Length: > 0 } v) v[(int)(RT() % (uint)v.Length)] ^= (byte)(1 << (int)(RT() % 8));
+				else if (vramWords is { Length: > 0 } w) w[(int)(RT() % (uint)w.Length)] ^= (ushort)(1 << (int)(RT() % 16));
+			}
+	}
+
 	// ===================================================================================== palette (display only)
 	// The finished picture's colours go through a cached table (a game shows few colours), so fades and flashes keep working:
 	// the transform follows whatever the game draws. Nothing the game can read changes.
@@ -1072,6 +1131,7 @@ public sealed class Butcher
 	{
 		WatchRam();
 		if (PaletteActive) PaletteFrame();
+		if (RotActive) RotFrame();
 		if (BandsActive) BandsFrame(); else { TallXor = 0; LineBendMask = 0; }
 		if (RamActive) RamFrame();
 		var sp = settings.Sprites;
@@ -1158,6 +1218,9 @@ public sealed record ButcherReach(string PpuCore, bool ConsolePins, bool Console
 	public string[] BandKinds { get; init; } = { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spritesOff", "spriteHeight", "bend" };
 	/// <summary>Names of this console's own extra band types (Extra1-3), with what each does.</summary>
 	public string[] ExtraBands { get; init; } = Array.Empty<string>();
+	/// <summary>Unsafe reach: the CPU-bus pins (NES cartridge PRG pins) and VRAM rot.</summary>
+	public bool CpuPins { get; init; }
+	public bool VramRot { get; init; } = true;
 }
 
 /// <summary>A running system Butchering mode can drive (the NES, a Game Boy session).</summary>

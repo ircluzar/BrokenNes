@@ -99,7 +99,7 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
     {
         var b = Butcher;
         var apu = ButcherApu();
-        if (b != null) { b.AttachRam(board.Wram); b.FrameStart(apu != null ? apu.ButcherDspWrite : (_, _) => { }); }
+        if (b != null) { b.AttachRam(board.Wram); b.AttachVramWords(board.Ppu.Vram); b.FrameStart(apu != null ? apu.ButcherDspWrite : (_, _) => { }); }
         var on = b != null && !b.Idle ? b : null;
         board.Ppu.Butcher = on; if (apu != null) apu.Butcher = on;
     }
@@ -527,7 +527,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
     private void ButcherFrame()
     {
         var b = Butcher;
-        if (b != null) { b.AttachRam(board.Wram); b.FrameStart(board.ButcherSoundWrite); }
+        if (b != null) { b.AttachRam(board.Wram); b.AttachVram(board.Ppu.Vram); b.FrameStart(board.ButcherSoundWrite); }
         var on = b != null && !b.Idle ? b : null;
         board.Butcher = on; board.Ppu.Butcher = on;
     }

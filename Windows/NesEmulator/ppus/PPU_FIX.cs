@@ -546,6 +546,9 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		for (int x = 0; x < w; x++) Buffer.BlockCopy(tmp, ((x + by) % w) * 4, fb, row + x * 4, 4);
 	}
 
+	/// <summary>Butchering mode's VRAM rot (unsafe): the console's own 2 KB nametable RAM.</summary>
+	public byte[] ButcherVram => vram;
+
 	private void ButcherSprite0Guarantee()
 	{
 		if ((PPUSTATUS & 0x40) != 0 || (PPUMASK & 0x18) != 0x18) return;

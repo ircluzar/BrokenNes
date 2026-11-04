@@ -46,7 +46,9 @@
       bands: (() => { const b = () => ({ on: false, rate: 25, width: 30, strength: 8, lifetime: 30 }); return { shift: b(), slip: b(), patternSwap: b(), nametableSwap: b(), bgOff: b(), spritesOff: b(), spriteHeight: b(), bend: b(), extra1: b(), extra2: b(), extra3: b() }; })(),
       ram: { on: false, rate: 25, step: 1, lifetime: 60, maxProbes: 3 },
       palette: { on: false, mode: 0, invert: false, channelSwap: false, posterize: 0, cycleFrames: 0 },
-      groupsOff: { picture: false, sprites: false, sound: false, bands: false, ram: false, palette: false }
+      unsafe: { cpuPins: { address: new Array(15).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
+                ramRot: { on: false, rate: 25, bits: 1 }, vramRot: { on: false, rate: 25, bits: 1 } },
+      groupsOff: { picture: false, sprites: false, sound: false, bands: false, ram: false, palette: false, unsafe: false }
     };
   }
 
@@ -122,7 +124,7 @@
       if (n && settings?.ram?.on) n.textContent = st.confirmed > 0
         ? `Ready: ${st.confirmed} confirmed variable${st.confirmed === 1 ? '' : 's'}, ${st.nudging} being nudged (${st.watches} watched). What it learned survives Reload State.`
         : `Learning… ${st.watches} byte${st.watches === 1 ? '' : 's'} watched, nothing confirmed yet (title screens give it little: play a bit).`;
-      watchdog(st.stillFrames || 0);
+      watchdog(st.crashed ? 999 : (st.stillFrames || 0), st.crashed);
     }
     const r = await api.butcher.getReach().catch(() => null);
     if (!r?.success || !r.supported) return;
@@ -137,12 +139,12 @@
 
   // Freeze watchdog: the game's RAM has not changed for about 3 seconds - offer the entry state.
   let freezeDismissed = false;
-  function watchdog(still) {
+  function watchdog(still, crashed) {
     let bar = document.getElementById('freezeBar');
     if (still < 180) { if (bar) bar.remove(); freezeDismissed = false; return; }
     if (bar || freezeDismissed) return;
     bar = el('div', { id: 'freezeBar', class: 'freeze' },
-      el('span', {}, 'The game looks frozen.'),
+      el('span', {}, crashed ? 'The game crashed.' : 'The game looks frozen.'),
       el('button', { type: 'button', onclick: async () => { document.getElementById('freezeBar')?.remove(); await reloadState(); } }, 'Reload State'),
       el('button', { type: 'button', onclick: () => { freezeDismissed = true; document.getElementById('freezeBar')?.remove(); } }, 'Keep going'));
     document.querySelector('.head')?.after(bar);
@@ -182,6 +184,7 @@
     if (off.bands) e.bands = d.bands;
     if (off.ram) e.ram = d.ram;
     if (off.palette) e.palette = d.palette;
+    if (off.unsafe) { e.unsafe = d.unsafe; e.consolePins.bendWrites = false; e.cartPins.bendWrites = false; }
     delete e.groupsOff;
     return e;
   }
@@ -296,8 +299,7 @@
     const body = el('fieldset', { class: available ? '' : 'disabled' },
       el('div', { class: 'sub' }, 'Address lines'), pinGrid('A', group.address),
       el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', group.data),
-      slider('Flicker', group, 'flicker', 0, 100, 1),
-      el('div', { class: 'fx' }, check('Bend writes too', group, 'bendWrites'), el('div', { class: 'why' }, writesText)));
+      slider('Flicker', group, 'flicker', 0, 100, 1));
     return el('details', { open: true }, groupSummary(title, 'picture'),
       el('div', { class: 'why' }, why),
       available ? null : el('div', { class: 'off' }, unavailableText),
@@ -419,6 +421,30 @@
           el('label', {}, el('input', { type: 'checkbox', checked: pl.channelSwap, onchange: (e) => { pl.channelSwap = e.target.checked; push(); } }), 'Channel swap')),
         slider('Posterize', pl, 'posterize', 0, 8, 1),
         slider('Cycle frames', pl, 'cycleFrames', 0, 240, 1))));
+
+    const un = settings.unsafe;
+    const rotFx = (label, why, fx) => el('div', { class: 'fx' }, check(label, fx, 'on'), el('div', { class: 'why' }, why),
+      slider('Rate', fx, 'rate', 0, 100, 1), slider('Bits / hit', fx, 'bits', 1, 64, 1));
+    const unsafeBody = [
+      el('div', { class: 'off' }, 'These damage the game itself: it can crash, freeze or stay broken until Reload State. The freeze watchdog offers the entry state when it stops.'),
+      el('div', { class: 'sub' }, 'Bent writes'),
+      el('div', { class: 'fx' }, check('Console pins bend writes too', settings.consolePins, 'bendWrites'),
+        el('div', { class: 'why' }, 'Video RAM writes land at the bent address with the bent value: the damage stays.')),
+    ];
+    if (isNes) unsafeBody.push(el('div', { class: 'fx' }, check('Cartridge pins bend writes too', settings.cartPins, 'bendWrites'),
+        el('div', { class: 'why' }, reach.chrIsRam ? 'CHR-RAM writes land bent: tile graphics stay damaged.' : 'CHR-ROM cannot be written: no effect on this cartridge.')));
+    if (reach.cpuPins) unsafeBody.push(
+      el('div', { class: 'sub' }, 'CPU bus · cartridge PRG pins'),
+      el('div', { class: 'why' }, 'The CPU reads the game\u2019s code and data through these: wrong instructions, wrong numbers, often a crash.'),
+      el('div', { class: 'legend' }, '· connected   L stuck low   H stuck high   B bridged to the next line'),
+      el('div', { class: 'sub' }, 'Address lines'), pinGrid('A', un.cpuPins.address),
+      el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', un.cpuPins.data),
+      slider('Flicker', un.cpuPins, 'flicker', 0, 100, 1),
+      el('div', { class: 'fx' }, check('Bend writes too (mapper registers)', un.cpuPins, 'bendWrites')));
+    unsafeBody.push(el('div', { class: 'sub' }, 'Bit rot'),
+      rotFx('RAM rot', 'Random bits flip anywhere in work RAM: the stack and pointers too.', un.ramRot));
+    if (reach.vramRot !== false) unsafeBody.push(rotFx('VRAM rot', 'Random bits flip in video RAM: tiles and maps decay.', un.vramRot));
+    g.append(el('details', { open: false, class: 'unsafe' }, groupSummary('Unsafe (can break the game)', 'unsafe'), ...unsafeBody));
 
     const rm = settings.ram;
 

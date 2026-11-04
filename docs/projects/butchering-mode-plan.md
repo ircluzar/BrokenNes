@@ -105,3 +105,14 @@ The point is not to copy the Glitch Boy: it is to take the concepts its research
   - NES frozen cores (BFR, CUBE, CUBEX, EIL, FMC, LOW, LQ, SPD, ULQ at their `scanline++`): PPUCTRL / PPUMASK overlays - pattern swap, sprite height, BG off, sprites off. **No bend** there (measured: these cores do not fetch line by line where a bend could land). PPU FIX keeps its full 8-type engine.
   - The panel lists the band types each console / core supports (`reach.bandKinds`) and its extras (`reach.extraBands`).
 - **Verified**: headless per console (never attached vs all-off vs each band type at full rate): all-off identical everywhere; every listed band type changes the picture and the game keeps moving (SNES, Game Boy, Master System, Genesis, NES FMC / LQ). Extras that use a layer the test game does not show (Super Mario Land's window, Super Mario World's Mode 7) changed nothing there - game-dependent. Golden suites: 125 / 0, Sega 46 / 0, SNES 21 / 0, Game Boy 4 / 0.
+
+## Next-wave groups A-C as built (2026-11-04)
+- **A1** `UAT/cases/butcher.json`: per console an all-off case that reproduces the plain golden of the same game, and a heavy-preset golden (`UAT/butcher/*.json`, Workshop `--butcher <file> [--butcher-at N]` on `--romtest` / `--session-test`).
+- **A2** watchdog: frames with the work RAM unchanged (`stillFrames`) or a crashed NES (`crashed`) - the panel offers Reload State after ~3 s.
+- **A3** palette (display only, every console): hue +60/+120/+180/+240, hue + brightness flip, invert, channel swap, posterize, auto-cycle; cached colour table on the finished picture; the game's palette and RAM untouched.
+- **A4** MMC5 cartridge pins (`Mapper5.TryPpuToChrIndex`).
+- **A5** group switches on every section (kept in presets; a switched-off group is sent as all-off).
+- **B** per-field organic sprite events (SMS/GG, Genesis, SNES, NES $2004); SNES sprite high table; Genesis sprite cache read around while bent; stutter on every channel incl. FM; Genesis slip + sprites-off bands; RAM learning / ready readout.
+- **C (unsafe)** NES cartridge PRG pins on the CPU bus (A0-A14, D0-D7, flicker, bent mapper writes); RAM rot and VRAM rot on every console (VRAM = CHR-RAM or PPU FIX nametables on the NES, VRAM elsewhere, word VRAM on the SNES); "bend writes too" moved here as its own unsafe group. Headless: CPU pins crash SMB (the watchdog reports it), rot changes every console's picture, all-off identical.
+- **Speed** (SMB, FIX, 3000 frames, interleaved): pre-Butchering build 304-314 fps; today with the mode off 306-320 fps (no cost); pin faults on ~270 fps; many effects on ~240 fps.
+- **Still open (group D)**: panel layout / search, randomize / mutate, solo-effect, MIDI / VST CC, capture, Lite; CPU pins on the other consoles.

@@ -821,14 +821,19 @@ namespace NesEmulator
 				Sound: bus != null,
 				Bands: ppu is not null and not PPU_EXE and not PPU_IMG,
 				Ram: bus?.ram != null)
-			{ BandKinds = ppu is PPU_FIX ? new[] { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spritesOff", "spriteHeight", "bend" }
+			{ CpuPins = true, VramRot = (cartridge != null && cartridge.chrBanks == 0) || ppu is PPU_FIX, BandKinds = ppu is PPU_FIX ? new[] { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spritesOff", "spriteHeight", "bend" }
 				: new[] { "patternSwap", "bgOff", "spritesOff", "spriteHeight" } };   // the other cores do not fetch line by line where a bend band could land
 		}
 
 		private void ButcherFrame()
 		{
 			var b = Butcher;
-			if (b != null) { b.AttachRam(bus!.ram); b.FrameStart(bus!.ButcherApuWrite); }
+			if (b != null)
+			{
+				b.AttachRam(bus!.ram);
+				b.AttachVram(cartridge != null && cartridge.chrBanks == 0 && cartridge.chrRAM.Length > 0 ? cartridge.chrRAM : (bus.ppu as PPU_FIX)?.ButcherVram);
+				b.FrameStart(bus!.ButcherApuWrite);
+			}
 			if (b == null || b.Idle) { bus!.Butcher = null; if (cartridge != null) cartridge.Butcher = null; return; }
 			bus!.Butcher = b;
 			if (cartridge != null) { cartridge.Butcher = b.Cart != null ? b : null; if (bus.cartridge != null && !ReferenceEquals(bus.cartridge, cartridge)) bus.cartridge.Butcher = cartridge.Butcher; }

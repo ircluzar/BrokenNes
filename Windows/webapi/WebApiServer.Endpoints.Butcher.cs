@@ -98,10 +98,12 @@ namespace BrokenNes.Windows.WebApi
             // GET /api/butcher/stats - the RAM profiler's live view (watches, confirmed variables, nudges running)
             app.MapGet("/api/butcher/stats", () =>
             {
-                var b = ButcherHost(out _)?.Butcher;
-                if (b == null) return Results.Ok(new { success = true, watches = 0, confirmed = 0, nudging = 0, stillFrames = 0 });
+                var host = ButcherHost(out _);
+                var b = host?.Butcher;
+                bool crashed = host is NES nes && nes.IsCrashed();   // a crashed NES runs no frames: the watchdog hears it from here
+                if (b == null) return Results.Ok(new { success = true, watches = 0, confirmed = 0, nudging = 0, stillFrames = 0, crashed });
                 var (w, c, n) = b.RamStats();
-                return Results.Ok(new { success = true, watches = w, confirmed = c, nudging = n, stillFrames = b.StillFrames });
+                return Results.Ok(new { success = true, watches = w, confirmed = c, nudging = n, stillFrames = b.StillFrames, crashed });
             });
 
             // POST /api/butcher/off - every effect off (the hooks detach at the next frame)
