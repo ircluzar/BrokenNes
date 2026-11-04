@@ -50,8 +50,10 @@ internal static class SessionTestCli
             byte[]? snapshot = null; (ulong audio, double sum, double sumSq, long n, PadButtons held)? atSave = null; string stateNote = "";
             if (rewindSave > 0 && swaps.Count > 0) throw new ArgumentException("--rewind and --swap are not combined: a swap would be done twice");
             if (rewindSave > 0 && !session.SupportsState) throw new NotSupportedException(session.StateUnsupportedReason);
+            var (butcher, butcherAt) = ButcherCli.Parse(args);
             for (int f = 1; f <= frames; f++)
             {
+                if (butcher != null && f - 1 == butcherAt) (ButcherCli.Host(session) ?? throw new NotSupportedException("this session has no Butchering mode")).ApplyButcher(butcher);
                 foreach (var sw in swaps.Where(s => s.frame == f - 1))
                 {
                     var slot = sw.spec.ToLowerInvariant() switch { "cpu" => CoreSlot.Cpu, "ppu" => CoreSlot.Ppu, _ => CoreSlot.Apu };

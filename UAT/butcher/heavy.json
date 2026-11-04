@@ -1,0 +1,23 @@
+{
+  "enabled": true,
+  "consolePins": { "address": [0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0], "data": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0], "flicker": 40, "bendWrites": false },
+  "cartPins": { "address": [0,0,2,0,0,0,0,0,0,0,0,0,0], "data": [0,0,0,0,0,0,0,0], "flicker": 0, "bendWrites": false },
+  "sprites": {
+    "xJitter": { "on": true, "rate": 60, "range": 10 }, "yJitter": { "on": true, "rate": 40, "range": 6 },
+    "tile": { "on": true, "rate": 30 }, "attr": { "bits": [true, true, false, true, false], "rate": 30 },
+    "groupLag": { "on": true, "rate": 40, "duration": 20 }, "clone": { "on": true, "rate": 30, "duration": 30 }
+  },
+  "sound": {
+    "bitFlip": { "bits": [true, true, true, false, false], "rate": 40 }, "nudge": { "on": true, "rate": 40 },
+    "drops": { "channels": [true, false, true, false, true, false, true, false, true, false, true, false, true, false, true, false], "rate": 60, "duration": 20 },
+    "stutter": { "on": true, "rate": 50, "duration": 30 }, "drone": { "on": true, "rate": 30, "duration": 20 },
+    "detune": { "on": true, "rate": 40, "duration": 30, "value": 3 }
+  },
+  "bands": {
+    "shift": { "on": true, "rate": 60, "width": 30, "strength": 12, "lifetime": 40 },
+    "patternSwap": { "on": true, "rate": 40, "width": 20, "strength": 8, "lifetime": 30 },
+    "bgOff": { "on": true, "rate": 30, "width": 10, "strength": 8, "lifetime": 20 },
+    "extra1": { "on": true, "rate": 40, "width": 30, "strength": 12, "lifetime": 40 }
+  },
+  "ram": { "on": true, "rate": 50, "step": 1, "lifetime": 60, "maxProbes": 3 }
+}

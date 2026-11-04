@@ -1,0 +1,284 @@
+﻿{
+    "schema":  1,
+    "suite":  "butcher",
+    "description":  "Butchering mode (docs/projects/butchering-mode-plan.md) on every console: the all-off cases mirror existing goldens (attached but idle changes nothing), the heavy cases pin what a fixed set of effects does.",
+    "roots":  {
+                  "corpus":  "SubProjects/65-o-borked/bin/Debug/net8.0/roms",
+                  "snes":  "X:/EMULATION/Super Nintendo/Super Nintendo (U)",
+                  "gb":  "X:/EMULATION/GameBoy",
+                  "sms":  "%LOCALAPPDATA%/VRUN_Nes_Dev_work/sega_roms/sms",
+                  "gg":  "X:/EMULATION/Sega Game Gear",
+                  "md":  "X:/EMULATION/Sega Genesis"
+              },
+    "cases":  [
+                  {
+                      "id":  "butcher-nes-off",
+                      "kind":  "romtest",
+                      "rom":  "{corpus}/Super Mario Bros. (JU) (PRG0) [!].nes",
+                      "cpu":  "FIX",
+                      "ppu":  "FIX",
+                      "apu":  "FIX",
+                      "frames":  600,
+                      "butcher":  "off.json",
+                      "butcherAt":  60,
+                      "description":  "Butchering mode attached with every effect off: must reproduce the plain golden of this game exactly.",
+                      "tags":  [
+                                   "butcher",
+                                   "nes"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "D69F34F69ED8DE55",
+                                     "framesRun":  600,
+                                     "distinctColors":  11,
+                                     "result":  "ok",
+                                     "crashInfo":  ""
+                                 }
+                  },
+                  {
+                      "id":  "butcher-nes-heavy",
+                      "kind":  "romtest",
+                      "rom":  "{corpus}/Super Mario Bros. (JU) (PRG0) [!].nes",
+                      "cpu":  "FIX",
+                      "ppu":  "FIX",
+                      "apu":  "FIX",
+                      "frames":  600,
+                      "butcher":  "heavy.json",
+                      "butcherAt":  60,
+                      "description":  "Butchering mode\u0027s heavy preset (pins, sprites, sound, bands, RAM nudges) from frame 60: nothing moved since it was recorded; the game still runs.",
+                      "tags":  [
+                                   "butcher",
+                                   "nes"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "181EECC3A839F759",
+                                     "framesRun":  600,
+                                     "distinctColors":  12,
+                                     "result":  "ok",
+                                     "crashInfo":  ""
+                                 }
+                  },
+                  {
+                      "id":  "butcher-gb-off",
+                      "kind":  "session",
+                      "rom":  "{gb}/Super Mario Land (W) (V1.1) [!].zip",
+                      "frames":  700,
+                      "input":  "100:Start,110:,200:A,210:,300:Right",
+                      "butcher":  "off.json",
+                      "butcherAt":  60,
+                      "description":  "Butchering mode attached with every effect off: must reproduce the plain golden of this game exactly.",
+                      "tags":  [
+                                   "butcher",
+                                   "gb"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "4FD0F9AB37B5EE44",
+                                     "audioHash":  "46ABA37E017E48FC",
+                                     "framesRun":  700,
+                                     "distinctColors":  4,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "butcher-gb-heavy",
+                      "kind":  "session",
+                      "rom":  "{gb}/Super Mario Land (W) (V1.1) [!].zip",
+                      "frames":  700,
+                      "input":  "100:Start,110:,200:A,210:,300:Right",
+                      "butcher":  "heavy.json",
+                      "butcherAt":  60,
+                      "description":  "Butchering mode\u0027s heavy preset (pins, sprites, sound, bands, RAM nudges) from frame 60: nothing moved since it was recorded; the game still runs.",
+                      "tags":  [
+                                   "butcher",
+                                   "gb"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "F70545907FA3A9B4",
+                                     "audioHash":  "4B4008E57F03FE9E",
+                                     "framesRun":  700,
+                                     "distinctColors":  4,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "butcher-sms-off",
+                      "kind":  "session",
+                      "rom":  "{sms}/alexkidd.sms",
+                      "frames":  600,
+                      "input":  "120:A,126:,260:A,266:,400:Right",
+                      "butcher":  "off.json",
+                      "butcherAt":  60,
+                      "description":  "Butchering mode attached with every effect off: must reproduce the plain golden of this game exactly.",
+                      "tags":  [
+                                   "butcher",
+                                   "sms"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "2025AE9F110B2F07",
+                                     "audioHash":  "A65335A512775B95",
+                                     "framesRun":  600,
+                                     "distinctColors":  17,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "butcher-sms-heavy",
+                      "kind":  "session",
+                      "rom":  "{sms}/alexkidd.sms",
+                      "frames":  600,
+                      "input":  "120:A,126:,260:A,266:,400:Right",
+                      "butcher":  "heavy.json",
+                      "butcherAt":  60,
+                      "description":  "Butchering mode\u0027s heavy preset (pins, sprites, sound, bands, RAM nudges) from frame 60: nothing moved since it was recorded; the game still runs.",
+                      "tags":  [
+                                   "butcher",
+                                   "sms"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "3B6FE50062FBEF90",
+                                     "audioHash":  "5A06CF65497CC865",
+                                     "framesRun":  600,
+                                     "distinctColors":  23,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "butcher-gg-off",
+                      "kind":  "session",
+                      "rom":  "{gg}/Sonic The Hedgehog (U) (V1.1) [!].gg",
+                      "frames":  600,
+                      "input":  "120:Start,126:,240:Right",
+                      "butcher":  "off.json",
+                      "butcherAt":  60,
+                      "description":  "Butchering mode attached with every effect off: must reproduce the plain golden of this game exactly.",
+                      "tags":  [
+                                   "butcher",
+                                   "gg"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "096ABAB4E7E1FEDF",
+                                     "audioHash":  "FFDE477745C9B193",
+                                     "framesRun":  600,
+                                     "distinctColors":  26,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "butcher-gg-heavy",
+                      "kind":  "session",
+                      "rom":  "{gg}/Sonic The Hedgehog (U) (V1.1) [!].gg",
+                      "frames":  600,
+                      "input":  "120:Start,126:,240:Right",
+                      "butcher":  "heavy.json",
+                      "butcherAt":  60,
+                      "description":  "Butchering mode\u0027s heavy preset (pins, sprites, sound, bands, RAM nudges) from frame 60: nothing moved since it was recorded; the game still runs.",
+                      "tags":  [
+                                   "butcher",
+                                   "gg"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "53E3DDA2A0636C51",
+                                     "audioHash":  "6373F1412452E33F",
+                                     "framesRun":  600,
+                                     "distinctColors":  26,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "butcher-md-off",
+                      "kind":  "session",
+                      "rom":  "{md}/Sonic the Hedgehog (JUE) [!].bin",
+                      "frames":  600,
+                      "input":  "150:Start,156:,300:Right",
+                      "butcher":  "off.json",
+                      "butcherAt":  60,
+                      "description":  "Butchering mode attached with every effect off: must reproduce the plain golden of this game exactly.",
+                      "tags":  [
+                                   "butcher",
+                                   "md"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "6D83D98DFC821C0C",
+                                     "audioHash":  "81048663BBD451CD",
+                                     "framesRun":  600,
+                                     "distinctColors":  64,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "butcher-md-heavy",
+                      "kind":  "session",
+                      "rom":  "{md}/Sonic the Hedgehog (JUE) [!].bin",
+                      "frames":  600,
+                      "input":  "150:Start,156:,300:Right",
+                      "butcher":  "heavy.json",
+                      "butcherAt":  60,
+                      "description":  "Butchering mode\u0027s heavy preset (pins, sprites, sound, bands, RAM nudges) from frame 60: nothing moved since it was recorded; the game still runs.",
+                      "tags":  [
+                                   "butcher",
+                                   "md"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "B4DB977E0A1FE11E",
+                                     "audioHash":  "E54C73DF11C74483",
+                                     "framesRun":  600,
+                                     "distinctColors":  104,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "butcher-snes-off",
+                      "kind":  "session",
+                      "rom":  "{snes}/Super Mario World (U) [!].smc",
+                      "frames":  1500,
+                      "input":  "500:Start,508:,700:A,708:,900:A,908:,1100:A,1108:,1300:A,1308:,1400:Right",
+                      "butcher":  "off.json",
+                      "butcherAt":  60,
+                      "description":  "Butchering mode attached with every effect off: must reproduce the plain golden of this game exactly.",
+                      "tags":  [
+                                   "butcher",
+                                   "snes"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "972DC5F3AC1AE5A6",
+                                     "audioHash":  "06F3CFC0C7716483",
+                                     "framesRun":  1500,
+                                     "distinctColors":  207,
+                                     "result":  "ok"
+                                 }
+                  },
+                  {
+                      "id":  "butcher-snes-heavy",
+                      "kind":  "session",
+                      "rom":  "{snes}/Super Mario World (U) [!].smc",
+                      "frames":  1500,
+                      "input":  "500:Start,508:,700:A,708:,900:A,908:,1100:A,1108:,1300:A,1308:,1400:Right",
+                      "butcher":  "heavy.json",
+                      "butcherAt":  60,
+                      "description":  "Butchering mode\u0027s heavy preset (pins, sprites, sound, bands, RAM nudges) from frame 60: nothing moved since it was recorded; the game still runs.",
+                      "tags":  [
+                                   "butcher",
+                                   "snes"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "B12EA20F154275F9",
+                                     "audioHash":  "3943F5EAC0C7F5A3",
+                                     "framesRun":  1500,
+                                     "distinctColors":  224,
+                                     "result":  "ok"
+                                 }
+                  }
+              ],
+    "goldenGeneratedUtc":  "2026-11-04T12:25:27Z"
+}

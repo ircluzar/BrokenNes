@@ -261,6 +261,15 @@ if ($UpdateGolden) { $runsPerCase = [Math]::Max(2, $runsPerCase) }
 
 # ---------------------------------------------------------------------------- per-kind execution
 
+# Butchering mode (UAT/cases/butcher.json): 'butcher' names a settings file under UAT/butcher, 'butcherAt' the frame it is applied at.
+function Get-ButcherArgs {
+    param($Case)
+    $b = Get-Prop $Case 'butcher' $null
+    if (-not $b) { return @() }
+    $path = Join-Path (Join-Path $PSScriptRoot 'butcher') ([string]$b)
+    return @('--butcher', $path, '--butcher-at', "$([int](Get-Prop $Case 'butcherAt' 60))")
+}
+
 function Invoke-RomTestCase {
     param($Case, [string]$RomPath)
     $a = @('--romtest', '--rom', $RomPath)
@@ -275,6 +284,7 @@ function Invoke-RomTestCase {
     # powerOnRam (optional): fceux (BrokenNes' own fill, the default) | zeros | ones
     $por = Get-Prop $Case 'powerOnRam' $null
     if ($por) { $a += @('--power-on-ram', [string]$por) }
+    $a += Get-ButcherArgs $Case
     $a += '--json'
 
     $r = Invoke-Workshop -Arguments $a -TimeoutMs ($TimeoutSeconds * 1000)
@@ -310,6 +320,7 @@ function Invoke-SessionCase {
     $a += @('--frames', "$([int](Get-Prop $Case 'frames' 600))")
     $inp = Get-Prop $Case 'input' $null
     if ($inp) { $a += @('--input', [string]$inp) }
+    $a += Get-ButcherArgs $Case
     $a += '--json'
 
     $r = Invoke-Workshop -Arguments $a -TimeoutMs ($TimeoutSeconds * 1000)

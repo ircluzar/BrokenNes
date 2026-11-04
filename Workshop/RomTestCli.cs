@@ -62,6 +62,7 @@ internal static class RomTestCli
                     case "--out": outPath = args[++i]; break;
                     case "--json": json = true; break;
                     case "--ntsc-frame-timing": ntscFrameTiming = ParseOnOff(args[++i]); break;
+                    case "--butcher": case "--butcher-at": i++; break;   // read by ButcherCli.Parse
                     case "--power-on-ram": powerOnRam = args[++i].ToLowerInvariant(); if (powerOnRam is not ("fceux" or "zeros" or "ones")) throw new FormatException($"expected fceux|zeros|ones, got '{powerOnRam}'"); break;
                     default:
                         Console.Error.WriteLine($"Unknown argument: {args[i]}\n{Usage}");
@@ -140,8 +141,10 @@ internal static class RomTestCli
             int nextStep = 0;
             int framesRun = 0;
             int crashFrame = -1;
+            var (butcher, butcherAt) = ButcherCli.Parse(args);
             for (int f = 0; f < frames; f++)
             {
+                if (butcher != null && f == butcherAt) nes.ApplyButcher(butcher);
                 // Steps are pre-sorted; a while (not if) so several steps on the same frame - or a
                 // step landing on a frame we happen to be at - all resolve before this frame runs.
                 while (nextStep < script.Count && script[nextStep].Frame <= f)
