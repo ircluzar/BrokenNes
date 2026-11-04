@@ -254,6 +254,8 @@ public sealed partial class DSP1_SFC : ISnesCoprocessor
     {
         if (m == 0) return (0x7FFF, 0x002F);
         double v = 1.0 / (m / 32768.0 * Math.Pow(2, e));
+        // an exponent far outside what games send (bent coprocessor pins, a runaway program) gives 0 or infinity, which the normalising loops below never leave
+        if (v == 0 || !double.IsFinite(v)) return v == 0 ? ((short)0x4000, (short)-0x7FFF) : (m < 0 ? (short)-0x8000 : (short)0x7FFF, (short)0x7FFF);
         int exp = 0;
         while (Math.Abs(v) >= 1.0) { v /= 2; exp++; }
         while (Math.Abs(v) < 0.5) { v *= 2; exp--; }

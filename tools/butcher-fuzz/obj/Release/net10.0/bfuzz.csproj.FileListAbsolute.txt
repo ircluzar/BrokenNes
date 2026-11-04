@@ -1,0 +1,17 @@
+C:\Users\philt\AppData\Local\VRUN_Nes_Dev_work\bfuzz_check\bfuzz.exe
+C:\Users\philt\AppData\Local\VRUN_Nes_Dev_work\bfuzz_check\bfuzz.deps.json
+C:\Users\philt\AppData\Local\VRUN_Nes_Dev_work\bfuzz_check\bfuzz.runtimeconfig.json
+C:\Users\philt\AppData\Local\VRUN_Nes_Dev_work\bfuzz_check\bfuzz.dll
+C:\Users\philt\AppData\Local\VRUN_Nes_Dev_work\bfuzz_check\bfuzz.pdb
+C:\Users\philt\OneDrive\Documents\PROJECTS\BrokenNes\tools\butcher-fuzz\obj\Release\net10.0\bfuzz.csproj.AssemblyReference.cache
+C:\Users\philt\OneDrive\Documents\PROJECTS\BrokenNes\tools\butcher-fuzz\obj\Release\net10.0\bfuzz.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\philt\OneDrive\Documents\PROJECTS\BrokenNes\tools\butcher-fuzz\obj\Release\net10.0\bfuzz.AssemblyInfoInputs.cache
+C:\Users\philt\OneDrive\Documents\PROJECTS\BrokenNes\tools\butcher-fuzz\obj\Release\net10.0\bfuzz.AssemblyInfo.cs
+C:\Users\philt\OneDrive\Documents\PROJECTS\BrokenNes\tools\butcher-fuzz\obj\Release\net10.0\bfuzz.csproj.CoreCompileInputs.cache
+C:\Users\philt\OneDrive\Documents\PROJECTS\BrokenNes\tools\butcher-fuzz\obj\Release\net10.0\bfuzz.sourcelink.json
+C:\Users\philt\OneDrive\Documents\PROJECTS\BrokenNes\tools\butcher-fuzz\obj\Release\net10.0\bfuzz.csproj.Up2Date
+C:\Users\philt\OneDrive\Documents\PROJECTS\BrokenNes\tools\butcher-fuzz\obj\Release\net10.0\bfuzz.dll
+C:\Users\philt\OneDrive\Documents\PROJECTS\BrokenNes\tools\butcher-fuzz\obj\Release\net10.0\refint\bfuzz.dll
+C:\Users\philt\OneDrive\Documents\PROJECTS\BrokenNes\tools\butcher-fuzz\obj\Release\net10.0\bfuzz.pdb
+C:\Users\philt\OneDrive\Documents\PROJECTS\BrokenNes\tools\butcher-fuzz\obj\Release\net10.0\bfuzz.genruntimeconfig.cache
+C:\Users\philt\OneDrive\Documents\PROJECTS\BrokenNes\tools\butcher-fuzz\obj\Release\net10.0\ref\bfuzz.dll
