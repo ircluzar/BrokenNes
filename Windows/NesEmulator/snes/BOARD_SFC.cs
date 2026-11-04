@@ -560,6 +560,9 @@ public sealed partial class BOARD_SFC : ISnesBus
         new[] { 0, 1, 2, 3 }, new[] { 0, 1, 0, 1 }, new[] { 0, 0 }, new[] { 0, 0, 1, 1 },
     };
 
+    // HDMA's table and data reads through Butchering mode's DMA pins (the same source bus as general DMA).
+    private byte HdmaRead(uint bank, uint offset) => ButcherCpu?.Dma != null ? ButcherCpu.DmaRead8(bank << 16 | (offset & 0xFFFF), x => ReadNoTick(x >> 16, x & 0xFFFF)) : ReadNoTick(bank, offset);
+
     // A DMA cannot start another: on hardware the A-bus I/O registers ($420B among them) are not reachable by the DMA
     // itself. Only a corrupted transfer (Butchering mode's CPU pins) aims one at $420B - without this guard each nested
     // start recursed until the stack overflowed and took the whole app down.
@@ -663,7 +666,7 @@ public sealed partial class BOARD_SFC : ISnesBus
         if ((dmaRegs[r + 0xA] & 0x7F) != 0) return;
         byte bank = dmaRegs[r + 4];
         ushort a2a = (ushort)(dmaRegs[r + 8] | dmaRegs[r + 9] << 8);
-        byte count = ReadNoTick(bank, a2a++);
+        byte count = HdmaRead(bank, a2a++);
         DebugTap?.OnRead((uint)bank << 16 | (ushort)(a2a - 1), count, SnesBusSource.Hdma, ch);   // a debugger watch sees the table fetches
         dmaRegs[r + 0xA] = count;
         hdmaDone[ch] = count == 0;
@@ -671,8 +674,8 @@ public sealed partial class BOARD_SFC : ISnesBus
         if (!fetchCharged) stall += 8;
         if ((dmaRegs[r] & 0x40) != 0 && !hdmaDone[ch])
         {
-            dmaRegs[r + 5] = ReadNoTick(bank, a2a++);
-            dmaRegs[r + 6] = ReadNoTick(bank, a2a++);
+            dmaRegs[r + 5] = HdmaRead(bank, a2a++);
+            dmaRegs[r + 6] = HdmaRead(bank, a2a++);
             if (DebugTap is { } t) { t.OnRead((uint)bank << 16 | (ushort)(a2a - 2), dmaRegs[r + 5], SnesBusSource.Hdma, ch); t.OnRead((uint)bank << 16 | (ushort)(a2a - 1), dmaRegs[r + 6], SnesBusSource.Hdma, ch); }
             stall += 16;
         }
@@ -700,7 +703,7 @@ public sealed partial class BOARD_SFC : ISnesBus
                     byte bReg = (byte)(bbad + offset);
                     if (tap != null) DebugDmaByte(toA, bank, addr, bReg, ch, SnesBusSource.Hdma);
                     else if (toA) WriteNoTick(bank, addr, ReadBBus(bReg));
-                    else DmaWriteBBus(bReg, ReadNoTick(bank, addr));
+                    else DmaWriteBBus(bReg, HdmaRead(bank, addr));
                     addr++;
                     dmaRegs[lo] = (byte)addr; dmaRegs[lo + 1] = (byte)(addr >> 8);
                     stall += 8;

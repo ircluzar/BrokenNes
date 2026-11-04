@@ -227,9 +227,11 @@
     const r = await api.butcher.getPresets().catch(() => null);
     const sel = $('presetList');
     sel.innerHTML = '<option value="">Presets…</option>';
+    // built-ins (read-only, shipped with the module) first, then the user's own
     for (const p of (r?.presets || [])) {
       const o = document.createElement('option');
-      o.value = p.name; o.textContent = p.name;
+      o.value = (p.builtIn ? 'b:' : 'u:') + p.name; o.textContent = p.builtIn ? `★ ${p.name}` : p.name;
+      if (p.builtIn) o.title = 'Built-in preset (read-only): Save with its name to make your own copy';
       sel.appendChild(o);
     }
     sel._presets = r?.presets || [];
@@ -240,11 +242,11 @@
     const r = await api.butcher.savePreset(name, settings).catch(() => null);
     status(r?.success ? `Preset "${name}" saved.` : (r?.error || 'Save failed.'), !r?.success);
     await refreshPresets();
-    $('presetList').value = name;
+    $('presetList').value = 'u:' + name;
   }
   async function loadPreset() {
     const sel = $('presetList');
-    const p = (sel._presets || []).find(x => x.name === sel.value);
+    const p = (sel._presets || []).find(x => (x.builtIn ? 'b:' : 'u:') + x.name === sel.value);
     if (!p) return;
     settings = fit(p.settings);
     render();
@@ -252,8 +254,10 @@
     status(`Preset "${p.name}" loaded.`);
   }
   async function deletePreset() {
-    const name = $('presetList').value;
-    if (!name) return;
+    const v = $('presetList').value;
+    if (!v) return;
+    if (v.startsWith('b:')) { status('Built-in presets cannot be deleted (they are always there to come back to).', true); return; }
+    const name = v.slice(2);
     await api.butcher.deletePreset(name).catch(() => null);
     await refreshPresets();
     status(`Preset "${name}" deleted.`);

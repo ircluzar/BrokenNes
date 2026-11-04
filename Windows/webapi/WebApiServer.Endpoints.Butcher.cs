@@ -44,6 +44,19 @@ namespace BrokenNes.Windows.WebApi
             File.Move(tmp, p, true);
         }
 
+        // Built-in presets ship read-only with the webmodule (Webmodules/ButcheringMode/builtins/<console>.json): listed beside the user's
+        // own, marked builtIn, never deleted; saving under a built-in's name makes the user's own copy beside it.
+        private static Dictionary<string, ButcherSettings> LoadBuiltInPresets(string console)
+        {
+            try
+            {
+                var p = Path.Combine(AppContext.BaseDirectory, "Webmodules", "ButcheringMode", "builtins", $"{console}.json");
+                if (!File.Exists(p)) return new();
+                return JsonSerializer.Deserialize<Dictionary<string, ButcherSettings>>(File.ReadAllText(p), ButcherJson) ?? new();
+            }
+            catch { return new(); }
+        }
+
         public sealed class ButcherPresetRequest { public string? Name { get; set; } public ButcherSettings? Settings { get; set; } }
 
         // The running system Butchering mode drives: the console session when one is up (Game Boy today), else the NES.
@@ -120,8 +133,9 @@ namespace BrokenNes.Windows.WebApi
                 {
                     ButcherHost(out var console);
                     var d = LoadButcherPresets(console);
-                    return Results.Ok(new { success = true, presets = d.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase)
-                        .Select(k => new { name = k.Key, settings = k.Value }) });
+                    var builtIn = LoadBuiltInPresets(console).Select(k => new { name = k.Key, settings = k.Value, builtIn = true });
+                    return Results.Ok(new { success = true, presets = builtIn.Concat(d.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase)
+                        .Select(k => new { name = k.Key, settings = k.Value, builtIn = false })) });
                 }
             });
 

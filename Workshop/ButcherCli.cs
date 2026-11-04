@@ -24,6 +24,94 @@ public static class ButcherCli
         return (s, at);
     }
 
+    /// <summary>
+    /// <c>--butcher-soundcheck --out &lt;dir&gt; [--nes rom] [--gb rom] [--sms rom] [--gg rom] [--md rom] [--snes rom] [--seconds 8]</c>:
+    /// per console a clean clip and one clip per sound effect (each alone, strong), as WAV files, for a quick listening test.
+    /// Every clip starts from the same frame of the same game with Start pressed early, so the music is comparable.
+    /// </summary>
+    public static int SoundCheck(string[] args)
+    {
+        RomTestCli.EnsureConsole();
+        string Opt(string n, string d) { int i = Array.FindIndex(args, a => a.Equals("--" + n, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < args.Length ? args[i + 1] : d; }
+        string outDir = Opt("out", "butcher-soundcheck"); Directory.CreateDirectory(outDir);
+        int seconds = int.Parse(Opt("seconds", "8"));
+        var effects = new (string name, Action<SoundSettings> on)[] {
+            ("clean", _ => { }),
+            ("bit-flips", s => { s.BitFlip.Bits = new[] { true, true, true, true, true }; s.BitFlip.Rate = 70; }),
+            ("detune-1", s => { s.Nudge.On = true; s.Nudge.Rate = 80; }),
+            ("drop-outs", s => { s.Drops.Channels = Enumerable16(true); s.Drops.Rate = 70; s.Drops.Duration = 20; }),
+            ("stutter", s => { s.Stutter.On = true; s.Stutter.Rate = 80; s.Stutter.Duration = 60; }),
+            ("drone", s => { s.Drone.On = true; s.Drone.Rate = 70; s.Drone.Duration = 40; }),
+            ("duty-force", s => { s.Duty.On = true; s.Duty.Rate = 80; s.Duty.Duration = 60; s.Duty.Value = 3; }),
+            ("detune-xor", s => { s.Detune.On = true; s.Detune.Rate = 70; s.Detune.Duration = 40; s.Detune.Value = 5; }),
+        };
+        var index = new System.Text.StringBuilder("# Butchering mode sound self-check\n\nEach clip: the same game from the same frame, one sound effect alone (strong). Compare with `clean`.\n\n");
+        foreach (var console in new[] { "nes", "gb", "sms", "gg", "md", "snes" })
+        {
+            string rom = Opt(console, ""); if (rom == "" || !File.Exists(rom)) continue;
+            index.Append($"## {console}: {Path.GetFileName(rom)}\n\n");
+            foreach (var (name, on) in effects)
+            {
+                if (name == "duty-force" && console != "nes" && console != "gb") continue;   // only pulse channels with a duty
+                var b = new ButcherSettings { Enabled = true }; on(b.Sound);
+                var (pcm, rate, ch) = Render(console, rom, name == "clean" ? null : b, seconds);
+                string file = Path.Combine(outDir, $"{console}-{name}.wav");
+                WriteWav(file, pcm, rate, ch);
+                index.Append($"- `{Path.GetFileName(file)}`\n");
+            }
+            index.Append('\n');
+        }
+        File.WriteAllText(Path.Combine(outDir, "README.md"), index.ToString());
+        Console.WriteLine($"written to {Path.GetFullPath(outDir)}");
+        return 0;
+    }
+
+    private static bool[] Enumerable16(bool v) { var a = new bool[16]; Array.Fill(a, v); return a; }
+
+    private static (short[] pcm, int rate, int channels) Render(string console, string rom, ButcherSettings? s, int seconds)
+    {
+        const int warm = 240, applyAt = 300;
+        var pcm = new System.Collections.Generic.List<short>();
+        if (console == "nes")
+        {
+            var n = new NES(); n.LoadROM(File.ReadAllBytes(rom)); n.SetCpuCore("FIX"); n.SetPpuCore("FIX"); n.SetApuCore("FIX");
+            int frames = applyAt + seconds * 60;
+            for (int f = 0; f < frames; f++)
+            {
+                if (f == applyAt && s != null) n.ApplyButcher(s);
+                n.SetInput(new[] { false, false, false, f >= warm && f < warm + 6, false, false, false, false }); n.RunFrame();
+                var buf = n.GetAudioBuffer();
+                if (f >= applyAt) foreach (var x in buf) pcm.Add((short)Math.Clamp(x * 32767, -32768, 32767));
+            }
+            return (pcm.ToArray(), n.GetAudioSampleRate(), 1);
+        }
+        var kind = console switch { "gb" => NesEmulator.Systems.ConsoleKind.GameBoy, "sms" => NesEmulator.Systems.ConsoleKind.MasterSystem, "gg" => NesEmulator.Systems.ConsoleKind.GameGear, "md" => NesEmulator.Systems.ConsoleKind.Genesis, _ => NesEmulator.Systems.ConsoleKind.Snes };
+        byte[] data = NesEmulator.Systems.RomDetect.Unwrap(File.ReadAllBytes(rom), rom, out string inner);
+        var slot = NesEmulator.Systems.CoreSlot.Apu;
+        string Def(NesEmulator.Systems.CoreSlot sl) => NesEmulator.Systems.CoreCatalog.Default(kind, sl);
+        using var session = NesEmulator.Systems.ConsoleSessions.Create(kind, data, Def(NesEmulator.Systems.CoreSlot.Cpu), Def(NesEmulator.Systems.CoreSlot.Ppu), Def(slot), null, inner);
+        var host = Host(session);
+        var sb = new short[65536];
+        int total = applyAt + (int)(seconds * session.FramesPerSecond);
+        for (int f = 0; f < total; f++)
+        {
+            if (f == applyAt && s != null) host?.ApplyButcher(s);
+            session.SetPad(0, f >= warm && f < warm + 6 ? NesEmulator.Systems.PadButtons.Start : NesEmulator.Systems.PadButtons.None);
+            session.RunFrame();
+            int got; while ((got = session.ReadSamples(sb)) > 0) if (f >= applyAt) for (int i = 0; i < got; i++) pcm.Add(sb[i]);
+        }
+        return (pcm.ToArray(), session.SampleRate, 2);
+    }
+
+    private static void WriteWav(string path, short[] pcm, int rate, int channels)
+    {
+        using var w = new BinaryWriter(File.Create(path));
+        int bytes = pcm.Length * 2;
+        w.Write("RIFF"u8); w.Write(36 + bytes); w.Write("WAVE"u8); w.Write("fmt "u8); w.Write(16); w.Write((short)1); w.Write((short)channels);
+        w.Write(rate); w.Write(rate * channels * 2); w.Write((short)(channels * 2)); w.Write((short)16); w.Write("data"u8); w.Write(bytes);
+        foreach (var x in pcm) w.Write(x);
+    }
+
     /// <summary>The host a session's Butchering mode drives (the Sega session under its picture bridge).</summary>
     public static IButcherHost? Host(object session) =>
         (session is NesEmulator.Mix.SegaPictureSession sp ? sp.Inner : session) as IButcherHost;

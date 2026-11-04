@@ -48,6 +48,7 @@ internal static class Program
         {
             return RomTestCli.Run(args);
         }
+        if (args.Length > 0 && args[0].Equals("--butcher-soundcheck", StringComparison.OrdinalIgnoreCase)) return ButcherCli.SoundCheck(args);
         if (args.Length > 0 && args[0].Equals("--snestest", StringComparison.OrdinalIgnoreCase))
         {
             return SnesTestCli.Run(args);

@@ -1,0 +1,909 @@
+{
+ "Gentle": {
+  "enabled": true,
+  "consolePins": {
+   "address": [
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "data": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flicker": 70,
+   "bendWrites": false
+  },
+  "cartPins": {
+   "address": [],
+   "data": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flicker": 0,
+   "bendWrites": false
+  },
+  "sprites": {
+   "xJitter": {
+    "on": true,
+    "rate": 20,
+    "range": 4
+   },
+   "tile": {
+    "on": true,
+    "rate": 10
+   }
+  },
+  "sound": {
+   "nudge": {
+    "on": true,
+    "rate": 20
+   },
+   "detune": {
+    "on": true,
+    "rate": 15,
+    "duration": 20,
+    "value": 1
+   }
+  },
+  "bands": {},
+  "ram": {
+   "on": false
+  },
+  "palette": {
+   "on": false
+  },
+  "unsafe": {
+   "cpuPins": {
+    "address": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "data": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "flicker": 0,
+    "bendWrites": false
+   },
+   "ramRot": {
+    "on": false
+   },
+   "vramRot": {
+    "on": false
+   }
+  }
+ },
+ "Heavy": {
+  "enabled": true,
+  "consolePins": {
+   "address": [
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    3,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "data": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flicker": 30,
+   "bendWrites": false
+  },
+  "cartPins": {
+   "address": [],
+   "data": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flicker": 0,
+   "bendWrites": false
+  },
+  "sprites": {
+   "xJitter": {
+    "on": true,
+    "rate": 60,
+    "range": 12
+   },
+   "yJitter": {
+    "on": true,
+    "rate": 40,
+    "range": 8
+   },
+   "tile": {
+    "on": true,
+    "rate": 30
+   },
+   "attr": {
+    "bits": [
+     true,
+     true,
+     false,
+     true,
+     false
+    ],
+    "rate": 30
+   },
+   "groupLag": {
+    "on": true,
+    "rate": 40,
+    "duration": 20
+   },
+   "clone": {
+    "on": true,
+    "rate": 30,
+    "duration": 30
+   }
+  },
+  "sound": {
+   "bitFlip": {
+    "bits": [
+     true,
+     true,
+     true,
+     false,
+     false
+    ],
+    "rate": 40
+   },
+   "nudge": {
+    "on": true,
+    "rate": 40
+   },
+   "drops": {
+    "channels": [
+     true,
+     false,
+     true,
+     false,
+     true,
+     false,
+     true,
+     false,
+     true,
+     false
+    ],
+    "rate": 50,
+    "duration": 20
+   },
+   "stutter": {
+    "on": true,
+    "rate": 50,
+    "duration": 30
+   },
+   "drone": {
+    "on": true,
+    "rate": 25,
+    "duration": 20
+   },
+   "detune": {
+    "on": true,
+    "rate": 40,
+    "duration": 30,
+    "value": 3
+   }
+  },
+  "bands": {
+   "shift": {
+    "on": true,
+    "rate": 60,
+    "width": 30,
+    "strength": 12,
+    "lifetime": 40
+   },
+   "bgOff": {
+    "on": true,
+    "rate": 20,
+    "width": 8,
+    "strength": 8,
+    "lifetime": 15
+   }
+  },
+  "ram": {
+   "on": true,
+   "rate": 50,
+   "step": 1,
+   "lifetime": 60,
+   "maxProbes": 3
+  },
+  "palette": {
+   "on": false
+  },
+  "unsafe": {
+   "cpuPins": {
+    "address": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "data": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "flicker": 0,
+    "bendWrites": false
+   },
+   "ramRot": {
+    "on": false
+   },
+   "vramRot": {
+    "on": false
+   }
+  }
+ },
+ "Glitch art": {
+  "enabled": true,
+  "consolePins": {
+   "address": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    2,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "data": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    3,
+    0
+   ],
+   "flicker": 55,
+   "bendWrites": false
+  },
+  "cartPins": {
+   "address": [],
+   "data": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flicker": 0,
+   "bendWrites": false
+  },
+  "sprites": {},
+  "sound": {},
+  "bands": {
+   "shift": {
+    "on": true,
+    "rate": 70,
+    "width": 40,
+    "strength": 24,
+    "lifetime": 60
+   },
+   "slip": {
+    "on": true,
+    "rate": 25,
+    "width": 240,
+    "strength": 12,
+    "lifetime": 90
+   },
+   "nametableSwap": {
+    "on": true,
+    "rate": 30,
+    "width": 30,
+    "strength": 8,
+    "lifetime": 40
+   },
+   "bend": {
+    "on": true,
+    "rate": 35,
+    "width": 24,
+    "strength": 20,
+    "lifetime": 40
+   },
+   "extra1": {
+    "on": true,
+    "rate": 40,
+    "width": 40,
+    "strength": 16,
+    "lifetime": 60
+   }
+  },
+  "ram": {
+   "on": false
+  },
+  "palette": {
+   "on": true,
+   "mode": 2,
+   "invert": false,
+   "channelSwap": false,
+   "posterize": 0,
+   "cycleFrames": 90
+  },
+  "unsafe": {
+   "cpuPins": {
+    "address": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "data": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "flicker": 0,
+    "bendWrites": false
+   },
+   "ramRot": {
+    "on": false
+   },
+   "vramRot": {
+    "on": false
+   }
+  }
+ },
+ "Broken (unsafe)": {
+  "enabled": true,
+  "consolePins": {
+   "address": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "data": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flicker": 0,
+   "bendWrites": false
+  },
+  "cartPins": {
+   "address": [],
+   "data": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flicker": 0,
+   "bendWrites": false
+  },
+  "sprites": {},
+  "sound": {},
+  "bands": {},
+  "ram": {
+   "on": false
+  },
+  "palette": {
+   "on": false
+  },
+  "unsafe": {
+   "cpuPins": {
+    "address": [
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "data": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "flicker": 96,
+    "bendWrites": false
+   },
+   "ramRot": {
+    "on": true,
+    "rate": 40,
+    "bits": 2
+   },
+   "vramRot": {
+    "on": true,
+    "rate": 40,
+    "bits": 4
+   }
+  }
+ },
+ "FM chaos": {
+  "enabled": true,
+  "consolePins": {
+   "address": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "data": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flicker": 0,
+   "bendWrites": false
+  },
+  "cartPins": {
+   "address": [],
+   "data": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flicker": 0,
+   "bendWrites": false
+  },
+  "sprites": {},
+  "sound": {
+   "bitFlip": {
+    "bits": [
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "rate": 50
+   },
+   "detune": {
+    "on": true,
+    "rate": 60,
+    "duration": 40,
+    "value": 7
+   },
+   "drops": {
+    "channels": [
+     false,
+     false,
+     false,
+     false,
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "rate": 40,
+    "duration": 25
+   },
+   "stutter": {
+    "on": true,
+    "rate": 60,
+    "duration": 40
+   }
+  },
+  "bands": {},
+  "ram": {
+   "on": false
+  },
+  "palette": {
+   "on": false
+  },
+  "unsafe": {
+   "cpuPins": {
+    "address": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "data": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "flicker": 0,
+    "bendWrites": false
+   },
+   "ramRot": {
+    "on": false
+   },
+   "vramRot": {
+    "on": false
+   }
+  }
+ },
+ "Plane shuffle": {
+  "enabled": true,
+  "consolePins": {
+   "address": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "data": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flicker": 0,
+   "bendWrites": false
+  },
+  "cartPins": {
+   "address": [],
+   "data": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flicker": 0,
+   "bendWrites": false
+  },
+  "sprites": {},
+  "sound": {},
+  "bands": {
+   "extra1": {
+    "on": true,
+    "rate": 50,
+    "width": 60,
+    "strength": 8,
+    "lifetime": 60
+   },
+   "extra2": {
+    "on": true,
+    "rate": 30,
+    "width": 40,
+    "strength": 8,
+    "lifetime": 40
+   },
+   "nametableSwap": {
+    "on": true,
+    "rate": 40,
+    "width": 30,
+    "strength": 8,
+    "lifetime": 40
+   }
+  },
+  "ram": {
+   "on": false
+  },
+  "palette": {
+   "on": true,
+   "mode": 1,
+   "cycleFrames": 0
+  },
+  "unsafe": {
+   "cpuPins": {
+    "address": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "data": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "flicker": 0,
+    "bendWrites": false
+   },
+   "ramRot": {
+    "on": false
+   },
+   "vramRot": {
+    "on": false
+   }
+  }
+ }
+}
