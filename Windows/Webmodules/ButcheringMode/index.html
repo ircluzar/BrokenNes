@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Butchering Mode</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <button id="toggle" class="toggle" type="button" title="Show / hide the panel">Butcher</button>
+  <aside id="panel" class="panel" aria-label="Butchering mode controls">
+    <header class="head">
+      <div class="title">Butchering Mode</div>
+      <div id="status" class="status">Starting…</div>
+      <div class="row">
+        <button id="reload" type="button" disabled>Reload State</button>
+        <button id="allOff" type="button">All off</button>
+        <button id="exit" type="button" class="danger">Exit &amp; undo</button>
+      </div>
+      <div class="note">Leaving reloads the state taken when you entered: everything done in here is undone, progress included.</div>
+      <div class="row presets">
+        <select id="presetList" aria-label="Presets"><option value="">Presets…</option></select>
+        <button id="presetLoad" type="button">Load</button>
+        <button id="presetDelete" type="button">Delete</button>
+      </div>
+      <div class="row presets">
+        <input id="presetName" type="text" maxlength="60" placeholder="Preset name">
+        <button id="presetSave" type="button">Save</button>
+      </div>
+    </header>
+    <div id="groups"></div>
+  </aside>
+  <script src="../shared/webapi.js"></script>
+  <script src="butchering-mode.js"></script>
+</body>
+</html>

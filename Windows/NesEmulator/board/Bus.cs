@@ -788,6 +788,7 @@ public class Bus : IBus
 			int idx = address - 0x4000;
 			if (idx >=0 && idx < apuRegLatch.Length) { apuRegLatch[idx] = value; apuRegLatchWritten |= 1u << idx; }
 			ApuWriteTap?.Invoke(address, value, ApuClock);
+			if (Butcher is { SoundActive: true } bs) value = bs.FilterApuWrite(address, value);
 			activeApu.WriteAPURegister(address, value); return;
 		}
 	// Mapper expansion registers (e.g., MMC5 $5000-$5FFF)
@@ -827,7 +828,18 @@ public class Bus : IBus
 	// === OAM DMA Fast Path ===
 	// If source page is internal RAM (0x0000-0x1FFF mirrors) perform a single BlockCopy instead of 256 bus.Read calls.
 	// For now only RAM pages fast path; future: detect linear PRG ROM banks for immediate copy.
+	/// <summary>Butchering mode (corruption/Butcher.cs). Null when off: one null test on the slow paths it filters.</summary>
+	public Butcher? Butcher;
+	/// <summary>Butchering mode's own APU writes (a channel drop-out, a stutter replay): straight to the chip, not filtered.</summary>
+	public void ButcherApuWrite(ushort address, byte value) => activeApu.WriteAPURegister(address, value);
+
 	public void FastOamDma(byte page, byte[] destOam, ref byte oamAddr)
+	{
+		if (Butcher is { SpritesActive: true } bb) { bb.BeforeOamDma(destOam); FastOamDmaCore(page, destOam, ref oamAddr); bb.AfterOamDma(destOam); return; }
+		FastOamDmaCore(page, destOam, ref oamAddr);
+	}
+
+	private void FastOamDmaCore(byte page, byte[] destOam, ref byte oamAddr)
 	{
 		ushort baseAddr = (ushort)(page << 8);
 		if (!pageTableInitialized) { // safety fallback

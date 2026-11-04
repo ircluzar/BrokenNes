@@ -31,6 +31,12 @@ public class Mapper2 : IMapper { //UxROM
         }
     }
 
+    // Butchering mode cartridge pins (IMapper.TryPpuToChrIndex): the same index PPURead uses, without its side effects.
+    public bool TryPpuToChrIndex(ushort address, out int index) {
+        index = 0; if (address >= 0x2000) return false;
+        index = cartridge.chrBanks == 0 ? address : address % cartridge.chrROM.Length; return true;
+    }
+
     public byte PPURead(ushort addr) {
         if (addr < 0x2000) {
             if (cartridge.chrBanks == 0)

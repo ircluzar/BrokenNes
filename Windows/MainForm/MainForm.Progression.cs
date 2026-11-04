@@ -50,6 +50,8 @@ namespace BrokenNes.Windows
             var targetModuleId = !string.IsNullOrWhiteSpace(module.Config.LoadModule)
                 ? module.Config.LoadModule.Trim()
                 : module.FolderName;
+            // Butchering mode has no unlock of its own: it comes with Corruption Slop
+            if (targetModuleId.Equals("ButcheringMode", StringComparison.OrdinalIgnoreCase)) targetModuleId = "CorruptionSlop";
             return progressionSaveService.IsWebmoduleUnlocked(save, targetModuleId);
         }
 

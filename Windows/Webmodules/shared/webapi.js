@@ -285,6 +285,15 @@
       setTrueDomainSizes: (enabled) => request('/api/rtc/true-domain-sizes', { method: 'POST', json: { enabled } })
     },
 
+    butcher: {
+      getReach: () => request('/api/butcher/reach'),
+      getSettings: () => request('/api/butcher/settings'),
+      setSettings: (settings) => request('/api/butcher/settings', { method: 'POST', json: settings }),
+      off: () => request('/api/butcher/off', { method: 'POST' }),
+      getPresets: () => request('/api/butcher/presets'),
+      savePreset: (name, settings) => request('/api/butcher/presets', { method: 'POST', json: { name, settings } }),
+      deletePreset: (name) => request(`/api/butcher/presets/${encodeURIComponent(name)}`, { method: 'DELETE' })
+    },
     gh: {
       getBaseStates: () => request('/api/gh/base-states'),
       addBaseState: (name) => request('/api/gh/base-state', { method: 'POST', json: { name } }),

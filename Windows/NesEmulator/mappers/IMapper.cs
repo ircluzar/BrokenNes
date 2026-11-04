@@ -40,6 +40,11 @@ public interface IMapper {
     void SetMapperState(object state);
         uint GetChrBankSignature();
 
+    // Butchering mode's cartridge pins: map a PPU pattern address ($0000-$1FFF) to the byte index inside the CHR chip the
+    // current banking selects (chrROM when the cart has CHR-ROM, else chrRAM). Must be PURE - no latch, IRQ or other side
+    // effect; the real fetch still goes through PPURead. False = this mapper does not say (the panel shows the group as unavailable).
+    bool TryPpuToChrIndex(ushort address, out int index) { index = 0; return false; }
+
     // Optional hint to inform mapper of current PPU fetch phase; default is no-op for mappers that don't care.
     void PpuPhaseHint(bool isSpriteFetch, bool objSize16, bool renderingEnabled) {}
 

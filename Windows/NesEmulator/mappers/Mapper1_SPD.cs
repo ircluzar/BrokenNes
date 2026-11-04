@@ -80,6 +80,15 @@ public class Mapper1_SPD : IMapper { //MMC1 (Experimenal)
         }
     }
 
+    // Butchering mode cartridge pins (IMapper.TryPpuToChrIndex): the same index PPURead uses, without its side effects.
+    public bool TryPpuToChrIndex(ushort addr, out int index) {
+        index = 0; if (addr >= 0x2000) return false;
+        if (cartridge.chrBanks == 0) { index = addr; return true; }
+        if (((control >> 4) & 1) == 0) index = (addr + (chrBank0 & 0x1E) * 0x1000) % cartridge.chrROM.Length;
+        else index = addr < 0x1000 ? (addr + chrBankOffset0) % cartridge.chrROM.Length : ((addr - 0x1000) + chrBankOffset1) % cartridge.chrROM.Length;
+        return true;
+    }
+
     public byte PPURead(ushort addr) {
         if (addr < 0x2000) {
             if (cartridge.chrBanks == 0) {

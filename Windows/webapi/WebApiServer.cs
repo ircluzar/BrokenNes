@@ -294,6 +294,7 @@ namespace BrokenNes.Windows.WebApi
             RegisterPpuStateEndpoints(app);
             RegisterApuStateEndpoints(app);
             RegisterRtcEndpoints(app);
+            RegisterButcherEndpoints(app);   // Butchering mode: reach, controls, presets
             RegisterGlitchHarvesterEndpoints(app);
             RegisterGlitchHarvesterConsoleEndpoints(app);
             RegisterImagineEndpoints(app);

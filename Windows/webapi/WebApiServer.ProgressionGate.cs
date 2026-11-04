@@ -28,6 +28,14 @@ namespace BrokenNes.Windows.WebApi
                     : "RTC + Glitch Harvester is locked";
             }
 
+            if (path.StartsWithSegments("/api/butcher", System.StringComparison.OrdinalIgnoreCase))
+            {
+                // Butchering mode is unlocked together with Corruption Slop (MainForm.IsWebModuleUnlocked)
+                return await IsWebmoduleUnlockedAsync("CorruptionSlop")
+                    ? null
+                    : "Butchering mode is locked";
+            }
+
             if (path.StartsWithSegments("/api/timejump", System.StringComparison.OrdinalIgnoreCase))
             {
                 return await IsWebmoduleUnlockedAsync("TimeJump")

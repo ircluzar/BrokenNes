@@ -790,9 +790,49 @@ namespace NesEmulator
 			}
 		}
 
+		// ===================================================================== Butchering mode (corruption/Butcher.cs)
+		/// <summary>Null = Butchering mode never used on this NES. Set through <see cref="ApplyButcher"/>.</summary>
+		public Butcher? Butcher { get; private set; }
+
+		/// <summary>Takes the panel's controls. The hooks attach at the next frame start and detach once nothing is on.</summary>
+		public void ApplyButcher(ButcherSettings settings)
+		{
+			var b = Butcher ?? new Butcher();
+			b.Apply(settings, cartridge?.ChrChipSize ?? 0);
+			Butcher = b;
+		}
+
+		/// <summary>What this cartridge and these cores let Butchering mode reach (the panel greys out the rest).</summary>
+		public ButcherReach GetButcherReach()
+		{
+			var ppu = bus?.ppu;
+			bool cart = cartridge?.mapper != null && cartridge.ChrChipSize > 0 && cartridge.mapper.TryPpuToChrIndex(0, out _);
+			bool dma = ppu != null && ppu is not PPU_EXE && ppu is not PPU_IMG;
+			return new ButcherReach(
+				PpuCore: ppu?.CoreName ?? "",
+				ConsolePins: ppu is PPU_FIX,
+				CartPins: cart,
+				CartAddressLines: cartridge != null ? NesEmulator.Butcher.AddressLinesFor(cartridge.ChrChipSize) : 0,
+				ChrIsRam: cartridge != null && cartridge.chrBanks == 0,
+				Mapper: cartridge?.mapperID ?? -1,
+				SpritesDma: dma,
+				Sprites2004: ppu is PPU_FIX,
+				Sound: bus != null);
+		}
+
+		private void ButcherFrame()
+		{
+			var b = Butcher;
+			if (b != null) b.FrameStart(bus!.ButcherApuWrite);
+			if (b == null || b.Idle) { bus!.Butcher = null; if (cartridge != null) cartridge.Butcher = null; return; }
+			bus!.Butcher = b;
+			if (cartridge != null) { cartridge.Butcher = b.Cart != null ? b : null; if (bus.cartridge != null && !ReferenceEquals(bus.cartridge, cartridge)) bus.cartridge.Butcher = cartridge.Butcher; }
+		}
+
 		public void RunFrame()
 		{
 			if (bus == null || crashed) return;
+			if (Butcher != null || bus.Butcher != null) ButcherFrame();
 
 			// --- Targeted Imagine: reset per-frame capture buffer and apply target configuration ---
 			if (bus.ppu is PPU_IMG imgPpu)

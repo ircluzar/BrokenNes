@@ -341,6 +341,12 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 				// The sprites fetched during this line's hblank are the ones the next line shows.
 				CommitNextLineSprites();
 
+				// Butchering mode's sprite-0 guarantee (Glitch Boy does the same): bent tiles or a jittered sprite 0 can lose the
+				// real hit, and a game polling $2002 for it (SMB's status-bar split) then spins inside its NMI forever - its sprite
+				// DMA never runs again, so even switching every effect off would not free it. At the end of sprite 0's last row,
+				// with the hit still clear and BG + sprites on, the hit is forced. Off = one null test per line.
+				if (bus.Butcher != null && scanline < 240) ButcherSprite0Guarantee();
+
 				// (VBlank set / NMI assert moved to scanline 241 dot 1 in the per-dot section above -
 				// firing it here meant the end of scanline 241, i.e. 340 dots late.)
 				// (v = t at the end of pre-render replaced by the dot 280-304 vert(v) := vert(t)
@@ -508,6 +514,15 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		bgShiftHi = (ushort)((bgShiftHi & 0xFF00) | bgNextHi);
 		atShiftLo = (ushort)((atShiftLo & 0xFF00) | ((bgNextAt & 1) != 0 ? 0xFF : 0x00));
 		atShiftHi = (ushort)((atShiftHi & 0xFF00) | ((bgNextAt & 2) != 0 ? 0xFF : 0x00));
+	}
+
+	private void ButcherSprite0Guarantee()
+	{
+		if ((PPUSTATUS & 0x40) != 0 || (PPUMASK & 0x18) != 0x18) return;
+		int y = oam[0];
+		if (y >= 0xEF) return;
+		int h = (PPUCTRL & 0x20) != 0 ? 16 : 8;
+		if (scanline == y + h) PPUSTATUS |= 0x40;
 	}
 
 	private void FetchBgNametable()
@@ -865,7 +880,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 				break;
 			case 0x0004: // OAM Data
 				OAMDATA = value;
-				oam[OAMADDR++] = OAMDATA;
+				oam[OAMADDR] = bus.Butcher is { SpritesActive: true } sb ? sb.FilterOamWrite(OAMADDR, OAMDATA) : OAMDATA; OAMADDR++;
 				break;
 			case 0x0005: // PPU Scroll
 				if (!w)
@@ -917,9 +932,20 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		}
 	}
 
+	// Butchering mode's console pins (corruption/Butcher.cs): the PPU's own address / data bus, before the mapper. Off = one null test.
 	public byte Read(ushort address)
 	{
 		address = (ushort)(address & 0x3FFF);
+		var bb = bus.Butcher;
+		if (bb?.Console == null || address >= 0x3F00) return ReadUnbent(address);
+		int a = bb.ConsoleReadAddr(address, out bool bendData);
+		if (a < 0) return ReadUnbent(address);
+		byte v = ReadUnbent((ushort)a);
+		return bendData ? bb.ConsoleData(v) : v;
+	}
+
+	private byte ReadUnbent(ushort address)
+	{
 
 		if (address < 0x2000)
 		{
@@ -956,6 +982,17 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	public void Write(ushort address, byte value)
 	{
 		address = (ushort)(address & 0x3FFF);
+		var bb = bus.Butcher;
+		if (bb?.Console is { BendWrites: true } f && address < 0x3F00)
+		{
+			int a = bb.ConsoleReadAddr(address, out bool bendData);
+			if (a >= 0) { WriteUnbent((ushort)a, bendData ? f.Data(value) : value); return; }
+		}
+		WriteUnbent(address, value);
+	}
+
+	private void WriteUnbent(ushort address, byte value)
+	{
 
 		if (address < 0x2000)
 		{

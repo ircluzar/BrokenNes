@@ -190,15 +190,46 @@ public class Cartridge
 		mapper.CPUWrite(address, value);
 	}
 
+	/// <summary>Butchering mode (corruption/Butcher.cs). Null unless its cartridge pins are faulted: one null test per CHR access.</summary>
+	public Butcher? Butcher;
+
 	public byte PPURead(ushort address)
 	{
-		return mapper.PPURead(address);
-	} 
-	
+		byte v = mapper.PPURead(address);   // the real fetch always happens: its latches and IRQ edges are the game's
+		if (Butcher == null) return v;
+		return ButcherRead(address, v);
+	}
+
 	public void PPUWrite(ushort address, byte value)
 	{
+		if (Butcher != null && ButcherWrite(address, value)) return;
 		mapper.PPUWrite(address, value);
 	}
+
+	// The CHR chip's own pins, after the mapper's banking: the index the mapper picked is bent, and the chip answers for the bent index.
+	private byte ButcherRead(ushort address, byte v)
+	{
+		var f = Butcher?.Cart;
+		if (f == null || address >= 0x2000 || f.Misses() || !mapper.TryPpuToChrIndex(address, out int idx)) return v;
+		var chip = chrBanks > 0 ? chrROM : chrRAM;
+		if (chip.Length == 0) return v;
+		if (f.AddrActive) { int b = f.Addr(idx); if (b != idx) v = chip[(uint)b % (uint)chip.Length]; }
+		return f.DataActive ? f.Data(v) : v;
+	}
+
+	/// <summary>True when the write was taken (bent into CHR-RAM).</summary>
+	private bool ButcherWrite(ushort address, byte value)
+	{
+		var f = Butcher?.Cart;
+		if (f == null || !f.BendWrites || chrBanks > 0 || address >= 0x2000 || f.Misses() || !mapper.TryPpuToChrIndex(address, out int idx)) return false;
+		if (chrRAM.Length == 0) return false;
+		int b = f.AddrActive ? f.Addr(idx) : idx;
+		chrRAM[(uint)b % (uint)chrRAM.Length] = f.DataActive ? f.Data(value) : value;
+		return true;
+	}
+
+	/// <summary>Size of the CHR chip the cartridge pins belong to (CHR-ROM, else CHR-RAM).</summary>
+	public int ChrChipSize => chrBanks > 0 ? chrROM.Length : chrRAM.Length;
 
 	public void SetMirroring(Mirroring mode)
 	{

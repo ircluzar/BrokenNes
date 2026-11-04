@@ -26,6 +26,12 @@
       "port": 5090
     },
     {
+      "name": "webmodules-static",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "SubProjects/LiteStaticServer", "-c", "Release", "--", "../../Windows/Webmodules", "5095"],
+      "port": 5095
+    },
+    {
       "name": "snes-wasm-bench",
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["run", "--project", "SubProjects/SnesWasmBench", "-c", "Release", "--urls", "http://localhost:5021"],

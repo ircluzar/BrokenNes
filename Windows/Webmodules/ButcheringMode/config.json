@@ -1,0 +1,13 @@
+{
+  "name": "Butchering Mode",
+  "title": "Butchering Mode",
+  "version": "1.0.0",
+  "description": "Bus-level corruption with one control per effect: pin faults on the picture bus, sprite and sound transit effects. Leaving undoes everything.",
+  "author": "BrokenNes",
+  "entryPoint": "index.html",
+  "displayMode": "overlay",
+  "showInToolsMenu": true,
+  "isActivity": true,
+  "hideMenuBar": true,
+  "pauseEmulatorOnOpen": false
+}
