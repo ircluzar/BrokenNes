@@ -293,7 +293,7 @@
       reach.chrIsRam ? 'Writes to CHR-RAM land bent too, so the damage stays until Reload State.' : 'CHR-ROM cannot be written: this has no effect here.'));
 
     const spritesWhy = reach.spritesDma ? (reach.sprites2004 || !isNes ? '' : 'Single $2004 writes are not filtered on this PPU core (DMA is).')
-      : `Not reachable on the ${reach.ppuCore} PPU core.`;
+      : isNes ? `Not reachable on the ${reach.ppuCore} PPU core.` : 'Not reachable on this console yet.';
     g.append(el('details', { open: true }, el('summary', {}, 'Sprites'),
       el('div', { class: 'why' }, 'Bytes on their way into sprite memory. The game resends it every frame, so a hit lasts one frame.'),
       spritesWhy ? el('div', { class: 'off' }, spritesWhy) : null,
@@ -318,7 +318,8 @@
         ]))));
 
     g.append(el('details', { open: true }, el('summary', {}, 'Sound'),
-      el('div', { class: 'why' }, isNes ? 'Writes on their way into the APU. DMC samples are left alone.' : 'Writes on their way into the sound chip. Power and wave RAM are left alone.'),
+      el('div', { class: 'why' }, isNes ? 'Writes on their way into the APU. DMC samples are left alone.' : 'Writes on their way into the sound chip.'),
+      reach.soundNote ? el('div', { class: 'off' }, reach.soundNote) : null,
       el('div', { class: 'sub' }, 'Classic'),
       el('div', { class: 'fx' }, el('label', { class: 'name' }, 'Bit flips (pitch / volume / envelope bits)'),
         bits(['Bit 0', 'Bit 1', 'Bit 2', 'Bit 3', 'Bit 4'], so.bitFlip.bits), slider('Rate', so.bitFlip, 'rate', 0, 100, 1)),

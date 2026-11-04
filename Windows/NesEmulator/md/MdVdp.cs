@@ -31,6 +31,10 @@ public interface IMdVdpHost
 public partial class MdVdp
 {
     // ---- memories and registers
+    /// <summary>Butchering mode (corruption/Butcher.cs): VRAM-bus pin faults on the picture's fetches. Null when off.</summary>
+    public Butcher? Butcher;
+    private byte VR(int a) => Butcher == null ? Vram[a] : Butcher.PictureRead(Vram, a);
+
     public readonly byte[] Vram = new byte[0x10000];
     public readonly ushort[] Cram = new ushort[64];
     public readonly ushort[] Vsram = new ushort[64];

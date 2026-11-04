@@ -363,9 +363,15 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
         z80.Irq = asserted;
     }
 
+    /// <summary>Butchering mode (corruption/Butcher.cs): the PSG filter on both the 68000's and the Z80's writes. Null when off.</summary>
+    public Butcher? Butcher;
+    /// <summary>Butchering mode's own PSG writes: straight to the chip.</summary>
+    public void ButcherPsgWrite(ushort _, byte v) => psg.Write(v);
+
     public void WritePsg(byte value, long masterClock)
     {
         RunTo(masterClock);
+        if (Butcher is { SoundActive: true } bs) value = bs.FilterPsgWrite(value);
         psg.Write(value);
         OnPsgWrite(value);
         PsgWrites++;
@@ -422,7 +428,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
         if (address < 0x8000)
         {
             int reg = address & 0xFF;
-            if (reg >= 0x11 && reg <= 0x17 && (reg & 1) != 0) { psg.Write(value); OnPsgWrite(value); PsgWrites++; PsgWriteHook?.Invoke(value); PsgPortTap?.Invoke(master, value); return; }
+            if (reg >= 0x11 && reg <= 0x17 && (reg & 1) != 0) { if (Butcher is { SoundActive: true } bs) value = bs.FilterPsgWrite(value); psg.Write(value); OnPsgWrite(value); PsgWrites++; PsgWriteHook?.Invoke(value); PsgPortTap?.Invoke(master, value); return; }
             if (fromZ80 && host != null) host.WriteBus(0xC00000 + reg, value, master, out _);
             return;
         }

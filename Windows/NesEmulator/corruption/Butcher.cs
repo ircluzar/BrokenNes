@@ -230,6 +230,16 @@ public sealed class ButcherProfile
 		Psg = true,
 		RamWindow = 0x2000, StackPage = 0x1F,
 	};
+	/// <summary>Genesis: 64 KB VRAM, the PSG (FM not yet), 64 KB work RAM.</summary>
+	public static readonly ButcherProfile Md = new()
+	{
+		Console = "md",
+		ConsoleLines = 16,
+		AttrBits = Array.Empty<int>(), AttrNames = Array.Empty<string>(),
+		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise" },
+		Psg = true,
+		RamWindow = 0x10000, StackPage = 0xFF,
+	};
 	public bool Psg;
 }
 
@@ -800,6 +810,8 @@ public sealed record ButcherReach(string PpuCore, bool ConsolePins, bool Console
 	public string[] Channels { get; init; } = ButcherProfile.Nes.Channels;
 	public string PinsTitle { get; init; } = "Picture bus · console pins";
 	public string PinsWhy { get; init; } = "The PPU's own bus, before the cartridge's banking: tiles, nametables and attributes.";
+	/// <summary>A limit of this console's sound reach, shown in the panel (empty = none).</summary>
+	public string SoundNote { get; init; } = "";
 }
 
 /// <summary>A running system Butchering mode can drive (the NES, a Game Boy session).</summary>

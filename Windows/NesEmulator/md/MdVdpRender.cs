@@ -181,8 +181,8 @@ public partial class MdVdp
         // horizontal scroll: the table entry of this line (the hardware reads it as the line begins)
         int mask = (Reg[11] & 3) switch { 0 => 0, 1 => 7, 2 => 0xF8, _ => 0xFF };
         int ea = ((Reg[13] & 0x3F) << 10) + ((lineY & mask) << 2);
-        hscrollA = (Vram[ea & 0xFFFF] << 8 | Vram[ea + 1 & 0xFFFF]) & 0x3FF;
-        hscrollB = (Vram[ea + 2 & 0xFFFF] << 8 | Vram[ea + 3 & 0xFFFF]) & 0x3FF;
+        hscrollA = (VR(ea & 0xFFFF) << 8 | VR(ea + 1 & 0xFFFF)) & 0x3FF;
+        hscrollB = (VR(ea + 2 & 0xFFFF) << 8 | VR(ea + 3 & 0xFFFF)) & 0x3FF;
         BuildSprites();
     }
 
@@ -314,7 +314,7 @@ public partial class MdVdp
             int cell = x >> 3, fine = x & 7;
             int len = Math.Min(8 - fine, xb - x);
             int ea = nt + (row * cells + cell) * 2;
-            int e = Vram[ea & 0xFFFF] << 8 | Vram[ea + 1 & 0xFFFF];
+            int e = VR(ea & 0xFFFF) << 8 | VR(ea + 1 & 0xFFFF);
             DrawTileRun(dst, x, len, e, r, fine);
             x += len;
         }
@@ -398,7 +398,7 @@ public partial class MdVdp
             // the window bug: the plane column (a pair of cells) that supplies the left part of the first screen column after the window is read from the column after it
             if (x >= bugX0 && x < bugX1 && (cell >> 1) == bugColumn0) cell = cell + 2 & (wCells - 1);
             int ea = nt + ((py >> cellShift) * rowStride + cell) * 2;
-            int e = Vram[ea & 0xFFFF] << 8 | Vram[ea + 1 & 0xFFFF];
+            int e = VR(ea & 0xFFFF) << 8 | VR(ea + 1 & 0xFFFF);
             DrawTileRun(dst, x, len, e, py & (1 << cellShift) - 1, fine);
             x += len;
         }
@@ -459,7 +459,7 @@ public partial class MdVdp
                 return;
             }
         }
-        uint bits = (uint)(Vram[a & 0xFFFF] << 24 | Vram[a + 1 & 0xFFFF] << 16 | Vram[a + 2 & 0xFFFF] << 8 | Vram[a + 3 & 0xFFFF]);
+        uint bits = (uint)(VR(a & 0xFFFF) << 24 | VR(a + 1 & 0xFFFF) << 16 | VR(a + 2 & 0xFFFF) << 8 | VR(a + 3 & 0xFFFF));
         if ((e & 0x800) != 0)
         {
             for (int k = 0; k < len; k++)
@@ -505,7 +505,7 @@ public partial class MdVdp
             int a = sat + idx * 8;
             int ypos, size, link;
             if (SpriteCacheOn) { int c = idx * 4; ypos = (SpriteCache[c] << 8 | SpriteCache[c + 1]) & SpriteYMask; size = SpriteCache[c + 2]; link = SpriteCache[c + 3] & 0x7F; }
-            else { ypos = (Vram[a & 0xFFFF] << 8 | Vram[a + 1 & 0xFFFF]) & SpriteYMask; size = Vram[a + 2 & 0xFFFF]; link = Vram[a + 3 & 0xFFFF] & 0x7F; }
+            else { ypos = (VR(a & 0xFFFF) << 8 | VR(a + 1 & 0xFFFF)) & SpriteYMask; size = VR(a + 2 & 0xFFFF); link = VR(a + 3 & 0xFFFF) & 0x7F; }
             int h = (size & 3) + 1;
             int top = ypos - (128 << (dbl ? 1 : 0));
             if (imgRow >= top && imgRow < top + (h << cellShift))
@@ -532,12 +532,12 @@ public partial class MdVdp
         for (int i = 0; i < lineSpriteCount && cellsLeft > 0; i++)
         {
             int a = sat + lineSprites[i] * 8;
-            int size = SpriteCacheOn ? SpriteCache[lineSprites[i] * 4 + 2] : Vram[a + 2 & 0xFFFF];
+            int size = SpriteCacheOn ? SpriteCache[lineSprites[i] * 4 + 2] : VR(a + 2 & 0xFFFF);
             int w = (size >> 2 & 3) + 1, h = (size & 3) + 1;
             int aa = H40 || !H32AttrWrap ? a : sat + (lineSprites[i] * 8 & 0x1FF);       // H32: the table is 0x200 bytes and the position and attributes of sprite 64 to 79 come from sprite 0 to 15 (the sprite cache holds all 80 sprites' first words)
-            int attr = Vram[aa + 4 & 0xFFFF] << 8 | Vram[aa + 5 & 0xFFFF];
-            int xraw = (Vram[aa + 6 & 0xFFFF] << 8 | Vram[aa + 7 & 0xFFFF]) & 0x1FF;
-            int ypos = (SpriteCacheOn ? (SpriteCache[lineSprites[i] * 4] << 8 | SpriteCache[lineSprites[i] * 4 + 1]) & SpriteYMask : (Vram[a & 0xFFFF] << 8 | Vram[a + 1 & 0xFFFF]) & SpriteYMask) - (128 << (dbl ? 1 : 0));
+            int attr = VR(aa + 4 & 0xFFFF) << 8 | VR(aa + 5 & 0xFFFF);
+            int xraw = (VR(aa + 6 & 0xFFFF) << 8 | VR(aa + 7 & 0xFFFF)) & 0x1FF;
+            int ypos = (SpriteCacheOn ? (SpriteCache[lineSprites[i] * 4] << 8 | SpriteCache[lineSprites[i] * 4 + 1]) & SpriteYMask : (VR(a & 0xFFFF) << 8 | VR(a + 1 & 0xFFFF)) & SpriteYMask) - (128 << (dbl ? 1 : 0));
             // a sprite at X=0 hides the sprites after it, but only once a sprite with another X has come before it on the line (or the line before ran out of pixels)
             if (xraw == 0) { if (seenVisible) masked = true; }
             else seenVisible = true;
@@ -564,7 +564,7 @@ public partial class MdVdp
                 int c = hflip ? w - 1 - k : k;
                 int tile = tileBase + c * h + cellRow & 0x7FF;
                 int ta = (tile << cellShift + 2) + (row << 2);
-                uint bits = (uint)(Vram[ta & 0xFFFF] << 24 | Vram[ta + 1 & 0xFFFF] << 16 | Vram[ta + 2 & 0xFFFF] << 8 | Vram[ta + 3 & 0xFFFF]);
+                uint bits = (uint)(VR(ta & 0xFFFF) << 24 | VR(ta + 1 & 0xFFFF) << 16 | VR(ta + 2 & 0xFFFF) << 8 | VR(ta + 3 & 0xFFFF));
                 for (int j = 0; j < 8; j++)
                 {
                     int x = x0 + j;

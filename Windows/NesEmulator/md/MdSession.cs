@@ -14,8 +14,31 @@ namespace NesEmulator.Sega;
 /// Pad mapping: the apps send the twelve generic buttons, the Genesis pad has eight. A, B, X, Y, Start and the directions are themselves; C is <see cref="PadButtons.C"/> or R, Z is <see cref="PadButtons.Z"/> or L and
 /// Mode is <see cref="PadButtons.Mode"/> or Select (so the six-button pad is reachable from the layout the apps already have). Player 1 has a six-button pad, player 2 a three-button one.
 /// </remarks>
-public sealed class MdSession : IConsoleSession
+public sealed class MdSession : IConsoleSession, IButcherHost
 {
+    // ===================================================================== Butchering mode (corruption/Butcher.cs)
+    public Butcher? Butcher { get; private set; }
+    public void ApplyButcher(ButcherSettings settings)
+    {
+        var b = Butcher ?? new Butcher { Profile = ButcherProfile.Md };
+        b.Apply(settings, 0);
+        Butcher = b;
+    }
+    public ButcherReach GetButcherReach() => new(
+        PpuCore: "Genesis VDP", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
+        SpritesDma: false, Sprites2004: false, Sound: Board.Sound is MdSoundUnit, Bands: false, Ram: true)
+    { Console = "md", ConsoleAddressLines = ButcherProfile.Md.ConsoleLines, AttrNames = ButcherProfile.Md.AttrNames, Channels = ButcherProfile.Md.Channels,
+      PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the VDP and its 64 KB video RAM: plane maps, tile graphics, the sprite table and the scroll table.",
+      SoundNote = Board.Sound is MdSoundUnit ? "The PSG only: the FM chip (YM2612) is not reached yet." : "Not reachable with this sound unit (pick the default Genesis sound in the APU menu)." };
+    private void ButcherFrame()
+    {
+        var b = Butcher;
+        var unit = Board.Sound as MdSoundUnit;
+        if (b != null) { b.AttachRam(Board.Ram); b.FrameStart(unit != null ? unit.ButcherPsgWrite : (_, _) => { }); }
+        var on = b != null && !b.Idle ? b : null;
+        Board.Vdp.Butcher = on; if (unit != null) unit.Butcher = on;
+    }
+
     public const int DebugWidth = 512, DebugHeight = 272;
 
     public BOARD_MD Board { get; }
@@ -64,6 +87,7 @@ public sealed class MdSession : IConsoleSession
 
     public void RunFrame()
     {
+        if (Butcher != null || Board.Vdp.Butcher != null) ButcherFrame();
         Board.RunFrame();
         var v = Board.Vdp;
         if (DebugView)
