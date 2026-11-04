@@ -153,3 +153,15 @@ The point is not to copy the Glitch Boy: it is to take the concepts its research
 | Built-ins | **Read-only**, marked as built-in in the list; saving under the same name makes the user's own copy. |
 | Gaps | SNES HDMA tables through the DMA pins. |
 | Sound self-check | Render short WAV clips of each sound effect per console, so the listening test is quick. |
+
+## Wave 8 scope (2026-11-04, user: "do them all") - the last unmapped pins
+1. Interrupt lines (NMI / IRQ): stuck, ghost, dropped - every console (unsafe).
+2. Video-chip register bus: NES $2000-$2007, GB $FF40-$FF4B, SMS / GG VDP ports, Genesis VDP port, SNES B-bus $21xx (safe-ish: writes land bent / on the wrong register).
+3. Work-RAM bus pins: the CPU's own RAM reads / writes bent (unsafe).
+4. Palette RAM bus: NES palette, GBC palettes, Sega CRAM, SNES CGRAM.
+5. Video DAC pins: stuck / bridged bits on the final RGB (display-only).
+6. NES CIRAM A10 (mirroring pin).
+7. Genesis 68000 / Z80 bus arbitration (BUSREQ / RESET) (unsafe).
+8. Game Boy OAM DMA source bus.
+9. Clock pins: CPU / PPU clock wobble (unsafe).
+Order of work: 6, 5, 4, 2, 1, 8, 3, 7, 9 (smallest first; commit each).
