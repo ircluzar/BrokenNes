@@ -219,6 +219,18 @@ public sealed class ButcherProfile
 		DropApply = (v, mask) => (byte)(v & ~(mask | (mask << 4))),
 		RamWindow = 0x2000, StackPage = 0x1F,
 	};
+	/// <summary>Master System / Game Gear: the sprite table is in VRAM (no attribute byte), the PSG takes latch / data bytes.</summary>
+	public static readonly ButcherProfile Sms = new()
+	{
+		Console = "sms",
+		ConsoleLines = 14,                                   // VRAM A0-A13
+		HiddenYMin = 0x100, HiddenYZero = 0xD0, YMin = 0, YMax = 0xCF, XMax = 0xFF,   // Y = $D0 ends the list
+		AttrBits = Array.Empty<int>(), AttrNames = Array.Empty<string>(),
+		Channels = new[] { "Tone 1", "Tone 2", "Tone 3", "Noise" },
+		Psg = true,
+		RamWindow = 0x2000, StackPage = 0x1F,
+	};
+	public bool Psg;
 }
 
 public sealed class Butcher
@@ -552,6 +564,9 @@ public sealed class Butcher
 		for (int i = 0; i < len; i++) oam[i] = FilterByte(i, oam[i], sp, organicGroups: true);
 	}
 
+	/// <summary>A sprite-table byte by canonical field (0 Y, 1 tile, 2 attributes, 3 X), for chips whose table is not 4-byte records.</summary>
+	public byte FilterSpriteField(int field, int sprite, byte b) => FilterField(field, b, settings.Sprites);
+
 	/// <summary>A single OAM byte written through $2004.</summary>
 	public byte FilterOamWrite(int index, byte b) => FilterByte(index & 0xFF, b, settings.Sprites, organicGroups: false);
 
@@ -559,6 +574,11 @@ public sealed class Butcher
 	{
 		int field = Profile.FieldOfRaw[idx & 3];
 		if (organicGroups && lagLeft > 0 && idx >= 4 && (idx >> 5) == lagGroup) return prevOam[idx];
+		return FilterField(field, b, sp);
+	}
+
+	private byte FilterField(int field, byte b, SpriteSettings sp)
+	{
 		if (forceLeft > 0 && field == (sp.ForceBit.Field & 3) && !(field == 0 && Hidden(b)))
 		{
 			int m = 1 << (sp.ForceBit.Bit & 7);
@@ -577,12 +597,12 @@ public sealed class Butcher
 				if (sp.Tile.On && RS() < Threshold(sp.Tile.Rate)) b = (byte)(b + ((RS() & 1) != 0 ? 1 : -1));
 				break;
 			case 2:
-				if (Any(sp.Attr.Bits) && RS() < Threshold(sp.Attr.Rate))
+				if (Profile.AttrBits.Length > 0 && Any(sp.Attr.Bits) && RS() < Threshold(sp.Attr.Rate))
 				{
 					int[] bitOf = Profile.AttrBits;
 					int n = 0; var picks = new int[5];
-					for (int i = 0; i < Math.Min(5, sp.Attr.Bits.Length); i++) if (sp.Attr.Bits[i]) picks[n++] = bitOf[i];
-					b ^= (byte)(1 << picks[RS() % (uint)n]);
+					for (int i = 0; i < Math.Min(bitOf.Length, sp.Attr.Bits.Length); i++) if (sp.Attr.Bits[i]) picks[n++] = bitOf[i];
+					if (n > 0) b ^= (byte)(1 << picks[RS() % (uint)n]);
 				}
 				break;
 		}
@@ -636,6 +656,71 @@ public sealed class Butcher
 		return v;
 	}
 
+	// ===================================================================================== the SN76489 PSG (Master System / Game Gear)
+	// One port: a latch byte (1 cc t dddd: channel, type 1 = volume, low data) or a data byte (0 x dddddd: the rest of the latched
+	// tone). Volume 0 is loudest, 15 is silent. Drop-outs hold a channel's volume at 15, drone at 0; tone bytes take the bit flips,
+	// nudges and detune; stutter replays an older byte of a channel.
+	private int psgCh, psgType; private readonly int[] psgVol = { -1, -1, -1, -1 };
+
+	public byte FilterPsgWrite(byte v)
+	{
+		var so = settings.Sound;
+		if ((v & 0x80) != 0) { psgCh = (v >> 5) & 3; psgType = (v >> 4) & 1; }
+		int ch = psgCh;
+		{ var h = history[ch]; Array.Copy(h, 0, h, 1, 7); h[0] = (0, v); if (historyCount[ch] < 8) historyCount[ch]++; }
+		if (psgType == 1)
+		{
+			int vol = v & 0x0F;
+			if ((v & 0x80) != 0) psgVol[ch] = vol;
+			if ((dropMask & (1 << ch)) != 0) vol = 15;
+			else if (droneLeft > 0) vol = 0;
+			return (byte)((v & 0xF0) | vol);
+		}
+		int bits = (v & 0x80) != 0 ? 0x0F : 0x3F;   // the data a latch / data byte carries
+		int d = v & bits;
+		if (detuneLeft > 0) d ^= Math.Clamp(so.Detune.Value, 1, 255) & bits;
+		if (Any(so.BitFlip.Bits) && RA() < Threshold(so.BitFlip.Rate))
+		{
+			int n = 0; var picks = new int[5];
+			for (int i = 0; i < Math.Min(5, so.BitFlip.Bits.Length); i++) if (so.BitFlip.Bits[i] && ((1 << i) & bits) != 0) picks[n++] = i;
+			if (n > 0) d ^= 1 << picks[RA() % (uint)n];
+		}
+		if (so.Nudge.On && RA() < Threshold(so.Nudge.Rate)) d = (d + ((RA() & 1) != 0 ? 1 : -1)) & bits;
+		return (byte)((v & ~bits) | (d & bits));
+	}
+
+	private void PsgFrame(Action<ushort, byte> inject)
+	{
+		var so = settings.Sound;
+		int oldDrop = dropMask; bool droneWas = droneLeft > 0;
+		if (SoundActive)
+		{
+			for (int ch = 0; ch < 4; ch++)
+			{
+				if (dropLeft[ch] > 0) { if (--dropLeft[ch] == 0) dropMask &= ~(1 << ch); continue; }
+				bool on = so.Drops.Channels != null && ch < so.Drops.Channels.Length && so.Drops.Channels[ch];
+				if (on && RA() < EventThreshold(so.Drops.Rate)) { dropMask |= 1 << ch; dropLeft[ch] = Math.Max(1, so.Drops.Duration); }
+			}
+			Tick(ref stutterLeft, so.Stutter.On, so.Stutter.Rate, so.Stutter.Duration, null);
+			Tick(ref droneLeft, so.Drone.On, so.Drone.Rate, so.Drone.Duration, null);
+			Tick(ref detuneLeft, so.Detune.On, so.Detune.Rate, so.Detune.Duration, null);
+			if (stutterLeft > 0)
+			{
+				int ch = (int)(RA() % 4);
+				if (historyCount[ch] > 1) inject(0, history[ch][1 + (int)(RA() % (uint)(historyCount[ch] - 1))].v);
+			}
+		}
+		else { dropMask = 0; Array.Clear(dropLeft); droneLeft = 0; }
+		bool drone = droneLeft > 0;
+		for (int ch = 0; ch < 4; ch++)
+		{
+			bool was = (oldDrop & (1 << ch)) != 0, now = (dropMask & (1 << ch)) != 0;
+			if (was == now && droneWas == drone) continue;
+			int vol = now ? 15 : drone ? 0 : psgVol[ch];
+			if (vol >= 0) inject(0, (byte)(0x90 | (ch << 5) | vol));   // a volume latch; the game's own volume comes back when the effect ends
+		}
+	}
+
 	// ===================================================================================== per frame
 	/// <summary>Once per frame, before it runs: starts and ends events. <paramref name="inject"/> writes straight to the APU.</summary>
 	public void FrameStart(Action<ushort, byte> inject)
@@ -643,6 +728,15 @@ public sealed class Butcher
 		if (BandsActive) BandsFrame(); else { TallXor = 0; LineBendMask = 0; }
 		if (RamActive) RamFrame();
 		var sp = settings.Sprites;
+		if (Profile.Psg)
+		{
+			if (SpritesActive)
+			{
+				Tick(ref forceLeft, sp.ForceBit.On, sp.ForceBit.Rate, sp.ForceBit.Duration, null);
+			}
+			PsgFrame(inject);
+			return;
+		}
 		if (SpritesActive)
 		{
 			Tick(ref lagLeft, sp.GroupLag.On, sp.GroupLag.Rate, sp.GroupLag.Duration, () => lagGroup = (int)(RS() % 8));

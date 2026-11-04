@@ -11,8 +11,30 @@ namespace NesEmulator.Sega;
 /// shape every console session has. Model and region come from <see cref="SegaSettings"/> (the file name carries the region tag; the user can override).
 /// Input: A and B are buttons 1 and 2, Select is the Pause button (an NMI), Mode is the Reset button, the direction pad is the pad; player 2 has its own pad.
 /// </summary>
-public class SmsSession : IConsoleSession
+public class SmsSession : IConsoleSession, IButcherHost
 {
+    // ===================================================================== Butchering mode (corruption/Butcher.cs)
+    public Butcher? Butcher { get; private set; }
+    private bool IsGameGear => this is GgSession;
+    public void ApplyButcher(ButcherSettings settings)
+    {
+        var b = Butcher ?? new Butcher { Profile = ButcherProfile.Sms };
+        b.Apply(settings, 0);
+        Butcher = b;
+    }
+    public ButcherReach GetButcherReach() => new(
+        PpuCore: IsGameGear ? "Game Gear VDP" : "Master System VDP", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
+        SpritesDma: true, Sprites2004: false, Sound: true, Bands: false, Ram: true)
+    { Console = IsGameGear ? "gg" : "sms", ConsoleAddressLines = ButcherProfile.Sms.ConsoleLines, AttrNames = ButcherProfile.Sms.AttrNames, Channels = ButcherProfile.Sms.Channels,
+      PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the VDP and its 16 KB video RAM: name table, tile graphics and the sprite table." };
+    protected void ButcherFrame()
+    {
+        var b = Butcher;
+        if (b != null) { b.AttachRam(board.Ram); b.FrameStart(board.ButcherPsgWrite); }
+        var on = b != null && !b.Idle ? b : null;
+        board.Butcher = on; board.Vdp.Butcher = on;
+    }
+
     protected const int Rate = 44100;
     protected readonly BOARD_SMS board;
     protected string cpuId, ppuId, apuId;
@@ -77,7 +99,7 @@ public class SmsSession : IConsoleSession
         board.SetPad(player, s);
     }
 
-    public virtual void RunFrame() => board.RunFrame();
+    public virtual void RunFrame() { if (Butcher != null || board.Butcher != null) ButcherFrame(); board.RunFrame(); }
 
     public void Reset() => board.Reset();
     public virtual uint[] Frame => board.Vdp.Frame;
@@ -199,6 +221,7 @@ public sealed class GgSession : SmsSession
 
     public override void RunFrame()
     {
+        if (Butcher != null || board.Butcher != null) ButcherFrame();
         board.RunFrame();
         CropLcd();
     }

@@ -101,11 +101,11 @@ public partial class SmsVdp
             int nt = ntBase + ty * 64 + mapCol * 2;
             if (sms1Mask) nt &= ~0x400;
             nt &= 0x3FFF;
-            int entry = Vram[nt] | Vram[(nt + 1) & 0x3FFF] << 8;
+            int entry = VR(nt) | VR((nt + 1) & 0x3FFF) << 8;
             int tile = entry & 0x1FF;
             bool hflip = (entry & 0x200) != 0, vflip = (entry & 0x400) != 0, pal2 = (entry & 0x800) != 0, prio = (entry & 0x1000) != 0;
             int a = (tile * 32 + (vflip ? 7 - fy : fy) * 4) & 0x3FFF;
-            int p0 = Vram[a], p1 = Vram[a + 1], p2 = Vram[a + 2], p3 = Vram[a + 3];
+            int p0 = VR(a), p1 = VR(a + 1), p2 = VR(a + 2), p3 = VR(a + 3);
             int palBase = pal2 ? 16 : 0;
             for (; x < tileEnd; x++)
             {
@@ -136,7 +136,7 @@ public partial class SmsVdp
         int found = 0, colX = int.MaxValue;
         for (int i = 0; i < 64; i++)
         {
-            int y = Vram[(satBase + i) & 0x3FFF];
+            int y = VR((satBase + i) & 0x3FFF);
             if (y == 0xD0 && terminator) break;
             int r = (v - y - 1) & 0xFF;
             if (r >= height) continue;
@@ -147,13 +147,13 @@ public partial class SmsVdp
                 break;
             }
             found++;
-            int x = Vram[(xnBase + 2 * i) & 0x3FFF] - shift;
-            int tn = Vram[(xnBase + 2 * i + 1) & 0x3FFF];
+            int x = VR((xnBase + 2 * i) & 0x3FFF) - shift;
+            int tn = VR((xnBase + 2 * i + 1) & 0x3FFF);
             int srcRow = zoom ? r >> 1 : r;
             int tileNo;
             if (tall) tileNo = ((tn & 0xFE) | tileHi) + (srcRow >> 3); else tileNo = tn | tileHi;
             int a = (tileNo * 32 + (srcRow & 7) * 4) & 0x3FFF;
-            int p0 = Vram[a], p1 = Vram[a + 1], p2 = Vram[a + 2], p3 = Vram[a + 3];
+            int p0 = VR(a), p1 = VR(a + 1), p2 = VR(a + 2), p3 = VR(a + 3);
             int w = zoom ? 16 : 8;
             for (int k = 0; k < w; k++)
             {
@@ -197,8 +197,8 @@ public partial class SmsVdp
             for (int x = 0; x < 256; x++) lineBuf[x] = bdColor;
             for (int col = 0; col < 40; col++)
             {
-                int name = Vram[(ntBase + row * 40 + col) & 0x3FFF];
-                int bits = Vram[(pat + name * 8 + fy) & 0x3FFF];
+                int name = VR((ntBase + row * 40 + col) & 0x3FFF);
+                int bits = VR((pat + name * 8 + fy) & 0x3FFF);
                 for (int p = 0; p < 6; p++)
                 {
                     int colr = (bits & (0x80 >> p)) != 0 ? fg : bg;
@@ -212,8 +212,8 @@ public partial class SmsVdp
             int pat = (Regs[4] & 7) << 11;
             for (int col = 0; col < 32; col++)
             {
-                int name = Vram[(ntBase + row * 32 + col) & 0x3FFF];
-                int b = Vram[(pat + name * 8 + (row & 3) * 2 + (fy >> 2)) & 0x3FFF];
+                int name = VR((ntBase + row * 32 + col) & 0x3FFF);
+                int b = VR((pat + name * 8 + (row & 3) * 2 + (fy >> 2)) & 0x3FFF);
                 tmsBg[col * 8 + 0] = tmsBg[col * 8 + 1] = tmsBg[col * 8 + 2] = tmsBg[col * 8 + 3] = (byte)(b >> 4);
                 tmsBg[col * 8 + 4] = tmsBg[col * 8 + 5] = tmsBg[col * 8 + 6] = tmsBg[col * 8 + 7] = (byte)(b & 0x0F);
             }
@@ -226,10 +226,10 @@ public partial class SmsVdp
             int patBase = (Regs[4] & 4) << 11, colBase = (Regs[3] & 0x80) << 6;
             for (int col = 0; col < 32; col++)
             {
-                int name = Vram[(ntBase + row * 32 + col) & 0x3FFF];
+                int name = VR((ntBase + row * 32 + col) & 0x3FFF);
                 int idx = (third << 8) | name;
-                int bits = Vram[(patBase + ((idx & patMask) << 3) + fy) & 0x3FFF];
-                int cl = Vram[(colBase + ((idx & colMask) << 3) + fy) & 0x3FFF];
+                int bits = VR((patBase + ((idx & patMask) << 3) + fy) & 0x3FFF);
+                int cl = VR((colBase + ((idx & colMask) << 3) + fy) & 0x3FFF);
                 for (int p = 0; p < 8; p++) tmsBg[col * 8 + p] = (byte)((bits & (0x80 >> p)) != 0 ? cl >> 4 : cl & 0x0F);
             }
         }
@@ -238,9 +238,9 @@ public partial class SmsVdp
             int pat = (Regs[4] & 7) << 11, colTab = Regs[3] << 6;
             for (int col = 0; col < 32; col++)
             {
-                int name = Vram[(ntBase + row * 32 + col) & 0x3FFF];
-                int bits = Vram[(pat + name * 8 + fy) & 0x3FFF];
-                int cl = Vram[(colTab + (name >> 3)) & 0x3FFF];
+                int name = VR((ntBase + row * 32 + col) & 0x3FFF);
+                int bits = VR((pat + name * 8 + fy) & 0x3FFF);
+                int cl = VR((colTab + (name >> 3)) & 0x3FFF);
                 for (int p = 0; p < 8; p++) tmsBg[col * 8 + p] = (byte)((bits & (0x80 >> p)) != 0 ? cl >> 4 : cl & 0x0F);
             }
         }
@@ -254,7 +254,7 @@ public partial class SmsVdp
         bool displayEnabled = (Regs[1] & 0x40) != 0;
         for (int i = 0; i < 32; i++)
         {
-            int sy = Vram[(sat + i * 4) & 0x3FFF];
+            int sy = VR((sat + i * 4) & 0x3FFF);
             if (sy == 0xD0) break;
             int top = (sy > 0xE0 ? sy - 256 : sy) + 1;
             int r = y - top;
@@ -265,15 +265,15 @@ public partial class SmsVdp
                 if (displayEnabled) { if (fifthSpriteNumber == 0x1F && !fifthSeen) { fifthSeen = true; fifthSpriteNumber = i; } tmsFifth = true; }
                 break;
             }
-            int sx = Vram[(sat + i * 4 + 1) & 0x3FFF];
-            int name = Vram[(sat + i * 4 + 2) & 0x3FFF];
-            int attr = Vram[(sat + i * 4 + 3) & 0x3FFF];
+            int sx = VR((sat + i * 4 + 1) & 0x3FFF);
+            int name = VR((sat + i * 4 + 2) & 0x3FFF);
+            int attr = VR((sat + i * 4 + 3) & 0x3FFF);
             if ((attr & 0x80) != 0) sx -= 32;
             int colr = attr & 0x0F;
             if (big) name &= 0xFC;
             int rr = mag ? r >> 1 : r;
-            int left = Vram[(sprPat + name * 8 + rr) & 0x3FFF];
-            int right = big ? Vram[(sprPat + name * 8 + 16 + rr) & 0x3FFF] : 0;
+            int left = VR((sprPat + name * 8 + rr) & 0x3FFF);
+            int right = big ? VR((sprPat + name * 8 + 16 + rr) & 0x3FFF) : 0;
             int w = (big ? 16 : 8) << (mag ? 1 : 0);
             for (int k = 0; k < w; k++)
             {

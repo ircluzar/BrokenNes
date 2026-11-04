@@ -427,7 +427,10 @@ public partial class SmsVdp
     {
         switch (kind)
         {
-            case OpVram: Vram[index] = value; break;
+            case OpVram:
+                if (Butcher == null) Vram[index] = value;
+                else Butcher.PictureWrite(Vram, index, ButcherSprite(index, value));
+                break;
             case OpCram:
                 WriteCram(index, value);
                 // With the display off the picture shows the backdrop, and a colour RAM write that lands while the line is being drawn shows through as a one-pixel dot of the colour written
@@ -449,6 +452,21 @@ public partial class SmsVdp
     }
 
     /// <summary>A write to the data port ($BE).</summary>
+    /// <summary>Butchering mode (corruption/Butcher.cs): VRAM-bus pin faults on the picture's fetches, and the sprite table filter. Null when off.</summary>
+    public Butcher? Butcher;
+    private byte VR(int a) => Butcher == null ? Vram[a] : Butcher.PictureRead(Vram, a);
+
+    // A write into the Mode 4 sprite table (Y bytes, then X / tile pairs) on its way in: the sprite filters, by field.
+    private byte ButcherSprite(int index, byte value)
+    {
+        var b = Butcher!;
+        if (!b.SpritesActive) return value;
+        int sat = (Regs[5] & 0x7E) << 7, o = index - sat;
+        if (o >= 0 && o < 64) return b.FilterSpriteField(0, o, value);                       // Y
+        if (o >= 0x80 && o < 0x100) return b.FilterSpriteField((o & 1) == 0 ? 3 : 1, (o - 0x80) >> 1, value);   // X, tile
+        return value;
+    }
+
     public void WriteData(byte value, int mc)
     {
         RunTo(WriteTime(mc));

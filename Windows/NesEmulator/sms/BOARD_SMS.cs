@@ -380,6 +380,11 @@ public sealed class BOARD_SMS
         }
     }
 
+    /// <summary>Butchering mode (corruption/Butcher.cs): the PSG filter. Null when off.</summary>
+    public Butcher? Butcher;
+    /// <summary>Butchering mode's own PSG writes (drop-outs, drone, stutter): straight to the chip.</summary>
+    public void ButcherPsgWrite(ushort _, byte v) { SyncSound(); Sound.WritePsg(v); }
+
     public void WritePort(ushort port, byte value)
     {
         PortHook?.Invoke(true, port, value, Vdp.Line, lineCycle);
@@ -411,6 +416,7 @@ public sealed class BOARD_SMS
                 break;
             case 0x40:
                 SyncSound();
+                if (Butcher is { SoundActive: true } bs) value = bs.FilterPsgWrite(value);
                 Sound.WritePsg(value);
                 break;
             case 0x80:

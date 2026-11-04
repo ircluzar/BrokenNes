@@ -277,8 +277,8 @@
     g.replaceChildren();
     const sp = settings.sprites, so = settings.sound;
 
-    if (reach.consolePinsPartial) g.append(el('div', { class: 'off' }, `The ${reach.ppuCore} PPU core fetches tile graphics through its own fast path: console pins reach its nametables and $2007, not every tile fetch (cartridge pins reach them).`));
     const isNes = (reach.console || 'nes') === 'nes';
+    if (reach.consolePinsPartial) g.append(el('div', { class: 'off' }, isNes ? `The ${reach.ppuCore} PPU core fetches tile graphics through its own fast path: console pins reach its nametables and $2007, not every tile fetch (cartridge pins reach them).` : 'The picture is drawn on another chip (PPU menu), which reads video RAM itself: the pins reach only the fetches of the console’s own chip. Pick that chip in the PPU menu for the full effect.'));
     g.append(pinGroup(reach.pinsTitle || 'Picture bus · console pins',
       reach.pinsWhy || '',
       settings.consolePins, reach.consolePins,

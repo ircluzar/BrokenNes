@@ -51,6 +51,7 @@ namespace BrokenNes.Windows.WebApi
         private IButcherHost? ButcherHost(out string console)
         {
             var cs = GetConsoleSession?.Invoke();
+            if (cs is NesEmulator.Mix.SegaPictureSession sps) cs = sps.Inner;   // the Sega session under the picture bridge
             if (cs != null) { console = cs is IButcherHost h ? h.GetButcherReach().Console : "other"; return cs as IButcherHost; }
             var nes = _getNes();
             console = nes != null ? "nes" : "none";
@@ -65,8 +66,10 @@ namespace BrokenNes.Windows.WebApi
                 var host = ButcherHost(out var console);
                 if (host == null)
                     return Results.Ok(new { success = true, console, supported = false,
-                        reason = console == "none" ? "Load a game first." : "Butchering mode runs on NES and Game Boy games for now." });
+                        reason = console == "none" ? "Load a game first." : "Butchering mode runs on NES, Game Boy, Master System and Game Gear games for now." });
                 var reach = host.GetButcherReach();
+                if (GetConsoleSession?.Invoke() is NesEmulator.Mix.SegaPictureSession { Bridged: true })
+                    reach = reach with { ConsolePinsPartial = true };   // another chip draws the picture from VRAM itself: the pins reach the Sega VDP's own fetches only
                 return Results.Ok(new { success = true, console, supported = true, reach, consoleAddressLines = reach.ConsoleAddressLines });
             });
 
