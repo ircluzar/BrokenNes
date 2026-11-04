@@ -29,6 +29,9 @@ namespace BrokenNes.Windows
         public bool ShowInToolsMenu { get; set; } = false;
         public bool IsActivity { get; set; } = false;
         public bool HideMenuBar { get; set; } = false;
+        // When set (and hideMenuBar is false), the menu bar stays but only these top-level menus show, by their text
+        // ("PPU", "APU", "SHADER"); the others come back when the module is left.
+        public string[] VisibleMenus { get; set; } = System.Array.Empty<string>();
         public string LoadModule { get; set; } = ""; // If set, clicking this menu item loads a different module
         public bool PauseEmulatorOnOpen { get; set; } = false; // If true, pauses emulator when opening this module (if game is loaded and running)
     }

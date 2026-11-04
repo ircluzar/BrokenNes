@@ -93,7 +93,7 @@
     reach = r.reach;
     consoleAddressLines = r.consoleAddressLines || 14;
 
-    try { await api.ui.hideMenu(); } catch { /* the menu stays: not fatal */ }
+    // The menu bar stays with only PPU, APU and SHADER (config.json visibleMenus), so cores and shaders can be changed while butchering.
 
     const base = await api.gh.addBaseState(STATE_NAME).catch(() => null);
     const b = base?.baseState || base;
@@ -107,6 +107,20 @@
     await refreshPresets();
     status(`Entry state saved. PPU core: ${reach.ppuCore || '?'} · mapper ${reach.mapper}`);
   }
+
+  // The PPU, APU and SHADER menus stay usable in this mode: when a core is swapped, what the mode can reach changes with it.
+  setInterval(async () => {
+    if (leaving || !reach) return;
+    const r = await api.butcher.getReach().catch(() => null);
+    if (!r?.success || !r.supported) return;
+    const before = JSON.stringify(reach), now = JSON.stringify(r.reach);
+    if (before === now) return;
+    reach = r.reach;
+    settings = fit(settings);
+    render();
+    await push();
+    status(`Cores changed. PPU core: ${reach.ppuCore || '?'} · mapper ${reach.mapper}`);
+  }, 1500);
 
   async function reloadState() {
     if (!baseStateId) return;

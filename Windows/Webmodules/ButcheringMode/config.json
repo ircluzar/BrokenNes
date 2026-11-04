@@ -8,6 +8,7 @@
   "displayMode": "overlay",
   "showInToolsMenu": true,
   "isActivity": true,
-  "hideMenuBar": true,
+  "hideMenuBar": false,
+  "visibleMenus": ["PPU", "APU", "SHADER"],
   "pauseEmulatorOnOpen": false
 }

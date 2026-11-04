@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -134,6 +136,7 @@ namespace BrokenNes.Windows
             // Restore menu bar when switching to Emulator mode
             if (mode == ViewMode.Emulator && this.MainMenuStrip != null)
             {
+                RestoreModuleMenuFilter();
                 this.MainMenuStrip.Visible = true;
             }
 
@@ -525,6 +528,7 @@ namespace BrokenNes.Windows
                 if (this.MainMenuStrip != null)
                 {
                     this.MainMenuStrip.Visible = !module.HideMenuBar;
+                    ApplyModuleMenuFilter(module.HideMenuBar ? null : module.Config.VisibleMenus);
                 }
                 
                 // Switch to appropriate ViewMode based on config FIRST (but don't navigate yet)
@@ -678,6 +682,29 @@ namespace BrokenNes.Windows
             }
         }
 
+        // A module's visibleMenus (WebModuleConfig): the top-level menus it hides, with the visibility each had before, so
+        // leaving the module restores exactly that (menus the app keeps hidden for its own reasons stay hidden).
+        private readonly Dictionary<ToolStripItem, bool> moduleHiddenMenus = new();
+
+        private void ApplyModuleMenuFilter(string[]? keep)
+        {
+            RestoreModuleMenuFilter();
+            if (this.MainMenuStrip == null || keep == null || keep.Length == 0) return;
+            static string Norm(string? t) => (t ?? "").Replace("&", "").Trim();
+            foreach (ToolStripItem item in this.MainMenuStrip.Items)
+            {
+                if (keep.Any(k => Norm(k).Equals(Norm(item.Text), StringComparison.OrdinalIgnoreCase))) continue;
+                moduleHiddenMenus[item] = item.Available;
+                item.Available = false;
+            }
+        }
+
+        private void RestoreModuleMenuFilter()
+        {
+            foreach (var (item, available) in moduleHiddenMenus) item.Available = available;
+            moduleHiddenMenus.Clear();
+        }
+
         /// <summary>
         /// Hides the top menu bar
         /// </summary>
@@ -707,6 +734,7 @@ namespace BrokenNes.Windows
         {
             if (this.MainMenuStrip != null)
             {
+                RestoreModuleMenuFilter();
                 this.MainMenuStrip.Visible = true;
                 Console.WriteLine("[MainForm] Menu bar shown");
                 
