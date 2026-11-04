@@ -178,6 +178,7 @@ public class CPU_FIX : ICPU {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public void RequestNMI()
 	{
+		if (bus.Butcher is { DropNmiNow: true }) return;   // Butchering mode: a dropped NMI
 		if (!nmiRequested && bus.ppu is IPpuFixTiming fixPpu && bus.InstructionStartDot >= 0)
 		{
 			long rel = fixPpu.LastInterruptDot - bus.InstructionStartDot;

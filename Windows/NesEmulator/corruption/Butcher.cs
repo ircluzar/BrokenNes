@@ -45,6 +45,10 @@ public sealed class UnsafeSettings
 	public PinGroupSettings CpuPins { get; set; } = new();
 	/// <summary>The sound CPU's own bus (Genesis Z80 over its 8 KB RAM, SNES SPC700 over its 64 KB ARAM): the music program gets bent.</summary>
 	public PinGroupSettings SoundCpuPins { get; set; } = new();
+	/// <summary>Interrupt lines: a ghost NMI (an extra vertical-blank interrupt), dropped NMIs, a stuck IRQ line.</summary>
+	public EventEffect GhostNmi { get; set; } = new();
+	public EventEffect DropNmi { get; set; } = new();
+	public EventEffect StuckIrq { get; set; } = new();
 	/// <summary>The bus from the CPU to the video chip's registers (NES $2000-$2007, GB $FF40-$FF4B, SMS VDP ports, Genesis
 	/// VDP ports, SNES B-bus $21xx): writes land on the wrong register or with bent bits - a bent VRAM address can leave damage.</summary>
 	public PinGroupSettings VideoBus { get; set; } = new();
@@ -398,6 +402,22 @@ public sealed class Butcher
 	public bool RamActive { get; private set; }
 	public bool PaletteActive { get; private set; }
 	internal PinFaults? VideoDacFaults, PaletteBusFaults, VideoBusFaults;
+	// interrupt lines: the host wires these to its CPU
+	public Action? GhostNmiLine; public Action<bool>? HoldIrqLine;
+	public bool IrqActive { get; private set; }
+	public bool DropNmiNow => dropLeft2 > 0;
+	private int ghostLeft, dropLeft2, irqLeft;
+	private void InterruptFrame()
+	{
+		var u = settings.Unsafe;
+		bool ghostWas = ghostLeft > 0;
+		Tick(ref ghostLeft, u.GhostNmi.On, u.GhostNmi.Rate, 1, null);
+		if (!ghostWas && ghostLeft > 0) GhostNmiLine?.Invoke();
+		Tick(ref dropLeft2, u.DropNmi.On, u.DropNmi.Rate, u.DropNmi.Duration, null);
+		bool irqWas = irqLeft > 0;
+		Tick(ref irqLeft, u.StuckIrq.On, u.StuckIrq.Rate, u.StuckIrq.Duration, null);
+		if (irqLeft > 0) HoldIrqLine?.Invoke(true); else if (irqWas) HoldIrqLine?.Invoke(false);
+	}
 	/// <summary>A video-chip register write through the bent CPU-to-video bus (register index lines, data lines).</summary>
 	public (int reg, int v) VideoBusBend(int reg, int v, int lines)
 	{
@@ -471,6 +491,8 @@ public sealed class Butcher
 		Dma = on && Profile.DmaLines > 0 && dm.Active ? dm : null;
 		var co = new PinFaults(settings.Unsafe.CoproPins, 24, 0xD3A2646Cu);
 		Copro = on && Profile.Console == "snes" && co.Active ? co : null;
+		IrqActive = on && (settings.Unsafe.GhostNmi.On || settings.Unsafe.DropNmi.On || settings.Unsafe.StuckIrq.On);
+		if (!IrqActive) { ghostLeft = dropLeft2 = 0; if (irqLeft > 0) { irqLeft = 0; HoldIrqLine?.Invoke(false); } }
 		RotActive = on && (settings.Unsafe.RamRot.On || settings.Unsafe.VramRot.On || settings.Unsafe.SoundRamRot.On || settings.Unsafe.EchoAbuse.On);
 		PadActive = on && settings.Unsafe.PadLines is { } pl && Array.Exists(pl, x => x != 0);
 		paletteLut.Clear(); paletteMode = Math.Clamp(settings.Palette.Mode, 0, 4); paletteTick = 0;
@@ -482,7 +504,7 @@ public sealed class Butcher
 	}
 
 	/// <summary>Nothing is on: the hooks can be detached.</summary>
-	public bool Idle => CiramFault == 0 && PaletteBusFaults == null && VideoBusFaults == null && !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
+	public bool Idle => !IrqActive && irqLeft == 0 && CiramFault == 0 && PaletteBusFaults == null && VideoBusFaults == null && !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
 
 	public static int AddressLinesFor(int size)
 	{
@@ -1409,6 +1431,7 @@ public sealed class Butcher
 		WatchRam();
 		if (PaletteActive) PaletteFrame();
 		if (RotActive) { RotFrame(); SoundRot(); }
+		if (IrqActive || irqLeft > 0) InterruptFrame();
 		if (BandsActive) BandsFrame(); else { TallXor = 0; LineBendMask = 0; }
 		if (RamActive) RamFrame();
 		var sp = settings.Sprites;

@@ -35,7 +35,7 @@ public class SmsSession : IConsoleSession, IButcherHost
     protected void ButcherFrame()
     {
         var b = Butcher;
-        if (b != null) { b.FmInject = board.ButcherFmWrite; b.AttachRam(board.Ram); b.AttachVram(board.Vdp.Vram); b.FrameStart(board.ButcherPsgWrite); }
+        if (b != null) { b.GhostNmiLine = () => { board.Cpu.NmiLine = true; board.Cpu.NmiLine = false; }; b.HoldIrqLine = l => board.Cpu.Irq = l || board.Vdp.Irq; b.FmInject = board.ButcherFmWrite; b.AttachRam(board.Ram); b.AttachVram(board.Vdp.Vram); b.FrameStart(board.ButcherPsgWrite); }
         var on = b != null && !b.Idle ? b : null;
         board.Butcher = on; board.Vdp.Butcher = on;
     }

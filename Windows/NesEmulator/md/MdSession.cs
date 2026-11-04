@@ -37,6 +37,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the VDP and its 64 KB video RAM: plane maps, tile graphics, the sprite table and the scroll table.",
       SoundNote = ButcherUnit() != null ? "" : "Not reachable with this sound unit." };
     /// <summary>The real Genesis sound unit, wherever it sits: the board's own, or inside a bridge that plays it on another chip (the guest's own writes are bent).</summary>
+    private int ghostVblank;
     private MdSoundUnit? ButcherUnit() => Board.Sound switch
     {
         MdSoundUnit u => u,
@@ -49,7 +50,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
     {
         var b = Butcher;
         var unit = ButcherUnit();
-        if (b != null) { b.FmInject = unit != null ? unit.ButcherYmWrite : null; b.AttachRam(Board.Ram); b.AttachVram(Board.Vdp.Vram); b.AttachSoundRam(unit?.Z80Ram); b.FrameStart(unit != null ? unit.ButcherPsgWrite : (_, _) => { }); }
+        if (b != null) { b.GhostNmiLine = () => { ghostVblank = 2; Board.ButcherIpl = 6; }; b.HoldIrqLine = l => Board.ButcherIpl = l ? 4 : 0; if (ghostVblank > 0 && --ghostVblank == 0 && Board.ButcherIpl == 6) Board.ButcherIpl = 0; b.FmInject = unit != null ? unit.ButcherYmWrite : null; b.AttachRam(Board.Ram); b.AttachVram(Board.Vdp.Vram); b.AttachSoundRam(unit?.Z80Ram); b.FrameStart(unit != null ? unit.ButcherPsgWrite : (_, _) => { }); }
         var on = b != null && !b.Idle ? b : null;
         Board.Vdp.Butcher = on; if (unit != null) unit.Butcher = on;
         Board.ButcherCpu = on is { CpuPins: not null } || on is { VideoBusFaults: not null } ? on : null;

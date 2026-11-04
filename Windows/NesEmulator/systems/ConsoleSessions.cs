@@ -107,12 +107,13 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
         if (b != null)
         {
             b.AttachRam(board.Wram); b.AttachVramWords(board.Ppu.Vram); b.AttachSoundRam(apu?.Aram);
+            b.GhostNmiLine = board.ButcherGhostNmi; b.HoldIrqLine = board.ButcherHoldIrq;
             b.EchoInject = apu != null ? (r, v) => apu.ButcherDspWrite((ushort)r, v) : null; b.DspReadReg = apu != null ? r => apu.Dsp.Read(r) : null;
             b.FrameStart(apu != null ? apu.ButcherDspWrite : (_, _) => { });
         }
         var on = b != null && !b.Idle ? b : null;
         board.Ppu.Butcher = on; if (apu != null) { apu.Butcher = on; apu.Dsp.Butcher = on; }
-        board.ButcherCpu = on is { CpuPins: not null } || on is { Dma: not null } || on is { VideoBusFaults: not null } ? on : null;
+        board.ButcherCpu = on is { CpuPins: not null } || on is { Dma: not null } || on is { VideoBusFaults: not null } || on is { IrqActive: true } ? on : null;
         switch (board.Coprocessor) { case SA1_SFC sa: sa.Butcher = on; break; case GSU_SFC g: g.Butcher = on; break; case DSP1_SFC d: d.Butcher = on; break; }
     }
 
@@ -543,7 +544,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
     private void ButcherFrame()
     {
         var b = Butcher;
-        if (b != null) { b.AttachRam(board.Wram); b.AttachVram(board.Ppu.Vram); b.AttachSoundRam((board.Apu as APU_GB)?.WaveRam); b.FrameStart(board.ButcherSoundWrite); }
+        if (b != null) { b.GhostNmiLine = () => board.ButcherInterrupt(0); b.HoldIrqLine = l => { if (l) board.ButcherInterrupt(2); }; b.AttachRam(board.Wram); b.AttachVram(board.Ppu.Vram); b.AttachSoundRam((board.Apu as APU_GB)?.WaveRam); b.FrameStart(board.ButcherSoundWrite); }
         var on = b != null && !b.Idle ? b : null;
         board.Butcher = on; board.Ppu.Butcher = on;
         if (board.Apu is APU_GB ag) ag.Butcher = on;

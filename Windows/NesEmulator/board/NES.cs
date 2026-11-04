@@ -831,6 +831,7 @@ namespace NesEmulator
 			if (b != null)
 			{
 				b.AttachRam(bus!.ram);
+				b.GhostNmiLine = () => bus.cpu.RequestNMI(); b.HoldIrqLine = l => bus.cpu.RequestIRQ(l);
 				b.AttachVram(cartridge != null && cartridge.chrBanks == 0 && cartridge.chrRAM.Length > 0 ? cartridge.chrRAM : (bus.ppu as PPU_FIX)?.ButcherVram);
 				b.FrameStart(bus!.ButcherApuWrite);
 			}

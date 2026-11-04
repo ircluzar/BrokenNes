@@ -165,3 +165,14 @@ The point is not to copy the Glitch Boy: it is to take the concepts its research
 8. Game Boy OAM DMA source bus.
 9. Clock pins: CPU / PPU clock wobble (unsafe).
 Order of work: 6, 5, 4, 2, 1, 8, 3, 7, 9 (smallest first; commit each).
+
+## Wave 8 progress (2026-11-04)
+Done (committed): 6 CIRAM A10 (PPU FIX), 5 video DAC pins (every console), 4 palette RAM bus (NES PPU FIX + SNES CGRAM),
+2 video register bus (every console), 1 interrupt lines (ghost NMI / dropped NMI / stuck IRQ).
+Measured headless: all-off identical everywhere; NES all change (stuck IRQ: SMB never enables IRQs); SNES all change;
+SMS ghost + IRQ + video bus change; Genesis ghost + IRQ change; GB IRQ changes.
+**Left**: palette bus on GB Color / SMS / GG / Genesis CRAM; dropped NMI on GB / SMS / Genesis (only NES + SNES wired);
+check GB video-bus (no change seen with A0 high) and Genesis (A0 high only swaps the two data ports - try other lines);
+items 8 (GB OAM DMA source bus), 3 (work-RAM bus pins), 7 (Genesis BUSREQ / Z80 reset), 9 (clock pins);
+then golden suites + Butchering cases + sound self-check rerun, rebuild the user's exe.
+Fixed on the way: the Genesis ROM hook ran CPU pins whenever any board-level effect attached the engine (NullReference).

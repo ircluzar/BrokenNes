@@ -218,7 +218,7 @@ public sealed partial class BOARD_SFC : ISnesBus
         {
             inVBlank = true;
             nmiFlag = true;
-            if ((nmitimen & 0x80) != 0) { Cpu.RaiseNmi(); NmiCount++; }
+            if ((nmitimen & 0x80) != 0 && ButcherCpu is not { DropNmiNow: true }) { Cpu.RaiseNmi(); NmiCount++; }
             if ((nmitimen & 0x01) != 0) RunAutoJoypad();
             Ppu.OnVBlankStart();
             Apu.RunTo(MasterClock);   // keep audio flowing even when the game leaves the ports alone
@@ -256,7 +256,11 @@ public sealed partial class BOARD_SFC : ISnesBus
     }
 
     private void RaiseIrq() { irqFlag = true; Cpu.SetIrq(true); }
-    private void ClearIrq() { irqFlag = false; Cpu.SetIrq(chipIrq); }
+    private void ClearIrq() { irqFlag = false; Cpu.SetIrq(chipIrq || butcherIrq); }
+    // Butchering mode's interrupt lines
+    private bool butcherIrq;
+    public void ButcherGhostNmi() => Cpu.RaiseNmi();
+    public void ButcherHoldIrq(bool line) { butcherIrq = line; Cpu.SetIrq(irqFlag || chipIrq || butcherIrq); }
 
     private void RunAutoJoypad()
     {

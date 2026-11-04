@@ -64,7 +64,17 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     /// its level is read from the VDP as the clock stands (the VDP has been brought to it by the run loop): without that a stopped game never wakes (Beast Wrestler, Valis, Mr. Nutz, the HardBall games and a dozen more
     /// sit in STOP waiting for the vertical interrupt, which the stale sample hid).
     /// </summary>
+    /// <summary>Butchering mode's interrupt lines: an extra level held on the 68000's IPL pins (0 = none).</summary>
+    public int ButcherIpl;
     public int InterruptSample
+    {
+        get
+        {
+            if (ButcherIpl > 0) { int real = InterruptSampleUnbent; return Math.Max(real, ButcherIpl); }
+            return InterruptSampleUnbent;
+        }
+    }
+    private int InterruptSampleUnbent
     {
         get
         {
@@ -378,7 +388,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         BeginAccess(cycles);
         BusReads++;
         address &= 0xFFFFFE;
-        ushort v = ButcherCpu != null && address < 0x400000 ? ButcherCpu.CpuRead16(address, 22, x => ReadWord(x & 0xFFFFFE, upper, lower, t)) : ReadWord(address, upper, lower, t);
+        ushort v = ButcherCpu?.CpuPins != null && address < 0x400000 ? ButcherCpu.CpuRead16(address, 22, x => ReadWord(x & 0xFFFFFE, upper, lower, t)) : ReadWord(address, upper, lower, t);
         if (address >= 0x400000 && address < 0xE00000)
         {
             recentIoAddr[recentIoPos & 15] = address; recentIoVal[recentIoPos & 15] = v; recentIoPos++;

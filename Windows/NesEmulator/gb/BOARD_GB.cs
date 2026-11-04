@@ -398,6 +398,8 @@ public sealed class BOARD_GB : IGbCpuBus
     public Butcher? Butcher;
     /// <summary>Butchering mode's own sound writes (drop-outs, stutter): straight to the chip, not filtered.</summary>
     public void ButcherSoundWrite(ushort reg, byte v) => Apu.WriteRegister(reg, v);
+    /// <summary>Butchering mode's interrupt lines: a ghost vertical blank, a stuck timer interrupt.</summary>
+    public void ButcherInterrupt(int bit) { byte mask = (byte)(1 << bit); iflag |= mask; irqNew |= mask; }
 
     private void TickOamDma()
     {
