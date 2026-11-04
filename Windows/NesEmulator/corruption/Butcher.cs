@@ -121,12 +121,12 @@ internal sealed class PinFaults
 	private readonly uint flickerThreshold;          // fault absent on a fetch when rng < this
 	private uint rng;
 
-	public PinFaults(PinGroupSettings? s, int addrLines, uint seed)
+	public PinFaults(PinGroupSettings? s, int addrLines, uint seed, int dataLines = 8)
 	{
 		rng = seed == 0 ? 0x6c8e9cf5u : seed;
 		addrAnd = ~0; dataAnd = ~0;
 		addrBridges = Compile(s?.Address, addrLines, ref addrAnd, ref addrOr);
-		dataBridges = Compile(s?.Data, 8, ref dataAnd, ref dataOr);
+		dataBridges = Compile(s?.Data, dataLines, ref dataAnd, ref dataOr);
 		AddrActive = addrAnd != ~0 || addrOr != 0 || addrBridges.Length != 0;
 		DataActive = dataAnd != ~0 || dataOr != 0 || dataBridges.Length != 0;
 		Active = AddrActive || DataActive;
@@ -161,6 +161,7 @@ internal sealed class PinFaults
 
 	public int Addr(int a) => Apply(a, addrAnd, addrOr, addrBridges);
 	public byte Data(byte v) => (byte)Apply(v, dataAnd, dataOr, dataBridges);
+	public ushort Data16(ushort v) => (ushort)Apply(v, dataAnd, dataOr, dataBridges);
 
 	private static int Apply(int v, int and, int or, int[] bridges)
 	{
@@ -240,7 +241,20 @@ public sealed class ButcherProfile
 		Psg = true,
 		RamWindow = 0x10000, StackPage = 0xFF,
 	};
+	/// <summary>SNES: word VRAM (A0-A14), OAM records X, Y, tile, attributes; 128 KB work RAM; sound (SPC700 + DSP) not yet.</summary>
+	public static readonly ButcherProfile Snes = new()
+	{
+		Console = "snes",
+		ConsoleLines = 15, DataLines = 16,
+		RawOfField = new[] { 1, 2, 3, 0 }, FieldOfRaw = new[] { 3, 0, 1, 2 },
+		HiddenYMin = 0xE0, YMin = 0, YMax = 0xDF, XMax = 0xFF,
+		AttrBits = new[] { 7, 6, 4, 3, 1 },
+		AttrNames = new[] { "V-flip", "H-flip", "Priority", "Palette 2", "Palette 0" },
+		Channels = Array.Empty<string>(),
+		RamWindow = 0x20000, StackPage = 0x1F,
+	};
 	public bool Psg;
+	public int DataLines = 8;
 }
 
 public sealed class Butcher
@@ -269,7 +283,7 @@ public sealed class Butcher
 		settings = s ?? new ButcherSettings();
 		cartLines = AddressLinesFor(chrChipSize);
 		var on = settings.Enabled;
-		var c = new PinFaults(settings.ConsolePins, Profile.ConsoleLines, 0x9e3779b9u);
+		var c = new PinFaults(settings.ConsolePins, Profile.ConsoleLines, 0x9e3779b9u, Profile.DataLines);
 		var k = new PinFaults(settings.CartPins, cartLines, 0x85ebca6bu);
 		Console = on && c.Active ? c : null;
 		Cart = on && k.Active ? k : null;
@@ -341,6 +355,24 @@ public sealed class Butcher
 		int b = f.AddrActive ? f.Addr(a) & (mem.Length - 1) : a;
 		byte v = mem[b];
 		return f.DataActive ? f.Data(v) : v;
+	}
+
+	/// <summary>The same for a word-wide VRAM (the SNES).</summary>
+	public ushort PictureReadWord(ushort[] mem, int a)
+	{
+		var f = Console;
+		if (f == null || f.Misses()) return mem[a];
+		int b = f.AddrActive ? f.Addr(a) & (mem.Length - 1) : a;
+		ushort v = mem[b];
+		return f.DataActive ? f.Data16(v) : v;
+	}
+
+	public void PictureWriteWord(ushort[] mem, int a, ushort v)
+	{
+		var f = Console;
+		if (f is not { BendWrites: true } || f.Misses()) { mem[a] = v; return; }
+		int b = f.AddrActive ? f.Addr(a) & (mem.Length - 1) : a;
+		mem[b] = f.DataActive ? f.Data16(v) : v;
 	}
 
 	/// <summary>A write to that memory, with "bend writes too": it lands at the bent address with the bent value.</summary>
@@ -806,6 +838,7 @@ public sealed record ButcherReach(string PpuCore, bool ConsolePins, bool Console
 	/// <summary>The panel's labels for this console (NES defaults).</summary>
 	public string Console { get; init; } = "nes";
 	public int ConsoleAddressLines { get; init; } = 14;
+	public int ConsoleDataLines { get; init; } = 8;
 	public string[] AttrNames { get; init; } = ButcherProfile.Nes.AttrNames;
 	public string[] Channels { get; init; } = ButcherProfile.Nes.Channels;
 	public string PinsTitle { get; init; } = "Picture bus · console pins";

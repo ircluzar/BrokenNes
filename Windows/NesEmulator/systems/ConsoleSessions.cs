@@ -68,8 +68,30 @@ public static class ConsoleSessions
 /// which keeps every layer and sprite on PPU_FIXS), its sound on the SFC unit, the HLE unit or any NES APU.
 /// <para>The same session is the <b>WideMess</b> console (<c>wideMess: true</c>, docs/projects/widemess-spec.md): the SFC board with the WideMess picture chip (<see cref="PPU_WMS"/>) and its registers
 /// (<see cref="WmsExtension"/>), running a .wms game or a SNES game. Locked, the WideMess is a SNES, so a SNES game runs exactly as on the SNES console.</para></summary>
-public sealed partial class SnesSession : IConsoleSession
+public sealed partial class SnesSession : IConsoleSession, IButcherHost
 {
+    // ===================================================================== Butchering mode (corruption/Butcher.cs)
+    public Butcher? Butcher { get; private set; }
+    public void ApplyButcher(ButcherSettings settings)
+    {
+        var b = Butcher ?? new Butcher { Profile = ButcherProfile.Snes };
+        b.Apply(settings, 0);
+        Butcher = b;
+    }
+    public ButcherReach GetButcherReach() => new(
+        PpuCore: "SNES PPU", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
+        SpritesDma: true, Sprites2004: false, Sound: false, Bands: false, Ram: true)
+    { Console = "snes", ConsoleAddressLines = ButcherProfile.Snes.ConsoleLines, ConsoleDataLines = 16, AttrNames = ButcherProfile.Snes.AttrNames, Channels = Array.Empty<string>(),
+      PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The word-wide bus between the PPU and its two 32 KB video RAM chips: tile maps, tile graphics (D0-D7 the low chip, D8-D15 the high one).",
+      SoundNote = "Not reachable yet: the sound runs on its own SPC700 and DSP." };
+    private void ButcherFrame()
+    {
+        var b = Butcher;
+        if (b != null) { b.AttachRam(board.Wram); b.FrameStart((_, _) => { }); }
+        var on = b != null && !b.Idle ? b : null;
+        board.Ppu.Butcher = on;
+    }
+
     public const double NtscFps = 21477272.0 / (1364 * 262);
 
     private readonly BOARD_SFC board;
@@ -248,6 +270,7 @@ public sealed partial class SnesSession : IConsoleSession
 
     public void RunFrame()
     {
+        if (Butcher != null || board.Ppu.Butcher != null) ButcherFrame();
         mid = null;
         if (wms != null) BeforeFrameEnhance();   // milestone 6: the console's enhancements (SnesSession.Enhance.cs)
         board.RunFrame();

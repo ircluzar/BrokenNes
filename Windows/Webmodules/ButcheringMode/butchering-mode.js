@@ -25,7 +25,7 @@
     const ev = () => ({ on: false, rate: 25, duration: 30 });
     return {
       enabled: true,
-      consolePins: { address: new Array(consoleAddressLines).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
+      consolePins: { address: new Array(consoleAddressLines).fill(0), data: new Array(reach?.consoleDataLines || 8).fill(0), flicker: 0, bendWrites: false },
       cartPins: { address: new Array(cartLines).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
       sprites: {
         xJitter: { on: false, rate: 25, range: 8 },

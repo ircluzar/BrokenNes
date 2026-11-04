@@ -175,13 +175,13 @@ public partial class PPU_SFC
             case 0x18:
             {
                 // Outside vblank/forced blank the write is lost, but the address still increments.
-                if (VramWritable) { int a = VramAddress(); Vram[a] = (ushort)((Vram[a] & 0xFF00) | v); }
+                if (VramWritable) { int a = VramAddress(); VW(a, (ushort)((Vram[a] & 0xFF00) | v)); }
                 if ((vmain & 0x80) == 0) VramIncrement();
                 break;
             }
             case 0x19:
             {
-                if (VramWritable) { int a = VramAddress(); Vram[a] = (ushort)((Vram[a] & 0x00FF) | v << 8); }
+                if (VramWritable) { int a = VramAddress(); VW(a, (ushort)((Vram[a] & 0x00FF) | v << 8)); }
                 if ((vmain & 0x80) != 0) VramIncrement();
                 break;
             }
@@ -288,13 +288,19 @@ public partial class PPU_SFC
         return -1;
     }
 
+    /// <summary>Butchering mode (corruption/Butcher.cs): VRAM-bus pin faults (word bus: 15 address, 16 data lines) and the sprite filter. Null when off.</summary>
+    public Butcher? Butcher;
+    private ushort VR(int a) => Butcher == null ? Vram[a] : Butcher.PictureReadWord(Vram, a);
+    private void VW(int a, ushort v) { if (Butcher == null) Vram[a] = v; else Butcher.PictureWriteWord(Vram, a, v); }
+    private byte OF(int index, byte v) => Butcher is { SpritesActive: true } b ? b.FilterOamWrite(index, v) : v;
+
     private void WriteOam(byte v)
     {
         oamVersion++;
         if (oamInternal < 0x200)
         {
             if ((oamInternal & 1) == 0) oamLatch = v;
-            else { Oam[oamInternal - 1] = oamLatch; Oam[oamInternal] = v; }
+            else { Oam[oamInternal - 1] = OF(oamInternal - 1, oamLatch); Oam[oamInternal] = OF(oamInternal, v); }
         }
         else Oam[0x200 + (oamInternal & 0x1F)] = v;
         oamInternal = (ushort)((oamInternal + 1) & 0x3FF);
@@ -746,7 +752,7 @@ public partial class PPU_SFC
         int addr = mapBase + ((row & 31) << 5) + (col & 31);
         if (wide && (col & 32) != 0) addr += 0x400;
         if (tall && (row & 32) != 0) addr += wide ? 0x800 : 0x400;
-        return Vram[addr & 0x7FFF];
+        return VR(addr & 0x7FFF);
     }
 
     private void RenderBg(int bg, int bpp, int mode, int line)
@@ -796,7 +802,7 @@ public partial class PPU_SFC
             int bit = 7 - (px & 7), c = 0;
             for (int plane = 0; plane < bpp; plane += 2)
             {
-                ushort w = Vram[(addr + plane * 4) & 0x7FFF];
+                ushort w = VR((addr + plane * 4) & 0x7FFF);
                 c |= ((w >> bit) & 1) << plane | ((w >> (8 + bit)) & 1) << (plane + 1);
             }
             if (c == 0) { colors[sx] = Transparent; continue; }
@@ -975,8 +981,8 @@ public partial class PPU_SFC
                 if (outside == 2) { c1[sx] = Transparent; c2[sx] = Transparent; continue; }
                 tile = 0;
             }
-            else tile = Vram[(((py >> 3) & 127) << 7) | ((px >> 3) & 127)] & 0xFF;
-            int color = Vram[(tile << 6 | (py & 7) << 3 | (px & 7)) & 0x7FFF] >> 8;
+            else tile = VR((((py >> 3) & 127) << 7) | ((px >> 3) & 127)) & 0xFF;
+            int color = VR((tile << 6 | (py & 7) << 3 | (px & 7)) & 0x7FFF) >> 8;
             c1[sx] = color == 0 ? Transparent : direct ? DirectColor(color, 0) : Cgram[color];
             if (extbg)
             {
@@ -1081,7 +1087,7 @@ public partial class PPU_SFC
                 int ctx = hflip ? tilesWide - 1 - tx : tx;
                 int chr = (((tileLo >> 4) + ty) & 0x0F) << 4 | ((tileLo + ctx) & 0x0F);
                 int addr = (table + chr * 16 + fy) & 0x7FFF;
-                ushort p01 = Vram[addr], p23 = Vram[(addr + 8) & 0x7FFF];
+                ushort p01 = VR(addr), p23 = VR((addr + 8) & 0x7FFF);
                 if (FastPaths)
                 {
                     var expand = hflip ? PlaneExpandFlipped : PlaneExpand;
