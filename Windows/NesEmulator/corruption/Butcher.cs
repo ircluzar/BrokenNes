@@ -1004,6 +1004,17 @@ public sealed class Butcher
 		var h = history[ch]; Array.Copy(h, 0, h, 1, 7); h[0] = (a, v); if (historyCount[ch] < 8) historyCount[ch]++;
 	}
 	private int dropMask; private readonly int[] dropLeft = new int[16]; private bool pendingDropRelease;
+	/// <summary>
+	/// The host loaded a save state: the sound chip now holds the state's own registers, so any restore this engine still owes
+	/// (a channel drop-out ending, a drone / duty / detune releasing, the release pending after Off) is forgotten - written now it
+	/// would put the old timeline's values into the loaded machine (Leave = Off then reload would not undo everything). Effects
+	/// that are still on simply start again from the loaded state.
+	/// </summary>
+	public void NoteStateLoaded()
+	{
+		dropMask = 0; Array.Clear(dropLeft); pendingDropRelease = false;
+		droneLeft = dutyLeft = detuneLeft = stutterLeft = 0;
+	}
 	private int stutterLeft, droneLeft, dutyLeft, detuneLeft;
 
 	/// <summary>Filters a game write to a sound register on its way into the chip (NES $4000-$4017, Game Boy NR10-NR52).</summary>

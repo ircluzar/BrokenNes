@@ -46,3 +46,27 @@ Five campaigns, about 9,000 trials across the 8 consoles (NES, GB, GBC, SMS, GG,
 Source: `tools/butcher-fuzz` (`dotnet run -c Release --project tools/butcher-fuzz -- <console> <seconds> <outdir> <seed>`; ROM folders are the user library paths at the top of Program.cs).
 
 `bfuzz <console> <seconds> <outdir> <seed>`; `REPRO=<seed> [REPRO_UNDO=1] [REPRO_DEEP=1]` minimises (process-isolated); `FTRACE=1` traces frames, events and dumps `pre.state` / `pre.json`; `FUZZ_CONTROL=1` runs with the mode off; `NOEV=<digits>` disables harness events.
+
+## Round 3 (2026-11-04): reload fidelity + the test battery
+
+### Fixed
+- NES savestate carries the frame being drawn and the frame on show (`liveFrame`, `shownFrame`, deflated): the first frame after a load is exact; the 9 savestate goldens went from "PASS (framebuffer-only difference, expected)" to an exact "PASS".
+- NES Load State cleared nothing when the game had crashed (a bent CPU into a bad opcode): Reload State could not undo it. A load now clears the crash.
+- PPU_FIX: the PPU open-bus latch and its decay timers are in the state (relative to the dot counter, which is not).
+- **Leave did not fully undo** (every console): Off queued a sound restore (drop-out / drone / duty / detune release) for the next frame, which wrote the old timeline's register values into the machine the following reload had just restored. `Butcher.NoteStateLoaded()` is called by every host's Load State.
+- NES: entering Butchering mode (or a Glitch Harvester base state) on a **paused** game failed ("Failed to capture atomic NES state"): with no frame running for 250 ms the state is now taken directly.
+- Game Boy: after a load the session kept showing the old picture until a frame ran (Leave while paused showed the butchered frame).
+- Master System / Game Gear / Genesis on a cross-console picture chip (the user's Genesis profile: `NES:DMGS`): the bridge redraws on load, and remembers the picture of the last 8 states it saved (by hash), so Reload State and Leave give the exact picture back.
+- Harness: SNES "picture-only" mismatches were the harness hashing rows below the visible picture (the 512x240 buffer); hashes now cover width x height only.
+
+### Battery
+`powershell -NoProfile -File UAT\battery.ps1 [-FuzzMinutes 10] [-Soak 20000] [-Consoles nes,snes] [-Skip fuzz]` - builds to a scratch folder, then
+the golden suite on 10 runners (`UAT/run-parallel.ps1`, ~100 s instead of ~12 min), the Butchering scenarios (`tools/butcher-scenarios`: preset undo, soak,
+core swaps, mangled JSON; 788 checks) and a fuzz campaign, all consoles in parallel; writes `report.md` / `report.json` with a repro line per finding.
+`UAT/butcher-desktop.ps1` drives the real app over HTTP on its own instance (`BROKENNES_SAVES_DIR` isolated): the panel's enter / Reload State / leave
+calls and the battery freeze. First full battery: suite 137/0, scenarios 788/0, fuzz 2,080 trials; desktop 6/6 leave exact, battery frozen on Zelda + SMW.
+
+### Still open
+- Krion Conquest (NES, MMC3): reload drifts after normal play with Butchering mode never on (PPU pipeline at frame 2); not the mapper, cartridge or CPU counters.
+- Rare reload mismatches with cross-console cores (NES with `cpu=SM83` or `ppu=MD`, GB `GB-NESCLOCK`): 3 in 2,080 trials.
+- A bridged picture loaded from a state saved in another session is redrawn, not exact.

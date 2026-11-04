@@ -152,8 +152,25 @@ namespace NesEmulator
 			if (timeoutMs <= 0)
 				return await tcs.Task.ConfigureAwait(false);
 
-			var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs)).ConfigureAwait(false);
-			if (completed != tcs.Task) return null;
+			// A paused machine runs no RunFrame, so the request would never be served (entering Butchering mode or taking a
+			// Glitch Harvester base state on a paused game failed). Stopped between frames, it is at a frame boundary already:
+			// when no frame has run for a quarter of a second, the request is withdrawn and the state taken directly.
+			long framesAtRequest = framesExecutedTotal;
+			var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+			var idleFrom = DateTime.UtcNow;
+			while (!tcs.Task.IsCompleted && DateTime.UtcNow < deadline)
+			{
+				await Task.WhenAny(tcs.Task, Task.Delay(50)).ConfigureAwait(false);
+				if (tcs.Task.IsCompleted) break;
+				if (framesExecutedTotal != framesAtRequest) { framesAtRequest = framesExecutedTotal; idleFrom = DateTime.UtcNow; continue; }
+				if ((DateTime.UtcNow - idleFrom).TotalMilliseconds >= 250)
+				{
+					_snapshotRequested = false; _snapshotCallback = null;
+					if (tcs.Task.IsCompleted) break;   // served at the last moment after all
+					try { return SaveState(); } catch { return null; }
+				}
+			}
+			if (!tcs.Task.IsCompleted) return null;
 			return await tcs.Task.ConfigureAwait(false);
 		}
 
@@ -269,6 +286,11 @@ namespace NesEmulator
 			public bool hasFrameClock;
 			public long globalCpuCycle; public long ntscDotBudget; public bool ntscFrameParityToggle; public bool ntscWasEnabled; public int precisePpuDebt; public int preciseCarryDots; public bool dmcDmaPending;
 			public byte[] ram = Array.Empty<byte>();
+			/// <summary>The PPU's live render target, deflated + base64: the frame in progress at the save point already has its top rows, so without them the first frame
+			/// presented after a load mixes in whatever was on screen before the load (empty in older states: the load then behaves as before).</summary>
+			public string liveFrame = string.Empty;
+			/// <summary>The completed frame on show at the save point (same packing; empty when none was presented yet).</summary>
+			public string shownFrame = string.Empty;
 			public string cpu = string.Empty; public string ppu = string.Empty; public string apu = string.Empty; public string mapper = string.Empty; public byte[] prgRAM=Array.Empty<byte>(); public byte[] chrRAM=Array.Empty<byte>();
 			public byte controllerState; public byte controllerShift; public bool controllerStrobe; // input
 			// Bus-level state that lives outside any CPU/PPU/APU core's own GetState() - previously
@@ -441,6 +463,8 @@ namespace NesEmulator
 					romData = Array.Empty<byte>(), // Exclude ROM to save space
 					romName = RomName,
 					romPath = RomPath,
+					liveFrame = PackFrame(bus.ppu?.GetFrameBuffer()),
+					shownFrame = presentedValid ? PackFrame(presentedFrame) : string.Empty,
 					controllerState = bus.input.DebugGetRawState(),
 					controllerShift = bus.input.DebugGetShift(),
 					controllerStrobe = bus.input.DebugGetStrobe(),
@@ -479,6 +503,21 @@ namespace NesEmulator
 
 		// Minimal reflection-based serializer supporting primitive fields and primitive arrays.
 		// Produces stable JSON without relying on System.Text.Json for AOT-problematic types.
+		private static string PackFrame(byte[]? frame)
+		{
+			if (frame == null || frame.Length == 0) return string.Empty;
+			using var ms = new System.IO.MemoryStream();
+			using (var z = new System.IO.Compression.DeflateStream(ms, System.IO.Compression.CompressionLevel.Fastest, true)) z.Write(frame, 0, frame.Length);
+			return Convert.ToBase64String(ms.ToArray());
+		}
+		private static void UnpackFrame(string packed, byte[] into)
+		{
+			using var z = new System.IO.Compression.DeflateStream(new System.IO.MemoryStream(Convert.FromBase64String(packed)), System.IO.Compression.CompressionMode.Decompress);
+			var tmp = new byte[into.Length + 1]; int n = 0, got;
+			while (n < tmp.Length && (got = z.Read(tmp, n, tmp.Length - n)) > 0) n += got;
+			if (n == into.Length) Buffer.BlockCopy(tmp, 0, into, 0, n);   // only a frame of the same size as this core's target
+		}
+
 		private static string PlainSerialize(object? obj)
 		{
 			if (obj == null) return "null";
@@ -608,6 +647,8 @@ namespace NesEmulator
 				if (root.TryGetProperty("romHash", out var rhEl) && rhEl.ValueKind==System.Text.Json.JsonValueKind.String) st.romHash = rhEl.GetString() ?? string.Empty;
 				if (root.TryGetProperty("romName", out var rnM) && rnM.ValueKind==System.Text.Json.JsonValueKind.String) st.romName = rnM.GetString() ?? string.Empty;
 				if (root.TryGetProperty("romPath", out var rnP) && rnP.ValueKind==System.Text.Json.JsonValueKind.String) st.romPath = rnP.GetString() ?? string.Empty;
+				if (root.TryGetProperty("liveFrame", out var lfP) && lfP.ValueKind==System.Text.Json.JsonValueKind.String) st.liveFrame = lfP.GetString() ?? string.Empty;
+				if (root.TryGetProperty("shownFrame", out var sfP) && sfP.ValueKind==System.Text.Json.JsonValueKind.String) st.shownFrame = sfP.GetString() ?? string.Empty;
 				if (root.TryGetProperty("apuCore", out var apcEl)) st.apuCore = apcEl.GetInt32();
 				if (root.TryGetProperty("cpuCore", out var cpcEl)) st.cpuCore = cpcEl.GetInt32();
 				if (root.TryGetProperty("cpuCoreId", out var ccidEl) && ccidEl.ValueKind==System.Text.Json.JsonValueKind.String) st.cpuCoreId = ccidEl.GetString() ?? string.Empty;
@@ -727,6 +768,19 @@ namespace NesEmulator
 			try { bus.ActiveAPU?.ClearAudioBuffers(); } catch { }
 			// Restore controller
 			bus.input.DebugSetState(st.controllerState, st.controllerShift, st.controllerStrobe);
+			Butcher?.NoteStateLoaded();
+			crashed = false; crashInfo = string.Empty; crashKind = CrashKind.Generic;   // the loaded machine had not crashed: a state is how a crash (a bent CPU running into a bad opcode) is undone
+			try { if (st.liveFrame.Length > 0 && bus.ppu != null) UnpackFrame(st.liveFrame, bus.ppu.GetFrameBuffer()); } catch { }   // last: a core's SetState may have reallocated its target
+			try
+			{
+				if (st.shownFrame.Length > 0 && bus.ppu != null)
+				{
+					var live = bus.ppu.GetFrameBuffer();
+					if (presentedFrame == null || presentedFrame.Length != live.Length) presentedFrame = new byte[live.Length];
+					UnpackFrame(st.shownFrame, presentedFrame); presentedValid = true;
+				}
+				else if (st.liveFrame.Length > 0) presentedValid = false;   // the state had nothing on show yet: neither does the reloaded machine
+			} catch { }
 			StateLoaded?.Invoke();
 			#if DIAG_LOG
 			try {

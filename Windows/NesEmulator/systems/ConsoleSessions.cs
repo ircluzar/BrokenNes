@@ -613,7 +613,12 @@ public sealed class GbSession : IConsoleSession, IButcherHost
         if (!SupportsState) throw new NotSupportedException(StateUnsupportedReason);
         byte[] payload = ConsoleStateFile.Unwrap(state, Console, GameId, Title, StateUnits());
         byte[] before = board.SaveState();
-        try { board.LoadState(payload); }
+        try
+        {
+            board.LoadState(payload); Butcher?.NoteStateLoaded();
+            // the picture the state carries (v2), on show at once: a paused game shows the loaded frame, not the one from before the load
+            if (toNes == null && toSnes == null) { Array.Copy(board.Ppu.FrameBuffer, frame, PPU_GB.Width * PPU_GB.Height); width = PPU_GB.Width; height = PPU_GB.Height; }
+        }
         catch (Exception e)
         {
             board.LoadState(before);   // put the machine back as it was, and say so

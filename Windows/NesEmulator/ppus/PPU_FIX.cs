@@ -679,7 +679,7 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	// and the shifters/latches/sprite units are what the rest of that line (and the next) draw from.
 	private byte[] PackPipeline()
 	{
-		var b = new byte[8 + 4 + 2 + 32 + 2 + 48 + 3 + 2];
+		var b = new byte[8 + 4 + 2 + 32 + 2 + 48 + 3 + 2 + 1 + 32];
 		int o = 0;
 		void U16(ushort x) { b[o++] = (byte)x; b[o++] = (byte)(x >> 8); }
 		U16(bgShiftLo); U16(bgShiftHi); U16(atShiftLo); U16(atShiftHi);
@@ -690,6 +690,9 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		for (int i = 0; i < 8; i++) { b[o++] = nSprX[i]; b[o++] = nSprLo[i]; b[o++] = nSprHi[i]; b[o++] = nSprAttr[i]; b[o++] = nSprTile[i]; b[o++] = nSprRow[i]; }
 		b[o++] = (byte)vUpdateDelay; U16(vUpdatePending); // a $2006 copy still in flight
 		U16(bgPatternAddr);
+		// the PPU open-bus latch and each bit's decay, as dots from now (the dot counter itself is not in a state): a load must not decay them on the old timeline
+		b[o++] = ppuOpenBus;
+		for (int i = 0; i < 8; i++) { int rem = (int)Math.Clamp(ppuOpenBusDecayAt[i] - ppuDotCounter, int.MinValue, int.MaxValue); b[o++] = (byte)rem; b[o++] = (byte)(rem >> 8); b[o++] = (byte)(rem >> 16); b[o++] = (byte)(rem >> 24); }
 		return b;
 	}
 
@@ -711,6 +714,11 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		for (int i = 0; i < 8; i++) { nSprX[i] = b[o++]; nSprLo[i] = b[o++]; nSprHi[i] = b[o++]; nSprAttr[i] = b[o++]; nSprTile[i] = b[o++]; nSprRow[i] = b[o++]; }
 		if (b.Length >= 99) { vUpdateDelay = b[o++]; vUpdatePending = U16(); } else vUpdateDelay = 0;
 		if (b.Length >= 101) bgPatternAddr = U16();
+		if (b.Length >= 134)
+		{
+			ppuOpenBus = b[o++];
+			for (int i = 0; i < 8; i++) { int rem = b[o] | b[o + 1] << 8 | b[o + 2] << 16 | b[o + 3] << 24; o += 4; ppuOpenBusDecayAt[i] = ppuDotCounter + rem; }
+		}
 	}
 
 

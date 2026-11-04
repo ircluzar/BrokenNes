@@ -24,7 +24,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "verdict": "PASS (framebuffer-only difference, expected)",
+        "verdict": "PASS",
         "mismatchedFrameCount": 0,
         "immediateLossy": false
       }
@@ -46,7 +46,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "verdict": "PASS (framebuffer-only difference, expected)",
+        "verdict": "PASS",
         "mismatchedFrameCount": 0,
         "immediateLossy": false
       }
@@ -68,7 +68,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "verdict": "PASS (framebuffer-only difference, expected)",
+        "verdict": "PASS",
         "mismatchedFrameCount": 0,
         "immediateLossy": false
       }
@@ -90,7 +90,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "verdict": "PASS (framebuffer-only difference, expected)",
+        "verdict": "PASS",
         "mismatchedFrameCount": 0,
         "immediateLossy": false
       }
@@ -112,7 +112,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "verdict": "PASS (framebuffer-only difference, expected)",
+        "verdict": "PASS",
         "mismatchedFrameCount": 0,
         "immediateLossy": false
       }
@@ -134,7 +134,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "verdict": "PASS (framebuffer-only difference, expected)",
+        "verdict": "PASS",
         "mismatchedFrameCount": 0,
         "immediateLossy": false
       }
@@ -157,7 +157,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "verdict": "PASS (framebuffer-only difference, expected)",
+        "verdict": "PASS",
         "mismatchedFrameCount": 0,
         "immediateLossy": false
       }
@@ -203,7 +203,7 @@
       ],
       "expect": {
         "exitCode": 0,
-        "verdict": "PASS (framebuffer-only difference, expected)",
+        "verdict": "PASS",
         "mismatchedFrameCount": 0,
         "immediateLossy": false
       }

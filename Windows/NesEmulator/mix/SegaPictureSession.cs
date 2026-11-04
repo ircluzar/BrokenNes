@@ -79,13 +79,51 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
     // ---- save states: the board's (the picture chip keeps no state of its own; the bridge is rebuilt from the loaded VDP) ----
     public bool SupportsState => inner.SupportsState;
     public string StateUnsupportedReason => inner.StateUnsupportedReason;
-    public byte[] SaveState() => inner.SaveState();
+    public byte[] SaveState()
+    {
+        var st = inner.SaveState();
+        if (Bridged) RememberPicture(st);
+        return st;
+    }
+
+    // The bridged picture is not in the console's state (the line capture that drew it is the bridge's own), so a load could only redraw an
+    // approximation. The picture shown for each of the last few states this session saved is kept by the state's hash: loading one of them
+    // (Butchering mode's Reload State and Leave, a quick slot, a Glitch Harvester base state) shows exactly the picture it was taken on.
+    private readonly List<(string Key, uint[] Frame, int W, int H, bool Guest, int Side, (int, int, int, int) Region, uint[] Reference)> shown = new();
+    private static string KeyOf(byte[] st) => Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(st));
+    private void RememberPicture(byte[] st)
+    {
+        string k = KeyOf(st);
+        shown.RemoveAll(e => e.Key == k);
+        int n = frameWidth * frameHeight;
+        shown.Add((k, frame.AsSpan(0, n).ToArray(), frameWidth, frameHeight, guestSize, side, region, reference.AsSpan(0, n).ToArray()));
+        if (shown.Count > 8) shown.RemoveAt(0);
+    }
+    private bool RecallPicture(byte[] st)
+    {
+        if (shown.Count == 0) return false;
+        string k = KeyOf(st);
+        int i = shown.FindIndex(e => e.Key == k); if (i < 0) return false;
+        var e = shown[i];
+        frameWidth = e.W; frameHeight = e.H; guestSize = e.Guest; side = e.Side; region = e.Region;
+        e.Frame.CopyTo(frame, 0); e.Reference.CopyTo(reference, 0);
+        return true;
+    }
     public byte[] SaveStatePayload() => inner.SaveStatePayload();
 
     public void LoadState(byte[] state)
     {
         inner.LoadState(state);
         if (IsNesChip(ppuId)) SetBridge(ppuId);   // the translators' caches and the line capture describe the old picture
+        // and the bridged picture on show is the old machine's until a frame runs: draw it from the loaded state now (a view only - nothing in the machine moves),
+        // so a paused game shows where the load put it (Butchering mode's Leave, a Reload State while paused)
+        if (Bridged && RecallPicture(state)) return;
+        try
+        {
+            if (toNesSms != null) { Take(toNesSms.Render(sms!.Vdp, smsCap!)); BuildSmsReference(toNesSms.Window); }
+            else if (toNesMd != null) { Take(toNesMd.Render()); toNesMd.BuildReference(reference, frameWidth, out var r); region = Viewed(r); }
+        }
+        catch { }
     }
 
     // ---------------------------------------------------------------------------------------------------------- IConsoleSession

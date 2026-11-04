@@ -188,6 +188,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
             using var r = new BinaryReader(new MemoryStream(payload), System.Text.Encoding.UTF8);
             Board.LoadState(r);
             if (r.BaseStream.Position != payload.Length) throw new InvalidDataException("The state has more data than this machine reads (it was made by another layout).");
+            Butcher?.NoteStateLoaded();
             AfterStateLoad();
         }
         catch (Exception e)

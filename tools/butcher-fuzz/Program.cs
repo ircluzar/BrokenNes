@@ -86,8 +86,8 @@ IMachine Make(string rom, Random r, out string desc)
 }
 
 // ---------- one trial ----------
-ulong HashP(IMachine m, ulong h) { foreach (var p in m.Frame) { h ^= p; h *= 1099511628211UL; } m.Audio(); return h; }
-ulong Hash(IMachine m, ulong h) { foreach (var p in m.Frame) { h ^= p; h *= 1099511628211UL; } foreach (var s in m.Audio()) { h ^= (ushort)s; h *= 1099511628211UL; } return h; }
+ulong HashP(IMachine m, ulong h) { foreach (var p in m.Frame.AsSpan(0, Math.Min(m.Frame.Length, m.Visible))) { h ^= p; h *= 1099511628211UL; } m.Audio(); return h; }
+ulong Hash(IMachine m, ulong h) { foreach (var p in m.Frame.AsSpan(0, Math.Min(m.Frame.Length, m.Visible))) { h ^= p; h *= 1099511628211UL; } foreach (var s in m.Audio()) { h ^= (ushort)s; h *= 1099511628211UL; } return h; }
 PadButtons Pad(Random r, int f) { var v = (PadButtons)r.Next(0, 4096); return f < 200 ? (f % 40 < 4 ? PadButtons.Start : PadButtons.None) : v; }
 
 (ulong h, string? oracle) Trial(int seed, string rom, bool deep)
@@ -115,6 +115,7 @@ PadButtons Pad(Random r, int f) { var v = (PadButtons)r.Next(0, 4096); return f 
                 if (deep && m.CanState)
                 {
                     step = "save-before"; before = m.Save(); m.Load(before); m.Audio();
+                    { var again = m.Save(); if (!again.AsSpan().SequenceEqual(before)) { int i0 = 0; while (i0 < Math.Min(again.Length, before.Length) && again[i0] == before[i0]) i0++; var tx = System.Text.Encoding.UTF8.GetString(before); Find("oracle", "load-save-not-idempotent " + (tx.StartsWith("{") ? tx.Substring(Math.Max(0, i0 - 50), Math.Min(70, tx.Length - Math.Max(0, i0 - 50))).Replace("\\", "") : $"byte {i0}"), ctx); } }
                     var prA = new Random(seed ^ 0x5A5A); for (int i = 0; i < applyAt; i++) Pad(prA, i);
                     ulong c = 0; for (int i = 0; i < refLen; i++) { m.Pad(Pad(prA, 1000 + i)); m.Run(); c = HashP(m, c); } cleanRef = c; refState = m.CanState ? m.Save() : null;
                     m.Load(before); m.Audio();
@@ -149,7 +150,7 @@ PadButtons Pad(Random r, int f) { var v = (PadButtons)r.Next(0, 4096); return f 
             var pr2 = new Random(seed ^ 0x5A5A); // the pad stream used for the reference was drawn after the warm-up; redo it identically
             for (int i = 0; i < applyAt; i++) Pad(pr2, i);
             ulong c = 0; for (int i = 0; i < refLen; i++) { m.Pad(Pad(pr2, 1000 + i)); m.Run(); c = HashP(m, c); }
-            if (c != cleanRef) { var ns = m.Save(); bool same = refState != null && ns.AsSpan().SequenceEqual(refState); string where = ""; if (!same && refState != null) { int i0 = 0; while (i0 < Math.Min(ns.Length, refState.Length) && ns[i0] == refState[i0]) i0++; var t1 = System.Text.Encoding.UTF8.GetString(refState); if (t1.Length > i0 && t1.StartsWith("{")) where = " near " + t1.Substring(Math.Max(0, i0 - 40), Math.Min(50, t1.Length - Math.Max(0, i0 - 40))).Replace("\\", ""); else where = $" at byte {i0}/{refState.Length}"; } Find("oracle", "undo-mismatch " + (same ? "picture-only " : "STATE" + where + " ") + (hostile ? "hostile" : "normal"), $"{ctx}\nsettings {sj}"); return (h, "undo"); }
+            if (c != cleanRef) { var ns = m.Save(); bool same = refState != null && ns.AsSpan().SequenceEqual(refState); if (Environment.GetEnvironmentVariable("DUMP") == "1" && refState != null) { File.WriteAllBytes($"dump-{seed}-before.st", before!); File.WriteAllBytes($"dump-{seed}-ref.st", refState); File.WriteAllBytes($"dump-{seed}-undo.st", ns); } string where = ""; if (!same && refState != null) { int i0 = 0; while (i0 < Math.Min(ns.Length, refState.Length) && ns[i0] == refState[i0]) i0++; var t1 = System.Text.Encoding.UTF8.GetString(refState); if (t1.Length > i0 && t1.StartsWith("{")) where = " near " + t1.Substring(Math.Max(0, i0 - 40), Math.Min(50, t1.Length - Math.Max(0, i0 - 40))).Replace("\\", ""); else where = $" at byte {i0}/{refState.Length}"; } Find("oracle", "undo-mismatch " + (same ? "picture-only " : "STATE" + where + " ") + (hostile ? "hostile" : "normal"), $"{ctx}\nsettings {sj}"); return (h, "undo"); }
             if (m.Host.Butcher is { Idle: false } bb) { var names = "RamBusFaults IrqActive irqLeft CiramFault PaletteBusFaults VideoBusFaults PadActive SoundBus SampleFaults DacActive Dma Copro Console Cart CpuPins SoundCpu SpritesActive SoundActive BandsActive dropMask RamActive PaletteActive RotActive".Split(' '); var on = names.Where(n => { const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance; object? v = bb.GetType().GetField(n, F)?.GetValue(bb) ?? bb.GetType().GetProperty(n, F)?.GetValue(bb); return v is true || v is int i && i != 0 || v is uint u && u != 0 || (v != null && v is not bool && v is not int && v is not uint); }); Find("oracle", "engine-not-idle-after-off: " + string.Join(",", on), ctx); }
         }
         catch (Exception e) { Find("crash:undo", Sig(e), $"{ctx}\n{e}"); }
@@ -201,12 +202,12 @@ log.Flush(); Environment.Exit(0);
 
 interface IMachine
 {
-    IButcherHost Host { get; } uint[] Frame { get; } bool CanState { get; }
+    IButcherHost Host { get; } uint[] Frame { get; } bool CanState { get; } int Visible { get; }
     void Run(); void Pad(PadButtons b); short[] Audio(); byte[] Save(); void Load(byte[] s); void Reset(); void TrySwap(Random r);
 }
 sealed class NesM(NES n) : IMachine
 {
-    public IButcherHost Host => n; public uint[] Frame => n.GetFrameBuffer().Select(x => (uint)x).ToArray(); public bool CanState => true;
+    public IButcherHost Host => n; public uint[] Frame => n.GetFrameBuffer().Select(x => (uint)x).ToArray(); public bool CanState => true; public int Visible => int.MaxValue;
     public void Run() => n.RunFrame();
     public void Pad(PadButtons b) { int v = (int)b; n.SetInput(Enumerable.Range(0, 8).Select(i => (v >> i & 1) != 0).ToArray()); }
     public short[] Audio() => n.GetAudioBuffer().Select(x => (short)Math.Clamp(x * 32767, -32768, 32767)).ToArray();
@@ -219,7 +220,7 @@ sealed class SesM(IConsoleSession s) : IMachine
 {
     readonly short[] buf = new short[65536];
     public IButcherHost Host => (IButcherHost)(s is NesEmulator.Mix.SegaPictureSession sp ? sp.Inner : s);
-    public uint[] Frame => s.Frame; public bool CanState => s.SupportsState;
+    public uint[] Frame => s.Frame; public bool CanState => s.SupportsState; public int Visible => s.FrameWidth * s.FrameHeight;
     public void Run() => s.RunFrame(); public void Pad(PadButtons b) => s.SetPad(0, b);
     public short[] Audio() { var l = new List<short>(); int g; while ((g = s.ReadSamples(buf)) > 0) l.AddRange(buf.AsSpan(0, g).ToArray()); return l.ToArray(); }
     public byte[] Save() => s.SaveState(); public void Load(byte[] st) => s.LoadState(st); public void Reset() => s.Reset();
