@@ -593,6 +593,7 @@ public sealed class PPU_GB
     private void OutputPixel(int x, int bc, int oc, byte oa, byte attr)
     {
         int i = ly * Width + x;
+        if ((uint)i >= (uint)FrameBuffer.Length) return;   // a pixel still queued when the line ended past the screen (bent LCDC writes can do it): dropped, not a crash
         uint color; byte shade;
         if (Cgb)
         {

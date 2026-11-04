@@ -280,7 +280,7 @@ namespace NesEmulator.Mix
             for (int v = 0; v < n; v++)
             {
                 int b = v * 16, envx = r[b + 8] & 0x7F;
-                int l = Math.Abs((sbyte)r[b]), rt = Math.Abs((sbyte)r[b + 1]);
+                int l = Math.Abs((int)(sbyte)r[b]), rt = Math.Abs((int)(sbyte)r[b + 1]);
                 double loud = envx * (l + rt) / 2.0;
                 bool isNoise = (r[0x3D] & (1 << v)) != 0;
                 int pitch = r[b + 2] | (r[b + 3] & 0x3F) << 8;

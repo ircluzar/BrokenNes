@@ -321,8 +321,11 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     private void SyncSound()
     {
         Sound.RunTo(t);
-        while (cpuStall > 0)
+        // A Z80 that does nothing but hit the bank window (runaway code: a damaged sound driver, Butchering mode's bent Z80 pins) charges the 68000 more stall than the stall
+        // lets it run, so paying it off would never end: after a bounded number of rounds the rest is dropped (a real game never comes near this).
+        for (int rounds = 0; cpuStall > 0; rounds++)
         {
+            if (rounds >= 64) { cpuStall = 0; break; }
             t += cpuStall; cpuStall = 0;
             Vdp.RunTo(t);
             Sound.RunTo(t);

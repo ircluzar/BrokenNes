@@ -534,7 +534,12 @@ public sealed class Butcher
 		var co = new PinFaults(settings.Unsafe.CoproPins, 24, 0xD3A2646Cu);
 		Copro = on && Profile.Console == "snes" && co.Active ? co : null;
 		IrqActive = on && (settings.Unsafe.GhostNmi.On || settings.Unsafe.DropNmi.On || settings.Unsafe.StuckIrq.On || settings.Unsafe.Z80BusHold.On || settings.Unsafe.Z80ResetHold.On || settings.Unsafe.ClockStall.On || settings.Unsafe.ClockRush.On);
-		if (!IrqActive) { ghostLeft = dropLeft2 = 0; if (irqLeft > 0) { irqLeft = 0; HoldIrqLine?.Invoke(false); } }
+		if (!IrqActive)
+		{
+			ghostLeft = dropLeft2 = 0; if (irqLeft > 0) { irqLeft = 0; HoldIrqLine?.Invoke(false); }
+			stallLeft = rushLeft = 0;   // leaving mid-stall must not freeze the game: the host keeps asking ClockStallNow after the engine stops ticking
+			if (busHoldLeft > 0 || resetHoldLeft > 0) { busHoldLeft = resetHoldLeft = 0; Z80Lines?.Invoke(false, true); }
+		}
 		RotActive = on && (settings.Unsafe.RamRot.On || settings.Unsafe.VramRot.On || settings.Unsafe.SoundRamRot.On || settings.Unsafe.EchoAbuse.On);
 		PadActive = on && settings.Unsafe.PadLines is { } pl && Array.Exists(pl, x => x != 0);
 		paletteLut.Clear(); paletteMode = Math.Clamp(settings.Palette.Mode, 0, 4); paletteTick = 0;
@@ -1022,7 +1027,7 @@ public sealed class Butcher
 		if (dutyLeft > 0 && Array.IndexOf(pf.DutyRegs, r) >= 0) v = (byte)((v & 0x3F) | ((so.Duty.Value & 3) << 6));
 		bool periodLow = Array.IndexOf(pf.PeriodLowRegs, r) >= 0;
 		if (detuneLeft > 0 && periodLow) v ^= (byte)Math.Clamp(so.Detune.Value, 1, 255);
-		if (Any(so.BitFlip.Bits) && RA() < Threshold(so.BitFlip.Rate))
+		if (Any(so.BitFlip.Bits.AsSpan(0, Math.Min(5, so.BitFlip.Bits.Length)).ToArray()) && RA() < Threshold(so.BitFlip.Rate))   // only the five bits the panel shows count (a longer array from the API must not leave none to pick)
 		{
 			int n = 0; var picks = new int[5];
 			for (int i = 0; i < Math.Min(5, so.BitFlip.Bits.Length); i++) if (so.BitFlip.Bits[i]) picks[n++] = i;
@@ -1402,7 +1407,7 @@ public sealed class Butcher
 		int bits = (v & 0x80) != 0 ? 0x0F : 0x3F;   // the data a latch / data byte carries
 		int d = v & bits;
 		if (detuneLeft > 0) d ^= Math.Clamp(so.Detune.Value, 1, 255) & bits;
-		if (Any(so.BitFlip.Bits) && RA() < Threshold(so.BitFlip.Rate))
+		if (Any(so.BitFlip.Bits.AsSpan(0, Math.Min(5, so.BitFlip.Bits.Length)).ToArray()) && RA() < Threshold(so.BitFlip.Rate))   // only the five bits the panel shows count (a longer array from the API must not leave none to pick)
 		{
 			int n = 0; var picks = new int[5];
 			for (int i = 0; i < Math.Min(5, so.BitFlip.Bits.Length); i++) if (so.BitFlip.Bits[i] && ((1 << i) & bits) != 0) picks[n++] = i;

@@ -93,11 +93,15 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
         Supervisor = true; Trace = false; IntMask = 7;
         pend = 0;
         // two idle clocks of bus preparation are not modelled; the four reads are what matters to the board
-        A[7] = ReadMem(Long, 0);
-        Pc = ReadMem(Long, 4);
-        Prefetch();
-        Prefetch();
-        Flush();
+        try
+        {
+            A[7] = ReadMem(Long, 0);
+            Pc = ReadMem(Long, 4);
+            Prefetch();
+            Prefetch();
+            Flush();
+        }
+        catch (AddressErrorSignal) { Halted = true; pend = 0; }   // an odd reset vector (a damaged ROM, Butchering mode's bent pins): the real chip double-faults and halts
     }
 
     // ================================================================================================================
