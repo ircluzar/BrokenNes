@@ -183,3 +183,5 @@ sites), Game Boy OAM DMA source bus (DMA pins), work-RAM bus pins on every conso
 
 Wave 8 finished (2026-11-04): + Genesis BUSREQ / Z80 reset holds, clock stall / rush on every console. Golden suites
 green after the whole wave. **Only left**: palette bus on Game Boy Color / Master System / Game Gear / Genesis CRAM.
+
+Palette bus finished (2026-11-04, c5d65492): GBC (6 address / 8 data, both colour bytes), SMS / GG (5 index lines), Genesis (6 address / CRAM data). Probe: SMS + Genesis picture changes, all-off identical. GBC not probed with a Color game yet.
