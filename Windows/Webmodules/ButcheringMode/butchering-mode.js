@@ -50,6 +50,8 @@
       bands: (() => { const b = () => ({ on: false, rate: 25, width: 30, strength: 8, lifetime: 30 }); return { shift: b(), slip: b(), patternSwap: b(), nametableSwap: b(), bgOff: b(), spritesOff: b(), spriteHeight: b(), bend: b(), extra1: b(), extra2: b(), extra3: b() }; })(),
       ram: { on: false, rate: 25, step: 1, lifetime: 60, maxProbes: 3 },
       palette: { on: false, mode: 0, invert: false, channelSwap: false, posterize: 0, cycleFrames: 0 },
+      ciramA10: 0, ciramFlicker: 0,
+      videoDac: { address: [], data: new Array(24).fill(0), flicker: 0, bendWrites: false },
       unsafe: { cpuPins: { address: new Array(reach?.cpuAddressLines || 15).fill(0), data: new Array(reach?.cpuDataLines || 8).fill(0), flicker: 0, bendWrites: false },
                 soundCpuPins: { address: new Array(reach?.soundCpuLines || 0).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
                 ramRot: { on: false, rate: 25, bits: 1 }, vramRot: { on: false, rate: 25, bits: 1 },
@@ -199,7 +201,8 @@
     if (off.sound) e.sound = d.sound;
     if (off.bands) e.bands = d.bands;
     if (off.ram) e.ram = d.ram;
-    if (off.palette) e.palette = d.palette;
+    if (off.palette) { e.palette = d.palette; e.videoDac = d.videoDac; }
+    if (off.picture) { e.ciramA10 = 0; }
     if (off.unsafe) { e.unsafe = d.unsafe; e.consolePins.bendWrites = false; e.cartPins.bendWrites = false; }
     delete e.groupsOff;
     return e;
@@ -440,6 +443,12 @@
       `This cartridge (mapper ${reach.mapper}) does not expose its CHR chip yet.`,
       reach.chrIsRam ? 'Writes to CHR-RAM land bent too, so the damage stays until Reload State.' : 'CHR-ROM cannot be written: this has no effect here.'));
 
+    if (isNes) g.append(el('details', { open: true }, groupSummary('Picture bus · CIRAM A10 (mirroring pin)', 'picture'),
+      el('div', { class: 'why' }, 'The cartridge line that picks which nametable the console’s VRAM answers: shorted, screens repeat, swap or tear (PPU FIX).'),
+      el('div', { class: 'fx' }, el('div', { class: 'bits' }, el('label', {}, 'A10 ', el('select', { onchange: (e) => { settings.ciramA10 = Number(e.target.value); push(); } },
+        ...['connected', 'stuck low', 'stuck high', 'inverted'].map((n, i) => el('option', { value: i, selected: settings.ciramA10 === i }, n))))),
+        slider('Flicker', settings, 'ciramFlicker', 0, 100, 1))));
+
     const spritesWhy = reach.spritesDma ? (reach.sprites2004 || !isNes ? '' : 'Single $2004 writes are not filtered on this PPU core (DMA is).')
       : isNes ? `Not reachable on the ${reach.ppuCore} PPU core.` : 'Not reachable on this console yet.';
     g.append(el('details', { open: true }, groupSummary('Sprites', 'sprites'),
@@ -514,7 +523,10 @@
           el('label', {}, el('input', { type: 'checkbox', checked: pl.invert, onchange: (e) => { pl.invert = e.target.checked; push(); } }), 'Invert'),
           el('label', {}, el('input', { type: 'checkbox', checked: pl.channelSwap, onchange: (e) => { pl.channelSwap = e.target.checked; push(); } }), 'Channel swap')),
         slider('Posterize', pl, 'posterize', 0, 8, 1),
-        slider('Cycle frames', pl, 'cycleFrames', 0, 240, 1))));
+        slider('Cycle frames', pl, 'cycleFrames', 0, 240, 1)),
+      el('div', { class: 'fx' }, el('div', { class: 'namerow' }, el('label', { class: 'name' }, 'Video DAC pins (R0-R7, G0-G7, B0-B7)'), soloBtn(settings.videoDac, 'Video DAC pins (R0-R7, G0-G7, B0-B7)')),
+        el('div', { class: 'why' }, 'The 24 lines into the video DAC: stuck or bridged colour bits on the final picture.'),
+        pinGrid('D', settings.videoDac.data))));
 
     const un = settings.unsafe;
     const rotFx = (label, why, fx) => el('div', { class: 'fx' }, check(label, fx, 'on'), el('div', { class: 'why' }, why),

@@ -1061,7 +1061,14 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 		}
 	}
 
+	// Butchering mode's CIRAM A10 pin (the cartridge's mirroring line): stuck low / high / inverted, after the mirroring.
 	private ushort MirrorVRAMAddress(ushort address)
+	{
+		ushort m = MirrorVRAMAddressUnbent(address);
+		return bus.Butcher is { CiramFault: > 0 } bc ? bc.CiramA10(m) : m;
+	}
+
+	private ushort MirrorVRAMAddressUnbent(ushort address)
 	{
 		ushort offset = (ushort)(address & 0x0FFF);
 

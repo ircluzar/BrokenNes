@@ -28,6 +28,11 @@ public sealed class ButcherSettings
 	public BandSettings Bands { get; set; } = new();
 	public RamSettings Ram { get; set; } = new();
 	public PaletteSettings Palette { get; set; } = new();
+	/// <summary>NES: the cartridge's CIRAM A10 (mirroring) line: 0 connected, 1 stuck low, 2 stuck high, 3 inverted; and its flicker.</summary>
+	public int CiramA10 { get; set; }
+	public double CiramFlicker { get; set; }
+	/// <summary>The video DAC's 24 input lines (R0-R7, G0-G7, B0-B7): stuck / bridged bits on the final colours (display only).</summary>
+	public PinGroupSettings VideoDac { get; set; } = new();
 	public UnsafeSettings Unsafe { get; set; } = new();
 }
 
@@ -232,6 +237,7 @@ internal sealed class PinFaults
 	public int Addr(int a) => Apply(a, addrAnd, addrOr, addrBridges);
 	public byte Data(byte v) => (byte)Apply(v, dataAnd, dataOr, dataBridges);
 	public ushort Data16(ushort v) => (ushort)Apply(v, dataAnd, dataOr, dataBridges);
+	public int Data24(int v) => Apply(v, dataAnd, dataOr, dataBridges) & 0xFFFFFF;
 
 	private static int Apply(int v, int and, int or, int[] bridges)
 	{
@@ -384,6 +390,15 @@ public sealed class Butcher
 	public bool BandsActive { get; private set; }
 	public bool RamActive { get; private set; }
 	public bool PaletteActive { get; private set; }
+	internal PinFaults? VideoDacFaults;
+	public int CiramFault { get; private set; }
+	private uint rngCiram = 0x3C6EF372u;
+	/// <summary>A nametable RAM index (0-0x7FF) through the faulted A10 line.</summary>
+	public ushort CiramA10(ushort i)
+	{
+		if (settings.CiramFlicker > 0 && Step(ref rngCiram) < (uint)(Math.Clamp(settings.CiramFlicker, 0, 99.9) / 100.0 * uint.MaxValue)) return i;
+		return CiramFault switch { 1 => (ushort)(i & ~0x400), 2 => (ushort)(i | 0x400), 3 => (ushort)(i ^ 0x400), _ => i };
+	}
 	public bool RotActive { get; private set; }
 	public bool PadActive { get; private set; }
 
@@ -413,7 +428,10 @@ public sealed class Butcher
 			|| bd.Extra1.On || bd.Extra2.On || bd.Extra3.On);
 		if (!BandsActive) { Array.Clear(bandLife); LineBendMask = 0; TallXor = 0; }
 		RamActive = on && settings.Ram.On;
-		PaletteActive = on && settings.Palette.On;
+		var vd = new PinFaults(settings.VideoDac, 1, 0x1B873593u, 24);
+		VideoDacFaults = on && vd.DataActive ? vd : null;
+		PaletteActive = on && (settings.Palette.On || VideoDacFaults != null);
+		CiramFault = on ? Math.Clamp(settings.CiramA10, 0, 3) : 0;
 		var cp = new PinFaults(settings.Unsafe.CpuPins, Profile.CpuLines, 0xC2B2AE35u, Profile.CpuDataLines);
 		CpuPins = on && cp.Active ? cp : null;
 		var sc = new PinFaults(settings.Unsafe.SoundCpuPins, Math.Max(1, Profile.SoundCpuLines), 0x27D4EB2Fu);
@@ -438,7 +456,7 @@ public sealed class Butcher
 	}
 
 	/// <summary>Nothing is on: the hooks can be detached.</summary>
-	public bool Idle => !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
+	public bool Idle => CiramFault == 0 && !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
 
 	public static int AddressLinesFor(int size)
 	{
@@ -1245,6 +1263,7 @@ public sealed class Butcher
 	{
 		if (paletteLut.TryGetValue(c, out var m)) return m;
 		var ps = settings.Palette;
+		if (!ps.On) { m = VideoDac(c); if (paletteLut.Count < 65536) paletteLut[c] = m; return m; }
 		double r = (c >> 16 & 255) / 255.0, g = (c >> 8 & 255) / 255.0, b = (c & 255) / 255.0;
 		double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b)), d = max - min, h = 0, sat = max == 0 ? 0 : d / max, v = max;
 		if (d > 0) h = max == r ? ((g - b) / d + 6) % 6 : max == g ? (b - r) / d + 2 : (r - g) / d + 4;
@@ -1256,8 +1275,18 @@ public sealed class Butcher
 		if (ps.Invert) (r, g, b) = (1 - r, 1 - g, 1 - b);
 		if (ps.Posterize >= 2) { int n = Math.Clamp(ps.Posterize, 2, 8) - 1; r = Math.Round(r * n) / n; g = Math.Round(g * n) / n; b = Math.Round(b * n) / n; }
 		m = (c & 0xFF000000u) | (uint)Math.Clamp((int)(r * 255 + 0.5), 0, 255) << 16 | (uint)Math.Clamp((int)(g * 255 + 0.5), 0, 255) << 8 | (uint)Math.Clamp((int)(b * 255 + 0.5), 0, 255);
+		m = VideoDac(m);
 		if (paletteLut.Count < 65536) paletteLut[c] = m;
 		return m;
+	}
+
+	/// <summary>The video DAC's lines on one colour (bits 0-7 R, 8-15 G, 16-23 B).</summary>
+	private uint VideoDac(uint c)
+	{
+		var f = VideoDacFaults; if (f == null) return c;
+		uint rgb = (c >> 16 & 255) | (c >> 8 & 255) << 8 | (c & 255) << 16;
+		uint o = (uint)f.Data24((int)rgb);
+		return (c & 0xFF000000u) | (o & 255) << 16 | (o >> 8 & 255) << 8 | (o >> 16 & 255);
 	}
 
 	// ===================================================================================== the SN76489 PSG (Master System / Game Gear)
