@@ -210,19 +210,19 @@
     if (off.ram) e.ram = d.ram;
     if (off.palette) { e.palette = d.palette; e.videoDac = d.videoDac; e.paletteBus = d.paletteBus; }
     if (off.picture) { e.ciramA10 = 0; }
-    if (off.unsafe) { e.unsafe = d.unsafe; e.consolePins.bendWrites = false; e.cartPins.bendWrites = false; }
+    if (off.unsafe) { e.ram = d.ram; e.unsafe = d.unsafe; e.consolePins.bendWrites = false; e.cartPins.bendWrites = false; }
     delete e.groupsOff;
     return e;
   }
 
   // A section header with its group switch (clicking the switch does not fold the section).
-  function groupSummary(title, key) {
+  function groupSummary(title, key, tab) {
     settings.groupsOff = settings.groupsOff || {};
     const box = el('input', { type: 'checkbox', checked: !settings.groupsOff[key], title: 'Group on / off (keeps its settings)',
       onclick: (e) => e.stopPropagation(),
       onchange: (e) => { settings.groupsOff[key] = !e.target.checked; push(); } });
     const sm = el('summary', {}, box, ' ', title);
-    queueMicrotask(() => { if (sm.parentElement) sm.parentElement.dataset.tab = key; });
+    queueMicrotask(() => { if (sm.parentElement) sm.parentElement.dataset.tab = tab || key; });
     return sm;
   }
 
@@ -399,8 +399,8 @@
   }
 
   // ---------------------------------------------------------------- tabs + search
-  const TABS = [['picture', 'Picture'], ['sprites', 'Sprites'], ['sound', 'Sound'], ['bands', 'Bands'], ['palette', 'Palette'], ['ram', 'RAM'], ['unsafe', 'Unsafe']];
-  let activeTab = (() => { try { return localStorage.getItem('butcher.tab') || 'picture'; } catch { return 'picture'; } })();
+  const TABS = [['picture', 'Picture'], ['sprites', 'Sprites'], ['sound', 'Sound'], ['bands', 'Bands'], ['palette', 'Palette'], ['unsafe', 'Unsafe']];
+  let activeTab = (() => { try { const t = localStorage.getItem('butcher.tab') || 'picture'; return t === 'ram' ? 'unsafe' : t; } catch { return 'picture'; } })();   // the RAM tab is gone: RAM nudges are unsafe
   let query = '';
   function tabify() {
     const g = $('groups');
@@ -621,8 +621,8 @@
 
     const rm = settings.ram;
 
-    g.append(el('details', { open: true }, groupSummary('RAM nudges', 'ram'),
-      el('div', { class: 'why' }, 'Learns which RAM bytes are live game variables (positions, timers, speeds) and nudges them a step at a time, only inside the range the game itself used. Pointers and flags are filtered out.'),
+    g.append(el('details', { open: true, class: 'unsafe' }, groupSummary('RAM nudges (unsafe: can leave the game broken)', 'ram', 'unsafe'),
+      el('div', { class: 'why' }, 'Writes into the work RAM of the game itself, so it can break progress until Reload State. Learns which RAM bytes are live game variables (positions, timers, speeds) and nudges them a step at a time, only inside the range the game itself used. Pointers and flags are filtered out.'),
       el('div', { class: 'fx' }, check('Nudge variables', rm, 'on'),
         slider('Rate', rm, 'rate', 0, 100, 1), slider('Step', rm, 'step', 1, 8, 1),
         slider('Frames', rm, 'lifetime', 1, 600, 1), slider('At once', rm, 'maxProbes', 1, 8, 1),
@@ -643,10 +643,9 @@
     if (reach.sound !== false) { c.push(['bits', so.bitFlip, 'bits'], ['fx', so.nudge], ['bits', so.drops, 'channels'], ['fx', so.stutter], ['fx', so.drone], ['fx', so.detune]); if (isNesReach()) c.push(['fx', so.duty]); }
     if (reach.bands) { for (const k of (reach.bandKinds || [])) if (bd[k]) c.push(['fx', bd[k]]); (reach.extraBands || []).forEach((_, i) => c.push(['fx', bd['extra' + (i + 1)]])); }
     c.push(['fx', st.palette], ['fx', st.sound.wobble], ['pins', st.sound.busPins]);
-    if (reach.ram) c.push(['fx', st.ram]);
     if (reach.consolePins) c.push(['pins', st.consolePins]);
     if (isNesReach() && reach.cartPins) c.push(['pins', st.cartPins]);
-    if (includeUnsafe) { c.push(['fx', st.unsafe.ramRot]); if (reach.vramRot !== false) c.push(['fx', st.unsafe.vramRot]); if (reach.cpuPins) c.push(['pins', st.unsafe.cpuPins]); if (reach.soundCpuLines > 0) c.push(['pins', st.unsafe.soundCpuPins]); if (reach.dmaLines > 0) c.push(['pins', st.unsafe.dmaPins]); }
+    if (includeUnsafe) { if (reach.ram) c.push(['fx', st.ram]); c.push(['fx', st.unsafe.ramRot]); if (reach.vramRot !== false) c.push(['fx', st.unsafe.vramRot]); if (reach.cpuPins) c.push(['pins', st.unsafe.cpuPins]); if (reach.soundCpuLines > 0) c.push(['pins', st.unsafe.soundCpuPins]); if (reach.dmaLines > 0) c.push(['pins', st.unsafe.dmaPins]); }
     return c;
   }
   function turnOn(kind, fx, r, k, listKey) {

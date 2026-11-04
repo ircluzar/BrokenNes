@@ -294,7 +294,7 @@
    }
   },
   "ram": {
-   "on": true,
+   "on": false,
    "rate": 50,
    "step": 1,
    "lifetime": 60,
@@ -552,7 +552,11 @@
   "sound": {},
   "bands": {},
   "ram": {
-   "on": false
+   "on": true,
+   "rate": 50,
+   "step": 1,
+   "lifetime": 60,
+   "maxProbes": 3
   },
   "palette": {
    "on": false
