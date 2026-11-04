@@ -306,7 +306,7 @@ public sealed class ButcherProfile
 		DropReg = 0x25,                                                         // NR51: a channel off on both sides
 		DropApply = (v, mask) => (byte)(v & ~(mask | (mask << 4))),
 		DropRegDefault = 0xFF,
-		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 144, CpuLines = 15, SoundBusLines = 6, SampleLines = 4, VideoBusLines = 4,
+		RamWindow = 0x2000, StackPage = 0x1F, VisibleLines = 144, CpuLines = 15, SoundBusLines = 6, SampleLines = 4, VideoBusLines = 4, DmaLines = 16,
 	};
 	/// <summary>Master System / Game Gear: the sprite table is in VRAM (no attribute byte), the PSG takes latch / data bytes.</summary>
 	public static readonly ButcherProfile Sms = new()

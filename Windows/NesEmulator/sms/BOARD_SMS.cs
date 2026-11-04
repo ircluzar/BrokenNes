@@ -372,7 +372,7 @@ public sealed class BOARD_SMS
                 byte v;
                 if ((p & 1) == 0) v = Vdp.ReadData(PortMc);
                 else v = Vdp.ReadStatus(PortMc);
-                Cpu.Irq = Vdp.Irq;
+                Cpu.Irq = Vdp.Irq && Butcher is not { DropNmiNow: true };
                 return v;
             }
             default:
@@ -428,7 +428,7 @@ public sealed class BOARD_SMS
                 if (Butcher?.VideoBusFaults != null) { var (r2, v2) = Butcher.VideoBusBend(p & 1, value, 1); p = (p & ~1) | (r2 & 1); value = (byte)v2; }
                 if ((p & 1) == 0) Vdp.WriteData(value, PortMc);
                 else Vdp.WriteControl(value, PortMc);
-                Cpu.Irq = Vdp.Irq;
+                Cpu.Irq = Vdp.Irq && Butcher is not { DropNmiNow: true };
                 break;
         }
     }

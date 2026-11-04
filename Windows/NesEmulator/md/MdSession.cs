@@ -50,6 +50,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
     {
         var b = Butcher;
         var unit = ButcherUnit();
+        Board.ButcherDropVblank = b is { DropNmiNow: true };
         if (b != null) { b.GhostNmiLine = () => { ghostVblank = 2; Board.ButcherIpl = 6; }; b.HoldIrqLine = l => Board.ButcherIpl = l ? 4 : 0; if (ghostVblank > 0 && --ghostVblank == 0 && Board.ButcherIpl == 6) Board.ButcherIpl = 0; b.FmInject = unit != null ? unit.ButcherYmWrite : null; b.AttachRam(Board.Ram); b.AttachVram(Board.Vdp.Vram); b.AttachSoundRam(unit?.Z80Ram); b.FrameStart(unit != null ? unit.ButcherPsgWrite : (_, _) => { }); }
         var on = b != null && !b.Idle ? b : null;
         Board.Vdp.Butcher = on; if (unit != null) unit.Butcher = on;

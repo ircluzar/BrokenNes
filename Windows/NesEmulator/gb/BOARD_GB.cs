@@ -79,6 +79,7 @@ public sealed class BOARD_GB : IGbCpuBus
         Apu = apuFactory?.Invoke(model) ?? new APU_GB(model);
         Ppu.RequestInterrupt = bit =>
         {
+            if (bit == 0 && Butcher is { DropNmiNow: true }) return;   // Butchering mode: a dropped vertical-blank interrupt
             byte mask = (byte)(1 << bit);
             iflag |= mask; irqNew |= mask;
             if (Ppu.InterruptLate) irqLate |= mask;
@@ -407,7 +408,7 @@ public sealed class BOARD_GB : IGbCpuBus
         {
             ushort src = (ushort)(dmaSource + dmaIndex);
             if (src >= 0xE000) src -= 0x2000;                  // $E0-$FF sources read the WRAM echo
-            byte v = ReadBus(src, cpu: false);
+            byte v = Butcher?.Dma != null ? Butcher.DmaRead8(src, x => ReadBus((ushort)x, cpu: false)) : ReadBus(src, cpu: false);   // Butchering mode: the OAM DMA source bus
             if (DebugTap is { } tap) { tap.OnRead((ushort)(dmaSource + dmaIndex), v, GbBusSource.OamDma); tap.OnWrite((ushort)(0xFE00 + dmaIndex), v, GbBusSource.OamDma); }
             if (dmaIndex == 0 && Butcher is { SpritesActive: true } bs) bs.BeforeOamDma(Ppu.Oam);
             Ppu.Oam[dmaIndex] = v;

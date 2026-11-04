@@ -66,12 +66,14 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     /// </summary>
     /// <summary>Butchering mode's interrupt lines: an extra level held on the 68000's IPL pins (0 = none).</summary>
     public int ButcherIpl;
+    public bool ButcherDropVblank;
     public int InterruptSample
     {
         get
         {
-            if (ButcherIpl > 0) { int real = InterruptSampleUnbent; return Math.Max(real, ButcherIpl); }
-            return InterruptSampleUnbent;
+            int real = InterruptSampleUnbent;
+            if (ButcherDropVblank && real == 6) real = 0;   // Butchering mode: a dropped vertical-blank interrupt
+            return ButcherIpl > 0 ? Math.Max(real, ButcherIpl) : real;
         }
     }
     private int InterruptSampleUnbent

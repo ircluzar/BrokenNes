@@ -537,7 +537,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
         SpritesDma: true, Sprites2004: false, Sound: true, Bands: true, Ram: true)
     { ExtraBands = new[] { "Window off|The window layer vanishes inside the band.", "Window shift|The window slides sideways inside the band.", "Window map swap|The window draws from the other tile map." },
       CpuPins = true, CpuAddressLines = 15, CpuDataLines = 8, CpuPinsTitle = "CPU bus · cartridge pins (A0-A14, D0-D7; MBC writes with bend writes)",
-      SoundBusLines = 6, SampleLines = 4, SoundRam = board.Apu is APU_GB, SamplePinsTitle = "Sample fetch · wave RAM (A0-A3, D0-D7)",
+      SoundBusLines = 6, SampleLines = 4, SoundRam = board.Apu is APU_GB, DmaLines = 16, DmaDataLines = 8, SamplePinsTitle = "Sample fetch · wave RAM (A0-A3, D0-D7)",
       PadOrder = Butcher.PadGb, PadNames = new[] { "A", "B", "Select", "Start", "Up", "Down", "Left", "Right" },
       Console = "gb", ConsoleAddressLines = ButcherProfile.Gb.ConsoleLines, AttrNames = ButcherProfile.Gb.AttrNames, Channels = ButcherProfile.Gb.Channels,
       PinsTitle = "Picture bus · VRAM pins", PinsWhy = "The bus between the picture chip and its video RAM: tile maps, tile graphics and sprite graphics (A13 is the Color bank line)." };
