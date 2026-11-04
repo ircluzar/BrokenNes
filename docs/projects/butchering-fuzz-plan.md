@@ -36,7 +36,7 @@ Five campaigns, about 9,000 trials across the 8 consoles (NES, GB, GBC, SMS, GG,
 | 7 | SNES DSP-1: `Inverse` never left its normalising loops for an exponent that gives 0 / infinity (bent coprocessor data; a game could too) | `DSP1_SFC.Inverse` | hang, Super Mario Kart |
 
 ### Open findings (not Butchering mode itself)
-- **GB framebuffer not in the savestate**: frames the PPU does not fully draw (after LCD on, etc.) keep pixels from before a load, so the picture after Load State depends on history. State bytes are identical. Fixing needs the ~92 KB buffer in the GB state format (Timeflow takes one per frame). SNES shows the same "picture-only" pattern (~5% of reload trials).
+- **GB framebuffer not in the savestate**: FIXED (GB state v2 carries FrameBuffer + ShadeBuffer; v1 states still load). Reload pictures exact on Trax (DMG) and 1942 (GBC); a 5-minute GB/GBC rerun left 1 rare mismatch each (one state, one picture), not chased. SNES shows a similar picture-only pattern (~5% of reload trials) and is not fixed.
 - **NES reload not always exact** even with Butchering mode never on: e.g. `FUZZ_CONTROL=1 bfuzz nes 1 out 9014` (Lode Runner, all FIX): after 250 more frames, Load State + 60 frames diverges at `globalCpuCycle`. Did not reproduce in a stand-alone probe; root cause unknown.
 - SMS/GG with a NES / SNES picture chip (`ppu=NES:*`): savestates do not replay (the picture bridge's state is not saved).
 - `APU_FIX` zeroes its audio filter on load (deliberate, anti-pop), so audio right after a load differs by design.

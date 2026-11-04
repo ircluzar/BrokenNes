@@ -493,7 +493,7 @@ public sealed class BOARD_GB : IGbCpuBus
         using var ms = new MemoryStream();
         using (var w = new BinaryWriter(ms))
         {
-            w.Write("GBST"u8); w.Write(1);
+            w.Write("GBST"u8); w.Write(2);   // 2: + the picture (frames the LCD does not fully draw keep earlier pixels, so a load must bring them back)
             Core.SaveState(w); Ppu.SaveState(w); Apu.SaveState(w); Cart.SaveState(w);
             w.Write(wram); w.Write(hram); w.Write(ie); w.Write(iflag); w.Write(wramBank); w.Write(joypSelect);
             w.Write(divCounter); w.Write(tima); w.Write(tma); w.Write(tac); w.Write(timaState);
@@ -501,6 +501,7 @@ public sealed class BOARD_GB : IGbCpuBus
             w.Write(dmaActive); w.Write(dmaPendingCycles); w.Write(dmaIndex); w.Write(dmaSource); w.Write(dmaReg);
             w.Write(key1); w.Write(hdmaActive); w.Write(hdmaRequest); w.Write(hdmaBlocks); w.Write(hdmaSrc); w.Write(hdmaDst);
             w.Write(DoubleSpeed); w.Write(CycleCount);
+            w.Write(System.Runtime.InteropServices.MemoryMarshal.AsBytes(Ppu.FrameBuffer.AsSpan())); w.Write(Ppu.ShadeBuffer);
         }
         return ms.ToArray();
     }
@@ -508,7 +509,9 @@ public sealed class BOARD_GB : IGbCpuBus
     public void LoadState(byte[] state)
     {
         using var r = new BinaryReader(new MemoryStream(state));
-        if (r.ReadUInt32() != 0x54534247 || r.ReadInt32() != 1) throw new InvalidDataException("Not a BrokenNes Game Boy state.");
+        if (r.ReadUInt32() != 0x54534247) throw new InvalidDataException("Not a BrokenNes Game Boy state.");
+        int version = r.ReadInt32();
+        if (version is not (1 or 2)) throw new InvalidDataException("Not a BrokenNes Game Boy state.");
         Core.LoadState(r); Ppu.LoadState(r); Apu.LoadState(r); Cart.LoadState(r);
         r.ReadBytes(wram.Length).CopyTo(wram, 0); r.ReadBytes(hram.Length).CopyTo(hram, 0);
         ie = r.ReadByte(); iflag = r.ReadByte(); wramBank = r.ReadInt32(); joypSelect = r.ReadByte();
@@ -517,5 +520,10 @@ public sealed class BOARD_GB : IGbCpuBus
         dmaActive = r.ReadBoolean(); dmaPendingCycles = r.ReadInt32(); dmaIndex = r.ReadInt32(); dmaSource = r.ReadUInt16(); dmaReg = r.ReadByte();
         key1 = r.ReadByte(); hdmaActive = r.ReadBoolean(); hdmaRequest = r.ReadBoolean(); hdmaBlocks = r.ReadInt32(); hdmaSrc = r.ReadUInt16(); hdmaDst = r.ReadUInt16();
         DoubleSpeed = r.ReadBoolean(); CycleCount = r.ReadInt64();
+        if (version >= 2)
+        {
+            r.ReadBytes(Ppu.FrameBuffer.Length * 4).CopyTo(System.Runtime.InteropServices.MemoryMarshal.AsBytes(Ppu.FrameBuffer.AsSpan()));
+            r.ReadBytes(Ppu.ShadeBuffer.Length).CopyTo(Ppu.ShadeBuffer, 0);
+        }
     }
 }
