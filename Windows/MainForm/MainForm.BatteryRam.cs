@@ -143,6 +143,9 @@ namespace BrokenNes.Windows
             {
                 return;
             }
+            // Butchering mode: bent CPU writes and RAM rot can reach the cartridge's save RAM. Nothing goes to disk while the
+            // mode is on; leaving it reloads the entry state, so the save on disk stays exactly what it was.
+            if (targetNes.Butcher?.Settings.Enabled == true) return;
 
             // The embedded placeholder ROM is not a game and has no progress worth keeping. The
             // guard lives here rather than at each call site because it was previously missing from

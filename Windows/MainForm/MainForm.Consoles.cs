@@ -604,6 +604,8 @@ namespace BrokenNes.Windows
 
         private void SaveSessionBattery(bool force)
         {
+            // Butchering mode freezes disk saves (see SaveBatteryRamForNes)
+            if (session is { } bs && ((bs is NesEmulator.Mix.SegaPictureSession sps ? sps.Inner : bs) as NesEmulator.IButcherHost)?.Butcher?.Settings.Enabled == true) return;
             var s = session;
             if (s == null || !s.HasBattery) return;
             if (farm.SaveRamTouched) return;     // a corruption wrote the game's save RAM, or the machine is a replayed or loaded one: never over the player's save
