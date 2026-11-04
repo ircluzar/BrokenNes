@@ -269,6 +269,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
 
     public void WriteBusRequest(bool request, long masterClock)
     {
+        if (Butcher is { Z80BusHeldNow: true }) request = true;   // Butchering mode: BUSREQ stuck - the Z80 stays halted
         RunTo(masterClock);
         if (request == requested) return;
         LoopBreak();
@@ -308,6 +309,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
 
     public void WriteReset(bool released, long masterClock)
     {
+        if (Butcher is { Z80ResetHeldNow: true }) released = false;   // Butchering mode: the Z80's reset line stuck
         RunTo(masterClock);
         LoopBreak();
         bool wasInReset = inReset;
