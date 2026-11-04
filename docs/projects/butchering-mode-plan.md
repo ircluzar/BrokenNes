@@ -116,3 +116,13 @@ The point is not to copy the Glitch Boy: it is to take the concepts its research
 - **C (unsafe)** NES cartridge PRG pins on the CPU bus (A0-A14, D0-D7, flicker, bent mapper writes); RAM rot and VRAM rot on every console (VRAM = CHR-RAM or PPU FIX nametables on the NES, VRAM elsewhere, word VRAM on the SNES); "bend writes too" moved here as its own unsafe group. Headless: CPU pins crash SMB (the watchdog reports it), rot changes every console's picture, all-off identical.
 - **Speed** (SMB, FIX, 3000 frames, interleaved): pre-Butchering build 304-314 fps; today with the mode off 306-320 fps (no cost); pin faults on ~270 fps; many effects on ~240 fps.
 - **Still open (group D)**: panel layout / search, randomize / mutate, solo-effect, MIDI / VST CC, capture, Lite; CPU pins on the other consoles.
+
+## Group D interview (2026-11-04)
+| Topic | Decision |
+|---|---|
+| Scope | Panel layout + search, Randomize / Mutate, Solo. **Capture: later** (undecided). MIDI / VST CC and Lite: later. |
+| Layout | **Tabs per group** (Picture / Sprites / Sound / Bands / RAM / Palette / Unsafe), one visible at a time, plus a search box across all. |
+| Randomize unsafe | Never, unless an "include unsafe" checkbox is ticked. |
+| Strength | One strength slider: few gentle effects at low, many strong at high; Mutate nudges the current values by that amount. |
+| Solo | An S button on each effect: only that one runs while soloed; everything else is kept and comes back on un-solo. |
+| Rolls | A history of the last ~20 rolls to step back through; any roll can be saved as a preset (seed included). |
