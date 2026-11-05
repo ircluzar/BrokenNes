@@ -6,12 +6,20 @@
   "kind": "sms",
   "console": "sms",
   "description": "The Master System port of VRUN CTW, the NES demake (docs/projects/sega-vrun-ports-plan.md, S2: the view kept in 256x192, the HUD shrinks, PSG sound from the NES version). Today the S0 skeleton: a hello ROM (text, a frame counter, a cursor that Left / Right move) that proves the toolchain and BrokenDev's build / verify / compat. Built with SDCC 4.6.0 + devkitSMS (toolchains.json) in its live workspace PROJECTS/VRUN_CTW_SMS_dev (its own git, local only).",
-  "source": { "folder": "{live:VRUN_CTW_SMS_dev}" },
+  "source": {
+    "folder": "{live:VRUN_CTW_SMS_dev}"
+  },
   "requires": {
-    "tools": ["ps5", "toolchain:sdcc", "toolchain:devkitsms"],
+    "tools": [
+      "ps5",
+      "toolchain:sdcc",
+      "toolchain:devkitsms"
+    ],
     "projects": [],
     "inputs": [],
-    "toolchain": ["SDCC 4.6.0 and devkitSMS 533ae57, pinned in toolchains.json (SMSlib and crt0 rebuilt from devkitSMS's sources by build.ps1)"]
+    "toolchain": [
+      "SDCC 4.6.0 and devkitSMS 533ae57, pinned in toolchains.json (SMSlib and crt0 rebuilt from devkitSMS's sources by build.ps1)"
+    ]
   },
   "build": {
     "steps": [
@@ -20,19 +28,47 @@
         "shell": "ps5",
         "cwd": "{src}",
         "file": "{src}/build.ps1",
-        "args": ["-Sdcc", "{toolchain:sdcc}", "-DevkitSms", "{toolchain:devkitsms}"],
+        "args": [
+          "-Sdcc",
+          "{toolchain:sdcc}",
+          "-DevkitSms",
+          "{toolchain:devkitsms}"
+        ],
         "timeoutSec": 900,
         "note": "build.ps1: SMSlib and crt0 rebuilt once (build/smslib-sms), sdcc -mz80, makesms; checks 'TMR SEGA' and the Master System export region code (4)."
       }
     ],
     "outputs": [
-      { "id": "rom", "path": "{src}/build/vrun_ctw_sms.sms", "publishAs": "vrun_ctw_sms.sms", "kind": "sms" },
-      { "id": "noi", "path": "{src}/build/vrun_ctw_sms.noi", "publishAs": "vrun_ctw_sms.noi", "kind": "symbols" },
-      { "id": "sym", "path": "{src}/build/vrun_ctw_sms.sym", "publishAs": "vrun_ctw_sms.sym", "kind": "symbols-wla" },
-      { "id": "map", "path": "{src}/build/vrun_ctw_sms.map", "publishAs": "vrun_ctw_sms.map", "kind": "map" }
+      {
+        "id": "rom",
+        "path": "{src}/build/vrun_ctw_sms.sms",
+        "publishAs": "vrun_ctw_sms.sms",
+        "kind": "sms"
+      },
+      {
+        "id": "noi",
+        "path": "{src}/build/vrun_ctw_sms.noi",
+        "publishAs": "vrun_ctw_sms.noi",
+        "kind": "symbols"
+      },
+      {
+        "id": "sym",
+        "path": "{src}/build/vrun_ctw_sms.sym",
+        "publishAs": "vrun_ctw_sms.sym",
+        "kind": "symbols-wla"
+      },
+      {
+        "id": "map",
+        "path": "{src}/build/vrun_ctw_sms.map",
+        "publishAs": "vrun_ctw_sms.map",
+        "kind": "map"
+      }
     ]
   },
-  "run": { "console": "sms", "note": "The skeleton: Left / Right move the cursor. Lite: the .sms opens in BrokenNes Lite's Master System (UAT/entrypoints/lite-sega.ps1 -Roms <folder with sms\\vrun_ctw_sms.sms>)." },
+  "run": {
+    "console": "sms",
+    "note": "The skeleton: Left / Right move the cursor. Lite: the .sms opens in BrokenNes Lite's Master System (UAT/entrypoints/lite-sega.ps1 -Roms <folder with sms\\vrun_ctw_sms.sms>)."
+  },
   "verify": {
     "timeoutSec": 600,
     "scenarios": [
@@ -40,15 +76,39 @@
         "id": "hello",
         "frames": 300,
         "input": "100:Right,130:",
-        "checkpoints": [50, 300],
+        "checkpoints": [
+          50,
+          300
+        ],
         "expect": {
           "minDistinctColors": 2,
-          "pictureDiffers": [50, 300],
+          "pictureDiffers": [
+            50,
+            300
+          ],
           "memory": [
-            { "symbol": "_hello_ok", "is": 1, "what": "the screen was set up" },
-            { "symbol": "_frame_count", "size": 2, "min": 250, "what": "the vblank loop runs every frame" },
-            { "symbol": "_cursor_x", "is": 31, "what": "Right reached the pad and moved the cursor to the right edge (32 columns)" },
-            { "symbol": "_pad_seen", "size": 2, "is": 8, "what": "only Right was pressed (PORT_A_KEY_RIGHT)" }
+            {
+              "symbol": "_hello_ok",
+              "is": 1,
+              "what": "the screen was set up"
+            },
+            {
+              "symbol": "_frame_count",
+              "size": 2,
+              "min": 250,
+              "what": "the vblank loop runs every frame"
+            },
+            {
+              "symbol": "_cursor_x",
+              "is": 31,
+              "what": "Right reached the pad and moved the cursor to the right edge (32 columns)"
+            },
+            {
+              "symbol": "_pad_seen",
+              "size": 2,
+              "is": 8,
+              "what": "only Right was pressed (PORT_A_KEY_RIGHT)"
+            }
           ]
         },
         "why": "the hello ROM on the Master System: it runs, draws and reads the pad"
@@ -57,28 +117,137 @@
   },
   "compat": {
     "what": "The hello ROM on every Master System emulator BrokenDev has, from power-on and the same pad script, its state read by the build's symbols every frame.",
-    "symbols": { "file": "{out}/vrun_ctw_sms.noi" },
-    "reads": { "frame": "_frame_count", "ok": "_hello_ok", "cursor": "_cursor_x" },
+    "symbols": {
+      "file": "{out}/vrun_ctw_sms.noi"
+    },
+    "reads": {
+      "frame": "_frame_count",
+      "ok": "_hello_ok",
+      "cursor": "_cursor_x"
+    },
     "frameTolerance": 30,
     "scenarios": [
       {
         "id": "hello",
         "frames": 400,
         "input": "100:Right,130:",
-        "shots": [50, 400],
+        "shots": [
+          50,
+          400
+        ],
         "what": "power-on, the text, Right held 30 frames",
         "checks": [
-          { "id": "alive", "what": "the main loop runs (frame_count keeps changing)", "changes": "frame", "within": [60, 400], "min": 200 },
-          { "id": "ready", "what": "the screen was set up", "read": "ok", "is": 1, "within": [60, 400], "hold": true },
-          { "id": "moved", "what": "Right moved the cursor to the right edge", "read": "cursor", "is": 31, "within": [200, 400], "hold": true },
-          { "id": "drawn", "what": "the text is drawn", "picture": 400, "minColors": 2 }
+          {
+            "id": "alive",
+            "what": "the main loop runs (frame_count keeps changing)",
+            "changes": "frame",
+            "within": [
+              60,
+              400
+            ],
+            "min": 200
+          },
+          {
+            "id": "ready",
+            "what": "the screen was set up",
+            "read": "ok",
+            "is": 1,
+            "within": [
+              60,
+              400
+            ],
+            "hold": true
+          },
+          {
+            "id": "moved",
+            "what": "Right moved the cursor to the right edge",
+            "read": "cursor",
+            "is": 31,
+            "within": [
+              200,
+              400
+            ],
+            "hold": true
+          },
+          {
+            "id": "drawn",
+            "what": "the text is drawn",
+            "picture": 400,
+            "minColors": 2
+          }
         ]
       }
     ]
   },
   "comparison": {
-    "what": "The cross-console comparison (S0): the port against its original, VRUN CTW on the NES (project vrun-nes). Tolerance (2026-11-01): the same events in order, positions within a few pixels. Filled in by S2 when the game exists; the skeleton maps nothing yet.",
-    "original": "vrun-nes"
+    "what": "S2: the Master System port against VRUN CTW on the NES (project vrun-nes, the mapper-30 build). The port is the same game code translated to C (tools/fab2c.py), so the tolerance is the plan's 'same events, small drift': rooms, items, deaths in the same order, positions within 4 pixels. Both sides 60 Hz, one tick a frame, time 0 = the first frame of the game (app_state 1). NESFab keeps each byte of a variable apart (player_x@1 = the whole pixel), the port's C variables are 8.8 fixed point (byte +1 = the pixel).",
+    "original": "vrun-nes",
+    "rate": {
+      "original": {
+        "fps": 60,
+        "origin": "state=1"
+      },
+      "port": {
+        "fps": 60,
+        "origin": "state=1"
+      }
+    },
+    "input": "frame",
+    "tolerance": {
+      "ticks": 6,
+      "positions": 4
+    },
+    "sampleEveryTicks": 30,
+    "variables": [
+      {
+        "name": "state",
+        "kind": "event",
+        "original": "app_state@0",
+        "port": "_app_state"
+      },
+      {
+        "name": "room",
+        "kind": "event",
+        "original": "current_room@0",
+        "port": "_current_room"
+      },
+      {
+        "name": "map",
+        "kind": "event",
+        "original": "map_slot@0",
+        "port": "_map_slot"
+      },
+      {
+        "name": "hp",
+        "kind": "event",
+        "original": "player_hp@0",
+        "port": "_player_hp"
+      },
+      {
+        "name": "cash",
+        "kind": "event",
+        "original": "le16 score@0",
+        "port": "le16 _score"
+      },
+      {
+        "name": "x",
+        "kind": "position",
+        "original": "player_x@1",
+        "port": "[_player_x + 1]"
+      },
+      {
+        "name": "y",
+        "kind": "position",
+        "original": "player_y@1",
+        "port": "[_player_y + 1]"
+      }
+    ],
+    "buttons": {
+      "A": "B",
+      "B": "A",
+      "Start": "B"
+    },
+    "settleFrames": 125
   },
   "knownIssues": [
     "S0 skeleton only: the game is S2.",
