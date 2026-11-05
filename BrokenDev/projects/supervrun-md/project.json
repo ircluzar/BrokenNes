@@ -170,11 +170,11 @@
     "rate": {
       "original": {
         "fps": 60,
-        "tick": "le16 game_frames"
+        "tick": "{title_frames} + {game_frames}"
       },
       "port": {
         "fps": 60,
-        "tick": "be16 game_frames"
+        "tick": "(([title_frames]) << 8 | [title_frames + 1]) + (([game_frames]) << 8 | [game_frames + 1])"
       }
     },
     "input": "tick",
@@ -184,6 +184,12 @@
     },
     "sampleEveryTicks": 10,
     "variables": [
+      {
+        "name": "slot",
+        "kind": "event",
+        "original": "slot_current",
+        "port": "slot_current"
+      },
       {
         "name": "state",
         "kind": "event",
@@ -245,34 +251,10 @@
         "port": "[p2ctx + 14]"
       },
       {
-        "name": "shut",
-        "kind": "event",
-        "original": "room_doors_shut",
-        "port": "room_doors_shut"
-      },
-      {
         "name": "enemies",
         "kind": "event",
         "original": "room_enemies_remaining",
         "port": "room_enemies_remaining"
-      },
-      {
-        "name": "locks",
-        "kind": "event",
-        "original": "room_lockblocks_remaining",
-        "port": "room_lockblocks_remaining"
-      },
-      {
-        "name": "open",
-        "kind": "event",
-        "original": "le16 room_doors_opened",
-        "port": "be16 room_doors_opened"
-      },
-      {
-        "name": "unlocked",
-        "kind": "event",
-        "original": "le16 room_doors_unlocked",
-        "port": "be16 room_doors_unlocked"
       }
     ],
     "buttons": {
@@ -283,7 +265,7 @@
       "Select": "Mode"
     },
     "settleFrames": 200,
-    "tickLead": 0
+    "tickLead": -1
   },
   "knownIssues": [
     "S0 skeleton only: the game is S3.",

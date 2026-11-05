@@ -85,7 +85,7 @@ internal static class TimeflowComparing
         public double SampleEveryTicks;
         public string OriginalProject = "", Note = "";
         public long SettleFrames;
-        public long TickLead = 1;   // input tick: the port frame at tick T plays the original's pad for the update at T + TickLead (comparison.tickLead)
+        public long TickLead;   // input tick: frames added to the re-anchored mapping (comparison.tickLead)
 
         public static Spec Load(string map, string manifest)
         {
@@ -115,7 +115,7 @@ internal static class TimeflowComparing
             if (s.Input is not ("auto" or "time" or "frame" or "tick")) throw new ArgumentException($"{where}: comparison.input must be time, frame, tick or auto");
             s.SampleEveryTicks = Num(e, "sampleEveryTicks");
             s.SettleFrames = (long)Num(e, "settleFrames");
-            s.TickLead = (long)Num(e, "tickLead", 1);
+            s.TickLead = (long)Num(e, "tickLead", 0);
             if (e.TryGetProperty("buttons", out var b) && b.ValueKind == JsonValueKind.Object)
                 foreach (var p in b.EnumerateObject()) s.Buttons[p.Name] = p.Value.GetString() ?? "";
             if (!e.TryGetProperty("variables", out var vars) || vars.ValueKind != JsonValueKind.Array || vars.GetArrayLength() == 0)
@@ -329,26 +329,24 @@ internal static class TimeflowComparing
         var ev = Evaluators(m, spec, true, out var tick, out side.Watches);
         var rec = TimeflowRecorder.Start(TimeflowMachines.SourceFor(m), OptionsFor(m, "compare-port", $"timeflow compare: the pads of timeline {orig.Timeline} ({orig.Console} {orig.Rom})", a.PortProject));
         long tb = 0, tp = 0;
-        // input "tick" (S3: the same game code on two CPUs that spend different frames loading): pads by frame while the port's game
-        // tick (rate.tick) is 0; after, by game tick. A pad is read in vblank and used by the next update, and lag frames re-read it, so
-        // the original's pad for the update at tick T is the pad of the frame before its first frame that moved the tick past T; the port's
-        // frame g (its tick T before it) gets the pad of the update at T + 1 (the one after g's own update), as it will use it there.
+        // input "tick" (S3: the same game code on two CPUs that spend different frames loading): the pads go by frame, re-anchored at
+        // every change of the game's tick (rate.tick): the port's frame g, s frames after its tick became T, plays the original's frame
+        // s (+ tickLead) after the original's tick became T. Menus and stories (the tick still) keep their frame timing; a load that
+        // takes the two machines different frames only shifts what follows by the difference.
         bool byTick = spec.Input == "tick";
         if (byTick && (spec.O.Tick.Length == 0 || spec.P.Tick.Length == 0)) throw new ArgumentException("comparison.input tick needs rate.original.tick and rate.port.tick (the game's tick counters)");
-        var padFor = new Dictionary<long, long>();
-        for (int k = 1; k < orig.Ticks.Count; k++)
-        {
-            long before = (long)orig.Ticks[k - 1], after = (long)orig.Ticks[k];
-            if (after != before) padFor.TryAdd(before, k - 1);
-        }
+        var firstAt = new Dictionary<long, long>();
+        for (int k = 0; k < orig.Ticks.Count; k++) firstAt.TryAdd(k == 0 ? 0 : (long)orig.Ticks[k - 1], k);
+        long curT = -1, anchor = 0;
         for (long g = 0; g < frames && rec.Running; g++)
         {
             long f = byTime ? Math.Min(orig.Frames - 1, (long)Math.Floor(g * orig.Fps / fpsP)) : g;
             if (byTick)
             {
                 long tNow = g == 0 ? 0 : (long)side.Ticks[(int)g - 1];
-                if (tNow != 0) f = padFor.TryGetValue(tNow + spec.TickLead, out long k) ? k : -1;
-                f = Math.Min(f, orig.Frames - 1);
+                if (tNow != curT) { curT = tNow; anchor = g; }
+                f = firstAt.TryGetValue(tNow, out long k0) ? k0 + (g - anchor) + spec.TickLead : -1;
+                if (f >= orig.Frames) f = -1;
             }
             var (p1, p2) = f >= 0 ? rd.Pads(f) : (PadButtons.None, PadButtons.None);
             p1 = MapPad(p1, spec); p2 = MapPad(p2, spec);
