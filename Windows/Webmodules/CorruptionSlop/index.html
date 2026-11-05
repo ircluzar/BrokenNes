@@ -4,29 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Corruption Slop</title>
+  <link rel="stylesheet" href="../shared/controls/controls.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <button id="stopSquare" class="stop-square" title="Stop" aria-label="Exit Corruption Slop"></button>
-  <div class="funny-box" aria-label="Corruption intensity control">
-    <label for="funnyKnob" class="funny-label">Adjust until funny</label>
-    <div class="funny-knob-wrap">
-      <button
-        id="funnyKnob"
-        class="funny-knob"
-        type="button"
-        role="slider"
-        aria-label="Corruption intensity"
-        aria-valuemin="0"
-        aria-valuemax="100"
-        aria-valuenow="50"
-        data-value="50"
-      ></button>
-      <div id="funnyValue" class="funny-value" aria-hidden="true">Mild</div>
-    </div>
-  </div>
+  <!-- The faceplate (shared/controls): the intensity knob, the loop's settings, its status and Stop. Bottom-right over the game. -->
+  <div id="faceplate" class="slop-faceplate" aria-label="Corruption Slop controller"></div>
 
   <script src="../shared/webapi.js"></script>
+  <script src="../shared/controls/controls.js"></script>
   <script src="corruption-slop.js"></script>
 </body>
 </html>
