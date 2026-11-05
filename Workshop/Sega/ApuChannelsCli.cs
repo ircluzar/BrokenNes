@@ -19,7 +19,7 @@ namespace BrokenNes.Workshop.Sega;
 /// skipped (a planted mute) and requires the check to call it silent. Exit 0 = no SILENT/WRONG PITCH cell outside the documented intended list, and
 /// every negative control caught.
 /// </summary>
-internal static class ApuChannelsCli
+internal static partial class ApuChannelsCli
 {
     private sealed record Render(short[] Stereo, int Rate);
     private sealed record Cell(string Console, string Channel, bool Pitched, Func<string, bool, Render> Drive, bool StereoCheck = false);
@@ -28,6 +28,7 @@ internal static class ApuChannelsCli
 
     public static int Run(string[] args)
     {
+        if (M68kTestCli.Flag(args, "--state")) return StateCheck(args);
         string? consoleArg = M68kTestCli.Arg(args, "--console")?.ToUpperInvariant();
         var only = M68kTestCli.Arg(args, "--only")?.ToUpperInvariant().Split(',');
         wavDir = M68kTestCli.Arg(args, "--wav") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VRUN_Nes_Dev_work", "fapu_build", "wav");
