@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "id": "vrun-ctw-sms",
-  "title": "VRUN CTW (the Corrupt The World demake) on the Master System (S0: the skeleton)",
+  "title": "VRUN CTW (the Corrupt The World demake) on the Master System (S2)",
   "family": "vrun",
   "kind": "sms",
   "console": "sms",
@@ -73,107 +73,101 @@
     "timeoutSec": 600,
     "scenarios": [
       {
-        "id": "hello",
-        "frames": 300,
-        "input": "100:Right,130:",
+        "id": "play",
+        "frames": 700,
+        "input": "120:B,132:,400:Right",
         "checkpoints": [
-          50,
-          300
+          100,
+          380,
+          700
         ],
         "expect": {
-          "minDistinctColors": 2,
+          "minDistinctColors": 4,
           "pictureDiffers": [
-            50,
-            300
+            100,
+            380
           ],
           "memory": [
             {
-              "symbol": "_hello_ok",
+              "symbol": "_app_state",
               "is": 1,
-              "what": "the screen was set up"
+              "what": "the title's B started a game (APP_GAME)"
             },
             {
-              "symbol": "_frame_count",
-              "size": 2,
-              "min": 250,
-              "what": "the vblank loop runs every frame"
+              "symbol": "_current_room",
+              "is": 0,
+              "what": "still in the first room"
             },
             {
-              "symbol": "_cursor_x",
-              "is": 31,
-              "what": "Right reached the pad and moved the cursor to the right edge (32 columns)"
-            },
-            {
-              "symbol": "_pad_seen",
-              "size": 2,
-              "is": 8,
-              "what": "only Right was pressed (PORT_A_KEY_RIGHT)"
+              "symbol": "_player_hp",
+              "is": 5,
+              "what": "full health"
             }
           ]
         },
-        "why": "the hello ROM on the Master System: it runs, draws and reads the pad"
+        "why": "the game boots to the title, B starts a run and the first room plays (the S0 hello scenario is gone)"
       }
     ]
   },
   "compat": {
-    "what": "The hello ROM on every Master System emulator BrokenDev has, from power-on and the same pad script, its state read by the build's symbols every frame.",
+    "what": "The game on every Master System emulator BrokenDev has, from power-on and the same pad script (B on the title, then Right), its state read by the build's symbols every frame.",
     "symbols": {
       "file": "{out}/vrun_ctw_sms.noi"
     },
     "reads": {
-      "frame": "_frame_count",
-      "ok": "_hello_ok",
-      "cursor": "_cursor_x"
+      "frame": "_nmi_counter",
+      "state": "_app_state",
+      "room": "_current_room"
     },
     "frameTolerance": 30,
     "scenarios": [
       {
-        "id": "hello",
-        "frames": 400,
-        "input": "100:Right,130:",
+        "id": "play",
+        "frames": 700,
+        "input": "120:B,132:,400:Right",
         "shots": [
-          50,
-          400
+          100,
+          700
         ],
-        "what": "power-on, the text, Right held 30 frames",
+        "what": "power-on, the title, B starts a run, Right walks in the first room",
         "checks": [
           {
             "id": "alive",
-            "what": "the main loop runs (frame_count keeps changing)",
+            "what": "the frame interrupt runs (nmi_counter keeps changing)",
             "changes": "frame",
             "within": [
               60,
-              400
+              700
             ],
             "min": 200
           },
           {
-            "id": "ready",
-            "what": "the screen was set up",
-            "read": "ok",
+            "id": "started",
+            "what": "B on the title started a game",
+            "read": "state",
             "is": 1,
             "within": [
-              60,
-              400
+              200,
+              700
             ],
             "hold": true
           },
           {
-            "id": "moved",
-            "what": "Right moved the cursor to the right edge",
-            "read": "cursor",
-            "is": 31,
+            "id": "room0",
+            "what": "the first room",
+            "read": "room",
+            "is": 0,
             "within": [
               200,
-              400
+              700
             ],
             "hold": true
           },
           {
             "id": "drawn",
-            "what": "the text is drawn",
-            "picture": 400,
-            "minColors": 2
+            "what": "the room is drawn",
+            "picture": 700,
+            "minColors": 4
           }
         ]
       }
