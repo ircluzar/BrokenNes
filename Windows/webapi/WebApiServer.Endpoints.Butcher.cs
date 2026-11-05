@@ -126,6 +126,22 @@ namespace BrokenNes.Windows.WebApi
                 return Results.Ok(new { success = true });
             });
 
+            // GET /api/butcher/catalog - every effect's purity score (0 forced .. 100 pure, docs/projects/butchering-purity-plan.md), with the score on
+            // the running console where the part sits elsewhere there; and the pin fault codes. Informational: nothing uses the scores yet.
+            app.MapGet("/api/butcher/catalog", () =>
+            {
+                ButcherHost(out var console);
+                return Results.Ok(new
+                {
+                    success = true,
+                    console,
+                    effects = NesEmulator.ButcherCatalog.Effects.Select(e => new { path = e.Path, group = e.Group, name = e.Name, purity = e.Purity, purityHere = e.PurityOn(console), tier = NesEmulator.ButcherCatalog.TierOf(e.PurityOn(console)).ToString(), why = e.Why, byConsole = e.ByConsole }),
+                    faults = NesEmulator.ButcherCatalog.Faults.Select(f => new { code = f.Code, name = f.Name, purity = f.Purity, why = f.Why }),
+                    tiers = new[] { new { tier = "Pure", from = 90 }, new { tier = "Plausible", from = 70 }, new { tier = "MechanismReal", from = 40 }, new { tier = "Steered", from = 15 }, new { tier = "Forced", from = 0 } },
+                    unscored = NesEmulator.ButcherCatalog.Unscored(),
+                });
+            });
+
             // GET /api/butcher/presets - the named presets (NES)
             app.MapGet("/api/butcher/presets", () =>
             {

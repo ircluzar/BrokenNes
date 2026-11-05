@@ -1,5 +1,6 @@
 // Butchering-mode scenario tests (docs/projects/butchering-fuzz-plan.md, "battery"). One process per console:
 //   bscen <nes|gb|gbc|sms|gg|md|snes|wm> <outdir> [--games N] [--soak FRAMES] [--seed S]
+// S0 catalog       every effect in ButcherSettings has a purity score (ButcherCatalog), none orphaned, all 0-100.
 // Scenarios (each line of <outdir>/<console>.txt is PASS / FAIL / SKIP with a reason; exit code 1 when anything failed):
 //   S1 preset-undo   every built-in preset x several games: enter (state) -> preset -> play -> Reload State -> play -> Off + reload
 //                    must replay the clean continuation bit-exact (visible picture + state).
@@ -64,6 +65,16 @@ ulong Run(IM m, Random r, int frames, int f0, bool hash = true)
     return h;
 }
 string G(string rom) => Path.GetFileName(rom);
+
+// ---------- S0 catalog: every effect has a purity score, and no score points at an effect that is gone ----------
+{
+    var unscored = ButcherCatalog.Unscored(); var orphans = ButcherCatalog.Orphans();
+    var bad = ButcherCatalog.Effects.Where(e => e.Purity is < 0 or > 100 || (e.ByConsole?.Values.Any(v => v is < 0 or > 100) ?? false)).Select(e => e.Path).ToList();
+    var dup = ButcherCatalog.Effects.GroupBy(e => e.Path, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+    bool ok = unscored.Count == 0 && orphans.Count == 0 && bad.Count == 0 && dup.Count == 0;
+    Line(ok ? "PASS" : "FAIL", "S0", ok ? $"catalog: all {ButcherCatalog.SettingsPaths().Count} effects scored ({ButcherCatalog.Effects.Count} entries)"
+        : $"catalog: unscored [{string.Join(", ", unscored)}] orphans [{string.Join(", ", orphans)}] out of range [{string.Join(", ", bad)}] duplicates [{string.Join(", ", dup)}]");
+}
 
 // ---------- S1 preset-undo ----------
 foreach (var rom in games)
