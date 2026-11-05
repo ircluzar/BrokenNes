@@ -185,14 +185,25 @@
     "rate": {
       "original": {
         "fps": 60,
-        "origin": "state=1"
+        "origin": "state=1",
+        "tick": "{run_timer@0} * 60 + [run_timer_subsec@0]"
       },
       "port": {
         "fps": 60,
-        "origin": "state=1"
+        "origin": "state=1",
+        "tick": "{_run_timer} * 60 + [_run_timer_subsec]"
       }
     },
-    "input": "frame",
+    "input": "used",
+    "padVars": {
+      "Right": "move_right@0",
+      "Left": "move_left@0",
+      "Up": "move_up@0",
+      "Down": "move_down@0",
+      "A": "jump_held@0",
+      "B": "fire_held@0"
+    },
+    "padWhen": "state=1",
     "tolerance": {
       "ticks": 6,
       "positions": 4
@@ -247,7 +258,7 @@
       "B": "A",
       "Start": "B"
     },
-    "settleFrames": 125
+    "settleFrames": 122
   },
   "knownIssues": [
     "S0 skeleton only: the game is S2.",

@@ -87,6 +87,10 @@ internal static class TimeflowComparing
         public long SettleFrames;
         public string TickLeadWhen = "";   // "var=value": tickLead applies only while the port's variable has that value (S3: in gameplay, not the menus)
         public long TickLead;   // input tick: frames added to the re-anchored mapping (comparison.tickLead)
+        // input "used" (S2): per button, an original expression that is nonzero while the original's game update saw that button held
+        // (the game's own input variables, written by the update itself); buttons not listed come from the frame mapping
+        public Dictionary<string, string> PadVars = new(StringComparer.OrdinalIgnoreCase);
+        public string PadWhen = "";   // "var=value": the used pads apply only while the port's variable has that value (else the frame mapping)
 
         public static Spec Load(string map, string manifest)
         {
@@ -113,7 +117,15 @@ internal static class TimeflowComparing
             }
             if (e.TryGetProperty("tolerance", out var tol)) { s.TickTolerance = Num(tol, "ticks"); s.PositionTolerance = Num(tol, "positions"); }
             s.Input = Str(e, "input", "auto").ToLowerInvariant();
-            if (s.Input is not ("auto" or "time" or "frame" or "tick" or "update")) throw new ArgumentException($"{where}: comparison.input must be time, frame, tick, update or auto");
+            if (s.Input is not ("auto" or "time" or "frame" or "tick" or "update" or "used")) throw new ArgumentException($"{where}: comparison.input must be time, frame, tick, update, used or auto");
+            if (e.TryGetProperty("padVars", out var pv) && pv.ValueKind == JsonValueKind.Object)
+                foreach (var p in pv.EnumerateObject())
+                {
+                    if (!Enum.TryParse<PadButtons>(p.Name, true, out _)) throw new ArgumentException($"{where}: padVars: no button {p.Name}");
+                    s.PadVars[p.Name] = p.Value.GetString() ?? "";
+                }
+            s.PadWhen = Str(e, "padWhen");
+            if (s.Input == "used" && s.PadVars.Count == 0) throw new ArgumentException($"{where}: comparison.input used needs padVars (the original's per-update input variables)");
             s.SampleEveryTicks = Num(e, "sampleEveryTicks");
             s.SettleFrames = (long)Num(e, "settleFrames");
             s.TickLead = (long)Num(e, "tickLead", 0);
@@ -180,6 +192,7 @@ internal static class TimeflowComparing
         public double Fps;
         public readonly List<long[]> Values = new();
         public readonly List<double> Ticks = new();
+        public readonly List<PadButtons> UsedPads = new();   // input "used", the original: per frame, the buttons its padVars showed after the frame
         public long? OffFrame; public string OffWhat = "";
         public string Crash = "";
         public long Frames => Values.Count;
@@ -301,6 +314,17 @@ internal static class TimeflowComparing
         var src = TimeflowMachines.SourceFor(m);
         var side = new Side { Label = "original", Console = meta.Console, Rom = meta.RomName, RomSha = meta.RomSha256, Timeline = meta.Id, TimelineDir = dir, Symbols = symbols, Fps = spec.O.Fps > 0 ? spec.O.Fps : FpsOf(m) };
         var ev = Evaluators(m, spec, false, out var tick, out side.Watches);
+        var used = new List<(PadButtons b, Func<long> e)>();
+        if (spec.Input == "used")
+        {
+            var d = m.Host.Dbg!;
+            foreach (var (name, x) in spec.PadVars)
+            {
+                string e = Expr(x);
+                try { d.Evaluate(e); } catch (Exception ex) { throw new ArgumentException($"padVars {name} on the original ({e}): {ex.Message}"); }
+                used.Add((Enum.Parse<PadButtons>(name, true), () => d.Evaluate(e)));
+            }
+        }
         long tb = 0, tp = 0;
         long end = maxFrames > 0 ? Math.Min(rd.EndFrame, maxFrames) : rd.EndFrame;
         for (long f = 0; f < end; f++)
@@ -312,6 +336,7 @@ internal static class TimeflowComparing
             { side.OffFrame = f; side.OffWhat = src.RamHash() != row.Ram ? "the work RAM after the frame" : "the picture after the frame"; }
             side.Values.Add(ev.Select(e => e()).ToArray());
             side.Ticks.Add(TickOf(spec.O, side.Fps, f + 1, tick?.Invoke() ?? 0, ref tb, ref tp));
+            if (used.Count > 0) { PadButtons u = PadButtons.None; foreach (var (b, e) in used) if (e() != 0) u |= b; side.UsedPads.Add(u); }
             if (m.Crashed) { side.Crash = m.CrashInfo; break; }
         }
         TimeflowStore.Touch(dir);
@@ -326,7 +351,7 @@ internal static class TimeflowComparing
         double fpsP = spec.P.Fps > 0 ? spec.P.Fps : FpsOf(m);
         bool byTime = spec.Input == "time" || spec.Input == "auto" && Math.Abs(fpsP - orig.Fps) > 0.01;
         long frames = byTime ? (long)Math.Floor(orig.Frames * fpsP / orig.Fps) : orig.Frames;
-        if (spec.Input is "tick" or "update") frames += 600;   // room to catch up: the port may reach the original's last tick later
+        if (spec.Input is "tick" or "update" or "used") frames += 600;   // room to catch up: the port may reach the original's last tick later
         var side = new Side { Label = "port", Console = m.ConsoleKey, Rom = m.RomName, RomSha = m.RomSha256, Symbols = a.PortSymbols, Fps = fpsP };
         var ev = Evaluators(m, spec, true, out var tick, out side.Watches);
         var rec = TimeflowRecorder.Start(TimeflowMachines.SourceFor(m), OptionsFor(m, "compare-port", $"timeflow compare: the pads of timeline {orig.Timeline} ({orig.Console} {orig.Rom})", a.PortProject));
@@ -355,9 +380,47 @@ internal static class TimeflowComparing
             if (!lm.Success || (leadVar = spec.Vars.FindIndex(v => v.Name == lm.Groups[1].Value)) < 0) throw new ArgumentException($"tickLeadWhen '{spec.TickLeadWhen}': var=value (a comparison variable)");
             leadVal = long.Parse(lm.Groups[2].Value, CultureInfo.InvariantCulture);
         }
+        // input "used" (S2: the NES polls its pad within a line of its frame boundary, so the update after frame f's NMI saw the pad of
+        // frame f or f+1 by jitter): while padWhen holds, the port's frame g (its tick T after frame g-1) plays the buttons the original's
+        // update T+1 saw (its padVars after the frame its tick reached T+1); the other buttons, and everything outside padWhen, by frame.
+        bool byUsed = spec.Input == "used";
+        if (byUsed && (spec.O.Tick.Length == 0 || spec.P.Tick.Length == 0)) throw new ArgumentException("comparison.input used needs rate.original.tick and rate.port.tick (counters of the game's updates)");
+        int whenVar = -1; long whenVal = 0;
+        if (spec.PadWhen.Length > 0)
+        {
+            var wm = Regex.Match(spec.PadWhen, @"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(-?\d+)\s*$");
+            if (!wm.Success || (whenVar = spec.Vars.FindIndex(v => v.Name == wm.Groups[1].Value)) < 0) throw new ArgumentException($"padWhen '{spec.PadWhen}': var=value (a comparison variable)");
+            whenVal = long.Parse(wm.Groups[2].Value, CultureInfo.InvariantCulture);
+        }
+        var usedAt = new Dictionary<long, int>();
+        if (byUsed)
+            for (int k = 1; k < orig.Frames && k < orig.UsedPads.Count; k++)
+            {
+                if (whenVar >= 0 && orig.Values[k][whenVar] != whenVal) continue;
+                long t1 = (long)orig.Ticks[k], t0 = Math.Max(t1 - 64, (long)orig.Ticks[k - 1]);   // a tick base jump (a counter reset read as a wrap) is not a run of updates
+                for (long t = t0 + 1; t <= t1; t++) usedAt.TryAdd(t & 0xFFFF, k);   // by the counter's own 16 bits: the two sides' bases differ when one read a stale value before the reset
+            }
+        PadButtons usedMask = PadButtons.None;
+        foreach (var name in spec.PadVars.Keys) usedMask |= Enum.Parse<PadButtons>(name, true);
         for (long g = 0; g < frames && rec.Running; g++)
         {
             long f = byTime ? Math.Min(orig.Frames - 1, (long)Math.Floor(g * orig.Fps / fpsP)) : g;
+            if (byUsed)
+            {
+                var (q1, q2) = f < orig.Frames ? rd.Pads(f) : (PadButtons.None, PadButtons.None);
+                if (g > 0 && (whenVar < 0 || side.Values[(int)g - 1][whenVar] == whenVal) && usedAt.TryGetValue(((long)side.Ticks[(int)g - 1] + 1) & 0xFFFF, out int ku))
+                {
+                    q1 = (q1 & ~usedMask) | orig.UsedPads[ku];
+                }
+                q1 = MapPad(q1, spec); q2 = MapPad(q2, spec);
+                rec.BeforeFrame(q1, q2);
+                m.Frame(q1, q2);
+                rec.AfterFrame();
+                side.Values.Add(ev.Select(e => e()).ToArray());
+                side.Ticks.Add(TickOf(spec.P, fpsP, g + 1, tick?.Invoke() ?? 0, ref tb, ref tp));
+                if (m.Crashed) { side.Crash = m.CrashInfo; break; }
+                continue;
+            }
             if (byTick)
             {
                 long tNow = g == 0 ? 0 : (long)side.Ticks[(int)g - 1];
@@ -468,7 +531,8 @@ internal static class TimeflowComparing
             if (k >= eo.Count)
             {
                 var y = ep[k];
-                if (o.Ticks.Count == 0 || o.Ticks[^1] + spec.TickTolerance < y.Tick) break;
+                // only a drift when the original's run reached the end of that event's window (it may happen up to the tolerance later)
+                if (o.Ticks.Count == 0 || o.Ticks[^1] < y.Tick + spec.TickTolerance) break;
                 ev = new Drift { Kind = "extra", Event = k, Var = spec.Vars[y.Var].Name, FrameO = FrameAtTick(o, y.Tick), FrameP = y.Frame, TickO = y.Tick, Detail = $"the port's event #{k} ({spec.Vars[y.Var].Name} {y.From} -> {y.To} at tick {y.Tick:0.##}) never happens on the original" };
                 break;
             }
