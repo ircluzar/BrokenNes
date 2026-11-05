@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controller Components</title>
+  <link rel="stylesheet" href="controls.css">
+  <style>
+    body { margin: 0; padding: 24px; background: #111215; color: #ddd; font: 13px system-ui, sans-serif; }
+    h1 { font-size: 16px; margin: 0 0 4px; }
+    p { color: #999; margin: 0 0 16px; max-width: 760px; }
+    .row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 18px; }
+    #log { font: 12px ui-monospace, Consolas, monospace; color: #8ef0b2; white-space: pre; height: 120px; overflow: auto; background: #0b0c0e; padding: 8px; border-radius: 6px; max-width: 760px; }
+  </style>
+</head>
+<body>
+  <h1>BrokenNes controller components</h1>
+  <p>Every component in every state (docs/projects/controller-standard-plan.md). Drag knobs up / down (Shift = fine), wheel, arrow keys, Page Up / Down, Home / End; double-click or Delete resets to the default. Sliders also jump where you click.</p>
+  <div class="row" id="host"></div>
+  <div id="log"></div>
+  <script src="controls.js"></script>
+  <script>
+    const log = (t) => { const l = document.getElementById('log'); l.textContent += t + '\n'; l.scrollTop = 1e9; };
+    const P = BNControls.param;
+    const params = [
+      P({ id: 'drive', label: 'Drive', min: 0, max: 100, default: 35, unit: '%' }),
+      P({ id: 'cutoff', label: 'Cutoff', short: 'Cut', min: 20, max: 20000, default: 1000, unit: 'Hz', taper: 'log' }),
+      P({ id: 'pan', label: 'Pan', min: -50, max: 50, default: 0, bipolar: true }),
+      P({ id: 'mode', label: 'Mode', steps: ['off', 'soft', 'hard', 'fold'], default: 1 }),
+      P({ id: 'big', label: 'Adjust until funny', min: 0, max: 100, default: 50, unit: '%' }),
+      P({ id: 'level', label: 'Level', min: 0, max: 100, default: 70, unit: '%' }),
+      P({ id: 'mix', label: 'Mix', min: 0, max: 1, default: 0.5, step: 0.01 }),
+      P({ id: 'pace', label: 'Pace', min: 0.1, max: 10, default: 2, unit: 's', taper: 'log' }),
+      P({ id: 'power', label: 'Power', default: true }),
+      P({ id: 'bypass', label: 'Bypass', default: false }),
+      P({ id: 'off', label: 'Disabled', min: 0, max: 100, default: 60, unit: '%' }),
+    ];
+    const layout = {
+      title: 'Component test', cols: 12, rows: 5, accent: '#e0523b',
+      sections: [{ title: 'Knobs', x: 0, y: 0, w: 6, h: 3 }, { title: 'Sliders', x: 6, y: 0, w: 4, h: 4 }, { title: 'Switches', x: 10, y: 0, w: 2, h: 4 }, { title: 'Read-outs', x: 0, y: 3, w: 6, h: 2 }],
+      controls: [
+        { type: 'knob', param: 'drive', x: 0, y: 0 }, { type: 'knob', param: 'cutoff', x: 1, y: 0 }, { type: 'knob', param: 'pan', x: 2, y: 0 }, { type: 'knob', param: 'mode', x: 3, y: 0 },
+        { type: 'knob', param: 'off', x: 0, y: 1, disabled: true },
+        { type: 'knob', param: 'big', x: 4, y: 0, w: 2, h: 2 },
+        { type: 'label', text: 'Small knobs, stepped, bipolar', x: 0, y: 2, w: 4 },
+        { type: 'slider', param: 'level', x: 6, y: 0, w: 1, h: 4 }, { type: 'slider', param: 'pace', x: 7, y: 0, w: 1, h: 4 },
+        { type: 'slider', param: 'mix', x: 8, y: 1, w: 2, h: 1 },
+        { type: 'toggle', param: 'power', x: 10, y: 0 }, { type: 'toggle', param: 'bypass', x: 11, y: 0 },
+        { type: 'button', id: 'go', label: 'Blast', glyph: '●', x: 10, y: 1 }, { type: 'button', id: 'stop', label: 'Stop', glyph: '■', danger: true, x: 11, y: 1 },
+        { type: 'led', id: 'blink', label: 'Blast', x: 10, y: 2 },
+        { type: 'display', param: 'cutoff', label: 'Cutoff', x: 0, y: 3, w: 3 },
+        { type: 'display', id: 'status', text: 'ready', label: 'Status', x: 3, y: 3, w: 3 },
+        { type: 'display', param: 'mode', label: 'Mode', x: 0, y: 4, w: 2 },
+      ],
+    };
+    const panel = BNControls.createPanel(document.getElementById('host'), layout, params, {
+      onChange: (id, v, p) => { log(`${id} = ${p.format(v)}`); panel.refresh(); },
+      onPress: (id) => { log(`press ${id}`); if (id === 'go') panel.flash('blink', 160); panel.setText('status', id === 'stop' ? 'stopped' : 'blast!'); },
+    });
+    window.demoPanel = panel;
+  </script>
+</body>
+</html>
