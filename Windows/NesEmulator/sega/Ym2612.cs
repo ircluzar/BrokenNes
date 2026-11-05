@@ -272,6 +272,9 @@ public sealed partial class Ym2612 : IHubVoiceSource
     /// <summary>Optional hooks for the plugin's "push an instrument into the running game" (null, the default, leaves the chip exactly as it always was). See <see cref="IYm2612Override"/>.</summary>
     public IYm2612Override? Override { get; set; }
 
+    /// <summary>Which operators of channel 0-5 are keyed on (bit n = operator n, the $28 mask): for a hooked engine that is rebuilt after a state load and must re-key the held notes.</summary>
+    public int KeyMask(int channel) { int m = 0; for (int n = 0; n < 4; n++) if ((ops[channel * 4 + n].KeyonLive & (1 << KeyonNormal)) != 0) m |= 1 << n; return m; }
+
     /// <summary>Rewrites an operator or channel register (the operator registers $30-$9F, the channel registers $B0-$B7, the LFO $22; part 2 adds $100) the way a write would, without the bus: for <see cref="IYm2612Override.OnKeyOn"/>. False for any other register.</summary>
     public bool OverrideRegister(int index, byte data)
     {

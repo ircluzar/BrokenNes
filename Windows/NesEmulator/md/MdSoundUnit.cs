@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.IO;
 
@@ -614,6 +615,32 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
             for (int r = 0xb0; r < 0xb7; r++) W(part, r, ym.Register(b + r));
         }
         W(0, 0x2a, ym.Register(0x2a));
+    }
+
+    /// <summary>The $28 writes that key on again the notes the stock YM2612 holds (a hooked engine rebuilt after a state load), as values for register $28.</summary>
+    protected IEnumerable<byte> FmKeyOnValues()
+    {
+        for (int ch = 0; ch < 6; ch++) { int m = ym.KeyMask(ch); if (m != 0) yield return (byte)(m << 4 | (ch < 3 ? ch : ch + 1)); }
+    }
+
+    /// <summary>
+    /// For a hooked engine rebuilt after a state load or a core swap: the FM registers (<see cref="ReplayFmRegisters"/>), then key-on again for the
+    /// notes the stock chip holds, then the stock PSG's tones, volumes and noise, all through <see cref="OnYmWrite"/> / <see cref="OnPsgWrite"/>, so held
+    /// notes keep sounding (re-keyed: the engine's own envelope and phase restart; the primer's phase 2, --apu-channels --state).
+    /// </summary>
+    protected void ReplaySoundState()
+    {
+        ReplayFmRegisters();
+        foreach (var v in FmKeyOnValues()) { OnYmWrite(0, 0x28); OnYmWrite(1, v); }
+        foreach (var v in PsgReplayBytes(psg)) OnPsgWrite(v);
+    }
+
+    /// <summary>The PSG writes that set a fresh SN76489 to the stock one's tones, volumes and noise.</summary>
+    internal static IEnumerable<byte> PsgReplayBytes(Sn76489 p)
+    {
+        for (int c = 0; c < 3; c++) { yield return (byte)(0x80 | c << 5 | p.Period(c) & 0x0f); yield return (byte)(p.Period(c) >> 4 & 0x3f); }
+        yield return (byte)(0xe0 | p.NoiseControl & 7);
+        for (int c = 0; c < 4; c++) yield return (byte)(0x90 | c << 5 | p.Volume(c) & 0x0f);
     }
 
     public string Describe() { Unpark(); return DescribeCore(); }

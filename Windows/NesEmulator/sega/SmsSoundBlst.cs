@@ -30,5 +30,6 @@ public sealed class SmsSoundBlst : SmsSound
     {
         if (cpuClockHz == 0) return;   // a base-constructor Reset, before the fields exist
         Psg2.Reset();
+        foreach (var v in MdSoundUnit.PsgReplayBytes(Psg)) Psg2.Write(v);   // a state load / core swap: the held tones (--apu-channels --state)
     }
 }

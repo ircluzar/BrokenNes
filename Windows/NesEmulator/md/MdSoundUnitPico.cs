@@ -74,7 +74,7 @@ public sealed class MdSoundUnitPico : MdSoundUnit, IGenesisSound
     {
         pym = null; psn = null;
         fmPos = psgPos = frameLen;
-        if (fmBuf != null) curL = curR = curPsg = 0;
+        if (fmBuf != null) { curL = curR = curPsg = 0; ReplaySoundState(); }   // a state load / core swap: instruments, held notes, PSG (not the base constructor's Reset)
     }
 
     protected override void OnYmWrite(int port, byte value) => Ym.Write(port, value);

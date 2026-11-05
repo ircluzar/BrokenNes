@@ -33,6 +33,14 @@ namespace NesEmulator
         public new int Rating => 1;
         public new int Performance => -5;
 
+        /// <summary>After a state load the engine's own state is not in the save: the stock APU's restored registers are replayed into the engine
+        /// (the channels still sounding are re-keyed), so a held note keeps playing (docs/KNOWN_GAPS.md FA-NES-ST).</summary>
+        public new void SetState(object state)
+        {
+            base.SetState(state);
+            foreach (var (a, v) in SoundRegisterReplay()) { if (a == 0x4015) Eng.SetEnable(v); else Eng.Write(a - 0x4000, v); }
+        }
+
         public new void WriteAPURegister(ushort address, byte value)
         {
             base.WriteAPURegister(address, value);

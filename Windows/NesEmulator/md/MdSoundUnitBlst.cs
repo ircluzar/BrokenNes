@@ -37,6 +37,6 @@ public sealed class MdSoundUnitBlst : MdSoundUnit
         if (machine == null) return;   // a base-constructor Reset, before the fields exist
         Fm2.Reset();
         Psg2.Reset();
-        ReplayFmRegisters();      // a state load / core swap: the game's instruments, from the stock chip
+        ReplaySoundState();       // a state load / core swap: the game's instruments, from the stock chip
     }
 }

@@ -69,6 +69,7 @@ public sealed class MdSoundUnitM036 : MdSoundUnit
             if (part == 0) for (int r = 0xac; r < 0xaf; r++) { o.Write(ap, r); o.Write(dp, Fm.Register(r)); o.Write(ap, r - 4); o.Write(dp, Fm.Register(r - 4)); }
             for (int r = 0xb0; r < 0xb7; r++) { o.Write(ap, r); o.Write(dp, Fm.Register(b + r)); }
         }
+        foreach (var v in FmKeyOnValues()) { o.Write(0, 0x28); o.Write(1, v); }   // re-key the held notes (--apu-channels --state)
         Sn.ReplayFrom(Psg);
     }
 }

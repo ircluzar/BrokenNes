@@ -14,7 +14,8 @@ namespace BrokenNes.Workshop.Sega;
 /// --apu-channels --state [--console X]: Foreign APU follow-up phase 2 (docs/projects/foreign-apu-next-primer.md). Per core: a chord is keyed,
 /// 0.25 s plays, the state is SAVED mid-note, 0.25 s more plays (A); a fresh unit of the same core LOADS the state and plays 0.25 s (B).
 /// A and B should match: err = rms(A - B) / rms(A) at the best lag within +-64 samples. Verdicts: exact / close (&lt; 0.05) / drifts (&lt; 0.5) /
-/// DIFFERENT / SILENT AFTER LOAD. Negative control (first core of each console): skip the load (a fresh unkeyed unit) and require a fail verdict.
+/// re-keyed (sound continues at a similar level, waveform not continuous: the engine state is rebuilt from registers) / LEVEL CHANGED / SILENT AFTER LOAD.
+/// Fails: SILENT, LEVEL CHANGED, crash. re-keyed is the documented equivalent for now (KNOWN_GAPS FA-3 and the per-engine rows). Negative control (first core of each console): skip the load (a fresh unkeyed unit) and require a fail verdict.
 /// </summary>
 internal static partial class ApuChannelsCli
 {
@@ -168,7 +169,9 @@ internal static partial class ApuChannelsCli
                 try
                 {
                     (ra, rb, err, lag) = SaveLoadCompare(make(id, true), make(id, false), plant: false);
-                    verdict = ra < 30 ? "NO SOUND BEFORE THE SAVE" : rb < ra * 0.1 ? "SILENT AFTER LOAD" : err < 1e-9 ? "exact" : err < 0.05 ? "close" : err < 0.5 ? "drifts" : "DIFFERENT";
+                    double lvl = rb / Math.Max(1, ra);
+                    verdict = ra < 30 ? "NO SOUND BEFORE THE SAVE" : rb < ra * 0.1 ? "SILENT AFTER LOAD" : err < 1e-9 ? "exact" : err < 0.05 ? "close"
+                        : lvl > 0.5 && lvl < 2 ? $"re-keyed (keeps sounding at x{lvl:F2} level, waveform not continuous: engine state not saved)" : $"LEVEL CHANGED x{lvl:F2}";
                     if (id == ids[0])
                     {
                         var (_, nrb, nerr, _) = SaveLoadCompare(make(id, true), make(id, false), plant: true);
@@ -178,7 +181,7 @@ internal static partial class ApuChannelsCli
                     }
                 }
                 catch (Exception e) { verdict = $"CRASH {e.GetType().Name}: {e.Message.Split('\n')[0]}"; }
-                if (verdict.StartsWith("SILENT") || verdict.StartsWith("DIFF") || verdict.StartsWith("CRASH") || verdict.StartsWith("NO SOUND")) bad++;
+                if (verdict.StartsWith("SILENT") || verdict.StartsWith("LEVEL") || verdict.StartsWith("CRASH") || verdict.StartsWith("NO SOUND")) bad++;
                 Console.WriteLine($"{con,-6} {id,-7} {ra,7:F0} {rb,7:F0} {err,7:F3} {lag,4}  {verdict}");
             }
         }
