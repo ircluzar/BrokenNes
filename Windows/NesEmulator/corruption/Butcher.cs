@@ -37,6 +37,8 @@ public sealed class ButcherSettings
 	public PinGroupSettings PaletteBus { get; set; } = new();
 	/// <summary>The LCD's column / row drivers failing (Game Boy, Game Boy Color, Game Gear): dead or stuck lines across the screen.</summary>
 	public LcdSettings Lcd { get; set; } = new();
+	/// <summary>One of the two VRAM chips failing (SNES, Genesis: a word-wide VRAM made of two byte-wide chips): half of every word is wrong.</summary>
+	public VramChipSettings VramChip { get; set; } = new();
 	public UnsafeSettings Unsafe { get; set; } = new();
 }
 
@@ -58,6 +60,16 @@ public sealed class UnsafeSettings
 	public SagEffect PowerSag { get; set; } = new();
 	/// <summary>A badly seated cartridge: bursts of faults on the cartridge bus (the Game Boy's tilt sensitivity, a loose cart anywhere).</summary>
 	public EventEffect LooseCart { get; set; } = new();
+	/// <summary>DRAM refresh failing (SNES work RAM, Genesis VRAM and work RAM are DRAM): whole rows fade toward 0.</summary>
+	public DramRotEffect DramRot { get; set; } = new();
+	/// <summary>Heat soak: the longer the game runs, the more often every intermittent (flickering) pin fault is there. A reload cools it.</summary>
+	public HeatEffect HeatSoak { get; set; } = new();
+	/// <summary>An electrostatic discharge: one moment of bit flips in every memory at once.</summary>
+	public EsdEffect Esd { get; set; } = new();
+	/// <summary>Noise on the Game Boy's link port: garbage bytes arrive as if a cable were plugged in.</summary>
+	public RateEffect LinkNoise { get; set; } = new();
+	/// <summary>The Genesis pads' TH line (the multiplexing select pin): 0 connected, 1 stuck low, 2 stuck high, 3 floating; flicker as the pins.</summary>
+	public PadThSettings PadTh { get; set; } = new();
 	public EventEffect GhostNmi { get; set; } = new();
 	public EventEffect DropNmi { get; set; } = new();
 	public EventEffect StuckIrq { get; set; } = new();
@@ -96,6 +108,15 @@ public sealed class SagEffect { public bool On { get; set; } public double Rate 
 public sealed class LcdSettings { public bool On { get; set; } public int Columns { get; set; } = 2; public int Rows { get; set; } = 0; public int Mode { get; set; } public int Seed { get; set; } = 1; }
 /// <summary>Age 0-100: how far the audio path's capacitors have dried out (muffled, then crackle, then cut-outs).</summary>
 public sealed class CapsEffect { public bool On { get; set; } public double Age { get; set; } = 40; }
+/// <summary>Chip 0 the low byte (D0-D7), 1 the high byte (D8-D15). Mode 0 stuck low, 1 stuck high, 2 floating.</summary>
+public sealed class VramChipSettings { public bool On { get; set; } public int Chip { get; set; } public int Mode { get; set; } public double Flicker { get; set; } }
+/// <summary>Rate: chance per frame of a row fading. Rows: how many 512-byte rows per event.</summary>
+public sealed class DramRotEffect { public bool On { get; set; } public double Rate { get; set; } = 10; public int Rows { get; set; } = 1; }
+/// <summary>Minutes: how long until the faults are at their worst.</summary>
+public sealed class HeatEffect { public bool On { get; set; } public double Minutes { get; set; } = 5; }
+/// <summary>Rate: chance per frame of a discharge. Bits: bits flipped in each memory.</summary>
+public sealed class EsdEffect { public bool On { get; set; } public double Rate { get; set; } = 2; public int Bits { get; set; } = 16; }
+public sealed class PadThSettings { public int Mode { get; set; } public double Flicker { get; set; } }
 
 /// <summary>Glitch Boy's palette glitch: the picture's colours through a transform, never the game's own palette.</summary>
 public sealed class PaletteSettings
@@ -219,6 +240,8 @@ public sealed class SoundSettings
 	public ClockWobble Wobble { get; set; } = new();
 	/// <summary>Dried-out capacitors on the audio output path.</summary>
 	public CapsEffect Caps { get; set; } = new();
+	/// <summary>The Master System's FM unit losing contact: its writes go nowhere for a while (only the PSG is heard).</summary>
+	public EventEffect FmUnplug { get; set; } = new();
 }
 
 public sealed class ClockWobble { public bool On { get; set; } public int Depth { get; set; } = 30; public int Speed { get; set; } = 8; }
@@ -232,6 +255,9 @@ internal sealed class PinFaults
 	// fault 4, floating: an open line keeps the charge of the last value driven onto it (NMOS bus capacitance), so it reads as last time
 	private readonly int addrFloat, dataFloat; private int lastAddr, lastData;
 	private readonly uint flickerThreshold;          // fault absent on a fetch when rng < this
+	private uint missThreshold;                       // the flicker as it is now (heat soak lowers it: the fault is there more often)
+	/// <summary>Heat soak: 1 = the flicker as set, 0 = the fault always there.</summary>
+	public void SetHeat(double missScale) => missThreshold = (uint)(flickerThreshold * Math.Clamp(missScale, 0, 1));
 	private uint rng;
 
 	public PinFaults(PinGroupSettings? s, int addrLines, uint seed, int dataLines = 8)
@@ -246,6 +272,7 @@ internal sealed class PinFaults
 		BendWrites = s?.BendWrites == true;
 		double f = Math.Clamp(s?.Flicker ?? 0, 0, 100) / 100.0;
 		flickerThreshold = (uint)(Math.Min(f, 0.999) * uint.MaxValue);
+		missThreshold = flickerThreshold;
 	}
 
 	private static int[] Compile(int[]? faults, int lines, ref int and, ref int or, ref int floating)
@@ -271,7 +298,7 @@ internal sealed class PinFaults
 	private uint Next() { uint x = rng; x ^= x << 13; x ^= x >> 17; x ^= x << 5; if (x == 0) x = 0x6c8e9cf5u; rng = x; return x; }
 
 	/// <summary>True when the flicker leaves this fetch untouched.</summary>
-	public bool Misses() => flickerThreshold != 0 && Next() < flickerThreshold;
+	public bool Misses() => missThreshold != 0 && Next() < missThreshold;
 
 	public int Addr(int a) { if (addrFloat != 0) a = (a & ~addrFloat) | (lastAddr & addrFloat); a = Apply(a, addrAnd, addrOr, addrBridges); lastAddr = a; return a; }
 	public byte Data(byte v) => (byte)DataBits(v);
@@ -476,6 +503,27 @@ public sealed class Butcher
 	private int busHoldLeft, resetHoldLeft;
 	private int ghostLeft, dropLeft2, irqLeft;
 	private int cicCount, looseLeft; private bool resetPending, sagPending; private PinFaults? cpuPinsBase;
+	private long heatFrames; private int fmUnplugLeft; private bool linkPending; private byte linkByte;
+	private PinFaults? padThFaults; private bool padThLast = true;
+	/// <summary>The Master System's FM unit has lost contact this frame: the board drops its writes and its detection.</summary>
+	public bool FmUnpluggedNow => fmUnplugLeft > 0;
+	/// <summary>The Genesis pads' TH line is faulted.</summary>
+	public bool PadThActive { get; private set; }
+	/// <summary>The TH level a pad sees, given the one the console drives (stuck, floating: the level it had last).</summary>
+	public bool PadThBend(bool th)
+	{
+		var f = padThFaults; if (f == null || f.Misses()) { padThLast = th; return th; }
+		int mode = settings.Unsafe.PadTh.Mode;
+		bool v = mode == 1 ? false : mode == 2 ? true : padThLast;
+		padThLast = v; return v;
+	}
+	/// <summary>A garbage byte on the link port this frame (the Game Boy board delivers it as a finished transfer), or null.</summary>
+	public byte? TakeLinkByte() { if (!linkPending) return null; linkPending = false; return linkByte; }
+	private System.Collections.Generic.IEnumerable<PinFaults?> AllPins()
+	{
+		yield return Console; yield return Cart; yield return CpuPins; yield return cpuPinsBase; yield return SoundCpu; yield return SoundBus; yield return SampleFaults;
+		yield return Dac; yield return Dma; yield return Copro; yield return VideoDacFaults; yield return PaletteBusFaults; yield return VideoBusFaults; yield return RamBusFaults; yield return padThFaults;
+	}
 	private uint rngEvents = 0x2C1B3C6Du;
 	private uint RE() { uint x = rngEvents; x ^= x << 13; x ^= x >> 17; x ^= x << 5; if (x == 0) x = 0x2C1B3C6Du; rngEvents = x; return x; }
 	/// <summary>
@@ -529,6 +577,34 @@ public sealed class Butcher
 		Tick(ref looseLeft, u.LooseCart.On, u.LooseCart.Rate, u.LooseCart.Duration, null);
 		if (!looseWas && looseLeft > 0) CpuPins = LooseBurst();
 		else if (looseWas && looseLeft == 0) CpuPins = cpuPinsBase;
+		// heat soak: every intermittent pin fault is there more often as the minutes pass (up to always, at the set time)
+		if (u.HeatSoak.On)
+		{
+			double heat = Math.Min(1.0, ++heatFrames / Math.Max(60.0, Math.Clamp(u.HeatSoak.Minutes, 0.1, 120) * 3600));
+			foreach (var pf in AllPins()) pf?.SetHeat(1 - heat);
+		}
+		// DRAM refresh failing: rows that fade toward 0 (charge leaks away), in the memories that are DRAM on this console
+		if (u.DramRot.On && RE() < EventThreshold(u.DramRot.Rate))
+		{
+			for (int k = 0; k < Math.Clamp(u.DramRot.Rows, 1, 16); k++)
+			{
+				byte[]? m = Profile.Console == "md" ? (((RE() & 1) != 0) ? vram : ram) : Profile.Console == "snes" ? ram : null;
+				if (m == null || m.Length < 512) continue;
+				int row = (int)(RE() % (uint)(m.Length / 512)) * 512;
+				for (int i = row; i < row + 512; i++) for (int bit = 0; bit < 8; bit++) if ((RE() & 7) == 0) m[i] &= (byte)~(1 << bit);
+			}
+		}
+		// an electrostatic discharge: bit flips in every memory at the same moment
+		if (u.Esd.On && RE() < EventThreshold(u.Esd.Rate))
+		{
+			int n = Math.Clamp(u.Esd.Bits, 1, 4096);
+			void Zap(byte[]? m) { if (m == null || m.Length == 0) return; for (int i = 0; i < n; i++) m[RE() % (uint)m.Length] ^= (byte)(1 << (int)(RE() & 7)); }
+			Zap(ram); Zap(vram); Zap(soundRam);
+			if (vramWords is { Length: > 0 } vw) for (int i = 0; i < n; i++) vw[RE() % (uint)vw.Length] ^= (ushort)(1 << (int)(RE() & 15));
+		}
+		if (u.LinkNoise.On && Profile.Console == "gb" && RE() < EventThreshold(u.LinkNoise.Rate)) { linkPending = true; linkByte = (byte)RE(); }
+		var fu = settings.Sound.FmUnplug;
+		Tick(ref fmUnplugLeft, fu.On, fu.Rate, fu.Duration, null);
 		Tick(ref stallLeft, u.ClockStall.On, u.ClockStall.Rate, u.ClockStall.Duration, null);
 		Tick(ref rushLeft, u.ClockRush.On, u.ClockRush.Rate, u.ClockRush.Duration, null);
 		bool busWas = busHoldLeft > 0, rstWas = resetHoldLeft > 0;
@@ -573,7 +649,18 @@ public sealed class Butcher
 		settings = s ?? new ButcherSettings();
 		cartLines = AddressLinesFor(chrChipSize);
 		var on = settings.Enabled;
-		var c = new PinFaults(settings.ConsolePins, Profile.ConsoleLines, 0x9e3779b9u, Profile.DataLines);
+		var cpSet = settings.ConsolePins;
+		var vc = settings.VramChip;
+		if (on && vc.On && Profile.DataLines >= 16)
+		{
+			// a failed chip: its eight data lines all stuck (or floating), on top of whatever the pins already have
+			var d = new int[Math.Max(16, cpSet.Data?.Length ?? 0)];
+			if (cpSet.Data != null) Array.Copy(cpSet.Data, d, Math.Min(cpSet.Data.Length, d.Length));
+			int code = vc.Mode switch { 1 => 2, 2 => 4, _ => 1 }, from = vc.Chip == 1 ? 8 : 0;
+			for (int i = from; i < from + 8; i++) if (d[i] == 0) d[i] = code;
+			cpSet = new PinGroupSettings { Address = cpSet.Address, Data = d, Flicker = Math.Max(cpSet.Flicker, vc.Flicker), BendWrites = cpSet.BendWrites };
+		}
+		var c = new PinFaults(cpSet, Profile.ConsoleLines, 0x9e3779b9u, Profile.DataLines);
 		var k = new PinFaults(settings.CartPins, cartLines, 0x85ebca6bu);
 		Console = on && c.Active ? c : null;
 		Cart = on && k.Active ? k : null;
@@ -614,7 +701,12 @@ public sealed class Butcher
 		cpuPinsBase = CpuPins;
 		var un = settings.Unsafe;
 		IrqActive = on && (un.GhostNmi.On || un.DropNmi.On || un.StuckIrq.On || un.Z80BusHold.On || un.Z80ResetHold.On || un.ClockStall.On || un.ClockRush.On
-			|| (un.CicReset.On && Profile.Cic) || un.ResetBounce.On || un.PowerSag.On || un.LooseCart.On);
+			|| (un.CicReset.On && Profile.Cic) || un.ResetBounce.On || un.PowerSag.On || un.LooseCart.On
+			|| un.DramRot.On || un.HeatSoak.On || un.Esd.On || (un.LinkNoise.On && Profile.Console == "gb") || settings.Sound.FmUnplug.On);
+		if (!(on && un.HeatSoak.On)) { heatFrames = 0; foreach (var pf in AllPins()) pf?.SetHeat(1); }
+		PadThActive = on && Profile.Console == "md" && un.PadTh.Mode is >= 1 and <= 3;
+		padThFaults = PadThActive ? new PinFaults(new PinGroupSettings { Flicker = un.PadTh.Flicker }, 1, 0x7A5C3E11u) : null;
+		if (!(on && settings.Sound.FmUnplug.On)) fmUnplugLeft = 0;
 		if (!(on && un.LooseCart.On)) looseLeft = 0;
 		if (!(on && un.CicReset.On)) cicCount = 0;
 		lcdOn = on && settings.Lcd.On && (settings.Lcd.Columns > 0 || settings.Lcd.Rows > 0);
@@ -637,7 +729,7 @@ public sealed class Butcher
 	}
 
 	/// <summary>Nothing is on: the hooks can be detached.</summary>
-	public bool Idle => !LcdActive && !resetPending && looseLeft == 0 && RamBusFaults == null && !IrqActive && irqLeft == 0 && CiramFault == 0 && PaletteBusFaults == null && VideoBusFaults == null && !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
+	public bool Idle => !LcdActive && !resetPending && looseLeft == 0 && !PadThActive && fmUnplugLeft == 0 && !linkPending && RamBusFaults == null && !IrqActive && irqLeft == 0 && CiramFault == 0 && PaletteBusFaults == null && VideoBusFaults == null && !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
 
 	public static int AddressLinesFor(int size)
 	{
@@ -1101,6 +1193,8 @@ public sealed class Butcher
 		dropMask = 0; Array.Clear(dropLeft); pendingDropRelease = false;
 		droneLeft = dutyLeft = detuneLeft = stutterLeft = 0;
 		resetPending = sagPending = false;   // a reset queued on the old timeline must not hit the loaded machine
+		linkPending = false;
+		heatFrames = 0; foreach (var pf in AllPins()) pf?.SetHeat(1);   // a reload is the machine cold again
 		if (looseLeft > 0) { looseLeft = 0; CpuPins = cpuPinsBase; }
 	}
 	private int stutterLeft, droneLeft, dutyLeft, detuneLeft;

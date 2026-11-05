@@ -84,12 +84,16 @@ public sealed class MdPads
         else
         {
             bool th = (p.Control & 0x40) != 0 ? (p.DataLatch & 0x40) != 0 : true;
+            if (ButcherTh != null && index == 0) th = ButcherTh(th);   // Butchering mode: player 1's TH wire
             pins = Lines(p, th, now);
             if ((p.Control & 0x40) != 0) pins = (byte)(pins & ~0x40 | p.DataLatch & 0x40);
         }
         // pins the console drives read back its latch, the others follow the pad
         return (byte)((p.DataLatch & p.Control | pins & ~p.Control) & 0xFF);
     }
+
+    /// <summary>Butchering mode's TH line fault (player 1): the level the pad sees for the one the console drives. Null when off.</summary>
+    public Func<bool, bool>? ButcherTh;
 
     public void WriteData(int index, byte value, long now)
     {

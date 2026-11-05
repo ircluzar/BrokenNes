@@ -361,7 +361,7 @@ public sealed class BOARD_SMS
         // The FM unit answers a read of $F2 with its audio control (bits 0-1) only while the console's I/O chip is switched off (bit 2 of the memory control port $3E): that is how a game detects the unit
         // (it writes 0 and 1 to $F2 and reads them back, with the I/O chip off). With the I/O chip on, or without the unit, $F2 is a mirror of $DC like any other port ($F0, $F1 read as $DC / $DD always).
         // Measured on the oracle (Mesen 2.1.1) with Workshop/Sega/SmsSuitesFm.cs's probes, all 256 written values, with and without its FM chip.
-        if (p == 0xF2 && Sound.HasFm && !ioEnabled) return Sound.ReadAudioControl();
+        if (p == 0xF2 && Sound.HasFm && !ioEnabled && Butcher is not { FmUnpluggedNow: true }) return Sound.ReadAudioControl();
         if (IsGameGear && p < 0x07) return ReadGgPort(p);
         switch (p & 0xC0)
         {
@@ -396,6 +396,7 @@ public sealed class BOARD_SMS
         if (p is 0xF0 or 0xF1 or 0xF2)
         {
             SyncSound();
+            if (Butcher is { FmUnpluggedNow: true }) return;   // Butchering mode: the FM unit has lost contact, its writes go nowhere
             if (p <= 0xF1 && Butcher is { SoundActive: true } bf) value = bf.FilterOpllWrite(p == 0xF1, value);
             if (p == 0xF0) Sound.WriteFmAddress(value); else if (p == 0xF1) Sound.WriteFmData(value); else Sound.WriteAudioControl(value);
             return;

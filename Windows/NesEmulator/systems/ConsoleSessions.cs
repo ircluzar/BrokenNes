@@ -550,6 +550,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
         var on = b != null && !b.Idle ? b : null;
         board.Butcher = on; board.Ppu.Butcher = on;
         if (board.Apu is APU_GB ag) ag.Butcher = on;
+        if (b?.TakeLinkByte() is byte lb) board.ButcherSerial(lb);
     }
 
     public void RunFrame()

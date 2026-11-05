@@ -39,6 +39,7 @@ public static class ButcherCatalog
 		new("ciramA10", "picture", "CIRAM A10 (mirroring pin)", 93, "A real cartridge pin; a bad contact gives exactly this."),
 		new("videoDac", "palette", "Video DAC lines", 72, "Inside the picture chip on these consoles: a dead colour bit is a real failure, but of a damaged chip."),
 		new("lcd", "picture", "LCD driver lines", 99, "A failed LCD column or row driver: the classic dead vertical lines of a Game Boy or Game Gear screen."),
+		new("vramChip", "picture", "One VRAM chip failing", 93, "The SNES builds its word-wide VRAM from two byte-wide chips: one dying wrecks half of every word."),
 		new("paletteBus", "palette", "Palette RAM bus", 70, "Palette / colour RAM is on the picture chip's die on every console here."),
 		// ---- sprites
 		new("sprites.xJitter", "sprites", "Sprite X jitter", 50, "Positions read wrong (a real result of a bad sprite-table path), chosen as an offset rather than a bit fault."),
@@ -61,6 +62,7 @@ public static class ButcherCatalog
 		new("sound.duty", "sound", "Duty force", 15, "A duty value chosen."),
 		new("sound.detune", "sound", "Detune (XOR)", 30, "A bit pattern aimed at the period registers."),
 		new("sound.wobble", "sound", "Clock wobble", 78, "A drifting or failing crystal / resonator."),
+		new("sound.fmUnplug", "sound", "FM unit losing contact (Master System)", 85, "The FM unit's connector or socket losing contact: only the PSG is heard while it is out."),
 		new("sound.caps", "sound", "Dried-out audio capacitors", 93, "Old electrolytic capacitors on the audio path: muffled sound, crackle, cut-outs. The most common repair on old consoles."),
 		// ---- bands (a register changed for a few scanlines: what a CPU writing mid-frame does, not a physical fault)
 		new("bands.shift", "bands", "Band: shift", 45, "Mid-frame scroll change."),
@@ -91,6 +93,11 @@ public static class ButcherCatalog
 		new("unsafe.resetBounce", "unsafe", "Reset line bounce", 90, "A worn reset button or a noisy reset circuit pulsing the reset line."),
 		new("unsafe.powerSag", "unsafe", "Power sag (brown-out)", 92, "A failing power supply dips: the console resets and RAM keeps only part of what it held."),
 		new("unsafe.looseCart", "unsafe", "Loose cartridge", 96, "A badly seated or tilted cartridge: bursts of faults on the cartridge bus (the Game Boy's tilt sensitivity)."),
+		new("unsafe.dramRot", "unsafe", "DRAM refresh rot", 82, "DRAM whose refresh fails loses whole rows to leakage (SNES work RAM, Genesis VRAM and work RAM are DRAM)."),
+		new("unsafe.heatSoak", "unsafe", "Heat soak", 85, "Cracked joints and tired contacts open up as the board warms: intermittent faults get worse the longer it runs."),
+		new("unsafe.esd", "unsafe", "Electrostatic discharge", 80, "A static zap from a finger or a cable: one moment of bit flips everywhere."),
+		new("unsafe.linkNoise", "unsafe", "Link port noise (Game Boy)", 80, "A dirty or half-inserted link port picking up noise as data."),
+		new("unsafe.padTh", "unsafe", "Pad TH line (Genesis)", 92, "The pad cable's select wire broken or shorted: the button multiplexing goes wrong (6-button pads especially)."),
 		new("unsafe.ghostNmi", "unsafe", "Ghost NMI", 80, "Noise on an interrupt line."),
 		new("unsafe.dropNmi", "unsafe", "Dropped NMI", 80, "A broken or weak interrupt trace."),
 		new("unsafe.stuckIrq", "unsafe", "Stuck IRQ", 80, "A shared open-collector IRQ line held low."),

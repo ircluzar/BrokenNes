@@ -378,6 +378,13 @@ public sealed class BOARD_GB : IGbCpuBus
     private byte sb, sc;
     private int serialBits, serialCounter;
 
+    /// <summary>Butchering mode's link-port noise: a byte arrives as if a partner had sent it (a transfer in progress, even on the external clock, finishes).</summary>
+    public void ButcherSerial(byte v)
+    {
+        sb = v;
+        if ((sc & 0x80) != 0) { sc &= 0x7F; serialBits = 0; serialCounter = 0; iflag |= 0x08; }
+    }
+
     private void TickSerial()
     {
         if (serialBits == 0 || (sc & 1) == 0) return;       // external clock with no partner never finishes
