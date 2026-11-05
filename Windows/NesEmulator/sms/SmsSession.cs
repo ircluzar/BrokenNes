@@ -26,7 +26,7 @@ public class SmsSession : IConsoleSession, IButcherHost
     public ButcherReach GetButcherReach() => new(
         PpuCore: IsGameGear ? "Game Gear VDP" : "Master System VDP", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
         SpritesDma: true, Sprites2004: false, Sound: true, Bands: true, Ram: true)
-    { BandKinds = new[] { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spriteHeight", "bend" },
+    { Lcd = IsGameGear, BandKinds = new[] { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spriteHeight", "bend" },
       ExtraBands = new[] { "Sprite zoom|Sprites drawn double size inside the band.", "Left column blank|The leftmost 8 pixels blanked inside the band.", "Sprite shift|Sprites pushed 8 pixels left inside the band." },
       CpuPins = true, CpuAddressLines = 14, CpuDataLines = 8, CpuPinsTitle = "CPU bus · cartridge slot pins (A0-A13 within a 16 KB slot, D0-D7)",
       SoundBusLines = 0, SampleLines = 0,
@@ -106,7 +106,7 @@ public class SmsSession : IConsoleSession, IButcherHost
         board.SetPad(player, s);
     }
 
-    public virtual void RunFrame() { if (Butcher != null || board.Butcher != null) ButcherFrame(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } } board.RunFrame(); }
+    public virtual void RunFrame() { if (Butcher != null || board.Butcher != null) ButcherFrame(); if (Butcher?.TakeReset() == true) Reset(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } } board.RunFrame(); }
 
     public void Reset() => board.Reset();
     public virtual uint[] Frame => board.Vdp.Frame;
@@ -229,9 +229,11 @@ public sealed class GgSession : SmsSession
 
     public override void RunFrame()
     {
-        if (Butcher != null || board.Butcher != null) ButcherFrame(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
+        if (Butcher != null) Butcher.LcdHost = true;
+        if (Butcher != null || board.Butcher != null) ButcherFrame(); if (Butcher?.TakeReset() == true) Reset(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
         board.RunFrame();
         CropLcd();
+        if (Butcher is { LcdActive: true } bl) bl.ApplyLcd(lcd, LcdWidth, LcdHeight);   // Butchering mode: the LCD drivers
     }
 
     private void CropLcd()

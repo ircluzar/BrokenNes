@@ -8,7 +8,8 @@
     { code: 0, short: '·', name: 'connected' },
     { code: 1, short: 'L', name: 'stuck low' },
     { code: 2, short: 'H', name: 'stuck high' },
-    { code: 3, short: 'B', name: 'bridged to the next line' }
+    { code: 3, short: 'B', name: 'bridged to the next line' },
+    { code: 4, short: 'F', name: 'floating (keeps the last value on it)' }
   ];
 
   let baseStateId = null;
@@ -45,17 +46,20 @@
         busPins: { address: new Array(reach?.soundBusLines ?? 5).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
         samplePins: { address: new Array(reach?.sampleLines ?? 15).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
         dacPins: { address: [], data: new Array(16).fill(0), flicker: 0, bendWrites: false },
-        wobble: { on: false, depth: 30, speed: 8 }
+        wobble: { on: false, depth: 30, speed: 8 },
+        caps: { on: false, age: 40 }
       },
       bands: (() => { const b = () => ({ on: false, rate: 25, width: 30, strength: 8, lifetime: 30 }); return { shift: b(), slip: b(), patternSwap: b(), nametableSwap: b(), bgOff: b(), spritesOff: b(), spriteHeight: b(), bend: b(), extra1: b(), extra2: b(), extra3: b() }; })(),
       ram: { on: false, rate: 25, step: 1, lifetime: 60, maxProbes: 3 },
       palette: { on: false, mode: 0, invert: false, channelSwap: false, posterize: 0, cycleFrames: 0 },
       ciramA10: 0, ciramFlicker: 0,
+      lcd: { on: false, columns: 2, rows: 0, mode: 0, seed: 1 },
       videoDac: { address: [], data: new Array(24).fill(0), flicker: 0, bendWrites: false },
       paletteBus: (() => { const z = { nes: [5, 6], snes: [8, 15], md: [6, 12], sms: [5, 0], gg: [5, 0], gb: [6, 8] }[reach?.console || 'nes'] || [5, 6]; return { address: new Array(z[0]).fill(0), data: new Array(z[1]).fill(0), flicker: 0, bendWrites: false }; })(),
       unsafe: { cpuPins: { address: new Array(reach?.cpuAddressLines || 15).fill(0), data: new Array(reach?.cpuDataLines || 8).fill(0), flicker: 0, bendWrites: false },
                 soundCpuPins: { address: new Array(reach?.soundCpuLines || 0).fill(0), data: new Array(8).fill(0), flicker: 0, bendWrites: false },
                 ramRot: { on: false, rate: 25, bits: 1 }, vramRot: { on: false, rate: 25, bits: 1 },
+                cicReset: { on: false, periodFrames: 60 }, resetBounce: { on: false, rate: 3 }, powerSag: { on: false, rate: 3, decay: 30 }, looseCart: { on: false, rate: 10, duration: 20 },
                 padLines: new Array(15).fill(0), padFlicker: 0,
                 soundRamRot: { on: false, rate: 25, bits: 1 }, echoAbuse: { on: false, rate: 25, duration: 120 },
                 ghostNmi: { on: false, rate: 25, duration: 1 }, clockStall: { on: false, rate: 25, duration: 10 }, clockRush: { on: false, rate: 25, duration: 30 }, z80BusHold: { on: false, rate: 25, duration: 60 }, z80ResetHold: { on: false, rate: 25, duration: 60 }, dropNmi: { on: false, rate: 25, duration: 10 }, stuckIrq: { on: false, rate: 25, duration: 10 },
@@ -209,7 +213,7 @@
     if (off.bands) e.bands = d.bands;
     if (off.ram) e.ram = d.ram;
     if (off.palette) { e.palette = d.palette; e.videoDac = d.videoDac; e.paletteBus = d.paletteBus; }
-    if (off.picture) { e.ciramA10 = 0; }
+    if (off.picture) { e.ciramA10 = 0; e.lcd = d.lcd; }
     if (off.unsafe) { e.ram = d.ram; e.unsafe = d.unsafe; e.consolePins.bendWrites = false; e.cartPins.bendWrites = false; }
     delete e.groupsOff;
     return e;
@@ -363,7 +367,7 @@
     return el('details', { open: true }, groupSummary(title, 'picture'),
       el('div', { class: 'why' }, why),
       available ? null : el('div', { class: 'off' }, unavailableText),
-      el('div', { class: 'legend' }, '· connected   L stuck low   H stuck high   B bridged to the next line'),
+      el('div', { class: 'legend' }, '· connected   L stuck low   H stuck high   B bridged to the next line   F floating'),
       body);
   }
 
@@ -455,6 +459,16 @@
       el('div', { class: 'fx' }, el('div', { class: 'bits' }, el('label', {}, 'A10 ', el('select', { onchange: (e) => { settings.ciramA10 = Number(e.target.value); push(); } },
         ...['connected', 'stuck low', 'stuck high', 'inverted'].map((n, i) => el('option', { value: i, selected: settings.ciramA10 === i }, n))))),
         slider('Flicker', settings, 'ciramFlicker', 0, 100, 1))));
+    if (reach.lcd) {
+      const lc = settings.lcd;
+      g.append(el('details', { open: true }, groupSummary('LCD drivers (column / row lines)', 'picture'),
+        el('div', { class: 'why' }, 'The screen’s column and row driver chips failing: whole lines stay dark, light or flicker - the classic dead lines of an old handheld.'),
+        el('div', { class: 'fx' }, check('Dead lines', lc, 'on'),
+          slider('Columns', lc, 'columns', 0, 16, 1), slider('Rows', lc, 'rows', 0, 16, 1),
+          el('div', { class: 'bits' }, el('label', {}, 'Lines ', el('select', { onchange: (e) => { lc.mode = Number(e.target.value); push(); } },
+            ...['dark', 'light', 'flickering'].map((n, i) => el('option', { value: i, selected: lc.mode === i }, n))))),
+          slider('Which lines', lc, 'seed', 1, 999, 1))));
+    }
 
     const spritesWhy = reach.spritesDma ? (reach.sprites2004 || !isNes ? '' : 'Single $2004 writes are not filtered on this PPU core (DMA is).')
       : isNes ? `Not reachable on the ${reach.ppuCore} PPU core.` : 'Not reachable on this console yet.';
@@ -508,7 +522,9 @@
         el('div', { class: 'why' }, 'The 16 lines into the DAC: bitcrush and distortion on the final sound. Display-only: the game never hears it.'),
         pinGrid('D', so.dacPins.data), slider('Flicker', so.dacPins, 'flicker', 0, 100, 1)),
       el('div', { class: 'fx' }, check('Clock wobble', so.wobble, 'on'), el('div', { class: 'why' }, 'A drifting crystal: the pitch sways like a worn tape.'),
-        slider('Depth', so.wobble, 'depth', 1, 100, 1), slider('Speed', so.wobble, 'speed', 1, 80, 1))));
+        slider('Depth', so.wobble, 'depth', 1, 100, 1), slider('Speed', so.wobble, 'speed', 1, 80, 1)),
+      el('div', { class: 'fx' }, check('Dried-out capacitors', so.caps, 'on'), el('div', { class: 'why' }, 'The audio path’s old capacitors: the treble goes first, then crackle, then the sound cuts out for moments.'),
+        slider('Age', so.caps, 'age', 1, 100, 1))));
 
     const bd = settings.bands;
     const bandFx = (label, why, fx, strengthLabel) => el('div', { class: 'fx' }, check(label, fx, 'on'), el('div', { class: 'why' }, why),
@@ -553,7 +569,7 @@
     if (reach.cpuPins) unsafeBody.push(
       el('div', { class: 'sub' }, reach.cpuPinsTitle || 'CPU bus · cartridge PRG pins'),
       el('div', { class: 'why' }, 'The CPU reads the game\u2019s code and data through these: wrong instructions, wrong numbers, often a crash.'),
-      el('div', { class: 'legend' }, '· connected   L stuck low   H stuck high   B bridged to the next line'),
+      el('div', { class: 'legend' }, '· connected   L stuck low   H stuck high   B bridged to the next line   F floating'),
       el('div', { class: 'sub' }, 'Address lines'), pinGrid('A', un.cpuPins.address),
       el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', un.cpuPins.data),
       slider('Flicker', un.cpuPins, 'flicker', 0, 100, 1),
@@ -589,6 +605,14 @@
     if (reach.console === 'md') unsafeBody.push(el('div', { class: 'sub' }, '68000 / Z80 bus arbitration'),
       eventFx('BUSREQ stuck', 'The 68000 keeps the Z80 off the bus: the sound CPU halts, the music freezes.', un.z80BusHold),
       eventFx('Z80 reset held', 'The sound CPU is held in reset: silence, then a restart from scratch.', un.z80ResetHold));
+    unsafeBody.push(el('div', { class: 'sub' }, 'Reset line and power'),
+      reach.cic ? el('div', { class: 'fx' }, check('Lockout chip (CIC) fails', un.cicReset, 'on'), el('div', { class: 'why' }, 'The console resets about once a second, the famous blinking power light.'),
+        slider('Every (frames)', un.cicReset, 'periodFrames', 10, 600, 1)) : null,
+      el('div', { class: 'fx' }, check('Reset bounce', un.resetBounce, 'on'), el('div', { class: 'why' }, 'A worn reset button: the console resets by itself now and then.'),
+        slider('Rate', un.resetBounce, 'rate', 0, 100, 1)),
+      el('div', { class: 'fx' }, check('Power sag (brown-out)', un.powerSag, 'on'), el('div', { class: 'why' }, 'The supply dips: the console resets, and RAM keeps only part of what it held.'),
+        slider('Rate', un.powerSag, 'rate', 0, 100, 1), slider('RAM lost (%)', un.powerSag, 'decay', 0, 100, 1)),
+      reach.cpuPins ? eventFx('Loose cartridge', 'A badly seated or tilted cartridge: bursts of faults on its pins, then it sits right again.', un.looseCart) : null);
     unsafeBody.push(el('div', { class: 'sub' }, 'Clock pins'),
       eventFx('Clock stall', 'The CPU’s clock stops for a while: the picture and sound freeze.', un.clockStall),
       eventFx('Clock rush', 'The clock runs double: the game races, the music doubles its tempo.', un.clockRush));
@@ -642,10 +666,11 @@
     if (reach.spritesDma && (reach.attrNames || []).length) c.push(['bits', sp.attr, 'bits']);
     if (reach.sound !== false) { c.push(['bits', so.bitFlip, 'bits'], ['fx', so.nudge], ['bits', so.drops, 'channels'], ['fx', so.stutter], ['fx', so.drone], ['fx', so.detune]); if (isNesReach()) c.push(['fx', so.duty]); }
     if (reach.bands) { for (const k of (reach.bandKinds || [])) if (bd[k]) c.push(['fx', bd[k]]); (reach.extraBands || []).forEach((_, i) => c.push(['fx', bd['extra' + (i + 1)]])); }
-    c.push(['fx', st.palette], ['fx', st.sound.wobble], ['pins', st.sound.busPins]);
+    c.push(['fx', st.palette], ['fx', st.sound.wobble], ['pins', st.sound.busPins], ['fx', st.sound.caps]);
+    if (reach.lcd) c.push(['fx', st.lcd]);
     if (reach.consolePins) c.push(['pins', st.consolePins]);
     if (isNesReach() && reach.cartPins) c.push(['pins', st.cartPins]);
-    if (includeUnsafe) { if (reach.ram) c.push(['fx', st.ram]); c.push(['fx', st.unsafe.ramRot]); if (reach.vramRot !== false) c.push(['fx', st.unsafe.vramRot]); if (reach.cpuPins) c.push(['pins', st.unsafe.cpuPins]); if (reach.soundCpuLines > 0) c.push(['pins', st.unsafe.soundCpuPins]); if (reach.dmaLines > 0) c.push(['pins', st.unsafe.dmaPins]); }
+    if (includeUnsafe) { if (reach.ram) c.push(['fx', st.ram]); c.push(['fx', st.unsafe.resetBounce], ['fx', st.unsafe.powerSag]); if (reach.cic) c.push(['fx', st.unsafe.cicReset]); if (reach.cpuPins) c.push(['fx', st.unsafe.looseCart]); c.push(['fx', st.unsafe.ramRot]); if (reach.vramRot !== false) c.push(['fx', st.unsafe.vramRot]); if (reach.cpuPins) c.push(['pins', st.unsafe.cpuPins]); if (reach.soundCpuLines > 0) c.push(['pins', st.unsafe.soundCpuPins]); if (reach.dmaLines > 0) c.push(['pins', st.unsafe.dmaPins]); }
     return c;
   }
   function turnOn(kind, fx, r, k, listKey) {
@@ -657,6 +682,9 @@
     if ('range' in fx) fx.range = Math.max(1, Math.round(2 + 30 * amt * r()));
     if ('duration' in fx) fx.duration = Math.round(5 + 120 * r());
     if ('width' in fx) fx.width = Math.max(1, Math.round(4 + 100 * amt * r()));
+    if ('age' in fx) fx.age = Math.max(1, Math.round(15 + 85 * amt * r()));
+    if ('columns' in fx) { fx.columns = 1 + Math.floor(r() * (1 + 4 * k)); fx.rows = r() < 0.3 ? 1 + Math.floor(r() * 2) : 0; fx.mode = Math.floor(r() * 3); fx.seed = 1 + Math.floor(r() * 998); }
+    if ('decay' in fx) fx.decay = Math.round(10 + 60 * amt * r());
     if ('strength' in fx) fx.strength = Math.max(1, Math.round(2 + 40 * amt * r()));
     if ('lifetime' in fx) fx.lifetime = Math.round(10 + 150 * r());
     if ('mode' in fx && 'posterize' in fx) { fx.mode = Math.floor(r() * 5); fx.invert = r() < 0.2; fx.channelSwap = r() < 0.2; fx.posterize = r() < 0.2 ? 2 + Math.floor(r() * 5) : 0; }

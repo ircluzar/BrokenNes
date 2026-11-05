@@ -38,6 +38,7 @@ public static class ButcherCatalog
 		new("cartPins", "picture", "Cartridge pins (CHR bus)", 97, "Dirty or bent cartridge connector pins: the single most common NES fault."),
 		new("ciramA10", "picture", "CIRAM A10 (mirroring pin)", 93, "A real cartridge pin; a bad contact gives exactly this."),
 		new("videoDac", "palette", "Video DAC lines", 72, "Inside the picture chip on these consoles: a dead colour bit is a real failure, but of a damaged chip."),
+		new("lcd", "picture", "LCD driver lines", 99, "A failed LCD column or row driver: the classic dead vertical lines of a Game Boy or Game Gear screen."),
 		new("paletteBus", "palette", "Palette RAM bus", 70, "Palette / colour RAM is on the picture chip's die on every console here."),
 		// ---- sprites
 		new("sprites.xJitter", "sprites", "Sprite X jitter", 50, "Positions read wrong (a real result of a bad sprite-table path), chosen as an offset rather than a bit fault."),
@@ -60,6 +61,7 @@ public static class ButcherCatalog
 		new("sound.duty", "sound", "Duty force", 15, "A duty value chosen."),
 		new("sound.detune", "sound", "Detune (XOR)", 30, "A bit pattern aimed at the period registers."),
 		new("sound.wobble", "sound", "Clock wobble", 78, "A drifting or failing crystal / resonator."),
+		new("sound.caps", "sound", "Dried-out audio capacitors", 93, "Old electrolytic capacitors on the audio path: muffled sound, crackle, cut-outs. The most common repair on old consoles."),
 		// ---- bands (a register changed for a few scanlines: what a CPU writing mid-frame does, not a physical fault)
 		new("bands.shift", "bands", "Band: shift", 45, "Mid-frame scroll change."),
 		new("bands.slip", "bands", "Band: slip", 45, "Mid-frame scroll change."),
@@ -85,6 +87,10 @@ public static class ButcherCatalog
 		new("unsafe.dmaPins", "unsafe", "DMA pins", 70, "The DMA unit's address lines are inside the CPU on all of them."),
 		new("unsafe.coproPins", "unsafe", "Coprocessor pins", 90, "SA-1 / Super FX / DSP-1 sit on the cartridge board."),
 		new("unsafe.videoBus", "unsafe", "Video-chip register bus", 85, "On the board between CPU and picture chip on the NES and SNES; inside the Game Boy.", On(("gb", 70), ("gbc", 70))),
+		new("unsafe.cicReset", "unsafe", "Lockout chip (CIC) reset", 97, "The CIC failing to agree with the cartridge's: the console resets about once a second (the famous blinking NES)."),
+		new("unsafe.resetBounce", "unsafe", "Reset line bounce", 90, "A worn reset button or a noisy reset circuit pulsing the reset line."),
+		new("unsafe.powerSag", "unsafe", "Power sag (brown-out)", 92, "A failing power supply dips: the console resets and RAM keeps only part of what it held."),
+		new("unsafe.looseCart", "unsafe", "Loose cartridge", 96, "A badly seated or tilted cartridge: bursts of faults on the cartridge bus (the Game Boy's tilt sensitivity)."),
 		new("unsafe.ghostNmi", "unsafe", "Ghost NMI", 80, "Noise on an interrupt line."),
 		new("unsafe.dropNmi", "unsafe", "Dropped NMI", 80, "A broken or weak interrupt trace."),
 		new("unsafe.stuckIrq", "unsafe", "Stuck IRQ", 80, "A shared open-collector IRQ line held low."),
@@ -106,6 +112,7 @@ public static class ButcherCatalog
 		(1, "stuck low", 96, "An open line pulled down, or a short to ground (corrosion does it)."),
 		(2, "stuck high", 95, "An open line pulled up, or a short to the supply."),
 		(3, "bridged", 92, "A solder bridge or a conductive whisker between neighbouring lines."),
+		(4, "floating", 96, "An open line nothing drives: it keeps the charge of the last value put on it (NMOS bus capacitance)."),
 	};
 
 	public static Entry? Find(string path) => Effects.FirstOrDefault(e => string.Equals(e.Path, path, StringComparison.OrdinalIgnoreCase));

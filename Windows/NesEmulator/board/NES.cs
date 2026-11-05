@@ -876,7 +876,7 @@ namespace NesEmulator
 				Sound: bus != null,
 				Bands: ppu is not null and not PPU_EXE and not PPU_IMG,
 				Ram: bus?.ram != null)
-			{ CpuPins = true, VramRot = (cartridge != null && cartridge.chrBanks == 0) || ppu is PPU_FIX, BandKinds = ppu is PPU_FIX ? new[] { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spritesOff", "spriteHeight", "bend" }
+			{ CpuPins = true, Cic = true, VramRot = (cartridge != null && cartridge.chrBanks == 0) || ppu is PPU_FIX, BandKinds = ppu is PPU_FIX ? new[] { "shift", "slip", "patternSwap", "nametableSwap", "bgOff", "spritesOff", "spriteHeight", "bend" }
 				: new[] { "patternSwap", "bgOff", "spritesOff", "spriteHeight" } };   // the other cores do not fetch line by line where a bend band could land
 		}
 
@@ -899,7 +899,7 @@ namespace NesEmulator
 		public void RunFrame()
 		{
 			if (bus == null || crashed) return;
-			if (Butcher != null || bus.Butcher != null) ButcherFrame(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
+			if (Butcher != null || bus.Butcher != null) ButcherFrame(); if (Butcher?.TakeReset() == true) Reset(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
 
 			// --- Targeted Imagine: reset per-frame capture buffer and apply target configuration ---
 			if (bus.ppu is PPU_IMG imgPpu)

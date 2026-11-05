@@ -49,6 +49,7 @@ public static class ButcherCli
             ("sample-pins", x => x.Sound.SamplePins = P(16, 3, 1, 8, 2, 2)),
             ("dac-pins", x => x.Sound.DacPins = P(0, -1, 0, 16, 13, 3, 0)),
             ("clock-wobble", x => { x.Sound.Wobble.On = true; x.Sound.Wobble.Depth = 50; x.Sound.Wobble.Speed = 10; }),
+            ("dried-out-caps", x => { x.Sound.Caps.On = true; x.Sound.Caps.Age = 75; }),
             ("sound-ram-rot", x => { x.Unsafe.SoundRamRot.On = true; x.Unsafe.SoundRamRot.Rate = 60; x.Unsafe.SoundRamRot.Bits = 4; }),
             ("echo-abuse", x => { x.Unsafe.EchoAbuse.On = true; x.Unsafe.EchoAbuse.Rate = 100; x.Unsafe.EchoAbuse.Duration = 600; }),
         };

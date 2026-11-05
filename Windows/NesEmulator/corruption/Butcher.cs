@@ -35,6 +35,8 @@ public sealed class ButcherSettings
 	public PinGroupSettings VideoDac { get; set; } = new();
 	/// <summary>The palette RAM's own bus (NES palette, SNES CGRAM): the renderer reads the wrong entry / bent colour bits.</summary>
 	public PinGroupSettings PaletteBus { get; set; } = new();
+	/// <summary>The LCD's column / row drivers failing (Game Boy, Game Boy Color, Game Gear): dead or stuck lines across the screen.</summary>
+	public LcdSettings Lcd { get; set; } = new();
 	public UnsafeSettings Unsafe { get; set; } = new();
 }
 
@@ -48,6 +50,14 @@ public sealed class UnsafeSettings
 	/// <summary>The CPU's own work-RAM chip pins: reads (and, with bend writes, writes) of RAM through bent lines.</summary>
 	public PinGroupSettings RamBus { get; set; } = new();
 	/// <summary>Interrupt lines: a ghost NMI (an extra vertical-blank interrupt), dropped NMIs, a stuck IRQ line.</summary>
+	/// <summary>The lockout chip (CIC) failing: the console resets about once a second (NES, SNES).</summary>
+	public CicEffect CicReset { get; set; } = new();
+	/// <summary>Spurious pulses on the reset line (a bouncing reset button, a noisy reset circuit).</summary>
+	public RateEffect ResetBounce { get; set; } = new();
+	/// <summary>A brown-out: the supply dips, the console resets, and RAM keeps only part of what it held.</summary>
+	public SagEffect PowerSag { get; set; } = new();
+	/// <summary>A badly seated cartridge: bursts of faults on the cartridge bus (the Game Boy's tilt sensitivity, a loose cart anywhere).</summary>
+	public EventEffect LooseCart { get; set; } = new();
 	public EventEffect GhostNmi { get; set; } = new();
 	public EventEffect DropNmi { get; set; } = new();
 	public EventEffect StuckIrq { get; set; } = new();
@@ -79,6 +89,13 @@ public sealed class UnsafeSettings
 }
 
 public sealed class RotEffect { public bool On { get; set; } public double Rate { get; set; } = 25; public int Bits { get; set; } = 1; }
+public sealed class CicEffect { public bool On { get; set; } public int PeriodFrames { get; set; } = 60; }
+/// <summary>Rate: chance per frame of a dip. Decay: how much of RAM loses its contents across the dip (percent of bits).</summary>
+public sealed class SagEffect { public bool On { get; set; } public double Rate { get; set; } = 5; public double Decay { get; set; } = 30; }
+/// <summary>Columns / Rows: how many driver lines failed. Mode 0 dark, 1 light, 2 flickering. Seed picks which lines.</summary>
+public sealed class LcdSettings { public bool On { get; set; } public int Columns { get; set; } = 2; public int Rows { get; set; } = 0; public int Mode { get; set; } public int Seed { get; set; } = 1; }
+/// <summary>Age 0-100: how far the audio path's capacitors have dried out (muffled, then crackle, then cut-outs).</summary>
+public sealed class CapsEffect { public bool On { get; set; } public double Age { get; set; } = 40; }
 
 /// <summary>Glitch Boy's palette glitch: the picture's colours through a transform, never the game's own palette.</summary>
 public sealed class PaletteSettings
@@ -200,6 +217,8 @@ public sealed class SoundSettings
 	public PinGroupSettings DacPins { get; set; } = new();
 	/// <summary>A drifting crystal: the output's pitch wobbles (depth in cents, speed in tenths of a hertz).</summary>
 	public ClockWobble Wobble { get; set; } = new();
+	/// <summary>Dried-out capacitors on the audio output path.</summary>
+	public CapsEffect Caps { get; set; } = new();
 }
 
 public sealed class ClockWobble { public bool On { get; set; } public int Depth { get; set; } = 30; public int Speed { get; set; } = 8; }
@@ -210,6 +229,8 @@ internal sealed class PinFaults
 	public readonly bool Active, AddrActive, DataActive, BendWrites;
 	private readonly int addrAnd, addrOr, dataAnd, dataOr;
 	private readonly int[] addrBridges, dataBridges; // pairs of bit numbers
+	// fault 4, floating: an open line keeps the charge of the last value driven onto it (NMOS bus capacitance), so it reads as last time
+	private readonly int addrFloat, dataFloat; private int lastAddr, lastData;
 	private readonly uint flickerThreshold;          // fault absent on a fetch when rng < this
 	private uint rng;
 
@@ -217,17 +238,17 @@ internal sealed class PinFaults
 	{
 		rng = seed == 0 ? 0x6c8e9cf5u : seed;
 		addrAnd = ~0; dataAnd = ~0;
-		addrBridges = Compile(s?.Address, addrLines, ref addrAnd, ref addrOr);
-		dataBridges = Compile(s?.Data, dataLines, ref dataAnd, ref dataOr);
-		AddrActive = addrAnd != ~0 || addrOr != 0 || addrBridges.Length != 0;
-		DataActive = dataAnd != ~0 || dataOr != 0 || dataBridges.Length != 0;
+		addrBridges = Compile(s?.Address, addrLines, ref addrAnd, ref addrOr, ref addrFloat);
+		dataBridges = Compile(s?.Data, dataLines, ref dataAnd, ref dataOr, ref dataFloat);
+		AddrActive = addrAnd != ~0 || addrOr != 0 || addrBridges.Length != 0 || addrFloat != 0;
+		DataActive = dataAnd != ~0 || dataOr != 0 || dataBridges.Length != 0 || dataFloat != 0;
 		Active = AddrActive || DataActive;
 		BendWrites = s?.BendWrites == true;
 		double f = Math.Clamp(s?.Flicker ?? 0, 0, 100) / 100.0;
 		flickerThreshold = (uint)(Math.Min(f, 0.999) * uint.MaxValue);
 	}
 
-	private static int[] Compile(int[]? faults, int lines, ref int and, ref int or)
+	private static int[] Compile(int[]? faults, int lines, ref int and, ref int or, ref int floating)
 	{
 		if (faults == null) return Array.Empty<int>();
 		var bridges = new System.Collections.Generic.List<int>();
@@ -241,6 +262,7 @@ internal sealed class PinFaults
 					int j = i + 1 < lines ? i + 1 : i - 1;
 					if (j >= 0) { bridges.Add(i); bridges.Add(j); }
 					break;
+				case 4: floating |= 1 << i; break;
 			}
 		}
 		return bridges.ToArray();
@@ -251,10 +273,11 @@ internal sealed class PinFaults
 	/// <summary>True when the flicker leaves this fetch untouched.</summary>
 	public bool Misses() => flickerThreshold != 0 && Next() < flickerThreshold;
 
-	public int Addr(int a) => Apply(a, addrAnd, addrOr, addrBridges);
-	public byte Data(byte v) => (byte)Apply(v, dataAnd, dataOr, dataBridges);
-	public ushort Data16(ushort v) => (ushort)Apply(v, dataAnd, dataOr, dataBridges);
-	public int Data24(int v) => Apply(v, dataAnd, dataOr, dataBridges) & 0xFFFFFF;
+	public int Addr(int a) { if (addrFloat != 0) a = (a & ~addrFloat) | (lastAddr & addrFloat); a = Apply(a, addrAnd, addrOr, addrBridges); lastAddr = a; return a; }
+	public byte Data(byte v) => (byte)DataBits(v);
+	public ushort Data16(ushort v) => (ushort)DataBits(v);
+	public int Data24(int v) => DataBits(v) & 0xFFFFFF;
+	private int DataBits(int v) { if (dataFloat != 0) v = (v & ~dataFloat) | (lastData & dataFloat); v = Apply(v, dataAnd, dataOr, dataBridges); lastData = v; return v; }
 
 	private static int Apply(int v, int and, int or, int[] bridges)
 	{
@@ -274,6 +297,10 @@ internal sealed class PinFaults
 public sealed class ButcherProfile
 {
 	public string Console = "nes";
+	/// <summary>The console has a lockout chip whose failure resets it (NES, SNES).</summary>
+	public bool Cic;
+	/// <summary>The console has an LCD (Game Boy, Game Boy Color, Game Gear).</summary>
+	public bool Lcd;
 	public int ConsoleLines = 14;
 	/// <summary>Sprite record: which raw byte (0-3) holds each canonical field 0 Y, 1 tile, 2 attributes, 3 X.</summary>
 	public int[] RawOfField = { 0, 1, 2, 3 };
@@ -296,9 +323,10 @@ public sealed class ButcherProfile
 	// RAM window the profiler watches, and the page it never touches (the stack)
 	public int RamWindow = 0x800, StackPage = 1;
 
-	public static readonly ButcherProfile Nes = new();
+	public static readonly ButcherProfile Nes = new() { Cic = true };
 	public static readonly ButcherProfile Gb = new()
 	{
+		Lcd = true,
 		Console = "gb",
 		ConsoleLines = 14,                                   // VRAM A0-A12 + the Color bank line
 		RawOfField = new[] { 0, 2, 3, 1 }, FieldOfRaw = new[] { 0, 3, 1, 2 },   // Y, X, tile, flags
@@ -353,6 +381,7 @@ public sealed class ButcherProfile
 	/// <summary>SNES: word VRAM (A0-A14), OAM records X, Y, tile, attributes; 128 KB work RAM; sound (SPC700 + DSP) not yet.</summary>
 	public static readonly ButcherProfile Snes = new()
 	{
+		Cic = true,
 		Console = "snes",
 		ConsoleLines = 15, DataLines = 16,
 		RawOfField = new[] { 1, 2, 3, 0 }, FieldOfRaw = new[] { 3, 0, 1, 2 },
@@ -404,7 +433,12 @@ public sealed class Butcher
 	internal PinFaults? Dma, Copro; // null = no DMA / coprocessor bus fault - unsafe
 	internal PinFaults? SoundBus, SampleFaults, Dac; // the sound pins (safe)
 	public bool WobbleActive { get; private set; }
-	public bool DacActive => Dac != null || WobbleActive;
+	public bool DacActive => Dac != null || WobbleActive || CapsActive;
+	public bool CapsActive { get; private set; }
+	/// <summary>The Game Gear runs on the Master System profile: its session says it has an LCD.</summary>
+	public bool LcdHost { get; set; }
+	private bool lcdOn;
+	public bool LcdActive => lcdOn && (Profile.Lcd || LcdHost);
 	private int cartLines;
 	public bool SpritesActive { get; private set; }
 	public bool SoundActive { get; private set; }
@@ -441,6 +475,41 @@ public sealed class Butcher
 	public Action<bool, bool>? Z80Lines;
 	private int busHoldLeft, resetHoldLeft;
 	private int ghostLeft, dropLeft2, irqLeft;
+	private int cicCount, looseLeft; private bool resetPending, sagPending; private PinFaults? cpuPinsBase;
+	private uint rngEvents = 0x2C1B3C6Du;
+	private uint RE() { uint x = rngEvents; x ^= x << 13; x ^= x >> 17; x ^= x << 5; if (x == 0) x = 0x2C1B3C6Du; rngEvents = x; return x; }
+	/// <summary>
+	/// The host asks this once per frame, before running it: true = press reset now (a lockout pulse, a bounce, a brown-out). For a
+	/// brown-out RAM has already lost part of its contents (cells fall to 0 or 1 by chance, as SRAM / DRAM do across a dip).
+	/// </summary>
+	public bool TakeReset()
+	{
+		if (!resetPending) return false;
+		resetPending = false;
+		if (sagPending)
+		{
+			sagPending = false;
+			double frac = Math.Clamp(settings.Unsafe.PowerSag.Decay, 0, 100) / 100.0;
+			uint t = (uint)(frac * uint.MaxValue);
+			void Decay(byte[]? m) { if (m == null) return; for (int i = 0; i < m.Length; i++) for (int b = 0; b < 8; b++) if (RE() < t) { if ((RE() & 1) != 0) m[i] |= (byte)(1 << b); else m[i] &= (byte)~(1 << b); } }
+			Decay(ram); Decay(vram); Decay(soundRam);
+			if (vramWords != null) for (int i = 0; i < vramWords.Length; i++) for (int b = 0; b < 16; b++) if (RE() < t) { if ((RE() & 1) != 0) vramWords[i] |= (ushort)(1 << b); else vramWords[i] &= (ushort)~(1 << b); }
+		}
+		return true;
+	}
+	/// <summary>A loose cartridge's burst: two to four cartridge data or address lines floating or flickering, at random.</summary>
+	private PinFaults LooseBurst()
+	{
+		var g = new PinGroupSettings { Address = new int[Math.Max(1, Profile.CpuLines)], Data = new int[Math.Max(1, Profile.CpuDataLines)], Flicker = 30 + RE() % 50 };
+		int n = 2 + (int)(RE() % 3);
+		for (int k = 0; k < n; k++)
+		{
+			bool data = (RE() & 3) != 0;   // mostly the data lines (the long, exposed contacts)
+			var arr = data ? g.Data : g.Address;
+			arr[(int)(RE() % (uint)arr.Length)] = 1 + (int)(RE() % 4);
+		}
+		return new PinFaults(g, Math.Max(1, Profile.CpuLines), RE() | 1, Math.Max(1, Profile.CpuDataLines));
+	}
 	private void InterruptFrame()
 	{
 		var u = settings.Unsafe;
@@ -451,6 +520,15 @@ public sealed class Butcher
 		bool irqWas = irqLeft > 0;
 		Tick(ref irqLeft, u.StuckIrq.On, u.StuckIrq.Rate, u.StuckIrq.Duration, null);
 		if (irqLeft > 0) HoldIrqLine?.Invoke(true); else if (irqWas) HoldIrqLine?.Invoke(false);
+		// the reset line: a failing lockout chip pulses it about once a second; a bouncing reset now and then; a brown-out resets with RAM partly lost
+		if (u.CicReset.On && Profile.Cic && ++cicCount >= Math.Clamp(u.CicReset.PeriodFrames, 10, 600)) { cicCount = 0; resetPending = true; }
+		if (u.ResetBounce.On && RE() < EventThreshold(u.ResetBounce.Rate)) resetPending = true;
+		if (u.PowerSag.On && RE() < EventThreshold(u.PowerSag.Rate)) { resetPending = true; sagPending = true; }
+		// a loose cartridge: a burst of faults on the cartridge bus, then it sits right again
+		bool looseWas = looseLeft > 0;
+		Tick(ref looseLeft, u.LooseCart.On, u.LooseCart.Rate, u.LooseCart.Duration, null);
+		if (!looseWas && looseLeft > 0) CpuPins = LooseBurst();
+		else if (looseWas && looseLeft == 0) CpuPins = cpuPinsBase;
 		Tick(ref stallLeft, u.ClockStall.On, u.ClockStall.Rate, u.ClockStall.Duration, null);
 		Tick(ref rushLeft, u.ClockRush.On, u.ClockRush.Rate, u.ClockRush.Duration, null);
 		bool busWas = busHoldLeft > 0, rstWas = resetHoldLeft > 0;
@@ -533,10 +611,18 @@ public sealed class Butcher
 		Dma = on && Profile.DmaLines > 0 && dm.Active ? dm : null;
 		var co = new PinFaults(settings.Unsafe.CoproPins, 24, 0xD3A2646Cu);
 		Copro = on && Profile.Console == "snes" && co.Active ? co : null;
-		IrqActive = on && (settings.Unsafe.GhostNmi.On || settings.Unsafe.DropNmi.On || settings.Unsafe.StuckIrq.On || settings.Unsafe.Z80BusHold.On || settings.Unsafe.Z80ResetHold.On || settings.Unsafe.ClockStall.On || settings.Unsafe.ClockRush.On);
+		cpuPinsBase = CpuPins;
+		var un = settings.Unsafe;
+		IrqActive = on && (un.GhostNmi.On || un.DropNmi.On || un.StuckIrq.On || un.Z80BusHold.On || un.Z80ResetHold.On || un.ClockStall.On || un.ClockRush.On
+			|| (un.CicReset.On && Profile.Cic) || un.ResetBounce.On || un.PowerSag.On || un.LooseCart.On);
+		if (!(on && un.LooseCart.On)) looseLeft = 0;
+		if (!(on && un.CicReset.On)) cicCount = 0;
+		lcdOn = on && settings.Lcd.On && (settings.Lcd.Columns > 0 || settings.Lcd.Rows > 0);
+		CapsActive = on && settings.Sound.Caps.On && settings.Sound.Caps.Age > 0;
 		if (!IrqActive)
 		{
 			ghostLeft = dropLeft2 = 0; if (irqLeft > 0) { irqLeft = 0; HoldIrqLine?.Invoke(false); }
+			resetPending = sagPending = false; looseLeft = 0; cicCount = 0;   // a reset already queued must not fire on the game Off is leaving (Leave reloads it next)
 			stallLeft = rushLeft = 0;   // leaving mid-stall must not freeze the game: the host keeps asking ClockStallNow after the engine stops ticking
 			if (busHoldLeft > 0 || resetHoldLeft > 0) { busHoldLeft = resetHoldLeft = 0; Z80Lines?.Invoke(false, true); }
 		}
@@ -551,7 +637,7 @@ public sealed class Butcher
 	}
 
 	/// <summary>Nothing is on: the hooks can be detached.</summary>
-	public bool Idle => RamBusFaults == null && !IrqActive && irqLeft == 0 && CiramFault == 0 && PaletteBusFaults == null && VideoBusFaults == null && !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
+	public bool Idle => !LcdActive && !resetPending && looseLeft == 0 && RamBusFaults == null && !IrqActive && irqLeft == 0 && CiramFault == 0 && PaletteBusFaults == null && VideoBusFaults == null && !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
 
 	public static int AddressLinesFor(int size)
 	{
@@ -1014,6 +1100,8 @@ public sealed class Butcher
 	{
 		dropMask = 0; Array.Clear(dropLeft); pendingDropRelease = false;
 		droneLeft = dutyLeft = detuneLeft = stutterLeft = 0;
+		resetPending = sagPending = false;   // a reset queued on the old timeline must not hit the loaded machine
+		if (looseLeft > 0) { looseLeft = 0; CpuPins = cpuPinsBase; }
 	}
 	private int stutterLeft, droneLeft, dutyLeft, detuneLeft;
 
@@ -1219,6 +1307,7 @@ public sealed class Butcher
 	{
 		var f = Dac;
 		if (f != null) for (int i = 0; i < s.Length; i++) if (!f.Misses()) s[i] = (short)f.Data16((ushort)s[i]);
+		if (CapsActive) for (int i = 0; i + channels - 1 < s.Length; i += channels) for (int c = 0; c < channels; c++) s[i + c] = (short)Math.Clamp(Cap(s[i + c], c), -32768, 32767);
 		if (!WobbleActive) return;
 		for (int i = 0; i + channels - 1 < s.Length; i += channels)
 			for (int c = 0; c < channels; c++) s[i + c] = (short)Math.Clamp(Wob(s[i + c], c, channels), -32768, 32767);
@@ -1227,9 +1316,57 @@ public sealed class Butcher
 	{
 		var f = Dac;
 		if (f != null) for (int i = 0; i < s.Length; i++) if (!f.Misses()) s[i] = (short)f.Data16((ushort)(short)Math.Clamp(s[i] * 32767, -32768, 32767)) / 32768f;
+		if (CapsActive) for (int i = 0; i < s.Length; i++) s[i] = (float)(Math.Clamp(Cap(s[i] * 32768, 0), -32768, 32767) / 32768);
 		if (!WobbleActive) return;
 		for (int i = 0; i < s.Length; i++) s[i] = (float)(Wob(s[i] * 32768, 0, 1) / 32768);
 	}
+	// Dried-out capacitors on the output path: the coupling / filter caps lose capacitance, so the treble goes (a low-pass falling with age),
+	// the DC blocking leaks (a slow wander), a failing cap crackles, and near the end the output cuts out for moments at a time.
+	private readonly double[] capLp = new double[2], capDc = new double[2]; private int capCut; private uint rngCaps = 0x68E31DA4u;
+	private uint RC() { uint x = rngCaps; x ^= x << 13; x ^= x >> 17; x ^= x << 5; if (x == 0) x = 0x68E31DA4u; rngCaps = x; return x; }
+	private double Cap(double x, int c)
+	{
+		double age = Math.Clamp(settings.Sound.Caps.Age, 0, 100) / 100.0;
+		c &= 1;
+		double alpha = 1.0 - 0.93 * age;                        // one-pole low-pass: 1 = untouched, falling toward a muffled 0.07
+		capLp[c] += (x - capLp[c]) * alpha;
+		double y = capLp[c];
+		capDc[c] += (y - capDc[c]) * (0.0005 + 0.004 * age);    // the blocking cap leaks: a slow pull toward the signal's own mean
+		y -= capDc[c] * (1 - age);
+		if (age > 0.3 && RC() < (uint)((age - 0.3) * (age - 0.3) * 0.002 * uint.MaxValue)) y += ((RC() & 1) != 0 ? 1 : -1) * (6000 + RC() % 14000);   // crackle
+		if (c == 0) { if (capCut > 0) capCut--; else if (age > 0.6 && RC() < (uint)((age - 0.6) * 0.00004 * uint.MaxValue)) capCut = (int)(400 + RC() % 6000); }
+		if (capCut > 0) y *= 0.02;
+		return y;
+	}
+
+	/// <summary>
+	/// The LCD's driver chips failing (Game Boy, Game Gear): a failed column or row driver leaves its line dark, light, or flickering
+	/// across the whole screen. Which lines is fixed by the seed (a failed driver output stays where it is).
+	/// </summary>
+	public void ApplyLcd(uint[] frame, int w, int h)
+	{
+		var l = settings.Lcd;
+		if (w <= 0 || h <= 0 || frame.Length < w * h) return;
+		uint dark = 0xFFFFFFFFu, light = 0; int dl = int.MaxValue, ll = -1;
+		for (int i = 0; i < w * h; i += 7) { uint p = frame[i]; int lum = (int)((p >> 16 & 255) * 3 + (p >> 8 & 255) * 6 + (p & 255)); if (lum < dl) { dl = lum; dark = p; } if (lum > ll) { ll = lum; light = p; } }
+		uint r = (uint)(l.Seed * 2654435761u) | 1; uint Nx() { r ^= r << 13; r ^= r >> 17; r ^= r << 5; return r; }
+		bool flick = l.Mode == 2; uint frameRnd = (uint)lcdFrames++ * 2246822519u;
+		uint Pick(int line) => !flick ? (l.Mode == 1 ? light : dark) : ((frameRnd ^ (uint)line * 3266489917u) >> 29 & 1) != 0 ? dark : light;
+		for (int k = 0; k < Math.Clamp(l.Columns, 0, 16); k++)
+		{
+			int x = (int)(Nx() % (uint)w); uint col = Pick(x);
+			if (flick && ((frameRnd >> (k & 15)) & 1) != 0) continue;
+			for (int y = 0; y < h; y++) frame[y * w + x] = col;
+		}
+		for (int k = 0; k < Math.Clamp(l.Rows, 0, 16); k++)
+		{
+			int y = (int)(Nx() % (uint)h); uint col = Pick(y + 1000);
+			if (flick && ((frameRnd >> ((k + 7) & 15)) & 1) != 0) continue;
+			Array.Fill(frame, col, y * w, w);
+		}
+	}
+	private int lcdFrames;
+
 	private double Wob(double x, int c, int channels)
 	{
 		var w = settings.Sound.Wobble;
@@ -1592,6 +1729,10 @@ public sealed record ButcherReach(string PpuCore, bool ConsolePins, bool Console
 	public int SoundBusLines { get; init; } = 5;
 	/// <summary>The sound chip has RAM of its own (SPC700 ARAM, Z80 RAM, Game Boy wave RAM) for the sound RAM rot.</summary>
 	public bool SoundRam { get; init; }
+	/// <summary>The lockout chip can fail (NES, SNES): the panel offers the CIC reset.</summary>
+	public bool Cic { get; init; }
+	/// <summary>An LCD screen (Game Boy, Game Gear): the panel offers the LCD driver faults.</summary>
+	public bool Lcd { get; init; }
 	public int VideoBusLines { get; init; } = 3;
 	public int RamBusLines { get; init; } = 11;
 	public int SampleLines { get; init; } = 15;

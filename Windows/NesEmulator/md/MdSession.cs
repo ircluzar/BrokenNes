@@ -109,7 +109,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
 
     public void RunFrame()
     {
-        if (Butcher != null || Board.Vdp.Butcher != null) ButcherFrame(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
+        if (Butcher != null || Board.Vdp.Butcher != null) ButcherFrame(); if (Butcher?.TakeReset() == true) Reset(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
         Board.RunFrame();
         var v = Board.Vdp;
         if (DebugView)

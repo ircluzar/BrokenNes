@@ -82,7 +82,7 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
     public ButcherReach GetButcherReach() => new(
         PpuCore: "SNES PPU", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
         SpritesDma: true, Sprites2004: false, Sound: ButcherApu() != null, Bands: true, Ram: true)
-    { CpuPins = true, CpuAddressLines = 24, CpuDataLines = 8, CpuPinsTitle = "CPU bus · cartridge pins (A bus: A0-A23, D0-D7)",
+    { CpuPins = true, Cic = true, CpuAddressLines = 24, CpuDataLines = 8, CpuPinsTitle = "CPU bus · cartridge pins (A bus: A0-A23, D0-D7)",
       PadOrder = Butcher.PadSnes, PadNames = new[] { "Up", "Down", "Left", "Right", "B", "Y", "Select", "Start", "A", "X", "L", "R" },
       DmaLines = 24, DmaDataLines = 8,
       CoproName = board.Coprocessor switch { SA1_SFC => "SA-1", GSU_SFC => "Super FX", DSP1_SFC => "DSP-1", _ => "" },
@@ -296,7 +296,7 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
 
     public void RunFrame()
     {
-        if (Butcher != null || board.Ppu.Butcher != null || ButcherApu()?.Butcher != null) ButcherFrame(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
+        if (Butcher != null || board.Ppu.Butcher != null || ButcherApu()?.Butcher != null) ButcherFrame(); if (Butcher?.TakeReset() == true) Reset(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
         mid = null;
         if (wms != null) BeforeFrameEnhance();   // milestone 6: the console's enhancements (SnesSession.Enhance.cs)
         board.RunFrame();
@@ -537,7 +537,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
     public ButcherReach GetButcherReach() => new(
         PpuCore: "Game Boy PPU", ConsolePins: true, ConsolePinsPartial: false, CartPins: false, CartAddressLines: 0, ChrIsRam: true, Mapper: -1,
         SpritesDma: true, Sprites2004: false, Sound: true, Bands: true, Ram: true)
-    { ExtraBands = new[] { "Window off|The window layer vanishes inside the band.", "Window shift|The window slides sideways inside the band.", "Window map swap|The window draws from the other tile map." },
+    { Lcd = true, ExtraBands = new[] { "Window off|The window layer vanishes inside the band.", "Window shift|The window slides sideways inside the band.", "Window map swap|The window draws from the other tile map." },
       CpuPins = true, CpuAddressLines = 15, CpuDataLines = 8, CpuPinsTitle = "CPU bus · cartridge pins (A0-A14, D0-D7; MBC writes with bend writes)",
       SoundBusLines = 6, SampleLines = 4, SoundRam = board.Apu is APU_GB, DmaLines = 16, DmaDataLines = 8, SamplePinsTitle = "Sample fetch · wave RAM (A0-A3, D0-D7)",
       PadOrder = Butcher.PadGb, PadNames = new[] { "A", "B", "Select", "Start", "Up", "Down", "Left", "Right" },
@@ -554,7 +554,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
 
     public void RunFrame()
     {
-        if (Butcher != null || board.Butcher != null) ButcherFrame(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
+        if (Butcher != null || board.Butcher != null) ButcherFrame(); if (Butcher?.TakeReset() == true) Reset(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
         var shades = board.Ppu.DmgColors;   // the Game Boy look, live (DMG games on a DMG)
         for (int i = 0; i < 4; i++) shades[i] = GbLook.Argb(i);
         board.RunFrame();
@@ -562,6 +562,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
         else if (toSnes != null) { var f = toSnes.Render(board, cap!); Array.Copy(f, frame, Math.Min(f.Length, frame.Length)); width = 256; height = f.Length / 256; }
         else { Array.Copy(board.Ppu.FrameBuffer, frame, PPU_GB.Width * PPU_GB.Height); width = PPU_GB.Width; height = PPU_GB.Height; }
         if (Butcher is { PaletteActive: true } bp) bp.ApplyPalette(frame, width * height);
+        if (Butcher is { LcdActive: true } bl) bl.ApplyLcd(frame, width, height);   // Butchering mode: the LCD drivers
     }
 
     public void Reset() => board.Reset();

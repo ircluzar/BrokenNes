@@ -156,7 +156,7 @@ New effects, with their expected score. **Bold** = recommended for the first bat
 | Phase | What | Notes |
 |---|---|---|
 | **R0** | Catalog + retroactive scores (section 2), `/api/butcher/catalog`, the "every effect is scored" test | **DONE 2026-11-04**: `corruption/ButcherCatalog.cs` (55 effects + 4 palette sub-options + 3 fault codes; Pure 8, Plausible 17, Mechanism-real 21, Steered 8, Forced 5), the S0 scenario. No behaviour change. |
-| **R1** | Pure batch: floating line fault code, LCD column / row failure (GB, GG), CIC lockout resets (NES, SNES), cartridge seated badly (GB tilt bursts), power sag, reset bounce, bad audio caps | All 85-99. Each with the usual scenario / fuzz coverage. |
+| **R1** | Pure batch: floating line fault code, LCD column / row failure (GB, GG), CIC lockout resets (NES, SNES), loose cartridge bursts, power sag, reset bounce, bad audio caps | **DONE 2026-11-04**: fault code 4 floating (96), `lcd` (99), `unsafe.cicReset` (97), `unsafe.looseCart` (96), `sound.caps` (93), `unsafe.powerSag` (92), `unsafe.resetBounce` (90). Off and Load State drop a pending reset. Battery: suite 137/0, scenarios 796/0; fuzz found 2 reload mismatches, both cross-console-core cases not needing any R1 effect (open). |
 | **R2** | Plausible batch: SNES VRAM chip halves, DRAM refresh rot (SNES WRAM, Genesis VRAM), heat soak modifier, ESD hit, link port noise, controller TH, FM unit unplugged | 80-93. |
 | **R3** | Forced batch, labelled as such: sine / noise / hum injection, test-tone sweeps, image overlay / channel effects | 5-60. These are where "forced" will matter most. |
 | **R4** | Use the scores: decided then (a purity floor slider, "pure only" Randomize, preset badges, a purity score per run) | Needs a decision. |

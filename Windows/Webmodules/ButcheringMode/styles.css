@@ -30,6 +30,7 @@ summary { cursor: pointer; font-weight: 600; color: #ffd27a; }
 .pin.f1 { background: #1f3f8a; border-color: #5a82e0; }
 .pin.f2 { background: #8a2a1f; border-color: #e0755a; }
 .pin.f3 { background: #6a1f8a; border-color: #b45ae0; }
+.pin.f4 { background: #1f5a8a; border-color: #5aa8e0; }
 .legend { color: #aaa; font-size: 11px; }
 .fx { display: grid; grid-template-columns: 1fr; gap: 2px; padding: 3px 0; border-top: 1px dashed #333; }
 .fx:first-of-type { border-top: 0; }
