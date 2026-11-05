@@ -1,6 +1,8 @@
 /* BrokenNes controller standard (docs/projects/controller-standard-plan.md): a faceplate grid of 48 px cells, the components on it. */
 .bnc-plate {
-  --u: 48px;
+  --u: 56px;
+  --gap-x: 12px;
+  --gap-y: 14px;
   --plate: #1b1d22;
   --plate-hi: #262930;
   --plate-edge: #0d0e11;
@@ -20,22 +22,22 @@
   border: 1px solid var(--plate-edge);
   border-radius: 8px;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 6px 18px rgba(0, 0, 0, 0.45);
-  padding: 10px 12px 12px;
+  padding: 14px 18px 18px;
   color: var(--ink);
   font: 600 10px/1.2 system-ui, 'Segoe UI', sans-serif;
   user-select: none;
   -webkit-user-select: none;
 }
-.bnc-title { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); margin: 0 0 8px 2px; }
-.bnc-grid { position: relative; margin-top: 8px; row-gap: 0; display: grid; grid-template-columns: repeat(var(--cols), var(--u)); grid-auto-rows: var(--u); }
+.bnc-title { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink); margin: 0 0 16px; }
+.bnc-grid { position: relative; margin-top: 4px; display: grid; column-gap: var(--gap-x); row-gap: var(--gap-y); grid-template-columns: repeat(var(--cols), var(--u)); grid-auto-rows: var(--u); }
 
 /* sections: a frame under its controls, title on the top edge */
-.bnc-section { border: 1px solid #34373f; border-radius: 6px; margin: 2px; margin-top: -4px; position: relative; pointer-events: none; z-index: 0; }
-.bnc-section > span { position: absolute; top: -7px; left: 8px; padding: 0 4px; background: var(--plate); color: var(--ink-dim); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; }
+.bnc-section { border: 1px solid #383b44; border-radius: 7px; margin: -9px -4px -4px; position: relative; pointer-events: none; z-index: 0; background: rgba(255, 255, 255, 0.015); }
+.bnc-section > span { position: absolute; top: -7px; left: 10px; padding: 0 5px; background: var(--plate); color: var(--ink-dim); font-size: 9px; line-height: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
 
-.bnc-ctl { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; outline: none; }
+.bnc-ctl { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0; outline: none; }
 .bnc-ctl:focus-visible { box-shadow: 0 0 0 2px var(--focus); border-radius: 6px; }
-.bnc-label { color: var(--ink-dim); font-size: 9px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.bnc-label { color: var(--ink-dim); font-size: 10px; line-height: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .bnc-value { position: absolute; bottom: -9px; left: 50%; transform: translateX(-50%); z-index: 3; background: #000a; padding: 1px 3px; border-radius: 2px; color: var(--ink); font: 600 9px/1 ui-monospace, Consolas, monospace; opacity: 0; transition: opacity 0.12s; white-space: nowrap; }
 .bnc-ctl:hover .bnc-value, .bnc-ctl.bnc-active .bnc-value, .bnc-ctl:focus-visible .bnc-value { opacity: 1; }
 .bnc-ctl.bnc-disabled { opacity: 0.38; pointer-events: none; }
@@ -62,18 +64,18 @@
 
 /* button / toggle */
 .bnc-btn, .bnc-tog { cursor: pointer; }
-.bnc-cap { width: 30px; height: 22px; border-radius: 4px; background: linear-gradient(180deg, var(--cap-hi), var(--cap)); border: 1px solid #0b0b0d; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 2px 3px rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; color: var(--ink); font-size: 9px; }
+.bnc-cap { width: 34px; height: 26px; border-radius: 4px; background: linear-gradient(180deg, var(--cap-hi), var(--cap)); border: 1px solid #0b0b0d; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 2px 3px rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; color: var(--ink); font-size: 9px; }
 .bnc-btn.bnc-active .bnc-cap, .bnc-tog.bnc-active .bnc-cap { transform: translateY(1px); box-shadow: 0 0 0 rgba(0, 0, 0, 0), 0 1px 1px rgba(0, 0, 0, 0.5) inset; }
 .bnc-btn.bnc-danger .bnc-cap { background: linear-gradient(180deg, #ff6a5a, #c0201a); color: #fff; }
 
 /* LED (alone, or on a toggle) */
-.bnc-led { width: 8px; height: 8px; border-radius: 50%; background: var(--led-off); box-shadow: 0 0 0 1px #000 inset; transition: background 0.08s, box-shadow 0.08s; }
+.bnc-led { width: 9px; height: 9px; border-radius: 50%; background: var(--led-off); box-shadow: 0 0 0 1px #000 inset; transition: background 0.08s, box-shadow 0.08s; }
 .bnc-led.on { background: var(--led-on); box-shadow: 0 0 6px var(--led-on), 0 0 0 1px rgba(0, 0, 0, 0.4) inset; }
 
 /* display (LCD read-out) */
-.bnc-disp { align-items: stretch; padding: 4px 3px; }
-.bnc-lcd { background: var(--lcd-bg); border: 1px solid #000; border-radius: 3px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.8) inset; color: var(--lcd-ink); font: 600 13px/1 ui-monospace, Consolas, monospace; text-shadow: 0 0 4px color-mix(in srgb, var(--lcd-ink) 50%, transparent); padding: 5px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bnc-disp { align-items: stretch; justify-content: center; padding: 0 2px; }
+.bnc-lcd { background: var(--lcd-bg); border: 1px solid #000; border-radius: 3px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.8) inset; color: var(--lcd-ink); font: 600 13px/1 ui-monospace, Consolas, monospace; text-shadow: 0 0 4px color-mix(in srgb, var(--lcd-ink) 50%, transparent); padding: 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bnc-disp .bnc-label { text-align: left; margin-left: 2px; }
 
 /* label (caption) */
-.bnc-caption { color: var(--ink); font-size: 11px; letter-spacing: 0.06em; align-items: flex-start; padding-left: 4px; }
+.bnc-caption { color: var(--ink-dim); font-size: 11px; letter-spacing: 0.04em; align-items: flex-start; padding-left: 2px; }

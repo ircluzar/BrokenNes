@@ -6,7 +6,7 @@ lists every effect and lets the player place them on a grid to build their own p
 
 ## 1. The pieces
 
-Everything sits on a **grid**: one cell is 48 x 48 px (the "U"), components are whole cells, sections group them under a title.
+Everything sits on a **grid**: one cell is 56 x 56 px (the "U"), with gutters of 12 px between columns and 14 px between rows; components are whole cells, sections group them under a title. A section's frame sits in the gutter around its cells (4 px out, 9 px at the top for its title), so neighbouring frames never touch and every control keeps air on all sides; the plate pads 14 / 18 px. Small knobs are 34 px, big (2x2) 76 px. (Revised 2026-11-05 after the first look: 48 px cells and no gutter were too tight.)
 
 | Component | Size (cells) | What it does | Interaction |
 |---|---|---|---|

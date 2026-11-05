@@ -10,7 +10,9 @@
 // Components: knob (continuous; stepped when the parameter has steps), slider (vertical when h > w), button, toggle (with LED),
 // display (LCD read-out of a parameter or of text), label (caption), led. All are keyboard and screen-reader usable.
 (() => {
-  const U = 48;
+  const U = 56, GAP_X = 12, GAP_Y = 14;   // a cell and the gutters between cells (controls.css --u / --gap-x / --gap-y)
+  const GAP = GAP_X;
+  const span = (cells, vertical) => cells * U + (cells - 1) * (vertical ? GAP_Y : GAP_X);
   const SVGNS = 'http://www.w3.org/2000/svg';
 
   // ------------------------------------------------------------------ parameters
@@ -152,7 +154,7 @@
   // ------------------------------------------------------------------ components
   function knob(spec, p, onChange) {
     const big = (spec.w || 1) >= 2;
-    const size = big ? 64 : 26, stroke = big ? 5 : 3, r = size / 2 - stroke / 2 - 1;
+    const size = big ? 76 : 34, stroke = big ? 5.5 : 3.5, r = size / 2 - stroke / 2 - 1;
     const c = size / 2;
     const s = svg('svg', { width: size, height: size, viewBox: `0 0 ${size} ${size}`, 'aria-hidden': 'true' });
     s.append(svg('path', { class: 'bnc-arc-bg', d: arcPath(c, c, r, A0, A1), fill: 'none', 'stroke-width': stroke, 'stroke-linecap': 'round' }));
@@ -183,7 +185,7 @@
 
   function slider(spec, p, onChange) {
     const vertical = (spec.h || 1) > (spec.w || 1);
-    const len = (vertical ? spec.h : spec.w) * U - (vertical ? 30 : 16);
+    const len = span(vertical ? spec.h : spec.w, vertical) - (vertical ? 34 : 24);
     const track = el('div', { class: 'bnc-track', style: vertical ? `width:6px;height:${len}px` : `height:6px;width:${len}px` });
     const fill = el('div', { class: 'bnc-fill' }), thumb = el('div', { class: 'bnc-thumb' });
     track.append(fill, thumb);
@@ -304,5 +306,5 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureDefs); else ensureDefs();
 
-  window.BNControls = { createPanel, param, toNorm, fromNorm, CELL: U };
+  window.BNControls = { createPanel, param, toNorm, fromNorm, CELL: U, GAP_X, GAP_Y, span };
 })();

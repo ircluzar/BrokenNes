@@ -720,10 +720,11 @@
 
   // ---------------------------------------------------------------- Build view (controller standard C4)
   // Every effect this console can do, from the purity catalog, in a list; drag one (or press +) onto the board and it becomes its
-  // controller (effect-controllers.js). The board is a grid of 48 px cells, kept per console; modules move by their title bar.
+  // controller (effect-controllers.js). The board places modules on a 24 px step, kept per console; modules move by their title bar.
   // The board edits the same settings as the strip: both views always agree.
   let view = 'strip', catalog = null;
-  let BOARD_COLS = 12;   // set from the board's width when it is drawn (at least one module wide)
+  let BOARD_COLS = 24;   // set from the board's width when it is drawn (at least one module wide)
+  const PITCH = 24;      // the board's placement step (finer than the controls' cells, so modules sit snug)
   const boardKey = () => `butcher.board.v1.${reach?.console || 'nes'}`;
   function loadBoard() { try { const b = JSON.parse(localStorage.getItem(boardKey()) || '[]'); return Array.isArray(b) ? b : []; } catch { return []; } }
   function saveBoard(b) { try { localStorage.setItem(boardKey(), JSON.stringify(b)); } catch { /* not kept */ } }
@@ -737,10 +738,14 @@
   }
   const GROUP_NAMES = { picture: 'Picture', sprites: 'Sprites', sound: 'Sound', bands: 'Bands', palette: 'Palette & video', unsafe: 'Unsafe' };
   // a module's size on the board: its faceplate's cells plus the plate's frame and title
-  function moduleSize(built) { return { w: built.layout.cols + 1, h: built.layout.rows + 1 }; }
+  // a module's footprint in board cells: its faceplate (controller standard sizes: cells, gutters, the plate's padding) plus the title bar
+  function moduleSize(built) {
+    const plateW = BNControls.span(built.layout.cols) + 2 * 18 + 2, plateH = BNControls.span(built.layout.rows, true) + 14 + 18 + 4 + 2;
+    return { w: Math.ceil(plateW / PITCH), h: Math.ceil((plateH + 22) / PITCH) };
+  }
   function freeSpot(board, w, h) {
     const taken = (x, y) => board.some(m => x < m.x + m.w && x + w > m.x && y < m.y + m.h && y + h > m.y);
-    for (let y = 0; y < 200; y++) for (let x = 0; x + w <= BOARD_COLS; x++) if (!taken(x, y)) return { x, y };
+    for (let y = 0; y < 600; y++) for (let x = 0; x + w <= BOARD_COLS; x++) if (!taken(x, y)) return { x, y };
     return { x: 0, y: 0 };
   }
   function buildCtx(path) {
@@ -788,7 +793,7 @@
       const path = ev.dataTransfer.getData('text/x-butcher-effect'); if (!path) return;
       ev.preventDefault();
       const r = grid.getBoundingClientRect();
-      addModule(path, Math.floor((ev.clientX - r.left) / 48), Math.floor((ev.clientY - r.top + grid.scrollTop) / 48));
+      addModule(path, Math.floor((ev.clientX - r.left) / PITCH), Math.floor((ev.clientY - r.top + grid.scrollTop) / PITCH));
     });
     function addModule(path, x, y) {
       if (board.some(m => m.path === path)) return;
@@ -800,12 +805,21 @@
     }
     function paintBoard() {
       grid.replaceChildren(); boardPanels = [];
-      BOARD_COLS = Math.max(5, Math.floor((grid.clientWidth || 576) / 48));
+      BOARD_COLS = Math.max(11, Math.floor((grid.clientWidth || 576) / PITCH));
       grid.style.setProperty('--bcols', BOARD_COLS);
       // a module the narrower board no longer fits moves to the first free spot
-      for (const m of board) if (m.x + (m.w || 5) > BOARD_COLS) { const rest = board.filter(o => o !== m); const sp = freeSpot(rest, m.w || 5, m.h || 2); m.x = sp.x; m.y = sp.y; }
-      const rows = Math.max(8, ...board.map(m => m.y + m.h + 1));
-      grid.style.gridTemplateRows = `repeat(${rows}, 48px)`;
+      // sizes first (a faceplate's size follows the controller standard), then settle: a module that no longer fits the board, or now
+      // overlaps one placed before it (sizes changed since it was saved), moves to the first free spot
+      for (const m of board) { const sz = moduleSize(BNEffects.build(m.path, buildCtx(m.path))); m.w = sz.w; m.h = sz.h; }
+      const settled = [];
+      for (const m of [...board].sort((a, b) => a.y - b.y || a.x - b.x)) {
+        const clash = m.x + m.w > BOARD_COLS || settled.some(o => m.x < o.x + o.w && m.x + m.w > o.x && m.y < o.y + o.h && m.y + m.h > o.y);
+        if (clash) { const sp = freeSpot(settled, m.w, m.h); m.x = sp.x; m.y = sp.y; }
+        settled.push(m);
+      }
+      saveBoard(board);
+      const rows = Math.max(16, ...board.map(m => m.y + m.h + 1));
+      grid.style.gridTemplateRows = `repeat(${rows}, ${PITCH}px)`;
       for (const m of board) {
         const built = BNEffects.build(m.path, buildCtx(m.path));
         const sz = moduleSize(built); m.w = sz.w; m.h = sz.h;
@@ -828,7 +842,7 @@
           handle.setPointerCapture(ev.pointerId);
           const sx = ev.clientX, sy = ev.clientY, ox = m.x, oy = m.y;
           const move = (e2) => {
-            const nx = Math.max(0, Math.min(BOARD_COLS - m.w, ox + Math.round((e2.clientX - sx) / 48))), ny = Math.max(0, oy + Math.round((e2.clientY - sy) / 48));
+            const nx = Math.max(0, Math.min(BOARD_COLS - m.w, ox + Math.round((e2.clientX - sx) / PITCH))), ny = Math.max(0, oy + Math.round((e2.clientY - sy) / PITCH));
             const clash = board.some(o => o !== m && nx < o.x + o.w && nx + m.w > o.x && ny < o.y + o.h && ny + m.h > o.y);
             if (!clash && (nx !== m.x || ny !== m.y)) { m.x = nx; m.y = ny; mod.style.gridColumn = `${m.x + 1} / span ${m.w}`; mod.style.gridRow = `${m.y + 1} / span ${m.h}`; }
           };

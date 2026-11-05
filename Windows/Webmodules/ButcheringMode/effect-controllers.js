@@ -143,9 +143,9 @@
     return finish(title, params, controls);
   }
 
-  // a default layout: controls on a grid four cells wide (displays take two), purity in the title colour
+  // a default layout: controls on a grid three cells wide (displays take two)
   function finish(title, params, controls) {
-    const cols = 4; let x = 0, y = 0;
+    const cols = 3; let x = 0, y = 0;   // three cells wide: a module fits a narrow board
     const placed = controls.map((c) => {
       const w = c.w || 1;
       if (x + w > cols) { x = 0; y++; }
