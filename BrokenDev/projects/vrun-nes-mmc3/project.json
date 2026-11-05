@@ -367,6 +367,65 @@
       }
     ]
   },
+  "comparison": {
+    "what": "2026-11-05: the MMC3 build against an earlier MMC3 build of itself (the graphics-only enhancements: title tunnel, bank-switched animations must not change the game). Record the earlier build as a timeline (timeflow record), then 'timeflow compare vrun-nes-mmc3 -Original <that timeline>'. Tolerance as the ports' ('same events, small drift': 6 ticks, 4 px): two builds of the SAME source (2026-10-31 certified 232304f4 and a 2026-11-05 rebuild of b6b1c65) already drift 2 px at tick 445 of the play script, so zero tolerance measures NESFab's build-to-build timing, not the game. map_slot is left out: it rotates once per title main-loop pass, and the title's frame jitter (two passes in one frame, then none) differs between builds before Start; the seed taken at Start is what matters, and room / position / hp / cash follow from it.",
+    "original": "vrun-nes-mmc3",
+    "rate": {
+      "original": {
+        "fps": 60,
+        "origin": "state=1",
+        "tick": "{run_timer@0} * 60 + [run_timer_subsec@0]"
+      },
+      "port": {
+        "fps": 60,
+        "origin": "state=1",
+        "tick": "{run_timer@0} * 60 + [run_timer_subsec@0]"
+      }
+    },
+    "tolerance": {
+      "ticks": 6,
+      "positions": 4
+    },
+    "sampleEveryTicks": 1,
+    "variables": [
+      {
+        "name": "state",
+        "kind": "event",
+        "original": "app_state@0",
+        "port": "app_state@0"
+      },
+      {
+        "name": "room",
+        "kind": "event",
+        "original": "current_room@0",
+        "port": "current_room@0"
+      },
+      {
+        "name": "hp",
+        "kind": "event",
+        "original": "player_hp@0",
+        "port": "player_hp@0"
+      },
+      {
+        "name": "cash",
+        "kind": "event",
+        "original": "le16 score@0",
+        "port": "le16 score@0"
+      },
+      {
+        "name": "x",
+        "kind": "position",
+        "original": "player_x@1",
+        "port": "player_x@1"
+      },
+      {
+        "name": "y",
+        "kind": "position",
+        "original": "player_y@1",
+        "port": "player_y@1"
+      }
+    ]
+  },
   "checks": {
     "what": "BrokenDev hardware checks (docs/projects/brokendev-debugging-plan.md, D4): every verify scenario runs again with the checks on; a finding not accepted here fails verify. Each acceptance says why.",
     "accepted": [
