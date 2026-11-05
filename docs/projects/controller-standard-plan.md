@@ -6,7 +6,7 @@ lists every effect and lets the player place them on a grid to build their own p
 
 ## 1. The pieces
 
-Everything sits on a **grid**: one cell is 56 x 56 px (the "U"), with gutters of 12 px between columns and 14 px between rows; components are whole cells, sections group them under a title. A section's frame sits in the gutter around its cells (4 px out, 9 px at the top for its title), so neighbouring frames never touch and every control keeps air on all sides; the plate pads 14 / 18 px. Small knobs are 34 px, big (2x2) 76 px. (Revised 2026-11-05 after the first look: 48 px cells and no gutter were too tight.)
+Everything sits on a **grid**: one cell is 56 x 56 px (the "U"), with gutters of 12 px between columns and 14 px between rows; components are whole cells, sections group them under a title. A section's frame sits in the gutter around its cells (4 px out, 9 px at the top for its title), so neighbouring frames never touch and every control keeps air on all sides; the plate pads 14 / 18 px. Section frames sit 8 px out from their cells (14 px at the top, for the title); where one section ends and another begins the library inserts a thin spacer track, so every frame is 10 px from its neighbours and from the plate edge, across and down alike (revised again 2026-11-05: stacked frames were 1 px apart, side-by-side ones 4 px). A lone LED has a bezel so it reads as a part. Small knobs are 34 px, big (2x2) 76 px. (Revised 2026-11-05 after the first look: 48 px cells and no gutter were too tight.)
 
 | Component | Size (cells) | What it does | Interaction |
 |---|---|---|---|

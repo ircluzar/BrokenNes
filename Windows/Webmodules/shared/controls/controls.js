@@ -247,6 +247,26 @@
     return { node, disabled: false, paint() {}, setDisabled() {} };
   }
 
+  // ------------------------------------------------------------------ tracks
+  // Section frames sit in the gutters (FRAME_X / FRAME_Y out from their cells, FRAME_TOP above for the title). Where one section
+  // ends and the next begins, the gutter alone cannot hold two frames and the space between them, so a thin spacer track goes in
+  // there: every frame is then FRAME_GAP from its neighbours and from the plate's edge, across and down alike.
+  const FRAME_X = 8, FRAME_Y = 8, FRAME_TOP = 14, FRAME_GAP = 10;
+  const SPACE_X = Math.max(0, FRAME_GAP + 2 * FRAME_X - 2 * GAP_X), SPACE_Y = Math.max(0, FRAME_GAP + FRAME_Y + FRAME_TOP - 2 * GAP_Y);
+  function tracks(layout) {
+    const cols = layout.cols || 8, rows = layout.rows || 4, secs = layout.sections || [];
+    const bx = new Set(), by = new Set();
+    for (const s of secs) { const x = s.x || 0, y = s.y || 0; bx.add(x); bx.add(x + (s.w || 1)); by.add(y); by.add(y + (s.h || 1)); }
+    const build = (n, breaks, space) => {
+      const idx = [], tpl = []; let extra = 0;
+      for (let i = 0; i < n; i++) { if (i > 0 && breaks.has(i)) { tpl.push(space + 'px'); extra++; } idx.push(tpl.length); tpl.push('var(--u)'); }
+      return { idx, tpl: tpl.join(' '), extra };
+    };
+    const c = build(cols, bx, SPACE_X), r = build(rows, by, SPACE_Y);
+    return { col: c.idx, row: r.idx, colTemplate: c.tpl, rowTemplate: r.tpl, sectioned: secs.length > 0,
+      width: span(cols) + c.extra * (SPACE_X + GAP_X), height: span(rows, true) + r.extra * (SPACE_Y + GAP_Y) };
+  }
+
   // ------------------------------------------------------------------ panels
   // layout: { title, cols, rows, accent, sections: [{ title, x, y, w, h }], controls: [{ type, param, id, x, y, w, h, label, ... }] }
   // params: an array of param() records (or plain definitions), matched by id.
@@ -256,9 +276,13 @@
     const plate = el('div', { class: 'bnc-plate', role: 'group', 'aria-label': layout.title || 'controller' });
     if (layout.accent) plate.style.setProperty('--accent', layout.accent);
     if (layout.title) plate.append(el('div', { class: 'bnc-title' }, layout.title));
-    const grid = el('div', { class: 'bnc-grid', style: `--cols:${layout.cols || 8};grid-template-rows:repeat(${layout.rows || 4}, var(--u))` });
+    const tr = tracks(layout);
+    const grid = el('div', { class: 'bnc-grid' + (tr.sectioned ? ' bnc-sectioned' : ''), style: `grid-template-columns:${tr.colTemplate};grid-template-rows:${tr.rowTemplate}` });
     plate.append(grid);
-    const place = (node, s) => { node.style.gridColumn = `${(s.x || 0) + 1} / span ${s.w || 1}`; node.style.gridRow = `${(s.y || 0) + 1} / span ${s.h || 1}`; };
+    const place = (node, s) => {
+      const x = s.x || 0, y = s.y || 0, w = s.w || 1, h = s.h || 1;
+      node.style.gridColumn = `${tr.col[x] + 1} / ${tr.col[x + w - 1] + 2}`; node.style.gridRow = `${tr.row[y] + 1} / ${tr.row[y + h - 1] + 2}`;
+    };
     for (const s of layout.sections || []) { const n = el('div', { class: 'bnc-section' }, s.title ? el('span', {}, s.title) : null); place(n, s); grid.append(n); }
     const controls = new Map();
     const onChange = (id, v) => { if (opts.onChange) opts.onChange(id, v, byId.get(id)); };
@@ -306,5 +330,5 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureDefs); else ensureDefs();
 
-  window.BNControls = { createPanel, param, toNorm, fromNorm, CELL: U, GAP_X, GAP_Y, span };
+  window.BNControls = { createPanel, param, toNorm, fromNorm, CELL: U, GAP_X, GAP_Y, span, tracks };
 })();

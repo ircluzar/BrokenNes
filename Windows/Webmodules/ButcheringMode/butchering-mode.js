@@ -740,7 +740,7 @@
   // a module's size on the board: its faceplate's cells plus the plate's frame and title
   // a module's footprint in board cells: its faceplate (controller standard sizes: cells, gutters, the plate's padding) plus the title bar
   function moduleSize(built) {
-    const plateW = BNControls.span(built.layout.cols) + 2 * 18 + 2, plateH = BNControls.span(built.layout.rows, true) + 14 + 18 + 4 + 2;
+    const tr = BNControls.tracks(built.layout), plateW = tr.width + 2 * 18 + 2, plateH = tr.height + 14 + 18 + (tr.sectioned ? 21 : 4) + 2;
     return { w: Math.ceil(plateW / PITCH), h: Math.ceil((plateH + 22) / PITCH) };
   }
   function freeSpot(board, w, h) {
