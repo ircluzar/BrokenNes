@@ -162,3 +162,18 @@ New effects, with their expected score. **Bold** = recommended for the first bat
 | **R4** | Use the scores: decided then (a purity floor slider, "pure only" Randomize, preset badges, a purity score per run) | Needs a decision. |
 
 Open questions for the user before R1: the scores in section 2 (adjust any you disagree with), and whether R1 is the right first batch.
+
+## 6. R4: what the scores drive (options, 2026-11-04)
+
+The catalog has every effect scored (`GET /api/butcher/catalog`, per console). Ways to use it, cheapest first:
+
+| # | Option | What the player sees | Cost |
+|---|---|---|---|
+| A | **Badges on every effect** | A small tier dot and the number beside each effect name (Pure 96, Forced 5), colour per tier. | Small: the panel reads the catalog once. |
+| B | **Live purity meter** | One number for the whole setup: the average score of the effects switched on, weighted by how strongly each is set, with its tier ("This butchering is 88 - Plausible"). | Small. |
+| C | **Preset badges** | Built-in and saved presets show their purity in the list; Save names a new preset with its tier. | Small (reuses B). |
+| D | **Purity bias in Randomize / Mutate** | A second slider beside Strength, from "pure only" to "anything goes"; rolls pick effects weighted by their score. | Medium. |
+| E | **Purity floor** | A "show / allow effects from N up" control: effects below are greyed out and stay off (a "pure hardware only" mode). | Medium: every group switch and roll must respect it. |
+| F | **A score per run** | The meter's value is kept with each capture / bug report / Glitch Harvester entry, so a result says how it was made. | Medium; depends on where runs are kept. |
+
+Recommended first: A + B + C (visible, no behaviour change), then D. E and F after, if wanted.
