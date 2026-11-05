@@ -88,6 +88,15 @@ modifiers and items were that parity). Next week's pool.
 **Open questions.** The DOS target (real mode / DOS extender, VGA mode 13h / Mode X, Sound Blaster / AdLib), the minimum PC, and
 whether 2P stays (keyboard sharing, two joysticks).
 
+**Decision (2026-11-05).** DOS starts **after the Genesis port (S3)** and takes from both earlier ports:
+- From the **Genesis**: the layout (320 wide, play area centred) and the FM music converter path, extended for **OPL2/OPL3**.
+- From the **SNES**: the colours (256-colour VGA, no 64-colour cut) and the byte order (little-endian, like the SNES).
+- Optional: software-mixed SNES sample SFX on the Sound Blaster.
+
+**Toolkit (ready).** `C:\BrokenNes-tools\dos` (pinned in its `MANIFEST.md`): Open Watcom 2.0 (2026-11-01 snapshot) with its
+bundled DOS/32A, DOSBox-X 2026.10.01 portable, FreeDOS 1.4 LiteUSB, NASM 3.02. Session env: `. C:\BrokenNes-tools\dos\env.ps1`;
+smoke test `smoke\run-smoke.ps1` (32-bit DOS hello + Mode 13h, headless in DOSBox-X) passes. The same toolkit serves Vaults DOS.
+
 ---
 
 ## P3. An "x86 console" in BrokenNes (386 + DOS extenders, kept simple)
