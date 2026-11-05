@@ -211,3 +211,20 @@ Port repo VRUN_VOC_GG_dev (local git): 6b52b02 physics, 0c354ac the game + PSG s
   BrokenNes works, BizHawk SMSHawk-gg works, Mesen FAILS: the title takes Right but never A (the run never starts): most likely the
   Mesen adapter's 'a' on its SmsController is not the Game Gear's button 1 (the S0 hello only checked the d-pad). Not fixed.
 - **Hand-off:** %LOCALAPPDATA%\VRUN_Nes_Dev_work\gg_handoffrun_voc_gg_682d469.gg (sha256 865857fe...c320) + README.txt.
+
+## S2 scope (2026-11-05): Corrupt The World on the Master System
+
+Port repo `VRUN_CTW_SMS_dev` (local git), full scope in its `docs/S2-scope.md`. Source: the NESFab mapper-30 build (main.fab ~5,600
+lines of code, 168 room templates, 32 baked maps, 12 tracks, 22 SFX).
+- **Method:** a translator (`tools/fab2c.py`) turns main.fab + data into C over an NES-shaped platform layer (name table writes, OAM,
+  APU registers, pads, CHR bank, saves); only the layer is Master-System-specific (and gets the Z80 assembly). The logic then
+  compares nearly frame for frame.
+- **Picture:** VDP mode 4; the 32x28 name table holds the whole 256x224 room and the 192-line view follows the player vertically
+  (0-32 px); the HUD row shrinks into a strip of sprites with a small font. NES tiles converted at upload (palette in the upper bit
+  planes; sprites get a flip/palette tile cache); the corruption bank flip = a second name table switched by VDP register 2.
+- **Sound:** the translated decoders write a virtual APU; a PSG driver converts per frame (squares -> tones 0/1, triangle -> tone 2
+  an octave down, noise -> PSG noise).
+- **Pad:** 2 = A (jump), 1 = B (fire), Pause = Start; Select = button 1 while paused ("1: SAVE & QUIT"); the in-game Start+Select
+  scheme cycle is dropped (Options keeps it); pad 2 for the twin schemes. **Saves:** cart SRAM, the same bytes.
+- **Risks:** Z80 speed (the NES frame is nearly full; asm hot paths expected), NESFab's 8-bit wrap vs C promotion, 32 px of the room
+  off screen at a time (judge on the flash cart).
