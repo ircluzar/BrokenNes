@@ -724,7 +724,8 @@
   // The board edits the same settings as the strip: both views always agree.
   let view = 'strip', catalog = null;
   let BOARD_COLS = 24;   // set from the board's width when it is drawn (at least one module wide)
-  const PITCH = 24;      // the board's placement step (finer than the controls' cells, so modules sit snug)
+  const PITCH = 8;       // the board's placement step: fine, so a module's footprint is its real size rounded up by at most 7 px
+  const MODULE_GAP = 8;  // the space a module keeps to its right and below, so neighbours can sit 8 px apart and no closer
   const boardKey = () => `butcher.board.v1.${reach?.console || 'nes'}`;
   function loadBoard() { try { const b = JSON.parse(localStorage.getItem(boardKey()) || '[]'); return Array.isArray(b) ? b : []; } catch { return []; } }
   function saveBoard(b) { try { localStorage.setItem(boardKey(), JSON.stringify(b)); } catch { /* not kept */ } }
@@ -739,9 +740,21 @@
   const GROUP_NAMES = { picture: 'Picture', sprites: 'Sprites', sound: 'Sound', bands: 'Bands', palette: 'Palette & video', unsafe: 'Unsafe' };
   // a module's size on the board: its faceplate's cells plus the plate's frame and title
   // a module's footprint in board cells: its faceplate (controller standard sizes: cells, gutters, the plate's padding) plus the title bar
+  // a module's footprint, from its real rendered size (title bar + faceplate), measured once per layout
+  const sizeCache = new Map();
   function moduleSize(built) {
-    const tr = BNControls.tracks(built.layout), plateW = tr.width + 2 * 18 + 2, plateH = tr.height + 14 + 18 + (tr.sectioned ? 21 : 4) + 2;
-    return { w: Math.ceil(plateW / PITCH), h: Math.ceil((plateH + 22) / PITCH) };
+    const key = JSON.stringify(built.layout);
+    let px = sizeCache.get(key);
+    if (!px) {
+      const probe = el('div', { class: 'bmodule', style: 'position:absolute;left:-10000px;top:0;visibility:hidden' },
+        el('div', { class: 'bhandle' }, el('span', { class: 'bname' }, 'x')), el('div', { class: 'bplate' }));
+      document.body.append(probe);
+      BNControls.createPanel(probe.lastChild, Object.assign({}, built.layout, { title: '' }), built.params);
+      px = { w: probe.offsetWidth, h: probe.offsetHeight };
+      probe.remove();
+      if (px.w > 0) sizeCache.set(key, px);
+    }
+    return { w: Math.ceil((px.w + MODULE_GAP) / PITCH), h: Math.ceil((px.h + MODULE_GAP) / PITCH) };
   }
   function freeSpot(board, w, h) {
     const taken = (x, y) => board.some(m => x < m.x + m.w && x + w > m.x && y < m.y + m.h && y + h > m.y);
@@ -805,7 +818,7 @@
     }
     function paintBoard() {
       grid.replaceChildren(); boardPanels = [];
-      BOARD_COLS = Math.max(11, Math.floor((grid.clientWidth || 576) / PITCH));
+      BOARD_COLS = Math.max(36, Math.floor((grid.clientWidth || 576) / PITCH));
       grid.style.setProperty('--bcols', BOARD_COLS);
       // a module the narrower board no longer fits moves to the first free spot
       // sizes first (a faceplate's size follows the controller standard), then settle: a module that no longer fits the board, or now
@@ -818,7 +831,7 @@
         settled.push(m);
       }
       saveBoard(board);
-      const rows = Math.max(16, ...board.map(m => m.y + m.h + 1));
+      const rows = Math.max(48, ...board.map(m => m.y + m.h + 1));
       grid.style.gridTemplateRows = `repeat(${rows}, ${PITCH}px)`;
       for (const m of board) {
         const built = BNEffects.build(m.path, buildCtx(m.path));

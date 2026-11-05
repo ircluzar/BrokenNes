@@ -75,14 +75,16 @@ button.solo.on { background: #1f6a2a; border-color: #6fe07a; color: #fff; }
 .effname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .effscore { color: #999; font: 10px ui-monospace, Consolas, monospace; }
 .effadd { padding: 0 6px; min-width: 22px; }
-.board { position: relative; flex: 1; min-width: 240px; display: grid; grid-template-columns: repeat(var(--bcols), 24px); align-content: start; grid-auto-rows: 24px; overflow: auto; max-height: calc(100vh - 220px);
+.board { position: relative; flex: 1; min-width: 240px; display: grid; grid-template-columns: repeat(var(--bcols), 8px); align-content: start; grid-auto-rows: 8px; overflow: auto; max-height: calc(100vh - 220px);
   background-color: #101114; background-image: linear-gradient(#1c1e23 1px, transparent 1px), linear-gradient(90deg, #1c1e23 1px, transparent 1px); background-size: 48px 48px; border: 1px solid #333; border-radius: 6px; }
-.boardhint { grid-column: 2 / span 14; grid-row: 2 / span 5; color: #888; padding: 12px; font-size: 12px; }
-.bmodule { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.bhandle { display: flex; align-items: center; gap: 6px; padding: 2px 6px; background: #2a2d34; border-radius: 6px 6px 0 0; cursor: move; font-size: 11px; touch-action: none; }
+.boardhint { grid-column: 2 / span 42; grid-row: 2 / span 12; color: #888; padding: 12px; font-size: 12px; }
+/* a module is exactly its faceplate's size (its footprint on the board is that, rounded up to the 8 px step, plus an 8 px gap);
+   the title bar takes the plate's width and never widens it */
+.bmodule { display: flex; flex-direction: column; justify-self: start; align-self: start; width: max-content; }
+.bhandle { width: 0; min-width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 2px 6px; background: #2a2d34; border-radius: 6px 6px 0 0; cursor: move; font-size: 11px; touch-action: none; }
 .bname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bremove { padding: 0 6px; line-height: 1.1; }
-.bplate .bnc-plate { border-radius: 0 0 8px 8px; }
+.bplate .bnc-plate { display: block; border-radius: 0 0 8px 8px; }
 
 .boardtools { justify-content: space-between; align-items: center; margin-bottom: 6px; }
 /* a narrow window: the list above the board instead of beside it */
