@@ -6,12 +6,19 @@
   "kind": "md",
   "console": "md",
   "description": "The Genesis port of Super VRUN (docs/projects/sega-vrun-ports-plan.md, S3: 1P and 2P, the game centred in 320 with each room's edges repeated like the WideMess version, Super VRUN's own music engine on FM + PSG, ONE shared game-logic source with the SNES and WideMess versions: the proposal is in the workspace's README.md). Today the S0 skeleton: a hello ROM (text, a frame counter, both pads read, a cursor that Left / Right move). Built with SGDK 2.11 (toolchains.json) in its live workspace PROJECTS/SuperVRUN_MD_dev (its own git, local only).",
-  "source": { "folder": "{live:SuperVRUN_MD_dev}" },
+  "source": {
+    "folder": "{live:SuperVRUN_MD_dev}"
+  },
   "requires": {
-    "tools": ["ps5", "toolchain:sgdk"],
+    "tools": [
+      "ps5",
+      "toolchain:sgdk"
+    ],
     "projects": [],
     "inputs": [],
-    "toolchain": ["SGDK 2.11 (m68k gcc, make, libmd), pinned in toolchains.json; Java (the machine's JDK) for SGDK's sizebnd.jar / rescomp.jar"]
+    "toolchain": [
+      "SGDK 2.11 (m68k gcc, make, libmd), pinned in toolchains.json; Java (the machine's JDK) for SGDK's sizebnd.jar / rescomp.jar"
+    ]
   },
   "build": {
     "steps": [
@@ -20,17 +27,33 @@
         "shell": "ps5",
         "cwd": "{src}",
         "file": "{src}/build.ps1",
-        "args": ["-Sgdk", "{toolchain:sgdk}"],
+        "args": [
+          "-Sgdk",
+          "{toolchain:sgdk}"
+        ],
         "timeoutSec": 900,
         "note": "build.ps1: SGDK's makefile.gen release (-O3, LTO) into out/, then build/supervrun_md.bin and its nm symbols; checks the 'SEGA' system name at $100."
       }
     ],
     "outputs": [
-      { "id": "rom", "path": "{src}/build/supervrun_md.bin", "publishAs": "supervrun_md.md", "kind": "md" },
-      { "id": "nm", "path": "{src}/build/supervrun_md.nm.txt", "publishAs": "supervrun_md.nm.txt", "kind": "symbols" }
+      {
+        "id": "rom",
+        "path": "{src}/build/supervrun_md.bin",
+        "publishAs": "supervrun_md.md",
+        "kind": "md"
+      },
+      {
+        "id": "nm",
+        "path": "{src}/build/supervrun_md.nm.txt",
+        "publishAs": "supervrun_md.nm.txt",
+        "kind": "symbols"
+      }
     ]
   },
-  "run": { "console": "md", "note": "The skeleton: Left / Right move the cursor. Lite: the .md opens in BrokenNes Lite's Genesis (UAT/entrypoints/lite-sega.ps1 -Roms <folder with md\\supervrun_md.md>)." },
+  "run": {
+    "console": "md",
+    "note": "The skeleton: Left / Right move the cursor. Lite: the .md opens in BrokenNes Lite's Genesis (UAT/entrypoints/lite-sega.ps1 -Roms <folder with md\\supervrun_md.md>)."
+  },
   "verify": {
     "timeoutSec": 600,
     "scenarios": [
@@ -38,14 +61,38 @@
         "id": "hello",
         "frames": 300,
         "input": "100:Left,110:",
-        "checkpoints": [50, 300],
+        "checkpoints": [
+          50,
+          300
+        ],
         "expect": {
           "minDistinctColors": 2,
-          "pictureDiffers": [50, 300],
+          "pictureDiffers": [
+            50,
+            300
+          ],
           "memory": [
-            { "symbol": "hello_ok", "size": 2, "endian": "big", "is": 1, "what": "the screen was set up" },
-            { "symbol": "frame_count", "size": 2, "endian": "big", "min": 250, "what": "the main loop runs every frame" },
-            { "symbol": "cursor_x", "size": 2, "endian": "big", "is": 6, "what": "Left reached the pad and moved the cursor 10 columns (16 -> 6)" }
+            {
+              "symbol": "hello_ok",
+              "size": 2,
+              "endian": "big",
+              "is": 1,
+              "what": "the screen was set up"
+            },
+            {
+              "symbol": "frame_count",
+              "size": 2,
+              "endian": "big",
+              "min": 250,
+              "what": "the main loop runs every frame"
+            },
+            {
+              "symbol": "cursor_x",
+              "size": 2,
+              "endian": "big",
+              "is": 6,
+              "what": "Left reached the pad and moved the cursor 10 columns (16 -> 6)"
+            }
           ]
         },
         "why": "the hello ROM on the Genesis: it runs, draws and reads the pad"
@@ -54,28 +101,189 @@
   },
   "compat": {
     "what": "The hello ROM on every Genesis emulator BrokenDev has (BizHawk's Genplus-gx), from power-on and the same pad script. The variables are big-endian u16: the reads take their low byte (the symbol + 1).",
-    "symbols": { "file": "{out}/supervrun_md.nm.txt" },
-    "reads": { "frame": "frame_count", "framelo": "frame_count+1", "ok": "hello_ok+1", "cursor": "cursor_x+1" },
+    "symbols": {
+      "file": "{out}/supervrun_md.nm.txt"
+    },
+    "reads": {
+      "frame": "frame_count",
+      "framelo": "frame_count+1",
+      "ok": "hello_ok+1",
+      "cursor": "cursor_x+1"
+    },
     "frameTolerance": 30,
     "scenarios": [
       {
         "id": "hello",
         "frames": 400,
         "input": "100:Left,110:",
-        "shots": [50, 400],
+        "shots": [
+          50,
+          400
+        ],
         "what": "power-on, the text, Left held 10 frames",
         "checks": [
-          { "id": "alive", "what": "the main loop runs (frame_count's low byte keeps changing)", "changes": "framelo", "within": [60, 400], "min": 200 },
-          { "id": "ready", "what": "the screen was set up", "read": "ok", "is": 1, "within": [60, 400], "hold": true },
-          { "id": "moved", "what": "Left moved the cursor 10 columns (16 -> 6)", "read": "cursor", "is": 6, "within": [200, 400], "hold": true },
-          { "id": "drawn", "what": "the text is drawn", "picture": 400, "minColors": 2 }
+          {
+            "id": "alive",
+            "what": "the main loop runs (frame_count's low byte keeps changing)",
+            "changes": "framelo",
+            "within": [
+              60,
+              400
+            ],
+            "min": 200
+          },
+          {
+            "id": "ready",
+            "what": "the screen was set up",
+            "read": "ok",
+            "is": 1,
+            "within": [
+              60,
+              400
+            ],
+            "hold": true
+          },
+          {
+            "id": "moved",
+            "what": "Left moved the cursor 10 columns (16 -> 6)",
+            "read": "cursor",
+            "is": 6,
+            "within": [
+              200,
+              400
+            ],
+            "hold": true
+          },
+          {
+            "id": "drawn",
+            "what": "the text is drawn",
+            "picture": 400,
+            "minColors": 2
+          }
         ]
       }
     ]
   },
   "comparison": {
-    "what": "The cross-console comparison (S0): the port against its original, Super VRUN on the SNES (project supervrun). Tolerance (2026-11-01): the same events in order, positions within a few pixels. Filled in by S3; the skeleton maps nothing yet.",
-    "original": "supervrun"
+    "what": "S3 M2: the Genesis port's logic (logic/ = a copy of the SNES C, the 98 asm paths as C) against Super VRUN on the SNES (project supervrun). Same game code, so the tolerance is tight: the same events in order within 2 ticks, positions within 1 pixel. Both 60 Hz, time = the game's own tick (game_frames, one per gameplay update), because the two CPUs spend different frames loading a room; input tick: pads by frame until the game starts, then by game tick. Variables by symbol on both sides (SNES: WLA .sym; Genesis: SGDK nm). The SNES keeps u16 little-endian (pixel = byte +1); the 68000 big-endian (pixel = byte +0). p2ctx (the stored player, 2P) is in the SNES byte layout on both (BACKPORT 7). Pads: SNES Y->A, A->C, B->B, X->X, L->Y, R->Z, Select->Mode (platform/md/plat_md.c's map). TRAP: in a SNES expression a symbol's value loses its bank once arithmetic is applied ([player_x + 1] reads bank 0 = ROM): add the bank, [player_x + $7E0001].",
+    "original": "supervrun",
+    "rate": {
+      "original": {
+        "fps": 60,
+        "tick": "le16 game_frames"
+      },
+      "port": {
+        "fps": 60,
+        "tick": "be16 game_frames"
+      }
+    },
+    "input": "tick",
+    "tolerance": {
+      "ticks": 2,
+      "positions": 4
+    },
+    "sampleEveryTicks": 10,
+    "variables": [
+      {
+        "name": "state",
+        "kind": "event",
+        "original": "cur_state_seen",
+        "port": "cur_state_seen"
+      },
+      {
+        "name": "room",
+        "kind": "event",
+        "original": "room_current",
+        "port": "room_current"
+      },
+      {
+        "name": "hp",
+        "kind": "event",
+        "original": "player_hp",
+        "port": "player_hp"
+      },
+      {
+        "name": "cash",
+        "kind": "event",
+        "original": "le16 player_score",
+        "port": "be16 player_score"
+      },
+      {
+        "name": "cur",
+        "kind": "event",
+        "original": "player_cur",
+        "port": "player_cur"
+      },
+      {
+        "name": "x",
+        "kind": "position",
+        "original": "[player_x + $7E0001]",
+        "port": "[player_x]"
+      },
+      {
+        "name": "y",
+        "kind": "position",
+        "original": "[player_y + $7E0001]",
+        "port": "[player_y]"
+      },
+      {
+        "name": "p2x",
+        "kind": "position",
+        "original": "[p2ctx + $7E0001]",
+        "port": "[p2ctx + 1]"
+      },
+      {
+        "name": "p2y",
+        "kind": "position",
+        "original": "[p2ctx + $7E0003]",
+        "port": "[p2ctx + 3]"
+      },
+      {
+        "name": "p2hp",
+        "kind": "event",
+        "original": "[p2ctx + $7E000E]",
+        "port": "[p2ctx + 14]"
+      },
+      {
+        "name": "shut",
+        "kind": "event",
+        "original": "room_doors_shut",
+        "port": "room_doors_shut"
+      },
+      {
+        "name": "enemies",
+        "kind": "event",
+        "original": "room_enemies_remaining",
+        "port": "room_enemies_remaining"
+      },
+      {
+        "name": "locks",
+        "kind": "event",
+        "original": "room_lockblocks_remaining",
+        "port": "room_lockblocks_remaining"
+      },
+      {
+        "name": "open",
+        "kind": "event",
+        "original": "le16 room_doors_opened",
+        "port": "be16 room_doors_opened"
+      },
+      {
+        "name": "unlocked",
+        "kind": "event",
+        "original": "le16 room_doors_unlocked",
+        "port": "be16 room_doors_unlocked"
+      }
+    ],
+    "buttons": {
+      "Y": "A",
+      "A": "C",
+      "L": "Y",
+      "R": "Z",
+      "Select": "Mode"
+    },
+    "settleFrames": 200,
+    "tickLead": 0
   },
   "knownIssues": [
     "S0 skeleton only: the game is S3.",
