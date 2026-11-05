@@ -447,6 +447,7 @@
 
   function renderStrip() {
     document.getElementById('panel')?.classList.remove('wide');
+    trying = null; tryPanel = null; document.getElementById('trybench')?.remove();
     for (const id of ['tabs', 'search']) { const n = $(id); if (n) n.style.display = ''; }
     const g = $('groups');
     g.replaceChildren();
@@ -765,8 +766,8 @@
     const entry = (catalog?.effects || []).find(e => e.path === path);
     return { settings, reach, entry, onChange: () => { push(); refreshBoardDisplays(); } };
   }
-  let boardPanels = [];
-  function refreshBoardDisplays() { for (const bp of boardPanels) bp.refresh(); }
+  let boardPanels = [], trying = null, tryPanel = null;
+  function refreshBoardDisplays() { for (const bp of boardPanels) bp.refresh(); tryPanel?.refresh(); }
   function renderBuild() {
     document.getElementById('panel')?.classList.add('wide');
     for (const id of ['tabs', 'search']) { const n = $(id); if (n) n.style.display = 'none'; }
@@ -788,7 +789,9 @@
         rows.push(el('div', { class: 'effgrp' }, GROUP_NAMES[grp]));
         for (const e of items) {
           const placed = board.some(m => m.path === e.path);
-          const item = el('div', { class: 'effitem' + (placed ? ' placed' : ''), role: 'listitem', draggable: 'true', title: `${e.name}\n${e.tier} ${e.purityHere}: ${e.why}`,
+          const item = el('div', { class: 'effitem' + (placed ? ' placed' : '') + (trying === e.path ? ' selected' : ''), role: 'listitem', draggable: 'true', tabindex: 0, title: `${e.name}\n${e.tier} ${e.purityHere}: ${e.why}`,
+            onclick: (ev) => { if (!ev.target.closest('button')) tryEffect(e.path); },
+            onkeydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); tryEffect(e.path); } },
             ondragstart: (ev) => { ev.dataTransfer.setData('text/x-butcher-effect', e.path); ev.dataTransfer.effectAllowed = 'copy'; } },
             el('span', { class: 'tierdot', style: `background:${BNEffects.tierColour(e.tier)}`, 'aria-label': `${e.tier}, purity ${e.purityHere}` }),
             el('span', { class: 'effname' }, e.name), el('span', { class: 'effscore' }, String(e.purityHere)),
@@ -798,6 +801,32 @@
       }
       list.replaceChildren(...rows);
     }
+
+    // ---- the test bench: the selected effect's controller, alone in the free space left of the panel, to play with before placing
+    function tryEffect(path) {
+      const e = effects.find(x => x.path === path); if (!e) return;
+      trying = path;
+      const built = BNEffects.build(path, buildCtx(path));
+      let bench = document.getElementById('trybench');
+      if (!bench) { bench = el('div', { id: 'trybench', class: 'trybench', role: 'dialog', 'aria-label': 'Try an effect' }); document.body.append(bench); }
+      const placed = board.some(m => m.path === path);
+      const plateHost = el('div', { class: 'bplate' });
+      bench.replaceChildren(
+        el('div', { class: 'bhandle trytitle' },
+          el('span', { class: 'tierdot', style: `background:${BNEffects.tierColour(e.tier)}` }),
+          el('span', { class: 'bname' }, built.title), el('span', { class: 'effscore' }, String(e.purityHere)),
+          el('button', { type: 'button', class: 'bremove', 'aria-label': 'Close the test bench', onclick: closeTry }, '×')),
+        plateHost,
+        el('div', { class: 'trywhy' }, `${e.tier}: ${e.why}`),
+        el('div', { class: 'row tryrow' },
+          el('button', { type: 'button', disabled: placed ? '' : null, onclick: () => addModule(path) }, placed ? 'On the board' : 'Add to board')),
+        el('div', { class: 'trywhy' }, 'Live: it changes the running game, like the board does.'));
+      built.layout.title = ''; built.layout.accent = BNEffects.tierColour(e.tier);
+      const bp = BNControls.createPanel(plateHost, built.layout, built.params, { onPress: (id) => { built.actions[id]?.(); bp.refresh(); } });
+      tryPanel = bp;
+      paintList();
+    }
+    function closeTry() { trying = null; tryPanel = null; document.getElementById('trybench')?.remove(); paintList(); }
 
     // ---- the board
     const grid = el('div', { class: 'board', style: `--bcols:${BOARD_COLS}` });
@@ -810,6 +839,7 @@
     });
     function addModule(path, x, y) {
       if (board.some(m => m.path === path)) return;
+      if (trying === path) closeTry();
       const built = BNEffects.build(path, buildCtx(path));
       const sz = moduleSize(built);
       let spot = x === undefined ? freeSpot(board, sz.w, sz.h) : { x: Math.max(0, Math.min(BOARD_COLS - sz.w, x)), y: Math.max(0, y) };
@@ -850,17 +880,28 @@
         const bp = BNControls.createPanel(host, built.layout, built.params, { onPress: (id) => { built.actions[id]?.(); bp.refresh(); } });
         boardPanels.push(bp);
         // move by the title bar, snapping to cells, never onto another module
+        // The module follows the pointer; where the pointer's spot would overlap a neighbour, it takes the nearest free spot to it
+        // instead of stopping, so it slides along edges and into corners. No text gets selected while dragging.
         handle.addEventListener('pointerdown', (ev) => {
-          if (ev.target.closest('button')) return;
+          if (ev.target.closest('button') || ev.button !== 0) return;
+          ev.preventDefault();
           handle.setPointerCapture(ev.pointerId);
+          document.body.classList.add('bdragging'); mod.classList.add('moving');
           const sx = ev.clientX, sy = ev.clientY, ox = m.x, oy = m.y;
+          const others = board.filter(o => o !== m);
+          const free = (x, y) => x >= 0 && y >= 0 && x + m.w <= BOARD_COLS && !others.some(o => x < o.x + o.w && x + m.w > o.x && y < o.y + o.h && y + m.h > o.y);
           const move = (e2) => {
-            const nx = Math.max(0, Math.min(BOARD_COLS - m.w, ox + Math.round((e2.clientX - sx) / PITCH))), ny = Math.max(0, oy + Math.round((e2.clientY - sy) / PITCH));
-            const clash = board.some(o => o !== m && nx < o.x + o.w && nx + m.w > o.x && ny < o.y + o.h && ny + m.h > o.y);
-            if (!clash && (nx !== m.x || ny !== m.y)) { m.x = nx; m.y = ny; mod.style.gridColumn = `${m.x + 1} / span ${m.w}`; mod.style.gridRow = `${m.y + 1} / span ${m.h}`; }
+            const tx = Math.max(0, Math.min(BOARD_COLS - m.w, ox + Math.round((e2.clientX - sx) / PITCH))), ty = Math.max(0, oy + Math.round((e2.clientY - sy) / PITCH));
+            let best = null, bd = Infinity;
+            for (let r = 0; r <= 40 && !best; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+              if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+              const d = dx * dx + dy * dy;
+              if (d < bd && free(tx + dx, ty + dy)) { bd = d; best = { x: tx + dx, y: ty + dy }; }
+            }
+            if (best && (best.x !== m.x || best.y !== m.y)) { m.x = best.x; m.y = best.y; mod.style.gridColumn = `${m.x + 1} / span ${m.w}`; mod.style.gridRow = `${m.y + 1} / span ${m.h}`; }
           };
-          const up = () => { handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); saveBoard(board); paintBoard(); };
-          handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up);
+          const up = () => { handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); handle.removeEventListener('pointercancel', up); document.body.classList.remove('bdragging'); saveBoard(board); paintBoard(); };
+          handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up); handle.addEventListener('pointercancel', up);
         });
         grid.append(mod);
       }
@@ -872,6 +913,7 @@
       el('span', { class: 'note' }, 'The board edits the same settings as the strip. Dot colour: purity tier (green pure … red forced).'));
     g.append(tools, el('div', { class: 'buildview' }, el('div', { class: 'listpane' }, filter, list), grid));
     paintList(); paintBoard();
+    if (trying) tryEffect(trying);   // a redraw keeps the bench, bound to the new board
   }
 
   // ---------------------------------------------------------------- randomize / mutate

@@ -71,6 +71,17 @@ button.solo.on { background: #1f6a2a; border-color: #6fe07a; color: #fff; }
 .effitem { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 4px; cursor: grab; font-size: 11px; }
 .effitem:hover { background: rgba(255, 255, 255, .08); }
 .effitem.placed { opacity: .55; }
+.effitem.selected { background: rgba(255, 107, 107, .18); box-shadow: 0 0 0 1px rgba(255, 107, 107, .5) inset; }
+/* nothing in the build view is text to select: list items and modules are dragged */
+.buildview, .boardtools { user-select: none; -webkit-user-select: none; }
+.buildview input { user-select: text; -webkit-user-select: text; }
+body.bdragging, body.bdragging * { user-select: none !important; -webkit-user-select: none !important; cursor: grabbing !important; }
+.bmodule.moving { z-index: 2; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .6)); }
+/* the test bench: fixed in the free space left of the panel */
+.trybench { position: fixed; left: 12px; top: 38px; z-index: 10001; width: max-content; max-width: calc(100vw - 24px); display: flex; flex-direction: column;
+  background: rgba(10, 10, 10, .9); border: 1px solid rgba(255, 255, 255, .25); border-radius: 8px; padding: 8px; gap: 6px; box-shadow: 0 4px 16px rgba(0, 0, 0, .6); user-select: none; -webkit-user-select: none; }
+.trybench .trytitle { cursor: default; }
+.trywhy { color: #999; font-size: 11px; width: 0; min-width: 100%; }
 .tierdot { width: 8px; height: 8px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px #000; }
 .effname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .effscore { color: #999; font: 10px ui-monospace, Consolas, monospace; }
@@ -94,3 +105,4 @@ button.solo.on { background: #1f6a2a; border-color: #6fe07a; color: #fff; }
   .efflist { max-height: 180px; }
   .board { width: 100%; max-height: none; }
 }
+.panel.hidden ~ .trybench { display: none; }
