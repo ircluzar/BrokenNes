@@ -25,6 +25,7 @@ until the user picks it. Two of them (P3, P4) need an interview first. P4 -> P5 
 | P6: unvisited rooms on the map | **Like CTW Remastered** (copy what its map does). |
 | P1: the Vaults music on a Super Game Boy | **Stays on the Game Boy** channels; only the sound effects move to the SNES samples. |
 | P2: 2P in the DOS version | **Kept, on two joysticks.** |
+| P3: isolated (2026-11-04) | **The x86 console is an ISOLATED system:** its parts are not interchangeable with the other consoles' (no bridges, no core swaps), like the planned N64 console (cer64plus). This replaces "mix the x86 with the other consoles' chips" below. |
 | P3: why an x86 console | **All three:** run Super VRUN DOS inside BrokenNes (debugger, Timeflow, save states), mix the x86 with the other consoles' chips, and run DOS games in general (a real new console). |
 | P3: how much PC | **A 386 with DOS extenders** (most 90s DOS games). |
 | P3: own or ported | **Port an open-source one** under a documented licence exception, like the Foreign APU cores. |
