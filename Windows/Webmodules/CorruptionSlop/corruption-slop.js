@@ -39,21 +39,23 @@
   };
   function ms(v) { return v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)} s` : `${Math.round(v)} ms`; }
 
+  // Blast (the big knob, Base, the blast light) | Pace (fast over slow) | Intermission (chance slider over min cycles and
+  // guarantee); under them a Run strip reading left to right: status, blasts, Stop in the corner.
   const LAYOUT = {
     title: 'Corruption Slop', cols: 6, rows: 3, accent: '#e0523b',
-    sections: [{ title: 'Blast', x: 0, y: 0, w: 3, h: 2 }, { title: 'Intermission', x: 3, y: 0, w: 2, h: 2 }],
+    sections: [{ title: 'Blast', x: 0, y: 0, w: 3, h: 2 }, { title: 'Pace', x: 3, y: 0, w: 1, h: 2 }, { title: 'Intermission', x: 4, y: 0, w: 2, h: 2 }, { title: 'Run', x: 0, y: 2, w: 6, h: 1 }],
     controls: [
       { type: 'knob', param: 'intensity', x: 0, y: 0, w: 2, h: 2 },
       { type: 'knob', param: 'base', x: 2, y: 0 },
-      { type: 'knob', param: 'paceMin', x: 2, y: 1, label: 'Fast' },
-      { type: 'knob', param: 'chance', x: 3, y: 0 },
-      { type: 'knob', param: 'minCycles', x: 4, y: 0 },
-      { type: 'knob', param: 'guarantee', x: 3, y: 1 },
-      { type: 'knob', param: 'paceMax', x: 4, y: 1, label: 'Slow' },
-      { type: 'button', id: 'stop', label: 'Stop', glyph: '■', danger: true, x: 5, y: 0 },
-      { type: 'led', id: 'blast', label: 'Blast', x: 5, y: 1 },
-      { type: 'display', id: 'status', text: 'starting', label: 'Status', x: 0, y: 2, w: 3, live: true },
-      { type: 'display', id: 'count', text: '0 cycles', label: 'Blasts', x: 3, y: 2, w: 3 },
+      { type: 'led', id: 'blast', label: 'Blast', x: 2, y: 1 },
+      { type: 'knob', param: 'paceMin', x: 3, y: 0, label: 'Fast' },
+      { type: 'knob', param: 'paceMax', x: 3, y: 1, label: 'Slow' },
+      { type: 'slider', param: 'chance', x: 4, y: 0, w: 2, label: 'Chance' },
+      { type: 'knob', param: 'minCycles', x: 4, y: 1, label: 'Min cyc' },
+      { type: 'knob', param: 'guarantee', x: 5, y: 1 },
+      { type: 'display', id: 'status', text: 'starting', label: 'Status', x: 0, y: 2, w: 2, live: true },
+      { type: 'display', id: 'count', text: '0 cycles', label: 'Blasts', x: 2, y: 2, w: 3 },
+      { type: 'button', id: 'stop', label: 'Stop', glyph: '■', danger: true, x: 5, y: 2 },
     ],
   };
 

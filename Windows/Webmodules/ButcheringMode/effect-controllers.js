@@ -101,7 +101,7 @@
       add({ id: base + '_f', label: 'Flicker', min: 0, max: 100, step: 1, unit: '%', default: 0, get: () => u.padFlicker || 0, set: (v) => { u.padFlicker = v; changed(); } }, { type: 'knob', param: base + '_f' });
       controls.push({ type: 'button', id: base + '_rnd', label: 'Random', glyph: '?', action: () => { const a = u.padLines; a.fill(0); a[Math.floor(Math.random() * a.length)] = 1 + Math.floor(Math.random() * 3); changed(); } });
       controls.push({ type: 'button', id: base + '_clr', label: 'Clear', glyph: '×', action: () => { (u.padLines || []).fill(0); changed(); } });
-      return finish(title, params, controls);
+      return finishPins(title, params, controls);
     }
 
     const obj = get(settings, path);
@@ -115,7 +115,7 @@
       if (!path.startsWith('sound.dac') && !path.startsWith('videoDac')) add({ id: base + '_w', label: 'Bend writes', short: 'Writes', default: false, get: () => !!obj.bendWrites, set: (v) => { obj.bendWrites = v; changed(); } }, { type: 'toggle', param: base + '_w', label: 'Writes' });
       controls.push({ type: 'button', id: base + '_rnd', label: 'Random', glyph: '?', action: () => { const all = [...obj.address.map((_, i) => ['address', i]), ...obj.data.map((_, i) => ['data', i])]; if (!all.length) return; const [k, i] = all[Math.floor(Math.random() * all.length)]; obj[k][i] = 1 + Math.floor(Math.random() * 4); changed(); } });
       controls.push({ type: 'button', id: base + '_clr', label: 'Clear', glyph: '×', action: () => { obj.address.fill(0); obj.data.fill(0); changed(); } });
-      return finish(title, params, controls);
+      return finishPins(title, params, controls);
     }
 
     // the switch first
@@ -143,16 +143,39 @@
     return finish(title, params, controls);
   }
 
-  // a default layout: controls on a grid three cells wide (displays take two)
+  const actionsOf = (controls) => Object.fromEntries(controls.filter(c => c.action).map(c => [c.id, c.action]));
+
+  // a pin group: two frames side by side, full height. Faults: the read-out with the one-shot buttons that change it under it;
+  // Bend: the settings that stay (flicker over bend writes).
+  function finishPins(title, params, controls) {
+    const by = (pred) => controls.find(pred);
+    const at = (c, x, y, w) => c && Object.assign({}, c, { x, y, w: w || 1, h: 1 });
+    const placed = [
+      at(by(c => c.type === 'display'), 0, 0, 2),
+      at(by(c => c.id && c.id.endsWith('_rnd')), 0, 1),
+      at(by(c => c.id && c.id.endsWith('_clr')), 1, 1),
+      at(by(c => c.type === 'knob'), 2, 0),
+      at(by(c => c.type === 'toggle'), 2, 1),
+    ].filter(Boolean);
+    const sections = [{ title: 'Faults', x: 0, y: 0, w: 2, h: 2 }, { title: 'Bend', x: 2, y: 0, w: 1, h: 2 }];
+    return { title, params, layout: { title, cols: 3, rows: 2, sections, controls: placed }, actions: actionsOf(controls) };
+  }
+
+  // a default layout: controls on a grid three cells wide (displays take two). An On switch keeps column 0 to itself, so it is
+  // in the same place on every module and the other controls line up in the two columns beside it.
   function finish(title, params, controls) {
-    const cols = 3; let x = 0, y = 0;   // three cells wide: a module fits a narrow board
-    const placed = controls.map((c) => {
+    const cols = 3;   // three cells wide: a module fits a narrow board
+    const on = controls[0] && controls[0].type === 'toggle' && controls[0].label === 'On' && controls.length > 1 ? controls[0] : null;
+    const x0 = on ? 1 : 0; let x = x0, y = 0;
+    const rest = on ? controls.slice(1) : controls;
+    const placed = rest.map((c) => {
       const w = c.w || 1;
-      if (x + w > cols) { x = 0; y++; }
+      if (x + w > cols) { x = x0; y++; }
       const p = Object.assign({}, c, { x, y, w, h: 1 });
       x += w; return p;
     });
-    return { title, params, layout: { title, cols, rows: Math.max(1, y + 1), controls: placed }, actions: Object.fromEntries(controls.filter(c => c.action).map(c => [c.id, c.action])) };
+    if (on) placed.unshift(Object.assign({}, on, { x: 0, y: 0, w: 1, h: 1 }));
+    return { title, params, layout: { title, cols, rows: Math.max(1, y + 1), controls: placed }, actions: actionsOf(controls) };
   }
 
   const TIER_COLOUR = { Pure: '#5fd68a', Plausible: '#9fc85a', MechanismReal: '#e0b341', Steered: '#e07b3b', Forced: '#d9534f' };
