@@ -197,7 +197,7 @@
       "ticks": 6,
       "positions": 4
     },
-    "sampleEveryTicks": 30,
+    "sampleEveryTicks": 10,
     "variables": [
       {
         "name": "state",
