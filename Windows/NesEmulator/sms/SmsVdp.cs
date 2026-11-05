@@ -650,6 +650,7 @@ public partial class SmsVdp
 
     public void LoadState(BinaryReader r)
     {
+        bandOn = false;   // a Butchering band in progress (a frame ends part-way through a line) belongs to the old timeline: its saved registers must not be put back into the loaded ones
         r.Read(Vram, 0, Vram.Length); r.Read(cram, 0, cram.Length); r.Read(Regs, 0, Regs.Length);
         addr = r.ReadInt32(); code = r.ReadInt32(); latch = r.ReadBoolean(); latchByte = r.ReadByte(); readBuffer = r.ReadByte(); ggCramLatch = r.ReadByte();
         vintFlag = r.ReadBoolean(); ovrFlag = r.ReadBoolean(); colFlag = r.ReadBoolean(); lineIrqPending = r.ReadBoolean(); fifthSpriteNumber = r.ReadInt32();

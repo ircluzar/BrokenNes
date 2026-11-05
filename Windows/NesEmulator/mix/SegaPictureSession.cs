@@ -166,7 +166,8 @@ public sealed class SegaPictureSession : IConsoleSession, IPictureBridgeInfo
         }
         if (side > 0) ShiftReference();
         if (Enhanced is WmsWideChip wide) wide.CountInto(Counters);     // what the widescreen chip showed beside the console's picture (the status line)
-        if ((inner as IButcherHost)?.Butcher is { PaletteActive: true } bp) bp.ApplyPalette(Frame, FrameWidth * FrameHeight);   // Butchering mode's palette: the finished picture only
+        if ((inner as IButcherHost)?.Butcher is { PaletteActive: true } bp) bp.ApplyPalette(Frame, FrameWidth * FrameHeight);
+        if ((inner as IButcherHost)?.Butcher is { VideoFxActive: true } bv) bv.ApplyVideo(Frame, FrameWidth, FrameHeight);   // and the video signal   // Butchering mode's palette: the finished picture only
     }
 
     private void Take(BridgeFrame f)

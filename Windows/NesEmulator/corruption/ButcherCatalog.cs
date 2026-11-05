@@ -63,6 +63,9 @@ public static class ButcherCatalog
 		new("sound.detune", "sound", "Detune (XOR)", 30, "A bit pattern aimed at the period registers."),
 		new("sound.wobble", "sound", "Clock wobble", 78, "A drifting or failing crystal / resonator."),
 		new("sound.fmUnplug", "sound", "FM unit losing contact (Master System)", 85, "The FM unit's connector or socket losing contact: only the PSG is heard while it is out."),
+		new("sound.hum", "sound", "Mains hum", 60, "A ground loop between the console, the amp and the mains: real, but outside the console."),
+		new("sound.inject", "sound", "Tone injection", 5, "A generated waveform pushed in from outside, the example of a forced effect."),
+		new("sound.sweep", "sound", "Test sweep", 3, "A generated test tone sweeping the range."),
 		new("sound.caps", "sound", "Dried-out audio capacitors", 93, "Old electrolytic capacitors on the audio path: muffled sound, crackle, cut-outs. The most common repair on old consoles."),
 		// ---- bands (a register changed for a few scanlines: what a CPU writing mid-frame does, not a physical fault)
 		new("bands.shift", "bands", "Band: shift", 45, "Mid-frame scroll change."),
@@ -82,6 +85,10 @@ public static class ButcherCatalog
 		new("palette.channelSwap", "palette", "Palette channel swap", 20, "A mis-wired RGB / SCART cable is real; a console fault is not."),
 		new("palette.posterize", "palette", "Palette posterize", 5, "A transform."),
 		new("palette.cycleFrames", "palette", "Palette cycle", 3, "A clock-driven show."),
+		new("video.roll", "palette", "Picture roll (sync loss)", 35, "Vertical sync lost on the way to the set: a real fault, but of the cable, modulator or TV, not the console."),
+		new("video.ghost", "palette", "RF ghost", 30, "An echo on the RF signal (a bad cable, a reflection): outside the console."),
+		new("video.misconverge", "palette", "RGB misconvergence", 25, "A CRT whose red and blue beams miss their dots: the screen's fault, generated here."),
+		new("video.snow", "palette", "RF snow", 8, "Snow on a weak RF signal: generated noise laid over the picture."),
 		// ---- unsafe
 		new("unsafe.cpuPins", "unsafe", "CPU pins (cartridge bus)", 97, "Dirty cartridge connectors: the classic."),
 		new("unsafe.soundCpuPins", "unsafe", "Sound CPU pins", 88, "The SPC700 / Z80 bus to its RAM chips is on the board."),
@@ -125,8 +132,8 @@ public static class ButcherCatalog
 	public static Entry? Find(string path) => Effects.FirstOrDefault(e => string.Equals(e.Path, path, StringComparison.OrdinalIgnoreCase));
 
 	// Settings properties that are not effects of their own: the containers, the master switch, and parameters of another effect.
-	private static readonly HashSet<string> NotEffects = new(StringComparer.OrdinalIgnoreCase) { "enabled", "sprites", "sound", "bands", "unsafe", "ciramFlicker", "unsafe.padFlicker" };
-	private static readonly HashSet<string> Containers = new(StringComparer.OrdinalIgnoreCase) { "sprites", "sound", "bands", "unsafe" };
+	private static readonly HashSet<string> NotEffects = new(StringComparer.OrdinalIgnoreCase) { "enabled", "sprites", "sound", "bands", "unsafe", "video", "ciramFlicker", "unsafe.padFlicker" };
+	private static readonly HashSet<string> Containers = new(StringComparer.OrdinalIgnoreCase) { "sprites", "sound", "bands", "unsafe", "video" };
 
 	/// <summary>Every effect path in <see cref="ButcherSettings"/>, camelCase (the containers' children, and the top-level effects).</summary>
 	public static IReadOnlyList<string> SettingsPaths()

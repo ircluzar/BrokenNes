@@ -48,7 +48,10 @@
         dacPins: { address: [], data: new Array(16).fill(0), flicker: 0, bendWrites: false },
         wobble: { on: false, depth: 30, speed: 8 },
         caps: { on: false, age: 40 },
-        fmUnplug: { on: false, rate: 10, duration: 60 }
+        fmUnplug: { on: false, rate: 10, duration: 60 },
+        inject: { on: false, wave: 0, freq: 440, level: 20, mix: 0 },
+        hum: { on: false, hz: 60, level: 15 },
+        sweep: { on: false, from: 100, to: 8000, seconds: 4, level: 15 }
       },
       bands: (() => { const b = () => ({ on: false, rate: 25, width: 30, strength: 8, lifetime: 30 }); return { shift: b(), slip: b(), patternSwap: b(), nametableSwap: b(), bgOff: b(), spritesOff: b(), spriteHeight: b(), bend: b(), extra1: b(), extra2: b(), extra3: b() }; })(),
       ram: { on: false, rate: 25, step: 1, lifetime: 60, maxProbes: 3 },
@@ -56,6 +59,7 @@
       ciramA10: 0, ciramFlicker: 0,
       lcd: { on: false, columns: 2, rows: 0, mode: 0, seed: 1 },
       vramChip: { on: false, chip: 0, mode: 0, flicker: 0 },
+      video: { snow: { on: false, level: 20 }, roll: { on: false, speed: 2 }, ghost: { on: false, level: 30, offset: 6 }, misconverge: { on: false, pixels: 2 } },
       videoDac: { address: [], data: new Array(24).fill(0), flicker: 0, bendWrites: false },
       paletteBus: (() => { const z = { nes: [5, 6], snes: [8, 15], md: [6, 12], sms: [5, 0], gg: [5, 0], gb: [6, 8] }[reach?.console || 'nes'] || [5, 6]; return { address: new Array(z[0]).fill(0), data: new Array(z[1]).fill(0), flicker: 0, bendWrites: false }; })(),
       unsafe: { cpuPins: { address: new Array(reach?.cpuAddressLines || 15).fill(0), data: new Array(reach?.cpuDataLines || 8).fill(0), flicker: 0, bendWrites: false },
@@ -215,7 +219,7 @@
     if (off.sound) e.sound = d.sound;
     if (off.bands) e.bands = d.bands;
     if (off.ram) e.ram = d.ram;
-    if (off.palette) { e.palette = d.palette; e.videoDac = d.videoDac; e.paletteBus = d.paletteBus; }
+    if (off.palette) { e.video = d.video; e.palette = d.palette; e.videoDac = d.videoDac; e.paletteBus = d.paletteBus; }
     if (off.picture) { e.ciramA10 = 0; e.lcd = d.lcd; e.vramChip = d.vramChip; }
     if (off.unsafe) { e.ram = d.ram; e.unsafe = d.unsafe; e.consolePins.bendWrites = false; e.cartPins.bendWrites = false; }
     delete e.groupsOff;
@@ -539,7 +543,20 @@
         slider('Depth', so.wobble, 'depth', 1, 100, 1), slider('Speed', so.wobble, 'speed', 1, 80, 1)),
       el('div', { class: 'fx' }, check('Dried-out capacitors', so.caps, 'on'), el('div', { class: 'why' }, 'The audio path’s old capacitors: the treble goes first, then crackle, then the sound cuts out for moments.'),
         slider('Age', so.caps, 'age', 1, 100, 1)),
-      reach.console === 'sms' && (reach.channels || []).length > 4 ? eventFx('FM unit loses contact', 'The FM unit’s connector or socket: only the PSG is heard while it is out.', so.fmUnplug) : null));
+      reach.console === 'sms' && (reach.channels || []).length > 4 ? eventFx('FM unit loses contact', 'The FM unit’s connector or socket: only the PSG is heard while it is out.', so.fmUnplug) : null,
+      el('div', { class: 'sub' }, 'Generated sound (forced: made outside the console)'),
+      el('div', { class: 'fx' }, check('Mains hum', so.hum, 'on'), el('div', { class: 'why' }, 'A ground loop between the console, the amp and the wall: a low buzz.'),
+        el('div', { class: 'bits' }, el('label', {}, 'Mains ', el('select', { onchange: (e) => { so.hum.hz = Number(e.target.value); push(); } },
+          ...[50, 60].map(v => el('option', { value: v, selected: so.hum.hz === v }, v + ' Hz'))))),
+        slider('Level', so.hum, 'level', 0, 100, 1)),
+      el('div', { class: 'fx' }, check('Tone injection', so.inject, 'on'), el('div', { class: 'why' }, 'A generated waveform pushed into the output, added or ring-modulating the game.'),
+        el('div', { class: 'bits' }, el('label', {}, 'Wave ', el('select', { onchange: (e) => { so.inject.wave = Number(e.target.value); push(); } },
+          ...['sine', 'square', 'saw', 'noise'].map((n, i) => el('option', { value: i, selected: so.inject.wave === i }, n)))),
+          el('label', {}, ' Mix ', el('select', { onchange: (e) => { so.inject.mix = Number(e.target.value); push(); } },
+          ...['added', 'ring modulation'].map((n, i) => el('option', { value: i, selected: so.inject.mix === i }, n))))),
+        slider('Frequency (Hz)', so.inject, 'freq', 20, 8000, 1), slider('Level', so.inject, 'level', 0, 100, 1)),
+      el('div', { class: 'fx' }, check('Test sweep', so.sweep, 'on'), el('div', { class: 'why' }, 'A test tone sweeping from low to high, over and over.'),
+        slider('From (Hz)', so.sweep, 'from', 20, 2000, 1), slider('To (Hz)', so.sweep, 'to', 200, 16000, 10), slider('Seconds', so.sweep, 'seconds', 1, 30, 1), slider('Level', so.sweep, 'level', 0, 100, 1))));
 
     const bd = settings.bands;
     const bandFx = (label, why, fx, strengthLabel) => el('div', { class: 'fx' }, check(label, fx, 'on'), el('div', { class: 'why' }, why),
@@ -672,6 +689,18 @@
     if (reach.vramRot !== false) unsafeBody.push(rotFx('VRAM rot', 'Random bits flip in video RAM: tiles and maps decay.', un.vramRot));
     g.append(el('details', { open: false, class: 'unsafe' }, groupSummary('Unsafe (can break the game)', 'unsafe'), ...unsafeBody));
 
+    const vd = settings.video;
+    g.append(el('details', { open: true }, groupSummary('Video signal (display only, forced)', 'palette'),
+      el('div', { class: 'why' }, 'What a bad cable, modulator or TV does to the picture on its way to the screen: laid over the finished picture, the game never sees it.'),
+      el('div', { class: 'fx' }, check('Picture roll (sync loss)', vd.roll, 'on'), el('div', { class: 'why' }, 'Vertical sync lost: the picture rolls with its dark blanking bar.'),
+        slider('Speed', vd.roll, 'speed', -20, 20, 1)),
+      el('div', { class: 'fx' }, check('RF ghost', vd.ghost, 'on'), el('div', { class: 'why' }, 'An echo on the antenna signal: a faint copy beside the picture.'),
+        slider('Level', vd.ghost, 'level', 0, 100, 1), slider('Offset', vd.ghost, 'offset', 1, 32, 1)),
+      el('div', { class: 'fx' }, check('RGB misconvergence', vd.misconverge, 'on'), el('div', { class: 'why' }, 'The red and blue beams miss their dots: coloured fringes.'),
+        slider('Pixels', vd.misconverge, 'pixels', -8, 8, 1)),
+      el('div', { class: 'fx' }, check('RF snow', vd.snow, 'on'), el('div', { class: 'why' }, 'A weak signal: snow over the picture.'),
+        slider('Level', vd.snow, 'level', 0, 100, 1))));
+
     const rm = settings.ram;
 
     g.append(el('details', { open: true, class: 'unsafe' }, groupSummary('RAM nudges (unsafe: can leave the game broken)', 'ram', 'unsafe'),
@@ -697,6 +726,7 @@
     if (reach.bands) { for (const k of (reach.bandKinds || [])) if (bd[k]) c.push(['fx', bd[k]]); (reach.extraBands || []).forEach((_, i) => c.push(['fx', bd['extra' + (i + 1)]])); }
     c.push(['fx', st.palette], ['fx', st.sound.wobble], ['pins', st.sound.busPins], ['fx', st.sound.caps]);
     if (reach.lcd) c.push(['fx', st.lcd]);
+    c.push(['fx', st.video.roll], ['fx', st.video.ghost], ['fx', st.video.misconverge], ['fx', st.video.snow], ['fx', st.sound.hum], ['fx', st.sound.inject], ['fx', st.sound.sweep]);
     if (reach.console === 'snes' || reach.console === 'wm') c.push(['fx', st.vramChip]);
     if (reach.console === 'sms' && (reach.channels || []).length > 4) c.push(['fx', st.sound.fmUnplug]);
     if (reach.consolePins) c.push(['pins', st.consolePins]);
@@ -716,6 +746,10 @@
     if ('age' in fx) fx.age = Math.max(1, Math.round(15 + 85 * amt * r()));
     if ('columns' in fx) { fx.columns = 1 + Math.floor(r() * (1 + 4 * k)); fx.rows = r() < 0.3 ? 1 + Math.floor(r() * 2) : 0; fx.mode = Math.floor(r() * 3); fx.seed = 1 + Math.floor(r() * 998); }
     if ('decay' in fx) fx.decay = Math.round(10 + 60 * amt * r());
+    if ('level' in fx) fx.level = Math.max(1, Math.round(5 + 60 * amt * r()));
+    if ('freq' in fx) { fx.freq = Math.round(60 + 2000 * r() * r()); fx.wave = Math.floor(r() * 4); fx.mix = r() < 0.3 ? 1 : 0; }
+    if ('pixels' in fx) fx.pixels = (r() < 0.5 ? -1 : 1) * (1 + Math.floor(r() * 4));
+    if ('speed' in fx && !('depth' in fx)) fx.speed = (r() < 0.5 ? -1 : 1) * (1 + Math.floor(r() * 6));
     if ('strength' in fx) fx.strength = Math.max(1, Math.round(2 + 40 * amt * r()));
     if ('lifetime' in fx) fx.lifetime = Math.round(10 + 150 * r());
     if ('mode' in fx && 'posterize' in fx) { fx.mode = Math.floor(r() * 5); fx.invert = r() < 0.2; fx.channelSwap = r() < 0.2; fx.posterize = r() < 0.2 ? 2 + Math.floor(r() * 5) : 0; }

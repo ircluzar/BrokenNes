@@ -39,6 +39,8 @@ public sealed class ButcherSettings
 	public LcdSettings Lcd { get; set; } = new();
 	/// <summary>One of the two VRAM chips failing (SNES, Genesis: a word-wide VRAM made of two byte-wide chips): half of every word is wrong.</summary>
 	public VramChipSettings VramChip { get; set; } = new();
+	/// <summary>The video signal on its way to the screen (display only, forced: generated outside the console): snow, roll, ghost, misconvergence.</summary>
+	public VideoSettings Video { get; set; } = new();
 	public UnsafeSettings Unsafe { get; set; } = new();
 }
 
@@ -117,6 +119,27 @@ public sealed class HeatEffect { public bool On { get; set; } public double Minu
 /// <summary>Rate: chance per frame of a discharge. Bits: bits flipped in each memory.</summary>
 public sealed class EsdEffect { public bool On { get; set; } public double Rate { get; set; } = 2; public int Bits { get; set; } = 16; }
 public sealed class PadThSettings { public int Mode { get; set; } public double Flicker { get; set; } }
+/// <summary>Wave 0 sine, 1 square, 2 saw, 3 noise. Mix 0 added, 1 ring modulation. Level 0-100.</summary>
+public sealed class InjectEffect { public bool On { get; set; } public int Wave { get; set; } public double Freq { get; set; } = 440; public double Level { get; set; } = 20; public int Mix { get; set; } }
+/// <summary>Hz 50 or 60. Level 0-100.</summary>
+public sealed class HumEffect { public bool On { get; set; } public int Hz { get; set; } = 60; public double Level { get; set; } = 15; }
+/// <summary>From / To in Hz, Seconds per sweep (it repeats), Level 0-100.</summary>
+public sealed class SweepEffect { public bool On { get; set; } public double From { get; set; } = 100; public double To { get; set; } = 8000; public double Seconds { get; set; } = 4; public double Level { get; set; } = 15; }
+public sealed class VideoSettings
+{
+	/// <summary>RF snow: Level 0-100.</summary>
+	public LevelEffect Snow { get; set; } = new();
+	/// <summary>Vertical sync lost: the picture rolls, Speed lines per frame.</summary>
+	public RollEffect Roll { get; set; } = new();
+	/// <summary>An RF ghost: a faint copy Offset pixels to the right, Level 0-100.</summary>
+	public GhostEffect Ghost { get; set; } = new();
+	/// <summary>The red and blue beams off target: Pixels apart.</summary>
+	public MisconvergeEffect Misconverge { get; set; } = new();
+}
+public sealed class LevelEffect { public bool On { get; set; } public double Level { get; set; } = 20; }
+public sealed class RollEffect { public bool On { get; set; } public double Speed { get; set; } = 2; }
+public sealed class GhostEffect { public bool On { get; set; } public double Level { get; set; } = 30; public int Offset { get; set; } = 6; }
+public sealed class MisconvergeEffect { public bool On { get; set; } public int Pixels { get; set; } = 2; }
 
 /// <summary>Glitch Boy's palette glitch: the picture's colours through a transform, never the game's own palette.</summary>
 public sealed class PaletteSettings
@@ -242,6 +265,12 @@ public sealed class SoundSettings
 	public CapsEffect Caps { get; set; } = new();
 	/// <summary>The Master System's FM unit losing contact: its writes go nowhere for a while (only the PSG is heard).</summary>
 	public EventEffect FmUnplug { get; set; } = new();
+	/// <summary>A generated waveform pushed into the output (forced): added, or ring-modulating the game's sound.</summary>
+	public InjectEffect Inject { get; set; } = new();
+	/// <summary>Mains hum from a ground loop: 50 or 60 Hz and its odd harmonics.</summary>
+	public HumEffect Hum { get; set; } = new();
+	/// <summary>A test-tone sweep over the output (forced).</summary>
+	public SweepEffect Sweep { get; set; } = new();
 }
 
 public sealed class ClockWobble { public bool On { get; set; } public int Depth { get; set; } = 30; public int Speed { get; set; } = 8; }
@@ -460,7 +489,9 @@ public sealed class Butcher
 	internal PinFaults? Dma, Copro; // null = no DMA / coprocessor bus fault - unsafe
 	internal PinFaults? SoundBus, SampleFaults, Dac; // the sound pins (safe)
 	public bool WobbleActive { get; private set; }
-	public bool DacActive => Dac != null || WobbleActive || CapsActive;
+	public bool DacActive => Dac != null || WobbleActive || CapsActive || ToneActive;
+	public bool ToneActive { get; private set; }
+	public bool VideoFxActive { get; private set; }
 	public bool CapsActive { get; private set; }
 	/// <summary>The Game Gear runs on the Master System profile: its session says it has an LCD.</summary>
 	public bool LcdHost { get; set; }
@@ -711,6 +742,10 @@ public sealed class Butcher
 		if (!(on && un.CicReset.On)) cicCount = 0;
 		lcdOn = on && settings.Lcd.On && (settings.Lcd.Columns > 0 || settings.Lcd.Rows > 0);
 		CapsActive = on && settings.Sound.Caps.On && settings.Sound.Caps.Age > 0;
+		var sn = settings.Sound;
+		ToneActive = on && ((sn.Inject.On && sn.Inject.Level > 0) || (sn.Hum.On && sn.Hum.Level > 0) || (sn.Sweep.On && sn.Sweep.Level > 0));
+		var vi = settings.Video;
+		VideoFxActive = on && ((vi.Snow.On && vi.Snow.Level > 0) || (vi.Roll.On && vi.Roll.Speed != 0) || (vi.Ghost.On && vi.Ghost.Level > 0) || (vi.Misconverge.On && vi.Misconverge.Pixels != 0));
 		if (!IrqActive)
 		{
 			ghostLeft = dropLeft2 = 0; if (irqLeft > 0) { irqLeft = 0; HoldIrqLine?.Invoke(false); }
@@ -729,7 +764,7 @@ public sealed class Butcher
 	}
 
 	/// <summary>Nothing is on: the hooks can be detached.</summary>
-	public bool Idle => !LcdActive && !resetPending && looseLeft == 0 && !PadThActive && fmUnplugLeft == 0 && !linkPending && RamBusFaults == null && !IrqActive && irqLeft == 0 && CiramFault == 0 && PaletteBusFaults == null && VideoBusFaults == null && !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
+	public bool Idle => !VideoFxActive && !ToneActive && !LcdActive && !resetPending && looseLeft == 0 && !PadThActive && fmUnplugLeft == 0 && !linkPending && RamBusFaults == null && !IrqActive && irqLeft == 0 && CiramFault == 0 && PaletteBusFaults == null && VideoBusFaults == null && !PadActive && SoundBus == null && SampleFaults == null && !DacActive && Dma == null && Copro == null && Console == null && Cart == null && CpuPins == null && SoundCpu == null && !SpritesActive && !SoundActive && !BandsActive && dropMask == 0 && !RamActive && !PaletteActive && !RotActive;
 
 	public static int AddressLinesFor(int size)
 	{
@@ -1402,6 +1437,7 @@ public sealed class Butcher
 		var f = Dac;
 		if (f != null) for (int i = 0; i < s.Length; i++) if (!f.Misses()) s[i] = (short)f.Data16((ushort)s[i]);
 		if (CapsActive) for (int i = 0; i + channels - 1 < s.Length; i += channels) for (int c = 0; c < channels; c++) s[i + c] = (short)Math.Clamp(Cap(s[i + c], c), -32768, 32767);
+		if (ToneActive) for (int i = 0; i + channels - 1 < s.Length; i += channels) { ToneStep(); for (int c = 0; c < channels; c++) s[i + c] = (short)Math.Clamp(Tone(s[i + c]), -32768, 32767); }
 		if (!WobbleActive) return;
 		for (int i = 0; i + channels - 1 < s.Length; i += channels)
 			for (int c = 0; c < channels; c++) s[i + c] = (short)Math.Clamp(Wob(s[i + c], c, channels), -32768, 32767);
@@ -1411,6 +1447,7 @@ public sealed class Butcher
 		var f = Dac;
 		if (f != null) for (int i = 0; i < s.Length; i++) if (!f.Misses()) s[i] = (short)f.Data16((ushort)(short)Math.Clamp(s[i] * 32767, -32768, 32767)) / 32768f;
 		if (CapsActive) for (int i = 0; i < s.Length; i++) s[i] = (float)(Math.Clamp(Cap(s[i] * 32768, 0), -32768, 32767) / 32768);
+		if (ToneActive) for (int i = 0; i < s.Length; i++) { ToneStep(); s[i] = (float)(Math.Clamp(Tone(s[i] * 32768), -32768, 32767) / 32768); }
 		if (!WobbleActive) return;
 		for (int i = 0; i < s.Length; i++) s[i] = (float)(Wob(s[i] * 32768, 0, 1) / 32768);
 	}
@@ -1431,6 +1468,112 @@ public sealed class Butcher
 		if (c == 0) { if (capCut > 0) capCut--; else if (age > 0.6 && RC() < (uint)((age - 0.6) * 0.00004 * uint.MaxValue)) capCut = (int)(400 + RC() % 6000); }
 		if (capCut > 0) y *= 0.02;
 		return y;
+	}
+
+	// Generated sound (forced): one step per output frame (all channels of a sample share it), at the output rate.
+	private const double ToneRate = 44100;
+	private double injPhase, humPhase, sweepPhase, sweepT; private uint rngTone = 0x1F123BB5u; private double injValue, humValue, sweepValue;
+	private void ToneStep()
+	{
+		var so = settings.Sound;
+		if (so.Inject.On)
+		{
+			injPhase += Math.Clamp(so.Inject.Freq, 1, 20000) / ToneRate; injPhase -= Math.Floor(injPhase);
+			injValue = so.Inject.Wave switch
+			{
+				1 => injPhase < 0.5 ? 1 : -1,
+				2 => injPhase * 2 - 1,
+				3 => (int)((rngTone = rngTone * 1664525u + 1013904223u) >> 16) / 32768.0 - 1,
+				_ => Math.Sin(2 * Math.PI * injPhase),
+			};
+		}
+		if (so.Hum.On)
+		{
+			humPhase += (so.Hum.Hz == 50 ? 50 : 60) / ToneRate; humPhase -= Math.Floor(humPhase);
+			double a = 2 * Math.PI * humPhase;
+			humValue = Math.Sin(a) * 0.7 + Math.Sin(3 * a) * 0.2 + Math.Sin(5 * a) * 0.1;   // a rectified-supply buzz is mostly the fundamental and its odd harmonics
+		}
+		if (so.Sweep.On)
+		{
+			double secs = Math.Clamp(so.Sweep.Seconds, 0.2, 60);
+			sweepT += 1 / ToneRate; if (sweepT >= secs) sweepT = 0;
+			double from = Math.Clamp(so.Sweep.From, 10, 20000), to = Math.Clamp(so.Sweep.To, 10, 20000);
+			double f = from * Math.Pow(to / from, sweepT / secs);   // logarithmic, as test sweeps are
+			sweepPhase += f / ToneRate; sweepPhase -= Math.Floor(sweepPhase);
+			sweepValue = Math.Sin(2 * Math.PI * sweepPhase);
+		}
+	}
+	private double Tone(double x)
+	{
+		var so = settings.Sound;
+		if (so.Inject.On)
+		{
+			double lv = Math.Clamp(so.Inject.Level, 0, 100) / 100.0;
+			x = so.Inject.Mix == 1 ? x * (1 - lv + lv * injValue) : x + injValue * lv * 16000;
+		}
+		if (so.Hum.On) x += humValue * Math.Clamp(so.Hum.Level, 0, 100) / 100.0 * 12000;
+		if (so.Sweep.On) x += sweepValue * Math.Clamp(so.Sweep.Level, 0, 100) / 100.0 * 16000;
+		return x;
+	}
+
+	// The video signal (display only, forced): snow, roll, an RF ghost, the red and blue beams off target. On the finished picture, after the palette.
+	private int rollPos; private double rollAcc; private uint rngVideo = 0x5DEECE66u; private uint[] videoTmp = Array.Empty<uint>();
+	private uint RV() { uint x = rngVideo; x ^= x << 13; x ^= x >> 17; x ^= x << 5; if (x == 0) x = 0x5DEECE66u; rngVideo = x; return x; }
+	public void ApplyVideo(uint[] f, int w, int h)
+	{
+		var v = settings.Video; int n = w * h;
+		if (w <= 0 || h <= 0 || f.Length < n) return;
+		if (videoTmp.Length < n) videoTmp = new uint[n];
+		if (v.Misconverge.On && v.Misconverge.Pixels != 0)
+		{
+			int d = Math.Clamp(v.Misconverge.Pixels, -16, 16);
+			Array.Copy(f, videoTmp, n);
+			for (int y = 0; y < h; y++)
+				for (int x = 0; x < w; x++)
+				{
+					int i = y * w + x;
+					uint r = videoTmp[y * w + Math.Clamp(x - d, 0, w - 1)] & 0xFF0000u, b = videoTmp[y * w + Math.Clamp(x + d, 0, w - 1)] & 0xFFu;
+					f[i] = (f[i] & 0xFF00FF00u) | r | b;
+				}
+		}
+		if (v.Ghost.On && v.Ghost.Level > 0)
+		{
+			int off = Math.Clamp(v.Ghost.Offset, 1, 64); double lv = Math.Clamp(v.Ghost.Level, 0, 100) / 200.0;
+			Array.Copy(f, videoTmp, n);
+			for (int y = 0; y < h; y++)
+				for (int x = off; x < w; x++)
+				{
+					int i = y * w + x; uint a = f[i], g = videoTmp[i - off];
+					int R = (int)((a >> 16 & 255) * (1 - lv) + (g >> 16 & 255) * lv), G = (int)((a >> 8 & 255) * (1 - lv) + (g >> 8 & 255) * lv), Bl = (int)((a & 255) * (1 - lv) + (g & 255) * lv);
+					f[i] = 0xFF000000u | (uint)(R << 16 | G << 8 | Bl);
+				}
+		}
+		if (v.Roll.On && v.Roll.Speed != 0)
+		{
+			rollAcc += Math.Clamp(v.Roll.Speed, -64, 64);
+			int step = (int)rollAcc; rollAcc -= step; rollPos = ((rollPos + step) % h + h) % h;
+			if (rollPos != 0)
+			{
+				Array.Copy(f, videoTmp, n);
+				for (int y = 0; y < h; y++) Array.Copy(videoTmp, ((y + rollPos) % h) * w, f, y * w, w);
+				int bar = Math.Max(1, h / 30), at = h - rollPos;   // the blanking bar rolls through as a dark band
+				for (int y = at; y < at + bar && y < h; y++) for (int x = 0; x < w; x++) f[y * w + x] = 0xFF000000u | (f[y * w + x] >> 2 & 0x3F3F3F);
+			}
+		}
+		if (v.Snow.On && v.Snow.Level > 0)
+		{
+			uint t = (uint)(Math.Clamp(v.Snow.Level, 0, 100) / 100.0 * 0.6 * uint.MaxValue);
+			for (int i = 0; i < n; i++) if (RV() < t) { uint g = RV() & 255; f[i] = 0xFF000000u | g << 16 | g << 8 | g; }
+		}
+	}
+	/// <summary>The NES's presented frame (RGBA bytes).</summary>
+	public void ApplyVideoRgba(byte[] rgba, int w, int h)
+	{
+		int n = w * h; if (rgba.Length < n * 4) return;
+		var f = new uint[n];
+		for (int i = 0; i < n; i++) f[i] = 0xFF000000u | (uint)rgba[i * 4] << 16 | (uint)rgba[i * 4 + 1] << 8 | rgba[i * 4 + 2];
+		ApplyVideo(f, w, h);
+		for (int i = 0; i < n; i++) { uint c = f[i]; rgba[i * 4] = (byte)(c >> 16); rgba[i * 4 + 1] = (byte)(c >> 8); rgba[i * 4 + 2] = (byte)c; }
 	}
 
 	/// <summary>

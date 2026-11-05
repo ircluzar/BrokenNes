@@ -315,7 +315,7 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
     }
 
     /// <summary>Butchering mode's palette: the finished picture's colours only.</summary>
-    private void ButcherPalette() { if (Butcher is { PaletteActive: true } bp) bp.ApplyPalette(frame, width * height); }
+    private void ButcherPalette() { if (Butcher is { PaletteActive: true } bp) bp.ApplyPalette(frame, width * height); if (Butcher is { VideoFxActive: true } bv) bv.ApplyVideo(frame, width, height); }
 
     /// <summary>True while the WideMess widescreen chip draws the picture (route WMS:WMSS): the frame is 400 wide with square pixels.</summary>
     private bool wideBridge;
@@ -563,6 +563,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
         else if (toSnes != null) { var f = toSnes.Render(board, cap!); Array.Copy(f, frame, Math.Min(f.Length, frame.Length)); width = 256; height = f.Length / 256; }
         else { Array.Copy(board.Ppu.FrameBuffer, frame, PPU_GB.Width * PPU_GB.Height); width = PPU_GB.Width; height = PPU_GB.Height; }
         if (Butcher is { PaletteActive: true } bp) bp.ApplyPalette(frame, width * height);
+        if (Butcher is { VideoFxActive: true } bv) bv.ApplyVideo(frame, width, height);
         if (Butcher is { LcdActive: true } bl) bl.ApplyLcd(frame, width, height);   // Butchering mode: the LCD drivers
     }
 

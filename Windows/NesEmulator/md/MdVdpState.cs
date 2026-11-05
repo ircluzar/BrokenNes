@@ -31,6 +31,7 @@ public partial class MdVdp
 
     public void LoadState(BinaryReader r)
     {
+        bandOn = false; bandHs = 0; bandVs = 0; bandSpritesOff = false;   // a Butchering band in progress belongs to the old timeline (see SmsVdp.LoadState)
         ReadAll(r, Vram); for (int i = 0; i < Cram.Length; i++) Cram[i] = r.ReadUInt16(); for (int i = 0; i < Vsram.Length; i++) Vsram[i] = r.ReadUInt16(); ReadAll(r, Reg);
         Time = r.ReadInt64(); lineStart = r.ReadInt64(); Line = r.ReadInt32(); Frames = r.ReadInt64(); FrameCompleted = r.ReadBoolean(); oddFrame = r.ReadBoolean();
         vintPending = r.ReadBoolean(); hintPending = r.ReadBoolean(); hintCounter = r.ReadInt32(); hintEnCur = r.ReadBoolean(); hintEnNext = r.ReadBoolean(); vintTime = r.ReadInt64(); hintTime = r.ReadInt64(); z80IntClear = r.ReadInt64(); z80IntAsserted = r.ReadBoolean();

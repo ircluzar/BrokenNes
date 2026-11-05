@@ -793,6 +793,7 @@ public sealed class PPU_GB
 
     public void LoadState(BinaryReader r)
     {
+        bandOn = false;   // a Butchering band in progress belongs to the old timeline (see SmsVdp.LoadState)
         r.ReadBytes(Vram.Length).CopyTo(Vram, 0); r.ReadBytes(Oam.Length).CopyTo(Oam, 0);
         r.ReadBytes(64).CopyTo(BgPalRam, 0); r.ReadBytes(64).CopyTo(ObjPalRam, 0);
         Lcdc = r.ReadByte(); Scy = r.ReadByte(); Scx = r.ReadByte(); Lyc = r.ReadByte(); Bgp = r.ReadByte(); Obp0 = r.ReadByte(); Obp1 = r.ReadByte(); Wy = r.ReadByte(); Wx = r.ReadByte();

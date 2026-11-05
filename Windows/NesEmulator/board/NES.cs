@@ -291,6 +291,8 @@ namespace NesEmulator
 			public string liveFrame = string.Empty;
 			/// <summary>The completed frame on show at the save point (same packing; empty when none was presented yet).</summary>
 			public string shownFrame = string.Empty;
+			/// <summary>The cartridge's nametable mirroring (-1 in older states). MMC3 and others only set it on a register write, so without it a load kept the mirroring of the moment before.</summary>
+			public int mirroring = -1;
 			public string cpu = string.Empty; public string ppu = string.Empty; public string apu = string.Empty; public string mapper = string.Empty; public byte[] prgRAM=Array.Empty<byte>(); public byte[] chrRAM=Array.Empty<byte>();
 			public byte controllerState; public byte controllerShift; public bool controllerStrobe; // input
 			// Bus-level state that lives outside any CPU/PPU/APU core's own GetState() - previously
@@ -465,6 +467,7 @@ namespace NesEmulator
 					romPath = RomPath,
 					liveFrame = PackFrame(bus.ppu?.GetFrameBuffer()),
 					shownFrame = presentedValid ? PackFrame(presentedFrame) : string.Empty,
+					mirroring = (int)cartridge.mirroringMode,
 					controllerState = bus.input.DebugGetRawState(),
 					controllerShift = bus.input.DebugGetShift(),
 					controllerStrobe = bus.input.DebugGetStrobe(),
@@ -649,6 +652,7 @@ namespace NesEmulator
 				if (root.TryGetProperty("romPath", out var rnP) && rnP.ValueKind==System.Text.Json.JsonValueKind.String) st.romPath = rnP.GetString() ?? string.Empty;
 				if (root.TryGetProperty("liveFrame", out var lfP) && lfP.ValueKind==System.Text.Json.JsonValueKind.String) st.liveFrame = lfP.GetString() ?? string.Empty;
 				if (root.TryGetProperty("shownFrame", out var sfP) && sfP.ValueKind==System.Text.Json.JsonValueKind.String) st.shownFrame = sfP.GetString() ?? string.Empty;
+				if (root.TryGetProperty("mirroring", out var mrP) && mrP.ValueKind==System.Text.Json.JsonValueKind.Number) st.mirroring = mrP.GetInt32();
 				if (root.TryGetProperty("apuCore", out var apcEl)) st.apuCore = apcEl.GetInt32();
 				if (root.TryGetProperty("cpuCore", out var cpcEl)) st.cpuCore = cpcEl.GetInt32();
 				if (root.TryGetProperty("cpuCoreId", out var ccidEl) && ccidEl.ValueKind==System.Text.Json.JsonValueKind.String) st.cpuCoreId = ccidEl.GetString() ?? string.Empty;
@@ -707,6 +711,8 @@ namespace NesEmulator
 			if (st.ram != null && st.ram.Length == bus.ram.Length) Array.Copy(st.ram, bus.ram, st.ram.Length);
 			bus.SetOpenBus(st.openBus);
 			bus.PendingCpuStallCycles = st.pendingCpuStallCycles;
+			// the mirroring first: a mapper that derives it from its registers sets it again just below; one that only sets it on a write (MMC3) keeps this
+			if (st.mirroring >= 0 && Enum.IsDefined(typeof(Mirroring), st.mirroring)) { try { cartridge.SetMirroring((Mirroring)st.mirroring); } catch { } }
 			// Restore mapper first so CPU/PPU memory fetches align when we set their internals
 			if (!string.IsNullOrEmpty(st.mapper)) { try { using var md = System.Text.Json.JsonDocument.Parse(st.mapper); cartridge.mapper.SetMapperState(md.RootElement); } catch { } }
 			// A savestate load has just (possibly) rolled the cartridge's flash back to an older
@@ -1371,6 +1377,7 @@ namespace NesEmulator
 			if (presentedFrame == null || presentedFrame.Length != live.Length) presentedFrame = new byte[live.Length];
 			Buffer.BlockCopy(live, 0, presentedFrame, 0, live.Length);
 			if (Butcher is { PaletteActive: true } bp) bp.ApplyPaletteRgba(presentedFrame);   // Butchering mode's palette: the presented copy only
+			if (Butcher is { VideoFxActive: true } bv) bv.ApplyVideoRgba(presentedFrame, 256, presentedFrame.Length / 1024);   // and the video signal
 			presentedValid = true;
 		}
 
