@@ -60,6 +60,7 @@ Timeflow T6 (a self-filling gameplay corpus) is replaced by what these ports nee
 | S3 music | **Port Super VRUN's own music engine** to the Genesis (FM + PSG), not SGDK's XGM driver. |
 | The comparison's tolerance | **Same events, small drift:** rooms, pickups, deaths and clears in the same order; positions within a few pixels. (S1 is stricter: tick-identical.) |
 | Order | S0, then Game Gear, Master System, Genesis, as planned. |
+| S2's source (2026-11-04) | **A C rewrite of the NESFab mapper-30 version** (its CHR-RAM upload model is the Master System's model). The NES game's MMC3 build becomes the main NES version for NES-only graphics (bank-switched animated tiles, the title tunnel, scanline splits), from the same NESFab source behind the mapper switch. |
 
 Open questions 2-4 below are answered by this table (the Master System's rows: the HUD shrinks; the Genesis sound: our own engine;
 the Game Gear: the Color's colours).
