@@ -10,6 +10,24 @@ namespace BrokenNes.Windows.WebApi
 {
     public partial class WebApiServer
     {
+        // The WebView2 belongs to the UI thread: these endpoints run on the HTTP server's threads, so touching CoreWebView2 here threw
+        // (the navigation endpoints answered 500 from the start). Both checks and scripts are marshalled to the UI thread.
+        private static bool WebViewReady(Microsoft.Web.WebView2.WinForms.WebView2 wv)
+        {
+            if (wv.IsDisposed) return false;
+            return wv.InvokeRequired ? (bool)wv.Invoke(new Func<bool>(() => wv.CoreWebView2 != null)) : wv.CoreWebView2 != null;
+        }
+        private static System.Threading.Tasks.Task<string> RunScriptOnUi(Microsoft.Web.WebView2.WinForms.WebView2 wv, string script)
+        {
+            var tcs = new System.Threading.Tasks.TaskCompletionSource<string>(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+            wv.BeginInvoke(new Action(async () =>
+            {
+                try { tcs.SetResult(await wv.CoreWebView2.ExecuteScriptAsync(script)); }
+                catch (Exception e) { tcs.SetException(e); }
+            }));
+            return tcs.Task;
+        }
+
         /// <summary>
         /// Register Navigation/Routing API endpoints
         /// </summary>
@@ -19,7 +37,7 @@ namespace BrokenNes.Windows.WebApi
             app.MapPost("/api/navigation/navigate", async (HttpContext context) =>
             {
                 var webView = _getWebView();
-                if (webView == null || webView.CoreWebView2 == null)
+                if (webView == null || !WebViewReady(webView))
                 {
                     return Results.BadRequest(new { success = false, error = "WebView not initialized" });
                 }
@@ -34,7 +52,7 @@ namespace BrokenNes.Windows.WebApi
 
                     // Navigate within the Blazor app
                     string script = $"window.location.href = '{form.Url.Replace("'", "\\'")}'";
-                    await webView.CoreWebView2.ExecuteScriptAsync(script);
+                    await RunScriptOnUi(webView, script);
 
                     return Results.Ok(new
                     {
@@ -56,7 +74,7 @@ namespace BrokenNes.Windows.WebApi
             app.MapGet("/api/navigation/query-params", async () =>
             {
                 var webView = _getWebView();
-                if (webView == null || webView.CoreWebView2 == null)
+                if (webView == null || !WebViewReady(webView))
                 {
                     return Results.BadRequest(new { success = false, error = "WebView not initialized" });
                 }
@@ -65,7 +83,7 @@ namespace BrokenNes.Windows.WebApi
                 {
                     // Get current URL from WebView
                     string script = "window.location.search";
-                    string queryString = await webView.CoreWebView2.ExecuteScriptAsync(script);
+                    string queryString = await RunScriptOnUi(webView, script);
                     
                     // Remove quotes from JSON string result
                     queryString = queryString.Trim('"');
@@ -154,7 +172,7 @@ namespace BrokenNes.Windows.WebApi
             app.MapGet("/api/navigation/current-route", async () =>
             {
                 var webView = _getWebView();
-                if (webView == null || webView.CoreWebView2 == null)
+                if (webView == null || !WebViewReady(webView))
                 {
                     return Results.BadRequest(new { success = false, error = "WebView not initialized" });
                 }
@@ -163,14 +181,14 @@ namespace BrokenNes.Windows.WebApi
                 {
                     // Get current pathname from WebView
                     string script = "window.location.pathname";
-                    string pathname = await webView.CoreWebView2.ExecuteScriptAsync(script);
+                    string pathname = await RunScriptOnUi(webView, script);
                     
                     // Remove quotes from JSON string result
                     pathname = pathname.Trim('"');
 
                     // Get full URL too
                     string fullUrlScript = "window.location.href";
-                    string fullUrl = await webView.CoreWebView2.ExecuteScriptAsync(fullUrlScript);
+                    string fullUrl = await RunScriptOnUi(webView, fullUrlScript);
                     fullUrl = fullUrl.Trim('"');
 
                     return Results.Ok(new
