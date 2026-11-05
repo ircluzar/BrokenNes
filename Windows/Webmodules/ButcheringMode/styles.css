@@ -56,3 +56,32 @@ button.solo { padding: 0 6px; font-size: 10px; line-height: 16px; border-radius:
 button.solo.on { background: #1f6a2a; border-color: #6fe07a; color: #fff; }
 .roll { margin-top: 4px; }
 .unsafeopt { color: #e88; font-size: 11px; }
+
+/* Build view (controller standard C4) */
+.viewswitch { gap: 0; margin: 4px 0 2px; }
+.viewswitch button { border-radius: 0; }
+.viewswitch button:first-child { border-radius: 4px 0 0 4px; } .viewswitch button:last-child { border-radius: 0 4px 4px 0; }
+.viewswitch button.on { background: #ff6b6b; color: #111; border-color: #ff6b6b; }
+.panel.wide { width: min(900px, calc(100vw - 16px)); }
+.buildview { display: flex; gap: 8px; align-items: flex-start; }
+.listpane { width: 230px; flex: none; display: flex; flex-direction: column; gap: 4px; }
+.efffilter { width: 100%; }
+.efflist { max-height: calc(100vh - 260px); overflow-y: auto; }
+.effgrp { color: #ff6b6b; font-weight: 700; font-size: 11px; margin: 6px 0 2px; text-transform: uppercase; letter-spacing: .06em; }
+.effitem { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 4px; cursor: grab; font-size: 11px; }
+.effitem:hover { background: rgba(255, 255, 255, .08); }
+.effitem.placed { opacity: .55; }
+.tierdot { width: 8px; height: 8px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px #000; }
+.effname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.effscore { color: #999; font: 10px ui-monospace, Consolas, monospace; }
+.effadd { padding: 0 6px; min-width: 22px; }
+.board { position: relative; flex: 1; min-width: 240px; display: grid; grid-template-columns: repeat(var(--bcols), 48px); align-content: start; grid-auto-rows: 48px; overflow: auto; max-height: calc(100vh - 220px);
+  background-color: #101114; background-image: linear-gradient(#1c1e23 1px, transparent 1px), linear-gradient(90deg, #1c1e23 1px, transparent 1px); background-size: 48px 48px; border: 1px solid #333; border-radius: 6px; }
+.boardhint { grid-column: 1 / span 8; grid-row: 2 / span 2; color: #888; padding: 12px; font-size: 12px; }
+.bmodule { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.bhandle { display: flex; align-items: center; gap: 6px; padding: 2px 6px; background: #2a2d34; border-radius: 6px 6px 0 0; cursor: move; font-size: 11px; touch-action: none; }
+.bname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bremove { padding: 0 6px; line-height: 1.1; }
+.bplate .bnc-plate { border-radius: 0 0 8px 8px; padding: 6px 8px 8px; }
+.bplate .bnc-grid { margin-top: 0; }
+.boardtools { justify-content: space-between; align-items: center; margin-bottom: 6px; }

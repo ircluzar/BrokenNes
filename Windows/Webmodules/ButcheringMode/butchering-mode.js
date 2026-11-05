@@ -108,6 +108,8 @@
     $('toggle').addEventListener('click', () => $('panel').classList.toggle('hidden'));
     $('exit').addEventListener('click', exitMode);
     $('reload').addEventListener('click', reloadState);
+    $('viewStrip').addEventListener('click', () => setView('strip'));
+    $('viewBuild').addEventListener('click', () => setView('build'));
     $('allOff').addEventListener('click', () => { settings = defaults(reach.cartAddressLines); render(); push(); });
     $('presetSave').addEventListener('click', savePreset);
     $('presetLoad').addEventListener('click', loadPreset);
@@ -441,7 +443,11 @@
     document.querySelectorAll('#tabs .tab').forEach(b => b.style.opacity = query ? '.5' : '');
   }
 
-  function render() {
+  function render() { if (view === 'build') renderBuild(); else renderStrip(); }
+
+  function renderStrip() {
+    document.getElementById('panel')?.classList.remove('wide');
+    for (const id of ['tabs', 'search']) { const n = $(id); if (n) n.style.display = ''; }
     const g = $('groups');
     g.replaceChildren();
     const sp = settings.sprites, so = settings.sound;
@@ -710,6 +716,135 @@
         slider('Frames', rm, 'lifetime', 1, 600, 1), slider('At once', rm, 'maxProbes', 1, 8, 1),
         el('div', { id: 'ramStats', class: 'why' }, 'Profiler: learning…'))));
     queueMicrotask(() => { tabify(); paintSolo(); });
+  }
+
+  // ---------------------------------------------------------------- Build view (controller standard C4)
+  // Every effect this console can do, from the purity catalog, in a list; drag one (or press +) onto the board and it becomes its
+  // controller (effect-controllers.js). The board is a grid of 48 px cells, kept per console; modules move by their title bar.
+  // The board edits the same settings as the strip: both views always agree.
+  let view = 'strip', catalog = null;
+  let BOARD_COLS = 12;   // set from the board's width when it is drawn (at least one module wide)
+  const boardKey = () => `butcher.board.v1.${reach?.console || 'nes'}`;
+  function loadBoard() { try { const b = JSON.parse(localStorage.getItem(boardKey()) || '[]'); return Array.isArray(b) ? b : []; } catch { return []; } }
+  function saveBoard(b) { try { localStorage.setItem(boardKey(), JSON.stringify(b)); } catch { /* not kept */ } }
+  async function setView(v) {
+    view = v;
+    $('viewStrip').classList.toggle('on', v === 'strip'); $('viewStrip').setAttribute('aria-selected', String(v === 'strip'));
+    $('viewBuild').classList.toggle('on', v === 'build'); $('viewBuild').setAttribute('aria-selected', String(v === 'build'));
+    try { localStorage.setItem('butcher.view', v); } catch { }
+    if (v === 'build' && !catalog) { const r = await api.butcher.getCatalog().catch(() => null); catalog = r?.success ? r : { effects: [] }; }
+    render();
+  }
+  const GROUP_NAMES = { picture: 'Picture', sprites: 'Sprites', sound: 'Sound', bands: 'Bands', palette: 'Palette & video', unsafe: 'Unsafe' };
+  // a module's size on the board: its faceplate's cells plus the plate's frame and title
+  function moduleSize(built) { return { w: built.layout.cols + 1, h: built.layout.rows + 1 }; }
+  function freeSpot(board, w, h) {
+    const taken = (x, y) => board.some(m => x < m.x + m.w && x + w > m.x && y < m.y + m.h && y + h > m.y);
+    for (let y = 0; y < 200; y++) for (let x = 0; x + w <= BOARD_COLS; x++) if (!taken(x, y)) return { x, y };
+    return { x: 0, y: 0 };
+  }
+  function buildCtx(path) {
+    const entry = (catalog?.effects || []).find(e => e.path === path);
+    return { settings, reach, entry, onChange: () => { push(); refreshBoardDisplays(); } };
+  }
+  let boardPanels = [];
+  function refreshBoardDisplays() { for (const bp of boardPanels) bp.refresh(); }
+  function renderBuild() {
+    document.getElementById('panel')?.classList.add('wide');
+    for (const id of ['tabs', 'search']) { const n = $(id); if (n) n.style.display = 'none'; }
+    const g = $('groups');
+    g.replaceChildren();
+    boardPanels = [];
+    const effects = (catalog?.effects || []).filter(e => BNEffects.available(e.path, reach));
+    let board = loadBoard().filter(m => effects.some(e => e.path === m.path));
+
+    // ---- the list
+    const list = el('div', { class: 'efflist', role: 'list', 'aria-label': 'Effects' });
+    const filter = el('input', { type: 'search', class: 'efffilter', placeholder: 'Filter effects…', 'aria-label': 'Filter effects', oninput: () => paintList() });
+    function paintList() {
+      const q = filter.value.trim().toLowerCase();
+      const rows = [];
+      for (const grp of Object.keys(GROUP_NAMES)) {
+        const items = effects.filter(e => e.group === grp && (!q || e.name.toLowerCase().includes(q))).sort((a, b) => b.purityHere - a.purityHere);
+        if (!items.length) continue;
+        rows.push(el('div', { class: 'effgrp' }, GROUP_NAMES[grp]));
+        for (const e of items) {
+          const placed = board.some(m => m.path === e.path);
+          const item = el('div', { class: 'effitem' + (placed ? ' placed' : ''), role: 'listitem', draggable: 'true', title: `${e.name}\n${e.tier} ${e.purityHere}: ${e.why}`,
+            ondragstart: (ev) => { ev.dataTransfer.setData('text/x-butcher-effect', e.path); ev.dataTransfer.effectAllowed = 'copy'; } },
+            el('span', { class: 'tierdot', style: `background:${BNEffects.tierColour(e.tier)}`, 'aria-label': `${e.tier}, purity ${e.purityHere}` }),
+            el('span', { class: 'effname' }, e.name), el('span', { class: 'effscore' }, String(e.purityHere)),
+            el('button', { type: 'button', class: 'effadd', 'aria-label': `Add ${e.name} to the board`, disabled: placed ? '' : null, onclick: () => addModule(e.path) }, placed ? '✓' : '+'));
+          rows.push(item);
+        }
+      }
+      list.replaceChildren(...rows);
+    }
+
+    // ---- the board
+    const grid = el('div', { class: 'board', style: `--bcols:${BOARD_COLS}` });
+    grid.addEventListener('dragover', (ev) => { if (ev.dataTransfer.types.includes('text/x-butcher-effect')) { ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; } });
+    grid.addEventListener('drop', (ev) => {
+      const path = ev.dataTransfer.getData('text/x-butcher-effect'); if (!path) return;
+      ev.preventDefault();
+      const r = grid.getBoundingClientRect();
+      addModule(path, Math.floor((ev.clientX - r.left) / 48), Math.floor((ev.clientY - r.top + grid.scrollTop) / 48));
+    });
+    function addModule(path, x, y) {
+      if (board.some(m => m.path === path)) return;
+      const built = BNEffects.build(path, buildCtx(path));
+      const sz = moduleSize(built);
+      let spot = x === undefined ? freeSpot(board, sz.w, sz.h) : { x: Math.max(0, Math.min(BOARD_COLS - sz.w, x)), y: Math.max(0, y) };
+      board.push({ path, x: spot.x, y: spot.y, w: sz.w, h: sz.h });
+      saveBoard(board); paintBoard(); paintList();
+    }
+    function paintBoard() {
+      grid.replaceChildren(); boardPanels = [];
+      BOARD_COLS = Math.max(5, Math.floor((grid.clientWidth || 576) / 48));
+      grid.style.setProperty('--bcols', BOARD_COLS);
+      // a module the narrower board no longer fits moves to the first free spot
+      for (const m of board) if (m.x + (m.w || 5) > BOARD_COLS) { const rest = board.filter(o => o !== m); const sp = freeSpot(rest, m.w || 5, m.h || 2); m.x = sp.x; m.y = sp.y; }
+      const rows = Math.max(8, ...board.map(m => m.y + m.h + 1));
+      grid.style.gridTemplateRows = `repeat(${rows}, 48px)`;
+      for (const m of board) {
+        const built = BNEffects.build(m.path, buildCtx(m.path));
+        const sz = moduleSize(built); m.w = sz.w; m.h = sz.h;
+        const entry = (catalog?.effects || []).find(e => e.path === m.path);
+        const mod = el('div', { class: 'bmodule', style: `grid-column:${m.x + 1} / span ${m.w};grid-row:${m.y + 1} / span ${m.h}` });
+        const handle = el('div', { class: 'bhandle', title: 'Drag to move' },
+          el('span', { class: 'tierdot', style: `background:${BNEffects.tierColour(entry?.tier)}` }),
+          el('span', { class: 'bname' }, built.title), el('span', { class: 'effscore' }, entry ? String(entry.purityHere) : ''),
+          el('button', { type: 'button', class: 'bremove', 'aria-label': `Remove ${built.title}`, onclick: () => { board = board.filter(b => b !== m); saveBoard(board); paintBoard(); paintList(); } }, '×'));
+        mod.append(handle);
+        const host = el('div', { class: 'bplate' });
+        mod.append(host);
+        built.layout.title = '';
+        built.layout.accent = BNEffects.tierColour(entry?.tier);
+        const bp = BNControls.createPanel(host, built.layout, built.params, { onPress: (id) => { built.actions[id]?.(); bp.refresh(); } });
+        boardPanels.push(bp);
+        // move by the title bar, snapping to cells, never onto another module
+        handle.addEventListener('pointerdown', (ev) => {
+          if (ev.target.closest('button')) return;
+          handle.setPointerCapture(ev.pointerId);
+          const sx = ev.clientX, sy = ev.clientY, ox = m.x, oy = m.y;
+          const move = (e2) => {
+            const nx = Math.max(0, Math.min(BOARD_COLS - m.w, ox + Math.round((e2.clientX - sx) / 48))), ny = Math.max(0, oy + Math.round((e2.clientY - sy) / 48));
+            const clash = board.some(o => o !== m && nx < o.x + o.w && nx + m.w > o.x && ny < o.y + o.h && ny + m.h > o.y);
+            if (!clash && (nx !== m.x || ny !== m.y)) { m.x = nx; m.y = ny; mod.style.gridColumn = `${m.x + 1} / span ${m.w}`; mod.style.gridRow = `${m.y + 1} / span ${m.h}`; }
+          };
+          const up = () => { handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); saveBoard(board); paintBoard(); };
+          handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up);
+        });
+        grid.append(mod);
+      }
+      if (!board.length) grid.append(el('div', { class: 'boardhint' }, 'Drag effects here from the list (or press + beside one). Each becomes its own controller; move it by its title bar.'));
+    }
+
+    const tools = el('div', { class: 'row boardtools' },
+      el('button', { type: 'button', onclick: () => { board = []; saveBoard(board); paintBoard(); paintList(); } }, 'Clear board'),
+      el('span', { class: 'note' }, 'The board edits the same settings as the strip. Dot colour: purity tier (green pure … red forced).'));
+    g.append(tools, el('div', { class: 'buildview' }, el('div', { class: 'listpane' }, filter, list), grid));
+    paintList(); paintBoard();
   }
 
   // ---------------------------------------------------------------- randomize / mutate

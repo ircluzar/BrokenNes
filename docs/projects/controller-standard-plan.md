@@ -80,7 +80,7 @@ Values are kept per player (browser storage) and shown with their units; double-
 
 | Step | What |
 |---|---|
-| C1 | The library: grid, knob, stepped knob, slider, button, toggle, display, LED, sections; parameters; layout from data; a test page with every component in every state |
-| C2 | Corruption Slop on it (the table above), the hidden settings made parameters |
-| C3 | Butchering effects as controllers: each effect's settings become parameters (on, rate, duration, ...), with a default small layout per effect |
-| C4 | The Butchering grid mode: the effect list (classified with the purity scores), drag onto a grid, save / load panels |
+| C1 | The library: grid, knob, stepped knob, slider, button, toggle, display, LED, sections; parameters; layout from data; a test page with every component in every state | **DONE** 9d1158f8: `Webmodules/shared/controls/` (controls.js, controls.css, demo.html) |
+| C2 | Corruption Slop on it (the table above), the hidden settings made parameters | **DONE** 26fba9b3: checked in the real app (loop runs, a knob reaches the engine, Stop returns) |
+| C3 | Butchering effects as controllers: each effect's settings become parameters (on, rate, duration, ...), with a default small layout per effect | **DONE**: `ButcheringMode/effect-controllers.js`; all 68 SNES effects build |
+| C4 | The Butchering grid mode: the effect list (classified with the purity scores), drag onto a grid, save / load panels | **DONE**: the Build view (Strip / Build switch): list by group, sorted by purity with tier dots, drag or + onto a board of 48 px cells sized to the window, modules move by their title bar, one board kept per console; board and strip edit the same settings |

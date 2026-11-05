@@ -289,6 +289,7 @@
       getReach: () => request('/api/butcher/reach'),
       getSettings: () => request('/api/butcher/settings'),
       getStats: () => request('/api/butcher/stats'),
+      getCatalog: () => request('/api/butcher/catalog'),
       setSettings: (settings) => request('/api/butcher/settings', { method: 'POST', json: settings }),
       off: () => request('/api/butcher/off', { method: 'POST' }),
       getPresets: () => request('/api/butcher/presets'),

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Butchering Mode</title>
+  <link rel="stylesheet" href="../shared/controls/controls.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11,6 +12,10 @@
   <aside id="panel" class="panel" aria-label="Butchering mode controls">
     <header class="head">
       <div class="title">Butchering Mode</div>
+      <div class="row viewswitch" role="tablist" aria-label="View">
+        <button id="viewStrip" type="button" role="tab" aria-selected="true" class="on">Strip</button>
+        <button id="viewBuild" type="button" role="tab" aria-selected="false">Build</button>
+      </div>
       <div id="status" class="status">Starting…</div>
       <div class="row">
         <button id="reload" type="button" disabled>Reload State</button>
@@ -31,6 +36,8 @@
     <div id="groups"></div>
   </aside>
   <script src="../shared/webapi.js"></script>
+  <script src="../shared/controls/controls.js"></script>
+  <script src="effect-controllers.js"></script>
   <script src="butchering-mode.js"></script>
 </body>
 </html>
