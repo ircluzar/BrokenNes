@@ -20,7 +20,7 @@
         "shell": "ps5",
         "cwd": "{src}",
         "file": "{bd}/widemess/tools/wmsbuild.ps1",
-        "args": ["-Project", "{src}", "-Pvsneslib", "{root:svrunrepo}/snes-stub/toolchain/pvsneslib", "-Workshop", "{workshop}", "-Define", "BROKENDEV_DEBUG"],
+        "args": ["-Project", "{src}", "-Pvsneslib", "{tools}/supervrun/snes-stub/toolchain/pvsneslib", "-Workshop", "{workshop}", "-Define", "BROKENDEV_DEBUG"],
         "timeoutSec": 900,
         "note": "wmsbuild.ps1: the converters (wms.json's graphics and sound), 816-tcc, wla-65816, wla-spc700, wlalink on PVSnesLib's HiROM libraries, Workshop --wms-pack --map 2. -Define BROKENDEV_DEBUG: the dev build, with the debug port's calls (BrokenDev/debugport); a release build leaves it out."
       }

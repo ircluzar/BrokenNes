@@ -37,6 +37,19 @@ function Get-BdArchivesDir {
     Split-Path -Parent $h
 }
 
+function Get-BdToolsDir {
+    <# The machine's toolchain folder outside every repository (PVSnesLib and Mesen for Super VRUN, NESFab for VRUN):
+       BROKENNES_TOOLS, else C:\BrokenNes-tools. Manifests name it {tools}. #>
+    if ($env:BROKENNES_TOOLS) { return [System.IO.Path]::GetFullPath($env:BROKENNES_TOOLS).TrimEnd('\') }
+    'C:\BrokenNes-tools'
+}
+
+function Get-BdWorkDir {
+    <# The scratch work folder outside every repository: BROKENNES_WORK, else C:\BrokenNes-work. #>
+    if ($env:BROKENNES_WORK) { return [System.IO.Path]::GetFullPath($env:BROKENNES_WORK).TrimEnd('\') }
+    'C:\BrokenNes-work'
+}
+
 # ---------------------------------------------------------------------------------------------------- logging
 
 function Write-BdInfo  { param([string]$Message) Write-Host $Message }
@@ -48,7 +61,7 @@ function Write-BdFail  { param([string]$Message) Write-Host "FAIL  $Message" -Fo
 
 function Expand-BdPath {
     <#
-      Replaces {home}, {repo}, {bd}, {out}, {root:<name>} and {env:<NAME>} in a manifest string.
+      Replaces {home}, {repo}, {bd}, {out}, {tools}, {root:<name>} and {env:<NAME>} in a manifest string.
       $Context is a hashtable: Roots (name -> folder), Out (the project's output folder), plus any extra {key} values.
       An unknown placeholder is an error, never an empty string.
     #>
@@ -62,6 +75,7 @@ function Expand-BdPath {
             '^repo$' { return $script:BdRepo }
             '^bd$'   { return $script:BdRoot }
             '^archives$' { return (Get-BdArchivesDir) }
+            '^tools$' { return (Get-BdToolsDir) }
             '^out$'  {
                 if ($Context.ContainsKey('Out')) { return [string]$Context['Out'] }
                 throw "placeholder {out} used outside a project context in: $Text"

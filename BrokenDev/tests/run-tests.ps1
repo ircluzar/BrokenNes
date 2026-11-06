@@ -1617,7 +1617,7 @@ try {
     }
     Test-Case 'the NESFab library''s release-strip proof: the sample built with brokendev_dbg_off.fab is byte-identical to the sample without any dbg_ call, the dev build differs and its port speaks (prints, the assert, the timer); SKIP without NESFab' {
         if (-not $ws) { Skip-Test $wsSkip }
-        $nf = 'C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\sys0\simulations\VRUN\tools\nesfab'
+        $nf = Join-Path (Get-BdToolsDir) 'vrun\nesfab'
         if ($env:BROKENDEV_NESFAB) { $nf = $env:BROKENDEV_NESFAB }
         if (-not (Test-Path -LiteralPath (Join-Path $nf 'nesfab.exe'))) { Skip-Test "no NESFab at $nf (BROKENDEV_NESFAB)" }
         $ps5 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'

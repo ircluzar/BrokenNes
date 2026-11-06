@@ -65,7 +65,11 @@ if ($Name -notmatch '^[a-z][a-z0-9_]{0,23}$') { Write-Host "-Name must be a lowe
 # ---- prerequisites, each named when missing (no silent fallback) ----
 $need = @('build.sh', 'engine\audio\build_music.py', 'engine\audio\gen_music_decoders.py', 'engine\audio\audio_engine.fab', 'engine\audio\player_ui.fab',
     'engine\audio\sfx_decoders.fab', 'engine\audio\converter\Midi2Nes.cs', 'engine\audio\converter\cli\midi2nes.csproj', 'src\audioplayer\main.fab',
-    'src\audioplayer\audioplayer.cfg', 'src\audioplayer\prebuild.sh', 'src\hello\font.png', 'tools\nesfab\nesfab_legal.exe', 'tools\nesfab\lib\nes.fab')
+    'src\audioplayer\audioplayer.cfg', 'src\audioplayer\prebuild.sh', 'src\hello\font.png')
+# NESFab: the tree's own tools\nesfab (a restored copy ships it), else the machine's toolchain folder (C:\BrokenNes-tools\vrun\nesfab)
+$nfSrc = Join-Path $Vrun 'tools\nesfab'
+if (-not (Test-Path -LiteralPath (Join-Path $nfSrc 'nesfab_legal.exe'))) { $nfSrc = Join-Path (Get-BdToolsDir) 'vrun\nesfab' }
+foreach ($x in 'nesfab_legal.exe', 'lib\nes.fab') { if (-not (Test-Path -LiteralPath (Join-Path $nfSrc $x))) { Write-Host "NESFab lacks $x (looked in $Vrun\tools\nesfab and $nfSrc)"; exit 2 } }
 $missing = @($need | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Vrun $_)) })
 if ($missing.Count -gt 0) { Write-Host "the VRUN tree at $Vrun lacks: $($missing -join ', ') (restore it: BrokenDev\brokendev.ps1 restore vrun_nes_dev)"; exit 2 }
 $bash = Find-BdGitBash
@@ -104,8 +108,9 @@ foreach ($f in @('build.sh', 'src\audioplayer\main.fab', 'src\audioplayer\audiop
     if (Test-Path -LiteralPath (Join-Path $Vrun $f)) { Copy-Fresh $f }
 }
 $fabExe = Join-Path $scratch 'tools\nesfab\nesfab_legal.exe'
-if (-not (Test-Path -LiteralPath $fabExe) -or (Get-BdSha256 $fabExe) -ne (Get-BdSha256 (Join-Path $Vrun 'tools\nesfab\nesfab_legal.exe'))) { Copy-Fresh 'tools\nesfab\nesfab_legal.exe' }
-Copy-Fresh 'tools\nesfab\lib' -Dir
+if (-not (Test-Path -LiteralPath $fabExe) -or (Get-BdSha256 $fabExe) -ne (Get-BdSha256 (Join-Path $nfSrc 'nesfab_legal.exe'))) { New-Item -ItemType Directory -Force -Path (Split-Path -Parent $fabExe) | Out-Null; Copy-Item -LiteralPath (Join-Path $nfSrc 'nesfab_legal.exe') -Destination $fabExe -Force }
+$fabLib = Join-Path $scratch 'tools\nesfab\lib'; if (Test-Path -LiteralPath $fabLib) { Remove-Item -LiteralPath $fabLib -Recurse -Force }; Copy-Item -LiteralPath (Join-Path $nfSrc 'lib') -Destination $fabLib -Recurse -Force
+$env:VRUN_NESFAB_DIR = Join-Path $scratch 'tools\nesfab'   # the scratch copy's build.sh compiles with the scratch NESFab (older build.sh files use tools\nesfab directly)
 
 # ---- the one-song project ----
 $projName = if ($Mode -eq 'template') { 'musictest' } else { "bn2_$Name" }

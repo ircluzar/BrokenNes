@@ -65,7 +65,7 @@
         "rootsNote": "The live SuperVRUN_dev folder IS the repository (the archive's SuperVRUN folder). svrunpkg (the package root: mesen2_user_folder, dev_retrospective.md) has no live equivalent and stays the restored copy.",
         "sentinels": [
           "snes-dev/supervrun/build.sh",
-          "snes-stub/toolchain/pvsneslib/devkitsnes/bin/816-tcc.exe"
+          "snes-dev/supervrun/src/main.c"
         ]
       },
       "sentinels": [

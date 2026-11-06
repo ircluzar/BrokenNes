@@ -6,10 +6,10 @@
   release  the sample with brokendev_dbg_off.fab      (every call compiles to nothing)
   none     the sample with every dbg_ line taken out (Strip-DebugCalls.ps1), and no library at all
   PASS when release is byte-identical to none and dev differs from both. Writes only under -Out. NESFab is read where it is (the VRUN
-  workspace ships NESFab 1.8: tools\nesfab), never changed. Exit 0 pass, 1 fail, 2 usage.
+  toolchain folder holds VRUN's NESFab 1.8: C:\BrokenNes-tools\vrun\nesfab), never changed. Exit 0 pass, 1 fail, 2 usage.
 #>
 param(
-    [string]$NesFab = 'C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\sys0\simulations\VRUN\tools\nesfab',
+    [string]$NesFab = $(if ($env:BROKENNES_TOOLS) { Join-Path $env:BROKENNES_TOOLS 'vrun\nesfab' } else { 'C:\BrokenNes-tools\vrun\nesfab' }),
     [string]$Sample = '',
     [Parameter(Mandatory)][string]$Out
 )

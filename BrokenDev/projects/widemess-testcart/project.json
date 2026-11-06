@@ -20,7 +20,7 @@
         "shell": "ps5",
         "cwd": "{src}",
         "file": "{src}/build.ps1",
-        "args": ["-Wla", "{root:svrunrepo}/snes-stub/toolchain/pvsneslib/devkitsnes/bin", "-Workshop", "{workshop}", "-Out", "{src}/build"],
+        "args": ["-Wla", "{tools}/supervrun/snes-stub/toolchain/pvsneslib/devkitsnes/bin", "-Workshop", "{workshop}", "-Out", "{src}/build"],
         "timeoutSec": 900,
         "note": "build.ps1: gen_testcart.py (the data, the reference pictures), wla-spc700 and wla-65816, wlalink, Workshop --wms-pack --map 2. Into the project's build folder (WideMess\\testroms\\bin holds the copy the apps and --wms-test use)."
       }

@@ -72,7 +72,7 @@
   },
   "oracle": {
     "kind": "mesen-screens",
-    "mesenDir": "{root:svrunrepo}/tools/Mesen2",
+    "mesenDir": "{tools}/supervrun/Mesen2",
     "mesenSettings": "{root:svrunpkg}/mesen2_user_folder/settings.json",
     "frames": [60, 120, 240, 300, 600, 700, 900, 1200, 1500],
     "input": "300:Start,306:,520:Start,526:,1000:Right,1100:Right+Y,1150:Right",

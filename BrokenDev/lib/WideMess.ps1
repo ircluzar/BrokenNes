@@ -7,10 +7,11 @@
 Set-StrictMode -Version Latest
 
 function Find-BdPvsneslib {
-    <# PVSnesLib's folder for WideMess builds: BROKENDEV_PVSNESLIB, else the copy in the Super VRUN workspace beside the repository (a git
+    <# PVSnesLib's folder for WideMess builds: BROKENDEV_PVSNESLIB, else the toolchain folder ({tools}\supervrun\snes-stub\toolchain\pvsneslib, C:\BrokenNes-tools by default), else the old copy in the Super VRUN workspace beside the repository (a git
        worktree under .claude\worktrees looks beside the main checkout). $null when there is none (devkitsnes\bin\816-tcc.exe is the test). #>
     $c = @()
     if ($env:BROKENDEV_PVSNESLIB) { $c += $env:BROKENDEV_PVSNESLIB }
+    $c += (Join-Path (Get-BdToolsDir) 'supervrun\snes-stub\toolchain\pvsneslib')
     $repo = Get-BdRepoRoot
     $c += (Join-Path (Split-Path $repo -Parent) 'SuperVRUN_dev\snes-stub\toolchain\pvsneslib')
     if ($repo -match '^(.*?)\\[^\\]+\\\.claude\\worktrees\\') { $c += (Join-Path $Matches[1] 'SuperVRUN_dev\snes-stub\toolchain\pvsneslib') }

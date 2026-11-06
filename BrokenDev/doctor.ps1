@@ -104,17 +104,20 @@ if (-not $SkipProjects -and $homeInfo) {
     $mesenProbe  = { param($p) (Get-Item -LiteralPath $p).VersionInfo.FileVersion }
 
     $v = $roots['vrun']; $n = $roots['nested']; $sv = $roots['svrunrepo']; $s1 = $roots['smb1']
-    $checks.Add((Test-BdFileTool 'NESFab 1.8 (VRUN, ISA=legal)' (Join-Path $v 'tools\nesfab\nesfab_legal.exe') 'vrun_nes_dev' $false $nesfabProbe))
+    $bt = Get-BdToolsDir   # toolchains outside the repositories (BROKENNES_TOOLS, default C:\BrokenNes-tools)
+    $nfv = Join-Path $bt 'vrun\nesfab\nesfab_legal.exe'   # the live VRUN builds with this one; a restored copy ships its own tools\nesfab
+    if (-not (Test-Path -LiteralPath $nfv)) { $nfv = Join-Path $v 'tools\nesfab\nesfab_legal.exe' }
+    $checks.Add((Test-BdFileTool 'NESFab 1.8 (VRUN, ISA=legal)' $nfv 'vrun_nes_dev' $false $nesfabProbe))
     $checks.Add((Test-BdFileTool 'Mesen 2 (VRUN oracle)' (Join-Path $v 'tools\mesen\Mesen.exe') 'vrun_nes_dev' $false $mesenProbe))
     $checks.Add((Test-BdFileTool 'Project Nested injector (Project_Nested.exe)' (Join-Path $n 'Project Nested\bin\Release\Project_Nested.exe') 'vrun_nes_dev' $false))
     $checks.Add((Test-BdFileTool 'Nested pristine core (Project_Nested.pristine.smc)' (Join-Path $n 'tools\m30pipe\core\pristine\Project_Nested.pristine.smc') 'vrun_nes_dev' $false))
     $checks.Add((Test-BdFileTool 'NESFab (SMB1 remake, patched 1.8)' (Join-Path $s1 'tools\nesfab\nesfab.exe') 'smb1_topaz' $false $nesfabProbe))
     $checks.Add((Test-BdFileTool 'Mesen 2 (SMB1 remake)' (Join-Path $s1 'tools\mesen\Mesen.exe') 'smb1_topaz' $false $mesenProbe))
-    $pvs = Join-Path $sv 'snes-stub\toolchain\pvsneslib\devkitsnes\bin'
+    $pvs = Join-Path $bt 'supervrun\snes-stub\toolchain\pvsneslib\devkitsnes\bin'
     $checks.Add((Test-BdFileTool 'PVSnesLib C compiler 816-tcc (SuperVRUN)' (Join-Path $pvs '816-tcc.exe') 'supervrun_dev' $false))
     $checks.Add((Test-BdFileTool 'PVSnesLib assembler wla-65816 (SuperVRUN)' (Join-Path $pvs 'wla-65816.exe') 'supervrun_dev' $false))
     $checks.Add((Test-BdFileTool 'PVSnesLib linker wlalink (SuperVRUN)' (Join-Path $pvs 'wlalink.exe') 'supervrun_dev' $false))
-    $checks.Add((Test-BdFileTool 'Mesen 2 (SuperVRUN)' (Join-Path $sv 'tools\Mesen2\Mesen.exe') 'supervrun_dev' $false $mesenProbe))
+    $checks.Add((Test-BdFileTool 'Mesen 2 (SuperVRUN)' (Join-Path $bt 'supervrun\Mesen2\Mesen.exe') 'supervrun_dev' $false $mesenProbe))
 
     # SMB1's builds read the original game's data; the ROM is the user's own and never goes into git.
     $orig = $env:SMB1_ORIG_ROM
