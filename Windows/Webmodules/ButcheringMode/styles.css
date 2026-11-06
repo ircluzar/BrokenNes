@@ -106,3 +106,11 @@ body.bdragging, body.bdragging * { user-select: none !important; -webkit-user-se
   .board { width: 100%; max-height: none; }
 }
 .panel.hidden ~ .trybench { display: none; }
+
+/* the classification menu (right-click a module's title bar) */
+.tagmenu { position: fixed; z-index: 10002; background: #1b1b1b; border: 1px solid rgba(255, 255, 255, .25); border-radius: 6px; padding: 4px 0; min-width: 150px; box-shadow: 0 4px 16px rgba(0, 0, 0, .6); user-select: none; -webkit-user-select: none; font-size: 12px; }
+.tagtitle { color: #999; padding: 3px 10px 5px; border-bottom: 1px solid rgba(255, 255, 255, .12); margin-bottom: 3px; white-space: nowrap; }
+.tagitem { display: flex; align-items: center; gap: 8px; padding: 4px 10px; cursor: pointer; color: #ddd; }
+.tagitem:hover { background: rgba(255, 107, 107, .18); }
+.tagbadge { font-size: 9px; font-weight: 700; padding: 0 3px; border-radius: 3px; background: #666; color: #fff; }
+.tagbadge.unsafe { background: #b33; }

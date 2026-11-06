@@ -23,6 +23,24 @@ namespace BrokenNes.Windows.WebApi
                 : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BrokenNes"),
             "Butchering", $"presets-{console}.json");
 
+        // The classification tags set from the board's right-click menu: per effect path, Unsafe (overrides the catalog's own
+        // unsafe group either way) and Disgraced (kept out of rolls unless asked). One file for every console, beside the presets,
+        // so the tagging work can be read back and folded into the catalog.
+        private sealed class ButcherTag { public bool? Unsafe { get; set; } public bool Disgraced { get; set; } }
+        private sealed class ButcherTagRequest { public string? Path { get; set; } public bool? Unsafe { get; set; } public bool? Disgraced { get; set; } }
+        private static string ButcherTagPath() => System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ButcherPresetPath("nes"))!, "tags.json");
+        private static Dictionary<string, ButcherTag> LoadButcherTags()
+        {
+            try
+            {
+                var p = ButcherTagPath();
+                if (!File.Exists(p)) return new(StringComparer.OrdinalIgnoreCase);
+                var d = JsonSerializer.Deserialize<Dictionary<string, ButcherTag>>(File.ReadAllText(p), ButcherJson);
+                return d != null ? new(d, StringComparer.OrdinalIgnoreCase) : new(StringComparer.OrdinalIgnoreCase);
+            }
+            catch { return new(StringComparer.OrdinalIgnoreCase); }
+        }
+
         private static Dictionary<string, ButcherSettings> LoadButcherPresets(string console)
         {
             try
@@ -131,11 +149,18 @@ namespace BrokenNes.Windows.WebApi
             app.MapGet("/api/butcher/catalog", () =>
             {
                 ButcherHost(out var console);
+                Dictionary<string, ButcherTag> tags; lock (ButcherPresetLock) tags = LoadButcherTags();
                 return Results.Ok(new
                 {
                     success = true,
                     console,
-                    effects = NesEmulator.ButcherCatalog.Effects.Select(e => new { path = e.Path, group = e.Group, name = e.Name, purity = e.Purity, purityHere = e.PurityOn(console), tier = NesEmulator.ButcherCatalog.TierOf(e.PurityOn(console)).ToString(), why = e.Why, byConsole = e.ByConsole }),
+                    effects = NesEmulator.ButcherCatalog.Effects.Select(e =>
+                    {
+                        tags.TryGetValue(e.Path, out var tg);
+                        bool builtInUnsafe = e.Group == "unsafe";
+                        return new { path = e.Path, group = e.Group, name = e.Name, purity = e.Purity, purityHere = e.PurityOn(console), tier = NesEmulator.ButcherCatalog.TierOf(e.PurityOn(console)).ToString(), why = e.Why, byConsole = e.ByConsole,
+                            unsafeBuiltIn = builtInUnsafe, @unsafe = tg?.Unsafe ?? builtInUnsafe, disgraced = tg?.Disgraced ?? false };
+                    }),
                     faults = NesEmulator.ButcherCatalog.Faults.Select(f => new { code = f.Code, name = f.Name, purity = f.Purity, why = f.Why }),
                     tiers = new[] { new { tier = "Pure", from = 90 }, new { tier = "Plausible", from = 70 }, new { tier = "MechanismReal", from = 40 }, new { tier = "Steered", from = 15 }, new { tier = "Forced", from = 0 } },
                     unscored = NesEmulator.ButcherCatalog.Unscored(),
@@ -172,6 +197,32 @@ namespace BrokenNes.Windows.WebApi
                         SaveButcherPresets(console, d);
                     }
                     return Results.Ok(new { success = true, name });
+                }
+                catch (Exception ex) { return Results.BadRequest(new { success = false, error = ex.Message }); }
+            });
+
+            // POST /api/butcher/tags {path, unsafe?, disgraced?} - set an effect's classification tags (the board's right-click menu)
+            app.MapPost("/api/butcher/tags", async (HttpContext context) =>
+            {
+                try
+                {
+                    var r = await context.Request.ReadFromJsonAsync<ButcherTagRequest>(ButcherJson);
+                    var entry = r?.Path == null ? null : NesEmulator.ButcherCatalog.Find(r.Path);
+                    if (entry == null) return Results.BadRequest(new { success = false, error = "Unknown effect path" });
+                    lock (ButcherPresetLock)
+                    {
+                        var d = LoadButcherTags();
+                        var tg = d.TryGetValue(entry.Path, out var x) ? x : new ButcherTag();
+                        bool builtIn = entry.Group == "unsafe";
+                        if (r!.Unsafe is bool u) tg.Unsafe = u == builtIn ? null : u;
+                        if (r.Disgraced is bool g) tg.Disgraced = g;
+                        if (tg.Unsafe == null && !tg.Disgraced) d.Remove(entry.Path); else d[entry.Path] = tg;
+                        var p = ButcherTagPath();
+                        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(p)!);
+                        File.WriteAllText(p + ".tmp", JsonSerializer.Serialize(d, ButcherJson));
+                        File.Move(p + ".tmp", p, true);
+                        return Results.Ok(new { success = true, path = entry.Path, @unsafe = tg.Unsafe ?? builtIn, disgraced = tg.Disgraced });
+                    }
                 }
                 catch (Exception ex) { return Results.BadRequest(new { success = false, error = ex.Message }); }
             });

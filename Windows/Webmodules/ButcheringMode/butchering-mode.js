@@ -141,6 +141,7 @@
     $('reload').disabled = false;
 
     settings = defaults(reach.cartAddressLines);
+    await loadCatalog();
     render();
     await push();
     await refreshPresets();
@@ -730,12 +731,44 @@
   const boardKey = () => `butcher.board.v1.${reach?.console || 'nes'}`;
   function loadBoard() { try { const b = JSON.parse(localStorage.getItem(boardKey()) || '[]'); return Array.isArray(b) ? b : []; } catch { return []; } }
   function saveBoard(b) { try { localStorage.setItem(boardKey(), JSON.stringify(b)); } catch { /* not kept */ } }
+  async function loadCatalog() { const r = await api.butcher.getCatalog().catch(() => null); catalog = r?.success ? r : { effects: [] }; }
+  // ---- classification menu: right-click a module's title bar. Unsafe (in the catalog's unsafe group, or tagged here) and Disgraced
+  // (feels unnatural: kept out of rolls unless "Include disgraced effects in rolls" is ticked). The app keeps them in Butchering/tags.json.
+  function tagMenu(ev, path) {
+    ev.preventDefault();
+    document.getElementById('tagmenu')?.remove();
+    const e = (catalog?.effects || []).find(x => x.path === path); if (!e) return;
+    const item = (label, key, hint) => el('label', { class: 'tagitem', title: hint },
+      el('input', { type: 'checkbox', checked: e[key] ? '' : null, onchange: async (c) => {
+        const v = c.target.checked;
+        const r = await api.butcher.setTags(path, { [key]: v }).catch(() => null);
+        if (r?.success) {
+          e.unsafe = r.unsafe; e.disgraced = r.disgraced;
+          status(`${e.name}: ${key === 'unsafe' ? (r.unsafe ? 'tagged unsafe' : 'not unsafe') : (r.disgraced ? 'disgraced' : 'no longer disgraced')}.`);
+          menu.remove(); render();
+        } else { c.target.checked = !v; status(r?.error || 'Could not save the tag.', true); }
+      } }), label);
+    const menu = el('div', { id: 'tagmenu', class: 'tagmenu', role: 'menu', style: `left:${ev.clientX}px;top:${ev.clientY}px` },
+      el('div', { class: 'tagtitle' }, e.name),
+      item('Unsafe', 'unsafe', e.unsafeBuiltIn ? 'In the catalog\'s unsafe group' : 'Tag it when it can crash or wreck the game'),
+      item('Disgraced', 'disgraced', 'Feels unnatural: kept out of rolls'));
+    document.body.append(menu);
+    const b = menu.getBoundingClientRect();
+    if (b.right > innerWidth) menu.style.left = `${Math.max(0, innerWidth - b.width - 4)}px`;
+    if (b.bottom > innerHeight) menu.style.top = `${Math.max(0, innerHeight - b.height - 4)}px`;
+    const close = (x) => {
+      if (!document.body.contains(menu) || (x.type === 'keydown' ? x.key === 'Escape' : !menu.contains(x.target))) {
+        menu.remove(); removeEventListener('pointerdown', close, true); removeEventListener('keydown', close, true);
+      }
+    };
+    setTimeout(() => { addEventListener('pointerdown', close, true); addEventListener('keydown', close, true); });
+  }
   async function setView(v) {
     view = v;
     $('viewStrip').classList.toggle('on', v === 'strip'); $('viewStrip').setAttribute('aria-selected', String(v === 'strip'));
     $('viewBuild').classList.toggle('on', v === 'build'); $('viewBuild').setAttribute('aria-selected', String(v === 'build'));
     try { localStorage.setItem('butcher.view', v); } catch { }
-    if (v === 'build' && !catalog) { const r = await api.butcher.getCatalog().catch(() => null); catalog = r?.success ? r : { effects: [] }; }
+    if (v === 'build' && !catalog?.effects?.length) await loadCatalog();
     render();
   }
   const GROUP_NAMES = { picture: 'Picture', sprites: 'Sprites', sound: 'Sound', bands: 'Bands', palette: 'Palette & video', unsafe: 'Unsafe' };
@@ -885,9 +918,11 @@
         const sz = moduleSize(built); m.w = sz.w; m.h = sz.h;
         const entry = (catalog?.effects || []).find(e => e.path === m.path);
         const mod = el('div', { class: 'bmodule', style: `grid-column:${m.x + 1} / span ${m.w};grid-row:${m.y + 1} / span ${m.h}` });
-        const handle = el('div', { class: 'bhandle', title: 'Drag to move' },
+        const handle = el('div', { class: 'bhandle', title: 'Drag to move · right-click to classify', oncontextmenu: (ev) => tagMenu(ev, m.path) },
           el('span', { class: 'tierdot', style: `background:${BNEffects.tierColour(entry?.tier)}` }),
-          el('span', { class: 'bname' }, built.title), el('span', { class: 'effscore' }, entry ? String(entry.purityHere) : ''),
+          el('span', { class: 'bname' }, built.title),
+          entry?.unsafe ? el('span', { class: 'tagbadge unsafe', title: 'Unsafe' }, 'U') : null, entry?.disgraced ? el('span', { class: 'tagbadge', title: 'Disgraced' }, 'D') : null,
+          el('span', { class: 'effscore' }, entry ? String(entry.purityHere) : ''),
           el('button', { type: 'button', class: 'bremove', 'aria-label': `Remove ${built.title}`, onclick: () => { board = board.filter(b => b !== m); saveBoard(board); paintBoard(); paintList(); } }, '×'));
         mod.append(handle);
         const host = el('div', { class: 'bplate' });
@@ -937,7 +972,7 @@
   // ---------------------------------------------------------------- randomize / mutate
   // Seeded (mulberry32), so a roll can be saved with its seed and come back the same. One strength slider: few gentle
   // effects at low, many strong ones at high. Unsafe effects only when "include unsafe" is ticked.
-  let strength = 35, includeUnsafe = false, history = [], historyAt = -1;
+  let strength = 35, includeUnsafe = false, includeDisgraced = false, history = [], historyAt = -1;
   function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
   function candidates(st) {
     const c = [];
@@ -954,7 +989,9 @@
     if (reach.consolePins) c.push(['pins', st.consolePins]);
     if (isNesReach() && reach.cartPins) c.push(['pins', st.cartPins]);
     if (includeUnsafe) { if (reach.ram) c.push(['fx', st.ram]); c.push(['fx', st.unsafe.resetBounce], ['fx', st.unsafe.powerSag], ['fx', st.unsafe.esd], ['fx', st.unsafe.heatSoak]); if (reach.console === 'snes' || reach.console === 'md') c.push(['fx', st.unsafe.dramRot]); if (reach.console === 'gb') c.push(['fx', st.unsafe.linkNoise]); if (reach.cic) c.push(['fx', st.unsafe.cicReset]); if (reach.cpuPins) c.push(['fx', st.unsafe.looseCart]); c.push(['fx', st.unsafe.ramRot]); if (reach.vramRot !== false) c.push(['fx', st.unsafe.vramRot]); if (reach.cpuPins) c.push(['pins', st.unsafe.cpuPins]); if (reach.soundCpuLines > 0) c.push(['pins', st.unsafe.soundCpuPins]); if (reach.dmaLines > 0) c.push(['pins', st.unsafe.dmaPins]); }
-    return c;
+    // the classification tags: an effect tagged unsafe by hand needs "include unsafe"; a disgraced one needs "include disgraced"
+    const tagOf = (fx) => { const p = pathOf(fx, st); return p ? (catalog?.effects || []).find(e => e.path === p) : null; };
+    return c.filter(([, fx]) => { const e = tagOf(fx); return !e || ((includeUnsafe || !e.unsafe || e.unsafeBuiltIn) && (includeDisgraced || !e.disgraced)); });
   }
   function turnOn(kind, fx, r, k, listKey) {
     const amt = 0.15 + 0.85 * k;
@@ -1034,6 +1071,7 @@
         el('button', { id: 'histFwd', type: 'button', onclick: () => stepHistory(1), title: 'Next roll', disabled: true }, '\u25B6')),
       el('div', { class: 'slider' }, el('span', {}, 'Strength'),
         el('input', { type: 'range', min: 0, max: 100, step: 1, value: strength, 'aria-label': 'Randomize strength', oninput: (e) => { strength = Number(e.target.value); out.textContent = String(strength); } }), out),
-      el('label', { class: 'name unsafeopt' }, el('input', { type: 'checkbox', onchange: (e) => { includeUnsafe = e.target.checked; } }), 'Include unsafe effects in rolls'));
+      el('label', { class: 'name unsafeopt' }, el('input', { type: 'checkbox', checked: includeUnsafe ? '' : null, onchange: (e) => { includeUnsafe = e.target.checked; } }), 'Include unsafe effects in rolls'),
+      el('label', { class: 'name unsafeopt' }, el('input', { type: 'checkbox', checked: includeDisgraced ? '' : null, onchange: (e) => { includeDisgraced = e.target.checked; } }), 'Include disgraced effects in rolls'));
   });
 })();
