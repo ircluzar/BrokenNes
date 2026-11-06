@@ -141,6 +141,8 @@ P3g the mesh (bridges both ways), Lite last (speed in WASM measured).
 
 **Decided.** tiny386's 386 core + our own BIOS + FreeDOS + DOS32A: a fully open stack.
 
+**Progress.** P3b done 2026-11-05: the i386 core is ported (`Windows/NesEmulator/x86/I386*.cs`, ledger beside it) and checked by Workshop `--x86test`: 13 hand-written programs (101 checks: real mode, the PM switch, IDT and #GP, paging and #PF, ring 3 via a TSS) and a differential trace against tiny386 itself (built from the pinned source with a scratch harness, `--ref`): 4 seeds x 5013 cases identical step for step. No FPU yet. Next: P3c (VGA, PIT, PIC, keyboard, our C# BIOS, FreeDOS headless).
+
 ---
 
 ## P4. WideMess Virtual (built 2026-11-01, desktop)

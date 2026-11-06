@@ -60,6 +60,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--sega-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaFoundationTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--sega-chips-test", StringComparison.OrdinalIgnoreCase)) return Sega.SegaChipsTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--z80test", StringComparison.OrdinalIgnoreCase)) return Sega.Z80TestCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--x86test", StringComparison.OrdinalIgnoreCase)) return X86.X86TestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--m68ktest", StringComparison.OrdinalIgnoreCase)) return Sega.M68kTestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-run", StringComparison.OrdinalIgnoreCase)) return Sega.MdRunCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-sweep", StringComparison.OrdinalIgnoreCase)) return Sega.MdSweepCli.Run(args);

@@ -2,7 +2,8 @@
 
 BrokenNes is released under the **Digital Lifeform License 1.1** (`LICENSE.txt`). This file lists what in the repository, or in the programs built from it,
 came from somewhere else, and under which terms. It is the root of the ledgers: each console family keeps its own, more detailed one beside its code
-(`Windows/NesEmulator/gb/THIRD_PARTY_NOTICES.md`, `Windows/NesEmulator/snes/THIRD_PARTY_NOTICES.md`, `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md`).
+(`Windows/NesEmulator/gb/THIRD_PARTY_NOTICES.md`, `Windows/NesEmulator/snes/THIRD_PARTY_NOTICES.md`, `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md`,
+`Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md`).
 The plugin's About window and the Lite site point here.
 
 **Provenance of changes.** The license asks that modifications be traceable to the digital agent that made them. The record is the git history: commit
@@ -32,6 +33,7 @@ find a borrowed piece that is not listed, that is a bug in this file: report it.
 | Sega: YM2413 (OPLL) FM core, ported | `Windows/NesEmulator/sega/Ym2413.cs`, `Ym2413Tables.cs`, `Ym2413Resampler.cs` | emu2413 v1.6.2, MIT, Copyright (c) 2001-2019 Mitsutaka Okazaki; details (what was taken, what was changed, what was measured against Nuked-OPLL as a black-box oracle) in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md`, section 1e; the MIT text is in section 6 |
 | Sega: Z80 core, ported (design, decode tables and program builders; also the Master System / Game Gear / Genesis sound CPU and, in `CPU_Z80`, a NES CPU) | `Windows/NesEmulator/sega/Z80/*.cs` | BizHawk `Z80A` (Alyosha and the BizHawk team), HEAD f9c0100 of the local tree, MIT, Copyright (c) BizHawk team; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` section 1a |
 | Sega: SN76489 PSG, Master System / Game Gear / Genesis mappers, VDPs, boards and the Genesis cartridge, sound unit and pads | `Windows/NesEmulator/sega/Sn76489.cs`, `sms/`, `md/` (except the 68000 and YM2612 rows above) | written for this project from public hardware documentation and black-box oracle comparisons; BizHawk's Master System memory map was read as a cross-check (MIT); no third-party source copied. Ledger sections 1c, 1d, 1f, 1h, 2a to 2d of `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` |
+| x86 console: Intel 80386 / 80486 CPU core, ported (no FPU, MMX/SSE, long mode or fast path) | `Windows/NesEmulator/x86/I386*.cs` | tiny386 `i386.c` + `i386ins.def`, commit 2c1205c, BSD-3-Clause, Copyright (c) 2024-2025 Chunhui He; details in `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md` (the BSD text is in section 6) |
 | Sega bridges to and from the NES, the CPU walls, the plugin's Sega chips | `Windows/NesEmulator/mix/` (`APU_SMS`, `APU_SMSFM`, `APU_MD`, `PPU_SMS`, `PPU_MD`, `CPU_Z80`, `CPU_M68K`, `SmsFmSoundOnNes`, `MdSoundOnNes`, `HubReplayer`, ...), `Plugin/` | written for this project; no third-party source (ledger section 2c and 2d of the Sega ledger) |
 
 BizHawk's license statement (`LICENSE` in its repository) says the BizHawk team's own C# is provided under the MIT License, and that other parts of that repository
@@ -125,6 +127,18 @@ Redistribution and use in source and binary forms, with or without modification,
 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
 
 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+**BSD 3-Clause License, Copyright (c) 2024-2025, Chunhui He** (tiny386; the i386 core under `Windows/NesEmulator/x86/`)
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+* Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 

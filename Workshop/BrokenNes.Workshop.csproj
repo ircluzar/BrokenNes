@@ -93,6 +93,8 @@
     <Compile Include="$(NesRoot)sega\**\*.cs"    LinkBase="NesEmulator\sega" />
     <Compile Include="$(NesRoot)sms\**\*.cs"    LinkBase="NesEmulator\sms" />
     <Compile Include="$(NesRoot)md\**\*.cs"     LinkBase="NesEmulator\md" />
+    <!-- x86 console (pool card P3): an isolated system, the i386 core ported from tiny386. -->
+    <Compile Include="$(NesRoot)x86\**\*.cs"    LinkBase="NesEmulator\x86" />
     <Compile Include="$(NesRoot)corruption\**\*.cs" LinkBase="NesEmulator\corruption" />
     <!-- The debugger engine (BrokenDev milestone D1): breakpoints, watches, stepping, call stack, trace, symbols. The plugin and Lite
          compile only its hooks (in board\Bus.cs, snes\SnesDebugHooks.cs, gb\GbDebugHooks.cs), never this folder. -->
