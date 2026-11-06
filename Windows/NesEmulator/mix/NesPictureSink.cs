@@ -87,9 +87,6 @@ internal interface IPictureSink
     IEnhancedPictureChip? Enhanced { get; }
     /// <summary>The flat path: a NES picture drawn by a NES chip, RGBA 256 x 240. Only a route without <see cref="Enhanced"/> is asked.</summary>
     byte[] Present(NesPicture p);
-    /// <summary>After a state load (or a reset) of the guest: forget the chip's picture history, as the NES itself does on a load (<c>NES.LoadState</c> clears its
-    /// PPU's buffers), so the pictures after a load are the same whatever ran before it (a history-keeping chip like BFR's bleeding frames blends into them).</summary>
-    void Restart() { }
 }
 
 /// <summary>
@@ -130,8 +127,6 @@ internal sealed class NesPictureSink : IPictureSink
             throw new ArgumentException($"NES PPU '{nesPpuId}' not applied (got {nes.GetPpuCoreId()})");
         bus = (Bus)typeof(NES).GetField("bus", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(nes)!;
     }
-
-    public void Restart() { try { bus.ppu?.ClearBuffers(); } catch { } }
 
     /// <summary>The NES PPU core drawing the picture (for chips with extensions, e.g. PPU_FIXS layers).</summary>
     public IPPU Ppu => bus.ppu;
