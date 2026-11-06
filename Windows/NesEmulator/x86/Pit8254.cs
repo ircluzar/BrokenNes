@@ -177,6 +177,8 @@ public sealed class Pit8254
     }
 
     public int GetOut(int ch) => GetOut1(_c[ch], _now());
+    /// <summary>A channel's output at PIT time <paramref name="t"/> as it is programmed now (the speaker draws its samples with it).</summary>
+    public int OutAt(int ch, long t) { var c = _c[ch]; return c.Count == 0 ? 1 : GetOut1(c, Math.Max(t, c.LoadTime)); }
     public int GetGate(int ch) => _c[ch].Gate;
     public int Ch2Count => (int)_c[2].Count;
     public int Ch2Mode => _c[2].Mode2;

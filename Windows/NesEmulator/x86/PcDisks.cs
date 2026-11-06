@@ -73,7 +73,7 @@ public static class PcDisks
         string name = DosName(fileName);
         string stem = name.Contains('.') ? name[..name.IndexOf('.')] : name, ext = name.Contains('.') ? name[name.IndexOf('.')..] : "";
         if (new FatImage((byte[])freeDos.Clone()).Exists(name) || stem is "FDAUTO" or "FDCONFIG" or "SETUP") name = "G" + stem[..Math.Min(7, stem.Length)] + ext;
-        string auto = "@ECHO OFF\r\nSET DOSDIR=\\FREEDOS\r\nSET PATH=%DOSDIR%\\BIN\r\n" + name + "\r\n";
+        string auto = "@ECHO OFF\r\nSET DOSDIR=\\FREEDOS\r\nSET PATH=%DOSDIR%\\BIN\r\n\\" + name + "\r\n";   // with its path: a name like BEEP is never taken for a shell command
         return BuildDisk(freeDos, DefaultConfig, auto, new[] { (program, name) }, new[] { "PACKAGES" });
     }
 

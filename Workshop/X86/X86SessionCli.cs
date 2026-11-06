@@ -35,7 +35,15 @@ internal static class X86SessionCli
         var save0 = s.ExportSave();
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var buf = new short[8192]; long samples = 0;
-        for (int f = 0; f < frames; f++) { s.RunFrame(); samples += s.ReadSamples(buf); }
+        long loud = 0, edges = 0, first = -1, lastLoud = 0, idx = 0; short last = 0;
+        for (int f = 0; f < frames; f++)
+        {
+            s.RunFrame();
+            int n = s.ReadSamples(buf); samples += n;
+            for (int i = 0; i < n; i += 2, idx++) { if (buf[i] != 0) { loud++; if (first < 0) first = idx; lastLoud = idx; } if ((buf[i] > 2500) != (last > 2500)) edges++; last = buf[i]; }
+        }
+        double span = first < 0 ? 0 : (lastLoud - first + 1) / 44100.0;
+        Console.WriteLine($"  sound: {loud} of {samples / 2} samples not silent, sounding for {span:F2} s, {edges / 2} square-wave periods ({(span > 0 ? edges / 2.0 / span : 0):F0} Hz)");
         Console.WriteLine($"  {frames} frames in {sw.Elapsed.TotalSeconds:F1} s ({frames / sw.Elapsed.TotalSeconds:F1} fps, real time is {s.FramesPerSecond:F1}); picture {s.FrameWidth}x{s.FrameHeight} shown {s.DisplayWidth} wide");
         Check(s.Frame.Take(s.FrameWidth * s.FrameHeight).Distinct().Count() > 1, "the picture is not blank");
         int si = Array.IndexOf(args, "--shot");

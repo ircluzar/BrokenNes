@@ -50,6 +50,7 @@ public sealed partial class PcMachine : IX86Bus
         Kbc = new Kbc8042(Pic);
         Cmos = new Cmos(() => PitNow, MemKb);
         Vga = new Vga(() => PitNow);
+        Speaker = new PcSpeaker(this);
         Pic.Raise = () => Cpu.RaiseIrq();
         RegisterTraps();
     }
@@ -95,9 +96,10 @@ public sealed partial class PcMachine : IX86Bus
         switch (port)
         {
             case 0x20: case 0x21: case 0xa0: case 0xa1: Pic.Out(port, v); return;
-            case 0x40: case 0x41: case 0x42: case 0x43: Pit.Out(port, v); return;
+            case 0x40: case 0x41: Pit.Out(port, v); return;
+            case 0x42: case 0x43: Speaker.CatchUp(); Pit.Out(port, v); return;   // channel 2 is the speaker's tone
             case 0x60: case 0x64: Kbc.Out(port, v); if (Kbc.ResetRequested) CpuResetRequest(); return;
-            case 0x61: _port61 = v; Pit.SetGate(2, v & 1); Speaker?.Invoke(); return;
+            case 0x61: Speaker.CatchUp(); _port61 = v; Pit.SetGate(2, v & 1); return;
             case 0x70: case 0x71: Cmos.Out(port, v); return;
             case 0x92: Kbc.A20 = (v & 2) != 0; if ((v & 1) != 0) CpuResetRequest(); return;
             case 0x80: return;                                // POST code
@@ -123,7 +125,8 @@ public sealed partial class PcMachine : IX86Bus
 
     /// <summary>Port 61h bit 1 (speaker data) and bit 0 (PIT channel 2 gate).</summary>
     public int Port61 => _port61;
-    public Action? Speaker;
+    /// <summary>The PC speaker's sound (off until a host enables it).</summary>
+    public readonly PcSpeaker Speaker;
 
     private void CpuResetRequest()
     {

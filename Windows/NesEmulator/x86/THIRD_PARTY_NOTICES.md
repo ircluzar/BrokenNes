@@ -18,7 +18,8 @@ Written for this project (no source copied): the board `PcMachine.cs`, the **C# 
 ROM file, no SeaBIOS / VGABIOS code: POST, vectors, BIOS data area, INT 10h / 11h / 12h / 13h / 15h / 16h / 1Ah / 19h, built from the
 public PC/AT BIOS interface documentation, the way DOSBox answers BIOS calls in its own code), the keyboard controller `Kbc8042.cs`
 (tiny386 `i8042.c` was read only for which commands DOS software sends), the CMOS clock `Cmos.cs`, `DiskImage.cs`, `FatImage.cs`,
-`I386.State.cs` (save states).
+`I386.State.cs` (save states), the console session `PcSession.cs`, the boot-disk builder `PcDisks.cs`, the PC speaker `PcSpeaker.cs`
+(port 61h bit 1 AND the 8254 channel 2 output, drawn on the machine clock).
 
 **FreeDOS: shipped with the desktop release, never in the repository** (user decision of 2026-11-06, "Ship FreeDOS with the app"). The FreeDOS 1.4
 LiteUSB image `FD14LITE.img` (FreeDOS project; the kernel, FreeCOM and most of `\FREEDOS\BIN` GPL-2.0 or later, other programs under their own
