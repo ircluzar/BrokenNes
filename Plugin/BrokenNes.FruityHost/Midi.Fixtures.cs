@@ -39,7 +39,7 @@ internal static class MidiFixtures
             catch (InvalidOperationException) { return null; }
         }
         string dir = Win(Environment.GetEnvironmentVariable("BROKENNES_VRUN")) ?? Win(Environment.GetEnvironmentVariable("VRUN_ROOT")) ?? Live()
-            ?? Path.Combine(Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } h ? h : @"P:\BrokenDev\env", @"vrun_nes_dev\sys0\simulations\VRUN");
+            ?? Path.Combine(Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } h ? h : @"T:\BrokenDev\env", @"vrun_nes_dev\sys0\simulations\VRUN");
         return File.Exists(Path.Combine(dir, "build.sh")) && Directory.Exists(Path.Combine(dir, @"engine\audio\converter")) ? dir : null;
     }
 

@@ -3,7 +3,7 @@
   "suite": "brokendev",
   "description": "The BrokenDev projects (the user's homebrew: VRUN NES demake, Nested VRUN, Nested VRUN enhanced, the SMB1 remake and its Nested version, Super VRUN) built by BrokenDev\\brokendev.ps1 into BROKENDEV_HOME\\out and run on BrokenNes. The ROMs are built from private source and are never in git: every case skips with a stated reason when its ROM is not there. Record or refresh the expected values with: UAT\\run-suite.ps1 -Exe <fresh Workshop> -Filter brokendev- -UpdateGolden.",
   "roots": {
-    "brokendev": "P:/BrokenDev/env/out"
+    "brokendev": "T:/BrokenDev/env/out"
   },
   "cases": [
     {

@@ -26,7 +26,7 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'} [vrun-voc] ${name}${detail !== '' ? ' - ' + detail : ''}`);
   return !!ok;
 }
-if (!a.rom || !fs.existsSync(a.rom)) { console.log(`the ROM is missing: ${a.rom} (the frozen V0 hello world: powershell -File BrokenDev\\tests\\voc-v0.ps1, then --rom P:\\BrokenDev\\env\\out\\vrun-voc-v0\\vrun_voc.gbc)`); process.exit(2); }
+if (!a.rom || !fs.existsSync(a.rom)) { console.log(`the ROM is missing: ${a.rom} (the frozen V0 hello world: powershell -File BrokenDev\\tests\\voc-v0.ps1, then --rom T:\\BrokenDev\\env\\out\\vrun-voc-v0\\vrun_voc.gbc)`); process.exit(2); }
 fs.mkdirSync(path.join(a.roms, 'gb'), { recursive: true });
 fs.copyFileSync(a.rom, path.join(a.roms, 'gb', 'vrun_voc.gbc'));
 const romBytes = fs.readFileSync(a.rom);

@@ -98,7 +98,7 @@
     folder overrides the search; = off uses the restored copy.
 
   Environment
-    BROKENDEV_HOME      working folder, OUTSIDE the repository (default P:\BrokenDev\env)
+    BROKENDEV_HOME      working folder, OUTSIDE the repository (default T:\BrokenDev\env)
     BROKENDEV_ARCHIVES  folder holding the project archives (default: the parent of BROKENDEV_HOME)
     BROKENDEV_LIVE_<ARCHIVE>  a live workspace folder, or 'off' (see Workspaces)
     BROKENDEV_PYTHON    force a Python interpreter (default: the first with pillow and numpy)

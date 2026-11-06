@@ -18,7 +18,7 @@ namespace BrokenNes.Windows
     /// </summary>
     public partial class MainForm
     {
-        private const string DefaultBrokenDevHome = @"P:\BrokenDev\env";
+        private const string DefaultBrokenDevHome = @"T:\BrokenDev\env";
 
         // Power-on RAM (BrokenDev only). BrokenNes fills work RAM with FCEUX's pattern, which is right for movie portability and honest to hardware (a
         // real console's RAM powers on undefined), but a homebrew written against an emulator set to all-zeros can read a variable it never wrote and

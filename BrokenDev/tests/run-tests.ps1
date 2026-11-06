@@ -1953,7 +1953,7 @@ exit $p.ExitCode
 
     Test-Case 'timeflow rebuild-resume on a real Game Boy project built from source with GBDK (T5): a copy of the frozen V0 hello world in scratch (the game repo only read), a timeline of it, the source edited (the d-pad''s right edge 160 -> 150), rebuilt and resumed at frame 60: safe, the verdict "never state [player_x] > 150" passes (fails on the old future); NEGATIVE: an edit that grows the main loop (the call into vsync moves) is refused, naming the return address' {
         if (-not $ws) { Skip-Test $wsSkip }
-        if (-not (Test-Path 'P:\BrokenDev\env\toolchains\gbdk\4.5.0\gbdk\bin\lcc.exe')) { Skip-Test 'GBDK-2020 4.5.0 is not installed (toolchains.json gbdk)' }
+        if (-not (Test-Path 'T:\BrokenDev\env\toolchains\gbdk\4.5.0\gbdk\bin\lcc.exe')) { Skip-Test 'GBDK-2020 4.5.0 is not installed (toolchains.json gbdk)' }
         $th = Join-Path $tmpRoot 'tf5ghome'; $tp = Join-Path $tmpRoot 'tf5gprojects'; $copy = Join-Path $tmpRoot 'tf5gv0'
         New-Item -ItemType Directory -Force -Path $th, (Join-Path $tp 'vgame') | Out-Null
         $psExe = if ($PSVersionTable.PSEdition -eq 'Core') { (Get-Process -Id $PID).Path } else { Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe' }

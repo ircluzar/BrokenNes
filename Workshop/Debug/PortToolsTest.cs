@@ -182,7 +182,7 @@ internal static class PortToolsTest
             g.Run(frames, CheckedGame.ParseInput(input));
             check(port);
         }
-        string home = Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } eh ? eh : @"P:\BrokenDev\env";
+        string home = Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } eh ? eh : @"T:\BrokenDev\env";
         // the hello world is frozen at V0 (the game repo's commit f828fbe, built once by BrokenDev\tests\voc-v0.ps1): the live game moves on
         string v0 = Path.Combine(home, "out", "vrun-voc-v0");
         if (!File.Exists(Path.Combine(v0, "vrun_voc.gbc"))) NotRun("the Game Boy hello world's dev build", $"{v0}\\vrun_voc.gbc is not built here (powershell -File BrokenDev\\tests\\voc-v0.ps1)");
@@ -221,7 +221,7 @@ internal static class PortToolsTest
         }
         Run("VRUN (does not use the port)", @"C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\builds\2026-10-23_poweron\vrun_game.nes", null, null, 900, "120:Start,132:,400:Right", p =>
             Check("VRUN: a game that does not use the port hears nothing (no false events)", p.EventCount == 0 && p.Writes == 0, $"{p.EventCount} events, {p.Writes} writes"));
-        Run("Super VRUN (does not use the port)", @"P:\BrokenDev\env\out\supervrun\supervrun.sfc", null, null, 900, "120:Start,132:", p =>
+        Run("Super VRUN (does not use the port)", @"T:\BrokenDev\env\out\supervrun\supervrun.sfc", null, null, 900, "120:Start,132:", p =>
             Check("Super VRUN: a game that does not use the port hears nothing (no false events)", p.EventCount == 0 && p.Writes == 0, $"{p.EventCount} events, {p.Writes} writes"));
         string sample = FindUp("WideMess\\testroms\\bin\\devkit_sample.wms");
         Run("the WideMess sample's release build", sample, null, ConsoleKind.WideMess, 600, "30:Right+B", p =>

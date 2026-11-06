@@ -59,7 +59,7 @@ internal static partial class BrokenDevCli
             Console.Error.WriteLine("Cannot find BrokenDev/projects (pass --manifests, or set BROKENDEV_MANIFESTS, or run from inside the repository).");
             return 2;
         }
-        string home = Opt("home", "") is { Length: > 0 } h ? h : Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } eh ? eh : @"P:\BrokenDev\env";
+        string home = Opt("home", "") is { Length: > 0 } h ? h : Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } eh ? eh : @"T:\BrokenDev\env";
 
         switch (args[1].ToLowerInvariant())
         {

@@ -358,7 +358,7 @@ internal static class MovieTestCli
 
     private static void Games(string dir)
     {
-        string home = Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } e ? e : @"P:\BrokenDev\env";
+        string home = Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } e ? e : @"T:\BrokenDev\env";
         foreach (var (name, rom, sym, script, frames) in new[]
         {
             ("VRUN", Path.Combine(home, "out", "vrun-nes", "vrun_game.nes"), Path.Combine(home, "out", "vrun-nes", "vrun_game.mlb"), "120:Start,132:,400:Right,600:Right+B,700:Right", 900),

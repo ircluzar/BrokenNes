@@ -7,7 +7,7 @@
   the repository is only read, never checked out, committed to or built in. They are unpacked to <Out>\src and, unless -SourceOnly, built with
   their own build.ps1 and the pinned GBDK-2020 into <Out> (vrun_voc.gbc, .noi, .sym, .map).
 
-  -Out defaults to BROKENDEV_HOME\out\vrun-voc-v0 (P:\BrokenDev\env\out\vrun-voc-v0): the known place the Workshop's --port-test and the
+  -Out defaults to BROKENDEV_HOME\out\vrun-voc-v0 (T:\BrokenDev\env\out\vrun-voc-v0): the known place the Workshop's --port-test and the
   UAT scripts look for the V0 build. Build it once with:   powershell -File BrokenDev\tests\voc-v0.ps1
   -Profile dev (the default) is the debug-port build; -Define takes the planted-bug negative controls (VOC_PLANT_UNINIT, VOC_PLANT_ASSERT).
 

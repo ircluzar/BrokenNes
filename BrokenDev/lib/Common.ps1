@@ -12,7 +12,7 @@ $script:BdRoot    = Split-Path -Parent $script:BdLibDir          # ...\BrokenDev
 $script:BdRepo    = Split-Path -Parent $script:BdRoot            # repository root
 
 # The default working folder the user chose for this machine. Override with the BROKENDEV_HOME environment variable.
-$script:BdDefaultHome = 'P:\BrokenDev\env'
+$script:BdDefaultHome = 'T:\BrokenDev\env'
 
 function Get-BdRoot     { $script:BdRoot }
 function Get-BdRepoRoot { $script:BdRepo }

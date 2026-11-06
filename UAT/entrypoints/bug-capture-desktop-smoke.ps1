@@ -23,8 +23,8 @@
 param(
     [Parameter(Mandatory)][string]$Exe,
     [Parameter(Mandatory)][string]$WorkshopExe,
-    [string]$VrunRom = 'P:\BrokenDev\env\out\vrun-nes\vrun_game.nes',
-    [string]$SnesRom = 'P:\BrokenDev\env\out\supervrun\supervrun.sfc',
+    [string]$VrunRom = 'T:\BrokenDev\env\out\vrun-nes\vrun_game.nes',
+    [string]$SnesRom = 'T:\BrokenDev\env\out\supervrun\supervrun.sfc',
     [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_bug_capture_desktop')
 )
 $ErrorActionPreference = 'Stop'

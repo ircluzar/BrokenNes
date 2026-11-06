@@ -409,7 +409,7 @@ internal static class BugTestCli
 
     private static void Games(string dir)
     {
-        string home = Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } e ? e : @"P:\BrokenDev\env";
+        string home = Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } e ? e : @"T:\BrokenDev\env";
         foreach (var (name, rom, console, frames) in new[]
         {
             ("VRUN", Path.Combine(home, "out", "vrun-nes", "vrun_game.nes"), "nes", 2400L),
@@ -432,7 +432,7 @@ internal static class BugTestCli
 
     private static void Speed(string nes, string dir)
     {
-        string home = Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } e ? e : @"P:\BrokenDev\env";
+        string home = Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } e ? e : @"T:\BrokenDev\env";
         var roms = new List<(string, string, string)> { ("the planted NES game", nes, "nes") };
         string vrun = Path.Combine(home, "out", "vrun-nes", "vrun_game.nes"), sv = Path.Combine(home, "out", "supervrun", "supervrun.sfc");
         if (File.Exists(vrun)) roms.Add(("VRUN", vrun, "nes")); else NotRun("VRUN: speed", "not built here");

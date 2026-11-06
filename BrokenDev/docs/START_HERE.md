@@ -34,7 +34,7 @@ BrokenDev never contains the user's source. Put these three files where the scri
 
 ```powershell
 cd <repository>
-$env:BROKENDEV_HOME = 'D:\BrokenDev\env'        # optional; default P:\BrokenDev\env; must be OUTSIDE the repository
+$env:BROKENDEV_HOME = 'D:\BrokenDev\env'        # optional; default T:\BrokenDev\env; must be OUTSIDE the repository
 BrokenDev\brokendev.ps1 doctor                  # 1. is the machine ready?
 BrokenDev\brokendev.ps1 restore all             # 2. extract the three archives (about 15 minutes on a network share, less locally)
 BrokenDev\brokendev.ps1 build-workshop          # 3. the headless BrokenNes runner (about 1 minute)
@@ -98,7 +98,7 @@ Outputs: `BROKENDEV_HOME\out\<project>\` holds the published ROM, `build.json` (
 
 ## 4. What was done on the first machine (2026-10-16), so you can compare
 
-* Restore: three archives into `P:\BrokenDev\env` (a network share), 311 s, 420 s and about 200 s. No junction or `subst` was needed: no build or
+* Restore: three archives into `T:\BrokenDev\env` (a network share), 311 s, 420 s and about 200 s. No junction or `subst` was needed: no build or
   verify step reads an absolute path. The package's START_HERE asks for `C:\PROJECTS\sys0\...`; only the Nested Builder UI's default Mesen path
   and two side scripts (`verify_pipe_joints.py`, `mapscan.py`) use it. If you want the UI, make the junction yourself:
   `mklink /J C:\PROJECTS <BROKENDEV_HOME>\vrun_nes_dev` (no admin needed; the restored folder has `sys0\` directly inside).

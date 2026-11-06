@@ -78,7 +78,7 @@ internal static partial class DebugTestCli
         Group("sega", "Z80 and 68000 disassemblers against the cores", () => { Z80Lengths(); M68kLengths(); });
         Group("games", "Real Sega games", () => SegaGames());
         Group("games", "Real games", () => Games(Opt("vrun", @"C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\builds\2026-10-23_poweron\vrun_game.nes"),
-                                                  Opt("supervrun", @"P:\BrokenDev\env\out\supervrun\supervrun.sfc")));
+                                                  Opt("supervrun", @"T:\BrokenDev\env\out\supervrun\supervrun.sfc")));
         Console.WriteLine();
         Console.WriteLine($"debug-test: {pass} pass, {fail} fail, {notRun} not run ({sw.Elapsed.TotalSeconds:F1} s); files in {dir}");
         foreach (var f in failures) Console.WriteLine("  FAILED " + f);

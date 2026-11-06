@@ -28,7 +28,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Exe,
-    [string]$GbcRom = 'P:\BrokenDev\env\out\vrun-voc-v2\vrun_voc.gbc',
+    [string]$GbcRom = 'T:\BrokenDev\env\out\vrun-voc-v2\vrun_voc.gbc',
     [int]$Rounds = 4,
     [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_menu_race_desktop')
 )

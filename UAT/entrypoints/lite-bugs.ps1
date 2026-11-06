@@ -18,8 +18,8 @@
 param(
     [Parameter(Mandatory)][string]$WorkshopExe,
     [string]$Publish,
-    [string]$NesRom = 'P:\BrokenDev\env\out\vrun-nes\vrun_game.nes',
-    [string]$GbRom = 'P:\BrokenDev\env\out\vrun-voc\vrun_voc.gbc',
+    [string]$NesRom = 'T:\BrokenDev\env\out\vrun-nes\vrun_game.nes',
+    [string]$GbRom = 'T:\BrokenDev\env\out\vrun-voc\vrun_voc.gbc',
     [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_lite_bugs')
 )
 $ErrorActionPreference = 'Stop'

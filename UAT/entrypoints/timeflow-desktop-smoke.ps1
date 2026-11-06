@@ -27,7 +27,7 @@
 param(
     [Parameter(Mandatory)][string]$Exe,
     [Parameter(Mandatory)][string]$WorkshopExe,
-    [string]$Rom = 'P:\BrokenDev\env\out\vrun-nes\vrun_game.nes',
+    [string]$Rom = 'T:\BrokenDev\env\out\vrun-nes\vrun_game.nes',
     [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_timeflow_desktop')
 )
 $ErrorActionPreference = 'Stop'

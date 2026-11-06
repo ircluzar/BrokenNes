@@ -26,7 +26,7 @@ internal static class BrokenDevBridge
     }
 
     public static string Script => Path.Combine(Repo, "BrokenDev", "brokendev.ps1");
-    public static string Home => Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } h ? Path.GetFullPath(h) : @"P:\BrokenDev\env";
+    public static string Home => Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } h ? Path.GetFullPath(h) : @"T:\BrokenDev\env";
 
     public static List<string> ProjectIds()
     {

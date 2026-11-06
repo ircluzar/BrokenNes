@@ -26,7 +26,7 @@ param(
     [Parameter(Mandatory)][string]$WorkshopExe,
     [string]$VocDev = '',
     [string]$Scratch = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\xcompare_test'),
-    [string]$Gbdk = 'P:\BrokenDev\env\toolchains\gbdk\4.5.0\gbdk',
+    [string]$Gbdk = 'T:\BrokenDev\env\toolchains\gbdk\4.5.0\gbdk',
     [switch]$SkipBuild
 )
 $ErrorActionPreference = 'Stop'
@@ -34,7 +34,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repo = (Resolve-Path (Join-Path $here '..\..')).Path
 if (-not $VocDev) { $d = Split-Path -Parent $repo; while ($d -and -not (Test-Path (Join-Path $d 'VRUN_VOC_dev'))) { $p = Split-Path -Parent $d; if ($p -eq $d) { $d = ''; break }; $d = $p }; if ($d) { $VocDev = Join-Path $d 'VRUN_VOC_dev' } }
 if (-not (Test-Path (Join-Path $VocDev 'src\phys\voc_phys.c'))) { throw "VRUN_VOC_dev not found (-VocDev)" }
-$bdHome = if ($env:BROKENDEV_HOME) { $env:BROKENDEV_HOME } else { 'P:\BrokenDev\env' }
+$bdHome = if ($env:BROKENDEV_HOME) { $env:BROKENDEV_HOME } else { 'T:\BrokenDev\env' }
 New-Item -ItemType Directory -Force $Scratch | Out-Null
 $env:BROKENDEV_TIMEFLOW = Join-Path $Scratch 'timeflow'
 if (Test-Path $env:BROKENDEV_TIMEFLOW) { Remove-Item -Recurse -Force $env:BROKENDEV_TIMEFLOW }

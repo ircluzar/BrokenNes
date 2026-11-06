@@ -237,7 +237,7 @@ public static class BugBundle
 /// </summary>
 public static class BugPlaces
 {
-    public const string DefaultBrokenDevHome = @"P:\BrokenDev\env";
+    public const string DefaultBrokenDevHome = @"T:\BrokenDev\env";
     public const string BugsFolder = "bugs";
 
     public static string BrokenDevHome() => Environment.GetEnvironmentVariable("BROKENDEV_HOME") is { Length: > 0 } h ? h : DefaultBrokenDevHome;

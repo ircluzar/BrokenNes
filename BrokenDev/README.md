@@ -311,7 +311,7 @@ copy; a machine with no live workspace (a new one) uses the restored copy, as be
 * **In git (this folder):** `brokendev.ps1`, `doctor.ps1`, `lib/` (with `lib/adapters/`), `projects/*/project.json`, `archives.json`, `devtools.json`, `emulators.json`,
   `tools/` (with `tools/vrun/mesen/`, the user's 20 VRUN Mesen tracer and probe scripts, and `tools/vrun/sfx-configurator/`), `docs/`,
   `tests/`. Light: no ROM, no archive, no toolchain, no build output, no file over 1 MB.
-* **Outside git, in `BROKENDEV_HOME` (default `P:\BrokenDev\env`):** the restored projects, `out/<id>/` (built ROMs, build and
+* **Outside git, in `BROKENDEV_HOME` (default `T:\BrokenDev\env`):** the restored projects, `out/<id>/` (built ROMs, build and
   verify records, screenshots, logs, `compat/`), the Workshop build, work folders of the pipelines, `work/tools/<id>/` (what the tools write:
   logs, the generated SFX page, renders, screenshots, the PID of a web UI BrokenDev started), `emulators/` (the installed emulators and
   `_downloads/`, the verified zips), `work/compat/` (each compat run's ROM copies, configs and saves) and `work/play/` (hand-testing saves).
@@ -323,7 +323,7 @@ copy; a machine with no live workspace (a new one) uses the restored copy, as be
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `BROKENDEV_HOME` | working folder, must be outside the repository | `P:\BrokenDev\env` |
+| `BROKENDEV_HOME` | working folder, must be outside the repository | `T:\BrokenDev\env` |
 | `BROKENDEV_ARCHIVES` | the folder holding the archives | the parent of `BROKENDEV_HOME` |
 | `BROKENDEV_PYTHON` | force one Python | the first 3.10+ with pillow and numpy |
 | `BROKENDEV_WORKSHOP` | force a Workshop executable | the one `build-workshop` built |

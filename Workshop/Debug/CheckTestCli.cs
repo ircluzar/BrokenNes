@@ -50,7 +50,7 @@ internal static partial class CheckTestCli
         Group("wms", "WideMess (the SNES rules on the WideMess console, the debug port)", WideMess);
         Group("gb", "Game Boy rules", GameBoy);
         Group("sega", "Master System, Game Gear and Genesis rules (Timeflow T0)", Sega);
-        Group("games", "Real games", () => Games(Opt("vrun", @"P:\BrokenDev\env\out\vrun-nes\vrun_game.nes"), Opt("supervrun", @"P:\BrokenDev\env\out\supervrun\supervrun.sfc")));
+        Group("games", "Real games", () => Games(Opt("vrun", @"T:\BrokenDev\env\out\vrun-nes\vrun_game.nes"), Opt("supervrun", @"T:\BrokenDev\env\out\supervrun\supervrun.sfc")));
         if (only.Contains("nes") && only.Contains("snes") && only.Contains("gb") && only.Contains("sega"))
         {
             var missing = CheckCatalogue.All.Where(r => !triggered.Contains(r.Id) || !cleared.Contains(r.Id)).Select(r => r.Id).ToList();
