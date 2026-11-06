@@ -141,6 +141,7 @@ public sealed partial class I386
 
     // ================= lazy flags =================
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int GetCF()
     {
         if ((_ccMask & CF) == 0) return (Flags & CF) != 0 ? 1 : 0;
@@ -190,6 +191,7 @@ public sealed partial class I386
     private int GetZF() => (_ccMask & ZF) != 0 ? (_ccDst == 0 ? 1 : 0) : ((Flags & ZF) != 0 ? 1 : 0);
     private int GetSF() => (_ccMask & SF) != 0 ? (int)(_ccDst >> 31) : ((Flags & SF) != 0 ? 1 : 0);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int GetOF()
     {
         if ((_ccMask & OF) == 0) return (Flags & OF) != 0 ? 1 : 0;

@@ -173,6 +173,12 @@ public sealed partial class I386
                     case 0xeb: r = OpJmp8(); break;
                     case 0xf6: r = K(Grp38()); break;
                     case 0xf7: r = K(_opsz16 ? Grp316() : Grp332()); break;
+                    case 0x0f: r = OpTwo(); break;
+                    case 0x84: r = OpTest8(); break;
+                    case 0x85: r = _opsz16 ? OpTest16() : OpTest32(); break;
+                    case 0x8d: r = OpLea(); break;
+                    case 0xc3: r = OpRet(); break;
+                    case 0xe8: r = OpCallRel(); break;
                     default: r = ExecOne((int)b1); break;
                 }
             if (r == FAIL) return false;
@@ -210,6 +216,48 @@ public sealed partial class I386
         return OK;
     }
 
+    /// <summary>0F: the near Jcc (0F 80-8F) here, the rest in ExecTwo.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int OpTwo()
+    {
+        if (_ifPaddr != 0 && (U8(_ifPaddr) & 0xf0) == 0x80)
+        {
+            Fetch8(out uint b2);
+            int bits = _opsz16 ? 16 : 32;
+            if (!Fetch(bits, out uint imm)) return FAIL;
+            if (Cond(b2)) JumpRel(Sext(bits, imm));
+            return OK;
+        }
+        return ExecTwo();
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)] private int OpTest8() => OpTestCore(8);
+    [MethodImpl(MethodImplOptions.NoInlining)] private int OpTest16() => OpTestCore(16);
+    [MethodImpl(MethodImplOptions.NoInlining)] private int OpTest32() => OpTestCore(32);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int OpTestCore(int bits)
+    {
+        if (!DecodeE(bits, 1)) return FAIL;
+        Alu(4, bits, ReadE(bits), LReg(bits, _reg));
+        TryJcc8E();
+        return OK;
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int OpLea()
+    {
+        if (!DecodeModrm()) return FAIL;
+        if (_mod == 3) return K(Throw0(EX_UD));
+        SReg(_opsz16 ? 16 : 32, _reg, _addr);
+        return OK;
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)] private int OpRet() => K(Ret(0));
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int OpCallRel()
+    {
+        int bits = _opsz16 ? 16 : 32;
+        if (!Fetch(bits, out uint imm)) return FAIL;
+        return K(CallNear(Sext(bits, imm), true));
+    }
+
     // ================= operand helpers =================
 
     private bool DecodeModrm()
@@ -229,6 +277,7 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool DecodeE(int bits, int rwm) => DecodeModrm() && TranslateE(bits, rwm);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool Cond(uint c) => (c & 0xf) switch
     {
         0x0 => GetOF() != 0,
@@ -249,6 +298,7 @@ public sealed partial class I386
         _ => GetZF() == 0 && GetSF() == GetOF(),
     };
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void JumpRel(uint d) { NextIp += d; if (_c16) NextIp &= 0xffff; }
 
     // ================= arithmetic =================
@@ -402,6 +452,7 @@ public sealed partial class I386
         WriteE(bits, _ccDst);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void IncDecReg(int bits, int reg, bool dec)
     {
         int cf = GetCF();
