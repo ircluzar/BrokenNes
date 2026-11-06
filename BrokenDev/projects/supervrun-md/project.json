@@ -1,11 +1,11 @@
 {
   "schema": 1,
   "id": "supervrun-md",
-  "title": "Super VRUN on the Genesis / Mega Drive (S0: the skeleton)",
+  "title": "Super VRUN on the Genesis / Mega Drive (S3)",
   "family": "supervrun",
   "kind": "md",
   "console": "md",
-  "description": "The Genesis port of Super VRUN (docs/projects/sega-vrun-ports-plan.md, S3: 1P and 2P, the game centred in 320 with each room's edges repeated like the WideMess version, Super VRUN's own music engine on FM + PSG, ONE shared game-logic source with the SNES and WideMess versions: the proposal is in the workspace's README.md). Today the S0 skeleton: a hello ROM (text, a frame counter, both pads read, a cursor that Left / Right move). Built with SGDK 2.11 (toolchains.json) in its live workspace PROJECTS/SuperVRUN_MD_dev (its own git, local only).",
+  "description": "The Genesis port of Super VRUN (docs/projects/sega-vrun-ports-plan.md, S3: 1P and 2P, the game centred in 320 with each room's edges repeated like the WideMess version, Super VRUN's own music engine on FM + PSG, ONE shared game-logic source with the SNES and WideMess versions: the proposal is in the workspace's README.md). S3: the whole game (logic, picture; sound is M4). Built with SGDK 2.11 (toolchains.json) in its live workspace PROJECTS/SuperVRUN_MD_dev (its own git, local only).",
   "source": {
     "folder": "{live:SuperVRUN_MD_dev}"
   },
@@ -52,112 +52,109 @@
   },
   "run": {
     "console": "md",
-    "note": "The skeleton: Left / Right move the cursor. Lite: the .md opens in BrokenNes Lite's Genesis (UAT/entrypoints/lite-sega.ps1 -Roms <folder with md\\supervrun_md.md>)."
+    "note": "The game: Start on the title, Start again in the menu, then play (D-pad, A/B/C, Start+A or Mode = Select). Lite: the .md opens in BrokenNes Lite's Genesis (UAT/entrypoints/lite-sega.ps1 -Roms <folder with md\\supervrun_md.md>)."
   },
   "verify": {
     "timeoutSec": 600,
     "scenarios": [
       {
-        "id": "hello",
-        "frames": 300,
-        "input": "100:Left,110:",
+        "id": "boot-to-game",
+        "frames": 900,
+        "input": "300:Start,310:,420:Start,430:",
         "checkpoints": [
-          50,
-          300
+          200,
+          900
         ],
         "expect": {
           "minDistinctColors": 2,
           "pictureDiffers": [
-            50,
-            300
+            200,
+            900
           ],
           "memory": [
             {
-              "symbol": "hello_ok",
+              "symbol": "title_frames",
               "size": 2,
               "endian": "big",
+              "min": 100,
+              "what": "the title runs (its tick counts)"
+            },
+            {
+              "symbol": "cur_state_seen",
+              "size": 1,
               "is": 1,
-              "what": "the screen was set up"
+              "what": "Start, Start reached gameplay (STATE_GAME)"
             },
             {
-              "symbol": "frame_count",
+              "symbol": "game_frames",
               "size": 2,
               "endian": "big",
-              "min": 250,
-              "what": "the main loop runs every frame"
-            },
-            {
-              "symbol": "cursor_x",
-              "size": 2,
-              "endian": "big",
-              "is": 6,
-              "what": "Left reached the pad and moved the cursor 10 columns (16 -> 6)"
+              "min": 60,
+              "what": "gameplay updates every tick"
             }
           ]
         },
-        "why": "the hello ROM on the Genesis: it runs, draws and reads the pad"
+        "why": "the game boots on the Genesis, the title animates, the pad reaches the game and it runs"
       }
     ]
   },
   "compat": {
-    "what": "The hello ROM on every Genesis emulator BrokenDev has (BizHawk's Genplus-gx), from power-on and the same pad script. The variables are big-endian u16: the reads take their low byte (the symbol + 1).",
+    "what": "The game on every Genesis emulator BrokenDev has (BizHawk's Genplus-gx), from power-on and the same pad script: title, Start, Start, gameplay. Variables are big-endian u16: the low byte is the symbol + 1.",
     "symbols": {
       "file": "{out}/supervrun_md.nm.txt"
     },
     "reads": {
-      "frame": "frame_count",
-      "framelo": "frame_count+1",
-      "ok": "hello_ok+1",
-      "cursor": "cursor_x+1"
+      "title": "title_frames+1",
+      "game": "game_frames+1",
+      "state": "cur_state_seen"
     },
     "frameTolerance": 30,
     "scenarios": [
       {
-        "id": "hello",
-        "frames": 400,
-        "input": "100:Left,110:",
+        "id": "boot-to-game",
+        "frames": 900,
+        "input": "300:Start,310:,420:Start,430:",
         "shots": [
-          50,
-          400
+          200,
+          900
         ],
-        "what": "power-on, the text, Left held 10 frames",
+        "what": "power-on, title, Start twice, gameplay",
         "checks": [
           {
-            "id": "alive",
-            "what": "the main loop runs (frame_count's low byte keeps changing)",
-            "changes": "framelo",
+            "id": "title",
+            "what": "the title runs (title_frames' low byte keeps changing)",
+            "changes": "title",
             "within": [
               60,
-              400
+              290
             ],
-            "min": 200
+            "min": 100
           },
           {
-            "id": "ready",
-            "what": "the screen was set up",
-            "read": "ok",
+            "id": "game",
+            "what": "Start, Start reached gameplay",
+            "read": "state",
             "is": 1,
             "within": [
-              60,
-              400
+              700,
+              900
             ],
             "hold": true
           },
           {
-            "id": "moved",
-            "what": "Left moved the cursor 10 columns (16 -> 6)",
-            "read": "cursor",
-            "is": 6,
+            "id": "alive",
+            "what": "gameplay runs (game_frames' low byte keeps changing)",
+            "changes": "game",
             "within": [
-              200,
-              400
+              700,
+              900
             ],
-            "hold": true
+            "min": 100
           },
           {
             "id": "drawn",
-            "what": "the text is drawn",
-            "picture": 400,
+            "what": "the room is drawn",
+            "picture": 900,
             "minColors": 2
           }
         ]
@@ -268,7 +265,7 @@
     "tickLead": -1
   },
   "knownIssues": [
-    "S0 skeleton only: the game is S3.",
-    "No hardware test on the user's Genesis flash cart yet."
+    "No hardware test on the user's Genesis flash cart yet.",
+    "Room 1 ladder rails pink (SNES yellow): parked, docs/S3-scope.md."
   ]
 }
