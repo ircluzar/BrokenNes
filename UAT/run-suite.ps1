@@ -455,6 +455,23 @@ foreach ($w in $work) {
         continue
     }
 
+    # --- ROM pinned by its SHA-256 (cases on ROMs that get rebuilt, e.g. the BrokenDev homebrew) -------------
+    # A golden only means something for the ROM it was recorded on. NESFab / Project Nested builds are not
+    # byte-repeatable, so a rebuild changes the hashes without the emulator changing. Such a case says so
+    # plainly (still a FAIL: nothing was proven about the emulator) instead of a bare hash mismatch.
+    $pinnedSha = [string](Get-Prop $c 'romSha256' '')
+    $romSha = $null
+    if ($pinnedSha -or ($UpdateGolden -and (Get-Prop $c 'pinRom' $false))) {
+        $romSha = (Get-FileHash -LiteralPath $w.RomPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    if ($pinnedSha -and -not $UpdateGolden -and $romSha -ne $pinnedSha.ToLowerInvariant()) {
+        $row.status = 'FAIL'; $row.expected = "rom sha256 $($pinnedSha.Substring(0,12))"; $row.actual = "rom sha256 $($romSha.Substring(0,12))"
+        $row.note = "ROM REBUILT since this golden was recorded (not an emulator result): run the case's ROM through its own checks (e.g. brokendev verify), confirm the emulator still matches on the old ROM, then re-record with -UpdateGolden"
+        $rows += [pscustomobject]$row; $failCount++
+        if ($StopOnFirstFailure) { $aborted = $true; break }
+        continue
+    }
+
     if ($SkipInformational -and $kind -eq 'benchmark') {
         $row.status = 'SKIP'; $row.expected = '(info)'; $row.actual = '-'; $row.note = '-SkipInformational'
         $rows += [pscustomobject]$row; $skipCount++
@@ -520,6 +537,10 @@ foreach ($w in $work) {
         $after  = ($first.Observed | ConvertTo-Json -Compress -Depth 5)
         if ($c.PSObject.Properties['expect']) { $c.expect = $first.Observed }
         else { $c | Add-Member -NotePropertyName expect -NotePropertyValue $first.Observed }
+        if ($romSha) {
+            if ($c.PSObject.Properties['romSha256']) { $c.romSha256 = $romSha }
+            else { $c | Add-Member -NotePropertyName romSha256 -NotePropertyValue $romSha }
+        }
         $w.Manifest.Dirty = $true
         $row.status   = if ($before -eq $after) { 'SAME' } else { 'WROTE' }
         $row.expected = $before
