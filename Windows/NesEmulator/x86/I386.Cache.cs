@@ -17,17 +17,176 @@ public sealed partial class I386
         public bool O16, A16;
         public sbyte Seg, SegRaw; // the segment used for a memory operand / the prefix one (-1 none)
         public uint Disp, Imm;
+        public bool Folds;       // (the compiler's) a CMP / TEST that folds with the JZ / JNZ rel8 after it
+        public byte FoldNb;      // that JZ / JNZ's opcode
+        public uint FoldRel;     // and its displacement, sign-extended
     }
 
     // kinds (0 = not cached: the ordinary path)
     private const byte DK_SLOW = 0, DK_MOVEG = 1, DK_MOVGE = 2, DK_ALUEG = 3, DK_ALUGE = 4, DK_ALUAI = 5, DK_GRP1 = 6, DK_GRP2 = 7,
         DK_TESTEG = 8, DK_G3TEST = 9, DK_GRP3 = 10, DK_MOVEI = 11, DK_LEA = 12, DK_MOVRI = 13, DK_INC = 14, DK_DEC = 15, DK_PUSH = 16,
-        DK_POP = 17, DK_JCC = 18, DK_JMP = 19, DK_CALL = 20, DK_RET = 21;
+        DK_POP = 17, DK_JCC = 18, DK_JMP = 19, DK_CALL = 20, DK_RET = 21,
+        DK_INTERP = 22;   // any other instruction: the compiled code runs it through the interpreter (Step1), Op = 1 when it never falls through
 
     /// <summary>Decode the instruction at <paramref name="paddr"/> (in a fast-fetch code page) into <paramref name="e"/>; Kind 0 if it is not
     /// one of the cached forms.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void DcDecode(ref DEntry e, uint paddr)
+    {
+        DcDecodeFast(ref e, paddr);
+        if (e.Kind != DK_SLOW) return;
+        int len = DcLength(paddr, out bool noFall);
+        if (len <= 0) return;
+        e = default;
+        e.Kind = DK_INTERP; e.Len = (byte)len; e.Op = (byte)(noFall ? 1 : 0); e.Mod = (byte)(DcNoWrite(paddr) ? 0 : 1);
+    }
+
+    /// <summary>Can this out-of-line instruction not write to memory at all (so not to the compiled code either)? Registers, flags,
+    /// segment registers, reads only. Conservative: false when unsure (an OUT may start a BIOS disk read, a string op writes...).</summary>
+    private bool DcNoWrite(uint paddr)
+    {
+        int p = 0;
+        uint b;
+        do { b = U8(paddr + (uint)p++); } while (IsPrefix[b] && p < 5);
+        if (IsPrefix[b]) return false;
+        for (int q = 0; q < p - 1; q++) if (U8(paddr + (uint)q) is 0xf0 or 0xf2 or 0xf3) return false;
+        uint m = U8(paddr + (uint)p + (b == 0x0f ? 1u : 0u));
+        bool regOp = (m >> 6) == 3;
+        if (b == 0x0f)
+        {
+            uint b2 = U8(paddr + (uint)p);
+            return b2 is 0xb6 or 0xb7 or 0xbe or 0xbf or 0xaf or 0xa3 or 0xbc or 0xbd or (>= 0x40 and <= 0x4f) or (>= 0x80 and <= 0x8f)
+                || (b2 is (>= 0x90 and <= 0x9f) or 0xa4 or 0xa5 or 0xac or 0xad or 0xab or 0xb3 or 0xbb && regOp)
+                || (b2 == 0xba && (regOp || ((m >> 3) & 7) == 4));
+        }
+        return b switch
+        {
+            0x98 or 0x99 or 0x9e or 0x9f or (>= 0x90 and <= 0x97) or (>= 0xf8 and <= 0xfd) or 0xf5 => true,
+            0x69 or 0x6b or 0x8e or 0x8d or 0x07 or 0x17 or 0x1f or 0xa0 or 0xa1 or 0xa8 or 0xa9 or 0xd4 or 0xd5 or 0x27 or 0x2f or 0x37 or 0x3f => true,
+            (>= 0x70 and <= 0x7f) or 0xeb or 0xe9 or 0xe3 => true,
+            0x86 or 0x87 or 0x8c or 0xd0 or 0xd1 or 0xd2 or 0xd3 or 0xc0 or 0xc1 => regOp,
+            0xfe or 0xff => regOp && ((m >> 3) & 7) < 2,
+            0xf6 or 0xf7 => regOp || ((m >> 3) & 7) is 0 or 1 or 4 or 5 or 6 or 7,   // TEST / MUL / IMUL / DIV / IDIV write registers only
+            _ => false,
+        };
+    }
+
+    /// <summary>The length of any instruction at <paramref name="paddr"/> (0 when unsure), and whether it never falls through (an
+    /// unconditional jump / return). Only a hint for the compiler: the out-of-line instruction's own NextIp decides where it goes on.</summary>
+    private int DcLength(uint paddr, out bool noFall)
+    {
+        noFall = false;
+        bool c16 = _c16, o16 = c16, a16 = c16;
+        int p = 0;
+        uint b;
+        for (;;)
+        {
+            b = U8(paddr + (uint)p++);
+            if (!IsPrefix[b]) break;
+            if (b == 0x66) o16 = !c16; else if (b == 0x67) a16 = !c16;
+            if (p > 4) return 0;
+        }
+        int iv = o16 ? 2 : 4;
+        bool modrm = false;
+        int imm = 0;
+        if (b == 0x0f)
+        {
+            b = U8(paddr + (uint)p++);
+            switch (b)
+            {
+                case <= 0x03: modrm = true; break;
+                case 0x06: case 0x08: case 0x09: case 0x0b: case 0x31: case 0xa2: case 0xa0: case 0xa1: case 0xa8: case 0xa9: break;
+                case >= 0x20 and <= 0x27: p++; break;   // MOV to / from CR / DR / TR: always a register operand
+                case >= 0x40 and <= 0x4f: modrm = true; break;
+                case >= 0x80 and <= 0x8f: imm = iv; break;
+                case >= 0x90 and <= 0x9f: modrm = true; break;
+                case 0xa3: case 0xab: case 0xb3: case 0xbb: case 0xa5: case 0xad: case 0xaf: modrm = true; break;
+                case 0xa4: case 0xac: case 0xba: modrm = true; imm = 1; break;
+                case >= 0xb0 and <= 0xb7: modrm = true; break;
+                case >= 0xbc and <= 0xc1: modrm = true; break;
+                case >= 0xc8 and <= 0xcf: break;
+                default: return 0;
+            }
+        }
+        else
+        {
+            switch (b)
+            {
+                case < 0x40:
+                    switch (b & 7) { case < 4: modrm = true; break; case 4: imm = 1; break; case 5: imm = iv; break; }
+                    break;
+                case < 0x62: break;
+                case 0x62: case 0x63: modrm = true; break;
+                case 0x68: imm = iv; break;
+                case 0x69: modrm = true; imm = iv; break;
+                case 0x6a: imm = 1; break;
+                case 0x6b: modrm = true; imm = 1; break;
+                case < 0x70: break;
+                case < 0x80: imm = 1; break;
+                case 0x80: case 0x82: case 0x83: modrm = true; imm = 1; break;
+                case 0x81: modrm = true; imm = iv; break;
+                case < 0x90: modrm = true; break;
+                case 0x9a: imm = iv + 2; break;
+                case < 0xa0: break;
+                case < 0xa4: imm = a16 ? 2 : 4; break;
+                case 0xa8: imm = 1; break;
+                case 0xa9: imm = iv; break;
+                case < 0xb0: break;
+                case < 0xb8: imm = 1; break;
+                case < 0xc0: imm = iv; break;
+                case 0xc0: case 0xc1: case 0xc6: modrm = true; imm = 1; break;
+                case 0xc2: imm = 2; noFall = true; break;
+                case 0xc3: case 0xcb: case 0xcf: noFall = true; break;
+                case 0xca: imm = 2; noFall = true; break;
+                case 0xc4: case 0xc5: modrm = true; break;
+                case 0xc7: modrm = true; imm = iv; break;
+                case 0xc8: imm = 3; break;
+                case 0xcd: imm = 1; break;
+                case < 0xd0: break;
+                case < 0xd4: modrm = true; break;
+                case 0xd4: case 0xd5: imm = 1; break;
+                case < 0xd8: break;
+                case < 0xe0: modrm = true; break;
+                case < 0xe8: imm = 1; break;
+                case 0xe8: imm = iv; break;
+                case 0xe9: imm = iv; noFall = true; break;
+                case 0xea: imm = iv + 2; noFall = true; break;
+                case 0xeb: imm = 1; noFall = true; break;
+                case < 0xf6: break;
+                case 0xf6: case 0xf7:
+                    modrm = true;
+                    if (((U8(paddr + (uint)p) >> 3) & 7) < 2) imm = b == 0xf6 ? 1 : iv;
+                    break;
+                case < 0xfe: break;
+                default:
+                    modrm = true;
+                    if (b == 0xff && ((U8(paddr + (uint)p) >> 3) & 7) is 4 or 5) noFall = true;
+                    break;
+            }
+        }
+        if (modrm)
+        {
+            uint m = U8(paddr + (uint)p++);
+            uint mod = m >> 6, rm = m & 7;
+            if (mod != 3)
+            {
+                if (a16)
+                {
+                    if (mod == 0 && rm == 6) p += 2; else if (mod == 1) p += 1; else if (mod == 2) p += 2;
+                }
+                else
+                {
+                    if (rm == 4) { uint sib = U8(paddr + (uint)p++); if (mod == 0 && (sib & 7) == 5) p += 4; }
+                    else if (mod == 0 && rm == 5) p += 4;
+                    if (mod == 1) p += 1; else if (mod == 2) p += 4;
+                }
+            }
+        }
+        p += imm;
+        return p > 15 ? 0 : p;
+    }
+
+    private void DcDecodeFast(ref DEntry e, uint paddr)
     {
         e.Kind = DK_SLOW;
         bool c16 = _c16, o16 = c16, a16 = c16;
