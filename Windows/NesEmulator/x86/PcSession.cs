@@ -99,7 +99,20 @@ public sealed class PcSession : IConsoleSession
         _pad = buttons;
     }
 
-    // ================= running =================
+    // ================= input: the host's real keyboard =================
+
+    /// <summary>A key of the host's real keyboard (the desktop app passes its keyboard through while an x86 session runs, alongside the pad's keys): the PC/XT
+    /// scan code (set 1) of the key, <paramref name="extended"/> for the E0-prefixed keys (right Ctrl / Alt, the arrows and the editing block, keypad Enter and /),
+    /// <paramref name="down"/> false for the release (the break code: make | 80h). Pause is its own sequence (E1 1D 45 E1 9D C5, make only). Repeats are passed as
+    /// repeated makes, as a real keyboard's typematic does.</summary>
+    public void HostKey(int scan, bool extended, bool down)
+    {
+        if (scan <= 0 || scan > 0x7f) return;
+        if (scan == 0x45 && extended) { if (down) _m.Kbc.KeyBytes(0xe1, 0x1d, 0x45, 0xe1, 0x9d, 0xc5); return; }   // Pause (the host names it 45h extended)
+        byte code = (byte)(down ? scan : scan | 0x80);
+        if (extended) _m.Kbc.KeyBytes(0xe0, code); else _m.Kbc.KeyBytes(code);
+    }
+
 
     public void RunFrame()
     {

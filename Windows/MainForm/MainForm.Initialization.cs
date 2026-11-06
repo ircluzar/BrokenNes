@@ -80,6 +80,7 @@ namespace BrokenNes.Windows
             this.Resize += MainForm_Resize;
             this.Activated += (_, _) => isMainWindowFocused = true;
             this.Deactivate += (_, _) => isMainWindowFocused = false;
+            InstallPcKeyboard();   // the x86 PC's real keyboard (MainForm.X86Keyboard.cs): idle unless an x86 session runs
             
             // Create menu bar
             var menuStrip = new MenuStrip { ShowItemToolTips = true };     // a MenuStrip shows no item tooltips unless asked: the core menus carry one each (what the part is and what it costs)
@@ -766,6 +767,7 @@ namespace BrokenNes.Windows
                 inputManager = new InputManager(SharpDX.XInput.UserIndex.One);
             }
             inputManager.SetKeyboardFocusProvider(() => config.AcceptBackgroundInput || isMainWindowFocused);
+            inputManager.KeyboardToPad = KeyboardToPadNow;
             inputManager.SetPlayerConfig(p1Config);
             
             Console.WriteLine($"Player 1 controller configured:");
@@ -786,6 +788,7 @@ namespace BrokenNes.Windows
                 inputManager2 = new InputManager(SharpDX.XInput.UserIndex.Two);
             }
             inputManager2.SetKeyboardFocusProvider(() => config.AcceptBackgroundInput || isMainWindowFocused);
+            inputManager2.KeyboardToPad = KeyboardToPadNow;
             inputManager2.SetPlayerConfig(p2Config);
             
             Console.WriteLine($"Player 2 controller configured:");

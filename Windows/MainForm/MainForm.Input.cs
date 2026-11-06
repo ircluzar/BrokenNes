@@ -74,6 +74,7 @@ namespace BrokenNes.Windows
                         {
                             inputManager2 = new InputManager(SharpDX.XInput.UserIndex.Two);
                             inputManager2.SetKeyboardFocusProvider(() => config.AcceptBackgroundInput || isMainWindowFocused);
+                            inputManager2.KeyboardToPad = KeyboardToPadNow;
                         }
                         inputManager2.SetPlayerConfig(playerConfig);
                     }
