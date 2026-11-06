@@ -107,6 +107,8 @@ internal sealed class GbToNes
     /// <summary>What the last frame used (tools): tiles, sprites, palettes; made when read (the layered path makes no string a frame).</summary>
     public string Stats => layeredLast ? $"layers {layersUsed} (background tiles {bgTilesUsed}), sprite pieces {piecesUsed}" : stats;
     public GbToNes(string nesPpuId) { sink = new NesPictureSink(nesPpuId); }
+    /// <summary>After a load or a reset: the chip's picture history is forgotten (<see cref="IPictureSink.Restart"/>).</summary>
+    public void Restart() => sink.Restart();
     /// <summary>Onto an enhanced picture chip of another console directly (no NES in between): the Game Boy picture as layers at its 160 x 144, in that chip's colours.</summary>
     public GbToNes(IEnhancedPictureChip chip, string routeId) { sink = new ChipPictureSink(chip, routeId); }
     public string PpuId => sink.PpuId;
