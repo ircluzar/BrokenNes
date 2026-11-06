@@ -7,6 +7,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace NesEmulator.X86;
 
@@ -110,7 +111,6 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private static uint Sext16(uint a) => (uint)(int)(short)a;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint Sext(int bits, uint a) => bits == 8 ? Sext8(a) : bits == 16 ? Sext16(a) : a;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint SetBit(uint w, bool f, uint m) => f ? w | m : w & ~m;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -293,6 +293,7 @@ public sealed partial class I386
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool TranslateLaddr(ref OptAddr res, int rwm, uint laddr, int size, int cpl)
     {
         if ((Cr0 & CR0_PG) != 0)
@@ -311,12 +312,14 @@ public sealed partial class I386
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool SegCheck(int seg)
     {
         if ((Cr0 & 1) != 0 && SegLimit[seg] == 0 && (SegSel[seg] & ~3u) == 0) return Throw(EX_GP, 0); // null selector
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool Translate(ref OptAddr res, int rwm, int seg, uint addr, int size, int cpl)
     {
         uint laddr = SegBase[seg] + addr;
@@ -324,6 +327,7 @@ public sealed partial class I386
         return TranslateLaddr(ref res, rwm, laddr, size, cpl);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool Translate(ref OptAddr res, int rwm, int seg, uint addr, int size) => Translate(ref res, rwm, seg, addr, size, Cpl);
 
     private bool Translate8r(ref OptAddr res, int seg, uint addr)
@@ -354,24 +358,51 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool InIoMem(uint a) => (a >= 0xa0000 && a < 0xc0000) || a >= 0xe0000000;
 
-    private uint Load8(ref OptAddr r)
+    // unchecked RAM access: only for an address already checked to be below MemSize (Mem has 16 spare bytes past MemSize)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint U8(uint a) => Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint U16(uint a) => Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a));
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint U32(uint a) => Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a));
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US8(uint a, uint v) => Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a) = (byte)v;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US16(uint a, uint v) => Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), (ushort)v);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void US32(uint a, uint v) => Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Mem), (nint)a), v);
+
+    /// <summary>Plain RAM (below MemSize and, with memory-mapped I/O on, outside A0000-BFFFF; the E0000000+ window is above MemSize).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool IsRam(uint a) => a < MemSize && (!_ioMem || a - 0xa0000u >= 0x20000u);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private uint Load8(ref OptAddr r) => IsRam(r.A1) ? U8(r.A1) : Load8Slow(ref r);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private uint Load8Slow(ref OptAddr r)
     {
         uint a = r.A1;
+        if (IsRam(a)) return U8(a);
         if (_ioMem && InIoMem(a)) return _bus.MemRead8(a);
         if (a >= MemSize) return 0;
         return P8(a);
     }
 
-    private uint Load16(ref OptAddr r)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private uint Load16(ref OptAddr r) => !r.Two && IsRam(r.A1) ? U16(r.A1) : Load16Slow(ref r);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private uint Load16Slow(ref OptAddr r)
     {
+        if (!r.Two && IsRam(r.A1)) return U16(r.A1);
         if (_ioMem && InIoMem(r.A1)) return _bus.MemRead16(r.A1);
         if (r.A1 >= MemSize) return 0;
         if (!r.Two) return P16(r.A1);
         return P8(r.A1) | ((uint)P8(r.A2) << 8);
     }
 
-    private uint Load32(ref OptAddr r)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private uint Load32(ref OptAddr r) => !r.Two && IsRam(r.A1) ? U32(r.A1) : Load32Slow(ref r);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private uint Load32Slow(ref OptAddr r)
     {
+        if (!r.Two && IsRam(r.A1)) return U32(r.A1);
         if (_ioMem && InIoMem(r.A1)) return _bus.MemRead32(r.A1);
         if (r.A1 >= MemSize) return 0;
         if (!r.Two) return P32(r.A1);
@@ -383,24 +414,39 @@ public sealed partial class I386
         }
     }
 
-    private void Store8(ref OptAddr r, uint v)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void Store8(ref OptAddr r, uint v) { if (IsRam(r.A1)) US8(r.A1, v); else Store8Slow(ref r, v); }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void Store8Slow(ref OptAddr r, uint v)
     {
         uint a = r.A1;
+        if (IsRam(a)) { US8(a, v); return; }
         if (_ioMem && InIoMem(a)) { _bus.MemWrite8(a, (byte)v); return; }
         if (a >= MemSize) return;
         PS8(a, v);
     }
 
-    private void Store16(ref OptAddr r, uint v)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void Store16(ref OptAddr r, uint v) { if (!r.Two && IsRam(r.A1)) US16(r.A1, v); else Store16Slow(ref r, v); }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void Store16Slow(ref OptAddr r, uint v)
     {
+        if (!r.Two && IsRam(r.A1)) { US16(r.A1, v); return; }
         if (_ioMem && InIoMem(r.A1)) { _bus.MemWrite16(r.A1, (ushort)v); return; }
         if (r.A1 >= MemSize) return;
         if (!r.Two) PS16(r.A1, v);
         else { PS8(r.A1, v); PS8(r.A2, v >> 8); }
     }
 
-    private void Store32(ref OptAddr r, uint v)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void Store32(ref OptAddr r, uint v) { if (!r.Two && IsRam(r.A1)) US32(r.A1, v); else Store32Slow(ref r, v); }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void Store32Slow(ref OptAddr r, uint v)
     {
+        if (!r.Two && IsRam(r.A1)) { US32(r.A1, v); return; }
         if (_ioMem && InIoMem(r.A1)) { _bus.MemWrite32(r.A1, v); return; }
         if (r.A1 >= MemSize) return;
         if (!r.Two) { PS32(r.A1, v); return; }
@@ -412,7 +458,9 @@ public sealed partial class I386
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private uint Load(int bits, ref OptAddr r) => bits == 8 ? Load8(ref r) : bits == 16 ? Load16(ref r) : Load32(ref r);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Store(int bits, ref OptAddr r, uint v) { if (bits == 8) Store8(ref r, v); else if (bits == 16) Store16(ref r, v); else Store32(ref r, v); }
 
     // public linear-segment accessors (tiny386 cpu_load8/cpu_store8...): for the BIOS and the tests
@@ -434,7 +482,7 @@ public sealed partial class I386
     private bool Peek8(out uint val)
     {
         uint laddr = SegBase[SEG_CS] + NextIp;
-        if (((ulong)laddr ^ _ifLaddr) < 4096) { val = P8(_ifXaddr ^ laddr); return true; }
+        if (((ulong)laddr ^ _ifLaddr) < 4096) { val = U8(_ifXaddr ^ laddr); return true; }
         val = 0;
         var res = new OptAddr();
         if (!Translate8r(ref res, SEG_CS, NextIp)) return false;
@@ -450,9 +498,16 @@ public sealed partial class I386
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool Fetch8(out uint val)
     {
-        if (_ifPaddr != 0) { val = P8(_ifPaddr); _ifPaddr++; NextIp++; return true; }
+        if (_ifPaddr != 0) { val = U8(_ifPaddr); _ifPaddr++; NextIp++; return true; }
+        return Fetch8Slow(out val);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool Fetch8Slow(out uint val)
+    {
         if (!Peek8(out val)) return false;
         NextIp++;
         return true;
@@ -464,7 +519,7 @@ public sealed partial class I386
         if (((ulong)laddr ^ _ifLaddr) < 4096 - 16)
         {
             uint paddr = _ifXaddr ^ laddr;
-            val = P8(paddr);
+            val = U8(paddr);
             _ifPaddr = paddr + 1;
             NextIp++;
             return true;
@@ -475,11 +530,18 @@ public sealed partial class I386
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool Fetch16(out uint val)
     {
-        if (_ifPaddr != 0) { val = P16(_ifPaddr); _ifPaddr += 2; NextIp += 2; return true; }
+        if (_ifPaddr != 0) { val = U16(_ifPaddr); _ifPaddr += 2; NextIp += 2; return true; }
+        return Fetch16Slow(out val);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool Fetch16Slow(out uint val)
+    {
         uint laddr = SegBase[SEG_CS] + NextIp;
-        if (((ulong)laddr ^ _ifLaddr) < 4095) val = P16(_ifXaddr ^ laddr);
+        if (((ulong)laddr ^ _ifLaddr) < 4095) val = U16(_ifXaddr ^ laddr);
         else
         {
             var res = new OptAddr(); val = 0;
@@ -490,11 +552,18 @@ public sealed partial class I386
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool Fetch32(out uint val)
     {
-        if (_ifPaddr != 0) { val = P32(_ifPaddr); _ifPaddr += 4; NextIp += 4; return true; }
+        if (_ifPaddr != 0) { val = U32(_ifPaddr); _ifPaddr += 4; NextIp += 4; return true; }
+        return Fetch32Slow(out val);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool Fetch32Slow(out uint val)
+    {
         uint laddr = SegBase[SEG_CS] + NextIp;
-        if (((ulong)laddr ^ _ifLaddr) < 4093) val = P32(_ifXaddr ^ laddr);
+        if (((ulong)laddr ^ _ifLaddr) < 4093) val = U32(_ifXaddr ^ laddr);
         else
         {
             var res = new OptAddr(); val = 0;
@@ -505,6 +574,7 @@ public sealed partial class I386
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool Fetch(int bits, out uint val) => bits == 8 ? Fetch8(out val) : bits == 16 ? Fetch16(out val) : Fetch32(out val);
 
     // ================= ModR/M =================

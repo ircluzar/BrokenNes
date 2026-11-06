@@ -2,6 +2,7 @@
 // i386ins.def, commit 2c1205c, BSD-3-Clause, Copyright (c) 2024-2025, Chunhui He. See x86/THIRD_PARTY_NOTICES.md.
 
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace NesEmulator.X86;
 
@@ -16,9 +17,18 @@ public sealed partial class I386
     private OptAddr _meml;
 
     private const int FAIL = 0, OK = 1, END = 2;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int K(bool ok) => ok ? OK : FAIL;
     private int V => _opsz16 ? 16 : 32;
     private int A => _adsz16 ? 16 : 32;
+
+    private static readonly bool[] IsPrefix = BuildPrefixTable();
+    private static bool[] BuildPrefixTable()
+    {
+        var t = new bool[256];
+        foreach (int b in new[] { 0x26, 0x2e, 0x36, 0x3e, 0x64, 0x65, 0x66, 0x67, 0xf0, 0xf2, 0xf3 }) t[b] = true;
+        return t;
+    }
 
     private bool Exec1(int stepcount)
     {
@@ -31,7 +41,7 @@ public sealed partial class I386
             if (!Fetch8pf(out uint b1)) return false;
             Cycle++;
             _opsz16 = _c16; _adsz16 = _c16; _rep = 0; _curSeg = -1;
-            for (; ; )
+            while (IsPrefix[b1])   // a table test, not a switch: an indirect jump on every opcode costs as much as the dispatch itself
             {
                 switch (b1)
                 {
@@ -45,17 +55,159 @@ public sealed partial class I386
                     case 0x67: _adsz16 = !_c16; break;
                     case 0xf3: _rep = 1; break;
                     case 0xf2: _rep = 2; break;
-                    case 0xf0: break;
-                    default: goto decoded;
+                    default: break;   // 0xf0 LOCK
                 }
                 if (!Fetch8(out b1)) return false;
             }
-        decoded:
-            int r = ExecOne((int)b1);
+            // the everyday opcodes are dispatched here, to small handlers: going through ExecOne's big switch costs about as much as
+            // the instruction itself (measured with Workshop --x86bench); everything else still goes to ExecOne
+            int r;
+            switch (b1)
+            {
+                    case 0x00: r = K(AluEG8(0)); break;
+                    case 0x01: r = K(_opsz16 ? AluEG16(0) : AluEG32(0)); break;
+                    case 0x02: r = K(AluGE8(0)); break;
+                    case 0x03: r = K(_opsz16 ? AluGE16(0) : AluGE32(0)); break;
+                    case 0x04: r = K(AluAI8(0)); break;
+                    case 0x05: r = K(_opsz16 ? AluAI16(0) : AluAI32(0)); break;
+                    case 0x08: r = K(AluEG8(1)); break;
+                    case 0x09: r = K(_opsz16 ? AluEG16(1) : AluEG32(1)); break;
+                    case 0x0a: r = K(AluGE8(1)); break;
+                    case 0x0b: r = K(_opsz16 ? AluGE16(1) : AluGE32(1)); break;
+                    case 0x0c: r = K(AluAI8(1)); break;
+                    case 0x0d: r = K(_opsz16 ? AluAI16(1) : AluAI32(1)); break;
+                    case 0x10: r = K(AluEG8(2)); break;
+                    case 0x11: r = K(_opsz16 ? AluEG16(2) : AluEG32(2)); break;
+                    case 0x12: r = K(AluGE8(2)); break;
+                    case 0x13: r = K(_opsz16 ? AluGE16(2) : AluGE32(2)); break;
+                    case 0x14: r = K(AluAI8(2)); break;
+                    case 0x15: r = K(_opsz16 ? AluAI16(2) : AluAI32(2)); break;
+                    case 0x18: r = K(AluEG8(3)); break;
+                    case 0x19: r = K(_opsz16 ? AluEG16(3) : AluEG32(3)); break;
+                    case 0x1a: r = K(AluGE8(3)); break;
+                    case 0x1b: r = K(_opsz16 ? AluGE16(3) : AluGE32(3)); break;
+                    case 0x1c: r = K(AluAI8(3)); break;
+                    case 0x1d: r = K(_opsz16 ? AluAI16(3) : AluAI32(3)); break;
+                    case 0x20: r = K(AluEG8(4)); break;
+                    case 0x21: r = K(_opsz16 ? AluEG16(4) : AluEG32(4)); break;
+                    case 0x22: r = K(AluGE8(4)); break;
+                    case 0x23: r = K(_opsz16 ? AluGE16(4) : AluGE32(4)); break;
+                    case 0x24: r = K(AluAI8(4)); break;
+                    case 0x25: r = K(_opsz16 ? AluAI16(4) : AluAI32(4)); break;
+                    case 0x28: r = K(AluEG8(5)); break;
+                    case 0x29: r = K(_opsz16 ? AluEG16(5) : AluEG32(5)); break;
+                    case 0x2a: r = K(AluGE8(5)); break;
+                    case 0x2b: r = K(_opsz16 ? AluGE16(5) : AluGE32(5)); break;
+                    case 0x2c: r = K(AluAI8(5)); break;
+                    case 0x2d: r = K(_opsz16 ? AluAI16(5) : AluAI32(5)); break;
+                    case 0x30: r = K(AluEG8(6)); break;
+                    case 0x31: r = K(_opsz16 ? AluEG16(6) : AluEG32(6)); break;
+                    case 0x32: r = K(AluGE8(6)); break;
+                    case 0x33: r = K(_opsz16 ? AluGE16(6) : AluGE32(6)); break;
+                    case 0x34: r = K(AluAI8(6)); break;
+                    case 0x35: r = K(_opsz16 ? AluAI16(6) : AluAI32(6)); break;
+                    case 0x38: r = K(AluEG8(7)); break;
+                    case 0x39: r = K(_opsz16 ? AluEG16(7) : AluEG32(7)); break;
+                    case 0x3a: r = K(AluGE8(7)); break;
+                    case 0x3b: r = K(_opsz16 ? AluGE16(7) : AluGE32(7)); break;
+                    case 0x3c: r = K(AluAI8(7)); break;
+                    case 0x3d: r = K(_opsz16 ? AluAI16(7) : AluAI32(7)); break;
+                    case 0x40: r = OpIncReg(0); break;
+                    case 0x41: r = OpIncReg(1); break;
+                    case 0x42: r = OpIncReg(2); break;
+                    case 0x43: r = OpIncReg(3); break;
+                    case 0x44: r = OpIncReg(4); break;
+                    case 0x45: r = OpIncReg(5); break;
+                    case 0x46: r = OpIncReg(6); break;
+                    case 0x47: r = OpIncReg(7); break;
+                    case 0x48: r = OpDecReg(0); break;
+                    case 0x49: r = OpDecReg(1); break;
+                    case 0x4a: r = OpDecReg(2); break;
+                    case 0x4b: r = OpDecReg(3); break;
+                    case 0x4c: r = OpDecReg(4); break;
+                    case 0x4d: r = OpDecReg(5); break;
+                    case 0x4e: r = OpDecReg(6); break;
+                    case 0x4f: r = OpDecReg(7); break;
+                    case 0x50: r = OpPushReg(0); break;
+                    case 0x51: r = OpPushReg(1); break;
+                    case 0x52: r = OpPushReg(2); break;
+                    case 0x53: r = OpPushReg(3); break;
+                    case 0x54: r = OpPushReg(4); break;
+                    case 0x55: r = OpPushReg(5); break;
+                    case 0x56: r = OpPushReg(6); break;
+                    case 0x57: r = OpPushReg(7); break;
+                    case 0x58: r = OpPopReg(0); break;
+                    case 0x59: r = OpPopReg(1); break;
+                    case 0x5a: r = OpPopReg(2); break;
+                    case 0x5b: r = OpPopReg(3); break;
+                    case 0x5c: r = OpPopReg(4); break;
+                    case 0x5d: r = OpPopReg(5); break;
+                    case 0x5e: r = OpPopReg(6); break;
+                    case 0x5f: r = OpPopReg(7); break;
+                    case 0x70: r = OpJcc8(112); break;
+                    case 0x71: r = OpJcc8(113); break;
+                    case 0x72: r = OpJcc8(114); break;
+                    case 0x73: r = OpJcc8(115); break;
+                    case 0x74: r = OpJcc8(116); break;
+                    case 0x75: r = OpJcc8(117); break;
+                    case 0x76: r = OpJcc8(118); break;
+                    case 0x77: r = OpJcc8(119); break;
+                    case 0x78: r = OpJcc8(120); break;
+                    case 0x79: r = OpJcc8(121); break;
+                    case 0x7a: r = OpJcc8(122); break;
+                    case 0x7b: r = OpJcc8(123); break;
+                    case 0x7c: r = OpJcc8(124); break;
+                    case 0x7d: r = OpJcc8(125); break;
+                    case 0x7e: r = OpJcc8(126); break;
+                    case 0x7f: r = OpJcc8(127); break;
+                    case 0x80: case 0x82: r = K(Grp1_8()); break;
+                    case 0x81: r = K(_opsz16 ? Grp1_16() : Grp1_32()); break;
+                    case 0x83: r = K(_opsz16 ? Grp1_16_8() : Grp1_32_8()); break;
+                    case 0x88: r = K(MovEG8()); break;
+                    case 0x89: r = K(_opsz16 ? MovEG16() : MovEG32()); break;
+                    case 0x8a: r = K(MovGE8()); break;
+                    case 0x8b: r = K(_opsz16 ? MovGE16() : MovGE32()); break;
+                    case 0xc1: r = K(_opsz16 ? Grp2Op16(0) : Grp2Op32(0)); break;
+                    case 0xd3: r = K(_opsz16 ? Grp2Op16(2) : Grp2Op32(2)); break;
+                    case 0xe9: r = OpJmpRel(); break;
+                    case 0xeb: r = OpJmp8(); break;
+                    case 0xf6: r = K(Grp38()); break;
+                    case 0xf7: r = K(_opsz16 ? Grp316() : Grp332()); break;
+                    default: r = ExecOne((int)b1); break;
+                }
             if (r == FAIL) return false;
             if (r == END) return true;
         }
         return true;
+    }
+
+    // ================= hot-opcode handlers (Exec1's own dispatch) =================
+
+    [MethodImpl(MethodImplOptions.NoInlining)] private int OpIncReg(int reg) { IncDecReg(_opsz16 ? 16 : 32, reg, false); return OK; }
+    [MethodImpl(MethodImplOptions.NoInlining)] private int OpDecReg(int reg) { IncDecReg(_opsz16 ? 16 : 32, reg, true); return OK; }
+    [MethodImpl(MethodImplOptions.NoInlining)] private int OpPushReg(int reg) => _opsz16 ? K(Push(16, R[reg] & 0xffff)) : K(Push(32, R[reg]));
+    [MethodImpl(MethodImplOptions.NoInlining)] private int OpPopReg(int reg) => K(PopReg(_opsz16 ? 16 : 32, reg));
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int OpJcc8(int b1)
+    {
+        if (!Fetch8(out uint imm)) return FAIL;
+        if (Cond((uint)b1)) JumpRel(Sext8(imm));
+        return OK;
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int OpJmp8()
+    {
+        if (!Fetch8(out uint imm)) return FAIL;
+        JumpRel(Sext8(imm));
+        return OK;
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int OpJmpRel()
+    {
+        int bits = _opsz16 ? 16 : 32;
+        if (!Fetch(bits, out uint imm)) return FAIL;
+        JumpRel(Sext(bits, imm));
+        return OK;
     }
 
     // ================= operand helpers =================
@@ -68,9 +220,13 @@ public sealed partial class I386
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool TranslateE(int bits, int rwm) => _mod == 3 || Translate(ref _meml, rwm, _curSeg, _addr, bits / 8);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private uint ReadE(int bits) => _mod == 3 ? LReg(bits, _rm) : Load(bits, ref _meml);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WriteE(int bits, uint v) { if (_mod == 3) SReg(bits, _rm, v); else Store(bits, ref _meml, v); }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool DecodeE(int bits, int rwm) => DecodeModrm() && TranslateE(bits, rwm);
 
     private bool Cond(uint c) => (c & 0xf) switch
@@ -99,7 +255,30 @@ public sealed partial class I386
 
     private const uint ALL = CF | PF | AF | ZF | SF | OF, LOGIC = CF | PF | ZF | SF | OF;
 
+    // MOV E,G / G,E (88-8B), one copy per operand size so the size is a constant in each
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool MovEG8() => MovEGCore(8);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool MovEG16() => MovEGCore(16);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool MovEG32() => MovEGCore(32);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool MovGE8() => MovGECore(8);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool MovGE16() => MovGECore(16);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool MovGE32() => MovGECore(32);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool MovEGCore(int bits)
+    {
+        if (!DecodeE(bits, 2)) return false;
+        WriteE(bits, LReg(bits, _reg));
+        return true;
+    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool MovGECore(int bits)
+    {
+        if (!DecodeE(bits, 1)) return false;
+        SReg(bits, _reg, ReadE(bits));
+        return true;
+    }
+
     /// <summary>Group-1 ALU op (0 ADD 1 OR 2 ADC 3 SBB 4 AND 5 SUB 6 XOR 7 CMP); returns the (sign-extended) result.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private uint Alu(int op, int bits, uint a, uint b)
     {
         int cf;
@@ -124,17 +303,24 @@ public sealed partial class I386
 
     private void SetSub(int bits, uint a, uint b) { _ccSrc1 = Sext(bits, a); _ccSrc2 = Sext(bits, b); _ccDst = Sext(bits, _ccSrc1 - _ccSrc2); _ccOp = (int)Cc.SUB; _ccMask = ALL; }
 
-    private bool AluEG(int op, int bits)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool AluEG(int op, int bits) => bits == 8 ? AluEG8(op) : bits == 16 ? AluEG16(op) : AluEG32(op);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool AluEG8(int op) => AluEGCore(op, 8);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool AluEG16(int op) => AluEGCore(op, 16);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool AluEG32(int op) => AluEGCore(op, 32);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool AluEGCore(int op, int bits)
     {
         if (!DecodeE(bits, op == 7 ? 1 : 3)) return false;
         uint r = Alu(op, bits, ReadE(bits), LReg(bits, _reg));
-        if (op != 7) WriteE(bits, r); else TryJcc8();
+        if (op != 7) WriteE(bits, r); else TryJcc8E();
         return true;
     }
 
     /// <summary>tiny386 try_jcc8: right after CMP / TEST, a following short JZ / JNZ that is taken is folded into this instruction
     /// (kept so the instruction stream steps exactly like the original's).</summary>
-    private void TryJcc8()
+    private void TryJcc8(bool pure = true)
     {
         if (_ifPaddr == 0) return;
         uint op = P8(_ifPaddr);
@@ -143,18 +329,39 @@ public sealed partial class I386
         {
             NextIp += Sext8(P8(_ifPaddr + 1)) + 2;
             if (Code16) NextIp &= 0xffff;
+            // A spin: CMP / TEST + JZ / JNZ back to itself, reading only registers or plain RAM. Nothing but an interrupt can change what
+            // it reads, and interrupts and the devices only run between batches, so the rest of this batch would repeat this very step:
+            // count those steps at once (the same instruction clock, the same state, step for step).
+            if (NextIp == Ip && pure && _steps > 1) { Cycle += _steps - 1; _steps = 1; }
         }
     }
 
-    private bool AluGE(int op, int bits)
+    /// <summary>TryJcc8 after a CMP / TEST with an r/m operand: a spin may be skipped only if that operand is a register or plain RAM.</summary>
+    private void TryJcc8E() => TryJcc8(_mod == 3 || (IsRam(_meml.A1) && (!_meml.Two || IsRam(_meml.A2))));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool AluGE(int op, int bits) => bits == 8 ? AluGE8(op) : bits == 16 ? AluGE16(op) : AluGE32(op);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool AluGE8(int op) => AluGECore(op, 8);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool AluGE16(int op) => AluGECore(op, 16);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool AluGE32(int op) => AluGECore(op, 32);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool AluGECore(int op, int bits)
     {
         if (!DecodeE(bits, 1)) return false;
         uint r = Alu(op, bits, LReg(bits, _reg), ReadE(bits));
-        if (op != 7) SReg(bits, _reg, r); else TryJcc8();
+        if (op != 7) SReg(bits, _reg, r); else TryJcc8E();
         return true;
     }
 
-    private bool AluAI(int op, int bits)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool AluAI(int op, int bits) => bits == 8 ? AluAI8(op) : bits == 16 ? AluAI16(op) : AluAI32(op);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool AluAI8(int op) => AluAICore(op, 8);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool AluAI16(int op) => AluAICore(op, 16);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool AluAI32(int op) => AluAICore(op, 32);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool AluAICore(int op, int bits)
     {
         if (!Fetch(bits, out uint imm)) return false;
         uint r = Alu(op, bits, LReg(bits, 0), imm);
@@ -163,7 +370,16 @@ public sealed partial class I386
     }
 
     /// <summary>Group 1 with an immediate: imm8 (sign-extended when <paramref name="immBits"/> is 8 and bits > 8) or a full immediate.</summary>
-    private bool Grp1(int bits, int immBits)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool Grp1(int bits, int immBits) => bits == 8 ? Grp1_8() : immBits == 8 ? (bits == 16 ? Grp1_16_8() : Grp1_32_8()) : bits == 16 ? Grp1_16() : Grp1_32();
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool Grp1_8() => Grp1Core(8, 8);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool Grp1_16_8() => Grp1Core(16, 8);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool Grp1_32_8() => Grp1Core(32, 8);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool Grp1_16() => Grp1Core(16, 16);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool Grp1_32() => Grp1Core(32, 32);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool Grp1Core(int bits, int immBits)
     {
         if (!DecodeModrm()) return false;
         if (!Fetch(immBits, out uint imm)) return false;
@@ -171,7 +387,7 @@ public sealed partial class I386
         int op = _reg;
         if (!TranslateE(bits, op == 7 ? 1 : 3)) return false;
         uint r = Alu(op, bits, ReadE(bits), imm);
-        if (op != 7) WriteE(bits, r); else TryJcc8();
+        if (op != 7) WriteE(bits, r); else TryJcc8E();
         return true;
     }
 
@@ -198,6 +414,7 @@ public sealed partial class I386
     }
 
     /// <summary>Group 2 shifts and rotates on E (0 ROL 1 ROR 2 RCL 3 RCR 4/6 SHL 5 SHR 7 SAR) by count <paramref name="b"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Grp2(int op, int bits, uint b)
     {
         uint x = ReadE(bits);
@@ -299,7 +516,14 @@ public sealed partial class I386
         }
     }
 
-    private bool Grp2Op(int bits, int countKind)   // countKind: 0 = imm8, 1 = one, 2 = CL
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool Grp2Op(int bits, int countKind) => bits == 8 ? Grp2Op8(countKind) : bits == 16 ? Grp2Op16(countKind) : Grp2Op32(countKind);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool Grp2Op8(int countKind) => Grp2OpCore(8, countKind);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool Grp2Op16(int countKind) => Grp2OpCore(16, countKind);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool Grp2Op32(int countKind) => Grp2OpCore(32, countKind);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool Grp2OpCore(int bits, int countKind)   // countKind: 0 = imm8, 1 = one, 2 = CL
     {
         if (!DecodeModrm()) return false;
         uint count = 1;
@@ -335,7 +559,14 @@ public sealed partial class I386
         WriteE(bits, _ccDst);
     }
 
-    private bool Grp3(int bits)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool Grp3(int bits) => bits == 8 ? Grp38() : bits == 16 ? Grp316() : Grp332();
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool Grp38() => Grp3Core(8);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool Grp316() => Grp3Core(16);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool Grp332() => Grp3Core(32);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool Grp3Core(int bits)
     {
         if (!DecodeModrm()) return false;
         switch (_reg)
@@ -346,7 +577,7 @@ public sealed partial class I386
                 if (!Fetch(bits, out uint imm)) return false;
                 if (!TranslateE(bits, 1)) return false;
                 Alu(4, bits, ReadE(bits), imm);
-                TryJcc8();
+                TryJcc8E();
                 return true;
             }
             case 2:
@@ -1037,10 +1268,10 @@ public sealed partial class I386
             case 0x37: Aaa(); return OK;
             case 0x3f: Aas(); return OK;
 
-            case >= 0x40 and <= 0x47: IncDecReg(V, b1 & 7, false); return OK;
-            case >= 0x48 and <= 0x4f: IncDecReg(V, b1 & 7, true); return OK;
-            case >= 0x50 and <= 0x57: return K(Push(V, LReg(V, b1 & 7)));
-            case >= 0x58 and <= 0x5f: return K(PopReg(V, b1 & 7));
+            case 0x40: case 0x41: case 0x42: case 0x43: case 0x44: case 0x45: case 0x46: case 0x47: IncDecReg(V, b1 & 7, false); return OK;
+            case 0x48: case 0x49: case 0x4a: case 0x4b: case 0x4c: case 0x4d: case 0x4e: case 0x4f: IncDecReg(V, b1 & 7, true); return OK;
+            case 0x50: case 0x51: case 0x52: case 0x53: case 0x54: case 0x55: case 0x56: case 0x57: return K(Push(V, LReg(V, b1 & 7)));
+            case 0x58: case 0x59: case 0x5a: case 0x5b: case 0x5c: case 0x5d: case 0x5e: case 0x5f: return K(PopReg(V, b1 & 7));
 
             case 0x60: return K(Pusha());
             case 0x61: return K(Popa());
@@ -1084,7 +1315,7 @@ public sealed partial class I386
             case 0x6d: return K(Ins(V));
             case 0x6e: return K(Outs(8));
             case 0x6f: return K(Outs(V));
-            case >= 0x70 and <= 0x7f:
+            case 0x70: case 0x71: case 0x72: case 0x73: case 0x74: case 0x75: case 0x76: case 0x77: case 0x78: case 0x79: case 0x7a: case 0x7b: case 0x7c: case 0x7d: case 0x7e: case 0x7f:
                 if (!Fetch8(out imm)) return FAIL;
                 if (Cond((uint)b1)) JumpRel(Sext8(imm));
                 return OK;
@@ -1097,7 +1328,7 @@ public sealed partial class I386
                 int bits = b1 == 0x84 ? 8 : V;
                 if (!DecodeE(bits, 1)) return FAIL;
                 Alu(4, bits, ReadE(bits), LReg(bits, _reg));
-                TryJcc8();
+                TryJcc8E();
                 return OK;
             }
             case 0x86: case 0x87:
@@ -1109,20 +1340,10 @@ public sealed partial class I386
                 WriteE(bits, tmp);
                 return OK;
             }
-            case 0x88: case 0x89:
-            {
-                int bits = b1 == 0x88 ? 8 : V;
-                if (!DecodeE(bits, 2)) return FAIL;
-                WriteE(bits, LReg(bits, _reg));
-                return OK;
-            }
-            case 0x8a: case 0x8b:
-            {
-                int bits = b1 == 0x8a ? 8 : V;
-                if (!DecodeE(bits, 1)) return FAIL;
-                SReg(bits, _reg, ReadE(bits));
-                return OK;
-            }
+            case 0x88: return K(MovEG8());
+            case 0x89: return K(_opsz16 ? MovEG16() : MovEG32());
+            case 0x8a: return K(MovGE8());
+            case 0x8b: return K(_opsz16 ? MovGE16() : MovGE32());
             case 0x8c: // MOV Ew, Sw
             {
                 if (!DecodeModrm()) return FAIL;
@@ -1146,7 +1367,7 @@ public sealed partial class I386
             }
             case 0x8f: return K(PopE());
             case 0x90: return OK;
-            case >= 0x91 and <= 0x97:
+            case 0x91: case 0x92: case 0x93: case 0x94: case 0x95: case 0x96: case 0x97:
             {
                 int bits = V, reg = b1 & 7;
                 uint tmp = LReg(bits, reg); SReg(bits, reg, LReg(bits, 0)); SReg(bits, 0, tmp);
@@ -1194,8 +1415,8 @@ public sealed partial class I386
             case 0xad: return K(Lods(V));
             case 0xae: return K(Scas(8));
             case 0xaf: return K(Scas(V));
-            case >= 0xb0 and <= 0xb7: if (!Fetch8(out imm)) return FAIL; S8(b1 & 7, imm); return OK;
-            case >= 0xb8 and <= 0xbf: if (!Fetch(V, out imm)) return FAIL; SReg(V, b1 & 7, imm); return OK;
+            case 0xb0: case 0xb1: case 0xb2: case 0xb3: case 0xb4: case 0xb5: case 0xb6: case 0xb7: if (!Fetch8(out imm)) return FAIL; S8(b1 & 7, imm); return OK;
+            case 0xb8: case 0xb9: case 0xba: case 0xbb: case 0xbc: case 0xbd: case 0xbe: case 0xbf: if (!Fetch(V, out imm)) return FAIL; SReg(V, b1 & 7, imm); return OK;
 
             case 0xc0: return K(Grp2Op(8, 0));
             case 0xc1: return K(Grp2Op(V, 0));
@@ -1257,7 +1478,7 @@ public sealed partial class I386
                 S8(0, Load8(ref _meml));
                 return OK;
             }
-            case >= 0xd8 and <= 0xdf: // ESC: no FPU
+            case 0xd8: case 0xd9: case 0xda: case 0xdb: case 0xdc: case 0xdd: case 0xde: case 0xdf: // ESC: no FPU
                 if ((Cr0 & 0xc) != 0) return K(Throw0(EX_NM));
                 return K(DecodeModrm());
 
@@ -1398,7 +1619,7 @@ public sealed partial class I386
             case 0x23: { if (!Fetch8(out uint modrm)) return FAIL; Dr[(modrm >> 3) & 7] = R[modrm & 7]; return OK; }
             case 0x24: case 0x26: return K(Fetch8(out _));
             case 0x31: R[0] = (uint)Cycle; R[2] = (uint)((ulong)Cycle >> 32); return OK; // RDTSC: the instruction count (deterministic; tiny386 reads the host clock)
-            case >= 0x40 and <= 0x4f: // CMOVcc (P6)
+            case 0x40: case 0x41: case 0x42: case 0x43: case 0x44: case 0x45: case 0x46: case 0x47: case 0x48: case 0x49: case 0x4a: case 0x4b: case 0x4c: case 0x4d: case 0x4e: case 0x4f: // CMOVcc (P6)
             {
                 if (Gen <= 5) return K(Throw0(EX_UD));
                 if (!DecodeE(V, 1)) return FAIL;
@@ -1406,11 +1627,11 @@ public sealed partial class I386
                 if (Cond(b1)) SReg(V, _reg, v);
                 return OK;
             }
-            case >= 0x80 and <= 0x8f:
+            case 0x80: case 0x81: case 0x82: case 0x83: case 0x84: case 0x85: case 0x86: case 0x87: case 0x88: case 0x89: case 0x8a: case 0x8b: case 0x8c: case 0x8d: case 0x8e: case 0x8f:
                 if (!Fetch(V, out imm)) return FAIL;
                 if (Cond(b1)) JumpRel(Sext(V, imm));
                 return OK;
-            case >= 0x90 and <= 0x9f:
+            case 0x90: case 0x91: case 0x92: case 0x93: case 0x94: case 0x95: case 0x96: case 0x97: case 0x98: case 0x99: case 0x9a: case 0x9b: case 0x9c: case 0x9d: case 0x9e: case 0x9f:
                 if (!DecodeE(8, 2)) return FAIL;
                 WriteE(8, Cond(b1) ? 1u : 0u);
                 return OK;
@@ -1508,7 +1729,7 @@ public sealed partial class I386
                 _ccMask &= ~ZF;
                 return OK;
             }
-            case >= 0xc8 and <= 0xcf: // BSWAP
+            case 0xc8: case 0xc9: case 0xca: case 0xcb: case 0xcc: case 0xcd: case 0xce: case 0xcf: // BSWAP
             {
                 if (_opsz16) return K(Throw0(EX_UD));
                 R[b1 & 7] = BinaryPrimitivesReverse(R[b1 & 7]);
