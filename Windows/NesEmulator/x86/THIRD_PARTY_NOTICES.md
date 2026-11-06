@@ -9,6 +9,19 @@ The policy and the root list are in `/THIRD_PARTY_NOTICES.md`. **Update this fil
 | What | Where | Source | License |
 | --- | --- | --- | --- |
 | Intel 80386 / 80486 CPU core | `I386.cs`, `I386.Exec.cs`, `I386.System.cs` | tiny386 (github.com/hchunhui/tiny386) `i386.c`, `i386ins.def`, `i386.h`, commit 2c1205c (local pinned copy, read only), Copyright (c) 2024-2025 Chunhui He | BSD-3-Clause (text in the root ledger, section 6). Permissive: no exception to the policy needed. |
+| 8259A interrupt controllers (master + slave) | `Pic8259.cs` | tiny386 `i8259.c` @2c1205c, from QEMU, Copyright (c) 2003-2004 Fabrice Bellard | MIT (text in the root ledger, section 6) |
+| 8254 interval timer | `Pit8254.cs` | tiny386 `i8254.c` @2c1205c, from QEMU, Copyright (c) 2003-2004 Fabrice Bellard | MIT. Changed: time is the machine's deterministic clock in PIT ticks (instruction count), not host microseconds; the IRQ check compares 64-bit times; `NextIrq0` added (a halted CPU sleeps to it). |
+| VGA registers and CPU memory access (chain 4, odd/even, latched write modes 0-3, read modes 0-1), the graphics picture (line offset, double scan, split screen, panning, 16 / 4 / 256 colour shifts) | `Vga.cs` | tiny386 `vga.c` @2c1205c, from QEMU, Copyright (c) 2003-2017 Fabrice Bellard | MIT. Left out: VBE / Bochs DISPI, PCI, the terminal mirror, the scalers, CGA composite. The text picture, the retrace timing (449 lines at 70 Hz on the machine clock), the mode tables (standard IBM VGA register values) and the default 256-colour DAC are written for this project. |
+| The 8x16 code page 437 font | `VgaFont.cs` | tiny386 `vgafont.c` @2c1205c (the font QEMU ships), under tiny386's licence | BSD-3-Clause |
+
+Written for this project (no source copied): the board `PcMachine.cs`, the **C# BIOS** `PcMachine.Bios.cs` / `PcMachine.Video.cs` (no BIOS
+ROM file, no SeaBIOS / VGABIOS code: POST, vectors, BIOS data area, INT 10h / 11h / 12h / 13h / 15h / 16h / 1Ah / 19h, built from the
+public PC/AT BIOS interface documentation, the way DOSBox answers BIOS calls in its own code), the keyboard controller `Kbc8042.cs`
+(tiny386 `i8042.c` was read only for which commands DOS software sends), the CMOS clock `Cmos.cs`, `DiskImage.cs`, `FatImage.cs`,
+`I386.State.cs` (save states).
+
+**Not in the repository: FreeDOS.** The boot disk used by the tests is built at test time from the FreeDOS 1.4 LiteUSB image in the
+developer's toolkit (`C:\BrokenNes-tools\dosreedos`, GPL-2.0 and others); nothing of FreeDOS is committed or shipped.
 
 **What was kept.** The core's design and behaviour, function by function: the lazy flags (`cc` op / dst / src / mask), the TLB and
 page walk (accessed and dirty bits, the `pte_lookup` permission table), the instruction-fetch cache, ModR/M + SIB decoding, segment
@@ -45,3 +58,11 @@ Workshop `--x86test` (see `Workshop/X86/`):
   unsigned). The programs plus seeded random real-mode instruction streams (16- and 32-bit operand / address sizes, prefixes) run on both,
   and the state after every instruction step plus a hash of the 4 MB of memory must match line for line. 2026-11-05: 4 seeds x 5013 cases,
   all identical.
+
+Workshop `--x86dev` (the board, 2026-11-06): 11 boot-sector programs (NASM, assembled at test time with the toolkit's pinned NASM) on a fresh
+machine: PIT + PIC (count read-back, status, 1 kHz rate on the machine clock), the BIOS keyboard (INT 16h waiting in HLT, shift, E0 keys)
+and the 8042 directly (own INT 9, self test, identify), CMOS / INT 1Ah, text mode through INT 10h (cells, attributes, cursor, the
+rendered glyphs), mode 13h (DAC, pixels, INT 10h 0Ch / 0Dh), Mode X (unchained planes, 320x240, page flip), 70 Hz retrace on 3DAh, INT 13h
+(geometry, CHS read / write, missing drives), save state + load into a new machine (identical run): 100/100 checks.
+Workshop `--x86disk` + `--x86boot`: FreeDOS 1.4 (kernel 2043, FreeCOM 0.86) boots from a disk built from the LiteUSB image to `C:\>` in
+2.1 s of machine time; `mem` and `dir` run.

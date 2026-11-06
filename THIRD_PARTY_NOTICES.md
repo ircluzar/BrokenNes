@@ -34,6 +34,7 @@ find a borrowed piece that is not listed, that is a bug in this file: report it.
 | Sega: Z80 core, ported (design, decode tables and program builders; also the Master System / Game Gear / Genesis sound CPU and, in `CPU_Z80`, a NES CPU) | `Windows/NesEmulator/sega/Z80/*.cs` | BizHawk `Z80A` (Alyosha and the BizHawk team), HEAD f9c0100 of the local tree, MIT, Copyright (c) BizHawk team; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` section 1a |
 | Sega: SN76489 PSG, Master System / Game Gear / Genesis mappers, VDPs, boards and the Genesis cartridge, sound unit and pads | `Windows/NesEmulator/sega/Sn76489.cs`, `sms/`, `md/` (except the 68000 and YM2612 rows above) | written for this project from public hardware documentation and black-box oracle comparisons; BizHawk's Master System memory map was read as a cross-check (MIT); no third-party source copied. Ledger sections 1c, 1d, 1f, 1h, 2a to 2d of `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` |
 | x86 console: Intel 80386 / 80486 CPU core, ported (no FPU, MMX/SSE, long mode or fast path) | `Windows/NesEmulator/x86/I386*.cs` | tiny386 `i386.c` + `i386ins.def`, commit 2c1205c, BSD-3-Clause, Copyright (c) 2024-2025 Chunhui He; details in `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md` (the BSD text is in section 6) |
+| x86 console: 8259 PIC, 8254 PIT, VGA (registers, memory access, graphics picture), ported; the 8x16 VGA font | `Windows/NesEmulator/x86/Pic8259.cs`, `Pit8254.cs`, `Vga.cs`, `VgaFont.cs` | tiny386 `i8259.c`, `i8254.c`, `vga.c` (from QEMU), commit 2c1205c, MIT, Copyright (c) 2003-2017 Fabrice Bellard; the font from tiny386 `vgafont.c` (BSD-3-Clause, as above); details in `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md`; the MIT text is in section 6 |
 | Sega bridges to and from the NES, the CPU walls, the plugin's Sega chips | `Windows/NesEmulator/mix/` (`APU_SMS`, `APU_SMSFM`, `APU_MD`, `PPU_SMS`, `PPU_MD`, `CPU_Z80`, `CPU_M68K`, `SmsFmSoundOnNes`, `MdSoundOnNes`, `HubReplayer`, ...), `Plugin/` | written for this project; no third-party source (ledger section 2c and 2d of the Sega ledger) |
 
 BizHawk's license statement (`LICENSE` in its repository) says the BizHawk team's own C# is provided under the MIT License, and that other parts of that repository
@@ -147,6 +148,14 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 The MIT License (MIT)
 
 Copyright (c) 2001-2019 Mitsutaka Okazaki
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+**MIT License, Copyright (c) 2003-2017 Fabrice Bellard** (the x86 console's PIC, PIT and VGA under `Windows/NesEmulator/x86/`, ported from tiny386, which took them from QEMU)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
