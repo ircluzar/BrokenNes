@@ -5,7 +5,7 @@ How to make a game for WideMess, BrokenNes's souped-up SNES fantasy console, wit
 
 The devkit is **PVSnesLib with WideMess extensions**, the toolchain Super VRUN already uses (816-tcc C and WLA-DX 65816), plus
 converters, a sound driver for the bigger sound chip, a project template and a sample game. It lives in `BrokenDev/widemess/`; the sample
-game is `WideMess/sample/`. PVSnesLib itself is the user's copy in the Super VRUN workspace (`SuperVRUN_dev/snes-stub/toolchain/pvsneslib`),
+game is `WideMess/sample/`. PVSnesLib itself is the user's copy in the toolchain folder (`C:\BrokenNes-tools\supervrun\snes-stub\toolchain\pvsneslib`),
 which the devkit only reads.
 
 ![Wide Blaster, the sample game](widemess-images/m5/m5-sample-boss.png)

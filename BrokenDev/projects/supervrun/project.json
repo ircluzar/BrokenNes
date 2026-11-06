@@ -16,7 +16,7 @@
     "tools": ["gitbash", "python"],
     "projects": [],
     "inputs": [],
-    "toolchain": ["PVSnesLib 4.6.0 shipped in SuperVRUN/snes-stub/toolchain/pvsneslib (816-tcc, 816-opt, wla-65816, wlalink, gfx4snes, smconv)", "Mesen 2 shipped in SuperVRUN/tools/Mesen2 (its own headless test runner; not needed by BrokenDev)"]
+    "toolchain": ["PVSnesLib 4.6.0 in C:\\BrokenNes-tools\\supervrun\\snes-stub\\toolchain\\pvsneslib (816-tcc, 816-opt, wla-65816, wlalink, gfx4snes, smconv)", "Mesen 2 shipped in SuperVRUN/tools/Mesen2 (its own headless test runner; not needed by BrokenDev)"]
   },
   "build": {
     "steps": [

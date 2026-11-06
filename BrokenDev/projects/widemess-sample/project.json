@@ -11,7 +11,7 @@
     "tools": ["python", "workshop"],
     "projects": [],
     "inputs": [],
-    "toolchain": ["PVSnesLib 4.6.0 (816-tcc, 816-opt, wla-65816, wla-spc700, wlalink, snesbrr), the copy in the Super VRUN workspace (snes-stub/toolchain/pvsneslib): read, never changed", "BrokenNes Workshop (--wms-pack)"]
+    "toolchain": ["PVSnesLib 4.6.0 (816-tcc, 816-opt, wla-65816, wla-spc700, wlalink, snesbrr), the copy in the toolchain folder ({tools}/supervrun/snes-stub/toolchain/pvsneslib): read, never changed", "BrokenNes Workshop (--wms-pack)"]
   },
   "build": {
     "steps": [
