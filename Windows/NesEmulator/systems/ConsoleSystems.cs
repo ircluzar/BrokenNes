@@ -380,7 +380,7 @@ public static class CoreCatalog
     {
         int u = id.IndexOf('_');
         if (u <= 0 || !PortedIds.Contains(id[(u + 1)..])) return null;
-        return id[..u].ToUpperInvariant() switch { "SNES" => ("SNES", id[(u + 1)..]), "DMG" => ("Game Boy", id[(u + 1)..]), "SMS" => ("Master System", id[(u + 1)..]), "MD" => ("Genesis", id[(u + 1)..]), _ => null };
+        return id[..u].ToUpperInvariant() switch { "SNES" => ("SNES", id[(u + 1)..]), "DMG" => ("Game Boy", id[(u + 1)..]), "SMS" => ("Master System", id[(u + 1)..]), "SMSFM" => ("Master System", id[(u + 1)..]), "MD" => ("Genesis", id[(u + 1)..]), _ => null };
     }
 
     /// <summary>True for a ported engine's entry, by its bare id ("ZS15", "NES:FCEU") or as a NES bridge with the engine fixed ("SNES_ZS15").</summary>
@@ -629,7 +629,7 @@ public static class CoreCatalog
                 {
                     string fam = NesFamilyOf(slot, id);
                     if (Hidden(fam)) continue;       // the WideMess's chips where the WideMess is hidden (Lite, the FL plugin)
-                    string? pl = slot == CoreSlot.Apu && PortedBridgeEngine(id) is { } pb ? $"{pb.Family switch { "SNES" => "SNES sound (S-DSP)", "Game Boy" => "Game Boy sound chip", "Master System" => "Master System PSG", _ => "Genesis sound chips" }} on the {ShortNames[pb.Engine]} engine" : null;
+                    string? pl = slot == CoreSlot.Apu && PortedBridgeEngine(id) is { } pb ? $"{pb.Family switch { "SNES" => "SNES sound (S-DSP)", "Game Boy" => "Game Boy sound chip", "Master System" => id.StartsWith("SMSFM_", StringComparison.OrdinalIgnoreCase) ? "Master System FM chip (YM2413)" : "Master System PSG", _ => "Genesis sound chips" }} on the {ShortNames[pb.Engine]} engine" : null;
                     list.Add(new CoreOption(id, pl != null ? $"{id} - {pl}" : NesBridgeLabels.TryGetValue(prefix + ":" + id, out var l) ? $"{id} - {l}" : id, fam) { Wall = slot == CoreSlot.Cpu && id.ToUpperInvariant() is "Z80" or "M68K" or "SM83" });
                 }
                 break;
@@ -966,7 +966,7 @@ public static class CoreCatalog
         "SMS" => $"SMS - through a NES onto the Master System sound chip ({carried} on the SN76489's 3 tones + noise)",
         "SMSFM" => $"SMSFM - through a NES onto the Master System FM chip ({carried} on YM2413 instruments + the PSG's noise)",
         "MD" => $"MD - through a NES onto the Genesis sound chips ({carried} on YM2612 voices + PSG)",
-        _ when PortedBridgeEngine(id) is { } pb => $"{id} - through a NES onto the {pb.Family} sound on the {ShortNames[pb.Engine]} engine ({carried})",
+        _ when PortedBridgeEngine(id) is { } pb => $"{id} - through a NES onto the {(id.StartsWith("SMSFM_", StringComparison.OrdinalIgnoreCase) ? "Master System FM" : pb.Family)} sound on the {ShortNames[pb.Engine]} engine ({carried})",
         _ => $"{id} - through a NES onto another console's sound chip",
     };
 

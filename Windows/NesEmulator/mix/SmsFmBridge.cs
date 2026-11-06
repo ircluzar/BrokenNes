@@ -21,7 +21,7 @@ namespace NesEmulator
     /// The chips run on the NES clock: the PSG and the YM2413 from exactly twice the NES CPU clock (the Z80's, 3.58 MHz), the YM2413 making one sample every 72 of those clocks, which is 36 NES cycles, so a note is the pitch the NES
     /// asks for up to the F-number's 9 bits. Its 49.7 kHz output is brought to the host rate by the converter of emu2413 (<see cref="Ym2413Resampler"/>). Discovered by CoreRegistry as APU id "SMSFM". Allocation-free while running.
     /// </summary>
-    public sealed class APU_SMSFM : IAPU, IDmcDmaSchedulable, NesEmulator.IFrontedApu
+    public class APU_SMSFM : IAPU, IDmcDmaSchedulable, NesEmulator.IFrontedApu
     {
         /// <summary>The PSG's and the YM2413's clock: exactly twice the NES CPU clock.</summary>
         public const double ClockHz = 2 * NesVoiceWriter.NesCpuHz;
@@ -44,6 +44,10 @@ namespace NesEmulator
         private readonly Sn76489 psg;
         private readonly Ym2413 fm;
         private readonly Ym2413Resampler resampler;
+        /// <summary>A ported YM2413 engine's unit (APU_SMSFM_M036FM, APU_SMSFM_E055: the all-APU matrix), null for the stock chip. When set, every chip write goes through the unit's ports (its stock YM2413 and PSG, <see cref="fm"/> and <see cref="psg"/>, mirror them, so the registers stay readable) and the unit's own output is played.</summary>
+        private readonly SmsFmSound? unit;
+        /// <summary>"SMSFM" for the stock chip, else the Master System menu's id of the ported engine.</summary>
+        public string UnitId { get; }
         private NesChannelModel model = new();
         private int channelMask = 0x1F;
         private int sinceSync;
@@ -140,7 +144,10 @@ namespace NesEmulator
             }
         }
 
-        public APU_SMSFM(Bus bus)
+        public APU_SMSFM(Bus bus) : this(bus, "SMSFM") { }
+
+        /// <summary>The bridge on a chosen Master System FM unit (<see cref="SmsSoundFactories"/> id): the menus' entries for the ported YM2413 engines (APU_SMSFM_M036FM, APU_SMSFM_E055) fix it here.</summary>
+        protected APU_SMSFM(Bus bus, string unitId)
         {
             string frontId = MixConfig.NesFrontApu;
             if (frontId.Equals("SMSFM", StringComparison.OrdinalIgnoreCase) || frontId.Equals("MD", StringComparison.OrdinalIgnoreCase) || frontId.Equals("SMS", StringComparison.OrdinalIgnoreCase))
@@ -148,22 +155,36 @@ namespace NesEmulator
             var t = CoreRegistry.ApuTypes.TryGetValue(frontId, out var ft) ? ft : throw new ArgumentException($"No NES APU '{frontId}'");
             front = CoreRegistry.CreateInstance<IAPU>(t, bus) ?? throw new InvalidOperationException("front APU");
             int rate = front.GetSampleRate();
-            psg = new Sn76489(ClockHz, rate, PsgVariant.Sega) { Gain = APU_SMS.PsgGain };
-            fm = new Ym2413(ClockHz);
+            UnitId = unitId;
+            if (unitId.Equals("SMSFM", StringComparison.OrdinalIgnoreCase))
+            {
+                psg = new Sn76489(ClockHz, rate, PsgVariant.Sega) { Gain = APU_SMS.PsgGain };
+                fm = new Ym2413(ClockHz);
+            }
+            else
+            {
+                var req = new SmsSoundRequest(new SegaMachine(SegaTimeline.MasterSystem(SegaRegion.Ntsc), GenesisModel.Model1, rate), NesEmulator.Systems.ConsoleKind.MasterSystem, PsgVariant.Sega);
+                unit = SmsSoundFactories.Create(unitId, req) as SmsFmSound ?? throw new NotSupportedException($"Master System sound unit '{unitId}' is not an FM unit");
+                // the unit mixes PSG and FM itself: the FM at the chip's scale, the PSG brought down by FmGain, so the bridge's FmGain on the mix leaves the PSG where the stock path has it
+                unit.FmGain = 1f; unit.PsgGain = 1f / FmGain;
+                psg = unit.Psg; psg.Gain = APU_SMS.PsgGain;
+                fm = unit.Fm;
+            }
             resampler = new Ym2413Resampler(ClockHz / Ym2413.ClocksPerSample, rate);
             patchIndex = OpllPatchBank.Clamp(DefaultPatch); patch = OpllPatchBank.Patches[patchIndex]; patchDirty = true;
             lock (Live) Live.Add(new WeakReference<APU_SMSFM>(this));
             PowerOn();
         }
 
-        public string CoreName => $"SMSFM:YM2413+SN76489+{front.CoreName}";
+        public string CoreName => $"SMSFM:{(unit == null ? "YM2413" : UnitId)}+SN76489+{front.CoreName}";
         public string Description => "MIX LAB: NES channels played on the Master System's FM chip (pulses -> YM2413 channels with a chosen instrument, triangle -> an FM sine, noise -> the PSG noise; the DMC is dropped and counted)";
         public int Performance => 0; public int Rating => 1; public string Category => "Experimental";
 
         private void PowerOn()
         {
-            psg.Reset();
-            fm.Reset(); fm.ResetPatch(); resampler.Reset();
+            if (unit != null) { unit.Reset(); unit.WriteAudioControl(1); }   // FM on, the PSG heard
+            else { psg.Reset(); fm.Reset(); fm.ResetPatch(); }
+            resampler.Reset();
             fmRemainder = 0;
             psgRead = psgWrite = fmRead = fmWrite = 0;
             Array.Fill(period, -1); Array.Fill(volume, -1); noiseControl = -1; Array.Clear(outOfRange);
@@ -180,32 +201,37 @@ namespace NesEmulator
         {
             if (period[channel] == n) return;
             period[channel] = n;
-            psg.Write((byte)(0x80 | channel << 5 | (n & 0x0F)));
-            psg.Write((byte)((n >> 4) & 0x3F));
+            PsgWrite((byte)(0x80 | channel << 5 | (n & 0x0F)));
+            PsgWrite((byte)((n >> 4) & 0x3F));
         }
 
         private void SetVolume(int channel, int k)
         {
             if (volume[channel] == k) return;
             volume[channel] = k;
-            psg.Write((byte)(0x90 | channel << 5 | k));
+            PsgWrite((byte)(0x90 | channel << 5 | k));
         }
 
         private void SetNoise(int control)
         {
             if (noiseControl == control) return;
             noiseControl = control;
-            psg.Write((byte)(0xE0 | control));
+            PsgWrite((byte)(0xE0 | control));
         }
 
+        private void PsgWrite(byte v) { if (unit != null) unit.WritePsg(v); else psg.Write(v); }
+
         // ---- the YM2413's registers ----
+
+        /// <summary>One chip register write: straight to the stock chip, or through a ported unit's address and data ports (the engine and the unit's stock chip both get it).</summary>
+        private void FmWrite(int r, byte v) { if (unit != null) { unit.WriteFmAddress((byte)r); unit.WriteFmData(v); } else fm.WriteRegister(r, v); }
 
         /// <summary>Loads the user instrument (registers $00 to $07) when it differs from what the chip has.</summary>
         private bool LoadUser(byte[] bytes)
         {
             bool changed = false;
             for (int r = 0; r < 8; r++)
-                if (!userValid || userWritten[r] != bytes[r]) { fm.WriteRegister(r, bytes[r]); userWritten[r] = bytes[r]; changed = true; }
+                if (!userValid || userWritten[r] != bytes[r]) { FmWrite(r, bytes[r]); userWritten[r] = bytes[r]; changed = true; }
             userValid = true;
             return changed;
         }
@@ -217,12 +243,12 @@ namespace NesEmulator
             int r30 = (q.Inst << 4) | (q.Att < 0 ? 15 : q.Att);
             int r10 = q.Fnum & 0xFF;
             int r20 = (q.Keyed ? 0x10 : 0) | (q.Block << 1) | (q.Fnum >> 8);
-            if (r30 != q.W30) { fm.WriteRegister(0x30 + c, (byte)r30); q.W30 = r30; }
-            if (r10 != q.W10) { fm.WriteRegister(0x10 + c, (byte)r10); q.W10 = r10; }
+            if (r30 != q.W30) { FmWrite(0x30 + c, (byte)r30); q.W30 = r30; }
+            if (r10 != q.W10) { FmWrite(0x10 + c, (byte)r10); q.W10 = r10; }
             if (r20 != q.W20)
             {
                 bool wasKeyed = q.W20 >= 0 && (q.W20 & 0x10) != 0;
-                fm.WriteRegister(0x20 + c, (byte)r20); q.W20 = r20;
+                FmWrite(0x20 + c, (byte)r20); q.W20 = r20;
                 if (q.Keyed && !wasKeyed) FmNotes++;
             }
         }
@@ -375,6 +401,18 @@ namespace NesEmulator
         private void Drain()
         {
             int n;
+            if (unit != null)
+            {
+                while ((n = unit.ReadSamples(pcm)) > 0)
+                    for (int i = 0; i + 1 < n; i += 2)
+                    {
+                        float v = (pcm[i] + pcm[i + 1]) * (0.5f * FmGain / 32768f);
+                        if (ringCount == ring.Length) { ringHead = (ringHead + 1) & (ring.Length - 1); ringCount--; }
+                        ring[(ringHead + ringCount) & (ring.Length - 1)] = v;
+                        ringCount++;
+                    }
+                return;
+            }
             while ((n = psg.ReadSamples(pcm)) > 0)
             {
                 int frames = n / 2;
@@ -400,9 +438,13 @@ namespace NesEmulator
             if (cpuCycles <= 0) return;
             if (StepFront) front.Step(cpuCycles);
             model.ClockBulk(cpuCycles);
-            psg.Run(cpuCycles * 2);
-            fmRemainder += cpuCycles;
-            while (fmRemainder >= CyclesPerFmSample) { fmRemainder -= CyclesPerFmSample; FmTick(); }
+            if (unit != null) unit.Run(cpuCycles * 2);
+            else
+            {
+                psg.Run(cpuCycles * 2);
+                fmRemainder += cpuCycles;
+                while (fmRemainder >= CyclesPerFmSample) { fmRemainder -= CyclesPerFmSample; FmTick(); }
+            }
             if ((sinceSync += cpuCycles) >= SyncCycles) { sinceSync = 0; Sync(); }
             if (front.GetQueuedSampleCount() > 4096) { while (front.ReadSamples(drainScratch) > 0) { } }
         }
@@ -438,7 +480,7 @@ namespace NesEmulator
         }
 
         public int GetQueuedSampleCount() { Drain(); return ringCount; }
-        public int GetSampleRate() => psg.SampleRate;
+        public int GetSampleRate() => unit?.SampleRate ?? psg.SampleRate;
         public void SetEnabledChannels(int mask) { channelMask = mask; front.SetEnabledChannels(mask); }
         public object GetState() => front.GetState();
         public void SetState(object state) { front.SetState(state); ResyncModel(); }

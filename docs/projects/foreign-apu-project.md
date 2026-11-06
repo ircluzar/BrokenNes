@@ -21,6 +21,8 @@ on the NES and on other consoles through the existing bridges, for free:
 | Japanese Master System (FM unit; not on Game Gear) | M036FM, E055 |
 | NES (`APU_*` cores, family "Foreign") | FCEU, INES, NSTC, DARC, TUXN, VNES, PNES |
 
+**All-APU matrix (2026-11-05):** every port of the other families is also a NES APU id with its engine fixed (`mix/PortedEngineBridges.cs`): `SNES_<port>`, `DMG_<port>`, `SMS_<port>`, `MD_<port>` and, for the two YM2413 engines, `SMSFM_M036FM` / `SMSFM_E055` (the NES's `APU_SMSFM` bridge with the ported FM unit: the bridge's FM and PSG writes go through the unit's ports, its stock chips mirror them, the unit's output plays). The NES menu lists them directly; NES, SNES, GB/GBC, Genesis and WideMess reach them as `NES:<id>` under the family's "Ported from other emulators" heading. The Game Gear has no FM chip: no FM entry in any form, and a swap to one is refused with that reason. `Workshop --apu-sweep [--console NES|SNES|GB|SMS|GG|MD|WMS]` covers every cell; `--plant menu|silent|stuck|crash|stockpick` are the negative controls (`stockpick` swaps to the stock bridge, which the samples-identical check must catch).
+
 Each core's source, version and quirks are in the batch tables below. Every shortcut is in `docs/KNOWN_GAPS.md`. The licenses are in `THIRD_PARTY_NOTICES.md` §2 and the family ledgers.
 
 **Review pass at the end of the session:**

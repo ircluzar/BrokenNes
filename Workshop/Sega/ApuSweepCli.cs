@@ -10,7 +10,7 @@ using NesEmulator.Systems;
 namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
-/// <c>--apu-sweep [--console NES|SNES|GB|SMS|GG|MD] [--only ID,ID] [--plant silent|stuck|crash] [--tsv file]</c>: foreign APU phase 3 (docs/projects/foreign-apu-next-primer.md), the cross-console sweep
+/// <c>--apu-sweep [--console NES|SNES|GB|SMS|GG|MD|WMS] [--only ID,ID] [--plant silent|stuck|crash|menu|stockpick] [--tsv file]</c>: foreign APU phase 3 (docs/projects/foreign-apu-next-primer.md), the cross-console sweep
 /// weighted to the 27 ported sound engines. Each cell is one engine reached one way, run inside a real game (the in-repo NES music test, Super Mario World, Super Mario Land, the hand-assembled Sega tone programs):
 /// <list type="bullet">
 /// <item><b>native</b>: the engine on its own console's APU menu, swapped in live mid-song (<c>TrySwapCore</c> / <c>NES.SetApuCore</c>);</item>
@@ -44,6 +44,8 @@ internal static class ApuSweepCli
     {
         public string Swap = "-", State = "-", Butcher = "-", Stuck = "-", Back = "-";
         public double R0, R1, R2, R3, R4, R5, R6;
+        /// <summary>A hash of the samples of the window after the swap (R1): equal to the control's means the pick played the stock bridge's sound sample for sample.</summary>
+        public ulong H1;
         public readonly List<string> Fails = new(), Notes = new();
         public bool Ok => Fails.Count == 0;
     }
@@ -156,10 +158,11 @@ internal static class ApuSweepCli
         "SMS" => new SessionRig(ConsoleKind.MasterSystem, SwapSuite.ToneScroller(false), "tone.sms", apu, c.Setup),
         "GG" => new SessionRig(ConsoleKind.GameGear, SwapSuite.ToneScroller(true), "tone.gg", apu, c.Setup),
         "MD" => new SessionRig(ConsoleKind.Genesis, SwapMatrixTestCli.GenesisTone(), "tone.md", apu, c.Setup),
+        "WMS" => new SessionRig(ConsoleKind.WideMess, snesRom!, "smw.smc", apu, c.Setup),   // a SNES game on the WideMess console (its menu's NES:<id> entries)
         _ => throw new ArgumentException(c.Console),
     };
 
-    private static string Stock(string console) => console switch { "GG" => CoreCatalog.Default(ConsoleKind.GameGear, CoreSlot.Apu), "SMS" => CoreCatalog.Default(ConsoleKind.MasterSystem, CoreSlot.Apu), _ => console switch { "NES" => "FIX", "SNES" => "SFC", "GB" => "GB", _ => "MD" } };
+    private static string Stock(string console) => console switch { "GG" => CoreCatalog.Default(ConsoleKind.GameGear, CoreSlot.Apu), "SMS" => CoreCatalog.Default(ConsoleKind.MasterSystem, CoreSlot.Apu), _ => console switch { "NES" => "FIX", "SNES" => "SFC", "GB" => "GB", "WMS" => "WMS", _ => "MD" } };
 
     /// <summary>Every cell, its control first: a control (route "control ...") is the same way in with the stock engine; the cells after it, with the same <see cref="Cell.Group"/>, are judged against it.</summary>
     private static List<Cell> Cells()
@@ -181,12 +184,12 @@ internal static class ApuSweepCli
         Group("NES", "dmg", "NES game -> APU_DMG", p => new("NES", p, "", "FIX", "DMG", "FIX", () => MixConfig.GbApu = p), "GB", GbPorts);
         // every port behind the NES's bridges as the menus offer them (FA-BR-1 and the all-APU matrix): the engine fixed in the NES core id (SNES_<port>, DMG_<port>, SMS_<port>, MD_<port>), no mix-lab
         // setting; on the NES menu directly, on every other console as NES:<id> through the NES registers (swapped in live). The control is the family's stock bridge (SNES, DMG, SMS, MD).
-        foreach (var con in new[] { "NES", "SNES", "GB", "SMS", "GG", "MD" })
+        foreach (var con in MenuHosts)
             foreach (var (fam, pre, stock, ports) in PortFamilies)
             {
                 if (fam == OwnFamily(con)) continue;
                 string hop = con == "NES" ? "" : "NES:";
-                Group(con, pre.ToLowerInvariant() + "menu", $"{con} menu {hop}{pre}<port>", p => new(con, p, "", Stock(con), p == stock ? hop + pre.TrimEnd('_') : hop + pre + p, Stock(con)), stock, ports);
+                Group(con, pre.ToLowerInvariant() + "menu", $"{con} menu {hop}{pre}<port>", p => new(con, p, "", Stock(con), p == stock || plant == "stockpick" ? hop + pre.TrimEnd('_') : hop + pre + p, Stock(con)), stock, ports);
             }
         // another console's game on a NES port (the menus list them as NES:<port>): swapped in live, and the game started on it (the app's restart path)
         foreach (var con in new[] { "SNES", "GB", "SMS", "GG", "MD" })
@@ -204,10 +207,13 @@ internal static class ApuSweepCli
     /// <summary>The ported engines' families behind the NES bridges: the menu family, the NES id prefix (the stock bridge's id without the underscore), the stock engine (the control) and the ports.</summary>
     private static readonly (string Family, string Prefix, string Stock, string[] Ports)[] PortFamilies =
     {
-        ("SNES", "SNES_", "SFC", SnesPorts), ("Game Boy", "DMG_", "GB", GbPorts), ("Master System", "SMS_", "SMS", PsgPorts), ("Genesis", "MD_", "MD", MdPorts),
+        ("SNES", "SNES_", "SFC", SnesPorts), ("Game Boy", "DMG_", "GB", GbPorts), ("Master System", "SMS_", "SMS", PsgPorts), ("Master System", "SMSFM_", "SMSFM", FmPorts), ("Genesis", "MD_", "MD", MdPorts),
     };
-    private static string OwnFamily(string con) => con switch { "NES" => "NES", "SNES" => "SNES", "GB" => "Game Boy", "SMS" or "GG" => "Master System", _ => "Genesis" };
-    private static ConsoleKind Kind(string con) => con switch { "NES" => ConsoleKind.Nes, "SNES" => ConsoleKind.Snes, "GB" => ConsoleKind.GameBoy, "SMS" => ConsoleKind.MasterSystem, "GG" => ConsoleKind.GameGear, _ => ConsoleKind.Genesis };
+    /// <summary>The consoles whose APU menus offer the ported engines behind the NES bridges (the WideMess runs Super Mario World, as the SNES does).</summary>
+    private static readonly string[] MenuHosts = { "NES", "SNES", "GB", "SMS", "GG", "MD", "WMS" };
+    /// <summary>The family whose ports a console has natively, not through the NES (the WideMess's native sound units are the SNES's).</summary>
+    private static string OwnFamily(string con) => con switch { "NES" => "NES", "SNES" or "WMS" => "SNES", "GB" => "Game Boy", "SMS" or "GG" => "Master System", _ => "Genesis" };
+    private static ConsoleKind Kind(string con) => con switch { "NES" => ConsoleKind.Nes, "SNES" => ConsoleKind.Snes, "GB" => ConsoleKind.GameBoy, "SMS" => ConsoleKind.MasterSystem, "GG" => ConsoleKind.GameGear, "WMS" => ConsoleKind.WideMess, _ => ConsoleKind.Genesis };
 
     private static void ResetMix() { MixConfig.SnesApu = "SFC"; MixConfig.GbApu = "GB"; MixConfig.NesBackApu = "FIX"; MixConfig.GbBackNesApu = "FIX"; }
 
@@ -258,7 +264,7 @@ internal static class ApuSweepCli
         Console.WriteLine($"{"console",-5} {"engine",-7} {"route",-31} {"swap",-10} {"state",-10} {"butcher",-10} {"stuck",-10} {"back",-10} verdict");
         foreach (var c in cells)
         {
-            if ((c.Console == "NES" && nesRom == null) || (c.Console == "SNES" && snesRom == null) || (c.Console == "GB" && gbRom == null)) { notRun++; continue; }
+            if ((c.Console == "NES" && nesRom == null) || ((c.Console == "SNES" || c.Console == "WMS") && snesRom == null) || (c.Console == "GB" && gbRom == null)) { notRun++; continue; }
             ResetMix();
             var sw = System.Diagnostics.Stopwatch.StartNew();
             Result r;
@@ -282,7 +288,7 @@ internal static class ApuSweepCli
     private static int MenuCheck(string? console)
     {
         int bad = 0, all = 0;
-        foreach (var con in new[] { "NES", "SNES", "GB", "SMS", "GG", "MD" })
+        foreach (var con in MenuHosts)
         {
             if (console != null && console != con) continue;
             var opts = CoreCatalog.Options(Kind(con), CoreSlot.Apu);
@@ -300,7 +306,32 @@ internal static class ApuSweepCli
                 }
             }
         }
-        Console.WriteLine($"menu: {all - bad} of {all} ports offered behind the NES bridges");
+        // the Game Gear has no FM chip: its menu must not offer the YM2413 engines in any form, and a swap to one must be refused with a reason
+        if (console == null || console == "GG")
+        {
+            var gg = CoreCatalog.Options(ConsoleKind.GameGear, CoreSlot.Apu);
+            foreach (var p in FmPorts)
+            {
+                all++;
+                var hit = gg.FirstOrDefault(x => x.Id.EndsWith(p, StringComparison.OrdinalIgnoreCase));
+                string? why = hit != null ? $"offered as {hit.Id}" : null;
+                if (why == null)
+                {
+                    using var rig = new SessionRig(ConsoleKind.GameGear, SwapSuite.ToneScroller(true), "tone.gg", Stock("GG"), null);
+                    foreach (var id in new[] { p, "NES:SMSFM_" + p })
+                    {
+                        bool ok = rig.Swap(id, out string r);
+                        if (ok) why = $"the swap to {id} was taken";
+                        else if (string.IsNullOrWhiteSpace(r)) why = $"the swap to {id} was refused without a reason";
+                        else if (!r.Contains("no YM2413", StringComparison.OrdinalIgnoreCase)) why = $"the swap to {id} was refused without saying the Game Gear has no FM chip ({r})";
+                        else Console.WriteLine($"menu: GG {id} refused: {r}");
+                        if (why != null) break;
+                    }
+                }
+                if (why != null) { bad++; Console.WriteLine($"MENU FAIL GG APU {p}: {why} (the Game Gear has no FM chip)"); }
+            }
+        }
+        Console.WriteLine($"menu: {all - bad} of {all} ports offered behind the NES bridges (and the FM engines kept off the Game Gear)");
         return bad;
     }
 
@@ -308,6 +339,13 @@ internal static class ApuSweepCli
     private static string? IntendedSilent(Cell c) => (c.Console, c.Group, c.Engine) switch
     {
         ("SMS" or "GG" or "MD", "nes" or "nesboot", "NSTC") => "NESticle holds a note 0.5 s at most ('hold note' bit = 0.5 s, NesticleSound.cs header); the Sega tone program keys its tone once, so it fades after half a second; KNOWN_GAPS FA-SW-1",
+        _ => null,
+    };
+
+    /// <summary>The menu cells whose swap window is sample-for-sample the stock bridge's because the port only differs where the program does not go: reported, not a failure.</summary>
+    private static string? IntendedSame(Cell c) => (c.Console, c.Group, c.Engine) switch
+    {
+        ("SMS" or "GG", "snes_menu", "OSPC") => "the Sega tone program holds one keyed tone (the bridge's direct GAIN, no noise, no echo); OpenSPC differs from the stock S-DSP in envelopes, KON timing, noise and echo only, and differs on every other host",
         _ => null,
     };
 
@@ -351,11 +389,15 @@ internal static class ApuSweepCli
         return Math.Sqrt(s / x.Count);
     }
 
-    private static double Play(IRig rig, int frames, bool zero = false)
+    private static double Play(IRig rig, int frames, bool zero = false) => Play(rig, frames, out _, zero);
+
+    private static double Play(IRig rig, int frames, out ulong hash, bool zero = false)
     {
         var a = new List<short>(frames * 800);
         for (int f = 0; f < frames; f++) rig.Frame(a);
         if (zero) a.Clear();
+        hash = 14695981039346656037UL;
+        foreach (var v in a) { hash ^= (ushort)v; hash *= 1099511628211UL; }
         return Rms(a);
     }
 
@@ -380,11 +422,18 @@ internal static class ApuSweepCli
                 return r;
             }
             if (!rig.Description.Contains(c.SwapTo, StringComparison.OrdinalIgnoreCase)) r.Fails.Add($"the description does not name {c.SwapTo} ({rig.Description})");
-            r.R1 = Play(rig, Window);
+            r.R1 = Play(rig, Window, out r.H1);
             r.Swap = r.R1 >= Quiet ? "sounds" : r.R0 < Quiet ? "quiet*" : IntendedSilent(c) != null ? "silent*" : "SILENT";
             if (r.Swap == "silent*") r.Notes.Add("intended: " + IntendedSilent(c));
             if (r.Swap == "SILENT") r.Fails.Add($"silent after the live swap (rms {r.R0:F0} -> {r.R1:F0})");
             else if (r.R0 >= Quiet && (r.R1 / r.R0 > 8 || r.R0 / r.R1 > 8)) r.Notes.Add($"level jump at the swap x{r.R1 / r.R0:F2}");
+            // a menu pick must play the port, not the family's stock bridge: the samples after the swap differ from the control's (--plant stockpick swaps to the stock bridge instead, so every such cell must fail here)
+            if (!isControl && c.Group.EndsWith("menu") && control != null && control.R1 >= Quiet && r.H1 == control.H1 && IntendedSame(c) is { } same && plant != "stockpick")
+                r.Notes.Add("same samples as stock, intended: " + same);
+            else if (!isControl && c.Group.EndsWith("menu") && control != null && control.R1 >= Quiet && r.H1 == control.H1)
+                r.Fails.Add($"plays the stock bridge's samples exactly (rms {r.R1:F1}, the control {control.R1:F1})");
+            else if (!isControl && c.Group.EndsWith("menu") && control != null && control.R1 >= Quiet && Math.Abs(r.R1 / control.R1 - 1) < 0.002)
+                r.Notes.Add($"level within 0.2% of the stock bridge's (rms {r.R1:F1} / {control.R1:F1}), samples differ");
         }
         else if (r.R0 < Quiet && IntendedSilent(c) is { } why0) { r.R1 = r.R0; r.Swap = "silent*"; r.Notes.Add("intended: " + why0); }
         else { r.R1 = r.R0; r.Swap = r.R0 >= Quiet ? "built-on" : "SILENT"; if (r.R0 < Quiet) r.Fails.Add($"silent on the bridge (rms {r.R0:F0})"); }

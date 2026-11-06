@@ -40,3 +40,11 @@ namespace NesEmulator
     public sealed class APU_MD_BLST : APU_MD { public APU_MD_BLST(Bus bus) : base(bus, "BLST") { } }
     public sealed class APU_MD_GPGX : APU_MD { public APU_MD_GPGX(Bus bus) : base(bus, "GPGX") { } }
 }
+
+namespace NesEmulator
+{
+    // All-APU matrix, FM family (2026-11-05): the Master System's ported YM2413 engines behind the NES's APU_SMSFM bridge (the bridge's FM and PSG writes go through the unit's ports, its stock chips mirror them, the unit's output is played).
+    // The Game Gear has no FM chip, so its menu offers neither (its own family is the Master System's: these are never NES:<id> there).
+    public sealed class APU_SMSFM_M036FM : APU_SMSFM { public APU_SMSFM_M036FM(Bus bus) : base(bus, "M036FM") { } }
+    public sealed class APU_SMSFM_E055 : APU_SMSFM { public APU_SMSFM_E055(Bus bus) : base(bus, "E055") { } }
+}

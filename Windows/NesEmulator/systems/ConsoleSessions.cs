@@ -50,7 +50,14 @@ public static class ConsoleSessions
     /// <summary>True when the console's menu for <paramref name="slot"/> lists <paramref name="id"/>: a swap to anything else is refused (never accepted, never replaced by another core).</summary>
     internal static bool Offers(ConsoleKind console, CoreSlot slot, string id) => System.Linq.Enumerable.Any(CoreCatalog.Options(console, slot), o => o.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
-    internal static string NotOffered(ConsoleKind console, CoreSlot slot, string id) => $"the {Consoles.DisplayName(console)} {slot} menu does not offer '{id}'";
+    internal static string NotOffered(ConsoleKind console, CoreSlot slot, string id) => $"the {Consoles.DisplayName(console)} {slot} menu does not offer '{id}'{(console == ConsoleKind.GameGear && slot == CoreSlot.Apu && IsFmUnit(id) ? ": the Game Gear has no YM2413 FM chip (the FM units are the Japanese Master System's)" : "")}";
+
+    /// <summary>A Master System FM sound unit or bridge id (SMS-FM, M036FM, E055, NES-FM:..., NES:SMSFM...).</summary>
+    private static bool IsFmUnit(string id)
+    {
+        string u = id.ToUpperInvariant();
+        return u is "SMS-FM" or "M036FM" or "E055" || u.StartsWith("NES-FM") || u.StartsWith("NES:SMSFM");
+    }
 
     /// <summary>RGBA bytes (a NES picture) to 0xAARRGGBB.</summary>
     internal static void RgbaToArgb(byte[] rgba, uint[] dst)
