@@ -40,6 +40,7 @@ namespace BrokenNes.Windows
         static int Main(string[] args)
         {
             NesEmulator.Systems.Consoles.WideMessEnabled = true;   // the WideMess console (docs/projects/widemess-spec.md): the desktop app offers it; Lite and the plugin do from its milestone 7
+            NesEmulator.Systems.Consoles.X86Enabled = true;        // the x86 console (P3, docs/projects/next-pool-plans.md): a DOS PC booting a disk image; the desktop app only
 
             // `--install-vst`: put the FL Studio plugin where FL finds it and stop. No console, no diagnostics, no emulator.
             if (args.Any(a => a.Equals("--install-vst", StringComparison.OrdinalIgnoreCase)))

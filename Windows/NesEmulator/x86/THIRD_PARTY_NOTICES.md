@@ -20,8 +20,16 @@ public PC/AT BIOS interface documentation, the way DOSBox answers BIOS calls in 
 (tiny386 `i8042.c` was read only for which commands DOS software sends), the CMOS clock `Cmos.cs`, `DiskImage.cs`, `FatImage.cs`,
 `I386.State.cs` (save states).
 
-**Not in the repository: FreeDOS.** The boot disk used by the tests is built at test time from the FreeDOS 1.4 LiteUSB image in the
-developer's toolkit (`C:\BrokenNes-tools\dosreedos`, GPL-2.0 and others); nothing of FreeDOS is committed or shipped.
+**FreeDOS: shipped with the desktop release, never in the repository** (user decision of 2026-11-06, "Ship FreeDOS with the app"). The FreeDOS 1.4
+LiteUSB image `FD14LITE.img` (FreeDOS project; the kernel, FreeCOM and most of `\FREEDOS\BIN` GPL-2.0 or later, other programs under their own
+free licences, each stated in its package's `APPINFO\*.LSM`) is copied unmodified into the desktop build's `x86\freedos\` by
+`Windows/BrokenNes.Windows.csproj` from the developer toolkit (`C:\BrokenNes-tools\dos\freedos`, MSBuild property `FreeDosImage`), beside
+`Windows/x86/freedos/README.txt` (what it is, the licences, where the source is, and the GPL section 3(b) written offer) and
+`Windows/x86/freedos/GPL-2.0.txt` (the GPL version 2 text, verbatim). It is a **separate, aggregated program**: BrokenNes runs it inside the
+emulated PC from a disk image and links nothing of it. `PcDisks.ForProgram` puts a DOS program on an in-memory copy of the image (our own
+FDCONFIG.SYS / FDAUTO.BAT, `\PACKAGES` dropped); that copy is the game's save. **Open before a release:** the written offer's contact
+(README.txt says `[CONTACT TO BE FILLED IN ...]`), or bundle the FD14 source packages instead (a download the user has to approve).
+The tests build their boot disks from the same toolkit image.
 
 **What was kept.** The core's design and behaviour, function by function: the lazy flags (`cc` op / dst / src / mask), the TLB and
 page walk (accessed and dirty bits, the `pte_lookup` permission table), the instruction-fetch cache, ModR/M + SIB decoding, segment

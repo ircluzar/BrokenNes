@@ -28,6 +28,12 @@ internal static class X86BootCli
 
     public static int Disk(string[] args)
     {
+        if (Arg(args, "--list") is string dir)   // --x86disk --list DOSDIR [--base img]: what a disk holds
+        {
+            var fi = new FatImage(File.ReadAllBytes(Arg(args, "--base") ?? FreeDosLite));
+            foreach (var n in fi.List(dir)) Console.WriteLine(n);
+            return 0;
+        }
         string? outPath = Arg(args, "--out");
         if (outPath == null) { Console.WriteLine("x86disk: --out img"); return 1; }
         var img = BuildDisk(Arg(args, "--base") ?? FreeDosLite,
@@ -39,17 +45,8 @@ internal static class X86BootCli
         return 0;
     }
 
-    public static byte[] BuildDisk(string basePath, string config, string autoexec, IEnumerable<(string host, string dos)> puts, IEnumerable<string>? drop = null)
-    {
-        var img = File.ReadAllBytes(basePath);
-        var fat = new FatImage(img);
-        fat.WriteFile("FDCONFIG.SYS", Encoding.ASCII.GetBytes(config.Replace("\r\n", "\n").Replace("\n", "\r\n")));
-        fat.WriteFile("FDAUTO.BAT", Encoding.ASCII.GetBytes(autoexec.Replace("\r\n", "\n").Replace("\n", "\r\n")));
-        fat.Delete("SETUP.BAT");
-        foreach (var d in drop ?? Array.Empty<string>()) fat.DeleteTree(d);
-        foreach (var (host, dos) in puts) fat.WriteFile(dos, File.ReadAllBytes(host));
-        return img;
-    }
+    public static byte[] BuildDisk(string basePath, string config, string autoexec, IEnumerable<(string host, string dos)> puts, IEnumerable<string>? drop = null) =>
+        PcDisks.BuildDisk(File.ReadAllBytes(basePath), config, autoexec, puts.Select(p => (File.ReadAllBytes(p.host), p.dos)), drop);
 
     public static int Boot(string[] args)
     {

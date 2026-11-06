@@ -578,6 +578,8 @@ namespace BrokenNes.Windows
             ConsoleKind.MasterSystem => Path.Combine(SaveRoot, "SmsSaves", s.GameId + ".sav"),
             ConsoleKind.GameGear => Path.Combine(SaveRoot, "GgSaves", s.GameId + ".sav"),
             ConsoleKind.Genesis => Path.Combine(SaveRoot, "MdSaves", s.GameId + ".srm"),
+            // the x86 console: the disk image as DOS left it (its battery is the whole disk), by the original image's id
+            ConsoleKind.Pc => Path.Combine(SaveRoot, "PcDisks", s.GameId + ".img"),
             _ => Path.Combine(SaveRoot, "GbSaves", s.GameId + ".sav"),
         };
 

@@ -63,6 +63,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--x86test", StringComparison.OrdinalIgnoreCase)) return X86.X86TestCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86dev", StringComparison.OrdinalIgnoreCase)) return X86.X86DevCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86bench", StringComparison.OrdinalIgnoreCase)) return X86.X86BenchCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--x86session", StringComparison.OrdinalIgnoreCase)) return X86.X86SessionCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--x86disk", StringComparison.OrdinalIgnoreCase)) return X86.X86BootCli.Disk(args);
         if (args.Length > 0 && args[0].Equals("--x86boot", StringComparison.OrdinalIgnoreCase)) return X86.X86BootCli.Boot(args);
         if (args.Length > 0 && args[0].Equals("--m68ktest", StringComparison.OrdinalIgnoreCase)) return Sega.M68kTestCli.Run(args);
