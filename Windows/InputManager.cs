@@ -107,6 +107,9 @@ namespace BrokenNes.Windows
         /// <summary>
         /// Set a callback that indicates whether keyboard input should be accepted.
         /// </summary>
+        /// <summary>False while the keyboard goes to the game as a keyboard (the x86 PC's passthrough): the keys then press no pad buttons (a game pad still does).</summary>
+        public Func<bool>? KeyboardToPad { get; set; }
+
         public void SetKeyboardFocusProvider(Func<bool> focusProvider)
         {
             keyboardFocusProvider = focusProvider;
@@ -145,6 +148,10 @@ namespace BrokenNes.Windows
 
             // Ignore keyboard polling when the emulator window is not focused.
             if (keyboardFocusProvider != null && !keyboardFocusProvider())
+                return;
+
+            // The keyboard is passed through to a console that has one (the x86 PC): it does not also press pad buttons (a typed Z would be Ctrl too).
+            if (KeyboardToPad != null && !KeyboardToPad())
                 return;
 
             // Optimization: Skip keyboard polling if only using gamepad

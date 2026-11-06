@@ -229,6 +229,17 @@ internal static partial class TimeflowTestCli
                 var src = TimeflowMachines.SourceFor(mm);
                 try { pb.Jump(src, f); loaded++; } catch (InvalidDataException e) { if (loadBad.Length == 0) loadBad = e.Message; }
             }
+            // jump --png: the picture drawn after a jump is the recorded picture of that frame
+            int picOk = 0; string picBad = "";
+            foreach (long f in picks)
+            {
+                using var mm = TimeflowMachines.OpenFor(tdir, pb.Meta, false);
+                var src = TimeflowMachines.SourceFor(mm);
+                pb.Jump(src, f);
+                var (png, ok) = TimeflowCli.JumpPicture(pb, mm, src, f);
+                if (ok && png.Length > 8) picOk++; else if (picBad.Length == 0) picBad = $"frame {f}";
+            }
+            Check($"consoles: {name}: jump --png draws the recorded picture", picOk == picks.Length, $"{picOk} of {picks.Length}{(picBad.Length > 0 ? ", first off: " + picBad : "")}");
             Check($"consoles: {name}: loaded into a fresh machine, its state is the recorded one", loaded == picks.Length, $"{loaded} of {picks.Length} frames ({string.Join(", ", picks)}){(loadBad.Length > 0 ? ": " + loadBad : "")}");
             long from = frames / 2 + 7;
             using (var mm = TimeflowMachines.OpenFor(tdir, pb.Meta, false))

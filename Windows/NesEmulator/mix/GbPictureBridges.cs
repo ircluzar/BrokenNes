@@ -27,6 +27,8 @@ internal sealed class GbLineCapture
     }
 
     public int Clamp(int line) => Math.Clamp(line, 0, 143);
+    /// <summary>After a state load: the lines captured before it describe the old machine.</summary>
+    public void Clear() { foreach (var a in new[] { Lcdc, Scx, Scy, Wx, Wy, Bgp, Obp0, Obp1 }) Array.Clear(a); seen = 0; }
 }
 
 /// <summary>Game Boy shades as NES colours: the classic green DMG look (default) or plain greys.</summary>
