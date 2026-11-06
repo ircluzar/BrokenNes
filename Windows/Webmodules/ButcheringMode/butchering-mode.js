@@ -757,6 +757,12 @@
     }
     return { w: Math.ceil((px.w + MODULE_GAP) / PITCH), h: Math.ceil((px.h + MODULE_GAP) / PITCH) };
   }
+  // is this effect doing something: its On switch, or any bit / channel / pin it has set
+  function isLive(o) {
+    if (!o || typeof o !== 'object') return false;
+    if ('on' in o) return !!o.on;
+    return Object.values(o).some(v => Array.isArray(v) && v.some(x => x === true || (typeof x === 'number' && x !== 0)));
+  }
   function freeSpot(board, w, h) {
     const taken = (x, y) => board.some(m => x < m.x + m.w && x + w > m.x && y < m.y + m.h && y + h > m.y);
     for (let y = 0; y < 600; y++) for (let x = 0; x + w <= BOARD_COLS; x++) if (!taken(x, y)) return { x, y };
@@ -846,6 +852,17 @@
       board.push({ path, x: spot.x, y: spot.y, w: sz.w, h: sz.h });
       saveBoard(board); paintBoard(); paintList();
     }
+    // Import Live: every effect the current settings have switched on gets a module, biggest first, each in the
+    // first free spot scanning row by row, so they pack into the board's width.
+    function importLive() {
+      const fresh = effects.filter(e => !board.some(m => m.path === e.path) && isLive(getPath(settings, e.path)))
+        .map(e => ({ path: e.path, ...moduleSize(BNEffects.build(e.path, buildCtx(e.path))) }))
+        .sort((a, b) => b.h - a.h || b.w - a.w);
+      if (!fresh.length) { status(board.length ? 'Every live effect is already on the board.' : 'No effect is on right now: load a preset or press Randomize first.'); return; }
+      for (const f of fresh) { const s = freeSpot(board, f.w, f.h); board.push({ path: f.path, x: s.x, y: s.y, w: f.w, h: f.h }); }
+      saveBoard(board); paintBoard(); paintList();
+      status(`Imported ${fresh.length} live effect${fresh.length === 1 ? '' : 's'}.`);
+    }
     function paintBoard() {
       grid.replaceChildren(); boardPanels = [];
       BOARD_COLS = Math.max(36, Math.floor((grid.clientWidth || 576) / PITCH));
@@ -910,6 +927,7 @@
 
     const tools = el('div', { class: 'row boardtools' },
       el('button', { type: 'button', onclick: () => { board = []; saveBoard(board); paintBoard(); paintList(); } }, 'Clear board'),
+      el('button', { type: 'button', title: 'Put every effect that is on right now (a loaded preset, a roll, the strip) on the board, packed tight', onclick: importLive }, 'Import Live'),
       el('span', { class: 'note' }, 'The board edits the same settings as the strip. Dot colour: purity tier (green pure … red forced).'));
     g.append(tools, el('div', { class: 'buildview' }, el('div', { class: 'listpane' }, filter, list), grid));
     paintList(); paintBoard();
