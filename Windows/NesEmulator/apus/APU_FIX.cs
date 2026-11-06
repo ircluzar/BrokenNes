@@ -699,7 +699,7 @@ namespace NesEmulator
         }
 
         public void SetState(object state){
-            if(state is ApuState s){ RestoreState(s); PostRestoreAudioResync(); return; }
+            if(state is ApuState s){ RestoreState(s); PostRestoreRingOnly(); return; }
             if(state is System.Text.Json.JsonElement je){
                 try{
                     if(je.ValueKind==System.Text.Json.JsonValueKind.Object){
@@ -816,7 +816,7 @@ namespace NesEmulator
                         if(je.TryGetProperty("nextFrameEvent", out v)) tmp.nextFrameEvent=v.GetInt32();
 
                         RestoreState(tmp);
-                        PostRestoreAudioResync();
+                        PostRestoreRingOnly();
                     }
                 }catch{}
             }
@@ -836,16 +836,15 @@ namespace NesEmulator
         frameStep = k; nextFrameEventCycle = at[k];
     }
 
-        private void PostRestoreAudioResync()
-        {
-            ringRead = ringWrite = ringCount = 0;
-            fractionalSampleAccumulator = 0; samplePhase = 0;
-            lpLast = 0; dcLastIn = 0; dcLastOut = 0;
-        }
+        // After a state load: only the sample ring is dropped (its contents are not in the state); the output filters and the sample phase are the saved
+        // machine's (restored above). Zeroing them, as before, made the DC blocker start from 0 under a non-zero signal: the first ~0.2 s after a load
+        // came out about 1.5x louder than the saved machine's (KNOWN_GAPS FA-ST-1, found by --apu-channels --state). An older state without them still loads as 0.
+        private void PostRestoreRingOnly() { ringRead = ringWrite = ringCount = 0; }
 
+        // the queued samples only: NES.LoadState calls this right after SetState, and the output filters / sample phase it restored must survive (FA-ST-1)
         public void ClearAudioBuffers()
         {
-            PostRestoreAudioResync();
+            PostRestoreRingOnly();
         }
 
         // Minimal Reset: clear audio buffers and pacing; preserve register latches/state.

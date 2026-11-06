@@ -210,6 +210,7 @@ internal static class ApuSweepCli
         string sml = @"X:\EMULATION\GameBoy\Super Mario Land (W) (V1.0) [!].zip";
         if (File.Exists(sml)) gbRom = RomDetect.Unwrap(File.ReadAllBytes(sml), Path.GetFileName(sml), out _);
 
+        if (M68kTestCli.Flag(args, "--nes-load-diff")) return NesLoadDiff();
         string? probe = M68kTestCli.Arg(args, "--probe");     // --probe APU: the level every 30 frames of a fresh session on that unit (picks the windows)
         if (probe != null && console != null)
         {
@@ -275,6 +276,26 @@ internal static class ApuSweepCli
         ("SNES", "native", "ZS151") => "ZSNES 1.51's FLG mute only stops the voices at the write (Zs151Dsp.cs case 0x6C); the driver's next key-on sounds; FA-SW-4",
         _ => null,
     };
+    /// <summary>--apu-sweep --nes-load-diff: the music test on stock FIX, saved at frame 300; the same machine plays on (A), a fresh one loads the state and plays (B):
+    /// the level of both, the first sample that differs, and the APU state fields that differ right after the load (the stock NES's own save/load exactness, KNOWN_GAPS FA-ST-1).</summary>
+    private static int NesLoadDiff()
+    {
+        NES Make() { var n = new NES { RomName = "musictest.nes" }; n.LoadROM(nesRom!); n.SetCpuCore("FIX"); n.SetPpuCore("FIX"); n.SetApuCore("FIX"); return n; }
+        var a = Make(); for (int f = 0; f < 300; f++) { a.RunFrame(); a.GetAudioBuffer(); }
+        string st = a.SaveState();
+        var b = Make(); b.LoadState(st); b.GetAudioBuffer();
+        var ja = System.Text.Json.JsonDocument.Parse(NES_ApuJson(a)).RootElement; var jb = System.Text.Json.JsonDocument.Parse(NES_ApuJson(b)).RootElement;
+        foreach (var p in ja.EnumerateObject()) { string vb = jb.TryGetProperty(p.Name, out var q) ? q.GetRawText() : "(missing)"; if (vb != p.Value.GetRawText()) Console.WriteLine($"  apu field {p.Name}: saved {p.Value.GetRawText()} loaded {vb}"); }
+        var A = new List<float>(); var B = new List<float>();
+        for (int f = 0; f < 30; f++) { a.RunFrame(); A.AddRange(a.GetAudioBuffer()); b.RunFrame(); B.AddRange(b.GetAudioBuffer()); }
+        int first = -1; for (int i = 0; i < Math.Min(A.Count, B.Count); i++) if (Math.Abs(A[i] - B[i]) > 1e-6) { first = i; break; }
+        double Rf(List<float> x, int from, int to) { double s = 0; for (int i = from; i < to; i++) s += x[i] * x[i]; return Math.Sqrt(s / Math.Max(1, to - from)) * 32767; }
+        Console.WriteLine($"samples A {A.Count} B {B.Count}; first difference at {first}; rms A {Rf(A, 0, A.Count):F0} B {Rf(B, 0, B.Count):F0}; last half A {Rf(A, A.Count / 2, A.Count):F0} B {Rf(B, B.Count / 2, B.Count):F0}");
+        return 0;
+    }
+
+    private static string NES_ApuJson(NES n) { string s = n.SaveState(); using var d = System.Text.Json.JsonDocument.Parse(s); return d.RootElement.GetProperty("apu").GetString() ?? "{}"; }
+
     private static string Trim(string s, int n) => s.Length <= n ? s : s[..(n - 1)] + "~";
 
     private static double Rms(List<short> x)
