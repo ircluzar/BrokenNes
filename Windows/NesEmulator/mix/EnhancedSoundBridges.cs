@@ -285,7 +285,7 @@ namespace NesEmulator.Mix
                 bool isNoise = (r[0x3D] & (1 << v)) != 0;
                 int pitch = r[b + 2] | (r[b + 3] & 0x3F) << 8;
                 double period = isNoise ? 0 : Period(r[b + 4]);
-                float level = loud < 40 ? 0f : (float)Math.Min(1.0, loud / 16129.0);
+                float level = loud < 40 || (r[0x6C] & 0xC0) != 0 ? 0f : (float)Math.Min(1.0, loud / 16129.0);   // FLG soft reset / mute: silent (KNOWN_GAPS FA-SW-3)
                 float pan = l + rt == 0 ? 0f : (float)(rt - l) / (l + rt);
                 voices[v] = isNoise || period == 0
                     ? new HubVoice(HubVoiceKind.Noise, isNoise ? DspNoiseHz[r[0x6C] & 31] : 4000, level, Pan: pan)

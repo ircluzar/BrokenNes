@@ -21,7 +21,7 @@ namespace NesEmulator
     /// The chips run on the NES clock: the PSG and the YM2413 from exactly twice the NES CPU clock (the Z80's, 3.58 MHz), the YM2413 making one sample every 72 of those clocks, which is 36 NES cycles, so a note is the pitch the NES
     /// asks for up to the F-number's 9 bits. Its 49.7 kHz output is brought to the host rate by the converter of emu2413 (<see cref="Ym2413Resampler"/>). Discovered by CoreRegistry as APU id "SMSFM". Allocation-free while running.
     /// </summary>
-    public sealed class APU_SMSFM : IAPU, IDmcDmaSchedulable
+    public sealed class APU_SMSFM : IAPU, IDmcDmaSchedulable, NesEmulator.IFrontedApu
     {
         /// <summary>The PSG's and the YM2413's clock: exactly twice the NES CPU clock.</summary>
         public const double ClockHz = 2 * NesVoiceWriter.NesCpuHz;

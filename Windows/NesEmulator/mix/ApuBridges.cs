@@ -308,7 +308,7 @@ namespace NesEmulator
     /// voices 0/1 = pulses (four duty samples), 2 = triangle, 3 = noise (the DSP's noise generator), 4 = a short
     /// noise hit for every DMC sample start (DPCM samples themselves are not converted).
     /// </summary>
-    public sealed class APU_SNES : IAPU
+    public sealed class APU_SNES : IAPU, NesEmulator.IFrontedApu
     {
         private readonly IAPU front;
         private readonly ISnesApu snes;
@@ -432,8 +432,10 @@ namespace NesEmulator
         public int GetQueuedSampleCount() { Drain(); return queue.Count; }
         public int GetSampleRate() => snes.SampleRate;
         public void SetEnabledChannels(int channelMask) { this.channelMask = channelMask; front.SetEnabledChannels(channelMask); }
+        public IAPU Front => front;
         public object GetState() => front.GetState();
-        public void SetState(object state) => front.SetState(state);
+        // the front's registers are restored; the channel model that drives the S-DSP is fed them again (it kept the moment before the load: a key-off written after the save stayed in force, Workshop --apu-sweep)
+        public void SetState(object state) { front.SetState(state); if (front is NesEmulator.APU_FIX f) foreach (var (a, v) in f.SoundRegisterReplay()) model.Write(a, v); }
         public void ClearAudioBuffers() { Drain(); queue.Clear(); front.ClearAudioBuffers(); }
         public void Reset() { front.Reset(); }
     }
@@ -565,7 +567,7 @@ namespace NesEmulator.Mix
                 bool isNoise = (r[0x3D] & (1 << v)) != 0;
                 int pitch = r[b + 2] | (r[b + 3] & 0x3F) << 8;
                 double period = isNoise ? 0 : Period(r[b + 4]);
-                float level = loud < 40 ? 0f : (float)Math.Min(1.0, loud / 16129.0);
+                float level = loud < 40 || (r[0x6C] & 0xC0) != 0 ? 0f : (float)Math.Min(1.0, loud / 16129.0);
                 float pan = l + rt == 0 ? 0f : (float)(rt - l) / (l + rt);
                 voices[v] = isNoise || period == 0
                     ? new NesEmulator.Sega.HubVoice(NesEmulator.Sega.HubVoiceKind.Noise, isNoise ? DspNoiseHz[r[0x6C] & 31] : 4000, level, Pan: pan)
@@ -638,7 +640,8 @@ namespace NesEmulator.Mix
             Syncs++;
             var r = probe.DspRegs;
             var tonal = new List<(int v, double loud, double hz)>(); var noises = new List<(int v, double loud)>();
-            for (int v = 0; v < 8; v++)
+            bool muted = (r[0x6C] & 0xC0) != 0;     // FLG soft reset / mute: the S-DSP's output is silent whatever the voices do (KNOWN_GAPS FA-SW-3)
+            for (int v = 0; v < 8 && !muted; v++)
             {
                 int b = v * 16, envx = r[b + 8] & 0x7F;
                 double loud = envx * (Math.Abs((int)(sbyte)r[b]) + Math.Abs((int)(sbyte)r[b + 1])) / 2.0;
@@ -669,6 +672,14 @@ namespace NesEmulator.Mix
                 WriteTriangle(w, tonal, 2 * banks + k);
                 WriteNoise(w, r, noises, k);
             }
+            // The NES chip's silent channels are also switched off in $4015: the volume-0 / linear-counter writes are not a key-off on every NES APU (DarcNES has no triangle
+            // linear counter, InfoNES ignores the constant volume), $4015 is; a channel switched back on gets its key register again (Workshop --apu-sweep, KNOWN_GAPS FA-SW-2).
+            int mask = (tonal.Count > 0 && tonal[0].hz > 20 ? 1 : 0) | (tonal.Count > 1 && tonal[1].hz > 20 ? 2 : 0) | (2 * banks < tonal.Count && tonal[2 * banks].hz > 20 ? 4 : 0) | (noises.Count > 0 ? 8 : 0);
+            int was = nesCache[0x15];
+            N(0x4015, (byte)mask);
+            if (was >= 0)
+                for (int i = 0; i < 4; i++)
+                    if ((mask >> i & 1) != 0 && (was >> i & 1) == 0 && nesCache[3 + i * 4] >= 0) back.WriteAPURegister((ushort)(0x4003 + i * 4), (byte)nesCache[3 + i * 4]);
         }
 
         private static int Vol(double loud) => Math.Clamp((int)Math.Round(15 * Math.Sqrt(loud / 16129.0) * 1.6), 1, 15);

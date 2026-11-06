@@ -420,6 +420,17 @@ namespace NesEmulator
 		}
 		public System.Collections.Generic.IReadOnlyList<string> GetApuCoreIds() => bus?.GetApuCoreIds() ?? System.Array.Empty<string>();
 
+		/// <summary>Sets the bus's APU register latch $4000-$4013 / $4015 from <paramref name="writes"/> (last write wins); the key registers ($4003, $4007, $400B, $400F)
+		/// that are not among them are marked unwritten, so a later core swap does not key a channel that was silent. $4017 keeps its latch.</summary>
+		private void RebuildApuLatch(System.Collections.Generic.List<(ushort addr, byte value)> writes)
+		{
+			if (bus == null) return;
+			var regs = new byte[0x18]; uint written = bus.CopyApuLatch(regs);
+			foreach (int key in new[] { 0x03, 0x07, 0x0B, 0x0F }) written &= ~(1u << key);
+			foreach (var (a, v) in writes) { int i = a - 0x4000; if (i < 0 || i >= 0x17) continue; regs[i] = v; written |= 1u << i; }
+			bus.SetApuLatch(regs, written);
+		}
+
 		public string SaveState()
 		{
 			// Verbose diagnostic logging (DEBUG only) - stripped in Release
@@ -770,6 +781,10 @@ namespace NesEmulator
 				} catch { }
 			}
 			try { if (!string.IsNullOrEmpty(st.apu)) { using var ad = System.Text.Json.JsonDocument.Parse(st.apu); bus.ActiveAPU.SetState(ad.RootElement); } } catch { }
+			// The bus's register latch (what a live APU core swap replays into the incoming core) is not in the state: left as it was, a swap after
+			// the load replayed the registers of the moment before it (a $4015 = 0 written after the save silenced the game for good on the next swap,
+			// found by Workshop --apu-sweep). Rebuilt here from the restored APU: its registers as writes, the key registers only for channels still sounding.
+			try { if ((bus.ActiveAPU as APU_FIX ?? (bus.ActiveAPU as IFrontedApu)?.Front as APU_FIX) is { } fixFamily) RebuildApuLatch(fixFamily.SoundRegisterReplay()); } catch { }
 			// Drop any queued audio/pacing so playback restarts cleanly after state load
 			try { bus.ActiveAPU?.ClearAudioBuffers(); } catch { }
 			// Restore controller

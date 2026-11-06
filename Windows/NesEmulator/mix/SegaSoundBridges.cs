@@ -32,7 +32,7 @@ namespace NesEmulator
     /// </list>
     /// Discovered by CoreRegistry as APU id "SMS". Allocation-free while running (the plugin plays it on the audio thread).
     /// </summary>
-    public sealed class APU_SMS : IAPU, IDmcDmaSchedulable
+    public sealed class APU_SMS : IAPU, IDmcDmaSchedulable, NesEmulator.IFrontedApu
     {
         /// <summary>The PSG runs from exactly twice the NES CPU clock: a NES timer value t is PSG period t + 1 at the same pitch.</summary>
         public const double PsgClockHz = 2 * NesVoiceWriter.NesCpuHz;

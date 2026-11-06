@@ -124,6 +124,7 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals("--sms-render", StringComparison.OrdinalIgnoreCase)) return Sega.SmsRenderCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--apu-fuzz", StringComparison.OrdinalIgnoreCase)) return Sega.ForeignApuFuzzCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--apu-channels", StringComparison.OrdinalIgnoreCase)) return Sega.ApuChannelsCli.Run(args);
+        if (args.Length > 0 && args[0].Equals("--apu-sweep", StringComparison.OrdinalIgnoreCase)) return Sega.ApuSweepCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--md-sound-bench", StringComparison.OrdinalIgnoreCase)) return Sega.MdSoundBenchCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--sms-run", StringComparison.OrdinalIgnoreCase)) return Sega.SmsRunCli.Run(args);
         if (args.Length > 0 && args[0].Equals("--smstest", StringComparison.OrdinalIgnoreCase)) return Sega.SmsTestCli.Run(args);

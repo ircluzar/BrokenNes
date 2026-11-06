@@ -22,7 +22,7 @@ namespace NesEmulator
     /// is the pitch the NES asks for. The FM chip runs at its own 53,267 Hz and is resampled to the host rate by the same band-limited mixer the Genesis sound unit uses. Discovered by CoreRegistry as APU id "MD".
     /// Allocation-free while running (the plugin plays it on the audio thread).
     /// </summary>
-    public sealed class APU_MD : IAPU, IDmcDmaSchedulable
+    public sealed class APU_MD : IAPU, IDmcDmaSchedulable, NesEmulator.IFrontedApu
     {
         /// <summary>The PSG runs from exactly twice the NES CPU clock.</summary>
         public const double PsgClockHz = 2 * NesVoiceWriter.NesCpuHz;

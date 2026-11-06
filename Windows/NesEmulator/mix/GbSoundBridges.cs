@@ -91,6 +91,7 @@ namespace NesEmulator.Mix
         private void Sync()
         {
             Syncs++;
+            int sounding = 0;
             for (int i = 0; i < 2; i++)
             {
                 var ch = front.Channel(i);
@@ -103,6 +104,7 @@ namespace NesEmulator.Mix
                     N(b, (byte)(duty << 6 | 0x30 | ch.Volume));
                     N((ushort)(b + 2), (byte)t);
                     N((ushort)(b + 3), (byte)(0x08 | (t >> 8)));
+                    sounding |= 1 << i;
                 }
                 else N(b, (byte)(duty << 6 | 0x30));
             }
@@ -113,6 +115,7 @@ namespace NesEmulator.Mix
                     double hz = 65536.0 / (2048 - ch.Period);
                     int t = Math.Clamp((int)Math.Round(1789773.0 / (32 * hz) - 1), 2, 2047);
                     N(0x4008, 0xFF); N(0x400A, (byte)t); N(0x400B, (byte)(0x08 | (t >> 8)));
+                    sounding |= 4;
                 }
                 else N(0x4008, 0x80);
             }
@@ -125,9 +128,18 @@ namespace NesEmulator.Mix
                     int best = 0; double bd = double.MaxValue;
                     for (int k = 0; k < 16; k++) { double d = Math.Abs(Math.Log(1789773.0 / NesChannelModel.NoisePeriods[k] / hz)); if (d < bd) { bd = d; best = k; } }
                     N(0x400C, (byte)(0x30 | ch.Volume)); N(0x400E, (byte)((ch.NoiseShortMode ? 0x80 : 0) | best)); N(0x400F, 0x08);
+                    sounding |= 8;
                 }
                 else N(0x400C, 0x30);
             }
+            // A silent channel is also switched off in $4015: the volume-0 / linear-counter writes above are not a key-off on every NES APU (DarcNES has no
+            // triangle linear counter, InfoNES ignores the constant volume), and $4015 is. A channel switched back on gets its key register again (its length counter
+            // was cleared), found by Workshop --apu-sweep (KNOWN_GAPS FA-SW-2).
+            int was = cache[0x15];
+            N(0x4015, (byte)sounding);
+            if (was >= 0)
+                for (int i = 0; i < 4; i++)
+                    if ((sounding >> i & 1) != 0 && (was >> i & 1) == 0 && cache[3 + i * 4] >= 0) back.WriteAPURegister((ushort)(0x4003 + i * 4), (byte)cache[3 + i * 4]);
         }
 
         /// <summary>The Game Boy's four voices as the hub's voice list (tools and tests): pulse 1 and 2, the wave channel (a triangle on the NES), the noise; the level is the
@@ -180,7 +192,7 @@ namespace NesEmulator
     /// exact), noise -> noise (nearest clock, short mode -> 7-bit mode). DMC samples have nowhere to go and are dropped.
     /// Discovered by CoreRegistry as APU id "DMG".
     /// </summary>
-    public class APU_DMG : IAPU
+    public class APU_DMG : IAPU, NesEmulator.IFrontedApu
     {
         private readonly IAPU front;
         private readonly IGbApu gb;
@@ -385,8 +397,10 @@ namespace NesEmulator
         public int GetQueuedSampleCount() { Drain(); return queue.Count; }
         public int GetSampleRate() => gb.SampleRate;
         public void SetEnabledChannels(int channelMask) { this.channelMask = channelMask; front.SetEnabledChannels(channelMask); }
+        public IAPU Front => front;
         public object GetState() => front.GetState();
-        public void SetState(object state) => front.SetState(state);
+        // the front's registers are restored; the Game Boy chip behind is fed them again (it kept the moment before the load: a key-off written after the save stayed in force, Workshop --apu-sweep)
+        public void SetState(object state) { front.SetState(state); if (front is NesEmulator.APU_FIX f) foreach (var (a, v) in f.SoundRegisterReplay()) lane0.Write(a, v); }
         public void ClearAudioBuffers() { Drain(); queue.Clear(); front.ClearAudioBuffers(); }
         public void Reset() { front.Reset(); }
     }

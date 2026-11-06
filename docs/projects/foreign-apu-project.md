@@ -41,6 +41,18 @@ Each core's source, version and quirks are in the batch tables below. Every shor
    - FA-5: cards and the blind bag.
    - FA-WEB-1 is now fixed.
 
+## Follow-up test batch (2026-11-05, primer `foreign-apu-next-primer.md`)
+
+| Phase | Tool | Result | Commits |
+|---|---|---|---|
+| 1. Every channel sounds | `Workshop --apu-channels [--console X]` | 274 cells (core x channel vs the stock core, RMS + pitch), 0 port bugs, 35 intended deviations (the originals' sound, KNOWN_GAPS FA-CH-1..3); WAVs in `%LOCALAPPDATA%\VRUN_Nes_Dev_work\fapu_build\wav` | `4ff599ca` |
+| 2. Save states | `--apu-channels --state` | every port keeps sounding at its level after a load (NES ports were silent: FA-NES-ST; Genesis / SMS lost notes: FA-MD-ST). Re-keyed, not sample-exact, except the Game Boy ports (FA-ST-1, open) | `b0b8195e`, `70e51e57` |
+| 3. Cross-console sweep | `--apu-sweep [--console X] [--only ID] [--plant silent\|stuck\|crash] [--tsv f]` | 162 cells (21 of them stock controls): each port native on its menu, swapped live mid-song, and behind every bridge that reaches it (NES game on APU_SNES / APU_DMG, SNES / GB / SMS / GG / Genesis game on `NES:<port>` swapped in live and started on it, SMS game on `NES:DMG` / `NES:SNES`, GB game on `NES:SNES`), each judged against the stock control of its route: live swap, save + load, Butchering mode (4 sound effects, then off + reload), key-off (no stuck notes), swap back to stock (nothing carried back). All pass after the fixes; the plants are caught | this batch |
+
+Phase 3 found and fixed (KNOWN_GAPS): **FA-SW-5** a NES core swap after a state load replayed the pre-load registers (a later swap could silence the game for good), and the APU_SNES / APU_DMG bridges did not refeed their chip on a load; **FA-SW-2** stuck notes on the `NES:<chip>` bridges with DARC / INES (the bridges now key off in `$4015`); **FA-SW-3** the SNES-to-NES bridges ignored the S-DSP mute. Intended (the originals): FA-SW-1 (NSTC caps a held note at 0.5 s), FA-SW-4 (ZS15 / ZS151 / S9X1 / SNDS ignore FLG mute). Open: FA-BR-1 (the NES menu's SNES / DMG bridges cannot pick a port: a decision), FA-SW-6 (five NES ports' sample counts / NSTC pitch behind the Sega hub, pre-existing in `--swap-matrix-test`), FA-ST-1 (exact per-engine state).
+
+Every session is headless; run one console per process (`--console`), six at a time take about a minute.
+
 ## Decisions (user interviews, 2026-11-01)
 
 | Topic | Decision |
