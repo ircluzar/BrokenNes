@@ -26,11 +26,13 @@ public PC/AT BIOS interface documentation, the way DOSBox answers BIOS calls in 
 LiteUSB image `FD14LITE.img` (FreeDOS project; the kernel, FreeCOM and most of `\FREEDOS\BIN` GPL-2.0 or later, other programs under their own
 free licences, each stated in its package's `APPINFO\*.LSM`) is copied unmodified into the desktop build's `x86\freedos\` by
 `Windows/BrokenNes.Windows.csproj` from the developer toolkit (`C:\BrokenNes-tools\dos\freedos`, MSBuild property `FreeDosImage`), beside
-`Windows/x86/freedos/README.txt` (what it is, the licences, where the source is, and the GPL section 3(b) written offer) and
+`Windows/x86/freedos/README.txt` (what it is, the licences, and that the source is included: GPL section 3(a)) and
 `Windows/x86/freedos/GPL-2.0.txt` (the GPL version 2 text, verbatim). It is a **separate, aggregated program**: BrokenNes runs it inside the
 emulated PC from a disk image and links nothing of it. `PcDisks.ForProgram` puts a DOS program on an in-memory copy of the image (our own
-FDCONFIG.SYS / FDAUTO.BAT, `\PACKAGES` dropped); that copy is the game's save. **Open before a release:** the written offer's contact
-(README.txt says `[CONTACT TO BE FILLED IN ...]`), or bundle the FD14 source packages instead (a download the user has to approve).
+FDCONFIG.SYS / FDAUTO.BAT, `\PACKAGES` dropped); that copy is the game's save. The complete corresponding source ships beside it in `x86\freedos\source\` (from the toolkit,
+`C:\BrokenNes-tools\x86\freedos-1.4-src\source`, MSBuild property `FreeDosSource`): the 65 package zips of the image's `\PACKAGES` plus grep,
+doslfn, srdisk and cdrcache from the FreeDOS 1.4 LegacyCD (installed in the image's `\FREEDOS\BIN`), all unmodified, each with its `SOURCE\`;
+`SOURCES.txt` there lists their SHA-256 and origin. No written offer is needed.
 The tests build their boot disks from the same toolkit image.
 
 **What was kept.** The core's design and behaviour, function by function: the lazy flags (`cc` op / dst / src / mask), the TLB and

@@ -27,16 +27,14 @@ others); each program's licence is stated in its FreeDOS package
 (\PACKAGES\...\*.ZIP, file APPINFO\*.LSM) and on https://www.freedos.org/ .
 BrokenNes 2's own licence (LICENSE.txt) does not apply to FreeDOS.
 
-Source code (GPL, section 3)
-----------------------------
-The complete corresponding source code of FreeDOS 1.4 is published by the
-FreeDOS project at https://www.freedos.org/download/ and in the same ibiblio
-directory as the image (the FD14 source packages).
-
-WRITTEN OFFER: for at least three years from the date you received this copy
-of BrokenNes 2, its distributor will give anyone who asks a complete
-machine-readable copy of the corresponding source code of the GPL-licensed
-programs on FD14LITE.img, on a medium customarily used for software
-interchange (a download link, or a disk on request), for no more than the
-cost of performing the distribution. Ask: [CONTACT TO BE FILLED IN BY THE
-DISTRIBUTOR BEFORE A RELEASE].
+Source code (GPL, section 3(a))
+-------------------------------
+The complete corresponding source code is included: the folder source\ beside
+this file holds the FreeDOS 1.4 package of every program on FD14LITE.img,
+unmodified, each with its source in SOURCE\ (the 65 packages stored in the
+image's \PACKAGES, plus grep, doslfn, srdisk and cdrcache, which are installed
+in \FREEDOS\BIN and taken from the FreeDOS 1.4 LegacyCD of the same release).
+source\SOURCES.txt lists every file with its SHA-256 and where it came from.
+The installer's batch files on the image are their own source. The FreeDOS
+project also publishes all of it at https://www.freedos.org/download/ and
+https://www.ibiblio.org/pub/micro/pc-stuff/freedos/files/ .

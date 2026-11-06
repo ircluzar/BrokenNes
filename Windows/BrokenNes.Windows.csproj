@@ -118,15 +118,18 @@
     <None Include="NesEmulator\sega\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES-sega.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
   </ItemGroup>
 
-  <!-- The x86 console (P3): the FreeDOS 1.4 boot disk ships beside the program in x86\freedos, as a separate aggregated program with its GPL text and source offer (x86\freedos\README.txt).
-       The image is not in the repository: it is taken from the developer toolkit (C:\BrokenNes-tools\dos\freedos, or FreeDosImage=...) when present; without it a build still works and opens disk images,
-       only a bare DOS program cannot be opened. -->
+  <!-- The x86 console (P3): the FreeDOS 1.4 boot disk ships beside the program in x86\freedos, as a separate aggregated program with its GPL text (x86\freedos\README.txt)
+       and its complete corresponding source (GPL 3(a)) in x86\freedos\source: the FreeDOS 1.4 packages, with SOURCES.txt (SHA-256 and origin of each).
+       Neither is in the repository: they are taken from the developer toolkit (C:\BrokenNes-tools\dos\freedos or FreeDosImage=..., C:\BrokenNes-tools\x86\freedos-1.4-src\source
+       or FreeDosSource=...). The image is only copied when its source is there too; without them a build still works and opens disk images, only a bare DOS program cannot be opened. -->
   <PropertyGroup>
     <FreeDosImage Condition="'$(FreeDosImage)' == ''">C:\BrokenNes-tools\dos\freedos\FD14LITE.img</FreeDosImage>
+    <FreeDosSource Condition="'$(FreeDosSource)' == ''">C:\BrokenNes-tools\x86\freedos-1.4-src\source</FreeDosSource>
   </PropertyGroup>
   <ItemGroup>
     <None Include="x86\freedos\README.txt;x86\freedos\GPL-2.0.txt"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
-    <None Include="$(FreeDosImage)" Link="x86\freedos\FD14LITE.img" Condition="Exists('$(FreeDosImage)')"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+    <None Include="$(FreeDosSource)\**\*" Link="x86\freedos\source\%(RecursiveDir)%(Filename)%(Extension)" Condition="Exists('$(FreeDosImage)') And Exists('$(FreeDosSource)\SOURCES.txt')"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
+    <None Include="$(FreeDosImage)" Link="x86\freedos\FD14LITE.img" Condition="Exists('$(FreeDosImage)') And Exists('$(FreeDosSource)\SOURCES.txt')"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory><ExcludeFromSingleFile>true</ExcludeFromSingleFile></None>
   </ItemGroup>
 
   <!-- WideMess milestone 6: the SNES games' enhancement profiles (docs/projects/widemess-spec.md 6.2) ship beside the program, in WideMess\profiles. -->
