@@ -4,7 +4,7 @@
   Exit 0 = every check passed. Ends with ONE JSON result line (entrypoint, pass, checks, speed, notes, seconds), like the other entrypoint scripts.
 
 .DESCRIPTION
-  1. Publishes WebLite as AOT (`dotnet publish -c Release -p:EnableWasmAot=true`, output under %LOCALAPPDATA%\VRUN_Nes_Dev_work\uat_lite_widemess) unless -Publish names an existing publish folder.
+  1. Publishes WebLite as AOT (`dotnet publish -c Release -p:EnableWasmAot=true`, output under C:\BrokenNes-work\uat_lite_widemess) unless -Publish names an existing publish folder.
   2. Runs UAT\lite\test-lite-widemess.mjs (node 22 or newer) on the WideMess test ROMs (WideMess\testroms\bin, copied into a scratch folder) and, when the user's SNES library has it, Super Mario World:
      groups console, picture, model, control, snes, sound, saves, states, layout (the browser's software renderer, as the other Lite suites), then speed with LITELAB_GPU=1 (the machine's GPU draws the
      picture, as in a real browser). See the header of that file for what each group proves and what it cannot see.
@@ -23,7 +23,7 @@ param(
     [string]$Publish,
     [string]$Library,
     [string[]]$Only,
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_lite_widemess')
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_lite_widemess')
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path

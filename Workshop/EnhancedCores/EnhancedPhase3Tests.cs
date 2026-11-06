@@ -487,8 +487,8 @@ internal static class EnhancedPhase3Tests
         {
             (ConsoleKind.Snes, @"X:\EMULATION\Super Nintendo\Super Nintendo (U)\Super Mario World (U) [!].smc", 600),
             (ConsoleKind.Genesis, @"X:\EMULATION\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin", 600),
-            (ConsoleKind.MasterSystem, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"VRUN_Nes_Dev_work\sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms"), 600),
-            (ConsoleKind.GameGear, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"VRUN_Nes_Dev_work\sega_roster\gg\Columns (U) [!].gg"), 600),
+            (ConsoleKind.MasterSystem, Path.Combine((Environment.GetEnvironmentVariable("BROKENNES_WORK") ?? @"C:\BrokenNes-work"), @"sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms"), 600),
+            (ConsoleKind.GameGear, Path.Combine((Environment.GetEnvironmentVariable("BROKENNES_WORK") ?? @"C:\BrokenNes-work"), @"sega_roster\gg\Columns (U) [!].gg"), 600),
         };
         foreach (var (console, path, frames) in games)
         {

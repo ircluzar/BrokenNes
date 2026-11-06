@@ -3,7 +3,7 @@
   "suite": "sega-sessions",
   "description": "The Master System, Game Gear and Genesis through Workshop --session-test: a real game from the user's libraries on the console's own cores, on machine variants (PAL, Genesis Model 2), with its picture drawn by a NES chip, its sound played by a NES chip or another console's chip through the NES registers, and with a core swapped in the middle of the run. Every golden says what this build did when it was recorded (nothing moved), not that the game is right: the accuracy gates are --smstest, --md-golden, --md-test and the oracle comparisons. A ROM that is not on this machine SKIPs. The Master System games are unpacked by UAT/lib/Prepare-SegaRoms.ps1 (the suite and certify.ps1 run it first).",
   "roots": {
-    "sms": "%LOCALAPPDATA%/VRUN_Nes_Dev_work/sega_roms/sms",
+    "sms": "C:/BrokenNes-work/sega_roms/sms",
     "gg": "X:/EMULATION/Sega Game Gear",
     "md": "X:/EMULATION/Sega Genesis"
   },

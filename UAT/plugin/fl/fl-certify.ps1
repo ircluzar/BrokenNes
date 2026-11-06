@@ -28,8 +28,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
-$work = if ($WorkDir) { $WorkDir } else { Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\fl_certify' }
-$art = Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\bn_build'
+$work = if ($WorkDir) { $WorkDir } else { Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'fl_certify' }
+$art = Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'bn_build'
 $result = [ordered]@{ ok = $false; steps = @() }
 function Step($name, $ok, $detail = '') {
     $script:result.steps += [ordered]@{ step = $name; ok = [bool]$ok; detail = $detail }

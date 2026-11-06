@@ -23,7 +23,7 @@ internal static class StateAuditCli
         string snes = @"X:\EMULATION\Super Nintendo\Super Nintendo (U)\Super Mario World (U) [!].smc";
         string gb = @"X:\EMULATION\GameBoy\Super Mario Land (W) (V1.1) [!].zip";
         string gbc = @"X:\EMULATION\GameBoy Color\1942 (USA).gbc";
-        string sms = System.IO.Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? "", @"VRUN_Nes_Dev_work\sega_roms\sms\alexkidd.sms");
+        string sms = System.IO.Path.Combine((Environment.GetEnvironmentVariable("BROKENNES_WORK") ?? @"C:\BrokenNes-work"), @"sega_roms\sms\alexkidd.sms");
         string gg = @"X:\EMULATION\Sega Game Gear\Columns (U) [!].gg";
         string md = @"X:\EMULATION\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin";
         yield return new(ConsoleKind.Snes, "snes", snes, "Super Mario World");

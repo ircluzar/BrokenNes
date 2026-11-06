@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   1. Builds Windows\BrokenNes.Windows.csproj -c Release with --artifacts-path under
-     $env:LOCALAPPDATA\VRUN_Nes_Dev_work\uat_desktop (nothing lands in the repo tree), unless -Exe is given.
+     C:\BrokenNes-work\uat_desktop (nothing lands in the repo tree), unless -Exe is given.
   2. Launches it via UAT\lib\ApiClient.ps1 (Start-BrokenNesInstance) and drives the local HTTP API.
   3. Applies CPU/PPU/APU = FIX (mapper-30 VRUN needs the FIX CPU), navigates to the emulator view,
      loads the NES ROM, then samples for -RunSeconds.
@@ -52,7 +52,7 @@ param(
     [int]$MinColors = 3,
     [double]$MinNonBlackPct = 5,
     [switch]$RequireAudio,
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_desktop')
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_desktop')
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path

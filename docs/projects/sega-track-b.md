@@ -98,7 +98,7 @@ None of this says the games are playable: with no sprites and no scroll the pict
 ## Reproduce
 
 ```
-dotnet build Workshop\BrokenNes.Workshop.csproj -c Release --artifacts-path %LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_sega_b
+dotnet build Workshop\BrokenNes.Workshop.csproj -c Release --artifacts-path C:\BrokenNes-work\bn_sega_b
 Workshop.exe --m68ktest [--selftest | --bench | --jobs 4 | --poison 50 | --no-exclusions | --no-tolerances]
 Workshop.exe --md-test
 Workshop.exe --md-run <rom> --frames 1560 --input "480:Start,486:" --plane-png out.png [--trace t.txt --trace-pc --trace-reads] [--ram-out ram.bin] [--force]

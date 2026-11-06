@@ -17,7 +17,7 @@ Phase 0 is done and on `main` (see section 12 of `sega-cores-plan.md`). Three tr
 ## Hard rules
 
 - **Your own worktree and branch.** Commit there, often, with a message that says what changed and what was verified, ending with the attribution line the harness gives you. **Never push, never merge, never touch `main`.** The lead merges.
-- **Builds:** always `dotnet build <csproj> -c Release --artifacts-path %LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_sega_<yourtrack>` (a: `bn_sega_a`, b: `bn_sega_b`, c: `bn_sega_c`) so you never clobber another agent. **Check the build exit code before running any exe**:
+- **Builds:** always `dotnet build <csproj> -c Release --artifacts-path C:\BrokenNes-work\bn_sega_<yourtrack>` (a: `bn_sega_a`, b: `bn_sega_b`, c: `bn_sega_c`) so you never clobber another agent. **Check the build exit code before running any exe**:
   a stale Workshop exe falls through to the GUI and hangs. Run exes through `Start-Process ... -RedirectStandardOutput` with a timeout and kill on timeout. This machine has 12 threads shared by three agents plus the user: keep parallel jobs to 4 or fewer
   and never leave long runs unattended without a timeout.
 - **Licensing (the repo license is bespoke and cannot carry GPL).** Port only from MIT, BSD, ISC or zlib sources, with a ledger row in `sega/THIRD_PARTY_NOTICES.md` saying what was taken, from where, at what version, and what was changed. GPL, LGPL, AGPL and non-commercial emulators

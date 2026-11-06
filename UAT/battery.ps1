@@ -28,8 +28,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $Repo = Split-Path -Parent $PSScriptRoot
 if ($Seed -eq 0) { $Seed = [int](Get-Date -UFormat %j) * 1000 + (Get-Date).Hour * 10 }
-if (-not $Out) { $Out = Join-Path $env:LOCALAPPDATA ("VRUN_Nes_Dev_work\battery\" + (Get-Date -Format 'yyyyMMdd-HHmmss')) }
-$Build = Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\battery-build'
+if (-not $Out) { $Out = Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) ("battery\" + (Get-Date -Format 'yyyyMMdd-HHmmss')) }
+$Build = Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'battery-build'
 New-Item -ItemType Directory -Force -Path $Out, $Build | Out-Null
 $t0 = Get-Date
 $groups = [ordered]@{}

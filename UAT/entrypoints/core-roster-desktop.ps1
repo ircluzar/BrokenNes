@@ -93,7 +93,7 @@ try {
     # 4. the enhanced picture contract in the app: a Sega game swapped onto an enhanced chip (FIXS, DMGS; since phase 3 the other consoles' enhanced chips, reached directly, and the console's own enhanced
     #    chip) is drawn at the console's own size; on the stock FIX it is a NES picture
     $games = @(
-        @{ Name = 'Master System Sonic'; Path = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms'); W = 256; H = 192; Chips = @('NES:FIXS', 'NES:DMGS', 'NES:FIX', 'SNES:SFCS', 'MD:MDS', 'SMSS') },
+        @{ Name = 'Master System Sonic'; Path = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms'); W = 256; H = 192; Chips = @('NES:FIXS', 'NES:DMGS', 'NES:FIX', 'SNES:SFCS', 'MD:MDS', 'SMSS') },
         @{ Name = 'Genesis Sonic'; Path = 'X:\EMULATION\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin'; W = 320; H = 224; Chips = @('NES:FIXS', 'NES:DMGS', 'NES:FIX', 'SNES:SFCS', 'SMS:SMSS', 'GG:GGS', 'MDS') })
     foreach ($g in $games) {
         if (-not (Test-Path -LiteralPath $g.Path)) { Write-Host "[NOT RUN] $($g.Name): no ROM at $($g.Path)"; continue }

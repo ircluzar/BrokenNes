@@ -3,7 +3,7 @@
 One script per shipped entrypoint. Each exits 0 on pass / 1 on fail, prints human-readable
 `[PASS]/[FAIL]` lines, and ends with ONE JSON result line (`entrypoint`, `pass`, `checks`, `notes`,
 `seconds`). Run under `pwsh -File`. Build/publish output goes to
-`%LOCALAPPDATA%\VRUN_Nes_Dev_work\uat_desktop|uat_web`, never into the repo. The header comment of each
+`C:\BrokenNes-work\uat_desktop|uat_web`, never into the repo. The header comment of each
 script lists exactly what is and is not verified.
 
 | Script | Entrypoint | Typical time |

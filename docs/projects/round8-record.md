@@ -154,7 +154,7 @@ For the user: (1) **controller 7 or 11** for volume changes, once FL's handling 
 
 ## 10. Final runs
 
-`refs/heads/main` had not moved since this branch began (43f7a70, the round 7 `midi` merge): nothing to merge. Every DLL figure is from the Native AOT DLL published from this tree into `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r8_record`.
+`refs/heads/main` had not moved since this branch began (43f7a70, the round 7 `midi` merge): nothing to merge. Every DLL figure is from the Native AOT DLL published from this tree into `C:\BrokenNes-work\bn_r8_record`.
 
 | Run | Result |
 |---|---|
@@ -210,7 +210,7 @@ Control ids 2034 (Log FL's calls), 2035 (Bends + volume from the recording), 205
 
 ### Final runs (this section)
 
-`refs/heads/main` had not moved from 421c4d8 (fetched again at the end): nothing to merge. Every DLL figure is from the Native AOT DLL published from this tree into `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r8_record`.
+`refs/heads/main` had not moved from 421c4d8 (fetched again at the end): nothing to merge. Every DLL figure is from the Native AOT DLL published from this tree into `C:\BrokenNes-work\bn_r8_record`.
 
 | Run | Result |
 |---|---|
@@ -378,7 +378,7 @@ For the user: (1) duty changes: two tracks (exact, now) or one track per instrum
 
 ### Final runs
 
-`refs/heads/main` had not moved from 1a04aad (fetched again at the end, `--no-tags`): nothing more to merge. The DLL was published from this tree into `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r8_nes`.
+`refs/heads/main` had not moved from 1a04aad (fetched again at the end, `--no-tags`): nothing more to merge. The DLL was published from this tree into `C:\BrokenNes-work\bn_r8_nes`.
 
 | Run | Result |
 |---|---|
@@ -471,7 +471,7 @@ Control ids 2036 (Link all), 2060 (Link to recording), 2061 (Unlink); plugin tes
 
 ### Final runs (this section)
 
-`refs/heads/main` had not moved from 71c538d (fetched again at the end, `--no-tags`): nothing to merge. Every DLL figure is from the Native AOT DLL published from this tree into `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r8_relink`.
+`refs/heads/main` had not moved from 71c538d (fetched again at the end, `--no-tags`): nothing to merge. Every DLL figure is from the Native AOT DLL published from this tree into `C:\BrokenNes-work\bn_r8_relink`.
 
 | Run | Result |
 |---|---|
@@ -493,7 +493,7 @@ In the user's words: "When recording either NES or SNES, after reloading the MID
 
 ### The evidence: real FL 2026
 
-`Documents\BrokenNes2 host log.txt`: 1,775 lines written by FL64.exe (FL's host version 26001000) between 18:53 and 18:58, read only (a copy and the recordings it used are in `%LOCALAPPDATA%\VRUN_Nes_Dev_work\fl-evidence\2026-10-18`, outside the repository: the test reads that copy). Two sessions: **Super Mario World 18.52.50** (7 tracks; channels #2-#8 made while on offer; FL played none of their notes before the tracks were withdrawn) and **Wario's Woods 18.55.44** (6 tracks; channels #10-#15; four Plays; 192 notes logged, 32 per channel). Read against the recordings' MIDI files:
+`Documents\BrokenNes2 host log.txt`: 1,775 lines written by FL64.exe (FL's host version 26001000) between 18:53 and 18:58, read only (a copy and the recordings it used are in `C:\BrokenNes-work\fl-evidence\2026-10-18`, outside the repository: the test reads that copy). Two sessions: **Super Mario World 18.52.50** (7 tracks; channels #2-#8 made while on offer; FL played none of their notes before the tracks were withdrawn) and **Wario's Woods 18.55.44** (6 tracks; channels #10-#15; four Plays; 192 notes logged, 32 per channel). Read against the recordings' MIDI files:
 
 | What FL did | Evidence | What r13 made of it |
 |---|---|---|
@@ -536,7 +536,7 @@ In the user's words: "When recording either NES or SNES, after reloading the MID
 
 ### Verification (numbers from runs on this machine)
 
-The DLL is the Native AOT DLL published from this tree into `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r8_reload`.
+The DLL is the Native AOT DLL published from this tree into `C:\BrokenNes-work\bn_r8_reload`.
 
 **`FruityHost selftest --only reload`** (new): PASS, about 3.5 minutes, 8 of 8 deliberate bugs caught.
 
@@ -593,7 +593,7 @@ One more observation, not explained at the time (explained on 2026-10-23: sectio
 
 ### Final runs (this section)
 
-`refs/heads/main` was merged three times (capture 4cda3b2, the SNES HDMA fix 4bb3ef1, VRUN's bends 8f67d43; the last was clean and touched only the plugin's music and capture code, their checks, BrokenDev's template build and docs). Every DLL figure is from the Native AOT DLL published from this tree into `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r8_reload`.
+`refs/heads/main` was merged three times (capture 4cda3b2, the SNES HDMA fix 4bb3ef1, VRUN's bends 8f67d43; the last was clean and touched only the plugin's music and capture code, their checks, BrokenDev's template build and docs). Every DLL figure is from the Native AOT DLL published from this tree into `C:\BrokenNes-work\bn_r8_reload`.
 
 | Run | Result |
 |---|---|

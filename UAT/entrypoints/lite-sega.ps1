@@ -4,7 +4,7 @@
   Exit 0 = every check passed. Ends with ONE JSON result line (entrypoint, pass, checks, notes, seconds), like the other entrypoint scripts.
 
 .DESCRIPTION
-  1. Publishes WebLite as AOT (`dotnet publish -c Release -p:EnableWasmAot=true`, output under %LOCALAPPDATA%\VRUN_Nes_Dev_work\uat_lite_sega) unless -Publish names an existing publish folder (its wwwroot or itself).
+  1. Publishes WebLite as AOT (`dotnet publish -c Release -p:EnableWasmAot=true`, output under C:\BrokenNes-work\uat_lite_sega) unless -Publish names an existing publish folder (its wwwroot or itself).
   2. Gathers the games it plays into a scratch folder (never the repository): two Master System, two Game Gear and two Genesis games from the user's libraries
      (X:\EMULATION\..., the .7z archives opened with 7-Zip) unless -Roms names a folder that already has sms\ gg\ md\ subfolders.
   3. Runs UAT\lite\test-lite-sega.mjs (node 22 or newer): groups console, layout, rom, import, pickers, swap, saves, states, video, audio, control (see the header of that file for what each proves and what it cannot see).
@@ -25,7 +25,7 @@ param(
     [string]$Roms,
     [string[]]$Only,
     [switch]$Bench,
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_lite_sega')
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_lite_sega')
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path

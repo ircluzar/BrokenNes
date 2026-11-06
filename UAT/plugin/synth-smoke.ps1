@@ -4,7 +4,7 @@
   Exit 0 = pass, non-zero = fail. Prints ONE JSON result line as the last line of stdout (same shape as desktop-smoke.ps1).
 
 .DESCRIPTION
-  Builds Windows\BrokenNes.Windows.csproj -c Release under $env:LOCALAPPDATA\VRUN_Nes_Dev_work\uat_synth (unless -Exe is given) and drives the REAL
+  Builds Windows\BrokenNes.Windows.csproj -c Release under C:\BrokenNes-work\uat_synth (unless -Exe is given) and drives the REAL
   windows: UI Automation for menus, tabs and the status line, real keyboard events (keybd_event) for the computer-keyboard piano. Settings go to a
   temp folder (BROKENNES_SYNTH_DIR) and the plugin's prefs to a temp file, so nothing of yours is touched.
 
@@ -39,7 +39,7 @@
 [CmdletBinding()]
 param(
     [string]$Exe,
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_synth')
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_synth')
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path

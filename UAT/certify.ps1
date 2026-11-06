@@ -38,7 +38,7 @@
     notices    third-party notices            UAT\entrypoints\notices-check.ps1: the ledgers match the tree, the four license texts are there, and the desktop
                                               folder, the Lite site and (in install-smoke) the installed plugin folder hold the notices
 
-  Build output goes to %LOCALAPPDATA%\VRUN_Nes_Dev_work (never into the repo). Exit code 0 = nothing FAILED
+  Build output goes to C:\BrokenNes-work (never into the repo). Exit code 0 = nothing FAILED
   (NOT RUN entrypoints do not fail unless -RequireFl).
 .EXAMPLE
   pwsh -File UAT\certify.ps1                    # everything
@@ -57,7 +57,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$workRoot = Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work'
+$workRoot = $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' })
 $art = if ($env:BROKENNES_ART) { $env:BROKENNES_ART } else { Join-Path $workRoot 'bn_build' }      # BROKENNES_ART: a private build folder (several agents share the machine)
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $outDir = Join-Path $workRoot "certify\$stamp"

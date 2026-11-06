@@ -18,7 +18,7 @@ if (-not $vgm) { "no BlastEm VGM written"; return }
 $theirs = Join-Path $OutDir "blastem.vgm"; Move-Item $vgm.FullName $theirs -Force
 "BlastEm: $theirs ($((Get-Item $theirs).Length) bytes)"
 if ($Frames -le 0) { $Frames = [int]($DurationMs * 60 / 1000) + 120 }
-$art = if ($env:BN_ARTIFACTS) { $env:BN_ARTIFACTS } else { "$env:LOCALAPPDATA\VRUN_Nes_Dev_work\bn_sega_b4b" }
+$art = if ($env:BN_ARTIFACTS) { $env:BN_ARTIFACTS } else { "$(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' })\bn_sega_b4b" }
 $exe = "$art\bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe"
 $ours = Join-Path $OutDir "ours.vgm"
 $p = Start-Process $exe -ArgumentList @("--md-run", "`"$Rom`"", "--frames", "$Frames", "--quiet", "--vgm", "`"$ours`"") -RedirectStandardOutput (Join-Path $OutDir "ours.out.txt") -PassThru -WindowStyle Hidden

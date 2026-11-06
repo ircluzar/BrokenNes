@@ -13,8 +13,8 @@
 #>
 param(
     [string] $Exe,
-    [string] $Out = (Join-Path $env:LOCALAPPDATA ("VRUN_Nes_Dev_work\battery\desktop-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))),
-    [string] $Build = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\battery-desktop-build')
+    [string] $Out = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) ("battery\desktop-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))),
+    [string] $Build = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'battery-desktop-build')
 )
 $ErrorActionPreference = 'Stop'
 $Repo = Split-Path -Parent $PSScriptRoot

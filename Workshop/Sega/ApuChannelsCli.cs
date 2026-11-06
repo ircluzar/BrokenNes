@@ -31,7 +31,7 @@ internal static partial class ApuChannelsCli
         if (M68kTestCli.Flag(args, "--state")) return StateCheck(args);
         string? consoleArg = M68kTestCli.Arg(args, "--console")?.ToUpperInvariant();
         var only = M68kTestCli.Arg(args, "--only")?.ToUpperInvariant().Split(',');
-        wavDir = M68kTestCli.Arg(args, "--wav") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VRUN_Nes_Dev_work", "fapu_build", "wav");
+        wavDir = M68kTestCli.Arg(args, "--wav") ?? Path.Combine((Environment.GetEnvironmentVariable("BROKENNES_WORK") ?? @"C:\BrokenNes-work"), "fapu_build", "wav");
         Directory.CreateDirectory(wavDir);
 
         var consoles = new (string name, string stock, string[] ids, List<Cell> cells)[]

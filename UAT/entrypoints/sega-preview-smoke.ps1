@@ -39,7 +39,7 @@
 [CmdletBinding()]
 param(
     [string]$Exe,
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_sega_preview'),
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_sega_preview'),
     # run only the core-swap section (the three consoles through the HTTP API, one through the PPU menu): a few minutes shorter, for working on swaps; the full run is the certification
     [switch]$SwapsOnly
 )

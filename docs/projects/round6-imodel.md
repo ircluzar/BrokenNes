@@ -1,7 +1,7 @@
 # Round 6, `imodel`: the instrument model and the instrument corruptor
 
 Date: 2026-10-17. Domain: `Plugin/BrokenNes2.Plugin/Instruments/` (a pure library, no drawing), its glue to the Instruments tab (`Instruments/InstrumentsUi.cs`, `Emulator.Instruments.cs`, `Bn2Plugin.Instruments.cs`) and its checks. Brief: `docs/projects/round6-instruments-brief.md`.
-Branch `worktree-agent-ab6b2e10fb6fa8a04`, builds in `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r6_imodel`. Nothing pushed, nothing merged into `main`; `refs/heads/main` (78a7dee, the `ui` merge) is merged into the branch.
+Branch `worktree-agent-ab6b2e10fb6fa8a04`, builds in `C:\BrokenNes-work\bn_r6_imodel`. Nothing pushed, nothing merged into `main`; `refs/heads/main` (78a7dee, the `ui` merge) is merged into the branch.
 
 ## What exists
 

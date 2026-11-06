@@ -5,12 +5,12 @@
 .DESCRIPTION
   The Master System library keeps one .7z per title (the roster file is inside the archive named for its title, e.g. "Astro Warrior.7z" holds "Astro Warrior (USA).sms"); the Game Gear library holds the .gg files themselves.
   The folder is what `Workshop --smstest --roms <folder>` and UAT\sega-gate.ps1 -Roms take: the suites `swap` (real games), `rosterstate` and `golden` run on it, and `--smstest --prove` can then prove them. ROMs are never copied into
-  the repository: the default folder is under %LOCALAPPDATA%\VRUN_Nes_Dev_work. Uses 7-Zip (C:\Program Files\7-Zip\7z.exe). Prints one line per missing game and a count; exit 0 always.
+  the repository: the default folder is under C:\BrokenNes-work. Uses 7-Zip (C:\Program Files\7-Zip\7z.exe). Prints one line per missing game and a count; exit 0 always.
 .EXAMPLE
   pwsh -File UAT\lib\Prepare-SegaRoster.ps1
 #>
 param(
-    [string]$Out = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\sega_roster'),
+    [string]$Out = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'sega_roster'),
     [string]$SmsLibrary = 'X:\EMULATION\Sega Master System',
     [string]$GgLibrary = 'X:\EMULATION\Sega Game Gear',
     [string]$List = (Join-Path $PSScriptRoot '..\..\Workshop\Sega\mesen\roster-scripts.tsv')

@@ -1,7 +1,7 @@
 // Round 7 (midi): what the Test MIDI export checks are fed. The user's VRUN tree (read only; found under BROKENDEV_HOME like BrokenDev finds it, or BROKENNES_VRUN), its two rosters and their
 // MIDI files, BrokenDev's synthetic FL-style song (make_test_mid.py, ported here and compared with the Python original when Python is on the machine), stress songs written here
 // (dense, long, many channels, tempo changes, bends, drums only, format 0, running status, no notes, not a MIDI), the template script (BrokenDev/tools/music/build-musictest.ps1)
-// and VRUN's own converter CLI, built by that script in its scratch copy. Nothing here writes into the VRUN tree; scratch output goes under %LOCALAPPDATA%\VRUN_Nes_Dev_work\midi-test.
+// and VRUN's own converter CLI, built by that script in its scratch copy. Nothing here writes into the VRUN tree; scratch output goes under C:\BrokenNes-work\midi-test.
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -45,7 +45,7 @@ internal static class MidiFixtures
 
     public static string Work(string name)
     {
-        string root = Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? Path.GetTempPath(), "VRUN_Nes_Dev_work", "midi-test", name);
+        string root = Path.Combine((Environment.GetEnvironmentVariable("BROKENNES_WORK") ?? @"C:\BrokenNes-work"), "midi-test", name);
         Directory.CreateDirectory(root);
         return root;
     }

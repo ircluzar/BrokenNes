@@ -4,7 +4,7 @@
   the DevTools protocol. Exit 0 = every check passed. Ends with ONE JSON result line (entrypoint, pass, checks, seconds).
 
 .DESCRIPTION
-  1. Publishes WebLite as AOT (`dotnet publish -c Release -p:EnableWasmAot=true`, under %LOCALAPPDATA%\VRUN_Nes_Dev_work\uat_lite_bugs) unless
+  1. Publishes WebLite as AOT (`dotnet publish -c Release -p:EnableWasmAot=true`, under C:\BrokenNes-work\uat_lite_bugs) unless
      -Publish names an existing publish folder.
   2. Runs UAT\lite\test-lite-bugs.mjs (node 22 or newer) on VRUN and the user's Game Boy game (BrokenDev's builds; any version of vrun-voc: a capture replays exactly whatever the game is): the Bug button's zip (the note
      prompt, the download) replayed exactly by Workshop --bug play, the prompt cancelled and the capture off (negative controls), a console
@@ -20,7 +20,7 @@ param(
     [string]$Publish,
     [string]$NesRom = 'T:\BrokenDev\env\out\vrun-nes\vrun_game.nes',
     [string]$GbRom = 'T:\BrokenDev\env\out\vrun-voc\vrun_voc.gbc',
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_lite_bugs')
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_lite_bugs')
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path

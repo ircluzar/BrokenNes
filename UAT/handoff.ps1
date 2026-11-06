@@ -39,7 +39,7 @@ $pluginDll = Join-Path $repo 'Plugin\dist\BrokenNes2_x64.dll'
 if (-not (Test-Path $pluginDll)) { throw "no plugin DLL at $pluginDll (run without -SkipPlugin)" }
 
 # ---- 2. the desktop app ----
-$art = Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\bn_handoff'
+$art = Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'bn_handoff'
 & dotnet.exe publish (Join-Path $repo 'Windows\BrokenNes.Windows.csproj') -c Release -o $app --artifacts-path $art -nologo -v:q
 if ($LASTEXITCODE -ne 0) { throw "desktop publish failed ($LASTEXITCODE)" }
 $exe = Join-Path $app 'BrokenNes.Windows.exe'

@@ -550,7 +550,7 @@ internal static class WideMessGuestTests
     /// <summary>A game of the user's library: its console, the file, a few presses to reach play (frame: buttons), and the frames to look at.</summary>
     internal sealed record Game(string Name, ConsoleKind Console, string Path, string Input, int Frames, int[] Moments);
 
-    internal static readonly string Lib = @"X:\EMULATION", Roster = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"VRUN_Nes_Dev_work\sega_roster");
+    internal static readonly string Lib = @"X:\EMULATION", Roster = System.IO.Path.Combine((Environment.GetEnvironmentVariable("BROKENNES_WORK") ?? @"C:\BrokenNes-work"), @"sega_roster");
 
     internal static Game[] Games() => new[]
     {

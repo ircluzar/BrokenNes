@@ -21,7 +21,7 @@
 param(
     [Parameter(Mandatory)] [string]$RomDir,
     [string]$Scratch = "C:\bn_saves",                     # keep it shallow: the oracle's script fails silently when a path passes 260 characters
-    [string]$Workshop = (Join-Path $env:LOCALAPPDATA "VRUN_Nes_Dev_work\bn_sega_a\bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe"),
+    [string]$Workshop = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) "bn_sega_a\bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe"),
     [string]$Only = "",                                    # part of a game's file name
     [string]$Modes = "oracle=--tune OracleZ80Timing=1,OracleLineCounterAtPowerOn=1;zilog="
 )

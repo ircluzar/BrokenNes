@@ -178,7 +178,7 @@ The games (reported, not changed):
 
 ## 6. Environment notes (this machine)
 
-* **Claude-launched processes write `%LOCALAPPDATA%` / `%APPDATA%` into the Claude app's package store** (`AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\...`): everything an agent puts under `%LOCALAPPDATA%\VRUN_Nes_Dev_work` may be invisible to your own Explorer and is lost if that app is reset. Frozen ROMs therefore went to the OneDrive `builds\` folder.
+* **Claude-launched processes write `%LOCALAPPDATA%` / `%APPDATA%` into the Claude app's package store** (`AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\...`): everything an agent puts under `C:\BrokenNes-work` may be invisible to your own Explorer and is lost if that app is reset. Frozen ROMs therefore went to the OneDrive `builds\` folder.
 * (Fixed in round 2.) The live VRUN checkout had 54 tracked files CRLF in the working tree but LF in git, hidden because git trusted its stat cache. They were restored to the committed bytes after checking that line endings were the only difference; the index then still held the old CRLF sizes (git reported them modified without re-reading), which re-staging the identical content cleared. `git ls-files --eol` now shows no `w/crlf`.
 * The Mesen tracers the differentials need (`state_trace.lua`, `apu_write_log.lua`, `ppu2007_pair.lua`, …) exist **only in the older `PROJECTS\sys0\simulations\VRUN\tools`** clone, not in the VRUN repository.
 * Mesen's `--testRunner` stops a script after ~100 s: pass `--timeout=<s>` (the BrokenDev tools now can).
@@ -223,8 +223,8 @@ bash build.sh                                  # srccheck, ..., "ramcheck: ... O
 
 ```powershell
 # a Workshop of your own (never the repo's stale bin\)
-dotnet build Workshop\BrokenNes.Workshop.csproj -c Release --artifacts-path $env:LOCALAPPDATA\VRUN_Nes_Dev_work\bn_vrundev\art
-$ws = "$env:LOCALAPPDATA\VRUN_Nes_Dev_work\bn_vrundev\art\bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe"
+dotnet build Workshop\BrokenNes.Workshop.csproj -c Release --artifacts-path C:\BrokenNes-work\bn_vrundev\art
+$ws = "C:\BrokenNes-work\bn_vrundev\art\bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe"
 # Workshop is a GUI-subsystem exe: from PowerShell use Start-Process -Wait -NoNewWindow -RedirectStandardOutput, or call it from Git Bash
 
 # 1. recipes: boot / play / input / colours / audio / speed (ids: vrun-nes, vrun-nested, vrun-nested-enhanced, supervrun)

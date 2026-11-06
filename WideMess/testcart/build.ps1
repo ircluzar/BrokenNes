@@ -8,7 +8,7 @@
   Folder holding wla-65816.exe, wla-spc700.exe and wlalink.exe. Default: $env:BROKENDEV_WLA, else the PVSnesLib toolchain beside this repo
   (PROJECTS\SuperVRUN_dev\snes-stub\toolchain\pvsneslib\devkitsnes\bin), found from a .claude\worktrees checkout too.
 .PARAMETER Workshop
-  BrokenNes.Workshop.exe (for --wms-pack). Default: $env:BROKENNES_WORKSHOP, $env:BD_WORKSHOP, else the newest build under %LOCALAPPDATA%\VRUN_Nes_Dev_work.
+  BrokenNes.Workshop.exe (for --wms-pack). Default: $env:BROKENNES_WORKSHOP, $env:BD_WORKSHOP, else the newest build under C:\BrokenNes-work.
 .PARAMETER Python
   Python 3.10+ (the standard library is enough). Default: $env:BROKENDEV_PYTHON, else python on the PATH.
 .PARAMETER Out
@@ -32,7 +32,7 @@ foreach ($t in $asm, $asm700, $link) { if (-not (Test-Path -LiteralPath $t)) { t
 if (-not $Workshop) { $Workshop = $env:BROKENNES_WORKSHOP }
 if (-not $Workshop) { $Workshop = $env:BD_WORKSHOP }
 if (-not $Workshop) {
-    $Workshop = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work') -Recurse -Filter 'BrokenNes.Workshop.exe' -ErrorAction SilentlyContinue |
+    $Workshop = Get-ChildItem -Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) -Recurse -Filter 'BrokenNes.Workshop.exe' -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
 }
 if (-not $Workshop -or -not (Test-Path -LiteralPath $Workshop)) { throw 'BrokenNes.Workshop.exe not found (pass -Workshop or set BROKENNES_WORKSHOP)' }

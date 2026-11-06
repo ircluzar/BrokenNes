@@ -1,7 +1,7 @@
 # Round 6, `inject`: pushing an edited instrument into the RUNNING game
 
 Date: 2026-10-17. Domain: the option to put the edit of the Instruments tab into the game's own sound memory / chip (not only Runaway's private copy), so that when Instrument Runaway is switched off the game's own music plays it.
-Brief: `docs/projects/round6-instruments-brief.md` ("Pushing into the running game (honest design)"). Branch `worktree-agent-a1810679592f7a835`, builds in `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r6_inject`. Nothing pushed, nothing merged into `main`.
+Brief: `docs/projects/round6-instruments-brief.md` ("Pushing into the running game (honest design)"). Branch `worktree-agent-a1810679592f7a835`, builds in `C:\BrokenNes-work\bn_r6_inject`. Nothing pushed, nothing merged into `main`.
 Everything below was measured on real games from the user's library (Super Mario World, Sonic the Hedgehog, The Legend of Zelda: Link's Awakening, Galactic Protector; never committed). **Nobody has heard any of it** (no sound card on the build machine): every sound claim is a measured PCM, FFT peak or hash.
 
 ## 1. Feasibility, per console (measured first, then built)

@@ -210,7 +210,7 @@ Port repo VRUN_VOC_GG_dev (local git): 6b52b02 physics, 0c354ac the game + PSG s
 - **Compat** (brokendev.ps1 compat vrun-voc-gg, BROKENDEV_WORKSHOP = a current Workshop, the shared one lacks gg in its compat spec):
   BrokenNes works, BizHawk SMSHawk-gg works, Mesen FAILS: the title takes Right but never A (the run never starts): most likely the
   Mesen adapter's 'a' on its SmsController is not the Game Gear's button 1 (the S0 hello only checked the d-pad). Not fixed.
-- **Hand-off:** %LOCALAPPDATA%\VRUN_Nes_Dev_work\gg_handoffrun_voc_gg_682d469.gg (sha256 865857fe...c320) + README.txt.
+- **Hand-off:** C:\BrokenNes-work\gg_handoffrun_voc_gg_682d469.gg (sha256 865857fe...c320) + README.txt.
 
 ## S2 scope (2026-11-05): Corrupt The World on the Master System
 

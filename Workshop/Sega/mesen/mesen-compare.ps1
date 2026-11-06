@@ -21,7 +21,7 @@ param(
     [Parameter(Mandatory)] [string]$List,
     [Parameter(Mandatory)] [string]$OutTsv,
     [string]$Scratch = (Join-Path $env:TEMP "bn-mesen-compare"),
-    [string]$Workshop = (Join-Path $env:LOCALAPPDATA "VRUN_Nes_Dev_work\bn_sega_a3\bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe"),
+    [string]$Workshop = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) "bn_sega_a3\bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe"),
     [int]$Frames = 899,
     [string]$Spec = "",             # the oracle's screenshots to compare: "2-899" (default: every frame from 2 to -Frames) or a list such as "300,600,900,1800" for a quick screen of many games
     [int]$Runs = 2,                 # oracle runs per game: 2 gives the "oracle disagrees with itself" frames; 1 is enough for a screen

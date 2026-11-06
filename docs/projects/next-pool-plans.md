@@ -266,7 +266,7 @@ after). **Not done: the edge repeat.** The sides show the 32-wide maps wrapping 
 Blocker: a 64-wide room map needs a second 1K-word screen beside `$6C00`, and both neighbours are in use (`$6800-$6BFF` the
 HUD / shadow / visor tiles, `$7000` the boss blocks); the wide SNES modes read only the first 64 KB, and VRAM has no free 2 KB.
 Windows cannot hide the sides either (the 2P colour window HDMAs `WH0-WH3`). The design for after the space is found, and the
-resume list, are in Super VRUN's memory note `project_widemess_p5.md` and `%LOCALAPPDATA%\VRUN_Nes_Dev_work\wms_progress\p5.log`.
+resume list, are in Super VRUN's memory note `project_widemess_p5.md` and `C:\BrokenNes-work\wms_progress\p5.log`.
 No BrokenDev project was added yet.
 
 ---

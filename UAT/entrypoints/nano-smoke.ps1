@@ -15,7 +15,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Artifacts = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_nano'),
+    [string]$Artifacts = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_nano'),
     [string]$FruityHost,
     [string]$PluginDll,
     [switch]$Mutants

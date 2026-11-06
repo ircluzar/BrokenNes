@@ -4,7 +4,7 @@
   Exit 0 = pass, non-zero = fail. Prints ONE JSON result line as the last line of stdout (same shape as desktop-smoke.ps1).
 
 .DESCRIPTION
-  Builds Windows\BrokenNes.Windows.csproj -c Release under $env:LOCALAPPDATA\VRUN_Nes_Dev_work\uat_install (unless -Exe is given), then drives
+  Builds Windows\BrokenNes.Windows.csproj -c Release under C:\BrokenNes-work\uat_install (unless -Exe is given), then drives
   the installer against FAKE FL Studio folders it makes under the work dir, so nothing in Program Files is touched and no UAC prompt appears:
 
     build_ok                  the exe exists and the plugin DLL ships beside it (Plugin\BrokenNes2_x64.dll)
@@ -33,7 +33,7 @@
 [CmdletBinding()]
 param(
     [string]$Exe,
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_install')
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_install')
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path

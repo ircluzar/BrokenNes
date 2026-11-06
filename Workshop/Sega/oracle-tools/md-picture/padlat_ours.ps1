@@ -1,5 +1,5 @@
 [CmdletBinding(PositionalBinding=$false)]
-param([string]$Lines = "230,231,232", [string]$Art = "$env:LOCALAPPDATA\VRUN_Nes_Dev_work\bn_sega_b4b_r")
+param([string]$Lines = "230,231,232", [string]$Art = "$(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' })\bn_sega_b4b_r")
 # Ours: what the pad-latency probe (run_padlat.py) records when the replay sets the pad at the start of line N (the replay's --line): the HV counter at which the program sees C go down and up.
 $here = Split-Path $MyInvocation.MyCommand.Path
 $work = if ($env:BN_ORACLE_ROOT) { $env:BN_ORACLE_ROOT } else { "C:\BrokenNes-tools\sega-work\b4b" }

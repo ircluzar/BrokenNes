@@ -28,12 +28,12 @@ internal static class EnhancedShotsCli
         if (Opt("set", "").Equals("phase3", StringComparison.OrdinalIgnoreCase)) return Phase3(Opt);
         string outDir = Opt("out", "."), label = Opt("label", "shot");
         Directory.CreateDirectory(outDir);
-        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string local = (Environment.GetEnvironmentVariable("BROKENNES_WORK") ?? @"C:\BrokenNes-work");
         var games = new List<Game>
         {
             new("snes-smw", ConsoleKind.Snes, Opt("snes", @"X:\EMULATION\Super Nintendo\Super Nintendo (U)\Super Mario World (U) [!].smc"), 700, ""),
             new("md-sonic", ConsoleKind.Genesis, Opt("md", @"X:\EMULATION\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin"), 900, "450:Start,460:"),
-            new("sms-sonic", ConsoleKind.MasterSystem, Opt("sms", System.IO.Path.Combine(local, @"VRUN_Nes_Dev_work\sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms")), 900, "300:A,310:"),
+            new("sms-sonic", ConsoleKind.MasterSystem, Opt("sms", System.IO.Path.Combine(local, @"sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms")), 900, "300:A,310:"),
             new("nes-smb", ConsoleKind.Nes, Opt("nes", @"X:\EMULATION\Nintendo Entertainment System\Super Mario Bros. (JU) (PRG0) [!].nes"), 400, "100:Start,106:"),
         };
         var only = Opt("only", "").Split(',', StringSplitOptions.RemoveEmptyEntries);
@@ -102,14 +102,14 @@ internal static class EnhancedShotsCli
     }
 
     /// <summary>
-    /// <c>--set phase3 [--out dir]</c> (default <c>%LOCALAPPDATA%\VRUN_Nes_Dev_work\enhanced_cores\phase3</c>): a NES, a SNES, a Game Boy, a Master System and a Genesis game on each of the other consoles' enhanced picture chips
+    /// <c>--set phase3 [--out dir]</c> (default <c>C:\BrokenNes-work\enhanced_cores\phase3</c>): a NES, a SNES, a Game Boy, a Master System and a Genesis game on each of the other consoles' enhanced picture chips
     /// (<c>SNES:SFCS</c>, <c>SMS:SMSS</c>, <c>GG:GGS</c>, <c>MD:MDS</c>; the NES game on the NES board's <c>SNESS</c>, <c>SMSS</c>, <c>MDS</c>) next to the same console's stock chip as the guests reached it before
     /// (<c>NES:SNES</c>, <c>NES:SMS</c>, <c>NES:MD</c>; the NES game on <c>SNES</c>, <c>SMS</c>, <c>MD</c>), and on its own chip. One frame of each game, the same on every chip.
     /// </summary>
     private static int Phase3(Func<string, string, string> Opt)
     {
-        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        string outDir = Opt("out", System.IO.Path.Combine(local, @"VRUN_Nes_Dev_work\enhanced_cores\phase3"));
+        string local = (Environment.GetEnvironmentVariable("BROKENNES_WORK") ?? @"C:\BrokenNes-work");
+        string outDir = Opt("out", System.IO.Path.Combine(local, @"enhanced_cores\phase3"));
         Directory.CreateDirectory(outDir);
         var routes = new (string Route, string Family, string? NesId, string Stock)[] { ("SNES:SFCS", "SNES", "SNESS", "NES:SNES"), ("MD:MDS", "Genesis", "MDS", "NES:MD"), ("SMS:SMSS", "Master System", "SMSS", "NES:SMS"), ("GG:GGS", "Master System", null, "NES:SMS") }
             .Where(r => EnhancedChips.IsRoute(r.Route)).ToArray();
@@ -118,7 +118,7 @@ internal static class EnhancedShotsCli
             new("nes-smb", ConsoleKind.Nes, Opt("nes", @"X:\EMULATION\Nintendo Entertainment System\Super Mario Bros. (JU) (PRG0) [!].nes"), 400, "100:Start,106:"),
             new("snes-smw", ConsoleKind.Snes, Opt("snes", @"X:\EMULATION\Super Nintendo\Super Nintendo (U)\Super Mario World (U) [!].smc"), 700, ""),
             new("gb-kirby", ConsoleKind.GameBoy, Opt("gb", @"X:\EMULATION\GameBoy\Kirby's Dream Land (UE) [!].zip"), 500, "200:Start,210:,300:Start,310:"),
-            new("sms-sonic", ConsoleKind.MasterSystem, Opt("sms", System.IO.Path.Combine(local, @"VRUN_Nes_Dev_work\sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms")), 900, "300:A,310:"),
+            new("sms-sonic", ConsoleKind.MasterSystem, Opt("sms", System.IO.Path.Combine(local, @"sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms")), 900, "300:A,310:"),
             new("md-sonic", ConsoleKind.Genesis, Opt("md", @"X:\EMULATION\Sega Genesis\Sonic the Hedgehog (JUE) [!].bin"), 900, "450:Start,460:"),
         };
         int made = 0, failed = 0;

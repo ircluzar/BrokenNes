@@ -12,7 +12,7 @@
 #>
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$art = Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\bn_build'
+$art = Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'bn_build'
 $env:PATH += ";${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"   # Native AOT needs vswhere on PATH
 
 & dotnet.exe publish (Join-Path $repo 'Plugin\BrokenNes2.Plugin\BrokenNes2.Plugin.csproj') -c Release --artifacts-path $art --disable-build-servers -nodeReuse:false

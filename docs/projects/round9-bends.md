@@ -1,6 +1,6 @@
 # Round 9 `bends`: VRUN's sound engine plays pitch bends, and Test MIDI export plays them
 
-Date: 2026-10-18. Agent `vrun-bends`. VRUN branch `audio-bends` (VRUN repo, from `6c561f6`; worktree `%LOCALAPPDATA%\VRUN_Nes_Dev_work\vrun-bends\VRUN`; merged into the live `vrun-history-export` as `e5ba53f`, section 9), BrokenNes branch `vrun-bends` (from `refs/heads/main` `5fcae89`; worktree `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r9_bends\wt`). User-facing: `Plugin/README.md` (Test MIDI export, "Pitch bends"); VRUN side: `engine/audio/README.md` ("Pitch bends") in VRUN; handoff: `Plugin/CLAUDE.md`. Builds on `docs/projects/round7-midi.md`.
+Date: 2026-10-18. Agent `vrun-bends`. VRUN branch `audio-bends` (VRUN repo, from `6c561f6`; worktree `C:\BrokenNes-work\vrun-bends\VRUN`; merged into the live `vrun-history-export` as `e5ba53f`, section 9), BrokenNes branch `vrun-bends` (from `refs/heads/main` `5fcae89`; worktree `C:\BrokenNes-work\bn_r9_bends\wt`). User-facing: `Plugin/README.md` (Test MIDI export, "Pitch bends"); VRUN side: `engine/audio/README.md` ("Pitch bends") in VRUN; handoff: `Plugin/CLAUDE.md`. Builds on `docs/projects/round7-midi.md`.
 
 ## 1. What the user asked for, and decided
 

@@ -1,7 +1,7 @@
 # Round 6, `runaway`: corrupted instruments that sound clean in the plugin
 
 Date: 2026-10-17. Domain: Instrument Runaway for SNES (SPC700) and Genesis games: what it captures, how the captured instruments are played, how the Corruption window uses it.
-Branch `worktree-agent-a144df44a0d045116` (worktree `.claude/worktrees/agent-a144df44a0d045116`), builds in `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r6_runaway`, lab output in `...\r6_lab`. Nothing pushed, nothing merged into `main`; `refs/heads/main` (`ui`, then `imodel`) is merged into the branch.
+Branch `worktree-agent-a144df44a0d045116` (worktree `.claude/worktrees/agent-a144df44a0d045116`), builds in `C:\BrokenNes-work\bn_r6_runaway`, lab output in `...\r6_lab`. Nothing pushed, nothing merged into `main`; `refs/heads/main` (`ui`, then `imodel`) is merged into the branch.
 User-facing text: `Plugin/README.md` ("Game voices"), `docs/handoff-testing-guide.md`. Developer notes: `Plugin/CLAUDE.md` ("Game voices").
 
 ## The report, and the answer in one table
@@ -119,7 +119,7 @@ All on the merged tree (`refs/heads/main` 7bd01f1 merged: `ui` and `imodel`), 20
 | `BrokenNes.Workshop --corrupt-test` (the shared corruption library) | 275 passed, 0 failed |
 | `--snes-state-test` / `--md-state-test` | 147 / 168 passed, 0 failed |
 | UAT suite (`UAT\run-suite.ps1 -Exe` the fresh Workshop exe) | 125 pass, 0 fail, 16 skip (ROMs absent on this machine), 3 informational |
-| `UAT\certify.ps1 -Only plugin-host,plugin-install` (private build folder through `BROKENNES_ART`) | plugin-host PASS (55 passed, 1 warning, 0 failed, 235 s), plugin-install PASS (14/14 checks, 37 s); report in `%LOCALAPPDATA%\VRUN_Nes_Dev_work\certify\20261017_154005` |
+| `UAT\certify.ps1 -Only plugin-host,plugin-install` (private build folder through `BROKENNES_ART`) | plugin-host PASS (55 passed, 1 warning, 0 failed, 235 s), plugin-install PASS (14/14 checks, 37 s); report in `C:\BrokenNes-work\certify\20261017_154005` |
 
 **Checks that can fail, shown failing.** Every verifier of the listening was run against a deliberately broken build, and each made a named check fail (before the merge, on the tree at `1b3f1dc`): M1 pitch changes dropped from the macro, M2 DSP writes not logged, M3 the SNES macro does not play, M4 no held voices, M5 a recipe with pitch 0 accepted, M6 FM patch writes dropped, M7 the FM macro does not play, M8 all notes one recipe (the grouping), M9 the Genesis window ignored (Workshop `--runaway-test`); P1 play-for ignored (Runaway at once), P2 `SPR1` not saved, P3 an allocation in the SNES macro step, P4 the Genesis PSG tap not installed, P5 the Recipe parameter ignored, P6 `GNR1` not saved (plugin check `runaway-recipes`). After the merge one more: M10, the edited-instrument copies drop the game voices (`SnesInstruments.Write`, `SegaInstruments.Copy`): `runaway-recipes` failed with four separate messages, restored, passes. The fifteen earlier injections were **not** rerun after the merge.
 

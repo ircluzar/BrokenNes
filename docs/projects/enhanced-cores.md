@@ -317,7 +317,7 @@ chip's banks, with no NES in between.
 
 ### 5.6 Pictures
 
-`Workshop --enhanced-shots --set phase3` writes, to `%LOCALAPPDATA%\VRUN_Nes_Dev_work\enhanced_cores\phase3\`, one frame of Super Mario Bros. (NES), Super
+`Workshop --enhanced-shots --set phase3` writes, to `C:\BrokenNes-work\enhanced_cores\phase3\`, one frame of Super Mario Bros. (NES), Super
 Mario World (SNES), Kirby's Dream Land (Game Boy), Sonic (Master System) and Sonic 1 (Genesis) on its own chip and on each other console's stock chip (as
 the guests reached it before) and enhanced chip.
 

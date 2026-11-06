@@ -46,7 +46,7 @@ param(
     [int]$Volume = 10,
     [switch]$SkipLegacy,
     [ValidateSet('nes', 'gb')][string[]]$Games = @('nes', 'gb'),
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_audio_pacing_desktop')
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_audio_pacing_desktop')
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path

@@ -10,7 +10,7 @@
 .PARAMETER Wla
   Folder holding wla-65816.exe and wlalink.exe. Default: $env:BROKENDEV_WLA, else the PVSnesLib toolchain beside this repo (PROJECTS\SuperVRUN_dev\snes-stub\toolchain\pvsneslib\devkitsnes\bin).
 .PARAMETER Workshop
-  BrokenNes.Workshop.exe (for --wms-pack). Default: $env:BROKENNES_WORKSHOP, else the newest build under %LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_wms.
+  BrokenNes.Workshop.exe (for --wms-pack). Default: $env:BROKENNES_WORKSHOP, else the newest build under C:\BrokenNes-work\bn_wms.
 #>
 param([string]$Wla = '', [string]$Workshop = '')
 $ErrorActionPreference = 'Stop'
@@ -28,7 +28,7 @@ $asm = Join-Path $Wla 'wla-65816.exe'; $link = Join-Path $Wla 'wlalink.exe'
 if (-not (Test-Path -LiteralPath $asm)) { throw "wla-65816.exe not found in $Wla (pass -Wla or set BROKENDEV_WLA)" }
 if (-not $Workshop) { $Workshop = $env:BROKENNES_WORKSHOP }
 if (-not $Workshop) {
-    $Workshop = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\bn_wms') -Recurse -Filter 'BrokenNes.Workshop.exe' -ErrorAction SilentlyContinue |
+    $Workshop = Get-ChildItem -Path (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'bn_wms') -Recurse -Filter 'BrokenNes.Workshop.exe' -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
 }
 if (-not $Workshop -or -not (Test-Path -LiteralPath $Workshop)) { throw 'BrokenNes.Workshop.exe not found (pass -Workshop or set BROKENNES_WORKSHOP)' }

@@ -1,6 +1,6 @@
 [CmdletBinding(PositionalBinding=$false)] param([string]$OutFile = "", [int]$TimeoutSec = 300, [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest)
 # Run the b2a Workshop exe with arguments (quoted properly), capture stdout to a file (or print it), kill on timeout.
-$art = if ($env:BN_ARTIFACTS) { $env:BN_ARTIFACTS } else { "$env:LOCALAPPDATA\VRUN_Nes_Dev_work\bn_sega_b2a" }   # the folder build.ps1 builds into
+$art = if ($env:BN_ARTIFACTS) { $env:BN_ARTIFACTS } else { "$(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' })\bn_sega_b2a" }   # the folder build.ps1 builds into
 $exe = "$art\bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe"
 $q = ($Rest | ForEach-Object { if ($_ -match '[\s\[\]]' -and $_ -notmatch '^".*"$') { '"' + $_ + '"' } else { $_ } }) -join ' '
 $o = if ($OutFile) { $OutFile } else { Join-Path $env:TEMP ("ws_" + [guid]::NewGuid().ToString("N") + ".txt") }

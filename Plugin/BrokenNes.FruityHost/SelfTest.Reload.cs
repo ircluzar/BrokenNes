@@ -1,6 +1,6 @@
 // Round 8 `reload` (2026-10-18): the user's report from FL 2026 (build r13): "after reloading the MIDI and replacing the FLEX/MIDI instruments with BrokenNes, despite relinking themselves, the right
 // instruments do not play; in the case of the NES, that really ain't working out". The evidence is the host log of that FL session (Documents\BrokenNes2 host log.txt, copied with the recordings
-// it used to %LOCALAPPDATA%\VRUN_Nes_Dev_work\fl-evidence\2026-10-18, or BROKENNES_FLREPLAY_DIR; never in the repository: a game's music), and it shows FL's real conventions (Record/FlNotes.cs).
+// it used to C:\BrokenNes-work\fl-evidence\2026-10-18, or BROKENNES_FLREPLAY_DIR; never in the repository: a game's music), and it shows FL's real conventions (Record/FlNotes.cs).
 // Through the real plugin DLL (Native AOT):
 //   log-wario   THE LOG REPLAY: the Wario's Woods session as FL ran it. The recording offered from its own MIDI file and presets; the six channels FL made (#10-#15) created with the very Dispatcher
 //               calls the log shows, in order (FL's creation sequence, its Play and Stop, focus, IO latency ...); their 32 logged notes each at its logged time with its logged pitch (cents from MIDI 0),
@@ -37,7 +37,7 @@ public sealed unsafe partial class SelfTest
 
     /// <summary>The evidence of the user's FL session: the host log and the recordings it used, outside the repository.</summary>
     private static string FlEvidenceDir => Environment.GetEnvironmentVariable("BROKENNES_FLREPLAY_DIR") is { Length: > 0 } d ? d
-        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VRUN_Nes_Dev_work", "fl-evidence", "2026-10-18");
+        : Path.Combine((Environment.GetEnvironmentVariable("BROKENNES_WORK") ?? @"C:\BrokenNes-work"), "fl-evidence", "2026-10-18");
 
     private delegate void ReloadScenario(T t, string dir);
     private bool reloadMutantPass;

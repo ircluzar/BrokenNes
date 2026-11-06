@@ -5,7 +5,7 @@
     "roots":  {
                   "snes":  "X:/EMULATION/Super Nintendo/Super Nintendo (U)",
                   "gb":  "X:/EMULATION/GameBoy",
-                  "sms":  "%LOCALAPPDATA%/VRUN_Nes_Dev_work/sega_roms/sms",
+                  "sms":  "C:/BrokenNes-work/sega_roms/sms",
                   "gg":  "X:/EMULATION/Sega Game Gear",
                   "md":  "X:/EMULATION/Sega Genesis"
               },

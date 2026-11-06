@@ -25,7 +25,7 @@
 param(
     [Parameter(Mandatory)][string]$WorkshopExe,
     [string]$VocDev = '',
-    [string]$Scratch = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\xcompare_test'),
+    [string]$Scratch = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'xcompare_test'),
     [string]$Gbdk = 'T:\BrokenDev\env\toolchains\gbdk\4.5.0\gbdk',
     [switch]$SkipBuild
 )

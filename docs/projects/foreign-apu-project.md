@@ -47,7 +47,7 @@ Each core's source, version and quirks are in the batch tables below. Every shor
 
 | Phase | Tool | Result | Commits |
 |---|---|---|---|
-| 1. Every channel sounds | `Workshop --apu-channels [--console X]` | 274 cells (core x channel vs the stock core, RMS + pitch), 0 port bugs, 35 intended deviations (the originals' sound, KNOWN_GAPS FA-CH-1..3); WAVs in `%LOCALAPPDATA%\VRUN_Nes_Dev_work\fapu_build\wav` | `4ff599ca` |
+| 1. Every channel sounds | `Workshop --apu-channels [--console X]` | 274 cells (core x channel vs the stock core, RMS + pitch), 0 port bugs, 35 intended deviations (the originals' sound, KNOWN_GAPS FA-CH-1..3); WAVs in `C:\BrokenNes-work\fapu_build\wav` | `4ff599ca` |
 | 2. Save states | `--apu-channels --state` | every port keeps sounding at its level after a load (NES ports were silent: FA-NES-ST; Genesis / SMS lost notes: FA-MD-ST). Re-keyed, not sample-exact, except the Game Boy ports (FA-ST-1, open) | `b0b8195e`, `70e51e57` |
 | 3. Cross-console sweep | `--apu-sweep [--console X] [--only ID] [--plant silent\|stuck\|crash] [--tsv f]` | 162 cells (21 of them stock controls): each port native on its menu, swapped live mid-song, and behind every bridge that reaches it (NES game on APU_SNES / APU_DMG, SNES / GB / SMS / GG / Genesis game on `NES:<port>` swapped in live and started on it, SMS game on `NES:DMG` / `NES:SNES`, GB game on `NES:SNES`), each judged against the stock control of its route: live swap, save + load, Butchering mode (4 sound effects, then off + reload), key-off (no stuck notes), swap back to stock (nothing carried back). All pass after the fixes; the plants are caught | this batch |
 

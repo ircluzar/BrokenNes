@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$Artifacts = "$env:LOCALAPPDATA\VRUN_Nes_Dev_work\bn_sega_b3b_poison")
+param([string]$Artifacts = "$(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' })\bn_sega_b3b_poison")
 # The proof that --md-cart-test can fail: each case breaks one rule in the source, rebuilds, runs the test, counts the failing checks and puts the source back (the file is restored from a backup even if
 # something throws). Run from the repository root on a tree whose cartridge sources are committed or at least saved: a copy is the only record of the original while a case runs.
 $ErrorActionPreference = 'Stop'

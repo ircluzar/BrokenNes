@@ -8,7 +8,7 @@ previously made, not add new ones."
 
 So: no new tool. Every tool below existed; BrokenDev now finds it in the **live** workspace, starts it the way it was always started, and
 the record says how each was proven to work on this machine. Commands: `BrokenDev\brokendev.ps1 tools` and `tool <id>` (see
-`BrokenDev\README.md`). Screenshots of every tool: `%LOCALAPPDATA%\VRUN_Nes_Dev_work\brokendev_tools\shots\` (outside git).
+`BrokenDev\README.md`). Screenshots of every tool: `C:\BrokenNes-work\brokendev_tools\shots\` (outside git).
 
 ## 1. What changed in BrokenDev
 
@@ -138,7 +138,7 @@ Not kept, and why:
 * Repositories afterwards: VRUN clean apart from the two commits of section 2; Project-Nested unchanged (the same 20 untracked backups and
   caches as before); SuperVRUN_dev clean; the CTW folder as before (the test draft removed); `sys0` untouched. Every web UI BrokenDev
   started was stopped again by its recorded PID; the Mesen window the AudioPlayer configurator opened was closed by its PID.
-* Screenshots (outside git), `%LOCALAPPDATA%\VRUN_Nes_Dev_work\brokendev_tools\shots\`: `brokendev-tools.png` / `.txt`,
+* Screenshots (outside git), `C:\BrokenNes-work\brokendev_tools\shots\`: `brokendev-tools.png` / `.txt`,
   `brokendev-list.png` / `.txt`, `tile-editor_*`, `sfx-configurator_*`, `audioplayer-configurator_*` (UI, built, Mesen window, the ROM on
   BrokenNes), `nested-builder_*` (start, new-build recipe, settings, exact profile, build done, the SNES ROM on BrokenNes),
   `ctw-room-designer_*`, `ctw-original-game.png`, `script-vrun-warp-room_room32.png`, `script-vrun-screenshot_f900.png`.

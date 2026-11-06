@@ -204,7 +204,7 @@ The oracle's slope for a one-word-a-slot transfer, from the 128 and 2048-word la
 
 ## 10. The integrated tree (main merged into this branch, on the lead's request)
 
-`git merge refs/heads/main` (A4, C4b and C4a merged on main) into `worktree-agent-aa6d456623a384ca7` went through without a conflict (the Program.cs routes and the sound unit files are main's and mine only in disjoint places); built with `dotnet build Workshop -c Release --artifacts-path %LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_sega_b4a_wrap`, exit 0. On that tree:
+`git merge refs/heads/main` (A4, C4b and C4a merged on main) into `worktree-agent-aa6d456623a384ca7` went through without a conflict (the Program.cs routes and the sound unit files are main's and mine only in disjoint places); built with `dotnet build Workshop -c Release --artifacts-path C:\BrokenNes-work\bn_sega_b4a_wrap`, exit 0. On that tree:
 
 | What | Result |
 |---|---|

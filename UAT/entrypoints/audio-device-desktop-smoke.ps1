@@ -29,7 +29,7 @@
 param(
     [Parameter(Mandatory)][string]$Exe,
     [string]$GbcRom = 'T:\BrokenDev\env\out\vrun-voc-v2\vrun_voc.gbc',
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_audio_device_desktop')
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_audio_device_desktop')
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path

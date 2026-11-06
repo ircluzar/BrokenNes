@@ -26,7 +26,7 @@
 param(
     [Parameter(Mandatory)][string]$Exe,
     [string]$Rom = 'T:\BrokenDev\env\out\vrun-voc-v0\vrun_voc.gbc',   # the frozen V0 hello world (powershell -File BrokenDev\tests\voc-v0.ps1)
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_vrun_voc_desktop')
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_vrun_voc_desktop')
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path

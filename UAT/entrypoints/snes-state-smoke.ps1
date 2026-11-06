@@ -26,7 +26,7 @@
 [CmdletBinding()]
 param(
     [string]$Exe,
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_snes_state'),
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_snes_state'),
     # a folder with the SNES library (the real-game check is skipped, with the reason, when Super Mario World is not in it)
     [string]$Library = 'X:\EMULATION\Super Nintendo\Super Nintendo (U)'
 )

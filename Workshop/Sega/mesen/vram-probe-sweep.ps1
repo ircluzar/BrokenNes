@@ -17,7 +17,7 @@ param(
     [Parameter(Mandatory)] [string]$Dir,
     [ValidateSet("vram", "row")] [string]$Mode = "vram",
     [string]$Scratch = "C:\bn_probe",
-    [string]$Workshop = (Join-Path $env:LOCALAPPDATA "VRUN_Nes_Dev_work\bn_sega_a\bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe"),
+    [string]$Workshop = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) "bn_sega_a\bin\BrokenNes.Workshop\release\BrokenNes.Workshop.exe"),
     [string]$Tune = "",
     [string]$Python = $(if (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "python" })      # with Pillow for -Mode row
 )

@@ -13,7 +13,7 @@
   the summary counts them. -Strict turns every skip into a failure.
 
   It refuses to run a stale exe: the Workshop exe must be newer than every source file under Windows\NesEmulator, Core and Workshop (a stale exe falls through to
-  the GUI and tests nothing). Build it first, or pass -Build to build it under %LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_sega_gate (never into the repo).
+  the GUI and tests nothing). Build it first, or pass -Build to build it under C:\BrokenNes-work\bn_sega_gate (never into the repo).
 
   Time: the whole gate takes about 10 to 15 minutes on a quiet machine (the bridge test and the vector sets are most of it). -Quick leaves out the long vector
   sets and the bridge test's real-game groups and finishes in about 2 minutes (it is a smoke check, not the gate; the report says QUICK).
@@ -21,7 +21,7 @@
   Every verifier is shown able to fail in the track records (docs\projects\sega-track-*.md); -Prove runs the ones that have a built-in proof of failure (--smstest --prove).
 
   The real-game suites of --smstest (hot swaps in real games, save states on the 40 roster games, the golden frame hashes) need the roster folder (sms\ and gg\ inside, the file names of Workshop\Sega\mesen\roster-scripts.tsv): -Roms <folder>,
-  or BROKENNES_SMS_ROMS, or %LOCALAPPDATA%\VRUN_Nes_Dev_work\sega_roster, which UAT\lib\Prepare-SegaRoster.ps1 fills from the libraries (the gate runs it when the smstest steps are selected). Without a roster folder those suites skip
+  or BROKENNES_SMS_ROMS, or C:\BrokenNes-work\sega_roster, which UAT\lib\Prepare-SegaRoster.ps1 fills from the libraries (the gate runs it when the smstest steps are selected). Without a roster folder those suites skip
   inside smstest (counted in the note) and a proof that could not run there (`--smstest --prove` says "NOT PROVEN (the suite could not run here)") is a SKIP, not a failure, unless -Strict.
 .EXAMPLE
   pwsh -File UAT\sega-gate.ps1                 # the gate, against the Workshop exe built by `dotnet build Workshop -c Release`
@@ -41,7 +41,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$work = Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work'
+$work = $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' })
 $tools = 'C:\BrokenNes-tools\sega'
 if (-not $ReportDir) { $ReportDir = Join-Path $work ('sega_gate\' + (Get-Date -Format 'yyyyMMdd_HHmmss')) }
 New-Item -ItemType Directory -Force $ReportDir | Out-Null

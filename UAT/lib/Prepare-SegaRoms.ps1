@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Unpacks the Master System games the UAT cases name from the user's library (one game per .7z in X:\EMULATION\Sega Master System) into
-  %LOCALAPPDATA%\VRUN_Nes_Dev_work\sega_roms\sms under stable file names. Idempotent; a game that is not in the library is reported, not an error.
+  C:\BrokenNes-work\sega_roms\sms under stable file names. Idempotent; a game that is not in the library is reported, not an error.
 .DESCRIPTION
   The Game Gear (.gg) and Genesis (.bin) libraries are plain files and the cases read them where they are; only the Master System's archives need unpacking
   (the suite's Workshop reads zips, not 7z). ROMs are never copied into the repository: the folder is outside it, and each case SKIPs when its ROM is not there.
@@ -11,7 +11,7 @@
 #>
 param(
     [string]$Library = 'X:\EMULATION\Sega Master System',
-    [string]$Out = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\sega_roms\sms')
+    [string]$Out = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'sega_roms\sms')
 )
 $sevenZip = 'C:\Program Files\7-Zip\7z.exe'
 if (-not (Test-Path $sevenZip)) { Write-Host "7-Zip not found ($sevenZip): the Master System cases will SKIP"; exit 0 }

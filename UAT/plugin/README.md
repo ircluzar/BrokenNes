@@ -18,7 +18,7 @@ pwsh -File UAT\plugin\fl\fl-certify.ps1                                      # e
 | `install-smoke.ps1` (`certify.ps1 -Only plugin-install`) | **Install to FL Studio** / `--install-vst`: detection of the real FL installs on the machine (excluding "FL Studio ASIO", Minihost, Shared), fresh / idempotent / replace-another-build installs, no partial file, two targets in one run, FL running from one installation refuses that install only, a non-FL folder, a missing DLL, "needs administrator" reported (an ACL-denied folder + `--elevated`), the picker opens and cancels with exit 2 | the real exe against FAKE FL folders under the work dir: no UAC, nothing in Program Files. **Not covered:** the UAC click and a copy into the real Program Files |
 | `synth-smoke.ps1` (`certify.ps1 -Only plugin-synth`) | **the standalone synth** / `--synth`: the plugin's editor drawn in four tabs, the computer-keyboard piano (note, octave keys, switch off) reaching a rendered level, tab routing, saved settings written on close and restored, and the **restart handoff** emulator -> synth -> emulator through the real menus, plus a build with no plugin saying why and starting the emulator instead | the real windows through UI Automation and real key events, with `BROKENNES_SYNTH_AUDIO=null` (a documented switch: renders in real time into nothing). **Not covered:** the WASAPI handoff to a real playback device, MIDI hardware (the MIDI logic is `selftest standalone-midi`) |
 
-Both build the desktop under `%LOCALAPPDATA%\VRUN_Nes_Dev_work` unless given `-Exe`, and both were also run against a **published** single-file build (the flavor
+Both build the desktop under `C:\BrokenNes-work` unless given `-Exe`, and both were also run against a **published** single-file build (the flavor
 users download). Rule zero holds: only PIDs they started are stopped. The synth one presses real keys: keep the desktop quiet.
 
 ## What `fl-certify.ps1` does
@@ -49,7 +49,7 @@ users download). Rule zero holds: only PIDs they started are stopped. The synth 
    - waveform restarts at period high-byte changes are excluded and counted, as in the host tests.
 
 The report (`fl-certify.json`, `analysis.json`, the rendered `fl-render.wav`) goes to
-`%LOCALAPPDATA%\VRUN_Nes_Dev_work\fl_certify`.
+`C:\BrokenNes-work\fl_certify`.
 
 ## Why it is built this way
 

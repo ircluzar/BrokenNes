@@ -1,7 +1,7 @@
 # Round 6, `ui`: the editor's tabs (Emulator | Instruments | Presets)
 
 Date: 2026-10-17. Domain: the tab framework and window widening in `Bn2Editor.cs`, the Instruments and Presets tab shells, the shared widgets, the self-test coverage. Brief: `docs/projects/round6-instruments-brief.md`.
-Branch `worktree-agent-adeff1a703f4f60a2`, builds in `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r6_ui`. Nothing pushed, nothing merged into `main`.
+Branch `worktree-agent-adeff1a703f4f60a2`, builds in `C:\BrokenNes-work\bn_r6_ui`. Nothing pushed, nothing merged into `main`.
 
 ## What exists
 
@@ -52,7 +52,7 @@ Verified: `bmpdiff` of editor captures from the **unmodified plugin** (built fro
 
 ## Verifiers (every one shown able to fail)
 
-`FruityHost selftest <dll>` on the Native AOT DLL built the way `Plugin/build-dist.ps1` does (`dotnet publish ... --artifacts-path %LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r6_ui`):
+`FruityHost selftest <dll>` on the Native AOT DLL built the way `Plugin/build-dist.ps1` does (`dotnet publish ... --artifacts-path C:\BrokenNes-work\bn_r6_ui`):
 
 - **Full suite: 53 results, 52 pass, 1 warning (the QLQ core's octave, expected), 0 failed** (before this work 51: 50 + 1; the two new are `ui` and `ui-proof`). Run on the final build of this work (143 s).
 - **`ui`** (about 10 s): 22 scenarios, each with its own plugin instance and editor, all driven by real `WM_LBUTTONDOWN` / `WM_MOUSEMOVE` / `WM_MOUSEWHEEL` / `WM_CHAR` / `WM_KEYDOWN` messages and the editor's own control record: `tabs` (sizes on each tab, the host told once per size change, the host's frame follows by exactly 420, the strip clear of About and of every control, modals open on a wide tab),

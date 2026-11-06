@@ -24,7 +24,7 @@ param(
     [Parameter(Mandatory)][string]$Exe,
     [Parameter(Mandatory)][string]$Workshop,
     [string]$NesRom,
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA ('VRUN_Nes_Dev_work\uat_corruption_' + (Get-Date -Format 'yyyyMMdd_HHmmss')))
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) ('uat_corruption_' + (Get-Date -Format 'yyyyMMdd_HHmmss')))
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path

@@ -30,7 +30,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Exe,
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_widemess_desktop')
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_widemess_desktop')
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -205,7 +205,7 @@ try {
     Start-Sleep -Seconds 2
     $f7 = Get-Frame $id; $st = Get-Status $id
     Check 'guest_nes_back' ([bool]$set.success -and $st.ppu -eq 'PPU_FIX' -and $f7.Width -eq 256 -and $st.frameWidth -eq 256) "PPU $($st.ppu), picture $($f7.Width) x $($f7.Height), status $($st.frameWidth)"
-    $sms = Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms'
+    $sms = Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'sega_roster\sms\Sonic The Hedgehog (USA, Europe).sms'
     if (Test-Path -LiteralPath $sms) {
         Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/load-rom' -Body @{ path = $sms } | Out-Null
         Start-Sleep -Seconds 3

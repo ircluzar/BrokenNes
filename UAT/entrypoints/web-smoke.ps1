@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   1. `dotnet publish WebLite\BrokenNes.Lite.csproj -c Release` with --artifacts-path / -o under
-     $env:LOCALAPPDATA\VRUN_Nes_Dev_work\uat_web (nothing lands in the repo tree). Default is the
+     C:\BrokenNes-work\uat_web (nothing lands in the repo tree). Default is the
      NON-AOT publish (the AOT publish needs the wasm-tools workload and takes far longer); pass -Aot
      to add -p:EnableWasmAot=true.
   2. Serves <publish>\wwwroot with `python -m http.server` bound to 127.0.0.1 on a free port.
@@ -50,7 +50,7 @@ param(
     [int]$MaxColors = 200,
     [string]$Python = (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python314\python.exe'),
     [string]$Browser,
-    [string]$WorkDir = (Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\uat_web')
+    [string]$WorkDir = (Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'uat_web')
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path

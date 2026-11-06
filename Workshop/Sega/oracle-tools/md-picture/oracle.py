@@ -12,7 +12,7 @@ import os, subprocess, sys, shutil, struct, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.environ.get('BN_ORACLE_ROOT', HERE)
-ART = os.environ.get('BN_ARTIFACTS', os.path.join(os.environ.get('LOCALAPPDATA', ''), 'VRUN_Nes_Dev_work', 'bn_sega_b3a'))
+ART = os.environ.get('BN_ARTIFACTS', os.path.join(os.environ.get('BROKENNES_WORK') or r'C:\BrokenNes-work', 'bn_sega_b3a'))
 WORKSHOP = os.environ.get('BN_WORKSHOP', os.path.join(ART, 'bin', 'BrokenNes.Workshop', 'release', 'BrokenNes.Workshop.exe'))    # BN_WORKSHOP: another build (a saved baseline for before/after numbers)
 STATE_RAM = 0x10941          # 68000 work RAM inside a BlastEm 1.0.0 quick-save state: 64 KB as a plain big-endian byte stream (word k at STATE_RAM + 2k, odd offset!)
 

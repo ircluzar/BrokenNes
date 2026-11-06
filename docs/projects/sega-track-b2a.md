@@ -50,7 +50,7 @@ Each one was seen on BlastEm 1.0.0's screen or in a probe's output, not in its s
 
 ## Verification
 
-All on the merged branch tip with `GenesisReady = true`, built with `--artifacts-path %LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_sega_b2a`:
+All on the merged branch tip with `GenesisReady = true`, built with `--artifacts-path C:\BrokenNes-work\bn_sega_b2a`:
 
 | What | Result |
 |---|---|
@@ -160,7 +160,7 @@ oracle-scripts line in section 4), `docs/projects/`. Contracts: no change to `IC
 ## Reproduce
 
 ```
-dotnet build Workshop\BrokenNes.Workshop.csproj -c Release --artifacts-path %LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_sega_b2a
+dotnet build Workshop\BrokenNes.Workshop.csproj -c Release --artifacts-path C:\BrokenNes-work\bn_sega_b2a
 Workshop.exe --md-pic-test                       # 93 checks
 Workshop.exe --md-golden [--update] [--poison]   # the golden pictures (ROMs from games: and tests: folders, see Workshop\MdGolden\md_golden.json)
 Workshop.exe --md-find <rom> --shots a.png,b.png --scan --input "737:Start,743:"   # which frame of ours matches each screenshot

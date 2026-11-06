@@ -90,7 +90,7 @@ Deliberate bugs through the DLL (hook 849), each caught by its scenario: flow (b
 
 ### The whole self-test and the other suites
 
-`refs/heads/main` did not move during this work (5fcae89, fetched again at the end with `--no-tags`): nothing to merge. DLL and test bench built from this tree into `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r9_capture` (the DLL with `dotnet publish`, Native AOT, as `Plugin/build-dist.ps1` does).
+`refs/heads/main` did not move during this work (5fcae89, fetched again at the end with `--no-tags`): nothing to merge. DLL and test bench built from this tree into `C:\BrokenNes-work\bn_r9_capture` (the DLL with `dotnet publish`, Native AOT, as `Plugin/build-dist.ps1` does).
 
 | Run | Result |
 |---|---|
@@ -155,4 +155,4 @@ A dry merge of `r8-reload` (6180510) into this branch conflicts only in `Bn2Plug
 | `capture-test` `mono` (new) | a take made for it: a long note with a newer one inside it that it outlasts (shortened, said as outlasted), two notes struck together (the earlier left out), a slide inside its note (300 cents at its end, the bend back to 0 at the next note), a note touching the next (unchanged), Pulse 2 untouched; no note overlaps the next on its track; the ROM plays the kept notes throughout (0 silent frames); the bug: "Pulse 1 in the file: 60 0-3000, 67 960-1920, 64 3840-4800, ..." (6 failing assertions) |
 | `selftest --only capture` (the DLL) | the bug through hook 849 caught by `file` (76 ends at 7720, FL's next note started at 7640) and `engine` (square 1's stream 55 bytes, the ideal file's 56) |
 
-**Runs** (DLL published Native AOT into `%LOCALAPPDATA%\VRUN_Nes_Dev_work\bn_r9_capture`): `FruityHost capture-test`: 6 of 6 checks, 727 assertions, 17 of 17 deliberate bugs caught, 0 NOT RUN. `FruityHost selftest <dll> --only capture,midi`: 2 passed, 0 warnings, 0 failed; capture: library 17 of 17 and DLL 17 of 17 deliberate bugs caught (163 s), the take in VRUN's engine 5,032 of 5,032 field-frames, 0 bytes on the audio thread.
+**Runs** (DLL published Native AOT into `C:\BrokenNes-work\bn_r9_capture`): `FruityHost capture-test`: 6 of 6 checks, 727 assertions, 17 of 17 deliberate bugs caught, 0 NOT RUN. `FruityHost selftest <dll> --only capture,midi`: 2 passed, 0 warnings, 0 failed; capture: library 17 of 17 and DLL 17 of 17 deliberate bugs caught (163 s), the take in VRUN's engine 5,032 of 5,032 field-frames, 0 bytes on the audio thread.

@@ -57,7 +57,7 @@ $SentinelA = 0x6D29; $SentinelB = 0x92D6; $SentinelC = 0x5AA5               # si
 
 if (-not $Vrun -and $env:BROKENNES_VRUN) { $Vrun = $env:BROKENNES_VRUN }
 if (-not $Vrun) { $Vrun = Join-Path (Get-BdHome) 'vrun_nes_dev\sys0\simulations\VRUN' }
-$workRoot = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'VRUN_Nes_Dev_work\musictest' } else { throw 'LOCALAPPDATA is not set' }
+$workRoot = Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:\BrokenNes-work' }) 'musictest'
 if (-not $Work) { $Work = Join-Path $workRoot 'scratch' }
 if (-not $Out) { $Out = Join-Path $workRoot $Mode }
 if ($Name -notmatch '^[a-z][a-z0-9_]{0,23}$') { Write-Host "-Name must be a lowercase identifier (it becomes part of NESFab names): '$Name'"; exit 2 }
