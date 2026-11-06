@@ -22,7 +22,7 @@ namespace NesEmulator
     /// is the pitch the NES asks for. The FM chip runs at its own 53,267 Hz and is resampled to the host rate by the same band-limited mixer the Genesis sound unit uses. Discovered by CoreRegistry as APU id "MD".
     /// Allocation-free while running (the plugin plays it on the audio thread).
     /// </summary>
-    public sealed class APU_MD : IAPU, IDmcDmaSchedulable, NesEmulator.IFrontedApu
+    public class APU_MD : IAPU, IDmcDmaSchedulable, NesEmulator.IFrontedApu
     {
         /// <summary>The PSG runs from exactly twice the NES CPU clock.</summary>
         public const double PsgClockHz = 2 * NesVoiceWriter.NesCpuHz;
@@ -49,6 +49,17 @@ namespace NesEmulator
         private readonly IAPU front;
         private readonly Sn76489 psg;
         private readonly Ym2612 ym;
+        /// <summary>A ported Genesis sound unit (APU_MD_GENS ...) that plays instead of the stock chips: its Z80 is held in reset (the 68000's window then reaches the YM2612 directly), every YM2612 and PSG write the
+        /// bridge makes is mirrored into it at its master-clock time (30 per NES cycle), and its output replaces the stock chips' (which keep running: the patch loudness ladder and the probes read them). Null for the stock MD.</summary>
+        private readonly IGenesisSound? unit;
+        private long unitClock;
+        /// <summary>The Genesis menu's id of the unit that plays ("MD" for the stock chips).</summary>
+        public string UnitId { get; }
+        private sealed class NoHost : IGenesisSoundHost
+        {
+            public byte ReadBus(int address, long masterClock, out int waitMasterClocks) { waitMasterClocks = 0; return 0xFF; }
+            public void WriteBus(int address, byte value, long masterClock, out int waitMasterClocks) { waitMasterClocks = 0; }
+        }
         private readonly BandLimitedMixer fmLeft, fmRight;
         private readonly FmSink sink;
         private NesChannelModel model = new();
@@ -142,8 +153,12 @@ namespace NesEmulator
         /// <summary>For the verifier and the patch lab: plays a patch that is not in the bank (a test patch with chosen operators). <see cref="Patch"/> reads -1 until a bank patch is chosen again.</summary>
         internal void UseCustomPatch(FmPatch custom) { requestedPatch = NoRequest; patchIndex = -1; patch = custom; patchDirty = true; }
 
-        public APU_MD(Bus bus)
+        public APU_MD(Bus bus) : this(bus, "MD") { }
+
+        /// <summary>The bridge on a chosen Genesis sound unit (<see cref="GenesisSoundFactories"/> id): the NES menu's "Genesis: &lt;engine&gt;" entries (APU_MD_GENS ...) fix it here.</summary>
+        protected APU_MD(Bus bus, string unitId)
         {
+            UnitId = unitId;
             string frontId = MixConfig.NesFrontApu;
             if (frontId.Equals("MD", StringComparison.OrdinalIgnoreCase) || frontId.Equals("SMS", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("APU_MD cannot be its own front APU");
             var t = CoreRegistry.ApuTypes.TryGetValue(frontId, out var ft) ? ft : throw new ArgumentException($"No NES APU '{frontId}'");
@@ -155,12 +170,18 @@ namespace NesEmulator
             ym = new Ym2612(m, YmClockHz) { Sink = sink };
             fmLeft = new BandLimitedMixer(YmClockHz / Ym2612.ClocksPerSample, rate);
             fmRight = new BandLimitedMixer(YmClockHz / Ym2612.ClocksPerSample, rate);
+            if (!unitId.Equals("MD", StringComparison.OrdinalIgnoreCase))
+            {
+                unit = GenesisSoundFactories.Create(unitId, new SegaMachine(SegaTimeline.Genesis(SegaRegion.Ntsc), m, rate));
+                unit.Attach(new NoHost());
+                if (unit.SampleRate != rate) throw new NotSupportedException($"Genesis sound unit '{unitId}' renders at {unit.SampleRate} Hz, not the NES's {rate}");
+            }
             patchIndex = FmPatchBank.Clamp(DefaultPatch); patch = FmPatchBank.Patches[patchIndex]; patchDirty = true;
             PowerOn();
             lock (Live) { if (Live.Count >= 32) Live.RemoveAll(w => !w.TryGetTarget(out _)); Live.Add(new WeakReference<APU_MD>(this)); }
         }
 
-        public string CoreName => $"MD:YM2612+SN76489+{front.CoreName}";
+        public string CoreName => unit != null ? $"MD:{UnitId}+{front.CoreName}" : $"MD:YM2612+SN76489+{front.CoreName}";
         public string Description => "MIX LAB: NES channels played on Genesis sound chips (pulses -> YM2612 FM voices with a chosen patch, triangle -> an FM sine, noise -> the PSG noise; the DMC is dropped and counted)";
         public int Performance => 0; public int Rating => 1; public string Category => "Experimental";
 
@@ -184,6 +205,7 @@ namespace NesEmulator
         {
             psg.Reset();
             ym.PowerOn();
+            unit?.Reset();          // the Z80 held in reset: the window reaches the YM2612, the Z80 never runs
             sink.Reset();
             ymClock = 0; ymRemainder = 0;      // the chip's own clock starts again; the mixers' sample count keeps counting (as the Genesis sound unit's does across a reset)
             fmLeft.Reset(); fmRight.Reset();
@@ -203,22 +225,22 @@ namespace NesEmulator
         {
             if (period[channel] == n) return;
             period[channel] = n;
-            psg.Write((byte)(0x80 | channel << 5 | (n & 0x0F)));
-            psg.Write((byte)((n >> 4) & 0x3F));
+            PsgOut((byte)(0x80 | channel << 5 | (n & 0x0F)));
+            PsgOut((byte)((n >> 4) & 0x3F));
         }
 
         private void SetVolume(int channel, int k)
         {
             if (volume[channel] == k) return;
             volume[channel] = k;
-            psg.Write((byte)(0x90 | channel << 5 | k));
+            PsgOut((byte)(0x90 | channel << 5 | k));
         }
 
         private void SetNoise(int control)
         {
             if (noiseControl == control) return;
             noiseControl = control;
-            psg.Write((byte)(0xE0 | control));   // reloads the noise shift register: only done when the mode or rate changes
+            PsgOut((byte)(0xE0 | control));   // reloads the noise shift register: only done when the mode or rate changes
         }
 
         // ---- the YM2612's registers (voices 1 to 3 are channels 0 to 2 of part 1: address port 0, data port 1) ----
@@ -227,7 +249,10 @@ namespace NesEmulator
         {
             ym.Write(0, (byte)reg, ymClock);
             ym.Write(1, (byte)value, ymClock);
+            if (unit != null) { unit.Write(0x4000, (byte)reg, unitClock); unit.Write(0x4001, (byte)value, unitClock); }
         }
+
+        private void PsgOut(byte v) { psg.Write(v); unit?.WritePsg(v, unitClock); }
 
         /// <summary>Programs a channel with a patch: every operator's registers, the algorithm and feedback, both speakers on, no LFO. The key state is left alone; the carriers' attenuation is set by <see cref="FmLevel"/>.</summary>
         private void LoadChannel(int ch, FmPatch p)
@@ -396,6 +421,7 @@ namespace NesEmulator
         /// <summary>Moves the finished samples of both chips into the mono ring (the FM chip's two sides averaged, the PSG's the same).</summary>
         private void Drain()
         {
+            if (unit != null) { DrainUnit(); return; }
             fmLeft.Advance(fmSamples); fmRight.Advance(fmSamples);
             while (true)
             {
@@ -415,6 +441,24 @@ namespace NesEmulator
             }
         }
 
+        /// <summary>The ported unit plays: the stock chips' samples are taken and dropped (they keep running for the loudness ladder and the probes), the unit's stereo is averaged into the ring.</summary>
+        private void DrainUnit()
+        {
+            fmLeft.Advance(fmSamples); fmRight.Advance(fmSamples);
+            int f;
+            while ((f = Math.Min(Math.Min(fmLeft.Available, fmRight.Available), fl.Length)) > 0) { fmLeft.Read(fl.AsSpan(0, f)); fmRight.Read(fr.AsSpan(0, f)); }
+            while (psg.ReadSamples(pcm) > 0) { }
+            int n;
+            while ((n = unit!.ReadSamples(pcm)) > 0)
+                for (int i = 0; i < n / 2; i++)
+                {
+                    float v = (pcm[2 * i] + pcm[2 * i + 1]) * (0.5f / 32768f);
+                    if (ringCount == ring.Length) { ringHead = (ringHead + 1) & (ring.Length - 1); ringCount--; }
+                    ring[(ringHead + ringCount) & (ring.Length - 1)] = v;
+                    ringCount++;
+                }
+        }
+
         /// <summary>The band-limited mixers hold back half their kernel (8 samples) before the first sample is final, so the stream starts that far behind the time that has passed and a unit started in the middle of a game hands out 8 samples fewer than
         /// the stock units do for the same frames. Starting the ring with that much silence makes the count right (the sound is that much later, as it always was).</summary>
         private void PrimeRing() { ringHead = 0; ringCount = BandLimitedMixer.Taps / 2; Array.Clear(ring, 0, ringCount); }
@@ -431,6 +475,7 @@ namespace NesEmulator
             int num = ymRemainder + cpuCycles * 30;
             ymClock += num / 7; ymRemainder = num % 7;
             ym.RunTo(ymClock);
+            if (unit != null) { unitClock += cpuCycles * 30L; unit.RunTo(unitClock); }
             if ((sinceSync += cpuCycles) >= SyncCycles) { sinceSync = 0; Sync(); }
             if (front.GetQueuedSampleCount() > 4096) { while (front.ReadSamples(drainScratch) > 0) { } }   // the front's own sound is discarded
         }

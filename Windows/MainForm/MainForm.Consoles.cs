@@ -938,8 +938,8 @@ namespace BrokenNes.Windows
                 var parts = new[]
                 {
                     ("Best", entries.Where(o => o.Grade != CoreGrade.Other).ToList()),
-                    ("Ported from other emulators", entries.Where(o => o.Grade == CoreGrade.Other && CoreCatalog.PortedIds.Contains(o.Id[(o.Id.LastIndexOf(':') + 1)..])).ToList()),
-                    ("More", entries.Where(o => o.Grade == CoreGrade.Other && !CoreCatalog.PortedIds.Contains(o.Id[(o.Id.LastIndexOf(':') + 1)..])).ToList()),
+                    ("Ported from other emulators", entries.Where(o => o.Grade == CoreGrade.Other && CoreCatalog.IsPorted(o.Id)).ToList()),
+                    ("More", entries.Where(o => o.Grade == CoreGrade.Other && !CoreCatalog.IsPorted(o.Id)).ToList()),
                 }.Where(p => p.Item2.Count > 0).ToList();
                 foreach (var (heading, list) in parts)
                 {

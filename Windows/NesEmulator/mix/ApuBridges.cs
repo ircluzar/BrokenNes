@@ -308,7 +308,7 @@ namespace NesEmulator
     /// voices 0/1 = pulses (four duty samples), 2 = triangle, 3 = noise (the DSP's noise generator), 4 = a short
     /// noise hit for every DMC sample start (DPCM samples themselves are not converted).
     /// </summary>
-    public sealed class APU_SNES : IAPU, NesEmulator.IFrontedApu
+    public class APU_SNES : IAPU, NesEmulator.IFrontedApu
     {
         private readonly IAPU front;
         private readonly ISnesApu snes;
@@ -326,11 +326,14 @@ namespace NesEmulator
 
         private const int DirPage = 0x03, SampleBase = 0x0400;
 
-        public APU_SNES(Bus bus)
+        public APU_SNES(Bus bus) : this(bus, MixConfig.SnesApu) { }
+
+        /// <summary>The bridge on a chosen SNES sound unit (<see cref="SnesCores"/> id): the NES menu's "SNES: &lt;engine&gt;" entries (APU_SNES_ZS15 ...) fix their engine here, the mix lab's plain SNES takes <see cref="MixConfig.SnesApu"/>.</summary>
+        protected APU_SNES(Bus bus, string snesApuId)
         {
             var t = CoreRegistry.ApuTypes.TryGetValue(MixConfig.NesFrontApu, out var ft) ? ft : throw new ArgumentException($"No NES APU '{MixConfig.NesFrontApu}'");
             front = CoreRegistry.CreateInstance<IAPU>(t, bus) ?? throw new InvalidOperationException("front APU");
-            snes = SnesCores.CreateApu(MixConfig.SnesApu);
+            snes = SnesCores.CreateApu(snesApuId);
             drv = new SpcDspDriver(snes);
             Boot();
             bootClock = drv.MasterClock;

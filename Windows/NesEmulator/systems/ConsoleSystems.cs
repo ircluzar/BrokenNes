@@ -370,7 +370,25 @@ public static class CoreCatalog
 
     /// <summary>The family a NES-board core id belongs to ("NES" unless it is a bridge).</summary>
     public static string NesFamilyOf(CoreSlot slot, string id) =>
-        (slot switch { CoreSlot.Cpu => NesCpuFamily, CoreSlot.Ppu => NesPpuFamily, _ => NesApuFamily }).TryGetValue(id, out var f) ? f : "NES";
+        (slot switch { CoreSlot.Cpu => NesCpuFamily, CoreSlot.Ppu => NesPpuFamily, _ => NesApuFamily }).TryGetValue(id, out var f) ? f
+        : slot == CoreSlot.Apu && PortedBridgeEngine(id) is { } b ? b.Family : "NES";
+
+    /// <summary>
+    /// A NES APU id that is a bridge with a ported engine fixed (FA-BR-1: "SNES_ZS15" = APU_SNES on ZSNES 0.15, "DMG_GNUB" = APU_DMG on gnuboy): the family and the engine id, else null.
+    /// </summary>
+    public static (string Family, string Engine)? PortedBridgeEngine(string id)
+    {
+        int u = id.IndexOf('_');
+        if (u <= 0 || !PortedIds.Contains(id[(u + 1)..])) return null;
+        return id[..u].ToUpperInvariant() switch { "SNES" => ("SNES", id[(u + 1)..]), "DMG" => ("Game Boy", id[(u + 1)..]), "SMS" => ("Master System", id[(u + 1)..]), "MD" => ("Genesis", id[(u + 1)..]), _ => null };
+    }
+
+    /// <summary>True for a ported engine's entry, by its bare id ("ZS15", "NES:FCEU") or as a NES bridge with the engine fixed ("SNES_ZS15").</summary>
+    public static bool IsPorted(string id)
+    {
+        string bare = id[(id.LastIndexOf(':') + 1)..];
+        return PortedIds.Contains(bare) || PortedBridgeEngine(bare) != null;
+    }
 
     /// <summary>NES PPU bridges that need the board's cycle-precise PPU stepping (they wrap PPU_FIX-timed cores).</summary>
     public static bool NesPpuNeedsPreciseTiming(string id) => NesPpuFamily.ContainsKey(id);
@@ -611,7 +629,8 @@ public static class CoreCatalog
                 {
                     string fam = NesFamilyOf(slot, id);
                     if (Hidden(fam)) continue;       // the WideMess's chips where the WideMess is hidden (Lite, the FL plugin)
-                    list.Add(new CoreOption(id, NesBridgeLabels.TryGetValue(prefix + ":" + id, out var l) ? $"{id} - {l}" : id, fam) { Wall = slot == CoreSlot.Cpu && id.ToUpperInvariant() is "Z80" or "M68K" or "SM83" });
+                    string? pl = slot == CoreSlot.Apu && PortedBridgeEngine(id) is { } pb ? $"{pb.Family switch { "SNES" => "SNES sound (S-DSP)", "Game Boy" => "Game Boy sound chip", "Master System" => "Master System PSG", _ => "Genesis sound chips" }} on the {ShortNames[pb.Engine]} engine" : null;
+                    list.Add(new CoreOption(id, pl != null ? $"{id} - {pl}" : NesBridgeLabels.TryGetValue(prefix + ":" + id, out var l) ? $"{id} - {l}" : id, fam) { Wall = slot == CoreSlot.Cpu && id.ToUpperInvariant() is "Z80" or "M68K" or "SM83" });
                 }
                 break;
             }
@@ -706,7 +725,7 @@ public static class CoreCatalog
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), NesFamilyOf(CoreSlot.Apu, id)));
                         if (CoreRegistry.ApuIds.Contains("DMG", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMG", "Game Boy sound chip (through NES registers)", "Game Boy"));
                         if (CoreRegistry.ApuIds.Contains("DMGS", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMGS", "Game Boy sound chip with extra channel banks: all eight of the S-DSP's voices (through NES registers)", "Game Boy"));
-                        foreach (var id in HubSoundChips("SNES").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "Game Boy")) list.Add(new("NES:" + id, HubSoundLabel(id, "the S-DSP's eight voices"), NesFamilyOf(CoreSlot.Apu, id)));
+                        foreach (var id in HubSoundChips("SNES").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "Game Boy" || PortedBridgeEngine(i) != null)) list.Add(new("NES:" + id, HubSoundLabel(id, "the S-DSP's eight voices"), NesFamilyOf(CoreSlot.Apu, id)));
                         break;
                 }
                 break;
@@ -731,7 +750,7 @@ public static class CoreCatalog
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), NesFamilyOf(CoreSlot.Apu, id)));
                         if (CoreRegistry.ApuIds.Contains("DMG", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMG", "Game Boy sound chip (through NES registers)", "Game Boy"));
                         if (CoreRegistry.ApuIds.Contains("DMGS", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:DMGS", "Game Boy sound chip with extra channel banks: all eight of the SNES's voices (through NES registers)", "Game Boy"));
-                        foreach (var id in HubSoundChips("SNES").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "Game Boy")) list.Add(new("NES:" + id, HubSoundLabel(id, "the SNES's voices"), NesFamilyOf(CoreSlot.Apu, id)));
+                        foreach (var id in HubSoundChips("SNES").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "Game Boy" || PortedBridgeEngine(i) != null)) list.Add(new("NES:" + id, HubSoundLabel(id, "the SNES's voices"), NesFamilyOf(CoreSlot.Apu, id)));
                         break;
                 }
                 break;
@@ -761,7 +780,7 @@ public static class CoreCatalog
                         list.Add(new("GYOB", "GYOB (GameYob DS sound, 2013: GB channels on DS PSG/PCM channels, per-frame updates, DC hum)", "Game Boy"));
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), "NES"));
                         if (CoreRegistry.ApuIds.Contains("SNES", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:SNES", "SNES sound (through NES registers)", "SNES"));
-                        foreach (var id in HubSoundChips("Game Boy").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "SNES")) list.Add(new("NES:" + id, HubSoundLabel(id, "the Game Boy's channels"), NesFamilyOf(CoreSlot.Apu, id)));
+                        foreach (var id in HubSoundChips("Game Boy").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "SNES" || PortedBridgeEngine(i) != null)) list.Add(new("NES:" + id, HubSoundLabel(id, "the Game Boy's channels"), NesFamilyOf(CoreSlot.Apu, id)));
                         break;
                 }
                 break;
@@ -835,6 +854,7 @@ public static class CoreCatalog
         if (o.Grade != CoreGrade.Other) { int d = o.Label.IndexOf(" - ", StringComparison.Ordinal); return Cap(d > 0 ? o.Label[..d] : o.Label); }
         if (o.Id.StartsWith("NES-FM:", StringComparison.OrdinalIgnoreCase)) return $"{bare} with the FM chip";
         if (ShortNames.TryGetValue(bare, out var n)) return $"{bare}  {n}";
+        if (PortedBridgeEngine(bare) is { } pbe) return $"{pbe.Engine}  {ShortNames[pbe.Engine]}";
         string l = o.Label;
         foreach (var h in new[] { o.Id + " - ", bare + " - " }) if (l.StartsWith(h, StringComparison.OrdinalIgnoreCase)) { l = l[h.Length..]; break; }
         if (l.StartsWith(bare + " (", StringComparison.OrdinalIgnoreCase) && l.EndsWith(")")) l = l[(bare.Length + 2)..^1];
@@ -946,6 +966,7 @@ public static class CoreCatalog
         "SMS" => $"SMS - through a NES onto the Master System sound chip ({carried} on the SN76489's 3 tones + noise)",
         "SMSFM" => $"SMSFM - through a NES onto the Master System FM chip ({carried} on YM2413 instruments + the PSG's noise)",
         "MD" => $"MD - through a NES onto the Genesis sound chips ({carried} on YM2612 voices + PSG)",
+        _ when PortedBridgeEngine(id) is { } pb => $"{id} - through a NES onto the {pb.Family} sound on the {ShortNames[pb.Engine]} engine ({carried})",
         _ => $"{id} - through a NES onto another console's sound chip",
     };
 

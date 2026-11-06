@@ -32,7 +32,7 @@ namespace NesEmulator
     /// </list>
     /// Discovered by CoreRegistry as APU id "SMS". Allocation-free while running (the plugin plays it on the audio thread).
     /// </summary>
-    public sealed class APU_SMS : IAPU, IDmcDmaSchedulable, NesEmulator.IFrontedApu
+    public class APU_SMS : IAPU, IDmcDmaSchedulable, NesEmulator.IFrontedApu
     {
         /// <summary>The PSG runs from exactly twice the NES CPU clock: a NES timer value t is PSG period t + 1 at the same pitch.</summary>
         public const double PsgClockHz = 2 * NesVoiceWriter.NesCpuHz;
@@ -86,6 +86,10 @@ namespace NesEmulator
         }
         private readonly IAPU front;
         private readonly Sn76489 psg;
+        /// <summary>The sound unit that plays: the stock PSG (<see cref="SmsSound"/>), or a ported engine's unit (APU_SMS_BLST ...) that mirrors every write into the stock PSG <see cref="psg"/> (its registers stay readable) and renders its own output.</summary>
+        private readonly SmsSound unit;
+        /// <summary>The unit's id: "SMS" for the stock PSG, else the Master System menu's id of the ported engine.</summary>
+        public string UnitId { get; }
         private NesChannelModel model = new();
         private int channelMask = 0x1F;
         private int sinceSync;
@@ -132,23 +136,33 @@ namespace NesEmulator
         /// <summary>The NES APU core kept in front (registers, frame IRQ, DMC timing).</summary>
         public IAPU Front => front;
 
-        public APU_SMS(Bus bus)
+        public APU_SMS(Bus bus) : this(bus, "SMS") { }
+
+        /// <summary>The bridge on a chosen Master System PSG unit (<see cref="SmsSoundFactories"/> id): the NES menu's "Master System: &lt;engine&gt;" entries (APU_SMS_BLST ...) fix it here.</summary>
+        protected APU_SMS(Bus bus, string unitId)
         {
             string frontId = MixConfig.NesFrontApu;
             if (frontId.Equals("SMS", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("APU_SMS cannot be its own front APU");
             var t = CoreRegistry.ApuTypes.TryGetValue(frontId, out var ft) ? ft : throw new ArgumentException($"No NES APU '{frontId}'");
             front = CoreRegistry.CreateInstance<IAPU>(t, bus) ?? throw new InvalidOperationException("front APU");
-            psg = new Sn76489(PsgClockHz, front.GetSampleRate()) { Gain = PsgGain };
+            UnitId = unitId;
+            if (unitId.Equals("SMS", StringComparison.OrdinalIgnoreCase)) unit = new SmsSound(PsgClockHz, front.GetSampleRate());
+            else
+            {
+                var req = new SmsSoundRequest(new SegaMachine(SegaTimeline.MasterSystem(SegaRegion.Ntsc), GenesisModel.Model1, front.GetSampleRate()), NesEmulator.Systems.ConsoleKind.MasterSystem, PsgVariant.Sega);
+                unit = SmsSoundFactories.Create(unitId, req) as SmsSound ?? throw new NotSupportedException($"Master System sound unit '{unitId}' is not a PSG unit");
+            }
+            psg = unit.Psg; psg.Gain = PsgGain;
             PowerOn();
         }
 
-        public string CoreName => $"SMS:SN76489+{front.CoreName}";
+        public string CoreName => $"SMS:{(UnitId.Equals("SMS", StringComparison.OrdinalIgnoreCase) ? "SN76489" : UnitId)}+{front.CoreName}";
         public string Description => "MIX LAB: NES channels played on a Master System / Game Gear PSG (pulses -> tones 1 and 2 at 50% duty, triangle -> tone 3, noise -> noise; the DMC is dropped and counted)";
         public int Performance => 0; public int Rating => 1; public string Category => "Experimental";
 
         private void PowerOn()
         {
-            psg.Reset();
+            unit.Reset();
             Array.Fill(period, -1); Array.Fill(volume, -1); noiseControl = -1; Array.Clear(outOfRange);
             for (int c = 0; c < 4; c++) SetVolume(c, 15);
             SetNoise(0);
@@ -160,22 +174,22 @@ namespace NesEmulator
         {
             if (period[channel] == n) return;
             period[channel] = n;
-            psg.Write((byte)(0x80 | channel << 5 | (n & 0x0F)));
-            psg.Write((byte)((n >> 4) & 0x3F));
+            unit.WritePsg((byte)(0x80 | channel << 5 | (n & 0x0F)));
+            unit.WritePsg((byte)((n >> 4) & 0x3F));
         }
 
         private void SetVolume(int channel, int k)
         {
             if (volume[channel] == k) return;
             volume[channel] = k;
-            psg.Write((byte)(0x90 | channel << 5 | k));
+            unit.WritePsg((byte)(0x90 | channel << 5 | k));
         }
 
         private void SetNoise(int control)
         {
             if (noiseControl == control) return;
             noiseControl = control;
-            psg.Write((byte)(0xE0 | control));   // reloads the noise shift register: only done when the mode or rate changes
+            unit.WritePsg((byte)(0xE0 | control));   // reloads the noise shift register: only done when the mode or rate changes
         }
 
         // ---- the replay ----
@@ -260,7 +274,7 @@ namespace NesEmulator
         private void Drain()
         {
             int n;
-            while ((n = psg.ReadSamples(pcm)) > 0)
+            while ((n = unit.ReadSamples(pcm)) > 0)
             {
                 int frames = n / 2;
                 for (int i = 0; i < frames; i++)
@@ -280,7 +294,7 @@ namespace NesEmulator
             if (cpuCycles <= 0) return;
             if (StepFront) front.Step(cpuCycles);
             model.ClockBulk(cpuCycles);
-            psg.Run(cpuCycles * 2);
+            unit.Run(cpuCycles * 2);
             if ((sinceSync += cpuCycles) >= SyncCycles) { sinceSync = 0; Sync(); }
             if (front.GetQueuedSampleCount() > 4096) { while (front.ReadSamples(drainScratch) > 0) { } }   // the front's own sound is discarded
         }
@@ -317,7 +331,7 @@ namespace NesEmulator
         }
 
         public int GetQueuedSampleCount() { Drain(); return ringCount; }
-        public int GetSampleRate() => psg.SampleRate;
+        public int GetSampleRate() => unit.SampleRate;
         public void SetEnabledChannels(int mask) { channelMask = mask; front.SetEnabledChannels(mask); }
         public object GetState() => front.GetState();
         public void SetState(object state) { front.SetState(state); ResyncModel(); }

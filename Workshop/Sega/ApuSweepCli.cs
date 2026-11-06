@@ -179,6 +179,15 @@ internal static class ApuSweepCli
         // bridges: a NES game on another console's chip, backed by a port (the mix lab's MixConfig), swapped in live
         Group("NES", "snes", "NES game -> APU_SNES", p => new("NES", p, "", "FIX", "SNES", "FIX", () => MixConfig.SnesApu = p), "SFC", SnesPorts);
         Group("NES", "dmg", "NES game -> APU_DMG", p => new("NES", p, "", "FIX", "DMG", "FIX", () => MixConfig.GbApu = p), "GB", GbPorts);
+        // every port behind the NES's bridges as the menus offer them (FA-BR-1 and the all-APU matrix): the engine fixed in the NES core id (SNES_<port>, DMG_<port>, SMS_<port>, MD_<port>), no mix-lab
+        // setting; on the NES menu directly, on every other console as NES:<id> through the NES registers (swapped in live). The control is the family's stock bridge (SNES, DMG, SMS, MD).
+        foreach (var con in new[] { "NES", "SNES", "GB", "SMS", "GG", "MD" })
+            foreach (var (fam, pre, stock, ports) in PortFamilies)
+            {
+                if (fam == OwnFamily(con)) continue;
+                string hop = con == "NES" ? "" : "NES:";
+                Group(con, pre.ToLowerInvariant() + "menu", $"{con} menu {hop}{pre}<port>", p => new(con, p, "", Stock(con), p == stock ? hop + pre.TrimEnd('_') : hop + pre + p, Stock(con)), stock, ports);
+            }
         // another console's game on a NES port (the menus list them as NES:<port>): swapped in live, and the game started on it (the app's restart path)
         foreach (var con in new[] { "SNES", "GB", "SMS", "GG", "MD" })
         {
@@ -191,6 +200,14 @@ internal static class ApuSweepCli
         Group("GB", "nessnes", "GB game -> NES:SNES", p => new("GB", p, "", "GB", "NES:SNES", "GB", () => MixConfig.SnesApu = p), "SFC", SnesPorts);
         return l;
     }
+
+    /// <summary>The ported engines' families behind the NES bridges: the menu family, the NES id prefix (the stock bridge's id without the underscore), the stock engine (the control) and the ports.</summary>
+    private static readonly (string Family, string Prefix, string Stock, string[] Ports)[] PortFamilies =
+    {
+        ("SNES", "SNES_", "SFC", SnesPorts), ("Game Boy", "DMG_", "GB", GbPorts), ("Master System", "SMS_", "SMS", PsgPorts), ("Genesis", "MD_", "MD", MdPorts),
+    };
+    private static string OwnFamily(string con) => con switch { "NES" => "NES", "SNES" => "SNES", "GB" => "Game Boy", "SMS" or "GG" => "Master System", _ => "Genesis" };
+    private static ConsoleKind Kind(string con) => con switch { "NES" => ConsoleKind.Nes, "SNES" => ConsoleKind.Snes, "GB" => ConsoleKind.GameBoy, "SMS" => ConsoleKind.MasterSystem, "GG" => ConsoleKind.GameGear, _ => ConsoleKind.Genesis };
 
     private static void ResetMix() { MixConfig.SnesApu = "SFC"; MixConfig.GbApu = "GB"; MixConfig.NesBackApu = "FIX"; MixConfig.GbBackNesApu = "FIX"; }
 
@@ -233,6 +250,7 @@ internal static class ApuSweepCli
             }
             Console.WriteLine($"{console} {probe}: {string.Join(" ", t)}"); return 0;
         }
+        int menuFails = MenuCheck(console);
         var cells = Cells().Where(c => console == null || c.Console == console).Where(c => only == null || only.Contains(c.Engine) || c.IsControl).ToList();
         var controls = new Dictionary<string, Result>();
         var rows = new List<(Cell c, Result r)>();
@@ -256,7 +274,34 @@ internal static class ApuSweepCli
             File.WriteAllLines(tsv, new[] { "console\tengine\troute\tswap\tstate\tbutcher\tstuck\tback\tr0\tr1\tr2\tr3\tr4\tr5\tr6\tverdict" }
                 .Concat(rows.Select(x => $"{x.c.Console}\t{x.c.Engine}\t{x.c.Route}\t{x.r.Swap}\t{x.r.State}\t{x.r.Butcher}\t{x.r.Stuck}\t{x.r.Back}\t{x.r.R0:F0}\t{x.r.R1:F0}\t{x.r.R2:F0}\t{x.r.R3:F0}\t{x.r.R4:F0}\t{x.r.R5:F0}\t{x.r.R6:F0}\t{(x.r.Ok ? "ok" : "FAIL " + string.Join("; ", x.r.Fails))}")));
         Console.WriteLine($"\n{rows.Count - fails} of {rows.Count} cells passed{(notRun > 0 ? $", {notRun} not run (game not on this machine)" : "")}{(plant != "" ? $" [planted fault: {plant}]" : "")}");
-        return fails == 0 ? 0 : 1;
+        return fails == 0 && menuFails == 0 ? 0 : 1;
+    }
+
+    /// <summary>Every console's APU menu offers every port of every other family behind the NES bridges, in that family's submenu under "Ported", labelled with the engine's id and short name
+    /// (FA-BR-1 on the NES; NES:&lt;id&gt; elsewhere). Planted (--plant menu): the first port of each family is looked up under a wrong id, so each must be reported.</summary>
+    private static int MenuCheck(string? console)
+    {
+        int bad = 0, all = 0;
+        foreach (var con in new[] { "NES", "SNES", "GB", "SMS", "GG", "MD" })
+        {
+            if (console != null && console != con) continue;
+            var opts = CoreCatalog.Options(Kind(con), CoreSlot.Apu);
+            foreach (var (fam, pre, _, ports) in PortFamilies)
+            {
+                if (fam == OwnFamily(con)) continue;
+                foreach (var p in ports)
+                {
+                    all++;
+                    string id = (con == "NES" ? "" : "NES:") + pre + p + (plant == "menu" && p == ports[0] ? "?" : "");
+                    var o = opts.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+                    string? why = o == null ? "not on the menu" : CoreCatalog.MenuConsole(o) != fam ? $"in the {CoreCatalog.MenuConsole(o)} submenu" : !CoreCatalog.IsPorted(o.Id) ? "not under Ported"
+                        : !CoreCatalog.MenuLabel(o).StartsWith(p + " ") ? $"label '{CoreCatalog.MenuLabel(o)}'" : null;
+                    if (why != null) { bad++; Console.WriteLine($"MENU FAIL {con} APU {id}: {why}"); }
+                }
+            }
+        }
+        Console.WriteLine($"menu: {all - bad} of {all} ports offered behind the NES bridges");
+        return bad;
     }
 
     /// <summary>The cells that are silent in the measured windows because the original emulator was (evidence from the port's header): reported as silent*, not a failure.</summary>
