@@ -439,6 +439,34 @@ public sealed class Vga
             addr &= 0x3ffff;
             int o = y * w;
             if (addr >= RamSize || lineBytes > RamSize - addr) Array.Fill(Frame, unchecked((int)0xff000000), o, w);
+            else if (shift == 0 && xdiv <= 2)
+            {   // planar 16 colours, a byte of each plane (8 pixels) at a time: the same pixels as the general loop below
+                var pal = _pal; var fr = Frame;
+                int x = 0, x1 = pan, pm = planeMask & 0xf;
+                while (x < w)
+                {
+                    uint b = addr + 4 * (uint)(x1 >> 3);
+                    int p0 = vram[b], p1 = 0, p2 = 0, p3 = 0;
+                    if (planeMask != 1) { p1 = vram[b + 1]; p2 = vram[b + 2]; p3 = vram[b + 3]; }
+                    for (int bit = 7 - (x1 & 7); bit >= 0 && x < w; bit--, x1++)
+                    {
+                        int k = (((p0 >> bit) & 1) | (((p1 >> bit) & 1) << 1) | (((p2 >> bit) & 1) << 2) | (((p3 >> bit) & 1) << 3)) & pm;
+                        int c = pal[k];
+                        fr[o + x++] = c;
+                        if (xdiv == 2 && x < w) fr[o + x++] = c;
+                    }
+                }
+            }
+            else if (shift >= 2 && xdiv == 2)
+            {   // 256 colours, each pixel twice
+                var pal = _pal; var fr = Frame;
+                for (int x = 0; x < w; x += 2)
+                {
+                    int c = pal[vram[addr + (uint)(x / 2 + pan)]];
+                    fr[o + x] = c;
+                    if (x + 1 < w) fr[o + x + 1] = c;
+                }
+            }
             else
                 for (int x = 0; x < w; x++)
                 {

@@ -47,14 +47,16 @@ public sealed partial class I386
         public bool C16;
         public int Visits;
         public bool Failed;
+        public bool Pending;   // being compiled in the background (interpreted meanwhile)
         public JitCode? Code;
         public int K;
     }
 
     private static readonly bool JitOn = RuntimeFeature.IsDynamicCodeCompiled && Environment.GetEnvironmentVariable("X86_NOJIT") == null;
-    private const int JitBits = 16, JitMask = (1 << JitBits) - 1, JIT_DECLINE = 3, JitKeep = 16384;
+    private const int JitBits = 16, JitMask = (1 << JitBits) - 1, JIT_DECLINE = 3, JIT_END = 4, JitKeep = 16384;
     private static readonly int JitMaxInstr = int.TryParse(Environment.GetEnvironmentVariable("X86_JITMAX"), out int jm) ? jm : 128;
     private static readonly int JitHot = int.TryParse(Environment.GetEnvironmentVariable("X86_JITHOT"), out int jh) ? jh : 32;
+    private JitCode? _jitCur;   // the block running now
     private readonly JitEntry?[] _je = new JitEntry?[1 << JitBits];
     private readonly List<JitCode> _jitAll = new();
     private readonly Dictionary<ulong, JitCode> _jitCodes = new();   // every block compiled, by start address and code size: a block evicted from the table is not compiled twice
@@ -65,6 +67,12 @@ public sealed partial class I386
     public long JitRuns, JitInvalid;
     public IEnumerable<string> JitTop(int n) => _jitAll.OrderByDescending(b => b.Instrs).Take(n)
         .Select(b => $"{b.Start:X8} n{b.Count} runs {b.Runs} instrs {b.Instrs} | {Convert.ToHexString(b.Bytes)}");
+    private readonly long[] _interpOps = new long[65536];
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void JitCountInterp(uint pa) { if (pa + 2 < MemSize) _interpOps[Mem[pa] << 8 | Mem[pa + 1]]++; }
+    public IEnumerable<string> InterpTop(int n) => Enumerable.Range(0, 65536).Where(i => _interpOps[i] > 0).OrderByDescending(i => _interpOps[i]).Take(n)
+        .Select(i => $"{i >> 8:X2} {i & 255:X2}: {_interpOps[i]}");
+    public long JitInstrsTotal => _jitAll.Sum(b => b.Instrs);
     public static bool JitStats = Environment.GetEnvironmentVariable("X86_JITSTAT") != null;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -83,12 +91,13 @@ public sealed partial class I386
             {
                 if (JitSame(code))
                 {
+                    _jitCur = code;
                     if (!JitStats) return code.Fn(this, en.K);
                     return JitRunCounted(code, en.K);
                 }
                 return JitInvalidated(en);
             }
-            if (en.Failed) return JIT_DECLINE;
+            if (en.Failed || en.Pending) return JIT_DECLINE;
             if (++en.Visits >= JitHot) JitCompile(en);
             return JIT_DECLINE;
         }
@@ -108,7 +117,7 @@ public sealed partial class I386
     private int JitInvalidated(JitEntry en)
     {   // the block's bytes changed: interpret, and compile again once hot again
         JitInvalid++;
-        en.Code = null; en.Visits = 0; en.Failed = false;
+        en.Code = null; en.Visits = 0; en.Failed = false; en.Pending = false;
         return JIT_DECLINE;
     }
 
@@ -117,7 +126,7 @@ public sealed partial class I386
     {
         ref JitEntry? slot = ref _je[JitIndex(paddr)];
         var en = slot ??= new JitEntry();
-        en.Start = paddr; en.C16 = _c16; en.Visits = 1; en.Failed = false; en.Code = null; en.K = 0;
+        en.Start = paddr; en.C16 = _c16; en.Visits = 1; en.Failed = false; en.Pending = false; en.Code = null; en.K = 0;
         return JIT_DECLINE;
     }
 
@@ -139,29 +148,49 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool JSegOk(int seg) => (Cr0 & 1) == 0 || SegLimit[seg] != 0 || (SegSel[seg] & ~3u) != 0;
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegBase(int seg) => SegBase[seg];
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JCond(uint c) => Cond(c);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JAlu(int op, int bits, uint a, uint b) => Alu(op, bits, a, b);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void JIncDec(int bits, int reg, bool dec) => IncDecReg(bits, reg, dec);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool JCond(uint c) => Cond(c);
+    [MethodImpl(MethodImplOptions.NoInlining)] private uint JAlu(int op, int bits, uint a, uint b) => Alu(op, bits, a, b);
+    [MethodImpl(MethodImplOptions.NoInlining)] private void JIncDec(int bits, int reg, bool dec) => IncDecReg(bits, reg, dec);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JNextIp() => NextIp;
 
     /// <summary>The decode state an out-of-line handler reads (what Exec1's fetch and DecodeModrm would have left).</summary>
-    private void JPrep(uint ip, uint nextIp, uint ifp, bool o16, bool a16, int curSeg, int mod, int reg, int rm, uint addr)
+    [MethodImpl(MethodImplOptions.NoInlining)] private void JPrep(uint ip, uint nextIp, uint ifp, bool o16, bool a16, int curSeg, int mod, int reg, int rm, uint addr)
     {
         Ip = ip; NextIp = nextIp; _ifPaddr = ifp; _opsz16 = o16; _adsz16 = a16; _rep = 0; _curSeg = curSeg;
         _mod = mod; _reg = reg; _rm = rm; _addr = addr;
     }
-    private bool JGrp2(int bits, int op, uint count)
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp2(int bits, int op, uint count)
     {
         if (!TranslateE(bits, 3)) return false;
         if (bits == 32) DGrp2_32(op, count); else if (bits == 16) DGrp2_16(op, count); else DGrp2_8(op, count);
         return true;
     }
-    private bool JGrp3(int bits) => Grp3Body(bits);
-    private bool JCall(uint rel) => CallNear(rel, true);
-    private bool JRet() => OpRet() != FAIL;
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool JGrp3(int bits) => Grp3Body(bits);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool JCall(uint rel) => CallNear(rel, true);
+    [MethodImpl(MethodImplOptions.NoInlining)] private bool JRet() => OpRet() != FAIL;
 
-    private int JExitOk(uint ip, uint nextIp, long cyc, int st) { Ip = ip; NextIp = nextIp; Cycle = cyc; _steps = st + 1; return OK; }
-    private int JExitFail(uint ip, long cyc, int st) { Ip = ip; Cycle = cyc; _steps = st; return FAIL; }
+    /// <summary>An out-of-line instruction: exactly one iteration of Exec1's loop (without the compiled code), from Ip <paramref name="ip"/>.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private int JInterp(uint ip, long cyc, int st)
+    {
+        Cycle = cyc; _steps = st; NextIp = ip;
+        return Step1(false);
+    }
+    /// <summary>After an out-of-line instruction: can the compiled code go on (the same code size, paging still off, the fetch still
+    /// on this code page, every segment it uses still usable)? Leaves _spm as Exec1's next iteration would.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool JStill(bool c16, uint pa, int segs, bool wrote)
+    {
+        _c16 = Code16; _spm = SpMask;
+        if (_c16 != c16 || (Cr0 & CR0_PG) != 0 || _ifLaddr != (pa & ~4095u)) return false;
+        if (wrote && !JitSame(_jitCur!)) return false;   // (it may have written to the code)
+        for (int s = 0; s < 6; s++) if ((segs >> s & 1) != 0 && !JSegOk(s)) return false;
+        return true;
+    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSpm() => _spm;
+
+    [MethodImpl(MethodImplOptions.NoInlining)] private int JExitOk(uint ip, uint nextIp, long cyc, int st) { Ip = ip; NextIp = nextIp; Cycle = cyc; _steps = st + 1; return OK; }
+    [MethodImpl(MethodImplOptions.NoInlining)] private int JExitFail(uint ip, long cyc, int st) { Ip = ip; Cycle = cyc; _steps = st; return FAIL; }
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private long JCycle() => Cycle;
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private int JSteps() => _steps;
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JIp() => Ip;
@@ -179,7 +208,7 @@ public sealed partial class I386
     {
         var d = new Dictionary<string, MethodInfo>();
         foreach (var n in new[] { "JRam", "JSegOk", "JSegBase", "JCond", "JAlu", "JIncDec", "JNextIp", "JPrep", "JGrp2", "JGrp3", "JCall", "JRet",
-                     "JExitOk", "JExitFail", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow" })
+                     "JExitOk", "JExitFail", "JCycle", "JSteps", "JIp", "JRdSlow", "JWrSlow", "JInterp", "JStill", "JSpm" })
             d[n] = M(n);
         return d;
     });
@@ -219,17 +248,19 @@ public sealed partial class I386
         {
             uint pa = todo.Dequeue();
             if (found.ContainsKey(pa)) continue;
-            if ((pa & 0xfff) >= 4096 - 16 || pa + 32 >= MemSize || pa - start + 2048 >= 4096) continue;
+            // one 4 KB page (the compiled code never goes on into another one: see Continue)
+            if ((pa & 0xfff) >= 4096 - 16 || pa + 32 >= MemSize || (pa >> 12) != (start >> 12)) continue;
             var e = new DEntry();
             DcDecode(ref e, pa);
             if (e.Kind == DK_SLOW) continue;
-            found[pa] = e;
             uint end = pa + e.Len;
-            if (e.Kind is not (DK_JMP or DK_CALL or DK_RET)) todo.Enqueue(end);
+            if (JitFoldsAt(e, end)) { e.Folds = true; e.FoldNb = (byte)U8(end); e.FoldRel = Sext8(U8(end + 1)); }
+            found[pa] = e;
+            if (e.Kind is not (DK_JMP or DK_CALL or DK_RET) && !(e.Kind == DK_INTERP && e.Op == 1)) todo.Enqueue(end);
             if (e.Kind is DK_JMP or DK_JCC) todo.Enqueue(end + e.Imm);
-            if (JitFoldsAt(e, end)) todo.Enqueue(end + 2 + Sext8(U8(end + 1)));
+            if (e.Folds) todo.Enqueue(end + 2 + e.FoldRel);
         }
-        if (found.Count == 0) { en.Failed = true; return; }
+        if (!found.Values.Any(x => x.Kind != DK_INTERP)) { en.Failed = true; return; }
         var pas = found.Keys.ToArray();
         var ins = found.Values.ToArray();
         // the byte ranges the code depends on: each instruction, plus the JZ / JNZ a CMP / TEST folds with
@@ -237,26 +268,101 @@ public sealed partial class I386
         for (int k = 0; k < pas.Length; k++)
         {
             uint a = pas[k], b = a + ins[k].Len;
-            if (JitFoldsAt(ins[k], b)) b += 2;
+            if (ins[k].Folds) b += 2;
             if (ranges.Count > 0 && a <= ranges[^1].b) ranges[^1] = (ranges[^1].a, Math.Max(ranges[^1].b, b));
             else ranges.Add((a, b));
         }
-        JitFn fn;
-        try { fn = Emit(start, pas, ins, ranges[0].a, ranges[^1].b); }
-        catch (Exception) { en.Failed = true; return; }
+        // the bytes it is compiled from, as they are now (the compiled code runs only while memory still holds them)
         var bytes = new List<byte>();
         foreach (var (a, b) in ranges) bytes.AddRange(Mem.AsSpan((int)a, (int)(b - a)).ToArray());
         var code = new JitCode
         {
-            Start = start, Fn = fn, Count = pas.Length, C16 = _c16, Bytes = bytes.ToArray(),
+            Start = start, Count = pas.Length, C16 = _c16, Bytes = bytes.ToArray(),
             RunAt = ranges.Select(r => (int)r.a).ToArray(), RunLen = ranges.Select(r => (int)(r.b - r.a)).ToArray(),
             Addrs = pas,
         };
+        uint lo = ranges[0].a, hi = ranges[^1].b;
+        bool c16 = _c16, ioMem = _ioMem;
+        uint memSize = MemSize;
+        if (!JitAsync)
+        {
+            try { code.Fn = Emit(start, pas, ins, lo, hi, c16, memSize, ioMem); code.Fn(this, -1); }   // (entry -1: only compiles it, the .NET JIT, and declines)
+            catch (Exception) { en.Failed = true; return; }
+            JitInstall(en, code, key);
+            return;
+        }
+        // in the background: the interpreter runs this code meanwhile (it does exactly what the compiled code will do, so when the
+        // compiled code takes over changes nothing but the speed); the result is installed by the CPU's own thread, between batches
+        // every address of the region waits for it (else each would get hot and ask for its own region meanwhile)
+        foreach (uint pa in pas)
+        {
+            ref JitEntry? slot = ref _je[JitIndex(pa)];
+            var e = slot ??= new JitEntry();
+            if (e.Start == pa && e.C16 == c16 && e.Code != null) continue;
+            e.Start = pa; e.C16 = c16; e.Code = null; e.Failed = false; e.Pending = true;
+        }
+        en.Pending = true;
+        _jitPending++;
+        JitWorker.Post(() =>
+        {
+            try { code.Fn = Emit(start, pas, ins, lo, hi, c16, memSize, ioMem); code.Fn(this, -1); }
+            catch (Exception) { code.Fn = null!; }
+            _jitDone.Enqueue((en, code, key));
+        });
+    }
+
+    private void JitInstall(JitEntry en, JitCode code, ulong key)
+    {
         JitCompiled++;
         if (JitStats) _jitAll.Add(code);
         if (_jitCodes.Count >= JitKeep) _jitCodes.Clear();   // a long session that has run a lot of different code: let the old code go
         _jitCodes[key] = code;
         JitRegister(code);
+    }
+
+    /// <summary>Install the blocks the background compiler has finished (the CPU's thread, before a batch): each one only if memory
+    /// still holds the bytes it was compiled from.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void JitDrain()
+    {
+        while (_jitDone.TryDequeue(out var d))
+        {
+            _jitPending--;
+            var (en, code, key) = d;
+            bool ok = code.Fn != null && JitSame(code);
+            foreach (uint pa in code.Addrs)
+            {   // the addresses that waited for it: interpreted again, counted again from 0 (a failed start: never again)
+                var e = _je[JitIndex(pa)];
+                if (e == null || e.Start != pa || e.C16 != code.C16 || !e.Pending) continue;
+                e.Pending = false; e.Visits = 0;
+                if (code.Fn == null && pa == code.Start) e.Failed = true;
+            }
+            if (ok) JitInstall(en, code, key);
+        }
+    }
+
+    /// <summary>Wait for the background compiler, then install what it made (tests: the same blocks as a synchronous compile).</summary>
+    public void JitFlush()
+    {
+        while (_jitPending > 0) { System.Threading.Thread.Yield(); JitDrain(); }
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(JitEntry, JitCode, ulong)> _jitDone = new();
+    private int _jitPending;
+    /// <summary>X86_JITSYNC: compile on the CPU's own thread, at once (as before: a hitch, but the compiled code runs from the 32nd visit).</summary>
+    private static readonly bool JitAsync = Environment.GetEnvironmentVariable("X86_JITSYNC") == null;
+
+    /// <summary>The background compiler: one low-priority thread for every CPU in the process.</summary>
+    private static class JitWorker
+    {
+        private static readonly System.Collections.Concurrent.BlockingCollection<Action> Q = new();
+        static JitWorker()
+        {
+            var t = new System.Threading.Thread(() => { foreach (var a in Q.GetConsumingEnumerable()) a(); })
+            { IsBackground = true, Name = "x86 block compiler", Priority = System.Threading.ThreadPriority.BelowNormal };
+            t.Start();
+        }
+        public static void Post(Action a) => Q.Add(a);
     }
 
     /// <summary>A CMP / TEST whose next bytes are JZ / JNZ rel8 (tiny386's try_jcc8 folds them).</summary>
@@ -275,11 +381,11 @@ public sealed partial class I386
             ref JitEntry? slot = ref _je[JitIndex(pa)];
             var e = slot ??= new JitEntry();
             if (pa != code.Start && e.Start == pa && e.C16 == code.C16 && e.Code != null && e.Code.Start == pa) continue;   // keep a region that starts there itself
-            e.Start = pa; e.C16 = code.C16; e.Failed = false; e.Code = code; e.K = k;
+            e.Start = pa; e.C16 = code.C16; e.Failed = false; e.Pending = false; e.Code = code; e.K = k;
         }
     }
 
-    private JitFn Emit(uint start, uint[] pas, DEntry[] ins, uint lo, uint hi)
+    private JitFn Emit(uint start, uint[] pas, DEntry[] ins, uint lo, uint hi, bool c16, uint memSize, bool ioMem)
     {
         var mm = JitMethods.Value;
         var dm = new DynamicMethod("x86blk", typeof(int), new[] { typeof(I386), typeof(int) }, typeof(I386), true);
@@ -292,7 +398,6 @@ public sealed partial class I386
         var ea = il.DeclareLocal(typeof(uint));
         var sb = new LocalBuilder?[6];
         int n = ins.Length;
-        bool c16 = _c16;
         var index = new Dictionary<uint, int>();
         for (int k = 0; k < n; k++) index[pas[k]] = k;
 
@@ -335,7 +440,6 @@ public sealed partial class I386
             else { RegAddr(i > 3 ? 4 * (i - 4) + 1 : 4 * i); v(); Op(OpCodes.Stind_I1); }
         }
         // memory at linear (= physical, paging is off) address `la`: plain RAM inline, the rest through Load*Slow / Store*Slow
-        uint memSize = MemSize; bool ioMem = _ioMem;
         void IfRam(LocalBuilder addr, Label notRam)
         {
             Ld(addr); U4(memSize); il.Emit(OpCodes.Bge_Un, notRam);
@@ -421,6 +525,8 @@ public sealed partial class I386
             sb[s] = il.DeclareLocal(typeof(uint));
             Ld0(); I4(s); Call("JSegBase"); il.Emit(OpCodes.Stloc, sb[s]!);
         }
+        int segMask = 0;
+        foreach (int s in usedSegs) segMask |= 1 << s;
         Ld0(); Call("JCycle"); il.Emit(OpCodes.Stloc, cyc);
         Ld0(); Call("JSteps"); il.Emit(OpCodes.Stloc, st);
         LdF(FR); I4(0); il.Emit(OpCodes.Ldelema, typeof(uint)); Stl(rref);
@@ -446,7 +552,9 @@ public sealed partial class I386
         {
             var leave = il.DefineLabel();
             il.Emit(OpCodes.Ldloc, st); il.Emit(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Ble, leave);
-            if (target is uint tg && index.TryGetValue(tg, out int j))
+            // inside the region only on the same 4 KB page: the interpreter fetches the first instruction on another page the slow way,
+            // where a CMP / TEST does not fold with the next JZ / JNZ
+            if (target is uint tg && (tg >> 12) == (pas[k] >> 12) && index.TryGetValue(tg, out int j))
             {
                 if (!fallsInto) { next(); IpAt(tg); il.Emit(OpCodes.Bne_Un, leave); }   // a jump: the target Ip (with a 16-bit wrap) must be that address
                 if (!(fallsInto && j == k + 1)) il.Emit(OpCodes.Br, body[j]);
@@ -479,6 +587,32 @@ public sealed partial class I386
             int bits = e.Bits;
             bool mem = DcHasModrm(e.Kind) && e.Mod != 3;
             il.MarkLabel(body[k]);
+            if (e.Kind == DK_INTERP)
+            {   // out of line, through the interpreter's own loop body (it counts the instruction clock itself)
+                var notFail = il.DefineLabel(); var notEnd = il.DefineLabel(); var leaveG = il.DefineLabel();
+                Ld0(); IpAt(pa); Ld(cyc); Ld(st); Call("JInterp"); Stl(Y);
+                Ld(Y); I4(FAIL); il.Emit(OpCodes.Bne_Un, notFail); I4(FAIL); Op(OpCodes.Ret);
+                il.MarkLabel(notFail);
+                Ld(Y); I4(END); il.Emit(OpCodes.Bne_Un, notEnd); I4(JIT_END); Op(OpCodes.Ret);
+                il.MarkLabel(notEnd);
+                Ld0(); Call("JCycle"); Stl(cyc);
+                Ld0(); Call("JSteps"); Op(OpCodes.Ldc_I4_1); Op(OpCodes.Sub); Stl(st);
+                Ld0(); Bool(c16); U4(pa); I4(segMask); Bool(e.Mod != 0); Call("JStill"); il.Emit(OpCodes.Brfalse, leaveG);
+                foreach (int s in usedSegs) { Ld0(); I4(s); Call("JSegBase"); Stl(sb[s]!); }
+                Ld0(); Call("JSpm"); Stl(spm);
+                var notRep = il.DefineLabel();   // a REP string instruction that goes on: run it again
+                Ld0(); Call("JNextIp"); IpAt(pa); il.Emit(OpCodes.Bne_Un, notRep);
+                Ld(st); Op(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Ble, leaveG);
+                il.Emit(OpCodes.Br, body[k]);
+                il.MarkLabel(notRep);
+                var fall = il.DefineLabel();
+                Ld0(); Call("JNextIp"); IpAt(pe); il.Emit(OpCodes.Beq, fall);
+                il.MarkLabel(leaveG);
+                Ld0(); Ld0(); Call("JIp"); Ld0(); Call("JNextIp"); Ld(cyc); Ld(st); Call("JExitOk"); Op(OpCodes.Ret);
+                il.MarkLabel(fall);
+                Continue(k, () => IpAt(pe), pe, true);   // (falls into the next instruction's code, which follows)
+                continue;
+            }
             il.Emit(OpCodes.Ldloc, cyc); il.Emit(OpCodes.Ldc_I4_1); il.Emit(OpCodes.Conv_I8); il.Emit(OpCodes.Add); il.Emit(OpCodes.Stloc, cyc);
 
             // effective address and linear address of a memory operand
@@ -510,9 +644,9 @@ public sealed partial class I386
             // CMP / TEST followed (in memory) by JZ / JNZ rel8: tiny386's try_jcc8 folding, with the spin skip
             void Fold(bool pureConst)
             {
-                if (!JitFoldsAt(e, pe)) return;
-                uint nb = U8(pe);
-                uint rel = Sext8(U8(pe + 1));
+                if (!e.Folds) return;
+                uint nb = e.FoldNb;
+                uint rel = e.FoldRel;
                 var notTaken = il.DefineLabel();
                 LdF(FDst); if ((nb & 1) != 0) il.Emit(OpCodes.Brfalse, notTaken); else il.Emit(OpCodes.Brtrue, notTaken);
                 IpAt(pe); U4(rel + 2); il.Emit(OpCodes.Add);

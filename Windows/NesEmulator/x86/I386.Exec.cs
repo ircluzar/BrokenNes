@@ -35,6 +35,21 @@ public sealed partial class I386
         _steps = stepcount;
         for (; _steps > 0; _steps--)
         {
+            int r = Step1(true);
+            if (r == OK) continue;
+            if (r == FAIL) return false;
+            return true;
+        }
+        return true;
+    }
+
+    /// <summary>One iteration of Exec1's loop: fetch, prefixes, dispatch (OK / FAIL / END). With <paramref name="jit"/> a compiled block
+    /// may run from here instead (then OK means: it ran, the step budget as it left it). The compiled code's out-of-line instructions run
+    /// through this too (JInterp, without <paramref name="jit"/>).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int Step1(bool jit)
+    {
+        {
             _c16 = Code16;
             _spm = SpMask;
             Ip = NextIp;
@@ -43,12 +58,14 @@ public sealed partial class I386
             if (((ulong)laddr ^ _ifLaddr) < 4096 - 16)
             {
                 uint paddr = _ifXaddr ^ laddr;
-                if (JitOn && (Cr0 & CR0_PG) == 0)
+                if (jit && JitOn && (Cr0 & CR0_PG) == 0)
                 {
                     // a compiled block from here (I386.Jit.cs), else interpret this instruction
                     int rc = JitTry(paddr);
-                    if (rc == OK) continue;
-                    if (rc == FAIL) return false;
+                    if (rc == OK) return OK;
+                    if (rc == FAIL) return FAIL;
+                    if (rc == JIT_END) return END;
+                    if (JitStats) JitCountInterp(paddr);
                 }
                 b1 = U8(paddr);
                 _ifPaddr = paddr + 1;
@@ -57,7 +74,7 @@ public sealed partial class I386
             else
             {
                 _ifPaddr = 0;
-                if (!Peek8(out b1)) return false;
+                if (!Peek8(out b1)) return FAIL;
                 NextIp++;
             }
             Cycle++;
@@ -78,7 +95,7 @@ public sealed partial class I386
                     case 0xf2: _rep = 2; break;
                     default: break;   // 0xf0 LOCK
                 }
-                if (!Fetch8(out b1)) return false;
+                if (!Fetch8(out b1)) return FAIL;
             }
             // the everyday opcodes are dispatched here, to small handlers: going through ExecOne's big switch costs about as much as
             // the instruction itself (measured with Workshop --x86bench); everything else still goes to ExecOne
@@ -202,10 +219,8 @@ public sealed partial class I386
                     case 0xe8: r = OpCallRel(); break;
                     default: r = ExecOne((int)b1); break;
                 }
-            if (r == FAIL) return false;
-            if (r == END) return true;
+            return r;
         }
-        return true;
     }
 
     // ================= hot-opcode handlers (Exec1's own dispatch) =================

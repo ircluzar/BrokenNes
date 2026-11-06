@@ -780,6 +780,7 @@ public sealed partial class I386
             if (!CallIsr(no, false, 1)) Abort("interrupt delivery failed");
         }
         if (Halt) return;
+        if (!_jitDone.IsEmpty) JitDrain();
         bool ret = Exec1(stepcount);
         _ifPaddr = 0;
         if (!ret)
