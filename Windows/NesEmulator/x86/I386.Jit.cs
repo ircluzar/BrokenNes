@@ -148,9 +148,9 @@ public sealed partial class I386
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool JSegOk(int seg) => (Cr0 & 1) == 0 || SegLimit[seg] != 0 || (SegSel[seg] & ~3u) != 0;
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JSegBase(int seg) => SegBase[seg];
-    [MethodImpl(MethodImplOptions.NoInlining)] private bool JCond(uint c) => Cond(c);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private bool JCond(uint c) => Cond(c);
     [MethodImpl(MethodImplOptions.NoInlining)] private uint JAlu(int op, int bits, uint a, uint b) => Alu(op, bits, a, b);
-    [MethodImpl(MethodImplOptions.NoInlining)] private void JIncDec(int bits, int reg, bool dec) => IncDecReg(bits, reg, dec);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private void JIncDec(int bits, int reg, bool dec) => IncDecReg(bits, reg, dec);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private uint JNextIp() => NextIp;
 
     /// <summary>The decode state an out-of-line handler reads (what Exec1's fetch and DecodeModrm would have left).</summary>
@@ -352,15 +352,16 @@ public sealed partial class I386
     /// <summary>X86_JITSYNC: compile on the CPU's own thread, at once (as before: a hitch, but the compiled code runs from the 32nd visit).</summary>
     private static readonly bool JitAsync = Environment.GetEnvironmentVariable("X86_JITSYNC") == null;
 
-    /// <summary>The background compiler: one low-priority thread for every CPU in the process.</summary>
+    /// <summary>The background compiler, shared by every CPU in the process.</summary>
     private static class JitWorker
     {
         private static readonly System.Collections.Concurrent.BlockingCollection<Action> Q = new();
         static JitWorker()
         {
-            var t = new System.Threading.Thread(() => { foreach (var a in Q.GetConsumingEnumerable()) a(); })
-            { IsBackground = true, Name = "x86 block compiler", Priority = System.Threading.ThreadPriority.BelowNormal };
-            t.Start();
+            // two threads (the CPU's own thread is the third): a game's start asks for ~1000 blocks at once
+            for (int i = 0; i < Math.Clamp(Environment.ProcessorCount - 1, 1, 2); i++)
+                new System.Threading.Thread(() => { foreach (var a in Q.GetConsumingEnumerable()) a(); })
+                { IsBackground = true, Name = "x86 block compiler" }.Start();
         }
         public static void Post(Action a) => Q.Add(a);
     }
