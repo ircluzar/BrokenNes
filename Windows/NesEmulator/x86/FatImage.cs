@@ -157,6 +157,32 @@ public sealed class FatImage
         _d[e] = 0xe5;
     }
 
+    /// <summary>Deletes a directory with everything in it (or a file).</summary>
+    public void DeleteTree(string path)
+    {
+        var (dir, leaf) = Walk(path);
+        int e = Find(dir, leaf);
+        if (e < 0) return;
+        if ((_d[e + 11] & 0x10) != 0)
+        {
+            int c0 = BitConverter.ToUInt16(_d, e + 26);
+            var kids = new List<string>();
+            foreach (int o in Slots(c0))
+            {
+                if (_d[o] == 0) break;
+                if (_d[o] == 0xe5 || _d[o + 11] == 0x0f || (_d[o + 11] & 8) != 0) continue;
+                string n = Name83(_d.AsSpan(o, 11));
+                if (n is "." or "..") continue;
+                kids.Add(n);
+            }
+            foreach (var k in kids) DeleteTree(path.TrimEnd('\\') + "\\" + k);
+            foreach (int c in Chain(c0)) SetFat(c, 0);
+            _d[e] = 0xe5;
+            return;
+        }
+        Delete(path);
+    }
+
     /// <summary>Creates or replaces a file (the directory must exist). Timestamp: 1994-06-01 12:00 (deterministic images).</summary>
     public void WriteFile(string path, byte[] content)
     {

@@ -11,7 +11,7 @@ namespace BrokenNes.Workshop.X86;
 /// <summary>
 /// The x86 console's disk and boot tools.
 /// <list type="bullet">
-/// <item><c>--x86disk --out img [--base img] [--put host=DOSPATH]... [--autoexec file] [--config file]</c>: a boot disk built from the
+/// <item><c>--x86disk --out img [--base img] [--put host=DOSPATH]... [--drop DOSPATH]... [--autoexec file] [--config file]</c>: a boot disk built from the
 /// FreeDOS 1.4 LiteUSB image (C:\BrokenNes-tools\dos\freedos\FD14LITE.img, a 32 MB FAT16 hard disk with the FreeDOS kernel, COMMAND.COM and
 /// \FREEDOS\BIN): our own FDCONFIG.SYS / FDAUTO.BAT replace the installer's (boot to a prompt; or run a program), and files are added.</item>
 /// <item><c>--x86boot --hdd img | --floppy img [--frames N] [--until text] [--type text] [--shot png] [--save img] [--get DOSPATH=host]...
@@ -33,19 +33,20 @@ internal static class X86BootCli
         var img = BuildDisk(Arg(args, "--base") ?? FreeDosLite,
             Arg(args, "--config") is string c ? File.ReadAllText(c) : DefaultConfig,
             Arg(args, "--autoexec") is string a ? File.ReadAllText(a) : DefaultAutoexec,
-            Args(args, "--put").Select(p => { int i = p.IndexOf('='); return (p[..i], p[(i + 1)..]); }));
+            Args(args, "--put").Select(p => { int i = p.IndexOf('='); return (p[..i], p[(i + 1)..]); }), Args(args, "--drop"));
         File.WriteAllBytes(outPath, img);
         Console.WriteLine($"x86disk: {outPath} ({img.Length / 1024 / 1024} MB)");
         return 0;
     }
 
-    public static byte[] BuildDisk(string basePath, string config, string autoexec, IEnumerable<(string host, string dos)> puts)
+    public static byte[] BuildDisk(string basePath, string config, string autoexec, IEnumerable<(string host, string dos)> puts, IEnumerable<string>? drop = null)
     {
         var img = File.ReadAllBytes(basePath);
         var fat = new FatImage(img);
         fat.WriteFile("FDCONFIG.SYS", Encoding.ASCII.GetBytes(config.Replace("\r\n", "\n").Replace("\n", "\r\n")));
         fat.WriteFile("FDAUTO.BAT", Encoding.ASCII.GetBytes(autoexec.Replace("\r\n", "\n").Replace("\n", "\r\n")));
         fat.Delete("SETUP.BAT");
+        foreach (var d in drop ?? Array.Empty<string>()) fat.DeleteTree(d);
         foreach (var (host, dos) in puts) fat.WriteFile(dos, File.ReadAllBytes(host));
         return img;
     }
@@ -60,7 +61,10 @@ internal static class X86BootCli
         string? until = Arg(args, "--until"), type = Arg(args, "--type"), shot = Arg(args, "--shot");
         var sw = Stopwatch.StartNew();
         m.PowerOn();
-        int n = RunUntil(m, until, frames);
+        var shotAt = Args(args, "--shotat").Select(x => { int i = x.IndexOf('='); return (f: int.Parse(x[..i]), p: x[(i + 1)..]); }).OrderBy(x => x.f).ToList();
+        int n = 0;
+        foreach (var (sf, sp) in shotAt) { n += RunUntil(m, null, sf - n); X86Shots.SavePng(m.Vga, sp); }
+        n += RunUntil(m, until, frames - n);
         bool found = until == null || Screen(m).Contains(until) || m.Teletype.ToString().Contains(until);
         Console.WriteLine($"x86boot: {n} frames ({n / 70.0:F1} s machine time) in {sw.Elapsed.TotalSeconds:F1} s, {(m.Cpu.Cycle / Math.Max(0.001, sw.Elapsed.TotalSeconds)) / 1e6:F1} M instr/s{(m.Stopped != null ? ", STOPPED: " + m.Stopped : "")}");
         if (until != null) Console.WriteLine(found ? $"x86boot: found \"{until}\"" : $"x86boot: \"{until}\" NOT found");
@@ -76,6 +80,15 @@ internal static class X86BootCli
                 found &= f2;
             }
         }
+        if (Arg(args, "--sample") is string smp)
+            for (int k = 0; k < int.Parse(smp); k++)
+            {
+                m.RunClock(997);
+                uint lin = m.Cpu.SegBase[1] + m.Cpu.Ip;
+                var bytes = string.Join(" ", Enumerable.Range(0, 12).Select(i => m.Phys8(lin + (uint)i).ToString("X2")));
+                Console.WriteLine($"  {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} lin {lin:X8} EAX {m.Cpu.R[0]:X8} ECX {m.Cpu.R[1]:X8} EDX {m.Cpu.R[2]:X8} ESP {m.Cpu.R[4]:X8} IF {(m.Cpu.Flags >> 9) & 1} | {bytes}");
+            }
+        if (args.Contains("--irqstat")) Console.WriteLine("irqs: " + string.Join(" ", Enumerable.Range(0, 256).Where(i => m.IrqCount[i] > 0).Select(i => $"{i:X2}h={m.IrqCount[i]}")) + $"; PIC imr {m.Pic.MasterImr:X2}/{m.Pic.SlaveImr:X2}; CR0 {m.Cpu.Cr0:X}; CS:EIP {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8}; IF {(m.Cpu.Flags >> 9) & 1}; halt {m.Cpu.Halt}");
         Console.WriteLine("---- screen ----");
         Console.WriteLine(Screen(m).TrimEnd());
         Console.WriteLine("----------------");

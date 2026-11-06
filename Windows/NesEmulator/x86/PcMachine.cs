@@ -65,7 +65,9 @@ public sealed partial class PcMachine : IX86Bus
     public uint MemRead32(uint a) => (uint)(MemRead16(a) | (MemRead16(a + 2) << 16));
     public void MemWrite32(uint a, uint v) { MemWrite16(a, (ushort)v); MemWrite16(a + 2, (ushort)(v >> 16)); }
 
-    public int AckIrq() => Pic.ReadIrq();
+    /// <summary>How many times each vector was taken as a hardware interrupt (diagnostics).</summary>
+    public readonly long[] IrqCount = new long[256];
+    public int AckIrq() { int v = Pic.ReadIrq(); IrqCount[v & 0xff]++; return v; }
 
     public byte In8(int port)
     {
