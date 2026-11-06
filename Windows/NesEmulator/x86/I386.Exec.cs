@@ -38,7 +38,28 @@ public sealed partial class I386
             _c16 = Code16;
             _spm = SpMask;
             Ip = NextIp;
-            if (!Fetch8pf(out uint b1)) return false;
+            uint b1;
+            uint laddr = SegBase[SEG_CS] + Ip;
+            if (((ulong)laddr ^ _ifLaddr) < 4096 - 16)
+            {
+                uint paddr = _ifXaddr ^ laddr;
+                if (JitOn && (Cr0 & CR0_PG) == 0)
+                {
+                    // a compiled block from here (I386.Jit.cs), else interpret this instruction
+                    int rc = JitTry(paddr);
+                    if (rc == OK) continue;
+                    if (rc == FAIL) return false;
+                }
+                b1 = U8(paddr);
+                _ifPaddr = paddr + 1;
+                NextIp++;
+            }
+            else
+            {
+                _ifPaddr = 0;
+                if (!Peek8(out b1)) return false;
+                NextIp++;
+            }
             Cycle++;
             _opsz16 = _c16; _adsz16 = _c16; _rep = 0; _curSeg = -1;
             while (IsPrefix[b1])   // a table test, not a switch: an indirect jump on every opcode costs as much as the dispatch itself
@@ -620,6 +641,12 @@ public sealed partial class I386
     private bool Grp3Core(int bits)
     {
         if (!DecodeModrm()) return false;
+        return Grp3Body(bits);
+    }
+
+    /// <summary>Group 3 after the ModR/M byte (the decoded-instruction cache comes in here for NOT / NEG / MUL / IMUL / DIV / IDIV).</summary>
+    private bool Grp3Body(int bits)
+    {
         switch (_reg)
         {
             case 0:

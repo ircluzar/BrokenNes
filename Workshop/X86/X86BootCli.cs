@@ -60,8 +60,22 @@ internal static class X86BootCli
         m.PowerOn();
         var shotAt = Args(args, "--shotat").Select(x => { int i = x.IndexOf('='); return (f: int.Parse(x[..i]), p: x[(i + 1)..]); }).OrderBy(x => x.f).ToList();
         int n = 0;
-        foreach (var (sf, sp) in shotAt) { n += RunUntil(m, null, sf - n); X86Shots.SavePng(m.Vga, sp); }
+        foreach (var (sf, sp) in shotAt) { n += RunUntil(m, null, sf - n); X86Shots.SavePng(m.Vga, sp); Console.WriteLine($"x86boot: frame {n} at {sw.Elapsed.TotalSeconds:F1} s, cycle {m.Cpu.Cycle}"); }
+        var hot = new Dictionary<string, int>();
+        bool sampling = args.Contains("--hot");
+        var sampler = sampling ? new System.Threading.Thread(() =>
+        {
+            while (sampling)
+            {
+                System.Threading.Thread.Sleep(1);
+                string k = $"{m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip & ~0x3fu:X8} vm{(m.Cpu.Flags >> 17) & 1} pe{m.Cpu.Cr0 & 1}";
+                lock (hot) hot[k] = hot.GetValueOrDefault(k) + 1;
+            }
+        }) { IsBackground = true } : null;
+        sampler?.Start();
         n += RunUntil(m, until, frames - n);
+        sampling = false;
+        if (sampler != null) foreach (var kv in hot.OrderByDescending(x => x.Value).Take(30)) Console.WriteLine($"  hot {kv.Key} {kv.Value}");
         bool found = until == null || Screen(m).Contains(until) || m.Teletype.ToString().Contains(until);
         Console.WriteLine($"x86boot: {n} frames ({n / 70.0:F1} s machine time) in {sw.Elapsed.TotalSeconds:F1} s, {(m.Cpu.Cycle / Math.Max(0.001, sw.Elapsed.TotalSeconds)) / 1e6:F1} M instr/s{(m.Stopped != null ? ", STOPPED: " + m.Stopped : "")}");
         if (until != null) Console.WriteLine(found ? $"x86boot: found \"{until}\"" : $"x86boot: \"{until}\" NOT found");
@@ -85,6 +99,8 @@ internal static class X86BootCli
                 var bytes = string.Join(" ", Enumerable.Range(0, 12).Select(i => m.Phys8(lin + (uint)i).ToString("X2")));
                 Console.WriteLine($"  {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8} lin {lin:X8} EAX {m.Cpu.R[0]:X8} ECX {m.Cpu.R[1]:X8} EDX {m.Cpu.R[2]:X8} ESP {m.Cpu.R[4]:X8} IF {(m.Cpu.Flags >> 9) & 1} | {bytes}");
             }
+        if (args.Contains("--jitstat")) Console.WriteLine($"jit: compiled {m.Cpu.JitCompiled} reused {m.Cpu.JitReused} runs {m.Cpu.JitRuns} invalid {m.Cpu.JitInvalid} cycle {m.Cpu.Cycle} (set X86_JITSTAT for the per-block counts)");
+        if (args.Contains("--jitstat")) foreach (var l in m.Cpu.JitTop(25)) Console.WriteLine("  blk " + l);
         if (args.Contains("--irqstat")) Console.WriteLine("irqs: " + string.Join(" ", Enumerable.Range(0, 256).Where(i => m.IrqCount[i] > 0).Select(i => $"{i:X2}h={m.IrqCount[i]}")) + $"; PIC imr {m.Pic.MasterImr:X2}/{m.Pic.SlaveImr:X2}; CR0 {m.Cpu.Cr0:X}; CS:EIP {m.Cpu.SegSel[1]:X4}:{m.Cpu.Ip:X8}; IF {(m.Cpu.Flags >> 9) & 1}; halt {m.Cpu.Halt}");
         Console.WriteLine("---- screen ----");
         Console.WriteLine(Screen(m).TrimEnd());

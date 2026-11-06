@@ -31,7 +31,22 @@ internal static class X86BenchCli
             0xF4,                      // hlt
         };
         if (tight) code = new byte[] { 0xB9, 0, 0, 0, 0, 0x49, 0x75, 0xFD, 0xF4 };
-        uint iters = (uint)(n * 1_000_000L / (tight ? 2 : 8));
+        bool split = Array.IndexOf(args, "--split") >= 0;   // a JMP in the middle of the loop: the cost of going from one compiled block to the next
+        if (split) code = new byte[]
+        {
+            0xB9, 0, 0, 0, 0,          // mov ecx, iterations
+            0x8B, 0x06,                // l: mov eax, [esi]
+            0x01, 0xD8,                // add eax, ebx
+            0x89, 0x46, 0x04,          // mov [esi+4], eax
+            0xEB, 0x00,                // jmp $+2
+            0xC1, 0xE0, 0x03,          // shl eax, 3
+            0x25, 0xFF, 0, 0, 0,       // and eax, 0xff
+            0x88, 0x1C, 0x07,          // mov [edi+eax], bl
+            0x49,                      // dec ecx
+            0x75, 0xE9,                // jnz l
+            0xF4,                      // hlt
+        };
+        uint iters = (uint)(n * 1_000_000L / (tight ? 2 : split ? 9 : 8));
         BitConverter.GetBytes(iters).CopyTo(code, 1);
         double best = 0;
         for (int round = 0; round < 3; round++)
