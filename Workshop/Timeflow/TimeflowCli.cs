@@ -348,12 +348,13 @@ internal static class TimeflowCli
         double ms = sw.Elapsed.TotalMilliseconds;
         var row = pb.Reader.Row(frame);
         var ex = pb.Reader.Extras(frame);
+        bool? pictureOk = null;
         if (png.Length > 0)
         {
-            // the picture of the frame before (the restored machine shows what the frame before drew): run this frame with its input to draw it
-            var (p1, p2) = pb.Reader.Pads(frame);
-            m.Frame(p1, p2);
-            File.WriteAllBytes(png, Picture(m));
+            var (bytes, ok) = JumpPicture(pb, m, src, frame);
+            pictureOk = ok;
+            File.WriteAllBytes(png, bytes);
+            if (!ok) Console.Error.WriteLine($"warning: the picture drawn after the jump does not hash as recorded at frame {frame}");
         }
         if (stateOut.Length > 0) File.WriteAllBytes(stateOut, m.Host.SaveState());
         var j = new JsonObject
@@ -363,10 +364,21 @@ internal static class TimeflowCli
             ["vars"] = new JsonObject(pb.Meta.Vars.Select((v, i) => KeyValuePair.Create(v.Split('=')[0], (JsonNode?)(i < ex.Vars.Length ? ex.Vars[i] : null)))),
             ["changed"] = new JsonObject(pb.Meta.Domains.Select((d, i) => KeyValuePair.Create(d.Id, (JsonNode?)(i < ex.Domains.Count ? ex.Domains[i].ChangedBytes : 0)))),
             ["findings"] = new JsonArray(ex.Findings.Select(x => (JsonNode)x).ToArray()), ["coverageRanges"] = ex.Coverage.Count,
-            ["png"] = png.Length > 0 ? png : null, ["stateFile"] = stateOut.Length > 0 ? stateOut : null,
+            ["png"] = png.Length > 0 ? png : null, ["pictureMatchesRecord"] = pictureOk, ["stateFile"] = stateOut.Length > 0 ? stateOut : null,
         };
         Console.WriteLine(json ? j.ToJsonString(Indented) : $"timeline {pb.Meta.Id} frame {frame}: restored and loaded in {ms:0.0} ms, the machine's state hashes {row.State:x16} as recorded");
         return 0;
+    }
+
+    /// <summary>The picture of frame <paramref name="frame"/> after a jump there: the restored machine shows what the frame before drew, so this
+    /// runs the frame with its recorded pads and takes what it drew. <c>ok</c>: the drawn picture hashes as the recording's picture of that frame
+    /// (the check that the PNG is the recorded picture, on every console).</summary>
+    public static (byte[] Png, bool Ok) JumpPicture(TimeflowPlayback pb, MovieMachine m, TimeflowSource src, long frame)
+    {
+        var (p1, p2) = pb.Reader.Pads(frame);
+        m.Frame(p1, p2);
+        bool ok = src.PictureHash() == pb.Reader.Row(frame).Picture;
+        return (Picture(m), ok);
     }
 
     public static byte[] Picture(MovieMachine m)
