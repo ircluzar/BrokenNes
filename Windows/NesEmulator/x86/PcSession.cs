@@ -1,5 +1,5 @@
 // The x86 console as a BrokenNes 2 console session: a disk image is the "ROM", the disk's own changes are its save. Written for BrokenNes.
-// The x86 console is ISOLATED (docs/projects/next-pool-plans.md, P3): one CPU, one picture chip, the PC speaker (the AdLib comes next), none of them another console's.
+// The x86 console is ISOLATED (docs/projects/next-pool-plans.md, P3): one CPU, one picture chip, the AdLib (YM3812 OPL2) and the PC speaker, none of them another console's.
 
 using System;
 using System.Collections.Generic;
@@ -45,6 +45,7 @@ public sealed class PcSession : IConsoleSession
         _floppy = image.Length <= 2949120 && !(image[510] == 0x55 && image[511] == 0xaa && image[0x1c2] != 0);   // a floppy-sized image without a partition table
         _m.InstructionsPerSecond = DefaultIps;
         _m.Speaker.Enabled = true;
+        _m.Opl.Enabled = true;
         InsertDisk((byte[])image.Clone());
     }
 
@@ -62,7 +63,7 @@ public sealed class PcSession : IConsoleSession
     public string? Program { get; }
     public ConsoleKind Console => ConsoleKind.Pc;
     public string Title { get; }
-    public string Description => $"x86 PC | CPU I386 (486-class, {_m.InstructionsPerSecond / 1_000_000} M instr/s) | PPU VGA | APU SPKR (PC speaker; no AdLib yet) | {(Program != null ? $"{Program} on a FreeDOS 1.4 disk" : _floppy ? "floppy A:" : "hard disk C:")} {_original.Length / 1024:N0} KB{(_m.Stopped != null ? " | STOPPED: " + _m.Stopped : "")}";
+    public string Description => $"x86 PC | CPU I386 (486-class, {_m.InstructionsPerSecond / 1_000_000} M instr/s) | PPU VGA | APU ADLIB (AdLib YM3812 OPL2 + PC speaker) | {(Program != null ? $"{Program} on a FreeDOS 1.4 disk" : _floppy ? "floppy A:" : "hard disk C:")} {_original.Length / 1024:N0} KB{(_m.Stopped != null ? " | STOPPED: " + _m.Stopped : "")}";
     public double FramesPerSecond => Pit8254.Freq / Vga.FrameTicks;
     public string GameId { get; }
 
@@ -104,7 +105,8 @@ public sealed class PcSession : IConsoleSession
     {
         if (!_powered) { _m.PowerOn(); _powered = true; }
         _m.RunFrame();
-        _m.Speaker.CatchUp();   // the PC speaker's samples up to the end of this frame
+        _m.Speaker.CatchUp();   // the PC speaker's and the AdLib's samples up to the end of this frame
+        _m.Opl.CatchUp();
         CopyFrame();
     }
 
@@ -117,14 +119,20 @@ public sealed class PcSession : IConsoleSession
         _w = w; _h = h;
     }
 
-    public void Reset() { _m.PowerOn(); _m.Speaker.Restart(); _powered = true; _pad = PadButtons.None; }
+    public void Reset() { _m.PowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _powered = true; _pad = PadButtons.None; }
     public uint[] Frame => _frame;
     public int FrameWidth => _w;
     public int FrameHeight => _h;
     public int DisplayWidth => _h * 4 / 3;   // a 4:3 monitor (720 x 400 text and 640 x 400 mode 13h are shown 4:3 too)
     public int SampleRate => Rate;
 
-    public int ReadSamples(short[] buffer) => _m.Speaker.Read(buffer);
+    /// <summary>The PC speaker with the AdLib added on top (both drawn up to the end of the last frame on the same 44.1 kHz timeline).</summary>
+    public int ReadSamples(short[] buffer)
+    {
+        int n = _m.Speaker.Read(buffer);
+        _m.Opl.MixInto(buffer, n);
+        return n;
+    }
 
     // ================= the disk is the battery =================
 
@@ -143,7 +151,7 @@ public sealed class PcSession : IConsoleSession
     {
         if (data.Length != _original.Length) return;
         InsertDisk((byte[])data.Clone());
-        if (_powered) { _m.PowerOn(); _m.Speaker.Restart(); }
+        if (_powered) { _m.PowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); }
     }
 
     public bool TrySwapCore(CoreSlot slot, string id) => ConsoleSessions.Offers(ConsoleKind.Pc, slot, id);
@@ -165,7 +173,7 @@ public sealed class PcSession : IConsoleSession
     {
         byte[] payload = ConsoleStateFile.Unwrap(state, Console, GameId, Title, StateUnits());
         var before = _m.SaveState();
-        try { _m.LoadState(payload); _m.Speaker.Restart(); _powered = true; _exported = null; _pad = PadButtons.None; }
+        try { _m.LoadState(payload); _m.Speaker.Restart(); _m.Opl.Restart(); _powered = true; _exported = null; _pad = PadButtons.None; }
         catch (Exception e) when (e is not InvalidDataException) { _m.LoadState(before); throw new InvalidDataException("the x86 state is damaged: " + e.Message); }
     }
 

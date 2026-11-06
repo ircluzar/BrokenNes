@@ -511,7 +511,7 @@ public static class CoreCatalog
             (ConsoleKind.WideMess, _) => new[] { ("WMS", CoreGrade.Stock, "WideMess") },
             (ConsoleKind.Pc, CoreSlot.Cpu) => new[] { ("I386", CoreGrade.Stock, "x86 PC") },
             (ConsoleKind.Pc, CoreSlot.Ppu) => new[] { ("VGA", CoreGrade.Stock, "x86 PC") },
-            (ConsoleKind.Pc, _) => new[] { ("SPKR", CoreGrade.Stock, "x86 PC") },
+            (ConsoleKind.Pc, _) => new[] { ("ADLIB", CoreGrade.Stock, "x86 PC") },
             _ => new[] { ("MD", CoreGrade.Stock, "Genesis") },
         };
         // the console's own enhanced picture and sound chips (SFCS, SMSS, GGS, MDS), once they exist: after its stock cores
@@ -753,7 +753,7 @@ public static class CoreCatalog
                 {
                     case CoreSlot.Cpu: list.Add(new("I386", "I386 (486-class, ported from tiny386; no FPU)", "x86")); break;
                     case CoreSlot.Ppu: list.Add(new("VGA", "VGA (text modes, mode 13h, mode 12h)", "x86")); break;
-                    default: list.Add(new("SPKR", "SPKR (the PC speaker; the AdLib OPL2 comes next)", "x86")); break;
+                    default: list.Add(new("ADLIB", "ADLIB (AdLib YM3812 OPL2 + PC speaker)", "x86")); break;
                 }
                 break;
             case ConsoleKind.Snes:

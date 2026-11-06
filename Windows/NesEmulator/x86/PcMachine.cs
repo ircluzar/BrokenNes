@@ -51,6 +51,7 @@ public sealed partial class PcMachine : IX86Bus
         Cmos = new Cmos(() => PitNow, MemKb);
         Vga = new Vga(() => PitNow);
         Speaker = new PcSpeaker(this);
+        Opl = new Opl2(() => PitNow);
         Pic.Raise = () => Cpu.RaiseIrq();
         RegisterTraps();
     }
@@ -85,6 +86,8 @@ public sealed partial class PcMachine : IX86Bus
             case 0x70: case 0x71: return Cmos.In(port);
             case 0x92: return (byte)(Kbc.A20 ? 2 : 0);
             case 0x201: return 0xff;                          // no joystick
+            case 0x388: return Opl.ReadStatus();              // AdLib status
+            case 0x389: return 0xff;
             case >= 0x3b0 and <= 0x3df: return Vga.In(port);
         }
         if (ExtraIn != null) { int v = ExtraIn(port, 8); if (v >= 0) return (byte)v; }
@@ -104,6 +107,8 @@ public sealed partial class PcMachine : IX86Bus
             case 0x92: Kbc.A20 = (v & 2) != 0; if ((v & 1) != 0) CpuResetRequest(); return;
             case 0x80: return;                                // POST code
             case 0xe9: DebugPort.Append((char)v); return;
+            case 0x388: Opl.WriteAddress(v); return;          // AdLib (YM3812) address
+            case 0x389: Opl.WriteData(v); return;             // AdLib data
             case BiosTrapPort: BiosTrap(); return;
             case >= 0x3b0 and <= 0x3df: Vga.Out(port, v); return;
         }
@@ -127,6 +132,8 @@ public sealed partial class PcMachine : IX86Bus
     public int Port61 => _port61;
     /// <summary>The PC speaker's sound (off until a host enables it).</summary>
     public readonly PcSpeaker Speaker;
+    /// <summary>The AdLib's YM3812 (OPL2) on ports 388h / 389h: its timers always run, its sound only while a host enables it.</summary>
+    public readonly Opl2 Opl;
 
     private void CpuResetRequest()
     {
@@ -221,6 +228,7 @@ public sealed partial class PcMachine : IX86Bus
         Cpu.Reset();
         Pic.Reset();
         Pit.Reset();
+        Opl.Reset();
         _lastFrame = -1;
         Post();
     }
@@ -233,10 +241,10 @@ public sealed partial class PcMachine : IX86Bus
         using (var w = new BinaryWriter(ms))
         {
             w.Write(0x33384350); // "PC83"
-            w.Write(1);
+            w.Write(2);   // 2: the AdLib after the VGA
             Cpu.SaveState(w);
             w.Write(_idle); w.Write(_port61); w.Write(_lastFrame); w.Write(InstructionsPerSecond);
-            Pic.Save(w); Pit.Save(w); Kbc.Save(w); Cmos.Save(w); Vga.Save(w);
+            Pic.Save(w); Pit.Save(w); Kbc.Save(w); Cmos.Save(w); Vga.Save(w); Opl.Save(w);
             foreach (var d in new[] { Floppy[0], Floppy[1], Hdd[0], Hdd[1] })
             {
                 w.Write(d != null);
@@ -249,10 +257,13 @@ public sealed partial class PcMachine : IX86Bus
     public void LoadState(byte[] s)
     {
         using var r = new BinaryReader(new MemoryStream(s));
-        if (r.ReadInt32() != 0x33384350 || r.ReadInt32() != 1) throw new InvalidDataException("not an x86 console state");
+        if (r.ReadInt32() != 0x33384350) throw new InvalidDataException("not an x86 console state");
+        int version = r.ReadInt32();
+        if (version is not (1 or 2)) throw new InvalidDataException($"x86 console state version {version} is not known");
         Cpu.LoadState(r);
         _idle = r.ReadInt64(); _port61 = r.ReadByte(); _lastFrame = r.ReadInt64(); InstructionsPerSecond = r.ReadInt64();
         Pic.Load(r); Pit.Load(r); Kbc.Load(r); Cmos.Load(r); Vga.Load(r);
+        if (version >= 2) Opl.Load(r); else { Opl.Reset(); Opl.Resync(); }   // a version 1 state (before the AdLib): the chip starts silent
         var disks = new DiskImage?[4];
         var old = new[] { Floppy[0], Floppy[1], Hdd[0], Hdd[1] };
         for (int i = 0; i < 4; i++)
