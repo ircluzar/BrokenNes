@@ -114,3 +114,90 @@ body.bdragging, body.bdragging * { user-select: none !important; -webkit-user-se
 .tagitem:hover { background: rgba(255, 107, 107, .18); }
 .tagbadge { font-size: 9px; font-weight: 700; padding: 0 3px; border-radius: 3px; background: #666; color: #fff; }
 .tagbadge.unsafe { background: #b33; }
+
+/* ---- the compact strip (2026-11-07) ---- */
+[hidden] { display: none !important; }
+.grow { flex: 1; min-width: 0; }
+.hrow { margin: 0 0 2px; }
+.hrow .viewswitch { margin: 0; }
+.head .status { font-size: 11px; color: #8a8a8a; margin: 3px 0 0; }
+.popmenu { display: flex; flex-direction: column; gap: 2px; background: #1b1b1b; border: 1px solid #555; border-radius: 5px; padding: 5px 7px; margin: 0 0 3px auto; width: max-content; max-width: 100%; box-shadow: 0 4px 12px rgba(0, 0, 0, .6); }
+.popmenu label { display: flex; gap: 5px; align-items: center; }
+.roll .hist { color: #999; font-size: 11px; min-width: 26px; text-align: center; font-variant-numeric: tabular-nums; }
+.mini { display: flex; align-items: center; gap: 4px; justify-content: flex-end; color: #bbb; font-size: 11px; }
+.mini { flex: none; margin-left: auto; }
+.mini input { width: 52px; min-width: 0; padding: 0; accent-color: #ff6b6b; }
+.mini output { font-variant-numeric: tabular-nums; }
+/* the switch: a checkbox drawn as a pill (Chromium draws no pseudo-elements on inputs: the knob is a gradient) */
+input.sw { appearance: none; -webkit-appearance: none; width: 24px; height: 13px; border-radius: 7px; border: 0; padding: 0; margin: 0; flex: none; cursor: pointer;
+  background: radial-gradient(circle at 6.5px 50%, #c8c8c8 4px, transparent 4.6px), #555; }
+input.sw:checked { background: radial-gradient(circle at 17.5px 50%, #fff 4px, transparent 4.6px), #ff6b6b; }
+.swgap { width: 24px; flex: none; }
+/* tabs with counts, the search icon, On now */
+.tabs { flex-wrap: wrap; align-items: center; }
+.tab { font-size: 11px; padding: 1px 7px; display: inline-flex; align-items: center; gap: 4px; }
+.tab .n { min-width: 14px; padding: 0 3px; border-radius: 7px; background: #ff6b6b; color: #111; font-size: 10px; font-weight: 700; text-align: center; line-height: 13px; }
+.tab.icon { margin-left: auto; padding: 1px 6px; }
+.onnow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; background: #1a1a1a; border: 1px solid #383838; border-radius: 4px; padding: 4px 5px; margin: 0 0 4px; font-size: 11px; }
+.onlab { color: #999; }
+.chip { display: inline-flex; border: 1px solid #7a3a3a; border-radius: 9px; background: #3a2424; overflow: hidden; }
+.chip button { border: 0; border-radius: 0; background: transparent; color: #ffd6d6; font-size: 11px; padding: 0 3px 0 7px; line-height: 16px; }
+.chip button.chipx { padding: 0 6px 0 3px; color: #e99; }
+.chip button:hover { background: #5a2a2a !important; }
+/* one line per effect */
+.fx { display: block; padding: 0; border-top: 1px solid #333; }
+.fxrow { display: flex; align-items: center; gap: 6px; min-height: 22px; padding: 2px 0; cursor: pointer; }
+.fxrow:focus-visible { outline: 1px solid #fff; outline-offset: -1px; }
+.fxrow .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx.lit .fxrow .name { color: #fff; font-weight: 600; }
+.fxrow .val { color: #9a9a9a; font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chev { width: 10px; color: #999; font-size: 12px; flex: none; text-align: center; }
+.fxbody { display: none; padding: 2px 0 6px 30px; }
+.fx.open > .fxbody { display: flex; flex-direction: column; gap: 4px; }
+.fx.flashfx { background: rgba(255, 107, 107, .15); }
+.info { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #666; color: #aaa; font: italic 9px/12px Georgia, serif; text-align: center; flex: none; cursor: help; display: inline-block; font-weight: 400; }
+.info:hover, .tipopen > .fxrow .info, .tipopen > summary .info { border-color: #ccc; color: #fff; }
+.tip { display: none; background: #111; border: 1px solid #555; border-radius: 4px; padding: 4px 6px; margin: 0 0 4px 30px; color: #ccc; font-size: 11px; }
+.tipopen > .tip, .fx.open > .tip { display: block; }
+details > .tip.gtip { margin-left: 0; }
+details.tipopen > .tip.gtip { display: block; }
+summary { display: flex; align-items: center; gap: 6px; }
+summary::before { content: '\25B8'; font-size: 10px; color: #888; }
+details[open] > summary::before { content: '\25BE'; }
+summary::-webkit-details-marker { display: none; }
+summary .gcount { margin-left: auto; color: #999; font-weight: 400; font-size: 11px; }
+summary .info { margin-left: 2px; }
+button.solo { font-size: 10px; padding: 0 6px; line-height: 15px; }
+/* knobs (controller standard) inside an open effect */
+.knobrow { align-self: flex-start; max-width: 100%; overflow-x: auto; }
+.knobrow .bnc-plate { border-radius: 6px; }
+.pinacts .knobrow { align-self: center; }
+/* bits / channels: toggles */
+.bits.tg { padding-left: 0; gap: 4px; }
+.bits.tg label { position: relative; padding: 1px 7px; border: 1px solid #555; border-radius: 9px; cursor: pointer; color: #ccc; user-select: none; }
+.bits.tg label input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; }
+.bits.tg label:has(input:checked) { background: #ff6b6b; border-color: #ff6b6b; color: #111; font-weight: 600; }
+.bits.tg label:has(input:focus-visible) { outline: 1px solid #fff; }
+.fxbody .bits:not(.tg) { padding-left: 0; }
+/* compact pin grids */
+.pins { grid-template-columns: 12px repeat(8, 1fr); gap: 2px; }
+.pinlab { color: #9cf; font-size: 10px; font-weight: 700; }
+.pin { height: 20px; padding: 0; font-size: 9px; color: #888; background: #1d1d1d; border-color: #4a4a4a; font-variant-numeric: tabular-nums; }
+.pin.f1, .sq.f1 { background: #1f3a5f; border-color: #3f7ac0; color: #cfe3ff; }
+.pin.f2, .sq.f2 { background: #5f3a1f; border-color: #c07a3f; color: #ffe3cf; }
+.pin.f3, .sq.f3 { background: #4a1f5f; border-color: #9a4ac0; color: #f0d8ff; }
+.pin.f4, .sq.f4 { background: #1f5f3a; border-color: #3fc07a; color: #cfffe3; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 10px; color: #aaa; margin: 3px 0; }
+.legend span { display: inline-flex; align-items: center; gap: 3px; }
+.sq { display: inline-block; width: 9px; height: 9px; border-radius: 2px; border: 1px solid #555; background: #1d1d1d; }
+.pinbody { display: flex; flex-direction: column; gap: 3px; }
+.pinacts { margin: 2px 0 0; flex-wrap: nowrap; }
+.wtoggle { display: inline-flex; gap: 4px; align-items: center; font-size: 11px; }
+
+.roll { flex-wrap: nowrap; gap: 3px; }
+.roll button { padding: 2px 6px; }
+.roll #histBack, .roll #histFwd { padding: 2px 4px; }
+.roll .mini input { width: 44px; }
+.roll .hist { min-width: 22px; }
+.knobrow .bnc-plate { padding: 6px 10px 8px; }
+.knobrow .bnc-grid { margin-top: 0; }

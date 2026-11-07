@@ -11,27 +11,33 @@
   <button id="toggle" class="toggle" type="button" title="Show / hide the panel">Butcher</button>
   <aside id="panel" class="panel" aria-label="Butchering mode controls">
     <header class="head">
-      <div class="title">Butchering Mode</div>
-      <div class="row viewswitch" role="tablist" aria-label="View">
-        <button id="viewStrip" type="button" role="tab" aria-selected="true" class="on">Strip</button>
-        <button id="viewBuild" type="button" role="tab" aria-selected="false">Build</button>
+      <div class="row hrow">
+        <div class="title grow">Butchering Mode</div>
+        <div class="row viewswitch" role="tablist" aria-label="View">
+          <button id="viewStrip" type="button" role="tab" aria-selected="true" class="on">Strip</button>
+          <button id="viewBuild" type="button" role="tab" aria-selected="false">Build</button>
+        </div>
       </div>
-      <div id="status" class="status">Starting…</div>
-      <div class="row">
+      <div class="row presets">
+        <select id="presetList" aria-label="Presets (picking one loads it)"><option value="">Presets…</option></select>
+        <button id="presetSave" type="button" title="Save the current settings as a preset">Save</button>
+        <button id="presetMore" type="button" title="More preset actions" aria-haspopup="menu" aria-expanded="false">⋯</button>
+      </div>
+      <div id="presetMenu" class="popmenu" role="menu" hidden>
+        <button id="presetDelete" type="button" role="menuitem">Delete the selected preset</button>
+      </div>
+      <div id="presetNameRow" class="row presets" hidden>
+        <input id="presetName" type="text" maxlength="60" placeholder="Name the preset">
+        <button id="presetSaveOk" type="button">Save</button>
+        <button id="presetSaveCancel" type="button" title="Cancel">×</button>
+      </div>
+      <div id="stateRow" class="row">
         <button id="reload" type="button" disabled>Reload State</button>
         <button id="allOff" type="button">All off</button>
-        <button id="exit" type="button" class="danger">Exit &amp; undo</button>
+        <span class="grow"></span>
+        <button id="exit" type="button" class="danger" title="Leaving reloads the state taken when you entered: everything done in here is undone, progress included.">Exit &amp; undo</button>
       </div>
-      <div class="note">Leaving reloads the state taken when you entered: everything done in here is undone, progress included.</div>
-      <div class="row presets">
-        <select id="presetList" aria-label="Presets"><option value="">Presets…</option></select>
-        <button id="presetLoad" type="button">Load</button>
-        <button id="presetDelete" type="button">Delete</button>
-      </div>
-      <div class="row presets">
-        <input id="presetName" type="text" maxlength="60" placeholder="Preset name">
-        <button id="presetSave" type="button">Save</button>
-      </div>
+      <div id="status" class="status">Starting…</div>
     </header>
     <div id="groups"></div>
   </aside>

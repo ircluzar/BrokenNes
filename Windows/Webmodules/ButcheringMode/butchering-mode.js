@@ -111,9 +111,17 @@
     $('viewStrip').addEventListener('click', () => setView('strip'));
     $('viewBuild').addEventListener('click', () => setView('build'));
     $('allOff').addEventListener('click', () => { settings = defaults(reach.cartAddressLines); render(); push(); });
-    $('presetSave').addEventListener('click', savePreset);
-    $('presetLoad').addEventListener('click', loadPreset);
-    $('presetDelete').addEventListener('click', deletePreset);
+    $('presetList').addEventListener('change', () => { if ($('presetList').value) loadPreset(); });
+    $('presetSave').addEventListener('click', () => {
+      const row = $('presetNameRow'), sel = $('presetList');
+      row.hidden = !row.hidden;
+      if (!row.hidden) { if (sel.value.startsWith('u:')) $('presetName').value = sel.value.slice(2); $('presetName').focus(); $('presetName').select(); }
+    });
+    $('presetSaveOk').addEventListener('click', async () => { await savePreset(); if ($('presetName').value.trim()) $('presetNameRow').hidden = true; });
+    $('presetSaveCancel').addEventListener('click', () => { $('presetNameRow').hidden = true; });
+    $('presetName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('presetSaveOk').click(); if (e.key === 'Escape') $('presetNameRow').hidden = true; });
+    popMenu($('presetMore'), $('presetMenu'));
+    $('presetDelete').addEventListener('click', () => { $('presetMenu').hidden = true; deletePreset(); });
     start();
   });
 
@@ -241,6 +249,7 @@
   }
 
   function push() {
+    if (view === 'strip') refreshOnNow();
     clearTimeout(syncTimer);
     return new Promise(res => {
       syncTimer = setTimeout(async () => {
@@ -304,18 +313,37 @@
     return n;
   }
 
+  // A value as a controller-standard knob (the Build board's): a placeholder carrying the parameter; knobRows() puts consecutive
+  // ones into one panel once the strip is drawn. Wide ranges (frames, hertz) turn on a log scale.
+  let knobSeq = 0;
   function slider(label, obj, key, min, max, step, onChange) {
-    const out = el('output', {}, String(obj[key]));
-    const input = el('input', {
-      type: 'range', min, max, step, value: obj[key], 'aria-label': label,
-      oninput: (e) => { obj[key] = Number(e.target.value); out.textContent = String(obj[key]); (onChange || push)(); }
-    });
-    return el('div', { class: 'slider' }, el('span', {}, label), input, out);
+    const s = el('div', { class: 'kslot' });
+    const log = min > 0 && max / min >= 50;
+    s._param = BNControls.param({ id: 'k' + (++knobSeq), label, short: label.replace(/\s*\(.*\)\s*/, '').replace(/ px$/, ''), min, max, step,
+      unit: / px$/.test(label) ? 'px' : /\(Hz\)/.test(label) ? 'Hz' : label === 'Rate' || label === 'Flicker' || label === 'Level' ? '%' : label === 'Frames' ? 'f' : '', default: obj[key], taper: log ? 'log' : 'linear',
+      get: () => obj[key],
+      set: (v) => { const q = Math.min(max, Math.max(min, Math.round(v / step) * step)); obj[key] = +q.toFixed(4); (onChange || push)(); } });
+    return s;
+  }
+  function knobRows(root) {
+    const seen = new Set();
+    for (const s of root.querySelectorAll('.kslot')) {
+      if (seen.has(s)) continue;
+      const run = [s]; seen.add(s);
+      for (let n = s.nextElementSibling; n && n.classList.contains('kslot'); n = n.nextElementSibling) { run.push(n); seen.add(n); }
+      const host = el('div', { class: 'knobrow' });
+      s.before(host);
+      const params = run.map(r => r._param), per = 4;
+      const layout = { title: '', cols: Math.min(per, run.length), rows: Math.ceil(run.length / per), accent: '#ff6b6b',
+        controls: params.map((p, i) => ({ type: 'knob', param: p.id, x: i % per, y: (i / per) | 0 })) };
+      try { host._panel = BNControls.createPanel(host, layout, params); host._params = params; } catch (e) { console.warn('[ButcheringMode] knobs', e); }
+      run.forEach(r => r.remove());
+    }
   }
 
   function check(label, obj, key) {
     const l = el('label', { class: 'name' },
-      el('input', { type: 'checkbox', checked: !!obj[key], onchange: (e) => { obj[key] = e.target.checked; push(); } }), label);
+      el('input', { type: 'checkbox', class: key === 'on' ? 'sw' : '', 'aria-label': label, checked: !!obj[key], onchange: (e) => { obj[key] = e.target.checked; push(); } }), label);
     return key === 'on' ? el('div', { class: 'namerow' }, l, soloBtn(obj, label)) : l;
   }
 
@@ -329,6 +357,9 @@
     return null;
   }
   function soloBtn(obj, label) {
+    const b = soloBtnRaw(obj, label); b._label = label; return b;
+  }
+  function soloBtnRaw(obj, label) {
     return el('button', { type: 'button', class: 'solo', title: 'Solo: only this effect runs (click again to un-solo)',
       onclick: (e) => {
         e.preventDefault(); e.stopPropagation();
@@ -336,29 +367,30 @@
         solo = solo && solo.path === path ? null : { path, label };
         paintSolo(); push();
         status(solo ? `Solo: ${label}` : 'Solo off: every effect back.');
-      } }, 'S');
+      } }, 'Solo');
   }
   function paintSolo() {
     document.querySelectorAll('button.solo').forEach(b => b.classList.remove('on'));
     if (!solo) return;
-    document.querySelectorAll('button.solo').forEach(b => { if (b.closest('.namerow')?.querySelector('label')?.textContent === solo.label) b.classList.add('on'); });
+    document.querySelectorAll('button.solo').forEach(b => { if (b._label === solo.label) b.classList.add('on'); });
   }
   function getPath(o, path) { return path.split('.').reduce((x, k) => x?.[k], o); }
   function setPath(o, path, v) { const ks = path.split('.'); const last = ks.pop(); const t = ks.reduce((x, k) => x[k], o); t[last] = v; }
 
   function bits(names, arr) {
-    return el('div', { class: 'bits' }, ...names.map((n, i) => el('label', {},
+    return el('div', { class: 'bits tg' }, ...names.map((n, i) => el('label', {},
       el('input', { type: 'checkbox', checked: !!arr[i], onchange: (e) => { arr[i] = e.target.checked; push(); } }), n)));
   }
 
   function pinGrid(prefix, arr) {
     const grid = el('div', { class: 'pins' });
     arr.forEach((code, i) => {
+      if (i % 8 === 0) grid.appendChild(el('span', { class: 'pinlab' }, i === 0 ? prefix : ''));
       const b = el('button', { type: 'button', class: `pin f${code}` });
       const paint = () => {
         const f = FAULTS[arr[i]];
         b.className = `pin f${f.code}`;
-        b.replaceChildren(el('span', {}, f.short), `${prefix}${i}`);
+        b.textContent = String(i);
         b.title = `${prefix}${i}: ${f.name} (click: next fault, right-click: reconnect)`;
       };
       b.addEventListener('click', () => { arr[i] = (arr[i] + 1) % FAULTS.length; paint(); push(); });
@@ -370,15 +402,23 @@
   }
 
   function pinGroup(title, why, group, available, unavailableText, writesText) {
-    const body = el('fieldset', { class: available ? '' : 'disabled' },
-      el('div', { class: 'sub' }, 'Address lines'), pinGrid('A', group.address),
-      el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', group.data),
-      slider('Flicker', group, 'flicker', 0, 100, 1));
+    const redraw = () => { render(); push(); };
+    const body = el('fieldset', { class: available ? 'pinbody' : 'pinbody disabled' },
+      pinGrid('A', group.address), pinGrid('D', group.data),
+      el('div', { class: 'row pinacts' }, slider('Flicker', group, 'flicker', 0, 100, 1), el('span', { class: 'grow' }),
+        el('button', { type: 'button', title: 'One to three random lines faulted', onclick: () => { const all = [...group.address.keys()].map(i => ['address', i]).concat([...group.data.keys()].map(i => ['data', i])); const n = 1 + Math.floor(Math.random() * 3); for (let k = 0; k < n; k++) { const [w, i] = all[Math.floor(Math.random() * all.length)]; group[w][i] = 1 + Math.floor(Math.random() * (FAULTS.length - 1)); } redraw(); } }, 'Random'),
+        el('button', { type: 'button', title: 'Every line connected', onclick: () => { group.address.fill(0); group.data.fill(0); redraw(); } }, 'Clear'),
+        el('label', { class: 'wtoggle', title: writesText || 'Writes land bent too' }, el('input', { type: 'checkbox', checked: !!group.bendWrites, onchange: (e) => { group.bendWrites = e.target.checked; push(); } }), 'Writes')));
     return el('details', { open: true }, groupSummary(title, 'picture'),
       el('div', { class: 'why' }, why),
       available ? null : el('div', { class: 'off' }, unavailableText),
-      el('div', { class: 'legend' }, '· connected   L stuck low   H stuck high   B bridged to the next line   F floating'),
+      pinLegend(),
       body);
+  }
+
+  function pinLegend() {
+    return el('div', { class: 'legend' }, ...FAULTS.map(f => el('span', {}, el('i', { class: `sq f${f.code}` }), f.code === 0 ? 'ok' : f.name.replace(/^stuck /, '').replace(/ to the next line$/, '').replace(/ \(.*$/, ''))),
+      el('span', { class: 'grow' }), el('span', {}, 'click cycles, right-click clears'));
   }
 
   function rateFx(label, why, fx, extra) {
@@ -423,13 +463,17 @@
     let bar = $('tabs');
     if (!bar) {
       bar = el('div', { id: 'tabs', class: 'tabs' });
-      const search = el('input', { id: 'search', type: 'search', placeholder: 'Search effects…', 'aria-label': 'Search effects',
+      const search = el('input', { id: 'search', type: 'search', placeholder: 'Search effects…', 'aria-label': 'Search effects', hidden: true,
         oninput: (e) => { query = e.target.value.trim().toLowerCase(); applyTabs(); } });
-      $('groups').before(bar, search);
+      $('groups').before(bar, search, el('div', { id: 'onnow', class: 'onnow', hidden: true }));
     }
-    bar.replaceChildren(...TABS.map(([k, n]) => el('button', { type: 'button', class: 'tab' + (k === activeTab ? ' on' : '') + (k === 'unsafe' ? ' red' : ''),
-      onclick: () => { activeTab = k; try { localStorage.setItem('butcher.tab', k); } catch { } $('search').value = ''; query = ''; tabify(); } }, n)));
+    bar.replaceChildren(...TABS.map(([k, n]) => el('button', { type: 'button', 'data-tab': k, class: 'tab' + (k === activeTab ? ' on' : '') + (k === 'unsafe' ? ' red' : ''),
+      onclick: () => { activeTab = k; try { localStorage.setItem('butcher.tab', k); } catch { } $('search').value = ''; query = ''; tabify(); } }, n, el('span', { class: 'n', hidden: true }))),
+      el('button', { type: 'button', class: 'tab icon', title: 'Search effects', 'aria-label': 'Search effects', onclick: () => {
+        const s = $('search'); s.hidden = !s.hidden; if (s.hidden) { s.value = ''; query = ''; applyTabs(); } else s.focus(); } }, '\u2315'));
+    if (query) $('search').hidden = false;
     applyTabs();
+    refreshOnNow();
   }
   function applyTabs() {
     const g = $('groups');
@@ -445,6 +489,109 @@
   }
 
   function render() { if (view === 'build') renderBuild(); else renderStrip(); }
+
+  // ---------------------------------------------------------------- the compact strip (approved 2026-11-07)
+  // An effect is one line: its switch, its name, a short summary of its values while it is on, Solo, "i" (the explanation) and ▸.
+  // Clicking the line opens its controls under it (kept open across redraws). A group's explanation sits behind its own "i".
+  const openFx = new Set();
+  function infoBtn(text, owner) {
+    return el('span', { class: 'info', role: 'button', tabindex: 0, title: text, 'aria-label': 'What it does',
+      onclick: (e) => { e.preventDefault(); e.stopPropagation(); owner.classList.toggle('tipopen'); },
+      onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); owner.classList.toggle('tipopen'); } } }, 'i');
+  }
+  function compactStrip(g) {
+    for (const d of g.querySelectorAll('details')) {
+      const sm = d.querySelector(':scope > summary'); if (!sm || sm._compact) continue; sm._compact = true;
+      const whys = [...d.querySelectorAll(':scope > .why')];
+      const text = whys.map(w => w.textContent).join(' ').trim();
+      if (text) { whys.forEach(w => w.remove()); sm.append(infoBtn(text, d)); sm.after(el('div', { class: 'tip gtip' }, text)); }
+      sm.append(el('span', { class: 'gcount' }));
+    }
+    for (const fx of g.querySelectorAll('.fx')) {
+      if (fx._compact) continue; fx._compact = true;
+      const head = fx.querySelector(':scope > .namerow') || fx.querySelector(':scope > label.name');
+      if (!head) continue;
+      const lab = head.matches('label') ? head : head.querySelector('label.name');
+      const cb = lab?.querySelector('input[type=checkbox]') || null;
+      const name = (lab?.textContent || '').trim();
+      const solo = head.querySelector('button.solo');
+      const whys = [...fx.querySelectorAll(':scope > .why')];
+      const text = whys.map(w => w.textContent).join(' ').trim();
+      whys.forEach(w => w.remove());
+      const body = el('div', { class: 'fxbody' });
+      [...fx.children].filter(c => c !== head).forEach(c => body.append(c));
+      const val = el('span', { class: 'val' }), chev = el('span', { class: 'chev', 'aria-hidden': 'true' });
+      if (cb) cb.classList.add('sw');
+      const setOpen = (o) => { fx.classList.toggle('open', o); if (o) openFx.add(name); else openFx.delete(name); chev.textContent = o ? '\u25BE' : '\u25B8'; row.setAttribute('aria-expanded', String(o)); };
+      const row = el('div', { class: 'fxrow', role: 'button', tabindex: 0,
+        onclick: (e) => { if (e.target.closest('input, button, .info, label')) return; setOpen(!fx.classList.contains('open')); },
+        onkeydown: (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === row) { e.preventDefault(); setOpen(!fx.classList.contains('open')); } } },
+        cb || el('span', { class: 'swgap' }), el('span', { class: 'name' }, name), val, solo, text ? infoBtn(text, fx) : null, chev);
+      head.remove();
+      fx.append(row);
+      if (text) fx.append(el('div', { class: 'tip' }, text));
+      fx.append(body);
+      fx._name = name; fx._cb = cb; fx._val = val;
+      setOpen(openFx.has(name));
+    }
+  }
+  // on: its switch, or (no switch) any bit / channel ticked or line faulted
+  function fxOn(fx) {
+    if (fx._cb) return fx._cb.checked;
+    return !!fx.querySelector('.fxbody input[type=checkbox]:checked, .fxbody .pin:not(.f0)');
+  }
+  function fxSummary(fx) {
+    const ps = [...fx.querySelectorAll('.fxbody .knobrow')].flatMap(h => h._params || []).slice(0, 2);
+    return ps.map(p => p.format(p.get())).join(' · ');
+  }
+  function fxOff(fx) {
+    if (fx._cb) { fx._cb.checked = false; fx._cb.dispatchEvent(new Event('change')); return; }
+    fx.querySelectorAll('.fxbody input[type=checkbox]:checked').forEach(c => { c.checked = false; c.dispatchEvent(new Event('change')); });
+    fx.querySelectorAll('.fxbody .pin:not(.f0)').forEach(b => b.dispatchEvent(new MouseEvent('contextmenu', { cancelable: true })));
+  }
+  // the pin groups are groups of their own (a details with lines, no effects inside)
+  const pinGroups = (g) => [...g.querySelectorAll(':scope > details')].filter(d => d.querySelector('.pins') && !d.querySelector('.fx'));
+  let onNowQueued = false;
+  function refreshOnNow() {
+    if (onNowQueued) return; onNowQueued = true;
+    requestAnimationFrame(() => {
+      onNowQueued = false;
+      const g = $('groups'), box = $('onnow');
+      if (!g || !box || view !== 'strip') return;
+      const counts = {}, on = [];
+      for (const fx of g.querySelectorAll('.fx')) {
+        if (!fx._compact || !fx._name) continue;
+        const lit = fxOn(fx);
+        fx.classList.toggle('lit', lit);
+        if (fx._val) fx._val.textContent = lit ? fxSummary(fx) : '';
+        if (lit) { const tab = fx.closest('[data-tab]')?.dataset.tab; counts[tab] = (counts[tab] || 0) + 1; on.push({ name: fx._name, tab, node: fx }); }
+      }
+      for (const d of pinGroups(g)) {
+        const n = d.querySelectorAll('.pin:not(.f0)').length;
+        if (n) { counts[d.dataset.tab] = (counts[d.dataset.tab] || 0) + 1; on.push({ name: [...(d.querySelector(':scope > summary')?.childNodes || [])].filter(x => x.nodeType === 3).map(x => x.textContent).join('').trim().replace(/^Picture bus · /, '').replace(/^./, c => c.toUpperCase()) + ` (${n})`, tab: d.dataset.tab, node: d, pins: true }); }
+      }
+      for (const d of g.querySelectorAll(':scope > details')) {
+        const c = d.querySelector(':scope > summary .gcount');
+        if (!c) continue;
+        const n = [...d.querySelectorAll('.fx')].filter(f => f.classList.contains('lit')).length + (pinGroups(g).includes(d) && d.querySelector('.pin:not(.f0)') ? 1 : 0);
+        c.textContent = n ? `${n} on` : '';
+      }
+      document.querySelectorAll('#tabs .tab[data-tab]').forEach(b => { const n = counts[b.dataset.tab] || 0, s = b.querySelector('.n'); s.textContent = String(n); s.hidden = !n; });
+      box.hidden = !on.length;
+      box.replaceChildren(el('span', { class: 'onlab' }, 'On now'), ...on.map(o => el('span', { class: 'chip' },
+        el('button', { type: 'button', class: 'chipgo', title: 'Show it', onclick: () => {
+          if (activeTab !== o.tab) { activeTab = o.tab; tabify(); }
+          if (!o.pins && !o.node.classList.contains('open')) o.node.querySelector('.fxrow')?.click();
+          o.node.scrollIntoView({ block: 'nearest' });
+          o.node.classList.add('flashfx'); setTimeout(() => o.node.classList.remove('flashfx'), 700);
+        } }, o.name),
+        el('button', { type: 'button', class: 'chipx', title: `Switch ${o.name} off`, 'aria-label': `Switch ${o.name} off`, onclick: () => {
+          if (o.pins) o.node.querySelectorAll('.pin:not(.f0)').forEach(b => b.dispatchEvent(new MouseEvent('contextmenu', { cancelable: true })));
+          else fxOff(o.node);
+          refreshOnNow();
+        } }, '\u00D7'))));
+    });
+  }
 
   function renderStrip() {
     document.getElementById('panel')?.classList.remove('wide');
@@ -717,7 +864,7 @@
         slider('Rate', rm, 'rate', 0, 100, 1), slider('Step', rm, 'step', 1, 8, 1),
         slider('Frames', rm, 'lifetime', 1, 600, 1), slider('At once', rm, 'maxProbes', 1, 8, 1),
         el('div', { id: 'ramStats', class: 'why' }, 'Profiler: learning…'))));
-    queueMicrotask(() => { tabify(); paintSolo(); });
+    queueMicrotask(() => { const g = $('groups'); knobRows(g); compactStrip(g); tabify(); paintSolo(); });
   }
 
   // ---------------------------------------------------------------- Build view (controller standard C4)
@@ -1060,18 +1207,31 @@
     const b = $('histBack'), f = $('histFwd'); if (b) b.disabled = historyAt <= 0; if (f) f.disabled = historyAt >= history.length - 1;
   }
   document.addEventListener('DOMContentLoaded', () => {
-    const head = document.querySelector('.head'); if (!head) return;
+    const anchor = $('stateRow'); if (!anchor) return;
     const out = el('output', {}, String(strength));
-    head.append(
+    const menu = el('div', { class: 'popmenu', role: 'menu', hidden: true },
+      el('label', { class: 'unsafeopt' }, el('input', { type: 'checkbox', checked: includeUnsafe ? '' : null, onchange: (e) => { includeUnsafe = e.target.checked; } }), 'Include unsafe effects in rolls'),
+      el('label', { class: 'unsafeopt' }, el('input', { type: 'checkbox', checked: includeDisgraced ? '' : null, onchange: (e) => { includeDisgraced = e.target.checked; } }), 'Include disgraced effects in rolls'));
+    const more = el('button', { type: 'button', title: 'Roll options', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, '\u25BE');
+    anchor.before(
       el('div', { class: 'row roll' },
         el('button', { type: 'button', onclick: randomize, title: 'A new random butcher' }, 'Randomize'),
         el('button', { type: 'button', onclick: mutate, title: 'Nudge the current settings' }, 'Mutate'),
         el('button', { id: 'histBack', type: 'button', onclick: () => stepHistory(-1), title: 'Previous roll', disabled: true }, '\u25C0'),
-        el('span', { id: 'histLabel', class: 'why' }, '\u2014'),
-        el('button', { id: 'histFwd', type: 'button', onclick: () => stepHistory(1), title: 'Next roll', disabled: true }, '\u25B6')),
-      el('div', { class: 'slider' }, el('span', {}, 'Strength'),
-        el('input', { type: 'range', min: 0, max: 100, step: 1, value: strength, 'aria-label': 'Randomize strength', oninput: (e) => { strength = Number(e.target.value); out.textContent = String(strength); } }), out),
-      el('label', { class: 'name unsafeopt' }, el('input', { type: 'checkbox', checked: includeUnsafe ? '' : null, onchange: (e) => { includeUnsafe = e.target.checked; } }), 'Include unsafe effects in rolls'),
-      el('label', { class: 'name unsafeopt' }, el('input', { type: 'checkbox', checked: includeDisgraced ? '' : null, onchange: (e) => { includeDisgraced = e.target.checked; } }), 'Include disgraced effects in rolls'));
+        el('span', { id: 'histLabel', class: 'hist' }, '\u2014'),
+        el('button', { id: 'histFwd', type: 'button', onclick: () => stepHistory(1), title: 'Next roll', disabled: true }, '\u25B6'),
+        el('label', { class: 'mini', title: 'Randomize strength: few gentle effects at low, many strong ones at high' }, out,
+          el('input', { type: 'range', min: 0, max: 100, step: 1, value: strength, 'aria-label': 'Randomize strength', oninput: (e) => { strength = Number(e.target.value); out.textContent = String(strength); } })),
+        more),
+      menu);
+    popMenu(more, menu);
   });
+
+  // a small menu under its button: opens on click, closes on a click elsewhere or Escape
+  function popMenu(btn, menu) {
+    const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+    btn.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute('aria-expanded', String(!menu.hidden)); });
+    document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) close(); }, true);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) close(); });
+  }
 })();
