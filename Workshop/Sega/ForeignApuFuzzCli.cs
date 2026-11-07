@@ -20,8 +20,8 @@ internal static class ForeignApuFuzzCli
 {
     private static readonly string[] SnesIds = { "SFC", "ZS15", "S9X1", "OSPC", "S951", "S916", "ZS151", "SNDS" };
     private static readonly string[] GbIds = { "GB", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" };
-    private static readonly string[] MdIds = { "MD", "GENS", "PICO", "M036", "BLST", "GPGX" };
-    private static readonly string[] SmsIds = { "SMS", "SMS-FM", "GENS", "PICO", "M036", "BLST", "GPGX", "DARC", "DEGA", "M036FM", "E055" };
+    private static readonly string[] MdIds = { "MD", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN" };
+    private static readonly string[] SmsIds = { "SMS", "SMS-FM", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA", "M036FM", "E055" };
     private static readonly string[] NesIds = { "FIX", "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR" };
 
     public static int Run(string[] args)
@@ -113,7 +113,7 @@ internal static class ForeignApuFuzzCli
     /// then the game keys the next note on without rewriting the patch: does it sound? (KNOWN_GAPS FA-S-GENS-3 / FA-S-PICO-2 / FA-S-M036-3)</summary>
     private static int MdReload()
     {
-        string[] ids = { "MD", "GENS", "PICO", "M036", "BLST", "GPGX" };
+        string[] ids = { "MD", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN" };
         int bad = 0;
         foreach (var id in ids)
         {

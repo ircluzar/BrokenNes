@@ -39,9 +39,9 @@ internal static partial class ApuChannelsCli
             ("NES", "FIX", new[] { "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR" }, NesCells()),
             ("SNES", "SFC", new[] { "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS" }, SnesCells()),
             ("GB", "GB", new[] { "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" }, GbCells()),
-            ("MD", "MD", new[] { "GENS", "PICO", "M036", "BLST", "GPGX" }, MdCells()),
-            ("SMS", "SMS", new[] { "GENS", "PICO", "M036", "BLST", "GPGX", "DARC", "DEGA" }, PsgCells(ConsoleKind.MasterSystem)),
-            ("GG", "SMS", new[] { "GENS", "PICO", "M036", "BLST", "GPGX", "DARC", "DEGA" }, PsgCells(ConsoleKind.GameGear)),
+            ("MD", "MD", new[] { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN" }, MdCells()),
+            ("SMS", "SMS", new[] { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA" }, PsgCells(ConsoleKind.MasterSystem)),
+            ("GG", "SMS", new[] { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA" }, PsgCells(ConsoleKind.GameGear)),
             ("FM", "SMS-FM", new[] { "M036FM", "E055" }, FmCells()),
         };
 

@@ -32,9 +32,9 @@ internal static class ApuSweepCli
     private static readonly string[] NesPorts = { "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR" };
     private static readonly string[] SnesPorts = { "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS" };
     private static readonly string[] GbPorts = { "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" };
-    private static readonly string[] PsgPorts = { "GENS", "PICO", "M036", "BLST", "GPGX", "DARC", "DEGA" };
+    private static readonly string[] PsgPorts = { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA" };
     private static readonly string[] FmPorts = { "M036FM", "E055" };
-    private static readonly string[] MdPorts = { "GENS", "PICO", "M036", "BLST", "GPGX" };
+    private static readonly string[] MdPorts = { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN" };
 
     /// <summary>One way of reaching an engine: <paramref name="Start"/> is the unit the session is built on, <paramref name="SwapTo"/> the id swapped in live (null: the session starts on the engine, no live swap in),
     /// <paramref name="Setup"/> the mix-lab configuration the bridge reads, <paramref name="Stock"/> the id swapped back to.</summary>

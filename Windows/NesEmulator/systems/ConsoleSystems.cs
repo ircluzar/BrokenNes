@@ -676,6 +676,7 @@ public static class CoreCatalog
                         if (!gg) list.Add(new("E055", "E055 (emu2413 v0.55 YM2413, 2002: log attack, crude drums, 2-tap averaging)", fam));
                         list.Add(new("M036", "M036 (MAME 0.36 sound, 1999: sn76496.c, mono, old noise taps, unipolar output)", fam));
                         list.Add(new("GPGX", "GPGX (Genesis Plus GX 1.3.0 PSG, 2008: Maxim's SN76489, mono, GX's output filter)", fam));
+                        list.Add(new("GWEN", "GWEN (Gwenesis / retro-go PSG: MCU-trimmed SN76489, 6 dB volume steps, white noise dies, mono)", fam));
                         list.Add(new("GENS", "GENS (Gens 2.10 PSG, 2002: 22 kHz unipolar squares, no Game Gear stereo)", fam));
                         // Foreign APU: PicoDrive 1.85's SN76496 (a MAME-derived PSG: mono, unipolar, white-noise taps 0x14002; no Game Gear stereo)
                         list.Add(new("PICO", "PICO (PicoDrive 1.85 SN76496: MAME-style PSG, odd noise taps, mono)", fam));
@@ -706,6 +707,7 @@ public static class CoreCatalog
                         list.Add(new("BLST", "BLST (BlastEm 0.3.1 YM2612 + PSG, pre-0.4 FM envelope/LFO/key-on bugs)", "Genesis"));
                         list.Add(new("M036", "M036 (MAME 0.36 sound, 1999: fm.c 0.36e YM2612 + sn76496.c at 22 kHz, preliminary envelopes, LFO mostly off)", "Genesis"));
                         list.Add(new("GPGX", "GPGX (Genesis Plus GX 1.3.0 sound, 2008: MAME fm.c 1.4 YM2612 with the old half-done SSG-EG + Maxim's SN76489)", "Genesis"));
+                        list.Add(new("GWEN", "GWEN (Gwenesis / retro-go sound: GPGX fm.c YM2612 trimmed for MCUs, mono, wrapping mix + cut-down SN76489)", "Genesis"));
                         list.Add(new("GENS", "GENS (Gens 2.10 sound, 2002: YM2612 + PSG at 22 kHz, the classic Gens sound)", "Genesis"));
                         // Foreign APU: PicoDrive 1.85's YM2612 + SN76496 (the handheld emulator's: no SSG-EG, guessed DAC level, odd PSG noise taps)
                         list.Add(new("PICO", "PICO (PicoDrive 1.85 YM2612 + SN76496: no SSG-EG, guessed DAC level)", "Genesis"));
@@ -841,7 +843,7 @@ public static class CoreCatalog
     /// <summary>The engines ported from other emulators (the Foreign APU project, docs/projects/foreign-apu-project.md): the core menus list them in their console's submenu under their own heading.</summary>
     public static readonly HashSet<string> PortedIds = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB", "GENS", "PICO", "M036", "BLST", "GPGX", "DARC", "DEGA", "M036FM", "E055",
+        "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA", "M036FM", "E055",
         "FCEU", "INES", "NSTC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR",
     };
 
@@ -873,7 +875,7 @@ public static class CoreCatalog
     {
         ["ZS15"] = "ZSNES 0.15", ["ZS151"] = "ZSNES 1.51", ["S916"] = "Snes9x 1.16a", ["S9X1"] = "Snes9x 1.43", ["S951"] = "Snes9x 1.51", ["OSPC"] = "libOpenSPC", ["SNDS"] = "SNEmulDS",
         ["GNUB"] = "gnuboy 1.0.3", ["VBA"] = "VisualBoyAdvance 1.7.2", ["VBAM"] = "VBA-M 2007", ["TGBD"] = "TGB Dual", ["GYOB"] = "GameYob DS", ["MGB"] = "minigb_apu 2022",
-        ["GENS"] = "Gens 2.10", ["PICO"] = "PicoDrive 1.85", ["M036"] = "MAME 0.36", ["M036FM"] = "MAME 0.36 FM", ["BLST"] = "BlastEm 0.3.1", ["GPGX"] = "Genesis Plus GX 1.3",
+        ["GENS"] = "Gens 2.10", ["PICO"] = "PicoDrive 1.85", ["M036"] = "MAME 0.36", ["M036FM"] = "MAME 0.36 FM", ["BLST"] = "BlastEm 0.3.1", ["GPGX"] = "Genesis Plus GX 1.3", ["GWEN"] = "Gwenesis (retro-go)",
         ["DARC"] = "DarcNES", ["DEGA"] = "Dega 1.16", ["E055"] = "emu2413 0.55", ["FCEU"] = "FCE Ultra", ["INES"] = "iNES", ["NSTC"] = "NESticle", ["TUXN"] = "TuxNES",
         ["VNES"] = "VirtuaNES 0.97", ["PNES"] = "PocketNES", ["NSDS"] = "nesDS 2.0.1", ["PCEG"] = "PCE-GO PSG (retro-go)", ["POKY"] = "atari800 POKEY", ["AY124"] = "MAME 0.124 AY-3-8910", ["NOFR"] = "nofrendo (retro-go)", ["HLE"] = "silent", ["SMS-FM"] = "with the FM chip", ["SMSFM"] = "Master System FM",
     };
