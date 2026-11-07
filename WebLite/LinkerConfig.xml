@@ -88,6 +88,8 @@
     <type fullname="NesEmulator.APU_PCEG" preserve="all" />
     <!-- APU harvest: atari800 POKEY (APU_POKY, family "Foreign"). -->
     <type fullname="NesEmulator.APU_POKY" preserve="all" />
+    <!-- APU harvest: MAME 0.124 AY-3-8910 (APU_AY124, family "Foreign"). -->
+    <type fullname="NesEmulator.APU_AY124" preserve="all" />
     <type fullname="NesEmulator.APU_VNES" preserve="all" />
     <!-- Enhanced cores phase 3: a NES game on the other consoles' ENHANCED chips (CoreRegistry finds them by name, so they must be rooted).
          The other consoles reach those chips directly (EnhancedChips routes, plain code: no root needed). -->

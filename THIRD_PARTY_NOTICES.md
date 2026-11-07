@@ -1,168 +1,168 @@
-# Third-party notices and provenance
-
-BrokenNes is released under the **Digital Lifeform License 1.1** (`LICENSE.txt`). This file lists what in the repository, or in the programs built from it,
-came from somewhere else, and under which terms. It is the root of the ledgers: each console family keeps its own, more detailed one beside its code
-(`Windows/NesEmulator/gb/THIRD_PARTY_NOTICES.md`, `Windows/NesEmulator/snes/THIRD_PARTY_NOTICES.md`, `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md`,
-`Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md`).
-The plugin's About window and the Lite site point here.
-
-**Provenance of changes.** The license asks that modifications be traceable to the digital agent that made them. The record is the git history: commit
-trailers (`Co-Authored-By:`) name the agent, and commit messages say what changed and why. Notices below were written when the code was added; if you
-find a borrowed piece that is not listed, that is a bug in this file: report it.
-
-## Policy for what may be borrowed
-
-- **MIT, BSD, ISC and zlib** code may be ported or adapted, with its copyright notice kept in the file's ledger entry (and in a header comment for
-  substantial ports) and the license text shipped with the program (section 5).
-- **GPL, AGPL, LGPL and non-commercial** code is never copied into BrokenNes. Such programs (Mesen 2, BlastEm, Genesis Plus GX, jgenesis, the Nuked-*
-  cores, ...) are used only as **black-box oracles**: the program is run and its output is compared, its source is not read for the code we write.
-  The Digital Lifeform License forbids further restrictions on the work and grants a right to sell, which copyleft and non-commercial terms conflict with.
-- The exceptions that already exist are listed in section 2 and are meant to be replaced.
-- Game ROMs and BIOS/firmware are never committed or shipped. Test ROMs are committed only when their license allows it (section 3).
-
-## 1. Code derived from other projects (permissive)
-
-| What | Where | Source and license |
-|---|---|---|
-| Mapper 30 (UNROM 512), ported | `Windows/NesEmulator/mappers/Mapper30.cs` | BizHawk `Mapper030.cs`, MIT, Copyright (c) BizHawk team |
-| Mapper 5 (MMC5), adapted | `Windows/NesEmulator/mappers/Mapper5.cs` | BizHawk ExROM, MIT, Copyright (c) BizHawk team |
-| MMC5 expansion audio, adapted | `Windows/NesEmulator/expansion/MMC5Audio.cs` | BizHawk `MMC5Audio`, MIT, Copyright (c) BizHawk team |
-| Mapper 90 and Mapper 228 logic follows BizHawk's, simplified | `Windows/NesEmulator/mappers/Mapper90.cs`, `Mapper228.cs` | BizHawk, MIT, Copyright (c) BizHawk team |
-| Sega: Motorola 68000 core, ported | `Windows/NesEmulator/md/M68k*.cs`, `IM68kBus.cs` | ares `component/processor/m68000`, ISC, Copyright (c) 2004-2025 ares team, Near et al; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` (the ISC text is in section 6) |
-| Sega: YM2612 / YM3438 FM chip (Genesis), ported | `Windows/NesEmulator/sega/Ym2612.cs`, `Ym2612.Tables.cs` | ymfm `ym2612` / `ym3438` and the shared FM engine (`ymfm_opn.cpp`, `ymfm_fm.ipp`, `ymfm_fm.h`, `ymfm.h`), commit 81aec25, BSD-3-Clause, Copyright (c) 2021 Aaron Giles; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` section 1c (the BSD text is in section 6) |
-| Sega: YM2413 (OPLL) FM core, ported | `Windows/NesEmulator/sega/Ym2413.cs`, `Ym2413Tables.cs`, `Ym2413Resampler.cs` | emu2413 v1.6.2, MIT, Copyright (c) 2001-2019 Mitsutaka Okazaki; details (what was taken, what was changed, what was measured against Nuked-OPLL as a black-box oracle) in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md`, section 1e; the MIT text is in section 6 |
-| Sega: Z80 core, ported (design, decode tables and program builders; also the Master System / Game Gear / Genesis sound CPU and, in `CPU_Z80`, a NES CPU) | `Windows/NesEmulator/sega/Z80/*.cs` | BizHawk `Z80A` (Alyosha and the BizHawk team), HEAD f9c0100 of the local tree, MIT, Copyright (c) BizHawk team; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` section 1a |
-| Sega: SN76489 PSG, Master System / Game Gear / Genesis mappers, VDPs, boards and the Genesis cartridge, sound unit and pads | `Windows/NesEmulator/sega/Sn76489.cs`, `sms/`, `md/` (except the 68000 and YM2612 rows above) | written for this project from public hardware documentation and black-box oracle comparisons; BizHawk's Master System memory map was read as a cross-check (MIT); no third-party source copied. Ledger sections 1c, 1d, 1f, 1h, 2a to 2d of `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` |
-| x86 console: Intel 80386 / 80486 CPU core, ported (no FPU, MMX/SSE, long mode or fast path) | `Windows/NesEmulator/x86/I386*.cs` | tiny386 `i386.c` + `i386ins.def`, commit 2c1205c, BSD-3-Clause, Copyright (c) 2024-2025 Chunhui He; details in `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md` (the BSD text is in section 6) |
-| x86 console: 8259 PIC, 8254 PIT, VGA (registers, memory access, graphics picture), ported; the 8x16 VGA font | `Windows/NesEmulator/x86/Pic8259.cs`, `Pit8254.cs`, `Vga.cs`, `VgaFont.cs` | tiny386 `i8259.c`, `i8254.c`, `vga.c` (from QEMU), commit 2c1205c, MIT, Copyright (c) 2003-2017 Fabrice Bellard; the font from tiny386 `vgafont.c` (BSD-3-Clause, as above); details in `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md`; the MIT text is in section 6 |
-| x86 console: AdLib, Yamaha YM3812 (OPL2) FM chip, ported | `Windows/NesEmulator/x86/Opl2.cs`, `Opl2.Tables.cs` | ymfm `ym3812`, `opl_registers_base<2>` and the shared FM engine (`ymfm_opl.h`, `ymfm_opl.cpp`, `ymfm_fm.h`, `ymfm_fm.ipp`, `ymfm.h`), commit 81aec25, BSD-3-Clause, Copyright (c) 2021 Aaron Giles; details in `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md` section 1 (the BSD text is in section 6, the ymfm entry) |
-| x86 console: **FreeDOS 1.4** boot disk (a separate program, shipped beside the desktop app, not in the repository) | `x86\freedos\FD14LITE.img` in the desktop build, with `Windows/x86/freedos/README.txt` + `GPL-2.0.txt` and the source packages in `x86\freedos\source\` | The FreeDOS project's LiteUSB image, unmodified; GPL-2.0 (kernel, FreeCOM, most tools) and other free licences per package; aggregated, not linked; complete corresponding source shipped beside it (GPL 3(a): the 69 FreeDOS 1.4 packages, unmodified, `source\SOURCES.txt` lists their SHA-256); details in `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md` |
-| Sega bridges to and from the NES, the CPU walls, the plugin's Sega chips | `Windows/NesEmulator/mix/` (`APU_SMS`, `APU_SMSFM`, `APU_MD`, `PPU_SMS`, `PPU_MD`, `CPU_Z80`, `CPU_M68K`, `SmsFmSoundOnNes`, `MdSoundOnNes`, `HubReplayer`, ...), `Plugin/` | written for this project; no third-party source (ledger section 2c and 2d of the Sega ledger) |
-
-BizHawk's license statement (`LICENSE` in its repository) says the BizHawk team's own C# is provided under the MIT License, and that other parts of that repository
-carry their own, sometimes incompatible, licenses. Only files authored by the BizHawk team are used here. The MIT text is reproduced in section 6.
-
-**The user's own projects inside the plugin (not third-party):** the built-in game `Plugin/BrokenNes2.Plugin/Resources/default.nes` (VRUN) and the Test MIDI export template
-`Resources/musictest.nes` (VRUN's AudioPlayer with padded song arrays, built by `BrokenDev/tools/music/build-musictest.ps1`) are the user's VRUN code compiled by NESFab 1.8;
-NESFab's own library code compiled into them (`lib/`) is under the Boost Software License 1.0, which asks for no notice in compiled form, and the NESFab compiler (GPL-3.0) is a
-build tool that is neither shipped nor copied. `Plugin/BrokenNes2.Plugin/Music/Vrun/` is a byte-for-byte copy of VRUN's music converter (`engine/audio/converter`), the user's
-code (`SOURCE.txt` there records its origin and hashes).
-
-## 2. Code with provenance that needs attention
-
-| What | Where | Status |
-|---|---|---|
-| **QuickNES-family sound cores** (`APU_QN`, `APU_QLQ`, `APU_QLQ2`, `APU_QLOW`) | `Windows/NesEmulator/apus/APU_QN.cs`, `APU_QLQ.cs`, `APU_QLQ2.cs`, `APU_QLOW.cs` | The headers say "QuickNES-inspired ... informed by publicly known NES APU behavior and the QuickNES approach", while `APU_QN`'s description says "Retrofitted QuickNES APU from C++ to C#", and `readme.txt` credits "QN Cores: QuickNES Emulator". QuickNES is by blargg (Shay Green), distributed under the LGPL (not re-verified in this pass). **Until the cores are compared with the original, treat them as LGPL-derived.** They are "Unstable"-category cores, not defaults. To resolve: compare against the original, then either record the exact derivation here or rewrite them from documentation. |
-| **NET-NES** by BotRandomness (the base emulator the project started from; `CPU_FMC`, `APU_FMC` are "loosely based" on it) | `Windows/NesEmulator/cpus/CPU_FMC.cs`, `apus/APU_FMC.cs`; credited in `readme.txt` | License not recorded in this repository: to be confirmed and entered here. |
-| **BrokenNes Nano** (the web synth): `chip.js` is a JavaScript transcription of `APU_FIX` and `StreamResampler`, so it **inherits the NET-NES question above** (`APU_FIX` was forked from `APU_FMC`) | `Nano/src/chip.js`, shipped in `Nano/dist/nano.js`, `nano.mjs`, `nano-worklet.js` | Everything else in Nano (the instrument layer after the plugin's Direct mode, the presets, the DPCM encoder, the API, the demo, the tests and the C# reference) was written for this project; no third-party source, fonts or samples; the files carry the license header and `Nano/dist/LICENSE.txt`. Settle the NET-NES question before Nano is published outside the repository. Details: `Nano/README.md` ("Licensing") |
-| **Foreign APU project: 27 alternate sound engines ported from old GPL / LGPL / non-commercial / unlicensed emulators** (decision of 2026-11-01: allowed for the sake of art, documented, licensing to be revisited) | see section 2a below (by license) and `docs/projects/foreign-apu-project.md` | **Copied/ported, a deliberate exception to the policy above.** These licenses conflict with the Digital Lifeform License's right to sell; **open question for later** (`docs/KNOWN_GAPS.md` FA-1): keep them as optional / separately distributed cores, re-license with the authors' permission, or replace them with clean-room cores that imitate the sound. Until then, do not ship builds that include them outside personal/art use. |
-| **S-DSP** ported from blargg's `snes_spc` (LGPL 2.1 or later) | `Windows/NesEmulator/snes/DSP_SFC.cs` | A documented **LGPL exception**, kept for now (decision of 2026-10-03). The SFC ledger plans a from-scratch replacement written without that source; the current core stays as the reference. |
-| SPC700 cycle table (hardware timing data, copied) | `Windows/NesEmulator/snes/SMP_SFC.cs` | From snes9x (non-commercial / GPL lineage); the data is hardware timing. Details in the SFC ledger. |
-| CGB compatibility palette tables (data) | `Windows/NesEmulator/gb/GbCompatPalettes.cs` | Transcribed from ISSOtm's `gb-bootroms` disassembly; tables only. Details in the GB ledger. |
-
-
-### 2a. Foreign APU project cores, by license
-
-Every ported file starts with a header naming its source, version, authors and license. The family ledgers (`Windows/NesEmulator/{snes,gb,sega}/THIRD_PARTY_NOTICES.md`) carry one row per core.
-
-| License class | Cores (id: source @ version, files in `Windows/NesEmulator/`) |
-|---|---|
-| **GPL** (2.0, 2.0+, 3.0+) | ZS15: ZSNES 0.15 via zsnes-asm2c (`snes/Zs15Dsp.cs`); ZS151: ZSNES 1.51 (`snes/Zs151Dsp.cs`); SNDS: SNEmulDS / PocketSPC @79762ad (`snes/SnemulDsDsp.cs`); GNUB: gnuboy @4c2f6c4 (`gb/GnubSound.cs`); VBA: VisualBoyAdvance 1.7.2 @9fbd04f8 (`gb/VbaGbSound.cs`); VBAM: VBA-M @5e3902b4 (`gb/VbamGbSound.cs`); TGBD: TGB Dual (`gb/TgbdApu.cs`); GENS: Gens 2.10 (`sega/GensYm2612.cs`, `GensPsg.cs`); BLST: BlastEm 0.3.1 (`sega/BlastemYm2612.cs`, `BlastemPsg.cs`); FCEU: FCE Ultra 0.96 (`apus/FceuApu.cs`); TUXN: TuxNES 0.75 @f537b4b (`apus/TuxnesSound.cs`); ADLIB_D074F: DOSBox 0.74 dbopl r3582 (`x86/Dosbox074Dbopl.cs`) |; PCEG: retro-go PCE-GO psg.c @05e97e8, GPL-2.0, ducalex and the Hu-Go!/PCE-GO authors, https://github.com/ducalex/retro-go/tree/05e97e8/retro-core/components/pce-go (`apus/PceGoPsg.cs`); ADLIB_D074F: DOSBox 0.74 dbopl r3582 (`x86/Dosbox074Dbopl.cs`) |
-| **LGPL** | OSPC: libOpenSPC @2f68400, with a SNEeSe Clarified Artistic License fragment (`snes/OspcDsp.cs`); ADLIB_D074C: DOSBox 0.74 opl.cpp r3548 (`x86/Dosbox074CompatOpl.cs`); ADLIB_NUK174: Nuked-OPL3 1.7.4 from AdPlug 2.3.1 (`x86/Nuked174Opl.cs`) |; ADLIB_NUK174: Nuked-OPL3 1.7.4 from AdPlug 2.3.1 (`x86/Nuked174Opl.cs`) ; POKY: atari800 0.9.8a pokeysnd.c (PokeySound V2.4), LGPL-2 (Library GPL v2), (C) 1996-1998 Ron Fries + atari800 team, https://sources.debian.org/src/atari800/0.9.8a-2/pokeysnd.c (`apus/AtariPokeySnd.cs`, translator `apus/APU_POKY.cs` is new code) |
-| **Non-commercial** (Snes9x, MAME, PicoDrive, Genesis Plus, DarcNES, Dega licenses) | S9X1: Snes9x 1.43 via snes9x2005 @a79dfe9 (`snes/S9x1Dsp.cs`); S951: Snes9x 1.51 (`snes/S951Dsp.cs`); S916: Snes9x 1.16a (`snes/S916Dsp.cs`); M036: MAME 0.36 (`sega/Mame036Opn2.cs`, `Mame036Sn76496.cs`); M036FM: MAME 0.36 (`sega/Mame036Opl.cs`, `Mame036Ym2413.cs`); PICO: PicoDrive v1.85 (`sega/PicoYm2612.cs`, `PicoSn76496.cs`); GPGX: Genesis Plus GX 1.3.0 @6f65ac3 (`sega/GpgxYm2612.cs`, `GpgxSn76489.cs`); DARC: DarcNES (`apus/DarcNesPsg.cs`, `sega/DarcSmsPsg.cs`); DEGA: Dega 1.16 (`sega/DegaPsg.cs`, `DegaSamples.cs`) |
-| **Permissive** (no exception needed; listed with the set) | INES: InfoNES, Apache-2.0, (C) 1999-2004 Jay's Factory (`apus/InfoNesApu.cs`); GYOB: GameYob @45599fb, MIT, (C) 2013 Drenn & contributors (`gb/GameYobSound.cs`); NSDS: nesDS v2.0.1 @652c8aa, public domain (README; Mamiya library "PDS"), loopy, FluBBa, Mamiya (`apus/NesdsSound.cs`); MGB: minigb_apu (Peanut-GB @024175d), MIT, (C) Mahyar Koshkouei, based on MiniGBS by Alex Baines (`gb/MinigbApu.cs`) |
-| **No license stated** | VNES: VirtuaNES 0.97 (modified mirror) (`apus/VirtuaNesApu.cs`, `VirtuaNesMmc5.cs`); PNES: PocketNES @9c07f3d (`apus/PocketNesSound.cs`); E055: emu2413-legacy tag 0.55 @2d92835 (`sega/Emu2413v055.cs`); ADLIB_D072: DOSBox 0.72 fmopl.c r2883, MAME-derived (`x86/Dosbox072Opl.cs`) |
-| **No license: leaked source** (the project owner's decision) | NSTC: NESticle 1997 prototype `NESSOUND.CPP` (`apus/NesticleSound.cs`) |
-
-## 3. Test material in the repository
-
-| What | Where | License |
-|---|---|---|
-| gilyon/snes-tests v1.4 (SNES CPU and SPC700 test ROMs) | `Windows/Resources/snes-test-roms/` (committed, with `LICENSE` and `SOURCE.txt`) | MIT |
-| c-sp/game-boy-test-roms v7.0 (a collection with mixed licenses) | `Windows/Resources/gb-test-roms/` (**not committed**, excluded through `.git/info/exclude`) | per-ROM licenses; kept local |
-| Sega test material | not in the repository | MIT sets (z80test, SingleStepTests) may be committed later with `LICENSE` and `SOURCE.txt`; unlicensed ROMs and GPL test programs stay local |
-
-## 4. Programs used only as references (nothing copied)
-
-Mesen 2 (GPL-3.0), BizHawk's native cores, BlastEm (GPL-3.0), Genesis Plus GX (non-commercial), jgenesis (GPL-3.0), the Nuked-OPN2 / OPLL / MD / PSG cores
-(LGPL-2.1 / GPL-2.0), Emulicious. They are run, and their output is compared; none of their source is included. Where a ledger says a source was read, the entry says so.
-
-## 5. Packages that ship with the programs
-
-| Package | Used by | License |
-|---|---|---|
-| NAudio 2.2.1 (and NAudio.Core, .Wasapi, .WinMM, .Midi) | desktop audio and MIDI | MIT, Copyright 2020 Mark Heath and contributors |
-| MeltySynth 2.4.x | SoundFont cores (desktop) | MIT; its license file also carries the notices of C# Synth (Alex Veltsistas, 2014) and TinySoundFont |
-| SharpDX 4.2.0 (Direct2D1, Direct3D11, DXGI, D3DCompiler, Mathematics, XInput) | desktop rendering and gamepads | MIT (license at sharpdx.org/License.txt), Copyright Alexandre Mutel |
-| Microsoft.Web.WebView2 | desktop web modules | Microsoft license shipped in the package (`LICENSE.txt`: redistribution with the copyright notice kept) |
-| Microsoft.AspNetCore.Components.WebAssembly 10.x | Lite (Blazor WebAssembly) | MIT, Microsoft |
-
-Web assets of the Lite site and the desktop web modules (CSS, fonts, JavaScript libraries) are **not yet itemised here**; that audit is open.
-
-## 6. License texts
-
-**MIT License, Copyright (c) BizHawk team**
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR
-A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
-ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-**ISC License, Copyright (c) 2004-2025 ares team, Near et al** (the 68000 core under `Windows/NesEmulator/md/`)
-
-Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-**BSD 3-Clause License, Copyright (c) 2021, Aaron Giles** (ymfm; the YM2612 core under `Windows/NesEmulator/sega/` and the YM3812 (AdLib) core under `Windows/NesEmulator/x86/`)
-
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
-
-1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
-
-2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
-
-3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-**BSD 3-Clause License, Copyright (c) 2024-2025, Chunhui He** (tiny386; the i386 core under `Windows/NesEmulator/x86/`)
-
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
-
-* Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
-
-* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
-
-* Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-**MIT License, Copyright (c) 2001-2019 Mitsutaka Okazaki** (the YM2413 core under `Windows/NesEmulator/sega/`, ported from emu2413)
-
-The MIT License (MIT)
-
-Copyright (c) 2001-2019 Mitsutaka Okazaki
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-**MIT License, Copyright (c) 2003-2017 Fabrice Bellard** (the x86 console's PIC, PIT and VGA under `Windows/NesEmulator/x86/`, ported from tiny386, which took them from QEMU)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-The licenses of the packages in section 5 ship inside the packages (their `license` files) and are included with the distributed programs.
+# Third-party notices and provenance; # Third-party notices and provenance
+; 
+BrokenNes is released under the **Digital Lifeform License 1.1** (`LICENSE.txt`). This file lists what in the repository, or in the programs built from it,; or in the programs built from it,
+came from somewhere else, and under which terms. It is the root of the ledgers: each console family keeps its own, more detailed one beside its code; more detailed one beside its code
+(`Windows/NesEmulator/gb/THIRD_PARTY_NOTICES.md`, `Windows/NesEmulator/snes/THIRD_PARTY_NOTICES.md`, `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md`,; `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md`,
+`Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md`).; `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md`).
+The plugin's About window and the Lite site point here.; The plugin's About window and the Lite site point here.
+; 
+**Provenance of changes.** The license asks that modifications be traceable to the digital agent that made them. The record is the git history: commit; **Provenance of changes.** The license asks that modifications be traceable to the digital agent that made them. The record is the git history: commit
+trailers (`Co-Authored-By:`) name the agent, and commit messages say what changed and why. Notices below were written when the code was added; if you; if you
+find a borrowed piece that is not listed, that is a bug in this file: report it.; that is a bug in this file: report it.
+; 
+## Policy for what may be borrowed; ## Policy for what may be borrowed
+; 
+- **MIT, BSD, ISC and zlib** code may be ported or adapted, with its copyright notice kept in the file's ledger entry (and in a header comment for; with its copyright notice kept in the file's ledger entry (and in a header comment for
+  substantial ports) and the license text shipped with the program (section 5).;   substantial ports) and the license text shipped with the program (section 5).
+- **GPL, AGPL, LGPL and non-commercial** code is never copied into BrokenNes. Such programs (Mesen 2, BlastEm, Genesis Plus GX, jgenesis, the Nuked-*; the Nuked-*
+  cores, ...) are used only as **black-box oracles**: the program is run and its output is compared, its source is not read for the code we write.; its source is not read for the code we write.
+  The Digital Lifeform License forbids further restrictions on the work and grants a right to sell, which copyleft and non-commercial terms conflict with.; which copyleft and non-commercial terms conflict with.
+- The exceptions that already exist are listed in section 2 and are meant to be replaced.; - The exceptions that already exist are listed in section 2 and are meant to be replaced.
+- Game ROMs and BIOS/firmware are never committed or shipped. Test ROMs are committed only when their license allows it (section 3).; - Game ROMs and BIOS/firmware are never committed or shipped. Test ROMs are committed only when their license allows it (section 3).
+; 
+## 1. Code derived from other projects (permissive); ## 1. Code derived from other projects (permissive)
+; 
+| What | Where | Source and license |; | What | Where | Source and license |
+|---|---|---|; |---|---|---|
+| Mapper 30 (UNROM 512), ported | `Windows/NesEmulator/mappers/Mapper30.cs` | BizHawk `Mapper030.cs`, MIT, Copyright (c) BizHawk team |; Copyright (c) BizHawk team |
+| Mapper 5 (MMC5), adapted | `Windows/NesEmulator/mappers/Mapper5.cs` | BizHawk ExROM, MIT, Copyright (c) BizHawk team |; Copyright (c) BizHawk team |
+| MMC5 expansion audio, adapted | `Windows/NesEmulator/expansion/MMC5Audio.cs` | BizHawk `MMC5Audio`, MIT, Copyright (c) BizHawk team |; Copyright (c) BizHawk team |
+| Mapper 90 and Mapper 228 logic follows BizHawk's, simplified | `Windows/NesEmulator/mappers/Mapper90.cs`, `Mapper228.cs` | BizHawk, MIT, Copyright (c) BizHawk team |; Copyright (c) BizHawk team |
+| Sega: Motorola 68000 core, ported | `Windows/NesEmulator/md/M68k*.cs`, `IM68kBus.cs` | ares `component/processor/m68000`, ISC, Copyright (c) 2004-2025 ares team, Near et al; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` (the ISC text is in section 6) |; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` (the ISC text is in section 6) |
+| Sega: YM2612 / YM3438 FM chip (Genesis), ported | `Windows/NesEmulator/sega/Ym2612.cs`, `Ym2612.Tables.cs` | ymfm `ym2612` / `ym3438` and the shared FM engine (`ymfm_opn.cpp`, `ymfm_fm.ipp`, `ymfm_fm.h`, `ymfm.h`), commit 81aec25, BSD-3-Clause, Copyright (c) 2021 Aaron Giles; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` section 1c (the BSD text is in section 6) |; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` section 1c (the BSD text is in section 6) |
+| Sega: YM2413 (OPLL) FM core, ported | `Windows/NesEmulator/sega/Ym2413.cs`, `Ym2413Tables.cs`, `Ym2413Resampler.cs` | emu2413 v1.6.2, MIT, Copyright (c) 2001-2019 Mitsutaka Okazaki; details (what was taken, what was changed, what was measured against Nuked-OPLL as a black-box oracle) in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md`, section 1e; the MIT text is in section 6 |; the MIT text is in section 6 |
+| Sega: Z80 core, ported (design, decode tables and program builders; also the Master System / Game Gear / Genesis sound CPU and, in `CPU_Z80`, a NES CPU) | `Windows/NesEmulator/sega/Z80/*.cs` | BizHawk `Z80A` (Alyosha and the BizHawk team), HEAD f9c0100 of the local tree, MIT, Copyright (c) BizHawk team; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` section 1a |; details in `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` section 1a |
+| Sega: SN76489 PSG, Master System / Game Gear / Genesis mappers, VDPs, boards and the Genesis cartridge, sound unit and pads | `Windows/NesEmulator/sega/Sn76489.cs`, `sms/`, `md/` (except the 68000 and YM2612 rows above) | written for this project from public hardware documentation and black-box oracle comparisons; BizHawk's Master System memory map was read as a cross-check (MIT); no third-party source copied. Ledger sections 1c, 1d, 1f, 1h, 2a to 2d of `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` |; 2a to 2d of `Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md` |
+| x86 console: Intel 80386 / 80486 CPU core, ported (no FPU, MMX/SSE, long mode or fast path) | `Windows/NesEmulator/x86/I386*.cs` | tiny386 `i386.c` + `i386ins.def`, commit 2c1205c, BSD-3-Clause, Copyright (c) 2024-2025 Chunhui He; details in `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md` (the BSD text is in section 6) |; details in `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md` (the BSD text is in section 6) |
+| x86 console: 8259 PIC, 8254 PIT, VGA (registers, memory access, graphics picture), ported; the 8x16 VGA font | `Windows/NesEmulator/x86/Pic8259.cs`, `Pit8254.cs`, `Vga.cs`, `VgaFont.cs` | tiny386 `i8259.c`, `i8254.c`, `vga.c` (from QEMU), commit 2c1205c, MIT, Copyright (c) 2003-2017 Fabrice Bellard; the font from tiny386 `vgafont.c` (BSD-3-Clause, as above); details in `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md`; the MIT text is in section 6 |; the MIT text is in section 6 |
+| x86 console: AdLib, Yamaha YM3812 (OPL2) FM chip, ported | `Windows/NesEmulator/x86/Opl2.cs`, `Opl2.Tables.cs` | ymfm `ym3812`, `opl_registers_base<2>` and the shared FM engine (`ymfm_opl.h`, `ymfm_opl.cpp`, `ymfm_fm.h`, `ymfm_fm.ipp`, `ymfm.h`), commit 81aec25, BSD-3-Clause, Copyright (c) 2021 Aaron Giles; details in `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md` section 1 (the BSD text is in section 6, the ymfm entry) |; the ymfm entry) |
+| x86 console: **FreeDOS 1.4** boot disk (a separate program, shipped beside the desktop app, not in the repository) | `x86\freedos\FD14LITE.img` in the desktop build, with `Windows/x86/freedos/README.txt` + `GPL-2.0.txt` and the source packages in `x86\freedos\source\` | The FreeDOS project's LiteUSB image, unmodified; GPL-2.0 (kernel, FreeCOM, most tools) and other free licences per package; aggregated, not linked; complete corresponding source shipped beside it (GPL 3(a): the 69 FreeDOS 1.4 packages, unmodified, `source\SOURCES.txt` lists their SHA-256); details in `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md` |; details in `Windows/NesEmulator/x86/THIRD_PARTY_NOTICES.md` |
+| Sega bridges to and from the NES, the CPU walls, the plugin's Sega chips | `Windows/NesEmulator/mix/` (`APU_SMS`, `APU_SMSFM`, `APU_MD`, `PPU_SMS`, `PPU_MD`, `CPU_Z80`, `CPU_M68K`, `SmsFmSoundOnNes`, `MdSoundOnNes`, `HubReplayer`, ...), `Plugin/` | written for this project; no third-party source (ledger section 2c and 2d of the Sega ledger) |; no third-party source (ledger section 2c and 2d of the Sega ledger) |
+; 
+BizHawk's license statement (`LICENSE` in its repository) says the BizHawk team's own C# is provided under the MIT License, and that other parts of that repository; and that other parts of that repository
+carry their own, sometimes incompatible, licenses. Only files authored by the BizHawk team are used here. The MIT text is reproduced in section 6.; licenses. Only files authored by the BizHawk team are used here. The MIT text is reproduced in section 6.
+; 
+**The user's own projects inside the plugin (not third-party):** the built-in game `Plugin/BrokenNes2.Plugin/Resources/default.nes` (VRUN) and the Test MIDI export template; **The user's own projects inside the plugin (not third-party):** the built-in game `Plugin/BrokenNes2.Plugin/Resources/default.nes` (VRUN) and the Test MIDI export template
+`Resources/musictest.nes` (VRUN's AudioPlayer with padded song arrays, built by `BrokenDev/tools/music/build-musictest.ps1`) are the user's VRUN code compiled by NESFab 1.8;; built by `BrokenDev/tools/music/build-musictest.ps1`) are the user's VRUN code compiled by NESFab 1.8;
+NESFab's own library code compiled into them (`lib/`) is under the Boost Software License 1.0, which asks for no notice in compiled form, and the NESFab compiler (GPL-3.0) is a; and the NESFab compiler (GPL-3.0) is a
+build tool that is neither shipped nor copied. `Plugin/BrokenNes2.Plugin/Music/Vrun/` is a byte-for-byte copy of VRUN's music converter (`engine/audio/converter`), the user's; the user's
+code (`SOURCE.txt` there records its origin and hashes).; code (`SOURCE.txt` there records its origin and hashes).
+; 
+## 2. Code with provenance that needs attention; ## 2. Code with provenance that needs attention
+; 
+| What | Where | Status |; | What | Where | Status |
+|---|---|---|; |---|---|---|
+| **QuickNES-family sound cores** (`APU_QN`, `APU_QLQ`, `APU_QLQ2`, `APU_QLOW`) | `Windows/NesEmulator/apus/APU_QN.cs`, `APU_QLQ.cs`, `APU_QLQ2.cs`, `APU_QLOW.cs` | The headers say "QuickNES-inspired ... informed by publicly known NES APU behavior and the QuickNES approach", while `APU_QN`'s description says "Retrofitted QuickNES APU from C++ to C#", and `readme.txt` credits "QN Cores: QuickNES Emulator". QuickNES is by blargg (Shay Green), distributed under the LGPL (not re-verified in this pass). **Until the cores are compared with the original, treat them as LGPL-derived.** They are "Unstable"-category cores, not defaults. To resolve: compare against the original, then either record the exact derivation here or rewrite them from documentation. |; then either record the exact derivation here or rewrite them from documentation. |
+| **NET-NES** by BotRandomness (the base emulator the project started from; `CPU_FMC`, `APU_FMC` are "loosely based" on it) | `Windows/NesEmulator/cpus/CPU_FMC.cs`, `apus/APU_FMC.cs`; credited in `readme.txt` | License not recorded in this repository: to be confirmed and entered here. |; credited in `readme.txt` | License not recorded in this repository: to be confirmed and entered here. |
+| **BrokenNes Nano** (the web synth): `chip.js` is a JavaScript transcription of `APU_FIX` and `StreamResampler`, so it **inherits the NET-NES question above** (`APU_FIX` was forked from `APU_FMC`) | `Nano/src/chip.js`, shipped in `Nano/dist/nano.js`, `nano.mjs`, `nano-worklet.js` | Everything else in Nano (the instrument layer after the plugin's Direct mode, the presets, the DPCM encoder, the API, the demo, the tests and the C# reference) was written for this project; no third-party source, fonts or samples; the files carry the license header and `Nano/dist/LICENSE.txt`. Settle the NET-NES question before Nano is published outside the repository. Details: `Nano/README.md` ("Licensing") |, the files carry the license header and `Nano/dist/LICENSE.txt`. Settle the NET-NES question before Nano is published outside the repository. Details: `Nano/README.md` ("Licensing") |
+| **Foreign APU project: 27 alternate sound engines ported from old GPL / LGPL / non-commercial / unlicensed emulators** (decision of 2026-11-01: allowed for the sake of art, documented, licensing to be revisited) | see section 2a below (by license) and `docs/projects/foreign-apu-project.md` | **Copied/ported, a deliberate exception to the policy above.** These licenses conflict with the Digital Lifeform License's right to sell; **open question for later** (`docs/KNOWN_GAPS.md` FA-1): keep them as optional / separately distributed cores, re-license with the authors' permission, or replace them with clean-room cores that imitate the sound. Until then, do not ship builds that include them outside personal/art use. |; do not ship builds that include them outside personal/art use. |
+| **S-DSP** ported from blargg's `snes_spc` (LGPL 2.1 or later) | `Windows/NesEmulator/snes/DSP_SFC.cs` | A documented **LGPL exception**, kept for now (decision of 2026-10-03). The SFC ledger plans a from-scratch replacement written without that source; the current core stays as the reference. |; the current core stays as the reference. |
+| SPC700 cycle table (hardware timing data, copied) | `Windows/NesEmulator/snes/SMP_SFC.cs` | From snes9x (non-commercial / GPL lineage); the data is hardware timing. Details in the SFC ledger. |; the data is hardware timing. Details in the SFC ledger. |
+| CGB compatibility palette tables (data) | `Windows/NesEmulator/gb/GbCompatPalettes.cs` | Transcribed from ISSOtm's `gb-bootroms` disassembly; tables only. Details in the GB ledger. |; tables only. Details in the GB ledger. |
+; 
+; 
+### 2a. Foreign APU project cores, by license; by license
+; 
+Every ported file starts with a header naming its source, version, authors and license. The family ledgers (`Windows/NesEmulator/{snes,gb,sega}/THIRD_PARTY_NOTICES.md`) carry one row per core.; authors and license. The family ledgers (`Windows/NesEmulator/{snes,gb,sega}/THIRD_PARTY_NOTICES.md`) carry one row per core.
+; 
+| License class | Cores (id: source @ version, files in `Windows/NesEmulator/`) |; files in `Windows/NesEmulator/`) |
+|---|---|; |---|---|
+| **GPL** (2.0, 2.0+, 3.0+) | ZS15: ZSNES 0.15 via zsnes-asm2c (`snes/Zs15Dsp.cs`); ZS151: ZSNES 1.51 (`snes/Zs151Dsp.cs`); SNDS: SNEmulDS / PocketSPC @79762ad (`snes/SnemulDsDsp.cs`); GNUB: gnuboy @4c2f6c4 (`gb/GnubSound.cs`); VBA: VisualBoyAdvance 1.7.2 @9fbd04f8 (`gb/VbaGbSound.cs`); VBAM: VBA-M @5e3902b4 (`gb/VbamGbSound.cs`); TGBD: TGB Dual (`gb/TgbdApu.cs`); GENS: Gens 2.10 (`sega/GensYm2612.cs`, `GensPsg.cs`); BLST: BlastEm 0.3.1 (`sega/BlastemYm2612.cs`, `BlastemPsg.cs`); FCEU: FCE Ultra 0.96 (`apus/FceuApu.cs`); TUXN: TuxNES 0.75 @f537b4b (`apus/TuxnesSound.cs`); ADLIB_D074F: DOSBox 0.74 dbopl r3582 (`x86/Dosbox074Dbopl.cs`) |; PCEG: retro-go PCE-GO psg.c @05e97e8, GPL-2.0, ducalex and the Hu-Go!/PCE-GO authors, https://github.com/ducalex/retro-go/tree/05e97e8/retro-core/components/pce-go (`apus/PceGoPsg.cs`); ADLIB_D074F: DOSBox 0.74 dbopl r3582 (`x86/Dosbox074Dbopl.cs`) |
+| **LGPL** | OSPC: libOpenSPC @2f68400, with a SNEeSe Clarified Artistic License fragment (`snes/OspcDsp.cs`); ADLIB_D074C: DOSBox 0.74 opl.cpp r3548 (`x86/Dosbox074CompatOpl.cs`); ADLIB_NUK174: Nuked-OPL3 1.7.4 from AdPlug 2.3.1 (`x86/Nuked174Opl.cs`) |; ADLIB_NUK174: Nuked-OPL3 1.7.4 from AdPlug 2.3.1 (`x86/Nuked174Opl.cs`) ; POKY: atari800 0.9.8a pokeysnd.c (PokeySound V2.4), LGPL-2 (Library GPL v2), (C) 1996-1998 Ron Fries + atari800 team, https://sources.debian.org/src/atari800/0.9.8a-2/pokeysnd.c (`apus/AtariPokeySnd.cs`, translator `apus/APU_POKY.cs` is new code) |; ADLIB_NUK174: Nuked-OPL3 1.7.4 from AdPlug 2.3.1 (`x86/Nuked174Opl.cs`) |
+| **Non-commercial** (Snes9x, MAME, PicoDrive, Genesis Plus, DarcNES, Dega licenses) | S9X1: Snes9x 1.43 via snes9x2005 @a79dfe9 (`snes/S9x1Dsp.cs`); S951: Snes9x 1.51 (`snes/S951Dsp.cs`); S916: Snes9x 1.16a (`snes/S916Dsp.cs`); M036: MAME 0.36 (`sega/Mame036Opn2.cs`, `Mame036Sn76496.cs`); M036FM: MAME 0.36 (`sega/Mame036Opl.cs`, `Mame036Ym2413.cs`); PICO: PicoDrive v1.85 (`sega/PicoYm2612.cs`, `PicoSn76496.cs`); GPGX: Genesis Plus GX 1.3.0 @6f65ac3 (`sega/GpgxYm2612.cs`, `GpgxSn76489.cs`); DARC: DarcNES (`apus/DarcNesPsg.cs`, `sega/DarcSmsPsg.cs`); DEGA: Dega 1.16 (`sega/DegaPsg.cs`, `DegaSamples.cs`) |; `DegaSamples.cs`); AY124: MAME 0.124 ay8910.c (pre-0.124u4), MAME license, Ville Hallik, Michael Cuddy, Tatsuyuki Satoh, Fabrice Frances, Nicola Salmoria ([source](https://github.com/mamedev/mame/blob/mame0124/src/emu/sound/ay8910.c); `apus/Mame0124Ay8910.cs`, translator `apus/APU_AY124.cs`) |
+| **Permissive** (no exception needed; listed with the set) | INES: InfoNES, Apache-2.0, (C) 1999-2004 Jay's Factory (`apus/InfoNesApu.cs`); GYOB: GameYob @45599fb, MIT, (C) 2013 Drenn & contributors (`gb/GameYobSound.cs`); NSDS: nesDS v2.0.1 @652c8aa, public domain (README; Mamiya library "PDS"), loopy, FluBBa, Mamiya (`apus/NesdsSound.cs`); MGB: minigb_apu (Peanut-GB @024175d), MIT, (C) Mahyar Koshkouei, based on MiniGBS by Alex Baines (`gb/MinigbApu.cs`) |; based on MiniGBS by Alex Baines (`gb/MinigbApu.cs`) |
+| **No license stated** | VNES: VirtuaNES 0.97 (modified mirror) (`apus/VirtuaNesApu.cs`, `VirtuaNesMmc5.cs`); PNES: PocketNES @9c07f3d (`apus/PocketNesSound.cs`); E055: emu2413-legacy tag 0.55 @2d92835 (`sega/Emu2413v055.cs`); ADLIB_D072: DOSBox 0.72 fmopl.c r2883, MAME-derived (`x86/Dosbox072Opl.cs`) |; MAME-derived (`x86/Dosbox072Opl.cs`) |
+| **No license: leaked source** (the project owner's decision) | NSTC: NESticle 1997 prototype `NESSOUND.CPP` (`apus/NesticleSound.cs`) |; | **No license: leaked source** (the project owner's decision) | NSTC: NESticle 1997 prototype `NESSOUND.CPP` (`apus/NesticleSound.cs`) |
+; 
+## 3. Test material in the repository; ## 3. Test material in the repository
+; 
+| What | Where | License |; | What | Where | License |
+|---|---|---|; |---|---|---|
+| gilyon/snes-tests v1.4 (SNES CPU and SPC700 test ROMs) | `Windows/Resources/snes-test-roms/` (committed, with `LICENSE` and `SOURCE.txt`) | MIT |; with `LICENSE` and `SOURCE.txt`) | MIT |
+| c-sp/game-boy-test-roms v7.0 (a collection with mixed licenses) | `Windows/Resources/gb-test-roms/` (**not committed**, excluded through `.git/info/exclude`) | per-ROM licenses; kept local |; kept local |
+| Sega test material | not in the repository | MIT sets (z80test, SingleStepTests) may be committed later with `LICENSE` and `SOURCE.txt`; unlicensed ROMs and GPL test programs stay local |; unlicensed ROMs and GPL test programs stay local |
+; 
+## 4. Programs used only as references (nothing copied); ## 4. Programs used only as references (nothing copied)
+; 
+Mesen 2 (GPL-3.0), BizHawk's native cores, BlastEm (GPL-3.0), Genesis Plus GX (non-commercial), jgenesis (GPL-3.0), the Nuked-OPN2 / OPLL / MD / PSG cores; the Nuked-OPN2 / OPLL / MD / PSG cores
+(LGPL-2.1 / GPL-2.0), Emulicious. They are run, and their output is compared; none of their source is included. Where a ledger says a source was read, the entry says so.; the entry says so.
+; 
+## 5. Packages that ship with the programs; ## 5. Packages that ship with the programs
+; 
+| Package | Used by | License |; | Package | Used by | License |
+|---|---|---|; |---|---|---|
+| NAudio 2.2.1 (and NAudio.Core, .Wasapi, .WinMM, .Midi) | desktop audio and MIDI | MIT, Copyright 2020 Mark Heath and contributors |; Copyright 2020 Mark Heath and contributors |
+| MeltySynth 2.4.x | SoundFont cores (desktop) | MIT; its license file also carries the notices of C# Synth (Alex Veltsistas, 2014) and TinySoundFont |; 2014) and TinySoundFont |
+| SharpDX 4.2.0 (Direct2D1, Direct3D11, DXGI, D3DCompiler, Mathematics, XInput) | desktop rendering and gamepads | MIT (license at sharpdx.org/License.txt), Copyright Alexandre Mutel |; Copyright Alexandre Mutel |
+| Microsoft.Web.WebView2 | desktop web modules | Microsoft license shipped in the package (`LICENSE.txt`: redistribution with the copyright notice kept) |; | Microsoft.Web.WebView2 | desktop web modules | Microsoft license shipped in the package (`LICENSE.txt`: redistribution with the copyright notice kept) |
+| Microsoft.AspNetCore.Components.WebAssembly 10.x | Lite (Blazor WebAssembly) | MIT, Microsoft |; Microsoft |
+; 
+Web assets of the Lite site and the desktop web modules (CSS, fonts, JavaScript libraries) are **not yet itemised here**; that audit is open.; that audit is open.
+; 
+## 6. License texts; ## 6. License texts
+; 
+**MIT License, Copyright (c) BizHawk team**; Copyright (c) BizHawk team**
+; 
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in; to deal in
+the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of; and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:; subject to the following conditions:
+; 
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.; The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+; 
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR; FITNESS FOR
+A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN; WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+; 
+**ISC License, Copyright (c) 2004-2025 ares team, Near et al** (the 68000 core under `Windows/NesEmulator/md/`); Near et al** (the 68000 core under `Windows/NesEmulator/md/`)
+; 
+Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.; provided that the above copyright notice and this permission notice appear in all copies.
+; 
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR, THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF; ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.; OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+; 
+**BSD 3-Clause License, Copyright (c) 2021, Aaron Giles** (ymfm; the YM2612 core under `Windows/NesEmulator/sega/` and the YM3812 (AdLib) core under `Windows/NesEmulator/x86/`); the YM2612 core under `Windows/NesEmulator/sega/` and the YM3812 (AdLib) core under `Windows/NesEmulator/x86/`)
+; 
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:; are permitted provided that the following conditions are met:
+; 
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.; this list of conditions and the following disclaimer.
+; 
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.; this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+; 
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.; 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+; 
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.; EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+; 
+**BSD 3-Clause License, Copyright (c) 2024-2025, Chunhui He** (tiny386; the i386 core under `Windows/NesEmulator/x86/`); the i386 core under `Windows/NesEmulator/x86/`)
+; 
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:; are permitted provided that the following conditions are met:
+; 
+* Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.; this list of conditions and the following disclaimer.
+; 
+* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.; this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+; 
+* Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.; * Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+; 
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.; EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+; 
+**MIT License, Copyright (c) 2001-2019 Mitsutaka Okazaki** (the YM2413 core under `Windows/NesEmulator/sega/`, ported from emu2413); ported from emu2413)
+; 
+The MIT License (MIT); The MIT License (MIT)
+; 
+Copyright (c) 2001-2019 Mitsutaka Okazaki; Copyright (c) 2001-2019 Mitsutaka Okazaki
+; 
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:; subject to the following conditions:
+; 
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.; The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+; 
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+; 
+**MIT License, Copyright (c) 2003-2017 Fabrice Bellard** (the x86 console's PIC, PIT and VGA under `Windows/NesEmulator/x86/`, ported from tiny386, which took them from QEMU); which took them from QEMU)
+; 
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:; subject to the following conditions:
+; 
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.; The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+; 
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+; 
+The licenses of the packages in section 5 ship inside the packages (their `license` files) and are included with the distributed programs.; The licenses of the packages in section 5 ship inside the packages (their `license` files) and are included with the distributed programs.
