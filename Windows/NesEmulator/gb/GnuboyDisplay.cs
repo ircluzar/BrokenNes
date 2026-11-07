@@ -113,10 +113,10 @@ internal sealed class GnuboyDisplay : IGbForeignView
             while (c > 0)
             {
                 int m = System.Math.Min(8, c);
-                for (int k = 0; k < m; k++) buf[d++] = (byte)(Pat(wndTiles[ti * 2], WV, k) | wndTiles[ti * 2 + 1]);
+                for (int k = 0; k < m; k++, d++) if (d >= 0) buf[d] = (byte)(Pat(wndTiles[ti * 2], WV, k) | wndTiles[ti * 2 + 1]);   // WX -7..-1: gnuboy writes before BUF; those pixels are dropped here
                 c -= 8; ti++;
             }
-            if (!cgb) for (int x = WX; x < 160; x++) buf[x] |= 0x04;   // recolor: the window's own DMG palette slot
+            if (!cgb) for (int x = System.Math.Max(WX, 0); x < 160; x++) buf[x] |= 0x04;   // recolor: the window's own DMG palette slot
         }
         // bg_scan_pri / wnd_scan_pri (CGB, only when sprites are on the line)
         if (cgb && ns > 0)
@@ -127,7 +127,7 @@ internal sealed class GnuboyDisplay : IGbForeignView
             if (WX < 160)
             {
                 int rowW = 0x2000 + wBase; bool wused = false; for (int k = 0; k < 32; k++) wused |= (vram[(rowW + k) & 0x3FFF] & 0x80) != 0;
-                if (wused) for (int x = WX, i = 0; x < 160; x++) pri[x] = (byte)(vram[(rowW + ((x - WX) >> 3) + i) & 0x3FFF] & 128);
+                if (wused) for (int x = System.Math.Max(WX, 0); x < 160; x++) pri[x] = (byte)(vram[(rowW + ((x - WX) >> 3)) & 0x3FFF] & 128);
             }
         }
 
