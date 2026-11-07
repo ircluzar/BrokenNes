@@ -52,6 +52,7 @@ public sealed partial class PcMachine : IX86Bus
         Vga = new Vga(() => PitNow);
         Speaker = new PcSpeaker(this);
         Opl = new Opl2(() => PitNow);
+        Dma = new Dma8237(this);
         Pic.Raise = () => Cpu.RaiseIrq();
         RegisterTraps();
     }
@@ -73,6 +74,7 @@ public sealed partial class PcMachine : IX86Bus
 
     public byte In8(int port)
     {
+        if (Card != null && Card.In(port, false, out int cv)) return (byte)cv;
         switch (port)
         {
             case 0x20: case 0x21: case 0xa0: case 0xa1: return Pic.In(port);
@@ -86,16 +88,18 @@ public sealed partial class PcMachine : IX86Bus
             case 0x70: case 0x71: return Cmos.In(port);
             case 0x92: return (byte)(Kbc.A20 ? 2 : 0);
             case 0x201: return 0xff;                          // no joystick
-            case 0x388: return Opl.ReadStatus();              // AdLib status
+            case 0x388: return AdlibPresent ? Opl.ReadStatus() : (byte)0xff;   // AdLib status (FFh: no AdLib)
             case 0x389: return 0xff;
             case >= 0x3b0 and <= 0x3df: return Vga.In(port);
         }
+        if (Dma.In(port, out byte dv)) return dv;
         if (ExtraIn != null) { int v = ExtraIn(port, 8); if (v >= 0) return (byte)v; }
         return 0xff;
     }
 
     public void Out8(int port, byte v)
     {
+        if (Card != null && Card.Out(port, false, v)) return;
         switch (port)
         {
             case 0x20: case 0x21: case 0xa0: case 0xa1: Pic.Out(port, v); return;
@@ -107,21 +111,24 @@ public sealed partial class PcMachine : IX86Bus
             case 0x92: Kbc.A20 = (v & 2) != 0; if ((v & 1) != 0) CpuResetRequest(); return;
             case 0x80: return;                                // POST code
             case 0xe9: DebugPort.Append((char)v); return;
-            case 0x388: Opl.WriteAddress(v); return;          // AdLib (YM3812) address
-            case 0x389: Opl.WriteData(v); return;             // AdLib data
+            case 0x388: if (AdlibPresent) Opl.WriteAddress(v); return;   // AdLib (YM3812) address
+            case 0x389: if (AdlibPresent) Opl.WriteData(v); return;      // AdLib data
             case BiosTrapPort: BiosTrap(); return;
             case >= 0x3b0 and <= 0x3df: Vga.Out(port, v); return;
         }
+        if (Dma.Out(port, v)) return;
         ExtraOut?.Invoke(port, 8, v);
     }
 
     public ushort In16(int port)
     {
+        if (Card != null && Card.In(port, true, out int cv)) return (ushort)cv;
         if (ExtraIn != null) { int v = ExtraIn(port, 16); if (v >= 0) return (ushort)v; }
         return (ushort)(In8(port) | (In8(port + 1) << 8));
     }
     public void Out16(int port, ushort v)
     {
+        if (Card != null && Card.Out(port, true, v)) return;
         if (ExtraOut != null && ExtraOut(port, 16, v)) return;
         Out8(port, (byte)v); Out8(port + 1, (byte)(v >> 8));
     }
@@ -134,6 +141,21 @@ public sealed partial class PcMachine : IX86Bus
     public readonly PcSpeaker Speaker;
     /// <summary>The AdLib's YM3812 (OPL2) on ports 388h / 389h: its timers always run, its sound only while a host enables it.</summary>
     public readonly Opl2 Opl;
+    /// <summary>The two 8237 DMA controllers (the sound cards' DMA).</summary>
+    public readonly Dma8237 Dma;
+    /// <summary>False when the sound choice has no AdLib (SPEAKER, COVOX, TANDY, GUS): 388h reads FFh and writes go nowhere.</summary>
+    public bool AdlibPresent = true;
+    /// <summary>The sound card in the slot (null: none beyond the PC speaker and the AdLib). Not part of the state's choice: the session picks it.</summary>
+    public IPcSoundCard? Card { get; private set; }
+
+    /// <summary>Puts <paramref name="card"/> in the slot (the old one's DMA handlers dropped). The new card starts cold.</summary>
+    public void SetCard(IPcSoundCard? card)
+    {
+        Dma.ClearCallbacks();
+        Card = card;
+        Dma.SecondOpen = card is not Dosbox072Tandy;
+        card?.Reset();
+    }
 
     private void CpuResetRequest()
     {
@@ -196,6 +218,7 @@ public sealed partial class PcMachine : IX86Bus
 
     private bool RunBatch()
     {
+        Card?.Advance();
         Pit.UpdateIrq();
         Kbc.Pump();
         try
@@ -218,6 +241,9 @@ public sealed partial class PcMachine : IX86Bus
         return true;
     }
 
+    /// <summary>Headless tests: lets <paramref name="instr"/> instructions of machine time pass without running the CPU (as a halted CPU sleeps), the sound card caught up.</summary>
+    public void IdleFor(long instr) { _idle += instr; Card?.Advance(); }
+
     // ================= power =================
 
     /// <summary>Cold boot: clears memory, resets every chip, runs the BIOS's POST and boots (floppy A: first, then the hard disk).</summary>
@@ -229,6 +255,8 @@ public sealed partial class PcMachine : IX86Bus
         Pic.Reset();
         Pit.Reset();
         Opl.Reset();
+        Dma.Reset();
+        Card?.Reset();
         _lastFrame = -1;
         Post();
     }
@@ -241,10 +269,19 @@ public sealed partial class PcMachine : IX86Bus
         using (var w = new BinaryWriter(ms))
         {
             w.Write(0x33384350); // "PC83"
-            w.Write(2);   // 2: the AdLib after the VGA
+            w.Write(3);   // 2: the AdLib after the VGA; 3: the DMA controllers and the sound card after the AdLib
             Cpu.SaveState(w);
             w.Write(_idle); w.Write(_port61); w.Write(_lastFrame); w.Write(InstructionsPerSecond);
             Pic.Save(w); Pit.Save(w); Kbc.Save(w); Cmos.Save(w); Vga.Save(w); Opl.Save(w);
+            Dma.Save(w);
+            w.Write(Card?.Id ?? "");
+            if (Card != null)
+            {
+                var cs = new MemoryStream();
+                using (var cw = new BinaryWriter(cs)) Card.Save(cw);
+                var blob = cs.ToArray();
+                w.Write(blob.Length); w.Write(blob);
+            }
             foreach (var d in new[] { Floppy[0], Floppy[1], Hdd[0], Hdd[1] })
             {
                 w.Write(d != null);
@@ -259,11 +296,23 @@ public sealed partial class PcMachine : IX86Bus
         using var r = new BinaryReader(new MemoryStream(s));
         if (r.ReadInt32() != 0x33384350) throw new InvalidDataException("not an x86 console state");
         int version = r.ReadInt32();
-        if (version is not (1 or 2)) throw new InvalidDataException($"x86 console state version {version} is not known");
+        if (version is not (1 or 2 or 3)) throw new InvalidDataException($"x86 console state version {version} is not known");
         Cpu.LoadState(r);
         _idle = r.ReadInt64(); _port61 = r.ReadByte(); _lastFrame = r.ReadInt64(); InstructionsPerSecond = r.ReadInt64();
         Pic.Load(r); Pit.Load(r); Kbc.Load(r); Cmos.Load(r); Vga.Load(r);
         if (version >= 2) Opl.Load(r); else { Opl.Reset(); Opl.Resync(); }   // a version 1 state (before the AdLib): the chip starts silent
+        if (version >= 3)
+        {
+            Dma.Load(r);
+            Dma.ClearCallbacks();
+            string id = r.ReadString();
+            byte[]? blob = id.Length > 0 ? r.ReadBytes(r.ReadInt32()) : null;
+            // the card saved is restored when the same card is in the slot; another card (or none then) starts cold: a clean re-key, never a guess
+            if (Card != null && blob != null && id == Card.Id) { using var cr = new BinaryReader(new MemoryStream(blob)); Card.Load(cr); }
+            else Card?.Reset();
+        }
+        else { Dma.Reset(); Card?.Reset(); }   // before the DMA controllers / cards
+        Dma.SecondOpen = Card is not Dosbox072Tandy;
         var disks = new DiskImage?[4];
         var old = new[] { Floppy[0], Floppy[1], Hdd[0], Hdd[1] };
         for (int i = 0; i < 4; i++)

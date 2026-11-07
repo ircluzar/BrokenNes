@@ -7,8 +7,10 @@ using System.Linq;
 namespace NesEmulator.X86;
 
 /// <summary>
-/// x86 APU ids: "ADLIB" = the AdLib (YM3812) with ymfm, "ADLIB_&lt;engine&gt;" = the AdLib with another emulator's OPL2 core (<see cref="OplEngines"/>).
-/// The PC speaker is always on (it is part of the PC).
+/// x86 APU ids, one family per sound card (the family label is the card's name): "ADLIB" = the AdLib (YM3812) with ymfm, "ADLIB_&lt;engine&gt;" = the AdLib with
+/// another emulator's OPL2 core (<see cref="OplEngines"/>); "SB_D072" = DOSBox 0.72's Sound Blaster Pro 2 with the AdLib (ymfm) as its FM, "SB_D072_&lt;engine&gt;" the same
+/// with another OPL2 engine; "GUS_D074" = DOSBox 0.74's Gravis Ultrasound; "TANDY_D072" = DOSBox 0.72's Tandy SN76496; "SPEAKER" = the PC speaker alone (no AdLib);
+/// "COVOX" = a Covox Speech Thing on LPT1. The PC speaker is always on (it is part of the PC); only the ADLIB and SB families have the AdLib at 388h.
 /// </summary>
 public static class PcSound
 {
@@ -25,18 +27,62 @@ public static class PcSound
     public static IEnumerable<(string id, string label)> AdlibEngineLabels =>
         Known.Where(k => OplEngines.Factories.ContainsKey(k.id)).Select(k => (k.id, $"ADLIB_{k.id} (AdLib on {k.name} + PC speaker)"));
 
+    public const string SbLabel = "Sound Blaster Pro 2, DOSBox 0.72 (DSP 3.02 at 220h, IRQ 7, DMA 1; 1 ms smeared direct DAC, mixer-pulled DMA)";
+    public const string GusLabel = "Gravis Ultrasound, DOSBox 0.74 (240h, IRQ 5, DMA 3, 1 MB; mono, AutoAmp that never recovers)";
+    public const string TandyLabel = "Tandy SN76496, DOSBox 0.72 (C0h; 15-bit periodic noise, unipolar output, mutes 5 s after the last write)";
+    public const string CovoxLabel = "Covox Speech Thing on LPT1 (378h, 8-bit DAC, sample-and-hold)";
+
+    /// <summary>The non-AdLib cards on the menu: (id, label, family).</summary>
+    public static IEnumerable<(string id, string label, string family)> CardOptions()
+    {
+        yield return ("SB_D072", $"SB_D072 ({SbLabel} + AdLib ymfm + PC speaker)", "Sound Blaster");
+        foreach (var k in Known.Where(k => OplEngines.Factories.ContainsKey(k.id))) yield return ("SB_D072_" + k.id, $"SB_D072_{k.id} (Sound Blaster Pro 2, DOSBox 0.72, its FM on {k.name} + PC speaker)", "Sound Blaster");
+        yield return ("GUS_D074", $"GUS_D074 ({GusLabel} + PC speaker)", "Gravis Ultrasound");
+        yield return ("TANDY_D072", $"TANDY_D072 ({TandyLabel} + PC speaker)", "Tandy");
+        yield return ("SPEAKER", "SPEAKER (the PC speaker only: no AdLib)", "PC speaker");
+        yield return ("COVOX", $"COVOX ({CovoxLabel} + PC speaker)", "Covox");
+    }
+
     public static string Describe(string apu)
     {
-        if (apu.Equals("ADLIB", StringComparison.OrdinalIgnoreCase)) return "AdLib YM3812 OPL2, ymfm + PC speaker";
+        string u = apu.ToUpperInvariant();
+        if (u == "ADLIB") return "AdLib YM3812 OPL2, ymfm + PC speaker";
+        if (u == "SB_D072") return SbLabel + " + AdLib ymfm + PC speaker";
+        if (u.StartsWith("SB_D072_")) { var e = Known.FirstOrDefault(x => x.id == u[8..]); return e.id != null ? $"{SbLabel}, FM on {e.name} + PC speaker" : apu; }
+        if (u == "GUS_D074") return GusLabel + " + PC speaker";
+        if (u == "TANDY_D072") return TandyLabel + " + PC speaker";
+        if (u == "SPEAKER") return "PC speaker only";
+        if (u == "COVOX") return CovoxLabel + " + PC speaker";
         var k = Known.FirstOrDefault(x => ("ADLIB_" + x.id).Equals(apu, StringComparison.OrdinalIgnoreCase));
         return k.id != null ? $"AdLib on {k.name} + PC speaker" : apu;
     }
 
-    /// <summary>Puts the card and engine of <paramref name="apu"/> in the machine (live: held notes are re-keyed). False for an id it does not know.</summary>
+    /// <summary>Puts the card and engine of <paramref name="apu"/> in the machine (live: held notes are re-keyed). False for an id it does not know.
+    /// A different card starts cold (its state is not carried across a swap); the same card stays as it is.</summary>
     public static bool Apply(PcMachine m, string apu)
     {
-        if (string.IsNullOrEmpty(apu) || apu.Equals("ADLIB", StringComparison.OrdinalIgnoreCase)) { m.Opl.Engine = null; return true; }
-        if (apu.StartsWith("ADLIB_", StringComparison.OrdinalIgnoreCase) && OplEngines.Factories.TryGetValue(apu[6..], out var f)) { m.Opl.Engine = f(); return true; }
-        return false;
+        string u = string.IsNullOrEmpty(apu) ? "ADLIB" : apu.ToUpperInvariant();
+        string card; string? engine;
+        if (u == "ADLIB") { card = ""; engine = null; }
+        else if (u.StartsWith("ADLIB_")) { card = ""; engine = u[6..]; }
+        else if (u == "SB_D072") { card = "SB_D072"; engine = null; }
+        else if (u.StartsWith("SB_D072_")) { card = "SB_D072"; engine = u[8..]; }
+        else if (u is "GUS_D074" or "TANDY_D072" or "COVOX" or "SPEAKER") { card = u == "SPEAKER" ? "" : u; engine = null; }
+        else return false;
+        Func<IOplEngine>? f = null;
+        if (engine != null && !OplEngines.Factories.TryGetValue(engine, out f)) return false;
+        bool adlib = u.StartsWith("ADLIB") || card == "SB_D072";
+        m.Opl.Engine = f?.Invoke();
+        m.AdlibPresent = adlib;
+        if ((m.Card?.Id ?? "") != card)
+            m.SetCard(card switch
+            {
+                "SB_D072" => new Dosbox072SoundBlaster(m),
+                "GUS_D074" => new Dosbox074Gus(m),
+                "TANDY_D072" => new Dosbox072Tandy(m),
+                "COVOX" => new CovoxCard(m),
+                _ => null,
+            });
+        return true;
     }
 }

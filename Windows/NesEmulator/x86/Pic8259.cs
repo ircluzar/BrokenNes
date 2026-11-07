@@ -24,6 +24,8 @@ public sealed class Pic8259
 
     public byte MasterImr => _p[0].Imr;
     public byte SlaveImr => _p[1].Imr;
+    /// <summary>The master's request register (tests: which IRQs a device raised).</summary>
+    public byte MasterIrr => _p[0].Irr;
 
     private static void SetIrq1(Chip s, int irq, int level)
     {

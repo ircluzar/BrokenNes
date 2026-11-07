@@ -125,6 +125,7 @@ public sealed class PcSession : IConsoleSession
         _m.RunFrame();
         _m.Speaker.CatchUp();   // the PC speaker's and the AdLib's samples up to the end of this frame
         _m.Opl.CatchUp();
+        _m.Card?.Advance();
         CopyFrame();
     }
 
@@ -137,18 +138,19 @@ public sealed class PcSession : IConsoleSession
         _w = w; _h = h;
     }
 
-    public void Reset() { _m.PowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _powered = true; _pad = PadButtons.None; }
+    public void Reset() { _m.PowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); _powered = true; _pad = PadButtons.None; }
     public uint[] Frame => _frame;
     public int FrameWidth => _w;
     public int FrameHeight => _h;
     public int DisplayWidth => _h * 4 / 3;   // a 4:3 monitor (720 x 400 text and 640 x 400 mode 13h are shown 4:3 too)
     public int SampleRate => Rate;
 
-    /// <summary>The PC speaker with the AdLib added on top (both drawn up to the end of the last frame on the same 44.1 kHz timeline).</summary>
+    /// <summary>The PC speaker with the AdLib and the sound card (if any) added on top (both drawn up to the end of the last frame on the same 44.1 kHz timeline).</summary>
     public int ReadSamples(short[] buffer)
     {
         int n = _m.Speaker.Read(buffer);
         _m.Opl.MixInto(buffer, n);
+        _m.Card?.MixInto(buffer, n);
         return n;
     }
 
@@ -169,7 +171,7 @@ public sealed class PcSession : IConsoleSession
     {
         if (data.Length != _original.Length) return;
         InsertDisk((byte[])data.Clone());
-        if (_powered) { _m.PowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); }
+        if (_powered) { _m.PowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); }
     }
 
     /// <summary>Puts a file on the disk before the machine starts (BrokenDev's x86 runner: a test script such as TEST.TXT beside the program). Refused once the machine runs.</summary>
@@ -207,7 +209,7 @@ public sealed class PcSession : IConsoleSession
     {
         byte[] payload = ConsoleStateFile.Unwrap(state, Console, GameId, Title, StateUnits());
         var before = _m.SaveState();
-        try { _m.LoadState(payload); _m.Speaker.Restart(); _m.Opl.Restart(); _powered = true; _exported = null; _pad = PadButtons.None; }
+        try { _m.LoadState(payload); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); _powered = true; _exported = null; _pad = PadButtons.None; }
         catch (Exception e) when (e is not InvalidDataException) { _m.LoadState(before); throw new InvalidDataException("the x86 state is damaged: " + e.Message); }
     }
 

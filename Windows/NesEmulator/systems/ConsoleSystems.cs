@@ -757,6 +757,7 @@ public static class CoreCatalog
                         // the sound card and its engine (the APU harvest): AdLib with ymfm (stock) or another emulator's OPL2 core; the PC speaker is always there
                         list.Add(new("ADLIB", "ADLIB (AdLib YM3812 OPL2, ymfm + PC speaker)", "AdLib"));
                         foreach (var (id, label) in NesEmulator.X86.PcSound.AdlibEngineLabels) list.Add(new("ADLIB_" + id, label, "AdLib"));
+                        foreach (var (id, label, family) in NesEmulator.X86.PcSound.CardOptions()) list.Add(new(id, label, family));
                         break;
                 }
                 break;
