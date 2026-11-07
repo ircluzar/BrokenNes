@@ -568,11 +568,7 @@ public class PPU_FCEU : IPPU, IPpuFrameClock
 
     public void SetState(object state)
     {
-        PpuSharedState? s = state as PpuSharedState;
-        if (s == null && state is System.Text.Json.JsonElement je)
-        {
-            try { s = System.Text.Json.JsonSerializer.Deserialize<PpuSharedState>(je.GetRawText(), new System.Text.Json.JsonSerializerOptions { IncludeFields = true }); } catch { }
-        }
+        PpuSharedState? s = HarvestPpuState.From(state);
         if (s == null) return;
         if (s.vram?.Length == 0x800) ntaram = (byte[])s.vram.Clone();
         if (s.oam?.Length == 0x100) spram = (byte[])s.oam.Clone();

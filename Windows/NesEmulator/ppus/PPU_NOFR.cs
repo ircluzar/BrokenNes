@@ -404,11 +404,7 @@ public class PPU_NOFR : IPPU, IPpuFrameClock
 
     public void SetState(object state)
     {
-        PpuSharedState? s = state as PpuSharedState;
-        if (s == null && state is System.Text.Json.JsonElement je)
-        {
-            try { s = System.Text.Json.JsonSerializer.Deserialize<PpuSharedState>(je.GetRawText(), new System.Text.Json.JsonSerializerOptions { IncludeFields = true }); } catch { }
-        }
+        PpuSharedState? s = HarvestPpuState.From(state);
         if (s == null) return;
         if (s.vram?.Length == 2048) vram = (byte[])s.vram.Clone();
         if (s.palette?.Length == 32) palette = (byte[])s.palette.Clone();
