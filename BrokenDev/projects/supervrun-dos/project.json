@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "id": "supervrun-dos",
+  "title": "Super VRUN for MS-DOS (P2)",
+  "family": "supervrun",
+  "kind": "dos",
+  "console": "x86",
+  "description": "The fresh DOS port of Super VRUN (BrokenNes docs/projects/next-pool-plans.md, P2): the SNES game's C (logic/, a copy of SuperVRUN_dev) on a software SNES PPU (platform/dos), VGA 320x240 with the SNES colours, OPL2 music and effects converted from the .it modules, PC speaker without an FM chip, SVRUN.SAV, 2P on two joysticks. Built with Open Watcom 2.0 + DOS/32A + NASM (C:\\BrokenNes-tools\\dos) in its live workspace PROJECTS/SuperVRUN_DOS_dev (its own git, remote T:\\BrokenDev\\Projects\\SuperVRUN_DOS.git).",
+  "source": {
+    "folder": "{live:SuperVRUN_DOS_dev}"
+  },
+  "requires": {
+    "tools": [
+      "ps5"
+    ],
+    "projects": [],
+    "inputs": [],
+    "toolchain": [
+      "Open Watcom 2.0 (wcc386, wlink, DOS/32A), NASM 3.02, Python 3: C:\\BrokenNes-tools\\dos (env.ps1)",
+      "the SNES tree SuperVRUN_dev (read only: gfx and audio), build.ps1's -Snes default (PROJECTS\\SuperVRUN_dev\\snes-dev\\supervrun)"
+    ]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "ps5",
+        "cwd": "{src}",
+        "file": "{src}/build.ps1",
+        "args": [],
+        "timeoutSec": 600,
+        "note": "build.ps1: gen_assets.py (gfx -> NASM), oplconv.py (music), sfxconv.py (effects), wcc386 per file, wlink with DOS/32A bound in: build/SVRUN.EXE + SVRUN.MAP."
+      }
+    ],
+    "outputs": [
+      {
+        "id": "rom",
+        "path": "{src}/build/SVRUN.EXE",
+        "publishAs": "SVRUN.EXE",
+        "kind": "x86"
+      },
+      {
+        "id": "map",
+        "path": "{src}/build/SVRUN.MAP",
+        "publishAs": "SVRUN.MAP",
+        "kind": "map"
+      }
+    ]
+  },
+  "run": {
+    "console": "x86",
+    "note": "DOSBox-X: tests/play_dosbox.ps1 (a private config in C:\\BrokenNes-work). BrokenNes desktop (brokendev.ps1 run supervrun-dos): open SVRUN.EXE as the x86 PC (it is put on the FreeDOS disk). Keys: arrows; Space/W = R (jump); Z/K = B, X/L = A, A/J = Y, S/I = X (fire down/right/left/up); Q/left Shift = L; Enter = Start; Tab/Backspace = Select; Esc quits. Joystick A = P1, B = P2 (button 1 = A, 2 = Y)."
+  },
+  "verify": {
+    "timeoutSec": 900,
+    "x86": {
+      "ips": 130000000
+    },
+    "scenarios": [
+      {
+        "id": "play",
+        "frames": 1500,
+        "input": "500:Start,504:,800:Start,804:,1100:Right,1400:",
+        "checkpoints": [
+          200,
+          400,
+          700,
+          1000,
+          1500
+        ],
+        "expect": {
+          "minDistinctColors": 16,
+          "pictureDiffers": [
+            400,
+            700
+          ],
+          "audio": {
+            "minPeak": 0.05
+          },
+          "dos": {
+            "files": [
+              {
+                "path": "SVRUN.EXE"
+              }
+            ],
+            "teletype": {
+              "notContains": [
+                "Bad command",
+                "not found"
+              ]
+            }
+          }
+        },
+        "why": "FreeDOS boots the game, the title plays music, Start (NEW GAME 1P) shows the intro, Start skips it, the first room is drawn and Right walks the player (1000 vs 1500 differ only in the player: kept as a picture, not a check)"
+      }
+    ],
+    "note": "The release build on the x86 PC at 130M instr/s (the speed the port is measured at). The SNES comparison stays in the game repo's tests/run_x86.ps1 (the SV_DOS_TEST build with TEST.TXT)."
+  },
+  "knownIssues": [
+    "x86 console at 130M instr/s: the title (sub screen + colour cache path) and room loads skip many pictures; rooms are fine (~85% idle)",
+    "pictures that change mid-frame from the main code (not HDMA) are drawn as they stand at line 0"
+  ]
+}

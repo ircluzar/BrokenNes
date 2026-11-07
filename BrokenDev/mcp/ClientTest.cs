@@ -365,6 +365,17 @@ internal static class ClientTest
             Check("open_project_vrun_nes", S(proj["console"]) == "nes" && L(proj["symbols"]) > 100 && L(vs["colours"]) > 1 && L(vrr["framesRun"]) == 120, $"{S(proj["rom"])}: {L(proj["symbols"])} symbols, 120 frames, {L(vs["colours"])} colours");
             await Call("close_session", new { session = hv });
         }
+        // a DOS game (kind dos): the x86 PC boots the built .exe on a FreeDOS disk (no debugger on the x86: frames, input, picture and sound)
+        var dosProj = await Call("open_project", new { project = "vrun-voc-dos", call_stack = false });
+        if (dosProj.IsError) Check("open_project_vrun_voc_dos", dosProj.Text.Contains("build") || dosProj.Text.Contains("FreeDOS"), "not built here (or no FreeDOS disk): " + dosProj.Text);
+        else
+        {
+            string hd = S(dosProj["session"]);
+            var drr = await Call("run", new { session = hd, frames = 300 });
+            var ds = await Call("screenshot", new { session = hd });
+            Check("open_project_vrun_voc_dos", S(dosProj["console"]) == "x86" && L(drr["framesRun"]) == 300 && L(ds["colours"]) > 2, $"{S(dosProj["rom"])}: 300 frames, {L(ds["colours"])} colours");
+            await Call("close_session", new { session = hd });
+        }
         foreach (var x in new[] { h1, hp, hs, hw, hg, hm }) await Call("close_session", new { session = x }, log: false);
         await MovieSuite(dir, sms);
     }

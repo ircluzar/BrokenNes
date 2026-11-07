@@ -201,6 +201,9 @@ function Invoke-BdProjectRun {
     if ([string]$m.console -eq 'wms') {
         throw "the BrokenNes desktop app is not built (set BROKENDEV_APP, or run: brokendev.ps1 build-app). A WideMess game opens in the desktop app; without it, Workshop --wms-run / --wms-shot run it headless."
     }
+    if ([string]$m.console -eq 'x86') {
+        throw "the BrokenNes desktop app is not built (set BROKENDEV_APP, or run: brokendev.ps1 build-app). A DOS game opens in the desktop app's x86 PC; without it, the MCP server's open_project runs it headless."
+    }
     if ([string]$m.console -in 'gb', 'gbc') {
         # (the Workshop's own Game Boy player keeps its saves in the player's %APPDATA%\BrokenNes\GbSaves: not a fallback BrokenDev takes)
         throw "the BrokenNes desktop app is not built (set BROKENDEV_APP, or run: brokendev.ps1 build-app). A Game Boy game opens in the desktop app."

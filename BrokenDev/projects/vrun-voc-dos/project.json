@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "id": "vrun-voc-dos",
+  "title": "VRUN: Vaults of Obsolete Code for MS-DOS",
+  "family": "vrun",
+  "kind": "dos",
+  "console": "x86",
+  "description": "The DOS port of the Game Boy game (project vrun-voc): the same physics and maps (src/phys, src/maps), a VGA picture, OPL2 music and effects (the effects on the PC speaker without an FM chip). Built with Open Watcom 2.0 + DOS/32A (C:\\BrokenNes-tools\\dos, env.ps1) in its live workspace PROJECTS/VRUN_VOC_DOS_dev (its own git, remote brokendev). It runs on BrokenNes's x86 PC: the .exe boots on a FreeDOS disk made for it.",
+  "source": {
+    "folder": "{live:VRUN_VOC_DOS_dev}"
+  },
+  "requires": {
+    "tools": [
+      "ps5"
+    ],
+    "projects": [],
+    "inputs": [],
+    "toolchain": [
+      "Open Watcom 2.0 (wcl386, DOS/32A) in C:\\BrokenNes-tools\\dos (env.ps1); not pinned in toolchains.json"
+    ]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "ps5",
+        "cwd": "{src}",
+        "file": "{src}/build.ps1",
+        "args": [],
+        "timeoutSec": 900,
+        "note": "build.ps1 -Target game: wcl386 with DOS/32A bound in -> build/VRUNVOC.EXE."
+      }
+    ],
+    "outputs": [
+      {
+        "id": "rom",
+        "path": "{src}/build/VRUNVOC.EXE",
+        "publishAs": "VRUNVOC.EXE",
+        "kind": "x86"
+      }
+    ]
+  },
+  "run": {
+    "console": "x86",
+    "note": "BrokenNes desktop: open VRUNVOC.EXE as the x86 PC. Pad on the x86: the arrows, A = Ctrl, B = Alt, Start = Enter (PcSession.KeyFor); the game reads Ctrl / Space as A, Alt as B, Enter as Start."
+  },
+  "verify": {
+    "timeoutSec": 900,
+    "x86": {
+      "ips": 130000000
+    },
+    "scenarios": [
+      {
+        "id": "play",
+        "frames": 1200,
+        "input": "400:A,404:,700:Right,900:",
+        "checkpoints": [
+          150,
+          300,
+          500,
+          800,
+          1200
+        ],
+        "expect": {
+          "minDistinctColors": 5,
+          "pictureDiffers": [
+            300,
+            500
+          ],
+          "audio": {
+            "minPeak": 0.05
+          },
+          "dos": {
+            "files": [
+              {
+                "path": "VRUNVOC.EXE"
+              }
+            ],
+            "teletype": {
+              "notContains": [
+                "Bad command",
+                "not found"
+              ]
+            }
+          }
+        },
+        "why": "FreeDOS boots the game, the title plays music, A on the title starts RUN and the first map is drawn"
+      }
+    ]
+  },
+  "knownIssues": [
+    "No symbols: the Watcom map is not read by BrokenDev, so expect.memory needs physical addresses (domain mem).",
+    "No other emulator in BrokenDev runs DOS (DOSBox-X is the game repo's own tests/), so there is no compat section."
+  ]
+}

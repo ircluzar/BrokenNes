@@ -23,6 +23,8 @@ The app shows nothing of BrokenDev unless it is switched on: set the environment
 | `vrun-ctw-sms` | VRUN CTW on the Master System (S2; today the S0 skeleton), `PROJECTS\VRUN_CTW_SMS_dev` | Master System | SDCC 4.6.0 + devkitSMS (pinned) |
 | `supervrun-md` | Super VRUN on the Genesis (S3; today the S0 skeleton), `PROJECTS\SuperVRUN_MD_dev` | Genesis / Mega Drive | SGDK 2.11 (pinned) |
 | `vrun-voc` | VRUN: Vaults of Obsolete Code, today its V2 tutorial (`docs/projects/vrun-voc-plan.md`), in its live workspace `PROJECTS\VRUN_VOC_dev` | Game Boy (dual mode: console `gbc`, also run as `gb`), MBC5 1 MB + 32 KB battery RAM | GBDK-2020 4.5.0 (pinned, `toolchains.json`), the workspace's `build.ps1` |
+| `vrun-voc-dos` | VRUN: Vaults of Obsolete Code for MS-DOS, `PROJECTS\VRUN_VOC_DOS_dev` | x86 PC (DOS) | Open Watcom 2.0 + DOS/32A (`C:\BrokenNes-tools\dos`), the workspace's `build.ps1` |
+| `supervrun-dos` | Super VRUN for MS-DOS (P2), `PROJECTS\SuperVRUN_DOS_dev` | x86 PC (DOS) | Open Watcom 2.0 + DOS/32A + NASM (`C:\BrokenNes-tools\dos`), the workspace's `build.ps1` |
 
 Each project is a manifest, `projects/<id>/project.json`: where its source comes from (an archive and a path), the tools it
 needs, the build steps and outputs, how to verify it on BrokenNes, and what is known to be wrong with it. The scripts in this
@@ -221,6 +223,19 @@ its `expect.wms`; `compat` has BrokenNes's column only. The guide: `docs/project
   the first drift with both sides opened (T3 profiles); `brokendev.ps1 timeflow recheck <port>` rebuilds the port and replays its recorded
   sessions: unchanged, or the first altered frame. Workshop `--timeflow compare|recheck`, MCP `timeflow_compare`, `timeflow_recheck`. The
   mapping's shape and the tests (`tests/xcompare.ps1`) are in the plan's "S0 as built".
+
+## DOS games (the x86 PC, `vrun-voc-dos`, `supervrun-dos`)
+
+- **Projects** have kind `dos` and console `x86`; the build's `rom` output is the game's `.exe` (or `.com`, or a disk image). Workshop's runner
+  boots it on BrokenNes's x86 PC the way the desktop app opens it: a FreeDOS disk made for the program (`PcDisks.ForProgram`; FreeDOS from
+  `BROKENNES_FREEDOS`, the app's `x86reedos`, or `C:\BrokenNes-tools\dosreedos`). The pad is the keyboard (`PcSession.KeyFor`: arrows,
+  A = Ctrl, B = Alt, X = Space, Y = Esc, L = Tab, R = right Shift, Start = Enter, Select = Backspace).
+- **verify**: `verify.x86.ips` sets the machine's speed (instructions per emulated second; the app's default is 60M). A scenario's
+  `dosFiles` (`{ "TEST.TXT": "text" }`) go on the disk before the first frame; `expect.dos` checks after the last one: `files`
+  (`path`, `exists`, `contains`, `notContains`: a save, a status file), `debugPort` (port E9h) and `teletype` (what the BIOS printed) with
+  `contains` / `notContains`. `expect.memory` reads physical memory by `addr` (domain `mem`); there are no symbols (the Watcom map is not read).
+- No checks, profiler, debugger or compat column on the x86; the MCP server's `open_project` runs the build headless (frames, input,
+  picture, sound) and `brokendev.ps1 run` opens it in the desktop app.
 
 ## The Game Boy (GBDK-2020, `vrun-voc`)
 

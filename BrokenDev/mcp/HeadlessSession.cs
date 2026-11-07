@@ -87,8 +87,10 @@ internal sealed partial class HeadlessSession : Session
         if (!File.Exists(path)) throw new ToolError($"no ROM at '{path}'");
         byte[] raw = File.ReadAllBytes(path);
         byte[] rom = RomDetect.Unwrap(raw, path, out string inner);
+        // a DOS program (.exe / .com) or a disk image (.img / .ima) is an x86 PC game: the PC is offered here as on the desktop (it boots on the FreeDOS disk PcDisks finds)
+        if (Path.GetExtension(path).ToLowerInvariant() is ".exe" or ".com" or ".img" or ".ima") Consoles.X86Enabled = true;
         ConsoleKind? want = string.IsNullOrWhiteSpace(consoleKey) ? null : ParseConsole(consoleKey!);
-        var c = want ?? RomDetect.Detect(rom, inner) ?? throw new ToolError($"{Path.GetFileName(path)}: not a ROM BrokenNes recognises (give console: nes, snes, wms, gb, gbc, sms, gg, md)");
+        var c = want ?? RomDetect.Detect(rom, inner) ?? throw new ToolError($"{Path.GetFileName(path)}: not a ROM BrokenNes recognises (give console: nes, snes, wms, gb, gbc, sms, gg, md, x86)");
         var h = new HeadlessSession(id, c, Path.GetFileName(inner), Path.GetFullPath(path)) { romFile = raw, romFileName = Path.GetFileName(path) };
         try
         {
@@ -144,8 +146,9 @@ internal sealed partial class HeadlessSession : Session
     public static ConsoleKind ParseConsole(string key)
     {
         string k = key.Trim().ToLowerInvariant();
-        if (k is not ("nes" or "famicom" or "snes" or "sfc" or "gb" or "gameboy" or "gbc" or "gameboycolor" or "sms" or "mastersystem" or "gg" or "gamegear" or "md" or "genesis" or "megadrive" or "wms" or "widemess"))
-            throw new ToolError($"unknown console '{key}' (nes, snes, wms, gb, gbc, sms, gg, md)");
+        if (k is not ("nes" or "famicom" or "snes" or "sfc" or "gb" or "gameboy" or "gbc" or "gameboycolor" or "sms" or "mastersystem" or "gg" or "gamegear" or "md" or "genesis" or "megadrive" or "wms" or "widemess" or "x86" or "pc" or "dos"))
+            throw new ToolError($"unknown console '{key}' (nes, snes, wms, gb, gbc, sms, gg, md, x86)");
+        if (k is "x86" or "pc" or "dos") Consoles.X86Enabled = true;   // a DOS game (BrokenDev kind dos): the x86 PC, which the desktop app alone offers by default
         return k is "nes" or "famicom" ? ConsoleKind.Nes : Consoles.FromKey(k);
     }
 

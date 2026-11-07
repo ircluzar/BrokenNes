@@ -167,6 +167,17 @@ public sealed class PcSession : IConsoleSession
         if (_powered) { _m.PowerOn(); _m.Speaker.Restart(); _m.Opl.Restart(); }
     }
 
+    /// <summary>Puts a file on the disk before the machine starts (BrokenDev's x86 runner: a test script such as TEST.TXT beside the program). Refused once the machine runs.</summary>
+    public void PutFile(string dosPath, byte[] data)
+    {
+        if (_powered) throw new InvalidOperationException("files go on the x86 disk before the first frame");
+        new FatImage(Disk.Data).WriteFile(dosPath, data);
+        _exported = null;
+    }
+
+    /// <summary>A file on the disk as it is now (what the program wrote: a save, a status file), or null when there is none.</summary>
+    public byte[]? ReadFile(string dosPath) => new FatImage(Disk.Data).ReadFile(dosPath);
+
     public bool TrySwapCore(CoreSlot slot, string id) => ConsoleSessions.Offers(ConsoleKind.Pc, slot, id);
     public string SwapRefusal(CoreSlot slot, string id) => $"the x86 PC has one {slot} core (it is an isolated console: no other console's chips)";
 

@@ -185,10 +185,10 @@ internal static partial class BrokenDevCli
                 Console.Error.WriteLine($"spec line {lineNo}: {ex.Message}: {raw}"); return 2;
             }
         }
-        if (console is not ("nes" or "snes" or "wms" or "gb" or "gbc" or "sms" or "gg" or "md") || rom.Length == 0 || outDir.Length == 0 || frames <= 0) { Console.Error.WriteLine("spec needs console nes|snes|wms|gb|gbc|sms|gg|md, rom, out and frames > 0"); return 2; }
+        if (console is not ("nes" or "snes" or "wms" or "gb" or "gbc" or "sms" or "gg" or "md" or "x86") || rom.Length == 0 || outDir.Length == 0 || frames <= 0) { Console.Error.WriteLine("spec needs console nes|snes|wms|gb|gbc|sms|gg|md|x86, rom, out and frames > 0"); return 2; }
         if (!File.Exists(rom)) { Console.Error.WriteLine($"ROM not found: {rom}"); return 2; }
         foreach (var r in reads)
-            if ((console == "nes" && r.Domain != "ram") || (console is "snes" or "wms" && r.Domain != "wram") || (IsGameBoyKey(console) && r.Domain is not ("wram" or "hram" or "cartram")) || (IsSegaKey(console) && r.Domain != "wram"))
+            if ((console == "nes" && r.Domain != "ram") || (console is "snes" or "wms" && r.Domain != "wram") || (IsGameBoyKey(console) && r.Domain is not ("wram" or "hram" or "cartram")) || (IsSegaKey(console) && r.Domain != "wram") || (IsX86Key(console) && r.Domain != "mem"))
             { Console.Error.WriteLine($"read {r.Name}: domain {r.Domain} does not belong to the {console}"); return 2; }
         steps = steps.OrderBy(s => s.Frame).ToList();
         Directory.CreateDirectory(outDir);
@@ -401,6 +401,7 @@ internal static partial class BrokenDevCli
                     pokes.Add((p.GetProperty("frame").GetInt32(), addr, (byte)p.GetProperty("value").GetInt32()));
                 }
             if (pokes.Count > 0 && runner is not NesRunner) throw new ArgumentException("pokes work on a NES scenario only");
+            X86Before(runner, sc);   // an x86 scenario's dosFiles go on the disk before the first frame (BrokenDevCli.X86.cs)
             port = ScenarioPort(runner, res);   // the debug port listens (D7: BrokenDevCli.Port.cs); it never changes the game
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int f = 0; f < frames; f++)
@@ -431,6 +432,7 @@ internal static partial class BrokenDevCli
             res.Colors = res.Checkpoints.Count > 0 ? res.Checkpoints[^1].Colors : 0;
             if (runner is SnesRunner { WideMessSession: { } wmsEnd }) res.Wms = WideMessCli.Measure(wmsEnd);   // after the last picture: measuring redraws
             if (res.Result == "ok") ReadMemoryExpectations(res, runner, expect, symbols);
+            if (res.Result == "ok") X86End(res, runner, expect);
             if (keepBattery) res.BatteryOut = runner.ExportBattery();
         }
         catch (Exception ex2) when (ex2 is ArgumentException or NotSupportedException or InvalidDataException or Cartridge.UnsupportedMapperException)
@@ -738,8 +740,10 @@ internal static partial class BrokenDevCli
         private readonly short[] buf = new short[65536];
         public string Cores { get; }
         public string Description => s.Description;
-        public bool Crashed => false;
-        public string CrashInfo => "";
+        public bool Crashed => s is NesEmulator.X86.PcSession { Machine.Stopped: not null };
+        public string CrashInfo => s is NesEmulator.X86.PcSession pcs ? "x86 stopped: " + pcs.Machine.Stopped : "";
+        /// <summary>The x86 PC's session (an "x86" project, a DOS game), for the runner's disk files; null on the other consoles.</summary>
+        public NesEmulator.X86.PcSession? Pc => s as NesEmulator.X86.PcSession;
         public int Width => s.FrameWidth;
         public int Height => s.FrameHeight;
 
@@ -762,9 +766,12 @@ internal static partial class BrokenDevCli
                 "wms" => ConsoleKind.WideMess, "gb" => ConsoleKind.GameBoy, "gbc" => ConsoleKind.GameBoyColor,
                 // the Sega VRUN ports (S0): the Master System, Game Gear and Genesis with their menus' defaults
                 "sms" => ConsoleKind.MasterSystem, "gg" => ConsoleKind.GameGear, "md" => ConsoleKind.Genesis,
+                // a DOS game (kind dos): the x86 PC, a .exe / .com put on a FreeDOS boot disk made for it, or a disk image
+                "x86" => ConsoleKind.Pc,
                 _ => ConsoleKind.Snes,
             };
             if (console == ConsoleKind.WideMess) Consoles.WideMessEnabled = true;
+            if (console == ConsoleKind.Pc) Consoles.X86Enabled = true;
             cpu = cpu == "" ? CoreCatalog.Default(console, CoreSlot.Cpu) : cpu;
             ppu = ppu == "" ? CoreCatalog.Default(console, CoreSlot.Ppu) : ppu;
             apu = apu == "" ? CoreCatalog.Default(console, CoreSlot.Apu) : apu;
@@ -774,6 +781,7 @@ internal static partial class BrokenDevCli
             Cores = $"{cpu}/{ppu}/{apu}";
             byte[] unwrapped = RomDetect.Unwrap(rom, fileName, out string inner);
             s = ConsoleSessions.Create(console, unwrapped, cpu, ppu, apu, null, inner);
+            if (s is NesEmulator.X86.PcSession pc) Cores += X86Configure(pc, verify);
         }
 
         public void Step(List<string> held) => Step(held, NoButtons);
@@ -807,11 +815,13 @@ internal static partial class BrokenDevCli
 
         public void SavePng(string path) => MixLab.MixLabCli.SaveArgb(s.Frame, s.FrameWidth, s.FrameHeight, path);
 
-        public int Peek(string domain, int addr) => s is GbSession gs ? PeekGb(gs, domain, addr)
+        public int Peek(string domain, int addr) => s is NesEmulator.X86.PcSession pp ? PeekX86(pp, domain, addr)
+            : s is GbSession gs ? PeekGb(gs, domain, addr)
             : IsSegaSession(s) ? PeekSega(s, domain, addr)
             : domain == "wram" && s is SnesSession ss ? ss.Board.Wram[addr & 0x1FFFF] : throw new ArgumentException($"the SNES has no memory domain '{domain}' here (wram)");
 
-        public int PeekCpu(uint addr) => s is GbSession gs ? gs.Board.Peek((ushort)addr)
+        public int PeekCpu(uint addr) => s is NesEmulator.X86.PcSession pq ? pq.Machine.Phys8(addr)
+            : s is GbSession gs ? gs.Board.Peek((ushort)addr)
             : IsSegaSession(s) ? PeekSegaCpu(s, addr)
             : throw new ArgumentException("expect.memory reads the NES and the Game Boy; on the SNES use the compat section's reads");
 
