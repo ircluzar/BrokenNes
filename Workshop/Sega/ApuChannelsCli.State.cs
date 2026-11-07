@@ -155,7 +155,7 @@ internal static partial class ApuChannelsCli
             ("SNES", new[] { "SFC", "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "PSPC3" }, (id, k) => new SnesUnit(id, k)),
             ("GB", new[] { "GB", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" }, (id, k) => new GbUnit(id, k)),
             ("MD", new[] { "MD", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN" }, (id, k) => new MdUnit(id, k)),
-            ("SMS", new[] { "SMS", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA" }, (id, k) => new SmsUnit(id, false, k)),
+            ("SMS", new[] { "SMS", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA", "SMSA" }, (id, k) => new SmsUnit(id, false, k)),
             ("FM", new[] { "SMS-FM", "M036FM", "E055" }, (id, k) => new SmsUnit(id, true, k)),
         };
         int bad = 0, nc = 0;

@@ -207,5 +207,5 @@ Per core: fetch, port, register, notices, `--apu-channels` + `--state`, suite, c
 | MAME 0.124 AY, NES APU id AY124 (re-keyed) | ported | (this commit) |
 | DOSBox 0.72 SB / 0.74 GUS / 0.72 Tandy + SPEAKER, COVOX cards, 8237 DMA | ported (cherry-picked from 5b55df52, c13a53a9, 991dd851; DOS env BLASTER / ULTRASND on the FreeDOS disk) | merged |
 | PocketSPC 0.3 | planned | |
-| SMSAdvance | planned | |
+| SMSAdvance 2.5 PSG (sn76496.s), SMS/GG APU id SMSA + NES SMS_SMSA (no Genesis: the GBA emulator has no MD PSG path offered) | ported | (this commit) |
 | Gwenesis YM2612 | done (GWEN) | `sega/GwenYm2612.cs`, `GwenSn76489.cs`, `md/MdSoundUnitGwen.cs`, `SmsSoundGwen.cs`; Genesis APU + SMS/GG PSG menus |

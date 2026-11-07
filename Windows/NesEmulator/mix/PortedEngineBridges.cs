@@ -32,6 +32,7 @@ namespace NesEmulator
     public sealed class APU_SMS_PICO : APU_SMS { public APU_SMS_PICO(Bus bus) : base(bus, "PICO") { } }
     public sealed class APU_SMS_DARC : APU_SMS { public APU_SMS_DARC(Bus bus) : base(bus, "DARC") { } }
     public sealed class APU_SMS_DEGA : APU_SMS { public APU_SMS_DEGA(Bus bus) : base(bus, "DEGA") { } }
+    public sealed class APU_SMS_SMSA : APU_SMS { public APU_SMS_SMSA(Bus bus) : base(bus, "SMSA") { } }
 }
 
 namespace NesEmulator

@@ -40,8 +40,8 @@ internal static partial class ApuChannelsCli
             ("SNES", "SFC", new[] { "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "PSPC3" }, SnesCells()),
             ("GB", "GB", new[] { "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" }, GbCells()),
             ("MD", "MD", new[] { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN" }, MdCells()),
-            ("SMS", "SMS", new[] { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA" }, PsgCells(ConsoleKind.MasterSystem)),
-            ("GG", "SMS", new[] { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA" }, PsgCells(ConsoleKind.GameGear)),
+            ("SMS", "SMS", new[] { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA", "SMSA" }, PsgCells(ConsoleKind.MasterSystem)),
+            ("GG", "SMS", new[] { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA", "SMSA" }, PsgCells(ConsoleKind.GameGear)),
             ("FM", "SMS-FM", new[] { "M036FM", "E055" }, FmCells()),
         };
 

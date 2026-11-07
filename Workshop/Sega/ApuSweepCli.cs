@@ -32,7 +32,7 @@ internal static class ApuSweepCli
     private static readonly string[] NesPorts = { "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16", "FSID" };
     private static readonly string[] SnesPorts = { "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "PSPC3" };
     private static readonly string[] GbPorts = { "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" };
-    private static readonly string[] PsgPorts = { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA" };
+    private static readonly string[] PsgPorts = { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA", "SMSA" };
     private static readonly string[] FmPorts = { "M036FM", "E055" };
     private static readonly string[] MdPorts = { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN" };
 

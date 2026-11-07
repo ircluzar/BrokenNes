@@ -685,6 +685,8 @@ public static class CoreCatalog
                         list.Add(new("DARC", "DARC (DarcNES 2000 PSG: 5-bit metallic noise, linear volume, per-frame updates, mono)", fam));
                         // Foreign APU: Dega 1.16's "Enhanced PSG" (Dave / FinalBurn author): sampled instruments on tone channels 0-1, an echo, retrigger on volume jumps; Game Gear stereo the Dega way
                         list.Add(new("DEGA", "DEGA (Dega 1.16 Enhanced PSG: sampled instruments instead of squares, echo, inaccurate on purpose)", fam));
+                        // Foreign APU: SMSAdvance 2.5's PSG (FluBBa, GBA ARM asm): 528-sample blocks mixed at vblank and played a frame late, its own volume table, high tones cut
+                        list.Add(new("SMSA", "SMSA (SMSAdvance 2.5 GBA PSG: per-frame blocks a frame late, own volume table, top tones cut)", fam));
                         // The game's PSG replayed on a NES sound chip (SmsSoundOnNes, unit id "NES:<chip>"). Lossy and said so: mono, PSG only.
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, SegaOnNesLabel(id), "NES"));
                         // The Japanese console's PSG and its YM2413 together on a NES chip (SmsFmSoundOnNes, unit id "NES-FM:<chip>"): the game finds the FM chip and plays its FM music; each FM voice becomes a pulse, a triangle or a noise. Master System only (the Game Gear has no FM).
@@ -849,7 +851,7 @@ public static class CoreCatalog
     /// <summary>The engines ported from other emulators (the Foreign APU project, docs/projects/foreign-apu-project.md): the core menus list them in their console's submenu under their own heading.</summary>
     public static readonly HashSet<string> PortedIds = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "PSPC3", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA", "M036FM", "E055",
+        "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "PSPC3", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA", "SMSA", "M036FM", "E055",
         "FCEU", "INES", "NSTC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16", "FSID",
     };
 
@@ -882,7 +884,7 @@ public static class CoreCatalog
         ["ZS15"] = "ZSNES 0.15", ["ZS151"] = "ZSNES 1.51", ["S916"] = "Snes9x 1.16a", ["S9X1"] = "Snes9x 1.43", ["S951"] = "Snes9x 1.51", ["OSPC"] = "libOpenSPC", ["SNDS"] = "SNEmulDS", ["PSPC3"] = "PocketSPC 0.3",
         ["GNUB"] = "gnuboy 1.0.3", ["VBA"] = "VisualBoyAdvance 1.7.2", ["VBAM"] = "VBA-M 2007", ["TGBD"] = "TGB Dual", ["GYOB"] = "GameYob DS", ["MGB"] = "minigb_apu 2022",
         ["GENS"] = "Gens 2.10", ["PICO"] = "PicoDrive 1.85", ["M036"] = "MAME 0.36", ["M036FM"] = "MAME 0.36 FM", ["BLST"] = "BlastEm 0.3.1", ["GPGX"] = "Genesis Plus GX 1.3", ["GWEN"] = "Gwenesis (retro-go)",
-        ["DARC"] = "DarcNES", ["DEGA"] = "Dega 1.16", ["E055"] = "emu2413 0.55", ["FCEU"] = "FCE Ultra", ["INES"] = "iNES", ["NSTC"] = "NESticle", ["TUXN"] = "TuxNES",
+        ["DARC"] = "DarcNES", ["DEGA"] = "Dega 1.16", ["SMSA"] = "SMSAdvance 2.5", ["E055"] = "emu2413 0.55", ["FCEU"] = "FCE Ultra", ["INES"] = "iNES", ["NSTC"] = "NESticle", ["TUXN"] = "TuxNES",
         ["VNES"] = "VirtuaNES 0.97", ["PNES"] = "PocketNES", ["NSDS"] = "nesDS 2.0.1", ["PCEG"] = "PCE-GO PSG (retro-go)", ["POKY"] = "atari800 POKEY", ["AY124"] = "MAME 0.124 AY-3-8910", ["NOFR"] = "nofrendo (retro-go)", ["RSID16"] = "reSID 0.16", ["FSID"] = "VICE FastSID", ["HLE"] = "silent", ["SMS-FM"] = "with the FM chip", ["SMSFM"] = "Master System FM",
     };
 
