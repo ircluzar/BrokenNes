@@ -40,6 +40,7 @@ public static class SmsSoundFactories
         ["GENS"] = r => new SmsSoundGens(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // foreign APU: Gens 2.10's PSG (quick port; the Master System and Game Gear menus)
         ["PICO"] = r => new SmsSoundPico(r),   // foreign APU: PicoDrive 1.85's SN76496 (MAME-derived, noise taps 0x14002), Master System and Game Gear
         ["DARC"] = r => new SmsSoundDarc(r),   // foreign APU: DarcNES 1.14's sms_psg.c (5-bit noise register, linear volume, per-frame blocks), Master System and Game Gear
+        ["SMSA"] = r => new SmsSoundSmsa(r),   // foreign APU: SMSAdvance 2.5's PSG (FluBBa, GBA asm): 528-sample blocks per frame, own volume table, one frame of DMA latency, Master System and Game Gear
         ["DEGA"] = r => new SmsSoundDega(r),   // foreign APU: Dega 1.16's PSG in Enhanced PSG mode (sampled instruments, echo on channels 0-1, retrigger on volume jumps), Master System and Game Gear
     };
 
