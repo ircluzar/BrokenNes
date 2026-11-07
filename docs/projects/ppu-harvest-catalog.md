@@ -135,8 +135,8 @@ Order: nofrendo, InfoNES, FCEUX old PPU, SameBoy v0.1, Peanut-GB, gnuboy 1.0.3, 
 | 3 | FCEUX old PPU @2b2d70b | NES `FCEU` | ported (same five games; state reload SAME) | abfaa298 |
 | 4 | SameBoy v0.1 | GB/GBC `SB01` | ported as a renderer beside the stock chip (timing stays PPU_GB's); Mealybug m3 tests show its 8-pixel chunks; LA, Kirby, SML, Oracle of Seasons draw; state reload SAME | 575d27f1 |
 | 5 | Peanut-GB @8a692e4 | GB/GBC `PGB` | ported as a renderer beside the stock chip; LA, Kirby, SML draw; GBC games drawn wrongly as DMG (its jank); state reload SAME | 575d27f1 |
-| 6 | gnuboy 1.0.3 @29076d4 | GB/GBC `GNUB` | ported as a renderer beside the stock chip; LA, Kirby, SML, Oracle of Seasons draw; state reload SAME | GNUB commit |
-| 7 | PicoDrive draw2 v1.85 | MD | todo | |
+| 6 | gnuboy 1.0.3 @29076d4 | GB/GBC `GNUB` | ported as a renderer beside the stock chip; LA, Kirby, SML, Oracle of Seasons draw; state reload SAME | 4da5ff09 |
+| 7 | PicoDrive draw2 v1.85 | Genesis `PD2` | ported (whole frame at frame end from the stock VDP's memories); Sonic, Streets of Rage 2, Gunstar Heroes draw; state reload SAME | PD2 commit |
 | 8 | Genesis Plus GX @cbf8f4e | MD / SMS | todo | |
 | 9 | Snes9x tile.cpp @88f3702 | SNES | todo | |
 | 10 | runners-up, tarball targets | | todo | |

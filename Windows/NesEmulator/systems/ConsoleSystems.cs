@@ -700,6 +700,7 @@ public static class CoreCatalog
                     case CoreSlot.Cpu: list.Add(new("M68K", "M68K (Genesis main CPU)", "Genesis")); break;
                     case CoreSlot.Ppu:
                         list.Add(new("MD", "MD (Genesis picture chip)", "Genesis"));
+                        list.Add(new("PD2", "PD2 (PicoDrive 1.85 fast renderer: whole frame in 8x8 tiles at frame end, scroll per tile row, 224 lines)", "Genesis"));
                         foreach (var id in SegaPictureChips("Genesis")) list.Add(new("NES:" + id, SegaPictureLabel(id), NesFamilyOf(CoreSlot.Ppu, id)));
                         break;
                     default:

@@ -125,6 +125,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
     /// <summary>The picture the VDP finished: in interlace mode 2 the double-height one with both fields woven (448 or 480 rows, shown at twice the width so the proportions hold: see <see cref="DisplayWidth"/>), else the normal one.</summary>
     private void CopyPicture(MdVdp v)
     {
+        if (ppuId.Equals("PD2", StringComparison.OrdinalIgnoreCase)) { pd2 ??= new PicoDraw2(); pd2.Render(v, frame); frameWidth = pd2.Width; frameHeight = PicoDraw2.Height; return; }   // PicoDrive's draw2.c (ppu-harvest)
         if (v.WovenValid) { frameWidth = v.PictureWidth; frameHeight = v.WovenHeight; v.CopyWovenPicture(frame); }
         else { frameWidth = v.PictureWidth; frameHeight = v.PictureHeight; v.CopyPicture(frame); }
     }
@@ -138,6 +139,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
 
     public void Reset() => Board.Reset();
 
+    private PicoDraw2? pd2;
     public uint[] Frame => frame;
     public int FrameWidth => frameWidth;
     public int FrameHeight => frameHeight;
