@@ -202,7 +202,7 @@ Per core: fetch, port, register, notices, `--apu-channels` + `--state`, suite, c
 | PCE-GO psg (05e97e8), NES APU id PCEG (re-keyed onto the HuC6280 PSG) | ported | 24398fcb (cherry-picked) |
 | atari800 POKEY, NES APU id POKY (re-keyed) | ported | (this commit) |
 | MAME 0.124 AY, NES APU id AY124 (re-keyed) | ported | (this commit) |
-| DOSBox 0.72 SB / 0.74 GUS / 0.72 Tandy | planned | |
+| DOSBox 0.72 SB / 0.74 GUS / 0.72 Tandy + SPEAKER, COVOX cards, 8237 DMA | ported (cherry-picked from 5b55df52, c13a53a9, 991dd851; DOS env BLASTER / ULTRASND on the FreeDOS disk) | merged |
 | PocketSPC 0.3 | planned | |
 | SMSAdvance | planned | |
 | Gwenesis YM2612 | planned | |
