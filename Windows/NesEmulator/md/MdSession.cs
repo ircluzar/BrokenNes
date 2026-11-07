@@ -190,6 +190,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
             Board.LoadState(r);
             if (r.BaseStream.Position != payload.Length) throw new InvalidDataException("The state has more data than this machine reads (it was made by another layout).");
             Butcher?.NoteStateLoaded();
+            ghostVblank = 0; Board.ButcherIpl = 0;   // the Butchering interrupt lines are the host's, not the loaded machine's
             AfterStateLoad();
         }
         catch (Exception e)

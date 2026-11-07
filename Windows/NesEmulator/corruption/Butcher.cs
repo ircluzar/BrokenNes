@@ -1231,6 +1231,10 @@ public sealed class Butcher
 		linkPending = false;
 		heatFrames = 0; foreach (var pf in AllPins()) pf?.SetHeat(1);   // a reload is the machine cold again
 		if (looseLeft > 0) { looseLeft = 0; CpuPins = cpuPinsBase; }
+		// a Z80 bus / reset hold of the old timeline: the loaded machine's lines are its own (they are in the state). Releasing them later (at Off, or
+		// when the hold ran out) wrote the old timeline's release into the loaded machine (fuzz md 311174). The interrupt holds stay: their lines are
+		// the host's on some boards (SNES), and those still need their release.
+		busHoldLeft = resetHoldLeft = 0;
 	}
 	private int stutterLeft, droneLeft, dutyLeft, detuneLeft;
 
