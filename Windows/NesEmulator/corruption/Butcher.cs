@@ -687,6 +687,7 @@ public sealed class Butcher
 	/// </summary>
 	public void Reset(long seed)
 	{
+		if (irqLeft > 0) HoldIrqLine?.Invoke(false);   // let go of a held IRQ line: the board keeps its own copy, outside the savestate
 		var fresh = new Butcher { Profile = Profile };
 		int chr = lastChrChipSize;
 		const System.Reflection.BindingFlags F = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;

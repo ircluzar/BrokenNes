@@ -51,9 +51,9 @@ public sealed class MdSession : IConsoleSession, IButcherHost
     {
         var b = Butcher;
         var unit = ButcherUnit();
-        Board.ButcherDropVblank = b is { DropNmiNow: true };
         if (b != null && unit != null) b.Z80Lines = (req, rel) => { unit.WriteBusRequest(req, Board.Vdp.Time); unit.WriteReset(rel, Board.Vdp.Time); };   // a hold ends with the lines free again
         if (b != null) { b.GhostNmiLine = () => { ghostVblank = 2; Board.ButcherIpl = 6; }; b.HoldIrqLine = l => Board.ButcherIpl = l ? 4 : 0; if (ghostVblank > 0 && --ghostVblank == 0 && Board.ButcherIpl == 6) Board.ButcherIpl = 0; b.FmInject = unit != null ? unit.ButcherYmWrite : null; b.AttachRam(Board.Ram); b.AttachVram(Board.Vdp.Vram); b.AttachSoundRam(unit?.Z80Ram); b.FrameStart(unit != null ? unit.ButcherPsgWrite : (_, _) => { }); }
+        Board.ButcherDropVblank = b is { DropNmiNow: true };   // after FrameStart: a reset requested by a state load has run
         var on = b != null && !b.Idle ? b : null;
         Board.Vdp.Butcher = on; if (unit != null) unit.Butcher = on;
         Board.Pads.ButcherTh = on is { PadThActive: true } ? on.PadThBend : null;

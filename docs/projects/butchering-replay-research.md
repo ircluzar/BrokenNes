@@ -79,6 +79,6 @@ Runs: NES (Super Mario Bros., 600 frames), SNES (Super Mario World), Game Boy (S
 | Genesis | 77 / 77 | 76 / 77 | 76 / 77 |
 | Master System | 77 / 77 | 77 / 77 | 77 / 77 |
 
-(77 now includes the `seed` setting itself.) Even the machine-touching unsafe effects replay now. Two leftovers, both interrupt lines
-held outside the savestate: `unsafe.dropNmi` on Genesis and `unsafe.stuckIrq` on SNES (same on a fresh machine, differ on a reload
-of a machine that already ran them). Next: audit those two, then the effects' state inside the savestate, timed setup changes, input.
+(77 now includes the `seed` setting itself.) Even the machine-touching unsafe effects replay now. The last two (Genesis `unsafe.dropNmi`, SNES `unsafe.stuckIrq`) were interrupt lines the board
+keeps outside the savestate: the reset now releases a held IRQ line, and MdSession reads the dropped-vblank flag after `FrameStart`.
+After that fix every console is 77 / 77 on all three. Next: effects' state inside the savestate, timed setup changes, input.
