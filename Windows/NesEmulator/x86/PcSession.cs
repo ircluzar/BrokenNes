@@ -29,7 +29,7 @@ public sealed class PcSession : IConsoleSession
     private byte[]? _exported;
 
     /// <param name="image">A disk image, or a DOS program (<see cref="PcDisks.IsDosProgram"/>: it is put on a FreeDOS boot disk made for it, <see cref="PcDisks.ForProgram"/>).</param>
-    public PcSession(byte[] image, string fileName = "")
+    public PcSession(byte[] image, string fileName = "", string apu = "ADLIB")
     {
         Title = fileName.Length > 0 ? Path.GetFileNameWithoutExtension(fileName) : "x86 disk";
         if (PcDisks.IsDosProgram(image, fileName))
@@ -47,7 +47,12 @@ public sealed class PcSession : IConsoleSession
         _m.Speaker.Enabled = true;
         _m.Opl.Enabled = true;
         InsertDisk((byte[])image.Clone());
+        if (!PcSound.Apply(_m, apu)) throw new ArgumentException($"the x86 PC has no sound card '{apu}'");
+        ApuId = apu.ToUpperInvariant();
     }
+
+    /// <summary>The sound card and engine heard (an x86 APU id: ADLIB, ADLIB_D072, ...).</summary>
+    public string ApuId { get; private set; } = "ADLIB";
 
     private void InsertDisk(byte[] data)
     {
@@ -63,7 +68,7 @@ public sealed class PcSession : IConsoleSession
     public string? Program { get; }
     public ConsoleKind Console => ConsoleKind.Pc;
     public string Title { get; }
-    public string Description => $"x86 PC | CPU I386 (486-class, {_m.InstructionsPerSecond / 1_000_000} M instr/s) | PPU VGA | APU ADLIB (AdLib YM3812 OPL2 + PC speaker) | {(Program != null ? $"{Program} on a FreeDOS 1.4 disk" : _floppy ? "floppy A:" : "hard disk C:")} {_original.Length / 1024:N0} KB{(_m.Stopped != null ? " | STOPPED: " + _m.Stopped : "")}";
+    public string Description => $"x86 PC | CPU I386 (486-class, {_m.InstructionsPerSecond / 1_000_000} M instr/s) | PPU VGA | APU {ApuId} ({PcSound.Describe(ApuId)}) | {(Program != null ? $"{Program} on a FreeDOS 1.4 disk" : _floppy ? "floppy A:" : "hard disk C:")} {_original.Length / 1024:N0} KB{(_m.Stopped != null ? " | STOPPED: " + _m.Stopped : "")}";
     public double FramesPerSecond => Pit8254.Freq / Vga.FrameTicks;
     public string GameId { get; }
 
@@ -178,7 +183,12 @@ public sealed class PcSession : IConsoleSession
     /// <summary>A file on the disk as it is now (what the program wrote: a save, a status file), or null when there is none.</summary>
     public byte[]? ReadFile(string dosPath) => new FatImage(Disk.Data).ReadFile(dosPath);
 
-    public bool TrySwapCore(CoreSlot slot, string id) => ConsoleSessions.Offers(ConsoleKind.Pc, slot, id);
+    public bool TrySwapCore(CoreSlot slot, string id)
+    {
+        if (!ConsoleSessions.Offers(ConsoleKind.Pc, slot, id)) return false;
+        if (slot == CoreSlot.Apu) { if (!PcSound.Apply(_m, id)) return false; ApuId = id.ToUpperInvariant(); }
+        return true;
+    }
     public string SwapRefusal(CoreSlot slot, string id) => $"the x86 PC has one {slot} core (it is an isolated console: no other console's chips)";
 
     // ================= save states =================

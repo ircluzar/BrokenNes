@@ -78,3 +78,15 @@ rendered glyphs), mode 13h (DAC, pixels, INT 10h 0Ch / 0Dh), Mode X (unchained p
 (geometry, CHS read / write, missing drives), save state + load into a new machine (identical run): 100/100 checks.
 Workshop `--x86disk` + `--x86boot`: FreeDOS 1.4 (kernel 2043, FreeCOM 0.86) boots from a disk built from the LiteUSB image to `C:\>` in
 2.1 s of machine time; `mem` and `dir` run.
+
+## AdLib engines (APU harvest, 2026-11-07): ported from other emulators, a documented exception (THIRD_PARTY_NOTICES.md section 2a, docs/KNOWN_GAPS.md FA-1)
+
+Art instruments, ported faithfully with their flaws (listed in each file's header). Sources as fetched, with sha256 manifests: `C:\BrokenNes-tools\apu-harvest\<name>\`.
+
+| x86 APU id | File | Source | License |
+|---|---|---|---|
+| ADLIB_M036 | `OplEngines.cs` (adapter) + `sega/Mame036Opl.cs` | MAME 0.36 `src/sound/fmopl.c`, (C) 1999 Tatsuyuki Satoh | MAME license of the time (non-commercial) |
+| ADLIB_D072 | `Dosbox072Opl.cs` | DOSBox 0.72 (SVN tags/RELEASE_0_72, r2883) `src/hardware/fmopl.c` = MAME fmopl 0.70, (C) 2002-2003 Jarek Burczynski, 1999-2000 Tatsuyuki Satoh; https://sourceforge.net/p/dosbox/code-0/HEAD/tree/dosbox/tags/RELEASE_0_72/src/hardware/ | no license stated in the file (MAME-derived) |
+| ADLIB_D074C | `Dosbox074CompatOpl.cs` | DOSBox 0.74 (tags/RELEASE_0_74, r3548) `src/hardware/opl.cpp`, (C) 2002-2010 The DOSBox Team, based on Ken Silverman's ADLIBEMU | LGPL-2.1+ (https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt) |
+| ADLIB_D074F | `Dosbox074Dbopl.cs` | DOSBox 0.74 (tags/RELEASE_0_74, r3582) `src/hardware/dbopl.cpp`, (C) 2002-2010 The DOSBox Team (Edward van der Spek) | GPL-2.0+ (https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt) |
+| ADLIB_NUK174 | `Nuked174Opl.cs` | Nuked-OPL3 1.7.4 by Alexey Khokholov (nukeykt), as shipped in AdPlug tag adplug-2.3.1 `src/nukedopl.c`; https://github.com/adplug/adplug/tree/adplug-2.3.1/src | LGPL-2.1+ |

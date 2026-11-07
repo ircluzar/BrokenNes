@@ -753,7 +753,11 @@ public static class CoreCatalog
                 {
                     case CoreSlot.Cpu: list.Add(new("I386", "I386 (486-class, ported from tiny386; no FPU)", "x86")); break;
                     case CoreSlot.Ppu: list.Add(new("VGA", "VGA (text modes, mode 13h, mode 12h)", "x86")); break;
-                    default: list.Add(new("ADLIB", "ADLIB (AdLib YM3812 OPL2 + PC speaker)", "x86")); break;
+                    default:
+                        // the sound card and its engine (the APU harvest): AdLib with ymfm (stock) or another emulator's OPL2 core; the PC speaker is always there
+                        list.Add(new("ADLIB", "ADLIB (AdLib YM3812 OPL2, ymfm + PC speaker)", "AdLib"));
+                        foreach (var (id, label) in NesEmulator.X86.PcSound.AdlibEngineLabels) list.Add(new("ADLIB_" + id, label, "AdLib"));
+                        break;
                 }
                 break;
             case ConsoleKind.Snes:

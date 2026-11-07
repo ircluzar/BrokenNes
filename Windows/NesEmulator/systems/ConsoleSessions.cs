@@ -20,7 +20,7 @@ public static class ConsoleSessions
         ConsoleKind.WideMess => new SnesSession(rom, cpu, ppu, apu, loadFirmware, wideMess: true),
         ConsoleKind.GameBoy or ConsoleKind.GameBoyColor => new GbSession(rom, console, cpu, ppu, apu),
         ConsoleKind.MasterSystem or ConsoleKind.GameGear or ConsoleKind.Genesis => CreateSega(console, rom, cpu, ppu, apu, fileName, sega),
-        ConsoleKind.Pc => Consoles.IsAvailable(ConsoleKind.Pc) ? new NesEmulator.X86.PcSession(rom, fileName) : throw new NotSupportedException("the x86 console is not offered here"),
+        ConsoleKind.Pc => Consoles.IsAvailable(ConsoleKind.Pc) ? new NesEmulator.X86.PcSession(rom, fileName, apu) : throw new NotSupportedException("the x86 console is not offered here"),
         _ => throw new ArgumentException("The NES runs on the NES class, not a console session"),
     };
 

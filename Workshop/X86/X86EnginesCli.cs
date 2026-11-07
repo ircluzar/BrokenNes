@@ -102,6 +102,27 @@ internal static class X86EnginesCli
             catch (Exception e) { flagged++; Console.WriteLine($"{id,-8} CRASH {e.GetType().Name}: {e.Message}"); }
             if (wavDir != null) { Directory.CreateDirectory(wavDir); WriteWav(Path.Combine(wavDir, $"adlib_{id}.wav"), all); }
         }
+        // the menu: every x86 APU option swaps live on a running session and survives a save/load (FreeDOS boot disk, when the toolkit has it)
+        string fd = PcDisks.FindFreeDos() ?? "";
+        if (File.Exists(fd))
+        {
+            var opts = NesEmulator.Systems.CoreCatalog.Options(NesEmulator.Systems.ConsoleKind.Pc, NesEmulator.Systems.CoreSlot.Apu).Select(o => o.Id).ToList();
+            foreach (var id in opts)
+            {
+                try
+                {
+                    var s = new PcSession(File.ReadAllBytes(fd), "freedos.img", id);
+                    for (int f = 0; f < 30; f++) s.RunFrame();
+                    bool swap = s.TrySwapCore(NesEmulator.Systems.CoreSlot.Apu, opts[(opts.IndexOf(id) + 1) % opts.Count]) && s.TrySwapCore(NesEmulator.Systems.CoreSlot.Apu, id);
+                    var st = s.SaveState(); for (int f = 0; f < 10; f++) s.RunFrame(); s.LoadState(st); s.RunFrame();
+                    bool ok = swap && s.ApuId == id.ToUpperInvariant();
+                    if (!ok) flagged++;
+                    Console.WriteLine($"menu     {id,-14} {(ok ? "boots, swaps live, loads a state" : "FAIL")}");
+                }
+                catch (Exception e) { flagged++; Console.WriteLine($"menu     {id,-14} CRASH {e.Message}"); }
+            }
+        }
+        else Console.WriteLine("menu: no FreeDOS disk here, session check not run");
         Console.WriteLine($"\n{ids.Count} engines, {flagged} flagged");
         return flagged == 0 ? 0 : 1;
     }
