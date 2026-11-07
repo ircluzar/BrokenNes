@@ -176,12 +176,16 @@ public partial class MdVdp
         if (renderX > px) renderX = px;
     }
 
+    /// <summary>Called as each active line starts (null = one test per line): the PPU harvest's Genesis Plus GX renderer draws its own line there.</summary>
+    public Action<int>? LineObserver;
+
     private void BeginLineRender()
     {
         if (!winLatchDone) { winNext17 = Reg[17]; winNext18 = Reg[18]; }
         winCur17 = winNext17; winCur18 = winNext18; winLatchDone = false;
         TakeLineVscroll();
         lineActive = Line < ActiveLines && Line < PictureMaxHeight;
+        if (lineActive && LineObserver != null) LineObserver(Line);   // a foreign renderer drawing beside this chip (PPU harvest: md/GpgxRender.cs)
         if (!lineActive) return;
         lineY = Line;
         dbl = Interlace == 3;

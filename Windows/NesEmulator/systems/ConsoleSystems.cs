@@ -704,6 +704,7 @@ public static class CoreCatalog
                     case CoreSlot.Ppu:
                         list.Add(new("MD", "MD (Genesis picture chip)", "Genesis"));
                         list.Add(new("PD2", "PD2 (PicoDrive 1.85 fast renderer: whole frame in 8x8 tiles at frame end, scroll per tile row, 224 lines)", "Genesis"));
+                        list.Add(new("GPGX", "GPGX (Genesis Plus GX 2013 line renderer: whole line at line start, sprite limit by width sum incl. off-screen, sprites found a line early)", "Genesis"));
                         foreach (var id in SegaPictureChips("Genesis")) list.Add(new("NES:" + id, SegaPictureLabel(id), NesFamilyOf(CoreSlot.Ppu, id)));
                         break;
                     default:

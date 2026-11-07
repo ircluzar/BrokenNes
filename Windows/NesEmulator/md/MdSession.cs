@@ -89,7 +89,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
         var parts = new SegaBoardParts<MdBus, M68k<MdBus>, MdVdp, IGenesisSound> { Apu = machine => GenesisSoundFactories.Create(apu, machine) };
         Board = new BOARD_MD(cart, r, m, sampleRate, parts);
         title = cart.OverseasTitle.Length > 0 ? cart.OverseasTitle : cart.DomesticTitle;
-        FramesPerSecond = Board.Timeline.FramesPerSecond;
+        FramesPerSecond = Board.Timeline.FramesPerSecond; PickRenderer();
     }
 
     public ConsoleKind Console => ConsoleKind.Genesis;
@@ -125,6 +125,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
     /// <summary>The picture the VDP finished: in interlace mode 2 the double-height one with both fields woven (448 or 480 rows, shown at twice the width so the proportions hold: see <see cref="DisplayWidth"/>), else the normal one.</summary>
     private void CopyPicture(MdVdp v)
     {
+        if (gpgx != null) { frameWidth = gpgx.Width; frameHeight = Math.Min(gpgx.Height, 240); Array.Copy(gpgx.Picture, frame, frameWidth * frameHeight); return; }   // Genesis Plus GX's vdp_render.c (ppu-harvest)
         if (ppuId.Equals("PD2", StringComparison.OrdinalIgnoreCase)) { pd2 ??= new PicoDraw2(); pd2.Render(v, frame); frameWidth = pd2.Width; frameHeight = PicoDraw2.Height; return; }   // PicoDrive's draw2.c (ppu-harvest)
         if (v.WovenValid) { frameWidth = v.PictureWidth; frameHeight = v.WovenHeight; v.CopyWovenPicture(frame); }
         else { frameWidth = v.PictureWidth; frameHeight = v.PictureHeight; v.CopyPicture(frame); }
@@ -140,6 +141,8 @@ public sealed class MdSession : IConsoleSession, IButcherHost
     public void Reset() => Board.Reset();
 
     private PicoDraw2? pd2;
+    private GpgxRender? gpgx;
+    private void PickRenderer() { gpgx?.Detach(); gpgx = ppuId.Equals("GPGX", StringComparison.OrdinalIgnoreCase) ? new GpgxRender(Board.Vdp) : null; }
     public uint[] Frame => frame;
     public int FrameWidth => frameWidth;
     public int FrameHeight => frameHeight;
@@ -191,7 +194,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
             using var r = new BinaryReader(new MemoryStream(payload), System.Text.Encoding.UTF8);
             Board.LoadState(r);
             if (r.BaseStream.Position != payload.Length) throw new InvalidDataException("The state has more data than this machine reads (it was made by another layout).");
-            Butcher?.NoteStateLoaded();
+            Butcher?.NoteStateLoaded(); gpgx?.Reset();
             ghostVblank = 0; Board.ButcherIpl = 0;   // the Butchering interrupt lines are the host's, not the loaded machine's
             AfterStateLoad();
         }
@@ -246,7 +249,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
             case CoreSlot.Ppu:
                 // the VDP's own ids: the stock chip and the enhanced one (a subclass that draws a Genesis game on the stock pipeline); a NES chip or another console's is the wrapper's
                 if (id.Contains(':') || !System.Linq.Enumerable.Any(CoreCatalog.Options(ConsoleKind.Genesis, CoreSlot.Ppu), o => o.Section == CoreSection.Own && o.Id.Equals(id, StringComparison.OrdinalIgnoreCase))) return false;
-                ppuId = id; return true;
+                ppuId = id; PickRenderer(); return true;
             default: return id.Equals(cpuId, StringComparison.OrdinalIgnoreCase);
         }
     }

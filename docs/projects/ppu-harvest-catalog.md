@@ -137,7 +137,7 @@ Order: nofrendo, InfoNES, FCEUX old PPU, SameBoy v0.1, Peanut-GB, gnuboy 1.0.3, 
 | 5 | Peanut-GB @8a692e4 | GB/GBC `PGB` | ported as a renderer beside the stock chip; LA, Kirby, SML draw; GBC games drawn wrongly as DMG (its jank); state reload SAME | 575d27f1 |
 | 6 | gnuboy 1.0.3 @29076d4 | GB/GBC `GNUB` | ported as a renderer beside the stock chip; LA, Kirby, SML, Oracle of Seasons draw; state reload SAME | 4da5ff09 |
 | 7 | PicoDrive draw2 v1.85 | Genesis `PD2` | ported (whole frame at frame end from the stock VDP's memories); Sonic, Streets of Rage 2, Gunstar Heroes draw; state reload SAME | 6b067835 |
-| 8 | Genesis Plus GX @cbf8f4e | MD / SMS | not started this run: vdp_render.c is 4150 lines and the jank lives in its full line pipeline | |
+| 8 | Genesis Plus GX @cbf8f4e | Genesis `GPGX` | ported (Mode 5 path: lines drawn beside the stock VDP via MdVdp.LineObserver); Sonic, Sonic 2, Mickey Mania, Vectorman draw; state reload SAME. Mode 4 / SMS path not ported | GPGX commit |
 | 9 | Snes9x tile.cpp @88f3702 | SNES | not started this run: needs Snes9x's whole GFX pipeline around it | |
 | 10 | runners-up, tarball targets | | not started | |
 
