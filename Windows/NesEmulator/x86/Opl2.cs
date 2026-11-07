@@ -375,6 +375,7 @@ public sealed partial class Opl2
         foreach (var c in _ch) { c.Fb0 = c.Fb1 = c.FbIn = 0; }
         foreach (var o in _ops) { o.Phase = 0; o.EnvAtt = 0x3ff; o.EnvState = EgRelease; o.KeyState = 0; o.KeyonLive = 0; }
         _address = 0;
+        if (_alt != null) { _alt.Reset(); _altQueue.Clear(); _altBufPos = _altBufLen = 0; }
     }
 
     private void ClockEngine()
@@ -427,6 +428,7 @@ public sealed partial class Opl2
 
     private void WriteRegister(byte reg, byte data)
     {
+        if (_alt != null) { if (_altBlock > 0) _altQueue.Add((reg, data)); else _alt.Write(reg, data); }
         if (reg == 0x04) { EngineModeWrite(data); return; }
         _modifiedChannels = 0x1ff;
         _regs[reg] = data;
@@ -510,6 +512,14 @@ public sealed partial class Opl2
                 TimerExpired(_timerEnd[0] == tTimer ? 0 : 1);
                 continue;
             }
+            if (_alt != null)
+            {
+                // an alternative engine draws the sound on its own timeline; ymfm's sample clock only paces the timers here
+                if (tSample > clock) { if (Enabled) RunAlt(clock); break; }
+                long until = Math.Min(clock, tTimer - 1);
+                _samples = until / ClocksPerSample + 1;
+                continue;
+            }
             if (tSample > clock) break;
             if (!Enabled)
             {
@@ -525,6 +535,93 @@ public sealed partial class Opl2
             Resample(v);
         }
         _now = clock;
+    }
+
+    // ================= an alternative engine (OplEngines.cs) =================
+
+    private IOplEngine? _alt;
+    private int _altBlock;
+    private readonly List<(byte reg, byte v)> _altQueue = new();
+    private long _altSamples;          // engine samples drawn; sample k sits at chip clock k * 3 * PIT / rate
+    private short[] _altBuf = new short[1];
+    private int _altBufPos, _altBufLen;
+    private int _aPrev, _aCur;
+    private long _aOutIndex;
+
+    /// <summary>The engine heard (null = ymfm, the card's own). The registers as they are now are replayed into a new engine (notes keyed on stay on).</summary>
+    public IOplEngine? Engine
+    {
+        get => _alt;
+        set
+        {
+            CatchUp();
+            _alt = value; _altQueue.Clear(); _altBufPos = _altBufLen = 0;
+            if (_alt == null) { _modifiedChannels = 0x1ff; return; }
+            _altBlock = _alt.BlockSamples;
+            if (_altBuf.Length < Math.Max(1, _altBlock)) _altBuf = new short[Math.Max(1, _altBlock)];
+            _alt.Reset();
+            ReplayIntoAlt();
+            AltRestart();
+        }
+    }
+
+    private void ReplayIntoAlt()
+    {
+        if (_alt == null) return;
+        _alt.Write(0x01, _regs[0x01]); _alt.Write(0x08, _regs[0x08]);
+        for (int r = 0x20; r < 0x100; r++) if (r != 0xbd && (r & 0xf0) != 0xb0) _alt.Write(r, _regs[r]);
+        for (int r = 0xb0; r < 0xb9; r++) _alt.Write(r, _regs[r]);
+        _alt.Write(0xbd, _regs[0xbd]);
+    }
+
+    private void AltRestart()
+    {
+        if (_alt == null) return;
+        long chip = ChipNow;
+        _altSamples = (long)((Int128)chip * _alt.Rate / (3L * Pit8254.Freq)) + 1;
+        _aOutIndex = (long)((Int128)_pitNow() * Rate / Pit8254.Freq);
+        _aPrev = _aCur = 0; _altBufPos = _altBufLen = 0;
+    }
+
+    private short NextAlt()
+    {
+        if (_altBufPos >= _altBufLen)
+        {
+            if (_altBlock > 0)
+            {
+                _alt!.Generate(_altBuf, _altBlock);   // the block is drawn with the registers as they were before it; its writes land after it
+                foreach (var (r, v) in _altQueue) _alt.Write(r, v);
+                _altQueue.Clear();
+                _altBufLen = _altBlock;
+            }
+            else { _alt!.Generate(_altBuf, 1); _altBufLen = 1; }
+            _altBufPos = 0;
+        }
+        return _altBuf[_altBufPos++];
+    }
+
+    private void RunAlt(long clock)
+    {
+        long rate = _alt!.Rate, den = 3L * Pit8254.Freq;
+        while ((Int128)_altSamples * den <= (Int128)clock * rate)
+        {
+            _aPrev = _aCur; _aCur = NextAlt();
+            long k = _altSamples++;
+            // 44.1 kHz sample m sits at engine-sample position m * rate / 44100
+            while (true)
+            {
+                long num = _aOutIndex * rate;
+                long idx = num / Rate;
+                if (idx >= k) break;
+                if (idx < k - 1) { _aOutIndex++; continue; }
+                long frac = num % Rate;
+                int s = (int)(_aPrev + (_aCur - _aPrev) * frac / Rate) * Gain;
+                short o = (short)Clamp(s, -32768, 32767);
+                _out.Add(o); _out.Add(o);
+                _aOutIndex++;
+            }
+        }
+        if (_out.Count > Rate * 4) _out.RemoveRange(0, _out.Count - Rate * 2);
     }
 
     private void Resample(int v)
@@ -569,6 +666,7 @@ public sealed partial class Opl2
         if (_samples * ClocksPerSample <= chip) _samples = chip / ClocksPerSample + 1;
         _outIndex = (long)((Int128)_pitNow() * Rate / Pit8254.Freq);
         _prev = _cur = 0;
+        AltRestart();
     }
 
     // ================= ports 388h / 389h =================
@@ -607,5 +705,6 @@ public sealed partial class Opl2
         foreach (var o in _ops) { o.Phase = r.ReadUInt32(); o.EnvAtt = r.ReadUInt16(); o.EnvState = r.ReadByte(); o.KeyState = r.ReadByte(); o.KeyonLive = r.ReadByte(); }
         _modifiedChannels = 0x1ff;   // ymfm invalidates the caches after a restore
         _out.Clear();
+        if (_alt != null) { _alt.Reset(); _altQueue.Clear(); ReplayIntoAlt(); }   // the engines' own state is not saved: re-keyed from the registers
     }
 }
