@@ -1,0 +1,162 @@
+[
+ {
+  "name": "play",
+  "frames": 3000,
+  "input": "240:Start,252:,600:Right,800:Right+B,900:Right,1100:Up,1200:Right+B,1400:Down,1500:Right+A,1800:Left+B,2100:Right"
+ },
+ {
+  "name": "save",
+  "frames": 900,
+  "input": "240:Start,252:,600:Start,612:,660:Select,672:"
+ },
+ {
+  "name": "ex0",
+  "frames": 5641,
+  "input": "241:Start,253:,541:Down+B,566:Right+B,637:Up+B,702:Left+A+B,739:Right+A+B,861:Right+A+B,996:Right,1131:Up+B,1222:Down+A,1320:Left+A+B,1401:Right+A,1428:Right,1459:Down,1557:Up+B,1670:Right+B,1807:Left+B,1929:Right,1989:Down,2047:Left,2137:Right+B,2259:Right+A,2335:,2345:Down+A,2438:Left+B,2563:Right+A,2643:,2653:Left+B,2785:Right,2919:Right+B,3046:Up+A+B,3169:Left+A+B,3294:Right+A,3371:Left+A,3401:Right+B,3496:Left+B,3518:Right+B,3585:Up+B,3709:,3719:Left+B,3744:Left+A+B,3841:Right,3942:Right,4012:,4022:Right,4119:,4129:Left,4210:Right,4299:Right+A,4327:Left+A,4391:Right+A+B,4470:,4480:Right+B,4525:Left+B,4652:Right+B,4761:Right+B,4889:Right+A,4924:Down+B,4945:Down+A+B,5076:Up+A,5145:Up+B,5236:Down,5298:Right+A,5335:Down+A,5433:Up+A+B,5567:Right+B"
+ },
+ {
+  "name": "ex1",
+  "frames": 5663,
+  "input": "263:Start,275:,563:Left+A+B,691:Right+A,726:Down+B,829:Left,911:,921:Down+B,1018:Right+B,1072:Left+A+B,1212:Up,1234:,1244:Right,1384:Left+B,1458:Right+B,1575:Down+A+B,1624:Left+B,1741:Up,1814:Right,1857:Left+A,1892:Left+A+B,2031:Right+B,2089:Down+A+B,2159:Right+B,2210:Down+B,2315:Right+A,2346:Right,2465:Down+A,2547:Down,2606:Right+A+B,2700:Left+B,2784:Right+B,2873:Right+B,2944:Right+A,3022:Left+A+B,3119:Right+B,3239:Left+A+B,3362:Right+B,3436:Down+A,3528:Right+B,3610:Down+A,3630:Right+A+B,3692:Right+B,3793:Right+B,3923:,3933:Right+A,3957:Left,3987:Down,4103:Left+A,4137:Left+A,4194:,4204:Left+A,4291:Left+A,4393:Down+A,4476:Right+A,4545:Left+A,4578:Left+A+B,4624:Down,4672:,4682:Left,4794:Down+A+B,4900:Left+A+B,4977:Left,5047:Up+B,5074:Left+B,5206:,5216:Right,5275:Up+B,5348:Left,5439:Right+A+B,5563:Right+B,5604:Left+A+B,5689:"
+ },
+ {
+  "name": "ex2",
+  "frames": 5687,
+  "input": "287:Start,299:,587:Right,617:Left+A,669:Right,763:Down+B,885:Right+A,974:Right+A,1109:,1119:Right+A,1198:Down+B,1332:Left+A+B,1374:Right+B,1435:Right+A+B,1501:Left+A+B,1544:Down+B,1658:Up+A+B,1723:Down+B,1839:Left+B,1942:Down+A,2080:Right+A,2184:Down+A,2276:Right+B,2358:Up+B,2490:Up+B,2549:Left+A+B,2640:Left+A+B,2735:Left+B,2817:Left+A+B,2949:,2959:Up,3095:Left,3122:Right+A,3217:Right+A+B,3254:Left+B,3394:Down,3421:Left+B,3527:,3537:Right,3560:,3570:Right+A,3622:Left+B,3708:Down+A+B,3733:Left+B,3757:,3767:Right,3823:Right+A,3900:Right,4035:Down+A+B,4145:Left,4249:Right,4326:Left+A+B,4420:Down+A+B,4481:Up+A,4534:Down,4643:Left,4695:,4705:Left+B,4737:Left+A+B,4874:Right+B,4923:Right+A,4953:Right+A+B,5063:Left+B,5118:Right+B,5142:Left,5227:Left,5259:,5269:Left,5316:,5326:Left+B,5404:Left+B,5451:Left+B,5525:Right+A+B,5551:Right+A+B,5594:Left+B,5660:,5670:Right+A+B"
+ },
+ {
+  "name": "ex3",
+  "frames": 5711,
+  "input": "311:Start,323:,611:Left+A+B,700:Right+B,800:Right,936:Up+A+B,985:Left+B,1074:Down+B,1175:Left+B,1306:Down,1411:Left+A+B,1436:Right+A,1516:Down+B,1586:Right+B,1725:Up,1749:Left+A,1855:Left+A,1928:Down+A+B,1992:Down+A+B,2041:Left,2170:Right+B,2279:Right+A+B,2371:Left+B,2472:Right+A,2528:Down+B,2559:Right+B,2693:Up+B,2811:Right,2908:Right+B,3019:Right+A,3103:Right+A,3123:,3133:Right+A+B,3157:Down+A,3255:Left,3386:Up+B,3520:Down+B,3651:Left+A+B,3758:Right+A+B,3812:Left+B,3951:Up+A+B,4009:Right+B,4103:Down+A+B,4198:Right+A,4277:Up+A+B,4387:Down,4482:,4492:Left,4559:Down+A,4654:Left+A,4697:Up+A+B,4750:Down,4868:Right+B,4927:Left+A,4977:Left+B,5080:Right+A+B,5141:Left+B,5217:Left,5280:Left+A+B,5357:Right,5444:Up+A+B,5487:Up,5610:Right+B,5683:Up+B"
+ },
+ {
+  "name": "ex4",
+  "frames": 5733,
+  "input": "333:Start,345:,633:Left+A,666:Down+B,697:,707:Down+A+B,844:Right+B,930:Up+B,1055:Left,1181:Up+A,1225:Up+A,1256:Up+B,1340:Left+B,1395:,1405:Right+A,1425:Right+A,1553:Left+B,1627:Down+B,1667:Up,1697:,1707:Left+A,1793:Down+A,1831:Left,1903:Left+B,1958:Down+A+B,2019:Left+A,2051:Left+B,2106:Right+B,2141:Left+A,2219:,2229:Up,2363:Up+A,2385:Up+B,2504:Right,2561:Down+A,2598:Right+B,2660:Up,2738:Up+A,2831:,2841:Left+B,2978:Right,3005:Right+B,3102:,3112:Down+A+B,3163:Right,3289:Down+B,3370:Down+B,3452:,3462:Down+B,3513:Down+B,3596:Right+A,3648:Left+B,3721:Left+A,3747:Up+A+B,3781:Down,3864:Down+B,4003:Left+A,4060:Left+A,4184:Left+A,4247:Down,4376:Left+B,4401:Right+B,4519:Left,4650:Left+B,4742:Down+B,4789:Left+B,4810:Up,4880:Down+B,4970:,4980:Left+B,5085:Right+B,5222:Right,5246:Right+B,5337:Right+B,5362:Right,5420:Right,5509:Left+A,5578:Down+B,5610:,5620:Right+A,5705:Down+B"
+ },
+ {
+  "name": "ex5",
+  "frames": 5759,
+  "input": "359:Start,371:,659:Right+A,773:Left+A+B,796:Left,931:Up+B,1062:Right,1155:Left+B,1227:Down+B,1344:Left+A+B,1443:Left,1574:,1584:Left+B,1715:Up+B,1804:Left+B,1847:Left+B,1981:Right+A,2054:Left+A,2082:Right+A+B,2102:Left+A,2130:Up+B,2239:Down+B,2349:Up,2464:Down,2554:Up+B,2648:Down,2758:Left,2874:Down+A,2959:Right+A,3078:Right+A,3208:Down,3254:Right+A,3391:Up+A+B,3422:Up+A,3464:Left+B,3576:Down+B,3688:,3698:Right+A+B,3836:Left+A+B,3900:Down+B,3938:,3948:Left,4070:Left+B,4183:Left+B,4216:Up+B,4243:Up+B,4321:Right+B,4407:Down+A,4488:Down+B,4623:Down+A+B,4665:Down+A,4708:,4718:Up+A+B,4838:Right+A,4866:Up+A+B,4970:,4980:Up+A,5071:Up+B,5124:Left+A,5187:Right,5267:Up+A,5372:Up+A+B,5474:Up+A,5529:Left+B,5593:Left+B,5659:Right+B,5746:Left+A"
+ },
+ {
+  "name": "ex6",
+  "frames": 5777,
+  "input": "377:Start,389:,677:Right,759:Right,797:Down+A,857:Up+B,979:Down+A+B,1068:Left+A+B,1158:Left+A,1262:Left,1390:Right+A,1512:Up+B,1621:,1631:Left+A,1663:Right+B,1788:Up+B,1927:Left+A+B,2020:Left+A+B,2157:,2167:Up+B,2264:Up+A+B,2299:,2309:Left+A+B,2354:Left+A,2413:Down+B,2461:Left+A+B,2482:Left,2584:Left+A+B,2683:Down+A+B,2752:Left+B,2778:Right+B,2810:Left,2944:Down+B,3064:Right+A+B,3138:Left+B,3278:,3288:Left+A,3365:Left,3387:Up+A+B,3509:Up+A+B,3586:Right+A,3658:Down+A+B,3740:Down+B,3822:Down+B,3881:Down+A,3947:Right+B,4055:Up+B,4137:Left+A,4228:,4238:Down,4281:,4291:Right,4398:Up+B,4527:Left+B,4581:Down+A+B,4663:,4673:Left,4740:Left+B,4837:Right,4948:Left+B,5027:Right,5136:Right,5176:Up+B,5259:Left+B,5383:Down+B,5502:Right+A,5583:Right+A,5649:Right,5733:Up+A"
+ },
+ {
+  "name": "ex7",
+  "frames": 5801,
+  "input": "401:Start,413:,701:Up+B,771:Right+A+B,803:Right+A+B,850:,860:Down+B,888:Right+B,915:Right+B,1015:Right+A+B,1109:Left,1200:Up+B,1238:Right+A,1329:Left,1423:Left+A,1455:Right+A+B,1482:Down+A+B,1556:Down+A+B,1694:Up+B,1815:Left,1908:Down+A,2021:Right,2056:Left+A,2095:Down,2200:,2210:Right+A+B,2331:Up+A,2439:Down+A+B,2561:Right+A,2641:Right,2754:Left+A+B,2861:Up+B,2994:Right+B,3059:Right+B,3086:Up+B,3200:Down+B,3230:Down+A+B,3285:Down+A+B,3340:Up+B,3389:Left+B,3438:Right+B,3564:Up+A,3584:Right+A,3682:Left+A+B,3781:Left,3859:Left+A+B,3929:Down,4010:Right+B,4038:Down+B,4072:Right,4092:Right,4158:Right+B,4256:Left+A,4320:Down,4354:Down+B,4435:Left,4550:Up+B,4676:Right,4722:Right+A,4760:Right+A+B,4818:Right+A,4904:Left+A,5022:Right+A+B,5084:Right+B,5207:Down+B,5252:Up,5275:Down+A,5319:Up+B,5442:Up+A,5472:Left+B,5517:Down+A+B,5652:Right+B,5788:Left"
+ },
+ {
+  "name": "room244",
+  "frames": 1744,
+  "input": "244:Start,256:,484:Up+A,588:Up+B,699:Up,742:Right+A,783:Right,855:Left+B,922:Right,993:Up+A,1062:Right,1154:Right,1231:Left+B,1307:Right+B,1360:Right+A,1390:Left+B,1483:Left+A,1574:Up+A,1654:Left+A"
+ },
+ {
+  "name": "room252",
+  "frames": 1752,
+  "input": "252:Start,264:,492:Right+A,567:Left+A,638:Right+A,714:Left+A,787:Right+B,875:Right+B,964:Right+B,1021:Left+B,1137:Right+B,1184:Left+B,1261:Right,1294:Right,1397:Right,1490:Right,1594:Right,1627:Right+B,1716:Left+B"
+ },
+ {
+  "name": "room260",
+  "frames": 1760,
+  "input": "260:Start,272:,500:Right,610:Right+A,729:Left+B,849:Right+A,927:Right,997:Left+A,1040:Right+A,1138:Left+A,1199:Right+A,1233:Right,1341:Left,1438:Right+A,1474:Up,1534:Left+A,1595:Right,1631:Left+A,1695:Right+B"
+ },
+ {
+  "name": "room268",
+  "frames": 1768,
+  "input": "268:Start,280:,508:Left,583:Left+B,652:Left+A,684:Right+B,803:Right,837:Up+B,871:Right+A,967:Right+B,1073:Up+B,1138:Up+A,1204:Up,1267:Right,1352:Left+A,1437:Left,1469:Left,1587:Right+B,1654:Left+A,1731:Right+B,1762:Left"
+ },
+ {
+  "name": "room276",
+  "frames": 1776,
+  "input": "276:Start,288:,516:Up+A,592:Right,628:Left,705:Right,777:Right,859:Right+A,907:Left,990:Right,1077:Right,1192:Left,1248:Right+A,1287:Right,1368:Up,1449:Right+A,1511:Up,1624:Right+A,1683:Up+A,1749:Right+B"
+ },
+ {
+  "name": "room284",
+  "frames": 1784,
+  "input": "284:Start,296:,524:Left+B,592:Right+B,711:Up+B,809:Right,891:Up+A,989:Right+A,1061:Up,1106:Right+B,1171:Left,1216:Up+A,1280:Right+B,1348:Right+B,1409:Right,1509:Right+B,1629:Up+B,1706:Right,1756:Left+A"
+ },
+ {
+  "name": "room292",
+  "frames": 1792,
+  "input": "292:Start,304:,532:Up+B,611:Up+B,671:Left+A,755:Right+B,803:Right,916:Up,951:Left+A,1006:Left,1063:Right,1162:Up+A,1204:Up+B,1249:Left+A,1283:Left+B,1324:Up,1435:Left+B,1551:Left+B,1634:Up+A,1701:Up+A,1735:Up+A"
+ },
+ {
+  "name": "room300",
+  "frames": 1800,
+  "input": "300:Start,312:,540:Up+A,643:Left+B,756:Left+B,832:Right+B,951:Left,1037:Left+A,1069:Left+A,1123:Up+B,1201:Up+B,1313:Right+B,1415:Left+B,1490:Left,1542:Right+A,1628:Right+A,1720:Left"
+ },
+ {
+  "name": "room308",
+  "frames": 1808,
+  "input": "308:Start,320:,548:Up+B,586:Right+B,662:Right+A,773:Right+A,865:Right,967:Up+B,1083:Left+B,1135:Left,1195:Right+B,1308:Right,1420:Right+B,1484:Left+A,1520:Right+A,1584:Right,1658:Right+B,1700:Right+A,1747:Right+A"
+ },
+ {
+  "name": "room316",
+  "frames": 1816,
+  "input": "316:Start,328:,556:Up,607:Left,711:Right+A,825:Right+B,894:Right+A,959:Right+A,1029:Right,1136:Up,1200:Right,1246:Left+B,1325:Up+B,1418:Left+A,1532:Left+B,1567:Left,1637:Right+B,1715:Up+A,1791:Right"
+ },
+ {
+  "name": "room324",
+  "frames": 1824,
+  "input": "324:Start,336:,564:Right+B,646:Right,695:Right+A,748:Left+B,813:Up+A,873:Right+B,968:Up+B,999:Right,1039:Right+B,1138:Left+A,1195:Up+A,1245:Up+A,1315:Right+A,1348:Right,1422:Left+B,1472:Left,1547:Right,1631:Right,1750:Right"
+ },
+ {
+  "name": "room332",
+  "frames": 1832,
+  "input": "332:Start,344:,572:Right+B,617:Left,708:Left+A,773:Left,868:Right+B,908:Right,1022:Up+A,1064:Right,1184:Left,1292:Left+A,1398:Up,1515:Right+A,1554:Right,1633:Left+B,1733:Up+A,1789:Right+B"
+ },
+ {
+  "name": "room340",
+  "frames": 1840,
+  "input": "340:Start,352:,580:Right+B,628:Right+B,704:Up,762:Left,792:Right+B,893:Up,989:Right+A,1021:Right,1130:Right,1191:Right+A,1247:Right+A,1299:Up+A,1392:Right,1423:Left+A,1510:Right,1606:Up,1724:Left+A,1775:Up"
+ },
+ {
+  "name": "room348",
+  "frames": 1848,
+  "input": "348:Start,360:,588:Right,634:Left+A,719:Right+B,801:Right,921:Right+A,1006:Right+A,1054:Right+B,1170:Left,1206:Right+A,1264:Right,1325:Up+A,1359:Up+A,1433:Left+A,1482:Up+A,1572:Left,1628:Up,1713:Right,1793:Up,1835:Up+B"
+ },
+ {
+  "name": "room356",
+  "frames": 1856,
+  "input": "356:Start,368:,596:Right,706:Left,788:Up+A,864:Up+B,967:Right+B,1038:Up+B,1069:Right+A,1112:Right+B,1190:Left,1284:Up+A,1363:Right+A,1410:Left,1472:Right+B,1546:Left,1595:Right+B,1641:Left,1675:Up,1723:Left,1791:Right"
+ },
+ {
+  "name": "room364",
+  "frames": 1864,
+  "input": "364:Start,376:,604:Left+B,670:Left,701:Up+B,795:Right,846:Up,927:Right+B,1031:Right+A,1120:Right+B,1203:Left,1259:Up+A,1370:Left+B,1446:Right+A,1488:Right+A,1548:Right,1579:Left+A,1623:Right+B,1709:Right+A,1759:Right+A,1830:Left+A"
+ },
+ {
+  "name": "room372",
+  "frames": 1872,
+  "input": "372:Start,384:,612:Left+A,714:Right,789:Right+B,821:Left+A,917:Right+B,984:Up,1074:Left+A,1111:Up+A,1152:Up+B,1193:Left+B,1227:Up+B,1258:Right+B,1339:Right+B,1426:Up+B,1460:Up+B,1526:Left,1607:Up+A,1725:Right,1766:Right+B"
+ },
+ {
+  "name": "room380",
+  "frames": 1880,
+  "input": "380:Start,392:,620:Up+A,735:Up,820:Left+B,889:Left+A,938:Right,1019:Up+B,1050:Right+A,1081:Up,1113:Left+A,1221:Up+B,1306:Right+A,1346:Up,1449:Right+B,1494:Up,1546:Up,1589:Left+B,1707:Left+A,1791:Left+A,1839:Right+B"
+ },
+ {
+  "name": "room388",
+  "frames": 1888,
+  "input": "388:Start,400:,628:Right+A,703:Right+A,765:Up+A,825:Up,911:Right+B,968:Left+B,1022:Up,1105:Left,1224:Up+A,1274:Right,1383:Left+B,1459:Left+B,1520:Left,1555:Up+A,1593:Right,1689:Left+B,1806:Left+A,1857:Right+A"
+ },
+ {
+  "name": "room396",
+  "frames": 1896,
+  "input": "396:Start,408:,636:Up,708:Left,775:Left+A,812:Up+A,869:Left,952:Right,1038:Up,1106:Right+A,1162:Right,1241:Right+B,1312:Right+A,1389:Right+B,1467:Left+B,1535:Left+B,1602:Right+B,1667:Right+B,1714:Right+A,1763:Left+B,1877:Left"
+ },
+ {
+  "name": "room404",
+  "frames": 1904,
+  "input": "404:Start,416:,644:Right,724:Up,811:Up+B,867:Left+B,950:Left+A,1034:Right+B,1105:Left,1183:Left,1274:Up,1390:Right+A,1509:Right+A,1558:Up,1670:Up+B,1788:Right+A,1831:Right+B"
+ },
+ {
+  "name": "room412",
+  "frames": 1912,
+  "input": "412:Start,424:,652:Right,721:Right+B,773:Right+B,815:Right+B,884:Left,967:Left+B,1083:Left,1162:Right+B,1253:Right,1293:Right+A,1330:Right,1434:Right+A,1526:Left+A,1566:Right,1661:Up+A,1741:Right,1776:Right+B,1827:Up+A,1902:Up+A"
+ }
+]

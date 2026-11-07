@@ -41,10 +41,12 @@
           "-BaseProfile", "50a5ca15",
           "-Post", "flash",
           "-SnesTitle", "VRUN CTW",
-          "-Feedback", "none"
+          "-Feedback", "brokennes",
+          "-Workshop", "{workshop}",
+          "-Plans", "{bd}/projects/vrun-nested/feedback-plans.json"
         ],
         "timeoutSec": 1800,
-        "note": "No entry-point feedback in this recipe: each part of the game compiles at run time the first time it runs (a short stall), which is the first-room freeze the Nested notes describe. See the nested-harvest variant in docs for the 10 to 20 minute bootstrap."
+        "note": "Entry-point feedback played headless on BrokenNes (2026-11-07): the build runs feedback-plans.json (verify's play, save, 8 seeded explorations from different Start frames) on the Workshop, reads the runtime compiles each run recorded in its .srm and rebuilds until a round adds nothing (about a minute, no Mesen). Without it every part of the game compiled at run time the first time it ran: 134 lag frames in play from frame 300 (617 over play + 3 held-out explorations), 0 with it. Code the plans never reach still compiles on first run; the Mesen bootstrap (nested-harvest, docs) explores wider."
       }
     ],
     "outputs": [
@@ -188,7 +190,7 @@
   },
   "knownIssues": [
     "Project Nested cannot reproduce NES lag frames: the exact fix would be a NES cycle clock in the recompiler (not started). The room-load timing race and RNG phase differ from the NES by a few frames.",
-    "This recipe builds without entry-point feedback; the first execution of each code path recompiles at run time and freezes briefly. The Nested Builder's 'Harvest' (bootstrap, 10 to 20 minutes, needs Mesen) removes that; BrokenDev records the variant without it.",
+    "The recipe's feedback comes from the scripted BrokenNes plans: a code path none of them reaches still recompiles at run time the first time it runs (a brief stall). The Nested Builder's 'Harvest' (bootstrap, 10 to 20 minutes, needs Mesen) explores wider.",
     "The Nested work is mostly uncommitted in the user's Project-Nested repository (3 changed tracked files, about 390 untracked): commit it on the new machine first (START_HERE section 4).",
     "Nested never delivers the DMC IRQ and never clears the DMC-active bit of $4015; games that depend on either need the post-build tools/dmc_status.py (VRUN does not).",
     "A rebuilt NES ROM has a new PRG CRC32 and a new flash-save sector layout; a SNES save from an older build is reset on first boot."

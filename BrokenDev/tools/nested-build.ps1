@@ -16,6 +16,12 @@
     3. -Feedback none     build with no entry-point feedback (the first run of each part of the game recompiles briefly);
        -Feedback harvest  run bootstrap\bootstrap.ps1 (a headless NES exploration finds the entry points, then SNES
                           verification rounds close the loop; needs Mesen, takes 10 to 20 minutes) and keep its profile;
+       -Feedback brokennes  the classic Nested feedback loop, played headless on BrokenNes (no Mesen, about a minute):
+                          build, run every plan of -Plans on the Workshop's --snesrun with a fresh SRAM, read the entry
+                          points each run's .srm recorded (the core's runtime compiles) with the injector's own reader,
+                          append the new ones, rebuild; repeat until a round adds nothing (-Rounds at most). Without it
+                          the first run of each part of the game compiles at run time: Nested VRUN lagged 134 frames in
+                          verify's play scenario (2026-11-07), 0 with it.
     4. m30build.ps1 writes the SNES ROM to -Out (with <Out>.build.log / .build.json beside it).
 
   Nothing game-specific is in the pipeline: everything a game needs is a parameter here.
@@ -28,7 +34,10 @@
 .PARAMETER BaseProfile  PRG CRC32 of an existing profile in the pipeline whose settings are copied (e.g. 50a5ca15 for VRUN, d257beb1 for the SMB1 remake)
 .PARAMETER Post       comma list: flash, dmc_status
 .PARAMETER SnesTitle  the SNES header title (20 characters at most)
-.PARAMETER Feedback   none | harvest
+.PARAMETER Feedback   none | harvest | brokennes
+.PARAMETER Workshop   brokennes: BrokenNes.Workshop.exe
+.PARAMETER Plans      brokennes: a JSON list of { "name", "frames", "input" } (Workshop pad scripts)
+.PARAMETER Rounds     brokennes: most build + play rounds
 .PARAMETER Minutes    harvest wall-clock budget
 .PARAMETER Seeds      harvest seeds (fewer seeds = fewer parallel Mesen processes)
 .PARAMETER MesenSource  a Mesen 2 folder to copy into a private deterministic copy (harvest only; the original is never modified)
@@ -42,7 +51,10 @@ param(
     [string]$BaseProfile = '',
     [string]$Post = '',
     [string]$SnesTitle = '',
-    [ValidateSet('none', 'harvest')][string]$Feedback = 'none',
+    [ValidateSet('none', 'harvest', 'brokennes')][string]$Feedback = 'none',
+    [string]$Workshop = '',
+    [string]$Plans = '',
+    [int]$Rounds = 4,
     [int]$Minutes = 20,
     [string]$Seeds = '1,2',
     [string]$MesenSource = ''
@@ -148,6 +160,48 @@ if ($Feedback -eq 'harvest') {
 $a = $ps + @((Join-Path $Pipe 'm30build.ps1'), '-Nes', $Nes, '-Profile', $profileDir, '-Out', $Out, '-Python', $Python, '-AllowMd5Mismatch')
 & powershell.exe @a
 if ($LASTEXITCODE -ne 0) { throw "m30build.ps1 failed (exit $LASTEXITCODE); see $Out.build.log" }
+if ($Feedback -eq 'brokennes') {
+    if (-not $Workshop -or -not (Test-Path -LiteralPath $Workshop)) { throw '-Feedback brokennes needs -Workshop (BrokenNes.Workshop.exe)' }
+    if (-not $Plans -or -not (Test-Path -LiteralPath $Plans)) { throw '-Feedback brokennes needs -Plans (a JSON list of {name, frames, input})' }
+    # (Windows PowerShell's ConvertFrom-Json hands a JSON list over as one object: unroll it)
+    $planList = @((Get-Content -LiteralPath $Plans -Raw | ConvertFrom-Json) | ForEach-Object { $_ })
+    # The runtime writes the SRAM feedback header from the ROM's title, which m30build replaces after injection (EmulatorName);
+    # the injector's reader looks for the core's own title, so each .srm gets the core's title back before it is read.
+    $coreTitle = [byte[]]([System.IO.File]::ReadAllBytes((Join-Path $Pipe 'out\core\Project_Nested.smc'))[0xFFC0..(0xFFC0 + 20)])
+    $romTitle = [System.Text.Encoding]::ASCII.GetBytes($(if ($SnesTitle) { $SnesTitle.PadRight(21) } else { '' }))
+    $fbDir = Join-Path $Work 'feedback'
+    for ($round = 1; $round -le $Rounds; $round++) {
+        $rd = Join-Path $fbDir ("round$round"); New-Item -ItemType Directory -Force -Path $rd | Out-Null
+        $srms = @()
+        foreach ($pl in $planList) {
+            $srm = Join-Path $rd ([string]$pl.name + '.srm')
+            if (Test-Path -LiteralPath $srm) { Remove-Item -LiteralPath $srm }
+            & $Workshop --snesrun --rom $Out --frames ([string]$pl.frames) --input ([string]$pl.input) --sram $srm | Out-Null
+            if (-not (Test-Path -LiteralPath $srm)) { throw "the Workshop wrote no SRAM for plan $($pl.name)" }
+            $b = [System.IO.File]::ReadAllBytes($srm)
+            if ($romTitle.Length -gt 0) {
+                $hit = -1
+                for ($i = 0; $i -le $b.Length - $romTitle.Length -and $hit -lt 0; $i += 1) {
+                    if ($b[$i] -ne $romTitle[0]) { continue }
+                    $ok = $true; for ($j = 1; $j -lt $romTitle.Length; $j++) { if ($b[$i + $j] -ne $romTitle[$j]) { $ok = $false; break } }
+                    if ($ok) { $hit = $i }
+                }
+                if ($hit -ge 0) { [Array]::Copy($coreTitle, 0, $b, $hit, 21); [System.IO.File]::WriteAllBytes($srm, $b) }
+            }
+            $srms += $srm
+        }
+        $got = Join-Path $rd 'calls.txt'
+        & powershell.exe @ps (Join-Path $Pipe 'srm2calls.ps1') -Nes $Nes -Srm ($srms -join ';') -Out $got -Python $Python | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "srm2calls.ps1 failed (exit $LASTEXITCODE)" }
+        $have = @(Get-Content -LiteralPath $calls | Where-Object { $_.Trim() -and -not $_.StartsWith('#') } | ForEach-Object { $_.Trim() })
+        $add = @(Get-Content -LiteralPath $got | Where-Object { $_.Trim() -and -not $_.StartsWith('#') } | ForEach-Object { $_.Trim() } | Where-Object { $have -notcontains $_ })
+        Write-Host ("nested-build: feedback round {0}: {1} known entry points, {2} new from {3} plan(s)" -f $round, $have.Count, $add.Count, $planList.Count)
+        if ($add.Count -eq 0) { break }
+        [System.IO.File]::AppendAllText($calls, ("# +{0} from BrokenNes feedback round {1}`r`n" -f $add.Count, $round) + (($add | ForEach-Object { "$_`r`n" }) -join ''))
+        & powershell.exe @a
+        if ($LASTEXITCODE -ne 0) { throw "m30build.ps1 failed (exit $LASTEXITCODE); see $Out.build.log" }
+    }
+}
 if (-not (Test-Path -LiteralPath $Out)) { throw "m30build reported success but wrote no ROM at $Out" }
 # The post-build steps are what make saves and the DMC wait work; a build that silently skipped one is wrong, so check the record.
 $bjPath = "$Out.build.json"
