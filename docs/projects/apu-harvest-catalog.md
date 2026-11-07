@@ -198,7 +198,7 @@ Per core: fetch, port, register, notices, `--apu-channels` + `--state`, suite, c
 | nesDS ARM7 (v2.0.1), NES APU id NSDS | ported | (this commit) |
 | minigb_apu (024175d), GB APU id MGB + NES DMG_MGB | ported | (this commit) |
 | AdLib engines (M036, D072, D074C, D074F, NUK174) + x86 APU menu ADLIB_<engine> | ported | (this commit) |
-| nofrendo (05e97e8) | planned | |
+| nofrendo (05e97e8), NES APU id NOFR | ported | (this commit) |
 | PCE-GO psg (05e97e8), NES APU id PCEG (re-keyed onto the HuC6280 PSG) | ported | 24398fcb (cherry-picked) |
 | atari800 POKEY, NES APU id POKY (re-keyed) | ported | (this commit) |
 | MAME 0.124 AY, NES APU id AY124 (re-keyed) | ported | (this commit) |
