@@ -29,7 +29,7 @@ internal static class ApuSweepCli
     private const int Warm = 420, Window = 120;   // the Game Boy and SNES games start their music after Start (frame 240)
     private static string plant = "";
 
-    private static readonly string[] NesPorts = { "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16" };
+    private static readonly string[] NesPorts = { "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16", "FSID" };
     private static readonly string[] SnesPorts = { "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS" };
     private static readonly string[] GbPorts = { "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" };
     private static readonly string[] PsgPorts = { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA" };
