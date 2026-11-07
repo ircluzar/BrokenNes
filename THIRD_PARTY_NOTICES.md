@@ -80,6 +80,8 @@ Picture-side twin of 2a (docs/projects/ppu-harvest-catalog.md): faithful ports o
 
 | License class | Cores (id: source @ version, files in `Windows/NesEmulator/`) |
 |---|---|
+| **Permissive** | PPU INES: InfoNES, (C) 1999-2004 Jay's Factory, Apache-2.0, jay-kumogata/InfoNES @fe3295c ([source](https://github.com/jay-kumogata/InfoNES/blob/fe3295c/src/InfoNES.cpp), `ppus/PPU_INES.cs`) |
+| **GPL** | PPU FCEU: FCE Ultra old PPU (the last src/ppu.cpp + pputile.inc before newppu), (C) 1998 BERO, (C) 2003 Xodnizel, GPL-2.0+, TASEmulators/fceux @2b2d70b ([source](https://github.com/TASEmulators/fceux/blob/2b2d70b/src/ppu.cpp), `ppus/PPU_FCEU.cs`) |
 | **LGPL** | PPU NOFR: nofrendo NES PPU, (C) 1998-2000 Matthew Conte, from retro-go @05e97e8 ([source](https://github.com/ducalex/retro-go/blob/05e97e8/retro-core/components/nofrendo/nes/ppu.c), LGPL v2, `ppus/PPU_NOFR.cs`) |
 
 ## 3. Test material in the repository; ## 3. Test material in the repository

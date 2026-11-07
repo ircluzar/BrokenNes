@@ -130,9 +130,9 @@ Order: nofrendo, InfoNES, FCEUX old PPU, SameBoy v0.1, Peanut-GB, gnuboy 1.0.3, 
 
 | # | Core | Id | State | Commit |
 |---|---|---|---|---|
-| 1 | nofrendo ppu.c @05e97e8 | NES `NOFR` | ported (SMB1, Castlevania, Battletoads, Contra, Mega Man 2 draw; state reload SAME) | NOFR commit |
-| 2 | InfoNES | NES `INES` | todo | |
-| 3 | FCEUX old PPU @2b2d70b | NES `FCEU` | todo | |
+| 1 | nofrendo ppu.c @05e97e8 | NES `NOFR` | ported (SMB1, Castlevania, Battletoads, Contra, Mega Man 2 draw; state reload SAME) | 07ce5486 |
+| 2 | InfoNES @fe3295c | NES `INES` | ported (SMB1, Castlevania, Battletoads, Mega Man 2, Zelda draw; state reload SAME) | INES/FCEU commit |
+| 3 | FCEUX old PPU @2b2d70b | NES `FCEU` | ported (same five games; state reload SAME) | INES/FCEU commit |
 | 4 | SameBoy v0.1 | GB | todo | |
 | 5 | Peanut-GB @8a692e4 | GB | todo | |
 | 6 | gnuboy 1.0.3 | GB | todo | |
