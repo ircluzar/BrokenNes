@@ -29,7 +29,7 @@ public sealed class PcSession : IConsoleSession
     private byte[]? _exported;
 
     /// <param name="image">A disk image, or a DOS program (<see cref="PcDisks.IsDosProgram"/>: it is put on a FreeDOS boot disk made for it, <see cref="PcDisks.ForProgram"/>).</param>
-    public PcSession(byte[] image, string fileName = "", string apu = "ADLIB")
+    public PcSession(byte[] image, string fileName = "", string apu = "ADLIB", string cpu = "I386")
     {
         Title = fileName.Length > 0 ? Path.GetFileNameWithoutExtension(fileName) : "x86 disk";
         if (PcDisks.IsDosProgram(image, fileName))
@@ -43,7 +43,7 @@ public sealed class PcSession : IConsoleSession
         if (image.Length < 512 || image.Length % 512 != 0) throw new InvalidDataException("an x86 disk image is a whole number of 512-byte sectors");
         _original = image;
         _floppy = image.Length <= 2949120 && !(image[510] == 0x55 && image[511] == 0xaa && image[0x1c2] != 0);   // a floppy-sized image without a partition table
-        _m.InstructionsPerSecond = DefaultIps;
+        _m.InstructionsPerSecond = IpsOf(cpu); _cpuId = cpu;
         _m.Speaker.Enabled = true;
         _m.Opl.Enabled = true;
         InsertDisk((byte[])image.Clone());
@@ -185,9 +185,17 @@ public sealed class PcSession : IConsoleSession
     /// <summary>A file on the disk as it is now (what the program wrote: a save, a status file), or null when there is none.</summary>
     public byte[]? ReadFile(string dosPath) => new FatImage(Disk.Data).ReadFile(dosPath);
 
+    /// <summary>CPU harvest: "I386_D074" = DOSBox 0.74's default speed. Its core_simple (and core_normal) count one "cycle" per instruction whatever the
+    /// instruction, exactly as this core does, so cycles=3000 (the 0.74 default) is 3,000 instructions a millisecond: delay-loop music and games run
+    /// at DOSBox's pace (20x slower than the stock 60 M instr/s here); the PIT and the sound cards keep real time.</summary>
+    private string _cpuId = "I386";
+    // the speed is the CPU option's, also after a state load (a state saved at the other speed carries its own number)
+    public static long IpsOf(string cpu) => cpu.Equals("I386_D074", StringComparison.OrdinalIgnoreCase) ? 3_000_000 : DefaultIps;
+
     public bool TrySwapCore(CoreSlot slot, string id)
     {
         if (!ConsoleSessions.Offers(ConsoleKind.Pc, slot, id)) return false;
+        if (slot == CoreSlot.Cpu) { _m.InstructionsPerSecond = IpsOf(id); _cpuId = id; }
         if (slot == CoreSlot.Apu) { if (!PcSound.Apply(_m, id)) return false; ApuId = id.ToUpperInvariant(); }
         return true;
     }
@@ -209,7 +217,7 @@ public sealed class PcSession : IConsoleSession
     {
         byte[] payload = ConsoleStateFile.Unwrap(state, Console, GameId, Title, StateUnits());
         var before = _m.SaveState();
-        try { _m.LoadState(payload); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); _powered = true; _exported = null; _pad = PadButtons.None; }
+        try { _m.LoadState(payload); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); _m.InstructionsPerSecond = IpsOf(_cpuId); _powered = true; _exported = null; _pad = PadButtons.None; }
         catch (Exception e) when (e is not InvalidDataException) { _m.LoadState(before); throw new InvalidDataException("the x86 state is damaged: " + e.Message); }
     }
 

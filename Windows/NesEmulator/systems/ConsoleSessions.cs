@@ -20,7 +20,7 @@ public static class ConsoleSessions
         ConsoleKind.WideMess => new SnesSession(rom, cpu, ppu, apu, loadFirmware, wideMess: true),
         ConsoleKind.GameBoy or ConsoleKind.GameBoyColor => new GbSession(rom, console, cpu, ppu, apu),
         ConsoleKind.MasterSystem or ConsoleKind.GameGear or ConsoleKind.Genesis => CreateSega(console, rom, cpu, ppu, apu, fileName, sega),
-        ConsoleKind.Pc => Consoles.IsAvailable(ConsoleKind.Pc) ? new NesEmulator.X86.PcSession(rom, fileName, apu) : throw new NotSupportedException("the x86 console is not offered here"),
+        ConsoleKind.Pc => Consoles.IsAvailable(ConsoleKind.Pc) ? new NesEmulator.X86.PcSession(rom, fileName, apu, cpu) : throw new NotSupportedException("the x86 console is not offered here"),
         _ => throw new ArgumentException("The NES runs on the NES class, not a console session"),
     };
 
@@ -407,6 +407,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
         Func<IGbCpuBus, IGbCpu>? cpuFactory = cpu.Equals("65816", StringComparison.OrdinalIgnoreCase) ? bus => new Cpu65816OnGb(bus) : null;
         board = new BOARD_GB(cart, model, SoundFactory(apu), cpuFactory);
         board.CpuClockFactor = ClockOf(cpu);
+        ApplyCpuCharacter(cpu);
         SetPicture(ppu);
         cpuId = cpu; ppuId = ppu; apuId = apu;
         Console = console;
@@ -426,6 +427,14 @@ public sealed class GbSession : IConsoleSession, IButcherHost
         if (apu.Equals("GYOB", StringComparison.OrdinalIgnoreCase)) return m => new APU_GYOB(m);   // GameYob's DS sound mapping (foreign-apu-project)
         if (apu.Equals("MGB", StringComparison.OrdinalIgnoreCase)) return m => new APU_MGB(m);   // minigb_apu @024175d (apu-harvest)
         return null;
+    }
+
+    /// <summary>The SM83's character options (CPU harvest): "GB-GNUB" = gnuboy's free interrupt dispatch. Any other SM83 id turns it off.</summary>
+    private void ApplyCpuCharacter(string cpu)
+    {
+        if (board.Core is not CPU_GB g) return;
+        g.FreeDispatch = cpu.Equals("GB-GNUB", StringComparison.OrdinalIgnoreCase);
+        g.UntimedWrite = g.FreeDispatch ? board.WriteUntimed : null;
     }
 
     private static double ClockOf(string cpu) => cpu.ToUpperInvariant() switch
@@ -511,6 +520,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
                     board.SwapCpu(next);
                 }
                 board.CpuClockFactor = ClockOf(id);
+                ApplyCpuCharacter(id);
                 cpuId = id; return true;
             }
         }

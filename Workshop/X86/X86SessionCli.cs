@@ -8,7 +8,7 @@ using NesEmulator.X86;
 namespace BrokenNes.Workshop.X86;
 
 /// <summary>
-/// <c>--x86session img [--frames N] [--shot png]</c>: the x86 console as the apps run it (<see cref="PcSession"/> through <see cref="ConsoleSessions.Create"/>): ROM detection of the image, the core menus, N frames,
+/// <c>--x86session img [--frames N] [--shot png] [--cpu I386|I386_D074]</c>: the x86 console as the apps run it (<see cref="PcSession"/> through <see cref="ConsoleSessions.Create"/>): ROM detection of the image, the core menus, N frames,
 /// the picture, a save state round trip (the same frames after a load give the same pictures), and the disk as the battery (a write shows in <c>ExportSave</c>). Exit code 0 = all passed.
 /// </summary>
 internal static class X86SessionCli
@@ -28,9 +28,9 @@ internal static class X86SessionCli
         foreach (var slot in new[] { CoreSlot.Cpu, CoreSlot.Ppu, CoreSlot.Apu })
         {
             var o = CoreCatalog.Options(ConsoleKind.Pc, slot);
-            Check(o.Count == 1, $"{slot} menu: {string.Join(" | ", o.Select(x => $"{x.Id} = {x.Label} [{x.Section}]"))}");
+            Check(o.Count == (slot == CoreSlot.Cpu ? 2 : 1), $"{slot} menu: {string.Join(" | ", o.Select(x => $"{x.Id} = {x.Label} [{x.Section}]"))}");
         }
-        using var s = ConsoleSessions.Create(ConsoleKind.Pc, data, CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Cpu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Apu), null, name);
+        using var s = ConsoleSessions.Create(ConsoleKind.Pc, data, Array.IndexOf(args, "--cpu") is int ci && ci > 0 && ci + 1 < args.Length ? args[ci + 1] : CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Cpu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Apu), null, name);
         Console.WriteLine($"  session: {s.Description}, {s.FramesPerSecond:F2} fps");
         var save0 = s.ExportSave();
         var sw = System.Diagnostics.Stopwatch.StartNew();

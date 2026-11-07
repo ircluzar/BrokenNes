@@ -215,6 +215,8 @@ public sealed class BOARD_GB : IGbCpuBus
     // =================================================================================== memory map
     /// <summary>Read without side effects or time (debuggers, test runners).</summary>
     public byte Peek(ushort a) => ReadBus(a, cpu: false);
+    /// <summary>A CPU write that takes no time (the gnuboy dispatch option on CPU_GB: <see cref="CPU_GB.FreeDispatch"/>).</summary>
+    public void WriteUntimed(ushort a, byte v) => WriteBus(a, v);
 
     private byte ReadBus(ushort a, bool cpu)
     {

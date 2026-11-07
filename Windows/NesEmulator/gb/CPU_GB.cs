@@ -48,6 +48,12 @@ public sealed class CPU_GB : IGbCpu
 
     public CPU_GB(IGbCpuBus bus) { this.bus = bus; }
 
+    /// <summary>CPU harvest (gnuboy cpu.c, GPL-2+, rofl0r/gnuboy master): interrupt dispatch costs no time. gnuboy's cpu_emulate pushes PC and jumps
+    /// to the vector (PRE_INT / THROW_INT) without adding a cycle, where the SM83 spends 5 M-cycles, so STAT and timer handlers start 20 clocks early.
+    /// Set by the session for the CPU id "GB-GNUB"; the pushes go through <see cref="UntimedWrite"/>, which does not clock the board.</summary>
+    public bool FreeDispatch { get; set; }
+    public Action<ushort, byte>? UntimedWrite { get; set; }
+
     private IGbCpuBus? debugRealBus;
     /// <summary>The bus the CPU really runs on, whatever the debugger interposed.</summary>
     public IGbCpuBus DebugRealBus => debugRealBus ?? bus;
@@ -227,6 +233,17 @@ public sealed class CPU_GB : IGbCpu
 
     private void Dispatch()
     {
+        if (FreeDispatch && UntimedWrite != null)
+        {
+            Ime = false;
+            byte pend = bus.PendingInterrupts;
+            SP--; UntimedWrite(SP, (byte)(PC >> 8));
+            SP--; UntimedWrite(SP, (byte)PC);
+            int b = System.Numerics.BitOperations.TrailingZeroCount(pend);
+            bus.AcknowledgeInterrupt(b);
+            PC = (ushort)(0x40 + b * 8);
+            return;
+        }
         Ime = false;
         bus.Idle();
         bus.Idle();

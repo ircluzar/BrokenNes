@@ -363,6 +363,7 @@ public static class CoreCatalog
         ["CPU:SM83"] = "SM83 (Game Boy CPU) - an instruction-set wall: it runs the game's 6502 code as SM83 instructions, so most games stop at once",
         ["CPU:Z80"] = "Z80 (Master System CPU) - an instruction-set wall: it runs the game's 6502 code as Z80 instructions, so nearly every game stops at once",
         ["CPU:M68K"] = "M68K (Genesis CPU) - an instruction-set wall: it runs the game's 6502 code as 68000 instructions, so nearly every game stops at once",
+        ["CPU:BAT_INES"] = "FIX opcodes on InfoNES's scheduler (113-cycle line batches, interrupts at batch start, sprite-0 split at its X)", ["CPU:BAT_NOFR"] = "FIX opcodes on nofrendo's scheduler (whole-line batches, NMI 7 cycles late, +2.5 cycles a line for SMB3/Kirby/Zen/Power Blade 2)", ["CPU:BAT_PNES"] = "FIX opcodes on PocketNES's scheduler (line batches, IRQ at a line or after CLI/PLP/RTI, idle loops skipped)", ["CPU:BAT_FCEU"] = "FIX opcodes with FCEUX e0028f6's double-counted page-cross and interrupt cycles (reverted the next day)",
         ["PPU:FIX"] = "the NES picture chip (2C02), dot-accurate", ["PPU:INES"] = "InfoNES picture chip (1999-2004: each line drawn after the CPU ran it, vblank flag never cleared by $2002)", ["PPU:FCEU"] = "FCE Ultra picture chip before newppu (2008: tile-at-a-time catch-up, sprites composed at line end, sprite-0 hit on pixel 255)", ["PPU:NOFR"] = "nofrendo picture chip (1998-2000, retro-go build: whole-line drawing, sprite-0 hit from the line start)", ["PPU:FIXS"] = "the NES picture chip with the cross-console layers (the guest's picture at its own size with all its layers and sprites; NES colours)",
         ["PPU:SNES"] = "SNES picture chip", ["PPU:DMG"] = "Game Boy picture chip (160x144: the middle of the picture, 4 shades by brightness)",
         ["PPU:DMGS"] = "Game Boy picture chip with the whole picture and the cross-console layers (4 shades by brightness, or Game Boy Color colours)",
@@ -509,7 +510,7 @@ public static class CoreCatalog
             (ConsoleKind.Genesis, CoreSlot.Cpu) => new[] { ("M68K", CoreGrade.Stock, "Genesis") },
             (ConsoleKind.WideMess, CoreSlot.Apu) => new[] { ("WMS", CoreGrade.Stock, "WideMess"), ("SFC", CoreGrade.Stock, "SNES") },
             (ConsoleKind.WideMess, _) => new[] { ("WMS", CoreGrade.Stock, "WideMess") },
-            (ConsoleKind.Pc, CoreSlot.Cpu) => new[] { ("I386", CoreGrade.Stock, "x86 PC") },
+            (ConsoleKind.Pc, CoreSlot.Cpu) => new[] { ("I386", CoreGrade.Stock, "x86 PC"), ("I386_D074", CoreGrade.Stock, "x86 PC") },
             (ConsoleKind.Pc, CoreSlot.Ppu) => new[] { ("VGA", CoreGrade.Stock, "x86 PC") },
             (ConsoleKind.Pc, _) => new[] { ("ADLIB", CoreGrade.Stock, "x86 PC") },
             _ => new[] { ("MD", CoreGrade.Stock, "Genesis") },
@@ -754,7 +755,7 @@ public static class CoreCatalog
             case ConsoleKind.Pc:
                 switch (slot)
                 {
-                    case CoreSlot.Cpu: list.Add(new("I386", "I386 (486-class, ported from tiny386; no FPU)", "x86")); break;
+                    case CoreSlot.Cpu: list.Add(new("I386", "I386 (486-class, ported from tiny386; no FPU)", "x86")); list.Add(new("I386_D074", "I386 at DOSBox 0.74's default speed (cycles=3000: one cycle per instruction, 3 M instr/s - delay loops and their music slow down)", "x86")); break;
                     case CoreSlot.Ppu: list.Add(new("VGA", "VGA (text modes, mode 13h, mode 12h)", "x86")); break;
                     default:
                         // the sound card and its engine (the APU harvest): AdLib with ymfm (stock) or another emulator's OPL2 core; the PC speaker is always there
@@ -796,6 +797,7 @@ public static class CoreCatalog
                         list.Add(new("GB", "SM83 (stock clock)", "Game Boy"));
                         list.Add(new("GB-HALF", "SM83 at half speed", "Game Boy"));
                         list.Add(new("GB-2X", "SM83 at double speed", "Game Boy"));
+                        list.Add(new("GB-GNUB", "SM83 with gnuboy's interrupt timing (dispatch takes no time: STAT and timer handlers start 20 clocks early)", "Game Boy"));
                         list.Add(new("GB-NESCLOCK", "SM83 at the NES clock (1.79 MHz)", "NES"));
                         list.Add(new("GB-SNESCLOCK", "SM83 at the SNES clock (3.58 MHz)", "SNES"));
                         list.Add(new("65816", "65816 (SNES CPU) - an instruction-set wall: it runs the game's SM83 code as 65816 instructions, so nearly every game stops at the boot logo", "SNES") { Wall = true });

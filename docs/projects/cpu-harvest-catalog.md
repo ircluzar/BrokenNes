@@ -190,8 +190,8 @@ The tag also has `core_normal`, `core_full`, `core_prefetch` and `core_dynrec`. 
 | Step | Core | State | Commit |
 |---|---|---|---|
 | 0 | catalog + plan | done | this commit |
-| 1 | BAT_INES / BAT_NOFR / BAT_PNES / BAT_FCEU | pending | |
-| 2a | SM83 gnuboy timing | pending | |
-| 2b | 65816 Snes9x 1.43 / ZSNES | pending | |
-| 2c | 68000 Musashi busy-wait | pending | |
-| 3 | x86 DOSBox core_simple | pending | |
+| 1 | BAT_INES / BAT_NOFR / BAT_PNES / BAT_FCEU | done: Kirby's status panel 1 line high + stray tiles, Zelda II title split moves, Castlevania III differs; PPU_FIX applies the $2006 copy at once under a batch CPU | step 1 commit |
+| 2a | SM83 gnuboy timing (GB-GNUB: free interrupt dispatch) | done, picture unchanged in Zelda LA / Pinball Fantasies / Road Rash / Kirby Pinball, audio length moves; HALT jump is already what the stock CPU does | step 2 commit |
+| 2b | 65816 Snes9x 1.43 / ZSNES | skipped: CPU_SFC is clocked per bus access by BOARD_SFC, so a flat MemSpeed or a missing 16-bit cycle needs untimed accesses through the whole core (not a clean knob) | |
+| 2c | 68000 Musashi busy-wait | skipped: the 3.3 source is not pinned (catalog gap) | |
+| 3 | x86 I386_D074 (DOSBox 0.74 default cycles=3000) | done: our I386 already counts one cycle per instruction like core_simple, so the option is DOSBox's default speed (3 M instr/s vs 60) | step 2 commit |

@@ -86,6 +86,20 @@ Picture-side twin of 2a (docs/projects/ppu-harvest-catalog.md): faithful ports o
 | **GPL** | GB GNUB: gnuboy 1.0.3 lcd.c, (C) Laguna and Gilgamesh, GPL-2.0, rofl0r/gnuboy @29076d4 ([source](https://github.com/rofl0r/gnuboy/blob/29076d4/lcd.c), `gb/GnuboyDisplay.cs`); PPU FCEU: FCE Ultra old PPU (the last src/ppu.cpp + pputile.inc before newppu), (C) 1998 BERO, (C) 2003 Xodnizel, GPL-2.0+, TASEmulators/fceux @2b2d70b ([source](https://github.com/TASEmulators/fceux/blob/2b2d70b/src/ppu.cpp), `ppus/PPU_FCEU.cs`) |
 | **LGPL** | PPU NOFR: nofrendo NES PPU, (C) 1998-2000 Matthew Conte, from retro-go @05e97e8 ([source](https://github.com/ducalex/retro-go/blob/05e97e8/retro-core/components/nofrendo/nes/ppu.c), LGPL v2, `ppus/PPU_NOFR.cs`) |
 
+
+### 2c. CPU harvest timing rules (docs/projects/cpu-harvest-catalog.md)
+
+Rebuilt from the donors' sources, which were read, not copied: each is a scheduling rule wrapped around this project's own CPU cores. Credited as inspiration references.
+
+| Core / option | Donor, licence, source |
+|---|---|
+| NES CPU BAT_INES | InfoNES (C) 1999-2004 Jay's Factory, Apache-2.0: `InfoNES_Cycle` / `K6502_Step` ([source](https://github.com/jay-kumogata/InfoNES/blob/master/src/InfoNES.cpp)), `cpus/CPU_BAT.cs` |
+| NES CPU BAT_NOFR | nofrendo (C) 1998-2000 Matthew Conte, retro-go build @05e97e8, LGPL-2 (FA-1 art exception): `nes_renderframe`, `nes_setcompathacks` ([source](https://github.com/ducalex/retro-go/blob/05e97e8/retro-core/components/nofrendo/nes/nes.c)), `cpus/CPU_BAT.cs` |
+| NES CPU BAT_PNES | PocketNES (GBA, Loopy / FluBBa / Dwedit), no licence in the archive mirror: `6502.s` check_irq + branch/JMP speed hack ([source](https://github.com/catskull/pocketnes/blob/master/src/6502.s)), `cpus/CPU_BAT.cs` |
+| NES CPU BAT_FCEU | FCEUX commit e0028f6 (2009-06-24, reverted in 854553e), GPL-2+ (FA-1): `x6502.cpp` cpu_ignore ([commit](https://github.com/TASEmulators/fceux/commit/e0028f6)), `cpus/CPU_BAT.cs` |
+| GB CPU GB-GNUB | gnuboy (C) Laguna / Gilgamesh, GPL-2+ (FA-1): `cpu_emulate` interrupt dispatch ([source](https://github.com/rofl0r/gnuboy/blob/master/cpu.c)), `gb/CPU_GB.cs` FreeDispatch |
+| x86 CPU I386_D074 | DOSBox 0.74 (C) 2002-2010 The DOSBox Team, GPL-2+ (FA-1): `core_simple.cpp` one cycle per instruction, default cycles=3000 ([source](https://sourceforge.net/p/dosbox/code-0/HEAD/tree/dosbox/tags/RELEASE_0_74/src/cpu/core_simple.cpp)), `x86/PcSession.cs` IpsOf |
+
 ## 3. Test material in the repository; ## 3. Test material in the repository
 ; 
 | What | Where | License |; | What | Where | License |
