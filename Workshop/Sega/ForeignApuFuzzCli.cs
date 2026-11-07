@@ -22,7 +22,7 @@ internal static class ForeignApuFuzzCli
     private static readonly string[] GbIds = { "GB", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" };
     private static readonly string[] MdIds = { "MD", "GENS", "PICO", "M036", "BLST", "GPGX" };
     private static readonly string[] SmsIds = { "SMS", "SMS-FM", "GENS", "PICO", "M036", "BLST", "GPGX", "DARC", "DEGA", "M036FM", "E055" };
-    private static readonly string[] NesIds = { "FIX", "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124" };
+    private static readonly string[] NesIds = { "FIX", "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR" };
 
     public static int Run(string[] args)
     {
