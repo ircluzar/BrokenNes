@@ -23,6 +23,7 @@ namespace NesEmulator.Mix
             ["VBAM"] = m => new APU_VBAM(m),   // VBA-M 2007 (5e3902b4) pre-Gb_Apu sound engine (foreign-apu-project)
             ["TGBD"] = m => new APU_TGBD(m),     // TGB Dual's apu.cpp (foreign-apu-project)
             ["GYOB"] = m => new APU_GYOB(m),     // GameYob's DS sound mapping (foreign-apu-project)
+            ["MGB"] = m => new APU_MGB(m),      // minigb_apu @024175d (apu-harvest)
         };
         public static IEnumerable<string> ApuIds => apus.Keys;
         public static IGbApu CreateApu(string id, GbModel model) =>

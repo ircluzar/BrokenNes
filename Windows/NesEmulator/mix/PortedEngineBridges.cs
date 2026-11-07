@@ -17,6 +17,7 @@ namespace NesEmulator
     public sealed class APU_DMG_VBAM : APU_DMG { public APU_DMG_VBAM(Bus bus) : base(bus, "VBAM", extBank: false) { } }
     public sealed class APU_DMG_TGBD : APU_DMG { public APU_DMG_TGBD(Bus bus) : base(bus, "TGBD", extBank: false) { } }
     public sealed class APU_DMG_GYOB : APU_DMG { public APU_DMG_GYOB(Bus bus) : base(bus, "GYOB", extBank: false) { } }
+    public sealed class APU_DMG_MGB : APU_DMG { public APU_DMG_MGB(Bus bus) : base(bus, "MGB", extBank: false) { } }
 }
 
 namespace NesEmulator

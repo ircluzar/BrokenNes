@@ -36,9 +36,9 @@ internal static partial class ApuChannelsCli
 
         var consoles = new (string name, string stock, string[] ids, List<Cell> cells)[]
         {
-            ("NES", "FIX", new[] { "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES" }, NesCells()),
+            ("NES", "FIX", new[] { "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS" }, NesCells()),
             ("SNES", "SFC", new[] { "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS" }, SnesCells()),
-            ("GB", "GB", new[] { "GNUB", "VBA", "VBAM", "TGBD", "GYOB" }, GbCells()),
+            ("GB", "GB", new[] { "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" }, GbCells()),
             ("MD", "MD", new[] { "GENS", "PICO", "M036", "BLST", "GPGX" }, MdCells()),
             ("SMS", "SMS", new[] { "GENS", "PICO", "M036", "BLST", "GPGX", "DARC", "DEGA" }, PsgCells(ConsoleKind.MasterSystem)),
             ("GG", "SMS", new[] { "GENS", "PICO", "M036", "BLST", "GPGX", "DARC", "DEGA" }, PsgCells(ConsoleKind.GameGear)),

@@ -326,7 +326,7 @@ public static class CoreCatalog
     // NES-board cores that are really another console's part (the mix bridges).
     private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy", ["Z80"] = "Master System", ["M68K"] = "Genesis" };
     private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess" };
-    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess", ["DARC"] = "Foreign", ["NSTC"] = "Foreign", ["INES"] = "Foreign", ["FCEU"] = "Foreign", ["TUXN"] = "Foreign", ["VNES"] = "Foreign", ["PNES"] = "Foreign" };
+    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess", ["DARC"] = "Foreign", ["NSTC"] = "Foreign", ["INES"] = "Foreign", ["FCEU"] = "Foreign", ["TUXN"] = "Foreign", ["VNES"] = "Foreign", ["PNES"] = "Foreign", ["NSDS"] = "Foreign" };
 
     /// <summary>The NES board's ids of the other consoles' ENHANCED chips (a NES game on them). Only the NES menu offers them: the other consoles reach those chips directly (<see cref="DirectRoutes"/>), never through a NES.
     /// WMSS (the WideMess's, milestone 7) only where the WideMess console is offered (<see cref="Consoles.WideMessEnabled"/>).</summary>
@@ -805,6 +805,7 @@ public static class CoreCatalog
                         list.Add(new("VBAM", "VBAM (VBA-M 2007 sound, pre-Gb_Apu: VBA 1.7.2 plus read masks and shadowed frequency registers)", "Game Boy"));
                         list.Add(new("TGBD", "TGBD (TGB Dual sound, 2001: whole-frame 44.1 kHz blocks, ~299 Hz envelopes, swapped L/R)", "Game Boy"));
                         list.Add(new("GYOB", "GYOB (GameYob DS sound, 2013: GB channels on DS PSG/PCM channels, per-frame updates, DC hum)", "Game Boy"));
+                        list.Add(new("MGB", "MGB (minigb_apu 2022-03, Peanut-GB: float per-sample timing, no frame sequencer, linear sweep, heavy per-channel high-pass)", "Game Boy"));
                         foreach (var id in NesSoundChips()) list.Add(new("NES:" + id, NesSoundLabel(id), "NES"));
                         if (CoreRegistry.ApuIds.Contains("SNES", StringComparer.OrdinalIgnoreCase)) list.Add(new("NES:SNES", "SNES sound (through NES registers)", "SNES"));
                         foreach (var id in HubSoundChips("Game Boy").Where(i => NesFamilyOf(CoreSlot.Apu, i) != "SNES" || PortedBridgeEngine(i) != null)) list.Add(new("NES:" + id, HubSoundLabel(id, "the Game Boy's channels"), NesFamilyOf(CoreSlot.Apu, id)));
@@ -833,8 +834,8 @@ public static class CoreCatalog
     /// <summary>The engines ported from other emulators (the Foreign APU project, docs/projects/foreign-apu-project.md): the core menus list them in their console's submenu under their own heading.</summary>
     public static readonly HashSet<string> PortedIds = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "GENS", "PICO", "M036", "BLST", "GPGX", "DARC", "DEGA", "M036FM", "E055",
-        "FCEU", "INES", "NSTC", "TUXN", "VNES", "PNES",
+        "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB", "GENS", "PICO", "M036", "BLST", "GPGX", "DARC", "DEGA", "M036FM", "E055",
+        "FCEU", "INES", "NSTC", "TUXN", "VNES", "PNES", "NSDS",
     };
 
     /// <summary>
@@ -864,10 +865,10 @@ public static class CoreCatalog
     private static readonly Dictionary<string, string> ShortNames = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ZS15"] = "ZSNES 0.15", ["ZS151"] = "ZSNES 1.51", ["S916"] = "Snes9x 1.16a", ["S9X1"] = "Snes9x 1.43", ["S951"] = "Snes9x 1.51", ["OSPC"] = "libOpenSPC", ["SNDS"] = "SNEmulDS",
-        ["GNUB"] = "gnuboy 1.0.3", ["VBA"] = "VisualBoyAdvance 1.7.2", ["VBAM"] = "VBA-M 2007", ["TGBD"] = "TGB Dual", ["GYOB"] = "GameYob DS",
+        ["GNUB"] = "gnuboy 1.0.3", ["VBA"] = "VisualBoyAdvance 1.7.2", ["VBAM"] = "VBA-M 2007", ["TGBD"] = "TGB Dual", ["GYOB"] = "GameYob DS", ["MGB"] = "minigb_apu 2022",
         ["GENS"] = "Gens 2.10", ["PICO"] = "PicoDrive 1.85", ["M036"] = "MAME 0.36", ["M036FM"] = "MAME 0.36 FM", ["BLST"] = "BlastEm 0.3.1", ["GPGX"] = "Genesis Plus GX 1.3",
         ["DARC"] = "DarcNES", ["DEGA"] = "Dega 1.16", ["E055"] = "emu2413 0.55", ["FCEU"] = "FCE Ultra", ["INES"] = "iNES", ["NSTC"] = "NESticle", ["TUXN"] = "TuxNES",
-        ["VNES"] = "VirtuaNES 0.97", ["PNES"] = "PocketNES", ["HLE"] = "silent", ["SMS-FM"] = "with the FM chip", ["SMSFM"] = "Master System FM",
+        ["VNES"] = "VirtuaNES 0.97", ["PNES"] = "PocketNES", ["NSDS"] = "nesDS 2.0.1", ["HLE"] = "silent", ["SMS-FM"] = "with the FM chip", ["SMSFM"] = "Master System FM",
     };
 
     /// <summary>

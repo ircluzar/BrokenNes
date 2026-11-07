@@ -19,10 +19,10 @@ namespace BrokenNes.Workshop.Sega;
 internal static class ForeignApuFuzzCli
 {
     private static readonly string[] SnesIds = { "SFC", "ZS15", "S9X1", "OSPC", "S951", "S916", "ZS151", "SNDS" };
-    private static readonly string[] GbIds = { "GB", "GNUB", "VBA", "VBAM", "TGBD", "GYOB" };
+    private static readonly string[] GbIds = { "GB", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" };
     private static readonly string[] MdIds = { "MD", "GENS", "PICO", "M036", "BLST", "GPGX" };
     private static readonly string[] SmsIds = { "SMS", "SMS-FM", "GENS", "PICO", "M036", "BLST", "GPGX", "DARC", "DEGA", "M036FM", "E055" };
-    private static readonly string[] NesIds = { "FIX", "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES" };
+    private static readonly string[] NesIds = { "FIX", "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS" };
 
     public static int Run(string[] args)
     {
@@ -83,7 +83,7 @@ internal static class ForeignApuFuzzCli
             Rms(a, 4_194_304 / 10);
             return a;
         }
-        string[] ids = { "GB", "GNUB", "VBA", "VBAM", "TGBD", "GYOB" };
+        string[] ids = { "GB", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" };
         int bad = 0;
         foreach (var from in ids)
             foreach (var to in ids)

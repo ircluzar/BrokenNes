@@ -29,9 +29,9 @@ internal static class ApuSweepCli
     private const int Warm = 420, Window = 120;   // the Game Boy and SNES games start their music after Start (frame 240)
     private static string plant = "";
 
-    private static readonly string[] NesPorts = { "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES" };
+    private static readonly string[] NesPorts = { "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS" };
     private static readonly string[] SnesPorts = { "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS" };
-    private static readonly string[] GbPorts = { "GNUB", "VBA", "VBAM", "TGBD", "GYOB" };
+    private static readonly string[] GbPorts = { "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" };
     private static readonly string[] PsgPorts = { "GENS", "PICO", "M036", "BLST", "GPGX", "DARC", "DEGA" };
     private static readonly string[] FmPorts = { "M036FM", "E055" };
     private static readonly string[] MdPorts = { "GENS", "PICO", "M036", "BLST", "GPGX" };
@@ -357,6 +357,7 @@ internal static class ApuSweepCli
         ("SNES", "native", "S9X1") => "Snes9x 1.43 never reads the mute bit (S9x1Dsp.cs: 'so.mute_sound = byte & APU_MUTE: nothing reads it'); FA-SW-4",
         ("SNES", "native", "SNDS") => "SNEmulDS's mixer ignores FLG mute/reset (SnemulDsDsp.cs header); FA-SW-4",
         ("SNES", "native", "ZS151") => "ZSNES 1.51's FLG mute only stops the voices at the write (Zs151Dsp.cs case 0x6C); the driver's next key-on sounds; FA-SW-4",
+        ("GB", "native", "MGB") => "minigb_apu @024175d stores NR52 writes and never powers off (MinigbApu.cs header: the register R/W while off bug); FA-SW-4",
         _ => null,
     };
     /// <summary>--apu-sweep --nes-load-diff: the music test on stock FIX, saved at frame 300; the same machine plays on (A), a fresh one loads the state and plays (B):
