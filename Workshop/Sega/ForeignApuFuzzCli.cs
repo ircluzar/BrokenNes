@@ -18,7 +18,7 @@ namespace BrokenNes.Workshop.Sega;
 /// </summary>
 internal static class ForeignApuFuzzCli
 {
-    private static readonly string[] SnesIds = { "SFC", "ZS15", "S9X1", "OSPC", "S951", "S916", "ZS151", "SNDS" };
+    private static readonly string[] SnesIds = { "SFC", "ZS15", "S9X1", "OSPC", "S951", "S916", "ZS151", "SNDS", "PSPC3" };
     private static readonly string[] GbIds = { "GB", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" };
     private static readonly string[] MdIds = { "MD", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN" };
     private static readonly string[] SmsIds = { "SMS", "SMS-FM", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA", "M036FM", "E055" };

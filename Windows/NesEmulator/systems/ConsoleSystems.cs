@@ -740,6 +740,7 @@ public static class CoreCatalog
                         list.Add(new("OSPC", "OSPC (libOpenSPC sound, 2002: guessed envelopes, linear release, rand() noise)", "SNES"));
                         list.Add(new("S916", "S916 (Snes9x 1.16a sound, 1998: 22 kHz, no interpolation, additive pitch mod, sample cache, half-speed envelopes)", "SNES"));
                         list.Add(new("SNDS", "SNDS (SNEmulDS / PocketSPC Nintendo DS sound: 32 kHz, no interpolation, 2.4% sharp, silent noise, broken echo)", "SNES"));
+                        list.Add(new("PSPC3", "PSPC3 (PocketSPC 0.3 Nintendo DS sound: 24 kHz, no interpolation, no echo (echo volume added to the voice), silent noise, right main volume ignored)", "SNES"));
                         list.Add(new("S9X1", "S9X1 (Snes9x 1.43 sound, 2004: stereo, old envelopes, linear interpolation, private echo)", "SNES"));
                         list.Add(new("S951", "S951 (Snes9x 1.51 sound, 2007: gaussian interpolation, counter-table envelopes, private echo)", "SNES"));
                         list.Add(new("ZS151", "ZS151 (ZSNES 1.51 sound, 2007: its own envelopes and echo, Gaussian look-ahead, 160-frame blocks)", "SNES"));
@@ -779,6 +780,7 @@ public static class CoreCatalog
                         list.Add(new("OSPC", "OSPC (libOpenSPC sound, 2002: guessed envelopes, linear release, rand() noise)", "SNES"));
                         list.Add(new("S916", "S916 (Snes9x 1.16a sound, 1998: 22 kHz, no interpolation, additive pitch mod, sample cache, half-speed envelopes)", "SNES"));
                         list.Add(new("SNDS", "SNDS (SNEmulDS / PocketSPC Nintendo DS sound: 32 kHz, no interpolation, 2.4% sharp, silent noise, broken echo)", "SNES"));
+                        list.Add(new("PSPC3", "PSPC3 (PocketSPC 0.3 Nintendo DS sound: 24 kHz, no interpolation, no echo (echo volume added to the voice), silent noise, right main volume ignored)", "SNES"));
                         list.Add(new("S9X1", "S9X1 (Snes9x 1.43 sound, 2004: stereo, old envelopes, linear interpolation, private echo)", "SNES"));
                         list.Add(new("S951", "S951 (Snes9x 1.51 sound, 2007: gaussian interpolation, counter-table envelopes, private echo)", "SNES"));
                         list.Add(new("ZS151", "ZS151 (ZSNES 1.51 sound, 2007: its own envelopes and echo, Gaussian look-ahead, 160-frame blocks)", "SNES"));
@@ -847,7 +849,7 @@ public static class CoreCatalog
     /// <summary>The engines ported from other emulators (the Foreign APU project, docs/projects/foreign-apu-project.md): the core menus list them in their console's submenu under their own heading.</summary>
     public static readonly HashSet<string> PortedIds = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA", "M036FM", "E055",
+        "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "PSPC3", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA", "M036FM", "E055",
         "FCEU", "INES", "NSTC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16", "FSID",
     };
 
@@ -877,7 +879,7 @@ public static class CoreCatalog
     /// <summary>The short names the core menus show for the ported engines (the full description is the tooltip; the overlay cards will carry more).</summary>
     private static readonly Dictionary<string, string> ShortNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["ZS15"] = "ZSNES 0.15", ["ZS151"] = "ZSNES 1.51", ["S916"] = "Snes9x 1.16a", ["S9X1"] = "Snes9x 1.43", ["S951"] = "Snes9x 1.51", ["OSPC"] = "libOpenSPC", ["SNDS"] = "SNEmulDS",
+        ["ZS15"] = "ZSNES 0.15", ["ZS151"] = "ZSNES 1.51", ["S916"] = "Snes9x 1.16a", ["S9X1"] = "Snes9x 1.43", ["S951"] = "Snes9x 1.51", ["OSPC"] = "libOpenSPC", ["SNDS"] = "SNEmulDS", ["PSPC3"] = "PocketSPC 0.3",
         ["GNUB"] = "gnuboy 1.0.3", ["VBA"] = "VisualBoyAdvance 1.7.2", ["VBAM"] = "VBA-M 2007", ["TGBD"] = "TGB Dual", ["GYOB"] = "GameYob DS", ["MGB"] = "minigb_apu 2022",
         ["GENS"] = "Gens 2.10", ["PICO"] = "PicoDrive 1.85", ["M036"] = "MAME 0.36", ["M036FM"] = "MAME 0.36 FM", ["BLST"] = "BlastEm 0.3.1", ["GPGX"] = "Genesis Plus GX 1.3", ["GWEN"] = "Gwenesis (retro-go)",
         ["DARC"] = "DarcNES", ["DEGA"] = "Dega 1.16", ["E055"] = "emu2413 0.55", ["FCEU"] = "FCE Ultra", ["INES"] = "iNES", ["NSTC"] = "NESticle", ["TUXN"] = "TuxNES",

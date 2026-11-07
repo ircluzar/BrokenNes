@@ -152,7 +152,7 @@ internal static partial class ApuChannelsCli
         var sets = new (string con, string[] ids, Func<string, bool, IUnit> make)[]
         {
             ("NES", new[] { "FIX", "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16", "FSID" }, (id, k) => new NesUnit(id, k)),
-            ("SNES", new[] { "SFC", "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS" }, (id, k) => new SnesUnit(id, k)),
+            ("SNES", new[] { "SFC", "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "PSPC3" }, (id, k) => new SnesUnit(id, k)),
             ("GB", new[] { "GB", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" }, (id, k) => new GbUnit(id, k)),
             ("MD", new[] { "MD", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN" }, (id, k) => new MdUnit(id, k)),
             ("SMS", new[] { "SMS", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA" }, (id, k) => new SmsUnit(id, false, k)),

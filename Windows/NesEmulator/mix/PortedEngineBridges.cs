@@ -11,6 +11,7 @@ namespace NesEmulator
     public sealed class APU_SNES_S951 : APU_SNES { public APU_SNES_S951(Bus bus) : base(bus, "S951") { } }
     public sealed class APU_SNES_OSPC : APU_SNES { public APU_SNES_OSPC(Bus bus) : base(bus, "OSPC") { } }
     public sealed class APU_SNES_SNDS : APU_SNES { public APU_SNES_SNDS(Bus bus) : base(bus, "SNDS") { } }
+    public sealed class APU_SNES_PSPC3 : APU_SNES { public APU_SNES_PSPC3(Bus bus) : base(bus, "PSPC3") { } }
 
     public sealed class APU_DMG_GNUB : APU_DMG { public APU_DMG_GNUB(Bus bus) : base(bus, "GNUB", extBank: false) { } }
     public sealed class APU_DMG_VBA : APU_DMG { public APU_DMG_VBA(Bus bus) : base(bus, "VBA", extBank: false) { } }

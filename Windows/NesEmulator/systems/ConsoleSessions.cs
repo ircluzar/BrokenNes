@@ -164,7 +164,7 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
         else if (apu.Equals("S951", StringComparison.OrdinalIgnoreCase)) unit = new APU_S951();   // the SNES unit heard through Snes9x 1.51 sound engine (foreign-apu-project)
         else if (apu.Equals("ZS151", StringComparison.OrdinalIgnoreCase)) unit = new APU_ZS151(); // the SNES unit heard through ZSNES 1.51's sound engine (foreign-apu-project)
         else if (apu.Equals("S916", StringComparison.OrdinalIgnoreCase)) unit = new APU_S916();
-        else if (apu.Equals("SNDS", StringComparison.OrdinalIgnoreCase)) unit = new APU_SNDS();   // the SNES unit heard through SNEmulDS's ARM7 DSP (foreign-apu-project)   // the SNES unit heard through Snes9x 1.16a sound engine (foreign-apu-project)
+        else if (apu.Equals("SNDS", StringComparison.OrdinalIgnoreCase)) unit = new APU_SNDS(); else if (apu.Equals("PSPC3", StringComparison.OrdinalIgnoreCase)) unit = new APU_PSPC3();   // the SNES unit heard through SNEmulDS's ARM7 DSP (foreign-apu-project)   // the SNES unit heard through Snes9x 1.16a sound engine (foreign-apu-project)
         else unit = new APU_SFC();
         var chip = SnesChips.Create(cart, loadFirmware, false, out string chipNote);
         if (wideMess)
@@ -259,10 +259,11 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
         "ZS151" => unit is APU_ZS151,
         "S916" => unit is APU_S916,
         "SNDS" => unit is APU_SNDS,
+            "PSPC3" => unit is APU_PSPC3,
         _ => unit.GetType() == typeof(APU_SFC),
     };
 
-    private static APU_SFC NewUnit(string id) => id.ToUpperInvariant() switch { "SFCS" => new APU_SFCS(), "WMS" => new APU_WMS(), "ZS15" => new APU_ZS15(), "OSPC" => new APU_OSPC(), "S9X1" => new APU_S9X1(), "S951" => new APU_S951(), "ZS151" => new APU_ZS151(), "S916" => new APU_S916(), "SNDS" => new APU_SNDS(), _ => new APU_SFC() };
+    private static APU_SFC NewUnit(string id) => id.ToUpperInvariant() switch { "SFCS" => new APU_SFCS(), "WMS" => new APU_WMS(), "ZS15" => new APU_ZS15(), "OSPC" => new APU_OSPC(), "S9X1" => new APU_S9X1(), "S951" => new APU_S951(), "ZS151" => new APU_ZS151(), "S916" => new APU_S916(), "SNDS" => new APU_SNDS(), "PSPC3" => new APU_PSPC3(), _ => new APU_SFC() };
 
     /// <summary>The same SPC700 + S-DSP in a unit of the other kind (stock / enhanced / WideMess): its whole state moves, at the board's time.</summary>
     private static APU_SFC MoveSpc(APU_SFC from, APU_SFC to)
