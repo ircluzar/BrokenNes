@@ -205,4 +205,4 @@ Per core: fetch, port, register, notices, `--apu-channels` + `--state`, suite, c
 | DOSBox 0.72 SB / 0.74 GUS / 0.72 Tandy | planned | |
 | PocketSPC 0.3 | planned | |
 | SMSAdvance | planned | |
-| Gwenesis YM2612 | planned | |
+| Gwenesis YM2612 | done (GWEN) | `sega/GwenYm2612.cs`, `GwenSn76489.cs`, `md/MdSoundUnitGwen.cs`, `SmsSoundGwen.cs`; Genesis APU + SMS/GG PSG menus |

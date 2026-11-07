@@ -26,6 +26,7 @@ namespace NesEmulator
     public sealed class APU_SMS_BLST : APU_SMS { public APU_SMS_BLST(Bus bus) : base(bus, "BLST") { } }
     public sealed class APU_SMS_M036 : APU_SMS { public APU_SMS_M036(Bus bus) : base(bus, "M036") { } }
     public sealed class APU_SMS_GPGX : APU_SMS { public APU_SMS_GPGX(Bus bus) : base(bus, "GPGX") { } }
+    public sealed class APU_SMS_GWEN : APU_SMS { public APU_SMS_GWEN(Bus bus) : base(bus, "GWEN") { } }
     public sealed class APU_SMS_GENS : APU_SMS { public APU_SMS_GENS(Bus bus) : base(bus, "GENS") { } }
     public sealed class APU_SMS_PICO : APU_SMS { public APU_SMS_PICO(Bus bus) : base(bus, "PICO") { } }
     public sealed class APU_SMS_DARC : APU_SMS { public APU_SMS_DARC(Bus bus) : base(bus, "DARC") { } }
@@ -40,6 +41,7 @@ namespace NesEmulator
     public sealed class APU_MD_M036 : APU_MD { public APU_MD_M036(Bus bus) : base(bus, "M036") { } }
     public sealed class APU_MD_BLST : APU_MD { public APU_MD_BLST(Bus bus) : base(bus, "BLST") { } }
     public sealed class APU_MD_GPGX : APU_MD { public APU_MD_GPGX(Bus bus) : base(bus, "GPGX") { } }
+    public sealed class APU_MD_GWEN : APU_MD { public APU_MD_GWEN(Bus bus) : base(bus, "GWEN") { } }
 }
 
 namespace NesEmulator

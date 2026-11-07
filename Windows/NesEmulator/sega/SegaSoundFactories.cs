@@ -36,6 +36,7 @@ public static class SmsSoundFactories
         ["BLST"] = r => new SmsSoundBlst(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // foreign APU: BlastEm 0.3.1's PSG (GPL-3.0-or-later)
         ["M036"] = r => new SmsSoundM036(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // Foreign APU: MAME 0.36's sn76496.c (1999)
         ["GPGX"] = r => new SmsSoundGpgx(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // Foreign APU: Genesis Plus GX 1.3.0's SN76489 (Maxim's core, 2008)
+        ["GWEN"] = r => new SmsSoundGwen(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // Foreign APU: Gwenesis (retro-go a0f857bf) SN76489, cut down "to fit on MCU" (AGPL-3.0)
         ["GENS"] = r => new SmsSoundGens(r.CpuClockHz, r.Machine.SampleRate, r.Variant),   // foreign APU: Gens 2.10's PSG (quick port; the Master System and Game Gear menus)
         ["PICO"] = r => new SmsSoundPico(r),   // foreign APU: PicoDrive 1.85's SN76496 (MAME-derived, noise taps 0x14002), Master System and Game Gear
         ["DARC"] = r => new SmsSoundDarc(r),   // foreign APU: DarcNES 1.14's sms_psg.c (5-bit noise register, linear volume, per-frame blocks), Master System and Game Gear
@@ -73,6 +74,7 @@ public static class GenesisSoundFactories
         ["NES"] = m => new MdSoundOnNes(m),
         ["M036"] = m => new MdSoundUnitM036(m),   // Foreign APU: MAME 0.36's fm.c (YM2612) + sn76496.c (1999)
         ["GPGX"] = m => new MdSoundUnitGpgx(m),   // Foreign APU: Genesis Plus GX 1.3.0's fm.c (MAME 1.4 + Eke-Eke) + SN76489 (2008)
+        ["GWEN"] = m => new MdSoundUnitGwen(m),   // Foreign APU: Gwenesis (retro-go a0f857bf): GPGX-era fm.c YM2612, mono, + MCU-trimmed SN76489 (AGPL-3.0)
         ["PICO"] = m => new MdSoundUnitPico(m),   // foreign APU: PicoDrive 1.85's YM2612 (no SSG-EG, guessed DAC level) + SN76496
     };
 
