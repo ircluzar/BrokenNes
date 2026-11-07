@@ -80,9 +80,34 @@ internal static class X86CardsCli
             try { test(); }
             catch (Exception e) { _flagged++; Console.WriteLine($"{name,-11} CRASH {e.GetType().Name}: {e.Message}\n{e.StackTrace}"); }
         }
+        try { DosEnvCheck(); } catch (Exception e) { _flagged++; Console.WriteLine($"dos env CRASH {e.Message}"); }
         if (_wavDir != null) { Directory.CreateDirectory(_wavDir); foreach (var (k, v) in Wavs) WriteWav(Path.Combine(_wavDir, $"card_{k}.wav"), v); }
         Console.WriteLine($"\n{_flagged} flagged");
         return _flagged == 0 ? 0 : 1;
+    }
+
+    // ================= the DOS environment on the boot disk =================
+
+    private static void DosEnvCheck()
+    {
+        string? fd = PcDisks.FindFreeDos();
+        if (fd == null || !File.Exists(fd)) { Console.WriteLine("dos env: no FreeDOS disk here, not run"); return; }
+        foreach (var (id, want, not) in new[] { ("SB_D072", "SET BLASTER=A220 I7 D1 T4", "ULTRASND"), ("SB_D072_D072", "SET BLASTER=A220 I7 D1 T4", "ULTRASND"),
+                     ("GUS_D074", "SET ULTRASND=240,3,3,5,5", "BLASTER"), ("ADLIB", "", "BLASTER"), ("COVOX", "", "ULTRASND") })
+        {
+            var s = new PcSession(new byte[] { 0xc3 }, "T.COM", id);   // a .COM that just returns (RET)
+            for (int f = 0; f < 300; f++) s.RunFrame();
+            string auto = System.Text.Encoding.ASCII.GetString(s.ReadFile("FDAUTO.BAT") ?? Array.Empty<byte>());
+            bool booted = s.Machine.Stopped == null;
+            // the variable in DOS's own environment (COMMAND.COM's block in RAM, below 640K), not just in the batch file's text
+            string envVar = want.Length > 0 ? want[4..] : "";
+            bool inRam = envVar.Length == 0 || System.Text.Encoding.ASCII.GetString(s.Machine.Cpu.Mem, 0, 0xa0000).Contains(envVar + "\0");
+            bool ok = booted && inRam && auto.Length > 0 && (want.Length == 0 || auto.Contains(want)) && !auto.Contains(not)
+                      && (id != "GUS_D074" || auto.Contains("SET ULTRADIR=C:\\ULTRASND"));
+            if (!ok) _flagged++;
+            string line = auto.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith("SET BLASTER") || l.StartsWith("SET ULTRASND")) ?? "(no card variable)";
+            Console.WriteLine($"{id,-13} {"FreeDOS FDAUTO.BAT",-20}          {(ok ? "ok" : "FAIL")}  {line}{(envVar.Length > 0 ? (inRam ? ", in the DOS environment" : ", NOT in the DOS environment") : "")}{(booted ? ", booted 300 frames": ", STOPPED: " + s.Machine.Stopped)}");
+        }
     }
 
     // ================= Sound Blaster =================

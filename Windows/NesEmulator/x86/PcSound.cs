@@ -43,6 +43,18 @@ public static class PcSound
         yield return ("COVOX", $"COVOX ({CovoxLabel} + PC speaker)", "Covox");
     }
 
+    /// <summary>The FDAUTO.BAT lines that let DOS programs find the card of <paramref name="apu"/> (CRLF-ended; empty for cards with no variable), matching the cards' defaults:
+    /// the SB Pro 2 at 220h / IRQ 7 / DMA 1 (T4), the GUS at 240h / DMA 3 / IRQ 5 (ULTRADIR names C:\ULTRASND, but no GUS patches are shipped). Written only when the boot disk
+    /// is built for a program (<see cref="PcDisks.ForProgram"/>, at session creation); a disk image opened as it is keeps its own AUTOEXEC (no safe hook: it is the user's disk);
+    /// after a live card swap the variables are stale until a new session builds a new disk (the running DOS keeps the environment it booted with).</summary>
+    public static string DosEnv(string apu)
+    {
+        string u = (apu ?? "").ToUpperInvariant();
+        if (u == "SB_D072" || u.StartsWith("SB_D072_")) return "SET BLASTER=A220 I7 D1 T4\r\n";
+        if (u == "GUS_D074") return "SET ULTRASND=240,3,3,5,5\r\nSET ULTRADIR=C:\\ULTRASND\r\n";
+        return "";
+    }
+
     public static string Describe(string apu)
     {
         string u = apu.ToUpperInvariant();

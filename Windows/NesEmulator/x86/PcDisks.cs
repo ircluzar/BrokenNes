@@ -68,12 +68,13 @@ public static class PcDisks
     /// A boot disk that runs one DOS program: FreeDOS from <paramref name="freeDos"/>, the program in the root of C: (its 8.3 name; a name FreeDOS uses there gets a G in front), FDAUTO.BAT
     /// starting it; when it returns, the DOS prompt. Whatever the program writes (its save file) stays on this disk, which the app keeps as the game's save.
     /// </summary>
-    public static byte[] ForProgram(byte[] freeDos, byte[] program, string fileName)
+    /// <param name="env">Extra FDAUTO.BAT lines run before the program (the sound card's SET BLASTER / ULTRASND, <see cref="PcSound.DosEnv"/>).</param>
+    public static byte[] ForProgram(byte[] freeDos, byte[] program, string fileName, string env = "")
     {
         string name = DosName(fileName);
         string stem = name.Contains('.') ? name[..name.IndexOf('.')] : name, ext = name.Contains('.') ? name[name.IndexOf('.')..] : "";
         if (new FatImage((byte[])freeDos.Clone()).Exists(name) || stem is "FDAUTO" or "FDCONFIG" or "SETUP") name = "G" + stem[..Math.Min(7, stem.Length)] + ext;
-        string auto = "@ECHO OFF\r\nSET DOSDIR=\\FREEDOS\r\nSET PATH=%DOSDIR%\\BIN\r\n\\" + name + "\r\n";   // with its path: a name like BEEP is never taken for a shell command
+        string auto = "@ECHO OFF\r\nSET DOSDIR=\\FREEDOS\r\nSET PATH=%DOSDIR%\\BIN\r\n" + env + "\\" + name + "\r\n";   // with its path: a name like BEEP is never taken for a shell command
         return BuildDisk(freeDos, DefaultConfig, auto, new[] { (program, name) }, new[] { "PACKAGES" });
     }
 

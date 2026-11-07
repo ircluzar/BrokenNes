@@ -37,7 +37,7 @@ public sealed class PcSession : IConsoleSession
             string fd = PcDisks.FindFreeDos() ?? throw new FileNotFoundException($"a DOS program needs the FreeDOS boot disk ({PcDisks.FreeDosImageName} in the app's x86/freedos folder, or BROKENNES_FREEDOS); open a disk image instead");
             Program = PcDisks.DosName(fileName);
             GameId = "exe" + ConsoleSessions.Sha1(image);   // the program's id: the disk made for it (and its save) is the same every time
-            image = PcDisks.ForProgram(File.ReadAllBytes(fd), image, fileName);
+            image = PcDisks.ForProgram(File.ReadAllBytes(fd), image, fileName, PcSound.DosEnv(apu));   // the card's SET BLASTER / ULTRASND, fixed at creation (a live swap does not rewrite it)
         }
         else GameId = ConsoleSessions.Sha1(image);
         if (image.Length < 512 || image.Length % 512 != 0) throw new InvalidDataException("an x86 disk image is a whole number of 512-byte sectors");
