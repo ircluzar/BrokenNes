@@ -136,11 +136,13 @@ Order: nofrendo, InfoNES, FCEUX old PPU, SameBoy v0.1, Peanut-GB, gnuboy 1.0.3, 
 | 4 | SameBoy v0.1 | GB/GBC `SB01` | ported as a renderer beside the stock chip (timing stays PPU_GB's); Mealybug m3 tests show its 8-pixel chunks; LA, Kirby, SML, Oracle of Seasons draw; state reload SAME | 575d27f1 |
 | 5 | Peanut-GB @8a692e4 | GB/GBC `PGB` | ported as a renderer beside the stock chip; LA, Kirby, SML draw; GBC games drawn wrongly as DMG (its jank); state reload SAME | 575d27f1 |
 | 6 | gnuboy 1.0.3 @29076d4 | GB/GBC `GNUB` | ported as a renderer beside the stock chip; LA, Kirby, SML, Oracle of Seasons draw; state reload SAME | 4da5ff09 |
-| 7 | PicoDrive draw2 v1.85 | Genesis `PD2` | ported (whole frame at frame end from the stock VDP's memories); Sonic, Streets of Rage 2, Gunstar Heroes draw; state reload SAME | PD2 commit |
-| 8 | Genesis Plus GX @cbf8f4e | MD / SMS | todo | |
-| 9 | Snes9x tile.cpp @88f3702 | SNES | todo | |
-| 10 | runners-up, tarball targets | | todo | |
+| 7 | PicoDrive draw2 v1.85 | Genesis `PD2` | ported (whole frame at frame end from the stock VDP's memories); Sonic, Streets of Rage 2, Gunstar Heroes draw; state reload SAME | 6b067835 |
+| 8 | Genesis Plus GX @cbf8f4e | MD / SMS | not started this run: vdp_render.c is 4150 lines and the jank lives in its full line pipeline | |
+| 9 | Snes9x tile.cpp @88f3702 | SNES | not started this run: needs Snes9x's whole GFX pipeline around it | |
+| 10 | runners-up, tarball targets | | not started | |
 
 Midpoint battery (2026-11-07, commit fc2371d5): suite 123/0, scenarios 1031/0, fuzz 1426 trials with 1 finding: nes undo-mismatch STATE, To The Earth, cpu SPD, ppu INES, minimised to Unsafe.VideoBus alone (repro `bfuzz nes 1 out 311282`). Plain save/reload of that game on INES is SAME; the divergence (CPU timing, openBus) is not yet traced to INES or to the board.
 
 Fuzz finding traced (7b2115f5): the three NES cores read their state with JsonSerializer, which cannot read the number arrays NES.SaveState writes for small byte arrays, so SetState silently restored nothing. Not a board issue; fixed with HarvestPpuState.From.
+
+Final battery (2026-11-07, 2e7a2748, run from the climb worktree): ALL GREEN - scenarios 1052/0, fuzz 916 trials 0 findings (it first caught a GNUB WX<0 overrun, fixed b5eb1a4d); golden suite from the main cases 123 pass / 0 fail / 30 skip.
