@@ -90,3 +90,20 @@ Art instruments, ported faithfully with their flaws (listed in each file's heade
 | ADLIB_D074C | `Dosbox074CompatOpl.cs` | DOSBox 0.74 (tags/RELEASE_0_74, r3548) `src/hardware/opl.cpp`, (C) 2002-2010 The DOSBox Team, based on Ken Silverman's ADLIBEMU | LGPL-2.1+ (https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt) |
 | ADLIB_D074F | `Dosbox074Dbopl.cs` | DOSBox 0.74 (tags/RELEASE_0_74, r3582) `src/hardware/dbopl.cpp`, (C) 2002-2010 The DOSBox Team (Edward van der Spek) | GPL-2.0+ (https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt) |
 | ADLIB_NUK174 | `Nuked174Opl.cs` | Nuked-OPL3 1.7.4 by Alexey Khokholov (nukeykt), as shipped in AdPlug tag adplug-2.3.1 `src/nukedopl.c`; https://github.com/adplug/adplug/tree/adplug-2.3.1/src | LGPL-2.1+ |
+
+## Sound cards (APU harvest, 2026-11-07): the x86 sound-card choice
+
+Ported cards are art instruments, ported faithfully with their flaws (listed in each file's header), a documented exception (root ledger section 2a, docs/KNOWN_GAPS.md FA-1).
+Sources as fetched: `C:\BrokenNes-toolspu-harvest\dosbox072\`, `...\dosbox074\`.
+
+| x86 APU id | File | Source | License |
+|---|---|---|---|
+| SB_D072, SB_D072_&lt;engine&gt; | `Dosbox072SoundBlaster.cs` | DOSBox 0.72 (SVN tags/RELEASE_0_72) `src/hardware/sblaster.cpp` v1.66, (C) 2002-2007 The DOSBox Team; https://sourceforge.net/p/dosbox/code-0/HEAD/tree/dosbox/tags/RELEASE_0_72/src/hardware/sblaster.cpp | GPL-2.0+ (https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt) |
+| GUS_D074 | `Dosbox074Gus.cs` | DOSBox 0.74 (SVN tags/RELEASE_0_74) `src/hardware/gus.cpp` v1.37, (C) 2002-2010 The DOSBox Team; https://sourceforge.net/p/dosbox/code-0/HEAD/tree/dosbox/tags/RELEASE_0_74/src/hardware/gus.cpp | GPL-2.0+ |
+| TANDY_D072 | `Dosbox072Tandy.cs` | DOSBox 0.72 (SVN tags/RELEASE_0_72) `src/hardware/tandy_sound.cpp`, (C) 2002-2007 The DOSBox Team, based on MAME's sn76496.c (Nicola Salmoria); https://sourceforge.net/p/dosbox/code-0/HEAD/tree/dosbox/tags/RELEASE_0_72/src/hardware/tandy_sound.cpp | GPL-2.0+ |
+
+Written for this project (no source copied): the 8237 DMA controllers `Dma8237.cs` (from the public 8237A / PC/AT documentation; its card-facing
+interface follows the shape of DOSBox's dma.h so the ported cards behave as there), the card slot and `DosboxMixer` in `PcCards.cs` (a re-creation of
+the DOSBox mixer's documented behaviour - its 1 ms tick, sample-and-hold AddSamples, AddStretched, FillUp; mixer.cpp is not among the pinned sources and was
+not copied), the Covox Speech Thing `CovoxCard.cs` (from the hardware description: an 8-bit DAC on LPT1's data latch), SPEAKER (no card, no AdLib), and the
+card wiring in `PcMachine.cs` / `PcSound.cs` / `PcSession.cs`. Verifier: `Workshop/X86/X86CardsCli.cs` (`--x86cards`).
