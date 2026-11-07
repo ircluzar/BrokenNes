@@ -601,6 +601,7 @@ namespace NesEmulator
 		public void LoadState(string json)
 		{
 			if (string.IsNullOrWhiteSpace(json)) return;
+			Butcher?.RequestReset();   // a loaded state starts the Butchering corruption over (docs/projects/butchering-replay-research.md)
 			// Keep showing the last good picture (rather than a half-drawn one) until the loaded machine
 			// has drawn a whole frame - see NotePpuProgress.
 			lastClockScanline = -1; awaitingFrameStart = true;

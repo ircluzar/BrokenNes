@@ -642,6 +642,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
     {
         if (!SupportsState) throw new NotSupportedException(StateUnsupportedReason);
         byte[] payload = ConsoleStateFile.Unwrap(state, Console, GameId, Title, StateUnits());
+        Butcher?.RequestReset();   // a loaded state starts the Butchering corruption over (docs/projects/butchering-replay-research.md)
         byte[] before = board.SaveState();
         try
         {

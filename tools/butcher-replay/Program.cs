@@ -15,7 +15,7 @@ using NesEmulator.Systems;
 
 string console = args[0]; string outDir = args[1];
 int Opt(string n, int d) { int i = Array.IndexOf(args, "--" + n); return i >= 0 && i + 1 < args.Length ? int.Parse(args[i + 1]) : d; }
-int frames = Opt("frames", 600), gameIx = Opt("game", 0);
+int frames = Opt("frames", 600), gameIx = Opt("game", 0), masterSeed = Opt("seed", 0);
 Directory.CreateDirectory(outDir);
 var report = new StreamWriter(Path.Combine(outDir, console + ".txt")) { AutoFlush = true };
 void Line(string s) { report.WriteLine(s); Console.WriteLine($"[{console}] {s}"); }
@@ -101,7 +101,7 @@ ButcherSettings With(string path)
 
 var paths = new List<string> { "(off)" };
 paths.AddRange(ButcherCatalog.SettingsPaths());
-Line($"# {console}: {Path.GetFileName(rom)}, {frames} frames per run, scripted input; A load+apply, B reload only, C re-apply+load, D fresh machine");
+Line($"# {console}: {Path.GetFileName(rom)}, seed {masterSeed}, {frames} frames per run, scripted input; A load+apply, B reload only, C re-apply+load, D fresh machine");
 Line($"# {"effect",-28} {"fresh(A=D)",-12} {"reload(B=A)",-12} {"reapply(C=A)",-13} note");
 int fresh = 0, reload = 0, reapply = 0, total = 0, inert = 0;
 var m0 = Make(); Warm(m0); var entry = m0.Save();
@@ -109,7 +109,7 @@ var m0 = Make(); Warm(m0); var entry = m0.Save();
 foreach (var path in paths)
 {
     ButcherSettings s;
-    try { s = path == "(off)" ? new ButcherSettings() : With(path); } catch (Exception e) { Line($"  {path,-28} SKIP {e.Message}"); continue; }
+    try { s = path == "(off)" ? new ButcherSettings() : With(path); s.Seed = masterSeed; } catch (Exception e) { Line($"  {path,-28} SKIP {e.Message}"); continue; }
     try
     {
         var m = m0;

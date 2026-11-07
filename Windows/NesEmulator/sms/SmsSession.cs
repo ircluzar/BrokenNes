@@ -152,6 +152,7 @@ public class SmsSession : IConsoleSession, IButcherHost
     {
         // the header is checked before anything is touched; a refusal leaves the machine as it was
         byte[] payload = ConsoleStateFile.Unwrap(state, Console, GameId, Title, StateUnits());
+        Butcher?.RequestReset();   // a loaded state starts the Butchering corruption over (docs/projects/butchering-replay-research.md)
         byte[] before = SnapshotForUndo();
         try
         {

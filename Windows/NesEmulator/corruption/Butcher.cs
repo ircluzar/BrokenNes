@@ -21,6 +21,9 @@ namespace NesEmulator
 public sealed class ButcherSettings
 {
 	public bool Enabled { get; set; }
+	/// <summary>The corruption's master seed (the panel's roll seed): <see cref="Butcher.Reset"/> derives every effect's generator from it,
+	/// so the same setup from the same state with the same seed and input does the same damage. 0 = the built-in seeds.</summary>
+	public long Seed { get; set; }
 	public PinGroupSettings ConsolePins { get; set; } = new();
 	public PinGroupSettings CartPins { get; set; } = new();
 	public SpriteSettings Sprites { get; set; } = new();
@@ -675,9 +678,52 @@ public sealed class Butcher
 	public int CartAddressLines => cartLines;
 
 	/// <summary>Takes a new set of controls. The CHR chip's size sets how many cartridge address lines exist.</summary>
+	/// <summary>
+	/// Puts every effect back to its starting point (a "blast"): generators, timers, phases, filters, histories and band lifetimes take
+	/// the values of a brand-new engine of the same console, the generators are then mixed with <paramref name="seed"/> (0 keeps the
+	/// built-in seeds), and the current settings are applied again. Hosts call it after loading a state, so a Reload State replays the
+	/// same corruption instead of continuing it (docs/projects/butchering-replay-research.md). What the host attached (memory, callbacks,
+	/// LcdHost) is kept: only private fields are reset, and an array or object the new engine does not have is left alone.
+	/// </summary>
+	public void Reset(long seed)
+	{
+		var fresh = new Butcher { Profile = Profile };
+		int chr = lastChrChipSize;
+		const System.Reflection.BindingFlags F = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+		foreach (var f in typeof(Butcher).GetFields(F))
+		{
+			if (f.IsPublic || f.Name == nameof(settings) || f.Name.Contains("LcdHost")) continue;
+			var mine = f.GetValue(this); var init = f.GetValue(fresh);
+			if (f.FieldType.IsPrimitive || f.FieldType.IsEnum) { f.SetValue(this, init); continue; }
+			if (init == null) continue;                                   // attached by the host (memory, chips): keep
+			if (mine is Array a && init is Array b && a.Length == b.Length && a.GetType() == b.GetType()) { Array.Copy(b, a, b.Length); continue; }
+			if (mine is Delegate) continue;
+			f.SetValue(this, init);                                        // a state object or buffer of the new engine's own
+		}
+		resetSeed = seed;
+		Apply(settings, chr);
+		if (seed != 0)
+			foreach (var f in typeof(Butcher).GetFields(F))
+				if (f.FieldType == typeof(uint) && f.Name.StartsWith("rng", StringComparison.Ordinal)) f.SetValue(this, SeedRng((uint)f.GetValue(this)!, f.Name));
+	}
+	/// <summary>A generator's start: its built-in value with no master seed, else one derived from the seed and the generator's name.</summary>
+	private uint SeedRng(uint builtIn, string name)
+	{
+		if (resetSeed == 0) return builtIn;
+		ulong z = unchecked((ulong)resetSeed * 0x9E3779B97F4A7C15UL ^ StableHash(name) ^ builtIn);
+		z ^= z >> 30; z *= 0xBF58476D1CE4E5B9UL; z ^= z >> 27; z *= 0x94D049BB133111EBUL; z ^= z >> 31;
+		uint v = (uint)z ^ (uint)(z >> 32);
+		return v == 0 ? 0x6c8e9cf5u : v;
+	}
+	private static uint StableHash(string s) { uint h = 2166136261u; foreach (char c in s) { h ^= c; h *= 16777619u; } return h; }
+	private int lastChrChipSize;
+	private long resetSeed;
+
 	public void Apply(ButcherSettings s, int chrChipSize)
 	{
+		lastChrChipSize = chrChipSize;
 		settings = s ?? new ButcherSettings();
+		if (settings.Seed != resetSeed) resetRequested = true;   // a new master seed starts the corruption over from it
 		cartLines = AddressLinesFor(chrChipSize);
 		var on = settings.Enabled;
 		var cpSet = settings.ConsolePins;
@@ -691,8 +737,8 @@ public sealed class Butcher
 			for (int i = from; i < from + 8; i++) if (d[i] == 0) d[i] = code;
 			cpSet = new PinGroupSettings { Address = cpSet.Address, Data = d, Flicker = Math.Max(cpSet.Flicker, vc.Flicker), BendWrites = cpSet.BendWrites };
 		}
-		var c = new PinFaults(cpSet, Profile.ConsoleLines, 0x9e3779b9u, Profile.DataLines);
-		var k = new PinFaults(settings.CartPins, cartLines, 0x85ebca6bu);
+		var c = new PinFaults(cpSet, Profile.ConsoleLines, SeedRng(0x9e3779b9u, "pins0x9e3779b9u"), Profile.DataLines);
+		var k = new PinFaults(settings.CartPins, cartLines, SeedRng(0x85ebca6bu, "pins0x85ebca6bu"));
 		Console = on && c.Active ? c : null;
 		Cart = on && k.Active ? k : null;
 		var sp = settings.Sprites;
@@ -706,28 +752,28 @@ public sealed class Butcher
 			|| bd.Extra1.On || bd.Extra2.On || bd.Extra3.On);
 		if (!BandsActive) { Array.Clear(bandLife); LineBendMask = 0; TallXor = 0; }
 		RamActive = on && settings.Ram.On;
-		var vd = new PinFaults(settings.VideoDac, 1, 0x1B873593u, 24);
+		var vd = new PinFaults(settings.VideoDac, 1, SeedRng(0x1B873593u, "pins0x1B873593u"), 24);
 		VideoDacFaults = on && vd.DataActive ? vd : null;
 		PaletteActive = on && (settings.Palette.On || VideoDacFaults != null);
 		CiramFault = on ? Math.Clamp(settings.CiramA10, 0, 3) : 0;
-		var pb = new PinFaults(settings.PaletteBus, 8, 0x61C88647u, 16);
+		var pb = new PinFaults(settings.PaletteBus, 8, SeedRng(0x61C88647u, "pins0x61C88647u"), 16);
 		PaletteBusFaults = on && pb.Active ? pb : null;
-		var cp = new PinFaults(settings.Unsafe.CpuPins, Profile.CpuLines, 0xC2B2AE35u, Profile.CpuDataLines);
+		var cp = new PinFaults(settings.Unsafe.CpuPins, Profile.CpuLines, SeedRng(0xC2B2AE35u, "pins0xC2B2AE35u"), Profile.CpuDataLines);
 		CpuPins = on && cp.Active ? cp : null;
-		var sc = new PinFaults(settings.Unsafe.SoundCpuPins, Math.Max(1, Profile.SoundCpuLines), 0x27D4EB2Fu);
+		var sc = new PinFaults(settings.Unsafe.SoundCpuPins, Math.Max(1, Profile.SoundCpuLines), SeedRng(0x27D4EB2Fu, "pins0x27D4EB2Fu"));
 		SoundCpu = on && Profile.SoundCpuLines > 0 && sc.Active ? sc : null;
 		var so2 = settings.Sound;
-		var sbp = new PinFaults(so2.BusPins, Math.Max(1, Profile.SoundBusLines), 0x7FEB352Du); SoundBus = on && sbp.Active ? sbp : null;
-		var smp = new PinFaults(so2.SamplePins, Math.Max(1, Profile.SampleLines), 0x846CA68Bu); SampleFaults = on && smp.Active ? smp : null;
-		var dac = new PinFaults(so2.DacPins, 1, 0x2C1B3C6Du, 16); Dac = on && dac.Active ? dac : null;
+		var sbp = new PinFaults(so2.BusPins, Math.Max(1, Profile.SoundBusLines), SeedRng(0x7FEB352Du, "pins0x7FEB352Du")); SoundBus = on && sbp.Active ? sbp : null;
+		var smp = new PinFaults(so2.SamplePins, Math.Max(1, Profile.SampleLines), SeedRng(0x846CA68Bu, "pins0x846CA68Bu")); SampleFaults = on && smp.Active ? smp : null;
+		var dac = new PinFaults(so2.DacPins, 1, SeedRng(0x2C1B3C6Du, "pins0x2C1B3C6Du"), 16); Dac = on && dac.Active ? dac : null;
 		WobbleActive = on && so2.Wobble.On && so2.Wobble.Depth > 0;
-		var rb = new PinFaults(settings.Unsafe.RamBus, Profile.RamBusLines, 0x4CF5AD43u);
+		var rb = new PinFaults(settings.Unsafe.RamBus, Profile.RamBusLines, SeedRng(0x4CF5AD43u, "pins0x4CF5AD43u"));
 		RamBusFaults = on && rb.Active ? rb : null;
-		var vb = new PinFaults(settings.Unsafe.VideoBus, Math.Max(1, Profile.VideoBusLines), 0x9E3779B1u, Profile.CpuDataLines);
+		var vb = new PinFaults(settings.Unsafe.VideoBus, Math.Max(1, Profile.VideoBusLines), SeedRng(0x9E3779B1u, "pins0x9E3779B1u"), Profile.CpuDataLines);
 		VideoBusFaults = on && vb.Active ? vb : null;
-		var dm = new PinFaults(settings.Unsafe.DmaPins, Math.Max(1, Profile.DmaLines), 0x165667B1u, Profile.CpuDataLines);
+		var dm = new PinFaults(settings.Unsafe.DmaPins, Math.Max(1, Profile.DmaLines), SeedRng(0x165667B1u, "pins0x165667B1u"), Profile.CpuDataLines);
 		Dma = on && Profile.DmaLines > 0 && dm.Active ? dm : null;
-		var co = new PinFaults(settings.Unsafe.CoproPins, 24, 0xD3A2646Cu);
+		var co = new PinFaults(settings.Unsafe.CoproPins, 24, SeedRng(0xD3A2646Cu, "pins0xD3A2646Cu"));
 		Copro = on && Profile.Console == "snes" && co.Active ? co : null;
 		cpuPinsBase = CpuPins;
 		var un = settings.Unsafe;
@@ -736,7 +782,7 @@ public sealed class Butcher
 			|| un.DramRot.On || un.HeatSoak.On || un.Esd.On || (un.LinkNoise.On && Profile.Console == "gb") || settings.Sound.FmUnplug.On);
 		if (!(on && un.HeatSoak.On)) { heatFrames = 0; foreach (var pf in AllPins()) pf?.SetHeat(1); }
 		PadThActive = on && Profile.Console == "md" && un.PadTh.Mode is >= 1 and <= 3;
-		padThFaults = PadThActive ? new PinFaults(new PinGroupSettings { Flicker = un.PadTh.Flicker }, 1, 0x7A5C3E11u) : null;
+		padThFaults = PadThActive ? new PinFaults(new PinGroupSettings { Flicker = un.PadTh.Flicker }, 1, SeedRng(0x7A5C3E11u, "pins0x7A5C3E11u")) : null;
 		if (!(on && settings.Sound.FmUnplug.On)) fmUnplugLeft = 0;
 		if (!(on && un.LooseCart.On)) looseLeft = 0;
 		if (!(on && un.CicReset.On)) cicCount = 0;
@@ -757,7 +803,7 @@ public sealed class Butcher
 		PadActive = on && settings.Unsafe.PadLines is { } pl && Array.Exists(pl, x => x != 0);
 		paletteLut.Clear(); paletteMode = Math.Clamp(settings.Palette.Mode, 0, 4); paletteTick = 0;
 		if (!RamActive) Array.Clear(probeLife);
-		rngSprites = 0x1234567u; rngSound = 0x7654321u; rngBands = 0x2545F491u;
+		rngSprites = SeedRng(0x1234567u, nameof(rngSprites)); rngSound = SeedRng(0x7654321u, nameof(rngSound)); rngBands = SeedRng(0x2545F491u, nameof(rngBands));
 		if (!SpritesActive) { lagLeft = cloneLeft = swapLeft = forceLeft = 0; }
 		if (!SoundActive || !Any(so.Drops.Channels)) pendingDropRelease = dropMask != 0;
 		if (!SoundActive) { stutterLeft = droneLeft = dutyLeft = detuneLeft = 0; }
@@ -1862,8 +1908,14 @@ public sealed class Butcher
 		StillFrames = h == lastRamHash ? StillFrames + 1 : 0; lastRamHash = h;
 	}
 
+	/// <summary>Asks for <see cref="Reset"/> with the settings' seed at the start of the next frame (the emulator's thread): the hosts call
+	/// it when a state is loaded, so Reload State replays the corruption from its start instead of continuing it.</summary>
+	public void RequestReset() => resetRequested = true;
+	private volatile bool resetRequested;
+
 	public void FrameStart(Action<ushort, byte> inject)
 	{
+		if (resetRequested) Reset(settings.Seed);
 		WatchRam();
 		if (PaletteActive) PaletteFrame();
 		if (RotActive) { RotFrame(); SoundRot(); }

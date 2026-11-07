@@ -60,5 +60,25 @@ Runs: NES (Super Mario Bros., 600 frames), SNES (Super Mario World), Game Boy (S
 - **The unsafe effects that touch the machine** need their own audit: what they change outside the savestate, and whether that can
   be saved or derived from the seed.
 
-Next step when this resumes: add `Reset(seed)` to the effects engine, rerun `breplay` and expect B = C = D = A for everything but the
-machine-touching unsafe effects; then audit those.
+
+
+## The seeded reset (built 2026-11-07)
+
+- `ButcherSettings.Seed` (long, 0 = built-in seeds) is the master seed. `Butcher.Reset(seed)` copies every private field's starting
+  value from a brand-new engine of the same console (host-attached memory, callbacks and `LcdHost` are kept), re-applies the
+  settings and derives every `rng*` generator and pin-fault seed from the master seed (`SeedRng`, SplitMix mix of seed + name).
+- Every host's `LoadState` calls `Butcher.RequestReset()`; the reset runs at the start of the next `FrameStart`. `Apply` also
+  requests one when the seed changes, so a new seed starts the corruption over.
+- `breplay --seed N`. Rerun, 300 frames (NES 600 at seed 0), seed 777:
+
+| console | fresh (A = D) | reload (B = A) | reapply (C = A) |
+|---|---|---|---|
+| NES | 77 / 77 | 77 / 77 | 77 / 77 |
+| SNES | 77 / 77 | 76 / 77 | 76 / 77 |
+| Game Boy | 77 / 77 | 77 / 77 | 77 / 77 |
+| Genesis | 77 / 77 | 76 / 77 | 76 / 77 |
+| Master System | 77 / 77 | 77 / 77 | 77 / 77 |
+
+(77 now includes the `seed` setting itself.) Even the machine-touching unsafe effects replay now. Two leftovers, both interrupt lines
+held outside the savestate: `unsafe.dropNmi` on Genesis and `unsafe.stuckIrq` on SNES (same on a fresh machine, differ on a reload
+of a machine that already ran them). Next: audit those two, then the effects' state inside the savestate, timed setup changes, input.
