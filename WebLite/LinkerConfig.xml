@@ -43,6 +43,11 @@
     <!-- PPU harvest (docs/projects/ppu-harvest-catalog.md): ported picture cores, found by CoreRegistry by name. -->
     <type fullname="NesEmulator.PPU_NOFR" preserve="all" />
     <type fullname="NesEmulator.PPU_INES" preserve="all" />
+    <!-- CPU harvest (docs/projects/cpu-harvest-catalog.md): scanline-batch timing presets over CPU_FIX. -->
+    <type fullname="NesEmulator.CPU_BAT_INES" preserve="all" />
+    <type fullname="NesEmulator.CPU_BAT_NOFR" preserve="all" />
+    <type fullname="NesEmulator.CPU_BAT_PNES" preserve="all" />
+    <type fullname="NesEmulator.CPU_BAT_FCEU" preserve="all" />
     <type fullname="NesEmulator.PPU_FCEU" preserve="all" />
 
     <!-- APU: FIX for accuracy, SPD/LOW/LQ as the cheap options, WF/MNES as the web-native

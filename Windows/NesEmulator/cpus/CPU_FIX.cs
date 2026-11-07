@@ -29,6 +29,10 @@ public class CPU_FIX : ICPU {
 	private Bus bus; // concrete type to avoid interface dispatch cost
 
 	private bool irqRequested;
+	/// <summary>For the batch wrapper (CPU_BAT_*): an IRQ is latched and not yet taken.</summary>
+	internal bool IrqPending => irqRequested;
+	/// <summary>For the batch wrapper (CPU_BAT_*): an NMI is latched and not yet taken.</summary>
+	internal bool NmiPending => nmiRequested;
 	private bool nmiRequested;
 
 	// Mirrors the real 6502's internal IRQ-gate poll latch. On hardware, the poll checkpoint

@@ -1085,12 +1085,15 @@ namespace NesEmulator
 					// only on register access is not enough on its own - SMB3's MMC3 IRQ is still
 					// noticed a batch late, which put its status-bar split on the wrong line. Every
 					// other PPU core keeps the batched timing its goldens were recorded against.
-					bool perInstruction = bus!.SpeedConfig.NtscAccurateFrameRate || bus!.ppu is IPpuFixTiming;
-					int dynamicThreshold = perInstruction ? 1 : ConfigBatchCycleThreshold;
+					// A batched CPU (CPU_BAT_*: a whole scanline per ExecuteInstruction) must be flushed in one lump,
+					// or the precise window would catch the PPU up on every bus access and erase its timing.
+					bool batchedCpu = bus!.cpu is IBatchedCpu;
+					bool perInstruction = !batchedCpu && (bus!.SpeedConfig.NtscAccurateFrameRate || bus!.ppu is IPpuFixTiming);
+					int dynamicThreshold = perInstruction || batchedCpu ? 1 : ConfigBatchCycleThreshold;
 					int adaptiveAccumulator = 0;
 					// Null unless the active APU can predict its DMC fetches (only APU_FIX does),
 					// which is what keeps every other core on the untouched batched path.
-					var dmcSchedulable = bus!.GetDmcSchedulable();
+					var dmcSchedulable = batchedCpu ? null : bus!.GetDmcSchedulable();
 					// Cycle-accurate CPU->PPU interleave; see SpeedConfig.CpuCyclePrecisePpu. Opt-in for
 					// every other PPU core; always on for PPU_FIX, the accuracy core, whose per-dot
 					// renderer only pays off if a register write lands on the right dot. Catching the
@@ -1099,7 +1102,7 @@ namespace NesEmulator
 					// matched in precise timing but not in default. Costs 15-21% over per-instruction.
 					// Hoisted out of the loop because it cannot change mid-frame and this is the
 					// hot loop: with it off the only cost is this one local read.
-					bool precisePpu = bus!.SpeedConfig.CpuCyclePrecisePpu || bus!.ppu is IPpuFixTiming;
+					bool precisePpu = !batchedCpu && (bus!.SpeedConfig.CpuCyclePrecisePpu || bus!.ppu is IPpuFixTiming);
 					bus!.PpuCaughtUpPerInstruction = perInstruction || precisePpu;
 					bus!.PreciseSteppingActive = precisePpu;
 					// The 6502 spends 8 cycles on its reset sequence before the first opcode fetch, and the
@@ -1206,7 +1209,7 @@ namespace NesEmulator
 							{
 								FlushBatch(batchCpu);
 								batchCpu = 0;
-								if (bus.SpeedConfig.CpuAdaptiveBatching && !perInstruction)
+								if (bus.SpeedConfig.CpuAdaptiveBatching && !perInstruction && !batchedCpu)
 								{
 									// Simple proportional adjustment: if actual batch overshoots target, reduce threshold; if undershoots, increase.
 									int target = bus!.SpeedConfig.CpuAdaptiveBatchTargetCycles;
@@ -1483,8 +1486,9 @@ namespace NesEmulator
 				targetCycles -= overshootCarry; overshootCarry = 0;
 			}
 			nextFrameBoundaryCycle = globalCpuCycle + targetCycles;
-			bool perInstruction = bus.SpeedConfig.NtscAccurateFrameRate || bus.ppu is IPpuFixTiming;
-			bool precisePpu = bus.SpeedConfig.CpuCyclePrecisePpu || bus.ppu is IPpuFixTiming;
+			bool batchedCpu = bus.cpu is IBatchedCpu;
+			bool perInstruction = !batchedCpu && (bus.SpeedConfig.NtscAccurateFrameRate || bus.ppu is IPpuFixTiming);
+			bool precisePpu = !batchedCpu && (bus.SpeedConfig.CpuCyclePrecisePpu || bus.ppu is IPpuFixTiming);
 			bus.PpuCaughtUpPerInstruction = perInstruction || precisePpu;
 			bus.PreciseSteppingActive = precisePpu;
 			bus.MarkInstructionStart(-1);
@@ -1548,8 +1552,9 @@ namespace NesEmulator
 		private void PrepareIdleStepping()
 		{
 			// the two flags RunFrame sets before its loop, from the same conditions
-			bool precisePpu = bus!.SpeedConfig.CpuCyclePrecisePpu || bus.ppu is IPpuFixTiming;
-			bus.PpuCaughtUpPerInstruction = bus.SpeedConfig.NtscAccurateFrameRate || bus.ppu is IPpuFixTiming || precisePpu;
+			bool batchedCpu = bus!.cpu is IBatchedCpu;
+			bool precisePpu = !batchedCpu && (bus!.SpeedConfig.CpuCyclePrecisePpu || bus.ppu is IPpuFixTiming);
+			bus.PpuCaughtUpPerInstruction = !batchedCpu && (bus.SpeedConfig.NtscAccurateFrameRate || bus.ppu is IPpuFixTiming || precisePpu);
 			bus.PreciseSteppingActive = precisePpu;
 			bus.MarkInstructionStart(-1);
 		}

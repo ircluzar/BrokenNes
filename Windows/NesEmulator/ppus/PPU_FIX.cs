@@ -953,6 +953,9 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 					t = (ushort)((t & 0xFF00) | value);
 					// The second write copies t into the live address register - a few dots later.
 					vUpdatePending = t; vUpdateDelay = VramAddrUpdateDelay;
+					// A batch CPU (CPU_BAT_*) runs a whole line between PPU catch-ups, so no dots pass between its accesses: the copy lands at once,
+					// as in the batching emulators it models (their PPUs applied every register write on the spot). Every other CPU runs PPU_FIX precise.
+					if (bus.cpu is IBatchedCpu) { v = t; vUpdateDelay = 0; }
 					PPUADDR = t;
 				}
 				w = !w; // same shared toggle as $2005
