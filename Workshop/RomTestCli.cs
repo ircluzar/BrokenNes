@@ -43,6 +43,7 @@ internal static class RomTestCli
 
         string? romPath = null, cpu = null, ppu = null, apu = null, outPath = null, inputScript = null;
         int frames = 600;
+        HashSet<int> pngAt = new(); string pngDir = "."; int stateAt = -1;   // picture proofs (--png-at f1,f2 --png-dir d) and the save/load check (--state-at f)
         bool json = false;
         bool ntscFrameTiming = false;
         string powerOnRam = "fceux";   // BrokenNes' own fill (the FCEUX pattern); zeros / ones only on request, for programs that read RAM they never wrote
@@ -61,6 +62,9 @@ internal static class RomTestCli
                     case "--input": inputScript = args[++i]; break;
                     case "--out": outPath = args[++i]; break;
                     case "--json": json = true; break;
+                    case "--png-at": pngAt = args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToHashSet(); break;
+                    case "--png-dir": pngDir = args[++i]; break;
+                    case "--state-at": stateAt = int.Parse(args[++i]); break;
                     case "--ntsc-frame-timing": ntscFrameTiming = ParseOnOff(args[++i]); break;
                     case "--butcher": case "--butcher-at": i++; break;   // read by ButcherCli.Parse
                     case "--power-on-ram": powerOnRam = args[++i].ToLowerInvariant(); if (powerOnRam is not ("fceux" or "zeros" or "ones")) throw new FormatException($"expected fceux|zeros|ones, got '{powerOnRam}'"); break;
@@ -137,6 +141,7 @@ internal static class RomTestCli
                 return 1;
             }
 
+            string? stateBlob = null;
             var held = new bool[8];
             int nextStep = 0;
             int framesRun = 0;
@@ -157,6 +162,22 @@ internal static class RomTestCli
                 nes.RunFrame();
                 framesRun++;
                 if (nes.IsCrashed()) { crashFrame = f; break; }
+                if (pngAt.Contains(f + 1)) { Directory.CreateDirectory(pngDir); BrokenNes.Workshop.MixLab.MixLabCli.SaveRgba(nes.GetFrameBuffer(), 256, 240, Path.Combine(pngDir, $"{Path.GetFileNameWithoutExtension(romPath)}_{ppu}_f{f + 1:D5}.png")); }
+                if (f + 1 == stateAt) stateBlob = nes.SaveState();
+            }
+            if (stateBlob != null && crashFrame < 0)
+            {
+                // Save/load check: the end picture, then reload the state taken at --state-at and run the same frames again.
+                string endHash = Fnv1a64(nes.GetFrameBuffer());
+                nes.LoadState(stateBlob);
+                for (int f = stateAt; f < frames; f++)
+                {
+                    int k = 0; bool[] h2 = new bool[8];
+                    for (; k < script.Count && script[k].Frame <= f; k++) h2 = (bool[])script[k].Held.Clone();
+                    nes.SetInputs(h2, null); nes.RunFrame();
+                }
+                string again = Fnv1a64(nes.GetFrameBuffer());
+                Console.WriteLine($"STATE-CHECK {(again == endHash ? "SAME" : "DIFFERENT")} end {endHash} after-reload {again}");
             }
 
             report.FramesRun = framesRun;

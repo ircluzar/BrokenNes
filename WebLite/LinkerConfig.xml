@@ -40,6 +40,8 @@
     <type fullname="NesEmulator.PPU_SPD" preserve="all" />
     <type fullname="NesEmulator.PPU_LOW" preserve="all" />
     <type fullname="NesEmulator.PPU_FMC" preserve="all" />
+    <!-- PPU harvest (docs/projects/ppu-harvest-catalog.md): ported picture cores, found by CoreRegistry by name. -->
+    <type fullname="NesEmulator.PPU_NOFR" preserve="all" />
 
     <!-- APU: FIX for accuracy, SPD/LOW/LQ as the cheap options, WF/MNES as the web-native
          SoundFont/MIDI enhanced cores. Notably absent: HI, HI2, HI2X, QN*, EIL, SPD2, ULQ, LQ2. -->

@@ -74,6 +74,14 @@ Every ported file starts with a header naming its source, version, authors and l
 | **No license stated** | VNES: VirtuaNES 0.97 (modified mirror) (`apus/VirtuaNesApu.cs`, `VirtuaNesMmc5.cs`); PNES: PocketNES @9c07f3d (`apus/PocketNesSound.cs`); E055: emu2413-legacy tag 0.55 @2d92835 (`sega/Emu2413v055.cs`); ADLIB_D072: DOSBox 0.72 fmopl.c r2883, MAME-derived (`x86/Dosbox072Opl.cs`) |; MAME-derived (`x86/Dosbox072Opl.cs`) |
 | **No license: leaked source** (the project owner's decision) | NSTC: NESticle 1997 prototype `NESSOUND.CPP` (`apus/NesticleSound.cs`) |; | **No license: leaked source** (the project owner's decision) | NSTC: NESticle 1997 prototype `NESSOUND.CPP` (`apus/NesticleSound.cs`) |
 ; 
+### 2b. PPU harvest picture cores, by license
+
+Picture-side twin of 2a (docs/projects/ppu-harvest-catalog.md): faithful ports of old picture renderers, kept as art instruments with their flaws. Every file starts with a header naming its source, pinned version, authors and license.
+
+| License class | Cores (id: source @ version, files in `Windows/NesEmulator/`) |
+|---|---|
+| **LGPL** | PPU NOFR: nofrendo NES PPU, (C) 1998-2000 Matthew Conte, from retro-go @05e97e8 ([source](https://github.com/ducalex/retro-go/blob/05e97e8/retro-core/components/nofrendo/nes/ppu.c), LGPL v2, `ppus/PPU_NOFR.cs`) |
+
 ## 3. Test material in the repository; ## 3. Test material in the repository
 ; 
 | What | Where | License |; | What | Where | License |
