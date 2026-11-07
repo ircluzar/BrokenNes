@@ -95,7 +95,7 @@ namespace NesEmulator
         private int pulse1_output, pulse2_output, triangle_output, noise_output, dmc_output;
 
         // DMC runtime
-        private int dmc_timer; private int dmc_timerPeriod; private int dmc_sampleAddress; private int dmc_sampleLengthRemaining; private bool dmc_irqEnable, dmc_loop; private int dmc_shiftReg; private int dmc_bitsRemaining; private int dmc_deltaCounter = 64; private bool dmc_silence; private int dmc_sampleBuffer; private bool dmc_sampleBufferFilled; private bool dmc_irqFlag;
+        private int dmc_timer; private int dmc_timerPeriod = 428; /* hardware powers up at rate index 0; 0 here made the DMC bit loop spin forever when a game enabled the DMC before writing $4010 (Super Dodge Ball hang) */ private int dmc_sampleAddress; private int dmc_sampleLengthRemaining; private bool dmc_irqEnable, dmc_loop; private int dmc_shiftReg; private int dmc_bitsRemaining; private int dmc_deltaCounter = 64; private bool dmc_silence; private int dmc_sampleBuffer; private bool dmc_sampleBufferFilled; private bool dmc_irqFlag;
 
         // Frame sequencer
         private int frameCycle; // counts CPU cycles since last frame sequence reset
@@ -260,7 +260,7 @@ namespace NesEmulator
                 {
                     do
                     {
-                        dmc_timer += dmc_timerPeriod;
+                        dmc_timer += dmc_timerPeriod > 0 ? dmc_timerPeriod : 428; // an older state can carry period 0
                         if (!dmc_silence)
                         {
                             if ((dmc_shiftReg & 1) != 0) { if (dmc_deltaCounter <= 125) dmc_deltaCounter += 2; }

@@ -137,8 +137,45 @@ namespace NesEmulator
         }
         public void RequestIRQ(bool line) { if (line) pending |= 0x02; else pending &= 0xFD; }
         public void RequestNMI() => pending |= 0x01;
-        public object GetState() => new CpuSharedState { A = cpu.A, X = cpu.B, Y = cpu.C, status = cpu.F, PC = cpu.PC, SP = (ushort)(cpu.SP & 0xFF) };
-        public void SetState(object state) { if (state is CpuSharedState s) { cpu.A = s.A; cpu.B = s.X; cpu.C = s.Y; cpu.PC = s.PC; cpu.SP = (ushort)(0x0100 | s.SP); } }
+        // Hot-swap with the NES cores: A/B/C carry the 6502's A/X/Y. A savestate also carries the SM83's whole state (F, D, E, H, L, IME,
+        // EI delay, HALT/STOP, the HALT bug) and the pending NES interrupt lines, so a state saved on this core reloads exactly
+        // (NES.LoadState hands SetState a JsonElement, which used to be ignored: the registers stayed the pre-load ones, and after a
+        // Reset IME stayed on).
+        public sealed class Sm83NesState : CpuSharedState
+        {
+            public string? sm83 { get; set; }
+            public byte pendingLines { get; set; }
+        }
+        public object GetState()
+        {
+            using var ms = new MemoryStream(); using (var w = new BinaryWriter(ms)) cpu.SaveState(w);
+            return new Sm83NesState { A = cpu.A, X = cpu.B, Y = cpu.C, status = cpu.F, PC = cpu.PC, SP = (ushort)(cpu.SP & 0xFF),
+                irqRequested = (pending & 0x02) != 0, nmiRequested = (pending & 0x01) != 0, sm83 = Convert.ToBase64String(ms.ToArray()), pendingLines = pending };
+        }
+        public void SetState(object state)
+        {
+            if (state is Sm83NesState own && own.sm83 != null) { LoadOwn(own.sm83, own.pendingLines); return; }
+            if (state is System.Text.Json.JsonElement je)
+            {
+                if (je.TryGetProperty("sm83", out var jb) && jb.ValueKind == System.Text.Json.JsonValueKind.String)
+                { LoadOwn(jb.GetString()!, je.TryGetProperty("pendingLines", out var jp) && jp.ValueKind == System.Text.Json.JsonValueKind.Number ? (byte)jp.GetInt32() : (byte)0); return; }
+                // another core's state (a 6502 save loaded on this core): its register file
+                int I(string n, int d) => je.TryGetProperty(n, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetInt32() : d;
+                bool B(string n) => je.TryGetProperty(n, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.True;
+                state = new CpuSharedState { A = (byte)I("A", 0), X = (byte)I("X", 0), Y = (byte)I("Y", 0), status = (byte)I("status", 0), PC = (ushort)I("PC", 0), SP = (ushort)I("SP", 0xFD), irqRequested = B("irqRequested"), nmiRequested = B("nmiRequested") };
+            }
+            if (state is CpuSharedState s)
+            {
+                cpu.A = s.A; cpu.B = s.X; cpu.C = s.Y; cpu.PC = s.PC; cpu.SP = (ushort)(0x0100 | s.SP);
+                if (s.irqRequested) pending |= 0x02; else pending &= 0xFD;
+                if (s.nmiRequested) pending |= 0x01;
+            }
+        }
+        private void LoadOwn(string b64, byte lines)
+        {
+            using var r = new BinaryReader(new MemoryStream(Convert.FromBase64String(b64)));
+            cpu.LoadState(r); pending = lines;
+        }
         public (ushort PC, byte A, byte X, byte Y, byte P, ushort SP) GetRegisters() => (cpu.PC, cpu.A, cpu.B, cpu.C, cpu.F, cpu.SP);
         public void AddToPC(int delta) => cpu.PC = (ushort)(cpu.PC + delta);
     }

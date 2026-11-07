@@ -4,6 +4,45 @@ using NesEmulator.Sega;
 namespace NesEmulator
 {
     /// <summary>
+    /// A NES savestate taken on a foreign CPU (the instruction-set walls): the 6502 register view for a hot-swap or a load into another core, plus the
+    /// chip's whole state and the adapter board's latches as one blob, so the state reloads exactly on the core that saved it. NES.LoadState hands
+    /// SetState a JsonElement; the walls used to accept only a CpuSharedState, so a load left the CPU as it was (fuzz: undo-mismatch on Z80 / M68K).
+    /// </summary>
+    public sealed class BlobCpuState : CpuSharedState
+    {
+        public string? core { get; set; }
+        public string? blob { get; set; }
+
+        public static BlobCpuState Make(string core, Action<System.IO.BinaryWriter> save)
+        {
+            using var ms = new System.IO.MemoryStream();
+            using (var w = new System.IO.BinaryWriter(ms)) save(w);
+            return new BlobCpuState { core = core, blob = Convert.ToBase64String(ms.ToArray()) };
+        }
+
+        /// <summary>Restores the core's own blob (true), or gives the 6502 register view of another core's state in <paramref name="shared"/>.</summary>
+        public static bool TryLoad(object state, string core, Action<System.IO.BinaryReader> load, out CpuSharedState? shared)
+        {
+            shared = state as CpuSharedState;
+            string? b64 = null;
+            if (state is BlobCpuState own && own.core == core) b64 = own.blob;
+            else if (state is System.Text.Json.JsonElement je)
+            {
+                if (je.TryGetProperty("core", out var jc) && jc.ValueKind == System.Text.Json.JsonValueKind.String && jc.GetString() == core
+                    && je.TryGetProperty("blob", out var jb) && jb.ValueKind == System.Text.Json.JsonValueKind.String) b64 = jb.GetString();
+                else
+                {
+                    int I(string n, int d) => je.TryGetProperty(n, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetInt32() : d;
+                    bool B(string n) => je.TryGetProperty(n, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.True;
+                    shared = new CpuSharedState { A = (byte)I("A", 0), X = (byte)I("X", 0), Y = (byte)I("Y", 0), status = (byte)I("status", 0x24), PC = (ushort)I("PC", 0), SP = (ushort)I("SP", 0xFD), irqRequested = B("irqRequested"), nmiRequested = B("nmiRequested") };
+                }
+            }
+            if (b64 == null) return false;
+            using var r = new System.IO.BinaryReader(new System.IO.MemoryStream(Convert.FromBase64String(b64)));
+            load(r); return true;
+        }
+    }
+    /// <summary>
     /// MIX: the Master System's real Z80 (<see cref="Z80{TBus}"/>, the same core the Master System, Game Gear and Genesis run) as a NES CPU (CoreRegistry id "Z80"). It fetches the NES game's 6502 machine code on the NES bus and
     /// decodes it as Z80 instructions: the instruction-set wall, the same one <c>CPU_SM83</c> is on the other side of the Game Boy. Nothing is translated and nothing is handed to another core: the chip really runs the bytes.
     /// <para>Wiring, as an adapter board between the Z80 and the NES would do it: the Z80 starts at the NES reset vector with its stack in the NES stack page; it runs at its stock speed against the NES clock (the Master System's
@@ -79,8 +118,17 @@ namespace NesEmulator
 
         public void RequestIRQ(bool line) => z80.Irq = line;
         public void RequestNMI() { Arm(0x0066, 0xFFFA); z80.RaiseNmi(); }
-        public object GetState() => new CpuSharedState { A = z80.A, X = z80.B, Y = z80.C, status = z80.F, PC = z80.PC, SP = (ushort)(z80.SP & 0xFF) };
-        public void SetState(object state) { if (state is CpuSharedState s) { z80.A = s.A; z80.B = s.X; z80.C = s.Y; z80.PC = s.PC; z80.SP = (ushort)(0x0100 | s.SP); } }
+        public object GetState()
+        {
+            var st = BlobCpuState.Make("Z80", w => { z80.SaveState(w); w.Write(carry); w.Write(overlayAddr); w.Write(overlayPos); w.Write(overlayTarget); });
+            st.A = z80.A; st.X = z80.B; st.Y = z80.C; st.status = z80.F; st.PC = z80.PC; st.SP = (ushort)(z80.SP & 0xFF); st.irqRequested = z80.Irq;
+            return st;
+        }
+        public void SetState(object state)
+        {
+            if (BlobCpuState.TryLoad(state, "Z80", r => { z80.LoadState(r); carry = r.ReadInt32(); overlayAddr = r.ReadInt32(); overlayPos = r.ReadInt32(); overlayTarget = r.ReadUInt16(); }, out var s)) return;
+            if (s != null) { z80.A = s.A; z80.B = s.X; z80.C = s.Y; z80.PC = s.PC; z80.SP = (ushort)(0x0100 | s.SP); }
+        }
         public (ushort PC, byte A, byte X, byte Y, byte P, ushort SP) GetRegisters() => (z80.PC, z80.A, z80.B, z80.C, z80.F, z80.SP);
         public void AddToPC(int delta) => z80.PC = (ushort)(z80.PC + delta);
     }
@@ -196,10 +244,16 @@ namespace NesEmulator
 
         public void RequestIRQ(bool line) => irqLine = line;
         public void RequestNMI() => nmiPending = true;
-        public object GetState() => new CpuSharedState { A = (byte)cpu.D[0], X = (byte)cpu.D[1], Y = (byte)cpu.D[2], status = (byte)cpu.ReadSr(), PC = (ushort)cpu.Pc, SP = (ushort)(cpu.A[7] & 0xFF) };
+        public object GetState()
+        {
+            var st = BlobCpuState.Make("M68K", w => { cpu.SaveState(w); w.Write(carry7); w.Write(nmiPending); w.Write(irqLine); w.Write(vecAddr); w.Write(vecNes); w.Write(resetPhase); w.Write(resetPc); w.Write(resetSp); });
+            st.A = (byte)cpu.D[0]; st.X = (byte)cpu.D[1]; st.Y = (byte)cpu.D[2]; st.status = (byte)cpu.ReadSr(); st.PC = (ushort)cpu.Pc; st.SP = (ushort)(cpu.A[7] & 0xFF);
+            return st;
+        }
         public void SetState(object state)
         {
-            if (state is not CpuSharedState s) return;
+            if (BlobCpuState.TryLoad(state, "M68K", r => { cpu.LoadState(r); carry7 = r.ReadInt32(); nmiPending = r.ReadBoolean(); irqLine = r.ReadBoolean(); vecAddr = r.ReadInt32(); vecNes = r.ReadUInt16(); resetPhase = r.ReadInt32(); resetPc = r.ReadUInt16(); resetSp = r.ReadUInt16(); }, out var s)) return;
+            if (s == null) return;
             ResetTo((ushort)(s.PC & 0xFFFE), (ushort)((0x0100 | s.SP) & 0xFFFE));   // words need even addresses
             cpu.D[0] = s.A; cpu.D[1] = s.X; cpu.D[2] = s.Y;
         }

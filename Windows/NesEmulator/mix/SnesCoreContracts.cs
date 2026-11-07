@@ -33,6 +33,10 @@ public interface ISnesCpuCore
     ushort PC { get; set; }
     byte P { get; set; }
     bool E { get; set; }
+    /// <summary>The core's whole machine state (registers, mode, latches), so a NES savestate taken on a SNES CPU reloads field for field.
+    /// A core without one keeps the register-file view only.</summary>
+    bool SaveState(System.IO.BinaryWriter w) => false;
+    void LoadState(System.IO.BinaryReader r) { }
 }
 
 /// <summary>The register-level SNES PPU state a downgrade needs (what the chip was programmed with).</summary>

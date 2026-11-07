@@ -169,7 +169,18 @@ public class PPU_DMG : IPPU, IPpuProbe
     public byte[] GetFrameBuffer() => frame;
     public void UpdateFrameBuffer() { }
     public object GetState() => front.GetState();
-    public void SetState(object state) => front.SetState(state);
+    public void SetState(object state)
+    {
+        front.SetState(state);
+        // the bridge's own copies of what the CPU wrote ($2000, $2003, $2004 / OAM DMA) come back from the loaded chip too; they used to
+        // keep the pre-load machine's, so sprites bent before a Reload State stayed bent in the next frames (fuzz 310046, picture-only undo mismatch)
+        if (front.GetState() is PpuSharedState ps)
+        {
+            ctrl = ps.PPUCTRL; oamAddr = ps.OAMADDR;
+            if (ps.oam != null) Array.Copy(ps.oam, oam, Math.Min(256, ps.oam.Length));
+        }
+        lastLine = ProbeScanline;
+    }
     public void GenerateStaticFrame() => front.GenerateStaticFrame();
     public void ClearBuffers() { front.ClearBuffers(); Array.Clear(frame); }
     public int ProbeScanline => clock?.ProbeScanline ?? probe!.ProbeScanline;

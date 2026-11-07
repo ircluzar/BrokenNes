@@ -165,7 +165,17 @@ public sealed class PPU_SNES : IPPU, IPpuProbe
     public byte[] GetFrameBuffer() => ShowFront ? front.GetFrameBuffer() : frame;
     public void UpdateFrameBuffer() { }
     public object GetState() => front.GetState();
-    public void SetState(object state) => front.SetState(state);
+    public void SetState(object state)
+    {
+        front.SetState(state);
+        // the bridge's own copies of $2000 / $2003 / OAM follow the loaded chip (they kept the pre-load machine's: bent sprites outlived a Reload State)
+        if (front.GetState() is PpuSharedState ps)
+        {
+            ctrl = ps.PPUCTRL; oamAddr = ps.OAMADDR;
+            if (ps.oam != null) Array.Copy(ps.oam, oam, Math.Min(256, ps.oam.Length));
+        }
+        lastLine = ProbeScanline;
+    }
     public void GenerateStaticFrame() => front.GenerateStaticFrame();
     public void ClearBuffers() { front.ClearBuffers(); Array.Clear(frame); }
 

@@ -114,17 +114,60 @@ public sealed class CPU_SNES : ICPU
     public void RequestNMI() { nmiLatched = true; cpu.RaiseNmi(); }
 
     // Hot-swap with the NES cores through their shared state: the 6502 register file maps onto emulation mode.
-    public object GetState() => new CpuSharedState
+    // A savestate also carries the 65816's whole state (mode, D/DBR/PBR, 16-bit halves, stop/wait/interrupt latches) and this
+    // bridge's own latches, so a state saved on this core reloads exactly (it used to come back through NES.LoadState as a
+    // JsonElement, which SetState ignored: the registers stayed whatever the CPU had before the load).
+    public sealed class SnesCpuState : CpuSharedState
     {
-        A = (byte)cpu.A, X = (byte)cpu.X, Y = (byte)cpu.Y, status = cpu.P, PC = cpu.PC, SP = (ushort)(cpu.S & 0xFF),
-    };
+        public string? core { get; set; }
+        public string? blob { get; set; }
+        public bool started { get; set; }
+        public bool irqLatchedS { get; set; }
+        public bool nmiLatchedS { get; set; }
+    }
+
+    public object GetState()
+    {
+        string? blob = null;
+        using (var ms = new System.IO.MemoryStream()) using (var w = new System.IO.BinaryWriter(ms)) { if (cpu.SaveState(w)) { w.Flush(); blob = Convert.ToBase64String(ms.ToArray()); } }
+        return new SnesCpuState
+        {
+            A = (byte)cpu.A, X = (byte)cpu.X, Y = (byte)cpu.Y, status = cpu.P, PC = cpu.PC, SP = (ushort)(cpu.S & 0xFF),
+            irqRequested = irqLatched, nmiRequested = nmiLatched,
+            core = cpu.Id, blob = blob, started = started, irqLatchedS = irqLatched, nmiLatchedS = nmiLatched,
+        };
+    }
 
     public void SetState(object state)
     {
+        if (state is SnesCpuState own && own.core == cpu.Id && own.blob != null) { LoadOwn(own.blob, own.started, own.irqLatchedS, own.nmiLatchedS); return; }
+        if (state is System.Text.Json.JsonElement je)
+        {
+            if (je.TryGetProperty("core", out var jc) && jc.ValueKind == System.Text.Json.JsonValueKind.String && jc.GetString() == cpu.Id
+                && je.TryGetProperty("blob", out var jb) && jb.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                bool B(string n) => je.TryGetProperty(n, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.True;
+                LoadOwn(jb.GetString()!, B("started"), B("irqLatchedS"), B("nmiLatchedS")); return;
+            }
+            // another core's state (a CPU_FIX save loaded on this core): its 6502 register file
+            int I(string n, int d) => je.TryGetProperty(n, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetInt32() : d;
+            bool Bo(string n) => je.TryGetProperty(n, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.True;
+            state = new CpuSharedState { A = (byte)I("A", 0), X = (byte)I("X", 0), Y = (byte)I("Y", 0), status = (byte)I("status", 0x24), PC = (ushort)I("PC", 0), SP = (ushort)I("SP", 0xFD), irqRequested = Bo("irqRequested"), nmiRequested = Bo("nmiRequested") };
+        }
         if (state is not CpuSharedState s) return;
         if (!started) { cpu.Reset(); started = true; }
         cpu.E = true;
         cpu.A = s.A; cpu.X = s.X; cpu.Y = s.Y; cpu.P = (byte)(s.status | 0x30); cpu.PC = s.PC; cpu.S = (ushort)(0x0100 | (s.SP & 0xFF));
+        // the interrupt requests the other core had latched but not taken yet
+        irqLatched = s.irqRequested; cpu.SetIrq(irqLatched);
+        if (s.nmiRequested && !nmiLatched) { nmiLatched = true; cpu.RaiseNmi(); }
+    }
+
+    private void LoadOwn(string blob, bool wasStarted, bool irq, bool nmi)
+    {
+        using var r = new System.IO.BinaryReader(new System.IO.MemoryStream(Convert.FromBase64String(blob)));
+        cpu.LoadState(r);
+        started = wasStarted; irqLatched = irq; nmiLatched = nmi;
     }
 
     public void AddToPC(int delta) => cpu.PC = (ushort)(cpu.PC + delta);

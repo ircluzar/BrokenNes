@@ -21,6 +21,8 @@ internal sealed class SfcCpuAdapter : ISnesCpuCore
     public ushort PC { get => c.PC; set => c.PC = value; }
     public byte P { get => c.P; set => c.P = value; }
     public bool E { get => c.E; set => c.E = value; }
+    public bool SaveState(System.IO.BinaryWriter w) { c.SaveState(w); return true; }
+    public void LoadState(System.IO.BinaryReader r) => c.LoadState(r);
 }
 
 /// <summary>PPU_SFC behind <see cref="ISnesPpuCore"/>; <see cref="Snapshot"/> uses PPU_SFC.GetRegisterSnapshot().</summary>
