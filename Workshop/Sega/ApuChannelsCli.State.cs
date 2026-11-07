@@ -151,7 +151,7 @@ internal static partial class ApuChannelsCli
         string? consoleArg = M68kTestCli.Arg(args, "--console")?.ToUpperInvariant();
         var sets = new (string con, string[] ids, Func<string, bool, IUnit> make)[]
         {
-            ("NES", new[] { "FIX", "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR" }, (id, k) => new NesUnit(id, k)),
+            ("NES", new[] { "FIX", "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16" }, (id, k) => new NesUnit(id, k)),
             ("SNES", new[] { "SFC", "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS" }, (id, k) => new SnesUnit(id, k)),
             ("GB", new[] { "GB", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" }, (id, k) => new GbUnit(id, k)),
             ("MD", new[] { "MD", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN" }, (id, k) => new MdUnit(id, k)),

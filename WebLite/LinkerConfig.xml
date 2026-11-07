@@ -96,6 +96,8 @@
     <type fullname="NesEmulator.APU_AY124" preserve="all" />
     <!-- APU harvest: nofrendo NES APU from retro-go (APU_NOFR, family "Foreign"). -->
     <type fullname="NesEmulator.APU_NOFR" preserve="all" />
+    <!-- APU harvest: reSID 0.16 MOS 6581 SID as a NES APU translator (APU_RSID16, family "Foreign"). -->
+    <type fullname="NesEmulator.APU_RSID16" preserve="all" />
     <type fullname="NesEmulator.APU_VNES" preserve="all" />
     <!-- Enhanced cores phase 3: a NES game on the other consoles' ENHANCED chips (CoreRegistry finds them by name, so they must be rooted).
          The other consoles reach those chips directly (EnhancedChips routes, plain code: no root needed). -->
