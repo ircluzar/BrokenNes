@@ -133,10 +133,12 @@ Order: nofrendo, InfoNES, FCEUX old PPU, SameBoy v0.1, Peanut-GB, gnuboy 1.0.3, 
 | 1 | nofrendo ppu.c @05e97e8 | NES `NOFR` | ported (SMB1, Castlevania, Battletoads, Contra, Mega Man 2 draw; state reload SAME) | 07ce5486 |
 | 2 | InfoNES @fe3295c | NES `INES` | ported (SMB1, Castlevania, Battletoads, Mega Man 2, Zelda draw; state reload SAME) | abfaa298 |
 | 3 | FCEUX old PPU @2b2d70b | NES `FCEU` | ported (same five games; state reload SAME) | abfaa298 |
-| 4 | SameBoy v0.1 | GB/GBC `SB01` | ported as a renderer beside the stock chip (timing stays PPU_GB's); Mealybug m3 tests show its 8-pixel chunks; LA, Kirby, SML, Oracle of Seasons draw; state reload SAME | SB01 commit |
-| 5 | Peanut-GB @8a692e4 | GB/GBC `PGB` | ported as a renderer beside the stock chip; LA, Kirby, SML draw; GBC games drawn wrongly as DMG (its jank); state reload SAME | SB01/PGB commit |
-| 6 | gnuboy 1.0.3 | GB | todo | |
+| 4 | SameBoy v0.1 | GB/GBC `SB01` | ported as a renderer beside the stock chip (timing stays PPU_GB's); Mealybug m3 tests show its 8-pixel chunks; LA, Kirby, SML, Oracle of Seasons draw; state reload SAME | 575d27f1 |
+| 5 | Peanut-GB @8a692e4 | GB/GBC `PGB` | ported as a renderer beside the stock chip; LA, Kirby, SML draw; GBC games drawn wrongly as DMG (its jank); state reload SAME | 575d27f1 |
+| 6 | gnuboy 1.0.3 | GB | not started (next: same renderer-beside-PPU_GB pattern) | |
 | 7 | PicoDrive draw2 v1.85 | MD | todo | |
 | 8 | Genesis Plus GX @cbf8f4e | MD / SMS | todo | |
 | 9 | Snes9x tile.cpp @88f3702 | SNES | todo | |
 | 10 | runners-up, tarball targets | | todo | |
+
+Midpoint battery (2026-11-07, commit fc2371d5): suite 123/0, scenarios 1031/0, fuzz 1426 trials with 1 finding: nes undo-mismatch STATE, To The Earth, cpu SPD, ppu INES, minimised to Unsafe.VideoBus alone (repro `bfuzz nes 1 out 311282`). Plain save/reload of that game on INES is SAME; the divergence (CPU timing, openBus) is not yet traced to INES or to the board.
