@@ -82,7 +82,7 @@ Picture-side twin of 2a (docs/projects/ppu-harvest-catalog.md): faithful ports o
 | License class | Cores (id: source @ version, files in `Windows/NesEmulator/`) |
 |---|---|
 | **Permissive** | GB PGB: Peanut-GB @8a692e4 peanut_gb.h, (C) 2018-2023 Mahyar Koshkouei, MIT ([source](https://github.com/deltabeard/Peanut-GB/blob/8a692e4/peanut_gb.h), `gb/PeanutGbDisplay.cs`); GB SB01: SameBoy v0.1 Core/display.c, (C) 2015-2016 Lior Halphon, MIT ([source](https://github.com/LIJI32/SameBoy/blob/v0.1/Core/display.c), `gb/SameBoyV01Display.cs`); PPU INES: InfoNES, (C) 1999-2004 Jay's Factory, Apache-2.0, jay-kumogata/InfoNES @fe3295c ([source](https://github.com/jay-kumogata/InfoNES/blob/fe3295c/src/InfoNES.cpp), `ppus/PPU_INES.cs`) |
-| **GPL** | PPU FCEU: FCE Ultra old PPU (the last src/ppu.cpp + pputile.inc before newppu), (C) 1998 BERO, (C) 2003 Xodnizel, GPL-2.0+, TASEmulators/fceux @2b2d70b ([source](https://github.com/TASEmulators/fceux/blob/2b2d70b/src/ppu.cpp), `ppus/PPU_FCEU.cs`) |
+| **GPL** | GB GNUB: gnuboy 1.0.3 lcd.c, (C) Laguna and Gilgamesh, GPL-2.0, rofl0r/gnuboy @29076d4 ([source](https://github.com/rofl0r/gnuboy/blob/29076d4/lcd.c), `gb/GnuboyDisplay.cs`); PPU FCEU: FCE Ultra old PPU (the last src/ppu.cpp + pputile.inc before newppu), (C) 1998 BERO, (C) 2003 Xodnizel, GPL-2.0+, TASEmulators/fceux @2b2d70b ([source](https://github.com/TASEmulators/fceux/blob/2b2d70b/src/ppu.cpp), `ppus/PPU_FCEU.cs`) |
 | **LGPL** | PPU NOFR: nofrendo NES PPU, (C) 1998-2000 Matthew Conte, from retro-go @05e97e8 ([source](https://github.com/ducalex/retro-go/blob/05e97e8/retro-core/components/nofrendo/nes/ppu.c), LGPL v2, `ppus/PPU_NOFR.cs`) |
 
 ## 3. Test material in the repository; ## 3. Test material in the repository

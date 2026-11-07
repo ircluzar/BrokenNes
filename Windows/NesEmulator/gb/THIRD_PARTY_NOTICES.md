@@ -26,3 +26,4 @@ Data borrowed from elsewhere:
 | PPU event timeline | `PPU_GB.cs` | Timings measured by running gbmicrotest / Mooneye / Wilbertpol test ROMs (black box); no emulator source. |
 | SB01 picture core (PPU harvest): get_pixel, palette scaling and the drawing part of display_run | `SameBoyV01Display.cs` | Ported from SameBoy tag v0.1 `Core/display.c` (2016-04-01), Copyright (c) 2015-2016 Lior Halphon, MIT License (https://github.com/LIJI32/SameBoy/blob/v0.1/LICENSE). Faithful port, flaws kept. |
 | PGB picture core (PPU harvest): __gb_draw_line and its LCD-mode timing | `PeanutGbDisplay.cs` | Ported from Peanut-GB @8a692e4 `peanut_gb.h`, Copyright (c) 2018-2023 Mahyar Koshkouei (parts from SameBoy), MIT License. Faithful port, flaws kept. |
+| GNUB picture core (PPU harvest): lcd.c line renderer, sprite enumeration, palettes | `GnuboyDisplay.cs` | Ported from gnuboy 1.0.3 `lcd.c` (rofl0r/gnuboy @29076d4), (C) Laguna and Gilgamesh, GPL-2.0. Faithful port, flaws kept. |
