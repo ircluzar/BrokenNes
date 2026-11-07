@@ -84,6 +84,8 @@
     <type fullname="NesEmulator.APU_PNES" preserve="all" />
     <!-- APU harvest: nesDS ARM7 sound (APU_NSDS, family "Foreign"). -->
     <type fullname="NesEmulator.APU_NSDS" preserve="all" />
+    <!-- APU harvest: retro-go PCE-GO HuC6280 PSG (APU_PCEG, family "Foreign"). -->
+    <type fullname="NesEmulator.APU_PCEG" preserve="all" />
     <type fullname="NesEmulator.APU_VNES" preserve="all" />
     <!-- Enhanced cores phase 3: a NES game on the other consoles' ENHANCED chips (CoreRegistry finds them by name, so they must be rooted).
          The other consoles reach those chips directly (EnhancedChips routes, plain code: no root needed). -->

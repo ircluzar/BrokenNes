@@ -196,6 +196,7 @@ Per core: fetch, port, register, notices, `--apu-channels` + `--state`, suite, c
 | Core | Status | Commit |
 |---|---|---|
 | nesDS ARM7 (v2.0.1), NES APU id NSDS | ported | (this commit) |
+| retro-go PCE-GO psg.c (@05e97e8), NES APU id PCEG (NES writes re-keyed onto the HuC6280 PSG) | ported | (this commit) |
 | minigb_apu (024175d), GB APU id MGB + NES DMG_MGB | ported | (this commit) |
 | AdLib engines (M036, D072, D074C, D074F, NUK174) + x86 APU menu ADLIB_<engine> | ported | (this commit) |
 | nofrendo (05e97e8) | planned | |
