@@ -798,6 +798,8 @@ public static class CoreCatalog
                         break;
                     case CoreSlot.Ppu:
                         list.Add(new("GB", console == ConsoleKind.GameBoyColor ? "GB (Game Boy Color picture chip)" : "GB (Game Boy picture chip)", "Game Boy"));
+                        list.Add(new("SB01", "SB01 (SameBoy v0.1 renderer, 2016: pixels in 8-dot chunks, fine SCX once a line, \"effective window\", DMG sprite-priority break)", "Game Boy"));
+                        list.Add(new("PGB", "PGB (Peanut-GB renderer, before the 2025 LCD fixes: whole line drawn late, WY latched once a frame, DMG only)", "Game Boy"));
                         foreach (var id in NesPictureChips().Where(i => NesFamilyOf(CoreSlot.Ppu, i) != "Game Boy")) list.Add(new("NES:" + id, NesPictureLabel(id), NesFamilyOf(CoreSlot.Ppu, id)));
                         list.Add(new("SNES:SFC", "SFC (SNES picture chip)", "SNES"));
                         break;

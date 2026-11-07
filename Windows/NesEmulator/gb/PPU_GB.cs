@@ -131,8 +131,13 @@ public sealed class PPU_GB
     private int tickEnd, tickHalf;    // the M-cycle being run: its last dot, and half its length
 
     /// <summary>Advance by <paramref name="dots"/> dots (4 per M-cycle at single speed, 2 at double speed).</summary>
+    /// <summary>Called at the start of every <see cref="Tick"/> (the machine as the last M-cycle left it): the PPU harvest's foreign renderers
+    /// (gb/SameBoyV01Display.cs) draw their own picture from the live registers alongside this chip. Null = one null test per M-cycle.</summary>
+    public Action? TickObserver;
+
     public void Tick(int dots)
     {
+        TickObserver?.Invoke();
         if (!LcdOn)
         {
             offDots += dots;

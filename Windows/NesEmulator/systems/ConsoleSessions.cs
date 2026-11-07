@@ -388,6 +388,8 @@ public sealed class GbSession : IConsoleSession, IButcherHost
     /// <summary>The picture bridge onto a NES chip, when the picture is on one (tests: the enhanced chip's layers).</summary>
     internal GbToNes? PictureBridge => toNes;
     private GbToSnes? toSnes;
+    /// <summary>A ported foreign renderer drawing beside the stock chip (the PPU harvest: SB01, PGB), or null.</summary>
+    private IGbForeignView? foreignView;
     private readonly uint[] frame = new uint[ExtPicture.MaxViewWidth * ExtPicture.MaxLines];
     private int width = PPU_GB.Width, height = PPU_GB.Height;
     private string cpuId, ppuId, apuId;
@@ -440,6 +442,9 @@ public sealed class GbSession : IConsoleSession, IButcherHost
     private void SetPicture(string ppu)
     {
         toNes = null; toSnes = null;
+        foreignView?.Detach(); foreignView = null;
+        if (ppu.Equals("SB01", StringComparison.OrdinalIgnoreCase)) { foreignView = new SameBoyV01Display(board.Ppu); return; }   // SameBoy v0.1's renderer (ppu-harvest)
+        if (ppu.Equals("PGB", StringComparison.OrdinalIgnoreCase)) { foreignView = new PeanutGbDisplay(board.Ppu); return; }      // Peanut-GB @8a692e4's renderer (ppu-harvest)
         if (ppu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { cap ??= new GbLineCapture(board.Ppu); toNes = new GbToNes(ppu[4..]); }
         else if (CoreCatalog.IsDirectRoute(ppu)) { cap ??= new GbLineCapture(board.Ppu); toNes = new GbToNes(EnhancedChips.Picture(ppu), ppu); }     // another console's enhanced chip: the Game Boy's layers at its 160 x 144
         else if (ppu.StartsWith("SNES:", StringComparison.OrdinalIgnoreCase)) { cap ??= new GbLineCapture(board.Ppu); toSnes = new GbToSnes(ppu[5..]); }
@@ -570,6 +575,7 @@ public sealed class GbSession : IConsoleSession, IButcherHost
         board.RunFrame();
         if (toNes != null) { var f = toNes.Render(board, cap!); Array.Copy(f.Argb, frame, f.Width * f.Height); width = f.Width; height = f.Height; }   // an enhanced chip: 160 x 144; a stock one: 256 x 240
         else if (toSnes != null) { var f = toSnes.Render(board, cap!); Array.Copy(f, frame, Math.Min(f.Length, frame.Length)); width = 256; height = f.Length / 256; }
+        else if (foreignView != null) { Array.Copy(foreignView.Screen, frame, PPU_GB.Width * PPU_GB.Height); width = PPU_GB.Width; height = PPU_GB.Height; }
         else { Array.Copy(board.Ppu.FrameBuffer, frame, PPU_GB.Width * PPU_GB.Height); width = PPU_GB.Width; height = PPU_GB.Height; }
         if (Butcher is { PaletteActive: true } bp) bp.ApplyPalette(frame, width * height);
         if (Butcher is { VideoFxActive: true } bv) bv.ApplyVideo(frame, width, height);

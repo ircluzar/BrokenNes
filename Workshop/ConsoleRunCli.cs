@@ -88,6 +88,7 @@ internal static class ConsoleRunCli
         // --sfc-layers <mask>: the native SNES picture with only these layers (bit 0-3 BG1-4, bit 4 OBJ) - diagnosis.
         if (Opt("sfc-layers", "") is { Length: > 0 } lm && s is SnesSession lms) lms.Ppu.DebugLayerMask = Convert.ToInt32(lm, 16);
         var buf = new short[32768]; long samples = 0; var held = PadButtons.None; int peak = 0;
+        int stateAt = int.Parse(Opt("state-at", "-1")); byte[]? stateBlob = null;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         for (int f = 1; f <= frames; f++)
         {
@@ -123,6 +124,18 @@ internal static class ConsoleRunCli
                 if (wav != "" && f >= wavFrom) for (int i = 0; i + 1 < n; i += 2) pcm.Add((short)((buf[i] + buf[i + 1]) / 2));
             }
             if (pngAt.Contains(f)) MixLabCli.SaveArgb(s.Frame, s.FrameWidth, s.FrameHeight, Path.Combine(outDir, $"{tag}_{Consoles.Key(console)}_f{f:D5}.png"));
+            if (f == stateAt) stateBlob = s.SaveState();   // --state-at f: the save/load check below
+        }
+        if (stateBlob != null)
+        {
+            // Save/load check: the last picture, then reload the state taken at --state-at and run the same frames (same input) again.
+            ulong Hash() { ulong hh = 14695981039346656037; for (int i = 0; i < s.FrameWidth * s.FrameHeight; i++) hh = (hh ^ s.Frame[i]) * 1099511628211; return hh; }
+            ulong end = Hash();
+            s.LoadState(stateBlob);
+            var held2 = PadButtons.None;
+            for (int f = 1; f <= frames; f++) { if (script.TryGetValue(f - 1, out var h2)) held2 = h2; if (f <= stateAt) continue; s.SetPad(0, held2); s.RunFrame(); while (s.ReadSamples(buf) > 0) { } }
+            ulong again = Hash();
+            Console.WriteLine($"STATE-CHECK {(again == end ? "SAME" : "DIFFERENT")} end {end:X16} after-reload {again:X16}");
         }
         if (NesEmulator.Mix.PitchGuard.Enabled) Console.WriteLine($"pitch guard: ceiling {NesEmulator.Mix.PitchGuard.CeilingHz} Hz, blocked {NesEmulator.Mix.PitchGuard.BlockedNotes} note-syncs");
         if (NesEmulator.Mix.PitchGuard.Census is { } census)
