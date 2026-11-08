@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- BrokenNes Nano GB: the C# side of the parity proof and of the "sounds the same as FL" comparison. It drives Core's GnubSound / APU_GNUB
+       (the chip) and NanoGbEngine (the instrument engine the BrokenNes2 plugin's Nano GB chip plays) with what the web library did, and writes PCM.
+       Not part of BrokenNes.sln; built on demand by Nano/gb/test/parity.mjs. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>BrokenNes.NanoGb</RootNamespace>
+    <AssemblyName>NanoGbParity</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\Core\BrokenNes.Core.csproj" />
+  </ItemGroup>
+
+</Project>

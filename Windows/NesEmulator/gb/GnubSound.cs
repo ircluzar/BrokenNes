@@ -34,9 +34,12 @@ public sealed class GnubSound
 {
     /// <summary>The rate gnuboy is asked for (pcm.hz); the one it actually makes is <see cref="ActualRate"/>.</summary>
     public const int RequestedHz = 44100;
-    /// <summary>snd.rate: 2.097152 MHz units per output sample.</summary>
-    public const int RATE = (1 << 21) / RequestedHz;
-    public const int ActualRate = (1 << 21) / RATE;     // 44,620 (44,620.25)
+    /// <summary>snd.rate at the default 44,100 Hz request: 2.097152 MHz units per output sample.</summary>
+    public const int DefaultRate = (1 << 21) / RequestedHz;
+    public const int ActualRate = (1 << 21) / DefaultRate;     // 44,620 (44,620.25)
+    /// <summary>snd.rate of this instance (gnuboy's pcm_init: 2^21 / the requested rate, integer division). The emulator uses the default;
+    /// BrokenNes Nano GB (Nano/gb) asks for the page's own rate, and its parity tool builds this class at that rate.</summary>
+    public readonly int RATE;
     private const byte Lcdc = 0x91;                     // ram.hi[0x40] as s3_init reads it
 
     private static readonly byte[] DmgWave = { 0xac, 0xdd, 0xda, 0x48, 0x36, 0x02, 0xcf, 0x16, 0x2c, 0x04, 0xe5, 0x2c, 0xac, 0xdd, 0xda, 0x48 };
@@ -146,7 +149,11 @@ public sealed class GnubSound
         NR30 = 0x1A, NR31 = 0x1B, NR32 = 0x1C, NR33 = 0x1D, NR34 = 0x1E, NR41 = 0x20, NR42 = 0x21, NR43 = 0x22, NR44 = 0x23,
         NR50 = 0x24, NR51 = 0x25, NR52 = 0x26;
 
-    public GnubSound(bool cgb) { Cgb = cgb; Hi[0x40] = Lcdc; }
+    public GnubSound(bool cgb, int requestedHz = RequestedHz)
+    {
+        if (requestedHz < 3000 || requestedHz > (1 << 20)) throw new ArgumentOutOfRangeException(nameof(requestedHz));
+        Cgb = cgb; RATE = (1 << 21) / requestedHz; Hi[0x40] = Lcdc;
+    }
 
     private void s1_freq_d(int d)
     {
@@ -225,7 +232,7 @@ public sealed class GnubSound
     /// <summary>sound_advance: cpu.snd += units (2.097152 MHz); then mixes what is due, as gnuboy does before every register access.</summary>
     public void Advance(int units) { Snd += units; sound_mix(); }
 
-    private static void EnvStep(ref Chan c)
+    private void EnvStep(ref Chan c)
     {
         if (c.enlen != 0 && (c.encnt += RATE) >= c.enlen)
         {

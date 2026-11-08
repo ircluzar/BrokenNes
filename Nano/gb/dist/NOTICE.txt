@@ -1,0 +1,10 @@
+BrokenNes Nano GB 0.1.0
+The Game Boy sound chip, as gnuboy plays it, as a web synth and MIDI player. Part of BrokenNes (Digital Lifeform License 1.1; LICENSE.txt
+in the BrokenNes repository). Source: Nano/gb/src; built by Nano/gb/build.mjs.
+
+The sound chip (src/chip.js) is a transcription of BrokenNes's Windows/NesEmulator/gb/GnubSound.cs, which is a C# port of the sound
+code of gnuboy 1.0.3 (sound.c, sound.h, noise.h), as revived at https://github.com/rofl0r/gnuboy (commit 4c2f6c441eb3b364e3c8e211ec39241718d5e189).
+gnuboy: Copyright (C) 2000-2001 Laguna and Gilgamesh, and the gnuboy contributors (see docs/CREDITS of the gnuboy source).
+gnuboy is distributed under the GNU General Public License, version 2 (COPYING of the gnuboy source); BrokenNes records it as a documented
+exception in THIRD_PARTY_NOTICES.md section 2. The noise tables of noise.h are rebuilt here from their recurrence rather than copied.
+The presets, the engine, the MIDI player and the demos were written for BrokenNes; nothing is copied from a game or its sound driver.

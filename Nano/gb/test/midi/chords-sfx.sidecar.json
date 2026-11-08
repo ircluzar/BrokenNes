@@ -1,0 +1,15 @@
+{
+  "format": "nano-gb-sidecar",
+  "version": 1,
+  "channels": {
+    "1": {
+      "preset": "square",
+      "duty": 1,
+      "pan": "L"
+    },
+    "4": {
+      "preset": "coin",
+      "volume": 0.9
+    }
+  }
+}
