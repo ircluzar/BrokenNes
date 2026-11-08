@@ -75,7 +75,19 @@ public class SmsSession : IConsoleSession, IButcherHost
         board = new BOARD_SMS(cart, console, model, region, Rate, parts, bios);
         Title = !string.IsNullOrEmpty(fileName) ? Path.GetFileNameWithoutExtension(fileName) : $"{Consoles.DisplayName(console)} game";
         Model = model;
+        PickRenderer();
     }
+
+    // PPU harvest picture cores beside the stock VDP (the stock chip keeps the timing): SMS Plus GX's render.c and Genesis Plus GX's Mode 4 path
+    private SmsHarvestRender? harvest;
+    private void PickRenderer()
+    {
+        harvest?.Detach();
+        harvest = ppuId.ToUpperInvariant() switch { "SMSP" => new SmspRender(board.Vdp), "GPGX" => new GpgxM4Render(board.Vdp), _ => null };
+    }
+    /// <summary>The picture the session shows: the stock chip's, or a harvest renderer's.</summary>
+    protected uint[] Picture => harvest?.Picture ?? board.Vdp.Frame;
+    protected void FinishPicture() => harvest?.FinishFrame();
 
     /// <summary>True for a file that is a BIOS image by its name ("[BIOS]" in the dump sets' names, or the word BIOS as a word).</summary>
     public static bool IsBiosImage(string fileName) =>
@@ -106,10 +118,10 @@ public class SmsSession : IConsoleSession, IButcherHost
         board.SetPad(player, s);
     }
 
-    public virtual void RunFrame() { if (Butcher != null || board.Butcher != null) ButcherFrame(); if (Butcher?.TakeReset() == true) Reset(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } } board.RunFrame(); }
+    public virtual void RunFrame() { if (Butcher != null || board.Butcher != null) ButcherFrame(); if (Butcher?.TakeReset() == true) Reset(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } } board.RunFrame(); FinishPicture(); }
 
     public void Reset() => board.Reset();
-    public virtual uint[] Frame => board.Vdp.Frame;
+    public virtual uint[] Frame => Picture;
     public virtual int FrameWidth => 256;
     public virtual int FrameHeight => board.Vdp.FrameHeight;
     public virtual int DisplayWidth => 256;
@@ -211,7 +223,7 @@ public class SmsSession : IConsoleSession, IButcherHost
             }
             case CoreSlot.Ppu:
                 if (id.Contains(':')) return false;   // drawing the picture on a NES chip (or another console's enhanced chip) is the wrapper's work, not the board's
-                ppuId = id; return true;   // one picture chip per console: the one running
+                ppuId = id; PickRenderer(); return true;   // one picture chip per console: the one running
             default: cpuId = id; return true;
         }
     }
@@ -232,14 +244,14 @@ public sealed class GgSession : SmsSession
     {
         if (Butcher != null) Butcher.LcdHost = true;
         if (Butcher != null || board.Butcher != null) ButcherFrame(); if (Butcher?.TakeReset() == true) Reset(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
-        board.RunFrame();
+        board.RunFrame(); FinishPicture();
         CropLcd();
         if (Butcher is { LcdActive: true } bl) bl.ApplyLcd(lcd, LcdWidth, LcdHeight);   // Butchering mode: the LCD drivers
     }
 
     private void CropLcd()
     {
-        var src = board.Vdp.Frame;
+        var src = Picture;
         int h = board.Vdp.FrameHeight;
         int top = Math.Max(0, (h - LcdHeight) / 2);
         for (int y = 0; y < LcdHeight; y++)

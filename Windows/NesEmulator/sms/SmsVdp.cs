@@ -237,7 +237,15 @@ public partial class SmsVdp
         lineDisplayOn = (Regs[1] & 0x40) != 0;
         Refresh();
         if (Butcher is { BandsActive: true } bb && n < 240) ButcherBandsBegin(bb, n);
+        LineObserver?.Invoke(n);   // a foreign renderer drawing beside this chip (PPU harvest: sms/SmspRender.cs, sms/GpgxM4Render.cs)
     }
+
+    /// <summary>Called as each frame line starts, after the line's registers are settled (null = one test per line): the PPU harvest's SMS Plus GX and Genesis Plus GX renderers draw their whole line there.</summary>
+    public Action<int>? LineObserver;
+    /// <summary>The vertical scroll latched for this frame (read by the PPU harvest renderers).</summary>
+    public int VscrollLatched => vscrollLatched;
+    /// <summary>True when Mode 4 is selected on a chip that has it (else a TMS mode).</summary>
+    public bool Mode4On => Mode4Active;
 
     // Butchering mode's bands, natively: the VDP's own registers are changed for this line (scroll, name table and sprite
     // pattern bases, sprite size / zoom, the display) and put back at its end - unless the CPU rewrote one meanwhile.

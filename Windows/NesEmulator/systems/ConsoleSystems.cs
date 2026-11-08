@@ -665,6 +665,9 @@ public static class CoreCatalog
                     case CoreSlot.Cpu: list.Add(new("Z80", "Z80 (stock clock)", fam)); break;
                     case CoreSlot.Ppu:
                         list.Add(gg ? new("GG", "GG (Game Gear picture chip)", fam) : new("SMS", "SMS (Master System picture chip)", fam));
+                        // PPU harvest: whole-line renderers beside the stock chip (Mode 4 only: TMS-mode lines stay the stock chip's, said in the label)
+                        list.Add(new("SMSP", "SMSP (SMS Plus GX / retro-go 1.20 renderer: whole line at line start, dark ESP32 colours, scroll-lock bug; TMS modes stock)", fam));
+                        list.Add(new("GPGX", "GPGX (Genesis Plus GX 2013 Mode 4 renderer: whole line at line start, Y=240 end marker in 224-line mode; TMS modes stock)", fam));
                         // The game's picture drawn by a NES chip (SmsToNes, picture id "NES:<chip>"), or through the NES by a Game Boy / SNES / Genesis chip. Lossy and said so (the losses are counted).
                         foreach (var id in SegaPictureChips(fam)) list.Add(new("NES:" + id, SegaPictureLabel(id), NesFamilyOf(CoreSlot.Ppu, id)));
                         break;
