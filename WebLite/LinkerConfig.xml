@@ -43,6 +43,7 @@
     <!-- PPU harvest (docs/projects/ppu-harvest-catalog.md): ported picture cores, found by CoreRegistry by name. -->
     <type fullname="NesEmulator.PPU_NOFR" preserve="all" />
     <type fullname="NesEmulator.PPU_INES" preserve="all" />
+    <type fullname="NesEmulator.PPU_MES010" preserve="all" />
     <!-- CPU harvest (docs/projects/cpu-harvest-catalog.md): scanline-batch timing presets over CPU_FIX. -->
     <type fullname="NesEmulator.CPU_BAT_INES" preserve="all" />
     <type fullname="NesEmulator.CPU_BAT_NOFR" preserve="all" />

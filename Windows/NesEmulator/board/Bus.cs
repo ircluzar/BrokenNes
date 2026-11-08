@@ -153,6 +153,8 @@ public class Bus : IBus
 			// A write that landed past its own cycle already ran this instruction's first dot(s) - count from the true start.
 			InstructionStartDot = ppu is IPpuFixTiming fixPpu ? fixPpu.DotCounter + (preciseCarryDots < 0 ? preciseCarryDots : 0) : -1;
 		}
+		/// <summary>The CPU cycle of the bus access being performed now, or -1 when the run path does not mark instructions (PPU_MES010's doubled-$2007-read rule).</summary>
+		public long CurrentCpuAccessCycle => instructionStartCycle < 0 ? -1 : CurrentAccessCycle();
 		// The access being performed now: it has already been counted, hence the -1.
 		private long CurrentAccessCycle() => instructionStartCycle + (instr.Reads + instr.Writes - accessCountAtInstructionStart - 1);
 		// Parity alignment between NES.globalCpuCycle's origin and the hardware get/put phase.

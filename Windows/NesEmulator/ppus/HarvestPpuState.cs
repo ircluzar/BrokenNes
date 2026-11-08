@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace NesEmulator;
 
 /// <summary>
-/// The PPU harvest cores' state reader (PPU_NOFR, PPU_INES, PPU_FCEU). NES.SaveState writes a core's <see cref="PpuSharedState"/> with its own
+/// The PPU harvest cores' state reader (PPU_NOFR, PPU_INES, PPU_FCEU, PPU_MES010). NES.SaveState writes a core's <see cref="PpuSharedState"/> with its own
 /// PlainSerialize: byte arrays of 64 bytes or fewer (the palette, NOFR's pipeline) become JSON number arrays, longer ones base64 strings. A stock
 /// JsonSerializer reads only the base64 form, threw on the palette and left the core un-restored (fuzz seed 311282's undo mismatch), so this reads both.
 /// </summary>
