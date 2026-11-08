@@ -88,7 +88,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     private int gbRate, gbChannel = -1;
     private bool gbGate;
 
-    public Bn2Plugin(FruityHost host, nint hostTag) : base(host, hostTag, Bn2Params.Build())
+    public Bn2Plugin(FruityHost host, nint hostTag) : base(host, hostTag, BuildParams())
     {
         for (int i = 0; i < 32; i++) pool.Push(new Voice());     // FL's voices are taken from here on the audio thread: made now, so a 9th or 20th note at once allocates nothing there (round 8 found 72 bytes per new peak of voices)
         HostLog.Text(InstanceNo,$"created (host tag 0x{hostTag:X}, FL's host version {HostVersion}); {(TrackOffers.Current is { } o ? $"{o.Slots.Length} tracks on offer" : "no tracks on offer")}");
@@ -192,6 +192,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
     protected override void OnParamChanged(int index, int value)
     {
+        if (index >= AutoBase) { if (!restoring) AutomationMoved(index - AutoBase, value); return; }   // a dynamic automation slot (Bn2Plugin.Automation.cs)
         if (restoring) return;
         var e = assignment.Emulator;
         switch (index)
@@ -908,6 +909,15 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 stream.Write(&crpLen, 4);
                 fixed (byte* p = corruptionSection) stream.Write(p, (uint)crpLen);
             }
+            // Which knobs the dynamic automation slots are wired to (Bn2Plugin.Automation.cs), before INJ1, which stays last.
+            if (AutomationSectionBytes() is { } autSection)
+            {
+                uint autMagic = AutoTag;
+                int autLen = autSection.Length;
+                stream.Write(&autMagic, 4);
+                stream.Write(&autLen, 4);
+                fixed (byte* p = autSection) stream.Write(p, (uint)autLen);
+            }
             // The instruments pushed into the running game (Instruments/GamePush.cs): the table of overrides and the original bytes, which no machine state holds. Last, so a build that does not know the section stops reading here.
             if (a.Emulator?.CaptureInjectSection() is { } injectSection)
             {
@@ -968,12 +978,18 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                     hintEmu = e; hintCh = c;
                     // The sections after the place record: tag, length, bytes. The ones this build knows are read and checked, never trusted; the others (a later build's) are skipped by their length;
                     // a stream that ends, or whose length cannot be right, ends the reading (what was read before it stands).
-                    for (int sections = 0; sections < 12; sections++)
+                    for (int sections = 0; sections < 14; sections++)
                     {
                         uint tag = 0; int slen = 0;
                         if (!stream.Read(&tag, 4) || !stream.Read(&slen, 4)) break;
                         seen?.Add($"{Encoding.ASCII.GetString(BitConverter.GetBytes(tag))} {slen} bytes");
-                        if (tag == TrackTag && slen is >= 25 and <= 16 << 20)
+                        if (tag == AutoTag && slen is > 0 and <= 1 << 16)
+                        {
+                            var autBuf = new byte[slen];
+                            fixed (byte* p = autBuf) if (!stream.Read(p, (uint)slen)) break;
+                            RestoreAutomationSection(autBuf);
+                        }
+                        else if (tag == TrackTag && slen is >= 25 and <= 16 << 20)
                         {
                             var trkBuf = new byte[slen];
                             fixed (byte* p = trkBuf) if (!stream.Read(p, (uint)slen)) break;
@@ -1178,6 +1194,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     protected override nint TestDispatcher(int id, nint index, nint value)
     {
         var emu = assignment.Emulator;
+        if (id - Fpd.TestBase is >= 960 and < 970) return AutomationTest(id - Fpd.TestBase, index, value);
         switch (id - Fpd.TestBase)
         {
             case 1: return OwnerOf((int)index)?.curPeriod ?? 0;

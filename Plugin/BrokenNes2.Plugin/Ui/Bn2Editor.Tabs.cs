@@ -46,7 +46,7 @@ public sealed unsafe partial class Bn2Editor
     private int Width => tab == 0 ? UiLayout.BaseWidth : UiLayout.WideWidth;
 
     private UiCanvas Canvas() => canvas ??= new UiCanvas((id, r) => AddHit(id, r, Kind.Ui));
-    private InstrumentsPanel Inst() => instPanel ??= new InstrumentsPanel(Canvas());
+    private InstrumentsPanel Inst() => instPanel ??= new InstrumentsPanel(Canvas()) { KnobEdited = plugin.AutomatedKnobEdited };
     private PresetsPanel Presets() => presetPanel ??= new PresetsPanel(Canvas()) { ChooseFile = ChooseTabFile };
 
     private void UiDispose()
