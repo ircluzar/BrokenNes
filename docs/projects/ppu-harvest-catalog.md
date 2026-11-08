@@ -137,8 +137,8 @@ Order: nofrendo, InfoNES, FCEUX old PPU, SameBoy v0.1, Peanut-GB, gnuboy 1.0.3, 
 | 5 | Peanut-GB @8a692e4 | GB/GBC `PGB` | ported as a renderer beside the stock chip; LA, Kirby, SML draw; GBC games drawn wrongly as DMG (its jank); state reload SAME | 575d27f1 |
 | 6 | gnuboy 1.0.3 @29076d4 | GB/GBC `GNUB` | ported as a renderer beside the stock chip; LA, Kirby, SML, Oracle of Seasons draw; state reload SAME | 4da5ff09 |
 | 7 | PicoDrive draw2 v1.85 | Genesis `PD2` | ported (whole frame at frame end from the stock VDP's memories); Sonic, Streets of Rage 2, Gunstar Heroes draw; state reload SAME | 6b067835 |
-| 8 | Genesis Plus GX @cbf8f4e | Genesis `GPGX` | ported (Mode 5 path: lines drawn beside the stock VDP via MdVdp.LineObserver); Sonic, Sonic 2, Mickey Mania, Vectorman draw; state reload SAME. Mode 4 / SMS path not ported | GPGX commit |
-| 9 | Snes9x tile.cpp @88f3702 | SNES | not started this run: needs Snes9x's whole GFX pipeline around it | |
+| 8 | Genesis Plus GX @cbf8f4e | Genesis `GPGX` | ported (Mode 5 path: lines drawn beside the stock VDP via MdVdp.LineObserver); Sonic, Sonic 2, Mickey Mania, Vectorman draw; state reload SAME. Mode 4 / SMS path not ported | 993c49c9 |
+| 9 | Snes9x tile.cpp @88f3702 | SNES | not started: tile.cpp (1515 lines) only works inside gfx.cpp (2398) and Snes9x's PPU/GFX state, roughly 2000+ lines of C# to port; sources fetched to C:\BrokenNes-tools\ppu-harvest\snes9x | |
 | 10 | runners-up, tarball targets | | not started | |
 
 Midpoint battery (2026-11-07, commit fc2371d5): suite 123/0, scenarios 1031/0, fuzz 1426 trials with 1 finding: nes undo-mismatch STATE, To The Earth, cpu SPD, ppu INES, minimised to Unsafe.VideoBus alone (repro `bfuzz nes 1 out 311282`). Plain save/reload of that game on INES is SAME; the divergence (CPU timing, openBus) is not yet traced to INES or to the board.
@@ -146,3 +146,5 @@ Midpoint battery (2026-11-07, commit fc2371d5): suite 123/0, scenarios 1031/0, f
 Fuzz finding traced (7b2115f5): the three NES cores read their state with JsonSerializer, which cannot read the number arrays NES.SaveState writes for small byte arrays, so SetState silently restored nothing. Not a board issue; fixed with HarvestPpuState.From.
 
 Final battery (2026-11-07, 2e7a2748, run from the climb worktree): ALL GREEN - scenarios 1052/0, fuzz 916 trials 0 findings (it first caught a GNUB WX<0 overrun, fixed b5eb1a4d); golden suite from the main cases 123 pass / 0 fail / 30 skip.
+
+Battery after GPGX (993c49c9): suite 123/0, fuzz 844/0, scenarios 1090/1 - the one was a single 73-second Sonic soak frame on the stock chip (machine contention); the Genesis scenarios re-run alone: 139/0 green. With the shared tree's unpushed Butchering commits eafb3585/50910529 cherry-picked in (battery-only branch), 8 scenarios fail on "catalog: unscored [seed]": the new seed setting is not in the scenario catalog yet (their work, not the picture cores).
