@@ -26,6 +26,9 @@
     <!-- The linked emulator cores' existing warnings; the AOT/trim warnings in them are known (the
          assembly is preserved whole, see Core/ILLink.Descriptors.xml). -->
     <NoWarn>$(NoWarn);IL2026;IL2067;IL2070;IL2075;IL3050;IL3053</NoWarn>
+    <!-- The Nano GB chip's presets (Core: NesEmulator.Gb.NanoGbPresets) are read from their JSON with the reflection serializer; Native AOT turns that off by default
+         (the table came out empty in the DLL: 0 presets). Core is preserved whole (Core/ILLink.Descriptors.xml), so reflection over its types works. -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
 
   <ItemGroup>
@@ -36,6 +39,11 @@
     <!-- Test MIDI export (round 7): VRUN's AudioPlayer with padded stream arrays, and its manifest (made by BrokenDev/tools/music/build-musictest.ps1; Music/MusicTemplate.cs reads them) -->
     <EmbeddedResource Include="Resources/musictest.nes" LogicalName="musictest.nes" />
     <EmbeddedResource Include="Resources/musictest.txt" LogicalName="musictest.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Native AOT: the JSON converters the Nano GB preset table needs (see rd.xml) -->
+    <RdXmlFile Include="rd.xml" />
   </ItemGroup>
 
   <ItemGroup>

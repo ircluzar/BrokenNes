@@ -44,6 +44,10 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         public bool CapOff = true;    // its release is in the lane (or it has no note-on there)
         public bool LiveSent;         // its note-on went out as MIDI (Bn2Plugin.CaptureLive.cs)
         public int LiveKey, LiveCh, LiveBase;
+        public int NanoId;            // the Nano GB engine's note id it plays (0 none: Bn2Plugin.NanoGb.cs)
+        public bool NanoStarted;      // its engine note was started (a killed note does not start again)
+        public int NanoNote;          // the MIDI key it was started on
+        public double NanoBend;       // the bend in cents last handed to the engine
     }
 
     private readonly List<Voice> voices = new(32);
@@ -121,6 +125,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     internal void RequestReset()
     {
         PrepareAgainForPreset();                 // a preset's engine is made again here, on the UI thread, before the audio thread drops the old one (Bn2Plugin.Presets.cs)
+        if (assignment.Emulator?.NanoGbDirectMode == true) PrepareNanoGb(again: true);   // the Nano GB engine too (Bn2Plugin.NanoGb.cs)
         if (assignment.Emulator?.WmsDirectMode == true) PrepareWms(again: true);      // the WideMess chip is made again here too, then swapped in (the audio thread takes the new one; its notes start over on it)
         Interlocked.Exchange(ref resetRequested, 1);
     }
@@ -234,6 +239,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         v.TrackKey = -1; v.RecNote = -1;
         v.Onset = ownSamples;                                         // (the block rendered next starts here)
         v.CapOff = true; v.LiveSent = false;
+        v.NanoId = 0; v.NanoStarted = false;
         voices.Add(v);
         // a linked instance recognises its track from this note before it sounds; one that plays a track knows which recorded note this is and plays its expression (Bn2Plugin.Tracks.cs)
         if (link != LinkNone || bindState != 0 || follow != null || HostLog.On) OnNote(v);
@@ -252,6 +258,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         var v = Find(handle);
         if (v == null) return;
         if (CaptureWanted) CaptureNoteOff(v);
+        NanoGbForget(v);
         voices.Remove(v);
         pool.Push(v);
     }
@@ -306,6 +313,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             return;
         }
 
+        if (nanoEngine != null && !emu.NanoGbDirectMode) nanoEngine = null;    // (left the Nano GB chip: its held notes go with the engine; PrepareChip makes a fresh one on the way back)
         if (emu.Mode != 1 || emu.SamplerMode) emu.DrainLiveMidi(this);      // (the live MIDI out's last note-offs when the game is frozen or gone; in ROM mode they go after the frames below)
         if (emu.PresetMode)
         {
@@ -368,6 +376,11 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             return;
         }
 
+        if (emu.NanoGbDirectMode)
+        {
+            RenderNanoGbDirect(emu, a.Channel, dest, length, gl, gr);  // the Nano GB chip: the web library's engine, one per instance (Bn2Plugin.NanoGb.cs)
+            return;
+        }
         if (emu.WmsDirectMode)
         {
             RenderWmsDirect(emu, a.Channel, dest, length, gl, gr);     // WideMess milestone 7a: the WideMess chip itself, many notes at once (Bn2Plugin.Wms.cs)
@@ -671,7 +684,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         var e = a.Emulator;
         if (e != null && e.Mode == 0 && a.Channel is >= 0 and < Ch.ToneCount)
         {
-            if (e.WmsDirectMode) PrepareWms();        // the WideMess chip is played by the plugin itself, not through a NES-register bridge (Bn2Plugin.Wms.cs)
+            if (e.NanoGbDirectMode) PrepareNanoGb();  // the Nano GB engine is the plugin's own, not a NES-register bridge (Bn2Plugin.NanoGb.cs)
+            else if (e.WmsDirectMode) PrepareWms();        // the WideMess chip is played by the plugin itself, not through a NES-register bridge (Bn2Plugin.Wms.cs)
             else EnsureChip(e);
         }
     }
@@ -1387,6 +1401,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 if (id - Fpd.TestBase is >= 740 and < 780) return NesRecordTestHook(id - Fpd.TestBase, index, value);                            // a NES game's recording (Bn2Plugin.RecordNes.cs)
                 if (id - Fpd.TestBase is >= 790 and < 820) return ReloadTestHook(id - Fpd.TestBase, index, value);                               // FL's real conventions, the notes followed, a recording offered from its files (Bn2Plugin.Reload.cs)
                 if (id - Fpd.TestBase is >= 840 and < 860) return CaptureTestHook(id - Fpd.TestBase, index, value);                              // round 9: Capture from FL (Bn2Plugin.Capture.cs; 790-819 are reload's)
+                if (id - Fpd.TestBase is >= 940 and < 960) return NanoGbTestHook(id - Fpd.TestBase, index, value);                               // the Nano GB chip (Bn2Plugin.NanoGb.cs)
                 if (id - Fpd.TestBase is >= 900 and < 940) return WmsTestHook(id - Fpd.TestBase, index, value);                                  // WideMess milestone 7a: the WMS chip and WideMess games (Bn2Plugin.Wms.cs)
                 return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }

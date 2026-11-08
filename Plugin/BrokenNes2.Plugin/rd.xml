@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Native AOT: generic instantiations the reflection JSON serializer makes at run time for the Nano GB chip's preset table (Core: NesEmulator.Gb.NanoGbPresets reads its
+     JSON with JsonSerializer.Deserialize in its static constructor). Without these the table throws "ArrayConverter`2[System.Int32[],System.Int32] is missing native code"
+     and the chip has no presets in the DLL. A source-generated JsonSerializerContext in Core would make this file unnecessary. -->
+<Directives xmlns="http://schemas.microsoft.com/netfx/2013/01/metadata">
+  <Application>
+    <Assembly Name="System.Text.Json">
+      <Type Name="System.Text.Json.Serialization.Converters.ArrayConverter`2[[System.Int32[],System.Private.CoreLib],[System.Int32,System.Private.CoreLib]]" Dynamic="Required All" />
+      <Type Name="System.Text.Json.Serialization.Converters.ArrayConverter`2[[System.Double[],System.Private.CoreLib],[System.Double,System.Private.CoreLib]]" Dynamic="Required All" />
+      <Type Name="System.Text.Json.Serialization.Converters.ArrayConverter`2[[NesEmulator.Gb.NanoGbPreset[],BrokenNes.Core],[NesEmulator.Gb.NanoGbPreset,BrokenNes.Core]]" Dynamic="Required All" />
+      <Type Name="System.Text.Json.Serialization.Converters.DictionaryOfTKeyTValueConverter`3[[System.Collections.Generic.Dictionary`2[[System.String,System.Private.CoreLib],[System.String,System.Private.CoreLib]],System.Private.CoreLib],[System.String,System.Private.CoreLib],[System.String,System.Private.CoreLib]]" Dynamic="Required All" />
+    </Assembly>
+  </Application>
+</Directives>

@@ -186,6 +186,22 @@ game had on a voice that played it. A project saved in Runaway keeps the copy in
 locked WideMess game (or a SNES game) is the SNES sampler's, as before. Not built: editing WideMess instruments in the Instruments tab (it says so), presets of them, pushing them into the game,
 recording the new voices (the Record window records the S-DSP's 8).
 
+### The Nano GB chip (the NANOGB chip)
+
+**NANOGB** (chip 30, the last; it sits on the **Game Boy** console) plays the instrument engine of the web library *Nano GB* (`Nano/gb`): gnuboy's Game Boy sound
+with the library's 27 presets. It is Direct mode only: in ROM mode a Game Boy game runs on the Game Boy's own sound unit, as on DMG. Each instance plays an
+engine of its own (four Game Boy channels: pulse 1, pulse 2, wave, noise; the preset picks the channel, one note per channel, the newest note wins).
+
+- **Instrument** picks the preset by number (0-26, the web library's program numbers: program change *n* = preset *n*; a larger number wraps, as the web player does).
+- **Notes** play exactly what the web library's MIDI player plays for the same MIDI notes: FL's key, FL's velocity (as MIDI velocity / 127), FL's pitch slides and
+  bends as the note's bend. Coarse and Fine shift the pitch as on every chip.
+- **Volume** multiplies the output (100% = the web player's default of 1); **Pan** pans it as on every chip.
+- **Export sidecar** (bottom right, on the Emulator tab, when the emulator is on NANOGB in Direct mode) saves the JSON file the web library reads next to FL's MIDI
+  export: for every Nano GB instance its preset, its volume (100% = 1.0) and its pan when it is 50% or more to one side ("L" / "R"; the web engine pans a Game Boy
+  channel hard left or right), keyed by MIDI channel. **The MIDI channel rule:** the Nano GB instances in the order they were made (when FL opens a project it makes
+  its channels' plugins top to bottom of the channel rack), the first is MIDI channel 1, the next 2, and so on up to 16 (more are left out, and the button says so).
+  Check that FL's MIDI export gives the channels the same numbers; a sidecar entry wins over channel 10's drums on the web.
+
 ## One instance = one channel of an emulator
 
 Like any instrument, an instance of BrokenNes2 is one voice of its own: **one NES channel**, with its own piano roll, its own

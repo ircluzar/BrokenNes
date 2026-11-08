@@ -21,7 +21,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
     public const int IdVoiceCell = 400;   // + channel 6..20: the Sega chips' own voices (a Sega game's stems); the ids below 100 are taken
     public const int IdSlider = 20;    // + parameter index
     public const int IdAbout = 40, IdAboutClose = 41;
-    public const int IdReset = 60;
+    public const int IdReset = 60, IdNanoSidecar = 61;   // 61: the Nano GB chip's "Export sidecar" (Bn2Plugin.NanoGb.cs)
     public const int IdConsole = 50;   // + console 0..2
     public const int IdItem = 100;     // + item index of the open list
     public const int IdAboutLink = 70;                                   // + link index in the About text
@@ -416,8 +416,9 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             else if (gch == 3) Slider(dc, P.NoiseMode, "Noise mode", x, y, w);
             else Txt(dc, "the game's own waveform (its wave RAM)", R(x + 86, y, w - 86, RowH), Win32.DT_LEFT | Mid, Faint, fontSmall);
         }
-        else if (PatchBank(mode) == 3)
+        else if (PatchBank(mode) is 3 or 4)
         {
+            // (bank 4: the Nano GB chip's 27 presets, by program number, on every channel)
             // WideMess milestone 7a: the WideMess chip plays its built-in 16-bit instruments on every channel, many notes at once; the Instrument parameter picks one (0 = the channel's own)
             var patch = Cx.PatchItems(3)[Cx.PatchClamp(3, plugin.Get(P.Instrument))];
             Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, patch.Name);
@@ -456,7 +457,15 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         bool flash = Environment.TickCount64 < resetFlashUntil;
         if (emu != null)
         {
-            Txt(dc, $"restarts emulator #{emu.Id}", R(ColX, reset.Top, reset.Left - ColX - 10, 30), Win32.DT_RIGHT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+            int textRight = reset.Left;
+            if (emu.NanoGbDirectMode)
+            {
+                // the Nano GB chip: the sidecar JSON the web library reads beside FL's MIDI export (every Nano GB instance's preset, volume and pan, keyed by MIDI channel)
+                var side = R(reset.Left - 6 - 150, reset.Top, 150, 30);
+                Button(dc, IdNanoSidecar, "Export sidecar", side);
+                textRight = side.Left;
+            }
+            Txt(dc, nanoSidecarWords.Length > 0 && emu.NanoGbDirectMode ? nanoSidecarWords : $"restarts emulator #{emu.Id}", R(ColX, reset.Top, textRight - ColX - 10, 30), Win32.DT_RIGHT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
             Button(dc, IdReset, flash ? "Reset done" : "Reset Console", reset, primary: flash);
         }
         else Box(dc, reset, Panel, Line, 5);
@@ -1437,6 +1446,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 else if (h.Id >= IdInputPad && h.Id < IdInputPad + 12) { captureIndex = h.Id - IdInputPad; captureIsKey = false; captureWait = true; }
                 else if (h.Id >= IdPadButton && h.Id < IdPadButton + 12) { heldPad = h.Id - IdPadButton; Win32.SetCapture(Hwnd); }
                 else if (h.Id == IdRunaway) { var re = plugin.Emulator; if (re != null) { plugin.MarkConfigured("Instrument Runaway"); re.SetRunaway(!re.Runaway); } }
+                else if (h.Id == IdNanoSidecar) NanoSidecarClick();
                 else if (h.Id == IdReset) { plugin.Emulator?.Reset(); resetFlashUntil = Environment.TickCount64 + 900; }
                 else if (h.Id is IdModeDirect or IdModeRom) plugin.SetFromUi(P.Mode, h.Id - IdModeDirect);
                 else if (h.Id >= IdConsole && h.Id < IdConsole + Cx.Count) plugin.SetFromUi(P.Console, h.Id - IdConsole);
@@ -1627,6 +1637,19 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
     /// <summary>The editor questions the test host asks (Fpd.TestBase + n): 30 packed rectangle of control <paramref name="index"/>
     /// (x | y &lt;&lt; 16 | w &lt;&lt; 32 | h &lt;&lt; 48; 0 when the control is not on screen), 31 id of the open dropdown (0 none),
     /// 32 its item count, 33 number of paints, 34 id under the mouse, 35 picture shown (1/0), 36 About window open (1/0).</summary>
+    private string nanoSidecarWords = "";
+    internal string? testNanoSidecarPath;      // (tests: the path the next Export sidecar click writes, instead of the Save dialog)
+
+    private void NanoSidecarClick()
+    {
+        string? path = testNanoSidecarPath;
+        testNanoSidecarPath = null;
+        path ??= Ui.UiNative.ChooseSaveFile(Hwnd, "Save the Nano GB sidecar (beside FL's MIDI export: the web library reads both)", "Nano GB sidecar (*.json)|*.json|All files (*.*)|*.*", "json");
+        if (path == null) return;
+        var why = Bn2Plugin.SaveNanoGbSidecar(path, out string summary);
+        nanoSidecarWords = why == null ? $"Saved {Path.GetFileName(path)}: {summary}" : "Not saved: " + why;
+    }
+
     public nint Test(int n, nint index, nint value)
     {
         switch (n)
@@ -1635,6 +1658,8 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             case >= 620 and < 630: return SongTest(n, index, value);    // Test MIDI export's window (Bn2Editor.Song.cs)
             case >= 670 and < 680: return RecordTest(n, index, value);  // the Record window (Bn2Editor.Record.cs)
             case >= 860 and < 870: return CaptureEditorTest(n, index, value);  // Capture from FL (Bn2Editor.Capture.cs)
+            case 880: testNanoSidecarPath = System.Runtime.InteropServices.Marshal.PtrToStringUni(value); return 0;   // the Nano GB chip: the path the next Export sidecar click writes
+            case 881: return CopyChars(nanoSidecarWords, index, value);
             case 30:
                 foreach (var h in hits)
                     if (h.Id == index)

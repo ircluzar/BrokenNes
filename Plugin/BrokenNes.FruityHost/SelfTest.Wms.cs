@@ -34,7 +34,7 @@ public sealed unsafe partial class SelfTest
         // ---- the chip list: appended after the Presets chips (append-only), on the SNES console ----
         List<string> chips;
         using (var probe = lib.Create()) chips = Chips(probe);
-        t.Expect(chips.Count == 30 && chips.IndexOf(WmsChipId) == 29, $"the {WmsChipId} chip is index {chips.IndexOf(WmsChipId)} of {chips.Count} (expected 29: appended after the six Presets chips)");
+        t.Expect(chips.Count == 31 && chips.IndexOf(WmsChipId) == 29 && chips[30] == "NANOGB", $"the {WmsChipId} chip is index {chips.IndexOf(WmsChipId)} of {chips.Count} (expected 29: appended after the six Presets chips)");
         t.Expect(chips.IndexOf("FIX") == 0 && chips.IndexOf("DMG") == 17 && chips.IndexOf("DMGS") == 18 && chips.IndexOf("SNES") == 19 && chips.IndexOf("SMS") == 20 && chips.IndexOf("MD") == 21 && chips.IndexOf("SMSFM") == 22
             && string.Join(",", chips.Skip(23).Take(6)) == "PRESETS,PRE-NES,PRE-GB,PRE-SNES,PRE-SMS,PRE-MD", "an existing chip moved (the chip index is part of saved projects: append only)");
         using (var p = lib.Create())
