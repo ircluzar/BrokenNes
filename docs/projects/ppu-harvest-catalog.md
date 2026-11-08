@@ -140,6 +140,8 @@ Order: nofrendo, InfoNES, FCEUX old PPU, SameBoy v0.1, Peanut-GB, gnuboy 1.0.3, 
 | 8 | Genesis Plus GX @cbf8f4e | Genesis `GPGX` | ported (Mode 5 path: lines drawn beside the stock VDP via MdVdp.LineObserver); Sonic, Sonic 2, Mickey Mania, Vectorman draw; state reload SAME. Mode 4 / SMS path not ported | 993c49c9 |
 | 9 | Snes9x @88f3702 gfx.cpp + tile.cpp + clip.cpp | SNES `S9X` | ported (lines flushed beside the stock S-PPU via PPU_SFC.LineObserver); RPM Racing, Seiken Densetsu 3 (hires), F-Zero, Super Mario Kart (Mode 7), Kirby's Dream Course, Chrono Trigger, SMW draw; state reload SAME | S9X commit |
 | 10 | runners-up, tarball targets | | not started | |
+| 10g | Gambatte 0.3.1 video.cpp (tarball) | GB/GBC `GMB031` | ported beside the stock chip, pixel by pixel at Gambatte's fixed rate; LA, Kirby, SML, Oracle of Seasons, Shantae, Pokemon Crystal Legacy, DW Monsters draw; state reload SAME | d86fc149 |
+| 10h | VisualBoyAdvance 1.7.2 gbGfx.cpp (tarball; chosen over VBA-M: older, no per-game fixes) | GB/GBC `VBA172` | ported beside the stock chip, whole line at the end of mode 3; same seven games draw; state reload SAME | d86fc149 |
 
 Midpoint battery (2026-11-07, commit fc2371d5): suite 123/0, scenarios 1031/0, fuzz 1426 trials with 1 finding: nes undo-mismatch STATE, To The Earth, cpu SPD, ppu INES, minimised to Unsafe.VideoBus alone (repro `bfuzz nes 1 out 311282`). Plain save/reload of that game on INES is SAME; the divergence (CPU timing, openBus) is not yet traced to INES or to the board.
 
