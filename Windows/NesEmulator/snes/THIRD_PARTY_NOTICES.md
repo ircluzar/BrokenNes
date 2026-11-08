@@ -99,3 +99,4 @@ written from documentation plus black-box differential testing against the refer
 ROMs, without reading the sources in section 1. Section 2's items should be re-derived from
 documentation in those cores.
 | S9X picture core (PPU harvest): gfx.cpp + tile.cpp + clip.cpp renderer | `Snes9xGfx.cs` | Ported from libretro/snes9x @88f3702 (parent of 795542d), (c) 1996-2011 Gary Henderson, Jerremy Koot, Matthew Kendora, Peter Bortas, Joel Yliluoma, John Weidman, funkyass, Kris Bleakley, Brad Jorsch, Nach, zones, nitsuja, BearOso, OV2 and others; Snes9x licence (non-commercial, notice kept). Faithful port, flaws kept. |
+| BS63 picture core (PPU harvest): bsnes v063 bPPU scanline renderer | `BsnesV063Render.cs` | Ported from the bsnes_v063.tar.bz2 release (src/ppu/bppu/render), (c) 2004-2010 byuu, mode 7 base algorithm anomie, colour add/sub blargg; GPL-2.0. Faithful port, flaws kept. |

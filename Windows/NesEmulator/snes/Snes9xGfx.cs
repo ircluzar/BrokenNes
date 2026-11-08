@@ -31,7 +31,7 @@ using System;
 
 namespace NesEmulator.Snes;
 
-internal sealed class Snes9xGfx
+internal sealed class Snes9xGfx : ISnesHarvestPicture
 {
     const int PPL = 512, MaxH = 239;
     private readonly PPU_SFC ppu;

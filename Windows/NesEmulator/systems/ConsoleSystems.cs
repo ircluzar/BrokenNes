@@ -776,6 +776,7 @@ public static class CoreCatalog
                     case CoreSlot.Ppu:
                         list.Add(new("SFC", "SFC (SNES picture chip)", "SNES"));
                         list.Add(new("S9X", "S9X (Snes9x 2013 renderer before anomie's hires fix: hires even columns from the sub screen, tile-parity hires, per-line flush)", "SNES"));
+                        list.Add(new("BS63", "BS63 (bsnes v063 scanline renderer, 2010: whole-line registers, OBSEL a line late, blurred hires with a dark left column)", "SNES"));
                         foreach (var id in NesPictureChips()) list.Add(new("NES:" + id, NesPictureLabel(id), NesFamilyOf(CoreSlot.Ppu, id)));
                         break;
                     default:
