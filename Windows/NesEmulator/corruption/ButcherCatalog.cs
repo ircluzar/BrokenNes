@@ -132,7 +132,7 @@ public static class ButcherCatalog
 	public static Entry? Find(string path) => Effects.FirstOrDefault(e => string.Equals(e.Path, path, StringComparison.OrdinalIgnoreCase));
 
 	// Settings properties that are not effects of their own: the containers, the master switch, and parameters of another effect.
-	private static readonly HashSet<string> NotEffects = new(StringComparer.OrdinalIgnoreCase) { "enabled", "sprites", "sound", "bands", "unsafe", "video", "ciramFlicker", "unsafe.padFlicker" };
+	private static readonly HashSet<string> NotEffects = new(StringComparer.OrdinalIgnoreCase) { "enabled", "seed", "sprites", "sound", "bands", "unsafe", "video", "ciramFlicker", "unsafe.padFlicker" };
 	private static readonly HashSet<string> Containers = new(StringComparer.OrdinalIgnoreCase) { "sprites", "sound", "bands", "unsafe", "video" };
 
 	/// <summary>Every effect path in <see cref="ButcherSettings"/>, camelCase (the containers' children, and the top-level effects).</summary>
