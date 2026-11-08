@@ -90,7 +90,9 @@ public static class Cx
 
     private static List<Chip> Build()
     {
-        var all = CoreRegistry.ApuIds.Where(id => !Hidden.Contains(id)).ToList();
+        // The ported engines' bridges ("DMG_GNUB", "SNES_ZS15", "SMS_GWEN", "MD_PICO", ...: a stock bridge with another emulator's engine fixed, the Foreign APU and APU harvest projects) carry their console's
+        // family, so they would sort into the Game Boy / SNES / Master System / Genesis groups and move every later chip (a saved project stores the index). They are left out like Hidden; offering one means appending it.
+        var all = CoreRegistry.ApuIds.Where(id => !Hidden.Contains(id) && CoreCatalog.PortedBridgeEngine(id) == null).ToList();
         var list = new List<Chip>();
         foreach (var id in all.Where(i => NesFamily(i) == "NES")
                      .OrderBy(i => i.Equals("FIX", StringComparison.OrdinalIgnoreCase) ? 0 : i.Equals("FIXS", StringComparison.OrdinalIgnoreCase) ? 1 : 2)
