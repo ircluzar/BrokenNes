@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace NesEmulator.Gb;
 
@@ -56,8 +57,9 @@ public sealed class NanoGbPreset
 /// <summary>The built-in presets in program order (generated from Nano/gb/src/presets.js into <c>NanoGbPresets.Json</c> by Nano/gb/build.mjs).</summary>
 public static partial class NanoGbPresets
 {
-    private sealed class Table { public NanoGbPreset[] Presets { get; set; } = []; public Dictionary<string, string> Drums { get; set; } = new(); }
-    private static readonly Table table = JsonSerializer.Deserialize<Table>(Json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+    internal sealed class Table { public NanoGbPreset[] Presets { get; set; } = []; public Dictionary<string, string> Drums { get; set; } = new(); }
+    // source-generated (no reflection): the plugin is an AOT DLL
+    private static readonly Table table = JsonSerializer.Deserialize(Json, NanoGbJson.Default.Table)!;
     /// <summary>Program number n = All[n] (the web library's PRESETS order).</summary>
     public static IReadOnlyList<NanoGbPreset> All => table.Presets;
     public static int Count => table.Presets.Length;
@@ -66,6 +68,12 @@ public static partial class NanoGbPresets
     /// <summary>General MIDI drum note (channel 10) -> preset, or null.</summary>
     public static NanoGbPreset? Drum(int note) => table.Drums.TryGetValue(note.ToString(System.Globalization.CultureInfo.InvariantCulture), out var n) ? table.Presets[IndexOf(n)] : null;
 }
+
+/// <summary>The preset table's JSON reader, made at build time (AOT-safe).</summary>
+[JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
+[JsonSerializable(typeof(NanoGbPresets.Table))]
+[JsonSerializable(typeof(NanoGbPreset))]
+internal partial class NanoGbJson : JsonSerializerContext { }
 
 public sealed class NanoGbEngine
 {

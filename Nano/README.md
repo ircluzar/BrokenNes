@@ -1,4 +1,7 @@
-# BrokenNes Nano
+# BrokenNes Nano NES
+
+> Renamed 2026-11-08: this is **Nano NES** (it was "Nano"). Its files and its global `BrokenNesNano` are unchanged. Its sibling **Nano GB**, the Game Boy chip as a
+> far lighter synth and MIDI player that the BrokenNes2 plugin's Nano GB chip plays identically, is in [`gb/`](gb/README.md).
 
 **The BrokenNes NES sound chip as a synth for web pages.** One script file, no server, no downloads at run time: a page that needs bleeps and bloops embeds it and
 plays two pulse channels, a triangle, a noise channel and (optionally) DPCM samples from notes. It is the chip behind the BrokenNes2 FL Studio plugin, ported to

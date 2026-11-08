@@ -110,7 +110,7 @@ let bad = 0;
 function emit(target, data, label) {
   const buf = Buffer.from(data, 'utf8');
   if (check) {
-    const have = fs.existsSync(target) ? fs.readFileSync(target) : null;
+    const have = fs.existsSync(target) ? Buffer.from(fs.readFileSync(target, 'utf8').split('\r\n').join('\n'), 'utf8') : null;   // (a checkout with core.autocrlf has CRLF line ends)
     if (!have || !have.equals(buf)) { console.error(`DIFFERS: ${label}`); bad++; } else console.log(`same: ${label} (${buf.length} bytes)`);
   } else { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, buf); console.log(`wrote ${label} (${buf.length} bytes)`); }
 }
