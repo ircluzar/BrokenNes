@@ -459,6 +459,8 @@ public sealed class GbSession : IConsoleSession, IButcherHost
         if (ppu.Equals("SB01", StringComparison.OrdinalIgnoreCase)) { foreignView = new SameBoyV01Display(board.Ppu); return; }   // SameBoy v0.1's renderer (ppu-harvest)
         if (ppu.Equals("PGB", StringComparison.OrdinalIgnoreCase)) { foreignView = new PeanutGbDisplay(board.Ppu); return; }      // Peanut-GB @8a692e4's renderer (ppu-harvest)
         if (ppu.Equals("GNUB", StringComparison.OrdinalIgnoreCase)) { foreignView = new GnuboyDisplay(board.Ppu); return; }      // gnuboy 1.0.3's lcd.c (ppu-harvest)
+        if (ppu.Equals("GMB031", StringComparison.OrdinalIgnoreCase)) { foreignView = new Gambatte031Display(board.Ppu); return; } // Gambatte 0.3.1's video.cpp (ppu-harvest)
+        if (ppu.Equals("VBA172", StringComparison.OrdinalIgnoreCase)) { foreignView = new Vba172Display(board.Ppu); return; }      // VisualBoyAdvance 1.7.2's gbGfx.cpp (ppu-harvest)
         if (ppu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase)) { cap ??= new GbLineCapture(board.Ppu); toNes = new GbToNes(ppu[4..]); }
         else if (CoreCatalog.IsDirectRoute(ppu)) { cap ??= new GbLineCapture(board.Ppu); toNes = new GbToNes(EnhancedChips.Picture(ppu), ppu); }     // another console's enhanced chip: the Game Boy's layers at its 160 x 144
         else if (ppu.StartsWith("SNES:", StringComparison.OrdinalIgnoreCase)) { cap ??= new GbLineCapture(board.Ppu); toSnes = new GbToSnes(ppu[5..]); }

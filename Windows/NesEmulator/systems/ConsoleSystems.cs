@@ -813,6 +813,8 @@ public static class CoreCatalog
                         list.Add(new("SB01", "SB01 (SameBoy v0.1 renderer, 2016: pixels in 8-dot chunks, fine SCX once a line, \"effective window\", DMG sprite-priority break)", "Game Boy"));
                         list.Add(new("PGB", "PGB (Peanut-GB renderer, before the 2025 LCD fixes: whole line drawn late, WY latched once a frame, DMG only)", "Game Boy"));
                         list.Add(new("GNUB", "GNUB (gnuboy 1.0.3 lcd.c: whole line at mode 3, window line = LY - WY, background-enable ignored, gnuboy's own pale palette)", "Game Boy"));
+                        list.Add(new("GMB031", "GMB031 (Gambatte 0.3.1 video.cpp, 2007: pixels at a fixed rate whatever the sprites, SCX/SCY 8 dots late, sprites pasted after the line, frame-wide sprite map)", "Game Boy"));
+                        list.Add(new("VBA172", "VBA172 (VisualBoyAdvance 1.7.2 gbGfx.cpp, 2004: whole line at the end of mode 3, wrong sprite overlap order, BG-off goes white, raw <<3 colours)", "Game Boy"));
                         foreach (var id in NesPictureChips().Where(i => NesFamilyOf(CoreSlot.Ppu, i) != "Game Boy")) list.Add(new("NES:" + id, NesPictureLabel(id), NesFamilyOf(CoreSlot.Ppu, id)));
                         list.Add(new("SNES:SFC", "SFC (SNES picture chip)", "SNES"));
                         break;
