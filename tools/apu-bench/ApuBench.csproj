@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ApuBench: how much CPU each BrokenNes sound chip costs to make audio in a minimal setup (docs/projects/nano-lightest-apu.md).
+       Not part of BrokenNes.sln; run: dotnet run -c Release -project tools/apu-bench [-seconds 3] [-runs 7] [-only NES:FIX,GB:GB,...] -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TieredPGO>true</TieredPGO>
+    <ServerGarbageCollector>false</ServerGarbageCollector>
+    <NoWarn>$(NoWarn);CS8602;CS8600;CS8604</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\BrokenNes.Core.csproj" />
+  </ItemGroup>
+
+</Project>
