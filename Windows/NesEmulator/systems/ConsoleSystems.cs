@@ -775,6 +775,7 @@ public static class CoreCatalog
                     case CoreSlot.Cpu: list.Add(new("SFC", "SFC (65816)", "SNES")); break;
                     case CoreSlot.Ppu:
                         list.Add(new("SFC", "SFC (SNES picture chip)", "SNES"));
+                        list.Add(new("S9X", "S9X (Snes9x 2013 renderer before anomie's hires fix: hires even columns from the sub screen, tile-parity hires, per-line flush)", "SNES"));
                         foreach (var id in NesPictureChips()) list.Add(new("NES:" + id, NesPictureLabel(id), NesFamilyOf(CoreSlot.Ppu, id)));
                         break;
                     default:

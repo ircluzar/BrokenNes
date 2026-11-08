@@ -138,7 +138,7 @@ Order: nofrendo, InfoNES, FCEUX old PPU, SameBoy v0.1, Peanut-GB, gnuboy 1.0.3, 
 | 6 | gnuboy 1.0.3 @29076d4 | GB/GBC `GNUB` | ported as a renderer beside the stock chip; LA, Kirby, SML, Oracle of Seasons draw; state reload SAME | 4da5ff09 |
 | 7 | PicoDrive draw2 v1.85 | Genesis `PD2` | ported (whole frame at frame end from the stock VDP's memories); Sonic, Streets of Rage 2, Gunstar Heroes draw; state reload SAME | 6b067835 |
 | 8 | Genesis Plus GX @cbf8f4e | Genesis `GPGX` | ported (Mode 5 path: lines drawn beside the stock VDP via MdVdp.LineObserver); Sonic, Sonic 2, Mickey Mania, Vectorman draw; state reload SAME. Mode 4 / SMS path not ported | 993c49c9 |
-| 9 | Snes9x tile.cpp @88f3702 | SNES | not started: tile.cpp (1515 lines) only works inside gfx.cpp (2398) and Snes9x's PPU/GFX state, roughly 2000+ lines of C# to port; sources fetched to C:\BrokenNes-tools\ppu-harvest\snes9x | |
+| 9 | Snes9x @88f3702 gfx.cpp + tile.cpp + clip.cpp | SNES `S9X` | ported (lines flushed beside the stock S-PPU via PPU_SFC.LineObserver); RPM Racing, Seiken Densetsu 3 (hires), F-Zero, Super Mario Kart (Mode 7), Kirby's Dream Course, Chrono Trigger, SMW draw; state reload SAME | S9X commit |
 | 10 | runners-up, tarball targets | | not started | |
 
 Midpoint battery (2026-11-07, commit fc2371d5): suite 123/0, scenarios 1031/0, fuzz 1426 trials with 1 finding: nes undo-mismatch STATE, To The Earth, cpu SPD, ppu INES, minimised to Unsafe.VideoBus alone (repro `bfuzz nes 1 out 311282`). Plain save/reload of that game on INES is SAME; the divergence (CPU timing, openBus) is not yet traced to INES or to the board.

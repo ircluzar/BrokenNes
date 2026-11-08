@@ -191,6 +191,7 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
     /// of the SFC chip's state - the SFC chip keeps running either way, so this swaps freely).</summary>
     private void SetPicture(string ppu)
     {
+        s9x?.Detach(); s9x = ppu.Equals("S9X", StringComparison.OrdinalIgnoreCase) ? new Snes9xGfx(board.Ppu) : null;   // Snes9x 88f3702's renderer (ppu-harvest)
         bool route = CoreCatalog.IsDirectRoute(ppu);     // another console's enhanced picture chip, reached directly: the SNES picture as layers at its own size
         if (ppu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase) || route)
         {
@@ -345,8 +346,10 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
         : $" | not carried by the other console's chips: {(WideMessPictureFramesNotCarried > 0 ? $"{WideMessPictureFramesNotCarried} frames of the WideMess picture (8 layers or 400 wide: the {ppuId} chip shows the SNES registers)" : "")}{(WideMessPictureFramesNotCarried > 0 && WideMessVoiceFramesNotCarried > 0 ? ", " : "")}{(WideMessVoiceFramesNotCarried > 0 ? $"{WideMessVoiceFramesNotCarried} frames of WideMess voices 8-31 ({apuId} replays the S-DSP's eight)" : "")}";
 
     /// <summary>The SNES picture chip's own picture (256 wide, or 512 when a line was drawn in a hi-res mode) as the frame the apps show.</summary>
+    private Snes9xGfx? s9x;
     private void PublishNativePicture()
     {
+        if (s9x != null) { height = Math.Min(s9x.Height, 239); width = s9x.Width; s9x.CopyTo(frame); return; }
         height = board.Ppu.VisibleHeight;
         if (wms is { FrameIsWide: true })
         {

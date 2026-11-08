@@ -98,3 +98,4 @@ The current cores stay as the **reference** implementation (the oracle). Indepen
 written from documentation plus black-box differential testing against the reference and the test
 ROMs, without reading the sources in section 1. Section 2's items should be re-derived from
 documentation in those cores.
+| S9X picture core (PPU harvest): gfx.cpp + tile.cpp + clip.cpp renderer | `Snes9xGfx.cs` | Ported from libretro/snes9x @88f3702 (parent of 795542d), (c) 1996-2011 Gary Henderson, Jerremy Koot, Matthew Kendora, Peter Bortas, Joel Yliluoma, John Weidman, funkyass, Kris Bleakley, Brad Jorsch, Nach, zones, nitsuja, BearOso, OV2 and others; Snes9x licence (non-commercial, notice kept). Faithful port, flaws kept. |

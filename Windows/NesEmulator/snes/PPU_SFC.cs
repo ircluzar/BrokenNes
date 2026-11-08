@@ -340,6 +340,7 @@ public partial class PPU_SFC
 
     public virtual void BeginFrame()
     {
+        FrameObserver?.Invoke();
         if (FrameHasHiRes) { Array.Clear(rowHiRes); FrameHasHiRes = false; }
         VisibleHeight = (setini & 0x04) != 0 ? MaxHeight : Height;
         if (!ForcedBlank) { rangeOver = false; timeOver = false; }
@@ -429,8 +430,23 @@ public partial class PPU_SFC
     // rewrite OAM mid-frame, like Super Mario Kart's split screen, get one copy per part).
     private byte[]? bridgeOam; private int bridgeOamVersion = -1;
 
+    /// <summary>Called as each line is drawn, with its output row (null = one test per line): the PPU harvest's Snes9x renderer draws its own line there.</summary>
+    public Action<int>? LineObserver;
+    /// <summary>Called at <see cref="BeginFrame"/> (the PPU harvest's Snes9x renderer starts its screen refresh there).</summary>
+    public Action? FrameObserver;
+
+    /// <summary>The decoded registers, read-only, for the PPU harvest's Snes9x renderer (the chip's own decoding: Snes9x's register latches are not ported).</summary>
+    public readonly record struct DecodedRegs(byte Inidisp, byte Obsel, byte Bgmode, byte Mosaic, byte Bg12nba, byte Bg34nba, byte Bgsc0, byte Bgsc1, byte Bgsc2, byte Bgsc3,
+        ushort Hofs0, ushort Hofs1, ushort Hofs2, ushort Hofs3, ushort Vofs0, ushort Vofs1, ushort Vofs2, ushort Vofs3,
+        byte M7sel, short M7a, short M7b, short M7c, short M7d, short M7x, short M7y, short M7hofs, short M7vofs,
+        byte Tm, byte Ts, byte W12sel, byte W34sel, byte Wobjsel, byte Wh0, byte Wh1, byte Wh2, byte Wh3, byte Wbglog, byte Wobjlog, byte Tmw, byte Tsw,
+        byte Cgwsel, byte Cgadsub, ushort Coldata, byte Setini, ushort Oamadd);
+    public DecodedRegs Decoded => new(inidisp, obsel, bgmode, mosaic, bg12nba, bg34nba, bgsc[0], bgsc[1], bgsc[2], bgsc[3], hofs[0], hofs[1], hofs[2], hofs[3], vofs[0], vofs[1], vofs[2], vofs[3],
+        m7sel, m7a, m7b, m7c, m7d, m7x, m7y, m7hofs, m7vofs, tm, ts, w12sel, w34sel, wobjsel, wh0, wh1, wh2, wh3, wbglog, wobjlog, tmw, tsw, cgwsel, cgadsub, coldata, setini, oamadd);
+
     public virtual void RenderLine(int line)
     {
+        LineObserver?.Invoke(line - 1);   // a foreign renderer drawing beside this chip (PPU harvest: snes/Snes9xGfx.cs), output row
         if (DebugLineRegisters != null && line >= 0 && line < DebugLineRegisters.Length) DebugLineRegisters[line] = GetRegisterSnapshot();
         if (BridgeLines != null && line >= 0 && line < BridgeLines.Length)
         {
