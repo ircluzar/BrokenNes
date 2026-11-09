@@ -252,7 +252,48 @@
       "B": "A",
       "Start": "B"
     },
-    "settleFrames": 122
+    "settleFrames": 122,
+    "play": {
+      "what": "D1 (Timeflow T6): brokendev.ps1 timeflow play-compare vrun-ctw-sms. The NES original (mapper 30, ./build.sh game) built from a git archive of VRUN at 439616b (the last commit fab2c translates: e9e3a61's audio bends are not), and the port translated from that same tree (build.ps1 -FabRoot), both into C:\\BrokenNes-work\\play-compare (the shipping builds are not touched); the seed is the title's frame count (the map slot), fixed by Start at frame 120. Then a scripted walk out of room 0 (right, firing, a jump: room 1 at about frame 700) and a seeded walker (tools/playscript.py --from 770 --seed 3 --buttons A,B) that jumps and fires: rooms, hits, cash. The NES build's tools need Python 3.12+ (py -3.14).",
+      "frames": 6000,
+      "input": "120:Start,132:,400:Right,550:Right+B,560:Right,570:Right+B,580:Right,590:Right+A,610:Right,650:Right+B,660:Right,749:,770:Left+Up,790:,810:Right+A,830:Right,850:Left+A,870:Right+A+B,890:B,910:,930:Right+Down,950:A,970:,990:A+B,1010:A,1030:Left,1050:Right+A+B+Up,1070:Right+A+B,1090:A,1110:Right+A,1130:Right,1150:Right+A+B+Up,1170:Right+A,1190:,1210:Right,1230:,1250:Down,1270:Left,1290:Right,1310:Right+Down,1330:Right+A+B,1350:B,1370:Right+B,1390:Right+A,1410:Right+Up,1430:Left+Up,1450:Right+A,1470:Left+Up,1490:Left+A,1510:Right,1550:Right+A+B,1570:Left+A,1590:Right+A,1610:Left,1630:,1650:Right,1710:Right+A+B+Up,1730:Left+A+Down,1750:Left,1770:Right+Up,1810:Left,1830:A+B+Down,1850:Right,1870:A+B+Up,1890:Right,1930:,1950:Right+B,1970:Right,1990:Left+Up,2010:A,2030:Right,2050:Left+A,2110:,2130:Right+B+Up,2150:Right+A,2170:Right+B,2190:Left+B,2210:,2230:Right+A,2250:Right,2270:A+B,2290:Right+Up,2310:Right,2330:B+Up,2350:Left+A+Up,2370:B+Down,2390:Right+A,2410:Right,2450:Left+A,2470:,2490:Left+A+Down,2510:B,2530:Right+A,2550:Left+B,2570:B,2590:Right+Down,2610:Left,2630:Right+A,2650:Right,2690:Left+B,2710:Left+A+B,2730:Right+B+Down,2750:Left+B,2770:Right+A,2790:Down,2810:Right+B,2830:,2850:Up,2870:Right+A+B,2890:Left+Up,2910:Right+Down,2930:Right+Up,2950:Right+A,2970:A,2990:Left+A,3010:Right+A,3030:A+B,3050:,3070:Right,3090:Right+B+Up,3110:A,3130:Right+A,3150:Left,3170:,3190:Left+Down,3210:Right,3230:Right+B+Up,3250:Right,3270:Left+B,3290:Right,3310:,3330:Right,3390:Right+B+Up,3410:Right,3430:Left+A,3450:,3470:Right+Down,3490:Right,3510:Left,3530:Left+Up,3550:Right+A,3570:Right+B,3590:A+B,3610:Right+A,3630:Right,3650:Left+A+B+Down,3670:Left,3690:Right+B,3710:Left+A+Down,3730:Right+A,3750:Right,3810:,3830:Right+B,3850:Right,3890:A,3910:Right,3930:Right+A,3950:Right,3970:Right+A,3990:A,4050:Right,4070:Left,4090:Right+A+Up,4110:Right,4130:Right+Down,4150:Left+A,4170:,4190:Right,4210:A,4250:Right,4290:Left,4310:Right,4350:Up,4370:Right,4390:A,4410:Right+A,4450:Right,4470:Right+A+Up,4490:Right,4530:Right+A,4550:A,4570:Right+A+Up,4590:Right+A+B+Down,4610:A,4630:B,4650:Right+B+Up,4670:Right+B,4690:Right+A,4710:Right,4730:Right+A+Up,4750:B,4770:Left,4790:Right+B,4830:Right+A+B,4850:A+Down,4870:Right,4890:,4910:Right,4950:Left+Up,4970:Down,4990:Right,5010:Left+A+B,5030:Left,5050:Right+B+Up,5070:Right+A+Up,5090:Left+A,5110:Right,5150:Left+B,5170:Right+B,5190:Left,5210:Right+B,5230:Left+B+Down,5250:Right+Down,5270:Left,5290:Right+A+B+Up,5310:Right,5330:A+B,5350:A+B+Down,5370:Left+A+B,5390:Right,5410:Left+A+Up,5430:Right+B+Down,5450:Right+A+Down,5470:Right+B,5490:Left+A+B,5510:B,5530:Left,5550:Left+Up,5570:Right+A+Down,5590:A,5610:Left+B,5630:Left,5650:A+Up,5670:B,5690:Right+B,5710:,5730:A,5750:,5770:Left+Down,5790:A,5830:,5850:Left,5870:Left+A,5890:Right+B+Down,5910:Right,5930:Right+B,5950:B,5970:Right+Down,5990:Right",
+      "original": {
+        "kind": "archive",
+        "repo": "{live:VRUN_Nes_Dev}/sys0/simulations/VRUN",
+        "commit": "439616b",
+        "into": "simulations/VRUN",
+        "links": {
+          "simulations/mz": "{live:VRUN_Nes_Dev}/sys0/simulations/mz"
+        },
+        "cwd": "simulations/VRUN",
+        "bash": "python() { py -3.14 \"$@\"; }; export -f python; ./build.sh game",
+        "rom": "simulations/VRUN/build/vrun_game.nes",
+        "symbols": [
+          "simulations/VRUN/build/vrun_game.mlb"
+        ]
+      },
+      "port": {
+        "kind": "ps1",
+        "script": "{src}/build.ps1",
+        "args": [
+          "-Sdcc",
+          "{toolchain:sdcc}",
+          "-DevkitSms",
+          "{toolchain:devkitsms}",
+          "-FabRoot",
+          "{originalTree}/simulations/VRUN"
+        ],
+        "defines": [],
+        "rom": "vrun_ctw_sms.sms",
+        "symbols": [
+          "vrun_ctw_sms.noi"
+        ]
+      },
+      "expect": {
+        "room": 1,
+        "hp": 1
+      }
+    }
   },
   "knownIssues": [
     "S0 skeleton only: the game is S2.",

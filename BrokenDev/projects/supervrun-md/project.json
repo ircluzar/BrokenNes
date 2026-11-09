@@ -262,7 +262,45 @@
       "Select": "Mode"
     },
     "settleFrames": 200,
-    "tickLead": -1
+    "tickLead": -1,
+    "play": {
+      "what": "D1 (Timeflow T6): brokendev.ps1 timeflow play-compare supervrun-md. The SNES original built from logic/SOURCE.txt's SuperVRUN_dev commit (git archive, its snes-stub toolchain joined from C:\\BrokenNes-tools), the port into C:\\BrokenNes-work\\play-compare (the shipping build is not touched); the seed is the title's frame count (the map slot), fixed by Start at frames 300 and 420 from power-on. Then a scripted walk out of room 0 (right, shooting, a jump) and a seeded walker that jumps (B) and shoots (Y): rooms, enemies, hits. The port repository's tools/compare_manifest.json (tickLeadWhen) is the mapping.",
+      "frames": 8000,
+      "input": "300:Start,310:,420:Start,430:,951:Right,1101:Right+Y,1111:Right,1121:Right+Y,1131:Right,1141:Right+B,1161:Right,1201:Right+Y,1211:Right,1301:,1320:Y,1340:Right+B,1360:,1380:Y,1420:B+Up,1440:Left+B+Y+Down,1460:Y,1480:Right,1500:Left+B,1520:Right+Down,1560:B+Up,1580:,1600:Right,1620:Left,1640:,1660:Right+B,1680:Right,1700:Right+B,1720:Right,1780:Right+B,1820:Right,1860:Left+B+Up,1880:Right,1920:Left,1940:Right+Down,1960:Right,1980:Down,2000:Right+Y,2020:,2040:Right+B+Y,2060:Y,2080:Right+Y,2100:Right,2120:B+Y,2140:Right,2160:Left+B+Down,2180:,2200:Right,2240:Right+Up,2260:Right,2280:,2300:Right+Y,2340:Up,2360:Left,2380:,2400:Right+B+Down,2420:Right,2440:Right+B,2460:B,2480:,2500:Right,2520:Right+B,2540:Left+B,2560:Left+Y,2580:Left+Up,2600:,2620:Right+B+Y+Down,2640:Right,2660:Left,2680:Right+B,2700:Right,2720:Right+Up,2740:Right+B+Down,2760:Right+B,2780:Left+B,2800:Left+B+Y,2820:Right+Y,2840:Right+B+Up,2860:Right,2880:B+Y,2900:Left+Y,2920:,2940:Right,2980:Right+B+Y,3000:Left+B,3020:Down,3040:Y,3060:Right,3080:,3100:Right+Down,3120:Right+B,3140:B,3160:Right,3180:Y,3200:B,3220:Right+B+Y,3240:Right+Y,3260:Right+Up,3280:Right+B,3300:Right,3320:Right+Y+Down,3340:Right,3360:Left,3380:Left+Up,3400:Right+B+Y,3420:Right+Down,3440:Right+B+Y,3460:,3480:Right,3500:Left+Y,3520:Left+B,3540:Left,3560:,3600:Right,3620:Right+B+Down,3640:Right+Y,3660:Up,3680:Left+B,3700:Left+B+Up,3720:Right,3740:Right+Up,3760:Right+B+Y,3780:Left+Y,3800:Right+Y,3820:B,3840:Right+Down,3860:Right,3880:Left,3900:Left+Down,3920:Right+B+Down,3940:Right+B,3960:Right,4000:Left+B+Down,4020:Right,4060:Right+Down,4080:Left,4100:Right+B,4120:Left+Y+Up,4140:Y,4160:,4180:B+Down,4200:Left,4220:Right+B+Y,4240:Right+Y,4260:Right+B,4280:Right,4340:Right+Up,4360:B,4380:Right,4400:Left,4420:Right+B+Up,4440:,4460:Right+Y+Down,4480:Right+B,4500:Y,4520:Right+Up,4540:Right+B,4560:Up,4580:Right+B,4600:,4620:Left+B,4640:Left,4660:,4680:Left,4700:Right,4720:Left+B,4740:Down,4780:Right+B+Y+Down,4800:Right+Down,4820:Right+Y+Up,4840:B+Up,4860:Right,4880:Up,4900:Left+Up,4920:Right,4940:Left+Up,4960:Right,5000:Right+B,5020:Left+Down,5040:Right+Y,5060:Right,5100:Left,5120:Right+Y,5140:Right,5220:Left+Y,5240:Right+Up,5260:Right,5280:Right+B,5300:Right+Y,5320:Left+B+Y+Up,5340:Right+B+Y+Down,5360:Left+B,5400:Right+B+Up,5420:Left+B,5440:Right,5460:Left,5480:Left+Y,5500:Up,5520:Right,5540:Left+B+Up,5560:Left+B,5580:Right+B+Down,5600:,5620:Right+B,5640:Y,5660:,5700:Right,5760:B,5780:Right,5800:Right+Up,5820:Right+B+Y,5840:Left+B+Y,5860:Left+Up,5880:Right+B,5900:,5940:Right+B,5960:B,5980:Right,6000:Right+B,6020:Right,6040:Right+B,6060:B+Y,6080:Left,6100:B,6120:,6140:Right,6160:Right+Down,6180:Right+B,6200:Left,6220:Right+Y,6240:Y,6260:Left,6280:Right+B,6300:,6320:Right+B,6340:Right+B+Y,6360:Right,6380:Left+B,6400:Right+B+Y+Up,6420:Right+B,6440:Right,6460:Right+Y,6480:Right+Down,6500:Right+Y+Up,6520:Right+B,6540:Right,6560:B+Y,6580:Right+Y,6600:Right+B,6620:Down,6640:B,6660:Up,6680:B,6700:Right+B,6720:Right+Down,6740:Right+B+Y,6760:Left+B,6780:Right+B+Down,6800:Y,6820:Right+Y,6840:Right,6860:Left,6880:Right+Y,6900:Left,6920:Left+Y,6940:Right+Up,6960:Left,6980:Right+B+Up,7000:Left+B,7020:Right+Up,7040:Y,7060:Right,7120:Right+Up,7140:Right+B,7160:B+Y+Down,7180:Right+Y,7220:Left+Down,7240:Left+B,7260:Left,7280:Left+B+Y+Down,7300:Right+B,7320:Left+Down,7340:Right,7360:Right+B+Down,7380:Right,7400:Left,7420:Left+B,7440:Right+Y,7460:Right,7480:Right+B+Up,7500:,7520:Right,7540:B,7560:Right+B+Y,7580:Right+B,7600:Right,7620:Down,7640:Right,7660:Y,7680:Right,7700:Y,7740:Right,7760:Left+Up,7780:Down,7800:Right+Y,7820:Left,7840:Right,7880:Down,7900:Right+B+Y+Down,7920:Left,7940:Right+B+Y,7960:Right+Y+Down,7980:Right+B",
+      "manifest": "{src}/tools/compare_manifest.json",
+      "original": {
+        "kind": "archive",
+        "repo": "{live:SuperVRUN_dev}",
+        "commitFile": "{src}/logic/SOURCE.txt",
+        "into": ".",
+        "links": {
+          "snes-stub/toolchain": "C:/BrokenNes-tools/supervrun/snes-stub/toolchain"
+        },
+        "cwd": "snes-dev/supervrun",
+        "bash": "bash build.sh",
+        "rom": "snes-dev/supervrun/build/supervrun.sfc",
+        "symbols": [
+          "snes-dev/supervrun/build/supervrun.sym"
+        ]
+      },
+      "port": {
+        "kind": "ps1",
+        "script": "{src}/build.ps1",
+        "args": [
+          "-Sgdk",
+          "{toolchain:sgdk}"
+        ],
+        "defines": [],
+        "rom": "supervrun_md.bin",
+        "symbols": [
+          "supervrun_md.nm.txt"
+        ]
+      },
+      "expect": {
+        "room": 1,
+        "enemies": 1
+      }
+    }
   },
   "knownIssues": [
     "No hardware test on the user's Genesis flash cart yet.",

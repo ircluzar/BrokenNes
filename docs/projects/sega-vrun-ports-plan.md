@@ -228,3 +228,18 @@ lines of code, 168 room templates, 32 baked maps, 12 tracks, 22 SFX).
   scheme cycle is dropped (Options keeps it); pad 2 for the twin schemes. **Saves:** cart SRAM, the same bytes.
 - **Risks:** Z80 speed (the NES frame is nearly full; asm hot paths expected), NESFab's 8-bit wrap vs C promotion, 32 px of the room
   off screen at a time (judge on the flash cart).
+
+## D1: play-compare (Timeflow T6, 2026-11-09)
+
+One command per port: `brokendev.ps1 timeflow play-compare <vrun-voc-gg | vrun-ctw-sms | supervrun-md> [-NoBuild] [-NoOpen]`
+(lib/TimeflowPlay.ps1). The port manifest's `comparison.play` names a fixed-seed test build of each side (`kind ps1`: the build.ps1 with
+-Out/-Define; `kind archive`: a git archive of a commit, junctions for what its build reads outside the repository, then a bash command),
+built into `C:\BrokenNes-work\play-compare\<port>` (BROKENNES_WORK; never the projects' build folders: the shipping ROMs are untouched; on C:
+because T: takes no junctions), the pad script (`tools/playscript.py`: a scripted prefix + a seeded walker), and `expect` (event counts each
+side must reach: the script really plays). Workshop's compare JSON now has `eventCounts` and `eventsPort`.
+
+| Port | Original / seed | First result |
+|---|---|---|
+| vrun-voc-gg | VRUN_VOC_dev, both `VOC_GAME_SEED=4321 VOC_GAME_MAP=7` | plays (3 rooms); DRIFT: the first room change comes 1 tick earlier on the Game Gear (138 vs 139) and its x is already on the far edge (31 vs 0); every room change of every script tried does this; the old 2000-frame input never changed rooms |
+| vrun-ctw-sms | VRUN NES at 439616b (git archive; HEAD e9e3a61's audio bends do not translate in fab2c), the port translated from the same tree (build.ps1 -FabRoot, VRUN_CTW_SMS 7c1dd9c); seed = Start at frame 120 | reaches room 1 on both; DRIFT: the NES player takes a hit in room 1 at tick 952 (hp 5 -> 4), the port never does (same position, x 220 y 192) |
+| supervrun-md | SuperVRUN_dev at logic/SOURCE.txt's 45efdc6 (git archive, snes-stub toolchain joined); seed = Start at 300/420; mapping tools/compare_manifest.json | reaches room 1 (4 enemies) on both; DRIFT: position x 206 vs 216 (tolerance 4) in room 1 at tick 3440 |

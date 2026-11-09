@@ -230,7 +230,50 @@
         "kind": "position",
         "original": "[_voc + 460]"
       }
-    ]
+    ],
+    "play": {
+      "what": "D1 (Timeflow T6): brokendev.ps1 timeflow play-compare vrun-voc-gg. Both sides built with the end-to-end test's fixed seed (VOC_GAME_SEED=4321, VOC_GAME_MAP=7: the release seeds from DIV / the R register, not reproducible) into C:\\BrokenNes-work\\play-compare\u000brun-voc-gg\\play (the shipping build is not touched); A on the title at frame 60, then 6000 frames of a seeded walker (tools/playscript.py --start '60:A,61:' --from 400 --frames 6000 --seed 7 --right 3): rooms, deaths, lives.",
+      "frames": 6000,
+      "input": "60:A,61:,400:Up,420:A+Up,440:Right,460:Right+A,480:,500:Right+B,520:Right,540:A,560:A+B+Down,580:Right,600:Right+A+Down,620:Right,660:Right+A+B,680:A,700:Right,720:,740:Right+A,760:,780:Right,800:Down,820:Right,840:Right+A,860:Right+B,880:Right,900:Right+Down,920:Right+B,940:,960:Right+A+B,980:Right+A,1000:Right+A+Down,1020:Right+Down,1040:Right,1060:Right+Up,1080:Right,1100:Right+A+B,1120:Right+Down,1140:,1160:B+Up,1180:B,1200:Right+A+B,1220:,1240:Right,1280:Right+A,1300:Right+B,1320:Right,1400:Down,1420:Right,1440:Right+B,1460:Right,1480:Right+A+Up,1500:Right+Down,1520:Right+Up,1540:Right+A+Down,1560:Right+A+B,1580:Right+Down,1600:Right+A,1620:Right+B+Up,1640:A,1660:Right+A+Up,1680:Right+A,1700:A+Up,1720:Right,1740:,1760:Right+A+Down,1780:A+B+Up,1800:Right,1880:Right+A,1900:Up,1920:Right,1940:Right+Up,1960:Right+A,1980:Right,2000:B,2020:Right+A,2040:Right,2060:Right+A+B,2080:Right,2100:Right+A+B,2120:Right+B,2140:Right,2160:Right+A+Down,2180:Right,2200:Right+A,2220:Right+A+B,2240:Right,2260:Right+Down,2280:,2300:Right,2320:Right+B+Up,2340:Right+B,2360:Right+A+B,2380:,2400:Right,2440:,2460:Right,2480:Right+B,2500:Right+A+B+Up,2520:Right+Up,2540:Right,2580:,2600:Right+B,2620:A+B+Up,2640:Right+B,2660:Right,2680:Right+B,2700:Right+Up,2720:A,2740:Right,2760:Right+B+Up,2780:A+Up,2800:Right,2820:A+B,2840:A+Up,2860:Right+A+B+Up,2880:Down,2900:Right+B,2920:Right,2940:Right+B,2960:Right+A,2980:Right+Up,3000:Right,3020:Right+A+B+Down,3040:Right+B+Down,3060:Right,3080:Right+A,3100:Right+A+B,3120:Right,3140:Right+A+Up,3160:Right+A+Down,3180:Right+Up,3200:A,3220:Right,3240:Right+A,3260:Right,3280:Right+A,3320:Right,3340:Right+B+Up,3360:Right+A+B,3380:,3400:Right+B,3420:Up,3440:Right,3460:Right+A,3480:Right,3500:Right+Down,3520:Right+B,3540:A+B,3560:Right+B,3580:Right,3600:Right+B+Down,3620:Right,3660:Right+A,3680:Right,3700:Right+B+Up,3720:Right+A+Up,3740:A,3760:Right+A,3780:Right+B,3800:Right+B+Down,3820:Right,3840:A+B,3860:A,3880:,3920:Right+A,3960:Right+A+Up,3980:Right+A,4000:Right+B,4020:,4040:Right,4060:Right+A,4080:Right,4100:Right+B,4120:A+B,4140:Right+A,4160:Right,4180:Right+Up,4200:Right,4240:Up,4260:Right,4280:A+B,4300:B+Up,4320:Right,4340:,4360:Right+Up,4380:Right,4400:Right+A,4420:Right,4440:A,4460:Right,4500:Right+A+Down,4520:Right,4540:Right+A,4560:Right,4580:Right+A+Down,4600:Right+A,4620:Right+A+B,4640:,4660:B,4680:Right+Down,4700:Right+B,4720:Right,4740:Right+A,4780:Right,4840:Right+Up,4860:Down,4880:Right+B+Up,4900:Right,4920:Right+A,4940:Right+Up,4960:Right,4980:Right+A+Up,5000:Right+Up,5020:Right+A,5040:Right,5060:A,5080:Right,5100:,5120:Right+A+B,5160:Right+A+Up,5180:Down,5200:Right,5220:Right+B,5240:Right+A,5260:Right,5320:Right+B,5340:A,5360:Right+B,5380:Right,5440:Right+A,5460:,5480:Right,5500:,5520:Right+B,5580:B,5600:Right+B+Down,5620:Right,5640:,5660:Right+A+B,5700:Right+A,5740:,5760:Right,5780:,5800:Right,5820:Right+Up,5840:Right+A,5860:Right,5900:A,5920:Right,5960:Right+A",
+      "original": {
+        "kind": "ps1",
+        "script": "{live:VRUN_VOC_dev}/build.ps1",
+        "args": [
+          "-Gbdk",
+          "{toolchain:gbdk}"
+        ],
+        "defines": [
+          "VOC_GAME_SEED=4321",
+          "VOC_GAME_MAP=7"
+        ],
+        "rom": "vrun_voc.gbc",
+        "symbols": [
+          "vrun_voc.noi"
+        ]
+      },
+      "port": {
+        "kind": "ps1",
+        "script": "{src}/build.ps1",
+        "args": [
+          "-Sdcc",
+          "{toolchain:sdcc}",
+          "-DevkitSms",
+          "{toolchain:devkitsms}"
+        ],
+        "defines": [
+          "VOC_GAME_SEED=4321",
+          "VOC_GAME_MAP=7"
+        ],
+        "rom": "vrun_voc_gg.gg",
+        "symbols": [
+          "vrun_voc_gg.noi"
+        ]
+      },
+      "expect": {
+        "mode": 1,
+        "room": 3
+      }
+    }
   },
   "knownIssues": [
     "No hardware test on the user's Genesis flash cart yet (its built-in Game Gear mode)."
