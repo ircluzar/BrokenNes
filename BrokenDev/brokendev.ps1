@@ -76,6 +76,7 @@
     timeflow rebuild-resume <timeline> -Frame F [-NoBuild] [-Safe main_loop,load_room] [-AtSafe] [-Verdict "TEST"] [-To B]
     timeflow diverge <branch> | <timeline> -Frame F -Patch ...   timeflow verdict <timeline> -Verdict "TEST" [-From A] [-To B]
     timeflow verdict-promote <timeline> -Verdict "TEST" -Name id -Why "what it tests" [-From A] [-To B]
+    timeflow play-compare <port project> [-NoBuild] [-Script S -Frames N] [-NoOpen]   (D1: fixed-seed builds of both sides + the comparison.play pad script)
     timeflow compare <port project> [-Original <timeline>] [-Scenario <the original's verify id> | -Script S -Frames N] [-NoOpen]
                                  the cross-console comparison (Sega VRUN ports, S0): the original recorded, its pads on the port, events
                                  and positions by the manifest's 'comparison' mapping; the first drift, both sides opened at it (T3)
@@ -210,6 +211,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\Bugs.ps1')
 . (Join-Path $here 'lib\Checkup.ps1')
 . (Join-Path $here 'lib\Timeflow.ps1')
+. (Join-Path $here 'lib\TimeflowPlay.ps1')
 
 function Show-BdHelp { Write-Host (Get-Help (Join-Path $here 'brokendev.ps1') -Full | Out-String) }
 

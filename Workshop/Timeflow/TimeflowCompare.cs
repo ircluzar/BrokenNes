@@ -483,6 +483,13 @@ internal static class TimeflowComparing
         return o;
     }
 
+    private static JsonObject Counts(List<Ev> evs, Spec spec)
+    {
+        var o = new JsonObject();
+        for (int i = 0; i < spec.Vars.Count; i++) if (spec.Vars[i].Kind == "event") o[spec.Vars[i].Name] = evs.Count(e => e.Var == i);
+        return o;
+    }
+
     private static JsonObject At(Side s, Spec spec, long frame) => new()
     {
         ["frame"] = frame, ["tick"] = frame >= 0 && frame < s.Frames ? Math.Round(s.Ticks[(int)frame], 3) : null, ["timeline"] = s.Timeline, ["state"] = State(s, spec, frame),
@@ -602,6 +609,9 @@ internal static class TimeflowComparing
             },
             ["eventsMatched"] = matched,
             ["eventsOriginal"] = new JsonArray(eo.Take(40).Select(e => (JsonNode)$"#{eo.IndexOf(e)} f{e.Frame} t{e.Tick:0.##} {spec.Vars[e.Var].Name} {e.From}->{e.To}").ToArray()),
+            // D1: how much each side played (per mapped event variable): a scripted run can be checked to really reach rooms, fights, shops
+            ["eventCounts"] = new JsonObject { ["original"] = Counts(eo, spec), ["port"] = Counts(ep, spec) },
+            ["eventsPort"] = new JsonArray(ep.Take(40).Select(e => (JsonNode)$"#{ep.IndexOf(e)} f{e.Frame} t{e.Tick:0.##} {spec.Vars[e.Var].Name} {e.From}->{e.To}").ToArray()),
             ["seconds"] = Math.Round(sw.Elapsed.TotalSeconds, 2),
         };
         if (o.OffFrame != null) r["warning"] = $"the original's replay left its recording at frame {o.OffFrame} ({o.OffWhat}): its values after that are not the recorded session's";

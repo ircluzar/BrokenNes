@@ -161,6 +161,11 @@ function Invoke-BdTimeflow {
           [string[]]$Patch = @(), [string[]]$Verdict = @(), [string]$Safe = '', [switch]$AtSafe, [switch]$NoBuild, [string]$Name = '', [string]$Why = '',
           [string]$Original = '', [switch]$NoOpen)
     switch ($Action.ToLowerInvariant()) {
+        'play-compare' {
+            # D1 (Timeflow T6): the port's comparison.play section: fixed-seed test builds of both sides + a pad script that really plays
+            if (-not $Target) { throw 'timeflow play-compare needs the port project (its manifest has comparison.play)' }
+            return (Invoke-BdPlayCompare -Id $Target -Script $Script -Frames $Frames -NoBuild:$NoBuild -NoOpen:$NoOpen -Json:$Json -Exe $Exe)
+        }
         'compare' {
             # the cross-console comparison (Sega VRUN ports, S0): the port project's 'comparison' section is the mapping
             if (-not $Target) { throw 'timeflow compare needs the port project (its manifest has a comparison section naming the original)' }
@@ -459,6 +464,6 @@ function Invoke-BdTimeflow {
             foreach ($g in @($r.Json.games)) { Write-Host ('  {0}: {1} timeline(s), {2:N1} MB of {3:N2} GB' -f $g.gameDir, $g.timelines, ($g.usedBytes / 1MB), ($g.capBytes / 1GB)) }
             return 0
         }
-        default { throw 'timeflow: record, list, info, verify, jump, resume, prune, keep, unkeep, status, search, patch, rebuild-resume, diverge, verdict, verdict-promote, compare, recheck, profile, profile-query, profiles, profile-keep, profile-unkeep, profile-drop or profile-sweep' }
+        default { throw 'timeflow: record, list, info, verify, jump, resume, prune, keep, unkeep, status, search, patch, rebuild-resume, diverge, verdict, verdict-promote, compare, recheck, profile, profile-query, profiles, profile-keep, profile-unkeep, profile-drop or profile-sweep; play-compare' }
     }
 }
