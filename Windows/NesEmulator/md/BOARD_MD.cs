@@ -387,13 +387,17 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     /// <summary>Butchering mode's cartridge pins on the 68000 bus (unsafe; ROM reads, A0-A21, D0-D15). Null when off.</summary>
     public Butcher? ButcherCpu;
 
+    // Its own method: a lambda capturing BusRead's parameters made the compiler allocate the closure at the top of BusRead, on EVERY bus read with
+    // Butchering off (about 800 KB per frame of Sonic; the plugin's selftest `inject` caught it on the audio thread).
+    private ushort ButcherRead16(uint address, bool upper, bool lower) => ButcherCpu!.CpuRead16(address, 22, x => ReadWord(x & 0xFFFFFE, upper, lower, t));
+
     public ushort BusRead(uint address, bool upper, bool lower, int cycles)
     {
         AlignVdpAccess(address, false);
         BeginAccess(cycles);
         BusReads++;
         address &= 0xFFFFFE;
-        ushort v = ButcherCpu?.CpuPins != null && address < 0x400000 ? ButcherCpu.CpuRead16(address, 22, x => ReadWord(x & 0xFFFFFE, upper, lower, t)) : ReadWord(address, upper, lower, t);
+        ushort v = ButcherCpu?.CpuPins != null && address < 0x400000 ? ButcherRead16(address, upper, lower) : ReadWord(address, upper, lower, t);
         if (address >= 0x400000 && address < 0xE00000)
         {
             recentIoAddr[recentIoPos & 15] = address; recentIoVal[recentIoPos & 15] = v; recentIoPos++;
