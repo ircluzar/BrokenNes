@@ -800,8 +800,8 @@ namespace NesEmulator
 				// next frame is exactly the original's, so it is presented as usual (waiting for a whole frame showed the old picture
 				// one frame too long: the Krion Conquest reload drift).
 				// Only the NES's own picture chips: a bridged one (another console's chip) redraws from its own machine after a load,
-				// so it keeps waiting for a whole frame (fuzz seed 313102, ppu=WMSS).
-				if (st.liveFrame.Length > 0 && bus.ppu != null && UnpackFrame(st.liveFrame, bus.ppu.GetFrameBuffer()) && bus.ppu is PPU_FIX) awaitingFrameStart = false;
+				// so it keeps waiting for a whole frame (fuzz seed 313102, ppu=WMSS). A foreign CPU (seed 313194, cpu=SNES ppu=FIX) waits too.
+				if (st.liveFrame.Length > 0 && bus.ppu != null && UnpackFrame(st.liveFrame, bus.ppu.GetFrameBuffer()) && bus.ppu is PPU_FIX && bus.cpu is CPU_FIX) awaitingFrameStart = false;
 			} catch { }
 			try
 			{
