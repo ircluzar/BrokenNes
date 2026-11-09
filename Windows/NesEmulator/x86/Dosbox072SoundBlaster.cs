@@ -34,7 +34,7 @@ using System.IO;
 
 namespace NesEmulator.X86;
 
-public sealed class Dosbox072SoundBlaster : IPcSoundCard
+public sealed class Dosbox072SoundBlaster : IPcSoundCard, IPcSoundOutput
 {
     public string Id => "SB_D072";
 
@@ -807,6 +807,8 @@ public sealed class Dosbox072SoundBlaster : IPcSoundCard
     public int MixInto(short[] buffer, int count) => _mix.MixInto(buffer, count);
     public int Pending => _mix.Pending;
     public void Restart() => _mix.Restart();
+    public void SaveOutput(BinaryWriter w) => _mix.SaveOutput(w);
+    public void LoadOutput(BinaryReader r) => _mix.LoadOutput(r);
 
     public void Save(BinaryWriter w)
     {

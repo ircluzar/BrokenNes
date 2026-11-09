@@ -210,14 +210,65 @@ public sealed class PcSession : IConsoleSession
     public byte[] SaveState()
     {
         if (!_powered) { _m.PowerOn(); _powered = true; }
-        return ConsoleStateFile.Wrap(Console, GameId, Title, StateUnits(), _m.SaveState());
+        return ConsoleStateFile.Wrap(Console, GameId, Title, StateUnits(), WithSoundOutput(_m.SaveState()));
+    }
+
+    // FA-ST-3: the sound already drawn but not yet read (the speaker, the AdLib, the card) follows the machine as a trailer: [machine][PCAU section][its length][PCAU].
+    // The machine state is unchanged; a state without the trailer (older) loads as before: the drawn samples are dropped and the sound carries on from the present.
+    private const int SoundMagic = 0x55414350;   // "PCAU"
+
+    private byte[] WithSoundOutput(byte[] machine)
+    {
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, true))
+        {
+            w.Write(machine);
+            long start = ms.Position;
+            w.Write(1);   // section version
+            _m.Speaker.SaveOutput(w);
+            _m.Opl.SaveOutput(w);
+            var card = _m.Card as IPcSoundOutput;
+            w.Write(_m.Card?.Id ?? ""); w.Write(card != null);
+            card?.SaveOutput(w);
+            w.Write((int)(ms.Position - start)); w.Write(SoundMagic);
+        }
+        return ms.ToArray();
+    }
+
+    /// <summary>Splits a payload into the machine state and the sound trailer (null when there is none).</summary>
+    private static (byte[] machine, byte[]? sound) SplitSoundOutput(byte[] payload)
+    {
+        if (payload.Length < 8 || BitConverter.ToInt32(payload, payload.Length - 4) != SoundMagic) return (payload, null);
+        int len = BitConverter.ToInt32(payload, payload.Length - 8);
+        if (len <= 0 || len > payload.Length - 8) return (payload, null);
+        int at = payload.Length - 8 - len;
+        return (payload[..at], payload[at..(payload.Length - 8)]);
+    }
+
+    private void RestoreSoundOutput(byte[]? sound)
+    {
+        if (sound != null)
+        {
+            using var r = new BinaryReader(new MemoryStream(sound));
+            if (r.ReadInt32() == 1)
+            {
+                _m.Speaker.LoadOutput(r);
+                _m.Opl.LoadOutput(r);
+                string id = r.ReadString(); bool has = r.ReadBoolean();
+                if (has && _m.Card is IPcSoundOutput c && _m.Card.Id == id) c.LoadOutput(r);
+                else _m.Card?.Restart();   // another card (or none) was saved: it started cold in the machine load
+                return;
+            }
+        }
+        _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart();
     }
 
     public void LoadState(byte[] state)
     {
         byte[] payload = ConsoleStateFile.Unwrap(state, Console, GameId, Title, StateUnits());
         var before = _m.SaveState();
-        try { _m.LoadState(payload); _m.Speaker.Restart(); _m.Opl.Restart(); _m.Card?.Restart(); _m.InstructionsPerSecond = IpsOf(_cpuId); _powered = true; _exported = null; _pad = PadButtons.None; }
+        var (machine, sound) = SplitSoundOutput(payload);
+        try { _m.LoadState(machine); RestoreSoundOutput(sound); _m.InstructionsPerSecond = IpsOf(_cpuId); _powered = true; _exported = null; _pad = PadButtons.None; }
         catch (Exception e) when (e is not InvalidDataException) { _m.LoadState(before); throw new InvalidDataException("the x86 state is damaged: " + e.Message); }
     }
 

@@ -1,3 +1,4 @@
+using System.IO;
 // The PC speaker: port 61h bit 1 gated with the 8254's channel 2 output, sampled on the machine clock. Written for BrokenNes.
 
 using System;
@@ -11,7 +12,7 @@ namespace NesEmulator.X86;
 /// The level is port 61h bit 1 AND the timer's channel 2 output (with the gate, bit 0, low the output stays high: a program toggling bit 1 by hand is heard too). Each sample averages
 /// four points of the square wave, a cheap guard against the worst aliasing.
 /// </summary>
-public sealed class PcSpeaker
+public sealed class PcSpeaker : IPcSoundOutput
 {
     public const int Rate = 44100;
     private const short Volume = 5000;
@@ -63,4 +64,6 @@ public sealed class PcSpeaker
 
     /// <summary>After a state load or a cold boot: forget the drawn samples, carry on from the machine's present time.</summary>
     public void Restart() { _out.Clear(); _pos = (long)((Int128)_m.PitNow * Rate / Pit8254.Freq); }
+    public void SaveOutput(BinaryWriter w) { PcOut.Write(w, _out); w.Write(_pos); }
+    public void LoadOutput(BinaryReader r) { PcOut.Read(r, _out); _pos = r.ReadInt64(); }
 }

@@ -13,7 +13,7 @@ using System.IO;
 
 namespace NesEmulator.X86;
 
-public sealed class CovoxCard : IPcSoundCard
+public sealed class CovoxCard : IPcSoundCard, IPcSoundOutput
 {
     public string Id => "COVOX";
     private const int Rate = 44100, Gain = 96;
@@ -30,6 +30,8 @@ public sealed class CovoxCard : IPcSoundCard
     public void Reset() { _latch = 0x80; Restart(); }
 
     public void Restart() { _out.Clear(); _pos = (long)((Int128)_m.PitNow * Rate / Pit8254.Freq); }
+    public void SaveOutput(BinaryWriter w) { PcOut.Write(w, _out); w.Write(_pos); }
+    public void LoadOutput(BinaryReader r) { PcOut.Read(r, _out); _pos = r.ReadInt64(); }
 
     public void Advance()
     {

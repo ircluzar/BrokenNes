@@ -7,6 +7,9 @@
   2. runs the golden suite sharded over -Jobs runners (UAT/run-parallel.ps1),
   3. runs the Butchering scenarios (preset undo, soak, core swaps, mangled JSON) - one process per console, in parallel,
   4. runs the fuzz campaign for -FuzzMinutes on every console, in parallel,
+  4b. the x86 PC console ('pc' in -Consoles; Butchering mode and the fuzzer do not cover it): the CPU checks (--x86test), the device programs
+      (--x86dev), the sound engines and cards with their save states (--x86engines, --x86cards), and a FreeDOS session on each x86 CPU core
+      (I386, I386_D074: boot, menus, state round trip) when the toolkit's FreeDOS image is here,
   5. writes <Out>\report.md (and report.json): each group's verdict, every failure, every fuzz finding with its one-line repro.
   Exit code 1 when anything failed. Long: run it in the background (Start-Process / a second terminal).
 
@@ -14,13 +17,14 @@
   powershell -NoProfile -File UAT\battery.ps1                         # ~25 min: suite + scenarios + 10 min of fuzz
   powershell -NoProfile -File UAT\battery.ps1 -FuzzMinutes 60 -Soak 60000
   powershell -NoProfile -File UAT\battery.ps1 -Skip fuzz -Consoles nes,snes
+  powershell -NoProfile -Command "& .\UAT\battery.ps1 -Skip suite,scenarios,fuzz -Consoles pc"   # the x86 checks alone
 #>
 param(
     [int]      $Jobs = [Math]::Max(2, [Environment]::ProcessorCount - 2),
     [int]      $FuzzMinutes = 10,
     [int]      $Soak = 20000,
     [int]      $Games = 6,
-    [string[]] $Consoles = @('nes', 'gb', 'gbc', 'sms', 'gg', 'md', 'snes', 'wm'),
+    [string[]] $Consoles = @('nes', 'gb', 'gbc', 'sms', 'gg', 'md', 'snes', 'wm', 'pc'),
     [string[]] $Skip = @(),
     [int]      $Seed = 0,
     [string]   $Out
@@ -33,6 +37,9 @@ $Build = Join-Path $(if ($env:BROKENNES_WORK) { $env:BROKENNES_WORK } else { 'C:
 New-Item -ItemType Directory -Force -Path $Out, $Build | Out-Null
 $t0 = Get-Date
 $groups = [ordered]@{}
+# the x86 PC console has its own checks (4b); Butchering scenarios and the fuzzer run on the others
+$runPc = $Consoles -contains 'pc'
+$Consoles = @($Consoles | Where-Object { $_ -ne 'pc' })
 function Note($m, $c = 'Gray') { Write-Host ("[{0:HH:mm:ss}] {1}" -f (Get-Date), $m) -ForegroundColor $c }
 
 # ---- 1. build (scratch output; dotnet must not touch the user's exe)
@@ -59,7 +66,7 @@ function RunPerConsole($tool, $argsFor, $label) {
 }
 
 # ---- 3. scenarios
-if ($Skip -notcontains 'scenarios') {
+if ($Skip -notcontains 'scenarios' -and $Consoles.Count -gt 0) {
     Note ("Butchering scenarios on {0} consoles (games {1}, soak {2} frames)" -f $Consoles.Count, $Games, $Soak) White
     $sd = Join-Path $Out 'scenarios'
     RunPerConsole $scen { param($c) @($c, $sd, '--games', $Games, '--soak', $Soak, '--seed', $Seed) } 'scen'
@@ -76,7 +83,7 @@ if ($Skip -notcontains 'scenarios') {
 }
 
 # ---- 4. fuzz
-if ($Skip -notcontains 'fuzz' -and $FuzzMinutes -gt 0) {
+if ($Skip -notcontains 'fuzz' -and $FuzzMinutes -gt 0 -and $Consoles.Count -gt 0) {
     Note ("fuzz campaign: {0} min on {1} consoles, seed {2}" -f $FuzzMinutes, $Consoles.Count, $Seed) White
     $fd = Join-Path $Out 'fuzz'; New-Item -ItemType Directory -Force -Path $fd | Out-Null
     Push-Location $fd
@@ -99,13 +106,34 @@ if ($Skip -notcontains 'fuzz' -and $FuzzMinutes -gt 0) {
     $groups['Fuzz campaign'] = [pscustomobject]@{ ok = ($real -eq 0); line = "$trials trials, $real finding(s)"; details = $findings }
 }
 
+# ---- 4b. the x86 PC console
+if ($runPc -and $Skip -notcontains 'x86') {
+    Note "x86 PC console checks" White
+    $xd = Join-Path $Out 'x86'; New-Item -ItemType Directory -Force -Path $xd | Out-Null
+    $runs = [ordered]@{ 'x86test' = @('--x86test'); 'x86dev' = @('--x86dev'); 'x86engines' = @('--x86engines'); 'x86cards' = @('--x86cards') }
+    $fd = if ($env:BROKENNES_FREEDOS) { $env:BROKENNES_FREEDOS } else { 'C:\BrokenNes-tools\dos\freedos\FD14LITE.img' }
+    if (Test-Path $fd) { foreach ($cpu in 'I386', 'I386_D074') { $runs["x86session-$cpu"] = @('--x86session', $fd, '--frames', '600', '--cpu', $cpu) } }
+    $procs = foreach ($k in $runs.Keys) { $p = Start-Process -FilePath $exe -ArgumentList $runs[$k] -NoNewWindow -PassThru -RedirectStandardOutput (Join-Path $xd "$k.txt") -RedirectStandardError (Join-Path $xd "$k.err.txt"); $null = $p.Handle; [pscustomobject]@{ k = $k; p = $p } }
+    $procs.p | Wait-Process
+    $det = @(); $okN = 0
+    foreach ($x in $procs) {
+        $txt = Get-Content (Join-Path $xd "$($x.k).txt") -ErrorAction SilentlyContinue
+        $last = ($txt | Where-Object { $_ -match '\S' } | Select-Object -Last 1)
+        # the CLIs end with a summary: "... 0 flagged", "checks N/N pass", "x86session: ok" / "N FAILED"
+        $bad = ($x.p.ExitCode -ne 0) -or (@($txt -cmatch 'FAILED|CRASH|NOT EXACT').Count -gt 0) -or ($last -match '[1-9]\d* flagged')
+        if ($bad) { $det += "$($x.k): exit $($x.p.ExitCode); $last"; $det += @($txt | Where-Object { $_ -cmatch '^\s*FAIL|NOT EXACT|CRASH' } | Select-Object -First 8 | ForEach-Object { "  $_" }) } else { $okN++ }
+    }
+    if (-not (Test-Path $fd)) { $det += "x86session: not run (no FreeDOS image at $fd)" }
+    $groups['x86 PC console'] = [pscustomobject]@{ ok = (($det | Where-Object { $_ -notlike 'x86session: not run*' }).Count -eq 0); line = "$okN of $($runs.Count) runs pass"; details = $det }
+}
+
 # ---- 5. report
 $mins = ((Get-Date) - $t0).TotalMinutes
 $allOk = -not ($groups.Values | Where-Object { -not $_.ok })
 $md = New-Object System.Text.StringBuilder
 [void]$md.AppendLine("# BrokenNes test battery - $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
 [void]$md.AppendLine('')
-[void]$md.AppendLine(("**{0}** in {1:0} min - commit {2}, seed {3}, consoles {4}" -f $(if ($allOk) { 'ALL GREEN' } else { 'FAILURES' }), $mins, (git -C $Repo rev-parse --short HEAD), $Seed, ($Consoles -join ' ')))
+[void]$md.AppendLine(("**{0}** in {1:0} min - commit {2}, seed {3}, consoles {4}" -f $(if ($allOk) { 'ALL GREEN' } else { 'FAILURES' }), $mins, (git -C $Repo rev-parse --short HEAD), $Seed, ((@($Consoles) + @(if ($runPc) { 'pc' })) -join ' ')))
 [void]$md.AppendLine('')
 [void]$md.AppendLine('| Group | Result | |'); [void]$md.AppendLine('|---|---|---|')
 foreach ($k in $groups.Keys) { [void]$md.AppendLine("| $k | $($groups[$k].line) | $(if ($groups[$k].ok) { 'OK' } else { '**FAIL**' }) |") }
