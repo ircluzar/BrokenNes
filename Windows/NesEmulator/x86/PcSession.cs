@@ -29,7 +29,7 @@ public sealed class PcSession : IConsoleSession
     private byte[]? _exported;
 
     /// <param name="image">A disk image, or a DOS program (<see cref="PcDisks.IsDosProgram"/>: it is put on a FreeDOS boot disk made for it, <see cref="PcDisks.ForProgram"/>).</param>
-    public PcSession(byte[] image, string fileName = "", string apu = "ADLIB", string cpu = "I386")
+    public PcSession(byte[] image, string fileName = "", string apu = "ADLIB", string cpu = "I386", string ppu = "VGA")
     {
         Title = fileName.Length > 0 ? Path.GetFileNameWithoutExtension(fileName) : "x86 disk";
         if (PcDisks.IsDosProgram(image, fileName))
@@ -49,7 +49,12 @@ public sealed class PcSession : IConsoleSession
         InsertDisk((byte[])image.Clone());
         if (!PcSound.Apply(_m, apu)) throw new ArgumentException($"the x86 PC has no sound card '{apu}'");
         ApuId = apu.ToUpperInvariant();
+        _m.Vga.Picture = VgaPictures.Create(_m.Vga, ppu);
+        PpuId = ppu.ToUpperInvariant();
     }
+
+    /// <summary>The picture chip (an x86 PPU id: VGA, BOCHS20, DOSBOX072, PCEM_CGA).</summary>
+    public string PpuId { get; private set; } = "VGA";
 
     /// <summary>The sound card and engine heard (an x86 APU id: ADLIB, ADLIB_D072, ...).</summary>
     public string ApuId { get; private set; } = "ADLIB";
@@ -68,7 +73,7 @@ public sealed class PcSession : IConsoleSession
     public string? Program { get; }
     public ConsoleKind Console => ConsoleKind.Pc;
     public string Title { get; }
-    public string Description => $"x86 PC | CPU I386 (486-class, {_m.InstructionsPerSecond / 1_000_000} M instr/s) | PPU VGA | APU {ApuId} ({PcSound.Describe(ApuId)}) | {(Program != null ? $"{Program} on a FreeDOS 1.4 disk" : _floppy ? "floppy A:" : "hard disk C:")} {_original.Length / 1024:N0} KB{(_m.Stopped != null ? " | STOPPED: " + _m.Stopped : "")}";
+    public string Description => $"x86 PC | CPU I386 (486-class, {_m.InstructionsPerSecond / 1_000_000} M instr/s) | PPU {PpuId} ({VgaPictures.Describe(PpuId)}) | APU {ApuId} ({PcSound.Describe(ApuId)}) | {(Program != null ? $"{Program} on a FreeDOS 1.4 disk" : _floppy ? "floppy A:" : "hard disk C:")} {_original.Length / 1024:N0} KB{(_m.Stopped != null ? " | STOPPED: " + _m.Stopped : "")}";
     public double FramesPerSecond => Pit8254.Freq / Vga.FrameTicks;
     public string GameId { get; }
 
@@ -197,6 +202,11 @@ public sealed class PcSession : IConsoleSession
         if (!ConsoleSessions.Offers(ConsoleKind.Pc, slot, id)) return false;
         if (slot == CoreSlot.Cpu) { _m.InstructionsPerSecond = IpsOf(id); _cpuId = id; }
         if (slot == CoreSlot.Apu) { if (!PcSound.Apply(_m, id)) return false; ApuId = id.ToUpperInvariant(); }
+        if (slot == CoreSlot.Ppu)
+        {   // a live swap: the new chip starts cold on the card as it is (a CGA swapped in under a VGA mode shows B8000 until the next mode set)
+            _m.Vga.Picture = VgaPictures.Create(_m.Vga, id);
+            PpuId = id.ToUpperInvariant();
+        }
         return true;
     }
     public string SwapRefusal(CoreSlot slot, string id) => $"the x86 PC has one {slot} core (it is an isolated console: no other console's chips)";

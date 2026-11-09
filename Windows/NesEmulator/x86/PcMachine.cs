@@ -201,6 +201,7 @@ public sealed partial class PcMachine : IX86Bus
         while (Vga.FrameIndex(PitNow) < target)
         {
             if (!RunBatch()) return false;
+            Vga.Picture?.Poll();
             if (++guard > 100_000_000) { Stopped = "frame never ended"; return false; }
         }
         _lastFrame = target;
@@ -257,6 +258,7 @@ public sealed partial class PcMachine : IX86Bus
         Opl.Reset();
         Dma.Reset();
         Card?.Reset();
+        Vga.Picture?.Reset();
         _lastFrame = -1;
         Post();
     }
@@ -286,6 +288,14 @@ public sealed partial class PcMachine : IX86Bus
             {
                 w.Write(d != null);
                 if (d != null) { w.Write(d.Data.Length); w.Write(d.Data); }
+            }
+            // the VGA harvest picture chip's own state (its stale screen, caches), after everything else: a stock-VGA state is byte for byte what it was
+            if (Vga.Picture != null)
+            {
+                var ps = new MemoryStream();
+                using (var pw = new BinaryWriter(ps)) Vga.Picture.Save(pw);
+                var blob = ps.ToArray();
+                w.Write(0x50434956); w.Write(Vga.Picture.Id); w.Write(blob.Length); w.Write(blob);   // "VICP"
             }
         }
         return ms.ToArray();
@@ -323,6 +333,14 @@ public sealed partial class PcMachine : IX86Bus
             disks[i] = new DiskImage(data, i < 2);
         }
         Floppy[0] = disks[0]; Floppy[1] = disks[1]; Hdd[0] = disks[2]; Hdd[1] = disks[3];
+        // the picture chip saved is restored when the same chip draws now; another one (or a state without one) starts it cold: a clean re-key, never a guess
+        string? picId = null; byte[]? picBlob = null;
+        if (r.BaseStream.Position + 4 <= r.BaseStream.Length && r.ReadInt32() == 0x50434956) { picId = r.ReadString(); picBlob = r.ReadBytes(r.ReadInt32()); }
+        if (Vga.Picture != null)
+        {
+            if (picBlob != null && picId == Vga.Picture.Id) { using var pr = new BinaryReader(new MemoryStream(picBlob)); Vga.Picture.Load(pr); }
+            else Vga.Picture.Reset();
+        }
         Stopped = null;
     }
 }

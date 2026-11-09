@@ -18,7 +18,10 @@ public sealed partial class PcMachine
         bool noClear = (mode & 0x80) != 0;
         mode &= 0x7f;
         int cols, rows, pageSize;
-        if (mode is <= 3 or 7) { Vga.SetRegs(Vga.Mode3); cols = 80; rows = 25; pageSize = 0x1000; }
+        // a CGA picture chip (VGA harvest) also takes the CGA graphics modes 4-6: the card keeps its text registers (B8000, odd/even = the CGA's linear 16 KB)
+        bool cgaGfx = mode is 4 or 5 or 6 && Vga.Picture is { TakesCgaModes: true };
+        if (cgaGfx) { Vga.SetRegs(Vga.Mode3); cols = mode == 6 ? 80 : 40; rows = 25; pageSize = 0x4000; }
+        else if (mode is <= 3 or 7) { Vga.SetRegs(Vga.Mode3); cols = 80; rows = 25; pageSize = 0x1000; }
         else if (mode == 0x13) { Vga.SetRegs(Vga.Mode13); cols = 40; rows = 25; pageSize = 0; }
         else if (mode is 0x12 or 0x11) { Vga.SetRegs(Vga.Mode12); cols = 80; rows = 30; pageSize = 0; mode = 0x12; }
         else return;                                             // not offered: the mode stays as it was
@@ -26,9 +29,11 @@ public sealed partial class PcMachine
         if (!noClear)
         {
             if (mode is <= 3 or 7) for (int i = 0; i < 0x8000; i++) { Vga.Ram[i * 4] = 0x20; Vga.Ram[i * 4 + 1] = 0x07; }
+            else if (cgaGfx) for (int i = 0; i < 0x8000; i++) { Vga.Ram[i * 4] = 0; Vga.Ram[i * 4 + 1] = 0; }
             else Array.Clear(Vga.Ram);
         }
-        if (mode is <= 3 or 7) Vga.LoadFont();
+        if (mode is <= 3 or 7 || cgaGfx) Vga.LoadFont();
+        Vga.Picture?.ModeSet(mode);
         PhysW8(0x449, (byte)mode);
         PhysW16(0x44a, (ushort)cols);
         PhysW16(0x44c, (ushort)(pageSize == 0 ? 0x10000 & 0xffff : pageSize));
@@ -74,6 +79,7 @@ public sealed partial class PcMachine
             if (i + 1 >= Vga.RamSize) return;
             Vga.Ram[i] = ch;
             if (withAttr) Vga.Ram[i + 1] = attr;
+            if (Vga.Picture != null) { Vga.Picture.NoteWrite(0xb8000u + (uint)(i >> 1), ch); if (withAttr) Vga.Picture.NoteWrite(0xb8001u + (uint)(i >> 1), attr); }   // the BIOS's write, as a bus write
             return;
         }
         int h = VMode == 0x13 ? 8 : 16;
@@ -104,6 +110,7 @@ public sealed partial class PcMachine
             if (x < 0 || x >= 320 || y < 0 || y >= 200) return;
             int i = y * 320 + x;
             Vga.Ram[i] = xor ? (byte)(Vga.Ram[i] ^ c) : c;
+            Vga.Picture?.NoteWrite(0xa0000u + (uint)i, Vga.Ram[i]);
             return;
         }
         if (VMode != 0x12 || x < 0 || x >= 640 || y < 0 || y >= 480) return;
@@ -115,6 +122,7 @@ public sealed partial class PcMachine
             if (xor) { if (on) Vga.Ram[a + p] ^= (byte)bit; }
             else Vga.Ram[a + p] = (byte)(on ? Vga.Ram[a + p] | bit : Vga.Ram[a + p] & ~bit);
         }
+        Vga.Picture?.NoteWrite(0xa0000u + (uint)(a >> 2), c);
     }
 
     private byte GetPixel(int x, int y)

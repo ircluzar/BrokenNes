@@ -763,7 +763,11 @@ public static class CoreCatalog
                 switch (slot)
                 {
                     case CoreSlot.Cpu: list.Add(new("I386", "I386 (486-class, ported from tiny386; no FPU)", "x86")); list.Add(new("I386_D074", "I386 at DOSBox 0.74's default speed (cycles=3000: one cycle per instruction, 3 M instr/s - delay loops and their music slow down)", "x86")); break;
-                    case CoreSlot.Ppu: list.Add(new("VGA", "VGA (text modes, mode 13h, mode 12h)", "x86")); break;
+                    case CoreSlot.Ppu:
+                        list.Add(new("VGA", "VGA (text modes, mode 13h, mode 12h)", "x86"));
+                        // the VGA harvest: other emulators' old pictures of the same card (and PCem's CGA)
+                        foreach (var (id, label) in NesEmulator.X86.VgaPictures.Chips) list.Add(new(id, label, id == "PCEM_CGA" ? "CGA" : "VGA"));
+                        break;
                     default:
                         // the sound card and its engine (the APU harvest): AdLib with ymfm (stock) or another emulator's OPL2 core; the PC speaker is always there
                         list.Add(new("ADLIB", "ADLIB (AdLib YM3812 OPL2, ymfm + PC speaker)", "AdLib"));

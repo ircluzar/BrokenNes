@@ -107,3 +107,15 @@ interface follows the shape of DOSBox's dma.h so the ported cards behave as ther
 the DOSBox mixer's documented behaviour - its 1 ms tick, sample-and-hold AddSamples, AddStretched, FillUp; mixer.cpp is not among the pinned sources and was
 not copied), the Covox Speech Thing `CovoxCard.cs` (from the hardware description: an 8-bit DAC on LPT1's data latch), SPEAKER (no card, no AdLib), and the
 card wiring in `PcMachine.cs` / `PcSound.cs` / `PcSession.cs`. Verifier: `Workshop/X86/X86CardsCli.cs` (`--x86cards`).
+
+## Picture chips (VGA harvest, 2026-11-09): the x86 PPU choice
+
+Ported pictures are art instruments, ported faithfully with their flaws (listed in each file's header), a documented exception (root ledger section 2a,
+docs/KNOWN_GAPS.md FA-1). They draw the stock VGA card's registers and memory (`Vga.cs`); the slot (`IVgaPicture`, `VgaPictures.cs`) and its hooks in
+`Vga.cs` / `PcMachine.cs` / `PcMachine.Video.cs` / `PcSession.cs` are written for this project. Sources as fetched, sha256 in `C:\BrokenNes-tools\vga-src\MANIFEST.sha256`.
+
+| x86 PPU id | File | Source | License |
+|---|---|---|---|
+| BOCHS20 | `Bochs20Vga.cs` | Bochs 2.0 (bochs-2.0.tar.gz, https://downloads.sourceforge.net/project/bochs/bochs/2.0/) `iodev/vga.cc` (update, mem_write tile marking, determine_screen_dimensions) + `gui/win32.cc` (text_update), (C) 2002 MandrakeSoft S.A. | LGPL-2.1+ |
+| DOSBOX072 | `Dosbox072Vga.cs` | DOSBox 0.72 (dosbox-0.72.tar.gz, https://downloads.sourceforge.net/project/dosbox/dosbox/0.72/) `src/hardware/vga_draw.cpp` + the panning rule of `vga_attr.cpp`, (C) 2002-2007 The DOSBox Team | GPL-2.0+ |
+| PCEM_CGA | `PcemCga.cs` | PCem v10 (Sarah Walker), https://github.com/sarah-walker-pcem/pcem commit 30826ba (2015-10-31, "Bumped version number up to v10") `src/vid_cga.c` + the CGA colours of `src/video.c`; the 8x8 font is folded from the VGA font above (no character ROM) | GPL-2.0 |
