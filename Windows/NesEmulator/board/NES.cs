@@ -524,12 +524,14 @@ namespace NesEmulator
 			using (var z = new System.IO.Compression.DeflateStream(ms, System.IO.Compression.CompressionLevel.Fastest, true)) z.Write(frame, 0, frame.Length);
 			return Convert.ToBase64String(ms.ToArray());
 		}
-		private static void UnpackFrame(string packed, byte[] into)
+		private static bool UnpackFrame(string packed, byte[] into)
 		{
 			using var z = new System.IO.Compression.DeflateStream(new System.IO.MemoryStream(Convert.FromBase64String(packed)), System.IO.Compression.CompressionMode.Decompress);
 			var tmp = new byte[into.Length + 1]; int n = 0, got;
 			while (n < tmp.Length && (got = z.Read(tmp, n, tmp.Length - n)) > 0) n += got;
-			if (n == into.Length) Buffer.BlockCopy(tmp, 0, into, 0, n);   // only a frame of the same size as this core's target
+			if (n != into.Length) return false;   // only a frame of the same size as this core's target
+			Buffer.BlockCopy(tmp, 0, into, 0, n);
+			return true;
 		}
 
 		private static string PlainSerialize(object? obj)
@@ -792,7 +794,13 @@ namespace NesEmulator
 			bus.input.DebugSetState(st.controllerState, st.controllerShift, st.controllerStrobe);
 			Butcher?.NoteStateLoaded();
 			crashed = false; crashInfo = string.Empty; crashKind = CrashKind.Generic;   // the loaded machine had not crashed: a state is how a crash (a bent CPU running into a bad opcode) is undone
-			try { if (st.liveFrame.Length > 0 && bus.ppu != null) UnpackFrame(st.liveFrame, bus.ppu.GetFrameBuffer()); } catch { }   // last: a core's SetState may have reallocated its target
+			try
+			{
+				// last: a core's SetState may have reallocated its target. With the frame in progress restored, the loaded machine's
+				// next frame is exactly the original's, so it is presented as usual (waiting for a whole frame showed the old picture
+				// one frame too long: the Krion Conquest reload drift).
+				if (st.liveFrame.Length > 0 && bus.ppu != null && UnpackFrame(st.liveFrame, bus.ppu.GetFrameBuffer())) awaitingFrameStart = false;
+			} catch { }
 			try
 			{
 				if (st.shownFrame.Length > 0 && bus.ppu != null)
