@@ -528,20 +528,8 @@ internal sealed partial class HeadlessSession : Session
 
     // ================================================================================================ input
 
-    public static PadButtons ParseButtons(IEnumerable<string> names)
-    {
-        PadButtons p = PadButtons.None;
-        foreach (var raw in names)
-        {
-            string n = raw.Trim();
-            if (n.Length == 0) continue;
-            string k = n.ToLowerInvariant() switch { "sel" => "Select", "u" => "Up", "d" => "Down", "l" => "Left", "r" => "Right", "pause" => "Select", "reset" => "Mode", _ => n };
-            if (k is "l" or "r") k = k.ToUpperInvariant();
-            if (!Enum.TryParse<PadButtons>(k, true, out var b) || b == PadButtons.None) throw new ToolError($"unknown button '{raw}' (A B X Y L R C Z Mode Start Select Up Down Left Right)");
-            p |= b;
-        }
-        return p;
-    }
+    /// <summary>Button names to the pad, for this session's console (<see cref="Pads"/>: L and R are the shoulders).</summary>
+    public PadButtons ParseButtons(IEnumerable<string> names) => Pads.Parse(names, ConsoleKey);
 
     /// <summary>"f:Btn+Btn,f:,..." (frames relative to now).</summary>
     public static List<PadStep> ParseScript(string spec)
