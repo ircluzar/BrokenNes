@@ -42,6 +42,12 @@ public sealed class Vga
 
     public Vga(Func<long> pitNow) { _pitNow = pitNow; InitMode3Defaults(); }
 
+    /// <summary>The picture chip drawing this card's memory (the VGA harvest: another emulator's renderer, x86/VgaPictures.cs), or null for the stock picture.
+    /// It sees the card's port writes and memory accesses as they happen and replaces <see cref="Render"/>; the registers and memory stay this card's.</summary>
+    public IVgaPicture? Picture;
+    /// <summary>The machine clock in PIT ticks (for a picture chip's own beam timing).</summary>
+    public long PitNow => _pitNow();
+
     // ================= ports =================
 
     public byte In(int addr)
@@ -90,6 +96,7 @@ public sealed class Vga
 
     public void Out(int addr, byte v)
     {
+        Picture?.NoteOut(addr, v);
         if ((addr >= 0x3b0 && addr <= 0x3bf && (Msr & 1) != 0) || (addr >= 0x3d0 && addr <= 0x3df && (Msr & 1) == 0)) return;
         int val = v;
         switch (addr)
@@ -157,6 +164,7 @@ public sealed class Vga
     public void MemWrite(uint addr, byte val8)
     {
         if ((Msr & 2) == 0) return;
+        Picture?.NoteWrite(addr, val8);
         if (!MapAddr(ref addr)) return;
         uint val = val8;
         if ((Sr[4] & 8) != 0)
@@ -217,6 +225,7 @@ public sealed class Vga
     public byte MemRead(uint addr)
     {
         if ((Msr & 2) == 0) return 0xff;
+        Picture?.NoteRead(addr);
         if (!MapAddr(ref addr)) return 0xff;
         if ((Sr[4] & 8) != 0) return addr < RamSize ? Ram[addr] : (byte)0xff;
         if ((Gr[5] & 0x10) != 0)
@@ -333,7 +342,7 @@ public sealed class Vga
     // ================= the picture =================
 
     private static int C6(int v) => (v << 2) | (v >> 4);
-    private int Dac(int i) => unchecked((int)0xff000000) | (C6(Palette[i * 3] & 63) << 16) | (C6(Palette[i * 3 + 1] & 63) << 8) | C6(Palette[i * 3 + 2] & 63);
+    public int Dac(int i) => unchecked((int)0xff000000) | (C6(Palette[i * 3] & 63) << 16) | (C6(Palette[i * 3 + 1] & 63) << 8) | C6(Palette[i * 3 + 2] & 63);
 
     private void Palette16(int[] pal)
     {
@@ -351,10 +360,12 @@ public sealed class Vga
     public void Render()
     {
         FrameCount++;
+        if (Picture != null) { Picture.Render(); return; }
         if ((Ar[0x10] & 1) == 0 || (Gr[6] & 1) == 0) RenderText(); else RenderGraphics();
     }
 
-    private void Ensure(int w, int h)
+    /// <summary>Sizes <see cref="Frame"/> (clamped to 8..1024 x 8..768).</summary>
+    public void Ensure(int w, int h)
     {
         if (w < 8) w = 8; if (h < 8) h = 8;
         if (w > 1024) w = 1024; if (h > 768) h = 768;

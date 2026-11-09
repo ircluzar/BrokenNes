@@ -8,11 +8,13 @@ using NesEmulator.X86;
 namespace BrokenNes.Workshop.X86;
 
 /// <summary>
-/// <c>--x86session img [--frames N] [--shot png] [--cpu I386|I386_D074]</c>: the x86 console as the apps run it (<see cref="PcSession"/> through <see cref="ConsoleSessions.Create"/>): ROM detection of the image, the core menus, N frames,
+/// <c>--x86session img [--frames N] [--shot png] [--cpu I386|I386_D074] [--ppu VGA|BOCHS20|DOSBOX072|PCEM_CGA] [--swapat F]</c>: the x86 console as the apps run it (<see cref="PcSession"/> through <see cref="ConsoleSessions.Create"/>): ROM detection of the image, the core menus, N frames,
 /// the picture, a save state round trip (the same frames after a load give the same pictures), and the disk as the battery (a write shows in <c>ExportSave</c>). Exit code 0 = all passed.
 /// </summary>
 internal static class X86SessionCli
 {
+    private static string? Arg(string[] a, string k) { int i = Array.IndexOf(a, k); return i > 0 && i + 1 < a.Length ? a[i + 1] : null; }
+
     public static int Run(string[] args)
     {
         string img = args.Length > 1 ? args[1] : throw new ArgumentException("--x86session img");
@@ -28,9 +30,9 @@ internal static class X86SessionCli
         foreach (var slot in new[] { CoreSlot.Cpu, CoreSlot.Ppu, CoreSlot.Apu })
         {
             var o = CoreCatalog.Options(ConsoleKind.Pc, slot);
-            Check(o.Count == (slot == CoreSlot.Cpu ? 2 : 1), $"{slot} menu: {string.Join(" | ", o.Select(x => $"{x.Id} = {x.Label} [{x.Section}]"))}");
+            Check(slot == CoreSlot.Apu ? o.Count >= 1 : o.Count == (slot == CoreSlot.Cpu ? 2 : 1 + VgaPictures.Chips.Length), $"{slot} menu: {string.Join(" | ", o.Select(x => $"{x.Id} = {x.Label} [{x.Section}]"))}");
         }
-        using var s = ConsoleSessions.Create(ConsoleKind.Pc, data, Array.IndexOf(args, "--cpu") is int ci && ci > 0 && ci + 1 < args.Length ? args[ci + 1] : CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Cpu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Apu), null, name);
+        using var s = ConsoleSessions.Create(ConsoleKind.Pc, data, Array.IndexOf(args, "--cpu") is int ci && ci > 0 && ci + 1 < args.Length ? args[ci + 1] : CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Cpu), Arg(args, "--ppu") ?? CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Apu), null, name);
         Console.WriteLine($"  session: {s.Description}, {s.FramesPerSecond:F2} fps");
         var save0 = s.ExportSave();
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -38,8 +40,10 @@ internal static class X86SessionCli
         long loud = 0, edges = 0, first = -1, lastLoud = 0, idx = 0; short last = 0;
         long rises = 0, firstRise = -1, lastRise = 0; bool low = true;   // sine pitch: rising crossings with hysteresis
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
+        int swapAt = Arg(args, "--swapat") is string sa ? int.Parse(sa) : -1;
         for (int f = 0; f < frames; f++)
         {
+            if (f == swapAt) Check(s.TrySwapCore(CoreSlot.Ppu, Arg(args, "--swapto") ?? "VGA"), $"live picture swap at frame {f} to {Arg(args, "--swapto") ?? "VGA"}");
             s.RunFrame();
             int n = s.ReadSamples(buf); samples += n;
             hash.AppendData(System.Runtime.InteropServices.MemoryMarshal.AsBytes(buf.AsSpan(0, n)));
@@ -61,11 +65,20 @@ internal static class X86SessionCli
         if (si > 0 && si + 1 < args.Length && s is PcSession ps) { X86Shots.SavePng(ps.Machine.Vga, args[si + 1]); Console.WriteLine($"  picture: {args[si + 1]}"); }
         Check(Math.Abs(samples / 2.0 - frames * 44100 / s.FramesPerSecond) < 2000, $"silence at the right rate ({samples / 2} stereo samples)");
         var st = s.SaveState();
-        string Run100() { for (int f = 0; f < 100; f++) { s.SetPad(0, f % 20 < 10 ? PadButtons.Right : PadButtons.None); s.RunFrame(); } return Convert.ToHexString(SHA1.HashData(System.Runtime.InteropServices.MemoryMarshal.AsBytes(s.Frame.AsSpan(0, s.FrameWidth * s.FrameHeight)))); }
+        string Run100() { using var h = IncrementalHash.CreateHash(HashAlgorithmName.SHA1); for (int f = 0; f < 100; f++) { s.SetPad(0, f % 20 < 10 ? PadButtons.Right : PadButtons.None); s.RunFrame(); h.AppendData(System.Runtime.InteropServices.MemoryMarshal.AsBytes(s.Frame.AsSpan(0, s.FrameWidth * s.FrameHeight))); } return Convert.ToHexString(h.GetHashAndReset()); }   // every frame's picture
         string a = Run100();
+        var stA = ((PcSession)s).Machine.SaveState();   // payloads (the wrapped state carries a time stamp)
         s.LoadState(st);
         string b = Run100();
         Check(a == b, $"save state round trip: the same 100 frames give the same picture ({a[..12]})");
+        s.LoadState(st);   // a third run, also from the load: it must end in the same machine state as the second, byte for byte (the first run did not start
+        Run100();          // from a load, and a load restarts the AdLib's sample clock, so its state legitimately differs there)
+        stA = ((PcSession)s).Machine.SaveState();
+        s.LoadState(st);
+        Run100();
+        var stB = ((PcSession)s).Machine.SaveState();
+        if (Environment.GetEnvironmentVariable("X86_DUMPST") is string dd) { File.WriteAllBytes(dd + ".a", stA); File.WriteAllBytes(dd + ".b", stB); }
+        Check(stA.AsSpan().SequenceEqual(stB), "save state round trip: the state after those frames is byte for byte the same");
         var save1 = s.ExportSave();
         Check(ReferenceEquals(save1, s.ExportSave()), "an unchanged disk exports the same array (no copy)");
         Console.WriteLine($"  disk changed since power-on: {!save0.AsSpan().SequenceEqual(save1)}");
