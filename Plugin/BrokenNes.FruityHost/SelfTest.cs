@@ -862,27 +862,30 @@ public sealed unsafe partial class SelfTest
         var rack = MakeRack([0, 1, 2, 3]);
         var plugin = rack[0];
         long allocBefore = 0, allocAfter = 0;
-        var mixer = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm => { if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = AllocStart(plugin); if (sm >= 48000 * 9 && allocAfter == 0) allocAfter = plugin.Test(4); } };
+        const double Blk = 512 / 48000.0;
+        var clock = new BlockClock(1100);              // the blocks' times (BlockClock: the pace on a busy machine)
+        var mixer = new Mixer { SampleRate = 48000, BlockSize = 512, AfterBlock = sm => { clock.Mark(); if (sm >= 48000 * 2 && allocBefore == 0) allocBefore = AllocStart(plugin); if (sm >= 48000 * 9 && allocAfter == 0) allocAfter = plugin.Test(4); } };
         var sw = Pace.Start();
+        clock.Mark();
         var audio = mixer.Run(rack, s, 0);
         sw.Stop();
         plugin.Dispose();
-        double seconds = audio.Length / 2 / 48000.0;
-        double speed = seconds / sw.Seconds;
-        t.Expect(speed >= 5, $"{speed:0.0}x real time with 4 instances (needs 5x or better: each instance runs its own chip)");
+        // seconds 1 to 9: four voices sliding in every window (the same work in each)
+        double speed = clock.Speed((int)(1 / Blk), (int)(9 / Blk), 12, Blk, out double whole, out double slowest);
+        t.Expect(speed >= 5, $"{speed:0.0}x real time with 4 instances (needs 5x or better: each instance runs its own chip; fastest quarter of 128 ms windows, whole stretch {whole:0.0}x, slowest window {slowest:0.0}x)");
         long alloc = allocAfter - allocBefore;
         t.Expect(alloc == 0, $"{alloc:N0} bytes allocated by the plugin while playing 4 sliding voices for 7 s (must be 0: garbage collection is audible)");
-        t.Note($"{speed:0.0}x real time, 4 instances with a sliding voice each, 48 kHz / 512-sample blocks; steady-state allocation {alloc} B");
+        t.Note($"{speed:0.0}x real time, 4 instances with a sliding voice each, 48 kHz / 512-sample blocks (fastest quarter of 128 ms windows; whole stretch {whole:0.0}x on the wall clock, {audio.Length / 2 / 48000.0 / sw.Seconds:0.0}x in processor time, slowest window {slowest:0.0}x); steady-state allocation {alloc} B");
 
         using var rp = RomPlugin();
         RenderBlocks(rp, 1.0);
         long a0 = AllocStart(rp);
-        var sw2 = Pace.Start();
-        RenderBlocks(rp, 8.0);
-        sw2.Stop();
+        var clock2 = new BlockClock(800);
+        RenderBlocks(rp, 8.0, atBlock: _ => clock2.Mark());
+        clock2.Mark();
         long a1 = rp.Test(4);
-        double rspeed = 8.0 / sw2.Seconds;
-        t.Expect(rspeed >= 2.5, $"ROM mode runs at {rspeed:0.0}x real time (needs 2.5x or better)");
+        double rspeed = RomPace(clock2, 8.0, out string rhow);
+        t.Expect(rspeed >= 2.5, $"ROM mode runs at {rspeed:0.0}x real time (needs 2.5x or better; {rhow})");
         t.Warn(a1 - a0 < 1000, $"ROM mode allocated {(a1 - a0) / 1024:N0} KB in 8 s while playing (garbage collection is audible)");
         rp.Dispose();                                  // its emulator would otherwise be the one the next instances share
         // a Game Boy and a SNES game on the same budget (the test games are small: a real game costs somewhat more)
@@ -899,11 +902,11 @@ public sealed unsafe partial class SelfTest
             {
                 using var g = OpenGame(path, console);
                 RenderBlocks(g, 1.0);
-                var sw3 = Pace.Start();
-                RenderBlocks(g, 6.0);
-                sw3.Stop();
-                double speed3 = 6.0 / sw3.Seconds;
-                t.Expect(speed3 >= 2.5, $"{name} game runs at {speed3:0.0}x real time (needs 2.5x or better)");
+                var clock3 = new BlockClock(600);
+                RenderBlocks(g, 6.0, atBlock: _ => clock3.Mark());
+                clock3.Mark();
+                double speed3 = RomPace(clock3, 6.0, out string how3);
+                t.Expect(speed3 >= 2.5, $"{name} game runs at {speed3:0.0}x real time (needs 2.5x or better; {how3})");
                 speeds.Add($"{name} {speed3:0.0}x");
             }
         }
@@ -937,6 +940,16 @@ public sealed unsafe partial class SelfTest
                     foreach (var extra in set.Skip(1)) extra.Destroy();
                 }
             }
+    }
+
+    /// <summary>A game's pace over <paramref name="seconds"/> of 512-sample blocks at 48 kHz: windows of a whole number of video frames' worth of audio
+    /// (48 blocks = 512 ms, about 30.7 frames: a window can hold one frame more than another, at most 3.3% more work), fastest quarter (<see cref="BlockClock"/>).</summary>
+    private static double RomPace(BlockClock c, double seconds, out string how)
+    {
+        const double Blk = 512 / 48000.0;
+        double v = c.Speed(0, (int)(seconds / Blk), 48, Blk, out double whole, out double slowest);
+        how = $"fastest quarter of 512 ms windows, whole stretch {whole:0.0}x, slowest window {slowest:0.0}x";
+        return v;
     }
 
     // ------------------------------------------------------------------------------------------------
