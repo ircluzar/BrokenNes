@@ -101,6 +101,7 @@ namespace BrokenNes.Windows
             // the debugger (BrokenDev D1): the running session (the NES is _getNes), the opt-in for its control routes, and the emulation
             // lock a parked emulation thread releases
             server.GetConsoleSession = () => session;
+            server.ButcherPopoutControl = ButcherPopoutControlAsync;
             server.DebuggerControlEnabled = () => config.EnableDebuggerControl;
             server.Debuggers.HostLock = emulationLock;
             server.GetConsoleStatus = () =>

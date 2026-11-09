@@ -43,6 +43,8 @@ if (!Directory.Exists(dir)) { Line("SKIP", "all", $"no ROM folder {dir}"); retur
 var pool = Directory.EnumerateFiles(dir).Where(f => exts.Contains(Path.GetExtension(f).ToLowerInvariant()) && !f.Contains("32X")).OrderBy(f => f).ToArray();
 var rng = new Random(seed);
 var games = known.Select(g => Path.Combine(dir, g)).Where(File.Exists).Concat(pool.OrderBy(_ => rng.Next()).Take(Math.Max(0, gamesN - known.Length))).Distinct().Take(gamesN).ToList();
+// --rom <file name part>: only the matching games of the folder (a repro of one game's finding)
+{ int ri = Array.IndexOf(args, "--rom"); if (ri >= 0 && ri + 1 < args.Length) games = pool.Where(f => Path.GetFileName(f).Contains(args[ri + 1], StringComparison.OrdinalIgnoreCase)).ToList(); }
 var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
 var presetFile = Path.Combine(repo, "Windows/Webmodules/ButcheringMode/builtins", presetKey + ".json");
 var presetText = File.ReadAllText(presetFile);

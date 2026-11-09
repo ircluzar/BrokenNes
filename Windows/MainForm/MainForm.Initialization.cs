@@ -964,6 +964,7 @@ namespace BrokenNes.Windows
                 if (isWebViewInitialized)
                 {
                     Console.WriteLine("[MainForm] WebView2 is now ready for use");
+                    if (webView != null) HookWebViewNewWindows(webView);
                 }
                 else
                 {

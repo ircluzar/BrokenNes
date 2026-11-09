@@ -392,6 +392,7 @@ public sealed class SmsCartridge
         ctl = r.ReadByte(); cmRamOn = r.ReadBoolean();
         for (int i = 0; i < 4; i++) pages[i] = r.ReadInt32();
         if (r.ReadBoolean()) { int n = r.ReadInt32(); var b = r.ReadBytes(n); if (Ram == null || Ram.Length != n) Ram = new byte[n]; Array.Copy(b, Ram, n); }
+        else Ram = null;   // a Codemasters cartridge whose RAM was switched on after the state was taken (a bent write did it on Pete Sampras Tennis): gone again
         if (r.ReadBoolean()) { if (Eeprom == null) throw new InvalidDataException("The state has a serial EEPROM this cartridge does not."); Eeprom.LoadState(r); }
         if (Eeprom != null) RefreshEepromPage();
         Remap();
