@@ -799,7 +799,9 @@ namespace NesEmulator
 				// last: a core's SetState may have reallocated its target. With the frame in progress restored, the loaded machine's
 				// next frame is exactly the original's, so it is presented as usual (waiting for a whole frame showed the old picture
 				// one frame too long: the Krion Conquest reload drift).
-				if (st.liveFrame.Length > 0 && bus.ppu != null && UnpackFrame(st.liveFrame, bus.ppu.GetFrameBuffer())) awaitingFrameStart = false;
+				// Only the NES's own picture chips: a bridged one (another console's chip) redraws from its own machine after a load,
+				// so it keeps waiting for a whole frame (fuzz seed 313102, ppu=WMSS).
+				if (st.liveFrame.Length > 0 && bus.ppu != null && UnpackFrame(st.liveFrame, bus.ppu.GetFrameBuffer()) && bus.ppu is not NesEmulator.Mix.IPictureBridgeInfo) awaitingFrameStart = false;
 			} catch { }
 			try
 			{
