@@ -242,18 +242,20 @@ public class SmsFmSound : ISmsSound, IVoiceStems
         for (long i = 0; i < np; i++) { w.Write(psgL[(psgRead + i) & QueueMask]); w.Write(psgR[(psgRead + i) & QueueMask]); }
         w.Write(nf);
         for (long i = 0; i < nf; i++) w.Write(fmQ[(fmRead + i) & QueueMask]);
+        EngineState.SaveSection(this, typeof(SmsFmSound), w);   // FA-ST-1: a ported engine's own state
     }
 
     public void LoadState(BinaryReader r)
     {
         psg.LoadState(r);
-        if (r.BaseStream.CanSeek && r.BaseStream.Position >= r.BaseStream.Length)
+        if (r.BaseStream.CanSeek && (r.BaseStream.Position >= r.BaseStream.Length || EngineState.AtSection(r)))
         {
             // the state of a PSG-only unit (an APU swap from the stock unit): the PSG goes on as it was, the FM chip starts as at power-on
             fm.Reset(); fm.ResetPatch(); resampler.Reset(); audioControl = 0; fmRemainder = 0;
             psgRead = psgWrite = fmRead = fmWrite = 0;
             RealignStems();
             OnReset();
+            EngineState.LoadSection(this, typeof(SmsFmSound), r);   // a PSG unit's engine section (another core): skipped, reported
             return;
         }
         fm.LoadState(r); resampler.LoadState(r);
@@ -269,6 +271,7 @@ public class SmsFmSound : ISmsSound, IVoiceStems
         fmWrite = nf;
         RealignStems();
         OnReset();
+        EngineState.LoadSection(this, typeof(SmsFmSound), r);   // FA-ST-1: replaces OnReset's re-key with the saved engine
     }
 
     // ---- Hooks for a unit that swaps the sound generator (the foreign APU project: Gens, PicoDrive, MAME 0.36 ... ports).

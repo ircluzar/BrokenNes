@@ -10,7 +10,7 @@ using NesEmulator.Systems;
 namespace BrokenNes.Workshop.Sega;
 
 /// <summary>
-/// <c>--apu-sweep [--console NES|SNES|GB|SMS|GG|MD|WMS] [--only ID,ID] [--plant silent|stuck|crash|menu|stockpick] [--tsv file]</c>: foreign APU phase 3 (docs/projects/foreign-apu-next-primer.md), the cross-console sweep
+/// <c>--apu-sweep [--console NES|SNES|GB|SMS|GG|MD|WMS] [--only ID,ID] [--plant silent|stuck|crash|menu|stockpick|rekey] [--tsv file]</c>: foreign APU phase 3 (docs/projects/foreign-apu-next-primer.md), the cross-console sweep
 /// weighted to the 27 ported sound engines. Each cell is one engine reached one way, run inside a real game (the in-repo NES music test, Super Mario World, Super Mario Land, the hand-assembled Sega tone programs):
 /// <list type="bullet">
 /// <item><b>native</b>: the engine on its own console's APU menu, swapped in live mid-song (<c>TrySwapCore</c> / <c>NES.SetApuCore</c>);</item>
@@ -20,7 +20,7 @@ namespace BrokenNes.Workshop.Sega;
 /// Phases per cell, each measured as the RMS of 2 s of the session's output: <b>swap</b> (live, not silent, the description names the engine; a refusal must give a reason), <b>state</b> (save, play, load, play: the level after the load
 /// within 2x of the level after the save), <b>butcher</b> (four Butchering-mode sound effects on the engine for 2 s: no exception; then off and the entry state reloaded, as the mode's exit does: sound again), <b>stuck</b> (the game's
 /// sound is keyed off through the console's own registers: as quiet as the stock control after the same writes), <b>back</b> (a live swap back to the stock unit: within 2x of the control run's level at the same point, so nothing
-/// the engine did is carried back). The control cell of each console is the stock unit through the same phases. <c>--plant</c> is the negative control: <c>silent</c> zeroes the cell's output after the state load,
+/// the engine did is carried back). The control cell of each console is the stock unit through the same phases. <c>--plant</c> is the negative control: <c>silent</c> zeroes the cell's output after the state load, <c>rekey</c> skips the ported engines' saved state (FA-ST-1: the state phase requires the samples after the load to equal those after the save, bit for bit),
 /// <c>stuck</c> skips the key-off writes on the cell (not on the control), <c>crash</c> throws inside the butcher phase; each must turn its check to FAIL.
 /// </summary>
 internal static class ApuSweepCli
@@ -358,6 +358,7 @@ internal static class ApuSweepCli
         ("SNES", "native", "SNDS") => "SNEmulDS's mixer ignores FLG mute/reset (SnemulDsDsp.cs header); FA-SW-4",
         ("SNES", "native", "PSPC3") => "PocketSPC 0.3's DspWriteByte has no FLG case and the mixer never reads FLG: no mute/reset (PocketSpc03Dsp.cs header); FA-SW-4",
         ("SNES", "native", "ZS151") => "ZSNES 1.51's FLG mute only stops the voices at the write (Zs151Dsp.cs case 0x6C); the driver's next key-on sounds; FA-SW-4",
+        ("NES", "native", "TUXN") => "TuxNES keeps stepping a square whose index is past its step even when disabled (TuxnesSound.cs Render: '|| sq1_index > step_sq1'), so the game's period writes after $4015=0 blip; heard now that a load restores the index exactly (FA-ST-1); KNOWN_GAPS FA-SW-7",
         ("GB", "native", "MGB") => "minigb_apu @024175d stores NR52 writes and never powers off (MinigbApu.cs header: the register R/W while off bug); FA-SW-4",
         _ => null,
     };
@@ -445,11 +446,16 @@ internal static class ApuSweepCli
         if (rig.SupportsState)
         {
             entry = rig.Save();
-            r.R2 = Play(rig, Window);
-            rig.Load(entry);
-            r.R3 = Play(rig, Window, zero: plant == "silent" && !isControl);
-            r.State = Near(r.R2, r.R3) ? "kept" : r.R3 < Quiet ? "SILENT" : "LEVEL";
-            if (r.State != "kept") r.Fails.Add($"after the state load rms {r.R3:F0}, after the save {r.R2:F0}");
+            r.R2 = Play(rig, Window, out ulong h2);
+            if (plant == "rekey" && !isControl) EngineState.TestSkipRestore = true;   // negative control: the load keeps the old re-key
+            try { rig.Load(entry); } finally { EngineState.TestSkipRestore = false; }
+            r.R3 = Play(rig, Window, out ulong h3, zero: plant == "silent" && !isControl);
+            // FA-ST-1: the same machine after the load plays the same samples as after the save, bit for bit
+            r.State = h2 == h3 ? "exact" : r.R3 < Quiet && r.R2 >= Quiet ? "SILENT" : !Near(r.R2, r.R3) ? "LEVEL" : "NOT EXACT";
+            // FA-ST-2 (KNOWN_GAPS): another console on a NES chip (NES:<id>, the hub bridges) keeps the chip as a listener outside the console's state: after a load it
+            // keeps playing and re-maps the loaded voices, by design; the level must hold, the samples cannot match
+            if (r.State == "NOT EXACT" && c.Console != "NES" && c.Route.Contains("NES:") && plant != "rekey") { r.State = "kept*"; r.Notes.Add("intended: the NES-chip hub is a listener outside the console's state (KNOWN_GAPS FA-ST-2)"); }
+            if (r.State != "exact" && r.State != "kept*") r.Fails.Add($"after the state load {(r.State == "NOT EXACT" ? "the samples differ from" : "rms " + r.R3.ToString("F0") + ",")} after the save (rms {r.R2:F0})");
         }
         else
         {

@@ -705,6 +705,36 @@ public sealed partial class Opl2
         foreach (var o in _ops) { o.Phase = r.ReadUInt32(); o.EnvAtt = r.ReadUInt16(); o.EnvState = r.ReadByte(); o.KeyState = r.ReadByte(); o.KeyonLive = r.ReadByte(); }
         _modifiedChannels = 0x1ff;   // ymfm invalidates the caches after a restore
         _out.Clear();
-        if (_alt != null) { _alt.Reset(); _altQueue.Clear(); ReplayIntoAlt(); }   // the engines' own state is not saved: re-keyed from the registers
+        if (_alt != null) { _alt.Reset(); _altQueue.Clear(); ReplayIntoAlt(); }   // re-keyed from the registers; LoadEngine then puts the engine's own saved state back
     }
+
+    /// <summary>FA-ST-1: the alternative engine's own state (its id, then every field of the engine object, EngineState) and the writes queued for its next block.</summary>
+    public void SaveEngine(BinaryWriter w)
+    {
+        w.Write(_alt?.Id ?? "");
+        if (_alt == null) return;
+        EngineState.Save(_alt, typeof(object), w, units: true);
+        w.Write(_altQueue.Count); foreach (var (r, v) in _altQueue) { w.Write(r); w.Write(v); }
+    }
+
+    public void LoadEngine(BinaryReader r)
+    {
+        string id = r.ReadString();
+        if (id.Length == 0) { if (_alt != null) Console.Error.WriteLine($"[EngineState] AdLib {_alt.Id}: the state was saved on ymfm; engine re-keyed from the registers (not sample-exact)"); return; }
+        if (_alt != null && _alt.Id == id)
+        {
+            if (!EngineState.TryLoad(_alt, typeof(object), r, units: true)) EngineState.ReportRekey(_alt);
+            int n = r.ReadInt32(); _altQueue.Clear(); for (int i = 0; i < n; i++) _altQueue.Add((r.ReadByte(), r.ReadByte()));
+        }
+        else
+        {
+            // skip another engine's section
+            r.ReadUInt64(); r.ReadUInt64(); r.ReadBytes(r.ReadInt32());
+            int n = r.ReadInt32(); r.ReadBytes(n * 2);
+            if (_alt != null) Console.Error.WriteLine($"[EngineState] AdLib {_alt.Id}: the state was saved on {id}; engine re-keyed from the registers (not sample-exact)");
+        }
+    }
+
+    /// <summary>A state from before FA-ST-1: the engine keeps its re-key, reported.</summary>
+    public void NoEngineState() { if (_alt != null) Console.Error.WriteLine($"[EngineState] AdLib {_alt.Id}: state from before FA-ST-1; engine re-keyed from the registers (not sample-exact)"); }
 }

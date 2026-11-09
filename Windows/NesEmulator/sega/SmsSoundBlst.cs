@@ -9,7 +9,7 @@ namespace NesEmulator.Sega;
 /// SMS APU id <c>BLST</c>; the foreign APU project). The stock SN76489 keeps running; BlastEm's takes the same writes, clocked at the Z80 clock / 16 and point-sampled
 /// at the host rate (writes land at the block the host pulls). Mono: BlastEm 0.3.1 has no Game Gear stereo port, so stereo writes are ignored.
 /// </summary>
-public sealed class SmsSoundBlst : SmsSound
+public sealed class SmsSoundBlst : SmsSound, IPortedEngineState
 {
     private readonly double cpuClockHz;
     private BlastemPsg? bpsg;

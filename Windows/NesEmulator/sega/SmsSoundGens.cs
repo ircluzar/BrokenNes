@@ -14,7 +14,7 @@ namespace NesEmulator.Sega;
 /// and the samples are rendered when the mixer asks: the effect of a write is not placed inside the audio chunk it falls in.
 /// Gens' level is halved (as in <see cref="MdSoundUnitGens"/>); the output stays unipolar like Gens'.
 /// </remarks>
-public sealed class SmsSoundGens : SmsSound
+public sealed class SmsSoundGens : SmsSound, IPortedEngineState
 {
     private const int GensRate = 22050;
     private readonly double cpuClockHz;

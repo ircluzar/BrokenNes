@@ -8,7 +8,7 @@ namespace NesEmulator.Sega;
 /// emulated frame), mixed at vblank from the registers as they stand and played during the next frame (the GBA DMA double buffer); SMSAdvance's volume table, Game Gear stereo
 /// as on/off masks, SG-1000 noise taps on the TI variant. Converted to the host rate by zero-order hold. A state load or a swap re-feeds the stock PSG's registers.
 /// </summary>
-public sealed class SmsSoundSmsa : SmsSound, ISmsSound
+public sealed class SmsSoundSmsa : SmsSound, ISmsSound, IPortedEngineState
 {
     private readonly double engineRate;
     private readonly bool pal, sg;

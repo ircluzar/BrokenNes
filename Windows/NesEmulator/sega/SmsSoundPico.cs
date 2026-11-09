@@ -9,7 +9,7 @@ namespace NesEmulator.Sega;
 /// PsndGetSamplesMS runs it: 44.1 kHz mono, one whole frame (735 / 882 samples) at a time, upmixed to both sides. PicoDrive 1.85 has no Game Gear, so the stereo port ($06) is ignored.
 /// Converted to the host rate by zero-order hold. Quick port; see <see cref="PicoSn76496"/> for the license (PicoDrive non-commercial / MAME) and the kept quirks.
 /// </summary>
-public sealed class SmsSoundPico : SmsSound, ISmsSound
+public sealed class SmsSoundPico : SmsSound, ISmsSound, IPortedEngineState
 {
     private readonly double clock;
     private readonly int frameLen;

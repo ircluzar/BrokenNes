@@ -14,8 +14,10 @@ namespace BrokenNes.Workshop.Sega;
 /// --apu-channels --state [--console X]: Foreign APU follow-up phase 2 (docs/projects/foreign-apu-next-primer.md). Per core: a chord is keyed,
 /// 0.25 s plays, the state is SAVED mid-note, 0.25 s more plays (A); a fresh unit of the same core LOADS the state and plays 0.25 s (B).
 /// A and B should match: err = rms(A - B) / rms(A) at the best lag within +-64 samples. Verdicts: exact / close (&lt; 0.05) / drifts (&lt; 0.5) /
-/// re-keyed (sound continues at a similar level, waveform not continuous: the engine state is rebuilt from registers) / LEVEL CHANGED / SILENT AFTER LOAD.
-/// Fails: SILENT, LEVEL CHANGED, crash. re-keyed is the documented equivalent for now (KNOWN_GAPS FA-3 and the per-engine rows). Negative control (first core of each console): skip the load (a fresh unkeyed unit) and require a fail verdict.
+/// RE-KEYED (sound continues at a similar level, waveform not continuous: the engine state is rebuilt from registers) / LEVEL CHANGED / SILENT AFTER LOAD.
+/// FA-ST-1: every core must be exact (each ported engine saves its own state, EngineState); anything else fails unless listed in KnownInexact
+/// with its KNOWN_GAPS row. Negative controls: (1) first core of each set, skip the load (a fresh unkeyed unit) and require a fail verdict;
+/// (2) first ported core of each set, skip the engine restore (as a state from before FA-ST-1) and require it not to be exact.
 /// </summary>
 internal static partial class ApuChannelsCli
 {
@@ -152,6 +154,11 @@ internal static partial class ApuChannelsCli
         var sets = new (string con, string[] ids, Func<string, bool, IUnit> make)[]
         {
             ("NES", new[] { "FIX", "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16", "FSID" }, (id, k) => new NesUnit(id, k)),
+            // the NES sound bridges and their ported-engine ids (FA-ST-1: the bridge and the unit it drives are saved whole)
+            ("NESBR", new[] { "SNES", "SNES_ZS15", "SNES_ZS151", "SNES_S916", "SNES_S9X1", "SNES_S951", "SNES_OSPC", "SNES_SNDS", "SNES_PSPC3",
+                "DMG", "DMG_GNUB", "DMG_VBA", "DMG_VBAM", "DMG_TGBD", "DMG_GYOB", "DMG_MGB",
+                "SMS", "SMS_BLST", "SMS_M036", "SMS_GPGX", "SMS_GWEN", "SMS_GENS", "SMS_PICO", "SMS_DARC", "SMS_DEGA", "SMS_SMSA",
+                "MD", "MD_GENS", "MD_PICO", "MD_M036", "MD_BLST", "MD_GPGX", "MD_GWEN", "SMSFM", "SMSFM_M036FM", "SMSFM_E055" }, (id, k) => new NesUnit(id, k)),
             ("SNES", new[] { "SFC", "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "PSPC3" }, (id, k) => new SnesUnit(id, k)),
             ("GB", new[] { "GB", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" }, (id, k) => new GbUnit(id, k)),
             ("MD", new[] { "MD", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN" }, (id, k) => new MdUnit(id, k)),
@@ -170,8 +177,23 @@ internal static partial class ApuChannelsCli
                 {
                     (ra, rb, err, lag) = SaveLoadCompare(make(id, true), make(id, false), plant: false);
                     double lvl = rb / Math.Max(1, ra);
-                    verdict = ra < 30 ? "NO SOUND BEFORE THE SAVE" : rb < ra * 0.1 ? "SILENT AFTER LOAD" : err < 1e-9 ? "exact" : err < 0.05 ? "close"
-                        : lvl > 0.5 && lvl < 2 ? $"re-keyed (keeps sounding at x{lvl:F2} level, waveform not continuous: engine state not saved)" : $"LEVEL CHANGED x{lvl:F2}";
+                    verdict = ra < 30 ? "NO SOUND BEFORE THE SAVE" : rb < ra * 0.1 ? "SILENT AFTER LOAD" : err < 1e-9 ? "exact" : err < 0.05 ? "NOT EXACT (close)"
+                        : lvl > 0.5 && lvl < 2 ? $"RE-KEYED (keeps sounding at x{lvl:F2} level, waveform not continuous: engine state not restored)" : $"LEVEL CHANGED x{lvl:F2}";
+                    if (verdict == "exact" && KnownInexact.Contains(con + ":" + id)) verdict += "   (KNOWN_GAPS row is stale: now exact)";
+                    else if (verdict != "exact" && KnownInexact.Contains(con + ":" + id)) verdict += "   (known gap, KNOWN_GAPS FA-ST-2)";
+                    // negative control 2 (FA-ST-1): the first ported core of each set with the engine restore skipped (as an old state) must not pass as exact
+                    if (id == ids[1] && con != "GB")   // the Game Boy ports serialize themselves (IGbApu.SaveState), not through EngineState
+                    {
+                        EngineState.TestSkipRestore = true;
+                        try
+                        {
+                            var (_, _, serr, _) = SaveLoadCompare(make(id, true), make(id, false), plant: false);
+                            bool caught = serr >= 1e-9;
+                            if (!caught) nc++;
+                            verdict += caught ? "   (negative control: engine restore skipped caught)" : "   (ENGINE-RESTORE NEGATIVE CONTROL MISSED)";
+                        }
+                        finally { EngineState.TestSkipRestore = false; }
+                    }
                     if (id == ids[0])
                     {
                         var (_, nrb, nerr, _) = SaveLoadCompare(make(id, true), make(id, false), plant: true);
@@ -181,13 +203,16 @@ internal static partial class ApuChannelsCli
                     }
                 }
                 catch (Exception e) { verdict = $"CRASH {e.GetType().Name}: {e.Message.Split('\n')[0]}"; }
-                if (verdict.StartsWith("SILENT") || verdict.StartsWith("LEVEL") || verdict.StartsWith("CRASH") || verdict.StartsWith("NO SOUND")) bad++;
+                if (!verdict.StartsWith("exact") && !KnownInexact.Contains(con + ":" + id)) bad++;
                 Console.WriteLine($"{con,-6} {id,-7} {ra,7:F0} {rb,7:F0} {err,7:F3} {lag,4}  {verdict}");
             }
         }
         Console.WriteLine($"\n{bad} cores fail the save/load audio check; negative controls {(nc == 0 ? "all caught" : nc + " missed")}");
         return bad == 0 && nc == 0 ? 0 : 1;
     }
+
+    /// <summary>Cores that cannot be sample-exact after a load, each with its KNOWN_GAPS row (FA-ST-2). Empty: every core is exact.</summary>
+    private static readonly HashSet<string> KnownInexact = new();
 
     private static (double ra, double rb, double err, int lag) SaveLoadCompare(IUnit a, IUnit fresh, bool plant)
     {

@@ -13,7 +13,7 @@ namespace NesEmulator
     /// NES APU id "PNES": APU_FIX keeps the game-facing side ($4015 reads, frame/DMC IRQs, DMC DMA timing); every register write also goes to the
     /// ported PocketNES translator, which is what you hear. The base's own samples are drained and discarded.
     /// </summary>
-    public sealed class APU_PNES : APU_FIX, IAPU
+    public sealed class APU_PNES : APU_FIX, IAPU, IPortedEngineState
     {
         private readonly Bus bus;
         private PocketNesSound? engine;   // lazy: the base constructor may call Reset before this class's fields exist
@@ -36,6 +36,7 @@ namespace NesEmulator
         {
             base.SetState(state);
             foreach (var (a, v) in SoundRegisterReplay()) E.Write(a, v, false);
+            ApplyEngineState();   // FA-ST-1: the engine's saved state replaces the re-key (exact)
         }
 
         public new void WriteAPURegister(ushort address, byte value)

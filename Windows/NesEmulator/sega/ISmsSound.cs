@@ -87,8 +87,8 @@ public class SmsSound : ISmsSound, IVoiceStems
     public long StemMask { get => psg.VoiceStems; set => psg.VoiceStems = (int)(value & 15); }
     public int ReadStem(int stem, Span<float> dest) => psg.ReadVoiceStem(stem, dest);
 
-    public void SaveState(BinaryWriter w) => psg.SaveState(w);
-    public void LoadState(BinaryReader r) { psg.LoadState(r); OnReset(); }
+    public void SaveState(BinaryWriter w) { psg.SaveState(w); EngineState.SaveSection(this, typeof(SmsSound), w); }   // FA-ST-1: a ported engine's own state
+    public void LoadState(BinaryReader r) { psg.LoadState(r); OnReset(); EngineState.LoadSection(this, typeof(SmsSound), r); }
 
     // ---- Hooks for a unit that swaps the sound generator (the foreign APU project: Gens, PicoDrive, MAME 0.36 ... ports).
     // The stock chips keep running and keep everything a game reads (status, timers, busy); the hooks decide what is heard.

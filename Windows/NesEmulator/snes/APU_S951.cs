@@ -9,7 +9,7 @@ namespace NesEmulator.Snes;
 /// Quick port: a state load or a swap re-feeds the engine the DSP registers (re-keying the voices that were keyed on), the engine's
 /// own envelope/sample position is not saved.
 /// </summary>
-public sealed class APU_S951 : APU_SFC, ISnesApu
+public sealed class APU_S951 : APU_SFC, ISnesApu, IPortedEngineState
 {
     public override string CoreName => "S951";
 

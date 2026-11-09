@@ -8,7 +8,7 @@ namespace NesEmulator.Sega;
 /// run as in <see cref="MdSoundUnit"/>; what is heard comes from the MAME engines, fed the same writes. Each stock 53 kHz FM sample takes the latest 22,050 Hz MAME sample (zero-order hold), the PSG's
 /// host-rate samples are replaced the same way. Quick port: a state load or swap re-feeds the engines the stock chips' registers (notes resume at their next key-on).
 /// </summary>
-public sealed class MdSoundUnitM036 : MdSoundUnit
+public sealed class MdSoundUnitM036 : MdSoundUnit, IPortedEngineState
 {
     private readonly int ymClock, hostRate;
     private readonly double fmRate, psgClock;

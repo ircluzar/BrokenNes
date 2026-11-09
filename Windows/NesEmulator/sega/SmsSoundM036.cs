@@ -7,7 +7,7 @@ namespace NesEmulator.Sega;
 /// THIRD_PARTY_NOTICES.md section 2): the stock PSG keeps running, what is heard is the MAME 0.36 PSG at 22,050 Hz, mono (the Game Gear stereo port is ignored, as MAME 0.36 had none), held up to the host rate.
 /// Quick port: register writes land on the next drained chunk; a state load or swap re-feeds the stock PSG's registers.
 /// </summary>
-public sealed class SmsSoundM036 : SmsSound
+public sealed class SmsSoundM036 : SmsSound, IPortedEngineState
 {
     private readonly double clock;
     private readonly bool ready;

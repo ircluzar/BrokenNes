@@ -9,7 +9,7 @@ namespace NesEmulator.Sega;
 /// fed the same writes, one GX FM sample per stock FM sample (both run at YM clock / 144). GX's default output filter (config.filter = 1: out = (prev + out) >> 1) is kept, applied to FM at
 /// ~53 kHz and to the PSG at the host rate (GX ran it once on the mix at the output rate). Quick port: a state load or swap re-feeds the engines the stock chips' registers.
 /// </summary>
-public sealed class MdSoundUnitGpgx : MdSoundUnit
+public sealed class MdSoundUnitGpgx : MdSoundUnit, IPortedEngineState
 {
     private readonly int hostRate;
     private readonly double psgClock;

@@ -28,7 +28,7 @@ using System;
 
 namespace NesEmulator
 {
-    public sealed class APU_RSID16 : APU_FIX, IAPU
+    public sealed class APU_RSID16 : APU_FIX, IAPU, IPortedEngineState
     {
         private Resid016? engine;
         private int mask = 0x1F;
@@ -131,6 +131,7 @@ namespace NesEmulator
             // the SID's own state is not in the save: a fresh chip is re-keyed from the restored NES registers (read through APU_FIX)
             engine = null;
             Sync();
+            ApplyEngineState();   // FA-ST-1: the engine's saved state replaces the re-key (exact)
         }
 
         public new void WriteAPURegister(ushort address, byte value)

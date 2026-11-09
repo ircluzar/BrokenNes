@@ -10,7 +10,7 @@ namespace NesEmulator.Sega;
 /// Menu id <c>E055</c>. The stock PSG and the stock YM2413 keep running (the game's ports and the stock state are untouched); only the FM that is heard is replaced.
 /// The engine runs at its sample player's default, OPLL_new(3,579,545, 44,100) with quality 0, and is held sample-and-hold up to the chip rate.
 /// </summary>
-public sealed class SmsFmSoundE055 : SmsFmSound
+public sealed class SmsFmSoundE055 : SmsFmSound, IPortedEngineState
 {
     public const uint OpllClock = 3579545;
     public const uint OpllRate = 44100;    // sample2413.c's SAMPLERATE; quality 0 (OPLL_new's calloc default)

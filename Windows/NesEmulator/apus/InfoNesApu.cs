@@ -145,6 +145,7 @@ namespace NesEmulator
             outN -= n; return n;
         }
         public void ClearOutput() { outW = outR = outN = 0; dcIn = dcOut = 0; }
+        public void DropOutput() { outW = outR = outN = 0; }
 
         // ===== Rectangle #1 =====
         private int WriteWave1(int cycles, int ev)

@@ -26,7 +26,7 @@ using System;
 
 namespace NesEmulator
 {
-    public sealed class APU_AY124 : APU_FIX, IAPU
+    public sealed class APU_AY124 : APU_FIX, IAPU, IPortedEngineState
     {
         private Mame0124Ay8910? engine;
         private int mask = 0x1F;
@@ -109,6 +109,7 @@ namespace NesEmulator
             // translator reads APU_FIX, which base.SetState already restored)
             engine = null;
             Sync();
+            ApplyEngineState();   // FA-ST-1: the engine's saved state replaces the re-key (exact)
         }
 
         public new void WriteAPURegister(ushort address, byte value)

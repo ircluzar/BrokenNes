@@ -11,7 +11,7 @@ namespace NesEmulator
     /// NES APU id "NOFR": APU_FIX keeps the game-facing side ($4015 reads, frame/DMC IRQs, DMC DMA timing); every register write also goes
     /// to the ported nofrendo APU (rendered once per frame), which is what you hear. The base's own samples are drained and discarded.
     /// </summary>
-    public sealed class APU_NOFR : APU_FIX, IAPU
+    public sealed class APU_NOFR : APU_FIX, IAPU, IPortedEngineState
     {
         private readonly Bus bus;
         private NofrendoApu? engine;   // lazy: the base constructor may call Reset before this class's fields exist
@@ -34,6 +34,7 @@ namespace NesEmulator
             base.SetState(state);
             E.Reset();
             foreach (var (a, v) in SoundRegisterReplay()) E.Write(a, v);
+            ApplyEngineState();   // FA-ST-1: the engine's saved state replaces the re-key (exact)
         }
 
         public new void WriteAPURegister(ushort address, byte value)

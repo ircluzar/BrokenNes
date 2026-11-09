@@ -10,7 +10,7 @@ namespace NesEmulator.Sega;
 /// writes land on frame boundaries; the DAC is <c>(data - 0x80) &lt;&lt; 6</c> added to both sides while $2B bit 7 is set. Converted to the hooks' rates by zero-order hold.
 /// Quick port; see the engine files for the license (PicoDrive non-commercial / MAME) and the kept quirks.
 /// </summary>
-public sealed class MdSoundUnitPico : MdSoundUnit, IGenesisSound
+public sealed class MdSoundUnitPico : MdSoundUnit, IGenesisSound, IPortedEngineState
 {
     private readonly double ymRate, ymClock, psgClock;
     private readonly int frameLen;

@@ -399,9 +399,9 @@ namespace NesEmulator
         public int GetSampleRate() => gb.SampleRate;
         public void SetEnabledChannels(int channelMask) { this.channelMask = channelMask; front.SetEnabledChannels(channelMask); }
         public IAPU Front => front;
-        public object GetState() => front.GetState();
+        public object GetState() => EngineState.BridgeGetState(this, front);   // FA-ST-1: the bridge and its unit, exact
         // the front's registers are restored; the Game Boy chip behind is fed them again (it kept the moment before the load: a key-off written after the save stayed in force, Workshop --apu-sweep)
-        public void SetState(object state) { front.SetState(state); if (front is NesEmulator.APU_FIX f) foreach (var (a, v) in f.SoundRegisterReplay()) lane0.Write(a, v); }
+        public void SetState(object state) => EngineState.BridgeSetState(this, front, state, () => { if (front is NesEmulator.APU_FIX f) foreach (var (a, v) in f.SoundRegisterReplay()) lane0.Write(a, v); });
         public void ClearAudioBuffers() { Drain(); queue.Clear(); front.ClearAudioBuffers(); }
         public void Reset() { front.Reset(); }
     }
