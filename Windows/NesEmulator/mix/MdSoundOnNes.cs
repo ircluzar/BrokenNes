@@ -215,7 +215,7 @@ namespace NesEmulator.Sega
         /// <summary>The inner unit's eleven voices (what the bridge replays); reading them clears the DAC's swing, so a probe should not interleave with the running bridge.</summary>
         public int DescribeVoices(Span<HubVoice> dest) => inner.DescribeVoices(dest);
 
-        public void SaveState(BinaryWriter w) => inner.SaveState(w);
+        public void SaveState(BinaryWriter w) { inner.SaveState(w); NesEmulator.EngineState.SaveHub(w, this, back, inner); }
 
         public void LoadState(BinaryReader r)
         {
@@ -233,6 +233,7 @@ namespace NesEmulator.Sega
             }
             ForgetVoices();
             Replay();
+            NesEmulator.EngineState.LoadHub(r, this, back, inner);   // FA-ST-2: the bridge and its NES chip as saved (over the re-key above)
         }
 
         public string Describe() =>

@@ -658,7 +658,28 @@ public sealed partial class Opl2
     /// <summary>Puts the chip's sample clock at the machine's present time (after loading a state that had no chip in it).</summary>
     public void Resync() { _samples = ChipNow / ClocksPerSample + 1; _timerEnd[0] = _timerEnd[1] = long.MaxValue; _timerRunning[0] = _timerRunning[1] = 0; }
 
-    /// <summary>After a state load or a cold boot: forget the drawn samples, carry on from the present.</summary>
+    /// <summary>FA-ST-3: the drawn samples and both resamplers' positions and history (ymfm's and the alternative engine's, with the block in progress), so a state load continues sample for sample.</summary>
+    public void SaveOutput(BinaryWriter w)
+    {
+        PcOut.Write(w, _out); w.Write(_outIndex); w.Write(_prev); w.Write(_cur); w.Write(_samples);
+        w.Write(_alt != null);
+        if (_alt == null) return;
+        w.Write(_altSamples); w.Write(_altBuf.Length); foreach (var v in _altBuf) w.Write(v); w.Write(_altBufPos); w.Write(_altBufLen); w.Write(_aPrev); w.Write(_aCur); w.Write(_aOutIndex);
+    }
+
+    public void LoadOutput(BinaryReader r)
+    {
+        PcOut.Read(r, _out); _outIndex = r.ReadInt64(); _prev = r.ReadInt32(); _cur = r.ReadInt32(); _samples = r.ReadInt64();
+        bool alt = r.ReadBoolean();
+        if (!alt) { if (_alt != null) AltRestart(); return; }
+        long altSamples = r.ReadInt64(); var buf = new short[r.ReadInt32()]; for (int i = 0; i < buf.Length; i++) buf[i] = r.ReadInt16();
+        int pos = r.ReadInt32(), len = r.ReadInt32(), ap = r.ReadInt32(), ac = r.ReadInt32(); long aoi = r.ReadInt64();
+        if (_alt == null) return;   // the engine changed since (LoadEngine reported it): nothing of the old engine's output applies
+        _altSamples = altSamples; if (_altBuf.Length < buf.Length) _altBuf = new short[buf.Length]; Array.Copy(buf, _altBuf, buf.Length);
+        _altBufPos = pos; _altBufLen = len; _aPrev = ap; _aCur = ac; _aOutIndex = aoi;
+    }
+
+    /// <summary>After a state load without the output section (an older state) or a cold boot: forget the drawn samples, carry on from the present.</summary>
     public void Restart()
     {
         _out.Clear();

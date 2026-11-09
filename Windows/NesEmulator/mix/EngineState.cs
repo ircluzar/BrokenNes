@@ -21,6 +21,8 @@ namespace NesEmulator;
 public static class EngineState
 {
     private const ulong Magic = 0x31545345474E45B7UL;  // "\xB7ENGEST1"
+    /// <summary>FA-ST-2 hub sections have a magic of their own: a stock unit's LoadState peeks for (and skips) an engine section right after its state, which is where a hub section stands.</summary>
+    private const ulong HubMagic = 0x31425548474E45B7UL;  // ENGHUB1
 
     /// <summary>Test hook (Workshop --apu-channels --state negative control): loads skip the engine section, as an old state would.</summary>
     public static bool TestSkipRestore;
@@ -28,35 +30,35 @@ public static class EngineState
     /// <summary>Last load's outcome, for tests and logs.</summary>
     public static string LastLoadNote { get; private set; } = "";
 
-    public static void Save(object root, Type stockBase, BinaryWriter w, bool units = false)
+    public static void Save(object root, Type stockBase, BinaryWriter w, bool units = false, object?[]? skip = null, ulong magic = Magic)
     {
         using var ms = new MemoryStream();
         using (var bw = new BinaryWriter(ms, System.Text.Encoding.UTF8, true))
-            new Walker(stockBase, units).Write(bw, root);
-        w.Write(Magic); w.Write(LayoutHash(root.GetType(), stockBase)); w.Write((int)ms.Length); w.Write(ms.GetBuffer(), 0, (int)ms.Length);
+            new Walker(stockBase, units, skip).Write(bw, root);
+        w.Write(magic); w.Write(LayoutHash(root.GetType(), stockBase)); w.Write((int)ms.Length); w.Write(ms.GetBuffer(), 0, (int)ms.Length);
     }
 
     public static byte[] Save(object root, Type stockBase, bool units = false) { using var ms = new MemoryStream(); using (var w = new BinaryWriter(ms)) Save(root, stockBase, w, units); return ms.ToArray(); }
 
     /// <summary>Reads an engine section if the stream holds one at this point (seekable streams: otherwise nothing is consumed), and restores it.
     /// False (with <see cref="LastLoadNote"/>) when there is none or it does not fit this build: the caller re-keys and reports.</summary>
-    public static bool TryLoad(object root, Type stockBase, BinaryReader r, bool units = false)
+    public static bool TryLoad(object root, Type stockBase, BinaryReader r, bool units = false, object?[]? skip = null, ulong magic = Magic)
     {
         var s = r.BaseStream;
         if (!s.CanSeek || s.Length - s.Position < 16) { LastLoadNote = "no engine section in the state (saved before FA-ST-1, or by another core)"; return false; }
         long at = s.Position;
-        if (r.ReadUInt64() != Magic) { s.Position = at; LastLoadNote = "no engine section in the state (saved before FA-ST-1, or by another core)"; return false; }
+        if (r.ReadUInt64() != magic) { s.Position = at; LastLoadNote = "no engine section in the state (saved before FA-ST-1, or by another core)"; return false; }
         ulong hash = r.ReadUInt64(); int len = r.ReadInt32(); byte[] body = r.ReadBytes(len);
         if (root is not IPortedEngineState && !units) { LastLoadNote = "engine section skipped (a stock unit loads a ported core's state)"; return false; }
-        return Restore(root, stockBase, hash, body, units);
+        return Restore(root, stockBase, hash, body, units, skip);
     }
 
     /// <summary>True when the reader stands at an engine section (peek; nothing consumed).</summary>
-    public static bool AtSection(BinaryReader r)
+    public static bool AtSection(BinaryReader r, ulong magic = Magic)
     {
         var s = r.BaseStream;
         if (!s.CanSeek || s.Length - s.Position < 16) return false;
-        long at = s.Position; bool yes = r.ReadUInt64() == Magic; s.Position = at; return yes;
+        long at = s.Position; bool yes = r.ReadUInt64() == magic; s.Position = at; return yes;
     }
 
     /// <summary>For the stock bases' LoadState: reads (or skips) the engine section if there is one, restores a ported core's engine, and reports
@@ -86,6 +88,32 @@ public static class EngineState
     public static object BridgeGetState(object bridge, IAPU front) =>
         new BridgeApuState { fix = front.GetState(), eng = Convert.ToBase64String(Save(bridge, typeof(object), units: true)) };
 
+    /// <summary>FA-ST-2: another console's sound unit on a NES chip (NES:&lt;id&gt; through a hub bridge: NesApuOnSnes, GbApuOnNes, SmsSoundOnNes,
+    /// SmsFmSoundOnNes, MdSoundOnNes). The console's own unit (<paramref name="front"/>) is saved by the session as before; this appends, after it,
+    /// the bridge itself (its clocks, caches, queue, resampler; the front left out) and the NES chip it plays on (<paramref name="back"/>, whole,
+    /// null when the chip belongs to a running NES that saves it itself), so a load continues sample for sample.</summary>
+    public static void SaveHub(BinaryWriter w, object bridge, IAPU? back, params object?[] front)
+    {
+        Save(bridge, typeof(object), w, units: true, skip: front, magic: HubMagic);
+        if (back != null) Save(back, typeof(object), w, units: true, magic: HubMagic);
+    }
+
+    /// <summary>Reads what <see cref="SaveHub"/> wrote, right after the front's state, and restores it over the bridge's own re-key (call it last).
+    /// A state without it (saved before FA-ST-2) keeps the re-key and says so on stderr. True when restored.</summary>
+    public static bool LoadHub(BinaryReader r, object bridge, IAPU? back, params object?[] front)
+    {
+        bool ok;
+        try
+        {
+            ok = TryLoad(bridge, typeof(object), r, units: true, skip: front, magic: HubMagic);
+            if (back != null && AtSection(r, HubMagic)) ok &= TryLoad(back, typeof(object), r, units: true, magic: HubMagic);
+            else if (back != null) { ok = false; LastLoadNote = $"no NES chip section in the state (bridge: {(ok ? "restored" : LastLoadNote)}; at {r.BaseStream.Position} of {r.BaseStream.Length})"; }
+        }
+        catch (Exception e) { ok = false; LastLoadNote = $"hub section unreadable ({e.GetType().Name}: {e.Message})"; }
+        if (!ok) ReportRekey(bridge);
+        return ok;
+    }
+
     /// <summary>Restores the front, runs the bridge's own re-key, then replaces it with the saved bridge (exact). An old state (the bare front)
     /// keeps the re-key and reports it.</summary>
     public static void BridgeSetState(object bridge, IAPU front, object state, Action rekey)
@@ -102,12 +130,12 @@ public static class EngineState
         if (!ok) ReportRekey(bridge);
     }
 
-    private static bool Restore(object root, Type stockBase, ulong hash, byte[] body, bool units)
+    private static bool Restore(object root, Type stockBase, ulong hash, byte[] body, bool units, object?[]? skip = null)
     {
         if (TestSkipRestore) { LastLoadNote = "restore skipped (test negative control)"; return false; }
         if (hash != LayoutHash(root.GetType(), stockBase)) { LastLoadNote = $"engine section of another build or core ({root.GetType().Name} layout changed)"; return false; }
         using var br = new BinaryReader(new MemoryStream(body));
-        new Walker(stockBase, units).Read(br, root);
+        new Walker(stockBase, units, skip).Read(br, root);
         LastLoadNote = "restored"; return true;
     }
 
@@ -171,11 +199,16 @@ public static class EngineState
     private sealed class Walker
     {
         private readonly Type stockBase; private readonly bool units;
+        private readonly HashSet<object>? skip;
         public SortedSet<string>? Seen;
         private readonly Dictionary<object, int> ids = new(ReferenceEqualityComparer.Instance);
         private readonly List<object> objs = new();
         private object root = null!;
-        public Walker(Type stockBase, bool units) { this.stockBase = stockBase; this.units = units; }
+        public Walker(Type stockBase, bool units, object?[]? skip = null)
+        {
+            this.stockBase = stockBase; this.units = units;
+            if (skip != null) { this.skip = new HashSet<object>(ReferenceEqualityComparer.Instance); foreach (var o in skip) if (o != null) this.skip.Add(o); }
+        }
 
         // tags for references
         private const byte Null = 0, Back = 1, New = 2, HostRef = 3, Static = 4;
@@ -243,7 +276,7 @@ public static class EngineState
             string? sk; lock (staticKey) staticKey.TryGetValue(v, out sk);
             if (sk != null) { w.Write(Static); w.Write(sk); return; }
             var t = v.GetType();
-            if (IsHost(t, root, units) || IsSkippedStatic(t)) { w.Write(HostRef); return; }
+            if (IsHost(t, root, units) || IsSkippedStatic(t) || skip?.Contains(v) == true) { w.Write(HostRef); return; }
             w.Write(New); w.Write(t.AssemblyQualifiedName!);
             ids[v] = objs.Count; objs.Add(v);
             if (t == typeof(string)) { w.Write((string)v); return; }

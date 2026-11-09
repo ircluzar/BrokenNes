@@ -72,8 +72,9 @@ namespace NesEmulator.Mix
         public void FrameSequencerStep() => front.FrameSequencerStep();
         public byte ReadRegister(int reg) => front.ReadRegister(reg);
         public void WriteRegister(int reg, byte v) => front.WriteRegister(reg, v);
-        public void SaveState(BinaryWriter w) => front.SaveState(w);
-        public void LoadState(BinaryReader r) => front.LoadState(r);
+        // FA-ST-2: the bridge and its NES chip follow the Game Boy unit (driveOnly: the chip is the running NES's own and is saved by it)
+        public void SaveState(BinaryWriter w) { front.SaveState(w); NesEmulator.EngineState.SaveHub(w, this, driveOnly ? null : back, front); }
+        public void LoadState(BinaryReader r) { front.LoadState(r); NesEmulator.EngineState.LoadHub(r, this, driveOnly ? null : back, front); }
 
         private void N(ushort a, byte v) { if (cache[a - 0x4000] == v) return; cache[a - 0x4000] = v; back.WriteAPURegister(a, v); }
 

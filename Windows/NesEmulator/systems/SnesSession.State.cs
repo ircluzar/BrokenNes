@@ -11,8 +11,7 @@ namespace NesEmulator.Systems;
 /// the cartridge chip) followed by the sound unit that was playing, whichever it is:
 /// <list type="bullet">
 /// <item><b>SFC</b> (the SPC700 + S-DSP): its whole state.</item>
-/// <item><b>NES:&lt;chip&gt;</b> (the game's sound replayed on a NES sound chip): the SPC700 + S-DSP that keeps running the game's sound program behind the bridge, whole. The NES chip is a listener, not part of the machine: it keeps playing
-/// what it was and listens to the loaded voices from the next sync on (<see cref="NesApuOnSnes.Rebase"/>), so the audio of such a session after a load is alive but not sample-identical to the session that carried on; the machine, the pictures and the SPC700 / S-DSP are.</item>
+/// <item><b>NES:&lt;chip&gt;</b> (the game's sound replayed on a NES sound chip): the SPC700 + S-DSP that keeps running the game's sound program behind the bridge, whole, then the bridge and the NES chip it plays on (FA-ST-2, <see cref="NesApuOnSnes.SaveHub"/>), so the sound after a load continues sample for sample. A state from before FA-ST-2 has no such section: the chip then keeps playing and re-maps the loaded voices from the next sync on (reported on stderr).</item>
 /// <item><b>HLE</b> (the silent stand-in): the stand-in's state, and the real SPC700 + S-DSP that was swapped out behind it, if the game ran on one first (swapping back resumes it).</item>
 /// </list>
 /// A state belongs to the sound unit it was saved with (<c>apu</c> in the header) and to the cartridge chip it ran with (<c>chip</c>: the homemade DSP-1 and Nintendo's firmware are different chips, and the firmware's hash is part of the id):
@@ -114,7 +113,7 @@ public sealed partial class SnesSession
                 w.Write(parkedSpc != null);
                 parkedSpc?.SaveState(w);
                 break;
-            case NesApuOnSnes { Front: APU_SFC front }: w.Write(UnitNes); front.SaveState(w); break;
+            case NesApuOnSnes { Front: APU_SFC front } nesBridge: w.Write(UnitNes); front.SaveState(w); nesBridge.SaveHub(w); break;   // FA-ST-2: the NES chip and the bridge follow
             case SnesApuOnChip { Front: APU_SFC chipFront }: w.Write(UnitChip); chipFront.SaveState(w); break;      // another console's enhanced sound chip: a listener, like the NES chip; the SPC700 + S-DSP is the machine
             default: throw new NotSupportedException($"The sound unit {board.Apu.CoreName} keeps no state that can be saved.");
         }
@@ -145,7 +144,8 @@ public sealed partial class SnesSession
             case NesApuOnSnes { Front: APU_SFC front } bridge:
                 RequireUnit(unit, UnitNes);
                 front.LoadState(r);
-                bridge.Rebase(board.MasterClock);   // the NES chip listens to the loaded voices from the board's new time; its own phases are not part of the machine
+                bridge.Rebase(board.MasterClock);
+                bridge.LoadHub(r);   // FA-ST-2: the bridge and its NES chip as saved (an older state: the chip re-maps the loaded voices from the next sync, reported)
                 break;
             case SnesApuOnChip { Front: APU_SFC chipFront } onChip:
                 RequireUnit(unit, UnitChip);

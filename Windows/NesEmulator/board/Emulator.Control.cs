@@ -29,7 +29,7 @@ namespace BrokenNes
                     if (nesController.UploadedRoms.ContainsKey(nesController.CurrentRomName))
                     {
                         var data = nesController.UploadedRoms[nesController.CurrentRomName];
-                        if (nes == null) nes = new NesEmulator.NES();
+                        if (nes == null) nes = NewNes();
                         nes.RomName = nesController.CurrentRomName;
                         var prevApuSuffix = nesController.ApuCoreSel;
                         nes.LoadROM(data);

@@ -39,7 +39,19 @@ public interface IPcSoundCard
     long IrqsRaised { get; }
 }
 
-public sealed class DosboxMixer
+/// <summary>FA-ST-3: a sound source's drawn-but-not-yet-read output (its 44.1 kHz samples, its resampler's position and history), saved after the machine
+/// so a state load continues sample for sample instead of dropping them and restarting from the present (PcSession, the "PCAU" trailer).</summary>
+public interface IPcSoundOutput { void SaveOutput(BinaryWriter w); void LoadOutput(BinaryReader r); }
+
+internal static class PcOut
+{
+    public static void Write(BinaryWriter w, List<short> l) { w.Write(l.Count); foreach (var v in l) w.Write(v); }
+    public static void Read(BinaryReader r, List<short> l) { l.Clear(); int n = r.ReadInt32(); for (int i = 0; i < n; i++) l.Add(r.ReadInt16()); }
+    public static void Write(BinaryWriter w, List<int> l) { w.Write(l.Count); foreach (var v in l) w.Write(v); }
+    public static void Read(BinaryReader r, List<int> l) { l.Clear(); int n = r.ReadInt32(); for (int i = 0; i < n; i++) l.Add(r.ReadInt32()); }
+}
+
+public sealed class DosboxMixer : IPcSoundOutput
 {
     public const int Shift = 14, Remain = (1 << Shift) - 1, VolShift = 13;
     public const int OutRate = 44100;
@@ -279,6 +291,9 @@ public sealed class DosboxMixer
         _mixBase = _mixCount;
         _outIndex = (long)(((Int128)_mixCount * OutRate + Rate - 1) / Rate);
     }
+
+    public void SaveOutput(BinaryWriter w) { PcOut.Write(w, _out); PcOut.Write(w, _mixL); PcOut.Write(w, _mixR); w.Write(_mixBase); w.Write(_outIndex); }
+    public void LoadOutput(BinaryReader r) { PcOut.Read(r, _out); PcOut.Read(r, _mixL); PcOut.Read(r, _mixR); _mixBase = r.ReadInt64(); _outIndex = r.ReadInt64(); }
 
     public void Save(BinaryWriter w)
     {

@@ -91,10 +91,10 @@ internal static class X86EnginesCli
                     var r = new Rig(Make());
                     r.W(0x01, 0x20); Patch(r, 0); KeyOn(r, 0);
                     var a = r.Run(0.3);
-                    var st = new MemoryStream(); var sw = new BinaryWriter(st); r.Chip.Save(sw); r.Chip.SaveEngine(sw); sw.Flush();
-                    r.Chip.Restart();   // the saved machine goes on as a loaded one does (the drawn samples dropped), so A and B start alike
+                    r.Run(0.0123);   // a save between reads: some drawn samples are waiting (FA-ST-3: they are saved with the resamplers)
+                    var st = new MemoryStream(); var sw = new BinaryWriter(st); r.Chip.Save(sw); r.Chip.SaveEngine(sw); r.Chip.SaveOutput(sw); sw.Flush();
                     var a2 = r.Run(0.3);
-                    var r2 = new Rig(Make()); r2.Clock = r.Clock - (long)(0.3 * Pit); st.Position = 0; var sr = new BinaryReader(st); r2.Chip.Load(sr); r2.Chip.LoadEngine(sr); r2.Chip.Restart();
+                    var r2 = new Rig(Make()); r2.Clock = r.Clock - (long)(0.3 * Pit); st.Position = 0; var sr = new BinaryReader(st); r2.Chip.Load(sr); r2.Chip.LoadEngine(sr); r2.Chip.LoadOutput(sr);
                     var b = r2.Run(0.3);
                     // FA-ST-1: the engine's own state is saved, so the loaded chip plays the saved one's samples exactly
                     int n = Math.Min(a2.Length, b.Length); double d = 0; for (int i = 0; i < n; i++) d += (double)(a2[i] - b[i]) * (a2[i] - b[i]);
@@ -119,10 +119,15 @@ internal static class X86EnginesCli
                     var s = new PcSession(File.ReadAllBytes(fd), "freedos.img", id);
                     for (int f = 0; f < 30; f++) s.RunFrame();
                     bool swap = s.TrySwapCore(NesEmulator.Systems.CoreSlot.Apu, opts[(opts.IndexOf(id) + 1) % opts.Count]) && s.TrySwapCore(NesEmulator.Systems.CoreSlot.Apu, id);
-                    var st = s.SaveState(); for (int f = 0; f < 10; f++) s.RunFrame(); s.LoadState(st); s.RunFrame();
-                    bool ok = swap && s.ApuId == id.ToUpperInvariant();
+                    // FA-ST-3: a session load continues the drawn sound sample for sample (the frames after the load read the same samples as the frames after the save)
+                    var buf = new short[16384];
+                    List<short> Frames(int n) { var o = new List<short>(); for (int f = 0; f < n; f++) { s.RunFrame(); int k = s.ReadSamples(buf); o.AddRange(buf.AsSpan(0, k).ToArray()); } return o; }
+                    s.RunFrame();   // a frame not read: its samples wait in the units at the save
+                    var st = s.SaveState(); var a1 = Frames(10); s.LoadState(st); var b1 = Frames(10);
+                    bool same = a1.Count == b1.Count && a1.SequenceEqual(b1);
+                    bool ok = swap && s.ApuId == id.ToUpperInvariant() && same;
                     if (!ok) flagged++;
-                    Console.WriteLine($"menu     {id,-14} {(ok ? "boots, swaps live, loads a state" : "FAIL")}");
+                    Console.WriteLine($"menu     {id,-14} {(ok ? $"boots, swaps live, loads a state, sound after the load exact ({a1.Count} samples)" : $"FAIL (swap {swap}, sound after the load {(same ? "exact" : $"differs: {a1.Count} vs {b1.Count} samples")})")}");
                 }
                 catch (Exception e) { flagged++; Console.WriteLine($"menu     {id,-14} CRASH {e.Message}"); }
             }

@@ -255,20 +255,21 @@ namespace BrokenNes
             nesController.CpuCoreOptions = NesEmulator.Systems.CoreCatalog.Options(NesEmulator.Systems.ConsoleKind.Nes, NesEmulator.Systems.CoreSlot.Cpu).Select(o => o.Id).ToList();
             if (string.IsNullOrEmpty(nesController.CpuCoreSel) || !nesController.CpuCoreOptions.Contains(nesController.CpuCoreSel))
             {
-                if (nesController.CpuCoreOptions.Contains("FMC")) nesController.CpuCoreSel = "FMC";
-                else if (nesController.CpuCoreOptions.Contains("FIX")) nesController.CpuCoreSel = "FIX";
+                if (nesController.CpuCoreOptions.Contains("FIX")) nesController.CpuCoreSel = "FIX";
+                else if (nesController.CpuCoreOptions.Contains("FMC")) nesController.CpuCoreSel = "FMC";
                 else if (nesController.CpuCoreOptions.Count>0) nesController.CpuCoreSel = nesController.CpuCoreOptions[0];
             }
             nesController.PpuCoreOptions = NesEmulator.Systems.CoreCatalog.Options(NesEmulator.Systems.ConsoleKind.Nes, NesEmulator.Systems.CoreSlot.Ppu).Select(o => o.Id).ToList();
             if (!nesController.PpuCoreOptions.Contains(nesController.PpuCoreSel) && nesController.PpuCoreOptions.Count>0)
             {
-                if (nesController.PpuCoreOptions.Contains("FMC")) nesController.PpuCoreSel = "FMC"; else if (nesController.PpuCoreOptions.Contains("NGTV")) nesController.PpuCoreSel = "NGTV"; else if (nesController.PpuCoreOptions.Contains("CUBE")) nesController.PpuCoreSel = "CUBE"; else nesController.PpuCoreSel = nesController.PpuCoreOptions[0];
+                // the stock FIX chips first (the desktop's default cores since 2026-09-25), then the old order
+                if (nesController.PpuCoreOptions.Contains("FIX")) nesController.PpuCoreSel = "FIX"; else if (nesController.PpuCoreOptions.Contains("FMC")) nesController.PpuCoreSel = "FMC"; else if (nesController.PpuCoreOptions.Contains("NGTV")) nesController.PpuCoreSel = "NGTV"; else if (nesController.PpuCoreOptions.Contains("CUBE")) nesController.PpuCoreSel = "CUBE"; else nesController.PpuCoreSel = nesController.PpuCoreOptions[0];
             }
             nesController.ApuCoreOptions = NesEmulator.Systems.CoreCatalog.Options(NesEmulator.Systems.ConsoleKind.Nes, NesEmulator.Systems.CoreSlot.Apu).Select(o => o.Id).ToList();
             if (string.IsNullOrEmpty(nesController.ApuCoreSel) || !nesController.ApuCoreOptions.Contains(nesController.ApuCoreSel))
             {
-                if (nesController.ApuCoreOptions.Contains("FMC")) nesController.ApuCoreSel = "FMC";
-                else if (nesController.ApuCoreOptions.Contains("FIX")) nesController.ApuCoreSel = "FIX";
+                if (nesController.ApuCoreOptions.Contains("FIX")) nesController.ApuCoreSel = "FIX";
+                else if (nesController.ApuCoreOptions.Contains("FMC")) nesController.ApuCoreSel = "FMC";
                 else if (nesController.ApuCoreOptions.Count>0) nesController.ApuCoreSel = nesController.ApuCoreOptions[0];
             }
             _ = Task.Run(async () => { try { var val = await JS.InvokeAsync<string>("nesInterop.idbGetItem", "pref_eventScheduler"); if (!string.IsNullOrEmpty(val)) { bool on = val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase); await InvokeAsync(()=>{ eventSchedulerOn = on; if (nes!=null) nes.EnableEventScheduler = on; StateHasChanged(); }); } } catch { } });
@@ -884,6 +885,17 @@ namespace BrokenNes
             try { await JS.InvokeVoidAsync("nesInterop.setActiveClockId", string.Empty); } catch {}
         }
 
+        /// <summary>The first NES of the page: on the stored sound core, else the stock FIX one (the desktop's default cores since 2026-09-25). A bare NES starts on
+        /// the frozen FMC sound core, and the ROM load copies the running core into the selection, so Lite ran every NES game on APU_FMC (whose state load resyncs
+        /// the audio: a loaded state did not continue sample for sample) and never applied a stored sound core. Later ROM loads keep the running core (LoadROM).</summary>
+        private NesEmulator.NES NewNes()
+        {
+            var n = new NesEmulator.NES();
+            var apu = string.IsNullOrEmpty(nesController.ApuCoreSel) ? "FIX" : nesController.ApuCoreSel;
+            try { if (!n.SetApuCore(apu)) { Status.Set($"Sound core {apu} is not in this build: FIX"); n.SetApuCore("FIX"); } } catch { }
+            return n;
+        }
+
         private void ApplySelectedCores()
         {
             if (nes == null) return;
@@ -950,7 +962,7 @@ namespace BrokenNes
                     nesController.ApuCoreOptions = nesController.ApuCoreOptions.Where(id => ownedApu.Contains(id)).ToList();
                     if (!nesController.ApuCoreOptions.Contains(nesController.ApuCoreSel))
                     {
-                        nesController.ApuCoreSel = nesController.ApuCoreOptions.Contains("FMC") ? "FMC" : (nesController.ApuCoreOptions.FirstOrDefault() ?? nesController.ApuCoreSel);
+                        nesController.ApuCoreSel = nesController.ApuCoreOptions.Contains("FIX") ? "FIX" : nesController.ApuCoreOptions.Contains("FMC") ? "FMC" : (nesController.ApuCoreOptions.FirstOrDefault() ?? nesController.ApuCoreSel);
                     }
                 }
                 if (ownedClock.Count > 0)
@@ -1042,7 +1054,7 @@ namespace BrokenNes
                 // BrokenNes 2: a SNES / Game Boy ROM from the server (?rom=...) starts a console session.
                 if (await TryStartSessionAsync(nesController.RomFileName, romData)) return;
                 bool wasRunning = nesController.IsRunning; if (wasRunning) await PauseEmulation();
-                if (nes == null) nes = new NesEmulator.NES();
+                if (nes == null) nes = NewNes();
                 // Wire Imagine Fix callback: when NES requests an Imagine shot, run with current settings.
                 // Guard against overlapping predictions; allow periodic retries from NES core.
                 try {
@@ -1161,7 +1173,7 @@ namespace BrokenNes
                     return false;
                 }
                 bool wasRunning = nesController.IsRunning; if (wasRunning) await PauseEmulation();
-                if (nes == null) nes = new NesEmulator.NES();
+                if (nes == null) nes = NewNes();
                 var prevApuSuffix = nesController.ApuCoreSel;
                 nes.RomName = filename;
                 nes.LoadROM(romData);

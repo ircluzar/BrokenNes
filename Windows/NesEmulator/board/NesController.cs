@@ -333,7 +333,7 @@ namespace BrokenNes
     public bool ShaderOn = true;
     public string ActiveShaderKey = "RF";
     public List<ShaderOption> ShaderOptions = new();
-    public bool FamicloneOn = true;
+    public bool FamicloneOn = false;   // follows the running APU (SetApuCoreSelFromEmu); the default is FIX
     public string ApuCoreSel = "";
     public string CpuCoreSel = "";
 
@@ -357,7 +357,7 @@ namespace BrokenNes
     // that load should use.
     public static int PeekMapperId(byte[] rom)
         => (rom == null || rom.Length < 16) ? -1 : ((rom[6] >> 4) | ((rom[7] >> 4) << 4));
-    public string PpuCoreSel = "FMC";
+    public string PpuCoreSel = "FIX";   // the stock picture chip (the desktop's default since 2026-09-25); a stored pref_ppuCore still wins
     // Clock Core selection (new pluggable loop ownership)
     public List<string> ClockCoreOptions { get; set; } = new();
     public string ClockCoreSel { get; set; } = "FMC";

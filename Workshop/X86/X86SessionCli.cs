@@ -28,7 +28,7 @@ internal static class X86SessionCli
         foreach (var slot in new[] { CoreSlot.Cpu, CoreSlot.Ppu, CoreSlot.Apu })
         {
             var o = CoreCatalog.Options(ConsoleKind.Pc, slot);
-            Check(o.Count == (slot == CoreSlot.Cpu ? 2 : 1), $"{slot} menu: {string.Join(" | ", o.Select(x => $"{x.Id} = {x.Label} [{x.Section}]"))}");
+            Check(slot == CoreSlot.Cpu ? o.Count == 2 : o.Count >= 1 && o[0].Id == CoreCatalog.Default(ConsoleKind.Pc, slot), $"{slot} menu: {string.Join(" | ", o.Select(x => $"{x.Id} = {x.Label} [{x.Section}]"))}");
         }
         using var s = ConsoleSessions.Create(ConsoleKind.Pc, data, Array.IndexOf(args, "--cpu") is int ci && ci > 0 && ci + 1 < args.Length ? args[ci + 1] : CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Cpu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Ppu), CoreCatalog.Default(ConsoleKind.Pc, CoreSlot.Apu), null, name);
         Console.WriteLine($"  session: {s.Description}, {s.FramesPerSecond:F2} fps");
