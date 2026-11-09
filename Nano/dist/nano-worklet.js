@@ -143,7 +143,7 @@ class Chip {
       case 0x400B:
         this.triTimer = (this.triTimer & 0x00FF) | ((value & 7) << 8);
         if (this.triEnabled) this.triLength = LENGTH_TABLE[(value >> 3) & 0x1F];
-        this.triSeq = 0; this.triReload = 1; this.triTimerCounter = this.triTimer + 1;
+        this.triReload = 1;   // APU_FIX: no phase reset (no sequence step, no timer divider reload)
         break;
       case 0x400C:
         this.noiseHalt = (value & 0x20) ? 1 : 0; this.noiseConst = (value & 0x10) ? 1 : 0; this.noiseVol = value & 0x0F;   // only $400F restarts the envelope
@@ -278,11 +278,10 @@ class Chip {
 
   // Would the sweep unit mute this pulse (the target period is out of range)?
   sweepMutes(i) {
-    const shift = this.pSwShift[i];
-    if (shift === 0) return false;
-    const timer = this.pTimer[i], change = timer >> shift;
+    // APU_FIX.SweepWouldMute: a target above $7FF mutes at every shift (shift 0: target = twice the period); a target below 8 does not
+    const timer = this.pTimer[i], change = timer >> this.pSwShift[i];
     const target = this.pSwNeg[i] ? (timer - change - (i === 0 ? 1 : 0)) : (timer + change);
-    return target > 0x7FF || target < 8;
+    return target > 0x7FF;
   }
 
   pulseOut(i) {
