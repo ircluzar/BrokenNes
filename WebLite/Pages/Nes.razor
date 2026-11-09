@@ -110,25 +110,10 @@
                     }
                     @if (emu!.ActiveConsole != ConsoleKind.Nes)
                     {
-                        @* SNES / Game Boy: the console's own parts first, then the other consoles' (a pick swaps in while the game runs). *@
+                        @* SNES / Game Boy / ...: the core menus (layout D, CoreMenuSheet); a pick swaps in while the game runs. *@
                         @foreach (var slot in new[] { CoreSlot.Cpu, CoreSlot.Ppu, CoreSlot.Apu })
                         {
-                            var current = emu!.ConsoleCore(emu!.ActiveConsole, slot);
-                            <div class="qc-select-stack">
-                                <label class="mini-label" title="@($"{slot.ToString().ToUpperInvariant()} of the {emu!.ActiveConsoleName} - swaps in while the game runs")">@slot.ToString().ToUpperInvariant()</label>
-                                <select class="btn btn-rf btn-select console-core-select" aria-label="@($"{slot} core")" value="@current"
-                                        @onchange="(e => emu!.SetConsoleCoreAsync(slot, e.Value?.ToString() ?? current))">
-                                    @foreach (var fam in emu!.ConsoleCoreOptions(slot).GroupBy(o => o.Section))
-                                    {
-                                        <optgroup label="@CoreCatalog.SectionTitle(emu!.ActiveConsole, fam.Key)">
-                                            @foreach (var o in fam)
-                                            {
-                                                <option value="@o.Id" selected="@(o.Id == current)">@o.Label</option>
-                                            }
-                                        </optgroup>
-                                    }
-                                </select>
-                            </div>
+                            @CoreMenuButton(slot)
                         }
                     }
                     @if (emu!.ShowsWideMessEnhancements)
@@ -154,12 +139,7 @@
                     }
                     @if (ShowApuPicker && emu!.ActiveConsole == ConsoleKind.Nes)
                     {
-                        <div class="qc-select-stack">
-                            <label for="apuCoreSelect" class="mini-label" title="Select audio processing core">APU Core</label>
-                            <button id="apuCoreSelect" type="button" class="btn btn-fmc btn-select" title="Audio core" aria-label="Audio Core" @onclick="OpenApuPicker">
-                                @emu!.Controller.ApuCoreSel
-                            </button>
-                        </div>
+                        @CoreMenuButton(CoreSlot.Apu)
                     }
                     @if (emu!.ActiveConsole == ConsoleKind.Nes && string.Equals(emu!.Controller.ApuCoreSel, "MD", StringComparison.OrdinalIgnoreCase))
                     {
@@ -177,28 +157,11 @@
                     }
                     @if (ShowCpuPicker && emu!.ActiveConsole == ConsoleKind.Nes)
                     {
-                        <div class="qc-select-stack">
-                            <label for="cpuCoreSelect" class="mini-label" title="Select CPU core implementation">CPU Core</label>
-                            @* Shows the core actually running, which is not always the one picked:
-                               a cartridge that cannot run on the selected core pins its own for the
-                               session. Rendering CpuCoreSel here would report FMC while FIX runs. *@
-                            <button id="cpuCoreSelect" type="button" class="btn btn-rf btn-select"
-                                    title="@(string.IsNullOrEmpty(emu!.Controller.RuntimeCpuCoreOverride)
-                                              ? "CPU core"
-                                              : $"This ROM requires CPU_{emu!.Controller.RuntimeCpuCoreOverride} and is using it for this session; your saved choice ({emu!.Controller.CpuCoreSel}) is unchanged.")"
-                                    aria-label="CPU Core" @onclick="OpenCpuPicker">
-                                @emu!.Controller.EffectiveCpuCoreSel@(string.IsNullOrEmpty(emu!.Controller.RuntimeCpuCoreOverride) ? "" : "*")
-                            </button>
-                        </div>
+                        @CoreMenuButton(CoreSlot.Cpu)
                     }
                     @if (ShowPpuPicker && emu!.ActiveConsole == ConsoleKind.Nes)
                     {
-                        <div class="qc-select-stack">
-                            <label for="ppuCoreSelect" class="mini-label" title="Select PPU core implementation">PPU Core</label>
-                            <button id="ppuCoreSelect" type="button" class="btn btn-rf btn-select" title="PPU core" aria-label="PPU Core" @onclick="OpenPpuPicker">
-                                @emu!.Controller.PpuCoreSel
-                            </button>
-                        </div>
+                        @CoreMenuButton(CoreSlot.Ppu)
                     }
                     @if (ShowClockPicker)
                     {
@@ -1353,6 +1316,10 @@
 </div>
 
 @* Core Picker Modal *@
+@if (coreMenuSlot is CoreSlot cms && emu != null)
+{
+    <CoreMenuSheet Emu="emu" Slot="cms" OnClose="(() => { coreMenuSlot = null; StateHasChanged(); })" />
+}
 @if (CorePickerOpen)
 {
     <div class="cp-modal-backdrop" @onclick="CloseCorePicker">
@@ -1410,6 +1377,23 @@
     private bool StageMode = false;
     private bool DisplayOnlyMode = false;
     private bool HideRtcGhImagine => StageMode || DisplayOnlyMode;
+    // the core menus (layout D, 2026-11-01 on the desktop): one button per slot shows the current core's short label and opens CoreMenuSheet
+    private CoreSlot? coreMenuSlot;
+    private string CoreMenuCurrent(CoreSlot slot) => emu!.ActiveConsole == ConsoleKind.Nes
+        ? (slot switch { CoreSlot.Cpu => emu!.Controller.EffectiveCpuCoreSel + (string.IsNullOrEmpty(emu!.Controller.RuntimeCpuCoreOverride) ? "" : "*"), CoreSlot.Ppu => emu!.Controller.PpuCoreSel, _ => emu!.Controller.ApuCoreSel }) ?? ""
+        : emu!.ConsoleCore(emu!.ActiveConsole, slot);
+    private RenderFragment CoreMenuButton(CoreSlot slot) => __builder =>
+    {
+        string id = CoreMenuCurrent(slot);
+        var opt = CoreCatalog.Find(emu!.ActiveConsole, slot, id.TrimEnd('*'));
+        string name = slot.ToString().ToUpperInvariant();
+        <div class="qc-select-stack">
+            <label for="@($"{slot.ToString().ToLowerInvariant()}CoreSelect")" class="mini-label">@name</label>
+            <button id="@($"{slot.ToString().ToLowerInvariant()}CoreSelect")" type="button" class="btn btn-rf btn-select core-menu-btn" aria-label="@($"{name} core menu")" data-core="@id.TrimEnd('*')"
+                    title="@(opt?.Label ?? id)" @onclick="(() => coreMenuSlot = slot)">@(opt != null ? CoreCatalog.MenuLabel(opt) : id)</button>
+        </div>
+    };
+
     private bool HideCoreSelectors => StageMode || DisplayOnlyMode;
     // The bundled homebrew demo. Registered as a built-in RomOption in Emulator.Initialize, so it
     // is also reachable from the ROM Manager list after the hero strip dismisses itself.

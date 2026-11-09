@@ -28,7 +28,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { startLab, args } from './litelab.mjs';
+import { startLab, args, pickCore, coreOptions, currentCore } from './litelab.mjs';
 
 const a = args();
 const only = a.only ? String(a.only).split(',') : null;
@@ -118,7 +118,7 @@ window.__diff = (b64, w, h) => {
 window.__allColour = rgb => { const fb = window.__last; if (!fb) return false; for (let i = 0; i < fb.length; i += 4) if (((fb[i] << 16) | (fb[i + 1] << 8) | fb[i + 2]) !== rgb) return false; return true; };
 return 1; })()`;
 
-const selectOption = (page, selector, value) => page.eval(`(() => { const s = document.querySelector(${JSON.stringify(selector)}); if (!s) return 'no select'; const o = [...s.options].find(x => x.value === ${JSON.stringify(value)}); if (!o) return 'no option ' + [...s.options].map(x => x.value).join(','); s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
+const selectOption = (page, selector, value) => /aria-label="(Cpu|Ppu|Apu) core"/.test(selector) ? pickCore(page, selector, value) : page.eval(`(() => { const s = document.querySelector(${JSON.stringify(selector)}); if (!s) return 'no select'; const o = [...s.options].find(x => x.value === ${JSON.stringify(value)}); if (!o) return 'no option ' + [...s.options].map(x => x.value).join(','); s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
 const press = (page, which) => page.eval(`(async () => { const t0 = performance.now(); await nesInterop._mainRef.invokeMethodAsync('Js${which}State'); return [document.body.innerText, performance.now() - t0]; })()`);
 const line = (text, re) => (text.match(new RegExp('[^\\n]*(?:' + re + ')[^\\n]*')) || [''])[0].trim();
 
@@ -143,7 +143,8 @@ if (want('console') || want('picture')) await withLab(async lab => {
   const opts = await page.eval(`[...document.getElementById('consoleSelect').options].map(o => o.value + '=' + o.text)`);
   check('console', 'the Console menu lists WideMess', opts.includes('wms=WideMess'), opts.join(', '));
   const cons = await console_(page);
-  const cores = await page.eval(`[...document.querySelectorAll('.console-core-select')].map(s => s.getAttribute('aria-label') + '=' + s.value + ' [' + [...s.options].map(o => o.value).join(' ') + ']')`);
+  const cores = [];
+  for (const slot of ['cpu', 'ppu', 'apu']) cores.push(`${slot[0].toUpperCase() + slot.slice(1)} core=${await currentCore(page, slot)} [${((await coreOptions(page, slot)) || []).map(o => o.id).join(' ')}]`);
   check('console', 'a .wms file starts the WideMess console with its own cores (WMS; the SNES sound chip offered as the alternative)',
     cons === 'wms' && cores.length === 3 && cores.every(c => /=WMS \[/.test(c)) && /Apu core=WMS \[WMS SFC/.test(cores.join(' | ')), `console ${cons}; ${cores.join(' | ')}`.slice(0, 400));
   let r = null;
@@ -408,7 +409,7 @@ if (want('chips')) {
     await page.waitFor("document.body.innerText.includes('ROM: vrun.nes') || document.body.innerText.includes('vrun.nes')", 240000).catch(() => {});
     await page.eval(HELPERS);
     const r = await page.eval(`window.__frames(240, null, { colours: true })`);
-    const sel = await page.eval(`document.getElementById('ppuCoreSelect')?.innerText?.trim() || ''`);
+    const sel = await page.eval(`document.getElementById('ppuCoreSelect')?.dataset.core || ''`);
     check('chips', 'a NES game on the WideMess widescreen chip (NES board WMSS) is shown whole, 400 wide, in Lite (VRUN\'s first screens: a few colours, moving)', /WMSS/.test(sel) && r.w === 400 && r.aw === 400 && r.colours >= 2 && new Set(r.hashes).size > 1,
       `PPU ${sel}, ${r.w} x ${r.h} shown ${r.aw} wide, ${r.colours} colours, ${new Set(r.hashes).size} distinct pictures in 240 frames`);
   });

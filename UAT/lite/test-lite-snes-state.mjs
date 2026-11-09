@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { startLab, args } from './litelab.mjs';
+import { startLab, args, pickCore, coreOptions, currentCore } from './litelab.mjs';
 
 const a = args();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -68,7 +68,7 @@ async function openRom(lab, rom) {
   await page.eval(FRAMES);
   return page;
 }
-const selectOption = (page, selector, value) => page.eval(`(() => { const s = document.querySelector(${JSON.stringify(selector)}); if (!s) return 'no select'; const o = [...s.options].find(x => x.value === ${JSON.stringify(value)}); if (!o) return 'no option'; s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
+const selectOption = (page, selector, value) => /aria-label="(Cpu|Ppu|Apu) core"/.test(selector) ? pickCore(page, selector, value) : page.eval(`(() => { const s = document.querySelector(${JSON.stringify(selector)}); if (!s) return 'no select'; const o = [...s.options].find(x => x.value === ${JSON.stringify(value)}); if (!o) return 'no option'; s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
 /** Calls the page's save / load and returns [the page text afterwards, milliseconds]. */
 const press = (page, which) => page.eval(`(async () => { const t0 = performance.now(); await nesInterop._mainRef.invokeMethodAsync('Js${which}State'); const ms = performance.now() - t0; return [document.body.innerText, ms]; })()`);
 const line = (text, re) => (text.match(new RegExp('[^\\n]*(?:' + re + ')[^\\n]*')) || [''])[0].trim();

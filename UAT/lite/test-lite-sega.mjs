@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { startLab, args } from './litelab.mjs';
+import { startLab, args, pickCore, coreOptions, currentCore } from './litelab.mjs';
 import { writeAll } from './synth-roms.mjs';
 
 const a = args();
@@ -85,6 +85,7 @@ async function withLab(opts, fn) {
 const ready = async (page) => { await page.eval(FRAMES); };
 
 async function selectOption(page, selector, value) {
+  if (/aria-label="(Cpu|Ppu|Apu) core"/.test(selector)) return pickCore(page, selector, value);
   return page.eval(`(() => { const s = document.querySelector(${JSON.stringify(selector)}); if (!s) return 'no select'; const o = [...s.options].find(x => x.value === ${JSON.stringify(value)}); if (!o) return 'no option ' + [...s.options].map(x => x.value).join(','); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
 }
 const statusText = page => page.eval(`(document.querySelector('.status-chip, .status-bar, #status')?.innerText || document.body.innerText.match(/STATUS:\\s*([^\\n]*)/)?.[1] || '')`);
@@ -236,14 +237,16 @@ async function groupPickers() {
     await withLab({}, async lab => {
       const page = await openRom(lab, GAMES[key]);
       for (const slot of ['cpu', 'ppu', 'apu']) {
-        const opts = await page.eval(`(() => { const s = document.querySelector('select[aria-label="${slot[0].toUpperCase() + slot.slice(1)} core"]'); return s ? [...s.options].map(o => o.value) : null; })()`);
-        check('pickers', `${key}: the ${slot.toUpperCase()} picker is there and lists the catalog`, opts && want[key][slot].every(id => opts.some(o => o.toUpperCase() === id.toUpperCase() || o.toUpperCase().startsWith(id.toUpperCase()))), opts ? opts.join(',') : 'no picker');
+        const opts = (await coreOptions(page, slot))?.map(o => o.id) ?? null;
+        check('pickers', `${key}: the ${slot.toUpperCase()} menu is there and lists the catalog`, opts && want[key][slot].every(id => opts.some(o => o.toUpperCase() === id.toUpperCase() || o.toUpperCase().startsWith(id.toUpperCase()))), opts ? opts.join(',') : 'no menu');
       }
-      const groups = await page.eval(`[...document.querySelectorAll('select[aria-label="Ppu core"] optgroup')].map(g => g.label)`);
-      check('pickers', `${key}: the PPU picker has the console's own chip first, then the other consoles' best chips, then the rest (one group each)`, groups.length === 3 && /\(its own\)/.test(groups[0]) && /^From the other consoles/.test(groups[1]) && /^More/.test(groups[2]), groups.join(' | '));
-      const labels = await page.eval(`[...document.querySelectorAll('select[aria-label="Ppu core"] option')].map(o => o.value + '=' + o.text)`);
-      check('pickers', `${key}: the stock / enhanced labels (FIX (stock), FIX (enhanced), Game Boy (stock), Game Boy (enhanced))`, ['NES:FIX=FIX (stock)', 'NES:FIXS=FIX (enhanced)', 'NES:DMG=Game Boy (stock)', 'NES:DMGS=Game Boy (enhanced)'].every(p => labels.some(l => l.startsWith(p))), labels.slice(0, 7).join(' | '));
-      check('pickers', `${key}: the enhanced chips of its own and of the other consoles say so (${enhancedLabels[key].map(p => p.split('=')[1]).join(', ')})`, enhancedLabels[key].every(p => labels.some(l => l.startsWith(p))), labels.filter(l => /\(enhanced\)/.test(l)).join(' | '));
+      // the core menus' layout D: the current core, Enhancements, Recent, Starred, then "Change core to:" with the console's own list first
+      const layout = await page.eval(`(async () => { document.getElementById('ppuCoreSelect').click(); await new Promise(r => setTimeout(r, 500)); const s = document.getElementById('core-menu-sheet'); const t = s ? s.innerText : ''; const cons = s ? [...s.querySelectorAll('.cm-console > summary')].map(x => x.textContent.replace(/^\u2713 /, '').trim()) : []; s?.querySelector('.cm-close').click(); return { t, cons }; })()`);
+      const own = { sms: 'Master System / Game Gear', gg: 'Master System / Game Gear', md: 'Genesis' }[key];
+      check('pickers', `${key}: the PPU menu is layout D (Current, Enhancements, Recent, Starred, Change core to:, its own console first)`, /^Current: /m.test(layout.t) && /Enhancements/.test(layout.t) && /RECENT/i.test(layout.t) && /STARRED/i.test(layout.t) && /CHANGE CORE TO:/i.test(layout.t) && layout.cons[0]?.includes(own), layout.cons.join(' | '));
+      const labels = (await coreOptions(page, 'ppu')).map(o => o.id + '=' + o.label);
+      check('pickers', `${key}: the short labels (FIX (stock), Game Boy (stock)) and the enhanced chips reached through them`, ['NES:FIX=FIX (stock)', 'NES:FIXS', 'NES:DMG=Game Boy (stock)', 'NES:DMGS'].every(p => labels.some(l => l.startsWith(p))), labels.slice(0, 7).join(' | '));
+      check('pickers', `${key}: the enhanced chips of its own and of the other consoles are offered (${enhancedLabels[key].map(p => p.split('=')[0]).join(', ')})`, enhancedLabels[key].every(p => labels.some(l => l.startsWith(p.split('=')[0] + '='))), labels.filter(l => /S=/.test(l)).join(' | '));
     });
   }
   // the NES side lists the Sega chips under their family
@@ -253,7 +256,7 @@ async function groupPickers() {
     for (const [btn, ids] of [['ppuCoreSelect', ['SMS', 'MD', 'SNESS', 'SMSS', 'MDS']], ['apuCoreSelect', ['SMS', 'MD', 'SNESS', 'SMSS', 'MDS']]]) {
       await page.eval(`document.getElementById('${btn}').click()`);
       await sleep(500);
-      const text = await page.eval(`document.body.innerText`);
+      const text = (await page.eval(`document.body.innerText`)) + ' ' + (await page.eval(`[...document.querySelectorAll('#core-menu-sheet [data-core], #core-menu-sheet [data-enh]')].flatMap(r => [r.dataset.core, ...(r.dataset.enh || '').split(',')]).map(x => (x || '').replace(/^NES:/, '')).join(' ')`));
       check('pickers', `the NES ${btn.replace('CoreSelect', '').toUpperCase()} picker offers the Master System and Genesis chips`, ids.every(id => text.includes(id + ':') || new RegExp('\\b' + id + '\\b').test(text)), '');
       await page.eval(`(() => { const c = document.querySelector('.modal-close, [aria-label="Close"], .picker-close'); if (c) c.click(); else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); })()`);
       await sleep(300);
@@ -269,7 +272,7 @@ async function groupRoster() {
     await page.eval(`(async () => { await nesInterop.idbSetItem('pref_core_md_ppu', 'NES:DMGX'); await nesInterop.idbSetItem('pref_ppuCore', 'DMGX'); return 1; })()`);
     page = await openRom(lab, GAMES.md);
     await sleep(1500);
-    const sel = await page.eval(`document.querySelector('select[aria-label="Ppu core"]')?.value || ''`);
+    const sel = await page.eval(`document.getElementById('ppuCoreSelect')?.dataset.core || ''`);
     const stored = await page.eval(`(async () => [await nesInterop.idbGetItem('pref_core_md_ppu'), await nesInterop.idbGetItem('pref_ppuCore')].join(','))()`);
     check('roster', 'a stored NES:DMGX (the retired chip) runs the Genesis on its successor NES:DMGS, and the stored picks are written back as DMGS', sel === 'NES:DMGS' && stored === 'NES:DMGS,DMGS', `picker=${sel} stored=${stored}`);
     const look = await page.eval(`!!document.getElementById('gbLookSelect')`);
