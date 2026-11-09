@@ -22,6 +22,58 @@
   const $ = (id) => document.getElementById(id);
   const isNesReach = () => (reach?.console || 'nes') === 'nes';
 
+  // ---- the popout (desktop only, decided 2026-11-07): the whole UI moves to its own window (the app gives window.open a real
+  // window), the in-game panel hides. The popout takes over this page's state and hands it back when it docks; closing it asks
+  // (the app's own prompt): dock back, or Exit & undo. It remembers nothing (no size, position or state of its own).
+  const POPOUT = new URLSearchParams(location.search).has('popout');
+  const CAN_POP = !POPOUT && !!window.chrome?.webview;   // the desktop app's WebView2; Lite keeps the docked panel
+  let poppedOut = false;
+  function snapshot() {
+    return JSON.stringify({ baseStateId, reach, consoleAddressLines, settings, history, historyAt, strength, includeUnsafe, includeDisgraced, view, solo });
+  }
+  function adopt(json) {
+    const s = JSON.parse(json);
+    baseStateId = s.baseStateId; reach = s.reach; consoleAddressLines = s.consoleAddressLines; settings = s.settings;
+    history = s.history || []; historyAt = s.historyAt ?? -1; strength = s.strength ?? strength;
+    includeUnsafe = !!s.includeUnsafe; includeDisgraced = !!s.includeDisgraced; view = s.view || 'strip'; solo = s.solo || null;
+    const si = $('strengthIn'), so = $('strengthOut'); if (si) si.value = String(strength); if (so) so.textContent = String(strength);
+    const iu = $('optUnsafe'), idg = $('optDisgraced'); if (iu) iu.checked = includeUnsafe; if (idg) idg.checked = includeDisgraced;
+    $('viewStrip').classList.toggle('on', view === 'strip'); $('viewStrip').setAttribute('aria-selected', String(view === 'strip'));
+    $('viewBuild').classList.toggle('on', view === 'build'); $('viewBuild').setAttribute('aria-selected', String(view === 'build'));
+  }
+  if (!POPOUT) {
+    window.__butcherHandoff = () => snapshot();
+    window.__butcherDock = async (json) => {
+      adopt(json);
+      poppedOut = false;
+      document.body.classList.remove('poppedout');
+      if (!catalog?.effects?.length) await loadCatalog();
+      render(); paintHistory(); await push();
+      status('Back in the game window.');
+    };
+    window.__butcherExit = () => exitMode();
+  }
+  function popOut() {
+    if (!reach || !baseStateId || poppedOut) return;
+    clearTimeout(syncTimer);
+    const w = window.open('index.html?popout=1', 'butcherPopout');
+    if (!w) { status('Could not open the window.', true); return; }
+    poppedOut = true;
+    trying = null; tryPanel = null; document.getElementById('trybench')?.remove(); document.getElementById('tagmenu')?.remove();
+    document.body.classList.add('poppedout');
+  }
+  // The app's close prompt calls this in the popout: 'dock' hands everything back, 'exit' hands it back and leaves (Exit & undo).
+  if (POPOUT) {
+    window.__butcherPopoutClose = (choice) => {
+      leaving = true; clearTimeout(syncTimer);
+      const o = window.opener;
+      if (!o || o.closed || !o.__butcherDock) return 'gone';
+      o.__butcherDock(snapshot());
+      if (choice === 'exit') o.__butcherExit();
+      return choice;
+    };
+  }
+
   function defaults(cartLines) {
     const ev = () => ({ on: false, rate: 25, duration: 30 });
     return {
@@ -122,10 +174,24 @@
     $('presetName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('presetSaveOk').click(); if (e.key === 'Escape') $('presetNameRow').hidden = true; });
     popMenu($('presetMore'), $('presetMenu'));
     $('presetDelete').addEventListener('click', () => { $('presetMenu').hidden = true; deletePreset(); });
+    if (POPOUT) document.body.classList.add('popout');
+    if (CAN_POP) $('viewBuild').parentElement.after(el('button', { id: 'popOut', type: 'button', title: 'Move Butchering to its own window', onclick: popOut }, 'Pop out ↗'));
     start();
   });
 
   async function start() {
+    if (POPOUT) {
+      const o = window.opener;
+      const json = o && !o.closed && o.__butcherHandoff ? o.__butcherHandoff() : null;
+      if (!json) { status('The game window is not in Butchering mode any more.', true); leaving = true; window.close(); return; }
+      adopt(json);
+      $('reload').disabled = !baseStateId;
+      await loadCatalog();
+      render(); paintHistory(); await push();
+      await refreshPresets();
+      status('Butchering in its own window. Closing it asks: dock back, or Exit & undo.');
+      return;
+    }
     // The reach call decides first: it knows every console. The time-jump ROM check only knows the NES (while a SNES / Game Boy / Sega
     // game runs, the NES holds its placeholder ROM, so the check said "no game" and the panel closed itself on every other console).
     const r = await api.butcher.getReach().catch(() => null);
@@ -158,7 +224,11 @@
 
   // The PPU, APU and SHADER menus stay usable in this mode: when a core is swapped, what the mode can reach changes with it.
   setInterval(async () => {
-    if (leaving || !reach) return;
+    if (POPOUT && !leaving) {
+      const o = window.opener;   // the game window left Butchering mode (or closed): this window goes with it
+      if (!o || o.closed || !o.__butcherHandoff) { leaving = true; window.close(); return; }
+    }
+    if (leaving || !reach || poppedOut) return;
     const st = await api.butcher.getStats().catch(() => null);
     if (st?.success) {
       const n = document.getElementById('ramStats');
@@ -199,6 +269,7 @@
 
   async function exitMode() {
     if (leaving) return;
+    if (POPOUT) { window.__butcherPopoutClose('exit'); window.close(); return; }   // the game window does the undo
     leaving = true;
     clearTimeout(syncTimer);
     try { await api.butcher.off(); } catch (e) { console.warn('[ButcheringMode] off failed', e); }
@@ -249,6 +320,7 @@
   }
 
   function push() {
+    if (poppedOut || leaving) return Promise.resolve();   // the popout drives the engine now / Exit & undo is under way
     if (view === 'strip') refreshOnNow();
     clearTimeout(syncTimer);
     return new Promise(res => {
@@ -488,7 +560,10 @@
     document.querySelectorAll('#tabs .tab').forEach(b => b.style.opacity = query ? '.5' : '');
   }
 
-  function render() { if (view === 'build') renderBuild(); else renderStrip(); }
+  function render() {
+    document.body.classList.toggle('vbuild', view === 'build');
+    if (view === 'build') renderBuild(); else { buildApi = null; renderStrip(); }
+  }
 
   // ---------------------------------------------------------------- the compact strip (approved 2026-11-07)
   // An effect is one line: its switch, its name, a short summary of its values while it is on, Solo, "i" (the explanation) and ▸.
@@ -952,7 +1027,7 @@
     const entry = (catalog?.effects || []).find(e => e.path === path);
     return { settings, reach, entry, onChange: () => { push(); refreshBoardDisplays(); } };
   }
-  let boardPanels = [], trying = null, tryPanel = null;
+  let boardPanels = [], trying = null, tryPanel = null, buildApi = null;
   function refreshBoardDisplays() { for (const bp of boardPanels) bp.refresh(); tryPanel?.refresh(); }
   function renderBuild() {
     document.getElementById('panel')?.classList.add('wide');
@@ -1112,6 +1187,7 @@
       el('button', { type: 'button', title: 'Put every effect that is on right now (a loaded preset, a roll, the strip) on the board, packed tight', onclick: importLive }, 'Import Live'),
       el('span', { class: 'note' }, 'The board edits the same settings as the strip. Dot colour: purity tier (green pure … red forced).'));
     g.append(tools, el('div', { class: 'buildview' }, el('div', { class: 'listpane' }, filter, list), grid));
+    buildApi = { importLive, clear: () => { board = []; saveBoard(board); paintBoard(); paintList(); }, repaint: () => paintBoard() };
     paintList(); paintBoard();
     if (trying) tryEffect(trying);   // a redraw keeps the bench, bound to the new board
   }
@@ -1208,10 +1284,10 @@
   }
   document.addEventListener('DOMContentLoaded', () => {
     const anchor = $('stateRow'); if (!anchor) return;
-    const out = el('output', {}, String(strength));
+    const out = el('output', { id: 'strengthOut' }, String(strength));
     const menu = el('div', { class: 'popmenu', role: 'menu', hidden: true },
-      el('label', { class: 'unsafeopt' }, el('input', { type: 'checkbox', checked: includeUnsafe ? '' : null, onchange: (e) => { includeUnsafe = e.target.checked; } }), 'Include unsafe effects in rolls'),
-      el('label', { class: 'unsafeopt' }, el('input', { type: 'checkbox', checked: includeDisgraced ? '' : null, onchange: (e) => { includeDisgraced = e.target.checked; } }), 'Include disgraced effects in rolls'));
+      el('label', { class: 'unsafeopt' }, el('input', { id: 'optUnsafe', type: 'checkbox', checked: includeUnsafe ? '' : null, onchange: (e) => { includeUnsafe = e.target.checked; } }), 'Include unsafe effects in rolls'),
+      el('label', { class: 'unsafeopt' }, el('input', { id: 'optDisgraced', type: 'checkbox', checked: includeDisgraced ? '' : null, onchange: (e) => { includeDisgraced = e.target.checked; } }), 'Include disgraced effects in rolls'));
     const more = el('button', { type: 'button', title: 'Roll options', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, '\u25BE');
     anchor.before(
       el('div', { class: 'row roll' },
@@ -1221,11 +1297,36 @@
         el('span', { id: 'histLabel', class: 'hist' }, '\u2014'),
         el('button', { id: 'histFwd', type: 'button', onclick: () => stepHistory(1), title: 'Next roll', disabled: true }, '\u25B6'),
         el('label', { class: 'mini', title: 'Randomize strength: few gentle effects at low, many strong ones at high' }, out,
-          el('input', { type: 'range', min: 0, max: 100, step: 1, value: strength, 'aria-label': 'Randomize strength', oninput: (e) => { strength = Number(e.target.value); out.textContent = String(strength); } })),
+          el('input', { id: 'strengthIn', type: 'range', min: 0, max: 100, step: 1, value: strength, 'aria-label': 'Randomize strength', oninput: (e) => { strength = Number(e.target.value); out.textContent = String(strength); } })),
         more),
       menu);
     popMenu(more, menu);
+    if (POPOUT) buildTopbar(menu);
   });
+
+  // The popout's one bar along the top: Strip/Build, the effect list toggle, Presets, Randomize / Mutate / history / strength,
+  // Reload State, All off, Import Live, Clear (the board), Exit & undo. The same controls, moved (they keep their handlers).
+  function buildTopbar(rollMenu) {
+    const head = document.querySelector('.head');
+    const onBoard = (fn) => async () => { if (view !== 'build') await setView('build'); buildApi?.[fn](); };
+    const listBtn = el('button', { id: 'listToggle', type: 'button', title: 'Show / hide the effect list', 'aria-pressed': 'true',
+      onclick: () => { const hide = document.body.classList.toggle('nolist'); listBtn.setAttribute('aria-pressed', String(!hide)); buildApi?.repaint(); } }, 'Effects');
+    const sep = () => el('span', { class: 'tsep', 'aria-hidden': 'true' });
+    const roll = document.querySelector('.row.roll');
+    const bar = el('div', { class: 'row topbar', role: 'toolbar', 'aria-label': 'Butchering' },
+      $('viewStrip').parentElement, listBtn, sep(),
+      $('presetList'), $('presetSave'), $('presetMore'), sep(),
+      ...roll.childNodes, sep(),
+      $('reload'), $('allOff'),
+      el('button', { type: 'button', title: 'Put every effect that is on right now on the board, packed tight', onclick: onBoard('importLive') }, 'Import Live'),
+      el('button', { type: 'button', title: 'Take every module off the board', onclick: onBoard('clear') }, 'Clear'),
+      el('span', { class: 'grow' }), $('exit'));
+    head.prepend(bar);
+    for (const n of [roll, $('stateRow'), document.querySelector('.hrow'), document.querySelector('.head > .row.presets:not(#presetNameRow)')]) n?.remove();
+    rollMenu.classList.add('topmenu'); $('presetMenu').classList.add('topmenu');
+    let t = null;
+    addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => { if (view === 'build') buildApi?.repaint(); }, 120); });
+  }
 
   // a small menu under its button: opens on click, closes on a click elsewhere or Escape
   function popMenu(btn, menu) {

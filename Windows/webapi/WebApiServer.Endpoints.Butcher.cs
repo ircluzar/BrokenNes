@@ -15,6 +15,8 @@ namespace BrokenNes.Windows.WebApi
         // entry savestate through /api/gh and drives the engine here: its reach on the running game, its controls, named presets.
         private static readonly JsonSerializerOptions ButcherJson = new(JsonSerializerDefaults.Web) { WriteIndented = true };
         private static readonly object ButcherPresetLock = new();
+        /// <summary>The Butchering popout window (MainForm.ButcherPopout.cs): status / open / dock / exit / prompt.</summary>
+        public Func<string, System.Threading.Tasks.Task<object>>? ButcherPopoutControl { get; set; }
 
         // %APPDATA%\BrokenNes\Butchering, or the BROKENNES_SAVES_DIR test hook's folder (as the battery saves and save states), so a
         // test instance never writes into the user's own presets.
@@ -138,6 +140,15 @@ namespace BrokenNes.Windows.WebApi
             });
 
             // POST /api/butcher/off - every effect off (the hooks detach at the next frame)
+            // GET /api/butcher/popout - is the popout window open; POST /api/butcher/popout/{open|dock|exit|prompt} - drive it as the
+            // panel's Pop out button and the close prompt's answers do (desktop only; tests and screenshots).
+            app.MapGet("/api/butcher/popout", async () =>
+                ButcherPopoutControl == null ? Results.Ok(new { success = false, error = "not available" }) : Results.Ok(await ButcherPopoutControl("status")));
+            app.MapPost("/api/butcher/popout/{action}", async (string action) =>
+                ButcherPopoutControl == null ? Results.Ok(new { success = false, error = "not available" })
+                : action is "open" or "dock" or "exit" or "prompt" ? Results.Ok(await ButcherPopoutControl(action))
+                : Results.Ok(new { success = false, error = "action: open, dock, exit or prompt" }));
+
             app.MapPost("/api/butcher/off", () =>
             {
                 ButcherHost(out _)?.ApplyButcher(new ButcherSettings());

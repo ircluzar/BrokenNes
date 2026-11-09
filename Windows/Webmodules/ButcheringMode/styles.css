@@ -201,3 +201,34 @@ button.solo { font-size: 10px; padding: 0 6px; line-height: 15px; }
 .roll .hist { min-width: 22px; }
 .knobrow .bnc-plate { padding: 6px 10px 8px; }
 .knobrow .bnc-grid { margin-top: 0; }
+
+/* ---- the popout (desktop, 2026-11-09): the whole UI in its own window ---- */
+#popOut { padding: 2px 6px; }
+body.poppedout .toggle, body.poppedout .panel, body.poppedout .trybench { display: none !important; }
+body.popout { background: #111214; }
+body.popout .toggle { display: none; }
+body.popout .panel, body.popout .panel.wide { inset: 0; width: auto; border: 0; border-radius: 0; box-shadow: none; background: #111214;
+  display: flex; flex-direction: column; overflow: hidden; padding: 6px 10px 8px; }
+body.popout .panel.hidden { display: flex; }
+body.popout .head { flex: none; }
+.topbar { flex-wrap: nowrap; gap: 4px; margin: 0 0 2px; }
+@media (max-width: 1000px) { .topbar { flex-wrap: wrap; } }
+.topbar .viewswitch { margin: 0; }
+.topbar #presetList { flex: 0 1 220px; min-width: 90px; }
+.topbar .mini { margin-left: 0; }
+.tsep { width: 1px; align-self: stretch; background: #3a3a3a; margin: 2px 4px; }
+.topmenu { margin: 0 0 3px 0; }
+body.popout:not(.vbuild) #listToggle { display: none; }
+#listToggle[aria-pressed="true"] { background: #3a2424; border-color: #7a3a3a; }
+body.popout #tabs, body.popout #search, body.popout #onnow { flex: none; }
+body.popout #groups { flex: 1; min-height: 0; overflow-y: auto; }
+body.popout:not(.vbuild) #groups { column-width: 360px; column-gap: 14px; }
+body.popout:not(.vbuild) #groups > * { break-inside: avoid; }
+body.popout.vbuild #groups { display: flex; flex-direction: column; overflow: hidden; }
+body.popout .boardtools { display: none; }
+body.popout .buildview { flex: 1; min-height: 0; align-items: stretch; flex-direction: row; }
+body.popout .listpane { width: 250px; min-height: 0; }
+body.popout .efflist { flex: 1; max-height: none; }
+body.popout .board { height: 100%; max-height: none; width: auto; }
+body.popout.nolist .listpane { display: none; }
+body.popout .trybench { left: auto; right: 16px; top: auto; bottom: 16px; }
