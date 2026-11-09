@@ -240,3 +240,51 @@ export function args(argv = process.argv.slice(2)) {
   }
   return o;
 }
+
+// ------------------------------------------------------------------------------------------------------------- the core menus (layout D, 2026-11-09)
+// Each slot is a button (#cpuCoreSelect / #ppuCoreSelect / #apuCoreSelect, data-core = the current id) that opens a sheet (#core-menu-sheet). Its rows carry
+// data-core; a console list's row carries data-enh, the enhanced chips reached through it (they are listed under "Enhancements" once that chip is picked).
+const slotOf = s => { const m = /(cpu|ppu|apu)/i.exec(s); return m ? m[1].toLowerCase() : s; };
+
+/** The id a slot runs (what a select's value used to say). `slot` is 'cpu' | 'ppu' | 'apu', or an old 'select[aria-label="Ppu core"]' selector. */
+export const currentCore = (page, slot) => page.eval(`document.getElementById('${slotOf(slot)}CoreSelect')?.dataset.core || ''`);
+
+/** Every id a slot's menu offers ({ id, label }), its enhanced chips included (labels: the short menu label). */
+export async function coreOptions(page, slot) {
+  return page.eval(`(async () => {
+    const b = document.getElementById('${slotOf(slot)}CoreSelect'); if (!b) return null;
+    b.click(); for (let i = 0; i < 50 && !document.getElementById('core-menu-sheet'); i++) await new Promise(r => setTimeout(r, 50));
+    const sheet = document.getElementById('core-menu-sheet'); if (!sheet) return null;
+    const out = new Map();
+    for (const r of sheet.querySelectorAll('.cm-console .cm-row[data-core]')) {
+      { let t = r.querySelector('.cm-text').textContent; if (t.endsWith('  +')) t = t.slice(0, -3); out.set(r.dataset.core, t); }
+      for (const e of (r.dataset.enh || '').split(',').filter(Boolean)) if (!out.has(e)) out.set(e, '');
+    }
+    for (const r of sheet.querySelectorAll('#cm-enh .cm-row[data-core]')) if (!out.get(r.dataset.core)) out.set(r.dataset.core, r.querySelector('.cm-text').textContent);
+    sheet.querySelector('.cm-close').click();
+    return [...out].map(([id, label]) => ({ id, label }));
+  })()`);
+}
+
+/** Picks a core from its slot's menu as a user does: the row itself, or (an enhanced chip) its stock chip first, then the chip under Enhancements. 'ok' or why not. */
+export async function pickCore(page, slot, id) {
+  return page.eval(`(async () => {
+    const id = ${JSON.stringify(id)}, btn = () => document.getElementById('${slotOf(slot)}CoreSelect');
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    async function open() { if (!btn()) return null; btn().click(); for (let i = 0; i < 60 && !document.getElementById('core-menu-sheet'); i++) await sleep(50); return document.getElementById('core-menu-sheet'); }
+    async function closed() { for (let i = 0; i < 200 && document.getElementById('core-menu-sheet'); i++) await sleep(50); }
+    const same = (a, b) => (a || '').toUpperCase() === (b || '').toUpperCase();
+    let sheet = await open(); if (!sheet) return 'no menu';
+    let row = [...sheet.querySelectorAll('.cm-row[data-core]')].find(r => same(r.dataset.core, id));
+    if (!row) {
+      const base = [...sheet.querySelectorAll('.cm-console .cm-row[data-core]')].find(r => (r.dataset.enh || '').split(',').some(e => same(e, id)));
+      if (!base) { const all = [...sheet.querySelectorAll('.cm-row[data-core]')].map(r => r.dataset.core); sheet.querySelector('.cm-close').click(); return 'no option ' + all.join(','); }
+      base.click(); await closed(); await sleep(300);
+      sheet = await open(); if (!sheet) return 'no menu';
+      row = [...sheet.querySelectorAll('#cm-enh .cm-row[data-core]')].find(r => same(r.dataset.core, id));
+      if (!row) { sheet.querySelector('.cm-close').click(); return 'no enhancement ' + id; }
+    }
+    row.click(); await closed();
+    return 'ok';
+  })()`);
+}

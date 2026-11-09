@@ -9,7 +9,7 @@
 // (core RunFrame, audio read, pixel conversion; the rest of a call is the crossing to JavaScript). The bar is 1.5x real time (90 fps for an NTSC console).
 import fs from 'node:fs';
 import path from 'node:path';
-import { startLab, args } from './litelab.mjs';
+import { startLab, args, pickCore, coreOptions, currentCore } from './litelab.mjs';
 
 const a = args();
 const frames = parseInt(a.frames || '600', 10);
@@ -62,7 +62,7 @@ for (const [name, cons, rom, cores = {}, note = ''] of CASES) {
     // --twin name=0|1,name=0|1: switches the build's twins (SetTwin) before the measurement, so one build can be measured with an optimisation on and off
     for (const t of String(a.twin || '').split(',').filter(Boolean)) { const [n, v] = t.split('='); const r = await page.eval(`nesInterop._dotNetRef.invokeMethodAsync('SetTwin', ${JSON.stringify(n)}, ${v !== '0'})`); console.log(`  twin ${n}=${v}: ${r}`); }
     for (const [slot, id] of Object.entries(cores)) {
-      const ok = await page.eval(`(() => { const s = document.querySelector('select[aria-label="${slot[0].toUpperCase() + slot.slice(1)} core"]'); if (!s) return 'no select'; const o = [...s.options].find(x => x.value === ${JSON.stringify(id)}); if (!o) return 'no option ' + [...s.options].map(x => x.value).join(','); s.value = ${JSON.stringify(id)}; s.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
+      const ok = await pickCore(page, slot, id);
       if (ok !== 'ok') throw new Error(`${name}: cannot pick ${slot} ${id}: ${ok}`);
       await sleep(1500);
     }

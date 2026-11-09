@@ -1,0 +1,162 @@
+@* The core menu of one slot (CPU / PPU / APU), the desktop's layout D (2026-11-01) adapted for touch: the current core, its Enhancements,
+   Recent (4) + Starred, then "Change core to:" with one fold-out per console (Best / Ported from other emulators / More).
+   Short labels only (CoreCatalog.MenuLabel; long ones are cut with an ellipsis, never run off the right); the full description is the title.
+   Recents and stars live in Lite's own IndexedDB prefs (pref_coreRecents / pref_coreStars), keyed "console|slot" like the desktop's config. *@
+@using NesEmulator
+@using NesEmulator.Systems
+@inject IJSRuntime JS
+
+<div class="cm-backdrop" @onclick="Close">
+    <div class="cm-sheet" role="dialog" aria-label="@($"{SlotName} core menu")" id="core-menu-sheet" @onclick:stopPropagation="true">
+        <div class="cm-head">
+            <strong>@SlotName core</strong>
+            <button type="button" class="cm-close" aria-label="Close" @onclick="Close">&times;</button>
+        </div>
+        <div class="cm-body">
+            @{
+                var now = CoreCatalog.Find(console, Slot, current);
+                var baseOpt = CoreCatalog.Find(console, Slot, currentBase);
+                var variants = CoreCatalog.EnhancementsOf(console, Slot, currentBase);
+                bool gbCross = Slot == CoreSlot.Ppu && (Consoles.IsGameBoy(console) ? !current.Equals("GB", StringComparison.OrdinalIgnoreCase) : CoreCatalog.IsGameBoyPicture(console, current));
+                bool hasEnh = (baseOpt != null && variants.Count > 0) || gbCross;
+                var known = CoreCatalog.Options(console, Slot);
+                CoreOption? Known(string id) => known.FirstOrDefault(o => o.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+                var recents = List(recentStore).Where(id => !Is(id, current)).Select(Known).OfType<CoreOption>().Take(4).ToList();
+                var stars = List(starStore).Select(Known).OfType<CoreOption>().ToList();
+                bool starred = stars.Any(o => Is(o.Id, current));
+            }
+            <div class="cm-current" id="cm-current" title="@(now != null ? Tip(now) : current)">Current: @(now != null ? CoreCatalog.MenuLabel(now) + Where(now) : current)</div>
+
+            <details class="cm-fold" id="cm-enh" open="@(hasEnh && enhOpen)">
+                <summary class="@(hasEnh ? "" : "cm-disabled")" @onclick:preventDefault="@(!hasEnh)">@(hasEnh ? "Enhancements" : "Enhancements (none for this chip)")</summary>
+                @if (baseOpt != null && variants.Count > 0)
+                {
+                    @Row(baseOpt, "Off (the stock chip)", Is(current, currentBase))
+                    @foreach (var v in variants) { @Row(v, CoreCatalog.MenuLabel(v) + (variants.Count > 1 ? Where(v) : ""), Is(current, v.Id)) }
+                }
+                @if (gbCross)
+                {
+                    <label class="cm-row cm-check"><input type="checkbox" checked="@Emu.GbInvertBackground" @onchange="(e => Emu.SetGbLookAsync(null, e.Value is true, null))" /><span>Invert background lightness</span></label>
+                    <label class="cm-row cm-check"><input type="checkbox" checked="@Emu.GbInvertSprites" @onchange="(e => Emu.SetGbLookAsync(null, null, e.Value is true))" /><span>Invert sprite lightness</span></label>
+                }
+            </details>
+
+            <div class="cm-h">Recent</div>
+            @if (recents.Count == 0) { <div class="cm-hint">(the cores you switch to appear here)</div> }
+            @foreach (var o in recents) { @Row(o, CoreCatalog.MenuLabel(o) + Where(o), false) }
+            <div class="cm-h">Starred</div>
+            @foreach (var o in stars) { @Row(o, CoreCatalog.MenuLabel(o) + Where(o), Is(o.Id, current)) }
+            <button type="button" class="cm-row cm-star" id="cm-star" @onclick="ToggleStar">@(starred ? "☆ Unstar the current core" : "★ Star the current core")</button>
+
+            <div class="cm-h">Change core to:</div>
+            @foreach (var (name, entries) in CoreCatalog.MenuConsoles(console, Slot))
+            {
+                bool here = entries.Any(o => Is(o.Id, currentBase));
+                var parts = new[]
+                {
+                    ("Best", entries.Where(o => o.Grade != CoreGrade.Other).ToList()),
+                    ("Ported from other emulators", entries.Where(o => o.Grade == CoreGrade.Other && CoreCatalog.IsPorted(o.Id)).ToList()),
+                    ("More", entries.Where(o => o.Grade == CoreGrade.Other && !CoreCatalog.IsPorted(o.Id)).ToList()),
+                }.Where(p => p.Item2.Count > 0).ToList();
+                <details class="cm-fold cm-console" open="@here">
+                    <summary>@(here ? "✓ " : "")@(name == "Master System" ? "Master System / Game Gear" : name)</summary>
+                    @foreach (var (heading, list) in parts)
+                    {
+                        if (parts.Count > 1) { <div class="cm-sub">@heading</div> }
+                        foreach (var opt in list)
+                        {
+                            var enh = CoreCatalog.EnhancementsOf(console, Slot, opt.Id);
+                            @Row(opt, CoreCatalog.MenuLabel(opt) + (enh.Count > 0 ? "  +" : ""), Is(opt.Id, currentBase), string.Join(",", enh.Select(e => e.Id)))
+                        }
+                    }
+                </details>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public BrokenNes.Emulator Emu { get; set; } = default!;
+    [Parameter] public CoreSlot Slot { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    // loaded once per page: the IndexedDB prefs, "console|slot=id,id,..." one line per menu
+    private static Dictionary<string, List<string>>? recentStore, starStore;
+    private const string RecentKey = "pref_coreRecents", StarKey = "pref_coreStars";
+    private bool enhOpen = true;
+
+    private ConsoleKind console => Emu.ActiveConsole;
+    private string SlotName => Slot.ToString().ToUpperInvariant();
+    private string ListKey => Consoles.Key(console) + "|" + Slot;
+    private string current => console == ConsoleKind.Nes
+        ? (Slot switch { CoreSlot.Cpu => Emu.Controller.CpuCoreSel, CoreSlot.Ppu => Emu.Controller.PpuCoreSel, _ => Emu.Controller.ApuCoreSel }) ?? "FIX"
+        : Emu.ConsoleCore(console, Slot);
+    private string currentBase => CoreCatalog.MenuBase(console, Slot, current);
+
+    private static bool Is(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+    private string Where(CoreOption o) { string f = CoreCatalog.MenuConsole(o); return f == Consoles.Family(console) ? "" : $"  ({(f == "Master System" ? "SMS/GG" : f)})"; }
+    private string Tip(CoreOption o) => console == ConsoleKind.Nes ? o.Label : CoreCatalog.Tip(console, Slot, o);
+    private List<string> List(Dictionary<string, List<string>>? store) => store != null && store.TryGetValue(ListKey, out var l) ? l : new List<string>();
+
+    private RenderFragment Row(CoreOption o, string text, bool on, string? enh = null) => __builder =>
+    {
+        <button type="button" class="cm-row @(on ? "cm-on" : "")" title="@Tip(o)" data-core="@o.Id" data-enh="@enh" @onclick="(() => Pick(o.Id))">
+            <span class="cm-tick">@(on ? "✓" : "")</span><span class="cm-text">@text</span>
+        </button>
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        recentStore ??= Parse(await Get(RecentKey));
+        starStore ??= Parse(await Get(StarKey));
+    }
+
+    private async Task<string?> Get(string key) { try { return await JS.InvokeAsync<string?>("nesInterop.idbGetItem", key); } catch { return null; } }
+    private async Task Put(string key, Dictionary<string, List<string>> store)
+    {
+        string text = string.Join("\n", store.Where(kv => kv.Value.Count > 0).Select(kv => kv.Key + "=" + string.Join(",", kv.Value)));
+        try { await JS.InvokeVoidAsync("nesInterop.idbSetItem", key, text); } catch { }
+    }
+    private static Dictionary<string, List<string>> Parse(string? text)
+    {
+        var d = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in (text ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int eq = line.IndexOf('=');
+            if (eq > 0) d[line[..eq]] = line[(eq + 1)..].Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
+        }
+        return d;
+    }
+
+    private async Task Pick(string id)
+    {
+        string was = current;
+        if (Is(id, was)) { await Close(); return; }
+        // Recent: newest first, the one left kept too so going back is one tap (as on the desktop)
+        recentStore ??= new(StringComparer.OrdinalIgnoreCase);
+        var r = List(recentStore);
+        r.RemoveAll(x => Is(x, id) || Is(x, was));
+        r.Insert(0, id); r.Insert(1, was);
+        recentStore[ListKey] = r.Take(6).ToList();
+        await Put(RecentKey, recentStore);
+        if (console != ConsoleKind.Nes) await Emu.SetConsoleCoreAsync(Slot, id);
+        else switch (Slot)
+        {
+            case CoreSlot.Cpu: await Emu.SetCpuCorePublic(id); break;
+            case CoreSlot.Ppu: await Emu.SetPpuCorePublic(id); break;
+            default: await Emu.SetApuCorePublic(id); break;
+        }
+        await Close();
+    }
+
+    private async Task ToggleStar()
+    {
+        starStore ??= new(StringComparer.OrdinalIgnoreCase);
+        var l = List(starStore);
+        if (l.RemoveAll(i => Is(i, current)) == 0) l.Add(current);
+        starStore[ListKey] = l;
+        await Put(StarKey, starStore);
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+}

@@ -1,7 +1,7 @@
 // profile-lite.mjs - where a Lite session's time goes in the WebAssembly build: samples the page's CPU (JS and wasm functions) over N frame calls and prints the top functions by self time.
 //
 //   node profile-lite.mjs --publish <dir> --roms <dir> --rom "md/Sonic the Hedgehog (JUE) [!].bin" --symbols <dotnet.native.js.symbols> [--frames 300] [--ppu NES:FIXS] [--apu id] [--top 60]
-import { startLab, args } from './litelab.mjs';
+import { startLab, args, pickCore, coreOptions, currentCore } from './litelab.mjs';
 const a = args();
 const lab = await startLab({ publishDir: a.publish, romsDir: a.roms, headless: !a.show });
 try {
@@ -9,7 +9,7 @@ try {
   await page.waitFor("document.body.innerText.includes('ROM: roms/')", 240000);
   for (const slot of ['cpu', 'ppu', 'apu']) {
     if (!a[slot]) continue;
-    const r = await page.eval(`(() => { const s = document.querySelector('select[aria-label="${slot[0].toUpperCase() + slot.slice(1)} core"]'); const o = s && [...s.options].find(x => x.value === ${JSON.stringify(a[slot])}); if (!o) return 'no'; s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
+    const r = await pickCore(page, slot, a[slot]);
     if (r !== 'ok') throw new Error('cannot pick ' + slot + ' ' + a[slot]);
     await new Promise(r => setTimeout(r, 1500));
   }

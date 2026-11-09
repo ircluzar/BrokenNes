@@ -155,6 +155,8 @@
     <Compile Include="$(NesRoot)apus\**\*.cs"      Exclude="$(NesRoot)apus\APU_WF.cs;$(NesRoot)apus\APU_MNES.cs" LinkBase="NesEmulator\apus" />
     <Compile Include="$(NesRoot)mappers\**\*.cs"   LinkBase="NesEmulator\mappers" />
     <Compile Include="$(NesRoot)expansion\**\*.cs" LinkBase="NesEmulator\expansion" />
+    <!-- the x86 console's chips: ConsoleSystems / ConsoleSessions name their types, so Lite compiles them too -->
+    <Compile Include="$(NesRoot)x86\**\*.cs"       LinkBase="NesEmulator\x86" />
     <!-- CLOCK_CLR and CLOCK_TRB excluded: both drive their frame loop via Task.Run(LoopAsync),
          which assumes a genuine background OS thread. Single-threaded WASM has none - Task.Run
          just queues the loop onto the same thread the browser needs for everything else. Reproduced
