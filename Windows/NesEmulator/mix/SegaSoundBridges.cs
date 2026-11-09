@@ -499,12 +499,13 @@ namespace NesEmulator.Sega
 
         public int DescribeVoices(Span<HubVoice> dest) => front.DescribeVoices(dest);
 
-        public void SaveState(BinaryWriter w) => front.SaveState(w);
+        public void SaveState(BinaryWriter w) { front.SaveState(w); NesEmulator.EngineState.SaveHub(w, this, back, front); }
 
         public void LoadState(BinaryReader r)
         {
             front.LoadState(r);
             Replay();
+            NesEmulator.EngineState.LoadHub(r, this, back, front);   // FA-ST-2: the bridge and its NES chip as saved (over the re-key above)
         }
 
         public string Describe() =>

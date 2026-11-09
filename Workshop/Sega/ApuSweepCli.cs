@@ -452,10 +452,8 @@ internal static class ApuSweepCli
             r.R3 = Play(rig, Window, out ulong h3, zero: plant == "silent" && !isControl);
             // FA-ST-1: the same machine after the load plays the same samples as after the save, bit for bit
             r.State = h2 == h3 ? "exact" : r.R3 < Quiet && r.R2 >= Quiet ? "SILENT" : !Near(r.R2, r.R3) ? "LEVEL" : "NOT EXACT";
-            // FA-ST-2 (KNOWN_GAPS): another console on a NES chip (NES:<id>, the hub bridges) keeps the chip as a listener outside the console's state: after a load it
-            // keeps playing and re-maps the loaded voices, by design; the level must hold, the samples cannot match
-            if (r.State == "NOT EXACT" && c.Console != "NES" && c.Route.Contains("NES:") && plant != "rekey") { r.State = "kept*"; r.Notes.Add("intended: the NES-chip hub is a listener outside the console's state (KNOWN_GAPS FA-ST-2)"); }
-            if (r.State != "exact" && r.State != "kept*") r.Fails.Add($"after the state load {(r.State == "NOT EXACT" ? "the samples differ from" : "rms " + r.R3.ToString("F0") + ",")} after the save (rms {r.R2:F0})");
+            // FA-ST-2 fixed: another console on a NES chip (NES:<id>, the hub bridges) saves the bridge and the chip with its unit, so these routes are exact too
+            if (r.State != "exact") r.Fails.Add($"after the state load {(r.State == "NOT EXACT" ? "the samples differ from" : "rms " + r.R3.ToString("F0") + ",")} after the save (rms {r.R2:F0})");
         }
         else
         {

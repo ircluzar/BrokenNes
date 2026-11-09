@@ -147,13 +147,14 @@ namespace NesEmulator.Sega
         /// <summary>The inner unit's eighteen voices (what the bridge replays).</summary>
         public int DescribeVoices(Span<HubVoice> dest) => inner.DescribeVoices(dest);
 
-        public void SaveState(BinaryWriter w) => inner.SaveState(w);
+        public void SaveState(BinaryWriter w) { inner.SaveState(w); NesEmulator.EngineState.SaveHub(w, this, back, inner); }
 
         public void LoadState(BinaryReader r)
         {
             inner.LoadState(r);
             replay.Forget(); Array.Clear(wasAudible);
             Replay();
+            NesEmulator.EngineState.LoadHub(r, this, back, inner);   // FA-ST-2: the bridge and its NES chip as saved (over the re-key above)
         }
 
         public string Describe() =>

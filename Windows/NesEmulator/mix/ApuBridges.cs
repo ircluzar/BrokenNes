@@ -547,6 +547,10 @@ namespace NesEmulator.Mix
         /// whatever it is playing and the next sync maps the loaded voices onto its channels; what it had queued from before the jump is dropped.
         /// </summary>
         public void Rebase(long masterClock) { lastClock = masterClock; nextSync = masterClock; queue.Clear(); }
+        /// <summary>FA-ST-2: saves the bridge (clocks, caches, queue) and its NES chip after the SNES unit's own state; the SNES unit is the session's.</summary>
+        public void SaveHub(System.IO.BinaryWriter w) => NesEmulator.EngineState.SaveHub(w, this, back, front, Front);
+        /// <summary>FA-ST-2: call after <see cref="Rebase"/>: the bridge and its chip as saved, so the sound continues sample for sample (an older state keeps the re-map and says so).</summary>
+        public void LoadHub(System.IO.BinaryReader r) => NesEmulator.EngineState.LoadHub(r, this, back, front, Front);
         public void Reset() => front.Reset();
         public byte ReadPort(int port) => front.ReadPort(port);
         public void WritePort(int port, byte value) => front.WritePort(port, value);
