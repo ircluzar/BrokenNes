@@ -82,12 +82,19 @@ internal static class Sessions
     private static readonly ConcurrentDictionary<string, Session> all = new(StringComparer.OrdinalIgnoreCase);
     private static int next;
 
-    public static string NewId(string prefix) => $"{prefix}{Interlocked.Increment(ref next)}";
+    /// <summary>
+    /// "h3-9f2c41ab": a counter (readable) plus 32 random bits. One stdio server is shared by every agent of a Claude Code session and the MCP
+    /// requests carry nothing that tells those agents apart, so a session cannot be tied to the connection that opened it; an id that cannot be
+    /// guessed (and is never listed in full by default) is the ownership instead.
+    /// </summary>
+    public static string NewId(string prefix) => $"{prefix}{Interlocked.Increment(ref next)}-{System.Security.Cryptography.RandomNumberGenerator.GetHexString(8, lowercase: true)}";
+    /// <summary>The id without its secret part ("h3-9f...").</summary>
+    public static string Mask(string id) { int d = id.LastIndexOf('-'); return d < 0 || d + 3 > id.Length ? id : id[..(d + 3)] + "..."; }
     public static void Add(Session s) => all[s.Id] = s;
     public static IEnumerable<Session> All => all.Values.OrderBy(s => s.OpenedUtc);
 
     public static Session Get(string id) =>
-        all.TryGetValue(id, out var s) ? s : throw new ToolError($"no session '{id}' (open ones: {(all.IsEmpty ? "none" : string.Join(", ", all.Keys))}; open one with open_rom, open_project or attach_live)");
+        all.TryGetValue(id, out var s) ? s : throw new ToolError($"no session '{id}' ({all.Count} open, ids not shown: use the id YOUR open_rom / open_project / attach_live returned; an id from list_sessions or another agent belongs to someone else)");
 
     public static bool Remove(string id, out Session? s) => all.TryRemove(id, out s);
 

@@ -11,7 +11,7 @@ internal sealed record ToolDef(string Name, string Description, JsonObject Schem
 /// </summary>
 internal static class Tools
 {
-    private const string SessionDesc = "the session id (from open_rom, open_project or attach_live)";
+    private const string SessionDesc = "the session id YOU got back from open_rom, open_project or attach_live. Ids are random and private: one MCP server is shared by every agent of a Claude Code session (subagents included) and it cannot tell them apart, so never use an id you did not open yourself; another agent's session is not yours to drive";
     private const string CpuDesc = "the CPU: main (default) or spc (the SNES sound CPU, SPC700)";
     private const string SpecDesc = "an address on a CPU: $0010, $8000-$80FF, 7E:0010 (bank:address), wram:$10, vram:$2000, spc:$0200 (cpu spc), a symbol (player_hp: its whole size), symbol+1. A CPU address matches every mirror of what it reaches.";
 
@@ -103,8 +103,13 @@ internal static class Tools
         void Add(string name, string desc, JsonObject schema, Func<Args, ToolOut> run, bool ro = false) => t.Add(new ToolDef(name, desc, schema, run, ro));
 
         // ------------------------------------------------------------------------------------------------ sessions
-        Add("list_sessions", "The open sessions (headless and live), with what each runs.", Schema(),
-            _ => new JsonObject { ["sessions"] = J.Arr(Sessions.All.Select(s => { lock (s.Gate) return (JsonNode)s.Describe(); })) }, ro: true);
+        Add("list_sessions", "The open sessions (headless and live), with what each runs. Ids are shown masked (other agents sharing this server may own them); pass reveal:true only to recover the id of a session YOU opened.",
+            Schema(("reveal", P("boolean", "show the full ids (default false: masked, e.g. h3-9f...)"), false)),
+            a =>
+            {
+                bool rv = a.Bool("reveal", false);
+                return new JsonObject { ["sessions"] = J.Arr(Sessions.All.Select(s => { JsonObject d; lock (s.Gate) d = s.Describe(); if (!rv) d["session"] = Sessions.Mask(s.Id); return (JsonNode)d; })) };
+            }, ro: true);
 
         Add("open_rom",
             "Opens a ROM in a new HEADLESS session: BrokenNes's own emulator inside this server, invisible, deterministic, as many at once as you like (no Mesen, no lock). " +
@@ -198,7 +203,7 @@ internal static class Tools
         // ------------------------------------------------------------------------------------------------ input
         Add("input",
             "The pad. mode press: hold buttons for N frames (default 6) and run them, then release; hold: keep them held until changed; release: let go; script: a pad script (\"0:Start,10:,60:Right+A,120:\", frames from now) run to its end (or run_frames). " +
-            "Buttons: A B X Y L R C Z Mode Start Select Up Down Left Right. Live: control (press / hold / release only).",
+            "Buttons per console: NES/GB A B Start Select; SNES/WideMess also X Y L R (L and R are ALWAYS the shoulders); Master System A(1) B(2) Pause Reset; Game Gear A B Start; Genesis A B C X Y Z Mode Start. Directions: Up Down Left Right (or U D, DLeft DRight). A button the console lacks is refused. Live: control (press / hold / release only).",
             Schema(S(), ("mode", P("string", "press, hold, release or script", Enum("press", "hold", "release", "script")), true), ("buttons", P("string[]", "the buttons"), false),
                    ("frames", P("integer", "press: frames to hold (default 6)"), false), ("player", P("integer", "1 (default) or 2"), false),
                    ("script", P("string", "mode script: frame:Button+Button,..."), false), ("run_frames", P("integer", "mode script: frames to run (default: to the last step)"), false)),

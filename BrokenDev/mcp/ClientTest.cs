@@ -248,6 +248,15 @@ internal static class ClientTest
         Check("deterministic_negative_control", r1 != r3, $"{s3} ran 121 frames: its RAM differs");
         var ls = await Call("list_sessions");
         Check("list_sessions", (ls["sessions"] as JsonArray)?.Count >= 4, $"{(ls["sessions"] as JsonArray)?.Count} open");
+        // session ownership: the server is shared by every agent of a Claude Code session, so ids are unguessable and never listed in full
+        var idShape = new System.Text.RegularExpressions.Regex("^h\\d+-[0-9a-f]{8}$");
+        var listed = (ls["sessions"] as JsonArray)?.Select(x => S(x?["session"])).ToList() ?? new();
+        Check("session_ids_unguessable", idShape.IsMatch(s1) && idShape.IsMatch(s2) && s1[(s1.IndexOf('-') + 1)..] != s2[(s2.IndexOf('-') + 1)..], $"{s1}, {s2}");
+        Check("list_sessions_masks_ids", listed.Count > 0 && !listed.Contains(s1) && listed.All(x => !idShape.IsMatch(x)), string.Join(" ", listed.Take(4)));
+        var lsr = await Call("list_sessions", new { reveal = true }, log: false);
+        Check("list_sessions_reveal", (lsr["sessions"] as JsonArray)?.Any(x => S(x?["session"]) == s1) == true, "reveal:true gives the full ids back");
+        var guess = await Call("status", new { session = s1[..s1.IndexOf('-')] });
+        Check("guessed_session_refused", guess.IsError && guess.Text.Contains("no session") && !guess.Text.Contains(s1) && !guess.Text.Contains(s2), guess.Text);
         foreach (var x in new[] { s1, s2, s3 }) await Call("close_session", new { session = x });
         var gone = await Call("status", new { session = s1 });
         Check("closed_session_refused", gone.IsError && gone.Text.Contains("no session"), gone.Text);
@@ -317,6 +326,12 @@ internal static class ClientTest
         var mr = await Call("run", new { session = hm, frames = 30 });
         var ms = await Call("screenshot", new { session = hm });
         Check("sega_session", S(mo["console"]) == "sms" && S(mr["outcome"]) == "frames" && ms.Images.Count == 1, $"{hm}: {S(mo["description"])}; {L(mr["framesRun"])} frames, picture {L(ms["width"])}x{L(ms["height"])}");
+        // pad names per console: L / R are the SNES / WideMess shoulders (they used to read as Left / Right), a button the pad lacks is refused
+        async Task<string> Held(string sess, params string[] b) { var r = await Call("input", new { session = sess, mode = "hold", buttons = b }, log: false); await Call("input", new { session = sess, mode = "release" }, log: false); return r.IsError ? "ERR " + r.Text : S(r["held"]); }
+        string snesLR = await Held(hs, "L", "R"), snesLr = await Held(hs, "l", "r"), snesDir = await Held(hs, "Left", "DRight"), wmsLR = await Held(hw, "L");
+        Check("input_snes_shoulders", snesLR == "L, R" && snesLr == "L, R" && snesDir == "Left, Right" && wmsLR == "L", $"SNES L+R -> {snesLR}, l+r -> {snesLr}, Left+DRight -> {snesDir}; WideMess L -> {wmsLR}");
+        string gbL = await Held(hg, "L"), gbX = await Held(hg, "X"), gbOk = await Held(hg, "Left", "A"), smsP = await Held(hm, "1", "Pause"), smsC = await Held(hm, "C");
+        Check("input_console_tables", gbL.StartsWith("ERR") && gbX.StartsWith("ERR") && gbOk == "Left, A" && smsP == "A, Select" && smsC.StartsWith("ERR"), $"GB L: {gbL}; GB X: {gbX}; GB Left+A: {gbOk}; SMS 1+Pause: {smsP}; SMS C: {smsC}");
         // the Sega debugger (Timeflow T0): the Z80 of the Master System, the 68000 and the sound Z80 of the Genesis
         await Call("breakpoint_add", new { session = hm, spec = "$0010" });
         var smb = await Call("run", new { session = hm, frames = 30 });
@@ -327,6 +342,8 @@ internal static class ClientTest
         await Call("breakpoint_remove", new { session = hm, all = true });
         var mdo = await Call("open_rom", new { path = md, symbols = new[] { mdSym } });
         string hmd = S(mdo["session"]);
+        string mdAll = await Held(hmd, "A", "B", "C", "X", "Y", "Z", "Mode", "Start"), mdReset = await Held(hmd, "Reset");
+        Check("input_genesis_table", mdAll == "A, B, X, Y, Start, C, Z, Mode" && mdReset.StartsWith("ERR"), $"Genesis six buttons -> {mdAll}; Reset: {mdReset}");
         await Call("breakpoint_add", new { session = hmd, spec = "sub2" });
         var mdb = await Call("run", new { session = hmd, frames = 30 });
         var mds = await Call("call_stack", new { session = hmd });

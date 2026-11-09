@@ -338,6 +338,8 @@ internal sealed class LiveSession : Session
     public override JsonObject Input(string mode, string[] buttons, int frames, int player, List<PadStep>? script, long? runFrames)
     {
         Control("pressing buttons in the user's game");
+        // the same names as headless (L / R = shoulders), sent as the app's canonical names
+        if (mode is "press" or "hold") buttons = Pads.Names(Pads.Parse(buttons, ConsoleKey.ToLowerInvariant() is "nes" or "snes" or "wms" or "gb" or "gbc" or "sms" or "gg" or "md" ? ConsoleKey.ToLowerInvariant() : ""));
         switch (mode)
         {
             case "press": return Obj(Post("/api/input/set-buttons", new { player = player + 1, buttons, holdMs = Math.Clamp(frames, 1, 600) * 1000 / 60 }));
