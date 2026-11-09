@@ -146,7 +146,7 @@ if (want('console') || want('picture')) await withLab(async lab => {
   const cores = [];
   for (const slot of ['cpu', 'ppu', 'apu']) cores.push(`${slot[0].toUpperCase() + slot.slice(1)} core=${await currentCore(page, slot)} [${((await coreOptions(page, slot)) || []).map(o => o.id).join(' ')}]`);
   check('console', 'a .wms file starts the WideMess console with its own cores (WMS; the SNES sound chip offered as the alternative)',
-    cons === 'wms' && cores.length === 3 && cores.every(c => /=WMS \[/.test(c)) && /Apu core=WMS \[WMS SFC/.test(cores.join(' | ')), `console ${cons}; ${cores.join(' | ')}`.slice(0, 400));
+    cons === 'wms' && cores.length === 3 && cores.every(c => /=WMS \[/.test(c)) && /^Apu core=WMS \[WMS /.test(cores[2]) && / SFC[ \]]/.test(cores[2]), `console ${cons}; ${cores.join(' | ')}`.slice(0, 400));
   let r = null;
   for (let i = 0; i < 10 && !(r && r.colours > 800); i++) r = await page.eval(`window.__frames(60, null, { colours: true })`);   // (the desktop smoke waits the same way: the ROM fills its layers over the first frames)
   check('picture', 'the 8-layer test ROM arrives at 400 x 224, shown 400 wide, with more than 800 colours', r.w === 400 && r.h === 224 && r.aw === 400 && r.colours > 800, `${r.w} x ${r.h}, shown ${r.aw} wide, ${r.colours} colours`);
