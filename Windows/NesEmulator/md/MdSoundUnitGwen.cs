@@ -9,7 +9,7 @@ namespace NesEmulator.Sega;
 /// PSG run as in <see cref="MdSoundUnit"/>; what is heard comes from the Gwenesis engines, fed the same writes, one Gwenesis FM sample per stock FM sample. Mono, as Gwenesis is:
 /// the one int16 FM sum goes to both sides, the PSG too. No output filter (gwenesis has none). A state load or swap re-feeds the engines the stock chips' registers.
 /// </summary>
-public sealed class MdSoundUnitGwen : MdSoundUnit
+public sealed class MdSoundUnitGwen : MdSoundUnit, IPortedEngineState
 {
     private readonly int hostRate;
     private readonly double psgClock;

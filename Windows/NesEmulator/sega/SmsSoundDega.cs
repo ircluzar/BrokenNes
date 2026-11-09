@@ -9,7 +9,7 @@ namespace NesEmulator.Sega;
 /// frontend rate) when the mixer asks, so writes are heard from the next chunk; converted to the host rate by zero-order hold. Game Gear stereo is honoured
 /// the Dega way (a channel switched off on one side plays at 1/4 there). A state load or a swap re-feeds the stock PSG's registers (Dega's MsndRefresh).
 /// </summary>
-public sealed class SmsSoundDega : SmsSound, ISmsSound
+public sealed class SmsSoundDega : SmsSound, ISmsSound, IPortedEngineState
 {
     private const int DegaRate = 44100;
     private readonly bool enhance;

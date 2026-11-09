@@ -8,7 +8,7 @@ namespace NesEmulator.Sega;
 /// ~44.05 kHz in emulated time), a 5-bit noise register, linear volume, unipolar mono (the Game Gear stereo port is ignored). Blocks are rendered when the mixer reaches them,
 /// so writes are heard from the next block; converted to the host rate by zero-order hold. A state load or a swap re-feeds the stock PSG's registers.
 /// </summary>
-public sealed class SmsSoundDarc : SmsSound, ISmsSound
+public sealed class SmsSoundDarc : SmsSound, ISmsSound, IPortedEngineState
 {
     private readonly double engineRate;
     private DarcSmsPsg? eng;

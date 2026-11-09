@@ -565,6 +565,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
         fmLeft.SaveState(w); fmRight.SaveState(w);
         w.Write(fmClock); w.Write(lastFmL); w.Write(lastFmR);
         w.Write(BusRequests); w.Write(BankReads); w.Write(BankWrites); w.Write(PsgWrites); w.Write(YmWrites); w.Write(Z80Ticks);
+        EngineState.SaveSection(this, typeof(MdSoundUnit), w);   // FA-ST-1: a ported engine's own state
     }
 
     public void LoadState(BinaryReader r)
@@ -582,6 +583,7 @@ public partial class MdSoundUnit : IGenesisSound, IHubVoiceSource, IYm2612Sink, 
         // the plugin's stems (one stream per voice, beside the mix) start again from the mix's time
         RealignStems();
         OnReset();
+        EngineState.LoadSection(this, typeof(MdSoundUnit), r);   // FA-ST-1: replaces OnReset's re-key with the saved engine
     }
 
     // ---- Hooks for a unit that swaps the sound generator (the foreign APU project: Gens, PicoDrive, MAME 0.36 ... ports).

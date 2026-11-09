@@ -29,6 +29,7 @@ public partial class APU_SFC
         w.Write(MemoryMarshal.AsBytes(ring.AsSpan(0, ringCount - first)));
         Smp.SaveState(w);
         Dsp.SaveState(w);
+        EngineState.SaveSection(this, typeof(APU_SFC), w);   // FA-ST-1: a ported engine's own state
     }
 
     public void LoadState(BinaryReader r)
@@ -48,5 +49,6 @@ public partial class APU_SFC
         Smp.LoadState(r);
         Dsp.LoadState(r);
         OnReset();
+        EngineState.LoadSection(this, typeof(APU_SFC), r);   // FA-ST-1: replaces OnReset's re-key with the saved engine
     }
 }

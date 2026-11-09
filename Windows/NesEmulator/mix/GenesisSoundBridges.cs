@@ -514,8 +514,8 @@ namespace NesEmulator
         public int GetQueuedSampleCount() { Drain(); return ringCount; }
         public int GetSampleRate() => psg.SampleRate;
         public void SetEnabledChannels(int mask) { channelMask = mask; front.SetEnabledChannels(mask); }
-        public object GetState() => front.GetState();
-        public void SetState(object state) { front.SetState(state); ResyncModel(); }
+        public object GetState() => EngineState.BridgeGetState(this, front);   // FA-ST-1: the bridge and its unit, exact
+        public void SetState(object state) => EngineState.BridgeSetState(this, front, state, ResyncModel);
 
         /// <summary>After a state load the model is rebuilt from the front core's state probe (see <see cref="APU_SMS"/>'s equivalent), so the chips play what the state was playing.</summary>
         private void ResyncModel()

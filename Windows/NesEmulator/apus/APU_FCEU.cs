@@ -11,7 +11,7 @@ namespace NesEmulator
     /// also goes to the ported FCEU engine, which is clocked from Step and whose 44100 Hz output replaces APU_FIX's. MMC5 sound writes reach the
     /// engine through <see cref="IApuExpansionAudio"/> (so the MMC5 squares and PCM are FCEU 0.96's). Discovered by CoreRegistry as APU id "FCEU".
     /// </summary>
-    public sealed class APU_FCEU : APU_FIX, IAPU, IApuExpansionAudio
+    public sealed class APU_FCEU : APU_FIX, IAPU, IPortedEngineState, IApuExpansionAudio
     {
         private readonly Bus host;
         private FceuApu? engine;
@@ -35,6 +35,7 @@ namespace NesEmulator
         {
             base.SetState(state);
             foreach (var (a, v) in SoundRegisterReplay()) Engine.Write(a, v);
+            ApplyEngineState();   // FA-ST-1: the engine's saved state replaces the re-key (exact)
         }
 
         public new void WriteAPURegister(ushort address, byte value)

@@ -10,7 +10,7 @@ namespace NesEmulator
     /// The engine's blocks (44.1 kHz nominal, ~43.68 kHz in emulated time) are placed by CPU cycle and held (zero-order) at the base's 44.1 kHz.
     /// Quick port: the engine's own state is not saved (a state load keeps whatever the engine had).
     /// </summary>
-    public sealed class APU_DARC : APU_FIX, IAPU
+    public sealed class APU_DARC : APU_FIX, IAPU, IPortedEngineState
     {
         private const int CpuHz = 1789773;
         private DarcNesPsg? eng;
@@ -38,6 +38,7 @@ namespace NesEmulator
         {
             base.SetState(state);
             foreach (var (a, v) in SoundRegisterReplay()) Eng.Write(a, v);
+            ApplyEngineState();   // FA-ST-1: the engine's saved state replaces the re-key (exact)
         }
 
         public new void WriteAPURegister(ushort address, byte value)
@@ -93,7 +94,7 @@ namespace NesEmulator
         public new void ClearAudioBuffers()
         {
             base.ClearAudioBuffers();
-            rw = rr = rc = 0; outPhase = 0;
+            rw = rr = rc = 0;   // only the queued samples: the resampling phase is engine state (FA-ST-1, a state load clears the buffers after SetState)
         }
 
         public new void Reset()

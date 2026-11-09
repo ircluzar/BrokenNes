@@ -10,7 +10,7 @@ namespace NesEmulator.Sega;
 /// The stock PSG and the stock YM2413 keep running (the game's ports and the stock state are untouched); only the FM that is heard is replaced.
 /// The OPL runs at MAME's default 22,050 Hz from a 3,579,545 Hz clock (3812intf.c's standard clock) and is held sample-and-hold up to the chip rate.
 /// </summary>
-public sealed class SmsFmSoundM036 : SmsFmSound
+public sealed class SmsFmSoundM036 : SmsFmSound, IPortedEngineState
 {
     public const int OplClock = 3579545;
     public const int OplRate = 22050;      // MAME 0.36's default sample rate

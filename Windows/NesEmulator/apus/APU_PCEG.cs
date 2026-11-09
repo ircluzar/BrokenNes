@@ -12,7 +12,7 @@ namespace NesEmulator
     /// NES APU id "PCEG": APU_FIX keeps the game-facing side and the NES channel logic (length, envelope, sweep, linear counter);
     /// the translator re-keys that state onto the ported PCE-GO PSG, which is what you hear. The base's own samples are discarded.
     /// </summary>
-    public sealed class APU_PCEG : APU_FIX, IAPU
+    public sealed class APU_PCEG : APU_FIX, IAPU, IPortedEngineState
     {
         private NesToPceTranslator? engine;   // lazy: the base constructor may call Reset before this class's fields exist
         private int mask = 0x1F;
@@ -33,6 +33,7 @@ namespace NesEmulator
             base.SetState(state);
             E.HardReset();
             foreach (var (a, v) in SoundRegisterReplay()) E.Write(a, v);
+            ApplyEngineState();   // FA-ST-1: the engine's saved state replaces the re-key (exact)
         }
 
         public new void WriteAPURegister(ushort address, byte value)

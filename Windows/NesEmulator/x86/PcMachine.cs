@@ -269,10 +269,10 @@ public sealed partial class PcMachine : IX86Bus
         using (var w = new BinaryWriter(ms))
         {
             w.Write(0x33384350); // "PC83"
-            w.Write(3);   // 2: the AdLib after the VGA; 3: the DMA controllers and the sound card after the AdLib
+            w.Write(4);   // 2: the AdLib after the VGA; 3: the DMA controllers and the sound card after the AdLib; 4: the AdLib engine's own state (FA-ST-1)
             Cpu.SaveState(w);
             w.Write(_idle); w.Write(_port61); w.Write(_lastFrame); w.Write(InstructionsPerSecond);
-            Pic.Save(w); Pit.Save(w); Kbc.Save(w); Cmos.Save(w); Vga.Save(w); Opl.Save(w);
+            Pic.Save(w); Pit.Save(w); Kbc.Save(w); Cmos.Save(w); Vga.Save(w); Opl.Save(w); Opl.SaveEngine(w);
             Dma.Save(w);
             w.Write(Card?.Id ?? "");
             if (Card != null)
@@ -296,11 +296,12 @@ public sealed partial class PcMachine : IX86Bus
         using var r = new BinaryReader(new MemoryStream(s));
         if (r.ReadInt32() != 0x33384350) throw new InvalidDataException("not an x86 console state");
         int version = r.ReadInt32();
-        if (version is not (1 or 2 or 3)) throw new InvalidDataException($"x86 console state version {version} is not known");
+        if (version is not (1 or 2 or 3 or 4)) throw new InvalidDataException($"x86 console state version {version} is not known");
         Cpu.LoadState(r);
         _idle = r.ReadInt64(); _port61 = r.ReadByte(); _lastFrame = r.ReadInt64(); InstructionsPerSecond = r.ReadInt64();
         Pic.Load(r); Pit.Load(r); Kbc.Load(r); Cmos.Load(r); Vga.Load(r);
-        if (version >= 2) Opl.Load(r); else { Opl.Reset(); Opl.Resync(); }   // a version 1 state (before the AdLib): the chip starts silent
+        if (version >= 2) Opl.Load(r); else { Opl.Reset(); Opl.Resync(); }
+        if (version >= 4) Opl.LoadEngine(r); else Opl.NoEngineState();   // a version 1 state (before the AdLib): the chip starts silent
         if (version >= 3)
         {
             Dma.Load(r);

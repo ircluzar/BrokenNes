@@ -9,7 +9,7 @@ namespace BrokenNes.Workshop.X86;
 /// <summary>
 /// <c>--x86engines [--only ID,ID] [--wav dir]</c>: every AdLib engine (ymfm = "YMFM", then <see cref="OplEngines.Factories"/>) plays the same test through the card (Opl2 with the engine set):
 /// each of the 9 melodic channels alone (a 440 Hz-ish note, then key-off), then the 5 rhythm instruments, then a save/load in the middle of a held note.
-/// Verdicts per cell: sounds (rms above a floor), SILENT, CRASH; key-off must fall quiet (STUCK otherwise); after the load the note must keep sounding (re-keyed).
+/// Verdicts per cell: sounds (rms above a floor), SILENT, CRASH; key-off must fall quiet (STUCK otherwise); after the load the note must continue sample-exact (FA-ST-1: the engine's own state is saved).
 /// Exit code 0 = no flagged cell.
 /// </summary>
 internal static class X86EnginesCli
@@ -91,11 +91,16 @@ internal static class X86EnginesCli
                     var r = new Rig(Make());
                     r.W(0x01, 0x20); Patch(r, 0); KeyOn(r, 0);
                     var a = r.Run(0.3);
-                    var st = new MemoryStream(); r.Chip.Save(new BinaryWriter(st));
-                    var r2 = new Rig(Make()); r2.Clock = r.Clock; st.Position = 0; r2.Chip.Load(new BinaryReader(st)); r2.Chip.Restart();
+                    var st = new MemoryStream(); var sw = new BinaryWriter(st); r.Chip.Save(sw); r.Chip.SaveEngine(sw); sw.Flush();
+                    r.Chip.Restart();   // the saved machine goes on as a loaded one does (the drawn samples dropped), so A and B start alike
+                    var a2 = r.Run(0.3);
+                    var r2 = new Rig(Make()); r2.Clock = r.Clock - (long)(0.3 * Pit); st.Position = 0; var sr = new BinaryReader(st); r2.Chip.Load(sr); r2.Chip.LoadEngine(sr); r2.Chip.Restart();
                     var b = r2.Run(0.3);
-                    string v = Rms(b) < 100 ? "SILENT" : "re-keyed";
-                    if (v == "SILENT") flagged++;
+                    // FA-ST-1: the engine's own state is saved, so the loaded chip plays the saved one's samples exactly
+                    int n = Math.Min(a2.Length, b.Length); double d = 0; for (int i = 0; i < n; i++) d += (double)(a2[i] - b[i]) * (a2[i] - b[i]);
+                    double err = n == 0 ? 1 : Math.Sqrt(d / n) / Math.Max(1, Rms(a2));
+                    string v = Rms(b) < 100 ? "SILENT" : err == 0 && a2.Length == b.Length ? "exact" : $"NOT EXACT (err {err:F3})";
+                    if (v != "exact") flagged++;
                     Console.WriteLine($"{id,-8} {"state",-11} {Rms(b),7:F0}  {v} (before the save {Rms(a):F0})");
                 }
             }

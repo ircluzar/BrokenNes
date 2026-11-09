@@ -156,6 +156,7 @@ namespace NesEmulator
             outN -= n; return n;
         }
         public void ClearOutput() { outW = outR = outN = 0; dcIn = dcOut = 0; }
+        public void DropOutput() { outW = outR = outN = 0; }
 
         private byte ShiftRegister15(byte xor_tap)
         {

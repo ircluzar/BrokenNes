@@ -7,7 +7,7 @@ namespace NesEmulator.Sega;
 /// exception, see THIRD_PARTY_NOTICES.md section 2). GX 1.3.0 was a Genesis-only emulator: its Genesis PSG is used as is, clocked by the Z80 clock, rendered at the host rate, x1.5 (psg_preamp)
 /// and through GX's default one-pole output filter. Mono: the Game Gear stereo byte is ignored, as GX's Update ignored it. Register writes land on the next drained chunk.
 /// </summary>
-public sealed class SmsSoundGpgx : SmsSound
+public sealed class SmsSoundGpgx : SmsSound, IPortedEngineState
 {
     private readonly double clock;
     private readonly bool ready;

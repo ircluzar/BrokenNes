@@ -7,7 +7,7 @@ namespace NesEmulator.Sega;
 /// exception, see THIRD_PARTY_NOTICES.md section 2a). Gwenesis is a Genesis emulator: its Genesis PSG is used as is, clocked by the Z80 clock, rendered at the host rate. Mono: the
 /// Game Gear stereo byte is ignored (Gwenesis has no stereo PSG). Its flaws come along: white noise dies (feedback mask never set), coarse 6 dB volume ladder, doubled noise.
 /// </summary>
-public sealed class SmsSoundGwen : SmsSound
+public sealed class SmsSoundGwen : SmsSound, IPortedEngineState
 {
     private readonly double clock;
     private readonly bool ready;

@@ -10,7 +10,7 @@ namespace NesEmulator.Sega;
 /// GPL-3.0-or-later, Copyright 2013 Michael Pavone) take the same writes and replace what is heard: the FM one sample per stock sample (1008 master clocks),
 /// the PSG point-sampled at the host rate (writes land at the block the host pulls, not at their clock).
 /// </summary>
-public sealed class MdSoundUnitBlst : MdSoundUnit
+public sealed class MdSoundUnitBlst : MdSoundUnit, IPortedEngineState
 {
     private readonly SegaMachine machine;
     private BlastemYm2612? fm;

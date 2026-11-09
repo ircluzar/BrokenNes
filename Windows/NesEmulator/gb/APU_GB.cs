@@ -521,7 +521,10 @@ public sealed class APU_GB : IGbApu
         w.Write(sweepShadow); w.Write(sweepTimer); w.Write(sweepEnabled); w.Write(sweepNegUsed);
         w.Write(wavePos); w.Write(waveBuffer); w.Write(lfsr);
         w.Write(sampleLeft); w.Write(sampleErr); w.Write(capL); w.Write(capR);
+        w.Write(AccMagic); w.Write(accL); w.Write(accR); w.Write(accN); w.Write(waveFetched);   // FA-ST-1: the sample in progress, so a load is sample-exact
     }
+
+    private const ulong AccMagic = 0x3143434142475FB7UL;
 
     public void LoadState(BinaryReader r)
     {
@@ -538,6 +541,13 @@ public sealed class APU_GB : IGbApu
         wavePos = r.ReadInt32(); waveBuffer = r.ReadByte(); lfsr = r.ReadInt32();
         sampleLeft = r.ReadInt32(); sampleErr = r.ReadInt32(); capL = r.ReadSingle(); capR = r.ReadSingle();
         accL = accR = 0; accN = 0; waveFetched = false;
+        var bs = r.BaseStream;   // the sample in progress (states from before FA-ST-1 start it over)
+        if (bs.CanSeek && bs.Length - bs.Position >= 29)
+        {
+            long at = bs.Position;
+            if (r.ReadUInt64() == AccMagic) { accL = r.ReadDouble(); accR = r.ReadDouble(); accN = r.ReadInt32(); waveFetched = r.ReadBoolean(); }
+            else bs.Position = at;
+        }
         if (sampleLeft <= 0) sampleLeft = 87;
         Remix();
     }

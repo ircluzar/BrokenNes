@@ -13,7 +13,7 @@ namespace NesEmulator
     /// NES APU id "INES": APU_FIX keeps the game-facing side ($4015 reads, frame/DMC IRQs, DMC DMA timing); every register write also goes to the
     /// ported InfoNES engine, which is what you hear. The base's own samples are drained and discarded.
     /// </summary>
-    public sealed class APU_INES : APU_FIX, IAPU
+    public sealed class APU_INES : APU_FIX, IAPU, IPortedEngineState
     {
         private readonly Bus bus;
         private InfoNesApu? engine;   // lazy: the base constructor may call Reset before this class's fields exist
@@ -36,6 +36,7 @@ namespace NesEmulator
         {
             base.SetState(state);
             foreach (var (a, v) in SoundRegisterReplay()) E.Write(a, v);
+            ApplyEngineState();   // FA-ST-1: the engine's saved state replaces the re-key (exact)
         }
 
         public new void WriteAPURegister(ushort address, byte value)
@@ -76,7 +77,7 @@ namespace NesEmulator
         public new void ClearAudioBuffers()
         {
             base.ClearAudioBuffers();
-            engine?.ClearOutput();
+            engine?.DropOutput();   // only the queued samples: the DC filter is engine state (FA-ST-1, a state load clears the buffers after SetState)
         }
 
         public new void Reset()

@@ -17,7 +17,7 @@ namespace NesEmulator.Sega;
 /// queues back by zero-order hold at their own rate (one Gens frame of latency). Gens' levels are halved so the FM sits near
 /// the stock unit's level; Gens' FM:PSG balance is kept.
 /// </remarks>
-public sealed class MdSoundUnitGens : MdSoundUnit
+public sealed class MdSoundUnitGens : MdSoundUnit, IPortedEngineState
 {
     private const int GensRate = 22050;
     private const double ClockNtsc = 53693175, ClockPal = 53203424;

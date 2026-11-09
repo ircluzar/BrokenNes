@@ -11,7 +11,7 @@ namespace NesEmulator
     /// The engine runs at its native 22050 Hz and is zero-order-held to 44100 Hz. Noise and DMC are silent, as in NESticle.
     /// Discovered by CoreRegistry as APU id "NSTC". Engine state is not in save states (quick port).
     /// </summary>
-    public sealed class APU_NSTC : APU_FIX, IAPU
+    public sealed class APU_NSTC : APU_FIX, IAPU, IPortedEngineState
     {
         private const int CpuFreqInt = 1789773;
         private const int OutRate = 44100;
@@ -39,6 +39,7 @@ namespace NesEmulator
         {
             base.SetState(state);
             foreach (var (a, v) in SoundRegisterReplay()) { if (a == 0x4015) Eng.SetEnable(v); else Eng.Write(a - 0x4000, v); }
+            ApplyEngineState();   // FA-ST-1: the engine's saved state replaces the re-key (exact)
         }
 
         public new void WriteAPURegister(ushort address, byte value)
@@ -111,7 +112,7 @@ namespace NesEmulator
         public new void ClearAudioBuffers()
         {
             base.ClearAudioBuffers();
-            ringWrite = ringRead = ringCount = 0; outPhase = 0;
+            ringWrite = ringRead = ringCount = 0;   // only the queued samples: the resampling phase is engine state (FA-ST-1)
         }
 
         public new void Reset()

@@ -27,7 +27,7 @@ using System;
 
 namespace NesEmulator
 {
-    public sealed class APU_FSID : APU_FIX, IAPU
+    public sealed class APU_FSID : APU_FIX, IAPU, IPortedEngineState
     {
         private const long NesClock = 1789773;
         private ViceFastSid? engine;   // lazy: the base constructor may call Reset before this class's fields exist
@@ -68,6 +68,7 @@ namespace NesEmulator
             ResetShadow();
             lastDmcLevel = -1; digiHold = 0;
             Sync();
+            ApplyEngineState();   // FA-ST-1: the engine's saved state replaces the re-key (exact)
         }
 
         public new void WriteAPURegister(ushort address, byte value)
