@@ -136,6 +136,27 @@ channel-rack order, which has not been checked in real FL. Look at the exported 
 Without a device: `BrokenNesNanoGB.renderMidi(data, opts)` returns `{ left, right }`. `renderOffline(events, seconds, opts)` and `toAudioBuffer(ctx, events, seconds)`
 work as in Nano NES; they return stereo with `opts.stereo`, and also work on `file://` pages and in Node.
 
+### FL projects (.flp) straight to a song: `tools/flp2nano`
+
+FL's own MIDI export loses what the plugin heard: the presets, slide notes and fine pitch, and it is empty when the playlist is. `flp2nano` reads the `.flp` itself and writes the song:
+
+```
+node Nano/gb/tools/flp2nano/flp2nano.mjs "song.flp" [more.flp ...] [--out DIR] [--slide fl|linear] [--dump]
+```
+
+It writes `song.nano.mid` and `song.nano.json` (the sidecar) next to the project, and nothing else.
+
+- **The parser** (`flp.mjs`) is our own, from the public description of the FLhd / FLdt event format: the channel rack, each BrokenNes2 instance's saved state (`BFNP`: every parameter, and where the instance sat), the patterns' notes, the playlist (FL 21+ 88-byte items, clip offsets) and the tempo. FL 26 writes header event 172 with 3 or 5 bytes; the parser handles it.
+- **Channels:** each BrokenNes2 channel gets a MIDI channel in channel-rack order (1, 2, 3 ...; 10 is skipped). Samplers, other plugins, automation clips, ROM mode and other chips are skipped with a warning.
+- **Arrangement:** the first arrangement's pattern clips, at their positions, with their start offsets, cut at their ends. **An empty playlist** plays the patterns once each in pattern order, rounded up to whole bars, with a loud warning.
+- **The Nano GB chip** (chip 30): program change and sidecar preset = the Instrument parameter; the sidecar's `volume` = Volume, `pan` = Pan (hard left or right from 50 %).
+- **A NES chip in Direct mode** (chip 0 = FIX, the default): the instance is one NES channel, monophonic with last-note priority, at a constant level. It becomes the nearest Nano GB sound, defined in the sidecar's `presets`: `nes-pulse-25` (and the other duties), `nes-triangle` (the NES triangle's own 32 steps at full level) and `nes-noise`. The notes are made monophonic as the NES channel plays them. The level goes through the NES mixer's formula (with a -2 dB trim measured on `overworld.wav`), because the NES pulses are much quieter than its triangle and the Game Boy's channels are not: level 12 becomes 6.
+- **Pitch:** FL key = MIDI key (the plugin hears cents from C5 = 60). Fine pitch (120 = none, taken as 1 cent a step: not checked in FL yet), Coarse and Fine, and **slide notes** become pitch bend, with an RPN range as wide as the widest bend (±23 for overworld). MIDI bends a whole channel: a NES channel has one note at a time anyway; on a Nano GB channel the newest note's bend is used and a warning counts the conflicts.
+- **FL's slide, measured:** in the user's `overworld.wav` (FL 26.1, 156 BPM, nine clean 19-tick slides), the glide is a straight line in cents that starts 0.85 tick before the slide note and lasts 1.8 ticks longer (83.3 ms for 76.1 ms). That is the default; `--slide linear` is the plain reading (exactly the slide note's length). Bends are written every 2 ticks of 960 PPQ.
+- **Not converted** (warned when present): automation clips (pitch, tempo), recorded pattern controllers, the channel's porta switch (its place in the channel parameters is not known), mixer effects and FL's master chain.
+
+`test/flp2nano.test.mjs` builds an FL project of its own and checks the whole path, the rendered slides included; with `FLP2NANO_SONGS=<folder>` it also checks the user's two songs against FL's own export (the same keys at the same times).
+
 ## Presets
 
 The order is the program number, and it is append-only. All 27 were written for this project from the chip's own parameters; none is copied from a game.
