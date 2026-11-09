@@ -195,3 +195,11 @@ The tag also has `core_normal`, `core_full`, `core_prefetch` and `core_dynrec`. 
 | 2b | 65816 Snes9x 1.43 / ZSNES | skipped: CPU_SFC is clocked per bus access by BOARD_SFC, so a flat MemSpeed or a missing 16-bit cycle needs untimed accesses through the whole core (not a clean knob) | |
 | 2c | 68000 Musashi busy-wait | skipped: the 3.3 source is not pinned (catalog gap) | |
 | 3 | x86 I386_D074 (DOSBox 0.74 default cycles=3000) | done: our I386 already counts one cycle per instruction like core_simple, so the option is DOSBox's default speed (3 M instr/s vs 60) | step 2 commit |
+
+## Final battery (2026-11-09, main f98bf281, agent C2)
+
+`UAT/battery.ps1` was run in a private build and work dir (`C:\BrokenNes-work\c2_work`) with seed 313130 on nes, gb, gbc, sms, gg, md, snes and wm. **ALL GREEN** in 19 minutes:
+- **Golden suite:** 123 pass, 0 fail, 30 skip. No golden case pins a harvest CPU, so the suite proves that the default cores are unchanged by the `IBatchedCpu` gates.
+- **Scenarios:** 1109 pass, 0 fail. In S3 core-swap, every harvest CPU swapped in live under a heavy preset with no crash: BAT_INES, BAT_NOFR, BAT_PNES and BAT_FCEU on SMB1 ('Cartridge short'), and GB-GNUB on Super Mario Land and 1942 GBC ('Window chaos').
+- **Fuzz:** 1404 trials, 0 findings. The random core picks covered BAT_INES x2, BAT_NOFR x2, BAT_PNES x1 and BAT_FCEU x2, all clean (state, undo and reload included). GB-GNUB drew no fuzz trial at this seed.
+- **Gap:** I386_D074 is not covered, because the battery has no x86/pc console (no suite case, no scenario and no fuzz). It is only checked by hand (`--x86session img --cpu I386_D074`). Adding a pc console to bscen/bfuzz is the follow-up.
