@@ -33,6 +33,8 @@ internal abstract class Session
     public virtual JsonObject Reset() => throw No("reset");
     // input
     public virtual JsonObject Input(string mode, string[] buttons, int frames, int player, List<PadStep>? script, long? runFrames) => throw No("input");
+    /// <summary>The WideMess pointer port (docs/projects/widemess-spec.md section 10).</summary>
+    public virtual JsonObject Pointer(int? x, int? y, string action, string device, int frames) => throw No("the pointer port (WideMess only)");
     // memory
     public virtual JsonObject Domains() => throw No("memory domains");
     public virtual JsonObject ReadMemory(string? spec, string? domain, long? address, int? length, string cpu) => throw No("reading memory");

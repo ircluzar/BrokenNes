@@ -12,13 +12,13 @@ namespace NesEmulator.Snes;
 //                 256-colour mode and the 400-wide output
 
 /// <summary>The WideMess's own registers and its unlock (spec section 1). The board consults it only for addresses the SNES leaves unused, and while it is locked every access falls through to the SNES's behaviour.</summary>
-public sealed class WmsExtension
+public sealed partial class WmsExtension
 {
     public const byte SpecMajor = 1, SpecMinor = 0;
     /// <summary>The WMFEAT bits this console has: bit 0 = the picture (wide output and the 8-layer mode); bit 1 = the rest of the picture (the 256-sprite table,
     /// windows and colour math at 400, the SNES modes wide: milestone 2); bit 2 = the sound (32 voices, BRR + 16-bit PCM, 1 MB sound RAM: milestone 3); bits 3, 4, 5 =
-    /// fast CPU, 1 MB work RAM, fast DMA (milestone 4). The other features arrive with their milestones.</summary>
-    public const byte Features = 0x3F;
+    /// fast CPU, 1 MB work RAM, fast DMA (milestone 4); bit 6 = the pointer port (section 10, WideMess.Pointer.cs). The other features arrive with their milestones.</summary>
+    public const byte Features = 0x7F;
     public const byte IdValue = 0x57;   // 'W'
 
     private readonly PPU_WMS ppu;
@@ -84,6 +84,7 @@ public sealed class WmsExtension
         0x4224 => Features,
         0x4225 => speed,
         0x4226 => dma,
+        >= 0x4228 and <= 0x422C => ReadPointer(offset),
         _ => 0,
     };
 

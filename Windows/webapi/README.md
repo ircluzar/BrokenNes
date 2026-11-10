@@ -287,6 +287,8 @@ and into the bug capture (bug.json's `debugPort`, the movie's markers). The port
 | GET | `/api/input/button-event` | Poll for the last webmodule X/Y button event (only if <100 ms old; reading clears it) |
 | POST | `/api/input/set-buttons` | Hold buttons for a player (`{ player: 1 or 2, buttons: ["A","Right"], holdMs }`): names `A B Select Start Up Down Left Right X Y L R C Z Mode`, plus the aliases `sel`, `pause` (= Select, the Master System's Pause), `reset` (= Mode, the Master System's Reset), `u`, `d`, or an index 0-14. The NES reads the first eight; a console session reads all of them (the Genesis pad's C, Z and Mode are the last three) |
 | POST | `/api/input/clear` | Release everything for both players |
+| POST | `/api/input/pointer` | Hold the WideMess pointer port at console pixels {x, y, present, left, right, device}; {clear: true} gives it back to the mouse |
+| GET | `/api/input/pointer` | The pointer the last frame was handed, and what a test holds |
 | GET | `/api/input/state` | The held buttons: `held` is what the running game was handed last frame (a console session reports its own pad: the keyboard, a gamepad and the injected buttons together), `injected` what this API latches, `emulationActive` whether the game is running |
 
 ### Console - `WebApiServer.Endpoints.Console.cs` (BrokenNes 2: the NES, SNES, Game Boy / Color, Master System, Game Gear and Genesis)

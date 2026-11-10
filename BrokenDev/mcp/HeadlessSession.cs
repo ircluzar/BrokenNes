@@ -8,6 +8,7 @@ using NesEmulator.Debugging;
 using NesEmulator.Debugging.Checks;
 using NesEmulator.Debugging.Movies;
 using NesEmulator.Systems;
+using NesEmulator.Snes;
 
 namespace BrokenNes.Mcp;
 
@@ -195,10 +196,11 @@ internal sealed partial class HeadlessSession : Session
             }
             p0 = held[0]; p1 = held[1];
         }
-        if (history != null) (p0, p1) = history.BeforeFrame(p0, p1);   // the log's input while replaying (after a step back, or a movie)
-        TimeflowBefore(p0, p1);   // Timeflow (T1): the state before this frame's pads reach the machine; returns at once unless recording was switched on
+        uint ptr; lock (padLock) ptr = livePointer.Pack();
+        if (history != null) (p0, p1) = history.BeforeFrame(p0, p1, ptr, out ptr);   // the log's input while replaying (after a step back, or a movie); the pointer port's with it
+        TimeflowBefore(p0, p1, ptr);   // Timeflow (T1): the state before this frame's pads reach the machine; returns at once unless recording was switched on
         if (nes != null) nes.SetInputs(NesPad(p0), NesPad(p1));
-        else { cs!.SetPad(0, p0); cs.SetPad(1, p1); }
+        else { cs!.SetPad(0, p0); cs.SetPad(1, p1); if (cs is IPointerSession { HasPointer: true } ps) ps.SetPointer(WmsPointer.Unpack(ptr)); }
         return (p0, p1);
     }
 
@@ -556,6 +558,47 @@ internal sealed partial class HeadlessSession : Session
                 l.Add((player, b));
             }
         }
+    }
+
+    // ---- the WideMess pointer port (spec section 10): what the agent points at, handed to the session each frame as the pads are
+    private WmsPointer livePointer;
+
+    public override JsonObject Pointer(int? x, int? y, string action, string device, int frames)
+    {
+        if (cs is not IPointerSession { HasPointer: true }) throw No("the pointer port (WideMess only)");
+        var dev = device.ToLowerInvariant() switch { "mouse" => WmsPointerDevice.Mouse, "touch" => WmsPointerDevice.Touch, "pen" => WmsPointerDevice.Pen, "agent" or "" => WmsPointerDevice.Agent, _ => throw new ToolError($"device '{device}': mouse, touch, pen or agent") };
+        WmsPointer cur; lock (padLock) cur = livePointer;
+        int px = x ?? cur.X, py = y ?? cur.Y;
+        if (px is < 0 or >= WmsPointer.Width || py is < 0 or >= WmsPointer.Height) throw new ToolError($"x, y ({px}, {py}) are console pixels: 0-{WmsPointer.Width - 1}, 0-{WmsPointer.Height - 1}");
+        frames = Math.Clamp(frames, 0, 600);
+        long before = Interlocked.Read(ref framesStarted);
+        BranchHistory();
+        void Set(WmsPointer p) { lock (padLock) livePointer = p; }
+        var at = new WmsPointer(px, py, true, cur.Left, cur.Right, dev);
+        RunOutcome? o = null;
+        switch (action.ToLowerInvariant())
+        {
+            case "move": Set(at); break;
+            case "down": Set(at with { Left = true }); break;
+            case "up": Set(at with { Left = false }); break;
+            case "right-down": Set(at with { Right = true }); break;
+            case "right-up": Set(at with { Right = false }); break;
+            case "leave": Set(cur with { Present = false, Left = false, Right = false, Device = dev }); break;
+            case "click": case "tap":
+                // a click: the button down for a frame, up for a frame, at the point (a tap is the same, lifting the finger after: not present)
+                Set(at with { Left = true, Right = false }); o = RunFrames(1);
+                Set(at with { Left = false, Right = false }); o = RunFrames(1);
+                if (action.Equals("tap", StringComparison.OrdinalIgnoreCase)) Set(at with { Present = false, Left = false, Right = false });
+                break;
+            default: throw new ToolError($"action '{action}': move, down, up, click, tap, right-down, right-up or leave");
+        }
+        if (frames > 0) o = RunFrames(frames);
+        var j = o is RunOutcome ro ? RunResult(ro, before) : Status();
+        WmsPointer now; lock (padLock) now = livePointer;
+        j["pointer"] = now.ToString();
+        j["latched"] = ((cs as SnesSession)?.WideMess?.Pointer ?? default).ToString();
+        j["note"] = "console pixels 0-399 x 0-223; the registers ($4228-$422C) latch at the start of each frame";
+        return j;
     }
 
     public override JsonObject Input(string mode, string[] buttons, int frames, int player, List<PadStep>? script, long? runFrames)

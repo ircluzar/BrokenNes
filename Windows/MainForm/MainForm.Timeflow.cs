@@ -75,11 +75,11 @@ namespace BrokenNes.Windows
                                  () => TfOptions(BugCaptureSource.NesCores(n), BugCaptureSource.NesNtsc(n)), BugCaptureRing.FromNes(p1), BugCaptureRing.FromNes(p2));
         }
 
-        private void TfBeforeSessionFrame(IConsoleSession s, PadButtons p1, PadButtons p2)
+        private void TfBeforeSessionFrame(IConsoleSession s, PadButtons p1, PadButtons p2, uint pointer = 0)
         {
             if (!TfActive) return;
             var c = s.Console;
-            tfSwitch.BeforeFrame(s, () => TimeflowSource.For(s, () => SessionCores(c)), () => TfOptions(SessionCores(c), false), p1, p2);
+            tfSwitch.BeforeFrame(s, () => TimeflowSource.For(s, () => SessionCores(c)), () => TfOptions(SessionCores(c), false), p1, p2, pointer);
         }
 
         /// <summary>After any frame (emulation thread): the recording's half, the replay's check, the frame count.</summary>

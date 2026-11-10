@@ -49,10 +49,10 @@ internal sealed partial class HeadlessSession
         return o;
     }
 
-    private void TimeflowBefore(PadButtons p0, PadButtons p1)
+    private void TimeflowBefore(PadButtons p0, PadButtons p1, uint pointer = 0)
     {
         if (!tf.On && tf.Current == null) return;
-        tf.BeforeFrame(this, TfSource, TfOptions, p0, p1);
+        tf.BeforeFrame(this, TfSource, TfOptions, p0, p1, pointer);
     }
 
     private JsonObject TfStatus()

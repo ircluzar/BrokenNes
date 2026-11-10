@@ -688,10 +688,12 @@ namespace BrokenNes.Windows
                 FarmBeforeFrame(p1, p2);
                 PortBeforeFrame(s);                 // the debug port (D7): returns at once when it is off
                 TfReplayPads(ref p1, ref p2);       // Timeflow (T2): a replay hands the recorded pads
+                uint ptr = FramePointer(s);         // the WideMess pointer port (spec 10): the mouse / touch / pen, or a replay's (MainForm.WmsPointer.cs)
                 BugBeforeSessionFrame(s, p1, p2);   // the bug capture (D6): returns at once when it is off
-                TfBeforeSessionFrame(s, p1, p2);    // Timeflow (T1): returns at once unless the user switched recording on
+                TfBeforeSessionFrame(s, p1, p2, ptr); // Timeflow (T1): returns at once unless the user switched recording on
                 DrainPcKeys(s);                     // the x86 PC: the real keyboard's keys typed since the last frame
                 s.SetPad(0, p1); s.SetPad(1, p2);
+                ApplyPointer(s, ptr);
                 s.RunFrame();
                 TfAfterFrame(s);
                 FarmAfterFrame();

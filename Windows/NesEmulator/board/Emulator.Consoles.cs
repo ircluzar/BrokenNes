@@ -354,6 +354,22 @@ namespace BrokenNes
             return $"md-loop={(NesEmulator.Sega.MdSoundUnit.FastLoops ? 1 : 0)} idle-frame={(NesEmulator.Mix.NesPictureSink.IdleMode == 2 ? 1 : 0)} payload={PayloadMode} vdp-run={(NesEmulator.Sega.MdVdp.FastRun ? 1 : 0)} vdp-draw={(NesEmulator.Sega.MdVdp.FastDraw ? 1 : 0)} vdp-swar={(NesEmulator.Sega.MdVdp.FastSwar ? 1 : 0)}";
         }
 
+        // ---- the WideMess pointer port (docs/projects/widemess-spec.md section 10): the canvas's pointer events, already in console pixels (nesInterop.js maps the canvas box)
+        private NesEmulator.Snes.WmsPointer litePointer;
+
+        /// <summary>The page's pointer over the picture: x / y console pixels; flags bit 0 present, 1 left, 2 right, bits 4-5 device (0 mouse, 1 touch, 2 pen).</summary>
+        [JSInvokable]
+        public void UpdatePointer(int x, int y, int flags)
+            => litePointer = new NesEmulator.Snes.WmsPointer(x, y, (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0, (NesEmulator.Snes.WmsPointerDevice)(flags >> 4 & 3)).Normalized();
+
+        /// <summary>True when the console has the pointer port (the page listens only then).</summary>
+        [JSInvokable]
+        public bool HasPointerPort() => session is NesEmulator.Snes.IPointerSession { HasPointer: true };
+
+        /// <summary>Tests: what the port's registers show this frame ("present 345,200 mouse"), or "" without a WideMess.</summary>
+        [JSInvokable]
+        public string WideMessPointerState() => (session as NesEmulator.Systems.SnesSession)?.WideMess?.Pointer.ToString() ?? "";
+
         // ---- a speed note, never a silent drop: when this device cannot keep the console at real time, the page says so (with what it manages) instead of just running slow
         private double slowSeconds;
         /// <summary>Empty while the game runs at its real frame rate; otherwise a sentence for the status badge ("Running at 41 of 60 frames a second on this device").</summary>
@@ -377,6 +393,7 @@ namespace BrokenNes
                 var bp1 = PadFrom(inputState, extraP1); var bp2 = PadFrom(inputStateP2, extraP2);
                 s.SetPad(0, bp1);
                 s.SetPad(1, bp2);
+                if (s is NesEmulator.Snes.IPointerSession { HasPointer: true } ps) ps.SetPointer(litePointer);   // the WideMess pointer port (spec 10): the canvas's pointer
                 int runs = nesController.FastForward ? 3 : 1;
                 for (int i = 0; i < runs; i++) { BugBeforeSessionFrame(s, bp1, bp2); s.RunFrame(); }   // the bug capture (D6) first: it returns at once when off
                 sessionFrames += runs;

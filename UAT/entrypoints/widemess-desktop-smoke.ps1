@@ -156,6 +156,22 @@ try {
     do { Start-Sleep -Milliseconds 400; $st = Get-Status $id } while ((Get-Date) -lt $end -and -not ($st.description -match 'WideMess sound' -and $st.description -match 'unlocked'))
     Check 'sound_chip' ($st.console -eq 'wms' -and $st.apu -eq 'WMS' -and $st.description -match 'WideMess sound' -and $st.description -match '\| unlocked') "console $($st.console), APU $($st.apu), $($st.description)"
 
+    # POINTER (spec section 10): the pointer test ROM reads the port; the HTTP API holds the pointer where the mouse would be (the window mapping itself: Workshop --wms-test PT3)
+    if (Test-Path -LiteralPath (Join-Path $bin 'pointer.wms')) {
+        Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/emulator/load-rom' -Body @{ path = (Join-Path $bin 'pointer.wms') } | Out-Null
+        Start-Sleep -Milliseconds 800
+        function Peek([int]$a) { (Invoke-BrokenNesApi -ProcessId $id -Method GET -Path "/api/memory/peek?domain=WRAM&address=$a").value }
+        Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/input/pointer' -Body @{ x = 345; y = 200; present = $true; device = 'mouse' } | Out-Null
+        Start-Sleep -Milliseconds 400
+        $hv = @((Peek 0x100), (Peek 0x101), (Peek 0x102), (Peek 0x103))
+        Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/input/pointer' -Body @{ x = 20; y = 30; present = $true; left = $true; device = 'touch' } | Out-Null
+        Start-Sleep -Milliseconds 400
+        $dn = @((Peek 0x100), (Peek 0x102), (Peek 0x103))
+        $obs = (Invoke-BrokenNesApi -ProcessId $id -Method GET -Path '/api/input/pointer').observed
+        Invoke-BrokenNesApi -ProcessId $id -Method POST -Path '/api/input/pointer' -Body @{ clear = $true } | Out-Null
+        Check 'pointer_port' (($hv -join ',') -eq '89,1,200,1' -and ($dn -join ',') -eq '20,30,67' -and $obs -eq 'present 20,30 left touch') "hover 345,200 -> registers $($hv -join ','); touch down 20,30 -> $($dn -join ','); the last frame was handed: $obs"
+    }
+
     # M6: the SNES games' enhancements. A SNES game that never unlocks: sprites_nounlock.wms's image (its 64-byte header off) as a .sfc
     Check 'm6_menu' ($names -contains 'WideMess enhancements') ("Console menu: " + ($names -join ', '))
     $wmsBytes = [IO.File]::ReadAllBytes((Join-Path $bin 'sprites_nounlock.wms'))

@@ -76,7 +76,7 @@ internal static class ClientTest
             client = await McpClient.CreateAsync(transport);
             var tools = await client.ListToolsAsync();
             var names = tools.Select(t => t.Name).ToHashSet();
-            string[] want = { "open_rom", "open_project", "attach_live", "list_instances", "list_sessions", "close_session", "status", "run", "run_until", "pause", "reset", "input",
+            string[] want = { "open_rom", "open_project", "attach_live", "list_instances", "list_sessions", "close_session", "status", "run", "run_until", "pause", "reset", "input", "pointer",
                 "read_memory", "write_memory", "search_memory", "list_domains", "symbols", "breakpoint_add", "breakpoint_list", "breakpoint_remove", "watch", "step", "call_stack",
                 "registers", "trace", "trace_frame", "disassemble", "evaluate", "screenshot", "layers", "tiles", "sprites", "record_sound", "save_state", "load_state", "diff_states",
                 "checks", "profile", "brokendev", "step_back", "open_movie", "movie", "bisect", "bugs", "debug_port",
@@ -314,6 +314,15 @@ internal static class ClientTest
         string hw = S(wm["session"]);
         var wmr = await Call("run", new { session = hw, frames = 20 });
         Check("widemess_session", S(wm["console"]) == "wms" && S(wmr["outcome"]) == "frames" && (wm["cpus"] as JsonArray)?.Count >= 1, $"{hw}: {S(wm["description"])}");
+        // the WideMess pointer port (spec section 10): the agent points at console pixels; the registers latch it at the next frame; a SNES has no port
+        var ptm = await Call("pointer", new { session = hw, action = "move", x = 345, y = 200, frames = 1 });
+        var ptc = await Call("pointer", new { session = hw, action = "click", frames = 0 });
+        var ptt = await Call("pointer", new { session = hw, action = "tap", x = 12, y = 34, device = "touch", frames = 1 });
+        var pbad = await Call("pointer", new { session = hw, action = "move", x = 400, y = 10 }, log: false);
+        var psnes = await Call("pointer", new { session = hs, action = "move", x = 10, y = 10 }, log: false);
+        Check("pointer_port", S(ptm["latched"]) == "present 345,200 agent" && S(ptc["latched"]) == "present 345,200 agent" && L(ptc["framesRun"]) == 2
+              && S(ptt["latched"]) == "away 12,34 touch" && pbad.IsError && psnes.IsError,
+              $"move -> {S(ptm["latched"])}; click -> {S(ptc["latched"])} after {L(ptc["framesRun"])} frames; tap -> {S(ptt["latched"])}; x 400 refused: {pbad.IsError}; SNES refused: {psnes.IsError}");
         var go = await Call("open_rom", new { path = gb, symbols = new[] { gbNoi } });
         string hg = S(go["session"]);
         await Call("breakpoint_add", new { session = hg, spec = "_bank2_func" });

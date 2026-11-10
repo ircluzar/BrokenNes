@@ -30,6 +30,7 @@ public sealed class DebugHistory
     private readonly Func<byte[]> save;
     private readonly Debugger? debugger;
     private readonly List<(PadButtons P1, PadButtons P2)> log = new();
+    private readonly List<uint> ptrLog = new();   // the WideMess pointer port's input of each frame (WmsPointer.Pack; 0 = idle), beside the pads
     private readonly List<Snapshot> snaps = new();
     private readonly List<MovieKey> keys = new();
     private readonly Func<(ulong picture, ulong ram)>? hashes;
@@ -61,7 +62,10 @@ public sealed class DebugHistory
     }
 
     /// <summary>The start of a frame (emulation thread): takes the state when due, and gives the pads to apply (the log's while replaying).</summary>
-    public (PadButtons P1, PadButtons P2) BeforeFrame(PadButtons live1, PadButtons live2)
+    public (PadButtons P1, PadButtons P2) BeforeFrame(PadButtons live1, PadButtons live2) => BeforeFrame(live1, live2, 0, out _);
+
+    /// <summary><see cref="BeforeFrame(PadButtons, PadButtons)"/> with the WideMess pointer port's input too (packed, <c>WmsPointer.Pack</c>): the log's while replaying.</summary>
+    public (PadButtons P1, PadButtons P2) BeforeFrame(PadButtons live1, PadButtons live2, uint livePointer, out uint pointer)
     {
         long f = FrameIndex;
         if (f % Every == 0 && SaveError == null && !snaps.Any(s => s.Frame == f))
@@ -77,8 +81,9 @@ public sealed class DebugHistory
                 while (snaps.Count > Keep) snaps.RemoveAt(0);
             }
         }
-        if (f < log.Count) return log[(int)f];
-        log.Add((live1, live2));
+        if (f < log.Count) { pointer = ptrLog[(int)f]; return log[(int)f]; }
+        log.Add((live1, live2)); ptrLog.Add(livePointer);
+        pointer = livePointer;
         return (live1, live2);
     }
 
@@ -112,7 +117,7 @@ public sealed class DebugHistory
     public void Preload(Movie m)
     {
         if (FrameIndex != 0 || log.Count != 0) throw new InvalidOperationException("a movie is preloaded before the first frame");
-        for (long f = 0; f < m.Frames; f++) { var (a, b) = m.PadsAt(f); log.Add((a, b)); }
+        for (long f = 0; f < m.Frames; f++) { var (a, b) = m.PadsAt(f); log.Add((a, b)); ptrLog.Add(m.PointerAt(f)); }
         expected = m.Keys.ToDictionary(k => k.Frame);
     }
 
@@ -121,6 +126,7 @@ public sealed class DebugHistory
     {
         if (FrameIndex >= log.Count) return;
         log.RemoveRange((int)FrameIndex, log.Count - (int)FrameIndex);
+        ptrLog.RemoveRange((int)FrameIndex, ptrLog.Count - (int)FrameIndex);
         snaps.RemoveAll(s => s.Frame > FrameIndex);
         keys.RemoveAll(k => k.Frame > FrameIndex);
     }
@@ -230,6 +236,7 @@ public sealed class DebugHistory
         var m = new Movie { Frames = n, KeyEvery = KeyEvery, Start = StartState != null ? MovieStart.State : MovieStart.PowerOn, StartState = StartState };
         for (int i = 0; i < n; i++) m.SetPads(i, log[i].P1, log[i].P2);
         if (m.Inputs.Count == 0) m.SetPads(0, PadButtons.None, PadButtons.None);
+        for (int i = 0; i < n; i++) m.SetPointer(i, ptrLog[i]);
         foreach (var k in keys.Where(k => k.Frame <= n)) m.Keys.Add(new MovieKey { Frame = k.Frame, Picture = k.Picture, Ram = k.Ram });
         return m;
     }

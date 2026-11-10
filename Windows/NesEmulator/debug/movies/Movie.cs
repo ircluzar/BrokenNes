@@ -89,6 +89,8 @@ public sealed class Movie
     public int KeyEvery = 60;
     public readonly List<(string Name, string Expr)> Vars = new();
     public readonly List<MovieInput> Inputs = new();
+    /// <summary>The WideMess pointer port's input (docs/projects/widemess-spec.md section 10) where it changes: (frame, <c>WmsPointer.Pack</c>), 0 = idle. Empty for every other console.</summary>
+    public readonly List<(long Frame, uint Pointer)> Pointers = new();
     public readonly List<MovieKey> Keys = new();
     public readonly List<MovieMark> Marks = new();
     public readonly List<string> Comments = new();
@@ -112,6 +114,24 @@ public sealed class Movie
         }
         else if (p1 == PadButtons.None && p2 == PadButtons.None && frame == 0) { Inputs.Add(new MovieInput(0, p1, p2)); return; }
         Inputs.Add(new MovieInput(frame, p1, p2));
+    }
+
+    /// <summary>Adds the pointer port's input for a frame (frames in order); one equal to the previous change adds nothing.</summary>
+    public void SetPointer(long frame, uint pointer)
+    {
+        uint last = Pointers.Count > 0 ? Pointers[^1].Pointer : 0;
+        if (Pointers.Count > 0 && frame < Pointers[^1].Frame) throw new ArgumentException($"movie pointer out of order: frame {frame} after {Pointers[^1].Frame}");
+        if (pointer == last) return;
+        if (Pointers.Count > 0 && Pointers[^1].Frame == frame) { Pointers[^1] = (frame, pointer); return; }
+        Pointers.Add((frame, pointer));
+    }
+
+    /// <summary>The pointer port's input during a frame (packed; 0 idle).</summary>
+    public uint PointerAt(long frame)
+    {
+        int lo = 0, hi = Pointers.Count - 1, found = -1;
+        while (lo <= hi) { int mid = (lo + hi) >> 1; if (Pointers[mid].Frame <= frame) { found = mid; lo = mid + 1; } else hi = mid - 1; }
+        return found < 0 ? 0 : Pointers[found].Pointer;
     }
 
     /// <summary>The pads held during a frame.</summary>
@@ -225,6 +245,8 @@ public sealed class Movie
         }
         foreach (var i in Inputs)
             sb.Append("i ").Append(i.Frame.ToString(CultureInfo.InvariantCulture)).Append(' ').Append(ButtonsText(i.P1)).Append(' ').Append(ButtonsText(i.P2)).Append('\n');
+        foreach (var (pf, pv) in Pointers)
+            sb.Append("p ").Append(pf.ToString(CultureInfo.InvariantCulture)).Append(' ').Append(pv.ToString("X6", CultureInfo.InvariantCulture)).Append('\n');
         foreach (var k in Keys)
         {
             sb.Append("k ").Append(k.Frame.ToString(CultureInfo.InvariantCulture)).Append(' ').Append(k.Picture.ToString("X16")).Append(' ').Append(k.Ram.ToString("X16"));
@@ -293,6 +315,16 @@ public sealed class Movie
                         long f = long.Parse(p[0], CultureInfo.InvariantCulture);
                         if (m.Inputs.Count > 0 && f <= m.Inputs[^1].Frame) throw new FormatException($"input frames must rise ({f} after {m.Inputs[^1].Frame})");
                         m.Inputs.Add(new MovieInput(f, ParseButtons(p[1]), p.Length > 2 ? ParseButtons(p[2]) : PadButtons.None));
+                        break;
+                    }
+                    case "p":
+                    {
+                        // the WideMess pointer port: 'p <frame> <packed hex>' where it changes
+                        var p = val.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        if (p.Length != 2) throw new FormatException("a pointer line is 'p <frame> <packed pointer, hex>'");
+                        long f = long.Parse(p[0], CultureInfo.InvariantCulture);
+                        if (m.Pointers.Count > 0 && f <= m.Pointers[^1].Frame) throw new FormatException($"pointer frames must rise ({f} after {m.Pointers[^1].Frame})");
+                        m.Pointers.Add((f, uint.Parse(p[1], NumberStyles.HexNumber, CultureInfo.InvariantCulture)));
                         break;
                     }
                     case "k":

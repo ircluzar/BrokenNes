@@ -1159,12 +1159,59 @@ window.nesInterop = {
         } catch (error) { console.error('Error invoking ' + method + ':', error); }
     },
 
+    // The WideMess pointer port (docs/projects/widemess-spec.md section 10): the canvas's pointer events mapped to the frame's pixels (the canvas box, with
+    // object-fit: contain's letterbox when the box is not the picture's shape); outside the picture = not present. No cursor is drawn: the system's shows
+    // on a PC, nothing on touch. A touch is the left button; when the finger lifts the pointer is no longer present (a tap = hover + click).
+    _ptrHooked: false, _ptrLast: '',
+    _hookPointer: function () {
+        if (this._ptrHooked) return;
+        this._ptrHooked = true;
+        const self = this;
+        const send = (x, y, flags) => {
+            const key = x + ',' + y + ',' + flags;
+            if (key === self._ptrLast) return;
+            self._ptrLast = key;
+            const ref = self._mainRef; if (!ref) return;
+            try { ref.invokeMethodAsync('UpdatePointer', x, y, flags); } catch { }
+        };
+        const map = (e, down) => {
+            const c = e.target;
+            const cache = self._cache && self._cache['nes-canvas'];
+            if (!cache || !c || !c.getBoundingClientRect) return null;
+            const r = c.getBoundingClientRect();
+            const ar = (c.width || 1) / (c.height || 1);
+            let w = r.width, h = r.height, ox = 0, oy = 0;
+            if (w / h > ar) { w = h * ar; ox = (r.width - w) / 2; } else { h = w / ar; oy = (r.height - h) / 2; }
+            const fx = (e.clientX - r.left - ox) / w * cache.w, fy = (e.clientY - r.top - oy) / h * cache.h;
+            const inside = fx >= 0 && fy >= 0 && fx < cache.w && fy < cache.h;
+            const dev = e.pointerType === 'touch' ? 1 : e.pointerType === 'pen' ? 2 : 0;
+            const b = e.buttons | 0;
+            const left = inside && (down !== undefined ? down : (b & 1) !== 0), right = inside && (b & 2) !== 0;
+            return { x: Math.max(0, Math.min(cache.w - 1, Math.floor(fx))), y: Math.max(0, Math.min(cache.h - 1, Math.floor(fy))), flags: (inside ? 1 : 0) | (left ? 2 : 0) | (right ? 4 : 0) | (dev << 4), dev, wide: cache.w === 400 };
+        };
+        const on = (type, fn) => document.addEventListener(type, (e) => { if (e.target && e.target.id === 'nes-canvas') fn(e); }, { passive: false, capture: true });
+        on('pointermove', (e) => { const p = map(e); if (p) send(p.x, p.y, p.flags); });
+        on('pointerdown', (e) => {
+            const p = map(e, e.button === 0 ? true : undefined); if (!p) return;
+            if (p.wide && p.dev === 1) { try { e.preventDefault(); } catch { } }   // a WideMess picture: the finger is the game's, not the page's scroll
+            send(p.x, p.y, p.flags);
+        });
+        on('pointerup', (e) => {
+            const p = map(e, e.button === 0 ? false : undefined); if (!p) return;
+            send(p.x, p.y, p.flags);
+            if (p.dev === 1) setTimeout(() => send(p.x, p.y, p.flags & ~7), 34);   // the finger lifted: two frames later nothing points (the game saw the release first)
+        });
+        const away = (e) => { const p = map(e, false); if (p) send(p.x, p.y, (p.flags & ~7)); };
+        on('pointerleave', away); on('pointercancel', away);
+    },
+
     registerInput: function (dotNetRef) {
         if (!dotNetRef) {
             console.error('dotNetRef is null');
             return;
         }
         this._mainRef = dotNetRef;
+        try { this._hookPointer(); } catch (e) { console.error('pointer port hook', e); }
         // Ensure canvas focusability and focused-state hooks for key handling
         try {
             this._ensureEmuFocusHooks && this._ensureEmuFocusHooks();

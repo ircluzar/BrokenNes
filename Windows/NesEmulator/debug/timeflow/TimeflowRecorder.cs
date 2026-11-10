@@ -77,6 +77,7 @@ public sealed class TimeflowRecorder : IDisposable
     {
         public TimeflowState State = null!;
         public PadButtons P1, P2;
+        public uint Pointer;   // the WideMess pointer port (WmsPointer.Pack; 0 idle)
         public ulong Picture, Ram;
         public byte[][] Domains = Array.Empty<byte[]>();
         public long[] Vars = Array.Empty<long>();
@@ -180,7 +181,10 @@ public sealed class TimeflowRecorder : IDisposable
     private static string Gb(long b) => $"{b / (1024.0 * 1024 * 1024):0.00} GB";
 
     /// <summary>Before a frame (emulation thread, between frames): takes the state and notes the pads the frame gets.</summary>
-    public void BeforeFrame(PadButtons p1, PadButtons p2)
+    public void BeforeFrame(PadButtons p1, PadButtons p2) => BeforeFrame(p1, p2, 0);
+
+    /// <summary><see cref="BeforeFrame(PadButtons, PadButtons)"/> with the WideMess pointer port's input for the frame (<c>WmsPointer.Pack</c>; 0 idle).</summary>
+    public void BeforeFrame(PadButtons p1, PadButtons p2, uint pointer)
     {
         if (!Running) return;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -204,7 +208,7 @@ public sealed class TimeflowRecorder : IDisposable
             Fail($"the machine refused a state at frame {opt.StartFrame + framesCaptured}: {e.Message}");
             return;
         }
-        pending = new Item { State = st, P1 = p1, P2 = p2 };
+        pending = new Item { State = st, P1 = p1, P2 = p2, Pointer = pointer };
         Ms(t0);
     }
 
@@ -273,7 +277,7 @@ public sealed class TimeflowRecorder : IDisposable
             {
                 if (stopReason != null) break;
                 var row = new TimelineRow { P1 = (ushort)it.P1, P2 = (ushort)it.P2, Picture = it.Picture, Ram = it.Ram };
-                var ex = new TimelineExtras { Vars = it.Vars, Findings = it.Findings, Coverage = it.Coverage, Accesses = it.Accesses };
+                var ex = new TimelineExtras { Vars = it.Vars, Findings = it.Findings, Coverage = it.Coverage, Accesses = it.Accesses, Pointer = it.Pointer };
                 int ip = writer.Meta.IndexPage;
                 for (int i = 0; i < it.Domains.Length; i++)
                 {
