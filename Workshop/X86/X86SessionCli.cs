@@ -8,12 +8,19 @@ using NesEmulator.X86;
 namespace BrokenNes.Workshop.X86;
 
 /// <summary>
-/// <c>--x86session img [--frames N] [--shot png] [--cpu I386|I386_D074] [--ppu VGA|BOCHS20|DOSBOX072|PCEM_CGA] [--swapat F]</c>: the x86 console as the apps run it (<see cref="PcSession"/> through <see cref="ConsoleSessions.Create"/>): ROM detection of the image, the core menus, N frames,
+/// <c>--x86session img [--frames N] [--shot png] [--cpu I386|I386_D074] [--ppu VGA|BOCHS20|DOSBOX072|PCEM_CGA] [--swapat F] [--wav out.wav] [--opllog out.txt]</c>: the x86 console as the apps run it (<see cref="PcSession"/> through <see cref="ConsoleSessions.Create"/>): ROM detection of the image, the core menus, N frames,
 /// the picture, a save state round trip (the same frames after a load give the same pictures), and the disk as the battery (a write shows in <c>ExportSave</c>). Exit code 0 = all passed.
 /// </summary>
 internal static class X86SessionCli
 {
     private static string? Arg(string[] a, string k) { int i = Array.IndexOf(a, k); return i > 0 && i + 1 < a.Length ? a[i + 1] : null; }
+
+    private static void WriteWav(string path, byte[] pcm)
+    {
+        using var w = new BinaryWriter(File.Create(path));
+        w.Write("RIFF"u8); w.Write(36 + pcm.Length); w.Write("WAVEfmt "u8); w.Write(16); w.Write((short)1); w.Write((short)2); w.Write(44100); w.Write(44100 * 4); w.Write((short)4); w.Write((short)16);
+        w.Write("data"u8); w.Write(pcm.Length); w.Write(pcm);
+    }
 
     public static int Run(string[] args)
     {
@@ -41,11 +48,16 @@ internal static class X86SessionCli
         long rises = 0, firstRise = -1, lastRise = 0; bool low = true;   // sine pitch: rising crossings with hysteresis
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
         int swapAt = Arg(args, "--swapat") is string sa ? int.Parse(sa) : -1;
+        string? wavPath = Arg(args, "--wav"), logPath = Arg(args, "--opllog");   // the sound as a 44.1 kHz stereo WAV; every AdLib data write as "frame reg value" (hex)
+        var wav = wavPath != null ? new MemoryStream() : null;
+        var oplLog = logPath != null ? new StreamWriter(logPath) : null; int curFrame = 0;
+        if (oplLog != null && s is PcSession pl) pl.Machine.Opl.WriteLog = (r, v) => oplLog.WriteLine($"{curFrame} {r:X2} {v:X2}");
         for (int f = 0; f < frames; f++)
         {
             if (f == swapAt) Check(s.TrySwapCore(CoreSlot.Ppu, Arg(args, "--swapto") ?? "VGA"), $"live picture swap at frame {f} to {Arg(args, "--swapto") ?? "VGA"}");
-            s.RunFrame();
+            curFrame = f; s.RunFrame();
             int n = s.ReadSamples(buf); samples += n;
+            wav?.Write(System.Runtime.InteropServices.MemoryMarshal.AsBytes(buf.AsSpan(0, n)));
             hash.AppendData(System.Runtime.InteropServices.MemoryMarshal.AsBytes(buf.AsSpan(0, n)));
             for (int i = 0; i < n; i += 2)
             {
@@ -54,6 +66,8 @@ internal static class X86SessionCli
             }
             for (int i = 0; i < n; i += 2, idx++) { if (buf[i] != 0) { loud++; if (first < 0) first = idx; lastLoud = idx; } if ((buf[i] > 2500) != (last > 2500)) edges++; last = buf[i]; }
         }
+        if (oplLog != null) { if (s is PcSession pu) pu.Machine.Opl.WriteLog = null; oplLog.Dispose(); Console.WriteLine($"  opl log: {logPath}"); }
+        if (wav != null) { WriteWav(wavPath!, wav.ToArray()); Console.WriteLine($"  wav: {wavPath}"); }
         double span = first < 0 ? 0 : (lastLoud - first + 1) / 44100.0;
         Console.WriteLine($"  sound: {loud} of {samples / 2} samples not silent, sounding for {span:F2} s, {edges / 2} square-wave periods ({(span > 0 ? edges / 2.0 / span : 0):F0} Hz)");
         if (s is PcSession pss) Console.WriteLine($"  adlib: {pss.Machine.Opl.DataWrites} data writes, {pss.Machine.Opl.StatusReads} status reads; {rises} rising crossings{(rises > 1 ? $" over {(lastRise - firstRise) / 44100.0:F2} s = {(rises - 1) * 44100.0 / (lastRise - firstRise):F1} Hz" : "")}");
