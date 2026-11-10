@@ -9,13 +9,13 @@ namespace BrokenNes2;
 
 public sealed unsafe partial class Bn2Editor
 {
-    public const int IdMid = 2000, IdMidClose = 2001, IdMidOpen = 2002, IdMidPlay = 2003, IdMidRestart = 2004, IdMidStop = 2005, IdMidReload = 2006, IdMidFollow = 2007, IdMidFlp = 2008;
+    public const int IdMid = 2000, IdMidClose = 2001, IdMidOpen = 2002, IdMidPlay = 2003, IdMidRestart = 2004, IdMidStop = 2005, IdMidReload = 2006, IdMidFollow = 2007, IdMidFlp = 2008, IdMidTarget = 2009;
     private const int MidW = 780, MidH = 650, MidNoteSeconds = 12;      // (650 since round 9: the Capture from FL row and strip, Bn2Editor.Capture.cs)
 
     private bool midOpen, midNoteShown;
     private string? testMidiPath;
 
-    private static bool IsMidId(int id) => id is >= IdMidClose and <= IdMidFlp;
+    private static bool IsMidId(int id) => id is >= IdMidClose and <= IdMidTarget;
 
     /// <summary>The header's button (left of the emulator badge, after the plugin's name and its line).</summary>
     private void DrawMidiButton(nint dc, int x)
@@ -111,7 +111,9 @@ public sealed unsafe partial class Bn2Editor
         Txt(dc, held == null ? "its last save" : Emulator.IsFlp(held.Path) ? $"{held.FileName}: save in FL, Reload" : $"{held.FileName}: export, Reload", R(lx + 598, y - 2, iw - 598, 38), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
 
         y = box.Top + 520;
-        Check(dc, IdMidFollow, "Follow FL's transport: FL's Play restarts the song from its start, FL's Stop stops it", lx, y, ui?.Follow == true, null, labelW: 640, hitW: 660);
+        Check(dc, IdMidFollow, "Follow FL's transport: Play restarts, Stop stops", lx, y, ui?.Follow == true, null, labelW: 380, hitW: 400);
+        // which game This FL project builds for (Music/Flp/GameTargets.cs, Emulator.GameBuild.cs): click for the next one
+        Button(dc, IdMidTarget, "In game: " + (emu?.FlpTarget.Label ?? "VRUN NES"), R(lx + 420, y - 4, 250, 30), primary: false, enabled: emu != null && !busy);
 
         // what happened
         y = box.Top + 548;
@@ -164,6 +166,7 @@ public sealed unsafe partial class Bn2Editor
             case IdMidReload: if (emu.Song != null && !ui.Busy && emu.ReloadSong() is { } why) ui.SetResult("Reload: " + why, false); break;
             case IdMidFollow: ui.Follow = !ui.Follow; break;
             case IdMidFlp: if (!ui.Busy) UseProjectFlp(); break;
+            case IdMidTarget: if (!ui.Busy) { emu.NextFlpTarget(); ui.SetResult($"This FL project builds for {emu.FlpTarget.Label}{(emu.FlpTarget.Id == "vrun-nes" ? "" : ": the game's own toolchain makes a test build (a few minutes), its fence report is shown")}", true); } break;
         }
     }
 
@@ -193,6 +196,7 @@ public sealed unsafe partial class Bn2Editor
             emu.SongUi.SetNote($"FL's window names the project \"{name}\", the file is {Path.GetFileName(path)}: check it is the right project");
         plugin.MarkConfigured("this FL project's .flp was opened");
         BrokenNes.Fruity.Diag.Log($"This FL project: FL's window title \"{title}\", name {(name ?? "none")}, file {path} (saved {when}){(picked ? ", picked now" : ", remembered")}");
+        if (emu.FlpTarget.Id != "vrun-nes") { if (emu.BuildInGame(path) is { } no) emu.SongUi.SetResult(no, false); return; }
         if (emu.OpenSong(path) is { } refused) emu.SongUi.SetResult(refused, false);
     }
 

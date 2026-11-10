@@ -5,12 +5,13 @@
 //
 // It reads the .flp itself (flp.mjs): the channel rack, every BrokenNes2 instance's saved state (chip, channel, Instrument, Volume, Pan, Duty),
 // the patterns' notes (velocity, length, fine pitch, slide notes) and the playlist. See README.md (Nano/gb) "FL projects (.flp)".
-// It only ever writes files ending in .nano.mid / .nano.json, and never the .flp.
+// It only ever writes files ending in .nano.mid / .nano.json / .nano.fence.json (the fence report: fence.mjs), and never the .flp.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseFlp } from './flp.mjs';
 import { convert } from './convert.mjs';
+import { fenceOf, fenceText } from './fence.mjs';
 
 const args = process.argv.slice(2);
 const files = [];
@@ -35,13 +36,16 @@ for (const f of files) {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(mid, r.midi);
     fs.writeFileSync(json, JSON.stringify(r.sidecar, null, 2) + '\n');
+    const fence = fenceOf(r, 'Nano GB', proj), fenceFile = path.join(dir, base + '.nano.fence.json');
+    fs.writeFileSync(fenceFile, JSON.stringify(fence) + '\n');
     console.log(`\n${f}`);
     console.log(`  FL ${proj.version}, ${proj.ppq} PPQ, ${r.tempo} BPM, ${r.songEnd} ticks = ${r.seconds.toFixed(3)} s${r.fallback ? '  (NO PLAYLIST: patterns in order)' : ''}`);
     for (const s of r.summary)
       console.log(`  MIDI ch ${String(s.midiChannel).padStart(2)}  rack ${s.rack} "${s.name}": ${s.kind}; ${s.notes} notes, ${s.slides} slide notes (${s.bentNotes} notes bent), bend range +-${s.bendRange}`);
     if (!r.summary.length) console.log('  NOTHING to convert: no BrokenNes2 Nano GB / NES channel');
     for (const w of r.warnings) console.log(`  ${/PLAYLIST IS EMPTY/.test(w) ? '!!! WARNING' : 'warning'}: ${w}`);
-    console.log(`  wrote ${mid}\n  wrote ${json}`);
+    console.log('  ' + fenceText(fence).split('\n').join('\n  '));
+    console.log(`  wrote ${mid}\n  wrote ${json}\n  wrote ${fenceFile}`);
     if (dump) console.log(JSON.stringify({ channels: proj.channels.map(c => ({ index: c.index, type: c.type, plugin: c.pluginName, name: c.name })), patterns: [...proj.patterns.values()].map(p => ({ index: p.index, notes: p.notes.length })), playlist: proj.arrangements.map(a => a.items) }, null, 1));
   } catch (e) {
     failed++;
