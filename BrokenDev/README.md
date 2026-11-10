@@ -15,6 +15,7 @@ The app shows nothing of BrokenDev unless it is switched on: set the environment
 | `vrun-nes` | VRUN CTW, the NES demake of Corrupt The World | NES, mapper 30 | NESFab 1.8 (shipped), `./build.sh game` |
 | `vrun-nested` | the same game on the SNES through Project Nested | SNES (nested) | `./build.sh game --nested`, then the `m30pipe` NES to SNES pipeline |
 | `vrun-nested-enhanced` | the SNES variant with enhanced graphics (shaded sprites and blocks, custom font) | SNES (nested) | `vrun-nested` plus `tools/snes_enhance.py` |
+| `nested-core` | Nested VRUN with the core assembled from source by our Project Nested fork (`Nested_VRUN/Project-Nested-core`, branch nested-vrun-core); `brokendev.ps1 nested` | SNES (nested) | `./build.sh game --nested`, then `brokendev.ps1 nested build` |
 | `smb1-nes` | the frame-accurate NESFab remake of Super Mario Bros. | NES, mapper 30 | patched NESFab 1.8 (shipped), `./build.sh game` |
 | `smb1-nested` | the remake on the SNES through Project Nested | SNES (nested) | `smb1-nes`, then `m30pipe` |
 | `supervrun` | Super VRUN, the current native SNES project | SNES | PVSnesLib 4.6.0 (shipped), `bash build.sh` |
@@ -45,6 +46,9 @@ BrokenDev\brokendev.ps1 list                   # the projects: restored / built 
 BrokenDev\brokendev.ps1 build vrun-nes         # build one project (dependencies first); outputs in BROKENDEV_HOME\out\<id>
 BrokenDev\brokendev.ps1 verify vrun-nes        # run the built ROM on BrokenNes and record checks, hashes, audio, speed
 BrokenDev\brokendev.ps1 build all ; BrokenDev\brokendev.ps1 verify all
+BrokenDev\brokendev.ps1 nested core [-Profile vrun]          # our Project Nested fork: the core assembled from source (Project-Nested-core, tools/nestedasm), md5 checked
+BrokenDev\brokendev.ps1 nested build <nes> [-Out f.smc] [-Profile vrun] [-Feedback none|brokennes -Plans f.json] [-Base 50a5ca15] [-Post flash] [-SnesTitle T]   # NES ROM -> SNES ROM
+BrokenDev\brokendev.ps1 nested test [-Quick]                  # golden hashes (projects/nested-core/golden.json): core md5 per step, the VRUN release ROM byte-identical
 BrokenDev\brokendev.ps1 diff vrun-nes          # differential replay against Mesen 2 as a black-box oracle (NES: the user's tracer, kept in tools\vrun\mesen)
 BrokenDev\brokendev.ps1 run supervrun          # open the built ROM in BrokenNes (desktop app through its HTTP API)
 BrokenDev\brokendev.ps1 tools                  # the editors and checkers of the games (see "The tools" below)

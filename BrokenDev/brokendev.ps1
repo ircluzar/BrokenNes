@@ -187,6 +187,15 @@ param(
     # 'timeflow compare' (Sega VRUN ports, S0): a recorded timeline of the original instead of recording it now; no profiles at the drift
     [string]$Original = '',
     [switch]$NoOpen,
+    # 'nested core|build|test': our Project Nested fork (lib\Nested.ps1): the nestedasm build profile, the SNES ROM, nested-build.ps1's options
+    [string]$Profile = 'vrun',
+    [string]$Out = '',
+    [ValidateSet('none', 'brokennes')][string]$Feedback = 'none',
+    [string]$Base = '',
+    [string]$Post = '',
+    [string]$SnesTitle = '',
+    [string]$Plans = '',
+    [switch]$Quick,
     # 'tool <id> <args...>': the arguments after the tool id are passed to the tool
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @()
 )
@@ -212,6 +221,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\Checkup.ps1')
 . (Join-Path $here 'lib\Timeflow.ps1')
 . (Join-Path $here 'lib\TimeflowPlay.ps1')
+. (Join-Path $here 'lib\Nested.ps1')
 
 function Show-BdHelp { Write-Host (Get-Help (Join-Path $here 'brokendev.ps1') -Full | Out-String) }
 
@@ -249,7 +259,7 @@ function Get-BdProjectStatus {
 }
 
 try {
-    if ($Rest.Count -gt 0 -and @('tool', 'emulators', 'new', 'movie', 'timeflow') -notcontains $Verb.ToLowerInvariant()) { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
+    if ($Rest.Count -gt 0 -and @('tool', 'emulators', 'new', 'movie', 'timeflow', 'nested') -notcontains $Verb.ToLowerInvariant()) { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
     # -Emu a,b and -Scenario a,b: one comma list or several values, the same either way (pwsh -File passes a,b as one string)
     $Emu = @($Emu | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $Scenario = @($Scenario | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -528,6 +538,18 @@ try {
             if ($r.firstBad) { Write-BdOk $r.verdict } else { Write-BdWarn $r.verdict }
             Write-BdInfo ("  {0} build(s); skipped (no build): {1}; can't tell: {2}" -f $r.builds, @($r.skipped).Count, @($r.cantTell).Count)
             if ($r.firstBad) { exit 0 } else { exit 1 }
+        }
+        'nested' {
+            switch ($Target.ToLowerInvariant()) {
+                'core'  { $r = Invoke-BdNestedCore -Profile $Profile; if ($Json) { $r | ConvertTo-Json }; exit 0 }
+                'build' {
+                    if ($Rest.Count -ne 1) { throw 'nested build needs one NES ROM: brokendev.ps1 nested build <nes> [-Out f.smc] [-Profile vrun] [-Feedback none|brokennes -Plans f.json] [-Base <m30pipe profile>] [-Post flash] [-SnesTitle T]' }
+                    $r = Invoke-BdNestedBuild -Nes $Rest[0] -Out $Out -Profile $Profile -Feedback $Feedback -Base $Base -Post $Post -SnesTitle $SnesTitle -Plans $Plans
+                    if ($Json) { $r | ConvertTo-Json }; exit 0
+                }
+                'test'  { if (Test-BdNested -Quick:$Quick) { Write-BdOk 'nested tests passed'; exit 0 } else { Write-BdFail 'nested tests failed'; exit 1 } }
+                default { throw "nested: core | build <nes> | test (got '$Target')" }
+            }
         }
         'checkup' {
             try { $r = Invoke-BdCheckup -Target $(if ($Target) { $Target } else { 'all' }) -Exe $Exe -McpExe $McpExe -NoCompat:$NoCompat -NoSuites:$NoSuites -Quiet:$Json }
