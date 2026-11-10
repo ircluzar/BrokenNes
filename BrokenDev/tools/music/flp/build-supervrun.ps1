@@ -57,7 +57,10 @@ Write-Host "== $name -> $id (work $w)"
 if ($LASTEXITCODE -ne 0) { Fail 'flp-backend' }
 $fence = Join-Path $w "$name.fence.json"
 $env:MNES_SF2 = $Sf2
-Invoke-Py (Join-Path $snesTree 'tools\music\sf2it.py') (Join-Path $w "$name.mid") -o (Join-Path $w 'rosbif.it') --report (Join-Path $w 'rosbif.rep.json') | Out-Null
+$pre = Join-Path $w "$name.presets.json"     # the instances' Runaway presets as samples (FruityHost flp-backend writes it when the song has any)
+$sfargs = @((Join-Path $snesTree 'tools\music\sf2it.py'), (Join-Path $w "$name.mid"), '-o', (Join-Path $w 'rosbif.it'), '--report', (Join-Path $w 'rosbif.rep.json'))
+if (Test-Path $pre) { $sfargs += @('--presets', $pre); Write-Host "   presets: $((Get-Content $pre -Raw))" }
+Invoke-Py @sfargs | Out-Null
 $fargs = @((Join-Path $here 'supervrun_fence.py'), $fence, $id, (Join-Path $w 'rosbif.it'), (Join-Path $w 'rosbif.rep.json'), '--snes', $snesTree, '--md', (Join-Path $Projects 'SuperVRUN_MD_dev'), '--dos', (Join-Path $Projects 'SuperVRUN_DOS_dev'))
 $report = Invoke-Py @fargs
 $report | Set-Content (Join-Path $w "$name.fence.txt")

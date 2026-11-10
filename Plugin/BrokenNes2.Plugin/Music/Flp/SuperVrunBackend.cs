@@ -19,7 +19,13 @@ public enum SvEngine { Snes, WideMess, Md, Dos, Win95 }
 
 public sealed record SvPart(int MidiChannel, string Instrument, string Sound, int Notes, int Slides);
 
-public sealed record SuperVrunSong(byte[] Midi, FenceReport Fence, List<SvPart> Parts, double Seconds);
+/// <summary>A preset instance's sample for sf2it.py (--presets): MIDI channel (1-16), the sound, the sample name the converters read (pcm..: itconv.py plays it on the DAC, oplconv.py as a tonal patch).</summary>
+public sealed record SvPreset(int MidiChannel, string Instrument, string SampleName, FlpPresetPcm Sound);
+
+public sealed record SuperVrunSong(byte[] Midi, FenceReport Fence, List<SvPart> Parts, double Seconds)
+{
+    public List<SvPreset> Presets { get; init; } = new();
+}
 
 public static class SuperVrunBackend
 {
@@ -35,13 +41,18 @@ public static class SuperVrunBackend
         _ => (7, 1, "OPL2: 7 tonal voices + 1 noise + 1 percussion (oplconv.py TONAL); effects take voice 6 (dos_snd.c SFX_V)"),
     };
 
-    private static readonly string[] SoundNames = ["pulse 12.5%", "pulse 25%", "pulse 50%", "pulse 75%", "triangle", "noise"];
+    private static readonly string[] SoundNames = ["pulse 12.5%", "pulse 25%", "pulse 50%", "pulse 75%", "triangle", "noise", "preset"];
+    /// <summary>The MIDI program of a preset instance's notes (sf2it.py plays the channel's --presets sample for it).</summary>
+    public const int PresetProgram = 6;
+    /// <summary>Sound RAM a song may use ($1A00-$FE00, supervrun_fence.py's default budget).</summary>
+    public const int SongAram = 0xFE00 - 0x1A00;
 
     public static SuperVrunSong Build(FlpSongModel song, string name, SvEngine engine)
     {
         var f = new FenceReport(Names[(int)engine]);
         foreach (var c in song.Caveats) f.Note("reader", c);
         var used = new List<(FlpInstrument Ins, int Sound)>();
+        var presetOf = new Dictionary<FlpInstrument, FlpPresetPcm>();
         foreach (var ins in song.Instruments)
         {
             string who = $"channel {ins.Rack} \"{ins.Name}\"";
@@ -51,6 +62,13 @@ public static class SuperVrunBackend
                 continue;
             }
             if (ins.Notes.Count == 0) continue;
+            if (b.Preset != null && b.Core is >= FlpPresetSound.FirstPresetChip and <= FlpPresetSound.LastPresetChip && b.Mode == "direct")
+            {
+                if (FlpPresetSound.Of(b.Preset, out string? why) is not { } ps) { f.Over("preset", $"{who} plays a preset that cannot be built ({why}): its {ins.Notes.Count} notes are not in the game"); continue; }
+                presetOf[ins] = ps;
+                used.Add((ins, PresetProgram));
+                continue;
+            }
             if (b.Mode != "direct") { f.Over("instrument", $"{who} is in ROM mode: its {ins.Notes.Count} notes are not in the game"); continue; }
             if (b.Console != 0) { f.Over("instrument", $"{who} is a {b.ConsoleName} instrument: Super VRUN's songs are NES-style (pulse/triangle/noise), its {ins.Notes.Count} notes are not in the game"); continue; }
             if (b.Channel is < 0 or > 3) { f.Over("instrument", $"{who}: NES channel {(b.Channel == 4 ? "Mix/DMC" : b.Channel.ToString())} is not pulse/triangle/noise: its {ins.Notes.Count} notes are not in the game (DPCM is not built for .flp songs)"); continue; }
@@ -84,6 +102,7 @@ public static class SuperVrunBackend
             trk.Events.Add(RecMidi.Cc(0, mc, 7, 127));
             trk.Events.Add(RecMidi.Cc(0, mc, 10, Math.Clamp((int)Math.Round(64 + pan * 0.63), 0, 127)));
             bool noise = sound == 5;
+            if (sound == PresetProgram) PresetFence(f, engine, who, presetOf[ins]);
             int shortMode = b.Param(7) != 0 && !FlpMutants.On(SvMutants.ShortNoiseAsLong) ? 1 : 0;
             int KeyOf(MonoSeg s) => noise ? (shortMode == 1 ? 64 : 48) + VrunNesBackend.NoiseIndex(s.V.PitchAt(s.From) - 6000) : Math.Clamp((int)Math.Round(s.V.Base / 100, MidpointRounding.AwayFromZero), 0, 127);
             double maxBend = 0;
@@ -129,12 +148,13 @@ public static class SuperVrunBackend
             if (sound == 4 && kept.Any(s => s.V.Level < 15)) f.Note("level", $"{who}: triangle notes softer than full: the NES triangle has no volume, the game plays them at its one level (as FL's NES chip does)");
             segsAll.Add((sound, kept));
             parts.Add(new SvPart(mc + 1, ins.Name, SoundNames[sound], notes, part.Voices.Sum(v => v.Glides.Count)));
-            EngineSoundFence(f, engine, who, sound, shortMode, pan, lo, hi);
+            if (sound != PresetProgram) EngineSoundFence(f, engine, who, sound, shortMode, pan, lo, hi);
+            else if (hi >= 0) RangeFence(f, engine, who, lo, hi, presetOf[ins].C5);
         }
 
         // the voice budget: how many parts sound at once (the converter packs notes onto the engine's voices and drops or steals what does not fit: its own count comes after conversion)
         var (voices, sfx, what) = Budget(engine);
-        var tonal = segsAll.Where(p => engine is SvEngine.Snes or SvEngine.WideMess || p.Sound != 5).Select(p => (IEnumerable<MonoSeg>)p.Segs).ToList();
+        var tonal = segsAll.Where(p => engine is SvEngine.Snes or SvEngine.WideMess || p.Sound != 5 && !(engine == SvEngine.Md && p.Sound == PresetProgram)).Select(p => (IEnumerable<MonoSeg>)p.Segs).ToList();
         var (peak, at) = FlpMono.Peak(tonal);
         string kind = engine is SvEngine.Snes or SvEngine.WideMess ? "parts" : "tonal parts";
         double Bar(int tick) => tick / (4.0 * Math.Max(1, song.Ppq)) + 1;
@@ -154,9 +174,26 @@ public static class SuperVrunBackend
         f.Note("timing", "the converter snaps notes to its tick grid (SNESMOD ticks at 8000 / (20480 // T) Hz): its report says the drift");
         f.Note("loop", "the song loops to its start (the converter's loop is the module's end)");
 
+        var presets = new List<SvPreset>();
+        for (int i = 0; i < parts.Count; i++)
+        {
+            var pins = used[i].Ins;
+            if (presetOf.TryGetValue(pins, out var ps)) presets.Add(new SvPreset(parts[i].MidiChannel, pins.Name, $"pcm{parts[i].MidiChannel}", ps));
+        }
+        if (presets.Count > 0 && engine is SvEngine.Snes or SvEngine.WideMess)
+            SoundRamFence(f, presets.Sum(p => p.Sound.BrrBytes));
+
         int us = (int)Math.Round(60_000_000.0 / Math.Max(1e-3, song.Tempo), MidpointRounding.AwayFromZero);
         var midi = RecMidi.Write([(0, us), (T(song.End), us)], name, [$"made from {name}.flp by the BrokenNes music pipeline ({Names[(int)engine]} back end, MNES layout for sf2it.py)"], tracks);
-        return new SuperVrunSong(midi, f, parts, song.End / (double)Math.Max(1, song.Ppq) * 60.0 / Math.Max(1e-3, song.Tempo));
+        return new SuperVrunSong(midi, f, parts, song.End / (double)Math.Max(1, song.Ppq) * 60.0 / Math.Max(1e-3, song.Tempo)) { Presets = presets };
+    }
+
+    /// <summary>The presets' samples against the sound RAM a song has (SNES / WideMess; supervrun_fence.py adds the converter's own total of patterns + samples).</summary>
+    public static void SoundRamFence(FenceReport f, int brr)
+    {
+        if (brr > SongAram && !FlpMutants.On(PsMutants.PresetFenceBlind)) f.Over("sound-ram", $"the presets' samples are {brr:N0} BRR bytes, more than the {SongAram:N0} bytes of sound RAM a song has ($1A00-$FE00): smconv cannot place the song");
+        else if (brr > SongAram / 2) f.Note("sound-ram", $"the presets' samples are {brr:N0} BRR bytes of the {SongAram:N0} a song has: little room for the patterns and the effects loaded with it");
+        else f.Ok("sound-ram", $"the presets' samples are {brr:N0} BRR bytes (of {SongAram:N0})");
     }
 
     /// <summary>Per sound, what each engine does with it (from the converters: sf2it.py's MNES samples, itconv.py's patches / PSG, oplconv.py's / dos_snd.c's patches).</summary>
@@ -190,6 +227,38 @@ public static class SuperVrunBackend
             else if (!snes && e != SvEngine.Md && hi > 108) f.Note("range", $"{who}: notes up to MIDI {hi}: OPL2 clamps at block 7 / fnum 1023");
             else f.Ok("range", $"{who}: notes MIDI {lo}-{hi}");
         }
+    }
+
+    /// <summary>What each engine does with a preset's sample (FlpPresetSound): the SNES / WideMess play it as an instrument of the module (smconv re-encodes the 16-bit PCM as BRR), the Genesis on the DAC
+    /// (itconv.py: pcm.. samples are DAC clips), DOS / 95 cannot (oplconv.py plays its default patch).</summary>
+    private static void PresetFence(FenceReport f, SvEngine e, string who, FlpPresetPcm p)
+    {
+        string what = $"{p.Console} preset \"{p.Name}\"{(p.Corrupted ? " (corrupted)" : "")}";
+        switch (e)
+        {
+            case SvEngine.Snes or SvEngine.WideMess:
+                f.Ok("preset", $"{who}: {what} is the song's own instrument: {p.How}; {p.Pcm.Length} samples = {p.BrrBytes:N0} BRR bytes{(p.Exact ? " (smconv re-encodes the PCM as BRR: near, not bit-exact)" : "")}");
+                if (p.Envelope.Length > 0) f.Note("envelope", $"{who}: the preset's {p.Envelope} is not played: SNESMOD holds the note's level while the key is down and cuts it at the note's end");
+                if (p.Noise) f.Note("flags", $"{who}: the preset has the noise flag: in the plugin the S-DSP's noise generator replaces its sample; the game plays the sample (SNESMOD has no per-instrument noise)");
+                if (p.Pmod) f.Note("flags", $"{who}: the preset has pitch modulation (by the voice before it): not in the game");
+                if (!p.Loops) f.Note("loop",$"{who}: the preset's sample does not loop: notes longer than {p.Pcm.Length / 32.0:0} ms at middle C fall silent before their end, as in the plugin");
+                break;
+            case SvEngine.Md:
+                if (FlpMutants.On(PsMutants.MdPresetAsPulse)) { f.Ok("preset", $"{who}: {what} as FM patch 2"); break; }
+                f.Note("preset", $"{who}: {what} plays on the DAC (itconv.py: a pcm.. sample is a DAC clip at the note's pitch, 8-bit at the driver's DAC rate, about 7.6 kHz): the preset's own sound, but one clip at a time, shared with the game's effects, and a clip plays to its end (its loop repeated up to 1 s; the driver's DAC has no note-off)");
+                break;
+            default:
+                f.Over("preset", $"{who}: {what} cannot be an OPL2 sound: oplconv.py plays it as its default 2-operator patch (the 50% pulse imitation), the preset's timbre is not in the game");
+                break;
+        }
+    }
+
+    private static void RangeFence(FenceReport f, SvEngine e, string who, int lo, int hi, double c5)
+    {
+        // the S-DSP's pitch register at a note is $1000 x c5 / 32000 x 2^((note-60)/12) and tops out at $3FFF
+        double top = 60 + 12 * Math.Log2(0x3FFF / 4096.0 * 32000.0 / c5);
+        if (e is SvEngine.Snes or SvEngine.WideMess && hi > top) f.Over("range", $"{who}: notes up to MIDI {hi}: the preset's sample cannot go above about MIDI {Math.Floor(top)} on the S-DSP (pitch $3FFF)");
+        else f.Ok("range", $"{who}: notes MIDI {lo}-{hi}");
     }
 
     private static void Add(this FenceReport f, FenceLevel l, string rule, string text) => f.Lines.Add(new FenceLine(rule, l, text));

@@ -62,6 +62,8 @@ public static class VrunNesBackend
             }
             if (ins.Notes.Count == 0) continue;
             if (b.Mode != "direct") { cav.Add($"{who} is in ROM mode (it plays a game's channel, not notes): its {ins.Notes.Count} notes are not in the game"); continue; }
+            if (b.Preset != null && b.Core is >= FlpPresetSound.FirstPresetChip and <= FlpPresetSound.LastPresetChip && !FlpMutants.On(PsMutants.NesPresetIgnored))
+            { cav.Add($"OVER {who} plays a Runaway preset (Presets chip): VRUN's NES engine plays only its own pulse / triangle / noise sounds, the preset is not in the game and its {ins.Notes.Count} notes are left out (put the part on a plain NES instance to hear it as VRUN's sound)"); continue; }
             if (b.Console != 0) { cav.Add($"{who} is a {b.ConsoleName} instrument: VRUN NES has no such sound, its {ins.Notes.Count} notes are not in the game (that console's back end will play it)"); continue; }
             if (b.Channel is < 0 or > 3) { cav.Add($"{who}: NES channel {(b.Channel == 4 ? "Mix/DMC" : b.Channel.ToString())} is not pulse/triangle/noise: its {ins.Notes.Count} notes are not in the game"); continue; }
             if (b.Core != 0) cav.Add($"{who}: sound chip #{b.Core}, not FIX: VRUN's game plays it on the real NES sound (FIX)");

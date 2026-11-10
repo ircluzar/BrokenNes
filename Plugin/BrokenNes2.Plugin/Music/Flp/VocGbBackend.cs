@@ -13,7 +13,7 @@ namespace BrokenNes2.Music.Flp;
 public enum VocTarget { Gb, Gg }
 
 /// <summary>An instrument of the engine (the part the plugin can ask for): pulse duty 0-3, the noise's 7-bit width; the wave channel's table is the triangle.</summary>
-public sealed record VocInstrument(int Duty = 2, bool Width7 = false)
+public sealed record VocInstrument(int Duty = 2, bool Width7 = false, byte[]? Wave = null)
 {
     /// <summary>The driver's 8 bytes for a channel kind (vocmusic.py Instrument.row).</summary>
     public byte[] Row(int kind, int waveIndex) => kind == 2 ? [(byte)waveIndex, 0, 0, 1, 0, 1, (byte)waveIndex, 0]
@@ -77,6 +77,8 @@ public static class VocGbBackend
         foreach (var c in song.Caveats) F.Add(new FenceLine("project", FenceLevel.Note, c));
         var byCh = new List<FlpInstrument>[4];
         for (int i = 0; i < 4; i++) byCh[i] = new();
+        var presetInst = new Dictionary<FlpInstrument, VocInstrument>();
+        var presetCh = new Dictionary<FlpInstrument, int>();
         int wanted = target == VocTarget.Gb ? 1 : 3;     // the plugin console the song is written with (Gg: the Master System console, whose PSG chip the Game Gear has)
         foreach (var ins in song.Instruments)
         {
@@ -88,6 +90,25 @@ public static class VocGbBackend
             }
             if (ins.Notes.Count == 0) continue;
             if (b.Mode != "direct") { F.Add(new FenceLine("instruments", FenceLevel.Over, $"{who} is in ROM mode (it plays a game's channel, not notes): its {ins.Notes.Count} notes are not in the game")); continue; }
+            if (b.Preset != null && b.Core is >= FlpPresetSound.FirstPresetChip and <= FlpPresetSound.LastPresetChip)
+            {
+                // a Runaway preset: the Game Boy engine plays a Game Boy preset's channel with its duty / width / wave RAM; anything else is not in the game
+                var pd = b.Preset.Ok ? BrokenNes2.Presets.PresetFile.Read(b.Preset.File).Data : null;
+                var play = pd != null ? BrokenNes2.Presets.PresetPlayable.Build(pd, out _) : null;
+                if (target != VocTarget.Gb || play == null || play.Console != BrokenNes2.Instruments.ConsoleId.GameBoy || FlpMutants.On(PsMutants.GbPresetIgnored))
+                {
+                    F.Add(new FenceLine("preset", FenceLevel.Over, $"{who} plays a {(play != null ? play.Console.ToString() : "damaged")} preset{(b.Preset.Ok ? "" : $" ({b.Preset.Problem})")}: the {console} engine has no way to play it, its {ins.Notes.Count} notes are not in the game"));
+                    continue;
+                }
+                var pi = play.Instrument;
+                int pc = play.GbChannel;
+                presetCh[ins] = pc;
+                presetInst[ins] = pc == 2 ? new VocInstrument(Wave: pi.Blobs[0].Data.Take(16).ToArray()) : pc == 3 ? new VocInstrument(Width7: play.GbNoiseShort) : new VocInstrument(Duty: pi.Get("duty") & 3);
+                F.Add(new FenceLine("preset", FenceLevel.Ok, $"{who}: Game Boy preset \"{(pd!.Name.Length > 0 ? pd.Name : pd.InstrumentName)}\" on {Names[pc]}: {(pc == 2 ? "its 32-sample wave RAM is the song's wave table (exact)" : pc == 3 ? $"its {(play.GbNoiseShort ? 7 : 15)}-bit noise" : $"its duty {new[] { "12.5", "25", "50", "75" }[pi.Get("duty") & 3]}%")}"));
+                if (pc != 2) F.Add(new FenceLine("preset", FenceLevel.Note, $"{who}: the preset's volume envelope is not played: the engine's notes hold the velocity's level (as Direct mode does)"));
+                byCh[pc].Add(ins);
+                continue;
+            }
             if (b.Console != wanted && !(target == VocTarget.Gg && b.Console == 1))
             { F.Add(new FenceLine("instruments", FenceLevel.Over, $"{who} is a {b.ConsoleName} instrument: its {ins.Notes.Count} notes are not in this {console} song (that console's back end plays it)")); continue; }
             if (b.Channel is < 0 or > 3) { F.Add(new FenceLine("channels", FenceLevel.Over, $"{who}: channel {(b.Channel == 4 ? "Mix" : b.Channel.ToString())} is not pulse 1 / pulse 2 / triangle / noise: its {ins.Notes.Count} notes are not in the game")); continue; }
@@ -119,7 +140,7 @@ public static class VocGbBackend
             int pan = group[0].Bn2!.Param(2);
             foreach (var g in group) if (g.Bn2!.Param(2) != 0 && Math.Abs(g.Bn2.Param(2)) != 100) partialPan++;
             int panCode = Math.Abs(pan) >= 50 ? (pan < 0 ? 2 : 1) : 3;
-            VocInstrument InstOf(MonoVoice v) => c < 2 ? new VocInstrument(Duty: v.Instrument.Bn2!.Param(5, 1) & 3) : c == 3 ? new VocInstrument(Width7: v.Instrument.Bn2!.Param(7) != 0) : new VocInstrument();
+            VocInstrument InstOf(MonoVoice v) => presetInst.TryGetValue(v.Instrument, out var pv) ? pv : c < 2 ? new VocInstrument(Duty: v.Instrument.Bn2!.Param(5, 1) & 3) : c == 3 ? new VocInstrument(Width7: v.Instrument.Bn2!.Param(7) != 0) : new VocInstrument();
             var first = mono.Segs.Count > 0 ? InstOf(mono.Segs[0].V) : new VocInstrument();
             ev.Add(new VocEvent(0, "inst", 0, first));
             if (panCode != 3) ev.Add(new VocEvent(0, "pan", panCode));
@@ -259,8 +280,9 @@ public static class VocGbBackend
         int w = 0;
         if (kind == 2)
         {
-            int k = s.Waves.FindIndex(x => x.AsSpan().SequenceEqual(TriangleWave));
-            if (k < 0) { s.Waves.Add(TriangleWave); k = s.Waves.Count - 1; }
+            var wave = inst.Wave ?? TriangleWave;          // a Game Boy wave preset brings its own 32 samples (the .flp pipeline's presets)
+            int k = s.Waves.FindIndex(x => x.AsSpan().SequenceEqual(wave));
+            if (k < 0) { s.Waves.Add(wave); k = s.Waves.Count - 1; }
             w = k;
         }
         var row = inst.Row(kind, w);

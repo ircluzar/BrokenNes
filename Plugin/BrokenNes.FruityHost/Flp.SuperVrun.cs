@@ -9,7 +9,7 @@ using Vrun.Audio;
 
 namespace BrokenNes.FruityHost;
 
-internal static class SvChecks
+internal static partial class SvChecks
 {
     public static int Backend(string[] args)
     {
@@ -19,6 +19,22 @@ internal static class SvChecks
         Directory.CreateDirectory(args[3]);
         File.WriteAllBytes(Path.Combine(args[3], name + ".mid"), s.Midi);
         File.WriteAllText(Path.Combine(args[3], name + ".fence.json"), s.Fence.Json());
+        if (s.Presets.Count > 0)
+        {
+            // the presets' samples for sf2it.py --presets: {"<MIDI channel 0-15>": {"wav", "name", "c5", "loop_start"}}
+            var json = new System.Text.StringBuilder("{");
+            foreach (var p in s.Presets)
+            {
+                string wav = $"{name}.preset{p.MidiChannel}.wav";
+                File.WriteAllBytes(Path.Combine(args[3], wav), FlpPresetSound.Wav(p.Sound));
+                // the plugin's own middle C held 1.5 s (mono float32, 32 kHz): the reference a game build's recording is compared with
+                var preset = FlpSong.Read(File.ReadAllBytes(args[1])).Instruments.First(i => i.Name == p.Instrument).Bn2!.Preset!;
+                File.WriteAllBytes(Path.Combine(args[3], $"{name}.preset{p.MidiChannel}.plugin.f32"), System.Runtime.InteropServices.MemoryMarshal.AsBytes(FlpPresetSound.PluginRender(preset, 1.5).AsSpan()).ToArray());
+                if (json.Length > 1) json.Append(',');
+                json.Append(System.FormattableString.Invariant($"\"{p.MidiChannel - 1}\":{{\"wav\":\"{wav}\",\"name\":\"{p.SampleName}\",\"c5\":{p.Sound.C5:0.###},\"loop_start\":{p.Sound.LoopStart}}}"));
+            }
+            File.WriteAllText(Path.Combine(args[3], name + ".presets.json"), json.Append('}').ToString());
+        }
         Console.Write(s.Fence.Text());
         foreach (var p in s.Parts) Console.WriteLine($"  MIDI ch {p.MidiChannel,2} \"{p.Instrument}\": {p.Sound}, {p.Notes} notes, {p.Slides} slides");
         Console.WriteLine($"  {s.Seconds:0.00} s; wrote {name}.mid and {name}.fence.json in {args[3]}");

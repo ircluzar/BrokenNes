@@ -37,6 +37,9 @@ internal static class FlpChecks
         .. FlpVocChecks.All,     // Vaults GB / Vaults GG / CTW SMS (Flp.Checks.Voc.cs)
         new("sv-synthetic", "Super VRUN back end (SNES, WideMess, MD, DOS, 95): programs, noise keys, levels, pan, pitch, per-engine fence lines", SvChecks.Synthetic),
         new("sv-fence", "Super VRUN fence: each limit broken on purpose is reported OVER (voices, noise, range, instances, instruments, empty song)", SvChecks.Fence),
+        new("sv-preset-snes", "presets: every SNES fixture instrument (clean, corrupted, tuned) from a PRS1 section written byte by byte becomes the song's own sample: BRR decode, loop, C5, the plugin's render alike", SvChecks.PresetSnes),
+        new("sv-preset-engines", "presets per engine: Genesis FM / DAC, Game Boy, SNES rendered or exact; SNES Ok, MD DAC Note, DOS / 95 OVER; damaged and NES presets OVER; sound RAM; pitch ceiling", SvChecks.PresetEngines),
+        new("preset-others", "presets on Vaults GB (a wave preset's RAM is the wave table, a pulse preset's duty), Vaults GG and VRUN NES (OVER, never silent)", SvChecks.PresetOthers),
         new("sv-songs", "every song on every Super VRUN engine: MIDI notes = the model's sounding notes, fence printed (with --out: written)", SvChecks.Songs),
     ];
 
@@ -98,14 +101,14 @@ internal static class FlpChecks
         return o.ToArray();
     }
     private static byte[] U16(string s) => Encoding.Unicode.GetBytes(s + "\0");
-    internal static byte[] Bn2State(int core = 0, int volume = 1000, int pan = 0, int coarse = 0, int fine = 0, int duty = 2, int channel = 0, int noiseMode = 0, int mode = 0, int console = 0, int place = 0, byte[]? section = null)
+    internal static byte[] Bn2State(int core = 0, int volume = 1000, int pan = 0, int coarse = 0, int fine = 0, int duty = 2, int channel = 0, int noiseMode = 0, int mode = 0, int console = 0, int place = 0, byte[]? section = null, string sectionTag = "XYZ1")
     {
         int[] p = [core, volume, pan, coarse, fine, duty, channel, noiseMode, mode, 0, console, 0, 0, 0];
         var b = new List<byte>();
         b.AddRange("BFNP"u8.ToArray()); b.AddRange(BitConverter.GetBytes(2)); b.AddRange(BitConverter.GetBytes(p.Length));
         foreach (int v in p) b.AddRange(BitConverter.GetBytes(v));
         b.AddRange(BitConverter.GetBytes(0)); b.AddRange("EMU2"u8.ToArray()); b.AddRange(BitConverter.GetBytes(1)); b.AddRange(BitConverter.GetBytes(place));
-        if (section != null) { b.AddRange("XYZ1"u8.ToArray()); b.AddRange(BitConverter.GetBytes(section.Length)); b.AddRange(section); }
+        if (section != null) { b.AddRange(System.Text.Encoding.Latin1.GetBytes(sectionTag)); b.AddRange(BitConverter.GetBytes(section.Length)); b.AddRange(section); }
         return b.ToArray();
     }
     internal sealed record SNote(int Pos, int Len, int Key, int Ch, bool Slide = false, int Fine = 120, int Vel = 100);
@@ -402,6 +405,12 @@ internal static class FlpChecks
         new(SvMutants.DutyAs50, "the Super VRUN back end plays every pulse at 50%", "sv-synthetic"),
         new(SvMutants.ShortNoiseAsLong, "short noise written as long noise", "sv-synthetic"),
         new(SvMutants.VelocityLinear, "velocity linear in the level (FluidSynth squares it)", "sv-synthetic"),
+        new(PsMutants.LoopIgnored, "a preset's sample loses its loop", "sv-preset-snes"),
+        new(PsMutants.TuningIgnored, "a preset's tuning is not in its C5", "sv-preset-snes"),
+        new(PsMutants.PresetFenceBlind, "the fence does not see presets over the song's sound RAM", "sv-preset-engines"),
+        new(PsMutants.MdPresetAsPulse, "the Genesis fence says a preset is an FM patch", "sv-preset-engines"),
+        new(PsMutants.GbPresetIgnored, "Vaults GB ignores a Game Boy preset", "preset-others"),
+        new(PsMutants.NesPresetIgnored, "VRUN NES plays a preset instance as a plain NES channel", "preset-others"),
     ];
 
     public static int Main(string[] args)
