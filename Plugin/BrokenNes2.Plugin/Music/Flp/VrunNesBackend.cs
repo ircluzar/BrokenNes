@@ -5,20 +5,24 @@
 // What it reads: every BrokenNes2 instance on the NES console in Direct mode, on pulse 1 / pulse 2 / triangle / noise (Channel, or Auto = where it sat). It plays them as the plugin does
 // (Record/NesDirect.cs, Bn2Plugin.ResolveOwner): one note at a time per channel (the newest held note), pitch = FL key + note fine pitch + Coarse/Fine from C5, FL's slide notes glide
 // the sounding note (FL's measured slide shape, flp2nano's FL_SLIDE), level = round(15 x velocity/128 x Volume).
-// What it reports (the caveats: nothing is dropped without a line): everything else on the rack, two instances on one NES channel (merged, newest note wins), a duty other than 50%
-// (VRUN's squares are 50%), noise level below 15 and short noise (VRUN's noise decoder hits at full volume, long mode), silent notes, pan (the NES is mono), slides with no note
+// Pulse duty (2026-11-10): each square's Duty (12.5/25/50/75%) goes to the MIDI as CC 14 at tick 0 (value duty x 32), which VRUN's converter turns into its duty
+// opcode 0xD3 (Midi2Nes.DutyCc / OpDuty; the template's square decoders are VRUN's duty decoders). One duty per square for the whole song.
+// What it reports (the caveats: nothing is dropped without a line): everything else on the rack, two instances on one NES channel (merged, newest note wins), instances
+// of one square with different duties (the first one's plays), noise level below 15 and short noise (VRUN's noise decoder hits at full volume, long mode), silent notes, pan (the NES is mono), slides with no note
 // under them, notes that end where they start. The round-7 facts (the converter's own: channel choice, thinning, truncation, bends) come on top, from SongConvert.
 using BrokenNes2.Record;
 
 namespace BrokenNes2.Music.Flp;
 
-public sealed record VrunNesPart(int NesChannel, string Instruments, int Notes, int Slides, int BentNotes, int BendRange);
+/// <summary>One NES channel's part. Duty: the square's pulse duty 0-3 (12.5/25/50/75%) written as CC 14; -1 on the triangle and noise.</summary>
+public sealed record VrunNesPart(int NesChannel, string Instruments, int Notes, int Slides, int BentNotes, int BendRange, int Duty = -1);
 
 public sealed record VrunNesSong(byte[] Midi, List<string> Caveats, List<VrunNesPart> Parts, double Seconds);
 
 public static class VrunNesBackend
 {
     public static readonly string[] NesNames = ["square 1", "square 2", "triangle", "noise"];
+    public static readonly string[] DutyNames = ["12.5", "25", "50", "75"];
     private static readonly int[] MidiChannelOf = [0, 1, 2, 9];
     /// <summary>FL's slide as the plugin heard it (measured on the user's overworld.wav: Nano/gb/tools/flp2nano/convert.mjs FL_SLIDE): starts 0.85 tick early, lasts 1.8 ticks longer.</summary>
     public const double SlideEarly = 0.85, SlideExtra = 1.8;
@@ -78,7 +82,7 @@ public static class VrunNesBackend
             int mc = MidiChannelOf[nc];
             var voices = new List<Voice>();
             var glides = new List<Glide>();
-            int order = 0, silent = 0, empty = 0, panned = 0;
+            int order = 0, silent = 0, empty = 0, panned = 0, partDuty = -1;
             foreach (var ins in group)
             {
                 var b = ins.Bn2!;
@@ -86,7 +90,11 @@ public static class VrunNesBackend
                 double volume = Math.Clamp(b.Param(1, 1000) / 1000.0, 0, 1);
                 int duty = b.Param(5) & 3, noiseMode = b.Param(7);
                 string who = $"channel {ins.Rack} \"{ins.Name}\"";
-                if (nc <= 1 && duty != 2) cav.Add($"{who}: Duty {new[] { "12.5", "25", "50", "75" }[duty]}% plays as 50% in the game (VRUN's squares are 50%)");
+                if (nc <= 1)
+                {
+                    if (partDuty < 0) partDuty = duty;
+                    else if (duty != partDuty) cav.Add($"{who}: Duty {DutyNames[duty]}% plays as {DutyNames[partDuty]}% in the game (one duty per square: the first instance's)");
+                }
                 if (nc == 3 && noiseMode != 0) cav.Add($"{who}: short (metallic) noise plays as long noise in the game (VRUN's noise decoder is long mode)");
                 if (b.Param(2) != 0) panned++;
                 foreach (var n in ins.Notes)
@@ -134,6 +142,7 @@ public static class VrunNesBackend
             var trk = new SmfTrack { Name = string.Join(" + ", group.Select(g => g.Name.Length > 0 ? g.Name : NesNames[nc])), Instrument = "BrokenNes2 NES " + NesNames[nc] };
             tracks.Add(trk);
             if (nc < 3) { trk.Events.AddRange(RecMidi.BendRange(0, mc, range)); trk.Events.Add(RecMidi.PitchBend(0, mc, 0)); }
+            if (nc <= 1) trk.Events.Add(RecMidi.Cc(0, mc, Vrun.Audio.Midi2Nes.DutyCc, (FlpMutants.On(FlpMutants.DutyIgnored) ? 2 : partDuty) * 32));
             int lastBend = 0, notes = 0, bent = 0, quiet = 0;
             void Bend(long tick, double cents)
             {
@@ -164,7 +173,7 @@ public static class VrunNesBackend
             }
             if (silent > 0) cav.Add($"{NesNames[nc]}: {silent} notes have level 0 (velocity x Volume): silent in FL and in the game");
             if (quiet > 0) cav.Add($"noise: {quiet} hits are softer than full level in FL: VRUN's noise decoder hits at full volume");
-            parts.Add(new VrunNesPart(nc, names, notes, voices.Sum(v => v.Glides.Count), bent, range));
+            parts.Add(new VrunNesPart(nc, names, notes, voices.Sum(v => v.Glides.Count), bent, range, nc <= 1 ? partDuty : -1));
         }
         if (parts.Count == 0) cav.Add("NOTHING for VRUN NES: no BrokenNes2 instance on the NES console in Direct mode with notes on pulse 1, pulse 2, triangle or noise");
         int us = (int)Math.Round(60_000_000.0 / Math.Max(1e-3, song.Tempo), MidpointRounding.AwayFromZero);

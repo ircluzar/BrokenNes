@@ -44,6 +44,8 @@ switch (args[0])
 
     case "flp-export":      // flp-export vocgb|vocgg|ctwsms <song.flp> <out folder>: the test ROM, the fence and the game's import file (Flp.Export.cs)
         return FlpExport.Main(args);
+    case "flp-backend":
+        return SvChecks.Backend(args);
 
     case "midi-test":
         return MidiChecks.Main(args);

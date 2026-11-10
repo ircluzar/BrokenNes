@@ -37,7 +37,7 @@ public sealed class VocSong
     public double Seconds;
     public string[] Parts = ["", "", "", ""];
     public int[] Notes = new int[4];
-    public IEnumerable<string> Caveats => Fence.Where(f => f.Fit != Fit.Ok).Select(f => f.ToString());
+    public IEnumerable<string> Caveats => Fence.Where(f => f.Level != FenceLevel.Ok).Select(FlpFence.Line);
 }
 
 public static class VocGbBackend
@@ -74,7 +74,7 @@ public static class VocGbBackend
         var o = new VocSong { Name = name, Title = song.Title.Length > 0 ? song.Title : name, Target = target };
         var F = o.Fence;
         string console = target == VocTarget.Gb ? "Game Boy" : "Game Gear";
-        foreach (var c in song.Caveats) F.Add(new FenceLine("project", Fit.Changed, c));
+        foreach (var c in song.Caveats) F.Add(new FenceLine("project", FenceLevel.Note, c));
         var byCh = new List<FlpInstrument>[4];
         for (int i = 0; i < 4; i++) byCh[i] = new();
         int wanted = target == VocTarget.Gb ? 1 : 3;     // the plugin console the song is written with (Gg: the Master System console, whose PSG chip the Game Gear has)
@@ -83,14 +83,14 @@ public static class VocGbBackend
             string who = $"channel {ins.Rack} \"{ins.Name}\"";
             if (ins.Bn2 is not { } b)
             {
-                if (ins.Notes.Count > 0) F.Add(new FenceLine("instruments", Fit.Out, $"{who} is not BrokenNes2 ({(ins.Plugin.Length > 0 ? ins.Plugin : ins.Type == 0 ? "sampler" : "type " + ins.Type)}): its {ins.Notes.Count} notes are not in the game"));
+                if (ins.Notes.Count > 0) F.Add(new FenceLine("instruments", FenceLevel.Over, $"{who} is not BrokenNes2 ({(ins.Plugin.Length > 0 ? ins.Plugin : ins.Type == 0 ? "sampler" : "type " + ins.Type)}): its {ins.Notes.Count} notes are not in the game"));
                 continue;
             }
             if (ins.Notes.Count == 0) continue;
-            if (b.Mode != "direct") { F.Add(new FenceLine("instruments", Fit.Out, $"{who} is in ROM mode (it plays a game's channel, not notes): its {ins.Notes.Count} notes are not in the game")); continue; }
+            if (b.Mode != "direct") { F.Add(new FenceLine("instruments", FenceLevel.Over, $"{who} is in ROM mode (it plays a game's channel, not notes): its {ins.Notes.Count} notes are not in the game")); continue; }
             if (b.Console != wanted && !(target == VocTarget.Gg && b.Console == 1))
-            { F.Add(new FenceLine("instruments", Fit.Out, $"{who} is a {b.ConsoleName} instrument: its {ins.Notes.Count} notes are not in this {console} song (that console's back end plays it)")); continue; }
-            if (b.Channel is < 0 or > 3) { F.Add(new FenceLine("channels", Fit.Out, $"{who}: channel {(b.Channel == 4 ? "Mix" : b.Channel.ToString())} is not pulse 1 / pulse 2 / triangle / noise: its {ins.Notes.Count} notes are not in the game")); continue; }
+            { F.Add(new FenceLine("instruments", FenceLevel.Over, $"{who} is a {b.ConsoleName} instrument: its {ins.Notes.Count} notes are not in this {console} song (that console's back end plays it)")); continue; }
+            if (b.Channel is < 0 or > 3) { F.Add(new FenceLine("channels", FenceLevel.Over, $"{who}: channel {(b.Channel == 4 ? "Mix" : b.Channel.ToString())} is not pulse 1 / pulse 2 / triangle / noise: its {ins.Notes.Count} notes are not in the game")); continue; }
             byCh[b.Channel].Add(ins);
         }
 
@@ -110,17 +110,17 @@ public static class VocGbBackend
             var group = byCh[c];
             var ev = o.Ch[c];
             if (group.Count == 0) { ev.Add(new VocEvent(0, "inst", 0, new VocInstrument())); continue; }
-            var mono = FlpMonoChannel.Of(group);
+            var mono = FlpMono.Resolve(group);
             o.Parts[c] = string.Join(" + ", group.Select(g => $"\"{g.Name}\""));
-            if (group.Count > 1) F.Add(new FenceLine("channels", Fit.Changed, $"{Names[c]}: {group.Count} instances play it ({o.Parts[c]}): the {console} has one {Names[c]}, they are merged one note at a time (the newest held note sounds, as in the plugin)"));
-            if (mono.Hidden + mono.Cut > 0) F.Add(new FenceLine("polyphony", Fit.Changed, $"{Names[c]}: one note at a time: {mono.Cut} notes are cut short by a newer one and {mono.Hidden} are never heard (a newer note covers them whole), exactly as the plugin plays them"));
-            if (mono.Empty > 0) F.Add(new FenceLine("notes", Fit.Ok, $"{Names[c]}: {mono.Empty} notes of length 0 are silent in FL and in the game"));
-            if (mono.LoneSlides > 0) F.Add(new FenceLine("slides", Fit.Ok, $"{Names[c]}: {mono.LoneSlides} slide notes have no note under them: they do nothing in FL either"));
+            if (group.Count > 1) F.Add(new FenceLine("channels", FenceLevel.Note, $"{Names[c]}: {group.Count} instances play it ({o.Parts[c]}): the {console} has one {Names[c]}, they are merged one note at a time (the newest held note sounds, as in the plugin)"));
+            if (mono.Cut > 0) F.Add(new FenceLine("polyphony", FenceLevel.Note, $"{Names[c]}: one note at a time: {mono.Cut - mono.Hidden} notes are cut short by a newer one and {mono.Hidden} are never heard (a newer note covers them whole), exactly as the plugin plays them"));
+            if (mono.Empty > 0) F.Add(new FenceLine("notes", FenceLevel.Ok, $"{Names[c]}: {mono.Empty} notes of length 0 are silent in FL and in the game"));
+            if (mono.LoneSlides > 0) F.Add(new FenceLine("slides", FenceLevel.Ok, $"{Names[c]}: {mono.LoneSlides} slide notes have no note under them: they do nothing in FL either"));
             int pan = group[0].Bn2!.Param(2);
             foreach (var g in group) if (g.Bn2!.Param(2) != 0 && Math.Abs(g.Bn2.Param(2)) != 100) partialPan++;
             int panCode = Math.Abs(pan) >= 50 ? (pan < 0 ? 2 : 1) : 3;
-            VocInstrument InstOf(FlpVoice v) => c < 2 ? new VocInstrument(Duty: v.Instrument.Bn2!.Param(5, 1) & 3) : c == 3 ? new VocInstrument(Width7: v.Instrument.Bn2!.Param(7) != 0) : new VocInstrument();
-            var first = mono.Segments.Count > 0 ? InstOf(mono.Segments[0].Voice) : new VocInstrument();
+            VocInstrument InstOf(MonoVoice v) => c < 2 ? new VocInstrument(Duty: v.Instrument.Bn2!.Param(5, 1) & 3) : c == 3 ? new VocInstrument(Width7: v.Instrument.Bn2!.Param(7) != 0) : new VocInstrument();
+            var first = mono.Segs.Count > 0 ? InstOf(mono.Segs[0].V) : new VocInstrument();
             ev.Add(new VocEvent(0, "inst", 0, first));
             if (panCode != 3) ev.Add(new VocEvent(0, "pan", panCode));
             VocInstrument cur = first;
@@ -134,12 +134,12 @@ public static class VocGbBackend
                 return sh;
             }
             int Reg(double cents) { double hz = MidiHz(cents / 100); return PulseX(c == 2 ? hz * 2 : hz); }
-            var segs = mono.Segments.Where(s => c == 2 || s.Voice.Level > 0).ToList();
-            silent += mono.Segments.Count - segs.Count;
+            var segs = mono.Segs.Where(s => c == 2 || s.V.Level > 0).ToList();
+            silent += mono.Segs.Count - segs.Count;
             for (int i = 0; i < segs.Count; i++)
             {
                 var s = segs[i];
-                var v = s.Voice;
+                var v = s.V;
                 int f0 = Math.Max(Frame(s.From), cursor), f1 = Frame(s.To);
                 if (f1 <= Frame(s.From)) { shortNotes++; f1 = Frame(s.From) + 1; }
                 if (f0 >= f1 || f0 >= o.Length) { lost++; continue; }
@@ -188,40 +188,40 @@ public static class VocGbBackend
 
         // ---- the fence ----
         var used = Enumerable.Range(0, 4).Where(c => byCh[c].Count > 0).ToList();
-        F.Add(new FenceLine("channels", used.Count > 0 ? Fit.Ok : Fit.Out, used.Count > 0 ? $"{string.Join(", ", used.Select(c => $"{Names[c]} <- {o.Parts[c]} ({o.Notes[c]} notes)"))}; the engine has 4 channels, one note at a time each"
+        F.Add(new FenceLine("channels", used.Count > 0 ? FenceLevel.Ok : FenceLevel.Over, used.Count > 0 ? $"{string.Join(", ", used.Select(c => $"{Names[c]} <- {o.Parts[c]} ({o.Notes[c]} notes)"))}; the engine has 4 channels, one note at a time each"
             : $"NOTHING for Vaults {(target == VocTarget.Gb ? "GB" : "GG")}: no BrokenNes2 instance on the {(target == VocTarget.Gb ? "Game Boy" : "Game Boy or Master System")} console in Direct mode with notes on pulse 1, pulse 2, triangle or noise"));
-        if (lowCount > 0) F.Add(new FenceLine("note range", Fit.Out, $"{lowCount} notes are under the lowest the {(target == VocTarget.Gb ? "Game Boy" : "engine")} plays (pulse C2 = 36, wave C1 = 24): played {(lowWorst > 12 ? "up to " + lowWorst / 12 + " octaves" : "an octave")} higher; the lowest is {lowWhere}"));
-        else F.Add(new FenceLine("note range", Fit.Ok, "every note is inside the channels' ranges (pulse C2-G9, wave C1-G9)"));
-        if (quantOver > 0) F.Add(new FenceLine("tuning", Fit.Changed, $"{quantOver} notes are more than 5 cents off their pitch on the frequency register's steps (worst {quantWorst:0.#} cents: high notes)"));
-        if (shortNotes > 0) F.Add(new FenceLine("timing", Fit.Changed, $"{shortNotes} notes are shorter than a Game Boy frame ({1000 / Fps:0.0} ms): they play for one frame"));
-        if (lost > 0) F.Add(new FenceLine("timing", Fit.Out, $"{lost} notes start and end inside a frame another note already has: not heard in the game"));
-        if (beyond > 0) F.Add(new FenceLine("length", Fit.Changed, $"{beyond} notes go past the song's end: cut at the end"));
-        F.Add(new FenceLine("timing", Fit.Ok, $"events on the {(target == VocTarget.Gb ? "Game Boy's" : "engine's")} frames ({Fps:0.0000} Hz, {1000 / Fps:0.00} ms): notes within half a frame of FL's time; {o.Length} frames = {o.Seconds:0.00} s, the whole song loops"));
-        if (silent > 0) F.Add(new FenceLine("volume", Fit.Ok, $"{silent} notes have level 0 (velocity x Volume): silent in FL and in the game"));
+        if (lowCount > 0) F.Add(new FenceLine("note range", FenceLevel.Over, $"{lowCount} notes are under the lowest the {(target == VocTarget.Gb ? "Game Boy" : "engine")} plays (pulse C2 = 36, wave C1 = 24): played {(lowWorst > 12 ? "up to " + lowWorst / 12 + " octaves" : "an octave")} higher; the lowest is {lowWhere}"));
+        else F.Add(new FenceLine("note range", FenceLevel.Ok, "every note is inside the channels' ranges (pulse C2-G9, wave C1-G9)"));
+        if (quantOver > 0) F.Add(new FenceLine("tuning", FenceLevel.Note, $"{quantOver} notes are more than 5 cents off their pitch on the frequency register's steps (worst {quantWorst:0.#} cents: high notes)"));
+        if (shortNotes > 0) F.Add(new FenceLine("timing", FenceLevel.Note, $"{shortNotes} notes are shorter than a Game Boy frame ({1000 / Fps:0.0} ms): they play for one frame"));
+        if (lost > 0) F.Add(new FenceLine("timing", FenceLevel.Over, $"{lost} notes start and end inside a frame another note already has: not heard in the game"));
+        if (beyond > 0) F.Add(new FenceLine("length", FenceLevel.Note, $"{beyond} notes go past the song's end: cut at the end"));
+        F.Add(new FenceLine("timing", FenceLevel.Ok, $"events on the {(target == VocTarget.Gb ? "Game Boy's" : "engine's")} frames ({Fps:0.0000} Hz, {1000 / Fps:0.00} ms): notes within half a frame of FL's time; {o.Length} frames = {o.Seconds:0.00} s, the whole song loops"));
+        if (silent > 0) F.Add(new FenceLine("volume", FenceLevel.Ok, $"{silent} notes have level 0 (velocity x Volume): silent in FL and in the game"));
         if (target == VocTarget.Gb)
         {
-            F.Add(new FenceLine("volume", Fit.Ok, "pulse and noise: 16 levels = the plugin's round(15 x velocity/128 x Volume); wave: full (the plugin's triangle has no volume either)"));
-            F.Add(new FenceLine("duty", Fit.Ok, duties.Count == 0 ? "no pulse notes" : $"duties {string.Join(", ", duties.Select(d => new[] { "12.5", "25", "50", "75" }[d] + "%"))}: the Game Boy has all four"));
-            F.Add(new FenceLine("noise", Fit.Ok, usedShort ? "Short noise = the 7-bit width" : "long noise (15-bit)"));
-            F.Add(new FenceLine("pan", partialPan > 0 ? Fit.Changed : Fit.Ok, partialPan > 0 ? $"{partialPan} instances are partly panned: the Game Boy pans hard (left, right or both): |Pan| 50 and more = that side, less = centre" : "hard left / right / centre"));
+            F.Add(new FenceLine("volume", FenceLevel.Ok, "pulse and noise: 16 levels = the plugin's round(15 x velocity/128 x Volume); wave: full (the plugin's triangle has no volume either)"));
+            F.Add(new FenceLine("duty", FenceLevel.Ok, duties.Count == 0 ? "no pulse notes" : $"duties {string.Join(", ", duties.Select(d => new[] { "12.5", "25", "50", "75" }[d] + "%"))}: the Game Boy has all four"));
+            F.Add(new FenceLine("noise", FenceLevel.Ok, usedShort ? "Short noise = the 7-bit width" : "long noise (15-bit)"));
+            F.Add(new FenceLine("pan", partialPan > 0 ? FenceLevel.Note : FenceLevel.Ok, partialPan > 0 ? $"{partialPan} instances are partly panned: the Game Boy pans hard (left, right or both): |Pan| 50 and more = that side, less = centre" : "hard left / right / centre"));
         }
-        if (noiseSlides > 0) F.Add(new FenceLine("slides", Fit.Out, $"noise: {noiseSlides} hits have slides: the noise channel's rate does not glide in the game (the hit keeps its first rate)"));
-        if (bends > 0) F.Add(new FenceLine("slides", Fit.Ok, $"{bends} frequency changes (3 bytes each) play FL's slides frame by frame, without a restart"));
-        F.Add(new FenceLine("effects", Fit.Ok, "the engine's envelopes, vibrato and sweep are not used (the plugin plays constant notes): nothing to map"));
-        F.Add(new FenceLine("chip", Fit.Ok, "the game runs on the real Game Boy sound unit; a sound chip other than GB on an instance is not in the song"));
+        if (noiseSlides > 0) F.Add(new FenceLine("slides", FenceLevel.Over, $"noise: {noiseSlides} hits have slides: the noise channel's rate does not glide in the game (the hit keeps its first rate)"));
+        if (bends > 0) F.Add(new FenceLine("slides", FenceLevel.Ok, $"{bends} frequency changes (3 bytes each) play FL's slides frame by frame, without a restart"));
+        F.Add(new FenceLine("effects", FenceLevel.Ok, "the engine's envelopes, vibrato and sweep are not used (the plugin plays constant notes): nothing to map"));
+        F.Add(new FenceLine("chip", FenceLevel.Ok, "the game runs on the real Game Boy sound unit; a sound chip other than GB on an instance is not in the song"));
 
         Encode(o);
         if (target == VocTarget.Gb)
         {
             int quads = QuadFrames(o).Count;
-            if (quads > 0) F.Add(new FenceLine("timing", Fit.Changed, $"{quads} frames have something to do on all four channels: the engine decodes at most 3 a frame (noise, wave, pulse 1 first), so pulse 2 comes one frame ({1000 / Fps:0.0} ms) late there; the next wait is a frame shorter (no drift)"));
+            if (quads > 0) F.Add(new FenceLine("timing", FenceLevel.Note, $"{quads} frames have something to do on all four channels: the engine decodes at most 3 a frame (noise, wave, pulse 1 first), so pulse 2 comes one frame ({1000 / Fps:0.0} ms) late there; the next wait is a frame shorter (no drift)"));
         }
         for (int c = 0; c < 4; c++)
-            if (o.Streams[c].Length > StreamCap) F.Add(new FenceLine("bytes", Fit.Out, $"{Names[c]}: {o.Streams[c].Length} bytes, the engine's stream limit is {StreamCap} (one bank): {o.Streams[c].Length - StreamCap} bytes over: shorten the song or thin its slides"));
+            if (o.Streams[c].Length > StreamCap) F.Add(new FenceLine("bytes", FenceLevel.Over, $"{Names[c]}: {o.Streams[c].Length} bytes, the engine's stream limit is {StreamCap} (one bank): {o.Streams[c].Length - StreamCap} bytes over: shorten the song or thin its slides"));
         int total = o.Streams.Sum(s => s.Length);
-        F.Add(new FenceLine("bytes", Fit.Ok, $"{string.Join(" + ", o.Streams.Select(s => s.Length))} = {total} bytes of song; one stream may be {StreamCap} bytes (a bank), the game's {SongBanks} song banks ({SongBanks * StreamCap} bytes) hold all 22 tracks"));
-        if (o.Instruments.Count > 16) F.Add(new FenceLine("instruments", Fit.Out, $"{o.Instruments.Count} instrument rows, the test ROM has room for 16"));
-        if (o.Noise.Count > 128) F.Add(new FenceLine("noise", Fit.Out, $"{o.Noise.Count} noise settings, the engine's table holds 128"));
+        F.Add(new FenceLine("bytes", FenceLevel.Ok, $"{string.Join(" + ", o.Streams.Select(s => s.Length))} = {total} bytes of song; one stream may be {StreamCap} bytes (a bank), the game's {SongBanks} song banks ({SongBanks * StreamCap} bytes) hold all 22 tracks"));
+        if (o.Instruments.Count > 16) F.Add(new FenceLine("instruments", FenceLevel.Over, $"{o.Instruments.Count} instrument rows, the test ROM has room for 16"));
+        if (o.Noise.Count > 128) F.Add(new FenceLine("noise", FenceLevel.Over, $"{o.Noise.Count} noise settings, the engine's table holds 128"));
         return o;
     }
 

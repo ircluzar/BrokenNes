@@ -6,6 +6,7 @@ import path from 'node:path';
 import { loadGb, pitchZc } from './lib.mjs';
 import { parseFlp, parseBn2State } from '../tools/flp2nano/flp.mjs';
 import { convert, nesPulseGb, FL_SLIDE } from '../tools/flp2nano/convert.mjs';
+import { fenceOf } from '../tools/flp2nano/fence.mjs';
 
 const G = loadGb();
 let pass = 0, fail = 0;
@@ -113,6 +114,18 @@ check(!lin.midi.equals(r.midi), "slide 'linear' differs from FL's measured slide
 const noPl = convert(parseFlp(flp({ ...project, items: [] })));
 check(noPl.fallback && noPl.warnings.some(w => /PLAYLIST IS EMPTY/.test(w)), 'empty playlist -> patterns in order, with a warning');
 check(Math.abs(noPl.songEnd - (384 + 384)) < 1e-9, `fallback length ${noPl.songEnd}`);
+
+// ---- the fence report (brokennes-fence v1): every warning is a line, a skipped channel with notes is over, the budget line is ok ----
+{
+  const proj = parseFlp(flp(project)), fr = convert(proj, { title: 'fence' }), fence = fenceOf(fr, 'Nano GB', proj);
+  check(fence.format === 'brokennes-fence' && fence.version === 1 && fence.lines.length === fr.warnings.length + 1, `fence: ${fence.lines.length} lines for ${fr.warnings.length} warnings`);
+  check(fence.lines.every(l => ['ok', 'note', 'over'].includes(l.level)) && fence.lines.some(l => l.level === 'ok' && l.rule === 'instruments'), 'fence: levels and the budget line');
+  check(fr.warnings.every(w => fence.lines.some(l => l.text.startsWith(w))), 'fence: a warning is missing from the fence');
+  const none = fenceOf({ warnings: [], summary: [] }, 'Nano GB');
+  check(none.lines.length === 1 && none.lines[0].level === 'over', 'fence: an empty song is over (NOTHING)');
+  const sk = fenceOf({ warnings: ['channel 0 \"x\" is not BrokenNes2 (sampler): skipped'], summary: [{}] }, 'Nano GB');
+  check(sk.lines[0].level === 'over', 'fence: a skipped channel (no project to count its notes) is over');
+}
 
 // ---- the user's projects, when they are here (read only) ----
 const dir = process.env.FLP2NANO_SONGS;

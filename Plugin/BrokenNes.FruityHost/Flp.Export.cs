@@ -50,6 +50,6 @@ internal static class FlpExport
         if (rom == null) { Console.WriteLine("no test ROM: " + why); return 1; }
         File.WriteAllBytes(Path.Combine(dir, $"{name}.{game}{ext}"), rom);
         Console.WriteLine($"wrote {Path.Combine(dir, $"{name}.{game}{ext}")}");
-        return fence.Any(f => f.Fit == Fit.Out) ? 2 : 0;
+        return fence.Any(f => f.Level == FenceLevel.Over) ? 2 : 0;
     }
 }

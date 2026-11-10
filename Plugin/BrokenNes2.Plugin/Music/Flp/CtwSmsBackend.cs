@@ -17,7 +17,7 @@ public sealed class CtwSmsSong
     public SongBuild? Build;
     public List<FenceLine> Fence = new();
     public double Seconds;
-    public IEnumerable<string> Caveats => Fence.Where(f => f.Fit != Fit.Ok).Select(f => f.ToString());
+    public IEnumerable<string> Caveats => Fence.Where(f => f.Level != FenceLevel.Ok).Select(FlpFence.Line);
 }
 
 public static class CtwSmsBackend
@@ -44,7 +44,7 @@ public static class CtwSmsBackend
     {
         var o = new CtwSmsSong();
         var F = o.Fence;
-        foreach (var c in song.Caveats) F.Add(new FenceLine("project", Fit.Changed, c));
+        foreach (var c in song.Caveats) F.Add(new FenceLine("project", FenceLevel.Note, c));
         // the Master System instances, read as the NES channels they sit on; everything else is said here
         var sub = new FlpSongModel { Ppq = song.Ppq, TempoMilli = song.TempoMilli, End = song.End, Title = song.Title };
         int slides = 0, detuned = 0, low = 0; double worstOff = 0; string lowWhere = "";
@@ -55,24 +55,24 @@ public static class CtwSmsBackend
             string who = $"channel {ins.Rack} \"{ins.Name}\"";
             if (ins.Bn2 is not { } b)
             {
-                if (ins.Notes.Count > 0) F.Add(new FenceLine("instruments", Fit.Out, $"{who} is not BrokenNes2 ({(ins.Plugin.Length > 0 ? ins.Plugin : ins.Type == 0 ? "sampler" : "type " + ins.Type)}): its {ins.Notes.Count} notes are not in the game"));
+                if (ins.Notes.Count > 0) F.Add(new FenceLine("instruments", FenceLevel.Over, $"{who} is not BrokenNes2 ({(ins.Plugin.Length > 0 ? ins.Plugin : ins.Type == 0 ? "sampler" : "type " + ins.Type)}): its {ins.Notes.Count} notes are not in the game"));
                 continue;
             }
             if (ins.Notes.Count == 0) continue;
-            if (b.Mode != "direct") { F.Add(new FenceLine("instruments", Fit.Out, $"{who} is in ROM mode (it plays a game's channel, not notes): its {ins.Notes.Count} notes are not in the game")); continue; }
-            if (b.Console != 3) { F.Add(new FenceLine("instruments", Fit.Out, $"{who} is a {b.ConsoleName} instrument: its {ins.Notes.Count} notes are not in this Master System song (that console's back end plays it)")); continue; }
-            if (b.Channel is < 0 or > 3) { F.Add(new FenceLine("channels", Fit.Out, $"{who}: channel {(b.Channel == 4 ? "Mix" : b.Channel.ToString())} is not tone 1 / tone 2 / tone 3 / noise: its {ins.Notes.Count} notes are not in the game")); continue; }
+            if (b.Mode != "direct") { F.Add(new FenceLine("instruments", FenceLevel.Over, $"{who} is in ROM mode (it plays a game's channel, not notes): its {ins.Notes.Count} notes are not in the game")); continue; }
+            if (b.Console != 3) { F.Add(new FenceLine("instruments", FenceLevel.Over, $"{who} is a {b.ConsoleName} instrument: its {ins.Notes.Count} notes are not in this Master System song (that console's back end plays it)")); continue; }
+            if (b.Channel is < 0 or > 3) { F.Add(new FenceLine("channels", FenceLevel.Over, $"{who}: channel {(b.Channel == 4 ? "Mix" : b.Channel.ToString())} is not tone 1 / tone 2 / tone 3 / noise: its {ins.Notes.Count} notes are not in the game")); continue; }
             var st = new FlpBn2 { Version = b.Version, Params = (int[])b.Params.Clone(), Console = 0, ConsoleName = "NES", Core = 0, Channel = b.Channel, Mode = "direct" };
             if (st.Params.Length > 5) st.Params[5] = 2;           // (no duty on the PSG: VRUN NES's duty caveat is not this game's)
             if (st.Params.Length > 3) { if (st.Params[3] != 0 || st.Params[4] != 0) detuned += ins.Notes.Count(n => !n.Slide); st.Params[3] = 0; st.Params[4] = 0; }
             var copy = new FlpInstrument { Rack = ins.Rack, Name = ins.Name, Plugin = ins.Plugin, Type = ins.Type, Bn2 = st };
-            var mono = FlpMonoChannel.Of([ins]);
-            foreach (var seg in mono.Segments)
+            var mono = FlpMono.Resolve([ins]);
+            foreach (var seg in mono.Segs)
             {
-                double c = seg.Voice.PitchAt(seg.From);
+                double c = seg.V.PitchAt(seg.From);
                 if (b.Channel < 3 && 440 * Math.Pow(2, (c / 100 - 69) / 12) < LowestHz) { low++; if (lowWhere.Length == 0) lowWhere = $"{FlpFence.NoteName((int)Math.Round(c / 100))} on {Names[b.Channel]} at {seg.From / (double)Math.Max(1, song.Ppq) / 4 + 1:0.##} bars"; }
                 if (b.Channel == 3) noiseIdx.Add(VrunNesBackend.NoiseIndex(c - 6000));
-                else if (b.Channel < 2 && seg.Voice.Level > 0) levels.Add(seg.Voice.Level);
+                else if (b.Channel < 2 && seg.V.Level > 0) levels.Add(seg.V.Level);
             }
             foreach (var n in ins.Notes)
             {
@@ -84,45 +84,45 @@ public static class CtwSmsBackend
         }
         o.Nes = VrunNesBackend.Build(sub, name);
         if (sub.Instruments.Count == 0)
-        { F.Add(new FenceLine("channels", Fit.Out, "NOTHING for CTW SMS: no BrokenNes2 instance on the Master System console in Direct mode with notes on tone 1, tone 2, tone 3 (Triangle) or noise")); return o; }
+        { F.Add(new FenceLine("channels", FenceLevel.Over, "NOTHING for CTW SMS: no BrokenNes2 instance on the Master System console in Direct mode with notes on tone 1, tone 2, tone 3 (Triangle) or noise")); return o; }
         foreach (var c in o.Nes.Caveats)
-            if (!c.StartsWith("NOTHING for VRUN NES")) F.Add(new FenceLine("VRUN engine", Fit.Changed, c.Replace("square 1", "tone 1").Replace("square 2", "tone 2")));
+            if (!c.StartsWith("NOTHING for VRUN NES")) F.Add(new FenceLine("VRUN engine", FenceLevel.Note, c.Replace("square 1", "tone 1").Replace("square 2", "tone 2")));
         o.Seconds = o.Nes.Seconds;
         o.Build = SongConvert.Convert(o.Nes.Midi, out var why);
-        if (o.Build == null) { F.Add(new FenceLine("converter", Fit.Out, "VRUN's converter refused the song: " + why)); return o; }
-        foreach (var l in o.Build.Facts.Lines()) F.Add(new FenceLine("converter", Fit.Ok, l));
-        foreach (var l in VrunNesBackend.ChannelChoice(o.Nes, o.Build.Facts)) F.Add(new FenceLine("channels", Fit.Changed, l));
+        if (o.Build == null) { F.Add(new FenceLine("converter", FenceLevel.Over, "VRUN's converter refused the song: " + why)); return o; }
+        foreach (var l in o.Build.Facts.Lines()) F.Add(new FenceLine("converter", FenceLevel.Ok, l));
+        foreach (var l in VrunNesBackend.ChannelChoice(o.Nes, o.Build.Facts)) F.Add(new FenceLine("channels", FenceLevel.Note, l));
         var used = o.Nes.Parts.Select(p => $"{Names[p.NesChannel]} <- {p.Instruments} ({p.Notes} notes)").ToList();
-        F.Add(new FenceLine("channels", used.Count > 0 ? Fit.Ok : Fit.Out, used.Count > 0 ? string.Join(", ", used) + "; the game has 4 channels (VRUN NES's), one note at a time each"
+        F.Add(new FenceLine("channels", used.Count > 0 ? FenceLevel.Ok : FenceLevel.Over, used.Count > 0 ? string.Join(", ", used) + "; the game has 4 channels (VRUN NES's), one note at a time each"
             : "NOTHING for CTW SMS: no BrokenNes2 instance on the Master System console in Direct mode with notes on tone 1, tone 2, tone 3 (Triangle) or noise"));
 
         // the bytes the plain decoders cannot play (a bend or any opcode past $D0 is their loop): refused, never played wrong
         for (int c = 0; c < 4; c++)
         {
             var st = o.Build.Channels[c];
-            if (st.Length > Region) F.Add(new FenceLine("bytes", Fit.Out, $"{Names[c]}: {st.Length} bytes, the game's song region is {Region}: {st.Length - Region} over"));
+            if (st.Length > Region) F.Add(new FenceLine("bytes", FenceLevel.Over, $"{Names[c]}: {st.Length} bytes, the game's song region is {Region}: {st.Length - Region} over"));
             for (int i = 0; i < st.Length; i++)
             {
                 int v = st[i];
                 if (v == 0xD0) { i++; continue; }
-                if (v > 0xD0 && v != 0xFF) { F.Add(new FenceLine("opcodes", Fit.Out, $"{Names[c]}: opcode ${v:X2} at byte {i}: the game's decoders know only notes, waits, volume and the loop")); break; }
+                if (v > 0xD0 && v != 0xFF) { F.Add(new FenceLine("opcodes", FenceLevel.Over, $"{Names[c]}: opcode ${v:X2} at byte {i}: the game's decoders know only notes, waits, volume and the loop")); break; }
             }
         }
-        F.Add(new FenceLine("bytes", Fit.Ok, $"{string.Join(" + ", o.Build.Channels.Select(x => x.Length))} bytes (VRUN's converter: at most {Region} a channel, it says what it cut)"));
-        if (slides > 0) F.Add(new FenceLine("slides", Fit.Out, $"{slides} slide notes are not played: CTW SMS's music decoders are VRUN's plain ones (no pitch bends: the bend decoders do not translate to the Master System, fab2c has no SSF type); each note keeps its first pitch"));
-        if (detuned > 0) F.Add(new FenceLine("tuning", Fit.Changed, $"{detuned} notes are off their semitone (note fine pitch up to {worstOff:0} cents, or Coarse/Fine on the instance): played on the nearest semitone (no bends in this game)"));
-        if (low > 0) F.Add(new FenceLine("note range", Fit.Out, $"{low} notes are under the PSG's lowest tone ({LowestHz:0.0} Hz, about A2): the game plays them an octave (or more) up, the plugin's Master System chip leaves them silent; the first is {lowWhere}"));
-        else F.Add(new FenceLine("note range", Fit.Ok, "every tone note is A2 (110 Hz) or higher: inside the PSG's range"));
-        F.Add(new FenceLine("duty", Fit.Ok, "the PSG's squares are 50%, as the plugin's Master System chip plays them (Pulse duty is not used)"));
+        F.Add(new FenceLine("bytes", FenceLevel.Ok, $"{string.Join(" + ", o.Build.Channels.Select(x => x.Length))} bytes (VRUN's converter: at most {Region} a channel, it says what it cut)"));
+        if (slides > 0) F.Add(new FenceLine("slides", FenceLevel.Over, $"{slides} slide notes are not played: CTW SMS's music decoders are VRUN's plain ones (no pitch bends: the bend decoders do not translate to the Master System, fab2c has no SSF type); each note keeps its first pitch"));
+        if (detuned > 0) F.Add(new FenceLine("tuning", FenceLevel.Note, $"{detuned} notes are off their semitone (note fine pitch up to {worstOff:0} cents, or Coarse/Fine on the instance): played on the nearest semitone (no bends in this game)"));
+        if (low > 0) F.Add(new FenceLine("note range", FenceLevel.Over, $"{low} notes are under the PSG's lowest tone ({LowestHz:0.0} Hz, about A2): the game plays them an octave (or more) up, the plugin's Master System chip leaves them silent; the first is {lowWhere}"));
+        else F.Add(new FenceLine("note range", FenceLevel.Ok, "every tone note is A2 (110 Hz) or higher: inside the PSG's range"));
+        F.Add(new FenceLine("duty", FenceLevel.Ok, "the PSG's squares are 50%, as the plugin's Master System chip plays them (Pulse duty is not used)"));
         var merged = levels.GroupBy(l => Vol2Att[l]).Where(g => g.Count() > 1).Select(g => string.Join("/", g)).ToList();
-        F.Add(new FenceLine("volume", merged.Count > 0 ? Fit.Changed : Fit.Ok, $"tone 1 / 2 levels {string.Join(", ", levels)} -> the PSG's 2 dB steps" + (merged.Count > 0 ? $": {string.Join(", ", merged)} sound the same" : "") + "; tone 3 (the triangle) a fixed attenuation 3 (6 dB under full), the noise full"));
+        F.Add(new FenceLine("volume", merged.Count > 0 ? FenceLevel.Note : FenceLevel.Ok, $"tone 1 / 2 levels {string.Join(", ", levels)} -> the PSG's 2 dB steps" + (merged.Count > 0 ? $": {string.Join(", ", merged)} sound the same" : "") + "; tone 3 (the triangle) a fixed attenuation 3 (6 dB under full), the noise full"));
         if (noiseIdx.Count > 0)
         {
             int rates = noiseIdx.Select(NoiseRate).Distinct().Count();
-            F.Add(new FenceLine("noise", rates < noiseIdx.Count ? Fit.Changed : Fit.Ok, $"{noiseIdx.Count} noise periods -> the PSG's 3 rates ({rates} used)" + (rates < noiseIdx.Count ? $": {noiseIdx.Count - rates} of them merge" : "")));
+            F.Add(new FenceLine("noise", rates < noiseIdx.Count ? FenceLevel.Note : FenceLevel.Ok, $"{noiseIdx.Count} noise periods -> the PSG's 3 rates ({rates} used)" + (rates < noiseIdx.Count ? $": {noiseIdx.Count - rates} of them merge" : "")));
         }
-        F.Add(new FenceLine("timing", Fit.Changed, $"VRUN's engine counts NES frames; the Master System's frame is {Fps:0.000} Hz: the song plays {(1 - Fps / NesFps) * 100:0.00}% slower ({o.Seconds * NesFps / Fps:0.00} s instead of {o.Seconds:0.00} s)"));
-        F.Add(new FenceLine("loop", Fit.Ok, "each channel loops at its own end (VRUN's converter makes them the song's length)"));
+        F.Add(new FenceLine("timing", FenceLevel.Note, $"VRUN's engine counts NES frames; the Master System's frame is {Fps:0.000} Hz: the song plays {(1 - Fps / NesFps) * 100:0.00}% slower ({o.Seconds * NesFps / Fps:0.00} s instead of {o.Seconds:0.00} s)"));
+        F.Add(new FenceLine("loop", FenceLevel.Ok, "each channel loops at its own end (VRUN's converter makes them the song's length)"));
         return o;
     }
 
@@ -133,7 +133,7 @@ public static class CtwSmsBackend
         if (s.Build == null) { why = "VRUN's converter refused the song"; return null; }
         var m = VocGbBackend.Manifest(manifest, "bn2-flp-ctwsms");
         if (template.Length.ToString() != m["rom-bytes"]) { why = "the template is not the one its manifest describes"; return null; }
-        if (s.Fence.Any(f => f.Rule == "opcodes" && f.Fit == Fit.Out)) { why = "the song has opcodes the game's decoders cannot play (see the fence)"; return null; }
+        if (s.Fence.Any(f => f.Rule == "opcodes" && f.Level == FenceLevel.Over)) { why = "the song has opcodes the game's decoders cannot play (see the fence)"; return null; }
         var rom = (byte[])template.Clone();
         string[] keys = ["square1", "square2", "triangle", "noise"];
         byte[] fill = [0xA1, 0xA2, 0xA3, 0xA4];

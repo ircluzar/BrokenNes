@@ -215,7 +215,7 @@ internal static class MidiChecks
         for (int i = 0; i < s.Length; i++)
         {
             if (s[i] < 0x80) return true;
-            if (s[i] == 0xD0) i++;
+            if (s[i] is 0xD0 or 0xD3) i++;
             else if (s[i] == 0xFF) return false;
         }
         return false;
@@ -415,7 +415,7 @@ internal static class MidiChecks
         for (int i = 0; i < corrupt[0].Length && left > 0; i++)
         {
             byte op = corrupt[0][i];
-            if (op < 0x80) { corrupt[0][i] ^= 1; left--; } else if (op == 0xD0) i++; else if (op == 0xFF) break;
+            if (op < 0x80) { corrupt[0][i] ^= 1; left--; } else if (op is 0xD0 or 0xD3) i++; else if (op == 0xFF) break;
         }
         bool c1 = left == 8 || MidiModel.ScoreAt(corrupt, run.Latch, sc.Start, n, Skip).Worst < 1;    // (a song with no square-1 note has nothing to corrupt there)
         bool c2 = MidiModel.ScoreAt(b.Channels, run.Latch, sc.Start + 1, n, Skip).Worst < 1;
@@ -435,7 +435,7 @@ internal static class MidiChecks
         {
             byte op = s[i];
             if (op == Vrun.Audio.Bends.OpSlide) return true;
-            if (op == 0xD0) i++;
+            if (op is 0xD0 or 0xD3) i++;
             else if (op == Vrun.Audio.Bends.OpPitch) i += 2;
             else if (op == 0xFF) return false;
         }

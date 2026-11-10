@@ -1,14 +1,15 @@
 # BrokenNes2 Test MIDI export: the template ROM's manifest. Made by BrokenDev/tools/music/build-musictest.ps1 from VRUN's AudioPlayer (src/audioplayer)
 # with a one-song roster whose four stream arrays are padded to the converter's maximum. Offsets are PRG-ROM offsets (after the 16-byte iNES header).
 format = bn2-musictest
-version = 2
-opcodes = vrun-music-2
+version = 3
+opcodes = vrun-music-3
 bend-decoders = square1 square2 triangle
+duty-decoders = square1 square2
 region = 1280
-square1 = 0x07868A
-square2 = 0x078B8A
-triangle = 0x07908A
-noise = 0x07958A
+square1 = 0x0786F1
+square2 = 0x078BF1
+triangle = 0x0790F1
+noise = 0x0795F1
 filler = A1 A2 A3 A4
 title = 0x01C079
 title-bytes = 25
@@ -17,5 +18,5 @@ loop-hi = 0x03C051 0x05809E
 loop-template = 27945
 periods-sha256 = 9d96aed3ae180f5e61dc660659dd2af18445f4f0c5f167d46d16594e019b0a60
 rom-bytes = 524304
-rom-sha256 = 0ebed6ee386516ecf01c8290c597f5791eeaacc9cc176a0909caa9a0c7803c85
-vrun-sources-sha256 = 811ffc557ead05d3986093c24d8714fb0d705c26cc4552ebb5694e82d1e675b9
+rom-sha256 = 7977b7e7b3e5c4e26280456e310079aee86d00c5937bfc077b83671db7b60700
+vrun-sources-sha256 = b66da0e3772e1b5e62198c47fb27aec0605bea7fbacde4638937e0b461b59e62

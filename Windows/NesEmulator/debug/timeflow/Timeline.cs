@@ -100,7 +100,14 @@ public sealed class TimelineMeta
     {
         string tmp = Path.Combine(dir, "timeline.json.tmp");
         File.WriteAllText(tmp, JsonSerializer.Serialize(this, Json));
-        File.Move(tmp, Path.Combine(dir, "timeline.json"), true);
+        // A replace-move can be refused for a moment while another process (a scanner, the indexer) holds the old file:
+        // measured on T: at ~13% of moves. Retry briefly before giving up.
+        string dst = Path.Combine(dir, "timeline.json");
+        for (int attempt = 0; ; attempt++)
+        {
+            try { File.Move(tmp, dst, true); return; }
+            catch (Exception e) when ((e is UnauthorizedAccessException or IOException) && attempt < 40) { System.Threading.Thread.Sleep(5 + attempt * 5); }
+        }
     }
 
     public static TimelineMeta Load(string dir)

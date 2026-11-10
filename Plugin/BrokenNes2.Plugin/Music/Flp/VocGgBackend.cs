@@ -76,22 +76,22 @@ public static class VocGgBackend
                 }
             }
         }
-        if (low > 0) F.Add(new FenceLine("note range", Fit.Out, $"{low} notes are under the Game Gear PSG's lowest tone (period 1023: about A2, 110 Hz): the driver plays them {(lowWorst > 1 ? "up to " + lowWorst + " octaves" : "an octave")} higher"));
-        else F.Add(new FenceLine("note range", Fit.Ok, "every note is inside the PSG's tone range (A2 and up)"));
-        if (notDuty > 0) F.Add(new FenceLine("duty", Fit.Changed, $"{notDuty} pulse notes have a duty other than 50%: the PSG's squares are 50% (the Game Gear driver does not play the duty)"));
-        else F.Add(new FenceLine("duty", Fit.Ok, "every pulse note is 50% (the PSG's square)"));
-        if (wave > 0) F.Add(new FenceLine("wave", Fit.Changed, $"{wave} wave-channel notes play on PSG tone 2: a square, not the triangle (same pitch)"));
-        if (panned > 0) F.Add(new FenceLine("pan", Fit.Changed, "Pan is not played: the Game Gear driver's mix is mono"));
+        if (low > 0) F.Add(new FenceLine("note range", FenceLevel.Over, $"{low} notes are under the Game Gear PSG's lowest tone (period 1023: about A2, 110 Hz): the driver plays them {(lowWorst > 1 ? "up to " + lowWorst + " octaves" : "an octave")} higher"));
+        else F.Add(new FenceLine("note range", FenceLevel.Ok, "every note is inside the PSG's tone range (A2 and up)"));
+        if (notDuty > 0) F.Add(new FenceLine("duty", FenceLevel.Note, $"{notDuty} pulse notes have a duty other than 50%: the PSG's squares are 50% (the Game Gear driver does not play the duty)"));
+        else F.Add(new FenceLine("duty", FenceLevel.Ok, "every pulse note is 50% (the PSG's square)"));
+        if (wave > 0) F.Add(new FenceLine("wave", FenceLevel.Note, $"{wave} wave-channel notes play on PSG tone 2: a square, not the triangle (same pitch)"));
+        if (panned > 0) F.Add(new FenceLine("pan", FenceLevel.Note, "Pan is not played: the Game Gear driver's mix is mono"));
         if (v.Notes[3] > 0)
         {
-            F.Add(new FenceLine("noise", rates.Count < nr.Count ? Fit.Changed : Fit.Ok, $"{nr.Count} noise settings play on the PSG's 3 fixed rates (used: {string.Join(", ", rates.Select(r => new[] { "high", "mid", "low" }[r]))})"
+            F.Add(new FenceLine("noise", rates.Count < nr.Count ? FenceLevel.Note : FenceLevel.Ok, $"{nr.Count} noise settings play on the PSG's 3 fixed rates (used: {string.Join(", ", rates.Select(r => new[] { "high", "mid", "low" }[r]))})"
                 + (rates.Count < nr.Count ? $": {nr.Count - rates.Count} of them merge" : "")));
-            if (width7 > 0) F.Add(new FenceLine("noise", Fit.Changed, $"{width7} hits use Short (7-bit) noise: the Game Gear driver plays white noise only"));
+            if (width7 > 0) F.Add(new FenceLine("noise", FenceLevel.Note, $"{width7} hits use Short (7-bit) noise: the Game Gear driver plays white noise only"));
         }
         var merged = levels.GroupBy(l => AttOf[l]).Where(g => g.Count() > 1).Select(g => string.Join("/", g)).ToList();
-        F.Add(new FenceLine("volume", merged.Count > 0 ? Fit.Changed : Fit.Ok, $"levels {string.Join(", ", levels)} -> the PSG's 2 dB steps" + (merged.Count > 0 ? $": {string.Join(", ", merged)} sound the same" : "")));
-        F.Add(new FenceLine("timing", Fit.Changed, $"the songs count Game Boy frames; the Game Gear's frame is {Fps:0.000} Hz: the song plays {(Fps / VocGbBackend.Fps - 1) * 100:0.00}% fast ({v.Seconds * VocGbBackend.Fps / Fps:0.00} s instead of {v.Seconds:0.00} s)"));
-        F.Add(new FenceLine("effects", Fit.Ok, "the instruments' envelopes, vibrato and sweep: not played by the Game Gear driver, and the plugin's songs use none"));
+        F.Add(new FenceLine("volume", merged.Count > 0 ? FenceLevel.Note : FenceLevel.Ok, $"levels {string.Join(", ", levels)} -> the PSG's 2 dB steps" + (merged.Count > 0 ? $": {string.Join(", ", merged)} sound the same" : "")));
+        F.Add(new FenceLine("timing", FenceLevel.Note, $"the songs count Game Boy frames; the Game Gear's frame is {Fps:0.000} Hz: the song plays {(Fps / VocGbBackend.Fps - 1) * 100:0.00}% fast ({v.Seconds * VocGbBackend.Fps / Fps:0.00} s instead of {v.Seconds:0.00} s)"));
+        F.Add(new FenceLine("effects", FenceLevel.Ok, "the instruments' envelopes, vibrato and sweep: not played by the Game Gear driver, and the plugin's songs use none"));
         return v;
     }
 

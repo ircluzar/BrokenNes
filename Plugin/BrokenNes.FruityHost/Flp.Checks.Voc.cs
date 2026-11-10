@@ -65,15 +65,15 @@ internal static class FlpVocChecks
         var s = FlpSong.Read(GbProject());
         var v = VocGbBackend.Build(s, "synthetic");
         string fence = string.Join(" | ", v.Fence);
-        bool Has(Fit f, string rule, string text) => v.Fence.Any(l => l.Fit == f && l.Rule == rule && l.Text.Contains(text));
-        r.Expect(Has(Fit.Out, "instruments", "is a NES instrument"), "no OUT line for the NES instance");
-        r.Expect(Has(Fit.Out, "instruments", "is not BrokenNes2"), "no OUT line for the sampler");
-        r.Expect(Has(Fit.Out, "channels", "Mix"), "no OUT line for the Mix-channel instance");
-        r.Expect(Has(Fit.Out, "note range", "under the lowest"), "no OUT line for pulse 2's note 30 (under C2)");
-        r.Expect(Has(Fit.Changed, "pan", "partly panned"), "no CHANGED line for pulse 2's Pan 30");
-        r.Expect(Has(Fit.Changed, "polyphony", "cut short"), "no CHANGED line for the lead's overlapping notes");
-        r.Expect(Has(Fit.Ok, "duty", "12.5%") && Has(Fit.Ok, "duty", "75%"), "the duty line does not list 12.5% and 75%");
-        r.Expect(Has(Fit.Ok, "noise", "7-bit"), "the noise line does not say Short = 7-bit");
+        bool Has(FenceLevel f, string rule, string text) => v.Fence.Any(l => l.Level == f && l.Rule == rule && l.Text.Contains(text));
+        r.Expect(Has(FenceLevel.Over, "instruments", "is a NES instrument"), "no OUT line for the NES instance");
+        r.Expect(Has(FenceLevel.Over, "instruments", "is not BrokenNes2"), "no OUT line for the sampler");
+        r.Expect(Has(FenceLevel.Over, "channels", "Mix"), "no OUT line for the Mix-channel instance");
+        r.Expect(Has(FenceLevel.Over, "note range", "under the lowest"), "no OUT line for pulse 2's note 30 (under C2)");
+        r.Expect(Has(FenceLevel.Note, "pan", "partly panned"), "no CHANGED line for pulse 2's Pan 30");
+        r.Expect(Has(FenceLevel.Note, "polyphony", "cut short"), "no CHANGED line for the lead's overlapping notes");
+        r.Expect(Has(FenceLevel.Ok, "duty", "12.5%") && Has(FenceLevel.Ok, "duty", "75%"), "the duty line does not list 12.5% and 75%");
+        r.Expect(Has(FenceLevel.Ok, "noise", "7-bit"), "the noise line does not say Short = 7-bit");
         int F(int tick) => (int)Math.Round(tick * 60.0 / 150 / 96 * VocGbBackend.Fps, MidpointRounding.AwayFromZero);
         var p1 = v.Ch[0];
         r.Expect(p1.Any(e => e.Frame == 0 && e.Op == "on" && e.Value == 72) && p1.Any(e => e.Frame == F(24) && e.Op == "on" && e.Value == 76), $"pulse 1: 72 at 0, 76 at frame {F(24)} (newest wins): {string.Join(" ", p1.Take(8))}");
@@ -93,12 +93,12 @@ internal static class FlpVocChecks
 
         // a project with nothing for the Game Boy: the fence says NOTHING (never an empty pass)
         var nes = VocGbBackend.Build(FlpSong.Read(FlpChecks.Project(150, [("NesLead", "BrokenNes2", FlpChecks.Bn2State(place: 0))], [(1, [new(0, 48, 72, 0)])], [(0, 1, 96)])), "nes-only");
-        r.Expect(nes.Fence.Any(l => l.Fit == Fit.Out && l.Text.StartsWith("NOTHING")), "a NES-only project: no NOTHING line in the Game Boy fence");
+        r.Expect(nes.Fence.Any(l => l.Level == FenceLevel.Over && l.Text.StartsWith("NOTHING")), "a NES-only project: no NOTHING line in the Game Boy fence");
         // a stream over the bank: OUT with the number of bytes over
         var big = Retarget(FlpSong.Read(FlpChecks.Project(150, [("Fast", "BrokenNes2", FlpChecks.Bn2State(console: 1, place: 0))],
             [(1, Enumerable.Range(0, 9000).Select(i => new FlpChecks.SNote(i * 8, 4, 50 + i % 30, 0, Vel: 40 + i % 80)).ToArray())], [(0, 1, 72000)])), 1);
         var bv = VocGbBackend.Build(big, "big");
-        r.Expect(bv.Fence.Any(l => l.Fit == Fit.Out && l.Rule == "bytes" && l.Text.Contains("bytes over")), $"a 9000-note stream ({bv.Streams[0].Length} bytes) has no OUT bytes line");
+        r.Expect(bv.Fence.Any(l => l.Level == FenceLevel.Over && l.Rule == "bytes" && l.Text.Contains("bytes over")), $"a 9000-note stream ({bv.Streams[0].Length} bytes) has no OUT bytes line");
         r.Expect(VocGbBackend.Patch(Template().Rom, Template().Manifest, bv, out var why) == null && why != null, "the test ROM accepted a stream bigger than its room");
     }
 
@@ -212,16 +212,16 @@ internal static class FlpVocChecks
     public static void GgSynthetic(ImodelReport r)
     {
         var v = VocGgBackend.Build(FlpSong.Read(GbProject()), "synthetic");
-        bool Has(Fit f, string rule, string text) => v.Fence.Any(l => l.Fit == f && l.Rule == rule && l.Text.Contains(text));
+        bool Has(FenceLevel f, string rule, string text) => v.Fence.Any(l => l.Level == f && l.Rule == rule && l.Text.Contains(text));
         var gb = VocGbBackend.Build(FlpSong.Read(GbProject()), "synthetic");
         r.Expect(Enumerable.Range(0, 4).All(c => v.Streams[c].AsSpan().SequenceEqual(gb.Streams[c])), "the Game Gear song is not the Game Boy song's bytes");
-        r.Expect(Has(Fit.Changed, "duty", "50%"), "no CHANGED duty line (12.5% / 75% on the PSG)");
-        r.Expect(Has(Fit.Changed, "wave", "square"), "no CHANGED wave line (the triangle plays as a square)");
-        r.Expect(Has(Fit.Out, "note range", "PSG's lowest"), "no OUT line for the notes under A2 (pulse 2's 42, the wave's 48 slid down)");
-        r.Expect(Has(Fit.Changed, "noise", "white noise only"), "no CHANGED line for Short noise");
-        r.Expect(Has(Fit.Changed, "pan", "mono"), "no CHANGED pan line");
-        r.Expect(Has(Fit.Changed, "timing", "fast"), "no CHANGED frame-rate line");
-        r.Expect(Has(Fit.Out, "instruments", "is a NES instrument"), "no OUT line for the NES instance");
+        r.Expect(Has(FenceLevel.Note, "duty", "50%"), "no CHANGED duty line (12.5% / 75% on the PSG)");
+        r.Expect(Has(FenceLevel.Note, "wave", "square"), "no CHANGED wave line (the triangle plays as a square)");
+        r.Expect(Has(FenceLevel.Over, "note range", "PSG's lowest"), "no OUT line for the notes under A2 (pulse 2's 42, the wave's 48 slid down)");
+        r.Expect(Has(FenceLevel.Note, "noise", "white noise only"), "no CHANGED line for Short noise");
+        r.Expect(Has(FenceLevel.Note, "pan", "mono"), "no CHANGED pan line");
+        r.Expect(Has(FenceLevel.Note, "timing", "fast"), "no CHANGED frame-rate line");
+        r.Expect(Has(FenceLevel.Over, "instruments", "is a NES instrument"), "no OUT line for the NES instance");
         r.Note($"synthetic (Game Gear): fence {FlpFence.Summary(v.Fence)}");
         foreach (var l in FlpFence.Lines(v.Fence)) r.Note("    " + l);
         // a Master System console project is a Game Gear song too (the PSG chip the Game Gear has)

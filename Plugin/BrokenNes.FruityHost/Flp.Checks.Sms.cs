@@ -44,14 +44,14 @@ internal static class FlpSmsChecks
     public static void SmsSynthetic(ImodelReport r)
     {
         var v = CtwSmsBackend.Build(FlpSong.Read(SmsProject()), "synthetic");
-        bool Has(Fit f, string rule, string text) => v.Fence.Any(l => l.Fit == f && l.Rule == rule && l.Text.Contains(text));
+        bool Has(FenceLevel f, string rule, string text) => v.Fence.Any(l => l.Level == f && l.Rule == rule && l.Text.Contains(text));
         r.Expect(v.Build != null, "VRUN's converter refused the synthetic song");
-        r.Expect(Has(Fit.Out, "slides", "not played"), "no OUT line for the triangle's slide");
-        r.Expect(Has(Fit.Out, "note range", "under the PSG"), "no OUT line for tone 2's note 40 (under A2)");
-        r.Expect(Has(Fit.Changed, "tuning", "nearest semitone"), "no CHANGED line for the +50-cent note");
-        r.Expect(Has(Fit.Out, "instruments", "is a GB instrument"), "no OUT line for the Game Boy instance");
-        r.Expect(Has(Fit.Out, "instruments", "is not BrokenNes2"), "no OUT line for the sampler");
-        r.Expect(Has(Fit.Changed, "timing", "slower"), "no CHANGED frame-rate line");
+        r.Expect(Has(FenceLevel.Over, "slides", "not played"), "no OUT line for the triangle's slide");
+        r.Expect(Has(FenceLevel.Over, "note range", "under the PSG"), "no OUT line for tone 2's note 40 (under A2)");
+        r.Expect(Has(FenceLevel.Note, "tuning", "nearest semitone"), "no CHANGED line for the +50-cent note");
+        r.Expect(Has(FenceLevel.Over, "instruments", "is a GB instrument"), "no OUT line for the Game Boy instance");
+        r.Expect(Has(FenceLevel.Over, "instruments", "is not BrokenNes2"), "no OUT line for the sampler");
+        r.Expect(Has(FenceLevel.Note, "timing", "slower"), "no CHANGED frame-rate line");
         r.Expect(!v.Fence.Any(l => l.Text.Contains("Duty 25%")), "VRUN NES's duty caveat leaked into the Master System fence (the PSG has no duty)");
         r.Expect(v.Build != null && v.Build.Channels.All(PlainOnly), "a stream has an opcode the game's plain decoders cannot play");
         var (tmpl, _) = Template();
@@ -60,7 +60,7 @@ internal static class FlpSmsChecks
         r.Note($"synthetic (Master System): fence {FlpFence.Summary(v.Fence)}");
         foreach (var l in FlpFence.Lines(v.Fence)) r.Note("    " + l);
         var gbOnly = CtwSmsBackend.Build(FlpSong.Read(FlpVocChecks.GbProject()), "gb-only");
-        r.Expect(gbOnly.Fence.Any(l => l.Fit == Fit.Out && l.Text.StartsWith("NOTHING")), "a Game Boy project: no NOTHING line in the Master System fence");
+        r.Expect(gbOnly.Fence.Any(l => l.Level == FenceLevel.Over && l.Text.StartsWith("NOTHING")), "a Game Boy project: no NOTHING line in the Master System fence");
     }
 
     /// <summary>What nes_apu.c makes of a NES latch (the registers as an NMI left them): per tone the PSG period and attenuation, the noise's attenuation and rate.</summary>
