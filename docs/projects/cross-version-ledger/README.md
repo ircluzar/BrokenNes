@@ -93,7 +93,7 @@ No ROM was re-run for this first pass, so every "run" cell cites an earlier meas
 | Feature | CTW original (Fusion, ref) | CTW NES MMC3 (BASE) | CTW NES m30 | CTW SMS | Nested VRUN SNES | Super VRUN SNES (BASE) | SV WideMess | SV Genesis | SV DOS | SV Win95 |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 30. Jump / hover | Y Fusion platform movement | Y hold jump; hover fuel 25/50 by Hover tier | Y hold jump; hover fuel 25/50 by Hover tier | Y hold jump; hover fuel 25/50 by Hover tier (fab2c translation of m30) | Y hold jump; hover fuel 25/50 by Hover tier (m30 ROM in Nested) | Y jump + hover (fuel none/25/50) | Y jump + hover (fuel none/25/50) | Y jump + hover (fuel none/25/50) (logic/ copy) | Y jump + hover (fuel none/25/50) (logic/ copy) | Y jump + hover (fuel none/25/50) (from DOS 0c727bb) |
-| 31. Physics constants | ? values not extracted (settle: port-spec 02 §1-2) | Y GRAVITY .1875, MAX_FALL 3.0, JUMP -2.0, HOLD .1875 x40, HOVER_VY -.... | Y GRAVITY .1875, MAX_FALL 3.0, JUMP -2.0, HOLD .1875 x40, HOVER_VY -.... | Y GRAVITY .1875, MAX_FALL 3.0, JUMP -2.0, HOLD .1875 x40, HOVER_VY -.... | Y GRAVITY .1875, MAX_FALL 3.0, JUMP -2.0, HOLD .1875 x40, HOVER_VY -.... | Y unknown values (settle: player.c/plctx.c); ports keep formats exact | Y unknown values (settle: player.c/plctx.c); ports keep formats exact | Y unknown values (settle: player.c/plctx.c); ports keep formats exact... | Y unknown values (settle: player.c/plctx.c); ports keep formats exact... | Y unknown values (settle: player.c/plctx.c); ports keep formats exact... |
+| 31. Physics constants | ? values not extracted (settle: port-spec 02 ï¿½1-2) | Y GRAVITY .1875, MAX_FALL 3.0, JUMP -2.0, HOLD .1875 x40, HOVER_VY -.... | Y GRAVITY .1875, MAX_FALL 3.0, JUMP -2.0, HOLD .1875 x40, HOVER_VY -.... | Y GRAVITY .1875, MAX_FALL 3.0, JUMP -2.0, HOLD .1875 x40, HOVER_VY -.... | Y GRAVITY .1875, MAX_FALL 3.0, JUMP -2.0, HOLD .1875 x40, HOVER_VY -.... | Y unknown values (settle: player.c/plctx.c); ports keep formats exact | Y unknown values (settle: player.c/plctx.c); ports keep formats exact | Y unknown values (settle: player.c/plctx.c); ports keep formats exact... | Y unknown values (settle: player.c/plctx.c); ports keep formats exact... | Y unknown values (settle: player.c/plctx.c); ports keep formats exact... |
 | 32. Aim / control schemes | Y Classic/Intro/Mixed/Twin with analog sticks + keyboard | Y 8-dir aim; CLASSIC/AIMLOCK/TWINPAD/TWINSHOOT (pad 2 for twin); Star... | Y same | ~ schemes kept; in-game Start+Select cycle dropped (no Select button) | Y + SNES pad: X/B/Y/A diamond aim, R jump, L fire for schemes C/D | Y CONTROLS + CONTROLS2 (P2) schemes, L/R item key | Y CONTROLS + CONTROLS2 (P2) schemes, L/R item key | Y CONTROLS + CONTROLS2 (P2) schemes, L/R item key (logic/ copy) | Y CONTROLS + CONTROLS2 (P2) schemes, L/R item key (logic/ copy) | Y CONTROLS + CONTROLS2 (P2) schemes, L/R item key (from DOS 0c727bb) |
 
 ### Screen
@@ -198,14 +198,37 @@ The other way round, CTW has things Super VRUN lacks or may lack:
 - 4 control schemes with in-game Start+Select cycling.
 - Duty-command music (n/a on SV's sample engines).
 
+## Settled by running (2026-11-10 pass)
+
+Evidence tags in the JSON for this pass end in "(run)" or "(code, settle pass)".
+
+| Unknown | Result | How |
+|---|---|---|
+| Invisible-enemy fix on WMS/MD/DOS/95 | present on all four | code: WMS roomtrans.asm:1012, MD asmref_room.c:1304, DOS/95 asmref_room.c:1315 |
+| MD save -> CONTINUE | works | **run**: headless BrokenNes MCP, Releases/SuperVRUN_MD/2026-11-09_62c4f90; Start f530, Select -> title CONTINUE 1P f850, SRAM $40.. = 3C 0B 00 05 05 ..., Start -> in game f1050. Same power session only. |
+| MD pause map | missing, and no stats either | **run**: screenshot f700 of the same session |
+| stat_of on SNES/WMS/MD | latent on SNES/WMS (build-guarded), absent on MD | code |
+| SV track list | 12 tracks, same on SNES/WMS/MD/DOS/95 | audio.h TRACK_* |
+| SV SFX list | 52 sounds, same table everywhere | sfx_table.h SFX_NSOUNDS |
+| SV room count, physics | N_ROOMS 168, GRAVITY 48, MAX_FALL_SPEED 768 everywhere | code |
+| Win95 audio API | WinMM waveOut | plat_win.c:461 |
+| Nested duty | none: only ROM predates a36dd5e | release file date |
+| CTW SMS bends/duty | now has both | VRUN_CTW_SMS_dev 783c093 |
+
+Not settled in this pass:
+- Title tunnel and animation clocks on the CTW versions (needs side-by-side NES/SMS/Nested runs).
+- Invisible-enemy **run** check (needs the TEST BUILD per port).
+- MD save across a power cycle.
+- Win95: cannot be run here.
+
 ## Differences that look like bugs (or unowned drift)
 
-1. **SV Genesis has no pause map.** Its logic copy (45efdc6) predates `pausemap.c`. The `stat_of` declaration-order bug (DOS BACKPORT #1) is probably in the MD copy too.
-2. **The `stat_of` fix never went back to SNES/WideMess.** It is a latent bug on the base: it only works because of 816-tcc's variable layout.
-3. **The invisible-enemy fix (9e13885) is unconfirmed on WideMess, MD, DOS and 95.** The ports replaced the asm with C refs, and nobody has checked that OAM X bit 8 is cleared. This is the bug class the user called the only major one.
-4. **The MD save system is unconfirmed.** The docs plan SRAM at $200001, but no save -> CONTINUE run is recorded on MD. DOS and 95 have one.
+1. **SV Genesis has no pause map. CONFIRMED (run).** The MD pause screen is only PAUSED / SELECT: SAVE & QUIT, with no map and no stats. Since MD has no `pausemap.c`, the `stat_of` bug is **REFUTED** there: the code is absent.
+2. **The `stat_of` fix never went back to SNES/WideMess. CONFIRMED LATENT, not live (code).** `tools/srccheck.py` plctxcheck fails the build if plctx.c's layout drifts from the PLC_* offsets, so it cannot break silently on 816-tcc.
+3. **The invisible-enemy fix (9e13885): REFUTED as a gap (code).** WideMess master contains 9e13885 (`_rtn_os_hide`); MD, DOS and 95 clear X bit 8 in `asmref_room.c` `rtn_oam_step` (gotcha #115 comment). Not yet re-run: that needs the run_invis_compat TEST BUILD.
+4. **The MD save system: REFUTED as a bug (run).** Pause+Select wrote SRAM and CONTINUE 1P resumed the run (see below). Original note: The docs plan SRAM at $200001, but no save -> CONTINUE run is recorded on MD. DOS and 95 have one.
 5. **The MD sync point (45efdc6) is behind DOS/95 (22bd670).** Any SNES change between those two commits is missing on MD, except hand forward-ports such as the Field fix. That may include cgram-uninit. Diff the two SNES commits to settle it.
-6. **CTW SMS cannot play duty commands or bends.** The fab2c template predates them, so new `.flp` music written on the NES will sound different on SMS. The fence reports it, but the ledger should track it.
+6. **CTW SMS bends/duty: FIXED since (code).** VRUN_CTW_SMS_dev 783c093 builds from live VRUN a36dd5e with bend decoders and the duty opcode. Nested is now the CTW version without duty (its only ROM is from 2026-11-07). Original note: The fab2c template predates them, so new `.flp` music written on the NES will sound different on SMS. The fence reports it, but the ledger should track it.
 7. **MMC3 animated tiles share one 83 ms clock.** On m30, SMS and Nested each anim keeps its own speed. This is forced by the hardware, but the base now looks different from the other versions.
 8. **The CTW title tunnel is on MMC3 and SMS but not on mapper 30 or Nested.** Nested is still built from m30; the move to MMC3 is planned.
 9. **Lag:**

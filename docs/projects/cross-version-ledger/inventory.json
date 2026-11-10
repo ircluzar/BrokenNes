@@ -1,5 +1,5 @@
 {
- "generated": "2026-11-10",
+ "generated": "2026-11-10; settle pass 2026-11-10",
  "versions": {
   "ctw_orig": "CTW original (Fusion, ref)",
   "ctw_nes_mmc3": "CTW NES MMC3 (BASE)",
@@ -204,7 +204,7 @@
     "ctw_orig": {
      "status": "partial",
      "detail": "debug level-select backdoor, dead in normal play",
-     "evidence": "port-spec 05 \u00a73 (note)"
+     "evidence": "port-spec 05 §3 (note)"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -320,7 +320,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "15 TTS voiceover lines",
-     "evidence": "port-spec 05 \u00a74 (note)"
+     "evidence": "port-spec 05 §4 (note)"
     },
     "ctw_nes_mmc3": {
      "status": "missing",
@@ -378,7 +378,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "time + scrolling credits",
-     "evidence": "port-spec 05 \u00a76 (note)"
+     "evidence": "port-spec 05 §6 (note)"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -436,7 +436,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "TTS 'Deleted' then page reload",
-     "evidence": "port-spec 05 \u00a75"
+     "evidence": "port-spec 05 §5"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -576,23 +576,23 @@
     },
     "sv_snes": {
      "status": "has",
-     "detail": "map_data.c, >=168 rooms (room 167 named); seeded via title map slot; exact count unknown (count map_data.c entries)",
-     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/map_data.c (code, partial)"
+     "detail": "N_ROOMS 168 (same on SNES/WMS/MD/DOS)",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src (code)"
     },
     "sv_wms": {
      "status": "has",
-     "detail": "map_data.c, >=168 rooms (room 167 named); seeded via title map slot; exact count unknown (count map_data.c entries)",
-     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+     "detail": "N_ROOMS 168 (same on SNES/WMS/MD/DOS)",
+     "evidence": "SuperVRUN_WMS_dev src (code)"
     },
     "sv_md": {
      "status": "has",
-     "detail": "map_data.c, >=168 rooms (room 167 named); seeded via title map slot; exact count unknown (count map_data.c entries) (logic/ copy)",
-     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+     "detail": "N_ROOMS 168 (same on SNES/WMS/MD/DOS)",
+     "evidence": "SuperVRUN_MD_dev/logic (code)"
     },
     "sv_dos": {
      "status": "has",
-     "detail": "map_data.c, >=168 rooms (room 167 named); seeded via title map slot; exact count unknown (count map_data.c entries) (logic/ copy)",
-     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+     "detail": "N_ROOMS 168 (same on SNES/WMS/MD/DOS)",
+     "evidence": "SuperVRUN_DOS_dev/logic (code)"
     },
     "sv_95": {
      "status": "has",
@@ -610,7 +610,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "random 3 of 9 items",
-     "evidence": "port-spec 02 \u00a74"
+     "evidence": "port-spec 02 §4"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -818,8 +818,8 @@
     },
     "sv_md": {
      "status": "missing",
-     "detail": "no logic/pausemap.c (sync 45efdc6 predates it)",
-     "evidence": "SuperVRUN_MD_dev/logic (code: file absent)"
+     "detail": "pause screen is only the PAUSED / SELECT: SAVE & QUIT box, no map",
+     "evidence": "headless MCP screenshot f700, supervrun_md_62c4f90.bin (run)"
     },
     "sv_dos": {
      "status": "has",
@@ -958,7 +958,7 @@
     "ctw_orig": {
      "status": "partial",
      "detail": "level-6 miniboss is dead data",
-     "evidence": "gap doc \u00a7J"
+     "evidence": "gap doc §J"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -1160,24 +1160,24 @@
      "evidence": "memory project_supervrun_invisible_enemies (note+run 2026-10-30)"
     },
     "sv_wms": {
-     "status": "unknown",
-     "detail": "depends on branch merge order; settle: grep _rtn_os_hide in SuperVRUN_WMS_dev/src/roomtrans.asm",
-     "evidence": ""
+     "status": "has",
+     "detail": "hidden sprite parked at y 240 AND X bit 8 cleared (gotcha #115); a live repro needs the TEST BUILD (run_invis_compat), not built in this pass",
+     "evidence": "SuperVRUN_WMS_dev/snes-dev/supervrun/src/roomtrans.asm:1012 _rtn_os_hide (master 0de710a contains 9e13885) (code, settle pass 2026-11-10)"
     },
     "sv_md": {
-     "status": "unknown",
-     "detail": "asm replaced by asmref_room.c; settle: check bit-8 clear in rtn_oam_step C ref",
-     "evidence": ""
+     "status": "has",
+     "detail": "hidden sprite parked at y 240 AND X bit 8 cleared (gotcha #115); a live repro needs the TEST BUILD (run_invis_compat), not built in this pass",
+     "evidence": "SuperVRUN_MD_dev/logic/asmref_room.c:1304 rtn_oam_step (code, settle pass 2026-11-10)"
     },
     "sv_dos": {
-     "status": "unknown",
-     "detail": "same as MD (DOS fixed rtn_oam_dma separately, BACKPORT #3)",
-     "evidence": "SuperVRUN_DOS_dev/BACKPORT.md"
+     "status": "has",
+     "detail": "hidden sprite parked at y 240 AND X bit 8 cleared (gotcha #115); a live repro needs the TEST BUILD (run_invis_compat), not built in this pass",
+     "evidence": "SuperVRUN_DOS_dev/logic/asmref_room.c:1315 rtn_oam_step (code, settle pass 2026-11-10)"
     },
     "sv_95": {
-     "status": "unknown",
-     "detail": "inherits DOS",
-     "evidence": ""
+     "status": "has",
+     "detail": "hidden sprite parked at y 240 AND X bit 8 cleared (gotcha #115); a live repro needs the TEST BUILD (run_invis_compat), not built in this pass",
+     "evidence": "SuperVRUN_95_dev/logic/asmref_room.c:1315 rtn_oam_step (code, settle pass 2026-11-10)"
     }
    }
   },
@@ -1190,7 +1190,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "Speed stat picks L1 15/110ms, L2 18/70ms, L3 25/40ms; ammo cap Burst+2",
-     "evidence": "gap doc \u00a7L2"
+     "evidence": "gap doc §L2"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -1248,12 +1248,12 @@
     "ctw_orig": {
      "status": "has",
      "detail": "world pickups ids 25-33",
-     "evidence": "gap doc \u00a7L2"
+     "evidence": "gap doc §L2"
     },
     "ctw_nes_mmc3": {
      "status": "missing",
      "detail": "cut for bullet count/ROM",
-     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/21-ctw-fidelity-gap-analysis.md \u00a7L"
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/21-ctw-fidelity-gap-analysis.md §L"
     },
     "ctw_nes_m30": {
      "status": "missing",
@@ -1306,7 +1306,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "ItemType 1-5 on Space",
-     "evidence": "port-spec 02 \u00a73.4"
+     "evidence": "port-spec 02 §3.4"
     },
     "ctw_nes_mmc3": {
      "status": "missing",
@@ -1364,7 +1364,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "random substitution 50% on Ressource L1/Health Square",
-     "evidence": "gap doc \u00a7L2"
+     "evidence": "gap doc §L2"
     },
     "ctw_nes_mmc3": {
      "status": "partial",
@@ -1422,7 +1422,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "3 random of 9 incl. Field 200/400, no Health",
-     "evidence": "port-spec 02 \u00a74"
+     "evidence": "port-spec 02 §4"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -1538,7 +1538,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "selects bullet type",
-     "evidence": "gap doc \u00a7L2"
+     "evidence": "gap doc §L2"
     },
     "ctw_nes_mmc3": {
      "status": "partial",
@@ -1654,7 +1654,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "1 HP per hit with cooldown, Heal +10",
-     "evidence": "gap doc \u00a7C, port-spec 02 \u00a75"
+     "evidence": "gap doc §C, port-spec 02 §5"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -1769,7 +1769,7 @@
    "versions": {
     "ctw_orig": {
      "status": "unknown",
-     "detail": "values not extracted (settle: port-spec 02 \u00a71-2)",
+     "detail": "values not extracted (settle: port-spec 02 §1-2)",
      "evidence": ""
     },
     "ctw_nes_mmc3": {
@@ -1794,23 +1794,23 @@
     },
     "sv_snes": {
      "status": "has",
-     "detail": "unknown values (settle: player.c/plctx.c); ports keep formats exact",
-     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/player.c; SuperVRUN_MD_dev/docs/S3-scope.md Types"
+     "detail": "GRAVITY 48, MAX_FALL_SPEED 768 (same on SNES/WMS/MD/DOS)",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src (code)"
     },
     "sv_wms": {
      "status": "has",
-     "detail": "unknown values (settle: player.c/plctx.c); ports keep formats exact",
-     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+     "detail": "GRAVITY 48, MAX_FALL_SPEED 768 (same on SNES/WMS/MD/DOS)",
+     "evidence": "SuperVRUN_WMS_dev src (code)"
     },
     "sv_md": {
      "status": "has",
-     "detail": "unknown values (settle: player.c/plctx.c); ports keep formats exact (logic/ copy)",
-     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+     "detail": "GRAVITY 48, MAX_FALL_SPEED 768 (same on SNES/WMS/MD/DOS)",
+     "evidence": "SuperVRUN_MD_dev/logic (code)"
     },
     "sv_dos": {
      "status": "has",
-     "detail": "unknown values (settle: player.c/plctx.c); ports keep formats exact (logic/ copy)",
-     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+     "detail": "GRAVITY 48, MAX_FALL_SPEED 768 (same on SNES/WMS/MD/DOS)",
+     "evidence": "SuperVRUN_DOS_dev/logic (code)"
     },
     "sv_95": {
      "status": "has",
@@ -1828,7 +1828,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "Classic/Intro/Mixed/Twin with analog sticks + keyboard",
-     "evidence": "port-spec 02 \u00a710"
+     "evidence": "port-spec 02 §10"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -1944,7 +1944,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "stat widgets, ItemBox, Score=Currency, Lives=Exp",
-     "evidence": "port-spec 05 \u00a72"
+     "evidence": "port-spec 05 §2"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -2239,7 +2239,7 @@
     "ctw_nes_mmc3": {
      "status": "has",
      "detail": "CHR bank flip on hits (chr_bank), ambient churn, hurt flash, death glitch, boss scatter, font corruption",
-     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/18-qol-refinement-pass.md \u00a72; 27-mmc3"
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/18-qol-refinement-pass.md §2; 27-mmc3"
     },
     "ctw_nes_m30": {
      "status": "has",
@@ -2325,9 +2325,9 @@
      "evidence": ""
     },
     "sv_md": {
-     "status": "unknown",
-     "detail": "plan SRAM $200001 odd bytes; settle: grep SRAM in platform/md/plat_md.c + save/CONTINUE run",
-     "evidence": "SuperVRUN_MD_dev/docs/S3-scope.md Saves"
+     "status": "has",
+     "detail": "Pause+Select writes the run to battery SRAM (offset $40+); the title then offers CONTINUE 1P, which resumes the run in game",
+     "evidence": "headless BrokenNes MCP, Releases/SuperVRUN_MD/2026-11-09_62c4f90: in game f400, Start f530, Select -> title with CONTINUE 1P f850, SRAM $40.. = 3C 0B 00 05 05..., Start -> in game f1050 (run; same power session, reload after power-cycle not tested)"
     },
     "sv_dos": {
      "status": "has",
@@ -2500,8 +2500,8 @@
     },
     "sv_md": {
      "status": "partial",
-     "detail": "pause stats only, no map; stat_of declaration-order bug (DOS BACKPORT #1) likely present",
-     "evidence": "SuperVRUN_DOS_dev/BACKPORT.md #1"
+     "detail": "PAUSED + SELECT: SAVE & QUIT only: no map and no stats. No pausemap.c, so the stat_of bug does not exist on MD",
+     "evidence": "headless MCP screenshot f700 (run); SuperVRUN_MD_dev/logic/pause.c (code)"
     },
     "sv_dos": {
      "status": "has",
@@ -2684,8 +2684,8 @@
     },
     "sv_95": {
      "status": "has",
-     "detail": "software OPL2 of DOS streams; output API unknown (settle: platform/win sources)",
-     "evidence": "SuperVRUN_95_dev/README.md"
+     "detail": "WinMM waveOut (waveOutOpen on WAVE_MAPPER), DOS engine mixed in software",
+     "evidence": "SuperVRUN_95_dev/platform/win/plat_win.c:461, tests/check_imports.ps1 (code)"
     }
    }
   },
@@ -2721,14 +2721,14 @@
      "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
     },
     "sv_snes": {
-     "status": "partial",
-     "detail": "13 IT modules per S3-scope; >=11 seen (baropen baropencrpt boss chicagovoices level2 puzzle rosbif satnkrt sundaydrive think vectorplane); full list unknown",
-     "evidence": "SuperVRUN_dev/snes-dev/supervrun/audio (code, partial)"
+     "status": "has",
+     "detail": "12: OUTSIDE BOSS SHOP BAROPEN BAROPENCRPT CHICAGOVOICES PUZZLE ROSBIF SATNKRT SUNDAYDRIVE VECTORPLANE LEVEL2 (TRACK_COUNT 12)",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/audio.h:35 (code)"
     },
     "sv_wms": {
-     "status": "unknown",
-     "detail": "same as SNES presumably",
-     "evidence": ""
+     "status": "has",
+     "detail": "12: OUTSIDE BOSS SHOP BAROPEN BAROPENCRPT CHICAGOVOICES PUZZLE ROSBIF SATNKRT SUNDAYDRIVE VECTORPLANE LEVEL2 (TRACK_COUNT 12)",
+     "evidence": "SuperVRUN_WMS_dev src/audio.h (code)"
     },
     "sv_md": {
      "status": "has",
@@ -2736,14 +2736,14 @@
      "evidence": "SuperVRUN_MD_dev/src/gen (code)"
     },
     "sv_dos": {
-     "status": "unknown",
-     "detail": "oplconv of the IT set; count unknown",
-     "evidence": ""
+     "status": "has",
+     "detail": "12: OUTSIDE BOSS SHOP BAROPEN BAROPENCRPT CHICAGOVOICES PUZZLE ROSBIF SATNKRT SUNDAYDRIVE VECTORPLANE LEVEL2 (TRACK_COUNT 12)",
+     "evidence": "SuperVRUN_DOS_dev/logic/audio.h (code)"
     },
     "sv_95": {
-     "status": "unknown",
-     "detail": "from DOS",
-     "evidence": ""
+     "status": "has",
+     "detail": "12: OUTSIDE BOSS SHOP BAROPEN BAROPENCRPT CHICAGOVOICES PUZZLE ROSBIF SATNKRT SUNDAYDRIVE VECTORPLANE LEVEL2 (TRACK_COUNT 12)",
+     "evidence": "SuperVRUN_95_dev/logic/audio.h (code)"
     }
    }
   },
@@ -2779,14 +2779,14 @@
      "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
     },
     "sv_snes": {
-     "status": "unknown",
-     "detail": "sfx.it; settle: sfx_table.h",
-     "evidence": ""
+     "status": "has",
+     "detail": "52 (SFX_NSOUNDS): 27 SFX_CTW_* + 17 generic + 8 shop bloops; MD/DOS have the same table",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/sfx_table.h (code)"
     },
     "sv_wms": {
-     "status": "unknown",
-     "detail": "",
-     "evidence": ""
+     "status": "has",
+     "detail": "52 (SFX_NSOUNDS): 27 SFX_CTW_* + 17 generic + 8 shop bloops; MD/DOS have the same table",
+     "evidence": "SuperVRUN_WMS_dev src/sfx_table.h (code)"
     },
     "sv_md": {
      "status": "has",
@@ -2827,9 +2827,9 @@
      "evidence": ""
     },
     "ctw_sms": {
-     "status": "missing",
-     "detail": "fab2c template from e9e3a61^1 can't do bends/duty",
-     "evidence": "memory project_flp_music_pipeline"
+     "status": "has",
+     "detail": "fab2c template now from live VRUN a36dd5e: bend decoders (SSF/UUF) translated",
+     "evidence": "VRUN_CTW_SMS_dev 783c093; BrokenNes 8c9c152e (code)"
     },
     "ctw_nested_snes": {
      "status": "partial",
@@ -2885,14 +2885,14 @@
      "evidence": ""
     },
     "ctw_sms": {
-     "status": "missing",
-     "detail": "fab2c template can't",
-     "evidence": ""
+     "status": "has",
+     "detail": "duty opcode $D3 translated from the live tree",
+     "evidence": "VRUN_CTW_SMS_dev 783c093 (code)"
     },
     "ctw_nested_snes": {
-     "status": "unknown",
-     "detail": "only if Nested ROM rebuilt after a36dd5e",
-     "evidence": ""
+     "status": "missing",
+     "detail": "the only Nested ROM (2026-11-07_speed) predates the duty opcode a36dd5e (2026-11-10)",
+     "evidence": "Releases/VRUN_Nested_SNES file date vs VRUN git log (code)"
     },
     "sv_snes": {
      "status": "n.a.",
@@ -2943,14 +2943,14 @@
      "evidence": ""
     },
     "ctw_sms": {
-     "status": "partial",
-     "detail": "embedded template, no bends/duty",
-     "evidence": "BrokenNes 0958ead7"
+     "status": "has",
+     "detail": "template v2 from the live VRUN tree, bends + duty",
+     "evidence": "VRUN_CTW_SMS_dev 783c093 (code)"
     },
     "ctw_nested_snes": {
-     "status": "unknown",
-     "detail": "",
-     "evidence": ""
+     "status": "partial",
+     "detail": "not rebuilt after a36dd5e: plays what the 11-07 m30 ROM had (no duty)",
+     "evidence": "same (code)"
     },
     "sv_snes": {
      "status": "has",
@@ -3534,18 +3534,18 @@
     },
     "sv_snes": {
      "status": "partial",
-     "detail": "stat_of declaration-order bug latent (works on 816-tcc layout)",
-     "evidence": "SuperVRUN_DOS_dev/BACKPORT.md #1"
+     "detail": "stat_of reads ((u8*)&player_x)[off]: LATENT, not live. tools/srccheck.py plctxcheck fails the build if plctx.c ever stops matching the PLC_* offsets",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/pausemap.c:427 + tools/srccheck.py:311 (code)"
     },
     "sv_wms": {
      "status": "partial",
-     "detail": "same as SNES",
-     "evidence": ""
+     "detail": "stat_of reads ((u8*)&player_x)[off]: LATENT, not live. tools/srccheck.py plctxcheck fails the build if plctx.c ever stops matching the PLC_* offsets",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/pausemap.c:427 + tools/srccheck.py:311 (code)"
     },
     "sv_md": {
      "status": "partial",
-     "detail": "endian fixes local; stat_of bug present (no pausemap)",
-     "evidence": "SuperVRUN_MD_dev/BACKPORT.md"
+     "detail": "endian fixes local; stat_of n.a. (no pausemap.c, no stats on pause)",
+     "evidence": "git grep stat_of SuperVRUN_MD_dev/logic: no hit (code)"
     },
     "sv_dos": {
      "status": "has",
