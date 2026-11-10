@@ -39,8 +39,12 @@ function Invoke-BdSeedBuild {
             $global:LASTEXITCODE = 0
             $named = @{ Out = $out; Define = $defs }   # "-Name value" pairs as named parameters (an array splat would pass them positionally)
             for ($i = 0; $i -lt $a.Count; $i++) { if ($a[$i] -match '^-(\w+)$') { $named[$Matches[1]] = $(if ($i + 1 -lt $a.Count -and $a[$i + 1] -notmatch '^-\w+$') { $i++; $a[$i] } else { $true }) } }
-            & $script @named *> $log
-            $ec = $LASTEXITCODE
+            # a child PowerShell, as from a shell: in this session '*> $log' turns a native tool's stderr (sdcc's warnings) into error
+            # records, and a build.ps1 with ErrorActionPreference Stop then dies on its first warning
+            $cl = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script)
+            foreach ($k in $named.Keys) { $v = $named[$k]; if ($v -is [bool]) { $cl += "-$k" } else { $cl += "-$k"; $cl += ($(if ($v -is [array]) { $v -join ',' } else { [string]$v })) } }
+            $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+            try { & powershell.exe @cl *> $log; $ec = $LASTEXITCODE } finally { $ErrorActionPreference = $eap }
             if ($ec -ne 0 -or -not (Test-Path -LiteralPath $rom)) { throw "$Label seed build failed (exit $ec), see $log" }
         }
         $detail = "$(Split-Path -Leaf (Split-Path -Parent (& $x $Spec.script))) -Define $($defs -join ',')"
