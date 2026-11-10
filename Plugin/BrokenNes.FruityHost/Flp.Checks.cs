@@ -402,6 +402,7 @@ internal static class FlpChecks
         new(SvMutants.DutyAs50, "the Super VRUN back end plays every pulse at 50%", "sv-synthetic"),
         new(SvMutants.ShortNoiseAsLong, "short noise written as long noise", "sv-synthetic"),
         new(SvMutants.VelocityLinear, "velocity linear in the level (FluidSynth squares it)", "sv-synthetic"),
+        new(CtwSmsMutants.SlidesDropped, "the CTW SMS back end drops the slide notes (the old no-bends game)", "ctwsms-synthetic"),
     ];
 
     public static int Main(string[] args)

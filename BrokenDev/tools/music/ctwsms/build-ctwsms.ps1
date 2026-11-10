@@ -8,11 +8,12 @@
   (music_rosbif_*, the title screen's music) are padded to 1280 bytes (the VRUN converter's per-channel maximum; each with its own
   filler after the loop, as BrokenDev/tools/music/pad_streams.py does). The plugin writes a song's streams over them: the game boots
   to its title screen and plays the song with its real engine. The manifest gives each array's ROM offset (fab2c's FAR_ address =
-  bank * 16384 + offset = the file offset), the region size and the commits. Exit 0 when written.
+  bank * 16384 + offset = the file offset), the region size and the commits. Exit 0 when written. Run it with pwsh (PowerShell 7: SHA256.HashData).
+  Version 2 (2026-11-10): the live VRUN tree (fab2c translates the bend decoders) and the title song regenerated with VRUN's bend + duty decoders (regen_decoders.py).
 #>
 param([string]$Game = 'C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_CTW_SMS_dev',
       [string]$Vrun = 'C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\sys0\simulations\VRUN',
-      [Parameter(Mandatory)][string]$Out, [string]$Commit = 'e9e3a61^1', [int]$Region = 1280, [string]$Song = 'rosbif')
+      [Parameter(Mandatory)][string]$Out, [string]$Commit = '', [int]$Region = 1280, [string]$Song = 'rosbif')
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $tree = Join-Path $Out 'vrun'
@@ -24,7 +25,7 @@ foreach ($d in 'src', 'engine') {
     if ($LASTEXITCODE -ge 8) { throw "robocopy $d" }
 }
 $global:LASTEXITCODE = 0
-# the tracked files as of -Commit (default: the last VRUN commit before the bend decoders, which fab2c cannot translate: their SSF variables)
+# the tracked files as of -Commit (default none: the live tree; fab2c translates the bend decoders' SSF variables since 2026-11-10)
 if ($Commit) {
     $tarFile = Join-Path $Out 'vrun.tar'
     & git -c safe.directory=* -C $Vrun archive --format=tar -o $tarFile $Commit -- src engine
@@ -47,6 +48,9 @@ $text = [regex]::Replace($text, "\[\]\s+music_($Song)_(square1|square2|triangle|
 })
 if ($n -ne 4) { throw "found $n of the 4 $Song stream arrays" }
 [IO.File]::WriteAllText($fab, $text)
+# the title song gets VRUN's bend decoders (squares, triangle) and duty decoders (squares), as VRUN NES's template has: any song can be patched over it
+& python -B (Join-Path $PSScriptRoot 'regen_decoders.py') $tree $Song
+ if ($LASTEXITCODE -ne 0) { throw 'regen_decoders.py' }
 $build = Join-Path $Out 'build'
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Game 'build.ps1') -FabRoot $tree -Out $build
 if ($LASTEXITCODE -ne 0) { throw 'the game''s build failed' }
@@ -55,7 +59,7 @@ $hdr = [IO.File]::ReadAllText((Join-Path $build 'gen\fab_game.h'))
 $bytes = [IO.File]::ReadAllBytes($rom.FullName)
 $sha = { param($b) -join ([Security.Cryptography.SHA256]::HashData($b) | ForEach-Object { $_.ToString('x2') }) }
 $m = @('# BrokenNes2 .flp test ROM (CTW SMS): the game itself, its title song''s four streams padded. Made by BrokenDev/tools/music/ctwsms/build-ctwsms.ps1. Offsets are ROM file offsets.',
-    'format = bn2-flp-ctwsms', 'version = 1',
+    'format = bn2-flp-ctwsms', 'version = 2', 'decoders = bends square1 square2 triangle; duty square1 square2',
     "game = VRUN_CTW_SMS_dev $((& git -c safe.directory=* -C $Game rev-parse --short HEAD).Trim())",
     "vrun = $(if ($Commit) { (& git -c safe.directory=* -C $Vrun rev-parse --short $Commit).Trim() + ' (tracked src + engine), untracked generated files of ' } else { 'the live tree at ' })$((& git -c safe.directory=* -C $Vrun rev-parse --short HEAD).Trim())", "song = $Song")
 foreach ($ch in 'square1', 'square2', 'triangle', 'noise') {

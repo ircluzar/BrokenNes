@@ -2,7 +2,7 @@
 //   <name>.<game>.<ext>    the test ROM (the game's own sound driver with the song written in), as the plugin's "This FL project" makes it
 //   <name>.<game>.fence.txt  every rule of the game's engine: ok / CHANGED / OUT and by how much
 //   vocgb / vocgg: <name>.vocsong.json   the game's import (VRUN_VOC_dev tools/music/roster.json: {"events": "<file>"}; the GG port takes the Game Boy songs)
-//   ctwsms:        <name>.vrun.mid       the game's import (CTW SMS translates VRUN NES's music: the file VRUN's own converter reads, as VRUN NES's roster takes it; convert it there WITHOUT bends)
+//   ctwsms:        <name>.vrun.mid       the game's import (CTW SMS translates VRUN NES's music: the file VRUN's own converter reads, as VRUN NES's roster takes it; convert it there with bends: "bends": true, and "duty": true when a square is not 50%)
 // Exit 0 when written, 2 when the fence has OUT lines (written all the same), 1 on an error.
 using BrokenNes2.Music.Flp;
 

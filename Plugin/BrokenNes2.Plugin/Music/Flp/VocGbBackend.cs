@@ -380,7 +380,7 @@ public static class VocGbBackend
     // ---- the test ROM: the template (the game's own driver + one reserved song) with this song written in ----
 
     /// <summary>The template's manifest (key = value lines; offsets in hex). Throws FormatException on anything it does not know.</summary>
-    public static Dictionary<string, string> Manifest(string text, string format)
+    public static Dictionary<string, string> Manifest(string text, string format, int version = 1)
     {
         var d = new Dictionary<string, string>();
         foreach (var raw in text.Split('\n'))
@@ -391,7 +391,7 @@ public static class VocGbBackend
             if (eq < 0) throw new FormatException("manifest line without '=': " + l);
             d[l[..eq].Trim()] = l[(eq + 1)..].Trim();
         }
-        if (d.GetValueOrDefault("format") != format || d.GetValueOrDefault("version") != "1") throw new FormatException($"not a {format} version 1 manifest");
+        if (d.GetValueOrDefault("format") != format || d.GetValueOrDefault("version") != version.ToString()) throw new FormatException($"not a {format} version {version} manifest");
         return d;
     }
 
