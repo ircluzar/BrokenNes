@@ -167,7 +167,10 @@ public sealed class TimelineExtras
     /// <summary>One page's accesses in a frame.</summary>
     public readonly record struct AccessPage(int Space, uint Page, int Reads, int Writes);
 
-    private const int TagAccesses = 1;
+    /// <summary>The WideMess pointer port's input to the frame (<c>WmsPointer.Pack</c>), 0 when idle (then not written: a tagged part, so older timelines read as idle).</summary>
+    public uint Pointer;
+
+    private const int TagAccesses = 1, TagPointer = 2;
 
     public byte[] Encode()
     {
@@ -210,6 +213,7 @@ public sealed class TimelineExtras
                 ls = a.Space; lp = a.Page;
             }
         }
+        if (Pointer != 0) { TimelineCodec.WriteVar(ms, TagPointer); TimelineCodec.WriteVar(ms, Pointer); }
         return ms.ToArray();
     }
 
@@ -244,6 +248,7 @@ public sealed class TimelineExtras
         while (at < b.Length)
         {
             int tag = (int)TimelineCodec.ReadVar(b, ref at);
+            if (tag == TagPointer) { e.Pointer = (uint)TimelineCodec.ReadVar(b, ref at); continue; }
             if (tag != TagAccesses) throw new InvalidDataException($"a frame's index record has an unknown part {tag} (written by a newer build)");
             int n = (int)TimelineCodec.ReadVar(b, ref at);
             var list = new List<AccessPage>(n);
@@ -488,6 +493,8 @@ public sealed class TimelineReader : IDisposable
     }
 
     public (PadButtons P1, PadButtons P2) Pads(long frame) { var r = Row(frame); return ((PadButtons)r.P1, (PadButtons)r.P2); }
+    /// <summary>The WideMess pointer port's input to a frame (<c>WmsPointer.Pack</c>; 0 idle, and for every other console).</summary>
+    public uint Pointer(long frame) => Extras(frame).Pointer;
 
     private byte[]? extraAll;
 

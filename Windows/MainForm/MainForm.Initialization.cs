@@ -546,7 +546,8 @@ namespace BrokenNes.Windows
                 };
                 
                 // Add double-click handler for fullscreen toggle
-                dxRenderer.DoubleClick += (s, e) => ToggleFullscreen();
+                dxRenderer.DoubleClick += (s, e) => { if (!PointerGameRunning) ToggleFullscreen(); };   // a WideMess game's pointer owns the picture's clicks
+                HookWmsPointer(dxRenderer);   // the WideMess pointer port (MainForm.WmsPointer.cs)
                 
                 displayPanel.Controls.Add(dxRenderer);
             }

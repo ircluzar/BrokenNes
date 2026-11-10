@@ -23,6 +23,28 @@ namespace BrokenNes.Windows.WebApi
     /// can consult it directly on the hot path without another delegate threaded through the
     /// server's constructor, and so its cost when unused is a single volatile read.
     /// </summary>
+    /// <summary>The WideMess pointer port held by a test (POST /api/input/pointer): replaces the mouse while set; Observed is what the last frame was handed.</summary>
+    public static class ApiPointerInjector
+    {
+        private static readonly object gate = new();
+        private static NesEmulator.Snes.WmsPointer? injected;
+        private static NesEmulator.Snes.WmsPointer observed;
+        public static NesEmulator.Snes.WmsPointer? Injected { get { lock (gate) return injected; } set { lock (gate) injected = value; } }
+        public static NesEmulator.Snes.WmsPointer Observed { get { lock (gate) return observed; } set { lock (gate) observed = value; } }
+    }
+
+    /// <summary>Body of POST /api/input/pointer: console pixels (0-399, 0-223). clear: true hands the port back to the mouse.</summary>
+    public sealed class SetPointerRequest
+    {
+        public int X { get; set; }
+        public int Y { get; set; }
+        public bool Present { get; set; } = true;
+        public bool Left { get; set; }
+        public bool Right { get; set; }
+        public string? Device { get; set; }
+        public bool Clear { get; set; }
+    }
+
     public static class ApiInputInjector
     {
         public const int ButtonCount = 15;
@@ -491,6 +513,23 @@ namespace BrokenNes.Windows.WebApi
                     return Results.BadRequest(new { success = false, error = ex.Message });
                 }
             });
+
+            // POST /api/input/pointer - Hold the WideMess pointer port (spec section 10) at console pixels; {clear:true} gives it back to the mouse.
+            app.MapPost("/api/input/pointer", (SetPointerRequest? r) =>
+            {
+                if (r == null) return Results.BadRequest(new { success = false, error = "a body {x, y, present, left, right, device} or {clear: true}" });
+                if (r.Clear) { ApiPointerInjector.Injected = null; return Results.Ok(new { success = true, cleared = true }); }
+                if (r.X is < 0 or >= NesEmulator.Snes.WmsPointer.Width || r.Y is < 0 or >= NesEmulator.Snes.WmsPointer.Height)
+                    return Results.BadRequest(new { success = false, error = "x 0-399, y 0-223 (console pixels)" });
+                var dev = (r.Device ?? "agent").ToLowerInvariant() switch { "mouse" => NesEmulator.Snes.WmsPointerDevice.Mouse, "touch" => NesEmulator.Snes.WmsPointerDevice.Touch, "pen" => NesEmulator.Snes.WmsPointerDevice.Pen, "agent" => NesEmulator.Snes.WmsPointerDevice.Agent, _ => (NesEmulator.Snes.WmsPointerDevice?)null };
+                if (dev == null) return Results.BadRequest(new { success = false, error = "device: mouse, touch, pen or agent" });
+                var p = new NesEmulator.Snes.WmsPointer(r.X, r.Y, r.Present, r.Left, r.Right, dev.Value).Normalized();
+                ApiPointerInjector.Injected = p;
+                return Results.Ok(new { success = true, pointer = p.ToString() });
+            });
+
+            // GET /api/input/pointer - What the pointer port was handed on the last frame, and what a test holds.
+            app.MapGet("/api/input/pointer", () => Results.Ok(new { success = true, observed = ApiPointerInjector.Observed.ToString(), injected = ApiPointerInjector.Injected?.ToString() }));
 
             // POST /api/input/clear - Release every injected button for both players.
             app.MapPost("/api/input/clear", () =>

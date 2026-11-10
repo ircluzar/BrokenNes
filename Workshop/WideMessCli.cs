@@ -197,6 +197,7 @@ internal static partial class WideMessCli
         SoundTests(dir);                     // milestone 3: the sound chip (WideMessCli.Sound.cs)
         if (!DevkitTests(dir)) return 2;     // milestone 5: the devkit's template and sample game (WideMessCli.Devkit.cs)
         if (!TestCartTests(dir)) return 2;   // the test cartridge: its results table, its pictures, its controls (WideMessCli.TestCart.cs)
+        if (!PointerTests(dir)) return 2;    // the pointer port (spec 10; WideMessCli.Pointer.cs)
 
         string snes = Opt(args, "snes", "");
         int frames = int.Parse(Opt(args, "frames", "900"));

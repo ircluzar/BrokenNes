@@ -920,7 +920,7 @@ emulator's frame begins, which is the start of vertical blanking), so every read
 latch with the previous one. A pointer that is not present keeps the last X/Y it had (so a game can still finish an action at the last place) and
 holds no buttons. **Hover** is PRESENT with no button held; **pressed** is a button held. A touch is the left button: a tap is a frame (or more) of
 PRESENT + LEFT at the finger, then PRESENT clear with the LEFT-up edge, so a game that highlights what is under the pointer and acts on the
-LEFT-down edge treats a tap as hover + click. Right is the mouse's right button and a pen's barrel button.
+LEFT-down edge treats a tap as hover + click. Right is the mouse's right button and a pen's barrel button. X and Y are pixels of the picture as the console draws it: 0-399 with wide output (`WMCTRL` bit 0), which every WideMess game has; a game that leaves the picture 256 wide gets 0-255 across it.
 
 Detection: unlock, check `WMFEAT` bit 6.
 

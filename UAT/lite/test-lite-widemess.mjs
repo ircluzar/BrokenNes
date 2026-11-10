@@ -13,6 +13,8 @@
 //   sound    the sound ROM (sound.wms) plays the WideMess voices: its sound is not the negative control's (sound_nounlock.wms: the same program locked, only the S-DSP's 8 voices), and louder.
 //   saves    battery RAM: the 4 MB WideMess-map ROM (bigmap.wms, 256 KB battery RAM) keeps a boot counter there; it is in IndexedDB (battery_v1:wms<sha1>.srm) and counts up in a fresh page.
 //   states   Save state / Load state on WideMess games (the same calls as the buttons): the next 60 frames are the same pictures and the same sound, also in a fresh page; the slot is state_v1:wms:<game id>.quick.
+//   pointer  the pointer port (spec section 10): pointer events on the canvas reach the WideMess's registers at console pixels (mouse hover, touch down and lift, pen), the canvas's
+//            letterbox (object-fit: contain in a box of another shape) is outside the picture: not present.
 //   layout   the touch controller has the SNES pad on the WideMess (data-layout wms: X, Y, L and R shown).
 //   enhance  WideMess milestone 6 in Lite: Super Mario World on the WideMess console finds its profile (built into the app), widescreen gives a 400-wide picture whose centre is, frame for frame from one
 //            saved moment, the SNES picture; the choice is kept per game in IndexedDB (fast CPU never) and comes back in a fresh page; "Use the profile" sets exactly the profile's recommendations;
@@ -205,6 +207,40 @@ if (want('control')) await withLab(async lab => {
   const r = await page.eval(`window.__frames(90)`);
   const black = await page.eval(`window.__allColour(0)`);
   check('control', 'the negative control (every WideMess register written without the unlock) stays a SNES picture: 256 x 224, black', r.w === 256 && r.h === 224 && black && (await console_(page)) === 'wms', `${r.w} x ${r.h}, all black ${black}`);
+});
+
+// ============================================================================================= the pointer port
+if (want('pointer')) await withLab(async lab => {
+  const page = await openRom(lab, 'wms/pointer.wms');
+  await page.eval(`window.__frames(20, null, { draw: true })`);
+  // a pointer event at console pixel (x, y) of the canvas as it is laid out (box b: the canvas's own box, or a letterboxed one)
+  const at = (type, x, y, extra) => page.eval(`(async () => {
+    const c = document.getElementById('nes-canvas'); const r = c.getBoundingClientRect();
+    const ar = c.width / c.height; let w = r.width, h = r.height, ox = 0, oy = 0;
+    if (w / h > ar) { w = h * ar; ox = (r.width - w) / 2; } else { h = w / ar; oy = (r.height - h) / 2; }
+    const e = Object.assign({ bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: -1, buttons: 0 }, ${JSON.stringify(extra || {})});
+    e.clientX = r.left + ox + (${x} + 0.5) / 400 * w; e.clientY = r.top + oy + (${y} + 0.5) / 224 * h;
+    if (${x} < 0) e.clientX = r.left + 1;
+    c.dispatchEvent(new PointerEvent('${type}', e));
+    await new Promise(res => setTimeout(res, 80));
+    await window.__frames(2);
+    return await window.__ref.invokeMethodAsync('WideMessPointerState');
+  })()`);
+  const hover = await at('pointermove', 345, 200);
+  check('pointer', 'a mouse over the canvas: the registers show it at console pixels, hovering', hover === 'present 345,200 mouse', hover);
+  const down = await at('pointerdown', 120, 40, { pointerType: 'touch', button: 0, buttons: 1 });
+  check('pointer', 'a finger goes down: present, the left button, device touch', down === 'present 120,40 left touch', down);
+  const up = await at('pointerup', 120, 40, { pointerType: 'touch', button: 0, buttons: 0 });
+  await page.eval(`window.__frames(4)`);
+  const lifted = await page.eval(`window.__ref.invokeMethodAsync('WideMessPointerState')`);
+  check('pointer', 'the finger lifts: the release, then nothing points (a tap = hover + click)', /^present 120,40 touch$|^away 120,40 touch$/.test(up) && lifted === 'away 120,40 touch', `${up}; then ${lifted}`);
+  const pen = await at('pointermove', 0, 0, { pointerType: 'pen', buttons: 2 });
+  check('pointer', 'a pen with its barrel button: the right button, device pen', pen === 'present 0,0 right pen', pen);
+  // the canvas in a wide box with object-fit: contain: the bars beside the picture are not the picture
+  await page.eval(`(() => { const c = document.getElementById('nes-canvas'); c.style.objectFit = 'contain'; c.style.width = '1200px'; c.style.height = '224px'; c.style.aspectRatio = 'auto'; return 1; })()`);
+  const inBox = await at('pointermove', 399, 100);
+  const bar = await at('pointermove', -1, 100);
+  check('pointer', 'letterboxed: the picture still maps to console pixels, the bar beside it is not present', inBox === 'present 399,100 mouse' && /^away /.test(bar), `${inBox}; bar: ${bar}`);
 });
 
 // ============================================================================================= SNES games on the WideMess

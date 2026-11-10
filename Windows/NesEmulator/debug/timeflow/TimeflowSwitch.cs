@@ -48,7 +48,7 @@ public sealed class TimeflowSwitch
     /// Before a frame (emulation thread, between frames). <paramref name="machine"/> identifies the running game (the NES object, the session):
     /// another one ends the timeline. The factories are only called when a timeline starts.
     /// </summary>
-    public void BeforeFrame(object machine, Func<TimeflowSource> makeSource, Func<TimeflowOptions> makeOptions, NesEmulator.Systems.PadButtons p1, NesEmulator.Systems.PadButtons p2)
+    public void BeforeFrame(object machine, Func<TimeflowSource> makeSource, Func<TimeflowOptions> makeOptions, NesEmulator.Systems.PadButtons p1, NesEmulator.Systems.PadButtons p2, uint pointer = 0)
     {
         if (!on && rec == null && !stopWanted) return;
         if (stopWanted && !on) { End("closed: recording was switched off"); stopWanted = false; return; }
@@ -73,7 +73,7 @@ public sealed class TimeflowSwitch
                 return;
             }
         }
-        rec.BeforeFrame(p1, p2);
+        rec.BeforeFrame(p1, p2, pointer);
     }
 
     public void AfterFrame() { rec?.AfterFrame(); }

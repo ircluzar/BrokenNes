@@ -121,6 +121,7 @@ public sealed partial class SnesSession
         if (wms != null) board.SaveWideMemory(w);   // milestone 4: the WideMess map's work RAM (the modes are the registers above)
         if (wms != null) wms.SavePicture(w);        // milestone 2: the sprite table, the registers of $21A0-$21BF, the rows drawn 400 wide
         if (wms != null) WriteWideSound(w);    // milestone 3: the sound chip's WideMess part
+        if (wms != null) board.WideMess!.SavePointer(w);   // the pointer port (spec 10): last, so an older state loads without it
     }
 
     private void ReadPayload(BinaryReader r)
@@ -158,6 +159,7 @@ public sealed partial class SnesSession
         if (wms != null) board.LoadWideMemory(r);
         if (wms != null) wms.LoadPicture(r);
         if (wms != null) ReadWideSound(r);
+        if (wms != null) board.WideMess!.LoadPointer(r);
     }
 
     private static void RequireUnit(byte saved, byte running)

@@ -210,6 +210,15 @@ internal static class Tools
             a => On(a, s => s.Input(a.Req("mode").ToLowerInvariant(), a.List("buttons").ToArray(), a.Int("frames", 6), a.Int("player", 1) - 1,
                 a.Str("script") is { Length: > 0 } sc ? HeadlessSession.ParseScript(sc) : null, a.Long("run_frames"))));
 
+        Add("pointer",
+            "The WideMess pointer port (docs/projects/widemess-spec.md section 10; WideMess sessions only): point at the picture in console pixels (x 0-399, y 0-223). action move (hover), down / up (left button), " +
+            "click (down a frame, up a frame), tap (a click, then the finger lifts: not present), right-down / right-up, leave (off the picture). device agent (default), mouse, touch or pen. Then runs frames (default 1; 0: none). " +
+            "The registers latch at the start of each frame. x / y default to the last point.",
+            Schema(S(), ("action", P("string", "move, down, up, click, tap, right-down, right-up or leave", Enum("move", "down", "up", "click", "tap", "right-down", "right-up", "leave")), true),
+                   ("x", P("integer", "console X, 0-399"), false), ("y", P("integer", "console Y, 0-223"), false),
+                   ("device", P("string", "agent (default), mouse, touch or pen", Enum("agent", "mouse", "touch", "pen")), false), ("frames", P("integer", "frames to run after (default 1)"), false)),
+            a => On(a, s => s.Pointer(a.Long("x") is long px ? (int)px : null, a.Long("y") is long py ? (int)py : null, a.Req("action"), a.Str("device") ?? "agent", a.Int("frames", 1))));
+
         // ------------------------------------------------------------------------------------------------ memory
         Add("list_domains", "The machine's memories (domains: RAM, WRAM, VRAM, CGRAM, OAM, ARAM, SRAM, ROM, IO, BUS, ...) with sizes, and each CPU's address spaces for specs.", Schema(S()),
             a => On(a, s => s.Domains()), ro: true);

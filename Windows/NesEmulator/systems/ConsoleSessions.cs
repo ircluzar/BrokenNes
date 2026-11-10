@@ -76,7 +76,7 @@ public static class ConsoleSessions
 /// which keeps every layer and sprite on PPU_FIXS), its sound on the SFC unit, the HLE unit or any NES APU.
 /// <para>The same session is the <b>WideMess</b> console (<c>wideMess: true</c>, docs/projects/widemess-spec.md): the SFC board with the WideMess picture chip (<see cref="PPU_WMS"/>) and its registers
 /// (<see cref="WmsExtension"/>), running a .wms game or a SNES game. Locked, the WideMess is a SNES, so a SNES game runs exactly as on the SNES console.</para></summary>
-public sealed partial class SnesSession : IConsoleSession, IButcherHost
+public sealed partial class SnesSession : IConsoleSession, IButcherHost, IPointerSession
 {
     // ===================================================================== Butchering mode (corruption/Butcher.cs)
     public Butcher? Butcher { get; private set; }
@@ -304,8 +304,15 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost
 
     public void SetPad(int player, PadButtons buttons) { if (player == 0 && Butcher is { PadActive: true }) buttons = (PadButtons)Butcher.FilterPad((ushort)buttons, Butcher.PadSnes); if (player is 0 or 1) board.Pads[player] = Map(buttons); }
 
+    // ---- the WideMess pointer port (docs/projects/widemess-spec.md section 10): latched into the registers at the start of each frame
+    private WmsPointer pendingPointer;
+    public bool HasPointer => board.WideMess != null;
+    public WmsPointer PendingPointer => pendingPointer;
+    public void SetPointer(WmsPointer p) => pendingPointer = p.Normalized();
+
     public void RunFrame()
     {
+        board.WideMess?.LatchPointer(pendingPointer);
         if (Butcher != null || board.Ppu.Butcher != null || ButcherApu()?.Butcher != null) ButcherFrame(); if (Butcher?.TakeReset() == true) Reset(); if (Butcher is { ClockStallNow: true }) return; if (Butcher is { ClockRushNow: true } && !butcherRush) { butcherRush = true; try { RunFrame(); } finally { butcherRush = false; } }
         mid = null;
         if (wms != null) BeforeFrameEnhance();   // milestone 6: the console's enhancements (SnesSession.Enhance.cs)
