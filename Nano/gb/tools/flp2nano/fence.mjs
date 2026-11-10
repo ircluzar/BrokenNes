@@ -12,11 +12,12 @@ export function fenceOf(r, engine = 'Nano GB', proj = null) {
   if (proj) for (const p of proj.patterns.values()) for (const n of p.notes) count.set(n.channel, (count.get(n.channel) ?? 0) + 1);
   const silent = w => { const m = /^channel (\d+) /.exec(w); return proj && m && !count.get(+m[1]); };
   const lines = [];
-  const rule = w => /pan/.test(w) ? 'pan' : /slide/.test(w) ? 'notes' : /noise/.test(w) ? 'noise' : /automation|controller/.test(w) ? 'automation' : /PLAYLIST|arrangement|clip/.test(w) ? 'reader' : /chip|plugin|ROM mode|BrokenNes2/.test(w) ? 'instrument' : 'other';
+  const rule = w => /preset/i.test(w) ? 'preset' : /pan/.test(w) ? 'pan' : /slide/.test(w) ? 'notes' : /noise/.test(w) ? 'noise' : /automation|controller/.test(w) ? 'automation' : /PLAYLIST|arrangement|clip/.test(w) ? 'reader' : /chip|plugin|ROM mode|BrokenNes2/.test(w) ? 'instrument' : 'other';
   for (const w of r.warnings) lines.push({ rule: rule(w), level: OVER.test(w) && !silent(w) ? 'over' : 'note', text: silent(w) ? w + ' (it has no notes)' : w });
   const n = r.summary.length;
   if (n === 0) lines.push({ rule: 'song', level: 'over', text: `NOTHING for ${engine}: no BrokenNes2 Nano GB / NES channel` });
   else lines.push({ rule: 'instruments', level: 'ok', text: `${n} part${n === 1 ? '' : 's'} on MIDI channels (15 fit)` });
+  for (const s of r.summary) if (/^Game Boy preset/.test(s.kind)) lines.push({ rule: 'preset', level: 'ok', text: `MIDI ch ${s.midiChannel} "${s.name}": ${s.kind}` });
   for (const s of r.summary) if (s.bendRange > 24) lines.push({ rule: 'bend', level: 'note', text: `MIDI ch ${s.midiChannel} "${s.name}": bend range +-${s.bendRange} semitones` });
   return { format: FENCE_FORMAT, version: 1, engine, lines };
 }

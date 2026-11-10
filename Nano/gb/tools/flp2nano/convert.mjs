@@ -10,6 +10,11 @@
 //     (Record/NesDirect.cs). It is converted to the nearest Nano GB sound: a plain pulse at the same duty and level, a wave channel playing
 //     the NES triangle's own 32-step table at full level, the noise clock nearest the NES noise period. Same notes, timing and pitch; the
 //     timbre is the Game Boy's, not the NES's (the game's library is Nano GB).
+//   * a Presets chip (chips 23-28) carrying a GAME BOY Runaway preset (its PRS1 section, preset.mjs): one Game Boy channel, monophonic with
+//     last-note priority, at the note's level (Bn2Plugin.UpdateGbVoice + GbSampler), as a sidecar preset of its own: a wave preset's 32 samples
+//     exactly, a pulse preset's duty, the envelope direction and pace (Nano GB's `env`: the chip's envelope from the note's level, as GbSampler
+//     plays it). A 7-bit noise preset plays as 15-bit noise (said: Nano GB's presets have short noise only on a fixed clock). A preset of
+//     another console, a damaged one or a Presets chip without a preset is skipped with the reason (OVER in the fence).
 // Anything else (samplers, other plugins, other chips, ROM mode) is skipped with a warning.
 //
 // Pitch over time: per voice, its key + fine pitch, then every slide note of its channel that starts while the voice sounds glides it, linearly
@@ -18,9 +23,10 @@
 // sounding voice and a warning counts the notes whose own bend was different at the time.
 
 import { SLIDE_FLAG, parseBn2State } from './flp.mjs';
+import { PRESET_CHIPS, presetOfState } from './preset.mjs';
 
 export const NANO_GB_CHIP = 30;
-const CHIP_NAMES = { 0: 'FIX', 1: 'FIXS', 30: 'NANOGB' };
+const CHIP_NAMES = { 0: 'FIX', 1: 'FIXS', 23: 'PRESETS', 24: 'PRE-NES', 25: 'PRE-GB', 26: 'PRE-SNES', 27: 'PRE-SMS', 28: 'PRE-MD', 30: 'NANOGB' };
 // presets.js ORDER (program numbers; append-only)
 const PRESET_ORDER = ['lead', 'square', 'thin', 'pwm', 'pluck', 'chime', 'arp', 'pulsebass', 'wavebass', 'subbass', 'pad', 'wavelead', 'organ', 'kick', 'tom', 'snare', 'hat', 'openhat', 'crash', 'coin', 'jump', 'laser', 'zap', 'powerup', 'explosion', 'hit', 'blip'];
 const NES_CHANNELS = ['pulse 1', 'pulse 2', 'triangle', 'noise'];
@@ -31,7 +37,10 @@ const NES_TRIANGLE = [...Array(16).keys()].map(i => 15 - i).concat([...Array(16)
 
 // ---- 1. which channels, and what they are ----
 
-export function classifyChannels(proj) {
+// deliberate bugs the preset tests switch on (opts.mutant) to prove they can fail; zero in normal use
+export const MUTANT = { PRESET_IGNORED: 1, WAVE_DROPPED: 2, DUTY_DROPPED: 4, ENV_DROPPED: 8, FOREIGN_SILENT: 16, SHORT_SILENT: 32 };
+
+export function classifyChannels(proj, opts = {}) {
   const out = [], warnings = [];
   for (const c of proj.channels) {
     const isBn2 = /^BrokenNes2$/i.test(c.pluginName);
@@ -44,17 +53,25 @@ export function classifyChannels(proj) {
     if (!st) { warnings.push(`channel ${c.index} "${c.name}": BrokenNes2 with no readable state (another version?): skipped`); continue; }
     const P = st.params;
     const chipName = CHIP_NAMES[P.core] ?? `chip ${P.core}`;
-    let kind = null, nesChannel = -1, why = '';
+    let kind = null, nesChannel = -1, why = '', preset = null;
     if (P.mode === 1) why = 'ROM mode (it plays a game\'s channel, not notes)';
     else if (P.core === NANO_GB_CHIP) kind = 'nanogb';
+    else if (P.core >= PRESET_CHIPS[0] && P.core <= PRESET_CHIPS[1] && !(opts.mutant & MUTANT.PRESET_IGNORED)) {
+      const pr = presetOfState(st);
+      if (!pr) why = 'a Presets chip with no preset in its state (no PRS1 section)';
+      else if (!pr.ok && pr.foreign) why = `it plays ${pr.problem}: Nano GB plays Game Boy presets only (that console's back end plays it)`;
+      else if (!pr.ok) why = `its preset cannot be used (${pr.problem})`;
+      else { kind = 'gbpreset'; nesChannel = pr.index; preset = pr; }
+    }
     else if (P.console === 0 && P.core >= 0 && P.core < 20) {
       nesChannel = P.channel > 0 ? P.channel - 1 : st.placeChannel;
       if (nesChannel >= 0 && nesChannel <= 3) kind = 'nes';
       else why = `NES chip on channel ${nesChannel} (not pulse/triangle/noise)`;
     } else why = `chip ${chipName} on console ${P.console} is neither Nano GB nor a NES chip`;
+    if (!kind && preset === null && (opts.mutant & MUTANT.FOREIGN_SILENT) && /presets only/.test(why)) continue;
     if (!kind) { warnings.push(`channel ${c.index} "${c.name}": ${why}: skipped`); continue; }
     if (kind === 'nes' && P.core !== 0) warnings.push(`channel ${c.index} "${c.name}": NES chip ${chipName} (not FIX): converted like FIX`);
-    out.push({ ch: c, rack: c.index, name: c.name, kind, nesChannel, params: P, state: st, chipName });
+    out.push({ ch: c, rack: c.index, name: c.name, kind, nesChannel, params: P, state: st, chipName, preset });
   }
   return { parts: out, warnings };
 }
@@ -159,7 +176,8 @@ export function writeMidi(tracks, ppq) {
 
 export function convert(proj, opts = {}) {
   const warnings = [...proj.warnings], info = [];
-  const { parts, warnings: w1 } = classifyChannels(proj);
+  const { parts, warnings: w1 } = classifyChannels(proj, opts);
+  const mut = opts.mutant ?? 0;
   const arr = arrange(proj);
   warnings.push(...w1, ...arr.warnings);
   const scale = Math.max(1, Math.round(960 / proj.ppq)), ppq = proj.ppq * scale;   // finer MIDI ticks for smooth bends
@@ -203,6 +221,25 @@ export function convert(proj, opts = {}) {
       preset = PRESET_ORDER[program];
       kindLabel = `Nano GB, preset #${program} ${preset}`;
       levelOf = (vel) => vel;
+    } else if (part.kind === 'gbpreset') {
+      const pr = part.preset, f = pr.fields, gbc = pr.index;
+      preset = `gb-preset-${part.rack}`;
+      const def = { kind: gbc === 2 ? 'wave' : gbc === 3 ? 'noise' : 'pulse', a: 0, d: 0, s: 1, r: 0 };
+      const said = [];
+      if (gbc < 2) { if (!(mut & MUTANT.DUTY_DROPPED)) def.duty = f.duty; said.push(`${['12.5', '25', '50', '75'][f.duty]}% duty`); }
+      if (gbc === 2) { if (!(mut & MUTANT.WAVE_DROPPED)) def.wave = pr.wave; said.push('its 32-sample wave RAM exactly'); }
+      if (gbc !== 2 && f['env.pace'] > 0) { if (!(mut & MUTANT.ENV_DROPPED)) def.env = { step: f['env.pace'], ...(f['env.dir'] ? { up: true } : {}) }; said.push(`its envelope (${f['env.dir'] ? 'swells' : 'fades'} one step every ${f['env.pace']}/64 s from the note's level)`); }
+      else if (gbc !== 2) said.push('its envelope holds (pace 0)');
+      if (gbc === 3) {
+        said.push('the noise clock follows the note');
+        if (f.width && !(mut & MUTANT.SHORT_SILENT)) warnings.push(`channel ${part.rack} "${part.name}": the Game Boy preset's 7-bit (buzz) noise plays as 15-bit noise in Nano GB (its presets have the 7-bit noise only on a fixed clock, and this preset's clock follows the note)`);
+      }
+      if (gbc === 0 && (f['sweep.period'] || f['sweep.shift'])) info.push(`channel ${part.rack} "${part.name}": the preset's sweep is not played (the plugin's Game Boy sampler turns the sweep off too)`);
+      def.desc = `Game Boy preset "${pr.name}" (Runaway): ${said.join(', ')}`;
+      sidecar.presets[preset] = def;
+      program = gbc === 2 ? 9 : gbc === 3 ? 15 : [2, 0, 1, 0][f.duty];
+      kindLabel = `Game Boy preset "${pr.name}" on ${['pulse 1', 'pulse 2', 'wave', 'noise'][gbc]} (${part.chipName}) -> Nano GB "${preset}": ${said.join(', ')}`;
+      levelOf = (vel) => vel;
     } else {
       const nc = part.nesChannel;
       if (nc <= 1) {
@@ -231,12 +268,12 @@ export function convert(proj, opts = {}) {
         return v;
       };
     }
-    const sideVolume = part.kind === 'nanogb' ? volume : 1;
+    const sideVolume = part.kind === 'nanogb' || part.kind === 'gbpreset' ? volume : 1;
     sidecar.channels[String(mc + 1)] = { name: tname, preset, ...(sideVolume !== 1 ? { volume: sideVolume } : {}), ...(pan ? { pan } : {}) };
     ev(trk, 0, 1, [0xC0 | mc, program]);
 
     // segments: who sounds when (NES: monophonic, the newest held voice; Nano GB: every voice)
-    const mono = part.kind === 'nes';
+    const mono = part.kind === 'nes' || part.kind === 'gbpreset';      // (a preset plays one Game Boy channel: the newest held note, Bn2Plugin.UpdateGbVoice)
     const segs = [];   // {v, from, to}
     if (mono) {
       const times = [...new Set(voices.flatMap(v => [v.start, v.end]))].sort((a, b) => a - b);
