@@ -20,7 +20,7 @@ public sealed record Chip(string Id, int Console, string? Note, bool IsPreset = 
 /// game gets: always the best of the console's own family (BrokenNes's <see cref="CoreCatalog"/>: FIX for the NES, the real Game Boy
 /// and SNES cores otherwise); those are not user choices any more.
 /// </summary>
-public static class Cx
+public static partial class Cx
 {
     // WideMess milestone 7a: the plugin offers the WideMess (its sound chip WMS, its games in ROM mode). The switch is the emulator tree's own (the desktop app and Workshop set it at start-up; Lite in its Program.cs):
     // with it on, RomDetect recognises a .wms file. Set before anything here is used (every road to a game goes through this class first).
@@ -124,13 +124,14 @@ public static class Cx
         foreach (var p in PresetChips) list.Add(new Chip(p.Id, p.Console, p.Note, IsPreset: true));       // the Presets chips (append-only)
         list.Add(new Chip(WmsChip, Snes, "WideMess sound chip: 24 notes at once, 16-bit samples", IsWms: true));   // WideMess milestone 7a: index 29, after the Presets chips (append-only)
         list.Add(new Chip(NanoGbChip, GameBoy, "Nano GB: the web library's engine, gnuboy sound, 27 presets", IsNanoGb: true));   // index 30, after WMS (append-only)
+        AddHarvest(list);       // the harvested engines (Bn2Consoles.Harvest.cs), appended
         return list;
     }
 
     // ---- the instrument pickers: the Instrument parameter is a patch of the chip's own bank for the FM chips ----
 
     /// <summary>What the Instrument parameter picks for this chip: 0 nothing (the NES chips: Pulse duty is the control), 1 the Genesis chip's FM patch, 2 the Master System FM chip's instrument.</summary>
-    public static int PatchBankOf(string chipId) => chipId.ToUpperInvariant() switch { "MD" => 1, "SMSFM" => 2, WmsChip => 3, NanoGbChip => 4, _ => 0 };
+    public static int PatchBankOf(string chipId) => HarvestBase(chipId).ToUpperInvariant() switch { "MD" => 1, "SMSFM" => 2, WmsChip => 3, NanoGbChip => 4, _ => 0 };
 
     public static int PatchCount(int bank) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Count, 2 => NesEmulator.Mix.OpllPatchBank.Count, 3 => WmsBank.Patches.Length, 4 => NesEmulator.Gb.NanoGbPresets.Count, _ => 0 };
 
@@ -183,7 +184,7 @@ public static class Cx
         if (mode == 0 || console == Nes) return [Ch.Pulse1, Ch.Pulse2, Ch.Triangle, Ch.Noise];
         if (console == Genesis) return [Ch.Pulse1, Ch.Pulse2, Ch.Triangle, Ch.Noise, .. Enumerable.Range(Ch.Fm1, 6), Ch.Dac];
         if (console == MasterSystem)
-            return chipId.Equals("SMSFM", StringComparison.OrdinalIgnoreCase)
+            return HarvestBase(chipId).Equals("SMSFM", StringComparison.OrdinalIgnoreCase)
                 ? [Ch.Pulse1, Ch.Pulse2, Ch.Triangle, Ch.Noise, .. Enumerable.Range(Ch.Fm1, 9), Ch.Bass, Ch.HiHat, Ch.Snare, Ch.Tom, Ch.Cymbal]
                 : [Ch.Pulse1, Ch.Pulse2, Ch.Triangle, Ch.Noise];
         return [];
@@ -195,7 +196,7 @@ public static class Cx
 
     /// <summary>The sound chip of a running game: the NES chips as they are; the Game Boy's own sound unit (GB, GBS for the enhanced
     /// one) and the SNES's S-SMP + S-DSP replace the register bridges that Direct mode uses.</summary>
-    public static string RomApu(Chip chip) => IsPresetId(chip.Id) ? throw new InvalidOperationException("the Presets chips play in Direct mode only: a game cannot run on them (the emulator should have gone back to the console's own sound chip)") : chip.Console switch
+    public static string RomApu(Chip chip) => HarvestEngine(chip.Id) is { } engine ? engine : IsPresetId(chip.Id) ? throw new InvalidOperationException("the Presets chips play in Direct mode only: a game cannot run on them (the emulator should have gone back to the console's own sound chip)") : chip.Console switch
     {
         Nes => chip.Id,
         GameBoy => chip.Id.Equals("DMGS", StringComparison.OrdinalIgnoreCase) ? "GBS" : "GB",
