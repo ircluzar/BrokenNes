@@ -221,6 +221,22 @@ Not settled in this pass:
 - MD save across a power cycle.
 - Win95: cannot be run here.
 
+### Pass 3 runs (2026-11-10)
+
+Screenshots: `C:\Users\philt\AppData\Local\Temp\claude\724ae6c77c6890ea\a47307b0-02aa-4683-aff7-7419181d3498\scratchpad\cvl_runs\` (scratch; copy them out if they should be kept).
+
+| Check | Result | Evidence |
+|---|---|---|
+| CTW title tunnel | **MMC3 yes, SMS yes, mapper 30 no, Nested no** (bug list #8 CONFIRMED) | headless MCP, all four at f299-301: ctw_mmc3_title_f299.png, ctw_sms_title_f300.png, ctw_m30_title_f299.png, ctw_nested_title_f301.png. SMS is the released final3 (11-07), not 783c093. |
+| MD save across a power cycle | **works** | Save in one session (SRAM `..`), new power-on session with those bytes: CONTINUE 1P lit at f260, resumes in the same room at f510. Control with blank SRAM: CONTINUE greyed. md_powercycle_title.png, md_powercycle_continue.png, md_fresh_title_no_save.png |
+
+Blocked or not done in pass 3:
+- **Invisible-enemy run check:** building the SV_INVIS_TEST ROMs (`SV_CFLAGS=-DSV_INVIS_TEST bash build.sh` in a scratch clone) was refused by the agent's worktree-isolation guard, so no test ROM could be built. No released ROM has the hook, and a plain input script can't set up four live ghosts at a right-hand exit. This stays (code).
+- **CTW SMS 783c093:** not built, for the same reason.
+- **CTW animation clocks:** frame-by-frame tile timing in game was not measured.
+- **Sound tests (12 tracks / 52 SFX), room count, physics measurements:** not run. These stay (code).
+- **Lag and shop-exit rows 53/57/59/62:** not run.
+
 ## Differences that look like bugs (or unowned drift)
 
 1. **SV Genesis has no pause map. CONFIRMED (run).** The MD pause screen is only PAUSED / SELECT: SAVE & QUIT, with no map and no stats. Since MD has no `pausemap.c`, the `stat_of` bug is **REFUTED** there: the code is absent.
@@ -230,7 +246,7 @@ Not settled in this pass:
 5. **The MD sync point (45efdc6) is behind DOS/95 (22bd670).** Any SNES change between those two commits is missing on MD, except hand forward-ports such as the Field fix. That may include cgram-uninit. Diff the two SNES commits to settle it.
 6. **CTW SMS bends/duty: FIXED since (code).** VRUN_CTW_SMS_dev 783c093 builds from live VRUN a36dd5e with bend decoders and the duty opcode. Nested is now the CTW version without duty (its only ROM is from 2026-11-07). Original note: The fab2c template predates them, so new `.flp` music written on the NES will sound different on SMS. The fence reports it, but the ledger should track it.
 7. **MMC3 animated tiles share one 83 ms clock.** On m30, SMS and Nested each anim keeps its own speed. This is forced by the hardware, but the base now looks different from the other versions.
-8. **The CTW title tunnel is on MMC3 and SMS but not on mapper 30 or Nested.** Nested is still built from m30; the move to MMC3 is planned.
+8. **The CTW title tunnel is on MMC3 and SMS but not on mapper 30 or Nested. CONFIRMED (run, pass 3).** Nested is still built from m30; the move to MMC3 is planned.
 9. **Lag:**
    - CTW SMS lags 9.1 frames per 1000; NES has 0. The HUD band causes about 40% of it.
    - Super VRUN MD runs about 0.91 game ticks per frame vs 1.00 on SNES.
