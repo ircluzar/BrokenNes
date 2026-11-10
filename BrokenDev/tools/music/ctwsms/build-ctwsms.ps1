@@ -10,6 +10,7 @@
   to its title screen and plays the song with its real engine. The manifest gives each array's ROM offset (fab2c's FAR_ address =
   bank * 16384 + offset = the file offset), the region size and the commits. Exit 0 when written. Run it with pwsh (PowerShell 7: SHA256.HashData).
   Version 2 (2026-11-10): the live VRUN tree (fab2c translates the bend decoders) and the title song regenerated with VRUN's bend + duty decoders (regen_decoders.py).
+  Version 3 (2026-11-10): the game is translated from the MMC3 main build (VRUN_CTW_SMS_dev tools/fab2c.json: mapper_mmc3.fab + snes_pad_stub_mmc3.fab), not mapper 30.
 #>
 param([string]$Game = 'C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_CTW_SMS_dev',
       [string]$Vrun = 'C:\Users\philt\OneDrive\Documents\PROJECTS\VRUN_Nes_Dev\sys0\simulations\VRUN',
@@ -59,7 +60,7 @@ $hdr = [IO.File]::ReadAllText((Join-Path $build 'gen\fab_game.h'))
 $bytes = [IO.File]::ReadAllBytes($rom.FullName)
 $sha = { param($b) -join ([Security.Cryptography.SHA256]::HashData($b) | ForEach-Object { $_.ToString('x2') }) }
 $m = @('# BrokenNes2 .flp test ROM (CTW SMS): the game itself, its title song''s four streams padded. Made by BrokenDev/tools/music/ctwsms/build-ctwsms.ps1. Offsets are ROM file offsets.',
-    'format = bn2-flp-ctwsms', 'version = 2', 'decoders = bends square1 square2 triangle; duty square1 square2',
+    'format = bn2-flp-ctwsms', 'version = 3', 'decoders = bends square1 square2 triangle; duty square1 square2', 'source = the MMC3 main build (main.fab + mapper_mmc3.fab, fab2c.json)',
     "game = VRUN_CTW_SMS_dev $((& git -c safe.directory=* -C $Game rev-parse --short HEAD).Trim())",
     "vrun = $(if ($Commit) { (& git -c safe.directory=* -C $Vrun rev-parse --short $Commit).Trim() + ' (tracked src + engine), untracked generated files of ' } else { 'the live tree at ' })$((& git -c safe.directory=* -C $Vrun rev-parse --short HEAD).Trim())", "song = $Song")
 foreach ($ch in 'square1', 'square2', 'triangle', 'noise') {

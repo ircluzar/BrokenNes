@@ -28,7 +28,8 @@ public static class CtwSmsMutants { public const int SlidesDropped = 4096; }
 public static class CtwSmsBackend
 {
     /// <summary>2 (2026-11-10): the template's title song has VRUN's bend + duty decoders. A version-1 template (plain decoders) would read a bend as the loop: refused.</summary>
-    public const int TemplateVersion = 2;
+    /// <summary>3 (2026-11-10): the game translated from the MMC3 main build (main.fab + mapper_mmc3.fab); same layout as 2.</summary>
+    public const int TemplateVersion = 3;
     public const double Fps = 3579545.0 / (228 * 262), NesFps = 1789773.0 / (262.0 * (341.0 / 3.0));
     public static readonly string[] Names = ["tone 1 (square 1)", "tone 2 (square 2)", "tone 3 (triangle)", "noise"];
     /// <summary>nes_apu.c's level -> attenuation (tools/gen_tables.py vol2att).</summary>
