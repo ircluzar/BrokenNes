@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nano SMS</title>
+<style>
+:root{--bg:#1d1d24;--ink:#e8e8f0;--mid:#3a3a52;--lite:#c8102e;--panel:#2a2a38}
+*{box-sizing:border-box}
+body{margin:0;padding:16px;background:var(--bg);color:var(--ink);font:14px/1.4 ui-monospace,Consolas,monospace}
+h1{margin:0 0 4px;font-size:22px}h2{font-size:15px;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.08em}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+button,select,input{font:inherit;color:var(--ink);background:var(--panel);border:2px solid var(--ink);border-radius:4px;padding:4px 8px;cursor:pointer}
+button.on{background:var(--ink);color:var(--panel)}
+.panel{border:2px solid var(--ink);border-radius:6px;padding:10px;margin-top:8px;background:#24242f}
+#keys{display:flex;user-select:none;touch-action:none;overflow-x:auto}
+#keys div{width:34px;height:110px;border:2px solid var(--ink);margin-right:-2px;background:#f4f4f8;color:#111;display:flex;align-items:flex-end;justify-content:center;font-size:11px}
+#keys div.black{background:var(--mid);color:#f4f4f8;height:70px;width:26px;margin:0 -13px;z-index:1;position:relative}
+#keys div.down{background:var(--lite)}
+#drop{border:3px dashed var(--ink);border-radius:8px;padding:18px;text-align:center}
+#drop.hover{background:var(--lite)}
+.meter{display:inline-block;width:110px;margin-right:8px}
+.meter b{display:block;height:10px;background:var(--ink);width:0}
+canvas{border:2px solid var(--ink);background:#e0f8d0;max-width:100%;touch-action:none}
+small{opacity:.8}
+</style>
+</head>
+<body>
+<h1>Nano SMS</h1>
+<div>The Master System / Game Gear sound chip (SN76489, BrokenNes's own) as a web synth and MIDI player. <small>Keys: A W S E D F T G Y H U J K = one octave; Z / X octave.</small></div>
+
+<h2>Synth</h2>
+<div class="row"><label>Preset <select id="preset"></select></label> <span id="pdesc"></span></div>
+<div class="row" style="margin-top:6px"><label>Volume <input id="vol" type="range" min="0" max="4" step="0.1" value="1.5"></label>
+  <label><input id="gg" type="checkbox"> Game Gear (stereo pan)</label> <label><input id="mono" type="checkbox"> mono</label> <label>internal rate <select id="divide"><option value="1">full</option><option value="2">/2</option><option value="4">/4</option></select></label>
+  <button id="panic">Panic</button></div>
+<div id="keys" style="margin-top:8px"></div>
+<div class="row" style="margin-top:8px" id="meters"></div>
+
+<h2>Sound effects</h2>
+<div class="row" id="sfx"></div>
+
+<h2>MIDI file</h2>
+<div id="drop">Drop a <b>.mid</b> here (and its <b>.json</b> sidecar, format nano-sms-sidecar), or <input id="file" type="file" accept=".mid,.midi,.json" multiple></div>
+<div class="row" style="margin-top:6px"><button id="play">Play</button><button id="pause">Pause</button><button id="stop">Stop</button>
+  <label><input id="loop" type="checkbox"> loop</label> <label>tempo <input id="tempo" type="range" min="0.5" max="2" step="0.05" value="1"></label>
+  <label>chips <select id="chips"><option value="channel">one per channel (as in FL)</option><option value="shared">one shared (4 voices)</option></select></label>
+  <span id="songinfo">no song</span></div>
+<div class="row"><input id="seek" type="range" min="0" max="1" step="0.01" value="0" style="flex:1"></div>
+
+
+<script src="../dist/nano-sms.js"></script>
+<script>
+const G = BrokenNesNanoSMS;
+let synth = null, song = null, songData = null, sidecar = null;
+const $ = (id) => document.getElementById(id);
+async function ensure() {
+  if (synth) return synth;
+  synth = await G.create({ volume: Number($('vol').value), mono: $('mono').checked, divide: Number($('divide').value), gameGear: $('gg').checked });
+  synth.onactivity = (a) => {
+    a.channels.forEach((c, i) => { meters[i].style.width = (c.active ? c.level / 15 * 100 : 0) + '%'; });
+    if (a.song && song && !seeking) { $('seek').value = a.song.position / song.duration; $('songinfo').textContent = `${a.song.position.toFixed(1)} / ${song.duration.toFixed(1)} s, channels ${song.channels.join(', ')}`; }
+  };
+  if (songData) loadSong();
+  return synth;
+}
+async function rebuild() { if (synth) { await synth.dispose(); synth = null; song = null; } await ensure(); }
+for (const id of ['mono', 'divide', 'gg']) $(id).onchange = rebuild;
+$('vol').oninput = () => synth && synth.setParam('volume', Number($('vol').value));
+$('panic').onclick = () => synth && synth.panic();
+
+// presets
+const sel = $('preset');
+for (const p of G.presets) { const o = document.createElement('option'); o.value = p.name; o.textContent = `${p.program}  ${p.label} (${p.kind})`; sel.appendChild(o); }
+const showDesc = () => { const p = G.presets.find(x => x.name === sel.value); $('pdesc').textContent = p ? p.desc : ''; };
+sel.onchange = showDesc; showDesc();
+
+// meters
+const meters = [];
+['tone 1', 'tone 2', 'tone 3', 'noise'].forEach(n => { const m = document.createElement('span'); m.className = 'meter'; m.innerHTML = `${n}<b></b>`; $('meters').appendChild(m); meters.push(m.querySelector('b')); });
+
+// keyboard
+let octave = 4; const held = new Map();
+const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B', 'C'], keyMap = 'awsedftgyhujk';
+for (let i = 0; i < 13; i++) { const d = document.createElement('div'); d.className = names[i].includes('#') ? 'black' : ''; d.textContent = names[i]; d.dataset.i = i; $('keys').appendChild(d); }
+async function down(i, el) { await ensure(); if (held.has(i)) return; held.set(i, synth.noteOn(12 * (octave + 1) + i, 1, { preset: sel.value })); el && el.classList.add('down'); }
+function up(i, el) { const h = held.get(i); if (h) { h.off(); held.delete(i); } el && el.classList.remove('down'); }
+$('keys').onpointerdown = (e) => { const el = e.target.closest('div[data-i]'); if (el) { down(+el.dataset.i, el); el.onpointerup = el.onpointerleave = () => up(+el.dataset.i, el); } };
+const keyEl = (i) => $('keys').children[i];
+addEventListener('keydown', (e) => { if (e.repeat || e.target.tagName === 'INPUT') return; const i = keyMap.indexOf(e.key.toLowerCase()); if (i >= 0) down(i, keyEl(i)); if (e.key === 'z') octave = Math.max(1, octave - 1); if (e.key === 'x') octave = Math.min(7, octave + 1); });
+addEventListener('keyup', (e) => { const i = keyMap.indexOf(e.key.toLowerCase()); if (i >= 0) up(i, keyEl(i)); });
+
+// sound effects: the one-shot presets
+for (const p of G.presets.filter(p => ['coin', 'jump', 'laser', 'powerup', 'blip', 'explosion', 'hit', 'kick', 'snare', 'hat', 'crash', 'buzz'].includes(p.name))) {
+  const b = document.createElement('button'); b.textContent = p.label; b.title = p.desc; b.onclick = async () => (await ensure()).play(p.name); $('sfx').appendChild(b);
+}
+
+// MIDI: drop zone, transport
+function loadSong() {
+  try { song = synth.loadMidi(songData, { sidecar, chips: $('chips').value, loop: $('loop').checked }); song.onend = () => $('play').classList.remove('on'); $('songinfo').textContent = `${song.duration.toFixed(1)} s, channels ${song.channels.join(', ')}${sidecar ? ', with sidecar' : ''}`; }
+  catch (e) { $('songinfo').textContent = 'cannot load: ' + e.message; song = null; }
+}
+async function takeFiles(files) {
+  for (const f of files) {
+    if (/\.json$/i.test(f.name)) sidecar = await f.text();
+    else songData = await f.arrayBuffer();
+  }
+  if (songData) { await ensure(); loadSong(); }
+}
+const drop = $('drop');
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('hover'); };
+drop.ondragleave = () => drop.classList.remove('hover');
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('hover'); takeFiles([...e.dataTransfer.files]); };
+$('file').onchange = (e) => takeFiles([...e.target.files]);
+$('play').onclick = async () => { await ensure(); if (song) { song.play(); $('play').classList.add('on'); } };
+$('pause').onclick = () => { if (song) { song.pause(); $('play').classList.remove('on'); } };
+$('stop').onclick = () => { if (song) { song.stop(); $('play').classList.remove('on'); } };
+$('loop').onchange = () => song && song.loop($('loop').checked);
+$('tempo').oninput = () => song && song.tempo(Number($('tempo').value));
+$('chips').onchange = () => { if (song && synth) loadSong(); };
+let seeking = false;
+$('seek').onpointerdown = () => seeking = true;
+$('seek').onchange = () => { seeking = false; if (song) song.seek(Number($('seek').value) * song.duration); };
+
+</script>
+</body>
+</html>

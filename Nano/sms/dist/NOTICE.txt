@@ -1,0 +1,7 @@
+BrokenNes Nano SMS 0.1.0
+The Master System / Game Gear sound chip (SN76489) as BrokenNes plays it, as a web synth and MIDI player. Part of BrokenNes (Digital Lifeform
+License 1.1; LICENSE.txt in the BrokenNes repository). Source: Nano/sms/src; built by Nano/sms/build.mjs.
+
+The sound chip (src/chip.js) is a transcription of BrokenNes's Windows/NesEmulator/sega/Sn76489.cs and BandLimitedMixer.cs, written for
+BrokenNes from the SMS Power SN76489 documentation (Maxim) and the Sega Game Gear Hardware Reference Manual (see sega/THIRD_PARTY_NOTICES.md).
+No third-party emulator code is in it. The presets, the engine, the MIDI player and the demos were written for BrokenNes.
