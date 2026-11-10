@@ -44,6 +44,7 @@ internal static class MidiModel
             if (wait > 0) wait--;
             if (wait == 0)
             {
+                if (kind == 0 && stream[ptr] == 0xD3) ptr += 2;                       // the duty opcode: read before the frame's opcode, for free (VRUN's duty decoder)
                 int op = stream[ptr];
                 if (op < 0x80)
                 {

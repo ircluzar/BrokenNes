@@ -4,6 +4,8 @@
 //               VRUN NES back end makes of it (channels, keys, levels, bends, the caveats for every part the game cannot play)
 //   fl-pitch    per frame, the MIDI file the back end wrote plays the pitch FL plays (worked out here from the song model alone, apart from the back end's code): note, key, bend
 //   engine      round 7's engine check on each song: the ROM the plugin builds plays the converter's streams frame for frame (three negative controls), and its bends follow the MIDI
+//   duty        each square's pulse duty: the back end writes the instances' Duty as CC 14, the converter starts the square's stream with the duty opcode 0xD3 when it is
+//               not 50% (and only then), and the sound-test ROM's $4000/$4004 writes carry that duty in bits 6-7 on every sounding write (read from the machine's APU write tap)
 //   rom         each song as a sound-test ROM (with --out: written there, with its facts), sha256 printed
 // The songs folder defaults to the user's Reverse Coaster folder (read only), else the repository's copy; NOT RUN when neither has a .flp. Deliberate bugs in the back end (FlpMutants) must each be caught.
 using System.Diagnostics;
@@ -30,6 +32,7 @@ internal static class FlpChecks
         new("synthetic", "a project written here: the reader's model and the VRUN NES back end's file and caveats", Synthetic),
         new("fl-pitch", "the MIDI the back end writes plays FL's pitch (from the model alone), frame by frame, on every NES channel", FlPitch),
         new("engine", "the sound-test ROM of each song plays the converter's streams frame for frame and its bends follow the MIDI", Engine),
+        new("duty", "each square's Duty reaches the MIDI (CC 14), the streams (0xD3 when not 50%) and the ROM's $4000/$4004 writes", Duty),
         new("rom", "each song becomes a sound-test ROM (round 7's template), facts and caveats said", Rom),
         new("sv-synthetic", "Super VRUN back end (SNES, WideMess, MD, DOS, 95): programs, noise keys, levels, pan, pitch, per-engine fence lines", SvChecks.Synthetic),
         new("sv-fence", "Super VRUN fence: each limit broken on purpose is reported OVER (voices, noise, range, instances, instruments, empty song)", SvChecks.Fence),
@@ -180,7 +183,8 @@ internal static class FlpChecks
         r.Expect(tri.Count == 2 && tri[0].Key == 48, $"triangle: {string.Join(" ", tri)} (key 60 with Coarse -12 = 48)");
         r.Expect(on.Count(x => x.Ch == 9) == 4 && on.Where(x => x.Ch == 9).All(x => x.Key >> 4 == 3), $"noise hits: {string.Join(" ", on.Where(x => x.Ch == 9))} (4 expected, keys $30-$3F = the period index)");
         r.Expect(v.Caveats.Any(c => c.Contains("softer than full level")), "no caveat for the soft noise (Volume 0.5)");
-        r.Expect(v.Caveats.Any(c => c.Contains("Duty 25%")), "no caveat for the lead's 25% duty");
+        r.Expect(!v.Caveats.Any(c => c.Contains("Duty")), "a caveat for the lead's 25% duty (VRUN plays it now)");
+        r.Expect(v.Parts.FirstOrDefault(p => p.NesChannel == 0)?.Duty == 1, "the lead's part does not carry its 25% duty");
         r.Expect(v.Caveats.Any(c => c.Contains("ROM mode")), "no caveat for the ROM-mode instance");
         r.Expect(v.Caveats.Any(c => c.Contains("GB instrument")), "no caveat for the Game Boy instance");
         r.Expect(v.Caveats.Any(c => c.Contains("is not BrokenNes2")), "no caveat for the sampler");
@@ -322,6 +326,45 @@ internal static class FlpChecks
         }
     }
 
+    // ---- pulse duty ----
+
+    public static void Duty(ImodelReport r)
+    {
+        if (NoSongs(r)) return;
+        var t = MidiChecks.BundledTemplate();
+        int nonHalf = 0;
+        foreach (var (name, v, b, rom) in Roms(r))
+        {
+            var model = FlpSong.Read(File.ReadAllBytes(Path.Combine(SongsDir, name + ".flp")));
+            var notes = new List<string>();
+            foreach (var p in v.Parts.Where(p => p.NesChannel <= 1))
+            {
+                // what FL plays: the Duty of the first instance on that square (the back end's rule)
+                int fl = model.Instruments.Where(i => i.Bn2 is { Mode: "direct", Console: 0 } x && x.Channel == p.NesChannel && i.Notes.Count > 0).Select(i => i.Bn2!.Param(5) & 3).FirstOrDefault(2);
+                r.Expect(p.Duty == fl, $"{name} {VrunNesBackend.NesNames[p.NesChannel]}: the part says duty {p.Duty}, FL's instance has {fl}");
+                // the converter's choice of NES channel: the stream that plays this part
+                int nes = Array.IndexOf(b.Facts.Source, p.NesChannel + 1);
+                if (nes is < 0 or > 1) { r.Warn($"{name}: {VrunNesBackend.NesNames[p.NesChannel]} is not played on a square (converter's choice)"); continue; }
+                var st = b.Channels[nes];
+                bool op = st.Length >= 2 && st[0] == Midi2Nes.OpDuty;
+                r.Expect(op == (fl != 2), $"{name} {MusicTemplate.ChannelNames[nes]}: stream starts {(op ? $"with $D3 ${st[1]:X2}" : "without $D3")}, duty {VrunNesBackend.DutyNames[fl]}%");
+                if (op) r.Expect(st[1] == (0x30 | fl << 6), $"{name} {MusicTemplate.ChannelNames[nes]}: $D3 operand ${st[1]:X2}, ${0x30 | fl << 6:X2} expected");
+                if (fl != 2) nonHalf++;
+                // the ROM: every write to the square's volume register that sounds (volume bits non-zero) has the duty in bits 6-7
+                var m = new NesEmulator.Plugin.NesAudioMachine(rom, null, "FIX", "FIX", "FIX") { HostSampleRate = 44100 };
+                int reg = nes * 4, sounding = 0, wrong = 0; byte firstWrong = 0;
+                m.RecordTap = (a, val, _) => { if (a == 0x4000 + reg && (val & 0x0F) != 0) { sounding++; if (val >> 6 != fl) { if (wrong++ == 0) firstWrong = val; } } };
+                var buf = new float[4096];
+                int frames = Math.Min(b.Facts.LoopFrames + 120, 3000);
+                for (int f = 0; f < frames; f++) { m.RunFrame(); while (m.ReadAvailable(buf) > 0) { } if (m.Crashed) { r.Failures.Add($"{name}: the ROM crashed: {m.CrashInfo}"); break; } }
+                r.Expect(sounding > 0 && wrong == 0, $"{name} ${0x4000 + reg:X4}: {wrong} of {sounding} sounding writes not at duty {VrunNesBackend.DutyNames[fl]}% (first ${firstWrong:X2})");
+                notes.Add($"{MusicTemplate.ChannelNames[nes]} {VrunNesBackend.DutyNames[fl]}%: {(op ? $"$D3 ${st[1]:X2}" : "no opcode")}, ${0x4000 + reg:X4} {sounding - wrong}/{sounding} sounding writes at that duty");
+            }
+            r.Note($"{name,-14} " + string.Join("; ", notes));
+        }
+        r.Expect(nonHalf > 0, "no square of the songs plays a duty other than 50%: the check proves nothing about the opcode");
+    }
+
     public static void Rom(ImodelReport r)
     {
         if (NoSongs(r)) return;
@@ -353,6 +396,7 @@ internal static class FlpChecks
         new(FlpMutants.OldestNoteWins, "the oldest held note keeps the channel", "fl-pitch"),
         new(FlpMutants.TuningIgnored, "the instance's Coarse/Fine are ignored", "synthetic"),
         new(FlpMutants.ReaderDropsLastNote, "the C# reader drops each pattern's last note", "identity"),
+        new(FlpMutants.DutyIgnored, "the squares' Duty is not written (50% in the game)", "duty"),
         new(SvMutants.VoiceFenceBlind, "the Super VRUN fence does not see too many voices", "sv-fence"),
         new(SvMutants.DutyAs50, "the Super VRUN back end plays every pulse at 50%", "sv-synthetic"),
         new(SvMutants.ShortNoiseAsLong, "short noise written as long noise", "sv-synthetic"),

@@ -181,7 +181,8 @@ public static class SongConvert
 
         SongResult result;
         // bends on (a no-op for a song without bends); the deliberate bug BendsIgnored converts as round 7 did
-        var options = new ConvertOptions { Bends = !MusicMutate.Has(MusicMutate.BendsIgnored) };
+        // pulse duty on (MIDI CC 14 per square; a song without it converts exactly as without)
+        var options = new ConvertOptions { Bends = !MusicMutate.Has(MusicMutate.BendsIgnored), Duty = true };
         try { result = Midi2Nes.ConvertSong(file, TrackName, facts.Log.Add, options); }
         catch (Exception e) when (e is FormatException or IndexOutOfRangeException or ArgumentOutOfRangeException or ArgumentException or InvalidOperationException or OverflowException)
         { problem = $"the converter could not convert it ({e.Message.TrimEnd('.')})"; return null; }
@@ -247,7 +248,7 @@ public static class SongConvert
         {
             byte op = s[i];
             o[i] = f(op, i, s);
-            if (op == 0xD0) i += 1;
+            if (op is 0xD0 or Midi2Nes.OpDuty) i += 1;
             else if (op is Vrun.Audio.Bends.OpPitch or Vrun.Audio.Bends.OpSlide) i += 2;
             else if (op == 0xFF) break;
         }
@@ -266,7 +267,7 @@ public static class SongConvert
                 int v = -(short)(s[i + 1] | s[i + 2] << 8);
                 o[i + 1] = (byte)v; o[i + 2] = (byte)(v >> 8);
             }
-            if (op == 0xD0) i += 1;
+            if (op is 0xD0 or Midi2Nes.OpDuty) i += 1;
             else if (op is Vrun.Audio.Bends.OpPitch or Vrun.Audio.Bends.OpSlide) i += 2;
             else if (op == 0xFF) break;
         }

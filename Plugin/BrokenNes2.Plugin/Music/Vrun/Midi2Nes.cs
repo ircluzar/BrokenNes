@@ -22,6 +22,9 @@ namespace Vrun.Audio;
 ///   0xD0 xx    wait xx (1-255) frames
 ///   0xD1 lo hi pitch: play period hi:lo now (a note-on at an exact period)
 ///   0xD2 lo hi slide: add hi.lo (signed 8.8) to the period every frame
+///   0xD3 dd    duty (squares): $4000/$4004 high nibble dd ($30 12.5%,
+///              $70 25%, $B0 50%, $F0 75%); only ever the first opcode of
+///              a stream, read for free before the frame's opcode
 ///   0xFF       end: loop to the start of this channel's stream
 /// </code>
 /// <para>0xD1/0xD2 are the pitch-bend opcodes, written only when the caller
@@ -55,6 +58,35 @@ public static class Midi2Nes
     /// touching this.
     /// </summary>
     public const int MaxChannelBytes = 1280;
+
+    /// <summary>The duty opcode (squares only, first opcode of a stream: see
+    /// <see cref="ConvertOptions.Duty"/>).</summary>
+    public const int OpDuty = 0xD3;
+
+    /// <summary>The MIDI controller that carries a square's duty (CC 14, undefined
+    /// in the MIDI spec): value / 32 = 0 12.5%, 1 25%, 2 50%, 3 75%.</summary>
+    public const int DutyCc = 14;
+
+    public static readonly string[] DutyNames = { "12.5%", "25%", "50%", "75%" };
+
+    /// <summary>The duty (0-3) of each MIDI channel that sets one: its first
+    /// <see cref="DutyCc"/> (earliest tick, then track order).</summary>
+    public static Dictionary<int, int> FindDuty(MidiFile midi)
+    {
+        var best = new Dictionary<int, (long Tick, int Duty)>();
+        foreach (var events in midi.Tracks)
+        {
+            long tick = 0;
+            foreach (var ev in events)
+            {
+                tick += ev.DeltaTime;
+                if (ev.Command == MidiFile.ControlChange && ev.Status < 0xF0 && ev.Data1 == DutyCc)
+                    if (!best.TryGetValue(ev.Channel, out var b) || tick < b.Tick)
+                        best[ev.Channel] = (tick, (ev.Data2 >> 5) & 3);
+            }
+        }
+        return best.ToDictionary(kv => kv.Key, kv => kv.Value.Duty);
+    }
 
     // ── Period table ─────────────────────────────────────────────────────
 
@@ -832,6 +864,16 @@ public static class Midi2Nes
         var final = new byte[4][];
         var untruncatedLengths = new int[4];
         var truncated = new bool[4];
+        // Duty (options.Duty only): per square, the duty its MIDI channel sets; 2 (50%) = no opcode.
+        var duty = new int[] { 2, 2, 2, 2 };
+        if (options.Duty)
+        {
+            var byMidi = FindDuty(midi);
+            foreach (var kv in map)
+                if (kv.Value is 0 or 1 && byMidi.TryGetValue(kv.Key, out int d))
+                    duty[kv.Value] = d;
+            log($"[midi2nes] duty ({name}): square1={DutyNames[duty[0]]}, square2={DutyNames[duty[1]]}");
+        }
         for (int nes = 0; nes < 4; nes++)
         {
             untruncatedLengths[nes] = streams.TryGetValue(nes, out var s0) ? s0.Count : 1;
@@ -839,7 +881,8 @@ public static class Midi2Nes
             // silent loop (not a bare 0xFF), or it would re-decode its loop
             // opcode every frame AND break the shared loop period.
             var data = streams.TryGetValue(nes, out var s) ? s : RetimeForCap1(new List<int> { 0xFF }, totalFrames, null, log);
-            var (cut, wasTruncated) = TruncateStream(data, MaxChannelBytes, totalFrames);
+            int dutyBytes = duty[nes] != 2 ? 2 : 0;
+            var (cut, wasTruncated) = TruncateStream(data, MaxChannelBytes - dutyBytes, totalFrames);
             truncated[nes] = wasTruncated;
             if (wasTruncated)
                 log($"[midi2nes] truncated {ChannelNames[nes]} to {cut.Count} bytes, " +
@@ -847,6 +890,8 @@ public static class Midi2Nes
                     $"(exceeded MAX_CHANNEL_BYTES={MaxChannelBytes} - see truncate_stream()'s own header)");
             if (cut.Count == 0)
                 cut = new List<int> { 0xFF };
+            if (dutyBytes > 0)
+                cut = new List<int> { OpDuty, 0x30 | duty[nes] << 6 }.Concat(cut).ToList();
             final[nes] = cut.Select(b => (byte)b).ToArray();
         }
         if (options.Bends)
@@ -872,10 +917,14 @@ public static class Midi2Nes
                 return false;
             if (b == Bends.OpPitch || b == Bends.OpSlide)
                 return true;
-            i += b == 0xD0 ? 2 : 1;
+            i += b == 0xD0 || b == OpDuty ? 2 : b == Bends.OpPitch || b == Bends.OpSlide ? 3 : 1;
         }
         return false;
     }
+
+    /// <summary>True when a stream starts with the duty opcode (0xD3) - the
+    /// decoder that plays it must be a duty decoder.</summary>
+    public static bool HasDutyOp(IReadOnlyList<byte> stream) => stream.Count >= 2 && stream[0] == OpDuty;
 }
 
 /// <summary>One converted song: the 4 channel streams exactly as baked into
