@@ -44,8 +44,8 @@
     },
     "ctw_sms": {
      "status": "has",
-     "detail": "tools/fab2c.py translates m30 main.fab to C + nes_shim.c virtual NES; S2 final 2026-11-06",
-     "evidence": "VRUN_CTW_SMS_dev/tools/fab2c.json (code); memory project_sega_vrun_ports (note)"
+     "detail": "tools/fab2c.py translates the MMC3 main build (main.fab + mapper_mmc3.fab) to C + nes_shim.c virtual NES since 2026-11-10 (e693044); generated code identical to the m30 translation",
+     "evidence": "VRUN_CTW_SMS_dev/tools/fab2c.json (code)"
     },
     "ctw_nested_snes": {
      "status": "has",
@@ -2016,8 +2016,8 @@
     },
     "ctw_sms": {
      "status": "has",
-     "detail": "tunnel present (cropped to 192 lines: the copyright line is off screen)",
-     "evidence": "headless MCP, Releases/VRUN_CTW_SMS final3 (11-07), f300, scratchpad/cvl_runs/ctw_sms_title_f300.png (run; not the 783c093 build, which could not be built here)"
+     "detail": "tunnel present (cropped to 192 lines: the copyright line is off screen); comes back after save & quit (fixed e693044: title_leaving stayed set)",
+     "evidence": "headless MCP, Releases/VRUN_CTW_SMS final3 (11-07), f300, scratchpad/cvl_runs/ctw_sms_title_f300.png (run; not the 783c093 build, which could not be built here); e693044 (run)"
     },
     "ctw_nested_snes": {
      "status": "missing",
@@ -2074,8 +2074,8 @@
     },
     "ctw_sms": {
      "status": "has",
-     "detail": "tile slot re-uploads (m30 model)",
-     "evidence": "nes_shim.c:614-628"
+     "detail": "tile slot re-uploads, each anim its own speed (fab2c.json ct_overrides CHR_RAM_ANIMS = true over the MMC3 layer's false)",
+     "evidence": "VRUN_CTW_SMS_dev e693044 (code)"
     },
     "ctw_nested_snes": {
      "status": "has",
@@ -3060,8 +3060,8 @@
     },
     "ctw_sms": {
      "status": "partial",
-     "detail": "lag 9.1/1000 frames (4-enemy rooms worse); HUD band costs ~40%; user accepted as final",
-     "evidence": "memory S2 speed round 4 (run)"
+     "detail": "lag 7.1/1000 frames (S2_SWEEP, 167 of 168 rooms, MMC3 source e693044; was 9.1); worst room 138 = 48 frames/300; sweep stalls leaving the shop at room 147 (test harness)",
+     "evidence": "headless BrokenNes sweep 2026-11-10 (run)"
     },
     "ctw_nested_snes": {
      "status": "partial",
@@ -3176,8 +3176,8 @@
     },
     "ctw_sms": {
      "status": "has",
-     "detail": "start-timing calibrated (NES_TITLE_FRAME 41); fab2c layout changes break it",
-     "evidence": "memory S2"
+     "detail": "start-timing calibrated to the MMC3 build (NES_TITLE_FRAME 30, was 41 for m30); play-compare Start at 109 = map 11 on both",
+     "evidence": "VRUN_CTW_SMS_dev e693044; play-compare 2026-11-10 (run)"
     },
     "ctw_nested_snes": {
      "status": "unknown",
@@ -3813,9 +3813,9 @@
      "evidence": ""
     },
     "ctw_sms": {
-     "status": "partial",
-     "detail": "also translated from m30 (no MMC3 tunnel anims)",
-     "evidence": ""
+     "status": "has",
+     "detail": "moved to the MMC3 source 2026-11-10 (e693044): fab2c translates mapper_mmc3.fab; SMS keeps its own tunnel + anim model",
+     "evidence": "VRUN_CTW_SMS_dev e693044 (code)"
     },
     "ctw_nested_snes": {
      "status": "has",
