@@ -46,9 +46,12 @@ $bd = Split-Path -Parent (Split-Path -Parent $here)
 # square 2 and triangle decoders are VRUN's bend decoders (roster "bend_decoders": "all"), so a song whose streams hold bend opcodes plays.
 # A version-1 template has the plain decoders, which read a bend opcode as the loop: the plugin refuses it.
 $FormatName = 'bn2-musictest'
-$FormatVersion = 2
-$Opcodes = 'vrun-music-2'
+# Version 3 (2026-11-10, pulse duty): the opcode format is vrun-music-3 (adds the converter's 0xD3 duty, MIDI CC 14), and the template's square
+# decoders are also VRUN's duty decoders (roster "duty_decoders": "all"). A version-2 template reads 0xD3 as the loop or a bend: refused.
+$FormatVersion = 3
+$Opcodes = 'vrun-music-3'
 $BendChannels = @('square1', 'square2', 'triangle')
+$DutyChannels = @('square1', 'square2')
 $Region = 1280                                   # Midi2Nes.MaxChannelBytes
 $Channels = @('square1', 'square2', 'triangle', 'noise')
 $Fillers = @{ square1 = 0xA1; square2 = 0xA2; triangle = 0xA3; noise = 0xA4 }   # pad_streams.py
@@ -131,7 +134,7 @@ $title = if ($Mode -eq 'template') { $TemplateTitle } else { $Name.ToUpperInvari
 # Pitch bends: the plugin converts every song with bends on (a song without bends converts exactly as without), so both modes ask VRUN's build
 # for them. The template gets the bend decoders on its three tonal channels whatever its own song holds (any song can be patched in); a full
 # rebuild gets them where its streams have bend opcodes, as the game would.
-$bendKeys = if ($Mode -eq 'template') { ', "bends": true, "bend_decoders": "all"' } else { ', "bends": true' }
+$bendKeys = if ($Mode -eq 'template') { ', "bends": true, "bend_decoders": "all", "duty": true, "duty_decoders": "all"' } else { ', "bends": true, "duty": true' }
 [System.IO.File]::WriteAllText((Join-Path $proj 'roster.json'), ('{ "title": "BROKENNES2 MIDI TEST", "tracks": [ {"name": "' + $track + '", "title": "' + $title + '", "midi": "song.mid"' + $bendKeys + '} ] }'), $utf8)
 $basePre = [System.IO.File]::ReadAllText((Join-Path $scratch 'src\audioplayer\prebuild.sh')).Replace("`r`n", "`n")
 
@@ -185,6 +188,11 @@ foreach ($pair in @(@('square1', 'mus_sq1_vel'), @('square2', 'mus_sq2_vel'), @(
     $fn = [regex]::Match($decText, "(?ms)^fn update_$($pair[0])_song\(\)\n(.*?)(?=^fn |\z)")
     if (-not $fn.Success -or $fn.Groups[1].Value -notmatch [regex]::Escape($pair[1])) { Write-Host "the template's update_$($pair[0])_song is not a bend decoder (no $($pair[1])): the VRUN tree at $Vrun has no pitch-bend engine (older than VRUN's merge of audio-bends: point -Vrun / BROKENNES_VRUN at the live VRUN), or build_music.py ignored ""bend_decoders"": ""all"""; exit 1 }
 }
+# ... and its two squares VRUN's duty decoders (they hold mus_<sq>_duty)
+foreach ($pair in @(@('square1', 'mus_sq1_duty'), @('square2', 'mus_sq2_duty'))) {
+    $fn = [regex]::Match($decText, "(?ms)^fn update_$($pair[0])_song\(\)\n(.*?)(?=^fn |\z)")
+    if (-not $fn.Success -or $fn.Groups[1].Value -notmatch [regex]::Escape($pair[1])) { Write-Host "the template's update_$($pair[0])_song is not a duty decoder (no $($pair[1])): the VRUN tree at $Vrun has no pulse-duty engine (point -Vrun / BROKENNES_VRUN at the live VRUN)"; exit 1 }
+}
 # The loop-length constant: built again with two other sentinels, a byte of the template holds the constant's low (high) byte when the three builds hold the three
 # sentinels' low (high) bytes there. (NESFab lays the /strings group out differently when the constant changes, so other bytes move between the builds too: they
 # are counted, not used. Only the template itself, build A, is ever patched, at the offsets found in it.)
@@ -235,6 +243,7 @@ $m = New-Object System.Text.StringBuilder
 [void]$m.Append("version = $FormatVersion`n")
 [void]$m.Append("opcodes = $Opcodes`n")
 [void]$m.Append("bend-decoders = $($BendChannels -join ' ')`n")
+[void]$m.Append("duty-decoders = $($DutyChannels -join ' ')`n")
 [void]$m.Append("region = $Region`n")
 foreach ($ch in $Channels) { [void]$m.Append(("{0} = 0x{1:X6}`n" -f $ch, $sym[$ch][0])) }
 [void]$m.Append(("filler = {0:X2} {1:X2} {2:X2} {3:X2}`n" -f $Fillers.square1, $Fillers.square2, $Fillers.triangle, $Fillers.noise))
