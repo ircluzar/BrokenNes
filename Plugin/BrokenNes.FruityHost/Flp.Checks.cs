@@ -32,6 +32,7 @@ internal static class FlpChecks
         new("synthetic", "a project written here: the reader's model and the VRUN NES back end's file and caveats", Synthetic),
         new("fl-pitch", "the MIDI the back end writes plays FL's pitch (from the model alone), frame by frame, on every NES channel", FlPitch),
         new("engine", "the sound-test ROM of each song plays the converter's streams frame for frame and its bends follow the MIDI", Engine),
+        new("bend-signs", "hand-written streams: positive / negative, sub-unit / whole slides crossing the period's high byte, on square 1, square 2 and the triangle, play exactly in the template", BendSigns),
         new("duty", "each square's Duty reaches the MIDI (CC 14), the streams (0xD3 when not 50%) and the ROM's $4000/$4004 writes", Duty),
         new("rom", "each song becomes a sound-test ROM (round 7's template), facts and caveats said", Rom),
         .. FlpVocChecks.All,     // Vaults GB / Vaults GG / CTW SMS (Flp.Checks.Voc.cs)
@@ -330,6 +331,49 @@ internal static class FlpChecks
         }
     }
 
+    // ---- slide signs (2026-11-10, the FL song "achievements") ----
+
+    /// <summary>Hand-written streams (no song file needed): on square 1, square 2 and the triangle, a pitch then slides of every sign and size the converter writes
+    /// (positive below one period unit, the case that broke: NESFab miscompiled square 2's 16.8 + 8.8 add and added the period's low byte into the high one;
+    /// positive whole, negative below one unit, negative whole), each crossing the period's high byte. The template must play them exactly as the decoder model says,
+    /// and the model with the slides negated must not (the streams really slide).</summary>
+    public static void BendSigns(ImodelReport r)
+    {
+        static byte[] Tonal() =>
+        [
+            0xD1, 0xF0, 0x00, 0xD2, 0x10, 0x00, 0xD0, 0xF0,   // period $0F0, +1/16 a frame for 240 frames: up through $100
+            0xD1, 0x08, 0x02, 0xD2, 0x00, 0x01, 0xD0, 0x20,   // $208, +1 a frame: past $220
+            0xD1, 0x04, 0x03, 0xD2, 0xF0, 0xFF, 0xD0, 0x60,   // $304, -1/16 a frame: down through $300
+            0xD1, 0x10, 0x01, 0xD2, 0x00, 0xFE, 0xD0, 0x20,   // $110, -2 a frame: down through $100
+            0xD1, 0xFC, 0x01, 0xD2, 0x80, 0x00, 0xD0, 0x40,   // $1FC, +1/2 a frame
+            0x80, 0xFF,
+        ];
+        var streams = new[] { Tonal(), Tonal(), Tonal(), new byte[] { 0x80, 0xD0, 0xFF, 0xD0, 0xFF, 0xFF } };
+        int loop = 0xF0 + 0x20 + 0x60 + 0x20 + 0x40 + 1, n = loop - 4;
+        var t = MidiChecks.BundledTemplate();
+        var (_, _, mlb) = MidiFixtures.Bundled();
+        var rom = t.Patch(streams, loop, "bend signs");
+        if (FlpMutants.On(FlpMutants.SlideSignLost))
+        {
+            // the deliberate bug: square 2's slide never gets its sign byte $FF (LDA/LDX/LDY #$FF; STA/STX/STY mus_sq2_vel@2 -> #$00)
+            var m = System.Text.RegularExpressions.Regex.Match(mlb, @"R:([0-9A-Fa-f]{4}):mus_sq2_vel@2:");
+            int planted = 0;
+            if (m.Success)
+            {
+                int zp = Convert.ToInt32(m.Groups[1].Value, 16);
+                for (int i = MusicTemplate.HeaderBytes; i + 3 < rom.Length; i++)
+                    if (rom[i + 1] == 0xFF && rom[i + 3] == zp && (rom[i], rom[i + 2]) is (0xA9, 0x85) or (0xA2, 0x86) or (0xA0, 0x84)) { rom[i + 1] = 0; planted++; }
+            }
+            r.Expect(planted > 0, "bend signs: the deliberate bug found no sign-byte store to plant itself in");
+        }
+        var run = MidiRun.Of(rom, n + MusicTemplate.Preroll + 4, mlb);
+        var sc = MidiModel.Best(streams, run.Latch, n, skip: MidiChecks.Skip);
+        r.Expect(sc.Worst >= 1.0, $"bend signs: the template does not play the slides as the model does: {sc.Agree}/{sc.Of}; {string.Join("; ", sc.Mismatches.Take(3))}");
+        var flipped = MidiModel.ScoreAt(streams, run.Latch, sc.Start, n, MidiChecks.Skip, flipSlides: true);
+        r.Expect(flipped.Worst < 1.0, "bend signs: the model with the slides negated agrees too (the streams do not slide)");
+        r.Note($"bend signs: {sc.Agree}/{sc.Of} field-frames exact (start {sc.Start}); slides negated: {flipped.Agree}/{flipped.Of}");
+    }
+
     // ---- pulse duty ----
 
     public static void Duty(ImodelReport r)
@@ -401,6 +445,7 @@ internal static class FlpChecks
         new(FlpMutants.TuningIgnored, "the instance's Coarse/Fine are ignored", "synthetic"),
         new(FlpMutants.ReaderDropsLastNote, "the C# reader drops each pattern's last note", "identity"),
         new(FlpMutants.DutyIgnored, "the squares' Duty is not written (50% in the game)", "duty"),
+        new(FlpMutants.SlideSignLost, "square 2's slide loses its sign extension in the ROM (the 2026-11-10 NESFab miscompile's class)", "bend-signs"),
         new(SvMutants.VoiceFenceBlind, "the Super VRUN fence does not see too many voices", "sv-fence"),
         new(SvMutants.DutyAs50, "the Super VRUN back end plays every pulse at 50%", "sv-synthetic"),
         new(SvMutants.ShortNoiseAsLong, "short noise written as long noise", "sv-synthetic"),
