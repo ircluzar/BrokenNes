@@ -254,9 +254,33 @@ internal static class ClientTest
         Check("session_ids_unguessable", idShape.IsMatch(s1) && idShape.IsMatch(s2) && s1[(s1.IndexOf('-') + 1)..] != s2[(s2.IndexOf('-') + 1)..], $"{s1}, {s2}");
         Check("list_sessions_masks_ids", listed.Count > 0 && !listed.Contains(s1) && listed.All(x => !idShape.IsMatch(x)), string.Join(" ", listed.Take(4)));
         var lsr = await Call("list_sessions", new { reveal = true }, log: false);
-        Check("list_sessions_reveal", (lsr["sessions"] as JsonArray)?.Any(x => S(x?["session"]) == s1) == true, "reveal:true gives the full ids back");
+        Check("list_sessions_reveal_refused", (lsr["sessions"] as JsonArray)?.All(x => !idShape.IsMatch(S(x?["session"]))) == true && S(lsr["note"]).Contains("no longer"), "reveal:true keeps ids masked");
         var guess = await Call("status", new { session = s1[..s1.IndexOf('-')] });
-        Check("guessed_session_refused", guess.IsError && guess.Text.Contains("no session") && !guess.Text.Contains(s1) && !guess.Text.Contains(s2), guess.Text);
+        Check("guessed_session_refused", guess.IsError && guess.Text.Contains("no session") && guess.Text.Contains("short ids") && !guess.Text.Contains(s1) && !guess.Text.Contains(s2), guess.Text);
+        // typos: the right number with another session's secret (s2's), and a one-character slip in s1's own secret
+        string cross = s1[..s1.IndexOf('-')] + s2[s2.IndexOf('-')..];
+        string slip = s1[..^1] + (s1[^1] == '0' ? '1' : '0');
+        var crossR = await Call("run", new { session = cross, frames = 600 });
+        var sl = await Call("input", new { session = slip, buttons = new[] { "A" }, frames = 600 });
+        var masked = await Call("status", new { session = listed.FirstOrDefault() ?? "h1-00..." });
+        Check("typod_session_refused", crossR.IsError && sl.IsError && crossR.Text.Contains("not yours") && sl.Text.Contains("not yours") && !crossR.Text.Contains(s1) && !sl.Text.Contains(s1) && !crossR.Text.Contains(s2), crossR.Text);
+        Check("masked_session_refused", masked.IsError && masked.Text.Contains("masked"), masked.Text);
+        var ramAfter = Ram(await Call("read_memory", new { session = s1, domain = "RAM", address = 0, length = 2048 }, log: false));
+        Check("refused_calls_left_the_session_alone", ramAfter == r1, "s1's RAM unchanged after the refused run / input");
+        // a second client (its own connection and server, as another Claude Code window): it cannot reach the first client's sessions
+        {
+            var serverArgs2 = new List<string>();
+            if (BrokenDevBridge.RepoOverride is { } repo2) { serverArgs2.Add("--repo"); serverArgs2.Add(repo2); }
+            await using var other = await McpClient.CreateAsync(new StdioClientTransport(new StdioClientTransportOptions { Name = "brokennes2", Command = Environment.ProcessPath!, Arguments = serverArgs2 }));
+            static string Txt(ModelContextProtocol.Protocol.CallToolResult r) => string.Concat(r.Content.OfType<ModelContextProtocol.Protocol.TextContentBlock>().Select(t => t.Text));
+            var oo = await other.CallToolAsync("open_rom", new Dictionary<string, object?> { ["path"] = nes, ["call_stack"] = false });
+            var os = await other.CallToolAsync("status", new Dictionary<string, object?> { ["session"] = s1 });
+            var ownOther = System.Text.Json.Nodes.JsonNode.Parse(Txt(oo))?["session"]?.ToString() ?? "";
+            var osOwn = await other.CallToolAsync("status", new Dictionary<string, object?> { ["session"] = ownOther });
+            Check("second_client_refused", os.IsError == true && Txt(os).Contains("no session") && osOwn.IsError != true, Txt(os));
+            var own = await Call("status", new { session = s1 }, log: false);
+            Check("own_session_still_works", !own.IsError, "each opener still drives its own session");
+        }
         foreach (var x in new[] { s1, s2, s3 }) await Call("close_session", new { session = x });
         var gone = await Call("status", new { session = s1 });
         Check("closed_session_refused", gone.IsError && gone.Text.Contains("no session"), gone.Text);

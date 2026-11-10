@@ -103,12 +103,13 @@ internal static class Tools
         void Add(string name, string desc, JsonObject schema, Func<Args, ToolOut> run, bool ro = false) => t.Add(new ToolDef(name, desc, schema, run, ro));
 
         // ------------------------------------------------------------------------------------------------ sessions
-        Add("list_sessions", "The open sessions (headless and live), with what each runs. Ids are shown masked (other agents sharing this server may own them); pass reveal:true only to recover the id of a session YOU opened.",
-            Schema(("reveal", P("boolean", "show the full ids (default false: masked, e.g. h3-9f...)"), false)),
+        Add("list_sessions", "The open sessions (headless and live), with what each runs. Ids are always masked (h3-9f...): every agent sharing this server sees this list and a session belongs to the caller that opened it, so a masked id cannot drive anything. Keep the id your open_rom / open_project / attach_live returned; if you lost it, open a new session.",
+            Schema(("reveal", P("boolean", "no longer honoured (ids stay masked); accepted so older callers do not fail"), false)),
             a =>
             {
-                bool rv = a.Bool("reveal", false);
-                return new JsonObject { ["sessions"] = J.Arr(Sessions.All.Select(s => { JsonObject d; lock (s.Gate) d = s.Describe(); if (!rv) d["session"] = Sessions.Mask(s.Id); return (JsonNode)d; })) };
+                var r = new JsonObject { ["sessions"] = J.Arr(Sessions.All.Select(s => { JsonObject d; lock (s.Gate) d = s.Describe(); d["session"] = Sessions.Mask(s.Id); return (JsonNode)d; })) };
+                if (a.Bool("reveal", false)) r["note"] = "reveal is no longer honoured: a full id is only ever given to the caller that opened the session";
+                return r;
             }, ro: true);
 
         Add("open_rom",
@@ -175,7 +176,7 @@ internal static class Tools
             a =>
             {
                 string id = a.Req("session");
-                if (!Sessions.Remove(id, out var s) || s == null) throw new ToolError($"no session '{id}'");
+                if (!Sessions.Remove(id, out var s) || s == null) throw new ToolError(Sessions.Refusal(id));
                 lock (s.Gate) s.Close();
                 return new JsonObject { ["closed"] = id, ["kind"] = s.Kind };
             });

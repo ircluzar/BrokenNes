@@ -96,7 +96,28 @@ internal static class Sessions
     public static IEnumerable<Session> All => all.Values.OrderBy(s => s.OpenedUtc);
 
     public static Session Get(string id) =>
-        all.TryGetValue(id, out var s) ? s : throw new ToolError($"no session '{id}' ({all.Count} open, ids not shown: use the id YOUR open_rom / open_project / attach_live returned; an id from list_sessions or another agent belongs to someone else)");
+        all.TryGetValue(id, out var s) ? s : throw new ToolError(Refusal(id));
+
+    /// <summary>
+    /// Why an id does not open a session, without ever naming a real id: an old short id ("h21", before ids were private), a masked id copied
+    /// from list_sessions ("h3-9f..."), a number that is open with a different secret (a typo, or someone else's session), or nothing at all.
+    /// </summary>
+    public static string Refusal(string? id)
+    {
+        id = (id ?? "").Trim();
+        string tail = $" ({all.Count} open; use the id YOUR open_rom / open_project / attach_live returned, in full: a session belongs to the caller that opened it)";
+        if (id.EndsWith("...", StringComparison.Ordinal))
+            return $"no session '{id}': that is a masked id from list_sessions, not a session id; masked ids cannot drive anything" + tail;
+        int d = id.LastIndexOf('-');
+        string counter = d < 0 ? id : id[..d];
+        bool counterOpen = all.Keys.Any(k => { int kd = k.LastIndexOf('-'); return kd > 0 && k[..kd].Equals(counter, StringComparison.OrdinalIgnoreCase); });
+        if (d < 0 && System.Text.RegularExpressions.Regex.IsMatch(id, "^h\\d+$"))
+            return $"no session '{id}': short ids like h21 are no longer accepted, every id ends in a random secret (h21-xxxxxxxx)"
+                + (counterOpen ? "; a session with that number is open but cannot be reached without its secret: if you did not open it, it is another agent's" : "") + tail;
+        if (counterOpen)
+            return $"no session '{id}': session {counter} is open but the secret does not match; it is not yours (or the id was mistyped)" + tail;
+        return $"no session '{id}'" + tail;
+    }
 
     public static bool Remove(string id, out Session? s) => all.TryRemove(id, out s);
 
