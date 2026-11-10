@@ -15,7 +15,8 @@ internal static class FlpSmsChecks
     public static readonly FlpChecks.Check[] All =
     [
         new("ctwsms-synthetic", "CTW SMS: a Master System project written here: the converter's streams and every fence rule it breaks (slides, low notes, detune, other consoles)", SmsSynthetic),
-        new("ctwsms-engine", "CTW SMS: the test ROM (the game itself, its title song replaced) plays what VRUN NES plays, through nes_apu.c's mapping, frame by frame", SmsEngine),
+        new("ctwsms-preset", "CTW SMS presets: Master System PSG tones / white / periodic noise presets (PRS1 written byte by byte) play as their PSG voice; FM-unit, Game Boy, damaged and empty presets OVER", SmsPreset),
+        new("ctwsms-engine","CTW SMS: the test ROM (the game itself, its title song replaced) plays what VRUN NES plays, through nes_apu.c's mapping, frame by frame", SmsEngine),
     ];
 
     internal static byte[] SmsProject() => FlpChecks.Project(150,
@@ -67,6 +68,51 @@ internal static class FlpSmsChecks
         foreach (var l in FlpFence.Lines(v.Fence)) r.Note("    " + l);
         var gbOnly = CtwSmsBackend.Build(FlpSong.Read(FlpVocChecks.GbProject()), "gb-only");
         r.Expect(gbOnly.Fence.Any(l => l.Level == FenceLevel.Over && l.Text.StartsWith("NOTHING")), "a Game Boy project: no NOTHING line in the Master System fence");
+    }
+
+    public static void SmsPreset(ImodelReport r)
+    {
+        var psg = PresetFixtures.Synthetic().First(s => s.Name == "psg");
+        var opll = PresetFixtures.Synthetic().First(s => s.Name == "opll");
+        var gb = PresetFixtures.Synthetic().First(s => s.Name == "gb-dmg");
+        var pl = PresetFixtures.Instruments(psg);
+        var tones = PresetFixtures.Make(psg, pl.First(i => i.Kind == BrokenNes2.Instruments.InstrumentKind.PsgTones), 0, 1, "tones");
+        var noises = pl.Where(i => i.Kind == BrokenNes2.Instruments.InstrumentKind.PsgNoise).ToList();
+        r.Expect(noises.Count == 2, $"the PSG fixture has {noises.Count} noise instruments (white + periodic expected)");
+        if (noises.Count < 2) return;
+        var white = PresetFixtures.Make(psg, noises[0], 0, 1, "white");
+        var periodic = PresetFixtures.Make(psg, noises[1], 0, 1, "periodic");
+        var fm = PresetFixtures.Make(opll, PresetFixtures.Instruments(opll).First(i => i.Kind is BrokenNes2.Instruments.InstrumentKind.OpllUser or BrokenNes2.Instruments.InstrumentKind.OpllRom), 0, 1, "fm");
+        var gbp = PresetFixtures.Make(gb, PresetFixtures.Instruments(gb)[0], 0, 1, "gb");
+        byte[] S(BrokenNes2.Presets.PresetData d, bool damage = false) => SvChecks.Prs1(BrokenNes2.Presets.PresetFile.TryWrite(d, out _)!, damage);
+        var song = FlpSong.Read(FlpChecks.Project(150,
+            [("Tones", "BrokenNes2", FlpChecks.Bn2State(core: 27, console: 3, place: 1, duty: 0, section: S(tones), sectionTag: "PRS1")),
+             ("White", "BrokenNes2", FlpChecks.Bn2State(core: 27, console: 3, place: 3, section: S(white), sectionTag: "PRS1")),
+             ("Periodic", "BrokenNes2", FlpChecks.Bn2State(core: 27, console: 3, place: 3, section: S(periodic), sectionTag: "PRS1")),
+             ("FM", "BrokenNes2", FlpChecks.Bn2State(core: 27, console: 3, place: 0, section: S(fm), sectionTag: "PRS1")),
+             ("GB", "BrokenNes2", FlpChecks.Bn2State(core: 25, console: 1, place: 0, section: S(gbp), sectionTag: "PRS1")),
+             ("Bad", "BrokenNes2", FlpChecks.Bn2State(core: 27, console: 3, place: 0, section: S(tones, true), sectionTag: "PRS1")),
+             ("Empty", "BrokenNes2", FlpChecks.Bn2State(core: 27, console: 3, place: 0))],
+            [(1, [new(0, 96, 72, 0), new(48, 96, 76, 0), new(0, 24, 60, 1), new(96, 24, 60, 2), new(0, 48, 60, 3), new(0, 48, 60, 4), new(0, 48, 60, 5), new(0, 48, 60, 6)])],
+            [(0, 1, 192)]));
+        var v = CtwSmsBackend.Build(song, "presets");
+        var P = v.Fence.Where(l => l.Rule == "preset").ToList();
+        bool Has(FenceLevel lv, string who, string text) => P.Any(l => l.Level == lv && l.Text.Contains($"\"{who}\"") && l.Text.Contains(text));
+        r.Expect(Has(FenceLevel.Ok, "Tones", "PSG tones preset") && Has(FenceLevel.Ok, "Tones", "tone 2"), "the tones preset is not Ok on tone 2 (its instance's channel)");
+        r.Expect(Has(FenceLevel.Note, "Tones", "one at a time"), "the tones preset's overlapping notes are not said (the plugin plays 3 at once)");
+        r.Expect(Has(FenceLevel.Ok, "White", "noise preset") && !Has(FenceLevel.Note, "White", "PERIODIC"), "the white-noise preset is not Ok on the noise");
+        r.Expect(Has(FenceLevel.Note, "Periodic", "PERIODIC"), "the periodic-noise preset is not a Note (the driver writes white noise)");
+        r.Expect(Has(FenceLevel.Over, "FM", "YM2413"), "the FM-unit preset is not OVER");
+        r.Expect(Has(FenceLevel.Over, "GB", "GB preset"), "the Game Boy preset is not OVER");
+        r.Expect(Has(FenceLevel.Over, "Bad", "damaged"), "the damaged preset is not OVER");
+        r.Expect(Has(FenceLevel.Over, "Empty", "no PRS1"), "the Presets chip without a preset is not OVER");
+        var parts = v.Nes.Parts.Select(p => p.Instruments).ToList();
+        r.Expect(v.Nes.Parts.Count == 2 && parts.Any(x => x.Contains("Tones")) && parts.Any(x => x.Contains("White") && x.Contains("Periodic")), $"the game's parts are {string.Join(" | ", v.Nes.Parts.Select(p => $"{p.NesChannel}:{p.Instruments}"))} (Tones on a tone, White + Periodic on the noise expected)");
+        r.Expect(v.Nes.Parts.FirstOrDefault(p => p.Instruments.Contains("Tones"))?.NesChannel == 1, "the tones preset is not on its instance's tone (tone 2)");
+        r.Expect(!v.Fence.Any(l => l.Rule == "duty" && l.Level == FenceLevel.Note), "a PSG preset's instance Duty (12.5%) leaked into the duty line: a preset has no duty");
+        r.Expect(v.Build != null && Enumerable.Range(0, 4).All(c => CtwSmsBackend.BadOpcode(v.Build.Channels[c], c) == null), "a preset song's stream has an opcode the game's decoders cannot play");
+        r.Note($"presets (Master System): fence {FlpFence.Summary(v.Fence)}");
+        foreach (var l in FlpFence.Lines(P)) r.Note("    " + l);
     }
 
     /// <summary>What nes_apu.c makes of a NES latch (the registers as an NMI left them): per tone the PSG period and attenuation, the noise's attenuation and rate.</summary>
