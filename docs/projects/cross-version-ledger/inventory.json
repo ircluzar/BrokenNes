@@ -1,0 +1,3853 @@
+{
+ "generated": "2026-11-10",
+ "versions": {
+  "ctw_orig": "CTW original (Fusion, ref)",
+  "ctw_nes_mmc3": "CTW NES MMC3 (BASE)",
+  "ctw_nes_m30": "CTW NES m30",
+  "ctw_sms": "CTW SMS",
+  "ctw_nested_snes": "Nested VRUN SNES",
+  "sv_snes": "Super VRUN SNES (BASE)",
+  "sv_wms": "SV WideMess",
+  "sv_md": "SV Genesis",
+  "sv_dos": "SV DOS",
+  "sv_95": "SV Win95"
+ },
+ "statuses": [
+  "has",
+  "partial",
+  "missing",
+  "n.a.",
+  "unknown"
+ ],
+ "evidence_tags": "(code)=read in source, (run)=measured in a run by an earlier agent, (note)=memory/doc note; none were re-run for this ledger",
+ "rows": [
+  {
+   "id": 1,
+   "category": "Provenance",
+   "game": "both",
+   "feature": "Source lineage / sync point",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "Clickteam Fusion HTML5 game, 113-114 room XMLs, runtime JS map generator",
+     "evidence": "P:/VRUN067 PC/docs/port-spec (note)"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "main.fab + mapper_mmc3.fab, ./build.sh game --mmc3 (MAIN NES build since 2026-11-04)",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/27-mmc3-build.md (code)"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "same main.fab + mapper_m30.fab; lean reference build, never to be dropped without parity proof",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/27-mmc3-build.md (code+note)"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "tools/fab2c.py translates m30 main.fab to C + nes_shim.c virtual NES; S2 final 2026-11-06",
+     "evidence": "VRUN_CTW_SMS_dev/tools/fab2c.json (code); memory project_sega_vrun_ports (note)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "m30 ROM (game.nested.cfg, snes_pad.fab) inside Project Nested; plain + enhanced builds",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/game.nested.cfg (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "PVSnesLib C + 65816 asm, master (2P merged 4ee3325, weapon mods, cgram fix 22bd670)",
+     "evidence": "memory project_supervrun_invisible_enemies (note)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "SNES widemess branch from weapon-mods 8953dbf, build.sh --widemess -> .wms",
+     "evidence": "SuperVRUN_dev memory project_widemess_p5.md (note)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "logic/ copy of SNES 45efdc6 + platform/md (SGDK); local: bgfx outline p2 room roomtrans bossvis plctx currency corruptfx",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt, LOCAL.txt (code)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "logic/ copy of SNES 22bd670 + software SNES PPU platform/dos; local: plctx p2 pausemap state_options platform_api",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt, LOCAL.txt (code)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "built from DOS 0c727bb, logic + software PPU unchanged, Win32 GDI shell",
+     "evidence": "SuperVRUN_95_dev/README.md (code)"
+    }
+   }
+  },
+  {
+   "id": 2,
+   "category": "Provenance",
+   "game": "CTW",
+   "feature": "Other CTW ports (Game Gear etc.)",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "no CTW Game Gear port exists; the GG port is Vaults (out of scope). VRUN_CTW_Remastered = PC remaster of the original (not a port)",
+     "evidence": "memory project_sega_vrun_ports; VRUN_CTW_Remastered/README.md (note)"
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 3,
+   "category": "Game modes",
+   "game": "both",
+   "feature": "Title menu: NEW GAME / CONTINUE / OPTIONS + hi score",
+   "versions": {
+    "ctw_orig": {
+     "status": "partial",
+     "detail": "Start frame with random verb label, no CONTINUE/OPTIONS in canvas",
+     "evidence": "port-spec 05 (note)"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "NEW GAME / CONTINUE (greyed w/o save) / OPTIONS + HI SCORE",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:8865-8873"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "NEW GAME / CONTINUE (greyed w/o save) / OPTIONS + HI SCORE",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:8865-8873"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "NEW GAME / CONTINUE (greyed w/o save) / OPTIONS + HI SCORE (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "NEW GAME / CONTINUE (greyed w/o save) / OPTIONS + HI SCORE (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "NEW GAME 1P / NEW GAME 2P / CONTINUE 1P|2P / OPTIONS + seed line + hiscore",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/state_title.c:83-87,184-199 (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "as SNES + pointer hover/click",
+     "evidence": "SuperVRUN_WMS_dev/src/wmsptr.h (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "NEW GAME 1P / NEW GAME 2P / CONTINUE 1P|2P / OPTIONS + seed line + hiscore (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "NEW GAME 1P / NEW GAME 2P / CONTINUE 1P|2P / OPTIONS + seed line + hiscore (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "NEW GAME 1P / NEW GAME 2P / CONTINUE 1P|2P / OPTIONS + seed line + hiscore (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 4,
+   "category": "Game modes",
+   "game": "both",
+   "feature": "START AT (area 1-6 / BOSS)",
+   "versions": {
+    "ctw_orig": {
+     "status": "partial",
+     "detail": "debug level-select backdoor, dead in normal play",
+     "evidence": "port-spec 05 \u00a73 (note)"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "Options START AT 1-6/BOSS; spawn safety fix 31767d0",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:8279-8300"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "Options START AT 1-6/BOSS; spawn safety fix 31767d0",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:8279-8300"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "Options START AT 1-6/BOSS; spawn safety fix 31767d0 (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "Options START AT 1-6/BOSS; spawn safety fix 31767d0 (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "Options START AT chips 1-6 + BOSS",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/state_options.c:273 (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "Options START AT chips 1-6 + BOSS",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "Options START AT chips 1-6 + BOSS (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "Options START AT chips 1-6 + BOSS (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "Options START AT chips 1-6 + BOSS (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 5,
+   "category": "Game modes",
+   "game": "both",
+   "feature": "BOOST start buff (NONE/MID/HIGH)",
+   "versions": {
+    "ctw_orig": {
+     "status": "missing",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "Options BOOST, test aid",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:8410-8456"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "Options BOOST, test aid",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:8410-8456"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "Options BOOST, test aid (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "Options BOOST, test aid (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "Options BOOST",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/state_options.c:327-329 (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "Options BOOST",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "Options BOOST (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "Options BOOST (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "Options BOOST (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 6,
+   "category": "Game modes",
+   "game": "both",
+   "feature": "Story screen",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "15 TTS voiceover lines",
+     "evidence": "port-spec 05 \u00a74 (note)"
+    },
+    "ctw_nes_mmc3": {
+     "status": "missing",
+     "detail": "no story app state (states TITLE GAME DEATH SHOP ENDING OPTIONS SOUND_TEST SFX_TEST)",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:7871-7878 (code)"
+    },
+    "ctw_nes_m30": {
+     "status": "missing",
+     "detail": "same",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:7871-7878"
+    },
+    "ctw_sms": {
+     "status": "missing",
+     "detail": "same (translated)",
+     "evidence": "S2-scope"
+    },
+    "ctw_nested_snes": {
+     "status": "missing",
+     "detail": "same",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "state_story.c (story text; skip behaviour unknown)",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/state_story.c (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "state_story.c (story text; skip behaviour unknown)",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "state_story.c (story text; skip behaviour unknown) (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "state_story.c (story text; skip behaviour unknown) (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "state_story.c (story text; skip behaviour unknown) (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 7,
+   "category": "Game modes",
+   "game": "both",
+   "feature": "Ending screen",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "time + scrolling credits",
+     "evidence": "port-spec 05 \u00a76 (note)"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "ending text + run time + score",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:8982-9008"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "ending text + run time + score",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:8982-9008"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "ending text + run time + score (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "ending text + run time + score (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "state_ending.c",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/state_ending.c (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "state_ending.c",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "state_ending.c (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "state_ending.c (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "state_ending.c (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 8,
+   "category": "Game modes",
+   "game": "both",
+   "feature": "Death sequence",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "TTS 'Deleted' then page reload",
+     "evidence": "port-spec 05 \u00a75"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "explosion, DELETED, glitch, restore",
+     "evidence": "S2-scope (note)"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "explosion, DELETED, glitch, restore",
+     "evidence": "S2-scope (note)"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "explosion, DELETED, glitch, restore (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "explosion, DELETED, glitch, restore (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "state_death.c + deathfx HDMA ripple + ctwdeath.c",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/state_death.c, deathfx (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "state_death.c + deathfx HDMA ripple + ctwdeath.c",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "partial",
+     "detail": "logic has it; HDMA ripple mapped to MD line scroll, extent unverified",
+     "evidence": "SuperVRUN_MD_dev/platform/md/video_md.c (code; run would settle)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "state_death.c + deathfx HDMA ripple + ctwdeath.c (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "state_death.c + deathfx HDMA ripple + ctwdeath.c (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 9,
+   "category": "World",
+   "game": "both",
+   "feature": "Areas / tiers",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "levels generated at runtime",
+     "evidence": "gap doc 21 (note)"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "6 tiers + boss arena; room ranges 0-12,13-31,32-56,57-87,88-124,125-167",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/map_slots.fab:13-16"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "6 tiers + boss arena; room ranges 0-12,13-31,32-56,57-87,88-124,125-167",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/map_slots.fab:13-16"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "6 tiers + boss arena; room ranges 0-12,13-31,32-56,57-87,88-124,125-167 (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "6 tiers + boss arena; room ranges 0-12,13-31,32-56,57-87,88-124,125-167 (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "areas 1-6 + boss (START AT chips)",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/state_options.c:273 (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "areas 1-6 + boss (START AT chips)",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "areas 1-6 + boss (START AT chips) (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "areas 1-6 + boss (START AT chips) (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "areas 1-6 + boss (START AT chips) (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 10,
+   "category": "World",
+   "game": "both",
+   "feature": "Room count / map generation",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "runtime JS generator (MapGeneratorReplay.mjs), 114 room XMLs",
+     "evidence": "gap doc 21 (note)"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "168 room templates, 32 baked maps (638 combos), seed = title map-slot counter shown on title + pause",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/map_data.fab:341, map_slots.fab:4-7"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "168 room templates, 32 baked maps (638 combos), seed = title map-slot counter shown on title + pause",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/map_data.fab:341, map_slots.fab:4-7"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "168 room templates, 32 baked maps (638 combos), seed = title map-slot counter shown on title + pause (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "168 room templates, 32 baked maps (638 combos), seed = title map-slot counter shown on title + pause (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "map_data.c, >=168 rooms (room 167 named); seeded via title map slot; exact count unknown (count map_data.c entries)",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/map_data.c (code, partial)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "map_data.c, >=168 rooms (room 167 named); seeded via title map slot; exact count unknown (count map_data.c entries)",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "map_data.c, >=168 rooms (room 167 named); seeded via title map slot; exact count unknown (count map_data.c entries) (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "map_data.c, >=168 rooms (room 167 named); seeded via title map slot; exact count unknown (count map_data.c entries) (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "map_data.c, >=168 rooms (room 167 named); seeded via title map slot; exact count unknown (count map_data.c entries) (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 11,
+   "category": "World",
+   "game": "both",
+   "feature": "Shop rooms",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "random 3 of 9 items",
+     "evidence": "port-spec 02 \u00a74"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "8 fixed rows, door seals",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:6455-6547"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "8 fixed rows, door seals",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:6455-6547"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "8 fixed rows, door seals (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "8 fixed rows, door seals (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "9 items modal (uimodal.c); 2P shared price + revive; shop lag fix f3dbf63 (13-15 -> 0 lag)",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/shop.h:39-50 (code); memory project_vrun_games_round (note)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "9 items modal (uimodal.c); 2P shared price + revive; shop lag fix f3dbf63 (13-15 -> 0 lag)",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "9 items modal (uimodal.c); 2P shared price + revive; shop lag fix f3dbf63 (13-15 -> 0 lag) (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "9 items modal (uimodal.c); 2P shared price + revive; shop lag fix f3dbf63 (13-15 -> 0 lag) (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "9 items modal (uimodal.c); 2P shared price + revive; shop lag fix f3dbf63 (13-15 -> 0 lag) (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 12,
+   "category": "World",
+   "game": "both",
+   "feature": "Portals (blue/pink)",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "",
+     "evidence": "port-spec 04"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "blue + pink pairs, flat pairing scan 2de35e3",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "blue + pink pairs, flat pairing scan 2de35e3",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "blue + pink pairs, flat pairing scan 2de35e3 (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "blue + pink pairs, flat pairing scan 2de35e3 (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "portal.c",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/portal.c (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "portal.c",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "portal.c (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "portal.c (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "portal.c (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 13,
+   "category": "World",
+   "game": "both",
+   "feature": "Lens / mirror / key-block laser puzzle",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "",
+     "evidence": "port-spec 04"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "rebuilt after phase-5 cut; bullet tier 4 lens beam",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:4143,5145,5191; docs/22-ctw-laser-mirror-flow.md"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "rebuilt after phase-5 cut; bullet tier 4 lens beam",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:4143,5145,5191; docs/22-ctw-laser-mirror-flow.md"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "rebuilt after phase-5 cut; bullet tier 4 lens beam (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "rebuilt after phase-5 cut; bullet tier 4 lens beam (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "puzzlefx.c, ctwpuzzle.c",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/ctwpuzzle.c (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "puzzlefx.c, ctwpuzzle.c",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "puzzlefx.c, ctwpuzzle.c (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "puzzlefx.c, ctwpuzzle.c (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "puzzlefx.c, ctwpuzzle.c (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 14,
+   "category": "World",
+   "game": "both",
+   "feature": "Pause area map",
+   "versions": {
+    "ctw_orig": {
+     "status": "missing",
+     "detail": "(Remastered adds a level map)",
+     "evidence": "VRUN_CTW_Remastered/README.md"
+    },
+    "ctw_nes_mmc3": {
+     "status": "missing",
+     "detail": "pause shows seed + save prompt only",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:2673-2684"
+    },
+    "ctw_nes_m30": {
+     "status": "missing",
+     "detail": "",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:2673-2684"
+    },
+    "ctw_sms": {
+     "status": "missing",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "missing",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "pausemap.c",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/pausemap.c (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "pause map + LIVE area map in the side columns (hover tint, click opens pause map), M8 68a5638",
+     "evidence": "SuperVRUN_WMS_dev/src/wmsptr.h, wms.c (code); memory project_widemess (note)"
+    },
+    "sv_md": {
+     "status": "missing",
+     "detail": "no logic/pausemap.c (sync 45efdc6 predates it)",
+     "evidence": "SuperVRUN_MD_dev/logic (code: file absent)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "LOCAL copy with stat_of fix (BACKPORT #1)",
+     "evidence": "SuperVRUN_DOS_dev/BACKPORT.md (code)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "from DOS",
+     "evidence": "SuperVRUN_95_dev/logic (code)"
+    }
+   }
+  },
+  {
+   "id": 15,
+   "category": "Enemies",
+   "game": "both",
+   "feature": "Enemy species",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "Ghost family, Bouncing L1-3, H-Movers, Red family, InfectedBlock, Runner (dead), Multiverse (stub)",
+     "evidence": "port-spec 03"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "9: H-Mover L1-3, Bouncing L1-3 (L2/L3 shoot), Ghost L1-2, Red Grid Mover; 4 hazard slots",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:4575,5286-5316"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "9: H-Mover L1-3, Bouncing L1-3 (L2/L3 shoot), Ghost L1-2, Red Grid Mover; 4 hazard slots",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:4575,5286-5316"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "9: H-Mover L1-3, Bouncing L1-3 (L2/L3 shoot), Ghost L1-2, Red Grid Mover; 4 hazard slots (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "9: H-Mover L1-3, Bouncing L1-3 (L2/L3 shoot), Ghost L1-2, Red Grid Mover; 4 hazard slots (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "9: HMOVER L1-3, BBLOCK L1-3, GHOST L1-2, RGRID_MOVER with original CTW A/B/C values",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/hazard.h:69-78 (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "9: HMOVER L1-3, BBLOCK L1-3, GHOST L1-2, RGRID_MOVER with original CTW A/B/C values",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "9: HMOVER L1-3, BBLOCK L1-3, GHOST L1-2, RGRID_MOVER with original CTW A/B/C values (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "9: HMOVER L1-3, BBLOCK L1-3, GHOST L1-2, RGRID_MOVER with original CTW A/B/C values (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "9: HMOVER L1-3, BBLOCK L1-3, GHOST L1-2, RGRID_MOVER with original CTW A/B/C values (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 16,
+   "category": "Enemies",
+   "game": "both",
+   "feature": "Max simultaneous enemies",
+   "versions": {
+    "ctw_orig": {
+     "status": "unknown",
+     "detail": "not extracted",
+     "evidence": "settle: port-spec 03"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "MAX_HAZARDS 4",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:4575"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "MAX_HAZARDS 4",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:4575"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "MAX_HAZARDS 4 (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "MAX_HAZARDS 4 (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "unknown (settle: hazard.h pool constant)",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "unknown (settle: hazard.h pool constant)",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "unknown (settle: hazard.h pool constant) (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "unknown (settle: hazard.h pool constant) (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "unknown (settle: hazard.h pool constant) (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 17,
+   "category": "Enemies",
+   "game": "both",
+   "feature": "Per-tier minibosses",
+   "versions": {
+    "ctw_orig": {
+     "status": "partial",
+     "detail": "level-6 miniboss is dead data",
+     "evidence": "gap doc \u00a7J"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "injected species at spawn in last room of each tier",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/map_slots.fab:16"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "injected species at spawn in last room of each tier",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/map_slots.fab:16"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "injected species at spawn in last room of each tier (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "injected species at spawn in last room of each tier (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "unknown (settle: grep miniboss in SNES src)",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "unknown (settle: grep miniboss in SNES src)",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "unknown (settle: grep miniboss in SNES src) (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "unknown (settle: grep miniboss in SNES src) (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "unknown (settle: grep miniboss in SNES src) (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 18,
+   "category": "Enemies",
+   "game": "both",
+   "feature": "LV1 Boss",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "phase machine; Lives-sync bug",
+     "evidence": "port-spec 03"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "5 attack phases + intro, 160 HP/phase, death: explode, vomit, SYSTEM CORRUPTED",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:7321-7459,9112-9123"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "5 attack phases + intro, 160 HP/phase, death: explode, vomit, SYSTEM CORRUPTED",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:7321-7459,9112-9123"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "5 attack phases + intro, 160 HP/phase, death: explode, vomit, SYSTEM CORRUPTED (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "5 attack phases + intro, 160 HP/phase, death: explode, vomit, SYSTEM CORRUPTED (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "boss.c/bossvis.c/bossdeath.c/ctwboss.c",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/boss.c (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "boss.c/bossvis.c/bossdeath.c/ctwboss.c",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "partial",
+     "detail": "logic has it; boss BG3 effects not drawn on MD",
+     "evidence": "SuperVRUN_MD_dev/platform/md/video_md.c:6 (code)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "boss.c/bossvis.c/bossdeath.c/ctwboss.c (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "boss.c/bossvis.c/bossdeath.c/ctwboss.c (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 19,
+   "category": "Enemies",
+   "game": "both",
+   "feature": "Hazard terrain (spikes, Red Grid, Bad Sector, tears, bricks, doors)",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "",
+     "evidence": "port-spec 03/04"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "Red Spikes, Red Grid, Bad Sector, Blue Tears (max 4, infect 8 neighbours), 4-HP bricks, locked doors",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:5635-5798"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "Red Spikes, Red Grid, Bad Sector, Blue Tears (max 4, infect 8 neighbours), 4-HP bricks, locked doors",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:5635-5798"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "Red Spikes, Red Grid, Bad Sector, Blue Tears (max 4, infect 8 neighbours), 4-HP bricks, locked doors (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "Red Spikes, Red Grid, Bad Sector, Blue Tears (max 4, infect 8 neighbours), 4-HP bricks, locked doors (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "same families via logic",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/hazard.h (code, partial check)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "same families via logic",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "same families via logic (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "same families via logic (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "same families via logic (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 20,
+   "category": "Enemies",
+   "game": "Super VRUN",
+   "feature": "Invisible-enemy fix (OAM X bit 8, 9e13885)",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "_rtn_os_hide in roomtrans.asm; sweep 108 -> 0",
+     "evidence": "memory project_supervrun_invisible_enemies (note+run 2026-10-30)"
+    },
+    "sv_wms": {
+     "status": "unknown",
+     "detail": "depends on branch merge order; settle: grep _rtn_os_hide in SuperVRUN_WMS_dev/src/roomtrans.asm",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "unknown",
+     "detail": "asm replaced by asmref_room.c; settle: check bit-8 clear in rtn_oam_step C ref",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "unknown",
+     "detail": "same as MD (DOS fixed rtn_oam_dma separately, BACKPORT #3)",
+     "evidence": "SuperVRUN_DOS_dev/BACKPORT.md"
+    },
+    "sv_95": {
+     "status": "unknown",
+     "detail": "inherits DOS",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 21,
+   "category": "Combat",
+   "game": "both",
+   "feature": "Bullet tiers / speeds",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "Speed stat picks L1 15/110ms, L2 18/70ms, L3 25/40ms; ammo cap Burst+2",
+     "evidence": "gap doc \u00a7L2"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "8-slot shared pool; player t0-t2 coloured yellow/red/blue; cooldown base 7 min 2",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:4124-4160"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "8-slot shared pool; player t0-t2 coloured yellow/red/blue; cooldown base 7 min 2",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:4124-4160"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "8-slot shared pool; player t0-t2 coloured yellow/red/blue; cooldown base 7 min 2 (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "8-slot shared pool; player t0-t2 coloured yellow/red/blue; cooldown base 7 min 2 (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "fire periods L1 165 / L2 105 / L3 60, MAX_BULLETS 24",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/weapon.h:25-27 (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "fire periods L1 165 / L2 105 / L3 60, MAX_BULLETS 24",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "fire periods L1 165 / L2 105 / L3 60, MAX_BULLETS 24 (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "fire periods L1 165 / L2 105 / L3 60, MAX_BULLETS 24 (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "fire periods L1 165 / L2 105 / L3 60, MAX_BULLETS 24 (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 22,
+   "category": "Combat",
+   "game": "both",
+   "feature": "Weapon modifiers (BlastType Wall/Chunk/Cross/Wave)",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "world pickups ids 25-33",
+     "evidence": "gap doc \u00a7L2"
+    },
+    "ctw_nes_mmc3": {
+     "status": "missing",
+     "detail": "cut for bullet count/ROM",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/21-ctw-fidelity-gap-analysis.md \u00a7L"
+    },
+    "ctw_nes_m30": {
+     "status": "missing",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "missing",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "missing",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "NONE/WALL/CHUNK/CROSS/WAVE, original CTW balance (fbc86f2)",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/weapon.h:15-20 (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "NONE/WALL/CHUNK/CROSS/WAVE, original CTW balance (fbc86f2)",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "NONE/WALL/CHUNK/CROSS/WAVE, original CTW balance (fbc86f2) (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "NONE/WALL/CHUNK/CROSS/WAVE, original CTW balance (fbc86f2) (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "NONE/WALL/CHUNK/CROSS/WAVE, original CTW balance (fbc86f2) (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 23,
+   "category": "Combat",
+   "game": "both",
+   "feature": "Held items (Corner/Field/Heal/Upgrade/Laser)",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "ItemType 1-5 on Space",
+     "evidence": "port-spec 02 \u00a73.4"
+    },
+    "ctw_nes_mmc3": {
+     "status": "missing",
+     "detail": "removed for ROM budget 2026-09-12",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3420-3431"
+    },
+    "ctw_nes_m30": {
+     "status": "missing",
+     "detail": "",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3420-3431"
+    },
+    "ctw_sms": {
+     "status": "missing",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "missing",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "5 items on L/R; Laser 4 cardinal dirs, horizontal fallback",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/item.h:21-26 (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "5 items on L/R; Laser 4 cardinal dirs, horizontal fallback",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "5 items on L/R; Laser 4 cardinal dirs, horizontal fallback (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "5 items on L/R; Laser 4 cardinal dirs, horizontal fallback (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "5 items on L/R; Laser 4 cardinal dirs, horizontal fallback (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 24,
+   "category": "Combat",
+   "game": "both",
+   "feature": "World pickups",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "random substitution 50% on Ressource L1/Health Square",
+     "evidence": "gap doc \u00a7L2"
+    },
+    "ctw_nes_mmc3": {
+     "status": "partial",
+     "detail": "currency drops (homing, max 10), blue heal, Health Square +1 HP; no modifier/item pickups",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3433,4401"
+    },
+    "ctw_nes_m30": {
+     "status": "partial",
+     "detail": "currency drops (homing, max 10), blue heal, Health Square +1 HP; no modifier/item pickups",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3433,4401"
+    },
+    "ctw_sms": {
+     "status": "partial",
+     "detail": "currency drops (homing, max 10), blue heal, Health Square +1 HP; no modifier/item pickups",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3433,4401"
+    },
+    "ctw_nested_snes": {
+     "status": "partial",
+     "detail": "currency drops (homing, max 10), blue heal, Health Square +1 HP; no modifier/item pickups",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3433,4401"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "9 kinds, max 8/room, once per run (pk_taken)",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/pickup.h:24-33 (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "9 kinds, max 8/room, once per run (pk_taken)",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "9 kinds, max 8/room, once per run (pk_taken) (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "9 kinds, max 8/room, once per run (pk_taken) (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "9 kinds, max 8/room, once per run (pk_taken) (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 25,
+   "category": "Progression",
+   "game": "both",
+   "feature": "Shop catalogue",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "3 random of 9 incl. Field 200/400, no Health",
+     "evidence": "port-spec 02 \u00a74"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "8 rows: Burst Range Health(+3, NES ladder) Intensity Speed Hover Trail(3 tiers) Luck",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:6460-6547"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "8 rows: Burst Range Health(+3, NES ladder) Intensity Speed Hover Trail(3 tiers) Luck",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:6460-6547"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "8 rows: Burst Range Health(+3, NES ladder) Intensity Speed Hover Trail(3 tiers) Luck (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "8 rows: Burst Range Health(+3, NES ladder) Intensity Speed Hover Trail(3 tiers) Luck (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "9: BURST RANGE HEALTH INTENSITY SPEED(pierce) HOVER TRAIL LUCK FIELD",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/shop.h:39-50 (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "9: BURST RANGE HEALTH INTENSITY SPEED(pierce) HOVER TRAIL LUCK FIELD",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "9: BURST RANGE HEALTH INTENSITY SPEED(pierce) HOVER TRAIL LUCK FIELD (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "9: BURST RANGE HEALTH INTENSITY SPEED(pierce) HOVER TRAIL LUCK FIELD (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "9: BURST RANGE HEALTH INTENSITY SPEED(pierce) HOVER TRAIL LUCK FIELD (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 26,
+   "category": "Progression",
+   "game": "CTW",
+   "feature": "Luck price typo 12800 + unreachable tiers >= 64000 (16-bit score)",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "typo is in the original",
+     "evidence": "port-spec 02"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "kept typo; UU score caps at 65535",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:6491-6515"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "kept typo; UU score caps at 65535",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:6491-6515"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "kept typo; UU score caps at 65535 (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "kept typo; UU score caps at 65535 (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 27,
+   "category": "Progression",
+   "game": "both",
+   "feature": "Speed stat effect",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "selects bullet type",
+     "evidence": "gap doc \u00a7L2"
+    },
+    "ctw_nes_mmc3": {
+     "status": "partial",
+     "detail": "cosmetic player recolour only",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:6727-6735"
+    },
+    "ctw_nes_m30": {
+     "status": "partial",
+     "detail": "cosmetic player recolour only",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:6727-6735"
+    },
+    "ctw_sms": {
+     "status": "partial",
+     "detail": "cosmetic player recolour only",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:6727-6735"
+    },
+    "ctw_nested_snes": {
+     "status": "partial",
+     "detail": "cosmetic player recolour only",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:6727-6735"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "SPEED = pierce",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/shop.h (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "SPEED = pierce",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "SPEED = pierce (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "SPEED = pierce (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "SPEED = pierce (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 28,
+   "category": "Progression",
+   "game": "both",
+   "feature": "Trail stat",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "cosmetic afterimage",
+     "evidence": "gap doc"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "damaging markers (divergence)",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:6489"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "damaging markers (divergence)",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:6489"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "damaging markers (divergence) (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "damaging markers (divergence) (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "TRAIL in shop; behaviour vs CTW unknown",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "TRAIL in shop; behaviour vs CTW unknown",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "TRAIL in shop; behaviour vs CTW unknown (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "TRAIL in shop; behaviour vs CTW unknown (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "TRAIL in shop; behaviour vs CTW unknown (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 29,
+   "category": "Progression",
+   "game": "both",
+   "feature": "HP model",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "1 HP per hit with cooldown, Heal +10",
+     "evidence": "gap doc \u00a7C, port-spec 02 \u00a75"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "start 5, Health +3, bar cap 32, 60-frame invuln",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3402-3403,11211"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "start 5, Health +3, bar cap 32, 60-frame invuln",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3402-3403,11211"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "start 5, Health +3, bar cap 32, 60-frame invuln (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "start 5, Health +3, bar cap 32, 60-frame invuln (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "start 5, +3 per HEALTH, max (user kept SV model); heal pickups/items",
+     "evidence": "memory project_supervrun_invisible_enemies 2026-10-31 (note)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "start 5, +3 per HEALTH, max (user kept SV model); heal pickups/items",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "start 5, +3 per HEALTH, max (user kept SV model); heal pickups/items (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "start 5, +3 per HEALTH, max (user kept SV model); heal pickups/items (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "start 5, +3 per HEALTH, max (user kept SV model); heal pickups/items (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 30,
+   "category": "Player",
+   "game": "both",
+   "feature": "Jump / hover",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "Fusion platform movement",
+     "evidence": "port-spec 02"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "hold jump; hover fuel 25/50 by Hover tier",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3381-3387,6483"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "hold jump; hover fuel 25/50 by Hover tier",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3381-3387,6483"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "hold jump; hover fuel 25/50 by Hover tier (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "hold jump; hover fuel 25/50 by Hover tier (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "jump + hover (fuel none/25/50)",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/shop.h:44 (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "jump + hover (fuel none/25/50)",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "jump + hover (fuel none/25/50) (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "jump + hover (fuel none/25/50) (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "jump + hover (fuel none/25/50) (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 31,
+   "category": "Player",
+   "game": "both",
+   "feature": "Physics constants",
+   "versions": {
+    "ctw_orig": {
+     "status": "unknown",
+     "detail": "values not extracted (settle: port-spec 02 \u00a71-2)",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "GRAVITY .1875, MAX_FALL 3.0, JUMP -2.0, HOLD .1875 x40, HOVER_VY -.0625 (8.8 fixed)",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3381-3387"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "GRAVITY .1875, MAX_FALL 3.0, JUMP -2.0, HOLD .1875 x40, HOVER_VY -.0625 (8.8 fixed)",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3381-3387"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "GRAVITY .1875, MAX_FALL 3.0, JUMP -2.0, HOLD .1875 x40, HOVER_VY -.0625 (8.8 fixed) (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "GRAVITY .1875, MAX_FALL 3.0, JUMP -2.0, HOLD .1875 x40, HOVER_VY -.0625 (8.8 fixed) (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "unknown values (settle: player.c/plctx.c); ports keep formats exact",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/player.c; SuperVRUN_MD_dev/docs/S3-scope.md Types"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "unknown values (settle: player.c/plctx.c); ports keep formats exact",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "unknown values (settle: player.c/plctx.c); ports keep formats exact (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "unknown values (settle: player.c/plctx.c); ports keep formats exact (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "unknown values (settle: player.c/plctx.c); ports keep formats exact (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 32,
+   "category": "Player",
+   "game": "both",
+   "feature": "Aim / control schemes",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "Classic/Intro/Mixed/Twin with analog sticks + keyboard",
+     "evidence": "port-spec 02 \u00a710"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "8-dir aim; CLASSIC/AIMLOCK/TWINPAD/TWINSHOOT (pad 2 for twin); Start+Select cycles",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3974-4008"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "same",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:3974-4008"
+    },
+    "ctw_sms": {
+     "status": "partial",
+     "detail": "schemes kept; in-game Start+Select cycle dropped (no Select button)",
+     "evidence": "S2-scope Pad"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "+ SNES pad: X/B/Y/A diamond aim, R jump, L fire for schemes C/D",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/snes_pad.fab:1-15"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "CONTROLS + CONTROLS2 (P2) schemes, L/R item key",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/state_options.c:44-55 (code)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "CONTROLS + CONTROLS2 (P2) schemes, L/R item key",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "CONTROLS + CONTROLS2 (P2) schemes, L/R item key (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "CONTROLS + CONTROLS2 (P2) schemes, L/R item key (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "CONTROLS + CONTROLS2 (P2) schemes, L/R item key (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 33,
+   "category": "Screen",
+   "game": "both",
+   "feature": "Resolution / layout",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "398x224 canvas, 256x224 room centred with 71 px margins",
+     "evidence": "memory reference_ctw_original"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "256x224 single-screen rooms, HUD row 28",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/README.md"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "same",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "partial",
+     "detail": "256x192: 184-line view follows player 0-40 px, 32 px of room off-screen, HUD band below",
+     "evidence": "VRUN_CTW_SMS_dev/src/nes_shim.c:1014-1059,1856"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "NES picture on SNES",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "256x224 Mode 1, BG1 room, BG2 backdrop/HUD, BG3 effects",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "400x224, game at columns 72-327, side HUD/live map; edge repeat dropped",
+     "evidence": "memory project_widemess_p5 (note)"
+    },
+    "sv_md": {
+     "status": "partial",
+     "detail": "H40 320x224, game x32-287, black side bars from 14 sprites; BG3 not drawn",
+     "evidence": "SuperVRUN_MD_dev/docs/S3-scope.md dec.6, video_md.c:4-16"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "VGA mode X 320x240, SNES 256x224 at x32 y8, software PPU",
+     "evidence": "SuperVRUN_DOS_dev/platform/dos/dos_vga.c:2"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "same PPU in resizable window 1x-6x, Alt+Enter/F11 fullscreen, keep aspect",
+     "evidence": "SuperVRUN_95_dev/README.md"
+    }
+   }
+  },
+  {
+   "id": 34,
+   "category": "Screen",
+   "game": "both",
+   "feature": "HUD",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "stat widgets, ItemBox, Score=Currency, Lives=Exp",
+     "evidence": "port-spec 05 \u00a72"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "row 28: HP+bar, $ score; BOSS/PHASE row 1 in arena",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:2019,2452"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "same",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "own BG band via line IRQ @183 + NT $3000 (costs ~40% of lag)",
+     "evidence": "nes_shim.c; memory S2 round 3-4"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "NES HUD; enhanced = custom 16-colour font",
+     "evidence": "Project-Nested snes_enhance.py"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "HUD with item slots, second half for P2",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "HUD with item slots, second half for P2",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "HUD on WINDOW plane (519c13a) so it no longer scrolls with the room",
+     "evidence": "memory project_sega_vrun_ports hw round 2"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "HUD with item slots, second half for P2 (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "HUD with item slots, second half for P2 (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 35,
+   "category": "Screen",
+   "game": "both",
+   "feature": "Title tunnel",
+   "versions": {
+    "ctw_orig": {
+     "status": "missing",
+     "detail": "(Remastered has one)",
+     "evidence": "VRUN_CTW_Remastered/README.md"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "16 CHR-ROM frames x 6 IRQ bands, 1 ring/s, darker greens (439616b)",
+     "evidence": "memory project_vrun_mapper_migration"
+    },
+    "ctw_nes_m30": {
+     "status": "missing",
+     "detail": "logo + menu only (MMC3-only feature)",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/27-mmc3-build.md"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "own tunnel: 140 tiles, sprite-palette cycling 13 phases, matches 439616b speed",
+     "evidence": "memory S2 final round"
+    },
+    "ctw_nested_snes": {
+     "status": "missing",
+     "detail": "m30 build",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "titletun.c/.asm, options over tunnel (45efdc6)",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/titletun.c"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "titletun.c/.asm, options over tunnel (45efdc6)",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "pre-converted records, ROM DMA; phase fixed in 156e111",
+     "evidence": "memory S3 agent 13"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "titletun.c/.asm, options over tunnel (45efdc6) (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "titletun.c/.asm, options over tunnel (45efdc6) (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 36,
+   "category": "Screen",
+   "game": "CTW",
+   "feature": "Animated tiles (Bad Sector, tears, portals)",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "partial",
+     "detail": "24 CHR-ROM banks on ONE shared 83 ms tick (independent speeds impossible)",
+     "evidence": "mapper_mmc3.fab:345; memory 2026-11-05"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "CHR-RAM NMI uploads, each anim its own speed",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:11039-11171"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "tile slot re-uploads (m30 model)",
+     "evidence": "nes_shim.c:614-628"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "m30 model",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 37,
+   "category": "Screen",
+   "game": "Super VRUN",
+   "feature": "HDMA effects (gradient, line scroll, mosaic, colour math)",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "bgfx gradient + line scroll HDMA, hit mosaic, shadows/tints",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/bgfx.c, shadow.c"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "bgfx gradient + line scroll HDMA, hit mosaic, shadows/tints",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "partial",
+     "detail": "gradient by chained H-int, line-scroll mode; dark colours round to black on 9-bit CRAM; mosaic/colour math unknown",
+     "evidence": "memory S3 agent 15, night 2026-11-06"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "software PPU emulates mode 1, windows, mosaic, colour math, HDMA per line; mosaic strip vs SNES NOT compared",
+     "evidence": "memory project_supervrun_dos"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "bgfx gradient + line scroll HDMA, hit mosaic, shadows/tints (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 38,
+   "category": "Screen",
+   "game": "CTW",
+   "feature": "SNES enhanced graphics (Nested only)",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "enhanced build: 16-colour font + hue-shifted bevel shading via spare bitplanes",
+     "evidence": "Project-Nested/tools/m30pipe/tools/snes_enhance.py"
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 39,
+   "category": "Corruption",
+   "game": "both",
+   "feature": "Corruption visuals",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "CHR bank flip on hits (chr_bank), ambient churn, hurt flash, death glitch, boss scatter, font corruption",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/18-qol-refinement-pass.md \u00a72; 27-mmc3"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "same, flip via CHR-RAM bank 1",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "emulated at tile-conversion upload",
+     "evidence": "S2-scope"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "Nested CHR mirror bank switch; enhanced shading follows bank",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "corrupt.c, corruptfx.c Field flip; Field fix 871167d everywhere (MD hand-ported)",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/corruptfx.c; SuperVRUN_MD_dev/docs/FIELD_FIX_NOTE.md"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "corrupt.c, corruptfx.c Field flip; Field fix 871167d everywhere (MD hand-ported)",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "corrupt.c, corruptfx.c Field flip; Field fix 871167d everywhere (MD hand-ported) (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "corrupt.c, corruptfx.c Field flip; Field fix 871167d everywhere (MD hand-ported) (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "corrupt.c, corruptfx.c Field flip; Field fix 871167d everywhere (MD hand-ported) (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 40,
+   "category": "Save",
+   "game": "both",
+   "feature": "Save system",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "browser JS gamestate",
+     "evidence": "port-spec"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "8 KB battery RAM $6000, magic VRU+$01, hi $6004, save $6010-$6022",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/27-mmc3-build.md Saves"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "self-flash 2 sectors (118/122): hi score 2 B + 19 B save",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/27-mmc3-build.md"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "cart SRAM via $FFFC bit 3; needs 'VRUN' at 0x1F0 on cold SRAM",
+     "evidence": "nes_shim.c:1691; memory S2 DONE"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "flash emulated (SST39SF040) by flash_patch_vrun.py",
+     "evidence": "Project-Nested tools"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "battery SRAM, loadout record @256 + checksum",
+     "evidence": "memory project_weapon_mods (note)"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "battery in WMS header",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "unknown",
+     "detail": "plan SRAM $200001 odd bytes; settle: grep SRAM in platform/md/plat_md.c + save/CONTINUE run",
+     "evidence": "SuperVRUN_MD_dev/docs/S3-scope.md Saves"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "SVRUN.SAV; save -> CONTINUE after reboot verified",
+     "evidence": "memory project_supervrun_dos (run)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "SVRUN.SAV beside exe (same format as DOS), %APPDATA%\\SuperVRUN95 fallback, SVRUN95.INI",
+     "evidence": "SuperVRUN_95_dev/README.md"
+    }
+   }
+  },
+  {
+   "id": 41,
+   "category": "Save",
+   "game": "both",
+   "feature": "Save & quit from pause",
+   "versions": {
+    "ctw_orig": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "Select = save & quit (SMS: button 1)",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:2673-2684,10747"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "Select = save & quit (SMS: button 1)",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:2673-2684,10747"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "Select = save & quit (SMS: button 1) (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "Select = save & quit (SMS: button 1) (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "SAVE & QUIT",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/pause.c"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "SAVE & QUIT",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "SAVE & QUIT (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "SAVE & QUIT (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "SAVE & QUIT (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 42,
+   "category": "Multiplayer",
+   "game": "both",
+   "feature": "Two-player co-op",
+   "versions": {
+    "ctw_orig": {
+     "status": "partial",
+     "detail": "Multiverse networked ghosts, inert stub",
+     "evidence": "port-spec 03"
+    },
+    "ctw_nes_mmc3": {
+     "status": "missing",
+     "detail": "pad 2 only for twin-stick aim",
+     "evidence": "game.cfg; S2-scope"
+    },
+    "ctw_nes_m30": {
+     "status": "missing",
+     "detail": "pad 2 only for twin-stick aim",
+     "evidence": "game.cfg; S2-scope"
+    },
+    "ctw_sms": {
+     "status": "missing",
+     "detail": "pad 2 only for twin-stick aim",
+     "evidence": "game.cfg; S2-scope"
+    },
+    "ctw_nested_snes": {
+     "status": "missing",
+     "detail": "pad 2 only for twin-stick aim",
+     "evidence": "game.cfg; S2-scope"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "p2.c: shared shop price, revive, nearest-player targeting; 2P lag 0.64% parked",
+     "evidence": "SuperVRUN_dev notes/two-player.md; memory games round"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "both pads + separate pointer port",
+     "evidence": "memory project_widemess"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "pad 2 on port 2, checked both pads 62c4f90",
+     "evidence": "memory S3 A1 round (run)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "pad 1 = stick B for P2",
+     "evidence": "memory project_supervrun_dos (run)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "second controller = P2",
+     "evidence": "SuperVRUN_95_dev/README.md"
+    }
+   }
+  },
+  {
+   "id": 43,
+   "category": "Menus",
+   "game": "both",
+   "feature": "Pause screen + stats",
+   "versions": {
+    "ctw_orig": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "blur fill, PAUSED, seed, save prompt (no stats)",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:2673-2684"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "blur fill, PAUSED, seed, save prompt (no stats)",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:2673-2684"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "blur fill, PAUSED, seed, save prompt (no stats) (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "blur fill, PAUSED, seed, save prompt (no stats) (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "pause stats (BURST/LUCK/HOVER...) + map",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/pause.c, pausemap.c"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "pause stats (BURST/LUCK/HOVER...) + map",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "partial",
+     "detail": "pause stats only, no map; stat_of declaration-order bug (DOS BACKPORT #1) likely present",
+     "evidence": "SuperVRUN_DOS_dev/BACKPORT.md #1"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "pause stats (BURST/LUCK/HOVER...) + map (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "pause stats (BURST/LUCK/HOVER...) + map (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 44,
+   "category": "Menus",
+   "game": "both",
+   "feature": "Options menu contents",
+   "versions": {
+    "ctw_orig": {
+     "status": "missing",
+     "detail": "HTML page outside canvas",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "CONTROLS A-D, SOUND TEST, SFX TEST, START AT, BOOST, BACK",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:8144-8181"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "CONTROLS A-D, SOUND TEST, SFX TEST, START AT, BOOST, BACK",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:8144-8181"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "CONTROLS A-D, SOUND TEST, SFX TEST, START AT, BOOST, BACK (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "CONTROLS A-D, SOUND TEST, SFX TEST, START AT, BOOST, BACK (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "tabs GRAPHICS/AUDIO/CONTROLS: CONTROLS, CONTROLS2, SOUND TEST, SFX TEST, START AT, BOOST, TILESET, BG LAB, FX LAB, UI LAB",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/state_options.c:44-55,112-115"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "tabs GRAPHICS/AUDIO/CONTROLS: CONTROLS, CONTROLS2, SOUND TEST, SFX TEST, START AT, BOOST, TILESET, BG LAB, FX LAB, UI LAB",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "tabs GRAPHICS/AUDIO/CONTROLS: CONTROLS, CONTROLS2, SOUND TEST, SFX TEST, START AT, BOOST, TILESET, BG LAB, FX LAB, UI LAB (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "+ AUDIO > SOUND OUT AUTO/FM/SPEAKER/OFF (BACKPORT #2)",
+     "evidence": "SuperVRUN_DOS_dev/BACKPORT.md, dos_snd.c:10"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "+ SOUND OUT + Windows menus (File/Options/View/Help, Controllers)",
+     "evidence": "SuperVRUN_95_dev/README.md"
+    }
+   }
+  },
+  {
+   "id": 45,
+   "category": "Menus",
+   "game": "both",
+   "feature": "Sound test + SFX test",
+   "versions": {
+    "ctw_orig": {
+     "status": "unknown",
+     "detail": "not inventoried",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "music test 12 tracks, SFX test 22",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:345,8607"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "music test 12 tracks, SFX test 22",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:345,8607"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "music test 12 tracks, SFX test 22 (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "music test 12 tracks, SFX test 22 (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "SOUND TEST + SFX TEST states",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/state_options.c"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "SOUND TEST + SFX TEST states",
+     "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "SOUND TEST + SFX TEST states (logic/ copy)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "SOUND TEST + SFX TEST states (logic/ copy)",
+     "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt = SNES 22bd670 (code, inferred)"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "SOUND TEST + SFX TEST states (from DOS 0c727bb)",
+     "evidence": "SuperVRUN_95_dev/README.md, logic/SOURCE.txt = 22bd670 (code, inferred)"
+    }
+   }
+  },
+  {
+   "id": 46,
+   "category": "Audio",
+   "game": "both",
+   "feature": "Music engine",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "5 original soundtracks (MP3/OGG)",
+     "evidence": "VRUN_CTW_Remastered/README.md"
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "NESFab MIDI-derived decoders (midi2nes.py), 4 decoders/track",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/tools/midi2nes.py"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "same",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "partial",
+     "detail": "virtual APU -> PSG: triangle an octave down, fixed level, no noise/duty fidelity; title music corr 0.71, starts 37 frames late",
+     "evidence": "memory S2 DONE (run: sndcmp.py)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "Nested APU emulation",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "snesmod, IT modules + sfx.it",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/../audio"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "snesmod (bigger SPC700 unused?) - unknown if WMS sound extensions used",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "own Z80 driver mdsnd.s80: FM1-5 NES-wave patches, PSG, DPCM drums on DAC 7.61 kHz",
+     "evidence": "memory S3 M4"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "OPL2 streams (oplconv.py) + PC speaker; patches not heard by user",
+     "evidence": "memory project_supervrun_dos"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "software OPL2 of DOS streams; output API unknown (settle: platform/win sources)",
+     "evidence": "SuperVRUN_95_dev/README.md"
+    }
+   }
+  },
+  {
+   "id": 47,
+   "category": "Audio",
+   "game": "both",
+   "feature": "Track list",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "5 tracks",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "12: OUTSIDE(think) BOSS SHOP BAROPEN BAROPENCRPT CHICAGOVOICES PUZZLE ROSBIF SATNKRT SUNDAYDRIVE VECTORPLANE LEVEL2",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:293-353"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "12: OUTSIDE(think) BOSS SHOP BAROPEN BAROPENCRPT CHICAGOVOICES PUZZLE ROSBIF SATNKRT SUNDAYDRIVE VECTORPLANE LEVEL2",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:293-353"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "12: OUTSIDE(think) BOSS SHOP BAROPEN BAROPENCRPT CHICAGOVOICES PUZZLE ROSBIF SATNKRT SUNDAYDRIVE VECTORPLANE LEVEL2 (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "12: OUTSIDE(think) BOSS SHOP BAROPEN BAROPENCRPT CHICAGOVOICES PUZZLE ROSBIF SATNKRT SUNDAYDRIVE VECTORPLANE LEVEL2 (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "partial",
+     "detail": "13 IT modules per S3-scope; >=11 seen (baropen baropencrpt boss chicagovoices level2 puzzle rosbif satnkrt sundaydrive think vectorplane); full list unknown",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/audio (code, partial)"
+    },
+    "sv_wms": {
+     "status": "unknown",
+     "detail": "same as SNES presumably",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "11 songs converted (src/gen music_*.bin)",
+     "evidence": "SuperVRUN_MD_dev/src/gen (code)"
+    },
+    "sv_dos": {
+     "status": "unknown",
+     "detail": "oplconv of the IT set; count unknown",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "unknown",
+     "detail": "from DOS",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 48,
+   "category": "Audio",
+   "game": "both",
+   "feature": "SFX count",
+   "versions": {
+    "ctw_orig": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "22 clips (FIRE..ZAP)",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:8918-8962"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "22 clips (FIRE..ZAP)",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/main.fab:8918-8962"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "22 clips (FIRE..ZAP) (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "22 clips (FIRE..ZAP) (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "unknown",
+     "detail": "sfx.it; settle: sfx_table.h",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "52 PCM clips on DAC",
+     "evidence": "memory S3 M4 SFX"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "sfxconv.py per-frame pitch/level on OPL voice 6 or speaker; count unknown",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "from DOS",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 49,
+   "category": "Audio",
+   "game": "both",
+   "feature": "Pitch bends",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "partial",
+     "detail": "decoder support merged (e5ba53f); NO roster song uses bends; audio-bends branch kept unmerged for evaluation",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/src/game/music_decoders.fab:4; memory project_audio_bends"
+    },
+    "ctw_nes_m30": {
+     "status": "partial",
+     "detail": "same",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "missing",
+     "detail": "fab2c template from e9e3a61^1 can't do bends/duty",
+     "evidence": "memory project_flp_music_pipeline"
+    },
+    "ctw_nested_snes": {
+     "status": "partial",
+     "detail": "same as m30 ROM",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "unknown",
+     "detail": "IT pitch slides presumably; not checked",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 50,
+   "category": "Audio",
+   "game": "both",
+   "feature": "Duty command (.flp pipeline D3 dd)",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "added VRUN a36dd5e",
+     "evidence": "memory project_flp_music_pipeline (note)"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "same source",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "missing",
+     "detail": "fab2c template can't",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "unknown",
+     "detail": "only if Nested ROM rebuilt after a36dd5e",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "sample engine",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 51,
+   "category": "Audio",
+   "game": "both",
+   "feature": ".flp music pipeline back end",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "partial",
+     "detail": "embedded template, no bends/duty",
+     "evidence": "BrokenNes 0958ead7"
+    },
+    "ctw_nested_snes": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "one .it path -> SNES/WMS/MD/DOS/95 (build-supervrun.ps1); Runaway presets -> BRR 1e504522",
+     "evidence": "BrokenNes git log 1e504522"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "presets -> BRR",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "presets -> DAC",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "partial",
+     "detail": "OPL path unheard",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "partial",
+     "detail": "Win95 unrun",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 52,
+   "category": "Input",
+   "game": "both",
+   "feature": "Input devices",
+   "versions": {
+    "ctw_orig": {
+     "status": "has",
+     "detail": "keyboard + analog gamepads",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "2 NES pads",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "2 NES pads",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "SMS pad (2 jump, 1 fire, Pause=Start), Genesis pad Start",
+     "evidence": "S2-scope"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "SNES pad",
+     "evidence": "snes_pad.fab"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "2 SNES pads (NO mouse by design)",
+     "evidence": "memory project_widemess pointer design"
+    },
+    "sv_wms": {
+     "status": "has",
+     "detail": "2 pads + WideMess pointer port (absolute X/Y, hover/press)",
+     "evidence": "SuperVRUN_WMS_dev/src/wmsptr.h"
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "3/6-button: Y->A B->B A->C, Start+A or Mode = Select",
+     "evidence": "S3-scope dec.5"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "keyboard (arrows, Z/Shift shoot, X/Space jump, Q/W L/R...) + joystick",
+     "evidence": "memory project_supervrun_dos 0c727bb"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "keyboard + DirectInput + XInput (runtime-loaded)",
+     "evidence": "SuperVRUN_95_dev/README.md"
+    }
+   }
+  },
+  {
+   "id": 53,
+   "category": "Performance",
+   "game": "both",
+   "feature": "Lag status",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "0 gameplay lag; sweep +2,005 / boss heal +4,367 cycles spare; ~5 lag frames on room load after Start",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/27-mmc3-build.md (run)"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "0 lag; +2,133 / +4,414 spare",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/27 (run)"
+    },
+    "ctw_sms": {
+     "status": "partial",
+     "detail": "lag 9.1/1000 frames (4-enemy rooms worse); HUD band costs ~40%; user accepted as final",
+     "evidence": "memory S2 speed round 4 (run)"
+    },
+    "ctw_nested_snes": {
+     "status": "partial",
+     "detail": "gameplay 0 lag after feedback build; 1-7 frames in title->room fade (hard-0 open)",
+     "evidence": "memory project_nested_speed (run)"
+    },
+    "sv_snes": {
+     "status": "partial",
+     "detail": "1P/2P self-play ~0; max loadout + Chunk lags; 2P busy rooms 0.64% parked",
+     "evidence": "memory games round + weapon_mods (run)"
+    },
+    "sv_wms": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "partial",
+     "detail": "steady room ~0.91 ticks/frame vs SNES 1.00 (slower than SNES); big-room build ~50 frames vs 8",
+     "evidence": "memory S3 M3 speed / hw round 2 (run)"
+    },
+    "sv_dos": {
+     "status": "partial",
+     "detail": "x86@130M area-4 skips 139 pictures per run (was 599); DOSBox fine",
+     "evidence": "memory project_supervrun_dos (run)"
+    },
+    "sv_95": {
+     "status": "unknown",
+     "detail": "fixed 60.0988 fps; not measured",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 54,
+   "category": "Debug",
+   "game": "both",
+   "feature": "Test / debug builds",
+   "versions": {
+    "ctw_orig": {
+     "status": "partial",
+     "detail": "Debug==666 level select (dead)",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "selftest_mmc3.lua, verify_rom_mmc3.py, frame_cost.lua",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/tools"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "selftest.lua, 68/68 suite, Lua checks",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/tools"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "S2_SWEEP (168-room lag sweep), HAZHP/NOFIRE, FAB2C_PROFILE, SHIM_AUTOSTART",
+     "evidence": "memory S2"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "feedback-plans verify scenarios",
+     "evidence": "BrokenNes BrokenDev/projects/vrun-nested"
+    },
+    "sv_snes": {
+     "status": "has",
+     "detail": "--test, SV_XCHECK, WM_PLANT, SV_INVIS_TEST, guard.c, FX/BG/UI LAB, negcontrol scripts",
+     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/guard.h"
+    },
+    "sv_wms": {
+     "status": "partial",
+     "detail": "--widemess build; wms tests in BrokenNes",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "MD_NEGCTL, MD_DOORTEST, MD_PROF, MD_TPROF, compare_snes timeflow",
+     "evidence": "SuperVRUN_MD_dev/platform/md/plat_md.c:184"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "SV_DOS_TEST + TEST.TXT (pad/seed/startat/startroom/money/pos/probe/shot)",
+     "evidence": "SuperVRUN_DOS_dev/platform/dos/dos_test.h"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "SV_DOS_TEST + tests/compare.ps1 vs DOS (state-exact 5 scripts)",
+     "evidence": "SuperVRUN_95_dev/README.md"
+    }
+   }
+  },
+  {
+   "id": 55,
+   "category": "Quirks",
+   "game": "CTW",
+   "feature": "MMC3 boots ~10 frames faster -> same inputs pick a different map",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "compare needs inputs shifted 10 + map_slot poke",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/27"
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "reference",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "start-timing calibrated (NES_TITLE_FRAME 41); fab2c layout changes break it",
+     "evidence": "memory S2"
+    },
+    "ctw_nested_snes": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 56,
+   "category": "Quirks",
+   "game": "CTW",
+   "feature": "NESFab non-deterministic builds (2 px drift at tick 445 between builds)",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "has",
+     "detail": "freeze ROM + mlb; zero-tolerance compares useless",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/27"
+    },
+    "ctw_nes_m30": {
+     "status": "has",
+     "detail": "freeze ROM + mlb; zero-tolerance compares useless",
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/27"
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "freeze ROM + mlb; zero-tolerance compares useless (fab2c translation of m30)",
+     "evidence": "VRUN_CTW_SMS_dev/docs/S2-scope.md (code, translated)"
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "freeze ROM + mlb; zero-tolerance compares useless (m30 ROM in Nested)",
+     "evidence": "Project-Nested/tools/m30pipe/README.md (code)"
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 57,
+   "category": "Quirks",
+   "game": "Super VRUN",
+   "feature": "MD coins/items/puzzle budget drift (perf_lines_now)",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "reference",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "accepted by user 2026-11-06; cash tolerance 30",
+     "evidence": "SuperVRUN_MD_dev/docs/S3-scope.md"
+    },
+    "sv_dos": {
+     "status": "missing",
+     "detail": "state-exact vs SNES (fixed beam V 226)",
+     "evidence": "memory project_supervrun_dos"
+    },
+    "sv_95": {
+     "status": "missing",
+     "detail": "state-exact vs DOS",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 58,
+   "category": "Quirks",
+   "game": "Super VRUN",
+   "feature": "MD colours: ladder rails pink, side doors, 9-bit CRAM dark colours",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "reference",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "partial",
+     "detail": "remap 62c4f90 made doors green + ladders = SNES; rails parked; dark gradient colours round to black",
+     "evidence": "memory S3 A1 round; S3-scope:129"
+    },
+    "sv_dos": {
+     "status": "missing",
+     "detail": "exact palette (15-bit cache)",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "missing",
+     "detail": "",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 59,
+   "category": "Quirks",
+   "game": "Super VRUN",
+   "feature": "DOS/95 parallax/glyph animation phase differs from SNES",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "SNES lags ~227 frames in loads; phase counter is vblank-driven",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "known difference",
+     "evidence": "memory project_supervrun_dos 2026-11-07"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "inherits DOS",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 60,
+   "category": "Quirks",
+   "game": "Super VRUN",
+   "feature": "Area-door re-entry freeze (gs_set fix)",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "SNES gsta re-runs init natively",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "has",
+     "detail": "fixed 71cf59b (gs_set)",
+     "evidence": "memory S3 area-door"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "fixed 0c727bb",
+     "evidence": "memory project_supervrun_dos"
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "built from DOS 0c727bb",
+     "evidence": "SuperVRUN_95_dev/README.md"
+    }
+   }
+  },
+  {
+   "id": 61,
+   "category": "Quirks",
+   "game": "Super VRUN",
+   "feature": "Port endian/backport fixes not back in SNES (MD BACKPORT 1-8, DOS #1 stat_of)",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "partial",
+     "detail": "stat_of declaration-order bug latent (works on 816-tcc layout)",
+     "evidence": "SuperVRUN_DOS_dev/BACKPORT.md #1"
+    },
+    "sv_wms": {
+     "status": "partial",
+     "detail": "same as SNES",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "partial",
+     "detail": "endian fixes local; stat_of bug present (no pausemap)",
+     "evidence": "SuperVRUN_MD_dev/BACKPORT.md"
+    },
+    "sv_dos": {
+     "status": "has",
+     "detail": "fixed locally",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "has",
+     "detail": "",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 62,
+   "category": "Quirks",
+   "game": "Super VRUN",
+   "feature": "Shop-exit freeze on real SNES (suspected DMA/HDMA lock-up)",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "unknown",
+     "detail": "awaiting console test; settle: user flash-cart run",
+     "evidence": "memory project_vrun_games_round"
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "unknown",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 63,
+   "category": "Quirks",
+   "game": "CTW",
+   "feature": "SMS view hides 32 px of each room",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "dead-zone follow 0-40",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 64,
+   "category": "Quirks",
+   "game": "CTW",
+   "feature": "Nested enhanced title shows NES font ~5 frames",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "accepted side effect of f13a2f9 lag fix",
+     "evidence": "memory project_vrun_games_round"
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 65,
+   "category": "Quirks",
+   "game": "CTW",
+   "feature": "SMS README stale (says S0 skeleton)",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "has",
+     "detail": "doc drift only",
+     "evidence": "VRUN_CTW_SMS_dev/README.md"
+    },
+    "ctw_nested_snes": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    }
+   }
+  },
+  {
+   "id": 66,
+   "category": "Quirks",
+   "game": "CTW",
+   "feature": "Nested still on mapper 30 (not the MMC3 main build)",
+   "versions": {
+    "ctw_orig": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_mmc3": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_nes_m30": {
+     "status": "n.a.",
+     "detail": "",
+     "evidence": ""
+    },
+    "ctw_sms": {
+     "status": "partial",
+     "detail": "also translated from m30 (no MMC3 tunnel anims)",
+     "evidence": ""
+    },
+    "ctw_nested_snes": {
+     "status": "has",
+     "detail": "move to MMC3 planned (cards nestedasm, nestedmmc3)",
+     "evidence": "memory project_nested_speed"
+    },
+    "sv_snes": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_wms": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_md": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_dos": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    },
+    "sv_95": {
+     "status": "n.a.",
+     "detail": "other game",
+     "evidence": ""
+    }
+   }
+  }
+ ]
+}
