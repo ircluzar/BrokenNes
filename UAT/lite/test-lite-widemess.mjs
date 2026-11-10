@@ -442,7 +442,7 @@ if (want('chips')) {
   // a NES game (Lite's built-in VRUN) on the NES board's WideMess widescreen chip: the page shows its whole 400-wide picture (the trimmed build keeps PPU_WMSS)
   await withLab(async lab => {
     const page = await lab.open('/?rom=vrun.nes&ppu=WMSS', { timeout: 240000 });
-    await page.waitFor("document.body.innerText.includes('ROM: vrun.nes') || document.body.innerText.includes('vrun.nes')", 240000).catch(() => {});
+    await page.waitFor("document.body.innerText.includes('ROM: vrun.nes') && !!nesInterop._dotNetRef", 240000).catch(() => {});   // the ROM list names vrun.nes before the game runs: wait for the game itself
     await page.eval(HELPERS);
     const r = await page.eval(`window.__frames(240, null, { colours: true })`);
     const sel = await page.eval(`document.getElementById('ppuCoreSelect')?.dataset.core || ''`);
