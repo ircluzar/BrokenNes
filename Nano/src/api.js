@@ -4,7 +4,7 @@
 // file and loaded from a Blob URL, so the page needs no second file and no server; pass {workletUrl} to load nano-worklet.js instead when a
 // Content-Security-Policy forbids blob: scripts). There is no fallback: a browser without AudioWorklet gets an Error that says so.
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const PROCESSOR_NAME = 'brokennes-nano';
 
 // ---- the AudioWorkletProcessor (runs in the audio thread; kit is the engine) ----
@@ -20,6 +20,7 @@ function workletMain(kit, PROCESSOR_NAME) {
       this.pending = [];                 // timed events that arrived before the first block
       this.report = false;
       this.quanta = 0;
+      this.song = null;                  // a SongPlayer (synth.loadMidi)
       this.port.onmessage = (e) => this.onMessage(e.data);
     }
 
@@ -43,11 +44,23 @@ function workletMain(kit, PROCESSOR_NAME) {
         case 'off': e.noteOff(f, m.ref); break;
         case 'bend': e.bendVoice(f, m.ref, m.cents); break;
         case 'alloff': e.allOff(f); break;
-        case 'kill': e.kill(f); break;
+        case 'kill': e.kill(f); if (this.song) this.song.seek(this.song.pos / sampleRate); break;
         case 'param': e.setParam(f, m.name, m.value); break;
         case 'addPreset': e.addPreset(m.name, m.def); break;
         case 'addSample': e.addSample(m.name, m.bytes, m.o); break;
         case 'report': this.report = !!m.on; break;
+        case 'song': this.song = m.song ? new kit.SongPlayer(sampleRate, m.song, m.o) : null; break;
+        case 'songctl': {
+          const s = this.song; if (!s) break;
+          if (m.op === 'play') { if (s.ended) s.seek(0); s.playing = true; }
+          else if (m.op === 'pause') { s.playing = false; for (const p of s.parts) p.engine.allOff(p.engine.frame); }
+          else if (m.op === 'stop') { s.playing = false; s.seek(0); }
+          else if (m.op === 'seek') s.seek(m.v);
+          else if (m.op === 'tempo') s.tempo = m.v;
+          else if (m.op === 'volume') s.volume = m.v;
+          else if (m.op === 'loop') { s.loop = m.v.on; if (m.v.start !== undefined) s.loopStart = m.v.start; if (m.v.end !== undefined) s.loopEnd = m.v.end; }
+          break;
+        }
         case 'ping': this.port.postMessage({ t: 'pong', n: m.n }); break;
       }
     }
@@ -57,10 +70,12 @@ function workletMain(kit, PROCESSOR_NAME) {
       if (this.expect !== currentFrame) this.base = currentFrame - this.engine.frame;
       if (this.pending.length) { const p = this.pending; this.pending = []; for (const m of p) this.onMessage(m); }
       this.engine.render(out, 0, out.length);
+      const s = this.song;
+      if (s) { const was = s.playing; s.render(out, 0, out.length); if (was && s.ended) this.port.postMessage({ t: 'ended' }); }
       for (let c = 1; c < outputs[0].length; c++) outputs[0][c].set(out);
       this.expect = currentFrame + out.length;
       if (this.report && ++this.quanta % 8 === 0) {
-        this.port.postMessage({ t: 'activity', channels: this.engine.activity(), peak: this.engine.peak });
+        this.port.postMessage({ t: 'activity', channels: this.engine.activity(), peak: this.engine.peak, song: s ? { position: s.pos / sampleRate, playing: s.playing } : null });
         this.engine.peak = 0;
       }
       return true;
@@ -130,6 +145,35 @@ class NoteHandle {
   off(opts = {}) { this.synth.noteOff(this, opts); }
   /** Bends the note by `cents` from now on. */
   bend(cents, opts = {}) { this.synth.bend(this, cents, opts); }
+}
+
+// The song player of a synth (synth.loadMidi): play / pause / stop / seek / loop / tempo / volume, onend. Same shape as Nano GB's.
+class SongControl {
+  constructor(synth, song) { this.synth = synth; this.song = song; this.duration = song.duration; this.channels = song.channels.map(c => c + 1); this.onend = null; this.position = 0; this.playing = false; }
+  _ctl(op, v) { this.synth._post({ t: 'songctl', op, v }); }
+  play() { this.synth._autoResume(); this.playing = true; this._ctl('play'); return this; }
+  pause() { this.playing = false; this._ctl('pause'); return this; }
+  stop() { this.playing = false; this._ctl('stop'); return this; }
+  seek(seconds) { if (!(seconds >= 0 && isFinite(seconds))) throw new RangeError('seek takes seconds from 0'); this._ctl('seek', seconds); return this; }
+  loop(on = true, start, end) {
+    if (start !== undefined && !(start >= 0)) throw new RangeError('loop start must be seconds from 0');
+    if (end !== undefined && !(end > (start ?? 0))) throw new RangeError('loop end must be after its start');
+    this._ctl('loop', { on: !!on, start, end }); return this;
+  }
+  tempo(x) { if (!(x >= 0.05 && x <= 8)) throw new RangeError('tempo is a factor from 0.05 to 8'); this._ctl('tempo', x); return this; }
+  volume(v) { if (!(v >= 0 && v <= 8)) throw new RangeError('volume must be from 0 to 8'); this._ctl('volume', v); return this; }
+  unload() { this.synth._post({ t: 'song', song: null }); if (this.synth.song === this) this.synth.song = null; }
+}
+
+function toSong(data) {
+  if (data && data.events && data.channels) return data;
+  if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) return kit.parseMidi(data);
+  throw new TypeError('a song is an ArrayBuffer / Uint8Array of a .mid file (or BrokenNesNano.parseMidi\'s result)');
+}
+function songOpts(opts) {
+  const o = { chips: opts.chips ?? 'channel', volume: opts.volume ?? 1, loop: !!opts.loop, loopStart: opts.loopStart, loopEnd: opts.loopEnd, presets: opts.presets };
+  if (opts.sidecar) o.sidecar = typeof opts.sidecar === 'string' ? JSON.parse(opts.sidecar) : opts.sidecar;
+  return o;
 }
 
 class Synth {
@@ -307,6 +351,17 @@ class Synth {
   }
 
   /** Routes the sound somewhere else: synth.connect(myGainNode). By default it is connected to the context's destination. */
+  /** Loads a Standard MIDI File (ArrayBuffer) for playing: returns its player ({play, pause, stop, seek, loop, tempo, volume, onend, duration, position}).
+   *  opts: {chips: 'channel' (default: one chip per MIDI channel, as FL plays one plugin per channel) | 'shared' (one chip, 5 voices in all), sidecar (flp2nano's .nano.json), loop, loopStart, loopEnd, volume, presets, play} */
+  loadMidi(data, opts = {}) {
+    const song = toSong(data), o = songOpts(opts);
+    new kit.SongPlayer(8000, song, o);          // the same checks the audio thread makes, here, so a bad sidecar throws at the call
+    this._post({ t: 'song', song, o });
+    this.song = new SongControl(this, song);
+    if (opts.play) this.song.play();
+    return this.song;
+  }
+
   connect(destination, output, input) { return this.node.connect(destination, output, input); }
   disconnect(...args) { this.node.disconnect(...args); }
 
@@ -435,10 +490,22 @@ function toAudioBuffer(ctx, events, seconds, opts = {}) {
   return buf;
 }
 
+/** Renders a .mid (ArrayBuffer, or parseMidi's result) offline to a mono Float32Array. opts: as loadMidi, plus sampleRate and seconds (default: the song + 1 s). */
+function renderMidi(data, opts = {}) {
+  const song = toSong(data), sr = opts.sampleRate || 44100;
+  const pl = new kit.SongPlayer(sr, song, songOpts(opts));
+  pl.playing = true;
+  const total = Math.round((opts.seconds ?? song.duration + 1) * sr);
+  const out = new Float32Array(total);
+  for (let o = 0; o < total; o += 128) pl.render(out, o, Math.min(128, total - o));
+  return out;
+}
+
 const api = {
   version: VERSION,
-  create, support, noteNumber, renderOffline, toAudioBuffer, encodeDpcm,
-  /** The built-in presets: [{name, label, kind, desc, note}] */
+  create, support, noteNumber, renderOffline, renderMidi, toAudioBuffer, encodeDpcm,
+  parseMidi: (data) => kit.parseMidi(data),
+  /** The built-in presets in program order (a MIDI program change n picks the n-th): [{name, label, kind, desc, note}] */
   presets: describePresets(Object.fromEntries(Object.keys(kit.PRESETS).map(k => [k, kit.normalizePreset(kit.PRESETS[k], k)]))),
   /** The engine itself, for tools and tests (not a stable interface). */
   _kit: kit,

@@ -65,7 +65,7 @@ const one = (preset, note, seconds, off = null, extra = {}) => render([{ time: 0
   check('dist/LICENSE.txt is the repository license', fs.readFileSync(path.join(nanoRoot, 'dist', 'LICENSE.txt'), 'utf8') === license);
   for (const f of ['nano.js', 'nano.mjs', 'nano-worklet.js']) {
     const b = fs.readFileSync(path.join(nanoRoot, 'dist', f));
-    check(`${f} is under 80 KB (${b.length} bytes, ${zlib.gzipSync(b, { level: 9 }).length} gzip)`, b.length < 80 * 1024);
+    check(`${f} is under 96 KB (${b.length} bytes, ${zlib.gzipSync(b, { level: 9 }).length} gzip; 80 KB before the MIDI player)`, b.length < 96 * 1024);
     check(`${f} makes no network calls (no fetch, XMLHttpRequest, WebSocket, importScripts, eval)`, !/\b(fetch|XMLHttpRequest|WebSocket|importScripts|eval)\s*\(/.test(b.toString('utf8')));
   }
   const sizes = fs.readdirSync(path.join(nanoRoot, 'dist')).map(f => fs.statSync(path.join(nanoRoot, 'dist', f)).size);

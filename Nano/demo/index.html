@@ -129,6 +129,12 @@
   </section>
 
   <section>
+    <h2>Play a song</h2>
+    <div><input type="file" id="midfile" accept=".mid,.midi"> <input type="file" id="sidefile" accept=".json"> <button id="songplay">Play</button> <button id="songstop">Stop</button> <label><input type="checkbox" id="songloop"> loop</label> <span id="songinfo"></span></div>
+    <div class="hint">A .mid (and, optionally, the .nes.json sidecar that <code>Nano/tools/flp2nano</code> writes next to it from an FL project). One NES chip per MIDI channel, as FL plays one plugin per channel. Start the synth first.</div>
+  </section>
+
+  <section>
     <h2>Embed it</h2>
     <pre id="snippet"></pre>
     <div class="hint">Everything above is that one script file. See <code>Nano/README.md</code> for the whole API.</div>
@@ -148,6 +154,22 @@ const NAMES = ['Pulse 1', 'Pulse 2', 'Triangle', 'Noise', 'DPCM'];
 const noteName = (n) => n < 0 ? '' : ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][n % 12] + (Math.floor(n / 12) - 1);
 
 let synth = null, analyser = null, preset = 'lead', octave = 3;
+
+// ---- songs ----
+let song = null;
+async function loadSong() {
+  const f = $('midfile').files[0]; if (!f || !synth) { $('songinfo').textContent = synth ? 'choose a .mid' : 'start the synth first'; return null; }
+  const sf = $('sidefile').files[0], sidecar = sf ? JSON.parse(await sf.text()) : undefined;
+  if (song) song.unload();
+  song = synth.loadMidi(await f.arrayBuffer(), { sidecar, loop: $('songloop').checked });
+  song.onend = () => { $('songinfo').textContent = 'ended'; };
+  $('songinfo').textContent = `${song.duration.toFixed(1)} s, MIDI channels ${song.channels.join(', ')}`;
+  return song;
+}
+$('songplay').onclick = async () => { try { (song && !$('midfile').dataset.dirty ? song : await loadSong())?.play(); $('midfile').dataset.dirty = ''; } catch (e) { $('songinfo').textContent = e.message; } };
+$('songstop').onclick = () => { if (song) song.stop(); };
+$('midfile').onchange = $('sidefile').onchange = () => { $('midfile').dataset.dirty = '1'; };
+$('songloop').onchange = () => { if (song) song.loop($('songloop').checked); };
 
 // ---- start (a click: the browser lets the page make sound after one) ----
 $('startbtn').onclick = async () => {

@@ -172,6 +172,29 @@ All samples together take at most 16 KB (the chip addresses `$C000-$FFFF`); `add
 on channel 10 the General MIDI drum notes (kick, snare, hats, toms, crash). Options: `input` (id or name), `channel`, `bendRange`, `drums`. It returns `{ close() }`. **Not tested with a device**: the message handling is
 tested with synthetic messages through the real worklet; the permission prompt and real hardware were not (headless Edge refuses the permission, and the error reaches the caller).
 
+### Songs (MIDI files) and FL projects
+
+Since 0.2.0 Nano NES plays Standard MIDI Files, with the same API as Nano GB:
+
+```js
+const song = synth.loadMidi(await (await fetch('overworld.nes.mid')).arrayBuffer(), { sidecar: await (await fetch('overworld.nes.json')).json(), loop: true });
+song.play();            // pause() stop() seek(s) loop(on, start, end) tempo(x) volume(v) unload(); song.onend; song.position / duration
+const pcm = BrokenNesNano.renderMidi(bytes, { sampleRate: 44100, sidecar });   // offline, mono Float32Array
+```
+
+* `chips: 'channel'` (default) gives every MIDI channel its own NES chip, as FL runs one BrokenNes2 instance per channel; `chips: 'shared'` puts the whole song on one chip (5 voices, the leanest).
+* Program change n picks the n-th built-in preset (the order of `presets`, append-only); channel 10 plays the General MIDI drum notes; pitch bend +-2 semitones or what RPN 0 sets; velocity is the level.
+* The sidecar (`{format: 'nano-nes-sidecar', version: 1, channels: {'1': {preset, volume, duty, noiseMode, name}}, presets: {...}}`) overrides the program per channel. Unknown keys are refused.
+* **From FL**: `node Nano/tools/flp2nano/flp2nano.mjs song.flp [--out DIR]` reads the .flp and writes `song.nes.mid`, `song.nes.json` (sidecar) and `song.nes.fence.json` (the music pipeline's fence report).
+  It converts every BrokenNes2 instance on a NES chip in Direct mode (pulse 1 / pulse 2 / triangle / noise): monophonic, last-note priority, the Direct-mode level
+  round(15 x vel/128 x Volume) as the velocity (Nano rounds it back to the same 4-bit level), duty and noise mode in the sidecar, FL slide notes and fine pitch as bends.
+  The FL side (rack, playlist, slides, SMF writer) is Nano GB's flp2nano, shared. Nano GB instances are skipped (use `Nano/gb/tools/flp2nano`).
+* **The plugin chip** is the existing NES chip FIX of BrokenNes2: Nano NES is APU_FIX sample for sample (`test/parity.mjs`), so what FL plays in Direct mode is what Nano NES plays.
+* Proof: `test/song.test.mjs` (a .mid through the player = the same notes scheduled by hand on the parity-proven engine, bit-exact; sidecar checks; seek/loop/end), `test/flp2nano.test.mjs`.
+  Checked on the user's `Reverse Coaster/overworld.flp`: 4 parts (pulse 1, pulse 2, triangle with 29 slides, noise), 28.1 s.
+* Cost: one chip per channel, so a 4-channel song is 4 chips: measured 216 to 336 ms (best runs; medians 256 to 481) of CPU per second at 48 kHz on the shared, loaded dev machine
+  (`song.test.mjs`, 3 runs x 5); about 4 x the single-chip figure below. Use `chips: 'shared'` when the budget matters. The player adds 9 KB (2.5 KB gzip) to `nano.js`.
+
 ## How it sounds like the chip, and what it adds
 
 Two layers, both in `src/`:
@@ -217,7 +240,7 @@ Not covered by the proof: the browser's own mixing after the worklet, sound thro
 
 | | |
 |---|---|
-| download | `nano.js` 74 KB, 23.4 KB gzip, 20.6 KB brotli; `nano-worklet.js` alone 52 KB, 16.2 KB gzip. Nothing else is fetched |
+| download | `nano.js` 89 KB, 27.5 KB gzip (0.2.0, with the MIDI player; 0.1.0 was 74 KB, 23.4 KB gzip); `nano-worklet.js` alone 63 KB, 19.6 KB gzip. Nothing else is fetched |
 | CPU | one chip simulates 1.79 M cycles a second whatever is playing: **about 20 to 25 ms of CPU per second of audio** (2 to 3 percent of one core; 40 to 48x real time) in Node and in Edge, the same with 1 or 4 voices sounding, ~21 ms measured for the chip alone in the desktop app's browser pane. It runs while the synth is connected, silent or not; `dispose()` or `disconnect()` a synth you are not using |
 | start-up | `create()` took 75 to 410 ms (module load and worklet start; the spread is the shared dev machine) and the first activity report came 60 to 330 ms after `noteOn` in headless Edge (it includes the report's own 23 ms cadence). Latency after that is the `AudioContext`'s: 10 ms base latency here |
 | memory | a 16 KB sample memory, a 128 KB mixer table, a 128 KB resampler buffer per synth |
