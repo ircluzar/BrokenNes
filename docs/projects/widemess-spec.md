@@ -24,10 +24,12 @@ emulates decodes this range: the SA-1 is at `$2200-$23FF`, the Super FX at `$300
 | `$4221` | WMID | R | `$57` ('W') once unlocked. A SNES returns open bus, which for `LDA $4221` is `$42` (the address's high byte), so the read tells the two apart. |
 | `$4222` | WMVER | R | Spec major version (1). |
 | `$4223` | WMREV | R | Spec minor version (0). |
-| `$4224` | WMFEAT | R | Features this console has (bit = 1): 0 picture (wide output, 8-layer mode); 1 sprites+ (the rest of the picture, section 3: the 256-sprite table, windows and colour math at 400, the SNES modes wide); 2 sound+ (section 4: voices 8-31, 16-bit PCM, 1 MB sound RAM); 3 fast CPU; 4 1 MB work RAM; 5 fast DMA; 7 debug port. |
+| `$4224` | WMFEAT | R | Features this console has (bit = 1): 0 picture (wide output, 8-layer mode); 1 sprites+ (the rest of the picture, section 3: the 256-sprite table, windows and colour math at 400, the SNES modes wide); 2 sound+ (section 4: voices 8-31, 16-bit PCM, 1 MB sound RAM); 3 fast CPU; 4 1 MB work RAM; 5 fast DMA; 6 pointer port (section 10); 7 debug port. |
 | `$4225` | WMSPEED | R/W | Bit 0: fast CPU (section 2). 0 at reset. |
 | `$4226` | WMDMA | R/W | Bit 0: fast general DMA (section 2). 0 at reset. |
-| `$4227-$422F` | | | Reserved: read 0, write ignored. |
+| `$4227` | | | Reserved: read 0, write ignored. |
+| `$4228-$422C` | WMPTR* | R | The pointer port (section 10): X, Y and the state of the pointer over the picture, latched at the start of each frame. |
+| `$422D-$422F` | | | Reserved: read 0, write ignored. |
 | `$4230-$423F` | | W | The BrokenDev debug port (`docs/projects/brokendev-debugging-plan.md`, "D7 settled"), the SNES's too: `$4230` / `$4231` DATA, `$4232` COMMAND, `$4234` TIMER START, `$4236` TIMER STOP, `$4238-$423F` reserved. Locked or unlocked; BrokenNes listens only while its debugger or dev mode is on, and the writes go nowhere on the console. `WMFEAT` bit 7 reads 0 (answering it would let a game behave differently under the debugger). |
 
 Detection, in a game: write `$57`, `$4D` to `$4220`, then read `$4221`. `$57` means WideMess; check `WMFEAT` for each feature you use.
@@ -805,6 +807,7 @@ No flicker changed nothing in eight of the eleven games' checked play: most SNES
 | SNES games enhanced: widescreen, no flicker, better sound, fast CPU, profiles | 6 | done (`WideMess.Enhance.cs`, `WideMess.Profiles.cs`, `DSP_SFC.Enhance.cs`, `SnesSession.Enhance.cs`; `WideMess/profiles`, 11 games proven, 6.4) |
 | BrokenNes Lite and the FL plugin (section 9) | 7a | done (Lite: `Emulator.Consoles.cs`, `Emulator.WideMess.cs`, `UAT/lite/test-lite-widemess.mjs`; plugin: chip `WMS`, `WmsBank.cs`, `WmsSampler.cs`, `WmsSnapshot.cs`, self-test `wms` / `rom-wms`) |
 | The WideMess chips on the other consoles (the widescreen chip, the sound chip), theirs on the WideMess | 7b | done (section 8; `WmsWideChip`, `WmsVoiceChip`, NES board `PPU_WMSS` / `APU_WMSS`: mix/WideMessEnhanced.cs; `Workshop --enhanced-test --only wmsmenu,wms,wmsown,wmsgames`) |
+| Pointer port (section 10) | wmspointer | done (`WmsExtension` pointer registers, `WmsPointer`; desktop, Lite, MCP `pointer`, HTTP `/api/input/pointer`; `Workshop --wms-test` pointer checks) |
 | Debug port | BrokenDev debugging toolkit | defined (D7: `$4230-$423F`) |
 | Conformance: the test cartridge (any implementation of this spec runs it; its expected results, its results table, its reference pictures) | - | done (`WideMess/testcart`, `WideMess/testroms/bin/widemess-testcart.wms`; `Workshop --wms-testcart`) |
 
@@ -893,3 +896,46 @@ the Pulse duty, a triangle, a noise in the Noise mode). Each waveform is eleven 
 starts on the loop whose rate puts its pitch register between $1000 and $1FFF, so the pitch is exact to a fifth of a cent (measured A0 to C8) and a held note bends an octave up or more. Each
 instrument has its S-DSP envelope. **Instrument Runaway on a WideMess game** whose sound unit is unlocked plays the game's own instruments the same way: the new voices' directory (16-bit PCM
 and BRR anywhere in the 1 MB, 24 at once) and the S-DSP's own (8 at once), at their pitch ($1000 = the sample's own rate at C5). Editing them in the Instruments tab is not built.
+
+
+## 10. The pointer port (wmspointer)
+
+A WideMess-only input device on its own port: a mouse, a finger, a pen or an agent pointing at the picture. It is not a pad port: both pad ports stay
+for two players, and the SNES console has no such port at all (a SNES game never sees it; locked, these addresses read as on a SNES). There is **no
+cursor drawn by the console**: on a PC the host's own system cursor shows over the window, on a touch screen nothing shows. The host maps its window
+coordinates to console pixels (its scaling, letterbox and stretch included); a pointer outside the picture is not present.
+
+### 10.1 Registers (CPU, banks $00-$3F / $80-$BF, unlocked only)
+
+| Address | Name | Contents |
+|---|---|---|
+| `$4228` | WMPTRXL | X, bits 0-7 (console pixels, 0-399) |
+| `$4229` | WMPTRXH | bit 0: X bit 8; bits 1-7 read 0 |
+| `$422A` | WMPTRY | Y (0-223) |
+| `$422B` | WMPTRST | bit 0 PRESENT (over the picture); bit 1 LEFT held; bit 2 RIGHT held; bit 3 LEFT went down this frame; bit 4 LEFT went up this frame; bit 5 RIGHT went down this frame; bits 6-7 DEVICE: 0 mouse, 1 touch, 2 pen, 3 agent |
+| `$422C` | WMPTRMOVE | bit 0: X or Y differs from the previous frame's; bit 1: PRESENT differs; bits 2-7 read 0 |
+
+All five are read-only (writes are ignored) and keep one value for the whole frame: the port **latches at the start of each frame** (the moment the
+emulator's frame begins, which is the start of vertical blanking), so every read in a frame agrees, and the "this frame" edge bits compare this
+latch with the previous one. A pointer that is not present keeps the last X/Y it had (so a game can still finish an action at the last place) and
+holds no buttons. **Hover** is PRESENT with no button held; **pressed** is a button held. A touch is the left button: a tap is a frame (or more) of
+PRESENT + LEFT at the finger, then PRESENT clear with the LEFT-up edge, so a game that highlights what is under the pointer and acts on the
+LEFT-down edge treats a tap as hover + click. Right is the mouse's right button and a pen's barrel button.
+
+Detection: unlock, check `WMFEAT` bit 6.
+
+### 10.2 The input as recorded
+
+The pointer is input, like the pads: the host hands it to the session once per frame (`SnesSession.SetPointer`) before the frame runs. The latched
+value and the previous one are part of the save state (an older state without them loads with the pointer idle: not present at 0,0). Timeflow
+records the pointer given to each frame in the frame's index (a tagged part of its extras, only for frames whose pointer was not idle), and a replay
+hands it back as it hands back the pads.
+
+### 10.3 The hosts
+
+| Host | Input | Mapping |
+|---|---|---|
+| Desktop app | the picture's mouse events (move, buttons, leave); touch and pen arrive as Windows' promoted mouse messages, told apart by their message signature | the renderer's own destination rectangle (scaling, pixel-perfect, alignment, stretch) to the frame's pixels; outside it = not present |
+| BrokenNes Lite | the canvas's pointer events (`pointerType` mouse / touch / pen) | the canvas's box, with `object-fit: contain`'s letterbox when the canvas is not the picture's shape, to the frame's pixels |
+| MCP (headless) | the `pointer` tool: x, y, action (move, down, up, click, leave, right-down, right-up), device | console pixels directly, device agent unless given |
+| HTTP API | `POST /api/input/pointer` {x, y, present, left, right, device} | console pixels directly |
