@@ -28,6 +28,7 @@ internal static class FlpVocChecks
         new("vocgb-engine", "Vaults GB: the test ROM (the game's own driver) plays the events frame by frame in BrokenNes's Game Boy", GbEngine),
         new("vocgg-synthetic", "Vaults GG: the Game Gear's fence on the same project (duty, wave as a square, low notes, noise rates, levels, frame rate)", GgSynthetic),
         new("vocgg-engine", "Vaults GG: the test ROM (the game's own PSG sound unit) plays the Game Boy bytes frame by frame in BrokenNes's Game Gear", GgEngine),
+        .. FlpSmsChecks.All,
     ];
 
     internal static string RepoFile(string rel) => Path.Combine(MidiFixtures.RepoRoot(), rel);

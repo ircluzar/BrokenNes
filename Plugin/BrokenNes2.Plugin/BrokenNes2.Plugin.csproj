@@ -38,6 +38,8 @@
     <!-- Test MIDI export (round 7): VRUN's AudioPlayer with padded stream arrays, and its manifest (made by BrokenDev/tools/music/build-musictest.ps1; Music/MusicTemplate.cs reads them) -->
     <EmbeddedResource Include="Resources/musictest.nes" LogicalName="musictest.nes" />
     <EmbeddedResource Include="Resources/musictest.txt" LogicalName="musictest.txt" />
+    <!-- the .flp pipeline's test ROMs for the other consoles (BrokenDev/tools/music/vocgb, vocgg, ctwsms; Emulator.FlpGame.cs) -->
+    <EmbeddedResource Include="Resources/flpvocgb.gbc;Resources/flpvocgb.txt;Resources/flpvocgg.gg;Resources/flpvocgg.txt;Resources/flpctwsms.sms;Resources/flpctwsms.txt" LogicalName="%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

@@ -151,6 +151,9 @@ public sealed partial class Emulator
                     // an FL project (the music pipeline, docs/projects/flp-music-pipeline.md): the shared reader + the VRUN NES back end make the MIDI VRUN's converter reads
                     if (IsFlp(path) && !MusicMutate.Has(MusicMutate.FlpReadAsMidi))
                     {
+                        try { if (FlpOtherConsole(path, midi)) return; }     // a Game Boy / Master System song: that game's test ROM (Emulator.FlpGame.cs)
+                        catch (Exception e) when (e is FormatException or IndexOutOfRangeException or ArgumentOutOfRangeException or ArgumentException or OverflowException or InvalidOperationException)
+                        { SongUi.SetResult($"{file} was not loaded ({e.Message.TrimEnd('.')}). Nothing changed", false); return; }
                         try { fromFlp = Music.Flp.VrunNesBackend.Build(Music.Flp.FlpSong.Read(midi), SongConvert.NameOf(path)); }
                         catch (Exception e) when (e is FormatException or IndexOutOfRangeException or ArgumentOutOfRangeException or ArgumentException or OverflowException)
                         { SongUi.SetResult($"{file} was not loaded: it is not an FL project BrokenNes2 can read ({e.Message.TrimEnd('.')}). Nothing changed", false); return; }
