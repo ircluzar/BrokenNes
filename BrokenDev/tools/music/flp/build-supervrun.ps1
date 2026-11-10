@@ -35,7 +35,7 @@ $snesTree = Join-Path $Projects 'SuperVRUN_dev\snes-dev\supervrun'
 $name = [IO.Path]::GetFileNameWithoutExtension($Flp)
 $safe = ($name -replace '[^A-Za-z0-9_-]', '_')
 function Fail($m) { Write-Host "FAIL  $m"; exit 1 }
-function Py { $a = @($args | ForEach-Object { $_ }); $p = $Python -split ' '; & $p[0] @($p[1..($p.Count - 1)] + $a); if ($LASTEXITCODE -ne 0) { Fail "python $($a[0]) (exit $LASTEXITCODE)" } }
+function Invoke-Py { $v = $Python -replace '^py\s+', ''; $out = $null | & py.exe $v -u -I @args; if ($LASTEXITCODE -ne 0) { $out | ForEach-Object { Write-Host "   $_" }; Fail "python $($args[0]) (exit $LASTEXITCODE)" }; $out }
 
 if (-not (Test-Path $Flp)) { Fail "no such .flp: $Flp" }
 if (-not $FruityHost) {
@@ -57,9 +57,9 @@ Write-Host "== $name -> $id (work $w)"
 if ($LASTEXITCODE -ne 0) { Fail 'flp-backend' }
 $fence = Join-Path $w "$name.fence.json"
 $env:MNES_SF2 = $Sf2
-Py (Join-Path $snesTree 'tools\music\sf2it.py') (Join-Path $w "$name.mid") -o (Join-Path $w 'rosbif.it') --report (Join-Path $w 'rosbif.rep.json') | Out-Null
+Invoke-Py (Join-Path $snesTree 'tools\music\sf2it.py') (Join-Path $w "$name.mid") -o (Join-Path $w 'rosbif.it') --report (Join-Path $w 'rosbif.rep.json') | Out-Null
 $fargs = @((Join-Path $here 'supervrun_fence.py'), $fence, $id, (Join-Path $w 'rosbif.it'), (Join-Path $w 'rosbif.rep.json'), '--snes', $snesTree, '--md', (Join-Path $Projects 'SuperVRUN_MD_dev'), '--dos', (Join-Path $Projects 'SuperVRUN_DOS_dev'))
-$report = Py @fargs
+$report = Invoke-Py @fargs
 $report | Set-Content (Join-Path $w "$name.fence.txt")
 $report | ForEach-Object { Write-Host "   $_" }
 Copy-Item $fence (Join-Path $Out "$safe.$Engine.fence.json") -Force
