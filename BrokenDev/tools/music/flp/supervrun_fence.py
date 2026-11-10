@@ -77,7 +77,7 @@ def main():
                 for ci, e in enumerate(r):
                     if e and e[0] is not None and e[0] < 120 and e[1]:
                         s, _ = it.sample_of(e[1], e[0])
-                        if s is not None and ic.sample_kind(it.samples[s].name) not in ('nzl', 'nzs', 'dpcm'):
+                        if s is not None and getattr(ic, 'md_kind', ic.sample_kind)(it.samples[s].name) not in ('nzl', 'nzs', 'dpcm'):   # (md_kind: a .flp preset's pcm.. sample is a DAC clip)
                             tonal[ci] = tonal.get(ci, 0) + 1
         lost = {c: n for c, n in tonal.items() if c not in vm}
         if lost:

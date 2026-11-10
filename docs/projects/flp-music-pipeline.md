@@ -111,3 +111,19 @@ Open questions for the user:
 - **Plugin:** Test MIDI export window, "In game: ..." button (id 2009) picks the target; "This FL project" then runs the script (Emulator.GameBuild.cs), shows the fence headline and loads SNES / WideMess / MD images in ROM mode; DOS / 95 / Nano GB are built and reported. Not exercised through the DLL by a check yet.
 - **Nano GB:** `Nano/gb/tools/flp2nano/fence.mjs` writes `<name>.nano.fence.json` from flp2nano's warnings. **Nano NES has no song player**: no target.
 - Checks: `FruityHost flp-test` `sv-synthetic`, `sv-fence`, `sv-songs` (+4 deliberate bugs); `node Nano/gb/test/flp2nano.test.mjs` (29).
+
+## 9. Presets: the instruments designed in the plugin reach the games (2026-11-10)
+
+**What a preset is** (Presets/PresetFile.cs): one instrument ripped by Instrument Runaway (clean or corrupted), not a recording: INS1 the instrument now (SNES: BRR bytes at their ARAM address, loop pointer, ADSR/GAIN, tuning, volumes, echo/noise/pmod flags; Genesis: FM patch registers or a DAC sample; PSG / Game Boy / NES registers), CLN1 the clean one, HIS1 the corruption history with seeds, CTX1 the engine context (SNES: 128 S-DSP registers + any ARAM a corrupted sample plays into), NOTE learned game voices. It rides in the instance's state as section PRS1 (u8 version, u8 flags, u16, u32 length, the file, CRC-32). The shared reader (FlpSong.cs / flpsong.mjs) already carried it byte for byte (`FlpBn2.Preset`): the canonical JSON is unchanged, the decoding is C#-only in `Music/Flp/FlpPresetSound.cs`.
+
+**The sample** (`FlpPresetSound.Of`): a SNES preset = EXACT: its BRR walked the way the S-DSP walks it (own bytes, loop pointer, the kept overrun ARAM), the loop unrolled until the BRR filter state repeats, C5 = 32000 x the pitch register the plugin keys at middle C / $1000. Any other preset = RENDERED: the plugin's own engine for it plays middle C 1 s at 33488 Hz (128 x 261.63 Hz), the last 10 periods (1280 samples, 80 BRR blocks) loop. A NES preset is not rendered (its player lives in the plugin): OVER.
+
+**Per engine** (Super VRUN back end; the instance's MIDI program is 6, `flp-backend` writes `<name>.presets.json` + WAVs, `build-supervrun.ps1` passes `--presets` to sf2it.py, which makes the sample instrument `pcm<ch>`):
+- SNES / WideMess: the preset is the song's own instrument (smconv re-encodes it as BRR). Fence: Ok + Notes for the envelope (SNESMOD holds the level), noise / pmod flags, no loop; `sound-ram` OVER past $1A00-$FE00; `range` OVER above the S-DSP's $3FFF.
+- Genesis: itconv.py plays `pcm..` samples on the DAC (driver patches are a fixed Z80 table: no per-song FM patch without a driver change). Note: one clip at a time, shared with effects, loop held up to 1 s, no note-off.
+- DOS / 95: oplconv.py plays its default patch: OVER.
+- Vaults GB: a Game Boy wave preset's 32-sample wave RAM becomes the song's wave table (exact), pulse = its duty, noise = its width; envelope Note. Vaults GG and VRUN NES: OVER. CTW SMS (another agent's file): not handled yet.
+
+**Measured** (headless BrokenNes, the plugin's own render of the preset vs the game build's recording, spectral similarity): SNES preset on Super VRUN SNES 0.999 (pitches exact: 2000/2516/3000/4000 Hz), Genesis FM preset on SNES 0.999, on WideMess 0.974, on MD 0.891 once pitch is compensated: **the MD DAC plays at ~0.74x the pitch itconv.py assumes** (middle C at ~194 Hz) - a driver/converter/emulator rate question that concerns every DAC clip, open.
+
+**Checks:** flp-test `sv-preset-snes`, `sv-preset-engines`, `preset-others`, 8 deliberate bugs (PsMutants). Game converters: sf2it.py (SuperVRUN c101aff) and itconv.py (SuperVRUN_MD 10442ad), default off, every existing song byte-identical.
