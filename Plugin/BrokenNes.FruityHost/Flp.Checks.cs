@@ -412,6 +412,9 @@ internal static class FlpChecks
         new(PsMutants.GbPresetIgnored, "Vaults GB ignores a Game Boy preset", "preset-others"),
         new(PsMutants.NesPresetIgnored, "VRUN NES plays a preset instance as a plain NES channel", "preset-others"),
         new(CtwSmsMutants.SlidesDropped, "the CTW SMS back end drops the slide notes (the old no-bends game)", "ctwsms-synthetic"),
+        new(CtwSmsMutants.PresetIgnored, "CTW SMS reads a preset instance as a plain channel", "ctwsms-preset"),
+        new(CtwSmsMutants.PresetFenceSilent, "CTW SMS drops a preset it cannot play without a fence line", "ctwsms-preset"),
+        new(CtwSmsMutants.PeriodicAsWhiteSilent, "CTW SMS plays a periodic-noise preset as white noise without saying so", "ctwsms-preset"),
     ];
 
     public static int Main(string[] args)

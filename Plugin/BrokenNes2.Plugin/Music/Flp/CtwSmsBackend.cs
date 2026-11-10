@@ -23,7 +23,7 @@ public sealed class CtwSmsSong
 }
 
 /// <summary>Deliberate bugs for FruityHost flp-test (bits of FlpMutants.Mask above Super VRUN's).</summary>
-public static class CtwSmsMutants { public const int SlidesDropped = 4096; }
+public static class CtwSmsMutants { public const int SlidesDropped = 262144, PresetIgnored = 524288, PresetFenceSilent = 1048576, PeriodicAsWhiteSilent = 2097152; }
 
 public static class CtwSmsBackend
 {
@@ -68,20 +68,30 @@ public static class CtwSmsBackend
             }
             if (ins.Notes.Count == 0) continue;
             if (b.Mode != "direct") { F.Add(new FenceLine("instruments", FenceLevel.Over, $"{who} is in ROM mode (it plays a game's channel, not notes): its {ins.Notes.Count} notes are not in the game")); continue; }
-            if (b.Console != 3) { F.Add(new FenceLine("instruments", FenceLevel.Over, $"{who} is a {b.ConsoleName} instrument: its {ins.Notes.Count} notes are not in this Master System song (that console's back end plays it)")); continue; }
-            if (b.Channel is < 0 or > 3) { F.Add(new FenceLine("channels", FenceLevel.Over, $"{who}: channel {(b.Channel == 4 ? "Mix" : b.Channel.ToString())} is not tone 1 / tone 2 / tone 3 / noise: its {ins.Notes.Count} notes are not in the game")); continue; }
-            var st = new FlpBn2 { Version = b.Version, Params = (int[])b.Params.Clone(), Console = 0, ConsoleName = "NES", Core = 0, Channel = b.Channel, Mode = "direct" };
+            int ch = b.Channel;
+            bool preset = false;
+            if (b.Core is >= FlpPresetSound.FirstPresetChip and <= FlpPresetSound.LastPresetChip && !FlpMutants.On(CtwSmsMutants.PresetIgnored))
+            {
+                var (pch, over) = PresetVoice(b, who, ins, F);
+                if (over) continue;
+                ch = pch; preset = true;
+            }
+            if (!preset && b.Console != 3) { F.Add(new FenceLine("instruments", FenceLevel.Over, $"{who} is a {b.ConsoleName} instrument: its {ins.Notes.Count} notes are not in this Master System song (that console's back end plays it)")); continue; }
+            if (ch is < 0 or > 3) { F.Add(new FenceLine("channels", FenceLevel.Over, $"{who}: channel {(ch == 4 ? "Mix" : ch.ToString())} is not tone 1 / tone 2 / tone 3 / noise: its {ins.Notes.Count} notes are not in the game")); continue; }
+            var st = new FlpBn2 { Version = b.Version, Params = (int[])b.Params.Clone(), Console = 0, ConsoleName = "NES", Core = 0, Channel = ch, Mode = "direct" };
+            if (preset && st.Params.Length > 5) st.Params[5] = (st.Params[5] & ~3) | 2;      // a PSG preset has no duty: the PSG's square, 50% (as the plugin plays it)
+            if (preset && st.Params.Length > 7) st.Params[7] = 0;                             // nor the NES's short noise
             // the duty goes to the converter (its 0xD3, which the game reads and the PSG cannot play); Coarse/Fine as VRUN NES (pitch opcodes)
-            if (b.Channel < 2 && st.Params.Length > 5 && (st.Params[5] & 3) != 2) notHalf += ins.Notes.Count(n => !n.Slide);
+            if (ch < 2 && st.Params.Length > 5 && (st.Params[5] & 3) != 2) notHalf += ins.Notes.Count(n => !n.Slide);
             if (st.Params.Length > 3 && (st.Params[3] != 0 || st.Params[4] != 0)) detuned += ins.Notes.Count(n => !n.Slide);
             var copy = new FlpInstrument { Rack = ins.Rack, Name = ins.Name, Plugin = ins.Plugin, Type = ins.Type, Bn2 = st };
             var mono = FlpMono.Resolve([ins]);
             foreach (var seg in mono.Segs)
             {
                 double c = seg.V.PitchAt(seg.From);
-                if (b.Channel < 3 && 440 * Math.Pow(2, (c / 100 - 69) / 12) < LowestHz) { low++; if (lowWhere.Length == 0) lowWhere = $"{FlpFence.NoteName((int)Math.Round(c / 100))} on {Names[b.Channel]} at {seg.From / (double)Math.Max(1, song.Ppq) / 4 + 1:0.##} bars"; }
-                if (b.Channel == 3) noiseIdx.Add(VrunNesBackend.NoiseIndex(c - 6000));
-                else if (b.Channel < 2 && seg.V.Level > 0) levels.Add(seg.V.Level);
+                if (ch < 3 && 440 * Math.Pow(2, (c / 100 - 69) / 12) < LowestHz) { low++; if (lowWhere.Length == 0) lowWhere = $"{FlpFence.NoteName((int)Math.Round(c / 100))} on {Names[ch]} at {seg.From / (double)Math.Max(1, song.Ppq) / 4 + 1:0.##} bars"; }
+                if (ch == 3) noiseIdx.Add(VrunNesBackend.NoiseIndex(c - 6000));
+                else if (ch < 2 && seg.V.Level > 0) levels.Add(seg.V.Level);
             }
             foreach (var n in ins.Notes)
             {
@@ -132,6 +142,38 @@ public static class CtwSmsBackend
         F.Add(new FenceLine("timing", FenceLevel.Note, $"VRUN's engine counts NES frames; the Master System's frame is {Fps:0.000} Hz: the song plays {(1 - Fps / NesFps) * 100:0.00}% slower ({o.Seconds * NesFps / Fps:0.00} s instead of {o.Seconds:0.00} s)"));
         F.Add(new FenceLine("loop", FenceLevel.Ok, "each channel loops at its own end (VRUN's converter makes them the song's length)"));
         return o;
+    }
+
+    /// <summary>A Presets-chip instance (docs/projects/flp-music-pipeline.md section 9): the PSG voice its Master System preset is (tone 0-2 or the noise, 3) with its fence
+    /// lines, or Over = true with the line that says why the game cannot play it (another console, the FM unit, damaged, no preset). A PSG preset has no audible fields
+    /// (SegaInstruments: the plugin plays the plain PSG from FL's pitch and level), so the voice it is IS what the game can carry of it.</summary>
+    private static (int Channel, bool Over) PresetVoice(FlpBn2 b, string who, FlpInstrument ins, List<FenceLine> F)
+    {
+        void Out(string why) { if (!FlpMutants.On(CtwSmsMutants.PresetFenceSilent)) F.Add(new FenceLine("preset", FenceLevel.Over, $"{who} {why}: its {ins.Notes.Count} notes are not in the game")); }
+        if (b.Preset == null) { Out("is on a Presets chip with no preset in its state (no PRS1 section)"); return (0, true); }
+        string? problem = b.Preset.Ok ? null : b.Preset.Problem;
+        var pd = b.Preset.Ok ? BrokenNes2.Presets.PresetFile.Read(b.Preset.File).Data : null;
+        if (b.Preset.Ok && pd == null) problem = "not a readable preset file";
+        var play = pd != null ? BrokenNes2.Presets.PresetPlayable.Build(pd, out problem) : null;
+        if (play == null) { Out($"plays a damaged preset ({problem})"); return (0, true); }
+        string name = pd!.Name.Length > 0 ? pd.Name : pd.InstrumentName;
+        if (play.Console != BrokenNes2.Instruments.ConsoleId.MasterSystem)
+        { Out($"plays a {BrokenNes2.Presets.PresetFile.ConsoleName(play.Console)} preset (\"{name}\"): CTW SMS's driver plays the Master System PSG only (that console's back end plays it)"); return (0, true); }
+        if (play.Kind is not (BrokenNes2.Instruments.InstrumentKind.PsgTones or BrokenNes2.Instruments.InstrumentKind.PsgNoise))
+        { Out($"plays a Master System FM-unit (YM2413) preset (\"{name}\"): the game's driver (nes_apu.c) writes the PSG only, there is no FM in CTW SMS"); return (0, true); }
+        if (play.Kind == BrokenNes2.Instruments.InstrumentKind.PsgNoise)
+        {
+            F.Add(new FenceLine("preset", FenceLevel.Ok, $"{who}: Master System PSG noise preset \"{name}\" on the noise: the plugin plays the PSG's noise from FL's pitch and level, the game alike"));
+            if (!play.Sega!.IsWhiteNoise(play.InstrumentValue - 1) && !FlpMutants.On(CtwSmsMutants.PeriodicAsWhiteSilent))
+                F.Add(new FenceLine("preset", FenceLevel.Note, $"{who}: the preset is PERIODIC noise (a buzz at the note's pitch in the plugin): the game's driver writes white noise only (as this back end's reading of nes_apu.c says; the game source was not re-read for this line), on the PSG's 3 fixed rates: it plays as a hiss"));
+            return (3, false);
+        }
+        int ch = b.Channel is >= 0 and <= 2 ? b.Channel : 0;
+        F.Add(new FenceLine("preset", FenceLevel.Ok, $"{who}: Master System PSG tones preset \"{name}\" on {Names[ch]}: the plugin plays it as the PSG's plain square from FL's pitch and level (its registers are not played), the game alike"));
+        if (b.Channel != ch) F.Add(new FenceLine("preset", FenceLevel.Note, $"{who}: the instance's channel {(b.Channel == 4 ? "Mix" : b.Channel.ToString())} is not a tone: the preset plays on tone 1"));
+        var mono = FlpMono.Resolve([ins]);
+        if (mono.Cut > 0) F.Add(new FenceLine("preset", FenceLevel.Note, $"{who}: the preset plays up to 3 notes at once in the plugin (the PSG's three tones); the game's {Names[ch]} plays one at a time: {mono.Cut} notes are cut by a newer one"));
+        return (ch, false);
     }
 
     /// <summary>Null when the template's decoders play every byte of channel c's stream, else what they would misread.</summary>
