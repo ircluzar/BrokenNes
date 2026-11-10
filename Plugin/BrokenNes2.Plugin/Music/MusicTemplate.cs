@@ -18,12 +18,16 @@ public sealed class MusicTemplate
     public const string FormatName = "bn2-musictest";
     /// <summary>2 (round 9): the template's tonal decoders play pitch bends. A version-1 template has the plain decoders, which read a bend opcode as the
     /// loop: it is refused.</summary>
-    public const int FormatVersion = 2;
+    /// <summary>3 (2026-11-10): the template's square decoders also play the pulse duty opcode 0xD3 (VRUN's duty decoders). A version-2 template reads 0xD3 as
+    /// the loop (plain) or a bend (bend decoders): it is refused.</summary>
+    public const int FormatVersion = 3;
     /// <summary>The opcode format the converter writes and the template's decoders read (Midi2Nes.cs header): vrun-music-2 adds the bend opcodes
     /// 0xD1 pitch and 0xD2 slide (Music/Vrun/Bends.cs).</summary>
-    public const string Opcodes = "vrun-music-2";
+    public const string Opcodes = "vrun-music-3";
     /// <summary>The channels whose decoders must be VRUN's bend decoders (the converter writes bend opcodes on these three only).</summary>
     public const string BendDecoders = "square1 square2 triangle";
+    /// <summary>The channels whose decoders must be VRUN's duty decoders (the converter writes the duty opcode 0xD3 on the squares only).</summary>
+    public const string DutyDecoders = "square1 square2";
     public const int HeaderBytes = 16;
     /// <summary>The AudioPlayer's charmap: a character's tile is its ASCII code - 32, and the string ends with the charmap's '\0', tile 95.</summary>
     public const byte StringEnd = 95;
@@ -98,6 +102,7 @@ public sealed class MusicTemplate
         bool old = MusicMutate.Has(MusicMutate.OldTemplateAccepted) && version == 1;       // (the deliberate bug: a round-7 template taken as it is)
         if (version != FormatVersion && !old) { problem = $"the music test template is version {version}; this build of BrokenNes2 understands version {FormatVersion} only" + (version == 1 ? " (a version-1 template cannot play pitch bends)" : ""); return null; }
         if (Get("opcodes") != Opcodes && !old) { problem = $"the music test template plays the opcode format '{Get("opcodes")}'; this build's converter writes '{Opcodes}'"; return null; }
+        if (Get("duty-decoders") != DutyDecoders && !old) { problem = $"the music test template's duty decoders are '{Get("duty-decoders")}'; this build's converter writes the pulse duty on {DutyDecoders}"; return null; }
         if (Get("bend-decoders") != BendDecoders && !old) { problem = $"the music test template's bend decoders are '{Get("bend-decoders")}'; this build's converter writes pitch bends on {BendDecoders}"; return null; }
         if (!int.TryParse(Get("region"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int region) || region != Midi2Nes.MaxChannelBytes)
         { problem = $"the music test template's stream regions are {Get("region")} bytes; the converter writes up to {Midi2Nes.MaxChannelBytes}"; return null; }

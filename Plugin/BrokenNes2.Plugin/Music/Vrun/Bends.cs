@@ -27,6 +27,13 @@ public sealed record ConvertOptions
     /// <see cref="Bends.MaxToleranceCents"/>) when a channel's bends would
     /// push it past <see cref="Midi2Nes.MaxChannelBytes"/>; the report says so.</summary>
     public double BendToleranceCents { get; init; } = DefaultBendToleranceCents;
+
+    /// <summary>Play each square's pulse duty from the MIDI (<see cref="Midi2Nes.DutyCc"/>,
+    /// the first one on the square's MIDI channel; value / 32 = 0 12.5%,
+    /// 1 25%, 2 50%, 3 75%): a square whose duty is not 50% starts its
+    /// stream with the duty opcode 0xD3 (the song then needs the duty
+    /// decoder on that square). Off: every square plays 50%, as always.</summary>
+    public bool Duty { get; init; }
 }
 
 /// <summary>What the converter did with one NES channel's pitch bends (one
