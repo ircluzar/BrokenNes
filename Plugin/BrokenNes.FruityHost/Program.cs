@@ -373,6 +373,9 @@ switch (args[0])
         return 0;
     }
 
+    case "chip-compat":     // chip-compat save|open <dll> <dir>: projects saved on every chip by one DLL load and play the same in another (SelfTest.Harvest.cs)
+        return SelfTest.ChipCompat(args[1], args[2], args[3]);
+
     case "selftest":
     {
         if (args.Length < 2 || !File.Exists(args[1])) { Console.Error.WriteLine($"plugin DLL not found: {(args.Length > 1 ? args[1] : "(none)")}"); return 2; }

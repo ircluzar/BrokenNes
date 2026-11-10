@@ -116,7 +116,7 @@ public sealed unsafe partial class SelfTest
         List<string> chips;
         using (var probe = lib.Create()) chips = Chips(probe);
         string[] last = ["PRESETS", "PRE-NES", "PRE-GB", "PRE-SNES", "PRE-SMS", "PRE-MD"];
-        t.Expect(chips.Count == 31 && chips[30] == "NANOGB" && chips.Skip(23).Take(6).SequenceEqual(last) && chips[29] == "WMS" && chips[22] == "SMSFM" && chips[0] == "FIX" && chips.IndexOf("DMG") == 17 && chips.IndexOf("SNES") == 19, $"the Presets chips must be appended after every earlier chip: {string.Join(",", chips.Skip(15))}");
+        t.Expect(chips.Count >= 31 && chips[30] == "NANOGB" && chips.Skip(23).Take(6).SequenceEqual(last) && chips[29] == "WMS" && chips[22] == "SMSFM" && chips[0] == "FIX" && chips.IndexOf("DMG") == 17 && chips.IndexOf("SNES") == 19, $"the Presets chips must be appended after every earlier chip: {string.Join(",", chips.Skip(15))}");
         // each is under its own console, and picking it keeps the console in step
         var home = new[] { 0, 0, 1, 2, 3, 4 };
         using var p = lib.Create();
@@ -141,12 +141,12 @@ public sealed unsafe partial class SelfTest
             p.ShowEditor(parent);
             Win32Host.Pump(100);
             ClickControl(t, p, 4, "chip dropdown (SNES, Direct)");
-            t.Expect(p.Test(32) == 3, $"the SNES chip list has {p.Test(32)} items in Direct mode, expected SNES, PRE-SNES and the WideMess chip WMS");
+            t.Expect(p.Test(32) == 11, $"the SNES chip list has {p.Test(32)} items in Direct mode, expected SNES, PRE-SNES, the WideMess chip WMS and the 8 harvested SNES engines");
             Win32Host.Click(p.EditorHandle, 20, 20);
             p.SetParam(PMode, 1);
             Win32Host.Pump(100);
             ClickControl(t, p, 4, "chip dropdown (SNES, ROM)");
-            t.Expect(p.Test(32) == 2, $"the SNES chip list has {p.Test(32)} items in ROM mode, expected SNES and WMS (the Presets chip plays without a game)");
+            t.Expect(p.Test(32) == 10, $"the SNES chip list has {p.Test(32)} items in ROM mode, expected SNES, WMS and the 8 harvested engines (the Presets chip plays without a game)");
             Win32Host.Click(p.EditorHandle, 20, 20);
             p.HideEditor();
         }
