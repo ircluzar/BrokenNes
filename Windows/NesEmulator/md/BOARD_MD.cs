@@ -207,7 +207,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
         using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) Sound.SaveState(w);
         ms.Position = 0;
         unit.Attach(this);
-        using (var r = new BinaryReader(ms, System.Text.Encoding.UTF8)) unit.LoadState(r);
+        using (var r = new BinaryReader(ms, System.Text.Encoding.UTF8)) using (NesEmulator.EngineState.LiveSwap()) unit.LoadState(r);
         Sound = unit;
     }
 

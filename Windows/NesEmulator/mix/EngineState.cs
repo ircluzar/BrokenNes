@@ -107,7 +107,7 @@ public static class EngineState
         {
             ok = TryLoad(bridge, typeof(object), r, units: true, skip: front, magic: HubMagic);
             if (back != null && AtSection(r, HubMagic)) ok &= TryLoad(back, typeof(object), r, units: true, magic: HubMagic);
-            else if (back != null) { ok = false; LastLoadNote = $"no NES chip section in the state (bridge: {(ok ? "restored" : LastLoadNote)}; at {r.BaseStream.Position} of {r.BaseStream.Length})"; }
+            else if (back != null) { bool bridgeOk = ok; ok = false; LastLoadNote = $"no NES chip section in the state (bridge: {(bridgeOk ? "restored" : LastLoadNote)}; at {r.BaseStream.Position} of {r.BaseStream.Length})"; }
         }
         catch (Exception e) { ok = false; LastLoadNote = $"hub section unreadable ({e.GetType().Name}: {e.Message})"; }
         if (!ok) ReportRekey(bridge);
@@ -139,9 +139,14 @@ public static class EngineState
         LastLoadNote = "restored"; return true;
     }
 
+    [ThreadStatic] private static int liveSwap;
+
+    /// <summary>A live sound-unit swap (BOARD_MD.SwapSound): the new unit takes the old one's state through its LoadState, and a unit of another
+    /// kind re-keying from the registers is the swap itself, not a lossy state load, so it is not reported. <c>using (EngineState.LiveSwap()) ...</c></summary>
+    public static IDisposable LiveSwap() { liveSwap++; return new SwapScope(); }
+    private sealed class SwapScope : IDisposable { private bool done; public void Dispose() { if (!done) { done = true; liveSwap--; } } }
     /// <summary>Reports a fallback to the re-key path (never silent: FA-ST-1).</summary>
-    public static void ReportRekey(object root) =>
-        Console.Error.WriteLine($"[EngineState] {root.GetType().Name}: {LastLoadNote}; engine re-keyed from the stock registers instead (not sample-exact)");
+    public static void ReportRekey(object root) { if (liveSwap == 0) Console.Error.WriteLine($"[EngineState] {root.GetType().Name}: {LastLoadNote}; engine re-keyed from the stock registers instead (not sample-exact)"); }
 
     /// <summary>A diagnostic: the types the walker reaches from <paramref name="root"/> and the section size (Workshop --apu-channels --state --audit).</summary>
     public static (int bytes, string[] types) Audit(object root, Type stockBase)
