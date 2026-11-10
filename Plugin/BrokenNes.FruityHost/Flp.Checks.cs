@@ -411,6 +411,7 @@ internal static class FlpChecks
         new(PsMutants.MdPresetAsPulse, "the Genesis fence says a preset is an FM patch", "sv-preset-engines"),
         new(PsMutants.GbPresetIgnored, "Vaults GB ignores a Game Boy preset", "preset-others"),
         new(PsMutants.NesPresetIgnored, "VRUN NES plays a preset instance as a plain NES channel", "preset-others"),
+        new(CtwSmsMutants.SlidesDropped, "the CTW SMS back end drops the slide notes (the old no-bends game)", "ctwsms-synthetic"),
     ];
 
     public static int Main(string[] args)

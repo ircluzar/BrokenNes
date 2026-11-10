@@ -4,8 +4,10 @@
 // VrunNesBackend and VRUN's own converter, Music/Vrun), and this file is the Master System's fence: what nes_apu.c and the translated decoders do with it (read in the game's source):
 //   squares: PSG N = NES period + 1, halved while over 1023 (notes under about A2, 109 Hz, an octave or more up); no duty (the PSG is 50%); level -> 2 dB steps (vol2att: some merge);
 //   triangle: N = 2 (period + 1) (the same halving), a fixed attenuation 3; noise: the PSG's 3 rates from the NES period index (0-3 high, 4-7 mid, 8-15 low), white noise;
-//   no pitch bends or slides: the game's decoders are VRUN's plain ones (the bend decoders do not translate: fab2c has no SSF type), so the song is converted without bends, every
-//   slide and every note off its semitone is said; the NES frame count runs on the Master System's 59.92 Hz frame (0.30% slower than the NES's 60.10 Hz).
+//   pitch bends and slides ON, as VRUN NES plays them (2026-11-10: fab2c translates the bend decoders' SSF periods; the template's title song has VRUN's bend decoders on its
+//   three tonal channels, so the converter's 0xD1 pitch / 0xD2 slide play: the bent NES period goes through the same PSG mapping each frame);
+//   pulse duty: the converter's 0xD3 duty opcode is read by the template's duty decoders (fab2c steps over it in every other square decoder), but the PSG has no duty: 50% (a note);
+//   the NES frame count runs on the Master System's 59.92 Hz frame (0.30% slower than the NES's 60.10 Hz).
 // The test ROM is THE GAME with its title song's streams replaced (Resources/flpctwsms.sms, BrokenDev/tools/music/ctwsms/build-ctwsms.ps1): it boots to the title screen and plays it.
 using BrokenNes2.Music;
 
@@ -20,8 +22,13 @@ public sealed class CtwSmsSong
     public IEnumerable<string> Caveats => Fence.Where(f => f.Level != FenceLevel.Ok).Select(FlpFence.Line);
 }
 
+/// <summary>Deliberate bugs for FruityHost flp-test (bits of FlpMutants.Mask above Super VRUN's).</summary>
+public static class CtwSmsMutants { public const int SlidesDropped = 4096; }
+
 public static class CtwSmsBackend
 {
+    /// <summary>2 (2026-11-10): the template's title song has VRUN's bend + duty decoders. A version-1 template (plain decoders) would read a bend as the loop: refused.</summary>
+    public const int TemplateVersion = 2;
     public const double Fps = 3579545.0 / (228 * 262), NesFps = 1789773.0 / (262.0 * (341.0 / 3.0));
     public static readonly string[] Names = ["tone 1 (square 1)", "tone 2 (square 2)", "tone 3 (triangle)", "noise"];
     /// <summary>nes_apu.c's level -> attenuation (tools/gen_tables.py vol2att).</summary>
@@ -47,7 +54,7 @@ public static class CtwSmsBackend
         foreach (var c in song.Caveats) F.Add(new FenceLine("project", FenceLevel.Note, c));
         // the Master System instances, read as the NES channels they sit on; everything else is said here
         var sub = new FlpSongModel { Ppq = song.Ppq, TempoMilli = song.TempoMilli, End = song.End, Title = song.Title };
-        int slides = 0, detuned = 0, low = 0; double worstOff = 0; string lowWhere = "";
+        int slides = 0, detuned = 0, low = 0, notHalf = 0; double worstOff = 0; string lowWhere = "";
         var noiseIdx = new SortedSet<int>();
         var levels = new SortedSet<int>();
         foreach (var ins in song.Instruments)
@@ -63,8 +70,9 @@ public static class CtwSmsBackend
             if (b.Console != 3) { F.Add(new FenceLine("instruments", FenceLevel.Over, $"{who} is a {b.ConsoleName} instrument: its {ins.Notes.Count} notes are not in this Master System song (that console's back end plays it)")); continue; }
             if (b.Channel is < 0 or > 3) { F.Add(new FenceLine("channels", FenceLevel.Over, $"{who}: channel {(b.Channel == 4 ? "Mix" : b.Channel.ToString())} is not tone 1 / tone 2 / tone 3 / noise: its {ins.Notes.Count} notes are not in the game")); continue; }
             var st = new FlpBn2 { Version = b.Version, Params = (int[])b.Params.Clone(), Console = 0, ConsoleName = "NES", Core = 0, Channel = b.Channel, Mode = "direct" };
-            if (st.Params.Length > 5) st.Params[5] = 2;           // (no duty on the PSG: VRUN NES's duty caveat is not this game's)
-            if (st.Params.Length > 3) { if (st.Params[3] != 0 || st.Params[4] != 0) detuned += ins.Notes.Count(n => !n.Slide); st.Params[3] = 0; st.Params[4] = 0; }
+            // the duty goes to the converter (its 0xD3, which the game reads and the PSG cannot play); Coarse/Fine as VRUN NES (pitch opcodes)
+            if (b.Channel < 2 && st.Params.Length > 5 && (st.Params[5] & 3) != 2) notHalf += ins.Notes.Count(n => !n.Slide);
+            if (st.Params.Length > 3 && (st.Params[3] != 0 || st.Params[4] != 0)) detuned += ins.Notes.Count(n => !n.Slide);
             var copy = new FlpInstrument { Rack = ins.Rack, Name = ins.Name, Plugin = ins.Plugin, Type = ins.Type, Bn2 = st };
             var mono = FlpMono.Resolve([ins]);
             foreach (var seg in mono.Segs)
@@ -76,9 +84,9 @@ public static class CtwSmsBackend
             }
             foreach (var n in ins.Notes)
             {
-                if (n.Slide) { slides++; continue; }
-                if (n.Fine != 120) { detuned++; worstOff = Math.Max(worstOff, Math.Abs(n.Fine - 120)); }
-                copy.Notes.Add(n with { Fine = 120 });
+                if (n.Slide) { slides++; if (FlpMutants.On(CtwSmsMutants.SlidesDropped)) continue; }
+                else if (n.Fine != 120) { detuned++; worstOff = Math.Max(worstOff, Math.Abs(n.Fine - 120)); }
+                copy.Notes.Add(n);
             }
             sub.Instruments.Add(copy);
         }
@@ -96,24 +104,23 @@ public static class CtwSmsBackend
         F.Add(new FenceLine("channels", used.Count > 0 ? FenceLevel.Ok : FenceLevel.Over, used.Count > 0 ? string.Join(", ", used) + "; the game has 4 channels (VRUN NES's), one note at a time each"
             : "NOTHING for CTW SMS: no BrokenNes2 instance on the Master System console in Direct mode with notes on tone 1, tone 2, tone 3 (Triangle) or noise"));
 
-        // the bytes the plain decoders cannot play (a bend or any opcode past $D0 is their loop): refused, never played wrong
+        // the bytes the template's decoders cannot play: refused, never played wrong. They know notes, waits, volume, the long wait $D0 n, the bends $D1/$D2 lo hi (squares and
+        // triangle: the title song's bend decoders) and the duty $D3 d (only as a square's first opcode, as VRUN's converter writes it), and the loop $FF
         for (int c = 0; c < 4; c++)
         {
             var st = o.Build.Channels[c];
             if (st.Length > Region) F.Add(new FenceLine("bytes", FenceLevel.Over, $"{Names[c]}: {st.Length} bytes, the game's song region is {Region}: {st.Length - Region} over"));
-            for (int i = 0; i < st.Length; i++)
-            {
-                int v = st[i];
-                if (v == 0xD0) { i++; continue; }
-                if (v > 0xD0 && v != 0xFF) { F.Add(new FenceLine("opcodes", FenceLevel.Over, $"{Names[c]}: opcode ${v:X2} at byte {i}: the game's decoders know only notes, waits, volume and the loop")); break; }
-            }
+            string? bad = BadOpcode(st, c);
+            if (bad != null) F.Add(new FenceLine("opcodes", FenceLevel.Over, $"{Names[c]}: {bad}"));
         }
         F.Add(new FenceLine("bytes", FenceLevel.Ok, $"{string.Join(" + ", o.Build.Channels.Select(x => x.Length))} bytes (VRUN's converter: at most {Region} a channel, it says what it cut)"));
-        if (slides > 0) F.Add(new FenceLine("slides", FenceLevel.Over, $"{slides} slide notes are not played: CTW SMS's music decoders are VRUN's plain ones (no pitch bends: the bend decoders do not translate to the Master System, fab2c has no SSF type); each note keeps its first pitch"));
-        if (detuned > 0) F.Add(new FenceLine("tuning", FenceLevel.Note, $"{detuned} notes are off their semitone (note fine pitch up to {worstOff:0} cents, or Coarse/Fine on the instance): played on the nearest semitone (no bends in this game)"));
+        if (slides > 0) F.Add(new FenceLine("slides", FenceLevel.Ok, $"{slides} slide notes play as VRUN NES plays them (its bend decoders: the period glides each frame, then nes_apu.c's PSG mapping)"));
+        if (detuned > 0) F.Add(new FenceLine("tuning", FenceLevel.Ok, $"{detuned} notes are off their semitone (note fine pitch up to {worstOff:0} cents, or Coarse/Fine on the instance): played bent, as VRUN NES plays them"));
         if (low > 0) F.Add(new FenceLine("note range", FenceLevel.Over, $"{low} notes are under the PSG's lowest tone ({LowestHz:0.0} Hz, about A2): the game plays them an octave (or more) up, the plugin's Master System chip leaves them silent; the first is {lowWhere}"));
         else F.Add(new FenceLine("note range", FenceLevel.Ok, "every tone note is A2 (110 Hz) or higher: inside the PSG's range"));
-        F.Add(new FenceLine("duty", FenceLevel.Ok, "the PSG's squares are 50%, as the plugin's Master System chip plays them (Pulse duty is not used)"));
+        F.Add(notHalf > 0
+            ? new FenceLine("duty", FenceLevel.Note, $"{notHalf} tone 1 / 2 notes have a Duty other than 50%: the game reads VRUN's duty opcode, but the PSG has no duty: they play at 50% (as the plugin's Master System chip plays them)")
+            : new FenceLine("duty", FenceLevel.Ok, "the PSG's squares are 50%, as the plugin's Master System chip plays them"));
         var merged = levels.GroupBy(l => Vol2Att[l]).Where(g => g.Count() > 1).Select(g => string.Join("/", g)).ToList();
         F.Add(new FenceLine("volume", merged.Count > 0 ? FenceLevel.Note : FenceLevel.Ok, $"tone 1 / 2 levels {string.Join(", ", levels)} -> the PSG's 2 dB steps" + (merged.Count > 0 ? $": {string.Join(", ", merged)} sound the same" : "") + "; tone 3 (the triangle) a fixed attenuation 3 (6 dB under full), the noise full"));
         if (noiseIdx.Count > 0)
@@ -126,12 +133,29 @@ public static class CtwSmsBackend
         return o;
     }
 
+    /// <summary>Null when the template's decoders play every byte of channel c's stream, else what they would misread.</summary>
+    public static string? BadOpcode(byte[] st, int c)
+    {
+        for (int i = 0; i < st.Length; i++)
+        {
+            int v = st[i];
+            if (v < 0xD0 || v == 0xFF) continue;
+            if (v == 0xD0) { i++; continue; }
+            if ((v == 0xD1 || v == 0xD2) && c < 3) { i += 2; continue; }
+            if (v == 0xD3 && c < 2 && i == 0) { i++; continue; }
+            return $"opcode ${v:X2} at byte {i}: the game's decoders know notes, waits, volume, bends (tones), the duty (a square's first opcode) and the loop";
+        }
+        return null;
+    }
+
     /// <summary>The test ROM: the game with its title song's streams replaced. Null with the reason when the song cannot be put there.</summary>
     public static byte[]? Patch(byte[] template, string manifest, CtwSmsSong s, out string? why)
     {
         why = null;
         if (s.Build == null) { why = "VRUN's converter refused the song"; return null; }
-        var m = VocGbBackend.Manifest(manifest, "bn2-flp-ctwsms");
+        Dictionary<string, string> m;
+        try { m = VocGbBackend.Manifest(manifest, "bn2-flp-ctwsms", TemplateVersion); }
+        catch (FormatException) { why = $"the CTW SMS template is not version {TemplateVersion} (this build needs its title song's bend and duty decoders)"; return null; }
         if (template.Length.ToString() != m["rom-bytes"]) { why = "the template is not the one its manifest describes"; return null; }
         if (s.Fence.Any(f => f.Rule == "opcodes" && f.Level == FenceLevel.Over)) { why = "the song has opcodes the game's decoders cannot play (see the fence)"; return null; }
         var rom = (byte[])template.Clone();

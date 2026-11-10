@@ -1,5 +1,5 @@
 // flp-test's checks of the CTW SMS back end (Music/Flp/CtwSmsBackend.cs): see Flp.Checks.Voc.cs for the family.
-//   ctwsms-synthetic  a Master System project written here: the fence (slides not played, a note under A2, a detuned note, other consoles, the frame rate), no opcode the game's
+//   ctwsms-synthetic  a Master System project written here: the fence (slides and detune played bent, duty not on the PSG, a note under A2, other consoles, the frame rate), no opcode the template's
 //                     plain decoders cannot play, the Sega header checksum the patch recomputes = makesms's
 //   ctwsms-engine     the test ROM (THE GAME, its title song replaced) in BrokenNes's Master System, frame by frame against VRUN NES's own sound-test ROM with the same streams, its
 //                     registers per NMI mapped as nes_apu.c maps them (period, attenuation, noise rate); a semitone-up / next-rate control must not agree
@@ -20,7 +20,7 @@ internal static class FlpSmsChecks
 
     internal static byte[] SmsProject() => FlpChecks.Project(150,
         [("Kick", "", null),
-         ("Lead", "BrokenNes2", FlpChecks.Bn2State(console: 3, place: 0)),
+         ("Lead", "BrokenNes2", FlpChecks.Bn2State(console: 3, place: 0, duty: 1)),
          ("Deep", "BrokenNes2", FlpChecks.Bn2State(console: 3, place: 1)),
          ("Bass", "BrokenNes2", FlpChecks.Bn2State(console: 3, place: 2)),
          ("Hat", "BrokenNes2", FlpChecks.Bn2State(console: 3, place: 3)),
@@ -35,10 +35,10 @@ internal static class FlpSmsChecks
         return (File.ReadAllBytes(rp), File.ReadAllText(Path.ChangeExtension(rp, ".txt")));
     }
 
-    private static bool PlainOnly(byte[] st)
+    private static bool HasBend(byte[] st)
     {
-        for (int i = 0; i < st.Length; i++) { if (st[i] == 0xD0) { i++; continue; } if (st[i] > 0xD0 && st[i] != 0xFF) return false; }
-        return true;
+        for (int i = 0; i < st.Length; i++) { if (st[i] == 0xD0 || st[i] == 0xD3) { i++; continue; } if (st[i] is 0xD1 or 0xD2) return true; if (st[i] == 0xFF) return false; }
+        return false;
     }
 
     public static void SmsSynthetic(ImodelReport r)
@@ -46,14 +46,20 @@ internal static class FlpSmsChecks
         var v = CtwSmsBackend.Build(FlpSong.Read(SmsProject()), "synthetic");
         bool Has(FenceLevel f, string rule, string text) => v.Fence.Any(l => l.Level == f && l.Rule == rule && l.Text.Contains(text));
         r.Expect(v.Build != null, "VRUN's converter refused the synthetic song");
-        r.Expect(Has(FenceLevel.Over, "slides", "not played"), "no OUT line for the triangle's slide");
+        r.Expect(Has(FenceLevel.Ok, "slides", "as VRUN NES plays them"), "no line saying the triangle's slide plays");
+        int bassAt = v.Build == null ? -1 : Array.IndexOf(v.Build.Facts.Source, 3);   // "Bass" (the triangle's instance, MIDI channel 3): the converter may move it
+        r.Expect(bassAt is >= 0 and < 3 && HasBend(v.Build!.Channels[bassAt]), $"the triangle's slide is not in its stream (NES channel {bassAt}: no $D1/$D2 bend opcode): the slide was dropped");
+        r.Expect(v.Build != null && v.Build.Channels[0].Length > 1 && v.Build.Channels[0][0] == 0xD3, "tone 1's Duty 25% did not reach the stream as VRUN's $D3 duty opcode");
+        r.Expect(Has(FenceLevel.Note, "duty", "no duty"), "no CHANGED line for tone 1's Duty 25% (the PSG has no duty)");
         r.Expect(Has(FenceLevel.Over, "note range", "under the PSG"), "no OUT line for tone 2's note 40 (under A2)");
-        r.Expect(Has(FenceLevel.Note, "tuning", "nearest semitone"), "no CHANGED line for the +50-cent note");
+        r.Expect(Has(FenceLevel.Ok, "tuning", "played bent"), "no line for the +50-cent note played bent");
         r.Expect(Has(FenceLevel.Over, "instruments", "is a GB instrument"), "no OUT line for the Game Boy instance");
         r.Expect(Has(FenceLevel.Over, "instruments", "is not BrokenNes2"), "no OUT line for the sampler");
         r.Expect(Has(FenceLevel.Note, "timing", "slower"), "no CHANGED frame-rate line");
         r.Expect(!v.Fence.Any(l => l.Text.Contains("Duty 25%")), "VRUN NES's duty caveat leaked into the Master System fence (the PSG has no duty)");
-        r.Expect(v.Build != null && v.Build.Channels.All(PlainOnly), "a stream has an opcode the game's plain decoders cannot play");
+        r.Expect(v.Build != null && Enumerable.Range(0, 4).All(c => CtwSmsBackend.BadOpcode(v.Build.Channels[c], c) == null), "a stream has an opcode the template's decoders cannot play");
+        // the refusal still works: an opcode the decoders do not know, a bend on the noise, a duty that is not a square's first opcode
+        r.Expect(CtwSmsBackend.BadOpcode([0x40, 0xD4, 0xFF], 0) != null && CtwSmsBackend.BadOpcode([0xD1, 0, 1, 0xFF], 3) != null && CtwSmsBackend.BadOpcode([0x40, 0xD3, 0x70, 0xFF], 0) != null, "the opcode fence lets through bytes the decoders would misread");
         var (tmpl, _) = Template();
         var copy = (byte[])tmpl.Clone(); CtwSmsBackend.SegaChecksum(copy);
         r.Expect(copy.AsSpan().SequenceEqual(tmpl), "the Sega header checksum recomputed on the template differs from makesms's");

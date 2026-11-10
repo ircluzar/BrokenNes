@@ -44,6 +44,8 @@ switch (args[0])
 
     case "flp-export":      // flp-export vocgb|vocgg|ctwsms <song.flp> <out folder>: the test ROM, the fence and the game's import file (Flp.Export.cs)
         return FlpExport.Main(args);
+    case "ctwsms-bends":    // ctwsms-bends <game.sms> <music_data.fab> <song> <loop frames> [frames]: Flp.SmsBends.cs
+        return FlpSmsBends.Main(args);
     case "flp-backend":
         return SvChecks.Backend(args);
 
