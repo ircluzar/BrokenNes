@@ -2006,23 +2006,23 @@
     },
     "ctw_nes_mmc3": {
      "status": "has",
-     "detail": "16 CHR-ROM frames x 6 IRQ bands, 1 ring/s, darker greens (439616b)",
-     "evidence": "memory project_vrun_mapper_migration"
+     "detail": "tunnel lines around the title menu",
+     "evidence": "headless MCP, Releases/VRUN_CTW_NES/2026-11-09_e9e3a61 bends ROM, f299, scratchpad/cvl_runs/ctw_mmc3_title_f299.png (run)"
     },
     "ctw_nes_m30": {
      "status": "missing",
-     "detail": "logo + menu only (MMC3-only feature)",
-     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/27-mmc3-build.md"
+     "detail": "plain black title, no tunnel",
+     "evidence": "headless MCP, VRUN build/vrun_game.nes (11-06), f299, scratchpad/cvl_runs/ctw_m30_title_f299.png (run)"
     },
     "ctw_sms": {
      "status": "has",
-     "detail": "own tunnel: 140 tiles, sprite-palette cycling 13 phases, matches 439616b speed",
-     "evidence": "memory S2 final round"
+     "detail": "tunnel present (cropped to 192 lines: the copyright line is off screen)",
+     "evidence": "headless MCP, Releases/VRUN_CTW_SMS final3 (11-07), f300, scratchpad/cvl_runs/ctw_sms_title_f300.png (run; not the 783c093 build, which could not be built here)"
     },
     "ctw_nested_snes": {
      "status": "missing",
-     "detail": "m30 build",
-     "evidence": ""
+     "detail": "plain black title, no tunnel",
+     "evidence": "headless MCP, Releases/VRUN_Nested_SNES 2026-11-07_speed, f301, scratchpad/cvl_runs/ctw_nested_title_f301.png (run)"
     },
     "sv_snes": {
      "status": "has",
@@ -2326,8 +2326,8 @@
     },
     "sv_md": {
      "status": "has",
-     "detail": "Pause+Select writes the run to battery SRAM (offset $40+); the title then offers CONTINUE 1P, which resumes the run in game",
-     "evidence": "headless BrokenNes MCP, Releases/SuperVRUN_MD/2026-11-09_62c4f90: in game f400, Start f530, Select -> title with CONTINUE 1P f850, SRAM $40.. = 3C 0B 00 05 05..., Start -> in game f1050 (run; same power session, reload after power-cycle not tested)"
+     "detail": "save survives a power cycle: fresh power-on with the saved battery bytes written back shows CONTINUE 1P lit (greyed with blank SRAM) and resumes the run in the same room",
+     "evidence": "headless MCP 62c4f90: save in session h7 (SRAM $40..), new session h8 with those bytes -> f260 CONTINUE lit, Down Down Start -> in game f510; control session h9 blank SRAM -> CONTINUE greyed; scratchpad/cvl_runs/md_powercycle_title.png, md_powercycle_continue.png, md_fresh_title_no_save.png (run)"
     },
     "sv_dos": {
      "status": "has",
