@@ -38,6 +38,8 @@ public sealed class SongFacts
     /// <summary>What the converter did with each NES channel whose MIDI channel bends (Bends.cs: played, thinned, not played and why); empty when no mapped channel bends.</summary>
     public IReadOnlyList<BendReport> Bends = [];
     public List<string> Log = [];
+    /// <summary>What the .flp back end reported (Music/Flp/VrunNesBackend.cs): the parts of the FL project the game plays differently or not at all. Empty for a MIDI file.</summary>
+    public List<string> Caveats = [];
 
     public int Thinned(int ch) => ThinnedVolume[ch] + ThinnedOff[ch] + ThinnedOn[ch];
     public int ThinnedTotal => Thinned(0) + Thinned(1) + Thinned(2) + Thinned(3);
@@ -92,6 +94,9 @@ public sealed class SongFacts
         lines.Add(dropped > 0
             ? $"{dropped} of {NotesTotal} notes dropped: MIDI channel{(DroppedChannels.Count == 1 ? "" : "s")} {string.Join(", ", DroppedChannels)} {(DroppedChannels.Count == 1 ? "has" : "have")} no NES channel (4 at most)"
             : $"all {NotesTotal} notes have a NES channel");
+        // a song made from a .flp: the back end's caveats take the place of the "all notes" line when nothing was dropped (the window has six lines; the full list is in the host log)
+        if (Caveats.Count > 0 && dropped == 0)
+            lines[^1] = $"{Caveats.Count} thing{(Caveats.Count == 1 ? "" : "s")} from the .flp not played as in FL: {Caveats[0]}" + (Caveats.Count > 1 ? $" (+{Caveats.Count - 1} more)" : "");
         if (ThinnedTotal > 0)
         {
             var parts = new List<string>();

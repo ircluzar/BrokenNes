@@ -142,17 +142,27 @@ public sealed partial class Emulator
             try
             {
                 byte[] midi;
+                Music.Flp.VrunNesSong? fromFlp = null;
                 if (reload && MusicMutate.Has(MusicMutate.ReloadCached) && cached != null) midi = cached.Midi;      // (the self-test's deliberate bug)
                 else
                 {
                     try { midi = File.ReadAllBytes(path); }
                     catch (Exception e) { SongUi.SetResult($"{file} could not be read ({e.Message.TrimEnd('.')}): nothing changed", false); return; }
+                    // an FL project (the music pipeline, docs/projects/flp-music-pipeline.md): the shared reader + the VRUN NES back end make the MIDI VRUN's converter reads
+                    if (IsFlp(path) && !MusicMutate.Has(MusicMutate.FlpReadAsMidi))
+                    {
+                        try { fromFlp = Music.Flp.VrunNesBackend.Build(Music.Flp.FlpSong.Read(midi), SongConvert.NameOf(path)); }
+                        catch (Exception e) when (e is FormatException or IndexOutOfRangeException or ArgumentOutOfRangeException or ArgumentException or OverflowException)
+                        { SongUi.SetResult($"{file} was not loaded: it is not an FL project BrokenNes2 can read ({e.Message.TrimEnd('.')}). Nothing changed", false); return; }
+                        midi = fromFlp.Midi;
+                        BrokenNes.Fruity.Diag.Log($"song from {path}: {fromFlp.Caveats.Count} caveats: " + string.Join(" | ", fromFlp.Caveats));
+                    }
                 }
-                var held = MakeSong(path, midi, out string? why);
+                var held = MakeSong(path, midi, out string? why, fromFlp);
                 if (held == null) { SongUi.SetResult($"{file} was not loaded: {why}. Nothing changed{(song != null ? ": the song that was playing goes on" : "")}", false); return; }
                 bool same = reload && cached != null && cached.Midi.AsSpan().SequenceEqual(midi);
                 Install(held, fromProject: false);
-                SongUi.SetResult(reload ? (same ? $"Reloaded {file}: the file has not changed since it was loaded (export it again from FL, then Reload)" : $"Reloaded {file}: the new export plays from its start")
+                SongUi.SetResult(reload ? (same ? $"Reloaded {file}: the file has not changed since it was loaded ({(IsFlp(path) ? "save the project in FL" : "export it again from FL")}, then Reload)" : $"Reloaded {file}: the new {(IsFlp(path) ? "save" : "export")} plays from its start")
                                         : $"Loaded {file}: it plays from its start", true);
             }
             catch (Exception e)
@@ -165,6 +175,9 @@ public sealed partial class Emulator
         return null;
     }
 
+    /// <summary>An FL project (.flp) rather than a MIDI file: by its extension (the reader checks the FLhd header itself).</summary>
+    internal static bool IsFlp(string path) => path.EndsWith(".flp", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Reload: the same file again (after another export from FL).</summary>
     internal string? ReloadSong()
     {
@@ -174,12 +187,13 @@ public sealed partial class Emulator
     }
 
     /// <summary>Converts and patches (worker thread). Null with the reason for the user.</summary>
-    private SongHeld? MakeSong(string path, byte[] midi, out string? why)
+    private SongHeld? MakeSong(string path, byte[] midi, out string? why, Music.Flp.VrunNesSong? fromFlp = null)
     {
         var template = MusicTemplate.Builtin(out why);
         if (template == null) { why = "Test MIDI export cannot run in this build: " + why; return null; }
         var build = SongConvert.Convert(midi, out why);
         if (build == null) return null;
+        if (fromFlp != null) { build.Facts.Caveats.AddRange(Music.Flp.VrunNesBackend.ChannelChoice(fromFlp, build.Facts)); build.Facts.Caveats.AddRange(fromFlp.Caveats); }
         var rom = template.Patch(build.Channels, build.Facts.LoopFrames, SongConvert.NameOf(path));
         return new SongHeld(path, SongConvert.NameOf(path), midi, build.Facts, rom, Interlocked.Increment(ref songGeneration));
     }

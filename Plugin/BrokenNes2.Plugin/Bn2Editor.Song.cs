@@ -3,18 +3,19 @@
 // The work happens in Emulator.Song.cs; this file only draws and routes clicks. Control ids 2000-2019 (outside the Emulator tab's < 1000 and the tabs' 1000-1999); editor test hooks 620-629.
 using BrokenNes.Fruity;
 using BrokenNes2.Music;
+using BrokenNes2.Music.Flp;
 
 namespace BrokenNes2;
 
 public sealed unsafe partial class Bn2Editor
 {
-    public const int IdMid = 2000, IdMidClose = 2001, IdMidOpen = 2002, IdMidPlay = 2003, IdMidRestart = 2004, IdMidStop = 2005, IdMidReload = 2006, IdMidFollow = 2007;
+    public const int IdMid = 2000, IdMidClose = 2001, IdMidOpen = 2002, IdMidPlay = 2003, IdMidRestart = 2004, IdMidStop = 2005, IdMidReload = 2006, IdMidFollow = 2007, IdMidFlp = 2008;
     private const int MidW = 780, MidH = 650, MidNoteSeconds = 12;      // (650 since round 9: the Capture from FL row and strip, Bn2Editor.Capture.cs)
 
     private bool midOpen, midNoteShown;
     private string? testMidiPath;
 
-    private static bool IsMidId(int id) => id is >= IdMidClose and <= IdMidFollow;
+    private static bool IsMidId(int id) => id is >= IdMidClose and <= IdMidFlp;
 
     /// <summary>The header's button (left of the emulator badge, after the plugin's name and its line).</summary>
     private void DrawMidiButton(nint dc, int x)
@@ -104,8 +105,10 @@ public sealed unsafe partial class Bn2Editor
         Button(dc, IdMidPlay, "Play", R(lx, y, 100, 34), primary: true, enabled: canPlay);
         Button(dc, IdMidRestart, "Restart", R(lx + 110, y, 100, 34), primary: false, enabled: canPlay);
         Button(dc, IdMidStop, "Stop", R(lx + 220, y, 100, 34), primary: false, enabled: canPlay && emu!.SongRunning);
-        Button(dc, IdMidReload, "Reload", R(lx + 350, y, 110, 34), primary: false, enabled: canPlay);
-        Txt(dc, held == null ? "" : $"reads {held.FileName} again: export from FL over it, then Reload", R(lx + 472, y - 2, iw - 472, 38), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER, Faint, fontSmall);
+        Button(dc, IdMidReload, "Reload", R(lx + 340, y, 90, 34), primary: false, enabled: canPlay);
+        // the music pipeline: this FL project's own last-saved .flp straight into the sound-test ROM (Music/Flp, ProjectFlp.cs)
+        Button(dc, IdMidFlp, "This FL project", R(lx + 440, y, 150, 34), primary: held == null, enabled: emu != null && !busy);
+        Txt(dc, held == null ? "its last save" : Emulator.IsFlp(held.Path) ? $"{held.FileName}: save in FL, Reload" : $"{held.FileName}: export, Reload", R(lx + 598, y - 2, iw - 598, 38), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
 
         y = box.Top + 520;
         Check(dc, IdMidFollow, "Follow FL's transport: FL's Play restarts the song from its start, FL's Stop stops it", lx, y, ui?.Follow == true, null, labelW: 640, hitW: 660);
@@ -138,7 +141,7 @@ public sealed unsafe partial class Bn2Editor
         if (path == null)
         {
             string? start = Prefs.Get("MidiFolder");
-            path = Win32.ChooseFile(Hwnd, "Open a MIDI file exported from FL Studio", "MIDI files (*.mid;*.midi)|*.mid;*.midi|All files (*.*)|*.*", !string.IsNullOrEmpty(start) && Directory.Exists(start) ? start : null);
+            path = Win32.ChooseFile(Hwnd, "Open a MIDI file exported from FL Studio, or an FL project (.flp)", "MIDI files and FL projects (*.mid;*.midi;*.flp)|*.mid;*.midi;*.flp|All files (*.*)|*.*", !string.IsNullOrEmpty(start) && Directory.Exists(start) ? start : null);
             if (path != null && Path.GetDirectoryName(path) is { Length: > 0 } folder) Prefs.Set("MidiFolder", folder);
         }
         if (path == null) return;
@@ -160,7 +163,37 @@ public sealed unsafe partial class Bn2Editor
             case IdMidStop: if (emu.SongRunning) { emu.StopSong(); ui.SetResult("Stopped: Play starts the song again from its start", true); } break;
             case IdMidReload: if (emu.Song != null && !ui.Busy && emu.ReloadSong() is { } why) ui.SetResult("Reload: " + why, false); break;
             case IdMidFollow: ui.Follow = !ui.Follow; break;
+            case IdMidFlp: if (!ui.Busy) UseProjectFlp(); break;
         }
+    }
+
+    /// <summary>"This FL project": the .flp this instance's project was last saved as. FL does not tell a plugin its project's path (ProjectFlp.cs): the name comes from FL's window
+    /// title, the path from the pick remembered for that name, else the file dialog once (a test names the file with hook 621, the title with hook 623).</summary>
+    private void UseProjectFlp()
+    {
+        var emu = plugin.Emulator;
+        if (emu == null) return;
+        string title = ProjectFlp.HostTitle(Hwnd);
+        string? name = FlpTitle.NameFromTitle(title);
+        string? path = testMidiPath ?? ProjectFlp.Remembered(name);
+        bool picked = false;
+        if (path == null)
+        {
+            string? start = Prefs.Get("FlpFolder");
+            path = Win32.ChooseFile(Hwnd, name != null ? $"Where is \"{name}.flp\"? (asked once: BrokenNes2 remembers it)" : "Which .flp is this FL project? (asked once: BrokenNes2 remembers it)",
+                "FL Studio projects (*.flp)|*.flp|All files (*.*)|*.*", !string.IsNullOrEmpty(start) && Directory.Exists(start) ? start : null);
+            picked = path != null;
+        }
+        testMidiPath = null;
+        if (path == null) return;
+        if (!Emulator.IsFlp(path)) { emu.SongUi.SetResult($"{Path.GetFileName(path)} is not an FL project (.flp)", false); return; }
+        if (picked) ProjectFlp.Remember(name, path);
+        string when = File.Exists(path) ? File.GetLastWriteTime(path).ToString("yyyy-MM-dd HH:mm") : "?";
+        if (name != null && !Path.GetFileNameWithoutExtension(path).Equals(name, StringComparison.OrdinalIgnoreCase))
+            emu.SongUi.SetNote($"FL's window names the project \"{name}\", the file is {Path.GetFileName(path)}: check it is the right project");
+        plugin.MarkConfigured("this FL project's .flp was opened");
+        BrokenNes.Fruity.Diag.Log($"This FL project: FL's window title \"{title}\", name {(name ?? "none")}, file {path} (saved {when}){(picked ? ", picked now" : ", remembered")}");
+        if (emu.OpenSong(path) is { } refused) emu.SongUi.SetResult(refused, false);
     }
 
     private long SongSignature()
@@ -180,8 +213,10 @@ public sealed unsafe partial class Bn2Editor
         620 => midOpen ? 1 : 0,
         621 => SetTestMidi(System.Runtime.InteropServices.Marshal.PtrToStringUni(value)),
         622 => midNoteShown ? 1 : 0,
+        623 => SetTestTitle(System.Runtime.InteropServices.Marshal.PtrToStringUni(value)),
         _ => 0,
     };
 
     private nint SetTestMidi(string? path) { testMidiPath = path; return 0; }
+    private static nint SetTestTitle(string? title) { ProjectFlp.TitleOverride = title; return 0; }
 }

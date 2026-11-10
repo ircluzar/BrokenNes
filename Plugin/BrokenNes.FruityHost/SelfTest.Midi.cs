@@ -142,6 +142,7 @@ public sealed unsafe partial class SelfTest
         ("refusals", SongRefusals, MusicMutate.RefusalSilent, "a refusal says nothing"),
         ("alloc", SongAlloc, MusicMutate.RestartAllocates, "a restart drops the prepared stems (the audio thread makes new ones)"),
         ("bends", SongBendsDll, MusicMutate.BendsIgnored, "the song is converted with bends off (round 7's way)"),
+        ("flp", SongFlpDll, MusicMutate.FlpReadAsMidi, "a .flp is read as if it were a MIDI file"),
     ];
 
     // ------------------------------------------------------------------------------------------------ pitch bends (round 9), from the plugin's own machine
