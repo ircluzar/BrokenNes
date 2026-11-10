@@ -88,8 +88,8 @@ public sealed partial class PcMachine : IX86Bus
             case 0x70: case 0x71: return Cmos.In(port);
             case 0x92: return (byte)(Kbc.A20 ? 2 : 0);
             case 0x201: return 0xff;                          // no joystick
-            case 0x388: return AdlibPresent ? Opl.ReadStatus() : (byte)0xff;   // AdLib status (FFh: no AdLib)
-            case 0x389: return 0xff;
+            case 0x388: AdlibWait(); return AdlibPresent ? Opl.ReadStatus() : (byte)0xff;   // AdLib status (FFh: no AdLib)
+            case 0x389: AdlibWait(); return 0xff;
             case >= 0x3b0 and <= 0x3df: return Vga.In(port);
         }
         if (Dma.In(port, out byte dv)) return dv;
@@ -111,8 +111,8 @@ public sealed partial class PcMachine : IX86Bus
             case 0x92: Kbc.A20 = (v & 2) != 0; if ((v & 1) != 0) CpuResetRequest(); return;
             case 0x80: return;                                // POST code
             case 0xe9: DebugPort.Append((char)v); return;
-            case 0x388: if (AdlibPresent) Opl.WriteAddress(v); return;   // AdLib (YM3812) address
-            case 0x389: if (AdlibPresent) Opl.WriteData(v); return;      // AdLib data
+            case 0x388: AdlibWait(); if (AdlibPresent) Opl.WriteAddress(v); return;   // AdLib (YM3812) address
+            case 0x389: AdlibWait(); if (AdlibPresent) Opl.WriteData(v); return;      // AdLib data
             case BiosTrapPort: BiosTrap(); return;
             case >= 0x3b0 and <= 0x3df: Vga.Out(port, v); return;
         }
@@ -241,6 +241,11 @@ public sealed partial class PcMachine : IX86Bus
         catch (I386AbortException e) { Stopped = "CPU stopped: " + e.Message; return false; }
         return true;
     }
+
+    /// <summary>An access to the AdLib's ports takes ISA bus time: ~0.55 us (the AdLib programming guide: 6 status reads = 3.3 us, 35 = 23 us). Without it a fast CPU ran the
+    /// classic detection (timer 1 at FFh = 80 us, then N status reads) before the timer fired: Super VRUN DOS's 2000 reads took ~77 us at 130 M instr/s and found "no AdLib".
+    /// Charged as idle machine time (like a halted CPU's sleep), so it holds at every instruction rate.</summary>
+    private void AdlibWait() => _idle += Math.Max(1, InstructionsPerSecond * 11 / 20_000_000);
 
     /// <summary>Headless tests: lets <paramref name="instr"/> instructions of machine time pass without running the CPU (as a halted CPU sleeps), the sound card caught up.</summary>
     public void IdleFor(long instr) { _idle += instr; Card?.Advance(); }

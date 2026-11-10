@@ -1,0 +1,3 @@
+C:\BrokenNes-work\flp_supervrun\overworld-95-20261110-161031\95\logic\room.h(35): Warning! W140: Definition of macro 'ROOM_H' not identical to previous definition
+C:\BrokenNes-work\flp_supervrun\overworld-95-20261110-161031\95\logic\room.h(35): Note! I2002: 'ROOM_H' defined in: C:\BrokenNes-work\flp_supervrun\overworld-95-20261110-161031\95\logic\room.h(16)
+C:\BrokenNes-work\flp_supervrun\overworld-95-20261110-161031\95\logic\bglab.c(329): Warning! W200: 'r' has been referenced but never assigned a value

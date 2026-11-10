@@ -699,7 +699,10 @@ public sealed partial class Opl2
 
     public void WriteAddress(byte v) { CatchUp(); _address = v; }
 
-    public void WriteData(byte v) { DataWrites++; CatchUp(); WriteRegister(_address, v); }
+    /// <summary>Diagnostics (not saved): when set, every data write is reported as (register, value) - the tools' OPL write log.</summary>
+    public Action<byte, byte>? WriteLog;
+
+    public void WriteData(byte v) { DataWrites++; WriteLog?.Invoke(_address, v); CatchUp(); WriteRegister(_address, v); }
 
     /// <summary>Direct register write at chip clock <paramref name="clock"/> (tests: scripted sequences).</summary>
     public void WriteAt(long clock, byte reg, byte v) { RunTo(clock); WriteRegister(reg, v); }
