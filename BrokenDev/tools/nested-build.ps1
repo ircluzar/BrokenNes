@@ -36,6 +36,8 @@
 .PARAMETER SnesTitle  the SNES header title (20 characters at most)
 .PARAMETER Feedback   none | harvest | brokennes
 .PARAMETER Workshop   brokennes: BrokenNes.Workshop.exe
+.PARAMETER CoreDir    a core folder (Project_Nested.smc + manifest.json) to inject instead of the pipeline's out\core: 'brokendev.ps1 nested'
+                      passes the core it assembled from source (Project-Nested-core, tools/nestedasm). Not used by -Feedback harvest.
 .PARAMETER Plans      brokennes: a JSON list of { "name", "frames", "input" } (Workshop pad scripts)
 .PARAMETER Rounds     brokennes: most build + play rounds
 .PARAMETER Minutes    harvest wall-clock budget
@@ -57,7 +59,8 @@ param(
     [int]$Rounds = 4,
     [int]$Minutes = 20,
     [string]$Seeds = '1,2',
-    [string]$MesenSource = ''
+    [string]$MesenSource = '',
+    [string]$CoreDir = ''
 )
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSEdition -eq 'Core') { throw 'run this with Windows PowerShell 5.1 (powershell.exe)' }
@@ -158,6 +161,7 @@ if ($Feedback -eq 'harvest') {
 }
 
 $a = $ps + @((Join-Path $Pipe 'm30build.ps1'), '-Nes', $Nes, '-Profile', $profileDir, '-Out', $Out, '-Python', $Python, '-AllowMd5Mismatch')
+if ($CoreDir) { $a += @('-CoreDir', $CoreDir) }
 & powershell.exe @a
 if ($LASTEXITCODE -ne 0) { throw "m30build.ps1 failed (exit $LASTEXITCODE); see $Out.build.log" }
 if ($Feedback -eq 'brokennes') {
@@ -167,7 +171,7 @@ if ($Feedback -eq 'brokennes') {
     $planList = @((Get-Content -LiteralPath $Plans -Raw | ConvertFrom-Json) | ForEach-Object { $_ })
     # The runtime writes the SRAM feedback header from the ROM's title, which m30build replaces after injection (EmulatorName);
     # the injector's reader looks for the core's own title, so each .srm gets the core's title back before it is read.
-    $coreTitle = [byte[]]([System.IO.File]::ReadAllBytes((Join-Path $Pipe 'out\core\Project_Nested.smc'))[0xFFC0..(0xFFC0 + 20)])
+    $coreTitle = [byte[]]([System.IO.File]::ReadAllBytes((Join-Path $(if ($CoreDir) { $CoreDir } else { Join-Path $Pipe 'out\core' }) 'Project_Nested.smc'))[0xFFC0..(0xFFC0 + 20)])
     $romTitle = [System.Text.Encoding]::ASCII.GetBytes($(if ($SnesTitle) { $SnesTitle.PadRight(21) } else { '' }))
     $fbDir = Join-Path $Work 'feedback'
     for ($round = 1; $round -le $Rounds; $round++) {

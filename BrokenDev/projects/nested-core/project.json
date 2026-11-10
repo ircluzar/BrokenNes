@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "id": "nested-core",
+  "title": "Nested (our Project Nested fork): Nested VRUN built with the core assembled from source",
+  "family": "vrun",
+  "kind": "nested",
+  "console": "snes",
+  "description": "The workspace entry of our own Project Nested fork: branch nested-vrun-core of Nested_VRUN/Project-Nested-core (v1.8 + the 18 Nested VRUN core steps as Assembly/ source, assembled by tools/nestedasm). Builds the same game as vrun-nested, but the core is assembled from source by 'brokendev.ps1 nested build' instead of master's binary patch chain (core/build_core.py). The NES to SNES pipeline (injector, m30build.ps1, game profiles) is still master's m30pipe. Golden hashes: golden.json, 'brokendev.ps1 nested test'.",
+  "source": {
+    "archive": "vrun_nes_dev",
+    "path": "Nested_VRUN/Project-Nested-core (tools/nestedasm, Assembly/) + Nested_VRUN/Project-Nested/tools/m30pipe + sys0/simulations/VRUN",
+    "docs": ["Nested_VRUN/Project-Nested-core/tools/nestedasm/README.md", "Nested_VRUN/Project-Nested-core/tools/nestedasm/profiles/README.md", "tools/m30pipe/core/STEPS.md (master)"],
+    "git": "Project-Nested-core is a worktree of Project-Nested (branch nested-vrun-core, remote brokendev = T:/BrokenDev/Projects/Nested_VRUN.git)"
+  },
+  "requires": {
+    "tools": ["gitbash", "python", "ps5", "workshop"],
+    "projects": [],
+    "inputs": [],
+    "toolchain": ["Project Nested injector (.NET Framework 4.8) in Project Nested/bin/Release (master)", "Python 3.10+ for tools/nestedasm"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build-nes-nested",
+        "shell": "bash",
+        "cwd": "{root:vrun}",
+        "run": "./build.sh game --nested",
+        "timeoutSec": 1200
+      },
+      {
+        "name": "nested-from-source",
+        "shell": "ps5",
+        "cwd": "{root:m30pipe}",
+        "file": "{bd}/brokendev.ps1",
+        "args": [
+          "nested", "build", "{root:vrun}/build/vrun_game_nested.nes",
+          "-Out", "{work}/vrun_game_nested_SNES.smc",
+          "-Profile", "vrun",
+          "-Base", "50a5ca15",
+          "-Post", "flash",
+          "-SnesTitle", "VRUN CTW",
+          "-Feedback", "brokennes",
+          "-Plans", "{bd}/projects/vrun-nested/feedback-plans.json"
+        ],
+        "timeoutSec": 1800,
+        "note": "The core is assembled from source (profile vrun, md5 57c4a845...), then the same recipe as vrun-nested."
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{work}/vrun_game_nested_SNES.smc", "publishAs": "vrun_game_nested_SNES.smc", "kind": "snes" },
+      { "id": "buildjson", "path": "{work}/vrun_game_nested_SNES.smc.build.json", "publishAs": "vrun_game_nested_SNES.smc.build.json", "kind": "record" }
+    ]
+  },
+  "run": { "console": "snes", "note": "Same game as vrun-nested." },
+  "verify": {
+    "timeoutSec": 900,
+    "scenarios": [
+      {
+        "id": "boot",
+        "frames": 1200,
+        "input": "",
+        "checkpoints": [120, 300, 600, 1200],
+        "expect": { "minDistinctColors": 5, "audio": { "fromFrame": 120, "minPeak": 0.02, "minNonSilentFrames": 100 }, "minRealtime": 1.0 }
+      },
+      {
+        "id": "play",
+        "frames": 3000,
+        "input": "240:Start,252:,600:Right,800:Right+B,900:Right,1100:Up,1200:Right+B,1400:Down,1500:Right+A,1800:Left+B,2100:Right",
+        "checkpoints": [300, 600, 900, 1200, 2000, 3000],
+        "expect": { "minDistinctColors": 10, "pictureDiffers": [900, 3000], "audio": { "fromFrame": 400, "minPeak": 0.02, "minNonSilentFrames": 200 }, "minRealtime": 1.0 }
+      }
+    ],
+    "compare": [
+      { "a": "play@600", "b": "boot@600", "expect": "differ", "why": "scripted input reached the game" }
+    ]
+  },
+  "knownIssues": [
+    "The same game issues as vrun-nested (no NES lag-frame model; feedback only covers the scripted plans).",
+    "Only the core comes from source: the injector, m30build.ps1 and the game profiles are still master's m30pipe. -Feedback harvest (Mesen bootstrap) still uses master's binary-chain core, so 'nested build' does not offer it.",
+    "Project-Nested-core lives only in the live VRUN_Nes_Dev workspace (not in the restored archive): from a worktree outside PROJECTS set BROKENDEV_LIVE_VRUN_NES_DEV."
+  ]
+}

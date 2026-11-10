@@ -14,6 +14,7 @@
         "ctw": "sys0/simulations/mz/CTW",
         "nested": "Nested_VRUN/Project-Nested",
         "m30pipe": "Nested_VRUN/Project-Nested/tools/m30pipe",
+        "nestedcore": "Nested_VRUN/Project-Nested-core",
         "vrunpkg": "."
       },
       "live": {
@@ -23,6 +24,7 @@
           "ctw": "sys0/simulations/mz/CTW",
           "nested": "Nested_VRUN/Project-Nested",
           "m30pipe": "Nested_VRUN/Project-Nested/tools/m30pipe",
+          "nestedcore": "Nested_VRUN/Project-Nested-core",
           "vrunpkg": "."
         },
         "sentinels": [
