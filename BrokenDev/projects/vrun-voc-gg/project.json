@@ -181,11 +181,13 @@
     "rate": {
       "original": {
         "tick": "le16 _tick_count",
-        "origin": "mode=1"
+        "origin": "mode=1",
+        "settled": "[_game_mode] != 1 || {_pre_done} != {_key_done}"
       },
       "port": {
         "tick": "le16 _tick_count",
-        "origin": "mode=1"
+        "origin": "mode=1",
+        "settled": "[_game_mode] != 1 || {_pre_done} != {_key_done}"
       }
     },
     "input": "frame",
@@ -193,7 +195,7 @@
       "ticks": 0,
       "positions": 0
     },
-    "sampleEveryTicks": 24,
+    "sampleEveryTicks": 1,
     "variables": [
       {
         "name": "mode",

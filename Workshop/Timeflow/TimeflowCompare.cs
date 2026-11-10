@@ -73,6 +73,7 @@ internal static class TimeflowComparing
         public double TickHz;       // game ticks a second (0: one tick a frame)
         public string Tick = "";    // an expression that reads the game's own tick counter (wins over TickHz)
         public string Origin = "";  // "var=value": time 0 is the first frame that variable has that value (the two games' clocks start at different moments)
+        public string Settled = ""; // an expression, nonzero when the game is between updates: a frame that ends while it is 0 (the frame boundary fell inside an update, e.g. a slow room load half done) keeps the last settled frame's values and tick
     }
 
     public sealed class Spec
@@ -113,7 +114,7 @@ internal static class TimeflowComparing
             if (e.TryGetProperty("rate", out var rate))
             {
                 foreach (var (side, r) in new[] { ("original", s.O), ("port", s.P) })
-                    if (rate.TryGetProperty(side, out var rs)) { r.Fps = Num(rs, "fps"); r.TickHz = Num(rs, "tickHz"); r.Tick = Str(rs, "tick"); r.Origin = Str(rs, "origin"); }
+                    if (rate.TryGetProperty(side, out var rs)) { r.Fps = Num(rs, "fps"); r.TickHz = Num(rs, "tickHz"); r.Tick = Str(rs, "tick"); r.Origin = Str(rs, "origin"); r.Settled = Str(rs, "settled"); }
             }
             if (e.TryGetProperty("tolerance", out var tol)) { s.TickTolerance = Num(tol, "ticks"); s.PositionTolerance = Num(tol, "positions"); }
             s.Input = Str(e, "input", "auto").ToLowerInvariant();
@@ -190,6 +191,7 @@ internal static class TimeflowComparing
         public List<string> Symbols = new();
         public string[] Watches = Array.Empty<string>();   // per variable: the CPU address range its expression reads ("$C1F9-$C1FA"), for the profile
         public double Fps;
+        public long Held;   // frames that ended inside an update (rate.settled 0): the last settled frame's values kept
         public readonly List<long[]> Values = new();
         public readonly List<double> Ticks = new();
         public readonly List<PadButtons> UsedPads = new();   // input "used", the original: per frame, the buttons its padVars showed after the frame
@@ -255,7 +257,30 @@ internal static class TimeflowComparing
             try { d.Evaluate(te); } catch (Exception x) { throw new ArgumentException($"the {(port ? "port" : "original")}'s tick ({te}): {x.Message}"); }
             tick = () => d.Evaluate(te);
         }
+        if (r.Settled.Length > 0)
+        {
+            string se = Expr(r.Settled);
+            try { d.Evaluate(se); } catch (Exception x) { throw new ArgumentException($"the {(port ? "port" : "original")}'s settled ({se}): {x.Message}"); }
+            list.Add(() => d.Evaluate(se));   // (the last evaluator: Sample takes it off)
+        }
         return list.ToArray();
+    }
+
+    /// <summary>One frame's values and tick; with rate.settled, a frame that ended inside an update keeps the last settled frame's.</summary>
+    private static void Sample(Side side, Rate r, Func<long>[] ev, double tick)
+    {
+        int n = r.Settled.Length > 0 ? ev.Length - 1 : ev.Length;
+        var row = new long[n];
+        for (int i = 0; i < n; i++) row[i] = ev[i]();
+        if (n < ev.Length && side.Values.Count > 0 && ev[n]() == 0)
+        {
+            side.Held++;
+            side.Values.Add(side.Values[^1]);
+            side.Ticks.Add(side.Ticks[^1]);
+            return;
+        }
+        side.Values.Add(row);
+        side.Ticks.Add(tick);
     }
 
     private static PadButtons MapPad(PadButtons p, Spec spec)
@@ -334,8 +359,7 @@ internal static class TimeflowComparing
             var row = rd.Row(f);
             if (side.OffFrame == null && (src.PictureHash() != row.Picture || src.RamHash() != row.Ram))
             { side.OffFrame = f; side.OffWhat = src.RamHash() != row.Ram ? "the work RAM after the frame" : "the picture after the frame"; }
-            side.Values.Add(ev.Select(e => e()).ToArray());
-            side.Ticks.Add(TickOf(spec.O, side.Fps, f + 1, tick?.Invoke() ?? 0, ref tb, ref tp));
+            Sample(side, spec.O, ev, TickOf(spec.O, side.Fps, f + 1, tick?.Invoke() ?? 0, ref tb, ref tp));
             if (used.Count > 0) { PadButtons u = PadButtons.None; foreach (var (b, e) in used) if (e() != 0) u |= b; side.UsedPads.Add(u); }
             if (m.Crashed) { side.Crash = m.CrashInfo; break; }
         }
@@ -416,8 +440,7 @@ internal static class TimeflowComparing
                 rec.BeforeFrame(q1, q2);
                 m.Frame(q1, q2);
                 rec.AfterFrame();
-                side.Values.Add(ev.Select(e => e()).ToArray());
-                side.Ticks.Add(TickOf(spec.P, fpsP, g + 1, tick?.Invoke() ?? 0, ref tb, ref tp));
+                Sample(side, spec.P, ev, TickOf(spec.P, fpsP, g + 1, tick?.Invoke() ?? 0, ref tb, ref tp));
                 if (m.Crashed) { side.Crash = m.CrashInfo; break; }
                 continue;
             }
@@ -435,8 +458,7 @@ internal static class TimeflowComparing
             rec.BeforeFrame(p1, p2);
             m.Frame(p1, p2);
             rec.AfterFrame();
-            side.Values.Add(ev.Select(e => e()).ToArray());
-            side.Ticks.Add(TickOf(spec.P, fpsP, g + 1, tick?.Invoke() ?? 0, ref tb, ref tp));
+            Sample(side, spec.P, ev, TickOf(spec.P, fpsP, g + 1, tick?.Invoke() ?? 0, ref tb, ref tp));
             if (m.Crashed) { side.Crash = m.CrashInfo; break; }
         }
         string dir = rec.Stop();
@@ -566,6 +588,18 @@ internal static class TimeflowComparing
             for (double t = spec.SampleEveryTicks; t <= last && sample == null; t += spec.SampleEveryTicks)
             {
                 long fo = FrameAtTick(o, t), fp = FrameAtTick(p, t);
+                if (spec.O.Settled.Length > 0 && spec.P.Settled.Length > 0)
+                {
+                    // settled sides: a side that ran several updates in one frame (catching up) never showed some ticks' states, so the
+                    // sample goes to the first tick from t on that BOTH sides showed exactly (else it would compare tick t with t + 1)
+                    double tt = t;
+                    while (tt <= last && (o.Ticks[(int)fo] != tt || p.Ticks[(int)fp] != tt))
+                    {
+                        tt = Math.Max(o.Ticks[(int)fo], p.Ticks[(int)fp]);   // (both >= tt, one > tt: strictly later)
+                        fo = FrameAtTick(o, tt); fp = FrameAtTick(p, tt);
+                    }
+                    if (tt > last || o.Ticks[(int)fo] != tt || p.Ticks[(int)fp] != tt) continue;
+                }
                 if (fo < spec.SettleFrames) continue;
                 sample = Positions(o, p, spec, fo, fp);
                 if (sample != null) { sample.Kind = "position"; sample.Detail = $"at tick {t:0.##} (every {spec.SampleEveryTicks} ticks): " + sample.Detail; }
@@ -604,6 +638,7 @@ internal static class TimeflowComparing
                 ["tickTolerance"] = spec.TickTolerance, ["input"] = spec.Input,
                 ["originOriginal"] = spec.O.Origin.Length > 0 ? $"{spec.O.Origin}: frame {originO?.ToString(CultureInfo.InvariantCulture) ?? "never"}" : null,
                 ["originPort"] = spec.P.Origin.Length > 0 ? $"{spec.P.Origin}: frame {originP?.ToString(CultureInfo.InvariantCulture) ?? "never"}" : null, ["sampleEveryTicks"] = spec.SampleEveryTicks,
+                ["heldOriginal"] = spec.O.Settled.Length > 0 ? (JsonNode?)o.Held : null, ["heldPort"] = spec.P.Settled.Length > 0 ? (JsonNode?)p.Held : null,
                 ["timeOriginal"] = spec.O.Tick.Length > 0 ? $"the game's tick {Expr(spec.O.Tick)}" : $"{(spec.O.TickHz > 0 ? spec.O.TickHz : o.Fps):0.####} ticks/s at {o.Fps:0.####} fps",
                 ["timePort"] = spec.P.Tick.Length > 0 ? $"the game's tick {Expr(spec.P.Tick)}" : $"{(spec.P.TickHz > 0 ? spec.P.TickHz : p.Fps):0.####} ticks/s at {p.Fps:0.####} fps",
             },
