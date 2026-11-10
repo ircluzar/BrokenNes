@@ -131,7 +131,8 @@ internal static class MidiChecks
             for (int i = 0; i < tracks.Count; i++)
             {
                 var log = new List<string>();
-                var result = Midi2Nes.ConvertSong(MidiFile.Parse(File.ReadAllBytes(tracks[i].Path)), tracks[i].Name, log.Add);
+                // the roster's per-track options, as build_music.py passes them (--bends, --bend-tolerance, --duty)
+                var result = Midi2Nes.ConvertSong(MidiFile.Parse(File.ReadAllBytes(tracks[i].Path)), tracks[i].Name, log.Add, MidiFixtures.RosterOptions(roster, tracks[i].Name));
                 sb.Append(FabWriter.SongText(result, i == 0, tracks[i].Midi));
                 logs.Add(log);
             }
@@ -268,10 +269,12 @@ internal static class MidiChecks
         string Hex6(int v) => $"0x{v:X6}";
         var cases = new List<(string What, byte[] Rom, string Manifest)>
         {
-            ("version 3", rom, Edit("version", "3")),
+            ($"version {MusicTemplate.FormatVersion + 1}", rom, Edit("version", (MusicTemplate.FormatVersion + 1).ToString())),
+            ("version 2 (round 9's: no duty decoders, 0xD3 would read as the loop or a bend)", rom, Edit("version", "2")),
             ("version 1 (round 7's: plain decoders, a bend opcode would read as the loop)", rom, Edit("version", "1")),
             ("another format", rom, Edit("format", "something-else")),
-            ("another opcode format", rom, Edit("opcodes", "vrun-music-3")),
+            ("another opcode format", rom, Edit("opcodes", "vrun-music-9")),
+            ("round 9's opcode format (no duty opcode)", rom, Edit("opcodes", "vrun-music-2")),
             ("round 7's opcode format", rom, Edit("opcodes", "vrun-music-1")),
             ("no bend decoder on the triangle", rom, Edit("bend-decoders", "square1 square2")),
             ("no bend decoders named", rom, string.Join("\n", Norm(manifest).Split('\n').Where(l => !l.StartsWith("bend-decoders")))),
@@ -424,7 +427,9 @@ internal static class MidiChecks
         // round 9: on a song that slides, the model with every slide negated must not match either
         bool c4 = !b.Channels.Take(3).Any(HasSlide) || MidiModel.ScoreAt(b.Channels, run.Latch, sc.Start, n, Skip, flipSlides: true).Worst < 1;
         // the player's loop counter (RAM pl_loops) turns once per loop length
-        int turn = Array.FindIndex(run.Loops, v => v > 0);
+        // (from the first frame it reads 0: before the player clears its RAM the byte holds the power-on pattern, $FF on half of the zero page, where pl_loops sits since 6f1c439)
+        int cleared = Array.FindIndex(run.Loops, v => v == 0);
+        int turn = cleared < 0 ? -1 : Array.FindIndex(run.Loops, cleared, v => v > 0);
         return new EngineResult(s.Name, sc, c1 && c2 && c3 && c4, turn < 0 ? -1 : turn - sc.Start, loop) { LateFrames = run.LateFrames };
     }
 

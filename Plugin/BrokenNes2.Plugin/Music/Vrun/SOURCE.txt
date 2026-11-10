@@ -5,7 +5,7 @@ live in the VRUN workspace (VRUN_ROOT = sys0\simulations\VRUN; BrokenDev's resto
 bends merge: point BROKENNES_VRUN or VRUN_ROOT at the live tree for the checks). It is the user's code, not third-party code;
 the files are copied byte for byte (namespace Vrun.Audio kept) and must not be edited here: change them in VRUN, then copy again.
 This copy is VRUN's branch audio-bends (the converter as of 237d7e4: MIDI pitch bends, opcodes 0xD1 pitch / 0xD2 slide), merged into
-the live VRUN branch vrun-history-export as e5ba53f (2026-10-18; no roster song has "bends": true yet).
+the live VRUN branch vrun-history-export as e5ba53f (2026-10-18; since e9e3a61 the game roster has "bends": true on baropencrpt, satnkrt, vectorplane: the converter check regenerates each roster track with its roster options, --bends / --bend-tolerance / --duty, as build_music.py does).
 Pulse duty (2026-11-10): opcode 0xD3 dd, read from MIDI CC 14 with ConvertOptions.Duty / --duty (VRUN vrun-history-export, duty commit).
 
 Pulse duty (2026-11-10): Midi2Nes.cs and Bends.cs copied again from VRUN a36dd5e (opcode 0xD3 dd, MIDI CC 14, ConvertOptions.Duty).

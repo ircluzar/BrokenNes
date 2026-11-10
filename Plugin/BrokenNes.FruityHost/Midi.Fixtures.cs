@@ -63,6 +63,21 @@ internal static class MidiFixtures
         return list;
     }
 
+    /// <summary>A roster track's converter options, read as build_music.py reads them: "bends" (and "bend_tolerance"), "duty".</summary>
+    public static Vrun.Audio.ConvertOptions RosterOptions(string rosterFile, string name)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(rosterFile));
+        foreach (var t in doc.RootElement.GetProperty("tracks").EnumerateArray())
+        {
+            if (t.GetProperty("name").GetString() != name) continue;
+            static bool Flag(JsonElement e, string k) => e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.True;
+            var o = new Vrun.Audio.ConvertOptions { Bends = Flag(t, "bends"), Duty = Flag(t, "duty") };
+            if (t.TryGetProperty("bend_tolerance", out var tol) && tol.ValueKind == JsonValueKind.Number) o = o with { BendToleranceCents = tol.GetDouble() };
+            return o;
+        }
+        return new Vrun.Audio.ConvertOptions();
+    }
+
     /// <summary>The eleven songs of VRUN's AudioPlayer roster (empty without the VRUN tree).</summary>
     public static List<MidiSong> RosterSongs()
     {
