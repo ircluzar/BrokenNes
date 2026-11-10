@@ -42,6 +42,9 @@ switch (args[0])
     case "flp-test":
         return FlpChecks.Main(args);
 
+    case "flp-backend":
+        return SvChecks.Backend(args);
+
     case "midi-test":
         return MidiChecks.Main(args);
 

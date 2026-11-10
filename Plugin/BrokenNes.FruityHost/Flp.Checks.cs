@@ -31,6 +31,9 @@ internal static class FlpChecks
         new("fl-pitch", "the MIDI the back end writes plays FL's pitch (from the model alone), frame by frame, on every NES channel", FlPitch),
         new("engine", "the sound-test ROM of each song plays the converter's streams frame for frame and its bends follow the MIDI", Engine),
         new("rom", "each song becomes a sound-test ROM (round 7's template), facts and caveats said", Rom),
+        new("sv-synthetic", "Super VRUN back end (SNES, WideMess, MD, DOS, 95): programs, noise keys, levels, pan, pitch, per-engine fence lines", SvChecks.Synthetic),
+        new("sv-fence", "Super VRUN fence: each limit broken on purpose is reported OVER (voices, noise, range, instances, instruments, empty song)", SvChecks.Fence),
+        new("sv-songs", "every song on every Super VRUN engine: MIDI notes = the model's sounding notes, fence printed (with --out: written)", SvChecks.Songs),
     ];
 
     private static string Sha(byte[] b) => Convert.ToHexString(SHA256.HashData(b)).ToLowerInvariant();
@@ -350,6 +353,10 @@ internal static class FlpChecks
         new(FlpMutants.OldestNoteWins, "the oldest held note keeps the channel", "fl-pitch"),
         new(FlpMutants.TuningIgnored, "the instance's Coarse/Fine are ignored", "synthetic"),
         new(FlpMutants.ReaderDropsLastNote, "the C# reader drops each pattern's last note", "identity"),
+        new(SvMutants.VoiceFenceBlind, "the Super VRUN fence does not see too many voices", "sv-fence"),
+        new(SvMutants.DutyAs50, "the Super VRUN back end plays every pulse at 50%", "sv-synthetic"),
+        new(SvMutants.ShortNoiseAsLong, "short noise written as long noise", "sv-synthetic"),
+        new(SvMutants.VelocityLinear, "velocity linear in the level (FluidSynth squares it)", "sv-synthetic"),
     ];
 
     public static int Main(string[] args)
