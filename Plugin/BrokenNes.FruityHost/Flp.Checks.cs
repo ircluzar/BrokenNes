@@ -34,6 +34,7 @@ internal static class FlpChecks
         new("engine", "the sound-test ROM of each song plays the converter's streams frame for frame and its bends follow the MIDI", Engine),
         new("duty", "each square's Duty reaches the MIDI (CC 14), the streams (0xD3 when not 50%) and the ROM's $4000/$4004 writes", Duty),
         new("rom", "each song becomes a sound-test ROM (round 7's template), facts and caveats said", Rom),
+        .. FlpVocChecks.All,     // Vaults GB / Vaults GG / CTW SMS (Flp.Checks.Voc.cs)
         new("sv-synthetic", "Super VRUN back end (SNES, WideMess, MD, DOS, 95): programs, noise keys, levels, pan, pitch, per-engine fence lines", SvChecks.Synthetic),
         new("sv-fence", "Super VRUN fence: each limit broken on purpose is reported OVER (voices, noise, range, instances, instruments, empty song)", SvChecks.Fence),
         new("sv-songs", "every song on every Super VRUN engine: MIDI notes = the model's sounding notes, fence printed (with --out: written)", SvChecks.Songs),

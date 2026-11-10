@@ -21,6 +21,7 @@ public sealed partial class Emulator
     {
         var t = FlpTarget;
         if (SongUi.Busy) return "busy: a song is being converted";
+        if (t.Inside) return BuildInside(flp, t);           // Vaults GB / GG, CTW SMS: built here from the embedded templates (Emulator.FlpGame.cs)
         string? repo = GameTargets.RepoFor(t, Prefs.Get("RepoPath"));
         if (repo == null) return $"{t.Label}: the build script {t.Script} was not found (set BROKENNES_REPO to the BrokenNes folder): nothing changed";
         string outDir = Path.Combine(Path.GetTempPath(), "BrokenNes2", "FlpBuilds");

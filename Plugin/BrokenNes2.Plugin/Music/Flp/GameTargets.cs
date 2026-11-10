@@ -4,7 +4,8 @@
 // and Nano GB is a web library): the window says where the file is. Pure: no UI, no processes.
 namespace BrokenNes2.Music.Flp;
 
-public sealed record GameTarget(string Id, string Label, string Engine, bool PlaysHere, string Script);
+/// <summary>Inside: built in the plugin from an embedded template with the game's own driver (Vaults GB / GG, CTW SMS: Emulator.FlpGame.cs), no script or toolchain.</summary>
+public sealed record GameTarget(string Id, string Label, string Engine, bool PlaysHere, string Script, bool Inside = false);
 
 public static class GameTargets
 {
@@ -16,6 +17,9 @@ public static class GameTargets
         new("supervrun-md", "Super VRUN MD", "md", true, @"BrokenDev\tools\music\flp\build-supervrun.ps1"),
         new("supervrun-dos", "Super VRUN DOS", "dos", false, @"BrokenDev\tools\music\flp\build-supervrun.ps1"),
         new("supervrun-95", "Super VRUN 95", "95", false, @"BrokenDev\tools\music\flp\build-supervrun.ps1"),
+        new("vaults-gb", "Vaults GB", "", true, "", Inside: true),
+        new("vaults-gg", "Vaults GG", "", true, "", Inside: true),
+        new("ctw-sms", "CTW SMS", "", true, "", Inside: true),
         new("nano-gb", "Nano GB (web)", "", false, @"Nano\gb\tools\flp2nano\flp2nano.mjs"),
     ];
 

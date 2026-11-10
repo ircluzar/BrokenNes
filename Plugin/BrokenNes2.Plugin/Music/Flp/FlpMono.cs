@@ -9,6 +9,8 @@ public sealed class MonoVoice
 {
     public int Start, End, Order, Velocity;
     public double Base, Volume;
+    /// <summary>The instance the note is on (a back end reads its parameters: duty, noise mode, pan).</summary>
+    public FlpInstrument Instrument = null!;
     public List<MonoGlide> Glides = new();
 
     public double PitchAt(double t)
@@ -35,6 +37,8 @@ public sealed class MonoPart
     public List<MonoVoice> Voices = new();
     public List<MonoSeg> Segs = new();
     public int Empty, LoneSlides, Cut;
+    /// <summary>Of the Cut notes, those never heard at all (a newer note covers them whole).</summary>
+    public int Hidden;
 }
 
 public static class FlpMono
@@ -53,7 +57,7 @@ public static class FlpMono
             {
                 double cents = n.Key * 100 + (n.Fine - 120) + tune;
                 if (n.Slide) glides.Add(new MonoGlide { At = n.Start, Start = n.Start - VrunNesBackend.SlideEarly, Len = Math.Max(0, n.End - n.Start) + VrunNesBackend.SlideExtra, To = cents });
-                else if (n.End > n.Start) part.Voices.Add(new MonoVoice { Start = n.Start, End = n.End, Base = cents, Velocity = n.Velocity, Volume = volume, Order = order++ });
+                else if (n.End > n.Start) part.Voices.Add(new MonoVoice { Start = n.Start, End = n.End, Base = cents, Velocity = n.Velocity, Volume = volume, Order = order++, Instrument = ins });
                 else part.Empty++;
             }
         }
@@ -74,6 +78,7 @@ public static class FlpMono
             else part.Segs.Add(new MonoSeg(own, t, times[i + 1]));
         }
         part.Cut = part.Voices.Count(v => !part.Segs.Any(s => s.V == v && s.To == v.End));
+        part.Hidden = part.Voices.Count(v => !part.Segs.Any(s => s.V == v));
         return part;
     }
 

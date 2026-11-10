@@ -63,3 +63,14 @@ public sealed class FenceReport
         return sb.Append('"').ToString();
     }
 }
+
+/// <summary>Helpers for back ends that keep their fence as a plain list of lines (Vaults GB / GG, CTW SMS): the same words and order as <see cref="FenceReport.Text"/>.</summary>
+public static class FlpFence
+{
+    public static string Line(FenceLine l) => (l.Level == FenceLevel.Over ? "OVER " : l.Level == FenceLevel.Note ? "note " : "ok   ") + $"[{l.Rule}] {l.Text}";
+    public static IEnumerable<string> Lines(IEnumerable<FenceLine> f) => f.OrderBy(l => l.Level == FenceLevel.Over ? 0 : l.Level == FenceLevel.Note ? 1 : 2).Select(Line);
+    public static string Summary(IEnumerable<FenceLine> f) { var l = f.ToList(); return $"{l.Count(x => x.Level == FenceLevel.Over)} over the limit, {l.Count(x => x.Level == FenceLevel.Note)} played differently, {l.Count(x => x.Level == FenceLevel.Ok)} inside"; }
+    public static FenceReport Report(string engine, IEnumerable<FenceLine> f) { var r = new FenceReport(engine); r.Lines.AddRange(f); return r; }
+    /// <summary>The MIDI note name of a key (C5 = 60, FL's convention).</summary>
+    public static string NoteName(int key) => new[] { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }[((key % 12) + 12) % 12] + (int)Math.Floor(key / 12.0);
+}

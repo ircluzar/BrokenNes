@@ -1,0 +1,16 @@
+# BrokenNes2 .flp test ROM (Vaults GB): the game's own music driver + one reserved song. Made by BrokenDev/tools/music/vocgb/build-vocgb.ps1. Offsets are ROM file offsets.
+format = bn2-flp-vocgb
+version = 1
+game = VRUN_VOC_dev f1f74bd
+driver-sha256 = f1104d1384afa5aa13117a4eec69052de7fe87b2061d3aa96009567fdcfad7f9
+instab = 0x0E14CC 128
+wavetab = 0x0E154C 256
+noisetab = 0x0E164C 128
+songtab = 0x0E16CC 14
+stream0 = 0x0E4000 16376
+stream1 = 0x0E8000 16376
+stream2 = 0x0EC000 16376
+stream3 = 0x0F0000 16376
+frames = 0xC0B1
+rom-bytes = 1048576
+rom-sha256 = babb30cd9a9d2bee7a2a4805236aab92fbb19531c2802365c13060804438a24d

@@ -1,0 +1,13 @@
+# BrokenNes2 .flp test ROM (Vaults GG): the game's own sound unit + one reserved song. Made by BrokenDev/tools/music/vocgg/build-vocgg.ps1. Offsets are ROM file offsets.
+format = bn2-flp-vocgg
+version = 1
+game = VRUN_VOC_GG_dev 551799d
+driver-sha256 = 6c7530a9366af10d3b0e9bf67e54e5fd9564b43b6264be01788010399f501a5a
+nrate = 0x0012AE 128
+stream0 = 0x0E8000 16376
+stream1 = 0x0EC000 16376
+stream2 = 0x0F4000 16376
+stream3 = 0x0F8000 16376
+frames = 0xC07F
+rom-bytes = 1032192
+rom-sha256 = fee4017f072da178281ebce4ca4470bae7eb7672f9e80a0522e6893aabff7c60

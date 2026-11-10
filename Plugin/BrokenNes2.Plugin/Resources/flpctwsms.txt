@@ -1,0 +1,12 @@
+# BrokenNes2 .flp test ROM (CTW SMS): the game itself, its title song's four streams padded. Made by BrokenDev/tools/music/ctwsms/build-ctwsms.ps1. Offsets are ROM file offsets.
+format = bn2-flp-ctwsms
+version = 1
+game = VRUN_CTW_SMS_dev 0a9cce8
+vrun = 439616b (tracked src + engine), untracked generated files of a36dd5e
+song = rosbif
+square1 = 0x0439A5 1280
+square2 = 0x044000 1280
+triangle = 0x044500 1280
+noise = 0x044A00 1280
+rom-bytes = 524288
+rom-sha256 = 142ef0a80b6382d34b229120aeecba3ac876434423dd69510b74a91c16418fd5
