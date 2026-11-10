@@ -31,6 +31,7 @@ internal static class FlpChecks
         new("fl-pitch", "the MIDI the back end writes plays FL's pitch (from the model alone), frame by frame, on every NES channel", FlPitch),
         new("engine", "the sound-test ROM of each song plays the converter's streams frame for frame and its bends follow the MIDI", Engine),
         new("rom", "each song becomes a sound-test ROM (round 7's template), facts and caveats said", Rom),
+        .. FlpVocChecks.All,     // Vaults GB / Vaults GG / CTW SMS (Flp.Checks.Voc.cs)
     ];
 
     private static string Sha(byte[] b) => Convert.ToHexString(SHA256.HashData(b)).ToLowerInvariant();
