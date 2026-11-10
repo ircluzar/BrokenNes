@@ -39,6 +39,9 @@ switch (args[0])
     case "preset-test":
         return PresetChecks.Main(args);
 
+    case "flp-test":
+        return FlpChecks.Main(args);
+
     case "midi-test":
         return MidiChecks.Main(args);
 

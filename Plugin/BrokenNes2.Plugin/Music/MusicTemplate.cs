@@ -232,5 +232,7 @@ public static class MusicMutate
     public const int SlideSignFlipped = 1 << 11;  // every slide's slope is negated after conversion (bends check)
     public const int FactsHideBendLoss = 1 << 12; // the facts say no bend frame was thinned (facts check)
     public const int OldTemplateAccepted = 1 << 13; // a version-1 template (plain decoders: a bend opcode reads as the loop) is accepted (template-refusals check)
+    // the .flp music pipeline (docs/projects/flp-music-pipeline.md)
+    public const int FlpReadAsMidi = 1 << 14;     // a .flp is handed to the MIDI reader as it is (selftest scenario flp: the project's song must play)
     public static bool Has(int bit) => (Mask & bit) != 0;
 }
