@@ -54,8 +54,8 @@
     },
     "sv_snes": {
      "status": "has",
-     "detail": "PVSnesLib C + 65816 asm, master (2P merged 4ee3325, weapon mods, cgram fix 22bd670)",
-     "evidence": "memory project_supervrun_invisible_enemies (note)"
+     "detail": "PVSnesLib C + 65816 asm, master 1c35e08 (2P, weapon mods, cgram fix 22bd670, port backports 1c35e08)",
+     "evidence": "SuperVRUN_dev git log (code)"
     },
     "sv_wms": {
      "status": "has",
@@ -64,18 +64,18 @@
     },
     "sv_md": {
      "status": "has",
-     "detail": "logic/ copy of SNES 45efdc6 + platform/md (SGDK); local: bgfx outline p2 room roomtrans bossvis plctx currency corruptfx",
-     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt, LOCAL.txt (code)"
+     "detail": "logic/ copy of SNES 1c35e08 (resync ce31650, 2026-11-10) + platform/md (SGDK); nothing local in logic/ (LOCAL.txt empty)",
+     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt, BACKPORT.md (code)"
     },
     "sv_dos": {
      "status": "has",
-     "detail": "logic/ copy of SNES 22bd670 + software SNES PPU platform/dos; local: plctx p2 pausemap state_options platform_api",
+     "detail": "logic/ copy of SNES 1c35e08 (6d32c40) + software SNES PPU platform/dos; local: state_options.c (SOUND OUT), platform_api.h",
      "evidence": "SuperVRUN_DOS_dev/logic/SOURCE.txt, LOCAL.txt (code)"
     },
     "sv_95": {
      "status": "has",
-     "detail": "built from DOS 0c727bb, logic + software PPU unchanged, Win32 GDI shell",
-     "evidence": "SuperVRUN_95_dev/README.md (code)"
+     "detail": "logic/ from DOS 6d32c40 (SNES 1c35e08), Win32 GDI shell",
+     "evidence": "SuperVRUN_95_dev/logic/SOURCE_DOS.txt (code)"
     }
    }
   },
@@ -204,7 +204,7 @@
     "ctw_orig": {
      "status": "partial",
      "detail": "debug level-select backdoor, dead in normal play",
-     "evidence": "port-spec 05 §3 (note)"
+     "evidence": "port-spec 05 \u00a73 (note)"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -320,7 +320,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "15 TTS voiceover lines",
-     "evidence": "port-spec 05 §4 (note)"
+     "evidence": "port-spec 05 \u00a74 (note)"
     },
     "ctw_nes_mmc3": {
      "status": "missing",
@@ -378,7 +378,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "time + scrolling credits",
-     "evidence": "port-spec 05 §6 (note)"
+     "evidence": "port-spec 05 \u00a76 (note)"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -436,7 +436,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "TTS 'Deleted' then page reload",
-     "evidence": "port-spec 05 §5"
+     "evidence": "port-spec 05 \u00a75"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -610,7 +610,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "random 3 of 9 items",
-     "evidence": "port-spec 02 §4"
+     "evidence": "port-spec 02 \u00a74"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -817,9 +817,9 @@
      "evidence": "SuperVRUN_WMS_dev/src/wmsptr.h, wms.c (code); memory project_widemess (note)"
     },
     "sv_md": {
-     "status": "missing",
-     "detail": "pause screen is only the PAUSED / SELECT: SAVE & QUIT box, no map",
-     "evidence": "headless MCP screenshot f700, supervrun_md_62c4f90.bin (run)"
+     "status": "partial",
+     "detail": "pause map + stats drawn (resync ce31650); the BG1 darken + mosaic and the sprite/BG3 split-off are not (no colour math / mosaic in the Genesis compositor)",
+     "evidence": "headless MCP run of ce31650: pause at f970-1090 shows P1 stats + map window (run)"
     },
     "sv_dos": {
      "status": "has",
@@ -958,7 +958,7 @@
     "ctw_orig": {
      "status": "partial",
      "detail": "level-6 miniboss is dead data",
-     "evidence": "gap doc §J"
+     "evidence": "gap doc \u00a7J"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -1190,7 +1190,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "Speed stat picks L1 15/110ms, L2 18/70ms, L3 25/40ms; ammo cap Burst+2",
-     "evidence": "gap doc §L2"
+     "evidence": "gap doc \u00a7L2"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -1248,12 +1248,12 @@
     "ctw_orig": {
      "status": "has",
      "detail": "world pickups ids 25-33",
-     "evidence": "gap doc §L2"
+     "evidence": "gap doc \u00a7L2"
     },
     "ctw_nes_mmc3": {
      "status": "missing",
      "detail": "cut for bullet count/ROM",
-     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/21-ctw-fidelity-gap-analysis.md §L"
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/21-ctw-fidelity-gap-analysis.md \u00a7L"
     },
     "ctw_nes_m30": {
      "status": "missing",
@@ -1306,7 +1306,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "ItemType 1-5 on Space",
-     "evidence": "port-spec 02 §3.4"
+     "evidence": "port-spec 02 \u00a73.4"
     },
     "ctw_nes_mmc3": {
      "status": "missing",
@@ -1364,7 +1364,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "random substitution 50% on Ressource L1/Health Square",
-     "evidence": "gap doc §L2"
+     "evidence": "gap doc \u00a7L2"
     },
     "ctw_nes_mmc3": {
      "status": "partial",
@@ -1422,7 +1422,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "3 random of 9 incl. Field 200/400, no Health",
-     "evidence": "port-spec 02 §4"
+     "evidence": "port-spec 02 \u00a74"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -1538,7 +1538,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "selects bullet type",
-     "evidence": "gap doc §L2"
+     "evidence": "gap doc \u00a7L2"
     },
     "ctw_nes_mmc3": {
      "status": "partial",
@@ -1654,7 +1654,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "1 HP per hit with cooldown, Heal +10",
-     "evidence": "gap doc §C, port-spec 02 §5"
+     "evidence": "gap doc \u00a7C, port-spec 02 \u00a75"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -1769,7 +1769,7 @@
    "versions": {
     "ctw_orig": {
      "status": "unknown",
-     "detail": "values not extracted (settle: port-spec 02 §1-2)",
+     "detail": "values not extracted (settle: port-spec 02 \u00a71-2)",
      "evidence": ""
     },
     "ctw_nes_mmc3": {
@@ -1828,7 +1828,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "Classic/Intro/Mixed/Twin with analog sticks + keyboard",
-     "evidence": "port-spec 02 §10"
+     "evidence": "port-spec 02 \u00a710"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -1944,7 +1944,7 @@
     "ctw_orig": {
      "status": "has",
      "detail": "stat widgets, ItemBox, Score=Currency, Lives=Exp",
-     "evidence": "port-spec 05 §2"
+     "evidence": "port-spec 05 \u00a72"
     },
     "ctw_nes_mmc3": {
      "status": "has",
@@ -2239,7 +2239,7 @@
     "ctw_nes_mmc3": {
      "status": "has",
      "detail": "CHR bank flip on hits (chr_bank), ambient churn, hurt flash, death glitch, boss scatter, font corruption",
-     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/18-qol-refinement-pass.md §2; 27-mmc3"
+     "evidence": "C:/Users/philt/OneDrive/Documents/PROJECTS/VRUN_Nes_Dev/sys0/simulations/VRUN/docs/18-qol-refinement-pass.md \u00a72; 27-mmc3"
     },
     "ctw_nes_m30": {
      "status": "has",
@@ -2500,8 +2500,8 @@
     },
     "sv_md": {
      "status": "partial",
-     "detail": "PAUSED + SELECT: SAVE & QUIT only: no map and no stats. No pausemap.c, so the stat_of bug does not exist on MD",
-     "evidence": "headless MCP screenshot f700 (run); SuperVRUN_MD_dev/logic/pause.c (code)"
+     "detail": "PAUSED, seed, SELECT: SAVE & QUIT + P1 stats (BURST 1, LUCK 0, HOVER 1 = SNES) + map; no darken/mosaic",
+     "evidence": "headless MCP run of ce31650 (run)"
     },
     "sv_dos": {
      "status": "has",
@@ -2557,9 +2557,9 @@
      "evidence": "SuperVRUN_WMS_dev = SNES widemess branch (code)"
     },
     "sv_md": {
-     "status": "has",
-     "detail": "tabs GRAPHICS/AUDIO/CONTROLS: CONTROLS, CONTROLS2, SOUND TEST, SFX TEST, START AT, BOOST, TILESET, BG LAB, FX LAB, UI LAB (logic/ copy)",
-     "evidence": "SuperVRUN_MD_dev/logic/SOURCE.txt = SNES 45efdc6 (code, inferred from copy)"
+     "status": "partial",
+     "detail": "SNES 1c35e08 options code (tabbed panel); the panel picture is garbled on the Genesis (BG2 panel map $2800 / tiles $3A00 over the tunnel): open",
+     "evidence": "headless MCP run of ce31650, options entered from the title (run)"
     },
     "sv_dos": {
      "status": "has",
@@ -3080,13 +3080,13 @@
     },
     "sv_md": {
      "status": "partial",
-     "detail": "steady room ~0.91 ticks/frame vs SNES 1.00 (slower than SNES); big-room build ~50 frames vs 8",
-     "evidence": "memory S3 M3 speed / hw round 2 (run)"
+     "detail": "idle room 0 and a 600-frame walk+shoot in room 0: 1.00 / 0.995 ticks/frame, same as before the resync; room-1 ~0.91 and big-room build ~50 frames not re-measured, speed climb not started",
+     "evidence": "headless MCP game_frames, ce31650 vs main 10442ad (run)"
     },
     "sv_dos": {
      "status": "partial",
-     "detail": "x86@130M area-4 skips 139 pictures per run (was 599); DOSBox fine",
-     "evidence": "memory project_supervrun_dos (run)"
+     "detail": "x86@130M area-4 run: 23 skipped pictures (19 title/area load, 3 room-entry fade, 1 hit mosaic), 0 in steady play, never two in a row; same 23 after the 1c35e08 sync (6d32c40)",
+     "evidence": "tests/run_x86.ps1, seed 300 5 / startat 300 4 / quit 1400 (run)"
     },
     "sv_95": {
      "status": "unknown",
@@ -3505,7 +3505,7 @@
    "id": 61,
    "category": "Quirks",
    "game": "Super VRUN",
-   "feature": "Port endian/backport fixes not back in SNES (MD BACKPORT 1-8, DOS #1 stat_of)",
+   "feature": "Port endian/backport fixes back in SNES (MD BACKPORT 1-8, DOS #1 stat_of)",
    "versions": {
     "ctw_orig": {
      "status": "n.a.",
@@ -3533,29 +3533,29 @@
      "evidence": ""
     },
     "sv_snes": {
-     "status": "partial",
-     "detail": "stat_of reads ((u8*)&player_x)[off]: LATENT, not live. tools/srccheck.py plctxcheck fails the build if plctx.c ever stops matching the PLC_* offsets",
-     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/pausemap.c:427 + tools/srccheck.py:311 (code)"
+     "status": "has",
+     "detail": "in the base since 1c35e08 (include/plat_endian.h; SNES ROM byte-identical, md5 885413ee...)",
+     "evidence": "2026-11-10 backport round (code+run)"
     },
     "sv_wms": {
-     "status": "partial",
-     "detail": "stat_of reads ((u8*)&player_x)[off]: LATENT, not live. tools/srccheck.py plctxcheck fails the build if plctx.c ever stops matching the PLC_* offsets",
-     "evidence": "SuperVRUN_dev/snes-dev/supervrun/src/pausemap.c:427 + tools/srccheck.py:311 (code)"
+     "status": "has",
+     "detail": "merged (c60964f); SNES + .wms builds byte-identical",
+     "evidence": "2026-11-10 backport round (code+run)"
     },
     "sv_md": {
-     "status": "partial",
-     "detail": "endian fixes local; stat_of n.a. (no pausemap.c, no stats on pause)",
-     "evidence": "git grep stat_of SuperVRUN_MD_dev/logic: no hit (code)"
+     "status": "has",
+     "detail": "resynced: BACKPORT 1-8 come from the base, LOCAL.txt empty (ce31650)",
+     "evidence": "2026-11-10 backport round (code+run)"
     },
     "sv_dos": {
      "status": "has",
-     "detail": "fixed locally",
-     "evidence": ""
+     "detail": "stat_of fix from the base (6d32c40); TRACE identical",
+     "evidence": "2026-11-10 backport round (code+run)"
     },
     "sv_95": {
      "status": "has",
-     "detail": "",
-     "evidence": ""
+     "detail": "from DOS 6d32c40; compare.ps1 46 probe lines identical",
+     "evidence": "2026-11-10 backport round (code+run)"
     }
    }
   },
