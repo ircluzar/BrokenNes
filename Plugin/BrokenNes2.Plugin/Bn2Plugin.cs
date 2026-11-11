@@ -20,6 +20,9 @@ namespace BrokenNes2;
 
 public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 {
+    /// <summary>The .flp this instance's FL project was picked as (ProjectFlp.cs): kept in the saved state (section FLP1), so the project remembers its own file. Null: not picked.</summary>
+    internal string? ProjectFlpPath;
+
     public const double CpuHz = 1789773.0;
     private const int Chunk = 64;
 
@@ -885,6 +888,15 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 stream.Write(&trkLen, 4);
                 fixed (byte* p = trackSection) stream.Write(p, (uint)trkLen);
             }
+            // Which .flp is this FL project (ProjectFlp.cs: picked once with the file dialog), so the project remembers its own file.
+            if (ProjectFlp.SectionBytes(ProjectFlpPath) is { } flpSection)
+            {
+                uint flpMagic = ProjectFlp.Tag;
+                int flpLen = flpSection.Length;
+                stream.Write(&flpMagic, 4);
+                stream.Write(&flpLen, 4);
+                fixed (byte* p = flpSection) stream.Write(p, (uint)flpLen);
+            }
             if (HostLog.On) HostLog.Text(InstanceNo, $"state saved: {Params.Length} values, ROM path {n} bytes, emulator #{emu} channel {ch}{(PresetSectionBytes() is { } ps ? $", PRS1 {ps.Length} bytes" : "")}{(TrackSectionBytes() is { } ts ? $", TRK1 {ts.Length} bytes" : "")}");
             // The Test MIDI export's song (Music/SongSection.cs): the MIDI file's bytes and path, so a reopened project rebuilds the same ROM; before the game's state, which then fits it.
             if (a.Emulator?.CaptureSongSection() is { } songSection)
@@ -956,6 +968,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         string? songProblem = null;
         byte[]? restoredRecord = null;
         byte[]? trackBytes = null;
+        string? flpPathRead = null;
         var seen = HostLog.On ? new List<string>() : null;
         restoring = true;
         try
@@ -982,12 +995,18 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                     hintEmu = e; hintCh = c;
                     // The sections after the place record: tag, length, bytes. The ones this build knows are read and checked, never trusted; the others (a later build's) are skipped by their length;
                     // a stream that ends, or whose length cannot be right, ends the reading (what was read before it stands).
-                    for (int sections = 0; sections < 12; sections++)
+                    for (int sections = 0; sections < 16; sections++)
                     {
                         uint tag = 0; int slen = 0;
                         if (!stream.Read(&tag, 4) || !stream.Read(&slen, 4)) break;
                         seen?.Add($"{Encoding.ASCII.GetString(BitConverter.GetBytes(tag))} {slen} bytes");
-                        if (tag == TrackTag && slen is >= 25 and <= 16 << 20)
+                        if (tag == ProjectFlp.Tag && slen is >= 8 and <= ProjectFlp.MaxBytes)
+                        {
+                            var flpBuf = new byte[slen];
+                            fixed (byte* p = flpBuf) if (!stream.Read(p, (uint)slen)) break;
+                            flpPathRead = ProjectFlp.ReadSection(flpBuf);
+                        }
+                        else if (tag == TrackTag && slen is >= 25 and <= 16 << 20)
                         {
                             var trkBuf = new byte[slen];
                             fixed (byte* p = trkBuf) if (!stream.Read(p, (uint)slen)) break;
@@ -1151,6 +1170,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         if (restoredRecord != null) emu2?.AdoptRecord(restoredRecord);         // (the first instance of the project that carries the recording gives it to the emulator)
         // whether this state makes the instance clearly the user's own (it holds a game, a preset or a track: it leaves the recording and never joins it by itself), or not (FL's empty or default
         // state, a fresh instance's own state, another channel's values: a joined instance stays joined; relink, 2026-10-18)
+        ProjectFlpPath = flpPathRead;
         var restoredTrack = trackBytes == null ? (null, null, false, -1) : ReadTrackSection(trackBytes);
         bool hadGame = restoredGame != null || gameProblem != null || restoredSnapshot != null || restoredGb != null || restoredSega != null || restoredWms != null || restoredSong != null || restoredRecord != null || restoredCorruption != null || injectPayload != null;
         bool usersOwn = RestoredUsersOwn(hadGame, presetSectionBytes != null, trackBytes != null);

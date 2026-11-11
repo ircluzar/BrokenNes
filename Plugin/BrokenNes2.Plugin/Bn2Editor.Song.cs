@@ -9,13 +9,13 @@ namespace BrokenNes2;
 
 public sealed unsafe partial class Bn2Editor
 {
-    public const int IdMid = 2000, IdMidClose = 2001, IdMidOpen = 2002, IdMidPlay = 2003, IdMidRestart = 2004, IdMidStop = 2005, IdMidReload = 2006, IdMidFollow = 2007, IdMidFlp = 2008, IdMidTarget = 2009;
+    public const int IdMid = 2000, IdMidClose = 2001, IdMidOpen = 2002, IdMidPlay = 2003, IdMidRestart = 2004, IdMidStop = 2005, IdMidReload = 2006, IdMidFollow = 2007, IdMidFlp = 2008, IdMidTarget = 2009, IdMidFlpChange = 2010;
     private const int MidW = 780, MidH = 650, MidNoteSeconds = 12;      // (650 since round 9: the Capture from FL row and strip, Bn2Editor.Capture.cs)
 
     private bool midOpen, midNoteShown;
     private string? testMidiPath;
 
-    private static bool IsMidId(int id) => id is >= IdMidClose and <= IdMidTarget;
+    private static bool IsMidId(int id) => id is >= IdMidClose and <= IdMidFlpChange;
 
     /// <summary>The header's button (left of the emulator badge, after the plugin's name and its line).</summary>
     private void DrawMidiButton(nint dc, int x)
@@ -108,7 +108,9 @@ public sealed unsafe partial class Bn2Editor
         Button(dc, IdMidReload, "Reload", R(lx + 340, y, 90, 34), primary: false, enabled: canPlay);
         // the music pipeline: this FL project's own last-saved .flp straight into the sound-test ROM (Music/Flp, ProjectFlp.cs)
         Button(dc, IdMidFlp, "This FL project", R(lx + 440, y, 150, 34), primary: held == null, enabled: emu != null && !busy);
-        Txt(dc, held == null ? "its last save" : Emulator.IsFlp(held.Path) ? $"{held.FileName}: save in FL, Reload" : $"{held.FileName}: export, Reload", R(lx + 598, y - 2, iw - 598, 38), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+        // which .flp that is: picked once with the file dialog, kept in this instance's saved state (the FL project), changed here
+        Button(dc, IdMidFlpChange, plugin.ProjectFlpPath == null ? "Pick .flp" : "Change .flp", R(lx + 598, y, 110, 34), primary: false, enabled: emu != null && !busy);
+        Txt(dc, plugin.ProjectFlpPath is { } pf ? Path.GetFileName(pf) + (held != null ? Emulator.IsFlp(held.Path) ? ": save in FL, Reload" : $" ({held.FileName}: export, Reload)" : "") : held == null ? "its last save" : Emulator.IsFlp(held.Path) ? $"{held.FileName}: save in FL, Reload" : $"{held.FileName}: export, Reload", R(lx + 716, y - 2, iw - 716, 38), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
 
         y = box.Top + 520;
         Check(dc, IdMidFollow, "Follow FL's transport: Play restarts, Stop stops", lx, y, ui?.Follow == true, null, labelW: 380, hitW: 400);
@@ -165,37 +167,47 @@ public sealed unsafe partial class Bn2Editor
             case IdMidStop: if (emu.SongRunning) { emu.StopSong(); ui.SetResult("Stopped: Play starts the song again from its start", true); } break;
             case IdMidReload: if (emu.Song != null && !ui.Busy && emu.ReloadSong() is { } why) ui.SetResult("Reload: " + why, false); break;
             case IdMidFollow: ui.Follow = !ui.Follow; break;
-            case IdMidFlp: if (!ui.Busy) UseProjectFlp(); break;
+            case IdMidFlp: if (!ui.Busy) UseProjectFlp(change: false); break;
+            case IdMidFlpChange: if (!ui.Busy) UseProjectFlp(change: true); break;
             case IdMidTarget: if (!ui.Busy) { emu.NextFlpTarget(); ui.SetResult($"This FL project builds for {emu.FlpTarget.Label}{(emu.FlpTarget.Id == "vrun-nes" ? "" : ": the game's own toolchain makes a test build (a few minutes), its fence report is shown")}", true); } break;
         }
     }
 
-    /// <summary>"This FL project": the .flp this instance's project was last saved as. FL does not tell a plugin its project's path (ProjectFlp.cs): the name comes from FL's window
-    /// title, the path from the pick remembered for that name, else the file dialog once (a test names the file with hook 621, the title with hook 623).</summary>
-    private void UseProjectFlp()
+    /// <summary>"This FL project": the .flp this instance's project was last saved as. FL does not tell a plugin its project's path (ProjectFlp.cs): the file dialog asks once, the pick is
+    /// kept in this instance's saved state (the FL project), "Change .flp" (<paramref name="change"/>) asks again. A test names the file with hook 621 and counts the dialogs with 623/624.</summary>
+    private void UseProjectFlp(bool change)
     {
         var emu = plugin.Emulator;
         if (emu == null) return;
-        string title = ProjectFlp.HostTitle(Hwnd);
-        string? name = FlpTitle.NameFromTitle(title);
-        string? path = testMidiPath ?? ProjectFlp.Remembered(name);
+        string? kept = plugin.ProjectFlpPath;
+        if (change && Music.MusicMutate.Has(Music.MusicMutate.FlpChangeIgnored) && kept != null && File.Exists(kept)) change = false;
+        string? path = !change && kept != null && File.Exists(kept) ? kept : null;
         bool picked = false;
         if (path == null)
         {
-            string? start = Prefs.Get("FlpFolder");
-            path = Win32.ChooseFile(Hwnd, name != null ? $"Where is \"{name}.flp\"? (asked once: BrokenNes2 remembers it)" : "Which .flp is this FL project? (asked once: BrokenNes2 remembers it)",
-                "FL Studio projects (*.flp)|*.flp|All files (*.*)|*.*", !string.IsNullOrEmpty(start) && Directory.Exists(start) ? start : null);
+            if (testMidiPath != null) { path = testMidiPath; dialogsAsked++; }
+            else if (testNoDialog) dialogsAsked++;
+            else
+            {
+                string? start = kept is { Length: > 0 } && Path.GetDirectoryName(kept) is { Length: > 0 } kd && Directory.Exists(kd) ? kd : Prefs.Get("FlpFolder");
+                path = Win32.ChooseFile(Hwnd, kept != null && !change ? $"{Path.GetFileName(kept)} is gone: which .flp is this FL project? (BrokenNes2 keeps the pick in the project)" : "Which .flp is this FL project? (BrokenNes2 keeps the pick in the project)",
+                    "FL Studio projects (*.flp)|*.flp|All files (*.*)|*.*", !string.IsNullOrEmpty(start) && Directory.Exists(start) ? start : null);
+                dialogsAsked++;
+            }
             picked = path != null;
         }
         testMidiPath = null;
         if (path == null) return;
         if (!Emulator.IsFlp(path)) { emu.SongUi.SetResult($"{Path.GetFileName(path)} is not an FL project (.flp)", false); return; }
-        if (picked) ProjectFlp.Remember(name, path);
+        if (picked)
+        {
+            plugin.ProjectFlpPath = path;
+            if (Path.GetDirectoryName(path) is { Length: > 0 } d) Prefs.Set("FlpFolder", d);
+            emu.SongUi.SetNote($"{Path.GetFileName(path)} is this FL project's file now: save the FL project to keep the pick (\"Change .flp\" picks another)");
+        }
         string when = File.Exists(path) ? File.GetLastWriteTime(path).ToString("yyyy-MM-dd HH:mm") : "?";
-        if (name != null && !Path.GetFileNameWithoutExtension(path).Equals(name, StringComparison.OrdinalIgnoreCase))
-            emu.SongUi.SetNote($"FL's window names the project \"{name}\", the file is {Path.GetFileName(path)}: check it is the right project");
         plugin.MarkConfigured("this FL project's .flp was opened");
-        BrokenNes.Fruity.Diag.Log($"This FL project: FL's window title \"{title}\", name {(name ?? "none")}, file {path} (saved {when}){(picked ? ", picked now" : ", remembered")}");
+        BrokenNes.Fruity.Diag.Log($"This FL project: file {path} (saved {when}){(picked ? change ? ", changed now" : ", picked now" : ", kept in the project")}");
         if (emu.FlpTarget.Id != "vrun-nes") { if (emu.BuildInGame(path) is { } no) emu.SongUi.SetResult(no, false); return; }
         if (emu.OpenSong(path) is { } refused) emu.SongUi.SetResult(refused, false);
     }
@@ -211,16 +223,20 @@ public sealed unsafe partial class Bn2Editor
         return h;
     }
 
-    /// <summary>The window's test hooks: 620 open (1/0), 621 the next click on "Open MIDI..." opens the file at the UTF-16 path <c>value</c> instead of the dialog, 622 the song note is drawn over the picture (1/0).</summary>
+    /// <summary>The window's test hooks: 620 open (1/0), 621 the next click on "Open MIDI..." opens the file at the UTF-16 path <c>value</c> instead of the dialog, 622 the song note is drawn over the picture (1/0), 623 the .flp dialogs wanted so far, 624 a wanted .flp dialog is cancelled instead of shown (1/0).</summary>
     private nint SongTest(int n, nint index, nint value) => n switch
     {
         620 => midOpen ? 1 : 0,
         621 => SetTestMidi(System.Runtime.InteropServices.Marshal.PtrToStringUni(value)),
         622 => midNoteShown ? 1 : 0,
-        623 => SetTestTitle(System.Runtime.InteropServices.Marshal.PtrToStringUni(value)),
+        623 => dialogsAsked,
+        624 => SetNoDialog(value != 0),
         _ => 0,
     };
 
     private nint SetTestMidi(string? path) { testMidiPath = path; return 0; }
-    private static nint SetTestTitle(string? title) { ProjectFlp.TitleOverride = title; return 0; }
+    private nint SetNoDialog(bool on) { testNoDialog = on; return 0; }
+    /// <summary>Tests: how many times "This FL project" / "Change .flp" wanted the file dialog (hook 623); with hook 624 on, a wanted dialog answers "cancelled" instead of opening.</summary>
+    private int dialogsAsked;
+    private bool testNoDialog;
 }

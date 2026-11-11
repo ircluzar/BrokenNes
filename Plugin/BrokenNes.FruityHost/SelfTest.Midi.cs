@@ -143,6 +143,8 @@ public sealed unsafe partial class SelfTest
         ("alloc", SongAlloc, MusicMutate.RestartAllocates, "a restart drops the prepared stems (the audio thread makes new ones)"),
         ("bends", SongBendsDll, MusicMutate.BendsIgnored, "the song is converted with bends off (round 7's way)"),
         ("flp", SongFlpDll, MusicMutate.FlpReadAsMidi, "a .flp is read as if it were a MIDI file"),
+        ("flp-pick", SongFlpPick, MusicMutate.FlpPickNotSaved, "the picked .flp is not kept in the saved state"),
+        ("flp-change", SongFlpPick, MusicMutate.FlpChangeIgnored, "Change .flp keeps the old pick"),
     ];
 
     // ------------------------------------------------------------------------------------------------ pitch bends (round 9), from the plugin's own machine

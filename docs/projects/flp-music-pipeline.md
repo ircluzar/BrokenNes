@@ -73,7 +73,7 @@ Test MIDI export window (header button, every tab):
 
 - **The repo has no FL SDK header.** `Plugin/BrokenNes.Fruity/FruitySdk.cs` is a C# mirror of what Bendy uses (fp_plugclass.h quotes). Its host calls: ParamMenu, EditorResized, ActivateMidi, GetParamMenuEntry, GetMixingTime, GetPlaybackTime, GetContextInfo (CI_TrackName, CI_TrackIndex); dispatcher events include `FPD_ProjLoaded` ("called after a project has been loaded": **no path in it**). None returns a project path. Without the real header (not downloaded for this work) it cannot be ruled out that the SDK has a path call; my memory of the SDK is not evidence.
 - **The real FL log** (reference_fl_real_conventions): FHD_GetContextInfo CI_TrackName answered 0 for every instance: context info is not a reliable channel either.
-- **So the plugin uses (ProjectFlp.cs + Music/Flp/FlpTitle.cs):** (1) a name from FL's main window title (the editor's GA_ROOT window; accepted forms "name.flp - FL Studio ...", "name - FL Studio ...", with a `*`); (2) the path picked once for that name, remembered in the plugin's preferences (`FlpPath:<name>`); (3) else the file dialog once, starting at the last pick's folder. A file whose name differs from the title's says so on screen. The title form is **unverified** in real FL 2026: only the user can check (the diagnostics log prints FL's title when the button is pressed).
+- **So the plugin uses a file picker (2026-11-10, the user's call: safer than parsing FL's window title, whose form was never verified):** the first press of "This FL project" opens the file dialog; the pick is kept in the instance's saved state (section `FLP1`: u16 version 1, u16 + UTF-8 path, CRC-32; `ProjectFlp.cs`), so it rides in the FL project itself; "Change .flp" (id 2010) asks again and replaces it; a kept file that is gone asks again. No window title is read (FlpTitle.cs removed). Checked by `selftest --only midi` scenarios `flp-pick` / `flp-change` (deliberate bugs `FlpPickNotSaved`, `FlpChangeIgnored`; hooks 621 pick, 623 dialogs wanted, 624 cancel dialogs).
 - Better options to test in real FL later: the real SDK header (if it has a path call); FL's recent-files list (registry; unverified).
 
 ## 6. Test plan
@@ -101,7 +101,7 @@ Open questions for the user:
 1. Duty: the songs' pulses are 25% in FL; VRUN plays 50%. Add a duty opcode to VRUN's engine (like the bends), or compose at 50%?
 2. Title Theme square 1 (1,289 B) and battle triangle (1,700 B) exceed the sound-test template's 1,280 bytes per channel: they go silent before the loop in the test ROM. Is that the game's limit too, or only the template's?
 3. Noise volume: VRUN's noise always hits at full volume; FL plays the hits softer (battle 152, victory 6).
-4. What FL's main window title looks like with a saved project (to confirm the name hint).
+4. ~~What FL's main window title looks like~~: moot since 2026-11-10 (file picker, pick kept in the project).
 5. FL's channel volume knob: should it count (it changes the mix in FL, not in the game)?
 
 ## 8. Phase 2: Super VRUN (SNES, WideMess, MD, DOS, 95), the fence, Nano GB (2026-11-10)
@@ -128,3 +128,7 @@ Open questions for the user:
 **Measured** (headless BrokenNes, the plugin's own render of the preset vs the game build's recording, spectral similarity): SNES preset on Super VRUN SNES 0.999 (pitches exact: 2000/2516/3000/4000 Hz), Genesis FM preset on SNES 0.999, on WideMess 0.974, on MD 0.891 once pitch is compensated: **the MD DAC plays at ~0.74x the pitch itconv.py assumes** (middle C at ~194 Hz) - a driver/converter/emulator rate question that concerns every DAC clip, open.
 
 **Checks:** flp-test `sv-preset-snes`, `sv-preset-engines`, `preset-others`, 8 deliberate bugs (PsMutants). Game converters: sf2it.py (SuperVRUN c101aff) and itconv.py (SuperVRUN_MD 10442ad), default off, every existing song byte-identical.
+
+## FL channel volume (2026-11-10)
+
+FL's channel volume knob (event 219, `Levels[1]`; default 10000 = FL's 78%) is FL's mixer, not the plugin's: no game carries it. Every back end (VRUN NES caveats, CTW SMS, Vaults GB / GG, Super VRUN fences) gets one note line `[fl-volume]` per BrokenNes2 channel with notes whose knob is off its default: "FL channel volume isn't carried; use the plugin's Volume" (`FlpFence.ChannelVolume`). Check `flp-test fl-volume` (+ deliberate bug `ChannelVolumeSilent`). On the user's songs only overworld moves knobs, on its two 808 sampler channels (not in the game anyway): no line.
