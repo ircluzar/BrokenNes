@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
   Turns a mapper 30 NES ROM into a Project Nested SNES ROM with the m30pipe pipeline, for any game, without touching the
-  restored pipeline's own game profiles. Run it with Windows PowerShell 5.1 (the injector is a .NET Framework assembly).
+  restored pipeline's own game profiles. Run it with the PowerShell the pipeline's injector needs: PowerShell 7.6+ (pwsh) for
+  our fork's .NET 10 injector (Project-Nested-core, 2026-11-10), Windows PowerShell 5.1 for master's .NET Framework release exe.
 
 .DESCRIPTION
   This is the "a new build of a known game" recipe of the Nested Builder (its ui\README.md), as one non-interactive command:
@@ -63,7 +64,12 @@ param(
     [string]$CoreDir = ''
 )
 $ErrorActionPreference = 'Stop'
-if ($PSVersionTable.PSEdition -eq 'Core') { throw 'run this with Windows PowerShell 5.1 (powershell.exe)' }
+# Which injector the pipeline loads: our fork's lib\nested.ps1 has Assert-InjectorHost (Project_Nested.dll, .NET 10, pwsh);
+# master's loads the .NET Framework Project_Nested.exe (Windows PowerShell 5.1). Child scripts run in this same PowerShell.
+$net10 = [bool](Select-String -LiteralPath (Join-Path $Pipe 'lib\nested.ps1') -Pattern 'function Assert-InjectorHost' -Quiet)
+if ($net10 -and ($PSVersionTable.PSEdition -ne 'Core' -or [Environment]::Version.Major -lt 10)) { throw "the pipeline $Pipe runs the .NET 10 injector: run this with PowerShell 7.6+ (pwsh.exe)" }
+if (-not $net10 -and $PSVersionTable.PSEdition -eq 'Core') { throw "the pipeline $Pipe runs the .NET Framework injector: run this with Windows PowerShell 5.1 (powershell.exe)" }
+$shell = (Get-Process -Id $PID).Path
 
 function Get-PrgCrc32([string]$Path) {
     $code = @"
@@ -143,7 +149,7 @@ if ($Feedback -eq 'harvest') {
     $mesenPriv = Join-Path $Work 'mesen'
     if (-not (Test-Path -LiteralPath (Join-Path $mesenPriv 'Mesen.exe'))) {
         if (-not $MesenSource) { throw '-Feedback harvest needs -MesenSource (a Mesen 2 folder); a private copy is made, the original is never changed' }
-        & powershell.exe @ps (Join-Path $Pipe 'harness\setup_mesen.ps1') -Source $MesenSource -Dest $mesenPriv
+        & $shell @ps (Join-Path $Pipe 'harness\setup_mesen.ps1') -Source $MesenSource -Dest $mesenPriv
         if ($LASTEXITCODE -ne 0) { throw "setup_mesen.ps1 failed (exit $LASTEXITCODE)" }
     }
     $env:M30_MESEN_DIR = $mesenPriv
@@ -151,7 +157,7 @@ if ($Feedback -eq 'harvest') {
     New-Item -ItemType Directory -Force -Path $env:M30_OUT_ROOT | Out-Null
     $a = $ps + @((Join-Path $Pipe 'bootstrap\bootstrap.ps1'), '-Nes', $Nes, '-Profile', $profileDir, '-Out', $Out, '-Minutes', $Minutes, '-Seeds', $Seeds, '-MaxPar', 2, '-Python', $Python, '-AppendToExisting')
     Write-Host "nested-build: bootstrap (harvest) ..."
-    & powershell.exe @a
+    & $shell @a
     $code = $LASTEXITCODE
     # 0 converged, 3 the rounds ran out without converging (the ROM and profile are still written)
     if ($code -ne 0 -and $code -ne 3) { throw "bootstrap.ps1 failed (exit $code)" }
@@ -162,7 +168,7 @@ if ($Feedback -eq 'harvest') {
 
 $a = $ps + @((Join-Path $Pipe 'm30build.ps1'), '-Nes', $Nes, '-Profile', $profileDir, '-Out', $Out, '-Python', $Python, '-AllowMd5Mismatch')
 if ($CoreDir) { $a += @('-CoreDir', $CoreDir) }
-& powershell.exe @a
+& $shell @a
 if ($LASTEXITCODE -ne 0) { throw "m30build.ps1 failed (exit $LASTEXITCODE); see $Out.build.log" }
 if ($Feedback -eq 'brokennes') {
     if (-not $Workshop -or -not (Test-Path -LiteralPath $Workshop)) { throw '-Feedback brokennes needs -Workshop (BrokenNes.Workshop.exe)' }
@@ -195,14 +201,14 @@ if ($Feedback -eq 'brokennes') {
             $srms += $srm
         }
         $got = Join-Path $rd 'calls.txt'
-        & powershell.exe @ps (Join-Path $Pipe 'srm2calls.ps1') -Nes $Nes -Srm ($srms -join ';') -Out $got -Python $Python | Out-Null
+        & $shell @ps (Join-Path $Pipe 'srm2calls.ps1') -Nes $Nes -Srm ($srms -join ';') -Out $got -Python $Python | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "srm2calls.ps1 failed (exit $LASTEXITCODE)" }
         $have = @(Get-Content -LiteralPath $calls | Where-Object { $_.Trim() -and -not $_.StartsWith('#') } | ForEach-Object { $_.Trim() })
         $add = @(Get-Content -LiteralPath $got | Where-Object { $_.Trim() -and -not $_.StartsWith('#') } | ForEach-Object { $_.Trim() } | Where-Object { $have -notcontains $_ })
         Write-Host ("nested-build: feedback round {0}: {1} known entry points, {2} new from {3} plan(s)" -f $round, $have.Count, $add.Count, $planList.Count)
         if ($add.Count -eq 0) { break }
         [System.IO.File]::AppendAllText($calls, ("# +{0} from BrokenNes feedback round {1}`r`n" -f $add.Count, $round) + (($add | ForEach-Object { "$_`r`n" }) -join ''))
-        & powershell.exe @a
+        & $shell @a
         if ($LASTEXITCODE -ne 0) { throw "m30build.ps1 failed (exit $LASTEXITCODE); see $Out.build.log" }
     }
 }
