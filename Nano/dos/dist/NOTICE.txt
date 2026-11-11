@@ -1,0 +1,10 @@
+BrokenNes Nano DOS 0.1.0
+The DOS PC's sound (an AdLib on MAME 0.36's OPL2 + the PC speaker) as BrokenNes plays it, as a web synth and MIDI player. Part of BrokenNes
+(Digital Lifeform License 1.1; LICENSE.txt in the BrokenNes repository). Source: Nano/dos/src; built by Nano/dos/build.mjs.
+
+The OPL2 (src/chip.js) is a transcription of BrokenNes's Windows/NesEmulator/sega/Mame036Opl.cs, a C# port of MAME 0.36's src/sound/fmopl.c
+(Version 0.36f, Copyright (C) 1999 Tatsuyuki Satoh, MultiArcadeMachineEmurator development and the MAME team; the MAME license of the time:
+free, non-commercial use, source must accompany redistribution; a documented exception in BrokenNes: sega/THIRD_PARTY_NOTICES.md section 2).
+Its quirks are kept on purpose (the user's choice: "the lightest", quirks accepted). The PC speaker (x86/PcSpeaker.cs, Pit8254.cs), the resampler
+(Core/StreamResampler.cs), the presets (the first eight are the BrokenNes2 plugin's Super VRUN DOS and Vaults DOS patches), the engine, the MIDI
+player and the demos were written for BrokenNes.
