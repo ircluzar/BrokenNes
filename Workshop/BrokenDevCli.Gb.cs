@@ -49,8 +49,11 @@ internal static partial class BrokenDevCli
     /// <summary>A Sega memory domain for compat: wram (the Master System / Game Gear's 8 KB at $C000, the Genesis's 64 KB at $FF0000).</summary>
     private static int PeekSega(IConsoleSession s, string domain, int addr)
     {
-        if (domain != "wram") throw new ArgumentException($"the {s.Console} has no memory domain '{domain}' here (wram)");
         var m = SegaMachine(s);
+        // zram: the Genesis's Z80 sound RAM (8 KB): the sound drivers' counters (as BizHawk's Genplus-gx "Z80 RAM")
+        if (domain == "zram" && m is NesEmulator.Sega.MdSession mz && mz.Board.Sound is NesEmulator.Sega.MdSoundUnit su)
+            return (uint)addr < (uint)su.Z80Ram.Length ? su.Z80Ram[addr] : throw new ArgumentException($"zram offset {addr:X} is outside {su.Z80Ram.Length} bytes");
+        if (domain != "wram") throw new ArgumentException($"the {s.Console} has no memory domain '{domain}' here (wram{(m is NesEmulator.Sega.MdSession ? ", zram" : "")})");
         byte[] ram = m is NesEmulator.Sega.MdSession md ? md.Board.Ram : ((NesEmulator.Sega.SmsSession)m).Board.Ram;
         return (uint)addr < (uint)ram.Length ? ram[addr] : throw new ArgumentException($"wram offset {addr:X} is outside {ram.Length} bytes");
     }
