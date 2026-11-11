@@ -170,6 +170,10 @@ public sealed unsafe partial class SelfTest
         int total = int.Parse(O(args, "--frames") ?? (frame + CapturedNote.MaxFrames + 2).ToString());
         var nes = new NES { RomName = Path.GetFileName(args[2]), RomPath = args[2] };
         nes.LoadROM(File.ReadAllBytes(args[2]));
+        nes.SetCpuCore("FIX"); nes.SetPpuCore("FIX"); nes.SetApuCore("FIX");
+        // --start F: press Start for 4 frames at frame F (default 40: past a title screen); --start -1 presses nothing
+        int start = int.Parse(O(args, "--start") ?? "40");
+        var held = new bool[8];
         var fix = NesExtractFeed.FixOf(nes);
         if (fix == null) { Console.Error.WriteLine("the game's APU is not APU_FIX"); return 1; }
         fix.SetEnabledChannels(1 << channel);
@@ -178,12 +182,15 @@ public sealed unsafe partial class SelfTest
         for (int f = 0; f < total; f++)
         {
             at[f] = pcm.Count;
+            held[3] = start >= 0 && f >= start && f < start + 4;
+            nes.SetInputs(held, null);
             nes.RunFrame();
             int q = fix.GetQueuedSampleCount(); if (q > 0) pcm.AddRange(fix.GetAudioSamples(q));
             feed.EndFrame();
         }
         at[total] = pcm.Count;
         feed.Detach();
+        Console.WriteLine("recorded " + total + " frames; per channel key-ons / sounding frames: " + string.Join(", ", Enumerable.Range(0, 4).Select(c => $"{CapturedNote.ChannelName(ConsoleId.Nes, c)} {feed.Recorder.FramesOf(c).Count(x => x.KeyOn)}/{feed.Recorder.FramesOf(c).Count(x => x.Level > 0)}")));
         var n = feed.Recorder.Pick(channel, frame, out string? why);
         if (n == null) { Console.Error.WriteLine(why); return 1; }
         Console.WriteLine("captured: " + n.Describe() + $"; levels {string.Join(",", n.Life.Take(24).Select(x => x.Level))}{(n.Frames > 24 ? ",..." : "")}");
