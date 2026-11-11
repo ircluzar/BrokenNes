@@ -71,6 +71,16 @@ public static class FlpFence
     public static IEnumerable<string> Lines(IEnumerable<FenceLine> f) => f.OrderBy(l => l.Level == FenceLevel.Over ? 0 : l.Level == FenceLevel.Note ? 1 : 2).Select(Line);
     public static string Summary(IEnumerable<FenceLine> f) { var l = f.ToList(); return $"{l.Count(x => x.Level == FenceLevel.Over)} over the limit, {l.Count(x => x.Level == FenceLevel.Note)} played differently, {l.Count(x => x.Level == FenceLevel.Ok)} inside"; }
     public static FenceReport Report(string engine, IEnumerable<FenceLine> f) { var r = new FenceReport(engine); r.Lines.AddRange(f); return r; }
+    /// <summary>FL's channel volume knob (event 219, Levels[1]) at its default: 10000 (FL shows 78%).</summary>
+    public const int FlDefaultVolume = 10000;
+    /// <summary>One note line per BrokenNes2 channel with notes whose FL channel volume knob is not at its default: the knob is FL's mixer, not the plugin's, so no game carries it.</summary>
+    public static IEnumerable<FenceLine> ChannelVolume(FlpSongModel song)
+    {
+        if (FlpMutants.On(FlpMutants.ChannelVolumeSilent)) yield break;
+        foreach (var ins in song.Instruments)
+            if (ins.Bn2 != null && ins.Notes.Count > 0 && ins.Levels is { Length: >= 2 } lv && lv[1] != FlDefaultVolume)
+                yield return new FenceLine("fl-volume", FenceLevel.Note, $"channel {ins.Rack} \"{ins.Name}\": FL channel volume is {lv[1] * 100.0 / 12800:0}% (default 78%): FL channel volume isn't carried; use the plugin's Volume");
+    }
     /// <summary>The MIDI note name of a key (C5 = 60, FL's convention).</summary>
     public static string NoteName(int key) => new[] { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }[((key % 12) + 12) % 12] + (int)Math.Floor(key / 12.0);
 }

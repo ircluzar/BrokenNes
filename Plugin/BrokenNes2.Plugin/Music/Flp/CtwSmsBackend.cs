@@ -53,6 +53,7 @@ public static class CtwSmsBackend
         var o = new CtwSmsSong();
         var F = o.Fence;
         foreach (var c in song.Caveats) F.Add(new FenceLine("project", FenceLevel.Note, c));
+        F.AddRange(FlpFence.ChannelVolume(song));
         // the Master System instances, read as the NES channels they sit on; everything else is said here
         var sub = new FlpSongModel { Ppq = song.Ppq, TempoMilli = song.TempoMilli, End = song.End, Title = song.Title };
         int slides = 0, detuned = 0, low = 0, notHalf = 0; double worstOff = 0; string lowWhere = "";

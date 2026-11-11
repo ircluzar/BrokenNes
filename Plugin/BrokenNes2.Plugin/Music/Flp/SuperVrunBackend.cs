@@ -51,6 +51,7 @@ public static class SuperVrunBackend
     {
         var f = new FenceReport(Names[(int)engine]);
         foreach (var c in song.Caveats) f.Note("reader", c);
+        f.Lines.AddRange(FlpFence.ChannelVolume(song));
         var used = new List<(FlpInstrument Ins, int Sound)>();
         var presetOf = new Dictionary<FlpInstrument, FlpPresetPcm>();
         foreach (var ins in song.Instruments)

@@ -239,5 +239,7 @@ public static class MusicMutate
     public const int OldTemplateAccepted = 1 << 13; // a version-1 template (plain decoders: a bend opcode reads as the loop) is accepted (template-refusals check)
     // the .flp music pipeline (docs/projects/flp-music-pipeline.md)
     public const int FlpReadAsMidi = 1 << 14;     // a .flp is handed to the MIDI reader as it is (selftest scenario flp: the project's song must play)
+    public const int FlpPickNotSaved = 1 << 15;   // the picked .flp is not written into the saved state (selftest scenario flp-pick: a reloaded project must not ask again)
+    public const int FlpChangeIgnored = 1 << 16;  // "Change .flp" keeps the old pick (selftest scenario flp-pick)
     public static bool Has(int bit) => (Mask & bit) != 0;
 }
