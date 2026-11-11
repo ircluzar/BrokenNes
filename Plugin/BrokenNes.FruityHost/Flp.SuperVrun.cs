@@ -15,6 +15,17 @@ internal static partial class SvChecks
     {
         if (args.Length < 4 || SuperVrunBackend.Parse(args[2]) is not { } eng) { Console.Error.WriteLine("usage: flp-backend <song.flp> <" + string.Join("|", SuperVrunBackend.Ids) + "> <out dir>"); return 2; }
         string name = Path.GetFileNameWithoutExtension(args[1]);
+        if (eng is SvEngine.Dos or SvEngine.Win95 && AdlibBackend.BuildSuperVrun(FlpSong.Read(File.ReadAllBytes(args[1])), name) is { } adl)
+        {
+            // composed for the AdLib (x86 PC console instances): the song blob replaces the converted module in the DOS / 95 build (oplconv.py reads music/adlib/<song>.opl)
+            Directory.CreateDirectory(args[3]);
+            File.WriteAllBytes(Path.Combine(args[3], name + ".adlib.opl"), adl.Blob);
+            File.WriteAllText(Path.Combine(args[3], name + ".fence.json"), adl.Fence.Json());
+            Console.Write(adl.Fence.Text());
+            foreach (var v in adl.Voices) Console.WriteLine($"  OPL voice {v.Voice + 1} \"{v.Instrument}\": {v.PatchFrom}, {v.Notes} notes");
+            Console.WriteLine($"  {adl.Seconds:0.00} s a loop; wrote {name}.adlib.opl ({adl.Blob.Length} bytes) and {name}.fence.json in {args[3]}");
+            return 0;
+        }
         var s = SuperVrunBackend.Build(FlpSong.Read(File.ReadAllBytes(args[1])), name, eng);
         Directory.CreateDirectory(args[3]);
         File.WriteAllBytes(Path.Combine(args[3], name + ".mid"), s.Midi);

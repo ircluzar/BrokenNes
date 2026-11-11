@@ -42,6 +42,7 @@ internal static class FlpChecks
         new("sv-preset-engines", "presets per engine: Genesis FM / DAC, Game Boy, SNES rendered or exact; SNES Ok, MD DAC Note, DOS / 95 OVER; damaged and NES presets OVER; sound RAM; pitch ceiling", SvChecks.PresetEngines),
         new("preset-others", "presets on Vaults GB (a wave preset's RAM is the wave table, a pulse preset's duty), Vaults GG and VRUN NES (OVER, never silent)", SvChecks.PresetOthers),
         new("fl-volume", "an FL channel volume knob off its default (78%) gives the note line on every back end (VRUN NES, CTW SMS, Vaults GB / GG, Super VRUN), the default gives none; overworld's real knobs", FlVolume),
+        new("adlib-sv", "AdLib back end (x86 PC console instances) -> Super VRUN DOS / 95 song blob: voices, the instances' own patches (bank and OPC1), fence OVER for non-AdLib PC chips, played by dos_snd.c's run_tick on the AdLib: A4, a slide's end, the loop", AdlibChecks.Sv),
         new("sv-songs", "every song on every Super VRUN engine: MIDI notes = the model's sounding notes, fence printed (with --out: written)", SvChecks.Songs),
     ];
 
@@ -498,6 +499,9 @@ internal static class FlpChecks
         new(CtwSmsMutants.PresetIgnored, "CTW SMS reads a preset instance as a plain channel", "ctwsms-preset"),
         new(CtwSmsMutants.PresetFenceSilent, "CTW SMS drops a preset it cannot play without a fence line", "ctwsms-preset"),
         new(CtwSmsMutants.PeriodicAsWhiteSilent, "CTW SMS plays a periodic-noise preset as white noise without saying so", "ctwsms-preset"),
+        new(AdlibMutants.PatchOrderSwapped, "the AdLib song's patch bytes have the modulator and carrier swapped", "adlib-sv"),
+        new(AdlibMutants.OctaveUp, "the AdLib song plays an octave up", "adlib-sv"),
+        new(AdlibMutants.FenceBlindChip, "the AdLib fence does not see a speaker instance", "adlib-sv"),
     ];
 
     public static int Main(string[] args)

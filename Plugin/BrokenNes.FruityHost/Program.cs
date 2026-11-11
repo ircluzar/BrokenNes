@@ -39,6 +39,10 @@ switch (args[0])
     case "preset-test":
         return PresetChecks.Main(args);
 
+    case "adlib-fixture":      // a small .flp composed on the PC console (AdlibChecks.Project): lead + bass on the AdLib, a speaker and a NES instance
+        File.WriteAllBytes(args[1], AdlibChecks.Project());
+        return 0;
+
     case "opl-fit-test":
         return OplFitChecks.Main(args);
 
