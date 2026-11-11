@@ -14,7 +14,7 @@ namespace BrokenNes2;
 /// <param name="IsNanoGb">The Nano GB chip (<see cref="Cx.NanoGbChip"/>, chip 30): the web library's instrument engine (NanoGbEngine, gnuboy's Game Boy sound, 27 presets), played by the plugin itself in Direct mode;
 /// in ROM mode a Game Boy game runs on the Game Boy's own sound unit (RomApu: "GB").</param>
 /// <param name="IsNanoSms">The Nano SMS chip (<see cref="Cx.NanoSmsChip"/>, appended after the harvested chips): the web library Nano/sms's engine (NanoSmsEngine), Direct mode, as Nano GB.</param>
-public sealed record Chip(string Id, int Console, string? Note, bool IsPreset = false, bool IsWms = false, bool IsNanoGb = false, bool IsNanoSms = false);
+public sealed record Chip(string Id, int Console, string? Note, bool IsPreset = false, bool IsWms = false, bool IsNanoGb = false, bool IsNanoSms = false, bool IsPc = false);
 
 /// <summary>
 /// The consoles BrokenNes2 offers and their sound chips. A console decides which chips are listed, and which CPU and PPU a running
@@ -29,17 +29,17 @@ public static partial class Cx
 
     // Append-only (projects store these numbers). The Master System console (value 3) holds the SN76489 PSG chip (APU id SMS) and runs Master System and Game Gear games (the Game Gear's PSG is the same
     // chip); the Genesis console (value 4) holds the YM2612 + PSG chip (APU id MD) in Direct mode only: its games are NOT supported yet, see RomSupported.
-    public const int Nes = 0, GameBoy = 1, Snes = 2, MasterSystem = 3, Genesis = 4, Count = 5;
-    public static readonly string[] Names = ["NES", "Game Boy", "SNES", "SMS", "MD"];
+    public const int Nes = 0, GameBoy = 1, Snes = 2, MasterSystem = 3, Genesis = 4, Count = 6;   // (Pc = 5: Bn2Consoles.Pc.cs)
+    public static readonly string[] Names = ["NES", "Game Boy", "SNES", "SMS", "MD", "PC"];
     /// <summary>What the console buttons of the editor say (five of them side by side do not fit the long names).</summary>
-    public static readonly string[] ShortNames = ["NES", "GB", "SNES", "SMS", "MD"];
-    public static readonly string[] RomNames = ["NES", "Game Boy", "SNES", "Master System", "Genesis"];
+    public static readonly string[] ShortNames = ["NES", "GB", "SNES", "SMS", "MD", "PC"];
+    public static readonly string[] RomNames = ["NES", "Game Boy", "SNES", "Master System", "Genesis", "PC"];
 
     /// <summary>
     /// Whether ROM mode can run this console's games: all five. The Genesis joined with round 3 (its board and picture are certified: <c>Consoles.GenesisReady</c>; the game plays through Mix, and its sound unit's voices are stems, see
     /// <see cref="Channels"/>); the Master System and Game Gear before it. Every game runs through the console sessions like a Game Boy or SNES game.
     /// </summary>
-    public static bool RomSupported(int console) => console is >= 0 and < Count;
+    public static bool RomSupported(int console) => console is >= 0 and < Count and not Pc;   // (the PC console is Direct mode only)
 
     /// <summary>Cores that are not offered: MNES and WF turn the sound into MIDI-style playback rather than emulating a chip. SNESS, SMSS and MDS (2026-10-23, the enhanced cores phase 3: a NES game on the SNES /
     /// Master System / Genesis enhanced sound chips) are left out so that no saved chip index moves (they would sort into the SNES, Master System and Genesis groups, before chips appended since); offering them
@@ -131,18 +131,19 @@ public static partial class Cx
         list.Add(new Chip(NanoGbChip, GameBoy, "Nano GB: the web library's engine, gnuboy sound, 27 presets", IsNanoGb: true));   // index 30, after WMS (append-only)
         AddHarvest(list);       // the harvested engines (Bn2Consoles.Harvest.cs), appended
         list.Add(new Chip(NanoSmsChip, MasterSystem, "Nano SMS: the web library's engine, the SN76489, 24 presets", IsNanoSms: true));   // after the harvested chips (append-only)
+        AddPc(list);            // the x86 PC console's devices (Bn2Consoles.Pc.cs), appended after NANOSMS
         return list;
     }
 
     // ---- the instrument pickers: the Instrument parameter is a patch of the chip's own bank for the FM chips ----
 
     /// <summary>What the Instrument parameter picks for this chip: 0 nothing (the NES chips: Pulse duty is the control), 1 the Genesis chip's FM patch, 2 the Master System FM chip's instrument.</summary>
-    public static int PatchBankOf(string chipId) => HarvestBase(chipId).ToUpperInvariant() switch { "MD" => 1, "SMSFM" => 2, WmsChip => 3, NanoGbChip => 4, NanoSmsChip => 5, _ => 0 };
+    public static int PatchBankOf(string chipId) => PcPatchBank(chipId) is >= 0 and var pcBank ? pcBank : HarvestBase(chipId).ToUpperInvariant() switch { "MD" => 1, "SMSFM" => 2, WmsChip => 3, NanoGbChip => 4, NanoSmsChip => 5, _ => 0 };
 
-    public static int PatchCount(int bank) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Count, 2 => NesEmulator.Mix.OpllPatchBank.Count, 3 => WmsBank.Patches.Length, 4 => NesEmulator.Gb.NanoGbPresets.Count, 5 => NesEmulator.Sega.NanoSmsPresets.Count, _ => 0 };
+    public static int PatchCount(int bank) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Count, 2 => NesEmulator.Mix.OpllPatchBank.Count, 3 => WmsBank.Patches.Length, 4 => NesEmulator.Gb.NanoGbPresets.Count, 5 => NesEmulator.Sega.NanoSmsPresets.Count, >= 6 => PcPatchCount(bank), _ => 0 };
 
     /// <summary>A patch index made safe (out of range is the bank's last entry, the PSG square, as the bridges clamp it; the WideMess chip's last instrument).</summary>
-    public static int PatchClamp(int bank, int index) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Clamp(index), 2 => NesEmulator.Mix.OpllPatchBank.Clamp(index), 3 => WmsBank.Clamp(index), 4 => ((index % NesEmulator.Gb.NanoGbPresets.Count) + NesEmulator.Gb.NanoGbPresets.Count) % NesEmulator.Gb.NanoGbPresets.Count, 5 => ((index % NesEmulator.Sega.NanoSmsPresets.Count) + NesEmulator.Sega.NanoSmsPresets.Count) % NesEmulator.Sega.NanoSmsPresets.Count, _ => index };   // (Nano GB: program n wraps as the web player's does)
+    public static int PatchClamp(int bank, int index) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Clamp(index), 2 => NesEmulator.Mix.OpllPatchBank.Clamp(index), 3 => WmsBank.Clamp(index), 4 => ((index % NesEmulator.Gb.NanoGbPresets.Count) + NesEmulator.Gb.NanoGbPresets.Count) % NesEmulator.Gb.NanoGbPresets.Count, 5 => ((index % NesEmulator.Sega.NanoSmsPresets.Count) + NesEmulator.Sega.NanoSmsPresets.Count) % NesEmulator.Sega.NanoSmsPresets.Count, >= 6 => PcPatchClamp(bank, index), _ => index };   // (Nano GB: program n wraps as the web player's does)
 
     /// <summary>The picker's rows: a name, a note beside it, and a line that says what the patch is.</summary>
     public static (string Name, string Note, string Description)[] PatchItems(int bank) => bank switch
@@ -152,6 +153,7 @@ public static partial class Cx
         3 => WmsBank.Patches.Select(p => (p.Name, p.Note, p.Description)).ToArray(),
         4 => NesEmulator.Gb.NanoGbPresets.All.Select((p, i) => ($"{i}  {p.Label}", p.Kind switch { 0 => "pulse", 1 => "wave", _ => "noise" }, p.Desc)).ToArray(),
         5 => NesEmulator.Sega.NanoSmsPresets.All.Select((p, i) => ($"{i}  {p.Label}", p.Kind == 0 ? "tone" : "noise", p.Desc)).ToArray(),
+        >= 6 => PcPatchItems(bank),
         _ => [],
     };
 
@@ -169,7 +171,7 @@ public static partial class Cx
         return 0;
     }
 
-    public static ConsoleKind Kind(int console) => console switch { GameBoy => ConsoleKind.GameBoy, Snes => ConsoleKind.Snes, MasterSystem => ConsoleKind.MasterSystem, Genesis => ConsoleKind.Genesis, _ => ConsoleKind.Nes };
+    public static ConsoleKind Kind(int console) => console switch { GameBoy => ConsoleKind.GameBoy, Snes => ConsoleKind.Snes, MasterSystem => ConsoleKind.MasterSystem, Genesis => ConsoleKind.Genesis, Pc => ConsoleKind.Pc, _ => ConsoleKind.Nes };
 
     /// <summary>The plugin console a game of this kind runs on. The Master System and the Game Gear (and the SG-1000) share the Master System console. A kind the plugin does not run throws, never quietly becoming a NES game.</summary>
     public static int FromKind(ConsoleKind k) => k switch
