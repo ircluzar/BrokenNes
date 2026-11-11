@@ -8,7 +8,7 @@ and a song player for Nano NES. Order: NES player, SMS/GG, Genesis, SNES, DOS. M
 | Nano | chip | library + MIDI player | parity vs C# | plugin chip | flp converter | commit |
 |---|---|---|---|---|---|---|
 | NES (`Nano/`) | APU_FIX (unchanged) | 0.2.0: song player, `nano-nes-sidecar` | 77/77 + 18/18 fuzz bit-exact vs current Core (the drift was fixed by 628e7aa8) | the existing FIX chip (Nano NES = FIX sample for sample) | `Nano/tools/flp2nano` (NES Direct mode) | 1c10c02a |
-| SMS / GG (`Nano/sms`) | stock `Sn76489` | done | 28/28 bit-exact, kernel bit-exact, 14/14 mutants | **not built** | **not built** | 4dda0a32 |
+| SMS / GG (`Nano/sms`) | stock `Sn76489` | done | 28/28 bit-exact, kernel bit-exact, 14/14 mutants; C# twin 10/10 + plugin-way MIDI 6/6 | `NANOSMS` = chip 76 (selftest nanosms PASS) | `Nano/sms/tools/flp2nano` (19 checks) | 4dda0a32, a64f7a7e + flp |
 | Genesis | to pick (see below) | not started | | | | |
 | SNES | to pick | not started | | | | |
 | DOS | to pick | not started | | | | |
