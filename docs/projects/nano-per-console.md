@@ -9,9 +9,9 @@ and a song player for Nano NES. Order: NES player, SMS/GG, Genesis, SNES, DOS. M
 |---|---|---|---|---|---|---|
 | NES (`Nano/`) | APU_FIX (unchanged) | 0.2.0: song player, `nano-nes-sidecar` | 77/77 + 18/18 fuzz bit-exact vs current Core (the drift was fixed by 628e7aa8) | the existing FIX chip (Nano NES = FIX sample for sample) | `Nano/tools/flp2nano` (NES Direct mode) | 1c10c02a |
 | SMS / GG (`Nano/sms`) | stock `Sn76489` | done | 28/28 bit-exact, kernel bit-exact, 14/14 mutants; C# twin 10/10 + plugin-way MIDI 6/6 | `NANOSMS` = chip 76 (selftest nanosms PASS) | `Nano/sms/tools/flp2nano` (19 checks) | 4dda0a32, a64f7a7e + flp |
-| Genesis | **stock `MD` (YM2612 + PSG)**, picked 2026-11-10 by the interleaved run below | not started | | | | |
-| SNES | **stock `SFC` S-DSP** (S-DSP alone, no SPC700), picked 2026-11-10 | not started | | | | |
-| DOS | **stock `YMFM` Opl2** + PC speaker, picked 2026-11-10 (every lighter engine is a harvested art port, see below) | not started | | | | |
+| Genesis (`Nano/genesis`) | **stock `MD` (YM2612 + PSG)**, picked 2026-11-10 by the interleaved run below | done (32 presets) | 26/26 traces + C# twin 10/10 + MIDI 6/6 bit-exact | `NANOMD` = chip 88 (selftest nanomore PASS) | `Nano/genesis/tools/flp2nano` (21 checks) | 2026-11-11 |
+| SNES (`Nano/snes`) | **stock `SFC` S-DSP** (S-DSP alone, no SPC700), picked 2026-11-10 | done (30 BRR presets, PRS1 presets via sidecar) | 26/26 traces + C# twin 10/10 + MIDI 6/6 bit-exact | `NANOSNES` = chip 89 (selftest nanomore PASS) | `Nano/snes/tools/flp2nano` (21 checks) | 2026-11-11 |
+| DOS (`Nano/dos`) | **`M036` (MAME 0.36 OPL2)** + PC speaker: the user's choice 2026-11-10 ("the lightest", quirks accepted) over the YMFM pick below | done (30 presets: SV / Vaults patches + designed + speaker) | tables = Core's; 26/26 traces + C# twin 10/10 + MIDI 6/6 bit-exact | `NANODOS` = chip 90, Direct only (selftest nanomore PASS) | `Nano/dos/tools/flp2nano` (21 checks, OPC1 patches) | 2026-11-11 |
 
 ## Benchmarks run for the rest (apu-bench, 2026-11-10, 3 passes, -seconds 2 -runs 5)
 

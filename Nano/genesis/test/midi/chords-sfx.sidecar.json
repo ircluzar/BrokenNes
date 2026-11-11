@@ -1,0 +1,14 @@
+{
+  "format": "nano-genesis-sidecar",
+  "version": 1,
+  "channels": {
+    "1": {
+      "preset": "epiano",
+      "pan": "L"
+    },
+    "4": {
+      "preset": "coin",
+      "volume": 0.9
+    }
+  }
+}

@@ -459,14 +459,14 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         if (emu != null)
         {
             int textRight = reset.Left;
-            if (emu.NanoGbDirectMode || emu.NanoSmsDirectMode)
+            if (emu.NanoGbDirectMode || emu.NanoSmsDirectMode || (emu.Mode == 0 && NanoKinds.OfChip(emu.Chip) != null))
             {
                 // the Nano GB chip: the sidecar JSON the web library reads beside FL's MIDI export (every Nano GB instance's preset, volume and pan, keyed by MIDI channel)
                 var side = R(reset.Left - 6 - 150, reset.Top, 150, 30);
                 Button(dc, IdNanoSidecar, "Export sidecar", side);
                 textRight = side.Left;
             }
-            Txt(dc, nanoSidecarWords.Length > 0 && (emu.NanoGbDirectMode || emu.NanoSmsDirectMode) ? nanoSidecarWords : $"restarts emulator #{emu.Id}", R(ColX, reset.Top, textRight - ColX - 10, 30), Win32.DT_RIGHT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+            Txt(dc, nanoSidecarWords.Length > 0 && (emu.NanoGbDirectMode || emu.NanoSmsDirectMode || (emu.Mode == 0 && NanoKinds.OfChip(emu.Chip) != null)) ? nanoSidecarWords : $"restarts emulator #{emu.Id}", R(ColX, reset.Top, textRight - ColX - 10, 30), Win32.DT_RIGHT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
             Button(dc, IdReset, flash ? "Reset done" : "Reset Console", reset, primary: flash);
         }
         else Box(dc, reset, Panel, Line, 5);
@@ -1647,10 +1647,11 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         string? path = testNanoSidecarPath;
         testNanoSidecarPath = null;
         bool sms = plugin.Assignment.Emulator?.NanoSmsDirectMode == true;   // (the Nano SMS chip's sidecar: Bn2Plugin.NanoSms.cs)
-        string what = sms ? "Nano SMS" : "Nano GB";
+        var more = plugin.Assignment.Emulator is { Mode: 0 } me ? NanoKinds.OfChip(me.Chip) : null;   // (the later Nano chips: Bn2Plugin.NanoMore.cs)
+        string what = more?.Name ?? (sms ? "Nano SMS" : "Nano GB");
         path ??= Ui.UiNative.ChooseSaveFile(Hwnd, $"Save the {what} sidecar (beside FL's MIDI export: the web library reads both)", $"{what} sidecar (*.json)|*.json|All files (*.*)|*.*", "json");
         if (path == null) return;
-        var why = sms ? Bn2Plugin.SaveNanoSmsSidecar(path, out string summary) : Bn2Plugin.SaveNanoGbSidecar(path, out summary);
+        var why = more != null ? Bn2Plugin.SaveNanoMoreSidecar(more, path, out string summary) : sms ? Bn2Plugin.SaveNanoSmsSidecar(path, out summary) : Bn2Plugin.SaveNanoGbSidecar(path, out summary);
         nanoSidecarWords = why == null ? $"Saved {Path.GetFileName(path)}: {summary}" : "Not saved: " + why;
     }
 

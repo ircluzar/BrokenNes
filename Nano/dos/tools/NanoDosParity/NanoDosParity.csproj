@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- BrokenNes Nano DOS: the C# side of the parity proof. It replays what the web library did to its chip (PSG and YM2612 writes, runs,
+       reads) through Core's Mame036Opl, the PC speaker's lines and StreamResampler and writes the PCM.
+       Not part of BrokenNes.sln; built on demand by Nano/dos/test/parity.mjs. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>BrokenNes.NanoDos</RootNamespace>
+    <AssemblyName>NanoDosParity</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\Core\BrokenNes.Core.csproj" />
+  </ItemGroup>
+
+</Project>
