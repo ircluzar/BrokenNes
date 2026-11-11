@@ -169,8 +169,11 @@ local function setup()
     if domainSize ~= want then error(string.format("memory domain %s is %d bytes, expected %d", domain, domainSize, want)) end
     for _, r in ipairs(spec.reads) do
       r.bizDomain = domain
-      if r.domain ~= "wram" then error("read " .. r.name .. ": domain " .. r.domain .. " does not belong to the " .. spec.console) end
-      if r.addr < 0 or r.addr >= domainSize then error(string.format("read %s: address %X is outside %s", r.name, r.addr, domain)) end
+      -- the Genesis' Z80 sound RAM (8 KB, Genplus-gx "Z80 RAM"): the sound drivers' counters
+      if spec.console == "md" and r.domain == "zram" and has("Z80 RAM") then r.bizDomain = "Z80 RAM"
+      elseif r.domain ~= "wram" then error("read " .. r.name .. ": domain " .. r.domain .. " does not belong to the " .. spec.console) end
+      local size = memory.getmemorydomainsize(r.bizDomain)
+      if r.addr < 0 or r.addr >= size then error(string.format("read %s: address %X is outside %s", r.name, r.addr, r.bizDomain)) end
     end
   else
     local want = isNes and 0x800 or 0x20000

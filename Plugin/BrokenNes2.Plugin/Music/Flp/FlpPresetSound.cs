@@ -17,7 +17,7 @@ using NesEmulator.Sega;
 namespace BrokenNes2.Music.Flp;
 
 /// <summary>Deliberate bugs for FruityHost flp-test (bits above the Super VRUN back end's).</summary>
-public static class PsMutants { public const int LoopIgnored = 4096, TuningIgnored = 8192, PresetFenceBlind = 16384, MdPresetAsPulse = 32768, GbPresetIgnored = 65536, NesPresetIgnored = 131072; }
+public static class PsMutants { public const int LoopIgnored = 4096, TuningIgnored = 8192, PresetFenceBlind = 16384, MdPresetAsPulse = 32768, GbPresetIgnored = 65536, NesPresetIgnored = 131072, ApproxStepsDropped = 4194304, ApproxEnvelopeFlat = 8388608; }
 
 /// <summary>A preset as one sample: <see cref="Pcm"/> at <see cref="Rate"/>, looping from <see cref="LoopStart"/> to the end (-1: plays once), sounding middle C (MIDI 60) when played at <see cref="C5"/> Hz.</summary>
 public sealed class FlpPresetPcm

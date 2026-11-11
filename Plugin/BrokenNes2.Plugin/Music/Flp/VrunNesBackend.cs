@@ -12,6 +12,7 @@
 // What it reports (the caveats: nothing is dropped without a line): everything else on the rack, two instances on one NES channel (merged, newest note wins), instances
 // of one square with different duties (the first one's plays), short noise (VRUN's noise decoder is long mode), silent notes, pan (the NES is mono), slides with no note
 // under them, notes that end where they start. The round-7 facts (the converter's own: channel choice, thinning, truncation, bends) come on top, from SongConvert.
+using BrokenNes2.Presets;
 using BrokenNes2.Record;
 
 namespace BrokenNes2.Music.Flp;
@@ -30,7 +31,7 @@ public static class VrunNesBackend
     public const double SlideEarly = 0.85, SlideExtra = 1.8;
 
     private sealed class Glide { public double Start, Len, To; public int At; public bool Hit; }
-    private sealed class Voice { public int Start, End, Order, Velocity; public double Base, Volume; public List<Glide> Glides = new(); }
+    private sealed class Voice { public int Start, End, Order, Velocity; public double Base, Volume; public List<Glide> Glides = new(); public FlpPresetApprox? Approx; }
 
     private static double PitchAt(Voice v, double t)
     {
@@ -66,8 +67,26 @@ public static class VrunNesBackend
             if (ins.Notes.Count == 0) continue;
             if (b.Mode != "direct") { cav.Add($"{who} is in ROM mode (it plays a game's channel, not notes): its {ins.Notes.Count} notes are not in the game"); continue; }
             if (b.Preset != null && b.Core is >= FlpPresetSound.FirstPresetChip and <= FlpPresetSound.LastPresetChip && !FlpMutants.On(PsMutants.NesPresetIgnored))
-            { cav.Add($"OVER {who} plays a Runaway preset (Presets chip): VRUN's NES engine plays only its own pulse / triangle / noise sounds, the preset is not in the game and its {ins.Notes.Count} notes are left out (put the part on a plain NES instance to hear it as VRUN's sound)"); continue; }
-            if (b.Console != 0) { cav.Add($"{who} is a {b.ConsoleName} instrument: VRUN NES has no such sound, its {ins.Notes.Count} notes are not in the game (that console's back end will play it)"); continue; }
+            {
+                // the engine approximation (FlpPresetApprox): the preset's duty / noise mode / level steps / pitch steps on the NES channel of its kind; the rest is listed as lost
+                string? why = null;
+                var ap = FlpPresetApprox.Get(ins) ?? FlpPresetApprox.Of(b, out why);
+                if (ap == null) { cav.Add($"OVER {who} plays a Runaway preset that cannot be read ({why}): its {ins.Notes.Count} notes are not in the game"); continue; }
+                int pc = ap.Role == 0 ? (b.Channel is 0 or 1 ? b.Channel : 0) : ap.Role > 0 ? ap.Role : b.Channel is >= 0 and <= 3 ? b.Channel : 0;
+                var pb = new FlpBn2 { Version = b.Version, Params = (int[])b.Params.Clone(), Console = 0, ConsoleName = "NES", Core = 0, Channel = pc, Mode = "direct" };
+                if (pb.Params.Length > 5) pb.Params[5] = (pb.Params[5] & ~3) | (ap.Duty >= 0 ? ap.Duty : pb.Params[5] & 3);
+                if (pb.Params.Length > 7) pb.Params[7] = ap.ShortNoise ? 1 : 0;
+                var pi = new FlpInstrument { Rack = ins.Rack, Name = ins.Name, Plugin = ins.Plugin, Type = ins.Type, Bn2 = pb };
+                pi.Notes.AddRange(ins.Notes);
+                FlpPresetApprox.Attach(pi, ap);
+                var lost = new List<string>(ap.Lost);
+                if (pc == 2 && ap.Level != null) lost.Add("the level steps (the triangle has no volume)");
+                if (pc == 3 && ap.ShortNoise) lost.Add("short noise (VRUN's noise decoder is long mode)");
+                cav.Add($"{who}: {PresetFile.ConsoleName(ap.Console)} preset \"{ap.Name}\" approximated on {NesNames[pc]}: kept {(ap.Kept.Count > 0 ? string.Join(", ", ap.Kept) : "the notes")}" + (lost.Count > 0 ? $"; lost: {string.Join("; ", lost)}" : ""));
+                byNes[pc].Add(pi);
+                continue;
+            }
+            if (b.Console != 0 && FlpPresetApprox.Get(ins) == null) { cav.Add($"{who} is a {b.ConsoleName} instrument: VRUN NES has no such sound, its {ins.Notes.Count} notes are not in the game (that console's back end will play it)"); continue; }
             if (b.Channel is < 0 or > 3) { cav.Add($"{who}: NES channel {(b.Channel == 4 ? "Mix/DMC" : b.Channel.ToString())} is not pulse/triangle/noise: its {ins.Notes.Count} notes are not in the game"); continue; }
             if (b.Core != 0) cav.Add($"{who}: sound chip #{b.Core}, not FIX: VRUN's game plays it on the real NES sound (FIX)");
             byNes[b.Channel].Add(ins);
@@ -106,7 +125,7 @@ public static class VrunNesBackend
                 {
                     double cents = n.Key * 100 + (FlpMutants.On(FlpMutants.NoteFineIgnored) ? 0 : n.Fine - 120) + tune;          // MIDI-0 based, FL's channels count from C5 = 60
                     if (n.Slide) glides.Add(new Glide { At = n.Start, Start = n.Start - SlideEarly, Len = Math.Max(0, n.End - n.Start) + SlideExtra, To = cents });
-                    else if (n.End > n.Start) voices.Add(new Voice { Start = n.Start, End = n.End, Base = cents, Velocity = n.Velocity, Volume = volume, Order = order++ });
+                    else if (n.End > n.Start) voices.Add(new Voice { Start = n.Start, End = n.End, Base = cents, Velocity = n.Velocity, Volume = volume, Order = order++, Approx = FlpPresetApprox.Get(ins) });
                     else empty++;
                 }
             }
@@ -138,6 +157,7 @@ public static class VrunNesBackend
                 foreach (var s in segs)
                 {
                     int key = KeyOf(s.V, s.From);
+                    if (s.V.Approx?.Pitch is { } pp) maxBend = Math.Max(maxBend, pp.Max(Math.Abs) + Math.Abs(PitchAt(s.V, s.From) - key * 100));
                     if (s.V.Glides.Count > 0) for (int t = s.From; t <= s.To; t++) maxBend = Math.Max(maxBend, Math.Abs(PitchAt(s.V, t) - key * 100));
                     else maxBend = Math.Max(maxBend, Math.Abs(PitchAt(s.V, s.From) - key * 100));
                 }
@@ -148,7 +168,8 @@ public static class VrunNesBackend
             tracks.Add(trk);
             if (nc < 3) { trk.Events.AddRange(RecMidi.BendRange(0, mc, range)); trk.Events.Add(RecMidi.PitchBend(0, mc, 0)); }
             if (nc <= 1) trk.Events.Add(RecMidi.Cc(0, mc, Vrun.Audio.Midi2Nes.DutyCc, (FlpMutants.On(FlpMutants.DutyIgnored) ? 2 : partDuty) * 32));
-            int lastBend = 0, notes = 0, bent = 0, quiet = 0;
+            int lastBend = 0, notes = 0, bent = 0, quiet = 0, stepped = 0, lastCc7 = 127;
+            double ticksPerFrame = song.Ppq * song.Tempo / 60.0 / 60.0;          // FL ticks in one 60 Hz frame (the presets' steps)
             void Bend(long tick, double cents)
             {
                 int v = (int)Math.Round(cents / (range * 100.0) * 8192, MidpointRounding.AwayFromZero);
@@ -172,10 +193,32 @@ public static class VrunNesBackend
                     }
                     if (s.V.Glides.Count > 0) bent++;
                 }
+                var ap = s.V.Approx;
+                if (ap != null && !FlpMutants.On(PsMutants.ApproxStepsDropped))
+                {
+                    // the preset's steps, frame by frame from the note's own start (a cut-short note's later part keeps its place in the envelope): level as CC 7 (the converter's
+                    // volume = velocity x CC7 / 127, no restart), pitch as bends on top of FL's
+                    if (lastCc7 != 127 && ap.Level == null) { trk.Events.Add(RecMidi.Cc(T(s.From), mc, 7, 127)); lastCc7 = 127; }
+                    int f0 = (int)Math.Floor((s.From - s.V.Start) / ticksPerFrame), f1 = (int)Math.Ceiling((s.To - s.V.Start) / ticksPerFrame);
+                    for (int f = f0; f < f1 && f < FlpPresetApprox.MaxFrames * 2; f++)
+                    {
+                        double t = Math.Max(s.From, s.V.Start + f * ticksPerFrame);
+                        if (t >= s.To) break;
+                        if (ap.Level != null && nc != 2)
+                        {
+                            int cc = Math.Clamp((int)Math.Round(127 * ap.LevelAt(f)), 0, 127);
+                            if (cc != lastCc7) { trk.Events.Add(RecMidi.Cc(T(t), mc, 7, cc)); lastCc7 = cc; stepped++; }
+                            if (nc == 3 && cc < 127) quiet++;
+                        }
+                        if (ap.Pitch != null && nc < 3) Bend(T(t), PitchAt(s.V, t) - key * 100 + ap.PitchAt(f));
+                    }
+                }
+                else if (lastCc7 != 127) { trk.Events.Add(RecMidi.Cc(T(s.From), mc, 7, 127)); lastCc7 = 127; }
                 trk.Events.Add(RecMidi.On(T(s.From), mc, key, nc == 2 ? 120 : level * 8));      // the converter's volume = velocity >> 3: level x 8 is exactly the level
                 trk.Events.Add(RecMidi.Off(T(s.To), mc, key));
                 notes++;
             }
+            if (stepped > 0) cav.Add($"{NesNames[nc]}: {stepped} level steps (CC 7) play the presets' volume envelopes");
             if (silent > 0) cav.Add($"{NesNames[nc]}: {silent} notes have level 0 (velocity x Volume): silent in FL and in the game");
             // noise volume (2026-11-10): a noise part with hits under full level turns VRUN's noise volume on (CC 15 = 127 at tick 0 -> the converter's 0xD4; the template's
             // noise decoder is VRUN's noise-volume decoder): each hit then plays its level (velocity = level x 8, the converter's volume = velocity >> 3). All hits full: no CC.

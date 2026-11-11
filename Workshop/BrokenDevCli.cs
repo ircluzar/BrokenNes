@@ -188,7 +188,7 @@ internal static partial class BrokenDevCli
         if (console is not ("nes" or "snes" or "wms" or "gb" or "gbc" or "sms" or "gg" or "md" or "x86") || rom.Length == 0 || outDir.Length == 0 || frames <= 0) { Console.Error.WriteLine("spec needs console nes|snes|wms|gb|gbc|sms|gg|md|x86, rom, out and frames > 0"); return 2; }
         if (!File.Exists(rom)) { Console.Error.WriteLine($"ROM not found: {rom}"); return 2; }
         foreach (var r in reads)
-            if ((console == "nes" && r.Domain != "ram") || (console is "snes" or "wms" && r.Domain != "wram") || (IsGameBoyKey(console) && r.Domain is not ("wram" or "hram" or "cartram")) || (IsSegaKey(console) && r.Domain != "wram") || (IsX86Key(console) && r.Domain != "mem"))
+            if ((console == "nes" && r.Domain != "ram") || (console is "snes" or "wms" && r.Domain != "wram") || (IsGameBoyKey(console) && r.Domain is not ("wram" or "hram" or "cartram")) || (IsSegaKey(console) && r.Domain != "wram" && !(console == "md" && r.Domain == "zram")) || (IsX86Key(console) && r.Domain != "mem"))
             { Console.Error.WriteLine($"read {r.Name}: domain {r.Domain} does not belong to the {console}"); return 2; }
         steps = steps.OrderBy(s => s.Frame).ToList();
         Directory.CreateDirectory(outDir);
