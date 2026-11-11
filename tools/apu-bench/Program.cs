@@ -1,6 +1,9 @@
 // ApuBench: what each BrokenNes sound chip costs to make audio, in the smallest setup that makes it sound (docs/projects/nano-lightest-apu.md).
 //
 //   dotnet run -c Release --project tools/apu-bench -- [-seconds 3] [-runs 7] [-only NES:FIX,GB:GB] [-csv out.csv]
+//   ... -interleave 40 -seconds 0.5 -only A,B,C   interleaved A/B: the candidates set up once, then 40 rounds, each timing every candidate once in a
+//                                                 rotating order (so a busy moment on a shared machine hits every candidate alike); per candidate the
+//                                                 minimum, median and maximum CPU ms per emulated audio second, and how often it was the round's lightest
 //
 // Every rig plays the same little tune: every channel the chip has is keyed on at setup and gets a new note every 125 ms (8 changes a second),
 // the host side runs in 1 ms slices (step the chip, drain its samples), as a real-time host would. A rig is timed over <seconds> of emulated audio,
@@ -15,7 +18,7 @@ using NesEmulator.Sega;
 using NesEmulator.Snes;
 using NesEmulator.X86;
 
-double seconds = 3; int runs = 7; string? only = null; string? csv = null;
+double seconds = 3; int runs = 7; string? only = null; string? csv = null; int interleave = 0;
 for (int i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -24,6 +27,7 @@ for (int i = 0; i < args.Length; i++)
         case "-runs": runs = int.Parse(args[++i]); break;
         case "-only": only = args[++i]; break;
         case "-csv": csv = args[++i]; break;
+        case "-interleave": interleave = int.Parse(args[++i]); break;
     }
 }
 
@@ -37,6 +41,7 @@ foreach (var id in OplEngines.Factories.Keys) { var c = id; rigs.Add(() => new O
 rigs.Add(() => new YmfmOplRig());
 
 var filter = only?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+if (interleave > 0) return Interleaved(rigs, filter, seconds, interleave, csv);
 var rows = new List<string>();
 Console.WriteLine($"# ApuBench {seconds}s x {runs} runs, {Environment.ProcessorCount} logical CPUs, {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
 Console.WriteLine("name,rate,ns_per_sample,cpu_pct,alloc_bytes_per_s,state_kb,peak,status");
@@ -54,6 +59,48 @@ foreach (var make in rigs)
 }
 if (csv != null) File.WriteAllLines(csv, new[] { "name,rate,ns_per_sample,cpu_pct,alloc_bytes_per_s,state_kb,peak,status" }.Concat(rows));
 return 0;
+
+static int Interleaved(List<Func<Rig>> makers, HashSet<string>? filter, double seconds, int rounds, string? csv)
+{
+    var rigs = new List<Rig>();
+    foreach (var make in makers)
+    {
+        Rig rig; try { rig = make(); } catch { continue; }
+        if (filter != null && !filter.Contains(rig.Name)) continue;
+        rig.Setup(); rig.Play(1.0); rig.Peak = 0; rig.Play(0.5);
+        if (rig.Peak <= 0.0005f) Console.WriteLine($"# {rig.Name} is SILENT");
+        rigs.Add(rig);
+    }
+    int n = rigs.Count;
+    var ms = new List<double>[n]; for (int i = 0; i < n; i++) ms[i] = new List<double>();
+    var wins = new int[n];
+    var log = new List<string> { "round,name,ms_per_s" };
+    Console.WriteLine($"# ApuBench interleaved: {n} candidates x {rounds} rounds of {seconds}s, {Environment.ProcessorCount} logical CPUs");
+    for (int r = 0; r < rounds; r++)
+    {
+        var t = new double[n];
+        for (int j = 0; j < n; j++)
+        {
+            int i = (r % 2 == 0) ? (j + r / 2) % n : (n - 1 - j + r / 2) % n;    // rotate, and reverse every other round
+            var sw = Stopwatch.StartNew();
+            rigs[i].Play(seconds);
+            sw.Stop();
+            t[i] = sw.Elapsed.TotalMilliseconds / seconds;
+            ms[i].Add(t[i]);
+            log.Add($"{r},{rigs[i].Name},{t[i]:F3}");
+        }
+        int best = 0; for (int i = 1; i < n; i++) if (t[i] < t[best]) best = i;
+        wins[best]++;
+    }
+    Console.WriteLine("name,rate,min_ms_per_s,median_ms_per_s,max_ms_per_s,lightest_in_rounds");
+    foreach (int i in Enumerable.Range(0, n).OrderBy(i => ms[i].Min()))
+    {
+        var l = ms[i].OrderBy(x => x).ToList();
+        Console.WriteLine($"{rigs[i].Name},{rigs[i].Rate},{l[0]:F2},{l[l.Count / 2]:F2},{l[^1]:F2},{wins[i]}");
+    }
+    if (csv != null) File.WriteAllLines(csv, log);
+    return 0;
+}
 
 static string Flat(Exception e) => (e.GetType().Name + " " + e.Message).Replace(',', ';').Replace('\n', ' ').Replace('\r', ' ');
 
