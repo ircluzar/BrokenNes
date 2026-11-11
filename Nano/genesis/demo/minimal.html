@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Nano Genesis: minimal</title></head>
+<body>
+<button id="go">Play a coin</button>
+<script src="../dist/nano-genesis.js"></script>
+<script>
+  let synth;
+  go.onclick = async () => {
+    synth ??= await BrokenNesNanoGenesis.create();   // inside a click: browsers keep a page silent until the user interacts
+    synth.play('coin');                         // or synth.noteOn('C4', 1, { preset: 'brass', duration: 0.5 })
+  };
+</script>
+</body>
+</html>

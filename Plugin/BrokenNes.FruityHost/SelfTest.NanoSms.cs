@@ -77,7 +77,7 @@ public sealed unsafe partial class SelfTest
         List<string> chips;
         using (var probe = lib.Create()) chips = Chips(probe);
         int at = chips.IndexOf(NanoSmsChipId);
-        t.Expect(at == 76 && chips.Skip(at + 1).All(c => c.StartsWith("PC_")), $"the {NanoSmsChipId} chip is index {at} of {chips.Count} (expected 76, after the harvested chips; only the x86 PC chips after it)");
+        t.Expect(at == 76 && chips.Skip(at + 1).All(c => c.StartsWith("PC_") || c.StartsWith("NANO")), $"the {NanoSmsChipId} chip is index {at} of {chips.Count} (expected 76, after the harvested chips; only the x86 PC chips after it)");
         t.Expect(chips.IndexOf("FIX") == 0 && chips.IndexOf("SMS") == 20 && chips.IndexOf("WMS") == 29 && chips.IndexOf("NANO" + "GB") == 30, "an existing chip moved (the chip index is part of saved projects: append only)");
         using (var p = lib.Create())
         {

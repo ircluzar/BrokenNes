@@ -176,10 +176,10 @@ if (args.includes('--mutants')) {
   const MUTANTS = [
     ['ladder offset +4 -> +3', 'accL += (cpan & 2) ? v + (v < 0 ? -3 : 4)', 'accL += (cpan & 2) ? v + (v < 0 ? -3 : 3)'],
     ['output scale 64/65 dropped', 'out[0] = Math.trunc(accL * 8192 / 390);', 'out[0] = Math.trunc(accL * 128 / 6);'],
-    ['channel clamp 255 -> 256', "const cl = (v) => v < -256 ? -256 : v > 255 ? 255 : v;", "const cl = (v) => v < -256 ? -256 : v > 256 ? 256 : v;"],
+    ['channel clamp 255 -> 256', "function ymClamp9(v) { return v < -256 ? -256 : v > 255 ? 255 : v; }", "function ymClamp9(v) { return v < -256 ? -256 : v > 256 ? 256 : v; }"],
     ['feedback shift', 'const mod1 = fb !== 0 ? (a1 + a2) >> (10 - fb) : 0;', 'const mod1 = fb !== 0 ? (a1 + a2) >> (9 - fb) : 0;'],
     ['algorithm 5 modulator', 'case 5: m2 = a1; m3 = a2; m4 = a1; break;', 'case 5: m2 = a1; m3 = a1; m4 = a1; break;'],
-    ['envelope tick pattern', 'if ((this.envCounter & 3) === 3) this.envCounter', 'if ((this.envCounter & 3) === 2) this.envCounter'],
+    ['envelope divide by three', 'if ((this.envCounter & 3) === 3) this.envCounter = (this.envCounter + 1)', 'if ((this.envCounter & 3) === 3) this.envCounter = (this.envCounter + 2)'],
     ['late slot env tick removed', 'const env = n === 3 && ch >= 4 ? envPrevious : this.envCounter;', 'const env = this.envCounter;'],
     ['fast-rate phase', 'const YM_FAST_PHASE = [0, 3, 1, 1];', 'const YM_FAST_PHASE = [0, 1, 1, 1];'],
     ['detune sign', 'o.detune = (detuneReg & 4) ? -adjust : adjust;', 'o.detune = (detuneReg & 4) ? adjust : adjust;'],

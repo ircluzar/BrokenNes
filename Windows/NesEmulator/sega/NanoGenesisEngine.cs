@@ -85,7 +85,7 @@ public static partial class NanoGenesisPresets
 [JsonSerializable(typeof(NanoGenesisPreset))]
 internal partial class NanoGenesisJson : JsonSerializerContext { }
 
-public sealed class NanoGenesisEngine
+public sealed class NanoGenesisEngine : INanoEngine
 {
     public const int Chunk = 64;
     public const int Channels = 10;
@@ -235,6 +235,8 @@ public sealed class NanoGenesisEngine
     private static int PackPans(ReadOnlySpan<int> p) { int x = 0; for (int c = 0; c < Channels; c++) x |= (p[c] + 1) << (2 * c); return x; }
     /// <summary>The channels' pans set now, before anything plays (song.js's mk: a sidecar channel's pan).</summary>
     public void SetChannelPans(int pan) { for (int c = 0; c < Channels; c++) ChanPan[c] = pan; }
+    long INanoEngine.Frame => Frame;
+    public void NoteOnProgram(long frame, int id, double note, double vel, int program, double bend) => NoteOn(frame, id, note, vel, NanoGenesisPresets.Program(program), bend: bend);
     public bool IsSounding(int id) => voices.TryGetValue(id, out var v) && !v.Dead;
     public int SoundingChannels { get { int n = 0; for (int c = 0; c < Channels; c++) if (gate[c]) n++; return n; } }
 

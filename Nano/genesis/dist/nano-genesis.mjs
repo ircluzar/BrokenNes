@@ -237,6 +237,9 @@ const YM_SLOT_OF_OP = [0, 2, 1, 3];
 const YM_FAST_PHASE = [0, 3, 1, 1];
 const EG_ATTACK = 1, EG_DECAY = 2, EG_SUSTAIN = 3, EG_RELEASE = 4, EG_QUIET = 0x380, PHASE_DYNAMIC = 1, LFO_LEAD = 4;
 
+function ymRate(raw, ksr) { return raw === 0 ? 0 : Math.min(raw + ksr, 63); }
+function ymClamp9(v) { return v < -256 ? -256 : v > 255 ? 255 : v; }
+
 class Op {
   constructor(choffs, opoffs) {
     this.choffs = choffs; this.opoffs = opoffs;
@@ -329,11 +332,10 @@ class Ym2612 {
     o.egSustainLevel = sl << 5;
     const ksr = regs[0x50 + opoffs] >> 6 & 3;
     const ksrval = keycode >> (ksr ^ 3);
-    const eff = (raw) => raw === 0 ? 0 : Math.min(raw + ksrval, 63);
-    o.rate[EG_ATTACK] = eff((regs[0x50 + opoffs] & 0x1F) * 2);
-    o.rate[EG_DECAY] = eff((regs[0x60 + opoffs] & 0x1F) * 2);
-    o.rate[EG_SUSTAIN] = eff((regs[0x70 + opoffs] & 0x1F) * 2);
-    o.rate[EG_RELEASE] = eff((regs[0x80 + opoffs] & 0xF) * 4 + 2);
+    o.rate[EG_ATTACK] = ymRate((regs[0x50 + opoffs] & 0x1F) * 2, ksrval);
+    o.rate[EG_DECAY] = ymRate((regs[0x60 + opoffs] & 0x1F) * 2, ksrval);
+    o.rate[EG_SUSTAIN] = ymRate((regs[0x70 + opoffs] & 0x1F) * 2, ksrval);
+    o.rate[EG_RELEASE] = ymRate((regs[0x80 + opoffs] & 0xF) * 4 + 2, ksrval);
     o.ssgEnable = (regs[0x90 + opoffs] & 8) !== 0;
     o.ssgMode = regs[0x90 + opoffs] & 7;
     o.amEnable = (regs[0x60 + opoffs] & 0x80) !== 0;
@@ -506,11 +508,10 @@ class Ym2612 {
     const m4sum = alg <= 4 ? m4 + v3 : m4;
     const v4 = this.computeVolume(o4, (o4.phase >>> 10) + (m4sum >> 1), am4);
     let acc = 0;
-    const cl = (v) => v < -256 ? -256 : v > 255 ? 255 : v;
-    if (alg === 7) acc = cl(acc + (a1 >> 5));
-    if (alg >= 5) acc = cl(acc + (v3 >> 5));
-    if (alg >= 4) acc = cl(acc + (v2 >> 5));
-    acc = cl(acc + (v4 >> 5));
+    if (alg === 7) acc = ymClamp9(acc + (a1 >> 5));
+    if (alg >= 5) acc = ymClamp9(acc + (v3 >> 5));
+    if (alg >= 4) acc = ymClamp9(acc + (v2 >> 5));
+    acc = ymClamp9(acc + (v4 >> 5));
     h1[h + 2] = h1[h + 1]; h1[h + 1] = a1; h1[h] = v1;
     this.hist2[ch] = v2;
     return acc;
