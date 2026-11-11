@@ -9,12 +9,14 @@ the live VRUN branch vrun-history-export as e5ba53f (2026-10-18; since e9e3a61 t
 Pulse duty (2026-11-10): opcode 0xD3 dd, read from MIDI CC 14 with ConvertOptions.Duty / --duty (VRUN vrun-history-export, duty commit).
 
 Pulse duty (2026-11-10): Midi2Nes.cs and Bends.cs copied again from VRUN a36dd5e (opcode 0xD3 dd, MIDI CC 14, ConvertOptions.Duty).
+Noise volume + song room (2026-11-10): Midi2Nes.cs and Bends.cs copied again from VRUN 7c9c4a1 (opcode 0xD4, MIDI CC 15, ConvertOptions.NoiseVolume;
+ConvertOptions.MaxChannelBytes, the template's song room).
 
 sha256 of the copies (line endings LF, as in VRUN):
   MidiFile.cs   89812698128251131d0d899f935df41f577e6a11a6b1d23f3b7af00fb983fa0a
-  Midi2Nes.cs   3872dc10f6809ea4b86909f18e3733b8b48485fef15c29afe3444e2aaac3824f
+  Midi2Nes.cs   fa3aa261a6db27e2211de00c12fef59d744b86d9b392c605f01c87fcd589c71e
   FabWriter.cs  688ca24d0a05a0801991b2fb3398c674783107ef9f35ee92a603a8c22c97a3b5
-  Bends.cs      3cbf565101a85cfca76fbafc4a25a8f932c952ff41566f89886bb9688c60297c
+  Bends.cs      128145e815d76248c517634c0360ef11db3f1b79478ace873baecb24ae12bfa4
 
 The guard against a silent drift is `FruityHost midi-test` (check "converter"): whenever the VRUN tree is on the machine, this copy must
 regenerate VRUN's baked music_data.fab files byte for byte, give the same output as VRUN's own midi2nes on every roster song and on the

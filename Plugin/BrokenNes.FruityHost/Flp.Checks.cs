@@ -296,7 +296,7 @@ internal static class FlpChecks
         {
             string name = Path.GetFileNameWithoutExtension(f);
             var v = VrunNesBackend.Build(FlpSong.Read(File.ReadAllBytes(f)), name);
-            var b = SongConvert.Convert(v.Midi, out var why);
+            var b = SongConvert.Convert(v.Midi, out var why, t.Region);
             r.Expect(b != null, $"{name}: the converter refused the file: {why}");
             if (b == null) continue;
             list.Add((name, v, b, t.Patch(b.Channels, b.Facts.LoopFrames, name)));

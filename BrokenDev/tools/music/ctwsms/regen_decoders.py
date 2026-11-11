@@ -1,6 +1,6 @@
 """Regenerates a VRUN tree's src/game/music_decoders.fab as VRUN's own build_music.py would (its gen_music_decoders.py
 templates, the bend / duty decoders where the converted streams in music_data.fab need them), plus the bend AND duty
-decoders on every tonal channel of one song (the .flp template's song: any song can be patched over it). Pure Python:
+decoders on every tonal channel of one song, and the noise-volume decoder on its noise, (the .flp template's song: any song can be patched over it). Pure Python:
 it reads the already converted music_data.fab and never runs the converter.
 
     python regen_decoders.py <VRUN tree> <song>
@@ -27,12 +27,17 @@ if not any(t["name"] == song for t in tracks):
 hint = f"python engine/audio/build_music.py {roster.name}"
 bends = bm.bend_decoder_channels(data, tracks)
 duty = bm.duty_decoder_channels(data, tracks) if hasattr(bm, "duty_decoder_channels") else {}
-same = gen.generate_decoders(tracks, hint, bends, duty) if duty else gen.generate_decoders(tracks, hint, bends)
+noise = bm.noise_volume_tracks(data, tracks) if hasattr(bm, "noise_volume_tracks") else set()
+same = (gen.generate_decoders(tracks, hint, bends, duty, noise) if noise else
+        gen.generate_decoders(tracks, hint, bends, duty) if duty else gen.generate_decoders(tracks, hint, bends))
 if same != dec.read_text(encoding="utf-8"):
     raise SystemExit(f"the regenerated decoders differ from {dec} (the tree's decoders are not what its roster makes)")
 bends[song] = set(gen.BEND_CHANNELS)
 if not hasattr(gen, "DUTY_CHANNELS"):
     raise SystemExit("this VRUN tree has no pulse-duty engine (older than a36dd5e)")
 duty[song] = set(gen.DUTY_CHANNELS)
-dec.write_text(gen.generate_decoders(tracks, hint, bends, duty), encoding="utf-8", newline="\n")
-print(f"ok    {dec}: {song} has bend decoders on {', '.join(gen.BEND_CHANNELS)} and duty decoders on {', '.join(gen.DUTY_CHANNELS)}")
+if not hasattr(gen, "with_noise_volume"):
+    raise SystemExit("this VRUN tree has no noise-volume engine (older than 7c9c4a1)")
+noise.add(song)
+dec.write_text(gen.generate_decoders(tracks, hint, bends, duty, noise), encoding="utf-8", newline="\n")
+print(f"ok    {dec}: {song} has bend decoders on {', '.join(gen.BEND_CHANNELS)} duty decoders on {', '.join(gen.DUTY_CHANNELS)} and the noise-volume decoder")

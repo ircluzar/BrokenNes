@@ -20,14 +20,18 @@ public sealed class MusicTemplate
     /// loop: it is refused.</summary>
     /// <summary>3 (2026-11-10): the template's square decoders also play the pulse duty opcode 0xD3 (VRUN's duty decoders). A version-2 template reads 0xD3 as
     /// the loop (plain) or a bend (bend decoders): it is refused.</summary>
-    public const int FormatVersion = 3;
+    /// <summary>4 (2026-11-10): the template's noise decoder plays the noise-volume opcode 0xD4 (VRUN's noise-volume decoder), and its regions are the song bank's
+    /// room (measured by build-musictest.ps1, at least the game's 1280). A version-3 template reads 0xD4 as the noise's loop: it is refused.</summary>
+    public const int FormatVersion = 4;
     /// <summary>The opcode format the converter writes and the template's decoders read (Midi2Nes.cs header): vrun-music-2 adds the bend opcodes
     /// 0xD1 pitch and 0xD2 slide (Music/Vrun/Bends.cs).</summary>
-    public const string Opcodes = "vrun-music-3";
+    public const string Opcodes = "vrun-music-4";
     /// <summary>The channels whose decoders must be VRUN's bend decoders (the converter writes bend opcodes on these three only).</summary>
     public const string BendDecoders = "square1 square2 triangle";
     /// <summary>The channels whose decoders must be VRUN's duty decoders (the converter writes the duty opcode 0xD3 on the squares only).</summary>
     public const string DutyDecoders = "square1 square2";
+    /// <summary>The channel whose decoder must be VRUN's noise-volume decoder (the converter writes 0xD4 on the noise only).</summary>
+    public const string NoiseVolumeDecoders = "noise";
     public const int HeaderBytes = 16;
     /// <summary>The AudioPlayer's charmap: a character's tile is its ASCII code - 32, and the string ends with the charmap's '\0', tile 95.</summary>
     public const byte StringEnd = 95;
@@ -103,9 +107,10 @@ public sealed class MusicTemplate
         if (version != FormatVersion && !old) { problem = $"the music test template is version {version}; this build of BrokenNes2 understands version {FormatVersion} only" + (version == 1 ? " (a version-1 template cannot play pitch bends)" : ""); return null; }
         if (Get("opcodes") != Opcodes && !old) { problem = $"the music test template plays the opcode format '{Get("opcodes")}'; this build's converter writes '{Opcodes}'"; return null; }
         if (Get("duty-decoders") != DutyDecoders && !old) { problem = $"the music test template's duty decoders are '{Get("duty-decoders")}'; this build's converter writes the pulse duty on {DutyDecoders}"; return null; }
+        if (Get("noise-volume-decoders") != NoiseVolumeDecoders && !old) { problem = $"the music test template's noise-volume decoders are '{Get("noise-volume-decoders")}'; this build's converter writes the noise volume on {NoiseVolumeDecoders}"; return null; }
         if (Get("bend-decoders") != BendDecoders && !old) { problem = $"the music test template's bend decoders are '{Get("bend-decoders")}'; this build's converter writes pitch bends on {BendDecoders}"; return null; }
-        if (!int.TryParse(Get("region"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int region) || region != Midi2Nes.MaxChannelBytes)
-        { problem = $"the music test template's stream regions are {Get("region")} bytes; the converter writes up to {Midi2Nes.MaxChannelBytes}"; return null; }
+        if (!int.TryParse(Get("region"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int region) || region < Midi2Nes.MaxChannelBytes)
+        { problem = $"the music test template's stream regions are {Get("region")} bytes; a song needs at least the game's {Midi2Nes.MaxChannelBytes}"; return null; }
         if (!int.TryParse(Get("rom-bytes"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int romBytes) || romBytes != rom.Length) { problem = $"the music test template ROM is {rom.Length} bytes, its description says {Get("rom-bytes")}"; return null; }
         string sha = Sha256Hex(rom);
         if (!string.Equals(Get("rom-sha256"), sha, StringComparison.OrdinalIgnoreCase)) { problem = "the music test template ROM is not the one its description was made for (its SHA-256 differs)"; return null; }
@@ -239,5 +244,6 @@ public static class MusicMutate
     public const int OldTemplateAccepted = 1 << 13; // a version-1 template (plain decoders: a bend opcode reads as the loop) is accepted (template-refusals check)
     // the .flp music pipeline (docs/projects/flp-music-pipeline.md)
     public const int FlpReadAsMidi = 1 << 14;     // a .flp is handed to the MIDI reader as it is (selftest scenario flp: the project's song must play)
+    public const int RoomAsOld = 1 << 15;         // the converter truncates at the game's 1280 bytes, not the template's song room (midi-test check "room", flp-test "room")
     public static bool Has(int bit) => (Mask & bit) != 0;
 }

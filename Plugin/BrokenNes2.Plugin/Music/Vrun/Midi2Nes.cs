@@ -25,6 +25,9 @@ namespace Vrun.Audio;
 ///   0xD3 dd    duty (squares): $4000/$4004 high nibble dd ($30 12.5%,
 ///              $70 25%, $B0 50%, $F0 75%); only ever the first opcode of
 ///              a stream, read for free before the frame's opcode
+///   0xD4       noise volume on (noise): the stream's 0xC0-0xCF volumes
+///              play (without it the noise hits at full volume, as always);
+///              only ever the first opcode of a stream, read for free
 ///   0xFF       end: loop to the start of this channel's stream
 /// </code>
 /// <para>0xD1/0xD2 are the pitch-bend opcodes, written only when the caller
@@ -66,6 +69,34 @@ public static class Midi2Nes
     /// <summary>The MIDI controller that carries a square's duty (CC 14, undefined
     /// in the MIDI spec): value / 32 = 0 12.5%, 1 25%, 2 50%, 3 75%.</summary>
     public const int DutyCc = 14;
+
+    /// <summary>The noise-volume opcode (noise only, first opcode of a stream:
+    /// see <see cref="ConvertOptions.NoiseVolume"/>).</summary>
+    public const int OpNoiseVolume = 0xD4;
+
+    /// <summary>The MIDI controller that turns the noise's volumes on (CC 15,
+    /// undefined in the MIDI spec): its first value on the noise's MIDI
+    /// channel, 64 or more = the hits play their velocity's volume.</summary>
+    public const int NoiseVolumeCc = 15;
+
+    /// <summary>The first value of controller <paramref name="cc"/> per MIDI
+    /// channel (earliest tick, then track order).</summary>
+    public static Dictionary<int, int> FindFirstCc(MidiFile midi, int cc)
+    {
+        var best = new Dictionary<int, (long Tick, int V)>();
+        foreach (var events in midi.Tracks)
+        {
+            long tick = 0;
+            foreach (var ev in events)
+            {
+                tick += ev.DeltaTime;
+                if (ev.Command == MidiFile.ControlChange && ev.Status < 0xF0 && ev.Data1 == cc)
+                    if (!best.TryGetValue(ev.Channel, out var b) || tick < b.Tick)
+                        best[ev.Channel] = (tick, ev.Data2);
+            }
+        }
+        return best.ToDictionary(kv => kv.Key, kv => kv.Value.V);
+    }
 
     public static readonly string[] DutyNames = { "12.5%", "25%", "50%", "75%" };
 
@@ -807,17 +838,17 @@ public static class Midi2Nes
         if (nes == 3)
             return baseReport with { Ignored = true };
         var original = streams[nes];
-        if (original.Count > MaxChannelBytes)
+        if (original.Count > options.MaxChannelBytes)
             return baseReport with
             {
                 Dropped = true,
-                DropReason = $"the channel is over {MaxChannelBytes} bytes even without them (it is truncated)",
+                DropReason = $"the channel is over {options.MaxChannelBytes} bytes even without them (it is truncated)",
             };
         double tol = options.BendToleranceCents;
         while (true)
         {
             var (fitted, report) = Bends.Fit(original, src, tol, nes, midiCh);
-            if (fitted.Count <= MaxChannelBytes)
+            if (fitted.Count <= options.MaxChannelBytes)
             {
                 streams[nes] = fitted;
                 return report with { RequestedToleranceCents = options.BendToleranceCents };
@@ -828,7 +859,7 @@ public static class Midi2Nes
         }
         // Still too big: keep the held bent pitches (and bent note-ons), drop the slides.
         var (steps, stepsReport) = Bends.Fit(original, src, tol, nes, midiCh, slides: false);
-        if (steps.Count <= MaxChannelBytes)
+        if (steps.Count <= options.MaxChannelBytes)
         {
             streams[nes] = steps;
             return stepsReport with { RequestedToleranceCents = options.BendToleranceCents };
@@ -836,7 +867,7 @@ public static class Midi2Nes
         return baseReport with
         {
             Dropped = true,
-            DropReason = $"even their held pitches alone would take the channel to {steps.Count} bytes, over {MaxChannelBytes}",
+            DropReason = $"even their held pitches alone would take the channel to {steps.Count} bytes, over {options.MaxChannelBytes}",
         };
     }
 
@@ -874,6 +905,16 @@ public static class Midi2Nes
                     duty[kv.Value] = d;
             log($"[midi2nes] duty ({name}): square1={DutyNames[duty[0]]}, square2={DutyNames[duty[1]]}");
         }
+        // Noise volume (options.NoiseVolume only): the noise's MIDI channel sets CC 15 >= 64.
+        bool noiseVolume = false;
+        if (options.NoiseVolume)
+        {
+            var byMidi = FindFirstCc(midi, NoiseVolumeCc);
+            foreach (var kv in map)
+                if (kv.Value == 3 && byMidi.TryGetValue(kv.Key, out int v) && v >= 64)
+                    noiseVolume = true;
+            log($"[midi2nes] noise volume ({name}): {(noiseVolume ? "on (velocity)" : "full")}");
+        }
         for (int nes = 0; nes < 4; nes++)
         {
             untruncatedLengths[nes] = streams.TryGetValue(nes, out var s0) ? s0.Count : 1;
@@ -881,17 +922,19 @@ public static class Midi2Nes
             // silent loop (not a bare 0xFF), or it would re-decode its loop
             // opcode every frame AND break the shared loop period.
             var data = streams.TryGetValue(nes, out var s) ? s : RetimeForCap1(new List<int> { 0xFF }, totalFrames, null, log);
-            int dutyBytes = duty[nes] != 2 ? 2 : 0;
-            var (cut, wasTruncated) = TruncateStream(data, MaxChannelBytes - dutyBytes, totalFrames);
+            int dutyBytes = duty[nes] != 2 ? 2 : nes == 3 && noiseVolume ? 1 : 0;
+            var (cut, wasTruncated) = TruncateStream(data, options.MaxChannelBytes - dutyBytes, totalFrames);
             truncated[nes] = wasTruncated;
             if (wasTruncated)
                 log($"[midi2nes] truncated {ChannelNames[nes]} to {cut.Count} bytes, " +
                     $"re-padded to the shared {totalFrames}-frame loop " +
-                    $"(exceeded MAX_CHANNEL_BYTES={MaxChannelBytes} - see truncate_stream()'s own header)");
+                    $"(exceeded MAX_CHANNEL_BYTES={options.MaxChannelBytes} - see truncate_stream()'s own header)");
             if (cut.Count == 0)
                 cut = new List<int> { 0xFF };
-            if (dutyBytes > 0)
+            if (dutyBytes == 2)
                 cut = new List<int> { OpDuty, 0x30 | duty[nes] << 6 }.Concat(cut).ToList();
+            else if (dutyBytes == 1)
+                cut = new List<int> { OpNoiseVolume }.Concat(cut).ToList();
             final[nes] = cut.Select(b => (byte)b).ToArray();
         }
         if (options.Bends)
@@ -917,7 +960,7 @@ public static class Midi2Nes
                 return false;
             if (b == Bends.OpPitch || b == Bends.OpSlide)
                 return true;
-            i += b == 0xD0 || b == OpDuty ? 2 : b == Bends.OpPitch || b == Bends.OpSlide ? 3 : 1;
+            i += b == 0xD0 || b == OpDuty ? 2 : b == OpNoiseVolume ? 1 : b == Bends.OpPitch || b == Bends.OpSlide ? 3 : 1;
         }
         return false;
     }
@@ -925,6 +968,10 @@ public static class Midi2Nes
     /// <summary>True when a stream starts with the duty opcode (0xD3) - the
     /// decoder that plays it must be a duty decoder.</summary>
     public static bool HasDutyOp(IReadOnlyList<byte> stream) => stream.Count >= 2 && stream[0] == OpDuty;
+
+    /// <summary>True when a stream starts with the noise-volume opcode (0xD4) -
+    /// the decoder that plays it must be a noise-volume decoder.</summary>
+    public static bool HasNoiseVolumeOp(IReadOnlyList<byte> stream) => stream.Count >= 1 && stream[0] == OpNoiseVolume;
 }
 
 /// <summary>One converted song: the 4 channel streams exactly as baked into
