@@ -44,10 +44,13 @@ switch (args[0])
 
     case "flp-export":      // flp-export vocgb|vocgg|ctwsms <song.flp> <out folder>: the test ROM, the fence and the game's import file (Flp.Export.cs)
         return FlpExport.Main(args);
+    case "mt-export": return MusicTestExport.Main(args);   // the Vaults music test players' FL TEST slot (MusicTest.Export.cs)
+    case "flp-vocdos": return FlpVocDos.Main(args);   // flp-vocdos <song.flp> <out> [dos|95]: the Vaults DOS / 95 music test's FL song (Flp.VocDos.cs)
     case "ctwsms-bends":    // ctwsms-bends <game.sms> <music_data.fab> <song> <loop frames> [frames]: Flp.SmsBends.cs
         return FlpSmsBends.Main(args);
     case "flp-backend":
         return SvChecks.Backend(args);
+    case "musictest-ctwsms": return MusicTestCtwSms.Main(args);   // MusicTest.CtwSms.cs
 
     case "midi-test":
         return MidiChecks.Main(args);

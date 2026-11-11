@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "id": "supervrun-md-musictest",
+  "title": "Super VRUN music test (Genesis / Mega Drive)",
+  "family": "supervrun",
+  "kind": "md",
+  "console": "md",
+  "description": "A spinoff MUSIC TEST player (modelled on CTW NES's AudioPlayer): the game's real sound driver, every music track of Super VRUN, one extra FL TEST slot (12: a song from an FL Studio project, BrokenDev/tools/music/flp/musictest/build-supervrun-md-mt.ps1; a placeholder song here), looping, per-channel mute/solo from the pad with the channel state on screen, song number and name on screen. A separate build target: the game build is byte-identical.",
+  "source": {
+    "folder": "{live:SuperVRUN_MD_dev}"
+  },
+  "requires": {
+    "tools": [
+      "ps5",
+      "python",
+      "toolchain:sgdk"
+    ],
+    "projects": [],
+    "inputs": [],
+    "toolchain": [
+      "SGDK 2.11 (toolchains.json)"
+    ]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "ps5",
+        "cwd": "{src}",
+        "file": "{src}/musictest/build-musictest.ps1",
+        "args": [
+          "-Sgdk",
+          "{toolchain:sgdk}"
+        ],
+        "timeoutSec": 900,
+        "note": "In a scratch tree (git archive HEAD) under build-mt\tree: musictest\\mtpatch_md.py (itconv's song list + fltest, the driver's mute mask, scratch only), gen_assets.py, itconv.py, SGDK with musictest\\mt_main.c."
+      }
+    ],
+    "outputs": [
+      {
+        "id": "rom",
+        "path": "{src}/build-mt/svmusictest_md.bin",
+        "publishAs": "svmusictest_md.md",
+        "kind": "md"
+      },
+      {
+        "id": "nm",
+        "path": "{src}/build-mt/svmusictest_md.nm.txt",
+        "publishAs": "svmusictest_md.nm.txt",
+        "kind": "symbols"
+      }
+    ]
+  },
+  "run": {
+    "console": "md",
+    "note": "Up/Down song, A play, B stop, Left/Right channel (F1-F5, DAC, P1-P3, noise), C mute, Start solo, X/Y/Z/Mode every channel on."
+  },
+  "verify": {
+    "timeoutSec": 300,
+    "scenarios": [
+      {
+        "id": "list-and-play",
+        "frames": 400,
+        "input": "200:Up,206:,210:A,216:",
+        "checkpoints": [
+          120,
+          400
+        ],
+        "expect": {
+          "minDistinctColors": 2,
+          "pictureDiffers": [
+            120,
+            400
+          ]
+        },
+        "why": "the list draws, THINK plays at power-on, the pad reaches the FL TEST slot"
+      }
+    ]
+  },
+  "knownIssues": [
+    "No hardware test on the flash cart yet (Releases\\SuperVRUN_MD_MusicTest).",
+    "Built from the repository's COMMITTED driver (git archive HEAD), not uncommitted work in the tree."
+  ]
+}

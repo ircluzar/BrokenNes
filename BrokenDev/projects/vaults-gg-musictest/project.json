@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "id": "vaults-gg-musictest",
+  "title": "Vaults GG MUSIC TEST (VRUN: Vaults of Obsolete Code on the Game Gear: its music as a player ROM)",
+  "family": "vrun",
+  "kind": "gg",
+  "console": "gg",
+  "description": "The music test spinoff of the Game Gear port (project vrun-voc-gg), modelled on CTW NES's AudioPlayer: the game's real sound unit (src/voc_sound.c, the same file the game builds: the PSG music driver), the song list (all 22 tracks of the game) and one FL TEST slot (list 23), nothing else. musictest/build_musictest.ps1 makes the songs the game's way (the Game Boy version's roster through its musictest/make_roster.py + tools/music/convert.py, then tools/psg/convert_music.py with --extra-track for the FL TEST slot) and builds build.ps1 -Target musictest (the game target is unchanged). Mute / solo without touching the driver: a muted channel is marked as an effect's (sfx_busy). An .flp song goes into the FL TEST slot with BrokenDev/tools/music/flp/musictest/build-vaults-gg-mt.ps1 (FruityHost mt-export vocgg).",
+  "source": { "folder": "{live:VRUN_VOC_GG_dev}" },
+  "requires": {
+    "tools": ["ps5", "toolchain:sdcc", "toolchain:devkitsms"],
+    "projects": [],
+    "inputs": [],
+    "toolchain": ["SDCC 4.6.0 and devkitSMS 533ae57, pinned in toolchains.json", "Python 3 and the Game Boy version's tree (PROJECTS/VRUN_VOC_dev: its roster and converter)"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "ps5",
+        "cwd": "{src}",
+        "file": "{src}/musictest/build_musictest.ps1",
+        "args": ["-Out", "{src}/build/musictest"],
+        "timeoutSec": 1200,
+        "note": "musictest/build_musictest.ps1: the songs into build/musictest/gen, then build.ps1 -Target musictest -Extra <gen> (the toolchains at build.ps1's pinned defaults)."
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{src}/build/musictest/vrun_voc_gg_musictest.gg", "publishAs": "vrun_voc_gg_musictest.gg", "kind": "gg" },
+      { "id": "noi", "path": "{src}/build/musictest/vrun_voc_gg_musictest.noi", "publishAs": "vrun_voc_gg_musictest.noi", "kind": "symbols" },
+      { "id": "sym", "path": "{src}/build/musictest/vrun_voc_gg_musictest.sym", "publishAs": "vrun_voc_gg_musictest.sym", "kind": "symbols-wla" }
+    ]
+  },
+  "run": { "console": "gg", "note": "The first track plays at power-on. Up / Down a track, 1 play from the start, 2 stop, Left / Right a channel (T0 T1 T2 NS), Start+1 mute / unmute it, Start solo it (again: no solo). Songs loop. List 23 = FL TEST." },
+  "verify": {
+    "timeoutSec": 900,
+    "scenarios": [
+      {
+        "id": "plays",
+        "frames": 400,
+        "checkpoints": [100, 400],
+        "expect": {
+          "minDistinctColors": 2,
+          "memory": [
+            { "symbol": "_mt_play_idx", "is": 0, "what": "list 1 (TITLE: ROSBIF) plays at power-on" },
+            { "symbol": "_mus_current", "is": 0, "what": "the game's sound unit took the title track" }
+          ],
+          "audio": { "fromFrame": 60, "minNonSilentFrames": 150, "minPeak": 0.05 }
+        },
+        "why": "power-on: the list on screen, the first track sounds"
+      },
+      {
+        "id": "mute-all",
+        "frames": 600,
+        "input": "200:Start,204:Start+A,210:,216:Right,220:,224:Start,228:Start+A,234:,240:Right,244:,248:Start,252:Start+A,258:,264:Right,268:,272:Start,276:Start+A,282:",
+        "checkpoints": [400, 600],
+        "expect": {
+          "memory": [ { "symbol": "_mt_mute", "is": 15, "what": "all four channels muted from the pad" } ],
+          "audio": { "fromFrame": 320, "silent": true }
+        },
+        "why": "mute from the pad changes the output: the four channels muted = silence"
+      },
+      {
+        "id": "fl-slot",
+        "frames": 800,
+        "input": "60:Down,460:,470:A,476:",
+        "checkpoints": [500, 800],
+        "expect": {
+          "memory": [ { "symbol": "_mt_play_idx", "is": 22, "what": "list 23, FL TEST" } ],
+          "audio": { "fromFrame": 520, "minNonSilentFrames": 60 }
+        },
+        "why": "the FL TEST slot plays (the placeholder here; an .flp's song with build-vaults-gg-mt.ps1)"
+      }
+    ]
+  },
+  "knownIssues": [
+    "The 22 tracks are the game's: today 11 placeholder songs; the GG driver plays the Game Boy song bytes (no duty / envelopes / pan, as in the game).",
+    "The user's songs are written with NES-console BrokenNes2 instances: mt-export reads them as Game Boy instances when a song has none for the Game Gear (a fence note says so)."
+  ]
+}

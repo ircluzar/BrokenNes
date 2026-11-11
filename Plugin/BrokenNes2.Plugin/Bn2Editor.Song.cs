@@ -207,6 +207,7 @@ public sealed unsafe partial class Bn2Editor
         }
         string when = File.Exists(path) ? File.GetLastWriteTime(path).ToString("yyyy-MM-dd HH:mm") : "?";
         plugin.MarkConfigured("this FL project's .flp was opened");
+        ArmLiveFlp(path);
         BrokenNes.Fruity.Diag.Log($"This FL project: file {path} (saved {when}){(picked ? change ? ", changed now" : ", picked now" : ", kept in the project")}");
         if (emu.FlpTarget.Id != "vrun-nes") { if (emu.BuildInGame(path) is { } no) emu.SongUi.SetResult(no, false); return; }
         if (emu.OpenSong(path) is { } refused) emu.SongUi.SetResult(refused, false);
@@ -216,6 +217,7 @@ public sealed unsafe partial class Bn2Editor
     {
         var e = plugin.Emulator;
         if (e == null) return midOpen ? 1 : 0;
+        LiveFlpTick();
         var u = e.SongUi;
         long h = (midOpen ? 1 : 2) * 31 + u.ResultStamp;
         h = h * 31 + (u.Busy ? 1 : 2); h = h * 31 + u.Status.GetHashCode(); h = h * 31 + (u.Follow ? 1 : 2);

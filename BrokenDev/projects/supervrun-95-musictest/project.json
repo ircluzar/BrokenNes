@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "id": "supervrun-95-musictest",
+  "title": "Super VRUN music test (Windows 95)",
+  "family": "supervrun",
+  "kind": "dos",
+  "console": "x86",
+  "description": "A spinoff MUSIC TEST player (modelled on CTW NES's AudioPlayer): the game's real sound driver, included unchanged, every music track, one FL TEST slot (00: a song from an FL Studio project via BrokenDev/tools/music/flp/musictest/build-supervrun-95-mt.ps1; a silent placeholder here), looping, per-channel mute (1-9) / solo (F1-F9) from the keyboard with the channel state on screen, song number and name on screen. A separate build target (musictest/build_mt.ps1): the game build is byte-identical.",
+  "source": {
+    "folder": "{live:SuperVRUN_95_dev}"
+  },
+  "requires": {
+    "tools": [
+      "ps5",
+      "python"
+    ],
+    "projects": [],
+    "inputs": [],
+    "toolchain": [
+      "Open Watcom 2.0 (wcc386/wcl386, wlink, DOS/32A), NASM 3.02, Python 3: C:\\BrokenNes-tools\\dos (env.ps1)"
+    ]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "ps5",
+        "cwd": "{src}",
+        "file": "{src}/musictest/build_mt.ps1",
+        "args": [],
+        "timeoutSec": 600,
+        "note": "build_mt.ps1: oplconv.py, sfxconv.py, musictest/mt_flconv.py, wcc386 -bt=nt on musictest/sv_mt_win.c (includes platform/win/win_snd.c unchanged; OPLWrite filtered for mute/solo), mt_ui.c, mt_win.c, platform/win/fmopl.c; wlink nt_win: build/mt/SVMT95.EXE."
+      }
+    ],
+    "outputs": [
+      {
+        "id": "rom",
+        "path": "{src}/build/mt/SVMT95.EXE",
+        "publishAs": "SVMT95.EXE",
+        "kind": "x86"
+      }
+    ]
+  },
+  "run": {
+    "console": "x86",
+    "note": "Windows 95 and up: a text window, waveOut. Same keys as DOS. Release: T:\\BrokenDev\\Releases\\SuperVRUN_95_MusicTest."
+  },
+  "verify": {
+    "timeoutSec": 900,
+    "x86": {
+      "ips": 130000000
+    },
+    "scenarios": [
+      {
+        "id": "list-and-play",
+        "frames": 900,
+        "input": "",
+        "checkpoints": [
+          300,
+          900
+        ],
+        "expect": {
+          "minDistinctColors": 4,
+          "dos": {
+            "files": [
+              {
+                "path": "SVMT95.EXE"
+              }
+            ],
+            "teletype": {
+              "notContains": [
+                "Bad command",
+                "not found"
+              ]
+            }
+          }
+        },
+        "why": "(not runnable here: see verify.note)"
+      }
+    ],
+    "note": "NOT RUNNABLE in BrokenDev: a Windows 95 exe (Win32 GUI); BrokenNes's x86 PC boots DOS only, and BrokenDev has no Windows kind (lib/Manifest.ps1 BdKinds), so kind/console say dos/x86 only to keep the manifest valid: do not run 'brokendev verify' on it. The game repo tests it on this Windows: SVMT95.EXE|VMT95.EXE /hidden /fast /wav with MT.TXT beside it -> MT.OUT, SCREEN.TXT, MT.WAV."
+  },
+  "knownIssues": [
+    "Windows exe: BrokenDev cannot run or verify it (no Windows kind); tested by the game repo's MT.TXT script on this PC.",
+    "check_imports.ps1: TextOutA, GetTextMetricsA, SetBkColor, SetTextColor, DestroyWindow, PeekMessageA are not on the repo's vetted Windows 95 list (all are Windows 95 APIs; not vetted on a real 95 machine)."
+  ]
+}

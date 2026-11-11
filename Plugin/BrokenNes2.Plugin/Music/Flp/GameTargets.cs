@@ -39,6 +39,7 @@ public static class GameTargets
     {
         string script = Path.Combine(repo, t.Script);
         if (t.Id == "nano-gb") return ("node", [script, flp, "--out", outDir]);
+        if (MusicTestTargets.Is(t)) return ("pwsh", ["-NoProfile", "-File", script, "-Flp", flp, "-Out", outDir]);
         return ("pwsh", ["-NoProfile", "-File", script, "-Flp", flp, "-Engine", t.Engine, "-Out", outDir]);
     }
 
@@ -46,6 +47,7 @@ public static class GameTargets
     public static string? Product(GameTarget t, string flp, string outDir)
     {
         string safe = string.Concat(Path.GetFileNameWithoutExtension(flp).Select(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' ? c : '_'));
+        if (MusicTestTargets.Is(t)) return Path.Combine(outDir, $"{safe}.{t.Id}.{t.Engine}");
         string? ext = t.Engine switch { "snes" => "sfc", "wms" => "wms", "md" => "bin", "dos" or "95" => "exe", _ => null };
         return ext == null ? Path.Combine(outDir, Path.GetFileNameWithoutExtension(flp) + ".nano.mid") : Path.Combine(outDir, $"{safe}.{t.Engine}.{ext}");
     }
@@ -53,6 +55,7 @@ public static class GameTargets
     public static string FenceFile(GameTarget t, string flp, string outDir)
     {
         string safe = string.Concat(Path.GetFileNameWithoutExtension(flp).Select(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' ? c : '_'));
+        if (MusicTestTargets.Is(t)) return Path.Combine(outDir, $"{safe}.{t.Id}.fence.txt");
         return t.Id == "nano-gb" ? Path.Combine(outDir, Path.GetFileNameWithoutExtension(flp) + ".nano.fence.json") : Path.Combine(outDir, $"{safe}.{t.Engine}.fence.txt");
     }
 }
