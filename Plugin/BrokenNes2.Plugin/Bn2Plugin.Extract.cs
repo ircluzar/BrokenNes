@@ -8,7 +8,7 @@ public sealed unsafe partial class Bn2Plugin
     private string extractText = "";
     private byte[]? extractFile;
 
-    /// <summary>1140 start a capture of channel <c>index</c> on this instance's game (0 started, 1 refused: words in 963), 1141 its state (0 waiting, 1 a preset is ready, 2 failed: words in 963; a ready
+    /// <summary>1140 start a capture of channel <c>index</c> on this instance's game (0 started, 1 refused: words in 1143), 1141 its state (0 waiting, 1 a preset is ready, 2 failed: words in 1143; a ready
     /// preset is made here), 1142 copy the ready preset file into the <c>index</c> bytes at <c>value</c> (returns its length, -1 none), 1143 copy the last words.</summary>
     private nint ExtractTestHook(int n, nint index, nint value)
     {

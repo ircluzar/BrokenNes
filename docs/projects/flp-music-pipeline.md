@@ -143,7 +143,7 @@ The other direction of section 9: an instrument a game plays is captured from on
 
 | front end | how | where |
 |---|---|---|
-| (a) the plugin, ROM mode | Presets tab: **Capture next note: <channel>** (the Emulator tab's Channel picks it; shown only while a NES game on the FIX chip or a Game Boy game runs). The channel's next whole note goes into the library. | `Emulator.Extract.cs`, `PresetLibrary` (`IPresetCapture`), hooks 960-963 |
+| (a) the plugin, ROM mode | Presets tab: **Capture next note: <channel>** (the Emulator tab's Channel picks it; shown only while a NES game on the FIX chip or a Game Boy game runs). The channel's next whole note goes into the library. | `Emulator.Extract.cs`, `PresetLibrary` (`IPresetCapture`), hooks 1140-1143 |
 | (b) BrokenNes desktop | **Emulator > Capture Instrument > (channel)**: the channel's next whole note, exported with a Save dialog | `Windows/MainForm/MainForm.Extract.cs` |
 | (c) BrokenDev CLI | `brokendev.ps1 instrument extract <rom> --frame N --channel C [--out f.bn2preset] [--input "40:Start,44:"] [--name T] [--json]` (headless Workshop `--extract-instrument`; NES on the FIX cores, Game Boy on the stock cores; deterministic: the same ROM, input and frame give the same preset) | `BrokenDev/lib/Instrument.ps1`, `Workshop/ExtractInstrumentCli.cs` |
 
