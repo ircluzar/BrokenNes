@@ -65,6 +65,20 @@ function fuzzStreams(N) {
     c.trace = [];
     const L = [], Rr = [];
     const bl = new Float32Array(4096), br = new Float32Array(4096);
+    if (s >= 12) {
+      // every channel keyed with every operator audible-ish, AM on with the deepest AMS, the LFO on, SSG-EG in a mode per stream (the hold modes 1, 3, 5, 7 among them)
+      c.ymWrite(0x22, 8 | (s & 7));
+      for (let ch = 0; ch < 6; ch++) {
+        const part = ch >= 3 ? 0x100 : 0, o = ch % 3;
+        c.ymWrite(part | (0xB0 + o), 7); c.ymWrite(part | (0xB4 + o), 0xC0 | 0x30 | (ch & 7));
+        for (const slot of [0, 4, 8, 12]) {
+          c.ymWrite(part | (0x30 + slot + o), 1 + ch); c.ymWrite(part | (0x40 + slot + o), 8); c.ymWrite(part | (0x50 + slot + o), 31);
+          c.ymWrite(part | (0x60 + slot + o), 0x80 | 12); c.ymWrite(part | (0x70 + slot + o), 6); c.ymWrite(part | (0x80 + slot + o), 0x55); c.ymWrite(part | (0x90 + slot + o), 8 | ((s * 2 + 1 + ch) & 7));
+        }
+        c.ymWrite(part | (0xA4 + o), 0x22); c.ymWrite(part | (0xA0 + o), 0x69 + ch * 9);
+        c.ymWrite(0x28, 0xF0 | (ch >= 3 ? 4 : 0) | o);
+      }
+    }
     for (let step = 0; step < 500; step++) {
       const r = rnd(), part = rnd() < 0.5 ? 0x100 : 0, ch = R(3);
       if (r < 0.3) { const base = [0x30, 0x40, 0x50, 0x60, 0x70, 0x80, 0x90][R(7)], slot = [0, 4, 8, 12][R(4)]; c.ymWrite(part | (base + slot + ch), base === 0x40 ? R(64) : base === 0x90 ? (rnd() < 0.6 ? 0 : R(16)) : R(256)); }

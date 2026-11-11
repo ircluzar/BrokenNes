@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- BrokenNes Nano SNES: the C# side of the parity proof. It replays what the web library did to its chip (PSG and YM2612 writes, runs,
+       reads) through Core's DSP_SFC (the S-DSP) and StreamResampler and writes the PCM.
+       Not part of BrokenNes.sln; built on demand by Nano/snes/test/parity.mjs. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>BrokenNes.NanoSnes</RootNamespace>
+    <AssemblyName>NanoSnesParity</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\Core\BrokenNes.Core.csproj" />
+  </ItemGroup>
+
+</Project>

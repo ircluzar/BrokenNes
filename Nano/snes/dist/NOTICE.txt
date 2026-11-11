@@ -1,0 +1,8 @@
+BrokenNes Nano SNES 0.1.0
+The SNES sound generator (the S-DSP) as BrokenNes plays it, as a web synth and MIDI player. Part of BrokenNes (Digital Lifeform License 1.1;
+LICENSE.txt in the BrokenNes repository). Source: Nano/snes/src; built by Nano/snes/build.mjs.
+
+The sound chip (src/chip.js) is a transcription of BrokenNes's Windows/NesEmulator/snes/DSP_SFC.cs and Core/StreamResampler.cs. DSP_SFC.cs is a C#
+port of the logic of blargg's snes_spc 0.9.0 (SPC_DSP.cpp, Copyright (C) 2007 Shay Green, GNU LGPL 2.1 or later: https://www.slack.net/~ant/);
+the Gauss, RatePeriod and RateOffset tables in chip.js are snes_spc's. See snes/THIRD_PARTY_NOTICES.md in the BrokenNes repository.
+The samples (src/samples.js, made by tools/make-samples.mjs), the presets, the engine, the MIDI player and the demos were written for BrokenNes.
