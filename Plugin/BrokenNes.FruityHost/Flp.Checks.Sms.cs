@@ -166,6 +166,8 @@ internal static class FlpSmsChecks
             var rom = CtwSmsBackend.Patch(tmpl, man, v, out var why);
             r.Expect(rom != null, $"{name}: the test ROM refused the song: {why}");
             if (rom == null || v.Build == null) continue;
+            // the reference is VRUN NES's template: a stream past its room (CTW SMS has more) cannot be played there
+            if (v.Build.Channels.Any(x => x.Length > nesT.Region)) { r.Note($"{name}: not compared: a stream ({string.Join(" + ", v.Build.Channels.Select(x => x.Length))}) is past VRUN NES's room of {nesT.Region}"); continue; }
             int n = Math.Min(v.Build.Facts.LoopFrames, 1500);
             var nes = MidiRun.Of(nesT.Patch(v.Build.Channels, v.Build.Facts.LoopFrames, name), n + 60, mlb);
             var want = Enumerable.Range(0, n + 60).Select(f => NesToPsg(nes.Latch.AsSpan(f * MidiModel.LatchBytes, MidiModel.LatchBytes))).ToArray();

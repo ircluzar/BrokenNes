@@ -188,7 +188,8 @@ internal static class FlpChecks
         var tri = on.Where(x => x.Ch == 2).ToList();
         r.Expect(tri.Count == 2 && tri[0].Key == 48, $"triangle: {string.Join(" ", tri)} (key 60 with Coarse -12 = 48)");
         r.Expect(on.Count(x => x.Ch == 9) == 4 && on.Where(x => x.Ch == 9).All(x => x.Key >> 4 == 3), $"noise hits: {string.Join(" ", on.Where(x => x.Ch == 9))} (4 expected, keys $30-$3F = the period index)");
-        r.Expect(v.Caveats.Any(c => c.Contains("softer than full level")), "no caveat for the soft noise (Volume 0.5)");
+        r.Expect(!v.Caveats.Any(c => c.Contains("softer than full level")) && Vrun.Audio.Midi2Nes.FindFirstCc(Vrun.Audio.MidiFile.Parse(v.Midi), Vrun.Audio.Midi2Nes.NoiseVolumeCc).GetValueOrDefault(9) == 127,
+            "the soft noise (Volume 0.5) did not turn VRUN's noise volume on (CC 15 = 127 on the noise, no full-volume caveat)");
         r.Expect(!v.Caveats.Any(c => c.Contains("Duty")), "a caveat for the lead's 25% duty (VRUN plays it now)");
         r.Expect(v.Parts.FirstOrDefault(p => p.NesChannel == 0)?.Duty == 1, "the lead's part does not carry its 25% duty");
         r.Expect(v.Caveats.Any(c => c.Contains("ROM mode")), "no caveat for the ROM-mode instance");

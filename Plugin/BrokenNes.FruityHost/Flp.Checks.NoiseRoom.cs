@@ -110,8 +110,14 @@ internal static class FlpNoiseRoomChecks
             var past = Enumerable.Range(0, 4).Where(c => b.Facts.Bytes[c] > Midi2Nes.MaxChannelBytes).Select(c => $"{MusicTemplate.ChannelNames[c]} {b.Facts.Bytes[c]}").ToList();
             var sv = smsRoom == null ? null : CtwSmsBackend.Build(FlpSms(name), name);
             bool smsOver = sv != null && sv.Fence.Any(f => f.Rule == "bytes" && f.Level == FenceLevel.Over);
-            if (sv?.Build != null) r.Expect(!smsOver && !sv.Build.Facts.AnyTruncated, $"{name}: CTW SMS truncates or fences the bytes ({string.Join(" + ", sv.Build.Channels.Select(x => x.Length))} in {string.Join("/", smsRoom!)})");
-            r.Note($"{name,-14} {string.Join(" + ", b.Facts.FinalBytes)} bytes{(past.Count > 0 ? $" (past 1280: {string.Join(", ", past)}: fits)" : "")}{(sv?.Build != null ? $"; CTW SMS {string.Join(" + ", sv.Build.Channels.Select(x => x.Length))}" : "")}");
+            if (sv?.Build != null)
+                for (int c = 0; c < 4; c++)
+                {
+                    var fx = sv.Build.Facts; int room = smsRoom!.Min();
+                    r.Expect(!(fx.Truncated[c] && fx.Bytes[c] <= room - 2) && !(!fx.Truncated[c] && fx.Bytes[c] > room) && !smsOver,
+                        $"{name} CTW SMS {MusicTemplate.ChannelNames[c]}: {fx.Bytes[c]} bytes, truncated {fx.Truncated[c]} in a room of {room}{(smsOver ? ", bytes fenced OVER" : "")}");
+                }
+            r.Note($"{name,-14} {string.Join(" + ", b.Facts.FinalBytes)} bytes{(past.Count > 0 ? $" (past 1280: {string.Join(", ", past)})" : "")}{(sv?.Build != null ? $"; CTW SMS {string.Join(" + ", sv.Build.Channels.Select(x => x.Length))}" : "")}");
         }
         foreach (var (name, ch) in new[] { ("Title Theme", 0), ("battle", 2) })
         {
