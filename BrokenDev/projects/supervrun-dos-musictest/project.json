@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "id": "supervrun-dos-musictest",
+  "title": "Super VRUN music test (MS-DOS)",
+  "family": "supervrun",
+  "kind": "dos",
+  "console": "x86",
+  "description": "A spinoff MUSIC TEST player (modelled on CTW NES's AudioPlayer): the game's real sound driver, included unchanged, every music track, one FL TEST slot (00: a song from an FL Studio project via BrokenDev/tools/music/flp/musictest/build-supervrun-dos-mt.ps1; a silent placeholder here), looping, per-channel mute (1-9) / solo (F1-F9) from the keyboard with the channel state on screen, song number and name on screen. A separate build target (musictest/build_mt.ps1): the game build is byte-identical.",
+  "source": {
+    "folder": "{live:SuperVRUN_DOS_dev}"
+  },
+  "requires": {
+    "tools": [
+      "ps5",
+      "python"
+    ],
+    "projects": [],
+    "inputs": [],
+    "toolchain": [
+      "Open Watcom 2.0 (wcc386/wcl386, wlink, DOS/32A), NASM 3.02, Python 3: C:\\BrokenNes-tools\\dos (env.ps1)"
+    ]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "ps5",
+        "cwd": "{src}",
+        "file": "{src}/musictest/build_mt.ps1",
+        "args": [],
+        "timeoutSec": 600,
+        "note": "build_mt.ps1: oplconv.py (the 11 modules, as the game), sfxconv.py, musictest/mt_flconv.py (the FL slot), wcc386 on musictest/sv_mt_dos.c (includes platform/dos/dos_snd.c unchanged; the port writes to the chip filtered for mute/solo), mt_ui.c, mt_dos.c; wlink with DOS/32A: build/mt/SVMT.EXE."
+      }
+    ],
+    "outputs": [
+      {
+        "id": "rom",
+        "path": "{src}/build/mt/SVMT.EXE",
+        "publishAs": "SVMT.EXE",
+        "kind": "x86"
+      }
+    ]
+  },
+  "run": {
+    "console": "x86",
+    "note": "Up/Down pick, Enter/Space play (loops), 1-9 mute FM1-7 / NOISE / DPCM, F1-F9 solo, 0 all on, S stop, Esc quit. Real hardware: T:\\BrokenDev\\Releases\\SuperVRUN_DOS_MusicTest (EXE + VRUN-DOS floppy)."
+  },
+  "verify": {
+    "timeoutSec": 900,
+    "x86": {
+      "ips": 130000000
+    },
+    "scenarios": [
+      {
+        "id": "list-and-play",
+        "frames": 900,
+        "input": "",
+        "checkpoints": [
+          300,
+          900
+        ],
+        "expect": {
+          "minDistinctColors": 4,
+          "dos": {
+            "files": [
+              {
+                "path": "SVMT.EXE"
+              }
+            ],
+            "teletype": {
+              "notContains": [
+                "Bad command",
+                "not found"
+              ]
+            }
+          }
+        },
+        "why": "FreeDOS boots the player: the song list (00 FL TEST, 01-11 the modules, 12 BOSS part 2) and the channel table are drawn"
+      }
+    ],
+    "note": "Mute / solo and every song are checked by the game repo's MT.TXT script (musictest/mt_ui.h: '<frame> play|mute|solo|clear|stop|quit [n]' -> MT.OUT with the chip writes, their hash and the key-ons per channel, SCREEN.TXT) on the x86 console (Workshop --x86boot with the script on the disk). The placeholder FL slot is silent, so the power-on song has no sound (no audio expectation)."
+  },
+  "knownIssues": [
+    "The FL TEST slot is a silent placeholder in this build; BrokenDev/tools/music/flp/musictest/build-supervrun-dos-mt.ps1 -Flp x.flp puts a song there.",
+    "No symbols (the Watcom map is not read by BrokenDev)."
+  ]
+}

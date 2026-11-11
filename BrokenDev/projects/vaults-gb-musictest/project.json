@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "id": "vaults-gb-musictest",
+  "title": "Vaults GB MUSIC TEST (VRUN: Vaults of Obsolete Code's music as a player ROM)",
+  "family": "vrun",
+  "kind": "gb",
+  "console": "gbc",
+  "description": "The music test spinoff of VRUN: Vaults of Obsolete Code on the Game Boy (project vrun-voc), modelled on CTW NES's AudioPlayer: the game's real music driver (src/music, the same files the game builds), the song list (all 22 tracks of the game: title, levels 1-20, clear) and one FL TEST slot (list 23), nothing else. musictest/build_musictest.ps1 makes the roster (musictest/make_roster.py: the game's tools/music/roster.json + the FL TEST song), converts it with the game's tools/music/convert.py and links the player (musictest/player.c) with the driver; the game's build.ps1 is not touched. An .flp song goes into the FL TEST slot with BrokenDev/tools/music/flp/musictest/build-vaults-gb-mt.ps1 (FruityHost mt-export vocgb: VocGbBackend's events, the game roster's import).",
+  "source": { "folder": "{live:VRUN_VOC_dev}" },
+  "requires": {
+    "tools": ["ps5", "toolchain:gbdk"],
+    "projects": [],
+    "inputs": [],
+    "toolchain": ["GBDK-2020 4.5.0, pinned in toolchains.json", "Python 3 (the game's tools/music/convert.py)"]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "ps5",
+        "cwd": "{src}",
+        "file": "{src}/musictest/build_musictest.ps1",
+        "args": ["-Gbdk", "{toolchain:gbdk}", "-Out", "{src}/build/musictest"],
+        "timeoutSec": 600,
+        "note": "musictest/build_musictest.ps1: make_roster.py + convert.py into build/musictest/gen (FL TEST = the roster's placeholder), lcc -autobank; MBC5 + RAM + battery, 1 MB, dual mode (the user's flash cart)."
+      }
+    ],
+    "outputs": [
+      { "id": "rom", "path": "{src}/build/musictest/vrun_voc_musictest.gbc", "publishAs": "vrun_voc_musictest.gbc", "kind": "gbc" },
+      { "id": "noi", "path": "{src}/build/musictest/vrun_voc_musictest.noi", "publishAs": "vrun_voc_musictest.noi", "kind": "symbols" },
+      { "id": "map", "path": "{src}/build/musictest/vrun_voc_musictest.map", "publishAs": "vrun_voc_musictest.map", "kind": "map" }
+    ]
+  },
+  "run": { "console": "gbc", "note": "The first track plays at power-on. Up / Down a track (held: repeats), A play from the start, B stop, Left / Right a channel (P1 P2 WV NS), Select mute / unmute it, Start solo it (again: no solo). Songs loop. List 23 = FL TEST." },
+  "verify": {
+    "timeoutSec": 600,
+    "scenarios": [
+      {
+        "id": "plays",
+        "frames": 400,
+        "checkpoints": [100, 400],
+        "expect": {
+          "minDistinctColors": 2,
+          "memory": [
+            { "symbol": "_mt_play_idx", "is": 0, "what": "list 1 (TITLE: ROSBIF) plays at power-on" },
+            { "symbol": "_mus_ticks", "size": 2, "min": 10, "what": "the game's driver advances the song" }
+          ],
+          "audio": { "fromFrame": 60, "minNonSilentFrames": 150, "minPeak": 0.05 }
+        },
+        "why": "power-on: the list on screen, the first track sounds"
+      },
+      {
+        "id": "mute-all",
+        "frames": 600,
+        "input": "200:Select,206:,212:Right,218:,224:Select,230:,236:Right,242:,248:Select,254:,260:Right,266:,272:Select,278:",
+        "checkpoints": [400, 600],
+        "expect": {
+          "memory": [
+            { "symbol": "_mt_mute", "is": 15, "what": "all four channels muted from the pad" },
+            { "symbol": "_mus_ticks", "size": 2, "min": 10, "what": "the song goes on silently" }
+          ],
+          "audio": { "fromFrame": 320, "silent": true }
+        },
+        "why": "mute from the pad changes the output: the four channels muted = silence while the song plays on"
+      },
+      {
+        "id": "fl-slot",
+        "frames": 800,
+        "input": "60:Down,560:,570:A,576:",
+        "checkpoints": [600, 800],
+        "expect": {
+          "memory": [ { "symbol": "_mt_play_idx", "is": 22, "what": "list 23, FL TEST" } ],
+          "audio": { "fromFrame": 620, "minNonSilentFrames": 60 }
+        },
+        "why": "the FL TEST slot plays (the placeholder here; an .flp's song with build-vaults-gb-mt.ps1)"
+      }
+    ]
+  },
+  "knownIssues": [
+    "The 22 tracks are the game's: today 11 placeholder songs (from the VRUN NES soundtrack); several tracks share one, as in the game.",
+    "No effects driver (tests/music/sfx_stub.c sets the sound chip up as the game does); the screen redraw is slow (printf), so held Up / Down repeats about 4 times a second.",
+    "The user's songs are written with NES-console BrokenNes2 instances: mt-export reads them as Game Boy instances when a song has none for the Game Boy (a fence note says so)."
+  ]
+}

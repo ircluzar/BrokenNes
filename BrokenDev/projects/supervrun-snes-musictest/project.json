@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "id": "supervrun-snes-musictest",
+  "title": "Super VRUN music test (SNES)",
+  "family": "supervrun",
+  "kind": "snes",
+  "console": "snes",
+  "description": "A spinoff MUSIC TEST player (modelled on CTW NES's AudioPlayer): the game's real sound driver, every music track of Super VRUN, one extra FL TEST slot (12: a song from an FL Studio project, BrokenDev/tools/music/flp/musictest/build-supervrun-snes-mt.ps1; a placeholder song here), looping, per-channel mute/solo from the pad with the channel state on screen, song number and name on screen. A separate build target: the game build is byte-identical.",
+  "source": {
+    "folder": "{live:SuperVRUN_dev}"
+  },
+  "requires": {
+    "tools": [
+      "gitbash",
+      "python"
+    ],
+    "projects": [],
+    "inputs": [],
+    "toolchain": [
+      "PVSnesLib 4.6.0 in C:\\BrokenNes-tools\\supervrun\\snes-stub\toolchain\\pvsneslib (816-tcc, 816-opt, wla-65816, wlalink, smconv)"
+    ]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "bash",
+        "cwd": "{src}/snes-dev/supervrun",
+        "run": "bash musictest/build-musictest.sh",
+        "timeoutSec": 600,
+        "note": "musictest/build-musictest.sh: smconv of the game's 12 modules + fltest (musictest/fltest_placeholder.it), musictest/musictest.c, tools/spcpatch.py then musictest/mtpatch.py (the mute mask: player only)."
+      }
+    ],
+    "outputs": [
+      {
+        "id": "rom",
+        "path": "{src}/snes-dev/supervrun/build-mt/svmusictest.sfc",
+        "publishAs": "svmusictest.sfc",
+        "kind": "snes"
+      },
+      {
+        "id": "sym",
+        "path": "{src}/snes-dev/supervrun/build-mt/svmusictest.sym",
+        "publishAs": "svmusictest.sym",
+        "kind": "symbols"
+      }
+    ]
+  },
+  "run": {
+    "console": "snes",
+    "note": "Up/Down song, A or Start play, B stop, Left/Right channel, X mute, Y solo, Select every channel on."
+  },
+  "verify": {
+    "timeoutSec": 300,
+    "scenarios": [
+      {
+        "id": "list-and-play",
+        "frames": 400,
+        "input": "200:Up,206:,210:A,216:",
+        "checkpoints": [
+          120,
+          400
+        ],
+        "expect": {
+          "minDistinctColors": 2,
+          "pictureDiffers": [
+            120,
+            400
+          ],
+          "memory": [
+            {
+              "symbol": "mt_playing",
+              "size": 1,
+              "is": 11,
+              "what": "Up then A started the FL TEST slot (row 12)"
+            }
+          ]
+        },
+        "why": "the list draws, THINK plays at power-on, the pad reaches the FL TEST slot"
+      }
+    ]
+  },
+  "knownIssues": [
+    "No hardware test yet (Releases\\SuperVRUN_MusicTest).",
+    "The position counter (POS) follows spcGetMusicPosition."
+  ]
+}

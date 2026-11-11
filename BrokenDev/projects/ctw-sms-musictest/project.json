@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "id": "ctw-sms-musictest",
+  "title": "CTW SMS MUSIC TEST (VRUN CTW's sound test as a Master System ROM)",
+  "family": "vrun",
+  "kind": "sms",
+  "console": "sms",
+  "description": "The music test spinoff of VRUN CTW on the Master System (project vrun-ctw-sms), modelled on CTW NES's AudioPlayer: the game's real sound driver (VRUN's NES music engine translated by fab2c, nes_apu.c's PSG mapping), the song list (all 11 game tracks) and one FL TEST slot, nothing else. It IS the game's own Options > Sound Test (engine/audio/player_ui.fab) as the whole ROM: musictest/build-musictest.ps1 copies the VRUN tree, adds the FL TEST track (musictest/mt_tree.py: a placeholder padded to 1280 bytes a channel, VRUN's bend + duty decoders), and builds it with the game's own build.ps1 -Define CTW_MUSICTEST (the pad's music test controls in src/nes_shim.c). The game build is not changed by it. An .flp song goes into the FL TEST slot with BrokenDev/tools/music/flp/musictest/build-ctw-sms-mt.ps1 (FruityHost musictest-ctwsms: CtwSmsBackend's Build + Patch).",
+  "source": {
+    "folder": "{live:VRUN_CTW_SMS_dev}"
+  },
+  "requires": {
+    "tools": [
+      "ps5",
+      "toolchain:sdcc",
+      "toolchain:devkitsms"
+    ],
+    "projects": [],
+    "inputs": [],
+    "toolchain": [
+      "SDCC 4.6.0 and devkitSMS 533ae57, pinned in toolchains.json (the game's build.ps1 rebuilds SMSlib and crt0 from devkitSMS's sources)",
+      "Python 3 (VRUN's engine/audio/build_music.py + gen_music_decoders.py, imported by musictest/mt_tree.py)"
+    ]
+  },
+  "build": {
+    "steps": [
+      {
+        "name": "build",
+        "shell": "ps5",
+        "cwd": "{src}",
+        "file": "{src}/musictest/build-musictest.ps1",
+        "args": [
+          "-Out",
+          "{src}/build/musictest",
+          "-Sdcc",
+          "{toolchain:sdcc}",
+          "-DevkitSms",
+          "{toolchain:devkitsms}"
+        ],
+        "timeoutSec": 1200,
+        "note": "musictest/build-musictest.ps1: the VRUN tree copied to build/musictest/vrun, mt_tree.py, the game's build.ps1 -FabRoot -Define CTW_MUSICTEST; writes vrun_ctw_sms_mt.sms + vrun_ctw_sms_mt.txt (the FL TEST slot's manifest, CtwSmsBackend's bn2-flp-ctwsms v3 format + loopframes)."
+      }
+    ],
+    "outputs": [
+      {
+        "id": "rom",
+        "path": "{src}/build/musictest/vrun_ctw_sms_mt.sms",
+        "publishAs": "vrun_ctw_sms_mt.sms",
+        "kind": "sms"
+      },
+      {
+        "id": "manifest",
+        "path": "{src}/build/musictest/vrun_ctw_sms_mt.txt",
+        "publishAs": "vrun_ctw_sms_mt.txt",
+        "kind": "text"
+      },
+      {
+        "id": "noi",
+        "path": "{src}/build/musictest/build/vrun_ctw_sms.noi",
+        "publishAs": "vrun_ctw_sms_mt.noi",
+        "kind": "symbols"
+      },
+      {
+        "id": "sym",
+        "path": "{src}/build/musictest/build/vrun_ctw_sms.sym",
+        "publishAs": "vrun_ctw_sms_mt.sym",
+        "kind": "symbols-wla"
+      }
+    ]
+  },
+  "run": {
+    "console": "sms",
+    "note": "Boots through the game's title to the MUSIC TEST screen (about frame 100). Pad: Up / Down choose a song, 2 play it from the start, Pause pause / resume, Left / Right pick a channel (SQ1 SQ2 TRI NOI = PSG tone 1, tone 2, tone 3, noise), 1 mute / unmute it, 1 held + 2 solo it (again: all on), 2 held + 1 stop. Songs loop. List 12 = FL TEST (the placeholder, or an .flp's song: build-ctw-sms-mt.ps1)."
+  },
+  "verify": {
+    "timeoutSec": 600,
+    "scenarios": [
+      {
+        "id": "play",
+        "frames": 600,
+        "input": "300:Down,306:,320:B,326:",
+        "checkpoints": [
+          280,
+          600
+        ],
+        "expect": {
+          "minDistinctColors": 3,
+          "memory": [
+            {
+              "symbol": "_app_state",
+              "is": 6,
+              "what": "the Sound Test screen (APP_SOUND_TEST)"
+            },
+            {
+              "symbol": "_pl_state",
+              "is": 1,
+              "what": "a song plays (PL_PLAYING)"
+            },
+            {
+              "symbol": "_current_music_track",
+              "is": 1,
+              "what": "list 2, BOSS FIGHT (track id 1)"
+            }
+          ]
+        },
+        "why": "the ROM boots to the music test, Down + button 2 plays the second song"
+      }
+    ]
+  },
+  "knownIssues": [
+    "The title screen shows for a moment at power-on (the boot is the game's own; the music test starts from it).",
+    "The help lines' button names are the Master System pad's (2, 1, Pause); the screen is otherwise the game's Sound Test (ON / OFF per channel: a solo shows as one ON)."
+  ]
+}
