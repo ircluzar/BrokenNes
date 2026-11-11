@@ -3,7 +3,7 @@ namespace BrokenNes2.Music.Flp;
 
 public static class FlpMutants
 {
-    public const int SlideSignFlipped = 1, NoteFineIgnored = 2, OldestNoteWins = 4, TuningIgnored = 8, ReaderDropsLastNote = 16, DutyIgnored = 32, SlideSignLost = 64, ChannelVolumeSilent = 128, NoiseVolumeIgnored = 256;
+    public const int SlideSignFlipped = 1, NoteFineIgnored = 2, OldestNoteWins = 4, TuningIgnored = 8, ReaderDropsLastNote = 16, DutyIgnored = 32, SlideSignLost = 64, ChannelVolumeSilent = 128, NoiseVolumeIgnored = 256, GbSlidesHeld = 1 << 24;
     public static int Mask;
     public static bool On(int bit) => (Mask & bit) != 0;
 }

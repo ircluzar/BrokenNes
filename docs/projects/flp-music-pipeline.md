@@ -182,3 +182,27 @@ A captured note is made a preset, loaded into the real DLL on the Presets chip a
 | Codename 23, triangle @ 204 / 394 | 8 frames | +0.3 / 0.0 c | 15.7 / 2.2% | 0.998 / 1.000 |
 
 (The SMB1 hacks play their music on pulse 2 and the triangle; pulse 1 is the sound effects. Their envelope error on 7-8-frame notes is mostly sub-frame timing: the game keys mid-frame, the preset at the frame's start.) The check also fails on a deliberate bug (the envelope flattened to the key-on level: caught by the envelope error) and runs the plugin's ROM-mode capture on the built-in game (Pulse 1, 12 frames; the preset reads back with its envelope, loads and sounds).
+
+## 11. Slide audit (2026-11-11): FL's slides through every engine
+
+`FruityHost flp-test --only slides-vrun-nes,slides-ctwsms,slides-vocgb,slides-vocgg,slides-adlib-sv,slides-adlib-vaults,slides-sv` (`Plugin/BrokenNes.FruityHost/Flp.Slides.cs`). One synthetic project (written byte by byte) on pulse 1, pulse 2 and triangle/wave: slides up/down, 2 to 200 ticks, a semitone to two octaves, crossing octaves and the NES period's $100/$200/$300, +50 cents on a detuned note. Each engine's real driver (or the driver's C# twin for the AdLib songs) runs headless; the pitch is read from the chip's registers every frame and compared with FL's pitch over that frame (model only). "Beyond step" = error beyond half of the register's own step.
+
+| engine | slides | max error (cents) | beyond step | how measured |
+|---|---|---|---|---|
+| VRUN NES | yes | 14.5 | 6.8 (period-linear vs FL's cents-linear glide) | sound-test ROM, APU per NMI |
+| CTW SMS | yes | 14.5 | 6.8 | the game ROM, PSG periods |
+| Vaults GB | yes | 8.4 | 0.0 | the game's driver ROM, GB registers |
+| Vaults GG | yes | 33.8 | 0.0 allowing 1 frame late (19.1 strict) | the game's driver ROM, PSG periods |
+| Super VRUN DOS/95 (AdLib song) | yes | 1.5 | 0.0 | dos_snd.c twin, OPL F-numbers |
+| Vaults DOS/95 (AdLib song) | yes | 1.3 | 0.0 | dos_opl.c twin, OPL F-numbers |
+| Super VRUN SNES/WMS/MD/DOS (.it path) | yes in the MIDI | 0.1 | 0.0 | the MIDI for sf2it.py only; sf2it follows bends row by row with EEx/EFx; the game builds were not run here |
+| Nano GB | (flp2nano, own tests) | - | - | not in this audit |
+| Nano NES | no player | - | - | no target |
+
+No engine drops or mangles slides: no new slide support was needed. Deliberate bugs (all caught): `SlideSignFlipped`, `CtwSmsMutants.SlidesDropped`, new `FlpMutants.GbSlidesHeld` (bit 24, Vaults GB/GG), new `SvMutants.SlideBendsDropped` (bit 25).
+
+Findings that are NOT slide matters (user's call, nothing changed):
+1. **VRUN NES triangle plays an octave below FL.** The converter writes the squares' period table for the triangle; the NES triangle sounds an octave lower than a square at the same period; FL's plugin plays the triangle at its key. Every song's triangle is affected (check warns; slides judged an octave up).
+2. **CTW SMS triangle flips octave**: nes_apu.c doubles the triangle's period and halves it only past the PSG's 10 bits, so the triangle is an octave below FL under period $3FF and at FL's pitch above it; a slide across that point jumps an octave (117 of 251 frames of the test song low).
+3. **Vaults GG held notes** are off by more than the PSG step (C4 -6, C7 -34 cents): the GG driver's note table, not slides.
+4. Notes under the PSG's lowest (A2) are the existing "note range" fence on CTW SMS / Vaults GG.

@@ -13,7 +13,7 @@ using BrokenNes2.Record;
 namespace BrokenNes2.Music.Flp;
 
 /// <summary>Deliberate bugs for FruityHost flp-test (bits of FlpMutants.Mask above phase 1's).</summary>
-public static class SvMutants { public const int VoiceFenceBlind = 256, DutyAs50 = 512, ShortNoiseAsLong = 1024, VelocityLinear = 2048; }
+public static class SvMutants { public const int VoiceFenceBlind = 256, DutyAs50 = 512, ShortNoiseAsLong = 1024, VelocityLinear = 2048, SlideBendsDropped = 1 << 25; }
 
 public enum SvEngine { Snes, WideMess, Md, Dos, Win95 }
 
@@ -132,7 +132,7 @@ public static class SuperVrunBackend
                 if (!noise)
                 {
                     Bend(T(s.From), s.V.PitchAt(s.From) - key * 100);
-                    foreach (var g in s.V.Glides)
+                    foreach (var g in FlpMutants.On(SvMutants.SlideBendsDropped) ? [] : s.V.Glides)
                     {
                         double a = Math.Max(g.Start, s.From), z = Math.Min(g.Start + g.Len, s.To);
                         for (double t = Math.Ceiling(a); t <= z; t += 1) Bend(T(t), s.V.PitchAt(t) - key * 100);
