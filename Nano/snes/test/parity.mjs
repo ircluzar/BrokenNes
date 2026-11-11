@@ -74,6 +74,13 @@ function fuzzStreams(N) {
     }
     c.writeRam(0x200, dir);
     c.write(0x5D, 2); c.write(0x6C, 0x00); c.write(0x0C, 0x40); c.write(0x1C, 0x40);
+    if (s >= 12) {
+      // loud samples (range 12, extreme nybbles: the interpolation's 16-bit wrap) on every voice, GAIN bent-line increase, full volume
+      const b = []; for (let j = 0; j < 4; j++) { b.push(0xC0 | (j === 3 ? 3 : 2)); for (let q = 0; q < 8; q++) b.push(j & 1 ? 0x77 : 0x88); }
+      c.writeRam(0x7000, b); c.writeRam(0x200 + 8 * 4, [0, 0x70, 0, 0x70]);
+      for (let v = 0; v < 8; v++) { c.write(v << 4 | 4, 8); c.write(v << 4 | 5, 0); c.write(v << 4 | 7, 0xE0 | (20 + v)); c.write(v << 4, 127); c.write(v << 4 | 1, 127); c.write(v << 4 | 2, 0x00); c.write(v << 4 | 3, 0x08 + v); }
+      c.write(0x4C, 0xFF);
+    }
     for (let step = 0; step < 600; step++) {
       const r = rnd(), v = R(8) << 4;
       if (r < 0.3) c.write(v | R(8), R(256));
@@ -187,10 +194,9 @@ if (args.includes('--mutants')) {
     ['echo FIR wrap', '    sum = s16(sum);\n    sum += s16(', '    sum += s16('],
     ['echo length', 'this.echoLength = (regs[EDL] & 0x0F) * 0x800;', 'this.echoLength = (regs[EDL] & 0x0F) * 0x400;'],
     ['bent line', 'if (mode > 6 && (v.hiddenEnv >>> 0) >= 0x600) env += 0x8 - 0x20;', 'if (mode > 6 && (v.hiddenEnv >>> 0) >= 0x700) env += 0x8 - 0x20;'],
-    ['resampler not float32', 'const c1 = f32(0.5 * f32(y2 - y0));', 'const c1 = 0.5 * (y2 - y0);'],
+    ['resampler not float32', 'out[off + i] = f32(f32(f32(f32(f32(f32(c3 * t) + c2) * t) + c1) * t) + y1);', 'out[off + i] = ((c3 * t + c2) * t + c1) * t + y1;'],
     ['resampler drop', 'const drop = Math.trunc(pos) - 1;', 'const drop = Math.trunc(pos) - 2;'],
-    ['ENVX not kept', 'regs[r + 8] = (v.env >> 4) & 0xFF;', 'regs[r + 8] = 0;'],
-    ['KON poll count', 'get polls() { return (this.samples + 1) >> 1; }', 'get polls() { return this.samples >> 1; }'],
+    ['KON not batched', 'this.konBits |= bit;', 'this.konBits = bit;'],
     ['volume rounding', 'const level = v.vel * p.gain * this.env(v, this.frame), vol = clamp(roundEven(level * 127), 0, 127)', 'const level = v.vel * p.gain * this.env(v, this.frame), vol = clamp(Math.floor(level * 127), 0, 127)'],
   ];
   let caught = 0;

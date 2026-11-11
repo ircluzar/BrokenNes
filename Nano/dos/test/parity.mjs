@@ -44,7 +44,7 @@ function scripts() {
       { time: 0.1, type: 'on', note: 60, preset: 'snare' }, { time: 0.3, type: 'on', note: 84, preset: 'hat' }, { time: 0.4, type: 'on', note: 60, preset: 'strings', duration: 0.3 },
       { time: 0.2, type: 'on', note: 70, preset: 'laser' }, { time: 0.5, type: 'on', note: 72, preset: 'powerup' }, { time: 0.35, type: 'param', name: 'pitchBend', value: -150 },
       { time: 0.62, type: 'on', note: 84, preset: 'crash' }, { time: 0.7, type: 'on', note: 60, preset: 'bell', duration: 0.3 }, { time: 0.75, type: 'kill' }, { time: 0.8, type: 'on', note: 20, preset: 'organ', duration: 0.1 },
-      { time: 0.9, type: 'on', note: 120, preset: 'svtriangle', duration: 0.05 }, { time: 0.95, type: 'on', note: 36, preset: 'kick' }, { time: 0.97, type: 'on', note: 36, preset: 'explosion' }]
+      { time: 0.9, type: 'on', note: 120, preset: 'svtriangle', duration: 0.05 }, { time: 0.95, type: 'on', note: 36, preset: 'kick' }, { time: 0.97, type: 'on', note: 36, preset: 'explosion' }, { time: 0.3, type: 'on', note: 50, preset: 'piano', channel: 3, duration: 0.6 }, { time: 0.4, type: 'on', note: 52, preset: 'piano', channel: 3, duration: 0.3 }]
       : [{ time: 0, type: 'on', note: 60, preset: { kind: 'fm', regs: [0xE3, 0x61, 0x8A, 0x40, 0x53, 0x47, 0x24, 0x35, 3, 1, 0x0B], r: 100 }, duration: 0.5 },
         { time: 0.01, type: 'on', note: 64, preset: 'svnoise', duration: 0.4 }, { time: 0.05, type: 'on', note: 48, preset: 'svpulse12', duration: 0.4 }, { time: 0.1, type: 'on', note: 52, preset: 'svmix', duration: 0.4 },
         { time: 0.12, type: 'on', note: 55, preset: 'vaults', duration: 0.4 }, { time: 0.14, type: 'on', note: 59, preset: 'epiano', duration: 0.4 }, { time: 0.16, type: 'on', note: 62, preset: 'flute', duration: 0.4 },
@@ -186,7 +186,7 @@ if (args.includes('--mutants')) {
     ['speaker 3 points', 'for (let k = 0; k < 4; k++) { let t = t0 + Math.floor((t1 - t0) * k / 4);', 'for (let k = 0; k < 4; k++) { let t = t0 + Math.floor((t1 - t0) * (k & 2) / 4);'],
     ['speaker phase kept on reload', 'if (count !== this.spkCount || !this.spkOn && on) { this.spkCount = count; this.spkLoad = pitOfSample(this.samples); }', 'if (count !== this.spkCount || !this.spkOn && on) { this.spkCount = count; }'],
     ['mix not saturated', 's = s < -32768 ? -32768 : s > 32767 ? 32767 : s;\n      this.out.writeOne', '\n      this.out.writeOne'],
-    ['resampler not float32', 'const c1 = f32(0.5 * f32(y2 - y0));', 'const c1 = 0.5 * (y2 - y0);'],
+    ['resampler not float32', 'out[off + i] = f32(f32(f32(f32(f32(f32(c3 * t) + c2) * t) + c1) * t) + y1);', 'out[off + i] = ((c3 * t + c2) * t + c1) * t + y1;'],
     ['retrigger without key-off', 'if (trig) { if (this.keyed[ch]) this.setFreq(ch, this.regFreq[ch] & 0x1FFF, false); this.loadPatch(ch, p); }', 'if (trig) { this.loadPatch(ch, p); }'],
   ];
   let caught = 0;
