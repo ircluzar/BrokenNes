@@ -40,7 +40,7 @@ public static partial class Cx
     /// <summary>What the Instrument parameter picks on a PC chip: 6 the OPL patch bank, 7 the DAC waveforms, 8 the Tandy's modes, 0 nothing (the speaker).</summary>
     public static int PcPatchBank(string chipId) => !chipId.StartsWith("PC_", StringComparison.OrdinalIgnoreCase) ? -1 : PcVoice.KindOf(PcApu(chipId)) switch
     {
-        PcKind.Adlib => 6, PcKind.Tandy => 8, PcKind.Speaker => 0, _ => 6,
+        PcKind.Adlib => 6, PcKind.Tandy => 8, PcKind.Speaker => 0, _ => 7,
     };
 
     public static int PcPatchCount(int bank) => bank switch { 6 => OplBank.Count, 7 => PcWaves.Count, 8 => TandyModes.Names.Length, _ => 0 };
