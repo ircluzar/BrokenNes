@@ -24,6 +24,7 @@ internal static class MidiModel
     private static St[] Run(byte[] stream, int kind, int frames, byte[] plo, byte[] phi, St init, bool flipSlides = false)
     {
         int ptr = 0, wait = 0, vol = 15;              // mus_sq1_vol / mus_sq2_vol start at 15 (audio_engine.fab)
+        int nvol = 15, nforce = 15; bool nnote = false; // the noise-volume decoder: mus_noise_vol, mus_noise_vforce, mus_noise_note != NOTE_NONE
         int per = 0, vel = 0;                         // mus_<ch>_per (24-bit: hi.lo.fraction) and mus_<ch>_vel (signed 8.8)
         int lo = init.Per & 0xFF, hi = init.Per >> 8; // the period registers as last written
         var st = init;
@@ -45,10 +46,20 @@ internal static class MidiModel
             if (wait == 0)
             {
                 if (kind == 0 && stream[ptr] == 0xD3) ptr += 2;                       // the duty opcode: read before the frame's opcode, for free (VRUN's duty decoder)
+                if (kind == 2 && ptr == 0)                                              // the noise volume: at pointer 0, $D4 read for free turns the volumes on (VRUN's noise-volume decoder)
+                {
+                    nforce = 15; nvol = 15;
+                    if (stream[0] == 0xD4) { nforce = 0; ptr++; }
+                }
                 int op = stream[ptr];
                 if (op < 0x80)
                 {
-                    if (kind == 2) { st.Vol = 15; st.NPer = NoiseCycles[op & 0x0F]; }
+                    if (kind == 2)
+                    {
+                        int nx = ptr + 1 < stream.Length ? stream[ptr + 1] : 0;         // the hit peeks at its volume
+                        if (nx >= 0xC0 && nx < 0xD0) nvol = (nx & 0x0F) | nforce;
+                        st.Vol = nvol; st.NPer = NoiseCycles[op & 0x0F]; nnote = true;
+                    }
                     else
                     {
                         if (kind == 0) st.Vol = vol; else st.Lin = 0x7F;
@@ -57,9 +68,14 @@ internal static class MidiModel
                     }
                     ptr++;
                 }
-                else if (op == 0x80) { if (kind == 1) st.Lin = 0; else st.Vol = 0; ptr++; }
+                else if (op == 0x80) { if (kind == 1) st.Lin = 0; else st.Vol = 0; if (kind == 2) nnote = false; ptr++; }
                 else if (op < 0xC0) { wait = op - 0x80; ptr++; }
-                else if (op < 0xD0) { if (kind == 0) { vol = op & 0x0F; st.Vol = vol; } ptr++; }
+                else if (op < 0xD0)
+                {
+                    if (kind == 0) { vol = op & 0x0F; st.Vol = vol; }
+                    else if (kind == 2) { nvol = (op & 0x0F) | nforce; if (nnote) st.Vol = nvol; }
+                    ptr++;
+                }
                 else if (op == 0xD0) { wait = stream[ptr + 1]; ptr += 2; }
                 else if (op == 0xFF || kind == 2) ptr = 0;                          // the loop (the noise's plain decoder reads anything else as the loop too)
                 else

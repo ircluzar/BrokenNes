@@ -34,6 +34,19 @@ public sealed record ConvertOptions
     /// stream with the duty opcode 0xD3 (the song then needs the duty
     /// decoder on that square). Off: every square plays 50%, as always.</summary>
     public bool Duty { get; init; }
+
+    /// <summary>Play the noise's volumes (its 0xC0-0xCF opcodes, from the
+    /// velocities) when the noise's MIDI channel sets <see cref="Midi2Nes.NoiseVolumeCc"/>
+    /// to 64 or more: the stream then starts with 0xD4 (the song needs the
+    /// noise-volume decoder). Off: the noise hits at full volume, as always.</summary>
+    public bool NoiseVolume { get; init; }
+
+    /// <summary>The most bytes one channel's stream may take (the duty or
+    /// noise-volume opcode included): longer streams are truncated and
+    /// re-padded, and bends are fitted under it. The default is the game's
+    /// <see cref="Midi2Nes.MaxChannelBytes"/>; a ROM with more room for a
+    /// song (BrokenNes2's music-test templates) passes its own.</summary>
+    public int MaxChannelBytes { get; init; } = Midi2Nes.MaxChannelBytes;
 }
 
 /// <summary>What the converter did with one NES channel's pitch bends (one

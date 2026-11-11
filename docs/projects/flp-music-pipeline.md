@@ -101,6 +101,10 @@ Open questions for the user:
 1. Duty: the songs' pulses are 25% in FL; VRUN plays 50%. Add a duty opcode to VRUN's engine (like the bends), or compose at 50%?
 2. Title Theme square 1 (1,289 B) and battle triangle (1,700 B) exceed the sound-test template's 1,280 bytes per channel: they go silent before the loop in the test ROM. Is that the game's limit too, or only the template's?
 3. Noise volume: VRUN's noise always hits at full volume; FL plays the hits softer (battle 152, victory 6).
+   **Done 2026-11-10 (items 1 + 2):** VRUN 7c9c4a1 adds the noise-volume opcode `$D4` (1 byte, first opcode of the noise stream, read free at pointer 0; MIDI CC 15 >= 64 on the noise's
+   channel with roster `"noise_volume": true`; the `$C0-$CF` volumes then play, a hit peeks its volume so it sounds on its own frame). The back end writes CC 15 = 127 when a noise part has a
+   hit under 15. The templates' song room is measured, not 1280: VRUN NES 3,609 bytes a channel (bank 30's free run shared out), CTW SMS 3,736 (ctwsms_room.py re-runs fab2c's far packing
+   in data banks 2-18). Title Theme square 1 and battle's triangle fit both. Checks: flp-test `noise-volume`, `room`.
 4. ~~What FL's main window title looks like~~: moot since 2026-11-10 (file picker, pick kept in the project).
 5. FL's channel volume knob: should it count (it changes the mix in FL, not in the game)?
 

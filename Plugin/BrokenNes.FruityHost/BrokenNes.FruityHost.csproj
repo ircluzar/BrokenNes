@@ -50,4 +50,8 @@
     <Compile Include="..\BrokenNes2.Plugin\Capture\*.cs" LinkBase="Capture" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- CtwSmsBackend.Room reads the CTW SMS template's manifest from the assembly that holds the plugin's sources -->
+    <EmbeddedResource Include="../BrokenNes2.Plugin/Resources/flpctwsms.txt" LogicalName="flpctwsms.txt" />
+  </ItemGroup>
 </Project>

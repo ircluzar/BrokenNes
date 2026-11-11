@@ -29,14 +29,29 @@ public static class CtwSmsBackend
 {
     /// <summary>2 (2026-11-10): the template's title song has VRUN's bend + duty decoders. A version-1 template (plain decoders) would read a bend as the loop: refused.</summary>
     /// <summary>3 (2026-11-10): the game translated from the MMC3 main build (main.fab + mapper_mmc3.fab); same layout as 2.</summary>
-    public const int TemplateVersion = 3;
+    /// <summary>4 (2026-11-10): the title song's noise has VRUN's noise-volume decoder (opcode 0xD4), and the four regions are the song room measured in the game's data
+    /// banks (build-ctwsms.ps1 + ctwsms_room.py), not the game's 1280. A version-3 template reads 0xD4 as the noise's loop: refused.</summary>
+    public const int TemplateVersion = 4;
     public const double Fps = 3579545.0 / (228 * 262), NesFps = 1789773.0 / (262.0 * (341.0 / 3.0));
     public static readonly string[] Names = ["tone 1 (square 1)", "tone 2 (square 2)", "tone 3 (triangle)", "noise"];
     /// <summary>nes_apu.c's level -> attenuation (tools/gen_tables.py vol2att).</summary>
     public static readonly int[] Vol2Att = [.. Enumerable.Range(0, 16).Select(v => v == 0 ? 15 : Math.Min(14, (int)Math.Round(-20 * Math.Log10(v / 15.0) / 2, MidpointRounding.ToEven)))];
     /// <summary>The lowest pitch a PSG tone plays (N = 1023).</summary>
     public static readonly double LowestHz = 3579545.0 / 32 / 1023;
-    public const int Region = 1280;
+    /// <summary>The song room per channel (square 1, square 2, triangle, noise): the regions of the bundled template's manifest (Resources/flpctwsms.txt). Null with
+    /// <see cref="RoomProblem"/> when the template is not in this build.</summary>
+    public static int[]? Room => room.Value.Room;
+    public static string? RoomProblem => room.Value.Problem;
+    private static readonly Lazy<(int[]? Room, string? Problem)> room = new(() =>
+    {
+        try
+        {
+            using var st = typeof(CtwSmsBackend).Assembly.GetManifestResourceStream("flpctwsms.txt") ?? throw new InvalidOperationException("no resource flpctwsms.txt");
+            var m = VocGbBackend.Manifest(new StreamReader(st).ReadToEnd(), "bn2-flp-ctwsms", TemplateVersion);
+            return ([.. new[] { "square1", "square2", "triangle", "noise" }.Select(k => VocGbBackend.Region(m, k).Size)], null);
+        }
+        catch (Exception e) when (e is InvalidOperationException or FormatException or KeyNotFoundException or IOException) { return (null, "the CTW SMS template's manifest: " + e.Message); }
+    });
 
     /// <summary>The PSG period nes_apu.c writes for a NES period on a square (triangle: doubled first), and how many times it was halved.</summary>
     public static (int N, int Halved) PsgPeriod(int nesPeriod, bool triangle)
@@ -59,6 +74,7 @@ public static class CtwSmsBackend
         int slides = 0, detuned = 0, low = 0, notHalf = 0; double worstOff = 0; string lowWhere = "";
         var noiseIdx = new SortedSet<int>();
         var levels = new SortedSet<int>();
+        var levelsNoise = new List<int>();
         foreach (var ins in song.Instruments)
         {
             string who = $"channel {ins.Rack} \"{ins.Name}\"";
@@ -91,7 +107,7 @@ public static class CtwSmsBackend
             {
                 double c = seg.V.PitchAt(seg.From);
                 if (ch < 3 && 440 * Math.Pow(2, (c / 100 - 69) / 12) < LowestHz) { low++; if (lowWhere.Length == 0) lowWhere = $"{FlpFence.NoteName((int)Math.Round(c / 100))} on {Names[ch]} at {seg.From / (double)Math.Max(1, song.Ppq) / 4 + 1:0.##} bars"; }
-                if (ch == 3) noiseIdx.Add(VrunNesBackend.NoiseIndex(c - 6000));
+                if (ch == 3) { noiseIdx.Add(VrunNesBackend.NoiseIndex(c - 6000)); if (seg.V.Level > 0) levelsNoise.Add(seg.V.Level); }
                 else if (ch < 2 && seg.V.Level > 0) levels.Add(seg.V.Level);
             }
             foreach (var n in ins.Notes)
@@ -108,7 +124,8 @@ public static class CtwSmsBackend
         foreach (var c in o.Nes.Caveats)
             if (!c.StartsWith("NOTHING for VRUN NES")) F.Add(new FenceLine("VRUN engine", FenceLevel.Note, c.Replace("square 1", "tone 1").Replace("square 2", "tone 2")));
         o.Seconds = o.Nes.Seconds;
-        o.Build = SongConvert.Convert(o.Nes.Midi, out var why);
+        if (Room is not { } rm) { F.Add(new FenceLine("bytes", FenceLevel.Over, "the song room is unknown: " + RoomProblem)); return o; }
+        o.Build = SongConvert.Convert(o.Nes.Midi, out var why, rm.Min());
         if (o.Build == null) { F.Add(new FenceLine("converter", FenceLevel.Over, "VRUN's converter refused the song: " + why)); return o; }
         foreach (var l in o.Build.Facts.Lines()) F.Add(new FenceLine("converter", FenceLevel.Ok, l));
         foreach (var l in VrunNesBackend.ChannelChoice(o.Nes, o.Build.Facts)) F.Add(new FenceLine("channels", FenceLevel.Note, l));
@@ -121,11 +138,11 @@ public static class CtwSmsBackend
         for (int c = 0; c < 4; c++)
         {
             var st = o.Build.Channels[c];
-            if (st.Length > Region) F.Add(new FenceLine("bytes", FenceLevel.Over, $"{Names[c]}: {st.Length} bytes, the game's song region is {Region}: {st.Length - Region} over"));
+            if (st.Length > rm[c]) F.Add(new FenceLine("bytes", FenceLevel.Over, $"{Names[c]}: {st.Length} bytes, the game's song room is {rm[c]}: {st.Length - rm[c]} over"));
             string? bad = BadOpcode(st, c);
             if (bad != null) F.Add(new FenceLine("opcodes", FenceLevel.Over, $"{Names[c]}: {bad}"));
         }
-        F.Add(new FenceLine("bytes", FenceLevel.Ok, $"{string.Join(" + ", o.Build.Channels.Select(x => x.Length))} bytes (VRUN's converter: at most {Region} a channel, it says what it cut)"));
+        F.Add(new FenceLine("bytes", FenceLevel.Ok, $"{string.Join(" + ", o.Build.Channels.Select(x => x.Length))} bytes (the song room: {string.Join(" / ", rm)} bytes a channel, measured in the game's data banks; VRUN's converter says what it cut)"));
         if (slides > 0) F.Add(new FenceLine("slides", FenceLevel.Ok, $"{slides} slide notes play as VRUN NES plays them (its bend decoders: the period glides each frame, then nes_apu.c's PSG mapping)"));
         if (detuned > 0) F.Add(new FenceLine("tuning", FenceLevel.Ok, $"{detuned} notes are off their semitone (note fine pitch up to {worstOff:0} cents, or Coarse/Fine on the instance): played bent, as VRUN NES plays them"));
         if (low > 0) F.Add(new FenceLine("note range", FenceLevel.Over, $"{low} notes are under the PSG's lowest tone ({LowestHz:0.0} Hz, about A2): the game plays them an octave (or more) up, the plugin's Master System chip leaves them silent; the first is {lowWhere}"));
@@ -134,7 +151,12 @@ public static class CtwSmsBackend
             ? new FenceLine("duty", FenceLevel.Note, $"{notHalf} tone 1 / 2 notes have a Duty other than 50%: the game reads VRUN's duty opcode, but the PSG has no duty: they play at 50% (as the plugin's Master System chip plays them)")
             : new FenceLine("duty", FenceLevel.Ok, "the PSG's squares are 50%, as the plugin's Master System chip plays them"));
         var merged = levels.GroupBy(l => Vol2Att[l]).Where(g => g.Count() > 1).Select(g => string.Join("/", g)).ToList();
-        F.Add(new FenceLine("volume", merged.Count > 0 ? FenceLevel.Note : FenceLevel.Ok, $"tone 1 / 2 levels {string.Join(", ", levels)} -> the PSG's 2 dB steps" + (merged.Count > 0 ? $": {string.Join(", ", merged)} sound the same" : "") + "; tone 3 (the triangle) a fixed attenuation 3 (6 dB under full), the noise full"));
+        F.Add(new FenceLine("volume", merged.Count > 0 ? FenceLevel.Note : FenceLevel.Ok, $"tone 1 / 2 levels {string.Join(", ", levels)} -> the PSG's 2 dB steps" + (merged.Count > 0 ? $": {string.Join(", ", merged)} sound the same" : "") + "; tone 3 (the triangle) a fixed attenuation 3 (6 dB under full)"));
+        var nlev = new SortedSet<int>(levelsNoise);
+        if (nlev.Count > 0)
+            F.Add(new FenceLine("volume", nlev.Count(l => l < 15) > 0 && nlev.GroupBy(l => Vol2Att[l]).Any(g => g.Count() > 1) ? FenceLevel.Note : FenceLevel.Ok,
+                nlev.All(l => l == 15) ? "the noise hits at full level, as in FL" : $"noise levels {string.Join(", ", nlev)} play (VRUN's noise volume, opcode $D4) -> the PSG's 2 dB steps" +
+                (nlev.GroupBy(l => Vol2Att[l]).Where(g => g.Count() > 1).Select(g => string.Join("/", g)).ToList() is { Count: > 0 } nm ? $": {string.Join(", ", nm)} sound the same" : "")));
         if (noiseIdx.Count > 0)
         {
             int rates = noiseIdx.Select(NoiseRate).Distinct().Count();
@@ -187,7 +209,8 @@ public static class CtwSmsBackend
             if (v == 0xD0) { i++; continue; }
             if ((v == 0xD1 || v == 0xD2) && c < 3) { i += 2; continue; }
             if (v == 0xD3 && c < 2 && i == 0) { i++; continue; }
-            return $"opcode ${v:X2} at byte {i}: the game's decoders know notes, waits, volume, bends (tones), the duty (a square's first opcode) and the loop";
+            if (v == 0xD4 && c == 3 && i == 0) continue;
+            return $"opcode ${v:X2} at byte {i}: the game's decoders know notes, waits, volume, bends (tones), the duty (a square's first opcode), the noise volume (the noise's first opcode) and the loop";
         }
         return null;
     }
@@ -199,7 +222,7 @@ public static class CtwSmsBackend
         if (s.Build == null) { why = "VRUN's converter refused the song"; return null; }
         Dictionary<string, string> m;
         try { m = VocGbBackend.Manifest(manifest, "bn2-flp-ctwsms", TemplateVersion); }
-        catch (FormatException) { why = $"the CTW SMS template is not version {TemplateVersion} (this build needs its title song's bend and duty decoders)"; return null; }
+        catch (FormatException) { why = $"the CTW SMS template is not version {TemplateVersion} (this build needs its title song's bend, duty and noise-volume decoders and the measured song room)"; return null; }
         if (template.Length.ToString() != m["rom-bytes"]) { why = "the template is not the one its manifest describes"; return null; }
         if (s.Fence.Any(f => f.Rule == "opcodes" && f.Level == FenceLevel.Over)) { why = "the song has opcodes the game's decoders cannot play (see the fence)"; return null; }
         var rom = (byte[])template.Clone();

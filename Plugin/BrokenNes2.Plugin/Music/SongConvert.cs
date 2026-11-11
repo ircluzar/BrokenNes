@@ -31,6 +31,8 @@ public sealed class SongFacts
     public double LoopSeconds => LoopFrames / Midi2Nes.Fps;
     /// <summary>Bytes per channel before truncation, and whether it was truncated to <see cref="Midi2Nes.MaxChannelBytes"/>.</summary>
     public int[] Bytes = new int[4];
+    /// <summary>The most bytes a channel's stream could take in this conversion: the ROM's song room (the template's region), Midi2Nes.MaxChannelBytes for the game.</summary>
+    public int MaxBytes = Midi2Nes.MaxChannelBytes;
     public bool[] Truncated = new bool[4];
     public int[] FinalBytes = new int[4];
     public double TempoBpm;
@@ -110,9 +112,9 @@ public sealed class SongFacts
         {
             var parts = new List<string>();
             for (int c = 0; c < 4; c++) if (Truncated[c]) parts.Add($"{Names[c]} {Bytes[c]:N0}");
-            lines.Add($"truncated (over {Midi2Nes.MaxChannelBytes:N0} bytes): {string.Join(", ", parts)}; {(parts.Count == 1 ? "it goes" : "they go")} silent before the loop");
+            lines.Add($"truncated (over {MaxBytes:N0} bytes): {string.Join(", ", parts)}; {(parts.Count == 1 ? "it goes" : "they go")} silent before the loop");
         }
-        else lines.Add($"fits: {FinalBytes[0]} + {FinalBytes[1]} + {FinalBytes[2]} + {FinalBytes[3]} bytes (at most {Midi2Nes.MaxChannelBytes:N0} per channel)");
+        else lines.Add($"fits: {FinalBytes[0]} + {FinalBytes[1]} + {FinalBytes[2]} + {FinalBytes[3]} bytes (at most {MaxBytes:N0} per channel)");
         var other = new List<string> { $"tempo {TempoBpm.ToString("0.#", CultureInfo.InvariantCulture)} BPM" };
         if (TempoChangesIgnored > 0) other.Add($"{TempoChangesIgnored} later tempo change{(TempoChangesIgnored == 1 ? "" : "s")} ignored");
         if (LowNotes > 0) other.Add($"{LowNotes} note{(LowNotes == 1 ? "" : "s")} below A1 at the lowest pitch");
@@ -138,7 +140,8 @@ public static class SongConvert
     private static readonly Regex Overload = new(@"channel overload \((?<ch>square1|square2|triangle|noise)\): dropped (?<v>\d+) volume / (?<o>\d+) note-off / (?<n>\d+) note-on", RegexOptions.CultureInvariant);
 
     /// <summary>Converts a MIDI file's bytes. Null with the reason (for the user) when it cannot be used: not a MIDI file, no notes, too big.</summary>
-    public static SongBuild? Convert(byte[] midi, out string? problem)
+    /// <summary><paramref name="maxChannelBytes"/>: the song room of the ROM the song goes into (its template's region): the converter truncates and fits bends under it.</summary>
+    public static SongBuild? Convert(byte[] midi, out string? problem, int maxChannelBytes = Midi2Nes.MaxChannelBytes)
     {
         problem = null;
         if (midi.Length > MaxMidiBytes) { problem = $"the file is {midi.Length:N0} bytes: a MIDI song is far smaller (at most {MaxMidiBytes:N0} accepted)"; return null; }
@@ -148,7 +151,7 @@ public static class SongConvert
         { problem = "it is not a MIDI file the converter can read (" + (e is FormatException ? e.Message : "it ends in the middle of an event") + ")"; return null; }
 
         // what the converter ignores without a word: counted here (it is the same event list it reads)
-        var facts = new SongFacts();
+        var facts = new SongFacts { MaxBytes = maxChannelBytes };
         bool firstTempo = true;
         foreach (var track in file.Tracks)
             foreach (var ev in track)
@@ -182,7 +185,9 @@ public static class SongConvert
         SongResult result;
         // bends on (a no-op for a song without bends); the deliberate bug BendsIgnored converts as round 7 did
         // pulse duty on (MIDI CC 14 per square; a song without it converts exactly as without)
-        var options = new ConvertOptions { Bends = !MusicMutate.Has(MusicMutate.BendsIgnored), Duty = true };
+        // noise volume on (MIDI CC 15 on the noise; a song without it converts exactly as without), the song room of the ROM it goes into
+        var options = new ConvertOptions { Bends = !MusicMutate.Has(MusicMutate.BendsIgnored), Duty = true, NoiseVolume = true,
+            MaxChannelBytes = MusicMutate.Has(MusicMutate.RoomAsOld) ? Midi2Nes.MaxChannelBytes : maxChannelBytes };
         try { result = Midi2Nes.ConvertSong(file, TrackName, facts.Log.Add, options); }
         catch (Exception e) when (e is FormatException or IndexOutOfRangeException or ArgumentOutOfRangeException or ArgumentException or InvalidOperationException or OverflowException)
         { problem = $"the converter could not convert it ({e.Message.TrimEnd('.')})"; return null; }

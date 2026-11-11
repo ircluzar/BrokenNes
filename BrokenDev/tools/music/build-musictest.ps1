@@ -48,11 +48,17 @@ $bd = Split-Path -Parent (Split-Path -Parent $here)
 $FormatName = 'bn2-musictest'
 # Version 3 (2026-11-10, pulse duty): the opcode format is vrun-music-3 (adds the converter's 0xD3 duty, MIDI CC 14), and the template's square
 # decoders are also VRUN's duty decoders (roster "duty_decoders": "all"). A version-2 template reads 0xD3 as the loop or a bend: refused.
-$FormatVersion = 3
-$Opcodes = 'vrun-music-3'
+# Version 4 (2026-11-10, noise volume + real song room): the opcode format is vrun-music-4 (adds the converter's 0xD4 noise volume, MIDI CC 15),
+# the template's noise decoder is VRUN's noise-volume decoder (roster "noise_volume_decoders": "all"), and the four stream arrays are as long as the
+# song bank allows (the region is measured: a probe build at 1280 bytes, then the bank's free bytes after the arrays shared out). A version-3
+# template reads 0xD4 as the noise's loop: refused.
+$FormatVersion = 4
+$Opcodes = 'vrun-music-4'
+$NoiseVolumeChannels = @('noise')
 $BendChannels = @('square1', 'square2', 'triangle')
 $DutyChannels = @('square1', 'square2')
-$Region = 1280                                   # Midi2Nes.MaxChannelBytes
+$Region = 1280                                   # Midi2Nes.MaxChannelBytes: the probe build's region; the template's own is measured from it (below)
+$BankBytes = 0x4000                              # mapper 30's switchable PRG bank: the four arrays must stay in the song bank they are in
 $Channels = @('square1', 'square2', 'triangle', 'noise')
 $Fillers = @{ square1 = 0xA1; square2 = 0xA2; triangle = 0xA3; noise = 0xA4 }   # pad_streams.py
 $TemplateTitle = 'MIDI EXPORT FROM FL TEST'                                   # 24 characters, the player's maximum
@@ -134,7 +140,7 @@ $title = if ($Mode -eq 'template') { $TemplateTitle } else { $Name.ToUpperInvari
 # Pitch bends: the plugin converts every song with bends on (a song without bends converts exactly as without), so both modes ask VRUN's build
 # for them. The template gets the bend decoders on its three tonal channels whatever its own song holds (any song can be patched in); a full
 # rebuild gets them where its streams have bend opcodes, as the game would.
-$bendKeys = if ($Mode -eq 'template') { ', "bends": true, "bend_decoders": "all", "duty": true, "duty_decoders": "all"' } else { ', "bends": true, "duty": true' }
+$bendKeys = if ($Mode -eq 'template') { ', "bends": true, "bend_decoders": "all", "duty": true, "duty_decoders": "all", "noise_volume": true, "noise_volume_decoders": "all"' } else { ', "bends": true, "duty": true, "noise_volume": true' }
 [System.IO.File]::WriteAllText((Join-Path $proj 'roster.json'), ('{ "title": "BROKENNES2 MIDI TEST", "tracks": [ {"name": "' + $track + '", "title": "' + $title + '", "midi": "song.mid"' + $bendKeys + '} ] }'), $utf8)
 $basePre = [System.IO.File]::ReadAllText((Join-Path $scratch 'src\audioplayer\prebuild.sh')).Replace("`r`n", "`n")
 
@@ -155,6 +161,35 @@ function Invoke-Build([int]$Sentinel, [string]$LogName) {
         Write-Host "build failed (exit $($b.ExitCode)); see $(Join-Path $Out $LogName)"; Write-Host (Select-BdTail $b.Output 20); exit 1
     }
     $b
+}
+function Read-Arrays {
+    $o = @{}
+    foreach ($line in [System.IO.File]::ReadAllLines($mlb)) {
+        if ($line -match '^NesPrgRom:([0-9A-Fa-f]+)-([0-9A-Fa-f]+):music_song_(square1|square2|triangle|noise)@') {
+            $o[$Matches[3]] = @([Convert]::ToInt32($Matches[1], 16), ([Convert]::ToInt32($Matches[2], 16) - [Convert]::ToInt32($Matches[1], 16) + 1))
+        }
+    }
+    $o
+}
+if ($Mode -eq 'template') {
+    # ---- the song room: a probe build at 1280 bytes per array, then the song bank's free bytes after the four arrays shared out among them ----
+    $null = Invoke-Build $SentinelA 'build-probe.log'
+    $probe = [System.IO.File]::ReadAllBytes($rom); $arr = Read-Arrays
+    if ($arr.Count -ne 4) { Write-Host "the probe build's .mlb names $($arr.Count) of the four music_song arrays"; exit 1 }
+    $first = [int]($Channels | ForEach-Object { $arr[$_][0] } | Measure-Object -Minimum).Minimum
+    $end = [int]($Channels | ForEach-Object { $arr[$_][0] + $arr[$_][1] } | Measure-Object -Maximum).Maximum
+    $bankEnd = [int]([Math]::Floor($first / $BankBytes) + 1) * $BankBytes
+    if ([Math]::Floor(($end - 1) / $BankBytes) -ne [Math]::Floor($first / $BankBytes)) { Write-Host 'the probe build splits the four arrays over two banks'; exit 1 }
+    $syms = foreach ($line in [System.IO.File]::ReadAllLines($mlb)) { if ($line -match '^NesPrgRom:([0-9A-Fa-f]+)') { [Convert]::ToInt32($Matches[1], 16) } }
+    $after = @($syms | Where-Object { $_ -ge $end -and $_ -lt $bankEnd })
+    if ($after.Count -gt 0) { Write-Host ("the probe build has symbols after the arrays in their bank (first at 0x{0:X6}): the free room is not one run" -f [int]($after | Measure-Object -Minimum).Minimum); exit 1 }
+    # the free run: zero bytes from the arrays' end; NESFab keeps the bank's last byte (mapper 30's bank number) - never counted
+    $free = 0
+    while ($end + $free -lt $bankEnd - 1 -and $probe[16 + $end + $free] -eq 0) { $free++ }
+    $ProbeRegion = $Region
+    $Region = [int][Math]::Floor(($Channels.Count * $ProbeRegion + ($end - $first - $Channels.Count * $ProbeRegion) + $free - $Channels.Count) / $Channels.Count)
+    $FreeBytes = $free
+    Write-Host ("song room: the probe's arrays 0x{0:X6}-0x{1:X6}, {2} free bytes after them in the bank: region {3} bytes per channel" -f $first, ($end - 1), $free, $Region)
 }
 $b = Invoke-Build $SentinelA 'build.log'
 $romBytes = [System.IO.File]::ReadAllBytes($rom)
@@ -188,6 +223,10 @@ foreach ($pair in @(@('square1', 'mus_sq1_vel'), @('square2', 'mus_sq2_vel'), @(
     $fn = [regex]::Match($decText, "(?ms)^fn update_$($pair[0])_song\(\)\n(.*?)(?=^fn |\z)")
     if (-not $fn.Success -or $fn.Groups[1].Value -notmatch [regex]::Escape($pair[1])) { Write-Host "the template's update_$($pair[0])_song is not a bend decoder (no $($pair[1])): the VRUN tree at $Vrun has no pitch-bend engine (older than VRUN's merge of audio-bends: point -Vrun / BROKENNES_VRUN at the live VRUN), or build_music.py ignored ""bend_decoders"": ""all"""; exit 1 }
 }
+# ... its noise VRUN's noise-volume decoder (it holds mus_noise_vforce) ...
+$fn = [regex]::Match($decText, "(?ms)^fn update_noise_song\(\)
+(.*?)(?=^fn |\z)")
+if (-not $fn.Success -or $fn.Groups[1].Value -notmatch 'mus_noise_vforce') { Write-Host "the template's update_noise_song is not a noise-volume decoder (no mus_noise_vforce): the VRUN tree at $Vrun has no noise-volume engine (point -Vrun / BROKENNES_VRUN at the live VRUN)"; exit 1 }
 # ... and its two squares VRUN's duty decoders (they hold mus_<sq>_duty)
 foreach ($pair in @(@('square1', 'mus_sq1_duty'), @('square2', 'mus_sq2_duty'))) {
     $fn = [regex]::Match($decText, "(?ms)^fn update_$($pair[0])_song\(\)\n(.*?)(?=^fn |\z)")
@@ -218,6 +257,7 @@ foreach ($ch in $Channels) {
     if (-not $sym.ContainsKey($ch)) { Write-Host "the template's .mlb names no music_song_$ch"; exit 1 }
     $off = $sym[$ch][0]; $len = $sym[$ch][1]
     if ($len -ne $Region) { Write-Host "music_song_$ch is $len bytes, expected $Region (padding failed)"; exit 1 }
+    if ([Math]::Floor($off / $BankBytes) -ne [Math]::Floor(($off + $len - 1) / $BankBytes) -or [Math]::Floor($off / $BankBytes) -ne [Math]::Floor($first / $BankBytes)) { Write-Host "music_song_$ch left the probe's song bank at $Region bytes"; exit 1 }
     $last = $romBytes[16 + $off + $len - 1]
     if ($last -ne $Fillers[$ch]) { Write-Host ("music_song_{0} ends with 0x{1:X2}, expected the filler 0x{2:X2}: the offset does not point at the array" -f $ch, $last, $Fillers[$ch]); exit 1 }
 }
@@ -238,13 +278,15 @@ $srcSha = ([BitConverter]::ToString($sha.ComputeHash($utf8.GetBytes($acc.ToStrin
 
 $m = New-Object System.Text.StringBuilder
 [void]$m.Append("# BrokenNes2 Test MIDI export: the template ROM's manifest. Made by BrokenDev/tools/music/build-musictest.ps1 from VRUN's AudioPlayer (src/audioplayer)`n")
-[void]$m.Append("# with a one-song roster whose four stream arrays are padded to the converter's maximum. Offsets are PRG-ROM offsets (after the 16-byte iNES header).`n")
+[void]$m.Append("# with a one-song roster whose four stream arrays are padded to the song bank's room (region). Offsets are PRG-ROM offsets (after the 16-byte iNES header).`n")
 [void]$m.Append("format = $FormatName`n")
 [void]$m.Append("version = $FormatVersion`n")
 [void]$m.Append("opcodes = $Opcodes`n")
 [void]$m.Append("bend-decoders = $($BendChannels -join ' ')`n")
 [void]$m.Append("duty-decoders = $($DutyChannels -join ' ')`n")
+[void]$m.Append("noise-volume-decoders = $($NoiseVolumeChannels -join ' ')`n")
 [void]$m.Append("region = $Region`n")
+[void]$m.Append("region-measured = probe $ProbeRegion per channel, $FreeBytes free bytes after the arrays in their bank`n")
 foreach ($ch in $Channels) { [void]$m.Append(("{0} = 0x{1:X6}`n" -f $ch, $sym[$ch][0])) }
 [void]$m.Append(("filler = {0:X2} {1:X2} {2:X2} {3:X2}`n" -f $Fillers.square1, $Fillers.square2, $Fillers.triangle, $Fillers.noise))
 [void]$m.Append(("title = 0x{0:X6}`n" -f $sym['title'][0]))

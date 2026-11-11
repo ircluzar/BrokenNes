@@ -35,6 +35,7 @@ internal static class FlpChecks
         new("bend-signs", "hand-written streams: positive / negative, sub-unit / whole slides crossing the period's high byte, on square 1, square 2 and the triangle, play exactly in the template", BendSigns),
         new("duty", "each square's Duty reaches the MIDI (CC 14), the streams (0xD3 when not 50%) and the ROM's $4000/$4004 writes", Duty),
         new("rom", "each song becomes a sound-test ROM (round 7's template), facts and caveats said", Rom),
+        .. FlpNoiseRoomChecks.All, // noise volume + song room (Flp.Checks.NoiseRoom.cs)
         .. FlpVocChecks.All,     // Vaults GB / Vaults GG / CTW SMS (Flp.Checks.Voc.cs)
         new("sv-synthetic", "Super VRUN back end (SNES, WideMess, MD, DOS, 95): programs, noise keys, levels, pan, pitch, per-engine fence lines", SvChecks.Synthetic),
         new("sv-fence", "Super VRUN fence: each limit broken on purpose is reported OVER (voices, noise, range, instances, instruments, empty song)", SvChecks.Fence),
@@ -224,7 +225,8 @@ internal static class FlpChecks
         var tri = on.Where(x => x.Ch == 2).ToList();
         r.Expect(tri.Count == 2 && tri[0].Key == 48, $"triangle: {string.Join(" ", tri)} (key 60 with Coarse -12 = 48)");
         r.Expect(on.Count(x => x.Ch == 9) == 4 && on.Where(x => x.Ch == 9).All(x => x.Key >> 4 == 3), $"noise hits: {string.Join(" ", on.Where(x => x.Ch == 9))} (4 expected, keys $30-$3F = the period index)");
-        r.Expect(v.Caveats.Any(c => c.Contains("softer than full level")), "no caveat for the soft noise (Volume 0.5)");
+        r.Expect(!v.Caveats.Any(c => c.Contains("softer than full level")) && Vrun.Audio.Midi2Nes.FindFirstCc(Vrun.Audio.MidiFile.Parse(v.Midi), Vrun.Audio.Midi2Nes.NoiseVolumeCc).GetValueOrDefault(9) == 127,
+            "the soft noise (Volume 0.5) did not turn VRUN's noise volume on (CC 15 = 127 on the noise, no full-volume caveat)");
         r.Expect(!v.Caveats.Any(c => c.Contains("Duty")), "a caveat for the lead's 25% duty (VRUN plays it now)");
         r.Expect(v.Parts.FirstOrDefault(p => p.NesChannel == 0)?.Duty == 1, "the lead's part does not carry its 25% duty");
         r.Expect(v.Caveats.Any(c => c.Contains("ROM mode")), "no caveat for the ROM-mode instance");
@@ -333,7 +335,7 @@ internal static class FlpChecks
         {
             string name = Path.GetFileNameWithoutExtension(f);
             var v = VrunNesBackend.Build(FlpSong.Read(File.ReadAllBytes(f)), name);
-            var b = SongConvert.Convert(v.Midi, out var why);
+            var b = SongConvert.Convert(v.Midi, out var why, t.Region);
             r.Expect(b != null, $"{name}: the converter refused the file: {why}");
             if (b == null) continue;
             list.Add((name, v, b, t.Patch(b.Channels, b.Facts.LoopFrames, name)));
@@ -473,7 +475,7 @@ internal static class FlpChecks
 
     // ---- deliberate bugs ----
 
-    public sealed record Mutant(int Bit, string What, string CaughtBy);
+    public sealed record Mutant(int Bit, string What, string CaughtBy, int MusicBit = 0);
     public static readonly Mutant[] Mutants =
     [
         new(FlpMutants.SlideSignFlipped, "slides glide the wrong way", "fl-pitch"),
@@ -482,6 +484,8 @@ internal static class FlpChecks
         new(FlpMutants.TuningIgnored, "the instance's Coarse/Fine are ignored", "synthetic"),
         new(FlpMutants.ReaderDropsLastNote, "the C# reader drops each pattern's last note", "identity"),
         new(FlpMutants.DutyIgnored, "the squares' Duty is not written (50% in the game)", "duty"),
+        new(FlpMutants.NoiseVolumeIgnored, "the noise's levels are not written (CC 15): every hit at full volume", "noise-volume"),
+        new(0, "the converter truncates at the game's 1280 bytes, not the template's song room", "room", MusicMutate.RoomAsOld),
         new(FlpMutants.SlideSignLost, "square 2's slide loses its sign extension in the ROM (the 2026-11-10 NESFab miscompile's class)", "bend-signs"),
         new(FlpMutants.ChannelVolumeSilent, "an FL channel volume off its default is not reported", "fl-volume"),
         new(SvMutants.VoiceFenceBlind, "the Super VRUN fence does not see too many voices", "sv-fence"),
@@ -531,10 +535,10 @@ internal static class FlpChecks
             Console.WriteLine("deliberate bugs (each must be caught by the check named):");
             foreach (var m in Mutants.Where(m => ids == null || ids.Contains(m.CaughtBy)))
             {
-                FlpMutants.Mask = m.Bit;
+                FlpMutants.Mask = m.Bit; MusicMutate.Mask = m.MusicBit;
                 var rep = new ImodelReport();
                 try { All.First(c => c.Id == m.CaughtBy).Run(rep); } catch (Exception e) { rep.Failures.Add("threw: " + e.Message); }
-                FlpMutants.Mask = 0;
+                FlpMutants.Mask = 0; MusicMutate.Mask = 0;
                 bool caught = rep.Failures.Count > 0;
                 bool skipped = rep.Assertions == 0;
                 if (!caught && !skipped) missed++;

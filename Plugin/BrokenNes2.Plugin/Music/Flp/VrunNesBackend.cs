@@ -7,8 +7,10 @@
 // the sounding note (FL's measured slide shape, flp2nano's FL_SLIDE), level = round(15 x velocity/128 x Volume).
 // Pulse duty (2026-11-10): each square's Duty (12.5/25/50/75%) goes to the MIDI as CC 14 at tick 0 (value duty x 32), which VRUN's converter turns into its duty
 // opcode 0xD3 (Midi2Nes.DutyCc / OpDuty; the template's square decoders are VRUN's duty decoders). One duty per square for the whole song.
+// Noise volume (2026-11-10): a noise part with any hit under full level gets CC 15 = 127 at tick 0 (Midi2Nes.NoiseVolumeCc), which turns VRUN's noise volume on (opcode 0xD4:
+// the hits play their levels, velocity = level x 8); a part whose hits are all full writes no CC and converts as before.
 // What it reports (the caveats: nothing is dropped without a line): everything else on the rack, two instances on one NES channel (merged, newest note wins), instances
-// of one square with different duties (the first one's plays), noise level below 15 and short noise (VRUN's noise decoder hits at full volume, long mode), silent notes, pan (the NES is mono), slides with no note
+// of one square with different duties (the first one's plays), short noise (VRUN's noise decoder is long mode), silent notes, pan (the NES is mono), slides with no note
 // under them, notes that end where they start. The round-7 facts (the converter's own: channel choice, thinning, truncation, bends) come on top, from SongConvert.
 using BrokenNes2.Record;
 
@@ -175,7 +177,9 @@ public static class VrunNesBackend
                 notes++;
             }
             if (silent > 0) cav.Add($"{NesNames[nc]}: {silent} notes have level 0 (velocity x Volume): silent in FL and in the game");
-            if (quiet > 0) cav.Add($"noise: {quiet} hits are softer than full level in FL: VRUN's noise decoder hits at full volume");
+            // noise volume (2026-11-10): a noise part with hits under full level turns VRUN's noise volume on (CC 15 = 127 at tick 0 -> the converter's 0xD4; the template's
+            // noise decoder is VRUN's noise-volume decoder): each hit then plays its level (velocity = level x 8, the converter's volume = velocity >> 3). All hits full: no CC.
+            if (nc == 3 && quiet > 0 && !FlpMutants.On(FlpMutants.NoiseVolumeIgnored)) trk.Events.Insert(0, RecMidi.Cc(0, mc, Vrun.Audio.Midi2Nes.NoiseVolumeCc, 127));
             parts.Add(new VrunNesPart(nc, names, notes, voices.Sum(v => v.Glides.Count), bent, range, nc <= 1 ? partDuty : -1));
         }
         if (parts.Count == 0) cav.Add("NOTHING for VRUN NES: no BrokenNes2 instance on the NES console in Direct mode with notes on pulse 1, pulse 2, triangle or noise");
