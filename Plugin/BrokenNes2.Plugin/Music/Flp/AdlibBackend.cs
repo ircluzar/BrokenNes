@@ -180,6 +180,46 @@ public static class AdlibBackend
         return new AdlibSong(blob.ToArray(), f, voices, loopAt / TickHz, loopAt);
     }
 
+
+    /// <summary>Vaults DOS (VRUN_VOC_DOS_dev src/dos/dos_opl.c, the AdLib-song player): 'A', 1, step (u16: ticks per game frame x 256), n voices (1-3), n x 11 patch bytes (SBI order),
+    /// the stream (1v off, 2v on, 3v lo hi, 4v tl, 8n wait, 02 lo hi = jump to a stream offset: the loop, 00 end). It plays on melodic voices 3-5 (the PSG layer keeps 0-2 and the rhythm
+    /// voices for the effects): 3 voices. Saved as music/adlib/song&lt;NN&gt;.opl in the game repo, it replaces song NN's PSG music on the FM chip (tools/adlib/gen_adlib_tab.py).</summary>
+    public static AdlibSong? BuildVaults(FlpSongModel song, string name)
+    {
+        if (!IsAdlibSong(song)) return null;
+        var f = new FenceReport("Vaults DOS (AdLib, composed in FL)");
+        foreach (var c in song.Caveats) f.Note("reader", c);
+        f.Lines.AddRange(FlpFence.ChannelVolume(song));
+        var (voices, events, end) = Read(song, f, 3, "Vaults' AdLib song player");
+        f.Ok("voices", $"{voices.Count} of 3 voices (OPL2 voices 4-6: the effects keep voices 1-3 and the rhythm snare): " + string.Join("; ", voices.Select(v => $"{v.Voice + 1} \"{v.Instrument}\" = {v.PatchFrom}")));
+        var s = new List<byte>();
+        int now = 0;
+        foreach (var e in events)
+        {
+            Wait(s, e.Tick - now); now = e.Tick;
+            switch (e.Op)
+            {
+                case 1: s.Add((byte)(0x10 | e.Voice)); break;
+                case 2: s.Add((byte)(0x20 | e.Voice)); break;
+                case 3: s.Add((byte)(0x30 | e.Voice)); s.Add((byte)e.A); s.Add((byte)e.B); break;
+                case 4: s.Add((byte)(0x40 | e.Voice)); s.Add((byte)e.A); break;
+            }
+        }
+        int barTicks = Math.Max(1, (int)Math.Round(4 * 60.0 / Math.Max(1, song.Tempo) * TickHz));
+        int loopAt = Math.Max(end, (int)Math.Ceiling((double)TickOf(song, song.End) / barTicks) * barTicks);
+        Wait(s, loopAt - now);
+        s.AddRange([0x02, 0, 0]);
+        int step = (int)Math.Round(TickHz / VocGbBackend.Fps * 256);
+        var blob = new List<byte> { (byte)'A', 1, (byte)step, (byte)(step >> 8), (byte)Math.Max(1, voices.Count) };
+        foreach (var v in voices) { var p = (byte[])v.Patch.Clone(); if (FlpMutants.On(AdlibMutants.PatchOrderSwapped)) (p[0], p[1]) = (p[1], p[0]); blob.AddRange(p); }
+        if (voices.Count == 0) blob.AddRange(new byte[11]);
+        blob.AddRange(s);
+        if (s.Count > 65535) f.Over("size", $"the stream is {s.Count} bytes: the player's loop offset is 16-bit (64 KB at most)");
+        else f.Ok("size", $"{blob.Count} bytes, {loopAt / TickHz:0.00} s a loop, {events.Count(e => e.Op == 2)} key-ons");
+        f.Note("timing", $"the player steps {TickHz:0} ticks a second from the game's {VocGbBackend.Fps:0.00} Hz frames ({step}/256 a frame): ticks land on frames, up to 16.7 ms late");
+        f.Ok("effects", "the game's effects keep the PSG layer's voices 1-3 and the snare: they never cut the AdLib song");
+        return new AdlibSong(blob.ToArray(), f, voices, loopAt / TickHz, loopAt);
+    }
     /// <summary>A plugin patch (11 bytes, SBI order) in dos_snd.c's 10-byte order: mod 20, car 20, mod 40, mod 60, car 60, mod 80, car 80, mod E0, car E0, C0 (the carrier's level is the driver's).</summary>
     public static byte[] SvPatchBytes(byte[] p) => FlpMutants.On(AdlibMutants.PatchOrderSwapped) ? [p[1], p[0], p[2], p[4], p[5], p[6], p[7], (byte)(p[8] & 3), (byte)(p[9] & 3), (byte)(p[10] & 0x0F)] : [p[0], p[1], p[2], p[4], p[5], p[6], p[7], (byte)(p[8] & 3), (byte)(p[9] & 3), (byte)(p[10] & 0x0F)];
 

@@ -113,4 +113,75 @@ internal static class AdlibChecks
         r.Expect(rms > 0.01, $"the song is silent on the AdLib (rms {rms:0.0000})");
         r.Note($"Super VRUN AdLib song: {s.Blob.Length} bytes, {s.Voices.Count} voices, A4 {hzA4:0.00} Hz, slide end {hzE5:0.00} Hz, rms {rms:0.000}; fence: {s.Fence.Summary}");
     }
+/// <summary>dos_opl.c's AdLib-song player (VRUN_VOC_DOS_dev), line for line, on the AdLib: voices 3-5, a tick per game frame x step/256.</summary>
+    internal static float[] PlayVaults(byte[] q, int frames)
+    {
+        var m = new PcMachine(1 << 20);
+        m.Speaker.Enabled = true; m.Opl.Enabled = true;
+        void W(int r, int v) { m.Out8(0x388, (byte)r); m.Out8(0x389, (byte)v); }
+        W(0x01, 0x20);
+        int[] om = [0x08, 0x09, 0x0A], oc = [0x0B, 0x0C, 0x0D];
+        int step = q[2] | q[3] << 8, n = q[4];
+        var tl = new int[3]; var hi = new int[3];
+        for (int v = 0; v < n; v++)
+        {
+            int p = 5 + 11 * v;
+            W(0x20 + om[v], q[p]); W(0x20 + oc[v], q[p + 1]); W(0x40 + om[v], q[p + 2]); tl[v] = q[p + 3] & 0x3F; W(0x40 + oc[v], tl[v]);
+            W(0x60 + om[v], q[p + 4]); W(0x60 + oc[v], q[p + 5]); W(0x80 + om[v], q[p + 6]); W(0x80 + oc[v], q[p + 7]);
+            W(0xE0 + om[v], q[p + 8]); W(0xE0 + oc[v], q[p + 9]); W(0xC3 + v, 0x30 | (q[p + 10] & 15));
+        }
+        int s0 = 5 + 11 * n, sp = s0, wait = 0, acc = 0;
+        bool on = true;
+        var outp = new List<float>(); var buf = new short[8192];
+        for (int fr = 0; fr < frames; fr++)
+        {
+            acc += step;
+            while (on && acc >= 256)
+            {
+                acc -= 256;
+                if (wait > 0) { wait--; continue; }
+                while (true)
+                {
+                    int b = q[sp++], v = b & 15;
+                    if (b >= 0x80) { wait = b & 0x7F; break; }
+                    if (b >> 4 == 0) { if (b == 2) { sp = s0 + (q[sp] | q[sp + 1] << 8); continue; } on = false; break; }
+                    switch (b >> 4)
+                    {
+                        case 1: W(0xB3 + v, hi[v] & 0x1F); hi[v] &= 0x1F; break;
+                        case 2: W(0xB3 + v, hi[v] & 0x1F); W(0xB3 + v, 0x20 | (hi[v] & 0x1F)); hi[v] |= 0x80; break;
+                        case 3: W(0xA3 + v, q[sp]); hi[v] = (hi[v] & 0x80) | (q[sp + 1] & 0x1F); W(0xB3 + v, ((hi[v] & 0x80) != 0 ? 0x20 : 0) | (hi[v] & 0x1F)); sp += 2; break;
+                        case 4: tl[v] = q[sp++]; W(0x40 + oc[v], Math.Min(63, tl[v])); break;
+                    }
+                }
+            }
+            long target = (long)Math.Round((fr + 1) * 44100.0 / VocGbBackend.Fps);
+            m.IdleFor(Math.Max(0, (long)((Int128)target * m.InstructionsPerSecond / 44100) - m.Clock));
+            m.Speaker.CatchUp(); m.Opl.CatchUp();
+            int k; while ((k = m.Speaker.Read(buf)) > 0) { m.Opl.MixInto(buf, k); for (int i = 0; i < k; i += 2) outp.Add(buf[i] / 32768f); }
+        }
+        return outp.ToArray();
+    }
+
+    public static void Vaults(ImodelReport r)
+    {
+        var song = FlpSong.Read(Project());
+        var s = AdlibBackend.BuildVaults(song, "adl");
+        r.Expect(s != null && s.Voices.Count == 2 && s.Blob[0] == 'A' && s.Blob[1] == 1 && s.Blob[4] == 2, "the Vaults AdLib song's header / voices");
+        if (s == null) return;
+        r.Expect(s.Blob.AsSpan(5, 11).SequenceEqual(OplBank.Patches[2].Regs), "voice 1's patch is not the lead's bank patch 2 in SBI order");
+        r.Expect(s.Fence.Lines.Any(l => l.Rule == "chip" && l.Level == FenceLevel.Over), "the speaker instance is not OVER");
+        // a 4th AdLib voice is OVER (3 voices)
+        var four = FlpSong.Read(FlpChecks.Project(120, [.. Enumerable.Range(0, 4).Select(i => ($"V{i}", "BrokenNes2", (byte[]?)PcState(AdlibBackend.FirstPcChip, 2)))], [(1, [.. Enumerable.Range(0, 4).Select(i => new FlpChecks.SNote(0, 96, 60 + i, i))])], [(0, 1, 192)]));
+        var s4 = AdlibBackend.BuildVaults(four, "four")!;
+        r.Expect(s4.Voices.Count == 3 && s4.Fence.Lines.Any(l => l.Rule == "voices" && l.Level == FenceLevel.Over), "a 4th AdLib voice on Vaults is not OVER");
+        var audio = PlayVaults(s.Blob, (int)(VocGbBackend.Fps * 2));
+        // the lead alone: render the lead-only song (the bass sounds A2 under it)
+        var lead = FlpSong.Read(FlpChecks.Project(120, [("Lead", "BrokenNes2", PcState(AdlibBackend.FirstPcChip, 3))], [(1, [new FlpChecks.SNote(0, 96, 69, 0)])], [(0, 1, 192)]));
+        var sl = AdlibBackend.BuildVaults(lead, "lead")!;
+        double hl = Audio.Frequency(PlayVaults(sl.Blob, 60), 44100, 4000, 20000);
+        r.Expect(Math.Abs(1200 * Math.Log2(hl / 440)) < 5, $"the Vaults player plays A4 at {hl:0.00} Hz");
+        double rms = Math.Sqrt(audio.Select(x => (double)x * x).Average());
+        r.Expect(rms > 0.01, $"the Vaults AdLib song is silent (rms {rms:0.0000})");
+        r.Note($"Vaults AdLib song: {s.Blob.Length} bytes, {s.Voices.Count} voices, A4 {hl:0.00} Hz, rms {rms:0.000}; fence: {s.Fence.Summary}");
+    }
 }
