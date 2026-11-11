@@ -87,9 +87,10 @@ public static class CtwSmsBackend
             if (b.Mode != "direct") { F.Add(new FenceLine("instruments", FenceLevel.Over, $"{who} is in ROM mode (it plays a game's channel, not notes): its {ins.Notes.Count} notes are not in the game")); continue; }
             int ch = b.Channel;
             bool preset = false;
+            FlpPresetApprox? approx = null;
             if (b.Core is >= FlpPresetSound.FirstPresetChip and <= FlpPresetSound.LastPresetChip && !FlpMutants.On(CtwSmsMutants.PresetIgnored))
             {
-                var (pch, over) = PresetVoice(b, who, ins, F);
+                var (pch, over) = PresetVoice(b, who, ins, F, out approx);
                 if (over) continue;
                 ch = pch; preset = true;
             }
@@ -102,6 +103,7 @@ public static class CtwSmsBackend
             if (ch < 2 && st.Params.Length > 5 && (st.Params[5] & 3) != 2) notHalf += ins.Notes.Count(n => !n.Slide);
             if (st.Params.Length > 3 && (st.Params[3] != 0 || st.Params[4] != 0)) detuned += ins.Notes.Count(n => !n.Slide);
             var copy = new FlpInstrument { Rack = ins.Rack, Name = ins.Name, Plugin = ins.Plugin, Type = ins.Type, Bn2 = st };
+            if (approx != null) FlpPresetApprox.Attach(copy, approx);
             var mono = FlpMono.Resolve([ins]);
             foreach (var seg in mono.Segs)
             {
@@ -170,8 +172,9 @@ public static class CtwSmsBackend
     /// <summary>A Presets-chip instance (docs/projects/flp-music-pipeline.md section 9): the PSG voice its Master System preset is (tone 0-2 or the noise, 3) with its fence
     /// lines, or Over = true with the line that says why the game cannot play it (another console, the FM unit, damaged, no preset). A PSG preset has no audible fields
     /// (SegaInstruments: the plugin plays the plain PSG from FL's pitch and level), so the voice it is IS what the game can carry of it.</summary>
-    private static (int Channel, bool Over) PresetVoice(FlpBn2 b, string who, FlpInstrument ins, List<FenceLine> F)
+    private static (int Channel, bool Over) PresetVoice(FlpBn2 b, string who, FlpInstrument ins, List<FenceLine> F, out FlpPresetApprox? approx)
     {
+        approx = null;
         void Out(string why) { if (!FlpMutants.On(CtwSmsMutants.PresetFenceSilent)) F.Add(new FenceLine("preset", FenceLevel.Over, $"{who} {why}: its {ins.Notes.Count} notes are not in the game")); }
         if (b.Preset == null) { Out("is on a Presets chip with no preset in its state (no PRS1 section)"); return (0, true); }
         string? problem = b.Preset.Ok ? null : b.Preset.Problem;
@@ -180,10 +183,21 @@ public static class CtwSmsBackend
         var play = pd != null ? BrokenNes2.Presets.PresetPlayable.Build(pd, out problem) : null;
         if (play == null) { Out($"plays a damaged preset ({problem})"); return (0, true); }
         string name = pd!.Name.Length > 0 ? pd.Name : pd.InstrumentName;
-        if (play.Console != BrokenNes2.Instruments.ConsoleId.MasterSystem)
-        { Out($"plays a {BrokenNes2.Presets.PresetFile.ConsoleName(play.Console)} preset (\"{name}\"): CTW SMS's driver plays the Master System PSG only (that console's back end plays it)"); return (0, true); }
-        if (play.Kind is not (BrokenNes2.Instruments.InstrumentKind.PsgTones or BrokenNes2.Instruments.InstrumentKind.PsgNoise))
-        { Out($"plays a Master System FM-unit (YM2413) preset (\"{name}\"): the game's driver (nes_apu.c) writes the PSG only, there is no FM in CTW SMS"); return (0, true); }
+        if (play.Console != BrokenNes2.Instruments.ConsoleId.MasterSystem || play.Kind is not (BrokenNes2.Instruments.InstrumentKind.PsgTones or BrokenNes2.Instruments.InstrumentKind.PsgNoise))
+        {
+            // the engine approximation (FlpPresetApprox): VRUN's engine on the PSG keeps the level steps and pitch steps; duty and short noise are lost on the PSG (50% squares, white noise)
+            approx = FlpPresetApprox.Of(b, out problem);
+            if (approx == null) { Out($"plays a preset that cannot be read ({problem})"); return (0, true); }
+            int ac = approx.Role == 0 ? (b.Channel is 0 or 1 or 2 ? b.Channel : 0) : approx.Role > 0 ? approx.Role : b.Channel is >= 0 and <= 3 ? b.Channel : 0;
+            var lost = new List<string>(approx.Lost);
+            if (approx.Duty is >= 0 and not 2) lost.Add($"duty {VrunNesBackend.DutyNames[approx.Duty]}% (the PSG's squares are 50%)");
+            if (approx.ShortNoise) lost.Add("short / periodic noise (the driver writes white noise)");
+            if (ac == 2 && approx.Level != null) lost.Add("the level steps on tone 3 (VRUN's triangle has no volume: a fixed attenuation)");
+            approx.Duty = 2; approx.ShortNoise = false;
+            if (!FlpMutants.On(CtwSmsMutants.PresetFenceSilent))
+                F.Add(new FenceLine("preset", FenceLevel.Note, $"{who}: {(play.Console == BrokenNes2.Instruments.ConsoleId.MasterSystem ? "Master System FM-unit" : BrokenNes2.Presets.PresetFile.ConsoleName(play.Console))} preset \"{name}\" approximated on {Names[ac]}: kept {(approx.Kept.Count > 0 ? string.Join(", ", approx.Kept) : "the notes")}" + (lost.Count > 0 ? $"; lost: {string.Join("; ", lost)}" : "")));
+            return (ac, false);
+        }
         if (play.Kind == BrokenNes2.Instruments.InstrumentKind.PsgNoise)
         {
             F.Add(new FenceLine("preset", FenceLevel.Ok, $"{who}: Master System PSG noise preset \"{name}\" on the noise: the plugin plays the PSG's noise from FL's pitch and level, the game alike"));

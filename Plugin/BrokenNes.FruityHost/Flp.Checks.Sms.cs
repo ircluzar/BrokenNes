@@ -15,7 +15,7 @@ internal static class FlpSmsChecks
     public static readonly FlpChecks.Check[] All =
     [
         new("ctwsms-synthetic", "CTW SMS: a Master System project written here: the converter's streams and every fence rule it breaks (slides, low notes, detune, other consoles)", SmsSynthetic),
-        new("ctwsms-preset", "CTW SMS presets: Master System PSG tones / white / periodic noise presets (PRS1 written byte by byte) play as their PSG voice; FM-unit, Game Boy, damaged and empty presets OVER", SmsPreset),
+        new("ctwsms-preset", "CTW SMS presets: Master System PSG tones / white / periodic noise presets (PRS1 written byte by byte) play as their PSG voice; FM-unit and Game Boy presets as engine approximations (losses listed), damaged and empty presets OVER", SmsPreset),
         new("ctwsms-engine","CTW SMS: the test ROM (the game itself, its title song replaced) plays what VRUN NES plays, through nes_apu.c's mapping, frame by frame", SmsEngine),
     ];
 
@@ -102,12 +102,12 @@ internal static class FlpSmsChecks
         r.Expect(Has(FenceLevel.Note, "Tones", "one at a time"), "the tones preset's overlapping notes are not said (the plugin plays 3 at once)");
         r.Expect(Has(FenceLevel.Ok, "White", "noise preset") && !Has(FenceLevel.Note, "White", "PERIODIC"), "the white-noise preset is not Ok on the noise");
         r.Expect(Has(FenceLevel.Note, "Periodic", "PERIODIC"), "the periodic-noise preset is not a Note (the driver writes white noise)");
-        r.Expect(Has(FenceLevel.Over, "FM", "YM2413"), "the FM-unit preset is not OVER");
-        r.Expect(Has(FenceLevel.Over, "GB", "GB preset"), "the Game Boy preset is not OVER");
+        r.Expect(Has(FenceLevel.Note, "FM", "FM-unit") && Has(FenceLevel.Note, "FM", "approximated") && Has(FenceLevel.Note, "FM", "lost:"), "the FM-unit preset is not an approximation with its losses");
+        r.Expect(Has(FenceLevel.Note, "GB", "GB preset") && Has(FenceLevel.Note, "GB", "approximated on tone 1"), "the Game Boy preset is not an approximation on tone 1");
         r.Expect(Has(FenceLevel.Over, "Bad", "damaged"), "the damaged preset is not OVER");
         r.Expect(Has(FenceLevel.Over, "Empty", "no PRS1"), "the Presets chip without a preset is not OVER");
         var parts = v.Nes.Parts.Select(p => p.Instruments).ToList();
-        r.Expect(v.Nes.Parts.Count == 2 && parts.Any(x => x.Contains("Tones")) && parts.Any(x => x.Contains("White") && x.Contains("Periodic")), $"the game's parts are {string.Join(" | ", v.Nes.Parts.Select(p => $"{p.NesChannel}:{p.Instruments}"))} (Tones on a tone, White + Periodic on the noise expected)");
+        r.Expect(v.Nes.Parts.Count == 3 && parts.Any(x => x.Contains("Tones")) && parts.Any(x => x.Contains("White") && x.Contains("Periodic")) && parts.Any(x => x.Contains("FM") && x.Contains("GB")), $"the game's parts are {string.Join(" | ", v.Nes.Parts.Select(p => $"{p.NesChannel}:{p.Instruments}"))} (Tones on a tone, White + Periodic on the noise, FM + GB approximated on tone 1 expected)");
         r.Expect(v.Nes.Parts.FirstOrDefault(p => p.Instruments.Contains("Tones"))?.NesChannel == 1, "the tones preset is not on its instance's tone (tone 2)");
         r.Expect(!v.Fence.Any(l => l.Rule == "duty" && l.Level == FenceLevel.Note), "a PSG preset's instance Duty (12.5%) leaked into the duty line: a preset has no duty");
         r.Expect(v.Build != null && Enumerable.Range(0, 4).All(c => CtwSmsBackend.BadOpcode(v.Build.Channels[c], c) == null), "a preset song's stream has an opcode the game's decoders cannot play");

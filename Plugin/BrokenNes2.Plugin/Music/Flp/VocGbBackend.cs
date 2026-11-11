@@ -80,6 +80,7 @@ public static class VocGbBackend
         for (int i = 0; i < 4; i++) byCh[i] = new();
         var presetInst = new Dictionary<FlpInstrument, VocInstrument>();
         var presetCh = new Dictionary<FlpInstrument, int>();
+        var presetApprox = new Dictionary<FlpInstrument, FlpPresetApprox>();
         int wanted = target == VocTarget.Gb ? 1 : 3;     // the plugin console the song is written with (Gg: the Master System console, whose PSG chip the Game Gear has)
         foreach (var ins in song.Instruments)
         {
@@ -96,17 +97,33 @@ public static class VocGbBackend
                 // a Runaway preset: the Game Boy engine plays a Game Boy preset's channel with its duty / width / wave RAM; anything else is not in the game
                 var pd = b.Preset.Ok ? BrokenNes2.Presets.PresetFile.Read(b.Preset.File).Data : null;
                 var play = pd != null ? BrokenNes2.Presets.PresetPlayable.Build(pd, out _) : null;
+                var ap = play != null && !FlpMutants.On(PsMutants.GbPresetIgnored) ? FlpPresetApprox.Of(b, out _) : null;
                 if (target != VocTarget.Gb || play == null || play.Console != BrokenNes2.Instruments.ConsoleId.GameBoy || FlpMutants.On(PsMutants.GbPresetIgnored))
                 {
-                    F.Add(new FenceLine("preset", FenceLevel.Over, $"{who} plays a {(play != null ? play.Console.ToString() : "damaged")} preset{(b.Preset.Ok ? "" : $" ({b.Preset.Problem})")}: the {console} engine has no way to play it, its {ins.Notes.Count} notes are not in the game"));
+                    if (ap == null)
+                    {
+                        F.Add(new FenceLine("preset", FenceLevel.Over, $"{who} plays a {(play != null ? play.Console.ToString() : "damaged")} preset{(b.Preset.Ok ? "" : $" ({b.Preset.Problem})")}: the {console} engine has no way to play it, its {ins.Notes.Count} notes are not in the game"));
+                        continue;
+                    }
+                    // the engine approximation (FlpPresetApprox): the channel of the preset's kind, its duty / noise width, level steps and pitch steps; the rest is listed as lost
+                    int ac = ap.Role == 0 ? (b.Channel is 0 or 1 ? b.Channel : 0) : ap.Role > 0 ? ap.Role : b.Channel is >= 0 and <= 3 ? b.Channel : 0;
+                    presetCh[ins] = ac;
+                    presetInst[ins] = ac == 2 ? new VocInstrument() : ac == 3 ? new VocInstrument(Width7: ap.ShortNoise) : new VocInstrument(Duty: ap.Duty >= 0 ? ap.Duty : 2);
+                    presetApprox[ins] = ap;
+                    var apLost = new List<string>(ap.Lost);
+                    if (ac == 2 && ap.Level != null) apLost.Add("the level steps (the wave channel plays at full level)");
+                    F.Add(new FenceLine("preset", apLost.Count > 0 ? FenceLevel.Note : FenceLevel.Ok, $"{who}: {BrokenNes2.Presets.PresetFile.ConsoleName(ap.Console)} preset \"{ap.Name}\" approximated on {Names[ac]}: kept {(ap.Kept.Count > 0 ? string.Join(", ", ap.Kept) : "the notes")}" + (apLost.Count > 0 ? $"; lost: {string.Join("; ", apLost)}" : "")));
+                    byCh[ac].Add(ins);
                     continue;
                 }
+                if (ap != null) presetApprox[ins] = ap;
                 var pi = play.Instrument;
                 int pc = play.GbChannel;
                 presetCh[ins] = pc;
                 presetInst[ins] = pc == 2 ? new VocInstrument(Wave: pi.Blobs[0].Data.Take(16).ToArray()) : pc == 3 ? new VocInstrument(Width7: play.GbNoiseShort) : new VocInstrument(Duty: pi.Get("duty") & 3);
                 F.Add(new FenceLine("preset", FenceLevel.Ok, $"{who}: Game Boy preset \"{(pd!.Name.Length > 0 ? pd.Name : pd.InstrumentName)}\" on {Names[pc]}: {(pc == 2 ? "its 32-sample wave RAM is the song's wave table (exact)" : pc == 3 ? $"its {(play.GbNoiseShort ? 7 : 15)}-bit noise" : $"its duty {new[] { "12.5", "25", "50", "75" }[pi.Get("duty") & 3]}%")}"));
-                if (pc != 2) F.Add(new FenceLine("preset", FenceLevel.Note, $"{who}: the preset's volume envelope is not played: the engine's notes hold the velocity's level (as Direct mode does)"));
+                if (pc != 2 && ap?.Level == null) F.Add(new FenceLine("preset", FenceLevel.Ok, $"{who}: the preset's volume is held (no envelope): the notes hold the velocity's level"));
+                else if (pc != 2) F.Add(new FenceLine("preset", FenceLevel.Ok, $"{who}: the preset's volume envelope plays as level steps, frame by frame"));
                 byCh[pc].Add(ins);
                 continue;
             }
@@ -172,7 +189,9 @@ public static class VocGbBackend
                 if (c == 3 && want.Width7) usedShort = true;
                 if (want != cur) { ev.Add(new VocEvent(f0, "inst", 0, want)); cur = want; }
                 int lvl = c == 2 ? 15 : v.Level;
-                if (lvl != lastVol) { ev.Add(new VocEvent(f0, "vol", lvl)); lastVol = lvl; }
+                var apV = c != 2 && presetApprox.TryGetValue(v.Instrument, out var apx) && apx.Level != null && !FlpMutants.On(PsMutants.ApproxStepsDropped) ? apx : null;
+                int lvl0 = apV != null ? Math.Clamp((int)Math.Round(lvl * apV.LevelAt(f0 - Frame(v.Start))), 0, 15) : lvl;
+                if (lvl0 != lastVol) { ev.Add(new VocEvent(f0, "vol", lvl0)); lastVol = lvl0; }
                 if (c == 3)
                 {
                     int idx = VrunNesBackend.NoiseIndex(v.PitchAt(s.From) - 6000);
@@ -191,7 +210,16 @@ public static class VocGbBackend
                     else ev.Add(new VocEvent(f0, "pitch", x));
                     double err = Math.Abs(1200 * Math.Log2(XHz(x, c == 2) / MidiHz(c2 / 100)));
                     if (err > 5) { quantOver++; quantWorst = Math.Max(quantWorst, err); }
-                    if (v.Glides.Count > 0)
+                    if (presetApprox.TryGetValue(v.Instrument, out var apP) && apP.Pitch != null && !FlpMutants.On(PsMutants.ApproxStepsDropped))
+                    {
+                        int last = x, fs = Frame(v.Start);
+                        for (int f = f0 + 1; f < f1; f++)
+                        {
+                            int y = Reg(v.PitchAt(TickOf(f)) + sh * 100 + apP.PitchAt(f - fs));
+                            if (y != last) { ev.Add(new VocEvent(f, "freq", y)); last = y; bends++; }
+                        }
+                    }
+                    else if (v.Glides.Count > 0)
                     {
                         int last = x;
                         for (int f = f0 + 1; f < f1; f++)
@@ -199,6 +227,15 @@ public static class VocGbBackend
                             int y = Reg(v.PitchAt(TickOf(f)) + sh * 100);
                             if (y != last) { ev.Add(new VocEvent(f, "freq", y)); last = y; bends++; }
                         }
+                    }
+                }
+                if (apV != null)
+                {
+                    int fs = Frame(v.Start);
+                    for (int f = f0 + 1; f < f1; f++)
+                    {
+                        int l2 = Math.Clamp((int)Math.Round(lvl * apV.LevelAt(f - fs)), 0, 15);
+                        if (l2 != lastVol) { ev.Add(new VocEvent(f, "vol", l2)); lastVol = l2; }
                     }
                 }
                 bool joined = i + 1 < segs.Count && Math.Max(Frame(segs[i + 1].From), f1) == f1 && Frame(segs[i + 1].From) <= f1;

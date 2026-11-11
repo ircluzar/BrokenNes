@@ -169,12 +169,12 @@ internal static partial class SvChecks
         var v = VocGbBackend.Build(song, "p");
         r.Expect(v.Waves.Any(w => w.AsSpan().SequenceEqual(want)), $"Vaults GB: the wave preset's RAM {Convert.ToHexString(want)} is not a wave table ({string.Join(",", v.Waves.Select(Convert.ToHexString))})");
         r.Expect(!v.Waves.Any(w => w.AsSpan().SequenceEqual(VocGbBackend.TriangleWave)) || want.AsSpan().SequenceEqual(VocGbBackend.TriangleWave), "Vaults GB: the triangle is still in the song (the wave preset was not used)");
-        r.Expect(v.Fence.Count(l => l.Rule == "preset" && l.Level == FenceLevel.Ok) == 2, $"Vaults GB: preset lines {string.Join(" | ", v.Fence.Where(l => l.Rule == "preset").Select(l => l.Level + " " + l.Text))}");
-        r.Expect(v.Fence.Any(l => l.Rule == "preset" && l.Level == FenceLevel.Over && l.Text.Contains("\"FM\"")), "Vaults GB: the Genesis preset is not OVER");
+        r.Expect(v.Fence.Count(l => l.Rule == "preset" && l.Level == FenceLevel.Ok) == 3, $"Vaults GB: preset lines {string.Join(" | ", v.Fence.Where(l => l.Rule == "preset").Select(l => l.Level + " " + l.Text))}");
+        r.Expect(v.Fence.Any(l => l.Rule == "preset" && l.Level == FenceLevel.Note && l.Text.Contains("\"FM\"") && l.Text.Contains("approximated") && l.Text.Contains("lost:")), "Vaults GB: the Genesis preset is not an approximation with its losses");
         var g = VocGbBackend.Build(song, "p", VocTarget.Gg);
-        r.Expect(g.Fence.Count(l => l.Rule == "preset" && l.Level == FenceLevel.Over) == 3, "Vaults GG: the presets are not OVER");
+        r.Expect(g.Fence.Count(l => l.Rule == "preset" && l.Text.Contains("approximated")) == 3 && !g.Fence.Any(l => l.Rule == "preset" && l.Level == FenceLevel.Over), "Vaults GG: the presets are not engine approximations");
         var n = VrunNesBackend.Build(song, "p");
-        r.Expect(n.Caveats.Count(c => c.StartsWith("OVER") && c.Contains("preset")) == 3 && n.Parts.Count == 0, $"VRUN NES: presets not OVER or still played ({n.Parts.Count} parts)");
+        r.Expect(n.Caveats.Count(c => c.Contains("approximated")) == 3 && !n.Caveats.Any(c => c.StartsWith("OVER") && c.Contains("preset")) && n.Parts.Count == 2, $"VRUN NES: presets not approximated ({n.Parts.Count} parts: wave on the triangle, pulse + FM on square 1 expected)");
         r.Note($"Vaults GB: wave tables {string.Join(", ", v.Waves.Select(Convert.ToHexString))}");
     }
 
@@ -247,5 +247,51 @@ internal static partial class SvChecks
         var hi = FlpSong.Read(FlpChecks.Project(120, [("Hi", "BrokenNes2", FlpChecks.Bn2State(core: 26, console: 2, section: Prs1(PresetFile.TryWrite(sp, out _)!), sectionTag: "PRS1"))], [(1, [new(0, 24, 100, 0)])], [(0, 1, 96)]));
         var hs = SuperVrunBackend.Build(hi, "h", SvEngine.Snes);
         r.Expect(hs.Fence.Lines.Any(l => l.Rule == "range" && l.Level == FenceLevel.Over), "a preset note above the S-DSP's pitch ceiling is not OVER");
+    }
+
+    /// <summary>preset-approx: the engine approximation on the register engines. A NES pulse preset (duty 12.5%, decay envelope period 3, sweep down) on VRUN NES: CC 14 = 0,
+    /// CC 7 falling steps inside one note, bends from the sweep, a song VRUN's converter takes; on Vaults GG: falling "vol" steps and "freq" steps. A Game Boy pulse preset
+    /// (envelope down from 15, pace 2) as falling "vol" steps on Vaults GB / GG. Deliberate bugs: steps dropped, envelope read as held.</summary>
+    public static void PresetApprox(ImodelReport r)
+    {
+        var nes = PresetFixtures.Synthetic().First(s => s.Name == "nes");
+        var gb = PresetFixtures.Synthetic().First(s => s.Name == "gb-dmg");
+        var pulse = PresetFixtures.Instruments(nes).First(i => i.Kind == InstrumentKind.NesPulse1);
+        void Set(Instrument i, string id, int v) { var f = i.Field(id); r.Expect(f != null, $"no field {id}"); if (f != null) f.Value = v; }
+        Set(pulse, "duty", 0); Set(pulse, "const", 0); Set(pulse, "vol", 3); Set(pulse, "halt", 0); Set(pulse, "sweep.on", 1); Set(pulse, "sweep.period", 3); Set(pulse, "sweep.neg", 1); Set(pulse, "sweep.shift", 4);
+        var np = PresetFixtures.Make(nes, pulse, 0, 1, "nes decay");
+        var gbp = PresetFixtures.Instruments(gb).First(i => i.Kind == InstrumentKind.GbPulse1);
+        Set(gbp, "duty", 1); Set(gbp, "env.vol", 15); Set(gbp, "env.dir", 0); Set(gbp, "env.pace", 2);
+        var gp = PresetFixtures.Make(gb, gbp, 0, 1, "gb decay");
+        var song = FlpSong.Read(PresetProject(("NesP", np, false), ("GbP", gp, false)));
+        var songN = FlpSong.Read(PresetProject(("NesP", np, false)));          // alone: on one channel the newest note wins
+        var ap = song.Instruments.Where(i => i.Bn2 != null).Select(i => FlpPresetApprox.Of(i.Bn2!, out _)).ToList();
+        r.Expect(ap.Count == 2 && ap.All(a => a != null), "the presets cannot be read as approximations");
+        if (ap.Count != 2 || ap.Any(a => a == null)) return;
+        var a0 = ap[0]!; var a1 = ap[1]!;
+        r.Expect(a0.Duty == 0 && a0.Level != null && a0.Pitch != null && a0.LevelAt(0) == 1 && a0.LevelAt(30) == 0, $"NES approximation: duty {a0.Duty}, level {(a0.Level == null ? "held" : string.Join(",", a0.Level.Take(8).Select(x => x.ToString("0.00"))))}, pitch {(a0.Pitch == null ? "none" : "steps")}");
+        r.Expect(a1.Duty == 1 && a1.Level != null && a1.LevelAt(0) == 1 && a1.LevelAt(60) < 0.1, "Game Boy approximation: duty 25% and a falling envelope expected");
+
+        var n = VrunNesBackend.Build(songN, "a");
+        var mf = global::Vrun.Audio.MidiFile.Parse(n.Midi);
+        var evs = mf.Tracks.SelectMany(t => t).ToList();
+        var cc7 = evs.Where(e => (e.Status & 0xF0) == 0xB0 && e.Data1 == 7).Select(e => e.Data2).ToList();
+        int bendsN = evs.Count(e => (e.Status & 0xF0) == 0xE0);
+        r.Expect(evs.Any(e => (e.Status & 0xF0) == 0xB0 && e.Data1 == global::Vrun.Audio.Midi2Nes.DutyCc && e.Data2 == 0), "VRUN NES: the preset's duty 12.5% is not CC 14 = 0");
+        r.Expect(cc7.Zip(cc7.Skip(1)).Count(p => p.Second < p.First) >= 6, $"VRUN NES: the decay is not falling CC 7 steps ({string.Join(",", cc7.Take(20))})");
+        r.Expect(bendsN >= 4, $"VRUN NES: the sweep made {bendsN} bends");
+        r.Expect(n.Caveats.Any(c => c.Contains("\"NesP\"") && c.Contains("approximated on square 1") && c.Contains("decay envelope") && c.Contains("sweep")), "VRUN NES: the fence does not say what the preset keeps");
+        var conv = BrokenNes2.Music.SongConvert.Convert(n.Midi, out var why);
+        r.Expect(conv != null, $"VRUN's converter refused the approximated song: {why}");
+        foreach (var t in new[] { VocTarget.Gg, VocTarget.Gb })
+        {
+            var v = VocGbBackend.Build(t == VocTarget.Gg ? songN : song, "a", t);
+            var vols = v.Ch[0].Concat(v.Ch[1]).Where(e => e.Op == "vol").Select(e => e.Value).ToList();
+            r.Expect(vols.Zip(vols.Skip(1)).Count(p => p.Second < p.First) >= 6, $"Vaults {t}: the envelopes are not falling vol steps ({string.Join(",", vols.Take(24))})");
+            if (t == VocTarget.Gg) r.Expect(v.Ch[0].Concat(v.Ch[1]).Count(e => e.Op == "freq") >= 4, "Vaults GG: the sweep made no freq steps");
+            r.Note($"Vaults {t}: {vols.Count} vol events ({string.Join(",", vols.Take(16))}...); fence {FlpFence.Summary(v.Fence)}");
+        }
+        r.Note($"VRUN NES: {cc7.Count} CC 7 steps ({string.Join(",", cc7.Take(16))}...), {bendsN} bends");
+        foreach (var c in n.Caveats.Where(c => c.Contains("approximated"))) r.Note("    " + c);
     }
 }
