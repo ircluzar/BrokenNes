@@ -17,6 +17,8 @@ public static class GameTargets
         new("supervrun-md", "Super VRUN MD", "md", true, @"BrokenDev\tools\music\flp\build-supervrun.ps1"),
         new("supervrun-dos", "Super VRUN DOS", "dos", false, @"BrokenDev\tools\music\flp\build-supervrun.ps1"),
         new("supervrun-95", "Super VRUN 95", "95", false, @"BrokenDev\tools\music\flp\build-supervrun.ps1"),
+        new("vaults-dos", "Vaults DOS (AdLib)", "dos", false, @"BrokenDev\tools\music\flp\build-vaults-adlib.ps1"),       // (a song composed on the PC console: replaces the title song)
+        new("vaults-95", "Vaults 95 (AdLib)", "95", false, @"BrokenDev\tools\music\flp\build-vaults-adlib.ps1"),
         new("vaults-gb", "Vaults GB", "", true, "", Inside: true),
         new("vaults-gg", "Vaults GG", "", true, "", Inside: true),
         new("ctw-sms", "CTW SMS", "", true, "", Inside: true),
@@ -48,6 +50,7 @@ public static class GameTargets
     {
         string safe = string.Concat(Path.GetFileNameWithoutExtension(flp).Select(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' ? c : '_'));
         if (MusicTestTargets.Is(t)) return Path.Combine(outDir, $"{safe}.{t.Id}.{t.Engine}");
+        if (t.Id.StartsWith("vaults-") && t.Engine is "dos" or "95") return Path.Combine(outDir, $"{safe}.vaults-{t.Engine}.exe");
         string? ext = t.Engine switch { "snes" => "sfc", "wms" => "wms", "md" => "bin", "dos" or "95" => "exe", _ => null };
         return ext == null ? Path.Combine(outDir, Path.GetFileNameWithoutExtension(flp) + ".nano.mid") : Path.Combine(outDir, $"{safe}.{t.Engine}.{ext}");
     }
@@ -56,6 +59,7 @@ public static class GameTargets
     {
         string safe = string.Concat(Path.GetFileNameWithoutExtension(flp).Select(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' ? c : '_'));
         if (MusicTestTargets.Is(t)) return Path.Combine(outDir, $"{safe}.{t.Id}.fence.txt");
+        if (t.Id.StartsWith("vaults-") && t.Engine is "dos" or "95") return Path.Combine(outDir, $"{safe}.vaults-{t.Engine}.fence.txt");
         return t.Id == "nano-gb" ? Path.Combine(outDir, Path.GetFileNameWithoutExtension(flp) + ".nano.fence.json") : Path.Combine(outDir, $"{safe}.{t.Engine}.fence.txt");
     }
 }

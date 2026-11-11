@@ -129,7 +129,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     {
         PrepareAgainForPreset();                 // a preset's engine is made again here, on the UI thread, before the audio thread drops the old one (Bn2Plugin.Presets.cs)
         if (assignment.Emulator?.NanoGbDirectMode == true) PrepareNanoGb(again: true);   // the Nano GB engine too (Bn2Plugin.NanoGb.cs)
-        if (assignment.Emulator?.NanoSmsDirectMode == true) PrepareNanoSms(again: true); // and the Nano SMS one (Bn2Plugin.NanoSms.cs)
+        if (assignment.Emulator?.NanoSmsDirectMode == true) PrepareNanoSms(again: true);
+        if (assignment.Emulator?.PcDirectMode == true) PreparePc(again: true);           // (Bn2Plugin.Pc.cs) // and the Nano SMS one (Bn2Plugin.NanoSms.cs)
         if (assignment.Emulator?.WmsDirectMode == true) PrepareWms(again: true);      // the WideMess chip is made again here too, then swapped in (the audio thread takes the new one; its notes start over on it)
         Interlocked.Exchange(ref resetRequested, 1);
     }
@@ -382,6 +383,11 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             return;
         }
 
+        if (emu.PcDirectMode)
+        {
+            RenderPcDirect(emu, a.Channel, dest, length, gl, gr);      // the x86 PC console: one voice of its own x86 sound device (Bn2Plugin.Pc.cs)
+            return;
+        }
         if (emu.NanoSmsDirectMode)
         {
             RenderNanoSmsDirect(emu, a.Channel, dest, length, gl, gr); // the Nano SMS chip: the web library's engine, one per instance (Bn2Plugin.NanoSms.cs)
@@ -695,7 +701,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         var e = a.Emulator;
         if (e != null && e.Mode == 0 && a.Channel is >= 0 and < Ch.ToneCount)
         {
-            if (e.NanoSmsDirectMode) PrepareNanoSms();   // (Bn2Plugin.NanoSms.cs)
+            if (e.PcDirectMode) PreparePc();          // the x86 PC console's device (Bn2Plugin.Pc.cs)
+            else if (e.NanoSmsDirectMode) PrepareNanoSms();   // (Bn2Plugin.NanoSms.cs)
             else if (e.NanoGbDirectMode) PrepareNanoGb();  // the Nano GB engine is the plugin's own, not a NES-register bridge (Bn2Plugin.NanoGb.cs)
             else if (e.WmsDirectMode) PrepareWms();        // the WideMess chip is played by the plugin itself, not through a NES-register bridge (Bn2Plugin.Wms.cs)
             else EnsureChip(e);
@@ -898,6 +905,12 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 fixed (byte* p = trackSection) stream.Write(p, (uint)trkLen);
             }
             // Which .flp is this FL project (ProjectFlp.cs: picked once with the file dialog), so the project remembers its own file.
+            if (PcSectionBytes() is { } pcSection)       // the PC console's patch editor (Bn2Plugin.Pc.cs)
+            {
+                uint pcMagic = PcTag; int pcLen = pcSection.Length;
+                stream.Write(&pcMagic, 4); stream.Write(&pcLen, 4);
+                fixed (byte* p = pcSection) stream.Write(p, (uint)pcLen);
+            }
             if (ProjectFlp.SectionBytes(ProjectFlpPath) is { } flpSection)
             {
                 uint flpMagic = ProjectFlp.Tag;
@@ -978,6 +991,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         byte[]? restoredRecord = null;
         byte[]? trackBytes = null;
         string? flpPathRead = null;
+        byte[]? pcPatchRead = null;
         var seen = HostLog.On ? new List<string>() : null;
         restoring = true;
         try
@@ -1009,7 +1023,13 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                         uint tag = 0; int slen = 0;
                         if (!stream.Read(&tag, 4) || !stream.Read(&slen, 4)) break;
                         seen?.Add($"{Encoding.ASCII.GetString(BitConverter.GetBytes(tag))} {slen} bytes");
-                        if (tag == ProjectFlp.Tag && slen is >= 8 and <= ProjectFlp.MaxBytes)
+                        if (tag == PcTag && slen is >= 1 and <= 64)
+                        {
+                            var pcBuf = new byte[slen];
+                            fixed (byte* p = pcBuf) if (!stream.Read(p, (uint)slen)) break;
+                            pcPatchRead = ReadPcSection(pcBuf);
+                        }
+                        else if (tag == ProjectFlp.Tag && slen is >= 8 and <= ProjectFlp.MaxBytes)
                         {
                             var flpBuf = new byte[slen];
                             fixed (byte* p = flpBuf) if (!stream.Read(p, (uint)slen)) break;
@@ -1180,6 +1200,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         // whether this state makes the instance clearly the user's own (it holds a game, a preset or a track: it leaves the recording and never joins it by itself), or not (FL's empty or default
         // state, a fresh instance's own state, another channel's values: a joined instance stays joined; relink, 2026-10-18)
         ProjectFlpPath = flpPathRead;
+        PcCustomPatch = pcPatchRead;
         var restoredTrack = trackBytes == null ? (null, null, false, -1) : ReadTrackSection(trackBytes);
         bool hadGame = restoredGame != null || gameProblem != null || restoredSnapshot != null || restoredGb != null || restoredSega != null || restoredWms != null || restoredSong != null || restoredRecord != null || restoredCorruption != null || injectPayload != null;
         bool usersOwn = RestoredUsersOwn(hadGame, presetSectionBytes != null, trackBytes != null);
@@ -1430,6 +1451,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 if (id - Fpd.TestBase is >= 740 and < 780) return NesRecordTestHook(id - Fpd.TestBase, index, value);                            // a NES game's recording (Bn2Plugin.RecordNes.cs)
                 if (id - Fpd.TestBase is >= 790 and < 820) return ReloadTestHook(id - Fpd.TestBase, index, value);                               // FL's real conventions, the notes followed, a recording offered from its files (Bn2Plugin.Reload.cs)
                 if (id - Fpd.TestBase is >= 840 and < 860) return CaptureTestHook(id - Fpd.TestBase, index, value);                              // round 9: Capture from FL (Bn2Plugin.Capture.cs; 790-819 are reload's)
+                if (id - Fpd.TestBase is >= 1100 and < 1140) return PcTestHook(id - Fpd.TestBase, index, value);                                // the x86 PC console (Bn2Plugin.Pc.cs)
                 if (id - Fpd.TestBase is >= 960 and < 980) return NanoSmsTestHook(id - Fpd.TestBase, index, value);                              // the Nano SMS chip (Bn2Plugin.NanoSms.cs)
                 if (id - Fpd.TestBase is >= 940 and < 960) return NanoGbTestHook(id - Fpd.TestBase, index, value);                               // the Nano GB chip (Bn2Plugin.NanoGb.cs)
                 if (id - Fpd.TestBase is >= 900 and < 940) return WmsTestHook(id - Fpd.TestBase, index, value);                                  // WideMess milestone 7a: the WMS chip and WideMess games (Bn2Plugin.Wms.cs)

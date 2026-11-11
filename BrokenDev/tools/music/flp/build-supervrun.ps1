@@ -56,6 +56,14 @@ Write-Host "== $name -> $id (work $w)"
 & $FruityHost flp-backend $Flp $id $w | Out-Null
 if ($LASTEXITCODE -ne 0) { Fail 'flp-backend' }
 $fence = Join-Path $w "$name.fence.json"
+$adlib = Join-Path $w "$name.adlib.opl"    # composed for the AdLib (x86 PC console instances): dos / 95 only, replaces the converted title song
+if (Test-Path $adlib) {
+    $fenceTxt = & $FruityHost flp-backend $Flp $id $w
+    $fenceTxt | Set-Content (Join-Path $w "$name.fence.txt"); $fenceTxt | ForEach-Object { Write-Host "   $_" }
+    Copy-Item $fence (Join-Path $Out "$safe.$Engine.fence.json") -Force; Copy-Item (Join-Path $w "$name.fence.txt") (Join-Path $Out "$safe.$Engine.fence.txt") -Force
+    if ($FenceOnly) { Write-Host "fence only: $Out\$safe.$Engine.fence.txt"; exit 0 }
+}
+else {
 $env:MNES_SF2 = $Sf2
 $pre = Join-Path $w "$name.presets.json"     # the instances' Runaway presets as samples (FruityHost flp-backend writes it when the song has any)
 $sfargs = @((Join-Path $snesTree 'tools\music\sf2it.py'), (Join-Path $w "$name.mid"), '-o', (Join-Path $w 'rosbif.it'), '--report', (Join-Path $w 'rosbif.rep.json'))
@@ -68,12 +76,13 @@ $report | ForEach-Object { Write-Host "   $_" }
 Copy-Item $fence (Join-Path $Out "$safe.$Engine.fence.json") -Force
 Copy-Item (Join-Path $w "$name.fence.txt") (Join-Path $Out "$safe.$Engine.fence.txt") -Force
 if ($FenceOnly) { Write-Host "fence only: $Out\$safe.$Engine.fence.txt"; exit 0 }
+}
 
 # 4: the game, in a scratch copy, with the song as module 7 (ROSBIF = the title music)
 $snesCopy = Join-Path $w 'supervrun'
 robocopy $snesTree $snesCopy /E /NFL /NDL /NJH /NJS /NP /XD build build-wms .git __pycache__ | Out-Null
 if ($LASTEXITCODE -ge 8) { Fail "robocopy of the SNES tree ($LASTEXITCODE)" }
-Copy-Item (Join-Path $w 'rosbif.it') (Join-Path $snesCopy 'audio\rosbif.it') -Force
+if (-not (Test-Path $adlib)) { Copy-Item (Join-Path $w 'rosbif.it') (Join-Path $snesCopy 'audio\rosbif.it') -Force }   # (an AdLib song leaves the SNES module as it is: the DOS build replaces it)
 
 function Publish($file, $ext) {
     if (-not (Test-Path $file)) { Fail "the build made no $file" }
@@ -118,6 +127,7 @@ switch ($Engine) {
         $dCopy = Join-Path $w $Engine
         robocopy $src $dCopy /E /NFL /NDL /NJH /NJS /NP /XD build .git __pycache__ | Out-Null
         if ($LASTEXITCODE -ge 8) { Fail "robocopy of $src ($LASTEXITCODE)" }
+        if (Test-Path $adlib) { New-Item -ItemType Directory -Force (Join-Path $dCopy 'music\adlib') | Out-Null; Copy-Item $adlib (Join-Path $dCopy 'music\adlib\rosbif.opl') -Force; Write-Host "   AdLib song: $adlib -> music\adlib\rosbif.opl (replaces the converted title music)" }
         $log = Join-Path $w 'build.log'
         & pwsh -NoProfile -File (Join-Path $dCopy 'build.ps1') -Snes $snesCopy *> $log
         if ($LASTEXITCODE -ne 0) { Get-Content $log -Tail 25 | ForEach-Object { Write-Host "   $_" }; Fail "build.ps1 (log $log)" }

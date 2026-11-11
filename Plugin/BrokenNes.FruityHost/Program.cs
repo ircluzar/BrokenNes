@@ -39,6 +39,24 @@ switch (args[0])
     case "preset-test":
         return PresetChecks.Main(args);
 
+    case "adlib-fixture":      // a small .flp composed on the PC console (AdlibChecks.Project): lead + bass on the AdLib, a speaker and a NES instance
+        File.WriteAllBytes(args[1], AdlibChecks.Project());
+        return 0;
+
+    case "flp-vocdos-adlib":   // <song.flp> <song index 0-10> <out dir>: the Vaults DOS AdLib song (music/adlib/song<NN>.opl) + its fence
+    {
+        var adl = BrokenNes2.Music.Flp.AdlibBackend.BuildVaults(BrokenNes2.Music.Flp.FlpSong.Read(File.ReadAllBytes(args[1])), Path.GetFileNameWithoutExtension(args[1]));
+        if (adl == null) { Console.Error.WriteLine("the song has no PC console instance: it is not composed for the AdLib"); return 1; }
+        Directory.CreateDirectory(args[3]);
+        File.WriteAllBytes(Path.Combine(args[3], $"song{int.Parse(args[2]):00}.opl"), adl.Blob);
+        File.WriteAllText(Path.Combine(args[3], $"song{int.Parse(args[2]):00}.fence.json"), adl.Fence.Json());
+        Console.Write(adl.Fence.Text());
+        return adl.Fence.AnyOver ? 3 : 0;
+    }
+
+    case "opl-fit-test":
+        return OplFitChecks.Main(args);
+
     case "flp-test":
         return FlpChecks.Main(args);
 
