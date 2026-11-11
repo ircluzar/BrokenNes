@@ -136,3 +136,45 @@ Open questions for the user:
 ## FL channel volume (2026-11-10)
 
 FL's channel volume knob (event 219, `Levels[1]`; default 10000 = FL's 78%) is FL's mixer, not the plugin's: no game carries it. Every back end (VRUN NES caveats, CTW SMS, Vaults GB / GG, Super VRUN fences) gets one note line `[fl-volume]` per BrokenNes2 channel with notes whose knob is off its default: "FL channel volume isn't carried; use the plugin's Volume" (`FlpFence.ChannelVolume`). Check `flp-test fl-volume` (+ deliberate bug `ChannelVolumeSilent`). On the user's songs only overworld moves knobs, on its two 808 sampler channels (not in the game anyway): no line.
+
+## 10. Instrument extraction: an instrument taken from a game becomes a preset (2026-11-10)
+
+The other direction of section 9: an instrument a game plays is captured from one of its channels and kept as a Runaway-style preset (`*.bn2preset`) that the plugin loads and plays from FL's notes. Three front ends share ONE capture core (`Plugin/BrokenNes2.Plugin/Extract/`: `InstrumentCapture.cs` the definition and the recorder, `ExtractFeeds.cs` the glue to a running chip, `CapturePreset.cs` the preset), linked as source by the plugin, the FruityHost bench, the Workshop and the desktop app:
+
+| front end | how | where |
+|---|---|---|
+| (a) the plugin, ROM mode | Presets tab: **Capture next note: <channel>** (the Emulator tab's Channel picks it; shown only while a NES game on the FIX chip or a Game Boy game runs). The channel's next whole note goes into the library. | `Emulator.Extract.cs`, `PresetLibrary` (`IPresetCapture`), hooks 960-963 |
+| (b) BrokenNes desktop | **Emulator > Capture Instrument > (channel)**: the channel's next whole note, exported with a Save dialog | `Windows/MainForm/MainForm.Extract.cs` |
+| (c) BrokenDev CLI | `brokendev.ps1 instrument extract <rom> --frame N --channel C [--out f.bn2preset] [--input "40:Start,44:"] [--name T] [--json]` (headless Workshop `--extract-instrument`; NES on the FIX cores, Game Boy on the stock cores; deterministic: the same ROM, input and frame give the same preset) | `BrokenDev/lib/Instrument.ps1`, `Workshop/ExtractInstrumentCli.cs` |
+
+### The capture (what a captured instrument IS)
+
+Sampled once per video frame per channel, from the chip's own state at the frame's end (NES `APU_FIX.ProbeControl`, Game Boy `APU_GB`'s channel probe) plus its register-write observer:
+
+- **key-on**: the frame the game re-started the channel. NES: a write to `$4003/$4007/$400B/$400F` (the length load that restarts the envelope and the sequencer). Game Boy: a write to NRx4 with bit 7. Also any frame where the channel's level goes from 0 to above 0 (a driver that never re-keys).
+- **the note** asked for (`--frame N`): the last key-on at or before N whose note still sounds at N; if the channel is silent at N, the next key-on after N. (The desktop and the plugin take the next whole note after the click.)
+- **snapshot at the key-on**: the console's whole sound-register block at the key-on frame (NES `$4000-$4017` as last written; Game Boy NR10-NR51 + wave RAM + the CGB flag). The preset's instrument (duty, envelope, sweep, length, wave table, noise width...) is read from it with the same `NesInstruments` / `GbInstruments` readers Instrument Runaway uses.
+- **envelope over the note's life**, one entry per frame from the key-on to the key-off: **level** 0-15 (what the chip outputs: NES constant volume or the envelope's decay level, 0 when the length counter ran out or a pulse timer is below 8, the triangle 15 while both its counters run; Game Boy the envelope volume, the wave channel 15/7/3/0 from NR32), **period** (NES timer or noise index; Game Boy 11-bit frequency or NR43), **duty** (pulse duty; NES noise mode; Game Boy wave level code, noise width). Pitch is kept as the period, so vibrato, slides, arpeggios and the hardware sweep are all in it (as cents from the key-on).
+- **key-off**: the first frame after the key-on where the level is 0 (*Silenced*), or the channel is keyed again (*Retrigger*), or 600 frames (*Cap*), or the recording ended.
+- Not captured: the NES DMC (its sample lives in the game's memory), SNES / Master System / Game Gear / Genesis (the presets of those come from Instrument Runaway; their extraction is the next step: the same recorder with an S-DSP voice / PSG / FM-channel probe).
+
+**In the preset**: the instrument (INS1/CLN1 from the snapshot), the context, and the note behaviour **version 4** (`PresetNote.Captured`): `CapturedNote.ToBytes()` = u8 format 1, console, channel, end, u32 key-on frame, u8 + register block, u16 frame count, then per frame u8 level, u16 period, u8 duty (bit 7 = keyed). Older versions of the plugin keep the block and play the plain instrument.
+
+**Playback**: NES (`NesPresetPlayer`): FL's note plays the captured life frame by frame (60.0988 Hz): constant volume = the frame's level, the frame's duty / noise mode, the pitch = FL's pitch + the frame's cents from the key-on (sweep off: the periods carry it); after the last frame a *Silenced* note goes quiet, any other holds its last frame while FL holds the key. Game Boy (`UpdateGbVoice`): the snapshot's registers play (its hardware envelope is the level), FL's pitch + the captured cents per frame, and the note stops at a *Silenced* end. (A Game Boy driver that changes the volume by re-triggering is captured, but plays its key-on volume only: the GB envelope cannot change under a sounding note.)
+
+### Round trip (checked: `selftest --only extract`; real games: `FruityHost extract-roundtrip <dll> <rom> --frame N --channel C`)
+
+A captured note is made a preset, loaded into the real DLL on the Presets chip and played by one FL note at the captured pitch for the captured length; the result is compared with the game's channel alone (scale-free): **pitch** = the median cents between the two pitch tracks, **envelope** = per-frame RMS each normalised to its peak, mean absolute difference, **spectral similarity** = cosine of the two magnitude spectra of the whole note.
+
+| source | note | pitch | envelope error | spectral |
+|---|---|---|---|---|
+| synthetic NES driver, pulse 1 (decay, duty change, vibrato) | 36 frames | +0.0 c | 0.1% | 0.999 |
+| synthetic NES driver, triangle | 40 frames | -0.1 c | 8.7% | 1.000 |
+| synthetic Game Boy, square 1 (hardware decay + legato pitch change) | 27 frames | 0.0 c | 5.0% | 1.000 |
+| Crazy Luigi (SMB1 hack), pulse 2 @ 214 | 7 frames | +0.6 c | 13.3% | 0.999 |
+| Crazy Luigi, pulse 2 @ 430 | 7 frames | +1.1 c | 10.1% | 1.000 |
+| Crazy Luigi, triangle @ 213 / 429 | 8 frames | +0.3 / +0.1 c | 7.8 / 11.3% | 0.999 / 1.000 |
+| Codename 23 (SMB1 hack), pulse 2 @ 205 / 395 | 7 frames | +0.2 / +2.8 c | 14.7 / 9.5% | 0.999 / 1.000 |
+| Codename 23, triangle @ 204 / 394 | 8 frames | +0.3 / 0.0 c | 15.7 / 2.2% | 0.998 / 1.000 |
+
+(The SMB1 hacks play their music on pulse 2 and the triangle; pulse 1 is the sound effects. Their envelope error on 7-8-frame notes is mostly sub-frame timing: the game keys mid-frame, the preset at the frame's start.) The check also fails on a deliberate bug (the envelope flattened to the key-on level: caught by the envelope error) and runs the plugin's ROM-mode capture on the built-in game (Pulse 1, 12 frames; the preset reads back with its envelope, loads and sounds).
