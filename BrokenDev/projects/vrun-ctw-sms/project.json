@@ -180,7 +180,8 @@
       "original": {
         "fps": 60,
         "origin": "state=1",
-        "tick": "{run_timer@0} * 60 + [run_timer_subsec@0]"
+        "tick": "{run_timer@0} * 60 + [run_timer_subsec@0]",
+        "sampleAt": "read_input"
       },
       "port": {
         "fps": 60,
