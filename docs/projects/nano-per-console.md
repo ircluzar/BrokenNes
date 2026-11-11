@@ -11,7 +11,7 @@ and a song player for Nano NES. Order: NES player, SMS/GG, Genesis, SNES, DOS. M
 | SMS / GG (`Nano/sms`) | stock `Sn76489` | done | 28/28 bit-exact, kernel bit-exact, 14/14 mutants; C# twin 10/10 + plugin-way MIDI 6/6 | `NANOSMS` = chip 76 (selftest nanosms PASS) | `Nano/sms/tools/flp2nano` (19 checks) | 4dda0a32, a64f7a7e + flp |
 | Genesis (`Nano/genesis`) | **stock `MD` (YM2612 + PSG)**, picked 2026-11-10 by the interleaved run below | done (32 presets) | 26/26 traces + C# twin 10/10 + MIDI 6/6 bit-exact | `NANOMD` = chip 88 (selftest nanomore PASS) | `Nano/genesis/tools/flp2nano` (21 checks) | 2026-11-11 |
 | SNES (`Nano/snes`) | **stock `SFC` S-DSP** (S-DSP alone, no SPC700), picked 2026-11-10 | done (30 BRR presets, PRS1 presets via sidecar) | 26/26 traces + C# twin 10/10 + MIDI 6/6 bit-exact | `NANOSNES` = chip 89 (selftest nanomore PASS) | `Nano/snes/tools/flp2nano` (21 checks) | 2026-11-11 |
-| DOS | **`M036` (MAME 0.36 OPL2)** + PC speaker: the user's choice 2026-11-10 ("the lightest", quirks accepted) over the YMFM pick below | not started | | | | |
+| DOS (`Nano/dos`) | **`M036` (MAME 0.36 OPL2)** + PC speaker: the user's choice 2026-11-10 ("the lightest", quirks accepted) over the YMFM pick below | done (30 presets: SV / Vaults patches + designed + speaker) | tables = Core's; 26/26 traces + C# twin 10/10 + MIDI 6/6 bit-exact | `NANODOS` = chip 90, Direct only (selftest nanomore PASS) | `Nano/dos/tools/flp2nano` (21 checks, OPC1 patches) | 2026-11-11 |
 
 ## Benchmarks run for the rest (apu-bench, 2026-11-10, 3 passes, -seconds 2 -runs 5)
 

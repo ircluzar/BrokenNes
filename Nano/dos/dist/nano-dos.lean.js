@@ -1084,7 +1084,7 @@ default: throw new RangeError(`unknown parameter '${name}'`);
 addPreset(name, def) { this._table[name] = kit.normalizePreset(def, name); this._post({ t: 'addPreset', name, def }); }
 loadMidi(data, opts = {}) {
 const song = toSong(data), o = songOpts(opts);
-new kit.SongPlayer(8000, song, o);
+new kit.SongPlayer(44100, song, o);
 this._post({ t: 'song', song, o });
 this.song = new SongControl(this, song);
 if (opts.play) this.song.play();

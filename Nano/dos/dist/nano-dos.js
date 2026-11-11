@@ -1220,7 +1220,7 @@ class Synth {
    *  opts: {chips: 'channel' (default: one chip per MIDI channel, as FL plays one plugin per channel) | 'shared' (one chip, 10 voices in all), sidecar (the plugin's export), loop, loopStart, loopEnd, volume, presets} */
   loadMidi(data, opts = {}) {
     const song = toSong(data), o = songOpts(opts);
-    new kit.SongPlayer(8000, song, o);          // the same checks the audio thread makes, here, so a bad sidecar throws at the call
+    new kit.SongPlayer(44100, song, o);          // the same checks the audio thread makes, here, so a bad sidecar throws at the call
     this._post({ t: 'song', song, o });
     this.song = new SongControl(this, song);
     if (opts.play) this.song.play();

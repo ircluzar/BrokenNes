@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nano DOS browser test</title>
+<style>body{font:14px/1.4 system-ui,sans-serif;margin:16px;background:#111;color:#ddd}.ok{color:#7d7}.bad{color:#f77}.skip{color:#fc6}</style>
+</head>
+<body>
+<h1>BrokenNes Nano DOS: browser test</h1>
+<p>Loads <code>../dist/nano-dos.js</code> with a plain script tag. <code>node Nano/gb/test/browser-test.mjs</code> drives it in headless Edge.</p>
+<button id="run">Run</button>
+<pre id="out"></pre>
+<script src="../dist/nano-dos.js"></script>
+<script>
+const G = window.BrokenNesNanoDOS, out = document.getElementById('out'), results = [];
+function record(name, status, detail) {
+  results.push({ name, status, detail: detail === undefined ? '' : String(detail) });
+  const d = document.createElement('div'); d.className = status === 'pass' ? 'ok' : status === 'skip' ? 'skip' : 'bad';
+  d.textContent = `${status.toUpperCase().padEnd(5)} ${name}${detail ? '  (' + detail + ')' : ''}`; out.appendChild(d);
+}
+async function test(name, fn) {
+  try { const r = await fn(); if (r && r.skip) record(name, 'skip', r.skip); else record(name, r === false ? 'fail' : 'pass', r && r.detail); }
+  catch (e) { record(name, 'fail', 'threw ' + (e && e.message || e)); }
+}
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const RATE = 44100, SECS = 2;
+const SCRIPT = [
+  { t: 0.05, note: 'C4', preset: 'piano', dur: 0.4, vel: 1 }, { t: 0.1, note: 'E4', preset: 'svpulse50', dur: 0.5, vel: 0.5 }, { t: 0.2, note: 'G4', preset: 'epiano', dur: 0.3, vel: 0.8 },
+  { t: 0.05, note: 'C2', preset: 'bass', dur: 0.6, vel: 1 }, { t: 0.3, note: 38, preset: 'snare', dur: 0.1, vel: 1 }, { t: 0.5, note: 36, preset: 'kick', dur: 0.1, vel: 1 },
+  { t: 0.7, note: 96, preset: 'laser', dur: 0.1, vel: 1 }, { t: 0.9, note: 55, preset: 'jump', dur: 0.1, vel: 1 }, { t: 1.0, note: 83, preset: 'coin', dur: 0.1, vel: 1 }, { t: 1.2, note: 60, preset: 'strings', dur: 0.6, vel: 0.7 },
+];
+const events = () => SCRIPT.flatMap((s, i) => [{ time: s.t, type: 'on', note: s.note, velocity: s.vel, preset: s.preset, id: i + 1 }, { time: s.t + s.dur, type: 'off', id: i + 1 }]);
+async function viaWorklet(extra = {}, rate = RATE, chans = 2) {
+  const ctx = new OfflineAudioContext(chans, rate * SECS, rate);
+  const s = await G.create({ context: ctx, volume: 1, ...extra });
+  SCRIPT.forEach(x => s.noteOn(x.note, x.vel, { preset: x.preset, time: x.t }).off({ time: x.t + x.dur }));
+  await s.sync();
+  const t0 = performance.now(), buf = await ctx.startRendering();
+  return { buf, ms: performance.now() - t0 };
+}
+function cmp(a, b) { let diffs = 0, first = -1, pk = 0; for (let i = 0; i < a.length; i++) { pk = Math.max(pk, Math.abs(a[i])); if (a[i] !== b[i]) { diffs++; if (first < 0) first = i; } } return { same: a.length === b.length && !diffs, diffs, first, peak: pk }; }
+
+async function runAll() {
+  out.textContent = ''; results.length = 0;
+  record('environment', 'pass', `${navigator.userAgent.match(/(Edg|Chrome|Firefox|Version)\/[\d.]+/)?.[0] ?? navigator.userAgent}, ${location.protocol}`);
+  if (location.protocol === 'file:') {
+    await test('create() on file:// rejects with an explanation', async () => { try { await G.create({ context: new OfflineAudioContext(1, 100, RATE) }); return { skip: 'loaded anyway' }; } catch (e) { return e.code === 'worklet'; } });
+    await test('toAudioBuffer works from file://', async () => { const ctx = new OfflineAudioContext(2, RATE, RATE); return G.toAudioBuffer(ctx, [{ time: 0, type: 'on', note: 83, preset: 'coin' }], 1).length === RATE; });
+    window.nanoBrowserResults = results; return results;
+  }
+  const want = G.renderOffline(events(), SECS, { sampleRate: RATE, stereo: true });
+  await test('the worklet (embedded Blob) = renderOffline, stereo, bit for bit', async () => {
+    const r = await viaWorklet(), a = cmp(r.buf.getChannelData(0), want.left), b = cmp(r.buf.getChannelData(1), want.right);
+    return a.same && b.same && a.peak > 0.05 ? { detail: `${want.left.length} frames, ${r.ms.toFixed(0)} ms to render ${SECS} s` } : (record('  detail', 'fail', `${a.diffs}/${b.diffs} differ, first ${a.first}`), false);
+  });
+  await test('the OPL2 tables here = Node\'s (Math.pow / sin / log10 round alike)', async () => { const want = (await (await fetch('../dist/tables.json')).json()).oplTableSum, got = G._kit.oplTableSum(); return got === want ? { detail: `fingerprint ${got}` } : false; });
+  await test('nano-dos-worklet.js (workletUrl) renders the same', async () => { const r = await viaWorklet({ workletUrl: new URL('../dist/nano-dos-worklet.js', location.href).href }); return cmp(r.buf.getChannelData(0), want.left).same && cmp(r.buf.getChannelData(1), want.right).same; });
+  await test('mono: one output channel = (left + right) / 2', async () => {
+    const r = await viaWorklet({ mono: true }, RATE, 1), m = G.renderOffline(events(), SECS, { sampleRate: RATE });
+    return cmp(r.buf.getChannelData(0), m).same;
+  });
+  await test('divide: 2 runs the chip at half the rate, each sample held twice', async () => {
+    const r = await viaWorklet({ divide: 2 }), half = G.renderOffline(events(), SECS, { sampleRate: RATE / 2, stereo: true }), L = r.buf.getChannelData(0);
+    let ok = true; for (let i = 0; i < L.length; i++) if (L[i] !== half.left[i >> 1]) { ok = false; break; }
+    return ok;
+  });
+  await test('loadMidi plays the song = renderMidi, bit for bit (a chip per channel)', async () => {
+    const mid = await (await fetch('midi/tune.mid')).arrayBuffer();
+    const ctx = new OfflineAudioContext(2, RATE * 3, RATE), s = await G.create({ context: ctx, volume: 1 });
+    s.loadMidi(mid, { play: true }); await s.sync();
+    const buf = await ctx.startRendering(), w = G.renderMidi(mid, { sampleRate: RATE, seconds: 3 });
+    // the worklet's song starts at the first block after the message, added onto the synth's own (idle) output, which the ladder's offsets make non-zero:
+    // the same sum made here (the idle engine, then the song player from block d), and identity demanded for some block d
+    const L = buf.getChannelData(0), kit = G._kit, idle = G.renderOffline([], 3, { sampleRate: RATE, stereo: true });
+    let d = -1;
+    for (let k = 0; k <= 2048 && d < 0; k += 128) {
+      const X = idle.left.slice(), Y = idle.right.slice(), pl = new kit.SongPlayer(RATE, kit.parseMidi(mid), { chips: 'channel', volume: 1 });
+      pl.playing = true;
+      for (let o = k; o < X.length; o += 128) pl.render(X, Y, o, Math.min(128, X.length - o));
+      let ok = true; for (let i = 0; i < X.length; i++) if (L[i] !== X[i]) { ok = false; break; }
+      if (ok) d = k;
+    }
+    void w;
+    const ok = d >= 0;
+    return ok ? { detail: `started ${d} samples after time 0` } : false;
+  });
+  await test('loadMidi with the sidecar, and a bad sidecar throws', async () => {
+    const mid = await (await fetch('midi/chords-sfx.mid')).arrayBuffer(), side = await (await fetch('midi/chords-sfx.sidecar.json')).text();
+    const s = await G.create({ context: new OfflineAudioContext(2, RATE, RATE) });
+    s.loadMidi(mid, { sidecar: side });
+    try { s.loadMidi(mid, { sidecar: { format: 'nano-dos-sidecar', version: 1, channels: { 1: { preset: 'nope' } } } }); return false; } catch (e) { return e instanceof RangeError; }
+  });
+  await test('bad arguments throw', async () => {
+    const s = await G.create({ context: new OfflineAudioContext(2, 100, RATE) });
+    const bad = [() => s.noteOn('H9'), () => s.noteOn(60, 2), () => s.noteOn(60, 1, { preset: 'nope' }), () => s.noteOn(60, 1, { preset: 'svpulse50', channel: 9 }), 
+      () => s.setParam('volume', -1), () => s.setParam('pan', [0]), () => s.setParam('wat', 1), () => s.loadMidi(new ArrayBuffer(4)), () => s.play('nope')];
+    return bad.every(f => { try { f(); return false; } catch (e) { return e instanceof RangeError || e instanceof TypeError; } });
+  });
+  await test('speed: the worklet renders 10 s of a 4-voice passage', async () => {
+    const ctx = new OfflineAudioContext(2, RATE * 10, RATE), s = await G.create({ context: ctx });
+    for (let b = 0; b < 40; b++) { s.noteOn(48 + b % 4, 1, { preset: 'bass', time: b * 0.25, duration: 0.2 }); s.noteOn(72 + b % 5, 0.9, { preset: 'piano', time: b * 0.25, duration: 0.2 }); s.noteOn(76, 0.7, { preset: 'beeparp', time: b * 0.25, duration: 0.2 }); s.play(b % 2 ? 'snare' : 'hat', { time: b * 0.25 }); }
+    await s.sync(); const t0 = performance.now(); await ctx.startRendering(); const ms = performance.now() - t0;
+    const c2 = new OfflineAudioContext(2, RATE * 10, RATE); const t1 = performance.now(); await c2.startRendering(); const base = performance.now() - t1;
+    return { detail: `${(ms / 10).toFixed(2)} ms per audio second (an empty offline context: ${(base / 10).toFixed(2)} ms)` };
+  });
+  await test('real-time context: plays, the analyser hears A4, activity reports only while asked', async () => {
+    const t0 = performance.now(), s = await G.create(), tc = performance.now() - t0;
+    if (s.context.state !== 'running') { try { await Promise.race([s.resume(), sleep(1500)]); } catch (e) { } }
+    if (s.context.state !== 'running') { await s.dispose(); return { skip: `context '${s.context.state}'` }; }
+    const an = s.context.createAnalyser(); an.fftSize = 8192; an.smoothingTimeConstant = 0; s.connect(an);
+    let msgs = 0; s.onactivity = () => msgs++;
+    s.noteOn('A4', 1, { preset: 'svpulse50' }); await sleep(500);
+    const fd = new Float32Array(an.frequencyBinCount); an.getFloatFrequencyData(fd); let bin = 1; for (let i = 2; i < fd.length / 4; i++) if (fd[i] > fd[bin]) bin = i;
+    const heard = bin * s.sampleRate / an.fftSize, ok = Math.abs(heard - 440) < 2 * s.sampleRate / an.fftSize;
+    s.onactivity = null; const m0 = msgs; await sleep(300); const after = msgs - m0;
+    await s.dispose();
+    return ok && m0 > 3 && after <= 1 ? { detail: `heard ${heard.toFixed(0)} Hz, create() ${tc.toFixed(0)} ms, ${m0} reports, ${after} after onactivity = null` } : false;
+  });
+  const failed = results.filter(r => r.status === 'fail').length;
+  record('summary', failed ? 'fail' : 'pass', `${results.filter(r => r.status === 'pass').length} passed, ${failed} failed`);
+  window.nanoBrowserResults = results;
+  return results;
+}
+window.runNanoGbBrowserTests = runAll;
+document.getElementById('run').onclick = runAll;
+</script>
+</body>
+</html>
