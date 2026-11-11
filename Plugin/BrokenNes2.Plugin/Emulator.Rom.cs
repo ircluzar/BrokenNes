@@ -352,6 +352,7 @@ public sealed partial class Emulator
 
         g.RunFrame();
         CaptureFrame(g);
+        ExtractFrame(g);                      // instrument extraction (Emulator.Extract.cs): returns at once unless a capture waits
         RecordClock(g);
         LiveFrameEnd(g);
 

@@ -498,6 +498,9 @@ internal sealed class SessionGame : IGame, IGameStems
         return snap;
     }
 
+    /// <summary>The Game Boy's sound chip when this is a Game Boy game on the stock chip (instrument extraction reads its probe), else null.</summary>
+    public NesEmulator.Gb.APU_GB? GbApu => s is GbSession gb ? gb.Apu as NesEmulator.Gb.APU_GB : null;
+
     public GbSnapshot? CaptureGb() =>
         s is GbSession gb && gb.Apu is NesEmulator.Gb.APU_GB apu ? GbSnapshot.FromApu(apu) : null;
 

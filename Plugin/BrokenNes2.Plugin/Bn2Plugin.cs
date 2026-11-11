@@ -1466,6 +1466,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 if (id - Fpd.TestBase is >= 1100 and < 1140) return PcTestHook(id - Fpd.TestBase, index, value);                                // the x86 PC console (Bn2Plugin.Pc.cs)
                 if (id - Fpd.TestBase is >= 960 and < 980) return NanoSmsTestHook(id - Fpd.TestBase, index, value);                              // the Nano SMS chip (Bn2Plugin.NanoSms.cs)
                 if (id - Fpd.TestBase is >= 940 and < 960) return NanoGbTestHook(id - Fpd.TestBase, index, value);                               // the Nano GB chip (Bn2Plugin.NanoGb.cs)
+                if (id - Fpd.TestBase is >= 1140 and < 1144) return ExtractTestHook(id - Fpd.TestBase, index, value);                            // instrument extraction (Bn2Plugin.Extract.cs)
                 if (id - Fpd.TestBase is >= 900 and < 940) return WmsTestHook(id - Fpd.TestBase, index, value);                                  // WideMess milestone 7a: the WMS chip and WideMess games (Bn2Plugin.Wms.cs)
                 return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);
         }

@@ -184,6 +184,12 @@ internal sealed class PresetsPanel
             c.Button(dc, UiIds.RenameOk, "OK", UiCanvas.R(DetailX + DetailW - 144, RenameY, 70, 30), primary: true);
             c.Button(dc, UiIds.RenameCancel, "Cancel", UiCanvas.R(DetailX + DetailW - 70, RenameY, 70, 30));
         }
+        // instrument extraction (ROM mode): only when the instance on screen runs a game a capture can watch
+        if (UiServices.Presets is IPresetCapture cap)
+        {
+            if (cap.CapturePoll() is { } done) Act(done);
+            if (!renaming && cap.CaptureLabel is { } capLabel) c.Button(dc, UiIds.CaptureNote, capLabel, UiCanvas.R(DetailX, RenameY, DetailW, 30), primary: cap.CaptureWaiting);
+        }
         int bw = (DetailW - 5 * 6) / 6;
         for (int i = 0; i < Buttons.Length; i++)
         {
@@ -217,6 +223,7 @@ internal sealed class PresetsPanel
         if (id == UiIds.SearchClear) { if (search.Text.Length > 0) { search.Text = ""; list.Scroll = 0; } return false; }
         if (id == UiIds.RenameInput) { search.Blur(); rename.Click(x, doubleClick); return false; }
         if (id >= UiIds.Filter && id < UiIds.Filter + FilterNames.Length) { filter = id - UiIds.Filter; list.Scroll = 0; return false; }
+        if (id == UiIds.CaptureNote && lib is IPresetCapture capture) { Act(capture.Capture()); return false; }
         if (id == UiIds.RenameOk) { CommitRename(); return false; }
         if (id == UiIds.RenameCancel) { renaming = false; rename.Blur(); return false; }
 

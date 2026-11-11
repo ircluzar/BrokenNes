@@ -14,7 +14,7 @@ internal static partial class UiBoot
     static partial void RegisterPresetLibrary() => UiServices.Presets = PresetLibrary.Instance;
 }
 
-internal sealed class PresetLibrary : IPresetLibrary
+internal sealed class PresetLibrary : IPresetLibrary, IPresetCapture
 {
     public static readonly PresetLibrary Instance = new();
     public const string ProjectPrefix = "project:";
@@ -110,6 +110,44 @@ internal sealed class PresetLibrary : IPresetLibrary
         var r = Store.Add(d);
         Store.Refresh(force: true);
         return r.Ok ? ActionResult.Done(r.Message + ". Open the Presets tab to rename it or play it with no ROM.") : ActionResult.Refused(r.Message);
+    }
+
+    // ---- instrument extraction in ROM mode (Emulator.Extract.cs) ----
+
+    public string? CaptureLabel
+    {
+        get
+        {
+            var host = PresetHost.Current;
+            if (host?.Emulator is not { } emu || emu.ExtractConsole is not { } console) return null;
+            if (emu.ExtractWaiting) return "Waiting for a note ... (click to cancel)";
+            return "Capture next note: " + BrokenNes2.Extract.CapturedNote.ChannelName(console, Math.Clamp(host.RequestedChannel, 0, 3));
+        }
+    }
+
+    public bool CaptureWaiting => PresetHost.Current?.Emulator?.ExtractWaiting == true;
+
+    public ActionResult Capture()
+    {
+        var host = PresetHost.Current;
+        if (host?.Emulator is not { } emu) return ActionResult.Refused("No FL instance is attached to this window.");
+        if (emu.ExtractWaiting) { emu.CancelExtract(); return ActionResult.Done("Capture cancelled."); }
+        string? why = emu.StartExtract(Math.Clamp(host.RequestedChannel, 0, 3));
+        return why == null ? ActionResult.Done("Play the game: the channel's next note is captured when it ends (the Channel on the Emulator tab picks the channel).") : ActionResult.Refused("Cannot capture: " + why + ".");
+    }
+
+    public ActionResult? CapturePoll()
+    {
+        var host = PresetHost.Current;
+        if (host?.Emulator is not { } emu) return null;
+        var (n, failed) = emu.TakeExtracted();
+        if (failed != null) return ActionResult.Refused("Nothing captured: " + failed + ".");
+        if (n == null) return null;
+        var d = BrokenNes2.Extract.CapturePreset.Make(n, "", emu.ExtractGameName, emu.SourceGameSha1() ?? "", DateTimeOffset.UtcNow.ToUnixTimeSeconds(), out string? problem);
+        if (d == null) return ActionResult.Refused("The note could not be made a preset: " + problem);
+        var r = Store.Add(d);
+        Store.Refresh(force: true);
+        return r.Ok ? ActionResult.Done($"Captured {n.Describe()}: {r.Message}.") : ActionResult.Refused(r.Message);
     }
 
     public ActionResult Load(string id)

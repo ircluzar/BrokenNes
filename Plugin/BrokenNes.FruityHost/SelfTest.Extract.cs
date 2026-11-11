@@ -61,6 +61,9 @@ public sealed unsafe partial class SelfTest
             t.Expect(Math.Abs(ts.PitchCents) < 10 && ts.Spectral > 0.85, "triangle: " + ts);
         }
 
+        // the plugin in ROM mode (the built-in game, or --rom): "Capture next note" through the DLL's hooks, on the first channel that plays within 10 s; the preset it makes loads and plays
+        ExtractRomMode(t);
+
         // the Game Boy: the hardware envelope comes from the key-on snapshot, the legato pitch change from the captured life
         var (gf, gpcm, gper) = SyntheticGb();
         var gn = gf.Recorder.Pick(0, 10, out why);
@@ -70,6 +73,34 @@ public sealed unsafe partial class SelfTest
             t.Note("extract round trip (synthetic Game Boy, square 1): " + gs);
             t.Expect(Math.Abs(gs.PitchCents) < 10 && gs.EnvelopeError < 0.15 && gs.Spectral > 0.85, "Game Boy square 1: " + gs);
         }
+    }
+
+    private void ExtractRomMode(T t)
+    {
+        using var p = RomPlugin();
+        RenderBlocks(p, 0.5);
+        string Words() { var b = new char[400]; long n; fixed (char* c = b) n = p.Test(1143, b.Length, (nint)c); return new string(b, 0, (int)Math.Clamp(n, 0, b.Length)); }
+        for (int ch = 0; ch < 4; ch++)
+        {
+            t.Expect(p.Test(1140, ch) == 0, $"ROM mode: the capture of channel {ch} was refused: {Words()}");
+            long state = 0;
+            for (int i = 0; i < 40 && (state = p.Test(1141)) == 0; i++) RenderBlocks(p, 0.25);
+            if (state != 1) continue;
+            long len = p.Test(1142, 0);
+            var file = new byte[Math.Max(0, len)];
+            fixed (byte* b = file) p.Test(1142, file.Length, (nint)b);
+            var read = BrokenNes2.Presets.PresetFile.Read(file);
+            t.Expect(read.Ok && BrokenNes2.Presets.PresetNote.CapturedOf(read.Data!) != null, $"ROM mode: the captured preset does not read back with its envelope: {read.Problem}");
+            using var q = NewOn(2, 0);
+            t.Expect(PLoad(q, file, out string text) == 0, "ROM mode: the captured preset does not load: " + text);
+            var s = new Scenario { Name = "x", Tempo = 120, LengthBeats = 2 };
+            s.Notes.Add(new SimNote { StartBeat = 0, LengthBeats = 1, Key = 60, Velocity = 1, Channel = 0 });
+            double rms = ImodelData.Rms(new Mixer { SampleRate = 44100 }.Run(q, s, 0));
+            t.Expect(rms > 1e-4, $"ROM mode: the captured preset is silent (rms {rms})");
+            t.Note($"ROM mode capture: {Words()} ({file.Length} bytes, plays at rms {rms:0.0000})");
+            return;
+        }
+        t.Warn(false, "ROM mode: no channel played a whole note within 10 s of the game: the ROM-mode capture was not exercised");
     }
 
     /// <summary>A 60-frame Game Boy "game" on APU_GB: square 1 triggered at frame 3 (NR12 $F2: volume 15 decaying, duty 50%, A4 = 1750), its frequency moved to C5 (1797) at frame 15 without a
