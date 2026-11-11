@@ -40,7 +40,15 @@ The WideMess sound chip is **chip 29, `WMS`**, appended after the six Presets ch
 - **Direct mode** = the stock chip's mapping: the chip id is the NES-board APU id, so FL notes, duty and the Instrument patch bank (`Cx.HarvestBase`: MD_* = FM patches, SMSFM_* = YM2413 instruments) are the stock chip's. **ROM mode** runs the game on the bare engine (`Cx.HarvestEngine`: GNUB, ZS15, M036FM ...); Runaway uses the console's samplers as for the stock unit.
 - `AddHarvest` throws if a listed core is missing (never a silent index shift). The list lives in a nested class: a static field in another partial file is NOT initialised before `Chips` (that was a NullReferenceException on load).
 - **Checks:** `selftest --only harvest` (pinned 31 earlier ids, order, console, save/load, each chip non-silent at A4 and identical on two renders); `FruityHost chip-compat save <old dll> <dir>` then `chip-compat open <new dll> <dir>` (every chip's project from an older DLL loads with the same chip and parameters and renders the same hash; 31/31 SAME against 9056cdd0).
-- Not offered: SNES `HLE` (silent), `MD-STUB`, the x86 cards/OPL engines (the plugin has no x86 console and they have no NES-register bridge).
+- Not offered: SNES `HLE` (silent), `MD-STUB`. (The x86 cards / OPL engines are the PC console's chips since 2026-11-10: next section.)
+
+## The x86 PC console (2026-11-10): console 5, chips 77-87, Direct mode only
+
+- **Chips** (`Bn2Consoles.Pc.cs`, appended after NANOSMS 76, append-only): `PC_ADLIB` (ymfm), `PC_ADLIB_M036/D072/D074C/D074F`, `PC_ADLIB_NUK174` (Nuked-OPL3 in OPL2 mode), `PC_SPEAKER`, `PC_SB_D072` (SB Pro 2 direct DAC), `PC_TANDY_D072`, `PC_GUS_D074`, `PC_COVOX`. Chip id = "PC_" + the x86 APU id (`PcSound.Apply`). `Cx.Count` = 6, `Cx.Pc` = 5; ROM mode refused (`Emulator.SetMode/SetChipLocked/Adopt`).
+- **Engine** (`Pc/PcVoice.cs`): each instance owns a `PcMachine` (1 MB, CPU never runs) and writes the device's ports as a DOS program would; the clock moves with `IdleFor`; output = speaker + OPL + card at 44.1 kHz, DC-blocked, resampled. One instance = ONE voice (newest held note, legato retrigger). Made on the UI thread (`PreparePc`).
+- **Patches** (`Pc/OplPatch.cs`, Instrument = bank 6): Super VRUN DOS 7, Vaults DOS 2 (tone, rhythm snare), YM2413 ROM 15, a DESIGNED 128-program GM bank (no classic GM AdLib bank exists in the repo or tools). Bank 7 = DAC waveforms, 8 = Tandy modes. Patch editor = `Bn2Editor.Pc.cs` (ids 2300-2399, editor hooks 2300-2304), saved as section `OPC1` (version 1 + 11 bytes). Plugin hooks 1100-1139.
+- **Fitting** (`Pc/OplFit.cs`): a patch fitted to any PCM (16 harmonics + 24-frame envelope; bank starts, coordinate descent); `FruityHost opl-fit-test`.
+- **Music** (`Music/Flp/AdlibBackend.cs`): an .flp with PC instances -> Super VRUN DOS / 95 (`<song>.adlib.opl`, the new driver opcode `6v`, `music/adlib/<song>.opl` replaces the converted song; `build-supervrun.ps1`) and Vaults DOS / 95 (format 'A' v1, voices 3-5; `flp-vocdos-adlib`, `build-vaults-adlib.ps1`). Presets instances get a fitted patch. Checks: `flp-test` `adlib-sv`, `adlib-vaults` (+3 deliberate bugs, bits 27-29); `selftest --only pc`; `chip-compat` 77/77 SAME against main's DLL.
 
 ## Instrument model and corruptor (2026-10-17, Round 6 `imodel`): a pure library over the Runaway snapshots
 
