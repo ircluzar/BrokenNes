@@ -75,6 +75,7 @@ public static class VocGbBackend
         var F = o.Fence;
         string console = target == VocTarget.Gb ? "Game Boy" : "Game Gear";
         foreach (var c in song.Caveats) F.Add(new FenceLine("project", FenceLevel.Note, c));
+        F.AddRange(FlpFence.ChannelVolume(song));
         var byCh = new List<FlpInstrument>[4];
         for (int i = 0; i < 4; i++) byCh[i] = new();
         var presetInst = new Dictionary<FlpInstrument, VocInstrument>();

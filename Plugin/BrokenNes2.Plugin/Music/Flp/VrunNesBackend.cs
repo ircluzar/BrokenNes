@@ -49,6 +49,7 @@ public static class VrunNesBackend
     public static VrunNesSong Build(FlpSongModel song, string name)
     {
         var cav = new List<string>(song.Caveats);
+        cav.AddRange(FlpFence.ChannelVolume(song).Select(l => l.Text));
         var byNes = new List<FlpInstrument>[4];
         for (int i = 0; i < 4; i++) byNes[i] = new();
         foreach (var ins in song.Instruments)

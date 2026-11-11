@@ -41,6 +41,7 @@ internal static class FlpChecks
         new("sv-preset-snes", "presets: every SNES fixture instrument (clean, corrupted, tuned) from a PRS1 section written byte by byte becomes the song's own sample: BRR decode, loop, C5, the plugin's render alike", SvChecks.PresetSnes),
         new("sv-preset-engines", "presets per engine: Genesis FM / DAC, Game Boy, SNES rendered or exact; SNES Ok, MD DAC Note, DOS / 95 OVER; damaged and NES presets OVER; sound RAM; pitch ceiling", SvChecks.PresetEngines),
         new("preset-others", "presets on Vaults GB (a wave preset's RAM is the wave table, a pulse preset's duty), Vaults GG and VRUN NES (OVER, never silent)", SvChecks.PresetOthers),
+        new("fl-volume", "an FL channel volume knob off its default (78%) gives the note line on every back end (VRUN NES, CTW SMS, Vaults GB / GG, Super VRUN), the default gives none; overworld's real knobs", FlVolume),
         new("sv-songs", "every song on every Super VRUN engine: MIDI notes = the model's sounding notes, fence printed (with --out: written)", SvChecks.Songs),
     ];
 
@@ -53,6 +54,42 @@ internal static class FlpChecks
         if (Songs().Count > 0) return false;
         r.Warn($"NOT RUN: no .flp in {SongsDir}");
         return true;
+    }
+
+    // ---- fl-volume ----
+
+    private static void FlVolume(ImodelReport r)
+    {
+        const string Words = "FL channel volume isn't carried; use the plugin's Volume";
+        var model = FlpSong.Read(SyntheticProject());
+        var lead = model.Instruments.First(i => i.Name == "Lead");
+        foreach (var i in model.Instruments) i.Levels = [6400, FlpFence.FlDefaultVolume, 0];
+        lead.Levels = [6400, 7120, 0];
+        IEnumerable<(string Engine, IEnumerable<string> Lines)> All(FlpSongModel m) =>
+        [
+            ("VRUN NES", VrunNesBackend.Build(m, "v").Caveats),
+            ("CTW SMS", CtwSmsBackend.Build(m, "v").Fence.Select(l => l.Text)),
+            ("Vaults GB", VocGbBackend.Build(m, "v").Fence.Select(l => l.Text)),
+            ("Vaults GG", VocGgBackend.Build(m, "v").Fence.Select(l => l.Text)),
+            .. Enum.GetValues<SvEngine>().Select(e => ("Super VRUN " + e, SuperVrunBackend.Build(m, "v", e).Fence.Lines.Select(l => l.Text))),
+        ];
+        foreach (var (engine, lines) in All(model))
+        {
+            var hit = lines.Where(l => l.Contains(Words)).ToList();
+            r.Expect(hit.Count == 1 && hit[0].Contains("\"Lead\"") && hit[0].Contains("56%"), $"{engine}: channel Lead's FL volume 56% gives {hit.Count} note lines: {string.Join(" | ", hit)}");
+        }
+        lead.Levels = [6400, FlpFence.FlDefaultVolume, 0];
+        foreach (var (engine, lines) in All(model))
+            r.Expect(!lines.Any(l => l.Contains(Words)), $"{engine}: every FL volume at its default, yet a volume note line");
+        // the user's overworld: two knobs moved (channels 0 and 3, measured from the file's event 219)
+        var ow = Songs().FirstOrDefault(f => Path.GetFileName(f) == "overworld.flp");
+        if (ow == null) { r.Warn("overworld.flp not found: the real-song half is not run"); return; }
+        var real = FlpSong.Read(File.ReadAllBytes(ow));
+        var want = real.Instruments.Where(i => i.Bn2 != null && i.Notes.Count > 0 && i.Levels is { Length: >= 2 } l && l[1] != FlpFence.FlDefaultVolume).Select(i => i.Rack).ToList();
+        var got = FlpFence.ChannelVolume(real).ToList();
+        var moved = real.Instruments.Where(i => i.Levels is { Length: >= 2 } l && l[1] != FlpFence.FlDefaultVolume).Select(i => $"{i.Rack} \"{i.Name}\" {(i.Bn2 == null ? i.Plugin : "BrokenNes2")} {i.Notes.Count} notes").ToList();
+        r.Expect(moved.Count == 2 && got.Count == want.Count, $"overworld: {moved.Count} moved knobs (2 in the file), {want.Count} BrokenNes2 channels with a moved FL volume, {got.Count} note lines");
+        r.Note($"overworld: knobs moved on {string.Join(", ", moved)}; note lines: {(got.Count == 0 ? "none (no BrokenNes2 channel with notes among them)" : string.Join(" | ", got.Select(l => l.Text)))}");
     }
 
     // ---- identity ----
@@ -446,6 +483,7 @@ internal static class FlpChecks
         new(FlpMutants.ReaderDropsLastNote, "the C# reader drops each pattern's last note", "identity"),
         new(FlpMutants.DutyIgnored, "the squares' Duty is not written (50% in the game)", "duty"),
         new(FlpMutants.SlideSignLost, "square 2's slide loses its sign extension in the ROM (the 2026-11-10 NESFab miscompile's class)", "bend-signs"),
+        new(FlpMutants.ChannelVolumeSilent, "an FL channel volume off its default is not reported", "fl-volume"),
         new(SvMutants.VoiceFenceBlind, "the Super VRUN fence does not see too many voices", "sv-fence"),
         new(SvMutants.DutyAs50, "the Super VRUN back end plays every pulse at 50%", "sv-synthetic"),
         new(SvMutants.ShortNoiseAsLong, "short noise written as long noise", "sv-synthetic"),
