@@ -6,6 +6,7 @@ using System.Numerics;
 using BrokenNes2.Extract;
 using BrokenNes2.Instruments;
 using NesEmulator;
+using NesEmulator.Gb;
 using NesEmulator.Plugin;
 
 namespace BrokenNes.FruityHost;
@@ -59,6 +60,44 @@ public sealed unsafe partial class SelfTest
             t.Note("extract round trip (synthetic driver, triangle): " + ts);
             t.Expect(Math.Abs(ts.PitchCents) < 10 && ts.Spectral > 0.85, "triangle: " + ts);
         }
+
+        // the Game Boy: the hardware envelope comes from the key-on snapshot, the legato pitch change from the captured life
+        var (gf, gpcm, gper) = SyntheticGb();
+        var gn = gf.Recorder.Pick(0, 10, out why);
+        t.Expect(gn != null && gn.KeyOnFrame == 3 && gn.End == CaptureEnd.Silenced && gn.Frames == 27 && Math.Abs(gn.CentsAt(20) - 297) < 15, $"Game Boy square 1: {gn?.Describe() ?? why}, {gn?.CentsAt(20):0} cents at frame 23");
+        if (gn != null && RoundTrip(t, gn, gpcm, gper, "synthetic Game Boy square 1") is { } gs)
+        {
+            t.Note("extract round trip (synthetic Game Boy, square 1): " + gs);
+            t.Expect(Math.Abs(gs.PitchCents) < 10 && gs.EnvelopeError < 0.15 && gs.Spectral > 0.85, "Game Boy square 1: " + gs);
+        }
+    }
+
+    /// <summary>A 60-frame Game Boy "game" on APU_GB: square 1 triggered at frame 3 (NR12 $F2: volume 15 decaying, duty 50%, A4 = 1750), its frequency moved to C5 (1797) at frame 15 without a
+    /// trigger, the envelope reaches 0 at frame 30 (the note ends there), the DAC switched off at frame 40. Only square 1 is heard. Returns the feed and the chip's sound (mono, 48 kHz resampled to 44.1) with each frame's sample offset.</summary>
+    private static (GbExtractFeed Feed, float[] Pcm, int[] FrameAt) SyntheticGb()
+    {
+        var apu = new APU_GB(GbModel.Dmg);
+        apu.ResetPostBoot();
+        var feed = new GbExtractFeed(apu);
+        apu.WriteRegister(0x24, 0x77); apu.WriteRegister(0x25, 0x11);
+        var raw = new List<float>(); var at = new int[61]; var buf = new short[8192];
+        const int frameCycles = 70224, fsCycles = 8192;
+        int fsLeft = fsCycles;
+        for (int f = 0; f < 60; f++)
+        {
+            at[f] = raw.Count;
+            if (f == 3) { apu.WriteRegister(0x11, 0x80); apu.WriteRegister(0x12, 0xF2); apu.WriteRegister(0x13, 1750 & 0xFF); apu.WriteRegister(0x14, (byte)(0x80 | 1750 >> 8)); }
+            if (f == 15) { apu.WriteRegister(0x13, 1797 & 0xFF); apu.WriteRegister(0x14, (byte)(1797 >> 8)); }
+            if (f == 40) apu.WriteRegister(0x12, 0x00);
+            int left = frameCycles;
+            while (left > 0) { int c = Math.Min(left, fsLeft); apu.Tick(c); left -= c; fsLeft -= c; if (fsLeft == 0) { apu.FrameSequencerStep(); fsLeft = fsCycles; } }
+            int n; while ((n = apu.ReadSamples(buf)) > 0) for (int i = 0; i + 1 < n; i += 2) raw.Add((buf[i] + buf[i + 1]) / 65536f);
+            feed.EndFrame();
+        }
+        at[60] = raw.Count;
+        feed.Detach();
+        int rate = apu.SampleRate;
+        return (feed, Resample(raw.ToArray(), rate, 44100), at.Select(x => (int)((long)x * 44100 / rate)).ToArray());
     }
 
     /// <summary>A 100-frame "game" on the FIX chip: pulse 1 keyed at 4 (A4, volume 15 decaying by 1 every 3 frames, duty 50% then 25% at 14, vibrato from 8), silenced at 40, keyed again at 52 (E5) until 80;
@@ -106,7 +145,8 @@ public sealed unsafe partial class SelfTest
         var real = truth ?? n;
         int from = frameAt[real.KeyOnFrame], to = frameAt[Math.Min(frameAt.Length - 1, real.KeyOnFrame + real.Frames)];
         var game = gamePcm[from..to];
-        double seconds = real.Frames / NesFrameHz;
+        double fhz = real.Console == ConsoleId.GameBoy ? 59.7275 : NesFrameHz;
+        double seconds = real.Frames / fhz;
         float[] played;
         using (var p = NewOn(2, ConsoleParam(n.Console)))
         {
@@ -116,10 +156,10 @@ public sealed unsafe partial class SelfTest
             played = Audio.Mono(new Mixer { SampleRate = 44100 }.Run(p, s, 0), 2);
         }
         int len = Math.Min(game.Length, played.Length);
-        return Score(game[..len], played[..len], 44100, real.Frames, real.MidiKey, !real.IsNoise);
+        return Score(game[..len], played[..len], 44100, real.Frames, real.MidiKey, !real.IsNoise, fhz);
     }
 
-    public static ExtractScore Score(float[] game, float[] played, int rate, int frames, double key, bool pitched)
+    public static ExtractScore Score(float[] game, float[] played, int rate, int frames, double key, bool pitched, double frameHz = NesFrameHz)
     {
         // pitch: the median difference of the two pitch tracks over the note (the first 40 ms skipped: the track's window)
         double pitch = 0;
@@ -131,7 +171,7 @@ public sealed unsafe partial class SelfTest
             pitch = d.Count == 0 ? double.NaN : d[d.Count / 2];
         }
         // envelope: per-frame RMS, each normalised to its own peak
-        double[] Env(float[] x) { var e = new double[frames]; for (int f = 0; f < frames; f++) { int s = (int)(f * rate / NesFrameHz), u = Math.Min(x.Length, (int)((f + 1) * rate / NesFrameHz)); e[f] = s < u ? Audio.Rms(x, s, u) : 0; } double m = e.Max(); return m > 0 ? e.Select(v => v / m).ToArray() : e; }
+        double[] Env(float[] x) { var e = new double[frames]; for (int f = 0; f < frames; f++) { int s = (int)(f * rate / frameHz), u = Math.Min(x.Length, (int)((f + 1) * rate / frameHz)); e[f] = s < u ? Audio.Rms(x, s, u) : 0; } double m = e.Max(); return m > 0 ? e.Select(v => v / m).ToArray() : e; }
         var eg = Env(game); var ep = Env(played);
         double env = eg.Zip(ep).Average(x => Math.Abs(x.First - x.Second));
         // spectrum: magnitude spectra (Hann, power-of-two FFT of the whole note), cosine similarity
