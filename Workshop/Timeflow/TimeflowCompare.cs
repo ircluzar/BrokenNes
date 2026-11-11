@@ -73,6 +73,7 @@ internal static class TimeflowComparing
         public double TickHz;       // game ticks a second (0: one tick a frame)
         public string Tick = "";    // an expression that reads the game's own tick counter (wins over TickHz)
         public string Origin = "";  // "var=value": time 0 is the first frame that variable has that value (the two games' clocks start at different moments)
+        public string SampleAt = ""; // a CPU address (a symbol) the game executes once per update, after its tick and its positions moved: each frame keeps the values, tick and pads the game had at its last execution there (a frame without one keeps the previous: held). For a game whose main loop runs through the frame boundary (the NES VRUN: the boundary lands anywhere in an update, between its move and its tick)
         public string Settled = ""; // an expression, nonzero when the game is between updates: a frame that ends while it is 0 (the frame boundary fell inside an update, e.g. a slow room load half done) keeps the last settled frame's values and tick
     }
 
@@ -114,7 +115,7 @@ internal static class TimeflowComparing
             if (e.TryGetProperty("rate", out var rate))
             {
                 foreach (var (side, r) in new[] { ("original", s.O), ("port", s.P) })
-                    if (rate.TryGetProperty(side, out var rs)) { r.Fps = Num(rs, "fps"); r.TickHz = Num(rs, "tickHz"); r.Tick = Str(rs, "tick"); r.Origin = Str(rs, "origin"); r.Settled = Str(rs, "settled"); }
+                    if (rate.TryGetProperty(side, out var rs)) { r.Fps = Num(rs, "fps"); r.TickHz = Num(rs, "tickHz"); r.Tick = Str(rs, "tick"); r.Origin = Str(rs, "origin"); r.Settled = Str(rs, "settled"); r.SampleAt = Str(rs, "sampleAt"); }
             }
             if (e.TryGetProperty("tolerance", out var tol)) { s.TickTolerance = Num(tol, "ticks"); s.PositionTolerance = Num(tol, "positions"); }
             s.Input = Str(e, "input", "auto").ToLowerInvariant();
@@ -238,6 +239,71 @@ internal static class TimeflowComparing
 
     private static Func<long>[] Evaluators(MovieMachine m, Spec spec, bool port, out Func<long>? tick) => Evaluators(m, spec, port, out tick, out _);
 
+    /// <summary>rate.sampleAt: the values (and tick, pads) the game had the last time it executed the sample address; the evaluators read this copy.</summary>
+    private sealed class SampleHook : NesEmulator.Debugging.DebugObserver
+    {
+        private readonly List<NesEmulator.Debugging.SpaceRange> at; private readonly bool onWrite; private readonly int tickAt; private readonly Func<long>[] live; public readonly long[] Row; public bool Hit, Ever;
+        private bool pending;
+        public SampleHook(List<NesEmulator.Debugging.SpaceRange> at, bool onWrite, int tickAt, Func<long>[] live) { this.at = at; this.onWrite = onWrite; this.tickAt = tickAt; this.live = live; Row = new long[live.Length]; }
+        private bool Matches(NesEmulator.Debugging.DebugCpu cpu, uint address, bool write)
+        {
+            Span<NesEmulator.Debugging.SpaceKey> keys = stackalloc NesEmulator.Debugging.SpaceKey[4];
+            int n = cpu.AccessKeys(address, write, keys);
+            for (int i = 0; i < n; i++) foreach (var r in at) if (r.Contains(keys[i])) return true;
+            return false;
+        }
+        public override bool WantsSteps(int cpuIndex) => cpuIndex == 0;
+        public override bool WantsAccesses(int cpuIndex) => onWrite && cpuIndex == 0;
+        public override void OnStep(NesEmulator.Debugging.DebugCpu cpu, long cycle, bool executes, string? interrupt)
+        {
+            if (onWrite) { if (pending && executes) { pending = false; Capture(); } return; }   // the step after the write: it has landed
+            if (!executes || interrupt != null || !Matches(cpu, cpu.PC, false)) return;
+            Capture();
+        }
+        public override void OnAccess(NesEmulator.Debugging.DebugCpu cpu, uint address, byte value, bool write, NesEmulator.Debugging.AccessSource source, int channel)
+        {
+            if (write && source == NesEmulator.Debugging.AccessSource.Cpu && Matches(cpu, address, true)) pending = true;
+        }
+        private void Capture() { for (int i = 0; i < live.Length; i++) Row[i] = live[i](); Hit = true; Ever = true; }
+        /// <summary>After a frame: true when the game reached the sample point in it. Else false (held: the values stay the last update's,
+        /// the frame boundary fell inside an update), unless there was none yet or the game's tick moved without it (a title, a menu):
+        /// then the frame's own values (true).</summary>
+        public bool EndFrame()
+        {
+            if (Hit) { Hit = false; return true; }
+            if (Ever && (tickAt < 0 || live[tickAt]() == Row[tickAt])) return false;
+            for (int i = 0; i < live.Length; i++) Row[i] = live[i]();
+            return true;
+        }
+    }
+
+    /// <summary>With rate.sampleAt: hooks the machine and turns the evaluators (variables, tick, pad variables) into reads of the hook's copy.</summary>
+    private static SampleHook? HookSamples(MovieMachine m, Rate r, bool port, ref Func<long>[] ev, ref Func<long>? tick, List<(PadButtons b, Func<long> e)>? used)
+    {
+        if (r.SampleAt.Length == 0) return null;
+        var d = m.Host.Dbg!;
+        List<NesEmulator.Debugging.SpaceRange> a;
+        string at = r.SampleAt.Trim();
+        bool write = at.StartsWith("write ", StringComparison.OrdinalIgnoreCase);   // "write sym": the step after the game writes that variable
+        if (write) at = at[6..].Trim();
+        try { a = d.Resolve(d.Machine.Cpus[0], at, write ? NesEmulator.Debugging.AccessKind.Write : NesEmulator.Debugging.AccessKind.Exec, out _); } catch (Exception x) { throw new ArgumentException($"the {(port ? "port" : "original")}'s sampleAt ({r.SampleAt}): {x.Message}"); }
+        var live = new List<Func<long>>(ev);
+        bool hasTick = tick != null;
+        if (hasTick) live.Add(tick!);
+        if (used != null) live.AddRange(used.Select(u => u.e));
+        var h = new SampleHook(a, write, hasTick ? ev.Length : -1, live.ToArray());
+        int n = ev.Length;
+        ev = Enumerable.Range(0, n).Select(i => (Func<long>)(() => h.Row[i])).ToArray();
+        if (hasTick) tick = () => h.Row[n];
+        if (used != null)
+        {
+            int b = n + (hasTick ? 1 : 0);
+            for (int i = 0; i < used.Count; i++) { int k = b + i; used[i] = (used[i].b, () => h.Row[k]); }
+        }
+        d.AddObserver(h);
+        return h;
+    }
+
     private static Func<long>[] Evaluators(MovieMachine m, Spec spec, bool port, out Func<long>? tick, out string[] watches)
     {
         var d = m.Host.Dbg ?? throw new NotSupportedException($"the {m.ConsoleKey} has no debugger here: its variables cannot be read by name");
@@ -350,6 +416,7 @@ internal static class TimeflowComparing
                 used.Add((Enum.Parse<PadButtons>(name, true), () => d.Evaluate(e)));
             }
         }
+        var hook = HookSamples(m, spec.O, false, ref ev, ref tick, used);
         long tb = 0, tp = 0;
         long end = maxFrames > 0 ? Math.Min(rd.EndFrame, maxFrames) : rd.EndFrame;
         for (long f = 0; f < end; f++)
@@ -359,6 +426,7 @@ internal static class TimeflowComparing
             var row = rd.Row(f);
             if (side.OffFrame == null && (src.PictureHash() != row.Picture || src.RamHash() != row.Ram))
             { side.OffFrame = f; side.OffWhat = src.RamHash() != row.Ram ? "the work RAM after the frame" : "the picture after the frame"; }
+            if (hook != null && !hook.EndFrame() && f > 0) side.Held++;
             Sample(side, spec.O, ev, TickOf(spec.O, side.Fps, f + 1, tick?.Invoke() ?? 0, ref tb, ref tp));
             if (used.Count > 0) { PadButtons u = PadButtons.None; foreach (var (b, e) in used) if (e() != 0) u |= b; side.UsedPads.Add(u); }
             if (m.Crashed) { side.Crash = m.CrashInfo; break; }
@@ -378,6 +446,7 @@ internal static class TimeflowComparing
         if (spec.Input is "tick" or "update" or "used") frames += 600;   // room to catch up: the port may reach the original's last tick later
         var side = new Side { Label = "port", Console = m.ConsoleKey, Rom = m.RomName, RomSha = m.RomSha256, Symbols = a.PortSymbols, Fps = fpsP };
         var ev = Evaluators(m, spec, true, out var tick, out side.Watches);
+        var hook = HookSamples(m, spec.P, true, ref ev, ref tick, null);
         var rec = TimeflowRecorder.Start(TimeflowMachines.SourceFor(m), OptionsFor(m, "compare-port", $"timeflow compare: the pads of timeline {orig.Timeline} ({orig.Console} {orig.Rom})", a.PortProject));
         long tb = 0, tp = 0;
         // input "tick" (S3: the same game code on two CPUs that spend different frames loading): the pads go by frame, re-anchored at
@@ -440,6 +509,7 @@ internal static class TimeflowComparing
                 rec.BeforeFrame(q1, q2);
                 m.Frame(q1, q2);
                 rec.AfterFrame();
+                if (hook != null && !hook.EndFrame() && g > 0) side.Held++;
                 Sample(side, spec.P, ev, TickOf(spec.P, fpsP, g + 1, tick?.Invoke() ?? 0, ref tb, ref tp));
                 if (m.Crashed) { side.Crash = m.CrashInfo; break; }
                 continue;
@@ -450,7 +520,14 @@ internal static class TimeflowComparing
                 if (tNow != curT) { curT = tNow; anchor = g; }
                 long lead = leadVar < 0 || (g > 0 && side.Values[(int)g - 1][leadVar] == leadVal) ? spec.TickLead : 0;
                 if (byUpdate) f = padFor.TryGetValue(tNow, out long ku) ? ku + lead : -1;
-                else f = firstAt.TryGetValue(tNow, out long k0) ? k0 + (g - anchor) + lead : -1;
+                else
+                {
+                    f = firstAt.TryGetValue(tNow, out long k0) ? k0 + (g - anchor) + lead : -1;
+                    // a port that stays on tick T longer than the original (a slower room load) holds the original's last pad of T: it
+                    // must not run on into the pads the original played after T + 1 (a release and re-press there is a new jump on the
+                    // port, then the re-anchor at T + 1 goes back in time); found on supervrun-md room 1 (2026-11-10)
+                    if (f >= 0 && firstAt.TryGetValue(tNow + 1, out long k1)) f = Math.Min(f, Math.Max(k0 + lead, k1 + lead - 1));
+                }
                 if (f >= orig.Frames) f = -1;
             }
             var (p1, p2) = f >= 0 ? rd.Pads(f) : (PadButtons.None, PadButtons.None);
@@ -458,6 +535,7 @@ internal static class TimeflowComparing
             rec.BeforeFrame(p1, p2);
             m.Frame(p1, p2);
             rec.AfterFrame();
+            if (hook != null && !hook.EndFrame() && g > 0) side.Held++;
             Sample(side, spec.P, ev, TickOf(spec.P, fpsP, g + 1, tick?.Invoke() ?? 0, ref tb, ref tp));
             if (m.Crashed) { side.Crash = m.CrashInfo; break; }
         }
@@ -588,7 +666,7 @@ internal static class TimeflowComparing
             for (double t = spec.SampleEveryTicks; t <= last && sample == null; t += spec.SampleEveryTicks)
             {
                 long fo = FrameAtTick(o, t), fp = FrameAtTick(p, t);
-                if (spec.O.Settled.Length > 0 && spec.P.Settled.Length > 0)
+                if (spec.O.Settled.Length + spec.O.SampleAt.Length > 0 || spec.P.Settled.Length + spec.P.SampleAt.Length > 0)
                 {
                     // settled sides: a side that ran several updates in one frame (catching up) never showed some ticks' states, so the
                     // sample goes to the first tick from t on that BOTH sides showed exactly (else it would compare tick t with t + 1)
@@ -623,6 +701,14 @@ internal static class TimeflowComparing
         if (a.PortSymbols.Count == 0) throw new ArgumentException("--port-sym F is needed (the port's variables are read by name)");
         var p = RunPort(a, spec, origDir, o);
         long? originO = ApplyOrigin(o, spec, spec.O), originP = ApplyOrigin(p, spec, spec.P);
+        var dump = Environment.GetEnvironmentVariable("TIMEFLOW_COMPARE_DUMP");   // debugging: per-frame tick and values of both sides, CSV
+        if (!string.IsNullOrEmpty(dump))
+            foreach (var (sd, nm) in new[] { (o, "original"), (p, "port") })
+            {
+                var sb = new System.Text.StringBuilder("frame,tick," + string.Join(",", spec.Vars.Select(v => v.Name)) + "\n");
+                for (int i = 0; i < sd.Values.Count; i++) sb.Append(i).Append(',').Append(sd.Ticks[i].ToString(CultureInfo.InvariantCulture)).Append(',').Append(string.Join(",", sd.Values[i].Take(spec.Vars.Count))).Append('\n');
+                File.WriteAllText(dump + "." + nm + ".csv", sb.ToString());
+            }
         var eo = Events(o, spec); var ep = Events(p, spec);
         var d = FirstDrift(o, p, spec, eo, ep, out int matched);
         var r = new JsonObject
@@ -638,7 +724,7 @@ internal static class TimeflowComparing
                 ["tickTolerance"] = spec.TickTolerance, ["input"] = spec.Input,
                 ["originOriginal"] = spec.O.Origin.Length > 0 ? $"{spec.O.Origin}: frame {originO?.ToString(CultureInfo.InvariantCulture) ?? "never"}" : null,
                 ["originPort"] = spec.P.Origin.Length > 0 ? $"{spec.P.Origin}: frame {originP?.ToString(CultureInfo.InvariantCulture) ?? "never"}" : null, ["sampleEveryTicks"] = spec.SampleEveryTicks,
-                ["heldOriginal"] = spec.O.Settled.Length > 0 ? (JsonNode?)o.Held : null, ["heldPort"] = spec.P.Settled.Length > 0 ? (JsonNode?)p.Held : null,
+                ["heldOriginal"] = spec.O.Settled.Length + spec.O.SampleAt.Length > 0 ? (JsonNode?)o.Held : null, ["heldPort"] = spec.P.Settled.Length + spec.P.SampleAt.Length > 0 ? (JsonNode?)p.Held : null,
                 ["timeOriginal"] = spec.O.Tick.Length > 0 ? $"the game's tick {Expr(spec.O.Tick)}" : $"{(spec.O.TickHz > 0 ? spec.O.TickHz : o.Fps):0.####} ticks/s at {o.Fps:0.####} fps",
                 ["timePort"] = spec.P.Tick.Length > 0 ? $"the game's tick {Expr(spec.P.Tick)}" : $"{(spec.P.TickHz > 0 ? spec.P.TickHz : p.Fps):0.####} ticks/s at {p.Fps:0.####} fps",
             },
