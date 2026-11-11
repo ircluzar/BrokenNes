@@ -50,6 +50,12 @@ The WideMess sound chip is **chip 29, `WMS`**, appended after the six Presets ch
 - **Fitting** (`Pc/OplFit.cs`): a patch fitted to any PCM (16 harmonics + 24-frame envelope; bank starts, coordinate descent); `FruityHost opl-fit-test`.
 - **Music** (`Music/Flp/AdlibBackend.cs`): an .flp with PC instances -> Super VRUN DOS / 95 (`<song>.adlib.opl`, the new driver opcode `6v`, `music/adlib/<song>.opl` replaces the converted song; `build-supervrun.ps1`) and Vaults DOS / 95 (format 'A' v1, voices 3-5; `flp-vocdos-adlib`, `build-vaults-adlib.ps1`). Presets instances get a fitted patch. Checks: `flp-test` `adlib-sv`, `adlib-vaults` (+3 deliberate bugs, bits 27-29); `selftest --only pc`; `chip-compat` 77/77 SAME against main's DLL.
 
+## The later Nano chips (2026-11-11): NANOMD 88, NANOSNES 89, NANODOS 90, one plugin path
+
+- **Chips** appended after the PC chips (append-only): `NANOMD` (Genesis console, Nano Genesis: stock YM2612 + PSG), `NANOSNES` (SNES console, Nano SNES: the S-DSP alone), `NANODOS` (PC console, Nano DOS: MAME 0.36 OPL2 + speaker; Direct mode only: `Emulator.DirectOnlyChip` now refuses ROM mode for every PC-console chip). Patch banks 9 / 10 / 11.
+- **One path** for all three: `Bn2Plugin.NanoMore.cs` (`NanoKinds` table: chip, console, sidecar format, bank, presets, engine factory; `Chip.NanoMore` = 1-based kind), engines behind `NesEmulator.INanoEngine` (Core: `sega/NanoGenesisEngine.cs`, `Core/NanoSnesEngine.cs`, `Core/NanoDosEngine.cs`; SNES / DOS live in Core because Core's `StreamResampler` is part of their sound). A fourth Nano = one `NanoKinds` row + one `MoreSpecs` row in `SelfTest.NanoMore.cs`. Test hooks 1150-1179 (1179 = mutant).
+- **Checks:** `selftest --only nanomore` (each chip: index pinned, presets, Direct mode, ROM refusal for NANODOS, FL notes = engine sample for sample, 2 deliberate bugs (velocity/128 skipped on NANODOS: invisible at 6-bit TL), Volume, bend, 0 bytes with 4 instances, sidecar hook + button); `chip-compat` 88/88 SAME against 0c2625cb.
+
 ## Instrument model and corruptor (2026-10-17, Round 6 `imodel`): a pure library over the Runaway snapshots
 
 `Plugin/BrokenNes2.Plugin/Instruments/` describes the instruments a Runaway snapshot holds as typed **fields** (id, name, kind enum / range / bits / signed, min, max, value, a one-line explanation, whether the sampler plays it) and **blobs** (BRR sample, DAC sound, wave RAM, DMC sample),
