@@ -13,7 +13,8 @@ namespace BrokenNes2;
 /// in ROM mode the sound unit of the WideMess console (a .wms game, or a SNES game: locked, the WideMess is a SNES).</param>
 /// <param name="IsNanoGb">The Nano GB chip (<see cref="Cx.NanoGbChip"/>, chip 30): the web library's instrument engine (NanoGbEngine, gnuboy's Game Boy sound, 27 presets), played by the plugin itself in Direct mode;
 /// in ROM mode a Game Boy game runs on the Game Boy's own sound unit (RomApu: "GB").</param>
-public sealed record Chip(string Id, int Console, string? Note, bool IsPreset = false, bool IsWms = false, bool IsNanoGb = false);
+/// <param name="IsNanoSms">The Nano SMS chip (<see cref="Cx.NanoSmsChip"/>, appended after the harvested chips): the web library Nano/sms's engine (NanoSmsEngine), Direct mode, as Nano GB.</param>
+public sealed record Chip(string Id, int Console, string? Note, bool IsPreset = false, bool IsWms = false, bool IsNanoGb = false, bool IsNanoSms = false);
 
 /// <summary>
 /// The consoles BrokenNes2 offers and their sound chips. A console decides which chips are listed, and which CPU and PPU a running
@@ -84,6 +85,10 @@ public static partial class Cx
     /// </summary>
     public const string NanoGbChip = "NANOGB";
 
+    /// <summary>The Nano SMS chip (2026-11-10), appended after the harvested chips (nothing before it moved), on the Master System console: every instance plays a NanoSmsEngine of its own
+    /// (the C# twin of the web library Nano/sms; Bn2Plugin.NanoSms.cs); the Instrument parameter is the preset's program number.</summary>
+    public const string NanoSmsChip = "NANOSMS";
+
     /// <summary>Whether a chip (an index into <see cref="Chips"/>) is one of the Presets chips.</summary>
     public static bool IsPresetChip(int chip) => (uint)chip < (uint)Chips.Count && Chips[chip].IsPreset;       // (read on the audio thread every block: no allocation)
 
@@ -125,18 +130,19 @@ public static partial class Cx
         list.Add(new Chip(WmsChip, Snes, "WideMess sound chip: 24 notes at once, 16-bit samples", IsWms: true));   // WideMess milestone 7a: index 29, after the Presets chips (append-only)
         list.Add(new Chip(NanoGbChip, GameBoy, "Nano GB: the web library's engine, gnuboy sound, 27 presets", IsNanoGb: true));   // index 30, after WMS (append-only)
         AddHarvest(list);       // the harvested engines (Bn2Consoles.Harvest.cs), appended
+        list.Add(new Chip(NanoSmsChip, MasterSystem, "Nano SMS: the web library's engine, the SN76489, 24 presets", IsNanoSms: true));   // after the harvested chips (append-only)
         return list;
     }
 
     // ---- the instrument pickers: the Instrument parameter is a patch of the chip's own bank for the FM chips ----
 
     /// <summary>What the Instrument parameter picks for this chip: 0 nothing (the NES chips: Pulse duty is the control), 1 the Genesis chip's FM patch, 2 the Master System FM chip's instrument.</summary>
-    public static int PatchBankOf(string chipId) => HarvestBase(chipId).ToUpperInvariant() switch { "MD" => 1, "SMSFM" => 2, WmsChip => 3, NanoGbChip => 4, _ => 0 };
+    public static int PatchBankOf(string chipId) => HarvestBase(chipId).ToUpperInvariant() switch { "MD" => 1, "SMSFM" => 2, WmsChip => 3, NanoGbChip => 4, NanoSmsChip => 5, _ => 0 };
 
-    public static int PatchCount(int bank) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Count, 2 => NesEmulator.Mix.OpllPatchBank.Count, 3 => WmsBank.Patches.Length, 4 => NesEmulator.Gb.NanoGbPresets.Count, _ => 0 };
+    public static int PatchCount(int bank) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Count, 2 => NesEmulator.Mix.OpllPatchBank.Count, 3 => WmsBank.Patches.Length, 4 => NesEmulator.Gb.NanoGbPresets.Count, 5 => NesEmulator.Sega.NanoSmsPresets.Count, _ => 0 };
 
     /// <summary>A patch index made safe (out of range is the bank's last entry, the PSG square, as the bridges clamp it; the WideMess chip's last instrument).</summary>
-    public static int PatchClamp(int bank, int index) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Clamp(index), 2 => NesEmulator.Mix.OpllPatchBank.Clamp(index), 3 => WmsBank.Clamp(index), 4 => ((index % NesEmulator.Gb.NanoGbPresets.Count) + NesEmulator.Gb.NanoGbPresets.Count) % NesEmulator.Gb.NanoGbPresets.Count, _ => index };   // (Nano GB: program n wraps as the web player's does)
+    public static int PatchClamp(int bank, int index) => bank switch { 1 => NesEmulator.Mix.FmPatchBank.Clamp(index), 2 => NesEmulator.Mix.OpllPatchBank.Clamp(index), 3 => WmsBank.Clamp(index), 4 => ((index % NesEmulator.Gb.NanoGbPresets.Count) + NesEmulator.Gb.NanoGbPresets.Count) % NesEmulator.Gb.NanoGbPresets.Count, 5 => ((index % NesEmulator.Sega.NanoSmsPresets.Count) + NesEmulator.Sega.NanoSmsPresets.Count) % NesEmulator.Sega.NanoSmsPresets.Count, _ => index };   // (Nano GB: program n wraps as the web player's does)
 
     /// <summary>The picker's rows: a name, a note beside it, and a line that says what the patch is.</summary>
     public static (string Name, string Note, string Description)[] PatchItems(int bank) => bank switch
@@ -145,6 +151,7 @@ public static partial class Cx
         2 => NesEmulator.Mix.OpllPatchBank.Patches.Select(p => (p.Name, p.Psg ? "PSG tones, no FM" : p.Rom > 0 ? $"chip instrument {p.Rom}" : "designed", p.Description)).ToArray(),
         3 => WmsBank.Patches.Select(p => (p.Name, p.Note, p.Description)).ToArray(),
         4 => NesEmulator.Gb.NanoGbPresets.All.Select((p, i) => ($"{i}  {p.Label}", p.Kind switch { 0 => "pulse", 1 => "wave", _ => "noise" }, p.Desc)).ToArray(),
+        5 => NesEmulator.Sega.NanoSmsPresets.All.Select((p, i) => ($"{i}  {p.Label}", p.Kind == 0 ? "tone" : "noise", p.Desc)).ToArray(),
         _ => [],
     };
 

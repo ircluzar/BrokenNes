@@ -129,6 +129,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     {
         PrepareAgainForPreset();                 // a preset's engine is made again here, on the UI thread, before the audio thread drops the old one (Bn2Plugin.Presets.cs)
         if (assignment.Emulator?.NanoGbDirectMode == true) PrepareNanoGb(again: true);   // the Nano GB engine too (Bn2Plugin.NanoGb.cs)
+        if (assignment.Emulator?.NanoSmsDirectMode == true) PrepareNanoSms(again: true); // and the Nano SMS one (Bn2Plugin.NanoSms.cs)
         if (assignment.Emulator?.WmsDirectMode == true) PrepareWms(again: true);      // the WideMess chip is made again here too, then swapped in (the audio thread takes the new one; its notes start over on it)
         Interlocked.Exchange(ref resetRequested, 1);
     }
@@ -262,6 +263,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         if (v == null) return;
         if (CaptureWanted) CaptureNoteOff(v);
         NanoGbForget(v);
+        NanoSmsForget(v);
         voices.Remove(v);
         pool.Push(v);
     }
@@ -316,6 +318,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             return;
         }
 
+        if (smsEngine != null && !emu.NanoSmsDirectMode) smsEngine = null;      // (the same for the Nano SMS chip: Bn2Plugin.NanoSms.cs)
         if (nanoEngine != null && !emu.NanoGbDirectMode) nanoEngine = null;    // (left the Nano GB chip: its held notes go with the engine; PrepareChip makes a fresh one on the way back)
         if (emu.Mode != 1 || emu.SamplerMode) emu.DrainLiveMidi(this);      // (the live MIDI out's last note-offs when the game is frozen or gone; in ROM mode they go after the frames below)
         if (emu.PresetMode)
@@ -379,6 +382,11 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             return;
         }
 
+        if (emu.NanoSmsDirectMode)
+        {
+            RenderNanoSmsDirect(emu, a.Channel, dest, length, gl, gr); // the Nano SMS chip: the web library's engine, one per instance (Bn2Plugin.NanoSms.cs)
+            return;
+        }
         if (emu.NanoGbDirectMode)
         {
             RenderNanoGbDirect(emu, a.Channel, dest, length, gl, gr);  // the Nano GB chip: the web library's engine, one per instance (Bn2Plugin.NanoGb.cs)
@@ -687,7 +695,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         var e = a.Emulator;
         if (e != null && e.Mode == 0 && a.Channel is >= 0 and < Ch.ToneCount)
         {
-            if (e.NanoGbDirectMode) PrepareNanoGb();  // the Nano GB engine is the plugin's own, not a NES-register bridge (Bn2Plugin.NanoGb.cs)
+            if (e.NanoSmsDirectMode) PrepareNanoSms();   // (Bn2Plugin.NanoSms.cs)
+            else if (e.NanoGbDirectMode) PrepareNanoGb();  // the Nano GB engine is the plugin's own, not a NES-register bridge (Bn2Plugin.NanoGb.cs)
             else if (e.WmsDirectMode) PrepareWms();        // the WideMess chip is played by the plugin itself, not through a NES-register bridge (Bn2Plugin.Wms.cs)
             else EnsureChip(e);
         }
@@ -1421,6 +1430,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 if (id - Fpd.TestBase is >= 740 and < 780) return NesRecordTestHook(id - Fpd.TestBase, index, value);                            // a NES game's recording (Bn2Plugin.RecordNes.cs)
                 if (id - Fpd.TestBase is >= 790 and < 820) return ReloadTestHook(id - Fpd.TestBase, index, value);                               // FL's real conventions, the notes followed, a recording offered from its files (Bn2Plugin.Reload.cs)
                 if (id - Fpd.TestBase is >= 840 and < 860) return CaptureTestHook(id - Fpd.TestBase, index, value);                              // round 9: Capture from FL (Bn2Plugin.Capture.cs; 790-819 are reload's)
+                if (id - Fpd.TestBase is >= 960 and < 980) return NanoSmsTestHook(id - Fpd.TestBase, index, value);                              // the Nano SMS chip (Bn2Plugin.NanoSms.cs)
                 if (id - Fpd.TestBase is >= 940 and < 960) return NanoGbTestHook(id - Fpd.TestBase, index, value);                               // the Nano GB chip (Bn2Plugin.NanoGb.cs)
                 if (id - Fpd.TestBase is >= 900 and < 940) return WmsTestHook(id - Fpd.TestBase, index, value);                                  // WideMess milestone 7a: the WMS chip and WideMess games (Bn2Plugin.Wms.cs)
                 return id - Fpd.TestBase is >= 320 and < 340 ? InjectTestHook(id - Fpd.TestBase, index, value) : id - Fpd.TestBase is >= 300 and < 320 ? InstrumentTestHook(id - Fpd.TestBase, index, value) : TestEditor(id - Fpd.TestBase, index, value);

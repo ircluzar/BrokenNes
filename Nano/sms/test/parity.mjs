@@ -73,6 +73,30 @@ function fuzzStreams(N) {
   return out;
 }
 
+// renderOffline's own conversion (frame = round(time x rate), ids in order) as engine events for NanoSmsParity notes; presets normalized
+function engineScript(N, sc) {
+  const kit = N._kit, presets = {}, events = [];
+  let nextId = 1;
+  const eng = new kit.Engine(sc.sr, {});
+  for (const ev of sc.ev) {
+    const frame = Math.round((ev.time || 0) * sc.sr);
+    if (ev.type === 'on') {
+      const p = eng.resolvePreset(ev.preset ?? 'lead'); presets[p.name] = p;
+      const e = { frame, t: 'on', id: ev.id ?? nextId++, note: N.noteNumber(ev.note), vel: ev.velocity ?? 1, preset: p.name };
+      if (ev.channel !== undefined) e.channel = ev.channel;
+      if (ev.pan !== undefined) e.pan = kit.panValue(ev.pan);
+      if (ev.bend !== undefined) e.bend = ev.bend;
+      if (ev.duration !== undefined) e.duration = ev.duration;
+      events.push(e);
+    } else if (ev.type === 'off') events.push(ev.id !== undefined ? { frame, t: 'off', id: ev.id } : { frame, t: 'off', note: N.noteNumber(ev.note) });
+    else if (ev.type === 'bend') events.push({ frame, t: 'bend', id: ev.id, cents: ev.cents });
+    else if (ev.type === 'param' && ev.name === 'pan') events.push({ frame, t: 'pan', value: ev.value.map(kit.panValue) });
+    else if (ev.type === 'param') events.push({ frame, t: ev.name, value: ev.value });
+    else events.push({ frame, t: ev.type });
+  }
+  return { sampleRate: sc.sr, gameGear: sc.gg, frames: Math.round(sc.seconds * sc.sr), presets, events };
+}
+
 function runAll(N, exe, dir, quiet) {
   let fails = 0;
   const fail = (m) => { fails++; if (!quiet) console.log('FAIL ' + m); };
@@ -87,7 +111,7 @@ function runAll(N, exe, dir, quiet) {
     cases.push({ name: sc.name, sr: sc.sr, ops: r.trace, pcm: Float32Array.from([...r.left, ...r.right]), clock: N._kit.NTSC_Z80 });
   }
   cases.push(...fuzzStreams(N));
-  for (const f of fs.readdirSync(dir)) if (f.endsWith('.trace.json') || f.endsWith('.core.f32')) fs.unlinkSync(path.join(dir, f));
+  for (const f of fs.readdirSync(dir)) fs.unlinkSync(path.join(dir, f));
   for (const c of cases) fs.writeFileSync(path.join(dir, c.name + '.trace.json'), JSON.stringify({ rate: c.sr, clock: c.clock, ops: c.ops }));
   execFileSync(exe, ['replay', dir], { stdio: ['ignore', 'ignore', 'inherit'] });
   let samples = 0, writes = 0, ok = 0;
@@ -97,7 +121,40 @@ function runAll(N, exe, dir, quiet) {
     if (d) fail(`${c.name}: ${d}`); else ok++;
     if (!d && !c.pcm.some(x => x !== 0)) fail(`${c.name}: silent (proves nothing)`);
   }
-  return { fails, ok, total: cases.length, samples, writes, kernelOk: !kd };
+  // the C# twin (Core's NanoSmsEngine, the plugin's engine): the same note scripts as engine events, and the test songs the way the plugin plays FL's notes
+  for (const sc of scripts()) {
+    const scr = engineScript(N, sc);
+    fs.writeFileSync(path.join(dir, 'e-' + sc.name + '.scn.json'), JSON.stringify(scr));
+  }
+  execFileSync(exe, ['notes', dir], { stdio: ['ignore', 'ignore', 'inherit'] });
+  let engOk = 0, engN = 0;
+  for (const sc of scripts()) {
+    engN++;
+    const r = N.renderOffline(sc.ev, sc.seconds, { sampleRate: sc.sr, gameGear: sc.gg, stereo: true });
+    const d = sameBits(Float32Array.from([...r.left, ...r.right]), readF32(path.join(dir, 'e-' + sc.name + '.ref.f32')));
+    if (d) fail(`engine ${sc.name}: ${d}`); else engOk++;
+  }
+  const midiDir = path.join(here, 'midi');
+  let midOk = 0, midN = 0;
+  const songs = [];
+  for (const f of fs.readdirSync(midiDir).filter(f => f.endsWith('.mid'))) for (const [sr, gg] of [[44100, false], [48000, true], [22050, false]]) {
+    const base = `m-${f.replace('.mid', '')}-${sr}${gg ? '-gg' : ''}`;
+    fs.copyFileSync(path.join(midiDir, f), path.join(dir, base + '.mid'));
+    fs.writeFileSync(path.join(dir, base + '.rate.txt'), String(sr));
+    if (gg) fs.writeFileSync(path.join(dir, base + '.gg.txt'), '1');
+    const side = path.join(midiDir, f.replace('.mid', '.sidecar.json'));
+    if (fs.existsSync(side)) fs.copyFileSync(side, path.join(dir, base + '.sidecar.json'));
+    songs.push({ base, sr, gg, mid: fs.readFileSync(path.join(midiDir, f)), side: fs.existsSync(side) ? fs.readFileSync(side, 'utf8') : undefined });
+  }
+  execFileSync(exe, ['midi', dir], { stdio: ['ignore', 'ignore', 'inherit'] });
+  for (const so of songs) {
+    midN++;
+    const r = N.renderMidi(so.mid, { sampleRate: so.sr, gameGear: so.gg, sidecar: so.side });
+    const d = sameBits(Float32Array.from([...r.left, ...r.right]), readF32(path.join(dir, so.base + '.midi.f32')));
+    if (d) fail(`midi ${so.base}: ${d}`); else midOk++;
+    if (!d && !r.left.some(x => x !== 0)) fail(`midi ${so.base}: silent`);
+  }
+  return { fails, ok, total: cases.length, samples, writes, kernelOk: !kd, engOk, engN, midOk, midN };
 }
 
 const exe = parityExe();
@@ -105,7 +162,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nano-sms-parity-'));
 const text = fs.readFileSync(distFile, 'utf8');
 const t0 = Date.now();
 const res = runAll(loadLib(text), exe, dir, false);
-console.log(`kernel: ${res.kernelOk ? 'bit-exact' : 'DIFFERS'}; ${res.ok}/${res.total} traces bit-exact (${res.total - 18} note scripts on Master System and Game Gear at ${RATES.join(', ')} Hz, 18 register fuzz streams); ${res.samples} samples, ${res.writes} chip writes, ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+console.log(`kernel: ${res.kernelOk ? 'bit-exact' : 'DIFFERS'}; ${res.ok}/${res.total} traces bit-exact (${res.total - 18} note scripts on Master System and Game Gear at ${RATES.join(', ')} Hz, 18 register fuzz streams); C# engine twin ${res.engOk}/${res.engN} scripts, plugin-way MIDI ${res.midOk}/${res.midN}; ${res.samples} samples, ${res.writes} chip writes, ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 let bad = res.fails;
 
 if (args.includes('--mutants')) {

@@ -74,14 +74,24 @@ loadMidi / connectMidi / onactivity / dispose`, `renderOffline`, `renderMidi`, `
   snare, hat, openhat, crash, buzz (periodic noise), laser, coin, jump, powerup, blip, explosion, hit. Noise: `noise: {rate 0..2, to, ms, white}`.
 * Sidecar: `{format: 'nano-sms-sidecar', version: 1, channels: {'1': {preset, volume, pan, name}}, presets: {...}}`.
 
-## Not done yet
+## The BrokenNes2 plugin chip: Nano SMS (`NANOSMS`)
 
-* **The BrokenNes2 plugin chip** (a "Nano SMS" chip like Nano GB's `NANOGB`, a C# twin of `src/engine.js`): not built. Until then, the plugin's
-  Master System chip `SMS` in Direct mode is the same SN76489 (the same Core class), but not the same instrument layer (presets, envelopes).
-* **An FL project converter** (flp2nano for the Master System): not built; `Nano/tools/flp2nano` (NES) and `Nano/gb/tools/flp2nano` are the models.
-* The tone-3-clocked noise (noise rate 3) is supported by the chip (and proven) but not offered by the engine.
+The plugin's chip list has **Nano SMS** on the Master System console (`NANOSMS`, chip index 76: appended after the 45 harvested chips, nothing
+before it moved). In Direct mode every instance plays a `NanoSmsEngine` of its own (`Windows/NesEmulator/sega/NanoSmsEngine.cs`), the line-for-line
+C# twin of `src/engine.js` on Core's own `Sn76489`; the Instrument parameter is the program number (`program % 24`), and the **Export sidecar**
+button writes the `nano-sms-sidecar` for the web library (every Nano SMS instance in the order they were made = MIDI channel 1, 2, ...).
+`node Nano/sms/build.mjs` writes the preset table the C# side reads (`NanoSmsPresets.g.cs`; `--check` compares).
 
-## Credits
+Proof: `test/parity.mjs` also runs the C# engine on the 10 note scripts (10/10 bit-exact) and plays the test songs the way the plugin plays FL's
+notes (`tools/NanoSmsParity midi`, one engine per MIDI channel: 6/6 bit-exact against `renderMidi`, Master System and Game Gear, 22.05-48 kHz);
+the plugin's `FruityHost selftest --only nanosms` checks FL's notes on the real DLL = the engine sample for sample (two deliberate bugs caught), the
+24-row picker, a saved project, Volume, bends, no allocation with 4 instances and the sidecar.
 
-The chip is BrokenNes's own `Sn76489.cs` / `BandLimitedMixer.cs`, written from the SMS Power SN76489 documentation (Maxim) and the Game Gear
-Hardware Reference Manual (`Windows/NesEmulator/sega/THIRD_PARTY_NOTICES.md`); `dist/NOTICE.txt` travels with the files.
+## FL projects (.flp)
+
+`node Nano/sms/tools/flp2nano/flp2nano.mjs song.flp [--out DIR]` writes `song.nanosms.mid`, `song.nanosms.json` (the sidecar) and
+`song.nanosms.fence.json` (the fence report: what is over the limit or plays differently). The reader, FL's measured slide model and the MIDI
+writer are Nano GB's (`Nano/gb/tools/flp2nano`). Converted: Nano SMS instances (polyphonic, their preset, Volume, Pan), the Master System chip
+`SMS` in Direct mode (one PSG channel, constant level), NES chips in Direct mode (pulses and the triangle as a steady PSG square, the noise as
+white noise: the duty and the triangle's shape are said in the fence). Notes below A2 are said too (the PSG's lowest note). Test:
+`node Nano/sms/test/flp2nano.test.mjs` (19 checks). The user's `overworld.flp` converts to the same 51 / 55 / 113 notes as FL's own export.

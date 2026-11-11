@@ -264,6 +264,19 @@ public sealed class Sn76489 : IHubVoiceSource
         if (r != lastRight) { right.Step(clock, r - lastRight); lastRight = r; }
     }
 
+    /// <summary>
+    /// Runs the chip just far enough for <paramref name="frames"/> more finished samples, the way Nano SMS's web chip does (Nano/sms/src/chip.js render): one PSG
+    /// clock past the exact edge, in CPU clocks less the carried remainder. The BrokenNes2 plugin's Nano SMS chip (NanoSmsEngine) runs the chip this way so its
+    /// writes land on the very PSG clocks the web library's do.
+    /// </summary>
+    public void RunForSamples(int frames)
+    {
+        if (left.Available >= frames) return;
+        long need = left.Consumed + frames + BandLimitedMixer.Taps / 2 + 1;
+        long clocks = (long)Math.Ceiling(need / left.SamplesPerClock) - clock + 1;
+        Run((int)Math.Max(0, clocks * Divider - cpuRemainder));
+    }
+
     /// <summary>Stereo interleaved 16-bit samples finished since the last call; the number of shorts written (always even).</summary>
     public int ReadSamples(Span<short> buffer)
     {
