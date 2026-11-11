@@ -85,6 +85,7 @@ namespace BrokenNes.Windows
         /// <summary>After any frame (emulation thread): the recording's half, the replay's check, the frame count.</summary>
         private void TfAfterFrame(object machine)
         {
+            ExtractAfterFrame(machine);   // instrument extraction (MainForm.Extract.cs): returns at once unless a capture is waiting
             tfFrames++;
             if (TfActive) tfSwitch.AfterFrame();
             if (tfReplay == null) return;
