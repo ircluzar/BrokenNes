@@ -416,6 +416,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             else if (gch == 3) Slider(dc, P.NoiseMode, "Noise mode", x, y, w);
             else Txt(dc, "the game's own waveform (its wave RAM)", R(x + 86, y, w - 86, RowH), Win32.DT_LEFT | Mid, Faint, fontSmall);
         }
+        else if (mode == 0 && DrawPcInstrument(dc, x, y, w)) { }      // the x86 PC console: the patch / waveform / mode on every channel, the OPL patch editor (Bn2Editor.Pc.cs)
         else if (PatchBank(mode) is 3 or 4)
         {
             // (bank 4: the Nano GB chip's 27 presets, by program number, on every channel)
@@ -475,7 +476,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         if (aboutOpen) DrawAbout(dc);
         else if (inputsOpen) DrawInputs(dc);
         else if (corOpen) DrawCorruption(dc, emu);
-        else { corRows = []; if (midOpen) DrawMidi(dc, emu); else if (recOpen) DrawRecord(dc, emu); }
+        else { corRows = []; if (midOpen) DrawMidi(dc, emu); else if (recOpen) DrawRecord(dc, emu); else if (pcEdOpen) DrawPcEditor(dc); }
     }
 
     /// <summary>Instead of the channel strip while the game is frozen: <paramref name="kind"/> 0 silent (NES), 1 SNES instruments, 2 Game Boy channels, 3 a Sega game's sound chips.</summary>
@@ -1432,6 +1433,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 else if (h.Id == IdCor) { corOpen = true; corScroll = 0; }
                 else if (h.Id == IdMid) midOpen = true;                                 // Test MIDI export (Bn2Editor.Song.cs)
                 else if (IsMidId(h.Id)) MidiClick(h.Id);
+                else if (IsPcEdId(h.Id)) PcEdClick(h.Id);                              // the PC console's patch editor (Bn2Editor.Pc.cs)
                 else if (IsCapId(h.Id)) CaptureClick(h.Id);                            // Capture from FL, in the Test MIDI export window (Bn2Editor.Capture.cs)
                 else if (h.Id == IdRec) { recOpen = true; recMessage = ""; }            // Record (Bn2Editor.Record.cs)
                 else if (IsRecId(h.Id)) RecordClick(h.Id);
@@ -1519,7 +1521,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             case Win32.WM_LBUTTONDBLCLK:
             {
                 var h = HitAt(x, y);
-                if (aboutOpen || inputsOpen || corOpen || midOpen || recOpen)
+                if (aboutOpen || inputsOpen || corOpen || midOpen || recOpen || pcEdOpen)
                 {
                     captureIndex = -1;                         // a click anywhere ends a rebinding that was waiting
                     if (recOpen && !aboutOpen && !inputsOpen && !corOpen && !midOpen && h is { } dh && IsRecDragId(dh.Id)) { dragArm = dh.Id; dragX = x; dragY = y; Refresh(); return; }     // a drag handle: the drag starts when the mouse moves
@@ -1657,6 +1659,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         switch (n)
         {
             case >= 400 and < 500: return UiTest(n, index, value);      // the tabs' hooks (Ui/Bn2Editor.Tabs.cs)
+            case >= 2300 and < 2310: return PcEditorTest(n, index);       // the PC console's patch editor (Bn2Editor.Pc.cs)
             case >= 620 and < 630: return SongTest(n, index, value);    // Test MIDI export's window (Bn2Editor.Song.cs)
             case >= 670 and < 680: return RecordTest(n, index, value);  // the Record window (Bn2Editor.Record.cs)
             case >= 860 and < 870: return CaptureEditorTest(n, index, value);  // Capture from FL (Bn2Editor.Capture.cs)

@@ -104,6 +104,26 @@ public sealed unsafe partial class SelfTest
         }
         t.Expect(EditWorks(), "the patch editor's change did not change the sound, or was not kept in the saved project (OPC1)");
 
+        // the patch editor through the real editor window, real clicks: Edit patch, Mod MULT +, Close
+        using (var p = lib.Create())
+        {
+            p.SetParam(PCore, adlib); p.SetParam(PInstrument, 2);
+            int before = (int)p.Test(HkPcGet, 4);
+            nint parent = Win32Host.CreateParent();
+            try
+            {
+                p.ShowEditor(parent); Win32Host.Pump(100);
+                ClickControl(t, p, 2300, "Edit patch"); Win32Host.Pump(50);
+                t.Expect(p.Test(2300) == 1, "the Edit patch button did not open the patch editor");
+                ClickControl(t, p, 2310 + 4, "Mod MULT +"); Win32Host.Pump(50);
+                t.Expect(p.Test(HkPcHas) == 1 && p.Test(HkPcGet, 4) == before + 1, $"Mod MULT + in the editor: {before} -> {p.Test(HkPcGet, 4)} (expected {before + 1})");
+                ClickControl(t, p, 2301, "Close"); Win32Host.Pump(50);
+                t.Expect(p.Test(2300) == 0, "Close did not close the patch editor");
+                p.HideEditor();
+            }
+            finally { Win32Host.DestroyParent(parent); }
+        }
+
         // a slide on the speaker follows the pitch (deliberate bug 1 = bends ignored)
         double SlideEnd()
         {
