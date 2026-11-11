@@ -23,6 +23,11 @@ public static class NanoKinds
             i => { var p = NesEmulator.Sega.NanoGenesisPresets.All[i]; return (p.Name, p.Label, p.Kind switch { 0 => "FM", 1 => "PSG tone", _ => "PSG noise" }, p.Desc); },
             NesEmulator.Sega.NanoGenesisPresets.IndexOf,
             rate => new NesEmulator.Sega.NanoGenesisEngine(rate)),
+        new("NANOSNES", Cx.Snes, "Nano SNES", "nano-snes-sidecar", 10,
+            () => NesEmulator.Snes.NanoSnesPresets.Count,
+            i => { var p = NesEmulator.Snes.NanoSnesPresets.All[i]; return (p.Name, p.Label, p.Kind == 0 ? "BRR sample" : "noise", p.Desc); },
+            NesEmulator.Snes.NanoSnesPresets.IndexOf,
+            rate => new NesEmulator.Snes.NanoSnesEngine(rate)),
     ];
 
     public static NanoKind? OfChip(int chip) => (uint)chip < (uint)Cx.Chips.Count && Cx.Chips[chip].NanoMore is int k and > 0 ? All[k - 1] : null;

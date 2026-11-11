@@ -18,6 +18,7 @@ public sealed unsafe partial class SelfTest
     private static readonly MoreSpec[] MoreSpecs =
     [
         new(1, "NANOMD", 88, 4, NesEmulator.Sega.NanoGenesisPresets.Count, r => new NesEmulator.Sega.NanoGenesisEngine(r), i => NesEmulator.Sega.NanoGenesisPresets.All[i].Name, i => NesEmulator.Sega.NanoGenesisPresets.All[i].Kind, "nano-genesis-sidecar", "sine"),
+        new(2, "NANOSNES", 89, 2, NesEmulator.Snes.NanoSnesPresets.Count, r => new NesEmulator.Snes.NanoSnesEngine(r), i => NesEmulator.Snes.NanoSnesPresets.All[i].Name, i => NesEmulator.Snes.NanoSnesPresets.All[i].Kind, "nano-snes-sidecar", "sine"),
     ];
 
     private float[] MorePlugin(MoreSpec s, int program, NanoStep[] script, int blocks, int mutant = 0, int volume = 1000)
