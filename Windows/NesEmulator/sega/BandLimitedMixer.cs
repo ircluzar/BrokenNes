@@ -91,6 +91,10 @@ public sealed class BandLimitedMixer
         if (over > 0) Consume(over);
     }
 
+    /// <summary>Output samples handed out so far, and output samples per chip clock (Nano SMS's engine sizes its runs with them: Sn76489.RunForSamples).</summary>
+    public long Consumed => consumed;
+    public double SamplesPerClock => samplesPerClock;
+
     /// <summary>How many finished samples are waiting.</summary>
     public int Available => (int)Math.Max(0, (long)Math.Floor(now) - Taps / 2 - consumed);
 
