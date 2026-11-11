@@ -31,12 +31,13 @@ internal static class AdlibChecks
     }
 
     /// <summary>dos_snd.c run_tick, its tables and register writes, on a real (emulated) AdLib; returns mono 44.1 kHz audio of <paramref name="ticks"/> ticks and each voice's patch writes.</summary>
-    internal static (float[] Audio, List<(int Voice, byte[] Regs)> Patches) Play(byte[] blob, int ticks, int[]? onlyVoices = null)
+    internal static (float[] Audio, List<(int Voice, byte[] Regs)> Patches) Play(byte[] blob, int ticks, int[]? onlyVoices = null, Action<int, int, int>? tap = null)
     {
         var m = new PcMachine(1 << 20);
         m.Speaker.Enabled = true; m.Opl.Enabled = true;
         int[] opM = [0x00, 0x01, 0x02, 0x08, 0x09, 0x0A, 0x10, 0x11, 0x12], opC = [0x03, 0x04, 0x05, 0x0B, 0x0C, 0x0D, 0x13, 0x14, 0x15];
-        void W(int r, int v) { if (onlyVoices != null && r is >= 0xA0 and < 0xC9 && !onlyVoices.Contains(r & 15)) return; m.Out8(0x388, (byte)r); m.Out8(0x389, (byte)v); }
+        int tick = 0;
+        void W(int r, int v) { if (onlyVoices != null && r is >= 0xA0 and < 0xC9 && !onlyVoices.Contains(r & 15)) return; tap?.Invoke(tick, r, v); m.Out8(0x388, (byte)r); m.Out8(0x389, (byte)v); }
         var vtl = new int[9]; var vhi = new int[9]; var keyed = new bool[9]; var cp = new byte[9][];
         var patches = new List<(int, byte[])>();
         W(0x01, 0x20);
@@ -48,6 +49,7 @@ internal static class AdlibChecks
         bool ended = false;
         for (int t = 0; t < ticks; t++)
         {
+            tick = t;
             if (!ended && wait > 0) wait--;
             else while (!ended)
             {
@@ -114,11 +116,12 @@ internal static class AdlibChecks
         r.Note($"Super VRUN AdLib song: {s.Blob.Length} bytes, {s.Voices.Count} voices, A4 {hzA4:0.00} Hz, slide end {hzE5:0.00} Hz, rms {rms:0.000}; fence: {s.Fence.Summary}");
     }
 /// <summary>dos_opl.c's AdLib-song player (VRUN_VOC_DOS_dev), line for line, on the AdLib: voices 3-5, a tick per game frame x step/256.</summary>
-    internal static float[] PlayVaults(byte[] q, int frames)
+    internal static float[] PlayVaults(byte[] q, int frames, Action<int, int, int>? tap = null)
     {
         var m = new PcMachine(1 << 20);
         m.Speaker.Enabled = true; m.Opl.Enabled = true;
-        void W(int r, int v) { m.Out8(0x388, (byte)r); m.Out8(0x389, (byte)v); }
+        int frame = 0;
+        void W(int r, int v) { tap?.Invoke(frame, r, v); m.Out8(0x388, (byte)r); m.Out8(0x389, (byte)v); }
         W(0x01, 0x20);
         int[] om = [0x08, 0x09, 0x0A], oc = [0x0B, 0x0C, 0x0D];
         int step = q[2] | q[3] << 8, n = q[4];
@@ -135,6 +138,7 @@ internal static class AdlibChecks
         var outp = new List<float>(); var buf = new short[8192];
         for (int fr = 0; fr < frames; fr++)
         {
+            frame = fr;
             acc += step;
             while (on && acc >= 256)
             {

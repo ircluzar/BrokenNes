@@ -219,7 +219,7 @@ public static class VocGbBackend
                             if (y != last) { ev.Add(new VocEvent(f, "freq", y)); last = y; bends++; }
                         }
                     }
-                    else if (v.Glides.Count > 0)
+                    else if (v.Glides.Count > 0 && !FlpMutants.On(FlpMutants.GbSlidesHeld))
                     {
                         int last = x;
                         for (int f = f0 + 1; f < f1; f++)

@@ -37,6 +37,7 @@ internal static class FlpChecks
         new("rom", "each song becomes a sound-test ROM (round 7's template), facts and caveats said", Rom),
         .. FlpNoiseRoomChecks.All, // noise volume + song room (Flp.Checks.NoiseRoom.cs)
         .. FlpVocChecks.All,     // Vaults GB / Vaults GG / CTW SMS (Flp.Checks.Voc.cs)
+        .. FlpSlideChecks.All,   // the slide audit across the engines (Flp.Slides.cs)
         new("sv-synthetic", "Super VRUN back end (SNES, WideMess, MD, DOS, 95): programs, noise keys, levels, pan, pitch, per-engine fence lines", SvChecks.Synthetic),
         new("sv-fence", "Super VRUN fence: each limit broken on purpose is reported OVER (voices, noise, range, instances, instruments, empty song)", SvChecks.Fence),
         new("sv-preset-snes", "presets: every SNES fixture instrument (clean, corrupted, tuned) from a PRS1 section written byte by byte becomes the song's own sample: BRR decode, loop, C5, the plugin's render alike", SvChecks.PresetSnes),
@@ -507,6 +508,11 @@ internal static class FlpChecks
         new(CtwSmsMutants.PresetIgnored, "CTW SMS reads a preset instance as a plain channel", "ctwsms-preset"),
         new(CtwSmsMutants.PresetFenceSilent, "CTW SMS drops a preset it cannot play without a fence line", "ctwsms-preset"),
         new(CtwSmsMutants.PeriodicAsWhiteSilent, "CTW SMS plays a periodic-noise preset as white noise without saying so", "ctwsms-preset"),
+        new(FlpMutants.SlideSignFlipped, "slides glide the wrong way (slide audit, VRUN NES ROM)", "slides-vrun-nes"),
+        new(CtwSmsMutants.SlidesDropped, "the CTW SMS back end drops the slide notes (slide audit, the game)", "slides-ctwsms"),
+        new(FlpMutants.GbSlidesHeld, "Vaults GB / GG hold a slid note at its start pitch (no freq events)", "slides-vocgb"),
+        new(FlpMutants.GbSlidesHeld, "Vaults GB / GG hold a slid note at its start pitch (no freq events)", "slides-vocgg"),
+        new(SvMutants.SlideBendsDropped, "the Super VRUN back end writes no bends for slides", "slides-sv"),
         new(AdlibMutants.PatchOrderSwapped, "the AdLib song's patch bytes have the modulator and carrier swapped", "adlib-sv"),
         new(AdlibMutants.OctaveUp, "the AdLib song plays an octave up", "adlib-sv"),
         new(AdlibMutants.FenceBlindChip, "the AdLib fence does not see a speaker instance", "adlib-sv"),
