@@ -94,6 +94,8 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
     private GbSnapshot? gbFor;
     private int gbRate, gbChannel = -1;
     private bool gbGate;
+    private long gbEnvSamples;
+    private bool gbEnvDone;          // (instrument extraction: samples since the preset's note started, for its captured pitch and end)
 
     public Bn2Plugin(FruityHost host, nint hostTag) : base(host, hostTag, Bn2Params.Build())
     {
@@ -624,6 +626,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         {
             int n = Math.Min(Chunk, length - off);
             UpdateGbVoice(s, preset);
+            gbEnvSamples += n;
             s.Render(stereo.AsSpan(0, n * 2), n);
             for (int i = 0; i < n; i++)
             {
@@ -646,6 +649,15 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         double semis = 60.0 + FlCents(fl.Pitch) / 100.0;
         double hz = 440.0 * Math.Pow(2.0, (semis - 69.0) / 12.0);
         bool shortNoise = preset != null ? preset.GbNoiseShort : Get(P.NoiseMode) == 1;
+        if (preset?.Captured is { } cap && cap.Console == BrokenNes2.Instruments.ConsoleId.GameBoy)
+        {
+            if (owner.Fresh) gbEnvDone = false;
+            if (gbEnvDone) return;
+            if (!gbGate || owner.Fresh) gbEnvSamples = 0;
+            int fi = (int)(gbEnvSamples * 59.7275 / Math.Max(1, EmulatorHub.HostRate));
+            if (fi >= cap.Frames && cap.End == BrokenNes2.Extract.CaptureEnd.Silenced) { if (gbGate) { s.NoteOff(ch); gbGate = false; } gbEnvDone = true; owner.Fresh = false; return; }
+            hz *= Math.Pow(2.0, cap.CentsAt(fi) / 1200.0);
+        }
         if (!gbGate || owner.Fresh)
         {
             int level = Math.Clamp((int)Math.Round(15 * fl.Vol), 0, 15);

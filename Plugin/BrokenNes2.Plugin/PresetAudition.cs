@@ -38,7 +38,7 @@ internal sealed class PresetAudition
         {
             case ConsoleId.Snes: snes = new SnesSampler(p.Snes!, rate); instrument = p.InstrumentValue; break;
             case ConsoleId.GameBoy: gb = new GbSampler(p.Gb!, rate); break;
-            case ConsoleId.Nes: nes = new NesPresetPlayer(p.Instrument, rate); break;
+            case ConsoleId.Nes: nes = new NesPresetPlayer(p.Instrument, rate, false, p.Captured); break;
             default:
                 sega = p.Sega!.Kind switch { SegaSnapshot.KindOpn => new OpnSampler(p.Sega, rate), SegaSnapshot.KindOpll => new OpllSampler(p.Sega, rate), _ => (SegaSampler)new PsgSampler(p.Sega, rate) };
                 instrument = p.Sega.Resolve(p.InstrumentValue);
