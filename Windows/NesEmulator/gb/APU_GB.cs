@@ -370,8 +370,20 @@ public sealed class APU_GB : IGbApu
         WaveRam[wavePos >> 1] = v;
     }
 
+    // ---- instrument extraction probe (BrokenNes2 Extract: read-only, allocation-free, nothing in any machine state; the default path never sets the observer) ----
+    /// <summary>Called with every register write (reg = the low byte, $10-$3F) before it takes effect.</summary>
+    public Action<int, byte>? RegisterWriteObserver;
+    public bool ChannelOn(int c) => enabled[c & 3];
+    /// <summary>The envelope volume of a pulse / noise channel (0-15).</summary>
+    public int ChannelVolume(int c) => volume[c & 3];
+    /// <summary>The 11-bit period of a pulse / wave channel (the sweep's current one on square 1).</summary>
+    public int ChannelFreq(int c) => freq[c & 3];
+    /// <summary>A register as last written ($10-$2F), without the read-back mask.</summary>
+    public byte RawRegister(int reg) => reg is >= 0x10 and <= 0x2F ? regs[reg - 0x10] : (byte)0xFF;
+
     public void WriteRegister(int reg, byte v)
     {
+        RegisterWriteObserver?.Invoke(reg, v);
         if (reg >= 0x30 && reg <= 0x3F) { WriteWave(reg - 0x30, v); return; }
         if (reg < 0x10 || reg > 0x2F) return;
         if (reg == 0x26) { WritePower(v); return; }

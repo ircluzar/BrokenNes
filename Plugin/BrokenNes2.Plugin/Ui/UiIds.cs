@@ -56,6 +56,7 @@ internal static class UiIds
     public const int Filter = 1655;               // + 0..5 (All, NES, GB, SNES, SMS, MD)
     public const int Load = 1670, Rename = 1671, Delete = 1672, Export = 1673, Import = 1674, Audition = 1675;
     public const int RenameInput = 1680, RenameOk = 1681, RenameCancel = 1682;
+    public const int CaptureNote = 1683;          // instrument extraction: "Capture next note" (ROM mode only)
 }
 
 /// <summary>Deliberate faults the self-test switches on (hook 499) to prove each of its checks can fail. All zero in normal use: every one is a single

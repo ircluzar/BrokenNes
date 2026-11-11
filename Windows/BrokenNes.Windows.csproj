@@ -31,6 +31,20 @@
     <!-- the standalone synth (Config > Synthesizer Mode > Restart as Standalone Synth) hosts the FL Studio plugin with this -->
     <ProjectReference Include="..\Plugin\BrokenNes.SynthHost\BrokenNes.SynthHost.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- instrument extraction (Emulator > Capture Instrument, MainForm.Extract.cs): the plugin's capture core, preset file and instrument model, linked as the Workshop links them -->
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\Extract\*.cs" LinkBase="PluginShared\Extract" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\Presets\*.cs" LinkBase="PluginShared\Presets" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\Instruments\*.cs" Exclude="..\Plugin\BrokenNes2.Plugin\Instruments\InstrumentsUi.cs;..\Plugin\BrokenNes2.Plugin\Instruments\InstrumentPushHandler.cs" LinkBase="PluginShared\Instruments" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\GbSampler.cs" Link="PluginShared\GbSampler.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\SpcSnapshot.cs" Link="PluginShared\SpcSnapshot.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\SnesSampler.cs" Link="PluginShared\SnesSampler.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\SpcRecipe.cs" Link="PluginShared\SpcRecipe.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\SegaSnapshot.cs" Link="PluginShared\SegaSnapshot.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\GenRecipe.cs" Link="PluginShared\GenRecipe.cs" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\SegaSamplers.cs" Link="PluginShared\SegaSamplers.cs" />
+    <Compile Include="..\Core\StreamResampler.cs" Link="PluginShared\StreamResampler.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Exclude Blazor-specific files from the NesEmulator folder (now local) -->

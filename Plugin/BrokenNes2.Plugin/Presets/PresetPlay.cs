@@ -160,6 +160,8 @@ public sealed class PresetPlayable
     public bool OverrunPartial;
     /// <summary>Not null when this preset cannot be played yet: the reason, in the words the user sees ("cannot play on this console yet: ...").</summary>
     public string? CannotPlay;
+    /// <summary>The note captured from a game (instrument extraction, PresetNote version 4): the NES player plays its life frame by frame, the Game Boy player its pitch and its end.</summary>
+    public BrokenNes2.Extract.CapturedNote? Captured;
 
     private const int MaxDacSounds = DacAnalyzer.MaxSounds;
 
@@ -178,6 +180,7 @@ public sealed class PresetPlayable
             ConsoleId.GameBoy => BuildGb(p, inst, d.Context),
             _ => BuildNes(p, inst),
         };
+        if (problem == null) p.Captured = PresetNote.CapturedOf(d);
         if (problem == null && inst.Console == ConsoleId.Snes && PresetNote.SnesList(d) is { } voices) { p.Recipes = voices; p.Snes!.Recipes = voices; }
         return problem == null ? p : null;
     }

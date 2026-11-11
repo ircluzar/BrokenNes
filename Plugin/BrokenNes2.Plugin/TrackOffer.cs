@@ -257,7 +257,7 @@ internal static class TrackOffers
                         if (r != null && r.Rate == rate) continue;
                         if (lp.Play.Snes is { } spc) Volatile.Write(ref s.Ready, new TrackEngine(new SnesSampler(spc, rate), rate));
                         else if (lp.Play.Console == Instruments.ConsoleId.Nes)
-                            Volatile.Write(ref s.Ready, new TrackEngine(null, rate) { Nes = new LoadedPreset { Data = lp.Data, File = lp.File, Play = lp.Play, Nes = new NesPresetPlayer(lp.Play.Instrument, rate, PresetNote.IsNesTrack(lp.Data)) } });
+                            Volatile.Write(ref s.Ready, new TrackEngine(null, rate) { Nes = new LoadedPreset { Data = lp.Data, File = lp.File, Play = lp.Play, Nes = new NesPresetPlayer(lp.Play.Instrument, rate, PresetNote.IsNesTrack(lp.Data), lp.Play.Captured) } });
                     }
                 Bn2Plugin[] list;
                 lock (gate) list = instances.ToArray();

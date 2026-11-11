@@ -120,6 +120,11 @@
     <!-- the .flp music pipeline's shared reader (docs/projects/flp-music-pipeline.md) -->
     <Compile Include="..\Plugin\BrokenNes2.Plugin\Music\Flp\FlpSong.cs" Link="PluginShared\FlpSong.cs" />
     <Compile Include="..\Plugin\BrokenNes2.Plugin\Music\Flp\FlpMutants.cs" Link="PluginShared\FlpMutants.cs" />
+    <!-- instrument extraction (the extract-instrument verb, BrokenDev `instrument extract`): the capture core, the preset file and the instrument model it writes, linked as the plugin has them -->
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\Extract\*.cs" LinkBase="PluginShared\Extract" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\Presets\*.cs" LinkBase="PluginShared\Presets" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\Instruments\*.cs" Exclude="..\Plugin\BrokenNes2.Plugin\Instruments\InstrumentsUi.cs;..\Plugin\BrokenNes2.Plugin\Instruments\InstrumentPushHandler.cs;..\Plugin\BrokenNes2.Plugin\Instruments\SnesOverlay.cs;..\Plugin\BrokenNes2.Plugin\Instruments\InstrumentMutants.cs" LinkBase="PluginShared\Instruments" />
+    <Compile Include="..\Plugin\BrokenNes2.Plugin\GbSampler.cs" Link="PluginShared\GbSampler.cs" />
 
     <!-- nullproviders/: only the 7 that don't `using BrokenNes.Windows.Rendering` (ColorMath,
          which lives outside the emulator tree) - same subset Web/ uses. Discovery is

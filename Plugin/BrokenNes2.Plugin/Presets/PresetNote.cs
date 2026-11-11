@@ -16,6 +16,19 @@ public static class PresetNote
     /// <summary>Version 3 (round 8, record-nes): a NES track recorded from a game. Its bytes: u8 format (1), u8 flags (0). The preset plays FL's notes the way Direct mode does (velocity x controller 7 is the
     /// chip's volume register, constant volume, no sweep, the pitch through NesDirect) with the preset's duty or noise mode, so a recording's notes write the game's registers back.</summary>
     public const int NesTrack = 3;
+    /// <summary>Version 4 (instrument extraction): one note captured from a game's channel (Extract.CapturedNote: the register snapshot at the key-on and the level / period / duty of every frame
+    /// until the key-off). NES and Game Boy presets. See docs/projects/flp-music-pipeline.md, "Instrument extraction".</summary>
+    public const int Captured = 4;
+
+    public static void AttachCaptured(PresetData d, BrokenNes2.Extract.CapturedNote n)
+    {
+        d.NoteVersion = Captured;
+        d.NoteBehaviour = n.ToBytes();
+    }
+
+    /// <summary>The captured note a version-4 preset carries, or null.</summary>
+    public static BrokenNes2.Extract.CapturedNote? CapturedOf(PresetData d) =>
+        d.NoteVersion == Captured && BrokenNes2.Extract.CapturedNote.FromBytes(d.NoteBehaviour) is { } n && n.Console == d.Console && n.Channel == d.Index ? n : null;
 
     /// <summary>Marks a NES preset (not the DMC) as a recorded track (version 3).</summary>
     public static void AttachNesTrack(PresetData d)
@@ -69,8 +82,9 @@ public static class PresetNote
             if (d.NoteBehaviour.Length != 2 || d.NoteBehaviour[0] != 1 || d.NoteBehaviour[1] != 0) return "damaged (a NES track's note behaviour)";
             if (d.Kind == InstrumentKind.NesDmc) return "damaged (a NES track's note behaviour on a DMC instrument)";
         }
+        if (d.NoteVersion == Captured && CapturedOf(d) == null) return "damaged (the captured envelope)";
         return null;
     }
 
-    public static string Describe(PresetData d) => d.NoteVersion == 0 ? "" : SnesList(d) is { } l ? $"{l.Length} game voice{(l.Length == 1 ? "" : "s")}" : IsNesTrack(d) ? "a recorded track (volume from the notes)" : "note behaviour this version cannot play";
+    public static string Describe(PresetData d) => d.NoteVersion == 0 ? "" : SnesList(d) is { } l ? $"{l.Length} game voice{(l.Length == 1 ? "" : "s")}" : IsNesTrack(d) ? "a recorded track (volume from the notes)" : CapturedOf(d) is { } cn ? $"the game's envelope ({cn.Frames} frames)" : "note behaviour this version cannot play";
 }

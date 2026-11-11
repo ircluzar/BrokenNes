@@ -148,6 +148,7 @@ namespace BrokenNes.Windows
             AddBugCaptureMenu(emulatorMenu);
             AddDebugPortMenu(emulatorMenu);   // the BrokenDev debug port (D7): homebrew prints, asserts, timers
             AddDebugWindowsMenu(emulatorMenu);   // the BrokenDev debug windows (D8): debugger, memory, ...
+            AddExtractMenu(emulatorMenu);        // instrument extraction: a channel's next note as a BrokenNes2 preset
 
             var openFolderItem = new ToolStripMenuItem("Open Emulator Folder", null, OpenEmulatorFolder_Click);
             emulatorMenu.DropDownItems.Add(openFolderItem);

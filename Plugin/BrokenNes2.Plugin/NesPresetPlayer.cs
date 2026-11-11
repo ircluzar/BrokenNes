@@ -23,8 +23,15 @@ internal sealed class NesPresetPlayer
     /// <summary>The bare chip it plays (tests read its writes through <c>WriteTap</c>).</summary>
     public NesApuInstrument Chip => chip;
 
-    public NesPresetPlayer(Instrument inst, int hostRate, bool track = false)
+    /// <summary>A preset extracted from a game (PresetNote.Captured): the captured life plays frame by frame from FL's note: level (constant volume), duty / noise mode and the pitch relative to
+    /// the key-on, the note silent after a key-off the game made (Silenced); held on its last frame otherwise.</summary>
+    public readonly BrokenNes2.Extract.CapturedNote? Envelope;
+    private long envSamples;
+    private const double FrameHz = 60.0988;
+
+    public NesPresetPlayer(Instrument inst, int hostRate, bool track = false, BrokenNes2.Extract.CapturedNote? envelope = null)
     {
+        Envelope = !track && envelope != null && envelope.Console == ConsoleId.Nes && envelope.Channel <= 3 && envelope.Frames > 0 ? envelope : null;
         chip = new NesApuInstrument("FIX", hostRate);
         kind = inst.Kind;
         Track = track && kind is InstrumentKind.NesPulse1 or InstrumentKind.NesPulse2 or InstrumentKind.NesTriangle or InstrumentKind.NesNoise;
@@ -61,6 +68,7 @@ internal sealed class NesPresetPlayer
             }
             return;
         }
+        if (Envelope != null) { UpdateEnvelope(fresh, cents); return; }
         double freq = 440.0 * Math.Pow(2.0, (60.0 + cents / 100.0 - 69.0) / 12.0);
         bool retrigger = fresh || !gate;
         switch (kind)
@@ -120,5 +128,61 @@ internal sealed class NesPresetPlayer
         return level;
     }
 
-    public void Render(Span<float> mono) => chip.Render(mono);
+    /// <summary>The frame of the captured life the note is on (from the samples rendered since its key-on).</summary>
+    public int EnvelopeFrame => (int)(envSamples * FrameHz / Math.Max(1, chip.HostSampleRate));
+
+    private void UpdateEnvelope(bool fresh, double cents)
+    {
+        var e = Envelope!;
+        bool retrigger = fresh || !gate;
+        if (retrigger) envSamples = 0;
+        int i = EnvelopeFrame;
+        bool over = i >= e.Frames;
+        var f = e.Life[Math.Min(i, e.Frames - 1)];
+        int level = over && e.End == BrokenNes2.Extract.CaptureEnd.Silenced ? 0 : f.Level;
+        double c = cents + e.CentsAt(Math.Min(i, e.Frames - 1));
+        double freq = 440.0 * Math.Pow(2.0, (60.0 + c / 100.0 - 69.0) / 12.0);
+        switch (kind)
+        {
+            case InstrumentKind.NesPulse1:
+            case InstrumentKind.NesPulse2:
+            {
+                int b = PulseBase;
+                int t = (int)Math.Round(Bn2Plugin.CpuHz / (16.0 * freq) - 1.0);
+                if (t > 0x7FF) t = 0x7FF;
+                bool muted = t < 8;
+                t = Math.Max(t, 8);
+                W(b, (f.Duty & 3) << 6 | 0x30 | (muted ? 0 : level));
+                W(b + 1, 0x08);                                       // sweep off (the captured periods already carry it)
+                int hi = t >> 8 & 7, lo = t & 0xFF;
+                if (retrigger || hi != (curPeriod >> 8 & 7)) { W(b + 2, lo); chip.Write(b + 3, (byte)(hi | 31 << 3)); }
+                else W(b + 2, lo);
+                curPeriod = t;
+                break;
+            }
+            case InstrumentKind.NesTriangle:
+            {
+                int t = Math.Clamp((int)Math.Round(Bn2Plugin.CpuHz / (32.0 * freq) - 1.0), 2, 0x7FF);
+                bool wasOff = chip.Shadow(8) == 0x80;
+                W(8, level > 0 ? 0xFF : 0x80);
+                int hi = t >> 8 & 7, lo = t & 0xFF;
+                if (retrigger || hi != (curPeriod >> 8 & 7) || (level > 0 && wasOff)) { W(0x0A, lo); chip.Write(0x0B, (byte)(hi | 31 << 3)); }
+                else W(0x0A, lo);
+                curPeriod = t;
+                break;
+            }
+            default:
+            {
+                int idx = Math.Clamp((f.Period & 15) - (int)Math.Round(cents / 300.0), 0, 15);
+                W(0x0C, 0x30 | level);
+                W(0x0E, (f.Duty & 1) << 7 | idx);
+                if (retrigger) chip.Write(0x0F, 31 << 3);
+                curPeriod = idx;
+                break;
+            }
+        }
+        gate = true;
+    }
+
+    public void Render(Span<float> mono) { chip.Render(mono); envSamples += mono.Length; }
 }

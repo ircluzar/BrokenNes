@@ -165,6 +165,17 @@ public interface IPresetLibrary
     ActionResult Audition(string id);
 }
 
+/// <summary>Instrument extraction in ROM mode (optional, implemented by the real library): the Presets tab shows "Capture next note" when <see cref="CaptureLabel"/> is not null.</summary>
+public interface IPresetCapture
+{
+    /// <summary>The button's words for the instance on screen ("Capture next note: Pulse 1"), or null when its emulator runs no game a capture can watch.</summary>
+    string? CaptureLabel { get; }
+    bool CaptureWaiting { get; }
+    ActionResult Capture();
+    /// <summary>Called as the tab paints: the result of a capture that has just finished (the preset added to the library), else null.</summary>
+    ActionResult? CapturePoll();
+}
+
 /// <summary>Where the real models register. Set once at start-up (or by a test hook); read on the GUI thread.</summary>
 public static class UiServices
 {

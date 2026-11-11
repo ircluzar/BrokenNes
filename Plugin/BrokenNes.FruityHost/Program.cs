@@ -57,6 +57,9 @@ switch (args[0])
     case "opl-fit-test":
         return OplFitChecks.Main(args);
 
+    case "extract-roundtrip":   // extract-roundtrip <plugin.dll> <game.nes> --frame N --channel C [--out preset]: instrument extraction's round trip on a real game (SelfTest.Extract.cs)
+        return SelfTest.ExtractRoundTripCli(args);
+
     case "flp-test":
         return FlpChecks.Main(args);
 
