@@ -8,4 +8,7 @@ public sealed partial class Emulator
 
     /// <summary>Whether a chip index is a PC console chip (read on the audio thread: a field test, no allocation).</summary>
     public static bool IsPcChip(int chip) => (uint)chip < (uint)Cx.Chips.Count && Cx.Chips[chip].IsPc;
+
+    /// <summary>A chip that plays in Direct mode only: every chip of the PC console (its devices, and the Nano DOS chip: the plugin runs no DOS program).</summary>
+    public static bool DirectOnlyChip(int chip) => IsPcChip(chip) || (uint)chip < (uint)Cx.Chips.Count && Cx.Chips[chip].Console == Cx.Pc;
 }

@@ -28,6 +28,11 @@ public static class NanoKinds
             i => { var p = NesEmulator.Snes.NanoSnesPresets.All[i]; return (p.Name, p.Label, p.Kind == 0 ? "BRR sample" : "noise", p.Desc); },
             NesEmulator.Snes.NanoSnesPresets.IndexOf,
             rate => new NesEmulator.Snes.NanoSnesEngine(rate)),
+        new("NANODOS", Cx.Pc, "Nano DOS", "nano-dos-sidecar", 11,
+            () => NesEmulator.X86.NanoDosPresets.Count,
+            i => { var p = NesEmulator.X86.NanoDosPresets.All[i]; return (p.Name, p.Label, p.Kind == 0 ? "AdLib FM" : "PC speaker", p.Desc); },
+            NesEmulator.X86.NanoDosPresets.IndexOf,
+            rate => new NesEmulator.X86.NanoDosEngine(rate)),
     ];
 
     public static NanoKind? OfChip(int chip) => (uint)chip < (uint)Cx.Chips.Count && Cx.Chips[chip].NanoMore is int k and > 0 ? All[k - 1] : null;

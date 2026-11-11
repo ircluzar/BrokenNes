@@ -19,6 +19,7 @@ public sealed unsafe partial class SelfTest
     [
         new(1, "NANOMD", 88, 4, NesEmulator.Sega.NanoGenesisPresets.Count, r => new NesEmulator.Sega.NanoGenesisEngine(r), i => NesEmulator.Sega.NanoGenesisPresets.All[i].Name, i => NesEmulator.Sega.NanoGenesisPresets.All[i].Kind, "nano-genesis-sidecar", "sine"),
         new(2, "NANOSNES", 89, 2, NesEmulator.Snes.NanoSnesPresets.Count, r => new NesEmulator.Snes.NanoSnesEngine(r), i => NesEmulator.Snes.NanoSnesPresets.All[i].Name, i => NesEmulator.Snes.NanoSnesPresets.All[i].Kind, "nano-snes-sidecar", "sine"),
+        new(3, "NANODOS", 90, 5, NesEmulator.X86.NanoDosPresets.Count, r => new NesEmulator.X86.NanoDosEngine(r), i => NesEmulator.X86.NanoDosPresets.All[i].Name, i => NesEmulator.X86.NanoDosPresets.All[i].Kind, "nano-dos-sidecar", "svtriangle"),
     ];
 
     private float[] MorePlugin(MoreSpec s, int program, NanoStep[] script, int blocks, int mutant = 0, int volume = 1000)
@@ -90,6 +91,7 @@ public sealed unsafe partial class SelfTest
             t.Expect(p.Test(HkMoreCount, s.Kind) == s.Presets, $"{s.Chip} has {p.Test(HkMoreCount, s.Kind)} presets (expected {s.Presets})");
             SetChip(p, s.Chip);
             t.Expect(p.GetParam(PConsole) == s.Console && p.Test(HkMoreDirect) == s.Kind, $"picking {s.Chip} should put the emulator on console {s.Console} in its Direct mode (console {p.GetParam(PConsole)}, kind {p.Test(HkMoreDirect)})");
+            if (s.Console == 5) { p.SetParam(PMode, 1); t.Expect(p.GetParam(PMode) == 0 && p.Test(HkMoreDirect) == s.Kind, $"{s.Chip}: ROM mode must be refused on the PC console (mode {p.GetParam(PMode)})"); }
             p.SetParam(PInstrument, s.Presets + 3);
             t.Expect(p.Test(HkMorePreset) == 3, $"program {s.Presets + 3} should wrap to preset 3 as the web player's program % count does (got {p.Test(HkMorePreset)})");
             nint parent = Win32Host.CreateParent();
@@ -129,6 +131,7 @@ public sealed unsafe partial class SelfTest
         t.Note($"{s.Chip} parity ({NanoBlocks * NanoBlock} frames at {NanoRate} Hz): {string.Join("; ", rows)}");
         foreach (var (mutant, what) in new[] { (1, "the velocity as FL's float (velocity / 128)"), (2, "bends ignored") })
         {
+            if (mutant == 1 && s.Chip == "NANODOS") continue;   // (the OPL2's level is 6-bit total level, 0.75 dB a step: velocity / 128 instead of / 127, 0.07 dB, lands on the same steps; the speaker has no level)
             int caught = 0;
             foreach (int prog in programs) if (NanoCompare(MorePlugin(s, prog, NanoScript, NanoBlocks, mutant), MoreReference(s, prog, NanoScript, NanoBlocks)).Diffs > 0) caught++;
             t.Expect(caught > 0, $"{s.Chip}: deliberate bug {mutant} ({what}) not caught");

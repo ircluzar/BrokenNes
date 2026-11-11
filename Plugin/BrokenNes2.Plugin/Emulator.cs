@@ -248,7 +248,7 @@ public sealed partial class Emulator : IDisposable
         lock (EmulatorHub.Gate)
         {
             value = Math.Clamp(value, 0, 1);
-            if (value == 1 && IsPcChip(chip)) { value = 0; if (mode == 0) { Changed(); return; } }      // the PC console plays in Direct mode only (Emulator.Pc.cs): the instances' Mode goes back to Direct
+            if (value == 1 && DirectOnlyChip(chip)) { value = 0; if (mode == 0) { Changed(); return; } }      // the PC console plays in Direct mode only (Emulator.Pc.cs): the instances' Mode goes back to Direct
             if (value == mode) return;
             Volatile.Write(ref mode, value);
             if (value == 0) ClearRunaway();
@@ -275,7 +275,7 @@ public sealed partial class Emulator : IDisposable
         string chipBefore = ChipId;
         bool presetBefore = PresetMode, modeChanged = false;
         // a Presets chip plays without a game: picking one while a game runs leaves ROM mode (the Mode buttons show it)
-        if ((Cx.IsPresetChip(value) || IsPcChip(value)) && mode == 1) { Volatile.Write(ref mode, 0); ClearRunaway(); modeChanged = true; }
+        if ((Cx.IsPresetChip(value) || DirectOnlyChip(value)) && mode == 1) { Volatile.Write(ref mode, 0); ClearRunaway(); modeChanged = true; }
         Volatile.Write(ref chip, value);
         if (Console != before || modeChanged || presetBefore != PresetMode) PlaceChanged();
         // a chip of the same console can offer other voices (the Master System FM chip has FM 1-9 where the PSG chip has none): instances are placed again, so those that asked for one get it (or lose it)
@@ -375,7 +375,7 @@ public sealed partial class Emulator : IDisposable
             romPaths[console] = string.IsNullOrWhiteSpace(rom) ? null : rom;
             AdoptSong(restoredSong, songProblem);       // the Test MIDI export's song (SNG1): when it was the NES game, the loading thread converts it and builds it as the game
             bool songGame = console == Cx.Nes && songActive;
-            Volatile.Write(ref mode, IsPcChip(newChip) ? 0 : Math.Clamp(newMode, 0, 1));
+            Volatile.Write(ref mode, DirectOnlyChip(newChip) ? 0 : Math.Clamp(newMode, 0, 1));
             if (mode == 1) LeavePresetChipLocked();          // (a project cannot have a game running on a Presets chip; if one says so, the console's own chip it is)
             if (mode != modeBefore || console != consoleBefore || PresetMode != presetBefore)
             {
