@@ -8,6 +8,9 @@
     list                         the projects, whether they are restored / built / verified
     restore <project|archive|all>  extract the project archives into BROKENDEV_HOME (-Full: also the bulky extras, -Force: again)
     build   <project|all>        run the project's build steps (dependencies first); outputs go to BROKENDEV_HOME\out\<id>\
+    instrument extract <rom> --frame N --channel C [--out f.bn2preset] [--input "40:Start,44:"] [--name T] [--json]
+                                 capture one instrument from a NES / Game Boy game's channel (the note sounding at frame N) and write a
+                                 BrokenNes2 preset (headless Workshop --extract-instrument; docs/projects/flp-music-pipeline.md)
     verify  <project|all>        run the built ROM on BrokenNes (headless Workshop) and record the checks in out\<id>\verify.json
                                  (-Coverage: also the coverage map, the code run per ROM bank, and out\<id>\coverage.html)
     diff    <project|all>        differential replay of the built ROM, BrokenNes against Mesen 2 (a black-box oracle); out\<id>\diff.json
@@ -222,6 +225,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'lib\Timeflow.ps1')
 . (Join-Path $here 'lib\TimeflowPlay.ps1')
 . (Join-Path $here 'lib\Nested.ps1')
+. (Join-Path $here 'lib\Instrument.ps1')
 
 function Show-BdHelp { Write-Host (Get-Help (Join-Path $here 'brokendev.ps1') -Full | Out-String) }
 
@@ -259,7 +263,7 @@ function Get-BdProjectStatus {
 }
 
 try {
-    if ($Rest.Count -gt 0 -and @('tool', 'emulators', 'new', 'movie', 'timeflow', 'nested') -notcontains $Verb.ToLowerInvariant()) { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
+    if ($Rest.Count -gt 0 -and @('tool', 'emulators', 'new', 'movie', 'timeflow', 'nested', 'instrument') -notcontains $Verb.ToLowerInvariant()) { throw "unexpected argument(s) for '$Verb': $($Rest -join ' ')" }
     # -Emu a,b and -Scenario a,b: one comma list or several values, the same either way (pwsh -File passes a,b as one string)
     $Emu = @($Emu | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $Scenario = @($Scenario | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -451,6 +455,12 @@ try {
                 'status'    { Get-BdMcpStatus | Format-List | Out-String | Write-Host; exit 0 }
                 'test'      { if (Invoke-BdMcpTest -Exe $Exe) { Write-BdOk 'mcp tests passed'; exit 0 } else { Write-BdFail 'mcp tests failed'; exit 1 } }
                 default     { throw "mcp: install, uninstall, build, status or test" }
+            }
+        }
+        'instrument' {
+            switch ($Target.ToLowerInvariant()) {
+                'extract' { exit (Invoke-BdInstrumentExtract -Rest $Rest -Frame $Frame -Out $Out -Exe $Exe -Json:$Json) }
+                default { throw "instrument: unknown action '$Target' (extract)" }
             }
         }
         'movie' {
