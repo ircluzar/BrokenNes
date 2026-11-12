@@ -191,7 +191,7 @@ public sealed partial class SnesSession : IConsoleSession, IButcherHost, IPointe
     /// of the SFC chip's state - the SFC chip keeps running either way, so this swaps freely).</summary>
     private void SetPicture(string ppu)
     {
-        s9x?.Detach(); s9x = ppu.ToUpperInvariant() switch { "S9X" => new Snes9xGfx(board.Ppu), "BS63" => new BsnesV063Render(board.Ppu), _ => null };   // ppu-harvest renderers: Snes9x 88f3702, bsnes v063
+        s9x?.Detach(); s9x = ppu.ToUpperInvariant() switch { "S9X" => new Snes9xGfx(board.Ppu), "BS63" => new BsnesV063Render(board.Ppu), "TYL" => new Snes9xTylGfx(board.Ppu), _ => null };   // ppu-harvest renderers: Snes9x 88f3702, bsnes v063
         bool route = CoreCatalog.IsDirectRoute(ppu);     // another console's enhanced picture chip, reached directly: the SNES picture as layers at its own size
         if (ppu.StartsWith("NES:", StringComparison.OrdinalIgnoreCase) || route)
         {
