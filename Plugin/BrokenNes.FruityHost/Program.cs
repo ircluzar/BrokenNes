@@ -43,6 +43,19 @@ switch (args[0])
         File.WriteAllBytes(args[1], AdlibChecks.Project());
         return 0;
 
+    case "adlib-expect":       // <song.flp> sv|vaults <ticks|frames> <out.txt>: the importer's song played by the driver's C# twin, every register write as "tick reg value" (hex), for comparing with Workshop --x86session --opllog
+    {
+        var fs = BrokenNes2.Music.Flp.FlpSong.Read(File.ReadAllBytes(args[1]));
+        bool sv = args[2] == "sv";
+        var song = sv ? BrokenNes2.Music.Flp.AdlibBackend.BuildSuperVrun(fs, "adl") : BrokenNes2.Music.Flp.AdlibBackend.BuildVaults(fs, "adl");
+        if (song == null) { Console.Error.WriteLine("not composed for the AdLib"); return 1; }
+        using var w = new StreamWriter(args[4]);
+        Action<int, int, int> tap = (t, r, v) => w.WriteLine($"{t} {r:X2} {v:X2}");
+        if (sv) AdlibChecks.Play(song.Blob, int.Parse(args[3]), tap: tap); else AdlibChecks.PlayVaults(song.Blob, int.Parse(args[3]), tap);
+        Console.WriteLine($"adlib-expect: {song.Blob.Length} bytes, {song.Voices.Count} voices, {song.Ticks} ticks -> {args[4]}");
+        return 0;
+    }
+
     case "flp-vocdos-adlib":   // <song.flp> <song index 0-10> <out dir>: the Vaults DOS AdLib song (music/adlib/song<NN>.opl) + its fence
     {
         var adl = BrokenNes2.Music.Flp.AdlibBackend.BuildVaults(BrokenNes2.Music.Flp.FlpSong.Read(File.ReadAllBytes(args[1])), Path.GetFileNameWithoutExtension(args[1]));

@@ -206,3 +206,10 @@ Findings that are NOT slide matters (user's call, nothing changed):
 2. **CTW SMS triangle flips octave**: nes_apu.c doubles the triangle's period and halves it only past the PSG's 10 bits, so the triangle is an octave below FL under period $3FF and at FL's pitch above it; a slide across that point jumps an octave (117 of 251 frames of the test song low).
 3. **Vaults GG held notes** are off by more than the PSG step (C4 -6, C7 -34 cents): the GG driver's note table, not slides.
 4. Notes under the PSG's lowest (A2) are the existing "note range" fence on CTW SMS / Vaults GG.
+
+## AdLib songs heard in the running games (2026-11-12)
+
+- `FruityHost adlib-expect <song.flp> sv|vaults <ticks> <out.txt>`: the importer's blob played by the driver's C# twin, every write as "tick reg value".
+- Workshop `--x86session <exe> --opllog <out.txt> [--wav out.wav] [--ips N]`: the game's writes on the x86 console (frame = 1/70.09 s); the 95 builds' test runs log the same from their software OPL (scratch patch only).
+- `BrokenDev/tools/music/flp/adlib_compare.py`: per voice, note events (key-on F-number/block, pitch while keyed, key-off) and the patch registers at the first key-on.
+- Result on the adlib-fixture song: Super VRUN DOS 288/288, 95 312/312; Vaults DOS 288/288 (at `--ips 200000000`: at the console's 60 M the game lags and the song runs at ~45 % tempo, notes still right), Vaults 95 312/312. Found and fixed: Vaults' player (dos_opl.c / win_opl.c) kept the key flag after a key-off, so a later 3v re-keyed the voice (VRUN_VOC_DOS fd5f367, VRUN_VOC_95 d138684). Output and WAVs: `C:\BrokenNes-work\flp_out\adlib`.
