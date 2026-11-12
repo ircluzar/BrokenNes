@@ -57,7 +57,7 @@
       {
         "id": "play",
         "frames": 3000,
-        "input": "240:Start,246:,600:Right,1300:Right+A,1360:Right,1500:Right+B,1700:Right+A+B,1760:Right+B",
+        "input": "240:Start,246:,600:Right,1300:Right+B,1360:Right,1500:Right+Y,1700:Right+B+Y,1760:Right+Y",
         "checkpoints": [300, 600, 1200, 1800, 3000],
         "expect": { "minDistinctColors": 6, "pictureDiffers": [1200, 3000], "audio": { "fromFrame": 400, "minPeak": 0.02, "minNonSilentFrames": 100 }, "minRealtime": 1.0 }
       }
@@ -71,7 +71,7 @@
     "mesenDir": "{tools}/supervrun/Mesen2",
     "mesenSettings": "{root:svrunpkg}/mesen2_user_folder/settings.json",
     "frames": [300, 600, 900, 1200, 1800, 2400, 3000],
-    "input": "240:Start,246:,600:Right,1300:Right+A,1360:Right,1500:Right+B,1700:Right+A+B,1760:Right+B",
+    "input": "240:Start,246:,600:Right,1300:Right+B,1360:Right,1500:Right+Y,1700:Right+B+Y,1760:Right+Y",
     "inputShift": 3,
     "window": [1, 5],
     "crop": [7, 8],
