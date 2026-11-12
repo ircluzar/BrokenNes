@@ -215,7 +215,10 @@ public class SmsSession : IConsoleSession, IButcherHost
                     using (var w = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true)) board.Sound.SaveState(w);
                     ms.Position = 0;
                     using var r = new BinaryReader(ms);
-                    try { next.LoadState(r); } catch (Exception) { /* a unit with a different state layout starts from reset */ }
+                    // a unit with a different state layout starts from reset: a load that fails part-way leaves the unit half-loaded with the other layout's bytes
+                    // (a NES-bridge unit's state read as the YM2413's: garbage indexes, IndexOutOfRange in Ym2413.CommitSlotUpdate, fuzz seed 316345), so make it again
+                    try { next.LoadState(r); }
+                    catch (Exception) { next = SmsSoundFactories.Create(id, new SmsSoundRequest(new SegaMachine(board.Timeline, GenesisModel.Model1, Rate), Console, variant)); }
                 }
                 board.SwapSound(next);
                 apuId = id;

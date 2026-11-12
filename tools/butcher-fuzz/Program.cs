@@ -179,8 +179,25 @@ if (Environment.GetEnvironmentVariable("REPRO") is string rs)
     Console.WriteLine("needed: " + string.Join(", ", paths.Where(x => !Zeroed.Contains(x))));
     Environment.Exit(0);
 }
+// ---------- pinned regression seeds: findings that were fixed, run first on every campaign (the seed picks the ROM from the same corpus) ----------
+// (console, seed, what it found). Add a fixed finding here; a pinned seed that finds anything again is reported like any other finding.
+var pinned = new (string Console, int Seed, string Why)[]
+{
+    ("nes", 316254, "undo-mismatch picture-only: PPU_FIX kept a pattern-swap band's override across a state load (WWF Wrestlemania Challenge, FIX/FIX/FIX)"),
+    ("sms", 316345, "crash in Ym2413.CommitSlotUpdate: an APU swap to SMS-FM half-loaded a NES-bridge unit's state (The Jungle Book, apu NES:QLQ2)"),
+};
+int pinnedRun = 0;
+if (Environment.GetEnvironmentVariable("REPRO") == null && Environment.GetEnvironmentVariable("NOPIN") != "1")
+    foreach (var pin in pinned.Where(x => x.Console == console))
+    {
+        var rom = roms[new Random(pin.Seed * 7919).Next(roms.Length)];
+        var task = Task.Run(() => Trial(pin.Seed, rom, pin.Seed % 2 == 0));
+        if (!task.Wait(TimeSpan.FromSeconds(90))) Find("hang", Path.GetFileName(rom), $"seed {pin.Seed} {rom} (pinned; thread abandoned)");
+        pinnedRun++;
+        log.WriteLine($"pinned seed {pin.Seed}: {(task.IsCompleted ? task.Result.oracle ?? "clean" : "hang")} ({pin.Why})");
+    }
 // ---------- main loop with a hang watchdog ----------
-var sw = Stopwatch.StartNew(); int trials = 0, seed = seed0;
+var sw = Stopwatch.StartNew(); int trials = pinnedRun, seed = seed0;
 while (sw.Elapsed.TotalSeconds < budget)
 {
     int sd = seed++; var rom = roms[new Random(sd * 7919).Next(roms.Length)];
