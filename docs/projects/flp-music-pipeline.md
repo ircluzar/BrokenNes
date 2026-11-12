@@ -197,17 +197,17 @@ A captured note is made a preset, loaded into the real DLL on the Presets chip a
 | Codename 23 (SMB1 hack), pulse 2 @ 205 / 395 | 7 frames | +0.2 / +2.8 c | 14.7 / 9.5% | 0.999 / 1.000 |
 | Codename 23, triangle @ 204 / 394 | 8 frames | +0.3 / 0.0 c | 15.7 / 2.2% | 0.998 / 1.000 |
 | synthetic SNES, voice 1 (looped BRR, ADSR, vibrato, driver volume 110 -> 30) | 27 frames | 0.0 c | 0.3% | 0.999 |
-| synthetic Master System PSG, tone 1 (2 dB decay, vibrato) | 26 frames | 0.0 c | 2.5% | 0.997 |
-| synthetic YM2413, FM 1 (ROM instrument 3, volume 0 / 4 / 8, vibrato) | 26 frames | 0.0 c | 0.7% | 1.000 |
-| synthetic YM2612, FM 1 (algorithm 4, carriers -12 TL, vibrato) | 26 frames | 0.0 c | 2.1% | 0.998 |
+| synthetic Master System PSG, tone 1 (2 dB decay, vibrato) | 26 frames | -0.1 c | 2.5% | 0.997 |
+| synthetic YM2413, FM 1 (ROM instrument 3, volume 0 / 4 / 8, vibrato) | 26 frames | +0.1 c | 0.7% | 1.000 |
+| synthetic YM2612, FM 1 (algorithm 4, carriers -12 TL, vibrato) | 26 frames | +0.1 c | 2.1% | 0.998 |
 | synthetic Genesis DAC (decaying 8 kHz saw) | 20 frames | - | 1.1% | 0.985 |
 | Super Mario World, voice 1 @ 401 / voice 2 @ 426 | 7 / 8 frames | 0.0 / 0.0 c | 5.6 / 0.1% | 0.995 / 1.000 |
 | Sonic the Hedgehog, FM 1 / FM 2 @ 699 | 7 frames | 0.0 / 0.0 c | 10.4 / 8.8% | 0.997 / 0.998 |
 | Sonic the Hedgehog, PSG noise / DAC @ 699 | 12 frames | - | 2.7 / 23.7% | 0.801 / 0.803 |
-| Alex Kidd in Miracle World, PSG tone 1 / tone 3 @ 400 | 2 frames | 0.0 / 0.0 c | 5.6 / 6.5% | 0.885 / 0.883 |
+| Alex Kidd in Miracle World, PSG tone 1 / tone 3 @ 400 | 2 frames | +0.1 / +0.1 c | 5.6 / 6.5% | 0.885 / 0.883 |
 | Alex Kidd in Miracle World, PSG noise @ 404 | 12 frames | - | 2.8% | 0.773 |
 
-For the SNES and Sega rows the pitch is the shift of the two log-frequency magnitude spectra that matches them best (5-cent steps, refined; a pitch tracker locks onto different partials of FM and sampled timbres: Sonic's FM read 2-4 semitones off that way while the spectra agreed to 0.997); the selftest checks that the measure reads a note 50 cents sharp. The real games' sound unit runs behind the frame it was asked for (Sonic's stems 2 frames): the recording is aligned by the lag (0-4 frames) at which the channel's loudness best follows its captured sounding frames. Deliberate bugs, all caught: the life flattened to the key-on frame (SNES envelope 0.3 -> 30.4%, PSG 2.5 -> 46.7%, YM2413 0.7 -> 29.3%, YM2612 2.1 -> 34.0%) and the DAC's rate doubled (spectral 0.985 -> 0.448). A real game's flattened note is reported, not required to fail (Sonic's FM notes hold one level; the noise notes go 2.7 -> 39.3% and 2.8 -> 40.0%). The DAC and noise envelope / spectral figures are drums against their own replays; the Master System FM unit has no real-game row (no FM game in the library list used here).
+For the SNES and Sega rows the pitch is the shift of the two log-frequency magnitude spectra that matches them best (within half an octave, 5-cent steps, refined; each log bin samples the spectrum at its centre so the FFT grid leaves no shared comb; a pitch tracker locks onto different partials of FM and sampled timbres: Sonic's FM read 2-4 semitones off that way while the spectra agreed to 0.997); the selftest checks that the measure reads a note 50 cents sharp. The real games' sound unit runs behind the frame it was asked for (Sonic's stems 2 frames): the recording is aligned by the lag (0-4 frames) at which the channel's loudness best follows its captured sounding frames. Deliberate bugs, all caught: the life flattened to the key-on frame (SNES envelope 0.3 -> 30.4%, PSG 2.5 -> 46.7%, YM2413 0.7 -> 29.3%, YM2612 2.1 -> 34.0%) and the DAC's rate doubled (spectral 0.985 -> 0.448). A real game's flattened note is reported, not required to fail (Sonic's FM notes hold one level; the noise notes go 2.7 -> 39.3% and 2.8 -> 40.0%). The DAC and noise envelope / spectral figures are drums against their own replays; the Master System FM unit has no real-game row (no FM game in the library list used here).
 
 (The SMB1 hacks play their music on pulse 2 and the triangle; pulse 1 is the sound effects. Their envelope error on 7-8-frame notes is mostly sub-frame timing: the game keys mid-frame, the preset at the frame's start.) The check also fails on a deliberate bug (the envelope flattened to the key-on level: caught by the envelope error) and runs the plugin's ROM-mode capture on the built-in game (Pulse 1, 12 frames; the preset reads back with its envelope, loads and sounds).
 

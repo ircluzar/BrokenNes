@@ -227,7 +227,7 @@ public sealed unsafe partial class SelfTest
         return new ExtractScore(pitch, env, spectral, frames, key);
     }
 
-    /// <summary>The pitch of <paramref name="played"/> against <paramref name="game"/> in cents: the shift (within an octave either way, 5-cent steps, refined by a parabola) of their magnitude spectra on a log-frequency
+    /// <summary>The pitch of <paramref name="played"/> against <paramref name="game"/> in cents: the shift (within half an octave either way, 5-cent steps, refined by a parabola) of their magnitude spectra on a log-frequency
     /// axis (55 Hz to 11 kHz) that gives the largest correlation.</summary>
     internal static double SpectralShiftCents(float[] game, float[] played, int rate)
     {
@@ -241,21 +241,25 @@ public sealed unsafe partial class SelfTest
             Fft(c);
             const double step = 5, lo = 55;
             int bins = (int)(1200 * Math.Log2(11000 / lo) / step);
+            // each log bin samples the magnitude spectrum at its centre (interpolated): bins that merely fall between FFT bins must not form a comb both spectra share
+            var mag = new double[nfft / 2];
+            for (int k = 0; k < nfft / 2; k++) mag[k] = c[k].Magnitude;
             var o = new double[bins];
-            for (int k = 1; k < nfft / 2; k++)
+            for (int b = 0; b < bins; b++)
             {
-                double hz = (double)k * rate / nfft;
-                if (hz < lo || hz >= 11000) continue;
-                int b = (int)(1200 * Math.Log2(hz / lo) / step);
-                if (b < bins) o[b] = Math.Max(o[b], c[k].Magnitude);
+                double k = lo * Math.Pow(2, b * step / 1200) * nfft / rate;
+                int k0 = (int)k; double fr = k - k0;
+                o[b] = Math.Log(1 + 100 * (mag[Math.Min(k0, mag.Length - 1)] * (1 - fr) + mag[Math.Min(k0 + 1, mag.Length - 1)] * fr));
             }
-            for (int i = 0; i < bins; i++) o[i] = Math.Log(1 + 1000 * o[i]);
+            double mean = o.Average();
+            for (int i = 0; i < bins; i++) o[i] -= mean;
             return o;
         }
         var a = LogSpec(game); var p = LogSpec(played);
-        double Corr(int s) { double d = 0; for (int i = 0; i < a.Length; i++) { int j = i + s; if (j >= 0 && j < p.Length) d += a[i] * p[j]; } return d; }
+        // (normalised over the overlap: a raw sum favours no shift, where the two spectra overlap most)
+        double Corr(int s) { double d = 0, ea = 0, ep = 0; for (int i = 0; i < a.Length; i++) { int j = i + s; if (j >= 0 && j < p.Length) { d += a[i] * p[j]; ea += a[i] * a[i]; ep += p[j] * p[j]; } } return ea > 0 && ep > 0 ? d / Math.Sqrt(ea * ep) : 0; }
         int best = 0; double bv = double.MinValue;
-        for (int s = -240; s <= 240; s++) { double v = Corr(s); if (v > bv) { bv = v; best = s; } }
+        for (int s = -120; s <= 120; s++) { double v = Corr(s); if (v > bv) { bv = v; best = s; } }
         double y0 = Corr(best - 1), y2 = Corr(best + 1), den = y0 - 2 * bv + y2;
         double frac = den < 0 ? 0.5 * (y0 - y2) / den : 0;
         return (best + Math.Clamp(frac, -0.5, 0.5)) * 5;

@@ -200,11 +200,11 @@ internal static partial class PresetChecks
         var rd = PresetFile.Read(plain);
         r.Expect(rd.Ok && rd.Data!.NoteVersion == 0 && !rd.Data.HasNoteBehaviour, "a version-0 preset reports note behaviour");
         // a later version's note behaviour: read, kept, written back unchanged, and said to be there
-        var withNote = PresetRaw.WithHeader(PresetRaw.WithBlob(plain, PresetFile.TagNote, _ => [5, 0, 1, 2, 3, 4, 5, 6, 7, 8]), h => h.Replace("\"noteBehaviour\":0", "\"noteBehaviour\":5"));
+        var withNote = PresetRaw.WithHeader(PresetRaw.WithBlob(plain, PresetFile.TagNote, _ => [9, 0, 1, 2, 3, 4, 5, 6, 7, 8]), h => h.Replace("\"noteBehaviour\":0", "\"noteBehaviour\":9"));
         var rn = PresetFile.Read(withNote);
-        r.Expect(rn.Ok && rn.Data!.NoteVersion == 5 && rn.Data.NoteBehaviour.SequenceEqual(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }) && rn.Data.HasNoteBehaviour, "a note-behaviour block of version 5 was not kept");
+        r.Expect(rn.Ok && rn.Data!.NoteVersion == 9 && rn.Data.NoteBehaviour.SequenceEqual(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }) && rn.Data.HasNoteBehaviour, "a note-behaviour block of version 9 was not kept");
         var again = rn.Ok ? PresetFile.TryWrite(rn.Data!, out _) : null;
-        r.Expect(again != null && again.AsSpan().SequenceEqual(withNote), "a note-behaviour block of version 5 did not survive a rewrite byte for byte");
+        r.Expect(again != null && again.AsSpan().SequenceEqual(withNote), "a note-behaviour block of version 9 did not survive a rewrite byte for byte");
         // an unknown part: kept
         var withUnknown = PresetRaw.Build(1, 0, PresetRaw.Split(plain).Header, [.. PresetRaw.Split(plain).Blobs, (0x31585A5Au, new byte[] { 9, 8, 7 })]);
         var ru = PresetFile.Read(withUnknown);
