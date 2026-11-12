@@ -103,3 +103,28 @@ Workshop --nested-cert --nes SMB1_Remake_m30.nes --snes SMB1_Remake_m30_SNES.smc
   --input <smb1_nes_inputs.json scenarios.fuzz1> --out-dir <dir> --raw
 python BrokenDev/tools/nested-cert-analyze.py <dir> SMB1_Remake_m30_SNES --mlb SMB1_Remake_m30.mlb
 ```
+
+## 2026-11-12 round 2: fixed-time NMI (`-Nmi accurate`)
+
+Core unchanged (step 18); the fixed-time NMI is Project Nested's own `NmiMode.AtVblank` on / `NmiMode.AutoDetect` off,
+written per game by `nested-build.ps1 -Nmi accurate` (see vrun.md round 2). The smb1 feedback plans already pressed B/Y;
+the project's verify/oracle script was fixed. Feedback re-run, personal builds in the session scratchpad only
+(`smb1_nested_personal\`, fast = 0d6471f4..., byte-identical to round 1; accurate = 345a2d77...).
+
+| scenario | SNES lag fast -> accurate | `logic_ticks` behind the NES in 1-1 (poll 600), BrokenNes fast -> accurate (Mesen accurate) |
+|---|---|---|
+| fuzz1 | 9 -> **2** | 8 -> **6** (7) |
+| fuzz2 | 13 -> **2** | 8 -> 6 |
+| recorded | 5 -> **2** | 8 -> 6 |
+
+- **The 8-step lag is reduced, not gone (6 steps).** The remake catches up missed NMIs with extra logic ticks during the
+  boot/title loading (`logic_ticks` jumps by several per poll on the NES at polls 6-23). How many NMIs elapse during those
+  loads depends on how fast the SNES does the loading, not on where the NMI lands, so a fixed NMI time can only remove the
+  part caused by late delivery (2 steps). The rest needs the loads to take the NES's number of frames.
+- **Lag frames:** the 2-frame lag pairs (97, 253, level events) are gone; 2 single lag frames remain (90, 268).
+- **Cross-check:** BrokenNes SNES vs Mesen SNES in accurate mode differ on 2692 of 2696 polls (Mesen ends 7 ticks behind,
+  BrokenNes 6): the async NMI exposes their sub-frame timing differences. Fast mode agreed.
+- Re-converges after the first death in both modes, as before. `dmc_stage` unchanged (DMC not touched this round).
+
+**Recommendation for SMB1: accurate** (fewer lag frames, smaller step gap), verdict stays **Jank** until the boot-load
+catch-up is matched.
