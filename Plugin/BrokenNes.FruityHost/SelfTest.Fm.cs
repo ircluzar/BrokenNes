@@ -177,7 +177,8 @@ public sealed unsafe partial class SelfTest
                 t.Expect(p.GetParam(PConsole) == 3 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "SMS", "the SMS segment did not switch to the PSG chip");
                 t.Expect(p.Test(30, 90) == 0 && p.Test(30, 25) != 0, "on the PSG chip the Pulse duty slider stays (dimmed) and there is no instrument picker");
                 ClickControl(t, p, 4, "Sound chip dropdown");
-                t.Expect(p.Test(31) == 4 && p.Test(32) == 14, $"the Master System console should list 14 chips (SMS, SMSFM, PRE-SMS, the 11 harvested engines), the list has {p.Test(32)}");
+                int wantSms = ExpectedChipCount(p, 3);
+                t.Expect(p.Test(31) == 4 && p.Test(32) == wantSms, $"the Master System console should list the chip table's {wantSms} Master System chips (SMS, SMSFM, PRE-SMS, the harvested engines, NANOSMS), the list has {p.Test(32)}");
                 var chipItem = Centre(p, 100 + 1);
                 t.Expect(chipItem != null, "the second chip is not reachable in the open list");
                 if (chipItem != null) Win32Host.Click(p.EditorHandle, chipItem.Value.X, chipItem.Value.Y);
