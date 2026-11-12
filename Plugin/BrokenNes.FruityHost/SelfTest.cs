@@ -108,6 +108,25 @@ public sealed unsafe partial class SelfTest
         }
     }
 
+    // which console's list a chip appears in, from its id (the chip table's naming: PRE-<console>, <console>_<engine>, the Nano chips, the PC devices);
+    // the expected chip-list sizes are counted from the DLL's own chip table with this, so appending a chip does not leave a stale hard number
+    private static int ChipConsoleOf(string id)
+    {
+        string u = id.ToUpperInvariant();
+        if (u is "PRESETS" or "PRE-NES") return 0;
+        if (u.StartsWith("PRE-")) u = u[4..];
+        if (u is "GB" or "DMG" or "DMGS" or "NANOGB" || u.StartsWith("DMG_")) return 1;
+        if (u is "SNES" or "WMS" or "NANOSNES" || u.StartsWith("SNES_")) return 2;
+        if (u is "SMS" or "SMSFM" or "NANOSMS" || u.StartsWith("SMS_") || u.StartsWith("SMSFM_")) return 3;
+        if (u is "MD" or "NANOMD" || u.StartsWith("MD_")) return 4;
+        if (u is "NANODOS" || u.StartsWith("PC_")) return 5;
+        return 0;
+    }
+
+    /// <summary>How many chips the editor's list should show on a console: every chip of it, without the Presets ones in ROM mode (they play without a game).</summary>
+    private static int ExpectedChipCount(PluginInstance p, int console, bool romMode = false) =>
+        Chips(p).Count(c => ChipConsoleOf(c) == console && !(romMode && (c.Equals("PRESETS", StringComparison.OrdinalIgnoreCase) || c.StartsWith("PRE-", StringComparison.OrdinalIgnoreCase))));
+
     private static List<string> Chips(PluginInstance p)
     {
         var list = new List<string>();
@@ -1373,7 +1392,8 @@ public sealed unsafe partial class SelfTest
             int qn = chips.IndexOf("QN");
             ClickControl(t, p, 4, "chip dropdown");
             t.Expect(p.Test(31) == 4, "the chip list did not open");
-            t.Expect(p.Test(32) == chips.Count - 12 - 31, $"the chip list has {p.Test(32)} items, expected the {chips.Count - 12 - 31} NES chips (the 31 harvested engines of the other consoles are under them too; the Game Boy, SNES, Master System and Genesis chips, the WideMess chip and the Nano GB chip are under their own consoles; the NES list has the Presets chip for every console and its own NES one)");
+            int nesChips = ExpectedChipCount(p, 0);
+            t.Expect(p.Test(32) == nesChips, $"the chip list has {p.Test(32)} items, expected the {nesChips} NES chips of the chip table (the other consoles' chips are under their own consoles; the NES list has the Presets chip for every console and its own NES one)");
             int before = p.Host.ParamChanges.Count;
             // scroll the list until QN is visible, then click it
             for (int guard = 0; guard < 40 && p.Test(30, 100 + qn) == 0; guard++) Win32Host.Wheel(hwnd, -1);
@@ -1405,22 +1425,22 @@ public sealed unsafe partial class SelfTest
             ClickControl(t, p, 51, "Game Boy segment");
             t.Expect(p.GetParam(PConsole) == 1 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "DMG", $"Game Boy segment: console {p.GetParam(PConsole)}, chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}");
             ClickControl(t, p, 4, "chip dropdown (Game Boy)");
-            t.Expect(p.Test(32) == 10, $"the Game Boy chip list has {p.Test(32)} items, expected DMG, DMGS, the Presets shortcut PRE-GB, NANOGB and the 6 harvested engines");
+            { int want = ExpectedChipCount(p, 1); t.Expect(p.Test(32) == want, $"the Game Boy chip list has {p.Test(32)} items, expected {want} (the chip table's Game Boy chips: DMG, DMGS, the Presets shortcut PRE-GB, NANOGB and the 6 harvested engines)"); }
             Win32Host.Click(hwnd, 20, 20);
             ClickControl(t, p, 52, "SNES segment");
             t.Expect(p.GetParam(PConsole) == 2 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "SNES", "SNES segment");
             ClickControl(t, p, 4, "chip dropdown (SNES)");
-            t.Expect(p.Test(32) == 11, $"the SNES chip list has {p.Test(32)} items, expected SNES, the Presets shortcut PRE-SNES and the WideMess chip WMS and the 8 harvested engines");
+            { int want = ExpectedChipCount(p, 2); t.Expect(p.Test(32) == want, $"the SNES chip list has {p.Test(32)} items, expected {want} (the chip table's SNES chips: SNES, the Presets shortcut PRE-SNES and the WideMess chip WMS and the 8 harvested engines)"); }
             Win32Host.Click(hwnd, 20, 20);
             ClickControl(t, p, 53, "SMS segment");
             t.Expect(p.GetParam(PConsole) == 3 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "SMS", $"SMS segment: console {p.GetParam(PConsole)}, chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}");
             ClickControl(t, p, 4, "chip dropdown (SMS)");
-            t.Expect(p.Test(32) == 14, $"the Master System chip list has {p.Test(32)} items, expected SMS, SMSFM and the Presets shortcut PRE-SMS and the 11 harvested engines");
+            { int want = ExpectedChipCount(p, 3); t.Expect(p.Test(32) == want, $"the Master System chip list has {p.Test(32)} items, expected {want} (the chip table's Master System chips: SMS, SMSFM and the Presets shortcut PRE-SMS and the 11 harvested engines)"); }
             Win32Host.Click(hwnd, 20, 20);
             ClickControl(t, p, 54, "MD segment");
             t.Expect(p.GetParam(PConsole) == 4 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "MD", $"MD segment: console {p.GetParam(PConsole)}, chip {p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore))}");
             ClickControl(t, p, 4, "chip dropdown (MD)");
-            t.Expect(p.Test(32) == 8, $"the Genesis chip list has {p.Test(32)} items, expected MD and the Presets shortcut PRE-MD and the 6 harvested engines");
+            { int want = ExpectedChipCount(p, 4); t.Expect(p.Test(32) == want, $"the Genesis chip list has {p.Test(32)} items, expected {want} (the chip table's Genesis chips: MD and the Presets shortcut PRE-MD and the 6 harvested engines)"); }
             Win32Host.Click(hwnd, 20, 20);
             ClickControl(t, p, 50, "NES segment");
             t.Expect(p.GetParam(PConsole) == 0 && p.GetName(Fpn.ParamValue, PCore, p.GetParam(PCore)) == "FIX", "NES segment");
