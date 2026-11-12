@@ -126,3 +126,33 @@ python BrokenDev/tools/nested-cert-compare.py <a.ram> <b.ram> --mlb ...
 
 The ex0/ex1/save inputs are the `vrun-nested` feedback plans moved to NES frames (-121), with SNES B->NES A and
 SNES Y->NES B; SNES A presses are dropped.
+
+## 2026-11-12 round 2: fixed-time NMI (`-Nmi accurate`) and the B/Y input fix
+
+**What changed.** The core is untouched (step 18, md5 57c4a845; the golden tests still hold). Project Nested already ships
+the fixed-time mode as an injector setting: `NmiMode.AtVblank` on + `NmiMode.AutoDetect` off delivers the NES NMI at every
+SNES vblank instead of at the game's idle loop. `nested-build.ps1 -Nmi accurate|fast` (and `brokendev.ps1 nested build
+-Nmi ...`) writes those two settings per game; `fast` (default) writes nothing, so earlier builds stay byte-identical. No
+NESTED_STEP 19 was needed. The vrun-nested verify/oracle scripts and feedback plans now press SNES B/Y for NES A/B.
+
+Builds (feedback re-run with the fixed plans, base profile 0192edb1, `-Post flash`), in
+`T:\BrokenDev\Releases\VRUN_Nested_SNES\`: `2026-11-12_aa968b88_nmi-fast` and `2026-11-12_b39df809_nmi-accurate`.
+
+| scenario (NES inputs with real A presses now) | SNES lag fast -> accurate | boot offset / end drift fast -> accurate |
+|---|---|---|
+| play (3000 f) | 2 -> 1 | 87/90 -> 89/95 |
+| ex0 | 2 -> 1 | 87/94 -> 89/99 |
+| ex1 | 2 -> 0 | 87/94 -> 89/98 |
+| save | 4 -> 2 | 87/86 -> 89/92 |
+
+- **Boot step: NOT fixed.** `map_slot` is still one ahead at poll 0 and `runtime_system` still reads 3 in both modes
+  (`runtime_nmi_counter` is equal at every poll in both). The extra title step does not come from where the NMI lands; it
+  comes from NESFab's boot (region detection counting CPU time between NMIs, which measures SNES time either way).
+- **Cross-check:** in accurate mode BrokenNes SNES and Mesen SNES no longer agree byte-for-byte (ex0: 5403 of 5515 polls
+  differ, from poll 108; in fast mode they agreed except scratch bytes). An NMI at a fixed SNES time interrupts the NES code
+  at a cycle-exact point, so the two SNES emulators' small timing differences now reach game state. Neither is "the NES".
+- With the corrected input (NES A presses now reach the game), the long explorations no longer stay byte-identical after
+  boot alignment in either mode (game state $200-$7FF differs on 5191/5515 polls fast, 5515 accurate): the A presses take
+  the run into lag-sensitive paths. This needs its own look before VRUN's verdict is re-stated; Certified stays for now.
+
+**Recommendation for VRUN: fast** (no visible gain from accurate, and fast keeps the two emulators in agreement).

@@ -99,7 +99,7 @@ function Invoke-BdNestedCore {
 function Invoke-BdNestedBuild {
     <# NES ROM -> SNES ROM: the core from source, then tools\nested-build.ps1 (m30build + optional BrokenNes feedback) with -CoreDir. #>
     param([Parameter(Mandatory)][string]$Nes, [string]$Out = '', [string]$Profile = 'vrun', [string]$Feedback = 'none',
-          [string]$Base = '', [string]$Post = '', [string]$SnesTitle = '', [string]$Plans = '')
+          [string]$Base = '', [string]$Post = '', [string]$SnesTitle = '', [string]$Plans = '', [string]$Nmi = '')
     if (-not (Test-Path -LiteralPath $Nes)) { throw "nested: no NES ROM at $Nes" }
     $Nes = (Resolve-Path -LiteralPath $Nes).ProviderPath
     $roots = Get-BdNestedRoots
@@ -117,6 +117,7 @@ function Invoke-BdNestedBuild {
     if ($Base) { $a += @('-BaseProfile', $Base) }
     if ($Post) { $a += @('-Post', $Post) }
     if ($SnesTitle) { $a += @('-SnesTitle', $SnesTitle) }
+    if ($Nmi) { $a += @('-Nmi', $Nmi) }
     if ($Feedback -eq 'brokennes') {
         $ws = Get-BdWorkshopExe
         if (-not $ws) { throw 'nested: -Feedback brokennes needs the Workshop (brokendev.ps1 build-workshop)' }

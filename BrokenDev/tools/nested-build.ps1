@@ -39,6 +39,10 @@
 .PARAMETER Workshop   brokennes: BrokenNes.Workshop.exe
 .PARAMETER CoreDir    a core folder (Project_Nested.smc + manifest.json) to inject instead of the pipeline's out\core: 'brokendev.ps1 nested'
                       passes the core it assembled from source (Project-Nested-core, tools/nestedasm). Not used by -Feedback harvest.
+.PARAMETER Nmi        the per-game accuracy/speed choice for the NES vertical-blank NMI (the injector's NmiMode settings):
+                      fast (or empty) = Project Nested's default, the NMI is delivered when the game reaches its idle loop
+                      (both NmiMode flags; nothing is written, so a build stays byte-identical to the earlier ones);
+                      accurate = at a FIXED time, the SNES vblank, like the NES (NmiMode.AtVblank only, AutoDetect off).
 .PARAMETER Plans      brokennes: a JSON list of { "name", "frames", "input" } (Workshop pad scripts)
 .PARAMETER Rounds     brokennes: most build + play rounds
 .PARAMETER Minutes    harvest wall-clock budget
@@ -61,7 +65,8 @@ param(
     [int]$Minutes = 20,
     [string]$Seeds = '1,2',
     [string]$MesenSource = '',
-    [string]$CoreDir = ''
+    [string]$CoreDir = '',
+    [ValidateSet('', 'fast', 'accurate')][string]$Nmi = ''
 )
 $ErrorActionPreference = 'Stop'
 # Which injector the pipeline loads: our fork's lib\nested.ps1 has Assert-InjectorHost (Project_Nested.dll, .NET 10, pwsh);
@@ -102,6 +107,7 @@ if ($BaseProfile) {
     foreach ($p in $bj.settings.PSObject.Properties) { $settings[$p.Name] = [string]$p.Value }
 }
 if ($SnesTitle) { $settings['EmulatorName'] = $SnesTitle }
+if ($Nmi -eq 'accurate') { $settings['NmiMode.AtVblank'] = 'True'; $settings['NmiMode.AutoDetect'] = 'False' }
 
 # ---- post-build steps --------------------------------------------------------------------------
 $postSteps = @()

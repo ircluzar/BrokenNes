@@ -198,6 +198,7 @@ param(
     [string]$Post = '',
     [string]$SnesTitle = '',
     [string]$Plans = '',
+    [ValidateSet('', 'fast', 'accurate')][string]$Nmi = '',
     [switch]$Quick,
     # 'tool <id> <args...>': the arguments after the tool id are passed to the tool
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @()
@@ -553,8 +554,8 @@ try {
             switch ($Target.ToLowerInvariant()) {
                 'core'  { $r = Invoke-BdNestedCore -Profile $Profile; if ($Json) { $r | ConvertTo-Json }; exit 0 }
                 'build' {
-                    if ($Rest.Count -ne 1) { throw 'nested build needs one NES ROM: brokendev.ps1 nested build <nes> [-Out f.smc] [-Profile vrun] [-Feedback none|brokennes -Plans f.json] [-Base <m30pipe profile>] [-Post flash] [-SnesTitle T]' }
-                    $r = Invoke-BdNestedBuild -Nes $Rest[0] -Out $Out -Profile $Profile -Feedback $Feedback -Base $Base -Post $Post -SnesTitle $SnesTitle -Plans $Plans
+                    if ($Rest.Count -ne 1) { throw 'nested build needs one NES ROM: brokendev.ps1 nested build <nes> [-Out f.smc] [-Profile vrun] [-Feedback none|brokennes -Plans f.json] [-Base <m30pipe profile>] [-Post flash] [-SnesTitle T] [-Nmi fast|accurate]' }
+                    $r = Invoke-BdNestedBuild -Nes $Rest[0] -Out $Out -Profile $Profile -Feedback $Feedback -Base $Base -Post $Post -SnesTitle $SnesTitle -Plans $Plans -Nmi $Nmi
                     if ($Json) { $r | ConvertTo-Json }; exit 0
                 }
                 'test'  { if (Test-BdNested -Quick:$Quick) { Write-BdOk 'nested tests passed'; exit 0 } else { Write-BdFail 'nested tests failed'; exit 1 } }
