@@ -160,9 +160,25 @@ Sampled once per video frame per channel, from the chip's own state at the frame
 - **snapshot at the key-on**: the console's whole sound-register block at the key-on frame (NES `$4000-$4017` as last written; Game Boy NR10-NR51 + wave RAM + the CGB flag). The preset's instrument (duty, envelope, sweep, length, wave table, noise width...) is read from it with the same `NesInstruments` / `GbInstruments` readers Instrument Runaway uses.
 - **envelope over the note's life**, one entry per frame from the key-on to the key-off: **level** 0-15 (what the chip outputs: NES constant volume or the envelope's decay level, 0 when the length counter ran out or a pulse timer is below 8, the triangle 15 while both its counters run; Game Boy the envelope volume, the wave channel 15/7/3/0 from NR32), **period** (NES timer or noise index; Game Boy 11-bit frequency or NR43), **duty** (pulse duty; NES noise mode; Game Boy wave level code, noise width). Pitch is kept as the period, so vibrato, slides, arpeggios and the hardware sweep are all in it (as cents from the key-on).
 - **key-off**: the first frame after the key-on where the level is 0 (*Silenced*), or the channel is keyed again (*Retrigger*), or 600 frames (*Cap*), or the recording ended.
-- Not captured: the NES DMC (its sample lives in the game's memory), SNES / Master System / Game Gear / Genesis (the presets of those come from Instrument Runaway; their extraction is the next step: the same recorder with an S-DSP voice / PSG / FM-channel probe).
+- Not captured: the NES DMC (its sample lives in the game's memory), the YM2413's rhythm voices.
+
+**SNES, Master System / Game Gear, Genesis (2026-11-12, `Extract/ExtractChips.cs`)**: the same recorder, with a feed per sound unit and a key-on block per note from which the Instrument Runaway readers (`SnesInstruments`, `SegaInstruments`) read the instrument:
+
+| console | channels | key-on | level per frame | period per frame | key-on block -> instrument |
+|---|---|---|---|---|---|
+| SNES | 0-7 the S-DSP voices | a KON write with the voice's bit (the sound unit's DSP write tap) | ENVX x voice volume / 63 (0-255), and the voice volume itself (0-127) | the 14-bit pitch register | the 128 DSP registers (other voices cleared) + the voice's BRR chain and directory entry -> the sample with this voice's ADSR / GAIN |
+| Master System / Game Gear / Genesis PSG | 0-2 tones, 3 noise | the PSG has no key: the level comes up from 0, jumps up 3+ steps, or comes up while the period changes (an attack ramp or tremolo stays one note) | 15 - attenuation | the 10-bit period (noise: the control register) | the PSG's registers -> PSG tones / white or periodic noise |
+| YM2413 (Master System FM unit) | 4-12 FM 1-9 | the key bit ($20+ch bit 4) goes up | 16 - volume while keyed | block << 9 \| F-number | the 64 registers -> the user instrument or the ROM instrument the channel had |
+| YM2612 (Genesis) | 4-9 FM 1-6 | a $28 write with operator bits (the unit's port tap) | 128 - the loudest carrier's TL while keyed | block << 11 \| F-number | the six patches -> the channel's patch |
+| Genesis DAC | 10 | a stretch of frames in which the game writes changing values to $2A with the DAC on | 15 while it streams | - | the stream's 8-bit samples and their rate (from the master clock of the first and last write) -> a DAC sound |
+
+These notes are **note version 5** (`PresetNote.CapturedWide`, `CapturedNote` format 2: a 32-bit block length, up to 13 channels, levels to 255). A separate version so that a plugin made before it keeps the block untouched and plays the plain instrument (version 4's reader would call the wider note damaged); NES and Game Boy notes stay version 4 / format 1. The preset's copy of the block leaves the sample out (it is in the instrument).
+
+Front ends: the plugin's **Capture next note** (the Emulator tab's Channel picks the PSG's four on a Sega game, the Voice FM 1-9 / DAC the chip voices; on the SNES Channel 1-4 or Voice FM 1-8 pick voices 1-8), the desktop's **Emulator > Capture Instrument** (every channel of the unit), and `brokendev.ps1 instrument extract <rom.sfc|.smc|.sms|.gg|.bin> --frame N --channel C [--console Kind] [--apu SMS-FM]` (stock cores).
 
 **In the preset**: the instrument (INS1/CLN1 from the snapshot), the context, and the note behaviour **version 4** (`PresetNote.Captured`): `CapturedNote.ToBytes()` = u8 format 1, console, channel, end, u32 key-on frame, u8 + register block, u16 frame count, then per frame u8 level, u16 period, u8 duty (bit 7 = keyed). Older versions of the plugin keep the block and play the plain instrument.
+
+**Playback** of the SNES and Sega notes: the same samplers Runaway plays (`SnesSampler`, `PsgSampler`, `OpllSampler`, `OpnSampler`) with the instrument; per frame FL's pitch + the captured cents and FL's velocity x the captured level (in the chip's own steps: PSG 2 dB, YM2413 3 dB, YM2612 0.75 dB, the SNES voice volume linearly; the SNES envelope itself is the sample's ADSR / GAIN from the key-on), a *Silenced* note stops at its last frame (an FM note gets its release). A noise note plays the game's noise rate (moved by FL's pitch from key 60). The SNES key: pitch $1000 is key 60; an FM note's key is its register frequency times the carriers' common multiple (what the samplers divide by).
 
 **Playback**: NES (`NesPresetPlayer`): FL's note plays the captured life frame by frame (60.0988 Hz): constant volume = the frame's level, the frame's duty / noise mode, the pitch = FL's pitch + the frame's cents from the key-on (sweep off: the periods carry it); after the last frame a *Silenced* note goes quiet, any other holds its last frame while FL holds the key. Game Boy (`UpdateGbVoice`): the snapshot's registers play (its hardware envelope is the level), FL's pitch + the captured cents per frame, and the note stops at a *Silenced* end. (A Game Boy driver that changes the volume by re-triggering is captured, but plays its key-on volume only: the GB envelope cannot change under a sounding note.)
 
@@ -180,6 +196,18 @@ A captured note is made a preset, loaded into the real DLL on the Presets chip a
 | Crazy Luigi, triangle @ 213 / 429 | 8 frames | +0.3 / +0.1 c | 7.8 / 11.3% | 0.999 / 1.000 |
 | Codename 23 (SMB1 hack), pulse 2 @ 205 / 395 | 7 frames | +0.2 / +2.8 c | 14.7 / 9.5% | 0.999 / 1.000 |
 | Codename 23, triangle @ 204 / 394 | 8 frames | +0.3 / 0.0 c | 15.7 / 2.2% | 0.998 / 1.000 |
+| synthetic SNES, voice 1 (looped BRR, ADSR, vibrato, driver volume 110 -> 30) | 27 frames | 0.0 c | 0.3% | 0.999 |
+| synthetic Master System PSG, tone 1 (2 dB decay, vibrato) | 26 frames | 0.0 c | 2.5% | 0.997 |
+| synthetic YM2413, FM 1 (ROM instrument 3, volume 0 / 4 / 8, vibrato) | 26 frames | 0.0 c | 0.7% | 1.000 |
+| synthetic YM2612, FM 1 (algorithm 4, carriers -12 TL, vibrato) | 26 frames | 0.0 c | 2.1% | 0.998 |
+| synthetic Genesis DAC (decaying 8 kHz saw) | 20 frames | - | 1.1% | 0.985 |
+| Super Mario World, voice 1 @ 401 / voice 2 @ 426 | 7 / 8 frames | 0.0 / 0.0 c | 5.6 / 0.1% | 0.995 / 1.000 |
+| Sonic the Hedgehog, FM 1 / FM 2 @ 699 | 7 frames | 0.0 / 0.0 c | 10.4 / 8.8% | 0.997 / 0.998 |
+| Sonic the Hedgehog, PSG noise / DAC @ 699 | 12 frames | - | 2.7 / 23.7% | 0.801 / 0.803 |
+| Alex Kidd in Miracle World, PSG tone 1 / tone 3 @ 400 | 2 frames | 0.0 / 0.0 c | 5.6 / 6.5% | 0.885 / 0.883 |
+| Alex Kidd in Miracle World, PSG noise @ 404 | 12 frames | - | 2.8% | 0.773 |
+
+For the SNES and Sega rows the pitch is the shift of the two log-frequency magnitude spectra that matches them best (5-cent steps, refined; a pitch tracker locks onto different partials of FM and sampled timbres: Sonic's FM read 2-4 semitones off that way while the spectra agreed to 0.997); the selftest checks that the measure reads a note 50 cents sharp. The real games' sound unit runs behind the frame it was asked for (Sonic's stems 2 frames): the recording is aligned by the lag (0-4 frames) at which the channel's loudness best follows its captured sounding frames. Deliberate bugs, all caught: the life flattened to the key-on frame (SNES envelope 0.3 -> 30.4%, PSG 2.5 -> 46.7%, YM2413 0.7 -> 29.3%, YM2612 2.1 -> 34.0%) and the DAC's rate doubled (spectral 0.985 -> 0.448). A real game's flattened note is reported, not required to fail (Sonic's FM notes hold one level; the noise notes go 2.7 -> 39.3% and 2.8 -> 40.0%). The DAC and noise envelope / spectral figures are drums against their own replays; the Master System FM unit has no real-game row (no FM game in the library list used here).
 
 (The SMB1 hacks play their music on pulse 2 and the triangle; pulse 1 is the sound effects. Their envelope error on 7-8-frame notes is mostly sub-frame timing: the game keys mid-frame, the preset at the frame's start.) The check also fails on a deliberate bug (the envelope flattened to the key-on level: caught by the envelope error) and runs the plugin's ROM-mode capture on the built-in game (Pulse 1, 12 frames; the preset reads back with its envelope, loads and sounds).
 

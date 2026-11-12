@@ -7,16 +7,19 @@ using BrokenNes2.Extract;
 using BrokenNes2.Instruments;
 using NesEmulator;
 using NesEmulator.Gb;
+using NesEmulator.Systems;
 
 namespace BrokenNes.Workshop;
 
 /// <summary>
-/// <c>--extract-instrument</c>: instrument extraction for batch work (BrokenDev's <c>instrument extract</c>). Runs a NES or Game Boy game headless on the FIX / stock cores, feeds the shared capture
+/// <c>--extract-instrument</c>: instrument extraction for batch work (BrokenDev's <c>instrument extract</c>). Runs a NES, Game Boy, SNES, Master System, Game Gear or Genesis game headless on the FIX / stock cores, feeds the shared capture
 /// core (Plugin/BrokenNes2.Plugin/Extract) every frame, picks the note of a channel at a frame and writes it as a .bn2preset the plugin loads. The definition of the capture is in
 /// docs/projects/flp-music-pipeline.md ("Instrument extraction").
 ///
 ///   --extract-instrument --rom game.nes|.gb|.gbc --frame N --channel C [--out file.bn2preset] [--name text] [--input "40:Start,44:"] [--json]
-///   channels: NES 0 pulse 1, 1 pulse 2, 2 triangle, 3 noise; Game Boy 0 square 1, 1 square 2, 2 wave, 3 noise
+///   channels: NES 0 pulse 1, 1 pulse 2, 2 triangle, 3 noise; Game Boy 0 square 1, 1 square 2, 2 wave, 3 noise; SNES 0-7 the S-DSP voices;
+///             Master System / Game Gear / Genesis 0-2 PSG tones, 3 PSG noise, then FM 1-9 (YM2413, --apu SMS-FM) or FM 1-6 on 4-9 and the DAC on 10 (Genesis)
+///   --rom game.sfc|.smc|.sms|.gg|.bin|.md|.gen [--console Genesis|MasterSystem|GameGear|Snes] [--apu core]
 ///   exit 0 written, 1 no note / no preset, 2 usage
 /// </summary>
 internal static class ExtractInstrumentCli
@@ -27,7 +30,7 @@ internal static class ExtractInstrumentCli
         string? rom = Opt("--rom");
         if (rom == null || !File.Exists(rom) || !int.TryParse(Opt("--frame") ?? "", out int frame) || !int.TryParse(Opt("--channel") ?? "", out int channel))
         {
-            Console.Error.WriteLine("Usage: --extract-instrument --rom <game.nes|.gb|.gbc> --frame N --channel C [--out file.bn2preset] [--name text] [--input \"40:Start,44:\"] [--json]");
+            Console.Error.WriteLine("Usage: --extract-instrument --rom <game.nes|.gb|.gbc|.sfc|.smc|.sms|.gg|.bin|.md> --frame N --channel C [--console Kind] [--apu core] [--out file.bn2preset] [--name text] [--input \"40:Start,44:\"] [--json]");
             return 2;
         }
         bool json = args.Any(a => a.Equals("--json", StringComparison.OrdinalIgnoreCase));
@@ -41,6 +44,7 @@ internal static class ExtractInstrumentCli
         try
         {
             if (ext is ".gb" or ".gbc") feed = RunGb(bytes, ext == ".gbc", input, total);
+            else if (SessionKind(ext, Opt("--console")) is { } kind) feed = RunSession(rom, bytes, kind, Opt("--apu"), input, total);
             else feed = RunNes(rom, bytes, input, total);
         }
         catch (Exception e) { Console.Error.WriteLine("extract: " + e.Message); return 1; }
@@ -64,6 +68,40 @@ internal static class ExtractInstrumentCli
             Console.WriteLine($"preset: {outPath} ({file.Length} bytes)");
         }
         return 0;
+    }
+
+    /// <summary>The console of a SNES / Sega ROM by its extension (--console names it for a .bin that is not a Genesis game).</summary>
+    private static ConsoleKind? SessionKind(string ext, string? console)
+    {
+        if (console != null) return Enum.Parse<ConsoleKind>(console, true);
+        return ext switch { ".sfc" or ".smc" => ConsoleKind.Snes, ".sms" => ConsoleKind.MasterSystem, ".gg" => ConsoleKind.GameGear, ".bin" or ".md" or ".gen" => ConsoleKind.Genesis, _ => null };
+    }
+
+    /// <summary>A SNES, Master System, Game Gear or Genesis game on its default cores (--apu picks another sound core, e.g. SMS-FM for the Master System's FM unit), with the feed of ExtractChips on its sound unit.</summary>
+    private static IExtractFeed RunSession(string path, byte[] bytes, ConsoleKind kind, string? apu, string input, int total)
+    {
+        var s = ConsoleSessions.Create(kind, bytes, CoreCatalog.Default(kind, CoreSlot.Cpu), CoreCatalog.Default(kind, CoreSlot.Ppu), apu ?? CoreCatalog.Default(kind, CoreSlot.Apu), null, Path.GetFileName(path));
+        var feed = ExtractChips.FeedFor(s) ?? throw new InvalidOperationException("this sound core cannot be captured (SNES S-DSP, Master System / Game Gear PSG or FM unit, Genesis sound unit)");
+        // --input "40:Start,44:" (buttons joined with +, an empty list releases them)
+        var script = new SortedDictionary<int, PadButtons>();
+        foreach (var part in input.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            int c = part.IndexOf(':');
+            if (c < 0 || !int.TryParse(part[..c], out int f)) throw new ArgumentException("bad --input entry: " + part);
+            var b = PadButtons.None;
+            foreach (var name in part[(c + 1)..].Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) b |= Enum.Parse<PadButtons>(name, true);
+            script[f] = b;
+        }
+        var buf = new short[1 << 16];
+        for (int f = 0; f < total; f++)
+        {
+            if (script.TryGetValue(f, out var held)) s.SetPad(0, held);
+            s.RunFrame();
+            while (s.ReadSamples(buf) > 0) { }
+            feed.EndFrame();
+        }
+        feed.Detach();
+        return feed;
     }
 
     private static string Sanitize(string s) => new string(s.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray()).Trim('_');
