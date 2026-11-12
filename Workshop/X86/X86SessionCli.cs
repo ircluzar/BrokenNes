@@ -8,7 +8,7 @@ using NesEmulator.X86;
 namespace BrokenNes.Workshop.X86;
 
 /// <summary>
-/// <c>--x86session img [--frames N] [--shot png] [--cpu I386|I386_D074] [--ppu VGA|BOCHS20|DOSBOX072|PCEM_CGA] [--swapat F] [--wav out.wav] [--opllog out.txt]</c>: the x86 console as the apps run it (<see cref="PcSession"/> through <see cref="ConsoleSessions.Create"/>): ROM detection of the image, the core menus, N frames,
+/// <c>--x86session img [--frames N] [--shot png] [--cpu I386|I386_D074] [--ppu VGA|BOCHS20|DOSBOX072|PCEM_CGA] [--swapat F] [--wav out.wav] [--opllog out.txt] [--ips N]</c>: the x86 console as the apps run it (<see cref="PcSession"/> through <see cref="ConsoleSessions.Create"/>): ROM detection of the image, the core menus, N frames,
 /// the picture, a save state round trip (the same frames after a load give the same pictures), and the disk as the battery (a write shows in <c>ExportSave</c>). Exit code 0 = all passed.
 /// </summary>
 internal static class X86SessionCli
@@ -51,6 +51,7 @@ internal static class X86SessionCli
         string? wavPath = Arg(args, "--wav"), logPath = Arg(args, "--opllog");   // the sound as a 44.1 kHz stereo WAV; every AdLib data write as "frame reg value" (hex)
         var wav = wavPath != null ? new MemoryStream() : null;
         var oplLog = logPath != null ? new StreamWriter(logPath) : null; int curFrame = 0;
+        if (Arg(args, "--ips") is string ips && s is PcSession pi) pi.Machine.InstructionsPerSecond = long.Parse(ips);   // a faster emulated CPU (a game that lags at the menu CPU's rate)
         if (oplLog != null && s is PcSession pl) pl.Machine.Opl.WriteLog = (r, v) => oplLog.WriteLine($"{curFrame} {r:X2} {v:X2}");
         for (int f = 0; f < frames; f++)
         {
