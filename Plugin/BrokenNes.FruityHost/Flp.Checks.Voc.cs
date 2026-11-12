@@ -91,9 +91,17 @@ internal static class FlpVocChecks
         r.Note($"synthetic: streams {string.Join("+", v.Streams.Select(x => x.Length))} bytes; fence: {FlpFence.Summary(v.Fence)}");
         foreach (var l in FlpFence.Lines(v.Fence)) r.Note("    " + l);
 
-        // a project with nothing for the Game Boy: the fence says NOTHING (never an empty pass)
-        var nes = VocGbBackend.Build(FlpSong.Read(FlpChecks.Project(150, [("NesLead", "BrokenNes2", FlpChecks.Bn2State(place: 0))], [(1, [new(0, 48, 72, 0)])], [(0, 1, 96)])), "nes-only");
-        r.Expect(nes.Fence.Any(l => l.Level == FenceLevel.Over && l.Text.StartsWith("NOTHING")), "a NES-only project: no NOTHING line in the Game Boy fence");
+        // a NES-only project (2026-11-12, NES is the inter-console standard): its NES instance plays on the Game Boy channel of the same number, a note line says so
+        var nesSong = FlpSong.Read(FlpChecks.Project(150, [("NesLead", "BrokenNes2", FlpChecks.Bn2State(place: 0))], [(1, [new(0, 48, 72, 0)])], [(0, 1, 96)]));
+        var nes = VocGbBackend.Build(nesSong, "nes-only");
+        r.Expect(!nes.Fence.Any(l => l.Text.StartsWith("NOTHING")) && nes.Notes[0] == 1 && nes.Fence.Any(l => l.Rule == "console" && l.Level == FenceLevel.Note && l.Text.Contains("\"NesLead\" pulse 1")),
+            $"a NES-only project: its NES instance is not played on pulse 1 with a note line (notes {string.Join("/", nes.Notes)}; {FlpFence.Summary(nes.Fence)})");
+        r.Expect(nesSong.Instruments[0].Bn2!.Console == 0, "the NES fallback changed the song model (it must build from a copy)");
+        var gg = VocGgBackend.Build(nesSong, "nes-only");
+        r.Expect(gg.Notes[0] == 1 && gg.Fence.Any(l => l.Rule == "console"), "a NES-only project: Vaults GG does not play its NES instance");
+        // a project with nothing for the Game Boy and no NES instance: the fence says NOTHING (never an empty pass)
+        var none = VocGbBackend.Build(FlpSong.Read(FlpChecks.Project(150, [("MdLead", "BrokenNes2", FlpChecks.Bn2State(console: 4, place: 0))], [(1, [new(0, 48, 72, 0)])], [(0, 1, 96)])), "md-only");
+        r.Expect(none.Fence.Any(l => l.Level == FenceLevel.Over && l.Text.StartsWith("NOTHING")), "a Genesis-only project: no NOTHING line in the Game Boy fence");
         // a stream over the bank: OUT with the number of bytes over
         var big = Retarget(FlpSong.Read(FlpChecks.Project(150, [("Fast", "BrokenNes2", FlpChecks.Bn2State(console: 1, place: 0))],
             [(1, Enumerable.Range(0, 9000).Select(i => new FlpChecks.SNote(i * 8, 4, 50 + i % 30, 0, Vel: 40 + i % 80)).ToArray())], [(0, 1, 72000)])), 1);
@@ -250,6 +258,20 @@ internal static class FlpVocChecks
     {
         string rp = RepoFile(@"Plugin\BrokenNes2.Plugin\Resources\flpvocgg.gg");
         var tmpl = File.ReadAllBytes(rp); var man = File.ReadAllText(Path.ChangeExtension(rp, ".txt"));
+        // the note table (2026-11-12: the nearest PSG periods): every held note A2..C8 within half the PSG's step there + 2 cents (the driver's x 0.852 by shifts skips a few periods) (an octave up per halving); the ROM plays the
+        // table (the frame-by-frame comparison below)
+        {
+            double worst = 0; string where = "";
+            for (int k = 45; k <= 108; k++)
+            {
+                var (N, h) = VocGgBackend.PeriodOfNote(k);
+                double hz = 3579545.0 / (32.0 * N), err = Math.Abs(1200 * Math.Log2(hz / (VocGbBackend.MidiHz(k) * Math.Pow(2, h))));
+                double half = (N > 1 ? 1200 * Math.Log2(N / (N - 1.0)) : 1200) / 2;
+                if (err - half > worst) { worst = err - half; where = $"note {k}: {err:0.0} cents off, half step {half:0.0}"; }
+            }
+            r.Expect(worst <= 2.0, $"Vaults GG note table: a held note is further from its pitch than the PSG's half step allows: {where}");
+            r.Note($"Vaults GG note table: every held note A2..C8 within the PSG's half step{(worst > 0 ? $" + {worst:0.0} cents" : "")}");
+        }
         var all = new List<(string, FlpSongModel)> { ("synthetic", FlpSong.Read(GbProject())) };
         all.AddRange(UserSongs(3));
         foreach (var (name, s) in all)

@@ -5,7 +5,8 @@
   The player is the game repo's own target (VRUN_VOC_95_dev musictest/build_mt.ps1: the game's music driver voc_sound.c on its
   PSG-on-OPL2 layer win_opl.c + Nuked OPL3, every song, mute / solo, looping). The FL song: FruityHost flp-vocdos (Music/Flp/VocDosBackend.cs: the
   Vaults Game Gear back end's song bytes, which the PC ports' unchanged driver plays, + the PC's fence) -> <name>.vocfl.c. Without -Flp
-  the slot is a silent placeholder. -AsGb: the .flp's BrokenNes2 instances are read as Game Boy instances (for NES-composed songs; the
+  the slot is a silent placeholder. A song with no Game Boy instance plays its NES instances (the back end's rule since 2026-11-12, said in the fence;
+  -AsGb is no longer needed for NES songs). -AsGb: the .flp's BrokenNes2 instances are read as Game Boy instances (for NES-composed songs; the
   fence says so). The game tree is only read (all output in -Work / -Out).
 .EXAMPLE
   pwsh BrokenDev/tools/music/flp/musictest/build-vaults-95-mt.ps1 -Flp "C:\Users\philt\Desktop\Reverse Coaster\battle.flp" -AsGb -Out C:\BrokenNes-work\flp_out

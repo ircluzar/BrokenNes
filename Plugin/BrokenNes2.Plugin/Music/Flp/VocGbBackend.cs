@@ -82,6 +82,7 @@ public static class VocGbBackend
         var presetCh = new Dictionary<FlpInstrument, int>();
         var presetApprox = new Dictionary<FlpInstrument, FlpPresetApprox>();
         int wanted = target == VocTarget.Gb ? 1 : 3;     // the plugin console the song is written with (Gg: the Master System console, whose PSG chip the Game Gear has)
+        song = FlpNesFallback.Apply(song, b => b.Console == wanted || (target == VocTarget.Gg && b.Console == 1), wanted, target == VocTarget.Gb ? "Game Boy" : "Master System / Game Boy", target == VocTarget.Gb ? "Vaults GB" : "Vaults GG", F);
         foreach (var ins in song.Instruments)
         {
             string who = $"channel {ins.Rack} \"{ins.Name}\"";

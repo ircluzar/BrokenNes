@@ -29,7 +29,7 @@ internal static class FlpSmsBends
         var nesT = MidiChecks.BundledTemplate();
         var (_, _, mlb) = MidiFixtures.Bundled();
         var nes = MidiRun.Of(nesT.Patch(ch, loop, song), frames + 60, mlb);
-        var want = Enumerable.Range(0, frames + 60).Select(f => FlpSmsChecks.NesToPsg(nes.Latch.AsSpan(f * MidiModel.LatchBytes, MidiModel.LatchBytes))).ToArray();
+        var want = FlpSmsChecks.NesToPsg(nes, frames + 60);
         var run = FlpSmsChecks.RunSms(sms, frames + 1500);
         // line up: the first frame each side sounds a tone, then the best offset around it
         int nf = Enumerable.Range(0, want.Length).FirstOrDefault(f => want[f].Att.Take(3).Any(a => a != 15), -1);

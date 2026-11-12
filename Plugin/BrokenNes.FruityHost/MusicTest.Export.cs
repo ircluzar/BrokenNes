@@ -6,7 +6,7 @@
 // --nes-as-gb: the user's songs are written with BrokenNes2 instances on the NES console; the Vaults back ends only read Game Boy (and, for GG, Master System)
 // instances, so such a song has NOTHING for the game. auto (default): when the song has no instance for the target console, its NES Direct instances are read
 // as Game Boy instances on the same channel (pulse 1/2, triangle -> wave, noise: the Game Boy back end's own NES-like mapping), and the fence says so
-// in its first note line. on: always; off: never.
+// in its first note line. on: always. (Since 2026-11-12 the back ends do auto themselves, FlpNesFallback: NES is the inter-console standard; off was removed.)
 // Exit 0 when written (OVER lines are the composer's, not an error), 1 on an error.
 using BrokenNes2.Music.Flp;
 
@@ -20,6 +20,7 @@ internal static class MusicTestExport
         string game = args[1], flp = args[2], dir = args[3];
         string mode = "auto";
         for (int i = 4; i + 1 < args.Length; i++) if (args[i] == "--nes-as-gb") mode = args[i + 1];
+        if (mode == "off") { Console.WriteLine("FAIL  --nes-as-gb off was removed (2026-11-12): a song with no instance for the console plays its NES instances (FlpNesFallback)"); return 1; }
         try
         {
             var model = FlpSong.Read(File.ReadAllBytes(flp));

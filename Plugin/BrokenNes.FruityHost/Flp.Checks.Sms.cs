@@ -66,8 +66,13 @@ internal static class FlpSmsChecks
         r.Expect(copy.AsSpan().SequenceEqual(tmpl), "the Sega header checksum recomputed on the template differs from makesms's");
         r.Note($"synthetic (Master System): fence {FlpFence.Summary(v.Fence)}");
         foreach (var l in FlpFence.Lines(v.Fence)) r.Note("    " + l);
-        var gbOnly = CtwSmsBackend.Build(FlpSong.Read(FlpVocChecks.GbProject()), "gb-only");
-        r.Expect(gbOnly.Fence.Any(l => l.Level == FenceLevel.Over && l.Text.StartsWith("NOTHING")), "a Game Boy project: no NOTHING line in the Master System fence");
+        // a Game Boy project (with a NES instance): no Master System instance, so its NES instance plays (NES is the inter-console standard, 2026-11-12); without NES instances: NOTHING
+        var gbSong = FlpSong.Read(FlpVocChecks.GbProject());
+        var gbOnly = CtwSmsBackend.Build(gbSong, "gb-project");
+        r.Expect(gbOnly.Fence.Any(l => l.Rule == "console" && l.Level == FenceLevel.Note) && gbOnly.Nes.Parts.Count > 0, $"a Game Boy project with a NES instance: CTW SMS does not play the NES instance ({FlpFence.Summary(gbOnly.Fence)})");
+        gbSong.Instruments.RemoveAll(i => i.Bn2 is { Console: 0 });
+        var gbNoNes = CtwSmsBackend.Build(gbSong, "gb-only");
+        r.Expect(gbNoNes.Fence.Any(l => l.Level == FenceLevel.Over && l.Text.StartsWith("NOTHING")), "a Game Boy project without NES instances: no NOTHING line in the Master System fence");
     }
 
     public static void SmsPreset(ImodelReport r)
@@ -116,7 +121,16 @@ internal static class FlpSmsChecks
     }
 
     /// <summary>What nes_apu.c makes of a NES latch (the registers as an NMI left them): per tone the PSG period and attenuation, the noise's attenuation and rate.</summary>
-    internal static (int[] N, int[] Att, int Rate) NesToPsg(ReadOnlySpan<byte> l)
+    /// <summary>The whole run through nes_apu.c (the triangle's octave is kept per note: the key-ons are the run's).</summary>
+    internal static (int[] N, int[] Att, int Rate)[] NesToPsg(MidiRun run, int frames)
+    {
+        int shift = 0;
+        var o = new (int[] N, int[] Att, int Rate)[frames];
+        for (int f = 0; f < frames; f++) o[f] = NesToPsg(run.Latch.AsSpan(f * MidiModel.LatchBytes, MidiModel.LatchBytes), f < run.TriKey.Length && run.TriKey[f], ref shift);
+        return o;
+    }
+
+    internal static (int[] N, int[] Att, int Rate) NesToPsg(ReadOnlySpan<byte> l, bool triKey, ref int triShift)
     {
         var n = new int[3]; var att = new int[4];
         int chn = l[0x15];
@@ -128,7 +142,7 @@ internal static class FlpSmsChecks
         }
         int pt = (l[0xB] & 7) << 8 | l[0xA];
         att[2] = (chn & 4) == 0 || (l[8] & 0x7F) == 0 || pt < 2 ? 15 : 3;
-        n[2] = CtwSmsBackend.PsgPeriod(pt, true).N;
+        n[2] = CtwSmsBackend.TrianglePsg(pt, triKey, ref triShift);
         att[3] = (chn & 8) == 0 ? 15 : CtwSmsBackend.Vol2Att[l[0xC] & 15];
         return (n, att, CtwSmsBackend.NoiseRate(l[0xE] & 15));
     }
@@ -158,7 +172,7 @@ internal static class FlpSmsChecks
         var (tmpl, man) = Template();
         var nesT = MidiChecks.BundledTemplate();
         var (_, _, mlb) = MidiFixtures.Bundled();
-        var all = new List<(string, FlpSongModel)> { ("synthetic", FlpSong.Read(SmsProject())) };
+        var all = new List<(string, FlpSongModel)> { ("synthetic", FlpSong.Read(SmsProject())), ("slides", FlpSong.Read(FlpSlideChecks.Project(3))) };   // slides: the triangle's octave through slides crossing N = 1023
         all.AddRange(FlpVocChecks.UserSongs(3));
         foreach (var (name, s) in all)
         {
@@ -170,7 +184,7 @@ internal static class FlpSmsChecks
             if (v.Build.Channels.Any(x => x.Length > nesT.Region)) { r.Note($"{name}: not compared: a stream ({string.Join(" + ", v.Build.Channels.Select(x => x.Length))}) is past VRUN NES's room of {nesT.Region}"); continue; }
             int n = Math.Min(v.Build.Facts.LoopFrames, 1500);
             var nes = MidiRun.Of(nesT.Patch(v.Build.Channels, v.Build.Facts.LoopFrames, name), n + 60, mlb);
-            var want = Enumerable.Range(0, n + 60).Select(f => NesToPsg(nes.Latch.AsSpan(f * MidiModel.LatchBytes, MidiModel.LatchBytes))).ToArray();
+            var want = NesToPsg(nes, n + 60);
             var run = RunSms(rom, n + 1500);
             int nf = Enumerable.Range(0, want.Length).FirstOrDefault(f => want[f].Att.Any(a => a != 15), -1);
             int sf = Enumerable.Range(31, run.Length - 31).FirstOrDefault(f => run[f].Att.Any(a => a != 15), -1);

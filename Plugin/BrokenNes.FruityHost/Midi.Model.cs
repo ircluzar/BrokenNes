@@ -177,7 +177,9 @@ internal sealed class MidiRun
     /// <summary>24 bytes per frame: the latch read when the frame ended (round 7's sample point; kept to count the frames where the two differ).</summary>
     public byte[] EndLatch = [];
     public long[] Picture = [];         // a hash of the picture after each frame
-    public int[] Loops = [], Position = [];    // the player's loop counter and song position (RAM), -1 when the ROM has no such symbol
+    public int[] Loops = [], Position = [];
+    /// <summary>Per frame: the triangle keyed ($4008 written non-zero in the frame's NMI window; nes_apu.c's tri_key).</summary>
+    public bool[] TriKey = [];    // the player's loop counter and song position (RAM), -1 when the ROM has no such symbol
 
     /// <summary>Frames whose registers at the frame's end differ from those after its NMI (the NMI was still writing when the frame ended).</summary>
     public int LateFrames
@@ -220,6 +222,7 @@ internal sealed class MidiRun
         }
         m.RecordTap = null;
         r.Latch = nmi.PerNmi().AsSpan(0, frames * MidiModel.LatchBytes).ToArray();
+        r.TriKey = nmi.Written(8, 0x7F).AsSpan(0, frames).ToArray();
         return r;
     }
 
