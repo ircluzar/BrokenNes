@@ -62,10 +62,10 @@ else
   emu.addMemoryCallback(onWrite, emu.callbackType.write, 0x4016, 0x4016, emu.cpuType.nes, emu.memType.nesMemory)
 end
 
--- The buttons of the poll being latched. NES: Mesen raises inputPolled on the strobe-HIGH write, before the $4016=0 write counted as that
+-- The buttons of the poll being latched: Mesen raises inputPolled on the strobe-HIGH write (NES: before the $4016=0 write counted as that
 -- poll, so the poll being latched is `polls`. SNES: Nested latches on the strobe-high write that onWrite has just counted: polls-1.
 -- MESEN_POLL_OFFSET overrides (measured: with the wrong one, the first press lands one poll late and the RAM streams split there).
-local offset = tonumber(os.getenv("MESEN_POLL_OFFSET") or "") or (snes and -1 or 0)
+local offset = tonumber(os.getenv("MESEN_POLL_OFFSET") or "") or 0
 emu.addEventCallback(function()
   local k = polls + offset
   if k < 0 then k = 0 end
