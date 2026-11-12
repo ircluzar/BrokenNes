@@ -153,7 +153,7 @@ internal static partial class ApuChannelsCli
         string? consoleArg = M68kTestCli.Arg(args, "--console")?.ToUpperInvariant();
         var sets = new (string con, string[] ids, Func<string, bool, IUnit> make)[]
         {
-            ("NES", new[] { "FIX", "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16", "FSID", "NSTRJ" }, (id, k) => new NesUnit(id, k)),
+            ("NES", new[] { "FIX", "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16", "FSID", "NSTRJ", "NSTRDC" }, (id, k) => new NesUnit(id, k)),
             // the NES sound bridges and their ported-engine ids (FA-ST-1: the bridge and the unit it drives are saved whole)
             ("NESBR", new[] { "SNES", "SNES_ZS15", "SNES_ZS151", "SNES_S916", "SNES_S9X1", "SNES_S951", "SNES_OSPC", "SNES_SNDS", "SNES_PSPC3",
                 "DMG", "DMG_GNUB", "DMG_VBA", "DMG_VBAM", "DMG_TGBD", "DMG_GYOB", "DMG_MGB",

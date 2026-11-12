@@ -200,7 +200,8 @@ Per core: fetch, port, register, notices, `--apu-channels` + `--state`, suite, c
 | AdLib engines (M036, D072, D074C, D074F, NUK174) + x86 APU menu ADLIB_<engine> | ported | (this commit) |
 | nofrendo (05e97e8), NES APU id NOFR | ported | (this commit) |
 | VICE 3.7 FastSID, NES APU id FSID (re-keyed) | ported | (this commit) |
-| NesterJ 1.11 (PSP, nofrendo nes_apu.c without APU_YANO), NES APU id NSTRJ (2026-11-12) | ported | (this commit) |
+| NesterJ 1.11 (PSP, nofrendo nes_apu.c without APU_YANO), NES APU id NSTRJ (2026-11-12) | ported | a9d54682 |
+| NesterDC 7.1.0 (Dreamcast, nofrendo nes_apu.c with APU_YANO), NES APU id NSTRDC (2026-11-12) | ported | (this commit) |
 | PocketSPC 0.3 (GameBrew pocketspc-src-v3), SNES APU id PSPC3 + NES SNES_PSPC3 (v3 has no echo: ECHO_ENABLED off, the "echo hack" adds EVOL to EON voices' volume) | ported | (this commit) |
 | reSID 0.16, NES APU id RSID16 (re-keyed) | ported | 164e32a1 (cherry-picked) |
 | PCE-GO psg (05e97e8), NES APU id PCEG (re-keyed onto the HuC6280 PSG) | ported | 24398fcb (cherry-picked) |
