@@ -30,6 +30,12 @@ public static class CapturePreset
                 context = [(byte)(cgb ? 1 : 0)];
                 break;
             }
+            case ConsoleId.Snes:
+            case ConsoleId.MasterSystem:
+            case ConsoleId.Genesis:
+                inst = ExtractChips.MakeInstrument(n, out context, out problem);
+                if (inst == null) return null;
+                break;
             default: problem = $"extraction does not support the {n.Console} yet"; return null;
         }
         if (inst == null) { problem = "the channel has no instrument"; return null; }

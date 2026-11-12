@@ -24,6 +24,7 @@ public sealed partial class Emulator
             if (Runaway || g == null) return null;
             if (g is NesGame { Nes: { } m } && NesExtractFeed.FixOf(m.Nes) != null) return ConsoleId.Nes;
             if (g is SessionGame sg && sg.GbApu != null) return ConsoleId.GameBoy;
+            if (g is SessionGame s2 && s2.ExtractConsole is { } c) return c;
             return null;
         }
     }
@@ -42,9 +43,10 @@ public sealed partial class Emulator
             if (Runaway) return "the game is frozen (Instrument Runaway): let it run to capture a note";
             if (g is NesGame { Nes: { } m } && NesExtractFeed.FixOf(m.Nes) is { } fix) extractFeed = new NesExtractFeed(fix, m.CopyApuLatch);
             else if (g is SessionGame sg && sg.GbApu is { } apu) extractFeed = new GbExtractFeed(apu);
-            else return "capture needs a NES game on the FIX sound chip or a Game Boy game running";
+            else if (g is SessionGame s2 && s2.NewExtractFeed() is { } f) extractFeed = f;
+            else return "capture needs a NES game on the FIX sound chip, or a Game Boy, SNES, Master System, Game Gear or Genesis game running";
             extractGame = g;
-            extractChannel = Math.Clamp(channel, 0, 3);
+            extractChannel = Math.Clamp(channel, 0, extractFeed.Recorder.Channels - 1);
             extractLeft = ExtractWaitFrames;
             return null;
         }

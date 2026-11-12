@@ -121,8 +121,20 @@ internal sealed class PresetLibrary : IPresetLibrary, IPresetCapture
             var host = PresetHost.Current;
             if (host?.Emulator is not { } emu || emu.ExtractConsole is not { } console) return null;
             if (emu.ExtractWaiting) return "Waiting for a note ... (click to cancel)";
-            return "Capture next note: " + BrokenNes2.Extract.CapturedNote.ChannelName(console, Math.Clamp(host.RequestedChannel, 0, 3));
+            return "Capture next note: " + BrokenNes2.Extract.CapturedNote.ChannelName(console, CaptureChannel(console, host.RequestedChannel));
         }
+    }
+
+    /// <summary>The capture channel the Emulator tab's Channel (or Voice) names: NES / Game Boy 0-3; Sega the PSG's four on 0-3, FM 1-9 (Voice) on 4-12, the Genesis DAC on 10;
+    /// SNES the S-DSP voice: Channel 1-4 are voices 1-4, Voice FM 1-8 voices 1-8.</summary>
+    internal static int CaptureChannel(ConsoleId console, int requested)
+    {
+        int count = BrokenNes2.Extract.ExtractChips.ChannelCount(console);
+        if (console is ConsoleId.Nes or ConsoleId.GameBoy) return Math.Clamp(requested, 0, 3);
+        if (console == ConsoleId.Snes) return Math.Clamp(requested >= Ch.Fm1 ? requested - Ch.Fm1 : requested, 0, 7);
+        if (requested == Ch.Dac && console == ConsoleId.Genesis) return BrokenNes2.Extract.ExtractChips.GenDac;
+        if (requested >= Ch.Fm1 && requested <= Ch.Fm9) return Math.Clamp(BrokenNes2.Extract.ExtractChips.Fm1 + requested - Ch.Fm1, 0, console == ConsoleId.Genesis ? BrokenNes2.Extract.ExtractChips.GenDac - 1 : count - 1);
+        return Math.Clamp(requested, 0, 3);
     }
 
     public bool CaptureWaiting => PresetHost.Current?.Emulator?.ExtractWaiting == true;
@@ -132,7 +144,7 @@ internal sealed class PresetLibrary : IPresetLibrary, IPresetCapture
         var host = PresetHost.Current;
         if (host?.Emulator is not { } emu) return ActionResult.Refused("No FL instance is attached to this window.");
         if (emu.ExtractWaiting) { emu.CancelExtract(); return ActionResult.Done("Capture cancelled."); }
-        string? why = emu.StartExtract(Math.Clamp(host.RequestedChannel, 0, 3));
+        string? why = emu.StartExtract(CaptureChannel(emu.ExtractConsole ?? ConsoleId.Nes, host.RequestedChannel));
         return why == null ? ActionResult.Done("Play the game: the channel's next note is captured when it ends (the Channel on the Emulator tab picks the channel).") : ActionResult.Refused("Cannot capture: " + why + ".");
     }
 

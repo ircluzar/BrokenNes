@@ -270,7 +270,7 @@ internal sealed class OpllSampler : SegaSampler
         Array.Fill(volOf, -1); Array.Fill(blockOf, -1);
     }
 
-    private static double FundamentalOf(int modMl, int carMl)
+    internal static double FundamentalOf(int modMl, int carMl)
     {
         int a = OpllPatchBank.MultipleTimesTwo(modMl), b = OpllPatchBank.MultipleTimesTwo(carMl);
         while (b != 0) (a, b) = (b, a % b);

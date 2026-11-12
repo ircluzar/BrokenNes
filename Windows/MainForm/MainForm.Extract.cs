@@ -11,8 +11,8 @@ namespace BrokenNes.Windows
 {
     /// <summary>
     /// Instrument extraction (2026-11-10): Emulator > Capture Instrument > (channel). While the game plays, the shared capture core (Plugin/BrokenNes2.Plugin/Extract, linked) watches the channel
-    /// from the click on; when the channel's next note has ended (key-off, the next note, or 10 s), the note is a BrokenNes2 preset (*.bn2preset) and a Save dialog exports it. NES (FIX APU) and
-    /// Game Boy. The capture is defined in docs/projects/flp-music-pipeline.md ("Instrument extraction"). Nothing is changed in the game: the feed only observes the chip's register writes.
+    /// from the click on; when the channel's next note has ended (key-off, the next note, or 10 s), the note is a BrokenNes2 preset (*.bn2preset) and a Save dialog exports it. NES (FIX APU),
+    /// Game Boy, and (2026-11-12) SNES (the S-DSP's eight voices), Master System / Game Gear (PSG, YM2413) and Genesis (YM2612, DAC, PSG). The capture is defined in docs/projects/flp-music-pipeline.md ("Instrument extraction"). Nothing is changed in the game: the feed only observes the chip's register writes.
     /// </summary>
     public partial class MainForm
     {
@@ -35,14 +35,15 @@ namespace BrokenNes.Windows
             if (extractMenu == null) return;
             extractMenu.DropDownItems.Clear();
             var console = ExtractConsole(out _);
-            if (console == null) { extractMenu.DropDownItems.Add(new ToolStripMenuItem("(a NES game on the FIX sound chip, or a Game Boy game)") { Enabled = false }); return; }
+            if (console == null) { extractMenu.DropDownItems.Add(new ToolStripMenuItem("(a NES game on the FIX sound chip, or a Game Boy, SNES, Master System, Game Gear or Genesis game)") { Enabled = false }); return; }
             if (extractFeed != null)
             {
                 extractMenu.DropDownItems.Add(new ToolStripMenuItem($"Waiting for a note on {CapturedNote.ChannelName(console.Value, extractChannel)}...") { Enabled = false });
                 extractMenu.DropDownItems.Add(new ToolStripMenuItem("Cancel", null, (_, _) => StopExtract()));
                 return;
             }
-            for (int c = 0; c < 4; c++)
+            int channels = console is ConsoleId.Nes or ConsoleId.GameBoy ? 4 : session != null ? ExtractChips.OfferedChannels(session) : 4;
+            for (int c = 0; c < channels; c++)
             {
                 int ch = c;
                 extractMenu.DropDownItems.Add(new ToolStripMenuItem(CapturedNote.ChannelName(console.Value, c), null, (_, _) => StartExtract(ch)));
@@ -55,6 +56,7 @@ namespace BrokenNes.Windows
             machine = null;
             if (session is GbSession gb && gb.Board.Apu is APU_GB) { machine = gb; return ConsoleId.GameBoy; }
             if (session == null && nes != null && NesExtractFeed.FixOf(nes) != null) { machine = nes; return ConsoleId.Nes; }
+            if (session != null && ExtractChips.ConsoleOf(session) is { } c) { machine = session; return c; }
             return null;
         }
 
@@ -64,8 +66,13 @@ namespace BrokenNes.Windows
             {
                 StopExtractLocked();
                 var console = ExtractConsole(out var machine);
-                if (console == null) { MessageBox.Show(this, "Instrument capture needs a NES game on the FIX sound chip or a Game Boy game.", "Capture Instrument"); return; }
-                extractFeed = machine is GbSession gb ? new GbExtractFeed((APU_GB)gb.Board.Apu) : new NesExtractFeed(NesExtractFeed.FixOf((NES)machine!)!, ((NES)machine!).CopyApuLatch);
+                if (console == null) { MessageBox.Show(this, "Instrument capture needs a NES game on the FIX sound chip, or a Game Boy, SNES, Master System, Game Gear or Genesis game.", "Capture Instrument"); return; }
+                extractFeed = machine switch
+                {
+                    GbSession gb => new GbExtractFeed((APU_GB)gb.Board.Apu),
+                    IConsoleSession s => ExtractChips.FeedFor(s)!,
+                    _ => new NesExtractFeed(NesExtractFeed.FixOf((NES)machine!)!, ((NES)machine!).CopyApuLatch),
+                };
                 extractMachine = machine;
                 extractChannel = channel;
                 extractFrom = 0;
