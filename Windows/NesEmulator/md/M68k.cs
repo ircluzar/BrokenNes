@@ -82,7 +82,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
         C = V = Z = N = X = false;
         IntMask = 7; Supervisor = true; Trace = false;
         Irc = Ir = Ird = 0x4E71;
-        Stopped = false; Halted = false; traceDue = false; pend = 0; Cycles = 0; Instructions = 0; pendReg = -1;
+        Stopped = false; Halted = false; traceDue = false; busyLoop = false; pend = 0; Cycles = 0; Instructions = 0; pendReg = -1;
     }
 
     /// <summary>The RESET exception as the hardware does it: supervisor mode, interrupts masked, SSP and PC read from vectors 0 and 1, and the two-word prefetch. Uses the bus, so the board's
@@ -452,7 +452,8 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
             if (level > IntMask || level == 7)
             {
                 Instructions++;
-                if (Stopped) Pc += 4;   // the stacked return address is the instruction after STOP (two words past it)
+                if (Stopped) Pc += 4;
+                busyLoop = false;   // the handler runs; the branch-to-self is re-run (and re-detected) after RTE   // the stacked return address is the instruction after STOP (two words past it)
                 Interrupt(level);
                 Flush();
                 return (int)(Cycles - start);
@@ -463,7 +464,17 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
                 Flush();
                 return (int)(Cycles - start);
             }
+            if (busyLoop)
+            {
+                // Musashi busy-wait (CPU harvest "M68K_MUSA"): the branch-to-self eats the rest of the host's time slice; the next interrupt is only seen at the slice edge
+                Instructions++;
+                int left = MusashiSlice - (int)((Cycles + pend) % MusashiSlice);
+                Idle(Math.Max(left, 10));
+                Flush();
+                return (int)(Cycles - start);
+            }
             Instructions++;
+            uint instrPc = Pc;
             Ird = Ir;
             frameIr = Ir;
             bool traced = Trace;
@@ -471,6 +482,7 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
             IplFromStart = false;
             Execute(Ird);
             traceDue = traced;
+            if (MusashiBusyWait && Pc == instrPc && !traced && IsBusyBranch(Ird)) { busyLoop = true; BusyWaits++; }
         }
         catch (AddressErrorSignal e)
         {
@@ -484,6 +496,21 @@ public sealed partial class M68k<TBus> where TBus : struct, IM68kBus
     }
 
     private bool traceDue;
+
+    /// <summary>
+    /// CPU harvest "M68K_MUSA": Musashi's busy-wait speedup (m68k_in.c, BRA/JMP: <c>if(REG_PC == REG_PPC) USE_ALL_CYCLES();</c>). An unconditional branch or jump to itself
+    /// spends the rest of the host's time slice at once instead of looping; interrupts are only looked at between slices. Rebuilt as a rule over this core (no Musashi code is used).</summary>
+    public bool MusashiBusyWait;
+
+    /// <summary>The time slice a Musashi host ran the 68000 for: one Genesis line (488 clocks, as Gens / Genesis Plus called <c>m68k_execute</c>).</summary>
+    public const int MusashiSlice = 488;
+
+    private bool busyLoop;
+
+    /// <summary>How many branch-to-self loops the Musashi rule cut short (information, not saved).</summary>
+    public long BusyWaits;
+
+    private static bool IsBusyBranch(ushort op) => (op & 0xFF00) == 0x6000 || (op & 0xFFC0) == 0x4EC0;
 
     /// <summary>The instruction that just ran had the trace bit set: the next <see cref="Step"/> takes the trace exception (for the debugger).</summary>
     public bool TraceDue => traceDue;

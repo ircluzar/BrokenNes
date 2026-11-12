@@ -101,6 +101,7 @@ Rebuilt from the donors' sources, which were read, not copied: each is a schedul
 | NES CPU BAT_FCEU | FCEUX commit e0028f6 (2009-06-24, reverted in 854553e), GPL-2+ (FA-1): `x6502.cpp` cpu_ignore ([commit](https://github.com/TASEmulators/fceux/commit/e0028f6)), `cpus/CPU_BAT.cs` |
 | GB CPU GB-GNUB | gnuboy (C) Laguna / Gilgamesh, GPL-2+ (FA-1): `cpu_emulate` interrupt dispatch ([source](https://github.com/rofl0r/gnuboy/blob/master/cpu.c)), `gb/CPU_GB.cs` FreeDispatch |
 | x86 CPU I386_D074 | DOSBox 0.74 (C) 2002-2010 The DOSBox Team, GPL-2+ (FA-1): `core_simple.cpp` one cycle per instruction, default cycles=3000 ([source](https://sourceforge.net/p/dosbox/code-0/HEAD/tree/dosbox/tags/RELEASE_0_74/src/cpu/core_simple.cpp)), `x86/PcSession.cs` IpsOf |
+| Genesis CPU M68K_MUSA | Musashi (C) 1998-2002 Karl Stenerud, MIT (readme.txt), kstenerud/Musashi @313ebf1 ([source](https://github.com/kstenerud/Musashi/blob/313ebf1bd9f4/m68k_in.c)): the BRA/JMP busy-wait rule (`if(REG_PC == REG_PPC) USE_ALL_CYCLES();`) rebuilt over the stock 68000, no Musashi code copied, `md/M68k.cs` MusashiBusyWait |
 
 ## 3. Test material in the repository; ## 3. Test material in the repository
 ; 

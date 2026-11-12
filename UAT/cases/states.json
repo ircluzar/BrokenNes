@@ -439,6 +439,30 @@
                                      "distinctColors":  64,
                                      "result":  "ok"
                                  }
+                  },
+                  {
+                      "id":  "state-md-sonic1-musashi-rewind",
+                      "description":  "Sonic the Hedgehog (Genesis) on the CPU harvest core M68K_MUSA (Musashi's busy-wait rule): the rewind run above. Sonic never branches to itself, so the rule never fires and the run must end on the stock golden; the state must carry the busy-wait latch (68000 state version 2).",
+                      "kind":  "session",
+                      "rom":  "{md}/Sonic the Hedgehog (JUE) [!].bin",
+                      "cpu":  "M68K_MUSA",
+                      "frames":  700,
+                      "input":  "200:Start,210:,300:Right",
+                      "rewind":  "300:500",
+                      "tags":  [
+                                   "state",
+                                   "md",
+                                   "rewind",
+                                   "harvest"
+                               ],
+                      "expect":  {
+                                     "exitCode":  0,
+                                     "frameBufferHash":  "759C504E0E1B519F",
+                                     "audioHash":  "FC628FF066D843E9",
+                                     "framesRun":  700,
+                                     "distinctColors":  64,
+                                     "result":  "ok"
+                                 }
                   }
               ]
 }

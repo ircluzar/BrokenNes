@@ -7,7 +7,7 @@ public sealed partial class M68k<TBus>
 {
     // ---- save state
 
-    private const int StateVersion = 1;
+    private const int StateVersion = 2;
 
     /// <summary>
     /// Writes the processor's state: the registers and flags, the prefetch queue, the stopped / halted / trace latches, the half-finished address-register update of an access and the counters. The bus is not part of it
@@ -26,13 +26,14 @@ public sealed partial class M68k<TBus>
         w.Write(Cycles); w.Write(Instructions); w.Write(pend); w.Write(pendReg); w.Write(pendValue);
         w.Write(AddressErrorCount);
         foreach (long c in ExceptionCounts) w.Write(c);
+        w.Write(busyLoop);
     }
 
     /// <summary>Restores what <see cref="SaveState"/> wrote.</summary>
     public void LoadState(BinaryReader r)
     {
         int version = r.ReadInt32();
-        if (version != StateVersion) throw new InvalidDataException($"68000 state version {version} is not supported");
+        if (version is not (1 or StateVersion)) throw new InvalidDataException($"68000 state version {version} is not supported");
         for (int i = 0; i < D.Length; i++) D[i] = r.ReadUInt32();
         for (int i = 0; i < A.Length; i++) A[i] = r.ReadUInt32();
         SpOther = r.ReadUInt32(); Pc = r.ReadUInt32();
@@ -43,5 +44,6 @@ public sealed partial class M68k<TBus>
         Cycles = r.ReadInt64(); Instructions = r.ReadInt64(); pend = r.ReadInt32(); pendReg = r.ReadInt32(); pendValue = r.ReadUInt32();
         AddressErrorCount = r.ReadInt64();
         for (int i = 0; i < ExceptionCounts.Length; i++) ExceptionCounts[i] = r.ReadInt64();
+        busyLoop = version >= 2 && r.ReadBoolean();
     }
 }

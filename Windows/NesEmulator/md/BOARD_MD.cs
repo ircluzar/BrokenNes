@@ -632,7 +632,7 @@ public sealed class BOARD_MD : IGenesisSoundHost, IMdVdpHost
     public void SetPad(int player, PadButtons buttons) => Pads.SetButtons(player, buttons);
 
     public string Describe() =>
-        $"BOARD_MD {Region} {Model} t={t} frames={Vdp.Frames} | 68000 pc={Cpu.Pc - 4:X6} sr={Cpu.ReadSr():X4} instr={Cpu.Instructions} addr-errors={Cpu.AddressErrorCount}{(Cpu.Halted ? " HALTED" : "")} | {Vdp.Describe()} | {Sound.Describe()} | {Pads.Describe()}";
+        $"BOARD_MD {Region} {Model} t={t} frames={Vdp.Frames} | 68000 pc={Cpu.Pc - 4:X6} sr={Cpu.ReadSr():X4} instr={Cpu.Instructions} addr-errors={Cpu.AddressErrorCount}{(Cpu.MusashiBusyWait ? $" musashi-busywaits={Cpu.BusyWaits}" : "")}{(Cpu.Halted ? " HALTED" : "")} | {Vdp.Describe()} | {Sound.Describe()} | {Pads.Describe()}";
 
     /// <summary>
     /// The whole board between two frames: its clock and the refresh and interrupt-sampling state, work RAM, the 68000, the VDP (with the picture), the sound unit (Z80, YM2612, PSG, the Z80's RAM and bus handshake), the
