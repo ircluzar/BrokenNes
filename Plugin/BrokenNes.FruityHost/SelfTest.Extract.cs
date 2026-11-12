@@ -73,6 +73,9 @@ public sealed unsafe partial class SelfTest
             t.Note("extract round trip (synthetic Game Boy, square 1): " + gs);
             t.Expect(Math.Abs(gs.PitchCents) < 10 && gs.EnvelopeError < 0.15 && gs.Spectral > 0.85, "Game Boy square 1: " + gs);
         }
+
+        // the SNES, the Master System / Game Gear and the Genesis (SelfTest.ExtractMore.cs)
+        ExtractMoreTest(t);
     }
 
     private void ExtractRomMode(T t)
@@ -176,7 +179,7 @@ public sealed unsafe partial class SelfTest
         var real = truth ?? n;
         int from = frameAt[real.KeyOnFrame], to = frameAt[Math.Min(frameAt.Length - 1, real.KeyOnFrame + real.Frames)];
         var game = gamePcm[from..to];
-        double fhz = real.Console == ConsoleId.GameBoy ? 59.7275 : NesFrameHz;
+        double fhz = ExtractChips.FrameHz(real.Console);
         double seconds = real.Frames / fhz;
         float[] played;
         using (var p = NewOn(2, ConsoleParam(n.Console)))
@@ -187,14 +190,17 @@ public sealed unsafe partial class SelfTest
             played = Audio.Mono(new Mixer { SampleRate = 44100 }.Run(p, s, 0), 2);
         }
         int len = Math.Min(game.Length, played.Length);
-        return Score(game[..len], played[..len], 44100, real.Frames, real.MidiKey, !real.IsNoise, fhz);
+        return Score(game[..len], played[..len], 44100, real.Frames, real.MidiKey, !real.IsNoise, fhz, spectralPitch: real.Wide);
     }
 
-    public static ExtractScore Score(float[] game, float[] played, int rate, int frames, double key, bool pitched, double frameHz = NesFrameHz)
+    /// <summary><paramref name="spectralPitch"/>: the pitch difference is the shift of the log-frequency magnitude spectra that matches them best (FM voices, samples and the SNES: a pitch
+    /// tracker locks onto different partials of such timbres), else the median of the two pitch tracks (the NES and Game Boy figures in the doc).</summary>
+    public static ExtractScore Score(float[] game, float[] played, int rate, int frames, double key, bool pitched, double frameHz = NesFrameHz, bool spectralPitch = false)
     {
         // pitch: the median difference of the two pitch tracks over the note (the first 40 ms skipped: the track's window)
         double pitch = 0;
-        if (pitched)
+        if (pitched && spectralPitch) pitch = SpectralShiftCents(game, played, rate);
+        else if (pitched)
         {
             double ms = game.Length * 1000.0 / rate;
             var a = Audio.Track(game, rate, 40, ms - 20); var b = Audio.Track(played, rate, 40, ms - 20);
@@ -221,6 +227,40 @@ public sealed unsafe partial class SelfTest
         return new ExtractScore(pitch, env, spectral, frames, key);
     }
 
+    /// <summary>The pitch of <paramref name="played"/> against <paramref name="game"/> in cents: the shift (within an octave either way, 5-cent steps, refined by a parabola) of their magnitude spectra on a log-frequency
+    /// axis (55 Hz to 11 kHz) that gives the largest correlation.</summary>
+    internal static double SpectralShiftCents(float[] game, float[] played, int rate)
+    {
+        double[] LogSpec(float[] x)
+        {
+            int nfft = 1; while (nfft < x.Length && nfft < 1 << 16) nfft <<= 1;
+            nfft = Math.Max(nfft, 8192);
+            var c = new Complex[nfft];
+            int m = Math.Min(x.Length, nfft);
+            for (int i = 0; i < m; i++) c[i] = x[i] * (0.5 - 0.5 * Math.Cos(2 * Math.PI * i / Math.Max(1, m - 1)));
+            Fft(c);
+            const double step = 5, lo = 55;
+            int bins = (int)(1200 * Math.Log2(11000 / lo) / step);
+            var o = new double[bins];
+            for (int k = 1; k < nfft / 2; k++)
+            {
+                double hz = (double)k * rate / nfft;
+                if (hz < lo || hz >= 11000) continue;
+                int b = (int)(1200 * Math.Log2(hz / lo) / step);
+                if (b < bins) o[b] = Math.Max(o[b], c[k].Magnitude);
+            }
+            for (int i = 0; i < bins; i++) o[i] = Math.Log(1 + 1000 * o[i]);
+            return o;
+        }
+        var a = LogSpec(game); var p = LogSpec(played);
+        double Corr(int s) { double d = 0; for (int i = 0; i < a.Length; i++) { int j = i + s; if (j >= 0 && j < p.Length) d += a[i] * p[j]; } return d; }
+        int best = 0; double bv = double.MinValue;
+        for (int s = -240; s <= 240; s++) { double v = Corr(s); if (v > bv) { bv = v; best = s; } }
+        double y0 = Corr(best - 1), y2 = Corr(best + 1), den = y0 - 2 * bv + y2;
+        double frac = den < 0 ? 0.5 * (y0 - y2) / den : 0;
+        return (best + Math.Clamp(frac, -0.5, 0.5)) * 5;
+    }
+
     private static void Fft(Complex[] a)
     {
         int n = a.Length;
@@ -237,6 +277,7 @@ public sealed unsafe partial class SelfTest
     {
         static string? O(string[] a, string n) { int i = Array.IndexOf(a, n); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
         if (args.Length < 3) { Console.Error.WriteLine("usage: extract-roundtrip <plugin.dll> <game.nes> --frame N --channel C [--out preset] [--frames M]"); return 2; }
+        if (!args[2].EndsWith(".nes", StringComparison.OrdinalIgnoreCase)) return ExtractRoundTripMoreCli(args, n => O(args, n));
         int frame = int.Parse(O(args, "--frame") ?? "300"), channel = int.Parse(O(args, "--channel") ?? "0");
         int total = int.Parse(O(args, "--frames") ?? (frame + CapturedNote.MaxFrames + 2).ToString());
         var nes = new NES { RomName = Path.GetFileName(args[2]), RomPath = args[2] };

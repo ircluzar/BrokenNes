@@ -13,6 +13,7 @@
 //          (see VRUN docs/26-live-audio-bridge-spec.md).
 using System.Text;
 using BrokenNes.Fruity;
+using BrokenNes2.Instruments;
 using BrokenNes2.Presets;
 using NesEmulator.Plugin;
 
@@ -505,6 +506,13 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 cents = ex.PitchCents(v.TrackKey, exBeat) + Get(P.Coarse) * 100 + Get(P.Fine);
                 level = Math.Clamp((int)Math.Round(127 * (float)(v.TrackVel * ex.CcAt(exBeat) / 100.0)), 0, 127);
             }
+            if (forcedInstrument >= 0 && CapturedFrame(v, offset, ConsoleId.Snes) is var (cap, fi))
+            {
+                // a preset extracted from a game (PresetNote.CapturedWide): its envelope is the sample's own ADSR / GAIN; the captured life adds the driver's pitch (cents from the key-on) and voice volume per frame, and ends a note that went silent
+                if (fi < 0) { if (v.Dsp >= 0) { s.NoteOff(v.Dsp); dspUsed[v.Dsp] = false; v.Dsp = -1; } continue; }
+                cents += cap.CentsAt(fi);
+                level = Math.Clamp((int)Math.Round(level * BrokenNes2.Extract.ExtractChips.LevelFactor(cap, fi)), 0, 127);
+            }
             if (v.Dsp < 0)
             {
                 if (recipe == null && !hasSample) continue;
@@ -551,7 +559,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         for (int off = 0; off < length; off += Chunk)
         {
             int n = Math.Min(Chunk, length - off);
-            UpdateSegaVoices(s, snap, instrument);
+            UpdateSegaVoices(s, snap, instrument, off);
             s.Render(stereo.AsSpan(0, n * 2), n);
             for (int i = 0; i < n; i++)
             {
@@ -563,7 +571,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
 
     /// <summary>The control-rate step of Sega Runaway: each FL voice owns a slot of the sampler (the instrument's range of them: the YM2413's nine channels, the YM2612's six, eight DAC voices, the PSG's three tones or its noise; the
     /// oldest note gives way for one more), with pitch and level re-read from FL's live values like in Direct mode, so slides and bends work. A note that lost its slot stays silent until it ends.</summary>
-    private void UpdateSegaVoices(SegaSampler s, SegaSnapshot snap, int forcedInstrument = -1)
+    private void UpdateSegaVoices(SegaSampler s, SegaSnapshot snap, int forcedInstrument = -1, int offset = 0)
     {
         // a game voice (the Recipe parameter, 1 and up) plays what the game's driver did with a channel; the slots it may take are its chip's. (A preset plays its own instrument: no game voice.)
         GenRecipe? recipe = null;
@@ -584,6 +592,14 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             double cents = FlCents(fl.Pitch);
             double hz = 440.0 * Math.Pow(2.0, ((60.0 + cents / 100.0) - 69.0) / 12.0);
             double velocity = Math.Clamp(fl.Vol, 0.0, 1.0);
+            if (forcedInstrument >= 0 && CapturedFrame(v, offset, snap.Kind == SegaSnapshot.KindOpn ? ConsoleId.Genesis : ConsoleId.MasterSystem) is var (cap, fi))
+            {
+                // a preset extracted from a game: the captured life plays frame by frame (pitch as cents from the key-on, the level in the chip's own steps); a note that went silent in the game stops there
+                if (fi < 0) { if (v.Slot >= 0) { s.NoteOff(v.Slot); slotUsed[v.Slot] = false; v.Slot = -1; } v.Silenced = true; continue; }
+                double noise = BrokenNes2.Extract.ExtractChips.NoiseHz(cap, fi);
+                hz = noise > 0 ? noise * hz / 261.6256 : hz * Math.Pow(2.0, cap.CentsAt(fi) / 1200.0);       // (a noise note: the game's noise rate, moved by FL's pitch from key 60)
+                velocity *= BrokenNes2.Extract.ExtractChips.KeyVelocity(cap) * BrokenNes2.Extract.ExtractChips.LevelFactor(cap, fi);
+            }
             if (v.Slot >= 0 && v.Instr != instrument) { s.NoteOff(v.Slot); slotUsed[v.Slot] = false; v.Slot = -1; }     // another instrument was picked under a held note: it starts again on that one
             if (v.Slot >= 0) { s.Update(v.Slot, hz, velocity); continue; }
             int first, count, slot = -1;
@@ -608,6 +624,17 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             v.Slot = slot; v.Instr = instrument;
             if (recipe != null) s.NoteOnRecipe(slot, recipe, hz, velocity); else s.NoteOn(slot, instrument, hz, velocity);
         }
+    }
+
+    /// <summary>The captured note of the preset this instance plays (a SNES / Sega extraction) and the frame of it voice <paramref name="v"/> is at, <paramref name="offset"/> samples into the block;
+    /// the frame is -1 once a note the game silenced has played its last frame. Null when the preset carries no such note.</summary>
+    private (BrokenNes2.Extract.CapturedNote Cap, int Frame)? CapturedFrame(Voice v, int offset, ConsoleId console)
+    {
+        if (preset?.Play.Captured is not { Wide: true } cap || cap.Console != console || cap.Frames == 0) return null;
+        long age = Math.Max(0, ownSamples - renderLength + offset - v.Onset);
+        int fi = (int)(age * BrokenNes2.Extract.ExtractChips.FrameHz(console) / Math.Max(1, EmulatorHub.HostRate));
+        if (fi >= cap.Frames) fi = cap.End == BrokenNes2.Extract.CaptureEnd.Silenced ? -1 : cap.Frames - 1;
+        return (cap, fi);
     }
 
     /// <summary>The Game Boy channel (0 pulse 1, 1 pulse 2, 2 wave, 3 noise) the Channel parameter picks in Game Boy Runaway: Auto and Mix are pulse 1.</summary>

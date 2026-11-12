@@ -498,6 +498,10 @@ internal sealed class SessionGame : IGame, IGameStems
         return snap;
     }
 
+    /// <summary>Instrument extraction (Extract/ExtractChips.cs): the console a feed can watch on this game's sound unit (SNES, Master System / Game Gear, Genesis), or null; and a new feed on it.</summary>
+    public Instruments.ConsoleId? ExtractConsole => Extract.ExtractChips.ConsoleOf(s);
+    public Extract.IExtractFeed? NewExtractFeed() => Extract.ExtractChips.FeedFor(s);
+
     /// <summary>The Game Boy's sound chip when this is a Game Boy game on the stock chip (instrument extraction reads its probe), else null.</summary>
     public NesEmulator.Gb.APU_GB? GbApu => s is GbSession gb ? gb.Apu as NesEmulator.Gb.APU_GB : null;
 

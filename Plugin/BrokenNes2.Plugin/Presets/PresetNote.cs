@@ -19,16 +19,20 @@ public static class PresetNote
     /// <summary>Version 4 (instrument extraction): one note captured from a game's channel (Extract.CapturedNote: the register snapshot at the key-on and the level / period / duty of every frame
     /// until the key-off). NES and Game Boy presets. See docs/projects/flp-music-pipeline.md, "Instrument extraction".</summary>
     public const int Captured = 4;
+    /// <summary>Version 5 (2026-11-12): a note captured from a SNES, Master System / Game Gear or Genesis channel (CapturedNote format 2: a longer key-on block, more channels, levels to 255).
+    /// A separate version so that a plugin made before it keeps the block untouched and plays the plain instrument (version 4's reader would call the wider note damaged).</summary>
+    public const int CapturedWide = 5;
 
     public static void AttachCaptured(PresetData d, BrokenNes2.Extract.CapturedNote n)
     {
-        d.NoteVersion = Captured;
-        d.NoteBehaviour = n.ToBytes();
+        d.NoteVersion = n.Wide ? CapturedWide : Captured;
+        d.NoteBehaviour = n.Wide ? BrokenNes2.Extract.ExtractChips.Slim(n).ToBytes() : n.ToBytes();      // (a sample in the key-on block is in the instrument already: not kept twice)
     }
 
     /// <summary>The captured note a version-4 preset carries, or null.</summary>
     public static BrokenNes2.Extract.CapturedNote? CapturedOf(PresetData d) =>
-        d.NoteVersion == Captured && BrokenNes2.Extract.CapturedNote.FromBytes(d.NoteBehaviour) is { } n && n.Console == d.Console && n.Channel == d.Index ? n : null;
+        (d.NoteVersion == Captured || d.NoteVersion == CapturedWide) && BrokenNes2.Extract.CapturedNote.FromBytes(d.NoteBehaviour) is { } n && n.Console == d.Console
+        && n.Wide == (d.NoteVersion == CapturedWide) && (n.Wide || n.Channel == d.Index) ? n : null;     // (a wide note's channel is a chip voice, not the instrument's number: a SNES sample slot, a Sega picker index)
 
     /// <summary>Marks a NES preset (not the DMC) as a recorded track (version 3).</summary>
     public static void AttachNesTrack(PresetData d)
@@ -82,7 +86,7 @@ public static class PresetNote
             if (d.NoteBehaviour.Length != 2 || d.NoteBehaviour[0] != 1 || d.NoteBehaviour[1] != 0) return "damaged (a NES track's note behaviour)";
             if (d.Kind == InstrumentKind.NesDmc) return "damaged (a NES track's note behaviour on a DMC instrument)";
         }
-        if (d.NoteVersion == Captured && CapturedOf(d) == null) return "damaged (the captured envelope)";
+        if ((d.NoteVersion == Captured || d.NoteVersion == CapturedWide) && CapturedOf(d) == null) return "damaged (the captured envelope)";
         return null;
     }
 
