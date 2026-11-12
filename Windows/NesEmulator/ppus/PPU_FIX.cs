@@ -129,7 +129,9 @@ public class PPU_FIX : IPPU, IPpuFixTiming, IPpuViewProbe
 	// After a savestate load: recompute the per-line cached flags for the line the state was taken on.
 	// A freshly constructed core would otherwise finish the current scanline with vPipelineOn false
 	// (no fetches, no coarse-X/Y increments, no dot-257 copy).
-	private void RefreshLineFlagsAfterLoad() => UpdateVPipelineFlag();
+	// The Butchering bands' per-line overrides are not machine state: a load drops them (a pattern-table swap set for the line the old
+	// timeline was on otherwise drew the loaded machine's line with the swapped table: Reload State + Off did not undo it, fuzz seed 316254).
+	private void RefreshLineFlagsAfterLoad() { UpdateVPipelineFlag(); ClearBands(); }
 
 	private void UpdateVPipelineFlag()
 	{
