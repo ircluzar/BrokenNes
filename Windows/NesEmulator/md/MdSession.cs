@@ -68,7 +68,12 @@ public sealed class MdSession : IConsoleSession, IButcherHost
     private int frameWidth = 320, frameHeight = 224;
     /// <summary>Show the VDP's memory view instead of the picture.</summary>
     public bool DebugView { get; set; }
-    private readonly string cpuId;
+    private string cpuId;
+
+    /// <summary>CPU harvest: "M68K_MUSA" = Musashi's busy-wait speedup on the 68000 (see <see cref="M68k{TBus}.MusashiBusyWait"/>). Any other id turns it off.</summary>
+    public static bool IsMusashi(string cpu) => cpu.Equals("M68K_MUSA", StringComparison.OrdinalIgnoreCase);
+
+    private void ApplyCpuCharacter() => Board.Cpu.MusashiBusyWait = IsMusashi(cpuId);
     private string ppuId, apuId;
     private readonly short[] scratch = new short[0];
     private readonly string title;
@@ -88,6 +93,7 @@ public sealed class MdSession : IConsoleSession, IButcherHost
         var m = SegaSettings.ResolveGenesisModel(model, rom);
         var parts = new SegaBoardParts<MdBus, M68k<MdBus>, MdVdp, IGenesisSound> { Apu = machine => GenesisSoundFactories.Create(apu, machine) };
         Board = new BOARD_MD(cart, r, m, sampleRate, parts);
+        ApplyCpuCharacter();
         title = cart.OverseasTitle.Length > 0 ? cart.OverseasTitle : cart.DomesticTitle;
         FramesPerSecond = Board.Timeline.FramesPerSecond; PickRenderer();
     }
@@ -251,7 +257,10 @@ public sealed class MdSession : IConsoleSession, IButcherHost
                 // the VDP's own ids: the stock chip and the enhanced one (a subclass that draws a Genesis game on the stock pipeline); a NES chip or another console's is the wrapper's
                 if (id.Contains(':') || !System.Linq.Enumerable.Any(CoreCatalog.Options(ConsoleKind.Genesis, CoreSlot.Ppu), o => o.Section == CoreSection.Own && o.Id.Equals(id, StringComparison.OrdinalIgnoreCase))) return false;
                 ppuId = id; PickRenderer(); return true;
-            default: return id.Equals(cpuId, StringComparison.OrdinalIgnoreCase);
+            default:
+                if (id.Equals(cpuId, StringComparison.OrdinalIgnoreCase)) return true;
+                if (!(id.Equals("M68K", StringComparison.OrdinalIgnoreCase) || IsMusashi(id))) return false;
+                cpuId = id; ApplyCpuCharacter(); return true;   // the same 68000 with or without the Musashi rule: swapped live
         }
     }
 

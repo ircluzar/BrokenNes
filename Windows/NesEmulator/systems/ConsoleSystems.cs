@@ -507,7 +507,7 @@ public static class CoreCatalog
             (ConsoleKind.MasterSystem, CoreSlot.Apu) => new[] { ("SMS", CoreGrade.Stock, "Master System"), ("SMS-FM", CoreGrade.Stock, "Master System FM") },
             (ConsoleKind.MasterSystem, _) => new[] { ("SMS", CoreGrade.Stock, "Master System") },
             (ConsoleKind.GameGear, _) => new[] { ("GG", CoreGrade.Stock, "Game Gear") },
-            (ConsoleKind.Genesis, CoreSlot.Cpu) => new[] { ("M68K", CoreGrade.Stock, "Genesis") },
+            (ConsoleKind.Genesis, CoreSlot.Cpu) => new[] { ("M68K", CoreGrade.Stock, "Genesis"), ("M68K_MUSA", CoreGrade.Stock, "Genesis") },
             (ConsoleKind.WideMess, CoreSlot.Apu) => new[] { ("WMS", CoreGrade.Stock, "WideMess"), ("SFC", CoreGrade.Stock, "SNES") },
             (ConsoleKind.WideMess, _) => new[] { ("WMS", CoreGrade.Stock, "WideMess") },
             (ConsoleKind.Pc, CoreSlot.Cpu) => new[] { ("I386", CoreGrade.Stock, "x86 PC"), ("I386_D074", CoreGrade.Stock, "x86 PC") },
@@ -703,7 +703,7 @@ public static class CoreCatalog
             case ConsoleKind.Genesis:
                 switch (slot)
                 {
-                    case CoreSlot.Cpu: list.Add(new("M68K", "M68K (Genesis main CPU)", "Genesis")); break;
+                    case CoreSlot.Cpu: list.Add(new("M68K", "M68K (Genesis main CPU)", "Genesis")); list.Add(new("M68K_MUSA", "68000 with Musashi's busy-wait speedup (a branch to itself eats the rest of the line; interrupts seen only at line edges)", "Genesis")); break;
                     case CoreSlot.Ppu:
                         list.Add(new("MD", "MD (Genesis picture chip)", "Genesis"));
                         list.Add(new("PD2", "PD2 (PicoDrive 1.85 fast renderer: whole frame in 8x8 tiles at frame end, scroll per tile row, 224 lines)", "Genesis"));
