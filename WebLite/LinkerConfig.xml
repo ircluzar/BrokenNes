@@ -46,6 +46,8 @@
     <type fullname="NesEmulator.PPU_MES010" preserve="all" />
     <!-- PPU harvest round 2 (2026-11-12): nesDS DS tile-engine picture. -->
     <type fullname="NesEmulator.PPU_NSDS" preserve="all" />
+    <!-- PPU harvest round 2: PocketNES GBA tile-engine picture. -->
+    <type fullname="NesEmulator.PPU_PNES" preserve="all" />
     <!-- CPU harvest (docs/projects/cpu-harvest-catalog.md): scanline-batch timing presets over CPU_FIX. -->
     <type fullname="NesEmulator.CPU_BAT_INES" preserve="all" />
     <type fullname="NesEmulator.CPU_BAT_NOFR" preserve="all" />
