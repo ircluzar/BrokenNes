@@ -64,14 +64,15 @@ public static class CtwSmsBackend
         return (n, h);
     }
 
-    /// <summary>nes_apu.c's triangle (2026-11-12): N = 2 (period + 1); at a key-on ($4008 written non-zero) the note's octave raise <paramref name="shift"/> is chosen (the fewest
-    /// octaves that bring N to 1023 or under) and kept until the next key-on; N past 1023 after that (a slide below the note's octave) stops at 1023.</summary>
+    /// <summary>nes_apu.c's triangle (2026-11-12): N = 2 (period + 1); at a key-on ($4008 written non-zero) the note's octave raise <paramref name="shift"/> is chosen from the
+    /// period's high byte written after it (one octave from $200, two from $400: N is at most 4096) and kept until the next key-on; N past 1023 (a slide below the note's octave,
+    /// or the edge periods $1FF / $3FF) stops at 1023.</summary>
     public static int TrianglePsg(int nesPeriod, bool keyOn, ref int shift)
     {
-        int n = (nesPeriod + 1) << 1;
         if (FlpMutants.On(CtwSmsMutants.TriangleHalvedPerFrame)) return PsgPeriod(nesPeriod, true).N;
-        if (keyOn) { shift = 0; while ((n >> shift) > 1023) shift++; }
-        return Math.Min(1023, n >> shift);
+        if (keyOn) { int h = (nesPeriod >> 8) & 7; shift = h > 3 ? 2 : h > 1 ? 1 : 0; }
+        int n = ((nesPeriod & 0x7FF) + 1) << 1 >> shift;
+        return Math.Min(1023, n);
     }
 
     public static int NoiseRate(int index) => index < 4 ? 0 : index < 8 ? 1 : 2;

@@ -2,9 +2,9 @@
 format = bn2-flp-ctwsms
 version = 4
 decoders = bends square1 square2 triangle; duty square1 square2; noise-volume noise
-region-measured = probe 1280 per channel; 19404 free bytes in data banks 2-18; 3736 fills them (ctwsms_room.py)
+region-measured = probe 1280 per channel; 19404 free bytes in data banks 2-18; 3736 fills them (ctwsms_room.py; this build given -Region 3736)
 source = the MMC3 main build (main.fab + mapper_mmc3.fab, fab2c.json)
-game = VRUN_CTW_SMS_dev e693044
+game = VRUN_CTW_SMS_dev d568694
 vrun = the live tree at 7c9c4a1
 song = rosbif
 square1 = 0x044000 3736
@@ -12,4 +12,4 @@ square2 = 0x044E98 3736
 triangle = 0x045D30 3736
 noise = 0x046BC8 3736
 rom-bytes = 524288
-rom-sha256 = 6a1e7803825acbdeb50cf69ffb6fd3f69b188a9a5a47ac215272647e5740a6f4
+rom-sha256 = 9ebdc7dfab0d26fcde592ec1f07bd8aa2e64e2d334c85514adb5f99fda53c661

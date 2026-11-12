@@ -214,7 +214,7 @@ internal static class FlpSlideChecks
             // the triangle (2026-11-12): where VRUN NES plays it, an octave below FL (judged an octave up, as VRUN NES's); a note under the PSG's range is raised whole octaves
             // for the whole note (judged modulo those raises); frames under the range an octave below FL are the fenced note range. And no octave jump inside a note:
             // two sounding frames in a row an octave apart (+-60 cents; the slide song has no legato octave leaps on the triangle)
-            Report(r, "CTW SMS", CtwSmsBackend.Names[c] + " (+1 oct)", s, 3, c, hz.Select(x => x * 2).ToArray(), st, CtwSmsBackend.NesFps, PsgLowest + 1200, tol: PeriodSlideTol, raise: 2);
+            Report(r, "CTW SMS", CtwSmsBackend.Names[c] + " (+1 oct)", s, 3, c, hz.Select(x => x * 2).ToArray(), st, CtwSmsBackend.NesFps, PsgLowest + 1200, tol: 6.0, raise: 2);   // (measured 5.2 beyond the half step, 2026-11-12: tighter than the squares' PeriodSlideTol)
             int jumps = 0; string firstJump = "";
             for (int f = 1; f < n; f++)
             {
