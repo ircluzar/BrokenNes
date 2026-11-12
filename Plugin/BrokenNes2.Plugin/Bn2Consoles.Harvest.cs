@@ -35,9 +35,28 @@ public static partial class Cx
         ("SMSFM_M036FM", MasterSystem, "MAME 0.36 YM2413"), ("SMSFM_E055", MasterSystem, "emu2413 0.55 YM2413"),
         // Genesis
         ("MD_GENS", Genesis, "Gens 2.10"), ("MD_PICO", Genesis, "PicoDrive 1.85"), ("MD_M036", Genesis, "MAME 0.36"), ("MD_BLST", Genesis, "BlastEm 0.3.1"), ("MD_GPGX", Genesis, "Genesis Plus GX 1.3"), ("MD_GWEN", Genesis, "Gwenesis (retro-go)"),
-        // appended 2026-11-12 (APU harvest round 2)
-        ("NSTRJ", Nes, "NesterJ 1.11 2A03 (PSP)"), ("NSTRDC", Nes, "NesterDC 7.1.0 2A03 (Dreamcast)"),
     ];
+    }
+
+    /// <summary>APU harvest round 2 (2026-11-12): appended at the very END of the chip list (after the PC and later Nano chips; the first harvest block is followed by NANOSMS, so it cannot grow). Append-only.</summary>
+    // In a nested class: a static field of this partial file is not initialised before Chips (the HarvestTable trap).
+    private static (string Id, int Console, string Name)[] Harvest2Ids => Harvest2Table.Ids;
+    private static class Harvest2Table
+    {
+        internal static readonly (string Id, int Console, string Name)[] Ids =
+        [
+            ("NSTRJ", Nes, "NesterJ 1.11 2A03 (PSP)"), ("NSTRDC", Nes, "NesterDC 7.1.0 2A03 (Dreamcast)"),
+        ];
+    }
+
+    private static void AddHarvest2(List<Chip> list)
+    {
+        foreach (var h in Harvest2Ids)
+        {
+            string? found = CoreRegistry.ApuIds.FirstOrDefault(i => i.Equals(h.Id, StringComparison.OrdinalIgnoreCase));
+            if (found == null) throw new InvalidOperationException($"harvest chip {h.Id} is not a registered APU core: the plugin's chip list would move");
+            list.Add(new Chip(found, h.Console, $"ported: {h.Name} (art, bugs kept)"));
+        }
     }
 
     private static void AddHarvest(List<Chip> list)
