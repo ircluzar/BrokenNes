@@ -68,7 +68,7 @@ internal static class FlpSlideChecks
     internal sealed record Result(int Judged, int Off, double MaxErr, double MaxBeyondStep, string First, int Below = 0, int Folded = 0);
 
     /// <summary>Compare a played track (Hz per frame, NaN = silent; the register's step in cents per frame) with FL on a channel; the song starts at the best-aligned frame.</summary>
-    internal static Result Measure(FlpSongModel s, int console, int channel, double[] hz, double[] step, double fps, double minCents = 0, double lag = 0, double tol = 2.0, bool movingOnly = false, bool fold = false)
+    internal static Result Measure(FlpSongModel s, int console, int channel, double[] hz, double[] step, double fps, double minCents = 0, double lag = 0, double tol = 2.0, bool movingOnly = false, bool fold = false, int raise = 0)
     {
         double tpf = s.Ppq * s.Tempo / 60.0 / fps;
         var bounds = new SortedSet<double>(s.Instruments.Where(i => i.Bn2 is { } b && b.Console == console && b.Channel == channel).SelectMany(i => i.Notes.Where(n => !n.Slide).SelectMany(n => new double[] { n.Start, n.End })));
@@ -91,6 +91,7 @@ internal static class FlpSlideChecks
                 double c = 6900 + 1200 * Math.Log2(hz[f] / 440.0);
                 double err = c < lo ? lo - c : c > hi ? c - hi : 0;
                 if (fold) { double c2 = c + 1200, e2 = c2 < lo ? lo - c2 : c2 > hi ? c2 - hi : 0; if (e2 < err) { err = e2; folded++; } }
+                for (int k = 1; k <= raise && err > 0; k++) { double c2 = c - 1200 * k, e2 = c2 < lo ? lo - c2 : c2 > hi ? c2 - hi : 0; if (e2 < err) { err = e2; folded++; } }
                 max = Math.Max(max, err);
                 double b = Math.Max(0, err - step[f] / 2);
                 beyond = Math.Max(beyond, b);
@@ -115,10 +116,11 @@ internal static class FlpSlideChecks
     }
 
     /// <summary>Measured strictly (FL's pitch during the frame itself), then judged with the engine's allowance: <paramref name="lag"/> frames late, <paramref name="tol"/> cents past the half step.</summary>
-    private static void Report(ImodelReport r, string engine, string part, FlpSongModel s, int console, int channel, double[] hz, double[] step, double fps, double minCents = 0, double lag = 0, double tol = 2.0, string? why = null, bool movingOnly = false, bool fold = false)
+    private static void Report(ImodelReport r, string engine, string part, FlpSongModel s, int console, int channel, double[] hz, double[] step, double fps, double minCents = 0, double lag = 0, double tol = 2.0, string? why = null, bool movingOnly = false, bool fold = false, int raise = 0)
     {
-        var strict = Measure(s, console, channel, hz, step, fps, minCents, fold: fold);
-        var m = lag == 0 && tol == 2.0 && !movingOnly ? strict : Measure(s, console, channel, hz, step, fps, minCents, lag, tol, movingOnly, fold);
+        var strict = Measure(s, console, channel, hz, step, fps, minCents, fold: fold, raise: raise);
+        var m = lag == 0 && tol == 2.0 && !movingOnly ? strict : Measure(s, console, channel, hz, step, fps, minCents, lag, tol, movingOnly, fold, raise);
+        if (raise > 0) r.Note($"    {engine} {part}: {strict.Folded} of {strict.Judged} frames are in notes the game raised whole octaves (under the PSG's range where the NES plays them: fenced)");
         if (fold) r.Warn($"{engine} {part}: {strict.Folded} of {strict.Judged} frames play an octave BELOW FL (nes_apu.c doubles the NES triangle's period like the NES does, and halves it only past the PSG's 10 bits: the octave flips inside a slide at period $3FF); judged modulo that octave");
         r.Expect(m.Judged >= (movingOnly ? 60 : 100), $"{engine} {part}: only {m.Judged} frames judged");
         r.Expect(m.Off == 0, $"{engine} {part}: {m.Off} of {m.Judged} frames off FL's slide by more than the register's half step + {tol} cents{(lag > 0 ? $" (allowing {lag} frame late)" : "")}; first {m.First}");
@@ -208,7 +210,20 @@ internal static class FlpSlideChecks
                 hz[f] = run[f].Att[psg] == 15 || N < 1 ? double.NaN : PsgClock / (32.0 * N);
                 st[f] = N > 1 ? Cents(PsgClock / (32.0 * (N - 1)), PsgClock / (32.0 * N)) : 0;
             }
-            Report(r, "CTW SMS", CtwSmsBackend.Names[c], s, 3, c, hz, st, CtwSmsBackend.NesFps, PsgLowest, tol: PeriodSlideTol, fold: psg == 2);
+            if (psg != 2) { Report(r, "CTW SMS", CtwSmsBackend.Names[c], s, 3, c, hz, st, CtwSmsBackend.NesFps, PsgLowest, tol: PeriodSlideTol); continue; }
+            // the triangle (2026-11-12): where VRUN NES plays it, an octave below FL (judged an octave up, as VRUN NES's); a note under the PSG's range is raised whole octaves
+            // for the whole note (judged modulo those raises); frames under the range an octave below FL are the fenced note range. And no octave jump inside a note:
+            // two sounding frames in a row an octave apart (+-60 cents; the slide song has no legato octave leaps on the triangle)
+            Report(r, "CTW SMS", CtwSmsBackend.Names[c] + " (+1 oct)", s, 3, c, hz.Select(x => x * 2).ToArray(), st, CtwSmsBackend.NesFps, PsgLowest + 1200, tol: 6.0, raise: 2);   // (measured 5.2 beyond the half step, 2026-11-12: tighter than the squares' PeriodSlideTol)
+            int jumps = 0; string firstJump = "";
+            for (int f = 1; f < n; f++)
+            {
+                if (double.IsNaN(hz[f]) || double.IsNaN(hz[f - 1])) continue;
+                double d = Math.Abs(1200 * Math.Log2(hz[f] / hz[f - 1]));
+                if (Math.Abs(d - 1200) < 60 || Math.Abs(d - 2400) < 60) { jumps++; if (firstJump.Length == 0) firstJump = $"frame {f}: {hz[f - 1]:0.0} -> {hz[f]:0.0} Hz"; }
+            }
+            r.Expect(jumps == 0, $"CTW SMS tone 3 (triangle): {jumps} octave jumps between two sounding frames (a note's octave must hold through its slides); first {firstJump}");
+            r.Note($"CTW SMS tone 3: {jumps} octave jumps between sounding frames");
         }
     }
 
@@ -259,7 +274,7 @@ internal static class FlpSlideChecks
             }
             // the Game Gear plays the Game Boy's frames at its own 59.92 Hz: the song's time per driver frame is the Game Boy's
             Report(r, "Vaults GG", VocGbBackend.Names[c], s, 1, c, hz, st, VocGbBackend.Fps, PsgLowest, lag: 1, movingOnly: true,
-                why: "judged while FL slides: the GG driver turns the Game Boy register into a PSG period (two roundings: the step allowed is both) and runs a frame behind the Game Boy driver; HELD notes are off by more than the PSG step (its note table: C4 -6, C7 -34 cents), a note-table matter, not slides");
+                why: "judged while FL slides: the GG driver turns the Game Boy register into a PSG period (two roundings: the step allowed is both) and runs a frame behind the Game Boy driver. Held notes started by a note byte play the note table (the nearest PSG periods since 2026-11-12: vocgg-engine checks them); a note HELD AFTER a slide keeps the slide's Game Boy register, which the driver's x 0.8516 (not 0.8534) and the register's step leave up to 34 cents off at C7 (measured 2026-11-12: the driver's math, not the table)");
         }
     }
 

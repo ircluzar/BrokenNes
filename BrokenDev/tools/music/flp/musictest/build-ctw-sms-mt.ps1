@@ -10,7 +10,8 @@
   (Plugin/BrokenNes.FruityHost/MusicTest.CtwSms.cs), which also writes the slot's loop length for the screen.
   -Flp: the .flp (without it: the placeholder song). <safe> = the .flp's base name, characters not [A-Za-z0-9_-] -> '_' ("placeholder"
   without -Flp). -Rom / -Manifest: the music test build (default: the game repo's build\musictest, built first when missing or -Rebuild).
-  -NesAsSms: BrokenNes2 instances on the NES console read as the Master System channel of the same number (an opt-in line in the fence).
+  A song with no Master System instance plays its NES instances on the channels of the same number (the back end's rule since 2026-11-12: NES is the
+  inter-console standard; a note line in the fence). -NesAsSms: always, even when the song has Master System instances.
   Exit 0 when both files are written (the fence may list notes over the limit: the ROM plays the song without them); else 1 + "FAIL ...".
 
 .EXAMPLE

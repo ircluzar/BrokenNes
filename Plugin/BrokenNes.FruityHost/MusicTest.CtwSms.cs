@@ -4,9 +4,9 @@
 // padded streams, exactly as the plugin patches the title song of Resources/flpctwsms.sms); the slot's loop length (the screen's
 // position / loop counter) is written at the manifest's `loopframes` offset and the Sega checksum redone.
 // Without a .flp: the ROM as built (the placeholder song in the slot) and a fence that says so.
-// --nes-as-sms (opt-in, said in the fence): BrokenNes2 instances on the NES console in Direct mode are read as the Master System's channel
-// of the same number (square 1 / 2 / triangle / noise = tone 1 / 2 / 3 / noise: CTW SMS plays VRUN NES's music, so these are the
-// channels the game's streams were made for); without it the back end leaves NES instances out, as the plugin does.
+// A song with no Master System instance plays its NES instances on the channels of the same number (the back end's own rule since 2026-11-12, FlpNesFallback:
+// NES is the inter-console standard; said in the fence). --nes-as-sms: always, even when the song has Master System instances (square 1 / 2 / triangle / noise =
+// tone 1 / 2 / 3 / noise: CTW SMS plays VRUN NES's music, so these are the channels the game's streams were made for).
 // Exit 0 when the ROM is written (the fence may still have lines over the limit: the song plays without them), 1 + a "FAIL" line otherwise.
 using BrokenNes2.Music.Flp;
 

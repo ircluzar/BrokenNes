@@ -1,7 +1,8 @@
 // `FruityHost flp-vocdos <song.flp> <out folder> [dos|95]`: an FL project for the Vaults DOS / Vaults 95 music tests (BrokenDev/tools/music/flp/musictest/build-vaults-*-mt.ps1):
 //   <name>.vocfl.c           the song for the music test's FL slot (Music/Flp/VocDosBackend.cs: the Game Gear driver's song bytes, played by the PC ports' unchanged driver on the OPL2)
 //   <name>.vaults-<t>.fence.txt  every rule: ok / note / OVER (first line: "<file> for vaults-<t>: N over the limit, ...")
-//   --as-gb: every BrokenNes2 instance is read as a Game Boy instance (FlpVocChecks.Retarget, as flp-test reads the user's NES songs for Vaults); the fence says so in a note line.
+//   A song with no Game Boy / Master System instance plays its NES instances (the back end's own rule since 2026-11-12, FlpNesFallback; said in the fence).
+//   --as-gb: every BrokenNes2 instance is read as a Game Boy instance, even when the song has instances for the console (FlpVocChecks.Retarget, as flp-test reads the user's NES songs for Vaults); the fence says so in a note line.
 // Exit 0 when written, 2 when the fence has OVER lines (written all the same), 1 on an error.
 using BrokenNes2.Music.Flp;
 

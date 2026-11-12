@@ -69,6 +69,7 @@ switch (args[0])
     case "flp-vocdos": return FlpVocDos.Main(args);   // flp-vocdos <song.flp> <out> [dos|95]: the Vaults DOS / 95 music test's FL song (Flp.VocDos.cs)
     case "ctwsms-bends":    // ctwsms-bends <game.sms> <music_data.fab> <song> <loop frames> [frames]: Flp.SmsBends.cs
         return FlpSmsBends.Main(args);
+    case "tri-octave": return FlpTriOctave.Main(args);   // tri-octave <song.flp> <out dir> [seconds]: VRUN NES triangle vs the plugin (Flp.TriOctave.cs)
     case "flp-backend":
         return SvChecks.Backend(args);
     case "musictest-ctwsms": return MusicTestCtwSms.Main(args);   // MusicTest.CtwSms.cs

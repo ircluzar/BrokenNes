@@ -21,11 +21,35 @@ public static class VocGgBackend
         return OfPer(q & 0xFFFF);
     }
 
-    /// <summary>The pulse-unit period of a note byte (convert_music.py mus_ptab: tones and the wave channel alike).</summary>
-    public static readonly int[] Ptab = [.. Enumerable.Range(0, 128).Select(n => Math.Min(65535, (int)Math.Round(131072.0 / VocGbBackend.MidiHz(n), MidpointRounding.ToEven)))];
+    /// <summary>The pulse-unit period of a note byte (convert_music.py mus_ptab: tones and the wave channel alike). Since 2026-11-12 (convert_music.py note_per) the period whose
+    /// PSG period after the driver's x 0.852 and halvings is the nearest to the note (an octave up per halving), among equals the one nearest 131072 / f; before, round(131072 / f)
+    /// (held notes 6 cents flat at C4, 34 at C7).</summary>
+    public static readonly int[] Ptab = [.. Enumerable.Range(0, 128).Select(NotePer)];
+
+    /// <summary>Deliberate bug for flp-test: the note table as before 2026-11-12 (round(131072 / f)).</summary>
+    public const int OldNoteTableMutant = 1 << 30;
+    public static int PtabOf(int note) => FlpMutants.On(OldNoteTableMutant) ? OldPer(note) : Ptab[note];
+    private static int OldPer(int n) => Math.Min(65535, (int)Math.Round(131072.0 / VocGbBackend.MidiHz(n), MidpointRounding.ToEven));
+
+    private static int NotePer(int n)
+    {
+        double f = VocGbBackend.MidiHz(n);
+        int q0 = OldPer(n);
+        if (q0 >= 65535) return q0;
+        int h0 = OfPer(q0).Halved, best = q0;
+        double bestErr = double.MaxValue;
+        for (int q = Math.Max(1, (int)(q0 * 0.97)); q <= Math.Min(65535, (int)(q0 * 1.03) + 2); q++)
+        {
+            var (N, h) = OfPer(q);
+            if (h != h0) continue;
+            double err = Math.Round(Math.Abs(1200 * Math.Log2(PsgClock / (32.0 * N) / (f * Math.Pow(2, h)))), 9);
+            if (err < bestErr || err == bestErr && Math.Abs(q - q0) < Math.Abs(best - q0)) { bestErr = err; best = q; }
+        }
+        return best;
+    }
 
     /// <summary>The PSG period the driver writes for a note byte ("on": mus_ptab, not the Game Boy register).</summary>
-    public static (int N, int Halved) PeriodOfNote(int note) => OfPer(Ptab[Math.Clamp(note, 0, 127)]);
+    public static (int N, int Halved) PeriodOfNote(int note) => OfPer(PtabOf(Math.Clamp(note, 0, 127)));
 
     private static (int N, int Halved) OfPer(int q)
     {
