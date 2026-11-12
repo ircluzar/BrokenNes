@@ -35,6 +35,8 @@ public static partial class Cx
         ("SMSFM_M036FM", MasterSystem, "MAME 0.36 YM2413"), ("SMSFM_E055", MasterSystem, "emu2413 0.55 YM2413"),
         // Genesis
         ("MD_GENS", Genesis, "Gens 2.10"), ("MD_PICO", Genesis, "PicoDrive 1.85"), ("MD_M036", Genesis, "MAME 0.36"), ("MD_BLST", Genesis, "BlastEm 0.3.1"), ("MD_GPGX", Genesis, "Genesis Plus GX 1.3"), ("MD_GWEN", Genesis, "Gwenesis (retro-go)"),
+        // appended 2026-11-12 (APU harvest round 2)
+        ("NSTRJ", Nes, "NesterJ 1.11 2A03 (PSP)"),
     ];
     }
 

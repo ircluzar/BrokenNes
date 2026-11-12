@@ -22,6 +22,7 @@ public sealed unsafe partial class SelfTest
         ("SNES_ZS15", 2), ("SNES_ZS151", 2), ("SNES_S916", 2), ("SNES_S9X1", 2), ("SNES_S951", 2), ("SNES_OSPC", 2), ("SNES_SNDS", 2), ("SNES_PSPC3", 2),
         ("SMS_BLST", 3), ("SMS_M036", 3), ("SMS_GPGX", 3), ("SMS_GWEN", 3), ("SMS_GENS", 3), ("SMS_PICO", 3), ("SMS_DARC", 3), ("SMS_DEGA", 3), ("SMS_SMSA", 3), ("SMSFM_M036FM", 3), ("SMSFM_E055", 3),
         ("MD_GENS", 4), ("MD_PICO", 4), ("MD_M036", 4), ("MD_BLST", 4), ("MD_GPGX", 4), ("MD_GWEN", 4),
+        ("NSTRJ", 0),
     ];
 
     private void Harvest(T t)

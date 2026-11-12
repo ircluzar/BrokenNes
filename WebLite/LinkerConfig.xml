@@ -106,6 +106,8 @@
     <type fullname="NesEmulator.APU_RSID16" preserve="all" />
     <!-- APU harvest: VICE FastSID (APU_FSID, family "Foreign"). -->
     <type fullname="NesEmulator.APU_FSID" preserve="all" />
+    <!-- APU harvest round 2: NesterJ 1.11 NES APU (APU_NSTRJ, family "Foreign"). -->
+    <type fullname="NesEmulator.APU_NSTRJ" preserve="all" />
     <type fullname="NesEmulator.APU_VNES" preserve="all" />
     <!-- Enhanced cores phase 3: a NES game on the other consoles' ENHANCED chips (CoreRegistry finds them by name, so they must be rooted).
          The other consoles reach those chips directly (EnhancedChips routes, plain code: no root needed). -->
