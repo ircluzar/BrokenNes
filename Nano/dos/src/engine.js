@@ -110,7 +110,7 @@ class Voice {
 class Engine {
   // opts: {volume (post-chip gain), presets (extra {name: preset}), trace, meter}
   constructor(sampleRate, opts = {}) {
-    if (!(sampleRate >= 11025 && sampleRate <= 768000)) throw new RangeError('sampleRate out of range (11025 to 768000: the 44.1 kHz sound is resampled, at most 4 to 1)');
+    if (!(sampleRate >= 3000 && sampleRate <= 768000)) throw new RangeError('sampleRate out of range (3000 to 768000: the 44.1 kHz sound is resampled)');
     this.chip = new Chip(sampleRate);
     if (opts.trace) this.chip.trace = [];
     this.sampleRate = sampleRate;

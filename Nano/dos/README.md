@@ -34,7 +34,7 @@ once, the rhythm mode's odd phases). `docs/projects/nano-per-console.md` has the
   Core by `tools/NanoDosParity` (`Core/NanoDosSound.cs`): **26/26 bit-exact, 1.25 M samples**; the C# engine twin 10/10; plugin-way MIDI 6/6.
   The speaker's lines in `NanoDosSound` are restated from `PcSpeaker.cs` / `Pit8254.cs` (no PcMachine), so its proof is the JS against that restatement.
 * `node Nano/dos/test/engine.test.mjs`: pitch (FM within 4 cents, the speaker's 8254 counts), -6 dB at velocity 0.5, nine voices + the speaker, a
-  retrigger's key off / on, the table fingerprint, the 11025 Hz floor, every preset, MIDI, sidecar with its own patch, lean = full (55 checks).
+  retrigger's key off / on, the table fingerprint, the 3000 Hz floor (8 kHz renders: over 4:1), every preset, MIDI, sidecar with its own patch, lean = full (55 checks).
 * `node Nano/dos/test/browser-test.mjs`: the worklet in headless Edge = renderOffline bit for bit, **the OPL2 tables in the browser = Node's**
   (`dist/tables.json`: a browser whose Math rounds differently would fail here), etc.: 11/11.
 

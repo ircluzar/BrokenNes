@@ -239,7 +239,7 @@ out[off + i] = f32(f32(f32(f32(f32(f32(c3 * t) + c2) * t) + c1) * t) + y1);
 pos += this.step;
 }
 this.position = pos;
-const drop = Math.trunc(pos) - 1;
+const drop = Math.min(Math.trunc(pos) - 1, this.count);
 if (drop > 0) { b.copyWithin(0, drop, this.count); this.count -= drop; this.position -= drop; }
 }
 }

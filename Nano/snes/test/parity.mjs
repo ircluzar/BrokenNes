@@ -195,7 +195,7 @@ if (args.includes('--mutants')) {
     ['echo length', 'this.echoLength = (regs[EDL] & 0x0F) * 0x800;', 'this.echoLength = (regs[EDL] & 0x0F) * 0x400;'],
     ['bent line', 'if (mode > 6 && (v.hiddenEnv >>> 0) >= 0x600) env += 0x8 - 0x20;', 'if (mode > 6 && (v.hiddenEnv >>> 0) >= 0x700) env += 0x8 - 0x20;'],
     ['resampler not float32', 'out[off + i] = f32(f32(f32(f32(f32(f32(c3 * t) + c2) * t) + c1) * t) + y1);', 'out[off + i] = ((c3 * t + c2) * t + c1) * t + y1;'],
-    ['resampler drop', 'const drop = Math.trunc(pos) - 1;', 'const drop = Math.trunc(pos) - 2;'],
+    ['resampler drop', 'const drop = Math.min(Math.trunc(pos) - 1, this.count);', 'const drop = Math.min(Math.trunc(pos) - 2, this.count);'],
     ['KON not batched', 'this.konBits |= bit;', 'this.konBits = bit;'],
     ['volume rounding', 'const level = v.vel * p.gain * this.env(v, this.frame), vol = clamp(roundEven(level * 127), 0, 127)', 'const level = v.vel * p.gain * this.env(v, this.frame), vol = clamp(Math.floor(level * 127), 0, 127)'],
   ];

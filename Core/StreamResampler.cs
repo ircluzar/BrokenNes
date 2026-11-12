@@ -83,7 +83,9 @@ public sealed class StreamResampler
             position += step;
         }
         // Keep one sample of history before the read position; shift the rest down.
-        int drop = (int)position - 1;
+        // Downsampling more than 4:1 (step > 4) can leave the read position past the end of the buffered input
+        // (the next output needs samples not written yet): drop at most what is held, the position stays ahead.
+        int drop = Math.Min((int)position - 1, count);
         if (drop > 0)
         {
             buffer.AsSpan(drop, count - drop).CopyTo(buffer);
