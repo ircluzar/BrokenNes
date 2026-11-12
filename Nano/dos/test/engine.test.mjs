@@ -54,7 +54,14 @@ check(kit.blockFnum(440) >> 10 === 4 && kit.speakerCount(440) === 2712, `A4: blo
   check(b0.length >= 3 && b0[0] === 0x20 && b0.includes(0) && b0[b0.length - 1] === 0x20, `B0 writes: key on, off, on (${b0.join(',')})`);
 }
 check(kit.oplTableSum() === JSON.parse(fs.readFileSync(path.join(dist, 'tables.json'), 'utf8')).oplTableSum, 'the OPL2 tables match the fingerprint the build wrote');
-{ let threw = false; try { N.renderOffline([], 0.1, { sampleRate: 8000 }); } catch { threw = true; } check(threw, 'a host rate under 11025 Hz is refused (the resampler goes 4:1 at most)'); }
+// low host rates: the resampler goes past 4:1 (8 kHz is 5.5:1, 3 kHz 14.7:1) and keeps the pitch
+for (const sr of [8000, 3000]) {
+  let pcm = null; try { pcm = N.renderOffline([{ time: 0, type: 'on', note: 57, preset: 'svtriangle', duration: 1 }], 1, { sampleRate: sr }); } catch (e) { console.log(e.message); }
+  let got = 0;
+  if (pcm) { let m = 0; const a = sr / 10, b = sr; for (let i = a; i < b; i++) m += pcm[i]; m /= b - a; let z = 0, f = -1, l = -1; for (let i = a + 1; i < b; i++) if (pcm[i - 1] < m && pcm[i] >= m) { if (f < 0) f = i; l = i; z++; } got = (z - 1) * sr / (l - f); }
+  check(pcm && pcm.length === sr && Math.abs(1200 * Math.log2(got / 220)) < 6, `${sr} Hz renders A3 (${got.toFixed(2)} Hz)`);
+}
+{ let threw = false; try { N.renderOffline([], 0.1, { sampleRate: 2000 }); } catch { threw = true; } check(threw, 'a host rate under 3000 Hz is refused'); }
 { let threw = false; try { N.renderOffline([{ time: 0, type: 'on', note: 60, preset: { kind: 'fm', regs: [1, 2, 3] } }], 0.1); } catch { threw = true; } check(threw, 'an fm preset needs its 11 SBI bytes'); }
 for (const p of N.presets) {
   const r = N.renderOffline([{ time: 0, type: 'on', note: p.note, preset: p.name, duration: 0.3 }], 0.6, { sampleRate: 22050 });

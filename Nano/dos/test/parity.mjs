@@ -34,7 +34,7 @@ function loadLib(text) {
 const readF32 = (f) => { const b = fs.readFileSync(f); return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.length)); };
 const sameBits = (a, b) => { if (a.length !== b.length) return `length ${a.length} vs ${b.length}`; const x = new Uint32Array(a.buffer, a.byteOffset, a.length), y = new Uint32Array(b.buffer, b.byteOffset, b.length); for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return `first difference at ${i}: ${a[i]} vs ${b[i]}`; return null; };
 
-const RATES = [11025, 22050, 44100, 48000, 96000];
+const RATES = [8000, 11025, 22050, 44100, 48000, 96000];
 function scripts() {
   const out = [];
   const melody = (pre, t0 = 0) => [60, 64, 67, 72, 76, 79, 84, 88].map((n, i) => ({ time: t0 + i * 0.09, type: 'on', note: n, preset: pre, velocity: 0.4 + 0.075 * i, duration: 0.08 }));

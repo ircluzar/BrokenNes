@@ -300,7 +300,7 @@ class StreamResampler {
       pos += this.step;
     }
     this.position = pos;
-    const drop = Math.trunc(pos) - 1;
+    const drop = Math.min(Math.trunc(pos) - 1, this.count);   // over 4:1 the position can run past the buffered input
     if (drop > 0) { b.copyWithin(0, drop, this.count); this.count -= drop; this.position -= drop; }
   }
 }
