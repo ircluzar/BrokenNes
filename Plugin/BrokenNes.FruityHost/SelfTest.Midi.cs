@@ -131,7 +131,17 @@ public sealed unsafe partial class SelfTest
 
     private delegate void SongScenario(T t);
 
-    private (string Name, SongScenario Body, int Mutant, string Why)[] SongScenarios() =>
+    // BN_SONG_ONLY=stems,flow runs only those scenarios (and their deliberate bugs): a developer aid, the full list otherwise
+    private (string Name, SongScenario Body, int Mutant, string Why)[] SongScenarios()
+    {
+        var all = AllSongScenarios();
+        var only = Environment.GetEnvironmentVariable("BN_SONG_ONLY");
+        if (string.IsNullOrWhiteSpace(only)) return all;
+        var want = only.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return all.Where(x => want.Contains(x.Name)).ToArray();
+    }
+
+    private (string Name, SongScenario Body, int Mutant, string Why)[] AllSongScenarios() =>
     [
         ("flow", SongFlow, MusicMutate.PlayCallsStop, "the Play button stops"),
         ("engine", SongEngineDll, MusicMutate.PatchSkew, "square 1 patched one byte late"),
