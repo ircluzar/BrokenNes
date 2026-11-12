@@ -326,7 +326,7 @@ public static class CoreCatalog
     // NES-board cores that are really another console's part (the mix bridges).
     private static readonly Dictionary<string, string> NesCpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SM83"] = "Game Boy", ["Z80"] = "Master System", ["M68K"] = "Genesis" };
     private static readonly Dictionary<string, string> NesPpuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess" };
-    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess", ["DARC"] = "Foreign", ["NSTC"] = "Foreign", ["INES"] = "Foreign", ["FCEU"] = "Foreign", ["TUXN"] = "Foreign", ["VNES"] = "Foreign", ["PNES"] = "Foreign", ["NSDS"] = "Foreign", ["PCEG"] = "Foreign", ["POKY"] = "Foreign", ["AY124"] = "Foreign", ["NOFR"] = "Foreign", ["RSID16"] = "Foreign", ["FSID"] = "Foreign" };
+    private static readonly Dictionary<string, string> NesApuFamily = new(StringComparer.OrdinalIgnoreCase) { ["SNES"] = "SNES", ["SNESS"] = "SNES", ["DMG"] = "Game Boy", ["DMGS"] = "Game Boy", ["SMS"] = "Master System", ["SMSS"] = "Master System", ["SMSFM"] = "Master System", ["MD"] = "Genesis", ["MDS"] = "Genesis", ["WMSS"] = "WideMess", ["DARC"] = "Foreign", ["NSTC"] = "Foreign", ["INES"] = "Foreign", ["FCEU"] = "Foreign", ["TUXN"] = "Foreign", ["VNES"] = "Foreign", ["PNES"] = "Foreign", ["NSDS"] = "Foreign", ["PCEG"] = "Foreign", ["POKY"] = "Foreign", ["AY124"] = "Foreign", ["NOFR"] = "Foreign", ["RSID16"] = "Foreign", ["FSID"] = "Foreign", ["NSTRJ"] = "Foreign", ["NSTRDC"] = "Foreign" };
 
     /// <summary>The NES board's ids of the other consoles' ENHANCED chips (a NES game on them). Only the NES menu offers them: the other consoles reach those chips directly (<see cref="DirectRoutes"/>), never through a NES.
     /// WMSS (the WideMess's, milestone 7) only where the WideMess console is offered (<see cref="Consoles.WideMessEnabled"/>).</summary>
@@ -364,7 +364,7 @@ public static class CoreCatalog
         ["CPU:Z80"] = "Z80 (Master System CPU) - an instruction-set wall: it runs the game's 6502 code as Z80 instructions, so nearly every game stops at once",
         ["CPU:M68K"] = "M68K (Genesis CPU) - an instruction-set wall: it runs the game's 6502 code as 68000 instructions, so nearly every game stops at once",
         ["CPU:BAT_INES"] = "FIX opcodes on InfoNES's scheduler (113-cycle line batches, interrupts at batch start, sprite-0 split at its X)", ["CPU:BAT_NOFR"] = "FIX opcodes on nofrendo's scheduler (whole-line batches, NMI 7 cycles late, +2.5 cycles a line for SMB3/Kirby/Zen/Power Blade 2)", ["CPU:BAT_PNES"] = "FIX opcodes on PocketNES's scheduler (line batches, IRQ at a line or after CLI/PLP/RTI, idle loops skipped)", ["CPU:BAT_FCEU"] = "FIX opcodes with FCEUX e0028f6's double-counted page-cross and interrupt cycles (reverted the next day)",
-        ["PPU:FIX"] = "the NES picture chip (2C02), dot-accurate", ["PPU:MES010"] = "Mesen 0.1.0 picture chip (2016: dot-based but early - one-step sprite fetches, doubled $2007 reads ignored, OAM DMA via a counter, sprite-0 hit raised at line end)", ["PPU:INES"] = "InfoNES picture chip (1999-2004: each line drawn after the CPU ran it, vblank flag never cleared by $2002)", ["PPU:FCEU"] = "FCE Ultra picture chip before newppu (2008: tile-at-a-time catch-up, sprites composed at line end, sprite-0 hit on pixel 255)", ["PPU:NOFR"] = "nofrendo picture chip (1998-2000, retro-go build: whole-line drawing, sprite-0 hit from the line start)", ["PPU:FIXS"] = "the NES picture chip with the cross-console layers (the guest's picture at its own size with all its layers and sprites; NES colours)",
+        ["PPU:FIX"] = "the NES picture chip (2C02), dot-accurate", ["PPU:MES010"] = "Mesen 0.1.0 picture chip (2016: dot-based but early - one-step sprite fetches, doubled $2007 reads ignored, OAM DMA via a counter, sprite-0 hit raised at line end)", ["PPU:INES"] = "InfoNES picture chip (1999-2004: each line drawn after the CPU ran it, vblank flag never cleared by $2002)", ["PPU:FCEU"] = "FCE Ultra picture chip before newppu (2008: tile-at-a-time catch-up, sprites composed at line end, sprite-0 hit on pixel 255)", ["PPU:PNES"] = "PocketNES picture (GBA tile engine: 240x160 window, three lines of four with a twitching dropped line, sprites scaled to 0.75, four palettes a frame)", ["PPU:NSDS"] = "nesDS picture (DS tile engine: 240 lines squeezed onto 192 with flickering dropped lines, unscaled once-a-frame sprites, no sprite limit)", ["PPU:NOFR"] = "nofrendo picture chip (1998-2000, retro-go build: whole-line drawing, sprite-0 hit from the line start)", ["PPU:FIXS"] = "the NES picture chip with the cross-console layers (the guest's picture at its own size with all its layers and sprites; NES colours)",
         ["PPU:SNES"] = "SNES picture chip", ["PPU:DMG"] = "Game Boy picture chip (160x144: the middle of the picture, 4 shades by brightness)",
         ["PPU:DMGS"] = "Game Boy picture chip with the whole picture and the cross-console layers (4 shades by brightness, or Game Boy Color colours)",
         ["PPU:SMS"] = "Master System picture chip (Mode 4: 4-bit tiles, 32 colours of 64, 8 sprites a line; 240-line mode)",
@@ -783,6 +783,7 @@ public static class CoreCatalog
                     case CoreSlot.Ppu:
                         list.Add(new("SFC", "SFC (SNES picture chip)", "SNES"));
                         list.Add(new("S9X", "S9X (Snes9x 2013 renderer before anomie's hires fix: hires even columns from the sub screen, tile-parity hires, per-line flush)", "SNES"));
+                        list.Add(new("TYL", "TYL (Snes9xTYL PSP approx. renderer: no colour math - sub-screen layers painted opaque under the main screen, no mosaic, one sprite list with no limits, square sprites)", "SNES"));
                         list.Add(new("BS63", "BS63 (bsnes v063 scanline renderer, 2010: whole-line registers, OBSEL a line late, blurred hires with a dark left column)", "SNES"));
                         foreach (var id in NesPictureChips()) list.Add(new("NES:" + id, NesPictureLabel(id), NesFamilyOf(CoreSlot.Ppu, id)));
                         break;
@@ -864,7 +865,7 @@ public static class CoreCatalog
     public static readonly HashSet<string> PortedIds = new(StringComparer.OrdinalIgnoreCase)
     {
         "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "PSPC3", "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB", "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN", "DARC", "DEGA", "SMSA", "M036FM", "E055",
-        "FCEU", "INES", "NSTC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16", "FSID",
+        "FCEU", "INES", "NSTC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16", "FSID", "NSTRJ", "NSTRDC",
     };
 
     /// <summary>
@@ -897,7 +898,7 @@ public static class CoreCatalog
         ["GNUB"] = "gnuboy 1.0.3", ["VBA"] = "VisualBoyAdvance 1.7.2", ["VBAM"] = "VBA-M 2007", ["TGBD"] = "TGB Dual", ["GYOB"] = "GameYob DS", ["MGB"] = "minigb_apu 2022",
         ["GENS"] = "Gens 2.10", ["PICO"] = "PicoDrive 1.85", ["M036"] = "MAME 0.36", ["M036FM"] = "MAME 0.36 FM", ["BLST"] = "BlastEm 0.3.1", ["GPGX"] = "Genesis Plus GX 1.3", ["GWEN"] = "Gwenesis (retro-go)",
         ["DARC"] = "DarcNES", ["DEGA"] = "Dega 1.16", ["SMSA"] = "SMSAdvance 2.5", ["E055"] = "emu2413 0.55", ["FCEU"] = "FCE Ultra", ["INES"] = "iNES", ["NSTC"] = "NESticle", ["TUXN"] = "TuxNES",
-        ["VNES"] = "VirtuaNES 0.97", ["PNES"] = "PocketNES", ["NSDS"] = "nesDS 2.0.1", ["PCEG"] = "PCE-GO PSG (retro-go)", ["POKY"] = "atari800 POKEY", ["AY124"] = "MAME 0.124 AY-3-8910", ["NOFR"] = "nofrendo (retro-go)", ["RSID16"] = "reSID 0.16", ["FSID"] = "VICE FastSID", ["HLE"] = "silent", ["SMS-FM"] = "with the FM chip", ["SMSFM"] = "Master System FM",
+        ["VNES"] = "VirtuaNES 0.97", ["PNES"] = "PocketNES", ["NSDS"] = "nesDS 2.0.1", ["PCEG"] = "PCE-GO PSG (retro-go)", ["POKY"] = "atari800 POKEY", ["AY124"] = "MAME 0.124 AY-3-8910", ["NOFR"] = "nofrendo (retro-go)", ["RSID16"] = "reSID 0.16", ["FSID"] = "VICE FastSID", ["NSTRJ"] = "NesterJ 1.11 (PSP)", ["NSTRDC"] = "NesterDC 7.1.0 (Dreamcast)", ["HLE"] = "silent", ["SMS-FM"] = "with the FM chip", ["SMSFM"] = "Master System FM",
     };
 
     /// <summary>

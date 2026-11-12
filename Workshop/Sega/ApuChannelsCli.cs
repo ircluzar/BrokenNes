@@ -36,7 +36,7 @@ internal static partial class ApuChannelsCli
 
         var consoles = new (string name, string stock, string[] ids, List<Cell> cells)[]
         {
-            ("NES", "FIX", new[] { "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16", "FSID" }, NesCells()),
+            ("NES", "FIX", new[] { "FCEU", "INES", "NSTC", "DARC", "TUXN", "VNES", "PNES", "NSDS", "PCEG", "POKY", "AY124", "NOFR", "RSID16", "FSID", "NSTRJ", "NSTRDC" }, NesCells()),
             ("SNES", "SFC", new[] { "ZS15", "ZS151", "S916", "S9X1", "S951", "OSPC", "SNDS", "PSPC3" }, SnesCells()),
             ("GB", "GB", new[] { "GNUB", "VBA", "VBAM", "TGBD", "GYOB", "MGB" }, GbCells()),
             ("MD", "MD", new[] { "GENS", "PICO", "M036", "BLST", "GPGX", "GWEN" }, MdCells()),
@@ -97,6 +97,7 @@ internal static partial class ApuChannelsCli
         ("NES", "NSTC") when channel.StartsWith("pulse") || channel == "triangle" => "NESticle pitch = 0x20000/period (NesticleSound.cs header)",
         ("NES", "NSTC") when channel is "noise" or "dmc" => "NESticle has no noise and no DMC (NesticleSound.cs, APU_NSTC.cs)",
         ("NES", "DARC") when channel is "noise" or "dmc" => "DarcNES 1.50: noise renderer #if 0, no DMC (DarcNesPsg.cs header)",
+        ("NES", "NSTRDC") when channel == "dmc" => "NesterDC's DC-offset canceller (YANO, Dec 2000) reshapes the looping DMC wave: the detector reads x0.85; with it off the loop measures 1020 Hz (NesterApu.cs header)",
         ("NES", "INES") when channel == "dmc" => "InfoNES DMC rate constant ~10x small (InfoNesApu.cs header)",
         ("SNES", "ZS15") when channel.StartsWith("voice") => "ZSNES 0.15 restarts a loop one BRR block early: the 2-block test loop plays 3 blocks (Zs15Dsp.cs header)",
         ("SNES", "ZS15") when channel == "echo tail" => "ZSNES 0.15 has no echo (Zs15Dsp.cs header)",

@@ -133,6 +133,7 @@ public static partial class Cx
         list.Add(new Chip(NanoSmsChip, MasterSystem, "Nano SMS: the web library's engine, the SN76489, 24 presets", IsNanoSms: true));   // after the harvested chips (append-only)
         AddPc(list);            // the x86 PC console's devices (Bn2Consoles.Pc.cs), appended after NANOSMS
         for (int k = 0; k < NanoKinds.All.Length; k++) list.Add(new Chip(NanoKinds.All[k].Chip, NanoKinds.All[k].Console, $"{NanoKinds.All[k].Name}: the web library's engine, {NanoKinds.All[k].Count()} presets", NanoMore: k + 1));   // the later Nano chips (Bn2Plugin.NanoMore.cs), after the PC chips (append-only: index 88 on)
+        AddHarvest2(list);      // APU harvest round 2 (Bn2Consoles.Harvest.cs), appended after everything else
         return list;
     }
 

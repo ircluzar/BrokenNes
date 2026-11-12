@@ -24,6 +24,9 @@ public sealed unsafe partial class SelfTest
         ("MD_GENS", 4), ("MD_PICO", 4), ("MD_M036", 4), ("MD_BLST", 4), ("MD_GPGX", 4), ("MD_GWEN", 4),
     ];
 
+    /// <summary>APU harvest round 2, appended at the very end of the list (after the Nano chips), in this order.</summary>
+    internal static readonly (string Id, int Console)[] Harvest2Chips = [("NSTRJ", 0), ("NSTRDC", 0)];
+
     private void Harvest(T t)
     {
         List<string> chips;
@@ -37,11 +40,16 @@ public sealed unsafe partial class SelfTest
         for (int k = 0; k < HarvestChips.Length; k++)
             t.Expect(first + k < chips.Count && chips[first + k].Equals(HarvestChips[k].Id, StringComparison.OrdinalIgnoreCase), $"harvest chip {k} is {(first + k < chips.Count ? chips[first + k] : "missing")}, expected {HarvestChips[k].Id}");
 
+        // round 2: the last chips of the list
+        int first2 = chips.Count - Harvest2Chips.Length;
+        for (int k = 0; k < Harvest2Chips.Length; k++)
+            t.Expect(first2 + k >= 0 && chips[first2 + k].Equals(Harvest2Chips[k].Id, StringComparison.OrdinalIgnoreCase), $"harvest-2 chip {k} is {(first2 + k >= 0 ? chips[first2 + k] : "missing")}, expected {Harvest2Chips[k].Id} (the last chips)");
+        var all = HarvestChips.Select((h, k) => (h.Id, h.Console, Index: first + k)).Concat(Harvest2Chips.Select((h, k) => (h.Id, h.Console, Index: first2 + k))).ToArray();
+
         var rows = new List<string>(); int silent = 0, differ = 0;
-        for (int k = 0; k < HarvestChips.Length; k++)
+        for (int k = 0; k < all.Length; k++)
         {
-            var (id, console) = HarvestChips[k];
-            int index = first + k;
+            var (id, console, index) = all[k];
             // picking it puts the instance on its console; a saved project comes back on it
             byte[] blob;
             using (var a = lib.Create())
@@ -75,7 +83,7 @@ public sealed unsafe partial class SelfTest
             t.Expect(h1 == h2, $"{id} (chip {index}): two renders of the same note differ ({h1} vs {h2})");
             rows.Add($"{index} {id} {rms:0.000}");
         }
-        t.Note($"{HarvestChips.Length} harvested chips from index {first}: {silent} silent, {differ} not deterministic; rms at A4: {string.Join(", ", rows)}");
+        t.Note($"{HarvestChips.Length} harvested chips from index {first} + {Harvest2Chips.Length} from {first2}: {silent} silent, {differ} not deterministic; rms at A4: {string.Join(", ", rows)}");
     }
 
     private static string HashAudio(float[] audio)

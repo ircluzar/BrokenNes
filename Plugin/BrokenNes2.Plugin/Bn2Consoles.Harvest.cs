@@ -38,6 +38,27 @@ public static partial class Cx
     ];
     }
 
+    /// <summary>APU harvest round 2 (2026-11-12): appended at the very END of the chip list (after the PC and later Nano chips; the first harvest block is followed by NANOSMS, so it cannot grow). Append-only.</summary>
+    // In a nested class: a static field of this partial file is not initialised before Chips (the HarvestTable trap).
+    private static (string Id, int Console, string Name)[] Harvest2Ids => Harvest2Table.Ids;
+    private static class Harvest2Table
+    {
+        internal static readonly (string Id, int Console, string Name)[] Ids =
+        [
+            ("NSTRJ", Nes, "NesterJ 1.11 2A03 (PSP)"), ("NSTRDC", Nes, "NesterDC 7.1.0 2A03 (Dreamcast)"),
+        ];
+    }
+
+    private static void AddHarvest2(List<Chip> list)
+    {
+        foreach (var h in Harvest2Ids)
+        {
+            string? found = CoreRegistry.ApuIds.FirstOrDefault(i => i.Equals(h.Id, StringComparison.OrdinalIgnoreCase));
+            if (found == null) throw new InvalidOperationException($"harvest chip {h.Id} is not a registered APU core: the plugin's chip list would move");
+            list.Add(new Chip(found, h.Console, $"ported: {h.Name} (art, bugs kept)"));
+        }
+    }
+
     private static void AddHarvest(List<Chip> list)
     {
         foreach (var h in HarvestIds)
