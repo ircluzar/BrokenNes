@@ -4,7 +4,7 @@ Measured 2026-11-12. Measure only: nothing in the Nested core was changed.
 
 | | |
 |---|---|
-| SNES ROM | `T:\BrokenDev\Releases\VRUN_Nested_SNES\VRUN_Nested_SNES_2026-11-07_speed.smc` (sha256 b58a1fd5...), rebuilt **byte-identical** today by `brokendev.ps1 nested test` (core from source, md5 57c4a845, injector built from source on .NET 10) |
+| SNES ROM | `T:\BrokenDev\Releases\VRUN_Nested_SNES\VRUN_Nested_SNES_2026-11-07_speed.smc` (sha256 b58a1fd5..., superseded 2026-11-13 by `..._2026-11-13_feedback-byfix.smc`, sha256 7665a9c8..., verify play lag 39 -> 0), rebuilt **byte-identical** today by `brokendev.ps1 nested test` (core from source, md5 57c4a845, injector built from source on .NET 10) |
 | NES ROM | the release's `.source.nes` (sha256 8e3caa40... = `VRUN_Nes_Dev\sys0\simulations\VRUN\build\vrun_game_nested.nes`, symbols `vrun_game_nested.mlb`) |
 | NES reference | BrokenNes CPU_FIX / PPU_FIX / APU_FIX, power-on RAM zeros (Mesen's NES setting in the private copy) |
 | SNES | BrokenNes SNES core (BOARD_SFC, default APU) |

@@ -1,11 +1,24 @@
 {
   "schema": 1,
   "_doc": "Golden hashes of our Project Nested fork, checked by 'brokendev.ps1 nested test'. Core: tools/nestedasm/test_nestedasm.py in the fork pins the pristine v1.8 core (md5 0aa40023...) and the md5 of every NESTED_STEP 1-18 (step 18 = 57c4a845..., profile vrun). Releases: the released SNES ROM rebuilt from its NES ROM (identified by sha256), its m30pipe game profile and the core assembled from source must be byte-identical. The ROMs live in Releases (outside git); a release whose NES ROM is missing is reported SKIPPED, never passed.",
-  "core": { "profile": "vrun", "md5": "57c4a8452a37a4a9493dc9dd29028ada", "pristineMd5": "0aa4002338a84a0a7111cd2aaf8281c8" },
+  "core": {
+    "profile": "vrun",
+    "md5": "57c4a8452a37a4a9493dc9dd29028ada",
+    "pristineMd5": "0aa4002338a84a0a7111cd2aaf8281c8"
+  },
   "releases": [
     {
+      "id": "vrun-nested-2026-11-13",
+      "what": "Nested VRUN SNES, the CURRENT release (2026-11-13 feedback-byfix: B/Y-fixed feedback plans, 124 entry points, verify play lag 0)",
+      "coreProfile": "vrun",
+      "nes": "{archives}/Releases/VRUN_Nested_SNES/VRUN_Nested_SNES_2026-11-13_feedback-byfix.source.nes",
+      "nesSha256": "8e3caa40cd51df5eb2cc4375b2285a37dfbb762273a5b484f402c8368066b032",
+      "gameProfile": "games/0192edb1-2026-11-13",
+      "snesSha256": "7665a9c80c4c925641985a2faea7733e497ff1bfafd3d58218b6955592bd4859"
+    },
+    {
       "id": "vrun-nested-2026-11-07",
-      "what": "Nested VRUN SNES, the 2026-11-07 speed release (VRUN 439616b --nested, entry points from BrokenNes feedback)",
+      "what": "Nested VRUN SNES, the 2026-11-07 speed release (VRUN 439616b --nested, entry points from BrokenNes feedback) - superseded 2026-11-13, kept as history",
       "coreProfile": "vrun",
       "nes": "{archives}/Releases/VRUN_Nested_SNES/VRUN_Nested_SNES_2026-11-07_speed.source.nes",
       "nesSha256": "8e3caa40cd51df5eb2cc4375b2285a37dfbb762273a5b484f402c8368066b032",
