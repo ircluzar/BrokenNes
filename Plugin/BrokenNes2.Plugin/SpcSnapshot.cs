@@ -179,6 +179,30 @@ public sealed class SpcSnapshot
         return new SpcSnapshot(aram, dsp);
     }
 
+    /// <summary>Layout B's Runaway tree check: slot 0 the looping square of <see cref="TestSample"/> (a Sample), slot 1 the same bytes at another address (a duplicate: folded into slot 0),
+    /// slot 2 a 10-block one-shot (5 ms: a Drum), slot 3 a 1000-block one-shot (500 ms: a Sound effect).</summary>
+    public static SpcSnapshot TreeTestSample()
+    {
+        var s = TestSample();
+        var aram = s.Aram;
+        void Dir(int slot, int start, int loop) { int a = 0x100 + slot * 4; aram[a] = (byte)start; aram[a + 1] = (byte)(start >> 8); aram[a + 2] = (byte)loop; aram[a + 3] = (byte)(loop >> 8); }
+        Dir(1, 0x0300, 0x0300);
+        Array.Copy(aram, 0x200, aram, 0x300, 9);
+        void OneShot(int slot, int start, int blocks, int seed)
+        {
+            Dir(slot, start, start);
+            uint x = (uint)seed;
+            for (int b = 0; b < blocks; b++)
+            {
+                aram[start + b * 9] = (byte)(b == blocks - 1 ? 0x91 : 0x90);       // range 9, filter 0; the last block ends the sample, no loop
+                for (int k = 1; k < 9; k++) { x = x * 1103515245 + 12345; aram[start + b * 9 + k] = (byte)(x >> 16); }
+            }
+        }
+        OneShot(2, 0x0400, 10, 7);
+        OneShot(3, 0x1000, 1000, 11);
+        return new SpcSnapshot(aram, s.Dsp);         // (a new snapshot: the sample list is worked out in the constructor)
+    }
+
     // ---- saved with the project: [aram][dsp] ----
     public byte[] ToBytes()
     {

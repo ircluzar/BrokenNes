@@ -194,6 +194,6 @@ public static class UiServices
     public const string NeedGame = "Load a game in ROM mode, then switch Instrument Runaway on to see its instruments";
     public const string NoEmulator = "No emulator: BrokenNes2 has no emulator to look at";
 
-    /// <summary>The tabs, by number (what the editor's strip shows): 0 Emulator, 1 Instruments, 2 Presets.</summary>
-    public static readonly string[] TabNames = ["Emulator", "Instruments", "Presets"];
+    /// <summary>The first three views, by number (what the editor's header shows): 0 Game (the old Emulator tab), 1 Instruments, 2 Presets.</summary>
+    public static readonly string[] TabNames = ["Game", "Instruments", "Presets"];
 }

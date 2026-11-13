@@ -1004,6 +1004,15 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                 stream.Write(&crpLen, 4);
                 fixed (byte* p = corruptionSection) stream.Write(p, (uint)crpLen);
             }
+            // The names given to Instrument Runaway's tree rows (layout B, RunawayTree.cs): before INJ1, which stays last.
+            if (a.Emulator?.RunawayNamesSection() is { } namesSection)
+            {
+                uint rnmMagic = RunawayNames.Tag;
+                int rnmLen = namesSection.Length;
+                stream.Write(&rnmMagic, 4);
+                stream.Write(&rnmLen, 4);
+                fixed (byte* p = namesSection) stream.Write(p, (uint)rnmLen);
+            }
             // The instruments pushed into the running game (Instruments/GamePush.cs): the table of overrides and the original bytes, which no machine state holds. Last, so a build that does not know the section stops reading here.
             if (a.Emulator?.CaptureInjectSection() is { } injectSection)
             {
@@ -1040,6 +1049,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
         byte[]? trackBytes = null;
         string? flpPathRead = null;
         byte[]? pcPatchRead = null;
+        Dictionary<string, string>? restoredNames = null;
         var seen = HostLog.On ? new List<string>() : null;
         restoring = true;
         try
@@ -1201,6 +1211,12 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
                             fixed (byte* p = crpBuf) if (!stream.Read(p, (uint)slen)) { restoredCorruption = CorruptionSection.Damaged("cut short"); break; }
                             restoredCorruption = CorruptionSection.Read(crpBuf, out _);          // damaged: the editor says so (the game-state section, if any, still brings the machine back)
                         }
+                        else if (tag == RunawayNames.Tag && slen is >= 7 and <= RunawayNames.MaxBytes)
+                        {
+                            var rnmBuf = new byte[slen];
+                            fixed (byte* p = rnmBuf) if (!stream.Read(p, (uint)slen)) break;
+                            restoredNames = RunawayNames.Read(rnmBuf);          // damaged or newer: the names are dropped, nothing else is
+                        }
                         else if (tag == Instruments.GamePushFile.Tag)
                         {
                             // the instruments pushed into the game: read and checked when the game is built, never trusted (a damaged or newer one is dropped and the editor says so, see Emulator.InjectNote)
@@ -1243,6 +1259,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             emu2.SetInstrumentNote(overlayProblem != null ? "The project's instrument edits were not restored: " + overlayProblem
                 : wmsProblem != null ? "The project's WideMess instruments were not restored: their section is " + wmsProblem + "; the game is frozen at the state the project kept, switch Instrument Runaway off and on to take them again" : null);
         }
+        if (restoredNames != null) emu2?.MergeRunawayNames(restoredNames);      // (layout B: the Runaway tree's names)
         RestorePreset(presetSectionBytes, presetSectionProblem);
         if (restoredRecord != null) emu2?.AdoptRecord(restoredRecord);         // (the first instance of the project that carries the recording gives it to the emulator)
         // whether this state makes the instance clearly the user's own (it holds a game, a preset or a track: it leaves the recording and never joins it by itself), or not (FL's empty or default
@@ -1320,7 +1337,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             case 43: emu?.Reset(); return 0;
             case 44: emu?.SetPad(this, (int)value); return 0;
             case 45: return emu?.Runaway == true ? 1 : 0;
-            case 46: emu?.ReplaceSnapshotForTests(SpcSnapshot.TestSample()); return 0;
+            case 46: emu?.ReplaceSnapshotForTests(index == 1 ? SpcSnapshot.TreeTestSample() : SpcSnapshot.TestSample()); return 0;      // (index 1: the Runaway tree's made-up sound memory, layout B)
             case 47: emu?.SetRunaway(value != 0); return 0;
             case 48: return emu?.SamplerMode == true ? 1 : 0;
             case 49: return emu?.PadBits ?? 0;

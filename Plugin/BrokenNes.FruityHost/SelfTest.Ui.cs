@@ -19,36 +19,38 @@ public sealed unsafe partial class SelfTest
     private const int UiPresetList = 1600, UiSearch = 1650, UiSearchClear = 1651, UiFilter = 1655, UiLoad = 1670, UiRename = 1671, UiDelete = 1672, UiExport = 1673, UiImport = 1674, UiAudition = 1675;
     private const int WideExtra = 420;
 
-    // every control the Emulator tab draws in its default state (NES, Direct, Pulse 1): id, x, y, w, h, captured from the plugin as it was BEFORE the tabs existed
-    // (FruityHost editor-golden on the unmodified DLL), so a layout that moved by a pixel fails
+    // every control the Game view draws in its default state (NES, Direct, Pulse 1): id, x, y, w, h. RE-RECORDED ON PURPOSE for layout B (2026-11-13, FruityHost editor-golden on the
+    // layout-B plugin): the old table pinned the 904 x 664 Emulator tab "as it was before the tabs existed"; the user chose a new layout, so every control moved once. From here on a layout that
+    // moves by a pixel fails again.
     private static readonly (int Id, int X, int Y, int W, int H)[] EmulatorGolden =
     [
-        (1, 642, 94, 246, 28),
-        (2, 642, 162, 123, 28),
-        (3, 765, 162, 123, 28),
-        (4, 642, 196, 246, 28),
-        (7, 642, 230, 246, 28),
-        (9, 642, 386, 246, 28),
-        (10, 556, 286, 61, 56),
-        (11, 623, 286, 61, 56),
-        (12, 690, 286, 61, 56),
-        (13, 757, 286, 61, 56),
-        (21, 636, 450, 172, 28),
-        (22, 636, 480, 172, 28),
-        (23, 636, 510, 172, 28),
-        (24, 636, 540, 172, 28),
-        (25, 636, 570, 172, 28),
-        (40, 814, 13, 74, 26),
-        // the Console selector: six segments (NES GB SNES SMS MD PC) since the PC console (8aa791a9), 246 / 6 = 41 px each
-        (50, 642, 128, 41, 28),
-        (51, 683, 128, 41, 28),
-        (52, 724, 128, 41, 28),
-        (53, 765, 128, 41, 28),
-        (54, 806, 128, 41, 28),
-        (55, 847, 128, 41, 28),
-        (60, 738, 618, 150, 30),
-        (80, 16, 618, 76, 30),
-        (500, 98, 618, 100, 30),
+        (1, 766, 8, 150, 28),          // the emulator, in the header
+        (2, 12, 234, 112, 28),         // Direct / ROM, in the strip
+        (3, 124, 234, 112, 28),
+        (4, 56, 268, 180, 28),         // the chip
+        (7, 784, 78, 208, 28),         // the game, in the Game view's column
+        (9, 82, 78, 154, 28),          // the channel
+        (10, 12, 112, 40, 56),
+        (11, 58, 112, 40, 56),
+        (12, 104, 112, 40, 56),
+        (13, 150, 112, 40, 56),
+        (21, 70, 408, 106, 28),        // Volume, Pan, Coarse, Fine, Pulse duty
+        (22, 70, 436, 106, 28),
+        (23, 70, 464, 106, 28),
+        (24, 70, 492, 106, 28),
+        (25, 70, 358, 106, 28),
+        (40, 924, 9, 64, 26),          // About
+        // the Console selector: six segments (NES GB SNES SMS MD PC), 224 / 6 = 37 px each
+        (50, 12, 200, 37, 28),
+        (51, 49, 200, 37, 28),
+        (52, 86, 200, 37, 28),
+        (53, 123, 200, 37, 28),
+        (54, 160, 200, 37, 28),
+        (55, 197, 200, 37, 28),
+        (60, 12, 612, 110, 30),        // Reset Console
+        (62, 12, 300, 224, 24),        // show every console's chips
+        (80, 688, 9, 70, 26),          // Inputs
+        (500, 428, 9, 80, 26),         // Corrupt
     ];
 
     private sealed class UiCtx : IDisposable
@@ -136,7 +138,7 @@ public sealed unsafe partial class SelfTest
 
     private void UiTabTo(T t, UiCtx c, int tabId, string what) { UiClick(t, c, tabId, what); Win32Host.Pump(30); }
 
-    private void UiSelectInstrument(T t, UiCtx c, int row) { for (int guard = 0; guard < 20 && c.P.Test(420, 0) > row; guard++) Win32Host.WheelAt(c.Hwnd, 5, 600, 200); UiClick(t, c, UiInstList + (int)(row - c.P.Test(420, 0)), $"instrument row {row}"); }
+    private void UiSelectInstrument(T t, UiCtx c, int row) { for (int guard = 0; guard < 20 && c.P.Test(420, 0) > row; guard++) Win32Host.WheelAt(c.Hwnd, 5, 300, 200); UiClick(t, c, UiInstList + (int)(row - c.P.Test(420, 0)), $"instrument row {row}"); }
 
     // ------------------------------------------------------------------------------------------------ the scenarios
 
@@ -198,8 +200,9 @@ public sealed unsafe partial class SelfTest
     /// <summary>(scenario name, fault switch from Ui/UiIds.cs UiMutate, why that fault must be caught).</summary>
     private static readonly (string Scenario, int Fault, string Why)[] UiFaults =
     [
-        ("tabs", 1 << 0, "switching tabs leaves the window as it is"),
-        ("tabs", 1 << 1, "the host is not told about the resize"),
+        ("tabs", 1 << 19, "switching views resizes the window again (the old wide tabs)"),
+        ("tabs", 1 << 20, "the song bar is left out on the views other than Game"),
+        ("tabs", 1 << 21, "the channel strip is left out on the views other than Game"),
         ("emulator-unchanged", 1 << 9, "the Emulator tab's column is drawn one pixel lower"),
         ("gate-runaway", 1 << 14, "the Instruments tab ignores that Instrument Runaway is off"),
         ("inst-list", 1 << 2, "the wheel does not scroll lists"),
@@ -252,59 +255,64 @@ public sealed unsafe partial class SelfTest
 
     private void CheckTabs(T t, UiCtx c)
     {
+        // layout B (2026-11-13): ONE window size on every view (the old check demanded 904 -> 1324 -> 904 and a host call each time; the user chose a fixed window, so this asks the opposite)
         var p = c.P;
-        t.Expect(p.Test(400) == 0, "the editor does not open on the Emulator tab");
-        t.Expect(Unpack(p.Test(401)) == (904, 664), $"the Emulator tab is {Unpack(p.Test(401))}, expected 904 x 664");
-        // the strip: three tabs on the header rule, clear of the About button and of every control the Emulator tab has
+        t.Expect(p.Test(400) == 0, "the editor does not open on the Game view");
+        t.Expect(Unpack(p.Test(401)) == (1000, 700), $"the Game view is {Unpack(p.Test(401))}, expected 1000 x 700");
+        // the view buttons: in the header, clear of the About button and of every control of the Game view
         var tabs = new[] { UiTab0, UiTab1, UiTab2 }.Select(id => UiRect(c, id)).ToArray();
-        t.Expect(tabs.All(r => r != null), "the tab strip is not drawn");
+        t.Expect(tabs.All(r => r != null), "the view buttons are not drawn");
         if (tabs.All(r => r != null))
         {
             var about = UiRect(c, 40)!.Value;
             foreach (var r in tabs)
             {
-                t.Expect(!Overlap(r!.Value, about), "a tab overlaps the About button");
-                t.Expect(r!.Value.X >= 556 && r.Value.Y >= 30 && r.Value.Y + r.Value.H <= 57, $"a tab is outside the strip's place ({r.Value})");
-                foreach (var g in EmulatorGolden) t.Expect(!Overlap(r.Value, (g.X, g.Y, g.W, g.H)), $"a tab overlaps control {g.Id}");
+                t.Expect(!Overlap(r!.Value, about), "a view button overlaps the About button");
+                t.Expect(r!.Value.Y >= 0 && r.Value.Y + r.Value.H <= 44, $"a view button is outside the header ({r.Value})");
+                foreach (var g in EmulatorGolden) t.Expect(!Overlap(r.Value, (g.X, g.Y, g.W, g.H)), $"a view button overlaps control {g.Id}");
             }
         }
-        ExpectGolden(t, c, "before any tab");
-        t.Expect(UiRect(c, UiInstList) == null && UiRect(c, UiPresetList) == null, "the other tabs' controls are on screen on the Emulator tab");
+        ExpectGolden(t, c, "before any view");
+        t.Expect(UiRect(c, UiInstList) == null && UiRect(c, UiPresetList) == null, "the other views' controls are on screen on the Game view");
 
         int calls = p.Host.EditorResizedCalls;
-        UiTabTo(t, c, UiTab1, "Instruments tab");
+        int frame = Win32Host.ClientSize(c.Parent).W;
+        UiTabTo(t, c, UiTab1, "Instruments view");
         t.Expect(p.Test(400) == 1, "clicking Instruments did not switch to it");
-        t.Expect(Unpack(p.Test(401)) == (904 + WideExtra, 664), $"the Instruments tab is {Unpack(p.Test(401))}, expected {904 + WideExtra} x 664");
-        t.Expect(p.Host.EditorResizedCalls == calls + 1, $"the host was told {p.Host.EditorResizedCalls - calls} times that the editor was resized (expected once)");
-        int wide = Win32Host.ClientSize(c.Parent).W;
-        t.Expect(wide >= 904 + WideExtra - 4, $"the host's frame did not grow to hold the wide editor (client {wide})");
-        t.Expect(UiRect(c, 60) == null && UiRect(c, 21) == null && UiRect(c, 1) == null, "the Emulator tab's controls (Reset Console, sliders, dropdowns) are still on the Instruments tab");
-        t.Expect(UiRect(c, 80) != null && UiRect(c, 500) != null, "the Inputs and Corruption buttons (left column) disappeared on the Instruments tab");
+        t.Expect(Unpack(p.Test(401)) == (1000, 700), $"the Instruments view is {Unpack(p.Test(401))}, expected the same 1000 x 700");
+        t.Expect(p.Host.EditorResizedCalls == calls, $"the host was told {p.Host.EditorResizedCalls - calls} times that the editor was resized (the window has one size now)");
+        t.Expect(Win32Host.ClientSize(c.Parent).W == frame, "the host's frame changed size");
+        // the strip and the song bar stay: the chip, the sliders, Reset Console, the song bar's Play in game; the screen's column (the Game dropdown) goes
+        t.Expect(UiRect(c, 4) != null && UiRect(c, 21) != null && UiRect(c, 60) != null && UiRect(c, 2202) != null, "the strip or the song bar is gone on the Instruments view");
+        t.Expect(UiRect(c, 7) == null, "the Game view's column (Game dropdown) is still on the Instruments view");
+        t.Expect(UiRect(c, 80) != null && UiRect(c, 500) != null, "the Inputs and Corrupt buttons (header) disappeared on the Instruments view");
         var about2 = UiRect(c, 40)!.Value;
-        t.Expect(about2.X + about2.W <= 904 + WideExtra, "the About button is outside the wide window");
+        t.Expect(about2.X + about2.W <= 1000, "the About button is outside the window");
 
-        UiTabTo(t, c, UiTab2, "Presets tab");
-        t.Expect(p.Test(400) == 2 && Unpack(p.Test(401)) == (904 + WideExtra, 664), "the Presets tab is not wide");
-        t.Expect(p.Host.EditorResizedCalls == calls + 1, "going from one wide tab to the other told the host again although the size did not change");
+        UiTabTo(t, c, UiTab2, "Presets view");
+        t.Expect(p.Test(400) == 2 && Unpack(p.Test(401)) == (1000, 700), "the Presets view is not 1000 x 700");
+        UiClick(t, c, 500, "Corrupt view"); Win32Host.Pump(30);
+        t.Expect(p.Test(890) == 3 && p.Test(140) == 1 && Unpack(p.Test(401)) == (1000, 700), $"the Corrupt button did not show the Corrupt view (view {p.Test(890)})");
+        UiClick(t, c, 2020, "Record view"); Win32Host.Pump(30);
+        t.Expect(p.Test(890) == 4 && Unpack(p.Test(401)) == (1000, 700), $"the Record button did not show the Record view (view {p.Test(890)})");
+        UiClick(t, c, 2000, "the song bar's Song view button"); Win32Host.Pump(30);
+        t.Expect(p.Test(890) == 5 && p.Test(620) == 1 && Unpack(p.Test(401)) == (1000, 700), $"the song bar's button did not show the Song view (view {p.Test(890)})");
 
-        UiTabTo(t, c, UiTab0, "Emulator tab");
-        t.Expect(p.Test(400) == 0 && Unpack(p.Test(401)) == (904, 664), $"back on the Emulator tab the window is {Unpack(p.Test(401))}, expected 904 x 664");
-        t.Expect(p.Host.EditorResizedCalls == calls + 2, "the host was not told when the editor went back to its own size");
-        int narrow = Win32Host.ClientSize(c.Parent).W;
-        t.Expect(wide - narrow == WideExtra, $"the host's frame changed by {wide - narrow} pixels between the tabs, expected {WideExtra}");
-        ExpectGolden(t, c, "after visiting the other tabs");
+        UiTabTo(t, c, UiTab0, "Game view");
+        t.Expect(p.Test(400) == 0 && p.Test(890) == 0 && Unpack(p.Test(401)) == (1000, 700), $"back on the Game view the window is {Unpack(p.Test(401))}, view {p.Test(890)}");
+        t.Expect(p.Host.EditorResizedCalls == calls, "the host was told of a resize while switching views");
+        ExpectGolden(t, c, "after visiting the other views");
 
-        // a modal opened on a wide tab stays inside the window and closes
-        UiTabTo(t, c, UiTab2, "Presets tab");
+        // a modal opened on another view stays inside the window and closes
+        UiTabTo(t, c, UiTab2, "Presets view");
         UiClick(t, c, 40, "About button");
-        t.Expect(p.Test(36) == 1, "the About window did not open from a wide tab");
+        t.Expect(p.Test(36) == 1, "the About window did not open from the Presets view");
         var close = UiRect(c, 41);
-        t.Expect(close != null && close.Value.X + close.Value.W <= 904 + WideExtra, "the About window's Close button is outside the wide window");
+        t.Expect(close != null && close.Value.X + close.Value.W <= 1000, "the About window's Close button is outside the window");
         UiClick(t, c, 41, "About Close");
         t.Expect(p.Test(36) == 0, "the About window did not close");
-        UiTabTo(t, c, UiTab0, "Emulator tab");
+        UiTabTo(t, c, UiTab0, "Game view");
     }
-
     // The wheel over a slider of the Emulator tab changes its parameter. WM_MOUSEWHEEL carries the cursor in SCREEN coordinates; before round 6 the Emulator tab read them as client
     // coordinates and hit whatever sat at that point (WheelAt sends the message the way Windows does).
     private void CheckEmulatorWheel(T t, UiCtx c)
@@ -331,7 +339,7 @@ public sealed unsafe partial class SelfTest
         Win32Host.MouseMove(c.Hwnd, 20, 20);
         Win32Host.Pump(60);
         var before = Win32Host.CapturePixels(c.Hwnd, out int w, out int h);
-        t.Expect(w == 904 && h == 664, $"the Emulator tab's picture is {w} x {h}");
+        t.Expect(w == 1000 && h == 700, $"the Game view's picture is {w} x {h}");
         // a round trip through both tabs leaves not one pixel of the Emulator tab different
         UiTabTo(t, c, UiTab1, "Instruments"); UiTabTo(t, c, UiTab2, "Presets"); UiTabTo(t, c, UiTab0, "Emulator");
         Win32Host.MouseMove(c.Hwnd, 20, 20);

@@ -32,11 +32,11 @@ public sealed unsafe partial class Bn2Editor
     private void DrawPresetPicker(nint dc, Emulator emu, int x, int y, int w)
     {
         var lp = plugin.Preset;
-        Dropdown(dc, IdInstrument, "Preset", x, y, w, 86, lp != null ? lp.Data.Name : "none loaded", dim: lp == null);
+        Dropdown(dc, IdInstrument, "Preset", x, y, w, Lw, lp != null ? lp.Data.Name : "none loaded", dim: lp == null);
         string note = plugin.PresetNote ?? "";
         string info = presetPickMessage.Length > 0 ? presetPickMessage : note.Length > 0 ? note : lp != null ? lp.Summary : "pick a preset from the library, or send one from the Instruments tab";
         bool warn = presetPickMessage.Length > 0 ? !presetPickOk : note.Length > 0;
-        Txt(dc, info, R(x + 86, y + RowH + 1, w - 86, 30), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_END_ELLIPSIS, warn ? Warn : Faint, fontSmall);
+        Txt(dc, info, R(x, y + RowH + 1, w, 30), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_END_ELLIPSIS, warn ? Warn : Faint, fontSmall);
     }
 
     /// <summary>The held preset carries game voices (a SNES instrument sent from a game): the Channel row of preset mode is their dropdown.</summary>
@@ -46,7 +46,7 @@ public sealed unsafe partial class Bn2Editor
     {
         var rs = plugin.Preset!.Play.Recipes;
         int rp = plugin.Get(P.Recipe);
-        Dropdown(dc, IdChannel, "Voice", x, y, w, 86, rp > 0 && rp <= rs.Length ? rs[rp - 1].Describe(rp - 1).Name : "Plain sample, as sent");
+        Dropdown(dc, IdChannel, "Voice", x, y, w, Lw, rp > 0 && rp <= rs.Length ? rs[rp - 1].Describe(rp - 1).Name : "Plain sample, as sent");
     }
 
     /// <summary>"Plain sample" (value 0) and one entry per game voice the preset carries (value n = the Recipe parameter).</summary>

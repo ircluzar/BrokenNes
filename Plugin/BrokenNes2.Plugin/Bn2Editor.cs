@@ -10,6 +10,7 @@
 using System.Runtime.InteropServices;
 using BrokenNes.Fruity;
 using BrokenNes2.Ui;
+using BrokenNes2.Music.Flp;
 
 namespace BrokenNes2;
 
@@ -34,14 +35,16 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
     private const int RecipeValue = 1000;
 
     private const string ClassName = "BrokenNes2Editor";
-    public const int Height = UiLayout.Height;      // the width depends on the tab: see Ui/Bn2Editor.Tabs.cs (Width, 904 on the Emulator tab)
-    private const int Margin = 16, HeaderH = 52;
-    private const int ScreenX = Margin, ScreenY = 64, ScreenW = 520, ScreenH = 488;
-    private const int ColX = 556, ColW = 332;
+    public const int Height = UiLayout.Height;      // one size on every view (layout B): Width is in Ui/Bn2Editor.Tabs.cs
+    private const int Margin = 16;
+    private const int ScreenX = UiLayout.ViewX, ScreenY = UiLayout.ViewY, ScreenW = 520, ScreenH = 488;     // the Game view's screen
+    private const int StripX = 12, StripWidth = UiLayout.StripW - 24;     // the channel strip's controls
+    private const int Lw = 70;                                             // the strip's label column
+    private const int SliderLabelW = 64, SliderValueW = 58, InstrumentRowH = 50;   // the strip's sliders; the Instrument row (dropdown + its line)
     private const nuint TimerId = 1;
     private const int RowH = 28, RowPitch = 34, ItemH = 24, MaxRows = 12;
     private const int AboutW = 720, AboutH = 542, InputsW = 780, InputsH = 600, HowH = 246, PlogueH = 150;
-    private const int CorW = 800, CorH = 616, CorVisible = 5, CorRowH = 50, CorNoteSeconds = 12;
+    private const int CorW = ViewBoxW, CorH = 616, CorVisible = 5, CorRowH = 50, CorNoteSeconds = 12;
 
     private enum Kind { Button, Dropdown, Slider, Item, Cell, Ui }
     private readonly record struct Hit(int Id, RECT Rect, Kind Kind);
@@ -88,7 +91,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
     private Emulator? padEmulator;
 
     // the Corruption window: the rows as of the last paint (the wheel and the clicks use them), the first visible row, and the note over the picture
-    private bool corOpen, corNoteShown;
+    private bool corNoteShown;          // (corOpen is the Corrupt view now: Bn2Editor.Layout.cs)
     private int corScroll, corSeenSelection = -2;
     private IReadOnlyList<CorrRow> corRows = [];
     private string? testPickedPath;
@@ -251,16 +254,16 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
     }
 
     /// <summary>A row of exclusive choices, one segment each (the selected one lit). Ids are <paramref name="firstId"/> + index.</summary>
-    private void Segments(nint dc, string label, int x, int y, int w, int firstId, string[] names, int selected)
+    private void Segments(nint dc, string label, int x, int y, int w, int firstId, string[] names, int selected, int labelW = 86)
     {
-        Txt(dc, label, R(x, y, 86, RowH), Win32.DT_LEFT | Mid, Dim, fontLabel);
-        int sx = x + 86, sw = (w - 86) / names.Length;
+        if (labelW > 0) Txt(dc, label, R(x, y, labelW, RowH), Win32.DT_LEFT | Mid, Dim, fontLabel);
+        int sx = x + labelW, sw = (w - labelW) / names.Length;
         for (int i = 0; i < names.Length; i++)
         {
             var seg = R(sx + i * sw, y, sw, RowH);
             bool on = selected == i, isHot = hot == firstId + i;
             Box(dc, seg, on ? Accent : (isHot ? FieldHot : Field), on ? Accent : Line, 5);
-            Txt(dc, names[i], seg, Win32.DT_CENTER | Mid, on ? White : Dim, on ? fontSection : fontLabel);
+            Txt(dc, names[i], seg, Win32.DT_CENTER | Mid, on ? White : Dim, on || sw < 50 ? fontSection : fontLabel);
             AddHit(firstId + i, seg, Kind.Button);
         }
     }
@@ -271,7 +274,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         var def = plugin.Params[param];
         int v = plugin.Get(param);
         bool isHot = hot == id || active == id;
-        const int labelW = 86, valueW = 78;
+        const int labelW = SliderLabelW, valueW = SliderValueW;
         Txt(dc, label, R(x, y, labelW, RowH), Win32.DT_LEFT | Mid, dim ? Faint : Dim, fontLabel);
         Txt(dc, def.Format(v), R(x + w - valueW, y, valueW, RowH), Win32.DT_RIGHT | Mid, dim ? Faint : Text, fontLabel);
         int tx = x + labelW, tw = w - labelW - valueW - 8, ty = y + RowH / 2;
@@ -299,86 +302,117 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
 
         var a = plugin.Assignment;
         var emu = a.Emulator;
+
+        DrawHeader(dc, emu);                                // logo, the view buttons, Inputs, the emulator, About (Bn2Editor.Layout.cs)
+        if (view == 0 || !UiMutate.Has(UiMutate.StripHidden)) DrawStrip(dc, a, emu);
+        if (view == 0 || !UiMutate.Has(UiMutate.SongBarHidden)) DrawSongBar(dc, emu);
+        switch (view)
+        {
+            case 0: DrawScreen(dc, emu); DrawStatus(dc, a, emu); DrawGameColumn(dc, emu); break;
+            case 1: case 2: DrawTabContent(dc, emu); break;      // the Instruments and Presets views (Ui/Bn2Editor.Tabs.cs)
+            case 3: DrawCorruption(dc, emu); break;
+            case 4: DrawRecord(dc, emu); break;
+            case 5: DrawMidi(dc, emu); break;
+        }
+        if (view != 3) corRows = [];
+
+        if (openId != 0) DrawList(dc);
+        if (aboutOpen) DrawAbout(dc);
+        else if (inputsOpen) DrawInputs(dc);
+        else if (pcEdOpen) DrawPcEditor(dc);
+    }
+
+    /// <summary>The channel strip on the left (layout B), always there: this channel, the console and its chip, the instrument, the sliders, Direct / ROM and Reset Console.
+    /// The controls are the old Emulator tab's right column with the same ids, narrower.</summary>
+    private void DrawStrip(nint dc, Assignment a, Emulator? emu)
+    {
+        Fill(dc, R(0, UiLayout.HeaderH + 1, UiLayout.StripW, UiLayout.SongBarY - UiLayout.HeaderH - 1), Panel);
+        Line_(dc, UiLayout.StripW, UiLayout.HeaderH + 1, UiLayout.StripW, UiLayout.SongBarY, Line);
         int mode = plugin.Get(P.Mode);
         int console = plugin.Get(P.Console);
-
-        DrawHeader(dc, emu);
-        DrawScreen(dc, emu);
-        DrawStatus(dc, a, emu);
-        DrawTabStrip(dc);                                   // tabs (Ui/Bn2Editor.Tabs.cs)
-
         bool frozen = emu?.Runaway == true, sampler = emu?.SamplerMode == true, gbSampler = emu?.GbSamplerMode == true, segaSampler = emu?.SegaSamplerMode == true, presetMode = emu?.PresetMode == true, wmsSampler = emu?.WmsSamplerMode == true;
-        if (tab == 0) {   // the Emulator tab: today's right column, untouched
+        int x = StripX, y = UiLayout.ViewY + (UiMutate.Has(UiMutate.EmulatorShift) ? 1 : 0), w = StripWidth;
 
-        // EMULATOR
-        int x = ColX, y = 64 + (UiMutate.Has(UiMutate.EmulatorShift) ? 1 : 0), w = ColW;
-        Section(dc, "EMULATOR", "shared by every instance on it", x, y, w);
-        y += 30;
-        int er = plugin.Get(P.Emulator);
-        Dropdown(dc, IdEmulator, "Emulator", x, y, w, 86, er == 0 ? (emu != null ? $"Auto  ->  #{emu.Id}" : "Auto  (none free)") : $"#{er}");
-        y += RowPitch;
-
-        Segments(dc, "Console", x, y, w, IdConsole, Cx.ShortNames, console);
-        y += RowPitch;
-
-        Segments(dc, "Mode", x, y, w, IdModeDirect, ModeLabels, mode);
-        y += RowPitch;
-
-        Dropdown(dc, IdChip, "Sound chip", x, y, w, 86, plugin.Params[P.Core].Format(plugin.Get(P.Core)));
-        y += RowPitch;
-
-        // the game ROM mode runs
-        Dropdown(dc, IdGame, "Game", x, y, w, 86, emu?.RomDisplayName ?? "-", dim: mode != 1);
-        y += RowPitch + 4;
-
-        // channel strip (or, in Instrument Runaway, a banner)
-        Txt(dc, frozen ? "Instrument Runaway" : "Channels", R(x, y, 200, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE, frozen ? Accent : Dim, fontSmall);
-        if (!frozen) Txt(dc, CellHint(emu), R(x + 80, y, w - 80, 16), Win32.DT_RIGHT | Win32.DT_SINGLELINE, Faint, fontSmall);
-        y += 18;
-        if (presetMode) DrawPresetBanner(dc, emu!, x, y, w); else if (frozen) DrawRunawayBanner(dc, sampler || wmsSampler ? 1 : gbSampler ? 2 : segaSampler ? 3 : 0, x, y, w, sampler ? emu!.Snapshot!.ListenNote : segaSampler ? emu!.SegaState!.ListenNote : wmsSampler ? emu!.WmsState!.ListenNote : ""); else DrawCells(dc, emu, a, x, y, w);
-        y += 56 + 14;
-
-        // THIS INSTANCE
-        Section(dc, "THIS INSTANCE", null, x, y, w);
-        y += 30;
+        // THIS CHANNEL
+        Section(dc, "THIS CHANNEL", emu == null ? "no emulator" : $"emulator #{emu.Id}", x, y, w);
+        y += 26;
         if (presetMode && PresetHasVoices) DrawPresetVoice(dc, x, y, w);
         else if (sampler || segaSampler || presetMode || wmsSampler)
         {
-            Txt(dc, "Channel", R(x, y, 86, RowH), Win32.DT_LEFT | Mid, Dim, fontLabel);
-            Box(dc, R(x + 86, y, w - 86, RowH), Panel, Line, 5);
-            Txt(dc, presetMode ? "Sampler  -  this instance's preset" : segaSampler ? "Sampler  -  game's sound chips" : wmsSampler ? "Sampler  -  game's WideMess instruments" : "Sampler  -  game's instruments", R(x + 96, y, w - 106, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Dim, fontLabel);
+            Txt(dc, "Channel", R(x, y, Lw, RowH), Win32.DT_LEFT | Mid, Dim, fontLabel);
+            Box(dc, R(x + Lw, y, w - Lw, RowH), Panel, Line, 5);
+            Txt(dc, presetMode ? "Sampler: own preset" : segaSampler ? "Sampler: game's chips" : wmsSampler ? "Sampler: WideMess" : "Sampler: game's samples", R(x + Lw + 8, y, w - Lw - 14, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Dim, fontLabel);
         }
         else
         {
             int cr = plugin.Get(P.Channel), req = plugin.RequestedChannel;
-            string chText = gbSampler ? (cr == 0 ? "Auto  ->  Pulse 1" : GbChannelNames[Bn2Plugin.GbChannelOf(cr)])
-                          : req < 0 ? (a.Channel >= 0 ? $"Auto  ->  {Ch.Label(a.Channel, console, mode)}" : "Auto") : Ch.Label(req, console, mode);
-            Dropdown(dc, IdChannel, "Channel", x, y, w, 86, chText);
+            string chText = gbSampler ? (cr == 0 ? "Auto -> Pulse 1" : GbChannelNames[Bn2Plugin.GbChannelOf(cr)])
+                          : req < 0 ? (a.Channel >= 0 ? $"Auto -> {Ch.Label(a.Channel, console, mode)}" : "Auto") : Ch.Label(req, console, mode);
+            Dropdown(dc, IdChannel, "Channel", x, y, w, Lw, chText);
         }
         y += RowPitch;
-        if (a.Problem != null) Txt(dc, a.Problem, R(x, y - 2, w, 30), Win32.DT_LEFT | Win32.DT_WORDBREAK, Warn, fontSmall);
-        y += 30;
-        Slider(dc, P.Volume, "Volume", x, y, w); y += 30;
-        Slider(dc, P.Pan, "Pan", x, y, w); y += 30;
-        Slider(dc, P.Coarse, "Coarse", x, y, w); y += 30;
-        Slider(dc, P.Fine, "Fine", x, y, w); y += 30;
+        // channel cells (or, in Instrument Runaway, a banner)
+        if (!frozen) Txt(dc, CellHint(emu), R(x, y - 4, w, 14), Win32.DT_RIGHT | Win32.DT_SINGLELINE, Faint, fontSmall);
+        if (presetMode) DrawPresetBanner(dc, emu!, x, y, w); else if (frozen) DrawRunawayBanner(dc, sampler || wmsSampler ? 1 : gbSampler ? 2 : segaSampler ? 3 : 0, x, y, w, sampler ? emu!.Snapshot!.ListenNote : segaSampler ? emu!.SegaState!.ListenNote : wmsSampler ? emu!.WmsState!.ListenNote : ""); else DrawCells(dc, emu, a, x, y, w);
+        y += 56 + 6;
+        if (a.Problem != null) { Txt(dc, a.Problem, R(x, y, w, 30), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_END_ELLIPSIS, Warn, fontSmall); y += 32; }
+
+        // CONSOLE AND CHIP
+        Section(dc, "CONSOLE  /  CHIP", null, x, y, w);
+        y += 26;
+        Segments(dc, "", x, y, w, IdConsole, Cx.ShortNames, console, labelW: 0);
+        y += RowPitch;
+        Segments(dc, "", x, y, w, IdModeDirect, ModeLabels, mode, labelW: 0);
+        y += RowPitch;
+        Dropdown(dc, IdChip, "Chip", x, y, w, 44, ChipValue());
+        y += RowH + 4;
+        Check(dc, IdAllChips, "show every console's chips", x, y + 2, showAllChips, null, labelW: 190, hitW: w);
+        y += 32;
+
+        // SOUND: the instrument, the sliders
+        Section(dc, "SOUND", null, x, y, w);
+        y += 26;
+        DrawInstrumentRow(dc, emu, a, x, y, w, mode, console, sampler, gbSampler, segaSampler, presetMode, wmsSampler);
+        y += InstrumentRowH;
+        Slider(dc, P.Volume, "Volume", x, y, w); y += 28;
+        Slider(dc, P.Pan, "Pan", x, y, w); y += 28;
+        Slider(dc, P.Coarse, "Coarse", x, y, w); y += 28;
+        Slider(dc, P.Fine, "Fine", x, y, w); y += 28;
+
+        // Reset Console (starts this emulator over for every instance on it) and the Nano chips' Export sidecar, at the strip's foot
+        var reset = R(x, UiLayout.SongBarY - 40, 110, 30);
+        bool flash = Environment.TickCount64 < resetFlashUntil;
+        if (emu != null)
+        {
+            bool nano = emu.NanoGbDirectMode || emu.NanoSmsDirectMode || (emu.Mode == 0 && NanoKinds.OfChip(emu.Chip) != null);
+            if (nano) Button(dc, IdNanoSidecar, "Export sidecar", R(reset.Right + 8, reset.Top, w - 118, 30));
+            string words = nanoSidecarWords.Length > 0 && nano ? nanoSidecarWords : $"Reset Console restarts emulator #{emu.Id}";
+            Txt(dc, words, R(x, reset.Top - 18, w, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+            Button(dc, IdReset, flash ? "Reset done" : "Reset Console", reset, primary: flash);
+        }
+        else Box(dc, reset, Panel, Line, 5);
+    }
+
+    /// <summary>The strip's Instrument row: what the Instrument parameter means on this chip / in this mode (the old Emulator tab's chain, unchanged in what it shows).</summary>
+    private void DrawInstrumentRow(nint dc, Emulator? emu, Assignment a, int x, int y, int w, int mode, int console, bool sampler, bool gbSampler, bool segaSampler, bool presetMode, bool wmsSampler)
+    {
         int ch = a.Channel;
         if (presetMode) DrawPresetPicker(dc, emu!, x, y, w);
         else if (sampler)
         {
-            // the picker lists what the game has loaded, read from its sample table
+            // the picker lists what the game has loaded, read from its sample table (the Game view's Runaway tree shows the same, grouped)
             var snap = emu!.Snapshot!;
             var found = snap.Instruments();
             int ins = snap.Resolve(plugin.Get(P.Instrument));
             var current = found.FirstOrDefault(i => i.Slot == ins);
             int rp = plugin.Get(P.Recipe);
             bool recipeOn = rp > 0 && rp <= snap.Recipes.Length;
-            string value = recipeOn ? snap.Recipes[rp - 1].Describe(rp - 1).Name : found.Count == 0 ? "no instruments found" : current.Blocks > 0 ? $"#{ins}   ${current.Start:X4}" : $"#{ins}   (empty slot)";
-            Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, value);
+            string value = recipeOn ? snap.Recipes[rp - 1].Describe(rp - 1).Name : found.Count == 0 ? "no instruments found" : current.Blocks > 0 ? TreeNameOr(emu, RunawayKey.Snes(snap, current), $"#{ins}   ${current.Start:X4}") : $"#{ins}   (empty slot)";
+            Dropdown(dc, IdInstrument, "Instrument", x, y, w, Lw, value);
             string info = recipeOn ? snap.Recipes[rp - 1].Describe(rp - 1).Note
                 : current.Blocks > 0 ? $"{current.Milliseconds:0} ms, {(current.Loops ? "loops" : "one-shot")}{(current.Sounding ? ", the game was playing it" : "")}   ({found.Count} found, {snap.Recipes.Length} game voices)"
                 : found.Count == 0 ? "the game's sample table has no sample the plugin can read" : $"nothing in this slot   ({found.Count} found: pick one from the list)";
-            Txt(dc, info, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+            Txt(dc, info, R(x, y + RowH + 1, w, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
         }
         else if (wmsSampler)
         {
@@ -386,10 +420,10 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             var ws = emu!.WmsState!;
             var found = ws.Instruments();
             int ins = ws.Resolve(plugin.Get(P.Instrument));
-            Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, found.Count == 0 ? "no instruments found" : $"#{ins}   {found[ins].Name}");
+            Dropdown(dc, IdInstrument, "Instrument", x, y, w, Lw, found.Count == 0 ? "no instruments found" : $"#{ins}   {found[ins].Name}");
             string info = found.Count == 0 ? "the game's sample directories have no sample the plugin can read"
                 : $"{found[ins].Milliseconds:0} ms, {(found[ins].Loops ? "loops" : "one-shot")}, {(found[ins].WideDir ? "a new voice (24 at once)" : "an S-DSP voice (8 at once)")}{(found[ins].Sounding ? ", the game was playing it" : "")}   ({found.Count} found)";
-            Txt(dc, info, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+            Txt(dc, info, R(x, y + RowH + 1, w, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
         }
         else if (segaSampler)
         {
@@ -399,10 +433,10 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             int grp = plugin.Get(P.Recipe);
             bool gameVoice = grp > 0 && grp <= sn.Recipes.Length;
             var (iname, inote) = sn.Instrument(ins);
-            Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, gameVoice ? sn.Recipes[grp - 1].Describe(grp - 1).Name : pv == 0 ? $"Auto  ->  {iname}" : iname);
+            Dropdown(dc, IdInstrument, "Instrument", x, y, w, Lw, gameVoice ? sn.Recipes[grp - 1].Describe(grp - 1).Name : pv == 0 ? $"Auto -> {iname}" : iname);
             int n = gameVoice ? (sn.Recipes[grp - 1].Kind == GenRecipe.KindPsgNoise ? 1 : sn.Recipes[grp - 1].IsFm ? 6 : 3) : sn.Slots(ins);
             string line = gameVoice ? sn.Recipes[grp - 1].Describe(grp - 1).Note : (inote != null ? inote + "   -   " : "") + (n == 1 ? "one note at a time" : $"{n} notes at once") + $"   ({sn.InstrumentCount} found, {sn.Recipes.Length} game voices)";
-            Txt(dc, line, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+            Txt(dc, line, R(x, y + RowH + 1, w, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
         }
         else if (gbSampler)
         {
@@ -411,10 +445,10 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             if (gch < 2)
             {
                 int d = plugin.Get(P.Instrument);
-                Dropdown(dc, IdGbDuty, "Duty", x, y, w, 86, d is >= 1 and <= 4 ? GbDutyNames[d - 1] : $"the game's ({GbDutyNames[gb.Duty(gch)]})");
+                Dropdown(dc, IdGbDuty, "Duty", x, y, w, Lw, d is >= 1 and <= 4 ? GbDutyNames[d - 1] : $"the game's ({GbDutyNames[gb.Duty(gch)]})");
             }
-            else if (gch == 3) Slider(dc, P.NoiseMode, "Noise mode", x, y, w);
-            else Txt(dc, "the game's own waveform (its wave RAM)", R(x + 86, y, w - 86, RowH), Win32.DT_LEFT | Mid, Faint, fontSmall);
+            else if (gch == 3) Slider(dc, P.NoiseMode, "Noise", x, y, w);
+            else Txt(dc, "the game's own waveform (its wave RAM)", R(x, y, w, RowH), Win32.DT_LEFT | Mid, Faint, fontSmall);
         }
         else if (mode == 0 && DrawPcInstrument(dc, x, y, w)) { }      // the x86 PC console: the patch / waveform / mode on every channel, the OPL patch editor (Bn2Editor.Pc.cs)
         else if (PatchBank(mode) is 3 or 4)
@@ -422,61 +456,22 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             // (bank 4: the Nano GB chip's 27 presets, by program number, on every channel)
             // WideMess milestone 7a: the WideMess chip plays its built-in 16-bit instruments on every channel, many notes at once; the Instrument parameter picks one (0 = the channel's own)
             var patch = Cx.PatchItems(3)[Cx.PatchClamp(3, plugin.Get(P.Instrument))];
-            Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, patch.Name);
-            Txt(dc, patch.Description, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+            Dropdown(dc, IdInstrument, "Instrument", x, y, w, Lw, patch.Name);
+            Txt(dc, patch.Description, R(x, y + RowH + 1, w, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
         }
         else if (PatchBank(mode) != 0 && (ch == Ch.Pulse1 || ch == Ch.Pulse2))
         {
             // the FM chips (Genesis, Master System FM) play a pulse as an FM voice with a patch of the chip's own bank; the Instrument parameter picks it. (The pulse duty only sets the loudness there.)
             int bank = PatchBank(mode);
             var patch = Cx.PatchItems(bank)[Cx.PatchClamp(bank, plugin.Get(P.Instrument))];
-            Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, patch.Name);
-            Txt(dc, patch.Description, R(x + 86, y + RowH + 1, w - 86, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+            Dropdown(dc, IdInstrument, "Instrument", x, y, w, Lw, patch.Name);
+            Txt(dc, patch.Description, R(x, y + RowH + 1, w, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
         }
         else if (PatchBank(mode) != 0 && ch == Ch.Triangle)
-            Txt(dc, PatchBank(mode) == 1 ? "a sine on FM voice 3: the triangle's voice (the patch is for the pulses)" : "a sine on FM channel 3 (a designed instrument plays it too: the chip has one custom instrument)", R(x, y, w, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
-        else if (ch == Ch.Pulse1 || ch == Ch.Pulse2) Slider(dc, P.Duty, "Pulse duty", x, y, w, dim: console == Cx.MasterSystem && mode == 0);   // the PSG's tones are 50% squares: the duty is not played
-        else if (ch == Ch.Noise) Slider(dc, P.NoiseMode, "Noise mode", x, y, w);
-        } else DrawTabContent(dc, emu);                     // the Instruments and Presets tabs (Ui/Bn2Editor.Tabs.cs)
-
-        // Inputs and Instrument Runaway, bottom left
-        int by = Height - Margin - 30;
-        var inputsBtn = R(ScreenX, by, 76, 30);
-        Button(dc, IdInputs, "Inputs", inputsBtn);
-        var corBtn = R(inputsBtn.Right + 6, by, 100, 30);
-        Button(dc, IdCor, "Corruption", corBtn, primary: emu?.Corruption.Applied != null);
-        var runBtn = R(corBtn.Right + 6, by, 176, 30);
-        bool canRun = emu?.CanRunaway == true;
-        if (canRun || frozen) Button(dc, IdRunaway, frozen ? "Runaway ON  -  release" : "Instrument Runaway", runBtn, primary: frozen);
-        else { Box(dc, runBtn, Panel, Line, 5); Txt(dc, "Instrument Runaway", runBtn, Win32.DT_CENTER | Mid, Faint, fontLabel); }
-        string runHint = frozen ? (sampler || wmsSampler ? "FL notes play its samples" : gbSampler ? "FL notes play its channels" : segaSampler ? "FL notes play its chips" : "frozen and silent") : canRun ? "freeze it, keep its sounds" : "needs ROM mode and a game";
-        Txt(dc, runHint, R(runBtn.Right + 8, by, ColX - runBtn.Right - 16, 30), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
-
-        // Reset Console, bottom right: starts this emulator over for every instance on it (the Emulator tab's; the other tabs leave it out)
-        if (tab == 0) {
-        var reset = R(Width - Margin - 150, Height - Margin - 30, 150, 30);
-        bool flash = Environment.TickCount64 < resetFlashUntil;
-        if (emu != null)
-        {
-            int textRight = reset.Left;
-            if (emu.NanoGbDirectMode || emu.NanoSmsDirectMode || (emu.Mode == 0 && NanoKinds.OfChip(emu.Chip) != null))
-            {
-                // the Nano GB chip: the sidecar JSON the web library reads beside FL's MIDI export (every Nano GB instance's preset, volume and pan, keyed by MIDI channel)
-                var side = R(reset.Left - 6 - 150, reset.Top, 150, 30);
-                Button(dc, IdNanoSidecar, "Export sidecar", side);
-                textRight = side.Left;
-            }
-            Txt(dc, nanoSidecarWords.Length > 0 && (emu.NanoGbDirectMode || emu.NanoSmsDirectMode || (emu.Mode == 0 && NanoKinds.OfChip(emu.Chip) != null)) ? nanoSidecarWords : $"restarts emulator #{emu.Id}", R(ColX, reset.Top, textRight - ColX - 10, 30), Win32.DT_RIGHT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
-            Button(dc, IdReset, flash ? "Reset done" : "Reset Console", reset, primary: flash);
-        }
-        else Box(dc, reset, Panel, Line, 5);
-        }
-
-        if (openId != 0) DrawList(dc);
-        if (aboutOpen) DrawAbout(dc);
-        else if (inputsOpen) DrawInputs(dc);
-        else if (corOpen) DrawCorruption(dc, emu);
-        else { corRows = []; if (midOpen) DrawMidi(dc, emu); else if (recOpen) DrawRecord(dc, emu); else if (pcEdOpen) DrawPcEditor(dc); }
+            Txt(dc, PatchBank(mode) == 1 ? "a sine on FM voice 3 (the patch is for the pulses)" : "a sine on FM channel 3 (a designed instrument)", R(x, y, w, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+        else if (ch == Ch.Pulse1 || ch == Ch.Pulse2) Slider(dc, P.Duty, "Duty", x, y, w, dim: console == Cx.MasterSystem && mode == 0);   // the PSG's tones are 50% squares: the duty is not played
+        else if (ch == Ch.Noise) Slider(dc, P.NoiseMode, "Noise", x, y, w);
+        else Txt(dc, "no instrument setting on this channel", R(x, y, w, RowH), Win32.DT_LEFT | Mid, Faint, fontSmall);
     }
 
     /// <summary>Instead of the channel strip while the game is frozen: <paramref name="kind"/> 0 silent (NES), 1 SNES instruments, 2 Game Boy channels, 3 a Sega game's sound chips.</summary>
@@ -497,27 +492,6 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
     private static readonly string[] GbDutyNames = ["12.5%", "25%", "50%", "75%"];
 
     private static readonly string[] ModeLabels = ["Direct", "ROM"];
-
-    private void DrawHeader(nint dc, Emulator? emu)
-    {
-        // BrokenNes2
-        int x = Margin;
-        Txt(dc, "Broken", R(x, 8, 200, 36), Win32.DT_LEFT | Mid, Text, fontTitle);
-        x += TextWidth(dc, "Broken", fontTitle);
-        Txt(dc, "Nes2", R(x, 8, 200, 36), Win32.DT_LEFT | Mid, Accent, fontTitle);
-        x += TextWidth(dc, "Nes2", fontTitle);
-        Txt(dc, "one instance = one channel", R(x + 16, 8, 300, 36), Win32.DT_LEFT | Mid, Faint, fontSmall);
-        int midiX = x + 16 + TextWidth(dc, "one instance = one channel", fontSmall) + 24;
-        DrawMidiButton(dc, midiX);                                                                    // Test MIDI export (Bn2Editor.Song.cs)
-        DrawRecordButton(dc, Math.Max(midiX, 330) + 156);                                             // Record (Bn2Editor.Record.cs)
-
-        // About, and which emulator this instance sits on
-        var about = R(Width - Margin - 74, 13, 74, 26);
-        Button(dc, IdAbout, "About", about);
-        string badge = emu == null ? "no emulator" : $"EMULATOR #{emu.Id}  -  {emu.MemberCount} instance{(emu.MemberCount == 1 ? "" : "s")}";
-        Txt(dc, badge, R(about.Left - 12 - 230, 8, 230, 36), Win32.DT_RIGHT | Mid, emu == null ? Warn : Dim, fontSection);
-        Line_(dc, 0, HeaderH + 4, Width, HeaderH + 4, Line);
-    }
 
     private void DrawScreen(nint dc, Emulator? emu)
     {
@@ -694,7 +668,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             else
             {
                 Txt(dc, Ch.ShortNames[c], R(r.Left, r.Top + 6, cw, 16), Win32.DT_CENTER | Win32.DT_SINGLELINE, unavailable ? Faint : Text, fontSmall);
-                string state = unavailable ? (c == Ch.Mix ? "ROM only" : "NES only") : mine ? "this" : taken ? "in use" : "free";
+                string state = unavailable ? (c == Ch.Mix ? (cw < 56 ? "ROM" : "ROM only") : (cw < 56 ? "NES" : "NES only")) : mine ? "this" : taken ? "in use" : "free";
                 Txt(dc, state, R(r.Left, r.Top + 22, cw, 14), Win32.DT_CENTER | Win32.DT_SINGLELINE, unavailable ? Faint : mine ? Text : taken ? Warn : Good, fontSmall);
                 var bar = R(r.Left + 8, r.Bottom - 12, cw - 16, 4);
                 Box(dc, bar, Bg, -1, 2);
@@ -719,7 +693,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
     private RECT ListRect()
     {
         int rows = Math.Min(openItems.Length, MaxRows);
-        int w = Math.Max(openAnchor.Right - openAnchor.Left, 220);
+        int w = Math.Max(openAnchor.Right - openAnchor.Left, openId is IdChip or IdBarTarget ? 380 : 220);      // (the chip list carries its group and note)
         int h = rows * ItemH + 8;
         int l = Math.Min(openAnchor.Left, Width - w - 8);
         int t = openAnchor.Bottom + 3;
@@ -741,6 +715,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             var row = R(box.Left + 4, box.Top + 4 + r * ItemH, box.Right - box.Left - 8 - (scroll ? 6 : 0), ItemH);
             bool selected = i == openSelected, isHot = i == openHover;
             if (isHot) Box(dc, row, FieldHot, -1, 4);
+            if (openGroupStarts.Contains(i)) Line_(dc, row.Left + 4, row.Top, row.Right - 4, row.Top, Accent);      // the chip list: a new group (stock, ported, nano, presets, another console) starts here
             if (selected) Fill(dc, R(row.Left, row.Top + 5, 3, ItemH - 10), Accent);
             var (text, note) = openItems[i];
             Txt(dc, text, R(row.Left + 10, row.Top, row.Right - row.Left - 14, ItemH), Win32.DT_LEFT | Mid, selected ? Text : (isHot ? Text : Win32.Rgb(200, 204, 216)), selected ? fontSection : fontLabel);
@@ -759,7 +734,8 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
 
     // ---------------------------------------------------------------- the Inputs window
 
-    private RECT InputsBox => R((Width - InputsW) / 2, (Height - InputsH) / 2, InputsW, InputsH);
+    /// <summary>The Inputs panel drops down from the header's Inputs button (layout B), right-aligned under the header.</summary>
+    private RECT InputsBox => R(Width - 12 - InputsW, UiLayout.HeaderH + 2, InputsW, InputsH);
 
     private void Check(nint dc, int id, string label, int x, int y, bool on, string? note, int labelW = 120, int hitW = 160)
     {
@@ -782,8 +758,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
 
     private void DrawInputs(nint dc)
     {
-        DimBackdrop(dc);
-        hits.Clear();                                    // a modal: nothing behind it can be reached
+        hits.Clear();                                    // the drop-down panel holds the mouse until Close (nothing behind it answers, as before)
         var box = InputsBox;
         Box(dc, R(box.Left + 4, box.Top + 6, InputsW, InputsH), Black, -1, 10);
         Box(dc, box, Panel, Accent, 10);
@@ -852,7 +827,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
 
     // ---------------------------------------------------------------- the Corruption window
 
-    private RECT CorruptionBox => R((Width - CorW) / 2, (Height - CorH) / 2, CorW, CorH);
+    private RECT CorruptionBox => ViewBox(CorW, CorH);
 
     /// <summary>A button that can be switched off: drawn quiet, and still answers a click (the answer says why it did nothing).</summary>
     private void Button(nint dc, int id, string label, RECT r, bool primary, bool enabled)
@@ -866,11 +841,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
 
     private void DrawCorruption(nint dc, Emulator? emu)
     {
-        DimBackdrop(dc);
-        hits.Clear();                                    // a modal: nothing behind it can be reached
-        var box = CorruptionBox;
-        Box(dc, R(box.Left + 4, box.Top + 6, CorW, CorH), Black, -1, 10);
-        Box(dc, box, Panel, Accent, 10);
+        var box = CorruptionBox;                         // the Corrupt view (layout B): the old window's box, its title row under the header (the view button names it)
         int lx = box.Left + 30, iw = CorW - 60;
         var panel = emu?.Corruption;
         var view = panel?.View;
@@ -887,7 +858,6 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         }
         bool busy = panel?.Busy == true;
 
-        Txt(dc, "Corruption", R(lx, box.Top + 14, 300, 34), Win32.DT_LEFT | Mid, Text, fontTitle);
         Txt(dc, "Open a stockpile that BrokenNes saved, pick a corruption, Start it on the game that is loaded (ROM mode), then take its instruments with Instrument Runaway. A started corruption is kept in the FL project.",
             R(lx, box.Top + 50, iw, 34), Win32.DT_LEFT | Win32.DT_WORDBREAK, Dim, fontSmall);
         Line_(dc, box.Left + 30, box.Top + 88, box.Right - 30, box.Top + 88, Line);
@@ -1204,7 +1174,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         for (int i = 0; i < plugin.Params.Length; i++) Mix(plugin.Get(i));
         Mix(e?.Id ?? 0); Mix(a.Channel); Mix(a.Problem?.GetHashCode() ?? 0);
         Mix(hot); Mix(active); Mix(openId); Mix(openHover); Mix(openScroll); Mix(aboutOpen ? 1 + aboutScroll : 0); Mix(Environment.TickCount64 < resetFlashUntil ? 1 : 0);
-        Mix(UiSignature()); Mix(PresetSignature()); Mix(SongSignature()); Mix(RecordSignature()); Mix(LinkSignature()); Mix(CaptureSignature());
+        Mix(UiSignature()); Mix(PresetSignature()); Mix(SongSignature()); Mix(RecordSignature()); Mix(LinkSignature()); Mix(CaptureSignature()); Mix(LayoutSignature());
         Mix(inputsOpen ? 1 + liveBits : 0); Mix(captureIndex); Mix(padConnected ? 1 : 0); Mix(Inputs.KeyboardEnabled ? 3 : 4); Mix(Inputs.GamepadEnabled ? 5 : 6); Mix(Inputs.AllowOpposite ? 9 : 10); Mix(e?.Runaway == true ? 7 : 8);
         if (e != null)
         {
@@ -1252,7 +1222,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         if (memDc == 0)
         {
             memDc = Win32.CreateCompatibleDC(hdc);
-            memBmp = Win32.CreateCompatibleBitmap(hdc, UiLayout.WideWidth, Height);      // big enough for every tab: the window is resized without making a new one
+            memBmp = Win32.CreateCompatibleBitmap(hdc, UiLayout.Width + 420, Height);      // (room for the old wide tabs: the deliberate fault LayoutResizes brings them back)
             memOld = Win32.SelectObject(memDc, memBmp);
         }
         Draw(memDc);
@@ -1278,13 +1248,13 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 }
                 return (list.ToArray(), Enumerable.Range(0, list.Count).ToArray(), plugin.Get(P.Emulator));
             }
-            case IdChip:
+            case IdBarTarget:
             {
-                // only the chips of the console picked above
-                var idx = Cx.ChipsOf(plugin.Get(P.Console));
-                if (plugin.Get(P.Mode) == 1) idx = idx.Where(i => !Cx.IsPresetChip(i)).ToArray();      // the Presets chips play without a game
-                return (idx.Select(i => (Cx.Chips[i].Id, Cx.Chips[i].Note)).ToArray(), idx, plugin.Get(P.Core));
+                // the song bar's "in <game>": the games This FL project can build for (Music/Flp/GameTargets.cs)
+                var all = GameTargets.All;
+                return (all.Select(t => (t.Label, (string?)(t.PlaysHere ? "plays here, in this emulator" : "built by the game's own toolchain"))).ToArray(), Enumerable.Range(0, all.Length).ToArray(), Array.IndexOf(all, emu?.FlpTarget ?? all[0]));
             }
+            case IdChip: return ChipItems();          // grouped stock / ported / nano / presets, other consoles' chips behind "show every console's chips" (Bn2Editor.Layout.cs)
             case IdGame:
             {
                 // values are actions: 0 the built-in game, 1 the game file (already loaded, or loaded again when the song replaced it), 2 choose a file, 3 the Test MIDI export's song
@@ -1377,6 +1347,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
     {
         openId = id;
         openAnchor = anchor;
+        openGroupStarts = new();                                  // (only the chip list has groups: ChipItems fills it)
         var (items, values, current) = BuildItems(id);
         openItems = items;
         openValues = values;
@@ -1401,6 +1372,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
         openId = 0;
         openHover = -1;
         if (id == IdGame) PickGame(value);
+        else if (id == IdBarTarget) { if (plugin.Emulator is { } te && (uint)value < (uint)GameTargets.All.Length) { te.SetFlpTarget(GameTargets.All[value]); te.SongUi.SetResult($"This FL project builds for {te.FlpTarget.Label}", true); } }
         else if (id == IdInstrument && plugin.Emulator?.PresetMode == true) PresetPick(value);      // the preset picker (Bn2Editor.Presets.cs)
         else if (id == IdChannel && plugin.Emulator?.PresetMode == true) plugin.SetFromUi(P.Recipe, value);      // the preset's Voice
         else if (id == IdInstrument && (plugin.Emulator?.SamplerMode == true || plugin.Emulator?.SegaSamplerMode == true))
@@ -1449,6 +1421,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 else if (h.Id >= IdPadButton && h.Id < IdPadButton + 12) { heldPad = h.Id - IdPadButton; Win32.SetCapture(Hwnd); }
                 else if (h.Id == IdRunaway) { var re = plugin.Emulator; if (re != null) { plugin.MarkConfigured("Instrument Runaway"); re.SetRunaway(!re.Runaway); } }
                 else if (h.Id == IdNanoSidecar) NanoSidecarClick();
+                else if (LayoutClick(h.Id)) { }                                         // layout B: the strip's tick, the song bar, the Game view's column, the Runaway tree (Bn2Editor.Layout.cs)
                 else if (h.Id == IdReset) { plugin.Emulator?.Reset(); resetFlashUntil = Environment.TickCount64 + 900; }
                 else if (h.Id is IdModeDirect or IdModeRom) plugin.SetFromUi(P.Mode, h.Id - IdModeDirect);
                 else if (h.Id >= IdConsole && h.Id < IdConsole + Cx.Count) plugin.SetFromUi(P.Console, h.Id - IdConsole);
@@ -1485,9 +1458,8 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
     {
         int param = h.Id - IdSlider;
         var def = plugin.Params[param];
-        const int labelW = 86, valueW = 78;
-        int w = ColW;
-        int tx = ColX + labelW, tw = w - labelW - valueW - 8;
+        // the track is the slider's hit area less 6 pixels each side (Slider): wherever the strip puts it
+        int tx = h.Rect.Left + 6, tw = Math.Max(1, h.Rect.Right - h.Rect.Left - 12);
         double f = Math.Clamp((mx - tx) / (double)tw, 0, 1);
         plugin.SetFromUi(param, def.Min + (int)Math.Round(f * (def.Max - def.Min)));
         Refresh();
@@ -1521,10 +1493,9 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
             case Win32.WM_LBUTTONDBLCLK:
             {
                 var h = HitAt(x, y);
-                if (aboutOpen || inputsOpen || corOpen || midOpen || recOpen || pcEdOpen)
+                if (aboutOpen || inputsOpen || pcEdOpen)
                 {
                     captureIndex = -1;                         // a click anywhere ends a rebinding that was waiting
-                    if (recOpen && !aboutOpen && !inputsOpen && !corOpen && !midOpen && h is { } dh && IsRecDragId(dh.Id)) { dragArm = dh.Id; dragX = x; dragY = y; Refresh(); return; }     // a drag handle: the drag starts when the mouse moves
                     if (h is { } mh) Activate(mh);             // a modal: only its own controls answer
                     Refresh();
                     return;
@@ -1534,6 +1505,8 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                     if (h is { Kind: Kind.Item } it) Pick(it.Id - IdItem); else CloseList();
                     return;
                 }
+                if (TreeTyping && !(h is { } th && IsTreeId(th.Id))) TreeRenameEnd(commit: true);        // a click elsewhere ends a rename in the Runaway tree (Bn2Editor.Tree.cs)
+                if (view == 4 && h is { } dh && IsRecDragId(dh.Id)) { dragArm = dh.Id; dragX = x; dragY = y; Refresh(); return; }     // the Record view's drag handles: the drag starts when the mouse moves
                 if (h is not { Kind: Kind.Ui }) UiBlur();                              // a press outside the tabs' controls: text fields let go of the keyboard
                 if (h is { } hit)
                 {
@@ -1555,7 +1528,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                 break;
             case Win32.WM_RBUTTONUP:
             {
-                if (aboutOpen || corOpen || midOpen || recOpen) return;
+                if (aboutOpen || pcEdOpen) return;
                 if (inputsOpen)
                 {
                     var ih = HitAt(x, y);
@@ -1589,11 +1562,12 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
                     UiNative.ScreenToClient(Hwnd, &wp);
                     mouseX = wp.X; mouseY = wp.Y;
                 }
-                if (tab != 0)                                                          // the Instruments and Presets tabs scroll their own lists
+                if (tab != 0 && mouseX >= UiLayout.ViewX)                              // the Instruments and Presets views scroll their own lists
                 {
                     UiWheel(delta, mouseX, mouseY);
                     break;
                 }
+                if (view == 0 && TreeWheel(delta, mouseX, mouseY)) break;               // the Game view's Runaway tree / game list (Bn2Editor.Tree.cs)
                 // the Emulator tab: the wheel over a slider or a dropdown changes it (this used to hit whatever sat at the SCREEN position: a latent bug, fixed in round 6)
                 var h = HitAt(mouseX, mouseY);
                 if (h is { Kind: Kind.Slider } s)
@@ -1659,6 +1633,7 @@ public sealed unsafe partial class Bn2Editor : IFruityEditor
     {
         switch (n)
         {
+            case >= 890 and < 900: return LayoutTest(n, index, value);  // layout B: views, chip picker, Runaway tree (Bn2Editor.Layout.cs)
             case >= 400 and < 500: return UiTest(n, index, value);      // the tabs' hooks (Ui/Bn2Editor.Tabs.cs)
             case >= 2300 and < 2310: return PcEditorTest(n, index);       // the PC console's patch editor (Bn2Editor.Pc.cs)
             case >= 620 and < 630: return SongTest(n, index, value);    // Test MIDI export's window (Bn2Editor.Song.cs)

@@ -13,21 +13,28 @@
 // plugin 600 - 619 (Bn2Plugin.Song.cs) and editor 620 - 629 (Bn2Editor.Song.cs), and the recording's: plugin 640 - 669 and 680 - 699 (Bn2Plugin.Record.cs; 680+ the live
 // MIDI out), 700 - 719 (Bn2Plugin.Tracks.cs: the tracks on offer) and editor 670 - 679 (Bn2Editor.Record.cs); a NES game's recording (round 8, record-nes): plugin 740 - 779
 // (Bn2Plugin.RecordNes.cs), editor 780 - 789 and control ids 2080 - 2119 reserved (the NES recording shows in the Record window's own controls).
+// Layout B (2026-11-13): control ids 2200 - 2219 the song bar, 2220 - 2259 the Game view's column (game list rows, freeze-later), 2260 - 2299 the Runaway tree (Bn2Editor.Layout.cs,
+// Bn2Editor.Tree.cs), 62 the strip's "show all consoles" tick; editor test hooks 890 - 899. The view buttons reuse 1000 - 1002 (Game, Instruments, Presets), 500 (Corrupt), 2020 (Record);
+// the song bar's facts button is 2000 (it opens the Song view, the old Test MIDI export window).
 // Round 9 (capture): control ids 2120 - 2139 (Capture from FL in the Test MIDI export window, Bn2Editor.Capture.cs: 2120-2122 used), plugin hooks 840 - 859 (Bn2Plugin.Capture.cs),
 // editor hooks 860 - 869 (Bn2Editor.Capture.cs); (790 - 819 are the reload agent's, Bn2Plugin.Reload.cs).
 namespace BrokenNes2.Ui;
 
-/// <summary>Geometry shared by the editor and the tabs. The window is BaseWidth x Height on the Emulator tab and grows to the right by <see cref="WideExtra"/> on the others
-/// (the game picture and the left column stay where they are; the tab panel starts at the right column's own left edge).</summary>
+/// <summary>Geometry shared by the editor and the views (layout "B", 2026-11-13: channel strip + song bar). The window is ONE fixed size on every view (no resize call to the host any more):
+///   header (0 .. HeaderH)       logo, the view buttons (Game, Instruments, Presets, Corrupt, Record), Inputs, the emulator, About
+///   strip  (0 .. StripW)        this channel, console, chip, instrument, the sliders, Direct/ROM, Reset Console: always there
+///   view   (ViewX .. ViewRight, ViewY .. ViewBottom)  the Game view (screen + game column), Instruments, Presets, Corrupt, Record, Song
+///   song bar (SongBarY .. Height)  the song, its game, Play / Restart / Stop / Reload, the loop position, the warnings (they open the Song view)</summary>
 internal static class UiLayout
 {
-    public const int BaseWidth = 904, Height = 664;
-    /// <summary>How much wider the window is on the Instruments and Presets tabs (904 + 420 = 1324 fits a 1366-wide screen with FL's frame).</summary>
-    public const int WideExtra = 420;
-    public const int WideWidth = BaseWidth + WideExtra;
-    public const int PanelX = 556, PanelY = 64, PanelRight = WideWidth - 16, PanelW = PanelRight - PanelX, PanelBottom = Height - 16;
-    /// <summary>The tab strip: it sits on the header rule above the right column, left edge at the column's, so nothing of the Emulator tab moves.</summary>
-    public const int StripX = PanelX, StripY = 36, StripH = 20;
+    public const int Width = 1000, Height = 700;
+    /// <summary>Kept for code written for the old resizing tabs: the window no longer changes size (BaseWidth = WideWidth = Width).</summary>
+    public const int BaseWidth = Width, WideExtra = 0, WideWidth = Width;
+    public const int HeaderH = 44, StripW = 248, ViewX = 256, ViewY = 52, ViewRight = Width - 8, ViewBottom = 644, SongBarY = 652;
+    public const int ViewW = ViewRight - ViewX, ViewH = ViewBottom - ViewY;
+    public const int PanelX = ViewX, PanelY = ViewY, PanelRight = ViewRight, PanelW = PanelRight - PanelX, PanelBottom = ViewBottom;
+    /// <summary>Where the header's view buttons start (right of the logo).</summary>
+    public const int StripX = 168, StripY = 9, StripH = 26;
 }
 
 internal static class UiIds
@@ -84,6 +91,16 @@ internal static class UiMutate
     public const int SilentModelFailure = 1 << 16;   // a model that throws is swallowed without a word on the tab
     public const int RemoveCallsPush = 1 << 17;      // "Remove from game" pushes instead (round 6, inject)
     public const int NoticeHidden = 1 << 18;         // the model's standing note is not drawn (round 6, inject)
+    // ---- the layout overhaul (2026-11-13, layout B): checks `layout`, `chip-picker`, `runaway-tree` (SelfTest.Layout.cs) ----
+    public const int LayoutResizes = 1 << 19;        // switching views resizes the window again (the old wide tabs)
+    public const int SongBarHidden = 1 << 20;        // the song bar is left out on the views other than Game
+    public const int StripHidden = 1 << 21;          // the channel strip is left out on the views other than Game
+    public const int ChipsUngrouped = 1 << 22;       // the chip list keeps index order instead of stock / ported / nano / presets
+    public const int ShowAllDead = 1 << 23;          // "show all consoles" adds no other console's chip
+    public const int TreeNoFold = 1 << 24;           // the Runaway tree lists duplicates one by one
+    public const int TreeKindsWrong = 1 << 25;       // every sample of the Runaway tree is filed under Samples (no Drums / Sound effects)
+    public const int RenameNotSaved = 1 << 26;       // a renamed instrument's name is left out of the project
+    public const int AuditionSilent = 1 << 27;       // a row's play button plays nothing
 
     public static bool Has(int bit) => (Mask & bit) != 0;
 }

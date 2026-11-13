@@ -10,9 +10,9 @@ namespace BrokenNes2;
 public sealed unsafe partial class Bn2Editor
 {
     public const int IdMid = 2000, IdMidClose = 2001, IdMidOpen = 2002, IdMidPlay = 2003, IdMidRestart = 2004, IdMidStop = 2005, IdMidReload = 2006, IdMidFollow = 2007, IdMidFlp = 2008, IdMidTarget = 2009, IdMidFlpChange = 2010;
-    private const int MidW = 780, MidH = 650, MidNoteSeconds = 12;      // (650 since round 9: the Capture from FL row and strip, Bn2Editor.Capture.cs)
+    private const int MidW = ViewBoxW, MidH = 628, MidNoteSeconds = 12;      // (the Song view's box since layout B: its title row lies under the header, its bottom on the view's)
 
-    private bool midOpen, midNoteShown;
+    private bool midNoteShown;          // (midOpen is the Song view now: Bn2Editor.Layout.cs)
     private string? testMidiPath;
 
     private static bool IsMidId(int id) => id is >= IdMidClose and <= IdMidFlpChange;
@@ -24,7 +24,7 @@ public sealed unsafe partial class Bn2Editor
         Button(dc, IdMid, "Test MIDI export", r, primary: plugin.Emulator?.SongRunning == true);
     }
 
-    private RECT MidiBox => R((Width - MidW) / 2, (Height - MidH) / 2, MidW, MidH);
+    private RECT MidiBox => ViewBox(MidW, MidH);
 
     /// <summary>True while the song note should be over the picture: what loading the song did to the game that was there, for <see cref="MidNoteSeconds"/> seconds (never while the window is open: it says the same).</summary>
     private bool SongNoteWanted(Emulator? emu) => emu != null && !midOpen && emu.SongUi.Note is { Length: > 0 } && Environment.TickCount64 - emu.SongUi.NoteTick < MidNoteSeconds * 1000L;
@@ -42,18 +42,12 @@ public sealed unsafe partial class Bn2Editor
 
     private void DrawMidi(nint dc, Emulator? emu)
     {
-        DimBackdrop(dc);
-        hits.Clear();                                    // a modal: nothing behind it can be reached
-        var box = MidiBox;
-        Box(dc, R(box.Left + 4, box.Top + 6, MidW, MidH), Black, -1, 10);
-        Box(dc, box, Panel, Accent, 10);
+        var box = MidiBox;                               // the Song view (layout B): the old Test MIDI export window's box, its title row under the header
         int lx = box.Left + 30, iw = MidW - 60;
         var ui = emu?.SongUi;
         var held = emu?.Song;
         bool busy = ui?.Busy == true;
 
-        Txt(dc, "Test MIDI export", R(lx, box.Top + 14, 400, 34), Win32.DT_LEFT | Mid, Text, fontTitle);
-        if (emu != null) Txt(dc, $"emulator #{emu.Id}", R(box.Right - 30 - 200, box.Top + 14, 200, 34), Win32.DT_RIGHT | Mid, Dim, fontSection);
         Txt(dc, "Capture your song straight from FL (Capture from FL: your BrokenNes2 channels as they are, no MIDI Out channels), or export it from FL as a MIDI file and open it here. BrokenNes2 converts it with VRUN's own music converter and plays it in VRUN's sound-test player in this emulator (NES, ROM mode): what you hear is what the game will play.",
             R(lx, box.Top + 50, iw, 48), Win32.DT_LEFT | Win32.DT_WORDBREAK, Dim, fontSmall);
         Line_(dc, box.Left + 30, box.Top + 102, box.Right - 30, box.Top + 102, Line);
@@ -102,15 +96,15 @@ public sealed unsafe partial class Bn2Editor
         // Play, Restart, Stop; Reload
         y = box.Top + 474;
         bool canPlay = emu != null && held != null && !busy;
-        Button(dc, IdMidPlay, "Play", R(lx, y, 100, 34), primary: true, enabled: canPlay);
-        Button(dc, IdMidRestart, "Restart", R(lx + 110, y, 100, 34), primary: false, enabled: canPlay);
-        Button(dc, IdMidStop, "Stop", R(lx + 220, y, 100, 34), primary: false, enabled: canPlay && emu!.SongRunning);
-        Button(dc, IdMidReload, "Reload", R(lx + 340, y, 90, 34), primary: false, enabled: canPlay);
+        Button(dc, IdMidPlay, "Play", R(lx, y, 90, 34), primary: true, enabled: canPlay);
+        Button(dc, IdMidRestart, "Restart", R(lx + 96, y, 90, 34), primary: false, enabled: canPlay);
+        Button(dc, IdMidStop, "Stop", R(lx + 192, y, 90, 34), primary: false, enabled: canPlay && emu!.SongRunning);
+        Button(dc, IdMidReload, "Reload", R(lx + 288, y, 84, 34), primary: false, enabled: canPlay);
         // the music pipeline: this FL project's own last-saved .flp straight into the sound-test ROM (Music/Flp, ProjectFlp.cs)
-        Button(dc, IdMidFlp, "This FL project", R(lx + 440, y, 150, 34), primary: held == null, enabled: emu != null && !busy);
+        Button(dc, IdMidFlp, "This FL project", R(lx + 384, y, 140, 34), primary: held == null, enabled: emu != null && !busy);
         // which .flp that is: picked once with the file dialog, kept in this instance's saved state (the FL project), changed here
-        Button(dc, IdMidFlpChange, plugin.ProjectFlpPath == null ? "Pick .flp" : "Change .flp", R(lx + 598, y, 110, 34), primary: false, enabled: emu != null && !busy);
-        Txt(dc, plugin.ProjectFlpPath is { } pf ? Path.GetFileName(pf) + (held != null ? Emulator.IsFlp(held.Path) ? ": save in FL, Reload" : $" ({held.FileName}: export, Reload)" : "") : held == null ? "its last save" : Emulator.IsFlp(held.Path) ? $"{held.FileName}: save in FL, Reload" : $"{held.FileName}: export, Reload", R(lx + 716, y - 2, iw - 716, 38), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+        Button(dc, IdMidFlpChange, plugin.ProjectFlpPath == null ? "Pick .flp" : "Change .flp", R(lx + 530, y, 104, 34), primary: false, enabled: emu != null && !busy);
+        Txt(dc, plugin.ProjectFlpPath is { } pf ? Path.GetFileName(pf) + (held != null ? Emulator.IsFlp(held.Path) ? ": save in FL, Reload" : $" ({held.FileName}: export, Reload)" : "") : held == null ? "its last save" : Emulator.IsFlp(held.Path) ? $"{held.FileName}: save in FL, Reload" : $"{held.FileName}: export, Reload", R(lx + 640, y - 2, iw - 640, 38), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
 
         y = box.Top + 520;
         Check(dc, IdMidFollow, "Follow FL's transport: Play restarts, Stop stops", lx, y, ui?.Follow == true, null, labelW: 380, hitW: 400);
@@ -128,11 +122,10 @@ public sealed unsafe partial class Bn2Editor
         if (say.Length > 0)
         {
             Fill(dc, R(lx, y, 3, 44), sayColor);
-            Txt(dc, say, R(lx + 12, y, iw - 12, 44), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, Text, fontSmall);
+            Txt(dc, say, R(lx + 12, y, iw - 12 - 120, 44), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER | Win32.DT_END_ELLIPSIS, Text, fontSmall);
         }
-        Line_(dc, box.Left + 30, box.Bottom - 54, box.Right - 30, box.Bottom - 54, Line);
-        Txt(dc, "The song is kept in the FL project (the MIDI file's bytes). Pitch bends play on the squares and the triangle (in the game: \"bends\": true in the song's roster entry). Whether it replays well is your call.", R(lx, box.Bottom - 48, iw - 120, 36), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER, Faint, fontSmall);
-        Button(dc, IdMidClose, "Close", R(box.Right - 30 - 100, box.Bottom - 46, 100, 34), primary: true);
+        Txt(dc, "The song is kept in the FL project (the MIDI file's bytes). Pitch bends play on the squares and the triangle (in the game: \"bends\": true in the song's roster entry).", R(lx, box.Bottom - 36, iw - 120, 34), Win32.DT_LEFT | Win32.DT_WORDBREAK | Win32.DT_VCENTER, Faint, fontSmall);
+        Button(dc, IdMidClose, "Back to game", R(box.Right - 30 - 110, box.Bottom - 36, 110, 34), primary: true);      // (the Song view: back to the Game view)
     }
 
     /// <summary>The Open button: the file dialog (a test can name the file instead), then the song is read and converted on a worker thread.</summary>
