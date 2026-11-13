@@ -27,6 +27,9 @@ public sealed unsafe partial class SelfTest
     /// <summary>APU harvest round 2, appended at the very end of the list (after the Nano chips), in this order.</summary>
     internal static readonly (string Id, int Console)[] Harvest2Chips = [("NSTRJ", 0), ("NSTRDC", 0)];
 
+    /// <summary>Layout B (2026-11-13): the enhanced NES-register bridges, offered at last (NES console), appended after round 2 in this order: chips 93-96.</summary>
+    internal static readonly (string Id, int Console)[] EnhancedChips = [("SNESS", 0), ("SMSS", 0), ("MDS", 0), ("WMSS", 0)];
+
     private void Harvest(T t)
     {
         List<string> chips;
@@ -40,11 +43,15 @@ public sealed unsafe partial class SelfTest
         for (int k = 0; k < HarvestChips.Length; k++)
             t.Expect(first + k < chips.Count && chips[first + k].Equals(HarvestChips[k].Id, StringComparison.OrdinalIgnoreCase), $"harvest chip {k} is {(first + k < chips.Count ? chips[first + k] : "missing")}, expected {HarvestChips[k].Id}");
 
-        // round 2: the last chips of the list
-        int first2 = chips.Count - Harvest2Chips.Length;
+        // round 2: right before the enhanced bridges, which are the last chips of the list since layout B (2026-11-13; every chip before them keeps its index: chip-compat)
+        int first3 = chips.Count - EnhancedChips.Length;
+        int first2 = first3 - Harvest2Chips.Length;
         for (int k = 0; k < Harvest2Chips.Length; k++)
-            t.Expect(first2 + k >= 0 && chips[first2 + k].Equals(Harvest2Chips[k].Id, StringComparison.OrdinalIgnoreCase), $"harvest-2 chip {k} is {(first2 + k >= 0 ? chips[first2 + k] : "missing")}, expected {Harvest2Chips[k].Id} (the last chips)");
-        var all = HarvestChips.Select((h, k) => (h.Id, h.Console, Index: first + k)).Concat(Harvest2Chips.Select((h, k) => (h.Id, h.Console, Index: first2 + k))).ToArray();
+            t.Expect(first2 + k >= 0 && chips[first2 + k].Equals(Harvest2Chips[k].Id, StringComparison.OrdinalIgnoreCase), $"harvest-2 chip {k} is {(first2 + k >= 0 ? chips[first2 + k] : "missing")}, expected {Harvest2Chips[k].Id} (right before the enhanced bridges)");
+        for (int k = 0; k < EnhancedChips.Length; k++)
+            t.Expect(first3 + k >= 0 && chips[first3 + k].Equals(EnhancedChips[k].Id, StringComparison.OrdinalIgnoreCase), $"enhanced chip {k} is {(first3 + k >= 0 ? chips[first3 + k] : "missing")}, expected {EnhancedChips[k].Id} (the last chips)");
+        t.Expect(first2 == 91, $"NSTRJ is chip {first2}, expected 91 (an earlier index moved)");
+        var all = HarvestChips.Select((h, k) => (h.Id, h.Console, Index: first + k)).Concat(Harvest2Chips.Select((h, k) => (h.Id, h.Console, Index: first2 + k))).Concat(EnhancedChips.Select((h, k) => (h.Id, h.Console, Index: first3 + k))).ToArray();
 
         var rows = new List<string>(); int silent = 0, differ = 0;
         for (int k = 0; k < all.Length; k++)
@@ -83,7 +90,7 @@ public sealed unsafe partial class SelfTest
             t.Expect(h1 == h2, $"{id} (chip {index}): two renders of the same note differ ({h1} vs {h2})");
             rows.Add($"{index} {id} {rms:0.000}");
         }
-        t.Note($"{HarvestChips.Length} harvested chips from index {first} + {Harvest2Chips.Length} from {first2}: {silent} silent, {differ} not deterministic; rms at A4: {string.Join(", ", rows)}");
+        t.Note($"{HarvestChips.Length} harvested chips from index {first} + {Harvest2Chips.Length} from {first2} + {EnhancedChips.Length} enhanced bridges from {first3}:{silent} silent, {differ} not deterministic; rms at A4: {string.Join(", ", rows)}");
     }
 
     private static string HashAudio(float[] audio)

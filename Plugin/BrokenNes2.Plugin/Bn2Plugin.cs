@@ -1337,7 +1337,7 @@ public sealed unsafe partial class Bn2Plugin : FruityPluginBase
             case 43: emu?.Reset(); return 0;
             case 44: emu?.SetPad(this, (int)value); return 0;
             case 45: return emu?.Runaway == true ? 1 : 0;
-            case 46: emu?.ReplaceSnapshotForTests(SpcSnapshot.TestSample()); return 0;
+            case 46: emu?.ReplaceSnapshotForTests(index == 1 ? SpcSnapshot.TreeTestSample() : SpcSnapshot.TestSample()); return 0;      // (index 1: the Runaway tree's made-up sound memory, layout B)
             case 47: emu?.SetRunaway(value != 0); return 0;
             case 48: return emu?.SamplerMode == true ? 1 : 0;
             case 49: return emu?.PadBits ?? 0;

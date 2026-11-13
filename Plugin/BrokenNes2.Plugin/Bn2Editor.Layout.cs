@@ -290,7 +290,7 @@ public sealed unsafe partial class Bn2Editor
     }
 
     /// <summary>Editor test hooks 890 - 899: 890 the view (0 Game, 1 Instruments, 2 Presets, 3 Corrupt, 4 Record, 5 Song); 891 set the view to <c>value</c>; 892 "show every console's chips" (1/0);
-    /// 893 the song bar's loop position (0..1000, -1 none); 894 the open list's group starts as a bit mask of its first 31 rows; 895 .. 899 the Runaway tree (Bn2Editor.Tree.cs).</summary>
+    /// 893 the song bar's loop position (0..1000, -1 none); 894 the open list's group starts as a bit mask of its first 63 rows; 895 .. 899 the Runaway tree (Bn2Editor.Tree.cs).</summary>
     private nint LayoutTest(int n, nint index, nint value)
     {
         switch (n)
@@ -299,7 +299,7 @@ public sealed unsafe partial class Bn2Editor
             case 891: SetView((int)value); return 0;
             case 892: return showAllChips ? 1 : 0;
             case 893: return songBarFraction;
-            case 894: { long m = 0; foreach (int k in openGroupStarts) if (k < 31) m |= 1L << k; return (nint)m; }
+            case 894: { long m = 0; foreach (int k in openGroupStarts) if (k < 63) m |= 1L << k; return (nint)m; }
             default: return TreeTest(n, index, value);
         }
     }

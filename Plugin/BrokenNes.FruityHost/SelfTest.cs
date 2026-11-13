@@ -194,8 +194,9 @@ public sealed unsafe partial class SelfTest
             ("rom-consoles", "ROM mode on Game Boy and SNES games: runs, picture size, Mix only, files of any console, bad files refused", RomConsoles),
             ("about", "About window: opens by itself the first time only, is modal, closes, reopens from the button", AboutWindow),
             ("rom-editor", "Editor in ROM mode: picture, mode switch loads the game, Direct shows the bypass message", RomEditor),
-            ("ui", "Editor tabs (Emulator | Instruments | Presets): the window is 904 x 664 on the Emulator tab and grows on the others (the host is told), the Emulator tab is unchanged (control rectangles and pixels), the Instruments tab (Runaway and model messages, instrument list, fields, slider, stepper, bit toggles, locks, waveform, hex field, corruption tools, undo and redo, send to presets, push) and the Presets tab (library, search, filter, Load, Rename, Delete, Export, Import, Audition) work through real mouse and key messages on stub models, typing does not press the game's buttons", UiTabsTest),
+            ("ui", "Editor views (layout B: Game | Instruments | Presets | Corrupt | Record | Song): one 1000 x 700 window on every view (the host is never told of a resize), the strip and the song bar on every view, the Game view's controls where the golden table says (re-recorded for layout B) and unchanged pixel for pixel after a visit to the other views, the Instruments tab (Runaway and model messages, instrument list, fields, slider, stepper, bit toggles, locks, waveform, hex field, corruption tools, undo and redo, send to presets, push) and the Presets tab (library, search, filter, Load, Rename, Delete, Export, Import, Audition) work through real mouse and key messages on stub models, typing does not press the game's buttons", UiTabsTest),
             ("ui-proof", "Every check of the editor tabs fails when a matching fault is injected (the faults are switches in the plugin set through a test hook), and the checks without a switch fail when asked a false question", UiProofTest),
+            ("layout", "Layout B (2026-11-13): the chip list is grouped stock / ported / nano / presets and \"show every console's chips\" adds the other consoles' chips (picking one moves the emulator), the song bar opens, plays, stops and restarts a song and its loop position moves, the Runaway tree files a made-up sound memory's samples as Samples / Drums / Sound effects, folds the duplicate, draws waveforms, picks, folds a group, renames with typed keys (kept in the project), auditions; six deliberate bugs are each caught", LayoutChecks),
             ("robust", "Many instances, concurrent instances, garbage calls, destroy with voices playing", Robust),
             ("log", "BROKENNES_PLUGIN_LOG records the host's calls", LogTest),
             ("hostlog", "The host log (relink): the test bench logs into a scratch file and the user's real Documents\\BrokenNes2 host log.txt is untouched by the whole run (the guard shown able to fail); the user's box turns it on and off for new instances when no tracks are on offer", HostLogTest),
@@ -1365,7 +1366,7 @@ public sealed unsafe partial class SelfTest
             // Direct mode shows the bypass message on the screen, not a picture
             t.Expect(p.Test(35) == 0, "a picture is shown in Direct mode");
             var shot = Win32Host.CapturePixels(hwnd, out int w, out int h);
-            int text = BrightPixels(shot, w, 40, 260, 480, 100);
+            int text = BrightPixels(shot, w, 280, 250, 480, 100);
             t.Expect(text > 150, $"no message text on the screen in Direct mode ({text} bright pixels)");
 
             // the sound chip dropdown: opens, lists every chip, picking one changes the parameter and tells the host
@@ -1530,7 +1531,7 @@ public sealed unsafe partial class SelfTest
             PickItem(t, p, 7, 0, "Game: built-in");
             ClickControl(t, p, 2, "Direct segment");
             Win32Host.Pump(80);
-            t.Expect(p.Test(35) == 0 && BrightPixels(Win32Host.CapturePixels(hwnd, out w, out h), w, 40, 260, 480, 100) > 150, "Direct mode should show the bypass message again");
+            t.Expect(p.Test(35) == 0 && BrightPixels(Win32Host.CapturePixels(hwnd, out w, out h), w, 280, 250, 480, 100) > 150, "Direct mode should show the bypass message again");
             p.HideEditor();
         }
         finally { Win32Host.DestroyParent(parent); }
@@ -2238,12 +2239,12 @@ public sealed unsafe partial class SelfTest
             var hwnd = p.EditorHandle;
             t.Expect(p.Test(36) == 1, "the About window must open by itself the first time");
             // modal: nothing behind it answers, and it has real text in it
-            Win32Host.Click(hwnd, 742, 210);             // where the sound chip dropdown is
+            Win32Host.Click(hwnd, 146, 282);             // where the sound chip dropdown is (layout B: in the strip)
             t.Expect(p.Test(31) == 0 && p.Test(30, 4) == 0, "something behind the About window answered a click");
             var shot = Win32Host.CapturePixels(hwnd, out int w, out int h);
-            int readFirst = BrightPixels(shot, w, 120, 130, 640, 200);
+            int readFirst = BrightPixels(shot, w, 168, 148, 640, 200);
             t.Expect(readFirst > 500, $"the read-this-first text is missing ({readFirst} bright pixels)");
-            int shout = BrightPixels(shot, w, 120, 390, 640, 130);
+            int shout = BrightPixels(shot, w, 168, 408, 640, 130);
             t.Expect(shout > 250, $"the Plogue shoutout is missing or too faint ({shout} bright pixels in its panel)");
             t.Expect(p.Test(30, 70) != 0, "the Plogue link in the About text is not on screen / clickable (it is not clicked here: it would open a browser)");
             Win32Host.Wheel(hwnd, -3);                   // scrolling the text must be harmless
@@ -2619,7 +2620,7 @@ public sealed unsafe partial class SelfTest
             int rows = Enumerable.Range(0, 12).Count(i => q.Test(30, 200 + i) != 0 && q.Test(30, 220 + i) != 0);
             t.Expect(rows == 12, $"{rows} of 12 button rows are on screen");
             var shot = Win32Host.CapturePixels(hwnd, out int w, out int h);
-            t.Expect(BrightPixels(shot, w, 90, 330, 400, 340) > 400, "the Inputs window shows no binding text");
+            t.Expect(BrightPixels(shot, w, 236, 344, 400, 340) > 400, "the Inputs window shows no binding text");
 
             // the on-screen pad: holding a button with the mouse presses it, letting go releases it
             var a = RectOf(q.Test(30, 244));

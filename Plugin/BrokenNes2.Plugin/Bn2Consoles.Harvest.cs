@@ -57,6 +57,25 @@ public static partial class Cx
             if (found == null) throw new InvalidOperationException($"harvest chip {h.Id} is not a registered APU core: the plugin's chip list would move");
             list.Add(new Chip(found, h.Console, $"ported: {h.Name} (art, bugs kept)"));
         }
+        // Layout B (2026-11-13, "offer every APU core not offered yet"): the enhanced NES-register bridges (a NES game / FL's NES registers on another console's sound chip, the enhanced cores'
+        // phase 3 and WideMess milestone 7b) were left out only so that no index moved (Cx.Hidden). Appended here, after everything, as NES-console chips: they take the NES registers, so
+        // Direct mode drives them like FIX and a NES game in ROM mode runs on them. Append-only. (MNES and WF stay out: MIDI-style playback, not a chip.)
+        foreach (var (id, note) in EnhancedBridges)
+        {
+            string? found = CoreRegistry.ApuIds.FirstOrDefault(i => i.Equals(id, StringComparison.OrdinalIgnoreCase));
+            if (found == null) throw new InvalidOperationException($"enhanced bridge {id} is not a registered APU core: the plugin's chip list would move");
+            list.Add(new Chip(found, Nes, note));
+        }
+    }
+
+    private static (string Id, string Note)[] EnhancedBridges => EnhancedTable.Ids;
+    private static class EnhancedTable
+    {
+        internal static readonly (string Id, string Note)[] Ids =
+        [
+            ("SNESS", "enhanced: the NES channels on the SNES S-DSP"), ("SMSS", "enhanced: the NES channels on the Master System PSG"),
+            ("MDS", "enhanced: the NES channels on the Genesis YM2612 + PSG"), ("WMSS", "enhanced: the NES channels on the WideMess chip"),
+        ];
     }
 
     private static void AddHarvest(List<Chip> list)

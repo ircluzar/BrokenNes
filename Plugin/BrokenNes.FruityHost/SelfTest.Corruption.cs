@@ -314,10 +314,10 @@ public sealed unsafe partial class SelfTest
                 t.Expect(p.Test(30, IdCor) != 0, $"{name}: there is no Corruption button");
                 if (!ClickControl(t, p, IdCor, name + ": Corruption button")) return;
                 t.Expect(p.Test(EdCorOpen) == 1, $"{name}: the Corruption window did not open");
-                t.Expect(p.Test(30, 4) == 0 && p.Test(30, 80) == 0, $"{name}: controls behind the Corruption window are still reachable");
+                t.Expect(p.Test(30, 4) != 0 && p.Test(30, 80) != 0, $"{name}: the strip or the header went away with the Corrupt view (layout B: the old window is a view, they stay)");
                 t.Expect(p.Test(HkCorCount) == -1, $"{name}: a stockpile is open before one was chosen");
                 var shot = Win32Host.CapturePixels(hwnd, out int w, out int h);
-                t.Expect(InkPixels(shot, w, 100, 222, 700, 110) > 300, $"{name}: the empty window shows no text telling the user what to do");
+                t.Expect(InkPixels(shot, w, 284, 214, 680, 110) > 300, $"{name}: the empty window shows no text telling the user what to do");
 
                 // Start with nothing chosen says so
                 ClickControl(t, p, IdCorStart, name + ": Start with no stockpile");
@@ -784,7 +784,7 @@ public sealed unsafe partial class SelfTest
                     t.Expect(p.Test(HkCorGood) == 0 && said.StartsWith("could not open") && said.Length > 30, $"messages: {label} said '{said}'");
                     t.Expect(p.Test(HkCorCount) == -1, $"messages: {label} left a list of {p.Test(HkCorCount)} corruptions");
                     var shot = Win32Host.CapturePixels(p.EditorHandle, out int w, out int h);
-                    t.Expect(BrightPixels(shot, w, 94, 588, 700, 44) > 120, $"messages: {label}: the window shows no explanation");
+                    t.Expect(BrightPixels(shot, w, 276, 580, 680, 44) > 120, $"messages: {label}: the window shows no explanation");
                     ClickControl(t, p, IdCorStart, "messages: Start after " + label);
                     t.Expect(CorText(p, 0).StartsWith("cannot start"), $"messages: Start after {label} said '{CorText(p, 0)}'");
                 }

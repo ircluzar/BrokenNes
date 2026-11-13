@@ -238,10 +238,10 @@ public sealed unsafe partial class SelfTest
                 long o = p.Test(30, other);
                 if (o != 0) { var q = RectOf(o); t.Expect(r.X + r.W <= q.X || q.X + q.W <= r.X || r.Y + r.H <= q.Y || q.Y + q.H <= r.Y, $"the button overlaps control {other}"); }
             }
-            t.Expect(r.Y + r.H <= 52, $"the button is not in the header ({r})");
+            t.Expect(r.Y >= 652, $"the button is not in the song bar ({r})");      // (layout B: the facts button of the song bar opens the Song view, the old window)
             ClickControl(t, p, IdMidBtn, "Test MIDI export button");
             t.Expect(p.Test(EdSOpen) == 1, "the window did not open");
-            t.Expect(p.Test(30, 80) == 0 && p.Test(30, IdMidBtn) == 0, "controls behind the window are still reachable");
+            t.Expect(p.Test(30, 4) != 0 && p.Test(30, 2202) != 0, "the strip or the song bar went away with the Song view (layout B: the old window is a view, they stay)");
             t.Expect(p.Test(30, IdMidPlayBtn) != 0 && p.Test(30, IdMidReloadBtn) != 0 && p.Test(30, IdMidFollowBtn) != 0, "the window's Play / Reload / follow controls are not drawn");
             fixed (char* c = mid + "\0") p.Test(EdSPick, 0, (nint)c);
             ClickControl(t, p, IdMidOpenBtn, "Open MIDI...");
