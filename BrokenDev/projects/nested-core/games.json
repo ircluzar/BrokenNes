@@ -1,0 +1,7 @@
+{
+  "what": "Per-game Nested choices, keyed by the m30pipe base profile (the PRG CRC32 of the game's reference build, nested-build.ps1 -BaseProfile). tools/nested-build.ps1 reads 'nmi' when -Nmi is not given; an explicit -Nmi still wins. nmi: fast = Project Nested's default (NMI at the game's idle loop; nothing written, builds stay byte-identical to the older ones), accurate = the NES NMI at every SNES vblank (NmiMode.AtVblank=True, AutoDetect=False). Decided by the user 2026-11-13: VRUN fast, SMB1 accurate (docs/projects/nested-cert/*.md, round 2).",
+  "games": {
+    "50a5ca15": { "game": "vrun", "nmi": "fast", "why": "accurate gains 0-2 lag frames but breaks the BrokenNes/Mesen SNES agreement; VRUN plays the same either way" },
+    "d257beb1": { "game": "smb1", "nmi": "accurate", "why": "cert round 2: lag 5-13 -> 2 frames, logic 8 -> 6 steps behind the NES" }
+  }
+}

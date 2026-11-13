@@ -43,6 +43,7 @@
                       fast (or empty) = Project Nested's default, the NMI is delivered when the game reaches its idle loop
                       (both NmiMode flags; nothing is written, so a build stays byte-identical to the earlier ones);
                       accurate = at a FIXED time, the SNES vblank, like the NES (NmiMode.AtVblank only, AutoDetect off).
+                      Not given: the game's choice in projects\nested-core\games.json (keyed by -BaseProfile), else fast.
 .PARAMETER Plans      brokennes: a JSON list of { "name", "frames", "input" } (Workshop pad scripts)
 .PARAMETER Rounds     brokennes: most build + play rounds
 .PARAMETER Minutes    harvest wall-clock budget
@@ -107,6 +108,20 @@ if ($BaseProfile) {
     foreach ($p in $bj.settings.PSObject.Properties) { $settings[$p.Name] = [string]$p.Value }
 }
 if ($SnesTitle) { $settings['EmulatorName'] = $SnesTitle }
+# The per-game NMI choice: projects\nested-core\games.json, keyed by the base profile, when -Nmi was not given.
+$nmiFrom = if ($Nmi) { '-Nmi' } else { 'default (fast)' }
+if (-not $Nmi -and $BaseProfile) {
+    $gj = Join-Path $PSScriptRoot '..\projects\nested-core\games.json'
+    if (Test-Path -LiteralPath $gj) {
+        $g = (Get-Content -LiteralPath $gj -Raw | ConvertFrom-Json).games
+        if ($g -and $g.PSObject.Properties[$BaseProfile] -and $g.$BaseProfile.PSObject.Properties['nmi']) {
+            $Nmi = [string]$g.$BaseProfile.nmi
+            if ($Nmi -notin @('fast', 'accurate')) { throw "games.json: nmi '$Nmi' for $BaseProfile is not fast or accurate" }
+            $nmiFrom = "games.json ($($g.$BaseProfile.game))"
+        }
+    }
+}
+Write-Host "nested-build: nmi $(if ($Nmi) { $Nmi } else { 'fast' }) from $nmiFrom"
 if ($Nmi -eq 'accurate') { $settings['NmiMode.AtVblank'] = 'True'; $settings['NmiMode.AutoDetect'] = 'False' }
 
 # ---- post-build steps --------------------------------------------------------------------------
