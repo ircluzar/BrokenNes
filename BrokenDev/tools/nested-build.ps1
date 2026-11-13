@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Turns a mapper 30 NES ROM into a Project Nested SNES ROM with the m30pipe pipeline, for any game, without touching the
+  Turns a NES ROM (any mapper the Nested core supports: 0,1,2,3,4,7,30,69) into a Project Nested SNES ROM with the m30pipe pipeline, for any game, without touching the
   restored pipeline's own game profiles. Run it with the PowerShell the pipeline's injector needs: PowerShell 7.6+ (pwsh) for
   our fork's .NET 10 injector (Project-Nested-core, 2026-11-10), Windows PowerShell 5.1 for master's .NET Framework release exe.
 
@@ -27,7 +27,7 @@
 
   Nothing game-specific is in the pipeline: everything a game needs is a parameter here.
 
-.PARAMETER Nes        the mapper 30 .nes (with its .mlb beside it when -Post flash is used)
+.PARAMETER Nes        the .nes (with its .mlb beside it when -Post flash is used)
 .PARAMETER Out        the .smc to write
 .PARAMETER Pipe       the restored ...\tools\m30pipe folder
 .PARAMETER Python     a Python 3.10+ with pillow and numpy
