@@ -222,7 +222,7 @@ internal sealed class MidiRun
         }
         m.RecordTap = null;
         r.Latch = nmi.PerNmi().AsSpan(0, frames * MidiModel.LatchBytes).ToArray();
-        r.TriKey = nmi.Written(8, 0x7F).AsSpan(0, frames).ToArray();
+        r.TriKey = nmi.Rising(8, 0x7F).AsSpan(0, frames).ToArray();   // CTW SMS nes_apu.c's triangle key-on: $4008 from silent to sounding (2026-11-13)
         return r;
     }
 

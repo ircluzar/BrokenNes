@@ -64,7 +64,7 @@ public static class CtwSmsBackend
         return (n, h);
     }
 
-    /// <summary>nes_apu.c's triangle (2026-11-12): N = 2 (period + 1); at a key-on ($4008 written non-zero) the note's octave raise <paramref name="shift"/> is chosen from the
+    /// <summary>nes_apu.c's triangle (2026-11-12): N = 2 (period + 1); at a key-on ($4008 written non-zero after zero: since 2026-11-13 a rewrite of a sounding note, VRUN's $D1 pitch step, is not one; key-ons from NmiLatch.Rising) the note's octave raise <paramref name="shift"/> is chosen from the
     /// period's high byte written after it (one octave from $200, two from $400: N is at most 4096) and kept until the next key-on; N past 1023 (a slide below the note's octave,
     /// or the edge periods $1FF / $3FF) stops at 1023.</summary>
     public static int TrianglePsg(int nesPeriod, bool keyOn, ref int shift)

@@ -54,6 +54,21 @@ public sealed class NmiLatch
 
     /// <summary>Per recorded frame (the same windows as <see cref="PerNmi"/>): whether a write to register <paramref name="reg"/> ($4000 + reg) with <c>value &amp; mask</c> non-zero was made
     /// (the triangle's key-on: VRUN writes $4008 = 255 at every note, even when the register already holds it, which the latch cannot show).</summary>
+    /// <summary>Per NMI: register <paramref name="reg"/> written with (value &amp; mask) != 0 while its previous value had (value &amp; mask) == 0 (CTW SMS nes_apu.c's triangle
+    /// key-on since 2026-11-13: a $4008 rewrite of a sounding note, as VRUN's $D1 pitch steps do every frame, is not a new note).</summary>
+    public bool[] Rising(int reg, int mask = 0xFF)
+    {
+        var o = new bool[frameStarts.Count];
+        int w = 0, prev = 0;
+        for (int i = 0; i < frameStarts.Count; i++)
+        {
+            long limit = i + 1 < frameStarts.Count ? frameStarts[i + 1] + (frameStarts[i + 1] - frameStarts[i]) / 2 : long.MaxValue;
+            for (; w < writes.Count && writes[w].Clock < limit; w++)
+                if (writes[w].Reg == reg) { if ((writes[w].Value & mask) != 0 && (prev & mask) == 0) o[i] = true; prev = writes[w].Value; }
+        }
+        return o;
+    }
+
     public bool[] Written(int reg, int mask = 0xFF)
     {
         var o = new bool[frameStarts.Count];

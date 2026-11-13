@@ -70,6 +70,7 @@ internal static class FlpTriOctaveSms
             double key = n.Key + (n.Fine - 120) / 100.0 + b.Param(3) + b.Param(4) / 100.0;
             double fl = 440 * Math.Pow(2, (key - 69) / 12), hz = 3579545.0 / (32.0 * N);
             double c = 1200 * Math.Log2(hz / fl);
+            if (Environment.GetEnvironmentVariable("BN_TRI_DUMP") == "1" && atKey) Console.WriteLine(FormattableString.Invariant($"    t {(n.Start - t0) / (double)s.Ppq:0.00} beats key {key:0.#} f{f0}-{f1} N {N} ({string.Join(",", ps.Distinct())}) {c:0}"));
             int o = (int)Math.Round(c / 1200); oct[o] = oct.GetValueOrDefault(o) + 1;
             double expect = atKey ? 0 : -1200;
             if (Math.Abs(c - expect) > 600) { raised++; continue; }   // a whole-octave raise (under the PSG's range) or a line-up miss: counted apart
