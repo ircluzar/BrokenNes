@@ -141,7 +141,7 @@ public static class SongConvert
 
     /// <summary>Converts a MIDI file's bytes. Null with the reason (for the user) when it cannot be used: not a MIDI file, no notes, too big.</summary>
     /// <summary><paramref name="maxChannelBytes"/>: the song room of the ROM the song goes into (its template's region): the converter truncates and fits bends under it.</summary>
-    public static SongBuild? Convert(byte[] midi, out string? problem, int maxChannelBytes = Midi2Nes.MaxChannelBytes)
+    public static SongBuild? Convert(byte[] midi, out string? problem, int maxChannelBytes = Midi2Nes.MaxChannelBytes, bool triangleAtKey = false)
     {
         problem = null;
         if (midi.Length > MaxMidiBytes) { problem = $"the file is {midi.Length:N0} bytes: a MIDI song is far smaller (at most {MaxMidiBytes:N0} accepted)"; return null; }
@@ -187,6 +187,7 @@ public static class SongConvert
         // pulse duty on (MIDI CC 14 per square; a song without it converts exactly as without)
         // noise volume on (MIDI CC 15 on the noise; a song without it converts exactly as without), the song room of the ROM it goes into
         var options = new ConvertOptions { Bends = !MusicMutate.Has(MusicMutate.BendsIgnored), Duty = true, NoiseVolume = true,
+            TriangleAtKey = triangleAtKey,      // an FL project (.flp): the triangle at FL's key (ConvertOptions.TriangleAtKey, 2026-11-12)
             MaxChannelBytes = MusicMutate.Has(MusicMutate.RoomAsOld) ? Midi2Nes.MaxChannelBytes : maxChannelBytes };
         try { result = Midi2Nes.ConvertSong(file, TrackName, facts.Log.Add, options); }
         catch (Exception e) when (e is FormatException or IndexOutOfRangeException or ArgumentOutOfRangeException or ArgumentException or InvalidOperationException or OverflowException)

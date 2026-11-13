@@ -45,7 +45,7 @@ internal static class FlpNoiseRoomChecks
             var midi = MidiFile.Parse(v.Midi);
             bool cc = Midi2Nes.FindFirstCc(midi, Midi2Nes.NoiseVolumeCc).TryGetValue(9, out int ccv) && ccv >= 64;
             r.Expect(cc == (tag == "soft"), $"{tag}: CC 15 on the noise's MIDI channel is {(cc ? "on" : "off")}");
-            var b = SongConvert.Convert(v.Midi, out var why, t.Region);
+            var b = SongConvert.Convert(v.Midi, out var why, t.Region, triangleAtKey: true);
             r.Expect(b != null, $"{tag}: the converter refused it: {why}");
             if (b == null) continue;
             int nes = Array.IndexOf(b.Facts.Source, 10);

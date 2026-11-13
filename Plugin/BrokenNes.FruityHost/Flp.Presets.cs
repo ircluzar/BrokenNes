@@ -281,7 +281,7 @@ internal static partial class SvChecks
         r.Expect(cc7.Zip(cc7.Skip(1)).Count(p => p.Second < p.First) >= 6, $"VRUN NES: the decay is not falling CC 7 steps ({string.Join(",", cc7.Take(20))})");
         r.Expect(bendsN >= 4, $"VRUN NES: the sweep made {bendsN} bends");
         r.Expect(n.Caveats.Any(c => c.Contains("\"NesP\"") && c.Contains("approximated on square 1") && c.Contains("decay envelope") && c.Contains("sweep")), "VRUN NES: the fence does not say what the preset keeps");
-        var conv = BrokenNes2.Music.SongConvert.Convert(n.Midi, out var why);
+        var conv = BrokenNes2.Music.SongConvert.Convert(n.Midi, out var why, triangleAtKey: true);
         r.Expect(conv != null, $"VRUN's converter refused the approximated song: {why}");
         foreach (var t in new[] { VocTarget.Gg, VocTarget.Gb })
         {

@@ -194,7 +194,7 @@ public sealed partial class Emulator
     {
         var template = MusicTemplate.Builtin(out why);
         if (template == null) { why = "Test MIDI export cannot run in this build: " + why; return null; }
-        var build = SongConvert.Convert(midi, out why, template.Region);
+        var build = SongConvert.Convert(midi, out why, template.Region, triangleAtKey: fromFlp != null || IsFlp(path));   // an .flp's triangle sounds at FL's key
         if (build == null) return null;
         if (fromFlp != null) { build.Facts.Caveats.AddRange(Music.Flp.VrunNesBackend.ChannelChoice(fromFlp, build.Facts)); build.Facts.Caveats.AddRange(fromFlp.Caveats); }
         var rom = template.Patch(build.Channels, build.Facts.LoopFrames, SongConvert.NameOf(path));

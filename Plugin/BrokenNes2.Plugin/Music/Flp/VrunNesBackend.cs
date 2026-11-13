@@ -49,7 +49,13 @@ public static class VrunNesBackend
     /// <summary>The noise period index the plugin plays for a pitch (cents from C5): Record/NesDirect.NoiseIndex.</summary>
     public static int NoiseIndex(double c5Cents) => Math.Clamp(15 - (int)Math.Floor((60.0 + c5Cents / 100.0 - 24.0) / 3.0), 0, 15);
 
-    public static VrunNesSong Build(FlpSongModel song, string name)
+    /// <summary>The triangle's octave (2026-11-12, the user's call after hearing it): the MIDI keeps FL's keys; VRUN's converter plays the triangle at them with
+    /// ConvertOptions.TriangleAtKey (roster "triangle_at_key": true; SongConvert's triangleAtKey for an .flp), which reads its notes an octave up in the squares'
+    /// table AFTER its channel choice (written here an octave up, the triangle stopped being the lowest part and the converter swapped parts: overworld).
+    /// Range then: FL keys 21-115; outside, the caveats below. <paramref name="triangleAtKey"/> false: no range caveats (CTW SMS, which keeps the old octave).</summary>
+    public static VrunNesSong Build(FlpSongModel song, string name) => Build(song, name, true);
+
+    public static VrunNesSong Build(FlpSongModel song, string name, bool triangleAtKey)
     {
         var cav = new List<string>(song.Caveats);
         cav.AddRange(FlpFence.ChannelVolume(song).Select(l => l.Text));
@@ -130,6 +136,12 @@ public static class VrunNesBackend
                 }
             }
             if (panned > 0) cav.Add($"{NesNames[nc]}: Pan is set: the NES is mono, the game plays it centred");
+            if (nc == 2 && triangleAtKey)
+            {
+                int high = voices.Count(v => v.Base / 100 > 115.5), low = voices.Count(v => v.Base / 100 < 20.5);
+                if (high > 0) cav.Add($"triangle: {high} notes above FL key 115 (G8) have no triangle period: VRUN's converter drops them (convert with triangle_at_key)");
+                if (low > 0) cav.Add($"triangle: {low} notes below FL key 21 (A0) play at the triangle's lowest period ($7FF, 27.3 Hz)");
+            }
             if (empty > 0) cav.Add($"{NesNames[nc]}: {empty} notes end where they start (length 0): silent in FL and in the game");
             foreach (var g in glides)
             {

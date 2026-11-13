@@ -339,7 +339,7 @@ internal static class FlpChecks
         {
             string name = Path.GetFileNameWithoutExtension(f);
             var v = VrunNesBackend.Build(FlpSong.Read(File.ReadAllBytes(f)), name);
-            var b = SongConvert.Convert(v.Midi, out var why, t.Region);
+            var b = SongConvert.Convert(v.Midi, out var why, t.Region, triangleAtKey: true);
             r.Expect(b != null, $"{name}: the converter refused the file: {why}");
             if (b == null) continue;
             list.Add((name, v, b, t.Patch(b.Channels, b.Facts.LoopFrames, name)));
@@ -359,7 +359,7 @@ internal static class FlpChecks
             var res = MidiChecks.EngineOne(r, s, t, mlb, songs[(i + 1) % songs.Count]);
             r.Expect(res.Score.Worst >= 1.0, $"{s.Name}: the ROM does not play the converter's streams: {res.Score.Agree}/{res.Score.Of}; {string.Join("; ", res.Score.Mismatches.Take(3))}");
             r.Expect(res.ControlsFailed, $"{s.Name}: a negative control did not fail");
-            var b = SongConvert.Convert(s.Midi, out _)!;
+            var b = SongConvert.Convert(s.Midi, out _, triangleAtKey: true)!;
             var bendNotes = new List<string>();
             int loop = b.Facts.LoopFrames, n = Math.Min(2 * loop, 2400);
             var run = MidiRun.Of(t.Patch(b.Channels, loop, s.Name), n + MusicTemplate.Preroll + 4, mlb);

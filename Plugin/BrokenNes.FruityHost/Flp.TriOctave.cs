@@ -35,7 +35,7 @@ internal static class FlpTriOctave
         var v = VrunNesBackend.Build(s, name);
         var t = MidiChecks.BundledTemplate();
         var (_, _, mlb) = MidiFixtures.Bundled();
-        var b = SongConvert.Convert(v.Midi, out var why, t.Region);
+        var b = SongConvert.Convert(v.Midi, out var why, t.Region, triangleAtKey: true);
         if (b == null) { Console.Error.WriteLine("converter refused: " + why); return 1; }
         var rom = t.Patch(b.Channels, b.Facts.LoopFrames, name);
         File.WriteAllBytes(Path.Combine(args[2], name + ".tri.nes"), rom);

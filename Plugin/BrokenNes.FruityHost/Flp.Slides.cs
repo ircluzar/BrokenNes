@@ -135,12 +135,6 @@ internal static class FlpSlideChecks
     /// <summary>The Game Boy register's step (cents) at a frequency.</summary>
     private static double GbStep(double hz, bool wave) { double x = 2048 - (wave ? 65536.0 : 131072.0) / hz; return Cents(VocGbBackend.XHz((int)Math.Min(2047, Math.Round(x) + 1), wave), VocGbBackend.XHz((int)Math.Round(x), wave)); }
 
-    /// <summary>VRUN's triangle plays the converter's period for the MIDI key (the squares' table) on the triangle, which sounds an octave below a square: an octave below FL's triangle. Not a slide matter: said, then the slides are judged an octave up.</summary>
-    private static double[] Octave(double[] hz, ImodelReport r, string engine)
-    {
-        r.Warn($"{engine}: the triangle plays an octave BELOW FL's triangle (VRUN's converter writes the squares' period table for it; FL's plugin plays the triangle at its key). Pipeline-wide, not slides: needs the user's call. Slides judged an octave up.");
-        return hz.Select(x => x * 2).ToArray();
-    }
 
     private static double Cents(double a, double b) => Math.Abs(1200 * Math.Log2(a / b));
     private const double NesCpu = 1789773.0, PsgClock = 3579545.0;
@@ -171,7 +165,7 @@ internal static class FlpSlideChecks
         var v = VrunNesBackend.Build(s, "slides");
         var t = MidiChecks.BundledTemplate();
         var (_, _, mlb) = MidiFixtures.Bundled();
-        var b = SongConvert.Convert(v.Midi, out var why, t.Region);
+        var b = SongConvert.Convert(v.Midi, out var why, t.Region, triangleAtKey: true);
         r.Expect(b != null, $"the converter refused the slide song: {why}");
         if (b == null) return;
         int n = b.Facts.LoopFrames + 60;
@@ -181,7 +175,7 @@ internal static class FlpSlideChecks
             int nes = Array.IndexOf(b.Facts.Source, p.NesChannel + 1);
             if (nes is < 0 or > 2) { r.Expect(false, $"VRUN NES {VrunNesBackend.NesNames[p.NesChannel]}: the converter put it on stream {nes}"); continue; }
             var (hz, st) = NesTrack(run.Latch, nes, n);
-            Report(r, "VRUN NES", VrunNesBackend.NesNames[p.NesChannel] + (nes == 2 ? " (+1 oct)" : ""), s, 0, p.NesChannel, nes == 2 ? Octave(hz, r, "VRUN NES") : hz, st, Midi2Nes.Fps, tol: PeriodSlideTol);
+            Report(r, "VRUN NES", VrunNesBackend.NesNames[p.NesChannel], s, 0, p.NesChannel, hz, st, Midi2Nes.Fps, tol: PeriodSlideTol);
         }
     }
 

@@ -76,7 +76,7 @@ switch (args[0])
     case "flp-test":
         return FlpChecks.Main(args);
 
-    case "flp-export":      // flp-export vocgb|vocgg|ctwsms <song.flp> <out folder>: the test ROM, the fence and the game's import file (Flp.Export.cs)
+    case "flp-export":      // flp-export vocgb|vocgg|ctwsms|vrunnes <song.flp> <out folder>: the test ROM, the fence and the game's import file (Flp.Export.cs)
         return FlpExport.Main(args);
     case "mt-export": return MusicTestExport.Main(args);   // the Vaults music test players' FL TEST slot (MusicTest.Export.cs)
     case "flp-vocdos": return FlpVocDos.Main(args);   // flp-vocdos <song.flp> <out> [dos|95]: the Vaults DOS / 95 music test's FL song (Flp.VocDos.cs)

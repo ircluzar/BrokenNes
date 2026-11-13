@@ -41,6 +41,17 @@ public sealed record ConvertOptions
     /// noise-volume decoder). Off: the noise hits at full volume, as always.</summary>
     public bool NoiseVolume { get; init; }
 
+    /// <summary>The triangle at the written key (2026-11-12, for FL songs): the
+    /// NES triangle sounds an octave below a square at the same period, and the
+    /// note table is the squares', so the triangle's MIDI notes are read one
+    /// octave up (key + 12: the table's period is then 1789773 / (32 f) - 1, the
+    /// triangle's own period for the key). Done after the channel choice (which
+    /// still sees the written notes); bends ride on the raised note, so slides keep
+    /// their shape in half-size period steps. Range: keys 21-115; a key above 115
+    /// has no table note (dropped, said in the log), one under 21 plays $7FF. Off:
+    /// the triangle an octave under the key, as every roster song was made.</summary>
+    public bool TriangleAtKey { get; init; }
+
     /// <summary>The most bytes one channel's stream may take (the duty or
     /// noise-volume opcode included): longer streams are truncated and
     /// re-padded, and bends are fitted under it. The default is the game's

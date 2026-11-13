@@ -146,7 +146,7 @@ public static class CtwSmsBackend
             }
             sub.Instruments.Add(copy);
         }
-        o.Nes = VrunNesBackend.Build(sub, name);
+        o.Nes = VrunNesBackend.Build(sub, name, triangleAtKey: false);   // its triangle rule sits on the NES triangle's old octave (11a item 2)
         if (sub.Instruments.Count == 0)
         { F.Add(new FenceLine("channels", FenceLevel.Over, "NOTHING for CTW SMS: no BrokenNes2 instance on the Master System console in Direct mode with notes on tone 1, tone 2, tone 3 (Triangle) or noise")); return o; }
         foreach (var c in o.Nes.Caveats)

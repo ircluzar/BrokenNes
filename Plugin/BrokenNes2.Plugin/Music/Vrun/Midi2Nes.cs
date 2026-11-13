@@ -681,6 +681,7 @@ public static class Midi2Nes
         foreach (int nes in order)
             channelEvents[nes] = new List<(int, MidiEvent)>();
 
+        int triHigh = 0, triLow = 0;
         foreach (var events in midi.Tracks)
         {
             int absoluteTick = 0;
@@ -691,9 +692,28 @@ public static class Midi2Nes
                 // otherwise read as "channel 15", a real leak once the
                 // selector can map channel 15.
                 if (ev.Status < 0xF0 && map.TryGetValue(ev.Channel, out int nes))
-                    channelEvents[nes].Add((absoluteTick, ev));
+                {
+                    var e = ev;
+                    // ConvertOptions.TriangleAtKey: the triangle's notes one octave up
+                    // in the squares' table (= the triangle's own period for the key)
+                    if (nes == 2 && options.TriangleAtKey &&
+                        (e.Command == MidiFile.NoteOn || e.Command == MidiFile.NoteOff || e.Command == 0xA0))
+                    {
+                        if (e.Command == MidiFile.NoteOn && e.Data2 > 0)
+                        {
+                            if (e.Data1 + 12 > 127) triHigh++;
+                            else if (e.Data1 + 12 < 33) triLow++;
+                        }
+                        e = e with { Data1 = e.Data1 + 12 };
+                    }
+                    channelEvents[nes].Add((absoluteTick, e));
+                }
             }
         }
+        if (triHigh > 0)
+            log($"[midi2nes] triangle at key: {triHigh} note(s) above MIDI 115 have no triangle period (dropped)");
+        if (triLow > 0)
+            log($"[midi2nes] triangle at key: {triLow} note(s) below MIDI 21 (A0) play at the lowest period 0x7FF");
 
         var streams = new Dictionary<int, List<int>>();
         foreach (int nes in order)
