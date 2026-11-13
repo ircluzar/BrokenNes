@@ -91,13 +91,16 @@ public sealed class MdChecks : ConsoleChecks
     protected override bool InVblank() => board.Vdp.Line >= board.Vdp.ActiveLines;
     protected override bool MainWaiting(DebugCpu c, bool executes) => !executes && board.Cpu.Stopped;
     protected override bool WantsOtherCpu(int cpuIndex) => cpuIndex == 1;
+    protected override double LagSlackCycles => board.Timeline.MasterClocksPerFrame / 262.0 * 2;   // two lines
 
-    private long lastFrame = -1;
+    // the frame boundary is vblank's start (the VDP's line reaching the active height), not its frame counter (which steps at line 0):
+    // a game waits for vblank, so a boundary at line 0 found its main loop working in every frame (all lag, busy counted from the wrong edge)
+    private bool wasVblank, seenLine;
     protected override bool FrameBoundary()
     {
-        long f = board.Vdp.Frames;
-        bool b = lastFrame >= 0 && f != lastFrame;
-        lastFrame = f;
+        bool v = InVblank();
+        bool b = seenLine && v && !wasVblank;
+        wasVblank = v; seenLine = true;
         return b;
     }
 
@@ -113,6 +116,8 @@ public sealed class MdChecks : ConsoleChecks
     {
         if (c.Index == 1) { Z80Access(c, address, value, write, source); return; }
         uint a = address & 0xFFFFFF;
+        if (source == AccessSource.Dma) { NoteDma(1); NoteUpload(board.MasterClock); }   // the VDP's DMA reading ROM / work RAM: bytes uploaded
+        else if (write && source == AccessSource.Cpu && a >= 0xC00000 && a < 0xC00008) NoteUpload(board.MasterClock);   // a data / control port write
         if (a >= 0xE00000)
         {
             uint f = a & 0xFFFF;

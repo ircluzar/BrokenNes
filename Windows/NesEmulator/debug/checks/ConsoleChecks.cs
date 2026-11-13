@@ -130,7 +130,7 @@ public abstract class ConsoleChecks : DebugObserver
 
     // the main CPU's step state
     private bool haveStep, lastIdle;
-    private long lastCycle;
+    private long lastCycle, lastIdleCycle = long.MinValue / 2;
     private uint lastPc;
     private FlowKind lastFlow;
     /// <summary>Interrupt frames on the main CPU's call stack (handlers count neither as waiting nor as the main program's work).</summary>
@@ -160,6 +160,7 @@ public abstract class ConsoleChecks : DebugObserver
             lastPc = pc;
         }
         lastIdle = InterruptDepth == 0 && (spinning || MainWaiting(cpu, executes) || InFrameWait(cpu, pc));
+        if (lastIdle) lastIdleCycle = cycle;
     }
 
     /// <summary>The cycles since the last accounting go to the frame (busy or waiting) and to the function running.</summary>
@@ -279,7 +280,7 @@ public abstract class ConsoleChecks : DebugObserver
     {
         if (frameCycles > 0)
         {
-            bool lag = !partial && !lastIdle && frames.Count > 0 && VblankCanArrive();
+            bool lag = !partial && !lastIdle && !(LagSlackCycles > 0 && cycle - lastIdleCycle <= LagSlackCycles) && frames.Count > 0 && VblankCanArrive();
             if (lag) LagFrame(frameNumber);
             if (!partial) OnFrameEnd(lastPc);
             frames.Add(new FrameStat
@@ -295,6 +296,10 @@ public abstract class ConsoleChecks : DebugObserver
     /// <summary>False when no vblank can arrive at this boundary on the hardware (the Game Boy with its LCD off: no mode 1, no vblank
     /// interrupt), so the main program cannot have missed one: a game loading with the display off is not lagging.</summary>
     protected virtual bool VblankCanArrive() => true;
+
+    /// <summary>A main program seen waiting this many cycles before the boundary is not lagging: a poll of the vblank flag leaves its loop on the very
+    /// step the flag sets (the Genesis's VDP status), before the next wait loop is recognised as one. 0: only the last step counts.</summary>
+    protected virtual double LagSlackCycles => 0;
 
     /// <summary>At each frame boundary (vblank started), with the main program's last PC: the console's once-a-frame checks.</summary>
     protected virtual void OnFrameEnd(uint mainPc) { }
