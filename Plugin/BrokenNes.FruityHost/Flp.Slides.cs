@@ -120,7 +120,7 @@ internal static class FlpSlideChecks
     {
         var strict = Measure(s, console, channel, hz, step, fps, minCents, fold: fold, raise: raise);
         var m = lag == 0 && tol == 2.0 && !movingOnly ? strict : Measure(s, console, channel, hz, step, fps, minCents, lag, tol, movingOnly, fold, raise);
-        if (raise > 0) r.Note($"    {engine} {part}: {strict.Folded} of {strict.Judged} frames are in notes the game raised whole octaves (under the PSG's range where the NES plays them: fenced)");
+        if (raise > 0) r.Note($"    {engine} {part}: {strict.Folded} of {strict.Judged} frames are in notes the game raised whole octaves (under the PSG's range: fenced)");
         if (fold) r.Warn($"{engine} {part}: {strict.Folded} of {strict.Judged} frames play an octave BELOW FL (nes_apu.c doubles the NES triangle's period like the NES does, and halves it only past the PSG's 10 bits: the octave flips inside a slide at period $3FF); judged modulo that octave");
         r.Expect(m.Judged >= (movingOnly ? 60 : 100), $"{engine} {part}: only {m.Judged} frames judged");
         r.Expect(m.Off == 0, $"{engine} {part}: {m.Off} of {m.Judged} frames off FL's slide by more than the register's half step + {tol} cents{(lag > 0 ? $" (allowing {lag} frame late)" : "")}; first {m.First}");
@@ -205,10 +205,10 @@ internal static class FlpSlideChecks
                 st[f] = N > 1 ? Cents(PsgClock / (32.0 * (N - 1)), PsgClock / (32.0 * N)) : 0;
             }
             if (psg != 2) { Report(r, "CTW SMS", CtwSmsBackend.Names[c], s, 3, c, hz, st, CtwSmsBackend.NesFps, PsgLowest, tol: PeriodSlideTol); continue; }
-            // the triangle (2026-11-12): where VRUN NES plays it, an octave below FL (judged an octave up, as VRUN NES's); a note under the PSG's range is raised whole octaves
-            // for the whole note (judged modulo those raises); frames under the range an octave below FL are the fenced note range. And no octave jump inside a note:
+            // the triangle (2026-11-13): at FL's key (TriangleAtKey, as VRUN NES's .flp songs); a note under the PSG's range is raised whole octaves
+            // for the whole note (judged modulo those raises); frames under the range are the fenced note range. And no octave jump inside a note:
             // two sounding frames in a row an octave apart (+-60 cents; the slide song has no legato octave leaps on the triangle)
-            Report(r, "CTW SMS", CtwSmsBackend.Names[c] + " (+1 oct)", s, 3, c, hz.Select(x => x * 2).ToArray(), st, CtwSmsBackend.NesFps, PsgLowest + 1200, tol: 6.0, raise: 2);   // (measured 5.2 beyond the half step, 2026-11-12: tighter than the squares' PeriodSlideTol)
+            Report(r, "CTW SMS", CtwSmsBackend.Names[c], s, 3, c, hz, st, CtwSmsBackend.NesFps, PsgLowest, tol: PeriodSlideTol, raise: 2);   // at the key the triangle slides in the squares' period units, as VRUN NES's (9.9 beyond the half step measured 2026-11-13)   // (measured 5.2 beyond the half step, 2026-11-12: tighter than the squares' PeriodSlideTol)
             int jumps = 0; string firstJump = "";
             for (int f = 1; f < n; f++)
             {

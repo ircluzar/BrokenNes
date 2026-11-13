@@ -83,6 +83,7 @@ switch (args[0])
     case "ctwsms-bends":    // ctwsms-bends <game.sms> <music_data.fab> <song> <loop frames> [frames]: Flp.SmsBends.cs
         return FlpSmsBends.Main(args);
     case "tri-octave": return FlpTriOctave.Main(args);   // tri-octave <song.flp> <out dir> [seconds]: VRUN NES triangle vs the plugin (Flp.TriOctave.cs)
+    case "tri-octave-sms": return FlpTriOctaveSms.Main(args);   // tri-octave-sms [song.flp ...]: CTW SMS tone 3 (triangle) vs FL's key, before/after TriangleAtKey (Flp.TriOctaveSms.cs)
     case "flp-backend":
         return SvChecks.Backend(args);
     case "musictest-ctwsms": return MusicTestCtwSms.Main(args);   // MusicTest.CtwSms.cs

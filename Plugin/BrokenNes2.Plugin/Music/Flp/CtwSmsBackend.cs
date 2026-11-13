@@ -3,8 +3,8 @@
 // BrokenNes2 instances on the MASTER SYSTEM console are read as the NES channels they sit on: Pulse 1 / Pulse 2 / Triangle / Noise = PSG tone 1 / tone 2 / tone 3 / noise, through
 // VrunNesBackend and VRUN's own converter, Music/Vrun), and this file is the Master System's fence: what nes_apu.c and the translated decoders do with it (read in the game's source):
 //   squares: PSG N = NES period + 1, halved while over 1023 (notes under about A2, 109 Hz, an octave or more up); no duty (the PSG is 50%); level -> 2 dB steps (vol2att: some merge);
-//   triangle: N = 2 (period + 1): where the NES plays it, an octave below the key (measured 2026-11-12, FruityHost tri-octave: VRUN NES's triangle sounds 1200 cents under the
-//   plugin's); a note under the PSG's range is raised by whole octaves chosen at its key-on and kept for the whole note (slides never jump; a slide below the note's octave stops
+//   triangle: N = 2 (period + 1), at FL's key since 2026-11-13: the streams are converted with ConvertOptions.TriangleAtKey as VRUN NES's .flp songs are (before: an octave
+//   below the key, where the NES triangle sounds at the squares' period; FruityHost tri-octave-sms measured it -1200 cents, now about 0); a note under the PSG's range is raised by whole octaves chosen at its key-on and kept for the whole note (slides never jump; a slide below the note's octave stops
 //   at N = 1023), a fixed attenuation 3; noise: the PSG's 3 rates from the NES period index (0-3 high, 4-7 mid, 8-15 low), white noise;
 //   pitch bends and slides ON, as VRUN NES plays them (2026-11-10: fab2c translates the bend decoders' SSF periods; the template's title song has VRUN's bend decoders on its
 //   three tonal channels, so the converter's 0xD1 pitch / 0xD2 slide play: the bent NES period goes through the same PSG mapping each frame);
@@ -77,7 +77,8 @@ public static class CtwSmsBackend
 
     public static int NoiseRate(int index) => index < 4 ? 0 : index < 8 ? 1 : 2;
 
-    public static CtwSmsSong Build(FlpSongModel song, string name)
+    /// <param name="triangleAtKey">false = the old octave (before 2026-11-13: an octave below FL's key), kept for FruityHost tri-octave-sms's before/after.</param>
+    public static CtwSmsSong Build(FlpSongModel song, string name, bool triangleAtKey = true)
     {
         var o = new CtwSmsSong();
         var F = o.Fence;
@@ -125,9 +126,9 @@ public static class CtwSmsBackend
                 double c = seg.V.PitchAt(seg.From);
                 if (ch == 2)
                 {
-                    // where the NES plays it: an octave below the key; raised whole octaves for the whole note when its start is under the PSG's range, a slide below that stops
-                    double hz = 440 * Math.Pow(2, (c / 100 - 12 - 69) / 12), lowHz = hz;
-                    for (int t = seg.From; t < seg.To; t += seg.V.Glides.Count > 0 ? 1 : Math.Max(1, seg.To - seg.From)) lowHz = Math.Min(lowHz, 440 * Math.Pow(2, (seg.V.PitchAt(t) / 100 - 12 - 69) / 12));
+                    // at FL's key (TriangleAtKey); raised whole octaves for the whole note when its start is under the PSG's range, a slide below that stops
+                    double hz = 440 * Math.Pow(2, (c / 100 - (triangleAtKey ? 0 : 12) - 69) / 12), lowHz = hz;
+                    for (int t = seg.From; t < seg.To; t += seg.V.Glides.Count > 0 ? 1 : Math.Max(1, seg.To - seg.From)) lowHz = Math.Min(lowHz, 440 * Math.Pow(2, (seg.V.PitchAt(t) / 100 - (triangleAtKey ? 0 : 12) - 69) / 12));
                     int k = 0; while (hz * (1 << k) < LowestHz) k++;
                     string at = $"{FlpFence.NoteName((int)Math.Round(c / 100))} at {seg.From / (double)Math.Max(1, song.Ppq) / 4 + 1:0.##} bars";
                     if (k > 0) { triRaised++; if (triWhere.Length == 0) triWhere = at + $" ({k} octave{(k > 1 ? "s" : "")} up)"; }
@@ -146,14 +147,14 @@ public static class CtwSmsBackend
             }
             sub.Instruments.Add(copy);
         }
-        o.Nes = VrunNesBackend.Build(sub, name, triangleAtKey: false);   // its triangle rule sits on the NES triangle's old octave (11a item 2)
+        o.Nes = VrunNesBackend.Build(sub, name, triangleAtKey);    // the triangle at FL's key, as VRUN NES's .flp songs (2026-11-13; nes_apu.c's N = 2 (period + 1) then sounds at the key)
         if (sub.Instruments.Count == 0)
         { F.Add(new FenceLine("channels", FenceLevel.Over, "NOTHING for CTW SMS: no BrokenNes2 instance on the Master System console in Direct mode with notes on tone 1, tone 2, tone 3 (Triangle) or noise")); return o; }
         foreach (var c in o.Nes.Caveats)
             if (!c.StartsWith("NOTHING for VRUN NES")) F.Add(new FenceLine("VRUN engine", FenceLevel.Note, c.Replace("square 1", "tone 1").Replace("square 2", "tone 2")));
         o.Seconds = o.Nes.Seconds;
         if (Room is not { } rm) { F.Add(new FenceLine("bytes", FenceLevel.Over, "the song room is unknown: " + RoomProblem)); return o; }
-        o.Build = SongConvert.Convert(o.Nes.Midi, out var why, rm.Min());
+        o.Build = SongConvert.Convert(o.Nes.Midi, out var why, rm.Min(), triangleAtKey);
         if (o.Build == null) { F.Add(new FenceLine("converter", FenceLevel.Over, "VRUN's converter refused the song: " + why)); return o; }
         foreach (var l in o.Build.Facts.Lines()) F.Add(new FenceLine("converter", FenceLevel.Ok, l));
         foreach (var l in VrunNesBackend.ChannelChoice(o.Nes, o.Build.Facts)) F.Add(new FenceLine("channels", FenceLevel.Note, l));
@@ -175,10 +176,10 @@ public static class CtwSmsBackend
         if (detuned > 0) F.Add(new FenceLine("tuning", FenceLevel.Ok, $"{detuned} notes are off their semitone (note fine pitch up to {worstOff:0} cents, or Coarse/Fine on the instance): played bent, as VRUN NES plays them"));
         if (low > 0) F.Add(new FenceLine("note range", FenceLevel.Over, $"{low} notes are under the PSG's lowest tone ({LowestHz:0.0} Hz, about A2): the game plays them an octave (or more) up, the plugin's Master System chip leaves them silent; the first is {lowWhere}"));
         else F.Add(new FenceLine("note range", FenceLevel.Ok, "every tone 1 / 2 note is A2 (110 Hz) or higher: inside the PSG's range"));
-        // the triangle sounds where VRUN NES plays it (an octave below FL's key: the NES triangle's period is the squares' table, measured 2026-11-12)
-        if (o.Nes.Parts.Any(p => p.NesChannel == 2)) F.Add(new FenceLine("triangle octave", FenceLevel.Note, "tone 3 (the triangle) plays where VRUN NES plays it: an octave below FL's key (the NES triangle sounds an octave under a square at the converter's period; the plugin plays it at the key)"));
+        // the triangle sounds at FL's key, as VRUN NES's .flp songs (TriangleAtKey, 2026-11-13)
+        if (o.Nes.Parts.Any(p => p.NesChannel == 2)) F.Add(new FenceLine("triangle octave", FenceLevel.Ok, "tone 3 (the triangle) plays at FL's key, as the plugin and VRUN NES play it"));
         if (triRaised > 0 && !FlpMutants.On(CtwSmsMutants.TriangleHalvedPerFrame))
-            F.Add(new FenceLine("note range", FenceLevel.Over, $"{triRaised} tone 3 (triangle) notes are under the PSG's lowest tone ({LowestHz:0.0} Hz) where the NES plays them (an octave below the key): the game raises each by whole octaves for the whole note, slides included; the first is {triWhere}"));
+            F.Add(new FenceLine("note range", FenceLevel.Over, $"{triRaised} tone 3 (triangle) notes are under the PSG's lowest tone ({LowestHz:0.0} Hz) at FL's key: the game raises each by whole octaves for the whole note, slides included; the first is {triWhere}"));
         if (triStopped > 0 && !FlpMutants.On(CtwSmsMutants.TriangleHalvedPerFrame))
             F.Add(new FenceLine("note range", FenceLevel.Over, $"{triStopped} tone 3 (triangle) notes slide below their octave's PSG range: the slide stops at the lowest tone ({LowestHz:0.0} Hz) instead of jumping an octave; the first is {stopWhere}"));
         F.Add(notHalf > 0
