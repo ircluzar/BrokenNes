@@ -54,6 +54,7 @@ public sealed partial class Emulator
                 string? product = GameTargets.Product(t, flp, outDir);
                 if (product == null || !File.Exists(product)) { SongUi.SetResult($"{t.Label}: the build said OK but made no {product}; {fence}", false); return; }
                 if (!t.PlaysHere) { SongUi.SetResult($"{t.Label}: built {product} ({fence}). It does not play in the plugin: {(t.Id == "nano-gb" ? "open it with the Nano GB web library" : "run it on BrokenNes's x86 console or DOSBox")}", true); return; }
+                MarkFlpRom(product);
                 if (LoadRomFile(product) is { } refused) { SongUi.SetResult($"{t.Label}: built {product}, but it did not load: {refused}", false); return; }
                 SongUi.SetResult(MusicTestTargets.Is(t) ? $"{t.Label}: loaded (the game's own driver; the song is the last entry, FL TEST); {fence}" : $"{t.Label}: plays the title screen's song (the game's own driver); {fence}", true);
                 SongUi.SetNote($"full fence report: {fenceFile}");

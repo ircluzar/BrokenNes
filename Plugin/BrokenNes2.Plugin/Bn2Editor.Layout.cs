@@ -111,7 +111,7 @@ public sealed unsafe partial class Bn2Editor
         var own = Cx.ChipsOf(console);
         if (mode == 1) own = own.Where(i => !Cx.IsPresetChip(i)).ToArray();      // the Presets chips play without a game
         if (!UiMutate.Has(UiMutate.ChipsUngrouped)) own = own.OrderBy(i => ChipGroup(Cx.Chips[i])).ThenBy(i => i).ToArray();
-        var items = own.Select(i => (Cx.Chips[i].Id, (string?)(ChipGroupNames[ChipGroup(Cx.Chips[i])] + (Cx.Chips[i].Note is { } nt ? "  -  " + nt : "")))).ToList();
+        var items = own.Select(i => (Cx.Chips[i].Id, (string?)(Cx.Chips[i].Note is { } nt && nt.StartsWith(ChipGroupNames[ChipGroup(Cx.Chips[i])], StringComparison.OrdinalIgnoreCase) ? nt : ChipGroupNames[ChipGroup(Cx.Chips[i])] + (Cx.Chips[i].Note is { } nt2 ? "  -  " + nt2 : "")))).ToList();
         var values = own.ToList();
         openGroupStarts = new HashSet<int>(Enumerable.Range(1, Math.Max(0, own.Length - 1)).Where(k => ChipGroup(Cx.Chips[own[k]]) != ChipGroup(Cx.Chips[own[k - 1]])));
         if (showAllChips && mode == 0 && !UiMutate.Has(UiMutate.ShowAllDead))
@@ -159,12 +159,12 @@ public sealed unsafe partial class Bn2Editor
         Dropdown(dc, IdBarTarget, "", x, y, 150, 0, "in " + (emu?.FlpTarget.Label ?? "VRUN NES"));
         x += 156;
         bool canPlay = emu != null && !busy;
-        bool playing = emu?.SongRunning == true && emu.SongActive && !emu.SongStopped;
+        bool playing = (emu?.SongRunning == true && emu.SongActive || emu?.FlpGameRunning == true) && !emu!.SongStopped;
         Button(dc, IdBarPlay, playing ? "Playing" : "Play in game", R(x, y, 110, h), primary: true, enabled: canPlay);
         x += 114;
         Button(dc, IdBarRestart, "Restart", R(x, y, 68, h), primary: false, enabled: canPlay && held != null);
         x += 72;
-        Button(dc, IdBarStop, "Stop", R(x, y, 52, h), primary: false, enabled: canPlay && emu!.SongRunning);
+        Button(dc, IdBarStop, "Stop", R(x, y, 52, h), primary: false, enabled: emu != null && emu.AnySongRunning);
         x += 56;
         Button(dc, IdBarReload, "Reload", R(x, y, 64, h), primary: false, enabled: canPlay && held != null);
         x += 70;
@@ -206,7 +206,7 @@ public sealed unsafe partial class Bn2Editor
             case IdBarPlay:
                 // "Play in game": the song held plays (again); none yet: this FL project's .flp when one was picked, else the file dialog
                 if (ui.Busy) break;
-                if (emu.Song != null) MidiClick(IdMidPlay);
+                if (emu.Song != null || emu.FlpGameRunning) MidiClick(IdMidPlay);
                 else if (plugin.ProjectFlpPath != null) UseProjectFlp(change: false);
                 else ChooseMidi();
                 break;

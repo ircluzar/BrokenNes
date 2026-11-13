@@ -55,7 +55,7 @@ public static partial class Cx
         {
             string? found = CoreRegistry.ApuIds.FirstOrDefault(i => i.Equals(h.Id, StringComparison.OrdinalIgnoreCase));
             if (found == null) throw new InvalidOperationException($"harvest chip {h.Id} is not a registered APU core: the plugin's chip list would move");
-            list.Add(new Chip(found, h.Console, $"ported: {h.Name} (art, bugs kept)"));
+            list.Add(new Chip(found, h.Console, $"ported from: {h.Name}"));
         }
         // Layout B (2026-11-13, "offer every APU core not offered yet"): the enhanced NES-register bridges (a NES game / FL's NES registers on another console's sound chip, the enhanced cores'
         // phase 3 and WideMess milestone 7b) were left out only so that no index moved (Cx.Hidden). Appended here, after everything, as NES-console chips: they take the NES registers, so
@@ -85,7 +85,7 @@ public static partial class Cx
             string? found = CoreRegistry.ApuIds.FirstOrDefault(i => i.Equals(h.Id, StringComparison.OrdinalIgnoreCase));
             // a missing core would move every later index: refuse loudly rather than shift saved projects
             if (found == null) throw new InvalidOperationException($"harvest chip {h.Id} is not a registered APU core: the plugin's chip list would move");
-            list.Add(new Chip(found, h.Console, $"ported: {h.Name} (art, bugs kept)"));
+            list.Add(new Chip(found, h.Console, $"ported from: {h.Name}"));
         }
     }
 

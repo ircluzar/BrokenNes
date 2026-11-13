@@ -67,6 +67,7 @@ public sealed partial class Emulator
         string romPath = Path.Combine(dir, name + "." + game.Replace(' ', '-').ToLowerInvariant() + ext);
         File.WriteAllBytes(romPath, rom);
         File.WriteAllLines(Path.ChangeExtension(romPath, ".fence.txt"), [$"{file} for {game}: {FlpFence.Summary(fence)}", .. lines]);
+        MarkFlpRom(romPath);
         string? err = LoadRomFile(romPath);
         if (err != null) { SongUi.SetResult($"{file}: the {game} test ROM was built but not loaded: {err}", false); return true; }
         SongUi.SetResult($"Loaded {file} into {game}'s own sound driver ({FlpFence.Summary(fence)}): it plays from its start", true);

@@ -277,6 +277,24 @@ public sealed partial class Emulator
 
     internal void StopSong() => Volatile.Write(ref songStopped, 1);
 
+    // ---- an .flp built for another game's own driver (CTW SMS, Vaults GB/GG, music tests ...): it loads as an ordinary ROM, so Stop and Play act on that game too ----
+    private volatile string? flpRomPath;
+    private volatile IGame? flpGame;
+    /// <summary>Remember the ROM an .flp was built into, before it is loaded (the load marks the game it makes).</summary>
+    internal void MarkFlpRom(string romPath) { flpRomPath = romPath; flpGame = null; }
+    /// <summary>The running game is an .flp built for another game's driver.</summary>
+    internal bool FlpGameRunning => game is { } g && ReferenceEquals(g, flpGame);
+    /// <summary>Some song is running: the VRUN NES song, or an .flp built for another game.</summary>
+    internal bool AnySongRunning => SongRunning || FlpGameRunning;
+    /// <summary>Play on a stopped .flp game: it starts again from power-on.</summary>
+    internal string PlayFlpGame()
+    {
+        if (!FlpGameRunning) return "no song";
+        if (!SongStopped) return "already playing";
+        lock (EmulatorHub.Gate) { StartLoad(); Changed(); }
+        return "playing from its start";
+    }
+
     internal string RestartSong()
     {
         if (song == null) return "open a MIDI file first";
@@ -313,7 +331,7 @@ public sealed partial class Emulator
     // ---- the audio side (under romLock, from ApplyPending / Produce) ----
 
     /// <summary>Whether the frame about to be made is silent because the song is stopped.</summary>
-    private bool SongHolds(IGame g) => g is NesGame { IsSongTest: true } && Volatile.Read(ref songStopped) != 0;
+    private bool SongHolds(IGame g) => (g is NesGame { IsSongTest: true } || ReferenceEquals(g, flpGame)) && Volatile.Read(ref songStopped) != 0;
 
     /// <summary>A restart that was asked for: the prepared copy takes over between frames (nothing allocated: the copy, its stems and the rings exist). When no copy is ready yet the
     /// request waits for the worker (and the song stays where it is, or silent when it was stopped).</summary>

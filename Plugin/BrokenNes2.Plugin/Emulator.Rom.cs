@@ -223,6 +223,7 @@ public sealed partial class Emulator
                     else ApplyRestore(g, request);
                 }
                 if (gen != Volatile.Read(ref loadGeneration)) { g.Dispose(); return; }
+                if (path != null && flpRomPath is { } fp && string.Equals(path, fp, StringComparison.OrdinalIgnoreCase)) { flpGame = g; Volatile.Write(ref songStopped, 0); }      // an .flp built for another game (Stop works on it too)
                 Interlocked.Exchange(ref pendingGame, g);
                 romStatus = "running " + (g is NesGame { IsSongTest: true } && song is { } playing ? "MIDI test: " + playing.FileName : name);
                 if (g is NesGame { IsSongTest: true }) { WantStandby(); }          // the copy a restart (Play, Restart, FL's transport) swaps in

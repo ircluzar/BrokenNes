@@ -98,7 +98,7 @@ public sealed unsafe partial class Bn2Editor
         bool canPlay = emu != null && held != null && !busy;
         Button(dc, IdMidPlay, "Play", R(lx, y, 90, 34), primary: true, enabled: canPlay);
         Button(dc, IdMidRestart, "Restart", R(lx + 96, y, 90, 34), primary: false, enabled: canPlay);
-        Button(dc, IdMidStop, "Stop", R(lx + 192, y, 90, 34), primary: false, enabled: canPlay && emu!.SongRunning);
+        Button(dc, IdMidStop, "Stop", R(lx + 192, y, 90, 34), primary: false, enabled: emu != null && emu.AnySongRunning);
         Button(dc, IdMidReload, "Reload", R(lx + 288, y, 84, 34), primary: false, enabled: canPlay);
         // the music pipeline: this FL project's own last-saved .flp straight into the sound-test ROM (Music/Flp, ProjectFlp.cs)
         Button(dc, IdMidFlp, "This FL project", R(lx + 384, y, 140, 34), primary: held == null, enabled: emu != null && !busy);
@@ -155,9 +155,9 @@ public sealed unsafe partial class Bn2Editor
         switch (id)
         {
             case IdMidOpen: if (!ui.Busy) ChooseMidi(); break;
-            case IdMidPlay: if (emu.Song != null && !ui.Busy) ui.SetResult("Play: " + emu.PlaySong(), true); break;
+            case IdMidPlay: if (emu.FlpGameRunning && !ui.Busy) ui.SetResult("Play: " + emu.PlayFlpGame(), true); else if (emu.Song != null && !ui.Busy) ui.SetResult("Play: " + emu.PlaySong(), true); break;
             case IdMidRestart: if (emu.Song != null && !ui.Busy) ui.SetResult("Restart: " + emu.RestartSong(), true); break;
-            case IdMidStop: if (emu.SongRunning) { emu.StopSong(); ui.SetResult("Stopped: Play starts the song again from its start", true); } break;
+            case IdMidStop: if (emu.AnySongRunning) { emu.StopSong(); ui.SetResult("Stopped: Play starts the song again from its start", true); } break;
             case IdMidReload: if (emu.Song != null && !ui.Busy && emu.ReloadSong() is { } why) ui.SetResult("Reload: " + why, false); break;
             case IdMidFollow: ui.Follow = !ui.Follow; break;
             case IdMidFlp: if (!ui.Busy) UseProjectFlp(change: false); break;

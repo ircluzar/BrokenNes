@@ -16,7 +16,7 @@ public static partial class Cx
         internal static readonly (string Id, string Note)[] Ids =
         [
             ("PC_ADLIB", "AdLib OPL2 (ymfm): one FM voice, pick the patch with Instrument"),
-            ("PC_ADLIB_M036", "AdLib on MAME 0.36 fmopl (art, bugs kept)"),
+            ("PC_ADLIB_M036", "AdLib on MAME 0.36 fmopl"),
             ("PC_ADLIB_D072", "AdLib on DOSBox 0.72 (art: 22 kHz, 1 ms write blocks)"),
             ("PC_ADLIB_D074C", "AdLib on DOSBox 0.74 compat / ADLIBEMU (art)"),
             ("PC_ADLIB_D074F", "AdLib on DOSBox 0.74 DBOPL (art)"),
