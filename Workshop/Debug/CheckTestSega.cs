@@ -58,6 +58,19 @@ internal static partial class CheckTestCli
             () => MdRun(MdRom(W(0x33FC, 0x0100), L(0xA11100), W(0x33FC, 0x0100), L(0xA11200), W(0x0839, 0x0000), L(0xA11100), W(0x66F6), W(0x13FC, 0x0001), L(0xA01000), MdSpin), "md_zbus_neg"),
             also: f => f.Address == "$A01000");
         Pair("md.lag-frame", () => MdRun(MdRom(W(0x5279), L(0xFF0000), W(0x60F8)), "md_lag"), () => MdRun(MdRom(MdSpin), "md_lag_neg"), fromFrame: 1);   // loop: ADDQ.W #1,$FF0000; BRA.S loop
+        // a game's frame: ~2000 counted writes (part of a frame), then it polls the VDP's vblank flag in, then out (as SGDK's VDP_waitVBlank). The frame
+        // boundary is vblank's start: there the program is polling, so no lag frame, and the profile's busy share is the work's, not the whole frame
+        // (the boundary at the VDP's frame counter, line 0, found it working every frame: all lag)
+        {
+            var (vf, vc) = MdRun(MdRom(W(0x33FC, 0x8144), L(0xC00004),                                   // MOVE.W #$8144,$C00004: the display on (off, the VB flag stays set)
+                W(0x323C, 0x07D0), W(0x5279), L(0xFF0000), W(0x51C9, 0xFFF8),     // loop: MOVE.W #2000,D1; work: ADDQ.W #1,$FF0000; DBRA D1,work
+                W(0x3039), L(0xC00004), W(0x0800, 0x0003), W(0x67F4),                                        // w1: MOVE.W $C00004,D0; BTST #3,D0; BEQ.S w1
+                W(0x3039), L(0xC00004), W(0x0800, 0x0003), W(0x66F4), W(0x60D8)), "md_vbwait", 30);            // w2: ... BNE.S w2; BRA.S loop
+            var lag = vf.Where(f => f.Rule == "md.lag-frame").ToList();
+            var ps = CheckRun.Summarize(vc, 2);
+            Check("md: a game waiting for vblank by polling the VDP is not lagging, and its busy share is its work", lag.Count == 0 && ps.Frames >= 20 && ps.BusyAverage > 15 && ps.BusyAverage < 85,
+                $"lag findings {lag.Count}, frames {ps.Frames}, busy {ps.BusyAverage:F1}%");
+        }
     }
 
     private static int[] W(params int[] w) => w;
