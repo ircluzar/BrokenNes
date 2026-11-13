@@ -105,7 +105,8 @@ public sealed unsafe partial class SelfTest
                 if (second != null) Win32Host.Click(hwnd, second.Value.X, second.Value.Y);
                 t.Expect(p.GetParam(PRecipe) == 1 && p.Test(HkRecipeParam) == 1, $"recipes: picking the game voice set the Recipe parameter to {p.GetParam(PRecipe)}");
                 var shot = Win32Host.CapturePixels(hwnd, out int w, out int h);
-                t.Expect(BrightPixels(shot, w, 14, 386, 220, 16) > 150, "recipes: the Instrument row shows no text");
+                var irow = RectOf(p.Test(30, 90));                                     // (layout B: the line under the strip's Instrument dropdown)
+                t.Expect(BrightPixels(shot, w, irow.X, irow.Y, irow.W, irow.H) > 100, "recipes: the Instrument row shows no text");
                 p.HideEditor();
             }
             finally { Win32Host.DestroyParent(parent); }

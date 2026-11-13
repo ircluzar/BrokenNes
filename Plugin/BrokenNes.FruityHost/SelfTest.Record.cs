@@ -236,8 +236,11 @@ public sealed unsafe partial class SelfTest
             var (mx, _, mw, _) = RectOf(mid);
             var (ax, _, _, _) = RectOf(about);
             var (tx, ty, _, _) = RectOf(tab0);
-            t.Expect(by >= 8 && by + bh <= 44 && bx >= mx + mw && bx + bw <= ax - 230 && (tab0 == 0 || bx + bw <= tx || by + bh <= ty),
-                $"the Record button at {bx},{by} {bw}x{bh} overlaps the Test MIDI export button (ends at {mx + mw}), the emulator badge and About (from {ax - 242}) or the tab strip ({tx},{ty})");
+            // layout B: the Record view button is among the header's view buttons (right of Game, left of Inputs); Test MIDI export is the song bar's facts button
+            var (ix, _, _, _) = RectOf(p.Test(30, 80));
+            var (_, my, _, _) = RectOf(mid);
+            t.Expect(by >= 0 && by + bh <= 44 && bx > tx && bx + bw <= ix && ax > ix && my >= 652,
+                $"the Record button at {bx},{by} {bw}x{bh} is not among the header's view buttons (Game at {tx},{ty}, Inputs at {ix}), or the song bar's button is at y {my} ({mx},{mw})");
             ClickControl(t, p, IdRecBtn, "Record button");
             t.Expect(p.Test(EdROpen) == 1, "the Record window did not open");
             ClickControl(t, p, IdRecStartBtn, "Record");
