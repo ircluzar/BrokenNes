@@ -21,14 +21,14 @@ public sealed unsafe partial class Bn2Editor
         if (bank == 0) { Txt(dc, "the PC speaker: a square from the 8254, on or off (no volume, no timbre)", R(x, y, w, RowH), Win32.DT_LEFT | Mid | Win32.DT_END_ELLIPSIS, Faint, fontSmall); return true; }
         var patch = Cx.PatchItems(bank)[Cx.PatchClamp(bank, plugin.Get(P.Instrument))];
         bool custom = bank == 6 && plugin.PcCustomPatch != null;
-        Dropdown(dc, IdInstrument, "Instrument", x, y, w, 86, custom ? patch.Name + " (edited)" : patch.Name);
-        int tw = w - 86;
+        Dropdown(dc, IdInstrument, "Instrument", x, y, w, Lw, custom ? patch.Name + " (edited)" : patch.Name);
+        int tw = w;
         if (bank == 6)
         {
-            Button(dc, IdPcEdit, custom ? "Edit patch*" : "Edit patch", R(x + w - 110, y + RowH + 1, 110, 20), primary: custom);
-            tw -= 116;
+            Button(dc, IdPcEdit, custom ? "Edit patch*" : "Edit patch", R(x + w - 100, y + RowH + 1, 100, 20), primary: custom);
+            tw -= 106;
         }
-        Txt(dc, patch.Description, R(x + 86, y + RowH + 1, tw, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
+        Txt(dc, patch.Description, R(x, y + RowH + 1, tw, 16), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Faint, fontSmall);
         return true;
     }
 

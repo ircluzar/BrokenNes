@@ -15,12 +15,11 @@ public sealed unsafe partial class Bn2Editor
         IdRecOptStart = 2027, IdRecOptStop = 2028, IdRecOptLanes = 2029, IdRecDragAll = 2030, IdRecLive = 2031, IdRecPortDown = 2032, IdRecPortUp = 2033, IdRecLog = 2034, IdRecExpr = 2035,
         IdRecLinkAll = 2036,                          // relink: "Link all BrokenNes2 channels"
         IdRecTrack = 2040, IdRecHere = 2050;          // + visible track row 0..RecRows-1 (the row's drag handle, its "Play here")
-    private const int RecW = 820, RecH = 624, RecRows = 5;
+    private const int RecW = ViewBoxW, RecH = 624, RecRows = 5;
 
     /// <summary>The recording the window lists: this emulator's, else the last one on offer (an instance that replaced an imported channel sits on another emulator).</summary>
     private static RecordHeld? ShownRecording(Emulator? emu) => emu?.Recording ?? TrackOffers.Current?.Recordings[^1].Held;
 
-    private bool recOpen;
     private int recScroll, dragArm, dragX, dragY;
     private string? testSavePath;
     private string recMessage = "";
@@ -30,32 +29,25 @@ public sealed unsafe partial class Bn2Editor
     private static bool IsRecDragId(int id) => id == IdRecDragAll || id is >= IdRecTrack and < IdRecTrack + RecRows;
 
     /// <summary>The header's button: right of Test MIDI export, clear of the tab strip.</summary>
-    private void DrawRecordButton(nint dc, int x)
+    /// <summary>The header's Record view button (layout B): lit while the view is shown, red while a recording is armed or running.</summary>
+    private void DrawRecordButton(nint dc, RECT r)
     {
         var emu = plugin.Emulator;
         int st = emu?.RecordUi.State ?? 0;
-        int w = Math.Min(64, UiLayout.StripX - 4 - x);
-        if (w < 40) return;
-        Button(dc, IdRec, st == RecordPanel.Recording ? "REC" : st == RecordPanel.Armed ? "armed" : "Record", R(x, 13, w, 26), primary: st is RecordPanel.Recording or RecordPanel.Armed);
+        ViewButton(dc, IdRec, st == RecordPanel.Recording ? "REC" : st == RecordPanel.Armed ? "Record (armed)" : "Record", r, view == 4, alert: st is RecordPanel.Recording or RecordPanel.Armed);
     }
 
-    private RECT RecordBox => R((Width - RecW) / 2, (Height - RecH) / 2, RecW, RecH);
+    private RECT RecordBox => ViewBox(RecW, RecH);
 
     private void DrawRecord(nint dc, Emulator? emu)
     {
-        DimBackdrop(dc);
-        hits.Clear();                                    // a modal: nothing behind it can be reached
-        var box = RecordBox;
-        Box(dc, R(box.Left + 4, box.Top + 6, RecW, RecH), Black, -1, 10);
-        Box(dc, box, Panel, Accent, 10);
+        var box = RecordBox;                             // the Record view (layout B): the old window's box, its title row under the header
         int lx = box.Left + 30, iw = RecW - 60;
         var ui = emu?.RecordUi;
         var held = emu?.Recording;
         var rec = emu?.Recorder;
         int st = ui?.State ?? 0;
 
-        Txt(dc, "Record the music", R(lx, box.Top + 14, 400, 34), Win32.DT_LEFT | Mid, Text, fontTitle);
-        if (emu != null) Txt(dc, $"emulator #{emu.Id}", R(box.Right - 30 - 200, box.Top + 14, 200, 34), Win32.DT_RIGHT | Mid, Dim, fontSection);
         Txt(dc, "Every note the game's sound chip plays (SNES, NES), from Record to Stop: one MIDI track and one preset per instrument, replayed by BrokenNes2 channels with no game.",
             R(lx, box.Top + 50, iw, 20), Win32.DT_LEFT | Win32.DT_SINGLELINE | Win32.DT_END_ELLIPSIS, Dim, fontSmall);
         Line_(dc, lx, box.Top + 74, box.Right - 30, box.Top + 74, Line);
@@ -73,7 +65,7 @@ public sealed unsafe partial class Bn2Editor
         y = box.Top + 122;
         Check(dc, IdRecOptStart, "Start with FL's Play", lx, y, ui?.StartWithTransport == true, null, labelW: 200, hitW: 230);
         Check(dc, IdRecOptStop, "Stop with FL's Stop", lx + 250, y, ui?.StopWithTransport == true, null, labelW: 200, hitW: 230);
-        Check(dc, IdRecOptLanes, "Lanes (exact: more tracks)", lx + 500, y, ui?.Lanes == true, null, labelW: 230, hitW: 260);
+        Check(dc, IdRecOptLanes, "Lanes (exact: more tracks)", lx + 460, y, ui?.Lanes == true, null, labelW: 216, hitW: 246);
 
         // the state, and what the transcription found
         var sb = R(lx, box.Top + 150, iw, 110);

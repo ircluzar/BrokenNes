@@ -29,7 +29,10 @@ namespace BrokenNes2;
 
 public sealed unsafe partial class Bn2Editor
 {
-    private int tab;                                  // 0 Emulator, 1 Instruments, 2 Presets
+    /// <summary>The view in the middle (layout B): 0 Game, 1 Instruments, 2 Presets, 3 Corrupt, 4 Record, 5 Song (the old Test MIDI export window). See Bn2Editor.Layout.cs.</summary>
+    private int view;
+    /// <summary>The old tab number the Instruments / Presets code and its test hooks speak: 1 Instruments, 2 Presets, else 0.</summary>
+    private int tab => view is 1 or 2 ? view : 0;
     private UiCanvas? canvas;
     private InstrumentsPanel? instPanel;
     private PresetsPanel? presetPanel;
@@ -42,8 +45,8 @@ public sealed unsafe partial class Bn2Editor
     private static IPresetLibrary? savedPresets;
     private static bool demoSaved;
 
-    /// <summary>The window's width: the Emulator tab's own, or wider on the tabs that need room.</summary>
-    private int Width => tab == 0 ? UiLayout.BaseWidth : UiLayout.WideWidth;
+    /// <summary>The window's width: one size on every view since layout B (the deliberate fault LayoutResizes brings the old wide tabs back, for the `layout` check).</summary>
+    private int Width => UiMutate.Has(UiMutate.LayoutResizes) && tab != 0 ? UiLayout.Width + 420 : UiLayout.Width;
 
     private UiCanvas Canvas() => canvas ??= new UiCanvas((id, r) => AddHit(id, r, Kind.Ui));
     private InstrumentsPanel Inst() => instPanel ??= new InstrumentsPanel(Canvas());
@@ -56,23 +59,6 @@ public sealed unsafe partial class Bn2Editor
     }
 
     // ---------------------------------------------------------------- drawing
-
-    /// <summary>The tab strip: three labels on the header rule, the current one underlined in the accent colour.</summary>
-    private void DrawTabStrip(nint dc)
-    {
-        int x = UiLayout.StripX;
-        for (int i = 0; i < UiServices.TabNames.Length; i++)
-        {
-            string label = UiServices.TabNames[i];
-            int w = TextWidth(dc, label, fontSection) + 24;
-            var r = R(x, UiLayout.StripY, w, UiLayout.StripH);
-            bool on = tab == i, isHot = hot == UiIds.Tab + i;
-            Txt(dc, label, R(r.Left, r.Top, w, UiLayout.StripH - 3), Win32.DT_CENTER | Mid, on ? White : isHot ? Text : Dim, fontSection);
-            if (on) Fill(dc, R(r.Left + 6, r.Bottom - 3, w - 12, 3), Accent);
-            AddHit(UiIds.Tab + i, r, Kind.Ui);
-            x += w + 2;
-        }
-    }
 
     /// <summary>The right column of the Instruments and Presets tabs.</summary>
     private void DrawTabContent(nint dc, Emulator? emu)
@@ -118,15 +104,20 @@ public sealed unsafe partial class Bn2Editor
 
     // ---------------------------------------------------------------- tabs and the window size
 
-    private void SetTab(int t)
+    private void SetTab(int t) => SetView(Math.Clamp(t, 0, UiServices.TabNames.Length - 1));
+
+    /// <summary>Switches the middle view. The window keeps its size (layout B); only the deliberate fault LayoutResizes resizes it and tells the host, as the old tabs did.</summary>
+    private void SetView(int v)
     {
-        t = Math.Clamp(t, 0, UiServices.TabNames.Length - 1);
-        if (t == tab) return;
+        v = Math.Clamp(v, 0, ViewCount - 1);
+        if (v == view) return;
         openId = 0; openHover = -1; active = 0;
         UiCancel();
         int before = Width;
-        tab = t;
-        if (Width != before) ApplyWindowSize();          // Instruments <-> Presets keep the wide window: the host is told only when the size changed
+        if (v == 3) corScroll = 0;
+        if (v == 4) recMessage = "";
+        view = v;
+        if (Width != before) ApplyWindowSize();
         Refresh();
     }
 
@@ -141,7 +132,7 @@ public sealed unsafe partial class Bn2Editor
 
     // ---------------------------------------------------------------- events
 
-    private bool UiWantsKeys => !UiMutate.Has(UiMutate.KeyGuardOff) && (tab == 1 ? instPanel?.WantsKeys == true : tab == 2 && presetPanel?.WantsKeys == true);
+    private bool UiWantsKeys => !UiMutate.Has(UiMutate.KeyGuardOff) && (TreeTyping || (tab == 1 ? instPanel?.WantsKeys == true : tab == 2 && presetPanel?.WantsKeys == true));
 
     private long UiSignature()
     {
@@ -198,6 +189,7 @@ public sealed unsafe partial class Bn2Editor
 
     private bool UiChar(char ch)
     {
+        if (TreeTyping) { TreeChar(ch); Refresh(); return true; }          // renaming a row of the Runaway tree (Bn2Editor.Tree.cs)
         bool used = UiGuard(() => tab == 1 ? Inst().Char(ch) : tab == 2 && Presets().Char(ch), false);
         if (used) Refresh();
         if (!UiWantsKeys) UiReleaseFocus();
@@ -206,6 +198,7 @@ public sealed unsafe partial class Bn2Editor
 
     private bool UiKey(int vk)
     {
+        if (TreeTyping && TreeKey(vk)) { Refresh(); return true; }
         bool used = UiGuard(() => tab == 1 ? Inst().Key(vk) : tab == 2 && Presets().Key(vk), false);
         if (used) Refresh();
         return used;

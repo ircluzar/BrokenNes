@@ -29,6 +29,18 @@ internal sealed class PresetAudition
         return why != null ? null : new PresetAudition(p, rate);
     }
 
+    /// <summary>Layout B's Runaway tree: a game voice (a SNES <see cref="SpcRecipe"/> or a Sega <see cref="GenRecipe"/>) auditioned the way FL's notes play it, on its own engine over the frozen snapshot.</summary>
+    public static PresetAudition? CreateRecipe(PresetPlayable p, int rate, object recipe, out string? why)
+    {
+        var a = Create(p, rate, out why);
+        if (a != null) { a.spcRecipe = recipe as SpcRecipe; a.genRecipe = recipe as GenRecipe; }
+        return a;
+    }
+
+    private SpcRecipe? spcRecipe;
+    private GenRecipe? genRecipe;
+    private int recipeSlot;
+
     private PresetAudition(PresetPlayable p, int rate)
     {
         play = p;
@@ -50,7 +62,9 @@ internal sealed class PresetAudition
     private void Start()
     {
         started = true;
-        if (snes != null) snes.NoteOn(0, instrument, SnesSampler.PitchFor(0), (int)Math.Round(127 * Velocity), (int)Math.Round(127 * Velocity));
+        if (snes != null && spcRecipe != null) snes.NoteOnRecipe(0, spcRecipe, SnesSampler.PitchFor(0, spcRecipe.Pitch), (int)Math.Round(127 * Velocity));
+        else if (sega != null && genRecipe != null) sega.NoteOnRecipe(recipeSlot = genRecipe.IsFm ? 0 : play.Sega!.SlotBase(play.Sega.PsgInstrument + (genRecipe.Kind == GenRecipe.KindPsgNoise ? 1 : 0)), genRecipe, MiddleCHz, Velocity);
+        else if (snes != null) snes.NoteOn(0, instrument, SnesSampler.PitchFor(0), (int)Math.Round(127 * Velocity), (int)Math.Round(127 * Velocity));
         else if (sega != null) sega.NoteOn(first, instrument, MiddleCHz, Velocity);
         else if (gb != null) gb.NoteOn(play.GbChannel, MiddleCHz, (int)Math.Round(15 * Velocity), -1, play.GbNoiseShort);
     }
@@ -59,7 +73,7 @@ internal sealed class PresetAudition
     {
         released = true;
         if (snes != null) snes.NoteOff(0);
-        else if (sega != null) sega.NoteOff(first);
+        else if (sega != null) sega.NoteOff(genRecipe != null ? recipeSlot : first);
         else if (gb != null) gb.NoteOff(play.GbChannel);
     }
 

@@ -290,14 +290,17 @@ switch (args[0])
                 nint qp = Win32Host.CreateParent();
                 q.ShowEditor(qp);
                 Win32Host.Pump(300);
-                Win32Host.CaptureWindow(qp, q.EditorHandle, 920, 670, relinkPrefix + "-" + suffix + ".bmp");
+                Win32Host.CaptureWindow(qp, q.EditorHandle, 1000, 700, relinkPrefix + "-" + suffix + ".bmp");
                 q.HideEditor();
                 Win32Host.DestroyParent(qp);
                 Console.WriteLine($"wrote {relinkPrefix}-{suffix}.bmp");
             }
             Win32Host.Pump(300);
         }
-        Win32Host.CaptureWindow(parent, plugin.EditorHandle, 920, 670, args[2]);
+        // layout B: --view n shows a view (0 Game, 1 Instruments, 2 Presets, 3 Corrupt, 4 Record, 5 Song) before the capture
+        if (Opt(args, "--view") is { } vw) { plugin.Test(891, 0, int.Parse(vw)); Win32Host.Pump(200); }
+        if (Opt(args, "--open-late") is { } late) { ClickId(int.Parse(late)); Win32Host.Pump(200); }
+        Win32Host.CaptureWindow(parent, plugin.EditorHandle, 1000, 700, args[2]);
         foreach (var q in relinkExtras) q.Destroy();
         foreach (var q in captureExtras) q.Destroy();
         if (Opt(args, "--hold") is { } hold)
@@ -410,6 +413,9 @@ switch (args[0])
         Console.WriteLine($"wrote {args[2]} ({s.Notes.Count} notes, {s.LengthBeats:0.##} beats at {s.Tempo} bpm)");
         return 0;
     }
+
+    case "chip-gaps":       // chip-gaps <dll>: every APU core id of the shared tree the DLL does not offer as a chip, with its family (SelfTest.ChipGaps.cs)
+        return SelfTest.ChipGaps(args[1]);
 
     case "chip-compat":     // chip-compat save|open <dll> <dir>: projects saved on every chip by one DLL load and play the same in another (SelfTest.Harvest.cs)
         return SelfTest.ChipCompat(args[1], args[2], args[3]);
