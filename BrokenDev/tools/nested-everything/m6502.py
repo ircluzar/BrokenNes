@@ -1,0 +1,108 @@
+"""6502 opcode table + a recursive-descent code finder for Nested NesGen (nes2md.py).
+
+Modes: imp acc imm zp zpx zpy abs abx aby ind izx izy rel.  Official opcodes only plus the common NOP aliases;
+an unknown opcode stops the walk at that address (the report lists it)."""
+
+SIZE = {'imp': 1, 'acc': 1, 'imm': 2, 'zp': 2, 'zpx': 2, 'zpy': 2, 'abs': 3, 'abx': 3, 'aby': 3, 'ind': 3,
+        'izx': 2, 'izy': 2, 'rel': 2}
+
+_T = """
+00 BRK imp|01 ORA izx|05 ORA zp|06 ASL zp|08 PHP imp|09 ORA imm|0A ASL acc|0D ORA abs|0E ASL abs
+10 BPL rel|11 ORA izy|15 ORA zpx|16 ASL zpx|18 CLC imp|19 ORA aby|1D ORA abx|1E ASL abx
+20 JSR abs|21 AND izx|24 BIT zp|25 AND zp|26 ROL zp|28 PLP imp|29 AND imm|2A ROL acc|2C BIT abs|2D AND abs|2E ROL abs
+30 BMI rel|31 AND izy|35 AND zpx|36 ROL zpx|38 SEC imp|39 AND aby|3D AND abx|3E ROL abx
+40 RTI imp|41 EOR izx|45 EOR zp|46 LSR zp|48 PHA imp|49 EOR imm|4A LSR acc|4C JMP abs|4D EOR abs|4E LSR abs
+50 BVC rel|51 EOR izy|55 EOR zpx|56 LSR zpx|58 CLI imp|59 EOR aby|5D EOR abx|5E LSR abx
+60 RTS imp|61 ADC izx|65 ADC zp|66 ROR zp|68 PLA imp|69 ADC imm|6A ROR acc|6C JMP ind|6D ADC abs|6E ROR abs
+70 BVS rel|71 ADC izy|75 ADC zpx|76 ROR zpx|78 SEI imp|79 ADC aby|7D ADC abx|7E ROR abx
+81 STA izx|84 STY zp|85 STA zp|86 STX zp|88 DEY imp|8A TXA imp|8C STY abs|8D STA abs|8E STX abs
+90 BCC rel|91 STA izy|94 STY zpx|95 STA zpx|96 STX zpy|98 TYA imp|99 STA aby|9A TXS imp|9D STA abx
+A0 LDY imm|A1 LDA izx|A2 LDX imm|A4 LDY zp|A5 LDA zp|A6 LDX zp|A8 TAY imp|A9 LDA imm|AA TAX imp|AC LDY abs|AD LDA abs|AE LDX abs
+B0 BCS rel|B1 LDA izy|B4 LDY zpx|B5 LDA zpx|B6 LDX zpy|B8 CLV imp|B9 LDA aby|BA TSX imp|BC LDY abx|BD LDA abx|BE LDX aby
+C0 CPY imm|C1 CMP izx|C4 CPY zp|C5 CMP zp|C6 DEC zp|C8 INY imp|C9 CMP imm|CA DEX imp|CC CPY abs|CD CMP abs|CE DEC abs
+D0 BNE rel|D1 CMP izy|D5 CMP zpx|D6 DEC zpx|D8 CLD imp|D9 CMP aby|DD CMP abx|DE DEC abx
+E0 CPX imm|E1 SBC izx|E4 CPX zp|E5 SBC zp|E6 INC zp|E8 INX imp|E9 SBC imm|EA NOP imp|EC CPX abs|ED SBC abs|EE INC abs
+F0 BEQ rel|F1 SBC izy|F5 SBC zpx|F6 INC zpx|F8 SED imp|F9 SBC aby|FD SBC abx|FE INC abx
+"""
+OPS = {}
+for _e in _T.replace('\n', '|').split('|'):
+    _e = _e.strip()
+    if _e:
+        _c, _m, _a = _e.split()
+        OPS[int(_c, 16)] = (_m, _a)
+
+BRANCHES = {'BPL', 'BMI', 'BVC', 'BVS', 'BCC', 'BCS', 'BNE', 'BEQ'}
+ENDS = {'JMP', 'RTS', 'RTI', 'BRK'}
+
+
+class Prg:
+    """NROM PRG image mapped at $8000-$FFFF (16 KB images are mirrored)."""
+    def __init__(self, prg):
+        self.prg = prg if len(prg) == 0x8000 else prg * (0x8000 // len(prg))
+        self.size = len(prg)
+
+    def b(self, a):
+        return self.prg[(a - 0x8000) & 0x7FFF] if a >= 0x8000 else None
+
+    def w(self, a):
+        return self.b(a) | (self.b(a + 1) << 8)
+
+    def canon(self, a):
+        """Canonical address of a PRG byte (the top mirror for a 16 KB image)."""
+        return a if self.size == 0x8000 else 0xC000 | (a & 0x3FFF)
+
+
+def decode(prg, a):
+    op = prg.b(a)
+    if op is None or op not in OPS:
+        return None
+    m, mode = OPS[op]
+    n = SIZE[mode]
+    arg = None
+    if n == 2:
+        arg = prg.b(a + 1)
+    elif n == 3:
+        arg = prg.w(a + 1)
+    tgt = None
+    if mode == 'rel':
+        tgt = (a + 2 + (arg - 256 if arg >= 128 else arg)) & 0xFFFF
+    return {'a': a, 'op': op, 'm': m, 'mode': mode, 'n': n, 'arg': arg, 'tgt': tgt}
+
+
+def walk(prg, entries):
+    """Recursive descent from entries.  Returns (insns by canonical address, label set, bad list, indirect jumps)."""
+    insns, labels, bad, indirect = {}, set(), [], []
+    todo = [prg.canon(e) for e in entries]
+    labels.update(todo)
+    while todo:
+        a = todo.pop()
+        while True:
+            a = prg.canon(a)
+            if a in insns:
+                break
+            d = decode(prg, a)
+            if d is None:
+                bad.append(a)
+                break
+            insns[a] = d
+            nxt = a + d['n']
+            if d['m'] in BRANCHES:
+                t = prg.canon(d['tgt'])
+                labels.add(t); todo.append(t)
+            elif d['m'] == 'JSR':
+                t = prg.canon(d['arg'])
+                labels.add(t); todo.append(t)
+                labels.add(prg.canon(nxt))        # the RTS comes back here through the dispatch table
+            elif d['m'] == 'JMP':
+                if d['mode'] == 'abs':
+                    t = prg.canon(d['arg'])
+                    labels.add(t); todo.append(t)
+                else:
+                    indirect.append(a)
+                break
+            if d['m'] in ENDS:
+                break
+            if nxt > 0xFFFF:
+                break
+            a = nxt
+    return insns, labels, bad, indirect
