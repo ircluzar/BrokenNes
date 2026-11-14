@@ -414,9 +414,18 @@ port_in:
 3:      moveq   #-1,d6
         rts
 
+| z_vcount: the SMS V counter as the game expects it relative to its frame interrupt. That fires at Genesis line 224
+| (VInt), SMS line 192 on the console: the game sees the Genesis line minus 48, SMS-encoded ($00-$DA, then $D5-$FF).
 z_vcount:
+        moveq   #0,d6
         move.b  (HVC).l,d6
-        rts
+        subi.w  #48,d6                  | (48, not 32: the VInt handler's own work takes Genesis lines 224-238, where a
+        bcc.s   1f                      | polling loop would never see SMS lines 192-206)
+        addi.w  #262,d6
+1:      cmpi.w  #219,d6
+        bcs.s   2f
+        subq.w  #6,d6
+2:      rts
 z_hcount:
         move.b  (HVC+1).l,d6
         rts

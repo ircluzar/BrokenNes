@@ -1066,7 +1066,8 @@ class Gen:
             p = b[1]
             cls = p & 0xC1
             if cls == 0x40:
-                self.emit('move.b  (HVC).l,d0')
+                self.emit('jsr     (z_vcount).l')
+                self.emit('move.b  d6,d0')
             elif cls == 0x41:
                 self.emit('move.b  (HVC+1).l,d0')
             elif cls == 0x80:
