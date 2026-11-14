@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "id": "gb2snes",
+  "name": "Nested GB: Game Boy -> SNES (proof of concept)",
+  "source": { "console": "gb", "extensions": [".gb"] },
+  "target": { "console": "snes", "extension": ".sfc" },
+  "tool": "BrokenDev/tools/nested-everything/gb2snes.py",
+  "frontEnd": "BrokenDev/tools/nested-everything/sm83.py",
+  "cli": "brokendev.ps1 nested-everything gb2snes <in.gb> <out.sfc> [-Feedback none|brokennes]",
+  "description": "Static recompilation of every SM83 instruction the front end finds into 65816 code (HiROM, FastROM): GB registers in direct page, the GB address space in WRAM bank $7F (data bank = GB address), exact GB flags only where a later instruction can read them, a dispatcher with per-address tables for ret / jp (hl) / RAM calls and a small SM83 interpreter (same templates) for self-modifying RAM code. RAM code copied from ROM is translated at its RAM address (feedback: BrokenNes's GB core, Workshop --gbrun --pcs). Picture: GB tiles are SNES 2bpp as they are; dirty 128-byte VRAM chunks are DMA'd in NMI, BGP -> CGRAM, SCX/SCY -> BG1 scroll. Harness: tools/nested-everything/gbpoc_test.py snes.",
+  "settings": [],
+  "status": "proof of concept: blargg cpu_instrs 06-ld r,r and 01-special pass on BrokenNes's SNES core; 02-interrupts passes #1-#3, fails #4 (no GB timer); no sprites, window, sound, MBC banks beyond 1",
+  "defaultInputs": [
+    { "id": "boot", "frames": 1800, "input": "" }
+  ],
+  "grades": ["Perfect", "Playable", "Glitchy", "Boots only", "Black screen", "Build fails"],
+  "profiles": "none yet"
+}
