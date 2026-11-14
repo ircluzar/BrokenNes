@@ -34,18 +34,18 @@
   {
    "id": "vaults-gg-seeded",
    "name": "Vaults GG, fixed-seed build (play-compare, VOC_GAME_SEED=4321)",
-   "grade": "Glitchy",
+   "grade": "Playable",
    "round1": "Glitchy",
    "round2a": "Playable",
    "path": "gg",
    "verdict": "converted",
    "match": [
     0.9092,
-    0.9112,
-    0.9126,
-    0.912,
-    0.9107,
-    0.9082
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
    ],
    "vsSmsRef": [
     0.9438,
@@ -55,7 +55,7 @@
     0.9582,
     0.9574
    ],
-   "sound": 0.234,
+   "sound": 0.96,
    "lag": 0,
    "patches": 32,
    "unhandled": 0,
