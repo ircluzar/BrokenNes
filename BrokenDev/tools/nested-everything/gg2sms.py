@@ -666,21 +666,25 @@ def convert_once(data, settings, profile, traces, allow_hook):
     fill_runs.sort(key=lambda r: (r[2] != 0xFF, -r[0]))
     runs = [(sz, st, 'ff' if f == 0xFF else '00') for sz, st, f in fill_runs]
     pad_runs = list(runs)
-    run_sets = [pad_runs]
+    run_sets = [[r for r in runs if r[2] == 'ff'], pad_runs]     # $FF padding, then $00 runs too (zeros are more often data)
     if profile.get('unread', 'use') != 'never':
         run_sets.append(pad_runs + [(sz, st, 'unread') for sz, st in unread_runs(rom, an, traces, lo_fixed, hi_fixed, protected, [(r[1], r[1] + r[0]) for r in fill_runs])])
 
     def keep(ps):
         return [p for p in ps if nmi_ok or 'nmi' not in p.labels]
     # padding first (near, then far: a bigger ROM is safer than bytes the traces only never saw read), then the never-read bytes
-    near = rt.build(settings, ram, used=used, hook=hookspec)
-    probe = rt.build(settings, ram, far_bank=0, used=used, hook=hookspec)
-    spots, parts, far_off = None, near, None
+    spots, parts, far_off = None, None, None
+    attempts = []                          # (runs, fast): padding with the fast path, padding without it, then never-read bytes
     for runs in run_sets:
+        attempts += [(runs, True), (runs, False)] if runs is not run_sets[-1] or len(run_sets) == 1 else [(runs, True)]
+    for runs, fast in attempts:
+        near = rt.build(settings, ram, used=used, hook=hookspec, fast=fast)
+        probe = rt.build(settings, ram, far_bank=0, used=used, hook=hookspec, fast=fast)
         far_bank_of[0] = None
         pieces = keep(near['pieces']) + tramp_pieces()
         spots = place(pieces, runs)
         if spots is not None:
+            parts = near
             break
         if SmsCodemasters(rom) or profile.get('layout') == 'near':
             continue
@@ -688,22 +692,17 @@ def convert_once(data, settings, profile, traces, allow_hook):
         pieces = keep(probe['pieces']) + tramp_pieces()
         spots = place(pieces, runs)
         if spots is not None:
-            far_need = len(probe['far'].code) + 8
-            fixed_banks = {0, 1} if an.fixed1 else {0}
-            far_runs = [r for r in free_runs(rom, an, 0x4000, rom.n, protected) if (r[1] >> 14) not in fixed_banks
-                        and (r[1] & 0x3FFF) + far_need <= 0x3FFF and r[0] >= far_need and r[2] == 0xFF]
-            if far_runs:
-                far_off = far_runs[0][1]
-            else:
-                new_n = 1 << max(16, (rom.n + 0x4000 - 1).bit_length())
-                far_off = rom.n
-                rom.b += bytes([0xFF]) * (new_n - rom.n)
-                report['warnings'].append(f'ROM grown {rom.n // 1024} KB -> {new_n // 1024} KB for the runtime bank')
-                rom.n = new_n
-            parts = rt.build(settings, ram, far_bank=far_off >> 14, used=used, hook=hookspec)
+            new_n = 1 << max(16, (rom.n + 0x4000 - 1).bit_length())
+            far_off = rom.n                # the runtime's bank is always a fresh one: its colour table sits at FAR_TABLE
+            rom.b += bytes([0xFF]) * (new_n - rom.n)
+            report['warnings'].append(f'ROM grown {rom.n // 1024} KB -> {new_n // 1024} KB for the runtime bank')
+            rom.n = new_n
+            parts = rt.build(settings, ram, far_bank=far_off >> 14, used=used, hook=hookspec, fast=fast)
             far_bank_of[0] = far_off >> 14
             pieces = keep(parts['pieces']) + tramp_pieces()
             break
+    if spots is not None and not fast:
+        report['warnings'].append('no room for the quick data-port path: every data-port site takes the full way (slower)')
     if spots is None:
         sizes = sorted((len(p.code) for p in rt.build(settings, ram, far_bank=0, used=used, hook=hookspec)['pieces'] + tramp_pieces()), reverse=True)
         report['verdict'] = (f'no room for the runtime in always-mapped ROM (far stub pieces {sizes}, {sum(sizes)} bytes; free runs '
@@ -728,6 +727,9 @@ def convert_once(data, settings, profile, traces, allow_hook):
     if parts['far']:
         fblob = parts['far'].link(far_base, labels)
         rom.b[far_off:far_off + len(fblob)] = fblob
+        assert len(fblob) <= rt.FAR_TABLE - 0x8000 and far_off & 0x3FFF == 0
+        tb = (far_off & ~0x3FFF) + (rt.FAR_TABLE - 0x8000)
+        rom.b[tb:tb + 4096] = rt.far_table(settings)
         ranges.append([far_off, far_off + len(fblob)])
         report['runtime'] += f', handlers in bank {far_off >> 14} at ${far_base:04X} ({len(fblob)} bytes)'
     report['runtimeRanges'] = ranges

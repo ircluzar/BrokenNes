@@ -25,6 +25,7 @@ CHAIN_MAX = 120
 IDLE = [0xC0, 0x7F, 0xFF, 0x00, 0xFF, 0x00, 0xFF]   # port $00 (overridden by h_p0) and the link / stereo ports' idle values
 HANDLERS = ['h_be', 'h_bf', 'h_p0', 'oc_a', 'oc_b', 'oc_c', 'oc_d', 'oc_e', 'oc_h', 'oc_l', 'oc_0', 'h_outi', 'h_otir', 'h_outd', 'h_otdr', 'h_inca', 'h_sr']
 LD_A_NN, LD_NN_A = 0x3A, 0x32
+FAR_TABLE = 0xA000         # far layout: GG 12-bit colour -> SMS byte, 4 KB at this address of the runtime's bank (page | blue, GGGGRRRR)
 BLOCKS = ('h_outi', 'h_otir', 'h_outd', 'h_otdr')
 
 
@@ -54,10 +55,14 @@ def handlers(a, settings, v, far, used=None, deep=None):
     a.db(0xCB, 0x41); a.op_r(0x20, 'be_odd')                 # bit 0,c / jr nz
     a.db(0x78); a.op_w(LD_NN_A, v['V_LO']); a.op_r(0x18, 'be_done')
     a.label('be_odd')
-    a.op_w(LD_A_NN, v['V_LO']); a.db(0x57)                   # d = GGGGRRRR
-    a.db(0x78, 0xE6, 0x0F); a.op_w(0xCD, 'lut'); a.db(0x07, 0x07, 0x07, 0x07, 0x5F)          # e = blue << 4
-    a.db(0x7A, 0x0F, 0x0F, 0x0F, 0x0F, 0xE6, 0x0F); a.op_w(0xCD, 'lut'); a.db(0x07, 0x07, 0xB3, 0x5F)  # e |= green << 2
-    a.db(0x7A, 0xE6, 0x0F); a.op_w(0xCD, 'lut'); a.db(0xB3, 0x5F)                            # e |= red
+    if far:                                                  # far: one look-up in the 4 KB table of the runtime's bank (FAR_TABLE)
+        a.op_w(LD_A_NN, v['V_LO']); a.db(0x6F)               # l = GGGGRRRR
+        a.db(0x78, 0xE6, 0x0F, 0xF6, FAR_TABLE >> 8, 0x67, 0x5E)   # h = table page | blue / ld e,(hl)
+    else:
+        a.op_w(LD_A_NN, v['V_LO']); a.db(0x57)                   # d = GGGGRRRR
+        a.db(0x78, 0xE6, 0x0F); a.op_w(0xCD, 'lut'); a.db(0x07, 0x07, 0x07, 0x07, 0x5F)          # e = blue << 4
+        a.db(0x7A, 0x0F, 0x0F, 0x0F, 0x0F, 0xE6, 0x0F); a.op_w(0xCD, 'lut'); a.db(0x07, 0x07, 0xB3, 0x5F)  # e |= green << 2
+        a.db(0x7A, 0xE6, 0x0F); a.op_w(0xCD, 'lut'); a.db(0xB3, 0x5F)                            # e |= red
     if not far:                                              # (far = interrupts already off: every way in turned them off)
         a.db(0xED, 0x57, 0xF5, 0xF3)                         # ld a,i / push af / di   (far: the stub already has them off)
     a.db(0x79, 0xCB, 0x3F, 0xD3, 0xBF)                       # ld a,c / srl a / out ($bf),a
@@ -248,7 +253,7 @@ def lookup(a, v, far, table):
         a.db(start & 0xFF, start >> 8, length & 0xFF, length >> 8, page)
 
 
-def build(settings, ram, far_bank=None, used=None, hook=None):
+def build(settings, ram, far_bank=None, used=None, hook=None, fast=True):
     """Assemble the runtime. Returns {'pieces': [Asm], 'far': Asm|None}: the pieces go in always-mapped ROM, each wherever it fits
     (relative jumps stay inside a piece), the far part in a bank of its own. Labels: disp (the RST target), nmi, init, hk (a hooked
     RST's entry) and the handlers; link every piece with extern = the addresses of all the others.
@@ -266,6 +271,18 @@ def build(settings, ram, far_bank=None, used=None, hook=None):
     safe = far is not None or hook is not None        # plain near: the old quick way in (a site cannot be reached between its two halves)
     d = Asm(); pieces.append(d)
     d.label('disp')
+    # the hot case first: a data-port write (index 0) while VRAM is selected goes straight out; the first byte of a colour pair
+    # is only remembered. Left out when the always-mapped room is too small (fast=False).
+    if fast:
+        d.db(0xE3, 0xF5, 0x7E, 0xB7); d.op_r(0x20, 'd_slow')             # ex (sp),hl / push af / ld a,(hl) / or a / jr nz
+        d.op_w(LD_A_NN, v['V_MODE']); d.db(0xB7); d.op_r(0x20, 'd_cram')
+        d.db(0xF1, 0x23, 0xE3, 0xD3, 0xBE, 0xC9)                          # pop af / inc hl / ex (sp),hl / out ($be),a / ret
+        d.label('d_cram')
+        d.op_w(LD_A_NN, v['V_ADDR']); d.db(0x0F); d.op_r(0x38, 'd_slow')  # rrca / jr c (odd: the full way)
+        d.db(0x07, 0x3C, 0xE6, 0x3F); d.op_w(LD_NN_A, v['V_ADDR'])        # rlca / inc a / and $3f
+        d.db(0xF1); d.op_w(LD_NN_A, v['V_LO']); d.db(0x23, 0xE3, 0xC9)    # pop af / ld (V_LO),a / inc hl / ex (sp),hl / ret
+        d.label('d_slow')
+        d.db(0xF1, 0xE3)                                                  # pop af / ex (sp),hl: as the site left them
     if safe:
         pro(d)
     d.db(0xE3, 0xF5, 0x7E, 0x23); d.op_w(LD_NN_A, v['V_ARG'])          # ex (sp),hl / push af / ld a,(hl) / inc hl / ld (V_ARG),a
@@ -324,6 +341,11 @@ def build(settings, ram, far_bank=None, used=None, hook=None):
     n.label('nmi')
     n.db(0xF5, 0x3E, settings['start_hold'] & 0xFF); n.op_w(LD_NN_A, v['V_START']); n.db(0xF1, 0xED, 0x45)
     return {'pieces': pieces, 'far': far}
+
+
+def far_table(settings):
+    t = settings['colour_table']
+    return bytes(t[x & 15] | t[x >> 4 & 15] << 2 | t[i >> 8] << 4 for i in range(4096) for x in [i & 0xFF])
 
 
 def init_inline(a, ram, far_bank=None):
