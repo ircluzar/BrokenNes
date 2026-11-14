@@ -232,7 +232,25 @@ def plan(rom, an, settings, profile):
                 actions[q] = ('call', BLOCK[b[q + 1]], f'{BLOCK[b[q + 1]][2:].upper()} -> dispatch (unrolled chain with a colour-RAM site)', slot_of(an, o))
                 an.code.setdefault(q, an.code.get(o, 0))
                 q += step
+    ram_bytes = {(s['pc'], s['port']): s['bytes'] for s in an.sites if s['off'] < 0}
+    deltas = set()                          # copy offsets (ROM source - RAM address) the unique matches prove
+    hits_of = {}
     for pc, port in ram_sites:
+        pat = bytes.fromhex(ram_bytes.get((pc, port), ''))
+        if port in GG_PORTS and port != 0 and len(pat) == 3 and pat[0] == 0xD3:
+            hits_of[pc] = [i for i in range(rom.n - 2) if b[i:i + 3] == pat and i not in an.code]
+            if len(hits_of[pc]) == 1:
+                deltas.add(hits_of[pc][0] - pc)
+    for pc, port in ram_sites:
+        # code the game copied to RAM: a link / stereo write is patched in the ROM bytes it was copied from, when they are unique
+        pat = bytes.fromhex(ram_bytes.get((pc, port), ''))
+        if port in GG_PORTS and port != 0 and len(pat) == 3 and pat[0] == 0xD3:
+            hits = hits_of.get(pc, [])
+            if len(hits) > 1:
+                hits = [h for h in hits if h - pc in deltas]
+            if len(hits) == 1:
+                actions[hits[0]] = ('bytes', bytes([0x00, 0x00]), f'OUT (${port:02X}),A copied to RAM ${pc:04X} -> NOP NOP (in the ROM source)')
+                continue
         unhandled.append({'off': None, 'pc': pc, 'why': f'code in RAM touches port ${port:02X} (cannot be patched in ROM)'})
     return actions, unhandled
 
@@ -874,17 +892,25 @@ def main():
     traces = []
     for i, inp in enumerate(profile_inputs(profile, manifest)):
         traces.append(run_trace(os.path.abspath(a.inp), os.path.join(work, f'orig{i}.json'), 'gg', inp['frames'], inp['input'], exe))
-    out, report, code = convert(data, settings, profile, traces)
-    if out is not None and report.get('runtimeRanges'):
+    for rnd in range(3):                   # residual GG port use in the converted game's own run becomes sites of the next round
+        out, report, code = convert(data, settings, profile, traces)
+        if out is None or not report.get('runtimeRanges'):
+            break
         with open(a.out, 'wb') as f:
             f.write(out)
         rng = report.get('runtimeRanges', [])
         res = []
         for i, inp in enumerate(profile_inputs(profile, manifest)):
             smsin = inp['input'].replace('Start', settings_start_button(settings))
-            tr = run_trace(os.path.abspath(a.out), os.path.join(work, f'conv{i}.json'), 'sms', inp['frames'], smsin, exe)
+            tr = run_trace(os.path.abspath(a.out), os.path.join(work, f'conv{rnd}_{i}.json'), 'sms', inp['frames'], smsin, exe)
             res += residual(tr, rng)
         report['residual'] = res
+        new = [r for r in res if r['off'] >= 0 and r['off'] not in {s2['off'] for t in traces for s2 in t['sites']}]
+        if not new:
+            break
+        traces.append({'code': [[r['off'], r['pc'] >> 14 if r['pc'] < 0xC000 else 0] for r in new], 'targets': [], 'ramChanged': [],
+                       'slotPages': [], 'sites': new, 'dataRead': []})
+        report['warnings'].append(f'feedback round {rnd + 2}: {len(new)} sites only the converted game reached')
         if res:
             code = max(code, 1)
     if a.save_profile:
