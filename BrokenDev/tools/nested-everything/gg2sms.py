@@ -353,7 +353,7 @@ def rst_calls(rom, an, v):
     """Every RST v instruction a wider descent finds: from all known code, and carrying on after RST instructions (the main descent
     stops there, in case inline data follows). Only RST v's offsets are kept, so a wrong guess costs a spare table entry, never a patch."""
     b, op = rom.b, 0xC7 | v
-    found = set()
+    found = {}
     seen = set()
     work = list(an.code.items())
     while work:
@@ -365,7 +365,7 @@ def rst_calls(rom, an, v):
             if off + n > rom.n:
                 break
             if b[off] == op:
-                found.add(off)
+                found[off] = slot
             falls, tg, kind = z80.flow(b, off, cpu_of(off, slot))
             for t in tg:
                 to = off_of(t, off, slot, an.fixed1)
@@ -604,9 +604,9 @@ def convert_once(data, settings, profile, traces, allow_hook):
     hookspec = None
     if hook:
         table = []                         # the game's own RST calls of the hooked vector (static and traced code)
-        for o in sorted(rst_calls(rom, an, hook[0])):
+        for o, sl in sorted(rst_calls(rom, an, hook[0]).items()):
             if o not in inplace:
-                pc = cpu_of(o, an.code[o]) + 1
+                pc = cpu_of(o, an.code.get(o, sl)) + 1
                 page = 0xFF if pc < 0x4000 or (pc < 0x8000 and an.fixed1) else o >> 14
                 if table and table[-1][2] == page and table[-1][0] + table[-1][1] + 1 == pc:
                     table[-1][1] += 2

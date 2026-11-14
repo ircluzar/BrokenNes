@@ -329,10 +329,7 @@ def build(settings, ram, far_bank=None, used=None, hook=None):
 def init_inline(a, ram, far_bank=None):
     """The power-on part, written inline in the reset trampoline: no stack (SP is not set yet at reset: a push at SP=0 lands
     on the mapper registers $FFFE/$FFFF). Clears the runtime's RAM; far: puts the slot-2 register where the BIOS leaves it."""
-    v = _vars(ram)
-    a.db(0xAF)
-    for name in VARS:
-        a.op_w(LD_NN_A, v[name])
+    a.op_w(0x21, ram); a.db(0x06, len(VARS), 0xAF, 0x77, 0x23, 0x10, 0xFC)   # ld hl,ram / ld b,n / xor a / ld (hl),a / inc hl / djnz
     if far_bank is not None:
         a.db(0x3E, 0x02); a.op_w(LD_NN_A, 0xFFFF)
 
