@@ -308,10 +308,10 @@ class Gen:
             self.clobber()
             self.raw(s)
             m = (defs | (0x10 if defs & C else 0)) if merge_mask is None else merge_mask
-            self.raw('move    sr,d6')
-            self.raw('andi.w  #0x%X,d6' % m)
+            self.raw('move    sr,d5')          # (d5: d6/d7 may hold the operand being written back)
+            self.raw('andi.w  #0x%X,d5' % m)
             self.raw('andi.w  #0x%X,d4' % (0xFFFF ^ m))
-            self.raw('or.w    d6,d4')
+            self.raw('or.w    d5,d4')
             self.ccr_has = False
             self.ccr_live = 0
             self.x_ok = sets_x
@@ -547,6 +547,14 @@ class Gen:
             self.raw('move.w  #%d,d7' % t)
             self.raw('jsr     (z_dispatch).l')
         self.raw('addq.l  #4,sp')
+        if slot and ret >> 14 == slot:
+            # banked code: the callee may have mapped another bank into this slot (a far-call trampoline);
+            # then the Z80 returns into that bank's code, not this one
+            self.raw('cmpi.l  #DT_%02X_%d,(%d).w' % (bank, slot, sx16(0xF030 + 4 * slot)))
+            self.raw('beq.s   4f')
+            self.raw('move.w  #%d,d7' % ret)
+            self.raw('jra     z_dispatch')
+            self.out.append('4:')
 
     def push_const(self, v):
         self.raw('move.b  #%d,-(a5)' % (v >> 8))
@@ -1034,8 +1042,17 @@ class Gen:
                 self.emit('move.b  d0,d6')
                 self.emit('jsr     (vdpw_data).l')
             elif cls == 0x81:
-                self.emit('move.b  d0,d6')
-                self.emit('jsr     (vdpw_ctrl).l')
+                # control port: the first byte of a pair only latches, inline
+                self.clobber()
+                self.raw('tst.b   (VLATCH).w')
+                self.raw('bne.s   1f')
+                self.raw('move.b  d0,(VLOW).w')
+                self.raw('st      (VLATCH).w')
+                self.raw('bra.s   2f')
+                self.out.append('1:')
+                self.raw('move.b  d0,d6')
+                self.raw('jsr     (vdpw_ctrl).l')
+                self.out.append('2:')
             return
         val = self.read8(b[1], 'd6') if b[0] == 'r' else '#0'
         if val != 'd6':
@@ -1088,7 +1105,12 @@ class Gen:
                     p.labels.add((bank, slot, prev.nxt))
                 prev = i
             prev = None
-            for i in inss:
+            skip = 0
+            for k, i in enumerate(inss):
+                if skip:
+                    skip -= 1
+                    prev = i
+                    continue
                 key = (bank, slot, i.pc)
                 contiguous = prev is not None and flow(prev)[0] and prev.nxt == i.pc
                 if prev is not None and flow(prev)[0] and not contiguous:
@@ -1106,7 +1128,41 @@ class Gen:
                 if i.pc in idle and slot == 0:
                     self.clobber()
                     self.raw('jsr     (z_idle).l')
-                self.ins(i, live_out[i.pc])
+                run = 1
+                if i.op == 'OUTI' and self.st.get('video') != 'mode4':
+                    while (k + run < len(inss) and inss[k + run].op == 'OUTI' and inss[k + run].pc == inss[k + run - 1].nxt
+                           and (bank, slot, inss[k + run].pc) not in p.labels):
+                        run += 1
+                loop = (self.st.get('video') != 'mode4' and (i.op == 'OTIR' or (
+                    i.op == 'OUTI' and run == 1 and k + 1 < len(inss) and inss[k + 1].op == 'JR' and inss[k + 1].a == ('cc', 'NZ')
+                    and inss[k + 1].b[1] == i.pc and inss[k + 1].pc == i.nxt and (bank, slot, inss[k + 1].pc) not in p.labels)))
+                if loop:
+                    # OTIR, or OUTI / JR NZ back to it: B bytes (0 = 256) in one bulk copy
+                    self.out.append('| ... OTIR loop')
+                    self.clobber()
+                    self.raw('moveq   #0,d5')
+                    self.raw('move.w  d1,d5')
+                    self.raw('lsr.w   #8,d5')
+                    self.raw('bne.s   1f')
+                    self.raw('move.w  #256,d5')
+                    self.out.append('1:')
+                    self.raw('jsr     (z_outin).l')
+                    self.ccr_has = False
+                    self.x_ok = False
+                    self.stats['otir_loops'] += 1
+                    skip = 0 if i.op == 'OTIR' else 1
+                elif run > 1:
+                    # a run of OUTIs (an unrolled VRAM upload): one bulk copy
+                    self.out.append('| ... %d OUTI in a row' % run)
+                    self.clobber()
+                    self.raw('moveq   #%d,d5' % run)
+                    self.raw('jsr     (z_outin).l')
+                    self.ccr_has = False
+                    self.x_ok = False
+                    self.stats['outi_runs'] += 1
+                    skip = run - 1
+                else:
+                    self.ins(i, live_out[i.pc])
                 prev = i
             if prev is not None and flow(prev)[0]:
                 self.flush()

@@ -17,6 +17,7 @@
         .equ VSHADOW,   0xFF0000        | 16 KB: the SMS VRAM as the game wrote it
         .equ CRAMBUF,   0xFF4000        | 32 bytes: SMS colour RAM as written (right after VRAM: a6 points here in CRAM mode)
         .equ SRAMBUF,   0xFF5000        | 8 KB: cartridge RAM
+        .equ NTCACHE,   0xFF8000        | 5 x 2 KB: the SMS words last converted into each Genesis plane (skip unchanged entries)
         .equ DIRTY,     0xFFFFF200      | 513 bytes: a 32-byte unit of VSHADOW (512 = CRAM) written since the last flush
 | variables (absolute short: $FFF000-; the 68000 stack below them. Z80 pointers into $8000-$BFFF land on $FF8000-$FFBFFF, which holds nothing)
         .equ IFF,       0xFFFFF000
@@ -52,6 +53,9 @@
         .equ ERRFLAG,   0xFFFFF084
         .equ NMIS,      0xFFFFF086
         .equ ERRFROM,   0xFFFFF094
+        .equ NTSLOT,    0xFFFFF100      | 8 words: Genesis plane address for each SMS name table base ($0000-$3800), 0 = not used yet
+        .equ NTNEXT,    0xFFFFF110
+        .equ NTFORCE,   0xFFFFF111
         .equ SHFLOOR,   0xFFFFF098      | 68000 SP at the current interrupt's entry: shadow return entries below it are its own
         .equ IDLEFR,    0xFFFFF08A      | frames in which the game reached its idle point (HALT or a profile's idle_pc)
         .equ IDLEFLAG,  0xFFFFF08E
@@ -59,7 +63,7 @@
         .equ MAGIC,     0xFFFE          | Z80 return address that means "back to the 68000 interrupt handler"
 
         .org 0
-        .long 0x00FFF000, boot
+        .long 0x00FFC000, boot          | 68000 stack: $FFC000 down to the NT cache at $FFA800 (deep interrupt nesting needs room)
         .rept 26
         .long exc_generic
         .endr
@@ -139,7 +143,7 @@ boot:
         dbra    d1,7b
         | plane B ($E000): solid colour 15 everywhere; window ($D000): opaque backdrop, high priority (covers lines 192-223)
         move.l  #0x60000003,(a0)
-        move.w  #0x6780,d0
+        move.w  #0x0782,d0              | plane B: a blank tile (BG colour 0 is the backdrop)
         move.w  #1023,d1
 8:      move.w  d0,(VDPD).l
         dbra    d1,8b
@@ -171,6 +175,9 @@ boot:
         dbra    d1,12b
         | SMS power-on state
         move.w  #0x3800,(NTBASE).w
+        moveq   #2,d6
+        move.b  #0xFF,d5
+        bsr     vdp_setreg              | the power-on name table ($3800) gets its plane
         move.w  #0x3F00,(SATBASE).w
         move.b  #0xFF,(PAD1).w
         lea     (MAPREG).w,a0
@@ -202,7 +209,7 @@ boot:
         jmp     Z80_RESET
 
 vdpinit:
-        .word 0x8004, 0x8164, 0x8230, 0x8334, 0x8407, 0x856C, 0x8600, 0x8710, 0x8800, 0x8900, 0x8AFF, 0x8B00
+        .word 0x8004, 0x8164, 0x8230, 0x8334, 0x8407, 0x856C, 0x8600, 0x8700, 0x8800, 0x8900, 0x8AFF, 0x8B00
         .word 0x8C00, 0x8D37, 0x8E00, 0x8F02, 0x9000, 0x9100, 0x9298
 vdpinit_end:
 
@@ -667,6 +674,64 @@ z_cpdr: bsr.s   z_cpd
         bne.s   z_cpdr
 1:      rts
 | OUTI/OUTD/OTIR/OTDR: out (C),(HL); HL+-; B-- ; Z = B == 0
+| z_outin: d5.w = n consecutive OUTIs. Port $BE with the source in one RAM range or one ROM slot: a bulk copy into the
+| shadow and one dirty mark per unit; anything else: n single OUTIs.
+z_outin:
+        .if VIDEO_MODE == 5
+        cmpi.b  #0xBE,d1
+        bne.s   8f
+        move.w  d3,d7
+        cmpi.w  #0xC000,d7
+        bcc.s   1f
+        move.w  d7,d6
+        andi.w  #0x3FFF,d6
+        add.w   d5,d6
+        cmpi.w  #0x4000,d6
+        bhi.s   8f                      | crosses the slot's end
+        move.w  d7,d6
+        rol.w   #4,d6
+        andi.w  #0x0C,d6
+        lea     (SLOTPTR).w,a0
+        movea.l 0(a0,d6.w),a0
+        andi.w  #0x3FFF,d7
+        adda.w  d7,a0
+        bra.s   2f
+1:      move.w  d7,d6
+        add.w   d5,d6
+        cmpi.w  #0xE000,d6
+        bhi.s   8f
+        movea.w d7,a0
+2:      sf      (VLATCH).w
+        move.w  a6,d6                   | first unit
+        lsr.w   #5,d6
+        move.w  d5,d7
+        subq.w  #1,d7
+3:      move.b  (a0)+,(a6)+
+        dbra    d7,3b
+        move.w  a6,d7
+        subq.w  #1,d7
+        lsr.w   #5,d7                   | last unit
+        lea     (DIRTY).w,a0
+4:      st      0(a0,d6.w)
+        addq.w  #1,d6
+        cmp.w   d7,d6
+        bls.s   4b
+        add.w   d5,d3
+        lsl.w   #8,d5
+        sub.w   d5,d1
+        moveq   #0,d4
+        cmpi.w  #0x100,d1
+        bcc.s   5f
+        moveq   #4,d4
+5:      rts
+        .endif
+8:      move.w  d5,-(sp)
+9:      bsr     z_outi
+        subq.w  #1,(sp)
+        bne.s   9b
+        addq.l  #2,sp
+        rts
+
 z_outi: cmpi.b  #0xBE,d1                | the VRAM upload case: (HL) straight into the shadow
         bne.s   5f
         .if VIDEO_MODE == 5
@@ -865,14 +930,48 @@ r1:     moveq   #0x40,d7
         move.w  d7,(VDPC).l
         st      (SATDIRTY).w
         rts
+| R2: every SMS name table base keeps its own converted Genesis plane, so a switch (the HUD band's mid-frame one too)
+| is only the Genesis plane A register
 r2:     moveq   #0x0E,d7
         and.b   d5,d7
         lsl.w   #8,d7
         lsl.w   #2,d7
-        cmp.w   (NTBASE).w,d7
-        beq.s   rnop
         move.w  d7,(NTBASE).w
-        bra     nt_rebuild
+        move.w  d7,d6
+        lsr.w   #8,d6
+        lsr.w   #2,d6
+        lea     (NTSLOT).w,a0
+        move.w  0(a0,d6.w),d5
+        bne.s   2f
+        moveq   #0,d5
+        move.b  (NTNEXT).w,d5
+        addq.b  #1,(NTNEXT).w
+        cmpi.b  #5,d5
+        bcs.s   1f
+        moveq   #0,d5
+        move.b  #1,(NTNEXT).w
+1:      add.w   d5,d5
+        move.w  ntplanes(pc,d5.w),d5
+        move.l  d4,-(sp)
+        moveq   #7,d4
+11:     cmp.w   (a0),d5
+        bne.s   12f
+        clr.w   (a0)
+12:     addq.l  #2,a0
+        dbra    d4,11b
+        move.l  (sp)+,d4
+        lea     (NTSLOT).w,a0
+        move.w  d5,0(a0,d6.w)
+        move.w  d5,-(sp)
+        bsr     nt_rebuild
+        move.w  (sp)+,d5
+2:      lsr.w   #8,d5
+        lsr.w   #2,d5
+        ori.w   #0x8200,d5
+        move.w  d5,(VDPC).l
+        rts
+ntplanes:
+        .word 0xC000, 0x4000, 0x6000, 0x8000, 0xA000
 r5:     moveq   #0x7E,d7
         and.b   d5,d7
         lsl.w   #7,d7
@@ -884,8 +983,6 @@ r6:     st      (SATDIRTY).w
 r7:     moveq   #0x0F,d7
         and.b   d5,d7
         move.w  d7,d6
-        ori.w   #0x8710,d7
-        move.w  d7,(VDPC).l
         lea     (CRAMSH+16).w,a0
         move.b  0(a0,d6.w),d6
         moveq   #(3*16+14),d7
@@ -930,10 +1027,18 @@ vdp_flush:
         sf      (a2)
         move.w  d2,d4
         lsl.w   #5,d4                   | unit address
+        move.w  d4,d7                   | a name table in use?
+        lsr.w   #8,d7
+        lsr.w   #2,d7
+        andi.w  #0x0E,d7
+        lea     (NTSLOT).w,a3
+        tst.w   0(a3,d7.w)
+        beq.s   4f
         move.w  d4,d7
-        sub.w   (NTBASE).w,d7
+        andi.w  #0x7FF,d7
         cmpi.w  #0x700,d7
         bcc.s   4f
+        move.w  d4,d7
         moveq   #15,d1                  | 16 name table entries
 31:     bsr     nt_put
         addq.w  #2,d7
@@ -1003,37 +1108,75 @@ cram_put:
         move.w  d6,(VDPD).l
         rts
 
-| nt_put: d7.w = entry offset (index * 2): converts the shadow's entry and writes it to plane A (rows 0-3 again at rows 28-31)
-nt_put: move.l  d0,-(sp)
+| nt_put: d7.w = SMS VRAM address of a name table entry (even): converted into its base's Genesis plane
+| (rows 0-3 again at rows 28-31, for the SMS's 224-line wrap). Keeps d7.
+nt_put: movem.l d0-d1,-(sp)
+        move.w  d7,d6
+        lsr.w   #8,d6
+        lsr.w   #2,d6
+        andi.w  #0x0E,d6
+        lea     (NTSLOT).w,a0
+        move.w  0(a0,d6.w),d1
+        beq.s   9f
+        move.w  d7,d6
+        andi.w  #0x7FF,d6
+        cmpi.w  #0x700,d6
+        bcc.s   9f
+        add.w   d6,d1
         lea     VSHADOW,a0
-        adda.w  (NTBASE).w,a0
         adda.w  d7,a0
+        move.w  d1,d0                   | the plane's cache: NTCACHE + (plane index * $800) + offset
+        sub.w   #0x4000,d0
+        lsr.w   #2,d0                   | $4000->0 $6000->$800 ... $C000->$2000
+        andi.w  #0x3800,d0
+        add.w   d6,d0
+        lea     NTCACHE,a1
+        adda.w  d0,a1
+        move.b  (a0),d0
+        lsl.w   #8,d0
+        move.b  1(a0),d0
+        tst.b   (NTFORCE).w
+        bne.s   8f
+        cmp.w   (a1),d0
+        beq.s   9f                      | unchanged since its last conversion
+8:      move.w  d0,(a1)
         moveq   #0,d0
         move.b  1(a0),d0
         add.w   d0,d0
         lea     NTHI,a1
         move.w  0(a1,d0.w),d0
         or.b    (a0),d0
-        move.w  d7,d6
+        bsr.s   ntw
+        cmpi.w  #256,d6
+        bcc.s   9f
+        addi.w  #0x700,d1
+        bsr.s   ntw
+9:      movem.l (sp)+,d0-d1
+        rts
+ntw:    move.l  d6,-(sp)
+        moveq   #0,d6
+        move.w  d1,d6
+        lsl.l   #2,d6
+        lsr.w   #2,d6
         swap    d6
-        clr.w   d6
-        ori.l   #0x40000003,d6          | VRAM $C000 + offset
+        ori.l   #0x40000000,d6
         move.l  d6,(VDPC).l
         move.w  d0,(VDPD).l
-        cmpi.w  #256,d7
-        bcc.s   1f
-        addi.l  #0x07000000,d6
-        move.l  d6,(VDPC).l
-        move.w  d0,(VDPD).l
-1:      move.l  (sp)+,d0
+        move.l  (sp)+,d6
         rts
 
+| nt_rebuild: d7.w = base: the whole name table from the shadow into its plane
 nt_rebuild:
-        moveq   #0,d7
-1:      bsr.s   nt_put
+        st      (NTFORCE).w
+        move.w  d7,-(sp)
+1:      bsr     nt_put
         addq.w  #2,d7
-        cmpi.w  #0x700,d7
+        move.w  d7,d6
+        andi.w  #0x7FF,d6
+        cmpi.w  #0x700,d6
         bcs.s   1b
+        move.w  (sp)+,d7
+        sf      (NTFORCE).w
         rts
 
 | tile_row: d5 = VRAM address of the row's last byte: converts the 4 planar bytes to one packed long at the same address
