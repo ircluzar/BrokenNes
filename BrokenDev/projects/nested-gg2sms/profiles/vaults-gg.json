@@ -1,0 +1,8 @@
+{
+  "what": "VRUN: Vaults of Obsolete Code, Game Gear build (our own game, repo PROJECTS/VRUN_VOC_GG_dev). Its own gg_on_sms switch (924a9b8) is not used: the converter answers the link-port probe ($03-$05) with the GG idle values, so the game keeps its GG code paths and the runtime translates them.",
+  "settings": { "start": "both" },
+  "inputs": [
+    { "id": "boot", "frames": 1800, "input": "" },
+    { "id": "run", "frames": 3600, "input": "60:A,61:,200:Start,206:,300:Start,306:,400:Right,401:,600:A,601:,900:Left,901:,1200:Start,1206:,1300:A+B,1320:,1500:Right,2000:A,2001:,2500:Start,2506:,2600:Start,2606:" }
+  ]
+}

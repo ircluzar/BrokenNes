@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "id": "gg2sms",
+  "name": "Nested GG: Game Gear -> Master System",
+  "source": { "console": "gg", "extensions": [".gg"] },
+  "target": { "console": "sms", "extension": ".sms" },
+  "tool": "BrokenDev/tools/nested-everything/gg2sms.py",
+  "cli": "brokendev.ps1 nested-everything gg2sms <in.gg> <out.sms> [-Profile <game id or file>] [-Feedback none|brokennes] [-Set key=value,...]",
+  "description": "Static patching plus a small Z80 runtime: the GG-only ports ($00 Start/region, $01-$05 link, $06 stereo) and the GG's 12-bit colour writes are trapped and translated; the rest of the game runs unchanged on the SMS's identical Z80 and Mode 4 VDP. The dynamic pass (BrokenNes's GG core, headless) finds what a static scan cannot see.",
+  "settings": [
+    { "id": "start", "type": "choice", "choices": ["both", "pause", "buttons12", "none"], "default": "both",
+      "what": "Where GG Start comes from: the SMS Pause button (NMI; on a Genesis in SMS mode, the pad's Start), buttons 1+2 held together, both, or never" },
+    { "id": "start_hold", "type": "int", "min": 1, "max": 255, "default": 8,
+      "what": "How many reads of port $00 see Start held after one Pause press (Pause gives no release)" },
+    { "id": "region", "type": "choice", "choices": ["auto", "export", "japan"], "default": "auto",
+      "what": "The region bit port $00 reports (auto: from the header, GG Japan -> japan)" },
+    { "id": "colours", "type": "choice", "choices": ["round", "truncate"], "default": "round",
+      "what": "GG 4-bit colour level -> SMS 2-bit level: nearest (0-2:0, 3-7:1, 8-12:2, 13-15:3) or the top two bits; a profile may give its own 16-entry list" },
+    { "id": "border", "type": "choice", "choices": ["show"], "default": "show",
+      "what": "The 256x192 SMS picture around the GG's 160x144 window: show what the game left in the name table (the GG view is already centred: columns 6-25, rows 3-20). Masking is not offered: the SMS can only blank 8 pixels on the left, and a line-interrupt letterbox would fight the game's own interrupt handler" },
+    { "id": "unseen_data_writes", "type": "choice", "choices": ["patch", "leave"], "default": "patch",
+      "what": "OUT ($BE),A sites the dynamic pass never saw run: route them through the colour check (safe, slower) or leave them" },
+    { "id": "vram_only_data_writes", "type": "choice", "choices": ["leave", "patch"], "default": "leave",
+      "what": "Data-port sites seen writing only VRAM (tile uploads): leave them fast, or route them through the colour check too" }
+  ],
+  "defaultInputs": [
+    { "id": "boot", "frames": 1800, "input": "" },
+    { "id": "start", "frames": 3600, "input": "120:Start,126:,300:Start,306:,500:A,506:,700:Start,706:,900:A,906:,1000:Right,1300:Right+A,1320:Right,1600:Left+B,1620:Left,1900:Start,1906:,2000:Start,2006:,2200:Right+A,2400:Up,2500:Down,2600:B,2700:Right,3000:A,3006:" }
+  ],
+  "grades": ["Perfect", "Playable", "Glitchy", "Boots only", "Black screen", "Build fails"],
+  "profiles": "BrokenDev/projects/nested-gg2sms/profiles/<game id>.json: settings, inputs (dynamic-pass scripts), ram, sites { \"0x1234\": \"patch\" | \"leave\" }, found (written by feedback)"
+}
