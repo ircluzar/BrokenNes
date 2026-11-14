@@ -51,6 +51,11 @@ S_SP    = $BDAC
 S_DE    = $BDAE
 S_AF    = $BDB2
 S_SPS   = $BDB4
+S_LYC   = $BDB6
+S_IHL   = $BDB8
+S_IAF   = $BDBA
+S_LBGP  = $BDBC
+S_LOBP  = $BDBD
 SH      = $BF00
 
 ; ---------------------------------------------------------------- RST bodies
@@ -144,13 +149,27 @@ op1:    ld (S_HL),hl
         push hl
         dec hl
         push af
+        push de
         ld a,l
-        ld l,h
-        ld h,hi(PT)
-        ld h,(hl)
-        ld l,a
-        ld a,(hl)
+        xor h
+.probe: ld e,a
+        ld d,hi(HT)
+        ld a,(de)
+        cp l
+        jr nz,.next
+        inc d
+        ld a,(de)
+        cp h
+        jr nz,.next
+        inc d
+        ld a,(de)
+        pop de
         ld hl,(S_HL)
+        jr .kind
+.next:  ld a,e
+        inc a
+        jr .probe
+.kind:
         cp 1
         jr z,.k1
         cp 2
@@ -169,6 +188,7 @@ op1:    ld (S_HL),hl
         jr z,.k8
         cp 9
         jr z,.k9
+;RSTKINDS
         pop af
         ret
 .k8:    pop af
@@ -202,18 +222,55 @@ op1:    ld (S_HL),hl
         ret
 
 ; ---------------------------------------------------------------- frame interrupt ($0038)
-irq:    push af
+; the runtime's scratch (S_HL, S_A, S_T) is saved around the GB handler: the interrupt can land inside an
+; op1 / ldh handler, and the GB handler's own reti / ldh would overwrite it
+irq:    ld (S_IHL),hl
+        push af
+        pop hl
+        ld (S_IAF),hl
+        ld hl,(S_HL)
+        push hl
+        ld hl,(S_A)
+        push hl
+        ld hl,(S_T)
+        push hl
         in a,($BF)
         call sync
         ld a,(SH+$FF)
         and 1
         jr z,.no
+        ld hl,irq_tail
+        push hl
+        ld hl,(S_IAF)
+        push hl
         pop af
+        ld hl,(S_IHL)
         jp $0040
 .no:    ld a,(SH+$0F)
         or 1
         ld (SH+$0F),a
+        pop hl
+        ld (S_T),hl
+        pop hl
+        ld (S_A),hl
+        pop hl
+        ld (S_HL),hl
+        ld hl,(S_IAF)
+        push hl
         pop af
+        ld hl,(S_IHL)
+        ei
+        ret
+irq_tail:
+        di
+        ld (S_IHL),hl
+        pop hl
+        ld (S_T),hl
+        pop hl
+        ld (S_A),hl
+        pop hl
+        ld (S_HL),hl
+        ld hl,(S_IHL)
         ei
         ret
 
@@ -302,6 +359,8 @@ io_write:
         jr z,.dma
         cp $47
         jr z,.bgp
+        cp $48
+        jr z,.bgp
         cp $04
         jr z,.div
         cp $0F
@@ -369,8 +428,9 @@ io_write:
         ld (S_PAL),a
         jr .done
 .sc:    ld a,(S_A)
-        and $80
-        jr z,.done
+        and $81
+        cp $81
+        jr nz,.done
         push de
         ld a,(SER+$FF)
         ld e,a
@@ -513,17 +573,16 @@ io_read:
 ; LY from the GG V counter: GG lines 24-167 are the GB's 0-143, the rest is vblank 144-153
 ly:     in a,($7E)
         sub 24
-        ret c
+        jr c,.vb
         cp 144
         ret c
-        sub 144
-        srl a
-        srl a
-        srl a
+.vb:    ld a,(S_LYC)
+        inc a
+        cp 10
+        jr c,.s
+        xor a
+.s:     ld (S_LYC),a
         add a,144
-        cp 154
-        ret c
-        ld a,153
         ret
 
 ; ---------------------------------------------------------------- the picture: GB map / tiles / palette -> GG VDP
@@ -533,10 +592,28 @@ sync:   push bc
         ld a,(S_FRAME)
         inc a
         ld (S_FRAME),a
-        ld a,(S_PAL)
-        or a
-        call nz,palette
+        ; LCDC / BGP / OBP0 may have been written through a pointer (no I/O hook): compare with what we drew
+        ld a,(SH+$40)
+        ld b,a
         ld a,(S_LCDC)
+        cpl
+        and b
+        and $80
+        jr z,.nf
+        ld a,1
+        ld (S_FULL),a
+.nf:    ld a,b
+        ld (S_LCDC),a
+        ld a,(SH+$47)
+        ld hl,S_LBGP
+        cp (hl)
+        jr nz,.pal
+        ld a,(SH+$48)
+        inc hl
+        cp (hl)
+        jr z,.np
+.pal:   call palette
+.np:    ld a,(S_LCDC)
         and $80
         ld b,$A0
         jr z,.off
@@ -566,12 +643,17 @@ sync:   push bc
         ld a,(S_FRAME)
         and 3
         call z,map
+        call sprites
 .out:   pop hl
         pop de
         pop bc
         ret
 
-palette: xor a
+palette: ld a,(SH+$47)
+        ld (S_LBGP),a
+        ld a,(SH+$48)
+        ld (S_LOBP),a
+        xor a
         ld (S_PAL),a
         out ($BF),a
         ld a,$C0
@@ -594,6 +676,75 @@ palette: xor a
         srl c
         srl c
         djnz .p
+        ld a,$20
+        out ($BF),a
+        ld a,$C0
+        out ($BF),a
+        ld a,(SH+$48)
+        ld c,a
+        ld b,4
+.q:     ld a,c
+        and 3
+        add a,a
+        ld e,a
+        ld d,0
+        ld hl,SHADES
+        add hl,de
+        ld a,(hl)
+        out ($BE),a
+        inc hl
+        ld a,(hl)
+        out ($BE),a
+        srl c
+        srl c
+        djnz .q
+        ret
+
+; GB OAM shadow ($BD00, 40 x 8x8) -> the GG sprite table: y-16+24-1, x-8+48 (no flips, no priority: VDP limits)
+sprites: xor a
+        out ($BF),a
+        ld a,$7F
+        out ($BF),a
+        ld hl,$BD00
+        ld b,40
+.y:     ld a,(hl)
+        or a
+        jr z,.hy
+        cp 160
+        jr nc,.hy
+        add a,7
+        cp $D0
+        jr nz,.oy
+        inc a
+.oy:    out ($BE),a
+        jr .ny
+.hy:    ld a,$E0
+        out ($BE),a
+.ny:    inc hl
+        inc hl
+        inc hl
+        inc hl
+        djnz .y
+        ld b,24
+        ld a,$E0
+.r:     out ($BE),a
+        djnz .r
+        ld a,$80
+        out ($BF),a
+        ld a,$7F
+        out ($BF),a
+        ld hl,$BD01
+        ld b,40
+.x:     ld a,(hl)
+        add a,40
+        out ($BE),a
+        inc hl
+        ld a,(hl)
+        out ($BE),a
+        inc hl
+        inc hl
+        inc hl
+        djnz .x
         ret
 SHADES: db $FF,$0F,$AA,$0A,$55,$05,$00,$00
 
@@ -745,7 +896,12 @@ boot:   im 1
         ld ($FFFE),a
         ld hl,$8000
         ld de,$8001
-        ld bc,$3FFF
+        ld bc,$1FFF
+        ld (hl),0
+        ldir
+        ld hl,$BC00
+        ld de,$BC01
+        ld bc,$03FF
         ld (hl),0
         ldir
         ld hl,VDPINIT
@@ -873,6 +1029,9 @@ def inplace(an, bank, pc, n, rd):
     if op == 0x76: return [0xC7 | HALTV] if rd(pc + 1) != 0xFE else None
     if op == 0x18 and b1 == 0xFE: return [0xC7 | HALTV, 0xFE]
     if op == 0x10: return [0x00, 0x00]
+    if op in (0xCD, 0xC3, 0xC4, 0xCC, 0xD4, 0xDC, 0xC2, 0xCA, 0xD2, 0xDA) and w >= 0xFF80:
+        w -= 0x4000
+        return [op, w & 0xFF, w >> 8]
     # pointers into the GB I/O + HRAM page ($FFxx) or OAM ($FExx) become pointers into their shadows: the GG's own
     # $FExx/$FFxx are the RAM mirror and the mapper registers. (Accesses through them skip the I/O side effects.)
     if op in (0x01, 0x11, 0x21) and w >= 0xFE00:
@@ -900,25 +1059,69 @@ def convert(data, pcs, report, count=False):
     report['vector_clashes'] = clash
     protected = [(an.file_off(-1, lo), an.file_off(-1, lo) + hi - lo) for lo, hi, off in an.overlays]
     protected += [(0, 0x150), (0x7FF0, 0x8000)]
-    alloc = Alloc(free_runs(rom, an, 0x150, 0x4000, protected))
-    tabs = alloc.take(768, 256)          # Z2G, G2Z, PT (page -> kinds page)
-    zero_page = alloc.take(256, 256)     # the kinds page of pages without op1 sites (all 0)
-    for i in range(256): rom[zero_page + i] = 0
+    runs0 = free_runs(rom, an, 0x150, 0x4000, protected)
+    # a game with no room in bank 0 (Tetris fills its 32KB): the runtime, tables and trampolines live in cartridge
+    # RAM $A000-$BBFF (the GB's external RAM area), copied there at boot from an added ROM bank
+    ram_mode = cart.banks <= 2 and sum(h - l for l, h in runs0) < 0x1800
+    report['runtime_home'] = 'cart RAM $A000-$BBFF (copied from ROM bank 2 at boot)' if ram_mode else 'free space in bank 0'
+    if ram_mode:
+        rom += bytearray(0x10000 - len(rom))
+        alloc = Alloc([(0xA000, 0xBC00)])
+    else:
+        alloc = Alloc(runs0)
+    tabs = alloc.take(1280, 256)         # Z2G, G2Z, HT (op1 sites: a hash of address lo / hi / kind, 3 pages)
     op1_sites = {}
     for i in range(256):
         rom[tabs + i] = z2g(i)
         rom[tabs + 256 + i] = g2z(i)
-    # runtime: assemble once to size it, then at its place
-    syms = {'Z2G': tabs, 'G2Z': tabs + 256, 'PT': tabs + 512}
-    code, _ = assemble(RUNTIME, 0x0000, syms)
+    # the game's own RST routines on vectors we take: moved, their 'rst n' sites become RST $30 + a kind
+    used = sorted({an.reader_for(b, a)(a) & 0x38 for (b, a), (n, m, f) in an.insn.items()
+                   if (an.reader_for(b, a)(a) & 0xC7) == 0xC7 and (0, an.reader_for(b, a)(a) & 0x38) in an.insn})
+    reloc = [v for v in used if v in (0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38)]
+    report['relocated_rst'] = ['$%02X' % v for v in reloc]
+    kinds = ''.join('        cp %d\n        jr z,.r%02X\n' % (16 + v // 8, v) for v in reloc)
+    kinds += ''.join('        jr .rx%02X\n.r%02X:   pop af\n        jp R_%02X\n.rx%02X:\n' % (v, v, v, v) for v in reloc)
+    rt_text = RUNTIME.replace(';RSTKINDS', kinds)
+    syms = {'Z2G': tabs, 'G2Z': tabs + 256, 'HT': tabs + 512}
+    syms.update({'R_%02X' % v: 0x1000 for v in reloc})
+    code, _ = assemble(rt_text, 0x0000, syms)
     rt = alloc.take(len(code) + 16)
-    code, rsyms = assemble(RUNTIME, rt, syms)
+    code, rsyms = assemble(rt_text, rt, syms)
+    for v in reloc:
+        lines, p = [], v
+        for _ in range(48):
+            if (0, p) not in an.insn: break
+            qn, qm, qfl = an.insn[(0, p)]
+            rd0 = an.reader_for(0, p)
+            tt = tramp_text(an, 0, p, qn, rd0)
+            if tt is None:
+                ip = inplace(an, 0, p, qn, rd0)
+                if ip == 'same': tt = 'db ' + ','.join('$%02X' % rd0(p + i) for i in range(qn))
+                elif ip == 'mbc': tt = 'call mbc'
+                else: tt = 'db ' + ','.join('$%02X' % x for x in ip)
+            lines.append(tt)
+            p += qn
+            if not qfl[0]:
+                p = None
+                break
+        if p is not None:
+            lines.append('jp $%04X' % p)
+        body = '\n'.join(lines)
+        b0, _ = assemble(body, 0, rsyms)
+        ra = alloc.take(len(b0))
+        b0, _ = assemble(body, ra, rsyms)
+        rom[ra:ra + len(b0)] = b0
+        syms['R_%02X' % v] = ra
+    code, rsyms = assemble(rt_text, rt, syms)
     rom[rt:rt + len(code)] = code
     report['runtime'] = {'at': '$%04X' % rt, 'bytes': len(code)}
     def put(addr, text):
         b, _ = assemble(text, addr, rsyms)
         rom[addr:addr + len(b)] = b
-    put(0x00, 'di\njp boot')
+    if ram_mode:
+        put(0x00, 'ld a,2\nld ($FFFE),a\njp $4000')
+    else:
+        put(0x00, 'di\njp boot')
     put(LDHW, 'jp ldhw'); put(LDHR, 'jp ldhr'); put(PUSHAF, 'jp pushaf'); put(POPAF, 'jp popaf')
     put(HALTV, 'jp haltb'); put(OP1, 'jp op1'); put(0x38, 'jp irq'); put(0x66, 'retn')
     # sites
@@ -929,6 +1132,8 @@ def convert(data, pcs, report, count=False):
         n, m, fl = an.insn[(bank, pc)]
         rd = an.reader_for(bank, pc)
         r = inplace(an, bank, pc, n, rd)
+        if (rd(pc) & 0xC7) == 0xC7 and (rd(pc) & 0x38) in reloc:
+            op1_sites[(bank, pc)] = 16 + (rd(pc) & 0x38) // 8; rom[an.file_off(bank, pc)] = 0xC7 | OP1; continue
         if rd(pc) == 0xD9:
             op1_sites[(bank, pc)] = 7; rom[an.file_off(bank, pc)] = 0xC7 | OP1; continue
         if r == 'same': continue
@@ -984,18 +1189,27 @@ def convert(data, pcs, report, count=False):
         stats['tramp'] += 1
     # the op1 page tables: CPU page -> a 256-byte page of kinds (RAM sites by their RAM address; ROM banks 1+
     # share the $4000-$7FFF pages: a clash between banks is reported)
-    pages = {}
-    for pg in range(256): rom[tabs + 512 + pg] = zero_page >> 8
-    for (bank, pc), k in op1_sites.items():
-        pg = pc >> 8
-        if pg not in pages:
-            pages[pg] = alloc.take(256, 256)
-            for i in range(256): rom[pages[pg] + i] = 0
-            rom[tabs + 512 + pg] = pages[pg] >> 8
-        if rom[pages[pg] + (pc & 0xFF)] not in (0, k): stats['failed'].append('op1 clash $%04X' % pc)
-        rom[pages[pg] + (pc & 0xFF)] = k
+    ht = tabs + 512
+    for i in range(768): rom[ht + i] = 0
+    filled = set()
+    for (bank, pc), k in sorted(op1_sites.items()):
+        h = ((pc & 0xFF) ^ (pc >> 8)) & 0xFF
+        while h in filled:
+            if rom[ht + h] == pc & 0xFF and rom[ht + 256 + h] == pc >> 8: break
+            h = (h + 1) & 0xFF
+        if h in filled and rom[ht + 512 + h] != k: stats['failed'].append('op1 clash $%04X' % pc)
+        filled.add(h)
+        rom[ht + h] = pc & 0xFF; rom[ht + 256 + h] = pc >> 8; rom[ht + 512 + h] = k
+    if len(filled) > 250: raise SystemExit('gb2gg: more than 250 op1 sites')
     report['sites'] = stats
     report['free_left'] = sum(h - l for l, h in alloc.runs)
+    if ram_mode:
+        boot2, _ = assemble('di\nld a,$08\nld ($FFFC),a\nld hl,$4020\nld de,$A000\nld bc,$1C00\nldir\n'
+                            'jp boot', 0x4000, rsyms)
+        bank2 = bytearray(b'\xFF' * 0x4000)
+        bank2[0:len(boot2)] = boot2
+        bank2[0x20:0x20 + 0x1C00] = rom[0xA000:0xBC00]
+        rom = bytearray(rom[0:0x8000]) + bank2 + bytearray(b'\xFF' * 0x4000)
     # GG header (BrokenNes does not need it; real units with a BIOS do): TMR SEGA, region GG export, 32KB
     if all(v in (0, 0xFF) for v in rom[0x7FF0:0x8000]):
         rom[0x7FF0:0x7FF8] = b'TMR SEGA'

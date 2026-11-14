@@ -154,10 +154,12 @@ class Assembler:
             lines.append(s.strip())
         syms = dict(self.ext)
         self.relaxed = set()
-        passes = [False] * 8 + [True]
+        # passes until no jr was relaxed and no label moved, then the final (encoding) pass
+        prev = None
+        passes = [False] * 12 + [True]
         for k, final in enumerate(passes):
             self.changed = False
-            if not final and k >= 2 and k < 7 and getattr(self, '_stable', False):
+            if not final and k >= 2 and getattr(self, '_stable', False):
                 continue
             pc = self.base
             out = bytearray()
@@ -192,7 +194,11 @@ class Assembler:
                     raise AsmError('%s: %s  (line: %s)' % (type(e).__name__, e, ln))
                 out += bytes(v & 0xFF for v in b)
                 pc += len(b)
-            self._stable = not self.changed and k >= 1
+            snap = dict(syms)
+            self._stable = not self.changed and k >= 1 and snap == prev
+            prev = snap
+        if not final or self.changed:
+            raise AsmError('labels did not settle')
         self.labels = {k: v for k, v in syms.items() if k not in self.ext}
         return bytes(out), syms
 

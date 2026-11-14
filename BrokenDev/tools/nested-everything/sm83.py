@@ -170,7 +170,7 @@ class Analysis:
         self.walk(work)
 
     def norm(self, bank, a):
-        return (0, a) if a < 0x4000 else (bank, a) if a < 0x8000 else (-1, a)
+        return (0, a) if a < 0x4000 else (max(bank, 1), a) if a < 0x8000 else (-1, a)
 
     def walk(self, work):
         work = list(work)
