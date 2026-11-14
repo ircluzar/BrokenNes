@@ -237,13 +237,17 @@ def one(game, work, exe):
         for d in (-1, 0, 1):
             pb = os.path.join(gw, f'{tag}_sms_f{f + lag + d}.png')
             if os.path.exists(pa) and os.path.exists(pb):
-                m = float((to_levels_sms(level_img(pa, False, table)) == to_levels_sms(level_img(pb, False, table))).all(axis=2).mean())
+                x, y = to_levels_sms(level_img(pa, False, table)), to_levels_sms(level_img(pb, False, table))
+                h = min(x.shape[0], y.shape[0])
+                m = float((x[:h] == y[:h]).all(axis=2).mean())
                 best = m if best is None else max(best, m)
         ref.append(None if best is None else round(best, 4))
     res['cmp']['vsSmsRef'] = ref
     gg_m = np.mean([c['match'] or 0 for c in res['cmp']['checks']]) if res['cmp']['checks'] else 0
     ref_m = np.mean([x or 0 for x in ref]) if ref else 0
-    res['path'] = 'sms' if ref_m > gg_m + 0.2 else 'gg'
+    ref_live = any(len(np.unique(np.asarray(Image.open(os.path.join(gw, f'{tag}_ref_f{f}.png')).convert('RGB')).reshape(-1, 3), axis=0)) > 1
+                   for f in CHECKS if os.path.exists(os.path.join(gw, f'{tag}_ref_f{f}.png')))
+    res['path'] = 'sms' if ref_live and ref_m > gg_m + 0.2 else 'gg'
     if res['path'] == 'sms':                  # graded against the SMS run of the same cartridge
         for c, m in zip(res['cmp']['checks'], ref):
             c['match'] = m
