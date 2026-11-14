@@ -528,7 +528,7 @@ class Gen:
         """Z80 CALL: the return address on the Z80 stack, then a 68000 JSR with a shadow entry (Z80 return, Z80 SP) so the
         matching RET can RTS straight back (return-address prediction); a mismatch takes z_ret_slow."""
         self.push_const(ret)
-        if self.st.get('ret_predict', True) in (False, 'false', '0', 0):
+        if self.st.get('ret_predict', False) in (False, 'false', 'False', '0', 0):
             self.jump(t)
             return
         self.raw('move.w  a5,-(sp)')
@@ -787,7 +787,7 @@ class Gen:
         self.raw('jmp     z_unsupported')
 
     def ret_body(self):
-        if self.st.get('ret_predict', True) in (False, 'false', '0', 0):
+        if self.st.get('ret_predict', False) in (False, 'false', 'False', '0', 0):
             self.pop_d7()
             self.raw('jra     z_dispatch')
             return
@@ -1094,6 +1094,12 @@ class Gen:
         p = self.p
         units = p.units()
         idle = set(int(x, 0) if isinstance(x, str) else x for x in p.profile.get('idle_pc', []))
+        self.repl = {}
+        pdir = os.path.dirname(self.st.get('_profile_path', '')) if self.st.get('_profile_path') else os.path.join(PIPE, 'profiles')
+        for r in p.profile.get('replace', []):
+            k = (r['bank'], r['slot'], int(r['pc'], 0) if isinstance(r['pc'], str) else r['pc'])
+            p.labels.add(k)
+            self.repl[k] = os.path.join(pdir, r['asm']).replace(os.sep, '/')
         for (bank, slot) in sorted(units):
             inss = units[(bank, slot)]
             self.cur = (bank, slot)
@@ -1120,7 +1126,14 @@ class Gen:
                 if key in p.labels or not contiguous:
                     if contiguous:
                         self.flush()
-                    self.out.append('%s:' % lbl(bank, slot, i.pc))
+                    if key in self.repl:
+                        # a profile's hand-written 68000 routine takes the entry; the translation stays as ORIG_<label>
+                        self.out.append('%s:' % lbl(bank, slot, i.pc))
+                        self.out.append('        .include "%s"' % self.repl[key])
+                        self.out.append('ORIG_%s:' % lbl(bank, slot, i.pc))
+                        self.stats['replaced'] += 1
+                    else:
+                        self.out.append('%s:' % lbl(bank, slot, i.pc))
                     p.labels.add(key)
                     self.reset_state()
                 self.out.append('| %r' % i)
@@ -1347,6 +1360,7 @@ def main():
         with open(a.profile, encoding='utf-8') as f:
             profile = json.load(f)
         settings.update(profile.get('settings', {}))
+        settings['_profile_path'] = os.path.abspath(a.profile)
     for kv in a.set:
         k, v = kv.split('=', 1)
         settings[k] = v

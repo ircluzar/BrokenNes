@@ -9,8 +9,25 @@
   "frames": 1500,
   "input": "120:Select,126:,300:A,306:,500:A,506:,700:A,706:,800:Right,1000:Right+A,1020:Right,1200:Left+B,1220:Left,1300:Up,1350:Down,1400:",
   "inputs": [
-    { "id": "boot", "frames": 1800, "input": "" },
-    { "id": "play", "frames": 3400, "input": "120:Select,126:,300:A,306:,500:A,506:,700:A,706:,1000:Right,1300:Right+A,1320:Right,1600:Left+B,1620:Left,2200:Right+A,2400:Up,2500:Down,2600:B,2700:Right,3000:A,3006:" }
+    {
+      "id": "boot",
+      "frames": 1800,
+      "input": ""
+    },
+    {
+      "id": "play",
+      "frames": 3400,
+      "input": "120:Select,126:,300:A,306:,500:A,506:,700:A,706:,1000:Right,1300:Right+A,1320:Right,1600:Left+B,1620:Left,2200:Right+A,2400:Up,2500:Down,2600:B,2700:Right,3000:A,3006:"
+    }
   ],
-  "notes": "The game runs inside the frame interrupt (devkitSMS handler -> NES-shim game NMI); HALT at $21DD is its wait for the next frame, so frames that reach it = frames with idle time."
+  "notes": "The game runs inside the frame interrupt (devkitSMS handler -> NES-shim game NMI); HALT at $21DD is its wait for the next frame, so frames that reach it = frames with idle time.",
+  "replace": [
+    {
+      "bank": 0,
+      "slot": 0,
+      "pc": "0x0DF6",
+      "asm": "vrun_ctw_sms/draw_nt_i.s",
+      "what": "draw_nt_i: cached-slot case in 68000 code"
+    }
+  ]
 }

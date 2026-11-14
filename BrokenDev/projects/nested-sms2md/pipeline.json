@@ -2,23 +2,81 @@
   "schema": 1,
   "id": "sms2md",
   "name": "Nested SMS: Master System -> Genesis",
-  "source": { "console": "sms", "extensions": [".sms"] },
-  "target": { "console": "md", "extension": ".md" },
+  "source": {
+    "console": "sms",
+    "extensions": [
+      ".sms"
+    ]
+  },
+  "target": {
+    "console": "md",
+    "extension": ".md"
+  },
   "tool": "BrokenDev/tools/nested-everything/sms2md.py",
   "cli": "brokendev.ps1 nested-everything sms2md <in.sms> <out.md> [-Profile <game id or file>] [-Feedback none|brokennes] [-Set key=value,...]",
   "description": "Ahead-of-time Z80 -> 68000 translation (static analysis + entry-point feedback from BrokenNes's SMS core + per-game profiles) with a small 68000 runtime that stands in for the SMS VDP, PSG, pads and Sega mapper. The output is a plain Genesis ROM: no SMS-mode reset, no Power Base Converter. Video back end B (Mode 5 translation) is built; back end A (keep the VDP in Mode 4) is a stub until a real console says Mode 4 works from Genesis mode.",
   "settings": [
-    { "id": "video", "type": "choice", "choices": ["mode5", "mode4"], "default": "mode5",
-      "what": "Video back end: mode5 = translate the SMS picture to Genesis Mode 5 (tiles converted, name table / sprites / colours translated); mode4 = leave the VDP in SMS Mode 4 and pass the game's writes through (STUB, needs the md-mode4-test answer from real hardware)" },
-    { "id": "memory", "type": "choice", "choices": ["trace", "trust_ram"], "default": "trace",
-      "what": "Pointer accesses: trace = the direct work-RAM path only where the dynamic pass saw nothing but work RAM, checked helpers elsewhere; trust_ram = direct everywhere (fast, breaks games that read ROM tables through pointers)" },
-    { "id": "levels", "type": "list", "default": [0, 2, 5, 7],
-      "what": "SMS 2-bit colour level -> Genesis 3-bit level (R, G and B)" }
+    {
+      "id": "video",
+      "type": "choice",
+      "choices": [
+        "mode5",
+        "mode4"
+      ],
+      "default": "mode5",
+      "what": "Video back end: mode5 = translate the SMS picture to Genesis Mode 5 (tiles converted, name table / sprites / colours translated); mode4 = leave the VDP in SMS Mode 4 and pass the game's writes through (STUB, needs the md-mode4-test answer from real hardware)"
+    },
+    {
+      "id": "memory",
+      "type": "choice",
+      "choices": [
+        "trace",
+        "trust_ram"
+      ],
+      "default": "trace",
+      "what": "Pointer accesses: trace = the direct work-RAM path only where the dynamic pass saw nothing but work RAM, checked helpers elsewhere; trust_ram = direct everywhere (fast, breaks games that read ROM tables through pointers)"
+    },
+    {
+      "id": "levels",
+      "type": "list",
+      "default": [
+        0,
+        2,
+        5,
+        7
+      ],
+      "what": "SMS 2-bit colour level -> Genesis 3-bit level (R, G and B)"
+    },
+    {
+      "id": "ret_predict",
+      "type": "choice",
+      "choices": [
+        false,
+        true
+      ],
+      "default": false,
+      "what": "Return-address prediction (shadow return stack on the 68000): off by default. On CTW it gained nothing measurable and 2 of 8 New Game starts stopped on a bad far-call target with it on (cause not found)."
+    }
   ],
   "defaultInputs": [
-    { "id": "boot", "frames": 1800, "input": "" },
-    { "id": "play", "frames": 3400, "input": "120:Select,126:,300:A,306:,500:A,506:,700:A,706:,1000:Right,1300:Right+A,1320:Right,1600:Left+B,1620:Left,2200:Right+A,2400:Up,2500:Down,2600:B,2700:Right,3000:A,3006:" }
+    {
+      "id": "boot",
+      "frames": 1800,
+      "input": ""
+    },
+    {
+      "id": "play",
+      "frames": 3400,
+      "input": "120:Select,126:,300:A,306:,500:A,506:,700:A,706:,1000:Right,1300:Right+A,1320:Right,1600:Left+B,1620:Left,2200:Right+A,2400:Up,2500:Down,2600:B,2700:Right,3000:A,3006:"
+    }
   ],
-  "grades": ["Perfect", "Playable", "Glitchy", "Boots only", "Black screen", "Build fails"],
+  "grades": [
+    "Perfect",
+    "Playable",
+    "Glitchy",
+    "Boots only",
+    "Black screen",
+    "Build fails"
+  ],
   "profiles": "BrokenDev/projects/nested-sms2md/profiles/<game id>.json: settings, inputs (dynamic-pass scripts), entries [[bank, slot, pc]], idle_pc [z80 addresses of the game's wait-for-frame loop: lag = frames that never reached it], calls_keep_flags"
 }
