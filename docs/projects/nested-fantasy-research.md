@@ -224,3 +224,27 @@ Both are only for comparison.
 - gb-recompiled: https://retrohandhelds.gg/game-boy-roms-go-native-with-new-static-recompiler/ ; jitboy https://github.com/sysprog21/jitboy
 - bsnes SGB: https://github.com/byuu/bsnes/wiki ; https://docs.libretro.com/library/bsnes/
 - SMS/GG emulator list: https://emulation.gametechwiki.com/index.php/Master_System/Game_Gear_emulators
+
+## Nested GB proof of concept: MEASURED (2026-11-14, branch nested-gb-poc)
+
+Built: shared SM83 front end (`BrokenDev/tools/nested-everything/sm83.py`, feedback from BrokenNes's GB core via
+`Workshop --gbrun --pcs`), static recompiler `gb2snes.py` (65816, HiROM/FastROM, GB registers in direct page, GB
+address space in WRAM bank $7F, exact flags only where a forward liveness scan says they are read, dispatcher tables +
+a small SM83 interpreter for self-modifying RAM code), harness `gbpoc_test.py snes`, wired as
+`brokendev.ps1 nested-everything gb2snes`. All numbers are BrokenNes headless (GB core vs SFC core); "cycles" are
+3.58 MHz-equivalent CPU cycles (SNES master clocks / 6), counted from power-on to the test's end loop.
+
+| ROM | Result | SNES cycles / GB instruction | Frame-time ratio (SNES frames / GB frames) |
+|---|---|---|---|
+| blargg cpu_instrs 06-ld r,r | PASS (same "Passed" text, drawn through BG1 2bpp) | **31.1** | 4.1x |
+| blargg cpu_instrs 01-special | PASS | **29.7** | 4.6x |
+| blargg cpu_instrs 02-interrupts | #1-#3 pass, FAIL #4 (no GB timer yet) | 40.2 | 5.2x |
+| Tetris (user's dump, scratch only) | copyright, title, menus, pieces fall and stack, sprites right; **no sound** (GB APU not mapped to the SPC700) | n/a | **gameplay loop at full speed (600 loops / 600 frames)**; boot/menu screens (bulk VRAM copies) ~4-5x slow |
+
+Reading: ~30 cycles per GB instruction is over the ~20 the research named as the line for compute-heavy games, so
+CPU-bound test code runs 4-5x slower than a GB; but a frame-locked, mostly idle game (Tetris) keeps its gameplay at
+60 Hz. The obvious next speed steps: keep GB A in the 65816 accumulator instead of DP, constant-fold static memory
+accesses further, translate HRAM/stack accesses without the slow paths, and a ret predictor in front of the
+dispatcher (every `ret` costs ~80 cycles today). dmg-acid2 not tried yet (window layer and 8x16 sprites missing).
+Test-ROM builds: `T:\BrokenDev\Releases\NestedGB_PoC\2026-11-14_<sha>\`.
+

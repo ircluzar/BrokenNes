@@ -263,3 +263,27 @@ None needed for the first proof of concept: the test ROMs are already on disk. T
 - SMS Power, VDP registers: https://www.smspower.org/Development/VDPRegisters
 - Prior-art search results: https://github.com/drhelius/Gearsystem, https://github.com/jsgroth/jgenesis, https://git.benkurtovic.com/ben/crater, https://fms.komkon.org
 - Cited from the sibling reports, not re-opened: SMS Power Mappers page, gb-recompiled, jitboy
+
+## GB -> GG proof of concept: MEASURED (2026-11-14, branch nested-gb-poc)
+
+Built: the same SM83 front end as Nested GB, `gb2gg.py` (the GB code runs natively on the Z80; ~16 differing opcodes
+rewritten in place or through JP trampolines; ldh -> RST + port into an I/O+HRAM shadow page; push/pop af through
+flag-layout tables; a hashed RST $30 multiplexer for 1-byte sites a trampoline cannot cover; GB VRAM = GG cart RAM at
+$8000, the runtime draws map/tiles/sprites/palette once a frame; games without free ROM space get the runtime in cart
+RAM $A000-$BBFF), `asmz80.py`, harness `gbpoc_test.py gg`, wired as `brokendev.ps1 nested-everything gb2gg`.
+BrokenNes headless (GB core vs GG core); Z80 T-states from power-on to the test's end loop.
+
+| ROM | Result | Z80 T-states / GB instruction | Frame-time ratio |
+|---|---|---|---|
+| blargg cpu_instrs 06-ld r,r | PASS | **30.5** (25.7 with the per-frame drawing switched off) | 4.1x |
+| blargg cpu_instrs 01-special | PASS (after a GB-exact DAA) | **12.9** | 2.0x |
+| blargg cpu_instrs 02-interrupts | #1-#2 pass, FAIL #3: an RST-based I/O write leaves a return address below SP (the test checks that memory) | 17.2 | 2.3x |
+| Tetris (user's dump, scratch only) | copyright, title, menus, falling piece + next piece; **no sound** (GB APU not mapped to the PSG); one `swap e` site left unpatched | n/a | **gameplay loop at ~37% of GB speed** (220 loops / 600 frames) |
+
+Reading: native execution makes plain code cheap (12.9 T for 01-special) but the picture costs most of the frame:
+there is no hardware help for GB VRAM (2bpp -> 4bpp, map window copy every 4th frame, no dirty tracking yet), so
+Tetris runs at about a third of its speed. The next steps would be write-site dirty tracking for VRAM (from the
+feedback pass), uploading only changed map rows, and trampolines instead of RSTs for I/O writes (02-interrupts #3).
+GG limits stay as the research said: no sprite flips (not handled), 8 sprites per line, GB window not drawn.
+Test-ROM builds: `T:\BrokenDev\Releases\NestedGB_PoC\2026-11-14_<sha>\`.
+
