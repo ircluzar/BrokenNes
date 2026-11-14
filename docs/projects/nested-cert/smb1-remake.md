@@ -190,6 +190,11 @@ Feedback brokennes as before (m30 106 entry points, MMC3 118). ROMs: `T:\BrokenD
 | `dmc_stage` | returns to 0 every frame (no more stuck at 1) | same |
 | sound | present (sweep: 1720 sound frames) | present |
 
+Mesen (fuzz1, SNES): m30 BrokenNes SNES vs Mesen SNES differ on 15 of 2696 polls (scratch only, same logic ticks and lives at
+the end): **agree**. MMC3: Mesen SNES runs **one logic step ahead** of BrokenNes SNES from poll ~19 (title), so the fuzz input
+lands differently and the runs diverge (2689 polls): round 3 agreed on MMC3, so this is new and **open** (not checked
+whether step 70 or the Mesen copy causes it).
+
 The step offset and the post-death divergence are the round-3 ones (not DMC related). `dmc_polls`/`dmc_p2` still differ
 (the SNES sync takes 2 polls, the NES a random 1-48). **Verdict: m30 Playable, MMC3 Playable** (was Jank: the picture fault
 is fixed; the remaining gap is the boot step offset).
