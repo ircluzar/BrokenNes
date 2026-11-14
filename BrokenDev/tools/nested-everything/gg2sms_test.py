@@ -34,12 +34,56 @@ SCRIPT = ("120:Start,126:,300:Start,306:,500:A,506:,700:Start,706:,900:A,906:,10
 FRAMES = 3400
 
 
-def run(exe, rom, console, tag, out, script):
-    shots = sorted({f + d for f in CHECKS for d in (-1, 0, 1)})
-    args = [exe, '--sms-run', rom, '--console', console, '--frames', str(FRAMES), '--png-at', ','.join(map(str, shots)),
+def shift_script(script, lag):
+    if not lag or not script:
+        return script
+    out = []
+    for item in script.split(','):
+        f, _, keys = item.partition(':')
+        out.append(f'{int(f) + lag}:{keys}')
+    return ','.join(out)
+
+
+LAG_MAX, LAG_FRAMES = 120, 240
+
+
+def boot_lag(exe, rom_gg, rom_sms, work, table):
+    """How many frames later the converted game reaches the same pictures with no input (the runtime is slower than the GG
+    ports were: a VRAM clear through the colour check can cost seconds at boot). The SMS pad script and checkpoints are moved by it,
+    so a Start pressed at frame 120 lands in the same place of the game."""
+    d = os.path.join(work, 'lag'); os.makedirs(d, exist_ok=True)
+    gf = list(range(30, LAG_FRAMES, 6))
+    sf = list(range(30, LAG_FRAMES + LAG_MAX + 1, 2))
+    for rom, con, fr in ((rom_gg, 'gg', gf), (rom_sms, 'sms', sf)):
+        subprocess.run([exe, '--sms-run', rom, '--console', con, '--frames', str(max(fr) + 1), '--png-at', ','.join(map(str, fr)),
+                        '--out', d, '--tag', con], capture_output=True, text=True, timeout=1800)
+    try:
+        g = {f: to_levels_gg(level_img(os.path.join(d, f'gg_f{f}.png'), False, table), table) for f in gf}
+        sm = {f: to_levels_sms(level_img(os.path.join(d, f'sms_f{f}.png'), True, table)) for f in sf}
+    except Exception:
+        return 0
+    live = [f for f in gf if len(np.unique(g[f].reshape(-1, 3), axis=0)) > 1]
+    if not live:
+        return 0
+    best = (-1, 0)
+    for lag in range(0, LAG_MAX + 1, 2):
+        ms = [float((g[f] == sm[f + lag]).all(axis=2).mean()) for f in live if f + lag in sm]
+        if ms:
+            m = float(np.mean(ms))
+            if m > best[0] + 0.01:          # the smallest lag that is clearly better
+                best = (m, lag)
+    return best[1]
+
+
+def run(exe, rom, console, tag, out, script, lag=0):
+    shots = sorted({f + lag + d for f in CHECKS for d in (-1, 0, 1)})
+    script = shift_script(script, lag)
+    args = [exe, '--sms-run', rom, '--console', console, '--frames', str(FRAMES + lag), '--png-at', ','.join(map(str, shots)),
             '--out', out, '--tag', tag, '--wav', os.path.join(out, tag + '.wav')]
     if script:
         args += ['--input', script]
+    if console == 'gg':
+        args += ['--gg-mono']        # the GG's stereo port ignored: the sound compared is what the SMS can play (one mix, no panning)
     r = subprocess.run(args, capture_output=True, text=True, timeout=1800)
     return r.returncode, (r.stdout or '')[-600:]
 
@@ -75,8 +119,8 @@ def wav_env(path):
     return np.sqrt((a[:k * per].reshape(k, per) ** 2).mean(axis=1))
 
 
-def compare(work, tag, table):
-    res = {'checks': []}
+def compare(work, tag, table, lag=0):
+    res = {'checks': [], 'lag': lag}
     for f in CHECKS:
         a = os.path.join(work, f'{tag}_gg_f{f}.png')
         if not os.path.exists(a):
@@ -84,18 +128,21 @@ def compare(work, tag, table):
         ga = to_levels_gg(level_img(a, False, table), table)
         best = None
         for d in (-1, 0, 1):
-            b = os.path.join(work, f'{tag}_sms_f{f + d}.png')
+            b = os.path.join(work, f'{tag}_sms_f{f + lag + d}.png')
             if not os.path.exists(b):
                 continue
             sb = to_levels_sms(level_img(b, True, table))
             m = float((ga == sb).all(axis=2).mean())
             if best is None or m > best[0]:
                 best = (m, d)
-        sb0 = to_levels_sms(level_img(os.path.join(work, f'{tag}_sms_f{f}.png'), True, table)) if os.path.exists(os.path.join(work, f'{tag}_sms_f{f}.png')) else None
+        p0 = os.path.join(work, f'{tag}_sms_f{f + lag}.png')
+        sb0 = to_levels_sms(level_img(p0, True, table)) if os.path.exists(p0) else None
         res['checks'].append({'frame': f, 'match': round(best[0], 4) if best else None, 'shift': best[1] if best else None,
                               'colours': int(len(np.unique(sb0.reshape(-1, 3), axis=0))) if sb0 is not None else 0,
                               'ggColours': int(len(np.unique(ga.reshape(-1, 3), axis=0)))})
     ea, eb = wav_env(os.path.join(work, f'{tag}_gg.wav')), wav_env(os.path.join(work, f'{tag}_sms.wav'))
+    if eb is not None and lag:
+        eb = eb[lag:]                          # the converted game's sound, from where its pictures line up
     if ea is not None and eb is not None:
         k = min(len(ea), len(eb))
         ea, eb = ea[:k], eb[:k]
@@ -109,10 +156,10 @@ def compare(work, tag, table):
     return res
 
 
-def frames_hash(work, tag, side):
+def frames_hash(work, tag, side, lag=0):
     hs = []
     for f in CHECKS:
-        p = os.path.join(work, f'{tag}_{side}_f{f}.png')
+        p = os.path.join(work, f'{tag}_{side}_f{f + (lag if side == "sms" else 0)}.png')
         if os.path.exists(p):
             im = np.asarray(Image.open(p).convert('RGB'))
             if side == 'sms':
@@ -164,11 +211,14 @@ def one(game, work, exe):
     if r.returncode not in (0, 1) or not os.path.exists(out_sms):
         res['grade'] = 'Build fails'
         return res
-    sms_script = SCRIPT.replace('Start', 'Select' if start in ('pause', 'both') else 'A+B')
+    pause_ok = start in ('pause', 'both') and not any('Pause cannot be used' in w for w in res.get('warnings', []))
+    sms_script = SCRIPT.replace('Start', 'Select' if pause_ok else 'A+B')
+    res['smsStart'] = 'Pause' if pause_ok else 'buttons 1+2'
     res['runGg'] = run(exe, game['rom'], 'gg', tag + '_gg', gw, SCRIPT)[0]
-    res['runSms'] = run(exe, out_sms, 'sms', tag + '_sms', gw, sms_script)[0]
-    res['cmp'] = compare(gw, tag, table)
-    res['hashGg'] = frames_hash(gw, tag, 'gg'); res['hashSms'] = frames_hash(gw, tag, 'sms')
+    lag = boot_lag(exe, game['rom'], out_sms, gw, table)
+    res['runSms'] = run(exe, out_sms, 'sms', tag + '_sms', gw, sms_script, lag)[0]
+    res['cmp'] = compare(gw, tag, table, lag)
+    res['hashGg'] = frames_hash(gw, tag, 'gg'); res['hashSms'] = frames_hash(gw, tag, 'sms', lag)
     res['grade'] = grade(res)
     del res['hashGg'], res['hashSms']
     return res
@@ -202,7 +252,7 @@ def main():
             results.append(res)
             ms = [c['match'] for c in res.get('cmp', {}).get('checks', [])]
             print(f"{res['grade']:<12} {res['name'][:44]:<44} match={ms} sound={res.get('cmp', {}).get('sound')} patches={res.get('patches')} "
-                  f"unhandled={res.get('unhandled')} residual={res.get('residual')}", flush=True)
+                  f"unhandled={res.get('unhandled')} residual={res.get('residual')} lag={res.get('cmp', {}).get('lag')}", flush=True)
     if a.results:
         with open(a.results, 'w', encoding='utf-8') as f:
             json.dump(results, f, indent=1)

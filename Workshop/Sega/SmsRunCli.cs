@@ -58,6 +58,7 @@ internal static class SmsRunCli
             ? (SmsSession)new GgSession(rom, "Z80", "GG", apu == "SMS" ? "GG" : apu, inner, region)
             : new SmsSession(rom, console, "Z80", "SMS", apu, inner, model, region);
         var board = session.Board;
+        if (Flag("gg-mono")) board.IgnoreGgStereo = true;   // the GG's stereo port ignored: the sound an SMS would make (gg2sms_test.py)
         // the oracle starts its VDP at a random scanline; its capture script records the line, and this emulator starts at the same one so the two run in step (frame for frame, cycle for cycle on the Z80 side)
         string? startLine = Opt("start-line");
         if (startLine == null && mesenDir != null && File.Exists(Path.Combine(mesenDir, tag + ".phase.txt")))
@@ -228,6 +229,7 @@ internal static class SmsRunCli
             var prevI = board.InstructionHook; var prevP = board.PortHook;
             board.InstructionHook = pc => { prevI?.Invoke(pc); ggSites.OnInstruction(pc); };
             board.PortHook = (w, port, v, line, cyc) => { prevP?.Invoke(w, port, v, line, cyc); ggSites.OnPort(w, port, v); };
+            if (board.DebugTap == null) board.DebugTap = ggSites;
         }
         for (int f = fStart; f < frames; f++)
         {

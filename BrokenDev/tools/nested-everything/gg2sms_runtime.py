@@ -19,18 +19,27 @@ Two layouts:
 """
 from z80 import Asm
 
-VARS = ['V_MODE', 'V_ADDR', 'V_LO', 'V_PREV', 'V_START', 'V_TMP', 'V_ARG', 'V_BANK', 'V_IFF']
+VARS = ['V_MODE', 'V_ADDR', 'V_LO', 'V_PREV', 'V_START', 'V_TMP', 'V_ARG', 'V_BANK', 'V_IFF', 'V_CNT', 'V_LATCH', 'V_IE']
+CHAIN = 16                 # index bytes CHAIN+n: the rest of an unrolled OUTI chain, n OUTIs, in one call (h_chain)
+CHAIN_MAX = 120
 IDLE = [0xC0, 0x7F, 0xFF, 0x00, 0xFF, 0x00, 0xFF]   # port $00 (overridden by h_p0) and the link / stereo ports' idle values
-HANDLERS = ['h_be', 'h_bf', 'h_p0', 'oc_a', 'oc_b', 'oc_c', 'oc_d', 'oc_e', 'oc_h', 'oc_l', 'oc_0', 'h_outi', 'h_otir', 'h_outd', 'h_otdr', 'h_inca']
+HANDLERS = ['h_be', 'h_bf', 'h_p0', 'oc_a', 'oc_b', 'oc_c', 'oc_d', 'oc_e', 'oc_h', 'oc_l', 'oc_0', 'h_outi', 'h_otir', 'h_outd', 'h_otdr', 'h_inca', 'h_sr']
 LD_A_NN, LD_NN_A = 0x3A, 0x32
+BLOCKS = ('h_outi', 'h_otir', 'h_outd', 'h_otdr')
 
 
 def _vars(ram):
     return {name: ram + i for i, name in enumerate(VARS)}
 
 
-def handlers(a, settings, v, far):
-    """The handler bodies into Asm a. far: block outputs read (HL) through the stub's rdhl."""
+def handlers(a, settings, v, far, used=None, deep=None):
+    """The handler bodies into Asm a. far: block outputs read (HL) through the stub's rdhl. used: the handler names the sites
+    call (None = all); the others are left out and their jump-table entries point at h_be (no site uses that index)."""
+    used = set(HANDLERS) if used is None else set(used) | {'h_be', 'h_bf'}
+    if 'h_inca' in used:
+        used.add('h_p0')
+    deep = far if deep is None else deep
+    need_one = any(h.startswith('oc_') or h in BLOCKS or h == 'h_chain' for h in used)
     base = 0xC0 if settings['region'] == 'export' else 0x80
     start = settings['start']
 
@@ -49,12 +58,12 @@ def handlers(a, settings, v, far):
     a.db(0x78, 0xE6, 0x0F); a.op_w(0xCD, 'lut'); a.db(0x07, 0x07, 0x07, 0x07, 0x5F)          # e = blue << 4
     a.db(0x7A, 0x0F, 0x0F, 0x0F, 0x0F, 0xE6, 0x0F); a.op_w(0xCD, 'lut'); a.db(0x07, 0x07, 0xB3, 0x5F)  # e |= green << 2
     a.db(0x7A, 0xE6, 0x0F); a.op_w(0xCD, 'lut'); a.db(0xB3, 0x5F)                            # e |= red
-    if not far:
+    if not far:                                              # (far = interrupts already off: every way in turned them off)
         a.db(0xED, 0x57, 0xF5, 0xF3)                         # ld a,i / push af / di   (far: the stub already has them off)
     a.db(0x79, 0xCB, 0x3F, 0xD3, 0xBF)                       # ld a,c / srl a / out ($bf),a
     a.db(0x3E, 0xC0, 0xD3, 0xBF)                             # ld a,$c0 / out ($bf),a
     a.db(0x7B, 0xD3, 0xBE)                                   # ld a,e / out ($be),a
-    if not far:
+    if not far:                                              # (far = interrupts already off: every way in turned them off)
         a.db(0xF1); a.op_w(0xE2, 'be_done'); a.db(0xFB)      # pop af / jp po (were off) / ei
     a.label('be_done')
     a.db(0xE1, 0xD1, 0xC1, 0xF1, 0xC9)
@@ -63,14 +72,41 @@ def handlers(a, settings, v, far):
     a.label('tab')
     a.db(bytes(settings['colour_table']))
 
-    a.label('h_bf')
-    a.db(0xD3, 0xBF, 0xF5, 0xE6, 0xC0, 0xFE, 0xC0); a.op_r(0x28, 'bf_c')
-    a.db(0xAF); a.op_w(LD_NN_A, v['V_MODE']); a.db(0xF1); a.op_w(LD_NN_A, v['V_PREV']); a.db(0xC9)
-    a.label('bf_c')
-    a.op_w(LD_A_NN, v['V_PREV']); a.db(0xE6, 0x3F); a.op_w(LD_NN_A, v['V_ADDR'])
-    a.db(0x3E, 0x01); a.op_w(LD_NN_A, v['V_MODE'])
-    a.db(0xF1); a.op_w(LD_NN_A, v['V_PREV']); a.db(0xC9)
+    if settings.get('latch', 'heuristic') in ('pairs', 'status'):
+        a.label('h_bf')                                      # the VDP's two-byte control latch, shadowed (interrupts off meanwhile)
+        a.db(0xF5, 0xED, 0x57, 0xF3, 0x3E, 0x00); a.op_w(0xE2, 'bf_po'); a.db(0x3C)
+        a.label('bf_po'); a.op_w(LD_NN_A, v['V_IE']); a.db(0xF1, 0xD3, 0xBF, 0xF5)
+        a.op_w(LD_A_NN, v['V_LATCH']); a.db(0xEE, 0x01); a.op_w(LD_NN_A, v['V_LATCH']); a.op_r(0x20, 'bf_1st')
+        a.db(0xF1, 0xF5, 0xE6, 0xC0, 0xFE, 0xC0); a.op_r(0x28, 'bf_c')
+        a.db(0xAF); a.op_w(LD_NN_A, v['V_MODE']); a.op_r(0x18, 'bf_end')
+        a.label('bf_1st'); a.db(0xF1, 0xF5); a.op_w(LD_NN_A, v['V_PREV']); a.op_r(0x18, 'bf_end')
+        a.label('bf_c')
+        a.op_w(LD_A_NN, v['V_PREV']); a.db(0xE6, 0x3F); a.op_w(LD_NN_A, v['V_ADDR'])
+        a.db(0x3E, 0x01); a.op_w(LD_NN_A, v['V_MODE'])
+        a.label('bf_end')
+        a.op_w(LD_A_NN, v['V_IE']); a.db(0xB7, 0x28, 0x01, 0xFB, 0xF1, 0xC9)
+    else:                                                    # heuristic: any byte with both top bits set selects colour RAM (quick)
+        a.label('h_bf')
+        a.db(0xD3, 0xBF, 0xF5, 0xE6, 0xC0, 0xFE, 0xC0); a.op_r(0x28, 'bf_c')
+        a.db(0xAF); a.op_w(LD_NN_A, v['V_MODE']); a.db(0xF1); a.op_w(LD_NN_A, v['V_PREV']); a.db(0xC9)
+        a.label('bf_c')
+        a.op_w(LD_A_NN, v['V_PREV']); a.db(0xE6, 0x3F); a.op_w(LD_NN_A, v['V_ADDR'])
+        a.db(0x3E, 0x01); a.op_w(LD_NN_A, v['V_MODE'])
+        a.db(0xF1); a.op_w(LD_NN_A, v['V_PREV']); a.db(0xC9)
+    if 'h_sr' in used:
+        a.label('h_sr')                                      # IN A,($BF): the status read resets the latch too (IN leaves the flags)
+        a.db(0xDB, 0xBF, 0xF5, 0xAF); a.op_w(LD_NN_A, v['V_LATCH']); a.db(0xF1, 0xC9)
 
+    if 'h_p0' in used:
+        p0(a, settings, v, base, start)
+    if need_one:
+        oc_block(a, v, far, used, deep)
+    if 'h_inca' in used:
+        inca(a)
+    jtab_go(a, v, used)
+
+
+def p0(a, settings, v, base, start):
     a.label('h_p0')
     a.db(0xF5)
     if start in ('pause', 'both'):
@@ -84,6 +120,11 @@ def handlers(a, settings, v, far):
     a.label('p0_out')
     a.op_w(LD_NN_A, v['V_TMP']); a.db(0xF1); a.op_w(LD_A_NN, v['V_TMP']); a.db(0xC9)
 
+
+
+def oc_block(a, v, far, used, deep=False):
+    if 'h_chain' in used:
+        chain(a, v, far, deep)
     a.label('oc_one')                                        # A = value, C = port
     a.db(0xF5, 0x79, 0xFE, 0x07); a.op_r(0x38, 'one_drop')
     a.db(0xE6, 0xC1, 0xFE, 0x80); a.op_r(0x28, 'one_data')
@@ -93,6 +134,8 @@ def handlers(a, settings, v, far):
     a.label('one_data'); a.db(0xF1); a.op_w(0xC3, 'h_be')
     a.label('one_ctl'); a.db(0xF1); a.op_w(0xC3, 'h_bf')
     for r, ld in (('a', None), ('b', 0x78), ('c', 0x79), ('d', 0x7A), ('e', 0x7B), ('h', 0x7C), ('l', 0x7D), ('0', 0xAF)):
+        if 'oc_' + r not in used:
+            continue
         a.label('oc_' + r)
         a.db(0xF5)
         if ld is not None:
@@ -105,14 +148,50 @@ def handlers(a, settings, v, far):
         else:
             a.db(0x7E)
     for name, step in (('h_outi', 0x23), ('h_outd', 0x2B)):
+        if name not in used:
+            continue
         a.label(name)
         a.db(0xF5); rd(); a.op_w(0xCD, 'oc_one'); a.db(step, 0xF1, 0x05, 0xC9)
     for name, step in (('h_otir', 0x23), ('h_otdr', 0x2B)):
+        if name not in used:
+            continue
         a.label(name)
         a.db(0xF5)
         a.label(name + '_l')
         rd(); a.op_w(0xCD, 'oc_one'); a.db(step); a.op_r(0x10, name + '_l')
         a.db(0xF1, 0x04, 0x05, 0xC9)                          # pop af / inc b / dec b (Z=1, N=1, as OTIR leaves them)
+
+
+def chain(a, v, far, deep):
+    # h_chain: the site is the first of n = V_ARG - CHAIN OUTIs left in an unrolled chain: do them all, return past the last one
+    a.label('h_chain')
+    # the site's return address sits under d_go's when the way in was safe (deep)
+    a.db(0xE5, 0xF5, 0x21, 4 + (2 if deep else 0), 0x00, 0x39)   # push hl / push af / ld hl,n / add hl,sp  -> the return address
+    a.op_w(LD_A_NN, v['V_ARG']); a.db(0xD6, CHAIN + 1, 0x87)      # a = 2 * (n - 1)
+    a.db(0x86, 0x77, 0x23); a.op_r(0x30, 'ch_nc'); a.db(0x34)     # add a,(hl) / ld (hl),a / inc hl / jr nc / inc (hl)
+    a.label('ch_nc')
+    a.db(0xF1, 0xE1, 0xF5)                                        # pop af / pop hl / push af
+    a.op_w(LD_A_NN, v['V_ARG']); a.db(0xD6, CHAIN); a.op_w(LD_NN_A, v['V_CNT'])
+    a.op_w(LD_A_NN, v['V_MODE']); a.db(0xB7); a.op_r(0x20, 'ch_l')   # colour RAM: byte by byte through the dispatch
+    a.db(0x79, 0xE6, 0xC1, 0xFE, 0x80); a.op_r(0x20, 'ch_l')         # not the data port: the same
+    if far:
+        a.db(0x7C, 0xFE, 0x80); a.op_r(0x30, 'ch_l')                 # (far: the game's slot-2 bytes are not mapped here)
+    a.op_w(LD_A_NN, v['V_CNT'])
+    a.label('ch_f')                                                  # VRAM: the real OUTIs, at full speed
+    a.db(0xED, 0xA3, 0x3D); a.op_r(0x20, 'ch_f')
+    a.op_r(0x18, 'ch_end')
+    a.label('ch_l')
+    if far:
+        a.op_w(0xCD, 'rdhl')
+    else:
+        a.db(0x7E)
+    a.op_w(0xCD, 'oc_one'); a.db(0x23, 0x05)                 # inc hl / dec b
+    a.op_w(LD_A_NN, v['V_CNT']); a.db(0x3D); a.op_w(LD_NN_A, v['V_CNT']); a.op_r(0x20, 'ch_l')
+    a.label('ch_end')
+    a.db(0xF1, 0x04, 0x05, 0xC9)                             # pop af / inc b / dec b (Z, N as the last OUTI) / ret
+
+
+def inca(a):
     a.label('h_inca')
     a.db(0x79, 0xFE, 0x07); a.op_r(0x30, 'inca_real')
     a.db(0xB7); a.op_w(0xCA, 'h_p0_and')
@@ -121,53 +200,141 @@ def handlers(a, settings, v, far):
     a.label('h_p0_and'); a.op_w(0xCD, 'h_p0'); a.db(0xA7, 0xC9)
     a.label('idle'); a.db(bytes(IDLE))
 
+
+
+def jtab_go(a, v, used):
     # the jump table and the indexed dispatch: V_ARG holds the handler index; HL and AF as the game left them, stack [return]
     a.label('jtab')
     for h in HANDLERS:
-        a.dw_ref(h)
+        a.dw_ref(h if h in used else 'h_be')
     a.label('go')
     a.db(0xE5, 0xF5)                                         # push hl / push af
-    a.op_w(LD_A_NN, v['V_ARG']); a.db(0x87)                  # ld a,(V_ARG) / add a,a
+    a.op_w(LD_A_NN, v['V_ARG'])
+    if 'h_chain' in used:
+        a.db(0xFE, CHAIN); a.op_r(0x30, 'go_ch')
+    a.db(0x87)                                               # add a,a
     a.op_w(0x21, 'jtab'); a.db(0x85, 0x6F, 0x30, 0x01, 0x24) # hl = jtab + 2*index
     a.db(0x7E, 0x23, 0x66, 0x6F)                             # ld a,(hl) / inc hl / ld h,(hl) / ld l,a
     a.db(0xF1, 0xE3, 0xC9)                                   # pop af / ex (sp),hl / ret  -> the handler, which returns to [return]
+    if 'h_chain' in used:
+        a.label('go_ch'); a.db(0xF1, 0xE1); a.op_w(0xC3, 'h_chain')
 
 
-def build(settings, ram, far_bank=None):
-    """Assemble the runtime. Returns {'fixed': Asm, 'far': Asm|None}; labels: disp (the RST / CALL target), nmi, init, and in near mode
-    every handler. Link the fixed part with extern = the far part's addresses and the other way round."""
+def lookup(a, v, far, table):
+    """lk: Z set when HL (a return address) is one of the game's own calls of the hooked RST. table: [(start, length, page)]: the return
+    addresses start, start+2, ... below start+length (an unrolled OUTI chain is one entry); page $FF = any bank, else compared with
+    the game's slot-2 bank (addresses >= $8000) or its slot-1 bank. Keeps BC, DE, HL; A is lost."""
+    assert 0 < len(table) < 256
+    a.label('lk')
+    a.db(0xC5, 0xD5); a.op_w(0x11, 'lk_t'); a.db(0x06, len(table))
+    a.label('lk_l')
+    a.db(0xC5, 0x1A, 0x4F, 0x13, 0x1A, 0x47, 0x13)            # push bc / bc = start
+    a.db(0xE5, 0xB7, 0xED, 0x42); a.op_r(0x38, 'lk_m4')       # push hl / hl -= start / below: next
+    a.db(0x1A, 0x4F, 0x13, 0x1A, 0x47, 0x13)                  # bc = length
+    a.db(0xB7, 0xED, 0x42); a.op_r(0x30, 'lk_m2')             # past the end: next
+    a.db(0x09, 0xCB, 0x45); a.op_r(0x20, 'lk_m2')             # odd: next
+    a.db(0xE1, 0x1A, 0x3C); a.op_r(0x28, 'lk_hit')            # pop hl / page $FF: any bank
+    a.db(0x3D, 0x4F, 0x7C, 0xFE, 0x80); a.op_r(0x38, 'lk_1')  # dec a / ld c,a / ld a,h / cp $80 / jr c
+    a.op_w(LD_A_NN, v['V_BANK'] if far else 0xFFFF); a.op_r(0x18, 'lk_c')
+    a.label('lk_1'); a.op_w(LD_A_NN, 0xFFFE)
+    a.label('lk_c'); a.db(0xB9); a.op_r(0x28, 'lk_hit'); a.op_r(0x18, 'lk_n')
+    a.label('lk_m4'); a.db(0x13, 0x13)
+    a.label('lk_m2'); a.db(0xE1)
+    a.label('lk_n'); a.db(0x13, 0xC1); a.op_r(0x10, 'lk_l')
+    a.db(0xD1, 0xC1, 0x3E, 0x01, 0xB7, 0xC9)                  # NZ: not a site
+    a.label('lk_hit'); a.db(0xC1, 0xD1, 0xC1, 0xAF, 0xC9)
+    a.label('lk_t')
+    for start, length, page in table:
+        a.db(start & 0xFF, start >> 8, length & 0xFF, length >> 8, page)
+
+
+def build(settings, ram, far_bank=None, used=None, hook=None):
+    """Assemble the runtime. Returns {'pieces': [Asm], 'far': Asm|None}: the pieces go in always-mapped ROM, each wherever it fits
+    (relative jumps stay inside a piece), the far part in a bank of its own. Labels: disp (the RST target), nmi, init, hk (a hooked
+    RST's entry) and the handlers; link every piece with extern = the addresses of all the others.
+    used: the handlers the sites call (None = all). hook: {'emit': f(asm) writing the hooked vector's relocated first instructions and
+    the jump back, 'table': [(lo, hi, page)] the sites' return addresses}: the RST vector stays the game's, the sites behind it are
+    told apart by their return address."""
     v = _vars(ram)
-    fixed = Asm()
+    used = set(HANDLERS) if used is None else set(used)
     far = Asm() if far_bank is not None else None
-    # disp: stack [ret -> index byte]; read the index (in the game's bank), step the return address over it
-    fixed.label('disp')
-    fixed.db(0xE3, 0xF5, 0x7E, 0x23); fixed.op_w(LD_NN_A, v['V_ARG']); fixed.db(0xF1, 0xE3)   # ex (sp),hl / push af / ld a,(hl) / inc hl / ld (V_ARG),a / pop af / ex (sp),hl
+    pieces = []
+    # Every way in starts with interrupts off (the state remembered in V_IFF): the game's interrupt handler may reach a site itself, and
+    # V_ARG / V_BANK must not change under a site in progress. d_go: stack [return], AF/HL the game's, V_ARG the index.
+    def pro(a):
+        a.db(0xF5, 0xED, 0x57, 0xF3, 0x3E, 0x00); a.op_w(0xE2, a.uniq('pro')); a.db(0x3C)   # push af / ld a,i / di / ld a,0 / jp po / inc a
+        a.label(a.last); a.op_w(LD_NN_A, v['V_IFF']); a.db(0xF1)                             # ld (V_IFF),a / pop af
+    safe = far is not None or hook is not None        # plain near: the old quick way in (a site cannot be reached between its two halves)
+    d = Asm(); pieces.append(d)
+    d.label('disp')
+    if safe:
+        pro(d)
+    d.db(0xE3, 0xF5, 0x7E, 0x23); d.op_w(LD_NN_A, v['V_ARG'])          # ex (sp),hl / push af / ld a,(hl) / inc hl / ld (V_ARG),a
+    if far is not None:
+        d.op_w(0xCD, 'enter')
+    d.db(0xF1, 0xE3)                                                  # pop af / ex (sp),hl
+    if not safe:
+        d.op_w(0xC3, 'go')
+    d.label('d_go')
+    d.op_w(0xCD, 'go'); d.db(0xF5); d.op_w(0xCD, 'leave'); d.db(0xF1, 0xC9)
+    e = Asm(); pieces.append(e)
+    if far is not None:
+        e.label('enter')                                              # the game's slot-2 bank saved, ours in (A lost)
+        e.op_w(LD_A_NN, 0xFFFF); e.op_w(LD_NN_A, v['V_BANK']); e.db(0x3E, far_bank); e.op_w(LD_NN_A, 0xFFFF); e.db(0xC9)
+    e.label('leave')                                                  # the game's bank back, interrupts as they were (A lost)
+    if far is not None:
+        e.op_w(LD_A_NN, v['V_BANK']); e.op_w(LD_NN_A, 0xFFFF)
+    e.op_w(LD_A_NN, v['V_IFF']); e.db(0xB7, 0xC8, 0xFB, 0xC9)         # or a / ret z / ei / ret
     if far is None:
-        fixed.op_w(0xC3, 'go')
-        handlers(fixed, settings, v, False)
+        h = Asm(); pieces.append(h)
+        handlers(h, settings, v, False, used, deep=safe)
+        if hook and hook['table']:
+            lookup(h, v, False, hook['table'])
     else:
-        fixed.db(0xF5, 0xED, 0x57, 0x3E, 0x00); fixed.op_w(0xE2, 'd_off'); fixed.db(0x3C)   # push af / ld a,i / ld a,0 / jp po / inc a
-        fixed.label('d_off')
-        fixed.op_w(LD_NN_A, v['V_IFF']); fixed.db(0xF3)                                    # ld (V_IFF),a / di
-        fixed.op_w(LD_A_NN, 0xFFFF); fixed.op_w(LD_NN_A, v['V_BANK'])                      # the game's slot-2 bank (RAM mirror of the mapper)
-        fixed.db(0x3E, far_bank); fixed.op_w(LD_NN_A, 0xFFFF)
-        fixed.db(0xF1); fixed.op_w(0xCD, 'go')                                             # pop af / call go (far)
-        fixed.db(0xF5); fixed.op_w(LD_A_NN, v['V_BANK']); fixed.op_w(LD_NN_A, 0xFFFF)
-        fixed.op_w(LD_A_NN, v['V_IFF']); fixed.db(0xB7, 0x28, 0x01, 0xFB, 0xF1, 0xC9)      # or a / jr z,+1 / ei / pop af / ret
-        fixed.label('rdhl')                                                                # A = (HL) with the game's bank in slot 2
-        fixed.db(0xC5); fixed.op_w(LD_A_NN, v['V_BANK']); fixed.op_w(LD_NN_A, 0xFFFF)
-        fixed.db(0x46, 0x3E, far_bank); fixed.op_w(LD_NN_A, 0xFFFF); fixed.db(0x78, 0xC1, 0xC9)
-        handlers(far, settings, v, True)
-    fixed.label('nmi')
-    fixed.db(0xF5, 0x3E, settings['start_hold'] & 0xFF); fixed.op_w(LD_NN_A, v['V_START']); fixed.db(0xF1, 0xED, 0x45)
-    fixed.label('init')
-    fixed.db(0xF5, 0xAF)
-    for name in VARS:
-        fixed.op_w(LD_NN_A, v[name])
-    if far is not None:                                       # the mapper as the BIOS leaves it, so the $FFFF mirror is right from the start
-        fixed.op_w(LD_NN_A, 0xFFFC); fixed.op_w(LD_NN_A, 0xFFFD); fixed.db(0x3C); fixed.op_w(LD_NN_A, 0xFFFE); fixed.db(0x3C); fixed.op_w(LD_NN_A, 0xFFFF)
-    fixed.db(0xF1, 0xC9)
-    return {'fixed': fixed, 'far': far}
+        if any(x in used for x in BLOCKS):
+            r = Asm(); pieces.append(r)
+            r.label('rdhl')                                                    # A = (HL) with the game's bank in slot 2
+            r.db(0xC5); r.op_w(LD_A_NN, v['V_BANK']); r.op_w(LD_NN_A, 0xFFFF)
+            r.db(0x46, 0x3E, far_bank); r.op_w(LD_NN_A, 0xFFFF); r.db(0x78, 0xC1, 0xC9)
+        handlers(far, settings, v, True, used)
+        if hook and hook['table']:
+            lookup(far, v, True, hook['table'])
+        far.label('f_init'); far.db(0xAF)
+        for name in VARS:
+            far.op_w(LD_NN_A, v[name])
+        far.db(0xC9)
+    if hook:
+        # the hooked vector: the game's own RST calls are the known few (their return addresses in the table); anything else whose
+        # index byte names a handler is a site.
+        k = Asm(); pieces.append(k)
+        k.label('hk')
+        pro(k)
+        k.db(0xE3, 0xF5, 0x7E); k.op_w(LD_NN_A, v['V_ARG'])                  # ex (sp),hl / push af / the index byte, in case it is a site
+        if far is not None:
+            k.op_w(0xCD, 'enter')
+        if hook['table']:
+            k.op_w(0xCD, 'lk'); k.op_r(0x28, 'hk_game')
+        k.op_w(LD_A_NN, v['V_ARG']); k.db(0xFE, CHAIN + CHAIN_MAX + 1 if 'h_chain' in used else len(HANDLERS)); k.op_r(0x38, 'hk_site')
+        k.label('hk_game')
+        k.op_w(0xCD, 'leave')
+        k.db(0xF1, 0xE3)                                                       # the game's own RST: its first instructions, then back
+        hook['emit'](k)
+        k.label('hk_site')
+        k.db(0x23, 0xF1, 0xE3); k.op_w(0xC3, 'd_go')                           # inc hl / pop af / ex (sp),hl: the return steps over the index
+    n = Asm(); pieces.append(n)
+    n.label('nmi')
+    n.db(0xF5, 0x3E, settings['start_hold'] & 0xFF); n.op_w(LD_NN_A, v['V_START']); n.db(0xF1, 0xED, 0x45)
+    i = Asm(); pieces.append(i)
+    i.label('init')
+    i.db(0xF5, 0xAF)
+    if far is None:
+        for name in VARS:
+            i.op_w(LD_NN_A, v[name])
+    else:                                                     # the mapper as the BIOS leaves it, so the $FFFF mirror is right from the start
+        i.op_w(LD_NN_A, 0xFFFC); i.op_w(LD_NN_A, 0xFFFD); i.db(0x3C); i.op_w(LD_NN_A, 0xFFFE)
+        i.db(0x3E, far_bank); i.op_w(LD_NN_A, 0xFFFF); i.op_w(0xCD, 'f_init'); i.db(0x3E, 0x02); i.op_w(LD_NN_A, 0xFFFF)
+    i.db(0xF1, 0xC9)
+    return {'pieces': pieces, 'far': far}
 
 
 def colour_table(kind):

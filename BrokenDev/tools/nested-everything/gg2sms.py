@@ -89,6 +89,10 @@ class Analysis:
             self.ram_changed.update(t['ramChanged'])
             self.slot_pages.update(t['slotPages'])
             self.sites += t['sites']
+        self.read = set()          # ROM bytes the traced runs read as data
+        for t in traces:
+            for a0, a1 in t.get('dataRead', []):
+                self.read.update(range(a0, a1))
         self.dyn_code = dict(self.code)
         pages1 = {p.split(',')[1] for p in self.slot_pages}
         pages0 = {p.split(',')[0] for p in self.slot_pages}
@@ -150,13 +154,17 @@ def classify_static(rom, an):
         op, p = b[off], b[off + 1]
         if op == 0xD3 and (p in GG_PORTS or 0x80 <= p < 0xC0):
             out.append({'off': off, 'slot': slot, 'form': 'out_n', 'port': p})
-        elif op == 0xDB and p in GG_PORTS:
+        elif op == 0xDB and (p in GG_PORTS or 0x80 <= p < 0xC0 and p & 1):
             out.append({'off': off, 'slot': slot, 'form': 'in_n', 'port': p})
     return out
 
 
 OC_REG = {0x79: 'a', 0x41: 'b', 0x49: 'c', 0x51: 'd', 0x59: 'e', 0x61: 'h', 0x69: 'l', 0x71: '0'}
 BLOCK = {0xA3: 'h_outi', 0xB3: 'h_otir', 0xAB: 'h_outd', 0xBB: 'h_otdr'}
+
+
+def slot_of(an, o):
+    return an.code.get(o, 0)
 
 
 def plan(rom, an, settings, profile):
@@ -191,6 +199,9 @@ def plan(rom, an, settings, profile):
                     actions[off] = ('bytes', bytes([0x3E, base]), 'IN A,($00) -> LD A,base (no Start)')
                 else:
                     actions[off] = ('call', 'h_p0', 'IN A,($00) -> h_p0', slot)
+            elif op == 0xDB and 0x80 <= p < 0xC0 and p & 1:
+                if settings.get('latch') == 'status':
+                    actions[off] = ('call', 'h_sr', f'IN A,(${p:02X}) -> h_sr (control latch)', slot)
             elif op == 0xD3 and 0x80 <= p < 0xC0 and p & 1:
                 actions[off] = ('call', 'h_bf', f'OUT (${p:02X}),A -> h_bf', slot)
             elif op == 0xD3 and 0x80 <= p < 0xC0:
@@ -213,6 +224,14 @@ def plan(rom, an, settings, profile):
                 unhandled.append({'off': off, 'why': f'ED {o2:02X} on GG ports {sorted(d["ports"])}: no handler'})
         elif d is not None:
             unhandled.append({'off': off, 'why': f'opcode {op:02X} at a GG port site'})
+    chain = sorted(o for o, a in actions.items() if a[0] == 'call' and a[1] in BLOCK.values())
+    for o in chain:                        # forward only, and at most 64 from the end (colour RAM is 64 bytes): the VRAM part stays fast
+        for step in (2,):
+            q = o + step
+            while 0 <= q < rom.n - 1 and q not in actions and b[q] == 0xED and b[q + 1] == b[o + 1] and (q - o) < 128:
+                actions[q] = ('call', BLOCK[b[q + 1]], f'{BLOCK[b[q + 1]][2:].upper()} -> dispatch (unrolled chain with a colour-RAM site)', slot_of(an, o))
+                an.code.setdefault(q, an.code.get(o, 0))
+                q += step
     for pc, port in ram_sites:
         unhandled.append({'off': None, 'pc': pc, 'why': f'code in RAM touches port ${port:02X} (cannot be patched in ROM)'})
     return actions, unhandled
@@ -302,7 +321,7 @@ def free_runs(rom, an, lo, hi, protected, margin=4):
     while i < hi:
         if b[i] in (0xFF, 0x00):
             fill, j = b[i], i
-            while j < hi and b[j] == fill and j not in an.code and j not in an.targets and j not in protected:
+            while j < hi and b[j] == fill and j not in an.code and j not in an.targets and j not in protected and j not in an.read:
                 j += 1
             st, en = i + margin, j - margin
             if en - st >= 16:
@@ -324,11 +343,115 @@ def free_rsts(rom, an):
             continue
         if any(x in an.code or x in an.targets for x in range(v, v + 3)):
             continue
+        if any(b[x] not in (0xFF, 0x00) for x in range(v, v + 3)) or len({b[x] for x in range(v, v + 3)}) > 1:
+            continue                       # code nobody was seen running: an RST the traces did not reach may still enter it
         out.append(v)
     return out
 
 
+def pick_hook(rom, an, traces, protected, forced=None):
+    """A used RST vector to share with the game: (vector, cover start, cover end, times entered in the traces), the least entered first
+    ($38, the interrupt, last). Its first whole instructions (>= 3 bytes, no jump target or patched site among them) move into the runtime."""
+    runs = [0] * 0x40
+    for t in traces:
+        for i, c in enumerate(t.get('vectorRuns', [])[:0x40]):
+            runs[i] += c
+    calls = {v: sum(1 for o in an.code if o < rom.n and rom.b[o] == 0xC7 | v) for v in range(0x08, 0x40, 8)}
+    cands = [forced] if forced is not None else sorted(range(0x08, 0x38, 8), key=lambda v: (v == 0x38, runs[v], calls[v]))
+    for v in cands:
+        if v in protected or (v not in an.code and v not in an.targets):
+            continue                       # never entered: free_rsts would have offered it unless its bytes run as other code
+        c = cover(rom, an, v, z80.length(rom.b, v), protected - set(range(v, v + z80.length(rom.b, v))))
+        if c is None or c[0] != v:
+            continue
+        q, ok = v, True
+        while q < c[1]:
+            kind = z80.flow(rom.b, q, q)[2]
+            if kind in ('rst', 'ind') and q + z80.length(rom.b, q) < c[1]:
+                ok = False                 # nothing after an RST / JP (HL) may be moved: it may be inline data or never fall through
+            q += z80.length(rom.b, q)
+        if ok:
+            return v, c[0], c[1], runs[v]
+    return None
+
+
+_PTR3 = {0x01, 0x11, 0x21, 0x31, 0x22, 0x2A, 0x32, 0x3A, 0xC2, 0xC3, 0xCA, 0xD2, 0xDA, 0xE2, 0xEA, 0xF2, 0xFA,
+         0xC4, 0xCC, 0xCD, 0xD4, 0xDC, 0xE4, 0xEC, 0xF4, 0xFC}
+
+
+def unread_runs(rom, an, traces, lo, hi, protected, skip, margin=8, least=16):
+    """[(size, start)] in [lo, hi): bytes no traced run executed or read as data, outside every instruction the static pass proved and
+    every padding run already offered, and with no 16-bit immediate of the game's code pointing into them. Biggest first."""
+    if not any(t.get('dataRead') is not None for t in traces):
+        return []
+    b = rom.b
+    used = bytearray(rom.n)
+    for o in an.code:
+        for x in range(o, min(rom.n, o + z80.length(b, o))):
+            used[x] = 1
+    for t in traces:
+        for a0, a1 in t.get('dataRead', []):
+            used[a0:a1] = b'\x01' * (a1 - a0)
+    for x in list(an.targets) + list(protected):
+        if 0 <= x < rom.n:
+            used[x] = 1
+    for s, e in skip:
+        used[s:e] = b'\x01' * (e - s)
+    ptr = set()
+    for o in an.code:
+        op = b[o] if o < rom.n else 0
+        if op in _PTR3 and o + 2 < rom.n:
+            ptr.add(b[o + 1] | b[o + 2] << 8)
+        elif op in (0xDD, 0xFD, 0xED) and o + 3 < rom.n and (b[o + 1] in (0x21, 0x22, 0x2A) or op == 0xED and b[o + 1] in z80._ED4):
+            ptr.add(b[o + 2] | b[o + 3] << 8)
+    out = []
+    i = lo
+    hi = min(hi, rom.n)
+    while i < hi:
+        if used[i]:
+            i += 1
+            continue
+        j = i
+        while j < hi and not used[j]:
+            j += 1
+        st, en = i + margin, j - margin
+        if en - st >= least and not any(i <= p < j for p in ptr):
+            out.append((en - st, st))
+        i = j
+    out.sort(key=lambda r: -r[0])
+    return out
+
+
+def place(pieces, runs):
+    """First fit, biggest piece first: [(base, run index)] per piece, or None."""
+    left = [[r[0], r[1]] for r in runs]
+    spots = [None] * len(pieces)
+    for i in sorted(range(len(pieces)), key=lambda i: -len(pieces[i].code)):
+        n = len(pieces[i].code)
+        for k, (sz, st) in enumerate(left):
+            if sz >= n:
+                spots[i] = (st, k)
+                left[k] = [sz - n, st + n]
+                break
+        else:
+            return None
+    return spots
+
+
 def convert(data, settings, profile, traces):
+    """JP trampolines when every site can have one (no lookup, nothing else slowed down); a hooked RST only when they cannot."""
+    if profile.get('hook') or profile.get('rst'):
+        return convert_once(data, settings, profile, traces, True)
+    out, report, code = convert_once(data, settings, profile, traces, False)
+    if out is not None and not any('no room for a jump' in u.get('why', '') for u in report['unhandled']):
+        return out, report, code
+    out2, report2, code2 = convert_once(data, settings, profile, traces, True)
+    if out2 is None and out is not None:
+        return out, report, code
+    return out2, report2, code2
+
+
+def convert_once(data, settings, profile, traces, allow_hook):
     rom = Rom(data)
     report = {'settings': settings, 'patches': [], 'unhandled': [], 'warnings': []}
     h = rom.header()
@@ -362,12 +485,22 @@ def convert(data, settings, profile, traces):
     for o in actions:
         protected.update(range(o, o + z80.length(rom.b, o)))
 
-    # ---- how the sites reach the runtime: a free RST vector (in place, 2 bytes for 2) or JP trampolines
+    # ---- how the sites reach the runtime: an RST vector + an index byte in place (2 bytes for 2). A vector the game never uses, or
+    # one it uses, hooked: its first instructions move into the runtime, and the sites behind it are told apart by their return address.
     rsts = free_rsts(rom, an)
-    if profile.get('rst') is not None:
-        rsts = [int(profile['rst'], 0)] if profile['rst'] != 'none' else []
+    forced_rst = profile.get('rst')
+    if forced_rst is not None:
+        rsts = [int(forced_rst, 0)] if forced_rst != 'none' else []
+    if profile.get('hook'):
+        rsts = []                          # test the hooked path even when a vector is free
     rst = rsts[0] if rsts else None
-    protected_v = set(range(rst, rst + 3)) if rst is not None else set()
+    hook = None
+    if rst is None and forced_rst != 'none' and calls and allow_hook:
+        hook = pick_hook(rom, an, traces, protected, int(profile['hook'], 0) if profile.get('hook') else None)
+        if hook:
+            rst = hook[0]
+            report['hook'] = f'RST ${hook[0]:02X} (the game\'s, entered {hook[3]} times in the traces): ${hook[1]:04X}-${hook[2] - 1:04X} moved into the runtime'
+    protected_v = set(range(rst, rst + 3)) if rst is not None and not hook else set(range(hook[1], hook[2])) if hook else set()
     nmi_ok = settings['start'] in ('pause', 'both') and all(x not in an.code and x not in an.targets for x in range(0x66, 0x69)) and not any(0x66 <= o < 0x69 for o in actions)
     if settings['start'] in ('pause', 'both') and not nmi_ok:
         report['warnings'].append('$0066 is game code: Pause cannot be used for Start (use start=buttons12)')
@@ -404,30 +537,107 @@ def convert(data, settings, profile, traces):
             continue
         protected.update(range(c[0], c[1]))
         tramps.append([c[0], c[1], {o: idx}, None])
-    tramp_bytes = sum(4 + (e - s) * 2 + 9 for s, e, _, _ in tramps)
+    # unrolled OUTI chains in place: each site's index says how many OUTIs are left, one call does them all (h_chain)
+    outi = sorted(o for o in inplace if actions[o][1] == 'h_outi')
+    runs_o, cur = [], []
+    for o in outi:
+        if cur and o == cur[-1] + 2:
+            cur.append(o)
+        else:
+            if cur:
+                runs_o.append(cur)
+            cur = [o]
+    if cur:
+        runs_o.append(cur)
+    for r in runs_o:
+        if len(r) < 4:
+            continue
+        for i, o in enumerate(r):
+            inplace[o] = rt.CHAIN + min(rt.CHAIN_MAX, len(r) - i)
+            if len(r) - i > rt.CHAIN_MAX:
+                inplace[o] = rt.CHAIN + rt.CHAIN_MAX     # (a longer chain: the call does the first CHAIN_MAX and returns into the rest)
+            actions[o] = ('call', 'h_chain', actions[o][2].replace('OUTI -> dispatch', 'OUTI chain -> h_chain'), actions[o][3])
+    used = {actions[o][1] for o in actions if actions[o][0] == 'call'}
+    hookspec = None
+    if hook:
+        table = []                         # the game's own RST calls of the hooked vector (static and traced code)
+        op = 0xC7 | hook[0]
+        for o in sorted(an.code):
+            if o < rom.n and rom.b[o] == op and o not in inplace:
+                pc = cpu_of(o, an.code[o]) + 1
+                page = 0xFF if pc < 0x4000 or (pc < 0x8000 and an.fixed1) else o >> 14
+                if table and table[-1][2] == page and table[-1][0] + table[-1][1] + 1 == pc:
+                    table[-1][1] += 2
+                else:
+                    table.append([pc, 1, page])
+        report['hookGameCalls'] = len(table)
+        if len(table) > 255:
+            report['verdict'] = f'{len(table)} known game calls of the hooked RST (the lookup holds 255)'
+            return None, report, 3
+        v0, v1 = hook[1], hook[2]
 
-    # ---- where the runtime goes: near (one block of always-mapped ROM) or far (a stub there, the handlers in a bank of their own)
-    fixed_runs = free_runs(rom, an, 0x0400, 0x4000, protected)
-    if an.fixed1 and rom.n > 0x4000:
-        fixed_runs += free_runs(rom, an, 0x4000, 0x7FF0, protected)
-        fixed_runs.sort(key=lambda r: (r[2] != 0xFF, -r[0]))
-    near = rt.build(settings, ram)
-    near_need = len(near['fixed'].code) + tramp_bytes
-    layout = None
-    for size, st, fill in fixed_runs:
-        if size >= near_need:
-            layout = ('near', st, fill, None)
-            break
-    if layout is None and not SmsCodemasters(rom) and profile.get('layout') != 'near':
-        probe = rt.build(settings, ram, far_bank=0)
-        stub_need = len(probe['fixed'].code) + tramp_bytes
-        far_need = len(probe['far'].code) + 8
-        stub = next(((st, fill) for size, st, fill in fixed_runs if size >= stub_need), None)
-        if stub:
+        def emit(asm, v0=v0, v1=v1):
+            q, fixups = v0, []
+            while q < v1:
+                n = z80.length(rom.b, q)
+                jf = relocate(rom.b, q, n, q, asm)
+                if jf is not None:
+                    fixups.append(jf)
+                q += n
+            for jf in fixups:
+                asm.code[jf] = v1 & 0xFF; asm.code[jf + 1] = v1 >> 8
+            asm.op_w(0xC3, v1)
+        hookspec = {'emit': emit, 'table': table}
+
+    def tramp_pieces():
+        out = []
+        for s, e, tsites, init in tramps:
+            slot = an.code.get(s, 0)
+            t = z80.Asm(); t.label(f't_{s:x}')
+            q, fixups = s, []
+            while q < e:
+                n = z80.length(rom.b, q)
+                if q in tsites:
+                    t.op_w(0xCD, 'disp'); t.db(tsites[q])
+                else:
+                    if q == s and init == 'init':
+                        t.op_w(0xCD, 'init')
+                    jf = relocate(rom.b, q, n, cpu_of(q, slot), t)
+                    if jf is not None:
+                        fixups.append(jf)
+                q += n
+            back = cpu_of(e, slot)
+            for jf in fixups:
+                t.code[jf] = back & 0xFF; t.code[jf + 1] = back >> 8
+            t.op_w(0xC3, back)
+            out.append(t)
+        return out
+
+    # ---- where the runtime goes: near (all of it in always-mapped ROM) or far (a stub there, the handlers in a bank of their own).
+    # Each piece goes wherever it fits: $FF/$00 padding first, then (with traces) bytes the game never ran or read.
+    lo_fixed, hi_fixed = 0x0400, (0x7FF0 if an.fixed1 and rom.n > 0x4000 else 0x4000)
+    fill_runs = free_runs(rom, an, 0x0400, 0x4000, protected)
+    if hi_fixed > 0x4000:
+        fill_runs += free_runs(rom, an, 0x4000, 0x7FF0, protected)
+    fill_runs.sort(key=lambda r: (r[2] != 0xFF, -r[0]))
+    runs = [(sz, st, 'ff' if f == 0xFF else '00') for sz, st, f in fill_runs]
+    if profile.get('unread', 'use') != 'never':
+        runs += [(sz, st, 'unread') for sz, st in unread_runs(rom, an, traces, lo_fixed, hi_fixed, protected, [(r[1], r[1] + r[0]) for r in fill_runs])]
+    def keep(ps):
+        return [p for p in ps if nmi_ok or 'nmi' not in p.labels]
+    near = rt.build(settings, ram, used=used, hook=hookspec)
+    pieces = keep(near['pieces']) + tramp_pieces()
+    spots = place(pieces, runs)
+    parts, far_off = near, None
+    if spots is None and not SmsCodemasters(rom) and profile.get('layout') != 'near':
+        probe = rt.build(settings, ram, far_bank=0, used=used, hook=hookspec)
+        pieces = keep(probe['pieces']) + tramp_pieces()
+        spots = place(pieces, runs)
+        if spots is not None:
+            far_need = len(probe['far'].code) + 8
             fixed_banks = {0, 1} if an.fixed1 else {0}
             far_runs = [r for r in free_runs(rom, an, 0x4000, rom.n, protected) if (r[1] >> 14) not in fixed_banks
-                        and (r[1] & 0x3FFF) + far_need <= 0x3FFF]
-            far_runs = [r for r in far_runs if r[0] >= far_need and r[2] == 0xFF]
+                        and (r[1] & 0x3FFF) + far_need <= 0x3FFF and r[0] >= far_need and r[2] == 0xFF]
             if far_runs:
                 far_off = far_runs[0][1]
             else:
@@ -436,61 +646,56 @@ def convert(data, settings, profile, traces):
                 rom.b += b'\xFF' * (new_n - rom.n)
                 report['warnings'].append(f'ROM grown {rom.n // 1024} KB -> {new_n // 1024} KB for the runtime\'s bank')
                 rom.n = new_n
-            layout = ('far', stub[0], stub[1], far_off)
-    if layout is None:
-        best = fixed_runs[0][0] if fixed_runs else 0
-        report['verdict'] = f'no room for the runtime in always-mapped ROM (near needs {near_need} bytes, the biggest free run is {best})'
+            parts = rt.build(settings, ram, far_bank=far_off >> 14, used=used, hook=hookspec)
+            pieces = keep(parts['pieces']) + tramp_pieces()
+    if spots is None:
+        sizes = sorted((len(p.code) for p in rt.build(settings, ram, far_bank=0, used=used, hook=hookspec)['pieces'] + tramp_pieces()), reverse=True)
+        report['verdict'] = (f'no room for the runtime in always-mapped ROM (far stub pieces {sizes}, {sum(sizes)} bytes; free runs '
+                             f'{sorted((r[0] for r in runs), reverse=True)[:8]})')
         return None, report, 3
-    kind, base, fill, far_off = layout
-    if fill == 0x00:
-        report['warnings'].append('runtime placed in a run of $00 bytes (no $FF padding big enough): check that the game does not read it as data')
-    if kind == 'near':
-        parts = near
-        far_base = None
-    else:
-        parts = rt.build(settings, ram, far_bank=far_off >> 14)
-        far_base = 0x8000 | (far_off & 0x3FFF)
-    fasm = parts['fixed']
-    # trampolines after the fixed part
-    for s, e, tsites, init in tramps:
-        slot = an.code.get(s, 0)
-        fasm.label(f't_{s:x}')
-        q, fixups = s, []
-        while q < e:
-            n = z80.length(rom.b, q)
-            if q in tsites:
-                fasm.op_w(0xCD, 'disp'); fasm.db(tsites[q])
-            else:
-                if q == s and init == 'init':
-                    fasm.op_w(0xCD, 'init')
-                jf = relocate(rom.b, q, n, cpu_of(q, slot), fasm)
-                if jf is not None:
-                    fixups.append(jf)
-            q += n
-        back = cpu_of(e, slot)
-        for jf in fixups:
-            fasm.code[jf] = back & 0xFF; fasm.code[jf + 1] = back >> 8
-        fasm.op_w(0xC3, back)
-    far_labels = {k: far_base + v for k, v in parts['far'].labels.items()} if parts['far'] else {}
-    fixed_labels = {k: base + v for k, v in fasm.labels.items()}
-    blob = fasm.link(base, far_labels)
-    rom.b[base:base + len(blob)] = blob
+    kinds = {k for _, _, k in (runs[spots[i][1]] for i in range(len(pieces)))}
+    if '00' in kinds:
+        report['warnings'].append('runtime partly in a run of $00 bytes (no $FF padding big enough): check that the game does not read it as data')
+    if 'unread' in kinds:
+        report['warnings'].append('runtime partly in bytes the traced runs never ran or read (no padding big enough): a part of the game the traces did not reach could read them')
+    far_base = 0x8000 | (far_off & 0x3FFF) if parts['far'] else None
+    labels = {k: far_base + v for k, v in parts['far'].labels.items()} if parts['far'] else {}
+    for p, (base, _) in zip(pieces, spots):
+        labels.update({k: base + v for k, v in p.labels.items()})
+    ranges = []
+    for p, (base, _) in zip(pieces, spots):
+        blob = p.link(base, labels)
+        rom.b[base:base + len(blob)] = blob
+        ranges.append([base, base + len(blob)])
+    report['runtime'] = (('far' if parts['far'] else 'near') + f': {len(pieces)} pieces in always-mapped ROM ({sum(e - s for s, e in ranges)} bytes at '
+                         + ', '.join(f'${s:04X}' for s, _ in ranges) + ')')
     if parts['far']:
-        fblob = parts['far'].link(far_base, fixed_labels)
+        fblob = parts['far'].link(far_base, labels)
         rom.b[far_off:far_off + len(fblob)] = fblob
-        report['runtime'] = f'far: stub ${base:04X} ({len(blob)} bytes), handlers in bank {far_off >> 14} at ${far_base:04X} ({len(fblob)} bytes)'
-    else:
-        report['runtime'] = f'near: ${base:04X} ({len(blob)} bytes)'
-    report['runtimeRanges'] = [[base, base + len(blob)]] + ([[far_off, far_off + len(parts['far'].code)]] if parts['far'] else [])
-    report['entry'] = f'RST ${rst:02X} + index byte, in place' if rst is not None else 'JP trampolines'
-    disp = fixed_labels['disp']
-    if rst is not None:
+        ranges.append([far_off, far_off + len(fblob)])
+        report['runtime'] += f', handlers in bank {far_off >> 14} at ${far_base:04X} ({len(fblob)} bytes)'
+    report['runtimeRanges'] = ranges
+    read = set()
+    for t in traces:
+        for a0, a1 in t.get('dataRead', []):
+            read.update(range(a0, a1))
+    hit = sum(1 for s, e in ranges for x in range(s, e) if x in read)
+    if hit:
+        report['warnings'].append(f'{hit} runtime bytes sit where the original game READ data in the traces')
+    report['entry'] = (f'hooked RST ${rst:02X} + index byte, in place' if hook else f'RST ${rst:02X} + index byte, in place') if rst is not None else 'JP trampolines'
+    if hook:
+        t = labels['hk']
+        rom.b[hook[1]] = 0xC3; rom.b[hook[1] + 1] = t & 0xFF; rom.b[hook[1] + 2] = t >> 8
+        for k in range(hook[1] + 3, hook[2]):
+            rom.b[k] = 0x00
+    elif rst is not None:
+        disp = labels['disp']
         rom.b[rst] = 0xC3; rom.b[rst + 1] = disp & 0xFF; rom.b[rst + 2] = disp >> 8
     for o, idx in sorted(inplace.items()):
         rom.b[o] = 0xC7 | rst; rom.b[o + 1] = idx
         report['patches'].append({'off': o, 'what': actions[o][2] + f' (RST ${rst:02X},{idx})'})
     for s, e, tsites, init in tramps:
-        t = fixed_labels[f't_{s:x}']
+        t = labels[f't_{s:x}']
         rom.b[s] = 0xC3; rom.b[s + 1] = t & 0xFF; rom.b[s + 2] = t >> 8
         for k in range(s + 3, e):
             rom.b[k] = 0x00
@@ -503,7 +708,7 @@ def convert(data, settings, profile, traces):
             rom.b[o:o + len(a[1])] = a[1]
             report['patches'].append({'off': o, 'what': a[2]})
     if nmi_ok:
-        t = fixed_labels['nmi']
+        t = labels['nmi']
         rom.b[0x66] = 0xC3; rom.b[0x67] = t & 0xFF; rom.b[0x68] = t >> 8
         report['patches'].append({'off': 0x66, 'what': 'NMI (Pause) -> Start'})
     fix_header(rom, report)
