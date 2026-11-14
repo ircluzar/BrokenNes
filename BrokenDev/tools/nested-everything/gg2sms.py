@@ -702,7 +702,7 @@ def convert_once(data, settings, profile, traces, allow_hook):
     spots, parts, far_off = None, None, None
     attempts = []                          # (runs, fast): padding with the fast path, padding without it, then never-read bytes
     for runs in run_sets:
-        attempts += [(runs, True), (runs, False)] if runs is not run_sets[-1] or len(run_sets) == 1 else [(runs, True)]
+        attempts += [(runs, f) for f in ((True, False) if profile.get("fast", True) else (False,))]
     for runs, fast in attempts:
         near = rt.build(settings, ram, used=used, hook=hookspec, fast=fast)
         probe = rt.build(settings, ram, far_bank=0, used=used, hook=hookspec, fast=fast)

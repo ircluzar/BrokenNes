@@ -19,7 +19,7 @@ Two layouts:
 """
 from z80 import Asm
 
-VARS = ['V_MODE', 'V_ADDR', 'V_LO', 'V_PREV', 'V_START', 'V_TMP', 'V_ARG', 'V_BANK', 'V_IFF', 'V_CNT', 'V_LATCH', 'V_IE']
+VARS = ['V_MODE', 'V_ADDR', 'V_LO', 'V_PREV', 'V_START', 'V_TMP', 'V_ARG', 'V_BANK', 'V_IFF', 'V_CNT', 'V_LATCH', 'V_IE', 'V_VC']
 CHAIN = 16                 # index bytes CHAIN+n: the rest of an unrolled OUTI chain, n OUTIs, in one call (h_chain)
 CHAIN_MAX = 120
 IDLE = [0xC0, 0x7F, 0xFF, 0x00, 0xFF, 0x00, 0xFF]   # port $00 (overridden by h_p0) and the link / stereo ports' idle values
@@ -115,8 +115,13 @@ def p0(a, settings, v, base, start):
     a.label('h_p0')
     a.db(0xF5)
     if start in ('pause', 'both'):
+        # Pause held Start for start_hold frames (counted by the VDP line counter going back), not reads: a game that polls
+        # port $00 in a loop would use up a read count within one frame
         a.op_w(LD_A_NN, v['V_START']); a.db(0xB7); a.op_r(0x28, 'p0_up')
-        a.db(0x3D); a.op_w(LD_NN_A, v['V_START']); a.db(0x3E, base & 0x7F); a.op_r(0x18, 'p0_out')
+        a.db(0xC5, 0xDB, 0x7E, 0x47); a.op_w(LD_A_NN, v['V_VC']); a.db(0x4F, 0x78); a.op_w(LD_NN_A, v['V_VC'])   # b = line, c = last
+        a.db(0xB9); a.op_r(0x30, 'p0_same')                                       # cp c / jr nc: same frame
+        a.op_w(LD_A_NN, v['V_START']); a.db(0x3D); a.op_w(LD_NN_A, v['V_START'])
+        a.label('p0_same'); a.db(0xC1, 0x3E, base & 0x7F); a.op_r(0x18, 'p0_out')
     a.label('p0_up')
     if start in ('buttons12', 'both'):
         a.db(0xDB, 0xDC, 0xE6, 0x30); a.op_r(0x20, 'p0_rel'); a.db(0x3E, base & 0x7F); a.op_r(0x18, 'p0_out')
@@ -352,8 +357,7 @@ def init_inline(a, ram, far_bank=None):
     """The power-on part, written inline in the reset trampoline: no stack (SP is not set yet at reset: a push at SP=0 lands
     on the mapper registers $FFFE/$FFFF). Clears the runtime's RAM; far: puts the slot-2 register where the BIOS leaves it."""
     a.op_w(0x21, ram); a.db(0x06, len(VARS), 0xAF, 0x77, 0x23, 0x10, 0xFC)   # ld hl,ram / ld b,n / xor a / ld (hl),a / inc hl / djnz
-    if far_bank is not None:
-        a.db(0x3E, 0x02); a.op_w(LD_NN_A, 0xFFFF)
+    # (far: the slot-2 register is left to the game, which sets it before it banks; the runtime saves and restores whatever it holds)
 
 
 def colour_table(kind):
