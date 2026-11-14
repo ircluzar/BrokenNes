@@ -14,15 +14,18 @@ public sealed partial class SnesCartridge
     public byte[] Rom { get; }
     public byte[] Sram { get; }
     public bool HiRom { get; }
+    /// <summary>ExHiROM (map mode $35, over 4MB): the header is at $40FFC0, banks $00-$7D read the upper 4MB.</summary>
+    public bool ExHiRom { get; }
     public string Title { get; }
     public byte MapMode { get; }
     public bool HasBattery { get; }
 
-    private SnesCartridge(byte[] rom, bool hiRom)
+    private SnesCartridge(byte[] rom, bool hiRom, bool exHiRom = false)
     {
         Rom = rom;
-        HiRom = hiRom;
-        int h = hiRom ? 0xFFC0 : 0x7FC0;
+        HiRom = hiRom || exHiRom;
+        ExHiRom = exHiRom;
+        int h = exHiRom ? 0x40FFC0 : hiRom ? 0xFFC0 : 0x7FC0;
         Title = Encoding.ASCII.GetString(rom, h, 21).TrimEnd(' ', '\0');
         MapMode = rom[h + 0x15];
         byte chipset = rom[h + 0x16];
@@ -59,6 +62,9 @@ public sealed partial class SnesCartridge
         byte[] rom = file;
         if (file.Length % 1024 == 512) rom = file.AsSpan(512).ToArray();   // strip copier header
         if (rom.Length < 0x8000) throw new InvalidOperationException($"SNES ROM too small ({rom.Length} bytes)");
+        if (rom.Length > 0x410000 && (rom[0x40FFD5] & 0x0F) == 5
+            && Score(rom, 0x40FFC0, hiRom: true) > Math.Max(Score(rom, 0xFFC0, hiRom: true), Score(rom, 0x7FC0, hiRom: false)))
+            return new SnesCartridge(rom, hiRom: true, exHiRom: true);
         bool hi = rom.Length >= 0x10000 && Score(rom, 0xFFC0, hiRom: true) > Score(rom, 0x7FC0, hiRom: false);
         return new SnesCartridge(rom, hi);
     }
@@ -135,6 +141,8 @@ public sealed partial class SnesCartridge
                 }
                 if (offset < 0x8000) return -1;
             }
+            if (ExHiRom)   // bank bit 7 clear = the upper 4MB of the file
+                return (int)(((((bank & 0x80) ^ 0x80) << 15) + (b & 0x3F) * 0x10000 + offset) % (uint)Rom.Length);
             return (int)(((b & 0x3F) * 0x10000 + offset) % (uint)Rom.Length);
         }
     }
