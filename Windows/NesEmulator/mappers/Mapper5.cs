@@ -613,7 +613,11 @@ public class Mapper5 : IMapper
         {
             inFrame = false; irqCounter = 0; irqPending = false; return;
         }
-        if (!inFrame)
+        // Line 0 starts a new frame. The PPUs only call this hook on visible lines, so nothing else ever
+        // cleared inFrame after the first frame: the counter ran on past 239 forever and an IRQ target
+        // could fire at most once per power-on (Castlevania III's status-bar split never ran, so stage
+        // 1 was drawn with the status bar's CHR banks - letter tiles).
+        if (!inFrame || scanline == 0)
         {
             inFrame = true; irqCounter = 0; irqPending = false; return;
         }
