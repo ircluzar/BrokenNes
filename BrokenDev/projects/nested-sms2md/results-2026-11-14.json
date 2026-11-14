@@ -1,0 +1,122 @@
+{
+ "pipeline": "sms2md",
+ "games": [
+  {
+   "id": "vrun_ctw_sms",
+   "translation": {
+    "out_sha256": "d017a1dcc3b57013523223312f67cb1d0bd7089ee6538936a29cd7a7a97eb349",
+    "out_size": 1147760,
+    "instructions": 25626,
+    "stats": {
+     "ins": 25626,
+     "mem_fast": 1494,
+     "mem_checked": 2069,
+     "dyn_jumps": 16
+    }
+   },
+   "boot": {
+    "titleFrame": 110,
+    "delay": 219,
+    "match": 0.9965
+   },
+   "md": {
+    "frames": 816,
+    "irqs": 348,
+    "halts": 69,
+    "idleFrames": 69,
+    "error": true,
+    "errKind": 238,
+    "errAddr": 0
+   },
+   "idle": {
+    "smsHaltFrames": 1410,
+    "smsFrames": 1500,
+    "mdHaltFrames": 69,
+    "mdFrames": 1719
+   },
+   "picture": {
+    "samples": 139,
+    "meanMatch": 0.0737,
+    "minMatch": 0.0,
+    "exact": 0,
+    "lagStart": 0,
+    "lagEnd": -10,
+    "lagMax": 29
+   },
+   "input": [
+    {
+     "frame": 120,
+     "button": "Select",
+     "sms": 0,
+     "md": 0
+    },
+    {
+     "frame": 300,
+     "button": "A",
+     "sms": 3,
+     "md": null
+    },
+    {
+     "frame": 500,
+     "button": "A",
+     "sms": 3,
+     "md": null
+    },
+    {
+     "frame": 700,
+     "button": "A",
+     "sms": 3,
+     "md": null
+    },
+    {
+     "frame": 800,
+     "button": "Right",
+     "sms": 2,
+     "md": null
+    },
+    {
+     "frame": 1000,
+     "button": "Right+A",
+     "sms": 29,
+     "md": null
+    },
+    {
+     "frame": 1020,
+     "button": "Right",
+     "sms": 9,
+     "md": null
+    },
+    {
+     "frame": 1200,
+     "button": "Left+B",
+     "sms": 2,
+     "md": null
+    },
+    {
+     "frame": 1220,
+     "button": "Left",
+     "sms": 0,
+     "md": null
+    },
+    {
+     "frame": 1300,
+     "button": "Up",
+     "sms": 2,
+     "md": null
+    },
+    {
+     "frame": 1350,
+     "button": "Down",
+     "sms": 2,
+     "md": null
+    }
+   ],
+   "sound": {
+    "smsMeanRms": 2133.6,
+    "mdMeanRms": 1440.1,
+    "loudnessCorr": 0.181
+   },
+   "grade": "Glitchy"
+  }
+ ]
+}

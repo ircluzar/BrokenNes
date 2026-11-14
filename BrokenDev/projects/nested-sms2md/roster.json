@@ -1,0 +1,7 @@
+{
+  "pipeline": "sms2md",
+  "note": "ROM paths are local; ROMs never go in git.",
+  "games": [
+    { "id": "vrun_ctw_sms", "rom": "T:/BrokenDev/Releases/VRUN_CTW_SMS/2026-11-10_e693044/VRUN_CTW_SMS_2026-11-10_mmc3.sms" }
+  ]
+}

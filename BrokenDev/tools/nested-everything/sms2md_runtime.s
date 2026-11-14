@@ -16,46 +16,46 @@
         .equ PSGP,      0xC00011
         .equ VSHADOW,   0xFF0000        | 16 KB: the SMS VRAM as the game wrote it
         .equ SRAMBUF,   0xFF4000        | 16 KB: cartridge RAM
-| variables (absolute short: $FF8000-$FFBFFF)
-        .equ IFF,       0xFFFF8000
-        .equ VLATCH,    0xFFFF8001
-        .equ VADDR,     0xFFFF8002
-        .equ VCODE,     0xFFFF8004
-        .equ VLOW,      0xFFFF8005
-        .equ VBUF,      0xFFFF8006
-        .equ VSTAT,     0xFFFF8007
-        .equ LINEFLAG,  0xFFFF8008
-        .equ SATDIRTY,  0xFFFF8009
-        .equ PAD1,      0xFFFF800A
-        .equ PADPREV,   0xFFFF800B
-        .equ NTBASE,    0xFFFF800C
-        .equ SATBASE,   0xFFFF800E
-        .equ VREGS,     0xFFFF8010
-        .equ SLOTPTR,   0xFFFF8020
-        .equ SLOTDISP,  0xFFFF8030
-        .equ SRAMON,    0xFFFF8040
-        .equ MAPREG,    0xFFFF8041      | 4 bytes: $FFFC-$FFFF as written
-        .equ HL2,       0xFFFF8046
-        .equ A2V,       0xFFFF8048
-        .equ F2V,       0xFFFF804A
-        .equ CRAMSH,    0xFFFF8050      | 32 bytes
-        .equ FRAMES,    0xFFFF8070
-        .equ IRQS,      0xFFFF8074
-        .equ HALTS,     0xFFFF8078
-        .equ ISRCNT,    0xFFFF807C
-        .equ INISR,     0xFFFF807D
-        .equ ERRADDR,   0xFFFF8080
-        .equ ERRKIND,   0xFFFF8082
-        .equ ERRFLAG,   0xFFFF8084
-        .equ NMIS,      0xFFFF8086
-        .equ ERRFROM,   0xFFFF8094
-        .equ IDLEFR,    0xFFFF808A      | frames in which the game reached its idle point (HALT or a profile's idle_pc)
-        .equ IDLEFLAG,  0xFFFF808E
-        .equ LASTFR,    0xFFFF8090      | FRAMES at the last idle
+| variables (absolute short: $FFF000-; the 68000 stack below them. Z80 pointers into $8000-$BFFF land on $FF8000-$FFBFFF, which holds nothing)
+        .equ IFF,       0xFFFFF000
+        .equ VLATCH,    0xFFFFF001
+        .equ VADDR,     0xFFFFF002
+        .equ VCODE,     0xFFFFF004
+        .equ VLOW,      0xFFFFF005
+        .equ VBUF,      0xFFFFF006
+        .equ VSTAT,     0xFFFFF007
+        .equ LINEFLAG,  0xFFFFF008
+        .equ SATDIRTY,  0xFFFFF009
+        .equ PAD1,      0xFFFFF00A
+        .equ PADPREV,   0xFFFFF00B
+        .equ NTBASE,    0xFFFFF00C
+        .equ SATBASE,   0xFFFFF00E
+        .equ VREGS,     0xFFFFF010
+        .equ SLOTPTR,   0xFFFFF020
+        .equ SLOTDISP,  0xFFFFF030
+        .equ SRAMON,    0xFFFFF040
+        .equ MAPREG,    0xFFFFF041      | 4 bytes: $FFFC-$FFFF as written
+        .equ HL2,       0xFFFFF046
+        .equ A2V,       0xFFFFF048
+        .equ F2V,       0xFFFFF04A
+        .equ CRAMSH,    0xFFFFF050      | 32 bytes
+        .equ FRAMES,    0xFFFFF070
+        .equ IRQS,      0xFFFFF074
+        .equ HALTS,     0xFFFFF078
+        .equ ISRCNT,    0xFFFFF07C
+        .equ INISR,     0xFFFFF07D
+        .equ ERRADDR,   0xFFFFF080
+        .equ ERRKIND,   0xFFFFF082
+        .equ ERRFLAG,   0xFFFFF084
+        .equ NMIS,      0xFFFFF086
+        .equ ERRFROM,   0xFFFFF094
+        .equ IDLEFR,    0xFFFFF08A      | frames in which the game reached its idle point (HALT or a profile's idle_pc)
+        .equ IDLEFLAG,  0xFFFFF08E
+        .equ LASTFR,    0xFFFFF090      | FRAMES at the last idle
         .equ MAGIC,     0xFFFE          | Z80 return address that means "back to the 68000 interrupt handler"
 
         .org 0
-        .long 0x00FFC000, boot
+        .long 0x00FFF000, boot
         .rept 26
         .long exc_generic
         .endr
@@ -87,6 +87,10 @@
 exc_ignore:
         rte
 exc_generic:
+        move.l  (sp),(0xFFF0E0).l       | the exception frame (address error: access, address, IR, SR, PC)
+        move.l  4(sp),(0xFFF0E4).l
+        move.l  8(sp),(0xFFF0E8).l
+        move.l  12(sp),(0xFFF0EC).l
         move.w  #0xEE,(ERRKIND).w
         bra     fatal
 
@@ -205,7 +209,7 @@ z_untranslated:
         move.w  a1,(ERRFROM).w          | with debug_trail: the Z80 instruction that jumped there
 fatal:
         move    #0x2700,sr
-        movem.l d0-d7/a0-a6,(0xFF80A0).l | the registers at the stop, for the harness
+        movem.l d0-d7/a0-a6,(0xFFF0A0).l | the registers at the stop, for the harness
         st      (ERRFLAG).w
         move.l  #0xC0000000,(VDPC).l
         move.w  #0x000E,(VDPD).l

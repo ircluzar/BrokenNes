@@ -206,6 +206,7 @@ class Program:
         live_in = {i.pc: 0 for i in inss}
         live_out = {i.pc: 0 for i in inss}
         cfk = bool(self.profile.get('calls_keep_flags'))
+        retf = ALLF if self.profile.get('ret_flags', 'CZ') == 'all' else (C | Z)
         changed = True
         while changed:
             changed = False
@@ -214,7 +215,7 @@ class Program:
                 uses, defs, full = flag_info(i)
                 out = 0
                 if kind in ('ret', 'ind'):
-                    out = ALLF
+                    out = retf
                 if kind in ('call', 'rst'):
                     nxt = live_in.get(i.nxt, ALLF) if falls else 0
                     lin = uses | (nxt if cfk else 0)
@@ -222,7 +223,7 @@ class Program:
                     if falls:
                         out |= live_in.get(i.nxt, ALLF)
                     if kind == 'retc':
-                        out |= ALLF
+                        out |= retf
                     if tgt is not None and kind in ('jp', 'jpc', 'djnz'):
                         if tgt >> 14 == slot and tgt in by:
                             out |= live_in[tgt]
@@ -380,6 +381,8 @@ class Gen:
 
     # ---- memory
     def site_ram_only(self, ins, write):
+        if self.st.get('memory') == 'checked':
+            return False
         k = self.p.off(self.cur[0], ins.pc)
         m = self.p.mem.get(k)
         if not m:
@@ -400,7 +403,7 @@ class Gen:
                 slot = nn >> 14
                 if slot == 0 and self.p.slot_banks[0] == {0} and nn >= 0:
                     return 'fast', '(SMSROM+%d).l' % nn
-                self.emit('movea.l (%d).w,a0' % sx16(0x8020 + 4 * slot), cc=False)
+                self.emit('movea.l (%d).w,a0' % sx16(0xF020 + 4 * slot), cc=False)
                 return 'fast', '%d(a0)' % (nn - slot * 0x4000)
             self.emit('move.w  #%d,d7' % nn)
             return 'chk', None
@@ -433,6 +436,25 @@ class Gen:
             return self.read8(o[1], into)
         if o[0] == 'n':
             return '#%d' % o[1]
+        if o[0] in ('m', 'ix') and o[1] != 'SP' and self.st.get('memory') != 'trust_ram' and self.site_ram_only(ins, False):
+            # guarded fast read: shared helpers (memcpy and friends) may get a ROM pointer the dynamic pass never saw
+            if o[0] == 'm':
+                self.emit('move.w  %s,d7' % R16[o[1]])
+            else:
+                self.raw('lea     %d(%s),a0' % (o[2], AREG[o[1]]))
+                self.emit('move.w  a0,d7')
+            self.emit('cmpi.w  #0xC000,d7')
+            self.raw('bcs.s   1f')
+            self.raw('movea.w d7,a0')
+            self.raw('move.b  (a0),%s' % into)
+            self.raw('bra.s   2f')
+            self.out.append('1:')
+            self.raw('jsr     (rd8).l')
+            if into != 'd6':
+                self.raw('move.b  d6,%s' % into)
+            self.out.append('2:')
+            self.stats['mem_guarded'] += 1
+            return into
         kind, opnd = self.mem(ins, o)
         if kind == 'fast':
             return opnd
