@@ -302,10 +302,6 @@ def build(settings, ram, far_bank=None, used=None, hook=None):
         handlers(far, settings, v, True, used)
         if hook and hook['table']:
             lookup(far, v, True, hook['table'])
-        far.label('f_init'); far.db(0xAF)
-        for name in VARS:
-            far.op_w(LD_NN_A, v[name])
-        far.db(0xC9)
     if hook:
         # the hooked vector: the game's own RST calls are the known few (their return addresses in the table); anything else whose
         # index byte names a handler is a site.
@@ -327,16 +323,18 @@ def build(settings, ram, far_bank=None, used=None, hook=None):
     n = Asm(); pieces.append(n)
     n.label('nmi')
     n.db(0xF5, 0x3E, settings['start_hold'] & 0xFF); n.op_w(LD_NN_A, v['V_START']); n.db(0xF1, 0xED, 0x45)
-    i = Asm(); pieces.append(i)
-    i.label('init')
-    i.db(0xF5, 0xAF)
-    if far is None:
-        for name in VARS:
-            i.op_w(LD_NN_A, v[name])
-    else:                                                     # the mapper as the BIOS leaves it, so the $FFFF mirror is right from the start
-        i.db(0x3E, far_bank); i.op_w(LD_NN_A, 0xFFFF); i.op_w(0xCD, 'f_init'); i.db(0x3E, 0x02); i.op_w(LD_NN_A, 0xFFFF)
-    i.db(0xF1, 0xC9)
     return {'pieces': pieces, 'far': far}
+
+
+def init_inline(a, ram, far_bank=None):
+    """The power-on part, written inline in the reset trampoline: no stack (SP is not set yet at reset: a push at SP=0 lands
+    on the mapper registers $FFFE/$FFFF). Clears the runtime's RAM; far: puts the slot-2 register where the BIOS leaves it."""
+    v = _vars(ram)
+    a.db(0xAF)
+    for name in VARS:
+        a.op_w(LD_NN_A, v[name])
+    if far_bank is not None:
+        a.db(0x3E, 0x02); a.op_w(LD_NN_A, 0xFFFF)
 
 
 def colour_table(kind):

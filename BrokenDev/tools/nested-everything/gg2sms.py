@@ -631,6 +631,8 @@ def convert_once(data, settings, profile, traces, allow_hook):
             asm.op_w(0xC3, v1)
         hookspec = {'emit': emit, 'table': table}
 
+    far_bank_of = [None]
+
     def tramp_pieces():
         out = []
         for s, e, tsites, init in tramps:
@@ -643,7 +645,7 @@ def convert_once(data, settings, profile, traces, allow_hook):
                     t.op_w(0xCD, 'disp'); t.db(tsites[q])
                 else:
                     if q == s and init == 'init':
-                        t.op_w(0xCD, 'init')
+                        rt.init_inline(t, ram, far_bank_of[0])
                     jf = relocate(rom.b, q, n, cpu_of(q, slot), t)
                     if jf is not None:
                         fixups.append(jf)
@@ -675,12 +677,14 @@ def convert_once(data, settings, profile, traces, allow_hook):
     probe = rt.build(settings, ram, far_bank=0, used=used, hook=hookspec)
     spots, parts, far_off = None, near, None
     for runs in run_sets:
+        far_bank_of[0] = None
         pieces = keep(near['pieces']) + tramp_pieces()
         spots = place(pieces, runs)
         if spots is not None:
             break
         if SmsCodemasters(rom) or profile.get('layout') == 'near':
             continue
+        far_bank_of[0] = 0                 # (same size as the real bank number)
         pieces = keep(probe['pieces']) + tramp_pieces()
         spots = place(pieces, runs)
         if spots is not None:
@@ -697,6 +701,7 @@ def convert_once(data, settings, profile, traces, allow_hook):
                 report['warnings'].append(f'ROM grown {rom.n // 1024} KB -> {new_n // 1024} KB for the runtime bank')
                 rom.n = new_n
             parts = rt.build(settings, ram, far_bank=far_off >> 14, used=used, hook=hookspec)
+            far_bank_of[0] = far_off >> 14
             pieces = keep(parts['pieces']) + tramp_pieces()
             break
     if spots is None:
