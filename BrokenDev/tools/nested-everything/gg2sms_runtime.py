@@ -262,8 +262,7 @@ def build(settings, ram, far_bank=None, used=None, hook=None):
     # Every way in starts with interrupts off (the state remembered in V_IFF): the game's interrupt handler may reach a site itself, and
     # V_ARG / V_BANK must not change under a site in progress. d_go: stack [return], AF/HL the game's, V_ARG the index.
     def pro(a):
-        a.db(0xF5, 0xED, 0x57, 0xF3, 0x3E, 0x00); a.op_w(0xE2, a.uniq('pro')); a.db(0x3C)   # push af / ld a,i / di / ld a,0 / jp po / inc a
-        a.label(a.last); a.op_w(LD_NN_A, v['V_IFF']); a.db(0xF1)                             # ld (V_IFF),a / pop af
+        a.op_w(0xCD, 'pro')                                                                    # interrupts off, their state in V_IFF
     safe = far is not None or hook is not None        # plain near: the old quick way in (a site cannot be reached between its two halves)
     d = Asm(); pieces.append(d)
     d.label('disp')
@@ -281,6 +280,10 @@ def build(settings, ram, far_bank=None, used=None, hook=None):
     if far is not None:
         e.label('enter')                                              # the game's slot-2 bank saved, ours in (A lost)
         e.op_w(LD_A_NN, 0xFFFF); e.op_w(LD_NN_A, v['V_BANK']); e.db(0x3E, far_bank); e.op_w(LD_NN_A, 0xFFFF); e.db(0xC9)
+    if safe:
+        e.label('pro')                                                # push af / ld a,i / di / ld a,0 / jp po / inc a / ld (V_IFF),a / pop af
+        e.db(0xF5, 0xED, 0x57, 0xF3, 0x3E, 0x00); e.op_w(0xE2, 'pro_o'); e.db(0x3C)
+        e.label('pro_o'); e.op_w(LD_NN_A, v['V_IFF']); e.db(0xF1, 0xC9)
     e.label('leave')                                                  # the game's bank back, interrupts as they were (A lost)
     if far is not None:
         e.op_w(LD_A_NN, v['V_BANK']); e.op_w(LD_NN_A, 0xFFFF)
@@ -331,7 +334,6 @@ def build(settings, ram, far_bank=None, used=None, hook=None):
         for name in VARS:
             i.op_w(LD_NN_A, v[name])
     else:                                                     # the mapper as the BIOS leaves it, so the $FFFF mirror is right from the start
-        i.op_w(LD_NN_A, 0xFFFC); i.op_w(LD_NN_A, 0xFFFD); i.db(0x3C); i.op_w(LD_NN_A, 0xFFFE)
         i.db(0x3E, far_bank); i.op_w(LD_NN_A, 0xFFFF); i.op_w(0xCD, 'f_init'); i.db(0x3E, 0x02); i.op_w(LD_NN_A, 0xFFFF)
     i.db(0xF1, 0xC9)
     return {'pieces': pieces, 'far': far}

@@ -37,8 +37,10 @@ def main():
         table = T.gg2sms.rt.colour_table(rep['settings'].get('colours', 'round'))
         start = rep['settings'].get('start', 'both')
         lag = g['cmp'].get('lag', 0) or 0
-        pause_ok = start in ('pause', 'both') and not any('Pause cannot be used' in w for w in rep.get('warnings', []))
-        script = T.shift_script(T.SCRIPT.replace('Start', 'Select' if pause_ok else 'A+B'), lag)
+        # buttons 1+2 for GG Start (the runtime takes both when start=both): the emulators' Lua pads have no Pause button
+        if start not in ('both', 'buttons12'):
+            print(f"{g['id']}: start={start}, skipped (needs buttons 1+2)"); continue
+        script = T.shift_script(T.SCRIPT.replace('Start', 'A+B'), lag)
         shots = sorted({f + lag + d for f in T.CHECKS for d in (-1, 0, 1)})
         row = {'id': g['id'], 'name': g.get('name', g['id']), 'harnessGrade': g['grade'], 'lag': lag, 'emus': {}}
         for emu in a.emu.split(','):

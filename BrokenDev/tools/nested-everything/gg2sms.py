@@ -312,7 +312,7 @@ def fix_header(rom, report):
     report['header'] = f'region {old_region} -> 4 (SMS export), checksum ${s:04X} over $0000-${last:X}'
 
 
-def free_runs(rom, an, lo, hi, protected, margin=4):
+def free_runs(rom, an, lo, hi, protected, margin=2):
     """Runs of filler bytes ($FF, then $00) in [lo, hi) that nothing runs or jumps into: [(size, start, fill)], biggest first."""
     b = rom.b
     out = []
@@ -349,6 +349,36 @@ def free_rsts(rom, an):
     return out
 
 
+def rst_calls(rom, an, v):
+    """Every RST v instruction a wider descent finds: from all known code, and carrying on after RST instructions (the main descent
+    stops there, in case inline data follows). Only RST v's offsets are kept, so a wrong guess costs a spare table entry, never a patch."""
+    b, op = rom.b, 0xC7 | v
+    found = set()
+    seen = set()
+    work = list(an.code.items())
+    while work:
+        off, slot = work.pop()
+        steps = 0
+        while 0 <= off < rom.n and (off, slot) not in seen and steps < 4096:
+            seen.add((off, slot)); steps += 1
+            n = z80.length(b, off)
+            if off + n > rom.n:
+                break
+            if b[off] == op:
+                found.add(off)
+            falls, tg, kind = z80.flow(b, off, cpu_of(off, slot))
+            for t in tg:
+                to = off_of(t, off, slot, an.fixed1)
+                if to is not None and kind != 'rst':
+                    work.append((to, t >> 14 if t < 0xC000 else slot))
+            if kind == 'rst':
+                falls = True
+            if not falls:
+                break
+            off += n
+    return found
+
+
 def pick_hook(rom, an, traces, protected, forced=None):
     """A used RST vector to share with the game: (vector, cover start, cover end, times entered in the traces), the least entered first
     ($38, the interrupt, last). Its first whole instructions (>= 3 bytes, no jump target or patched site among them) move into the runtime."""
@@ -356,8 +386,8 @@ def pick_hook(rom, an, traces, protected, forced=None):
     for t in traces:
         for i, c in enumerate(t.get('vectorRuns', [])[:0x40]):
             runs[i] += c
-    calls = {v: sum(1 for o in an.code if o < rom.n and rom.b[o] == 0xC7 | v) for v in range(0x08, 0x40, 8)}
-    cands = [forced] if forced is not None else sorted(range(0x08, 0x38, 8), key=lambda v: (v == 0x38, runs[v], calls[v]))
+    calls = {v: len(rst_calls(rom, an, v)) for v in range(0x08, 0x38, 8)}     # each known call is a table entry every site scans past
+    cands = [forced] if forced is not None else sorted(range(0x08, 0x38, 8), key=lambda v: (calls[v], runs[v]))
     for v in cands:
         if v in protected or (v not in an.code and v not in an.targets):
             continue                       # never entered: free_rsts would have offered it unless its bytes run as other code
@@ -423,19 +453,32 @@ def unread_runs(rom, an, traces, lo, hi, protected, skip, margin=8, least=16):
 
 
 def place(pieces, runs):
-    """First fit, biggest piece first: [(base, run index)] per piece, or None."""
+    """[(base, run index)] per piece, or None: an exact search (biggest piece first) when there are few pieces, else first fit."""
+    order = sorted(range(len(pieces)), key=lambda i: -len(pieces[i].code))
     left = [[r[0], r[1]] for r in runs]
     spots = [None] * len(pieces)
-    for i in sorted(range(len(pieces)), key=lambda i: -len(pieces[i].code)):
-        n = len(pieces[i].code)
-        for k, (sz, st) in enumerate(left):
-            if sz >= n:
-                spots[i] = (st, k)
-                left[k] = [sz - n, st + n]
-                break
-        else:
-            return None
-    return spots
+    budget = [20000]
+
+    def dfs(k):
+        if k == len(order):
+            return True
+        budget[0] -= 1
+        if budget[0] < 0:
+            return False
+        i = order[k]; n = len(pieces[i].code)
+        tried = set()
+        for r, (sz, st) in enumerate(left):
+            if sz < n or sz in tried:
+                continue
+            tried.add(sz)                  # runs with the same room left are interchangeable
+            spots[i] = (st, r); left[r] = [sz - n, st + n]
+            if dfs(k + 1):
+                return True
+            left[r] = [sz, st]
+        return False
+    if dfs(0):
+        return spots
+    return None
 
 
 def convert(data, settings, profile, traces):
@@ -561,9 +604,8 @@ def convert_once(data, settings, profile, traces, allow_hook):
     hookspec = None
     if hook:
         table = []                         # the game's own RST calls of the hooked vector (static and traced code)
-        op = 0xC7 | hook[0]
-        for o in sorted(an.code):
-            if o < rom.n and rom.b[o] == op and o not in inplace:
+        for o in sorted(rst_calls(rom, an, hook[0])):
+            if o not in inplace:
                 pc = cpu_of(o, an.code[o]) + 1
                 page = 0xFF if pc < 0x4000 or (pc < 0x8000 and an.fixed1) else o >> 14
                 if table and table[-1][2] == page and table[-1][0] + table[-1][1] + 1 == pc:
@@ -621,16 +663,24 @@ def convert_once(data, settings, profile, traces, allow_hook):
         fill_runs += free_runs(rom, an, 0x4000, 0x7FF0, protected)
     fill_runs.sort(key=lambda r: (r[2] != 0xFF, -r[0]))
     runs = [(sz, st, 'ff' if f == 0xFF else '00') for sz, st, f in fill_runs]
+    pad_runs = list(runs)
+    run_sets = [pad_runs]
     if profile.get('unread', 'use') != 'never':
-        runs += [(sz, st, 'unread') for sz, st in unread_runs(rom, an, traces, lo_fixed, hi_fixed, protected, [(r[1], r[1] + r[0]) for r in fill_runs])]
+        run_sets.append(pad_runs + [(sz, st, 'unread') for sz, st in unread_runs(rom, an, traces, lo_fixed, hi_fixed, protected, [(r[1], r[1] + r[0]) for r in fill_runs])])
+
     def keep(ps):
         return [p for p in ps if nmi_ok or 'nmi' not in p.labels]
+    # padding first (near, then far: a bigger ROM is safer than bytes the traces only never saw read), then the never-read bytes
     near = rt.build(settings, ram, used=used, hook=hookspec)
-    pieces = keep(near['pieces']) + tramp_pieces()
-    spots = place(pieces, runs)
-    parts, far_off = near, None
-    if spots is None and not SmsCodemasters(rom) and profile.get('layout') != 'near':
-        probe = rt.build(settings, ram, far_bank=0, used=used, hook=hookspec)
+    probe = rt.build(settings, ram, far_bank=0, used=used, hook=hookspec)
+    spots, parts, far_off = None, near, None
+    for runs in run_sets:
+        pieces = keep(near['pieces']) + tramp_pieces()
+        spots = place(pieces, runs)
+        if spots is not None:
+            break
+        if SmsCodemasters(rom) or profile.get('layout') == 'near':
+            continue
         pieces = keep(probe['pieces']) + tramp_pieces()
         spots = place(pieces, runs)
         if spots is not None:
@@ -643,11 +693,12 @@ def convert_once(data, settings, profile, traces, allow_hook):
             else:
                 new_n = 1 << max(16, (rom.n + 0x4000 - 1).bit_length())
                 far_off = rom.n
-                rom.b += b'\xFF' * (new_n - rom.n)
-                report['warnings'].append(f'ROM grown {rom.n // 1024} KB -> {new_n // 1024} KB for the runtime\'s bank')
+                rom.b += bytes([0xFF]) * (new_n - rom.n)
+                report['warnings'].append(f'ROM grown {rom.n // 1024} KB -> {new_n // 1024} KB for the runtime bank')
                 rom.n = new_n
             parts = rt.build(settings, ram, far_bank=far_off >> 14, used=used, hook=hookspec)
             pieces = keep(parts['pieces']) + tramp_pieces()
+            break
     if spots is None:
         sizes = sorted((len(p.code) for p in rt.build(settings, ram, far_bank=0, used=used, hook=hookspec)['pieces'] + tramp_pieces()), reverse=True)
         report['verdict'] = (f'no room for the runtime in always-mapped ROM (far stub pieces {sizes}, {sum(sizes)} bytes; free runs '

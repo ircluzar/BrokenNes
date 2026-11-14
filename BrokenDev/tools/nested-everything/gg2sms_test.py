@@ -150,8 +150,16 @@ def compare(work, tag, table, lag=0):
             res['sound'] = 1.0 if abs(ea.mean() - eb.mean()) < 50 else 0.0
         elif ea.std() < 1 or eb.std() < 1:
             res['sound'] = 0.0
-        else:
-            res['sound'] = round(float(np.corrcoef(ea, eb)[0, 1]), 3)
+        else:                                  # the best of a few frames' shift (the two cores' sound buffers differ by a frame or two)
+            best = None
+            for d in range(-4, 5):
+                x, y = (ea[:k - d], eb[d:]) if d >= 0 else (ea[-d:], eb[:k + d])
+                if len(x) > 60 and x.std() > 0 and y.std() > 0:
+                    c = float(np.corrcoef(x, y)[0, 1])
+                    if best is None or c > best[0]:
+                        best = (c, d)
+            res['sound'] = round(best[0], 3) if best else 0.0
+            res['soundShift'] = best[1] if best else None
         res['loud'] = [round(float(ea.mean()), 1), round(float(eb.mean()), 1)]
     return res
 
