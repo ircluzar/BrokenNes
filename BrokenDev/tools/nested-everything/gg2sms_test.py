@@ -258,6 +258,9 @@ def main():
     with cf.ThreadPoolExecutor(max_workers=max(1, min(2, a.jobs))) as ex:
         for res in ex.map(lambda g: one(g, a.work, exe), games):
             results.append(res)
+            if a.results:                      # after every game: a long run that stops early keeps what it graded
+                with open(a.results, 'w', encoding='utf-8') as f:
+                    json.dump(results, f, indent=1)
             ms = [c['match'] for c in res.get('cmp', {}).get('checks', [])]
             print(f"{res['grade']:<12} {res['name'][:44]:<44} match={ms} sound={res.get('cmp', {}).get('sound')} patches={res.get('patches')} "
                   f"unhandled={res.get('unhandled')} residual={res.get('residual')} lag={res.get('cmp', {}).get('lag')}", flush=True)
