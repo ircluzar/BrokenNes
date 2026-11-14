@@ -31,6 +31,8 @@
 	.equ	nmi_ic0, 0x28        | long
 	.equ	busy_sum,0x2C        | long: sum of decoded NMI lengths in lines
 	.equ	busy_max,0x30        | word: longest NMI in lines
+	.equ	sbase,   0x38        | long: 68000 stack base of the running context (JSR check frames sit above it)
+	.equ	ic_sum,  0x34        | long: 6502 instructions run inside NMIs (count builds)
 	.equ	missed,  0x40        | word: 6502 address of a dispatch miss
 	.equ	missflag,0x42        | $A5 after a miss
 	.equ	apu,     0x44        | 24 bytes: $4000-$4017 as written
@@ -132,6 +134,9 @@ start:	move.w	#0x2700,sr
 	moveq	#0,d5
 	move.l	#0xFD,d6
 	moveq	#0,d7
+	move.l	#-1,-(sp)                     | sentinel: a JSR check frame never matches the base
+	move.l	#-1,-(sp)
+	move.l	sp,sbase(a6)
 	move.w	#0x8164,(a4)                  | display on, VInt on
 	move.w	#0x2000,sr
 	jra	reset_entry
@@ -163,27 +168,46 @@ vint:	movem.l	d0-d7/a0-a6,-(sp)
 	move.b	d7,0(a2,d6.w)
 	subq.b	#1,d6
 	move.b	#1,iflag(a6)
+	move.l	sbase(a6),-(sp)
+	move.l	#-1,-(sp)
+	move.l	#-1,-(sp)
+	move.l	sp,sbase(a6)
 	jra	nmi_entry
 nmi_return:                                   | RTI popped the marker
 	lea	VARS,a6
+	move.l	sbase(a6),sp                  | drop JSR frames the NMI left (a PLA PLA exit)
+	addq.l	#8,sp
+	move.l	(sp)+,sbase(a6)
 	move.w	VDP_CTRL,d7
 	andi.w	#0x80,d7                      | VInt pending = ran into the next frame's vblank
 	move.w	d7,nmi_late(a6)
 	move.w	VDP_CTRL+4,d7
 	lsr.w	#8,d7
 	move.w	d7,nmi_v1(a6)
-	| decode the length: lines 224.. of this frame, then 0..223 of the next
+	| length in lines: from the V counters at start and end (the 224-line V counter runs 0..$EA then $E5..$FF;
+	| $E5-$EA are read as the second run, a <=6 line error), plus a frame when the VInt-pending flag says a
+	| line-224 crossing happened that the two samples do not show
 	move.w	nmi_v1(a6),d5
-	cmpi.w	#0xE5,d5
-	bcs.s	1f
-	subi.w	#0xE5-0xEB,d5                 | $E5..$FF second run -> 235..261 (ambiguous $E5-$EA taken as late)
-1:	cmpi.w	#224,d5
-	bcc.s	2f
-	addi.w	#262,d5
-2:	subi.w	#224,d5
-	tst.w	nmi_late(a6)
+	bsr	vdecode
+	move.w	d5,d7
+	move.w	nmi_v0(a6),d5
+	bsr	vdecode                       | d5 = l0, d7 = l1
+	sub.w	d5,d7
+	bpl.s	1f
+	addi.w	#262,d7                       | d7 = d
+1:	add.w	d7,d5                         | d5 = l0 + d
+	cmpi.w	#224,d5
+	bcs.s	2f                            | l0 + d < 224: no crossing seen
+	sub.w	d7,d5
+	cmpi.w	#224,d5
+	bcs.s	3f                            | l0 < 224 <= l0 + d: crossing seen
+	add.w	d7,d5
+	cmpi.w	#224+262,d5
+	bcc.s	3f
+2:	tst.w	nmi_late(a6)
 	beq.s	3f
-	addi.w	#262,d5
+	addi.w	#262,d7
+3:	move.w	d7,d5
 3:	ext.l	d5
 	add.l	d5,busy_sum(a6)
 	cmp.w	busy_max(a6),d5
@@ -192,12 +216,20 @@ nmi_return:                                   | RTI popped the marker
 4:	move.l	icount(a6),d5
 	sub.l	nmi_ic0(a6),d5
 	move.l	d5,nmi_ic(a6)
+	add.l	d5,ic_sum(a6)
 	sf	in_nmi(a6)
 vint_out:
 	movem.l	(sp)+,d0-d7/a0-a6
 	rte
 
 | ---------------------------------------------------------------- dispatch (d5.w = 6502 address)
+rts_slow:                                     | S was already moved past the return address
+	move.l	sbase(a6),sp
+	move.b	0(a2,d6.w),d5
+	lsl.w	#8,d5
+	move.b	-1(a2,d6.w),d5
+	addq.w	#1,d5
+	bra	dispatch
 do_rts:	move.b	1(a2,d6.w),d7                 | read both bytes before S moves
 	move.b	2(a2,d6.w),d5
 	addq.b	#2,d6
@@ -226,6 +258,11 @@ do_rti:	addq.b	#1,d6
 	tst.w	d5
 	beq	nmi_return
 	bra.s	dispatch
+vdecode:
+	cmpi.w	#0xE5,d5
+	bcs.s	1f
+	addq.w	#6,d5
+1:	rts
 brk_hit:
 miss:	lea	VARS,a6
 	move.w	d5,missed(a6)
@@ -578,54 +615,55 @@ wr_pal:	andi.w	#0x1F,d5
 	bra	9b
 
 | ---------------------------------------------------------------- sprites ($4014)
-io_wr_4014:
+io_wr_4014:                                   | 64 NES sprites -> the SAT (Y+121, link, attr|tile, X+128)
 	movem.l	d0-d5/a0,-(sp)
 	andi.w	#7,d7
 	lsl.w	#8,d7
 	lea	0(a5,d7.w),a0
-	lea	oam(a6),a1
+	lea	sprattr,a1
 	move.l	#0x78000003,(a4)              | SAT at $F800
-	moveq	#0,d5                         | sprite pattern base: 512 + (bit3 ? 256 : 0)
-	move.w	#512,d5
+	move.w	#512,d5                       | sprite pattern base: 512 + (bit3 ? 256 : 0)
 	btst	#3,ppuctrl(a6)
 	beq.s	1f
 	addi.w	#256,d5
 1:	moveq	#1,d4
-	moveq	#63,d3
-2:	moveq	#0,d0
-	move.b	(a0)+,d0                      | Y
-	move.b	d0,(a1)+
-	addi.w	#121,d0
-	move.w	d0,(a3)
-	cmpi.b	#64,d4
-	bne.s	3f
-	moveq	#0,d4
-3:	move.w	d4,(a3)                       | size 1x1, link
-	addq.w	#1,d4
+	moveq	#62,d3
 	moveq	#0,d0
-	move.b	(a0)+,d0                      | tile
-	move.b	d0,(a1)+
-	add.w	d5,d0
 	moveq	#0,d1
+	moveq	#121,d2
+2:	move.b	(a0)+,d0                      | Y
+	add.w	d2,d0
+	move.w	d0,(a3)
+	move.w	d4,(a3)                       | size 1x1, link
+	addq.w	#1,d4
+	move.b	(a0)+,d0                      | tile
+	add.w	d5,d0
 	move.b	(a0)+,d1                      | attributes
-	move.b	d1,(a1)+
-	move.w	d1,d2
-	andi.w	#3,d2
-	ror.w	#3,d2
-	or.w	d2,d0
-	btst	#6,d1
-	beq.s	4f
-	bset	#11,d0
-4:	btst	#7,d1
-	beq.s	5f
-	bset	#12,d0
-5:	move.w	d0,(a3)
+	add.w	d1,d1
+	or.w	0(a1,d1.w),d0
+	move.w	d0,(a3)
 	moveq	#0,d0
+	moveq	#0,d1
 	move.b	(a0)+,d0                      | X
-	move.b	d0,(a1)+
 	addi.w	#128,d0
 	move.w	d0,(a3)
+	moveq	#0,d0
 	dbra	d3,2b
+	move.b	(a0)+,d0                      | the last one links to 0
+	add.w	d2,d0
+	move.w	d0,(a3)
+	move.w	#0,(a3)
+	moveq	#0,d0
+	move.b	(a0)+,d0
+	add.w	d5,d0
+	move.b	(a0)+,d1
+	add.w	d1,d1
+	or.w	0(a1,d1.w),d0
+	move.w	d0,(a3)
+	moveq	#0,d0
+	move.b	(a0)+,d0
+	addi.w	#128,d0
+	move.w	d0,(a3)
 	movem.l	(sp)+,d0-d5/a0
 	rts
 

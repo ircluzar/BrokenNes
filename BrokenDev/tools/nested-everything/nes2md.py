@@ -89,23 +89,36 @@ class Emitter:
 
     # ---- flag liveness (a short look-ahead along the straight-line path) ----
     def live(self, a, writers, readers):
-        n = 0
+        """Is a flag read before it is written again, following both ways of branches and into JSR targets
+        (bounded; anything unknown counts as a read)."""
+        budget = [40]
+        seen = set()
+
+        def go(a):
+            while True:
+                if budget[0] <= 0 or a in seen:
+                    return budget[0] <= 0
+                seen.add(a)
+                budget[0] -= 1
+                d = self.insns.get(a)
+                if d is None:
+                    return True
+                m = d['m']
+                if m in readers:
+                    return True
+                if m in writers:
+                    return False
+                if m in ('RTS', 'RTI', 'BRK') or (m == 'JMP' and d['mode'] != 'abs'):
+                    return True
+                if m in m6502.BRANCHES:
+                    if go(self.prg.canon(d['tgt'])):
+                        return True
+                elif m in ('JMP', 'JSR'):
+                    a = self.prg.canon(d['arg'])
+                    continue
+                a = self.prg.canon(a + d['n'])
         d = self.insns[a]
-        a = self.prg.canon(a + d['n'])
-        while n < 24:
-            d = self.insns.get(a)
-            if d is None:
-                return True
-            m = d['m']
-            if m in readers:
-                return True
-            if m in writers:
-                return False
-            if m in m6502.BRANCHES or m in ('JMP', 'JSR', 'RTS', 'BRK'):
-                return True
-            a = self.prg.canon(a + d['n'])
-            n += 1
-        return True
+        return go(self.prg.canon(a + d['n']))
 
     # ---- operand addressing ----
     def region(self, addr):
@@ -196,6 +209,14 @@ class Emitter:
             self.e('move.b 0(a5,d5.w),%s' % dst)
             self.e('bra.s %s' % l2)
             self.out.append(l1 + ':')
+            l3 = self.lab()
+            self.e('tst.w d5')
+            self.e('bpl.s %s' % l3)
+            self.e('and.w #0x7fff,d5')             # PRG data through a pointer: inline
+            self.e('lea prg,a0')
+            self.e('move.b 0(a0,d5.w),%s' % dst)
+            self.e('bra.s %s' % l2)
+            self.out.append(l3 + ':')
             self.e('jsr gen_rd')
             if dst != 'd7':
                 self.e('move.b d7,%s' % dst)
@@ -231,7 +252,8 @@ class Emitter:
 
     def setnz(self, r):
         self.e('move.b %s,d3' % r)
-        self.e('ext.w d3')
+        if self.nlive:
+            self.e('ext.w d3')
 
     def setc(self, cond='scs'):
         self.e('%s d4' % cond)
@@ -245,6 +267,7 @@ class Emitter:
     def insn(self, d):
         a, m, mode = d['a'], d['m'], d['mode']
         nz = m in NZ_W and self.live(a, NZ_W, NZ_R)
+        self.nlive = nz and self.live(a, NZ_W, {'BMI', 'BPL', 'PHP', 'BRK'})
         c = m in C_W and self.live(a, C_W, C_R)
         v = m in V_W and self.live(a, V_W, V_R)
         nxt = self.insns.get(self.prg.canon(a + d['n']))
@@ -359,8 +382,7 @@ class Emitter:
             if k == 'ea' and not ea.startswith('(prg'):
                 self.e('%s.b #1,%s' % (op, ea))
                 if nz:
-                    self.e('move.b %s,d3' % ea)
-                    self.e('ext.w d3')
+                    self.setnz(ea)
             else:
                 del self.out[save:]
                 self.load(d, 'd7')
@@ -371,6 +393,9 @@ class Emitter:
         elif m in BR:
             t = 'L%04X' % self.prg.canon(d['tgt'])
             test, cc = BR[m]
+            last = self.out[-1].strip() if self.out else ''
+            if (m in ('BEQ', 'BNE') and last.startswith('move.b') and last.endswith(',d3')) or                (m in ('BEQ', 'BNE', 'BMI', 'BPL') and last == 'ext.w d3') or                (m in ('BCS', 'BCC') and last == 'neg.b d4'):
+                test = None                  # the 68000 flags already say it
             if test:
                 self.e(test)
             self.e('jb%s %s' % (cc, t))
@@ -391,12 +416,29 @@ class Emitter:
                 self.e('move.b d7,d5')
                 self.e('jra dispatch')
         elif m == 'JSR':
+            # native call with a check frame (S before the push, the 6502 return address): rts_fast returns
+            # natively only when the 6502 stack agrees, else it drops the frames and goes through the table
             ret = (a + 2) & 0xFFFF
-            self.push_imm(ret >> 8)
-            self.push_imm(ret & 0xFF)
-            self.e('jra L%04X' % self.prg.canon(d['arg']))
+            self.e('move.w d6,-(sp)')
+            self.e('subq.b #2,d6')
+            self.e('move.w #0x%04x,d7' % ret)
+            self.e('move.b d7,1(a2,d6.w)')
+            self.e('lsr.w #8,d7')
+            self.e('move.b d7,2(a2,d6.w)')
+            self.e('jbsr L%04X' % self.prg.canon(d['arg']))
+            if self.prg.canon(a + 3) not in self.insns:
+                self.e('move.w #0x%04x,d5' % (a + 3))
+                self.e('jra miss')
         elif m == 'RTS':
-            self.e('jra do_rts')
+            # native return when S is back where the JSR left it (a PLA PLA exit or a stack trick fails the
+            # check and goes through the dispatch table instead).  A changed return address with the same S
+            # is not caught (no such trick in the PoC games).
+            self.e('addq.b #2,d6')
+            self.e('cmp.w 4(sp),d6')
+            self.e('jbne rts_slow')
+            self.e('move.l (sp)+,a0')
+            self.e('addq.l #2,sp')
+            self.e('jmp (a0)')
         elif m == 'RTI':
             self.e('jra do_rti')
         elif m == 'PHA':
@@ -507,6 +549,9 @@ def convert(src, dst, profile_path=None, settings=None, work=None, report_path=N
     for i in range(0x8000):
         a = prg.canon(0x8000 + i)
         disp.append('L%04X' % a if a in insns else 'miss_tab')
+    sprattr = []
+    for v in range(256):
+        sprattr.append(((v & 3) << 13) | (0x800 if v & 0x40 else 0) | (0x1000 if v & 0x80 else 0))
     pal = ', '.join('0x%04x' % md_colour(c) for c in NES_RGB)
     gen = ['\t.include "%s"' % os.path.join(HERE, 'nes2md_runtime.s').replace('\\', '/'),
            '\t.equ MIRBIT, %d' % (10 if f6 & 1 else 11),
@@ -515,6 +560,7 @@ def convert(src, dst, profile_path=None, settings=None, work=None, report_path=N
            'reset_entry: jra L%04X' % prg.canon(vec[1]),
            'miss_tab: jra miss',
            '\t.even', 'nescol: .word ' + pal,
+           'sprattr: .word ' + ', '.join('0x%04x' % x for x in sprattr),
            'prg: .incbin "%s"' % os.path.join(work, 'prg.bin').replace('\\', '/'),
            '\t.even', 'chrraw: .incbin "%s"' % os.path.join(work, 'chrraw.bin').replace('\\', '/'),
            '\t.even', 'chrdata: .incbin "%s"' % os.path.join(work, 'chr.bin').replace('\\', '/'), 'chrdata_end:',
