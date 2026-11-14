@@ -189,6 +189,14 @@ So the interpreter route is measured dead (8-10 fps), and the translation route 
 - Best case: NROM and CHR-ROM games with at most one status-bar split (Donkey Kong, Balloon Fight, Nuts & Milk, SMB1 per the 2010 port).
 - **Proof of concept:** Donkey Kong or Nuts & Milk (NROM, CHR-ROM, no scroll, no sprite 0) with pre-converted tiles and PSG-only sound. This teaches the PPU layer without banking. Comparing against the 2010 SMB1 result is a free benchmark.
 
+**Proof of concept built (2026-11-14, branch `nested-nesgen-poc`): Donkey Kong. All numbers below are [measured]** on BrokenNes's Genesis core headless (`--md-run`), against the NES on the FIX cores (`--romtest`), with `BrokenDev/tools/nested-everything/nes2md_test.py`.
+- **Method.** A static 6502 -> 68000 translator (`nes2md.py`, `brokendev.ps1 nested-everything nes2md`). Recursive descent from the vectors finds all 6,012 instructions of Donkey Kong; there are no indirect jumps, and the dynamic fallback (a dispatch miss stops the ROM and the feedback pass adds the address) never fired in 1,100 frames. JSR/RTS are native 68000 calls with a stack check, so stack tricks fall back to a 32 K dispatch table. The NMI runs from the VInt. The 8 KB of CHR-ROM is converted once at build time. Nametable writes go to plane A (H32, the top 8 lines cropped), attributes to palette bits, `$4014` to the sprite table, and the 2A03 to the PSG.
+- **How far it gets.** It boots, shows the title, runs the attract demo, and starts and plays a game from the pad (Start, walk, jump). Its pictures match the NES's black/non-black layout at 99.3-100% at the check frames, allowing for its ~30-frame later boot. Sound plays (PSG; pulse duty, sweep and DMC are missing): around -19 to -30 dB RMS, against the NES's -27 dB.
+- **CPU cost.** **30.5-32 68000 cycles per 6502 instruction** (a count build gives the instructions, a normal build the NMI length from the V counter). At an assumed ~3 6502 cycles per instruction [estimate], that is ~10 Genesis cycles per NES cycle, against the 4.3 clock ratio.
+- **Frame time.** Donkey Kong's NMI runs 2,200 (play) to 3,300 (demo) 6502 instructions. That takes **143 lines (55%) of the 262-line frame in play and 207 lines (79%) in the demo**. 37 of the first 1,000 VInts are lost, almost all while booting, when the screen-drawing NMIs run up to 492 lines.
+- **What it took.** Three fixes mattered. Stack pushes must move S before writing, so a VInt between the two 68000 instructions cannot overwrite the byte (that was a real crash). The plane behind must point at a blank tile. Native JSR/RTS took the cost from 36.5 to 30.5 cycles per instruction.
+- **Verdict on the PoC.** Donkey Kong plays at full speed. The CPU cost (~2.3x the clock ratio) leaves headroom only for light NROM games. A heavier game such as SMB1 would need the 68000 code to be optimised further, or it would lag in busy scenes.
+
 ---
 
 ## Ranking (most to least likely to work)
