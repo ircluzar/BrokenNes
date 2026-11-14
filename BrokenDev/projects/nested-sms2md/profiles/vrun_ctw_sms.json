@@ -4,6 +4,7 @@
   "ret_flags": "CZ",
   "title_frame": 110,
   "halt_pc": "21DD",
+  "seed_addr": "DB97",
   "idle_pc": [],
   "frames": 1500,
   "input": "120:Select,126:,300:A,306:,500:A,506:,700:A,706:,800:Right,1000:Right+A,1020:Right,1200:Left+B,1220:Left,1300:Up,1350:Down,1400:",

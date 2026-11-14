@@ -143,6 +143,22 @@ def test_game(g, work, exe, bizhawk=False):
     # 2. play
     frames = prof.get('frames', 1500)
     script = prof.get('input', '')
+    seed = prof.get('seed_addr')
+    if seed and parse_script(script):
+        # the game picks something (CTW: the room) from the frame its first button lands on: shift the Genesis script so
+        # that frame shows the same seed byte as on the SMS
+        f0 = parse_script(script)[0][0]
+        a0 = int(seed, 16) - 0xC000
+        run([exe, '--sms-run', rom, '--console', 'sms', '--frames', str(f0 + 1), '--ram-at', str(f0), '--out', sb, '--tag', 'seed'])
+        want = open(os.path.join(sb, 'seed_f%d.ram.bin' % f0), 'rb').read()[a0]
+        lo, hi = f0 + delay - 20, f0 + delay + 60
+        run([exe, '--md-run', out, '--frames', str(hi + 1), '--ram-at', ','.join(str(x) for x in range(lo, hi)), '--png-dir', mb, '--quiet'])
+        for f in range(lo, hi):
+            pth = os.path.join(mb, 'f%06d.ram.bin' % f)
+            if os.path.exists(pth) and open(pth, 'rb').read()[0xC000 + a0] == want:
+                res['boot']['seedShift'] = f - f0 - delay
+                delay = f - f0
+                break
     sp, mp = os.path.join(work, 'splay'), os.path.join(work, 'mplay')
     os.makedirs(sp, exist_ok=True)
     os.makedirs(mp, exist_ok=True)
