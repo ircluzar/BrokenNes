@@ -1,0 +1,296 @@
+{
+ "what": "gg2sms_test.py round 2026-11-14 (BrokenNes GG core vs SMS core, harness grades, first opinion)",
+ "results": [
+  {
+   "id": "vaults-gg",
+   "name": "VRUN: Vaults of Obsolete Code (GG, 9ea616a)",
+   "grade": "Glitchy",
+   "verdict": "converted",
+   "match": [
+    0.9586,
+    0.8456,
+    0.8454,
+    0.8423,
+    0.8401,
+    0.8439
+   ],
+   "sound": 0.177,
+   "patches": 32,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "vaults-gg-seeded",
+   "name": "Vaults GG, fixed-seed build (play-compare, VOC_GAME_SEED=4321)",
+   "grade": "Glitchy",
+   "verdict": "converted",
+   "match": [
+    0.9586,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.701,
+   "patches": 32,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "gg-demo-by-charles-macdonald",
+   "name": "GG Demo by Charles MacDonald (PD)",
+   "grade": "Playable",
+   "verdict": "converted",
+   "match": [
+    0.9768,
+    0.9758,
+    0.9802,
+    0.9761,
+    0.9719,
+    0.9772
+   ],
+   "sound": 1.0,
+   "patches": 11,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "columns",
+   "name": "Columns (U) [!]",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 485 bytes, the biggest free run is 36)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "fantasy-zone-gear",
+   "name": "Fantasy Zone Gear (JU) [!]",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 485 bytes, the biggest free run is 20)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "bubble-bobble",
+   "name": "Bubble Bobble (U) [!]",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 485 bytes, the biggest free run is 0)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "pac-man",
+   "name": "Pac-Man (J)",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 485 bytes, the biggest free run is 49)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "wonder-boy",
+   "name": "Wonder Boy (E) [!]",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 1189 bytes, the biggest free run is 88)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "castle-of-illusion-starring-mickey-mouse",
+   "name": "Castle of Illusion Starring Mickey Mouse (U) [S][!]",
+   "grade": "Glitchy",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.2222,
+    0.2809,
+    0.6654,
+    0.0,
+    0.6142
+   ],
+   "sound": 0.278,
+   "patches": 61,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "land-of-illusion-starring-mickey-mouse",
+   "name": "Land of Illusion Starring Mickey Mouse (U) [!]",
+   "grade": "Black screen",
+   "verdict": "converted",
+   "match": [
+    0.9793,
+    0.1012,
+    0.0,
+    0.1012,
+    0.0,
+    0.4799
+   ],
+   "sound": 0.0,
+   "patches": 59,
+   "unhandled": 0,
+   "residual": 2
+  },
+  {
+   "id": "sonic-the-hedgehog",
+   "name": "Sonic The Hedgehog (U) (V1.1) [!]",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 485 bytes, the biggest free run is 68)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "dragon-crystal",
+   "name": "Dragon Crystal (U) [!]",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 1164 bytes, the biggest free run is 92)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 63,
+   "residual": 0
+  },
+  {
+   "id": "gg-shinobi",
+   "name": "GG Shinobi (E) [!]",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 2005 bytes, the biggest free run is 56)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 33,
+   "residual": 0
+  },
+  {
+   "id": "shinobi-ii-the-silent-fury",
+   "name": "Shinobi II - The Silent Fury (U) [!]",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 900 bytes, the biggest free run is 57)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 63,
+   "residual": 0
+  },
+  {
+   "id": "sonic-chaos",
+   "name": "Sonic Chaos (U) [!]",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 3015 bytes, the biggest free run is 0)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "sonic-the-hedgehog-2",
+   "name": "Sonic The Hedgehog 2 (U) [!]",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 1591 bytes, the biggest free run is 28)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "tails-adventures",
+   "name": "Tails' Adventures (U) [!]",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 5308 bytes, the biggest free run is 735)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "defenders-of-oasis",
+   "name": "Defenders of Oasis (U) [!]",
+   "grade": "Glitchy",
+   "verdict": "converted",
+   "match": [
+    0.0036,
+    0.0771,
+    0.0436,
+    0.1555,
+    0.0507,
+    0.0
+   ],
+   "sound": -0.088,
+   "patches": 91,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "ristar-the-shooting-star",
+   "name": "Ristar the Shooting Star (U) [!]",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 2052 bytes, the biggest free run is 310)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 33,
+   "residual": 0
+  },
+  {
+   "id": "micro-machines",
+   "name": "Micro Machines (E)",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 487 bytes, the biggest free run is 133)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 2,
+   "residual": 0
+  },
+  {
+   "id": "wonder-boy-the-dragon-s-trap",
+   "name": "Wonder Boy - The Dragon's Trap (E) [!]",
+   "grade": "Build fails",
+   "verdict": "no room for the runtime in always-mapped ROM (near needs 1136 bytes, the biggest free run is 780)",
+   "match": [],
+   "sound": null,
+   "patches": 0,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "shining-force-ii-the-sword-of-hajya",
+   "name": "Shining Force II - The Sword of Hajya (U) [!]",
+   "grade": "Black screen",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.7321,
+    0.4536,
+    0.4536,
+    0.4536,
+    0.4599,
+    0.1785
+   ],
+   "sound": 0.0,
+   "patches": 37,
+   "unhandled": 69,
+   "residual": 2
+  }
+ ]
+}

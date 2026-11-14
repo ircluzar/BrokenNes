@@ -293,26 +293,39 @@ def fix_header(rom, report):
     report['header'] = f'region {old_region} -> 4 (SMS export), checksum ${s:04X} over $0000-${last:X}'
 
 
-def find_free(rom, an, need, protected):
-    """A run of filler bytes ($FF, or $00 when allowed) in bank 0 that nothing runs or jumps into."""
+def free_runs(rom, an, lo, hi, protected, margin=4):
+    """Runs of filler bytes ($FF, then $00) in [lo, hi) that nothing runs or jumps into: [(size, start, fill)], biggest first."""
     b = rom.b
-    best = None
-    for fill in (0xFF, 0x00):
-        i = 0x0400
-        while i < min(0x4000, rom.n):
-            if b[i] == fill:
-                j = i
-                while j < min(0x4000, rom.n) and b[j] == fill and j not in an.code and j not in an.targets and j not in protected:
-                    j += 1
-                lo, hi = i + 16, j - 16                       # keep a margin: the bytes next to a run may be read as data
-                if hi - lo >= need and (best is None or hi - lo > best[1] - best[0]):
-                    best = (lo, hi)
-                i = max(j, i + 1)
-            else:
-                i += 1
-        if best:
-            return best[0], fill
-    return None, None
+    out = []
+    hi = min(hi, rom.n)
+    i = lo
+    while i < hi:
+        if b[i] in (0xFF, 0x00):
+            fill, j = b[i], i
+            while j < hi and b[j] == fill and j not in an.code and j not in an.targets and j not in protected:
+                j += 1
+            st, en = i + margin, j - margin
+            if en - st >= 16:
+                out.append((en - st, st, fill))
+            i = max(j, i + 1)
+        else:
+            i += 1
+    out.sort(key=lambda r: (r[2] != 0xFF, -r[0]))     # $FF padding first, then the biggest
+    return out
+
+
+def free_rsts(rom, an):
+    """RST vectors ($08-$30) the game never uses: no RST to them, nothing runs or jumps into their first 3 bytes."""
+    b = rom.b
+    used = {b[o] & 0x38 for o in an.code if o < rom.n and b[o] & 0xC7 == 0xC7}
+    out = []
+    for v in range(0x08, 0x38, 8):
+        if v in used:
+            continue
+        if any(x in an.code or x in an.targets for x in range(v, v + 3)):
+            continue
+        out.append(v)
+    return out
 
 
 def convert(data, settings, profile, traces):
@@ -320,9 +333,12 @@ def convert(data, settings, profile, traces):
     report = {'settings': settings, 'patches': [], 'unhandled': [], 'warnings': []}
     h = rom.header()
     region = rom.b[h + 15] >> 4 if h is not None else None
-    if region in (3, 4):
-        report['verdict'] = 'already an SMS game (header region %d): copied unchanged' % region
+    gg_io = any(s['port'] in GG_PORTS or s['cram'] for t in traces for s in t['sites'])
+    if region in (3, 4) and (not traces or not gg_io):
+        report['verdict'] = 'already an SMS game (header region %d%s): copied unchanged' % (region, ', no GG port use seen' if traces else '')
         return bytes(rom.b), report, 0
+    if region in (3, 4):
+        report['warnings'].append(f'the header says SMS (region {region}) but the game uses GG ports: converted anyway')
     if settings['region'] == 'auto':
         settings = dict(settings, region='japan' if region == 5 else 'export')
         report['settings'] = settings
@@ -332,6 +348,8 @@ def convert(data, settings, profile, traces):
     if not an.fixed0:
         report['verdict'] = 'the game maps other banks into slot 0: the runtime has nowhere safe to live'
         return None, report, 3
+    if SmsCodemasters(rom):
+        report['warnings'].append('Codemasters mapper: the far layout (slot-2 borrowing through $FFFF) is not available')
     ram = an.ram_slot(len(rt.VARS), int(profile['ram'], 0) if profile.get('ram') else None)
     if ram is None:
         report['verdict'] = 'no RAM the game leaves alone for the runtime (set "ram" in the profile)'
@@ -339,82 +357,140 @@ def convert(data, settings, profile, traces):
     report['ram'] = f'${ram:04X}-${ram + len(rt.VARS) - 1:04X}'
     actions, unhandled = plan(rom, an, settings, profile)
     report['unhandled'] += unhandled
-
-    asm = rt.build(settings, ram)
-    rt_len = len(asm.code)
-    sites = sorted(o for o, a in actions.items() if a[0] == 'call')
+    calls = sorted(o for o, a in actions.items() if a[0] == 'call')
     protected = set()
-    for o, a in actions.items():
-        n = z80.length(rom.b, o)
-        protected.update(range(o, o + n))
-    # NMI at $0066 and the reset trampoline at $0000
-    tramps = []        # (start, end, site_off_or_None, handler)
-    nmi_ok = settings['start'] in ('pause', 'both') and all(x not in an.dyn_code for x in range(0x66, 0x69)) and not any(0x66 <= o < 0x69 for o in actions)
+    for o in actions:
+        protected.update(range(o, o + z80.length(rom.b, o)))
+
+    # ---- how the sites reach the runtime: a free RST vector (in place, 2 bytes for 2) or JP trampolines
+    rsts = free_rsts(rom, an)
+    if profile.get('rst') is not None:
+        rsts = [int(profile['rst'], 0)] if profile['rst'] != 'none' else []
+    rst = rsts[0] if rsts else None
+    protected_v = set(range(rst, rst + 3)) if rst is not None else set()
+    nmi_ok = settings['start'] in ('pause', 'both') and all(x not in an.code and x not in an.targets for x in range(0x66, 0x69)) and not any(0x66 <= o < 0x69 for o in actions)
     if settings['start'] in ('pause', 'both') and not nmi_ok:
         report['warnings'].append('$0066 is game code: Pause cannot be used for Start (use start=buttons12)')
+    if nmi_ok:
+        protected.update(range(0x66, 0x69))
+    protected |= protected_v
+    tramps = []        # [start, end, {site: handler index}, init?]
     rc = cover(rom, an, 0, z80.length(rom.b, 0), protected - set(range(0, z80.length(rom.b, 0))))
     if rc:
         tramps.append([rc[0], rc[1], {}, 'init'])
         protected.update(range(rc[0], rc[1]))
     else:
         report['warnings'].append('reset code could not be hooked: the runtime RAM is not cleared at power-on')
-    for o in sites:
+    inplace = {}
+    for o in calls:
         _, handler, what, slot = actions[o]
+        idx = rt.HANDLERS.index(handler)
+        if rst is not None and z80.length(rom.b, o) == 2:
+            inplace[o] = idx
+            continue
         n = z80.length(rom.b, o)
         c = cover(rom, an, o, n, protected - set(range(o, o + n)))
         if c is None and tramps and o not in an.targets:
-            # join the previous trampoline when only plain instructions lie between its end and this site
             q, last = tramps[-1][1], tramps[-1]
             while q < o and q in an.code and q not in an.targets and q not in protected:
                 q += z80.length(rom.b, q)
             if q == o and o - last[1] < 16:
-                last[1] = o + n; last[2][o] = handler
+                last[1] = o + n; last[2][o] = idx
                 protected.update(range(o, o + n))
                 continue
         if c is None:
-            report['unhandled'].append({'off': o, 'why': f'{what}: no room for a jump (jump targets around it)'})
+            report['unhandled'].append({'off': o, 'why': f'{what}: no free RST and no room for a jump (jump targets around it)'})
             del actions[o]
             continue
         protected.update(range(c[0], c[1]))
-        tramps.append([c[0], c[1], {o: handler}, None])
-    # size: the runtime + each trampoline (calls 3 + relocated bytes + 3 for the JP back, + slack for DJNZ / JR rewrites)
-    need = rt_len + sum(3 + (e - s) * 2 + 6 for s, e, _, _ in tramps) + 8
-    base, fill = find_free(rom, an, need, protected)
-    if base is None:
-        report['verdict'] = f'no {need} free bytes in bank 0 for the runtime'
+        tramps.append([c[0], c[1], {o: idx}, None])
+    tramp_bytes = sum(4 + (e - s) * 2 + 9 for s, e, _, _ in tramps)
+
+    # ---- where the runtime goes: near (one block of always-mapped ROM) or far (a stub there, the handlers in a bank of their own)
+    fixed_runs = free_runs(rom, an, 0x0400, 0x4000, protected)
+    if an.fixed1 and rom.n > 0x4000:
+        fixed_runs += free_runs(rom, an, 0x4000, 0x7FF0, protected)
+        fixed_runs.sort(key=lambda r: (r[2] != 0xFF, -r[0]))
+    near = rt.build(settings, ram)
+    near_need = len(near['fixed'].code) + tramp_bytes
+    layout = None
+    for size, st, fill in fixed_runs:
+        if size >= near_need:
+            layout = ('near', st, fill, None)
+            break
+    if layout is None and not SmsCodemasters(rom) and profile.get('layout') != 'near':
+        probe = rt.build(settings, ram, far_bank=0)
+        stub_need = len(probe['fixed'].code) + tramp_bytes
+        far_need = len(probe['far'].code) + 8
+        stub = next(((st, fill) for size, st, fill in fixed_runs if size >= stub_need), None)
+        if stub:
+            fixed_banks = {0, 1} if an.fixed1 else {0}
+            far_runs = [r for r in free_runs(rom, an, 0x4000, rom.n, protected) if (r[1] >> 14) not in fixed_banks
+                        and (r[1] & 0x3FFF) + far_need <= 0x3FFF]
+            far_runs = [r for r in far_runs if r[0] >= far_need and r[2] == 0xFF]
+            if far_runs:
+                far_off = far_runs[0][1]
+            else:
+                new_n = 1 << max(16, (rom.n + 0x4000 - 1).bit_length())
+                far_off = rom.n
+                rom.b += b'\xFF' * (new_n - rom.n)
+                report['warnings'].append(f'ROM grown {rom.n // 1024} KB -> {new_n // 1024} KB for the runtime\'s bank')
+                rom.n = new_n
+            layout = ('far', stub[0], stub[1], far_off)
+    if layout is None:
+        best = fixed_runs[0][0] if fixed_runs else 0
+        report['verdict'] = f'no room for the runtime in always-mapped ROM (near needs {near_need} bytes, the biggest free run is {best})'
         return None, report, 3
+    kind, base, fill, far_off = layout
     if fill == 0x00:
         report['warnings'].append('runtime placed in a run of $00 bytes (no $FF padding big enough): check that the game does not read it as data')
-    report['runtime'] = f'${base:04X} ({need} bytes reserved, {rt_len} runtime)'
-    # assemble the trampolines after the runtime
-    tasm = asm
+    if kind == 'near':
+        parts = near
+        far_base = None
+    else:
+        parts = rt.build(settings, ram, far_bank=far_off >> 14)
+        far_base = 0x8000 | (far_off & 0x3FFF)
+    fasm = parts['fixed']
+    # trampolines after the fixed part
     for s, e, tsites, init in tramps:
         slot = an.code.get(s, 0)
-        tasm.label(f't_{s:x}')
-        q = s
-        fixups = []
+        fasm.label(f't_{s:x}')
+        q, fixups = s, []
         while q < e:
             n = z80.length(rom.b, q)
             if q in tsites:
-                tasm.op_w(0xCD, tsites[q])
+                fasm.op_w(0xCD, 'disp'); fasm.db(tsites[q])
             else:
                 if q == s and init == 'init':
-                    tasm.op_w(0xCD, 'init')
-                jf = relocate(rom.b, q, n, cpu_of(q, slot), tasm)
+                    fasm.op_w(0xCD, 'init')
+                jf = relocate(rom.b, q, n, cpu_of(q, slot), fasm)
                 if jf is not None:
                     fixups.append(jf)
             q += n
         back = cpu_of(e, slot)
         for jf in fixups:
-            tasm.code[jf] = back & 0xFF; tasm.code[jf + 1] = back >> 8
-        tasm.op_w(0xC3, back)
-    blob = tasm.link(base)
-    if len(blob) > need:
-        report['verdict'] = f'internal: runtime grew past its reservation ({len(blob)} > {need})'
-        return None, report, 3
+            fasm.code[jf] = back & 0xFF; fasm.code[jf + 1] = back >> 8
+        fasm.op_w(0xC3, back)
+    far_labels = {k: far_base + v for k, v in parts['far'].labels.items()} if parts['far'] else {}
+    fixed_labels = {k: base + v for k, v in fasm.labels.items()}
+    blob = fasm.link(base, far_labels)
     rom.b[base:base + len(blob)] = blob
+    if parts['far']:
+        fblob = parts['far'].link(far_base, fixed_labels)
+        rom.b[far_off:far_off + len(fblob)] = fblob
+        report['runtime'] = f'far: stub ${base:04X} ({len(blob)} bytes), handlers in bank {far_off >> 14} at ${far_base:04X} ({len(fblob)} bytes)'
+    else:
+        report['runtime'] = f'near: ${base:04X} ({len(blob)} bytes)'
+    report['runtimeRanges'] = [[base, base + len(blob)]] + ([[far_off, far_off + len(parts['far'].code)]] if parts['far'] else [])
+    report['entry'] = f'RST ${rst:02X} + index byte, in place' if rst is not None else 'JP trampolines'
+    disp = fixed_labels['disp']
+    if rst is not None:
+        rom.b[rst] = 0xC3; rom.b[rst + 1] = disp & 0xFF; rom.b[rst + 2] = disp >> 8
+    for o, idx in sorted(inplace.items()):
+        rom.b[o] = 0xC7 | rst; rom.b[o + 1] = idx
+        report['patches'].append({'off': o, 'what': actions[o][2] + f' (RST ${rst:02X},{idx})'})
     for s, e, tsites, init in tramps:
-        t = tasm.addr(base, f't_{s:x}')
+        t = fixed_labels[f't_{s:x}']
         rom.b[s] = 0xC3; rom.b[s + 1] = t & 0xFF; rom.b[s + 2] = t >> 8
         for k in range(s + 3, e):
             rom.b[k] = 0x00
@@ -427,14 +503,24 @@ def convert(data, settings, profile, traces):
             rom.b[o:o + len(a[1])] = a[1]
             report['patches'].append({'off': o, 'what': a[2]})
     if nmi_ok:
-        t = tasm.addr(base, 'nmi')
+        t = fixed_labels['nmi']
         rom.b[0x66] = 0xC3; rom.b[0x67] = t & 0xFF; rom.b[0x68] = t >> 8
         report['patches'].append({'off': 0x66, 'what': 'NMI (Pause) -> Start'})
     fix_header(rom, report)
     report['counts'] = {'patched': len(report['patches']), 'unhandled': len(report['unhandled']),
-                        'staticCode': len(an.code), 'tracedCode': len(an.dyn_code), 'fixedSlot1': an.fixed1}
+                        'staticCode': len(an.code), 'tracedCode': len(an.dyn_code), 'fixedSlot1': an.fixed1, 'freeRst': rsts}
     report['verdict'] = 'converted' + (' with unhandled sites' if report['unhandled'] else '')
     return bytes(rom.b), report, 1 if report['unhandled'] else 0
+
+
+def SmsCodemasters(rom):
+    """Codemasters carts keep a second header with a checksum at $7FE0 (the mapper registers are ROM writes, no RAM mirror)."""
+    if rom.n < 0x8000:
+        return False
+    b = rom.b
+    chk = b[0x7FE6] | b[0x7FE7] << 8
+    inv = b[0x7FE8] | b[0x7FE9] << 8
+    return chk != 0 and chk + inv == 0x10000
 
 
 # ============================================================================================== traces (BrokenNes headless)
@@ -475,12 +561,11 @@ def merge_settings(profile, sets):
     return s
 
 
-def residual(trace, report_runtime_range):
+def residual(trace, ranges):
     """GG-only port use or colour writes still reaching the hardware in a converted ROM (outside the runtime)."""
-    lo, hi = report_runtime_range
     out = []
     for s in trace['sites']:
-        inside = s['off'] >= 0 and lo <= s['off'] < hi
+        inside = s['off'] >= 0 and any(lo <= s['off'] < hi for lo, hi in ranges)
         if inside:
             continue
         if s['port'] in GG_PORTS:
@@ -527,11 +612,10 @@ def main():
     for i, inp in enumerate(profile_inputs(profile, manifest)):
         traces.append(run_trace(os.path.abspath(a.inp), os.path.join(work, f'orig{i}.json'), 'gg', inp['frames'], inp['input'], exe))
     out, report, code = convert(data, settings, profile, traces)
-    if out is not None:
+    if out is not None and report.get('runtimeRanges'):
         with open(a.out, 'wb') as f:
             f.write(out)
-        rt0 = int(report['runtime'].split()[0][1:], 16)
-        rng = (rt0, rt0 + int(report['runtime'].split('(')[1].split()[0]))
+        rng = report.get('runtimeRanges', [])
         res = []
         for i, inp in enumerate(profile_inputs(profile, manifest)):
             smsin = inp['input'].replace('Start', settings_start_button(settings))
