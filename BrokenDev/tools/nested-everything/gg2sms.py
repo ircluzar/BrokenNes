@@ -523,6 +523,14 @@ def convert_once(data, settings, profile, traces, allow_hook):
         return bytes(rom.b), report, 0
     if region in (3, 4):
         report['warnings'].append(f'the header says SMS (region {region}) but the game uses GG ports: converted anyway')
+    if traces:                             # by trace, not header: which GG-only ports and colour writes the game really made
+        report['ggPortsSeen'] = sorted({s['port'] for t in traces for s in t['sites'] if s['port'] in GG_PORTS})
+        report['cramWritesSeen'] = sum(s['cram'] for t in traces for s in t['sites'])
+        if not report['ggPortsSeen'] and not report['cramWritesSeen']:
+            report['verdict'] = 'already an SMS game by trace (no GG-only port use, no colour RAM writes): copied unchanged'
+            return bytes(rom.b), report, 0
+        if not report['ggPortsSeen']:
+            report['warnings'].append('no GG-only port use seen: only the colours need converting (the game may be an SMS game in a GG cartridge)')
     if settings['region'] == 'auto':
         settings = dict(settings, region='japan' if region == 5 else 'export')
         report['settings'] = settings

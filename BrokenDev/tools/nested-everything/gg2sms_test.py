@@ -227,6 +227,36 @@ def one(game, work, exe):
     res['runSms'] = run(exe, out_sms, 'sms', tag + '_sms', gw, sms_script, lag)[0]
     res['cmp'] = compare(gw, tag, table, lag)
     res['hashGg'] = frames_hash(gw, tag, 'gg'); res['hashSms'] = frames_hash(gw, tag, 'sms', lag)
+    # the SMS path: some GG games carry their SMS code too (full 256-wide layouts once they think they run on an SMS). Reference
+    # for those: the original cartridge run as an SMS (as a GG-as-SMS flash cart would), whole frames.
+    res['runSmsRef'] = run(exe, game['rom'], 'sms', tag + '_ref', gw, sms_script)[0]
+    ref = []
+    for f in CHECKS:
+        pa = os.path.join(gw, f'{tag}_ref_f{f}.png')
+        best = None
+        for d in (-1, 0, 1):
+            pb = os.path.join(gw, f'{tag}_sms_f{f + lag + d}.png')
+            if os.path.exists(pa) and os.path.exists(pb):
+                m = float((to_levels_sms(level_img(pa, False, table)) == to_levels_sms(level_img(pb, False, table))).all(axis=2).mean())
+                best = m if best is None else max(best, m)
+        ref.append(None if best is None else round(best, 4))
+    res['cmp']['vsSmsRef'] = ref
+    gg_m = np.mean([c['match'] or 0 for c in res['cmp']['checks']]) if res['cmp']['checks'] else 0
+    ref_m = np.mean([x or 0 for x in ref]) if ref else 0
+    res['path'] = 'sms' if ref_m > gg_m + 0.2 else 'gg'
+    if res['path'] == 'sms':                  # graded against the SMS run of the same cartridge
+        for c, m in zip(res['cmp']['checks'], ref):
+            c['match'] = m
+        ea, eb = wav_env(os.path.join(gw, f'{tag}_ref.wav')), wav_env(os.path.join(gw, f'{tag}_sms.wav'))
+        if ea is not None and eb is not None:
+            eb = eb[lag:]; k = min(len(ea), len(eb)); ea, eb = ea[:k], eb[:k]
+            best = None
+            for d in range(-4, 5):
+                x, y = (ea[:k - d], eb[d:]) if d >= 0 else (ea[-d:], eb[:k + d])
+                if len(x) > 60 and x.std() > 0 and y.std() > 0:
+                    c2 = float(np.corrcoef(x, y)[0, 1]); best = c2 if best is None else max(best, c2)
+            if best is not None:
+                res['cmp']['sound'] = round(best, 3)
     res['grade'] = grade(res)
     del res['hashGg'], res['hashSms']
     return res
@@ -263,7 +293,7 @@ def main():
                     json.dump(results, f, indent=1)
             ms = [c['match'] for c in res.get('cmp', {}).get('checks', [])]
             print(f"{res['grade']:<12} {res['name'][:44]:<44} match={ms} sound={res.get('cmp', {}).get('sound')} patches={res.get('patches')} "
-                  f"unhandled={res.get('unhandled')} residual={res.get('residual')} lag={res.get('cmp', {}).get('lag')}", flush=True)
+                  f"unhandled={res.get('unhandled')} residual={res.get('residual')} lag={res.get('cmp', {}).get('lag')} path={res.get('path')} vsSmsRef={res.get('cmp', {}).get('vsSmsRef')}", flush=True)
     if a.results:
         with open(a.results, 'w', encoding='utf-8') as f:
             json.dump(results, f, indent=1)
