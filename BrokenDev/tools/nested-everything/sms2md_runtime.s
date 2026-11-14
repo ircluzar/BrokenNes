@@ -56,6 +56,7 @@
         .equ NTSLOT,    0xFFFFF100      | 8 words: Genesis plane address for each SMS name table base ($0000-$3800), 0 = not used yet
         .equ NTNEXT,    0xFFFFF110
         .equ NTFORCE,   0xFFFFF111
+        .equ LASTDISP,  0xFFFFF112
         .equ SHFLOOR,   0xFFFFF098      | 68000 SP at the current interrupt's entry: shadow return entries below it are its own
         .equ IDLEFR,    0xFFFFF08A      | frames in which the game reached its idle point (HALT or a profile's idle_pc)
         .equ IDLEFLAG,  0xFFFFF08E
@@ -217,7 +218,7 @@ vdpinit_end:
 | d7.w = the Z80 address nobody translated. The picture goes red; ERRFLAG/ERRKIND/ERRADDR tell the harness.
 z_untranslated:
         move.w  #1,(ERRKIND).w
-        move.w  d7,(ERRADDR).w
+        move.w  (LASTDISP).w,(ERRADDR).w
         move.w  a1,(ERRFROM).w          | with debug_trail: the Z80 instruction that jumped there
 fatal:
         move    #0x2700,sr
@@ -236,6 +237,7 @@ z_unsupported:                          | an instruction the translator does not
 | ------------------------------------------------------------------------------------------------- dispatch
 | d7.w = Z80 address; jumps to its translation in the bank its slot holds now.
 z_dispatch:
+        move.w  d7,(LASTDISP).w         | (for the error report: d7 is scaled below)
         cmpi.w  #0xC000,d7
         bcc.s   1f
         move.w  d7,d6

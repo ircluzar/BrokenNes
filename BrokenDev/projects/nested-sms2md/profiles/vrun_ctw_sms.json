@@ -28,6 +28,13 @@
       "pc": "0x0DF6",
       "asm": "vrun_ctw_sms/draw_nt_i.s",
       "what": "draw_nt_i: cached-slot case in 68000 code"
+    },
+    {
+      "bank": 0,
+      "slot": 0,
+      "pc": "0x1586",
+      "asm": "vrun_ctw_sms/ppu_write_buf_loop.s",
+      "what": "ppu_write_buf: skip unchanged bytes in 68000 code"
     }
   ]
 }

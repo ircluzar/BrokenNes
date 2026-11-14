@@ -145,8 +145,52 @@ class Program:
         seen = [b for b in self.slot_banks[s2] if (b, s2, t) in self.code_seen]
         return [(b, s2) for b in (seen or sorted(self.slot_banks[s2]))]
 
+    def far_call_targets(self):
+        """SDCC banked calls (LD E,bank / LD HL,address / CALL trampoline): the callee is an entry in that bank."""
+        out = []
+        for (b, s, pc), i in list(self.ins.items()):
+            if i.op != 'LD' or i.a != ('r', 'E') or not i.b or i.b[0] != 'n':
+                continue
+            j = self.ins.get((b, s, i.nxt))
+            if not j or j.op != 'LD16' or j.a != ('rr', 'HL') or j.b[0] != 'nn':
+                continue
+            k = self.ins.get((b, s, j.nxt))
+            if not k or k.op != 'CALL' or k.a[0] == 'cc':
+                continue
+            bank, t = i.b[1], j.b[1]
+            if 0x4000 <= t < 0xC000 and bank < self.nbanks:
+                e = (bank, t >> 14, t)
+                if e not in self.ins:
+                    out.append(e)
+                self.labels.add(e)
+        return out
+
+    def outi_blocks(self):
+        """Unrolled OUTI blocks (16+ ED A3 in a row, SMSlib's VRAM copies) in the code banks: entered by computed jumps
+        at any OUTI, so each one is an entry. Both byte alignments are tried."""
+        out = []
+        for (bank, slot) in {(0, 0)} | {(b, s) for (b, s, _) in self.code_seen}:
+            base = bank * 0x4000
+            data = self.rom[base:base + 0x4000]
+            for al in (0, 1):
+                k = al
+                while k + 1 < len(data):
+                    if data[k] == 0xED and data[k + 1] == 0xA3:
+                        j = k
+                        while j + 1 < len(data) and data[j] == 0xED and data[j + 1] == 0xA3:
+                            j += 2
+                        if (j - k) // 2 >= 16:
+                            out += [(bank, slot, (slot << 14) | q) for q in range(k, j + 1, 2)]
+                        k = j + 2
+                    else:
+                        k += 2
+        return out
+
     def discover(self):
         work = [(0, 0, 0x0000), (0, 0, 0x0038), (0, 0, 0x0066)]
+        for e in self.outi_blocks():
+            work.append(e)
+            self.labels.add(e)
         self.labels.update(work)
         work += sorted(self.code_seen)
         for e in self.profile.get('entries', []):
@@ -159,6 +203,15 @@ class Program:
             # the slot the target ran from: the code map knows
             for (b, s, pc) in self._at_off(t):
                 self.labels.add((b, s, pc))
+        while True:
+            self._descend(work)
+            work = self.far_call_targets()
+            self.label_outi_runs()
+            work += [k for k in self.labels if k not in self.ins and k[2] >> 14 == k[1]]
+            if not work:
+                break
+
+    def _descend(self, work):
         while work:
             u = work.pop()
             if u in self.ins:
@@ -182,6 +235,32 @@ class Program:
                 for (b2, s2) in self.resolve(tgt, bank, slot):
                     work.append((b2, s2, tgt))
                     self.labels.add((b2, s2, tgt))
+
+    def label_outi_runs(self):
+        for (b, s, pc), ins in list(self.ins.items()):
+            if ins.op != 'OUTI':
+                continue
+            # walk forward/backward through the run, decoding what the descent did not reach
+            q = pc
+            while (q & 0x3FFF) + 2 <= 0x4000:
+                i2 = self.ins.get((b, s, q)) or decode(self.rom, self.off(b, q), q)
+                if i2.op != 'OUTI':
+                    break
+                self.ins[(b, s, q)] = i2
+                self.labels.add((b, s, q))
+                q = i2.nxt
+            nx = decode(self.rom, self.off(b, q), q)
+            if (b, s, q) not in self.ins:
+                self.ins[(b, s, q)] = nx
+            self.labels.add((b, s, q))
+            q = pc - 2
+            while q >= (s << 14) and (q & 0x3FFF) >= 0:
+                i2 = decode(self.rom, self.off(b, q), q)
+                if i2.op != 'OUTI':
+                    break
+                self.ins[(b, s, q)] = i2
+                self.labels.add((b, s, q))
+                q -= 2
 
     def _at_off(self, off):
         out = []
@@ -1143,6 +1222,20 @@ class Gen:
                     self.clobber()
                     self.raw('jsr     (z_idle).l')
                 run = 1
+                rest = 1
+                if i.op == 'OUTI' and self.st.get('video') != 'mode4':
+                    while (k + rest < len(inss) and inss[k + rest].op == 'OUTI' and inss[k + rest].pc == inss[k + rest - 1].nxt):
+                        rest += 1
+                if rest > 1 and all((bank, slot, inss[k + j].pc) in p.labels for j in range(1, rest)):
+                    # every OUTI of an unrolled run is an entry (computed jumps): each one copies the rest of the run
+                    self.out.append('| ... %d OUTI to the end of the run' % rest)
+                    self.clobber()
+                    self.raw('move.w  #%d,d5' % rest)
+                    self.raw('jsr     (z_outin).l')
+                    self.jump(inss[k + rest - 1].nxt)
+                    self.stats['outi_run_entries'] += 1
+                    prev = i
+                    continue
                 if i.op == 'OUTI' and self.st.get('video') != 'mode4':
                     while (k + run < len(inss) and inss[k + run].op == 'OUTI' and inss[k + run].pc == inss[k + run - 1].nxt
                            and (bank, slot, inss[k + run].pc) not in p.labels):
