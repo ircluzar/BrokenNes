@@ -300,7 +300,7 @@ def pcs_set(pcs):
 def find_overlays(cart, pcs):
     """RAM code the game copied from ROM: group the executed RAM PCs into runs and find each run's source in the ROM
     by its bytes (the delta that explains the most PCs). Returns [(ram_lo, ram_hi, file_off)]."""
-    ram = sorted((a, b) for bk, a, b, v in pcs if bk == 0xFF and b and not v and a < 0xFE00)
+    ram = sorted((a, b) for bk, a, b, v in pcs if bk == 0xFF and b and not v and (a < 0xFE00 or 0xFF80 <= a < 0xFFFF))
     runs, cur = [], []
     for a, b in ram:
         if cur and a - cur[-1][0] > 0x100:
@@ -323,8 +323,9 @@ def find_overlays(cart, pcs):
         lo, hi = run[0][0], run[-1][0] + 3
         # widen to the whole copied block: as far as the ROM bytes keep matching what ran
         lo &= ~0xFF; hi = (hi + 0xFF) & ~0xFF
-        lo = max(lo, -delta, 0xC000 if lo >= 0xC000 else 0x8000)
-        out.append((lo, min(hi, 0xFE00), lo + delta))
+        hram = run[0][0] >= 0xFF80
+        lo = max(lo, -delta, 0xFF80 if hram else 0xC000 if lo >= 0xC000 else 0x8000)
+        out.append((lo, min(hi, 0xFFFF if hram else 0xFE00), lo + delta))
     # runs copied by the same loop (same delta) become one overlay, gaps included
     out.sort()
     merged = []

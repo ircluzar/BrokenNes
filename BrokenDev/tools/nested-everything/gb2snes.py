@@ -462,7 +462,10 @@ fast:   lda #$80
         sta.l $002107
         lda #$00
         sta.l $00210B
-        lda #$01
+        jsr oaminit
+        lda #$02
+        sta.l $002101
+        lda #$11
         sta.l $00212C
         lda #$00
         sta.l $00212D
@@ -526,6 +529,8 @@ fast:   lda #$80
         bne .dirty
         lda #$FF
         sta $30
+        sta $31
+        sta $32
         lda #$81
         sta.l $004200
         lda #$0F
@@ -694,7 +699,18 @@ getly:  lda.l $00213F
         sta $0F
         ldx $0E
         lda.l LYTAB,x
-        rts
+        cmp #144
+        bcc .r
+        ; in vblank the NMI may hide whole lines: polls step through 144-153 so 'wait for LY == n' always meets n
+        lda $33
+        inc a
+        cmp #10
+        bcc .s
+        lda #$00
+.s:     sta $33
+        clc
+        adc #144
+.r:     rts
 
 wrx:    cpx #$8000
         bcc .rom
@@ -787,8 +803,9 @@ wrx:    cpx #$8000
         pla
         rtl
 .sc:    lda.w $FF02
-        and #$80
-        beq .scx
+        and #$81                    ; a transfer on the GB's own clock completes; external clock: nobody drives it
+        cmp #$81
+        bne .scx
         rep #$20
         .a16
         lda.l $7E3FFE
@@ -803,6 +820,8 @@ wrx:    cpx #$8000
         xba
         lda.w $FF01
         sta.l $7E4000,x
+        lda #$FF                    ; nobody on the link cable: the GB shifts in $FF
+        sta.w $FF01
         lda.w $FF02
         and #$7F
         sta.w $FF02
@@ -975,8 +994,16 @@ nmi:    rep #$30
         phx
         phy
         phb
+        lda $0A                     ; the translated code's temporaries
+        pha
+        lda $0C
+        pha
+        lda $0E
+        pha
         sep #$20
         .a8
+        lda #$00
+        xba                         ; B = 0 (TAX indexes below)
         lda #$00
         pha
         plb
@@ -986,6 +1013,8 @@ nmi:    rep #$30
         inc $1C
         sep #$20
         .a8
+        lda.l $7FFF40
+        bpl .np                     ; LCD off: no GB vblank
         lda.l $7FFF0F
         ora #$01
         sta.l $7FFF0F
@@ -1050,7 +1079,19 @@ nmi:    rep #$30
         lsr $0B
         dey
         bne .pal
-.nopal: ldy #24
+.nopal: lda.l $7FFF48
+        cmp $31
+        beq .nop0
+        sta $31
+        ldx #$0080
+        jsr objpal
+.nop0:  lda.l $7FFF49
+        cmp $32
+        beq .nop1
+        sta $32
+        ldx #$0090
+        jsr objpal
+.nop1:  ldy #10
         ldx #$0000
 .lp:    lda $40,x
         beq .nx
@@ -1065,8 +1106,15 @@ nmi:    rep #$30
 .nx:    inx
         cpx #$0040
         bne .lp
-.end:   rep #$30
+.end:   jsr sprites
+        rep #$30
         .a16
+        pla
+        sta $0E
+        pla
+        sta $0C
+        pla
+        sta $0A
         plb
         ply
         plx
@@ -1074,8 +1122,105 @@ nmi:    rep #$30
         rti
         .a8
 
+; A = OBPn, X = CGRAM index: colours 1-3 of an OBJ palette
+objpal: sta $0B
+        txa
+        sta.w $2121
+        ldy #$0004
+.p:     lda $0B
+        and #$03
+        asl a
+        tax
+        lda.l SHADES,x
+        sta.w $2122
+        lda.l SHADES+1,x
+        sta.w $2122
+        lsr $0B
+        lsr $0B
+        dey
+        bne .p
+        rts
+
+; GB OAM ($7F:FE00, 40 x 8x8) -> SNES OAM: x+40, y+23, flips, OBP0/1 -> palette 0/1, behind-BG -> priority 0
+sprites: lda #$00
+        sta.w $2102
+        sta.w $2103
+        ldx #$0000
+.s:     lda.l $7FFE00,x
+        beq .hide
+        cmp #160
+        bcs .hide
+        clc
+        adc #23
+        sta $0B
+        lda.l $7FFE01,x
+        clc
+        adc #40
+        sta.w $2104
+        lda $0B
+        sta.w $2104
+        lda.l $7FFE02,x
+        sta.w $2104
+        lda.l $7FFE03,x
+        sta $0B
+        and #$60
+        asl a
+        sta $0C
+        lda $0B
+        and #$10
+        lsr a
+        lsr a
+        lsr a
+        ora $0C
+        sta $0C
+        lda $0B
+        bmi .back
+        lda #$20
+        tsb $0C
+.back:  lda $0C
+        sta.w $2104
+        bra .nx
+.hide:  lda #$00
+        sta.w $2104
+        lda #$F0
+        sta.w $2104
+        sta.w $2104
+        sta.w $2104
+.nx:    inx
+        inx
+        inx
+        inx
+        cpx #160
+        bne .s
+        rts
+; all 128 SNES sprites hidden, small, x bit 8 clear (once, at boot, in forced blank)
+oaminit: lda #$00
+        sta.l $002102
+        sta.l $002103
+        ldx #$0000
+.rest:  lda #$F0
+        sta.l $002104
+        sta.l $002104
+        sta.l $002104
+        sta.l $002104
+        inx
+        inx
+        inx
+        inx
+        cpx #512
+        bne .rest
+        ldx #$0000
+.hi:    lda #$00
+        sta.l $002104
+        inx
+        cpx #32
+        bne .hi
+        rts
+
 ; X = chunk: 128 bytes of GB VRAM at $8000 + X*128 -> its one or two places in SNES VRAM (CHUNKS: dest1, dest2, mode)
-upchunk: rep #$20
+upchunk: txa
+        sta $2F
+        rep #$20
         .a16
         txa
         xba
@@ -1107,7 +1252,67 @@ upchunk: rep #$20
         sep #$20
         .a8
         jsr dma1
-.one:   rts
+.one:   lda $2F
+        cmp #$20
+        bcs .noobj
+        ; $8000-$8FFF also feeds the sprites: each 16-byte 2bpp tile is the first half of a 4bpp OBJ tile
+        lda #$08
+        sta $2D
+        rep #$20
+        .a16
+        lda $2F
+        and #$00FF
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a
+        clc
+        adc #$4000
+        sta $0A
+        sep #$20
+        .a8
+        lda #$80
+        sta $2E
+.ot:    jsr dma16
+        rep #$20
+        .a16
+        lda $0A
+        clc
+        adc #$0010
+        sta $0A
+        lda $0E
+        clc
+        adc #$0010
+        sta $0E
+        sep #$20
+        .a8
+        dec $2D
+        bne .ot
+.noobj: rts
+dma16:  lda #$80
+        sta.w $2115
+        rep #$20
+        .a16
+        lda $0A
+        sta.w $2116
+        lda $0E
+        sta.w $4302
+        lda #$0010
+        sta.w $4305
+        sep #$20
+        .a8
+        lda #$01
+        sta.w $4300
+        lda #$18
+        sta.w $4301
+        lda #$7F
+        sta.w $4304
+        lda #$01
+        sta.w $420B
+        rts
 dma1:   lda $2E
         sta.w $2115
         rep #$20
@@ -1356,6 +1561,7 @@ def convert(data, pcs, report, count=False):
     report['runtime_bytes'] = len(rt)
     report['interp_bytes'] = len(it)
     report['bytes_per_gb_instruction'] = round(report['code_bytes'] / max(1, len(units)), 1)
+    report['_labels'] = {k: v for k, v in syms.items() if k.startswith('G_') or k in ('dispatch', 'interp', 'rdx', 'wrx', 'nmi', 'irqtake', 'halt_rt', 'done_rt', 'gbdaa', 'reset')}
     report['symbols'] = {k: '$%06X' % v for k, v in syms.items() if k in ('reset', 'nmi', 'dispatch', 'interp', 'done_rt', 'irqtake')}
     return bytes(rom)
 
@@ -1432,6 +1638,10 @@ def main():
         pcs = sm83.read_pcs(a.pcs)
     rom = convert(data, pcs, report, a.count)
     open(a.out, 'wb').write(rom)
+    with open(os.path.splitext(a.out)[0] + '.sym', 'w') as f:      # WLA-DX symbols: the GB address of each block
+        f.write('[labels]' + chr(10))
+        for k, v in sorted(report.pop('_labels').items(), key=lambda kv: kv[1]):
+            f.write('%02X:%04X %s' % (v >> 16, v & 0xFFFF, k) + chr(10))
     if a.report:
         json.dump(report, open(a.report, 'w'), indent=1)
     print(json.dumps({k: report[k] for k in report if k not in ('symbols',)}, indent=1))
