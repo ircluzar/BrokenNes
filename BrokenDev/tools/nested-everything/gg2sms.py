@@ -542,11 +542,12 @@ def convert_once(data, settings, profile, traces, allow_hook):
         return None, report, 3
     if SmsCodemasters(rom):
         report['warnings'].append('Codemasters mapper: the far layout (slot-2 borrowing through $FFFF) is not available')
-    ram = an.ram_slot(len(rt.VARS), int(profile['ram'], 0) if profile.get('ram') else None)
+    nvars = len(rt.vars_list(settings))
+    ram = an.ram_slot(nvars, int(profile['ram'], 0) if profile.get('ram') else None)
     if ram is None:
         report['verdict'] = 'no RAM the game leaves alone for the runtime (set "ram" in the profile)'
         return None, report, 3
-    report['ram'] = f'${ram:04X}-${ram + len(rt.VARS) - 1:04X}'
+    report['ram'] = f'${ram:04X}-${ram + nvars - 1:04X}'
     actions, unhandled = plan(rom, an, settings, profile)
     report['unhandled'] += unhandled
     calls = sorted(o for o, a in actions.items() if a[0] == 'call')
@@ -671,7 +672,7 @@ def convert_once(data, settings, profile, traces, allow_hook):
                     t.op_w(0xCD, 'disp'); t.db(tsites[q])
                 else:
                     if q == s and init == 'init':
-                        rt.init_inline(t, ram, far_bank_of[0])
+                        rt.init_inline(t, ram, far_bank_of[0], nvars)
                     jf = relocate(rom.b, q, n, cpu_of(q, slot), t)
                     if jf is not None:
                         fixups.append(jf)

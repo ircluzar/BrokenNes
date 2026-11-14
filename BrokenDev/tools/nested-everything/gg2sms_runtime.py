@@ -19,7 +19,12 @@ Two layouts:
 """
 from z80 import Asm
 
-VARS = ['V_MODE', 'V_ADDR', 'V_LO', 'V_PREV', 'V_START', 'V_TMP', 'V_ARG', 'V_BANK', 'V_IFF', 'V_CNT', 'V_LATCH', 'V_IE', 'V_VC']
+VARS = ['V_MODE', 'V_ADDR', 'V_LO', 'V_PREV', 'V_START', 'V_TMP', 'V_ARG', 'V_BANK', 'V_IFF', 'V_CNT', 'V_VC', 'V_LATCH', 'V_IE']
+
+
+def vars_list(settings):
+    """The runtime's RAM: 11 bytes ($DFF0-$DFFA fits below the mapper registers), 13 with the shadowed control latch."""
+    return VARS if settings.get('latch', 'heuristic') != 'heuristic' else VARS[:11]
 CHAIN = 16                 # index bytes CHAIN+n: the rest of an unrolled OUTI chain, n OUTIs, in one call (h_chain)
 CHAIN_MAX = 120
 IDLE = [0xC0, 0x7F, 0xFF, 0x00, 0xFF, 0x00, 0xFF]   # port $00 (overridden by h_p0) and the link / stereo ports' idle values
@@ -30,7 +35,7 @@ BLOCKS = ('h_outi', 'h_otir', 'h_outd', 'h_otdr')
 
 
 def _vars(ram):
-    return {name: ram + i for i, name in enumerate(VARS)}
+    return {name: ram + i for i, name in enumerate(VARS)}       # (V_LATCH / V_IE only exist, and are only used, with latch pairs/status)
 
 
 def handlers(a, settings, v, far, used=None, deep=None):
@@ -119,7 +124,7 @@ def p0(a, settings, v, base, start):
         # port $00 in a loop would use up a read count within one frame
         a.op_w(LD_A_NN, v['V_START']); a.db(0xB7); a.op_r(0x28, 'p0_up')
         a.db(0xC5, 0xDB, 0x7E, 0x47); a.op_w(LD_A_NN, v['V_VC']); a.db(0x4F, 0x78); a.op_w(LD_NN_A, v['V_VC'])   # b = line, c = last
-        a.db(0xB9); a.op_r(0x30, 'p0_same')                                       # cp c / jr nc: same frame
+        a.db(0x79, 0xB8); a.op_r(0x38, 'p0_same')                                # ld a,c / cp b / jr c: a later line, same frame
         a.op_w(LD_A_NN, v['V_START']); a.db(0x3D); a.op_w(LD_NN_A, v['V_START'])
         a.label('p0_same'); a.db(0xC1, 0x3E, base & 0x7F); a.op_r(0x18, 'p0_out')
     a.label('p0_up')
@@ -353,10 +358,10 @@ def far_table(settings):
     return bytes(t[x & 15] | t[x >> 4 & 15] << 2 | t[i >> 8] << 4 for i in range(4096) for x in [i & 0xFF])
 
 
-def init_inline(a, ram, far_bank=None):
+def init_inline(a, ram, far_bank=None, n=None):
     """The power-on part, written inline in the reset trampoline: no stack (SP is not set yet at reset: a push at SP=0 lands
     on the mapper registers $FFFE/$FFFF). Clears the runtime's RAM; far: puts the slot-2 register where the BIOS leaves it."""
-    a.op_w(0x21, ram); a.db(0x06, len(VARS), 0xAF, 0x77, 0x23, 0x10, 0xFC)   # ld hl,ram / ld b,n / xor a / ld (hl),a / inc hl / djnz
+    a.op_w(0x21, ram); a.db(0x06, n or len(VARS), 0xAF, 0x77, 0x23, 0x10, 0xFC)   # ld hl,ram / ld b,n / xor a / ld (hl),a / inc hl / djnz
     # (far: the slot-2 register is left to the game, which sets it before it banks; the runtime saves and restores whatever it holds)
 
 

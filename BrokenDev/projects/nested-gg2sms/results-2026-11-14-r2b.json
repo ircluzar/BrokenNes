@@ -1,0 +1,643 @@
+{
+ "what": "gg2sms_test.py round 2b (2026-11-14, converter e629e521): GG core vs SMS core, SMS-path games graded against the cartridge run as an SMS. Names and numbers only.",
+ "results": [
+  {
+   "id": "vaults-gg",
+   "name": "VRUN: Vaults of Obsolete Code (GG, 9ea616a)",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8868,
+    0.7888,
+    0.7855,
+    0.7863,
+    0.7872,
+    0.7812
+   ],
+   "vsSmsRef": [
+    0.9751,
+    0.9093,
+    0.9106,
+    0.9105,
+    0.9107,
+    0.9096
+   ],
+   "sound": 0.18,
+   "lag": 0,
+   "patches": 32,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "vaults-gg-seeded",
+   "name": "Vaults GG, fixed-seed build (play-compare, VOC_GAME_SEED=4321)",
+   "grade": "Glitchy",
+   "r2a": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8868,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.9751,
+    0.9759,
+    1.0,
+    0.9766,
+    1.0,
+    0.9783
+   ],
+   "sound": 0.684,
+   "lag": 0,
+   "patches": 32,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "gg-demo-by-charles-macdonald",
+   "name": "GG Demo by Charles MacDonald (PD)",
+   "grade": "Glitchy",
+   "r2a": "Playable",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.899,
+    0.9008,
+    0.9001,
+    0.901,
+    0.8985,
+    0.9019
+   ],
+   "vsSmsRef": [
+    0.899,
+    0.9008,
+    0.9001,
+    0.901,
+    0.8985,
+    0.9019
+   ],
+   "sound": 1.0,
+   "lag": 0,
+   "patches": 11,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "columns",
+   "name": "Columns (U) [!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0447,
+    0.1161,
+    0.9724,
+    0.9704,
+    0.9559,
+    0.9397
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.79,
+    0.0008,
+    0.0008,
+    0.0008,
+    0.0008
+   ],
+   "sound": 0.306,
+   "lag": 20,
+   "patches": 122,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "fantasy-zone-gear",
+   "name": "Fantasy Zone Gear (JU) [!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.8458,
+    0.974,
+    0.7286,
+    0.138,
+    0.1122
+   ],
+   "vsSmsRef": [
+    0.9643,
+    0.0,
+    0.0,
+    0.0067,
+    0.0018,
+    0.0
+   ],
+   "sound": 0.228,
+   "lag": 4,
+   "patches": 18,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "bubble-bobble",
+   "name": "Bubble Bobble (U) [!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    1.0,
+    0.001,
+    0.856,
+    0.849,
+    0.853
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.651,
+   "lag": 4,
+   "patches": 121,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "pac-man",
+   "name": "Pac-Man (J)",
+   "grade": "Playable",
+   "r2a": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9987,
+    1.0,
+    1.0,
+    0.9968,
+    0.9968,
+    0.9968
+   ],
+   "vsSmsRef": [
+    0.8834,
+    0.9103,
+    0.9103,
+    0.9103,
+    0.9103,
+    0.9103
+   ],
+   "sound": 0.925,
+   "lag": 0,
+   "patches": 97,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "wonder-boy",
+   "name": "Wonder Boy (E) [!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.0889,
+    0.3665,
+    0.0739,
+    0.1071,
+    0.3777
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": -0.157,
+   "lag": 4,
+   "patches": 39,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "castle-of-illusion-starring-mickey-mouse",
+   "name": "Castle of Illusion Starring Mickey Mouse (U) [S][!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0429,
+    0.2222,
+    0.7222,
+    0.1287,
+    0.0,
+    0.0328
+   ],
+   "vsSmsRef": [
+    0.9586,
+    0.0864,
+    0.0864,
+    0.2094,
+    0.1161,
+    0.083
+   ],
+   "sound": 0.0,
+   "lag": 6,
+   "patches": 61,
+   "unhandled": 0,
+   "residual": 68
+  },
+  {
+   "id": "land-of-illusion-starring-mickey-mouse",
+   "name": "Land of Illusion Starring Mickey Mouse (U) [!]",
+   "grade": "Black screen",
+   "r2a": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9793,
+    0.1012,
+    0.0,
+    0.1012,
+    0.0,
+    0.4799
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.0,
+   "lag": 0,
+   "patches": 59,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "sonic-the-hedgehog",
+   "name": "Sonic The Hedgehog (U) (V1.1) [!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.1397,
+    0.0138,
+    0.0138,
+    0.0138,
+    0.0138,
+    0.0138
+   ],
+   "vsSmsRef": [
+    0.8616,
+    0.0578,
+    0.0578,
+    0.0578,
+    0.0578,
+    0.0578
+   ],
+   "sound": -0.174,
+   "lag": 28,
+   "patches": 78,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "dragon-crystal",
+   "name": "Dragon Crystal (U) [!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9175,
+    0.7855,
+    0.642,
+    0.8528,
+    0.827,
+    0.7878
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.9604,
+    0.8811,
+    1.0,
+    1.0,
+    0.9604
+   ],
+   "sound": 0.214,
+   "lag": 0,
+   "patches": 105,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "gg-shinobi",
+   "name": "GG Shinobi (E) [!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.4482,
+    0.1541,
+    0.1122,
+    0.1074,
+    0.1107,
+    0.1101
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "sound": 0.202,
+   "lag": 92,
+   "patches": 113,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "shinobi-ii-the-silent-fury",
+   "name": "Shinobi II - The Silent Fury (U) [!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.0,
+    0.9547,
+    0.5249,
+    0.8911,
+    0.3438,
+    0.9036
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.6424,
+    0.8616,
+    0.8616,
+    0.8616,
+    0.8616
+   ],
+   "sound": 0.079,
+   "lag": 22,
+   "patches": 87,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "sonic-chaos",
+   "name": "Sonic Chaos (U) [!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "sms",
+   "verdict": "converted",
+   "match": [
+    0.372,
+    1.0,
+    1.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "vsSmsRef": [
+    0.372,
+    1.0,
+    1.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "sound": 0.274,
+   "lag": 22,
+   "patches": 133,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "sonic-the-hedgehog-2",
+   "name": "Sonic The Hedgehog 2 (U) [!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9826,
+    0.9728,
+    0.9676,
+    0.5679,
+    0.4343
+   ],
+   "vsSmsRef": [
+    0.0,
+    0.0303,
+    0.0293,
+    0.0437,
+    0.0102,
+    0.0116
+   ],
+   "sound": 0.742,
+   "lag": 6,
+   "patches": 59,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "tails-adventures",
+   "name": "Tails' Adventures (U) [!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.2955,
+    0.0164,
+    0.0004,
+    0.0,
+    0.0027,
+    0.0025
+   ],
+   "vsSmsRef": [
+    0.3663,
+    0.1328,
+    0.1328,
+    1.0,
+    0.1328,
+    0.1328
+   ],
+   "sound": 0.382,
+   "lag": 8,
+   "patches": 255,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "defenders-of-oasis",
+   "name": "Defenders of Oasis (U) [!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.8065,
+    0.2245,
+    0.0,
+    0.0034,
+    0.0006,
+    0.0
+   ],
+   "vsSmsRef": [
+    1.0,
+    0.0,
+    0.0,
+    0.1612,
+    0.0,
+    1.0
+   ],
+   "sound": 0.107,
+   "lag": 0,
+   "patches": 91,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "ristar-the-shooting-star",
+   "name": "Ristar the Shooting Star (U) [!]",
+   "grade": "Glitchy",
+   "r2a": "Glitchy",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.8318,
+    0.8991,
+    0.7042,
+    0.3233,
+    0.0276
+   ],
+   "vsSmsRef": [
+    1.0,
+    1.0,
+    0.7511,
+    0.7639,
+    0.1433,
+    1.0
+   ],
+   "sound": 0.558,
+   "lag": 20,
+   "patches": 141,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "micro-machines",
+   "name": "Micro Machines (E)",
+   "grade": "Black screen",
+   "r2a": "Black screen",
+   "path": "gg",
+   "verdict": "converted with unhandled sites",
+   "match": [
+    0.0,
+    0.1773,
+    0.1869,
+    0.2061,
+    0.1651,
+    0.1619
+   ],
+   "vsSmsRef": [
+    0.0956,
+    0.1557,
+    0.1289,
+    0.1344,
+    0.1162,
+    0.1147
+   ],
+   "sound": 0.066,
+   "lag": 0,
+   "patches": 182,
+   "unhandled": 2,
+   "residual": 10
+  },
+  {
+   "id": "wonder-boy-the-dragon-s-trap",
+   "name": "Wonder Boy - The Dragon's Trap (E) [!]",
+   "grade": "Playable",
+   "r2a": "Playable",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    1.0,
+    0.9977,
+    0.997,
+    0.9961,
+    0.9888,
+    0.9936
+   ],
+   "vsSmsRef": [
+    0.2313,
+    0.0394,
+    0.0394,
+    0.0393,
+    0.0394,
+    0.0396
+   ],
+   "sound": 0.943,
+   "lag": 2,
+   "patches": 35,
+   "unhandled": 0,
+   "residual": 0
+  },
+  {
+   "id": "shining-force-ii-the-sword-of-hajya",
+   "name": "Shining Force II - The Sword of Hajya (U) [!]",
+   "grade": "Glitchy",
+   "r2a": "Black screen",
+   "path": "gg",
+   "verdict": "converted",
+   "match": [
+    0.9979,
+    0.8468,
+    0.8082,
+    0.5775,
+    0.685,
+    0.8642
+   ],
+   "vsSmsRef": [
+    0.9901,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "sound": 0.757,
+   "lag": 4,
+   "patches": 106,
+   "unhandled": 0,
+   "residual": 0
+  }
+ ]
+}
