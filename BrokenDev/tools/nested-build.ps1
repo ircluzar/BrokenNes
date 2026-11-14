@@ -67,6 +67,7 @@ param(
     [string]$Seeds = '1,2',
     [string]$MesenSource = '',
     [string]$CoreDir = '',
+    [string]$ExeDir = '',
     [ValidateSet('', 'fast', 'accurate')][string]$Nmi = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -189,6 +190,7 @@ if ($Feedback -eq 'harvest') {
 
 $a = $ps + @((Join-Path $Pipe 'm30build.ps1'), '-Nes', $Nes, '-Profile', $profileDir, '-Out', $Out, '-Python', $Python, '-AllowMd5Mismatch')
 if ($CoreDir) { $a += @('-CoreDir', $CoreDir) }
+if ($ExeDir) { $a += @('-ExeDir', $ExeDir) }
 & $shell @a
 if ($LASTEXITCODE -ne 0) { throw "m30build.ps1 failed (exit $LASTEXITCODE); see $Out.build.log" }
 if ($Feedback -eq 'brokennes') {

@@ -128,3 +128,40 @@ the project's verify/oracle script was fixed. Feedback re-run, personal builds i
 
 **Recommendation for SMB1: accurate** (fewer lag frames, smaller step gap), verdict stays **Jank** until the boot-load
 catch-up is matched.
+
+## 2026-11-14 round 3: mapper 30 AND MMC3 on the fork HEAD (phases 3-4)
+
+Core: fork `nested-vrun-core` 208926b, profile `universal` (md5 521a8685, unchanged), NMI accurate (games.json), feedback
+brokennes (17 plans; m30 105 entry points / 196 known calls, MMC3 111 / 203). NES: m30 `2026-11-12_f3be261c_m30`, MMC3
+`2026-11-13_036722e0_mmc3-lag2`. The MMC3 SNES ROM is 8 MB (ExHiROM). Work folder `C:\BrokenNes-work\smb1_nested`
+(own -ExeDir: `nested-build.ps1 -ExeDir` added for this). ROMs: `T:\BrokenDev\Releases\Nested_SMB1\2026-11-14_208926b`.
+
+| scenario | m30 SNES lag | MMC3 SNES lag | NES lag | logic steps behind the NES (m30 / MMC3) | lives diverge (m30 / MMC3) |
+|---|---|---|---|---|---|
+| verify play | 1 (f90) | 1 (f3035) | 0 | 0, then other outcome after a death at poll ~1386 (both) | yes / yes |
+| recorded | 2 (90, 268) | 1 (251) | 0 | 6 / **14** constant | no / no |
+| fuzz1 | 2 | 1 | 0 | 6 then 0 after death / 14 | no / **yes** (poll 1604) |
+| fuzz2 | 2 | 1 | 0 | 6 -> 0 -> diverges / 14 -> 0 | yes (poll 1880) / no |
+| fuzz3 | 2 | 1 | 0 | 6 -> 0 / 14 -> diverges | no / yes (poll 1869) |
+
+Mesen (fuzz1, private 2.1.1, RAM zeros): BrokenNes SNES vs Mesen SNES differ on 10 (m30) / 12 (MMC3) of 2696 polls,
+NESFab scratch only, same logic ticks and lives: **the two SNES emulators agree** (round 2's accurate-mode disagreement is
+gone on this core). BrokenNes NES vs Mesen NES: only `$0339/$033A` (dmc_polls / dmc_p2, the known DMC DMA residue).
+Mesen NES vs Mesen SNES shows the same step offsets and the same MMC3 lives divergence.
+
+Sound: present on both SNES builds with the same per-second loudness pattern (music phase follows the step offset).
+
+**Picture: FAIL on both mappers (new finding, confirmed on Mesen SNES).** The playfield does not scroll smoothly: the SNES
+shows the level at the status bar's scroll (fine X lost; it moves only in 256-pixel pages), while sprites are placed
+for the real camera (e.g. poll 600: camera_x 180 in RAM on both, NES shows the ? blocks, SNES still shows the start hill).
+Cause: the remake writes the status-bar split ($2005/$2000 for the playfield) only from DMC IRQ 2 (`game*/dmc_split.fab`);
+Project Nested never delivers the DMC IRQ and `dmc_status` makes the arm's sync loop exit, so the split write never
+happens (`dmc_stage` stuck at 1 = item 2 above, which does have a visible effect). Same with the vrun core (step 18) and
+with fast NMI, so not a regression. Earlier rounds compared RAM and SNES-vs-Mesen pictures only, not NES-vs-SNES pictures.
+
+Fix options: (a) core: deliver the DMC IRQ (one-byte samples at $4010 rates, timed from the $4015 start) - a core change,
+left to the core lanes; (b) game side: when no DMC IRQ came (dmc_stage still set at the next NMI) fall back to the
+sprite-0 wait that Nested already handles, or on MMC3 time the split with the scanline IRQ (Nested emulates it).
+
+**Verdict: m30 Jank, MMC3 Jank** (runs, plays, dies and continues correctly; picture wrong while scrolling; MMC3 boots 14
+steps behind the NES vs 6 on m30, so frame-exact replays diverge more often).
