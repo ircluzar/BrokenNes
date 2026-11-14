@@ -270,7 +270,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('roster', nargs='?')
     ap.add_argument('--rom'); ap.add_argument('--work', required=True); ap.add_argument('--only'); ap.add_argument('--jobs', type=int, default=2)
-    ap.add_argument('--results'); ap.add_argument('--workshop')
+    ap.add_argument('--results'); ap.add_argument('--workshop'); ap.add_argument('--resume', action='store_true')
     a = ap.parse_args()
     exe = gg2sms.workshop_exe(a.workshop)
     if a.rom:
@@ -287,8 +287,13 @@ def main():
     if a.only:
         games = [g for g in games if a.only.lower() in (g['id'] + g.get('name', '')).lower()]
     games = [g for g in games if os.path.exists(g['rom']) or print('missing ROM: ' + g['rom'])]
+    done = []
+    if a.resume and a.results and os.path.exists(a.results):   # carry on a long run: the games already graded are kept, not run again
+        done = json.load(open(a.results, encoding='utf-8'))
+        ids = {r['id'] for r in done}
+        games = [g for g in games if g['id'] not in ids]
     os.makedirs(a.work, exist_ok=True)
-    results = []
+    results = list(done)
     with cf.ThreadPoolExecutor(max_workers=max(1, min(2, a.jobs))) as ex:
         for res in ex.map(lambda g: one(g, a.work, exe), games):
             results.append(res)
