@@ -1,0 +1,1070 @@
+| Nested Everything SMS -> Genesis: the 68000 runtime under the translated Z80 code (sms2md.py writes game.s and includes this file).
+|
+| Z80 state in 68000 registers (the translated code and this runtime share it):
+|   d0.b A    d1.w BC   d2.w DE   d3.w HL   d4 F (as the 68000 CCR saved by MOVE SR: X N Z V C, see sms2md.py)
+|   a2 IX     a3 IY     a5 SP     (sign-extended: work RAM $C000-$DFFF is the Genesis's $FFC000-$FFDFFF)
+|   a4 BC'    a6 DE'    HL' A' F' in RAM
+|   d5 d6 d7 a0 a1: scratch. Helpers take an address in d7.w, a value in d6.b and may clobber d5-d7/a0/a1 unless they say so.
+|
+| Video back ends: VIDEO_MODE=5 (default, built here): the SMS VDP is emulated on top of Mode 5 (tiles converted from the SMS's
+| planar 4bpp to packed, name table / sprites / colours translated). VIDEO_MODE=4: pass-through stub for the day a console proves
+| that Mode 4 works from Genesis mode (md-mode4-test); not tested, see vid4_* below.
+
+        .equ VDPD,      0xC00000
+        .equ VDPC,      0xC00004
+        .equ HVC,       0xC00008
+        .equ PSGP,      0xC00011
+        .equ VSHADOW,   0xFF0000        | 16 KB: the SMS VRAM as the game wrote it
+        .equ SRAMBUF,   0xFF4000        | 16 KB: cartridge RAM
+| variables (absolute short: $FF8000-$FFBFFF)
+        .equ IFF,       0xFFFF8000
+        .equ VLATCH,    0xFFFF8001
+        .equ VADDR,     0xFFFF8002
+        .equ VCODE,     0xFFFF8004
+        .equ VLOW,      0xFFFF8005
+        .equ VBUF,      0xFFFF8006
+        .equ VSTAT,     0xFFFF8007
+        .equ LINEFLAG,  0xFFFF8008
+        .equ SATDIRTY,  0xFFFF8009
+        .equ PAD1,      0xFFFF800A
+        .equ PADPREV,   0xFFFF800B
+        .equ NTBASE,    0xFFFF800C
+        .equ SATBASE,   0xFFFF800E
+        .equ VREGS,     0xFFFF8010
+        .equ SLOTPTR,   0xFFFF8020
+        .equ SLOTDISP,  0xFFFF8030
+        .equ SRAMON,    0xFFFF8040
+        .equ MAPREG,    0xFFFF8041      | 4 bytes: $FFFC-$FFFF as written
+        .equ HL2,       0xFFFF8046
+        .equ A2V,       0xFFFF8048
+        .equ F2V,       0xFFFF804A
+        .equ CRAMSH,    0xFFFF8050      | 32 bytes
+        .equ FRAMES,    0xFFFF8070
+        .equ IRQS,      0xFFFF8074
+        .equ HALTS,     0xFFFF8078
+        .equ ISRCNT,    0xFFFF807C
+        .equ INISR,     0xFFFF807D
+        .equ ERRADDR,   0xFFFF8080
+        .equ ERRKIND,   0xFFFF8082
+        .equ ERRFLAG,   0xFFFF8084
+        .equ NMIS,      0xFFFF8086
+        .equ ERRFROM,   0xFFFF8094
+        .equ IDLEFR,    0xFFFF808A      | frames in which the game reached its idle point (HALT or a profile's idle_pc)
+        .equ IDLEFLAG,  0xFFFF808E
+        .equ LASTFR,    0xFFFF8090      | FRAMES at the last idle
+        .equ MAGIC,     0xFFFE          | Z80 return address that means "back to the 68000 interrupt handler"
+
+        .org 0
+        .long 0x00FFC000, boot
+        .rept 26
+        .long exc_generic
+        .endr
+        .long hint                      | 28: level 4 = HInt
+        .long exc_ignore                | 29
+        .long vint                      | 30: level 6 = VInt
+        .long exc_ignore                | 31
+        .rept 32
+        .long exc_generic
+        .endr
+
+        .org 0x100
+        .ascii "SEGA MEGA DRIVE "
+        .ascii "(C)BKND 2026.NOV"
+        .ascii "NESTED SMS ON GENESIS                           "
+        .ascii "NESTED SMS ON GENESIS                           "
+        .ascii "GM 00000000-00"
+        .word 0
+        .ascii "J               "
+        .long 0, ROMEND-1
+        .long 0xFF0000, 0xFFFFFF
+        .ascii "RA"
+        .byte 0xF8, 0x20
+        .long 0x200001, 0x207FFF
+        .ascii "            "
+        .ascii "                                        "
+        .ascii "JUE             "
+
+exc_ignore:
+        rte
+exc_generic:
+        move.w  #0xEE,(ERRKIND).w
+        bra     fatal
+
+| ------------------------------------------------------------------------------------------------- boot
+boot:
+        move    #0x2700,sr
+        move.b  (0xA10001).l,d0
+        andi.b  #0x0F,d0
+        beq.s   1f
+        move.l  #0x53454741,(0xA14000).l
+1:      move.w  #0x100,(0xA11100).l     | Z80 bus held, Z80 in reset: it stays off
+        move.w  #0,(0xA11200).l
+        lea     (VDPC).l,a0
+        move.w  (a0),d0
+        lea     vdpinit(pc),a1
+        moveq   #(vdpinit_end-vdpinit)/2-1,d1
+2:      move.w  (a1)+,(a0)
+        dbra    d1,2b
+        | clear VRAM, CRAM, VSRAM
+        move.l  #0x40000000,(a0)
+        moveq   #0,d0
+        move.w  #0x3FFF,d1
+3:      move.l  d0,(VDPD).l
+        dbra    d1,3b
+        move.l  #0xC0000000,(a0)
+        moveq   #31,d1
+4:      move.l  d0,(VDPD).l
+        dbra    d1,4b
+        move.l  #0x40000010,(a0)
+        moveq   #19,d1
+5:      move.l  d0,(VDPD).l
+        dbra    d1,5b
+        | solid tiles: $780 = colour 15 (SMS BG colour 0), $781 = colour 14 (SMS backdrop)
+        move.l  #0x70000003,(a0)        | VRAM $F000
+        move.l  #0xFFFFFFFF,d0
+        moveq   #7,d1
+6:      move.l  d0,(VDPD).l
+        dbra    d1,6b
+        move.l  #0xEEEEEEEE,d0
+        moveq   #7,d1
+7:      move.l  d0,(VDPD).l
+        dbra    d1,7b
+        | plane B ($E000): solid colour 15 everywhere; window ($D000): opaque backdrop, high priority (covers lines 192-223)
+        move.l  #0x60000003,(a0)
+        move.w  #0x6780,d0
+        move.w  #1023,d1
+8:      move.w  d0,(VDPD).l
+        dbra    d1,8b
+        move.l  #0x50000003,(a0)
+        move.w  #0xE781,d0
+        move.w  #1023,d1
+9:      move.w  d0,(VDPD).l
+        dbra    d1,9b
+        | pads
+        move.b  #0x40,(0xA10009).l
+        move.b  #0x40,(0xA10003).l
+        | RAM: all of it except the stack area in use
+        lea     0xFF0000,a1
+        moveq   #0,d0
+        move.w  #(0xC000/4)-1,d1
+10:     move.l  d0,(a1)+
+        dbra    d1,10b
+        lea     0xFFC000,a1
+        move.w  #(0x4000/4)-1,d1
+11:     move.l  d0,(a1)+
+        dbra    d1,11b
+        | cartridge RAM from the Genesis cartridge's battery RAM (odd bytes at $200001)
+        move.b  #1,(0xA130F1).l
+        lea     0x200001,a0
+        lea     SRAMBUF,a1
+        move.w  #0x3FFF,d1
+12:     move.b  (a0),(a1)+
+        addq.l  #2,a0
+        dbra    d1,12b
+        | SMS power-on state
+        move.w  #0x3800,(NTBASE).w
+        move.w  #0x3F00,(SATBASE).w
+        move.b  #0xFF,(PAD1).w
+        lea     (MAPREG).w,a0
+        move.b  #0,(a0)+
+        move.b  #0,(a0)+
+        move.b  #1,(a0)+
+        move.b  #2,(a0)+
+        moveq   #0,d6
+        move.w  #0xFFFD,d7
+        bsr     mapper_set
+        moveq   #1,d6
+        move.w  #0xFFFE,d7
+        bsr     mapper_set
+        moveq   #2,d6
+        move.w  #0xFFFF,d7
+        bsr     mapper_set
+        moveq   #0,d0
+        moveq   #0,d1
+        moveq   #0,d2
+        moveq   #0,d3
+        moveq   #0,d4
+        suba.l  a2,a2
+        suba.l  a3,a3
+        suba.l  a4,a4
+        suba.l  a6,a6
+        movea.w #0xDFF0,a5
+        move    #0x2000,sr
+        jmp     Z80_RESET
+
+vdpinit:
+        .word 0x8004, 0x8164, 0x8230, 0x8334, 0x8407, 0x856C, 0x8600, 0x8710, 0x8800, 0x8900, 0x8AFF, 0x8B00
+        .word 0x8C00, 0x8D37, 0x8E00, 0x8F02, 0x9000, 0x9100, 0x9298
+vdpinit_end:
+
+| ------------------------------------------------------------------------------------------------- errors
+| d7.w = the Z80 address nobody translated. The picture goes red; ERRFLAG/ERRKIND/ERRADDR tell the harness.
+z_untranslated:
+        move.w  #1,(ERRKIND).w
+        move.w  d7,(ERRADDR).w
+        move.w  a1,(ERRFROM).w          | with debug_trail: the Z80 instruction that jumped there
+fatal:
+        move    #0x2700,sr
+        movem.l d0-d7/a0-a6,(0xFF80A0).l | the registers at the stop, for the harness
+        st      (ERRFLAG).w
+        move.l  #0xC0000000,(VDPC).l
+        move.w  #0x000E,(VDPD).l
+        move.w  #0x8700,(VDPC).l
+        move.w  #0x8124,(VDPC).l
+1:      bra.s   1b
+z_unsupported:                          | an instruction the translator does not support (d7 = its address)
+        move.w  #2,(ERRKIND).w
+        move.w  d7,(ERRADDR).w
+        bra     fatal
+
+| ------------------------------------------------------------------------------------------------- dispatch
+| d7.w = Z80 address; jumps to its translation in the bank its slot holds now.
+z_dispatch:
+        cmpi.w  #0xC000,d7
+        bcc.s   1f
+        move.w  d7,d6
+        rol.w   #4,d6
+        andi.w  #0x0C,d6
+        lea     (SLOTDISP).w,a0
+        movea.l 0(a0,d6.w),a0
+        andi.l  #0x3FFF,d7
+        lsl.l   #2,d7
+        movea.l 0(a0,d7.l),a0
+        jmp     (a0)
+1:      cmpi.w  #MAGIC,d7
+        bne     z_untranslated
+        rts                             | back into deliver / nmi_deliver
+
+| ------------------------------------------------------------------------------------------------- memory
+| rd8: d7.w address -> d6.b (d7 kept)
+rd8:    cmpi.w  #0xC000,d7
+        bcc.s   1f
+        move.w  d7,d6
+        rol.w   #4,d6
+        andi.w  #0x0C,d6
+        lea     (SLOTPTR).w,a0
+        movea.l 0(a0,d6.w),a0
+        move.w  d7,d6
+        andi.w  #0x3FFF,d6
+        move.b  0(a0,d6.w),d6
+        rts
+1:      move.w  d7,d6
+        andi.w  #0xDFFF,d6
+        movea.w d6,a0
+        move.b  (a0),d6
+        rts
+
+| wr8: d7.w address, d6.b value (d7 kept)
+wr8:    cmpi.w  #0xC000,d7
+        bcs.s   2f
+        move.w  d7,d5
+        andi.w  #0xDFFF,d5
+        movea.w d5,a0
+        move.b  d6,(a0)
+        cmpi.w  #0xFFFC,d7
+        bcc.s   mapper_set
+        rts
+2:      cmpi.w  #0x8000,d7
+        bcs.s   3f
+        tst.b   (SRAMON).w
+        beq.s   3f
+        move.w  d7,d5
+        andi.w  #0x3FFF,d5
+        lea     SRAMBUF,a0
+        move.b  d6,0(a0,d5.w)
+        add.w   d5,d5
+        lea     0x200001,a0
+        move.b  d6,0(a0,d5.w)
+3:      rts
+
+| mapper_set: d7.w = $FFFC-$FFFF, d6.b = value (d7 kept)
+mapper_set:
+        movem.l d0-d1/a1,-(sp)
+        move.w  d7,d1
+        andi.w  #3,d1
+        lea     (MAPREG).w,a0
+        move.b  d6,0(a0,d1.w)
+        tst.w   d1
+        bne.s   1f
+        btst    #3,d6                   | $FFFC bit 3: cartridge RAM in slot 2
+        sne     (SRAMON).w
+        moveq   #3,d1
+        move.b  (MAPREG+3).w,d6
+1:      subq.w  #1,d1                   | slot 0-2
+        moveq   #0,d0
+        move.b  d6,d0
+        andi.w  #NBANKS-1,d0
+        move.l  d0,d5
+        swap    d5
+        lsr.l   #2,d5                   | bank * $4000
+        addi.l  #SMSROM,d5
+        cmpi.w  #2,d1
+        bne.s   2f
+        tst.b   (SRAMON).w
+        beq.s   2f
+        move.l  #SRAMBUF,d5
+2:      add.w   d1,d1
+        add.w   d1,d1
+        lea     (SLOTPTR).w,a0
+        move.l  d5,0(a0,d1.w)
+        lea     disptabs,a1
+        movea.l 0(a1,d1.w),a1
+        add.w   d0,d0
+        add.w   d0,d0
+        lea     (SLOTDISP).w,a0
+        move.l  0(a1,d0.w),0(a0,d1.w)
+        movem.l (sp)+,d0-d1/a1
+        rts
+
+| ------------------------------------------------------------------------------------------------- ports
+| port_out: d7.b port, d6.b value
+port_out:
+        move.b  d7,d5
+        andi.b  #0xC0,d5
+        cmpi.b  #0x40,d5
+        bne.s   1f
+        move.b  d6,(PSGP).l
+        rts
+1:      cmpi.b  #0x80,d5
+        bne.s   2f
+        btst    #0,d7
+        bne     vdpw_ctrl
+        bra     vdpw_data
+2:      rts
+
+| port_in: d7.b port -> d6.b
+port_in:
+        move.b  d7,d5
+        andi.b  #0xC0,d5
+        cmpi.b  #0x40,d5
+        bne.s   1f
+        btst    #0,d7
+        bne.s   z_hcount
+        bra.s   z_vcount
+1:      cmpi.b  #0x80,d5
+        bne.s   2f
+        btst    #0,d7
+        bne     vdpr_stat
+        bra     vdpr_data
+2:      cmpi.b  #0xC0,d5
+        bne.s   3f
+        btst    #0,d7
+        bne.s   z_pad2
+        bra.s   z_pad1
+3:      moveq   #-1,d6
+        rts
+
+z_vcount:
+        move.b  (HVC).l,d6
+        rts
+z_hcount:
+        move.b  (HVC+1).l,d6
+        rts
+z_pad1: move.b  (PAD1).w,d6
+        rts
+z_pad2: moveq   #-1,d6
+        rts
+
+| ------------------------------------------------------------------------------------------------- interrupts
+| irq_line: Z flag clear when the SMS VDP's interrupt line is up
+irq_line:
+        btst    #7,(VSTAT).w
+        beq.s   1f
+        btst    #5,(VREGS+1).w
+        bne.s   2f
+1:      tst.b   (LINEFLAG).w
+        beq.s   2f
+        btst    #4,(VREGS+0).w
+2:      rts
+
+| deliver: run the game's IM 1 handler now (Z80 interrupts on). Called from the 68000 handlers, EI and HALT.
+deliver:
+        sf      (IFF).w
+        addq.l  #1,(IRQS).w
+        addq.b  #1,(ISRCNT).w
+        move.b  #(MAGIC>>8),-(a5)
+        move.b  #(MAGIC&0xFF),-(a5)
+        move.w  sr,-(sp)
+        move    #0x2000,sr
+        jsr     Z80_IRQ
+        move.w  (sp)+,sr
+        rts
+
+vint:
+        movem.l d0-d7/a0-a6,-(sp)
+        addq.l  #1,(FRAMES).w
+        move.l  #0x40000010,(VDPC).l
+        moveq   #0,d0
+        move.b  (VREGS+9).w,d0
+        move.w  d0,(VDPD).l
+        tst.b   (SATDIRTY).w
+        beq.s   1f
+        sf      (SATDIRTY).w
+        bsr     sat_upload
+1:      bsr     read_pad
+        bset    #7,(VSTAT).w
+        tst.b   d2
+        beq.s   2f
+        | Pause: the Z80 NMI
+        addq.l  #1,(NMIS).w
+        moveq   #0,d7
+        move.b  (IFF).w,d7
+        move.w  d7,-(sp)
+        sf      (IFF).w
+        movem.l 2(sp),d0-d7/a0-a6       | the interrupted Z80 registers
+        move.b  #(MAGIC>>8),-(a5)
+        move.b  #(MAGIC&0xFF),-(a5)
+        move    #0x2000,sr
+        jsr     Z80_NMI
+        move    #0x2600,sr
+        move.w  (sp)+,d7
+        move.b  d7,(IFF).w
+2:      tst.b   (IFF).w
+        beq.s   9f
+        btst    #5,(VREGS+1).w
+        beq.s   9f
+        movem.l (sp),d0-d7/a0-a6
+        bsr     deliver
+9:      movem.l (sp)+,d0-d7/a0-a6
+        rte
+
+hint:
+        movem.l d0-d7/a0-a6,-(sp)
+        move.b  (HVC).l,d0
+        cmpi.b  #192,d0
+        bcc.s   9f
+        st      (LINEFLAG).w
+        tst.b   (IFF).w
+        beq.s   9f
+        btst    #4,(VREGS+0).w
+        beq.s   9f
+        movem.l (sp),d0-d7/a0-a6
+        bsr     deliver
+9:      movem.l (sp)+,d0-d7/a0-a6
+        rte
+
+| EI: interrupts on; a pending line interrupts at once
+z_ei:   st      (IFF).w
+        bsr       irq_line
+        beq.s   1f
+        bra     deliver
+1:      rts
+
+| HALT: wait for the next delivered interrupt
+z_halt: addq.l  #1,(HALTS).w
+        bsr     z_idle
+        move.b  (ISRCNT).w,d6
+1:      tst.b   (IFF).w
+        beq.s   2f
+        bsr       irq_line
+        beq.s   2f
+        bra     deliver
+2:      stop    #0x2000
+        cmp.b   (ISRCNT).w,d6
+        beq.s   1b
+        rts
+
+| z_idle: the game reached its idle point this frame (HALT or a profile idle_pc): counts frames with idle time (lag = frames without)
+z_idle: move.l  (FRAMES).w,d5
+        cmp.l   (LASTFR).w,d5
+        beq.s   1f
+        move.l  d5,(LASTFR).w
+        addq.l  #1,(IDLEFR).w
+1:      rts
+
+| read_pad (in VInt, every register free): PAD1 = SMS $DC (Genesis B = button 1, C = button 2, A = button 1 too), d2 = Start newly pressed
+read_pad:
+        lea     (0xA10003).l,a0
+        move.b  #0x40,(a0)
+        nop
+        nop
+        move.b  (a0),d0
+        move.b  #0x00,(a0)
+        nop
+        nop
+        move.b  (a0),d1
+        move.b  #0x40,(a0)
+        ori.b   #0xC0,d0
+        btst    #4,d1
+        bne.s   1f
+        bclr    #4,d0
+1:      move.b  d0,(PAD1).w
+        move.b  d1,d2
+        not.b   d2
+        andi.b  #0x20,d2
+        move.b  (PADPREV).w,d3
+        move.b  d2,(PADPREV).w
+        not.b   d3
+        and.b   d3,d2
+        rts
+
+| ------------------------------------------------------------------------------------------------- block instructions
+| (all keep d0-d4/a2-a6 as the Z80 state; flags: d4)
+z_ldi:  move.w  d3,d7
+        bsr     rd8
+        move.w  d2,d7
+        bsr     wr8
+        addq.w  #1,d3
+        addq.w  #1,d2
+        subq.w  #1,d1
+        bra.s   ld_pv
+z_ldd:  move.w  d3,d7
+        bsr     rd8
+        move.w  d2,d7
+        bsr     wr8
+        subq.w  #1,d3
+        subq.w  #1,d2
+        subq.w  #1,d1
+ld_pv:  bclr    #1,d4
+        tst.w   d1
+        beq.s   1f
+        bset    #1,d4
+1:      rts
+| LDIR: fast when the destination is work RAM and the source work RAM or one ROM slot
+z_ldir: tst.w   d1
+        beq.s   9f
+        cmpi.w  #0xC000,d2
+        bcs.s   5f
+        move.w  d2,d5
+        add.w   d1,d5
+        bcs.s   5f
+        cmpi.w  #0xE000,d5
+        bhi.s   5f
+        cmpi.w  #0xC000,d3
+        bcc.s   2f
+        move.w  d3,d5
+        add.w   d1,d5
+        subq.w  #1,d5
+        eor.w   d3,d5
+        andi.w  #0xC000,d5
+        bne.s   5f
+        move.w  d3,d7
+        bsr     rd8                     | leaves a0 = the slot's base
+        move.w  d3,d6
+        andi.w  #0x3FFF,d6
+        adda.w  d6,a0
+        bra.s   3f
+2:      move.w  d3,d5
+        add.w   d1,d5
+        bcs.s   5f
+        cmpi.w  #0xE000,d5
+        bhi.s   5f
+        movea.w d3,a0
+3:      movea.w d2,a1
+        move.w  d1,d6
+        subq.w  #1,d6
+4:      move.b  (a0)+,(a1)+
+        dbra    d6,4b
+        add.w   d1,d3
+        add.w   d1,d2
+        moveq   #0,d1
+        bclr    #1,d4
+        rts
+5:      bsr     z_ldi
+        tst.w   d1
+        bne.s   5b
+9:      bclr    #1,d4
+        rts
+z_lddr: bsr     z_ldd
+        tst.w   d1
+        bne.s   z_lddr
+        rts
+| CPI/CPIR/CPD/CPDR: Z = match, S from A-(HL), V = BC != 0, C kept
+z_cpi:  moveq   #1,d5
+        bra.s   cp_one
+z_cpd:  moveq   #-1,d5
+cp_one: move.w  d3,d7
+        bsr     rd8
+        add.w   d5,d3
+        subq.w  #1,d1
+        move.b  d0,d7
+        sub.b   d6,d7
+        move    sr,d6
+        andi.w  #0x0C,d6                | N Z
+        andi.w  #0x11,d4                | X C kept
+        or.w    d6,d4
+        tst.w   d1
+        beq.s   1f
+        bset    #1,d4
+1:      rts
+z_cpir: bsr.s   z_cpi
+        btst    #2,d4
+        bne.s   1f
+        btst    #1,d4
+        bne.s   z_cpir
+1:      rts
+z_cpdr: bsr.s   z_cpd
+        btst    #2,d4
+        bne.s   1f
+        btst    #1,d4
+        bne.s   z_cpdr
+1:      rts
+| OUTI/OUTD/OTIR/OTDR: out (C),(HL); HL+-; B-- ; Z = B == 0
+z_outi: move.w  d3,d7
+        bsr     rd8
+        addq.w  #1,d3
+        bra.s   out_one
+z_outd: move.w  d3,d7
+        bsr     rd8
+        subq.w  #1,d3
+out_one:
+        subi.w  #0x100,d1
+        move.b  d1,d7
+        bsr     port_out
+        moveq   #0,d4
+        cmpi.w  #0x100,d1
+        bcc.s   1f
+        moveq   #4,d4
+1:      rts
+z_otir: bsr.s   z_outi
+        cmpi.w  #0x100,d1
+        bcc.s   z_otir
+        rts
+z_otdr: bsr.s   z_outd
+        cmpi.w  #0x100,d1
+        bcc.s   z_otdr
+        rts
+| INI/IND/INIR/INDR
+z_ini:  move.b  d1,d7
+        bsr     port_in
+        move.w  d3,d7
+        bsr     wr8
+        addq.w  #1,d3
+        bra.s   in_b
+z_ind:  move.b  d1,d7
+        bsr     port_in
+        move.w  d3,d7
+        bsr     wr8
+        subq.w  #1,d3
+in_b:   subi.w  #0x100,d1
+        moveq   #0,d4
+        cmpi.w  #0x100,d1
+        bcc.s   1f
+        moveq   #4,d4
+1:      rts
+z_inir: bsr.s   z_ini
+        cmpi.w  #0x100,d1
+        bcc.s   z_inir
+        rts
+z_indr: bsr.s   z_ind
+        cmpi.w  #0x100,d1
+        bcc.s   z_indr
+        rts
+| RLD / RRD (A and (HL)); flags from A (S Z P), C kept
+z_rld:  move.w  d3,d7
+        bsr     rd8
+        moveq   #0,d5
+        move.b  d6,d5
+        lsl.w   #4,d5                   | (HL) << 4
+        move.b  d0,d6
+        andi.b  #0x0F,d6
+        or.b    d6,d5                   | low nibble of A in
+        move.w  d5,d6
+        lsr.w   #8,d6                   | old high nibble of (HL)
+        andi.b  #0xF0,d0
+        or.b    d6,d0
+        move.b  d5,d6
+        bsr     wr8
+        bra.s   rxd_f
+z_rrd:  move.w  d3,d7
+        bsr     rd8
+        moveq   #0,d5
+        move.b  d0,d5
+        lsl.w   #8,d5
+        move.b  d6,d5                   | A:(HL)
+        move.b  d6,d7
+        andi.b  #0x0F,d7                | low nibble of (HL) -> A
+        andi.b  #0xF0,d0
+        or.b    d7,d0
+        lsr.w   #4,d5
+        move.b  d5,d6                   | (A low << 4) | (HL) >> 4
+        move.w  d3,d7
+        bsr     wr8
+rxd_f:  andi.w  #0x11,d4
+        tst.b   d0
+        move    sr,d6
+        andi.w  #0x0C,d6
+        or.w    d6,d4
+        move.b  d0,d6
+        bra     parity_v
+
+| parity_v: d4 bit 1 (V) = even parity of d6.b (Z80 P/V after logic ops, shifts and IN)
+parity_v:
+        andi.w  #0xFF,d6
+        lea     PARITY,a0
+        bclr    #1,d4
+        tst.b   0(a0,d6.w)
+        beq.s   1f
+        bset    #1,d4
+1:      rts
+
+| ------------------------------------------------------------------------------------------------- video back end
+        .ifndef VIDEO_MODE
+        .equ VIDEO_MODE, 5
+        .endif
+
+        .if VIDEO_MODE == 5
+| --- Mode 5 translation (back end B) ---
+
+| vdpw_ctrl: d6.b = byte written to $BF
+vdpw_ctrl:
+        tst.b   (VLATCH).w
+        bne.s   1f
+        move.b  d6,(VLOW).w
+        move.b  d6,(VADDR+1).w
+        st      (VLATCH).w
+        rts
+1:      sf      (VLATCH).w
+        move.b  d6,d5
+        lsr.b   #6,d5
+        move.b  d5,(VCODE).w
+        andi.b  #0x3F,d6
+        move.b  d6,(VADDR).w
+        cmpi.b  #2,d5
+        beq.s   3f
+        tst.b   d5
+        bne.s   2f
+        move.w  (VADDR).w,d5
+        lea     VSHADOW,a0
+        move.b  0(a0,d5.w),(VBUF).w
+        addq.w  #1,d5
+        andi.w  #0x3FFF,d5
+        move.w  d5,(VADDR).w
+2:      rts
+3:      andi.w  #0x0F,d6
+        move.b  (VLOW).w,d5
+        move.w  sr,-(sp)
+        ori     #0x0700,sr
+        bsr.s   vdp_setreg
+        move.w  (sp)+,sr
+        rts
+
+| vdp_setreg: d6.w = register, d5.b = value
+vdp_setreg:
+        lea     (VREGS).w,a0
+        move.b  d5,0(a0,d6.w)
+        add.w   d6,d6
+        move.w  regtab(pc,d6.w),d6
+        jmp     regtab(pc,d6.w)
+regtab: .word r0-regtab, r1-regtab, r2-regtab, rnop-regtab, rnop-regtab, r5-regtab, r6-regtab, r7-regtab
+        .word r8-regtab, rnop-regtab, r10-regtab, rnop-regtab, rnop-regtab, rnop-regtab, rnop-regtab, rnop-regtab
+r0:     moveq   #0x10,d7
+        and.b   d5,d7
+        ori.w   #0x8004,d7
+        move.w  d7,(VDPC).l
+        st      (SATDIRTY).w
+rnop:   rts
+r1:     moveq   #0x40,d7
+        and.b   d5,d7
+        ori.w   #0x8124,d7
+        move.w  d7,(VDPC).l
+        st      (SATDIRTY).w
+        rts
+r2:     moveq   #0x0E,d7
+        and.b   d5,d7
+        lsl.w   #8,d7
+        lsl.w   #2,d7
+        cmp.w   (NTBASE).w,d7
+        beq.s   rnop
+        move.w  d7,(NTBASE).w
+        bra     nt_rebuild
+r5:     moveq   #0x7E,d7
+        and.b   d5,d7
+        lsl.w   #7,d7
+        move.w  d7,(SATBASE).w
+        st      (SATDIRTY).w
+        rts
+r6:     st      (SATDIRTY).w
+        rts
+r7:     moveq   #0x0F,d7
+        and.b   d5,d7
+        move.w  d7,d6
+        ori.w   #0x8710,d7
+        move.w  d7,(VDPC).l
+        lea     (CRAMSH+16).w,a0
+        move.b  0(a0,d6.w),d6
+        moveq   #(3*16+14),d7
+        bra     cram_put
+r8:     moveq   #0,d7
+        move.b  d5,d7
+        move.l  #0x5C000003,(VDPC).l    | H scroll table $DC00, plane A
+        move.w  d7,(VDPD).l
+        rts
+r10:    moveq   #0,d7
+        move.b  d5,d7
+        ori.w   #0x8A00,d7
+        move.w  d7,(VDPC).l
+        rts
+
+| vdpw_data: d6.b = byte written to $BE
+vdpw_data:
+        move.w  sr,-(sp)
+        ori     #0x0700,sr
+        sf      (VLATCH).w
+        move.w  (VADDR).w,d5
+        move.b  d6,(VBUF).w
+        cmpi.b  #3,(VCODE).w
+        beq.s   cram_w
+        lea     VSHADOW,a0
+        move.b  d6,0(a0,d5.w)
+        move.w  d5,d7
+        sub.w   (NTBASE).w,d7
+        cmpi.w  #0x700,d7
+        bcs      nt_w
+        move.w  d5,d7
+        sub.w   (SATBASE).w,d7
+        cmpi.w  #0x100,d7
+        bcs.s   sat_w
+        moveq   #3,d7
+        and.w   d5,d7
+        cmpi.w  #3,d7
+        bne.s   dnext
+        bsr     tile_row
+dnext:  addq.w  #1,d5
+        andi.w  #0x3FFF,d5
+        move.w  d5,(VADDR).w
+        move.w  (sp)+,sr
+        rts
+sat_w:  st      (SATDIRTY).w
+        bra.s   dnext
+cram_w: moveq   #0x1F,d7
+        and.w   d5,d7
+        lea     (CRAMSH).w,a0
+        move.b  d6,0(a0,d7.w)
+        move.w  d5,-(sp)
+        move.w  d7,-(sp)
+        move.b  d6,-(sp)
+        bsr     cram_put                | Genesis entry = SMS entry (line 0 = BG, line 1 = sprites)
+        move.b  (sp)+,d6
+        move.w  (sp)+,d7
+        tst.w   d7
+        bne.s   1f
+        moveq   #(3*16+15),d7           | BG colour 0 -> the solid plane B
+        bsr     cram_put
+        bra.s   2f
+1:      moveq   #0x0F,d5
+        and.b   (VREGS+7).w,d5
+        addi.w  #16,d5
+        cmp.w   d5,d7
+        bne.s   2f
+        moveq   #(3*16+14),d7           | backdrop colour -> the window band
+        bsr     cram_put
+2:      move.w  (sp)+,d5
+        bra.s   dnext
+
+| cram_put: d7.w = Genesis CRAM entry (0-63), d6.b = SMS colour (--BBGGRR)
+cram_put:
+        andi.w  #0x3F,d6
+        add.w   d6,d6
+        lea     GENCOL,a1
+        move.w  0(a1,d6.w),d6
+        add.w   d7,d7
+        swap    d7
+        clr.w   d7
+        ori.l   #0xC0000000,d7
+        move.l  d7,(VDPC).l
+        move.w  d6,(VDPD).l
+        rts
+
+| nt_w: name table byte written (d5 = VRAM address, d7 = offset in the name table)
+nt_w:   andi.w  #0xFFFE,d7
+        bsr.s   nt_put
+        bra      dnext
+| nt_put: d7.w = entry offset (index * 2): converts the shadow's entry and writes it to plane A (rows 0-3 again at rows 28-31)
+nt_put: move.l  d0,-(sp)
+        lea     VSHADOW,a0
+        adda.w  (NTBASE).w,a0
+        adda.w  d7,a0
+        moveq   #0,d0
+        move.b  1(a0),d0
+        add.w   d0,d0
+        lea     NTHI,a1
+        move.w  0(a1,d0.w),d0
+        or.b    (a0),d0
+        move.w  d7,d6
+        swap    d6
+        clr.w   d6
+        ori.l   #0x40000003,d6          | VRAM $C000 + offset
+        move.l  d6,(VDPC).l
+        move.w  d0,(VDPD).l
+        cmpi.w  #256,d7
+        bcc.s   1f
+        addi.l  #0x07000000,d6
+        move.l  d6,(VDPC).l
+        move.w  d0,(VDPD).l
+1:      move.l  (sp)+,d0
+        rts
+
+nt_rebuild:
+        moveq   #0,d7
+1:      bsr.s   nt_put
+        addq.w  #2,d7
+        cmpi.w  #0x700,d7
+        bcs.s   1b
+        rts
+
+| tile_row: d5 = VRAM address of the row's last byte: converts the 4 planar bytes to one packed long at the same address
+tile_row:
+        move.l  d0,-(sp)
+        move.w  d5,d7
+        andi.w  #0x3FFC,d7
+        lea     VSHADOW,a0
+        adda.w  d7,a0
+        lea     TT,a1
+        moveq   #0,d6
+        move.b  (a0)+,d6
+        add.w   d6,d6
+        add.w   d6,d6
+        move.l  0(a1,d6.w),d0
+        lea     1024(a1),a1
+        moveq   #0,d6
+        move.b  (a0)+,d6
+        add.w   d6,d6
+        add.w   d6,d6
+        or.l    0(a1,d6.w),d0
+        lea     1024(a1),a1
+        moveq   #0,d6
+        move.b  (a0)+,d6
+        add.w   d6,d6
+        add.w   d6,d6
+        or.l    0(a1,d6.w),d0
+        lea     1024(a1),a1
+        moveq   #0,d6
+        move.b  (a0)+,d6
+        add.w   d6,d6
+        add.w   d6,d6
+        or.l    0(a1,d6.w),d0
+        swap    d7
+        clr.w   d7
+        ori.l   #0x40000000,d7
+        move.l  d7,(VDPC).l
+        move.l  d0,(VDPD).l
+        move.l  (sp)+,d0
+        rts
+
+| vdpr_data / vdpr_stat: -> d6.b
+vdpr_data:
+        sf      (VLATCH).w
+        move.b  (VBUF).w,d6
+        move.w  (VADDR).w,d5
+        lea     VSHADOW,a0
+        move.b  0(a0,d5.w),(VBUF).w
+        addq.w  #1,d5
+        andi.w  #0x3FFF,d5
+        move.w  d5,(VADDR).w
+        rts
+vdpr_stat:
+        sf      (VLATCH).w
+        move.b  (VSTAT).w,d6
+        sf      (VSTAT).w
+        sf      (LINEFLAG).w
+        rts
+
+| sat_upload (in VInt, every register free): the SMS sprite table -> Genesis sprites (8x8 or 8x16, palette line 1, low priority)
+sat_upload:
+        lea     VSHADOW,a0
+        adda.w  (SATBASE).w,a0
+        lea     128(a0),a2
+        lea     (VDPD).l,a1
+        move.l  #0x58000003,(VDPC).l    | VRAM $D800
+        move.w  #0x2000,d4
+        btst    #2,(VREGS+6).w
+        beq.s   1f
+        move.w  #0x2100,d4
+1:      moveq   #0,d3
+        btst    #1,(VREGS+1).w
+        beq.s   2f
+        moveq   #1,d3
+2:      moveq   #0,d2
+        btst    #3,(VREGS+0).w
+        beq.s   3f
+        moveq   #8,d2
+3:      moveq   #0,d1
+        moveq   #63,d7
+        move.w  d3,d5
+        lsl.w   #8,d5                   | size bits in the high byte
+4:      moveq   #0,d0
+        move.b  (a0)+,d0
+        cmpi.b  #0xD0,d0
+        beq.s   8f
+        addq.w  #1,d0
+        cmpi.w  #0xF0,d0
+        bcs.s   5f
+        subi.w  #0x100,d0
+5:      addi.w  #128,d0
+        move.w  d0,(a1)
+        addq.w  #1,d1
+        move.w  d1,d6
+        andi.w  #0x3F,d6
+        or.w    d5,d6
+        move.w  d6,(a1)
+        moveq   #0,d6
+        move.b  1(a2),d6
+        tst.w   d3
+        beq.s   6f
+        andi.b  #0xFE,d6
+6:      or.w    d4,d6
+        move.w  d6,(a1)
+        moveq   #0,d6
+        move.b  (a2),d6
+        addi.w  #128,d6
+        sub.w   d2,d6
+        move.w  d6,(a1)
+        addq.l  #2,a2
+        dbra    d7,4b
+8:      tst.w   d1
+        bne.s   9f
+        moveq   #0,d0
+        move.l  d0,(a1)
+        move.l  d0,(a1)
+        rts
+9:      subq.w  #1,d1
+        lsl.w   #3,d1
+        addi.w  #0x1802,d1
+        swap    d1
+        clr.w   d1
+        ori.l   #0x40000003,d1
+        move.l  d1,(VDPC).l
+        move.w  d5,(a1)
+        rts
+
+        .else
+| --- Mode 4 pass-through (back end A): STUB, untested; for a console that proves Mode 4 works from Genesis mode ---
+| The idea: leave the VDP in Mode 4, send the game's bytes straight to it; only the interrupts and the pad stay translated.
+vdpw_ctrl:
+        move.b  d6,d5
+        tst.b   (VLATCH).w
+        bne.s   1f
+        move.b  d6,(VLOW).w
+        st      (VLATCH).w
+        rts
+1:      sf      (VLATCH).w
+        lsl.w   #8,d6
+        move.b  (VLOW).w,d6
+        move.w  d6,(VDPC).l
+        lsr.w   #8,d6
+        cmpi.b  #0x80,d6
+        bcs.s   2f
+        andi.w  #0x0F,d6
+        move.b  (VLOW).w,d5
+        lea     (VREGS).w,a0
+        move.b  d5,0(a0,d6.w)
+2:      rts
+vdpw_data:
+        sf      (VLATCH).w
+        move.b  d6,d5
+        lsl.w   #8,d6
+        move.b  d5,d6
+        move.w  d6,(VDPD).l
+        rts
+vdpr_data:
+        sf      (VLATCH).w
+        move.w  (VDPD).l,d6
+        rts
+vdpr_stat:
+        sf      (VLATCH).w
+        move.w  (VDPC).l,d6
+        rts
+sat_upload:
+        rts
+        .endif

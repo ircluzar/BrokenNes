@@ -229,9 +229,19 @@ internal static class SmsRunCli
             board.InstructionHook = pc => { prevI?.Invoke(pc); ggSites.OnInstruction(pc); };
             board.PortHook = (w, port, v, line, cyc) => { prevP?.Invoke(w, port, v, line, cyc); ggSites.OnPort(w, port, v); };
         }
+        // --md-sites <file.json>: the SMS -> Genesis translator's dynamic pass (SmsMdSitesTrace)
+        SmsMdSitesTrace? mdSites = null;
+        if (Opt("md-sites") != null)
+        {
+            mdSites = new SmsMdSitesTrace(board);
+            var prevI = board.InstructionHook;
+            board.InstructionHook = pc => { prevI?.Invoke(pc); mdSites.OnInstruction(pc); };
+            board.DebugTap = mdSites;
+        }
         for (int f = fStart; f < frames; f++)
         {
             ggSites?.OnFrame();
+            mdSites?.OnFrame();
             if (script1.TryGetValue(f, out var h1)) p1 = h1;
             if (script2.TryGetValue(f, out var h2)) p2 = h2;
             session.SetPad(0, p1); session.SetPad(1, p2);
@@ -347,6 +357,7 @@ internal static class SmsRunCli
         }
         double secs = sw.Elapsed.TotalSeconds;
         pcLog?.Dispose(); watchLog?.Dispose();
+        if (mdSites != null) { mdSites.Write(Opt("md-sites")!); Console.WriteLine($"md-sites: {Opt("md-sites")}"); }
         if (ggSites != null) { ggSites.Write(Opt("gg-sites")!); Console.WriteLine($"gg-sites: {Opt("gg-sites")}"); }
         foreach (var t in trace) Console.WriteLine(t);
         if (Opt("wav") is { } wav) { MixWav(wav, pcm.ToArray(), session.SampleRate); Console.WriteLine($"wrote {wav} ({pcm.Count / (double)session.SampleRate:F1} s)"); }
