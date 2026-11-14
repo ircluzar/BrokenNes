@@ -4,28 +4,30 @@
   {
    "id": "vrun_ctw_sms",
    "translation": {
-    "out_sha256": "96c2a1fa582551a5e974897799f14b298197512246ae8cfb1bf34b44d8971fb4",
-    "out_size": 1187468,
-    "instructions": 25626,
+    "out_sha256": "3e50af94d5bd83201a6ca035b43dd4d79e95dff0cba31d0edd7d3d8b101bea4a",
+    "out_size": 1228450,
+    "instructions": 37884,
     "stats": {
-     "ins": 25613,
+     "ins": 37756,
      "mem_fast": 1494,
-     "mem_checked": 2069,
-     "dyn_jumps": 16,
-     "otir_loops": 7
+     "outi_run_entries": 127,
+     "mem_checked": 3362,
+     "dyn_jumps": 19,
+     "replaced": 2,
+     "otir_loops": 1
     }
    },
    "boot": {
     "titleFrame": 110,
-    "delay": 85,
-    "match": 0.9976,
-    "seedShift": 8
+    "delay": 145,
+    "match": 0.997,
+    "seedShift": -15
    },
    "md": {
-    "frames": 1569,
-    "irqs": 2859,
-    "halts": 2634,
-    "idleFrames": 1368,
+    "frames": 1606,
+    "irqs": 2890,
+    "halts": 2575,
+    "idleFrames": 1322,
     "error": false,
     "errKind": 0,
     "errAddr": 0
@@ -33,17 +35,17 @@
    "idle": {
     "smsHaltFrames": 1410,
     "smsFrames": 1500,
-    "mdHaltFrames": 1368,
-    "mdFrames": 1593
+    "mdHaltFrames": 1322,
+    "mdFrames": 1630
    },
    "picture": {
     "samples": 139,
-    "meanMatch": 0.9875,
-    "minMatch": 0.9679,
-    "exact": 3,
-    "lagStart": -8,
-    "lagEnd": -4,
-    "lagMax": 28
+    "meanMatch": 0.9854,
+    "minMatch": 0.8071,
+    "exact": 1,
+    "lagStart": 8,
+    "lagEnd": 0,
+    "lagMax": 82
    },
    "input": [
     {
@@ -56,7 +58,7 @@
      "frame": 300,
      "button": "A",
      "sms": 3,
-     "md": 5
+     "md": 2
     },
     {
      "frame": 500,
@@ -74,25 +76,25 @@
      "frame": 800,
      "button": "Right",
      "sms": 2,
-     "md": 4
+     "md": 2
     },
     {
      "frame": 1000,
      "button": "Right+A",
      "sms": 29,
-     "md": 13
+     "md": 0
     },
     {
      "frame": 1020,
      "button": "Right",
      "sms": 9,
-     "md": 29
+     "md": 3
     },
     {
      "frame": 1200,
      "button": "Left+B",
      "sms": 2,
-     "md": 4
+     "md": 0
     },
     {
      "frame": 1220,
@@ -104,7 +106,7 @@
      "frame": 1300,
      "button": "Up",
      "sms": 2,
-     "md": 0
+     "md": 1
     },
     {
      "frame": 1350,
@@ -115,8 +117,8 @@
    ],
    "sound": {
     "smsMeanRms": 2133.6,
-    "mdMeanRms": 2023.3,
-    "loudnessCorr": 0.384
+    "mdMeanRms": 1944.2,
+    "loudnessCorr": 0.027
    },
    "grade": "Glitchy"
   }
