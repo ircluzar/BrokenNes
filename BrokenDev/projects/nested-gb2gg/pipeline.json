@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "id": "gb2gg",
+  "name": "Nested GB: Game Boy -> Game Gear (proof of concept)",
+  "source": { "console": "gb", "extensions": [".gb"] },
+  "target": { "console": "gg", "extension": ".gg" },
+  "tool": "BrokenDev/tools/nested-everything/gb2gg.py",
+  "frontEnd": "BrokenDev/tools/nested-everything/sm83.py",
+  "cli": "brokendev.ps1 nested-everything gb2gg <in.gb> <out.gg> [-Feedback none|brokennes]",
+  "description": "Most SM83 opcodes are the same Z80 bytes, so the game runs as it is on the GG's Z80; the ~16 that differ are rewritten in place or through JP trampolines (ldh -> RST + port byte into an I/O + HRAM shadow, push/pop af with flag-layout tables, ld (hl+/-), DAA, EI, reti, halt). GB VRAM is the GG's cartridge RAM at $8000; once a frame the runtime turns the GB map / tiles / palette into GG name table, 4bpp tiles and colours. RAM code the game copies from ROM is found by the feedback pass (BrokenNes's GB core, Workshop --gbrun --pcs) and patched at its ROM source. The test harness is tools/nested-everything/gbpoc_test.py gg.",
+  "settings": [],
+  "status": "proof of concept: blargg cpu_instrs 06-ld r,r and 01-special pass on BrokenNes's GG core; 02-interrupts fails #3 (RST-based I/O writes a return address below SP); no sprites, sound, timer, window, MBC beyond bank select",
+  "defaultInputs": [
+    { "id": "boot", "frames": 1800, "input": "" }
+  ],
+  "grades": ["Perfect", "Playable", "Glitchy", "Boots only", "Black screen", "Build fails"],
+  "profiles": "none yet"
+}
