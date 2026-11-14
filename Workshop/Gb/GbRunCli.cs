@@ -74,6 +74,40 @@ internal static class GbRunCli
                 lastRegion = r; lastPc = pc;
             };
         }
+        // --pcs file: every executed instruction address as "bank:pc" (bank = the ROM bank in $4000-$7FFF, FF for
+        // RAM/HRAM). RAM PCs whose opcode bytes differed between executions get a third field ":v" (self-modifying /
+        // reloaded code). The Nested Everything GB front end (BrokenDev/tools/nested-everything/sm83.py) reads it.
+        // --stop-pc XXXX: stop at the first execution of that address and print the instruction / cycle counts.
+        string pcsOut = Opt("pcs", "");
+        int stopPc = Opt("stop-pc", "") is var sp && sp != "" ? Convert.ToInt32(sp, 16) : -1;
+        bool stopped = false;
+        var pcsSeen = new HashSet<int>();
+        var ramBytes = new Dictionary<int, int>();
+        var ramVolatile = new HashSet<int>();
+        if (pcsOut != "" || stopPc >= 0)
+        {
+            var prev = board.InstructionHook;
+            board.InstructionHook = pc =>
+            {
+                prev?.Invoke(pc);
+                if (pcsOut != "")
+                {
+                    if (pc >= 0x8000)
+                    {
+                        int bytes = board.Peek(pc) | board.Peek((ushort)(pc + 1)) << 8 | board.Peek((ushort)(pc + 2)) << 16;
+                        if (ramBytes.TryGetValue(pc, out var was)) { if (was != bytes) ramVolatile.Add(pc); }
+                        else ramBytes[pc] = bytes;
+                        pcsSeen.Add(0xFF0000 | pc);
+                    }
+                    else pcsSeen.Add((pc < 0x4000 ? 0 : (board.Cart.DebugRomIndex(pc) >> 14)) << 16 | pc);
+                }
+                if (pc == stopPc && !stopped)
+                {
+                    stopped = true;
+                    Console.WriteLine($"stop-pc ${pc:X4}: frame={board.FrameCount} instr={board.Cpu.Instructions} line={board.Ppu.LY}");
+                }
+            };
+        }
         var samples = new List<short>();
         var buf = new short[16384];
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -87,7 +121,10 @@ internal static class GbRunCli
             if (hash) foreach (var p in board.Ppu.FrameBuffer) { h ^= p; h *= 1099511628211; }
             if (shots.Contains(f + 1)) GbTestCli.SaveFrame(board, Path.Combine(outDir, $"{tag}_f{f + 1}.png"));
             if (board.Cpu.Locked) { Console.WriteLine($"CPU LOCKED at frame {f + 1}, PC=${board.Cpu.PC:X4}"); break; }
+            if (stopped) break;
         }
+        if (pcsOut != "")
+            File.WriteAllLines(pcsOut, pcsSeen.OrderBy(v => v).Select(v => $"{v >> 16:X2}:{v & 0xFFFF:X4}" + ((v >> 16) == 0xFF ? $":{ramBytes[v & 0xFFFF] & 0xFF:X2}{ramBytes[v & 0xFFFF] >> 8 & 0xFF:X2}{ramBytes[v & 0xFFFF] >> 16 & 0xFF:X2}" + (ramVolatile.Contains(v & 0xFFFF) ? ":v" : "") : "")));
         foreach (var t in trace) Console.WriteLine(t);
         if (wav != "") MixLabWav.Write(wav, samples.ToArray(), board.Apu.SampleRate);
         string savOut = Opt("sav-out", sav);
