@@ -1,0 +1,5 @@
+{
+  "game": "Donkey Kong (JU) [NROM-128, 8 KB CHR-ROM, horizontal mirroring]",
+  "entries": [],
+  "note": "Recursive descent from the vectors finds all of Donkey Kong's code: no dispatch miss in 1,100 frames of demo and play (2026-11-14)."
+}

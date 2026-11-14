@@ -636,6 +636,7 @@ io_wr_4014:                                   | 64 NES sprites -> the SAT (Y+121
 	move.w	d0,(a3)
 	move.w	d4,(a3)                       | size 1x1, link
 	addq.w	#1,d4
+	moveq	#0,d0
 	move.b	(a0)+,d0                      | tile
 	add.w	d5,d0
 	move.b	(a0)+,d1                      | attributes
