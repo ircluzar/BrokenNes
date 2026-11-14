@@ -37,6 +37,7 @@ internal static class MdRunCli
         var picHashAt = new HashSet<int>((M68kTestCli.Arg(args, "--pic-hash-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
         var pngAt = new HashSet<int>((M68kTestCli.Arg(args, "--png-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
         string? pngDir = M68kTestCli.Arg(args, "--png-dir");
+        var ramAt = new HashSet<int>((M68kTestCli.Arg(args, "--ram-at") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(int.Parse));
         if (pngDir != null) Directory.CreateDirectory(pngDir);
         // --sheet out.png --sheet-at 100,200,300: a contact sheet of the picture at those frames (4 across, half size, frame numbers on them), for looking at a whole run at once
         string? sheetPath = M68kTestCli.Arg(args, "--sheet");
@@ -246,6 +247,7 @@ internal static class MdRunCli
             if (hashAt.Contains(i + 1)) Console.WriteLine($"   frame {i + 1,5} hash: {StateHash(board):X16}");
             if (picHashAt.Contains(i + 1)) Console.WriteLine($"   frame {i + 1,5} picture {session.FrameWidth}x{session.FrameHeight} hash: {PicHash(session):X16}");
             if (pngAt.Contains(i + 1) && pngDir != null) WritePng(session, Path.Combine(pngDir, $"f{i + 1:D6}.png"));
+            if (ramAt.Contains(i + 1) && pngDir != null) File.WriteAllBytes(Path.Combine(pngDir, $"f{i + 1:D6}.ram.bin"), board.Ram);   // --ram-at 60,120: work RAM after those frames (Nested SMS -> Genesis)
             if (sheetPath != null && sheetAt.Contains(i + 1)) sheetFrames.Add((i + 1, ToBitmap(session.Frame, session.FrameWidth, session.FrameHeight)));
         }
         sw.Stop();

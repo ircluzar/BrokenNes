@@ -436,7 +436,7 @@ class Gen:
             return self.read8(o[1], into)
         if o[0] == 'n':
             return '#%d' % o[1]
-        if o[0] in ('m', 'ix') and o[1] != 'SP' and self.st.get('memory') != 'trust_ram' and self.site_ram_only(ins, False):
+        if self.st.get('guard_reads') in (True, 'true', '1', 1) and o[0] in ('m', 'ix') and o[1] != 'SP' and self.site_ram_only(ins, False):
             # guarded fast read: shared helpers (memcpy and friends) may get a ROM pointer the dynamic pass never saw
             if o[0] == 'm':
                 self.emit('move.w  %s,d7' % R16[o[1]])
@@ -524,6 +524,30 @@ class Gen:
         if cond:
             self.out.append('1:')
 
+    def call(self, ret, t):
+        """Z80 CALL: the return address on the Z80 stack, then a 68000 JSR with a shadow entry (Z80 return, Z80 SP) so the
+        matching RET can RTS straight back (return-address prediction); a mismatch takes z_ret_slow."""
+        self.push_const(ret)
+        if self.st.get('ret_predict', True) in (False, 'false', '0', 0):
+            self.jump(t)
+            return
+        self.raw('move.w  a5,-(sp)')
+        self.raw('move.w  #%d,-(sp)' % ret)
+        bank, slot = self.cur
+        s2 = t >> 14
+        static = None
+        if s2 == slot and (bank, slot, t) in self.p.ins:
+            static = lbl(bank, slot, t)
+        elif s2 == 0 and self.p.slot_banks[0] == {0} and (0, 0, t) in self.p.ins:
+            static = lbl(0, 0, t)
+        if static:
+            self.raw('jbsr    %s' % static)
+        else:
+            self.stats['dyn_jumps'] += 1
+            self.raw('move.w  #%d,d7' % t)
+            self.raw('jsr     (z_dispatch).l')
+        self.raw('addq.l  #4,sp')
+
     def push_const(self, v):
         self.raw('move.b  #%d,-(a5)' % (v >> 8))
         self.raw('move.b  #%d,-(a5)' % (v & 0xFF))
@@ -608,7 +632,9 @@ class Gen:
             return
         if op == 'EXX':
             self.raw('exg     d1,a4')
-            self.raw('exg     d2,a6')
+            self.emit('move.w  (DE2).w,d7')
+            self.emit('move.w  d2,(DE2).w')
+            self.emit('move.w  d7,d2')
             self.emit('move.w  (HL2).w,d7')
             self.emit('move.w  d3,(HL2).w')
             self.emit('move.w  d7,d3')
@@ -688,13 +714,11 @@ class Gen:
                 self.need_ccr()
                 self.flush()
                 self.raw('jb%s    2f' % INV[cc])
-                self.push_const(i.nxt)
-                self.jump(tgt)
+                self.call(i.nxt, tgt)
                 self.out.append('2:')
                 return
             self.flush()
-            self.push_const(i.nxt)
-            self.jump(a[1])
+            self.call(i.nxt, a[1])
             return
         if op in ('RET', 'RETI', 'RETN'):
             if a is not None:
@@ -755,8 +779,19 @@ class Gen:
         self.raw('jmp     z_unsupported')
 
     def ret_body(self):
+        if self.st.get('ret_predict', True) in (False, 'false', '0', 0):
+            self.pop_d7()
+            self.raw('jra     z_dispatch')
+            return
+        self.raw('move.w  a5,d5')
         self.pop_d7()
-        self.raw('jra     z_dispatch')
+        self.raw('cmp.w   4(sp),d7')
+        self.raw('bne.s   3f')
+        self.raw('cmp.w   6(sp),d5')
+        self.raw('bne.s   3f')
+        self.raw('rts')
+        self.out.append('3:')
+        self.raw('jra     z_ret_slow')
 
     def ld(self, i):
         a, b = i.a, i.b
@@ -764,8 +799,16 @@ class Gen:
             if b[0] == 'r' and a[1] == b[1]:
                 return
             if a[1] in LOW8:
+                if b[0] == 'r' and b[1] in HIGH8:
+                    self.read8(b[1], LOW8[a[1]])          # straight into the destination
+                    return
                 src = self.src8(i, b, 'd6')
                 self.emit('move.b  %s,%s' % (src, LOW8[a[1]]))
+            elif a[1] in HIGH8 and b[0] == 'n':
+                d = HIGH8[a[1]]
+                self.emit('andi.w  #0x00FF,%s' % d)
+                if b[1]:
+                    self.emit('ori.w   #0x%02X00,%s' % (b[1], d))
             else:
                 src = self.src8(i, b, 'd6')
                 self.write8(a[1], src)
@@ -978,6 +1021,15 @@ class Gen:
             cls = p & 0xC1
             if cls in (0x40, 0x41):
                 self.emit('move.b  d0,(PSGP).l')
+            elif cls == 0x80 and self.st.get('video') != 'mode4':
+                # inline data-port write: into the shadow at the VDP address (a6), unit marked for the VInt flush
+                self.raw('sf      (VLATCH).w')
+                self.emit('move.b  d0,(a6)+')
+                self.emit('move.w  a6,d7')
+                self.emit('subq.w  #1,d7')
+                self.emit('lsr.w   #5,d7')
+                self.raw('lea     (DIRTY).w,a0')
+                self.emit('st      0(a0,d7.w)')
             elif cls == 0x80:
                 self.emit('move.b  d0,d6')
                 self.emit('jsr     (vdpw_data).l')
@@ -1073,6 +1125,9 @@ class Gen:
             o.append('DTL_%d:' % s)
             for bnk in range(p.nbanks):
                 o.append('        .long %s' % ('DT_%02X_%d' % (bnk, s) if (bnk, s) in units else 'DT_ERR'))
+        o.append('BANKPTR:')
+        for bnk in range(p.nbanks):
+            o.append('        .long SMSROM+%d' % (bnk * 0x4000))
         o.append('DTL_ERR:')
         for bnk in range(p.nbanks):
             o.append('        .long DT_ERR')

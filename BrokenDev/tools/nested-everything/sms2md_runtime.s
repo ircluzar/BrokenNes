@@ -3,7 +3,7 @@
 | Z80 state in 68000 registers (the translated code and this runtime share it):
 |   d0.b A    d1.w BC   d2.w DE   d3.w HL   d4 F (as the 68000 CCR saved by MOVE SR: X N Z V C, see sms2md.py)
 |   a2 IX     a3 IY     a5 SP     (sign-extended: work RAM $C000-$DFFF is the Genesis's $FFC000-$FFDFFF)
-|   a4 BC'    a6 DE'    HL' A' F' in RAM
+|   a4 BC'    a6 the SMS VDP address (pointer into the VRAM shadow)    DE' HL' A' F' in RAM
 |   d5 d6 d7 a0 a1: scratch. Helpers take an address in d7.w, a value in d6.b and may clobber d5-d7/a0/a1 unless they say so.
 |
 | Video back ends: VIDEO_MODE=5 (default, built here): the SMS VDP is emulated on top of Mode 5 (tiles converted from the SMS's
@@ -15,7 +15,9 @@
         .equ HVC,       0xC00008
         .equ PSGP,      0xC00011
         .equ VSHADOW,   0xFF0000        | 16 KB: the SMS VRAM as the game wrote it
-        .equ SRAMBUF,   0xFF4000        | 16 KB: cartridge RAM
+        .equ CRAMBUF,   0xFF4000        | 32 bytes: SMS colour RAM as written (right after VRAM: a6 points here in CRAM mode)
+        .equ SRAMBUF,   0xFF5000        | 8 KB: cartridge RAM
+        .equ DIRTY,     0xFFFFF200      | 513 bytes: a 32-byte unit of VSHADOW (512 = CRAM) written since the last flush
 | variables (absolute short: $FFF000-; the 68000 stack below them. Z80 pointers into $8000-$BFFF land on $FF8000-$FFBFFF, which holds nothing)
         .equ IFF,       0xFFFFF000
         .equ VLATCH,    0xFFFFF001
@@ -36,6 +38,7 @@
         .equ SRAMON,    0xFFFFF040
         .equ MAPREG,    0xFFFFF041      | 4 bytes: $FFFC-$FFFF as written
         .equ HL2,       0xFFFFF046
+        .equ DE2,       0xFFFFF04C
         .equ A2V,       0xFFFFF048
         .equ F2V,       0xFFFFF04A
         .equ CRAMSH,    0xFFFFF050      | 32 bytes
@@ -49,6 +52,7 @@
         .equ ERRFLAG,   0xFFFFF084
         .equ NMIS,      0xFFFFF086
         .equ ERRFROM,   0xFFFFF094
+        .equ SHFLOOR,   0xFFFFF098      | 68000 SP at the current interrupt's entry: shadow return entries below it are its own
         .equ IDLEFR,    0xFFFFF08A      | frames in which the game reached its idle point (HALT or a profile's idle_pc)
         .equ IDLEFLAG,  0xFFFFF08E
         .equ LASTFR,    0xFFFFF090      | FRAMES at the last idle
@@ -79,7 +83,7 @@
         .long 0xFF0000, 0xFFFFFF
         .ascii "RA"
         .byte 0xF8, 0x20
-        .long 0x200001, 0x207FFF
+        .long 0x200001, 0x203FFF
         .ascii "            "
         .ascii "                                        "
         .ascii "JUE             "
@@ -161,7 +165,7 @@ boot:
         move.b  #1,(0xA130F1).l
         lea     0x200001,a0
         lea     SRAMBUF,a1
-        move.w  #0x3FFF,d1
+        move.w  #0x1FFF,d1
 12:     move.b  (a0),(a1)+
         addq.l  #2,a0
         dbra    d1,12b
@@ -191,8 +195,9 @@ boot:
         suba.l  a2,a2
         suba.l  a3,a3
         suba.l  a4,a4
-        suba.l  a6,a6
+        movea.l #VSHADOW,a6             | a6 = the SMS VDP's address register, as a pointer into the shadow
         movea.w #0xDFF0,a5
+        move.l  sp,(SHFLOOR).w
         move    #0x2000,sr
         jmp     Z80_RESET
 
@@ -237,7 +242,28 @@ z_dispatch:
         jmp     (a0)
 1:      cmpi.w  #MAGIC,d7
         bne     z_untranslated
-        rts                             | back into deliver / nmi_deliver
+        movea.l (SHFLOOR).w,a0          | back into isr_call, whatever shadow entries the handler left
+        lea     -4(a0),sp
+        rts
+
+| z_ret_slow: a RET whose shadow entry did not match (d7 = popped return address, d5 = Z80 SP before the pop).
+| Entries of frames the game left without returning (Z80 SP below this one) are dropped, then the top one is tried again.
+z_ret_slow:
+        addq.l  #1,(0xFFF0B0).l         | misses (diagnostic)
+        movea.l (SHFLOOR).w,a0
+        lea     -4(a0),a0
+1:      cmpa.l  a0,sp
+        bcc.s   9f
+        cmp.w   6(sp),d5
+        bls.s   2f
+        addq.l  #8,sp
+        bra.s   1b
+2:      cmp.w   4(sp),d7
+        bne.s   9f
+        cmp.w   6(sp),d5
+        bne.s   9f
+        rts
+9:      jra     z_dispatch
 
 | ------------------------------------------------------------------------------------------------- memory
 | rd8: d7.w address -> d6.b (d7 kept)
@@ -283,6 +309,29 @@ wr8:    cmpi.w  #0xC000,d7
 
 | mapper_set: d7.w = $FFFC-$FFFF, d6.b = value (d7 kept)
 mapper_set:
+        cmpi.w  #0xFFFE,d7              | slot 1 / slot 2 bank (ROM): table look-ups only
+        bcs.s   mapper_full
+        tst.b   (SRAMON).w
+        bne.s   mapper_full
+        moveq   #0,d5
+        move.b  d6,d5
+        andi.w  #NBANKS-1,d5
+        add.w   d5,d5
+        add.w   d5,d5
+        lea     BANKPTR,a0
+        cmpi.w  #0xFFFF,d7
+        beq.s   1f
+        move.b  d6,(MAPREG+2).w
+        move.l  0(a0,d5.w),(SLOTPTR+4).w
+        lea     DTL_1,a0
+        move.l  0(a0,d5.w),(SLOTDISP+4).w
+        rts
+1:      move.b  d6,(MAPREG+3).w
+        move.l  0(a0,d5.w),(SLOTPTR+8).w
+        lea     DTL_2,a0
+        move.l  0(a0,d5.w),(SLOTDISP+8).w
+        rts
+mapper_full:
         movem.l d0-d1/a1,-(sp)
         move.w  d7,d1
         andi.w  #3,d1
@@ -386,17 +435,27 @@ deliver:
         sf      (IFF).w
         addq.l  #1,(IRQS).w
         addq.b  #1,(ISRCNT).w
+        lea     Z80_IRQ,a0
+| isr_call: run the Z80 handler at a0 as an interrupt (return address MAGIC on the Z80 stack, a new shadow floor)
+isr_call:
         move.b  #(MAGIC>>8),-(a5)
         move.b  #(MAGIC&0xFF),-(a5)
         move.w  sr,-(sp)
+        move.l  (SHFLOOR).w,-(sp)
+        move.w  a5,-(sp)
+        move.w  #MAGIC,-(sp)
+        move.l  sp,(SHFLOOR).w
         move    #0x2000,sr
-        jsr     Z80_IRQ
+        jsr     (a0)
+        addq.l  #4,sp
+        move.l  (sp)+,(SHFLOOR).w
         move.w  (sp)+,sr
         rts
 
 vint:
         movem.l d0-d7/a0-a6,-(sp)
         addq.l  #1,(FRAMES).w
+        bsr     vdp_flush
         move.l  #0x40000010,(VDPC).l
         moveq   #0,d0
         move.b  (VREGS+9).w,d0
@@ -416,10 +475,9 @@ vint:
         move.w  d7,-(sp)
         sf      (IFF).w
         movem.l 2(sp),d0-d7/a0-a6       | the interrupted Z80 registers
-        move.b  #(MAGIC>>8),-(a5)
-        move.b  #(MAGIC&0xFF),-(a5)
-        move    #0x2000,sr
-        jsr     Z80_NMI
+        lea     Z80_NMI,a0
+        bsr     isr_call
+        move.l  a6,2+56(sp)
         move    #0x2600,sr
         move.w  (sp)+,d7
         move.b  d7,(IFF).w
@@ -429,6 +487,7 @@ vint:
         beq.s   9f
         movem.l (sp),d0-d7/a0-a6
         bsr     deliver
+        move.l  a6,56(sp)               | the VDP address the handler left (hardware state, not a register to restore)
 9:      movem.l (sp)+,d0-d7/a0-a6
         rte
 
@@ -444,6 +503,7 @@ hint:
         beq.s   9f
         movem.l (sp),d0-d7/a0-a6
         bsr     deliver
+        move.l  a6,56(sp)
 9:      movem.l (sp)+,d0-d7/a0-a6
         rte
 
@@ -474,6 +534,9 @@ z_idle: move.l  (FRAMES).w,d5
         beq.s   1f
         move.l  d5,(LASTFR).w
         addq.l  #1,(IDLEFR).w
+        moveq   #0,d5
+        move.b  (HVC).l,d5              | the line the frame's work ended on: sum for the harness's average load
+        add.l   d5,(0xFFF0B4).l
 1:      rts
 
 | read_pad (in VInt, every register free): PAD1 = SMS $DC (Genesis B = button 1, C = button 2, A = button 1 too), d2 = Start newly pressed
@@ -604,7 +667,38 @@ z_cpdr: bsr.s   z_cpd
         bne.s   z_cpdr
 1:      rts
 | OUTI/OUTD/OTIR/OTDR: out (C),(HL); HL+-; B-- ; Z = B == 0
-z_outi: move.w  d3,d7
+z_outi: cmpi.b  #0xBE,d1                | the VRAM upload case: (HL) straight into the shadow
+        bne.s   5f
+        .if VIDEO_MODE == 5
+        move.w  d3,d7
+        cmpi.w  #0xC000,d7
+        bcc.s   1f
+        move.w  d7,d6
+        rol.w   #4,d6
+        andi.w  #0x0C,d6
+        lea     (SLOTPTR).w,a0
+        movea.l 0(a0,d6.w),a0
+        andi.w  #0x3FFF,d7
+        move.b  0(a0,d7.w),(a6)+
+        bra.s   2f
+1:      andi.w  #0xDFFF,d7
+        movea.w d7,a0
+        move.b  (a0),(a6)+
+2:      sf      (VLATCH).w
+        move.w  a6,d5
+        subq.w  #1,d5
+        lsr.w   #5,d5
+        lea     (DIRTY).w,a0
+        st      0(a0,d5.w)
+        addq.w  #1,d3
+        subi.w  #0x100,d1
+        moveq   #0,d4
+        cmpi.w  #0x100,d1
+        bcc.s   3f
+        moveq   #4,d4
+3:      rts
+        .endif
+5:      move.w  d3,d7
         bsr     rd8
         addq.w  #1,d3
         bra.s   out_one
@@ -614,13 +708,18 @@ z_outd: move.w  d3,d7
 out_one:
         subi.w  #0x100,d1
         move.b  d1,d7
-        bsr     port_out
+        cmpi.b  #0xBE,d7
+        bne.s   2f
+        bsr     vdpw_data
+        bra.s   3f
+2:      bsr     port_out
+3:
         moveq   #0,d4
         cmpi.w  #0x100,d1
         bcc.s   1f
         moveq   #4,d4
 1:      rts
-z_otir: bsr.s   z_outi
+z_otir: bsr     z_outi
         cmpi.w  #0x100,d1
         bcc.s   z_otir
         rts
@@ -715,26 +814,28 @@ vdpw_ctrl:
         tst.b   (VLATCH).w
         bne.s   1f
         move.b  d6,(VLOW).w
-        move.b  d6,(VADDR+1).w
         st      (VLATCH).w
         rts
 1:      sf      (VLATCH).w
         move.b  d6,d5
         lsr.b   #6,d5
         move.b  d5,(VCODE).w
-        andi.b  #0x3F,d6
-        move.b  d6,(VADDR).w
+        moveq   #0x3F,d7
+        and.b   d6,d7
+        lsl.w   #8,d7
+        move.b  (VLOW).w,d7             | d7 = the 14-bit address
+        cmpi.b  #3,d5
+        bne.s   2f
+        andi.w  #0x1F,d7
+        ori.w   #0x4000,d7              | CRAM: a6 into CRAMBUF
+2:      movea.l #VSHADOW,a6
+        adda.w  d7,a6
         cmpi.b  #2,d5
         beq.s   3f
         tst.b   d5
-        bne.s   2f
-        move.w  (VADDR).w,d5
-        lea     VSHADOW,a0
-        move.b  0(a0,d5.w),(VBUF).w
-        addq.w  #1,d5
-        andi.w  #0x3FFF,d5
-        move.w  d5,(VADDR).w
-2:      rts
+        bne.s   4f
+        move.b  (a6)+,(VBUF).w          | read setup: the read-ahead buffer
+4:      rts
 3:      andi.w  #0x0F,d6
         move.b  (VLOW).w,d5
         move.w  sr,-(sp)
@@ -800,61 +901,93 @@ r10:    moveq   #0,d7
         move.w  d7,(VDPC).l
         rts
 
-| vdpw_data: d6.b = byte written to $BE
+| vdpw_data: d6.b = byte written to $BE (the translated OUT ($BE),A does the same inline): into the shadow, unit marked dirty;
+| vdp_flush converts at the next VInt
 vdpw_data:
-        move.w  sr,-(sp)
-        ori     #0x0700,sr
         sf      (VLATCH).w
-        move.w  (VADDR).w,d5
-        move.b  d6,(VBUF).w
-        cmpi.b  #3,(VCODE).w
-        beq.s   cram_w
-        lea     VSHADOW,a0
-        move.b  d6,0(a0,d5.w)
-        move.w  d5,d7
+        move.b  d6,(a6)+
+        move.w  a6,d5
+        subq.w  #1,d5
+        lsr.w   #5,d5
+        lea     (DIRTY).w,a0
+        st      0(a0,d5.w)
+        rts
+
+| vdp_flush (in VInt, every register but a6 free): convert the dirty units (tiles, name table entries, the SAT, CRAM)
+vdp_flush:
+        lea     (DIRTY).w,a2
+        moveq   #0,d2                   | unit number
+1:      tst.l   (a2)
+        bne.s   2f
+        addq.l  #4,a2
+        addq.w  #4,d2
+        cmpi.w  #512,d2
+        bcs.s   1b
+        bra.s   8f
+2:      moveq   #3,d3
+3:      tst.b   (a2)
+        beq.s   6f
+        sf      (a2)
+        move.w  d2,d4
+        lsl.w   #5,d4                   | unit address
+        move.w  d4,d7
         sub.w   (NTBASE).w,d7
         cmpi.w  #0x700,d7
-        bcs      nt_w
-        move.w  d5,d7
+        bcc.s   4f
+        moveq   #15,d1                  | 16 name table entries
+31:     bsr     nt_put
+        addq.w  #2,d7
+        dbra    d1,31b
+        bra.s   6f
+4:      move.w  d4,d7
         sub.w   (SATBASE).w,d7
         cmpi.w  #0x100,d7
-        bcs.s   sat_w
-        moveq   #3,d7
-        and.w   d5,d7
-        cmpi.w  #3,d7
-        bne.s   dnext
-        bsr     tile_row
-dnext:  addq.w  #1,d5
-        andi.w  #0x3FFF,d5
-        move.w  d5,(VADDR).w
-        move.w  (sp)+,sr
-        rts
-sat_w:  st      (SATDIRTY).w
-        bra.s   dnext
-cram_w: moveq   #0x1F,d7
-        and.w   d5,d7
-        lea     (CRAMSH).w,a0
-        move.b  d6,0(a0,d7.w)
-        move.w  d5,-(sp)
-        move.w  d7,-(sp)
-        move.b  d6,-(sp)
-        bsr     cram_put                | Genesis entry = SMS entry (line 0 = BG, line 1 = sprites)
-        move.b  (sp)+,d6
-        move.w  (sp)+,d7
-        tst.w   d7
-        bne.s   1f
+        bcc.s   5f
+        st      (SATDIRTY).w
+        bra.s   6f
+5:      move.w  d4,d5
+        addq.w  #3,d5
+        moveq   #7,d1                   | 8 tile rows
+51:     bsr     tile_row
+        addq.w  #4,d5
+        dbra    d1,51b
+6:      addq.l  #1,a2
+        addq.w  #1,d2
+        dbra    d3,3b
+        cmpi.w  #512,d2
+        bcs.s   1b
+8:      tst.b   (DIRTY+512).w
+        beq.s   9f
+        sf      (DIRTY+512).w
+        | CRAM: entries that changed
+        lea     CRAMBUF,a2
+        lea     (CRAMSH).w,a3
+        moveq   #0,d2
+10:     move.b  0(a2,d2.w),d6
+        cmp.b   0(a3,d2.w),d6
+        beq.s   12f
+        move.b  d6,0(a3,d2.w)
+        move.w  d2,d7
+        move.b  d6,d4
+        bsr     cram_put
+        tst.w   d2
+        bne.s   11f
+        move.b  d4,d6
         moveq   #(3*16+15),d7           | BG colour 0 -> the solid plane B
         bsr     cram_put
-        bra.s   2f
-1:      moveq   #0x0F,d5
+        bra.s   12f
+11:     moveq   #0x0F,d5
         and.b   (VREGS+7).w,d5
         addi.w  #16,d5
-        cmp.w   d5,d7
-        bne.s   2f
+        cmp.w   d5,d2
+        bne.s   12f
+        move.b  d4,d6
         moveq   #(3*16+14),d7           | backdrop colour -> the window band
         bsr     cram_put
-2:      move.w  (sp)+,d5
-        bra.s   dnext
+12:     addq.w  #1,d2
+        cmpi.w  #32,d2
+        bcs.s   10b
+9:      rts
 
 | cram_put: d7.w = Genesis CRAM entry (0-63), d6.b = SMS colour (--BBGGRR)
 cram_put:
@@ -870,10 +1003,6 @@ cram_put:
         move.w  d6,(VDPD).l
         rts
 
-| nt_w: name table byte written (d5 = VRAM address, d7 = offset in the name table)
-nt_w:   andi.w  #0xFFFE,d7
-        bsr.s   nt_put
-        bra      dnext
 | nt_put: d7.w = entry offset (index * 2): converts the shadow's entry and writes it to plane A (rows 0-3 again at rows 28-31)
 nt_put: move.l  d0,-(sp)
         lea     VSHADOW,a0
@@ -950,12 +1079,7 @@ tile_row:
 vdpr_data:
         sf      (VLATCH).w
         move.b  (VBUF).w,d6
-        move.w  (VADDR).w,d5
-        lea     VSHADOW,a0
-        move.b  0(a0,d5.w),(VBUF).w
-        addq.w  #1,d5
-        andi.w  #0x3FFF,d5
-        move.w  d5,(VADDR).w
+        move.b  (a6)+,(VBUF).w
         rts
 vdpr_stat:
         sf      (VLATCH).w
