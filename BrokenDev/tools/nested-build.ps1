@@ -44,6 +44,8 @@
                       (both NmiMode flags; nothing is written, so a build stays byte-identical to the earlier ones);
                       accurate = at a FIXED time, the SNES vblank, like the NES (NmiMode.AtVblank only, AutoDetect off).
                       Not given: the game's choice in projects\nested-core\games.json (keyed by -BaseProfile), else fast.
+.PARAMETER ExtraSettings extra injector settings, "Name=Value;Name=Value" (after the base profile and games.json 'settings'; e.g.
+                      "Cpu.DmcIrq=True", universal core step 70+)
 .PARAMETER Plans      brokennes: a JSON list of { "name", "frames", "input" } (Workshop pad scripts)
 .PARAMETER Rounds     brokennes: most build + play rounds
 .PARAMETER Minutes    harvest wall-clock budget
@@ -68,7 +70,8 @@ param(
     [string]$MesenSource = '',
     [string]$CoreDir = '',
     [string]$ExeDir = '',
-    [ValidateSet('', 'fast', 'accurate')][string]$Nmi = ''
+    [ValidateSet('', 'fast', 'accurate')][string]$Nmi = '',
+    [string]$ExtraSettings = ''
 )
 $ErrorActionPreference = 'Stop'
 # Which injector the pipeline loads: our fork's lib\nested.ps1 has Assert-InjectorHost (Project_Nested.dll, .NET 10, pwsh);
@@ -124,6 +127,21 @@ if (-not $Nmi -and $BaseProfile) {
 }
 Write-Host "nested-build: nmi $(if ($Nmi) { $Nmi } else { 'fast' }) from $nmiFrom"
 if ($Nmi -eq 'accurate') { $settings['NmiMode.AtVblank'] = 'True'; $settings['NmiMode.AutoDetect'] = 'False' }
+# Per-game injector settings from games.json ('settings', keyed by the base profile), then -ExtraSettings (not $Settings: PowerShell would make it the same variable as $settings)
+if ($BaseProfile) {
+    $gj = Join-Path $PSScriptRoot '..\projects
+ested-core\games.json'
+    if (Test-Path -LiteralPath $gj) {
+        $g = (Get-Content -LiteralPath $gj -Raw | ConvertFrom-Json).games
+        if ($g -and $g.PSObject.Properties[$BaseProfile] -and $g.$BaseProfile.PSObject.Properties['settings']) {
+            foreach ($p in $g.$BaseProfile.settings.PSObject.Properties) { $settings[$p.Name] = [string]$p.Value; Write-Host "nested-build: setting $($p.Name)=$($p.Value) from games.json" }
+        }
+    }
+}
+foreach ($kv in ($ExtraSettings -split ';' | Where-Object { $_.Trim() })) {
+    $i = $kv.IndexOf('='); if ($i -lt 1) { throw "-ExtraSettings: '$kv' is not Name=Value" }
+    $settings[$kv.Substring(0, $i).Trim()] = $kv.Substring($i + 1).Trim()
+}
 
 # ---- post-build steps --------------------------------------------------------------------------
 $postSteps = @()

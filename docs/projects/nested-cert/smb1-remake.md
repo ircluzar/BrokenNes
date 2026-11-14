@@ -165,3 +165,31 @@ sprite-0 wait that Nested already handles, or on MMC3 time the split with the sc
 
 **Verdict: m30 Jank, MMC3 Jank** (runs, plays, dies and continues correctly; picture wrong while scrolling; MMC3 boots 14
 steps behind the NES vs 6 on m30, so frame-exact replays diverge more often).
+
+## 2026-11-14 round 4: DMC IRQ in the core (fork lane-dmc, step 70)
+
+Core: fork branch `lane-dmc` a6ca856 (on nested-vrun-core b1967c8), profile `universal` step 70, md5 `f04a2545`.
+New universal-only step 70 `dmc_irq`, opt-in per game with the injector setting `Cpu.DmcIrq` (SelfMod hooks: games
+without it keep step 61's code and timing). SMB1 gets it from `BrokenDev/projects/nested-core/games.json` (`settings`,
+read by `nested-build.ps1`, new `-ExtraSettings` too). The `dmc_status` post-build patch is **dropped**: the real model
+ends DMC samples, so the arm's sync loop exits by itself (x = 2 polls) and IRQ 1 / IRQ 2 really run.
+
+How the IRQ is timed: end time in NES cycles from the NMI (a start inside the DMC IRQ handler counts from the previous
+end; first bit at the old rate: 54 + 8*P1 + 7*P2, the remake's generator formula). In NmiMode.AtVblank Nested has no NES
+scanline clock, so the IRQs due are delivered at the NES NMI's return, in order (the handler returns to the same point);
+IRQ 2 polls $2002 for sprite 0 and Nested moves its virtual scanline to the sprite-0 line, so the split lands there.
+
+Feedback brokennes as before (m30 106 entry points, MMC3 118). ROMs: `T:\BrokenDev\Releases\Nested_SMB1\2026-11-14_a6ca856`.
+
+| check | m30 | MMC3 |
+|---|---|---|
+| picture while scrolling (NES vs SNES, recorded polls 400/500/600, fuzz1 300-1500) | **PASS**: playfield scrolls smoothly with the camera, status bar fixed | **PASS** (same) |
+| lag (SNES, all 5 scenarios) | 0 | 0 (1 in verify play) |
+| logic steps behind the NES (recorded) | 7 constant | 14 constant |
+| lives diverge (verify / fuzz1 / fuzz2 / fuzz3) | 1386 / 1603 / 689 / 2079 (recorded: none) | 1392 / 1604 / 2497 / 2079 (recorded: none) |
+| `dmc_stage` | returns to 0 every frame (no more stuck at 1) | same |
+| sound | present (sweep: 1720 sound frames) | present |
+
+The step offset and the post-death divergence are the round-3 ones (not DMC related). `dmc_polls`/`dmc_p2` still differ
+(the SNES sync takes 2 polls, the NES a random 1-48). **Verdict: m30 Playable, MMC3 Playable** (was Jank: the picture fault
+is fixed; the remaining gap is the boot step offset).

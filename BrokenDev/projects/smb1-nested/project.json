@@ -31,11 +31,10 @@
           "-Python", "{python}",
           "-Work", "{work}/nested",
           "-BaseProfile", "d257beb1",
-          "-Post", "dmc_status",
           "-Feedback", "none"
         ],
         "timeoutSec": 1800,
-        "note": "dmc_status is required: the remake's DMC-IRQ timing routine loops on BIT $4015 until the DMC-active bit clears, and Project Nested never clears it (the SNES build would freeze at the title otherwise). The DMC IRQ itself is not emulated by Nested; play matches the NES without it."
+        "note": "Needs the universal core (step 70+): games.json gives this game Cpu.DmcIrq=True, which ends DMC samples and delivers the DMC IRQ that writes the status-bar split. The old dmc_status post-build patch is no longer used (it only made $4015 bit 4 read 0; the split never ran)."
       }
     ],
     "outputs": [
@@ -141,7 +140,7 @@
   },
   "knownIssues": [
     "Built from smb1-nes' ROM, which since 2026-10-22 comes from the live workspace (PROJECTS\\SMB1_Remake_dev) with the power-on RAM fix (its reset code zeroes NES RAM; smb1-nes knownIssues). The Nested build did not need it (the pipeline zeroes NES RAM too) and behaves the same with it: the same checks pass on the same frames.",
-    "Project Nested never clears the DMC-active bit of $4015 and never delivers the DMC IRQ; the dmc_status post-build step fixes the first, the second stays unemulated (the status-bar split runs from that IRQ on the NES; the profile of the 20261002 build records that play matched the NES anyway).",
+    "Since core step 70 (2026-11-14, Cpu.DmcIrq via games.json) Nested ends DMC samples and delivers the DMC IRQ at the NES NMI's return; the status-bar split now scrolls like the NES. With the vrun core (step 18) the setting does not exist: build this game on the universal core.",
     "No NES lag-frame emulation: long play drifts from the NES by a few frames (docs/GENERALITY.md row 21). Not specific to this game.",
     "This recipe uses no entry-point feedback, so the first run of each code path recompiles at run time. The 20261002 build had 178 harvested entry points (profile d257beb1).",
     "The SNES header title is the default 'Nested Emulator' unless a title is set."
