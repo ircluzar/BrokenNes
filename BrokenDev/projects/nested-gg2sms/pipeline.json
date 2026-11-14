@@ -10,7 +10,7 @@
   "settings": [
     { "id": "start", "type": "choice", "choices": ["both", "pause", "buttons12", "none"], "default": "both",
       "what": "Where GG Start comes from: the SMS Pause button (NMI; on a Genesis in SMS mode, the pad's Start), buttons 1+2 held together, both, or never" },
-    { "id": "start_hold", "type": "int", "min": 1, "max": 255, "default": 6,
+    { "id": "start_hold", "type": "int", "min": 1, "max": 255, "default": 7,
       "what": "How many frames port $00 shows Start held after one Pause press (Pause gives no release; counted by the VDP line counter wrapping)" },
     { "id": "region", "type": "choice", "choices": ["auto", "export", "japan"], "default": "auto",
       "what": "The region bit port $00 reports (auto: from the header, GG Japan -> japan)" },
