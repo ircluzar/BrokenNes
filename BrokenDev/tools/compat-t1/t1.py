@@ -644,6 +644,9 @@ def cmd_export(a):
     for sha in shas:
         rec = catalog.get(a.console, sha)
         src = rec.get("path") or rec["file"]["path"]
+        if not os.path.exists(src.split("#")[0]):
+            print("missing ROM, skipped:", rec["title"], src)
+            continue
         name = unpack_rom(src, os.path.join(a.out, "roms", sha), (rec.get("dump") or {}).get("fileSha1"))
         rec = dict(rec, path=os.path.join("roms", sha, name))
         rec.pop("file", None)
