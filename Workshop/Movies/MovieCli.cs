@@ -16,7 +16,7 @@ namespace BrokenNes.Workshop.Movies;
 /// name and extension: <see cref="MovieFormat"/>).
 /// <code>
 ///   --movie record  --rom R --frames N [--input "120:Start,132:"] [--input2 S] [--console c] [--cores C/P/A] [--power-on fceux|zeros|ones] [--ntsc]
-///                   [--key-every 60] [--sym F]... [--var name=expr]... [--build TEXT] [--start-state FILE] --out M.bnm
+///                   [--key-every 60] [--sym F]... [--var name=expr]... [--build TEXT] [--start-state FILE] [--png-at f1,f2 --png-dir D] --out M.bnm
 ///   --movie import  --fm2 F --rom R [--key-every 60] [--build TEXT] --out M.bnm          (an FCEUX movie, replayed here to fill the keyframes)
 ///   --movie play    --movie M [--rom R] [--cores C/P/A] [--sym F]... [--frames N] [--json]   0 every keyframe matched | 1 off course or crashed
 ///   --movie info    --movie M
@@ -50,15 +50,34 @@ internal static class MovieCli
                     var vars = All("var").Select(v => { int e = v.IndexOf('='); return e > 0 ? (v[..e].Trim(), v[(e + 1)..].Trim()) : throw new ArgumentException($"--var '{v}': name=expression"); }).ToList();
                     using var m = MovieMachine.Open(rom, Opt("console") is { Length: > 0 } c ? c : null, Opt("cores"), Opt("power-on", "fceux"), Has("ntsc"), true, All("sym"));
                     byte[]? st = Opt("start-state") is { Length: > 0 } sp ? File.ReadAllBytes(sp) : null;
-                    var mv = MoviePlayer.Record(m, Opt("input"), Opt("input2"), frames, int.Parse(Opt("key-every", "60"), CultureInfo.InvariantCulture), vars, Opt("build"), st);
+                    // --png-at f1,f2 --png-dir D: the picture after those frames (the NES: the compat T1 checker's checkpoints, one run for movie + pictures)
+                    var pngAt = Opt("png-at").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(long.Parse).ToHashSet();
+                    string pngDir = Opt("png-dir", ".");
+                    Action<long>? after = pngAt.Count == 0 || m.Host.Nes == null ? null : f =>
+                    {
+                        if (!pngAt.Contains(f)) return;
+                        Directory.CreateDirectory(pngDir);
+                        BrokenNes.Workshop.MixLab.MixLabCli.SaveRgba(m.Host.Nes.GetFrameBuffer(), 256, 240, Path.Combine(pngDir, $"f{f:D5}.png"));
+                    };
+                    var mv = MoviePlayer.Record(m, Opt("input"), Opt("input2"), frames, int.Parse(Opt("key-every", "60"), CultureInfo.InvariantCulture), vars, Opt("build"), st, after);
                     mv.Save(outFile);
                     Console.WriteLine($"recorded {outFile}: {mv.Frames} frames, {mv.Inputs.Count} input changes, {mv.Keys.Count} keyframes, {m.ConsoleKey} {m.Cores}{(mv.Vars.Count > 0 ? ", course: " + string.Join(", ", mv.Vars.Select(v => v.Name)) : "")}");
                     return 0;
                 }
                 case "import":
                 {
-                    string fm2 = Opt("fm2"), rom = Opt("rom"), outFile = Opt("out");
-                    if (fm2.Length == 0 || rom.Length == 0 || outFile.Length == 0) { Console.Error.WriteLine("import needs --fm2, --rom and --out"); return 2; }
+                    string fm2 = Opt("fm2"), bk2 = Opt("bk2"), rom = Opt("rom"), outFile = Opt("out");
+                    if (bk2.Length > 0 && rom.Length > 0 && outFile.Length > 0)
+                    {
+                        using var bm = MovieMachine.Open(rom, Opt("console") is { Length: > 0 } bc ? bc : null, Opt("cores"), Opt("power-on", "fceux"), Has("ntsc"), false);
+                        var notes = new List<string>();
+                        var bmv = MovieExport.FromBk2(bk2, bm, int.Parse(Opt("key-every", "60"), CultureInfo.InvariantCulture), Opt("build"), notes);
+                        bmv.Save(outFile);
+                        Console.WriteLine($"imported {bk2} -> {outFile}: {bmv.Frames} frames, {bmv.Inputs.Count} input changes, {bm.ConsoleKey}");
+                        foreach (var n in notes) Console.WriteLine("note: " + n);
+                        return 0;
+                    }
+                    if (fm2.Length == 0 || rom.Length == 0 || outFile.Length == 0) { Console.Error.WriteLine("import needs (--fm2 F | --bk2 F), --rom and --out"); return 2; }
                     using var m = MovieMachine.Open(rom, "nes", Opt("cores"), Opt("power-on", "fceux"), Has("ntsc"), false);
                     var mv = MovieExport.FromFm2(fm2, m, int.Parse(Opt("key-every", "60"), CultureInfo.InvariantCulture), Opt("build"));
                     mv.Save(outFile);
@@ -93,7 +112,7 @@ internal static class MovieCli
                     if (!sha.Equals(mv.RomSha256, StringComparison.OrdinalIgnoreCase)) { Console.Error.WriteLine($"the ROM is not the movie's (sha256 {sha}, the movie's {mv.RomSha256}): an export names the ROM it plays on"); return 2; }
                     MovieExport.Result res;
                     if (Opt("fm2") is { Length: > 0 } f) res = MovieExport.ToFm2(mv, rom, f);
-                    else if (Opt("bk2") is { Length: > 0 } b) res = MovieExport.ToBk2(mv, rom, b, Opt("core"));
+                    else if (Opt("bk2") is { Length: > 0 } b) res = MovieExport.ToBk2(mv, rom, b, Opt("core"), Opt("pad"));
                     else { Console.Error.WriteLine("export needs --fm2 OUT or --bk2 OUT"); return 2; }
                     Console.WriteLine($"wrote {res.Path}: {res.Frames} frames");
                     foreach (var n in res.Notes) Console.WriteLine("note: " + n);

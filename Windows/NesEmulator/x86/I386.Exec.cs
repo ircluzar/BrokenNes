@@ -510,7 +510,7 @@ public sealed partial class I386
             case 0:
             case 1:
             {
-                uint y0 = b;   // tiny386 quirk kept: the flags test uses the unmasked count (the 386 masks it to 5 bits first)
+                uint y0 = b & 0x1f;   // the 386 masks the count to 5 bits first: ROL/ROR by 32/64/... leave CF/OF alone (tiny386 tested the unmasked count)
                 int y = (int)(y0 & (uint)(bits - 1));
                 uint res = x;
                 if (y != 0)
@@ -792,8 +792,8 @@ public sealed partial class I386
     {
         if (!DecodeModrm()) return false;
         uint b = LReg(bits, _reg);
-        // the register form addresses outside the operand (tiny386 quirk kept: the offset is unsigned; the 386 treats it as signed)
-        if (_mod != 3) _addr += b / (uint)bits * (uint)(bits / 8);
+        // the register form addresses outside the operand; the bit offset is signed (tiny386 took it unsigned)
+        if (_mod != 3) _addr += (uint)(((int)Sext(bits, b) >> (bits == 16 ? 4 : 5)) * (bits / 8));
         if (!TranslateE(bits, op == 0 ? 1 : 3)) return false;
         BitOp(op, bits, b);
         return true;
@@ -1780,7 +1780,7 @@ public sealed partial class I386
                 if (!Fetch8(out imm)) return FAIL;
                 int bits = V;
                 imm = Sext8(imm) & (bits == 16 ? 0xffffu : 0xffffffffu);
-                if (_mod != 3) _addr += imm / (uint)bits * (uint)(bits / 8);   // tiny386 quirk kept (the 386 takes the immediate modulo the size only)
+                // the 386 takes the immediate modulo the operand size only (tiny386 also moved the address by imm / size)
                 if (!TranslateE(bits, _reg == 4 ? 1 : 3)) return FAIL;
                 BitOp(_reg - 4, bits, imm);
                 return OK;

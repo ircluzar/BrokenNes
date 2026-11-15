@@ -72,7 +72,7 @@ public partial class MdVdp
     public bool VintEnabled => (Reg[1] & 0x20) != 0;
     public bool HintEnabled => (Reg[0] & 0x10) != 0;
     public bool HvCounterLatch => (Reg[0] & 0x02) != 0;
-    public int ActiveLines => V30 ? 240 : 224;
+    public int ActiveLines => !Mode5 ? 192 : V30 ? 240 : 224;     // Mode 4 (M5 clear): the SMS's 192-line picture (see MdVdpMode4.cs)
     public int AutoIncrement => Reg[15];
     /// <summary>Interlace mode from register 12 bits 2-1: 0 off, 1 mode 1 (double-height lines), 3 mode 2.</summary>
     public int Interlace => Reg[12] >> 1 & 3;
@@ -597,6 +597,7 @@ public partial class MdVdp
 
     public void AcknowledgeInterrupt(int level)
     {
+        if (!Mode5) { if (level == 6) VintTaken++; else if (level == 4) HintTaken++; return; }     // Mode 4: the 68000's acknowledge clears nothing, the status read does
         if (level == 6) { vintPending = false; VintTaken++; }
         else if (level == 4)
         {
@@ -636,7 +637,7 @@ public partial class MdVdp
                 case DmaKind.Copy: StepCopy(); break;
             }
     }
-    private static int SlotsFor(int code) => (code & 0xF) == 1 ? 2 : 1;
+    private static int SlotsFor(int code) => (code & M4Code) != 0 ? ((code & 3) == 3 ? 1 : 2) : (code & 0xF) == 1 ? 2 : 1;
 
     /// <summary>The word the next FIFO write would overwrite: stale or not yet written, it is the data the chip holds in that entry, and a read of CRAM, VSRAM or the 8-bit VRAM target takes its unused bits from it.</summary>
     private ushort NextFifoData => fifo[fifoHead + fifoCount & 3].Data;
@@ -713,6 +714,7 @@ public partial class MdVdp
     /// <summary>Write a word to VRAM, CRAM or VSRAM at <paramref name="addr"/> (the address register as the command left it).</summary>
     private void WriteTarget(int c, uint addr, ushort data)
     {
+        if ((c & M4Code) != 0) { WriteTargetM4(c, addr, data); return; }
         switch (c & 0xF)
         {
             case 1:      // VRAM: a word at an odd address lands byte-swapped
@@ -745,6 +747,7 @@ public partial class MdVdp
     /// </summary>
     private ushort ReadSource(int c, uint addr)
     {
+        if ((c & M4Code) != 0) return ReadSourceM4(addr);
         ushort slot = NextFifoData;
         switch (c & 0xF)
         {
@@ -814,6 +817,7 @@ public partial class MdVdp
     {
         RunTo(t);
         ControlWrites++;
+        if (!Mode5) { WriteControlM4(value); return; }
         if (!pendingCommand)
         {
             if ((value & 0xC000) == 0x8000)
@@ -844,8 +848,10 @@ public partial class MdVdp
         if (LineIsActive) { ActiveRegWrites++; if (reg < 24) ActiveRegWritesBy[reg]++; }
         SyncRender();
         if (reg is 1 or 7 or 12) RewindIndexStage();      // the display switch, the backdrop colour and the shadow mode act at the output, not at the fetch the stage runs ahead with
+        bool wasMode5 = Mode5;
         Reg[reg] = value;
-        if (reg == 0) hvLatched = (value & 2) == 0 ? -1 : hvLatched >= 0 ? hvLatched : HvNow();
+        if (reg == 0 && Mode5) hvLatched = (value & 2) == 0 ? -1 : hvLatched >= 0 ? hvLatched : HvNow();
+        if (reg == 1 && wasMode5 != Mode5) OnModeSwitch(wasMode5);
         if (reg == 1 && VintEnabled && !vintBefore) vintEnableFrom = Time + IplDelayMasterClocks;
         if (reg == 0 && HintEnabled && !hintBefore) hintEnableFrom = Time + IplDelayMasterClocks;
         if (reg == 0 && LineOffset < (H40 ? HintLatchClock : HintLatchClockH32)) hintEnNext = HintEnabled;
@@ -858,7 +864,7 @@ public partial class MdVdp
         readCacheCode = code; readCacheAddress = address;
         readStale = fifoCount > 0;
         readBuffer = ReadSource(code, address);
-        address = (address + (uint)AutoIncrement) & 0x1FFFF;
+        address = StepAddress(address);
         readReadyAt = NextFreeSlot(Math.Max(Time, slotCursor));
     }
 
@@ -884,7 +890,7 @@ public partial class MdVdp
             return;
         }
         PushFifo(code, address, value);
-        address = (address + (uint)AutoIncrement) & 0x1FFFF;
+        address = StepAddress(address);
         if (fillArmed)
         {
             // the word that starts a fill is written like any other (it went into the FIFO above, to whatever target the code register names now); the fill that follows repeats its high byte
@@ -904,7 +910,7 @@ public partial class MdVdp
         RunTo(t);
         WaitForDmaIdle();
         pendingCommand = false;
-        if ((code & 1) != 0) return lastFifoData;      // reading while a write command is set returns the FIFO's last word
+        if ((code & 1) != 0 && Mode5) return lastFifoData;      // reading while a write command is set returns the FIFO's last word
         // make sure the FIFO has drained and the read-ahead has had its slot
         while (fifoCount > 0) AdvanceWork();
         if (readStale) { readBuffer = ReadSource(readCacheCode, readCacheAddress); readStale = false; }      // the writes queued ahead of the read have landed: it sees them
@@ -912,7 +918,7 @@ public partial class MdVdp
         ushort data = readBuffer;
         readCacheCode = code; readCacheAddress = address;
         readBuffer = ReadSource(code, address);
-        address = (address + (uint)AutoIncrement) & 0x1FFFF;
+        address = StepAddress(address);
         readReadyAt = NextFreeSlot(Math.Max(Time, slotCursor));
         return data;
     }
@@ -929,6 +935,7 @@ public partial class MdVdp
         if (sprOverflow) s |= 0x40;
         if (sprCollision) s |= 0x20;
         sprOverflow = sprCollision = false;
+        if (!Mode5) { vintPending = false; hintPending = false; }      // Mode 4: the status read is the only acknowledge (MacDonald 2013)
         if (oddFrame) s |= 0x10;
         if (VBlankFlag || !DisplayEnabled) s |= 0x08;
         if (InHBlank) s |= 0x04;
@@ -1014,6 +1021,7 @@ public partial class MdVdp
     /// <summary>The 8-bit V counter value for <paramref name="line"/> (the sequences of the hardware: NTSC V28 $00-$EA then $E5-$FF, ...).</summary>
     public int VCounterFor(int line)
     {
+        if (!Mode5) return Region == SegaRegion.Ntsc ? (line <= 0xDA ? line : line - 6) : (line <= 0xF2 ? line : line - 0x39);     // Mode 4, 192 lines: the SMS sequences $00-$DA,$D5-$FF / $00-$F2,$BA-$FF
         if (Region == SegaRegion.Ntsc) return V30 ? (line & 0xFF) : line <= 0xEA ? line : line - 6;
         // PAL: 313 lines
         if (V30) return line <= 0x10A ? (line & 0xFF) : 0xD2 + (line - 0x10B);
@@ -1024,6 +1032,7 @@ public partial class MdVdp
     public ushort ReadHvCounter(long t)
     {
         RunTo(t);
+        if (!Mode5) return (ushort)(HvNow() & 0xFF00 | hvLatched & 0xFF);      // Mode 4: the V counter runs, the H counter is frozen (see OnModeSwitch)
         return hvLatched >= 0 ? (ushort)hvLatched : HvNow();
     }
 

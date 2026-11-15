@@ -454,7 +454,8 @@
       el('input', { type: 'checkbox', checked: !!arr[i], onchange: (e) => { arr[i] = e.target.checked; push(); } }), n)));
   }
 
-  function pinGrid(prefix, arr) {
+  function pinGrid(prefix, arr, onChange) {
+    const changed = onChange || push;
     const grid = el('div', { class: 'pins' });
     arr.forEach((code, i) => {
       if (i % 8 === 0) grid.appendChild(el('span', { class: 'pinlab' }, i === 0 ? prefix : ''));
@@ -465,12 +466,38 @@
         b.textContent = String(i);
         b.title = `${prefix}${i}: ${f.name} (click: next fault, right-click: reconnect)`;
       };
-      b.addEventListener('click', () => { arr[i] = (arr[i] + 1) % FAULTS.length; paint(); push(); });
-      b.addEventListener('contextmenu', (e) => { e.preventDefault(); arr[i] = 0; paint(); push(); });
+      b.addEventListener('click', () => { arr[i] = (arr[i] + 1) % FAULTS.length; paint(); changed(); });
+      b.addEventListener('contextmenu', (e) => { e.preventDefault(); arr[i] = 0; paint(); changed(); });
+      b._repaint = paint;
       paint();
       grid.appendChild(b);
     });
     return grid;
+  }
+
+  // the controller lines: a wire per button (both views)
+  const PAD = [['·', 'connected'], ['R', 'stuck released'], ['P', 'stuck pressed'], ['B', 'bridged to the next button']];
+  function padLinesGrid(onChange) {
+    const un = settings.unsafe;
+    const grid = el('div', { class: 'pins padpins' });
+    (reach.padOrder || []).forEach((bit, i) => {
+      const b = el('button', { type: 'button' });
+      const paint = () => { const f = un.padLines[bit] || 0; b.className = `pin f${f}`; b.replaceChildren(el('span', {}, PAD[f][0]), (reach.padNames || [])[i] || String(bit)); b.title = `${(reach.padNames || [])[i]}: ${PAD[f][1]}`; };
+      b.addEventListener('click', () => { un.padLines[bit] = ((un.padLines[bit] || 0) + 1) % 4; paint(); onChange(); });
+      b.addEventListener('contextmenu', (e) => { e.preventDefault(); un.padLines[bit] = 0; paint(); onChange(); });
+      b._repaint = paint;
+      paint(); grid.appendChild(b);
+    });
+    return grid;
+  }
+  // the per-line controls a Build module shows under its faceplate (the strip's own pin grids): lines = [[label, array], ...]
+  function pinsUi(lines, onChange) {
+    const box = el('div', { class: 'bpins' }, pinLegend(true));
+    for (const [lab, arr] of lines) if (arr && arr.length) box.append(pinGrid(lab, arr, onChange));
+    return box;
+  }
+  function padUi(onChange) {
+    return el('div', { class: 'bpins' }, el('div', { class: 'legend' }, '· connected   R stuck released   P stuck pressed   B bridged'), padLinesGrid(onChange));
   }
 
   function pinGroup(title, why, group, available, unavailableText, writesText) {
@@ -488,9 +515,9 @@
       body);
   }
 
-  function pinLegend() {
+  function pinLegend(compact) {
     return el('div', { class: 'legend' }, ...FAULTS.map(f => el('span', {}, el('i', { class: `sq f${f.code}` }), f.code === 0 ? 'ok' : f.name.replace(/^stuck /, '').replace(/ to the next line$/, '').replace(/ \(.*$/, ''))),
-      el('span', { class: 'grow' }), el('span', {}, 'click cycles, right-click clears'));
+      compact ? null : el('span', { class: 'grow' }), compact ? null : el('span', {}, 'click cycles, right-click clears'));
   }
 
   function rateFx(label, why, fx, extra) {
@@ -898,15 +925,7 @@
       el('div', { class: 'sub' }, 'Data lines'), pinGrid('D', un.videoBus.data),
       slider('Flicker', un.videoBus, 'flicker', 0, 100, 1));
     // controller lines: one wire per button
-    const PAD = [['·', 'connected'], ['R', 'stuck released'], ['P', 'stuck pressed'], ['B', 'bridged to the next button']];
-    const padGrid = el('div', { class: 'pins' });
-    (reach.padOrder || []).forEach((bit, i) => {
-      const b = el('button', { type: 'button' });
-      const paint = () => { const f = un.padLines[bit] || 0; b.className = `pin f${f}`; b.replaceChildren(el('span', {}, PAD[f][0]), (reach.padNames || [])[i] || String(bit)); b.title = `${(reach.padNames || [])[i]}: ${PAD[f][1]}`; };
-      b.addEventListener('click', () => { un.padLines[bit] = ((un.padLines[bit] || 0) + 1) % 4; paint(); push(); });
-      b.addEventListener('contextmenu', (e) => { e.preventDefault(); un.padLines[bit] = 0; paint(); push(); });
-      paint(); padGrid.appendChild(b);
-    });
+    const padGrid = padLinesGrid(push);
     unsafeBody.push(el('div', { class: 'sub' }, 'Controller lines (player 1)'),
       el('div', { class: 'why' }, 'A wire per button: stuck released, stuck pressed (ghost presses), or bridged to the next one (pressing either presses both).'),
       el('div', { class: 'legend' }, '· connected   R stuck released   P stuck pressed   B bridged'),
@@ -999,13 +1018,14 @@
   // a module's footprint, from its real rendered size (title bar + faceplate), measured once per layout
   const sizeCache = new Map();
   function moduleSize(built) {
-    const key = JSON.stringify(built.layout);
+    const key = JSON.stringify(built.layout) + (built.extraKey || '');
     let px = sizeCache.get(key);
     if (!px) {
       const probe = el('div', { class: 'bmodule', style: 'position:absolute;left:-10000px;top:0;visibility:hidden' },
         el('div', { class: 'bhandle' }, el('span', { class: 'bname' }, 'x')), el('div', { class: 'bplate' }));
       document.body.append(probe);
       BNControls.createPanel(probe.lastChild, Object.assign({}, built.layout, { title: '' }), built.params);
+      if (built.extra) probe.append(built.extra());
       px = { w: probe.offsetWidth, h: probe.offsetHeight };
       probe.remove();
       if (px.w > 0) sizeCache.set(key, px);
@@ -1025,9 +1045,11 @@
   }
   function buildCtx(path) {
     const entry = (catalog?.effects || []).find(e => e.path === path);
-    return { settings, reach, entry, onChange: () => { push(); refreshBoardDisplays(); } };
+    return { settings, reach, entry, onChange: () => { push(); refreshBoardDisplays(); }, pinsUi, padUi };
   }
   let boardPanels = [], trying = null, tryPanel = null, buildApi = null;
+  // Random / Clear on a module change the lines: its pin buttons repaint from the settings
+  function repaintPins(root) { root.querySelectorAll('.bpins .pin').forEach(b => b._repaint && b._repaint()); }
   function refreshBoardDisplays() { for (const bp of boardPanels) bp.refresh(); tryPanel?.refresh(); }
   function renderBuild() {
     document.getElementById('panel')?.classList.add('wide');
@@ -1083,7 +1105,8 @@
           el('button', { type: 'button', disabled: placed ? '' : null, onclick: () => addModule(path) }, placed ? 'On the board' : 'Add to board')),
         el('div', { class: 'trywhy' }, 'Live: it changes the running game, like the board does.'));
       built.layout.title = ''; built.layout.accent = BNEffects.tierColour(e.tier);
-      const bp = BNControls.createPanel(plateHost, built.layout, built.params, { onPress: (id) => { built.actions[id]?.(); bp.refresh(); } });
+      const bp = BNControls.createPanel(plateHost, built.layout, built.params, { onPress: (id) => { built.actions[id]?.(); bp.refresh(); repaintPins(bench); } });
+      if (built.extra) plateHost.after(built.extra());
       tryPanel = bp;
       paintList();
     }
@@ -1151,7 +1174,8 @@
         mod.append(host);
         built.layout.title = '';
         built.layout.accent = BNEffects.tierColour(entry?.tier);
-        const bp = BNControls.createPanel(host, built.layout, built.params, { onPress: (id) => { built.actions[id]?.(); bp.refresh(); } });
+        const bp = BNControls.createPanel(host, built.layout, built.params, { onPress: (id) => { built.actions[id]?.(); bp.refresh(); repaintPins(mod); } });
+        if (built.extra) mod.append(built.extra());
         boardPanels.push(bp);
         // move by the title bar, snapping to cells, never onto another module
         // The module follows the pointer; where the pointer's spot would overlap a neighbour, it takes the nearest free spot to it

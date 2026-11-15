@@ -232,3 +232,11 @@ body.popout .efflist { flex: 1; max-height: none; }
 body.popout .board { height: 100%; max-height: none; width: auto; }
 body.popout.nolist .listpane { display: none; }
 body.popout .trybench { left: auto; right: 16px; top: auto; bottom: 16px; }
+
+/* Build view: a pin module's per-line grid under its faceplate (the strip's own controls) */
+.bpins { background: #17181c; border-radius: 0 0 8px 8px; padding: 4px 6px 6px; margin-top: -6px; min-width: 260px; box-sizing: border-box; }
+.bpins .legend { gap: 6px; }
+.bmodule .bpins .pins { grid-template-columns: 12px repeat(8, 22px); }
+.bmodule .bpins .padpins, .trybench .bpins .padpins { grid-template-columns: repeat(4, 1fr); }
+.bpins .padpins .pin { height: auto; padding: 2px 0; }
+

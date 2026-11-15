@@ -26,6 +26,7 @@ internal static class Program
         if (Flag("client-test")) return ClientTest.Run(args, ClientTest.Suite.Client);
         if (Flag("demo")) return ClientTest.Run(args, ClientTest.Suite.Demo);
         if (Flag("live-test")) return ClientTest.Run(args, ClientTest.Suite.Live);
+        if (Flag("agentloop-test")) return AgentLoopTest.Run(args);   // play_step / record / reference (compat catalog P0)
         if (Opt("write-test-roms") is { Length: > 0 } romDir)
         {
             // the live test's ROM (the debugger tests' NES ROM, its labels) for the desktop apps it starts
@@ -48,6 +49,7 @@ internal static class Program
         "the D4 hardware checks and the profiler run with checks:true (NES, SNES, WideMess, Game Boy). Debug games here, not on Mesen (Mesen is for cross-checks). " +
         "LIVE sessions (attach_live) read the user's running desktop app: read freely; open with control:true only when the user asked in chat to control their game (and the app must have enableDebuggerControl on); " +
         "a live session never saves, never touches progression and never stops the process. SESSION IDS ARE PRIVATE: this one server is shared by every agent of a Claude Code session and cannot tell them apart, so a session belongs to the caller that opened it: its full id (h3-9f2c41ab, ending in a random secret) is returned only to that caller and is the key; list_sessions always masks ids, short, masked or mistyped ids are refused with a clear error, and an id you did not open is never yours to drive. Results are JSON (pictures as images). Typical: open_rom with checks:true, run 600, checks report, then breakpoint_add on what a finding names, run, call_stack, trace. " +
+        "Playing a game (an agent loop, the compatibility catalog): play_step holds pads for some frames and returns a small picture, RAM, the frame and the lag in one call; record makes the play a .bnm movie with checkpoint marks; reference opens a lock-stepped Mesen / BizHawk on the same ROM whose difference score comes back with every play_step. " +
         "Timeflow: a recorded timeline (timeflow_record on your headless session, timeflow_list) can be profiled over any span at full depth with timeflow_profile and streaming queries ('writes hp', 'last-write hp before 900', 'became hp == 0', 'stack N', 'histogram'): the write that corrupted a variable, with its instruction and call stack, without playing again.";
 
     private static async Task<int> Serve()

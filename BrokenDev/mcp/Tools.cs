@@ -9,7 +9,7 @@ internal sealed record ToolDef(string Name, string Description, JsonObject Schem
 /// The BrokenNes MCP tools (docs/projects/brokendev-debugging-plan.md section 8): sessions, running, input, memory, the debugger, the
 /// picture, sound, states, the checks and the profiler, BrokenDev. Each is a thin call onto <see cref="Session"/>.
 /// </summary>
-internal static class Tools
+internal static partial class Tools
 {
     private const string SessionDesc = "the session id YOU got back from open_rom, open_project or attach_live. Ids are random and private: one MCP server is shared by every agent of a Claude Code session (subagents included) and it cannot tell them apart, so never use an id you did not open yourself; another agent's session is not yours to drive";
     private const string CpuDesc = "the CPU: main (default) or spc (the SNES sound CPU, SPC700)";
@@ -710,6 +710,8 @@ internal static class Tools
                    ("project", P("string", "the project id (or all for build / verify / compat)"), false), ("emu", P("string[]", "compat: emulator ids"), false), ("scenario", P("string[]", "compat: scenario ids"), false),
                    ("timeout_sec", P("integer", "give up after this long (default 1800)"), false)),
             a => BrokenDevBridge.RunVerb(a.Req("verb"), a.Str("project") ?? "", a.List("emu"), a.List("scenario"), a.Int("timeout_sec", 1800)));
+
+        AgentLoopTools(Add);
 
         return t;
     }

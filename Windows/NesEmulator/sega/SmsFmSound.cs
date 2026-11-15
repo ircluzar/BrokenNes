@@ -248,9 +248,10 @@ public class SmsFmSound : ISmsSound, IVoiceStems
     public void LoadState(BinaryReader r)
     {
         psg.LoadState(r);
-        if (r.BaseStream.CanSeek && (r.BaseStream.Position >= r.BaseStream.Length || EngineState.AtSection(r)))
+        if (r.BaseStream.CanSeek && (r.BaseStream.Position >= r.BaseStream.Length || EngineState.AtSection(r) || EngineState.AtHubSection(r)))
         {
-            // the state of a PSG-only unit (an APU swap from the stock unit): the PSG goes on as it was, the FM chip starts as at power-on
+            // the state of a PSG-only unit (an APU swap from the stock unit, or from a PSG-on-NES bridge, whose hub section follows the PSG: read as FM bytes it indexed
+            // the YM2413's tables out of range, Lite UAT 2026-11-14): the PSG goes on as it was, the FM chip starts as at power-on
             fm.Reset(); fm.ResetPatch(); resampler.Reset(); audioControl = 0; fmRemainder = 0;
             psgRead = psgWrite = fmRead = fmWrite = 0;
             RealignStems();

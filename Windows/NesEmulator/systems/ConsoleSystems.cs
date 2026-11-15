@@ -188,6 +188,16 @@ public static class RomDetect
         return kind.Length > 0;
     }
 
+    /// <summary>The console a Game Boy cartridge boots on (header byte $143): a colour-only cart ($C0) on the Game Boy Color; a dual-mode cart ($80) on the Game Boy Color,
+    /// or on the plain Game Boy when <paramref name="dualModeAsDmg"/> is on; a plain Game Boy cart on <paramref name="selected"/> (the Game Boy Color runs it in its compatibility mode).</summary>
+    public static ConsoleKind GameBoyConsole(byte[] rom, ConsoleKind selected, bool dualModeAsDmg)
+    {
+        byte flag = rom.Length > 0x143 ? rom[0x143] : (byte)0;
+        if ((flag & 0xC0) == 0xC0) return ConsoleKind.GameBoyColor;
+        if ((flag & 0x80) != 0) return dualModeAsDmg ? ConsoleKind.GameBoy : ConsoleKind.GameBoyColor;
+        return Consoles.IsGameBoy(selected) ? selected : ConsoleKind.GameBoy;
+    }
+
     /// <summary>The console this ROM is for, or null when it looks like none of them.</summary>
     public static ConsoleKind? Detect(byte[] rom, string fileName)
     {
